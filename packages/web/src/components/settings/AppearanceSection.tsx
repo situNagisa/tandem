@@ -1,6 +1,7 @@
 import { Monitor, Moon, Smartphone, Sun } from 'lucide-react'
 import type { Theme } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
+import { modLabel } from '../../lib/format'
 import { cn } from '../../lib/cn'
 
 const THEMES: Array<{ id: Theme; label: string; desc: string; icon: typeof Sun }> = [
@@ -8,6 +9,39 @@ const THEMES: Array<{ id: Theme; label: string; desc: string; icon: typeof Sun }
   { id: 'dark', label: '深色', desc: '低亮度暖黑，夜间更舒适', icon: Moon },
   { id: 'system', label: '跟随系统', desc: '随设备外观自动切换', icon: Monitor },
 ]
+
+const PREVIEW = {
+  light: { bg: '#FAF9F5', side: '#F5F4ED', surface: '#FFFFFF', text: '#1F1E1D', soft: '#E4E1D8' },
+  dark: { bg: '#262624', side: '#1F1E1D', surface: '#30302E', text: '#F5F4EE', soft: '#3A3936' },
+} as const
+
+function ThemePreview({ mode }: { mode: Theme }) {
+  const modes = mode === 'system' ? (['light', 'dark'] as const) : ([mode] as const)
+  return (
+    <div className="flex h-[62px] overflow-hidden rounded-lg border border-border">
+      {modes.map((m) => {
+        const p = PREVIEW[m]
+        return (
+          <div key={m} className="relative h-full flex-1" style={{ background: p.bg }}>
+            <div className="absolute inset-y-0 left-0 w-[22%]" style={{ background: p.side }} />
+            <div
+              className="absolute left-[30%] top-3 h-1.5 w-[42%] rounded-full"
+              style={{ background: p.text, opacity: 0.8 }}
+            />
+            <div
+              className="absolute left-[30%] top-[22px] h-1.5 w-[28%] rounded-full"
+              style={{ background: p.soft }}
+            />
+            <div
+              className="absolute bottom-2 right-2 h-[18px] w-[38%] rounded-md border"
+              style={{ background: p.surface, borderColor: p.soft }}
+            />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export function AppearanceSection() {
   const theme = useUiStore((s) => s.theme)
@@ -29,34 +63,48 @@ export function AppearanceSection() {
               key={t.id}
               onClick={() => setTheme(t.id)}
               className={cn(
-                'rounded-xl border p-3 text-left transition-all duration-150',
+                'rounded-xl border p-2 text-left transition-all duration-150',
                 selected
-                  ? 'border-accent/50 bg-accent-soft/40 shadow-[0_0_0_1px_var(--t-accent)]'
-                  : 'border-border bg-surface hover:border-border-strong/70 hover:bg-surface-2/40',
+                  ? 'border-accent/45 bg-accent-soft/30 ring-1 ring-accent/30'
+                  : 'border-border bg-surface hover:border-border-strong/70',
               )}
               aria-pressed={selected}
             >
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    'flex size-8 items-center justify-center rounded-lg',
-                    selected ? 'bg-accent-soft text-accent' : 'bg-surface-2 text-muted',
-                  )}
-                >
-                  <Icon size={15} />
-                </span>
-                <span className="text-[12.5px] font-medium">{t.label}</span>
-                {selected && (
-                  <span className="ml-auto size-1.5 rounded-full bg-accent" aria-hidden />
-                )}
+              <ThemePreview mode={t.id} />
+              <div className="mt-2 flex items-center gap-1.5 px-0.5">
+                <Icon size={13} className={selected ? 'text-accent' : 'text-muted'} />
+                <span className="text-[12px] font-medium">{t.label}</span>
+                {selected && <span className="ml-auto size-1.5 rounded-full bg-accent" aria-hidden />}
               </div>
-              <p className="mt-2 text-[10.5px] leading-4 text-muted">{t.desc}</p>
+              <p className="mt-0.5 px-0.5 text-[10px] leading-4 text-muted">{t.desc}</p>
             </button>
           )
         })}
       </div>
 
       <div className="mt-5 rounded-xl border border-border bg-surface p-3.5">
+        <div className="text-[12px] font-medium">键盘快捷键</div>
+        <dl className="mt-2 grid gap-1.5 text-[11.5px] sm:grid-cols-2">
+          {[
+            ['新会话', `${modLabel} N`],
+            ['搜索会话', `${modLabel} K`],
+            ['收起 / 展开侧栏', `${modLabel} B`],
+            ['中断当前回合', 'Esc'],
+          ].map(([label, keys]) => (
+            <div key={label} className="flex items-center gap-2">
+              <dt className="text-muted">{label}</dt>
+              <span className="flex-1 border-b border-dashed border-border/60" />
+              <dd>
+                <kbd className="rounded border border-border bg-[var(--t-bg)] px-1.5 py-0.5 font-mono text-[10px] text-text-soft">
+                  {keys}
+                </kbd>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      <div className="mt-3 rounded-xl border border-border bg-surface p-3.5">
         <div className="flex items-center gap-2 text-[12.5px] font-medium">
           <Smartphone size={14} className="text-muted" /> 安装到手机主屏
         </div>
@@ -66,9 +114,8 @@ export function AppearanceSection() {
         </p>
       </div>
 
-      <div className="mt-3 rounded-xl border border-border bg-bg/30 p-3.5 text-[11px] leading-5 text-muted">
-        Tandem 的配色参考 Claude：暖色中性灰、克制的陶土橙强调色与衬线标题。
-        字体使用系统字体，不会加载外部字体文件。
+      <div className="mt-3 rounded-xl border border-border bg-[var(--t-bg)] p-3.5 text-[11px] leading-5 text-muted">
+        Tandem 使用暖色中性灰与克制的陶土橙强调色，衬线字体只用于标题。所有字体来自系统，不加载外部资源。
       </div>
     </div>
   )

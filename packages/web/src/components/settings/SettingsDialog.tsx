@@ -24,12 +24,12 @@ export function SettingsDialog() {
       open={open}
       onClose={close}
       title="设置"
-      description="管理执行任务的 Host、账号与模型，以及界面外观。"
+      description="Host、账号与模型，以及界面外观。"
       className="max-w-3xl"
       bodyClassName="p-0 overflow-hidden"
     >
-      <div className="flex h-[min(74dvh,620px)] min-h-[420px] flex-col sm:flex-row">
-        <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-bg/30 p-2 sm:w-44 sm:flex-col sm:border-b-0 sm:border-r sm:p-3">
+      <div className="flex h-[min(76dvh,640px)] min-h-[420px] flex-col sm:flex-row">
+        <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-bg/40 p-2 sm:w-44 sm:flex-col sm:border-b-0 sm:border-r sm:p-3">
           {TABS.map((t) => {
             const Icon = t.icon
             return (
@@ -37,10 +37,10 @@ export function SettingsDialog() {
                 key={t.id}
                 onClick={() => setTab(t.id)}
                 className={cn(
-                  'flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] transition-colors sm:min-h-9',
+                  'flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] transition-colors duration-100 sm:min-h-9',
                   tab === t.id
-                    ? 'bg-surface text-text shadow-sm ring-1 ring-border'
-                    : 'text-text-soft hover:bg-surface-2/60 hover:text-text',
+                    ? 'bg-surface text-text shadow-[var(--t-shadow-sm)] ring-1 ring-border'
+                    : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
                 )}
               >
                 <Icon size={14} className={tab === t.id ? 'text-accent' : 'text-muted'} />

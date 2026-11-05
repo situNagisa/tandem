@@ -297,7 +297,7 @@ export function SessionList({
       }
     : null
 
-  const renderRow = (hostId: string, s: SessionSummary, opts?: { pinnedRow?: boolean }) => {
+  const renderRow = (hostId: string, s: SessionSummary) => {
     const isActive = s.id === activeSessionId
     const renamingThis = renaming === s.id
     return (
@@ -377,11 +377,6 @@ export function SessionList({
             </button>
           </>
         )}
-        {opts?.pinnedRow && hosts.length > 1 && (
-          <span className="absolute -bottom-0.5 left-7 hidden text-[9px] text-muted group-hover:block">
-            {hosts.find((h) => h.id === hostId)?.name}
-          </span>
-        )}
       </div>
     )
   }
@@ -448,7 +443,7 @@ export function SessionList({
             <Pin size={11} />
             置顶
           </div>
-          <div className="space-y-0.5">{pinned.map(({ hostId, session }) => renderRow(hostId, session, { pinnedRow: true }))}</div>
+          <div className="space-y-0.5">{pinned.map(({ hostId, session }) => renderRow(hostId, session))}</div>
         </div>
       )}
 
@@ -549,7 +544,7 @@ export function SessionList({
                 }
               }}
               disabled={confirm?.busy}
-              className="flex min-h-9 items-center gap-1.5 rounded-lg bg-danger px-3.5 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+              className="flex min-h-9 items-center gap-1.5 rounded-lg bg-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
             >
               {confirm?.busy && <Loader2 size={13} className="animate-spin" />}
               删除

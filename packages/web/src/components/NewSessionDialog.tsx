@@ -449,7 +449,14 @@ export function NewSessionView() {
 
   useEffect(() => {
     if (!hostId && hosts[0]) setHostId(hosts[0].id)
+    else if (hostId && !hosts.some((h) => h.id === hostId)) setHostId(hosts[0]?.id ?? '')
   }, [hostId, hosts])
+
+  useEffect(() => {
+    if (activeHostId && activeHostId !== hostId && hosts.some((h) => h.id === activeHostId)) {
+      setHostId(activeHostId)
+    }
+  }, [activeHostId, hostId, hosts])
 
   useEffect(() => {
     if (!hostId) return

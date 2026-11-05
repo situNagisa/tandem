@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  ArrowUpRight,
   GitBranch,
   Menu,
   PanelLeft,
@@ -178,7 +177,7 @@ export function TopBar() {
         )}
 
         {hasSession && (
-          <span className="flex min-w-0 shrink items-center gap-1 rounded-md bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[10.5px] leading-4 text-text-soft">
+          <span className="hidden min-w-0 shrink items-center gap-1 rounded-md bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[10.5px] leading-4 text-text-soft sm:flex">
             <span className="max-w-[90px] truncate">{host?.name ?? 'Host'}</span>
             {project && (
               <>
@@ -265,18 +264,6 @@ export function TopBar() {
         </button>
       )}
 
-      {!hasSession && host && (
-        <a
-          href="#/"
-          onClick={(e) => {
-            e.preventDefault()
-            openSettings('profiles')
-          }}
-          className="hidden shrink-0 items-center gap-1 text-[10.5px] text-muted transition-colors hover:text-text sm:flex"
-        >
-          账号 <ArrowUpRight size={10} />
-        </a>
-      )}
     </header>
   )
 }

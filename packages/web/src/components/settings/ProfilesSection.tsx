@@ -132,6 +132,7 @@ export function ProfilesSection() {
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; error?: string }>>({})
   const [deleteTarget, setDeleteTarget] = useState<Profile | null>(null)
   const lastAutoFetch = useRef('')
+  const fetchInFlight = useRef(false)
 
   const host = hosts.find((h) => h.id === hostId) ?? null
   const runtime = hostId ? runtimes[hostId] : undefined
@@ -228,7 +229,7 @@ export function ProfilesSection() {
       ? existing
       : recommended.length
         ? recommended
-        : sorted.slice(0, 3).map((m) => m.id)
+        : list.slice(0, 3).map((m) => m.id)
     setAvailable(sorted)
     setSelected(initial)
     setDefaultModel((prev) =>
@@ -241,7 +242,7 @@ export function ProfilesSection() {
   }
 
   const fetchModels = async (useProfileId: boolean) => {
-    if (!host || fetching) return
+    if (!host || fetching || fetchInFlight.current) return
     const apiKey = form.apiKey.trim()
     const canUseProfile = useProfileId && !!editingProfile
     if (!canUseProfile && !apiKey) {
@@ -252,6 +253,7 @@ export function ProfilesSection() {
     }
     setStep(3)
     setFetching(true)
+    fetchInFlight.current = true
     setFetchError(null)
     setManualMode(false)
     try {
@@ -270,6 +272,7 @@ export function ProfilesSection() {
       )
       setManualMode(available.length === 0)
     } finally {
+      fetchInFlight.current = false
       setFetching(false)
     }
   }
@@ -627,7 +630,7 @@ export function ProfilesSection() {
                 )}
                 <span className="flex-1" />
                 <button
-                  onClick={() => void fetchModels(false)}
+                  onClick={() => void fetchModels(!!editingProfile)}
                   disabled={fetching}
                   className="flex min-h-9 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-60"
                 >

@@ -5,6 +5,8 @@ import {
   CircleCheck,
   CircleDot,
   Copy,
+  FolderGit2,
+  GitBranch,
   Loader2,
   Trash2,
   X,
@@ -23,6 +25,7 @@ import {
 } from '../lib/format'
 import { PERMISSION_MODE_LABELS } from '../lib/types'
 import { ConnectionDot, SessionStatusDot } from './StatusDot'
+import { Modal } from './ui/Modal'
 
 const EMPTY_TODOS: Todo[] = []
 
@@ -81,6 +84,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const toast = useUiStore((s) => s.toast)
   const [copied, setCopied] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const completed = todos.filter((t) => t.status === 'completed').length
   const progress = todos.length ? Math.round((completed / todos.length) * 100) : 0
@@ -99,11 +103,10 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
 
   const onDelete = async () => {
     if (!hostId || !sessionId || !summary || deleting) return
-    const name = summary.title || '未命名会话'
-    if (!window.confirm(`删除会话「${name}」？该操作不可撤销。`)) return
     setDeleting(true)
     try {
       await deleteSession(hostId, sessionId)
+      setConfirmDelete(false)
     } catch (err) {
       toast(err instanceof Error ? err.message : '删除会话失败', 'error')
     } finally {
@@ -125,7 +128,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         <button
           onClick={onClose}
           aria-label="关闭信息面板"
-          className="-mr-1 flex size-11 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-text md:size-8"
+          className="-mr-1 flex size-11 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:size-8"
         >
           <X size={15} />
         </button>
@@ -253,6 +256,22 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
                 )}
               </span>
             </DetailRow>
+            {summary?.env?.repoName && (
+              <DetailRow label="仓库">
+                <span className="flex items-center gap-1">
+                  <FolderGit2 size={11} className="text-muted" />
+                  {summary.env.repoName}
+                </span>
+              </DetailRow>
+            )}
+            {summary?.env?.branch && (
+              <DetailRow label="分支">
+                <span className="flex items-center gap-1">
+                  <GitBranch size={11} className="text-muted" />
+                  {summary.env.branch}
+                </span>
+              </DetailRow>
+            )}
             <DetailRow label="Host">
               <span className="flex items-center gap-1.5">
                 <ConnectionDot state={hostStatus} />
@@ -285,7 +304,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
 
         <Section title="危险操作">
           <button
-            onClick={onDelete}
+            onClick={() => setConfirmDelete(true)}
             disabled={deleting || !summary}
             className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-danger/25 bg-surface px-3 text-[12px] text-danger transition-colors hover:bg-danger-soft/60 disabled:opacity-50 md:min-h-10"
           >
@@ -295,6 +314,35 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         </Section>
         <div className="pb-1 text-center text-[10px] text-muted/70">Tandem · 多端实时协同</div>
       </div>
+      <Modal
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="删除会话"
+        className="max-w-md"
+        footer={
+          <>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              disabled={deleting}
+              className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
+            >
+              取消
+            </button>
+            <button
+              onClick={() => void onDelete()}
+              disabled={deleting}
+              className="flex min-h-9 items-center gap-1.5 rounded-lg bg-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
+            >
+              {deleting && <Loader2 size={13} className="animate-spin" />}
+              删除
+            </button>
+          </>
+        }
+      >
+        <p className="text-[13px] leading-6 text-text-soft">
+          确定删除「{summary?.title || '未命名会话'}」？该操作不可撤销。
+        </p>
+      </Modal>
     </aside>
   )
 }
