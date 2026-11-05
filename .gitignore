@@ -2,3 +2,7 @@ node_modules
 dist
 *.log
 .tandem-data
+dist-apk
+packages/mobile/android/.gradle
+packages/mobile/android/app/build
+packages/mobile/android/build
