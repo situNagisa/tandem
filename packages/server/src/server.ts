@@ -1,0 +1,358 @@
+// Fastify 服务：REST + WebSocket + 静态托管 + token 鉴权 + CORS。
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import cors from '@fastify/cors';
+import websocket from '@fastify/websocket';
+import fastifyStatic from '@fastify/static';
+import type {
+  ClientMsg,
+  CreateSessionInput,
+  FsEntry,
+  PermissionDecision,
+  ProfileInput,
+  ProviderKind,
+  UpdateSessionInput,
+} from '@tandem/protocol';
+import type { Host } from './host.js';
+import type { WsClient } from './events.js';
+import { testProfile } from './providers/index.js';
+import { walkFiles } from './util/fs-walk.js';
+import { expandHome, toPosix } from './util/path.js';
+import { truncateEnd } from './util/text.js';
+
+const PROVIDER_KINDS: ProviderKind[] = ['anthropic', 'openai', 'openai-compatible', 'gemini'];
+
+function bad(reply: FastifyReply, message: string, code = 400): FastifyReply {
+  return reply.code(code).send({ error: message });
+}
+
+function str(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function parseProfileInput(body: unknown): ProfileInput {
+  const raw = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+  const kind = str(raw.kind) as ProviderKind;
+  if (!PROVIDER_KINDS.includes(kind)) throw new Error('provider 类型无效');
+  const models = Array.isArray(raw.models)
+    ? raw.models.map((m) => str(m)).filter(Boolean)
+    : [];
+  const name = str(raw.name);
+  if (!name) throw new Error('name 不能为空');
+  const defaultModel = str(raw.defaultModel) || models[0] || '';
+  if (!defaultModel) throw new Error('defaultModel 不能为空');
+  return {
+    name,
+    kind,
+    baseUrl: str(raw.baseUrl) || undefined,
+    apiKey: typeof raw.apiKey === 'string' ? raw.apiKey : undefined,
+    models,
+    defaultModel,
+  };
+}
+
+/** @文件补全的模糊匹配打分；不匹配返回 null。 */
+function fuzzyScore(query: string, target: string): number | null {
+  const q = query.toLowerCase();
+  const t = target.toLowerCase();
+  const direct = t.indexOf(q);
+  if (direct >= 0) {
+    // 越靠前、越短越优先
+    return 1000 - direct * 3 - t.length * 0.1;
+  }
+  let qi = 0;
+  let score = 0;
+  let prev = -2;
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) {
+      score += prev === ti - 1 ? 8 : 2;
+      prev = ti;
+      qi++;
+    }
+  }
+  return qi === q.length ? score - t.length * 0.1 : null;
+}
+
+export async function createApp(host: Host): Promise<FastifyInstance> {
+  const app = Fastify({
+    logger: false,
+    bodyLimit: 30 * 1024 * 1024,
+  });
+
+  await app.register(cors, {
+    origin: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    maxAge: 600,
+  });
+  await app.register(websocket, {
+    options: { maxPayload: 32 * 1024 * 1024 }, // 允许客户端发送图片附件
+  });
+
+  const webDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
+  const hasWeb = existsSync(path.join(webDist, 'index.html'));
+
+  // 鉴权：/api 与 /ws 必须带 token（Bearer 或 ?token=），静态文件放行
+  app.addHook('onRequest', async (req, reply) => {
+    if (req.method === 'OPTIONS') return;
+    const urlPath = (req.raw.url ?? '').split('?')[0] ?? '';
+    if (!urlPath.startsWith('/api') && urlPath !== '/ws') return;
+
+    const auth = req.headers.authorization;
+    const bearer = auth?.startsWith('Bearer ') ? auth.slice('Bearer '.length).trim() : undefined;
+    const query = req.query as Record<string, unknown> | undefined;
+    const token = bearer || (typeof query?.token === 'string' ? query.token : undefined);
+    if (token !== host.config.token) {
+      return reply.code(401).send({ error: '未授权：token 无效' });
+    }
+  });
+
+  app.setErrorHandler((rawErr: unknown, _req, reply) => {
+    const err = rawErr as { statusCode?: number; message?: string };
+    const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
+    if (status >= 500) console.error('[tandem] 请求处理失败:', rawErr);
+    reply.code(status).send({ error: err.message ?? '服务器内部错误' });
+  });
+
+  // ---------- Host ----------
+  app.get('/api/host', async () => host.info());
+
+  // ---------- 账号 ----------
+  app.get('/api/profiles', async () => host.profiles.list().map((p) => host.profiles.toPublic(p)));
+
+  app.post('/api/profiles', async (req, reply) => {
+    try {
+      const input = parseProfileInput(req.body);
+      return host.profiles.toPublic(host.profiles.create(input));
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.put('/api/profiles/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!host.profiles.get(id)) return bad(reply, '账号不存在', 404);
+    try {
+      const input = parseProfileInput(req.body);
+      const updated = host.profiles.update(id, input);
+      return updated ? host.profiles.toPublic(updated) : bad(reply, '账号不存在', 404);
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.delete('/api/profiles/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!host.profiles.delete(id)) return bad(reply, '账号不存在', 404);
+    return reply.code(204).send();
+  });
+
+  app.post('/api/profiles/:id/test', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const profile = host.profiles.get(id);
+    if (!profile) return bad(reply, '账号不存在', 404);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20_000);
+    try {
+      return await testProfile(profile, controller.signal);
+    } catch (err) {
+      return { ok: false, error: truncateEnd((err as Error).message, 500) };
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+  // ---------- 会话 ----------
+  app.get('/api/sessions', async () => host.listSessions().map((s) => host.toSummary(s)));
+
+  app.post('/api/sessions', async (req, reply) => {
+    try {
+      const input = (req.body ?? {}) as Partial<CreateSessionInput>;
+      const rec = host.createSession(input);
+      return reply.code(201).send(host.toSummary(rec));
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.get('/api/sessions/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    return host.toSession(rec);
+  });
+
+  app.patch('/api/sessions/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const patch = (req.body ?? {}) as Partial<UpdateSessionInput>;
+      const rec = host.updateSession(id, patch);
+      if (!rec) return bad(reply, '会话不存在', 404);
+      return host.toSummary(rec);
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.delete('/api/sessions/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!host.deleteSession(id)) return bad(reply, '会话不存在', 404);
+    return reply.code(204).send();
+  });
+
+  // ---------- 文件系统 ----------
+  app.get('/api/fs/list', async (req, reply) => {
+    const query = req.query as { path?: string };
+    const raw = str(query.path) || os.homedir();
+    const dir = path.resolve(expandHome(raw));
+    let stat;
+    try {
+      stat = statSync(dir);
+    } catch {
+      return bad(reply, `目录不存在: ${dir}`);
+    }
+    if (!stat.isDirectory()) return bad(reply, `不是目录: ${dir}`);
+
+    const entries: FsEntry[] = [];
+    let dirents;
+    try {
+      dirents = readdirSync(dir, { withFileTypes: true });
+    } catch (err) {
+      return bad(reply, `无法读取目录: ${(err as Error).message}`);
+    }
+    for (const entry of dirents) {
+      const full = path.join(dir, entry.name);
+      let isDir = entry.isDirectory();
+      if (entry.isSymbolicLink()) {
+        try {
+          isDir = statSync(full).isDirectory();
+        } catch {
+          continue;
+        }
+      }
+      if (!isDir) continue;
+      entries.push({ name: entry.name, path: full, isDir: true });
+    }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    return entries;
+  });
+
+  app.get('/api/fs/complete', async (req, reply) => {
+    const query = req.query as { cwd?: string; q?: string };
+    const cwdRaw = str(query.cwd) || process.cwd();
+    const cwd = path.resolve(expandHome(cwdRaw));
+    const q = str(query.q);
+    if (!q) return [] as string[];
+    try {
+      if (!statSync(cwd).isDirectory()) return bad(reply, `不是目录: ${cwd}`);
+    } catch {
+      return bad(reply, `目录不存在: ${cwd}`);
+    }
+
+    const files = walkFiles(cwd, { maxEntries: 20_000 });
+    const scored: Array<{ rel: string; score: number }> = [];
+    for (const file of files) {
+      const rel = toPosix(path.relative(cwd, file));
+      if (rel.startsWith('..')) continue;
+      const score = fuzzyScore(q, rel);
+      if (score !== null) scored.push({ rel, score });
+    }
+    scored.sort((a, b) => b.score - a.score || a.rel.length - b.rel.length);
+    return scored.slice(0, 50).map((item) => item.rel);
+  });
+
+  // ---------- 斜杠命令 ----------
+  app.get('/api/commands', async (req) => {
+    const query = req.query as { cwd?: string };
+    const cwd = str(query.cwd) ? path.resolve(expandHome(str(query.cwd))) : process.cwd();
+    return host.listCommands(cwd);
+  });
+
+  // ---------- WebSocket ----------
+  app.get('/ws', { websocket: true }, (socket, _req) => {
+    const client = socket as unknown as WsClient;
+    host.hub.add(client);
+    host.hub.send(client, { type: 'hello', host: host.info() });
+
+    const sendError = (message: string) => host.hub.send(client, { type: 'error', message });
+
+    socket.on('message', (data: Buffer) => {
+      let msg: ClientMsg;
+      try {
+        msg = JSON.parse(data.toString()) as ClientMsg;
+      } catch {
+        sendError('无法解析 WebSocket 消息');
+        return;
+      }
+      if (!msg || typeof msg !== 'object' || typeof (msg as { type?: unknown }).type !== 'string') {
+        sendError('消息格式无效');
+        return;
+      }
+      switch (msg.type) {
+        case 'subscribe': {
+          const snapshot = host.snapshot(msg.sessionId);
+          if (!snapshot) {
+            sendError('会话不存在');
+            return;
+          }
+          host.hub.subscribe(client, msg.sessionId);
+          host.hub.send(client, {
+            type: 'session_snapshot',
+            session: snapshot.session,
+            pendingPermissions: snapshot.pendingPermissions,
+          });
+          break;
+        }
+        case 'unsubscribe':
+          host.hub.unsubscribe(client, msg.sessionId);
+          break;
+        case 'send':
+          void host.send(msg.sessionId, msg.content).catch((err: Error) => sendError(err.message));
+          break;
+        case 'interrupt':
+          host.interrupt(msg.sessionId);
+          break;
+        case 'permission':
+          host.resolvePermission(msg.requestId, msg.decision as PermissionDecision);
+          break;
+        case 'ping':
+          host.hub.send(client, { type: 'pong' });
+          break;
+        default:
+          sendError('未知消息类型');
+          break;
+      }
+    });
+
+    socket.on('close', () => host.hub.remove(client));
+    socket.on('error', () => host.hub.remove(client));
+  });
+
+  // ---------- 静态 Web UI ----------
+  if (hasWeb) {
+    await app.register(fastifyStatic, {
+      root: webDist,
+      prefix: '/',
+    });
+  }
+
+  app.setNotFoundHandler((req: FastifyRequest, reply: FastifyReply) => {
+    const urlPath = (req.raw.url ?? '').split('?')[0] ?? '';
+    const accept = req.headers.accept ?? '';
+    if (
+      hasWeb &&
+      req.method === 'GET' &&
+      !urlPath.startsWith('/api') &&
+      urlPath !== '/ws' &&
+      (accept.includes('text/html') || accept === '*/*' || accept === '')
+    ) {
+      return reply.sendFile('index.html');
+    }
+    return reply.code(404).send({ error: 'Not Found' });
+  });
+
+  return app;
+}
