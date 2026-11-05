@@ -1,9 +1,61 @@
 // 会话持久化：sessions/<id>.json，写盘节流。
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import type { PermissionMode, SessionEnv } from '@tandem/protocol';
 import type { SessionRecord } from './types.js';
 
 const SAVE_DELAY_MS = 300;
+const PERMISSION_MODES = new Set<PermissionMode>([
+  'default',
+  'acceptEdits',
+  'plan',
+  'bypassPermissions',
+]);
+
+/** 兼容老版本 json：缺失/异常的 SessionSummary 字段回落到默认值。 */
+function normalizeRecord(raw: SessionRecord): SessionRecord {
+  const usage = (raw.usage ?? {}) as unknown as Record<string, unknown>;
+  const num = (value: unknown): number =>
+    typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  const rec: SessionRecord = {
+    ...raw,
+    id: raw.id,
+    title: typeof raw.title === 'string' && raw.title.trim() ? raw.title : '新会话',
+    cwd: typeof raw.cwd === 'string' ? raw.cwd : '',
+    profileId: typeof raw.profileId === 'string' ? raw.profileId : '',
+    model: typeof raw.model === 'string' ? raw.model : '',
+    permissionMode: PERMISSION_MODES.has(raw.permissionMode) ? raw.permissionMode : 'default',
+    status: 'idle',
+    messages: Array.isArray(raw.messages) ? raw.messages : [],
+    todos: Array.isArray(raw.todos) ? raw.todos : [],
+    usage: {
+      inputTokens: num(usage.inputTokens),
+      outputTokens: num(usage.outputTokens),
+      ...(typeof usage.costUsd === 'number' ? { costUsd: usage.costUsd } : {}),
+    },
+    allowedTools: Array.isArray(raw.allowedTools) ? raw.allowedTools : [],
+    createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
+    updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),
+  };
+  if (raw.pinned === true) rec.pinned = true;
+  else delete rec.pinned;
+  if (raw.archived === true) rec.archived = true;
+  else delete rec.archived;
+  const env = normalizeEnv(raw.env);
+  if (env) rec.env = env;
+  else delete rec.env;
+  return rec;
+}
+
+function normalizeEnv(value: unknown): SessionEnv | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  const env: SessionEnv = {};
+  if (typeof raw.repoRoot === 'string' && raw.repoRoot) env.repoRoot = raw.repoRoot;
+  if (typeof raw.repoName === 'string' && raw.repoName) env.repoName = raw.repoName;
+  if (typeof raw.branch === 'string' && raw.branch) env.branch = raw.branch;
+  return env.repoRoot || env.repoName || env.branch ? env : undefined;
+}
 
 export class SessionStore {
   private dir: string;
@@ -28,14 +80,7 @@ export class SessionStore {
       try {
         const raw = JSON.parse(readFileSync(path.join(this.dir, file), 'utf8')) as SessionRecord;
         if (!raw || typeof raw.id !== 'string') continue;
-        const rec: SessionRecord = {
-          ...raw,
-          status: 'idle',
-          messages: Array.isArray(raw.messages) ? raw.messages : [],
-          todos: Array.isArray(raw.todos) ? raw.todos : [],
-          usage: raw.usage ?? { inputTokens: 0, outputTokens: 0 },
-          allowedTools: Array.isArray(raw.allowedTools) ? raw.allowedTools : [],
-        };
+        const rec = normalizeRecord(raw);
         this.records.set(rec.id, rec);
       } catch (err) {
         console.warn(`[tandem] 跳过损坏的会话文件 ${file}:`, (err as Error).message);

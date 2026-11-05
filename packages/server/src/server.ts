@@ -11,6 +11,7 @@ import type {
   ClientMsg,
   CreateSessionInput,
   FsEntry,
+  ListModelsInput,
   PermissionDecision,
   ProfileInput,
   ProviderKind,
@@ -165,6 +166,25 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
     }
   });
 
+  // ---------- 模型列表 ----------
+  app.post('/api/models', async (req) => {
+    const raw = (req.body ?? {}) as Partial<ListModelsInput>;
+    const kind = str(raw.kind) as ProviderKind;
+    if (!PROVIDER_KINDS.includes(kind)) {
+      return { ok: false, models: [], error: 'provider 类型无效' };
+    }
+    const profileId = str(raw.profileId) || undefined;
+    if (profileId && !host.profiles.get(profileId)) {
+      return { ok: false, models: [], error: '账号不存在' };
+    }
+    return host.listModels({
+      kind,
+      baseUrl: str(raw.baseUrl) || undefined,
+      apiKey: str(raw.apiKey) || undefined,
+      profileId,
+    });
+  });
+
   // ---------- 会话 ----------
   app.get('/api/sessions', async () => host.listSessions().map((s) => host.toSummary(s)));
 
@@ -172,6 +192,8 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
     try {
       const input = (req.body ?? {}) as Partial<CreateSessionInput>;
       const rec = host.createSession(input);
+      // 创建时检测 cwd 的 git 仓库/分支，供侧栏归类
+      await host.refreshEnv(rec.id);
       return reply.code(201).send(host.toSummary(rec));
     } catch (err) {
       return bad(reply, (err as Error).message);
@@ -201,6 +223,13 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
     const { id } = req.params as { id: string };
     if (!host.deleteSession(id)) return bad(reply, '会话不存在', 404);
     return reply.code(204).send();
+  });
+
+  app.post('/api/sessions/:id/fork', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.forkSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    return host.toSummary(rec);
   });
 
   // ---------- 文件系统 ----------

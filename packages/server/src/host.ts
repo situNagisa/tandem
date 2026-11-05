@@ -6,6 +6,7 @@ import path from 'node:path';
 import type {
   ContentBlock,
   HostInfo,
+  ListModelsInput,
   Message,
   PermissionDecision,
   PermissionMode,
@@ -30,9 +31,11 @@ import {
   type ParsedCommand,
 } from './agent/commands.js';
 import { PLAN_ALLOWED, TOOL_MAP, describeTool } from './tools/index.js';
-import { streamChat } from './providers/index.js';
+import { completeText, listModels as fetchModelList, streamChat } from './providers/index.js';
+import type { ListModelsResult } from './providers/index.js';
 import { buildSystemPrompt } from './agent/prompt.js';
 import { errorMessage } from './util/text.js';
+import { detectSessionEnv } from './util/git.js';
 import { expandHome } from './util/path.js';
 
 const PERMISSION_MODES = new Set<PermissionMode>([
@@ -94,10 +97,34 @@ export class Host {
       model: rec.model,
       permissionMode: rec.permissionMode,
       status: rec.status,
+      // 可选字段只在有值时下发，老客户端不受影响
+      ...(rec.pinned ? { pinned: true } : {}),
+      ...(rec.archived ? { archived: true } : {}),
+      ...(rec.env ? { env: { ...rec.env } } : {}),
       createdAt: rec.createdAt,
       updatedAt: rec.updatedAt,
       usage: { ...rec.usage },
     };
+  }
+
+  /** 检测 cwd 的 git 环境；变化时广播 session_updated。 */
+  async refreshEnv(id: string): Promise<void> {
+    const rec = this.store.get(id);
+    if (!rec) return;
+    const env = await detectSessionEnv(rec.cwd);
+    const before = JSON.stringify(rec.env ?? null);
+    const after = JSON.stringify(env ?? null);
+    if (before === after) return;
+    if (env) rec.env = env;
+    else delete rec.env;
+    this.store.markDirty(rec.id, false);
+    this.broadcastSummary(rec);
+  }
+
+  /** 拉取模型列表：apiKey 缺省时用 profileId 对应账号已存的 key。 */
+  listModels(input: ListModelsInput): Promise<ListModelsResult> {
+    const profile = input.profileId ? this.profiles.get(input.profileId) : undefined;
+    return fetchModelList(input, profile);
   }
 
   toSession(rec: SessionRecord): Session {
@@ -186,6 +213,8 @@ export class Host {
       profileId?: unknown;
       model?: unknown;
       permissionMode?: unknown;
+      pinned?: unknown;
+      archived?: unknown;
     },
   ): SessionRecord | undefined {
     const rec = this.store.get(id);
@@ -208,8 +237,42 @@ export class Host {
       }
     }
     if (typeof patch.model === 'string' && patch.model.trim()) rec.model = patch.model.trim();
+    if (typeof patch.pinned === 'boolean') {
+      if (patch.pinned) rec.pinned = true;
+      else delete rec.pinned;
+    }
+    if (typeof patch.archived === 'boolean') {
+      if (patch.archived) rec.archived = true;
+      else delete rec.archived;
+    }
 
     this.store.markDirty(rec.id, true);
+    this.broadcastSummary(rec);
+    return rec;
+  }
+
+  /** 复制会话（消息、todos、配置）为新会话，历史与原会话互不影响。 */
+  forkSession(id: string): SessionRecord | undefined {
+    const src = this.store.get(id);
+    if (!src) return undefined;
+    const now = Date.now();
+    const rec: SessionRecord = {
+      id: randomUUID(),
+      title: `${src.title || '新会话'}（副本）`,
+      cwd: src.cwd,
+      profileId: src.profileId,
+      model: src.model,
+      permissionMode: src.permissionMode,
+      status: 'idle',
+      createdAt: now,
+      updatedAt: now,
+      usage: { ...src.usage },
+      messages: structuredClone(src.messages),
+      todos: structuredClone(src.todos),
+      allowedTools: [...src.allowedTools],
+      ...(src.env ? { env: { ...src.env } } : {}),
+    };
+    this.store.add(rec);
     this.broadcastSummary(rec);
     return rec;
   }
@@ -290,9 +353,10 @@ export class Host {
       .join('\n')
       .replace(/\s+/g, ' ')
       .trim();
-    if ((!rec.title || rec.title === '新会话') && text) {
-      rec.title = text.slice(0, 40);
-    }
+    // 首条用户消息且标题仍是默认值时，先截取正文做兜底标题，再异步让模型生成更短的标题
+    const isFirstUserMessage = !rec.messages.some((m) => m.role === 'user');
+    const needsTitle = (!rec.title || rec.title === '新会话') && !!text;
+    if (needsTitle) rec.title = text.slice(0, 30);
     const message: Message = {
       id: randomUUID(),
       role: 'user',
@@ -312,7 +376,42 @@ export class Host {
     });
     this.store.markDirty(rec.id, true);
     this.broadcastSummary(rec);
+    if (needsTitle && isFirstUserMessage) void this.autoTitle(rec, text, rec.title);
     await runTurn(this, rec);
+  }
+
+  /**
+   * 用当前模型异步生成 ≤20 字的会话标题。失败或用户已改名时保留兜底标题。
+   * baseTitle 是发起请求时的标题，用于判断期间是否被用户手动改过。
+   */
+  private async autoTitle(rec: SessionRecord, firstText: string, baseTitle: string): Promise<void> {
+    const profile = this.profiles.get(rec.profileId);
+    const model = rec.model || profile?.defaultModel || '';
+    if (!profile?.apiKey || !model) return;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20_000);
+    try {
+      const raw = await completeText({
+        profile,
+        model,
+        system: '你是会话标题生成器。只输出标题本身，不要解释、不要引号、不要标点。',
+        prompt:
+          '请为下面这段用户的首条消息生成一个简短的中文标题，不超过 20 个字，概括用户真正想做的事：\n\n' +
+          firstText.slice(0, 2000),
+        maxTokens: 64,
+        signal: controller.signal,
+      });
+      const title = cleanTitle(raw);
+      if (!title || rec.title !== baseTitle) return;
+      rec.title = title;
+      this.store.markDirty(rec.id, false);
+      this.broadcastSummary(rec);
+    } catch {
+      // 生成失败不打扰用户，保留截取正文的兜底标题
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** 排队消息在本轮结束后依次执行。 */
@@ -669,6 +768,7 @@ export class Host {
       }
       this.broadcastSummary(rec);
       void this.drainQueue(rec.id);
+      void this.refreshEnv(rec.id);
     }
   }
 }
@@ -677,6 +777,17 @@ function labelOfSource(source: SlashCommand['source']): string {
   if (source === 'builtin') return '内置';
   if (source === 'project') return '项目';
   return '用户';
+}
+
+/** 清理模型返回的标题：取首行、去引号/前缀，限制 20 字。 */
+function cleanTitle(raw: string): string {
+  let title = raw.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? '';
+  title = title
+    .replace(/^标题\s*[:：]\s*/, '')
+    .replace(/^["'`“”‘’「」『』《》]+|["'`“”‘’「」『』《》]+$/g, '')
+    .replace(/[。！？!?，,、；;：:]+$/g, '')
+    .trim();
+  return [...title].slice(0, 20).join('').trim();
 }
 
 function commandPrefix(command: string): string {

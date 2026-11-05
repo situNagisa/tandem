@@ -6,6 +6,9 @@ import type { StoredProfile } from '../types.js';
 import { truncateEnd } from '../util/text.js';
 
 export type { StreamRequest, StreamResult } from './types.js';
+export { completeText } from './complete.js';
+export { listModels } from './models.js';
+export type { ListModelsResult } from './models.js';
 
 export async function streamChat(req: StreamRequest): Promise<StreamResult> {
   switch (req.profile.kind) {

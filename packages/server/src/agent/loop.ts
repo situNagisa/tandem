@@ -186,6 +186,8 @@ export async function runTurn(host: Host, rec: SessionRecord): Promise<void> {
     });
     host.broadcastSummary(rec);
     void host.drainQueue(rec.id);
+    // 每轮结束刷新 git 环境（分支可能被工具切换过）
+    void host.refreshEnv(rec.id);
   }
 }
 
