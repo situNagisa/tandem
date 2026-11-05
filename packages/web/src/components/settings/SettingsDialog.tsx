@@ -1,0 +1,63 @@
+import { Monitor, Palette, Server, Sparkles } from 'lucide-react'
+import type { SettingsTab } from '../../lib/types'
+import { useUiStore } from '../../store/useUiStore'
+import { cn } from '../../lib/cn'
+import { Modal } from '../ui/Modal'
+import { ProfilesSection } from './ProfilesSection'
+import { HostsSection } from './HostsSection'
+import { AppearanceSection } from './AppearanceSection'
+
+const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
+  { id: 'profiles', label: '账号与模型', icon: Sparkles },
+  { id: 'hosts', label: 'Host 管理', icon: Server },
+  { id: 'appearance', label: '外观', icon: Palette },
+]
+
+export function SettingsDialog() {
+  const open = useUiStore((s) => s.settingsOpen)
+  const tab = useUiStore((s) => s.settingsTab)
+  const setTab = useUiStore((s) => s.setSettingsTab)
+  const close = useUiStore((s) => s.closeSettings)
+
+  return (
+    <Modal
+      open={open}
+      onClose={close}
+      title="设置"
+      description="管理执行任务的 Host、账号与模型，以及界面外观。"
+      className="max-w-3xl"
+      bodyClassName="p-0 overflow-hidden"
+    >
+      <div className="flex h-[min(74dvh,620px)] min-h-[420px] flex-col sm:flex-row">
+        <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-bg/30 p-2 sm:w-44 sm:flex-col sm:border-b-0 sm:border-r sm:p-3">
+          {TABS.map((t) => {
+            const Icon = t.icon
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={cn(
+                  'flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] transition-colors sm:min-h-9',
+                  tab === t.id
+                    ? 'bg-surface text-text shadow-sm ring-1 ring-border'
+                    : 'text-text-soft hover:bg-surface-2/60 hover:text-text',
+                )}
+              >
+                <Icon size={14} className={tab === t.id ? 'text-accent' : 'text-muted'} />
+                {t.label}
+              </button>
+            )
+          })}
+          <div className="mt-auto hidden items-center gap-1.5 px-2.5 pb-1 text-[10px] text-muted/80 sm:flex">
+            <Monitor size={11} /> Tandem 0.1 · Web
+          </div>
+        </nav>
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-5">
+          {tab === 'profiles' && <ProfilesSection />}
+          {tab === 'hosts' && <HostsSection />}
+          {tab === 'appearance' && <AppearanceSection />}
+        </div>
+      </div>
+    </Modal>
+  )
+}

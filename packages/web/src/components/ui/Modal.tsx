@@ -1,0 +1,103 @@
+import { useEffect, useRef, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { X } from 'lucide-react'
+import { cn } from '../../lib/cn'
+
+interface ModalProps {
+  open: boolean
+  onClose: () => void
+  title?: ReactNode
+  description?: ReactNode
+  children: ReactNode
+  footer?: ReactNode
+  className?: string
+  bodyClassName?: string
+  align?: 'center' | 'top'
+}
+
+export function Modal({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+  className,
+  bodyClassName,
+  align = 'center',
+}: ModalProps) {
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) {
+        e.preventDefault()
+        onClose()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  useEffect(() => {
+    if (!open) return
+    const t = window.setTimeout(() => {
+      const el = panelRef.current?.querySelector<HTMLElement>(
+        'input:not([type="hidden"]), textarea, select, button[data-autofocus]',
+      )
+      el?.focus()
+    }, 30)
+    return () => window.clearTimeout(t)
+  }, [open])
+
+  if (!open) return null
+
+  return createPortal(
+    <div
+      className={cn(
+        'fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/30 p-3 backdrop-blur-[2px] dark:bg-black/55',
+        align === 'center' ? 'items-center sm:p-6' : 'items-start pt-[8vh] sm:pt-[12vh]',
+      )}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={typeof title === 'string' ? title : undefined}
+        className={cn(
+          'anim-slide-up my-auto flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-2xl border border-border bg-surface text-text shadow-[0_24px_70px_-20px_rgba(40,30,20,0.45)]',
+          align === 'top' && 'my-0',
+          className ?? 'max-w-lg',
+        )}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {(title || description) && (
+          <div className="flex items-start gap-3 border-b border-border px-5 py-4">
+            <div className="min-w-0 flex-1">
+              {title && <h2 className="truncate text-[15px] font-semibold">{title}</h2>}
+              {description && <p className="mt-1 text-[12.5px] text-muted">{description}</p>}
+            </div>
+            <button
+              onClick={onClose}
+              aria-label="关闭"
+              className="-mr-1 flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-text sm:size-8"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+        <div className={cn('min-h-0 flex-1 overflow-y-auto', bodyClassName ?? 'p-5')}>{children}</div>
+        {footer && (
+          <div className="flex items-center justify-end gap-2 border-t border-border bg-bg/40 px-5 py-3.5">
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  )
+}

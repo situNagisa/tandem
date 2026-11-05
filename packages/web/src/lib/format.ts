@@ -1,0 +1,97 @@
+/** 把时间戳格式化为「今天 / 昨天 / 更早」分组，用于会话列表。 */
+export function dayBucket(ts: number, now = Date.now()): '今天' | '昨天' | '更早' {
+  const start = new Date(now)
+  start.setHours(0, 0, 0, 0)
+  const today = start.getTime()
+  if (ts >= today) return '今天'
+  if (ts >= today - 86_400_000) return '昨天'
+  return '更早'
+}
+
+export function formatTokens(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0'
+  if (n < 1000) return String(n)
+  if (n < 1_000_000) {
+    const v = n / 1000
+    return `${v < 10 ? v.toFixed(1) : Math.round(v)}k`
+  }
+  return `${(n / 1_000_000).toFixed(2)}m`
+}
+
+export function formatCost(usd?: number): string {
+  if (usd === undefined || !Number.isFinite(usd)) return '—'
+  if (usd >= 1) return `$${usd.toFixed(2)}`
+  if (usd >= 0.01) return `$${usd.toFixed(3)}`
+  return `$${usd.toFixed(4)}`
+}
+
+export function formatRelative(ts: number, now = Date.now()): string {
+  const diff = Math.max(0, now - ts)
+  if (diff < 45_000) return '刚刚'
+  if (diff < 3_600_000) return `${Math.round(diff / 60_000)} 分钟前`
+  if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)} 小时前`
+  const d = new Date(ts)
+  const sameYear = d.getFullYear() === new Date(now).getFullYear()
+  return sameYear
+    ? `${d.getMonth() + 1} 月 ${d.getDate()} 日`
+    : `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
+}
+
+export function formatTime(ts: number): string {
+  const d = new Date(ts)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+/** 兼容 Windows 与 POSIX 路径。 */
+export function basename(path: string): string {
+  if (!path) return ''
+  const trimmed = path.replace(/[\\/]+$/, '')
+  const idx = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  return idx >= 0 ? trimmed.slice(idx + 1) || trimmed : trimmed
+}
+
+export function dirname(path: string): string {
+  if (!path) return ''
+  const isWin = /^[a-zA-Z]:[\\/]/.test(path) || path.includes('\\')
+  const sep = isWin ? '\\' : '/'
+  const trimmed = path.replace(/[\\/]+$/, '')
+  const idx = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  if (idx < 0) return ''
+  const parent = trimmed.slice(0, idx)
+  if (!parent) return sep
+  if (/^[a-zA-Z]:$/.test(parent)) return parent + sep
+  return parent
+}
+
+export function joinPath(base: string, name: string): string {
+  if (!base) return name
+  const sep = base.includes('\\') && !base.includes('/') ? '\\' : '/'
+  return base.replace(/[\\/]+$/, '') + sep + name
+}
+
+export function fileExt(path: string): string {
+  const name = basename(path)
+  const idx = name.lastIndexOf('.')
+  return idx > 0 ? name.slice(idx + 1).toLowerCase() : ''
+}
+
+/** 截断长字符串（按字符数），用于工具卡片摘要。 */
+export function truncate(s: string, n = 72): string {
+  if (!s) return ''
+  const flat = s.replace(/\s+/g, ' ').trim()
+  return flat.length > n ? flat.slice(0, n - 1) + '…' : flat
+}
+
+export function firstLine(s: string, n = 80): string {
+  return truncate((s ?? '').split('\n')[0] ?? '', n)
+}
+
+export function plural(n: number, unit: string): string {
+  return `${n} ${unit}`
+}
+
+export const isMacPlatform =
+  typeof navigator !== 'undefined' &&
+  /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent)
+
+export const modLabel = isMacPlatform ? '⌘' : 'Ctrl'
