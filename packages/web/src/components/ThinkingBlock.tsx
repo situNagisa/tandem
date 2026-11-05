@@ -1,51 +1,55 @@
 import { useEffect, useRef, useState } from 'react'
-import { Brain, ChevronRight, Loader2 } from 'lucide-react'
+import { Brain, ChevronRight } from 'lucide-react'
 import { cn } from '../lib/cn'
 
+/**
+ * 思考过程折叠为一行；流式时显示“思考中…”，结束后显示耗时。
+ * 历史消息没有耗时数据，按文本长度给出一个保守估计。
+ */
 export function ThinkingBlock({ text, streaming }: { text: string; streaming: boolean }) {
-  const [open, setOpen] = useState(streaming)
-  const touched = useRef(false)
+  const [open, setOpen] = useState(false)
+  const startedAt = useRef<number | null>(streaming ? Date.now() : null)
+  const [measured, setMeasured] = useState<number | null>(null)
 
   useEffect(() => {
-    if (!touched.current) setOpen(streaming)
+    if (streaming) {
+      startedAt.current ??= Date.now()
+      setMeasured(null)
+      return
+    }
+    if (startedAt.current != null) {
+      setMeasured(Math.max(1, Math.round((Date.now() - startedAt.current) / 1000)))
+      startedAt.current = null
+    }
   }, [streaming])
 
   if (!text && !streaming) return null
 
+  const seconds = measured ?? Math.min(999, Math.max(1, Math.round(text.length / 55)))
+
   return (
-    <div className="my-2 overflow-hidden rounded-xl border border-border/70 bg-surface-2/25">
+    <div className="my-1">
       <button
-        onClick={() => {
-          touched.current = true
-          setOpen((v) => !v)
-        }}
-        className="flex min-h-9 w-full items-center gap-2 px-3 py-1.5 text-left"
+        onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
+        className="tool-row"
       >
-        {streaming ? (
-          <Loader2 size={13} className="shrink-0 animate-spin text-accent" />
-        ) : (
-          <Brain size={13} className="shrink-0 text-muted" />
-        )}
-        <span
-          className={cn(
-            'text-[12px] font-medium',
-            streaming ? 'shimmer-text' : 'text-text-soft',
-          )}
-        >
-          {streaming ? '正在思考…' : '思考过程'}
-        </span>
-        <span className="flex-1" />
-        <ChevronRight
-          size={13}
-          className={cn('shrink-0 text-muted transition-transform duration-150', open && 'rotate-90')}
+        <Brain
+          size={14}
+          className={cn('shrink-0', streaming ? 'text-accent' : 'text-muted')}
         />
+        <span className={cn('min-w-0 truncate', streaming && 'shimmer-text')}>
+          {streaming ? '思考中…' : `思考了 ${seconds}s`}
+        </span>
+        <ChevronRight size={12} className="tool-chevron ml-auto shrink-0" />
       </button>
-      {open && (
-        <div className="max-h-80 overflow-y-auto border-t border-border/60 px-3.5 py-2.5 text-[12.5px] leading-6 text-text-soft">
-          <div className="whitespace-pre-wrap break-words">{text || '…'}</div>
+      <div className="collapse-grid" data-open={open}>
+        <div className="collapse-inner">
+          <div className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-[10px] bg-[color-mix(in_srgb,var(--t-surface-2)_45%,transparent)] px-3.5 py-2.5 text-[13px] leading-[1.7] text-text-soft">
+            {text || '…'}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState, type ComponentType } from 'react'
+import { memo, useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react'
 import {
   ChevronRight,
   Circle,
@@ -14,6 +14,7 @@ import {
   Terminal,
   Wrench,
 } from 'lucide-react'
+import { diffLines } from 'diff'
 import type { ContentBlock, Todo } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { cn } from '../lib/cn'
@@ -22,23 +23,23 @@ import { firstLine, truncate } from '../lib/format'
 import { CodeBlock } from './CodeBlock'
 import { DiffView } from './DiffView'
 
-type ToolUseBlock = Extract<ContentBlock, { type: 'tool_use' }>
+export type ToolUseBlock = Extract<ContentBlock, { type: 'tool_use' }>
 
 interface ToolMeta {
   icon: ComponentType<{ size?: number | string; className?: string }>
-  label: string
+  verb: string
 }
 
 const TOOL_META: Record<string, ToolMeta> = {
-  Bash: { icon: Terminal, label: 'Bash' },
-  Read: { icon: FileText, label: 'Read' },
-  Write: { icon: FilePlus2, label: 'Write' },
-  Edit: { icon: FilePenLine, label: 'Edit' },
-  Glob: { icon: Search, label: 'Glob' },
-  Grep: { icon: Search, label: 'Grep' },
-  TodoWrite: { icon: ListChecks, label: 'TodoWrite' },
-  WebFetch: { icon: Globe, label: 'WebFetch' },
-  Task: { icon: Wrench, label: 'Task' },
+  Bash: { icon: Terminal, verb: '运行' },
+  Read: { icon: FileText, verb: '读取' },
+  Write: { icon: FilePlus2, verb: '写入' },
+  Edit: { icon: FilePenLine, verb: '编辑' },
+  Glob: { icon: Search, verb: '列出' },
+  Grep: { icon: Search, verb: '搜索' },
+  TodoWrite: { icon: ListChecks, verb: '更新待办' },
+  WebFetch: { icon: Globe, verb: '获取' },
+  Task: { icon: Wrench, verb: '调用' },
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -64,29 +65,43 @@ function partialString(raw: string, key: string): string | undefined {
   }
 }
 
-function toolSummary(name: string, input: Record<string, unknown>, raw: string): string {
-  const pick = (key: string) => str(input[key]) || partialString(raw, key) || ''
-  if (name === 'Bash') return firstLine(pick('command'), 90)
-  if (name === 'Read' || name === 'Edit' || name === 'Write') return pick('file_path')
-  if (name === 'Glob') return pick('pattern')
-  if (name === 'Grep') {
-    const pattern = pick('pattern')
-    const path = pick('path')
-    return path ? `${pattern}  ${path}` : pattern
+/** 会话 cwd 内的路径显示为相对路径，和 Claude Code 一致。 */
+function shortPath(path: string, cwd?: string): string {
+  if (!path) return ''
+  if (!cwd) return path
+  const normalized = path.replace(/\\/g, '/')
+  const base = cwd.replace(/\\/g, '/').replace(/\/+$/, '')
+  if (normalized === base) return '.'
+  if (normalized.startsWith(base + '/')) return normalized.slice(base.length + 1)
+  return path
+}
+
+function urlHost(url: string): string {
+  if (!url) return ''
+  try {
+    return new URL(url).host
+  } catch {
+    return truncate(url, 60)
   }
-  if (name === 'WebFetch') return pick('url')
-  if (name === 'TodoWrite') {
-    const todos = Array.isArray(input.todos) ? input.todos : []
-    return todos.length ? `${todos.length} 项任务` : ''
-  }
-  if (Object.keys(input).length) {
-    try {
-      return truncate(JSON.stringify(input), 80)
-    } catch {
-      return ''
+}
+
+function diffStats(oldText: string, newText: string): { added: number; removed: number } {
+  if (!oldText && !newText) return { added: 0, removed: 0 }
+  const oldSafe = oldText.length > 50_000 ? oldText.slice(0, 50_000) : oldText
+  const newSafe = newText.length > 50_000 ? newText.slice(0, 50_000) : newText
+  try {
+    let added = 0
+    let removed = 0
+    for (const change of diffLines(oldSafe, newSafe)) {
+      const lines = change.value.split('\n')
+      if (lines[lines.length - 1] === '') lines.pop()
+      if (change.added) added += lines.length
+      else if (change.removed) removed += lines.length
     }
+    return { added, removed }
+  } catch {
+    return { added: 0, removed: 0 }
   }
-  return ''
 }
 
 function OutputBlock({
@@ -102,14 +117,7 @@ function OutputBlock({
 }) {
   if (!text) {
     return (
-      <div
-        className={cn(
-          'rounded-lg border px-3 py-2 font-mono text-[11.5px]',
-          isError
-            ? 'border-danger/30 bg-danger-soft/60 text-danger'
-            : 'border-border/60 bg-surface-2/30 text-muted',
-        )}
-      >
+      <div className="px-1 py-1 text-[12px] text-muted">
         {running ? <span className="shimmer-text">等待输出…</span> : '无输出'}
       </div>
     )
@@ -118,12 +126,7 @@ function OutputBlock({
     text.length > 200_000 ? text.slice(0, 200_000) + '\n…（输出过长，已截断）' : text
   return (
     <div
-      className={cn(
-        'overflow-auto whitespace-pre-wrap break-words rounded-lg border px-3 py-2 font-mono text-[11.5px] leading-[1.6]',
-        isError
-          ? 'border-danger/35 bg-danger-soft/60 text-danger'
-          : 'border-border/60 bg-surface-2/30 text-text-soft',
-      )}
+      className={cn('tool-output', isError && 'is-error')}
       style={{ maxHeight }}
     >
       {shown}
@@ -181,11 +184,12 @@ export const ToolCard = memo(function ToolCard({
   streaming: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const cwd = useAppStore((s) => s.active?.summary?.cwd)
   const raw = useAppStore((s) => s.active?.liveToolInputs[`${messageId}:${index}`] ?? '')
   const result = useAppStore((s) => s.active?.toolResults[block.id])
   const isError = !!result?.isError
   const running = streaming && !result
-  const meta = TOOL_META[block.name] ?? { icon: Wrench, label: block.name }
+  const meta = TOOL_META[block.name] ?? { icon: Wrench, verb: '使用' }
 
   const input = useMemo(() => {
     if (raw) {
@@ -202,107 +206,156 @@ export const ToolCard = memo(function ToolCard({
     if (isError) setOpen(true)
   }, [isError])
 
-  const baseSummary = toolSummary(block.name, input, raw)
-  const output = result?.content ?? ''
-  const readLines = output ? output.split('\n').length : 0
-  const summary =
-    block.name === 'Read' && result
-      ? `${baseSummary}${baseSummary ? ' · ' : ''}${readLines} 行`
-      : baseSummary
-  const command = str(input.command) || partialString(raw, 'command') || ''
-  const filePath = str(input.file_path) || partialString(raw, 'file_path') || ''
+  const pick = (key: string) => str(input[key]) || partialString(raw, key) || ''
+  const command = pick('command')
+  const filePath = pick('file_path')
   const oldString = str(input.old_string)
   const newString = str(input.new_string)
   const content = str(input.content)
-  const language = languageFromPath(filePath)
+  const output = result?.content ?? ''
   const waitingInput = running && !raw && Object.keys(input).length === 0
+  const displayPath = shortPath(filePath, cwd)
+  const readLines = output ? output.split('\n').length : 0
   const Icon = meta.icon
 
-  let body: React.ReactNode = null
-  if (block.name === 'Bash') {
-    body = (
-      <div className="space-y-2">
-        <div className="overflow-x-auto rounded-lg border border-border/60 bg-surface-2/30 px-3 py-2 font-mono text-[11.5px] leading-relaxed">
-          <span className="select-none text-muted">$ </span>
-          <span className="text-text">{command || <span className="shimmer-text">生成命令…</span>}</span>
+  const editStats = useMemo(
+    () => (block.name === 'Edit' ? diffStats(oldString, newString) : { added: 0, removed: 0 }),
+    [block.name, oldString, newString],
+  )
+
+  let target = ''
+  let suffix: ReactNode = null
+  switch (block.name) {
+    case 'Bash':
+      target = firstLine(command, 120)
+      break
+    case 'Read':
+      target = displayPath
+      if (result) suffix = `· ${readLines} 行`
+      break
+    case 'Edit':
+      target = displayPath
+      suffix = (
+        <span className="shrink-0 font-mono text-[11.5px]">
+          <span className="text-success">+{editStats.added}</span>{' '}
+          <span className="text-danger">−{editStats.removed}</span>
+        </span>
+      )
+      break
+    case 'Write':
+      target = displayPath
+      break
+    case 'Glob':
+      target = pick('pattern')
+      break
+    case 'Grep':
+      target = pick('pattern') ? `'${pick('pattern')}'` : ''
+      break
+    case 'WebFetch': {
+      const url = pick('url')
+      target = urlHost(url) || url
+      break
+    }
+    case 'TodoWrite': {
+      const todos = Array.isArray(input.todos) ? input.todos : []
+      target = ''
+      if (todos.length) suffix = `· ${todos.length} 项`
+      break
+    }
+    case 'Task':
+      target = pick('description') || pick('prompt')
+      break
+    default:
+      target = block.name
+  }
+
+  if (!target && block.name !== 'TodoWrite') {
+    target = running ? '…' : block.name
+  }
+  const fullTarget =
+    block.name === 'Bash' ? command : block.name === 'Edit' || block.name === 'Read' || block.name === 'Write' ? filePath : target
+
+  const body = (() => {
+    if (block.name === 'Bash') {
+      return (
+        <div className="space-y-2">
+          <div className="overflow-x-auto rounded-md bg-[color-mix(in_srgb,var(--t-bg)_45%,transparent)] px-2.5 py-2 font-mono text-[12px] leading-[1.6] text-text">
+            <span className="select-none text-muted">$ </span>
+            {command || <span className="shimmer-text">生成命令…</span>}
+          </div>
+          <OutputBlock text={output} isError={isError} running={running} maxHeight={320} />
         </div>
-        <OutputBlock
-          text={output}
-          isError={isError}
-          running={running}
-          maxHeight={320}
-        />
-      </div>
-    )
-  } else if (block.name === 'Edit') {
-    body = (
-      <div className="space-y-2">
-        {waitingInput ? (
-          <div className="shimmer-text py-1 text-[12px]">正在生成改动…</div>
-        ) : oldString || newString ? (
-          <DiffView oldText={oldString} newText={newString} fileName={filePath || 'Edit'} />
-        ) : (
-          <div className="text-[12px] text-muted">没有可显示的改动内容</div>
-        )}
-        {isError && <OutputBlock text={output} isError />}
-        {!isError && result && output && (
-          <div className="text-[11px] text-muted">{firstLine(output, 200)}</div>
-        )}
-      </div>
-    )
-  } else if (block.name === 'Write') {
-    body = (
-      <div className="space-y-2">
-        {waitingInput ? (
-          <div className="shimmer-text py-1 text-[12px]">正在生成文件内容…</div>
-        ) : content ? (
-          <DiffView oldText="" newText={content} fileName={filePath || 'Write'} />
-        ) : (
-          <div className="text-[12px] text-muted">没有文件内容</div>
-        )}
-        {isError && <OutputBlock text={output} isError />}
-      </div>
-    )
-  } else if (block.name === 'Read') {
-    body = (
-      <div className="space-y-2">
-        <div className="text-[11.5px] text-muted">
-          {result ? `读取 ${readLines} 行` : running ? '读取中…' : '尚未读取'}
+      )
+    }
+    if (block.name === 'Edit') {
+      return (
+        <div className="space-y-2">
+          {waitingInput ? (
+            <div className="shimmer-text py-1 text-[12px] text-muted">正在生成改动…</div>
+          ) : oldString || newString ? (
+            <DiffView oldText={oldString} newText={newString} fileName={displayPath || 'Edit'} maxHeight={380} />
+          ) : (
+            <div className="py-1 text-[12px] text-muted">没有可显示的改动内容</div>
+          )}
+          {isError ? (
+            <OutputBlock text={output} isError />
+          ) : (
+            result &&
+            output && <div className="text-[11.5px] text-muted">{firstLine(output, 200)}</div>
+          )}
         </div>
-        {output && !isError ? (
-          <CodeBlock code={output} language={language} fileName={filePath} maxHeight={280} />
-        ) : (
-          <OutputBlock text={output} isError={isError} running={running} />
-        )}
-      </div>
-    )
-  } else if (block.name === 'Glob' || block.name === 'Grep') {
-    body = (
-      <div className="space-y-2">
-        <OutputBlock
-          text={output}
-          isError={isError}
-          running={running}
-          maxHeight={320}
-        />
-      </div>
-    )
-  } else if (block.name === 'TodoWrite') {
-    const todos = Array.isArray(input.todos) ? (input.todos as Todo[]) : []
-    body = todos.length ? (
-      <TodoList todos={todos} />
-    ) : (
-      <div className="shimmer-text text-[12px]">正在更新任务…</div>
-    )
-  } else if (block.name === 'WebFetch') {
-    body = (
-      <div className="space-y-2">
-        <div className="break-all font-mono text-[11.5px] text-text-soft">{str(input.url)}</div>
-        <OutputBlock text={output} isError={isError} running={running} maxHeight={320} />
-      </div>
-    )
-  } else {
-    body = (
+      )
+    }
+    if (block.name === 'Write') {
+      return (
+        <div className="space-y-2">
+          {waitingInput ? (
+            <div className="shimmer-text py-1 text-[12px] text-muted">正在生成文件内容…</div>
+          ) : content ? (
+            <DiffView oldText="" newText={content} fileName={displayPath || 'Write'} maxHeight={380} />
+          ) : (
+            <div className="py-1 text-[12px] text-muted">没有文件内容</div>
+          )}
+          {isError && <OutputBlock text={output} isError />}
+        </div>
+      )
+    }
+    if (block.name === 'Read') {
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 rounded-md bg-[color-mix(in_srgb,var(--t-bg)_45%,transparent)] px-2.5 py-1.5 font-mono text-[12px] text-text-soft">
+            <FileText size={13} className="shrink-0 text-muted" />
+            <span className="min-w-0 flex-1 truncate" title={filePath}>
+              {displayPath || '…'}
+            </span>
+            <span className="shrink-0 text-[11px] text-muted">
+              {result ? `${readLines} 行` : running ? '读取中…' : ''}
+            </span>
+          </div>
+          {isError && <OutputBlock text={output} isError />}
+        </div>
+      )
+    }
+    if (block.name === 'Glob' || block.name === 'Grep') {
+      return <OutputBlock text={output} isError={isError} running={running} maxHeight={320} />
+    }
+    if (block.name === 'TodoWrite') {
+      const todos = Array.isArray(input.todos) ? (input.todos as Todo[]) : []
+      return todos.length ? (
+        <TodoList todos={todos} />
+      ) : (
+        <div className="shimmer-text text-[12px] text-muted">正在更新任务…</div>
+      )
+    }
+    if (block.name === 'WebFetch') {
+      return (
+        <div className="space-y-2">
+          <div className="break-all font-mono text-[12px] text-text-soft">{pick('url')}</div>
+          <OutputBlock text={output} isError={isError} running={running} maxHeight={320} />
+        </div>
+      )
+    }
+    return (
       <div className="space-y-2">
         {Object.keys(input).length > 0 && (
           <CodeBlock
@@ -315,66 +368,42 @@ export const ToolCard = memo(function ToolCard({
         <OutputBlock text={output} isError={isError} running={running} maxHeight={320} />
       </div>
     )
-  }
+  })()
 
   return (
-    <div
-      className={cn(
-        'group/tool relative my-2.5 overflow-hidden rounded-xl border bg-surface transition-colors duration-150',
-        isError
-          ? 'border-danger/40'
-          : running
-            ? 'border-accent/25'
-            : 'border-border/80 hover:border-border-strong/70',
-      )}
-    >
+    <div className="my-0.5">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex min-h-10 w-full items-center gap-2 px-2.5 py-1.5 text-left"
         aria-expanded={open}
+        title={fullTarget || undefined}
+        className="tool-row"
       >
-        <span
-          className={cn(
-            'flex size-6 shrink-0 items-center justify-center rounded-md',
-            isError
-              ? 'bg-danger-soft text-danger'
-              : running
-                ? 'bg-accent-soft text-accent'
-                : 'bg-surface-2 text-text-soft',
-          )}
-        >
-          {running ? <Loader2 size={13} className="animate-spin" /> : <Icon size={13} />}
-        </span>
-        <span className="shrink-0 text-[12px] font-medium">{meta.label}</span>
-        <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-muted">
-          {summary || (running ? '运行中…' : '')}
-        </span>
-        {isError && (
-          <span className="shrink-0 rounded-full bg-danger-soft px-1.5 py-px text-[10px] font-medium text-danger">
-            错误
+        {running ? (
+          <Loader2 size={14} className="shrink-0 animate-spin text-accent" />
+        ) : (
+          <Icon size={14} className={cn('shrink-0', isError ? 'text-danger' : 'text-muted')} />
+        )}
+        <span className={cn('shrink-0', isError && 'text-danger')}>{meta.verb}</span>
+        {target && (
+          <span
+            className={cn(
+              'min-w-0 truncate font-mono text-[12.5px]',
+              isError ? 'text-danger' : 'text-text-soft',
+            )}
+          >
+            {target}
           </span>
         )}
-        <ChevronRight
-          size={13}
-          className={cn(
-            'shrink-0 text-muted transition-transform duration-150',
-            open && 'rotate-90',
-          )}
-        />
+        {suffix && (
+          <span className={cn('shrink-0', isError ? 'text-danger' : 'text-muted/85')}>{suffix}</span>
+        )}
+        <ChevronRight size={12} className="tool-chevron ml-auto shrink-0 text-muted" />
       </button>
-      {running && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
-          <div className="h-full w-1/3 animate-pulse rounded-full bg-accent/70" />
+      <div className="collapse-grid" data-open={open}>
+        <div className="collapse-inner">
+          <div className="tool-detail">{body}</div>
         </div>
-      )}
-      {open && (
-        <div className="border-t border-border/70 bg-surface px-3 py-2.5">
-          {body}
-          {result && !isError && block.name === 'Edit' && !output && (
-            <div className="mt-1.5 text-[11px] text-muted">修改完成</div>
-          )}
-        </div>
-      )}
+      </div>
     </div>
   )
 })

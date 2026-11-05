@@ -1,6 +1,7 @@
 import { isValidElement, memo, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { cn } from '../lib/cn'
 import { CodeBlock } from './CodeBlock'
 
 function nodeText(node: ReactNode): string {
@@ -25,7 +26,7 @@ const components: Components = {
   pre({ children }) {
     const info = codeInfo(children)
     if (!info) return <pre>{children}</pre>
-    return <CodeBlock code={info.code} language={info.language} className="my-3" />
+    return <CodeBlock code={info.code} language={info.language} className="my-4" />
   },
   a({ href, children }) {
     return (
@@ -36,9 +37,18 @@ const components: Components = {
   },
 }
 
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+export const Markdown = memo(function Markdown({
+  text,
+  streaming = false,
+  className,
+}: {
+  text: string
+  /** 流式输出时在最后一段尾部显示闪烁光标。 */
+  streaming?: boolean
+  className?: string
+}) {
   return (
-    <div className="md">
+    <div className={cn('md chat-md', streaming && 'is-streaming', className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {text}
       </ReactMarkdown>

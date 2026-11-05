@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { languageLabel, loadHighlighter } from '../lib/highlight'
@@ -27,6 +27,7 @@ export function CodeBlock({
 }: CodeBlockProps) {
   const [highlighted, setHighlighted] = useState<{ code: string; html: string } | null>(null)
   const [copied, setCopied] = useState(false)
+  const copyTimer = useRef<number | null>(null)
   const shown = useMemo(
     () => (code.length > MAX_CHARS ? code.slice(0, MAX_CHARS) + '\n…（内容过长，已截断）' : code),
     [code],
@@ -56,49 +57,49 @@ export function CodeBlock({
     }
   }, [shown, language])
 
+  useEffect(
+    () => () => {
+      if (copyTimer.current) window.clearTimeout(copyTimer.current)
+    },
+    [],
+  )
+
   const html = highlighted && highlighted.code === shown ? highlighted.html : null
 
   const copy = async () => {
-    if (await copyText(code)) {
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1600)
-    }
+    if (!(await copyText(code))) return
+    setCopied(true)
+    if (copyTimer.current) window.clearTimeout(copyTimer.current)
+    copyTimer.current = window.setTimeout(() => setCopied(false), 1500)
   }
 
   const empty = !shown
 
   return (
-    <div className={cn('overflow-hidden rounded-xl border border-border bg-surface', className)}>
+    <div className={cn('chat-code', className)}>
       {showHeader && (
-        <div className="flex h-8 items-center gap-2 border-b border-border/80 bg-surface-2/40 px-3">
-          {fileName ? (
-            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-soft">
-              {fileName}
-            </span>
-          ) : (
-            <span className="min-w-0 flex-1 truncate text-[10.5px] font-medium uppercase tracking-wide text-muted">
-              {languageLabel(language)}
-            </span>
-          )}
+        <div className="chat-code-head">
+          <span className="min-w-0 flex-1 truncate text-[11.5px] text-muted">
+            {fileName || languageLabel(language)}
+          </span>
           {fileName && (
-            <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted">
-              {languageLabel(language)}
-            </span>
+            <span className="shrink-0 text-[10.5px] text-muted/80">{languageLabel(language)}</span>
           )}
           <button
             onClick={copy}
-            aria-label="复制代码"
-            title="复制"
-            className="-mr-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
+            aria-label={copied ? '已复制' : '复制代码'}
+            title={copied ? '已复制' : '复制'}
+            className="-mr-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
           >
-            {copied ? <Check size={12.5} className="text-success" /> : <Copy size={12.5} />}
+            {copied ? (
+              <Check size={13} className="text-success" />
+            ) : (
+              <Copy size={12.5} className="opacity-80" />
+            )}
           </button>
         </div>
       )}
-      <pre
-        className="overflow-auto bg-surface-2/20 p-3 font-mono text-[12.5px] leading-[1.65] text-text"
-        style={{ maxHeight }}
-      >
+      <pre style={{ maxHeight }}>
         {empty ? (
           <span className="italic text-muted">{placeholder ?? '（空）'}</span>
         ) : html ? (

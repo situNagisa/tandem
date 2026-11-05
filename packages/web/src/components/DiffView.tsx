@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { diffLines } from 'diff'
+import { ChevronsUpDown } from 'lucide-react'
 import { cn } from '../lib/cn'
 
 interface DiffLine {
@@ -9,22 +10,58 @@ interface DiffLine {
   newNo?: number
 }
 
-const MAX_ROWS = 1600
-const MAX_INPUT = 200_000
+type Row =
+  | DiffLine
+  | { type: 'gap'; key: string; count: number }
 
-export function DiffView({
+const MAX_ROWS = 2000
+const MAX_INPUT = 200_000
+const CTX_HEAD = 3
+const CTX_TAIL = 3
+const CTX_COLLAPSE = CTX_HEAD + CTX_TAIL + 2
+
+function buildRows(rows: DiffLine[], expanded: Set<string>): Row[] {
+  const out: Row[] = []
+  let i = 0
+  while (i < rows.length) {
+    if (rows[i].type !== 'ctx') {
+      out.push(rows[i])
+      i++
+      continue
+    }
+    let j = i
+    while (j < rows.length && rows[j].type === 'ctx') j++
+    const run = j - i
+    const key = `${i}:${j}`
+    if (run > CTX_COLLAPSE && !expanded.has(key)) {
+      out.push(...rows.slice(i, i + CTX_HEAD))
+      out.push({ type: 'gap', key, count: run - CTX_HEAD - CTX_TAIL })
+      out.push(...rows.slice(j - CTX_TAIL, j))
+    } else {
+      out.push(...rows.slice(i, j))
+    }
+    i = j
+  }
+  return out
+}
+
+export const DiffView = memo(function DiffView({
   oldText,
   newText,
   fileName,
   oldLabel,
   newLabel,
+  maxHeight = 460,
 }: {
   oldText: string
   newText: string
   fileName?: string
   oldLabel?: string
   newLabel?: string
+  maxHeight?: number
 }) {
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+
   const { rows, truncated, added, removed } = useMemo(() => {
     const oldSafe = oldText.length > MAX_INPUT ? oldText.slice(0, MAX_INPUT) : oldText
     const newSafe = newText.length > MAX_INPUT ? newText.slice(0, MAX_INPUT) : newText
@@ -61,55 +98,61 @@ export function DiffView({
     }
   }, [oldText, newText])
 
+  const display = useMemo(() => buildRows(rows, expanded), [rows, expanded])
+
+  const expand = (key: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      next.add(key)
+      return next
+    })
+  }
+
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-surface">
-      <div className="flex h-8 items-center gap-2 border-b border-border/80 bg-surface-2/40 px-3">
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-soft">
+    <div className="chat-diff">
+      <div className="chat-diff-head">
+        <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-text-soft" title={fileName}>
           {fileName || '改动'}
         </span>
-        <span className="shrink-0 font-mono text-[10.5px] text-success">+{added}</span>
-        <span className="shrink-0 font-mono text-[10.5px] text-danger">−{removed}</span>
+        <span className="shrink-0 font-mono text-[11px] text-success">+{added}</span>
+        <span className="shrink-0 font-mono text-[11px] text-danger">−{removed}</span>
       </div>
-      <div className="max-h-[440px] overflow-auto bg-surface-2/20 font-mono text-[11.5px] leading-[1.6]">
-        <div className="min-w-full w-max">
-          {rows.length === 0 && (
-            <div className="px-3 py-3 italic text-muted">没有差异</div>
-          )}
-          {rows.map((row, i) => (
-            <div
-              key={i}
-              className={cn(
-                'flex whitespace-pre',
-                row.type === 'add' && 'bg-[var(--t-add-bg)] text-[var(--t-add-fg)]',
-                row.type === 'del' && 'bg-[var(--t-del-bg)] text-[var(--t-del-fg)]',
-                row.type === 'ctx' && 'text-text-soft',
-              )}
-            >
-              <span className="w-10 shrink-0 select-none border-r border-border/40 px-1.5 text-right text-[10px] leading-[1.6] text-muted/70">
-                {row.oldNo ?? ''}
-              </span>
-              <span className="w-10 shrink-0 select-none border-r border-border/40 px-1.5 text-right text-[10px] leading-[1.6] text-muted/70">
-                {row.newNo ?? ''}
-              </span>
-              <span className="w-5 shrink-0 select-none text-center opacity-70">
+      <div className="chat-diff-body" style={{ maxHeight }}>
+        {display.length === 0 && (
+          <div className="px-3 py-4 text-[12px] italic text-muted">没有差异</div>
+        )}
+        {display.map((row, i) => {
+          if (row.type === 'gap') {
+            return (
+              <button key={`gap-${row.key}`} onClick={() => expand(row.key)} className="chat-diff-more">
+                <ChevronsUpDown size={11} />
+                展开 {row.count} 行未改动内容
+              </button>
+            )
+          }
+          return (
+            <div key={i} className="chat-diff-row" data-kind={row.type}>
+              <span className="ln">{row.oldNo ?? ''}</span>
+              <span className="ln">{row.newNo ?? ''}</span>
+              <span className={cn('sign', row.type === 'add' && 'text-success', row.type === 'del' && 'text-danger')}>
                 {row.type === 'add' ? '+' : row.type === 'del' ? '−' : ' '}
               </span>
-              <span className="pr-3">{row.text || ' '}</span>
+              <span className="text">{row.text || ' '}</span>
             </div>
-          ))}
-        </div>
+          )
+        })}
         {truncated && (
-          <div className="border-t border-border/60 px-3 py-1.5 text-[11px] text-muted">
+          <div className="border-t border-border px-3 py-1.5 text-[11px] text-muted">
             差异过长，仅显示前 {MAX_ROWS} 行
           </div>
         )}
       </div>
       {(oldLabel || newLabel) && (
-        <div className="flex gap-3 border-t border-border/60 px-3 py-1 text-[10px] text-muted">
+        <div className="flex gap-3 border-t border-border px-3 py-1 text-[10px] text-muted">
           {oldLabel && <span>旧：{oldLabel}</span>}
           {newLabel && <span>新：{newLabel}</span>}
         </div>
       )}
     </div>
   )
-}
+})

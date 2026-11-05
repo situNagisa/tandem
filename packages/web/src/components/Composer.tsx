@@ -7,6 +7,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ClipboardEvent as ReactClipboardEvent,
   type DragEvent as ReactDragEvent,
+  type ReactNode,
 } from 'react'
 import type { ContentBlock, PermissionMode, Profile, SlashCommand } from '@tandem/protocol'
 import {
@@ -14,15 +15,17 @@ import {
   AtSign,
   Check,
   ChevronDown,
-  Cpu,
   FileText,
+  Image as ImageIcon,
   Loader2,
   Map,
+  Paperclip,
   PencilLine,
+  Search,
   Settings2,
   Shield,
   ShieldOff,
-  Slash,
+  Slash as SlashIcon,
   Square,
   Terminal,
   X,
@@ -32,8 +35,9 @@ import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
-import { PERMISSION_MODE_LABELS, PROVIDER_KIND_LABELS } from '../lib/types'
+import { PROVIDER_KIND_LABELS } from '../lib/types'
 import { Popover } from './ui/Popover'
+import '../styles/chat.css'
 
 const EMPTY_PROFILES: Profile[] = []
 const EMPTY_COMMANDS: SlashCommand[] = []
@@ -43,17 +47,30 @@ const SOURCE_LABEL: Record<SlashCommand['source'], string> = {
   user: '用户',
 }
 const MODES: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions']
-const MODE_ICONS = {
-  default: Shield,
-  acceptEdits: PencilLine,
-  plan: Map,
-  bypassPermissions: ShieldOff,
-} as const
-const MODE_HINTS: Record<PermissionMode, string> = {
-  default: '每次执行工具前询问',
-  acceptEdits: '自动接受文件修改，其他仍询问',
-  plan: '只读规划，不直接执行改动',
-  bypassPermissions: '不再询问，请谨慎使用',
+
+const MODE_META: Record<
+  PermissionMode,
+  {
+    label: string
+    hint: string
+    icon: typeof Shield
+    tone: string
+  }
+> = {
+  default: { label: '询问', hint: '每次执行工具前询问', icon: Shield, tone: 'text-muted' },
+  acceptEdits: {
+    label: '自动接受编辑',
+    hint: '自动接受文件修改，其他仍询问',
+    icon: PencilLine,
+    tone: 'text-success',
+  },
+  plan: { label: '计划模式', hint: '只做规划，不直接执行改动', icon: Map, tone: 'text-accent' },
+  bypassPermissions: {
+    label: '全部允许',
+    hint: '不再询问，请谨慎使用',
+    icon: ShieldOff,
+    tone: 'text-danger',
+  },
 }
 
 interface Attachment {
@@ -78,191 +95,347 @@ interface CompletionEntry {
   badge?: string
 }
 
-type ModeIcon = (typeof MODE_ICONS)[PermissionMode]
+export interface ComposerProps {
+  /** 覆盖默认发送。返回 false（或 reject）时保留输入内容。 */
+  onSubmit?: (content: ContentBlock[]) => boolean | void | Promise<boolean | void>
+  /** 无会话模式：模型、权限模式由外部受控，running 也由外部提供。 */
+  sessionless?: boolean
+  model?: string
+  profileId?: string
+  permissionMode?: PermissionMode
+  onModelChange?: (profileId: string, model: string) => void
+  onPermissionModeChange?: (mode: PermissionMode) => void
+  /** 文件补全与斜杠命令使用的 Host / 工作目录；缺省用当前会话。 */
+  hostId?: string
+  cwd?: string
+  placeholder?: string
+  autoFocus?: boolean
+  disabled?: boolean
+  className?: string
+  /** 外部覆盖运行状态（新会话页首条消息提交后使用）。 */
+  running?: boolean
+  onStop?: () => void
+}
 
-function PermissionModeMenu() {
-  const summary = useAppStore((s) => s.active?.summary ?? null)
-  const setMode = useAppStore((s) => s.setPermissionMode)
-  const mode = summary?.permissionMode ?? 'default'
-  const Icon: ModeIcon = MODE_ICONS[mode]
+function prettyModel(id: string): string {
+  if (!id) return '选择模型'
+  const known: Record<string, string> = {
+    'claude-opus-4-1': 'Claude Opus 4.1',
+    'claude-opus-4': 'Claude Opus 4',
+    'claude-sonnet-4-5': 'Claude Sonnet 4.5',
+    'claude-sonnet-4': 'Claude Sonnet 4',
+    'claude-haiku-4-5': 'Claude Haiku 4.5',
+    'claude-3-7-sonnet': 'Claude Sonnet 3.7',
+  }
+  if (known[id]) return known[id]
+  let s = id.replace(/^claude-/, 'Claude ')
+  s = s.replace(/-\d{8}$/, '')
+  s = s.replace(/-(\d+)-(\d+)$/, ' $1.$2')
+  s = s.replace(/-(\d+)$/, ' $1')
+  if (!/^claude/i.test(s)) s = s.replace(/[-_]/g, ' ')
+  return s.replace(/\b\w/g, (c) => c.toUpperCase())
+}
 
+function Highlight({ text, query }: { text: string; query: string }) {
+  const q = query.trim()
+  if (!q) return <>{text}</>
+  const idx = text.toLowerCase().indexOf(q.toLowerCase())
+  if (idx < 0) return <>{text}</>
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="chat-match">{text.slice(idx, idx + q.length)}</mark>
+      {text.slice(idx + q.length)}
+    </>
+  )
+}
+
+function PermissionModeMenu({
+  mode,
+  disabled,
+  onChange,
+}: {
+  mode: PermissionMode
+  disabled?: boolean
+  onChange: (mode: PermissionMode) => void
+}) {
+  const meta = MODE_META[mode]
+  const Icon = meta.icon
   return (
     <Popover
       side="top"
-      panelClassName="w-[268px]"
+      align="left"
+      panelClassName="w-[264px]"
       trigger={({ open, toggle }) => (
         <button
           onClick={toggle}
-          disabled={!summary}
-          title={`权限模式：${PERMISSION_MODE_LABELS[mode]}（Shift+Tab 切换）`}
-          className={cn(
-            'flex h-11 items-center gap-1.5 rounded-lg px-2 text-[11.5px] text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-50 md:h-8',
-            open && 'bg-surface-2 text-text',
-          )}
+          disabled={disabled}
+          title={`权限模式：${meta.label}（Shift+Tab 切换）`}
+          aria-label={`权限模式：${meta.label}`}
+          className={cn('composer-pill', open && 'bg-bg-hover text-text', disabled && 'opacity-50')}
         >
-          <Icon size={13.5} />
-          <span className="hidden max-w-[86px] truncate sm:inline">
-            {PERMISSION_MODE_LABELS[mode]}
-          </span>
-          <ChevronDown size={11} className="hidden opacity-60 sm:block" />
+          <Icon size={13} className={cn('shrink-0', meta.tone)} />
+          <span className="truncate">{meta.label}</span>
+          <ChevronDown size={11} className="shrink-0 opacity-50" />
         </button>
       )}
     >
       {(close) => (
         <div>
-          <div className="px-2.5 pb-1 pt-1.5 text-[10.5px] font-medium uppercase tracking-wide text-muted">
-            权限模式
-          </div>
+          <div className="menu-section">权限模式</div>
           {MODES.map((m) => {
-            const ModeIcon = MODE_ICONS[m]
+            const item = MODE_META[m]
+            const ItemIcon = item.icon
             return (
               <button
                 key={m}
+                data-selected={m === mode}
                 onClick={() => {
                   close()
-                  if (summary) void setMode(m)
+                  if (m !== mode) onChange(m)
                 }}
-                className={cn(
-                  'flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-surface-2',
-                  m === mode && 'bg-surface-2/70',
-                )}
+                className="menu-item"
+                role="menuitemradio"
+                aria-checked={m === mode}
               >
-                <ModeIcon size={14} className="mt-0.5 shrink-0 text-muted" />
+                <ItemIcon size={14} className={cn('shrink-0', item.tone)} />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[12.5px] font-medium">
-                    {PERMISSION_MODE_LABELS[m]}
+                  <span className="block text-[12.5px] leading-4">{item.label}</span>
+                  <span className="block truncate text-[10.5px] leading-4 text-muted">
+                    {item.hint}
                   </span>
-                  <span className="block text-[11px] leading-4 text-muted">{MODE_HINTS[m]}</span>
                 </span>
-                {m === mode && <Check size={14} className="mt-0.5 shrink-0 text-accent" />}
+                {m === mode && <Check size={13} className="shrink-0 text-accent" />}
               </button>
             )
           })}
-          <div className="mt-1 border-t border-border px-2.5 pb-0.5 pt-1.5 text-[10px] text-muted">
-            Shift+Tab 快速切换
-          </div>
+          <div className="menu-divider" />
+          <div className="menu-hint">Shift+Tab 快速切换</div>
         </div>
       )}
     </Popover>
   )
 }
 
-function ModelMenu() {
-  const summary = useAppStore((s) => s.active?.summary ?? null)
-  const hostId = useAppStore((s) => s.active?.hostId ?? null)
-  const profiles = useAppStore((s) =>
-    hostId ? (s.runtimes[hostId]?.profiles ?? EMPTY_PROFILES) : EMPTY_PROFILES,
-  )
-  const loading = useAppStore((s) =>
-    hostId ? (s.runtimes[hostId]?.profilesLoading ?? false) : false,
-  )
-  const setModel = useAppStore((s) => s.setModel)
-  const refreshProfiles = useAppStore((s) => s.refreshProfiles)
-  const openSettings = useUiStore((s) => s.openSettings)
-  const currentProfile = profiles.find((p) => p.id === summary?.profileId) ?? null
+function profilesModels(p: Profile): string[] {
+  return p.models.length ? p.models : [p.defaultModel].filter(Boolean)
+}
 
+function ModelPanel({
+  profiles,
+  profileId,
+  model,
+  loading,
+  onSelect,
+  onManage,
+  close,
+}: {
+  profiles: Profile[]
+  profileId: string
+  model: string
+  loading: boolean
+  onSelect: (profileId: string, model: string) => void
+  onManage: () => void
+  close: () => void
+}) {
+  const [query, setQuery] = useState('')
+  const [active, setActive] = useState(0)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return profiles
+      .map((p) => {
+        const models = profilesModels(p)
+        const profileHit = !q || p.name.toLowerCase().includes(q)
+        return {
+          profile: p,
+          models: models.filter(
+            (m) => profileHit || m.toLowerCase().includes(q) || prettyModel(m).toLowerCase().includes(q),
+          ),
+        }
+      })
+      .filter((g) => g.models.length > 0)
+  }, [profiles, query])
+
+  const flat = useMemo(
+    () => groups.flatMap((g) => g.models.map((m) => ({ profile: g.profile, model: m }))),
+    [groups],
+  )
+
+  useEffect(() => {
+    setActive(0)
+  }, [query])
+
+  useEffect(() => {
+    setActive((i) => Math.min(i, Math.max(0, flat.length - 1)))
+  }, [flat.length])
+
+  useEffect(() => {
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [active])
+
+  const choose = (index: number) => {
+    const item = flat[index]
+    if (!item) return
+    close()
+    if (item.profile.id !== profileId || item.model !== model) {
+      onSelect(item.profile.id, item.model)
+    }
+  }
+
+  const onKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActive((i) => Math.min(flat.length - 1, i + 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActive((i) => Math.max(0, i - 1))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      choose(active)
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      close()
+    }
+  }
+
+  let index = -1
+  return (
+    <div>
+      <div className="menu-search">
+        <Search size={13} className="shrink-0" />
+        <input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onKey}
+          placeholder="搜索模型或账号"
+          aria-label="搜索模型"
+          spellCheck={false}
+        />
+        <span className="menu-kbd">esc</span>
+      </div>
+      <div ref={listRef} className="max-h-[300px] overflow-y-auto p-1.5">
+        {loading && profiles.length === 0 && (
+          <div className="flex items-center gap-2 px-2 py-4 text-[12px] text-muted">
+            <Loader2 size={13} className="animate-spin" /> 加载账号…
+          </div>
+        )}
+        {!loading && flat.length === 0 && (
+          <div className="px-2 py-3 text-[12px] leading-5 text-muted">
+            {profiles.length === 0 ? '这台 Host 还没有配置账号。' : '没有匹配的模型。'}
+          </div>
+        )}
+        {groups.map((g) => (
+          <div key={g.profile.id} className="pb-0.5">
+            <div className="menu-section flex items-center gap-1.5">
+              <span className="min-w-0 truncate text-[11.5px] font-semibold text-text-soft">
+                {g.profile.name}
+              </span>
+              <span className="shrink-0 rounded border border-border px-1 text-[9.5px] font-normal text-muted">
+                {PROVIDER_KIND_LABELS[g.profile.kind] ?? g.profile.kind}
+              </span>
+            </div>
+            {g.models.map((m) => {
+              index += 1
+              const i = index
+              const selected = g.profile.id === profileId && m === model
+              return (
+                <button
+                  key={`${g.profile.id}:${m}`}
+                  data-index={i}
+                  data-active={i === active}
+                  data-selected={selected}
+                  onMouseEnter={() => setActive(i)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => choose(i)}
+                  className="menu-item"
+                >
+                  <span className="min-w-0 flex-1 truncate font-mono text-[12px]">
+                    <Highlight text={m} query={query} />
+                  </span>
+                  {selected && <Check size={13} className="shrink-0 text-accent" />}
+                </button>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+      <div className="menu-divider" />
+      <div className="p-1">
+        <button
+          onClick={() => {
+            close()
+            onManage()
+          }}
+          className="menu-item"
+        >
+          <Settings2 size={13} /> 管理账号与模型
+        </button>
+        <div className="menu-hint hidden sm:block">↑↓ 选择 · Enter 确认 · Esc 关闭</div>
+      </div>
+    </div>
+  )
+}
+
+function ModelMenu({
+  profiles,
+  profileId,
+  model,
+  loading,
+  disabled,
+  onSelect,
+  onManage,
+  onOpen,
+}: {
+  profiles: Profile[]
+  profileId: string
+  model: string
+  loading: boolean
+  disabled?: boolean
+  onSelect: (profileId: string, model: string) => void
+  onManage: () => void
+  onOpen?: () => void
+}) {
+  const currentProfile = profiles.find((p) => p.id === profileId) ?? null
   return (
     <Popover
       side="top"
-      panelClassName="w-[310px] max-w-[calc(100vw-1.5rem)]"
+      align="right"
+      padded={false}
+      panelClassName="w-[320px] max-w-[calc(100vw-1.5rem)]"
       trigger={({ open, toggle }) => (
         <button
           onClick={() => {
-            if (!open && hostId && profiles.length === 0 && !loading) void refreshProfiles(hostId)
+            if (!open) onOpen?.()
             toggle()
           }}
-          disabled={!summary}
-          title={currentProfile ? `${currentProfile.name} · ${summary?.model}` : '选择账号与模型'}
+          disabled={disabled}
+          title={currentProfile ? `${currentProfile.name} · ${model}` : '选择账号与模型'}
+          aria-label="选择模型"
           className={cn(
-            'flex h-11 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[11.5px] text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-50 md:h-8',
-            open && 'bg-surface-2 text-text',
+            'flex h-8 min-w-0 max-w-[220px] items-center gap-1 rounded-lg px-2 text-[12.5px] text-muted transition-colors hover:bg-bg-hover hover:text-text-soft',
+            open && 'bg-bg-hover text-text-soft',
+            disabled && 'opacity-50',
           )}
         >
-          <Cpu size={13.5} className="shrink-0" />
-          {currentProfile && (
-            <>
-              <span className="hidden max-w-[110px] truncate text-muted md:inline">
-                {currentProfile.name}
-              </span>
-              <span className="hidden text-border-strong md:inline">·</span>
-            </>
-          )}
-          <span className="max-w-[130px] truncate text-text-soft sm:max-w-[180px]">
-            {summary?.model || '选择模型'}
-          </span>
-          <ChevronDown size={11} className="shrink-0 opacity-60" />
+          <span className="min-w-0 truncate">{prettyModel(model)}</span>
+          <ChevronDown size={12} className="shrink-0 opacity-60" />
         </button>
       )}
     >
       {(close) => (
-        <div>
-          <div className="flex items-center justify-between px-2.5 pb-1 pt-1.5">
-            <span className="text-[10.5px] font-medium uppercase tracking-wide text-muted">
-              账号与模型
-            </span>
-            <span className="text-[10px] text-muted">{profiles.length} 个账号</span>
-          </div>
-          <div className="max-h-72 overflow-y-auto">
-            {loading && profiles.length === 0 && (
-              <div className="flex items-center gap-2 px-2.5 py-4 text-[12px] text-muted">
-                <Loader2 size={13} className="animate-spin" /> 加载账号…
-              </div>
-            )}
-            {!loading && profiles.length === 0 && (
-              <div className="px-2.5 py-3 text-[12px] leading-5 text-muted">
-                这台 Host 还没有配置账号。
-              </div>
-            )}
-            {profiles.map((p) => {
-              const models = p.models.length ? p.models : [p.defaultModel].filter(Boolean)
-              return (
-                <div key={p.id} className="pb-1">
-                  <div className="flex items-center gap-1.5 px-2.5 pb-0.5 pt-2">
-                    <span className="truncate text-[11.5px] font-semibold text-text-soft">
-                      {p.name}
-                    </span>
-                    <span className="shrink-0 rounded border border-border/70 px-1 text-[9.5px] text-muted">
-                      {PROVIDER_KIND_LABELS[p.kind] ?? p.kind}
-                    </span>
-                    <span className="ml-auto truncate font-mono text-[9.5px] text-muted/80">
-                      {p.apiKeyMasked}
-                    </span>
-                  </div>
-                  {models.map((m) => {
-                    const selected = summary?.profileId === p.id && summary?.model === m
-                    return (
-                      <button
-                        key={`${p.id}:${m}`}
-                        onClick={() => {
-                          close()
-                          if (!selected) void setModel(p.id, m)
-                        }}
-                        className={cn(
-                          'flex w-full min-h-9 items-center gap-2 rounded-lg pl-4 pr-2.5 text-left text-[12px] transition-colors hover:bg-surface-2',
-                          selected ? 'text-accent' : 'text-text-soft',
-                        )}
-                      >
-                        <span className="min-w-0 flex-1 truncate font-mono">{m}</span>
-                        {selected && <Check size={13} className="shrink-0" />}
-                      </button>
-                    )
-                  })}
-                </div>
-              )
-            })}
-          </div>
-          <div className="mt-1 border-t border-border pt-1">
-            <button
-              onClick={() => {
-                close()
-                openSettings('profiles')
-              }}
-              className="flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[12px] text-text-soft transition-colors hover:bg-surface-2 hover:text-text"
-            >
-              <Settings2 size={13} /> 管理账号与模型
-            </button>
-          </div>
-        </div>
+        <ModelPanel
+          profiles={profiles}
+          profileId={profileId}
+          model={model}
+          loading={loading}
+          onSelect={onSelect}
+          onManage={onManage}
+          close={close}
+        />
       )}
     </Popover>
   )
@@ -290,42 +463,46 @@ function CompletionMenu({
     el?.scrollIntoView({ block: 'nearest' })
   }, [index, items.length])
 
+  let emptyText: ReactNode = '没有匹配项'
+  if (completion.kind === 'slash' && loading) emptyText = '加载命令…'
+  else if (completion.kind === 'file' && loading) emptyText = '搜索文件…'
+  else if (completion.kind === 'slash') emptyText = '没有匹配的命令'
+  else if (completion.kind === 'file') emptyText = '没有匹配的文件'
+
   return (
-    <div className="anim-slide-up absolute inset-x-0 bottom-full z-30 mb-2 overflow-hidden rounded-xl border border-border bg-surface shadow-[0_18px_50px_-16px_rgba(30,24,18,0.45)]">
-      <div className="flex items-center gap-2 border-b border-border/70 bg-surface-2/30 px-3 py-1.5 text-[10.5px] text-muted">
-        {completion.kind === 'slash' ? <Slash size={11} /> : <AtSign size={11} />}
-        <span className="font-medium uppercase tracking-wide">
-          {completion.kind === 'slash' ? '斜杠命令' : '文件补全'}
+    <div
+      className="popover-panel absolute inset-x-0 bottom-full z-40 mb-2"
+      data-side="top"
+      data-align="left"
+    >
+      <div className="flex h-9 items-center gap-2 border-b border-border px-3 text-[11px] text-muted">
+        {completion.kind === 'slash' ? <SlashIcon size={12} /> : <AtSign size={12} />}
+        <span className="font-medium">
+          {completion.kind === 'slash' ? '斜杠命令' : '文件'}
         </span>
-        <span className="text-border-strong">·</span>
-        <span className="truncate">
+        <span className="min-w-0 flex-1 truncate text-text-soft">
           {completion.kind === 'slash' ? `/${completion.query}` : `@${completion.query}`}
         </span>
-        <span className="ml-auto hidden shrink-0 sm:inline">↑↓ 选择 · Enter 确认 · Esc 关闭</span>
+        <span className="hidden shrink-0 sm:inline">↑↓ 选择 · Enter 确认 · Esc 关闭</span>
       </div>
-      <div ref={listRef} className="max-h-64 overflow-y-auto p-1">
+      <div ref={listRef} className="max-h-[264px] overflow-y-auto p-1.5">
         {loading && items.length === 0 && (
           <div className="flex items-center gap-2 px-2.5 py-3 text-[12px] text-muted">
-            <Loader2 size={13} className="animate-spin" />
-            {completion.kind === 'slash' ? '加载命令…' : '搜索文件…'}
+            <Loader2 size={13} className="animate-spin" /> {emptyText}
           </div>
         )}
         {!loading && items.length === 0 && (
-          <div className="px-2.5 py-3 text-[12px] text-muted">
-            {completion.kind === 'slash' ? '没有匹配的命令' : '没有匹配的文件'}
-          </div>
+          <div className="px-2.5 py-3 text-[12px] text-muted">{emptyText}</div>
         )}
         {items.map((item, i) => (
           <button
             key={`${item.kind}:${item.value}`}
             data-index={i}
+            data-active={i === index}
             onMouseDown={(e) => e.preventDefault()}
             onMouseEnter={() => onIndex(i)}
             onClick={() => onSelect(item)}
-            className={cn(
-              'flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-colors',
-              i === index ? 'bg-surface-2' : 'hover:bg-surface-2/60',
-            )}
+            className="menu-item"
           >
             {item.kind === 'slash' ? (
               <Terminal size={13} className="shrink-0 text-muted" />
@@ -333,13 +510,17 @@ function CompletionMenu({
               <FileText size={13} className="shrink-0 text-muted" />
             )}
             <span className="min-w-0 flex-1">
-              <span className="block truncate font-mono text-[12px] text-text">{item.label}</span>
+              <span className="block truncate font-mono text-[12.5px] text-text">
+                <Highlight text={item.label} query={completion.query} />
+              </span>
               {item.description && (
-                <span className="block truncate text-[10.5px] text-muted">{item.description}</span>
+                <span className="block truncate text-[10.5px] leading-4 text-muted">
+                  <Highlight text={item.description} query={completion.query} />
+                </span>
               )}
             </span>
             {item.badge && (
-              <span className="shrink-0 rounded border border-border/70 px-1 text-[9.5px] text-muted">
+              <span className="shrink-0 rounded border border-border px-1 text-[9.5px] text-muted">
                 {item.badge}
               </span>
             )}
@@ -377,29 +558,69 @@ function readFileAsDataUrl(file: File): Promise<string> {
 const MAX_ATTACHMENTS = 6
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
-export function Composer() {
+export function Composer({
+  onSubmit,
+  sessionless = false,
+  model: modelProp,
+  profileId: profileIdProp,
+  permissionMode: permissionModeProp,
+  onModelChange,
+  onPermissionModeChange,
+  hostId: hostIdProp,
+  cwd: cwdProp,
+  placeholder,
+  autoFocus = false,
+  disabled = false,
+  className,
+  running: runningProp,
+  onStop,
+}: ComposerProps) {
   const isMobile = useIsMobile()
   const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
   const summary = useAppStore((s) => s.active?.summary ?? null)
-  const running = useAppStore((s) => s.active?.running ?? false)
+  const storeRunning = useAppStore((s) => s.active?.running ?? false)
   const stopping = useAppStore((s) => s.active?.stopping ?? false)
-  const hostId = useAppStore((s) => s.active?.hostId ?? null)
+  const activeHostId = useAppStore((s) => s.active?.hostId ?? null)
   const hostStatus = useAppStore((s) =>
-    hostId ? (s.runtimes[hostId]?.status ?? 'offline') : 'offline',
+    (hostIdProp ?? activeHostId) ? (s.runtimes[hostIdProp ?? activeHostId!]?.status ?? 'offline') : 'offline',
   )
   const commands = useAppStore((s) =>
-    hostId ? (s.runtimes[hostId]?.commands ?? EMPTY_COMMANDS) : EMPTY_COMMANDS,
+    (hostIdProp ?? activeHostId)
+      ? (s.runtimes[hostIdProp ?? activeHostId!]?.commands ?? EMPTY_COMMANDS)
+      : EMPTY_COMMANDS,
   )
   const commandsLoaded = useAppStore((s) =>
-    hostId ? (s.runtimes[hostId]?.commandsLoaded ?? false) : false,
+    (hostIdProp ?? activeHostId)
+      ? (s.runtimes[hostIdProp ?? activeHostId!]?.commandsLoaded ?? false)
+      : false,
+  )
+  const profiles = useAppStore((s) =>
+    (hostIdProp ?? activeHostId)
+      ? (s.runtimes[hostIdProp ?? activeHostId!]?.profiles ?? EMPTY_PROFILES)
+      : EMPTY_PROFILES,
+  )
+  const profilesLoading = useAppStore((s) =>
+    (hostIdProp ?? activeHostId)
+      ? (s.runtimes[hostIdProp ?? activeHostId!]?.profilesLoading ?? false)
+      : false,
   )
   const send = useAppStore((s) => s.send)
   const interrupt = useAppStore((s) => s.interrupt)
   const setPermissionMode = useAppStore((s) => s.setPermissionMode)
+  const setModel = useAppStore((s) => s.setModel)
+  const refreshProfiles = useAppStore((s) => s.refreshProfiles)
   const refreshCommands = useAppStore((s) => s.refreshCommands)
   const seed = useUiStore((s) => s.promptSeed)
   const clearPromptSeed = useUiStore((s) => s.clearPromptSeed)
   const toast = useUiStore((s) => s.toast)
+  const openSettings = useUiStore((s) => s.openSettings)
+
+  const effectiveHostId = hostIdProp ?? activeHostId
+  const cwd = cwdProp ?? summary?.cwd
+  const running = runningProp ?? storeRunning
+  const mode = sessionless ? (permissionModeProp ?? 'default') : (summary?.permissionMode ?? 'default')
+  const currentModel = sessionless ? (modelProp ?? '') : (summary?.model ?? '')
+  const currentProfileId = sessionless ? (profileIdProp ?? '') : (summary?.profileId ?? '')
 
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -411,6 +632,7 @@ export function Composer() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const composingRef = useRef(false)
   const fileSeq = useRef(0)
   const prevSessionRef = useRef<string | null>(sessionId)
@@ -426,10 +648,11 @@ export function Composer() {
   }, [sessionId])
 
   useEffect(() => {
-    if (isMobile) return
+    if (isMobile || disabled) return
+    if (!autoFocus && sessionless) return
     const t = window.setTimeout(() => textareaRef.current?.focus(), 60)
     return () => window.clearTimeout(t)
-  }, [sessionId, isMobile])
+  }, [sessionId, isMobile, autoFocus, sessionless, disabled])
 
   useEffect(() => {
     if (!seed) return
@@ -447,12 +670,13 @@ export function Composer() {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = `${Math.min(Math.max(el.scrollHeight, 28), 224)}px`
+    const max = Math.max(120, Math.round(window.innerHeight * 0.4))
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 28), max)}px`
   }, [text])
 
   useEffect(() => {
-    if (completion?.kind === 'slash' && hostId) void refreshCommands(hostId)
-  }, [completion?.kind, hostId, refreshCommands])
+    if (completion?.kind === 'slash' && effectiveHostId) void refreshCommands(effectiveHostId)
+  }, [completion?.kind, effectiveHostId, refreshCommands])
 
   useEffect(() => {
     if (!completion || completion.kind !== 'file') {
@@ -462,7 +686,6 @@ export function Composer() {
       return
     }
     const seq = ++fileSeq.current
-    const cwd = summary?.cwd
     if (!cwd) {
       setFileItems([])
       setFileLoading(false)
@@ -470,7 +693,7 @@ export function Composer() {
     }
     setFileLoading(true)
     const timer = window.setTimeout(() => {
-      const host = useAppStore.getState().hosts.find((h) => h.id === hostId)
+      const host = useAppStore.getState().hosts.find((h) => h.id === effectiveHostId)
       if (!host) {
         setFileLoading(false)
         return
@@ -489,7 +712,7 @@ export function Composer() {
         })
     }, 140)
     return () => window.clearTimeout(timer)
-  }, [completion?.kind, completion?.query, hostId, summary?.cwd])
+  }, [completion?.kind, completion?.query, effectiveHostId, cwd])
 
   useEffect(() => {
     setIndex(0)
@@ -619,39 +842,68 @@ export function Composer() {
     if (files.length) void addImages(files)
   }
 
-  const canSend = (text.trim().length > 0 || attachments.length > 0) && !!summary
+  const hasContent = text.trim().length > 0 || attachments.length > 0
+  const canSend = hasContent && !disabled && (onSubmit ? true : !!summary)
 
-  const handleSend = () => {
-    if (!summary) return
-    const trimmed = text.trim()
-    if (!trimmed && attachments.length === 0) return
-    if (hostStatus !== 'online') {
-      toast('Host 未连接，消息未发送', 'error')
-      return
-    }
-    const blocks: ContentBlock[] = []
-    if (trimmed) blocks.push({ type: 'text', text: trimmed })
-    for (const a of attachments) {
-      blocks.push({ type: 'image', mediaType: a.mediaType, dataBase64: a.dataBase64 })
-    }
-    if (!send(blocks)) return
+  const resetInput = () => {
     setText('')
     setAttachments([])
     setCompletion(null)
     window.requestAnimationFrame(() => {
       const el = textareaRef.current
-      if (el) {
-        el.style.height = '28px'
-        el.focus()
-      }
+      if (!el) return
+      el.style.height = '28px'
+      if (!isMobile) el.focus()
     })
   }
 
-  const cycleMode = () => {
+  const handleSend = async () => {
+    if (!canSend) return
+    const trimmed = text.trim()
+    const blocks: ContentBlock[] = []
+    if (trimmed) blocks.push({ type: 'text', text: trimmed })
+    for (const a of attachments) {
+      blocks.push({ type: 'image', mediaType: a.mediaType, dataBase64: a.dataBase64 })
+    }
+    if (onSubmit) {
+      let result: boolean | void
+      try {
+        result = await onSubmit(blocks)
+      } catch {
+        return
+      }
+      if (result === false) return
+      resetInput()
+      return
+    }
     if (!summary) return
-    const idx = MODES.indexOf(summary.permissionMode)
-    const next = MODES[(idx + 1) % MODES.length]
-    void setPermissionMode(next)
+    if (hostStatus !== 'online') {
+      toast('Host 未连接，消息未发送', 'error')
+      return
+    }
+    if (!send(blocks)) return
+    resetInput()
+  }
+
+  const stop = () => {
+    if (stopping) return
+    if (onStop) onStop()
+    else interrupt()
+  }
+
+  const changeMode = (next: PermissionMode) => {
+    if (sessionless) onPermissionModeChange?.(next)
+    else void setPermissionMode(next)
+  }
+
+  const cycleMode = () => {
+    const idx = MODES.indexOf(mode)
+    changeMode(MODES[(idx + 1) % MODES.length])
+  }
+
+  const changeModel = (nextProfileId: string, nextModel: string) => {
+    if (sessionless) onModelChange?.(nextProfileId, nextModel)
+    else void setModel(nextProfileId, nextModel)
   }
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -694,7 +946,7 @@ export function Composer() {
       if (running) {
         e.preventDefault()
         e.stopPropagation()
-        interrupt()
+        stop()
       }
       return
     }
@@ -702,12 +954,12 @@ export function Composer() {
       if (composing) return
       if (e.metaKey || e.ctrlKey) {
         e.preventDefault()
-        handleSend()
+        void handleSend()
         return
       }
       if (isMobile || e.shiftKey) return
       e.preventDefault()
-      handleSend()
+      void handleSend()
       return
     }
     if (e.key === 'Tab' && e.shiftKey) {
@@ -722,8 +974,10 @@ export function Composer() {
     setCompletion(detectCompletion(value, caret))
   }
 
+  const sendState = running ? 'running' : canSend ? 'ready' : 'idle'
+
   return (
-    <div className="relative">
+    <div className={cn('relative', className)}>
       {completion && (
         <div ref={menuRef}>
           <CompletionMenu
@@ -749,17 +1003,16 @@ export function Composer() {
           setDragging(false)
         }}
         onDrop={onDrop}
-        className={cn(
-          'relative rounded-2xl border bg-surface shadow-[0_2px_12px_-4px_rgba(40,30,20,0.12)] transition-colors duration-150',
-          dragging ? 'border-accent/60' : 'border-border-strong/60 focus-within:border-border-strong',
-        )}
+        data-dragging={dragging}
+        className="composer-card"
       >
         {dragging && (
-          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-accent/50 bg-accent-soft/80 text-[13px] font-medium text-accent backdrop-blur-[1px]">
+          <div className="composer-drop">
+            <ImageIcon size={16} />
             松开以添加图片
           </div>
         )}
-        <div className="px-3 pt-2.5">
+        <div className="px-3.5 pb-0.5 pt-3">
           {attachments.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
               {attachments.map((a) => (
@@ -773,11 +1026,9 @@ export function Composer() {
                     className="size-full object-cover"
                   />
                   <button
-                    onClick={() =>
-                      setAttachments((prev) => prev.filter((x) => x.id !== a.id))
-                    }
+                    onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
                     aria-label="移除图片"
-                    className="absolute right-0.5 top-0.5 flex size-5 items-center justify-center rounded-full bg-black/60 text-white opacity-80 transition-opacity hover:opacity-100"
+                    className="absolute right-0.5 top-0.5 flex size-5 items-center justify-center rounded-full bg-black/60 text-white opacity-70 transition-opacity hover:opacity-100 md:opacity-0 md:group-hover:opacity-90"
                   >
                     <X size={11} />
                   </button>
@@ -788,7 +1039,9 @@ export function Composer() {
           <textarea
             ref={textareaRef}
             value={text}
-            onChange={(e) => onChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+            onChange={(e) =>
+              onChange(e.target.value, e.target.selectionStart ?? e.target.value.length)
+            }
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             onBlur={() => setCompletion(null)}
@@ -800,65 +1053,75 @@ export function Composer() {
             }}
             rows={1}
             spellCheck={false}
+            disabled={disabled}
             aria-label="消息输入框"
             placeholder={
-              running
-                ? '运行中，可继续输入，消息会排队发送…'
-                : '给 Tandem 发消息…'
+              placeholder ??
+              (running ? '运行中，可继续输入，消息会排队发送…' : '给 Tandem 发消息…')
             }
-            className="composer-textarea block max-h-[224px] min-h-7 w-full resize-none bg-transparent px-1 py-1 text-[16px] leading-6 text-text outline-none placeholder:text-muted md:text-[14.5px]"
+            className="composer-textarea"
           />
         </div>
 
-        <div className="flex items-center gap-0.5 px-1.5 pb-1.5 pt-1">
-          <PermissionModeMenu />
-          <span className="mx-0.5 h-4 w-px shrink-0 bg-border" />
-          <ModelMenu />
-          <span className="flex-1" />
-          {!summary && (
-            <span className="mr-1 hidden text-[10.5px] text-muted sm:block">会话加载中…</span>
-          )}
-          {running && (
-            <button
-              onClick={interrupt}
-              disabled={stopping}
-              title="停止生成 (Esc)"
-              aria-label="停止生成"
-              className="flex size-11 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-text-soft transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-60 md:size-9"
-            >
-              {stopping ? (
-                <Loader2 size={15} className="animate-spin" />
-              ) : (
-                <Square size={12} className="fill-current" />
-              )}
-            </button>
-          )}
+        <div className="flex items-center gap-1 px-2 pb-2 pt-1">
           <button
-            onClick={handleSend}
-            disabled={!canSend}
-            title={running ? '排队发送 (Enter)' : '发送 (Enter)'}
-            aria-label="发送消息"
-            className={cn(
-              'ml-0.5 flex size-11 shrink-0 items-center justify-center rounded-full transition-all duration-150 md:size-9',
-              canSend
-                ? 'bg-accent text-on-accent hover:bg-accent-hover active:scale-95'
-                : 'bg-surface-2 text-muted/50',
-            )}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled || attachments.length >= MAX_ATTACHMENTS}
+            title="添加图片"
+            aria-label="添加图片"
+            className="composer-icon-btn disabled:opacity-40"
           >
-            <ArrowUp size={18} strokeWidth={2.2} />
+            <Paperclip size={16} />
+          </button>
+          <PermissionModeMenu mode={mode} disabled={disabled} onChange={changeMode} />
+          <span className="min-w-0 flex-1" />
+          <ModelMenu
+            profiles={profiles}
+            profileId={currentProfileId}
+            model={currentModel}
+            loading={profilesLoading}
+            disabled={disabled || (!sessionless && !summary)}
+            onSelect={changeModel}
+            onManage={() => openSettings('profiles')}
+            onOpen={() => {
+              if (effectiveHostId && profiles.length === 0 && !profilesLoading) {
+                void refreshProfiles(effectiveHostId)
+              }
+            }}
+          />
+          <button
+            onClick={running ? stop : () => void handleSend()}
+            disabled={running ? stopping : !canSend}
+            data-state={sendState}
+            title={running ? '停止生成 (Esc)' : '发送 (Enter)'}
+            aria-label={running ? '停止生成' : '发送消息'}
+            className="composer-send ml-0.5 disabled:cursor-not-allowed"
+          >
+            <span key={sendState} className="send-icon flex items-center justify-center">
+              {running ? (
+                stopping ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Square size={11} className="fill-current" />
+                )
+              ) : (
+                <ArrowUp size={17} strokeWidth={2.2} />
+              )}
+            </span>
           </button>
         </div>
-      </div>
-
-      <div className="mt-1.5 flex items-center gap-2 px-1 text-[10.5px] leading-4 text-muted">
-        <span className="min-w-0 truncate">
-          {running
-            ? '运行中 · Enter 排队发送 · Esc 停止'
-            : isMobile
-              ? 'Enter 换行 · 点击右侧按钮发送'
-              : 'Enter 发送 · Shift+Enter 换行 · / 命令 · @ 文件 · 可粘贴图片'}
-        </span>
-        <span className="ml-auto hidden shrink-0 md:inline">Shift+Tab 切换权限</span>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? [])
+            e.target.value = ''
+            if (files.length) void addImages(files)
+          }}
+        />
       </div>
     </div>
   )

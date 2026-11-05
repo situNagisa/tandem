@@ -1,31 +1,18 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ChevronDown, RefreshCw, ShieldAlert, TriangleAlert, WifiOff } from 'lucide-react'
 import type { PermissionRequest } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
+import { cn } from '../lib/cn'
 import { MessageList } from './MessageList'
 import { SessionWelcome, HomeView } from './Welcome'
 import { PermissionCard } from './PermissionCard'
 import { Composer } from './Composer'
+import '../styles/chat.css'
 
 const EMPTY_PENDING: PermissionRequest[] = []
-const SCROLL_THRESHOLD = 80
-
-function StreamAutoScroll({
-  scrollRef,
-  pinnedRef,
-}: {
-  scrollRef: React.RefObject<HTMLDivElement | null>
-  pinnedRef: React.RefObject<boolean>
-}) {
-  const messages = useAppStore((s) => s.active?.messages)
-  useLayoutEffect(() => {
-    if (!pinnedRef.current) return
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [messages, scrollRef, pinnedRef])
-  return null
-}
+const PIN_THRESHOLD = 80
+const JUMP_THRESHOLD = 160
 
 export function ChatView() {
   const hasSession = useAppStore((s) => !!s.active)
@@ -56,53 +43,62 @@ export function ChatView() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
+  const frameRef = useRef<number | null>(null)
+  // 平滑滚动到顶前，避免 ResizeObserver 在同一帧插入瞬移
+  const programmaticUntil = useRef(0)
   const [showJump, setShowJump] = useState(false)
 
-  const scrollToBottom = (smooth = false) => {
-    const el = scrollRef.current
-    if (!el) return
-    pinnedRef.current = true
-    setShowJump(false)
-    if (smooth) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-    else el.scrollTop = el.scrollHeight
-  }
-
-  useEffect(() => {
-    pinnedRef.current = true
-    setShowJump(false)
-    const id = window.requestAnimationFrame(() => {
-      const el = scrollRef.current
-      if (el) el.scrollTop = el.scrollHeight
-    })
-    return () => window.cancelAnimationFrame(id)
-  }, [sessionId])
-
-  useEffect(() => {
+  const stickToBottom = useCallback(() => {
     if (!pinnedRef.current) return
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [messageCount, loading, pending.length])
-
-  useEffect(() => {
-    if (!lastIsLocal) return
-    pinnedRef.current = true
-    setShowJump(false)
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [lastIsLocal, messageCount])
-
-  // 图片、代码高亮等异步撑高内容时保持贴底
-  useEffect(() => {
-    const content = contentRef.current
-    if (!content || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(() => {
+    if (frameRef.current != null) return
+    frameRef.current = window.requestAnimationFrame(() => {
+      frameRef.current = null
       if (!pinnedRef.current) return
       const el = scrollRef.current
       if (el) el.scrollTop = el.scrollHeight
     })
-    ro.observe(content)
-    return () => ro.disconnect()
   }, [])
+
+  const scrollToBottom = useCallback((smooth = false) => {
+    const el = scrollRef.current
+    if (!el) return
+    pinnedRef.current = true
+    setShowJump(false)
+    if (smooth) {
+      programmaticUntil.current = Date.now() + 600
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    } else {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    pinnedRef.current = true
+    setShowJump(false)
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [sessionId])
+
+  useLayoutEffect(() => {
+    stickToBottom()
+  }, [messageCount, loading, pending.length, stickToBottom])
+
+  useEffect(() => {
+    if (!lastIsLocal) return
+    scrollToBottom()
+  }, [lastIsLocal, messageCount, scrollToBottom])
+
+  // 文本流式增长、图片加载、代码高亮都会撑高内容，用 ResizeObserver 保持贴底。
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return
+    const content = contentRef.current
+    const box = scrollRef.current
+    if (!content || !box) return
+    const ro = new ResizeObserver(() => stickToBottom())
+    ro.observe(content)
+    ro.observe(box)
+    return () => ro.disconnect()
+  }, [stickToBottom])
 
   useEffect(() => {
     if (!running) return
@@ -139,9 +135,21 @@ export function ChatView() {
     const el = scrollRef.current
     if (!el) return
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight
-    pinnedRef.current = distance < SCROLL_THRESHOLD
-    const next = distance > 240
+    if (programmaticUntil.current) {
+      if (distance < PIN_THRESHOLD) {
+        pinnedRef.current = true
+        setShowJump(false)
+        if (distance < 2) programmaticUntil.current = 0
+        return
+      }
+    }
+    pinnedRef.current = distance < PIN_THRESHOLD
+    const next = distance > JUMP_THRESHOLD
     setShowJump((prev) => (prev === next ? prev : next))
+  }
+
+  const cancelProgrammatic = () => {
+    programmaticUntil.current = 0
   }
 
   if (!hasSession) {
@@ -169,9 +177,7 @@ export function ChatView() {
       {!authError && hostStatus === 'offline' && (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-warning/25 bg-warning-soft/50 px-4 py-1.5 text-[11.5px] text-warning">
           <WifiOff size={13} className="shrink-0" />
-          <span className="min-w-0 flex-1">
-            与 {hostName} 的连接已断开，正在自动重连…
-          </span>
+          <span className="min-w-0 flex-1">与 {hostName} 的连接已断开，正在自动重连…</span>
           <button
             onClick={() => hostId && retryHost(hostId)}
             className="flex shrink-0 items-center gap-1 rounded-md border border-warning/30 px-2 py-0.5 text-[11px] transition-colors hover:bg-warning/10"
@@ -185,9 +191,14 @@ export function ChatView() {
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className="h-full w-full overflow-y-auto overscroll-contain"
+          onWheel={cancelProgrammatic}
+          onTouchMove={cancelProgrammatic}
+          className="chat-scroll h-full w-full overflow-y-auto overscroll-contain"
         >
-          <div ref={contentRef} className="mx-auto flex min-h-full w-full max-w-[860px] flex-col px-4 pb-5 pt-2 md:px-8 md:pt-4">
+          <div
+            ref={contentRef}
+            className="mx-auto flex min-h-full w-full max-w-[760px] flex-col px-4 pb-8 pt-3 md:px-6 md:pt-5"
+          >
             <div className="flex flex-1 flex-col">
               {loading && messageCount === 0 ? (
                 <MessageList showSkeleton />
@@ -212,19 +223,23 @@ export function ChatView() {
           </div>
         </div>
 
-        {showJump && (
-          <button
-            onClick={() => scrollToBottom(true)}
-            className="anim-fade-in absolute bottom-3 left-1/2 flex min-h-11 -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-surface px-4 py-2 text-[11.5px] text-text-soft shadow-lg transition-colors hover:bg-surface-2 md:min-h-0 md:px-3 md:py-1.5"
-          >
-            <ChevronDown size={13} /> 回到底部
-          </button>
-        )}
-        <StreamAutoScroll scrollRef={scrollRef} pinnedRef={pinnedRef} />
+        <button
+          onClick={() => scrollToBottom(true)}
+          aria-label="回到底部"
+          title="回到底部"
+          className={cn(
+            'chat-jump absolute bottom-4 left-1/2 z-10 flex size-8 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-surface text-text-soft shadow-md hover:text-text',
+            showJump
+              ? 'pointer-events-auto translate-y-0 opacity-100'
+              : 'pointer-events-none opacity-0',
+          )}
+        >
+          <ChevronDown size={16} />
+        </button>
       </div>
 
-      <div className="shrink-0 bg-bg px-3 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-1.5 md:px-8 md:pb-4 md:pt-2">
-        <div className="mx-auto w-full max-w-[860px]">
+      <div className="shrink-0 bg-bg px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5 md:px-6 md:pb-5 md:pt-2">
+        <div className="mx-auto w-full max-w-[760px]">
           {turnError && (
             <div className="mb-2 flex items-center gap-2 rounded-xl border border-danger/30 bg-danger-soft/50 px-3 py-2 text-[12px] text-danger">
               <TriangleAlert size={14} className="shrink-0" />
