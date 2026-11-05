@@ -2,6 +2,8 @@ import type {
   CreateSessionInput,
   FsEntry,
   HostInfo,
+  ListModelsInput,
+  ModelInfo,
   Profile,
   ProfileInput,
   Session,
@@ -91,6 +93,11 @@ export const api = {
     request<{ ok: boolean; error?: string }>(h, `/api/profiles/${encodeURIComponent(id)}/test`, {
       method: 'POST',
     }),
+  listModels: (h: HostConfig, input: ListModelsInput) =>
+    request<{ ok: boolean; models: ModelInfo[]; error?: string }>(h, '/api/models', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   sessions: (h: HostConfig) => request<SessionSummary[]>(h, '/api/sessions'),
   createSession: (h: HostConfig, input: CreateSessionInput) =>
@@ -104,6 +111,8 @@ export const api = {
     }),
   deleteSession: (h: HostConfig, id: string) =>
     request<void>(h, `/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  forkSession: (h: HostConfig, id: string) =>
+    request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/fork`, { method: 'POST' }),
 
   fsList: (h: HostConfig, path: string) =>
     request<FsEntry[]>(h, `/api/fs/list${qs({ path })}`),

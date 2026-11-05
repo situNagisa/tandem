@@ -3,70 +3,92 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --t-bg: #f7f4ee;
-  --t-sidebar: #f1ede5;
-  --t-surface: #fffdf8;
-  --t-surface-2: #ece6db;
-  --t-border: #e4ddd1;
-  --t-border-strong: #d3c9b9;
-  --t-text: #28241e;
-  --t-text-soft: #575149;
-  --t-muted: #8b8378;
-  --t-accent: #b85734;
-  --t-accent-hover: #a34a29;
-  --t-accent-soft: #f3e3d9;
-  --t-on-accent: #fffaf3;
-  --t-danger: #b23b32;
-  --t-danger-soft: #f8e7e3;
-  --t-warning: #96651d;
-  --t-warning-soft: #f5e9d3;
-  --t-success: #4a7456;
-  --t-success-soft: #e7f0e7;
+  /* 色板：暖色中性灰 + 唯一强调色 Claude 橙 */
+  --t-bg: #faf9f5;
+  --t-sidebar: #f5f4ed;
+  --t-surface: #ffffff;
+  --t-surface-2: #f0eee6;
+  --t-bg-hover: rgba(31, 30, 29, 0.05);
+  --t-bg-active: rgba(31, 30, 29, 0.08);
+  --t-border: rgba(31, 30, 29, 0.1);
+  --t-border-strong: rgba(31, 30, 29, 0.18);
+  --t-text: #1f1e1d;
+  --t-text-soft: #5e5d59;
+  --t-muted: #8f8d86;
+  --t-accent: #d97757;
+  --t-accent-hover: #c6613f;
+  --t-accent-soft: rgba(217, 119, 87, 0.12);
+  --t-on-accent: #ffffff;
+  --t-danger: #bf4d43;
+  --t-danger-soft: rgba(191, 77, 67, 0.1);
+  --t-warning: #a9752f;
+  --t-warning-soft: rgba(169, 117, 47, 0.12);
+  --t-success: #5a8f5a;
+  --t-success-soft: rgba(90, 143, 90, 0.12);
 
-  --t-add-bg: #e8f1e4;
-  --t-add-fg: #315c2f;
-  --t-del-bg: #f8e6e2;
-  --t-del-fg: #8c3129;
+  --t-add-bg: rgba(90, 143, 90, 0.12);
+  --t-add-fg: #3f6b3f;
+  --t-del-bg: rgba(191, 77, 67, 0.12);
+  --t-del-fg: #963b33;
 
-  --syn-comment: #958b7d;
-  --syn-keyword: #a44f2e;
-  --syn-string: #587842;
-  --syn-number: #2f7080;
-  --syn-title: #76508e;
-  --syn-attr: #93651f;
-  --syn-builtin: #8a5a2b;
-  --syn-meta: #7c7366;
+  --t-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --t-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --t-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.12);
+  --t-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  --t-font-sans: -apple-system, "Segoe UI Variable", "Segoe UI", system-ui, "PingFang SC",
+    "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
+  --t-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, "Songti SC",
+    "Noto Serif SC", serif;
+  --t-font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas,
+    "Liberation Mono", monospace;
+
+  --syn-comment: #8f8d86;
+  --syn-keyword: #b4553a;
+  --syn-string: #5f7f4c;
+  --syn-number: #3f7c86;
+  --syn-title: #7a5a86;
+  --syn-attr: #99702e;
+  --syn-builtin: #9a5d34;
+  --syn-meta: #7c7468;
 
   --app-height: 100dvh;
 }
 
 html.dark {
-  --t-bg: #1b1a18;
-  --t-sidebar: #161513;
-  --t-surface: #232220;
-  --t-surface-2: #2d2b27;
-  --t-border: #38352f;
-  --t-border-strong: #4a453d;
-  --t-text: #ece7de;
-  --t-text-soft: #c9c2b6;
-  --t-muted: #948c80;
-  --t-accent: #d97b58;
-  --t-accent-hover: #e58d6b;
-  --t-accent-soft: #3a2721;
-  --t-on-accent: #24130c;
-  --t-danger: #e0837a;
-  --t-danger-soft: #382320;
-  --t-warning: #d9a84e;
-  --t-warning-soft: #332a1c;
-  --t-success: #8fbe9a;
-  --t-success-soft: #222e25;
+  --t-bg: #262624;
+  --t-sidebar: #1f1e1d;
+  --t-surface: #30302e;
+  --t-surface-2: #2b2a27;
+  --t-bg-hover: rgba(255, 255, 255, 0.05);
+  --t-bg-active: rgba(255, 255, 255, 0.09);
+  --t-border: rgba(255, 255, 255, 0.08);
+  --t-border-strong: rgba(255, 255, 255, 0.16);
+  --t-text: #f5f4ee;
+  --t-text-soft: #c2c0b6;
+  --t-muted: #8a8880;
+  --t-accent: #d97757;
+  --t-accent-hover: #e08868;
+  --t-accent-soft: rgba(217, 119, 87, 0.16);
+  --t-on-accent: #ffffff;
+  --t-danger: #e07a70;
+  --t-danger-soft: rgba(224, 122, 112, 0.14);
+  --t-warning: #d6a45c;
+  --t-warning-soft: rgba(214, 164, 92, 0.14);
+  --t-success: #7db87d;
+  --t-success-soft: rgba(125, 184, 125, 0.14);
 
-  --t-add-bg: #223026;
-  --t-add-fg: #a6cfa5;
-  --t-del-bg: #372320;
-  --t-del-fg: #e6a29a;
+  --t-add-bg: rgba(125, 184, 125, 0.14);
+  --t-add-fg: #a9d6a9;
+  --t-del-bg: rgba(224, 122, 112, 0.14);
+  --t-del-fg: #e8a49d;
 
-  --syn-comment: #7d756a;
+  --t-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --t-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.36), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --t-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
+
+  --syn-comment: #8a8880;
   --syn-keyword: #e49a78;
   --syn-string: #a9c994;
   --syn-number: #8ecad8;
@@ -81,6 +103,8 @@ html.dark {
   --color-sidebar: var(--t-sidebar);
   --color-surface: var(--t-surface);
   --color-surface-2: var(--t-surface-2);
+  --color-bg-hover: var(--t-bg-hover);
+  --color-bg-active: var(--t-bg-active);
   --color-border: var(--t-border);
   --color-border-strong: var(--t-border-strong);
   --color-text: var(--t-text);
@@ -97,12 +121,13 @@ html.dark {
   --color-success: var(--t-success);
   --color-success-soft: var(--t-success-soft);
 
-  --font-sans: "Inter", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI",
-    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
-  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Songti SC",
-    "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
-  --font-mono: "SFMono-Regular", "JetBrains Mono", "Cascadia Code", Menlo, Consolas,
-    "Liberation Mono", monospace;
+  --font-sans: var(--t-font-sans);
+  --font-serif: var(--t-font-serif);
+  --font-mono: var(--t-font-mono);
+
+  --shadow-sm: var(--t-shadow-sm);
+  --shadow-md: var(--t-shadow-md);
+  --shadow-lg: var(--t-shadow-lg);
 
   --animate-shimmer: shimmer 1.6s linear infinite;
 }
@@ -121,18 +146,20 @@ html.dark {
   html {
     -webkit-text-size-adjust: 100%;
     scrollbar-color: var(--t-border-strong) transparent;
+    scrollbar-width: thin;
   }
 
   body {
     margin: 0;
     background: var(--t-bg);
     color: var(--t-text);
-    font-family: var(--font-sans);
+    font-family: var(--t-font-sans);
     font-size: 15px;
-    line-height: 1.6;
+    line-height: 1.65;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overscroll-behavior: none;
+    text-rendering: optimizeLegibility;
   }
 
   button {
@@ -158,31 +185,30 @@ html.dark {
   }
 
   ::selection {
-    background: color-mix(in srgb, var(--t-accent) 24%, transparent);
+    background: color-mix(in srgb, var(--t-accent) 22%, transparent);
   }
 
   :focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--t-accent) 65%, transparent);
+    outline: 2px solid color-mix(in srgb, var(--t-accent) 55%, transparent);
     outline-offset: 2px;
   }
 
   ::-webkit-scrollbar {
-    width: 9px;
-    height: 9px;
+    width: 7px;
+    height: 7px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--t-border-strong) 70%, transparent);
+    background: color-mix(in srgb, var(--t-border-strong) 55%, transparent);
     border-radius: 999px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--t-border-strong);
-    background-clip: padding-box;
-    border: 2px solid transparent;
+    background: color-mix(in srgb, var(--t-border-strong) 90%, transparent);
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }
 
@@ -209,11 +235,33 @@ html.dark {
 @keyframes tandem-slide-up {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes tandem-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes tandem-dialog {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
   }
 }
 
@@ -251,29 +299,37 @@ html.dark {
     transform: scale(1);
   }
   50% {
-    opacity: 0.45;
-    transform: scale(0.82);
+    opacity: 0.4;
+    transform: scale(0.8);
   }
 }
 
 .anim-fade-in {
-  animation: tandem-fade-in 160ms ease-out both;
+  animation: tandem-fade-in 160ms var(--t-ease-out) both;
+}
+
+.anim-pop {
+  animation: tandem-pop 160ms var(--t-ease-out) both;
 }
 
 .anim-slide-up {
-  animation: tandem-slide-up 200ms cubic-bezier(0.22, 0.8, 0.35, 1) both;
+  animation: tandem-slide-up 160ms var(--t-ease-out) both;
+}
+
+.anim-dialog {
+  animation: tandem-dialog 220ms var(--t-ease-out) both;
 }
 
 .anim-drawer-left {
-  animation: tandem-drawer-left 220ms cubic-bezier(0.22, 0.8, 0.35, 1) both;
+  animation: tandem-drawer-left 220ms var(--t-ease-out) both;
 }
 
 .anim-drawer-right {
-  animation: tandem-drawer-right 220ms cubic-bezier(0.22, 0.8, 0.35, 1) both;
+  animation: tandem-drawer-right 220ms var(--t-ease-out) both;
 }
 
 .running-dot {
-  animation: tandem-breathe 1.6s ease-in-out infinite;
+  animation: tandem-breathe 1.7s ease-in-out infinite;
 }
 
 .shimmer-text {
@@ -299,14 +355,33 @@ html.dark {
   );
   background-size: 400% 100%;
   animation: tandem-shimmer 1.5s ease infinite;
-  border-radius: 8px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .anim-pop,
+  .anim-slide-up,
+  .anim-dialog,
+  .anim-drawer-left,
+  .anim-drawer-right {
+    animation-name: tandem-fade-in !important;
+    transform: none !important;
+  }
 }
 
 /* ---------- Markdown 排版 ---------- */
 .md {
   color: var(--t-text);
   font-size: 15px;
-  line-height: 1.72;
+  line-height: 1.7;
   overflow-wrap: anywhere;
 }
 .md > :first-child {
@@ -366,7 +441,7 @@ html.dark {
   text-decoration: underline;
   text-underline-offset: 2px;
   text-decoration-thickness: 1px;
-  transition: color 150ms ease;
+  transition: color 120ms ease;
 }
 .md a:hover {
   color: var(--t-accent-hover);
@@ -392,7 +467,7 @@ html.dark {
   margin: 1.5em 0;
 }
 .md code {
-  font-family: var(--font-mono);
+  font-family: var(--t-font-mono);
   font-size: 0.86em;
   background: var(--t-surface-2);
   border: 1px solid color-mix(in srgb, var(--t-border) 70%, transparent);

@@ -1,6 +1,15 @@
 import { create } from 'zustand'
 import type { SettingsTab, Theme, Toast } from '../lib/types'
-import { loadTheme, loadUiPrefs, saveTheme, saveUiPrefs } from '../lib/storage'
+import {
+  loadCollapsedProjects,
+  loadSidebarWidth,
+  loadTheme,
+  loadUiPrefs,
+  saveCollapsedProjects,
+  saveSidebarWidth,
+  saveTheme,
+  saveUiPrefs,
+} from '../lib/storage'
 
 let toastSeq = 1
 const toastTimers = new Map<number, number>()
@@ -8,6 +17,9 @@ const toastTimers = new Map<number, number>()
 interface UiState {
   theme: Theme
   sidebarCollapsed: boolean
+  sidebarWidth: number
+  collapsedProjects: Record<string, boolean>
+  showArchived: boolean
   panelOpen: boolean
   mobileSidebar: boolean
   mobilePanel: boolean
@@ -21,6 +33,9 @@ interface UiState {
   setTheme: (theme: Theme) => void
   setSidebarCollapsed: (collapsed: boolean) => void
   toggleSidebar: () => void
+  setSidebarWidth: (width: number) => void
+  toggleProject: (key: string) => void
+  setShowArchived: (show: boolean) => void
   setPanelOpen: (open: boolean) => void
   togglePanel: () => void
   setMobileSidebar: (open: boolean) => void
@@ -41,6 +56,9 @@ const prefs = loadUiPrefs()
 export const useUiStore = create<UiState>((set, get) => ({
   theme: loadTheme(),
   sidebarCollapsed: prefs.sidebarCollapsed ?? false,
+  sidebarWidth: loadSidebarWidth(),
+  collapsedProjects: loadCollapsedProjects(),
+  showArchived: false,
   panelOpen: prefs.panelOpen ?? true,
   mobileSidebar: false,
   mobilePanel: false,
@@ -61,6 +79,17 @@ export const useUiStore = create<UiState>((set, get) => ({
     set({ sidebarCollapsed: collapsed })
   },
   toggleSidebar: () => get().setSidebarCollapsed(!get().sidebarCollapsed),
+  setSidebarWidth: (width) => {
+    const next = Math.min(400, Math.max(220, Math.round(width)))
+    saveSidebarWidth(next)
+    set({ sidebarWidth: next })
+  },
+  toggleProject: (key) => {
+    const next = { ...get().collapsedProjects, [key]: !get().collapsedProjects[key] }
+    saveCollapsedProjects(next)
+    set({ collapsedProjects: next })
+  },
+  setShowArchived: (show) => set({ showArchived: show }),
   setPanelOpen: (open) => {
     saveUiPrefs({ panelOpen: open })
     set({ panelOpen: open })
@@ -108,5 +137,5 @@ export function applyTheme(theme: Theme): void {
   root.classList.toggle('dark', dark)
   root.style.colorScheme = dark ? 'dark' : 'light'
   const meta = document.querySelector('meta[name="theme-color"]')
-  if (meta) meta.setAttribute('content', dark ? '#1b1a18' : '#f6f3ee')
+  if (meta) meta.setAttribute('content', dark ? '#262624' : '#faf9f5')
 }

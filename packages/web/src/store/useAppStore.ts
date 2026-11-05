@@ -9,6 +9,7 @@ import type {
   Session,
   SessionSummary,
   SlashCommand,
+  UpdateSessionInput,
 } from '@tandem/protocol'
 import { api, ApiError } from '../lib/api'
 import { HostConnection } from '../lib/ws'
@@ -51,6 +52,13 @@ interface AppState {
   setPermissionMode: (mode: PermissionMode) => Promise<void>
   setModel: (profileId: string, model: string) => Promise<void>
   createSession: (hostId: string, input: CreateSessionInput) => Promise<SessionSummary>
+  startSession: (hostId: string, input: CreateSessionInput, text: string) => Promise<SessionSummary>
+  updateSession: (
+    hostId: string,
+    sessionId: string,
+    patch: UpdateSessionInput,
+  ) => Promise<SessionSummary | null>
+  forkSession: (hostId: string, sessionId: string) => Promise<SessionSummary | null>
   deleteSession: (hostId: string, sessionId: string) => Promise<void>
 }
 
@@ -100,6 +108,9 @@ function summaryOf(s: Session): SessionSummary {
     model: s.model,
     permissionMode: s.permissionMode,
     status: s.status,
+    ...(s.pinned ? { pinned: true } : {}),
+    ...(s.archived ? { archived: true } : {}),
+    ...(s.env ? { env: s.env } : {}),
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
     usage: s.usage,
@@ -907,6 +918,69 @@ export const useAppStore = create<AppState>((set, get) => {
       if (rt) applySessionSummary(hostId, summary)
       navigate({ kind: 'session', hostId, sessionId: summary.id })
       return summary
+    },
+
+    startSession: async (hostId, input, text) => {
+      const host = getHost(hostId)
+      if (!host) throw new Error('Host 不存在')
+      const summary = await api.createSession(host, input)
+      applySessionSummary(hostId, summary)
+      set({
+        active: {
+          hostId,
+          sessionId: summary.id,
+          summary,
+          messages: [],
+          pending: [],
+          todos: [],
+          loading: true,
+          running: false,
+          stopping: false,
+          liveToolInputs: {},
+          toolResults: {},
+        },
+      })
+      navigate({ kind: 'session', hostId, sessionId: summary.id })
+      ensureConnection(hostId)?.subscribe(summary.id)
+      get().send([{ type: 'text', text }])
+      return summary
+    },
+
+    updateSession: async (hostId, sessionId, patch) => {
+      const host = getHost(hostId)
+      if (!host) return null
+      const rt = get().runtimes[hostId]
+      const active = get().active
+      const prev =
+        rt?.sessions.find((s) => s.id === sessionId) ??
+        (active?.hostId === hostId && active.sessionId === sessionId ? active.summary : null)
+      if (!prev) return null
+      const optimistic: SessionSummary = { ...prev, ...patch }
+      applySessionSummary(hostId, optimistic)
+      try {
+        const updated = await api.patchSession(host, sessionId, patch)
+        applySessionSummary(hostId, updated)
+        return updated
+      } catch (err) {
+        applySessionSummary(hostId, prev)
+        toast(err instanceof Error ? err.message : '更新会话失败', 'error')
+        return null
+      }
+    },
+
+    forkSession: async (hostId, sessionId) => {
+      const host = getHost(hostId)
+      if (!host) return null
+      try {
+        const summary = await api.forkSession(host, sessionId)
+        applySessionSummary(hostId, summary)
+        toast('已复制会话', 'success')
+        navigate({ kind: 'session', hostId, sessionId: summary.id })
+        return summary
+      } catch (err) {
+        toast(err instanceof Error ? err.message : '复制会话失败', 'error')
+        return null
+      }
     },
 
     deleteSession: async (hostId, sessionId) => {

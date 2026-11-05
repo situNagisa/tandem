@@ -54,6 +54,8 @@ export function saveTheme(theme: Theme): void {
 interface UiPrefs {
   sidebarCollapsed?: boolean
   panelOpen?: boolean
+  sidebarWidth?: number
+  collapsedProjects?: string[]
 }
 
 export function loadUiPrefs(): UiPrefs {
@@ -62,6 +64,28 @@ export function loadUiPrefs(): UiPrefs {
 
 export function saveUiPrefs(prefs: UiPrefs): void {
   writeJson(KEYS.ui, { ...loadUiPrefs(), ...prefs })
+}
+
+export function loadSidebarWidth(): number {
+  const n = loadUiPrefs().sidebarWidth
+  if (typeof n !== 'number' || !Number.isFinite(n)) return 272
+  return Math.min(400, Math.max(220, n))
+}
+
+export function saveSidebarWidth(width: number): void {
+  saveUiPrefs({ sidebarWidth: width })
+}
+
+export function loadCollapsedProjects(): Record<string, boolean> {
+  const list = loadUiPrefs().collapsedProjects
+  if (!Array.isArray(list)) return {}
+  const map: Record<string, boolean> = {}
+  for (const key of list) if (typeof key === 'string') map[key] = true
+  return map
+}
+
+export function saveCollapsedProjects(map: Record<string, boolean>): void {
+  saveUiPrefs({ collapsedProjects: Object.keys(map).filter((k) => map[k]) })
 }
 
 export function loadRecentDirs(hostId: string): string[] {
