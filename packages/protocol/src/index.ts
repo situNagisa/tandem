@@ -40,9 +40,17 @@ export interface SessionSummary {
   model: string;
   permissionMode: PermissionMode;
   status: SessionStatus;
+  pinned?: boolean;        // 置顶
+  archived?: boolean;      // 归档（列表默认隐藏）
+  env?: SessionEnv;        // 会话执行环境，用于侧栏按 项目/分支 自动归类
   createdAt: number;
   updatedAt: number;
   usage: Usage;
+}
+export interface SessionEnv {
+  repoRoot?: string;       // cwd 所在 git 仓库根目录（非仓库则无）
+  repoName?: string;       // 仓库名（根目录 basename）
+  branch?: string;         // 当前分支
 }
 export interface Usage { inputTokens: number; outputTokens: number; costUsd?: number }
 
@@ -53,7 +61,11 @@ export interface CreateSessionInput {
   permissionMode?: PermissionMode;
   title?: string;
 }
-export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'model' | 'permissionMode'>>;
+export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'model' | 'permissionMode' | 'pinned' | 'archived'>>;
+
+// 拉取模型列表：填 Key 后自动获取可用模型（无需手填）
+export interface ListModelsInput { kind: ProviderKind; baseUrl?: string; apiKey?: string; profileId?: string } // apiKey 缺省时用 profileId 已存的 key
+export interface ModelInfo { id: string; displayName?: string; contextWindow?: number }
 
 // ---------- 消息 ----------
 export type ContentBlock =
@@ -134,11 +146,13 @@ export type BlockDelta =
 // PUT    /api/profiles/:id            -> Profile
 // DELETE /api/profiles/:id
 // POST   /api/profiles/:id/test       -> { ok: boolean; error?: string }   测试 key 可用
+// POST   /api/models  ListModelsInput -> { ok: boolean; models: ModelInfo[]; error?: string }  从 provider 拉取模型列表
 // GET    /api/sessions                -> SessionSummary[]   (按 updatedAt 倒序)
 // POST   /api/sessions CreateSessionInput -> SessionSummary
 // GET    /api/sessions/:id            -> Session
 // PATCH  /api/sessions/:id UpdateSessionInput -> SessionSummary  (运行中切换模型/账号：下一轮生效)
 // DELETE /api/sessions/:id
+// POST   /api/sessions/:id/fork       -> SessionSummary   复制会话（含历史）为新会话
 // GET    /api/fs/list?path=           -> FsEntry[]   目录选择器
 // GET    /api/fs/complete?cwd=&q=     -> string[]    @文件 补全（相对 cwd 的路径）
 // GET    /api/commands                -> SlashCommand[]
