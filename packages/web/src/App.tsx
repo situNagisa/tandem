@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from './store/useAppStore'
 import { applyTheme, useUiStore } from './store/useUiStore'
 import { navigate, useRoute } from './lib/router'
@@ -8,7 +8,6 @@ import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
 import { ChatView } from './components/ChatView'
 import { RightPanel } from './components/RightPanel'
-import { NewSessionDialog } from './components/NewSessionDialog'
 import { SettingsDialog } from './components/settings/SettingsDialog'
 import { SearchDialog } from './components/SearchDialog'
 import { Toasts } from './components/ui/Toasts'
@@ -20,6 +19,8 @@ export default function App() {
   const initialized = useAppStore((s) => s.initialized)
   const hosts = useAppStore((s) => s.hosts)
   const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed)
+  const sidebarWidth = useUiStore((s) => s.sidebarWidth)
+  const setSidebarWidth = useUiStore((s) => s.setSidebarWidth)
   const panelOpen = useUiStore((s) => s.panelOpen)
   const setPanelOpen = useUiStore((s) => s.setPanelOpen)
   const theme = useUiStore((s) => s.theme)
@@ -28,6 +29,13 @@ export default function App() {
   const setMobileSidebar = useUiStore((s) => s.setMobileSidebar)
   const setMobilePanel = useUiStore((s) => s.setMobilePanel)
   const hasSession = useAppStore((s) => !!s.active)
+
+  const [dragWidth, setDragWidth] = useState<number | null>(null)
+  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
+  const lastWidthRef = useRef<number | null>(null)
+  const [drawerOffset, setDrawerOffset] = useState(0)
+  const drawerStart = useRef<number | null>(null)
+  const effectiveWidth = dragWidth ?? sidebarWidth
 
   useEffect(() => {
     useAppStore.getState().initialize()
@@ -90,13 +98,15 @@ export default function App() {
       if (!mod) return
       const key = e.key.toLowerCase()
       if (key === 'k') {
-        if (ui.settingsOpen || ui.newSessionOpen) return
+        if (ui.settingsOpen) return
         e.preventDefault()
         ui.setSearchOpen(!ui.searchOpen)
       } else if (key === 'n') {
-        if (ui.settingsOpen || ui.newSessionOpen) return
+        if (ui.settingsOpen) return
         e.preventDefault()
-        ui.setNewSessionOpen(true)
+        ui.setShowArchived(false)
+        navigate({ kind: 'home' })
+        ui.setMobileSidebar(false)
       } else if (key === 'b') {
         e.preventDefault()
         if (isMobile) ui.setMobileSidebar(!ui.mobileSidebar)
@@ -125,18 +135,67 @@ export default function App() {
     }
   }, [])
 
+  const startResize = (e: React.PointerEvent) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    dragRef.current = { startX: e.clientX, startWidth: sidebarWidth }
+    lastWidthRef.current = sidebarWidth
+    setDragWidth(sidebarWidth)
+    const move = (ev: PointerEvent) => {
+      const d = dragRef.current
+      if (!d) return
+      const next = Math.min(400, Math.max(220, d.startWidth + ev.clientX - d.startX))
+      lastWidthRef.current = next
+      setDragWidth(next)
+    }
+    const up = () => {
+      dragRef.current = null
+      const finalWidth = lastWidthRef.current
+      if (finalWidth !== null) useUiStore.getState().setSidebarWidth(finalWidth)
+      setDragWidth(null)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
   return (
     <div className="app-root flex overflow-hidden bg-bg pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)] text-text">
       {!isMobile && (
         <div
-          className={cn(
-            'h-full shrink-0 overflow-hidden transition-[width] duration-200 ease-out',
-            sidebarCollapsed ? 'w-0' : 'w-[276px]',
-          )}
+          className="relative h-full shrink-0"
+          style={{
+            width: sidebarCollapsed ? 0 : effectiveWidth,
+            transition: dragWidth !== null ? 'none' : 'width 220ms var(--t-ease-out)',
+          }}
         >
-          <div className="h-full w-[276px]">
+          <div className="h-full overflow-hidden" style={{ width: effectiveWidth }}>
             <Sidebar />
           </div>
+          {!sidebarCollapsed && (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整侧栏宽度"
+              onPointerDown={startResize}
+              onDoubleClick={() => setSidebarWidth(272)}
+              title="拖动调整宽度，双击复位"
+              className="group absolute -right-1 top-0 z-20 h-full w-2 cursor-col-resize touch-none"
+            >
+              <span
+                className={cn(
+                  'absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-transparent transition-colors duration-150',
+                  'group-hover:bg-border-strong',
+                  dragWidth !== null && 'bg-accent',
+                )}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -155,10 +214,30 @@ export default function App() {
       {isMobile && mobileSidebar && (
         <div className="fixed inset-0 z-40 md:hidden">
           <div
-            className="anim-fade-in absolute inset-0 bg-black/35 backdrop-blur-[1px]"
+            className="absolute inset-0 bg-black/35"
+            style={{ opacity: Math.max(0.15, 1 + drawerOffset / 320) }}
             onClick={() => setMobileSidebar(false)}
           />
-          <div className="anim-drawer-left absolute inset-y-0 left-0 w-[87%] max-w-[330px] bg-sidebar pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-2xl">
+          <div
+            className="anim-drawer-left absolute inset-y-0 left-0 w-[87%] max-w-[330px] bg-sidebar pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-lg"
+            style={{
+              transform: drawerOffset ? `translateX(${drawerOffset}px)` : undefined,
+              transition: drawerOffset ? 'none' : 'transform 220ms var(--t-ease-out)',
+            }}
+            onTouchStart={(e) => {
+              drawerStart.current = e.touches[0]?.clientX ?? null
+            }}
+            onTouchMove={(e) => {
+              if (drawerStart.current === null) return
+              const dx = (e.touches[0]?.clientX ?? drawerStart.current) - drawerStart.current
+              setDrawerOffset(Math.min(0, Math.max(-340, dx)))
+            }}
+            onTouchEnd={() => {
+              if (drawerOffset < -72) setMobileSidebar(false)
+              setDrawerOffset(0)
+              drawerStart.current = null
+            }}
+          >
             <Sidebar inDrawer onNavigate={() => setMobileSidebar(false)} />
           </div>
         </div>
@@ -167,16 +246,15 @@ export default function App() {
       {isMobile && mobilePanel && hasSession && (
         <div className="fixed inset-0 z-40 md:hidden">
           <div
-            className="anim-fade-in absolute inset-0 bg-black/35 backdrop-blur-[1px]"
+            className="anim-fade-in absolute inset-0 bg-black/35"
             onClick={() => setMobilePanel(false)}
           />
-          <div className="anim-drawer-right absolute inset-y-0 right-0 w-[90%] max-w-[344px] bg-sidebar pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-2xl">
+          <div className="anim-drawer-right absolute inset-y-0 right-0 w-[90%] max-w-[344px] bg-sidebar pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-lg">
             <RightPanel onClose={() => setMobilePanel(false)} />
           </div>
         </div>
       )}
 
-      <NewSessionDialog />
       <SettingsDialog />
       <SearchDialog />
       <Toasts />

@@ -56,7 +56,7 @@ export function Modal({
   return createPortal(
     <div
       className={cn(
-        'fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/30 p-3 backdrop-blur-[2px] dark:bg-black/55',
+        'anim-fade-in fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/25 p-3 backdrop-blur-[2px] dark:bg-black/50',
         align === 'center' ? 'items-center sm:p-6' : 'items-start pt-[8vh] sm:pt-[12vh]',
       )}
       onMouseDown={(e) => {
@@ -69,22 +69,22 @@ export function Modal({
         aria-modal="true"
         aria-label={typeof title === 'string' ? title : undefined}
         className={cn(
-          'anim-slide-up my-auto flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-2xl border border-border bg-surface text-text shadow-[0_24px_70px_-20px_rgba(40,30,20,0.45)]',
+          'anim-dialog my-auto flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-2xl border border-border bg-surface text-text shadow-[var(--t-shadow-lg)]',
           align === 'top' && 'my-0',
           className ?? 'max-w-lg',
         )}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {(title || description) && (
-          <div className="flex items-start gap-3 border-b border-border px-5 py-4">
+          <div className="flex items-start gap-3 border-b border-border px-5 py-3.5">
             <div className="min-w-0 flex-1">
-              {title && <h2 className="truncate text-[15px] font-semibold">{title}</h2>}
-              {description && <p className="mt-1 text-[12.5px] text-muted">{description}</p>}
+              {title && <h2 className="truncate text-[15px] font-medium tracking-[-0.01em]">{title}</h2>}
+              {description && <p className="mt-0.5 text-[12px] leading-5 text-muted">{description}</p>}
             </div>
             <button
               onClick={onClose}
               aria-label="关闭"
-              className="-mr-1 flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-text sm:size-8"
+              className="-mr-1 flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text sm:size-8"
             >
               <X size={16} />
             </button>
@@ -92,7 +92,7 @@ export function Modal({
         )}
         <div className={cn('min-h-0 flex-1 overflow-y-auto', bodyClassName ?? 'p-5')}>{children}</div>
         {footer && (
-          <div className="flex items-center justify-end gap-2 border-t border-border bg-bg/40 px-5 py-3.5">
+          <div className="flex items-center justify-end gap-2 border-t border-border bg-bg/50 px-5 py-3">
             {footer}
           </div>
         )}

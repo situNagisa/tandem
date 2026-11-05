@@ -4,7 +4,7 @@ import { cn } from '../lib/cn'
 
 const CONNECTION_STYLE: Record<ConnectionState, string> = {
   online: 'bg-success',
-  connecting: 'bg-warning running-dot',
+  connecting: 'bg-accent running-dot',
   offline: 'bg-muted/60',
 }
 
@@ -27,16 +27,21 @@ export function SessionStatusDot({ status }: { status: SessionStatus }) {
   if (status === 'running') {
     return (
       <span className="relative inline-flex size-2 shrink-0" title="运行中">
-        <span className="absolute inset-0 rounded-full bg-accent/30 running-dot" />
+        <span className="absolute inset-0 rounded-full bg-accent/25 running-dot" />
         <span className="relative m-auto size-1.5 rounded-full bg-accent" />
       </span>
     )
   }
   if (status === 'waiting_permission') {
-    return <span className="inline-block size-2 shrink-0 rounded-full bg-warning" title="等待审批" />
+    return <span className="inline-block size-2 shrink-0 rounded-full bg-accent" title="等待审批" />
   }
   if (status === 'error') {
     return <span className="inline-block size-2 shrink-0 rounded-full bg-danger" title="出错" />
   }
-  return <span className="inline-block size-1.5 shrink-0 rounded-full bg-border-strong/70" />
+  return (
+    <span
+      className="inline-block size-1.5 shrink-0 rounded-full border border-[var(--t-border-strong)]"
+      title="空闲"
+    />
+  )
 }
