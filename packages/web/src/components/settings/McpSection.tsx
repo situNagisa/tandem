@@ -26,11 +26,12 @@ const SOURCE_LABEL: Record<string, string> = {
   project: '项目',
 }
 
-const STATUS_STYLE: Record<McpServerStatus['status'], { dot: string; text: string; label: string }> = {
+const STATUS_STYLE: Record<McpServerStatus['status'] | 'unknown', { dot: string; text: string; label: string }> = {
   connected: { dot: 'bg-success', text: 'text-success', label: '已连接' },
   connecting: { dot: 'bg-accent running-dot', text: 'text-accent', label: '连接中' },
   error: { dot: 'bg-danger', text: 'text-danger', label: '出错' },
   disabled: { dot: 'border border-border-strong bg-transparent', text: 'text-muted', label: '已停用' },
+  unknown: { dot: 'bg-border-strong', text: 'text-muted', label: '未连接' },
 }
 
 interface Draft {
@@ -283,17 +284,18 @@ export function McpSection() {
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [editor, setEditor] = useState<Draft | null>(null)
+  const [removeTarget, setRemoveTarget] = useState<McpServerConfig | null>(null)
   const [saving, setSaving] = useState(false)
 
   const host = hosts.find((h) => h.id === hostId) ?? null
   const cwd = hostId === activeHostId ? activeCwd : undefined
 
   const load = useCallback(
-    async (silent = false) => {
+    async (silent = false, retry = false) => {
       if (!host) return
       if (!silent) setLoading(true)
       try {
-        const data = await api.mcp(host, cwd)
+        const data = await api.mcp(host, cwd, retry)
         setServers(data.servers)
         setStatuses(data.status)
         setError(null)
@@ -351,7 +353,26 @@ export function McpSection() {
   }
 
   const remove = (config: McpServerConfig) => {
-    void saveOwn(ownServers.filter((s) => s.name !== config.name))
+    setRemoveTarget(config)
+  }
+
+  const confirmRemove = async () => {
+    if (!removeTarget || !host) return
+    const target = removeTarget
+    setSaving(true)
+    try {
+      await api.saveMcp(
+        host,
+        ownServers.filter((s) => s.name !== target.name),
+      )
+      await load(true)
+      toast(`已移除 MCP 服务器 ${target.name}`, 'success')
+      setRemoveTarget(null)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '移除 MCP 服务器失败', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const saveDraft = (draft: Draft) => {
@@ -385,18 +406,18 @@ export function McpSection() {
           </select>
         )}
         <button
-          onClick={() => void load()}
+          onClick={() => void load(false, true)}
           disabled={loading || !host}
-          aria-label="刷新"
-          title="刷新状态"
-          className="flex size-8 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-50"
+          aria-label="刷新并重连"
+          title="刷新状态，并重连失败的服务器"
+          className="flex size-11 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-50 sm:size-8"
         >
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
         </button>
         <button
           onClick={() => setEditor(emptyDraft())}
           disabled={!host}
-          className="flex min-h-8 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[11.5px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
+          className="flex min-h-11 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[11.5px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50 sm:min-h-8"
         >
           <Plus size={13} /> 添加服务器
         </button>
@@ -431,7 +452,7 @@ export function McpSection() {
       <div className="space-y-2">
         {servers.map((config) => {
           const status = statusOf.get(config.name)
-          const state = status?.status ?? (config.enabled ? 'connecting' : 'disabled')
+          const state: McpServerStatus['status'] | 'unknown' = status?.status ?? (config.enabled ? 'unknown' : 'disabled')
           const style = STATUS_STYLE[state]
           const source = config.source ?? 'tandem'
           const readonly = source !== 'tandem'
@@ -458,11 +479,26 @@ export function McpSection() {
                       <span className="text-[10px] text-muted">{status?.tools.length ?? 0} 个工具</span>
                     )}
                   </div>
-                  <div className="mt-0.5 truncate font-mono text-[10px] text-muted">
+                  <div
+                    className="mt-0.5 truncate font-mono text-[10px] text-muted"
+                    title={
+                      config.transport === 'http'
+                        ? config.url
+                        : [config.command, ...(config.args ?? [])].join(' ')
+                    }
+                  >
                     {config.transport === 'http'
                       ? config.url
                       : [config.command, ...(config.args ?? [])].join(' ')}
                   </div>
+                  {state === 'error' && status?.error && (
+                    <p
+                      className="mt-0.5 line-clamp-1 break-all text-[10.5px] leading-4 text-danger"
+                      title={status.error}
+                    >
+                      {status.error}
+                    </p>
+                  )}
                   {readonly && (
                     <p className="mt-1 text-[10.5px] leading-4 text-muted">
                       来自 {source === 'claude' ? '~/.claude.json' : '项目 .mcp.json'}，只读；请
@@ -475,34 +511,39 @@ export function McpSection() {
                     <button
                       role="switch"
                       aria-checked={config.enabled}
+                      aria-label={`${config.enabled ? '停用' : '启用'} ${config.name}`}
                       onClick={() => toggle(config)}
                       disabled={saving}
                       title={config.enabled ? '停用' : '启用'}
-                      className={cn(
-                        'relative h-4 w-7 rounded-full transition-colors disabled:opacity-50',
-                        config.enabled ? 'bg-accent' : 'bg-[var(--t-bg-active)]',
-                      )}
+                      className="flex size-11 shrink-0 items-center justify-center disabled:opacity-50 sm:size-7"
                     >
                       <span
                         className={cn(
-                          'absolute top-0.5 size-3 rounded-full bg-white shadow-sm transition-transform',
-                          config.enabled ? 'translate-x-3.5' : 'translate-x-0.5',
+                          'relative h-4 w-7 rounded-full transition-colors',
+                          config.enabled ? 'bg-accent' : 'bg-[var(--t-bg-active)]',
                         )}
-                      />
+                      >
+                        <span
+                          className={cn(
+                            'absolute top-0.5 size-3 rounded-full bg-white shadow-sm transition-transform',
+                            config.enabled ? 'translate-x-3.5' : 'translate-x-0.5',
+                          )}
+                        />
+                      </span>
                     </button>
                     <button
                       onClick={() => setEditor(toDraft(config))}
-                      aria-label="编辑"
+                      aria-label={`编辑 ${config.name}`}
                       title="编辑"
-                      className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
+                      className="flex size-11 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text sm:size-7"
                     >
                       <Pencil size={12} />
                     </button>
                     <button
                       onClick={() => remove(config)}
-                      aria-label="删除"
+                      aria-label={`删除 ${config.name}`}
                       title="删除"
-                      className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-danger-soft hover:text-danger"
+                      className="flex size-11 items-center justify-center rounded-md text-muted transition-colors hover:bg-danger-soft hover:text-danger sm:size-7"
                     >
                       <Trash2 size={12} />
                     </button>
@@ -538,7 +579,13 @@ export function McpSection() {
                       </div>
                     ) : (
                       <div className="text-[11px] text-muted">
-                        {state === 'disabled' ? '服务器已停用。' : state === 'error' ? '连接失败，暂无工具。' : '尚未获取到工具。'}
+                        {state === 'disabled'
+                          ? '服务器已停用。'
+                          : state === 'error'
+                            ? '连接失败，暂无工具。'
+                            : state === 'unknown'
+                              ? '尚未连接，点击右上角刷新并重连。'
+                              : '尚未获取到工具。'}
                       </div>
                     )}
                   </div>
@@ -563,6 +610,46 @@ export function McpSection() {
           }}
         />
       )}
+
+      <Modal
+        open={!!removeTarget}
+        onClose={() => {
+          if (!saving) setRemoveTarget(null)
+        }}
+        title="移除 MCP 服务器"
+        description="会从 Host 的 mcp.json 中删除该条目，已连接的工具立即失效。"
+        className="max-w-md"
+        footer={
+          <>
+            <button
+              onClick={() => setRemoveTarget(null)}
+              disabled={saving}
+              className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
+            >
+              取消
+            </button>
+            <button
+              onClick={() => void confirmRemove()}
+              disabled={saving}
+              className="flex min-h-9 items-center gap-1.5 rounded-lg bg-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
+            >
+              {saving && <Loader2 size={13} className="animate-spin" />}
+              移除
+            </button>
+          </>
+        }
+      >
+        <p className="text-[13px] leading-6 text-text-soft">
+          确定移除「
+          <span className="font-mono text-text">{removeTarget?.name}</span>
+          」？此操作只删除 Tandem 自己的配置，不影响 Claude 或项目里的只读条目。
+        </p>
+        {removeTarget?.command && (
+          <p className="mt-2 break-all rounded-lg bg-[var(--t-surface-2)] px-2.5 py-2 font-mono text-[10.5px] text-muted">
+            {[removeTarget.command, ...(removeTarget.args ?? [])].join(' ')}
+          </p>
+        )}
+      </Modal>
     </div>
   )
 }

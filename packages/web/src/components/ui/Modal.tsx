@@ -15,6 +15,9 @@ interface ModalProps {
   align?: 'center' | 'top'
 }
 
+/** 嵌套 Modal（如设置里的删除确认）只让最上层响应 Esc，避免一次关掉两层。 */
+const modalStack: symbol[] = []
+
 export function Modal({
   open,
   onClose,
@@ -47,14 +50,21 @@ export function Modal({
 
   useEffect(() => {
     if (!open) return
+    const id = Symbol('modal')
+    modalStack.push(id)
     const onKey = (e: KeyboardEvent) => {
+      if (modalStack[modalStack.length - 1] !== id) return
       if (e.key === 'Escape' && !e.defaultPrevented) {
         e.preventDefault()
         onClose()
       }
     }
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return () => {
+      const index = modalStack.indexOf(id)
+      if (index >= 0) modalStack.splice(index, 1)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [open, onClose])
 
   useEffect(() => {

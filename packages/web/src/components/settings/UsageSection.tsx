@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart3, Loader2, RefreshCw, TriangleAlert } from 'lucide-react'
 import type { UsageStatsRow } from '@tandem/protocol'
 import { api } from '../../lib/api'
@@ -90,45 +90,85 @@ function RankTable({ title, rows }: { title: string; rows: RankRow[] }) {
       {rows.length === 0 ? (
         <div className="px-3 py-4 text-[11px] text-muted">暂无数据</div>
       ) : (
-        <div className="divide-y divide-[var(--t-border)]">
-          {rows.slice(0, 6).map((row) => (
-            <div key={row.key} className="flex items-center gap-2 px-3 py-1.5">
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-mono text-[11px] text-text" title={row.label}>
-                  {row.label}
+        <>
+          <div className="divide-y divide-[var(--t-border)]">
+            {rows.slice(0, 6).map((row) => (
+              <div key={row.key} className="flex items-center gap-2 px-3 py-1.5">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-mono text-[11px] text-text" title={row.label}>
+                    {row.label}
+                  </div>
+                  {row.sub && <div className="truncate text-[9.5px] text-muted">{row.sub}</div>}
                 </div>
-                {row.sub && <div className="truncate text-[9.5px] text-muted">{row.sub}</div>}
+                <div className="shrink-0 text-right">
+                  <div className="font-mono text-[11px] tabular-nums text-text">{formatCost(row.cost)}</div>
+                  <div className="text-[9px] tabular-nums text-muted">{formatTokens(row.tokens)} tok</div>
+                </div>
               </div>
-              <div className="shrink-0 text-right">
-                <div className="font-mono text-[11px] tabular-nums text-text">{formatCost(row.cost)}</div>
-                <div className="text-[9px] tabular-nums text-muted">{formatTokens(row.tokens)} tok</div>
-              </div>
+            ))}
+          </div>
+          {rows.length > 6 && (
+            <div className="border-t border-border/70 px-3 py-1 text-[9.5px] text-muted">
+              仅显示前 6 项，共 {rows.length} 项
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   )
 }
 
 function DayChart({ days, values }: { days: string[]; values: number[] }) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  // 按容器实际宽度绘制，避免固定 viewBox 在手机上把 9px 标签缩成 ~5px。
+  const [width, setWidth] = useState(() =>
+    Math.min(640, Math.max(280, (typeof window !== 'undefined' ? window.innerWidth : 720) - 80)),
+  )
   const [hover, setHover] = useState<number | null>(null)
-  const width = 640
-  const height = 168
-  const padding = { left: 40, right: 8, top: 12, bottom: 22 }
+  const [pinned, setPinned] = useState<number | null>(null)
+  const compact = width < 460
+  const height = compact ? 152 : 168
+  const padding = { left: compact ? 34 : 40, right: 8, top: 12, bottom: 22 }
   const plotW = width - padding.left - padding.right
   const plotH = height - padding.top - padding.bottom
   const max = Math.max(...values, 0)
   const scale = max > 0 ? plotH / max : 0
   const slot = plotW / Math.max(1, days.length)
   const barW = Math.max(2, Math.min(26, slot * 0.62))
-  const labelEvery = Math.max(1, Math.ceil(days.length / 6))
-  const hoverValue = hover !== null ? values[hover] : 0
-  const hoverDay = hover !== null ? days[hover] : ''
+  const labelEvery = Math.max(1, Math.ceil(days.length / (compact ? 4 : 7)))
+  const activeIndex = hover ?? pinned
+  const activeValue = activeIndex !== null ? (values[activeIndex] ?? 0) : 0
+  const activeDay = activeIndex !== null ? (days[activeIndex] ?? '') : ''
+  const today = days[days.length - 1]
+  const tipLeft =
+    activeIndex === null
+      ? 4
+      : Math.min(width - 96, Math.max(4, padding.left + slot * (activeIndex + 0.5) - 44))
+
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const update = () => {
+      const next = Math.min(720, Math.max(260, el.clientWidth))
+      if (next > 0) setWidth(next)
+    }
+    update()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   return (
-    <div className="relative">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full" role="img" aria-label="按天花费柱状图">
+    <div ref={wrapRef} className="relative">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width={width}
+        height={height}
+        className="h-auto w-full"
+        role="img"
+        aria-label="按天花费柱状图"
+      >
         {[0, 0.5, 1].map((frac) => {
           const y = padding.top + plotH * frac
           return (
@@ -143,10 +183,21 @@ function DayChart({ days, values }: { days: string[]; values: number[] }) {
             />
           )
         })}
-        <text x={padding.left - 6} y={padding.top + 4} textAnchor="end" fontSize={9} fill="var(--t-muted)">
+        <text x={padding.left - 5} y={padding.top + 4} textAnchor="end" fontSize={9.5} fill="var(--t-muted)">
           {max > 0 ? formatCost(max) : '$0'}
         </text>
-        <text x={padding.left - 6} y={padding.top + plotH} textAnchor="end" fontSize={9} fill="var(--t-muted)">
+        {max > 0 && (
+          <text
+            x={padding.left - 5}
+            y={padding.top + plotH / 2 + 3}
+            textAnchor="end"
+            fontSize={9}
+            fill="var(--t-muted)"
+          >
+            {formatCost(max / 2)}
+          </text>
+        )}
+        <text x={padding.left - 5} y={padding.top + plotH + 3} textAnchor="end" fontSize={9} fill="var(--t-muted)">
           $0
         </text>
         {days.map((day, i) => {
@@ -154,9 +205,18 @@ function DayChart({ days, values }: { days: string[]; values: number[] }) {
           const h = value > 0 ? Math.max(2, value * scale) : 0
           const x = padding.left + slot * i + (slot - barW) / 2
           const y = padding.top + plotH - h
-          const active = hover === i
+          const active = activeIndex === i
+          const isToday = day === today
+          const showLabel = i % labelEvery === 0
           return (
-            <g key={day} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+            <g
+              key={day}
+              onClick={() => setPinned((prev) => (prev === i ? null : i))}
+              onMouseEnter={() => setHover(i)}
+              onMouseLeave={() => setHover(null)}
+              style={{ cursor: 'pointer' }}
+              aria-label={`${day} 花费 ${formatCost(value)}`}
+            >
               <rect x={padding.left + slot * i} y={padding.top} width={slot} height={plotH} fill="transparent" />
               {h > 0 && (
                 <rect
@@ -165,16 +225,16 @@ function DayChart({ days, values }: { days: string[]; values: number[] }) {
                   width={barW}
                   height={h}
                   rx={2}
-                  fill={active ? 'var(--t-accent)' : 'var(--t-text-soft)'}
-                  opacity={active ? 0.9 : 0.28}
+                  fill={isToday || active ? 'var(--t-accent)' : 'var(--t-text-soft)'}
+                  opacity={active ? 1 : isToday ? 0.72 : 0.42}
                 />
               )}
-              {i % labelEvery === 0 && (
+              {showLabel && (
                 <text
                   x={x + barW / 2}
                   y={height - 6}
-                  textAnchor="middle"
-                  fontSize={8.5}
+                  textAnchor={i + labelEvery >= days.length ? 'end' : 'middle'}
+                  fontSize={9.5}
                   fill="var(--t-muted)"
                 >
                   {day.slice(5)}
@@ -183,17 +243,29 @@ function DayChart({ days, values }: { days: string[]; values: number[] }) {
             </g>
           )
         })}
+        {max === 0 && (
+          <text
+            x={padding.left + plotW / 2}
+            y={padding.top + plotH / 2 - 2}
+            textAnchor="middle"
+            fontSize={10.5}
+            fill="var(--t-muted)"
+          >
+            这段时间还没有用量
+          </text>
+        )}
       </svg>
-      {hover !== null && (
+      {activeIndex !== null && (
         <div
           className="pointer-events-none absolute top-1 rounded-md border border-border bg-surface px-2 py-1 text-[10px] text-text shadow-[var(--t-shadow-sm)]"
-          style={{
-            left: `calc(${((hover + 0.5) / Math.max(1, days.length)) * 100}% - 40px)`,
-          }}
+          style={{ left: tipLeft }}
         >
-          <div className="font-mono">{hoverDay}</div>
-          <div className="tabular-nums text-text-soft">{formatCost(hoverValue)}</div>
+          <div className="font-mono">{activeDay}</div>
+          <div className="tabular-nums text-text-soft">{formatCost(activeValue)}</div>
         </div>
+      )}
+      {compact && (
+        <div className="mt-1 text-center text-[10px] text-muted">点按柱子查看每日花费</div>
       )}
     </div>
   )
@@ -368,10 +440,10 @@ export function UsageSection() {
         <DayChart days={days} values={daily} />
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+      <div className={cn('mt-3 grid gap-2', hosts.length > 1 ? 'sm:grid-cols-3' : 'sm:grid-cols-2')}>
         <RankTable title="按模型" rows={modelRanks} />
         <RankTable title="按账号" rows={accountRanks} />
-        <RankTable title="按 Host" rows={hostRanks} />
+        {hosts.length > 1 && <RankTable title="按 Host" rows={hostRanks} />}
       </div>
 
       <p className="mt-4 text-[10.5px] leading-4 text-muted">

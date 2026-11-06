@@ -208,10 +208,10 @@ export const api = {
 
   commands: (h: HostConfig) => request<SlashCommand[]>(h, '/api/commands'),
 
-  mcp: (h: HostConfig, cwd?: string) =>
+  mcp: (h: HostConfig, cwd?: string, retry = false) =>
     request<{ servers: McpServerConfig[]; status: McpServerStatus[] }>(
       h,
-      `/api/mcp${qs({ cwd })}`,
+      `/api/mcp${qs({ cwd, retry: retry ? '1' : undefined })}`,
     ),
   saveMcp: (h: HostConfig, servers: McpServerConfig[]) =>
     request<{ servers: McpServerConfig[]; status: McpServerStatus[] }>(h, '/api/mcp', {
@@ -223,7 +223,7 @@ export const api = {
     request<UsageStatsRow[]>(h, `/api/usage${qs({ from, to })}`),
 
   pair: (h: HostConfig) =>
-    request<{ urls: string[]; token: string; hint?: string }>(h, '/api/pair'),
+    request<{ urls: string[]; token: string; loopback?: boolean; hint?: string }>(h, '/api/pair'),
 }
 
 /** 导入外部会话时可选的目标账号 / 分组 / 模型；不填则沿用原软件上下文。 */

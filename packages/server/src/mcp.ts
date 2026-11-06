@@ -78,7 +78,7 @@ export class McpManager {
   }
 
   /** 按需连接：为当前会话补充项目级 MCP，并重试失败的服务器（有冷却时间）。 */
-  async prepare(cwd: string | undefined, force = false): Promise<void> {
+  async prepare(cwd: string | undefined, force = false, retryErrors = true): Promise<void> {
     const configs = this.servers(cwd);
     const jobs: Promise<void>[] = [];
     for (const config of configs) {
@@ -89,6 +89,9 @@ export class McpManager {
       const conn = this.connections.get(config.name);
       if (conn && sameConfig(conn.config, config)) {
         if (conn.status === 'connected' || conn.connecting) continue;
+        // 只读查看（设置页轮询）不应反复重连失败项，避免把上次的错误状态
+        // 覆盖成「连接中」；显式刷新/重连才允许重试。
+        if (conn.status === 'error' && !retryErrors) continue;
         if (conn.status === 'error' && !force && Date.now() - conn.lastAttempt < RETRY_COOLDOWN_MS) {
           continue;
         }

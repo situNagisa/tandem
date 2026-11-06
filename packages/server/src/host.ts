@@ -146,7 +146,16 @@ export class Host {
   async refreshEnv(id: string): Promise<void> {
     const rec = this.store.get(id);
     if (!rec) return;
-    const env = await detectSessionEnv(rec.cwd);
+    // worktree 内跑 git 会把 worktree 目录当成仓库根，项目名变成分支目录名。
+    // 统一用原仓库根 + worktree 分支，保证侧栏/顶栏与主仓库一致。
+    const env =
+      rec.worktree && rec.worktreeRepoRoot
+        ? {
+            repoRoot: rec.worktreeRepoRoot,
+            repoName: path.basename(rec.worktreeRepoRoot),
+            branch: rec.worktree.branch,
+          }
+        : await detectSessionEnv(rec.cwd);
     const before = JSON.stringify(rec.env ?? null);
     const after = JSON.stringify(env ?? null);
     if (before === after) return;
@@ -310,6 +319,15 @@ export class Host {
       allowedTools: [],
       ...(worktree ? { worktree } : {}),
       ...(worktreeRepoRoot ? { worktreeRepoRoot } : {}),
+      ...(worktree && worktreeRepoRoot
+        ? {
+            env: {
+              repoRoot: worktreeRepoRoot,
+              repoName: path.basename(worktreeRepoRoot),
+              branch: worktree.branch,
+            },
+          }
+        : {}),
     };
     this.store.add(rec);
     this.broadcastSummary(rec);

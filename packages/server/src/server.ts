@@ -379,9 +379,12 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
 
   // ---------- MCP ----------
   app.get('/api/mcp', async (req) => {
-    const query = req.query as { cwd?: string };
+    const query = req.query as { cwd?: string; retry?: string };
     const cwd = str(query.cwd) ? path.resolve(expandHome(str(query.cwd))) : undefined;
-    if (cwd) void host.mcp.prepare(cwd);
+    const retry = str(query.retry) === '1';
+    // GET 默认只补齐尚未连接的服务器，不重试失败项；只有显式刷新才强制重连。
+    if (retry) void host.mcp.prepare(cwd, true);
+    else if (cwd) void host.mcp.prepare(cwd, false, false);
     return { servers: host.mcp.servers(cwd), status: host.mcp.status(cwd) };
   });
 
@@ -413,6 +416,7 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
       return {
         urls: [`http://127.0.0.1:${port}`],
         token: host.config.token,
+        loopback: true,
         hint: 'Host 仅监听本机地址；用 --host 0.0.0.0 启动后可生成局域网 / Tailscale 配对地址。',
       };
     }

@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import {
   Bot,
   ChevronRight,
@@ -222,7 +222,7 @@ export const ToolCard = memo(function ToolCard({
   const isError = !!result?.isError
   const running = streaming && !result
   const mcp = useMemo(() => parseMcpName(block.name), [block.name])
-  const meta = TOOL_META[block.name] ?? (mcp ? { icon: Wrench, verb: '' } : { icon: Wrench, verb: '使用' })
+  const meta = TOOL_META[block.name] ?? (mcp ? { icon: Wrench, verb: '调用' } : { icon: Wrench, verb: '使用' })
   const isTask = block.name === 'Task'
   const taskDescription = isTask ? str(asRecord(block.input).description) || partialString(raw, 'description') || '' : ''
   const sub = isTask && subagents
@@ -438,12 +438,6 @@ export const ToolCard = memo(function ToolCard({
     if (mcp) {
       return (
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
-            <span className="rounded bg-[var(--t-bg-active)] px-1.5 py-0.5 font-mono text-[10.5px] text-text-soft">
-              {mcp.server}
-            </span>
-            <span className="font-mono text-text-soft">{mcp.tool}</span>
-          </div>
           {Object.keys(input).length > 0 && (
             <CodeBlock
               code={JSON.stringify(input, null, 2)}
@@ -512,6 +506,12 @@ export const ToolCard = memo(function ToolCard({
 function SubagentStream({ id }: { id: string }) {
   const sub = useAppStore((s) => s.active?.subagents[id])
   const stopSubagent = useAppStore((s) => s.interruptSubagent)
+  const listRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!sub?.running) return
+    const el = listRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [sub?.running, sub?.messages.length])
   if (!sub) {
     return <div className="py-2 text-[11.5px] text-muted">正在等待子代理会话…</div>
   }
@@ -519,7 +519,7 @@ function SubagentStream({ id }: { id: string }) {
     <div className="overflow-hidden rounded-lg border border-border bg-[var(--t-bg)]">
       <div className="flex items-center gap-2 border-b border-border/70 px-2.5 py-1.5 text-[10.5px] text-muted">
         <Bot size={12} className={sub.running ? 'text-accent' : 'text-muted'} />
-        <span>{sub.summary?.title || '子代理'}</span>
+        <span>子代理会话</span>
         <span className={cn(sub.running ? 'text-accent' : '')}>
           {sub.running ? '运行中' : sub.loading ? '加载中…' : '已结束'}
         </span>
@@ -533,7 +533,7 @@ function SubagentStream({ id }: { id: string }) {
           </button>
         )}
       </div>
-      <div className="max-h-[380px] space-y-2.5 overflow-y-auto px-2.5 py-2">
+      <div ref={listRef} className="max-h-[380px] space-y-2.5 overflow-y-auto px-2.5 py-2">
         {sub.messages.length === 0 && (
           <div className="shimmer-text py-1 text-[11.5px] text-muted">
             {sub.loading ? '正在读取子会话…' : '暂无消息'}

@@ -56,6 +56,15 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   } else {
     delete rec.worktreeRepoRoot;
   }
+  // worktree 会话的环境应指向原仓库：否则侧栏/顶栏会把 worktree 目录 basename
+  // 当成项目名（例如 "cache"），与同一仓库的普通会话分成两组。
+  if (rec.worktree && rec.worktreeRepoRoot) {
+    rec.env = {
+      repoRoot: rec.worktreeRepoRoot,
+      repoName: path.basename(rec.worktreeRepoRoot),
+      branch: rec.worktree.branch,
+    };
+  }
   const from = raw.importedFrom as { source?: unknown; id?: unknown } | undefined;
   if (from && (from.source === 'claude-code' || from.source === 'codex') && typeof from.id === 'string' && from.id) {
     rec.importedFrom = { source: from.source, id: from.id };

@@ -155,7 +155,9 @@ export function TopBar() {
   return (
     <header
       className={cn(
-        'relative z-20 flex h-12 shrink-0 items-center gap-1.5 bg-bg px-2 md:px-3',
+        'relative z-20 flex shrink-0 items-center gap-1.5 bg-bg px-2 md:px-3',
+        // Windows 自绘标题栏高 36px（titleBarOverlay.height），顶栏与之对齐。
+        isWindowsDesktop ? 'h-9' : 'h-12',
         isDesktop && 'desktop-drag',
         isWindowsDesktop && 'pr-[140px]',
         isMacDesktop && sidebarCollapsed && 'pl-[72px]',

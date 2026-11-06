@@ -257,6 +257,6 @@ export interface UsageStatsRow { day: string; hostId: string; profileId: string;
 // GET /api/usage?from=&to= -> UsageStatsRow[]   （Host 内置常见模型单价表，可在账号上覆盖 price: {input, output} 每百万 token 美元）
 
 // ---------- 配对 ----------
-// GET /api/pair -> { urls: string[]; token: string }   列出本机所有可达地址（局域网 IP、Tailscale IP），客户端据此生成二维码供手机扫码。
+// GET /api/pair -> { urls: string[]; token: string; loopback?: boolean; hint?: string }   列出本机所有可达地址（局域网 IP、Tailscale IP），客户端据此生成二维码供手机扫码；loopback=true 表示只监听本机、扫码不可用。
 
 export const PROTOCOL_VERSION = 3;

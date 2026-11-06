@@ -1563,7 +1563,7 @@ export function ProfilesSection() {
                     <button
                       onClick={() => void test(p)}
                       disabled={testingId === p.id}
-                      className="mr-auto flex min-h-10 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[11px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
+                      className="mr-auto flex min-h-11 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[11px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
                     >
                       {testingId === p.id ? (
                         <Loader2 size={12} className="animate-spin" />
@@ -1574,14 +1574,14 @@ export function ProfilesSection() {
                     </button>
                     <button
                       onClick={() => startEdit(p)}
-                      className="flex min-h-10 items-center gap-1 rounded-lg border border-border px-2.5 text-[11px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
+                      className="flex min-h-11 items-center gap-1 rounded-lg border border-border px-2.5 text-[11px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
                     >
                       <Pencil size={12} /> 编辑
                     </button>
                     <button
                       onClick={() => setDeleteTarget(p)}
                       aria-label={`删除 ${p.name}`}
-                      className="flex min-h-10 items-center gap-1 rounded-lg border border-danger/25 px-2.5 text-[11px] text-danger transition-colors hover:bg-danger-soft"
+                      className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-lg border border-danger/25 px-2.5 text-[11px] text-danger transition-colors hover:bg-danger-soft"
                     >
                       <Trash2 size={12} />
                     </button>

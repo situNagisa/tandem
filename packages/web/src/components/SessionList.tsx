@@ -504,7 +504,7 @@ export function SessionList({
         {!renamingThis && s.worktree && (
           <span
             title={`worktree 分支 ${s.worktree.branch}（基于 ${s.worktree.baseBranch}）`}
-            className="flex max-w-[82px] shrink-0 items-center gap-0.5 text-[9.5px] text-muted"
+            className="flex max-w-[60px] shrink-0 items-center gap-0.5 text-[9.5px] text-muted"
           >
             <GitBranch size={9} className="shrink-0" />
             <span className="truncate font-mono">{s.worktree.branch}</span>
@@ -514,7 +514,7 @@ export function SessionList({
           <>
             <span
               className="session-row-tail flex min-w-0 items-center justify-end gap-1"
-              style={elapsed ? { width: 72 } : undefined}
+              style={elapsed ? { width: 56 } : undefined}
             >
               {importedFrom && (
                 <span
@@ -865,6 +865,9 @@ export function SessionList({
               </button>
             ))}
           </div>
+          <p className="mt-1.5 text-[11px] leading-5 text-muted">
+            只合并已提交的改动；worktree 里未提交或未跟踪的文件会留在原目录，不会带回基准分支。
+          </p>
           {merge?.error && (
             <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[11.5px] text-danger">
               <TriangleAlert size={13} className="mt-0.5 shrink-0" />

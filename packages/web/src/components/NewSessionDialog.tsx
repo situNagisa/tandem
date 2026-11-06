@@ -727,7 +727,7 @@ export function NewSessionView() {
             className={worktree ? 'border-accent/40 bg-accent-soft/60 text-text' : undefined}
           >
             <GitFork size={12} className={worktree ? 'text-accent' : 'text-muted'} />
-            隔离分支（worktree）
+            {gitRepo === 'no' ? '隔离分支（需 Git 仓库）' : '隔离分支（worktree）'}
           </Pill>
 
           {worktree && gitRepo === 'yes' && (
@@ -836,6 +836,10 @@ export function ConnectView() {
   const [ok, setOk] = useState(false)
   const [scanOpen, setScanOpen] = useState(false)
   const canScan = useMemo(scannerSupported, [])
+  const coarsePointer = useMemo(
+    () => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches,
+    [],
+  )
 
   const parseLink = () => {
     setError(null)
@@ -1031,6 +1035,11 @@ export function ConnectView() {
             >
               <ScanLine size={14} /> 扫码连接
             </button>
+          )}
+          {!canScan && coarsePointer && (
+            <p className="mt-2 rounded-lg border border-border bg-bg/50 px-2.5 py-2 text-[10.5px] leading-5 text-muted">
+              当前浏览器不支持应用内扫码（如 iOS Safari）；可先用系统相机扫描电脑上的配对二维码，再打开链接。
+            </p>
           )}
 
           <button

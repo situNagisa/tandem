@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import QRCode from 'qrcode'
-import { Check, Copy, Loader2, Smartphone, TriangleAlert, Wifi } from 'lucide-react'
+import { Check, Copy, Loader2, RefreshCw, Smartphone, Unplug, TriangleAlert, Wifi } from 'lucide-react'
 import { api } from '../../lib/api'
 import { copyText } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
@@ -11,6 +11,8 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
   const [urls, setUrls] = useState<string[]>([])
   const [token, setToken] = useState('')
   const [hint, setHint] = useState<string | undefined>()
+  const [loopback, setLoopback] = useState(false)
+  const [nonce, setNonce] = useState(0)
   const [active, setActive] = useState(0)
   const [svg, setSvg] = useState('')
   const [loading, setLoading] = useState(true)
@@ -20,6 +22,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setError(null)
     api
       .pair(host)
       .then((data) => {
@@ -27,6 +30,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
         setUrls(data.urls)
         setToken(data.token)
         setHint(data.hint)
+        setLoopback(!!data.loopback)
         setActive(0)
       })
       .catch((err) => {
@@ -38,7 +42,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
     return () => {
       cancelled = true
     }
-  }, [host])
+  }, [host, nonce])
 
   const url = urls[active] ?? ''
   const content = useMemo(
@@ -83,7 +87,11 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
       open
       onClose={onClose}
       title="连接手机"
-      description="手机与 Host 在同一局域网或 Tailscale 网络时，用 Tandem App 扫码即可连接。"
+      description={
+        loopback
+          ? 'Host 目前只监听本机回环地址，手机无法扫码连接。'
+          : '手机与 Host 在同一局域网或 Tailscale 网络时，用 Tandem App 扫码即可连接。'
+      }
       className="max-w-md"
     >
       <div className="space-y-3">
@@ -98,7 +106,30 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
           </div>
         )}
 
-        {urls.length > 0 && (
+        {!loading && loopback && (
+          <div className="rounded-xl border border-warning/30 bg-warning-soft/40 px-4 py-5 text-center">
+            <Unplug size={26} className="mx-auto text-warning" />
+            <p className="mt-2 text-[13px] font-medium text-text">手机暂时连不上这台 Host</p>
+            <p className="mx-auto mt-1 max-w-[300px] text-[11.5px] leading-5 text-text-soft">
+              Host 只监听 <code className="rounded bg-[var(--t-bg-active)] px-1 font-mono text-[10.5px]">127.0.0.1</code>，
+              二维码里的地址在手机上会指向手机自己。请让 Host 监听局域网地址后重新检测。
+            </p>
+            <div className="mt-3 rounded-lg border border-border bg-surface/70 px-2.5 py-2 text-left font-mono text-[10.5px] leading-5 text-text-soft">
+              tandem-host --host 0.0.0.0
+            </div>
+            <p className="mt-2 text-[10.5px] leading-5 text-muted">
+              桌面端也可在托盘菜单开启「允许局域网访问」，然后回到这里重新检测。
+            </p>
+            <button
+              onClick={() => setNonce((n) => n + 1)}
+              className="mt-3 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[11.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+            >
+              <RefreshCw size={12} /> 重新检测
+            </button>
+          </div>
+        )}
+
+        {urls.length > 0 && !loopback && (
           <>
             {urls.length > 1 && (
               <div className="flex flex-wrap gap-1">
@@ -139,7 +170,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
                   onClick={() => void copy()}
                   aria-label="复制配对链接"
                   title="复制配对链接"
-                  className="flex size-6 shrink-0 items-center justify-center rounded text-muted hover:bg-[var(--t-bg-hover)] hover:text-text"
+                  className="flex size-8 shrink-0 items-center justify-center rounded text-muted hover:bg-[var(--t-bg-hover)] hover:text-text sm:size-6"
                 >
                   {copied ? <Check size={11} className="text-success" /> : <Copy size={11} />}
                 </button>
@@ -148,7 +179,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
           </>
         )}
 
-        {hint && (
+        {hint && !loopback && (
           <div className="rounded-lg border border-warning/30 bg-warning-soft/50 px-2.5 py-2 text-[11px] leading-5 text-warning">
             <div className="flex items-start gap-2">
               <TriangleAlert size={12} className="mt-0.5 shrink-0" />
@@ -157,16 +188,18 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
           </div>
         )}
 
-        <div className="rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[10.5px] leading-5 text-muted">
-          <div className="mb-1 flex items-center gap-1.5 text-text-soft">
-            <Smartphone size={12} /> 让局域网可访问
+        {!loopback && (
+          <div className="rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[10.5px] leading-5 text-muted">
+            <div className="mb-1 flex items-center gap-1.5 text-text-soft">
+              <Smartphone size={12} /> 让局域网可访问
+            </div>
+            <p>
+              命令行启动：<code className="rounded bg-[var(--t-bg-active)] px-1 font-mono text-text-soft">tandem-host --host 0.0.0.0</code>
+            </p>
+            <p>桌面端：在托盘菜单中开启「允许局域网访问」，然后重新打开本页。</p>
+            <p className="mt-1">Tailscale 网络地址无需额外端口转发，直接扫码即可。</p>
           </div>
-          <p>
-            命令行启动：<code className="rounded bg-[var(--t-bg-active)] px-1 font-mono text-text-soft">tandem start --host 0.0.0.0</code>
-          </p>
-          <p>桌面端：在托盘菜单中开启「允许局域网访问」，然后重新打开本页。</p>
-          <p className="mt-1">Tailscale 网络地址无需额外端口转发，直接扫码即可。</p>
-        </div>
+        )}
       </div>
     </Modal>
   )
