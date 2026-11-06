@@ -685,7 +685,7 @@ export async function createApp(
           continue;
         }
       }
-      if (!includeFiles || isDir) {
+      if (includeFiles || isDir) {
         entries.push({ name: entry.name, path: full, isDir });
       }
     }
