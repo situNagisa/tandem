@@ -62,8 +62,7 @@ export function SettingsDialog() {
         </nav>
         <div
           key={tab}
-          className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-4 motion-reduce:animate-none sm:p-5 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]"
-          style={{ animation: 'tandem-fade-in 120ms var(--t-ease-out) both' }}
+          className="min-h-0 min-w-0 flex-1 animate-[tandem-fade-in_120ms_ease-out_both] overflow-y-auto overscroll-contain p-4 motion-reduce:animate-none sm:p-5 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]"
         >
           {tab === 'profiles' && <ProfilesSection />}
           {tab === 'hosts' && <HostsSection />}
