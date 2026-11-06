@@ -56,6 +56,8 @@ interface AppState {
   active: ActiveSession | null
   /** 回合结束后自增，改动审阅据此刷新。 */
   changesNonce: number
+  /** 已打开但尚未创建的 worktree 意图，键为 `${hostId}:${sessionId}`；发送下一条消息前创建。 */
+  worktreeIntents: Record<string, boolean>
 
   initialize: () => void
   checkConnections: () => void
@@ -115,6 +117,10 @@ interface AppState {
   interruptSubagent: (childId: string) => void
   /** 把 worktree 分支合回基准分支。 */
   mergeWorktree: (hostId: string, sessionId: string, strategy: 'merge' | 'squash') => Promise<boolean>
+  /** 只记录 worktree 意图，不立即创建。 */
+  setWorktreeIntent: (hostId: string, sessionId: string, on: boolean) => void
+  /** 发送消息前创建待处理的 worktree；无需创建时直接返回 true。 */
+  ensureWorktree: (hostId: string, sessionId: string) => Promise<boolean>
 }
 
 const connections = new Map<string, HostConnection>()
@@ -994,6 +1000,7 @@ export const useAppStore = create<AppState>((set, get) => {
     externalSessions: {},
     active: null,
     changesNonce: 0,
+    worktreeIntents: {},
 
     checkConnections: () => {
       for (const [hostId, conn] of connections) {
@@ -1604,6 +1611,43 @@ export const useAppStore = create<AppState>((set, get) => {
         return true
       } catch (err) {
         toast(err instanceof Error ? err.message : '合并失败', 'error')
+        return false
+      }
+    },
+
+    setWorktreeIntent: (hostId, sessionId, on) => {
+      const key = `${hostId}:${sessionId}`
+      set((state) => {
+        const worktreeIntents = { ...state.worktreeIntents }
+        if (on) worktreeIntents[key] = true
+        else delete worktreeIntents[key]
+        return { worktreeIntents }
+      })
+    },
+
+    ensureWorktree: async (hostId, sessionId) => {
+      const key = `${hostId}:${sessionId}`
+      if (!get().worktreeIntents[key]) return true
+      const host = getHost(hostId)
+      if (!host) return false
+      const rt = get().runtimes[hostId]
+      const summary =
+        (get().active?.hostId === hostId && get().active?.sessionId === sessionId
+          ? get().active?.summary
+          : null) ?? rt?.sessions.find((s) => s.id === sessionId)
+      const clearIntent = () => get().setWorktreeIntent(hostId, sessionId, false)
+      if (summary?.worktree) {
+        clearIntent()
+        return true
+      }
+      try {
+        const updated = await api.worktree(host, sessionId)
+        applySessionSummary(hostId, updated)
+        clearIntent()
+        if (updated.worktree) toast(`已创建隔离分支 ${updated.worktree.branch}`, 'success')
+        return true
+      } catch (err) {
+        toast(err instanceof Error ? err.message : '创建 worktree 失败', 'error')
         return false
       }
     },

@@ -874,6 +874,7 @@ export function Composer({
       : false,
   )
   const send = useAppStore((s) => s.send)
+  const ensureWorktree = useAppStore((s) => s.ensureWorktree)
   const interrupt = useAppStore((s) => s.interrupt)
   const setPermissionMode = useAppStore((s) => s.setPermissionMode)
   const setModel = useAppStore((s) => s.setModel)
@@ -917,6 +918,7 @@ export function Composer({
   const menuRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const composingRef = useRef(false)
+  const worktreeBusyRef = useRef(false)
   const fileSeq = useRef(0)
   const prevSessionRef = useRef<string | null>(draftKey)
   const textRef = useRef(text)
@@ -1261,6 +1263,14 @@ export function Composer({
     if (hostStatus !== 'online') {
       toast('Host 未连接，消息未发送', 'error')
       return
+    }
+    // worktree 开关只记录意图：真正发送前才创建隔离分支（创建后 cwd 已切换）。
+    if (activeHostId) {
+      if (worktreeBusyRef.current) return
+      worktreeBusyRef.current = true
+      const ready = await ensureWorktree(activeHostId, summary.id)
+      worktreeBusyRef.current = false
+      if (!ready) return
     }
     if (!send(blocks)) return
     rememberSent(outgoingText)

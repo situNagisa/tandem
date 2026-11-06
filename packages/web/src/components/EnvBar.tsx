@@ -25,6 +25,7 @@ import { ConnectionDot } from './StatusDot'
 import { Button, IconButton } from './ui/Button'
 import { Input } from './ui/Controls'
 import { Popover } from './ui/Popover'
+import { Tooltip } from './ui/Tooltip'
 
 const triggerClass =
   'flex h-[26px] shrink-0 items-center gap-1 rounded-md px-1.5 text-[12.5px] leading-4 text-text-soft outline-none transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:pointer-events-none disabled:opacity-40'
@@ -451,13 +452,25 @@ export function EnvBar({
 
   const [migrating, setMigrating] = useState(false)
   const [targetHostId, setTargetHostId] = useState<string | null>(null)
-  const [busyWorktree, setBusyWorktree] = useState(false)
 
   const isSession = variant === 'session'
   const migration = isSession && sessionId ? loadMigration(hostId, sessionId) : undefined
   const locked = disabled || (isSession && running) || migrating
   const branch = worktree?.branch || env?.branch
-  const isWorktree = isSession ? !!summary?.worktree : !!worktreeOn
+  const worktreeIntent = useAppStore((s) =>
+    sessionId ? !!s.worktreeIntents[`${hostId}:${sessionId}`] : false,
+  )
+  const setWorktreeIntent = useAppStore((s) => s.setWorktreeIntent)
+  const isWorktree = isSession ? !!summary?.worktree || worktreeIntent : !!worktreeOn
+  const worktreeTip = !isSession
+    ? env?.repoRoot
+      ? '将在创建会话时创建隔离分支'
+      : '当前目录不在 git 仓库中'
+    : summary?.worktree
+      ? `worktree：${worktree?.branch ?? branch ?? ''}`
+      : worktreeIntent
+        ? '将在发送下一条消息时创建隔离分支（再次点击取消）'
+        : '将在发送下一条消息时创建隔离分支'
 
   const startMigration = async (nextHostId: string, targetCwd: string) => {
     if (!host || !sessionId || migrating) return
@@ -480,26 +493,17 @@ export function EnvBar({
     }
   }
 
-  const toggleWorktree = async () => {
+  const toggleWorktree = () => {
     if (!isSession) {
       onWorktreeChange?.(!worktreeOn)
       return
     }
-    if (!host || !sessionId || busyWorktree) return
+    if (!hostId || !sessionId) return
     if (summary?.worktree) {
       toast('会话已在 worktree 中，可在会话菜单合并回基准分支')
       return
     }
-    setBusyWorktree(true)
-    try {
-      await api.worktree(host, sessionId)
-      void useAppStore.getState().refreshSessions(hostId)
-      toast('已在 worktree 中继续', 'success')
-    } catch (err) {
-      toast(err instanceof Error ? err.message : '创建 worktree 失败', 'error')
-    } finally {
-      setBusyWorktree(false)
-    }
+    setWorktreeIntent(hostId, sessionId, !worktreeIntent)
   }
 
   return (
@@ -636,45 +640,35 @@ export function EnvBar({
         }
       </Popover>
 
-      <button
-        type="button"
-        onClick={() => void toggleWorktree()}
-        disabled={locked || busyWorktree || (!isSession && !env?.repoRoot)}
-        title={
-          isWorktree
-            ? `worktree：${worktree?.branch ?? branch ?? ''}`
-            : isSession
-              ? '在当前仓库创建 worktree 并切换过去'
-              : env?.repoRoot
-                ? '在隔离的 git worktree 中运行'
-                : '当前目录不在 git 仓库中'
-        }
-        aria-pressed={isWorktree}
-        className={cn(
-          triggerClass,
-          isWorktree && 'bg-[var(--t-bg-active)] text-text',
-        )}
-      >
-        {busyWorktree ? (
-          <Loader2 size={12} className="animate-spin text-muted" />
-        ) : (
-          <GitFork size={12} className={isWorktree ? 'text-text-soft' : 'text-muted'} />
-        )}
-        <span>Worktree</span>
-        <span
+      <Tooltip label={worktreeTip} side="top" className="shrink-0">
+        <button
+          type="button"
+          onClick={toggleWorktree}
+          disabled={locked || (!isSession && !env?.repoRoot)}
+          aria-pressed={isWorktree}
           className={cn(
-            'relative ml-0.5 h-[12px] w-[20px] shrink-0 rounded-full transition-colors',
-            isWorktree ? 'bg-text-soft' : 'bg-[var(--t-bg-active)]',
+            triggerClass,
+            'inline-flex',
+            isWorktree && 'bg-[var(--t-bg-active)] text-text',
           )}
         >
+          <GitFork size={12} className={isWorktree ? 'text-text-soft' : 'text-muted'} />
+          <span>Worktree</span>
           <span
             className={cn(
-              'absolute top-[2px] size-2 rounded-full bg-bg transition-[left]',
-              isWorktree ? 'left-[10px]' : 'left-[2px]',
+              'relative ml-0.5 h-[12px] w-[20px] shrink-0 rounded-full transition-colors',
+              isWorktree ? 'bg-text-soft' : 'bg-[var(--t-bg-active)]',
             )}
-          />
-        </span>
-      </button>
+          >
+            <span
+              className={cn(
+                'absolute top-[2px] size-2 rounded-full bg-bg transition-[left]',
+                isWorktree ? 'left-[10px]' : 'left-[2px]',
+              )}
+            />
+          </span>
+        </button>
+      </Tooltip>
       {migration && (
         <span className="ml-2 shrink-0 truncate text-[11px] text-muted">
           已迁移到 {migration}
