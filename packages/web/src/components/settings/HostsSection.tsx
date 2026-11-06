@@ -16,6 +16,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { normalizeHostUrl } from '../../lib/hostUrl'
 import { useUiStore } from '../../store/useUiStore'
 import { ConnectionDot } from '../StatusDot'
+import { Modal } from '../ui/Modal'
 import { cn } from '../../lib/cn'
 
 const inputCls =
@@ -43,6 +44,7 @@ export function HostsSection() {
   const [editName, setEditName] = useState('')
   const [editUrl, setEditUrl] = useState('')
   const [editToken, setEditToken] = useState('')
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null)
 
   const handleAdd = () => {
     setAddError(null)
@@ -259,12 +261,7 @@ export function HostsSection() {
                     {editing ? <ChevronDown size={12} /> : <Pencil size={12} />}
                   </button>
                   <button
-                    onClick={() => {
-                      if (window.confirm(`移除 Host「${h.name}」？这不会影响 Host 机器上的数据。`)) {
-                        removeHost(h.id)
-                        setEditId(null)
-                      }
-                    }}
+                    onClick={() => setRemoveTarget({ id: h.id, name: h.name })}
                     title="移除"
                     aria-label="移除 Host"
                     className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-danger-soft hover:text-danger"
@@ -287,12 +284,7 @@ export function HostsSection() {
                   {editing ? <ChevronDown size={12} /> : <Pencil size={12} />} 编辑
                 </button>
                 <button
-                  onClick={() => {
-                    if (window.confirm(`移除 Host「${h.name}」？这不会影响 Host 机器上的数据。`)) {
-                      removeHost(h.id)
-                      setEditId(null)
-                    }
-                  }}
+                  onClick={() => setRemoveTarget({ id: h.id, name: h.name })}
                   aria-label="移除 Host"
                   className="flex min-h-10 items-center gap-1.5 rounded-lg border border-danger/25 px-2.5 text-[11px] text-danger transition-colors hover:bg-danger-soft"
                 >
@@ -353,6 +345,38 @@ export function HostsSection() {
       <p className="mt-4 text-[10.5px] leading-4 text-muted">
         修改地址或 Token 会自动重连并重新订阅当前会话。多个标签页/手机可以同时连接同一 Host。
       </p>
+      <Modal
+        open={!!removeTarget}
+        onClose={() => setRemoveTarget(null)}
+        title="移除 Host"
+        className="max-w-md"
+        footer={
+          <>
+            <button
+              onClick={() => setRemoveTarget(null)}
+              className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
+            >
+              取消
+            </button>
+            <button
+              onClick={() => {
+                if (!removeTarget) return
+                removeHost(removeTarget.id)
+                setEditId(null)
+                setRemoveTarget(null)
+              }}
+              className="min-h-9 rounded-lg bg-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90"
+            >
+              移除
+            </button>
+          </>
+        }
+      >
+        <p className="text-[13px] leading-6 text-text-soft">
+          移除 Host「{removeTarget?.name}」？这不会影响 Host 机器上的数据。
+        </p>
+      </Modal>
+
     </div>
   )
 }
