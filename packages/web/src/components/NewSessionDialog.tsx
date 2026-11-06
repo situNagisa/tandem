@@ -17,13 +17,14 @@ import {
   Server,
   TriangleAlert,
 } from 'lucide-react'
-import type { ContentBlock, FsEntry, PermissionMode } from '@tandem/protocol'
+import type { ContentBlock, FsEntry, PermissionMode, ReasoningEffort } from '@tandem/protocol'
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { basename, dirname } from '../lib/format'
 import { loadRecentDirs, rememberDir } from '../lib/storage'
 import { defaultChoiceFor } from '../lib/profileModels'
+import { loadLastEffort } from '../lib/effort'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
 import { Popover } from './ui/Popover'
@@ -320,6 +321,7 @@ export function NewSessionView() {
   const [groupId, setGroupId] = useState<string | undefined>(undefined)
   const [model, setModel] = useState('')
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
+  const [effort, setEffort] = useState<ReasoningEffort>(loadLastEffort)
   const [worktree, setWorktree] = useState(false)
   const [worktreeBranch, setWorktreeBranch] = useState('')
   const [sending, setSending] = useState(false)
@@ -428,6 +430,7 @@ export function NewSessionView() {
           ...(groupId ? { groupId } : {}),
           model,
           permissionMode,
+          effort,
           ...(worktree && gitRepo === 'yes'
             ? { worktree: { ...(worktreeBranch.trim() ? { branch: worktreeBranch.trim() } : {}) } }
             : {}),
@@ -490,8 +493,10 @@ export function NewSessionView() {
           profileId={profileId}
           groupId={groupId}
           permissionMode={permissionMode}
+          effort={effort}
           onModelChange={chooseAccount}
           onPermissionModeChange={setPermissionMode}
+          onEffortChange={setEffort}
           hostId={hostId}
           cwd={cwd}
           placeholder="描述一个任务，或粘贴一段代码…"

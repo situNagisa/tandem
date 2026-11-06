@@ -231,6 +231,16 @@ export async function createApp(
   });
 
   // ---------- 模型列表 ----------
+  app.get('/api/models/capabilities', async (req, reply) => {
+    const query = (req.query ?? {}) as Record<string, unknown>;
+    const profileId = str(query.profileId);
+    const model = str(query.model);
+    if (!profileId || !model) return bad(reply, 'profileId 与 model 不能为空');
+    const info = await host.modelCapabilities(profileId, str(query.groupId) || undefined, model);
+    if (!info) return bad(reply, '账号不存在', 404);
+    return info;
+  });
+
   app.post('/api/models', async (req) => {
     const raw = (req.body ?? {}) as Partial<ListModelsInput>;
     const kind = str(raw.kind) as ProviderKind;

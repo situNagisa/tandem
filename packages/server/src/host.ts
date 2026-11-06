@@ -12,6 +12,7 @@ import type {
   HostInfo,
   ListModelsInput,
   Message,
+  ModelInfo,
   PermissionDecision,
   PermissionMode,
   PermissionRequest,
@@ -65,6 +66,7 @@ import {
 import { PLAN_ALLOWED, TOOLS, TOOL_MAP, describeTool } from './tools/index.js';
 import { completeText, listModels as fetchModelList, streamChat } from './providers/index.js';
 import type { ListModelsResult } from './providers/index.js';
+import { applyModelCapabilities } from './providers/capabilities.js';
 import { buildSystemPrompt } from './agent/prompt.js';
 import {
   cacheHitRateOf,
@@ -106,6 +108,8 @@ export class Host {
   readonly version: string;
   private runtimes = new Map<string, SessionRuntime>();
   private permissions = new Map<string, PermissionEntry>();
+  /** 单模型能力缓存，避免每次打开选择器都请求 provider 模型列表。 */
+  private capabilityCache = new Map<string, { at: number; info: ModelInfo }>();
 
   constructor(config?: HostConfig, home = tandemHome()) {
     this.home = home;
@@ -240,6 +244,40 @@ export class Host {
       ? this.profileFor(input.profileId, input.groupId)
       : undefined;
     return fetchModelList(input, profile);
+  }
+
+  /** 单个模型能力：内存缓存 provider 列表结果，失败时退回内置表与手动覆盖。 */
+  async modelCapabilities(
+    profileId: string,
+    groupId: string | undefined,
+    model: string,
+  ): Promise<ModelInfo | undefined> {
+    const profile = this.profileFor(profileId, groupId);
+    if (!profile || !model) return undefined;
+    const key = `${profileId}:${groupId ?? ''}:${model}`;
+    const cached = this.capabilityCache.get(key);
+    if (cached && Date.now() - cached.at < 5 * 60_000) return { ...cached.info };
+
+    let info: ModelInfo = { id: model };
+    try {
+      const result = await fetchModelList(
+        {
+          kind: profile.kind,
+          baseUrl: profile.baseUrl,
+          apiKey: profile.apiKey,
+          profileId,
+          groupId,
+        },
+        profile,
+      );
+      const found = result.ok ? result.models.find((m) => m.id === model) : undefined;
+      if (found) info = { ...found };
+    } catch {
+      // provider 列表不可用：仍返回内置能力
+    }
+    info = applyModelCapabilities(info, profile.kind, profile.modelCapabilities);
+    this.capabilityCache.set(key, { at: Date.now(), info: { ...info } });
+    return info;
   }
 
   /** 本轮可用的工具：内置工具（depth < 3 才含 Task）+ 当前 cwd 已连接的 MCP 工具。 */

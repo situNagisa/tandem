@@ -4,11 +4,13 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import type {
+  ModelCapabilities,
   Profile,
   ProfileGroup,
   ProfileGroupInput,
   ProfileInput,
   ProviderKind,
+  ReasoningEffort,
 } from '@tandem/protocol';
 import type { HostConfig, RelayConfig, StoredProfile, StoredProfileGroup } from './types.js';
 
@@ -111,6 +113,9 @@ export class ProfileStore {
         const price = normalizePrice(p.price);
         if (price) profile.price = price;
         else delete profile.price;
+        const caps = normalizeModelCapabilities(p.modelCapabilities);
+        if (caps) profile.modelCapabilities = caps;
+        else delete profile.modelCapabilities;
         this.profiles.set(p.id, profile);
       }
     }
@@ -138,6 +143,8 @@ export class ProfileStore {
     };
     const price = normalizePrice((input as { price?: unknown }).price);
     if (price) profile.price = price;
+    const caps = normalizeModelCapabilities(input.modelCapabilities);
+    if (caps) profile.modelCapabilities = caps;
     const groups = buildGroups(input.groups, [], String(input.apiKey ?? ''));
     if (groups?.length) profile.groups = groups;
     this.profiles.set(profile.id, profile);
@@ -165,6 +172,11 @@ export class ProfileStore {
       const price = normalizePrice(rawPrice);
       if (price) next.price = price;
       else delete next.price;
+    }
+    if (input.modelCapabilities !== undefined) {
+      const caps = normalizeModelCapabilities(input.modelCapabilities);
+      if (caps) next.modelCapabilities = caps;
+      else delete next.modelCapabilities;
     }
     // 传了 groups 就整体替换；带 id 且不带 apiKey 的分组保留原 key
     if (input.groups !== undefined) {
@@ -194,6 +206,9 @@ export class ProfileStore {
       models: [...profile.models],
       defaultModel: profile.defaultModel,
       ...(profile.price ? { price: { ...profile.price } } : {}),
+      ...(profile.modelCapabilities
+        ? { modelCapabilities: structuredClone(profile.modelCapabilities) }
+        : {}),
       ...(profile.groups?.length ? { groups: profile.groups.map((g) => toPublicGroup(g)) } : {}),
       createdAt: profile.createdAt,
     };
@@ -259,6 +274,35 @@ export function normalizePrice(
   return Object.keys(out).length ? out : undefined;
 }
 
+const EFFORT_VALUES: ReasoningEffort[] = ['off', 'low', 'medium', 'high', 'max'];
+
+/** 账号/分组上的模型能力覆盖：{ 模型名: { efforts, contextWindow } }。 */
+export function normalizeModelCapabilities(
+  value: unknown,
+): Record<string, ModelCapabilities> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const out: Record<string, ModelCapabilities> = {};
+  for (const [model, raw] of Object.entries(value as Record<string, unknown>)) {
+    const name = model.trim();
+    if (!name || !raw || typeof raw !== 'object') continue;
+    const caps = raw as { efforts?: unknown; contextWindow?: unknown };
+    const item: ModelCapabilities = {};
+    if (Array.isArray(caps.efforts)) {
+      item.efforts = [
+        ...new Set(
+          caps.efforts.filter((e): e is ReasoningEffort =>
+            EFFORT_VALUES.includes(e as ReasoningEffort),
+          ),
+        ),
+      ];
+    }
+    const window = Number(caps.contextWindow);
+    if (Number.isFinite(window) && window > 0) item.contextWindow = window;
+    if (item.efforts !== undefined || item.contextWindow !== undefined) out[name] = item;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 function normalizeBaseUrl(url: unknown): string | undefined {
   const value = typeof url === 'string' ? url.trim() : '';
   return value || undefined;
@@ -274,6 +318,7 @@ export function normalizeStoredGroups(value: unknown): StoredProfileGroup[] {
     const name = typeof g.name === 'string' ? g.name.trim() : '';
     if (!name) continue;
     const models = normalizeModels(g.models);
+    const caps = normalizeModelCapabilities(g.modelCapabilities);
     out.push({
       id: typeof g.id === 'string' && g.id ? g.id : randomUUID(),
       name,
@@ -283,6 +328,7 @@ export function normalizeStoredGroups(value: unknown): StoredProfileGroup[] {
       models,
       defaultModel:
         (typeof g.defaultModel === 'string' && g.defaultModel.trim()) || models[0] || '',
+      ...(caps ? { modelCapabilities: caps } : {}),
     });
   }
   return out;
@@ -305,6 +351,10 @@ function buildGroups(
     const old = prevById.get(id);
     const models = normalizeModels(raw.models);
     const kind = raw.kind && KINDS.includes(raw.kind) ? raw.kind : old?.kind;
+    const caps =
+      raw.modelCapabilities !== undefined
+        ? normalizeModelCapabilities(raw.modelCapabilities)
+        : old?.modelCapabilities;
     out.push({
       id,
       name,
@@ -318,6 +368,7 @@ function buildGroups(
       models,
       defaultModel:
         (typeof raw.defaultModel === 'string' && raw.defaultModel.trim()) || old?.defaultModel || models[0] || '',
+      ...(caps ? { modelCapabilities: caps } : {}),
     });
   }
   return out;
@@ -332,6 +383,9 @@ function toPublicGroup(group: StoredProfileGroup): ProfileGroup {
     ...(group.baseUrl ? { baseUrl: group.baseUrl } : {}),
     models: [...group.models],
     defaultModel: group.defaultModel,
+    ...(group.modelCapabilities
+      ? { modelCapabilities: structuredClone(group.modelCapabilities) }
+      : {}),
   };
 }
 
@@ -376,6 +430,14 @@ export function effectiveProfile(profile: StoredProfile, groupId?: string): Stor
       (kind !== profile.kind ? inferProtocolBaseUrl(profile.baseUrl, kind) : profile.baseUrl),
     models: group.models.length ? [...group.models] : [...profile.models],
     defaultModel: group.defaultModel || group.models[0] || profile.defaultModel,
+    ...(profile.modelCapabilities || group.modelCapabilities
+      ? {
+          modelCapabilities: {
+            ...profile.modelCapabilities,
+            ...group.modelCapabilities,
+          },
+        }
+      : {}),
   };
 }
 

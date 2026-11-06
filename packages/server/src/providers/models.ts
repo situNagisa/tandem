@@ -1,8 +1,19 @@
 // 从各 provider 拉取可用模型列表：填 Key 后自动获取，无需手填。
-import type { ListModelsInput, ModelInfo, ProviderKind } from '@tandem/protocol';
+import type {
+  ListModelsInput,
+  ModelCapabilities,
+  ModelInfo,
+  ProviderKind,
+  ReasoningEffort,
+} from '@tandem/protocol';
 import { inferProtocolBaseUrl, joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import type { StoredProfile } from '../types.js';
 import { errorMessage, isAbortError, truncateEnd } from '../util/text.js';
+import {
+  applyModelCapabilities,
+  defaultEffortsForKind,
+  providerEffortsFor,
+} from './capabilities.js';
 
 const TIMEOUT_MS = 15_000;
 /** Gemini 原生模型列表端点（OpenAI 兼容端点失败时的兜底）。 */
@@ -67,6 +78,59 @@ function dedupe(models: ModelInfo[]): ModelInfo[] {
   return out;
 }
 
+const EFFORT_ORDER: ReasoningEffort[] = ['off', 'low', 'medium', 'high', 'max'];
+
+function normalizeEfforts(value: unknown): ReasoningEffort[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const picked = EFFORT_ORDER.filter((effort) => value.includes(effort));
+  return picked.length ? picked : [];
+}
+
+/** provider 模型条目里的能力字段；不同服务商字段名不一致，做兼容读取。 */
+function providerCapabilities(
+  item: any,
+  kind: ProviderKind,
+): ModelCapabilities | undefined {
+  const caps: ModelCapabilities = {};
+
+  const thinking = item?.capabilities?.thinking ?? item?.capabilities?.extended_thinking;
+  if (thinking && typeof thinking.supported === 'boolean') {
+    caps.efforts = thinking.supported ? defaultEffortsForKind(kind) : [];
+  }
+  const effortCaps = item?.capabilities?.effort;
+  if (effortCaps && typeof effortCaps === 'object') {
+    if (effortCaps.supported === false) caps.efforts = [];
+    else if (typeof effortCaps.supported === 'boolean' || Array.isArray(effortCaps.levels)) {
+      const levels = normalizeEfforts(effortCaps.levels);
+      caps.efforts =
+        levels && levels.length
+          ? EFFORT_ORDER.filter((effort) => effort === 'off' || levels.includes(effort))
+          : defaultEffortsForKind(kind);
+    }
+  }
+
+  const declared = normalizeEfforts(item?.efforts ?? item?.reasoning_efforts);
+  if (declared !== undefined) caps.efforts = declared;
+
+  const params: unknown = item?.supported_parameters;
+  if (Array.isArray(params) && params.some((p) => p === 'reasoning_effort' || p === 'reasoning')) {
+    caps.efforts = providerEffortsFor(kind);
+  }
+
+  const contextWindow =
+    item?.contextWindow ??
+    item?.context_window ??
+    item?.context_length ??
+    item?.max_context_length ??
+    item?.max_input_tokens ??
+    item?.inputTokenLimit ??
+    item?.top_provider?.context_length;
+  const window = Number(contextWindow);
+  if (Number.isFinite(window) && window > 0) caps.contextWindow = window;
+
+  return caps.efforts !== undefined || caps.contextWindow !== undefined ? caps : undefined;
+}
+
 async function getJson(
   url: string,
   headers: Record<string, string>,
@@ -104,6 +168,8 @@ async function listAnthropic(baseUrl: string, apiKey: string, signal: AbortSigna
       if (typeof item?.id !== 'string' || !item.id) continue;
       const info: ModelInfo = { id: item.id };
       if (typeof item.display_name === 'string' && item.display_name) info.displayName = item.display_name;
+      const caps = providerCapabilities(item, 'anthropic');
+      if (caps) Object.assign(info, caps);
       models.push(info);
     }
     const lastId = typeof data.last_id === 'string' ? data.last_id : undefined;
@@ -134,7 +200,10 @@ async function listOpenAICompatible(
     // Gemini 原生格式可能带 models/ 前缀
     const id = rawId.replace(/^models\//, '').trim();
     if (!id || isNonChatModel(id)) continue;
-    models.push({ id });
+    const info: ModelInfo = { id };
+    const caps = providerCapabilities(item, 'openai-compatible');
+    if (caps) Object.assign(info, caps);
+    models.push(info);
   }
   return sortNewestFirst(dedupe(models));
 }
@@ -157,6 +226,8 @@ async function listGeminiNative(apiKey: string, signal: AbortSignal): Promise<Mo
     const info: ModelInfo = { id };
     if (typeof item.displayName === 'string' && item.displayName) info.displayName = item.displayName;
     if (typeof item.inputTokenLimit === 'number') info.contextWindow = item.inputTokenLimit;
+    const caps = providerCapabilities(item, 'gemini');
+    if (caps) Object.assign(info, caps);
     models.push(info);
   }
   return sortNewestFirst(dedupe(models));
@@ -196,20 +267,25 @@ export async function listModels(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   const signal = controller.signal;
+  const capabilityKind = profile?.kind ?? kind;
+  const decorate = (models: ModelInfo[]) =>
+    models.map((model) =>
+      applyModelCapabilities(model, capabilityKind, profile?.modelCapabilities),
+    );
   try {
     if (kind === 'anthropic') {
-      return { ok: true, models: await listAnthropic(baseUrl, apiKey, signal) };
+      return { ok: true, models: decorate(await listAnthropic(baseUrl, apiKey, signal)) };
     }
     if (kind === 'gemini') {
       try {
-        return { ok: true, models: await listOpenAICompatible(baseUrl, apiKey, signal) };
+        return { ok: true, models: decorate(await listOpenAICompatible(baseUrl, apiKey, signal)) };
       } catch (err) {
         if (signal.aborted) throw err;
         // OpenAI 兼容端点不可用时再试 Gemini 原生接口
-        return { ok: true, models: await listGeminiNative(apiKey, signal) };
+        return { ok: true, models: decorate(await listGeminiNative(apiKey, signal)) };
       }
     }
-    return { ok: true, models: await listOpenAICompatible(baseUrl, apiKey, signal) };
+    return { ok: true, models: decorate(await listOpenAICompatible(baseUrl, apiKey, signal)) };
   } catch (err) {
     return { ok: false, models: [], error: friendlyError(err, baseUrl) };
   } finally {

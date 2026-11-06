@@ -1,5 +1,5 @@
 // 各 provider 共用的流式接口：统一产出协议 ContentBlock / BlockDelta。
-import type { ContentBlock, Message, Usage } from '@tandem/protocol';
+import type { ContentBlock, Message, ReasoningEffort, Usage } from '@tandem/protocol';
 import type { StoredProfile, ToolDefinition } from '../types.js';
 
 export interface StreamRequest {
@@ -13,6 +13,10 @@ export interface StreamRequest {
   signal: AbortSignal;
   idleTimeoutSec: number;
   maxTokens: number;
+  /** 思考强度；缺省或 off 时不向 provider 发送思考参数。 */
+  effort?: ReasoningEffort;
+  /** provider 因模型不支持而去掉思考参数并重试成功时调用（每轮只记一次）。 */
+  onEffortDropped?: () => void;
   onBlockStart: (index: number, block: ContentBlock) => void;
   onText: (index: number, text: string) => void;
   onToolInput: (index: number, partialJson: string) => void;
