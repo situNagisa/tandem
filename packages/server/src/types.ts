@@ -32,6 +32,8 @@ export interface StoredProfile {
   apiKey: string;
   models: string[];
   defaultModel: string;
+  /** 每百万 token 美元，覆盖内置参考单价（按模型名精确或前缀匹配）。 */
+  price?: Record<string, { input: number; output: number }>;
   groups?: StoredProfileGroup[];
   createdAt: number;
 }
@@ -45,6 +47,12 @@ export interface HostConfig {
 /** 会话记录：协议 Session + 仅服务端使用的字段。 */
 export interface SessionRecord extends Session {
   allowedTools: string[];
+  /** 子代理会话：指向派发它的主会话。 */
+  parentId?: string;
+  /** worktree 会话：路径/分支/基准分支。 */
+  worktree?: { path: string; branch: string; baseBranch: string };
+  /** worktree 所属原仓库（仅内部使用，用于 merge/清理）。 */
+  worktreeRepoRoot?: string;
   /** 从外部会话导入时记录来源；仅内部使用，不下发（协议 Session 无此字段）。 */
   importedFrom?: { source: ExternalSource; id: string };
 }
@@ -76,6 +84,8 @@ export interface ToolDefinition {
   readOnly: boolean;
   /** default 模式下是否需要用户审批。 */
   requiresApproval: boolean;
+  /** MCP 工具来源（用于把调用路由到对应服务器）。 */
+  mcp?: { server: string; tool: string };
 }
 
 export interface ToolResult {
@@ -91,6 +101,10 @@ export interface ToolContext {
   signal: AbortSignal;
   updateTodos: (todos: Todo[]) => void;
   setUsage?: (usage: Usage) => void;
+  /** Task 工具：在当前会话下创建子代理会话并执行完整 agent 循环。 */
+  runSubagent?: (input: { description: string; prompt: string; subagentType?: string }) => Promise<ToolResult>;
+  /** MCP 工具：把调用转发给对应服务器。 */
+  callMcp?: (server: string, tool: string, input: unknown) => Promise<ToolResult>;
 }
 
 export type { ContentBlock, Message, Session, SessionStatus, Todo, Usage };

@@ -46,6 +46,16 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   else delete rec.env;
   if (typeof raw.groupId === 'string' && raw.groupId) rec.groupId = raw.groupId;
   else delete rec.groupId;
+  if (typeof raw.parentId === 'string' && raw.parentId) rec.parentId = raw.parentId;
+  else delete rec.parentId;
+  const worktree = normalizeWorktree(raw.worktree);
+  if (worktree) rec.worktree = worktree;
+  else delete rec.worktree;
+  if (typeof raw.worktreeRepoRoot === 'string' && raw.worktreeRepoRoot) {
+    rec.worktreeRepoRoot = raw.worktreeRepoRoot;
+  } else {
+    delete rec.worktreeRepoRoot;
+  }
   const from = raw.importedFrom as { source?: unknown; id?: unknown } | undefined;
   if (from && (from.source === 'claude-code' || from.source === 'codex') && typeof from.id === 'string' && from.id) {
     rec.importedFrom = { source: from.source, id: from.id };
@@ -55,8 +65,25 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   return rec;
 }
 
-function normalizeEnv(value: unknown): SessionEnv | undefined {
+function normalizeWorktree(
+  value: unknown,
+): { path: string; branch: string; baseBranch: string } | undefined {
   if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  if (
+    typeof raw.path !== 'string' ||
+    !raw.path ||
+    typeof raw.branch !== 'string' ||
+    !raw.branch ||
+    typeof raw.baseBranch !== 'string' ||
+    !raw.baseBranch
+  ) {
+    return undefined;
+  }
+  return { path: raw.path, branch: raw.branch, baseBranch: raw.baseBranch };
+}
+
+function normalizeEnv(value: unknown): SessionEnv | undefined {  if (!value || typeof value !== 'object') return undefined;
   const raw = value as Record<string, unknown>;
   const env: SessionEnv = {};
   if (typeof raw.repoRoot === 'string' && raw.repoRoot) env.repoRoot = raw.repoRoot;
