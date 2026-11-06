@@ -370,7 +370,10 @@ function AccountMenu({
         {profiles.map((p) => (
           <button
             key={p.id}
-            onClick={() => setActiveId(p.id)}
+            onClick={() => {
+              setActiveId(p.id)
+              if (p.id !== profileId) onSelect(p.id, p.defaultModel || p.models[0] || '')
+            }}
             className={cn(
               'flex shrink-0 flex-col items-start rounded-lg border px-2 py-1.5 text-left transition-colors',
               p.id === active?.id
