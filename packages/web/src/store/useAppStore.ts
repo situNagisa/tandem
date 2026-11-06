@@ -4,6 +4,7 @@ import type {
   CreateSessionInput,
   ExternalSession,
   ExternalSource,
+  HookEventNotice,
   Message,
   PermissionDecision,
   PermissionRequest,
@@ -96,7 +97,7 @@ interface AppState {
   clearTurnError: () => void
   send: (blocks: ContentBlock[]) => boolean
   interrupt: () => void
-  decidePermission: (requestId: string, decision: PermissionDecision) => void
+  decidePermission: (requestId: string, decision: PermissionDecision, reason?: string) => void
   setPermissionMode: (mode: PermissionMode) => Promise<void>
   rewind: (input: RewindInput, seedText?: string) => Promise<boolean>
   setModel: (profileId: string, groupId: string | undefined, model: string) => Promise<void>
@@ -454,6 +455,8 @@ export const useAppStore = create<AppState>((set, get) => {
             session.status === 'running' && last?.role === 'assistant' ? last.id : undefined,
           liveToolInputs: {},
           toolResults: collectToolResults(session.messages),
+          plan: session.plan,
+          hookEvents: [],
         },
       }
     })
@@ -806,6 +809,26 @@ export const useAppStore = create<AppState>((set, get) => {
           break
         }
         patchActive(hostId, msg.sessionId, (a) => ({ ...a, todos: msg.todos }))
+        break
+      }
+      case 'plan': {
+        patchActive(hostId, msg.sessionId, (a) => ({ ...a, plan: msg.plan }))
+        break
+      }
+      case 'hook_event': {
+        const notice: HookEventNotice = {
+          sessionId: msg.sessionId,
+          event: msg.event,
+          name: msg.name,
+          ok: msg.ok,
+          durationMs: msg.durationMs,
+          ...(msg.blocked ? { blocked: true } : {}),
+          ...(msg.message ? { message: msg.message } : {}),
+        }
+        patchActive(hostId, msg.sessionId, (a) => ({
+          ...a,
+          hookEvents: [...a.hookEvents, notice].slice(-30),
+        }))
         break
       }
       case 'turn_end': {
@@ -1404,6 +1427,7 @@ export const useAppStore = create<AppState>((set, get) => {
           stopping: false,
           liveToolInputs: {},
           toolResults: {},
+          hookEvents: [],
           subagents: {},
         },
       })
@@ -1526,11 +1550,17 @@ export const useAppStore = create<AppState>((set, get) => {
       }
     },
 
-    decidePermission: (requestId, decision) => {
+    decidePermission: (requestId, decision, reason) => {
       const active = get().active
       if (!active) return
       const conn = connections.get(active.hostId) ?? ensureConnection(active.hostId)
-      const ok = conn?.send({ type: 'permission', requestId, decision }) ?? false
+      const ok =
+        conn?.send({
+          type: 'permission',
+          requestId,
+          decision,
+          ...(reason ? { reason } : {}),
+        }) ?? false
       if (!ok) {
         toast('Host 未连接，无法提交审批', 'error')
         return
@@ -1646,6 +1676,7 @@ export const useAppStore = create<AppState>((set, get) => {
           stopping: false,
           liveToolInputs: {},
           toolResults: {},
+          hookEvents: [],
           subagents: {},
         },
       })

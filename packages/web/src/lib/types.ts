@@ -2,10 +2,12 @@ import type {
   ContentBlock,
   ExternalSession,
   ExternalSource,
+  HookEventNotice,
   HostInfo,
   Message,
   PermissionRequest,
   Profile,
+  SessionPlan,
   SessionSummary,
   SlashCommand,
   Todo,
@@ -86,6 +88,10 @@ export interface ActiveSession {
   /** 已完成的工具结果，按 toolUseId 索引 */
   toolResults: Record<string, ToolResultBlock>
   turnError?: string
+  /** 当前计划（计划模式提交后保存，右侧信息栏可回看）。 */
+  plan?: SessionPlan
+  /** Hook 执行记录；界面只展示阻止/出错的条目。 */
+  hookEvents: HookEventNotice[]
   /** Task 子代理会话（parentId 指向当前会话），按子会话 id 索引。 */
   subagents: Record<string, SubagentSession>
 }
@@ -112,7 +118,7 @@ export interface Toast {
 }
 
 export type Theme = 'light' | 'dark' | 'system'
-export type SettingsTab = 'profiles' | 'hosts' | 'permissions' | 'mcp' | 'usage' | 'appearance' | 'sync'
+export type SettingsTab = 'profiles' | 'hosts' | 'permissions' | 'hooks' | 'mcp' | 'usage' | 'appearance' | 'sync'
 
 export type AppRoute =
   | { kind: 'home' }

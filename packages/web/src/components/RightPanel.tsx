@@ -9,6 +9,8 @@ import {
   GitBranch,
   GitFork,
   Loader2,
+  Maximize2,
+  ScrollText,
   Trash2,
   X,
 } from 'lucide-react'
@@ -25,6 +27,7 @@ import {
 } from '../lib/format'
 import { PERMISSION_MODE_LABELS } from '../lib/types'
 import { ConnectionDot, SessionStatusDot } from './StatusDot'
+import { Markdown } from './Markdown'
 import { Modal } from './ui/Modal'
 import { Button, IconButton } from './ui/Button'
 
@@ -70,6 +73,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
   const summary = useAppStore((s) => s.active?.summary ?? null)
   const todos = useAppStore((s) => s.active?.todos ?? EMPTY_TODOS)
+  const plan = useAppStore((s) => s.active?.plan ?? null)
   const host = useAppStore((s) => s.hosts.find((h) => h.id === s.active?.hostId) ?? null)
   const hostStatus = useAppStore((s) =>
     hostId ? (s.runtimes[hostId]?.status ?? 'offline') : 'offline',
@@ -84,6 +88,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [dirtyWorktree, setDirtyWorktree] = useState(false)
+  const [planOpen, setPlanOpen] = useState(false)
 
   const completed = todos.filter((t) => t.status === 'completed').length
   const progress = todos.length ? Math.round((completed / todos.length) * 100) : 0
@@ -134,6 +139,37 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+        {plan && (
+          <Section
+            title="当前计划"
+            extra={
+              <span className="flex items-center gap-1 text-[10.5px] text-muted">
+                <ScrollText size={11} />
+                {plan.status === 'approved'
+                  ? plan.approvalMode === 'acceptEdits'
+                    ? '已批准 · 自动接受编辑'
+                    : '已批准 · 逐个询问'
+                  : plan.status === 'rejected'
+                    ? '已退回完善'
+                    : '待批准'}
+              </span>
+            }
+          >
+            <div className="max-h-[200px] overflow-y-auto rounded-lg border border-border bg-bg/40 px-3 py-2">
+              <Markdown text={plan.content} />
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setPlanOpen(true)}
+              icon={<Maximize2 size={12} />}
+              className="mt-1.5 h-7 px-1.5 text-[11px] [&_svg]:size-3"
+            >
+              查看全文
+            </Button>
+          </Section>
+        )}
+
         <Section
           title="待办"
           extra={
@@ -317,6 +353,22 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
           删除会话
         </Button>
       </div>
+
+      <Modal
+        open={planOpen && !!plan}
+        onClose={() => setPlanOpen(false)}
+        title="当前计划"
+        description={plan?.status === 'approved' ? '计划已批准，可随时回看。' : undefined}
+        className="max-w-[min(820px,94vw)]"
+        bodyClassName="p-5"
+        footer={
+          <Button size="lg" onClick={() => setPlanOpen(false)}>
+            关闭
+          </Button>
+        }
+      >
+        {plan && <Markdown text={plan.content} />}
+      </Modal>
 
       <Modal
         open={confirmDelete}

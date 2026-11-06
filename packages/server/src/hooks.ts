@@ -45,6 +45,7 @@ export interface HookExecutionContext {
   permissionMode?: PermissionMode;
   toolName?: string;
   toolInput?: unknown;
+  toolUseId?: string;
   toolResponse?: string;
   prompt?: string;
   /** SessionStart 的来源：startup / resume / clear / compact。 */
@@ -201,6 +202,7 @@ export function buildHookStdin(event: HookEvent, ctx: HookExecutionContext): str
     payload.tool_name = ctx.toolName;
     payload.tool_input = ctx.toolInput ?? {};
   }
+  if (ctx.toolUseId) payload.tool_use_id = ctx.toolUseId;
   if (ctx.toolResponse !== undefined) payload.tool_response = ctx.toolResponse;
   if (ctx.prompt !== undefined) payload.prompt = ctx.prompt;
   if (event === 'SessionStart') payload.source = ctx.source ?? 'startup';

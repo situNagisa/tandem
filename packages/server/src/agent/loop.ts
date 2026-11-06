@@ -54,7 +54,10 @@ export async function runTurn(
   let sessionStartContext = '';
   if (!rt.sessionStartDone) {
     rt.sessionStartDone = true;
-    const start = await host.runHooks(rec, hookEntries, 'SessionStart', { source: 'startup' });
+    const start = await host.runHooks(rec, hookEntries, 'SessionStart', {
+      source: 'startup',
+      signal: abort.signal,
+    });
     sessionStartContext = start.contexts.join('\n\n');
   }
   const promptHookContext = [sessionStartContext, rt.pendingHookContext]
@@ -376,6 +379,7 @@ async function executeToolUses(
     const pre = await host.runHooks(rec, hookEntries, 'PreToolUse', {
       toolName: tool.name,
       toolInput: tool.input,
+      toolUseId: tool.id,
       signal,
     });
     if (pre.blocked) {
@@ -446,6 +450,7 @@ async function executeToolUses(
     const post = await host.runHooks(rec, hookEntries, 'PostToolUse', {
       toolName: tool.name,
       toolInput: tool.input,
+      toolUseId: tool.id,
       toolResponse: content,
       signal,
     });

@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ChevronDown, RotateCcw, ShieldAlert, TriangleAlert, X } from 'lucide-react'
-import type { PermissionRequest } from '@tandem/protocol'
+import type { HookEventNotice, PermissionRequest } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { cn } from '../lib/cn'
 import { MessageList } from './MessageList'
 import { SessionWelcome, HomeView } from './Welcome'
 import { PermissionCard } from './PermissionCard'
+import { PlanCard } from './PlanCard'
 import { Button, IconButton } from './ui/Button'
 import { Composer } from './Composer'
 import { TurnRail } from './chat/TurnRail'
 import '../styles/chat.css'
 
 const EMPTY_PENDING: PermissionRequest[] = []
+const EMPTY_HOOK_EVENTS: HookEventNotice[] = []
 const PIN_THRESHOLD = 80
 const JUMP_THRESHOLD = 160
 
@@ -24,6 +26,7 @@ export function ChatView() {
   const error = useAppStore((s) => s.active?.error)
   const turnError = useAppStore((s) => s.active?.turnError)
   const pending = useAppStore((s) => s.active?.pending ?? EMPTY_PENDING)
+  const hookEvents = useAppStore((s) => s.active?.hookEvents ?? EMPTY_HOOK_EVENTS)
   const messageCount = useAppStore((s) => s.active?.messages.length ?? 0)
   const lastIsLocal = useAppStore(
     (s) => s.active?.messages[s.active.messages.length - 1]?.local ?? false,
@@ -321,13 +324,38 @@ export function ChatView() {
               </div>
             </div>
           )}
-          {pending.length > 0 && (
-            <PermissionCard
-              key={pending[0].id}
-              request={pending[0]}
-              more={pending.length - 1}
-            />
+          {hookEvents.some((event) => !event.ok || event.blocked) && (
+            <div className="mb-1 space-y-0.5 px-1">
+              {hookEvents
+                .filter((event) => !event.ok || event.blocked)
+                .slice(-3)
+                .map((event, index) => (
+                  <div
+                    key={`${event.event}-${event.name}-${index}`}
+                    title={event.message}
+                    className="truncate text-[11px] leading-4 text-muted"
+                  >
+                    Hook {event.event} · {event.name}{' '}
+                    {event.blocked ? '已阻止' : '出错'}
+                    {event.message ? `：${event.message.split('\n')[0]}` : ''}
+                  </div>
+                ))}
+            </div>
           )}
+          {pending.length > 0 &&
+            (pending[0].toolName === 'ExitPlanMode' ? (
+              <PlanCard
+                key={pending[0].id}
+                request={pending[0]}
+                more={pending.length - 1}
+              />
+            ) : (
+              <PermissionCard
+                key={pending[0].id}
+                request={pending[0]}
+                more={pending.length - 1}
+              />
+            ))}
           <Composer />
         </div>
       </div>

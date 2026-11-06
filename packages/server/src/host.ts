@@ -198,7 +198,12 @@ export class Host {
 
   /** 本轮可用的工具：内置工具（子代理不含 Task）+ 当前 cwd 已连接的 MCP 工具。 */
   toolDefinitions(rec: SessionRecord, allowTask = true): ToolDefinition[] {
-    const base = allowTask ? TOOLS : TOOLS.filter((tool) => tool.name !== 'Task');
+    const base = TOOLS.filter(
+      (tool) =>
+        (allowTask || tool.name !== 'Task') &&
+        // 仅计划模式暴露 ExitPlanMode，其它模式下不打扰模型
+        (tool.name !== 'ExitPlanMode' || rec.permissionMode === 'plan'),
+    );
     return [...base, ...this.mcp.toolDefinitions(rec.cwd)];
   }
 

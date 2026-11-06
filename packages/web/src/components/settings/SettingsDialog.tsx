@@ -1,4 +1,4 @@
-import { BarChart3, Monitor, Palette, Plug, RefreshCw, Server, ShieldCheck, Sparkles } from 'lucide-react'
+import { BarChart3, Monitor, Palette, Plug, RefreshCw, Server, ShieldCheck, Sparkles, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
@@ -10,12 +10,14 @@ import { AppearanceSection } from './AppearanceSection'
 import { SyncSection } from './SyncSection'
 import { PermissionsSection } from './PermissionsSection'
 import { McpSection } from './McpSection'
+import { HooksSection } from './HooksSection'
 import { UsageSection } from './UsageSection'
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'profiles', label: '账号与模型', icon: Sparkles },
   { id: 'hosts', label: 'Host 管理', icon: Server },
   { id: 'permissions', label: '权限', icon: ShieldCheck },
+  { id: 'hooks', label: 'Hooks', icon: Webhook },
   { id: 'mcp', label: 'MCP', icon: Plug },
   { id: 'usage', label: '用量', icon: BarChart3 },
   { id: 'sync', label: '同步与备份', icon: RefreshCw },
@@ -33,7 +35,7 @@ export function SettingsDialog() {
       open={open}
       onClose={close}
       title="设置"
-      description="Host、账号与模型、MCP、用量、配置迁移，以及界面外观。"
+      description="Host、账号与模型、权限与 Hooks、MCP、用量、配置迁移，以及界面外观。"
       className="h-[min(640px,86dvh)] max-w-[min(880px,92vw)] max-sm:fixed max-sm:inset-0 max-sm:my-0 max-sm:h-auto max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:pt-[env(safe-area-inset-top)]"
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
     >
@@ -68,6 +70,7 @@ export function SettingsDialog() {
           {tab === 'profiles' && <ProfilesSection />}
           {tab === 'hosts' && <HostsSection />}
           {tab === 'permissions' && <PermissionsSection />}
+          {tab === 'hooks' && <HooksSection />}
           {tab === 'mcp' && <McpSection />}
           {tab === 'usage' && <UsageSection />}
           {tab === 'sync' && <SyncSection />}

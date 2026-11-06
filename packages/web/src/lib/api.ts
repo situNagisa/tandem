@@ -11,6 +11,8 @@ import type {
   FsEntry,
   FsReadResult,
   FsRevealResult,
+  HookEntry,
+  HookSettings,
   HostInfo,
   ListModelsInput,
   McpServerConfig,
@@ -197,6 +199,19 @@ export const api = {
       `/api/sessions/${encodeURIComponent(id)}/changes/commit`,
       { method: 'POST', body: JSON.stringify({ message, ...(paths?.length ? { paths } : {}) }) },
     ),
+
+  hooks: (h: HostConfig, cwd?: string) =>
+    request<HookSettings>(h, `/api/hooks${qs({ cwd })}`),
+  saveHooks: (h: HostConfig, entries: HookEntry[], cwd?: string) =>
+    request<HookSettings>(h, '/api/hooks', {
+      method: 'PUT',
+      body: JSON.stringify({ entries, ...(cwd ? { cwd } : {}) }),
+    }),
+  trustHooks: (h: HostConfig, cwd: string, trusted: boolean) =>
+    request<HookSettings>(h, '/api/hooks/trust', {
+      method: 'PUT',
+      body: JSON.stringify({ cwd, trusted }),
+    }),
 
   permissions: (h: HostConfig) => request<PermissionRule[]>(h, '/api/permissions'),
   setPermissions: (h: HostConfig, rules: PermissionRule[]) =>
