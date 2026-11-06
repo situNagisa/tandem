@@ -1,4 +1,4 @@
-import { Monitor, Palette, RefreshCw, Server, Sparkles } from 'lucide-react'
+import { Monitor, Palette, RefreshCw, Server, ShieldCheck, Sparkles } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
@@ -7,10 +7,12 @@ import { ProfilesSection } from './ProfilesSection'
 import { HostsSection } from './HostsSection'
 import { AppearanceSection } from './AppearanceSection'
 import { SyncSection } from './SyncSection'
+import { PermissionsSection } from './PermissionsSection'
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'profiles', label: '账号与模型', icon: Sparkles },
   { id: 'hosts', label: 'Host 管理', icon: Server },
+  { id: 'permissions', label: '权限', icon: ShieldCheck },
   { id: 'sync', label: '同步与备份', icon: RefreshCw },
   { id: 'appearance', label: '外观', icon: Palette },
 ]
@@ -57,6 +59,7 @@ export function SettingsDialog() {
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-5">
           {tab === 'profiles' && <ProfilesSection />}
           {tab === 'hosts' && <HostsSection />}
+          {tab === 'permissions' && <PermissionsSection />}
           {tab === 'sync' && <SyncSection />}
           {tab === 'appearance' && <AppearanceSection />}
         </div>

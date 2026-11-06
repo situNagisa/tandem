@@ -1,11 +1,151 @@
-import { useEffect, useMemo } from 'react'
-import { ShieldAlert } from 'lucide-react'
-import type { PermissionDecision, PermissionRequest } from '@tandem/protocol'
+import { useEffect, useMemo, useState } from 'react'
+import { Loader2, Plus, ShieldAlert } from 'lucide-react'
+import type { PermissionDecision, PermissionRequest, PermissionRule } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
+import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { CodeBlock } from './CodeBlock'
 import { DiffView } from './DiffView'
+import { Modal } from './ui/Modal'
+
+const FILE_TOOLS = new Set(['Read', 'Write', 'Edit', 'Glob', 'Grep'])
+const TOOL_OPTIONS = ['Bash', 'Write', 'Edit', 'Read', 'Glob', 'Grep', 'WebFetch', '*']
+const ACTIONS: Array<{ value: PermissionRule['action']; label: string }> = [
+  { value: 'allow', label: '允许' },
+  { value: 'ask', label: '询问' },
+  { value: 'deny', label: '拒绝' },
+]
+
+/** 从审批请求推断一条规则的预填：Bash 取命令前两个词作为前缀，文件工具取路径。 */
+function quickRule(toolName: string, input: Record<string, unknown>, cwd: string): PermissionRule {
+  if (toolName === 'Bash') {
+    const command = str(input.command).split('\n')[0]?.replace(/\s+/g, ' ').trim() ?? ''
+    const parts = command.split(' ').filter(Boolean)
+    const prefix = parts.slice(0, Math.min(2, parts.length)).join(' ')
+    return { tool: toolName, ...(prefix ? { pattern: `${prefix}*` } : {}), action: 'allow' }
+  }
+  if (FILE_TOOLS.has(toolName)) {
+    let filePath = str(input.file_path) || str(input.path)
+    const root = cwd.replace(/\/+$/, '')
+    if (filePath && root && filePath.startsWith(`${root}/`)) filePath = filePath.slice(root.length + 1)
+    return { tool: toolName, ...(filePath ? { pattern: filePath } : {}), action: 'allow' }
+  }
+  return { tool: toolName, action: 'allow' }
+}
+
+function AddRuleDialog({
+  draft,
+  hostId,
+  onClose,
+}: {
+  draft: PermissionRule
+  hostId: string | null
+  onClose: () => void
+}) {
+  const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
+  const toast = useUiStore((s) => s.toast)
+  const [rule, setRule] = useState<PermissionRule>(draft)
+  const [saving, setSaving] = useState(false)
+  const inputCls =
+    'h-8 rounded-md border border-border bg-surface px-2 text-[12px] text-text outline-none focus:border-border-strong'
+
+  const save = async () => {
+    if (!host || saving) return
+    setSaving(true)
+    try {
+      const list = await api.permissions(host)
+      await api.setPermissions(host, [...list, { ...rule, pattern: rule.pattern?.trim() || undefined }])
+      toast('已添加权限规则', 'success')
+      onClose()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '添加规则失败', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="添加为权限规则"
+      description="规则保存在 Host 上，立即对后续请求生效；当前这次请求仍需手动允许或拒绝。"
+      className="max-w-md"
+      footer={
+        <>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
+          >
+            取消
+          </button>
+          <button
+            onClick={() => void save()}
+            disabled={saving || !host}
+            className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12.5px] font-medium text-on-accent hover:bg-accent-hover disabled:opacity-60"
+          >
+            {saving && <Loader2 size={13} className="animate-spin" />}
+            添加规则
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <label className="block space-y-1">
+          <span className="text-[11.5px] text-muted">工具</span>
+          <select
+            value={rule.tool}
+            onChange={(e) => setRule((r) => ({ ...r, tool: e.target.value }))}
+            className={cn(inputCls, 'w-full font-mono text-[11.5px]')}
+          >
+            {!TOOL_OPTIONS.includes(rule.tool) && <option value={rule.tool}>{rule.tool}</option>}
+            {TOOL_OPTIONS.map((tool) => (
+              <option key={tool} value={tool}>
+                {tool === '*' ? '全部工具' : tool}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1">
+          <span className="text-[11.5px] text-muted">
+            匹配模式{rule.tool === 'Bash' ? '（命令前缀，可用 * 通配）' : '（文件 glob，留空匹配全部）'}
+          </span>
+          <input
+            value={rule.pattern ?? ''}
+            onChange={(e) => setRule((r) => ({ ...r, pattern: e.target.value }))}
+            placeholder={rule.tool === 'Bash' ? 'npm test*' : 'src/**/*.ts'}
+            className={cn(inputCls, 'w-full font-mono text-[11.5px]')}
+          />
+        </label>
+        <div className="space-y-1">
+          <span className="text-[11.5px] text-muted">动作</span>
+          <div className="flex overflow-hidden rounded-md border border-border">
+            {ACTIONS.map((action) => (
+              <button
+                key={action.value}
+                onClick={() => setRule((r) => ({ ...r, action: action.value }))}
+                className={cn(
+                  'h-8 flex-1 text-[12px] transition-colors',
+                  rule.action === action.value
+                    ? action.value === 'deny'
+                      ? 'bg-danger-soft text-danger'
+                      : action.value === 'ask'
+                        ? 'bg-warning-soft text-warning'
+                        : 'bg-success-soft text-success'
+                    : 'bg-surface text-muted hover:text-text',
+                )}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -40,6 +180,9 @@ export function PermissionCard({
   more: number
 }) {
   const decide = useAppStore((s) => s.decidePermission)
+  const hostId = useAppStore((s) => s.active?.hostId ?? null)
+  const cwd = useAppStore((s) => s.active?.summary?.cwd ?? '')
+  const [ruleDraft, setRuleDraft] = useState<PermissionRule | null>(null)
   const input = useMemo(() => asRecord(request.input), [request.input])
   const toolName = request.toolName
   const command = str(input.command)
@@ -164,6 +307,13 @@ export function PermissionCard({
           <Kbd>2</Kbd>
         </button>
         <button
+          onClick={() => setRuleDraft(quickRule(toolName, input, cwd))}
+          className="flex min-h-11 items-center gap-1 rounded-lg px-2.5 text-[12px] text-muted transition-colors hover:bg-bg-hover hover:text-text sm:min-h-8"
+          title="把这条件添加为 Host 级权限规则"
+        >
+          <Plus size={11} /> 添加为规则…
+        </button>
+        <button
           onClick={() => handle('allow')}
           className="flex min-h-11 items-center gap-1 rounded-lg bg-accent px-3.5 text-[12.5px] font-medium text-on-accent transition-colors hover:bg-accent-hover sm:min-h-8"
         >
@@ -171,6 +321,9 @@ export function PermissionCard({
           <Kbd inverse>1</Kbd>
         </button>
       </div>
+      {ruleDraft && (
+        <AddRuleDialog draft={ruleDraft} hostId={hostId} onClose={() => setRuleDraft(null)} />
+      )}
     </div>
   )
 }

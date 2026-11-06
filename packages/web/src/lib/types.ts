@@ -78,7 +78,7 @@ export interface Toast {
 }
 
 export type Theme = 'light' | 'dark' | 'system'
-export type SettingsTab = 'profiles' | 'hosts' | 'appearance' | 'sync'
+export type SettingsTab = 'profiles' | 'hosts' | 'permissions' | 'appearance' | 'sync'
 
 export type AppRoute =
   | { kind: 'home' }
