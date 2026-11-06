@@ -1,0 +1,457 @@
+import { useRef, useState } from 'react'
+import {
+  ArrowLeftRight,
+  Check,
+  Copy,
+  Download,
+  Eye,
+  EyeOff,
+  FileJson,
+  Loader2,
+  Share2,
+  ShieldCheck,
+  TriangleAlert,
+  Upload,
+} from 'lucide-react'
+import type { ConfigBundle, ConfigImportResult } from '@tandem/protocol'
+import { api } from '../../lib/api'
+import { useAppStore } from '../../store/useAppStore'
+import { useUiStore } from '../../store/useUiStore'
+import { collectClientSettings, type ClientSettingsBundle } from '../../lib/storage'
+import { copyText } from '../../lib/clipboard'
+import { cn } from '../../lib/cn'
+
+const inputCls =
+  'h-9 w-full rounded-lg border border-border bg-bg px-2.5 text-[12.5px] text-text outline-none transition-colors focus:border-border-strong'
+const labelCls = 'mb-1.5 block text-[11px] font-medium text-text-soft'
+
+function bundleText(bundle: ConfigBundle): string {
+  return JSON.stringify(bundle, null, 2)
+}
+
+function downloadBundle(bundle: ConfigBundle): void {
+  try {
+    const blob = new Blob([bundleText(bundle)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'tandem-config.json'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 2000)
+  } catch {
+    /* 下载失败时仍可用复制 */
+  }
+}
+
+type ShareNavigator = Navigator & {
+  canShare?: (data: { files: File[] }) => boolean
+  share?: (data: { files?: File[]; title?: string; text?: string }) => Promise<void>
+}
+
+function isBundle(value: unknown): value is ConfigBundle {
+  if (!value || typeof value !== 'object') return false
+  const b = value as Partial<ConfigBundle>
+  return (
+    b.version === 1 &&
+    typeof b.encrypted === 'string' &&
+    typeof b.salt === 'string' &&
+    typeof b.iv === 'string' &&
+    typeof b.createdAt === 'number'
+  )
+}
+
+export function SyncSection() {
+  const hosts = useAppStore((s) => s.hosts)
+  const activeHostId = useAppStore((s) => s.activeHostId)
+  const applyClientSettings = useAppStore((s) => s.applyClientSettings)
+  const refreshProfiles = useAppStore((s) => s.refreshProfiles)
+  const refreshSessions = useAppStore((s) => s.refreshSessions)
+  const toast = useUiStore((s) => s.toast)
+
+  const [hostId, setHostId] = useState(activeHostId ?? hosts[0]?.id ?? '')
+  const host = hosts.find((h) => h.id === hostId) ?? null
+
+  const [exportPass, setExportPass] = useState('')
+  const [showExportPass, setShowExportPass] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [bundle, setBundle] = useState<ConfigBundle | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const [fileName, setFileName] = useState('')
+  const [importBundle, setImportBundle] = useState<ConfigBundle | null>(null)
+  const [importPass, setImportPass] = useState('')
+  const [showImportPass, setShowImportPass] = useState(false)
+  const [mode, setMode] = useState<'merge' | 'replace'>('merge')
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importResult, setImportResult] = useState<ConfigImportResult | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const exportConfig = async () => {
+    if (!host) return
+    if (!exportPass.trim()) {
+      setExportError('请先输入一个导出用的口令')
+      return
+    }
+    setExporting(true)
+    setExportError(null)
+    setCopied(false)
+    try {
+      const result = await api.exportConfig(host, {
+        passphrase: exportPass,
+        clientSettings: collectClientSettings(),
+      })
+      setBundle(result)
+      downloadBundle(result)
+      toast('配置文件已生成并开始下载', 'success')
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : '导出失败')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const copyBundle = async () => {
+    if (!bundle) return
+    if (await copyText(bundleText(bundle))) {
+      setCopied(true)
+      toast('配置内容已复制', 'success')
+      window.setTimeout(() => setCopied(false), 1800)
+    } else {
+      toast('复制失败，请改用下载', 'error')
+    }
+  }
+
+  const shareBundle = async () => {
+    if (!bundle) return
+    const nav = navigator as ShareNavigator
+    const text = bundleText(bundle)
+    const file = new File([text], 'tandem-config.json', { type: 'application/json' })
+    try {
+      if (nav.canShare?.({ files: [file] }) && nav.share) {
+        await nav.share({
+          files: [file],
+          title: 'Tandem 配置备份',
+          text: 'Tandem 配置备份（含加密的账号 Key）',
+        })
+        return
+      }
+      if (nav.share) {
+        await nav.share({ title: 'Tandem 配置备份', text })
+        return
+      }
+    } catch {
+      /* 用户取消或系统不支持时回退到复制 */
+    }
+    await copyBundle()
+  }
+
+  const pickFile = async (file: File | undefined) => {
+    setFileName('')
+    setImportBundle(null)
+    setImportError(null)
+    setImportResult(null)
+    if (!file) return
+    try {
+      const text = await file.text()
+      const parsed: unknown = JSON.parse(text)
+      if (!isBundle(parsed)) {
+        setImportError('这不是有效的 Tandem 配置文件')
+        return
+      }
+      setFileName(file.name)
+      setImportBundle(parsed)
+    } catch {
+      setImportError('无法读取文件，请确认选择的是 tandem-config.json')
+    }
+  }
+
+  const importConfig = async () => {
+    if (!host) return
+    if (!importBundle) {
+      setImportError('先选择配置文件')
+      return
+    }
+    if (!importPass.trim()) {
+      setImportError('请输入导出时设置的口令')
+      return
+    }
+    setImporting(true)
+    setImportError(null)
+    setImportResult(null)
+    try {
+      const result = await api.importConfig(host, {
+        passphrase: importPass,
+        bundle: importBundle,
+        mode,
+      })
+      setImportResult(result)
+      if (result.clientSettings && typeof result.clientSettings === 'object') {
+        applyClientSettings(result.clientSettings as ClientSettingsBundle, mode)
+      } else {
+        await refreshProfiles(host.id)
+        await refreshSessions(host.id)
+      }
+      toast(
+        `导入完成：新增 ${result.profilesAdded} 个账号，更新 ${result.profilesUpdated} 个`,
+        'success',
+      )
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : '导入失败')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  if (!host) {
+    return (
+      <div className="flex h-full items-center justify-center text-[12.5px] text-muted">
+        先添加一台 Host，再同步配置。
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <h3 className="text-[14px] font-semibold">同步与备份</h3>
+        <span className="hidden text-[11px] text-muted sm:inline">
+          换电脑不用重新配置账号与界面
+        </span>
+        <span className="flex-1" />
+        {hosts.length > 1 && (
+          <select
+            value={hostId}
+            onChange={(e) => {
+              setHostId(e.target.value)
+              setBundle(null)
+              setImportResult(null)
+            }}
+            className={cn(inputCls, 'h-8 w-auto max-w-[180px] text-[11.5px]')}
+          >
+            {hosts.map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      <div className="mb-3 flex items-start gap-2 rounded-xl border border-border bg-bg/40 px-3 py-2.5 text-[11px] leading-5 text-text-soft">
+        <ShieldCheck size={14} className="mt-0.5 shrink-0 text-accent" />
+        <span>
+          配置文件包含账号与分组里<strong className="font-medium text-text">加密的 API Key</strong>
+          ，以及本机的 Host 列表、主题和侧栏偏好。请妥善保管文件和口令；口令忘记后无法恢复。
+        </span>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <div className="flex items-center gap-2">
+          <span className="flex size-7 items-center justify-center rounded-lg bg-accent-soft text-accent">
+            <Download size={14} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h4 className="text-[13px] font-semibold">导出配置</h4>
+            <p className="text-[10.5px] text-muted">
+              账号（含分组）、Host 列表、主题、侧栏偏好打包为一个文件
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <label className={labelCls}>加密口令</label>
+          <div className="relative">
+            <input
+              value={exportPass}
+              onChange={(e) => {
+                setExportPass(e.target.value)
+                setExportError(null)
+              }}
+              type={showExportPass ? 'text' : 'password'}
+              placeholder="设置一个只有你知道的口令"
+              autoComplete="new-password"
+              className={cn(inputCls, 'pr-9')}
+            />
+            <button
+              onClick={() => setShowExportPass((v) => !v)}
+              aria-label={showExportPass ? '隐藏口令' : '显示口令'}
+              className="absolute right-1 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-[var(--t-bg-hover)] hover:text-text"
+            >
+              {showExportPass ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+          </div>
+        </div>
+
+        {exportError && (
+          <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-1.5 text-[11px] text-danger">
+            <TriangleAlert size={12} className="mt-0.5 shrink-0" />
+            {exportError}
+          </div>
+        )}
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => void exportConfig()}
+            disabled={exporting}
+            className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60"
+          >
+            {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+            导出并下载
+          </button>
+          {bundle && (
+            <>
+              <button
+                onClick={() => downloadBundle(bundle)}
+                className="flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-[11.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
+              >
+                <FileJson size={12} /> 再次下载
+              </button>
+              <button
+                onClick={() => void copyBundle()}
+                className="flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-[11.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
+              >
+                {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
+                {copied ? '已复制' : '复制内容'}
+              </button>
+              <button
+                onClick={() => void shareBundle()}
+                className="flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-[11.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
+              >
+                <Share2 size={12} /> 分享
+              </button>
+            </>
+          )}
+        </div>
+        {bundle && (
+          <p className="mt-2 font-mono text-[10px] text-muted">
+            tandem-config.json · {new Date(bundle.createdAt).toLocaleString()} · {bundle.hostName}
+          </p>
+        )}
+        <p className="mt-2 text-[10px] leading-4 text-muted">
+          手机或 App 里下载不便时，可用「分享」或「复制内容」把文件发到另一台设备。
+        </p>
+      </div>
+
+      <div className="mt-3 rounded-xl border border-border bg-surface p-4">
+        <div className="flex items-center gap-2">
+          <span className="flex size-7 items-center justify-center rounded-lg bg-[var(--t-bg-active)] text-text-soft">
+            <Upload size={14} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h4 className="text-[13px] font-semibold">导入配置</h4>
+            <p className="text-[10.5px] text-muted">
+              选择之前导出的 tandem-config.json，输入口令后合并或替换
+            </p>
+          </div>
+        </div>
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={(e) => {
+            void pickFile(e.target.files?.[0])
+            e.target.value = ''
+          }}
+        />
+        <button
+          onClick={() => fileRef.current?.click()}
+          className="mt-3 flex min-h-9 w-full items-center gap-2 rounded-lg border border-dashed border-border bg-bg/40 px-3 text-left text-[11.5px] text-text-soft transition-colors hover:border-border-strong hover:bg-[var(--t-bg-hover)]"
+        >
+          <FileJson size={13} className="shrink-0 text-muted" />
+          <span className="min-w-0 flex-1 truncate">
+            {fileName || '选择配置文件…'}
+          </span>
+          {importBundle && <Check size={12} className="shrink-0 text-success" />}
+        </button>
+
+        <div className="mt-3">
+          <label className={labelCls}>口令</label>
+          <div className="relative">
+            <input
+              value={importPass}
+              onChange={(e) => {
+                setImportPass(e.target.value)
+                setImportError(null)
+              }}
+              type={showImportPass ? 'text' : 'password'}
+              placeholder="导出时设置的口令"
+              autoComplete="off"
+              className={cn(inputCls, 'pr-9')}
+            />
+            <button
+              onClick={() => setShowImportPass((v) => !v)}
+              aria-label={showImportPass ? '隐藏口令' : '显示口令'}
+              className="absolute right-1 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-[var(--t-bg-hover)] hover:text-text"
+            >
+              {showImportPass ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <label className={labelCls}>导入方式</label>
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            {(
+              [
+                ['merge', '合并', '保留现有账号，同名账号以文件为准'],
+                ['replace', '替换', '清空现有账号与 Host 后按文件恢复'],
+              ] as const
+            ).map(([value, label, hint]) => (
+              <button
+                key={value}
+                onClick={() => setMode(value)}
+                aria-pressed={mode === value}
+                className={cn(
+                  'rounded-lg border px-2.5 py-2 text-left transition-colors',
+                  mode === value
+                    ? 'border-accent/40 bg-accent-soft'
+                    : 'border-border bg-bg/40 hover:bg-[var(--t-bg-hover)]',
+                )}
+              >
+                <span className="flex items-center gap-1.5 text-[11.5px] font-medium">
+                  {label}
+                  {mode === value && <Check size={11} className="text-accent" />}
+                </span>
+                <span className="mt-0.5 block text-[10px] leading-4 text-muted">{hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {importError && (
+          <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-1.5 text-[11px] leading-5 text-danger">
+            <TriangleAlert size={12} className="mt-0.5 shrink-0" />
+            {importError}
+          </div>
+        )}
+        {importResult && (
+          <div className="mt-2 rounded-lg border border-success/25 bg-success-soft/50 px-2.5 py-2 text-[11px] text-success">
+            导入完成：新增 {importResult.profilesAdded} 个账号，更新 {importResult.profilesUpdated} 个
+            {importResult.clientSettings ? '；本机 Host 与界面设置已应用' : ''}。
+          </div>
+        )}
+
+        <div className="mt-3 flex items-center gap-2">
+          <span className="flex items-center gap-1 text-[10px] text-muted">
+            <ArrowLeftRight size={11} /> 应用到「{host.name}」
+          </span>
+          <span className="flex-1" />
+          <button
+            onClick={() => void importConfig()}
+            disabled={importing || !importBundle}
+            className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60"
+          >
+            {importing ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+            导入配置
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
