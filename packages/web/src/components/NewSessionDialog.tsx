@@ -26,6 +26,8 @@ import { defaultChoiceFor } from '../lib/profileModels'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
 import { Popover } from './ui/Popover'
+import { Button, IconButton } from './ui/Button'
+import { Input } from './ui/Controls'
 import { Composer } from './Composer'
 import { useGitRepo } from '../lib/useGitRepo'
 import { QrScanDialog, scannerSupported } from './QrScanDialog'
@@ -78,20 +80,19 @@ function Pill({
   pressed?: boolean
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="secondary"
       onClick={onClick}
-      title={title}
+      tooltip={title}
       disabled={disabled}
       aria-pressed={pressed}
       className={cn(
-        'flex h-10 min-w-0 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-surface/60 px-2.5 text-[11.5px] text-text-soft transition-colors duration-[120ms] hover:border-border-strong hover:bg-[var(--t-bg-hover)] hover:text-text md:h-8',
+        'min-h-10 min-w-0 max-w-full shrink-0 rounded-full px-2.5 font-normal md:min-h-[32px]',
         className,
-        disabled && 'cursor-not-allowed opacity-45 hover:border-border hover:bg-surface/60',
       )}
     >
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -218,15 +219,17 @@ function FolderMenu({
         </div>
       )}
       <div className="flex items-center gap-1 px-1 pb-1.5">
-        <button
+        <IconButton
+          size="sm"
           onClick={() => parent && go(parent)}
           disabled={!parent}
-          aria-label="上一级"
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-30"
+          label="上一级"
+          className="size-7 [&_svg]:size-[13px]"
         >
           <ArrowUp size={13} />
-        </button>
-        <input
+        </IconButton>
+        <Input
+          size="sm"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -238,15 +241,16 @@ function FolderMenu({
           }}
           spellCheck={false}
           aria-label="目录路径"
-          className="h-7 min-w-0 flex-1 rounded-md border border-border bg-bg px-1.5 font-mono text-[10.5px] outline-none focus:border-border-strong"
+          className="min-w-0 flex-1 font-mono text-[11px]"
         />
-        <button
+        <IconButton
+          size="sm"
           onClick={() => setRefreshKey((k) => k + 1)}
-          aria-label="刷新目录"
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+          label="刷新目录"
+          className="size-7 [&_svg]:size-3"
         >
           <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
-        </button>
+        </IconButton>
       </div>
       <div className="h-[188px] overflow-y-auto rounded-lg bg-[var(--t-bg)] p-1">
         {loading && entries.length === 0 && (
@@ -278,23 +282,21 @@ function FolderMenu({
         ))}
       </div>
       <div className="mt-1.5 flex items-center gap-1.5 px-1">
-        <button
-          onClick={() => go(home ?? path)}
-          className="rounded-md px-1.5 py-1 text-[10.5px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-        >
+        <Button size="sm" variant="ghost" onClick={() => go(home ?? path)} className="text-[10.5px]">
           主目录
-        </button>
+        </Button>
         <span className="flex-1" />
-        <button
+        <Button
+          size="sm"
+          variant="primary"
           onClick={() => {
             onSelect(path)
             close()
           }}
           disabled={!path}
-          className="flex h-7 items-center gap-1 rounded-md bg-accent px-2.5 text-[11px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           <Check size={11} /> 使用此目录
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -582,13 +584,15 @@ export function NewSessionView() {
           </div>
           <div className="flex flex-col items-center gap-1">
             {HINTS.map((hint) => (
-              <button
+              <Button
                 key={hint}
+                size="sm"
+                variant="secondary"
                 onClick={() => seedPrompt(hint)}
-                className="max-w-full cursor-pointer truncate rounded-full border border-border bg-surface/40 px-2.5 py-1 text-[11.5px] text-muted transition-colors hover:border-border-strong hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
+                className="max-w-full truncate rounded-full px-2.5 font-normal text-muted hover:text-text-soft"
               >
                 {hint}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -745,7 +749,8 @@ export function ConnectView() {
             配对链接
           </label>
           <div className="flex gap-1.5">
-            <input
+            <Input
+              size="lg"
               value={link}
               onChange={(e) => {
                 setLink(e.target.value)
@@ -761,14 +766,11 @@ export function ConnectView() {
               placeholder="直连链接，或含 #pair=… 的中继配对链接"
               spellCheck={false}
               autoComplete="off"
-              className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg px-2.5 font-mono text-[11.5px] outline-none transition-colors focus:border-border-strong"
+              className="min-w-0 flex-1 font-mono text-[12px]"
             />
-            <button
-              onClick={parseLink}
-              className="h-9 shrink-0 rounded-lg border border-border px-3 text-[11.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
-            >
+            <Button size="lg" onClick={parseLink} className="shrink-0">
               解析
-            </button>
+            </Button>
           </div>
           {parsed && (
             <div className="mt-2 rounded-lg bg-[var(--t-bg)] px-2.5 py-1.5 text-[10.5px] leading-4 text-muted">
@@ -800,7 +802,8 @@ export function ConnectView() {
           </div>
 
           <label className="mb-1.5 block text-[11px] font-medium text-text-soft">地址</label>
-          <input
+          <Input
+            size="lg"
             value={url}
             onChange={(e) => {
               setUrl(e.target.value)
@@ -809,11 +812,12 @@ export function ConnectView() {
             placeholder="http://192.168.1.10:7878"
             spellCheck={false}
             autoComplete="off"
-            className="h-9 w-full rounded-lg border border-border bg-bg px-2.5 font-mono text-[11.5px] outline-none transition-colors focus:border-border-strong"
+            className="font-mono text-[12px]"
           />
           <label className="mb-1.5 mt-3 block text-[11px] font-medium text-text-soft">Token</label>
           <div className="relative">
-            <input
+            <Input
+              size="lg"
               value={token}
               onChange={(e) => {
                 setToken(e.target.value)
@@ -824,15 +828,16 @@ export function ConnectView() {
               placeholder="Host 启动时输出的访问 Token"
               spellCheck={false}
               autoComplete="off"
-              className="h-9 w-full rounded-lg border border-border bg-bg px-2.5 pr-9 font-mono text-[11.5px] outline-none transition-colors focus:border-border-strong"
+              className="pr-9 font-mono text-[12px]"
             />
-            <button
+            <IconButton
+              size="sm"
               onClick={() => setShowToken((v) => !v)}
-              aria-label={showToken ? '隐藏 Token' : '显示 Token'}
-              className="absolute right-1 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-[var(--t-bg-hover)] hover:text-text"
+              label={showToken ? '隐藏 Token' : '显示 Token'}
+              className="absolute right-1 top-1/2 size-7 -translate-y-1/2 [&_svg]:size-[13px]"
             >
               {showToken ? <EyeOff size={13} /> : <Eye size={13} />}
-            </button>
+            </IconButton>
           </div>
 
           {error && (
@@ -848,13 +853,14 @@ export function ConnectView() {
           )}
 
           {canScan && (
-            <button
+            <Button
+              size="lg"
               onClick={() => setScanOpen(true)}
               disabled={busy}
-              className="mt-2 flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-surface text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-60"
+              className="mt-2 w-full"
             >
               <ScanLine size={14} /> 扫码连接
-            </button>
+            </Button>
           )}
           {!canScan && coarsePointer && (
             <p className="mt-2 rounded-lg border border-border bg-bg/50 px-2.5 py-2 text-[10.5px] leading-5 text-muted">
@@ -862,14 +868,16 @@ export function ConnectView() {
             </p>
           )}
 
-          <button
+          <Button
+            size="lg"
+            variant="primary"
             onClick={connect}
             disabled={busy}
-            className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-accent text-[12.5px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60"
+            className="mt-4 w-full"
           >
             {busy ? <Loader2 size={14} className="animate-spin" /> : null}
             测试并连接
-          </button>
+          </Button>
         </div>
 
         <p className="mt-4 text-center text-[10.5px] leading-5 text-muted">
