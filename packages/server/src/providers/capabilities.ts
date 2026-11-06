@@ -27,50 +27,36 @@ export function builtinCapabilities(kind: ProviderKind, model: string): ModelCap
   const id = model.toLowerCase();
   const caps: ModelCapabilities = {};
 
+  const claude = /^claude-/.test(id);
+  const claudeThinking = /claude-(?:3-7|(?:sonnet|opus|haiku)-(?:4|5))/.test(id);
+  const openaiReasoning = /^(?:o[1-9](?:-|$)|gpt-(?:5|6))/.test(id);
+  const geminiThinking = /^gemini-(?:2\.5|3)/.test(id);
+
   if (kind === 'anthropic') {
     // claude 3.7 / 4 / 4.x / 5 系列支持 extended thinking（预算可调）
-    if (/claude-(?:3-7|(?:sonnet|opus|haiku)-(?:4|5))/.test(id)) {
-      caps.efforts = [...ANTHROPIC_EFFORTS];
-    } else if (/^claude-/.test(id)) {
-      caps.efforts = [];
-    }
-    if (/^claude-/.test(id)) caps.contextWindow = 200_000;
-    return caps;
-  }
-
-  if (kind === 'openai') {
-    // o1/o3/o4、gpt-5/6 系列支持 reasoning_effort；max 在服务端映射为 high，故不单列
-    if (/^(?:o[1-9](?:-|$)|gpt-(?:5|6))/.test(id)) {
-      caps.efforts = [...OPENAI_EFFORTS];
-    } else if (/^(?:gpt-|o\d|chatgpt-)/.test(id)) {
-      caps.efforts = [];
-    }
-    if (/^gpt-5/.test(id)) caps.contextWindow = 400_000;
-    else if (/^gpt-4\.1/.test(id)) caps.contextWindow = 1_000_000;
-    else if (/^gpt-4o/.test(id)) caps.contextWindow = 128_000;
-    else if (/^o[1-9]/.test(id)) caps.contextWindow = 200_000;
-    return caps;
-  }
-
-  if (kind === 'gemini') {
-    if (/^gemini-(?:2\.5|3)/.test(id)) caps.efforts = [...GEMINI_EFFORTS];
-    else if (/^gemini-/.test(id)) caps.efforts = [];
-    if (/^gemini-/.test(id)) caps.contextWindow = 1_048_576;
-    return caps;
-  }
-
-  // 兼容端点：只对明确不可调的常见模型给出空档位；其余保持未知，交给 400 回退
-  if (/^deepseek-reasoner/.test(id)) {
+    if (claudeThinking) caps.efforts = [...ANTHROPIC_EFFORTS];
+    else if (claude) caps.efforts = [];
+  } else if (/^deepseek-reasoner/.test(id) || /^deepseek-/.test(id)) {
+    // 推理过程固定开启，没有可调档位
     caps.efforts = [];
-    caps.contextWindow = 128_000;
-  } else if (/^deepseek-/.test(id)) {
+  } else if (claudeThinking || openaiReasoning || geminiThinking) {
+    // 走 OpenAI 兼容端点时统一用 reasoning_effort；max 在服务端映射为 high
+    caps.efforts = kind === 'gemini' ? [...GEMINI_EFFORTS] : [...OPENAI_EFFORTS];
+  } else if (claude || /^(?:gpt-|o\d|chatgpt-|gemini-)/.test(id)) {
     caps.efforts = [];
-    caps.contextWindow = 128_000;
-  } else if (/^qwen/.test(id)) {
-    caps.contextWindow = 131_072;
-  } else if (/^(?:moonshot|kimi)-/.test(id)) {
-    caps.contextWindow = 262_144;
   }
+
+  // 上下文上限按模型 id 前缀推断（与 provider 无关）
+  if (claude) caps.contextWindow = 200_000;
+  else if (/^gpt-5/.test(id)) caps.contextWindow = 400_000;
+  else if (/^gpt-4\.1/.test(id)) caps.contextWindow = 1_000_000;
+  else if (/^gpt-4o/.test(id)) caps.contextWindow = 128_000;
+  else if (/^o[1-9]/.test(id)) caps.contextWindow = 200_000;
+  else if (/^gemini-/.test(id)) caps.contextWindow = 1_048_576;
+  else if (/^deepseek-/.test(id)) caps.contextWindow = 128_000;
+  else if (/^qwen/.test(id)) caps.contextWindow = 131_072;
+  else if (/^(?:moonshot|kimi)-/.test(id)) caps.contextWindow = 262_144;
+
   return caps;
 }
 

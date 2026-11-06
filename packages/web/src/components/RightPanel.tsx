@@ -707,7 +707,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
             <IconButton
               onClick={toggle}
               label="自定义信息面板"
-              tooltip="自定义"
+              tooltip={open ? '' : '自定义'}
               aria-expanded={open}
               aria-haspopup="menu"
               className={cn('-mr-0.5 max-md:size-11', open && 'bg-[var(--t-bg-active)] text-text')}

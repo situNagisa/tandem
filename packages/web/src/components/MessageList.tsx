@@ -212,8 +212,8 @@ export const UserMessage = memo(function UserMessage({
                 align="right"
                 side="top"
                 padded={false}
-                trigger={({ toggle }) => (
-                  <IconButton onClick={toggle} label="消息操作" className="[&_svg]:size-[15px] max-md:size-11 [&_svg]:max-md:size-[17px]">
+                trigger={({ open, toggle }) => (
+                  <IconButton onClick={toggle} label="消息操作" tooltip={open ? '' : undefined} className="[&_svg]:size-[15px] max-md:size-11 [&_svg]:max-md:size-[17px]">
                     <MoreHorizontal size={15} />
                   </IconButton>
                 )}
@@ -464,8 +464,8 @@ export const AssistantMessage = memo(function AssistantMessage({
               align="left"
               side="bottom"
               padded={false}
-              trigger={({ toggle }) => (
-                <IconButton onClick={toggle} label="回复操作" className="[&_svg]:size-[15px] max-md:size-11 [&_svg]:max-md:size-[17px]">
+              trigger={({ open, toggle }) => (
+                <IconButton onClick={toggle} label="回复操作" tooltip={open ? '' : undefined} className="[&_svg]:size-[15px] max-md:size-11 [&_svg]:max-md:size-[17px]">
                   <MoreHorizontal size={15} />
                 </IconButton>
               )}

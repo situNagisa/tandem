@@ -491,11 +491,12 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 side="top"
                 padded={false}
                 panelClassName="w-[200px]"
-                trigger={({ toggle }) => (
+                trigger={({ open, toggle }) => (
                   <IconButton
                     size="sm"
                     variant="ghost"
                     label="更多提交操作"
+                    tooltip={open ? '' : undefined}
                     onClick={toggle}
                   >
                     <MoreHorizontal size={14} />

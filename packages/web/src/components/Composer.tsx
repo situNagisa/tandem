@@ -291,7 +291,7 @@ function PermissionModeMenu({
           disabled={disabled}
           aria-expanded={open}
           aria-haspopup="menu"
-          tooltip={`权限模式：${meta.label}（Shift+Tab 切换）`}
+          tooltip={open ? undefined : `权限模式：${meta.label}（Shift+Tab 切换）`}
           tooltipSide="top"
           aria-label={`权限模式：${meta.label}`}
           className={cn(
@@ -337,6 +337,7 @@ function ThinkingModeMenu() {
           aria-expanded={open}
           aria-haspopup="menu"
           label={`思考过程：${meta.label}`}
+          tooltip={open ? '' : undefined}
           tooltipSide="top"
           className={cn('max-sm:size-11', open && 'bg-[var(--t-bg-hover)] text-text-soft')}
         >
@@ -404,6 +405,7 @@ function MobileMoreMenu({
           aria-expanded={open}
           aria-haspopup="menu"
           label={`更多设置 · 权限模式：${meta.label}`}
+          tooltip={open ? '' : undefined}
           tooltipSide="top"
           className={cn('max-sm:size-11', open && 'bg-[var(--t-bg-hover)] text-text-soft')}
         >
@@ -659,9 +661,11 @@ function ModelMenu({
           aria-expanded={isOpen}
           aria-haspopup="menu"
           tooltip={
-            currentProfile
-              ? `${currentProfile.name}${currentGroup ? ` › ${currentGroup}` : ''} · ${model}`
-              : '选择账号与模型'
+            isOpen
+              ? undefined
+              : currentProfile
+                ? `${currentProfile.name}${currentGroup ? ` › ${currentGroup}` : ''} · ${model}`
+                : '选择账号与模型'
           }
           tooltipSide="top"
           aria-label="选择模型"
@@ -1288,8 +1292,8 @@ export function Composer({
     else void setModel(nextProfileId, nextGroupId, nextModel)
   }
 
-  const changeEffort = (next: ReasoningEffort) => {
-    rememberEffort(next)
+  const changeEffort = (next: ReasoningEffort, remember = true) => {
+    if (remember) rememberEffort(next)
     setLocalEffort(next)
     if (sessionless) {
       onEffortChange?.(next)
@@ -1304,11 +1308,11 @@ export function Composer({
   useEffect(() => {
     if (modelEfforts === undefined) return
     if (modelEfforts.length === 0) {
-      if (effort !== 'off') changeEffort('off')
+      if (effort !== 'off') changeEffort('off', false)
       return
     }
     if (!modelEfforts.includes(effort)) {
-      changeEffort(nearestEffort(modelEfforts, effort))
+      changeEffort(nearestEffort(modelEfforts, effort), false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelEfforts, effort])
