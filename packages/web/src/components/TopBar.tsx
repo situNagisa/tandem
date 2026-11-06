@@ -18,6 +18,8 @@ import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
 import { isDesktop, isMacDesktop, isWindowsDesktop } from '../lib/desktop'
 import { ConnectionDot } from './StatusDot'
+import { Button, IconButton } from './ui/Button'
+import { Input } from './ui/Controls'
 
 function StatePill({
   running,
@@ -155,23 +157,24 @@ export function TopBar() {
       )}
       style={isWindowsDesktop ? { paddingRight: 140 } : undefined}
     >
-      <button
+      <IconButton
         onClick={() => {
           if (isMobile) setMobileSidebar(true)
           else setSidebarCollapsed(!sidebarCollapsed)
         }}
-        aria-label={isMobile ? '打开侧栏' : '切换侧栏'}
-        title={isMobile ? '打开侧栏' : '切换侧栏 (Ctrl+B)'}
-        className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text md:size-9"
+        label={isMobile ? '打开侧栏' : '切换侧栏'}
+        tooltip={isMobile ? '打开侧栏' : '切换侧栏 (Ctrl+B)'}
+        className="max-sm:size-11"
       >
         {isMobile ? <Menu size={18} /> : <PanelLeft size={17} />}
-      </button>
+      </IconButton>
 
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {hasSession ? (
           editing ? (
-            <input
+            <Input
               ref={inputRef}
+              size="sm"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={() => {
@@ -191,7 +194,7 @@ export function TopBar() {
                   setEditing(false)
                 }
               }}
-              className="h-7 min-w-0 max-w-[320px] flex-1 rounded-md border border-border-strong bg-surface px-2 text-[13px] font-medium outline-none md:flex-none md:w-[min(320px,40vw)]"
+              className="max-w-[320px] flex-1 border-border-strong font-medium md:w-[min(320px,40vw)] md:flex-none"
               aria-label="重命名会话"
             />
           ) : (
@@ -271,48 +274,46 @@ export function TopBar() {
       </div>
 
       {hasSession && changes && (
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => setChangesOpen(!changesOpen)}
           aria-label="改动审阅"
-          title="改动审阅"
+          tooltip="改动审阅"
           aria-pressed={changesOpen}
           className={cn(
-            'flex h-8 shrink-0 items-center gap-1 rounded-lg px-1.5 font-mono text-[11px] transition-colors md:h-7',
-            changesOpen
-              ? 'bg-accent-soft/70 text-text'
-              : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
+            'gap-1 px-1.5 font-mono max-md:h-8',
+            changesOpen && 'bg-[var(--t-bg-active)] text-text',
           )}
         >
           <FileDiff size={13.5} className={cn('shrink-0', changesOpen ? 'text-text-soft' : 'text-muted')} />
           <span className="hidden font-sans text-[11px] sm:inline">改动</span>
           {fileCount > 0 && !changesOpen && (
             <>
-              <span className="text-success">+{additions}</span>
-              <span className="text-danger">−{deletions}</span>
+              <span className="text-[var(--t-text-tertiary)]">+{additions}</span>
+              <span className="text-[var(--t-text-tertiary)]">−{deletions}</span>
             </>
           )}
-        </button>
+        </Button>
       )}
 
       {hasSession && (
-        <button
+        <IconButton
           onClick={() => {
             setChangesOpen(false)
             if (isMobile) setMobilePanel(true)
             else togglePanel()
           }}
-          aria-label="切换信息面板"
-          title="会话信息"
+          label="切换信息面板"
+          tooltip="会话信息"
           aria-pressed={!isMobile && panelOpen}
           className={cn(
-            'flex size-11 shrink-0 items-center justify-center rounded-lg transition-colors md:size-9',
-            !isMobile && panelOpen
-              ? 'text-accent hover:bg-[var(--t-bg-hover)]'
-              : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text',
+            'max-sm:size-11',
+            !isMobile && panelOpen && 'bg-[var(--t-bg-active)] text-text',
           )}
         >
           <PanelRight size={17} />
-        </button>
+        </IconButton>
       )}
 
       {offline && (

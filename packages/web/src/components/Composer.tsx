@@ -45,6 +45,7 @@ import {
   saveDraft,
 } from '../lib/storage'
 import { Popover } from './ui/Popover'
+import { Button, IconButton } from './ui/Button'
 import {
   setThinkingMode,
   THINKING_MODE_META,
@@ -202,14 +203,20 @@ function PermissionModeMenu({
       align="left"
       panelClassName="w-[264px]"
       trigger={({ open, toggle }) => (
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={toggle}
           disabled={disabled}
           aria-expanded={open}
           aria-haspopup="menu"
-          title={`权限模式：${meta.label}（Shift+Tab 切换）`}
+          tooltip={`权限模式：${meta.label}（Shift+Tab 切换）`}
+          tooltipSide="top"
           aria-label={`权限模式：${meta.label}`}
-          className={cn('composer-pill', open && 'bg-bg-hover text-text', disabled && 'opacity-50')}
+          className={cn(
+            'max-w-[170px] max-sm:min-h-11',
+            open && 'bg-[var(--t-bg-hover)] text-text',
+          )}
         >
           <Icon
             size={13}
@@ -222,7 +229,7 @@ function PermissionModeMenu({
             {meta.label}
           </span>
           <ChevronDown size={11} className="shrink-0 opacity-50" />
-        </button>
+        </Button>
       )}
     >
       {(close) => (
@@ -288,16 +295,16 @@ function ThinkingModeMenu() {
       align="left"
       panelClassName="w-[220px]"
       trigger={({ open, toggle }) => (
-        <button
+        <IconButton
           onClick={toggle}
           aria-expanded={open}
           aria-haspopup="menu"
-          title={`思考过程：${meta.label}`}
-          aria-label={`思考过程：${meta.label}`}
-          className={cn('composer-icon-btn', open && 'bg-bg-hover text-text-soft')}
+          label={`思考过程：${meta.label}`}
+          tooltipSide="top"
+          className={cn('max-sm:size-11', open && 'bg-[var(--t-bg-hover)] text-text-soft')}
         >
           <Brain size={16} />
-        </button>
+        </IconButton>
       )}
     >
       {(close) => (
@@ -565,7 +572,8 @@ function ModelMenu({
       onOpenChange={onOpenChange}
       panelClassName="w-[320px] max-w-[calc(100vw-1.5rem)]"
       trigger={({ open: isOpen, toggle }) => (
-        <button
+        <Button
+          variant="ghost"
           onClick={() => {
             if (!isOpen) onOpen?.()
             toggle()
@@ -573,21 +581,21 @@ function ModelMenu({
           disabled={disabled}
           aria-expanded={isOpen}
           aria-haspopup="menu"
-          title={
+          tooltip={
             currentProfile
               ? `${currentProfile.name}${currentGroup ? ` › ${currentGroup}` : ''} · ${model}`
               : '选择账号与模型'
           }
+          tooltipSide="top"
           aria-label="选择模型"
           className={cn(
-            'flex h-11 min-w-0 max-w-[220px] items-center gap-1 rounded-lg px-2 text-[12.5px] text-muted transition-colors hover:bg-bg-hover hover:text-text-soft md:h-8',
-            isOpen && 'bg-bg-hover text-text-soft',
-            disabled && 'opacity-50',
+            'min-w-0 max-w-[220px] justify-start gap-1 px-2 font-normal max-sm:min-h-11',
+            isOpen && 'bg-[var(--t-bg-hover)] text-text-soft',
           )}
         >
           <span className="min-w-0 truncate">{prettyModel(model)}</span>
           <ChevronDown size={12} className="shrink-0 opacity-60" />
-        </button>
+        </Button>
       )}
     >
       {(close) => (
@@ -1326,13 +1334,13 @@ export function Composer({
                     alt={a.name}
                     className="size-full object-contain p-0.5"
                   />
-                  <button
+                  <IconButton
                     onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
-                    aria-label="移除图片"
-                    className="absolute right-0 top-0 flex size-8 items-center justify-center rounded-bl-lg rounded-tr-lg bg-[color-mix(in_srgb,var(--t-text)_62%,transparent)] text-[var(--t-bg)] opacity-80 transition-opacity hover:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                    label="移除图片"
+                    className="absolute right-0 top-0 rounded-bl-lg rounded-tr-lg bg-[color-mix(in_srgb,var(--t-text)_62%,transparent)] text-[var(--t-bg)] opacity-80 hover:bg-[color-mix(in_srgb,var(--t-text)_72%,transparent)] hover:text-[var(--t-bg)] hover:opacity-100 md:opacity-0 md:group-hover:opacity-100"
                   >
                     <X size={14} />
-                  </button>
+                  </IconButton>
                 </div>
               ))}
             </div>
@@ -1350,13 +1358,14 @@ export function Composer({
                   <span className="shrink-0 text-[10px] tabular-nums text-muted">
                     {p.text.length > 999 ? `${(p.text.length / 1000).toFixed(1)}k` : p.text.length} 字
                   </span>
-                  <button
+                  <IconButton
+                    size="sm"
                     onClick={() => setPasted((prev) => prev.filter((x) => x.id !== p.id))}
-                    aria-label="移除粘贴的文本"
-                    className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text"
+                    label="移除粘贴的文本"
+                    className="size-6 [&_svg]:size-3"
                   >
                     <X size={12} />
-                  </button>
+                  </IconButton>
                 </div>
               ))}
             </div>
@@ -1389,15 +1398,15 @@ export function Composer({
         </div>
 
         <div className="flex items-center gap-1 px-2 pb-2 pt-1">
-          <button
+          <IconButton
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled || attachments.length >= MAX_ATTACHMENTS}
-            title="添加图片"
-            aria-label="添加图片"
-            className="composer-icon-btn disabled:opacity-40"
+            label="添加图片"
+            tooltipSide="top"
+            className="max-sm:size-11"
           >
             <Paperclip size={16} />
-          </button>
+          </IconButton>
           <ThinkingModeMenu />
           <PermissionModeMenu mode={mode} disabled={disabled} onChange={changeMode} />
           <span className="min-w-0 flex-1" />
@@ -1418,11 +1427,13 @@ export function Composer({
               }
             }}
           />
-          <button
+          <Button
+            variant="primary"
             onClick={running ? stop : () => void handleSend()}
             disabled={running ? stopping : !canSend}
             data-state={sendState}
-            title={running ? '停止生成 (Esc)' : '发送 (Enter)'}
+            tooltip={running ? '停止生成 (Esc)' : '发送 (Enter)'}
+            tooltipSide="top"
             aria-label={running ? '停止生成' : '发送消息'}
             className="composer-send ml-0.5 disabled:cursor-not-allowed"
           >
@@ -1437,7 +1448,7 @@ export function Composer({
                 <ArrowUp size={17} strokeWidth={2.2} />
               )}
             </span>
-          </button>
+          </Button>
         </div>
         <input
           ref={fileInputRef}
