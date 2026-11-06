@@ -28,48 +28,52 @@ flowchart LR
 
 ## 部署
 
-relay（任意公网机器，Node ≥ 20）：
+### 一键部署（推荐）
+
+准备一台公网 Ubuntu/Debian 服务器，并将域名的 A/AAAA 记录指向它；防火墙放行 TCP 80、443。下载本仓库后执行：
 
 ```bash
-npm install && npm run build -w @tandem/relay   # 或在 monorepo 里整体 npm run build
-node packages/relay/dist/cli.js --host 127.0.0.1 --port 7950 --trust-proxy --data /var/lib/tandem-relay
+cd /path/to/tandem
+git pull
+TANDEM_RELAY_DOMAIN=relay.example.com bash deploy/relay/install.sh
 ```
 
-relay 自己不做 TLS，**必须**放在带 TLS 的反向代理后面（明文 HTTP 会泄漏 token）。Caddy：
+脚本会检测并安装 Docker/Compose，构建 relay 镜像，启动 relay + Caddy，并由 Caddy 自动申请和续期 HTTPS 证书。它可重复执行；数据保存在 Docker 卷中。也可先复制 `deploy/relay/.env.example` 为 `deploy/relay/.env`，填写 `TANDEM_RELAY_DOMAIN` 后直接运行脚本。脚本不会打印密钥或 token。
 
-```
-relay.example.com {
-  reverse_proxy 127.0.0.1:7950
-}
-```
-
-nginx 需要 WebSocket 与不缓冲：
-
-```nginx
-location / {
-  proxy_pass http://127.0.0.1:7950;
-  proxy_http_version 1.1;
-  proxy_set_header Upgrade $http_upgrade;
-  proxy_set_header Connection $connection_upgrade;   # map $http_upgrade $connection_upgrade { default upgrade; '' close; }
-  proxy_set_header X-Forwarded-For $remote_addr;      # 配合 --trust-proxy 按来源 IP 限流
-  proxy_buffering off;
-  proxy_request_buffering off;
-  proxy_read_timeout 1h;
-  client_max_body_size 64m;
-}
-```
-
-Host 侧（每台机器一次）：
+部署完成后，在每台 Host 上执行脚本输出的命令：
 
 ```bash
-tandem-host --relay wss://relay.example.com      # 也接受 https://；写入 config.json 后下次可不带参数
+tandem-host --relay wss://relay.example.com
 ```
 
-首次会生成 `relay.hostKey` 并写进 `~/.tandem/config.json`（600 权限）。启动日志会打印中继 URL 与**公钥指纹**。等价的 config.json：
+验证：`https://relay.example.com/healthz` 应返回 `ok: true`。Caddy 配置已包含 WebSocket 透传；不要绕过 Caddy 直接把 relay 暴露到公网。
+
+### 无 Docker：systemd
+
+先在 `/opt/tandem` 放置源码并构建 relay：
+
+```bash
+cd /opt/tandem
+npm ci
+npm run build -w @tandem/relay
+sudo useradd --system --home /var/lib/tandem-relay --shell /usr/sbin/nologin tandem-relay || true
+sudo install -d -o tandem-relay -g tandem-relay /var/lib/tandem-relay
+sudo install -m 0644 deploy/relay/tandem-relay.service.example /etc/systemd/system/tandem-relay.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now tandem-relay
+```
+
+`deploy/relay/tandem-relay.service.example` 是 unit 模板；仍需单独配置 Caddy 或 nginx 的 HTTPS 与 WebSocket 反向代理，目标为 `127.0.0.1:7950`。Node.js 要求 ≥ 20（模板默认 `/usr/bin/node`）。
+
+### Host 配置
+
+桌面端目前没有“中继地址”的托盘菜单或设置入口。可在 Host 侧运行上面的 `tandem-host --relay ...`（会写入 `~/.tandem/config.json`），或手动写入：
 
 ```json
 { "relay": { "url": "wss://relay.example.com", "hostKey": "<自动生成>", "requireE2E": false } }
 ```
+
+首次启用会生成 `relay.hostKey` 并以 600 权限保存。启动日志会打印中继 URL 与**公钥指纹**。
 
 relay 选项：`--max-hosts`（1000）、`--max-streams`（单 Host 并发请求/WS，256）、`--max-conns-per-ip`（128）、`--bandwidth <MB/s>`（单 Host 双向合计，16，0 不限）。`GET /healthz` 返回 `{ ok, hostsOnline }`。日志只记录 Host 上线/下线/拒绝（hostId 截断），不记录 URL、头部和 body。
 
