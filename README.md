@@ -50,3 +50,12 @@ npm run dist:win -w @tandem/desktop
 
 ## 数据
 Host 数据在 `~/.tandem`（可用 `TANDEM_HOME` 覆盖）：`config.json`（hostId、token）、`profiles.json`（Key，权限 600）、`sessions/`、`checkpoints/`、`mcp.json`、`hooks.json` 等。Claude Code / Codex 的会话只读，不会被修改。
+
+## 反馈
+在 Web 界面里按 `Ctrl/Cmd + Shift + F`，或打开「设置 → 外观 → 进入反馈模式」。鼠标悬停元素会显示橙色选框，点击即可写反馈（`Alt + 点击`选择父元素）；写完后点顶部浮条的「导出」，会下载 `tandem-feedback-YYYYMMDD-HHmm.json`，把它发给维护者即可。导出前条目保存在本机，刷新不丢；解包查看：
+
+```bash
+node scripts/feedback-unpack.mjs tandem-feedback-20260101-1200.json [outDir]
+```
+
+会得到每条的 `NN-元素截图.png`、`page-N.png` 以及汇总的 `feedback.md`。

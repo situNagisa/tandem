@@ -15,6 +15,7 @@ import { FilePreviewPanel } from './components/FilePreviewPanel'
 import { SettingsDialog } from './components/settings/SettingsDialog'
 import { SearchDialog } from './components/SearchDialog'
 import { Toasts } from './components/ui/Toasts'
+import { FeedbackMode } from './components/feedback/FeedbackMode'
 
 export default function App() {
   useViewportHeight()
@@ -342,6 +343,7 @@ export default function App() {
       <SettingsDialog />
       <SearchDialog />
       <Toasts />
+      <FeedbackMode />
     </div>
   )
 }

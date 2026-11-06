@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Bell, Check, Monitor, Moon, Smartphone, Sun } from 'lucide-react'
+import { Bell, Check, MessageSquarePlus, Monitor, Moon, Smartphone, Sun } from 'lucide-react'
 import type { Theme } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { modLabel } from '../../lib/format'
 import { requestNotificationPermission } from '../../lib/attention'
 import { cn } from '../../lib/cn'
+import { Button } from '../ui/Button'
 import { Switch } from '../ui/Controls'
+import { useFeedbackStore } from '../../store/useFeedbackStore'
 
 const THEMES: Array<{ id: Theme; label: string; desc: string; icon: typeof Sun }> = [
   { id: 'light', label: '浅色', desc: '暖白纸面，白天更清爽', icon: Sun },
@@ -189,6 +191,23 @@ export function AppearanceSection() {
 
       <div className="mt-3 rounded-xl border border-border bg-[var(--t-bg)] p-3.5 text-[11px] leading-5 text-muted">
         Tandem 使用暖色中性灰与克制的陶土橙强调色，衬线字体只用于标题。所有字体来自系统，不加载外部资源。
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5">
+        <div className="min-w-0">
+          <div className="text-[12.5px] font-medium">反馈</div>
+          <p className="mt-0.5 text-[11px] leading-5 text-muted">
+            圈出界面问题并导出，附截图与上下文，发给我即可。
+          </p>
+        </div>
+        <Button
+          size="md"
+          variant="secondary"
+          icon={<MessageSquarePlus size={14} />}
+          onClick={() => useFeedbackStore.getState().enter()}
+        >
+          进入反馈模式
+        </Button>
       </div>
     </div>
   )

@@ -938,3 +938,16 @@ html.dark {
 .settings-textarea:focus {
   border-color: var(--t-border-strong);
 }
+
+/* 反馈模式：整页十字光标，浮层内恢复常规交互 */
+html.feedback-mode,
+html.feedback-mode * {
+  cursor: crosshair !important;
+}
+html.feedback-mode [data-feedback-ui],
+html.feedback-mode [data-feedback-ui] * {
+  cursor: pointer !important;
+}
+html.feedback-mode [data-feedback-ui] textarea {
+  cursor: text !important;
+}
