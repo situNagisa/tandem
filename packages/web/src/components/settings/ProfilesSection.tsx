@@ -795,10 +795,7 @@ function KeysPanel({
                   {test.ok ? <Check size={11} /> : <TriangleAlert size={11} />}
                 </span>
               )}
-              <Tooltip
-                label={statusTip}
-                className="shrink-0 text-[11px] leading-none"
-              >
+              <Tooltip label={statusTip} className="shrink-0 text-[12px] leading-none">
                 <span className={cn(status.tone, 'cursor-default')}>{status.text}</span>
               </Tooltip>
               <span className="flex shrink-0 items-center gap-0.5">

@@ -55,6 +55,14 @@ interface Draft {
   enabled: boolean
 }
 
+function newRuleId(): string {
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return `b-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  }
+}
+
 function emptyDraft(): Draft {
   return {
     scope: 'global',
@@ -290,7 +298,7 @@ export function BudgetsSection() {
       return
     }
     const next: BudgetRule = {
-      id: draft.id ?? crypto.randomUUID(),
+      id: draft.id ?? newRuleId(),
       scope: draft.scope,
       ...(draft.scope === 'account' || draft.scope === 'group'
         ? { profileId: draft.profileId }
