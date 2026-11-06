@@ -565,9 +565,11 @@ export function SessionList({
         onContextMenu={(e) => openMenu(e, hostId, s)}
         aria-current={isActive ? 'page' : undefined}
         title={
-          s.worktree
-            ? `${s.title || '未命名会话'} · worktree ${s.worktree.branch}（基于 ${s.worktree.baseBranch}）`
-            : s.title || '未命名会话'
+          s.forkedFrom
+            ? `分叉自 ${s.forkedFrom.title || '父会话'}${s.title ? ` · ${s.title}` : ''}`
+            : s.worktree
+              ? `${s.title || '未命名会话'} · worktree ${s.worktree.branch}（基于 ${s.worktree.baseBranch}）`
+              : s.title || '未命名会话'
         }
         className={cn(
           'anim-row-in group relative flex h-11 cursor-default items-center gap-2 rounded-lg pl-2 pr-1 text-[14px] outline-none transition-colors duration-[120ms] md:h-[34px]',
