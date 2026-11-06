@@ -8,6 +8,7 @@ import {
   Plus,
   RefreshCw,
   Server,
+  Smartphone,
   Trash2,
   TriangleAlert,
   X,
@@ -16,6 +17,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { normalizeHostUrl } from '../../lib/hostUrl'
 import { useUiStore } from '../../store/useUiStore'
 import { ConnectionDot } from '../StatusDot'
+import { PairDialog } from './PairDialog'
 import { Modal } from '../ui/Modal'
 import { cn } from '../../lib/cn'
 
@@ -45,6 +47,7 @@ export function HostsSection() {
   const [editUrl, setEditUrl] = useState('')
   const [editToken, setEditToken] = useState('')
   const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null)
+  const [pairHost, setPairHost] = useState<string | null>(null)
 
   const handleAdd = () => {
     setAddError(null)
@@ -245,6 +248,14 @@ export function HostsSection() {
                 </div>
                 <div className="hidden shrink-0 items-center gap-1 sm:flex">
                   <button
+                    onClick={() => setPairHost(h.id)}
+                    title="连接手机（扫码配对）"
+                    aria-label="连接手机"
+                    className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
+                  >
+                    <Smartphone size={12} />
+                  </button>
+                  <button
                     onClick={() => retryHost(h.id)}
                     title="重新连接"
                     aria-label="重新连接"
@@ -271,6 +282,12 @@ export function HostsSection() {
                 </div>
               </div>
               <div className="mt-2 flex items-center justify-end gap-1.5 border-t border-border/60 pt-2 sm:hidden">
+                <button
+                  onClick={() => setPairHost(h.id)}
+                  className="flex min-h-10 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[11px] text-text-soft transition-colors hover:bg-surface-2 hover:text-text"
+                >
+                  <Smartphone size={12} /> 连接手机
+                </button>
                 <button
                   onClick={() => retryHost(h.id)}
                   className="flex min-h-10 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[11px] text-text-soft transition-colors hover:bg-surface-2 hover:text-text"
@@ -377,6 +394,10 @@ export function HostsSection() {
         </p>
       </Modal>
 
+      {pairHost && (() => {
+        const host = hosts.find((x) => x.id === pairHost)
+        return host ? <PairDialog host={host} onClose={() => setPairHost(null)} /> : null
+      })()}
     </div>
   )
 }
