@@ -19,6 +19,7 @@ import { isDesktop, isMacDesktop, isWindowsDesktop } from '../lib/desktop'
 import { ConnectionDot } from './StatusDot'
 import { Button, IconButton } from './ui/Button'
 import { Input } from './ui/Controls'
+import { BackgroundTasksButton, FilesButton, SubagentsButton } from './chat/SessionHeaderTools'
 
 function StatePill({
   running,
