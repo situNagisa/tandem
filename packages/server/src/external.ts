@@ -45,6 +45,51 @@ export interface ExternalImportInput {
 const PROJECTS_DIR = path.join('.claude', 'projects');
 const CODEX_SESSIONS_DIR = path.join('.codex', 'sessions');
 
+/** 外部工具注入的整块标签：系统提醒、提及列表、IDE 上下文、Codex 环境说明等。 */
+const DROP_TAGS = [
+  'system-reminder',
+  'session-mentions',
+  'ide_opened_file',
+  'ide_selection',
+  'environment_context',
+  'user_instructions',
+  'local-command-stdout',
+  'local-command-stderr',
+];
+
+/** 命令回显块：转换为简短的 "/命令 参数" 文本。 */
+const COMMAND_TAGS = ['command-name', 'command-message', 'command-args'];
+
+function tagged(tag: string): RegExp {
+  return new RegExp(`<${tag}>[\\s\\S]*?</${tag}>`, 'g');
+}
+
+function commandSummary(text: string): string {
+  const name = text.match(/<command-name>([\s\S]*?)<\/command-name>/)?.[1]?.trim();
+  if (!name) return '';
+  const args = text.match(/<command-args>([\s\S]*?)<\/command-args>/)?.[1]?.trim();
+  const command = name.startsWith('/') ? name : `/${name}`;
+  return args ? `${command} ${args}` : command;
+}
+
+/** 去掉 @[名字](路径) 这类提及语法外壳，只留名字。 */
+function unwrapMentions(text: string): string {
+  return text.replace(/@\[([^\]\n]+)\](?:\([^)\n]*\))?/g, '$1');
+}
+
+/** 剥离 Claude Code / Codex 注入到用户消息里的标签块，只留真正的用户文本。 */
+function cleanInjectedText(text: string): string {
+  const command = commandSummary(text);
+  let out = text;
+  for (const tag of COMMAND_TAGS) out = out.replace(tagged(tag), '');
+  for (const tag of DROP_TAGS) out = out.replace(tagged(tag), '');
+  out = unwrapMentions(out)
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return command ? `${command}${out ? `\n${out}` : ''}` : out;
+}
+
 /** 明显是系统注入/命令回显的内容，不作为标题。 */
 function isInjectedText(text: string): boolean {
   const value = text.trim();
@@ -53,11 +98,27 @@ function isInjectedText(text: string): boolean {
   if (/^caveat:/i.test(value)) return true;
   if (value.startsWith('[Request interrupted')) return true;
   if (value.startsWith('This session is being continued')) return true;
+  if (/^\/\S+$/.test(value)) return true;
   return false;
 }
 
 function cleanTitle(text: string): string {
-  return [...text.replace(/\s+/g, ' ').trim()].slice(0, 60).join('').trim();
+  const plain = unwrapMentions(text).replace(/\s+/g, ' ').trim();
+  return [...plain].slice(0, 60).join('').trim();
+}
+
+/** 用户文本块统一过一遍注入清理；清理后为空的块直接丢弃。 */
+function cleanUserBlocks(blocks: ContentBlock[]): ContentBlock[] {
+  const out: ContentBlock[] = [];
+  for (const block of blocks) {
+    if (block.type !== 'text') {
+      out.push(block);
+      continue;
+    }
+    const text = cleanInjectedText(block.text);
+    if (text) out.push({ ...block, text });
+  }
+  return out;
 }
 
 function parseTime(value: unknown): number {
@@ -217,7 +278,8 @@ function parseClaudeFile(file: string, collect: boolean, fallbackId: string): Pa
     if (!rawMessage || typeof rawMessage !== 'object') continue;
     const msg = rawMessage as Record<string, unknown>;
     const role: Message['role'] = o.type === 'user' ? 'user' : 'assistant';
-    const blocks = convertClaudeBlocks(msg.content);
+    let blocks = convertClaudeBlocks(msg.content);
+    if (role === 'user') blocks = cleanUserBlocks(blocks);
     if (!blocks.length) continue;
 
     const toolOnly = blocks.every((b) => b.type === 'tool_result');
@@ -320,14 +382,16 @@ function parseCodexFile(file: string, collect: boolean, fallbackId: string): Par
       }
     }
     if (!blocks.length) return;
-    // 跳过 Codex 注入的环境说明，避免污染标题与预览
-    if (role === 'user' && blocks.every((b) => b.type === 'text' && isInjectedText(b.text))) return;
-    const textOnly = blocks
+    // 跳过 Codex 注入的环境说明/指令，避免污染标题与预览
+    const cleaned = role === 'user' ? cleanUserBlocks(blocks) : blocks;
+    if (!cleaned.length) return;
+    if (role === 'user' && cleaned.every((b) => b.type === 'text' && isInjectedText(b.text))) return;
+    const textOnly = cleaned
       .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
       .map((b) => b.text)
       .join('\n');
     if (role === 'user' && !title && textOnly && !isInjectedText(textOnly)) title = cleanTitle(textOnly);
-    push(role === 'assistant' ? 'assistant' : 'user', blocks, ts);
+    push(role === 'assistant' ? 'assistant' : 'user', cleaned, ts);
   };
 
   const handleResponseItem = (payload: Record<string, unknown>, ts: number): void => {
