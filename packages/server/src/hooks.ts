@@ -265,8 +265,9 @@ function execHookCommand(
       resolve({
         code,
         signal: sig,
-        stdout: decodeProcessOutput(Buffer.concat(outChunks)),
-        stderr: decodeProcessOutput(Buffer.concat(errChunks)) + stderrExtra,
+        stdout: decodeProcessOutput(Buffer.concat(outChunks)).slice(0, MAX_OUTPUT),
+        stderr:
+          decodeProcessOutput(Buffer.concat(errChunks)).slice(0, MAX_OUTPUT) + stderrExtra,
         timedOut,
         aborted,
       });
