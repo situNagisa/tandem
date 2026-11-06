@@ -222,6 +222,11 @@ export function ProfilesSection() {
     const sorted = list
       .slice()
       .sort((a, b) => (a.displayName ?? a.id).localeCompare(b.displayName ?? b.id, 'zh-Hans-CN'))
+    if (sorted.length === 0) {
+      setFetchError('服务商没有返回可用模型。可以手动输入模型 ID。')
+      setManualMode(true)
+      return
+    }
     const ids = new Set(sorted.map((m) => m.id))
     const existing = keepProfileModels ? selected.filter((id) => ids.has(id)) : []
     const recommended = (preset?.models ?? []).filter((id) => ids.has(id))
@@ -235,10 +240,6 @@ export function ProfilesSection() {
     setDefaultModel((prev) =>
       initial.includes(prev) ? prev : initial.includes(preset?.defaultModel ?? '') ? preset!.defaultModel : initial[0] ?? '',
     )
-    if (sorted.length === 0) {
-      setFetchError('服务商没有返回可用模型。可以手动输入模型 ID。')
-      setManualMode(true)
-    }
   }
 
   const fetchModels = async (useProfileId: boolean) => {

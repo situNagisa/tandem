@@ -563,7 +563,7 @@ export function NewSessionView() {
             rows={2}
             placeholder="描述一个任务，或粘贴一段代码…"
             aria-label="输入第一条消息"
-            className="block max-h-[200px] min-h-[70px] w-full resize-none bg-transparent px-4 pt-3.5 text-[14.5px] leading-6 text-text outline-none placeholder:text-muted"
+            className="block max-h-[200px] min-h-[70px] w-full resize-none bg-transparent px-4 pt-3.5 text-[15px] leading-6 text-text outline-none placeholder:text-muted"
           />
           <div className="flex items-center gap-2 px-3 pb-2.5 pt-1">
             <span className="hidden text-[10.5px] text-muted sm:block">

@@ -183,7 +183,7 @@ export function TopBar() {
               title="点击重命名"
               className="group flex min-w-0 max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-[var(--t-bg-hover)]"
             >
-              <h1 className="truncate text-[13.5px] font-medium leading-5">{title}</h1>
+              <h1 className="truncate text-[14px] font-medium leading-5">{title}</h1>
               <Pencil
                 size={11}
                 className="shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100"
@@ -191,7 +191,7 @@ export function TopBar() {
             </button>
           )
         ) : (
-          <h1 className="truncate px-1 text-[13.5px] font-medium leading-5">
+          <h1 className="truncate px-1 text-[14px] font-medium leading-5">
             {host?.name || 'Tandem'}
           </h1>
         )}
