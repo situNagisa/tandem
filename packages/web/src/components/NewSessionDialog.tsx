@@ -95,7 +95,7 @@ function Pill({
       onClick={onClick}
       title={title}
       className={cn(
-        'flex h-10 min-w-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-surface/60 px-2.5 text-[11.5px] text-text-soft transition-colors duration-100 hover:border-border-strong hover:bg-[var(--t-bg-hover)] hover:text-text md:h-8',
+        'flex h-10 min-w-0 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-surface/60 px-2.5 text-[11.5px] text-text-soft transition-colors duration-[120ms] hover:border-border-strong hover:bg-[var(--t-bg-hover)] hover:text-text md:h-8',
         className,
       )}
     >
@@ -650,7 +650,7 @@ export function NewSessionView() {
           </p>
         )}
 
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+        <div className="no-scrollbar mt-3 flex items-center gap-1.5 overflow-x-auto pb-0.5 max-md:-mx-4 max-md:px-4 md:flex-wrap md:justify-center">
           <Picker
             panelClass="w-auto"
             trigger={({ open, toggle }) => (

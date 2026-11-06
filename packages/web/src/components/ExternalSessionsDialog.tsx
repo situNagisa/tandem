@@ -515,13 +515,17 @@ export function ExternalSessionsDialog({
               previewContent
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-                <span className="flex size-12 items-center justify-center rounded-2xl bg-[var(--t-bg-hover)] text-muted">
-                  <History size={22} />
+                <span className="flex size-11 items-center justify-center rounded-2xl bg-[var(--t-bg-hover)] text-muted">
+                  <History size={20} />
                 </span>
-                <p className="mt-4 text-[13px] font-medium text-text-soft">选择一个会话查看</p>
-                <p className="mt-1 max-w-[280px] text-[11.5px] leading-5 text-muted">
-                  左侧按项目列出本机已有的会话，点击即可只读预览。「在 Tandem 中继续」会复制一份，
+                <p className="mt-3 text-[13px] font-medium text-text-soft">选择一个会话查看</p>
+                <p className="mt-1 max-w-[300px] text-[11.5px] leading-5 text-muted">
+                  左侧按项目列出本机已有的会话，点击即可只读预览；「在 Tandem 中继续」会复制一份，
                   原软件里的记录保持不变。
+                </p>
+                <p className="mt-3 max-w-[320px] rounded-lg border border-border/70 bg-bg/40 px-3 py-2 text-[10.5px] leading-5 text-muted">
+                  来源：Host 本机的 <span className="font-mono">~/.claude/projects</span> 与{' '}
+                  <span className="font-mono">~/.codex/sessions</span>，仅读取，不会上传或回写。
                 </p>
               </div>
             )}

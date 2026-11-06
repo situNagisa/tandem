@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 
 export function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() =>
@@ -60,3 +60,36 @@ export function useLatestRef<T>(value: T): RefObject<T> {
   ref.current = value
   return ref
 }
+
+/** 监听横向滚动容器，返回左右是否还有被内容遮住的部分。 */
+export function useHorizontalOverflow<T extends HTMLElement>(deps: unknown[] = []) {
+  const ref = useRef<T>(null)
+  const [edges, setEdges] = useState({ left: false, right: false })
+  const update = () => {
+    const el = ref.current
+    if (!el) return
+    const max = el.scrollWidth - el.clientWidth
+    const left = el.scrollLeft > 2
+    const right = max > 2 && el.scrollLeft < max - 2
+    setEdges((prev) => (prev.left === left && prev.right === right ? prev : { left, right }))
+  }
+  useLayoutEffect(() => {
+    update()
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    window.addEventListener('resize', update)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', update)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  useEffect(() => {
+    update()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps)
+  return { ref, canLeft: edges.left, canRight: edges.right, update }
+}
+

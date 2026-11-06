@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Copy } from 'lucide-react'
+import { ArrowLeftRight, Check, Copy } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { languageLabel, loadHighlighter } from '../lib/highlight'
 import { copyText } from '../lib/clipboard'
+import { useHorizontalOverflow } from '../lib/hooks'
 
 const MAX_CHARS = 200_000
 
@@ -65,6 +66,10 @@ export function CodeBlock({
   )
 
   const html = highlighted && highlighted.code === shown ? highlighted.html : null
+  const { ref: preRef, canRight, update: updateOverflow } = useHorizontalOverflow<HTMLPreElement>([
+    shown,
+    html,
+  ])
 
   const copy = async () => {
     if (!(await copyText(code))) return
@@ -99,15 +104,21 @@ export function CodeBlock({
           </button>
         </div>
       )}
-      <pre style={{ maxHeight }}>
-        {empty ? (
-          <span className="italic text-muted">{placeholder ?? '（空）'}</span>
-        ) : html ? (
-          <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
-        ) : (
-          <code>{shown}</code>
-        )}
-      </pre>
+      <div className="x-scroll-wrap">
+        <pre ref={preRef} onScroll={updateOverflow} style={{ maxHeight }}>
+          {empty ? (
+            <span className="italic text-muted">{placeholder ?? '（空）'}</span>
+          ) : html ? (
+            <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
+          ) : (
+            <code>{shown}</code>
+          )}
+        </pre>
+        <div className="x-scroll-fade" data-visible={canRight} aria-hidden />
+        <div className="x-scroll-hint" data-visible={canRight}>
+          <ArrowLeftRight size={10} /> 左右滑动查看
+        </div>
+      </div>
     </div>
   )
 }

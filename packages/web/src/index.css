@@ -33,6 +33,9 @@
   --t-add-fg: #3f6b3f;
   --t-del-bg: rgba(191, 77, 67, 0.12);
   --t-del-fg: #963b33;
+  /* 行内代码：浅色模式用比正文略深的纸色，边框拉开层次 */
+  --t-code-bg: color-mix(in srgb, var(--t-surface-2) 82%, var(--t-text) 4%);
+  --t-code-border: color-mix(in srgb, var(--t-border) 80%, transparent);
 
   --t-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
   --t-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -85,10 +88,12 @@ html.dark {
   --t-success: #7db87d;
   --t-success-soft: rgba(125, 184, 125, 0.14);
 
-  --t-add-bg: rgba(125, 184, 125, 0.14);
-  --t-add-fg: #a9d6a9;
-  --t-del-bg: rgba(224, 122, 112, 0.14);
-  --t-del-fg: #e8a49d;
+  --t-add-bg: rgba(125, 184, 125, 0.22);
+  --t-add-fg: #b7e0b7;
+  --t-del-bg: rgba(224, 122, 112, 0.22);
+  --t-del-fg: #f0b1aa;
+  --t-code-bg: #3a3936;
+  --t-code-border: rgba(255, 255, 255, 0.13);
 
   --t-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --t-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.36), 0 1px 3px rgba(0, 0, 0, 0.3);

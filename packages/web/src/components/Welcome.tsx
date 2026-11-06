@@ -47,34 +47,34 @@ export function SessionWelcome() {
   return (
     <div className="flex min-h-full flex-col items-center justify-center px-2 py-10 text-center md:py-14">
       <h2 className="font-serif text-[26px] leading-tight tracking-[-0.01em] text-text md:text-[30px]">
-        这个会话还没有消息
+        想先做点什么？
       </h2>
       <p className="mt-2 max-w-md text-[12.5px] leading-6 text-muted">
         {hostName}
         {summary ? ` · ${basename(summary.cwd) || summary.cwd}` : ''}
         {profileName ? ` · ${profileName}` : ''}
       </p>
-      <div className="mt-7 grid w-full max-w-[560px] grid-cols-1 gap-2 text-left sm:grid-cols-2">
+      <div className="mt-7 grid w-full max-w-[560px] grid-cols-2 gap-2 text-left">
         {SUGGESTIONS.map((s) => {
           const Icon = s.icon
           return (
             <button
               key={s.title}
               onClick={() => seedPrompt(s.prompt)}
-              className="group flex cursor-pointer items-start gap-2.5 rounded-xl border border-border bg-surface px-3 py-2.5 text-left transition-colors duration-100 hover:border-border-strong hover:bg-[var(--t-bg-hover)]"
+              className="group flex cursor-pointer items-start gap-2 rounded-xl border border-border bg-surface px-2.5 py-2.5 text-left transition-colors duration-[120ms] hover:border-border-strong hover:bg-[var(--t-bg-hover)] sm:gap-2.5 sm:px-3"
             >
               <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
                 <Icon size={13} />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1 text-[12.5px] font-medium text-text">
+                <span className="flex items-center gap-1 text-[12px] font-medium text-text sm:text-[12.5px]">
                   {s.title}
                   <ArrowUpRight
                     size={11}
                     className="text-muted opacity-0 transition-opacity group-hover:opacity-100"
                   />
                 </span>
-                <span className="mt-0.5 block text-[11px] leading-5 text-muted">{s.desc}</span>
+                <span className="mt-0.5 hidden text-[11px] leading-5 text-muted sm:block">{s.desc}</span>
               </span>
             </button>
           )

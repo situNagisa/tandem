@@ -111,7 +111,7 @@ export function SearchDialog() {
             onMouseEnter={() => setIndex(i)}
             onClick={() => openResult(r)}
             className={cn(
-              'flex min-h-11 w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-100',
+              'flex min-h-11 w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-[120ms]',
               i === index ? 'bg-[var(--t-bg-active)]' : 'hover:bg-[var(--t-bg-hover)]',
             )}
           >

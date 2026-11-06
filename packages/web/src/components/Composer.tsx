@@ -1140,14 +1140,14 @@ export function Composer({
                   <img
                     src={`data:${a.mediaType};base64,${a.dataBase64}`}
                     alt={a.name}
-                    className="size-full object-cover"
+                    className="size-full object-contain p-0.5"
                   />
                   <button
                     onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
                     aria-label="移除图片"
-                    className="absolute right-0.5 top-0.5 flex size-5 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--t-text)_62%,transparent)] text-[var(--t-bg)] opacity-70 transition-opacity hover:opacity-100 md:opacity-0 md:group-hover:opacity-90"
+                    className="absolute right-0 top-0 flex size-8 items-center justify-center rounded-bl-lg rounded-tr-lg bg-[color-mix(in_srgb,var(--t-text)_62%,transparent)] text-[var(--t-bg)] opacity-80 transition-opacity hover:opacity-100 md:opacity-0 md:group-hover:opacity-100"
                   >
-                    <X size={11} />
+                    <X size={14} />
                   </button>
                 </div>
               ))}

@@ -249,6 +249,31 @@ export function SessionList({
   const renameRef = useRef<HTMLInputElement>(null)
   const renameDoneRef = useRef(false)
   const renameCancelRef = useRef(false)
+  const navRef = useRef<HTMLElement>(null)
+
+  const onNavKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    const target = e.target as HTMLElement | null
+    if (!target) return
+    if (target.closest('input, textarea, select, [contenteditable="true"]')) return
+    const rows = Array.from(
+      navRef.current?.querySelectorAll<HTMLElement>('[data-session-row]') ?? [],
+    )
+    if (rows.length === 0) return
+    let index = target.closest<HTMLElement>('[data-session-row]')
+      ? rows.indexOf(target.closest<HTMLElement>('[data-session-row]')!)
+      : rows.findIndex((row) => row.getAttribute('aria-current') === 'page')
+    if (index < 0) index = e.key === 'ArrowDown' ? -1 : rows.length
+    const next = rows[
+      e.key === 'ArrowDown'
+        ? Math.min(rows.length - 1, index + 1)
+        : Math.max(0, index - 1)
+    ]
+    if (!next || next === rows[index]) return
+    e.preventDefault()
+    next.focus()
+    next.click()
+  }
 
   const { pinned, hosts: groups } = useMemo(
     () => buildGroups(hosts, runtimes, query, showArchived),
@@ -328,6 +353,9 @@ export function SessionList({
         key={`${hostId}:${s.id}`}
         role="button"
         tabIndex={0}
+        data-session-row="true"
+        data-session-id={s.id}
+        data-host-id={hostId}
         onClick={() => {
           if (!renamingThis) openSession(hostId, s.id)
         }}
@@ -340,8 +368,9 @@ export function SessionList({
         }}
         onContextMenu={(e) => openMenu(e, hostId, s)}
         aria-current={isActive ? 'page' : undefined}
+        title={s.title || '未命名会话'}
         className={cn(
-          'anim-row-in group relative flex min-h-11 cursor-default items-center gap-2 rounded-lg pl-2 pr-1 text-[13px] outline-none transition-colors duration-100 md:min-h-8',
+          'anim-row-in group relative flex min-h-11 cursor-default items-center gap-2 rounded-lg pl-2 pr-8 text-[13px] outline-none transition-colors duration-[120ms] md:min-h-8',
           isActive
             ? 'bg-[var(--t-bg-active)] text-text'
             : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
@@ -384,21 +413,23 @@ export function SessionList({
         )}
         {!renamingThis && (
           <>
-            {importedFrom && (
-              <span
-                title={`从 ${importedFrom.label} 导入`}
-                className="shrink-0 text-[9.5px] leading-none text-muted"
-              >
-                {importedFrom.mark}
-              </span>
-            )}
-            <span
-              className={cn(
-                'hidden shrink-0 text-[10.5px] tabular-nums text-muted transition-opacity group-hover:opacity-0 md:inline',
-                isActive && 'text-text-soft',
+            <span className="session-row-tail flex min-w-0 items-center justify-end gap-1">
+              {importedFrom && (
+                <span
+                  title={`从 ${importedFrom.label} 导入`}
+                  className="shrink-0 text-[9.5px] leading-none text-muted"
+                >
+                  {importedFrom.mark}
+                </span>
               )}
-            >
-              {formatRelative(s.updatedAt)}
+              <span
+                className={cn(
+                  'hidden shrink-0 text-[10.5px] tabular-nums text-muted transition-opacity group-hover:opacity-0 md:inline',
+                  isActive && 'text-text-soft',
+                )}
+              >
+                {formatRelative(s.updatedAt)}
+              </span>
             </span>
             <button
               onClick={(e) => {
@@ -434,7 +465,12 @@ export function SessionList({
   }
 
   return (
-    <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-3" aria-label="会话列表">
+    <nav
+      ref={navRef}
+      onKeyDown={onNavKeyDown}
+      className="min-h-0 flex-1 overflow-y-auto px-2 pb-3"
+      aria-label="会话列表"
+    >
       <div className="flex items-center gap-1 px-2 pb-1 pt-3">
         <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted">
           {showArchived ? '已归档' : query ? '搜索结果' : '会话'}
@@ -494,7 +530,7 @@ export function SessionList({
           <div key={host.id} className="mt-1.5">
             <button
               onClick={() => toggleProject(hostKey)}
-              className="flex min-h-8 w-full items-center gap-1.5 rounded-md px-2 text-left text-[11px] font-medium text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+              className="flex min-h-8 w-full items-center gap-1.5 rounded-md px-2 text-left text-[12px] font-semibold text-text-soft transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text"
               aria-expanded={!hostCollapsed}
             >
               <ChevronRight
@@ -519,7 +555,7 @@ export function SessionList({
                     <div key={project.key}>
                       <button
                         onClick={() => toggleProject(project.key)}
-                        className="flex min-h-7 w-full items-center gap-1.5 rounded-md px-2 pl-5 text-left text-[11.5px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
+                        className="flex min-h-7 w-full items-center gap-1.5 rounded-md px-2 pl-5 text-left text-[11px] text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
                         aria-expanded={!projCollapsed}
                         title={project.name}
                       >

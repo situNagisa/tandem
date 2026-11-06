@@ -30,7 +30,7 @@ export function SettingsDialog() {
       className="max-w-3xl"
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
     >
-      <div className="flex h-[min(76dvh,640px)] min-h-[420px] max-h-full flex-col sm:flex-row">
+      <div className="flex min-h-[360px] max-h-[min(76dvh,640px)] flex-col sm:flex-row">
         <nav className="grid shrink-0 grid-cols-2 gap-1 border-b border-border bg-bg/40 p-2 sm:flex sm:w-44 sm:flex-col sm:border-b-0 sm:border-r sm:p-3">
           {TABS.map((t) => {
             const Icon = t.icon
@@ -39,7 +39,7 @@ export function SettingsDialog() {
                 key={t.id}
                 onClick={() => setTab(t.id)}
                 className={cn(
-                  'flex min-h-11 min-w-0 items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] transition-colors duration-100 sm:min-h-9',
+                  'flex min-h-11 min-w-0 items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] transition-colors duration-[120ms] sm:min-h-9',
                   tab === t.id
                     ? 'bg-surface text-text shadow-[var(--t-shadow-sm)] ring-1 ring-border'
                     : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',

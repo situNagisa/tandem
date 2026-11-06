@@ -87,7 +87,7 @@ export function Sidebar({
       <div className="px-2.5 pb-1.5 pt-2">
         <button
           onClick={startNewSession}
-          className="group flex min-h-11 w-full items-center gap-2 rounded-lg border border-border bg-surface/70 px-2.5 text-[13px] font-medium text-text-soft transition-colors duration-100 hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-9"
+          className="group flex min-h-11 w-full items-center gap-2 rounded-lg border border-border bg-surface/70 px-2.5 text-[13px] font-medium text-text-soft transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-9"
         >
           <Plus size={15} className="text-accent" />
           新会话

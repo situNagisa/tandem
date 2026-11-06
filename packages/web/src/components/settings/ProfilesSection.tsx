@@ -841,7 +841,7 @@ export function ProfilesSection() {
                   <button
                     key={p.id}
                     onClick={() => choosePreset(p)}
-                    className="group flex items-center gap-2.5 rounded-xl border border-border bg-bg/40 p-2.5 text-left transition-colors duration-100 hover:border-border-strong hover:bg-[var(--t-bg-hover)]"
+                    className="group flex items-center gap-2.5 rounded-xl border border-border bg-bg/40 p-2.5 text-left transition-colors duration-[120ms] hover:border-border-strong hover:bg-[var(--t-bg-hover)]"
                   >
                     <ProviderLogo preset={p} size={32} />
                     <span className="min-w-0 flex-1">
@@ -854,7 +854,7 @@ export function ProfilesSection() {
                 ))}
                 <button
                   onClick={() => choosePreset(null)}
-                  className="flex items-center gap-2.5 rounded-xl border border-dashed border-border bg-transparent p-2.5 text-left transition-colors duration-100 hover:border-border-strong hover:bg-[var(--t-bg-hover)]"
+                  className="flex items-center gap-2.5 rounded-xl border border-dashed border-border bg-transparent p-2.5 text-left transition-colors duration-[120ms] hover:border-border-strong hover:bg-[var(--t-bg-hover)]"
                 >
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted">
                     <Plus size={14} />
@@ -1400,8 +1400,9 @@ export function ProfilesSection() {
                       </div>
                       {p.groups?.length ? (
                         <div className="mt-1 flex min-w-0 items-center gap-1 text-[10px] text-muted">
-                          <Layers size={10} className="shrink-0" />
-                          <span className="shrink-0">{p.groups.length} 个分组：</span>
+                          <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1 text-[9.5px] leading-4">
+                            {p.groups.length} 个分组
+                          </span>
                           <span className="min-w-0 truncate">
                             {p.groups.map((g) => g.name).join(' / ')}
                           </span>

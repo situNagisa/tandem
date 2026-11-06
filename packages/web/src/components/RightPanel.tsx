@@ -68,7 +68,6 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
   const summary = useAppStore((s) => s.active?.summary ?? null)
   const todos = useAppStore((s) => s.active?.todos ?? EMPTY_TODOS)
-  const running = useAppStore((s) => s.active?.running ?? false)
   const host = useAppStore((s) => s.hosts.find((h) => h.id === s.active?.hostId) ?? null)
   const hostStatus = useAppStore((s) =>
     hostId ? (s.runtimes[hostId]?.status ?? 'offline') : 'offline',
@@ -216,13 +215,6 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
             <DetailRow label="账号">{profileName ?? summary?.profileId ?? '—'}</DetailRow>
             <DetailRow label="权限">
               {summary ? PERMISSION_MODE_LABELS[summary.permissionMode] : '—'}
-            </DetailRow>
-            <DetailRow label="状态">
-              <span className="flex items-center gap-1.5">
-                {summary ? <SessionStatusDot status={summary.status} /> : null}
-                {summary ? (STATUS_TEXT[summary.status] ?? summary.status) : '—'}
-                {running && summary?.status === 'idle' ? '（执行中）' : ''}
-              </span>
             </DetailRow>
             <DetailRow label="工作目录">
               <span className="group/cwd flex items-start gap-1">

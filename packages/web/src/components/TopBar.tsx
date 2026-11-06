@@ -142,7 +142,7 @@ export function TopBar() {
         }}
         aria-label={isMobile ? '打开侧栏' : '切换侧栏'}
         title={isMobile ? '打开侧栏' : '切换侧栏 (Ctrl+B)'}
-        className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors duration-100 hover:bg-[var(--t-bg-hover)] hover:text-text md:size-9"
+        className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text md:size-9"
       >
         {isMobile ? <Menu size={18} /> : <PanelLeft size={17} />}
       </button>
@@ -250,7 +250,8 @@ export function TopBar() {
           aria-label="新会话"
           title="新会话"
           className={cn(
-            'flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:size-9',
+            'size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:size-9',
+            hasSession && isMobile ? 'hidden' : 'flex',
             sidebarCollapsed ? 'md:flex' : 'md:hidden',
           )}
         >
@@ -266,10 +267,11 @@ export function TopBar() {
           }}
           aria-label="切换信息面板"
           title="会话信息"
+          aria-pressed={!isMobile && panelOpen}
           className={cn(
             'flex size-11 shrink-0 items-center justify-center rounded-lg transition-colors md:size-9',
             !isMobile && panelOpen
-              ? 'bg-[var(--t-bg-active)] text-text'
+              ? 'text-accent hover:bg-[var(--t-bg-hover)]'
               : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text',
           )}
         >

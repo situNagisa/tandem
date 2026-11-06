@@ -41,7 +41,7 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
         aria-expanded={open}
         aria-haspopup="menu"
         className={cn(
-          'flex min-h-11 w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left transition-colors duration-100 hover:bg-[var(--t-bg-hover)] md:min-h-0',
+          'flex min-h-11 w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] md:min-h-0',
           open && 'bg-[var(--t-bg-active)]',
         )}
       >
