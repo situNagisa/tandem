@@ -26,13 +26,20 @@ export interface MenuListProps {
 }
 
 function menuItemsOf(root: HTMLElement | null): HTMLElement[] {
-  return Array.from(root?.querySelectorAll<HTMLElement>('[data-menu-item]:not(:disabled)') ?? [])
+  return Array.from(
+    root?.querySelectorAll<HTMLElement>(
+      '[data-menu-item]:not(:disabled):not([aria-disabled="true"])',
+    ) ?? [],
+  )
 }
 
 function itemFromEvent(target: EventTarget | null): HTMLElement | null {
   if (!(target instanceof HTMLElement)) return null
   const item = target.closest<HTMLElement>('[data-menu-item]')
-  return item && !item.hasAttribute('disabled') ? item : null
+  if (!item) return null
+  // 禁用的选项也允许悬停：用 tooltip 说明不可选的原因。
+  if (item.getAttribute('aria-disabled') === 'true' && !item.dataset.tip) return null
+  return item
 }
 
 /**
@@ -213,6 +220,8 @@ export interface MenuItemProps {
   icon?: ReactNode
   /** 悬停/键盘高亮时显示在列表旁的说明。 */
   hint?: string
+  /** 禁用原因：选项不可选时悬停显示，替代 hint。 */
+  disabledReason?: string
   selected?: boolean
   trailing?: ReactNode
   danger?: boolean
@@ -229,6 +238,7 @@ export function MenuItem({
   children,
   icon,
   hint,
+  disabledReason,
   selected = false,
   trailing,
   danger = false,
@@ -245,15 +255,21 @@ export function MenuItem({
       type="button"
       role={role}
       aria-checked={ariaChecked}
-      disabled={disabled}
+      disabled={disabled && !disabledReason}
+      aria-disabled={disabled || undefined}
+      tabIndex={disabled ? -1 : undefined}
       title={title}
       data-menu-item=""
-      data-tip={hint}
+      data-tip={disabled ? (disabledReason ?? hint) : hint}
       data-selected={selected || undefined}
-      onClick={onSelect}
-      onMouseDown={onMouseDown}
+      onClick={() => {
+        if (!disabled) onSelect?.()
+      }}
+      onMouseDown={(e) => {
+        if (!disabled) onMouseDown?.(e)
+      }}
       className={cn(
-        'flex h-[30px] w-full shrink-0 items-center gap-2 rounded-md px-2 text-left text-[13px] leading-none text-text-soft transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text data-[active=true]:bg-[var(--t-bg-hover)] data-[active=true]:text-text focus-visible:bg-[var(--t-bg-hover)] focus-visible:text-text focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-soft',
+        'flex h-[30px] w-full shrink-0 items-center gap-2 rounded-md px-2 text-left text-[13px] leading-none text-text-soft transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text data-[active=true]:bg-[var(--t-bg-hover)] data-[active=true]:text-text focus-visible:bg-[var(--t-bg-hover)] focus-visible:text-text focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-soft aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:text-text-soft',
         selected && 'text-text',
         danger && 'text-danger hover:text-danger focus-visible:text-danger',
         className,

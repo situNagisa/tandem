@@ -241,7 +241,7 @@ export const UserMessage = memo(function UserMessage({
                     <MenuItem
                       icon={<Undo2 />}
                       disabled={running}
-                      hint={running ? '会话运行中，结束后才能回退' : undefined}
+                      disabledReason={running ? '会话运行中，结束后才能回退' : undefined}
                       onSelect={() => {
                         close()
                         setRewindOpen(true)
@@ -485,7 +485,7 @@ export const AssistantMessage = memo(function AssistantMessage({
                     <MenuItem
                       icon={<Undo2 />}
                       disabled={running}
-                      hint={running ? '会话运行中，结束后才能回退' : undefined}
+                      disabledReason={running ? '会话运行中，结束后才能回退' : undefined}
                       onSelect={() => {
                         close()
                         setRewindOpen(true)
@@ -498,7 +498,7 @@ export const AssistantMessage = memo(function AssistantMessage({
                     <MenuItem
                       icon={<RefreshCw />}
                       disabled={running || regenerating}
-                      hint={running ? '会话运行中，结束后才能重新生成' : undefined}
+                      disabledReason={running ? '会话运行中，结束后才能重新生成' : undefined}
                       onSelect={() => {
                         close()
                         void regenerate()

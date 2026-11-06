@@ -739,13 +739,24 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
               {GROUPS.map((g) => {
                 const shown = !prefs.hidden.includes(g.id)
                 const avail = available[g.id]
+                const reason = avail
+                  ? undefined
+                  : g.id === 'plan'
+                    ? '当前会话没有计划'
+                    : g.id === 'agents'
+                      ? '当前会话没有子代理'
+                      : g.id === 'changes'
+                        ? changes && !changes.isRepo
+                          ? '非 git 仓库，无改动摘要'
+                          : '当前没有改动'
+                        : '暂无数据'
                 return (
                   <MenuItem
                     key={g.id}
                     icon={<g.Icon />}
                     selected={shown}
                     disabled={!avail}
-                    hint={avail ? undefined : '暂无数据'}
+                    disabledReason={reason}
                     role="menuitemcheckbox"
                     ariaChecked={shown}
                     onSelect={() => toggleGroup(g.id)}
