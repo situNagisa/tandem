@@ -24,12 +24,13 @@ export interface Profile {
 export interface ProfileGroup {
   id: string;
   name: string;
+  kind?: ProviderKind;     // 该分组使用的协议；缺省继承账号 kind。同一中转 URL 下不同分组可走不同协议
   apiKeyMasked: string;
   baseUrl?: string;        // 缺省用账号 baseUrl
   models: string[];
   defaultModel: string;
 }
-export interface ProfileGroupInput { id?: string; name: string; apiKey?: string; baseUrl?: string; models: string[]; defaultModel: string }
+export interface ProfileGroupInput { id?: string; name: string; kind?: ProviderKind; apiKey?: string; baseUrl?: string; models: string[]; defaultModel: string }
 export interface ProfileInput {
   name: string;
   kind: ProviderKind;
