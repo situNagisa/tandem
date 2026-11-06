@@ -1,6 +1,5 @@
-import { Check, RefreshCw, Server, Settings2 } from 'lucide-react'
+import { Check, RefreshCw, Server } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
-import { useUiStore } from '../store/useUiStore'
 import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
 import { Popover } from './ui/Popover'
@@ -12,7 +11,6 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
   const runtimes = useAppStore((s) => s.runtimes)
   const activateHost = useAppStore((s) => s.activateHost)
   const retryHost = useAppStore((s) => s.retryHost)
-  const openSettings = useUiStore((s) => s.openSettings)
   const active = hosts.find((h) => h.id === activeHostId) ?? null
   const runtime = active ? runtimes[active.id] : undefined
   const platform = runtime?.info?.platform
@@ -82,7 +80,7 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
                         {h.url.replace(/^https?:\/\//, '')}
                       </span>
                     </span>
-                    {isActive && <Check size={13} className="shrink-0 text-accent" />}
+                    {isActive && <Check size={13} className="shrink-0 text-text" />}
                   </button>
                   {rt?.status === 'offline' && (
                     <button
@@ -97,18 +95,6 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
                 </div>
               )
             })}
-          </div>
-          <div className="mt-1 border-t border-border pt-1">
-            <button
-              role="menuitem"
-              onClick={() => {
-                close()
-                openSettings('hosts')
-              }}
-              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-            >
-              <Settings2 size={13} /> 管理 Host…
-            </button>
           </div>
         </div>
       )}

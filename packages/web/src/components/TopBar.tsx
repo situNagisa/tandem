@@ -283,7 +283,7 @@ export function TopBar() {
               : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
           )}
         >
-          <FileDiff size={13.5} className={cn('shrink-0', changesOpen ? 'text-accent' : 'text-muted')} />
+          <FileDiff size={13.5} className={cn('shrink-0', changesOpen ? 'text-text-soft' : 'text-muted')} />
           <span className="hidden font-sans text-[11px] sm:inline">改动</span>
           {fileCount > 0 && !changesOpen && (
             <>

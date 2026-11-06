@@ -306,7 +306,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
       )}
 
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 px-3">
-        <FileDiff size={15} className="shrink-0 text-accent" />
+        <FileDiff size={15} className="shrink-0 text-text-soft" />
         <h2 className="text-[12.5px] font-semibold">改动审阅</h2>
         {changes?.branch && (
           <span className="min-w-0 truncate font-mono text-[10.5px] text-muted">

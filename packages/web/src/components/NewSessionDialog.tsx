@@ -14,7 +14,6 @@ import {
   Plus,
   RefreshCw,
   Server,
-  Sparkles,
   TriangleAlert,
 } from 'lucide-react'
 import type { ContentBlock, FsEntry, PermissionMode } from '@tandem/protocol'
@@ -23,7 +22,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { basename, dirname } from '../lib/format'
 import { loadRecentDirs, rememberDir } from '../lib/storage'
-import { defaultChoiceFor, groupName } from '../lib/profileModels'
+import { defaultChoiceFor } from '../lib/profileModels'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
 import { Popover } from './ui/Popover'
@@ -128,7 +127,7 @@ function HostMenu({
                 {h.url.replace(/^https?:\/\//, '')}
               </span>
             </span>
-            {h.id === hostId && <Check size={13} className="shrink-0 text-accent" />}
+            {h.id === hostId && <Check size={13} className="shrink-0 text-text" />}
           </button>
         )
       })}
@@ -299,180 +298,6 @@ function FolderMenu({
   )
 }
 
-function AccountMenu({
-  hostId,
-  profileId,
-  groupId,
-  model,
-  onSelect,
-  close,
-}: {
-  hostId: string
-  profileId: string
-  groupId?: string
-  model: string
-  onSelect: (profileId: string, groupId: string | undefined, model: string) => void
-  close: () => void
-}) {
-  const openSettings = useUiStore((s) => s.openSettings)
-  const runtime = useAppStore((s) => s.runtimes[hostId])
-  const profiles = runtime?.profiles ?? []
-  const [query, setQuery] = useState('')
-  const selected = profiles.find((p) => p.id === profileId) ?? profiles[0] ?? null
-  const [activeId, setActiveId] = useState(selected?.id ?? '')
-  const active = profiles.find((p) => p.id === activeId) ?? selected
-  const [activeGroupId, setActiveGroupId] = useState(
-    groupId ?? selected?.groups?.[0]?.id ?? '',
-  )
-  useEffect(() => {
-    if (!active) return
-    const keep =
-      groupId && active.groups?.some((g) => g.id === groupId) ? groupId : undefined
-    setActiveGroupId(keep ?? active.groups?.[0]?.id ?? '')
-  }, [active?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-  const activeGroup =
-    active?.groups?.find((g) => g.id === activeGroupId) ?? active?.groups?.[0] ?? null
-  const models = useMemo(() => {
-    const list = activeGroup
-      ? activeGroup.models.length
-        ? activeGroup.models
-        : [activeGroup.defaultModel].filter(Boolean)
-      : active?.models?.length
-        ? active.models
-        : active?.defaultModel
-          ? [active.defaultModel]
-          : []
-    const q = query.trim().toLowerCase()
-    return q ? list.filter((m) => m.toLowerCase().includes(q)) : list
-  }, [active, activeGroup, query])
-
-  if (profiles.length === 0) {
-    return (
-      <div className="w-[280px] px-3 py-3 text-center">
-        <p className="text-[12.5px] text-text-soft">还没有配置账号</p>
-        <p className="mt-1 text-[11px] leading-5 text-muted">在设置中添加一个服务商账号后即可选择模型。</p>
-        <button
-          onClick={() => {
-            close()
-            openSettings('profiles')
-          }}
-          className="mt-2 text-[11px] text-muted underline-offset-2 transition-colors hover:text-text hover:underline"
-        >
-          管理账号…
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <div className="w-[min(360px,calc(100vw-2rem))]">
-      <div className="flex items-center gap-2 px-2 pb-1 pt-1">
-        <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted">账号</span>
-        <button
-          onClick={() => {
-            close()
-            openSettings('profiles')
-          }}
-          className="ml-auto text-[10.5px] text-muted transition-colors hover:text-text"
-        >
-          管理账号…
-        </button>
-      </div>
-      <div className="flex gap-1 overflow-x-auto pb-1.5">
-        {profiles.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => {
-              setActiveId(p.id)
-              const choice = defaultChoiceFor(p)
-              setActiveGroupId(choice?.groupId ?? '')
-              if (
-                p.id !== profileId ||
-                (choice?.groupId ?? undefined) !== (groupId ?? undefined)
-              ) {
-                onSelect(p.id, choice?.groupId, choice?.model ?? '')
-              }
-            }}
-            className={cn(
-              'flex shrink-0 flex-col items-start rounded-lg border px-2 py-1.5 text-left transition-colors',
-              p.id === active?.id
-                ? 'border-accent/40 bg-accent-soft text-text'
-                : 'border-transparent text-text-soft hover:bg-[var(--t-bg-hover)]',
-            )}
-          >
-            <span className="max-w-[120px] truncate text-[11.5px] font-medium">{p.name}</span>
-            <span className="max-w-[120px] truncate text-[9.5px] text-muted">
-              {p.groups?.length ? `${p.groups.length} 个分组` : p.defaultModel}
-            </span>
-          </button>
-        ))}
-      </div>
-      {active?.groups?.length ? (
-        <div className="flex items-center gap-1.5 overflow-x-auto px-2 pb-1.5">
-          <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.08em] text-muted">
-            分组
-          </span>
-          {active.groups.map((g) => (
-            <button
-              key={g.id}
-              onClick={() => {
-                setActiveGroupId(g.id)
-                onSelect(active.id, g.id, g.defaultModel || g.models[0] || '')
-              }}
-              className={cn(
-                'max-w-[120px] shrink-0 truncate rounded-md px-1.5 py-0.5 text-[10.5px] transition-colors',
-                g.id === activeGroup?.id
-                  ? 'bg-[var(--t-bg-active)] text-text'
-                  : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text',
-              )}
-            >
-              {g.name}
-            </button>
-          ))}
-        </div>
-      ) : null}
-      <div className="border-t border-border pt-1.5">
-        <div className="flex items-center gap-1.5 px-2 pb-1">
-          <span className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.08em] text-muted">
-            模型{activeGroup ? ` · ${activeGroup.name}` : ''}
-          </span>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索模型"
-            className="ml-auto h-6 w-[120px] rounded-md border border-border bg-bg px-1.5 text-[10.5px] outline-none focus:border-border-strong"
-          />
-        </div>
-        <div className="max-h-[174px] overflow-y-auto">
-          {models.map((m) => {
-            const isCurrent =
-              active?.id === profileId &&
-              (activeGroup?.id ?? undefined) === (groupId ?? undefined) &&
-              m === model
-            return (
-              <button
-                key={`${activeGroup?.id ?? 'default'}:${m}`}
-                onClick={() => {
-                  if (!active) return
-                  onSelect(active.id, activeGroup?.id, m)
-                  close()
-                }}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--t-bg-hover)]"
-              >
-                <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-text-soft">{m}</span>
-                {isCurrent && <Check size={12} className="shrink-0 text-accent" />}
-              </button>
-            )
-          })}
-          {models.length === 0 && (
-            <p className="px-2 py-3 text-[11px] text-muted">该账号还没有模型，请到设置中刷新模型列表。</p>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export function NewSessionView() {
   const hosts = useAppStore((s) => s.hosts)
   const activeHostId = useAppStore((s) => s.activeHostId)
@@ -560,8 +385,6 @@ export function NewSessionView() {
     }
   }, [profiles, profileId, groupId])
 
-  const selectedProfile = profiles.find((p) => p.id === profileId) ?? null
-  const selectedGroupName = groupName(selectedProfile ?? undefined, groupId)
   const gitRepo = useGitRepo(host, cwd)
 
   useEffect(() => {
@@ -702,9 +525,9 @@ export function NewSessionView() {
                   ? '当前目录不在 git 仓库中，无法创建 worktree'
                   : '在隔离的 git worktree 中运行，改动不影响当前分支'
             }
-            className={worktree ? 'border-accent/40 bg-accent-soft/60 text-text' : undefined}
+            className={worktree ? 'bg-[var(--t-bg-active)] text-text' : undefined}
           >
-            <GitFork size={12} className={worktree ? 'text-accent' : 'text-muted'} />
+            <GitFork size={12} className="text-muted" />
             {gitRepo === 'no' ? '隔离分支（需 Git 仓库）' : '隔离分支（worktree）'}
           </Pill>
 
@@ -721,38 +544,6 @@ export function NewSessionView() {
             </label>
           )}
 
-          <Picker
-            panelClass="w-auto"
-            trigger={({ open, toggle }) => (
-              <Pill onClick={toggle} title="选择账号与模型" className={open ? 'bg-[var(--t-bg-active)]' : undefined}>
-                <Sparkles size={12} className="text-muted" />
-                <span className="max-w-[110px] truncate">
-                  {selectedProfile
-                    ? `${selectedProfile.name}${selectedGroupName ? ` › ${selectedGroupName}` : ''}`
-                    : '账号'}
-                </span>
-                {model && (
-                  <span className="hidden max-w-[130px] truncate font-mono text-[10.5px] text-muted sm:inline">
-                    {model}
-                  </span>
-                )}
-                <ChevronDown size={11} className="text-muted" />
-              </Pill>
-            )}
-          >
-            {(close) =>
-              host ? (
-                <AccountMenu
-                  hostId={host.id}
-                  profileId={profileId}
-                  groupId={groupId}
-                  model={model}
-                  onSelect={chooseAccount}
-                  close={close}
-                />
-              ) : null
-            }
-          </Picker>
         </div>
 
         {error && (
