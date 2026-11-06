@@ -115,7 +115,38 @@ export async function runTurn(host: Host, rec: SessionRecord): Promise<void> {
       }
       host.broadcastSummary(rec);
 
-      if (!result) break;
+      if (!result) {
+        // 请求失败或中断时若已解析出 tool_use，必须补上对应 tool_result，
+        // 否则下一轮会把悬空 tool_calls 发给模型，OpenAI 兼容接口会直接 400。
+        const orphanToolUses = assistant.content.filter((b) => b.type === 'tool_use');
+        if (orphanToolUses.length > 0) {
+          const orphanMessage: Message = {
+            id: randomUUID(),
+            role: 'user',
+            content: orphanToolUses.map<ContentBlock>((t) => ({
+              type: 'tool_result',
+              toolUseId: t.id,
+              content: reason === 'interrupted' ? '用户中断' : '模型请求失败，工具未执行',
+              isError: true,
+            })),
+            createdAt: Date.now(),
+          };
+          rec.messages.push(orphanMessage);
+          host.hub.broadcastSession(rec.id, {
+            type: 'message_start',
+            sessionId: rec.id,
+            message: orphanMessage,
+          });
+          host.hub.broadcastSession(rec.id, {
+            type: 'message_end',
+            sessionId: rec.id,
+            message: orphanMessage,
+          });
+          host.store.markDirty(rec.id, true);
+          host.broadcastSummary(rec);
+        }
+        break;
+      }
 
       if (rt.interrupted || abort.signal.aborted) reason = 'interrupted';
 
@@ -198,13 +229,23 @@ async function executeToolUses(
   signal: AbortSignal,
 ): Promise<ContentBlock[]> {
   const perTool: ContentBlock[][] = new Array(toolUses.length);
-  const parallel: number[] = [];
-  const serial: number[] = [];
 
+  // 按调用顺序分批：相邻只读工具并行，写类工具等待前面的调用完成。
+  // 不能把所有只读工具提到最前，否则同批的 Write 后 Read 会读到旧内容。
+  const batches: number[][] = [];
+  let reads: number[] = [];
   toolUses.forEach((tool, index) => {
-    if (PARALLEL_TOOLS.has(tool.name)) parallel.push(index);
-    else serial.push(index);
+    if (PARALLEL_TOOLS.has(tool.name)) {
+      reads.push(index);
+      return;
+    }
+    if (reads.length > 0) {
+      batches.push(reads);
+      reads = [];
+    }
+    batches.push([index]);
   });
+  if (reads.length > 0) batches.push(reads);
 
   const runOne = async (index: number): Promise<ContentBlock[]> => {
     const tool = toolUses[index];
@@ -252,13 +293,16 @@ async function executeToolUses(
     return blocks;
   };
 
-  await Promise.all(
-    parallel.map(async (index) => {
-      perTool[index] = await runOne(index);
-    }),
-  );
-  for (const index of serial) {
-    perTool[index] = await runOne(index);
+  for (const batch of batches) {
+    if (batch.length === 1) {
+      perTool[batch[0]!] = await runOne(batch[0]!);
+    } else {
+      await Promise.all(
+        batch.map(async (index) => {
+          perTool[index] = await runOne(index);
+        }),
+      );
+    }
   }
 
   return perTool.flat();
