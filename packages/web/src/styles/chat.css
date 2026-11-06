@@ -529,7 +529,8 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   min-height: 27px;
   padding: 1px 6px;
   border-radius: 6px;

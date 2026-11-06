@@ -69,7 +69,7 @@ function ContextNote({ kind, text }: { kind: string; text: string }) {
           setMounted(true)
           setOpen((v) => !v)
         }}
-        className="flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11.5px] leading-none text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
+        className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11.5px] leading-none text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
       >
         <ScrollText size={12} className="shrink-0 opacity-70" />
         <span className="min-w-0 truncate">注入上下文 · {kind}</span>

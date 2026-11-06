@@ -108,7 +108,7 @@ export function ThinkingBlock({ text, streaming }: { text: string; streaming: bo
           </span>
           <ChevronRight
             size={12}
-            className={cn('tool-chevron ml-auto shrink-0', open && 'opacity-70')}
+            className={cn('tool-chevron shrink-0', open && 'opacity-70')}
           />
         </button>
       )}

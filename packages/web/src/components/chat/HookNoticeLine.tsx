@@ -54,7 +54,7 @@ export function HookNoticeLine({ notices }: { notices: HookNotice[] }) {
               type="button"
               onClick={() => setOpen((v) => !v)}
               aria-expanded={open}
-              className="flex max-w-full items-center gap-1.5 rounded px-0.5 py-0.5 text-left text-[11.5px] leading-4 text-muted transition-colors hover:text-text-soft"
+              className="inline-flex max-w-full items-center gap-1.5 rounded px-0.5 py-0.5 text-left text-[11.5px] leading-4 text-muted transition-colors hover:text-text-soft"
             >
               <span className="shrink-0">
                 {label}
