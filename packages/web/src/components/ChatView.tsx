@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ChevronDown, RefreshCw, ShieldAlert, TriangleAlert, WifiOff } from 'lucide-react'
+import { ChevronDown, ShieldAlert, TriangleAlert } from 'lucide-react'
 import type { PermissionRequest } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -27,16 +27,9 @@ export function ChatView() {
     (s) => s.active?.messages[s.active.messages.length - 1]?.local ?? false,
   )
   const running = useAppStore((s) => s.active?.running ?? false)
-  const hostStatus = useAppStore((s) =>
-    hostId ? (s.runtimes[hostId]?.status ?? 'offline') : 'offline',
-  )
   const authError = useAppStore((s) =>
     hostId ? s.runtimes[hostId]?.authError : undefined,
   )
-  const hostName = useAppStore(
-    (s) => s.hosts.find((h) => h.id === s.active?.hostId)?.name ?? 'Host',
-  )
-  const retryHost = useAppStore((s) => s.retryHost)
   const reloadActiveSession = useAppStore((s) => s.reloadActiveSession)
   const openSettings = useUiStore((s) => s.openSettings)
 
@@ -173,19 +166,6 @@ export function ChatView() {
           </button>
         </div>
       )}
-      {!authError && hostStatus === 'offline' && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-warning/25 bg-warning-soft/50 px-4 py-1.5 text-[11.5px] text-warning">
-          <WifiOff size={13} className="shrink-0" />
-          <span className="min-w-0 flex-1">与 {hostName} 的连接已断开，正在自动重连…</span>
-          <button
-            onClick={() => hostId && retryHost(hostId)}
-            className="flex shrink-0 items-center gap-1 rounded-md border border-warning/30 px-2 py-0.5 text-[11px] transition-colors hover:bg-warning/10"
-          >
-            <RefreshCw size={11} /> 立即重试
-          </button>
-        </div>
-      )}
-
       <div className="relative flex min-h-0 flex-1">
         <div
           ref={scrollRef}

@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  FileDiff,
   GitBranch,
   Menu,
   PanelLeft,
   PanelRight,
   Pencil,
   Plus,
-  RefreshCw,
   Settings,
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useIsMobile } from '../lib/hooks'
+import { useSessionChanges } from '../lib/useChanges'
 import { basename } from '../lib/format'
 import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
@@ -29,14 +30,7 @@ function StatePill({
   connecting: boolean
 }) {
   const pill = 'flex shrink-0 items-center gap-1.5 text-[10.5px] text-text-secondary'
-  if (offline) {
-    return (
-      <span className={pill}>
-        <span className="size-1.5 rounded-full bg-muted/50" />
-        离线
-      </span>
-    )
-  }
+  if (offline) return null
   if (connecting) {
     return (
       <span className={pill}>
@@ -83,9 +77,17 @@ export function TopBar() {
   const status = summary?.status
   const running = useAppStore((s) => s.active?.running ?? false)
   const updateSession = useAppStore((s) => s.updateSession)
+  const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
+  const changesNonce = useAppStore((s) => s.changesNonce)
+  const { changes } = useSessionChanges(host, sessionId, changesNonce, !!sessionId)
+  const fileCount = changes?.files.length ?? 0
+  const additions = changes?.files.reduce((n, f) => n + f.additions, 0) ?? 0
+  const deletions = changes?.files.reduce((n, f) => n + f.deletions, 0) ?? 0
 
   const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed)
   const panelOpen = useUiStore((s) => s.panelOpen)
+  const changesOpen = useUiStore((s) => s.changesOpen)
+  const setChangesOpen = useUiStore((s) => s.setChangesOpen)
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed)
   const setMobileSidebar = useUiStore((s) => s.setMobileSidebar)
   const togglePanel = useUiStore((s) => s.togglePanel)
@@ -134,7 +136,7 @@ export function TopBar() {
   const branch = summary?.env?.branch
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-1.5 bg-bg px-2 md:px-3">
+    <header className="relative z-20 flex h-12 shrink-0 items-center gap-1.5 bg-bg px-2 md:px-3">
       <button
         onClick={() => {
           if (isMobile) setMobileSidebar(true)
@@ -232,12 +234,27 @@ export function TopBar() {
         )}
       </div>
 
-      {offline && (
+      {hasSession && changes && (
         <button
-          onClick={() => activeHostId && retryHost(activeHostId)}
-          className="hidden h-7 shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2 text-[11px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] sm:flex"
+          onClick={() => setChangesOpen(!changesOpen)}
+          aria-label="改动审阅"
+          title="改动审阅"
+          aria-pressed={changesOpen}
+          className={cn(
+            'flex h-8 shrink-0 items-center gap-1 rounded-lg px-1.5 font-mono text-[11px] transition-colors md:h-7',
+            changesOpen
+              ? 'bg-accent-soft/70 text-text'
+              : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
+          )}
         >
-          <RefreshCw size={11} /> 重连
+          <FileDiff size={13.5} className={cn('shrink-0', changesOpen ? 'text-accent' : 'text-muted')} />
+          <span className="hidden font-sans text-[11px] sm:inline">改动</span>
+          {fileCount > 0 && (
+            <>
+              <span className="text-success">+{additions}</span>
+              <span className="text-danger">−{deletions}</span>
+            </>
+          )}
         </button>
       )}
 
@@ -290,6 +307,18 @@ export function TopBar() {
         </button>
       )}
 
+      {offline && (
+        <div className="pointer-events-none absolute inset-x-0 top-full z-20 flex h-6 items-center justify-center gap-1.5 border-b border-border/60 bg-bg/95 text-[10.5px] text-muted backdrop-blur-sm">
+          <span className="size-1.5 rounded-full bg-warning/70 running-dot" />
+          <span>重新连接中…</span>
+          <button
+            onClick={() => activeHostId && retryHost(activeHostId)}
+            className="pointer-events-auto ml-1 rounded px-1 text-[10.5px] text-text-soft underline-offset-2 transition-colors hover:text-text hover:underline"
+          >
+            立即重试
+          </button>
+        </div>
+      )}
     </header>
   )
 }

@@ -6,6 +6,8 @@ const KEYS = {
   ui: 'tandem.ui.v1',
   recentDirs: 'tandem.recentDirs.v1',
   lastHost: 'tandem.lastHost.v1',
+  drafts: 'tandem.drafts.v1',
+  sentHistory: 'tandem.sentHistory.v1',
 } as const
 
 function readJson<T>(key: string, fallback: T): T {
@@ -72,7 +74,9 @@ export interface UiPrefs {
   sidebarCollapsed?: boolean
   panelOpen?: boolean
   sidebarWidth?: number
+  changesWidth?: number
   collapsedProjects?: string[]
+  notifications?: boolean
 }
 
 /** 随配置迁移打包的客户端设置：Host 列表、主题、侧栏偏好等 localStorage 内容。 */
@@ -117,6 +121,34 @@ export function saveCollapsedProjects(map: Record<string, boolean>): void {
 export function loadRecentDirs(hostId: string): string[] {
   const map = readJson<Record<string, string[]>>(KEYS.recentDirs, {})
   return Array.isArray(map[hostId]) ? map[hostId].slice(0, 8) : []
+}
+
+/** 输入框草稿：按会话保存，切换会话后恢复。 */
+export function loadDraft(sessionKey: string): string {
+  const map = readJson<Record<string, string>>(KEYS.drafts, {})
+  return typeof map[sessionKey] === 'string' ? map[sessionKey] : ''
+}
+
+export function saveDraft(sessionKey: string, text: string): void {
+  const map = readJson<Record<string, string>>(KEYS.drafts, {})
+  if (text) map[sessionKey] = text
+  else delete map[sessionKey]
+  writeJson(KEYS.drafts, map)
+}
+
+/** 每个会话最近发送的原文，供输入框空内容时按 ↑ 调出。 */
+export function loadSentHistory(sessionKey: string): string[] {
+  const map = readJson<Record<string, string[]>>(KEYS.sentHistory, {})
+  const list = map[sessionKey]
+  return Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : []
+}
+
+export function pushSentHistory(sessionKey: string, text: string): void {
+  if (!text) return
+  const map = readJson<Record<string, string[]>>(KEYS.sentHistory, {})
+  const list = [text, ...(map[sessionKey] ?? []).filter((x) => x !== text)].slice(0, 20)
+  map[sessionKey] = list
+  writeJson(KEYS.sentHistory, map)
 }
 
 export function rememberDir(hostId: string, dir: string): void {

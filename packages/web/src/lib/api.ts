@@ -1,4 +1,6 @@
 import type {
+  ChangesResult,
+  Checkpoint,
   ConfigBundle,
   ConfigExportInput,
   ConfigImportInput,
@@ -10,8 +12,10 @@ import type {
   HostInfo,
   ListModelsInput,
   ModelInfo,
+  PermissionRule,
   Profile,
   ProfileInput,
+  RewindInput,
   Session,
   SessionSummary,
   SlashCommand,
@@ -119,6 +123,40 @@ export const api = {
     request<void>(h, `/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   forkSession: (h: HostConfig, id: string) =>
     request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/fork`, { method: 'POST' }),
+
+  checkpoints: (h: HostConfig, id: string) =>
+    request<Checkpoint[]>(h, `/api/sessions/${encodeURIComponent(id)}/checkpoints`),
+  rewind: (h: HostConfig, id: string, input: RewindInput) =>
+    request<Session>(h, `/api/sessions/${encodeURIComponent(id)}/rewind`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  changes: (h: HostConfig, id: string) =>
+    request<ChangesResult>(h, `/api/sessions/${encodeURIComponent(id)}/changes`),
+  changesDiff: (h: HostConfig, id: string, path: string) =>
+    request<{ path: string; diff: string }>(
+      h,
+      `/api/sessions/${encodeURIComponent(id)}/changes/diff${qs({ path })}`,
+    ),
+  revertChanges: (h: HostConfig, id: string, paths: string[]) =>
+    request<ChangesResult>(h, `/api/sessions/${encodeURIComponent(id)}/changes/revert`, {
+      method: 'POST',
+      body: JSON.stringify({ paths }),
+    }),
+  commitChanges: (h: HostConfig, id: string, message: string, paths?: string[]) =>
+    request<{ ok: boolean; commit?: string; error?: string }>(
+      h,
+      `/api/sessions/${encodeURIComponent(id)}/changes/commit`,
+      { method: 'POST', body: JSON.stringify({ message, ...(paths?.length ? { paths } : {}) }) },
+    ),
+
+  permissions: (h: HostConfig) => request<PermissionRule[]>(h, '/api/permissions'),
+  setPermissions: (h: HostConfig, rules: PermissionRule[]) =>
+    request<PermissionRule[]>(h, '/api/permissions', {
+      method: 'PUT',
+      body: JSON.stringify(rules),
+    }),
 
   fsList: (h: HostConfig, path: string) =>
     request<FsEntry[]>(h, `/api/fs/list${qs({ path })}`),

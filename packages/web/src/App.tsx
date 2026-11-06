@@ -119,10 +119,7 @@ export default function App() {
 
   useEffect(() => {
     const reconnect = () => {
-      const store = useAppStore.getState()
-      for (const h of store.hosts) {
-        if (store.runtimes[h.id]?.status === 'offline') store.retryHost(h.id)
-      }
+      useAppStore.getState().checkConnections()
     }
     const onVisible = () => {
       if (document.visibilityState === 'visible') reconnect()

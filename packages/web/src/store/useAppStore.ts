@@ -7,6 +7,7 @@ import type {
   Message,
   PermissionDecision,
   PermissionMode,
+  RewindInput,
   ServerMsg,
   Session,
   SessionSummary,
@@ -28,6 +29,7 @@ import {
   type ClientSettingsBundle,
 } from '../lib/storage'
 import { navigate } from '../lib/router'
+import { notifyPermission, notifyTurnEnd } from '../lib/attention'
 import { useUiStore } from './useUiStore'
 import type {
   ActiveSession,
@@ -44,8 +46,12 @@ interface AppState {
   activeHostId: string | null
   runtimes: Record<string, HostRuntime>
   active: ActiveSession | null
+  /** 回合结束后自增，改动审阅据此刷新。 */
+  changesNonce: number
 
   initialize: () => void
+  checkConnections: () => void
+  bumpChanges: () => void
   addHost: (input: { name: string; url: string; token: string }) => HostConfig
   updateHost: (id: string, patch: Partial<Pick<HostConfig, 'name' | 'url' | 'token'>>) => void
   removeHost: (id: string) => void
@@ -71,6 +77,7 @@ interface AppState {
   interrupt: () => void
   decidePermission: (requestId: string, decision: PermissionDecision) => void
   setPermissionMode: (mode: PermissionMode) => Promise<void>
+  rewind: (input: RewindInput, seedText?: string) => Promise<boolean>
   setModel: (profileId: string, groupId: string | undefined, model: string) => Promise<void>
   createSession: (hostId: string, input: CreateSessionInput) => Promise<SessionSummary>
   startSession: (hostId: string, input: CreateSessionInput, content: ContentBlock[]) => Promise<SessionSummary>
@@ -450,6 +457,17 @@ export const useAppStore = create<AppState>((set, get) => {
             applySessionSummary(hostId, { ...active.summary, status: 'waiting_permission' })
           }
         }
+        const notifySummary = get().runtimes[hostId]?.sessions.find(
+          (s) => s.id === req.sessionId,
+        )
+        notifyPermission({
+          hostId,
+          sessionId: req.sessionId,
+          sessionTitle: notifySummary?.title ?? '未命名会话',
+          hostName: getHost(hostId)?.name ?? 'Host',
+          requestId: req.id,
+          description: req.description,
+        })
         break
       }
       case 'permission_resolved': {
@@ -505,6 +523,7 @@ export const useAppStore = create<AppState>((set, get) => {
           const host = getHost(hostId)
           toast(`${host?.name ?? 'Host'}：${msg.error ?? '回合执行出错'}`, 'error')
         }
+        set((state) => ({ changesNonce: state.changesNonce + 1 }))
         if (activeSummaryForSession(hostId, msg.sessionId)) {
           const base = activeSummaryForSession(hostId, msg.sessionId)!
           applySessionSummary(hostId, {
@@ -513,6 +532,15 @@ export const useAppStore = create<AppState>((set, get) => {
             updatedAt: Date.now(),
           })
         }
+        const finished = get().runtimes[hostId]?.sessions.find((s) => s.id === msg.sessionId)
+        notifyTurnEnd({
+          hostId,
+          sessionId: msg.sessionId,
+          sessionTitle: finished?.title ?? '未命名会话',
+          hostName: getHost(hostId)?.name ?? 'Host',
+          reason: msg.reason,
+          error: msg.error,
+        })
         break
       }
       case 'error': {
@@ -531,6 +559,15 @@ export const useAppStore = create<AppState>((set, get) => {
     activeHostId: null,
     runtimes: {},
     active: null,
+    changesNonce: 0,
+
+    checkConnections: () => {
+      for (const [hostId, conn] of connections) {
+        if (getHost(hostId)) conn.checkAlive()
+      }
+    },
+
+    bumpChanges: () => set((state) => ({ changesNonce: state.changesNonce + 1 })),
 
     initialize: () => {
       if (get().initialized) return
@@ -1063,6 +1100,36 @@ export const useAppStore = create<AppState>((set, get) => {
       } catch (err) {
         applySessionSummary(active.hostId, prev)
         toast(err instanceof Error ? err.message : '切换权限模式失败', 'error')
+      }
+    },
+
+    rewind: async (input, seedText) => {
+      const active = get().active
+      const host = active ? getHost(active.hostId) : undefined
+      if (!active || !host) return false
+      if (active.running) {
+        toast('会话正在运行，无法回退', 'error')
+        return false
+      }
+      try {
+        const session = await api.rewind(host, active.sessionId, input)
+        applySnapshot(active.hostId, session, [])
+        get().bumpChanges()
+        if (input.restoreConversation && seedText !== undefined) {
+          useUiStore.getState().seedPrompt(seedText)
+        }
+        toast(
+          input.restoreFiles && input.restoreConversation
+            ? '已恢复代码和对话'
+            : input.restoreFiles
+              ? '已恢复代码'
+              : '已恢复对话',
+          'success',
+        )
+        return true
+      } catch (err) {
+        toast(err instanceof Error ? err.message : '回退失败', 'error')
+        return false
       }
     },
 

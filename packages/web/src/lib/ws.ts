@@ -1,4 +1,4 @@
-import type { ClientMsg, ServerMsg } from '@tandem/protocol'
+import type { ClientMsg, SeqServerMsg, ServerMsg } from '@tandem/protocol'
 import type { ConnectionState, HostConfig } from './types'
 import { websocketUrl } from './hostUrl'
 
@@ -6,6 +6,9 @@ interface Handlers {
   onStatus: (state: ConnectionState, error?: string) => void
   onMessage: (msg: ServerMsg) => void
 }
+
+/** 超过这个时间没有任何服务端消息，认为连接已半死（后台挂起、网络切换）。 */
+const STALE_AFTER = 45_000
 
 const MAX_DELAY = 30_000
 
@@ -25,6 +28,11 @@ export class HostConnection {
   private pingTimer: number | undefined
   private subscriptions = new Set<string>()
   private lastStatus: ConnectionState = 'offline'
+  /** 每会话已应用到的最后 seq，重连时作为 sinceSeq 请求补发。 */
+  private lastSeq = new Map<string, number>()
+  /** 等待前序 seq 的事件，保证按序应用。 */
+  private pending = new Map<string, Map<number, ServerMsg>>()
+  private lastActivity = 0
 
   constructor(host: HostConfig, handlers: Handlers) {
     this.host = host
@@ -54,9 +62,15 @@ export class HostConnection {
 
     ws.onopen = () => {
       if (this.ws !== ws) return
+      this.lastActivity = Date.now()
       this.setStatus('online')
       for (const sessionId of this.subscriptions) {
-        this.rawSend({ type: 'subscribe', sessionId })
+        const sinceSeq = this.lastSeq.get(sessionId)
+        this.rawSend({
+          type: 'subscribe',
+          sessionId,
+          ...(sinceSeq !== undefined ? { sinceSeq } : {}),
+        })
       }
       this.startPing()
     }
@@ -72,8 +86,9 @@ export class HostConnection {
       }
       if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return
       this.retry = 0
+      this.lastActivity = Date.now()
       if (msg.type === 'pong') return
-      this.handlers.onMessage(msg)
+      this.deliver(msg)
     }
 
     ws.onerror = () => {
@@ -83,6 +98,7 @@ export class HostConnection {
     ws.onclose = () => {
       if (this.ws !== ws) return
       this.ws = null
+      this.pending.clear()
       this.stopPing()
       if (this.closed) return
       this.setStatus('offline')
@@ -100,12 +116,33 @@ export class HostConnection {
 
   subscribe(sessionId: string): void {
     this.subscriptions.add(sessionId)
+    // 显式订阅（打开/重新加载会话）要全量快照，不能沿用上一轮的 seq。
+    this.lastSeq.delete(sessionId)
+    this.pending.delete(sessionId)
     this.send({ type: 'subscribe', sessionId })
   }
 
   unsubscribe(sessionId: string): void {
     this.subscriptions.delete(sessionId)
+    this.pending.delete(sessionId)
     this.send({ type: 'unsubscribe', sessionId })
+  }
+
+  /**
+   * 从后台恢复或网络恢复时调用：连接已不在就立即重连；
+   * 长时间没收到任何消息则视为半死连接，同样重建。
+   */
+  checkAlive(): void {
+    if (this.closed) return
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.reconnectNow()
+      return
+    }
+    if (Date.now() - this.lastActivity > STALE_AFTER) {
+      this.reconnectNow()
+      return
+    }
+    this.rawSend({ type: 'ping' })
   }
 
   /** 立即重连（用户点“重试”或网络恢复时）。 */
@@ -143,6 +180,54 @@ export class HostConnection {
 
   get status(): ConnectionState {
     return this.lastStatus
+  }
+
+  /**
+   * 按会话 seq 顺序投递事件：重复的忽略，乱序的暂存，前序到达后再依次应用。
+   * 快照携带当前 seq，直接整体替换并抹平等待队列。
+   */
+  private deliver(msg: SeqServerMsg): void {
+    if (msg.type === 'session_snapshot') {
+      const sid = msg.session.id
+      if (typeof msg.seq === 'number') this.lastSeq.set(sid, msg.seq)
+      this.pending.delete(sid)
+      this.handlers.onMessage(msg)
+      return
+    }
+    const sessionId = 'sessionId' in msg ? msg.sessionId : undefined
+    const seq = msg.seq
+    if (!sessionId || typeof seq !== 'number') {
+      this.handlers.onMessage(msg)
+      return
+    }
+    const last = this.lastSeq.get(sessionId)
+    if (last !== undefined && seq <= last) return
+    if (last === undefined || seq === last + 1) {
+      this.lastSeq.set(sessionId, seq)
+      this.handlers.onMessage(msg)
+      this.flush(sessionId)
+      return
+    }
+    let queue = this.pending.get(sessionId)
+    if (!queue) {
+      queue = new Map()
+      this.pending.set(sessionId, queue)
+    }
+    queue.set(seq, msg)
+  }
+
+  private flush(sessionId: string): void {
+    const queue = this.pending.get(sessionId)
+    if (!queue) return
+    let last = this.lastSeq.get(sessionId)
+    while (last !== undefined && queue.has(last + 1)) {
+      const next = queue.get(last + 1)!
+      queue.delete(last + 1)
+      last += 1
+      this.lastSeq.set(sessionId, last)
+      this.handlers.onMessage(next)
+    }
+    if (queue.size === 0) this.pending.delete(sessionId)
   }
 
   private rawSend(msg: ClientMsg): void {

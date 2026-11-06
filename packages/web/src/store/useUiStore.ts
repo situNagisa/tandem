@@ -21,12 +21,15 @@ interface UiState {
   collapsedProjects: Record<string, boolean>
   showArchived: boolean
   panelOpen: boolean
+  changesOpen: boolean
+  changesWidth: number
   mobileSidebar: boolean
   mobilePanel: boolean
   settingsOpen: boolean
   settingsTab: SettingsTab
   newSessionOpen: boolean
   searchOpen: boolean
+  notifications: boolean
   toasts: Toast[]
   promptSeed: { text: string; nonce: number } | null
 
@@ -38,6 +41,9 @@ interface UiState {
   setShowArchived: (show: boolean) => void
   setPanelOpen: (open: boolean) => void
   togglePanel: () => void
+  setChangesOpen: (open: boolean) => void
+  toggleChanges: () => void
+  setChangesWidth: (width: number) => void
   setMobileSidebar: (open: boolean) => void
   setMobilePanel: (open: boolean) => void
   openSettings: (tab?: SettingsTab) => void
@@ -45,6 +51,7 @@ interface UiState {
   setSettingsTab: (tab: SettingsTab) => void
   setNewSessionOpen: (open: boolean) => void
   setSearchOpen: (open: boolean) => void
+  setNotifications: (enabled: boolean) => void
   toast: (text: string, kind?: Toast['kind']) => void
   dismissToast: (id: number) => void
   seedPrompt: (text: string) => void
@@ -60,12 +67,15 @@ export const useUiStore = create<UiState>((set, get) => ({
   collapsedProjects: loadCollapsedProjects(),
   showArchived: false,
   panelOpen: prefs.panelOpen ?? true,
+  changesOpen: false,
+  changesWidth: Math.min(760, Math.max(380, prefs.changesWidth ?? 520)),
   mobileSidebar: false,
   mobilePanel: false,
   settingsOpen: false,
   settingsTab: 'profiles',
   newSessionOpen: false,
   searchOpen: false,
+  notifications: prefs.notifications ?? true,
   toasts: [],
   promptSeed: null,
 
@@ -95,6 +105,14 @@ export const useUiStore = create<UiState>((set, get) => ({
     set({ panelOpen: open })
   },
   togglePanel: () => get().setPanelOpen(!get().panelOpen),
+  setChangesOpen: (open) =>
+    set((s) => ({ changesOpen: open, ...(open ? { panelOpen: false } : {}) })),
+  toggleChanges: () => get().setChangesOpen(!get().changesOpen),
+  setChangesWidth: (width) => {
+    const next = Math.min(760, Math.max(380, Math.round(width)))
+    saveUiPrefs({ changesWidth: next })
+    set({ changesWidth: next })
+  },
   setMobileSidebar: (open) => set({ mobileSidebar: open }),
   setMobilePanel: (open) => set({ mobilePanel: open }),
   openSettings: (tab) =>
@@ -108,6 +126,10 @@ export const useUiStore = create<UiState>((set, get) => ({
   setSettingsTab: (tab) => set({ settingsTab: tab }),
   setNewSessionOpen: (open) => set({ newSessionOpen: open, mobileSidebar: false }),
   setSearchOpen: (open) => set({ searchOpen: open }),
+  setNotifications: (enabled) => {
+    saveUiPrefs({ notifications: enabled })
+    set({ notifications: enabled })
+  },
   toast: (text, kind = 'info') => {
     const id = toastSeq++
     set((s) => ({ toasts: [...s.toasts.slice(-3), { id, kind, text }] }))
