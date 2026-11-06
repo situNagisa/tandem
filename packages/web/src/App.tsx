@@ -3,11 +3,13 @@ import { useAppStore } from './store/useAppStore'
 import { applyTheme, useUiStore } from './store/useUiStore'
 import { navigate, useRoute } from './lib/router'
 import { useIsMobile, useViewportHeight } from './lib/hooks'
+import { clearAttention } from './lib/attention'
 import { cn } from './lib/cn'
 import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
 import { ChatView } from './components/ChatView'
 import { RightPanel } from './components/RightPanel'
+import { ChangeReviewPanel } from './components/ChangeReviewPanel'
 import { SettingsDialog } from './components/settings/SettingsDialog'
 import { SearchDialog } from './components/SearchDialog'
 import { Toasts } from './components/ui/Toasts'
@@ -23,6 +25,8 @@ export default function App() {
   const setSidebarWidth = useUiStore((s) => s.setSidebarWidth)
   const panelOpen = useUiStore((s) => s.panelOpen)
   const setPanelOpen = useUiStore((s) => s.setPanelOpen)
+  const changesOpen = useUiStore((s) => s.changesOpen)
+  const setChangesOpen = useUiStore((s) => s.setChangesOpen)
   const theme = useUiStore((s) => s.theme)
   const mobileSidebar = useUiStore((s) => s.mobileSidebar)
   const mobilePanel = useUiStore((s) => s.mobilePanel)
@@ -67,6 +71,7 @@ export default function App() {
     const ui = useUiStore.getState()
     ui.setMobileSidebar(false)
     ui.setMobilePanel(false)
+    ui.setChangesOpen(false)
   }, [route])
 
   useEffect(() => {
@@ -111,6 +116,31 @@ export default function App() {
         e.preventDefault()
         if (isMobile) ui.setMobileSidebar(!ui.mobileSidebar)
         else ui.toggleSidebar()
+      } else if (e.shiftKey && (e.code === 'BracketLeft' || e.code === 'BracketRight')) {
+        const store = useAppStore.getState()
+        const hostId = store.active?.hostId ?? store.activeHostId
+        if (!hostId || ui.settingsOpen || ui.searchOpen) return
+        const list = (store.runtimes[hostId]?.sessions ?? [])
+          .filter((s) => !s.archived)
+          .slice()
+          .sort((a, b) => {
+            if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1
+            return b.updatedAt - a.updatedAt
+          })
+        if (list.length === 0) return
+        e.preventDefault()
+        const dir = e.code === 'BracketRight' ? 1 : -1
+        const current = store.active?.sessionId
+        const index = list.findIndex((s) => s.id === current)
+        const nextIndex =
+          index < 0
+            ? dir > 0
+              ? 0
+              : list.length - 1
+            : Math.min(list.length - 1, Math.max(0, index + dir))
+        if (nextIndex === index) return
+        navigate({ kind: 'session', hostId, sessionId: list[nextIndex].id })
+        ui.setMobileSidebar(false)
       }
     }
     window.addEventListener('keydown', onKey, true)
@@ -122,7 +152,10 @@ export default function App() {
       useAppStore.getState().checkConnections()
     }
     const onVisible = () => {
-      if (document.visibilityState === 'visible') reconnect()
+      if (document.visibilityState === 'visible') {
+        clearAttention()
+        reconnect()
+      }
     }
     window.addEventListener('online', reconnect)
     document.addEventListener('visibilitychange', onVisible)
@@ -205,7 +238,12 @@ export default function App() {
         <TopBar />
         <div className="flex min-h-0 flex-1">
           <ChatView />
-          {!isMobile && panelOpen && hasSession && (
+          {!isMobile && changesOpen && hasSession && (
+            <div className="anim-fade-in flex min-h-0 shrink-0">
+              <ChangeReviewPanel onClose={() => setChangesOpen(false)} />
+            </div>
+          )}
+          {!isMobile && panelOpen && !changesOpen && hasSession && (
             <div className="anim-fade-in shrink-0">
               <RightPanel onClose={() => setPanelOpen(false)} />
             </div>
@@ -243,6 +281,12 @@ export default function App() {
           >
             <Sidebar inDrawer onNavigate={() => setMobileSidebar(false)} />
           </div>
+        </div>
+      )}
+
+      {isMobile && changesOpen && hasSession && (
+        <div className="fixed inset-0 z-40 bg-bg md:hidden">
+          <ChangeReviewPanel onClose={() => setChangesOpen(false)} />
         </div>
       )}
 

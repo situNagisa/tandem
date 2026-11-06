@@ -11,9 +11,9 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
-import { useIsMobile } from '../lib/hooks'
+import { useIsMobile, useNow } from '../lib/hooks'
 import { useSessionChanges } from '../lib/useChanges'
-import { basename } from '../lib/format'
+import { basename, formatElapsed } from '../lib/format'
 import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
@@ -23,11 +23,13 @@ function StatePill({
   status,
   offline,
   connecting,
+  elapsed,
 }: {
   running: boolean
   status?: string
   offline: boolean
   connecting: boolean
+  elapsed?: string
 }) {
   const pill = 'flex shrink-0 items-center gap-1.5 text-[10.5px] text-text-secondary'
   if (offline) return null
@@ -43,7 +45,7 @@ function StatePill({
     return (
       <span className={pill}>
         <span className="size-1.5 rounded-full bg-accent" />
-        待审批
+        待审批{elapsed ? ` · ${elapsed}` : ''}
       </span>
     )
   }
@@ -59,7 +61,7 @@ function StatePill({
     return (
       <span className={pill}>
         <span className="size-1.5 rounded-full bg-accent running-dot" />
-        运行中
+        运行中{elapsed ? ` · ${elapsed}` : ''}
       </span>
     )
   }
@@ -76,6 +78,10 @@ export function TopBar() {
   const summary = useAppStore((s) => s.active?.summary ?? null)
   const status = summary?.status
   const running = useAppStore((s) => s.active?.running ?? false)
+  const ticking = running || status === 'waiting_permission'
+  const now = useNow(ticking)
+  const elapsed =
+    ticking && summary ? formatElapsed(now - summary.updatedAt) : undefined
   const updateSession = useAppStore((s) => s.updateSession)
   const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
   const changesNonce = useAppStore((s) => s.changesNonce)
@@ -222,7 +228,13 @@ export function TopBar() {
         )}
 
         {hasSession ? (
-          <StatePill running={running} status={status} offline={offline} connecting={connecting} />
+          <StatePill
+            running={running}
+            status={status}
+            offline={offline}
+            connecting={connecting}
+            elapsed={elapsed}
+          />
         ) : (
           !isMobile &&
           host && (
@@ -279,6 +291,7 @@ export function TopBar() {
       {hasSession && (
         <button
           onClick={() => {
+            setChangesOpen(false)
             if (isMobile) setMobilePanel(true)
             else togglePanel()
           }}

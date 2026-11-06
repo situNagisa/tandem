@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react'
+import { Fragment, memo, useMemo, useState, type ReactNode } from 'react'
 import { diffLines } from 'diff'
 import { ArrowLeftRight, ChevronsUpDown } from 'lucide-react'
 import { cn } from '../lib/cn'
@@ -9,6 +9,75 @@ interface DiffLine {
   text: string
   oldNo?: number
   newNo?: number
+}
+
+export interface DiffLineInfo {
+  line: number
+  side: 'old' | 'new'
+  text: string
+  type: DiffLine['type']
+}
+
+/** 解析统一 diff（git diff 输出）为按行结构。 */
+function parseUnified(text: string): { rows: DiffLine[]; added: number; removed: number } {
+  const rows: DiffLine[] = []
+  const lines = text.split('\n')
+  if (lines.length && lines[lines.length - 1] === '') lines.pop()
+  let oldNo = 0
+  let newNo = 0
+  let added = 0
+  let removed = 0
+  for (const line of lines) {
+    if (line.startsWith('@@')) {
+      const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
+      if (m) {
+        oldNo = Number(m[1])
+        newNo = Number(m[2])
+      }
+      continue
+    }
+    if (
+      line.startsWith('diff --git') ||
+      line.startsWith('index ') ||
+      line.startsWith('--- ') ||
+      line.startsWith('+++ ') ||
+      line.startsWith('new file') ||
+      line.startsWith('deleted file') ||
+      line.startsWith('old mode') ||
+      line.startsWith('new mode') ||
+      line.startsWith('similarity ') ||
+      line.startsWith('rename ') ||
+      line.startsWith('\\ No newline')
+    ) {
+      continue
+    }
+    const sign = line[0]
+    const body = line.length > 0 ? line.slice(1) : ''
+    if (sign === '+') {
+      rows.push({ type: 'add', text: body, newNo })
+      newNo++
+      added++
+    } else if (sign === '-') {
+      rows.push({ type: 'del', text: body, oldNo })
+      oldNo++
+      removed++
+    } else if (sign === ' ' || line === '') {
+      rows.push({ type: 'ctx', text: body, oldNo, newNo })
+      oldNo++
+      newNo++
+    }
+  }
+  return { rows, added, removed }
+}
+
+function lineInfo(row: DiffLine): DiffLineInfo {
+  if (row.type === 'add') {
+    return { line: row.newNo ?? 0, side: 'new', text: row.text, type: row.type }
+  }
+  if (row.type === 'del') {
+    return { line: row.oldNo ?? 0, side: 'old', text: row.text, type: row.type }
+  }
+  return { line: row.newNo ?? row.oldNo ?? 0, side: 'new', text: row.text, type: row.type }
 }
 
 type Row =
@@ -47,23 +116,39 @@ function buildRows(rows: DiffLine[], expanded: Set<string>): Row[] {
 }
 
 export const DiffView = memo(function DiffView({
-  oldText,
-  newText,
+  oldText = '',
+  newText = '',
+  unified,
   fileName,
   oldLabel,
   newLabel,
   maxHeight = 460,
+  onLineClick,
+  rowExtra,
 }: {
-  oldText: string
-  newText: string
+  oldText?: string
+  newText?: string
+  /** 直接渲染统一 diff 文本；给出时忽略 oldText/newText。 */
+  unified?: string
   fileName?: string
   oldLabel?: string
   newLabel?: string
   maxHeight?: number
+  onLineClick?: (info: DiffLineInfo) => void
+  rowExtra?: (info: DiffLineInfo) => ReactNode
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
 
   const { rows, truncated, added, removed } = useMemo(() => {
+    if (unified !== undefined) {
+      const parsed = parseUnified(unified)
+      return {
+        rows: parsed.rows.slice(0, MAX_ROWS),
+        truncated: parsed.rows.length > MAX_ROWS,
+        added: parsed.added,
+        removed: parsed.removed,
+      }
+    }
     const oldSafe = oldText.length > MAX_INPUT ? oldText.slice(0, MAX_INPUT) : oldText
     const newSafe = newText.length > MAX_INPUT ? newText.slice(0, MAX_INPUT) : newText
     const changes = diffLines(oldSafe, newSafe)
@@ -97,7 +182,7 @@ export const DiffView = memo(function DiffView({
       added,
       removed,
     }
-  }, [oldText, newText])
+  }, [oldText, newText, unified])
 
   const display = useMemo(() => buildRows(rows, expanded), [rows, expanded])
   const { ref: bodyRef, canRight, update: updateOverflow } = useHorizontalOverflow<HTMLDivElement>([
@@ -140,15 +225,24 @@ export const DiffView = memo(function DiffView({
                 </button>
               )
             }
+            const info = lineInfo(row)
             return (
-              <div key={i} className="chat-diff-row" data-kind={row.type}>
-                <span className="ln">{row.oldNo ?? ''}</span>
-                <span className="ln">{row.newNo ?? ''}</span>
-                <span className={cn('sign', row.type === 'add' && 'text-success', row.type === 'del' && 'text-danger')}>
-                  {row.type === 'add' ? '+' : row.type === 'del' ? '−' : ' '}
-                </span>
-                <span className="text">{row.text || ' '}</span>
-              </div>
+              <Fragment key={i}>
+                <div
+                  className={cn('chat-diff-row', onLineClick && 'cursor-pointer')}
+                  data-kind={row.type}
+                  onClick={onLineClick ? () => onLineClick(info) : undefined}
+                  title={onLineClick ? '点击添加行内评论' : undefined}
+                >
+                  <span className="ln">{row.oldNo ?? ''}</span>
+                  <span className="ln">{row.newNo ?? ''}</span>
+                  <span className={cn('sign', row.type === 'add' && 'text-success', row.type === 'del' && 'text-danger')}>
+                    {row.type === 'add' ? '+' : row.type === 'del' ? '−' : ' '}
+                  </span>
+                  <span className="text">{row.text || ' '}</span>
+                </div>
+                {rowExtra?.(info)}
+              </Fragment>
             )
           })}
           {truncated && (
