@@ -518,6 +518,7 @@ export function EnvBar({
   return (
     <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto py-0.5 pb-1.5">
       <Popover
+        side="top"
         panelClassName="w-auto"
         trigger={({ open, toggle }) => (
           <EnvTrigger
@@ -573,6 +574,7 @@ export function EnvBar({
       </Popover>
 
       <Popover
+        side="top"
         panelClassName="w-auto"
         trigger={({ open, toggle }) => (
           <EnvTrigger
