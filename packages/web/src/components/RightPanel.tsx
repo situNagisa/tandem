@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import {
   ArrowUpRight,
   BarChart3,
+  Bot,
   Check,
   Circle,
   CircleCheck,
@@ -22,13 +23,18 @@ import {
   X,
 } from 'lucide-react'
 import type { Todo } from '@tandem/protocol'
+import type { SubagentSession } from '../lib/types'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useSessionChanges } from '../lib/useChanges'
 import { copyText } from '../lib/clipboard'
 import { cn } from '../lib/cn'
 import { ApiError } from '../lib/api'
+import { useNow } from '../lib/hooks'
+import { runningSince } from '../lib/runClock'
 import {
+  formatCost,
+  formatElapsed,
   formatRelative,
   formatTime,
   formatTokens,
@@ -56,11 +62,12 @@ const TODO_ICONS = {
   pending: Circle,
 } as const
 
-type GroupId = 'plan' | 'todos' | 'usage' | 'changes' | 'details'
+type GroupId = 'plan' | 'todos' | 'agents' | 'usage' | 'changes' | 'details'
 
 const GROUPS: Array<{ id: GroupId; label: string; Icon: typeof ListTodo }> = [
   { id: 'plan', label: '当前计划', Icon: ScrollText },
   { id: 'todos', label: '待办', Icon: ListTodo },
+  { id: 'agents', label: '代理', Icon: Bot },
   { id: 'usage', label: '用量', Icon: BarChart3 },
   { id: 'changes', label: '改动摘要', Icon: FileDiff },
   { id: 'details', label: '详情', Icon: Info },
@@ -191,12 +198,100 @@ function Card({
   )
 }
 
+function AgentRow({ sub, depth }: { sub: SubagentSession; depth: number }) {
+  const focusAgent = useUiStore((s) => s.focusAgent)
+  const id = sub.summary?.id ?? ''
+  const status = sub.summary?.status
+  const running = sub.running || status === 'running' || status === 'waiting_permission'
+  const now = useNow(running)
+  const since = runningSince(`agent:${id}`, sub.summary?.createdAt ?? Date.now())
+  const usage = sub.summary?.usage
+  const tokens = (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)
+  const failed = status === 'error' || !!sub.error
+  const text = failed
+    ? '出错'
+    : status === 'waiting_permission'
+      ? '待审批'
+      : running
+        ? '运行中'
+        : sub.loading
+          ? '加载中'
+          : '已结束'
+  return (
+    <button
+      type="button"
+      onClick={() => id && focusAgent(id)}
+      className="flex min-h-8 w-full items-center gap-1.5 rounded-md pr-1 text-left text-[11.5px] transition-colors hover:bg-[var(--t-bg-hover)]"
+      style={{ paddingLeft: 4 + Math.max(0, depth - 1) * 14 }}
+      title={sub.summary?.title}
+    >
+      <span className="shrink-0 text-[9px] text-muted">
+        {depth <= 1 ? '子' : depth === 2 ? '孙' : depth}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-text-soft">
+        {sub.summary?.title || '未命名代理'}
+      </span>
+      <span
+        className={cn(
+          'shrink-0 text-[9.5px]',
+          failed ? 'text-danger' : running ? 'text-text-secondary' : 'text-muted',
+        )}
+      >
+        {text}
+        {running && ` ${formatElapsed(now - since)}`}
+      </span>
+      <span className="w-9 shrink-0 text-right text-[9.5px] tabular-nums text-muted">
+        {formatTokens(tokens)}
+      </span>
+    </button>
+  )
+}
+
+function AgentsCard() {
+  const subagents = useAppStore((s) => s.active?.subagents)
+  const activeSessionId = useAppStore((s) => s.active?.sessionId)
+  const rows = useMemo(() => {
+    if (!subagents || !activeSessionId) return []
+    const children = new Map<string, SubagentSession[]>()
+    for (const sub of Object.values(subagents)) {
+      const parentId = sub.summary?.parentId
+      if (!parentId) continue
+      const list = children.get(parentId) ?? []
+      list.push(sub)
+      children.set(parentId, list)
+    }
+    const out: Array<{ sub: SubagentSession; depth: number }> = []
+    const walk = (parentId: string, depth: number) => {
+      const list = (children.get(parentId) ?? [])
+        .slice()
+        .sort((a, b) => (a.summary?.createdAt ?? 0) - (b.summary?.createdAt ?? 0))
+      for (const sub of list) {
+        out.push({ sub, depth })
+        if (sub.summary?.id) walk(sub.summary.id, depth + 1)
+      }
+    }
+    walk(activeSessionId, 1)
+    return out
+  }, [subagents, activeSessionId])
+
+  if (rows.length === 0) return <p className="text-[11px] text-muted">暂无代理</p>
+  return (
+    <div className="space-y-0.5">
+      {rows.map(({ sub, depth }) => (
+        <AgentRow key={sub.summary?.id} sub={sub} depth={depth} />
+      ))}
+    </div>
+  )
+}
+
 export function RightPanel({ onClose }: { onClose: () => void }) {
   const hostId = useAppStore((s) => s.active?.hostId ?? null)
   const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
   const summary = useAppStore((s) => s.active?.summary ?? null)
   const todos = useAppStore((s) => s.active?.todos ?? EMPTY_TODOS)
   const plan = useAppStore((s) => s.active?.plan ?? null)
+  const subagents = useAppStore((s) => s.active?.subagents)
+  const agentCount = subagents ? Object.keys(subagents).length : 0
   const changesNonce = useAppStore((s) => s.changesNonce)
   const host = useAppStore((s) => s.hosts.find((h) => h.id === s.active?.hostId) ?? null)
   const hostStatus = useAppStore((s) =>
@@ -239,11 +334,12 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     () => ({
       plan: !!plan,
       todos: true,
+      agents: agentCount > 0,
       usage: true,
       changes: fileChanges.length > 0,
       details: true,
     }),
-    [plan, fileChanges.length],
+    [plan, fileChanges.length, agentCount],
   )
 
   const visibleGroups = prefs.order.filter((id) => !prefs.hidden.includes(id) && available[id])
@@ -351,6 +447,9 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         </span>
       )
     }
+    if (id === 'agents') {
+      return <span className="text-[10px] tabular-nums text-muted">{agentCount}</span>
+    }
     if (id === 'todos' && todos.length > 0) {
       return (
         <span className="text-[10px] tabular-nums text-muted">
@@ -379,6 +478,9 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
           <Markdown text={plan.content} />
         </div>
       )
+    }
+    if (id === 'agents') {
+      return <AgentsCard />
     }
     if (id === 'todos') {
       if (todos.length === 0) return <p className="text-[11px] text-muted">暂无待办</p>
@@ -426,27 +528,44 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         !!usage &&
         ((usage.inputTokens ?? 0) > 0 ||
           (usage.outputTokens ?? 0) > 0 ||
+          (usage.cacheReadTokens ?? 0) > 0 ||
+          (usage.cacheWriteTokens ?? 0) > 0 ||
           (usage.costUsd ?? 0) > 0)
       if (!hasUsage) {
         return <p className="text-[11px] leading-4 text-muted">暂无用量</p>
       }
+      const cacheRead = usage?.cacheReadTokens ?? 0
+      const cacheWrite = usage?.cacheWriteTokens ?? 0
+      const inputTotal = (usage?.inputTokens ?? 0) + cacheRead + cacheWrite
+      const hitRate = inputTotal > 0 ? cacheRead / inputTotal : undefined
       const stats = [
         { label: '输入', value: formatTokens(usage?.inputTokens ?? 0) },
         { label: '输出', value: formatTokens(usage?.outputTokens ?? 0) },
-        ...(usage?.costUsd !== undefined
-          ? [{ label: '花费', value: `$${usage.costUsd.toFixed(2)}` }]
-          : []),
+        { label: '缓存读', value: formatTokens(cacheRead) },
+        { label: '缓存写', value: formatTokens(cacheWrite) },
       ]
       return (
-        <div className="flex items-start gap-5">
-          {stats.map((s) => (
-            <div key={s.label} className="min-w-0">
-              <div className="text-[9.5px] text-muted">{s.label}</div>
-              <div className="mt-0.5 truncate font-mono text-[13px] tabular-nums text-text">
-                {s.value}
+        <div>
+          <div className="text-[9.5px] text-muted">总花费</div>
+          <div className="mt-0.5 font-mono text-[19px] leading-6 tabular-nums text-text">
+            {formatCost(usage?.costUsd)}
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5">
+            {stats.map((s) => (
+              <div key={s.label} className="flex min-w-0 items-baseline justify-between gap-2">
+                <span className="text-[9.5px] text-muted">{s.label}</span>
+                <span className="truncate font-mono text-[11.5px] tabular-nums text-text-soft">
+                  {s.value}
+                </span>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-border pt-1.5">
+            <span className="text-[9.5px] text-muted">缓存命中率</span>
+            <span className="font-mono text-[11.5px] tabular-nums text-text-soft">
+              {hitRate !== undefined ? `${Math.round(hitRate * 100)}%` : '—'}
+            </span>
+          </div>
         </div>
       )
     }

@@ -148,10 +148,12 @@ function summaryOf(s: Session): SessionSummary {
     ...(s.archived ? { archived: true } : {}),
     ...(s.env ? { env: s.env } : {}),
     ...(s.parentId ? { parentId: s.parentId } : {}),
+    ...(typeof s.depth === 'number' ? { depth: s.depth } : {}),
     ...(s.worktree ? { worktree: s.worktree } : {}),
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
     usage: s.usage,
+    ...(s.context ? { context: s.context } : {}),
   }
 }
 
@@ -195,6 +197,36 @@ function sameOrigin(url: string, origin: string): boolean {
 
 function isRunningStatus(status: SessionSummary['status']): boolean {
   return status === 'running' || status === 'waiting_permission'
+}
+
+/** 旧数据没有 depth 时沿 parentId 链推算。 */
+export function depthOf(summary: SessionSummary, sessions: SessionSummary[]): number {
+  if (typeof summary.depth === 'number') return summary.depth
+  let depth = 0
+  let cursor: SessionSummary | undefined = summary
+  const seen = new Set<string>([summary.id])
+  while (cursor?.parentId && !seen.has(cursor.parentId)) {
+    seen.add(cursor.parentId)
+    depth++
+    cursor = sessions.find((s) => s.id === cursor!.parentId)
+  }
+  return depth
+}
+
+/** summary 是否位于 rootId 之后（不含 root 本身）。 */
+function isDescendantSummary(
+  sessions: SessionSummary[],
+  summary: SessionSummary,
+  rootId: string,
+): boolean {
+  let cursor: SessionSummary | undefined = summary
+  const seen = new Set<string>([summary.id])
+  while (cursor?.parentId && !seen.has(cursor.parentId)) {
+    if (cursor.parentId === rootId) return true
+    seen.add(cursor.parentId)
+    cursor = sessions.find((s) => s.id === cursor!.parentId)
+  }
+  return false
 }
 
 function collectToolResults(messages: Message[], base: Record<string, ToolResultBlock> = {}) {
@@ -287,9 +319,13 @@ export const useAppStore = create<AppState>((set, get) => {
   }
 
   const addSubagent = (hostId: string, summary: SessionSummary): void => {
+    const current = get().active
+    if (!current || current.hostId !== hostId || !summary.parentId) return
+    const sessions = get().runtimes[hostId]?.sessions ?? []
+    if (!isDescendantSummary(sessions, summary, current.sessionId)) return
     set((state) => {
       const active = state.active
-      if (!active || active.hostId !== hostId || summary.parentId !== active.sessionId) return state
+      if (!active || active.hostId !== hostId) return state
       const prev = active.subagents[summary.id]
       if (prev) {
         if (prev.summary === summary) return state
@@ -328,7 +364,7 @@ export const useAppStore = create<AppState>((set, get) => {
     if (!active || active.hostId !== hostId || active.sessionId !== parentId) return
     const sessions = get().runtimes[hostId]?.sessions ?? []
     for (const child of sessions) {
-      if (child.parentId === parentId) addSubagent(hostId, child)
+      if (isDescendantSummary(sessions, child, parentId)) addSubagent(hostId, child)
     }
   }
 
@@ -346,9 +382,18 @@ export const useAppStore = create<AppState>((set, get) => {
     pendingPermissions: PermissionRequest[],
   ): void => {
     const summary = summaryOf(session)
+    const sessions = get().runtimes[hostId]?.sessions ?? []
+    const activeNow = get().active
+    if (
+      !activeNow ||
+      activeNow.hostId !== hostId ||
+      !isDescendantSummary(sessions, summary, activeNow.sessionId)
+    ) {
+      return
+    }
     set((state) => {
       const active = state.active
-      if (!active || active.hostId !== hostId || session.parentId !== active.sessionId) return state
+      if (!active || active.hostId !== hostId) return state
       const last = session.messages[session.messages.length - 1]
       return {
         active: {

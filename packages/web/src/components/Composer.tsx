@@ -45,8 +45,10 @@ import { groupName, profileModelGroups } from '../lib/profileModels'
 import {
   EFFORTS,
   EFFORT_LABEL,
+  defaultEffortsForKind,
   effortSuffix,
   loadLastEffort,
+  nearestEffort,
   rememberEffort,
 } from '../lib/effort'
 import {
@@ -56,6 +58,7 @@ import {
   saveDraft,
 } from '../lib/storage'
 import { Popover } from './ui/Popover'
+import { ContextMeter } from './chat/ContextMeter'
 import { Button, IconButton } from './ui/Button'
 import { SegmentedControl } from './ui/Controls'
 import { MenuDivider, MenuItem, MenuList } from './ui/Menu'
@@ -435,6 +438,7 @@ function ModelPanel({
   groupId,
   model,
   effort,
+  efforts,
   loading,
   onSelect,
   onEffortChange,
@@ -446,6 +450,7 @@ function ModelPanel({
   groupId?: string
   model: string
   effort: ReasoningEffort
+  efforts: ReasoningEffort[]
   loading: boolean
   onSelect: (profileId: string, groupId: string | undefined, model: string) => void
   onEffortChange: (effort: ReasoningEffort) => void
@@ -572,13 +577,15 @@ function ModelPanel({
       </MenuList>
       <div className="border-t border-border p-1.5">
         <div className="flex items-center justify-between gap-2">
-          <SegmentedControl
-            size="sm"
-            aria-label="思考强度"
-            value={effort}
-            options={EFFORTS.map((value) => ({ value, label: EFFORT_LABEL[value] }))}
-            onChange={onEffortChange}
-          />
+          {efforts.length > 0 && (
+            <SegmentedControl
+              size="sm"
+              aria-label="思考强度"
+              value={efforts.includes(effort) ? effort : nearestEffort(efforts, effort)}
+              options={efforts.map((value) => ({ value, label: EFFORT_LABEL[value] }))}
+              onChange={onEffortChange}
+            />
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -602,6 +609,7 @@ function ModelMenu({
   groupId,
   model,
   effort,
+  efforts,
   loading,
   disabled,
   onSelect,
@@ -616,6 +624,7 @@ function ModelMenu({
   groupId?: string
   model: string
   effort: ReasoningEffort
+  efforts: ReasoningEffort[]
   loading: boolean
   disabled?: boolean
   onSelect: (profileId: string, groupId: string | undefined, model: string) => void
@@ -627,7 +636,10 @@ function ModelMenu({
 }) {
   const currentProfile = profiles.find((p) => p.id === profileId) ?? null
   const currentGroup = groupName(currentProfile ?? undefined, groupId)
-  const label = model ? `${shortModelName(model)}${effortSuffix(effort)}` : '选择模型'
+  const showEffort = efforts.length > 0 && efforts.includes(effort)
+  const label = model
+    ? `${shortModelName(model)}${showEffort ? effortSuffix(effort) : ''}`
+    : '选择模型'
   return (
     <Popover
       side="top"
@@ -670,6 +682,7 @@ function ModelMenu({
           groupId={groupId}
           model={model}
           effort={effort}
+          efforts={efforts}
           loading={loading}
           onSelect={onSelect}
           onEffortChange={onEffortChange}
@@ -878,6 +891,11 @@ export function Composer({
   const currentProfileId = sessionless ? (profileIdProp ?? '') : (summary?.profileId ?? '')
   const currentGroupId = sessionless ? groupIdProp : summary?.groupId
   const [localEffort, setLocalEffort] = useState<ReasoningEffort>(loadLastEffort)
+  const [modelEfforts, setModelEfforts] = useState<ReasoningEffort[] | undefined>(undefined)
+  const currentProfile = profiles.find((p) => p.id === currentProfileId)
+  const currentGroup = currentProfile?.groups?.find((g) => g.id === currentGroupId)
+  const currentKind = currentGroup?.kind ?? currentProfile?.kind
+  const supportedEfforts = modelEfforts ?? defaultEffortsForKind(currentKind)
   const effort = sessionless ? (effortProp ?? localEffort) : (summary?.effort ?? 'off')
   const draftKey = sessionId ? `${activeHostId ?? ''}:${sessionId}` : `new:${effectiveHostId ?? ''}`
 
@@ -972,6 +990,26 @@ export function Composer({
   useEffect(() => {
     if (completion?.kind === 'slash' && effectiveHostId) void refreshCommands(effectiveHostId)
   }, [completion?.kind, effectiveHostId, refreshCommands])
+
+  // 当前模型支持哪些思考强度；请求失败按 provider 默认处理
+  useEffect(() => {
+    setModelEfforts(undefined)
+    if (!effectiveHostId || !currentProfileId || !currentModel) return
+    const host = useAppStore.getState().hosts.find((h) => h.id === effectiveHostId)
+    if (!host) return
+    let cancelled = false
+    api
+      .modelCapabilities(host, currentProfileId, currentGroupId, currentModel)
+      .then((info) => {
+        if (!cancelled) setModelEfforts(info.efforts)
+      })
+      .catch(() => {
+        /* 能力未知时保留默认档位 */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [effectiveHostId, currentProfileId, currentGroupId, currentModel])
 
   useEffect(() => {
     if (!completion || completion.kind !== 'file') {
@@ -1262,6 +1300,19 @@ export function Composer({
     }
   }
 
+  // 切换模型后当前强度不再受支持：降到最近的可用档；完全不支持思考则回到关
+  useEffect(() => {
+    if (modelEfforts === undefined) return
+    if (modelEfforts.length === 0) {
+      if (effort !== 'off') changeEffort('off')
+      return
+    }
+    if (!modelEfforts.includes(effort)) {
+      changeEffort(nearestEffort(modelEfforts, effort))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelEfforts, effort])
+
   const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     const composing = composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229
     if (
@@ -1490,12 +1541,14 @@ export function Composer({
             </>
           )}
           <span className="min-w-0 flex-1" />
+          {!sessionless && summary && <ContextMeter compactDisabled={running} />}
           <ModelMenu
             profiles={profiles}
             profileId={currentProfileId}
             groupId={currentGroupId}
             model={currentModel}
             effort={effort}
+            efforts={supportedEfforts}
             loading={profilesLoading}
             disabled={disabled || (!sessionless && !summary)}
             open={modelMenuOpen}

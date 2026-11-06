@@ -12,12 +12,14 @@ import {
 import { useAppStore } from '../store/useAppStore'
 import { cn } from '../lib/cn'
 import { copyText } from '../lib/clipboard'
+import { formatCost, formatTokens } from '../lib/format'
 import type { HookNotice, ToolResultBlock, UiMessage } from '../lib/types'
 import { Markdown } from './Markdown'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCard, type ToolUseBlock } from './ToolCard'
 import { RewindDialog } from './RewindDialog'
 import { Popover } from './ui/Popover'
+import { Tip } from './ui/Tooltip'
 import { MenuItem, MenuList } from './ui/Menu'
 import { Button, IconButton } from './ui/Button'
 import {
@@ -438,6 +440,24 @@ export const AssistantMessage = memo(function AssistantMessage({
                 )}
               </IconButton>
             )}
+            {message.usage && (
+              <span className="relative ml-auto flex cursor-default items-center pr-1 font-mono text-[10.5px] tabular-nums text-muted">
+                {formatTokens(message.usage.inputTokens)} → {formatTokens(message.usage.outputTokens)}
+                {message.usage.costUsd !== undefined && ` · ${formatCost(message.usage.costUsd)}`}
+                <Tip
+                  side="top"
+                  label={[
+                    `未命中输入 ${Math.round(message.usage.inputTokens).toLocaleString('en-US')}`,
+                    `缓存读 ${Math.round(message.usage.cacheReadTokens ?? 0).toLocaleString('en-US')}`,
+                    `缓存写 ${Math.round(message.usage.cacheWriteTokens ?? 0).toLocaleString('en-US')}`,
+                    `输出 ${Math.round(message.usage.outputTokens).toLocaleString('en-US')}`,
+                    `推理 ${Math.round(message.usage.reasoningTokens ?? 0).toLocaleString('en-US')}`,
+                    `花费 ${formatCost(message.usage.costUsd)}`,
+                    `模型 ${message.model ?? '未知'}`,
+                  ].join(' · ')}
+                />
+              </span>
+            )}
           </div>
           <div className="msg-more mt-0.5 h-7 justify-start max-md:h-11">
             <Popover
@@ -584,6 +604,7 @@ export function MessageList({
   // 连续、无文本的 assistant 消息合并成一个工具运行段。
   type Segment =
     | { kind: 'message'; message: UiMessage; animate: boolean }
+    | { kind: 'notice'; message: UiMessage; animate: boolean }
     | { kind: 'run'; key: string; messages: UiMessage[]; animate: boolean }
   const segments: Segment[] = []
   let toolRun: UiMessage[] = []
@@ -608,6 +629,11 @@ export function MessageList({
     toolRun = []
   }
   for (const m of messages) {
+    if (m.notice) {
+      flushRun()
+      segments.push({ kind: 'notice', message: m, animate: animateIds.has(m.id) })
+      continue
+    }
     if (m.role === 'user') {
       const visible = m.content.filter((b) => b.type !== 'tool_result')
       if (visible.length === 0) continue
@@ -673,6 +699,23 @@ export function MessageList({
                 toolResults={toolResults}
                 cwd={cwd}
               />
+            </div>
+          )
+        }
+        if (seg.kind === 'notice') {
+          const text = seg.message.content
+            .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
+            .map((b) => b.text)
+            .join(' ')
+          return (
+            <div
+              key={seg.message.id}
+              className={cn(
+                'msg-row px-1 text-[11px] leading-4 text-muted',
+                seg.animate && 'chat-msg-enter',
+              )}
+            >
+              {text}
             </div>
           )
         }

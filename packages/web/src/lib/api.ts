@@ -3,6 +3,7 @@ import type {
   Checkpoint,
   ConfigBundle,
   ConfigExportInput,
+  ContextBreakdown,
   ConfigImportInput,
   ConfigImportResult,
   CreateSessionInput,
@@ -147,6 +148,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  modelCapabilities: (
+    h: HostConfig,
+    profileId: string,
+    groupId: string | undefined,
+    model: string,
+  ) =>
+    request<ModelInfo>(
+      h,
+      `/api/models/capabilities${qs({ profileId, groupId, model })}`,
+    ),
 
   sessions: (h: HostConfig) => request<SessionSummary[]>(h, '/api/sessions'),
   createSession: (h: HostConfig, input: CreateSessionInput) =>
@@ -281,6 +292,9 @@ export const api = {
     }),
 
   commands: (h: HostConfig) => request<SlashCommand[]>(h, '/api/commands'),
+
+  context: (h: HostConfig, sessionId: string) =>
+    request<ContextBreakdown>(h, `/api/sessions/${encodeURIComponent(sessionId)}/context`),
 
   fsRead: (h: HostConfig, path: string, cwd?: string) =>
     request<FsReadResult>(h, `/api/fs/read${qs({ path, cwd })}`),
