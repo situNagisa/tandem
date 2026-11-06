@@ -160,12 +160,37 @@ function CommentMarker({
   const [editingId, setEditingId] = useState<number | null>(null)
   const [text, setText] = useState('')
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const leaveTimer = useRef<number | null>(null)
 
   useEffect(() => {
     if (editingId !== null) inputRef.current?.focus()
   }, [editingId])
 
+  useEffect(
+    () => () => {
+      if (leaveTimer.current) window.clearTimeout(leaveTimer.current)
+    },
+    [],
+  )
+
+  // 鼠标从图标移到浮层之间会短暂离开标记，延迟关闭让浮层可操作。
+  const holdOpen = () => {
+    if (leaveTimer.current) window.clearTimeout(leaveTimer.current)
+    leaveTimer.current = null
+    setHover(true)
+  }
+
+  const scheduleLeave = () => {
+    if (leaveTimer.current) window.clearTimeout(leaveTimer.current)
+    leaveTimer.current = window.setTimeout(() => {
+      leaveTimer.current = null
+      if (!pinned) setHover(false)
+    }, 180)
+  }
+
   const close = () => {
+    if (leaveTimer.current) window.clearTimeout(leaveTimer.current)
+    leaveTimer.current = null
     setPinned(false)
     setHover(false)
     setEditingId(null)
@@ -191,8 +216,8 @@ function CommentMarker({
           data-open={pinned || undefined}
           aria-label={`${lineLabel(comments[0].startLine, comments[0].endLine)}的评论，共 ${comments.length} 条`}
           onPointerDown={(e) => e.stopPropagation()}
-          onMouseEnter={() => setHover(true)}
-          onMouseLeave={() => setHover(false)}
+          onMouseEnter={holdOpen}
+          onMouseLeave={scheduleLeave}
           onClick={(e) => {
             e.stopPropagation()
             setPinned(true)
@@ -213,7 +238,11 @@ function CommentMarker({
           sticky="always"
           onOpenAutoFocus={(e) => e.preventDefault()}
           onPointerDown={(e) => e.stopPropagation()}
-          onPointerEnter={(e) => e.stopPropagation()}
+          onPointerEnter={(e) => {
+            e.stopPropagation()
+            holdOpen()
+          }}
+          onPointerLeave={scheduleLeave}
           onClick={(e) => e.stopPropagation()}
           className="popover-panel z-[85] w-[270px] p-2.5"
         >
@@ -270,6 +299,7 @@ function CommentMarker({
                         type="button"
                         className="rounded px-2 py-1 text-[11px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
                         onClick={() => {
+                          setPinned(true)
                           setText(comment.text)
                           setEditingId(comment.id)
                         }}

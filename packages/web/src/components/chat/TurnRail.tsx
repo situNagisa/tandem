@@ -356,7 +356,7 @@ export function TurnRail({
               className="turn-tick"
             >
               <span className="turn-tick-line" />
-              {active && (
+              {active && mark.turn !== 1 && mark.turn !== total && (
                 <span className="turn-tick-num" aria-hidden>
                   {mark.turn}
                 </span>
