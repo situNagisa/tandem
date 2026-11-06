@@ -1473,7 +1473,7 @@ export function ProfilesSection() {
                       </IconButton>
                     </div>
                   </div>
-                  <div className="mt-2 flex items-center justify-end gap-1.5 border-t border-border pt-2 sm:hidden">
+                  <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5 border-t border-border pt-2 sm:hidden">
                     <Button
                       size="md"
                       onClick={() => void test(p)}

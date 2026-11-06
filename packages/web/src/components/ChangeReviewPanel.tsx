@@ -542,8 +542,8 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                   提交全部
                 </Button>
               </div>
-              <div className="flex items-center gap-1.5 text-[10.5px] leading-4 text-muted">
-                <span>
+              <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] leading-4 text-muted">
+                <span className="min-w-0">
                   将暂存并提交全部 {files.length} 个文件
                   {untrackedCount > 0 ? `（含 ${untrackedCount} 个未跟踪）` : ''}
                 </span>
@@ -552,7 +552,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                   size="sm"
                   variant="ghost"
                   onClick={askAgentCommit}
-                  className="h-6! px-1 text-[10.5px] [&_svg]:size-3"
+                  className="ml-auto h-6! shrink-0 px-1 text-[10.5px] [&_svg]:size-3"
                 >
                   <Wand2 size={11} /> 让 agent 写提交信息
                 </Button>

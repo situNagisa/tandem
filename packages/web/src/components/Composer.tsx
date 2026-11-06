@@ -16,6 +16,7 @@ import {
   Brain,
   Check,
   ChevronDown,
+  Ellipsis,
   FileText,
   Image as ImageIcon,
   Loader2,
@@ -172,6 +173,11 @@ function prettyModel(id: string): string {
   return s.replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+/** 手机底栏窄，去掉「Claude」前缀，把宽度让给权限与发送。 */
+function shortModelName(id: string): string {
+  return prettyModel(id).replace(/^Claude\s+/i, '')
+}
+
 function Highlight({ text, query }: { text: string; query: string }) {
   const q = query.trim()
   if (!q) return <>{text}</>
@@ -183,6 +189,63 @@ function Highlight({ text, query }: { text: string; query: string }) {
       <mark className="chat-match">{text.slice(idx, idx + q.length)}</mark>
       {text.slice(idx + q.length)}
     </>
+  )
+}
+
+function PermissionModeItems({
+  mode,
+  close,
+  onChange,
+}: {
+  mode: PermissionMode
+  close: () => void
+  onChange: (mode: PermissionMode) => void
+}) {
+  return (
+    <div>
+      <div className="menu-section">权限模式</div>
+      {MODES.map((m) => {
+        const item = MODE_META[m]
+        const ItemIcon = item.icon
+        return (
+          <button
+            key={m}
+            data-selected={m === mode}
+            onClick={() => {
+              close()
+              if (m !== mode) onChange(m)
+            }}
+            className="menu-item"
+            role="menuitemradio"
+            aria-checked={m === mode}
+          >
+            <ItemIcon
+              size={14}
+              className={cn(
+                'shrink-0',
+                m === 'bypassPermissions' ? 'text-danger' : 'text-text-secondary',
+              )}
+            />
+            <span className="min-w-0 flex-1">
+              <span
+                className={cn(
+                  'block text-[12.5px] leading-4',
+                  m === 'bypassPermissions' && 'text-danger',
+                )}
+              >
+                {item.label}
+              </span>
+              <span className="block truncate text-[10.5px] leading-4 text-muted">
+                {item.hint}
+              </span>
+            </span>
+            {m === mode && <Check size={13} className="shrink-0 text-text-secondary" />}
+          </button>
+        )
+      })}
+      <div className="menu-divider" />
+      <div className="menu-hint">Shift+Tab 快速切换</div>
+    </div>
   )
 }
 
@@ -233,52 +296,7 @@ function PermissionModeMenu({
       )}
     >
       {(close) => (
-        <div>
-          <div className="menu-section">权限模式</div>
-          {MODES.map((m) => {
-            const item = MODE_META[m]
-            const ItemIcon = item.icon
-            return (
-              <button
-                key={m}
-                data-selected={m === mode}
-                onClick={() => {
-                  close()
-                  if (m !== mode) onChange(m)
-                }}
-                className="menu-item"
-                role="menuitemradio"
-                aria-checked={m === mode}
-              >
-                <ItemIcon
-                  size={14}
-                  className={cn(
-                    'shrink-0',
-                    m === 'bypassPermissions' ? 'text-danger' : 'text-text-secondary',
-                  )}
-                />
-                <span className="min-w-0 flex-1">
-                  <span
-                    className={cn(
-                      'block text-[12.5px] leading-4',
-                      m === 'bypassPermissions' && 'text-danger',
-                    )}
-                  >
-                    {item.label}
-                  </span>
-                  <span className="block truncate text-[10.5px] leading-4 text-muted">
-                    {item.hint}
-                  </span>
-                </span>
-                {m === mode && (
-                  <Check size={13} className="shrink-0 text-text-secondary" />
-                )}
-              </button>
-            )
-          })}
-          <div className="menu-divider" />
-          <div className="menu-hint">Shift+Tab 快速切换</div>
-        </div>
+        <PermissionModeItems mode={mode} close={close} onChange={onChange} />
       )}
     </Popover>
   )
@@ -307,31 +325,87 @@ function ThinkingModeMenu() {
         </IconButton>
       )}
     >
+      {(close) => <ThinkingModeItems close={close} />}
+    </Popover>
+  )
+}
+
+function ThinkingModeItems({ close }: { close: () => void }) {
+  const mode = useThinkingMode()
+  return (
+    <div>
+      <div className="menu-section">思考过程</div>
+      {THINKING_MODES.map((item) => (
+        <button
+          key={item}
+          data-selected={item === mode}
+          onClick={() => {
+            close()
+            setThinkingMode(item)
+          }}
+          className="menu-item"
+          role="menuitemradio"
+          aria-checked={item === mode}
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block text-[12.5px] leading-4">{THINKING_MODE_META[item].label}</span>
+            <span className="block truncate text-[10.5px] leading-4 text-muted">
+              {THINKING_MODE_META[item].hint}
+            </span>
+          </span>
+          {item === mode && <Check size={13} className="shrink-0 text-text-secondary" />}
+        </button>
+      ))}
+      <div className="menu-hint">设置会记住，对所有会话生效</div>
+    </div>
+  )
+}
+
+/** 手机底栏空间有限：思考过程与权限模式收进「更多」菜单。 */
+function MobileMoreMenu({
+  mode,
+  disabled,
+  onChange,
+}: {
+  mode: PermissionMode
+  disabled?: boolean
+  onChange: (mode: PermissionMode) => void
+}) {
+  const meta = MODE_META[mode]
+  return (
+    <Popover
+      side="top"
+      align="left"
+      panelClassName="w-[248px] max-w-[calc(100vw-1.5rem)]"
+      trigger={({ open, toggle }) => (
+        <IconButton
+          onClick={toggle}
+          disabled={disabled}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          label={`更多设置 · 权限模式：${meta.label}`}
+          tooltipSide="top"
+          className={cn('max-sm:size-11', open && 'bg-[var(--t-bg-hover)] text-text-soft')}
+        >
+          <span className="relative flex items-center justify-center">
+            <Ellipsis size={17} />
+            {mode !== 'default' && (
+              <span
+                className={cn(
+                  'absolute -right-1 -top-0.5 size-1.5 rounded-full',
+                  mode === 'bypassPermissions' ? 'bg-danger' : 'bg-accent',
+                )}
+              />
+            )}
+          </span>
+        </IconButton>
+      )}
+    >
       {(close) => (
         <div>
-          <div className="menu-section">思考过程</div>
-          {THINKING_MODES.map((item) => (
-            <button
-              key={item}
-              data-selected={item === mode}
-              onClick={() => {
-                close()
-                setThinkingMode(item)
-              }}
-              className="menu-item"
-              role="menuitemradio"
-              aria-checked={item === mode}
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block text-[12.5px] leading-4">{THINKING_MODE_META[item].label}</span>
-                <span className="block truncate text-[10.5px] leading-4 text-muted">
-                  {THINKING_MODE_META[item].hint}
-                </span>
-              </span>
-              {item === mode && <Check size={13} className="shrink-0 text-text-secondary" />}
-            </button>
-          ))}
-          <div className="menu-hint">设置会记住，对所有会话生效</div>
+          <ThinkingModeItems close={close} />
+          <div className="menu-divider" />
+          <PermissionModeItems mode={mode} close={close} onChange={onChange} />
         </div>
       )}
     </Popover>
@@ -548,6 +622,7 @@ function ModelMenu({
   onOpen,
   open,
   onOpenChange,
+  compact = false,
 }: {
   profiles: Profile[]
   profileId: string
@@ -560,9 +635,11 @@ function ModelMenu({
   onOpen?: () => void
   open: boolean
   onOpenChange: (open: boolean) => void
+  compact?: boolean
 }) {
   const currentProfile = profiles.find((p) => p.id === profileId) ?? null
   const currentGroup = groupName(currentProfile ?? undefined, groupId)
+  const label = compact ? shortModelName(model) : prettyModel(model)
   return (
     <Popover
       side="top"
@@ -589,11 +666,11 @@ function ModelMenu({
           tooltipSide="top"
           aria-label="选择模型"
           className={cn(
-            'min-w-0 max-w-[220px] justify-start gap-1 px-2 font-normal max-sm:min-h-11',
+            'min-w-0 max-w-[220px] justify-start gap-1 px-2 font-normal max-sm:min-h-11 max-sm:max-w-[40vw]',
             isOpen && 'bg-[var(--t-bg-hover)] text-text-soft',
           )}
         >
-          <span className="min-w-0 truncate">{prettyModel(model)}</span>
+          <span className="min-w-0 truncate">{label}</span>
           <ChevronDown size={12} className="shrink-0 opacity-60" />
         </Button>
       )}
@@ -1397,7 +1474,7 @@ export function Composer({
           />
         </div>
 
-        <div className="flex items-center gap-1 px-2 pb-2 pt-1">
+        <div className="flex min-w-0 flex-nowrap items-center gap-1 px-2 pb-2 pt-1">
           <IconButton
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled || attachments.length >= MAX_ATTACHMENTS}
@@ -1407,8 +1484,14 @@ export function Composer({
           >
             <Paperclip size={16} />
           </IconButton>
-          <ThinkingModeMenu />
-          <PermissionModeMenu mode={mode} disabled={disabled} onChange={changeMode} />
+          {isMobile ? (
+            <MobileMoreMenu mode={mode} disabled={disabled} onChange={changeMode} />
+          ) : (
+            <>
+              <ThinkingModeMenu />
+              <PermissionModeMenu mode={mode} disabled={disabled} onChange={changeMode} />
+            </>
+          )}
           <span className="min-w-0 flex-1" />
           <ModelMenu
             profiles={profiles}
@@ -1420,6 +1503,7 @@ export function Composer({
             open={modelMenuOpen}
             onOpenChange={setModelMenuOpen}
             onSelect={changeModel}
+            compact={isMobile}
             onManage={() => openSettings('profiles')}
             onOpen={() => {
               if (effectiveHostId && profiles.length === 0 && !profilesLoading) {
@@ -1435,7 +1519,7 @@ export function Composer({
             tooltip={running ? '停止生成 (Esc)' : '发送 (Enter)'}
             tooltipSide="top"
             aria-label={running ? '停止生成' : '发送消息'}
-            className="composer-send ml-0.5 disabled:cursor-not-allowed"
+            className="composer-send ml-0.5 shrink-0 disabled:cursor-not-allowed"
           >
             <span key={sendState} className="send-icon flex items-center justify-center">
               {running ? (
