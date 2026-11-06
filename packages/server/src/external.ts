@@ -121,14 +121,34 @@ function unwrapMentions(text: string): string {
 function extractInjected(text: string): { text: string; contexts: InjectedContext[] } {
   const contexts: InjectedContext[] = [];
   const marker = INJECTED_MARKERS.find((item) => item.re.test(text));
-  if (marker) {
+  let out = text;
+  if (marker && marker.kind !== 'AGENTS.md') {
     const value = text.trim();
     if (value) contexts.push({ kind: marker.kind, text: value });
     return { text: '', contexts };
   }
+  // AGENTS.md 头只占一行，后面常跟着 <INSTRUCTIONS> 等块；拆开保留，其余注入仍按标签分类。
+  if (marker) {
+    const header = out.match(/^#*\s*AGENTS\.md instructions[^\n]*\r?\n?/i)?.[0] ?? '';
+    if (!header) {
+      const value = out.trim();
+      if (value) contexts.push({ kind: 'AGENTS.md', text: value });
+      return { text: '', contexts };
+    }
+    if (header) {
+      out = out.slice(header.length);
+      const instructions = out.match(/<INSTRUCTIONS(?:\s[^>]*)?>([\s\S]*?)<\/INSTRUCTIONS>/i);
+      const parts = [header.trim()];
+      if (instructions) {
+        const value = String(instructions[1] ?? '').trim();
+        if (value) parts.push(value);
+        out = out.replace(instructions[0], '');
+      }
+      contexts.push({ kind: 'AGENTS.md', text: parts.join('\n\n') });
+    }
+  }
 
   const command = commandSummary(text);
-  let out = text;
   for (const tag of COMMAND_TAGS) out = out.replace(tagged(tag), '');
   for (const tag of DROP_TAGS) {
     const re = new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`, 'gi');
