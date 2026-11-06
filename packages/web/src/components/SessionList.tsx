@@ -5,7 +5,7 @@ import {
   ArchiveRestore,
   ChevronRight,
   Copy,
-  FolderGit2,
+  Folder,
   GitBranch,
   GitMerge,
   Loader2,
@@ -794,7 +794,7 @@ export function SessionList({
                         !projCollapsed && 'rotate-90',
                       )}
                     />
-                    <FolderGit2 size={13} className="shrink-0 text-text-tertiary" />
+                    <Folder size={13} className="shrink-0 text-text-tertiary" />
                     <span className="min-w-0 flex-1 truncate">{project.name}</span>
                     {project.branch && (
                       <span className="flex min-w-0 max-w-[42%] items-center gap-0.5 text-[10.5px] font-normal text-text-tertiary">
