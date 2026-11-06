@@ -87,3 +87,9 @@
 - [x] 全局提亮文字 token、字号下限（正文≥13、辅助≥12，375 处）
 - [x] 真实模型 e2e v2（docs/e2e-report-v2.md）：codex 分组全通过，修 6 个 bug；claude 分组被中转限制为仅 Claude Code 客户端，未能真测
 - [x] 交互走查 v6（docs/qa-v6.md）；AGENTS.md 项目手册
+
+## 迭代 13（2026-11-07）后台任务 + 定时任务
+- [x] Bash `run_in_background` + `BashOutput` / `KillBash`（Claude Code 同名同参）；Host 内 BackgroundTaskManager：1MB 环形缓冲 + ~/.tandem/tasks/<id>.log，REST `/api/tasks`，WS `task_updated` 节流；重启后运行中标记 lost、已结束保留
+- [x] Host 内 cron 调度（5 段，测试可 6 段带秒）：~/.tandem/schedules.json、新建/追加会话、账号/分组/模型/effort/权限、catchUp、`/api/schedules` CRUD + 立即运行；会话带 scheduledBy，侧栏小时钟
+- [x] web：顶栏后台任务面板（实时输出/跟随/终止）、Bash 卡「后台运行 · 查看输出」、设置「定时任务」页（预设 cron/下次时间/最近结果）、`/schedule` 打开新建表单
+- 验证：本地 8111 实测 BashOutput 取到 sleep 输出、KillBash 终止长任务、10 秒 cron 触发建会话；Playwright 截图与点击（面板、设置、立即运行、开关、/schedule）
