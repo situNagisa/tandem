@@ -8,6 +8,7 @@
   --t-sidebar: #eae6dd;
   --t-surface: #fcfbf8;
   --t-surface-2: #f0ece3;
+  --t-bg-subtle: #edece8;
   --t-bg-hover: rgba(55, 43, 26, 0.055);
   --t-bg-active: rgba(55, 43, 26, 0.09);
   --t-border: rgba(45, 35, 22, 0.11);
@@ -81,6 +82,7 @@ html.dark {
   --t-sidebar: #1f1f1f;
   --t-surface: #303030;
   --t-surface-2: #2a2a2a;
+  --t-bg-subtle: #2a2a2a;
   --t-bg-hover: rgba(255, 255, 255, 0.05);
   --t-bg-active: #404040;
   --t-border: rgba(255, 255, 255, 0.07);

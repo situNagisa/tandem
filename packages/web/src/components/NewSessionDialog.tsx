@@ -1,21 +1,24 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowUp,
-  ArrowUpRight,
   Check,
   ChevronDown,
   ChevronLeft,
   Eye,
   EyeOff,
+  FileText,
   Folder,
   FolderOpen,
+  GitBranch,
   GitFork,
   ScanLine,
   Loader2,
   Plus,
   RefreshCw,
+  Search,
   Server,
   TriangleAlert,
+  Wrench,
 } from 'lucide-react'
 import type { ContentBlock, FsEntry, PermissionMode, ReasoningEffort } from '@tandem/protocol'
 import { api } from '../lib/api'
@@ -39,9 +42,26 @@ import { parsePairLink, type PairTarget } from '../lib/pairLink'
 import { RELAY_UNSUPPORTED_MESSAGE, useRelayCryptoSupport } from '../lib/relay'
 
 const HINTS = [
-  '介绍一下这个项目的结构和启动方式',
-  '运行测试并修复失败的用例',
-  '查看最近的 git 改动并总结风险',
+  {
+    icon: Search,
+    label: '介绍项目',
+    prompt: '介绍一下这个项目的结构和启动方式。',
+  },
+  {
+    icon: Wrench,
+    label: '修复测试',
+    prompt: '运行测试并修复失败的用例。',
+  },
+  {
+    icon: GitBranch,
+    label: '总结改动',
+    prompt: '查看最近的 git 改动并总结风险。',
+  },
+  {
+    icon: FileText,
+    label: '写文档',
+    prompt: '阅读这个仓库并补一份清晰的中文 README。',
+  },
 ]
 
 function Picker({
@@ -528,24 +548,18 @@ export function NewSessionView() {
           </p>
         )}
 
-        <div className="mt-8">
-          <div className="mb-2 text-center text-[10px] font-medium uppercase tracking-[0.1em] text-muted">
-            常用
-          </div>
-          <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-0.5 max-md:-mx-4 max-md:px-4 md:justify-center">
-            {HINTS.map((hint) => (
-              <Button
-                key={hint}
-                size="sm"
-                variant="secondary"
-                onClick={() => seedPrompt(hint)}
-                className="h-[30px] shrink-0 gap-1.5 rounded-lg px-2.5 text-[11.5px] font-normal text-text-soft hover:text-text max-md:h-11"
-              >
-                <span className="whitespace-nowrap">{hint}</span>
-                <ArrowUpRight size={11} className="shrink-0 text-muted" />
-              </Button>
-            ))}
-          </div>
+        <div className="no-scrollbar mt-3 flex items-center gap-1.5 overflow-x-auto pb-0.5 max-md:-mx-4 max-md:px-4 md:justify-center">
+          {HINTS.map(({ icon: Icon, label, prompt }) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => seedPrompt(prompt)}
+              className="flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--t-bg-subtle)] px-2.5 text-[11.5px] font-normal text-text-soft transition-colors duration-[120ms] hover:bg-[color-mix(in_srgb,var(--t-text)_10%,var(--t-bg-subtle))] hover:text-text max-md:h-11"
+            >
+              <Icon size={12} className="shrink-0 text-muted" />
+              <span className="whitespace-nowrap">{label}</span>
+            </button>
+          ))}
         </div>
 
       </div>
