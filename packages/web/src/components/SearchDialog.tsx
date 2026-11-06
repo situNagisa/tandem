@@ -185,130 +185,131 @@ export function SearchDialog() {
       open={open}
       onClose={() => setOpen(false)}
       align="top"
-      className="max-w-[680px]"
-      bodyClassName="p-0"
+      className="h-[min(560px,70vh)] max-w-[680px]"
+      bodyClassName="overflow-hidden p-0"
     >
-      <div className="flex items-center gap-2.5 border-b border-border px-4">
-        <Search size={16} className="shrink-0 text-muted" />
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') {
-              e.preventDefault()
-              setIndex((i) => Math.min(results.length - 1, i + 1))
-            } else if (e.key === 'ArrowUp') {
-              e.preventDefault()
-              setIndex((i) => Math.max(0, i - 1))
-            } else if (e.key === 'Enter') {
-              e.preventDefault()
-              const r = results[index]
-              if (r) openResult(r)
-            }
-          }}
-          placeholder="搜索全部 Host 的会话"
-          className="h-12 min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-muted"
-          aria-label="搜索会话"
-        />
-        <kbd className="shrink-0 rounded border border-border bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[11px] text-muted">
-          Esc
-        </kbd>
-      </div>
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex shrink-0 items-center gap-2.5 border-b border-border px-4">
+          <Search size={16} className="shrink-0 text-muted" />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                setIndex((i) => Math.min(results.length - 1, i + 1))
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                setIndex((i) => Math.max(0, i - 1))
+              } else if (e.key === 'Enter') {
+                e.preventDefault()
+                const r = results[index]
+                if (r) openResult(r)
+              }
+            }}
+            placeholder="搜索全部 Host 的会话"
+            className="h-12 min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-muted"
+            aria-label="搜索会话"
+          />
+          <kbd className="shrink-0 rounded border border-border bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[11px] text-muted">
+            Esc
+          </kbd>
+        </div>
 
-      <div className="max-h-[54vh] overflow-y-auto px-1.5 py-1">
-        {results.length === 0 && (
-          <p className="px-3 py-8 text-center text-[13px] text-muted">
-            {query ? '没有找到匹配的会话' : scope === 'project' && !project ? '当前没有可定位的项目' : '暂无可搜索的会话'}
-          </p>
-        )}
-        {grouped.map((group) => (
-          <div key={group.key}>
-            <div className="px-2.5 pb-1 pt-2 text-[12px] font-medium tracking-[0.08em] text-muted">
-              {group.label}
-            </div>
-            {group.items.map((r) => {
-              const i = flatIndex++
-              return (
-                <button
-                  key={r.key}
-                  onMouseEnter={() => setIndex(i)}
-                  onClick={() => openResult(r)}
-                  className={cn(
-                    'flex h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left transition-colors duration-[120ms]',
-                    i === index ? 'bg-[var(--t-bg-active)]' : 'hover:bg-[var(--t-bg-hover)]',
-                  )}
-                >
-                  {typeof r.depth === 'number' && r.depth > 0 && (
-                    <span className="shrink-0 text-[12px] text-muted">
-                      {r.depth === 1 ? '子' : r.depth === 2 ? '孙' : `第${r.depth}层`}
-                    </span>
-                  )}
-                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
-                    {r.title}
-                  </span>
-                  {r.pinned && <Pin size={10} className="shrink-0 text-muted" />}
-                  {r.archived && (
-                    <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1 text-[11px] text-muted">
-                      已归档
-                    </span>
-                  )}
-                  <span
+        <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1">
+          {results.length === 0 && (
+            <p className="px-3 py-8 text-center text-[13px] text-muted">
+              {query ? '没有找到匹配的会话' : scope === 'project' && !project ? '当前没有可定位的项目' : '暂无可搜索的会话'}
+            </p>
+          )}
+          {grouped.map((group) => (
+            <div key={group.key}>
+              <div className="px-2.5 pb-1 pt-2 text-[12px] font-medium tracking-[0.08em] text-muted">
+                {group.label}
+              </div>
+              {group.items.map((r) => {
+                const i = flatIndex++
+                return (
+                  <button
+                    key={r.key}
+                    onMouseEnter={() => setIndex(i)}
+                    onClick={() => openResult(r)}
                     className={cn(
-                      'shrink-0 truncate rounded border border-border px-1 py-px text-[11px] text-muted',
-                      r.external ? 'max-w-[104px]' : 'max-w-[120px]',
+                      'flex h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left transition-colors duration-[120ms]',
+                      i === index ? 'bg-[var(--t-bg-active)]' : 'hover:bg-[var(--t-bg-hover)]',
                     )}
-                    title={`${r.hostName} · ${r.project}`}
                   >
-                    {r.external ? SOURCE_LABEL[r.external.source] : r.project}
-                  </span>
-                  <span className="w-[54px] shrink-0 text-right text-[12px] text-muted">
-                    {formatRelative(r.updatedAt)}
-                  </span>
-                  <span className="flex w-2 shrink-0 justify-center">
-                    <SessionStatusDot status={r.status} />
-                  </span>
-                  <span className="w-3 shrink-0 text-[12px] text-muted">{i === index ? '↵' : ''}</span>
-                </button>
-              )
-            })}
-          </div>
-        ))}
-      </div>
-
-      <div className="flex items-center gap-1 border-t border-border px-3 py-2">
-        <div className="flex items-center gap-0.5">
-          {SCOPES.map((s) => (
-            <button
-              key={s.value}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => setScope(s.value)}
-              aria-pressed={scope === s.value}
-              className={cn(
-                'h-6 rounded-md px-2 text-[13px] transition-colors duration-[120ms]',
-                scope === s.value
-                  ? 'bg-[var(--t-bg-active)] text-text'
-                  : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text-soft',
-              )}
-            >
-              {s.label}
-            </button>
+                    {typeof r.depth === 'number' && r.depth > 0 && (
+                      <span className="shrink-0 text-[12px] text-muted">
+                        {r.depth === 1 ? '子' : r.depth === 2 ? '孙' : `第${r.depth}层`}
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+                      {r.title}
+                    </span>
+                    {r.pinned && <Pin size={10} className="shrink-0 text-muted" />}
+                    {r.archived && (
+                      <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1 text-[11px] text-muted">
+                        已归档
+                      </span>
+                    )}
+                    <span
+                      className={cn(
+                        'shrink-0 truncate rounded border border-border px-1 py-px text-[11px] text-muted',
+                        r.external ? 'max-w-[104px]' : 'max-w-[120px]',
+                      )}
+                      title={`${r.hostName} · ${r.project}`}
+                    >
+                      {r.external ? SOURCE_LABEL[r.external.source] : r.project}
+                    </span>
+                    <span className="min-w-[52px] shrink-0 whitespace-nowrap text-right text-[12px] text-muted">
+                      {formatRelative(r.updatedAt)}
+                    </span>
+                    <span className="flex w-2 shrink-0 justify-center">
+                      <SessionStatusDot status={r.status} />
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           ))}
         </div>
-        <button
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setIncludeSubagents((v) => !v)}
-          aria-pressed={includeSubagents}
-          className={cn(
-            'ml-2 flex h-6 items-center gap-1 rounded-md px-2 text-[12px] transition-colors duration-[120ms]',
-            includeSubagents
-              ? 'bg-[var(--t-bg-active)] text-text'
-              : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text-soft',
-          )}
-        >
-          <Bot size={11} /> 包含子代理
-        </button>
-        <span className="ml-auto text-[12px] text-muted">{results.length} 个结果</span>
+
+        <div className="flex shrink-0 items-center gap-1 border-t border-border px-3 py-2">
+          <div className="flex items-center gap-0.5">
+            {SCOPES.map((s) => (
+              <button
+                key={s.value}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setScope(s.value)}
+                aria-pressed={scope === s.value}
+                className={cn(
+                  'h-6 rounded-md px-2 text-[13px] transition-colors duration-[120ms]',
+                  scope === s.value
+                    ? 'bg-[var(--t-bg-active)] text-text'
+                    : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text-soft',
+                )}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setIncludeSubagents((v) => !v)}
+            aria-pressed={includeSubagents}
+            className={cn(
+              'ml-2 flex h-6 items-center gap-1 rounded-md px-2 text-[12px] transition-colors duration-[120ms]',
+              includeSubagents
+                ? 'bg-[var(--t-bg-active)] text-text'
+                : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text-soft',
+            )}
+          >
+            <Bot size={11} /> 包含子代理
+          </button>
+          <span className="ml-auto text-[12px] text-muted">{results.length} 个结果</span>
+        </div>
       </div>
     </Modal>
   )
