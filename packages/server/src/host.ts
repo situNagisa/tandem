@@ -43,8 +43,24 @@ import {
 import { McpManager } from './mcp.js';
 import { PermissionRuleStore } from './permissions.js';
 import { SessionStore } from './store.js';
-import type { HostConfig, SessionRecord, SessionRuntime, StoredProfile, ToolDefinition, ToolResult } from './types.js';
+import type {
+  HostConfig,
+  SessionRecord,
+  SessionRuntime,
+  StoredProfile,
+  StoredProfileGroup,
+  ToolDefinition,
+  ToolResult,
+} from './types.js';
 import { UsageStore, costOfUsage, priceForModel } from './usage.js';
+import { BudgetStore } from './budgets.js';
+import {
+  classifyKeyFailure,
+  cooldownMsFor,
+  groupUnavailableError,
+  orderedAvailableKeys,
+  profileWithKey,
+} from './key-rotation.js';
 import {
   checkoutBranch,
   createWorktree,
@@ -73,7 +89,7 @@ import {
   estimateBreakdown,
   calibrateBreakdown,
 } from './context.js';
-import { errorMessage } from './util/text.js';
+import { errorMessage, truncateEnd } from './util/text.js';
 import { detectSessionEnv } from './util/git.js';
 import { expandHome, isSubPath, resolvePath } from './util/path.js';
 
@@ -103,6 +119,7 @@ export class Host {
   readonly hooks: HookManager;
   readonly mcp: McpManager;
   readonly usage: UsageStore;
+  readonly budgets: BudgetStore;
   readonly hub = new Hub();
   readonly version: string;
   private runtimes = new Map<string, SessionRuntime>();
@@ -111,6 +128,8 @@ export class Host {
   private capabilityCache = new Map<string, { at: number; info: ModelInfo }>();
   /** 已尝试过环境检测的会话：非 git 目录也记住，避免列表轮询反复执行 git。 */
   private envChecked = new Set<string>();
+  /** 分组 Key 轮询游标（按 profileId:groupId 存内存）。 */
+  private keyRotation = new Map<string, number>();
 
   constructor(config?: HostConfig, home = tandemHome()) {
     this.home = home;
@@ -122,6 +141,7 @@ export class Host {
     this.hooks = new HookManager(home);
     this.mcp = new McpManager(home);
     this.usage = new UsageStore(home);
+    this.budgets = new BudgetStore(home, this.usage);
     this.version = readVersion();
     // 启动时连接已启用的 MCP 服务器；失败只记录状态，不影响 Host 启动
     this.mcp.start();
@@ -255,6 +275,161 @@ export class Host {
   profileFor(profileId: string, groupId?: string): StoredProfile | undefined {
     const profile = this.profiles.get(profileId);
     return profile ? effectiveProfile(profile, groupId) : undefined;
+  }
+
+  groupFor(profileId: string, groupId?: string): StoredProfileGroup | undefined {
+    return groupId ? this.profiles.get(profileId)?.groups?.find((g) => g.id === groupId) : undefined;
+  }
+
+  /**
+   * 本次请求可尝试的 Key 候选：按 failover / round-robin 排序，已停用/冷却中的被过滤。
+   * 分组没有 Key 或会话未选分组时，退化为账号自身的单 Key（keyId 为空）。
+   */
+  keyCandidates(
+    profileId: string,
+    groupId?: string,
+  ): {
+    group?: StoredProfileGroup;
+    effective?: StoredProfile;
+    candidates: Array<{ keyId?: string; label?: string; profile: StoredProfile }>;
+  } {
+    const profile = this.profiles.get(profileId);
+    if (!profile) return { candidates: [] };
+    const effective = effectiveProfile(profile, groupId);
+    const group = this.groupFor(profileId, groupId);
+    const keys = group?.keys ?? [];
+    if (!group || keys.length === 0) {
+      return { effective, candidates: [{ profile: effective }] };
+    }
+    const rotationKey = `${profileId}:${groupId}`;
+    const rotate = this.keyRotation.get(rotationKey) ?? 0;
+    const available = orderedAvailableKeys(keys, group.keyStrategy, rotate);
+    if (group.keyStrategy === 'round_robin' && available.length > 0) {
+      this.keyRotation.set(rotationKey, rotate + 1);
+    }
+    return {
+      group,
+      effective,
+      candidates: available.map((key) => ({
+        keyId: key.id,
+        ...(key.label ? { label: key.label } : {}),
+        profile: profileWithKey(effective, key),
+      })),
+    };
+  }
+
+  /** 记录 Key 成功：清除冷却与连续失败计数。 */
+  markKeySuccess(profileId: string, groupId: string | undefined, keyId?: string): void {
+    if (!keyId || !groupId) return;
+    const key = this.groupFor(profileId, groupId)?.keys?.find((k) => k.id === keyId);
+    if (!key) return;
+    if (!key.failures && !key.cooldownUntil && !key.lastError) return;
+    this.profiles.updateKeyState(profileId, groupId, keyId, {
+      failures: undefined,
+      cooldownUntil: undefined,
+      lastError: undefined,
+      lastErrorAt: undefined,
+    });
+  }
+
+  /**
+   * 记录 Key 失败并更新停用/冷却状态；返回 true 表示可以换下一个 Key 重试。
+   * 401/403 停用该 Key；429/额度不足/5xx 冷却 60s→30min 指数退避。
+   */
+  markKeyFailure(
+    profileId: string,
+    groupId: string | undefined,
+    keyId: string | undefined,
+    err: unknown,
+  ): boolean {
+    if (!keyId || !groupId) return false;
+    const key = this.groupFor(profileId, groupId)?.keys?.find((k) => k.id === keyId);
+    if (!key) return false;
+    const failure = classifyKeyFailure(err);
+    if (failure.kind === 'none') return false;
+    const message = truncateEnd(failure.message, 300);
+    if (failure.kind === 'disable') {
+      this.profiles.updateKeyState(profileId, groupId, keyId, {
+        disabled: true,
+        cooldownUntil: undefined,
+        lastError: message,
+        lastErrorAt: Date.now(),
+      });
+    } else {
+      const failures = (key.failures ?? 0) + 1;
+      this.profiles.updateKeyState(profileId, groupId, keyId, {
+        failures,
+        cooldownUntil: Date.now() + cooldownMsFor(failures),
+        lastError: message,
+        lastErrorAt: Date.now(),
+      });
+    }
+    return true;
+  }
+
+  /** 分组 Key 全部不可用时的可读错误。 */
+  keysUnavailableMessage(
+    profileId: string,
+    groupId?: string,
+    errors: Map<string, string> = new Map(),
+  ): string | undefined {
+    const group = this.groupFor(profileId, groupId);
+    if (!group?.keys?.length) return undefined;
+    return groupUnavailableError(group, errors);
+  }
+
+  /** 预算检查：block 规则达到 100% 时拒绝请求（会话内 allow-once 可放行一次）。 */
+  assertBudget(rec: SessionRecord, model: string): void {
+    const status = this.budgets.blockingRule({
+      profileId: rec.profileId,
+      groupId: rec.groupId,
+      model,
+    });
+    if (!status) return;
+    const rt = this.ensureRuntime(rec.id);
+    if (rt.budgetAllowOnce) {
+      rt.budgetAllowOnce = false;
+      return;
+    }
+    const rule = this.budgets.list().find((item) => item.id === status.ruleId);
+    const name = rule ? this.budgets.describe(rule) : status.ruleId;
+    throw new Error(
+      `预算已达上限：${name} 本期已用 ${formatUsd(status.spentUsd)} / ${formatUsd(status.limitUsd)}（${status.percent}%），已阻止新请求。可在会话中临时放行一次。`,
+    );
+  }
+
+  /** 会话内临时放行一次 block 预算。 */
+  allowBudgetOnce(sessionId: string): boolean {
+    const rec = this.store.get(sessionId);
+    if (!rec) return false;
+    this.ensureRuntime(sessionId).budgetAllowOnce = true;
+    return true;
+  }
+
+  /** 用量落账后检查预算：新跨过的档位全局广播，并在触发会话里插一条低调提示。 */
+  observeBudgets(rec: SessionRecord): void {
+    const alerts = this.budgets.observe();
+    for (const alert of alerts) {
+      this.hub.broadcastAll({ type: 'budget_alert', ...alert });
+      const rule = this.budgets.list().find((item) => item.id === alert.ruleId);
+      const name = rule
+        ? this.budgets.describe(rule)
+        : this.budgets.describe({
+            scope: alert.scope,
+            period: alert.period,
+            ...(alert.profileId ? { profileId: alert.profileId } : {}),
+            ...(alert.groupId ? { groupId: alert.groupId } : {}),
+            ...(alert.model ? { model: alert.model } : {}),
+          });
+      const percent = alert.limitUsd > 0 ? Math.round((alert.spentUsd / alert.limitUsd) * 1000) / 10 : 0;
+      const text =
+        alert.level === '100'
+          ? `预算提醒：「${name}」本期已用 ${formatUsd(alert.spentUsd)} / ${formatUsd(alert.limitUsd)}（${percent}%）${
+              alert.action === 'block' ? '，后续模型请求将被拒绝，可在会话中临时放行一次。' : '。'
+            }`
+          : `预算提醒：「${name}」本期已用 ${formatUsd(alert.spentUsd)} / ${formatUsd(alert.limitUsd)}（${percent}%）。`;
+      this.appendNotice(rec, text);
+    }
   }
 
   /** 拉取模型列表：apiKey/baseUrl 缺省时用账号（或分组）已存的值。 */
@@ -835,7 +1010,8 @@ export class Host {
    * baseTitle 是发起请求时的标题，用于判断期间是否被用户手动改过。
    */
   private async autoTitle(rec: SessionRecord, firstText: string, baseTitle: string): Promise<void> {
-    const profile = this.profileFor(rec.profileId, rec.groupId);
+    const titleKey = this.keyCandidates(rec.profileId, rec.groupId).candidates[0];
+    const profile = titleKey?.profile ?? this.profileFor(rec.profileId, rec.groupId);
     const model = rec.model || profile?.defaultModel || '';
     if (!profile?.apiKey || !model) return;
 
@@ -852,12 +1028,14 @@ export class Host {
         maxTokens: 200,
         signal: controller.signal,
       });
+      this.markKeySuccess(rec.profileId, rec.groupId, titleKey?.keyId);
       const title = cleanTitle(raw);
       if (!title || rec.title !== baseTitle) return;
       rec.title = title;
       this.store.markDirty(rec.id, false);
       this.broadcastSummary(rec);
-    } catch {
+    } catch (err) {
+      this.markKeyFailure(rec.profileId, rec.groupId, titleKey?.keyId, err);
       // 生成失败不打扰用户，保留截取正文的兜底标题
     } finally {
       clearTimeout(timer);
@@ -1445,10 +1623,17 @@ export class Host {
 
     try {
       this.setStatus(rec, 'running');
-      const profile = this.profileFor(rec.profileId, rec.groupId);
-      if (!profile?.apiKey) throw new Error('当前账号未配置 API Key');
+      const selection = this.keyCandidates(rec.profileId, rec.groupId);
+      const compactKey = selection.candidates[0];
+      const profile = compactKey?.profile ?? this.profileFor(rec.profileId, rec.groupId);
+      if (!profile?.apiKey) {
+        throw new Error(
+          this.keysUnavailableMessage(rec.profileId, rec.groupId) ?? '当前账号未配置 API Key',
+        );
+      }
       const model = rec.model || profile.defaultModel;
       if (!model) throw new Error('当前账号没有配置模型');
+      this.assertBudget(rec, model);
       if (rec.messages.length === 0) {
         this.appendLocalAssistant(rec, '当前没有可压缩的对话。');
         return;
@@ -1468,20 +1653,27 @@ export class Host {
         createdAt: Date.now(),
       };
       const blocks: ContentBlock[] = [];
-      const result = await streamChat({
-        profile,
-        model,
-        system: buildSystemPrompt(rec.cwd),
-        messages: [...rec.messages, instruction],
-        tools: [],
-        blocks,
-        signal: abort.signal,
-        idleTimeoutSec: this.config.idleTimeoutSec ?? 180,
-        maxTokens: 4096,
-        onBlockStart: () => {},
-        onText: () => {},
-        onToolInput: () => {},
-      });
+      let result: Awaited<ReturnType<typeof streamChat>>;
+      try {
+        result = await streamChat({
+          profile,
+          model,
+          system: buildSystemPrompt(rec.cwd),
+          messages: [...rec.messages, instruction],
+          tools: [],
+          blocks,
+          signal: abort.signal,
+          idleTimeoutSec: this.config.idleTimeoutSec ?? 180,
+          maxTokens: 4096,
+          onBlockStart: () => {},
+          onText: () => {},
+          onToolInput: () => {},
+        });
+        this.markKeySuccess(rec.profileId, rec.groupId, compactKey?.keyId);
+      } catch (err) {
+        this.markKeyFailure(rec.profileId, rec.groupId, compactKey?.keyId, err);
+        throw err;
+      }
       const summary = blocks
         .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
         .map((b) => b.text)
@@ -1516,7 +1708,10 @@ export class Host {
         inputTokens: inputTokens + cacheReadTokens + cacheWriteTokens,
         outputTokens,
         costUsd: cost,
+        ...(compactKey?.keyId ? { keyId: compactKey.keyId } : {}),
+        ...(rec.groupId ? { groupId: rec.groupId } : {}),
       });
+      this.observeBudgets(rec);
       this.store.markDirty(rec.id, true);
       this.broadcastSummary(rec);
       this.broadcastSnapshot(rec);
@@ -1548,6 +1743,12 @@ export class Host {
     this.usage.flush();
     await this.mcp.close();
   }
+}
+
+/** 预算金额展示：常规金额保留两位，极小金额保留有效小数。 */
+function formatUsd(value: number): string {
+  if (value >= 0.01) return `$${value.toFixed(2)}`;
+  return `$${value.toFixed(8).replace(/0+$/, '').replace(/\.$/, '')}`;
 }
 
 /** 带 HTTP 状态码的错误，供 server 路由按状态返回（如运行中回退 409）。 */

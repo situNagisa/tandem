@@ -92,11 +92,25 @@ function parseGroupInputs(value: unknown): ProfileGroupInput[] | undefined {
         ? [...new Set(item.models.map((m) => str(m)).filter(Boolean))]
         : [];
       const kind = str(item.kind) as ProviderKind;
+      const keyStrategy = str(item.keyStrategy) as ProfileGroupInput['keyStrategy'];
+      const apiKeys = Array.isArray(item.apiKeys)
+        ? item.apiKeys
+            .filter((key): key is Record<string, unknown> => !!key && typeof key === 'object')
+            .map((key) => ({
+              ...(str(key.id) ? { id: str(key.id) } : {}),
+              ...(str(key.label) ? { label: str(key.label) } : {}),
+              ...(typeof key.apiKey === 'string' && key.apiKey ? { apiKey: key.apiKey } : {}),
+              ...(typeof key.disabled === 'boolean' ? { disabled: key.disabled } : {}),
+            }))
+            .filter((key) => key.id || key.apiKey)
+        : undefined;
       return {
         ...(str(item.id) ? { id: str(item.id) } : {}),
         name: str(item.name),
         ...(PROVIDER_KINDS.includes(kind) ? { kind } : {}),
         ...(typeof item.apiKey === 'string' && item.apiKey ? { apiKey: item.apiKey } : {}),
+        ...(apiKeys !== undefined ? { apiKeys } : {}),
+        ...(keyStrategy === 'failover' || keyStrategy === 'round_robin' ? { keyStrategy } : {}),
         ...(str(item.baseUrl) ? { baseUrl: str(item.baseUrl) } : {}),
         models,
         defaultModel: str(item.defaultModel) || models[0] || '',
@@ -212,13 +226,21 @@ export async function createApp(
 
   app.post('/api/profiles/:id/test', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const body = (req.body ?? {}) as { groupId?: unknown };
+    const body = (req.body ?? {}) as { groupId?: unknown; keyId?: unknown };
     const groupId = str(body.groupId) || undefined;
+    const keyId = str(body.keyId) || undefined;
     const base = host.profiles.get(id);
     if (!base) return bad(reply, '账号不存在', 404);
-    if (groupId && !base.groups?.some((g) => g.id === groupId)) return bad(reply, '分组不存在');
-    // 测试分组时用分组的 key/baseUrl
-    const profile = host.profileFor(id, groupId)!;
+    const group = groupId ? base.groups?.find((g) => g.id === groupId) : undefined;
+    if (groupId && !group) return bad(reply, '分组不存在');
+    // 测试分组时用分组当前可用 Key；指定 keyId 时只测该 Key
+    let profile = host.keyCandidates(id, groupId).candidates[0]?.profile ?? host.profileFor(id, groupId);
+    if (!profile) return bad(reply, '账号不存在', 404);
+    if (keyId) {
+      const key = group?.keys?.find((item) => item.id === keyId);
+      if (!key) return bad(reply, 'Key 不存在', 404);
+      profile = { ...profile, apiKey: key.apiKey };
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
     try {
@@ -287,6 +309,13 @@ export async function createApp(
     const rec = host.getSession(id);
     if (!rec) return bad(reply, '会话不存在', 404);
     return host.contextFor(rec);
+  });
+
+  // block 预算达到上限后，用户可在会话内临时放行一次
+  app.post('/api/sessions/:id/budget-allow-once', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!host.allowBudgetOnce(id)) return bad(reply, '会话不存在', 404);
+    return { ok: true };
   });
 
   app.patch('/api/sessions/:id', async (req, reply) => {
@@ -514,6 +543,19 @@ export async function createApp(
     const query = req.query as { from?: string; to?: string };
     return host.usage.list(str(query.from) || undefined, str(query.to) || undefined);
   });
+
+  // ---------- 预算 ----------
+  app.get('/api/budgets', async () => host.budgets.list());
+
+  app.put('/api/budgets', async (req, reply) => {
+    try {
+      return host.budgets.replace(req.body);
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.get('/api/budgets/status', async () => host.budgets.status());
 
   // ---------- 配对（手机扫码连接） ----------
   const withRelay = (base: { urls: string[]; token: string; loopback?: boolean; hint?: string }) => {

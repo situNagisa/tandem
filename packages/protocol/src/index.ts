@@ -28,17 +28,34 @@ export interface Profile {
   groups?: ProfileGroup[]; // 分组：同一账号（同一服务商/中转站）下多组 key，各自可用模型不同，如 "官方渠道"/"低价渠道"
   createdAt: number;
 }
+/** 同组多 Key 的调度策略：按顺序优先（failover，默认）或轮询（round_robin）。 */
+export type KeyStrategy = 'failover' | 'round_robin';
+/** 分组里的一个 Key。明文只存在 Host 的 profiles.json，接口只回掩码与运行状态。 */
+export interface ProfileKey {
+  id: string;
+  label?: string;
+  apiKeyMasked: string;
+  /** 401/403 后自动置位，需用户在设置里手动启用。 */
+  disabled?: boolean;
+  /** 冷却截止时间（epoch ms）；429/额度不足/5xx 后指数退避 60s→30min。 */
+  cooldownUntil?: number;
+  /** 最近一次失败的可读原因。 */
+  lastError?: string;
+}
+export interface ProfileKeyInput { id?: string; label?: string; apiKey?: string; disabled?: boolean } // 带 id 不带 apiKey 表示保留原 key；disabled=false 表示手动重新启用
 export interface ProfileGroup {
   id: string;
   name: string;
   kind?: ProviderKind;     // 该分组使用的协议；缺省继承账号 kind。同一中转 URL 下不同分组可走不同协议
-  apiKeyMasked: string;
+  apiKeyMasked: string;    // 兼容字段：第一个 Key 的掩码
+  keys: ProfileKey[];      // 同组多 Key（按顺序 failover / round_robin）
+  keyStrategy?: KeyStrategy;
   baseUrl?: string;        // 缺省用账号 baseUrl
   models: string[];
   defaultModel: string;
   modelCapabilities?: Record<string, ModelCapabilities>;
 }
-export interface ProfileGroupInput { id?: string; name: string; kind?: ProviderKind; apiKey?: string; baseUrl?: string; models: string[]; defaultModel: string; modelCapabilities?: Record<string, ModelCapabilities> }
+export interface ProfileGroupInput { id?: string; name: string; kind?: ProviderKind; apiKey?: string; /** 旧的单 Key 字段，等价于 apiKeys=[{apiKey}] */ apiKeys?: ProfileKeyInput[]; keyStrategy?: KeyStrategy; baseUrl?: string; models: string[]; defaultModel: string; modelCapabilities?: Record<string, ModelCapabilities> }
 export interface ProfileInput {
   name: string;
   kind: ProviderKind;
@@ -92,6 +109,7 @@ export interface Usage {
   cacheWriteTokens?: number; // 写入缓存（Anthropic cache_creation_input_tokens）
   reasoningTokens?: number;  // 输出中的推理 token（OpenAI reasoning_tokens 等，已含在 outputTokens 内）
   costUsd?: number;
+  keyId?: string;            // 本轮实际使用的分组 Key id（多 Key 切换后便于统计）
 }
 // 上下文占用（参考 Claude Code /context）：最近一次请求实际发送给模型的组成估算
 export interface ContextBreakdown {
@@ -255,6 +273,55 @@ export interface FsReadResult {
 
 export interface FsRevealResult { ok: boolean; error?: string }
 
+// ---------- 预算（Host 级，存 ~/.tandem/budgets.json；基于 usage.json 实时累计） ----------
+export type BudgetScope = 'global' | 'account' | 'group' | 'model';
+export type BudgetPeriod = 'day' | 'week' | 'month';
+export type BudgetAction = 'warn' | 'block';
+export interface BudgetRule {
+  id: string;
+  scope: BudgetScope;
+  /** account / group 范围对应的账号；group 还需 profileId + groupId。 */
+  profileId?: string;
+  groupId?: string;
+  /** model 范围对应的模型名。 */
+  model?: string;
+  period: BudgetPeriod;     // 自然日 / 本周（周一起）/ 本月
+  limitUsd: number;
+  action: BudgetAction;     // warn=仅提醒（80%/100%），block=达到 100% 拒绝新请求
+  enabled?: boolean;        // 缺省 true
+  label?: string;
+}
+export interface BudgetStatus {
+  ruleId: string;
+  scope: BudgetScope;
+  profileId?: string;
+  groupId?: string;
+  model?: string;
+  period: BudgetPeriod;
+  limitUsd: number;
+  spentUsd: number;
+  percent: number;          // spentUsd / limitUsd * 100，可为 0–100+
+  level?: '80' | '100';     // 已达到的告警档位
+  action: BudgetAction;
+  blocked: boolean;         // 当前是否会拒绝新请求（action=block 且百分比 ≥100）
+  resetAt: number;          // 下个周期起点（epoch ms）
+}
+export interface BudgetAlert {
+  ruleId: string;
+  scope: BudgetScope;
+  spentUsd: number;
+  limitUsd: number;
+  level: '80' | '100';
+  profileId?: string;
+  groupId?: string;
+  model?: string;
+  period: BudgetPeriod;
+  action: BudgetAction;
+}
+// GET /api/budgets -> BudgetRule[]    PUT /api/budgets BudgetRule[] -> BudgetRule[]（整体替换）
+// GET /api/budgets/status -> BudgetStatus[]   各规则当前周期用量、百分比与是否阻止
+// POST /api/sessions/:id/budget-allow-once -> { ok: boolean }   block 预算下临时放行一次（下一次模型请求后失效）
+
 // ---------- WebSocket: 客户端 -> 服务端 ----------
 export type ClientMsg =
   | { type: 'subscribe'; sessionId: string; sinceSeq?: number } // 订阅；带 sinceSeq 时服务端补发 seq>sinceSeq 的事件（缓冲不够则改发 snapshot）
@@ -298,7 +365,7 @@ export type BlockDelta =
 // POST   /api/profiles  ProfileInput  -> Profile
 // PUT    /api/profiles/:id            -> Profile
 // DELETE /api/profiles/:id
-// POST   /api/profiles/:id/test       -> { ok: boolean; error?: string }   测试 key 可用
+// POST   /api/profiles/:id/test       -> { ok: boolean; error?: string }   测试 key 可用（body: { groupId?, keyId? }，缺省测分组当前可用 Key）
 // POST   /api/models  ListModelsInput -> { ok: boolean; models: ModelInfo[]; error?: string }  从 provider 拉取模型列表
 // GET    /api/sessions                -> SessionSummary[]   (按 updatedAt 倒序)
 // POST   /api/sessions CreateSessionInput -> SessionSummary
@@ -379,7 +446,7 @@ export interface McpServerStatus { name: string; status: 'connected' | 'connecti
 // DELETE 会话时若有 worktree：未提交改动则 409，带 ?force=1 才删除
 
 // ---------- 用量统计 ----------
-export interface UsageStatsRow { day: string; hostId: string; profileId: string; model: string; inputTokens: number; outputTokens: number; costUsd: number; turns: number }
+export interface UsageStatsRow { day: string; hostId: string; profileId: string; model: string; inputTokens: number; outputTokens: number; costUsd: number; turns: number; keyId?: string; groupId?: string }
 // GET /api/usage?from=&to= -> UsageStatsRow[]   （Host 内置常见模型单价表，可在账号上覆盖 price: {input, output} 每百万 token 美元）
 
 // ---------- 配对 ----------
