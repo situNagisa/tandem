@@ -752,11 +752,11 @@ export function SessionList({
             <button
               key={`${hostId}:${ext.source}:${ext.id}`}
               onClick={() => openExternal(hostId, ext)}
-              title={`${ext.title || '外部会话'} · ${ext.cwd}`}
+              title={`${ext.title || '外部会话'} · ${ext.cwd} · ${ext.source === 'codex' ? 'Codex' : 'Claude Code'}`}
               className="anim-row-in group/ex flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg pl-2 pr-2 text-left text-[13.5px] text-text-soft outline-none transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-8"
             >
               <span
-                className="w-4 shrink-0 text-center text-[8.5px] font-medium tracking-tight text-muted"
+                className="min-w-4 shrink-0 text-left text-[8.5px] font-medium tracking-tight text-muted"
                 aria-label={ext.source === 'codex' ? 'Codex' : 'Claude Code'}
               >
                 {ext.source === 'codex' ? 'Codex' : 'CC'}
