@@ -291,11 +291,11 @@ export function TopBar() {
           tooltip="改动审阅"
           aria-pressed={changesOpen}
           className={cn(
-            'gap-1 px-1.5 font-mono text-text max-md:h-8',
+            'gap-1 px-1.5 font-mono text-text! max-md:h-8',
             changesOpen && 'bg-[var(--t-bg-active)] text-text',
           )}
         >
-          <FileDiff size={13.5} className="shrink-0 text-text" />
+          <FileDiff size={13.5} className="shrink-0 text-text!" />
           <span className="hidden font-sans text-[12px] sm:inline">改动</span>
           {fileCount > 0 && !changesOpen && (
             <>
@@ -317,7 +317,7 @@ export function TopBar() {
           tooltip="会话信息"
           aria-pressed={!isMobile && panelOpen}
           className={cn(
-            'text-text max-sm:size-11',
+            'text-text! max-sm:size-11',
             !isMobile && panelOpen && 'bg-[var(--t-bg-active)] text-text',
           )}
         >
