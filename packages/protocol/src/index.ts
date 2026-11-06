@@ -60,7 +60,8 @@ export interface SessionSummary {
   archived?: boolean;      // 归档（列表默认隐藏）
   env?: SessionEnv;        // 会话执行环境，用于侧栏按 项目/分支 自动归类
   importedFrom?: { source: ExternalSource; id: string }; // 从 Claude Code / Codex 导入的副本
-  parentId?: string;       // Task 子代理会话指向主会话
+  parentId?: string;       // Task 子代理会话指向主会话（孙代理指向子代理）
+  depth?: number;          // 0 主会话 / 1 子代理 / 2 孙代理…；侧栏只显示 depth 0
   worktree?: { path: string; branch: string; baseBranch: string }; // 隔离分支会话
   createdAt: number;
   updatedAt: number;
@@ -71,7 +72,23 @@ export interface SessionEnv {
   repoName?: string;       // 仓库名（根目录 basename）
   branch?: string;         // 当前分支
 }
-export interface Usage { inputTokens: number; outputTokens: number; costUsd?: number }
+export interface Usage {
+  inputTokens: number;       // 未命中缓存的输入
+  outputTokens: number;
+  cacheReadTokens?: number;  // 命中缓存读取（Anthropic cache_read_input_tokens / OpenAI cached_tokens）
+  cacheWriteTokens?: number; // 写入缓存（Anthropic cache_creation_input_tokens）
+  reasoningTokens?: number;  // 输出中的推理 token（OpenAI reasoning_tokens 等，已含在 outputTokens 内）
+  costUsd?: number;
+}
+// 上下文占用（参考 Claude Code /context）：最近一次请求实际发送给模型的组成估算
+export interface ContextBreakdown {
+  model: string;
+  contextWindow: number;     // 模型上下文上限
+  usedTokens: number;        // 最近一次请求的输入总量（含缓存）
+  parts: { kind: 'system' | 'tools' | 'mcp' | 'memory' | 'messages' | 'tool_results' | 'free'; tokens: number }[];
+  cacheHitRate?: number;     // 本会话累计：cacheRead / (input + cacheRead + cacheWrite)
+  updatedAt: number;
+}
 
 export interface CreateSessionInput {
   cwd: string;
@@ -79,6 +96,7 @@ export interface CreateSessionInput {
   groupId?: string;
   model?: string;
   permissionMode?: PermissionMode;
+  effort?: ReasoningEffort;
   title?: string;
   worktree?: { branch?: string };
 }
@@ -108,7 +126,14 @@ export interface ConfigImportResult { profilesAdded: number; profilesUpdated: nu
 
 // 拉取模型列表：填 Key 后自动获取可用模型（无需手填）
 export interface ListModelsInput { kind: ProviderKind; baseUrl?: string; apiKey?: string; profileId?: string; groupId?: string } // apiKey 缺省时用 profileId 已存的 key
-export interface ModelInfo { id: string; displayName?: string; contextWindow?: number }
+export interface ModelInfo {
+  id: string; displayName?: string; contextWindow?: number;
+  efforts?: ReasoningEffort[]; // 该模型支持的思考强度档位；缺省表示未知（客户端按 provider 默认显示）；[] 表示不支持思考
+}
+// 思考强度能力来源：provider 模型列表接口若提供（如 OpenRouter supported_parameters、Anthropic models 的 capabilities）则用之；
+// 否则 Host 内置能力表按模型 id 前缀匹配（如 claude-*-4/4.5/5 支持 thinking；o1/o3/o4/gpt-5 系列支持 reasoning_effort；deepseek-reasoner 不可调）。
+// GET /api/models/capabilities?profileId=&groupId=&model= -> ModelInfo   单个模型的能力（含 efforts、contextWindow）
+// GET /api/sessions/:id/context -> ContextBreakdown
 
 // ---------- 消息 ----------
 export type ContentBlock =
@@ -124,6 +149,9 @@ export interface Message {
   content: ContentBlock[];
   createdAt: number;
   model?: string;
+  /** 服务端记录的低调提示（如模型不支持思考强度），界面以单行灰字展示。 */
+  notice?: boolean;
+  usage?: Usage;             // assistant 消息：生成该消息的那次请求的用量与花费（一轮内多次请求各自记在对应消息上）
 }
 
 export interface Session extends SessionSummary { messages: Message[]; todos: Todo[]; plan?: SessionPlan }
