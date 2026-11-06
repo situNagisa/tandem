@@ -49,6 +49,13 @@ function dataUrl(block: Extract<ContentBlock, { type: 'image' }>): string {
   return `data:${block.mediaType};base64,${block.dataBase64}`
 }
 
+/** 注入上下文不算一轮对话，只有用户真正写的文字或图片才计轮次。 */
+function hasUserContent(message: UiMessage): boolean {
+  return message.content.some(
+    (b) => (b.type === 'text' && b.text.trim()) || b.type === 'image',
+  )
+}
+
 /** 外部会话的系统注入（AGENTS.md、skills_instructions 等）：默认折叠成一行灰字。 */
 function ContextNote({ kind, text }: { kind: string; text: string }) {
   const [open, setOpen] = useState(false)
@@ -712,7 +719,7 @@ export function MessageList({
   let turn = 0
   for (const m of messages) {
     if (m.role !== 'user') continue
-    if (m.content.every((b) => b.type === 'tool_result')) continue
+    if (!hasUserContent(m)) continue
     turnIndex.set(m.id, turn++)
   }
 
@@ -721,7 +728,7 @@ export function MessageList({
   let lastUser: UiMessage | undefined
   for (const m of messages) {
     if (m.role === 'user') {
-      if (m.content.some((b) => b.type !== 'tool_result')) lastUser = m
+      if (hasUserContent(m)) lastUser = m
     } else if (lastUser) {
       turnUserByAssistant.set(m.id, lastUser)
     }
