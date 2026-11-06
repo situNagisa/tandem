@@ -951,3 +951,7 @@ html.feedback-mode [data-feedback-ui] * {
 html.feedback-mode [data-feedback-ui] textarea {
   cursor: text !important;
 }
+
+html.feedback-mode [data-feedback-capture] {
+  cursor: crosshair !important;
+}

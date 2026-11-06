@@ -49,6 +49,31 @@ function isUiTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(`[${UI_ATTR}]`) !== null
 }
 
+/** 捕获层之下的真实目标：跳过捕获层、高亮层与反馈自身 UI。 */
+function elementAtPoint(x: number, y: number): Element | null {
+  for (const element of document.elementsFromPoint(x, y)) {
+    if (isUiTarget(element)) continue
+    if (element === document.documentElement) continue
+    return element
+  }
+  return null
+}
+
+/** 目标自身或最近的显式可滚动祖先。 */
+function scrollableFrom(element: Element | null): Element | null {
+  let node: Element | null = element
+  while (node && node !== document.body && node !== document.documentElement) {
+    const style = getComputedStyle(node)
+    const canY =
+      /(auto|scroll|overlay)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 1
+    const canX =
+      /(auto|scroll|overlay)/.test(style.overflowX) && node.scrollWidth > node.clientWidth + 1
+    if (canY || canX) return node
+    node = node.parentElement
+  }
+  return null
+}
+
 function elementLabel(element: Element | null): string {
   if (!element) return ''
   const component = reactComponentName(element)
@@ -140,8 +165,7 @@ function FeedbackEditor({
     <>
       <div
         {...{ [UI_ATTR]: '' }}
-        className="fixed inset-0 z-[119] bg-black/[0.03]"
-        onClick={() => !saving && onCancel()}
+        className="pointer-events-none fixed inset-0 z-[119] bg-black/[0.03]"
       />
       <div
         {...{ [UI_ATTR]: '' }}
@@ -233,6 +257,7 @@ export function FeedbackMode() {
   const editorRef = useRef<EditorState | null>(null)
   editorRef.current = editor
   const lastHoverRef = useRef<{ element: Element; alt: boolean } | null>(null)
+  const layerRef = useRef<HTMLDivElement>(null)
 
   // 进入/退出反馈模式：全局热键、Esc、页面光标。
   useEffect(() => {
@@ -292,64 +317,167 @@ export function FeedbackMode() {
     }
   }, [active])
 
-  // 圈选：覆盖层自身 pointer-events:none，用文档级捕获监听拦截点击。
+  // 圈选：全屏捕获层接管所有指针事件，原 UI 收不到 pointerdown/click，也就不会触发。
   useEffect(() => {
     if (!active) return
-    const onMove = (e: MouseEvent) => {
+    const layer = layerRef.current
+    if (!layer) return
+    let down: { x: number; y: number; pointerId: number } | null = null
+    let lastPoint: { x: number; y: number } | null = null
+
+    const hoverAt = (x: number, y: number, alt: boolean) => {
       if (editorRef.current) return
-      const target = e.target
-      if (!(target instanceof Element) || isUiTarget(target)) {
+      const target = elementAtPoint(x, y)
+      if (!target) {
         lastHoverRef.current = null
         setHover(null)
         return
       }
-      const picked = e.altKey && target.parentElement ? target.parentElement : target
-      if (
-        lastHoverRef.current?.element === picked &&
-        lastHoverRef.current.alt === e.altKey
-      ) {
+      const picked = alt && target.parentElement ? target.parentElement : target
+      if (lastHoverRef.current?.element === picked && lastHoverRef.current.alt === alt) {
         return
       }
-      lastHoverRef.current = { element: picked, alt: e.altKey }
+      lastHoverRef.current = { element: picked, alt }
       setHover({ rect: rectFor(picked), label: elementLabel(picked) })
     }
-    const onLeave = (e: MouseEvent) => {
-      if (e.relatedTarget === null) {
+
+    const onPointerMove = (e: PointerEvent) => {
+      e.stopPropagation()
+      lastPoint = { x: e.clientX, y: e.clientY }
+      if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) {
+        down = null
         lastHoverRef.current = null
         setHover(null)
+        return
       }
+      hoverAt(e.clientX, e.clientY, e.altKey)
     }
+
     const onPointerDown = (e: PointerEvent) => {
-      if (isUiTarget(e.target)) return
+      // 阻止默认行为也避免了焦点转移，radix 菜单/Popover 不会被判为外部点击而关闭。
       e.preventDefault()
       e.stopPropagation()
+      down = { x: e.clientX, y: e.clientY, pointerId: e.pointerId }
+      lastPoint = { x: e.clientX, y: e.clientY }
+      hoverAt(e.clientX, e.clientY, e.altKey)
     }
-    const onClick = (e: MouseEvent) => {
-      if (isUiTarget(e.target)) return
+
+    const onPointerUp = (e: PointerEvent) => {
       e.preventDefault()
       e.stopPropagation()
-      if (editorRef.current) return
-      const target = e.target
-      if (!(target instanceof Element)) return
-      let picked: Element = target
-      if (e.altKey && target.parentElement) picked = target.parentElement
-      if (picked === document.documentElement) return
-      const rect = rectFor(picked)
+      const start = down
+      down = null
+      if (!start || start.pointerId !== e.pointerId) return
+      if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) return
+      if (editorRef.current) {
+        setEditor(null)
+        return
+      }
+      const target = elementAtPoint(e.clientX, e.clientY)
+      if (!target) return
+      const picked = e.altKey && target.parentElement ? target.parentElement : target
       lastHoverRef.current = null
       setHover(null)
-      setEditor({ mode: 'new', element: picked, rect, type: 'issue', text: '' })
+      setEditor({ mode: 'new', element: picked, rect: rectFor(picked), type: 'issue', text: '' })
     }
-    document.addEventListener('mousemove', onMove, true)
-    document.addEventListener('mouseout', onLeave, true)
-    document.addEventListener('pointerdown', onPointerDown, true)
-    document.addEventListener('click', onClick, true)
+
+    const onPointerCancel = () => {
+      down = null
+    }
+
+    const onPointerLeave = () => {
+      if (down) return
+      lastHoverRef.current = null
+      setHover(null)
+    }
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1
+      const dx = e.deltaX * unit
+      const dy = e.deltaY * unit
+      const scroller = scrollableFrom(elementAtPoint(e.clientX, e.clientY))
+      if (scroller) scroller.scrollBy({ left: dx, top: dy })
+      else window.scrollBy(dx, dy)
+      lastPoint = { x: e.clientX, y: e.clientY }
+      requestAnimationFrame(() => {
+        if (lastPoint) hoverAt(lastPoint.x, lastPoint.y, false)
+      })
+    }
+
+    // 其余指针/触摸事件只在捕获层内部消化，不再冒泡给文档级监听。
+    const swallow = (e: Event) => {
+      e.stopPropagation()
+    }
+    const swallowed = [
+      'mousedown',
+      'mouseup',
+      'mousemove',
+      'mouseover',
+      'mouseout',
+      'dblclick',
+      'auxclick',
+      'touchstart',
+      'touchmove',
+      'touchend',
+      'touchcancel',
+    ]
+
+    const onClick = (e: MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+
+    layer.addEventListener('pointermove', onPointerMove)
+    layer.addEventListener('pointerdown', onPointerDown)
+    layer.addEventListener('pointerup', onPointerUp)
+    layer.addEventListener('pointercancel', onPointerCancel)
+    layer.addEventListener('pointerleave', onPointerLeave)
+    layer.addEventListener('wheel', onWheel, { passive: false })
+    layer.addEventListener('click', onClick)
+    layer.addEventListener('contextmenu', onContextMenu)
+    for (const type of swallowed) layer.addEventListener(type, swallow, { passive: true })
     return () => {
-      document.removeEventListener('mousemove', onMove, true)
-      document.removeEventListener('mouseout', onLeave, true)
-      document.removeEventListener('pointerdown', onPointerDown, true)
-      document.removeEventListener('click', onClick, true)
+      layer.removeEventListener('pointermove', onPointerMove)
+      layer.removeEventListener('pointerdown', onPointerDown)
+      layer.removeEventListener('pointerup', onPointerUp)
+      layer.removeEventListener('pointercancel', onPointerCancel)
+      layer.removeEventListener('pointerleave', onPointerLeave)
+      layer.removeEventListener('wheel', onWheel)
+      layer.removeEventListener('click', onClick)
+      layer.removeEventListener('contextmenu', onContextMenu)
+      for (const type of swallowed) layer.removeEventListener(type, swallow)
     }
   }, [active])
+
+  // 键盘：Esc 与反馈输入框内的按键放行，其余在捕获阶段拦下，避免应用响应。
+  // 常驻注册（早于 App 的全局快捷键监听），仅在反馈模式生效。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!useFeedbackStore.getState().active) return
+      if (e.target instanceof Element && e.target.closest(`[${UI_ATTR}]`)) return
+      if (e.key === 'Escape') return
+      const mod = e.metaKey || e.ctrlKey
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'f') return
+      e.preventDefault()
+      // 同一 window 上的全局快捷键（App 等）注册可能更晚，需立即停止派发。
+      e.stopImmediatePropagation()
+    }
+    window.addEventListener('keydown', onKey, true)
+    window.addEventListener('keypress', onKey, true)
+    window.addEventListener('keyup', onKey, true)
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('keypress', onKey, true)
+      window.removeEventListener('keyup', onKey, true)
+    }
+  }, [])
 
   const openEditorForItem = (item: FeedbackItem) => {
     const element = (() => {
@@ -526,6 +654,14 @@ export function FeedbackMode() {
 
   return createPortal(
     <>
+      {/* 全屏透明捕获层：拦截应用的一切交互，反馈自身 UI 位于其上方 */}
+      <div
+        ref={layerRef}
+        {...{ [UI_ATTR]: '', 'data-feedback-capture': '' }}
+        className="fixed inset-0 z-[105] touch-none select-none"
+        aria-hidden
+      />
+
       {/* 高亮框与徽标层：pointer-events:none，不改变页面元素自身样式 */}
       <div
         {...{ [UI_ATTR]: '' }}
