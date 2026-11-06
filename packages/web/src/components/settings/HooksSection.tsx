@@ -154,26 +154,26 @@ export function HooksSection() {
         <div className="flex items-center gap-2">
           <Webhook size={15} className="text-text-soft" />
           <h3 className="text-[14px] font-semibold">Hooks</h3>
-          <span className="rounded-[4px] bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-muted">
+          <span className="rounded-[4px] bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-muted">
             {host.name}
           </span>
         </div>
-        <p className="mt-1 text-[11px] leading-5 text-muted">
+        <p className="mt-1 text-[13px] leading-5 text-muted">
           兼容 Claude Code 的 hooks 配置形状。命令通过 stdin 收到包含 session_id、cwd、hook_event_name、
           tool_name、tool_input、tool_response 的 JSON；退出码 0 继续，2 阻止并把 stderr 回填给模型，
           其他非 0 只记录警告。stdout 可返回 decision / reason / continue 字段，超时默认 60 秒。
         </p>
         {cwd ? (
-          <p className="mt-1 break-all font-mono text-[10.5px] text-muted">项目目录：{cwd}</p>
+          <p className="mt-1 break-all font-mono text-[13px] text-muted">项目目录：{cwd}</p>
         ) : (
-          <p className="mt-1 text-[11px] text-muted">
+          <p className="mt-1 text-[13px] text-muted">
             打开一个会话后可查看该项目的项目级 hooks；当前只显示用户级配置。
           </p>
         )}
       </div>
 
       {error ? (
-        <p className="rounded-lg border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[12px] text-danger">
+        <p className="rounded-lg border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[13px] text-danger">
           {error}
         </p>
       ) : (
@@ -272,7 +272,7 @@ export function HooksSection() {
                           >
                             <Plus size={13} /> 添加 Hook
                           </Button>
-                          <span className="text-[11px] text-muted">
+                          <span className="text-[13px] text-muted">
                             {dirty ? '有未保存的修改' : draft.length ? `共 ${draft.length} 条` : ''}
                           </span>
                           <span className="flex-1" />
@@ -298,7 +298,7 @@ export function HooksSection() {
                   <section key={source} className="space-y-2">
                     <SourceHeader label={SOURCE_LABEL[source]} path={info.path} readOnly />
                     {entries.length === 0 ? (
-                      <p className="px-1 text-[11.5px] text-muted">
+                      <p className="px-1 text-[13px] text-muted">
                         {info.exists ? '未配置 hooks。' : '文件不存在。'}
                       </p>
                     ) : (
@@ -306,21 +306,21 @@ export function HooksSection() {
                         {entries.map((entry) => (
                           <div
                             key={entry.id}
-                            className="flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-lg border border-border/70 bg-bg/30 px-2.5 py-2 text-[12px]"
+                            className="flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-lg border border-border/70 bg-bg/30 px-2.5 py-2 text-[13px]"
                           >
-                            <span className="shrink-0 rounded bg-bg-hover px-1.5 py-0.5 font-mono text-[10.5px] text-text-secondary">
+                            <span className="shrink-0 rounded bg-bg-hover px-1.5 py-0.5 font-mono text-[13px] text-text-secondary">
                               {entry.event}
                             </span>
                             {entry.matcher && (
-                              <span className="shrink-0 font-mono text-[10.5px] text-muted">
+                              <span className="shrink-0 font-mono text-[13px] text-muted">
                                 /{entry.matcher}/
                               </span>
                             )}
-                            <span className="min-w-0 flex-1 break-all font-mono text-[11px] leading-5 text-text-soft">
+                            <span className="min-w-0 flex-1 break-all font-mono text-[13px] leading-5 text-text-soft">
                               {entry.command}
                             </span>
                             {entry.timeout && (
-                              <span className="shrink-0 text-[10.5px] tabular-nums text-muted">
+                              <span className="shrink-0 text-[13px] tabular-nums text-muted">
                                 {entry.timeout}s
                               </span>
                             )}
@@ -338,10 +338,10 @@ export function HooksSection() {
               <div className="flex items-start gap-2">
                 <ShieldCheck size={14} className="mt-0.5 shrink-0 text-text-secondary" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[12.5px] font-medium text-text">
+                  <p className="text-[13px] font-medium text-text">
                     项目 hooks {data.projectTrusted ? '已信任' : '尚未信任'}
                   </p>
-                  <p className="mt-0.5 text-[11.5px] leading-5 text-muted">
+                  <p className="mt-0.5 text-[13px] leading-5 text-muted">
                     来自项目目录的 hooks 会在工具执行前后运行任意命令，首次使用前需要你确认。
                     {data.projectTrusted
                       ? ' 当前项目的 hooks 会正常运行。'
@@ -378,13 +378,13 @@ function SourceHeader({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <h3 className="text-[12px] font-medium text-text-secondary">{label}</h3>
+      <h3 className="text-[13px] font-medium text-text-secondary">{label}</h3>
       {readOnly && (
-        <span className="flex items-center gap-0.5 rounded border border-border px-1 py-px text-[9.5px] text-muted">
+        <span className="flex items-center gap-0.5 rounded border border-border px-1 py-px text-[11px] text-muted">
           <Lock size={9} /> 只读
         </span>
       )}
-      <span className="min-w-0 truncate font-mono text-[10px] text-muted" title={path}>
+      <span className="min-w-0 truncate font-mono text-[13px] text-muted" title={path}>
         {path}
       </span>
     </div>

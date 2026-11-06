@@ -127,7 +127,7 @@ export function ExternalSessionView({
             {loading ? (
               <MessageList showSkeleton />
             ) : error ? (
-              <div className="mx-auto mt-10 flex max-w-[340px] items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-3 py-2 text-[11.5px] leading-5 text-danger">
+              <div className="mx-auto mt-10 flex max-w-[340px] items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-3 py-2 text-[13px] leading-5 text-danger">
                 <TriangleAlert size={13} className="mt-0.5 shrink-0" />
                 {error}
               </div>
@@ -147,7 +147,7 @@ export function ExternalSessionView({
 
       <div className="shrink-0 border-t border-border bg-bg px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2.5 md:px-6 md:pb-5">
         <div className="mx-auto flex w-full max-w-[760px] flex-col gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
-          <p className="min-w-0 flex-1 text-[11.5px] leading-5 text-text-soft">
+          <p className="min-w-0 flex-1 text-[13px] leading-5 text-text-soft">
             {label} 原始会话，仅只读查看。导入后可在 Tandem 中继续对话，原文件不会被修改。
           </p>
           <Button

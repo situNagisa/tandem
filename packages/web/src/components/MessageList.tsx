@@ -69,7 +69,7 @@ function ContextNote({ kind, text }: { kind: string; text: string }) {
           setMounted(true)
           setOpen((v) => !v)
         }}
-        className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11.5px] leading-none text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
+        className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[13px] leading-none text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
       >
         <ScrollText size={12} className="shrink-0 opacity-70" />
         <span className="min-w-0 truncate">注入上下文 · {kind}</span>
@@ -84,7 +84,7 @@ function ContextNote({ kind, text }: { kind: string; text: string }) {
       {mounted && (
         <div className="collapse-grid" data-open={open}>
           <div className="collapse-inner">
-            <pre className="my-1 max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--t-bg-subtle)] px-2.5 py-2 font-mono text-[11px] leading-5 text-text-soft">
+            <pre className="my-1 max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--t-bg-subtle)] px-2.5 py-2 font-mono text-[12px] leading-5 text-text-soft">
               {text}
             </pre>
           </div>
@@ -304,7 +304,7 @@ export const UserMessage = memo(function UserMessage({
           </>
         )}
         {message.queued && (
-          <div className="mt-1 text-right text-[11px] text-muted">已排队，当前回合结束后发送</div>
+          <div className="mt-1 text-right text-[12px] text-muted">已排队，当前回合结束后发送</div>
         )}
       </div>
       {rewindOpen && (
@@ -488,7 +488,7 @@ export const AssistantMessage = memo(function AssistantMessage({
               </IconButton>
             )}
             {message.usage && (
-              <span className="relative ml-auto flex cursor-default items-center pr-1 font-mono text-[10.5px] tabular-nums text-muted">
+              <span className="relative ml-auto flex cursor-default items-center pr-1 font-mono text-[12px] tabular-nums text-muted">
                 {formatTokens(message.usage.inputTokens)} → {formatTokens(message.usage.outputTokens)}
                 {message.usage.costUsd !== undefined && ` · ${formatCost(message.usage.costUsd)}`}
                 <Tip
@@ -758,7 +758,7 @@ export function MessageList({
             <div
               key={seg.message.id}
               className={cn(
-                'msg-row px-1 text-[11px] leading-4 text-muted',
+                'msg-row px-1 text-[12px] leading-4 text-muted',
                 seg.animate && 'chat-msg-enter',
               )}
             >

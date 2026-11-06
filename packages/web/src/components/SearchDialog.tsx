@@ -211,7 +211,7 @@ export function SearchDialog() {
           className="h-12 min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-muted"
           aria-label="搜索会话"
         />
-        <kbd className="shrink-0 rounded border border-border bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[10px] text-muted">
+        <kbd className="shrink-0 rounded border border-border bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[11px] text-muted">
           Esc
         </kbd>
       </div>
@@ -224,7 +224,7 @@ export function SearchDialog() {
         )}
         {grouped.map((group) => (
           <div key={group.key}>
-            <div className="px-2.5 pb-1 pt-2 text-[10px] font-medium tracking-[0.08em] text-muted">
+            <div className="px-2.5 pb-1 pt-2 text-[12px] font-medium tracking-[0.08em] text-muted">
               {group.label}
             </div>
             {group.items.map((r) => {
@@ -240,7 +240,7 @@ export function SearchDialog() {
                   )}
                 >
                   {typeof r.depth === 'number' && r.depth > 0 && (
-                    <span className="shrink-0 text-[9.5px] text-muted">
+                    <span className="shrink-0 text-[12px] text-muted">
                       {r.depth === 1 ? '子' : r.depth === 2 ? '孙' : `第${r.depth}层`}
                     </span>
                   )}
@@ -249,26 +249,26 @@ export function SearchDialog() {
                   </span>
                   {r.pinned && <Pin size={10} className="shrink-0 text-muted" />}
                   {r.archived && (
-                    <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1 text-[9px] text-muted">
+                    <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1 text-[11px] text-muted">
                       已归档
                     </span>
                   )}
                   <span
                     className={cn(
-                      'shrink-0 truncate rounded border border-border px-1 py-px text-[10px] text-muted',
+                      'shrink-0 truncate rounded border border-border px-1 py-px text-[11px] text-muted',
                       r.external ? 'max-w-[104px]' : 'max-w-[120px]',
                     )}
                     title={`${r.hostName} · ${r.project}`}
                   >
                     {r.external ? SOURCE_LABEL[r.external.source] : r.project}
                   </span>
-                  <span className="w-[54px] shrink-0 text-right text-[10px] text-muted">
+                  <span className="w-[54px] shrink-0 text-right text-[12px] text-muted">
                     {formatRelative(r.updatedAt)}
                   </span>
                   <span className="flex w-2 shrink-0 justify-center">
                     <SessionStatusDot status={r.status} />
                   </span>
-                  <span className="w-3 shrink-0 text-[10px] text-muted">{i === index ? '↵' : ''}</span>
+                  <span className="w-3 shrink-0 text-[12px] text-muted">{i === index ? '↵' : ''}</span>
                 </button>
               )
             })}
@@ -285,7 +285,7 @@ export function SearchDialog() {
               onClick={() => setScope(s.value)}
               aria-pressed={scope === s.value}
               className={cn(
-                'h-6 rounded-md px-2 text-[11.5px] transition-colors duration-[120ms]',
+                'h-6 rounded-md px-2 text-[13px] transition-colors duration-[120ms]',
                 scope === s.value
                   ? 'bg-[var(--t-bg-active)] text-text'
                   : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text-soft',
@@ -300,7 +300,7 @@ export function SearchDialog() {
           onClick={() => setIncludeSubagents((v) => !v)}
           aria-pressed={includeSubagents}
           className={cn(
-            'ml-2 flex h-6 items-center gap-1 rounded-md px-2 text-[11px] transition-colors duration-[120ms]',
+            'ml-2 flex h-6 items-center gap-1 rounded-md px-2 text-[12px] transition-colors duration-[120ms]',
             includeSubagents
               ? 'bg-[var(--t-bg-active)] text-text'
               : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text-soft',
@@ -308,7 +308,7 @@ export function SearchDialog() {
         >
           <Bot size={11} /> 包含子代理
         </button>
-        <span className="ml-auto text-[10.5px] text-muted">{results.length} 个结果</span>
+        <span className="ml-auto text-[12px] text-muted">{results.length} 个结果</span>
       </div>
     </Modal>
   )

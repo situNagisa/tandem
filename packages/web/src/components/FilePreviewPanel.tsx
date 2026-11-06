@@ -232,7 +232,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
               {fileBaseName(path || absPath)}
             </span>
             {label && (
-              <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[10px] text-text-secondary">
+              <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[11px] text-text-secondary">
                 :{label}
               </span>
             )}
@@ -247,7 +247,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
               {copied ? <Check size={12} className="text-success" /> : <Copy size={11.5} />}
             </IconButton>
           </div>
-          <div className="truncate font-mono text-[10px] text-muted" title={absPath}>
+          <div className="truncate font-mono text-[12px] text-muted" title={absPath}>
             {absPath || path}
           </div>
         </div>
@@ -295,7 +295,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
           <FileText size={26} className="text-muted/50" />
           <p className="text-[13px] font-medium text-text-soft">无法打开这个文件</p>
           <p className="max-w-[420px] text-[12px] leading-5 text-danger">{error}</p>
-          <p className="max-w-full break-all rounded-md bg-[var(--t-bg-subtle)] px-2 py-1 font-mono text-[11px] text-text-secondary">
+          <p className="max-w-full break-all rounded-md bg-[var(--t-bg-subtle)] px-2 py-1 font-mono text-[12px] text-text-secondary">
             {absPath}
           </p>
           <Button size="sm" onClick={() => setRetryNonce((n) => n + 1)} className="mt-1">
@@ -305,7 +305,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
       ) : data ? (
         <div className="flex min-h-0 flex-1 flex-col">
           {data.truncated && (
-            <div className="shrink-0 border-b border-border/70 bg-[var(--t-bg-subtle)] px-3 py-1.5 text-[11px] text-text-secondary">
+            <div className="shrink-0 border-b border-border/70 bg-[var(--t-bg-subtle)] px-3 py-1.5 text-[12px] text-text-secondary">
               文件较大（{formatSize(data.size)}），仅显示前 1 MB。
             </div>
           )}
@@ -321,7 +321,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
               <ImageIcon size={26} className="text-muted/50" />
               <p className="text-[13px] font-medium text-text-soft">二进制文件</p>
-              <p className="text-[11.5px] text-muted">
+              <p className="text-[13px] text-muted">
                 无法以文本预览（{formatSize(data.size)}）
               </p>
             </div>

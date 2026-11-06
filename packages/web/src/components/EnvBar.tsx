@@ -83,7 +83,7 @@ function MenuRow({
       type="button"
       onClick={onClick}
       className={cn(
-        'flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[12.5px] transition-colors hover:bg-[var(--t-bg-hover)]',
+        'flex h-[26px] w-full items-center gap-1.5 rounded-md px-1.5 text-left text-[12.5px] transition-colors hover:bg-[var(--t-bg-hover)]',
         active ? 'text-text' : 'text-text-soft',
       )}
     >
@@ -203,7 +203,7 @@ export function FolderBrowser({
   }
 
   const rowClass =
-    'flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[13px] leading-none text-text-soft outline-none transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text focus-visible:bg-[var(--t-bg-hover)] focus-visible:text-text'
+    'flex h-[26px] w-full items-center gap-1.5 rounded-md px-1.5 text-left text-[12.5px] leading-none text-text-soft outline-none transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text focus-visible:bg-[var(--t-bg-hover)] focus-visible:text-text'
 
   return (
     <div className="w-[min(320px,calc(100vw-2rem))]">

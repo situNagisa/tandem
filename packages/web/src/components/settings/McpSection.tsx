@@ -164,9 +164,9 @@ function McpEditor({
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="例如 github、playwright"
             spellCheck={false}
-            className="font-mono text-[12px]"
+            className="font-mono text-[13px]"
           />
-          <p className="mt-1 text-[10.5px] text-muted">工具名前缀为 mcp__{form.name.trim() || 'server'}__…</p>
+          <p className="mt-1 text-[13px] text-muted">工具名前缀为 mcp__{form.name.trim() || 'server'}__…</p>
         </div>
         <SegmentedControl
           aria-label="传输方式"
@@ -187,7 +187,7 @@ function McpEditor({
                 onChange={(e) => setForm({ ...form, command: e.target.value })}
                 placeholder="npx"
                 spellCheck={false}
-                className="font-mono text-[12px]"
+                className="font-mono text-[13px]"
               />
             </div>
             <div>
@@ -222,7 +222,7 @@ function McpEditor({
                 onChange={(e) => setForm({ ...form, url: e.target.value })}
                 placeholder="https://example.com/mcp"
                 spellCheck={false}
-                className="font-mono text-[12px]"
+                className="font-mono text-[13px]"
               />
             </div>
             <div>
@@ -239,7 +239,7 @@ function McpEditor({
           </>
         )}
         <div className="flex min-h-8 items-center gap-3">
-          <span className="text-[12px] text-text-soft">启用（保存后立即尝试连接）</span>
+          <span className="text-[13px] text-text-soft">启用（保存后立即尝试连接）</span>
           <span className="flex-1" />
           <Switch
             checked={form.enabled}
@@ -248,7 +248,7 @@ function McpEditor({
           />
         </div>
         {error && (
-          <div className="flex items-center gap-1.5 text-[11.5px] text-danger">
+          <div className="flex items-center gap-1.5 text-[13px] text-danger">
             <TriangleAlert size={12} /> {error}
           </div>
         )}
@@ -374,7 +374,7 @@ export function McpSection() {
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <h3 className="text-[14px] font-semibold">MCP 服务器</h3>
-        <span className="text-[11px] text-muted">stdio / Streamable HTTP</span>
+        <span className="text-[13px] text-muted">stdio / Streamable HTTP</span>
         <span className="flex-1" />
         {hosts.length > 1 && (
           <MenuSelect
@@ -383,7 +383,7 @@ export function McpSection() {
             aria-label="选择 Host"
             options={hosts.map((h) => ({ value: h.id, label: h.name }))}
             wrapperClassName="w-auto max-w-[180px]"
-            className="text-[11.5px]"
+            className="text-[13px]"
           />
         )}
         <IconButton
@@ -414,13 +414,13 @@ export function McpSection() {
       )}
 
       {error && (
-        <div className="mb-3 flex items-center gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[11.5px] text-danger">
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[13px] text-danger">
           <TriangleAlert size={12} /> {error}
         </div>
       )}
 
       {loading && servers.length === 0 && (
-        <div className="flex items-center justify-center gap-2 py-10 text-[12px] text-muted">
+        <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-muted">
           <Loader2 size={14} className="animate-spin" /> 正在读取 MCP 配置…
         </div>
       )}
@@ -449,7 +449,7 @@ export function McpSection() {
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <button
                       onClick={() => setExpanded((prev) => ({ ...prev, [config.name]: !prev[config.name] }))}
-                      className="flex min-w-0 items-center gap-1 text-left text-[12.5px] font-semibold text-text"
+                      className="flex min-w-0 items-center gap-1 text-left text-[13px] font-semibold text-text"
                     >
                       <ChevronRight
                         size={12}
@@ -457,14 +457,14 @@ export function McpSection() {
                       />
                       <span className="truncate font-mono">{config.name}</span>
                     </button>
-                    <span className="text-[10px] text-muted">{SOURCE_LABEL[source] ?? source}</span>
-                    <span className={cn('text-[10px]', style.text)}>{style.label}</span>
+                    <span className="text-[13px] text-muted">{SOURCE_LABEL[source] ?? source}</span>
+                    <span className={cn('text-[13px]', style.text)}>{style.label}</span>
                     {state === 'connected' && (
-                      <span className="text-[10px] text-muted">{status?.tools.length ?? 0} 个工具</span>
+                      <span className="text-[13px] text-muted">{status?.tools.length ?? 0} 个工具</span>
                     )}
                   </div>
                   <div
-                    className="mt-0.5 truncate font-mono text-[10px] text-muted"
+                    className="mt-0.5 truncate font-mono text-[13px] text-muted"
                     title={
                       config.transport === 'http'
                         ? config.url
@@ -477,14 +477,14 @@ export function McpSection() {
                   </div>
                   {state === 'error' && status?.error && (
                     <p
-                      className="mt-0.5 line-clamp-1 break-all text-[10.5px] leading-4 text-danger"
+                      className="mt-0.5 line-clamp-1 break-all text-[13px] leading-4 text-danger"
                       title={status.error}
                     >
                       {status.error}
                     </p>
                   )}
                   {readonly && (
-                    <p className="mt-1 text-[10.5px] leading-4 text-muted">
+                    <p className="mt-1 text-[13px] leading-4 text-muted">
                       来自 {source === 'claude' ? '~/.claude.json' : '项目 .mcp.json'}，只读；请
                       {source === 'claude' ? '在 Claude Code 中修改' : '直接编辑项目里的 .mcp.json'}。
                     </p>
@@ -517,20 +517,20 @@ export function McpSection() {
                     </IconButton>
                   </div>
                 )}
-                {readonly && <span className="shrink-0 text-[10px] text-muted">只读</span>}
+                {readonly && <span className="shrink-0 text-[13px] text-muted">只读</span>}
               </div>
               <div className="collapse-grid" data-open={isOpen}>
                 <div className="collapse-inner">
                   <div className="border-t border-border/70 px-3 py-2.5">
                     {status?.error ? (
-                      <div className="mb-2 flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[11px] leading-4 text-danger">
+                      <div className="mb-2 flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[13px] leading-4 text-danger">
                         <TriangleAlert size={12} className="mt-0.5 shrink-0" />
                         <span className="min-w-0 flex-1 break-words">{status.error}</span>
                       </div>
                     ) : null}
                     {status && status.tools.length > 0 ? (
                       <div>
-                        <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted">
+                        <div className="mb-1.5 text-[13px] font-medium uppercase tracking-[0.08em] text-muted">
                           工具（{status.tools.length}）
                         </div>
                         <div className="flex flex-wrap gap-1">
@@ -538,7 +538,7 @@ export function McpSection() {
                             <span
                               key={tool}
                               title={`mcp__${config.name}__${tool}`}
-                              className="rounded-md bg-[var(--t-bg-active)] px-1.5 py-0.5 font-mono text-[10px] text-text-soft"
+                              className="rounded-md bg-[var(--t-bg-active)] px-1.5 py-0.5 font-mono text-[13px] text-text-soft"
                             >
                               {tool}
                             </span>
@@ -546,7 +546,7 @@ export function McpSection() {
                         </div>
                       </div>
                     ) : (
-                      <div className="text-[11px] text-muted">
+                      <div className="text-[13px] text-muted">
                         {state === 'disabled'
                           ? '服务器已停用。'
                           : state === 'error'
@@ -609,7 +609,7 @@ export function McpSection() {
           」？此操作只删除 Tandem 自己的配置，不影响 Claude 或项目里的只读条目。
         </p>
         {removeTarget?.command && (
-          <p className="mt-2 break-all rounded-lg bg-[var(--t-surface-2)] px-2.5 py-2 font-mono text-[10.5px] text-muted">
+          <p className="mt-2 break-all rounded-lg bg-[var(--t-surface-2)] px-2.5 py-2 font-mono text-[13px] text-muted">
             {[removeTarget.command, ...(removeTarget.args ?? [])].join(' ')}
           </p>
         )}

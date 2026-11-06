@@ -206,7 +206,7 @@ export function ChatView() {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {authError && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-danger/25 bg-danger-soft/50 px-4 py-1.5 text-[11.5px] text-danger">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-danger/25 bg-danger-soft/50 px-4 py-1.5 text-[13px] text-danger">
           <ShieldAlert size={13} className="shrink-0" />
           <span className="min-w-0 flex-1">
             Host 认证失败：{authError}（请在设置的 Host 管理中检查 Token）
@@ -244,7 +244,7 @@ export function ChatView() {
                     size="sm"
                     variant="secondary"
                     onClick={reloadActiveSession}
-                    className="border-danger/30 px-2 text-[11px]"
+                    className="border-danger/30 px-2 text-[12px]"
                   >
                     重新加载
                   </Button>

@@ -91,7 +91,7 @@ export function AppearanceSection() {
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <h3 className="text-[14px] font-semibold">外观</h3>
-        <span className="text-[11px] text-muted">切换即时生效</span>
+        <span className="text-[13px] text-muted">切换即时生效</span>
       </div>
 
       <div className="grid gap-2.5 sm:grid-cols-3">
@@ -121,16 +121,16 @@ export function AppearanceSection() {
               <ThemePreview mode={t.id} />
               <div className="mt-2 flex items-center gap-1.5 px-0.5">
                 <Icon size={13} className={selected ? 'text-text-soft' : 'text-muted'} />
-                <span className="text-[12px] font-medium">{t.label}</span>
+                <span className="text-[13px] font-medium">{t.label}</span>
               </div>
-              <p className="mt-0.5 px-0.5 text-[10px] leading-4 text-muted">{t.desc}</p>
+              <p className="mt-0.5 px-0.5 text-[13px] leading-4 text-muted">{t.desc}</p>
             </button>
           )
         })}
       </div>
 
       <div className="mt-5 rounded-xl border border-border bg-surface p-3.5">
-        <div className="text-[12px] font-medium">键盘快捷键</div>
+        <div className="text-[13px] font-medium">键盘快捷键</div>
         <dl className="mt-2 grid gap-x-6 sm:grid-cols-[repeat(2,minmax(0,380px))]">
           {[
             ['发送消息', 'Enter'],
@@ -144,10 +144,10 @@ export function AppearanceSection() {
             ['切换上 / 下一个会话', `${modLabel} ⇧ [ / ]`],
             ['侧栏内切换会话', '↑ / ↓'],
           ].map(([label, keys]) => (
-            <div key={label} className="flex min-h-7 min-w-0 items-center gap-2 text-[12px]">
+            <div key={label} className="flex min-h-7 min-w-0 items-center gap-2 text-[13px]">
               <dt className="truncate text-text-soft">{label}</dt>
               <dd className="shrink-0">
-                <kbd className="whitespace-nowrap rounded-[4px] border border-border bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[9.5px] leading-none text-text-soft">
+                <kbd className="whitespace-nowrap rounded-[4px] border border-border bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[11px] leading-none text-text-soft">
                   {keys}
                 </kbd>
               </dd>
@@ -160,8 +160,8 @@ export function AppearanceSection() {
         <div className="flex items-center gap-2">
           <Bell size={14} className="text-muted" />
           <div className="min-w-0 flex-1">
-            <div className="text-[12.5px] font-medium">桌面通知</div>
-            <p className="mt-0.5 text-[11px] leading-5 text-muted">
+            <div className="text-[13px] font-medium">桌面通知</div>
+            <p className="mt-0.5 text-[13px] leading-5 text-muted">
               页面不可见时，回合结束与审批请求通过系统通知提醒；标题与 favicon 也会保留角标。
             </p>
           </div>
@@ -173,30 +173,30 @@ export function AppearanceSection() {
           />
         </div>
         {permission === 'denied' && (
-          <p className="mt-2 text-[10.5px] leading-5 text-warning">
+          <p className="mt-2 text-[13px] leading-5 text-warning">
             浏览器已拒绝通知权限，可在地址栏的站点设置里重新允许。
           </p>
         )}
       </div>
 
       <div className="mt-3 rounded-xl border border-border bg-surface p-3.5">
-        <div className="flex items-center gap-2 text-[12.5px] font-medium">
+        <div className="flex items-center gap-2 text-[13px] font-medium">
           <Smartphone size={14} className="text-muted" /> 安装到手机主屏
         </div>
-        <p className="mt-1.5 text-[11.5px] leading-5 text-muted">
+        <p className="mt-1.5 text-[13px] leading-5 text-muted">
           用手机浏览器打开 Tandem，在分享菜单选择「添加到主屏幕」，即可像 App 一样使用。
           手机与电脑连接同一 Host 时，会话、审批与消息会实时同步。
         </p>
       </div>
 
-      <div className="mt-3 rounded-xl border border-border bg-[var(--t-bg)] p-3.5 text-[11px] leading-5 text-muted">
+      <div className="mt-3 rounded-xl border border-border bg-[var(--t-bg)] p-3.5 text-[13px] leading-5 text-muted">
         Tandem 使用暖色中性灰与克制的陶土橙强调色，衬线字体只用于标题。所有字体来自系统，不加载外部资源。
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5">
         <div className="min-w-0">
-          <div className="text-[12.5px] font-medium">反馈</div>
-          <p className="mt-0.5 text-[11px] leading-5 text-muted">
+          <div className="text-[13px] font-medium">反馈</div>
+          <p className="mt-0.5 text-[13px] leading-5 text-muted">
             圈出界面问题并导出，附截图与上下文，发给我即可。
           </p>
         </div>

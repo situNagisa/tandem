@@ -138,7 +138,7 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
             <div className="flex items-baseline gap-2 text-[12px]">
               <span className="font-medium text-text">上下文</span>
               <span className="text-muted">暂无上下文数据</span>
-              <span className="ml-auto font-mono text-[11px] tabular-nums text-muted">0%</span>
+              <span className="ml-auto font-mono text-[12px] tabular-nums text-muted">0%</span>
             </div>
           )
         }
@@ -149,10 +149,10 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
           <div>
             <div className="mb-2 flex items-baseline gap-2">
               <span className="text-[12px] font-medium text-text">上下文</span>
-              <span className="font-mono text-[11px] tabular-nums text-text-soft">
+              <span className="font-mono text-[12px] tabular-nums text-text-soft">
                 {formatTokens(used)} / {formatTokens(window)}
               </span>
-              <span className="ml-auto text-[11px] tabular-nums text-muted">{pct}%</span>
+              <span className="ml-auto text-[12px] tabular-nums text-muted">{pct}%</span>
             </div>
             <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-surface-2">
               {rows.map((part) => {
@@ -178,7 +178,7 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
                 const meta = CONTEXT_PART_META[part.kind]
                 const share = window > 0 ? (part.tokens / window) * 100 : 0
                 return (
-                  <div key={part.kind} className="flex items-center gap-2 text-[11px] leading-4">
+                  <div key={part.kind} className="flex items-center gap-2 text-[12px] leading-4">
                     <span
                       className="size-2 shrink-0 rounded-[2px] border border-border/60"
                       style={{
@@ -196,7 +196,7 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
                 )
               })}
             </div>
-            <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border pt-2 text-[10.5px] text-muted">
+            <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border pt-2 text-[12px] text-muted">
               <span>
                 缓存命中率{' '}
                 <span className="font-mono tabular-nums text-text-soft">
@@ -221,7 +221,7 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
                 type="button"
                 onClick={() => compact(close)}
                 disabled={running || compactDisabled}
-                className="ml-auto rounded-md px-1.5 py-0.5 text-[10.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:pointer-events-none disabled:opacity-40"
+                className="ml-auto rounded-md px-1.5 py-0.5 text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:pointer-events-none disabled:opacity-40"
               >
                 压缩上下文（/compact）
               </button>

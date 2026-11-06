@@ -40,10 +40,10 @@ export function PlanCard({ request, more }: { request: PermissionRequest; more: 
           <ScrollText size={14} />
         </span>
         <span className="text-[13.5px] font-semibold text-text">计划</span>
-        <span className="rounded border border-border px-1.5 py-px text-[10.5px] text-muted">
+        <span className="rounded border border-border px-1.5 py-px text-[12px] text-muted">
           等待批准
         </span>
-        {more > 0 && <span className="text-[11px] text-muted">另有 {more} 个待审批</span>}
+        {more > 0 && <span className="text-[12px] text-muted">另有 {more} 个待审批</span>}
         <span className="flex-1" />
         <Button
           size="sm"
@@ -63,7 +63,7 @@ export function PlanCard({ request, more }: { request: PermissionRequest; more: 
       {feedbackOpen ? (
         <div className="border-t border-border/70 px-4 py-3">
           <label className="block">
-            <span className="mb-1 block text-[11.5px] text-muted">
+            <span className="mb-1 block text-[13px] text-muted">
               告诉模型需要怎么完善计划（会作为拒绝反馈回填）
             </span>
             <textarea

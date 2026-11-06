@@ -50,7 +50,7 @@ export function SettingsDialog() {
                 onClick={() => setTab(t.id)}
                 aria-current={tab === t.id ? 'page' : undefined}
                 className={cn(
-                  'min-h-11 w-full min-w-0 justify-start gap-2 px-2.5 text-left text-[12.5px] font-normal sm:min-h-8',
+                  'min-h-11 w-full min-w-0 justify-start gap-2 px-2.5 text-left text-[13px] font-normal sm:min-h-8',
                   tab === t.id && 'bg-[var(--t-bg-active)] text-text',
                 )}
                 icon={<Icon size={14} />}
@@ -59,7 +59,7 @@ export function SettingsDialog() {
               </Button>
             )
           })}
-          <div className="mt-auto hidden items-center gap-1.5 px-2.5 pb-1 text-[10px] text-muted sm:flex">
+          <div className="mt-auto hidden items-center gap-1.5 px-2.5 pb-1 text-[13px] text-muted sm:flex">
             <Monitor size={11} /> Tandem 0.1 · Web
           </div>
         </nav>

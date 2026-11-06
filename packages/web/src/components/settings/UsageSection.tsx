@@ -86,31 +86,31 @@ function rank(
 function RankTable({ title, rows }: { title: string; rows: RankRow[] }) {
   return (
     <div className="min-w-0 rounded-xl border border-border bg-surface">
-      <div className="border-b border-border/70 px-3 py-2 text-[11.5px] font-medium text-text-soft">
+      <div className="border-b border-border/70 px-3 py-2 text-[13px] font-medium text-text-soft">
         {title}
       </div>
       {rows.length === 0 ? (
-        <div className="px-3 py-4 text-[11px] text-muted">暂无数据</div>
+        <div className="px-3 py-4 text-[13px] text-muted">暂无数据</div>
       ) : (
         <>
           <div className="divide-y divide-[var(--t-border)]">
             {rows.slice(0, 6).map((row) => (
               <div key={row.key} className="flex items-center gap-2 px-3 py-1.5">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-mono text-[11px] text-text" title={row.label}>
+                  <div className="truncate font-mono text-[13px] text-text" title={row.label}>
                     {row.label}
                   </div>
-                  {row.sub && <div className="truncate text-[9.5px] text-muted">{row.sub}</div>}
+                  {row.sub && <div className="truncate text-[13px] text-muted">{row.sub}</div>}
                 </div>
                 <div className="shrink-0 text-right">
-                  <div className="font-mono text-[11px] tabular-nums text-text">{formatCost(row.cost)}</div>
-                  <div className="text-[9px] tabular-nums text-muted">{formatTokens(row.tokens)} tok</div>
+                  <div className="font-mono text-[13px] tabular-nums text-text">{formatCost(row.cost)}</div>
+                  <div className="text-[13px] tabular-nums text-muted">{formatTokens(row.tokens)} tok</div>
                 </div>
               </div>
             ))}
           </div>
           {rows.length > 6 && (
-            <div className="border-t border-border/70 px-3 py-1 text-[9.5px] text-muted">
+            <div className="border-t border-border/70 px-3 py-1 text-[13px] text-muted">
               仅显示前 6 项，共 {rows.length} 项
             </div>
           )}
@@ -259,7 +259,7 @@ function DayChart({ days, values }: { days: string[]; values: number[] }) {
       </svg>
       {activeIndex !== null && (
         <div
-          className="pointer-events-none absolute top-1 rounded-md border border-border bg-surface px-2 py-1 text-[10px] text-text shadow-[var(--t-shadow-sm)]"
+          className="pointer-events-none absolute top-1 rounded-md border border-border bg-surface px-2 py-1 text-[13px] text-text shadow-[var(--t-shadow-sm)]"
           style={{ left: tipLeft }}
         >
           <div className="font-mono">{activeDay}</div>
@@ -267,7 +267,7 @@ function DayChart({ days, values }: { days: string[]; values: number[] }) {
         </div>
       )}
       {compact && (
-        <div className="mt-1 text-center text-[10px] text-muted">点按柱子查看每日花费</div>
+        <div className="mt-1 text-center text-[13px] text-muted">点按柱子查看每日花费</div>
       )}
     </div>
   )
@@ -376,7 +376,7 @@ export function UsageSection() {
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <h3 className="text-[14px] font-semibold">用量</h3>
-        <span className="text-[11px] text-muted">跨 Host 汇总</span>
+        <span className="text-[13px] text-muted">跨 Host 汇总</span>
         <span className="flex-1" />
         <SegmentedControl
           aria-label="统计范围"
@@ -395,36 +395,36 @@ export function UsageSection() {
       </div>
 
       {error && (
-        <div className="mb-3 flex items-center gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[11px] text-danger">
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[13px] text-danger">
           <TriangleAlert size={12} /> {error}
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
-          <div className="text-[10px] text-muted">总花费</div>
+          <div className="text-[13px] text-muted">总花费</div>
           <div className="mt-0.5 font-mono text-[17px] tabular-nums text-text">{formatCost(totals.cost)}</div>
         </div>
         <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
-          <div className="text-[10px] text-muted">输入 token</div>
+          <div className="text-[13px] text-muted">输入 token</div>
           <div className="mt-0.5 font-mono text-[17px] tabular-nums text-text">{formatTokens(totals.input)}</div>
         </div>
         <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
-          <div className="text-[10px] text-muted">输出 token</div>
+          <div className="text-[13px] text-muted">输出 token</div>
           <div className="mt-0.5 font-mono text-[17px] tabular-nums text-text">{formatTokens(totals.output)}</div>
         </div>
         <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
-          <div className="text-[10px] text-muted">回合</div>
+          <div className="text-[13px] text-muted">回合</div>
           <div className="mt-0.5 font-mono text-[17px] tabular-nums text-text">{totals.turns}</div>
         </div>
       </div>
 
       <div className="mt-3 rounded-xl border border-border bg-surface p-3">
-        <div className="mb-2 flex items-center gap-1.5 text-[11.5px] font-medium text-text-soft">
+        <div className="mb-2 flex items-center gap-1.5 text-[13px] font-medium text-text-soft">
           <BarChart3 size={13} className="text-muted" /> 按天花费
           {loading && <Loader2 size={11} className="animate-spin text-muted" />}
           <span className="flex-1" />
-          <span className="text-[10px] font-normal text-muted">
+          <span className="text-[13px] font-normal text-muted">
             {from} — {to}
           </span>
         </div>

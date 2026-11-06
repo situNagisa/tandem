@@ -27,7 +27,7 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
           aria-expanded={open}
           aria-haspopup="menu"
           className={cn(
-            'flex h-6 max-w-[110px] min-w-0 items-center gap-0.5 rounded-md px-1.5 text-[11.5px] text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text',
+            'flex h-6 max-w-[110px] min-w-0 items-center gap-0.5 rounded-md px-1.5 text-[13px] text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text',
             open && 'bg-[var(--t-bg-active)] text-text',
           )}
         >
@@ -39,7 +39,7 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
       {(close) => (
         <MenuList aria-label="切换主机">
           {hosts.length === 0 && (
-            <p className="px-2 py-2 text-[12.5px] text-text-tertiary">
+            <p className="px-2 py-2 text-[13px] text-text-tertiary">
               还没有主机，先添加一台吧。
             </p>
           )}

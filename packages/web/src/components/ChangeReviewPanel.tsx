@@ -291,14 +291,14 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
 
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 px-3">
         <FileDiff size={15} className="shrink-0 text-text-soft" />
-        <h2 className="text-[12.5px] font-semibold">改动审阅</h2>
+        <h2 className="text-[13px] font-semibold">改动审阅</h2>
         {changes?.branch && (
-          <span className="min-w-0 truncate font-mono text-[10.5px] text-muted">
+          <span className="min-w-0 truncate font-mono text-[12px] text-muted">
             {changes.branch}
           </span>
         )}
         {files.length > 0 && (
-          <span className="flex shrink-0 items-center gap-1 font-mono text-[10.5px]">
+          <span className="flex shrink-0 items-center gap-1 font-mono text-[12px]">
             <span className="text-[var(--t-git-plus)]">+{totalAdd}</span>
             <span className="text-[var(--t-git-minus)]">−{totalDel}</span>
           </span>
@@ -322,7 +322,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
         </div>
       ) : error ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-          <p className="text-[12.5px] text-danger">{error}</p>
+          <p className="text-[13px] text-danger">{error}</p>
           <Button size="sm" onClick={reload}>
             重试
           </Button>
@@ -334,8 +334,8 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
       ) : files.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
           <FileDiff size={24} className="text-muted/50" />
-          <p className="text-[12.5px] text-text-soft">工作区没有未提交的改动</p>
-          <p className="text-[11.5px] text-muted">agent 修改文件后会出现在这里</p>
+          <p className="text-[13px] text-text-soft">工作区没有未提交的改动</p>
+          <p className="text-[13px] text-muted">agent 修改文件后会出现在这里</p>
         </div>
       ) : (
         <>
@@ -358,24 +358,24 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                     className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-1.5 pr-1 text-left"
                     title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
                   >
-                    <span className={cn('w-3 shrink-0 text-center font-mono text-[10.5px] font-semibold', meta.className)}>
+                    <span className={cn('w-3 shrink-0 text-center font-mono text-[12px] font-semibold', meta.className)}>
                       {meta.letter}
                     </span>
                     <span
                       className={cn(
-                        'max-w-[62%] shrink-0 truncate font-mono text-[11.5px]',
+                        'max-w-[62%] shrink-0 truncate font-mono text-[13px]',
                         selected === file.path ? 'text-text' : 'text-text-soft',
                       )}
                     >
                       {name}
                     </span>
                     {dir && (
-                      <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-muted">
+                      <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-muted">
                         {dir}
                       </span>
                     )}
-                    <span className="ml-auto shrink-0 font-mono text-[10px] text-[var(--t-git-plus)]">+{file.additions}</span>
-                    <span className="shrink-0 font-mono text-[10px] text-[var(--t-git-minus)]">−{file.deletions}</span>
+                    <span className="ml-auto shrink-0 font-mono text-[12px] text-[var(--t-git-plus)]">+{file.additions}</span>
+                    <span className="shrink-0 font-mono text-[12px] text-[var(--t-git-minus)]">−{file.deletions}</span>
                   </button>
                   <IconButton
                     size="sm"
@@ -395,16 +395,16 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
             {selectedFile && (
               <div className="mb-2 flex items-center gap-2">
-                <span className="min-w-0 truncate font-mono text-[11px] text-text-soft">
+                <span className="min-w-0 truncate font-mono text-[12px] text-text-soft">
                   {selectedFile.path}
                 </span>
                 <span className="flex-1" />
-                <span className="shrink-0 text-[10.5px] text-muted">点击或拖选行添加评论</span>
+                <span className="shrink-0 text-[12px] text-muted">点击或拖选行添加评论</span>
                 <Button
                   size="sm"
                   variant="danger-ghost"
                   onClick={() => setRevertTarget(selectedFile)}
-                  className="px-1.5 text-[10.5px] [&_svg]:size-3"
+                  className="px-1.5 text-[12px] [&_svg]:size-3"
                 >
                   <Trash2 size={10} /> 丢弃改动
                 </Button>
@@ -415,7 +415,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 <Loader2 size={15} className="animate-spin" />
               </div>
             ) : diffError ? (
-              <p className="rounded-lg border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[11.5px] text-danger">
+              <p className="rounded-lg border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[13px] text-danger">
                 {diffError}
               </p>
             ) : diff !== null ? (
@@ -439,7 +439,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 type="button"
                 onClick={sendComments}
                 disabled={sendingComments}
-                className="flex h-8 w-full items-center gap-1.5 border-b border-border/70 px-3 text-left text-[11px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
+                className="flex h-8 w-full items-center gap-1.5 border-b border-border/70 px-3 text-left text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
               >
                 <MessageSquarePlus size={12} className="shrink-0 text-[var(--t-accent)]" />
                 <span>{comments.length} 条评论</span>
@@ -449,7 +449,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
             )}
 
             {untrackedCount > 0 && (
-              <div className="flex h-6 items-center gap-1.5 border-b border-border/60 px-3 text-[10.5px] text-muted">
+              <div className="flex h-6 items-center gap-1.5 border-b border-border/60 px-3 text-[12px] text-muted">
                 <AlertTriangle size={10} className="shrink-0" />
                 含 {untrackedCount} 个未跟踪文件，提交时会一并加入版本库
               </div>
@@ -636,13 +636,13 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
           {untrackedCount > 0 ? `，其中 ${untrackedCount} 个未跟踪文件会首次加入版本库` : ''}。
         </p>
         <div className="mt-3 rounded-lg border border-border bg-bg/60 px-3 py-2">
-          <p className="text-[10.5px] text-muted">提交信息</p>
-          <p className="mt-0.5 whitespace-pre-wrap break-words text-[12.5px] leading-5 text-text">
+          <p className="text-[12px] text-muted">提交信息</p>
+          <p className="mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-5 text-text">
             {commitMessage.trim()}
           </p>
         </div>
         {untrackedCount > 0 && (
-          <p className="mt-3 text-[11.5px] leading-5 text-warning">
+          <p className="mt-3 text-[13px] leading-5 text-warning">
             {untrackedCount} 个未跟踪文件会被一并提交；如果其中有临时文件，请先取消并丢弃。
           </p>
         )}

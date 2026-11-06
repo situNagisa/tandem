@@ -208,7 +208,7 @@ export function CodeBlock({
     <div className={cn('chat-code', fill && 'file-code-fill', className)}>
       {showHeader && (
         <div className="chat-code-tools" data-visible={copied || undefined}>
-          <span className="truncate font-mono text-[10px] text-[var(--t-text-tertiary)]">
+          <span className="truncate font-mono text-[12px] text-[var(--t-text-tertiary)]">
             {fileName || languageLabel(language)}
           </span>
           <IconButton

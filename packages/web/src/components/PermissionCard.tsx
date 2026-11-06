@@ -91,7 +91,7 @@ function AddRuleDialog({
     >
       <div className="space-y-3">
         <label className="block space-y-1">
-          <span className="text-[11.5px] text-muted">工具</span>
+          <span className="text-[13px] text-muted">工具</span>
           <Select
             value={rule.tool}
             onChange={(e) => setRule((r) => ({ ...r, tool: e.target.value }))}
@@ -106,7 +106,7 @@ function AddRuleDialog({
           </Select>
         </label>
         <label className="block space-y-1">
-          <span className="text-[11.5px] text-muted">
+          <span className="text-[13px] text-muted">
             匹配模式{rule.tool === 'Bash' ? '（命令前缀，可用 * 通配）' : '（文件 glob，留空匹配全部）'}
           </span>
           <Input
@@ -117,7 +117,7 @@ function AddRuleDialog({
           />
         </label>
         <div className="space-y-1">
-          <span className="text-[11.5px] text-muted">动作</span>
+          <span className="text-[13px] text-muted">动作</span>
           <SegmentedControl
             aria-label="规则动作"
             className="flex w-full"
@@ -145,7 +145,7 @@ function Kbd({ children, inverse }: { children: React.ReactNode; inverse?: boole
   return (
     <kbd
       className={cn(
-        'ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-[4px] px-1 text-[9.5px] font-normal leading-none',
+        'ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-[4px] px-1 text-[12px] font-normal leading-none',
         inverse
           ? 'bg-[color-mix(in_srgb,var(--t-primary-fg)_12%,transparent)] text-[color-mix(in_srgb,var(--t-primary-fg)_55%,transparent)]'
           : 'text-[var(--t-text-tertiary)]',
@@ -262,23 +262,23 @@ export function PermissionCard({
         <ShieldAlert size={15} className="mt-0.5 shrink-0 text-[var(--t-text-tertiary)]" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--t-text-tertiary)]">
+            <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-[var(--t-text-tertiary)]">
               需要你的许可
             </span>
-            <span className="font-mono text-[10.5px] text-text-soft">{toolName}</span>
+            <span className="font-mono text-[12px] text-text-soft">{toolName}</span>
             {more > 0 && (
-              <span className="text-[11px] text-muted">另有 {more} 个待审批</span>
+              <span className="text-[12px] text-muted">另有 {more} 个待审批</span>
             )}
           </div>
           {subagentTitle && (
-            <div className="mt-1 flex items-center gap-1 text-[11px] text-muted">
+            <div className="mt-1 flex items-center gap-1 text-[12px] text-muted">
               <Bot size={11} className="shrink-0 text-accent/80" />
               <span className="min-w-0 truncate">
                 来自{sourceDepth === 1 ? '子代理' : sourceDepth === 2 ? '孙代理' : `第${sourceDepth}层代理`}：{subagentTitle}
               </span>
             </div>
           )}
-          <p className="mt-1 whitespace-pre-wrap break-words text-[12.5px] leading-[1.55] text-text-soft">
+          <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-[1.55] text-text-soft">
             {request.description}
           </p>
         </div>
@@ -293,7 +293,7 @@ export function PermissionCard({
           onClick={() => setRuleDraft(quickRule(toolName, input, cwd))}
           tooltip="把这条件添加为 Host 级权限规则"
           tooltipSide="top"
-          className="h-7 px-1.5 text-[11px] text-[var(--t-text-tertiary)] hover:text-text"
+          className="h-7 px-1.5 text-[12px] text-[var(--t-text-tertiary)] hover:text-text"
         >
           <Plus size={11} /> 添加为规则…
         </Button>

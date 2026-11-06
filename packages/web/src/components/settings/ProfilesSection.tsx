@@ -37,7 +37,7 @@ import { Button, IconButton } from '../ui/Button'
 import { MenuSelect } from '../ui/Menu'
 
 const inputCls =
-  'h-8 w-full rounded-lg border border-border bg-surface px-2.5 text-[12px] text-text outline-none transition-colors placeholder:text-muted focus:border-border-strong'
+  'h-8 w-full rounded-lg border border-border bg-surface px-2.5 text-[13px] text-text outline-none transition-colors placeholder:text-muted focus:border-border-strong'
 const labelCls = 'settings-label'
 
 /** 分组协议下拉的简短名称（与用户熟悉的叫法一致）。 */
@@ -76,14 +76,14 @@ function PriceOverrides({
   return (
     <div className="mt-3 rounded-lg border border-border bg-bg/40 px-2.5 py-2">
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-[11px] font-medium text-text-soft">自定义单价</span>
-        <span className="text-[10px] text-muted">每百万 token 美元，覆盖内置参考价</span>
+        <span className="text-[13px] font-medium text-text-soft">自定义单价</span>
+        <span className="text-[13px] text-muted">每百万 token 美元，覆盖内置参考价</span>
       </div>
       {Object.keys(price).length > 0 && (
         <div className="mt-1.5 space-y-1">
           {Object.entries(price).map(([id, value]) => (
             <div key={id} className="flex items-center gap-1.5">
-              <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-text-soft" title={id}>
+              <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-text-soft" title={id}>
                 {id}
               </span>
               <input
@@ -93,9 +93,9 @@ function PriceOverrides({
                 value={value.input}
                 onChange={(e) => update(id, 'input', e.target.value)}
                 aria-label={`${id} 输入单价`}
-                className="h-6 w-14 rounded border border-border bg-surface px-1 text-right font-mono text-[10px] outline-none focus:border-border-strong"
+                className="h-6 w-14 rounded border border-border bg-surface px-1 text-right font-mono text-[13px] outline-none focus:border-border-strong"
               />
-              <span className="text-[9px] text-muted">in</span>
+              <span className="text-[13px] text-muted">in</span>
               <input
                 type="number"
                 min={0}
@@ -103,9 +103,9 @@ function PriceOverrides({
                 value={value.output}
                 onChange={(e) => update(id, 'output', e.target.value)}
                 aria-label={`${id} 输出单价`}
-                className="h-6 w-14 rounded border border-border bg-surface px-1 text-right font-mono text-[10px] outline-none focus:border-border-strong"
+                className="h-6 w-14 rounded border border-border bg-surface px-1 text-right font-mono text-[13px] outline-none focus:border-border-strong"
               />
-              <span className="text-[9px] text-muted">out</span>
+              <span className="text-[13px] text-muted">out</span>
               <button
                 onClick={() => {
                   const next = { ...price }
@@ -134,7 +134,7 @@ function PriceOverrides({
           list="tandem-price-models"
           placeholder={candidates[0] ?? '模型 ID'}
           spellCheck={false}
-          className="h-6 min-w-0 flex-1 rounded border border-border bg-surface px-1.5 font-mono text-[10px] text-text outline-none focus:border-border-strong"
+          className="h-6 min-w-0 flex-1 rounded border border-border bg-surface px-1.5 font-mono text-[13px] text-text outline-none focus:border-border-strong"
         />
         <datalist id="tandem-price-models">
           {candidates.map((id) => (
@@ -144,7 +144,7 @@ function PriceOverrides({
         <button
           onClick={add}
           disabled={!model.trim()}
-          className="h-6 shrink-0 rounded border border-border px-1.5 text-[10px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-40"
+          className="h-6 shrink-0 rounded border border-border px-1.5 text-[13px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-40"
         >
           添加
         </button>
@@ -194,7 +194,7 @@ function Steps({ step }: { step: Step }) {
           <div key={label} className="flex items-center gap-1">
             <span
               className={cn(
-                'flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] transition-colors',
+                'flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[13px] transition-colors',
                 n === step
                   ? 'bg-[var(--t-bg-active)] font-medium text-text'
                   : n < step
@@ -204,7 +204,7 @@ function Steps({ step }: { step: Step }) {
             >
               <span
                 className={cn(
-                  'flex size-4 items-center justify-center rounded-full text-[9px]',
+                  'flex size-4 items-center justify-center rounded-full text-[11px]',
                   n === step
                     ? 'bg-[var(--t-text)] text-[var(--t-bg)]'
                     : n < step
@@ -430,7 +430,7 @@ function GroupEditor({
     <div className="rounded-xl border border-border-strong/60 bg-bg/40 p-3">
       <div className="mb-2 flex items-center gap-1.5">
         <Layers size={13} className="text-text-soft" />
-        <span className="text-[12px] font-medium">
+        <span className="text-[13px] font-medium">
           {existing ? `编辑分组「${existing.name}」` : '添加分组'}
         </span>
       </div>
@@ -470,7 +470,7 @@ function GroupEditor({
               }
               spellCheck={false}
               autoComplete="off"
-              className={cn(inputCls, 'pr-9 font-mono text-[11.5px]')}
+              className={cn(inputCls, 'pr-9 font-mono text-[13px]')}
             />
             <span className="absolute right-1 top-1/2 -translate-y-1/2">
               <IconButton
@@ -492,9 +492,9 @@ function GroupEditor({
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder={profileBaseUrl || groupBaseUrlPlaceholder(kind)}
           spellCheck={false}
-          className={cn(inputCls, 'font-mono text-[11px]')}
+          className={cn(inputCls, 'font-mono text-[13px]')}
         />
-        <p className="mt-1 text-[10px] leading-4 text-muted">
+        <p className="mt-1 text-[13px] leading-4 text-muted">
           {kind === 'anthropic'
             ? 'Anthropic 协议会自动拼接 /v1/messages；填完整端点也可以。'
             : 'OpenAI 系协议会自动拼接 /chat/completions。'}
@@ -509,11 +509,11 @@ function GroupEditor({
           自动拉取模型
         </Button>
         {existing && (
-          <span className="text-[10px] text-muted">留空 Key 时使用已保存的 Key</span>
+          <span className="text-[13px] text-muted">留空 Key 时使用已保存的 Key</span>
         )}
       </div>
       {fetchError && (
-        <p className="mt-1.5 flex items-start gap-1 text-[10.5px] leading-4 text-danger">
+        <p className="mt-1.5 flex items-start gap-1 text-[13px] leading-4 text-danger">
           <TriangleAlert size={11} className="mt-0.5 shrink-0" /> {fetchError}
         </p>
       )}
@@ -529,7 +529,7 @@ function GroupEditor({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索模型"
-              className="h-7 w-full rounded-md border border-border bg-bg pl-6 pr-2 text-[11px] outline-none focus:border-border-strong"
+              className="h-7 w-full rounded-md border border-border bg-bg pl-6 pr-2 text-[13px] outline-none focus:border-border-strong"
             />
           </div>
           <div className="mt-1.5 max-h-[150px] overflow-y-auto rounded-lg border border-border bg-bg/30 p-1">
@@ -551,17 +551,17 @@ function GroupEditor({
                   >
                     {checked && <Check size={9} strokeWidth={3} />}
                   </span>
-                  <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-text-soft">
+                  <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-text-soft">
                     {m.id}
                   </span>
                   {checked && m.id === defaultModel && (
-                    <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1 text-[9px] text-text-secondary">默认</span>
+                    <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1 text-[11px] text-text-secondary">默认</span>
                   )}
                 </label>
               )
             })}
             {filtered.length === 0 && (
-              <p className="px-2 py-3 text-center text-[10.5px] text-muted">没有匹配的模型</p>
+              <p className="px-2 py-3 text-center text-[13px] text-muted">没有匹配的模型</p>
             )}
           </div>
         </>
@@ -579,12 +579,12 @@ function GroupEditor({
           }}
           placeholder="手动添加模型 ID"
           spellCheck={false}
-          className={cn(inputCls, 'h-7 font-mono text-[10.5px]')}
+          className={cn(inputCls, 'h-7 font-mono text-[13px]')}
         />
         <button
           onClick={addManual}
           disabled={!manualInput.trim()}
-          className="h-7 shrink-0 rounded-md border border-border px-2 text-[10.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
+          className="h-7 shrink-0 rounded-md border border-border px-2 text-[13px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
         >
           添加
         </button>
@@ -592,9 +592,9 @@ function GroupEditor({
 
       {selected.length > 0 && (
         <div className="mt-2 flex items-center gap-2">
-          <span className="text-[10.5px] text-muted">已选 {selected.length} 个</span>
+          <span className="text-[13px] text-muted">已选 {selected.length} 个</span>
           <span className="flex-1" />
-          <span className="text-[10.5px] text-muted">默认</span>
+          <span className="text-[13px] text-muted">默认</span>
           <MenuSelect
             value={defaultModel}
             onChange={setDefaultModel}
@@ -602,13 +602,13 @@ function GroupEditor({
             size="sm"
             options={selected.map((id) => ({ value: id, label: id }))}
             wrapperClassName="w-auto max-w-[200px]"
-            className="font-mono text-[10.5px]"
+            className="font-mono text-[13px]"
           />
         </div>
       )}
 
       {error && (
-        <p className="mt-1.5 flex items-start gap-1 text-[10.5px] text-danger">
+        <p className="mt-1.5 flex items-start gap-1 text-[13px] text-danger">
           <TriangleAlert size={11} className="mt-0.5 shrink-0" /> {error}
         </p>
       )}
@@ -989,7 +989,7 @@ export function ProfilesSection() {
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <h3 className="text-[14px] font-semibold">账号与模型</h3>
-        <span className="hidden text-[11px] text-muted sm:inline">
+        <span className="hidden text-[13px] text-muted sm:inline">
           Key 保存在 Host 端，不会下发明文
         </span>
         <span className="flex-1" />
@@ -1003,7 +1003,7 @@ export function ProfilesSection() {
             aria-label="选择 Host"
             options={hosts.map((h) => ({ value: h.id, label: h.name }))}
             wrapperClassName="w-auto max-w-[180px]"
-            className="text-[11.5px]"
+            className="text-[13px]"
           />
         )}
         <IconButton
@@ -1027,7 +1027,7 @@ export function ProfilesSection() {
       </div>
 
       {runtime?.authError && (
-        <div className="mb-3 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft/50 px-3 py-2 text-[11.5px] text-danger">
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft/50 px-3 py-2 text-[13px] text-danger">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" /> {runtime.authError}
         </div>
       )}
@@ -1045,7 +1045,7 @@ export function ProfilesSection() {
               <h4 className="text-[13px] font-semibold">
                 {editing === 'new' ? '新建账号' : `编辑「${editingProfile?.name ?? '账号'}」`}
               </h4>
-              <p className="text-[10.5px] text-muted">
+              <p className="text-[13px] text-muted">
                 {editing === 'new' ? '三步完成，模型自动获取' : '修改后会立即保存到 Host'}
               </p>
             </div>
@@ -1059,7 +1059,7 @@ export function ProfilesSection() {
           <div key={step} className="anim-wizard-forward">
           {step === 1 && (
             <div>
-              <p className="mb-2.5 text-[11.5px] text-muted">选择服务商，预设会自动填好接口地址和推荐模型。</p>
+              <p className="mb-2.5 text-[13px] text-muted">选择服务商，预设会自动填好接口地址和推荐模型。</p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {PROVIDER_PRESETS.map((p) => (
                   <button
@@ -1069,8 +1069,8 @@ export function ProfilesSection() {
                   >
                     <ProviderLogo preset={p} size={32} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12px] font-medium">{p.name}</span>
-                      <span className="block truncate text-[10px] text-muted">
+                      <span className="block truncate text-[13px] font-medium">{p.name}</span>
+                      <span className="block truncate text-[13px] text-muted">
                         {PROVIDER_KIND_LABELS[p.kind] ?? p.kind}
                       </span>
                     </span>
@@ -1084,8 +1084,8 @@ export function ProfilesSection() {
                     <Plus size={14} />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12px] font-medium">自定义</span>
-                    <span className="block truncate text-[10px] text-muted">OpenAI 兼容接口</span>
+                    <span className="block truncate text-[13px] font-medium">自定义</span>
+                    <span className="block truncate text-[13px] text-muted">OpenAI 兼容接口</span>
                   </span>
                 </button>
               </div>
@@ -1097,16 +1097,16 @@ export function ProfilesSection() {
               <div className="mb-3 flex items-center gap-2.5 rounded-xl bg-[var(--t-bg)] px-3 py-2">
                 <ProviderLogo preset={preset ?? undefined} size={30} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12px] font-medium">
+                  <span className="block truncate text-[13px] font-medium">
                     {preset?.name ?? '自定义接口'}
                   </span>
-                  <span className="block truncate text-[10px] text-muted">
+                  <span className="block truncate text-[13px] text-muted">
                     {PROVIDER_KIND_LABELS[form.kind] ?? form.kind}
                   </span>
                 </span>
                 <button
                   onClick={() => setStep(1)}
-                  className="text-[10.5px] text-muted underline-offset-2 hover:text-text hover:underline"
+                  className="text-[13px] text-muted underline-offset-2 hover:text-text hover:underline"
                 >
                   更换
                 </button>
@@ -1129,9 +1129,9 @@ export function ProfilesSection() {
                     onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))}
                     placeholder={groupBaseUrlPlaceholder(form.kind)}
                     spellCheck={false}
-                    className={cn(inputCls, 'font-mono text-[11px]')}
+                    className={cn(inputCls, 'font-mono text-[13px]')}
                   />
-                  <p className="mt-1 text-[10px] leading-4 text-muted">
+                  <p className="mt-1 text-[13px] leading-4 text-muted">
                     一个账号对应一个 URL。Key、协议和模型都在下面的分组里配置，同一 URL 下可混合不同协议。
                   </p>
                 </div>
@@ -1139,19 +1139,19 @@ export function ProfilesSection() {
                 <div className="mt-3 rounded-xl border border-border bg-bg/30 p-3">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Layers size={13} className="text-text-soft" />
-                    <span className="text-[12px] font-medium">账号分组</span>
-                    <span className="text-[10px] text-muted">每组可独立协议与 Key</span>
+                    <span className="text-[13px] font-medium">账号分组</span>
+                    <span className="text-[13px] text-muted">每组可独立协议与 Key</span>
                     <span className="flex-1" />
                     <Button
                       size="sm"
                       onClick={() => setGroupEditor({ index: 'new' })}
                       disabled={!!groupEditor}
-                      className="px-2 text-[10.5px]"
+                      className="px-2 text-[13px]"
                     >
                       <Plus size={11} /> 添加分组
                     </Button>
                   </div>
-                  <p className="mt-1 text-[10px] leading-4 text-muted">
+                  <p className="mt-1 text-[13px] leading-4 text-muted">
                     同一账号 URL 下可有多组 Key（如官方渠道 / 低价渠道），每组可单独选择协议与模型；会话按所选分组的协议运行。
                   </p>
 
@@ -1185,12 +1185,12 @@ export function ProfilesSection() {
                         >
                           <span className="min-w-0 flex-1">
                             <span className="flex min-w-0 items-center gap-1.5">
-                              <span className="truncate text-[11.5px] text-text">{g.name}</span>
-                              <span className="shrink-0 rounded border border-border px-1 text-[9px] text-muted">
+                              <span className="truncate text-[13px] text-text">{g.name}</span>
+                              <span className="shrink-0 rounded border border-border px-1 text-[11px] text-muted">
                                 {GROUP_KIND_LABELS[g.kind]}
                               </span>
                             </span>
-                            <span className="block truncate font-mono text-[9.5px] text-muted">
+                            <span className="block truncate font-mono text-[13px] text-muted">
                               {g.apiKeyMasked || (g.apiKey ? '新 Key（待保存）' : g.inheritedKey ? '沿用账号 Key' : '无 Key')} ·{' '}
                               {g.models.length} 个模型
                             </span>
@@ -1222,7 +1222,7 @@ export function ProfilesSection() {
               </div>
 
               {error && (
-                <div className="mt-3 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft/50 px-3 py-2 text-[11.5px] text-danger">
+                <div className="mt-3 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft/50 px-3 py-2 text-[13px] text-danger">
                   <TriangleAlert size={13} className="mt-0.5 shrink-0" />
                   {error}
                 </div>
@@ -1242,8 +1242,8 @@ export function ProfilesSection() {
               <div className="mb-3 flex items-center gap-2">
                 <ProviderLogo preset={preset ?? undefined} size={28} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12px] font-medium">{form.name || preset?.name || '确认分组'}</div>
-                  <div className="text-[10px] text-muted">
+                  <div className="truncate text-[13px] font-medium">{form.name || preset?.name || '确认分组'}</div>
+                  <div className="text-[13px] text-muted">
                     {groups.length} 个分组 · 会话使用所选分组自己的协议与 Key
                   </div>
                 </div>
@@ -1257,12 +1257,12 @@ export function ProfilesSection() {
                   >
                     <span className="min-w-0 flex-1">
                       <span className="flex min-w-0 items-center gap-1.5">
-                        <span className="truncate text-[11.5px] text-text">{g.name}</span>
-                        <span className="shrink-0 rounded border border-border px-1 text-[9px] text-muted">
+                        <span className="truncate text-[13px] text-text">{g.name}</span>
+                        <span className="shrink-0 rounded border border-border px-1 text-[11px] text-muted">
                           {GROUP_KIND_LABELS[g.kind]}
                         </span>
                       </span>
-                      <span className="block truncate font-mono text-[9.5px] text-muted">
+                      <span className="block truncate font-mono text-[13px] text-muted">
                         {g.apiKeyMasked || (g.apiKey ? '新 Key' : g.inheritedKey ? '沿用账号 Key' : '无 Key')} · 默认{' '}
                         {g.defaultModel || g.models[0] || '未设置'} · {g.models.length} 个模型
                       </span>
@@ -1272,7 +1272,7 @@ export function ProfilesSection() {
                         setStep(2)
                         setGroupEditor({ index: i })
                       }}
-                      className="shrink-0 rounded-md border border-border px-2 py-0.5 text-[10.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+                      className="shrink-0 rounded-md border border-border px-2 py-0.5 text-[13px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
                     >
                       编辑
                     </button>
@@ -1280,7 +1280,7 @@ export function ProfilesSection() {
                 ))}
               </div>
 
-              <div className="mt-3 rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[10.5px] leading-4 text-muted">
+              <div className="mt-3 rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[13px] leading-4 text-muted">
                 账号 URL 共用；每个分组按自己的协议拼接请求路径（Anthropic：…/v1/messages，OpenAI：…/chat/completions）。
               </div>
 
@@ -1291,7 +1291,7 @@ export function ProfilesSection() {
               />
 
               {error && (
-                <div className="mt-3 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft/50 px-3 py-2 text-[11.5px] text-danger">
+                <div className="mt-3 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft/50 px-3 py-2 text-[13px] text-danger">
                   <TriangleAlert size={13} className="mt-0.5 shrink-0" />
                   {error}
                 </div>
@@ -1361,18 +1361,18 @@ export function ProfilesSection() {
                     {brand ? (
                       <ProviderLogo preset={brand} size={32} />
                     ) : (
-                      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[var(--t-bg-active)] text-[12px] font-semibold text-text-soft">
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[var(--t-bg-active)] text-[13px] font-semibold text-text-soft">
                         {initialOf(p.name)}
                       </span>
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="truncate text-[12.5px] font-semibold">{p.name}</span>
-                        <span className="rounded border border-border px-1 text-[9.5px] text-muted">
+                        <span className="truncate text-[13px] font-semibold">{p.name}</span>
+                        <span className="rounded border border-border px-1 text-[11px] text-muted">
                           {PROVIDER_KIND_LABELS[p.kind] ?? p.kind}
                         </span>
                       </div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-muted">
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-muted">
                         {p.groups?.length ? (
                           <>
                             <span>{p.groups.length} 个分组</span>
@@ -1402,8 +1402,8 @@ export function ProfilesSection() {
                         )}
                       </div>
                       {p.groups?.length ? (
-                        <div className="mt-1 flex min-w-0 items-center gap-1 text-[10px] text-muted">
-                          <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1 text-[9.5px] leading-4">
+                        <div className="mt-1 flex min-w-0 items-center gap-1 text-[13px] text-muted">
+                          <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1 text-[13px] leading-4">
                             {p.groups.length} 个分组
                           </span>
                           <span className="min-w-0 truncate">
@@ -1416,7 +1416,7 @@ export function ProfilesSection() {
                       {result && (
                         <div
                           className={cn(
-                            'mt-1 flex items-center gap-1 text-[10.5px]',
+                            'mt-1 flex items-center gap-1 text-[13px]',
                             result.ok ? 'text-success' : 'text-danger',
                           )}
                         >
@@ -1466,7 +1466,7 @@ export function ProfilesSection() {
                       size="md"
                       onClick={() => void test(p)}
                       disabled={testingId === p.id}
-                      className="mr-auto min-h-11 text-[11px]"
+                      className="mr-auto min-h-11 text-[13px]"
                     >
                       {testingId === p.id ? (
                         <Loader2 size={12} className="animate-spin" />
@@ -1478,7 +1478,7 @@ export function ProfilesSection() {
                     <Button
                       size="md"
                       onClick={() => startEdit(p)}
-                      className="min-h-11 text-[11px]"
+                      className="min-h-11 text-[13px]"
                     >
                       <Pencil size={12} /> 编辑
                     </Button>

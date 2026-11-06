@@ -106,7 +106,7 @@ export function QrScanDialog({
           )}
           <div className="pointer-events-none absolute inset-10 rounded-xl border-2 border-white/70" />
           {!error && (
-            <div className="absolute inset-x-0 bottom-3 flex justify-center text-[11px] text-white/80">
+            <div className="absolute inset-x-0 bottom-3 flex justify-center text-[12px] text-white/80">
               <span className="flex items-center gap-1 rounded-full bg-black/45 px-2 py-0.5">
                 <ScanLine size={11} /> 正在识别…
               </span>
@@ -114,7 +114,7 @@ export function QrScanDialog({
           )}
         </div>
         {error && (
-          <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[11.5px] leading-5 text-danger">
+          <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[13px] leading-5 text-danger">
             <TriangleAlert size={13} className="mt-0.5 shrink-0" />
             <span className="min-w-0 flex-1">{error}</span>
           </div>

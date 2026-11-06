@@ -109,22 +109,22 @@ export function PermissionsSection() {
         <div className="flex flex-wrap items-center gap-2">
           <ShieldCheck size={15} className="text-text-soft" />
           <h3 className="text-[14px] font-semibold">权限规则</h3>
-          <span className="rounded-[4px] bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-muted">
+          <span className="rounded-[4px] bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-muted">
             {host.name}
           </span>
         </div>
-        <p className="mt-1 text-[11px] leading-5 text-muted">
+        <p className="mt-1 text-[13px] leading-5 text-muted">
           规则保存在 Host 上，对所有会话生效。优先级为拒绝 &gt; 询问 &gt; 允许；Bash 的
           pattern 是命令前缀通配，文件工具是相对工作目录的 glob。
         </p>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 py-10 text-[12px] text-muted">
+        <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-muted">
           <Loader2 size={14} className="animate-spin" /> 正在读取权限规则…
         </div>
       ) : error ? (
-        <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[11.5px] leading-5 text-danger">
+        <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[13px] leading-5 text-danger">
           <TriangleAlert size={12} className="mt-0.5 shrink-0" /> {error}
         </div>
       ) : (
@@ -220,7 +220,7 @@ export function PermissionsSection() {
       )}
 
       <div className="flex items-center gap-2 border-t border-border pt-3">
-        <span className="text-[11px] text-muted">
+        <span className="text-[13px] text-muted">
           {dirty ? '有未保存的修改' : rules.length ? `共 ${rules.length} 条规则` : ''}
         </span>
         <span className="flex-1" />

@@ -49,7 +49,7 @@ export function SessionWelcome() {
       <h2 className="font-serif text-[26px] leading-tight tracking-[-0.01em] text-text md:text-[30px]">
         想先做点什么？
       </h2>
-      <p className="mt-2 max-w-md text-[12.5px] leading-6 text-muted">
+      <p className="mt-2 max-w-md text-[13px] leading-6 text-muted">
         {hostName}
         {summary ? ` · ${basename(summary.cwd) || summary.cwd}` : ''}
         {profileName ? ` · ${profileName}` : ''}
@@ -67,20 +67,20 @@ export function SessionWelcome() {
                 <Icon size={13} />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1 text-[12px] font-medium text-text sm:text-[12.5px]">
+                <span className="flex items-center gap-1 text-[12px] font-medium text-text sm:text-[13px]">
                   {s.title}
                   <ArrowUpRight
                     size={11}
                     className="text-muted opacity-0 transition-opacity group-hover:opacity-100"
                   />
                 </span>
-                <span className="mt-0.5 hidden text-[11px] leading-5 text-muted sm:block">{s.desc}</span>
+                <span className="mt-0.5 hidden text-[12px] leading-5 text-muted sm:block">{s.desc}</span>
               </span>
             </button>
           )
         })}
       </div>
-      <p className="mt-6 flex items-center gap-1.5 text-[10.5px] text-muted">
+      <p className="mt-6 flex items-center gap-1.5 text-[12px] text-muted">
         <Sparkles size={11} />
         输入框支持 @ 文件、/ 命令与图片粘贴
       </p>

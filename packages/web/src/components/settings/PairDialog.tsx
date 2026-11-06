@@ -111,12 +111,12 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
     >
       <div className="space-y-3">
         {loading && (
-          <div className="flex items-center gap-2 py-6 text-[12px] text-muted">
+          <div className="flex items-center gap-2 py-6 text-[13px] text-muted">
             <Loader2 size={13} className="animate-spin" /> 正在获取本机地址…
           </div>
         )}
         {error && (
-          <div className="flex items-center gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[11.5px] text-danger">
+          <div className="flex items-center gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[13px] text-danger">
             <TriangleAlert size={12} /> {error}
           </div>
         )}
@@ -125,14 +125,14 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
           <div className="rounded-xl border border-warning/30 bg-warning-soft/40 px-4 py-5 text-center">
             <Unplug size={26} className="mx-auto text-warning" />
             <p className="mt-2 text-[13px] font-medium text-text">手机暂时连不上这台 Host</p>
-            <p className="mx-auto mt-1 max-w-[300px] text-[11.5px] leading-5 text-text-soft">
-              Host 只监听 <code className="rounded bg-[var(--t-bg-active)] px-1 font-mono text-[10.5px]">127.0.0.1</code>，
+            <p className="mx-auto mt-1 max-w-[300px] text-[13px] leading-5 text-text-soft">
+              Host 只监听 <code className="rounded bg-[var(--t-bg-active)] px-1 font-mono text-[13px]">127.0.0.1</code>，
               二维码里的地址在手机上会指向手机自己。请让 Host 监听局域网地址后重新检测。
             </p>
-            <div className="mt-3 rounded-lg border border-border bg-surface/70 px-2.5 py-2 text-left font-mono text-[10.5px] leading-5 text-text-soft">
+            <div className="mt-3 rounded-lg border border-border bg-surface/70 px-2.5 py-2 text-left font-mono text-[13px] leading-5 text-text-soft">
               tandem-host --host 0.0.0.0
             </div>
-            <p className="mt-2 text-[10.5px] leading-5 text-muted">
+            <p className="mt-2 text-[13px] leading-5 text-muted">
               桌面端也可在托盘菜单开启「允许局域网访问」，然后回到这里重新检测。
             </p>
             <Button onClick={() => setNonce((n) => n + 1)} className="mt-3">
@@ -167,7 +167,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
                     key={item}
                     onClick={() => setActive(i)}
                     className={cn(
-                      'flex items-center gap-1 rounded-md border px-1.5 py-1 font-mono text-[10px] transition-colors',
+                      'flex items-center gap-1 rounded-md border px-1.5 py-1 font-mono text-[13px] transition-colors',
                       i === active
                         ? 'border-[var(--t-border-strong)] bg-[var(--t-bg-active)] text-text'
                         : 'border-border text-muted hover:text-text',
@@ -187,12 +187,12 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
                   aria-label="配对二维码"
                 />
               ) : (
-                <div className="flex size-[224px] items-center justify-center text-[11px] text-muted">
+                <div className="flex size-[224px] items-center justify-center text-[13px] text-muted">
                   {content ? '正在生成二维码…' : '没有可用的配对地址'}
                 </div>
               )}
               <div className="mt-2 flex w-full items-center gap-1.5 rounded-lg bg-[var(--t-bg)] px-2 py-1.5">
-                <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-text-soft">
+                <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-text-soft">
                   {content}
                 </span>
                 <IconButton
@@ -209,16 +209,16 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
         )}
 
         {source === 'relay' && relay && (
-          <div className="rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[10.5px] leading-5 text-muted">
+          <div className="rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[13px] leading-5 text-muted">
             <div className="mb-1 text-text-soft">Host 公钥指纹（SHA-256）</div>
-            <div className="break-all font-mono text-[10px] text-text-secondary">{relay.fingerprint}</div>
+            <div className="break-all font-mono text-[13px] text-text-secondary">{relay.fingerprint}</div>
             <p className="mt-1">链接里含 token 与指纹，请只发给可信设备；连接时指纹不符会拒绝连接。</p>
             {!relay.connected && <p className="mt-1 text-warning">Host 当前未连上中继，扫码后可能暂时无法连接。</p>}
           </div>
         )}
 
         {hint && !loopback && source === 'direct' && (
-          <div className="rounded-lg border border-warning/30 bg-warning-soft/50 px-2.5 py-2 text-[11px] leading-5 text-warning">
+          <div className="rounded-lg border border-warning/30 bg-warning-soft/50 px-2.5 py-2 text-[13px] leading-5 text-warning">
             <div className="flex items-start gap-2">
               <TriangleAlert size={12} className="mt-0.5 shrink-0" />
               <span className="min-w-0 flex-1">{hint}</span>
@@ -227,7 +227,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
         )}
 
         {!loopback && source === 'direct' && (
-          <div className="rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[10.5px] leading-5 text-muted">
+          <div className="rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[13px] leading-5 text-muted">
             <div className="mb-1 flex items-center gap-1.5 text-text-soft">
               <Smartphone size={12} /> 让局域网可访问
             </div>

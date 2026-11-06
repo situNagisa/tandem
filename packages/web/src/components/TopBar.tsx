@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  ChevronDown,
   FileDiff,
   Menu,
   PanelLeft,
@@ -8,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
+import { useTurnNavStore } from '../store/useTurnNavStore'
 import { useIsMobile, useNow } from '../lib/hooks'
 import { useSessionChanges } from '../lib/useChanges'
 import { formatElapsed } from '../lib/format'
@@ -32,7 +34,7 @@ function StatePill({
   connecting: boolean
   elapsed?: string
 }) {
-  const pill = 'flex shrink-0 items-center gap-1.5 text-[10.5px] text-text-secondary'
+  const pill = 'flex shrink-0 items-center gap-1.5 text-[12px] text-text-secondary'
   if (offline) return null
   if (connecting) {
     return (
@@ -114,6 +116,9 @@ export function TopBar() {
   const togglePanel = useUiStore((s) => s.togglePanel)
   const setMobilePanel = useUiStore((s) => s.setMobilePanel)
   const retryHost = useAppStore((s) => s.retryHost)
+  const turnTotal = useTurnNavStore((s) => s.total)
+  const turnActive = useTurnNavStore((s) => s.active)
+  const setTurnSheetOpen = useTurnNavStore((s) => s.setSheetOpen)
 
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -227,7 +232,7 @@ export function TopBar() {
             <h1 className="truncate text-[14px] font-medium leading-5">
               {externalTitle || '外部会话'}
             </h1>
-            <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[10px] leading-4 text-muted">
+            <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[11px] leading-4 text-muted">
               只读
             </span>
           </div>
@@ -248,13 +253,25 @@ export function TopBar() {
         ) : (
           !isMobile &&
           host && (
-            <span className="hidden items-center gap-1.5 text-[10.5px] text-muted sm:flex">
+            <span className="hidden items-center gap-1.5 text-[12px] text-muted sm:flex">
               <ConnectionDot state={runtime?.status ?? 'connecting'} />
               {runtime?.status === 'online' ? '在线' : runtime?.status === 'connecting' ? '连接中…' : '离线'}
             </span>
           )
         )}
       </div>
+
+      {hasSession && isMobile && turnTotal >= 2 && (
+        <button
+          type="button"
+          onClick={() => setTurnSheetOpen(true)}
+          aria-label="打开轮次大纲"
+          className="flex h-11 shrink-0 items-center gap-0.5 rounded-lg px-2 text-[12px] tabular-nums text-text-soft transition-colors active:bg-[var(--t-bg-active)]"
+        >
+          第 {turnActive}/{turnTotal} 轮
+          <ChevronDown size={13} className="text-muted" />
+        </button>
+      )}
 
       {hasSession && changes && (
         <Button
@@ -270,7 +287,7 @@ export function TopBar() {
           )}
         >
           <FileDiff size={13.5} className={cn('shrink-0', changesOpen ? 'text-text-soft' : 'text-muted')} />
-          <span className="hidden font-sans text-[11px] sm:inline">改动</span>
+          <span className="hidden font-sans text-[12px] sm:inline">改动</span>
           {fileCount > 0 && !changesOpen && (
             <>
               <span className="text-[var(--t-text-tertiary)]">+{additions}</span>
@@ -300,12 +317,12 @@ export function TopBar() {
       )}
 
       {offline && (
-        <div className="pointer-events-none absolute inset-x-0 top-full z-20 flex h-6 items-center justify-center gap-1.5 border-b border-border/60 bg-bg/95 text-[10.5px] text-muted backdrop-blur-sm">
+        <div className="pointer-events-none absolute inset-x-0 top-full z-20 flex h-6 items-center justify-center gap-1.5 border-b border-border/60 bg-bg/95 text-[12px] text-muted backdrop-blur-sm">
           <span className="size-1.5 rounded-full bg-muted/60 running-dot" />
           <span>重新连接中…</span>
           <button
             onClick={() => activeHostId && retryHost(activeHostId)}
-            className="pointer-events-auto ml-1 rounded px-1 text-[10.5px] text-text-soft underline-offset-2 transition-colors hover:text-text hover:underline"
+            className="pointer-events-auto ml-1 rounded px-1 text-[12px] text-text-soft underline-offset-2 transition-colors hover:text-text hover:underline"
           >
             立即重试
           </button>

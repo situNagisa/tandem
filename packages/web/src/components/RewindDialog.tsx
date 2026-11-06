@@ -127,20 +127,20 @@ export function RewindDialog({
           <Loader2 size={16} className="animate-spin" />
         </div>
       ) : error ? (
-        <p className="rounded-lg border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[12.5px] text-danger">
+        <p className="rounded-lg border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[13px] text-danger">
           {error}
         </p>
       ) : !checkpoint ? (
         <div className="space-y-3">
           <div className="rounded-lg border border-border bg-bg/60 px-3 py-2">
-            <p className="text-[10.5px] text-muted">目标消息</p>
+            <p className="text-[12px] text-muted">目标消息</p>
             <p className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-5 text-text-soft [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden">
               {messageText(message) || '（这条消息没有文本内容）'}
             </p>
           </div>
           <div className="space-y-2 py-2 text-center">
             <p className="text-[13px] text-text-soft">这条消息没有可用的检查点</p>
-            <p className="text-[11.5px] leading-5 text-muted">
+            <p className="text-[13px] leading-5 text-muted">
               检查点只在本轮开始前有文件被修改时创建。若这一轮没有改过文件，就无法回退。
             </p>
           </div>
@@ -148,7 +148,7 @@ export function RewindDialog({
       ) : (
         <div className="space-y-3">
           <div className="rounded-lg border border-border bg-bg/60 px-3 py-2">
-            <p className="text-[10.5px] text-muted">回退到这条消息之前</p>
+            <p className="text-[12px] text-muted">回退到这条消息之前</p>
             <p className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-5 text-text-soft [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden">
               {messageText(message) || '（这条消息没有文本内容）'}
             </p>
@@ -179,8 +179,8 @@ export function RewindDialog({
                     <Icon size={13} />
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-[12.5px] font-medium text-text">{option.title}</span>
-                    <span className="mt-0.5 block text-[11.5px] leading-5 text-muted">
+                    <span className="block text-[13px] font-medium text-text">{option.title}</span>
+                    <span className="mt-0.5 block text-[13px] leading-5 text-muted">
                       {option.description}
                     </span>
                   </span>
@@ -189,7 +189,7 @@ export function RewindDialog({
             })}
           </div>
 
-          <div className="flex items-start gap-2 rounded-lg border border-warning/25 bg-warning-soft/40 px-3 py-2 text-[11.5px] leading-5 text-warning">
+          <div className="flex items-start gap-2 rounded-lg border border-warning/25 bg-warning-soft/40 px-3 py-2 text-[13px] leading-5 text-warning">
             <TriangleAlert size={13} className="mt-0.5 shrink-0" />
             <span className="space-y-1">
               {mode !== 'conversation' && (
@@ -210,7 +210,7 @@ export function RewindDialog({
           </div>
 
           {running && (
-            <p className="text-[11.5px] text-danger">会话正在运行，结束后才能回退。</p>
+            <p className="text-[13px] text-danger">会话正在运行，结束后才能回退。</p>
           )}
         </div>
       )}

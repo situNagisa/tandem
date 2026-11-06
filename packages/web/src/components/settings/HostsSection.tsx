@@ -36,7 +36,7 @@ import {
 import type { HostConfig } from '../../lib/types'
 
 const inputCls =
-  'h-8 w-full rounded-lg border border-border bg-surface px-2.5 text-[12px] text-text outline-none transition-colors placeholder:text-muted focus:border-border-strong'
+  'h-8 w-full rounded-lg border border-border bg-surface px-2.5 text-[13px] text-text outline-none transition-colors placeholder:text-muted focus:border-border-strong'
 
 export function HostsSection() {
   const hosts = useAppStore((s) => s.hosts)
@@ -232,7 +232,7 @@ export function HostsSection() {
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <h3 className="text-[14px] font-semibold">Host 管理</h3>
-        <span className="text-[11px] text-muted">每台 Host 对应一个 WS 长连接</span>
+        <span className="text-[13px] text-muted">每台 Host 对应一个 WS 长连接</span>
         <span className="flex-1" />
         <Button
           variant="secondary"
@@ -255,7 +255,7 @@ export function HostsSection() {
                 placeholder="https://relay.example.com/h/…/#pair=… 或 http://…/?token=…"
                 spellCheck={false}
                 autoComplete="off"
-                className="min-w-0 flex-1 font-mono text-[12px]"
+                className="min-w-0 flex-1 font-mono text-[13px]"
               />
               <Button
                 onClick={() => void connectLink(link)}
@@ -276,12 +276,12 @@ export function HostsSection() {
                 </IconButton>
               )}
             </div>
-            <p className="mt-1.5 text-[10.5px] leading-4 text-muted">
+            <p className="mt-1.5 text-[13px] leading-4 text-muted">
               中继配对链接里的指纹会一并带入；解析后自动创建 Host。
             </p>
           </div>
 
-          <div className="my-3 flex items-center gap-2 text-[10px] text-muted">
+          <div className="my-3 flex items-center gap-2 text-[13px] text-muted">
             <span className="h-px flex-1 bg-[var(--t-border)]" />
             或手动填写
             <span className="h-px flex-1 bg-[var(--t-border)]" />
@@ -315,7 +315,7 @@ export function HostsSection() {
                 placeholder="Host 启动日志或配对链接中的 Token"
                 spellCheck={false}
                 autoComplete="off"
-                className="font-mono text-[12px]"
+                className="font-mono text-[13px]"
               />
             </div>
             {mode === 'direct' ? (
@@ -327,17 +327,17 @@ export function HostsSection() {
                     onChange={(e) => setUrl(e.target.value)}
                     placeholder="http://192.168.1.10:7878"
                     spellCheck={false}
-                    className="font-mono text-[12px]"
+                    className="font-mono text-[13px]"
                   />
                   <Button
                         onClick={() => setUrl(window.location.origin)}
                     tooltip="使用当前地址"
-                    className="shrink-0 px-2 text-[11px]"
+                    className="shrink-0 px-2 text-[13px]"
                   >
                     <Laptop size={12} /> 本机
                   </Button>
                 </div>
-                <p className="mt-1.5 text-[10.5px] leading-4 text-muted">
+                <p className="mt-1.5 text-[13px] leading-4 text-muted">
                   Token 只保存在本机浏览器里；远程 Host 请确保网络可达（局域网 / Tailscale / 端口转发）。
                 </p>
               </div>
@@ -350,7 +350,7 @@ export function HostsSection() {
                     onChange={(e) => setRelayUrl(e.target.value)}
                     placeholder="https://relay.example.com"
                     spellCheck={false}
-                    className={cn(inputCls, 'font-mono text-[11.5px]')}
+                    className={cn(inputCls, 'font-mono text-[13px]')}
                   />
                 </div>
                 <div>
@@ -360,7 +360,7 @@ export function HostsSection() {
                     onChange={(e) => setHostId(e.target.value)}
                     placeholder="中继上的 Host ID"
                     spellCheck={false}
-                    className={cn(inputCls, 'font-mono text-[11.5px]')}
+                    className={cn(inputCls, 'font-mono text-[13px]')}
                   />
                 </div>
                 <div>
@@ -370,22 +370,22 @@ export function HostsSection() {
                     onChange={(e) => setFingerprint(e.target.value)}
                     placeholder="SHA-256，64 位十六进制"
                     spellCheck={false}
-                    className={cn(inputCls, 'font-mono text-[11.5px]')}
+                    className={cn(inputCls, 'font-mono text-[13px]')}
                   />
                 </div>
-                <p className="text-[10.5px] leading-4 text-muted sm:col-span-2">
+                <p className="text-[13px] leading-4 text-muted sm:col-span-2">
                   指纹必须通过中继之外的渠道获得（Host 启动日志 / 本机配对二维码）。连接时指纹不符会拒绝连接。
                 </p>
               </>
             )}
           </div>
           {mode === 'relay' && cryptoSupported === false && (
-            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-warning">
+            <div className="mt-2 flex items-center gap-1.5 text-[13px] text-warning">
               <TriangleAlert size={12} /> {RELAY_UNSUPPORTED_MESSAGE}
             </div>
           )}
           {addError && (
-            <div className="mt-2 flex items-center gap-1.5 text-[11.5px] text-danger">
+            <div className="mt-2 flex items-center gap-1.5 text-[13px] text-danger">
               <TriangleAlert size={12} /> {addError}
             </div>
           )}
@@ -429,9 +429,9 @@ export function HostsSection() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="truncate text-[12.5px] font-semibold">{h.name}</span>
+                    <span className="truncate text-[13px] font-semibold">{h.name}</span>
                     <ConnectionDot state={rt?.status ?? 'connecting'} />
-                    <span className="text-[10px] text-muted">
+                    <span className="text-[13px] text-muted">
                       {rt?.status === 'online'
                         ? '在线'
                         : rt?.status === 'connecting'
@@ -439,19 +439,19 @@ export function HostsSection() {
                           : '离线'}
                     </span>
                     {h.id === activeHostId && (
-                      <span className="rounded border border-border px-1.5 py-px text-[9.5px] text-text-secondary">
+                      <span className="rounded border border-border px-1.5 py-px text-[11px] text-text-secondary">
                         当前
                       </span>
                     )}
                   </div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 break-all font-mono text-[10.5px] text-muted">
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 break-all font-mono text-[13px] text-muted">
                     <span>{h.url}</span>
                     <span className="font-sans">{h.mode === 'relay' ? '中继 · 加密' : '直连'}</span>
                   </div>
                   {h.mode === 'relay' && cryptoSupported === false && (
-                    <div className="mt-0.5 text-[10.5px] leading-4 text-warning">{RELAY_UNSUPPORTED_MESSAGE}</div>
+                    <div className="mt-0.5 text-[13px] leading-4 text-warning">{RELAY_UNSUPPORTED_MESSAGE}</div>
                   )}
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-muted">
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-muted">
                     <span className="font-mono">{h.token ? '•••• 已保存' : '无 Token'}</span>
                     {rt?.info?.platform && (
                       <>
@@ -471,12 +471,12 @@ export function HostsSection() {
                     )}
                   </div>
                   {rt?.authError && (
-                    <div className="mt-1 flex items-center gap-1 text-[10.5px] text-danger">
+                    <div className="mt-1 flex items-center gap-1 text-[13px] text-danger">
                       <TriangleAlert size={11} /> {rt.authError}
                     </div>
                   )}
                   {rt?.error && h.mode === 'relay' && (
-                    <div className="mt-1 flex items-start gap-1 text-[10.5px] leading-4 text-danger">
+                    <div className="mt-1 flex items-start gap-1 text-[13px] leading-4 text-danger">
                       <TriangleAlert size={11} className="mt-0.5 shrink-0" /> {rt.error}
                     </div>
                   )}
@@ -525,21 +525,21 @@ export function HostsSection() {
                 <Button
                   size="md"
                   onClick={() => setPairHost(h.id)}
-                  className="min-h-10 px-2.5 text-[11px]"
+                  className="min-h-10 px-2.5 text-[13px]"
                 >
                   <Smartphone size={12} /> 连接手机
                 </Button>
                 <Button
                   size="md"
                   onClick={() => retryHost(h.id)}
-                  className="min-h-10 px-2.5 text-[11px]"
+                  className="min-h-10 px-2.5 text-[13px]"
                 >
                   <RefreshCw size={12} /> 重连
                 </Button>
                 <Button
                   size="md"
                   onClick={() => (editing ? setEditId(null) : startEdit(h.id))}
-                  className="min-h-10 px-2.5 text-[11px]"
+                  className="min-h-10 px-2.5 text-[13px]"
                 >
                   {editing ? <ChevronDown size={12} /> : <Pencil size={12} />} 编辑
                 </Button>
@@ -570,7 +570,7 @@ export function HostsSection() {
                       onChange={(e) => setEditToken(e.target.value)}
                       spellCheck={false}
                       autoComplete="off"
-                      className={cn(inputCls, 'font-mono text-[11.5px]')}
+                      className={cn(inputCls, 'font-mono text-[13px]')}
                     />
                   </div>
                   {h.mode === 'relay' ? (
@@ -581,7 +581,7 @@ export function HostsSection() {
                           value={editRelayUrl}
                           onChange={(e) => setEditRelayUrl(e.target.value)}
                           spellCheck={false}
-                          className={cn(inputCls, 'font-mono text-[11.5px]')}
+                          className={cn(inputCls, 'font-mono text-[13px]')}
                         />
                       </div>
                       <div>
@@ -590,7 +590,7 @@ export function HostsSection() {
                           value={editHostId}
                           onChange={(e) => setEditHostId(e.target.value)}
                           spellCheck={false}
-                          className={cn(inputCls, 'font-mono text-[11.5px]')}
+                          className={cn(inputCls, 'font-mono text-[13px]')}
                         />
                       </div>
                       <div>
@@ -599,7 +599,7 @@ export function HostsSection() {
                           value={editFingerprint}
                           onChange={(e) => setEditFingerprint(e.target.value)}
                           spellCheck={false}
-                          className={cn(inputCls, 'font-mono text-[11.5px]')}
+                          className={cn(inputCls, 'font-mono text-[13px]')}
                         />
                       </div>
                     </>
@@ -610,7 +610,7 @@ export function HostsSection() {
                         value={editUrl}
                         onChange={(e) => setEditUrl(e.target.value)}
                         spellCheck={false}
-                        className={cn(inputCls, 'font-mono text-[11.5px]')}
+                        className={cn(inputCls, 'font-mono text-[13px]')}
                       />
                     </div>
                   )}

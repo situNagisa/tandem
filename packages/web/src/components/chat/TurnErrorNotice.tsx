@@ -40,7 +40,7 @@ export function TurnErrorNotice({
             type="button"
             onClick={onRetry}
             disabled={running}
-            className="h-6 rounded-full px-2 text-[11.5px] font-medium text-text transition-colors hover:bg-bg-hover disabled:pointer-events-none disabled:opacity-40"
+            className="h-6 rounded-full px-2 text-[13px] font-medium text-text transition-colors hover:bg-bg-hover disabled:pointer-events-none disabled:opacity-40"
           >
             重试
           </button>
@@ -49,7 +49,7 @@ export function TurnErrorNotice({
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
             className={cn(
-              'h-6 rounded-full px-2 text-[11.5px] transition-colors hover:bg-bg-hover hover:text-text',
+              'h-6 rounded-full px-2 text-[13px] transition-colors hover:bg-bg-hover hover:text-text',
               open ? 'text-text' : 'text-muted',
             )}
           >
@@ -58,7 +58,7 @@ export function TurnErrorNotice({
         </span>
       </div>
       {open && (
-        <div className="max-h-44 w-full overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-surface px-3 py-2 text-[11.5px] leading-5 text-muted">
+        <div className="max-h-44 w-full overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-surface px-3 py-2 text-[13px] leading-5 text-muted">
           {error}
         </div>
       )}

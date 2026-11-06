@@ -9,7 +9,7 @@ import { cn } from '../../lib/cn'
 import type { ControlSize } from './Button'
 
 const FIELD_SIZE: Record<ControlSize, string> = {
-  sm: 'h-[28px] rounded-md px-2 text-[12.5px]',
+  sm: 'h-[28px] rounded-md px-2 text-[13px]',
   md: 'h-[32px] rounded-lg px-2.5 text-[13px]',
   lg: 'h-[36px] rounded-[10px] px-3 text-[13px]',
 }
@@ -79,7 +79,7 @@ export function SegmentedControl<T extends string>({
   className,
   'aria-label': ariaLabel,
 }: SegmentedControlProps<T>) {
-  const item = size === 'sm' ? 'h-[24px] px-2 text-[12px]' : 'h-[28px] px-2.5 text-[12.5px]'
+  const item = size === 'sm' ? 'h-[24px] px-2 text-[12px]' : 'h-[28px] px-2.5 text-[13px]'
   return (
     <div
       role="group"

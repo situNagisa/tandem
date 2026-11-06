@@ -54,7 +54,7 @@ export function HookNoticeLine({ notices }: { notices: HookNotice[] }) {
               type="button"
               onClick={() => setOpen((v) => !v)}
               aria-expanded={open}
-              className="inline-flex max-w-full items-center gap-1.5 rounded px-0.5 py-0.5 text-left text-[11.5px] leading-4 text-muted transition-colors hover:text-text-soft"
+              className="inline-flex max-w-full items-center gap-1.5 rounded px-0.5 py-0.5 text-left text-[13px] leading-4 text-muted transition-colors hover:text-text-soft"
             >
               <span className="shrink-0">
                 {label}
@@ -67,7 +67,7 @@ export function HookNoticeLine({ notices }: { notices: HookNotice[] }) {
               />
             </button>
             {open && (
-              <div className="mb-1 mt-0.5 space-y-1 rounded-md bg-[var(--t-bg-subtle)] px-2 py-1.5 font-mono text-[10.5px] leading-4 text-muted">
+              <div className="mb-1 mt-0.5 space-y-1 rounded-md bg-[var(--t-bg-subtle)] px-2 py-1.5 font-mono text-[12px] leading-4 text-muted">
                 {group.messages.map((message, index) => (
                   <pre key={index} className="whitespace-pre-wrap break-words">
                     {message}

@@ -226,7 +226,7 @@ export function SyncSection() {
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <h3 className="text-[14px] font-semibold">同步与备份</h3>
-        <span className="hidden text-[11px] text-muted sm:inline">
+        <span className="hidden text-[13px] text-muted sm:inline">
           换电脑不用重新配置账号与界面
         </span>
         <span className="flex-1" />
@@ -241,12 +241,12 @@ export function SyncSection() {
             options={hosts.map((h) => ({ value: h.id, label: h.name }))}
             aria-label="选择 Host"
             wrapperClassName="w-auto max-w-[180px]"
-            className="text-[11.5px]"
+            className="text-[13px]"
           />
         )}
       </div>
 
-      <div className="mb-3 flex items-start gap-2 rounded-xl border border-border bg-bg/40 px-3 py-2.5 text-[11px] leading-5 text-text-soft">
+      <div className="mb-3 flex items-start gap-2 rounded-xl border border-border bg-bg/40 px-3 py-2.5 text-[13px] leading-5 text-text-soft">
         <ShieldCheck size={14} className="mt-0.5 shrink-0 text-muted" />
         <span>
           配置文件包含账号与分组里<strong className="font-medium text-text">加密的 API Key</strong>
@@ -261,7 +261,7 @@ export function SyncSection() {
           </span>
           <div className="min-w-0 flex-1">
             <h4 className="text-[13px] font-semibold">导出配置</h4>
-            <p className="text-[10.5px] text-muted">
+            <p className="text-[13px] text-muted">
               账号（含分组）、Host 列表、主题、侧栏偏好打包为一个文件
             </p>
           </div>
@@ -295,7 +295,7 @@ export function SyncSection() {
         </div>
 
         {exportError && (
-          <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-1.5 text-[11px] text-danger">
+          <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-1.5 text-[13px] text-danger">
             <TriangleAlert size={12} className="mt-0.5 shrink-0" />
             {exportError}
           </div>
@@ -326,7 +326,7 @@ export function SyncSection() {
           )}
         </div>
         {bundle && (
-          <p className="mt-2 font-mono text-[10px] text-muted">
+          <p className="mt-2 font-mono text-[13px] text-muted">
             tandem-config.json · {new Date(bundle.createdAt).toLocaleString()} · {bundle.hostName}
           </p>
         )}
@@ -342,7 +342,7 @@ export function SyncSection() {
           </span>
           <div className="min-w-0 flex-1">
             <h4 className="text-[13px] font-semibold">导入配置</h4>
-            <p className="text-[10.5px] text-muted">
+            <p className="text-[13px] text-muted">
               选择之前导出的 tandem-config.json，输入口令后合并或替换
             </p>
           </div>
@@ -417,31 +417,31 @@ export function SyncSection() {
                     : 'border-border bg-bg/40 hover:bg-[var(--t-bg-hover)]',
                 )}
               >
-                <span className="flex items-center gap-1.5 text-[11.5px] font-medium">
+                <span className="flex items-center gap-1.5 text-[13px] font-medium">
                   {label}
                   {mode === value && <Check size={11} className="text-text" />}
                 </span>
-                <span className="mt-0.5 block text-[10px] leading-4 text-muted">{hint}</span>
+                <span className="mt-0.5 block text-[13px] leading-4 text-muted">{hint}</span>
               </button>
             ))}
           </div>
         </div>
 
         {importError && (
-          <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-1.5 text-[11px] leading-5 text-danger">
+          <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-1.5 text-[13px] leading-5 text-danger">
             <TriangleAlert size={12} className="mt-0.5 shrink-0" />
             {importError}
           </div>
         )}
         {importResult && (
-          <div className="mt-2 rounded-lg border border-success/25 bg-success-soft/50 px-2.5 py-2 text-[11px] text-success">
+          <div className="mt-2 rounded-lg border border-success/25 bg-success-soft/50 px-2.5 py-2 text-[13px] text-success">
             导入完成：新增 {importResult.profilesAdded} 个账号，更新 {importResult.profilesUpdated} 个
             {importResult.clientSettings ? '；本机 Host 与界面设置已应用' : ''}。
           </div>
         )}
 
         <div className="mt-3 flex items-center gap-2">
-          <span className="flex items-center gap-1 text-[10px] text-muted">
+          <span className="flex items-center gap-1 text-[13px] text-muted">
             <ArrowLeftRight size={11} /> 应用到「{host.name}」
           </span>
           <span className="flex-1" />

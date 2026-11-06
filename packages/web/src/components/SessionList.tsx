@@ -616,8 +616,8 @@ export function SessionList({
           <span className="relative flex h-full w-[62px] shrink-0 items-center justify-end">
             <span
               className={cn(
-                'hidden max-w-full truncate text-[10.5px] tabular-nums transition-opacity md:inline',
-                elapsed && 'text-[9.5px]',
+                'hidden max-w-full truncate text-[12px] tabular-nums transition-opacity md:inline',
+                elapsed && 'text-[12px]',
                 s.status === 'waiting_permission' ? 'text-accent' : 'text-text-tertiary',
                 isActive ? 'opacity-0' : 'group-hover:opacity-0',
               )}
@@ -683,7 +683,7 @@ export function SessionList({
             <div className="flex size-10 items-center justify-center rounded-xl bg-[var(--t-bg-hover)] text-muted">
               <MessageSquarePlus size={18} />
             </div>
-            <p className="text-[12.5px] leading-5 text-muted">
+            <p className="text-[13px] leading-5 text-muted">
               {query
                 ? '没有匹配的会话'
                 : showArchived
@@ -726,7 +726,7 @@ export function SessionList({
                   <span className="min-w-0 flex-1 truncate leading-5">
                     {ext.title || '未命名会话'}
                   </span>
-                  <span className="w-[64px] shrink-0 truncate text-right text-[10.5px] tabular-nums text-text-tertiary">
+                  <span className="w-[64px] shrink-0 truncate text-right text-[12px] tabular-nums text-text-tertiary">
                     {formatRelative(ext.updatedAt)}
                   </span>
                 </button>
@@ -774,7 +774,7 @@ export function SessionList({
                     <Folder size={13} className="shrink-0 text-text-tertiary" />
                     <span className="min-w-0 flex-1 truncate">{project.name}</span>
                     {project.branch && (
-                      <span className="flex min-w-0 max-w-[42%] items-center gap-0.5 text-[10.5px] font-normal text-text-tertiary">
+                      <span className="flex min-w-0 max-w-[42%] items-center gap-0.5 text-[12px] font-normal text-text-tertiary">
                         <GitBranch size={9} className="shrink-0" />
                         <span className="truncate">{project.branch}</span>
                       </span>
@@ -863,7 +863,7 @@ export function SessionList({
                   />
                   <Server size={12} className="shrink-0 opacity-70" />
                   <span className="min-w-0 flex-1 truncate">{host.name}</span>
-                  <span className="text-[10px] font-normal tabular-nums text-text-tertiary">{host.count}</span>
+                  <span className="text-[12px] font-normal tabular-nums text-text-tertiary">{host.count}</span>
                 </button>
                 <div
                   className="expand-grid mt-0.5"
@@ -941,7 +941,7 @@ export function SessionList({
             确定删除「{confirm?.session.title || '未命名会话'}」？会话记录将从 Host 上移除，且无法恢复。
           </p>
         )}
-        <p className="mt-1.5 break-all font-mono text-[10.5px] text-muted">{confirm?.session.cwd}</p>
+        <p className="mt-1.5 break-all font-mono text-[12px] text-muted">{confirm?.session.cwd}</p>
       </Modal>
 
       <Modal
@@ -984,7 +984,7 @@ export function SessionList({
           </>
         }
       >
-        <div className="space-y-3 text-[12.5px] leading-5 text-text-soft">
+        <div className="space-y-3 text-[13px] leading-5 text-text-soft">
           <p>
             把 <span className="font-mono text-text">{merge?.session.worktree?.branch}</span> 合回{' '}
             <span className="font-mono text-text">{merge?.session.worktree?.baseBranch}</span>。
@@ -995,7 +995,7 @@ export function SessionList({
                 key={strategy}
                 onClick={() => merge && setMerge({ ...merge, strategy, error: undefined })}
                 className={cn(
-                  'flex-1 rounded-lg border px-2.5 py-2 text-left text-[11.5px] transition-colors',
+                  'flex-1 rounded-lg border px-2.5 py-2 text-left text-[13px] transition-colors',
                   merge?.strategy === strategy
                     ? 'border-[var(--t-border-strong)] bg-[var(--t-bg-active)] text-text'
                     : 'border-border bg-surface text-muted hover:border-border-strong',
@@ -1004,17 +1004,17 @@ export function SessionList({
                 <span className="block font-medium">
                   {strategy === 'merge' ? 'Merge' : 'Squash'}
                 </span>
-                <span className="mt-0.5 block text-[10.5px] leading-4">
+                <span className="mt-0.5 block text-[12px] leading-4">
                   {strategy === 'merge' ? '保留分支提交记录' : '压缩为一个提交'}
                 </span>
               </button>
             ))}
           </div>
-          <p className="mt-1.5 text-[11px] leading-5 text-muted">
+          <p className="mt-1.5 text-[12px] leading-5 text-muted">
             只合并已提交的改动；worktree 里未提交或未跟踪的文件会留在原目录，不会带回基准分支。
           </p>
           {merge?.error && (
-            <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[11.5px] text-danger">
+            <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[13px] text-danger">
               <TriangleAlert size={13} className="mt-0.5 shrink-0" />
               <span className="min-w-0 flex-1">
                 {merge.error}

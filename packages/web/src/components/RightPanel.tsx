@@ -125,8 +125,8 @@ const CHANGE_MARK: Record<string, string> = {
 
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[52px_minmax(0,1fr)] items-baseline gap-2 py-[3px] text-[11.5px] leading-[18px]">
-      <span className="text-[10px] text-muted">{label}</span>
+    <div className="grid grid-cols-[52px_minmax(0,1fr)] items-baseline gap-2 py-[3px] text-[13px] leading-[18px]">
+      <span className="text-[12px] text-muted">{label}</span>
       <span className="min-w-0 break-words text-text">{children}</span>
     </div>
   )
@@ -190,7 +190,7 @@ function Card({
           <GripVertical size={11} />
         </span>
         <Icon size={11} className="shrink-0 text-text-tertiary" />
-        <h3 className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.1em] text-text-tertiary">
+        <h3 className="min-w-0 truncate text-[12px] font-medium uppercase tracking-[0.1em] text-text-tertiary">
           {label}
         </h3>
         <span className="flex-1" />
@@ -224,11 +224,11 @@ function AgentRow({ sub, depth }: { sub: SubagentSession; depth: number }) {
     <button
       type="button"
       onClick={() => id && focusAgent(id)}
-      className="flex min-h-8 w-full items-center gap-1.5 rounded-md pr-1 text-left text-[11.5px] transition-colors hover:bg-[var(--t-bg-hover)]"
+      className="flex min-h-8 w-full items-center gap-1.5 rounded-md pr-1 text-left text-[13px] transition-colors hover:bg-[var(--t-bg-hover)]"
       style={{ paddingLeft: 4 + Math.max(0, depth - 1) * 14 }}
       title={sub.summary?.title}
     >
-      <span className="shrink-0 text-[9px] text-muted">
+      <span className="shrink-0 text-[12px] text-muted">
         {depth <= 1 ? '子' : depth === 2 ? '孙' : depth}
       </span>
       <span className="min-w-0 flex-1 truncate text-text-soft">
@@ -236,14 +236,14 @@ function AgentRow({ sub, depth }: { sub: SubagentSession; depth: number }) {
       </span>
       <span
         className={cn(
-          'shrink-0 text-[9.5px]',
+          'shrink-0 text-[12px]',
           failed ? 'text-danger' : running ? 'text-text-secondary' : 'text-muted',
         )}
       >
         {text}
         {running && ` ${formatElapsed(now - since)}`}
       </span>
-      <span className="w-9 shrink-0 text-right text-[9.5px] tabular-nums text-muted">
+      <span className="w-9 shrink-0 text-right text-[12px] tabular-nums text-muted">
         {formatTokens(tokens)}
       </span>
     </button>
@@ -277,7 +277,7 @@ function AgentsCard() {
     return out
   }, [subagents, activeSessionId])
 
-  if (rows.length === 0) return <p className="text-[11px] text-muted">暂无代理</p>
+  if (rows.length === 0) return <p className="text-[12px] text-muted">暂无代理</p>
   return (
     <div className="space-y-0.5">
       {rows.map(({ sub, depth }) => (
@@ -291,7 +291,7 @@ function AgentsCard() {
 function ContextCard() {
   const { context, noData, window, used, pct } = useContextBreakdown()
   if (noData || !context) {
-    return <p className="text-[11px] leading-4 text-muted">暂无上下文数据</p>
+    return <p className="text-[12px] leading-4 text-muted">暂无上下文数据</p>
   }
   const parts = context.parts.filter((part) => part.kind !== 'free')
   const free = Math.max(0, window - used)
@@ -299,10 +299,10 @@ function ContextCard() {
   return (
     <div>
       <div className="flex items-baseline justify-between gap-2">
-        <span className="font-mono text-[11px] tabular-nums text-text-soft">
+        <span className="font-mono text-[12px] tabular-nums text-text-soft">
           {formatTokens(used)} / {formatTokens(window)}
         </span>
-        <span className="font-mono text-[10px] tabular-nums text-muted">{pct}%</span>
+        <span className="font-mono text-[12px] tabular-nums text-muted">{pct}%</span>
       </div>
       <div className="mt-1.5 flex h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
         {rows.map((part) => {
@@ -329,7 +329,7 @@ function ContextCard() {
           return (
             <div
               key={part.kind}
-              className="flex min-w-0 items-center gap-1.5 text-[10px] leading-4"
+              className="flex min-w-0 items-center gap-1.5 text-[12px] leading-4"
             >
               <span
                 className="size-1.5 shrink-0 rounded-[2px] border border-border/60"
@@ -350,7 +350,7 @@ function ContextCard() {
           )
         })}
       </div>
-      <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-border pt-1.5 text-[10px]">
+      <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-border pt-1.5 text-[12px]">
         <span className="text-muted">缓存命中率</span>
         <span className="font-mono tabular-nums text-text-soft">
           {context.cacheHitRate !== undefined
@@ -527,7 +527,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const renderRight = (id: GroupId) => {
     if (id === 'plan') {
       return (
-        <span className="flex items-center gap-1 text-[9.5px] text-muted">
+        <span className="flex items-center gap-1 text-[12px] text-muted">
           {planStatus}
           <IconButton
             size="sm"
@@ -542,11 +542,11 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       )
     }
     if (id === 'agents') {
-      return <span className="text-[10px] tabular-nums text-muted">{agentCount}</span>
+      return <span className="text-[12px] tabular-nums text-muted">{agentCount}</span>
     }
     if (id === 'todos' && todos.length > 0) {
       return (
-        <span className="text-[10px] tabular-nums text-muted">
+        <span className="text-[12px] tabular-nums text-muted">
           {completed}/{todos.length}
         </span>
       )
@@ -556,7 +556,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         <button
           type="button"
           onClick={() => setChangesOpen(true)}
-          className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+          className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
         >
           审阅 <ArrowUpRight size={10} />
         </button>
@@ -568,7 +568,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const renderBody = (id: GroupId) => {
     if (id === 'plan' && plan) {
       return (
-        <div className="max-h-[180px] overflow-y-auto rounded-md border border-border/70 bg-bg/25 px-2.5 py-2 text-[11.5px] leading-[18px]">
+        <div className="max-h-[180px] overflow-y-auto rounded-md border border-border/70 bg-bg/25 px-2.5 py-2 text-[13px] leading-[18px]">
           <Markdown text={plan.content} />
         </div>
       )
@@ -580,7 +580,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       return <ContextCard />
     }
     if (id === 'todos') {
-      if (todos.length === 0) return <p className="text-[11px] text-muted">暂无待办</p>
+      if (todos.length === 0) return <p className="text-[12px] text-muted">暂无待办</p>
       return (
         <>
           <div className="mb-2 h-0.5 overflow-hidden rounded-full bg-[var(--t-bg-active)]/60">
@@ -629,7 +629,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
           (usage.cacheWriteTokens ?? 0) > 0 ||
           (usage.costUsd ?? 0) > 0)
       if (!hasUsage) {
-        return <p className="text-[11px] leading-4 text-muted">暂无用量</p>
+        return <p className="text-[12px] leading-4 text-muted">暂无用量</p>
       }
       const cacheRead = usage?.cacheReadTokens ?? 0
       const cacheWrite = usage?.cacheWriteTokens ?? 0
@@ -643,23 +643,23 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       ]
       return (
         <div>
-          <div className="text-[9.5px] text-muted">总花费</div>
+          <div className="text-[12px] text-muted">总花费</div>
           <div className="mt-0.5 font-mono text-[19px] leading-6 tabular-nums text-text">
             {formatCost(usage?.costUsd)}
           </div>
           <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5">
             {stats.map((s) => (
               <div key={s.label} className="flex min-w-0 items-baseline justify-between gap-2">
-                <span className="text-[9.5px] text-muted">{s.label}</span>
-                <span className="truncate font-mono text-[11.5px] tabular-nums text-text-soft">
+                <span className="text-[12px] text-muted">{s.label}</span>
+                <span className="truncate font-mono text-[13px] tabular-nums text-text-soft">
                   {s.value}
                 </span>
               </div>
             ))}
           </div>
           <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-border pt-1.5">
-            <span className="text-[9.5px] text-muted">缓存命中率</span>
-            <span className="font-mono text-[11.5px] tabular-nums text-text-soft">
+            <span className="text-[12px] text-muted">缓存命中率</span>
+            <span className="font-mono text-[13px] tabular-nums text-text-soft">
               {hitRate !== undefined ? `${Math.round(hitRate * 100)}%` : '—'}
             </span>
           </div>
@@ -669,29 +669,29 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     if (id === 'changes') {
       return (
         <>
-          <div className="mb-1.5 flex items-baseline gap-2 text-[11px] text-text-soft">
+          <div className="mb-1.5 flex items-baseline gap-2 text-[12px] text-text-soft">
             <span className="tabular-nums">{fileChanges.length} 个文件</span>
             <span className="flex-1" />
-            <span className="font-mono text-[10px] tabular-nums text-muted">
+            <span className="font-mono text-[12px] tabular-nums text-muted">
               +{additions} −{deletions}
             </span>
           </div>
           <div className="space-y-px">
             {fileChanges.slice(0, 4).map((f) => (
-              <div key={f.path} className="flex min-w-0 items-center gap-1.5 text-[10.5px] leading-[17px]">
-                <span className="w-2.5 shrink-0 font-mono text-[9px] text-muted">
+              <div key={f.path} className="flex min-w-0 items-center gap-1.5 text-[12px] leading-[17px]">
+                <span className="w-2.5 shrink-0 font-mono text-[12px] text-muted">
                   {CHANGE_MARK[f.status] ?? 'M'}
                 </span>
                 <span className="min-w-0 flex-1 truncate font-mono text-text-soft" title={f.path}>
                   {f.path}
                 </span>
-                <span className="shrink-0 font-mono text-[9px] tabular-nums text-muted">
+                <span className="shrink-0 font-mono text-[12px] tabular-nums text-muted">
                   +{f.additions} −{f.deletions}
                 </span>
               </div>
             ))}
             {fileChanges.length > 4 && (
-              <div className="pt-0.5 text-[9.5px] text-muted">还有 {fileChanges.length - 4} 个文件</div>
+              <div className="pt-0.5 text-[12px] text-muted">还有 {fileChanges.length - 4} 个文件</div>
             )}
           </div>
         </>
@@ -700,7 +700,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     return (
       <div className="space-y-0">
         <DetailRow label="模型">
-          <span className="font-mono text-[11px]">{summary?.model ?? '—'}</span>
+          <span className="font-mono text-[12px]">{summary?.model ?? '—'}</span>
         </DetailRow>
         <DetailRow label="账号">
           {profileName ??
@@ -711,7 +711,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         </DetailRow>
         <DetailRow label="工作目录">
           <span className="flex items-start gap-1">
-            <span className="min-w-0 flex-1 break-all font-mono text-[10.5px] leading-[17px] text-text-soft">
+            <span className="min-w-0 flex-1 break-all font-mono text-[12px] leading-[17px] text-text-soft">
               {summary?.cwd ?? '—'}
             </span>
             {summary?.cwd && (
@@ -748,12 +748,12 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
             <span className="block space-y-0.5">
               <span className="flex items-center gap-1 text-text">
                 <GitFork size={10} className="text-muted" />
-                <span className="font-mono text-[10.5px]">{summary.worktree.branch}</span>
+                <span className="font-mono text-[12px]">{summary.worktree.branch}</span>
               </span>
-              <span className="block text-[10px] text-muted">
+              <span className="block text-[12px] text-muted">
                 基于 {summary.worktree.baseBranch}
               </span>
-              <span className="block break-all font-mono text-[9.5px] leading-4 text-muted">
+              <span className="block break-all font-mono text-[12px] leading-4 text-muted">
                 {summary.worktree.path}
               </span>
             </span>
@@ -790,9 +790,9 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   return (
     <aside className="flex h-full w-full flex-col border-l border-border bg-sidebar md:w-[300px]">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 px-3.5">
-        <h2 className="text-[12.5px] font-semibold">会话信息</h2>
+        <h2 className="text-[13px] font-semibold">会话信息</h2>
         {summary && (
-          <span className="flex items-center gap-1.5 text-[10.5px] text-muted">
+          <span className="flex items-center gap-1.5 text-[12px] text-muted">
             <SessionStatusDot status={summary.status} />
             {STATUS_TEXT[summary.status] ?? summary.status}
           </span>
@@ -915,7 +915,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         })}
 
         {visibleGroups.length === 0 && (
-          <div className="flex flex-col items-center gap-2 px-4 py-10 text-center text-[11.5px] leading-5 text-muted">
+          <div className="flex flex-col items-center gap-2 px-4 py-10 text-center text-[13px] leading-5 text-muted">
             <Info size={15} />
             所有分组已隐藏，点击右上角 ⋯ 恢复显示。
           </div>

@@ -214,7 +214,7 @@ function FolderMenu({
 
   return (
     <div className="w-[min(340px,calc(100vw-2rem))]">
-      <div className="px-2 pb-1.5 pt-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted">
+      <div className="px-2 pb-1.5 pt-1 text-[12px] font-medium uppercase tracking-[0.08em] text-muted">
         工作目录
       </div>
       {recents.length > 0 && (
@@ -225,7 +225,7 @@ function FolderMenu({
               onClick={() => go(d)}
               title={d}
               className={cn(
-                'max-w-[140px] truncate rounded-md px-1.5 py-0.5 text-[10.5px] transition-colors',
+                'max-w-[140px] truncate rounded-md px-1.5 py-0.5 text-[12px] transition-colors',
                 d === path
                   ? 'bg-[var(--t-bg-active)] text-text'
                   : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text',
@@ -259,7 +259,7 @@ function FolderMenu({
           }}
           spellCheck={false}
           aria-label="目录路径"
-          className="min-w-0 flex-1 font-mono text-[11px]"
+          className="min-w-0 flex-1 font-mono text-[12px]"
         />
         <IconButton
           size="sm"
@@ -272,18 +272,18 @@ function FolderMenu({
       </div>
       <div className="h-[188px] overflow-y-auto rounded-lg bg-[var(--t-bg)] p-1">
         {loading && entries.length === 0 && (
-          <div className="flex h-full items-center justify-center gap-2 text-[11.5px] text-muted">
+          <div className="flex h-full items-center justify-center gap-2 text-[13px] text-muted">
             <Loader2 size={12} className="animate-spin" /> 读取目录…
           </div>
         )}
         {!loading && error && (
-          <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center text-[11px] text-danger">
+          <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center text-[12px] text-danger">
             <TriangleAlert size={14} />
             {error}
           </div>
         )}
         {!loading && !error && entries.length === 0 && (
-          <div className="flex h-full items-center justify-center text-[11.5px] text-muted">
+          <div className="flex h-full items-center justify-center text-[13px] text-muted">
             没有子文件夹
           </div>
         )}
@@ -300,7 +300,7 @@ function FolderMenu({
         ))}
       </div>
       <div className="mt-1.5 flex items-center gap-1.5 px-1">
-        <Button size="sm" variant="ghost" onClick={() => go(home ?? path)} className="text-[10.5px]">
+        <Button size="sm" variant="ghost" onClick={() => go(home ?? path)} className="text-[12px]">
           主目录
         </Button>
         <span className="flex-1" />
@@ -486,7 +486,7 @@ export function NewSessionView() {
           <h1 className="font-serif text-[30px] leading-tight tracking-[-0.015em] text-text md:text-[34px]">
             {greeting}，今天想做点什么？
           </h1>
-          <p className="mt-2.5 text-[12.5px] text-muted">
+          <p className="mt-2.5 text-[13px] text-muted">
             {host ? `在 ${host.name} 上开始一次新的协作` : '连接一台 Host 后即可开始'}
           </p>
         </div>
@@ -526,7 +526,7 @@ export function NewSessionView() {
         />
 
         {!hostReady && host && (
-          <p className="mt-2 text-center text-[11px] text-warning">
+          <p className="mt-2 text-center text-[12px] text-warning">
             {runtime?.status === 'connecting' ? '正在连接 Host…' : 'Host 当前离线，连上后即可发送。'}
           </p>
         )}
@@ -539,11 +539,11 @@ export function NewSessionView() {
         )}
 
         {!profiles.length && profilesLoading && (
-          <p className="mt-4 text-center text-[11.5px] text-muted">正在加载账号…</p>
+          <p className="mt-4 text-center text-[13px] text-muted">正在加载账号…</p>
         )}
 
         {!profiles.length && !profilesLoading && hostReady && (
-          <p className="mt-4 text-center text-[11.5px] text-muted">
+          <p className="mt-4 text-center text-[13px] text-muted">
             还没有账号，请先在设置中添加账号，再选择模型。
           </p>
         )}
@@ -554,7 +554,7 @@ export function NewSessionView() {
               key={label}
               type="button"
               onClick={() => seedPrompt(prompt)}
-              className="flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--t-bg-subtle)] px-2.5 text-[11.5px] font-normal text-text-soft transition-colors duration-[120ms] hover:bg-[color-mix(in_srgb,var(--t-text)_10%,var(--t-bg-subtle))] hover:text-text max-md:h-11"
+              className="flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-[var(--t-bg-subtle)] px-2.5 text-[13px] font-normal text-text-soft transition-colors duration-[120ms] hover:bg-[color-mix(in_srgb,var(--t-text)_10%,var(--t-bg-subtle))] hover:text-text max-md:h-11"
             >
               <Icon size={12} className="shrink-0 text-muted" />
               <span className="whitespace-nowrap">{label}</span>
@@ -704,13 +704,13 @@ export function ConnectView() {
           <h1 className="mt-5 font-serif text-[27px] leading-tight tracking-[-0.01em] md:text-[30px]">
             连接你的 Host
           </h1>
-          <p className="mx-auto mt-2 max-w-[340px] text-[12.5px] leading-6 text-muted">
+          <p className="mx-auto mt-2 max-w-[340px] text-[13px] leading-6 text-muted">
             Host 是实际执行任务的机器。在目标机器启动 Tandem Host，把带 token 的链接粘贴到这里。
           </p>
         </div>
 
         <div className="mt-7 rounded-2xl border border-border bg-surface p-4 shadow-[var(--t-shadow-md)]">
-          <label className="mb-1.5 block text-[11px] font-medium text-text-soft">
+          <label className="mb-1.5 block text-[12px] font-medium text-text-soft">
             配对链接
           </label>
           <div className="flex gap-1.5">
@@ -738,7 +738,7 @@ export function ConnectView() {
             </Button>
           </div>
           {parsed && (
-            <div className="mt-2 rounded-lg bg-[var(--t-bg)] px-2.5 py-1.5 text-[10.5px] leading-4 text-muted">
+            <div className="mt-2 rounded-lg bg-[var(--t-bg)] px-2.5 py-1.5 text-[12px] leading-4 text-muted">
               <div className="truncate font-mono">{parsed.url}</div>
               {parsed.kind === 'relay' ? (
                 <>
@@ -755,18 +755,18 @@ export function ConnectView() {
             </div>
           )}
           {parsed?.kind === 'relay' && cryptoSupported === false && (
-            <div className="mt-2 rounded-lg border border-warning/30 bg-warning-soft/40 px-2.5 py-2 text-[10.5px] leading-5 text-warning">
+            <div className="mt-2 rounded-lg border border-warning/30 bg-warning-soft/40 px-2.5 py-2 text-[12px] leading-5 text-warning">
               {RELAY_UNSUPPORTED_MESSAGE}
             </div>
           )}
 
-          <div className="my-4 flex items-center gap-2 text-[10px] text-muted">
+          <div className="my-4 flex items-center gap-2 text-[12px] text-muted">
             <span className="h-px flex-1 bg-[var(--t-border)]" />
             或手动填写
             <span className="h-px flex-1 bg-[var(--t-border)]" />
           </div>
 
-          <label className="mb-1.5 block text-[11px] font-medium text-text-soft">地址</label>
+          <label className="mb-1.5 block text-[12px] font-medium text-text-soft">地址</label>
           <Input
             size="lg"
             value={url}
@@ -779,7 +779,7 @@ export function ConnectView() {
             autoComplete="off"
             className="font-mono text-[12px]"
           />
-          <label className="mb-1.5 mt-3 block text-[11px] font-medium text-text-soft">Token</label>
+          <label className="mb-1.5 mt-3 block text-[12px] font-medium text-text-soft">Token</label>
           <div className="relative">
             <Input
               size="lg"
@@ -806,13 +806,13 @@ export function ConnectView() {
           </div>
 
           {error && (
-            <div className="mt-3 flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/60 px-2.5 py-2 text-[11.5px] leading-5 text-danger">
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/60 px-2.5 py-2 text-[13px] leading-5 text-danger">
               <TriangleAlert size={13} className="mt-0.5 shrink-0" />
               <span className="min-w-0 flex-1">{error}</span>
             </div>
           )}
           {ok && (
-            <div className="mt-3 flex items-center gap-2 rounded-lg border border-success/25 bg-success-soft/60 px-2.5 py-2 text-[11.5px] text-success">
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-success/25 bg-success-soft/60 px-2.5 py-2 text-[13px] text-success">
               <Check size={13} /> 连接成功
             </div>
           )}
@@ -828,7 +828,7 @@ export function ConnectView() {
             </Button>
           )}
           {!canScan && coarsePointer && (
-            <p className="mt-2 rounded-lg border border-border bg-bg/50 px-2.5 py-2 text-[10.5px] leading-5 text-muted">
+            <p className="mt-2 rounded-lg border border-border bg-bg/50 px-2.5 py-2 text-[12px] leading-5 text-muted">
               当前浏览器不支持应用内扫码（如 iOS Safari）；可先用系统相机扫描电脑上的配对二维码，再打开链接。
             </p>
           )}
@@ -845,7 +845,7 @@ export function ConnectView() {
           </Button>
         </div>
 
-        <p className="mt-4 text-center text-[10.5px] leading-5 text-muted">
+        <p className="mt-4 text-center text-[12px] leading-5 text-muted">
           Token 只保存在本机浏览器中。手机与电脑连接同一 Host 时，会话实时同步。
         </p>
       </div>
