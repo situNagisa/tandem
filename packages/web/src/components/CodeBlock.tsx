@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeftRight, Check, Copy } from 'lucide-react'
 import { cn } from '../lib/cn'
-import { languageLabel, loadHighlighter } from '../lib/highlight'
+import { AUTO_LANGUAGES, languageLabel, loadHighlighter } from '../lib/highlight'
 import { copyText } from '../lib/clipboard'
 import { useHorizontalOverflow } from '../lib/hooks'
 import { IconButton } from './ui/Button'
 
 const MAX_CHARS = 200_000
 const HIGHLIGHT_CACHE_MAX = 80
-const highlightCache = new Map<string, { code: string; html: string }>()
+const highlightCache = new Map<string, { code: string; html: string; language?: string }>()
 let highlightCacheChars = 0
 
 function hashText(text: string): number {
@@ -24,20 +24,23 @@ function cacheKey(language: string, code: string): string {
   return `${language}:${code.length}:${hashText(code)}`
 }
 
-function readCache(key: string, code: string): string | undefined {
+function readCache(
+  key: string,
+  code: string,
+): { html: string; language?: string } | undefined {
   const hit = highlightCache.get(key)
   if (!hit || hit.code !== code) return undefined
   // LRU：命中后移到末尾
   highlightCache.delete(key)
   highlightCache.set(key, hit)
-  return hit.html
+  return hit
 }
 
-function writeCache(key: string, code: string, html: string): void {
+function writeCache(key: string, code: string, html: string, language?: string): void {
   if (html.length > 300_000) return
   const prev = highlightCache.get(key)
   if (prev) highlightCacheChars -= prev.html.length
-  highlightCache.set(key, { code, html })
+  highlightCache.set(key, { code, html, ...(language ? { language } : {}) })
   highlightCacheChars += html.length
   while (highlightCache.size > HIGHLIGHT_CACHE_MAX || highlightCacheChars > 2_000_000) {
     const first = highlightCache.keys().next().value
@@ -108,14 +111,15 @@ export function CodeBlock({
   scrollToLine,
   fill = false,
 }: CodeBlockProps) {
-  const [highlighted, setHighlighted] = useState<{ code: string; html: string } | null>(null)
+  const [highlighted, setHighlighted] = useState<{ code: string; html: string; language?: string } | null>(null)
+  const [autoLang, setAutoLang] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const copyTimer = useRef<number | null>(null)
   const shown = useMemo(
     () => (code.length > MAX_CHARS ? code.slice(0, MAX_CHARS) + '\n…（内容过长，已截断）' : code),
     [code],
   )
-  const key = language ? cacheKey(language, shown) : ''
+  const key = cacheKey(language ?? 'auto', shown)
   const html = highlighted && highlighted.code === shown ? highlighted.html : null
   const { ref: preRef, canLeft, canRight, update: updateOverflow } = useHorizontalOverflow<HTMLPreElement>([
     shown,
@@ -123,6 +127,10 @@ export function CodeBlock({
   ])
   const scrollBoxRef = useRef<HTMLDivElement>(null)
   const lineCount = useMemo(() => (shown ? shown.split('\n').length : 0), [shown])
+
+  useEffect(() => {
+    setAutoLang(null)
+  }, [shown])
 
   // 文件预览打开时滚到目标行（上方留约 1/3 视口）。
   useEffect(() => {
@@ -136,10 +144,11 @@ export function CodeBlock({
   }, [lineNumbers, scrollToLine, shown])
 
   useEffect(() => {
-    if (!language || streaming) return
-    const cached = key ? readCache(key, shown) : undefined
+    if (streaming) return
+    const cached = readCache(key, shown)
     if (cached) {
-      setHighlighted({ code: shown, html: cached })
+      setHighlighted({ code: shown, html: cached.html })
+      setAutoLang(cached.language ?? null)
       return
     }
     let cancelled = false
@@ -149,12 +158,23 @@ export function CodeBlock({
       if (cancelled) return
       loadHighlighter()
         .then((hljs) => {
-          if (cancelled || !hljs.getLanguage(language)) return
+          if (cancelled) return
           try {
-            const html = hljs.highlight(shown, { language, ignoreIllegals: true }).value
+            if (language) {
+              if (!hljs.getLanguage(language)) return
+              const html = hljs.highlight(shown, { language, ignoreIllegals: true }).value
+              if (cancelled) return
+              writeCache(key, shown, html)
+              setHighlighted({ code: shown, html })
+              return
+            }
+            // 无语言标注：在受控候选集里自动检测；置信度太低就保持纯文本。
+            const auto = hljs.highlightAuto(shown, [...AUTO_LANGUAGES])
+            if (!auto.language || auto.relevance < 3) return
             if (cancelled) return
-            writeCache(key, shown, html)
-            setHighlighted({ code: shown, html })
+            writeCache(key, shown, auto.value, auto.language)
+            setHighlighted({ code: shown, html: auto.value, language: auto.language })
+            setAutoLang(auto.language)
           } catch {
             /* 高亮失败时保留纯文本 */
           }

@@ -12,6 +12,7 @@ export function loadHighlighter(): Promise<HLJSApi> {
       const [
         core,
         bash,
+        cpp,
         css,
         diff,
         go,
@@ -27,6 +28,7 @@ export function loadHighlighter(): Promise<HLJSApi> {
       ] = await Promise.all([
         import('highlight.js/lib/core'),
         import('highlight.js/lib/languages/bash'),
+        import('highlight.js/lib/languages/cpp'),
         import('highlight.js/lib/languages/css'),
         import('highlight.js/lib/languages/diff'),
         import('highlight.js/lib/languages/go'),
@@ -42,6 +44,7 @@ export function loadHighlighter(): Promise<HLJSApi> {
       ])
       const hljs = core.default
       hljs.registerLanguage('bash', bash.default)
+      hljs.registerLanguage('cpp', cpp.default)
       hljs.registerLanguage('css', css.default)
       hljs.registerLanguage('diff', diff.default)
       hljs.registerLanguage('go', go.default)
@@ -55,6 +58,7 @@ export function loadHighlighter(): Promise<HLJSApi> {
       hljs.registerLanguage('xml', xml.default)
       hljs.registerLanguage('yaml', yaml.default)
 
+      hljs.registerAliases(['c', 'c++', 'cc', 'cxx', 'h', 'hpp', 'hxx'], { languageName: 'cpp' })
       hljs.registerAliases(['sh', 'shell', 'zsh', 'console'], { languageName: 'bash' })
       hljs.registerAliases(['js', 'jsx', 'mjs', 'cjs'], { languageName: 'javascript' })
       hljs.registerAliases(['ts', 'tsx'], { languageName: 'typescript' })
@@ -101,6 +105,13 @@ const EXT_LANGUAGE: Record<string, string> = {
   yaml: 'yaml',
   diff: 'diff',
   patch: 'diff',
+  c: 'cpp',
+  cc: 'cpp',
+  cpp: 'cpp',
+  cxx: 'cpp',
+  h: 'cpp',
+  hpp: 'cpp',
+  hxx: 'cpp',
 }
 
 export function languageFromPath(path?: string): string | undefined {
@@ -125,9 +136,28 @@ const DISPLAY: Record<string, string> = {
   sql: 'SQL',
   go: 'Go',
   rust: 'Rust',
+  cpp: 'C/C++',
 }
 
 export function languageLabel(language?: string): string {
   if (!language) return '文本'
   return DISPLAY[language] ?? language
 }
+
+/** 无语言标注的代码块自动检测：只在这些候选里挑，避免整包体积与误判。 */
+export const AUTO_LANGUAGES = [
+  'bash',
+  'cpp',
+  'css',
+  'diff',
+  'go',
+  'javascript',
+  'json',
+  'markdown',
+  'python',
+  'rust',
+  'sql',
+  'typescript',
+  'xml',
+  'yaml',
+] as const
