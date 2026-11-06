@@ -617,6 +617,7 @@ export function EnvBar({
       </Popover>
 
       <Popover
+        side="top"
         panelClassName="w-auto"
         trigger={({ open, toggle }) => (
           <EnvTrigger
