@@ -63,6 +63,26 @@ export interface CreateSessionInput {
 }
 export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'model' | 'permissionMode' | 'pinned' | 'archived'>>;
 
+// ---------- 外部会话（本机已有的 Claude Code / Codex 会话） ----------
+// 原则：只读原软件的文件，绝不写回；"导入"= 复制成 Tandem 会话后继续（可换任意模型）。
+export type ExternalSource = 'claude-code' | 'codex';
+export interface ExternalSession {
+  source: ExternalSource;
+  id: string;              // 原软件的会话 id
+  title: string;           // 首条用户消息摘要
+  cwd: string;
+  updatedAt: number;
+  messageCount: number;
+  importedSessionId?: string; // 已导入过则给出对应 Tandem 会话 id
+}
+
+// ---------- 配置迁移（换电脑不用重配） ----------
+// 导出包含账号（含明文 key）与客户端设置，用用户口令加密（scrypt + AES-256-GCM）。
+export interface ConfigBundle { version: 1; encrypted: string; salt: string; iv: string; createdAt: number; hostName: string }
+export interface ConfigExportInput { passphrase: string; clientSettings?: unknown } // clientSettings：客户端的 Host 列表、主题等，原样打包
+export interface ConfigImportInput { passphrase: string; bundle: ConfigBundle; mode: 'merge' | 'replace' }
+export interface ConfigImportResult { profilesAdded: number; profilesUpdated: number; clientSettings?: unknown }
+
 // 拉取模型列表：填 Key 后自动获取可用模型（无需手填）
 export interface ListModelsInput { kind: ProviderKind; baseUrl?: string; apiKey?: string; profileId?: string } // apiKey 缺省时用 profileId 已存的 key
 export interface ModelInfo { id: string; displayName?: string; contextWindow?: number }
@@ -155,6 +175,11 @@ export type BlockDelta =
 // POST   /api/sessions/:id/fork       -> SessionSummary   复制会话（含历史）为新会话
 // GET    /api/fs/list?path=           -> FsEntry[]   目录选择器
 // GET    /api/fs/complete?cwd=&q=     -> string[]    @文件 补全（相对 cwd 的路径）
+// GET    /api/external-sessions?source=   -> ExternalSession[]    扫描 ~/.claude/projects、~/.codex/sessions
+// GET    /api/external-sessions/:source/:id -> Session            只读预览（转换为 Tandem 消息格式）
+// POST   /api/external-sessions/:source/:id/import -> SessionSummary  复制为 Tandem 会话
+// POST   /api/config/export ConfigExportInput -> ConfigBundle
+// POST   /api/config/import ConfigImportInput -> ConfigImportResult
 // GET    /api/commands                -> SlashCommand[]
 export interface SlashCommand { name: string; description: string; source: 'builtin' | 'project' | 'user' }
 
