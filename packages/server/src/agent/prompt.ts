@@ -24,7 +24,7 @@ function isGitRepo(cwd: string): boolean {
   return false;
 }
 
-export function buildSystemPrompt(cwd: string): string {
+export function buildSystemPrompt(cwd: string, options: { allowTask?: boolean } = {}): string {
   const date = new Date().toISOString().slice(0, 10);
   const env = [
     `- 工作目录（cwd）：${cwd}`,
@@ -61,6 +61,8 @@ export function buildSystemPrompt(cwd: string): string {
 - Glob / Grep：搜索优先用工具而不是 Bash 的 find/grep；Grep 会遵循 .gitignore。
 - TodoWrite：多步骤任务用它维护进度，同一时间保持一项 in_progress。
 - WebFetch：获取网页内容；基于内容回答，必要时说明来源。
+${options.allowTask !== false ? '- Task：把独立、多步的子任务派给子代理。description 是简短标题，prompt 要自包含；subagent_type 可选 Explore/Plan（只读，可同批并行）或 general-purpose（可改文件）。子代理最后一条文本会作为工具结果返回，不要用它处理必须共享同一上下文的小事。' : ''}
+- MCP 工具：名称形如 mcp__<服务器>__<工具>，参数 schema 由该服务器提供；默认需要用户审批，可按权限规则放行。调用失败时读取错误信息，必要时重试或改用其它工具。
 
 # 环境
 ${env}

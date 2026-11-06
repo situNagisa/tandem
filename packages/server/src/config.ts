@@ -96,6 +96,9 @@ export class ProfileStore {
         const groups = normalizeStoredGroups(p.groups);
         if (groups.length) profile.groups = groups;
         else delete profile.groups;
+        const price = normalizePrice(p.price);
+        if (price) profile.price = price;
+        else delete profile.price;
         this.profiles.set(p.id, profile);
       }
     }
@@ -121,6 +124,8 @@ export class ProfileStore {
       defaultModel: input.defaultModel || normalizeModels(input.models)[0] || '',
       createdAt: now,
     };
+    const price = normalizePrice((input as { price?: unknown }).price);
+    if (price) profile.price = price;
     const groups = buildGroups(input.groups);
     if (groups?.length) profile.groups = groups;
     this.profiles.set(profile.id, profile);
@@ -142,6 +147,13 @@ export class ProfileStore {
       // 不传或传空字符串表示保持原 key
       apiKey: input.apiKey ? String(input.apiKey) : current.apiKey,
     };
+    // price 是协议 Profile 的只读展示字段：更新时允许作为扩展字段传入，null 表示清除
+    const rawPrice = (input as { price?: unknown }).price;
+    if (rawPrice !== undefined) {
+      const price = normalizePrice(rawPrice);
+      if (price) next.price = price;
+      else delete next.price;
+    }
     // 传了 groups 就整体替换；带 id 且不带 apiKey 的分组保留原 key
     if (input.groups !== undefined) {
       const groups = buildGroups(input.groups, current.groups);
@@ -169,6 +181,7 @@ export class ProfileStore {
       apiKeyMasked: maskApiKey(profile.apiKey),
       models: [...profile.models],
       defaultModel: profile.defaultModel,
+      ...(profile.price ? { price: { ...profile.price } } : {}),
       ...(profile.groups?.length ? { groups: profile.groups.map((g) => toPublicGroup(g)) } : {}),
       createdAt: profile.createdAt,
     };
@@ -214,6 +227,24 @@ export class ProfileStore {
 function normalizeModels(models: unknown): string[] {
   if (!Array.isArray(models)) return [];
   return [...new Set(models.map((m) => String(m).trim()).filter(Boolean))];
+}
+
+/** 账号单价覆盖：{ 模型名: { input, output } }，每百万 token 美元。 */
+export function normalizePrice(
+  value: unknown,
+): Record<string, { input: number; output: number }> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const out: Record<string, { input: number; output: number }> = {};
+  for (const [model, raw] of Object.entries(value as Record<string, unknown>)) {
+    const name = model.trim();
+    if (!name || !raw || typeof raw !== 'object') continue;
+    const price = raw as { input?: unknown; output?: unknown };
+    const input = Number(price.input);
+    const output = Number(price.output);
+    if (!Number.isFinite(input) || !Number.isFinite(output) || input < 0 || output < 0) continue;
+    out[name] = { input, output };
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 function normalizeBaseUrl(url: unknown): string | undefined {

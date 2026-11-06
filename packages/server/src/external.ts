@@ -636,11 +636,11 @@ export class ExternalSessionStore {
   }
 
   /** 复制为 Tandem 会话：cwd 沿用，消息历史完整带入，之后可用任意模型继续。 */
-  importSession(
+  async importSession(
     source: ExternalSource,
     id: string,
     input: ExternalImportInput,
-  ): SessionRecord | undefined {
+  ): Promise<SessionRecord | undefined> {
     const parsed = this.find(source, id, true);
     if (!parsed) return undefined;
 
@@ -657,7 +657,7 @@ export class ExternalSessionStore {
     if (groupId && !profile.groups?.some((g) => g.id === groupId)) throw new Error('分组不存在');
 
     const cwd = parsed.cwd && statSafe(parsed.cwd)?.isDirectory() ? parsed.cwd : os.homedir();
-    const rec = this.host.createSession({
+    const rec = await this.host.createSession({
       cwd,
       profileId,
       groupId,

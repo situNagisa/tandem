@@ -90,6 +90,7 @@ async function main(): Promise<void> {
       // ignore
     }
     host.store.flush();
+    await host.shutdown();
     process.exit(0);
   };
   process.on('SIGINT', () => void shutdown('SIGINT'));

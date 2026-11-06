@@ -52,7 +52,7 @@ function statusOf(err: unknown): number {
   return typeof status === 'number' && status >= 400 && status < 500 ? status : 400;
 }
 
-function parseProfileInput(body: unknown): ProfileInput {
+function parseProfileInput(body: unknown): ProfileInput & { price?: unknown } {
   const raw = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
   const kind = str(raw.kind) as ProviderKind;
   if (!PROVIDER_KINDS.includes(kind)) throw new Error('provider 类型无效');
@@ -71,6 +71,8 @@ function parseProfileInput(body: unknown): ProfileInput {
     models,
     defaultModel,
     groups: parseGroupInputs(raw.groups),
+    // 协议 ProfileInput 暂未声明 price；这里按扩展字段接收，供配置覆盖单价
+    ...(raw.price !== undefined ? { price: raw.price } : {}),
   };
 }
 
@@ -237,7 +239,7 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
   app.post('/api/sessions', async (req, reply) => {
     try {
       const input = (req.body ?? {}) as Partial<CreateSessionInput>;
-      const rec = host.createSession(input);
+      const rec = await host.createSession(input);
       // 创建时检测 cwd 的 git 仓库/分支，供侧栏归类
       await host.refreshEnv(rec.id);
       return reply.code(201).send(host.toSummary(rec));
@@ -267,8 +269,28 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
 
   app.delete('/api/sessions/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    if (!host.deleteSession(id)) return bad(reply, '会话不存在', 404);
+    const query = req.query as { force?: string };
+    const force = query.force === '1' || query.force === 'true';
+    try {
+      if (!(await host.deleteSession(id, force))) return bad(reply, '会话不存在', 404);
+    } catch (err) {
+      return bad(reply, (err as Error).message, statusOf(err));
+    }
     return reply.code(204).send();
+  });
+
+  // worktree 会话合回基准分支
+  app.post('/api/sessions/:id/worktree/merge', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!host.getSession(id)) return bad(reply, '会话不存在', 404);
+    const body = (req.body ?? {}) as { strategy?: unknown };
+    const strategy = body.strategy === 'squash' ? 'squash' : body.strategy === 'merge' || body.strategy === undefined ? 'merge' : '';
+    if (!strategy) return bad(reply, 'strategy 必须是 merge 或 squash');
+    try {
+      return await host.mergeSessionWorktree(id, strategy);
+    } catch (err) {
+      return bad(reply, (err as Error).message, statusOf(err));
+    }
   });
 
   app.post('/api/sessions/:id/fork', async (req, reply) => {
@@ -354,6 +376,58 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
     }
   });
 
+  // ---------- MCP ----------
+  app.get('/api/mcp', async (req) => {
+    const query = req.query as { cwd?: string };
+    const cwd = str(query.cwd) ? path.resolve(expandHome(str(query.cwd))) : undefined;
+    if (cwd) void host.mcp.prepare(cwd);
+    return { servers: host.mcp.servers(cwd), status: host.mcp.status(cwd) };
+  });
+
+  app.put('/api/mcp', async (req, reply) => {
+    try {
+      const servers = await host.mcp.save(req.body);
+      return { servers, status: host.mcp.status() };
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  // ---------- 用量统计 ----------
+  app.get('/api/usage', async (req) => {
+    const query = req.query as { from?: string; to?: string };
+    return host.usage.list(str(query.from) || undefined, str(query.to) || undefined);
+  });
+
+  // ---------- 配对（手机扫码连接） ----------
+  app.get('/api/pair', async () => {
+    const address = app.server.address();
+    const port =
+      address && typeof address === 'object' && address.port
+        ? address.port
+        : 7878;
+    const bound = address && typeof address === 'object' ? address.address : '127.0.0.1';
+    const lan = bound === '0.0.0.0' || bound === '::' || bound === '::0';
+    if (!lan) {
+      return {
+        urls: [`http://127.0.0.1:${port}`],
+        token: host.config.token,
+        hint: 'Host 仅监听本机地址；用 --host 0.0.0.0 启动后可生成局域网 / Tailscale 配对地址。',
+      };
+    }
+    const urls: string[] = [];
+    for (const entries of Object.values(os.networkInterfaces())) {
+      for (const entry of entries ?? []) {
+        const family = String(entry.family);
+        const isV4 = family === 'IPv4' || family === '4';
+        if (!isV4 || entry.internal) continue;
+        urls.push(`http://${entry.address}:${port}`);
+      }
+    }
+    if (urls.length === 0) urls.push(`http://127.0.0.1:${port}`);
+    return { urls, token: host.config.token };
+  });
+
   // ---------- 外部会话（只读，不写原软件文件） ----------
   app.get('/api/external-sessions', async (req, reply) => {
     const query = req.query as { source?: string };
@@ -374,7 +448,7 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
     const { source, id } = req.params as { source: string; id: string };
     if (!isExternalSource(source)) return bad(reply, 'source 无效');
     try {
-      const rec = host.external.importSession(source, id, (req.body ?? {}) as Record<string, unknown>);
+      const rec = await host.external.importSession(source, id, (req.body ?? {}) as Record<string, unknown>);
       if (!rec) return bad(reply, '外部会话不存在', 404);
       await host.refreshEnv(rec.id);
       return reply.code(201).send(host.toSummary(rec));

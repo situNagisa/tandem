@@ -4,8 +4,10 @@ import type { ContentBlock, Message } from '@tandem/protocol';
 import type { Host } from '../host.js';
 import type { SessionRecord } from '../types.js';
 import { streamChat } from '../providers/index.js';
-import { TOOLS, executeTool } from '../tools/index.js';
+import { executeTool } from '../tools/index.js';
+import { isReadOnlySubagentInput } from '../tools/task.js';
 import { errorMessage, truncateMiddle } from '../util/text.js';
+import { costOf, priceForModel } from '../usage.js';
 import { buildSystemPrompt } from './prompt.js';
 
 const MAX_ITERATIONS = 100;
@@ -13,17 +15,38 @@ const MAX_TOKENS = 8192;
 /** 这些工具之间没有副作用，可以并行执行。 */
 const PARALLEL_TOOLS = new Set(['Read', 'Glob', 'Grep']);
 
-export async function runTurn(host: Host, rec: SessionRecord): Promise<void> {
+export interface TurnResult {
+  reason: 'done' | 'interrupted' | 'error';
+  error?: string;
+  /** 本轮最后一条 assistant 文本（子代理用于回传结果）。 */
+  lastText?: string;
+}
+
+export interface TurnOptions {
+  /** 子代理会话里不再暴露 Task，防止递归。 */
+  allowTask?: boolean;
+}
+
+export async function runTurn(
+  host: Host,
+  rec: SessionRecord,
+  options: TurnOptions = {},
+): Promise<TurnResult> {
   const rt = host.ensureRuntime(rec.id);
-  if (rt.running || rt.deleted) return;
+  if (rt.running || rt.deleted) return { reason: 'error', error: '会话正在运行' };
   rt.running = true;
   rt.interrupted = false;
   const abort = new AbortController();
   rt.abort = abort;
+  const allowTask = options.allowTask !== false;
 
   let reason: 'done' | 'interrupted' | 'error' = 'done';
   let errorText: string | undefined;
   let loopCompleted = false;
+
+  // 按需连接项目级 MCP，并顺带重试之前失败的服务器；失败不影响本轮
+  await host.mcp.prepare(rec.cwd).catch(() => {});
+  const tools = host.toolDefinitions(rec, allowTask);
 
   try {
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
@@ -58,10 +81,10 @@ export async function runTurn(host: Host, rec: SessionRecord): Promise<void> {
         result = await streamChat({
           profile,
           model,
-          system: buildSystemPrompt(rec.cwd),
+          system: buildSystemPrompt(rec.cwd, { allowTask }),
           // 排除刚插入的空 assistant 占位
           messages: rec.messages.slice(0, -1),
-          tools: TOOLS,
+          tools,
           blocks: assistant.content,
           signal: abort.signal,
           idleTimeoutSec: host.config.idleTimeoutSec ?? 180,
@@ -111,8 +134,22 @@ export async function runTurn(host: Host, rec: SessionRecord): Promise<void> {
       host.store.markDirty(rec.id, true);
 
       if (result) {
-        rec.usage.inputTokens += result.usage.inputTokens || 0;
-        rec.usage.outputTokens += result.usage.outputTokens || 0;
+        const inputTokens = result.usage.inputTokens || 0;
+        const outputTokens = result.usage.outputTokens || 0;
+        rec.usage.inputTokens += inputTokens;
+        rec.usage.outputTokens += outputTokens;
+        // 单价：账号 price 覆盖 > 内置参考价；未知模型只统计 token
+        const price = priceForModel(profile, model);
+        const cost = costOf(price, inputTokens, outputTokens);
+        if (price) rec.usage.costUsd = roundCost((rec.usage.costUsd ?? 0) + cost);
+        host.usage.record({
+          hostId: host.config.hostId,
+          profileId: rec.profileId,
+          model,
+          inputTokens,
+          outputTokens,
+          costUsd: cost,
+        });
       }
       host.broadcastSummary(rec);
 
@@ -221,6 +258,31 @@ export async function runTurn(host: Host, rec: SessionRecord): Promise<void> {
     // 每轮结束刷新 git 环境（分支可能被工具切换过）
     void host.refreshEnv(rec.id);
   }
+
+  return {
+    reason,
+    ...(errorText ? { error: errorText } : {}),
+    ...(lastAssistantText(rec) ? { lastText: lastAssistantText(rec) } : {}),
+  };
+}
+
+/** 最近一条包含文本的 assistant 消息内容（用于 Task 结果）。 */
+function lastAssistantText(rec: SessionRecord): string | undefined {
+  for (let i = rec.messages.length - 1; i >= 0; i--) {
+    const message = rec.messages[i]!;
+    if (message.role !== 'assistant') continue;
+    const text = message.content
+      .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim();
+    if (text) return text;
+  }
+  return undefined;
+}
+
+function roundCost(value: number): number {
+  return Math.round(value * 1e8) / 1e8;
 }
 
 async function executeToolUses(
@@ -236,7 +298,9 @@ async function executeToolUses(
   const batches: number[][] = [];
   let reads: number[] = [];
   toolUses.forEach((tool, index) => {
-    if (PARALLEL_TOOLS.has(tool.name)) {
+    const parallel =
+      tool.name === 'Task' ? isReadOnlySubagentInput(tool.input) : PARALLEL_TOOLS.has(tool.name);
+    if (parallel) {
       reads.push(index);
       return;
     }
@@ -279,8 +343,14 @@ async function executeToolUses(
         rec.usage.outputTokens += usage.outputTokens;
         host.store.markDirty(rec.id, false);
       },
+      runSubagent: (input: { description: string; prompt: string; subagentType?: string }) =>
+        host.runSubagent(rec, input, signal),
     };
-    const res = await executeTool(tool.name, tool.input, toolCtx);
+    const def = host.toolDefinition(tool.name, rec.cwd);
+    const res =
+      def?.mcp && tool.name.startsWith('mcp__')
+        ? await host.mcp.callTool(def.mcp.server, def.mcp.tool, tool.input, signal)
+        : await executeTool(tool.name, tool.input, toolCtx);
     const content = truncateMiddle(res.content || '(无输出)');
     const blocks: ContentBlock[] = [
       {

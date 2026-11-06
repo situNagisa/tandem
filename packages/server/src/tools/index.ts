@@ -8,10 +8,11 @@ import { definition as glob, run as runGlob } from './glob.js';
 import { definition as grep, run as runGrep } from './grep.js';
 import { definition as todo, run as runTodo } from './todo.js';
 import { definition as webfetch, run as runWebfetch } from './webfetch.js';
+import { definition as task, run as runTask } from './task.js';
 
 type ToolRunner = (input: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>;
 
-export const TOOLS: ToolDefinition[] = [bash, read, write, edit, glob, grep, todo, webfetch];
+export const TOOLS: ToolDefinition[] = [bash, read, write, edit, glob, grep, todo, webfetch, task];
 
 const RUNNERS: Record<string, ToolRunner> = {
   Bash: runBash,
@@ -22,6 +23,7 @@ const RUNNERS: Record<string, ToolRunner> = {
   Grep: runGrep,
   TodoWrite: runTodo,
   WebFetch: runWebfetch,
+  Task: runTask,
 };
 
 export const TOOL_MAP = new Map(TOOLS.map((tool) => [tool.name, tool]));
@@ -65,5 +67,10 @@ export function describeTool(name: string, input: unknown): string {
   if (name === 'Write') return `写入文件: ${String(args.file_path ?? '')}`;
   if (name === 'Edit') return `编辑文件: ${String(args.file_path ?? '')}`;
   if (name === 'WebFetch') return `访问网页: ${String(args.url ?? '')}`;
+  if (name === 'Task') return `启动子代理: ${String(args.description ?? '').slice(0, 80)}`;
+  if (name.startsWith('mcp__')) {
+    const [, server, ...rest] = name.split('__');
+    return `调用 MCP 工具: ${server ?? ''}/${rest.join('__')}`;
+  }
   return `调用工具: ${name}`;
 }

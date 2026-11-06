@@ -29,9 +29,18 @@ import {
 import { CheckpointStore } from './checkpoints.js';
 import { ExternalSessionStore } from './external.js';
 import { Hub } from './events.js';
+import { McpManager } from './mcp.js';
 import { PermissionRuleStore } from './permissions.js';
 import { SessionStore } from './store.js';
-import type { HostConfig, SessionRecord, SessionRuntime, StoredProfile } from './types.js';
+import type { HostConfig, SessionRecord, SessionRuntime, StoredProfile, ToolDefinition, ToolResult } from './types.js';
+import { UsageStore, costOf, priceForModel } from './usage.js';
+import {
+  createWorktree,
+  gitRepoRoot,
+  mergeWorktree,
+  removeWorktree,
+  worktreeCleanliness,
+} from './worktree.js';
 import { runTurn } from './agent/loop.js';
 import {
   BUILTIN_NAMES,
@@ -41,7 +50,7 @@ import {
   parseSlashCommand,
   type ParsedCommand,
 } from './agent/commands.js';
-import { PLAN_ALLOWED, TOOL_MAP, describeTool } from './tools/index.js';
+import { PLAN_ALLOWED, TOOLS, TOOL_MAP, describeTool } from './tools/index.js';
 import { completeText, listModels as fetchModelList, streamChat } from './providers/index.js';
 import type { ListModelsResult } from './providers/index.js';
 import { buildSystemPrompt } from './agent/prompt.js';
@@ -70,6 +79,8 @@ export class Host {
   readonly external = new ExternalSessionStore(this);
   readonly checkpoints: CheckpointStore;
   readonly permissionRules: PermissionRuleStore;
+  readonly mcp: McpManager;
+  readonly usage: UsageStore;
   readonly hub = new Hub();
   readonly version: string;
   private runtimes = new Map<string, SessionRuntime>();
@@ -82,7 +93,11 @@ export class Host {
     this.store = new SessionStore(home);
     this.checkpoints = new CheckpointStore(home);
     this.permissionRules = new PermissionRuleStore(home);
+    this.mcp = new McpManager(home);
+    this.usage = new UsageStore(home);
     this.version = readVersion();
+    // 启动时连接已启用的 MCP 服务器；失败只记录状态，不影响 Host 启动
+    this.mcp.start();
   }
 
   info(): HostInfo {
@@ -119,6 +134,8 @@ export class Host {
       ...(rec.pinned ? { pinned: true } : {}),
       ...(rec.archived ? { archived: true } : {}),
       ...(rec.env ? { env: { ...rec.env } } : {}),
+      ...(rec.parentId ? { parentId: rec.parentId } : {}),
+      ...(rec.worktree ? { worktree: { ...rec.worktree } } : {}),
       createdAt: rec.createdAt,
       updatedAt: rec.updatedAt,
       usage: { ...rec.usage },
@@ -153,6 +170,42 @@ export class Host {
     return fetchModelList(input, profile);
   }
 
+  /** 本轮可用的工具：内置工具（子代理不含 Task）+ 当前 cwd 已连接的 MCP 工具。 */
+  toolDefinitions(rec: SessionRecord, allowTask = true): ToolDefinition[] {
+    const base = allowTask ? TOOLS : TOOLS.filter((tool) => tool.name !== 'Task');
+    return [...base, ...this.mcp.toolDefinitions(rec.cwd)];
+  }
+
+  /** 按名称找工具定义（含动态 MCP 工具），供权限判定/调用路由使用。 */
+  toolDefinition(name: string, cwd: string): ToolDefinition | undefined {
+    return (
+      TOOL_MAP.get(name) ??
+      this.mcp.toolDefinitions(cwd).find((tool) => tool.name === name) ??
+      this.mcp.findTool(name)
+    );
+  }
+
+  /** 把 worktree 分支合回基准分支。 */
+  async mergeSessionWorktree(
+    id: string,
+    strategy: 'merge' | 'squash',
+  ): Promise<{ ok: boolean; error?: string }> {
+    const rec = this.store.get(id);
+    if (!rec) throw httpError('会话不存在', 404);
+    if (!rec.worktree) return { ok: false, error: '该会话不是 worktree 会话' };
+    if (this.isRunning(id)) return { ok: false, error: '会话正在运行，无法合并' };
+    const repoRoot = rec.worktreeRepoRoot ?? (await gitRepoRoot(rec.worktree.path));
+    if (!repoRoot) return { ok: false, error: '找不到 worktree 所属的原仓库' };
+    const result = await mergeWorktree(
+      repoRoot,
+      rec.worktree.baseBranch,
+      rec.worktree.branch,
+      strategy,
+    );
+    if (result.ok) void this.refreshEnv(id);
+    return result;
+  }
+
   toSession(rec: SessionRecord): Session {
     return {
       ...this.toSummary(rec),
@@ -183,14 +236,15 @@ export class Host {
 
   // ---------- 会话 CRUD ----------
 
-  createSession(input: {
+  async createSession(input: {
     cwd?: unknown;
     profileId?: unknown;
     groupId?: unknown;
     model?: unknown;
     permissionMode?: unknown;
     title?: unknown;
-  }): SessionRecord {
+    worktree?: unknown;
+  }): Promise<SessionRecord> {
     const rawCwd = typeof input.cwd === 'string' ? input.cwd.trim() : '';
     if (!rawCwd) throw new Error('cwd 不能为空');
     const cwd = path.resolve(expandHome(rawCwd));
@@ -219,11 +273,30 @@ export class Host {
     const permissionMode = PERMISSION_MODES.has(input.permissionMode as PermissionMode)
       ? (input.permissionMode as PermissionMode)
       : 'default';
+
+    // worktree 会话：先创建 worktree，会话 cwd 指向新目录
+    const shortId = randomUUID().slice(0, 8);
+    let sessionCwd = cwd;
+    let worktree: SessionRecord['worktree'];
+    let worktreeRepoRoot: string | undefined;
+    if (input.worktree && typeof input.worktree === 'object') {
+      const branch = (input.worktree as { branch?: unknown }).branch;
+      const info = await createWorktree(
+        this.home,
+        cwd,
+        typeof branch === 'string' ? branch : undefined,
+        shortId,
+      );
+      sessionCwd = info.path;
+      worktree = { path: info.path, branch: info.branch, baseBranch: info.baseBranch };
+      worktreeRepoRoot = info.repoRoot;
+    }
+
     const now = Date.now();
     const rec: SessionRecord = {
       id: randomUUID(),
       title: typeof input.title === 'string' && input.title.trim() ? input.title.trim() : '新会话',
-      cwd,
+      cwd: sessionCwd,
       profileId,
       ...(groupId ? { groupId } : {}),
       model,
@@ -235,6 +308,8 @@ export class Host {
       messages: [],
       todos: [],
       allowedTools: [],
+      ...(worktree ? { worktree } : {}),
+      ...(worktreeRepoRoot ? { worktreeRepoRoot } : {}),
     };
     this.store.add(rec);
     this.broadcastSummary(rec);
@@ -330,9 +405,23 @@ export class Host {
     return rec;
   }
 
-  deleteSession(id: string): boolean {
+  /**
+   * 删除会话。worktree 会话有未提交改动时拒绝（409），force=true 时强制删除目录与分支。
+   */
+  async deleteSession(id: string, force = false): Promise<boolean> {
     const rec = this.store.get(id);
     if (!rec) return false;
+    if (rec.worktree && !force) {
+      const status = await worktreeCleanliness(rec.worktree.path);
+      if (status.dirty) {
+        throw httpError(
+          `worktree 有未提交改动，未删除。确认丢弃后可带 ?force=1 重试`,
+          409,
+        );
+      }
+    }
+    // 先级联中断正在运行的子代理
+    this.interrupt(id);
     const rt = this.runtimes.get(id);
     if (rt) {
       rt.deleted = true;
@@ -345,6 +434,16 @@ export class Host {
     this.store.delete(id);
     this.hub.dropSession(id);
     this.hub.broadcastAll({ type: 'session_deleted', sessionId: id });
+    if (rec.worktree) {
+      await removeWorktree(
+        rec.worktreeRepoRoot ?? (await gitRepoRoot(rec.cwd)) ?? '',
+        rec.worktree.path,
+        rec.worktree.branch,
+        force,
+      ).catch((err) => {
+        console.warn(`[tandem] 清理 worktree 失败:`, errorMessage(err));
+      });
+    }
     return true;
   }
 
@@ -488,6 +587,12 @@ export class Host {
   }
 
   interrupt(sessionId: string): void {
+    // 先级联中断子代理会话，再中断主会话
+    for (const child of this.store.list()) {
+      if (child.parentId !== sessionId) continue;
+      const childRt = this.runtimes.get(child.id);
+      if (childRt?.running) this.interrupt(child.id);
+    }
     const rt = this.runtimes.get(sessionId);
     if (!rt) return;
     rt.queue = [];
@@ -496,6 +601,73 @@ export class Host {
     rt.abort?.abort();
     // 拒绝所有待审批请求，让工具循环尽快退出
     for (const pending of [...rt.pending.values()]) pending.resolve('deny');
+  }
+
+  /** Task 工具：创建子会话并运行完整 agent 循环；最后一条 assistant 文本作为结果。 */
+  async runSubagent(
+    parent: SessionRecord,
+    input: { description: string; prompt: string; subagentType?: string },
+    signal: AbortSignal,
+  ): Promise<ToolResult> {
+    if (signal.aborted) return { content: '用户中断', isError: true };
+    const now = Date.now();
+    const sub: SessionRecord = {
+      id: randomUUID(),
+      title: input.description.slice(0, 120) || '子代理',
+      cwd: parent.cwd,
+      profileId: parent.profileId,
+      ...(parent.groupId ? { groupId: parent.groupId } : {}),
+      model: parent.model,
+      permissionMode: parent.permissionMode,
+      status: 'idle',
+      createdAt: now,
+      updatedAt: now,
+      usage: { inputTokens: 0, outputTokens: 0 },
+      messages: [],
+      todos: [],
+      allowedTools: [...parent.allowedTools],
+      parentId: parent.id,
+    };
+    this.store.add(sub);
+    this.broadcastSummary(sub);
+
+    const promptMessage: Message = {
+      id: randomUUID(),
+      role: 'user',
+      content: [{ type: 'text', text: input.prompt }],
+      createdAt: Date.now(),
+    };
+    sub.messages.push(promptMessage);
+    const subRt = this.ensureRuntime(sub.id);
+    subRt.checkpoint = this.checkpoints.create(sub.id, promptMessage.id);
+    this.hub.broadcastSession(sub.id, {
+      type: 'message_start',
+      sessionId: sub.id,
+      message: promptMessage,
+    });
+    this.hub.broadcastSession(sub.id, {
+      type: 'message_end',
+      sessionId: sub.id,
+      message: promptMessage,
+    });
+    this.store.markDirty(sub.id, true);
+    this.broadcastSummary(sub);
+
+    // 主会话中断时级联中断子会话
+    const onAbort = () => this.interrupt(sub.id);
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) this.interrupt(sub.id);
+    try {
+      const result = await runTurn(this, sub, { allowTask: false });
+      if (result.lastText) return { content: result.lastText };
+      if (result.reason === 'error') {
+        return { content: `子代理执行失败: ${result.error ?? '未知错误'}`, isError: true };
+      }
+      if (result.reason === 'interrupted') return { content: '子代理已被中断', isError: true };
+      return { content: '（子代理没有返回文本）' };
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+    }
   }
 
   updateTodos(rec: SessionRecord, todos: Todo[]): void {
@@ -583,7 +755,7 @@ export class Host {
     toolUseId: string,
     signal: AbortSignal,
   ): Promise<{ allowed: boolean; reason?: string }> {
-    const def = TOOL_MAP.get(toolName);
+    const def = this.toolDefinition(toolName, rec.cwd);
     const mode = rec.permissionMode;
 
     // plan 模式：只允许只读工具，写类工具直接拒绝
@@ -665,6 +837,15 @@ export class Host {
           sessionId: rec.id,
           decision,
         });
+        // 子代理的审批状态同步给主会话订阅者
+        if (rec.parentId) {
+          this.hub.broadcastSession(rec.parentId, {
+            type: 'permission_resolved',
+            requestId: request.id,
+            sessionId: rec.id,
+            decision,
+          });
+        }
         if (rt.pending.size === 0 && rt.running && !rt.interrupted && rec.status === 'waiting_permission') {
           this.setStatus(rec, 'running');
         }
@@ -682,6 +863,10 @@ export class Host {
 
       this.setStatus(rec, 'waiting_permission');
       this.hub.broadcastSession(rec.id, { type: 'permission_request', request });
+      // 子代理的权限请求同时广播给主会话订阅者，便于在主会话里直接审批
+      if (rec.parentId) {
+        this.hub.broadcastSession(rec.parentId, { type: 'permission_request', request });
+      }
     });
   }
 
@@ -887,6 +1072,19 @@ export class Host {
       ];
       rec.usage.inputTokens += result.usage.inputTokens || 0;
       rec.usage.outputTokens += result.usage.outputTokens || 0;
+      const price = priceForModel(profile, model);
+      const inputTokens = result.usage.inputTokens || 0;
+      const outputTokens = result.usage.outputTokens || 0;
+      const cost = costOf(price, inputTokens, outputTokens);
+      if (price) rec.usage.costUsd = (rec.usage.costUsd ?? 0) + cost;
+      this.usage.record({
+        hostId: this.config.hostId,
+        profileId: rec.profileId,
+        model,
+        inputTokens,
+        outputTokens,
+        costUsd: cost,
+      });
       this.store.markDirty(rec.id, true);
       this.broadcastSummary(rec);
       this.broadcastSnapshot(rec);
@@ -910,6 +1108,12 @@ export class Host {
       void this.drainQueue(rec.id);
       void this.refreshEnv(rec.id);
     }
+  }
+  /** 进程退出：落盘会话/用量，关闭 MCP 子进程。 */
+  async shutdown(): Promise<void> {
+    this.store.flush();
+    this.usage.flush();
+    await this.mcp.close();
   }
 }
 
