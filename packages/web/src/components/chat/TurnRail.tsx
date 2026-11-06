@@ -20,7 +20,7 @@ export interface TurnMark {
 }
 
 const EMPTY_TURNS: TurnMark[] = []
-const ROW = 16
+const ROW = 14
 const EDGE_H = 14
 const FADE_COUNT = 3
 const MIN_WINDOW = 5
@@ -49,7 +49,7 @@ function selectTurns(state: { active: { messages: UiMessage[] } | null }): TurnM
     next.push({
       id: message.id,
       turn: next.length + 1,
-      preview: text.length > 40 ? `${text.slice(0, 40)}…` : text,
+      preview: text.length > 90 ? `${text.slice(0, 90)}…` : text,
     })
   })
   const same =
@@ -91,6 +91,9 @@ export function TurnRail({
   const lastDragTurn = useRef(0)
   const frozenStart = useRef(0)
   const [draggingView, setDraggingView] = useState(false)
+  const [dragTurn, setDragTurn] = useState<number | null>(null)
+  const [dragTop, setDragTop] = useState(0)
+  const dragTurnRef = useRef<number | null>(null)
   const suppressUntil = useRef(0)
   const correctTimer = useRef<number | null>(null)
 
@@ -232,6 +235,15 @@ export function TurnRail({
     return best
   }
 
+  const showDragPreview = (turn: number, clientY: number) => {
+    dragTurnRef.current = turn
+    setDragTurn(turn)
+    const nav = navRef.current
+    if (!nav) return
+    const rect = nav.getBoundingClientRect()
+    setDragTop(Math.max(18, Math.min(clientY - rect.top, rect.height - 18)))
+  }
+
   const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0) return
     const target = event.target as HTMLElement
@@ -243,22 +255,27 @@ export function TurnRail({
     frozenStart.current = start
     setDraggingView(true)
     lastDragTurn.current = turn
+    showDragPreview(turn, event.clientY)
     event.currentTarget.setPointerCapture(event.pointerId)
-    jump(turn, false)
   }
 
   const onPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     if (!dragging.current) return
     const turn = turnAtPoint(event.clientY)
-    if (turn == null || turn === lastDragTurn.current) return
+    if (turn == null) return
+    showDragPreview(turn, event.clientY)
+    if (turn === lastDragTurn.current) return
     lastDragTurn.current = turn
-    jump(turn, false)
   }
 
-  const endDrag = () => {
+  const endDrag = (cancelled = false) => {
     if (!dragging.current) return
     dragging.current = false
     setDraggingView(false)
+    const turn = dragTurnRef.current
+    dragTurnRef.current = null
+    setDragTurn(null)
+    if (!cancelled && turn != null) jump(turn, true)
   }
 
   useEffect(() => {
@@ -316,10 +333,11 @@ export function TurnRail({
       ref={navRef}
       className="turn-rail"
       aria-label="轮次导航"
+      data-dragging={draggingView ? 'true' : undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
+      onPointerUp={() => endDrag()}
+      onPointerCancel={() => endDrag(true)}
     >
       <div className="turn-rail-stack">
         {windowed && (
@@ -392,6 +410,12 @@ export function TurnRail({
           </button>
         )}
       </div>
+      {dragTurn != null && (
+        <div className="turn-drag-preview" style={{ top: dragTop }} aria-hidden>
+          <div className="turn-drag-preview-head">第 {dragTurn} 轮</div>
+          <div className="turn-drag-preview-text">{turns[dragTurn - 1]?.preview}</div>
+        </div>
+      )}
       <span className="turn-rail-count" aria-hidden>
         第 {activeTurn} / {total} 轮
       </span>

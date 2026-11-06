@@ -1106,6 +1106,8 @@ mark.chat-match {
 /* ---------- 轮次导航 ---------- */
 
 .turn-rail {
+  --tick-w: 18px;
+  --tick-row: 10px;
   position: absolute;
   /* 贴在对话滚动区右边缘内侧、原生滚动条左侧 */
   right: 18px;
@@ -1122,24 +1124,37 @@ mark.chat-match {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  padding: 6px 0 6px 10px;
   pointer-events: auto;
   touch-action: none;
   cursor: default;
+  transition: padding 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+/* 靠近/悬停整条放大：刻度 18→32px，行距 8→12px（含 2px 线高即 10→14px）。 */
+.turn-rail:hover,
+.turn-rail:focus-within,
+.turn-rail[data-dragging="true"] {
+  --tick-w: 32px;
+  --tick-row: 14px;
 }
 
 .turn-edge {
-  height: 14px;
-  min-width: 18px;
+  height: var(--tick-row);
+  min-width: var(--tick-w);
   padding: 0 1px;
   border: 0;
   background: transparent;
   color: var(--t-text-tertiary);
   font-size: 9.5px;
   font-variant-numeric: tabular-nums;
-  line-height: 14px;
+  line-height: var(--tick-row);
   text-align: right;
   cursor: pointer;
-  transition: color 120ms ease;
+  transition:
+    color 120ms ease,
+    height 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    min-width 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
 .turn-edge[data-active="true"],
 .turn-edge:hover {
@@ -1153,25 +1168,30 @@ mark.chat-match {
 
 .turn-fade {
   display: block;
-  width: 18px;
+  width: var(--tick-w);
   height: 2px;
   margin: 3px 0;
   border-radius: 2px;
   background: var(--t-text-tertiary);
-  transition: opacity 120ms ease;
+  transition:
+    opacity 120ms ease,
+    width 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
 .turn-tick {
   position: relative;
   display: flex;
-  width: 18px;
-  height: 16px;
+  width: var(--tick-w);
+  height: var(--tick-row);
   align-items: center;
   justify-content: flex-end;
   padding: 0;
   border: 0;
   background: transparent;
   cursor: pointer;
+  transition:
+    width 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    height 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
 /* 视觉刻度 18×2，命中区扩展到 26px 宽 × 16px 高，不与相邻刻度重叠 */
 .turn-tick::before {
@@ -1182,7 +1202,7 @@ mark.chat-match {
 
 .turn-tick-num {
   position: absolute;
-  right: 24px;
+  right: calc(var(--tick-w) + 6px);
   top: 50%;
   color: var(--t-text);
   font-size: 10px;
@@ -1196,14 +1216,15 @@ mark.chat-match {
 
 .turn-tick-line {
   display: block;
-  width: 18px;
+  width: 100%;
   height: 2px;
   border-radius: 2px;
   background: var(--t-text-tertiary);
   opacity: 0.55;
   transition:
     opacity 120ms ease,
-    background-color 120ms ease;
+    background-color 120ms ease,
+    transform 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
 .turn-tick:hover .turn-tick-line,
@@ -1213,14 +1234,14 @@ mark.chat-match {
 }
 
 .turn-tick[data-active="true"] .turn-tick-line {
-  width: 18px;
+  width: 100%;
   height: 2px;
   opacity: 1;
   background: var(--t-text);
 }
 
 .turn-tick[data-active="true"] .turn-tip {
-  right: 34px;
+  right: calc(var(--tick-w) + 14px);
 }
 
 .turn-tick:focus-visible {
@@ -1231,7 +1252,7 @@ mark.chat-match {
 
 .turn-tip {
   position: absolute;
-  right: 28px;
+  right: calc(var(--tick-w) + 10px);
   top: 50%;
   z-index: 10;
   max-width: 230px;
@@ -1259,6 +1280,41 @@ mark.chat-match {
 .turn-tick:focus-visible .turn-tip {
   opacity: 1;
   transform: translateY(-50%) scale(1);
+}
+
+.turn-drag-preview {
+  position: absolute;
+  right: calc(var(--tick-w) + 14px);
+  z-index: 20;
+  width: 240px;
+  padding: 8px 10px;
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  background: var(--t-surface);
+  box-shadow: var(--t-shadow-md);
+  color: var(--t-text);
+  text-align: left;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.turn-drag-preview-head {
+  color: var(--t-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+.turn-drag-preview-text {
+  display: -webkit-box;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--t-text);
+  font-size: 11.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .turn-rail-count {
