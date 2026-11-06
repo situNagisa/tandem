@@ -5,9 +5,12 @@ import './index.css'
 import { applyTheme, useUiStore } from './store/useUiStore'
 import { useAppStore } from './store/useAppStore'
 import { installFeedbackErrorBuffer } from './lib/feedbackErrors'
+import { installFeedbackHotkey } from './lib/feedbackHotkey'
 
 // 反馈模式依赖最早的错误缓冲，先于应用初始化安装。
 installFeedbackErrorBuffer()
+// 热键必须早于应用内所有 keydown 监听注册。
+installFeedbackHotkey()
 
 // 尽早应用主题、读取 Host 列表与 ?token=，避免首屏闪烁和路由被判为无效。
 applyTheme(useUiStore.getState().theme)

@@ -11,6 +11,7 @@ import {
   newFeedbackId,
   saveFeedbackFile,
   type FeedbackItem,
+  type FeedbackPageShot,
   type FeedbackRect,
   type FeedbackType,
 } from '../../lib/feedback'
@@ -35,6 +36,7 @@ const TYPE_OPTIONS: ReadonlyArray<{ value: FeedbackType; label: string }> = [
 const APP_VERSION = '0.1.0'
 
 const UI_ATTR = 'data-feedback-ui'
+const HOVER_ATTR = 'data-feedback-hover'
 
 interface EditorState {
   mode: 'new' | 'edit'
@@ -43,6 +45,66 @@ interface EditorState {
   rect: FeedbackRect
   type: FeedbackType
   text: string
+  /** 选中瞬间、输入浮窗出现前完成的截图。 */
+  elementShot?: string | null
+  pageShot?: FeedbackPageShot | null
+}
+
+/**
+ * 冻结进入反馈模式前的 hover 链：给链上元素加标记，并把样式表里所有
+ * `:hover` 规则复制成 `[data-feedback-hover]` 版本，group-hover 的
+ * “悬停才出现的按钮”也不会因为指针移到捕获层而消失。
+ */
+function freezeHoverState(): () => void {
+  for (const element of Array.from(document.querySelectorAll(':hover'))) {
+    element.setAttribute(HOVER_ATTR, '')
+  }
+
+  const hoverRules = (rules: CSSRuleList): string => {
+    const chunks: string[] = []
+    for (const rule of Array.from(rules)) {
+      if (rule instanceof CSSStyleRule) {
+        const selector = rule.selectorText
+        if (!selector?.includes(':hover')) continue
+        chunks.push(
+          `${selector.replaceAll(':hover', `[${HOVER_ATTR}]`)}{${rule.style.cssText}}`,
+        )
+      } else if (rule instanceof CSSMediaRule) {
+        const inner = hoverRules(rule.cssRules)
+        if (inner) chunks.push(`@media ${rule.conditionText}{${inner}}`)
+      } else if (typeof CSSSupportsRule !== 'undefined' && rule instanceof CSSSupportsRule) {
+        const inner = hoverRules(rule.cssRules)
+        if (inner) chunks.push(`@supports ${rule.conditionText}{${inner}}`)
+      } else if (typeof CSSLayerBlockRule !== 'undefined' && rule instanceof CSSLayerBlockRule) {
+        const inner = hoverRules(rule.cssRules)
+        if (inner) chunks.push(inner)
+      } else if (typeof CSSContainerRule !== 'undefined' && rule instanceof CSSContainerRule) {
+        const inner = hoverRules(rule.cssRules)
+        if (inner) chunks.push(`@container ${rule.conditionText}{${inner}}`)
+      }
+    }
+    return chunks.join('\n')
+  }
+
+  let css = ''
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      css += hoverRules(sheet.cssRules)
+    } catch {
+      /* 跨域样式表无法读取，忽略 */
+    }
+  }
+  const style = document.createElement('style')
+  style.dataset.feedbackHover = ''
+  style.textContent = css
+  document.head.appendChild(style)
+
+  return () => {
+    style.remove()
+    for (const element of Array.from(document.querySelectorAll(`[${HOVER_ATTR}]`))) {
+      element.removeAttribute(HOVER_ATTR)
+    }
+  }
 }
 
 function isUiTarget(target: EventTarget | null): boolean {
@@ -258,23 +320,9 @@ export function FeedbackMode() {
   editorRef.current = editor
   const lastHoverRef = useRef<{ element: Element; alt: boolean } | null>(null)
   const layerRef = useRef<HTMLDivElement>(null)
+  const capturingRef = useRef(false)
 
-  // 进入/退出反馈模式：全局热键、Esc、页面光标。
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey
-      if (mod && e.shiftKey && e.key.toLowerCase() === 'f') {
-        e.preventDefault()
-        e.stopPropagation()
-        const store = useFeedbackStore.getState()
-        if (store.active) store.exit()
-        else store.enter()
-      }
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [])
-
+  // 进入/退出反馈模式：冻结 hover、页面光标。热键在 main.tsx 中最早注册。
   useEffect(() => {
     if (!active) {
       document.documentElement.classList.remove('feedback-mode')
@@ -283,11 +331,10 @@ export function FeedbackMode() {
       setSaving(false)
       return
     }
+    const releaseHover = freezeHoverState()
     document.documentElement.classList.add('feedback-mode')
-    const ui = useUiStore.getState()
-    if (ui.settingsOpen) ui.closeSettings()
-    if (ui.searchOpen) ui.setSearchOpen(false)
     return () => {
+      releaseHover()
       document.documentElement.classList.remove('feedback-mode')
     }
   }, [active])
@@ -317,13 +364,18 @@ export function FeedbackMode() {
     }
   }, [active])
 
-  // 圈选：全屏捕获层接管所有指针事件，原 UI 收不到 pointerdown/click，也就不会触发。
+  // 圈选：在 window capture 阶段接管应用交互。
+  // Radix DismissableLayer 在 document 上监听 pointerdown / focusin，
+  // 必须比它更早 stopImmediatePropagation，打开的菜单/Popover 才不会被判为外部点击而关闭。
   useEffect(() => {
     if (!active) return
     const layer = layerRef.current
     if (!layer) return
     let down: { x: number; y: number; pointerId: number } | null = null
     let lastPoint: { x: number; y: number } | null = null
+
+    const isFeedbackUi = (target: EventTarget | null) =>
+      target instanceof Element && target.closest(`[${UI_ATTR}]`) !== null
 
     const hoverAt = (x: number, y: number, alt: boolean) => {
       if (editorRef.current) return
@@ -353,22 +405,66 @@ export function FeedbackMode() {
       hoverAt(e.clientX, e.clientY, e.altKey)
     }
 
+    // 点击后立刻截图，截图完成才弹输入浮窗：菜单或 hover 元素不会在截图前消失。
+    const openEditorFor = async (picked: Element, rect: FeedbackRect) => {
+      if (capturingRef.current) return
+      capturingRef.current = true
+      try {
+        const route = window.location.hash || '#/'
+        const store = useFeedbackStore.getState()
+        let pageShot = store.pageShots.find((shot) => shot.route === route) ?? null
+        const [elementShot, capturedPage] = await Promise.all([
+          captureElementShot(picked),
+          pageShot ? Promise.resolve(null) : capturePageShot(),
+        ])
+        if (!useFeedbackStore.getState().active) return
+        if (capturedPage) {
+          const shot: FeedbackPageShot = {
+            id: newFeedbackId(),
+            route,
+            dataURL: capturedPage.dataURL,
+            width: capturedPage.width,
+            height: capturedPage.height,
+            createdAt: Date.now(),
+          }
+          store.addPageShot(shot)
+          pageShot = shot
+        }
+        lastHoverRef.current = null
+        setHover(null)
+        setEditor({
+          mode: 'new',
+          element: picked,
+          rect,
+          type: 'issue',
+          text: '',
+          elementShot,
+          pageShot,
+        })
+      } finally {
+        capturingRef.current = false
+      }
+    }
+
     const onPointerDown = (e: PointerEvent) => {
+      if (isFeedbackUi(e.target)) return
       // 阻止默认行为也避免了焦点转移，radix 菜单/Popover 不会被判为外部点击而关闭。
       e.preventDefault()
-      e.stopPropagation()
+      e.stopImmediatePropagation()
       down = { x: e.clientX, y: e.clientY, pointerId: e.pointerId }
       lastPoint = { x: e.clientX, y: e.clientY }
       hoverAt(e.clientX, e.clientY, e.altKey)
     }
 
     const onPointerUp = (e: PointerEvent) => {
+      if (isFeedbackUi(e.target)) return
       e.preventDefault()
-      e.stopPropagation()
+      e.stopImmediatePropagation()
       const start = down
       down = null
       if (!start || start.pointerId !== e.pointerId) return
       if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) return
+      if (capturingRef.current) return
       if (editorRef.current) {
         setEditor(null)
         return
@@ -376,9 +472,7 @@ export function FeedbackMode() {
       const target = elementAtPoint(e.clientX, e.clientY)
       if (!target) return
       const picked = e.altKey && target.parentElement ? target.parentElement : target
-      lastHoverRef.current = null
-      setHover(null)
-      setEditor({ mode: 'new', element: picked, rect: rectFor(picked), type: 'issue', text: '' })
+      void openEditorFor(picked, rectFor(picked))
     }
 
     const onPointerCancel = () => {
@@ -406,53 +500,49 @@ export function FeedbackMode() {
       })
     }
 
-    // 其余指针/触摸事件只在捕获层内部消化，不再冒泡给文档级监听。
-    const swallow = (e: Event) => {
-      e.stopPropagation()
+    // 其余指针/触摸/焦点事件在 window capture 阶段消化，避免 Radix 关闭弹层。
+    const blockInteraction = (e: Event) => {
+      if (isFeedbackUi(e.target)) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
     }
-    const swallowed = [
+    const blockFocus = (e: Event) => {
+      e.stopImmediatePropagation()
+    }
+    const blocked = [
       'mousedown',
       'mouseup',
-      'mousemove',
-      'mouseover',
-      'mouseout',
+      'click',
       'dblclick',
       'auxclick',
+      'contextmenu',
       'touchstart',
       'touchmove',
       'touchend',
       'touchcancel',
+      'focusin',
+      'focusout',
     ]
 
-    const onClick = (e: MouseEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
+    window.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('pointerup', onPointerUp, true)
+    for (const type of blocked) {
+      window.addEventListener(type, type === 'focusin' || type === 'focusout' ? blockFocus : blockInteraction, true)
     }
-
-    const onContextMenu = (e: MouseEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-    }
-
     layer.addEventListener('pointermove', onPointerMove)
-    layer.addEventListener('pointerdown', onPointerDown)
-    layer.addEventListener('pointerup', onPointerUp)
     layer.addEventListener('pointercancel', onPointerCancel)
     layer.addEventListener('pointerleave', onPointerLeave)
     layer.addEventListener('wheel', onWheel, { passive: false })
-    layer.addEventListener('click', onClick)
-    layer.addEventListener('contextmenu', onContextMenu)
-    for (const type of swallowed) layer.addEventListener(type, swallow, { passive: true })
     return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('pointerup', onPointerUp, true)
+      for (const type of blocked) {
+        window.removeEventListener(type, type === 'focusin' || type === 'focusout' ? blockFocus : blockInteraction, true)
+      }
       layer.removeEventListener('pointermove', onPointerMove)
-      layer.removeEventListener('pointerdown', onPointerDown)
-      layer.removeEventListener('pointerup', onPointerUp)
       layer.removeEventListener('pointercancel', onPointerCancel)
       layer.removeEventListener('pointerleave', onPointerLeave)
       layer.removeEventListener('wheel', onWheel)
-      layer.removeEventListener('click', onClick)
-      layer.removeEventListener('contextmenu', onContextMenu)
-      for (const type of swallowed) layer.removeEventListener(type, swallow)
     }
   }, [active])
 
@@ -508,7 +598,7 @@ export function FeedbackMode() {
     try {
       const store = useFeedbackStore.getState()
       const pageShot = store.pageShots.find((shot) => shot.route === route)
-      let pageShotData: string | null = pageShot?.dataURL ?? null
+      let pageShotData: string | null = current.pageShot?.dataURL ?? pageShot?.dataURL ?? null
       if (!pageShotData) {
         const captured = await capturePageShot()
         if (captured) {
@@ -523,7 +613,9 @@ export function FeedbackMode() {
           })
         }
       }
-      const elementShot = await captureElementShot(element)
+      // 选中时已截图；这里只在缺失（如重试）时补拍。
+      const elementShot =
+        current.elementShot === undefined ? await captureElementShot(element) : current.elementShot
       const app = useAppStore.getState()
       const hostId = app.active?.hostId ?? app.activeHostId ?? undefined
       const hostInfo = hostId ? app.runtimes[hostId]?.info : undefined

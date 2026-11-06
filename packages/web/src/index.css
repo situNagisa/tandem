@@ -963,3 +963,11 @@ html.feedback-mode [data-feedback-ui] textarea {
 html.feedback-mode [data-feedback-capture] {
   cursor: crosshair !important;
 }
+
+/* 反馈模式冻结进入前的 hover 链：CSS 驱动的 hover 显示保持可见 */
+html.feedback-mode [data-feedback-hover] .settings-actions {
+  opacity: 1;
+}
+html.feedback-mode [data-feedback-hover].settings-item {
+  border-color: var(--t-border-strong);
+}
