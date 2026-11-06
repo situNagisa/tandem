@@ -114,6 +114,7 @@ function HostMenu({
 }) {
   const hosts = useAppStore((s) => s.hosts)
   const runtimes = useAppStore((s) => s.runtimes)
+  const openSettings = useUiStore((s) => s.openSettings)
   return (
     <div className="w-[252px]">
       <div className="px-2 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted">
@@ -141,6 +142,17 @@ function HostMenu({
           </button>
         )
       })}
+      <div className="mt-1 border-t border-border pt-1">
+        <button
+          onClick={() => {
+            close()
+            openSettings('hosts')
+          }}
+          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[11px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+        >
+          <Plus size={12} /> 添加 / 管理 Host
+        </button>
+      </div>
     </div>
   )
 }
@@ -436,6 +448,7 @@ export function NewSessionView() {
   const host = hosts.find((h) => h.id === hostId) ?? null
   const runtime = hostId ? runtimes[hostId] : undefined
   const profiles = runtime?.profiles ?? []
+  const profilesLoading = runtime?.profilesLoading ?? false
   const hostReady = runtime?.status === 'online'
 
   const [cwd, setCwd] = useState('')
@@ -663,7 +676,11 @@ export function NewSessionView() {
           </div>
         )}
 
-        {!profiles.length && hostReady && (
+        {!profiles.length && profilesLoading && (
+          <p className="mt-4 text-center text-[11.5px] text-muted">正在加载账号…</p>
+        )}
+
+        {!profiles.length && !profilesLoading && hostReady && (
           <p className="mt-4 text-center text-[11.5px] text-muted">
             还没有账号，
             <button
