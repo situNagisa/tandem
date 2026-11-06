@@ -145,10 +145,10 @@ function Kbd({ children, inverse }: { children: React.ReactNode; inverse?: boole
   return (
     <kbd
       className={cn(
-        'ml-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded border px-1 text-[10px] font-normal leading-none',
+        'ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-[4px] px-1 text-[9.5px] font-normal leading-none',
         inverse
-          ? 'border-[color-mix(in_srgb,var(--t-on-accent)_30%,transparent)] text-[color-mix(in_srgb,var(--t-on-accent)_75%,transparent)]'
-          : 'border-border/90 text-muted',
+          ? 'bg-[color-mix(in_srgb,var(--t-primary-fg)_12%,transparent)] text-[color-mix(in_srgb,var(--t-primary-fg)_55%,transparent)]'
+          : 'text-[var(--t-text-tertiary)]',
       )}
     >
       {children}
@@ -256,16 +256,14 @@ export function PermissionCard({
 
   return (
     <div className="permission-card mb-2.5">
-      <div className="flex items-start gap-2.5 px-4 pb-2 pt-3">
-        <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
-          <ShieldAlert size={14} />
-        </span>
+      <div className="flex items-start gap-2 px-3.5 pb-2 pt-2.5">
+        <ShieldAlert size={15} className="mt-0.5 shrink-0 text-[var(--t-text-tertiary)]" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[14px] font-semibold text-text">需要你的许可</span>
-            <span className="rounded border border-border bg-[color-mix(in_srgb,var(--t-surface-2)_55%,transparent)] px-1.5 py-px font-mono text-[10.5px] text-text-soft">
-              {toolName}
+            <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--t-text-tertiary)]">
+              需要你的许可
             </span>
+            <span className="font-mono text-[10.5px] text-text-soft">{toolName}</span>
             {more > 0 && (
               <span className="text-[11px] text-muted">另有 {more} 个待审批</span>
             )}
@@ -276,51 +274,51 @@ export function PermissionCard({
               <span className="min-w-0 truncate">来自子代理：{subagentTitle}</span>
             </div>
           )}
-          <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-[1.6] text-text-soft">
+          <p className="mt-1 whitespace-pre-wrap break-words text-[12.5px] leading-[1.55] text-text-soft">
             {request.description}
           </p>
         </div>
       </div>
       {preview && (
-        <div className="max-h-[min(34dvh,320px)] overflow-y-auto px-4 pb-2.5">{preview}</div>
+        <div className="max-h-[min(34dvh,320px)] overflow-y-auto px-3.5 pb-2.5">{preview}</div>
       )}
-      <div className="flex flex-wrap items-center justify-end gap-1.5 border-t border-border/70 px-3 py-2.5">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => handle('deny')}
-          className="min-h-11 sm:min-h-[28px]"
-        >
-          拒绝
-          <Kbd>3</Kbd>
-        </Button>
-        <Button
-          size="sm"
-          onClick={() => handle('allow_always')}
-          className="min-h-11 sm:min-h-[28px]"
-        >
-          总是允许
-          <Kbd>2</Kbd>
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 px-3 py-2">
         <Button
           size="sm"
           variant="ghost"
           onClick={() => setRuleDraft(quickRule(toolName, input, cwd))}
           tooltip="把这条件添加为 Host 级权限规则"
           tooltipSide="top"
-          className="min-h-11 sm:min-h-[28px]"
+          className="h-7 px-1.5 text-[11px] text-[var(--t-text-tertiary)] hover:text-text"
         >
           <Plus size={11} /> 添加为规则…
         </Button>
-        <Button
-          size="sm"
-          variant="primary"
-          onClick={() => handle('allow')}
-          className="min-h-11 sm:min-h-[28px]"
-        >
-          允许
-          <Kbd inverse>1</Kbd>
-        </Button>
+        <div className="permission-actions flex flex-wrap items-center gap-1.5">
+          <Button
+            variant="ghost"
+            onClick={() => handle('deny')}
+            className="max-sm:min-h-11"
+          >
+            拒绝
+            <Kbd>3</Kbd>
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => handle('allow_always')}
+            className="max-sm:min-h-11"
+          >
+            总是允许
+            <Kbd>2</Kbd>
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => handle('allow')}
+            className="max-sm:min-h-11"
+          >
+            允许
+            <Kbd inverse>1</Kbd>
+          </Button>
+        </div>
       </div>
       {ruleDraft && (
         <AddRuleDialog draft={ruleDraft} hostId={hostId} onClose={() => setRuleDraft(null)} />
