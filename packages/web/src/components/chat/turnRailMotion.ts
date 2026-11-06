@@ -1,7 +1,10 @@
 // 轮次条的动效内核：轻量 spring + 对话区滚动跟随。只写 transform/opacity，不触发布局。
 
+let reducedQuery: MediaQueryList | null = null
 export function prefersReducedMotion(): boolean {
-  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (typeof matchMedia !== 'function') return false
+  reducedQuery ??= matchMedia('(prefers-reduced-motion: reduce)')
+  return reducedQuery.matches
 }
 
 /** 半隐式欧拉弹簧，内部按 ≤4ms 子步积分，帧率抖动时手感不变。 */

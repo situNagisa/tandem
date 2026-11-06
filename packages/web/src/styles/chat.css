@@ -1206,6 +1206,18 @@ mark.chat-match {
   transform-origin: right center;
 }
 
+/* 静止态：当前轮刻度左侧的小号轮号 */
+.turn-item-r {
+  position: absolute;
+  top: 0;
+  right: 48px;
+  color: var(--t-text-soft);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 28px;
+  opacity: 0;
+}
+
 .turn-ind {
   position: absolute;
   top: calc(50% - 14px);

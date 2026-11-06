@@ -30,6 +30,7 @@ interface ItemRef {
   n: HTMLElement
   t: HTMLElement
   k: HTMLElement
+  r: HTMLElement
   bound: number
   shown: boolean
 }
@@ -75,6 +76,7 @@ export class RailScene {
       n: el.children[0] as HTMLElement,
       t: el.children[1] as HTMLElement,
       k: el.children[2] as HTMLElement,
+      r: el.children[3] as HTMLElement,
       bound: -1,
       shown: true,
     }))
@@ -208,17 +210,17 @@ export class RailScene {
       let depth = 0
       if (y < -half + zone) {
         dir = -1
-        depth = clamp((-half + zone - y) / zone, 0, 1.4)
+        depth = clamp((-half + zone - y) / zone, 0, 1.15)
       } else if (y > half - zone) {
         dir = 1
-        depth = clamp((y - (half - zone)) / zone, 0, 1.4)
+        depth = clamp((y - (half - zone)) / zone, 0, 1.15)
       }
       if (dir !== 0) {
         this.held += dt
         const dwell = this.dragging ? 0.05 : 0.28
         const gate = smooth(dwell, dwell + 0.25, this.held)
         const ramp = 0.7 + 0.7 * Math.min(1, this.held / 1.4)
-        const speed = (1.5 + 26 * depth * depth) * gate * ramp
+        const speed = (2 + 30 * depth * depth) * gate * ramp
         if (speed > 0.01) {
           this.L.t = clamp(this.L.t + dir * speed * dt, 1, n)
           edge = true
@@ -269,6 +271,7 @@ export class RailScene {
   private bind(it: ItemRef, turn: number): void {
     const mark = this.turns[turn - 1]
     it.n.textContent = String(turn)
+    it.r.textContent = String(turn)
     it.t.textContent = mark?.preview ?? ''
     it.bound = turn
   }
@@ -286,7 +289,7 @@ export class RailScene {
     const hi = this.I.x
     const dpr = window.devicePixelRatio || 1
     const px = (v: number) => Math.round(v * dpr) / dpr
-    const textIn = smooth(0.35, 0.95, pc)
+    const textIn = smooth(0.5, 0.92, pc)
 
     for (let e = 0; e < POOL; e++) {
       const it = this.items[e]
@@ -318,6 +321,7 @@ export class RailScene {
       const lit = Math.max(act, hov)
       it.t.style.opacity = f3(textIn * (0.66 + 0.34 * lit))
       it.n.style.opacity = f3(textIn * (0.5 + 0.5 * lit))
+      it.r.style.opacity = f3(act * (1 - smooth(0, 0.35, pc)))
       const restS = 0.42 + 0.4 * Math.exp(-Math.abs(dr) / 4)
       const sx = lerp(restS + 0.55 * act, 0.5 + 0.4 * lit, pc)
       const sy = 1 + 0.5 * act * (1 - pc)

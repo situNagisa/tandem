@@ -377,14 +377,13 @@ export function TurnRail({
     sceneRef.current?.setPointer(null)
     window.clearTimeout(closeTimer.current)
     if (document.activeElement === hitRef.current && hitRef.current?.matches(':focus-visible')) return
-    closeTimer.current = window.setTimeout(closePanel, event.pointerType === 'touch' ? 900 : 140)
+    closeTimer.current = window.setTimeout(closePanel, event.pointerType === 'touch' ? 900 : 110)
   }
 
   const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     const scene = sceneRef.current
     if (!scene || (event.pointerType === 'mouse' && event.button !== 0)) return
     event.preventDefault()
-    hitRef.current?.focus({ preventScroll: true })
     event.currentTarget.setPointerCapture(event.pointerId)
     window.clearTimeout(openTimer.current)
     openTimer.current = 0
@@ -419,7 +418,7 @@ export function TurnRail({
     if (!inside || event.pointerType === 'touch') {
       scene?.setPointer(null)
       window.clearTimeout(closeTimer.current)
-      closeTimer.current = window.setTimeout(closePanel, event.pointerType === 'touch' ? 900 : 140)
+      closeTimer.current = window.setTimeout(closePanel, event.pointerType === 'touch' ? 900 : 110)
     }
   }
 
@@ -478,6 +477,7 @@ export function TurnRail({
                 <span className="turn-item-n" />
                 <span className="turn-item-t" />
                 <span className="turn-item-k" />
+                <span className="turn-item-r" />
               </div>
             ))}
           </div>

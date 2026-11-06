@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  ChevronDown,
   FileDiff,
   Menu,
   PanelLeft,
@@ -266,10 +265,11 @@ export function TopBar() {
           type="button"
           onClick={() => setTurnSheetOpen(true)}
           aria-label="打开轮次大纲"
-          className="flex h-11 shrink-0 items-center gap-0.5 rounded-lg px-2 text-[12px] tabular-nums text-text-soft transition-colors active:bg-[var(--t-bg-active)]"
+          className="flex h-11 shrink-0 items-center px-0.5"
         >
-          第 {turnActive}/{turnTotal} 轮
-          <ChevronDown size={13} className="text-muted" />
+          <span className="rounded-full bg-[var(--t-bg-hover)] px-2 py-1 text-[12px] tabular-nums leading-4 text-text-soft transition-colors active:bg-[var(--t-bg-active)]">
+            第 {turnActive}/{turnTotal} 轮
+          </span>
         </button>
       )}
 
