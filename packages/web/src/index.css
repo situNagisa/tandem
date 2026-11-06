@@ -39,7 +39,8 @@
   --t-del-fg: var(--t-text);
   --t-add-bar: #1a7f37;
   --t-del-bar: #cf222e;
-  --t-comment-row-bg: rgba(45, 35, 22, 0.05);
+  --t-comment-row-bg: rgba(201, 162, 39, 0.07);
+  --t-comment-bar: #c9a227;
   /* 行内代码：浅色模式用比正文略深的纸色，边框拉开层次 */
   --t-code-bg: #efece4;
   --t-code-border: rgba(45, 35, 22, 0.16);
@@ -117,7 +118,8 @@ html.dark {
   --t-del-fg: var(--t-text);
   --t-add-bar: #3fb950;
   --t-del-bar: #f85149;
-  --t-comment-row-bg: rgba(255, 255, 255, 0.035);
+  --t-comment-row-bg: rgba(212, 176, 74, 0.09);
+  --t-comment-bar: #d4b04a;
   --t-code-bg: #333333;
   --t-code-border: rgba(255, 255, 255, 0.14);
   --t-git-modified: #7fa7d9;

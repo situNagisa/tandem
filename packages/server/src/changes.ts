@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import { readFileSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type { ChangesResult, FileChange } from '@tandem/protocol';
+import type { ChangesResult, DiffEmptyReason, FileChange } from '@tandem/protocol';
 import { walkFiles } from './util/fs-walk.js';
 import { isSubPath, toPosix } from './util/path.js';
 
@@ -18,10 +18,14 @@ interface GitRun {
   stderr: string;
 }
 
-/** 统一执行 git 子命令；失败不抛错，由调用方按 exit code 判断。 */
+/**
+ * 统一执行 git 子命令；失败不抛错，由调用方按 exit code 判断。
+ * -c core.quotepath=false：中文 / 特殊字符路径不被转义成 \344\275\240 形式。
+ * 所有调用都以仓库根为 cwd（调用方保证），返回的路径都是仓库相对 posix 路径。
+ */
 async function runGit(cwd: string, args: string[]): Promise<GitRun> {
   try {
-    const { stdout, stderr } = await exec('git', ['-C', cwd, ...args], {
+    const { stdout, stderr } = await exec('git', ['-c', 'core.quotepath=false', '-C', cwd, ...args], {
       timeout: GIT_TIMEOUT_MS,
       maxBuffer: GIT_MAX_BUFFER,
       windowsHide: true,
@@ -53,10 +57,15 @@ export async function repoRootOf(cwd: string): Promise<string | undefined> {
   return result.code === 0 && root ? root : undefined;
 }
 
+/** git 输出的路径统一成仓库相对 posix 路径（Windows 上不出现反斜杠）。 */
+function gitPath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
 /** 校验路径在仓库内，返回 posix 相对路径（相对仓库根）。 */
 export function repoRelativePath(root: string, input: string): string {
   if (typeof input !== 'string' || !input.trim()) throw new Error('path 不能为空');
-  const raw = input.trim();
+  const raw = gitPath(input.trim());
   if (path.isAbsolute(raw)) throw new Error(`只接受仓库内相对路径: ${raw}`);
   const abs = path.resolve(root, raw);
   if (!isSubPath(root, abs)) throw new Error(`路径不在仓库内: ${raw}`);
@@ -90,12 +99,12 @@ async function readStatus(root: string): Promise<StatusEntry[]> {
     if (!record) continue;
     const x = record[0] ?? ' ';
     const y = record[1] ?? ' ';
-    const file = record.slice(3);
+    const file = gitPath(record.slice(3));
     if (!file) continue;
     let oldPath: string | undefined;
     // 重命名/复制：紧跟一条原路径记录
     if (x === 'R' || x === 'C' || y === 'R' || y === 'C') {
-      oldPath = parts[++i] || undefined;
+      oldPath = gitPath(parts[++i] || '');
     }
     entries.push({ path: file, ...(oldPath ? { oldPath } : {}), status: classify(x, y) });
   }
@@ -151,11 +160,11 @@ async function readNumstat(root: string): Promise<Map<string, { additions: numbe
       if (!record) continue;
       const match = record.match(/^(-|\d+)\t(-|\d+)\t([\s\S]*)$/);
       if (!match) continue;
-      let file = match[3] ?? '';
+      let file = gitPath(match[3] ?? '');
       if (!file) {
         const oldPath = parts[++i];
         const newPath = parts[++i];
-        file = newPath || oldPath || '';
+        file = gitPath(newPath || oldPath || '');
       }
       if (!file) continue;
       const additions = match[1] === '-' ? 0 : Number(match[1]);
@@ -202,13 +211,44 @@ export async function getChanges(cwd: string): Promise<ChangesResult> {
   return { isRepo: true, ...(branch ? { branch } : {}), files };
 }
 
-/** 单文件统一 diff。未跟踪文件用 --no-index 与 /dev/null 比较。 */
-export async function getFileDiff(cwd: string, input: string): Promise<{ path: string; diff: string }> {
+/** 单个文件是否落在某个未跟踪目录下（git status 会把整个目录折叠成一条 `dir/`）。 */
+function inUntrackedDir(file: string, entry: StatusEntry): boolean {
+  return entry.status === 'untracked' && entry.path.endsWith('/') && file.startsWith(entry.path);
+}
+
+/** diff 文本为空时，判断空的原因，供 UI 显示比“没有差异”更准确的信息。 */
+async function emptyReason(
+  root: string,
+  rel: string,
+  entry: StatusEntry | undefined,
+  additions: number,
+  deletions: number,
+): Promise<DiffEmptyReason> {
+  const [summary, stagedSummary] = await Promise.all([
+    runGit(root, ['diff', '--summary', '--', rel]),
+    runGit(root, ['diff', '--cached', '--summary', '--', rel]),
+  ]);
+  const text = `${summary.stdout}${stagedSummary.stdout}`;
+  if (/mode change/i.test(text)) return 'mode';
+  if (/rename (from|to)/i.test(text)) return 'rename';
+  if (additions > 0 || deletions > 0) return 'eol';
+  if (entry?.status === 'untracked') return 'none';
+  return 'none';
+}
+
+/** 单文件统一 diff。未跟踪文件（含未跟踪目录里的文件）用 --no-index 与 /dev/null 比较。 */
+export async function getFileDiff(
+  cwd: string,
+  input: string,
+): Promise<{ path: string; diff: string; emptyReason?: DiffEmptyReason }> {
   const root = await repoRootOf(cwd);
   if (!root) throw new Error('当前目录不是 git 仓库');
   const rel = repoRelativePath(root, input);
   const status = await readStatus(root);
-  const entry = status.find((item) => item.path === rel || item.oldPath === rel);
+  // 精确匹配，或匹配被折叠的未跟踪目录（如 build-lease/ → build-lease/CMakeCache.txt）
+  const entry =
+    status.find((item) => item.path === rel || item.oldPath === rel) ??
+    status.find((item) => inUntrackedDir(rel, item));
 
   if (entry?.status === 'untracked') {
     const devNull = process.platform === 'win32' ? 'NUL' : '/dev/null';
@@ -217,14 +257,25 @@ export async function getFileDiff(cwd: string, input: string): Promise<{ path: s
     if (result.code !== 0 && !result.stdout) {
       throw new Error(result.stderr.trim() || '无法生成 diff');
     }
-    return { path: rel, diff: result.stdout };
+    return result.stdout
+      ? { path: rel, diff: result.stdout }
+      : { path: rel, diff: '', emptyReason: 'none' };
   }
 
   const [staged, unstaged] = await Promise.all([
     runGit(root, ['diff', '--cached', '--', rel]),
     runGit(root, ['diff', '--', rel]),
   ]);
-  return { path: rel, diff: `${staged.stdout}${unstaged.stdout}` };
+  const diff = `${staged.stdout}${unstaged.stdout}`;
+  // 只有 “old mode / new mode / rename” 这类元信息、没有 hunk 的 diff 对用户等于无内容差异
+  if (/(^|\n)@@ /.test(diff)) return { path: rel, diff };
+  const numstat = await readNumstat(root);
+  const counted = numstat.get(rel);
+  return {
+    path: rel,
+    diff,
+    emptyReason: await emptyReason(root, rel, entry, counted?.additions ?? 0, counted?.deletions ?? 0),
+  };
 }
 
 /**

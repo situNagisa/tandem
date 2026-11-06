@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { FileChange } from '@tandem/protocol'
+import type { DiffEmptyReason, FileChange } from '@tandem/protocol'
 import {
   AlertTriangle,
   FileDiff,
   FolderGit2,
   Loader2,
+  MessageSquare,
   MessageSquarePlus,
   MoreHorizontal,
   RefreshCw,
@@ -50,6 +51,31 @@ function commentLineLabel(comment: LineComment) {
     : `第 ${comment.startLine}–${comment.endLine} 行`
 }
 
+/** 文件列表 / diff 的分栏比例，记住用户拖动过的位置。 */
+const SPLIT_KEY = 'tandem.changesSplit.v1'
+function loadSplitRatio(): number {
+  try {
+    const n = Number(localStorage.getItem(SPLIT_KEY))
+    return Number.isFinite(n) && n >= 0.15 && n <= 0.85 ? n : 0.42
+  } catch {
+    return 0.42
+  }
+}
+function saveSplitRatio(ratio: number): void {
+  try {
+    localStorage.setItem(SPLIT_KEY, String(ratio))
+  } catch {
+    // localStorage 不可用时仅本次会话有效
+  }
+}
+
+function emptyReasonLabel(reason?: DiffEmptyReason): string | undefined {
+  if (reason === 'mode') return '仅文件模式变化（无内容差异）'
+  if (reason === 'eol') return '仅换行符或空白变化（无可见内容差异）'
+  if (reason === 'rename') return '仅重命名（无内容差异）'
+  return undefined
+}
+
 export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
   const isMobile = useIsMobile()
   const host = useAppStore((s) => s.hosts.find((h) => h.id === s.active?.hostId) ?? null)
@@ -68,6 +94,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
 
   const [selected, setSelected] = useState<string | null>(null)
   const [diff, setDiff] = useState<string | null>(null)
+  const [diffNote, setDiffNote] = useState<DiffEmptyReason | undefined>()
   const [diffLoading, setDiffLoading] = useState(false)
   const [diffError, setDiffError] = useState<string | undefined>()
   const [comments, setComments] = useState<LineComment[]>([])
@@ -80,8 +107,11 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
   const [committing, setCommitting] = useState(false)
   const [commitConfirmOpen, setCommitConfirmOpen] = useState(false)
   const [dragWidth, setDragWidth] = useState<number | null>(null)
+  const [splitRatio, setSplitRatio] = useState<number>(() => loadSplitRatio())
+  const [dragSplit, setDragSplit] = useState<number | null>(null)
   const commentSeq = useRef(1)
-  const diffCache = useRef(new Map<string, string>())
+  const diffCache = useRef(new Map<string, { diff: string; emptyReason?: DiffEmptyReason }>())
+  const splitBodyRef = useRef<HTMLDivElement>(null)
   const commitRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -116,7 +146,8 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
     }
     const cached = diffCache.current.get(selected)
     if (cached !== undefined) {
-      setDiff(cached)
+      setDiff(cached.diff)
+      setDiffNote(cached.emptyReason)
       setDiffError(undefined)
       return
     }
@@ -127,12 +158,14 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
       .changesDiff(host, sessionId, selected)
       .then((result) => {
         if (cancelled) return
-        diffCache.current.set(selected, result.diff)
+        diffCache.current.set(selected, { diff: result.diff, emptyReason: result.emptyReason })
         setDiff(result.diff)
+        setDiffNote(result.emptyReason)
       })
       .catch((err) => {
         if (cancelled) return
         setDiff(null)
+        setDiffNote(undefined)
         setDiffError(err instanceof Error ? err.message : '读取 diff 失败')
       })
       .finally(() => {
@@ -161,6 +194,35 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
       document.body.style.userSelect = ''
     }
     document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
+  const startSplit = (e: React.PointerEvent) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    const body = splitBodyRef.current
+    if (!body) return
+    const rect = body.getBoundingClientRect()
+    const initial = dragSplit ?? splitRatio
+    setDragSplit(initial)
+    const clamp = (v: number) => Math.min(0.8, Math.max(0.15, v))
+    const move = (ev: PointerEvent) => {
+      if (rect.height <= 0) return
+      setDragSplit(clamp((ev.clientY - rect.top) / rect.height))
+    }
+    const up = (ev: PointerEvent) => {
+      const ratio = clamp((ev.clientY - rect.top) / Math.max(1, rect.height))
+      setSplitRatio(ratio)
+      saveSplitRatio(ratio)
+      setDragSplit(null)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.body.style.cursor = 'row-resize'
     document.body.style.userSelect = 'none'
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
@@ -339,7 +401,11 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
         </div>
       ) : (
         <>
-          <div className="max-h-[38%] shrink-0 overflow-y-auto border-b border-border">
+        <div ref={splitBodyRef} className="flex min-h-0 flex-1 flex-col">
+          <div
+            className="min-h-[64px] shrink-0 overflow-y-auto"
+            style={{ flex: `0 0 ${(dragSplit ?? splitRatio) * 100}%` }}
+          >
             {files.map((file) => {
               const meta = STATUS_META[file.status] ?? STATUS_META.modified
               const { name, dir } = splitPath(file.path)
@@ -392,6 +458,21 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
             })}
           </div>
 
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="调整文件列表高度"
+            onPointerDown={startSplit}
+            className="group relative h-2 shrink-0 cursor-row-resize touch-none border-b border-border"
+          >
+            <span
+              className={cn(
+                'pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-transparent transition-colors',
+                dragSplit !== null ? 'bg-border-strong' : 'group-hover:bg-border-strong',
+              )}
+            />
+          </div>
+
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
             {selectedFile && (
               <div className="mb-2 flex items-center gap-2">
@@ -423,6 +504,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 unified={diff}
                 fileName={selected ?? undefined}
                 maxHeight={100000}
+                emptyLabel={emptyReasonLabel(diffNote)}
                 comments={fileComments}
                 onAddComment={addComment}
                 onEditComment={(id, text) =>
@@ -432,20 +514,71 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
               />
             ) : null}
           </div>
+        </div>
 
           <div className="shrink-0 border-t border-border">
             {comments.length > 0 && (
-              <button
-                type="button"
-                onClick={sendComments}
-                disabled={sendingComments}
-                className="flex h-8 w-full items-center gap-1.5 border-b border-border/70 px-3 text-left text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
-              >
-                <MessageSquarePlus size={12} className="shrink-0 text-[var(--t-accent)]" />
-                <span>{comments.length} 条评论</span>
-                <span className="text-muted">·</span>
-                <span className="font-medium text-text">发给 agent</span>
-              </button>
+              <div className="flex h-10 items-center gap-1.5 border-b border-border/60 px-2">
+                <Popover
+                  align="left"
+                  side="top"
+                  padded={false}
+                  panelClassName="w-[340px]"
+                  trigger={({ open, toggle }) => (
+                    <button
+                      type="button"
+                      onClick={toggle}
+                      className={cn(
+                        'flex h-7 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text',
+                        open && 'bg-[var(--t-bg-hover)] text-text',
+                      )}
+                      aria-label={`查看 ${comments.length} 条待发送评论`}
+                    >
+                      <MessageSquare size={12} className="shrink-0 text-[var(--t-comment-bar)]" />
+                      <span>{comments.length} 条评论</span>
+                    </button>
+                  )}
+                >
+                  {() => (
+                    <div className="max-h-64 overflow-y-auto p-1">
+                      {comments.map((comment) => (
+                        <div
+                          key={comment.id}
+                          className="group flex items-start gap-1.5 rounded-md px-2 py-1.5 hover:bg-[var(--t-bg-hover)]"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className="truncate font-mono text-[12px] text-muted"
+                              title={comment.path}
+                            >
+                              {comment.path}:{comment.startLine}
+                              {comment.endLine !== comment.startLine ? `-${comment.endLine}` : ''}
+                            </p>
+                            <p className="mt-0.5 whitespace-pre-wrap break-words text-[12px] leading-5 text-text-soft">
+                              {comment.text}
+                            </p>
+                          </div>
+                          <IconButton
+                            size="sm"
+                            variant="danger-ghost"
+                            label="删除这条评论"
+                            onClick={() =>
+                              setComments((prev) => prev.filter((c) => c.id !== comment.id))
+                            }
+                            className="md:size-6 [&_svg]:size-3"
+                          >
+                            <Trash2 size={12} />
+                          </IconButton>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Popover>
+                <span className="flex-1" />
+                <Button size="sm" variant="primary" onClick={sendComments} disabled={sendingComments}>
+                  发送给 agent
+                </Button>
+              </div>
             )}
 
             {untrackedCount > 0 && (

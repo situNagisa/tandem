@@ -31,7 +31,7 @@ import { testProfile } from './providers/index.js';
 import { exportBundle, importBundle } from './migrate.js';
 import { walkFiles } from './util/fs-walk.js';
 import { readForPreview, readImage, revealFile } from './util/file-preview.js';
-import { expandHome, toPosix } from './util/path.js';
+import { expandHome, resolveHostPath, toPosix } from './util/path.js';
 import { truncateEnd } from './util/text.js';
 
 const PROVIDER_KINDS: ProviderKind[] = ['anthropic', 'openai', 'openai-compatible', 'gemini'];
@@ -614,9 +614,10 @@ export async function createApp(
 
   // ---------- 文件系统 ----------
   app.get('/api/fs/list', async (req, reply) => {
-    const query = req.query as { path?: string };
+    const query = req.query as { path?: string; files?: string };
     const raw = str(query.path) || os.homedir();
-    const dir = path.resolve(expandHome(raw));
+    const dir = resolveHostPath(expandHome(raw));
+    const includeFiles = str(query.files) === '1';
     let stat;
     try {
       stat = statSync(dir);
@@ -642,10 +643,13 @@ export async function createApp(
           continue;
         }
       }
-      if (!isDir) continue;
-      entries.push({ name: entry.name, path: full, isDir: true });
+      if (!includeFiles || isDir) {
+        entries.push({ name: entry.name, path: full, isDir });
+      }
     }
-    entries.sort((a, b) => a.name.localeCompare(b.name));
+    entries.sort((a, b) =>
+      includeFiles && a.isDir !== b.isDir ? (a.isDir ? -1 : 1) : a.name.localeCompare(b.name),
+    );
     return entries;
   });
 
@@ -675,10 +679,8 @@ export async function createApp(
 
   /** 文件链接的路径：绝对路径直接用，相对路径以 cwd（默认进程 cwd）为基准。 */
   function resolvePreviewPath(rawPath: string, cwdRaw: string): string {
-    const expanded = expandHome(rawPath);
-    if (path.isAbsolute(expanded)) return path.normalize(expanded);
-    const cwd = cwdRaw ? path.resolve(expandHome(cwdRaw)) : process.cwd();
-    return path.resolve(cwd, expanded);
+    const cwd = cwdRaw ? resolveHostPath(expandHome(cwdRaw)) : undefined;
+    return resolveHostPath(expandHome(rawPath), cwd);
   }
 
   app.get('/api/fs/read', async (req, reply) => {

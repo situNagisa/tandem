@@ -344,8 +344,10 @@ export interface RewindInput { checkpointId: string; restoreFiles: boolean; rest
 // ---------- 改动审阅（git 工作区） ----------
 export interface FileChange { path: string; status: 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked'; additions: number; deletions: number; oldPath?: string }
 export interface ChangesResult { isRepo: boolean; branch?: string; files: FileChange[] }
+/** 单文件 diff 为空时的原因：仅文件模式变化 / 仅换行符或空白变化 / 仅重命名 / 确实没有差异。 */
+export type DiffEmptyReason = 'mode' | 'eol' | 'rename' | 'none'
 // GET  /api/sessions/:id/changes                 -> ChangesResult
-// GET  /api/sessions/:id/changes/diff?path=      -> { path: string; diff: string }  (统一 diff 文本)
+// GET  /api/sessions/:id/changes/diff?path=      -> { path: string; diff: string; emptyReason?: DiffEmptyReason }  (统一 diff 文本)
 // POST /api/sessions/:id/changes/revert {paths}  -> ChangesResult  丢弃这些文件的工作区改动
 // POST /api/sessions/:id/changes/commit {message, paths?} -> { ok: boolean; commit?: string; error?: string }
 // 行内评论：客户端把评论拼成一条用户消息发送（"关于 src/a.ts 第 12 行：..."），无需新接口。

@@ -8,6 +8,25 @@ export interface FileRef {
 const EXTERNAL_HREF = /^(?:https?:|mailto:)/i
 const OTHER_PROTOCOL = /^[a-zA-Z][a-zA-Z0-9+.-]*:/
 const WINDOWS_DRIVE = /^[a-zA-Z]:[\\/]/
+const WINDOWS_DRIVE_ANY = /^\/?([a-zA-Z]):[\\/]([\s\S]*)$/
+
+/**
+ * 文件引用路径归一化：Windows 盘符路径（`D:\`、`D:/`、`/D:/`、`file:///D:/`）
+ * 统一成 `D:/...`，其余路径的反斜杠也转成正斜杠，便于服务端与前端一致解析。
+ */
+export function normalizeFileRefPath(input: string): string {
+  let value = input.trim()
+  if (/^file:/i.test(value)) {
+    try {
+      value = decodeURIComponent(new URL(value).pathname)
+    } catch {
+      value = value.replace(/^file:\/\//i, '')
+    }
+  }
+  const drive = WINDOWS_DRIVE_ANY.exec(value)
+  if (drive) return `${drive[1]}:/${drive[2].replace(/\\/g, '/')}`
+  return value.includes('\\') ? value.replace(/\\/g, '/') : value
+}
 
 export function isExternalHref(href: string): boolean {
   return EXTERNAL_HREF.test(href.trim())
@@ -67,6 +86,7 @@ export function parseFileHref(href: string): FileRef | null {
     if (OTHER_PROTOCOL.test(raw) && !WINDOWS_DRIVE.test(raw)) return null
     raw = decode(raw)
   }
+  raw = normalizeFileRefPath(raw)
   let ref = stripHashLine(raw)
   if (!ref.path.trim() || ref.path.startsWith('#')) return null
   return ref
@@ -98,7 +118,7 @@ export function parseInlinePath(text: string): FileRef | null {
   if (!new RegExp(PLAIN_PATH_SOURCE).test(value)) return null
   const match = /^(.*?)(?::(\d+)(?:-(\d+))?)?$/.exec(value)
   if (!match) return null
-  const raw = match[1]
+  const raw = normalizeFileRefPath(match[1])
   const hasExt = new RegExp(`\\.${EXT}$`, 'i').test(raw)
   if (!raw.includes('/') && !hasExt) return null
   const lineStart = match[2] ? Number(match[2]) : undefined

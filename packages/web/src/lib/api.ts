@@ -7,6 +7,7 @@ import type {
   ConfigImportInput,
   ConfigImportResult,
   CreateSessionInput,
+  DiffEmptyReason,
   ExternalSession,
   ExternalSource,
   FsEntry,
@@ -220,7 +221,7 @@ export const api = {
   changes: (h: HostConfig, id: string) =>
     request<ChangesResult>(h, `/api/sessions/${encodeURIComponent(id)}/changes`),
   changesDiff: (h: HostConfig, id: string, path: string) =>
-    request<{ path: string; diff: string }>(
+    request<{ path: string; diff: string; emptyReason?: DiffEmptyReason }>(
       h,
       `/api/sessions/${encodeURIComponent(id)}/changes/diff${qs({ path })}`,
     ),
@@ -256,8 +257,11 @@ export const api = {
       body: JSON.stringify(rules),
     }),
 
-  fsList: (h: HostConfig, path: string) =>
-    request<FsEntry[]>(h, `/api/fs/list${qs({ path })}`),
+  fsList: (h: HostConfig, path: string, options?: { files?: boolean }) =>
+    request<FsEntry[]>(
+      h,
+      `/api/fs/list${qs({ path, files: options?.files ? '1' : undefined })}`,
+    ),
   fsComplete: (h: HostConfig, cwd: string, q: string) =>
     request<string[]>(h, `/api/fs/complete${qs({ cwd, q })}`),
 

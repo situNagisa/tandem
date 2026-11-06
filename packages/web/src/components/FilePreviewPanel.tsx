@@ -27,6 +27,7 @@ import {
   isImagePath,
   isMarkdownPath,
   lineLabel,
+  normalizeFileRefPath,
 } from '../lib/fileLinks'
 import { CodeBlock } from './CodeBlock'
 import { Markdown } from './Markdown'
@@ -37,19 +38,15 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-/** 服务端 404 时拿不到解析结果，客户端按同样规则拼出绝对路径供用户判断。 */
-function resolveAbsolute(path: string, cwd: string): string {
-  let raw = path
-  if (/^file:/i.test(raw)) {
-    try {
-      raw = decodeURIComponent(new URL(raw).pathname)
-    } catch {
-      raw = raw.replace(/^file:\/\//i, '')
-    }
-  }
-  if (raw.startsWith('/') || /^[A-Za-z]:[\\/]/.test(raw)) return raw
+/** 服务端 404 时拿不到解析结果，客户端按 Host 平台规则拼出绝对路径供用户判断。 */
+function resolveAbsolute(path: string, cwd: string, platform?: string): string {
+  const raw = normalizeFileRefPath(path)
+  if (!raw) return ''
+  const win = platform === 'win32'
+  if (win ? /^[A-Za-z]:\//.test(raw) : raw.startsWith('/')) return raw
   if (!cwd) return raw
-  return `${cwd.replace(/[\\/]+$/, '')}/${raw}`
+  const base = normalizeFileRefPath(cwd).replace(/\/+$/, '')
+  return `${base}/${raw.replace(/^\/+/, '')}`
 }
 
 export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
@@ -60,6 +57,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
   const toast = useUiStore((s) => s.toast)
   const hostId = useAppStore((s) => s.active?.hostId ?? s.activeHostId)
   const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
+  const hostPlatform = useAppStore((s) => (hostId ? s.runtimes[hostId]?.info?.platform : undefined))
 
   const [data, setData] = useState<FsReadResult | null>(null)
   const [loading, setLoading] = useState(false)
@@ -74,7 +72,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
 
   const path = preview?.path ?? ''
   const cwd = preview?.cwd ?? ''
-  const absPath = data?.path ?? (path ? resolveAbsolute(path, cwd) : '')
+  const absPath = data?.path ?? (path ? resolveAbsolute(path, cwd, hostPlatform) : '')
   const image = isImagePath(absPath)
   const markdown = isMarkdownPath(absPath)
   const label = lineLabel(preview ?? {})
@@ -223,56 +221,19 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
 
       <div className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border/70 px-3 py-1.5">
         <FileText size={15} className="shrink-0 text-text-soft" />
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <span
-              className="min-w-0 truncate font-mono text-[12px] text-text"
-              title={absPath || path}
-            >
-              {fileBaseName(path || absPath)}
-            </span>
-            {label && (
-              <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[11px] text-text-secondary">
-                :{label}
-              </span>
-            )}
-            <IconButton
-              size="sm"
-              onClick={() => void copyPath()}
-              label="复制文件路径"
-              tooltip={copied ? '已复制' : `复制路径：${absPath}`}
-              tooltipSide="bottom"
-              className="size-6! [&_svg]:size-3"
-            >
-              {copied ? <Check size={12} className="text-success" /> : <Copy size={11.5} />}
-            </IconButton>
-          </div>
-          <div className="truncate font-mono text-[12px] text-muted" title={absPath}>
-            {absPath || path}
-          </div>
-        </div>
-        {host && isLocalHostUrl(host.url) && (
-          <Button
-            size="sm"
-            onClick={() => void reveal()}
-            disabled={revealing || !data}
-            tooltip="在 Host 的文件管理器中显示"
-          >
-            {revealing ? <Loader2 size={11} className="animate-spin" /> : <ExternalLink size={11} />}
-            在本机打开
-          </Button>
-        )}
-        <IconButton
-          onClick={onClose}
-          label="关闭文件预览"
-          className="-mr-1 max-md:size-9"
+        <span
+          className="min-w-0 truncate font-mono text-[13px] text-text"
+          title={absPath || path || '文件预览'}
         >
-          <X size={15} />
-        </IconButton>
-      </div>
-
-      {markdown && data && !data.isBinary && (
-        <div className="flex shrink-0 items-center gap-1 border-b border-border/70 px-3 py-1.5">
+          {fileBaseName(path || absPath) || '文件'}
+        </span>
+        {label && (
+          <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[11px] text-text-secondary">
+            :{label}
+          </span>
+        )}
+        <span className="flex-1" />
+        {markdown && data && !data.isBinary && (
           <SegmentedControl
             aria-label="文件视图"
             size="sm"
@@ -283,8 +244,30 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
               { value: 'source', label: <><Code2 size={11} /> 源码</> },
             ]}
           />
-        </div>
-      )}
+        )}
+        {host && isLocalHostUrl(host.url) && (
+          <IconButton
+            size="sm"
+            onClick={() => void reveal()}
+            disabled={revealing || !data}
+            label="在本机打开"
+            tooltip="在 Host 的文件管理器中显示"
+          >
+            {revealing ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />}
+          </IconButton>
+        )}
+        <IconButton
+          size="sm"
+          onClick={() => void copyPath()}
+          label="复制文件路径"
+          tooltip={copied ? '已复制' : `复制路径：${absPath || path}`}
+        >
+          {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
+        </IconButton>
+        <IconButton onClick={onClose} label="关闭文件预览" className="-mr-1 max-md:size-9">
+          <X size={15} />
+        </IconButton>
+      </div>
 
       {loading ? (
         <div className="flex flex-1 items-center justify-center text-muted">

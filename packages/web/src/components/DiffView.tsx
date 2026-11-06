@@ -14,11 +14,11 @@ import {
   ArrowLeftRight,
   ChevronsUpDown,
   MessageSquare,
-  MessageSquarePlus,
 } from 'lucide-react'
 import { cn } from '../lib/cn'
-import { useHorizontalOverflow, useIsMobile } from '../lib/hooks'
+import { useHorizontalOverflow } from '../lib/hooks'
 import { useFeedbackStore } from '../store/useFeedbackStore'
+import { Button } from './ui/Button'
 
 interface DiffLine {
   type: 'add' | 'del' | 'ctx'
@@ -226,7 +226,6 @@ function CommentMarker({
           }}
         >
           <MessageSquare size={12} aria-hidden />
-          <span>{comments.length}</span>
         </button>
       </RPopover.Anchor>
       <RPopover.Portal>
@@ -370,8 +369,7 @@ function Composer({
   }
 
   return (
-    <div className="flex w-[min(340px,calc(100vw-16px))] items-start gap-1.5">
-      <MessageSquarePlus size={13} className="mt-2 shrink-0 text-[var(--t-accent)]" />
+    <div className="flex w-[min(340px,calc(100vw-16px))] items-end gap-1.5">
       <textarea
         ref={ref}
         rows={1}
@@ -386,16 +384,11 @@ function Composer({
         placeholder={`对${label}写审阅意见…`}
         aria-label="行内评论"
         title="Enter 保存 · Shift+Enter 换行 · Esc 取消"
-        className="block max-h-24 min-w-0 flex-1 resize-none rounded-md border border-border bg-bg px-2 py-1.5 text-[12px] leading-5 text-text outline-none placeholder:text-muted focus:border-[var(--t-border-strong)]"
+        className="block max-h-24 min-h-7 min-w-0 flex-1 resize-none rounded-md border-0 bg-[var(--t-bg)] px-2 py-1.5 text-[12px] leading-5 text-text outline-none placeholder:text-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/50"
       />
-      <button
-        type="button"
-        disabled={!text.trim()}
-        onClick={save}
-        className="mt-0.5 h-7 shrink-0 rounded-md bg-[var(--t-primary-bg)] px-2 text-[11px] font-medium text-[var(--t-primary-fg)] disabled:opacity-40"
-      >
-        保存
-      </button>
+      <Button size="sm" variant="primary" disabled={!text.trim()} onClick={save}>
+        评论
+      </Button>
     </div>
   )
 }
@@ -408,6 +401,7 @@ export const DiffView = memo(function DiffView({
   oldLabel,
   newLabel,
   maxHeight = 460,
+  emptyLabel,
   comments = [],
   onAddComment,
   onEditComment,
@@ -421,12 +415,13 @@ export const DiffView = memo(function DiffView({
   oldLabel?: string
   newLabel?: string
   maxHeight?: number
+  /** diff 为空或只有元信息时显示的文案。 */
+  emptyLabel?: string
   comments?: DiffComment[]
   onAddComment?: (draft: DiffCommentDraft) => void
   onEditComment?: (id: number, text: string) => void
   onDeleteComment?: (id: number) => void
 }) {
-  const isMobile = useIsMobile()
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [selection, setSelection] = useState<{ startIdx: number; endIdx: number } | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -492,7 +487,7 @@ export const DiffView = memo(function DiffView({
   const anchored = useMemo(() => {
     const map = new Map<string, DiffComment[]>()
     for (const comment of comments) {
-      const key = `${comment.side}:${comment.startLine}`
+      const key = `${comment.side}:${comment.endLine}`
       const list = map.get(key)
       if (list) list.push(comment)
       else map.set(key, [comment])
@@ -558,7 +553,7 @@ export const DiffView = memo(function DiffView({
           style={{ maxHeight }}
         >
           {display.length === 0 && (
-            <div className="px-3 py-4 text-[12px] italic text-muted">没有差异</div>
+            <div className="px-3 py-4 text-[12px] italic text-muted">{emptyLabel ?? '没有差异'}</div>
           )}
           {display.map((row, i) => {
             if (row.type === 'gap') {
@@ -648,9 +643,9 @@ export const DiffView = memo(function DiffView({
                       </RPopover.Anchor>
                       <RPopover.Portal>
                         <RPopover.Content
-                          side={isMobile ? 'bottom' : 'right'}
-                          align={isMobile ? 'start' : 'center'}
-                          sideOffset={8}
+                          side="bottom"
+                          align="start"
+                          sideOffset={4}
                           collisionPadding={8}
                           avoidCollisions
                           sticky="always"
