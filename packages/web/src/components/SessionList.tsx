@@ -5,6 +5,7 @@ import {
   ArchiveRestore,
   ChevronRight,
   Copy,
+  Eye,
   Folder,
   GitBranch,
   GitMerge,
@@ -717,10 +718,10 @@ export function SessionList({
               >
                 <button
                   onClick={() => openExternal(hostId, ext)}
-                  className="anim-row-in flex h-11 w-full min-w-0 items-center gap-2 rounded-lg pl-2 pr-2 text-left text-[14px] text-text-tertiary outline-none transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-secondary md:h-[34px]"
+                  className="anim-row-in flex h-11 w-full min-w-0 items-center gap-2 rounded-lg pl-2 pr-2 text-left text-[14px] text-text outline-none transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] md:h-[34px]"
                 >
-                  <span className="flex size-4 shrink-0 items-center justify-center">
-                    <span className="size-1.5 rounded-full border border-current opacity-35" />
+                  <span className="flex size-4 shrink-0 items-center justify-center text-text-tertiary">
+                    <Eye size={12} />
                   </span>
                   <span className="min-w-0 flex-1 truncate leading-5">
                     {ext.title || '未命名会话'}
