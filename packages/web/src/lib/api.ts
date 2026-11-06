@@ -181,8 +181,11 @@ export const api = {
       `/api/sessions/${encodeURIComponent(id)}/worktree/merge`,
       { method: 'POST', body: JSON.stringify({ strategy }) },
     ),
-  forkSession: (h: HostConfig, id: string) =>
-    request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/fork`, { method: 'POST' }),
+  forkSession: (h: HostConfig, id: string, messageId?: string) =>
+    request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/fork`, {
+      method: 'POST',
+      ...(messageId ? { body: JSON.stringify({ messageId }) } : {}),
+    }),
   branches: (h: HostConfig, id: string) =>
     request<{ current?: string; branches: string[] }>(
       h,

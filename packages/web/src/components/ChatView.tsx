@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ChevronDown, ShieldAlert, TriangleAlert } from 'lucide-react'
+import { ChevronDown, GitFork, ShieldAlert, TriangleAlert } from 'lucide-react'
 import type { PermissionRequest } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { api } from '../lib/api'
+import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
 import { MessageList } from './MessageList'
 import { SessionWelcome, HomeView } from './Welcome'
@@ -38,6 +39,14 @@ export function ChatView() {
     hostId ? s.runtimes[hostId]?.authError : undefined,
   )
   const reloadActiveSession = useAppStore((s) => s.reloadActiveSession)
+  const hostSessions = useAppStore((s) =>
+    s.active?.hostId ? s.runtimes[s.active.hostId]?.sessions : undefined,
+  )
+  const forkedFrom = summary?.forkedFrom
+  const parentSession = forkedFrom
+    ? hostSessions?.find((s) => s.id === forkedFrom.sessionId)
+    : undefined
+  const parentTitle = parentSession?.title ?? forkedFrom?.title
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -226,6 +235,32 @@ export function ChatView() {
             className="mx-auto flex min-h-full w-full max-w-[808px] flex-col px-4 pb-8 pt-3 md:px-6 md:pt-5"
           >
             <div className="flex flex-1 flex-col">
+              {forkedFrom && !loading && (
+                <div className="mb-3 flex min-w-0 items-center gap-1.5 px-1 text-[12px] leading-4 text-muted">
+                  <GitFork size={12} className="shrink-0 opacity-70" />
+                  <span className="min-w-0 truncate" title={parentTitle}>
+                    分叉自 {parentTitle || '父会话'}
+                  </span>
+                  {parentSession && hostId && (
+                    <>
+                      <span className="shrink-0 opacity-60">·</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate({
+                            kind: 'session',
+                            hostId: hostId,
+                            sessionId: parentSession.id,
+                          })
+                        }
+                        className="shrink-0 rounded px-0.5 text-text-tertiary underline-offset-2 transition-colors hover:text-text hover:underline"
+                      >
+                        查看
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
               {loading && messageCount === 0 ? (
                 <MessageList showSkeleton />
               ) : messageCount === 0 ? (

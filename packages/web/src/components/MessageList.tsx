@@ -1,9 +1,10 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
-import type { ContentBlock } from '@tandem/protocol'
+import type { ContentBlock, SessionSummary } from '@tandem/protocol'
 import {
   Check,
   ChevronRight,
   Copy,
+  GitFork,
   Loader2,
   MoreHorizontal,
   PencilLine,
@@ -15,6 +16,7 @@ import {
 import { useAppStore } from '../store/useAppStore'
 import { cn } from '../lib/cn'
 import { copyText } from '../lib/clipboard'
+import { navigate } from '../lib/router'
 import { formatCost, formatTokens } from '../lib/format'
 import type { HookNotice, ToolResultBlock, UiMessage } from '../lib/types'
 import { Markdown } from './Markdown'
@@ -157,6 +159,12 @@ export const UserMessage = memo(function UserMessage({
     void state.updateSession(active.hostId, active.sessionId, { pinnedTurns: next })
   }
 
+  const forkFromHere = () => {
+    const active = useAppStore.getState().active
+    if (!active) return
+    void useAppStore.getState().forkSession(active.hostId, active.sessionId, message.id)
+  }
+
   const startEdit = () => {
     setDraft(text)
     setEditing(true)
@@ -249,6 +257,15 @@ export const UserMessage = memo(function UserMessage({
                   </IconButton>
                   <IconButton
                     size="sm"
+                    onClick={forkFromHere}
+                    label="从这里分叉"
+                    tooltip="从这里分叉（复制到这条消息为止）"
+                    className="[&_svg]:size-[12.5px]"
+                  >
+                    <GitFork size={12.5} />
+                  </IconButton>
+                  <IconButton
+                    size="sm"
                     onClick={startEdit}
                     label="编辑并重发"
                     className="[&_svg]:size-[12.5px]"
@@ -307,6 +324,15 @@ export const UserMessage = memo(function UserMessage({
                       }}
                     >
                       {pinned ? '取消固定此轮' : '固定此轮'}
+                    </MenuItem>
+                    <MenuItem
+                      icon={<GitFork />}
+                      onSelect={() => {
+                        close()
+                        forkFromHere()
+                      }}
+                    >
+                      从这里分叉
                     </MenuItem>
                     <MenuItem
                       icon={<PencilLine />}
@@ -390,6 +416,12 @@ export const AssistantMessage = memo(function AssistantMessage({
     setCopied(true)
     if (copyTimer.current) window.clearTimeout(copyTimer.current)
     copyTimer.current = window.setTimeout(() => setCopied(false), 1500)
+  }
+
+  const forkFromHere = () => {
+    const active = useAppStore.getState().active
+    if (!active) return
+    void useAppStore.getState().forkSession(active.hostId, active.sessionId, message.id)
   }
 
   const regenerate = async () => {
@@ -491,6 +523,17 @@ export const AssistantMessage = memo(function AssistantMessage({
             >
               {copied ? <Check size={12.5} className="text-success" /> : <Copy size={12.5} />}
             </IconButton>
+            {!readOnly && (
+              <IconButton
+                size="sm"
+                onClick={forkFromHere}
+                label="从这里分叉"
+                tooltip="从这里分叉（复制到这条回复为止）"
+                className="[&_svg]:size-[12.5px]"
+              >
+                <GitFork size={12.5} />
+              </IconButton>
+            )}
             {!readOnly && turnUser && checkpointId && (
               <IconButton
                 size="sm"
@@ -560,6 +603,17 @@ export const AssistantMessage = memo(function AssistantMessage({
                   >
                     {copied ? '已复制' : '复制整条回复'}
                   </MenuItem>
+                  {!readOnly && (
+                    <MenuItem
+                      icon={<GitFork />}
+                      onSelect={() => {
+                        close()
+                        forkFromHere()
+                      }}
+                    >
+                      从这里分叉
+                    </MenuItem>
+                  )}
                   {!readOnly && turnUser && checkpointId && (
                     <MenuItem
                       icon={<Undo2 />}
@@ -642,6 +696,10 @@ export function MessageList({
   const storeHooks = useAppStore((s) => s.active?.hookEvents ?? EMPTY_HOOKS)
   const messages = messagesProp ?? storeMessages
   const hooks = messagesProp ? EMPTY_HOOKS : storeHooks
+  const activeHostId = useAppStore((s) => s.active?.hostId ?? null)
+  const hostSessions = useAppStore((s) =>
+    s.active?.hostId ? s.runtimes[s.active.hostId]?.sessions : undefined,
+  )
   const sessionId = messagesProp ? null : storeSessionId
   const streamingId = messagesProp ? undefined : storeStreamingId
 
@@ -745,6 +803,41 @@ export function MessageList({
   const hookLine = (id: string) => {
     const list = hooksByMessage.get(id)
     return list && list.length > 0 ? <HookNoticeLine notices={list} /> : null
+  }
+
+  // 分叉子会话：在分叉点那条消息下面给一个小入口（可能有多条）。
+  const forkChildrenByMessage = new Map<string, SessionSummary[]>()
+  if (!messagesProp && storeSessionId) {
+    for (const summary of hostSessions ?? []) {
+      const from = summary.forkedFrom
+      if (from?.sessionId !== storeSessionId || !from.messageId) continue
+      const list = forkChildrenByMessage.get(from.messageId) ?? []
+      list.push(summary)
+      forkChildrenByMessage.set(from.messageId, list)
+    }
+  }
+  const forkLinks = (messageId: string) => {
+    const list = forkChildrenByMessage.get(messageId)
+    if (!list?.length || !activeHostId) return null
+    return (
+      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 pl-0.5 text-[12px] leading-4 text-muted">
+        <span className="flex items-center gap-1">
+          <GitFork size={11} />
+          已分叉
+        </span>
+        {list.map((child) => (
+          <button
+            key={child.id}
+            type="button"
+            onClick={() => navigate({ kind: 'session', hostId: activeHostId, sessionId: child.id })}
+            className="inline-flex min-w-0 max-w-[280px] items-center gap-0.5 rounded px-1 py-0.5 text-left text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+            title={`打开分叉会话：${child.title}`}
+          >
+            → <span className="truncate">{child.title || '未命名会话'}</span>
+          </button>
+        ))}
+      </div>
+    )
   }
 
   const turnIndex = new Map<string, number>()

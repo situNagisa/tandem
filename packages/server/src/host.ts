@@ -186,6 +186,7 @@ export class Host {
       ...(rec.env ? { env: { ...rec.env } } : {}),
       ...(rec.parentId ? { parentId: rec.parentId } : {}),
       ...(typeof rec.depth === 'number' ? { depth: rec.depth } : {}),
+      ...(rec.forkedFrom ? { forkedFrom: { ...rec.forkedFrom } } : {}),
       ...(rec.worktree ? { worktree: { ...rec.worktree } } : {}),
       createdAt: rec.createdAt,
       updatedAt: rec.updatedAt,
@@ -637,13 +638,25 @@ export class Host {
   }
 
   /** 复制会话（消息、todos、配置）为新会话，历史与原会话互不影响。 */
-  forkSession(id: string): SessionRecord | undefined {
+  forkSession(id: string, messageId?: string): SessionRecord | undefined {
     const src = this.store.get(id);
     if (!src) return undefined;
+    let messages = structuredClone(src.messages);
+    if (messageId) {
+      const index = messages.findIndex((message) => message.id === messageId);
+      if (index < 0) throw httpError('分叉点消息不存在', 400);
+      messages = messages.slice(0, index + 1);
+      // 停在 assistant 消息上时去掉尾部未完成的 tool_use，否则下一轮请求缺少 tool_result。
+      const last = messages[messages.length - 1];
+      if (last?.role === 'assistant') {
+        last.content = last.content.filter((block) => block.type !== 'tool_use');
+        if (last.content.length === 0) messages.pop();
+      }
+    }
     const now = Date.now();
     const rec: SessionRecord = {
       id: randomUUID(),
-      title: `${src.title || '新会话'}（副本）`,
+      title: `${src.title || '新会话'}（${messageId ? '分叉' : '副本'}）`,
       cwd: src.cwd,
       profileId: src.profileId,
       ...(src.groupId ? { groupId: src.groupId } : {}),
@@ -653,11 +666,14 @@ export class Host {
       createdAt: now,
       updatedAt: now,
       usage: { ...src.usage },
-      messages: structuredClone(src.messages),
+      messages,
       todos: structuredClone(src.todos),
       allowedTools: [...src.allowedTools],
       ...(src.env ? { env: { ...src.env } } : {}),
       ...(src.plan ? { plan: structuredClone(src.plan) } : {}),
+      ...(messageId
+        ? { forkedFrom: { sessionId: src.id, messageId, title: src.title } }
+        : {}),
     };
     this.store.add(rec);
     this.broadcastSummary(rec);

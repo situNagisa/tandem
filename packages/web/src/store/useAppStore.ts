@@ -111,7 +111,7 @@ interface AppState {
     sessionId: string,
     patch: UpdateSessionInput,
   ) => Promise<SessionSummary | null>
-  forkSession: (hostId: string, sessionId: string) => Promise<SessionSummary | null>
+  forkSession: (hostId: string, sessionId: string, messageId?: string) => Promise<SessionSummary | null>
   deleteSession: (hostId: string, sessionId: string, force?: boolean) => Promise<void>
   /** 单独停止一个 Task 子代理会话。 */
   interruptSubagent: (childId: string) => void
@@ -1813,13 +1813,13 @@ export const useAppStore = create<AppState>((set, get) => {
       }
     },
 
-    forkSession: async (hostId, sessionId) => {
+    forkSession: async (hostId, sessionId, messageId) => {
       const host = getHost(hostId)
       if (!host) return null
       try {
-        const summary = await api.forkSession(host, sessionId)
+        const summary = await api.forkSession(host, sessionId, messageId)
         applySessionSummary(hostId, summary)
-        toast('已复制会话', 'success')
+        toast(messageId ? '已从该消息分叉' : '已复制会话', 'success')
         navigate({ kind: 'session', hostId, sessionId: summary.id })
         return summary
       } catch (err) {

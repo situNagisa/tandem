@@ -92,6 +92,20 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   const plan = normalizePlan(raw.plan);
   if (plan) rec.plan = plan;
   else delete rec.plan;
+  const fork = raw.forkedFrom as
+    | { sessionId?: unknown; messageId?: unknown; title?: unknown }
+    | undefined;
+  if (fork && typeof fork.sessionId === 'string' && fork.sessionId) {
+    rec.forkedFrom = {
+      sessionId: fork.sessionId,
+      ...(typeof fork.messageId === 'string' && fork.messageId
+        ? { messageId: fork.messageId }
+        : {}),
+      ...(typeof fork.title === 'string' && fork.title ? { title: fork.title } : {}),
+    };
+  } else {
+    delete rec.forkedFrom;
+  }
   const from = raw.importedFrom as { source?: unknown; id?: unknown } | undefined;
   if (from && (from.source === 'claude-code' || from.source === 'codex') && typeof from.id === 'string' && from.id) {
     rec.importedFrom = { source: from.source, id: from.id };

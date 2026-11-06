@@ -330,9 +330,14 @@ export async function createApp(
 
   app.post('/api/sessions/:id/fork', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const rec = host.forkSession(id);
-    if (!rec) return bad(reply, '会话不存在', 404);
-    return host.toSummary(rec);
+    const body = (req.body ?? {}) as { messageId?: unknown };
+    try {
+      const rec = host.forkSession(id, str(body.messageId) || undefined);
+      if (!rec) return bad(reply, '会话不存在', 404);
+      return host.toSummary(rec);
+    } catch (err) {
+      return bad(reply, (err as Error).message, statusOf(err));
+    }
   });
 
   // ---------- 会话环境：分支 / worktree / 跨 Host 迁移 ----------
