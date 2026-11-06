@@ -278,6 +278,7 @@ export function SessionList({
   }, [renaming])
 
   const total = groups.reduce((n, g) => n + g.count, 0) + (showArchived ? 0 : pinned.length)
+  const noHosts = hosts.length === 0
 
   const startRename = (s: SessionSummary) => {
     renameDoneRef.current = false
@@ -458,7 +459,9 @@ export function SessionList({
               ? '没有匹配的会话'
               : showArchived
                 ? '没有已归档的会话'
-                : '还没有会话，开始第一次对话吧。'}
+                : noHosts
+                  ? '还没有连接 Host，连接后会话会出现在这里。'
+                  : '还没有会话，开始第一次对话吧。'}
           </p>
           {!query && !showArchived && (
             <button
@@ -468,7 +471,7 @@ export function SessionList({
               }}
               className="rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
             >
-              新建会话
+              {noHosts ? '连接 Host' : '新建会话'}
             </button>
           )}
         </div>

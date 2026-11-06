@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { useClickOutside } from '../../lib/hooks'
 import { cn } from '../../lib/cn'
 
@@ -29,8 +36,36 @@ export function Popover({
   const [mounted, setMounted] = useState(false)
   const [closing, setClosing] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const close = useCallback(() => setOpen(false), [])
   useClickOutside(ref, close, open)
+
+  // 靠近视口边缘的触发器（如手机输入框里的模型按钮）会把面板顶出屏幕，
+  // 打开后按实际宽度横向校准，保留 8px 安全边距。translate 独立于入场 scale。
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = () => {
+      const el = panelRef.current
+      const anchor = ref.current
+      if (!el || !anchor) return
+      el.style.translate = '0px 0px'
+      // 用 offset 几何量而不是 getBoundingClientRect：入场动画带有 scale，
+      // 直接量会在动画结束前误判边界。
+      const anchorRect = anchor.getBoundingClientRect()
+      const left = anchorRect.left + el.offsetLeft
+      const right = left + el.offsetWidth
+      const margin = 8
+      let dx = 0
+      if (left < margin) dx = margin - left
+      else if (right > window.innerWidth - margin) {
+        dx = window.innerWidth - margin - right
+      }
+      if (dx) el.style.translate = `${dx}px 0px`
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [open, mounted])
 
   useEffect(() => {
     if (open) {
@@ -68,6 +103,7 @@ export function Popover({
       {trigger({ open, toggle: () => setOpen((v) => !v), close })}
       {mounted && (
         <div
+          ref={panelRef}
           role="menu"
           data-side={side}
           data-align={align}

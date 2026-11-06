@@ -367,9 +367,9 @@ export function ExternalSessionsDialog({
       title="导入会话"
       description="只读读取本机已有的 Claude Code / Codex 会话，导入后复制为 Tandem 会话，不会修改原软件的文件。"
       className="max-w-5xl"
-      bodyClassName="p-0 overflow-hidden"
+      bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
     >
-      <div className="flex h-[min(76dvh,660px)] min-h-[420px] flex-col sm:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
         {(!isMobile || !selected) && (
           <aside className="flex min-h-0 w-full shrink-0 flex-col border-b border-border sm:w-[310px] sm:border-b-0 sm:border-r">
             <div className="flex flex-wrap items-center gap-1.5 px-3 pb-1.5 pt-3">

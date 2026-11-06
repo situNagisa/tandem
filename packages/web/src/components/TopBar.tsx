@@ -78,6 +78,7 @@ export function TopBar() {
   const host = useAppStore((s) => s.hosts.find((h) => h.id === s.activeHostId) ?? null)
   const runtime = useAppStore((s) => (activeHostId ? s.runtimes[activeHostId] : undefined))
   const hasSession = useAppStore((s) => !!s.active)
+  const hasHosts = useAppStore((s) => s.hosts.length > 0)
   const summary = useAppStore((s) => s.active?.summary ?? null)
   const status = summary?.status
   const running = useAppStore((s) => s.active?.running ?? false)
@@ -240,20 +241,22 @@ export function TopBar() {
         </button>
       )}
 
-      <button
-        onClick={() => {
-          navigate({ kind: 'home' })
-          useUiStore.getState().setShowArchived(false)
-        }}
-        aria-label="新会话"
-        title="新会话"
-        className={cn(
-          'flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:size-9',
-          sidebarCollapsed ? 'md:flex' : 'md:hidden',
-        )}
-      >
-        <Plus size={18} />
-      </button>
+      {hasHosts && (
+        <button
+          onClick={() => {
+            navigate({ kind: 'home' })
+            useUiStore.getState().setShowArchived(false)
+          }}
+          aria-label="新会话"
+          title="新会话"
+          className={cn(
+            'flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:size-9',
+            sidebarCollapsed ? 'md:flex' : 'md:hidden',
+          )}
+        >
+          <Plus size={18} />
+        </button>
+      )}
 
       {hasSession && (
         <button

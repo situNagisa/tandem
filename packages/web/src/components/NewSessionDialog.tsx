@@ -8,7 +8,6 @@ import {
   EyeOff,
   Folder,
   FolderOpen,
-  GitBranch,
   Loader2,
   Plus,
   RefreshCw,
@@ -758,16 +757,6 @@ export function NewSessionView() {
           </div>
         </div>
 
-        {host && (
-          <div className="mt-8 flex items-center justify-center gap-3 text-[10px] text-muted">
-            <span className="flex items-center gap-1">
-              <GitBranch size={10} />
-              {cwd ? basename(cwd) : '未选择目录'}
-            </span>
-            <span>·</span>
-            <span>{model || '未选择模型'}</span>
-          </div>
-        )}
       </div>
     </div>
   )

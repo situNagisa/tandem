@@ -43,6 +43,7 @@ export function Sidebar({
       0,
     ),
   )
+  const hasHosts = useAppStore((s) => s.hosts.length > 0)
   const isDark =
     theme === 'dark' ||
     (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
@@ -121,32 +122,36 @@ export function Sidebar({
 
       <SessionList query={query} onNavigate={onNavigate} />
 
-      <div className="px-2.5 pb-1">
-        <button
-          onClick={() => setImportOpen(true)}
-          className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-8"
-        >
-          <History size={14} />
-          导入会话
-          <span className="ml-auto hidden text-[9.5px] text-muted md:inline">CC / Codex</span>
-        </button>
-      </div>
+      {hasHosts && (
+        <>
+          <div className="px-2.5 pb-1">
+            <button
+              onClick={() => setImportOpen(true)}
+              className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-8"
+            >
+              <History size={14} />
+              导入会话
+              <span className="ml-auto hidden text-[9.5px] text-muted md:inline">CC / Codex</span>
+            </button>
+          </div>
 
-      <div className="px-2.5 pb-1">
-        <button
-          onClick={() => setShowArchived(!showArchived)}
-          aria-pressed={showArchived}
-          className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-8"
-        >
-          {showArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-          {showArchived ? '返回全部会话' : '已归档'}
-          {archivedCount > 0 && (
-            <span className="ml-auto rounded-full bg-[var(--t-bg-active)] px-1.5 text-[10px] tabular-nums text-text-soft">
-              {archivedCount}
-            </span>
-          )}
-        </button>
-      </div>
+          <div className="px-2.5 pb-1">
+            <button
+              onClick={() => setShowArchived(!showArchived)}
+              aria-pressed={showArchived}
+              className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-8"
+            >
+              {showArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+              {showArchived ? '返回全部会话' : '已归档'}
+              {archivedCount > 0 && (
+                <span className="ml-auto rounded-full bg-[var(--t-bg-active)] px-1.5 text-[10px] tabular-nums text-text-soft">
+                  {archivedCount}
+                </span>
+              )}
+            </button>
+          </div>
+        </>
+      )}
 
       <div className="flex items-center gap-1 border-t border-border px-2 py-1.5">
         <button

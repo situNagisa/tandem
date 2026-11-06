@@ -190,11 +190,11 @@ export default function App() {
               onPointerDown={startResize}
               onDoubleClick={() => setSidebarWidth(272)}
               title="拖动调整宽度，双击复位"
-              className="group absolute -right-1 top-0 z-20 h-full w-2 cursor-col-resize touch-none"
+              className="group absolute right-0 top-0 z-20 h-full w-2 cursor-col-resize touch-none"
             >
               <span
                 className={cn(
-                  'absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-transparent transition-colors duration-150',
+                  'pointer-events-none absolute right-0 top-0 h-full w-px bg-transparent transition-colors duration-150',
                   'group-hover:bg-border-strong',
                   dragWidth !== null && 'bg-accent',
                 )}

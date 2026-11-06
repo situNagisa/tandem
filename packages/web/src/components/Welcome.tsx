@@ -53,7 +53,6 @@ export function SessionWelcome() {
         {hostName}
         {summary ? ` · ${basename(summary.cwd) || summary.cwd}` : ''}
         {profileName ? ` · ${profileName}` : ''}
-        {summary?.model ? ` · ${summary.model}` : ''}
       </p>
       <div className="mt-7 grid w-full max-w-[560px] grid-cols-1 gap-2 text-left sm:grid-cols-2">
         {SUGGESTIONS.map((s) => {
