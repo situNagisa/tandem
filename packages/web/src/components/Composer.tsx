@@ -619,6 +619,18 @@ function readFileAsDataUrl(file: File): Promise<string> {
   })
 }
 
+/** 剪贴板常把同一张图以多个 File 实例给出，用 类型+大小+头部字节 去重。 */
+async function imageFingerprint(file: File): Promise<string> {
+  let head = ''
+  try {
+    const bytes = new Uint8Array(await file.slice(0, 96).arrayBuffer())
+    for (const b of bytes) head += b.toString(16).padStart(2, '0')
+  } catch {
+    head = file.name
+  }
+  return `${file.type}:${file.size}:${head}`
+}
+
 const MAX_ATTACHMENTS = 6
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
@@ -847,8 +859,15 @@ export function Composer({
 
   const addImages = useCallback(
     async (files: File[]) => {
-      const images = files.filter((f) => f.type.startsWith('image/'))
-      if (!images.length) return
+      const candidates = files.filter((f) => f.type.startsWith('image/'))
+      if (!candidates.length) return
+      const signatures = await Promise.all(candidates.map(imageFingerprint))
+      const seen = new Set<string>()
+      const images = candidates.filter((_, i) => {
+        if (seen.has(signatures[i])) return false
+        seen.add(signatures[i])
+        return true
+      })
       const room = MAX_ATTACHMENTS - attachments.length
       if (room <= 0) {
         toast(`最多添加 ${MAX_ATTACHMENTS} 张图片`, 'info')
@@ -887,6 +906,8 @@ export function Composer({
   const onPaste = (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
     const clipboard = e.clipboardData
     if (!clipboard) return
+    // items 是剪贴板图片的规范来源；files 仅作兜底。两者同时遍历时，
+    // 同一张图会以不同 File 实例出现，导致粘贴一次添加多张。
     const files: File[] = []
     for (const item of Array.from(clipboard.items)) {
       if (item.kind === 'file' && item.type.startsWith('image/')) {
@@ -894,8 +915,10 @@ export function Composer({
         if (f) files.push(f)
       }
     }
-    for (const f of Array.from(clipboard.files)) {
-      if (f.type.startsWith('image/') && !files.includes(f)) files.push(f)
+    if (!files.length) {
+      for (const f of Array.from(clipboard.files)) {
+        if (f.type.startsWith('image/')) files.push(f)
+      }
     }
     if (files.length) {
       e.preventDefault()
