@@ -71,7 +71,6 @@ import { buildSystemPrompt } from './agent/prompt.js';
 import {
   cacheHitRateOf,
   estimateBreakdown,
-  contextWindowForModel,
   calibrateBreakdown,
 } from './context.js';
 import { errorMessage } from './util/text.js';
@@ -193,20 +192,22 @@ export class Host {
   /** GET /api/sessions/:id/context：无真实记录时按当前消息粗略估算。 */
   contextFor(rec: SessionRecord): ContextBreakdown {
     if (rec.context) return rec.context;
-    const model = rec.model || this.profileFor(rec.profileId, rec.groupId)?.defaultModel || '';
+    const profile = this.profileFor(rec.profileId, rec.groupId);
+    const model = rec.model || profile?.defaultModel || '';
     const system = buildSystemPrompt(rec.cwd, {
       planMode: rec.permissionMode === 'plan',
     });
     const tools = this.toolDefinitions(rec);
-    const estimate = estimateBreakdown({
+    return estimateBreakdown({
       model,
       system,
       tools,
       messages: rec.messages,
       cwd: rec.cwd,
       cacheHitRate: cacheHitRateOf(rec.usage),
+      providerKind: profile?.kind,
+      capabilityOverrides: profile?.modelCapabilities,
     });
-    return { ...estimate, contextWindow: contextWindowForModel(model) };
   }
 
   /** 检测 cwd 的 git 环境；变化时广播 session_updated。 */

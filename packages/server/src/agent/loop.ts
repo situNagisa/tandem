@@ -110,6 +110,8 @@ export async function runTurn(
         messages: requestMessages,
         cwd: rec.cwd,
         cacheHitRate: cacheHitRateOf(rec.usage),
+        providerKind: profile.kind,
+        capabilityOverrides: profile.modelCapabilities,
       });
       host.setContext(rec, contextEstimate, false);
 

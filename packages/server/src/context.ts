@@ -2,8 +2,14 @@
 // 参考 Claude Code /context 的分类；token 估算使用字符数 / 3.5。
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { ContextBreakdown, Message } from '@tandem/protocol';
+import type {
+  ContextBreakdown,
+  Message,
+  ModelCapabilities,
+  ProviderKind,
+} from '@tandem/protocol';
 import type { ToolDefinition } from './types.js';
+import { builtinCapabilities, overrideFor } from './providers/capabilities.js';
 
 type PartKind = ContextBreakdown['parts'][number]['kind'];
 
@@ -32,7 +38,17 @@ const CONTEXT_WINDOWS: Array<{ prefix: string; tokens: number }> = [
   { prefix: 'moonshot', tokens: 131_072 },
 ];
 
-export function contextWindowForModel(model: string): number {
+export function contextWindowForModel(
+  model: string,
+  kind?: ProviderKind,
+  overrides?: Record<string, ModelCapabilities>,
+): number {
+  const fromOverride = overrideFor(overrides, model)?.contextWindow;
+  if (fromOverride !== undefined) return fromOverride;
+  if (kind) {
+    const fromCapabilities = builtinCapabilities(kind, model).contextWindow;
+    if (fromCapabilities !== undefined) return fromCapabilities;
+  }
   const name = model.trim().toLowerCase().replace(/^[^/]+\//, '');
   if (/\[1m\]$/.test(name)) return 1_000_000;
   for (const entry of CONTEXT_WINDOWS) {
@@ -73,6 +89,8 @@ export interface EstimateInput {
   messages: Message[];
   cwd: string;
   cacheHitRate?: number;
+  providerKind?: ProviderKind;
+  capabilityOverrides?: Record<string, ModelCapabilities>;
 }
 
 /** 请求前的上下文占用估算。 */
@@ -101,7 +119,11 @@ export function estimateBreakdown(input: EstimateInput): ContextBreakdown {
 
   const parts = toParts({ system, tools, mcp, memory, messages, tool_results: toolResults });
   const usedTokens = sumParts(parts);
-  const contextWindow = contextWindowForModel(input.model);
+  const contextWindow = contextWindowForModel(
+    input.model,
+    input.providerKind,
+    input.capabilityOverrides,
+  );
   return finish(parts, usedTokens, contextWindow, input.model, input.cacheHitRate);
 }
 
