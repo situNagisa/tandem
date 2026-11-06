@@ -707,11 +707,24 @@ function CompletionMenu({
   onSelect: (item: CompletionEntry) => void
 }) {
   const listRef = useRef<HTMLDivElement>(null)
+  const [tipTop, setTipTop] = useState(0)
+  const active = items[index]
 
   useEffect(() => {
     const el = listRef.current?.querySelector<HTMLElement>(`[data-index="${index}"]`)
     el?.scrollIntoView({ block: 'nearest' })
   }, [index, items.length])
+
+  const syncTip = useCallback(() => {
+    const list = listRef.current
+    const el = list?.querySelector<HTMLElement>(`[data-index="${index}"]`)
+    if (!list || !el) return
+    setTipTop(Math.max(2, el.offsetTop - list.scrollTop - 1))
+  }, [index])
+
+  useEffect(() => {
+    syncTip()
+  }, [syncTip, items.length, completion.kind])
 
   let emptyText: ReactNode = '没有匹配项'
   if (completion.kind === 'slash' && loading) emptyText = '加载命令…'
@@ -720,69 +733,82 @@ function CompletionMenu({
   else if (completion.kind === 'file') emptyText = '没有匹配的文件'
 
   return (
-    <div
-      className="popover-panel absolute inset-x-0 bottom-full z-40 mb-2"
-      data-side="top"
-      data-align="left"
-    >
-      <div className="flex h-9 items-center gap-2 border-b border-border px-3 text-[11px] text-muted">
-        {completion.kind === 'slash' ? <SlashIcon size={12} /> : <AtSign size={12} />}
-        <span className="font-medium">
-          {completion.kind === 'slash' ? '斜杠命令' : '文件'}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-text-soft">
-          {completion.kind === 'slash' ? `/${completion.query}` : `@${completion.query}`}
-        </span>
-        <span className="hidden shrink-0 sm:inline">↑↓ 选择 · Enter 确认 · Esc 关闭</span>
-      </div>
-      <div ref={listRef} className="max-h-[264px] overflow-y-auto p-1.5">
-        {loading && items.length === 0 && (
-          <div className="flex items-center gap-2 px-2.5 py-3 text-[12px] text-muted">
-            <Loader2 size={13} className="animate-spin" /> {emptyText}
+    <div className="absolute inset-x-0 bottom-full z-40 mb-2">
+      <div
+        className="completion-panel popover-panel relative w-[600px] max-w-full"
+        data-side="top"
+        data-align="left"
+      >
+        <div ref={listRef} className="max-h-[232px] overflow-y-auto p-1" onScroll={syncTip}>
+          {loading && items.length === 0 && (
+            <div className="flex items-center gap-2 px-2 py-2 text-[12px] text-muted">
+              <Loader2 size={13} className="animate-spin" /> {emptyText}
+            </div>
+          )}
+          {!loading && items.length === 0 && (
+            <div className="px-2 py-2 text-[12px] text-muted">{emptyText}</div>
+          )}
+          {items.map((item, i) => {
+            const isDir = item.kind === 'file' && item.label.endsWith('/')
+            const clean = isDir ? item.label.slice(0, -1) : item.label
+            const cut = item.kind === 'file' ? clean.lastIndexOf('/') : -1
+            const name = cut < 0 ? item.label : clean.slice(cut + 1) + (isDir ? '/' : '')
+            const dir = cut < 0 ? '' : clean.slice(0, cut + 1)
+            return (
+              <button
+                key={`${item.kind}:${item.value}`}
+                data-index={i}
+                data-active={i === index}
+                onMouseDown={(e) => e.preventDefault()}
+                onMouseEnter={() => onIndex(i)}
+                onClick={() => onSelect(item)}
+                className="completion-row"
+              >
+                {item.kind === 'slash' ? (
+                  <Terminal size={12} className="shrink-0 text-muted" />
+                ) : (
+                  <FileText size={12} className="shrink-0 text-muted" />
+                )}
+                <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-text">
+                  {item.kind === 'file' ? (
+                    <>
+                      <Highlight text={name} query={completion.query} />
+                      {dir && (
+                        <span className="ml-1.5 text-[11.5px] text-muted">
+                          <Highlight text={dir} query={completion.query} />
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <Highlight text={item.label} query={completion.query} />
+                  )}
+                </span>
+                {item.badge && item.badge !== '内置' && (
+                  <span className="shrink-0 text-[9.5px] text-muted">{item.badge}</span>
+                )}
+                {i === index && (
+                  <span className="shrink-0 text-[11px] leading-none text-muted">↵</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+        {active && (
+          <div className="completion-tip hidden lg:block" style={{ top: tipTop }} aria-hidden>
+            {active.kind === 'slash' ? (
+              <span className="block text-[11.5px] leading-[1.5] text-text-soft">
+                {active.description || '无说明'}
+              </span>
+            ) : (
+              <>
+                <span className="block break-all font-mono text-[11px] leading-[1.5] text-text-soft">
+                  {active.label}
+                </span>
+                <span className="mt-1 block text-[10px] text-muted">插入相对路径</span>
+              </>
+            )}
           </div>
         )}
-        {!loading && items.length === 0 && (
-          <div className="px-2.5 py-3 text-[12px] text-muted">{emptyText}</div>
-        )}
-        {items.map((item, i) => (
-          <button
-            key={`${item.kind}:${item.value}`}
-            data-index={i}
-            data-active={i === index}
-            onMouseDown={(e) => e.preventDefault()}
-            onMouseEnter={() => onIndex(i)}
-            onClick={() => onSelect(item)}
-            className="menu-item"
-          >
-            {item.kind === 'slash' ? (
-              <Terminal size={13} className="shrink-0 text-muted" />
-            ) : (
-              <FileText size={13} className="shrink-0 text-muted" />
-            )}
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-mono text-[12.5px] text-text">
-                <Highlight text={item.label} query={completion.query} />
-              </span>
-              <span className="block truncate text-[10.5px] leading-4 text-muted">
-                {item.description ? (
-                  <Highlight text={item.description} query={completion.query} />
-                ) : (
-                  '插入相对路径'
-                )}
-              </span>
-            </span>
-            {item.badge && (
-              <span className="shrink-0 rounded border border-border px-1 text-[9.5px] text-muted">
-                {item.badge}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-      <div className="menu-hint flex items-center gap-1 border-t border-border">
-        {completion.kind === 'slash'
-          ? '↑↓ 选择 · Enter 插入 · /model 直接打开模型选择'
-          : '↑↓ 选择 · Enter 插入路径 · 输入 @ 搜索项目文件'}
       </div>
     </div>
   )
