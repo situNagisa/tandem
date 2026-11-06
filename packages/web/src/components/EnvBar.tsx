@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowUp,
   Check,
   ChevronDown,
   Clock,
+  CornerDownLeft,
   Folder,
   FolderOpen,
   GitBranch,
@@ -27,8 +28,9 @@ import { MenuDivider, MenuItem, MenuList } from './ui/Menu'
 import { Popover } from './ui/Popover'
 import { Tooltip } from './ui/Tooltip'
 
+/* 透明底：环境条直接坐在对话背景上，只在悬停/展开时给一点底色。 */
 const triggerClass =
-  'flex h-6 shrink-0 items-center gap-1 rounded-lg bg-[var(--t-bg-subtle)] px-2 text-[12.5px] leading-4 text-text-secondary outline-none transition-colors hover:bg-[var(--t-bg-active)] hover:text-text disabled:pointer-events-none disabled:opacity-40'
+  'flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[12.5px] leading-4 text-text-secondary outline-none transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:pointer-events-none disabled:opacity-40'
 
 function EnvTrigger({
   icon,
@@ -92,6 +94,53 @@ function MenuRow({
   )
 }
 
+/** 末尾分隔符仅在盘符根上保留，其余去掉（Windows 下 "C:" 表示该盘当前目录）。 */
+function cleanDir(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, '')
+  if (!trimmed) return path
+  return /^[a-zA-Z]:$/.test(trimmed) ? `${trimmed}\\` : trimmed
+}
+
+function sepOf(path: string): string {
+  return path.includes('\\') && !path.includes('/') ? '\\' : '/'
+}
+
+/** 前缀或子序列模糊匹配（大小写不敏感）。 */
+function fuzzyMatch(name: string, query: string): boolean {
+  if (!query) return true
+  const n = name.toLowerCase()
+  const q = query.toLowerCase()
+  if (n.includes(q)) return true
+  let i = 0
+  for (const ch of n) {
+    if (ch === q[i]) i += 1
+    if (i === q.length) return true
+  }
+  return false
+}
+
+/**
+ * 输入框既是筛选词也是路径：
+ * - 以当前目录开头、后面没有分隔符 → 在当前目录里筛选；
+ * - 其余含分隔符的输入 → 按路径导航（目录部分进入，末段作为筛选词）。
+ */
+function parseDraft(draft: string, current: string): { dir: string; query: string } {
+  const value = draft.trim()
+  if (!value) return { dir: current, query: '' }
+  const fixed = current.replace(/[\\/]+$/, '')
+  if (fixed && value.toLowerCase().startsWith(fixed.toLowerCase())) {
+    const rest = value.slice(fixed.length).replace(/^[\\/]/, '')
+    if (!/[\\/]/.test(rest)) return { dir: current, query: rest }
+  }
+  const sep = Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\'))
+  if (sep < 0) return { dir: current, query: value }
+  const dir = value.slice(0, sep + 1)
+  if (dir.replace(/[\\/]+$/, '').toLowerCase() === fixed.toLowerCase()) {
+    return { dir: current, query: value.slice(sep + 1) }
+  }
+  return { dir, query: value.slice(sep + 1) }
+}
+
 function HostMenu({
   hostId,
   onPick,
@@ -104,7 +153,7 @@ function HostMenu({
   const hosts = useAppStore((s) => s.hosts)
   const runtimes = useAppStore((s) => s.runtimes)
   return (
-    <MenuList aria-label="切换主机" className="w-[248px]">
+    <MenuList aria-label="切换主机" className="min-w-[180px] max-w-[280px]">
       {hosts.map((h) => {
         const rt = runtimes[h.id]
         const detail = [
@@ -154,6 +203,7 @@ export function FolderBrowser({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!initial && home) {
@@ -161,6 +211,13 @@ export function FolderBrowser({
       setDraft((prev) => prev || home)
     }
   }, [home, initial])
+
+  // 输入里的目录部分变化时切换浏览目录；筛选词不触发请求。
+  const parsed = useMemo(() => parseDraft(draft, path || home || ''), [draft, path, home])
+  const query = parsed.query
+  useEffect(() => {
+    if (parsed.dir && parsed.dir !== path) setPath(parsed.dir)
+  }, [parsed.dir, path])
 
   useEffect(() => {
     if (!host || !path) return
@@ -189,36 +246,91 @@ export function FolderBrowser({
 
   const open = (next: string) => {
     setPath(next)
-    setDraft(next)
+    setDraft(next + sepOf(next))
     setRefreshKey((k) => k + 1)
   }
-  const parent = dirname(path)
 
-  // Tab 补全：用当前输入最后一段匹配到的子目录名替换。
-  const complete = () => {
-    const idx = Math.max(draft.lastIndexOf('/'), draft.lastIndexOf('\\'))
-    const prefix = draft.slice(idx + 1)
-    const match = entries.find((e) => e.name.toLowerCase().startsWith(prefix.toLowerCase()))
-    if (match) setDraft(draft.slice(0, idx + 1) + match.name)
+  const filtered = useMemo(() => {
+    const q = query.trim()
+    if (!q) return entries
+    const lower = q.toLowerCase()
+    return entries
+      .filter((entry) => fuzzyMatch(entry.name, q))
+      .sort((a, b) => {
+        const ap = a.name.toLowerCase().startsWith(lower) ? 0 : 1
+        const bp = b.name.toLowerCase().startsWith(lower) ? 0 : 1
+        return ap - bp || a.name.localeCompare(b.name, 'zh-Hans-CN')
+      })
+  }, [entries, query])
+
+  const useCurrent = () => {
+    const q = query.trim().toLowerCase()
+    let target = parsed.dir || path
+    if (q) {
+      const exact = filtered.find((entry) => entry.name.toLowerCase() === q)
+      if (exact) target = exact.path
+      else if (filtered.length === 1) target = filtered[0].path
+      else if (/[\\/]/.test(draft.trim())) target = draft.trim()
+    }
+    if (target) onUse(cleanDir(target))
   }
 
-  const rowClass =
-    'flex h-[26px] w-full items-center gap-1.5 rounded-md px-1.5 text-left text-[12.5px] leading-none text-text-soft outline-none transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text focus-visible:bg-[var(--t-bg-hover)] focus-visible:text-text'
+  const parent = dirname(path)
+  const complete = () => {
+    if (!query.trim()) return
+    const match = filtered[0]
+    if (match) open(match.path)
+  }
 
   return (
-    <div className="w-[min(320px,calc(100vw-2rem))]">
-      <MenuList aria-label="选择文件夹">
-        <div className="max-h-[264px] overflow-y-auto">
-          {recents.length > 0 && (
-            <>
-              {recents.slice(0, 4).map((d) => (
-                <MenuItem key={d} icon={<Clock size={13} />} hint={d} onSelect={() => open(d)}>
-                  {basename(d) || d}
-                </MenuItem>
-              ))}
-              <MenuDivider />
-            </>
-          )}
+    <div className="flex w-[min(300px,calc(100vw-2rem))] flex-col gap-1">
+      <div className="flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-[var(--t-bg-hover)] pl-2 pr-1">
+        <Folder size={13} className="shrink-0 text-muted" />
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              e.stopPropagation()
+              if (!e.nativeEvent.isComposing) useCurrent()
+            } else if (e.key === 'Tab') {
+              e.preventDefault()
+              e.stopPropagation()
+              complete()
+            } else if (e.key === 'ArrowDown') {
+              e.preventDefault()
+              listRef.current
+                ?.querySelector<HTMLElement>('[data-menu-item]:not(:disabled)')
+                ?.focus()
+            }
+          }}
+          spellCheck={false}
+          autoComplete="off"
+          autoFocus
+          aria-label="筛选文件夹或输入路径"
+          placeholder="筛选文件夹，或输入路径"
+          className="h-full min-w-0 flex-1 bg-transparent font-mono text-[12px] text-text outline-none placeholder:font-sans placeholder:text-[12.5px] placeholder:text-muted"
+        />
+        <button
+          type="button"
+          onClick={useCurrent}
+          aria-label={useLabel}
+          title={`${useLabel} (Enter)`}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-[var(--t-bg-active)] hover:text-text"
+        >
+          <CornerDownLeft size={13} />
+        </button>
+      </div>
+
+      <div ref={listRef} className="max-h-[264px] overflow-y-auto">
+        <MenuList aria-label="选择文件夹" className="p-0">
+          {!query.trim() &&
+            recents.slice(0, 4).map((d) => (
+              <MenuItem key={d} icon={<Clock size={13} />} hint={d} onSelect={() => open(d)}>
+                {basename(d) || d}
+              </MenuItem>
+            ))}
           <MenuItem
             icon={<ArrowUp size={13} />}
             disabled={!parent}
@@ -228,78 +340,32 @@ export function FolderBrowser({
             ..
           </MenuItem>
           {loading && entries.length === 0 && (
-            <div className="flex h-[150px] items-center justify-center gap-2 text-[11.5px] text-muted">
+            <div className="flex h-[120px] items-center justify-center gap-2 text-[11.5px] text-muted">
               <Loader2 size={12} className="animate-spin" /> 读取目录…
             </div>
           )}
           {!loading && error && (
-            <div className="flex h-[150px] flex-col items-center justify-center gap-1 px-4 text-center text-[11px] text-danger">
+            <div className="flex h-[120px] flex-col items-center justify-center gap-1 px-4 text-center text-[11px] text-danger">
               <TriangleAlert size={14} />
               {error}
             </div>
           )}
-          {!loading && !error && entries.length === 0 && (
-            <div className="flex h-[150px] items-center justify-center text-[11.5px] text-muted">
-              没有子文件夹
+          {!loading && !error && filtered.length === 0 && (
+            <div className="flex h-[120px] items-center justify-center text-[11.5px] text-muted">
+              {query.trim() ? '没有匹配的文件夹' : '没有子文件夹'}
             </div>
           )}
-          {entries.map((entry) => (
-            <div key={entry.path} className="group/dir relative">
-              <button
-                type="button"
-                data-menu-item=""
-                onClick={() => open(entry.path)}
-                onDoubleClick={() => onUse(entry.path)}
-                className={cn(rowClass, 'pr-8')}
-              >
-                <Folder size={13} className="shrink-0 text-muted" />
-                <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-              </button>
-              <button
-                type="button"
-                tabIndex={-1}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onUse(entry.path)
-                }}
-                aria-label={`选择 ${entry.name}`}
-                className="absolute right-1 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted opacity-70 transition-opacity hover:bg-[var(--t-bg-hover)] hover:text-text md:opacity-0 md:group-hover/dir:opacity-100 md:focus-visible:opacity-100"
-              >
-                <Check size={12} />
-              </button>
-            </div>
+          {filtered.map((entry) => (
+            <MenuItem
+              key={entry.path}
+              icon={<Folder size={13} />}
+              title={entry.path}
+              onSelect={() => open(entry.path)}
+            >
+              {entry.name}
+            </MenuItem>
           ))}
-        </div>
-        <MenuDivider />
-        <MenuItem
-          icon={<Check size={13} />}
-          disabled={!path}
-          disabledReason="还没有打开任何目录"
-          onSelect={() => onUse(path)}
-        >
-          {useLabel}
-        </MenuItem>
-      </MenuList>
-      <div className="mt-1 border-t border-border pt-1">
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              const next = draft.trim()
-              if (next) onUse(next)
-            } else if (e.key === 'Tab') {
-              e.preventDefault()
-              complete()
-            }
-          }}
-          spellCheck={false}
-          autoComplete="off"
-          aria-label="目录路径"
-          placeholder="输入绝对路径，Enter 选定"
-          className="h-8 w-full min-w-0 bg-transparent px-2 font-mono text-[11.5px] text-text outline-none placeholder:text-muted"
-        />
+        </MenuList>
       </div>
     </div>
   )
@@ -519,7 +585,8 @@ export function EnvBar({
     <div className="flex min-w-0 items-center gap-1 overflow-x-auto pb-1.5">
       <Popover
         side="top"
-        panelClassName="w-auto"
+        padded={false}
+        panelClassName="w-auto rounded-[10px] p-[5px]"
         trigger={({ open, toggle }) => (
           <EnvTrigger
             icon={
@@ -575,7 +642,8 @@ export function EnvBar({
 
       <Popover
         side="top"
-        panelClassName="w-auto"
+        padded={false}
+        panelClassName="w-auto rounded-[10px] p-[5px]"
         trigger={({ open, toggle }) => (
           <EnvTrigger
             icon={<FolderOpen size={12} className="text-muted" />}
@@ -618,7 +686,8 @@ export function EnvBar({
 
       <Popover
         side="top"
-        panelClassName="w-auto"
+        padded={false}
+        panelClassName="w-auto rounded-[10px] p-[5px]"
         trigger={({ open, toggle }) => (
           <EnvTrigger
             icon={

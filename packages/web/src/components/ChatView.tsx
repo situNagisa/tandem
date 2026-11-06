@@ -314,7 +314,7 @@ export function ChatView() {
         </IconButton>
       </div>
 
-      <div className="shrink-0 bg-bg px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5 md:px-6 md:pb-5 md:pt-2">
+      <div className="shrink-0 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5 md:px-6 md:pb-5 md:pt-2">
         <div className="mx-auto w-full max-w-[760px]">
           {summary && hostId && (
             <EnvBar
