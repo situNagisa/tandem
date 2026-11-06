@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react'
+import { memo, useState } from 'react'
 import { ChevronRight, Layers, Loader2 } from 'lucide-react'
 import type { ToolResultBlock, UiMessage } from '../../lib/types'
 import { useAppStore } from '../../store/useAppStore'
@@ -51,6 +51,7 @@ export const ToolGroup = memo(
     cwd?: string
   }) {
     const [open, setOpen] = useState(false)
+    const [mounted, setMounted] = useState(false)
     const storeResults = useAppStore((s) => s.active?.toolResults)
     const results = toolResults ?? storeResults
     const tools = entries.filter(
@@ -59,15 +60,19 @@ export const ToolGroup = memo(
     const anyRunning = tools.some((t) => t.streaming && !results?.[t.block.id])
     const anyError = tools.some((t) => results?.[t.block.id]?.isError)
 
-    useEffect(() => {
-      if (anyError) setOpen(true)
-    }, [anyError])
 
     return (
       <div className={cn('my-0.5', animate && 'chat-msg-enter')}>
-        <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className="tool-row">
+        <button
+          onClick={() => {
+            setMounted(true)
+            setOpen((v) => !v)
+          }}
+          aria-expanded={open}
+          className="tool-row"
+        >
           {anyRunning ? (
-            <Loader2 size={14} className="shrink-0 animate-spin text-accent" />
+            <Loader2 size={14} className="shrink-0 animate-spin text-text-secondary" />
           ) : (
             <Layers
               size={14}
@@ -80,9 +85,10 @@ export const ToolGroup = memo(
           {anyError && <span className="shrink-0 text-[11.5px] text-danger">· 有错误</span>}
           <ChevronRight size={12} className="tool-chevron ml-auto shrink-0 text-muted" />
         </button>
-        <div className="collapse-grid" data-open={open}>
-          <div className="collapse-inner">
-            <div className="my-1 ml-1.5 border-l border-border py-0.5 pl-2">
+        {mounted && (
+          <div className="collapse-grid" data-open={open}>
+            <div className="collapse-inner">
+              <div className="my-1 ml-1.5 border-l border-border py-0.5 pl-2">
               {entries.map((entry, i) =>
                 entry.kind === 'thinking' ? (
                   <ThinkingBlock key={`k-${i}`} text={entry.text} streaming={entry.streaming} />
@@ -98,9 +104,10 @@ export const ToolGroup = memo(
                   />
                 ),
               )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     )
   },

@@ -213,6 +213,7 @@ export const ToolCard = memo(function ToolCard({
   cwd?: string
 }) {
   const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const storeCwd = useAppStore((s) => s.active?.summary?.cwd)
   const cwd = cwdProp ?? storeCwd
   const subagents = useAppStore((s) => s.active?.subagents)
@@ -249,10 +250,6 @@ export const ToolCard = memo(function ToolCard({
     }
     return asRecord(block.input)
   }, [raw, block.input])
-
-  useEffect(() => {
-    if (isError) setOpen(true)
-  }, [isError])
 
   const pick = (key: string) => str(input[key]) || partialString(raw, key) || ''
   const command = pick('command')
@@ -351,7 +348,7 @@ export const ToolCard = memo(function ToolCard({
     )
   }
 
-  const body = (() => {
+  const body = mounted ? (() => {
     if (block.name === 'Bash') {
       return (
         <div className="space-y-2">
@@ -471,18 +468,21 @@ export const ToolCard = memo(function ToolCard({
         <OutputBlock text={output} isError={isError} running={running} maxHeight={320} />
       </div>
     )
-  })()
+  })() : null
 
   return (
     <div className="my-0.5">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setMounted(true)
+          setOpen((v) => !v)
+        }}
         aria-expanded={open}
         title={fullTarget || undefined}
         className="tool-row"
       >
         {running ? (
-          <Loader2 size={14} className="shrink-0 animate-spin text-accent" />
+          <Loader2 size={14} className="shrink-0 animate-spin text-text-secondary" />
         ) : (
           <Icon size={14} className={cn('shrink-0', isError ? 'text-danger' : 'text-muted')} />
         )}
@@ -502,11 +502,13 @@ export const ToolCard = memo(function ToolCard({
         )}
         <ChevronRight size={12} className="tool-chevron ml-auto shrink-0 text-muted" />
       </button>
-      <div className="collapse-grid" data-open={open}>
-        <div className="collapse-inner">
-          <div className="tool-detail">{body}</div>
+      {mounted && (
+        <div className="collapse-grid" data-open={open}>
+          <div className="collapse-inner">
+            <div className="tool-detail">{body}</div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 })

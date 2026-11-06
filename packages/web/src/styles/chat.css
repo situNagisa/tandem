@@ -31,18 +31,6 @@
   }
 }
 
-.md.chat-md.is-streaming > :last-child::after {
-  content: "";
-  display: inline-block;
-  width: 2px;
-  height: 1.05em;
-  margin-left: 2px;
-  border-radius: 1px;
-  background: var(--t-accent);
-  vertical-align: -0.15em;
-  animation: chat-caret 1s steps(1) infinite;
-}
-
 @keyframes chat-pop-in {
   from {
     opacity: 0;
@@ -210,10 +198,12 @@
   letter-spacing: 0.002em;
 }
 
-.md.chat-md > :first-child {
+.md.chat-md > :first-child,
+.md.chat-md > .md-chunk:first-child > :first-child {
   margin-top: 0;
 }
-.md.chat-md > :last-child {
+.md.chat-md > :last-child,
+.md.chat-md > .md-chunk:last-child > :last-child {
   margin-bottom: 0;
 }
 
@@ -834,5 +824,164 @@ mark.chat-match {
   .popover-panel,
   .composer-send .send-icon {
     animation: none;
+  }
+}
+
+/* ---------- 流式 Markdown 分块 ---------- */
+
+/* 每块单独解析，用 contents 让排版像同一个 Markdown 根。 */
+.md-chunk {
+  display: contents;
+}
+
+.md.chat-md.is-streaming .md-chunk:last-child > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  border-radius: 1px;
+  background: var(--t-accent);
+  vertical-align: -0.15em;
+  animation: chat-caret 1s steps(1) infinite;
+}
+
+/* 流式中的行不跳过渲染，避免贴底时反复估算高度。 */
+.msg-row[data-streaming="true"] {
+  content-visibility: visible;
+}
+
+/* ---------- 轮次导航 ---------- */
+
+.turn-rail {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  z-index: 6;
+  display: flex;
+  height: min(68%, 520px);
+  width: 20px;
+  transform: translateY(-50%);
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.turn-rail-track {
+  position: relative;
+  height: 100%;
+  width: 16px;
+  pointer-events: auto;
+}
+
+.turn-tick {
+  position: absolute;
+  left: 0;
+  display: flex;
+  width: 16px;
+  height: 9px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.turn-tick-line {
+  display: block;
+  width: 7px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--t-text-tertiary);
+  opacity: 0.5;
+  transition:
+    width 120ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    opacity 120ms ease,
+    background-color 120ms ease;
+}
+
+.turn-tick:hover .turn-tick-line,
+.turn-tick:focus-visible .turn-tick-line {
+  width: 12px;
+  opacity: 0.9;
+  background: var(--t-text-secondary);
+}
+
+.turn-tick[data-active="true"] .turn-tick-line {
+  width: 14px;
+  opacity: 1;
+  background: var(--t-text);
+}
+
+.turn-tick:focus-visible {
+  outline: 1px solid var(--t-border-strong);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.turn-tip {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  z-index: 10;
+  max-width: 230px;
+  overflow: hidden;
+  padding: 4px 8px;
+  border: 1px solid var(--t-border);
+  border-radius: 6px;
+  background: var(--t-bg-elevated);
+  box-shadow: var(--t-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04));
+  color: var(--t-text-soft);
+  font-size: 11.5px;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) scale(0.98);
+  transform-origin: right center;
+  transition:
+    opacity 120ms ease,
+    transform 120ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.turn-tick:hover .turn-tip,
+.turn-tick:focus-visible .turn-tip {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+}
+
+.turn-rail-count {
+  position: absolute;
+  right: 0;
+  bottom: -18px;
+  color: var(--t-text-tertiary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.turn-rail:hover .turn-rail-count {
+  opacity: 1;
+}
+
+.msg-row[data-turn-id] {
+  scroll-margin-top: 16px;
+}
+
+@media (max-width: 767px) {
+  .turn-rail {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-tick-line,
+  .turn-tip,
+  .turn-rail-count {
+    transition: none;
   }
 }

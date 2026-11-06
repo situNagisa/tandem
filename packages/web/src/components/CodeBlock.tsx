@@ -6,6 +6,74 @@ import { copyText } from '../lib/clipboard'
 import { useHorizontalOverflow } from '../lib/hooks'
 
 const MAX_CHARS = 200_000
+const HIGHLIGHT_CACHE_MAX = 80
+const highlightCache = new Map<string, { code: string; html: string }>()
+let highlightCacheChars = 0
+
+function hashText(text: string): number {
+  let hash = 2166136261
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+function cacheKey(language: string, code: string): string {
+  return `${language}:${code.length}:${hashText(code)}`
+}
+
+function readCache(key: string, code: string): string | undefined {
+  const hit = highlightCache.get(key)
+  if (!hit || hit.code !== code) return undefined
+  // LRU：命中后移到末尾
+  highlightCache.delete(key)
+  highlightCache.set(key, hit)
+  return hit.html
+}
+
+function writeCache(key: string, code: string, html: string): void {
+  if (html.length > 300_000) return
+  const prev = highlightCache.get(key)
+  if (prev) highlightCacheChars -= prev.html.length
+  highlightCache.set(key, { code, html })
+  highlightCacheChars += html.length
+  while (highlightCache.size > HIGHLIGHT_CACHE_MAX || highlightCacheChars > 2_000_000) {
+    const first = highlightCache.keys().next().value
+    if (first == null) break
+    highlightCacheChars -= highlightCache.get(first)?.html.length ?? 0
+    highlightCache.delete(first)
+  }
+}
+
+
+type IdleDeadline = { didTimeout: boolean; timeRemaining: () => number }
+const highlightQueue: Array<() => void> = []
+let highlightScheduled = false
+
+function scheduleHighlight(job: () => void): void {
+  highlightQueue.push(job)
+  if (highlightScheduled) return
+  highlightScheduled = true
+  const pump = () => {
+    highlightScheduled = false
+    const next = highlightQueue.shift()
+    if (!next) return
+    next()
+    if (highlightQueue.length) {
+      highlightScheduled = true
+      schedulePump()
+    }
+  }
+  const schedulePump = () => {
+    const ric = (window as unknown as {
+      requestIdleCallback?: (cb: (d: IdleDeadline) => void, opts?: { timeout: number }) => number
+    }).requestIdleCallback
+    if (ric) ric.call(window, pump, { timeout: 1200 })
+    else window.setTimeout(pump, 80)
+  }
+  schedulePump()
+}
 
 interface CodeBlockProps {
   code: string
@@ -15,6 +83,8 @@ interface CodeBlockProps {
   maxHeight?: number
   placeholder?: string
   className?: string
+  /** 流式代码尚未稳定：先显示纯文本，结束后再高亮。 */
+  streaming?: boolean
 }
 
 export function CodeBlock({
@@ -25,6 +95,7 @@ export function CodeBlock({
   maxHeight = 420,
   placeholder,
   className,
+  streaming = false,
 }: CodeBlockProps) {
   const [highlighted, setHighlighted] = useState<{ code: string; html: string } | null>(null)
   const [copied, setCopied] = useState(false)
@@ -33,17 +104,33 @@ export function CodeBlock({
     () => (code.length > MAX_CHARS ? code.slice(0, MAX_CHARS) + '\n…（内容过长，已截断）' : code),
     [code],
   )
+  const key = language ? cacheKey(language, shown) : ''
+  const html = highlighted && highlighted.code === shown ? highlighted.html : null
+  const { ref: preRef, canLeft, canRight, update: updateOverflow } = useHorizontalOverflow<HTMLPreElement>([
+    shown,
+    html,
+  ])
 
   useEffect(() => {
-    if (!language) return
+    if (!language || streaming) return
+    const cached = key ? readCache(key, shown) : undefined
+    if (cached) {
+      setHighlighted({ code: shown, html: cached })
+      return
+    }
     let cancelled = false
-    const timer = window.setTimeout(() => {
+    let observer: IntersectionObserver | null = null
+
+    const run = () => {
+      if (cancelled) return
       loadHighlighter()
         .then((hljs) => {
           if (cancelled || !hljs.getLanguage(language)) return
           try {
             const html = hljs.highlight(shown, { language, ignoreIllegals: true }).value
-            if (!cancelled) setHighlighted({ code: shown, html })
+            if (cancelled) return
+            writeCache(key, shown, html)
+            setHighlighted({ code: shown, html })
           } catch {
             /* 高亮失败时保留纯文本 */
           }
@@ -51,12 +138,31 @@ export function CodeBlock({
         .catch(() => {
           /* 忽略加载失败 */
         })
-    }, 60)
+    }
+
+    // 视口外的代码块不解析：长会话打开时只高亮看得见的几块。
+    if (typeof IntersectionObserver !== 'undefined') {
+      const el = preRef.current
+      if (!el) return
+      observer = new IntersectionObserver(
+        (entries) => {
+          if (!entries.some((entry) => entry.isIntersecting)) return
+          observer?.disconnect()
+          observer = null
+          scheduleHighlight(run)
+        },
+        { rootMargin: '400px 0px' },
+      )
+      observer.observe(el)
+    } else {
+      scheduleHighlight(run)
+    }
+
     return () => {
       cancelled = true
-      window.clearTimeout(timer)
+      observer?.disconnect()
     }
-  }, [shown, language])
+  }, [shown, language, key, streaming])
 
   useEffect(
     () => () => {
@@ -64,12 +170,6 @@ export function CodeBlock({
     },
     [],
   )
-
-  const html = highlighted && highlighted.code === shown ? highlighted.html : null
-  const { ref: preRef, canLeft, canRight, update: updateOverflow } = useHorizontalOverflow<HTMLPreElement>([
-    shown,
-    html,
-  ])
 
   const copy = async () => {
     if (!(await copyText(code))) return

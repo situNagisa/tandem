@@ -1,4 +1,4 @@
-import { isValidElement, memo, type ReactNode } from 'react'
+import { isValidElement, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '../lib/cn'
@@ -22,20 +22,146 @@ function codeInfo(children: ReactNode): { code: string; language?: string } | nu
   return { code, language: match?.[1] }
 }
 
-const components: Components = {
-  pre({ children }) {
-    const info = codeInfo(children)
-    if (!info) return <pre>{children}</pre>
-    return <CodeBlock code={info.code} language={info.language} className="my-4" />
-  },
-  a({ href, children }) {
-    return (
-      <a href={href} target="_blank" rel="noreferrer noopener">
-        {children}
-      </a>
-    )
-  },
+function makeComponents(streaming: boolean): Components {
+  return {
+    pre({ children }) {
+      const info = codeInfo(children)
+      if (!info) return <pre>{children}</pre>
+      return (
+        <CodeBlock
+          code={info.code}
+          language={info.language}
+          className="my-4"
+          streaming={streaming}
+        />
+      )
+    },
+    a({ href, children }) {
+      return (
+        <a href={href} target="_blank" rel="noreferrer noopener">
+          {children}
+        </a>
+      )
+    },
+  }
 }
+
+const REMARK_PLUGINS = [remarkGfm]
+
+/**
+ * 流式时按动画帧合并 delta；文本越长渲染间隔越大，避免整段 Markdown
+ * 被每个 token 重解析（短文本约 20fps，长文本约 8–12fps）。
+ */
+function useStreamingText(text: string, streaming: boolean): string {
+  const [shown, setShown] = useState(text)
+  const shownRef = useRef(text)
+  shownRef.current = shown
+  const lastCommit = useRef(0)
+
+  useEffect(() => {
+    if (!streaming) {
+      if (shownRef.current !== text) setShown(text)
+      return
+    }
+    if (shownRef.current === text) return
+    let raf = 0
+    const interval = text.length > 8000 ? 120 : text.length > 3000 ? 80 : 48
+    const tick = () => {
+      const now = performance.now()
+      if (now - lastCommit.current >= interval) {
+        lastCommit.current = now
+        setShown(text)
+      } else {
+        raf = window.requestAnimationFrame(tick)
+      }
+    }
+    raf = window.requestAnimationFrame(tick)
+    return () => window.cancelAnimationFrame(raf)
+  }, [text, streaming])
+
+  return streaming ? shown : text
+}
+
+interface Chunk {
+  start: number
+  text: string
+}
+
+/**
+ * 把流式 Markdown 按空行切成块，已完成块用 memo 缓存，只重解析最后一块。
+ * 只在语义安全的空行处切：不切代码围栏、引用、列表（列表后的新段落可以切）。
+ */
+function splitChunks(text: string): Chunk[] {
+  const lines = text.split('\n')
+  const chunks: Chunk[] = []
+  let startOffset = 0
+  let offset = 0
+  let fence: string | null = null
+  let prevNonBlank = ''
+
+  const push = () => {
+    const end = offset
+    if (end > startOffset) chunks.push({ start: startOffset, text: text.slice(startOffset, end) })
+    startOffset = end
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    offset += line.length + 1
+    const trimmed = line.trimStart()
+    const fenceMatch = /^(```+|~~~+)/.exec(trimmed)
+    if (fenceMatch) {
+      const marker = fenceMatch[1][0]
+      if (!fence) fence = marker
+      else if (fence === marker) fence = null
+      prevNonBlank = line
+      continue
+    }
+    if (!line.trim() && !fence) {
+      // 下一个非空行决定这里是不是安全边界
+      let next = ''
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].trim()) {
+          next = lines[j]
+          break
+        }
+      }
+      if (!next) continue
+      const nextTrim = next.trimStart()
+      const nextIndented = /^\s{2,}/.test(next)
+      const nextList = /^(?:[-*+]|\d+[.)])\s/.test(nextTrim)
+      const prevList = /^(?:[-*+]|\d+[.)])\s/.test(prevNonBlank.trimStart())
+      const prevQuote = prevNonBlank.trimStart().startsWith('>')
+      const safe =
+        !!prevNonBlank &&
+        !nextIndented &&
+        !prevQuote &&
+        !(prevList && nextList)
+      if (safe) push()
+      continue
+    }
+    if (line.trim()) prevNonBlank = line
+  }
+  if (startOffset < text.length) chunks.push({ start: startOffset, text: text.slice(startOffset) })
+  return chunks.length ? chunks : [{ start: 0, text }]
+}
+
+const MarkdownChunk = memo(function MarkdownChunk({
+  text,
+  streaming,
+}: {
+  text: string
+  streaming: boolean
+}) {
+  const components = useMemo(() => makeComponents(streaming), [streaming])
+  return (
+    <div className={cn('md-chunk', streaming && 'is-streaming')}>
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={components}>
+        {text}
+      </ReactMarkdown>
+    </div>
+  )
+})
 
 export const Markdown = memo(function Markdown({
   text,
@@ -47,11 +173,22 @@ export const Markdown = memo(function Markdown({
   streaming?: boolean
   className?: string
 }) {
+  const shown = useStreamingText(text, streaming)
+  const chunks = useMemo(
+    () => (streaming ? splitChunks(shown) : [{ start: 0, text: shown }]),
+    [shown, streaming],
+  )
   return (
     <div className={cn('md chat-md', streaming && 'is-streaming', className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {text}
-      </ReactMarkdown>
+      {chunks.map((chunk, i) =>
+        chunk.text ? (
+          <MarkdownChunk
+            key={chunk.start}
+            text={chunk.text}
+            streaming={streaming && i === chunks.length - 1}
+          />
+        ) : null,
+      )}
     </div>
   )
 })
