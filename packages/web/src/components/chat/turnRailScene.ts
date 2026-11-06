@@ -289,7 +289,8 @@ export class RailScene {
     const hi = this.I.x
     const dpr = window.devicePixelRatio || 1
     const px = (v: number) => Math.round(v * dpr) / dpr
-    const textIn = smooth(0.5, 0.92, pc)
+    // 收回时文字更早淡出，避免行文字漂在逐渐缩小的面板之外
+    const textIn = this.P.t > 0.5 ? smooth(0.5, 0.92, pc) : smooth(0.8, 0.98, pc)
 
     for (let e = 0; e < POOL; e++) {
       const it = this.items[e]
@@ -337,9 +338,10 @@ export class RailScene {
 
     const curY = lerp((cx - Lc) * PITCH, (cx - Lp) * ROW, p)
     cur.style.transform = `translate3d(0,${px(curY)}px,0)`
-    cur.style.opacity = f3(smooth(0.5, 1, pc))
+    const chrome = this.P.t > 0.5 ? smooth(0.5, 1, pc) : smooth(0.8, 0.98, pc)
+    cur.style.opacity = f3(chrome)
 
     ind.style.transform = `translate3d(0,${px((hi - Lp) * ROW)}px,0)`
-    ind.style.opacity = f3(hv * smooth(0.5, 1, pc))
+    ind.style.opacity = f3(hv * chrome)
   }
 }
