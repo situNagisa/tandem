@@ -203,7 +203,12 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   )
   const profileName = useAppStore((s) => {
     if (!hostId || !summary?.profileId) return null
-    return s.runtimes[hostId]?.profiles.find((p) => p.id === summary.profileId)?.name ?? null
+    const profile = s.runtimes[hostId]?.profiles.find((p) => p.id === summary.profileId)
+    if (!profile) return '未知账号'
+    const group = summary.groupId
+      ? profile.groups?.find((g) => g.id === summary.groupId)?.name
+      : undefined
+    return group ? `${profile.name} › ${group}` : profile.name
   })
   const deleteSession = useAppStore((s) => s.deleteSession)
   const toast = useUiStore((s) => s.toast)
@@ -472,7 +477,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         <DetailRow label="模型">
           <span className="font-mono text-[11px]">{summary?.model ?? '—'}</span>
         </DetailRow>
-        <DetailRow label="账号">{profileName ?? summary?.profileId ?? '—'}</DetailRow>
+        <DetailRow label="账号">{profileName ?? (summary?.profileId ? '未知账号' : '—')}</DetailRow>
         <DetailRow label="权限">
           {summary ? PERMISSION_MODE_LABELS[summary.permissionMode] : '—'}
         </DetailRow>
