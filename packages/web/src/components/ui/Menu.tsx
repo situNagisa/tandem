@@ -40,7 +40,7 @@ function itemFromEvent(target: EventTarget | null): HTMLElement | null {
 }
 
 /**
- * 统一弹出列表：30px 单行选项，说明与禁用原因走标准 tooltip（悬停 500ms 后显示）。
+ * 统一弹出列表：26px 单行紧凑选项，说明与禁用原因走标准 tooltip（悬停 500ms 后显示）。
  * 不使用组标题；需要分组时用 MenuDivider 细分隔线。
  */
 export function MenuList({
@@ -215,7 +215,7 @@ export function MenuItem({
         if (!disabled) onMouseDown?.(e)
       }}
       className={cn(
-        'flex h-[30px] w-full shrink-0 items-center gap-2 rounded-md px-2 text-left text-[13px] leading-none text-text-soft transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text data-[active=true]:bg-[var(--t-bg-hover)] data-[active=true]:text-text focus-visible:bg-[var(--t-bg-hover)] focus-visible:text-text focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-soft aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:text-text-soft',
+        'flex h-[26px] w-full shrink-0 items-center gap-1.5 rounded-md px-1.5 text-left text-[12.5px] leading-none text-text-soft transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text data-[active=true]:bg-[var(--t-bg-hover)] data-[active=true]:text-text data-[selected=true]:bg-[color-mix(in_srgb,var(--t-bg-active)_55%,transparent)] focus-visible:bg-[var(--t-bg-hover)] focus-visible:text-text focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-soft aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:text-text-soft',
         selected && 'text-text',
         danger && 'text-danger hover:text-danger focus-visible:text-danger',
         className,
@@ -237,7 +237,7 @@ export function MenuItem({
 }
 
 export function MenuDivider({ className }: { className?: string }) {
-  return <div role="separator" className={cn('my-1 h-px shrink-0 bg-border', className)} />
+  return <div role="separator" className={cn('my-0.5 h-px shrink-0 bg-border', className)} />
 }
 
 const FIELD_SIZE: Record<ControlSize, string> = {

@@ -505,7 +505,7 @@ function ModelPanel({
   return (
     <div className="w-[360px] max-w-[calc(100vw-1.5rem)]">
       <MenuList aria-label="选择模型" className="p-0">
-        <div className="no-scrollbar flex shrink-0 gap-1 overflow-x-auto border-b border-border px-2 py-1.5">
+        <div className="no-scrollbar flex shrink-0 gap-1 overflow-x-auto border-b border-border px-1.5 py-1">
           {tabs.map((tab) => (
             <button
               key={tab.key}
@@ -515,7 +515,7 @@ function ModelPanel({
                 setQuery('')
               }}
               className={cn(
-                'h-7 shrink-0 whitespace-nowrap rounded-md px-2 text-[12px] transition-colors',
+                'h-6 shrink-0 whitespace-nowrap rounded-md px-1.5 text-[11.5px] transition-colors',
                 tab.key === activeKey
                   ? 'bg-[var(--t-bg-active)] text-text'
                   : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text',
@@ -526,7 +526,7 @@ function ModelPanel({
           ))}
         </div>
         {showSearch && (
-          <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-border px-2.5 text-muted">
+          <div className="flex h-7 shrink-0 items-center gap-1.5 border-b border-border px-2 text-muted">
             <Search size={12} className="shrink-0" />
             <input
               value={query}
