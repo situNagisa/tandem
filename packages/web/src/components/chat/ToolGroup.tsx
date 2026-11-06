@@ -69,7 +69,7 @@ export const ToolGroup = memo(
             setOpen((v) => !v)
           }}
           aria-expanded={open}
-          className="tool-row"
+          className="tool-row tool-group-head"
         >
           {anyRunning ? (
             <Loader2 size={14} className="shrink-0 animate-spin text-text-secondary" />

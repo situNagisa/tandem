@@ -207,24 +207,21 @@ export function CodeBlock({
   return (
     <div className={cn('chat-code', fill && 'file-code-fill', className)}>
       {showHeader && (
-        <div className="chat-code-head">
-          <span className="min-w-0 flex-1 truncate text-[11.5px] text-muted">
+        <div className="chat-code-tools" data-visible={copied || undefined}>
+          <span className="truncate font-mono text-[10px] text-[var(--t-text-tertiary)]">
             {fileName || languageLabel(language)}
           </span>
-          {fileName && (
-            <span className="shrink-0 text-[10.5px] text-muted">{languageLabel(language)}</span>
-          )}
           <IconButton
             size="sm"
             onClick={copy}
             label={copied ? '已复制' : '复制代码'}
             tooltip={copied ? '已复制' : '复制'}
-            className="-mr-1 size-6 [&_svg]:size-[13px]"
+            className="size-6 rounded-md bg-[color-mix(in_srgb,var(--t-bg)_72%,transparent)] text-[var(--t-text-tertiary)] backdrop-blur-sm hover:bg-[var(--t-bg-active)] hover:text-text [&_svg]:size-3"
           >
             {copied ? (
-              <Check size={13} className="text-success" />
+              <Check size={12} className="text-success" />
             ) : (
-              <Copy size={12.5} className="opacity-80" />
+              <Copy size={12} />
             )}
           </IconButton>
         </div>
