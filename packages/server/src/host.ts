@@ -109,6 +109,8 @@ export class Host {
   private permissions = new Map<string, PermissionEntry>();
   /** 单模型能力缓存，避免每次打开选择器都请求 provider 模型列表。 */
   private capabilityCache = new Map<string, { at: number; info: ModelInfo }>();
+  /** 已尝试过环境检测的会话：非 git 目录也记住，避免列表轮询反复执行 git。 */
+  private envChecked = new Set<string>();
 
   constructor(config?: HostConfig, home = tandemHome()) {
     this.home = home;
@@ -145,11 +147,25 @@ export class Host {
   // ---------- 会话读取/转换 ----------
 
   getSession(id: string): SessionRecord | undefined {
-    return this.store.get(id);
+    const rec = this.store.get(id);
+    if (rec) this.ensureSessionEnv(rec);
+    return rec;
   }
 
   listSessions(): SessionRecord[] {
-    return this.store.list();
+    const list = this.store.list();
+    for (const rec of list) this.ensureSessionEnv(rec);
+    return list;
+  }
+
+  /** 老会话没有 env（旧版本未检测或从别处导入）时按需检测一次。 */
+  private ensureSessionEnv(rec: SessionRecord): void {
+    if (rec.env || this.envChecked.has(rec.id)) return;
+    this.envChecked.add(rec.id);
+    void this.refreshEnv(rec.id).catch(() => {
+      // 检测失败保持无 env，下次进程启动再试
+      this.envChecked.delete(rec.id);
+    });
   }
 
   toSummary(rec: SessionRecord): SessionSummary {
@@ -555,6 +571,7 @@ export class Host {
         delete rec.worktree;
         delete rec.worktreeRepoRoot;
         delete rec.env;
+        this.envChecked.delete(id);
       }
     }
     if (typeof patch.effort === 'string') {
