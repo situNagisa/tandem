@@ -96,7 +96,7 @@ function Pill({
       onClick={onClick}
       title={title}
       className={cn(
-        'flex h-10 min-w-0 items-center gap-1.5 rounded-full border border-border bg-transparent px-2.5 text-[11.5px] text-text-soft transition-colors duration-100 hover:bg-[var(--t-bg-hover)] hover:text-text md:h-8',
+        'flex h-10 min-w-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-surface/60 px-2.5 text-[11.5px] text-text-soft transition-colors duration-100 hover:border-border-strong hover:bg-[var(--t-bg-hover)] hover:text-text md:h-8',
         className,
       )}
     >
@@ -742,7 +742,7 @@ export function NewSessionView() {
         )}
 
         <div className="mt-8">
-          <div className="mb-2 text-center text-[10px] font-medium uppercase tracking-[0.1em] text-muted/80">
+          <div className="mb-2 text-center text-[10px] font-medium uppercase tracking-[0.1em] text-muted">
             试试
           </div>
           <div className="flex flex-col items-center gap-1">
@@ -750,7 +750,7 @@ export function NewSessionView() {
               <button
                 key={hint}
                 onClick={() => seedPrompt(hint)}
-                className="max-w-full truncate rounded-md px-2 py-1 text-[11.5px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
+                className="max-w-full cursor-pointer truncate rounded-full border border-border bg-surface/40 px-2.5 py-1 text-[11.5px] text-muted transition-colors hover:border-border-strong hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
               >
                 {hint}
               </button>
@@ -759,7 +759,7 @@ export function NewSessionView() {
         </div>
 
         {host && (
-          <div className="mt-8 flex items-center justify-center gap-3 text-[10px] text-muted/80">
+          <div className="mt-8 flex items-center justify-center gap-3 text-[10px] text-muted">
             <span className="flex items-center gap-1">
               <GitBranch size={10} />
               {cwd ? basename(cwd) : '未选择目录'}

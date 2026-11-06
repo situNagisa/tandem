@@ -62,7 +62,7 @@ export function SessionWelcome() {
             <button
               key={s.title}
               onClick={() => seedPrompt(s.prompt)}
-              className="group flex items-start gap-2.5 rounded-xl border border-border bg-surface px-3 py-2.5 text-left transition-colors duration-100 hover:bg-[var(--t-bg-hover)]"
+              className="group flex cursor-pointer items-start gap-2.5 rounded-xl border border-border bg-surface px-3 py-2.5 text-left transition-colors duration-100 hover:border-border-strong hover:bg-[var(--t-bg-hover)]"
             >
               <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
                 <Icon size={13} />

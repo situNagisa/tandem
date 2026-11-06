@@ -128,7 +128,7 @@ export function Sidebar({
         >
           <History size={14} />
           导入会话
-          <span className="ml-auto hidden text-[9.5px] text-muted/80 md:inline">CC / Codex</span>
+          <span className="ml-auto hidden text-[9.5px] text-muted md:inline">CC / Codex</span>
         </button>
       </div>
 

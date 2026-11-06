@@ -386,7 +386,7 @@ export function SessionList({
             {importedFrom && (
               <span
                 title={`从 ${importedFrom.label} 导入`}
-                className="shrink-0 text-[9.5px] leading-none text-muted/80"
+                className="shrink-0 text-[9.5px] leading-none text-muted"
               >
                 {importedFrom.mark}
               </span>
@@ -527,7 +527,7 @@ export function SessionList({
                             <span className="truncate">{project.branch}</span>
                           </span>
                         )}
-                        <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted/70">
+                        <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted">
                           {project.items.length}
                         </span>
                       </button>

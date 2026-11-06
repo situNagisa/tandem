@@ -83,7 +83,7 @@ export function CodeBlock({
             {fileName || languageLabel(language)}
           </span>
           {fileName && (
-            <span className="shrink-0 text-[10.5px] text-muted/80">{languageLabel(language)}</span>
+            <span className="shrink-0 text-[10.5px] text-muted">{languageLabel(language)}</span>
           )}
           <button
             onClick={copy}

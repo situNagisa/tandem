@@ -395,7 +395,7 @@ export const ToolCard = memo(function ToolCard({
           </span>
         )}
         {suffix && (
-          <span className={cn('shrink-0', isError ? 'text-danger' : 'text-muted/85')}>{suffix}</span>
+          <span className={cn('shrink-0', isError ? 'text-danger' : 'text-muted')}>{suffix}</span>
         )}
         <ChevronRight size={12} className="tool-chevron ml-auto shrink-0 text-muted" />
       </button>

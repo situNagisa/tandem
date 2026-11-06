@@ -50,7 +50,7 @@ export function SettingsDialog() {
               </button>
             )
           })}
-          <div className="mt-auto hidden items-center gap-1.5 px-2.5 pb-1 text-[10px] text-muted/80 sm:flex">
+          <div className="mt-auto hidden items-center gap-1.5 px-2.5 pb-1 text-[10px] text-muted sm:flex">
             <Monitor size={11} /> Tandem 0.1 · Web
           </div>
         </nav>
