@@ -21,6 +21,8 @@ import { useUiStore } from '../../store/useUiStore'
 import { ConnectionDot } from '../StatusDot'
 import { PairDialog } from './PairDialog'
 import { Modal } from '../ui/Modal'
+import { Button, IconButton } from '../ui/Button'
+import { Input, SegmentedControl } from '../ui/Controls'
 import { cn } from '../../lib/cn'
 import { QrScanDialog, scannerSupported } from '../QrScanDialog'
 import { parsePairLink } from '../../lib/pairLink'
@@ -213,13 +215,14 @@ export function HostsSection() {
         <h3 className="text-[14px] font-semibold">Host 管理</h3>
         <span className="text-[11px] text-muted">每台 Host 对应一个 WS 长连接</span>
         <span className="flex-1" />
-        <button
+        <Button
+          variant="secondary"
           onClick={() => setAdding((v) => !v)}
-          className="flex min-h-11 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover sm:min-h-8"
+          className="max-sm:min-h-11"
         >
           {adding ? <X size={13} /> : <Plus size={13} />}
           {adding ? '收起' : '添加 Host'}
-        </button>
+        </Button>
       </div>
 
       {adding && (
@@ -227,31 +230,33 @@ export function HostsSection() {
           <div>
             <label className={labelCls}>配对链接（直连或中继）</label>
             <div className="flex gap-1.5">
-              <input
+              <Input
+                size="lg"
                 value={link}
                 onChange={(e) => setLink(e.target.value)}
                 placeholder="https://relay.example.com/h/…/#pair=… 或 http://…/?token=…"
                 spellCheck={false}
                 autoComplete="off"
-                className={cn(inputCls, 'min-w-0 flex-1 font-mono text-[11.5px]')}
+                className="min-w-0 flex-1 font-mono text-[12px]"
               />
-              <button
+              <Button
+                size="lg"
                 onClick={() => void connectLink(link)}
                 disabled={saving || !link.trim()}
-                className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 text-[11px] text-text-soft transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-50"
+                className="shrink-0"
               >
                 {saving && <Loader2 size={12} className="animate-spin" />}
                 解析并连接
-              </button>
+              </Button>
               {canScan && (
-                <button
+                <IconButton
                   onClick={() => setScanOpen(true)}
-                  title="扫码"
-                  aria-label="扫码添加 Host"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-surface-2 hover:text-text"
+                  label="扫码添加 Host"
+                  tooltip="扫码"
+                  className="size-9"
                 >
                   <ScanLine size={13} />
-                </button>
+                </IconButton>
               )}
             </div>
             <p className="mt-1.5 text-[10.5px] leading-4 text-muted">
@@ -265,62 +270,59 @@ export function HostsSection() {
             <span className="h-px flex-1 bg-[var(--t-border)]" />
           </div>
 
-          <div className="mb-3 flex rounded-md bg-[var(--t-bg-subtle)] p-0.5">
-            {(['direct', 'relay'] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={cn(
-                  'flex h-7 flex-1 items-center justify-center rounded px-2 text-[11px] transition-colors',
-                  mode === m
-                    ? 'bg-[var(--t-bg-active)] text-text'
-                    : 'text-muted hover:text-text-soft',
-                )}
-              >
-                {m === 'direct' ? '直连' : '中继 · 加密'}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            aria-label="连接方式"
+            className="mb-3 flex w-full"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: 'direct', label: '直连' },
+              { value: 'relay', label: '中继 · 加密' },
+            ]}
+          />
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className={labelCls}>名称（可选）</label>
-              <input
+              <Input
+                size="lg"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="例如：局域网工作站"
-                className={inputCls}
               />
             </div>
             <div>
               <label className={labelCls}>访问 Token</label>
-              <input
+              <Input
+                size="lg"
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 placeholder="Host 启动日志或配对链接中的 Token"
                 spellCheck={false}
                 autoComplete="off"
-                className={cn(inputCls, 'font-mono text-[11.5px]')}
+                className="font-mono text-[12px]"
               />
             </div>
             {mode === 'direct' ? (
               <div className="sm:col-span-2">
                 <label className={labelCls}>Host 地址</label>
                 <div className="flex gap-1.5">
-                  <input
+                  <Input
+                    size="lg"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     placeholder="http://192.168.1.10:7878"
                     spellCheck={false}
-                    className={cn(inputCls, 'font-mono text-[11.5px]')}
+                    className="font-mono text-[12px]"
                   />
-                  <button
+                  <Button
+                    size="lg"
                     onClick={() => setUrl(window.location.origin)}
-                    title="使用当前地址"
-                    className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-border px-2 text-[10.5px] text-muted transition-colors hover:bg-surface-2 hover:text-text"
+                    tooltip="使用当前地址"
+                    className="shrink-0 px-2 text-[11px]"
                   >
                     <Laptop size={12} /> 本机
-                  </button>
+                  </Button>
                 </div>
                 <p className="mt-1.5 text-[10.5px] leading-4 text-muted">
                   Token 只保存在本机浏览器里；远程 Host 请确保网络可达（局域网 / Tailscale / 端口转发）。
@@ -375,20 +377,18 @@ export function HostsSection() {
             </div>
           )}
           <div className="mt-3 flex justify-end gap-2">
-            <button
-              onClick={() => setAdding(false)}
-              className="min-h-11 rounded-lg border border-border bg-surface px-3 text-[12px] text-text-soft transition-colors hover:bg-surface-2 sm:min-h-9"
-            >
+            <Button size="lg" onClick={() => setAdding(false)}>
               取消
-            </button>
-            <button
+            </Button>
+            <Button
+              size="lg"
+              variant="primary"
               onClick={handleAdd}
               disabled={saving || (mode === 'relay' && cryptoSupported === false)}
-              className="flex min-h-11 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60 sm:min-h-9"
             >
-              {saving && <Loader2 size={13} className="animate-spin" />}
+              {saving && <Loader2 size={14} className="animate-spin" />}
               添加
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -470,66 +470,75 @@ export function HostsSection() {
                   )}
                 </div>
                 <div className="hidden shrink-0 items-center gap-1 sm:flex">
-                  <button
+                  <IconButton
+                    size="sm"
                     onClick={() => setPairHost(h.id)}
-                    title="连接手机（扫码配对）"
-                    aria-label="连接手机"
-                    className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
+                    label="连接手机"
+                    tooltip="连接手机（扫码配对）"
+                    className="size-7 [&_svg]:size-3"
                   >
                     <Smartphone size={12} />
-                  </button>
-                  <button
+                  </IconButton>
+                  <IconButton
+                    size="sm"
                     onClick={() => retryHost(h.id)}
-                    title="重新连接"
-                    aria-label="重新连接"
-                    className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
+                    label="重新连接"
+                    tooltip="重新连接"
+                    className="size-7 [&_svg]:size-3"
                   >
                     <RefreshCw size={12} />
-                  </button>
-                  <button
+                  </IconButton>
+                  <IconButton
+                    size="sm"
                     onClick={() => (editing ? setEditId(null) : startEdit(h.id))}
-                    title="编辑"
-                    aria-label="编辑 Host"
-                    className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
+                    label="编辑 Host"
+                    tooltip="编辑"
+                    className="size-7 [&_svg]:size-3"
                   >
                     {editing ? <ChevronDown size={12} /> : <Pencil size={12} />}
-                  </button>
-                  <button
+                  </IconButton>
+                  <IconButton
+                    size="sm"
+                    variant="danger-ghost"
                     onClick={() => setRemoveTarget({ id: h.id, name: h.name })}
-                    title="移除"
-                    aria-label="移除 Host"
-                    className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-danger-soft hover:text-danger"
+                    label="移除 Host"
+                    tooltip="移除"
+                    className="size-7 [&_svg]:size-3"
                   >
                     <Trash2 size={12} />
-                  </button>
+                  </IconButton>
                 </div>
               </div>
               <div className="mt-2 flex items-center justify-end gap-1.5 border-t border-border/60 pt-2 sm:hidden">
-                <button
+                <Button
+                  size="md"
                   onClick={() => setPairHost(h.id)}
-                  className="flex min-h-10 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[11px] text-text-soft transition-colors hover:bg-surface-2 hover:text-text"
+                  className="min-h-10 px-2.5 text-[11px]"
                 >
                   <Smartphone size={12} /> 连接手机
-                </button>
-                <button
+                </Button>
+                <Button
+                  size="md"
                   onClick={() => retryHost(h.id)}
-                  className="flex min-h-10 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[11px] text-text-soft transition-colors hover:bg-surface-2 hover:text-text"
+                  className="min-h-10 px-2.5 text-[11px]"
                 >
                   <RefreshCw size={12} /> 重连
-                </button>
-                <button
+                </Button>
+                <Button
+                  size="md"
                   onClick={() => (editing ? setEditId(null) : startEdit(h.id))}
-                  className="flex min-h-10 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[11px] text-text-soft transition-colors hover:bg-surface-2 hover:text-text"
+                  className="min-h-10 px-2.5 text-[11px]"
                 >
                   {editing ? <ChevronDown size={12} /> : <Pencil size={12} />} 编辑
-                </button>
-                <button
+                </Button>
+                <IconButton
+                  variant="danger-ghost"
                   onClick={() => setRemoveTarget({ id: h.id, name: h.name })}
-                  aria-label="移除 Host"
-                  className="flex min-h-10 items-center gap-1.5 rounded-lg border border-danger/25 px-2.5 text-[11px] text-danger transition-colors hover:bg-danger-soft"
+                  label="移除 Host"
+                  className="size-10"
                 >
                   <Trash2 size={12} />
-                </button>
+                </IconButton>
               </div>
 
               {editing && (
@@ -594,18 +603,12 @@ export function HostsSection() {
                     </div>
                   )}
                   <div className="flex items-center justify-end gap-2 sm:col-span-2">
-                    <button
-                      onClick={() => setEditId(null)}
-                      className="min-h-8 rounded-lg border border-border bg-surface px-3 text-[11.5px] text-text-soft transition-colors hover:bg-surface-2"
-                    >
+                    <Button size="sm" onClick={() => setEditId(null)}>
                       取消
-                    </button>
-                    <button
-                      onClick={saveEdit}
-                      className="flex min-h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[11.5px] font-medium text-on-accent transition-colors hover:bg-accent-hover"
-                    >
+                    </Button>
+                    <Button size="sm" variant="primary" onClick={saveEdit}>
                       <Check size={12} /> 保存
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )}
@@ -624,23 +627,21 @@ export function HostsSection() {
         className="max-w-md"
         footer={
           <>
-            <button
-              onClick={() => setRemoveTarget(null)}
-              className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
-            >
+            <Button size="lg" onClick={() => setRemoveTarget(null)}>
               取消
-            </button>
-            <button
+            </Button>
+            <Button
+              size="lg"
+              variant="danger-ghost"
               onClick={() => {
                 if (!removeTarget) return
                 removeHost(removeTarget.id)
                 setEditId(null)
                 setRemoveTarget(null)
               }}
-              className="min-h-9 rounded-lg btn-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90"
             >
               移除
-            </button>
+            </Button>
           </>
         }
       >
