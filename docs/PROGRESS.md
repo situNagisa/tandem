@@ -15,9 +15,10 @@
 - Bash 后台运行；权限规则 allow/ask/deny 配置化
 
 ## 迭代 2（进行中）
-- [ ] web v2 视觉与交互精修（design.md 设计规范、侧栏按项目分组+会话管理、添加账号自动拉模型）
-- [ ] server v2：/api/models、会话 env/置顶/归档/fork、自动标题
-- [ ] Android APK（Capacitor）
+- [x] web v2 视觉与交互精修（design.md 设计规范、侧栏按项目分组+会话管理、添加账号自动拉模型、新会话页、无 Host 引导页）
+- [x] server v2：/api/models、会话 env/置顶/归档/fork、自动标题
+- [x] Android APK（Capacitor，npm run apk -w @tandem/mobile）
+- [ ] 用户体验 v2
 
 ## 用户反馈记录
 - 2026-11-05 v1：整体不够精致（布局/流程/动画/配色僵硬）；添加 Key 后模型要手填；侧栏不能管理会话、不能按环境归类；想要 APK。
