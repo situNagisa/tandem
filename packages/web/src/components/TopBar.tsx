@@ -94,6 +94,8 @@ export function TopBar() {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const committingRef = useRef(false)
+  const cancelEditRef = useRef(false)
 
   useEffect(() => {
     if (editing) {
@@ -111,10 +113,19 @@ export function TopBar() {
   const title = summary?.title || '未命名会话'
 
   const commit = async () => {
+    if (committingRef.current) return
+    committingRef.current = true
     const next = draft.trim()
     setEditing(false)
-    if (!summary || !activeHostId || !next || next === summary.title) return
-    await updateSession(activeHostId, summary.id, { title: next })
+    if (!summary || !activeHostId || !next || next === summary.title) {
+      committingRef.current = false
+      return
+    }
+    try {
+      await updateSession(activeHostId, summary.id, { title: next })
+    } finally {
+      committingRef.current = false
+    }
   }
 
   const project = summary?.env?.repoName || basename(summary?.cwd ?? '')
@@ -141,13 +152,20 @@ export function TopBar() {
               ref={inputRef}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              onBlur={() => void commit()}
+              onBlur={() => {
+                if (cancelEditRef.current) {
+                  cancelEditRef.current = false
+                  return
+                }
+                void commit()
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
                   void commit()
                 } else if (e.key === 'Escape') {
                   e.preventDefault()
+                  cancelEditRef.current = true
                   setEditing(false)
                 }
               }}
@@ -157,6 +175,8 @@ export function TopBar() {
           ) : (
             <button
               onClick={() => {
+                committingRef.current = false
+                cancelEditRef.current = false
                 setDraft(summary?.title ?? '')
                 setEditing(true)
               }}

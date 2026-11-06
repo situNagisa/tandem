@@ -51,7 +51,7 @@ export function Sidebar({
   }
 
   return (
-    <aside className="flex h-full w-full shrink-0 flex-col bg-sidebar">
+    <aside className="flex h-full w-full shrink-0 flex-col border-r border-border bg-sidebar">
       <div className="flex items-center gap-2 px-3.5 pb-1 pt-3.5">
         <BrandMark size={22} />
         <span className="font-serif text-[18px] font-medium leading-none tracking-tight">Tandem</span>

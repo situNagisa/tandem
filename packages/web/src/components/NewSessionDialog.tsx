@@ -94,7 +94,7 @@ function Pill({
       onClick={onClick}
       title={title}
       className={cn(
-        'flex h-8 min-w-0 items-center gap-1.5 rounded-full border border-border bg-transparent px-2.5 text-[11.5px] text-text-soft transition-colors duration-100 hover:bg-[var(--t-bg-hover)] hover:text-text',
+        'flex h-10 min-w-0 items-center gap-1.5 rounded-full border border-border bg-transparent px-2.5 text-[11.5px] text-text-soft transition-colors duration-100 hover:bg-[var(--t-bg-hover)] hover:text-text md:h-8',
         className,
       )}
     >
@@ -579,7 +579,7 @@ export function NewSessionView() {
               aria-label="发送"
               title="发送"
               className={cn(
-                'flex size-8 shrink-0 items-center justify-center rounded-full transition-all duration-150',
+                'flex size-10 shrink-0 items-center justify-center rounded-full transition-all duration-150 md:size-8',
                 canSend
                   ? 'bg-accent text-on-accent shadow-sm hover:bg-accent-hover active:scale-95'
                   : 'bg-[var(--t-bg-active)] text-muted',

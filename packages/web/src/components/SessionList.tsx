@@ -247,6 +247,8 @@ export function SessionList({
     busy: boolean
   } | null>(null)
   const renameRef = useRef<HTMLInputElement>(null)
+  const renameDoneRef = useRef(false)
+  const renameCancelRef = useRef(false)
 
   const { pinned, hosts: groups } = useMemo(
     () => buildGroups(hosts, runtimes, query, showArchived),
@@ -263,11 +265,15 @@ export function SessionList({
   const total = groups.reduce((n, g) => n + g.count, 0) + (showArchived ? 0 : pinned.length)
 
   const startRename = (s: SessionSummary) => {
+    renameDoneRef.current = false
+    renameCancelRef.current = false
     setRenaming(s.id)
     setRenameDraft(s.title || '')
   }
 
   const commitRename = async (hostId: string, s: SessionSummary) => {
+    if (renameDoneRef.current) return
+    renameDoneRef.current = true
     const title = renameDraft.trim()
     setRenaming(null)
     if (!title || title === s.title) return
@@ -333,7 +339,13 @@ export function SessionList({
             value={renameDraft}
             onChange={(e) => setRenameDraft(e.target.value)}
             onClick={(e) => e.stopPropagation()}
-            onBlur={() => void commitRename(hostId, s)}
+            onBlur={() => {
+              if (renameCancelRef.current) {
+                renameCancelRef.current = false
+                return
+              }
+              void commitRename(hostId, s)
+            }}
             onKeyDown={(e) => {
               e.stopPropagation()
               if (e.key === 'Enter') {
@@ -341,6 +353,7 @@ export function SessionList({
                 void commitRename(hostId, s)
               } else if (e.key === 'Escape') {
                 e.preventDefault()
+                renameCancelRef.current = true
                 setRenaming(null)
               }
             }}

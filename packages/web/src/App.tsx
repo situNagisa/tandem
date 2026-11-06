@@ -223,6 +223,7 @@ export default function App() {
             style={{
               transform: drawerOffset ? `translateX(${drawerOffset}px)` : undefined,
               transition: drawerOffset ? 'none' : 'transform 220ms var(--t-ease-out)',
+              touchAction: 'pan-y',
             }}
             onTouchStart={(e) => {
               drawerStart.current = e.touches[0]?.clientX ?? null
