@@ -18,6 +18,7 @@ import type {
 import { api, ApiError, type ExternalImportInput } from '../lib/api'
 import { HostConnection } from '../lib/ws'
 import { normalizeHostUrl } from '../lib/hostUrl'
+import { isValidFingerprint, normalizeFingerprint, relayHostUrl } from '../lib/relay'
 import {
   loadHosts,
   loadLastHost,
@@ -58,8 +59,21 @@ interface AppState {
   checkConnections: () => void
   goOffline: () => void
   bumpChanges: () => void
-  addHost: (input: { name: string; url: string; token: string }) => HostConfig
-  updateHost: (id: string, patch: Partial<Pick<HostConfig, 'name' | 'url' | 'token'>>) => void
+  addHost: (input: {
+    name: string
+    url: string
+    token: string
+    mode?: HostConfig['mode']
+    relayUrl?: string
+    hostId?: string
+    fingerprint?: string
+  }) => HostConfig
+  updateHost: (
+    id: string,
+    patch: Partial<
+      Pick<HostConfig, 'name' | 'url' | 'token' | 'mode' | 'relayUrl' | 'hostId' | 'fingerprint'>
+    >,
+  ) => void
   removeHost: (id: string) => void
   activateHost: (id: string) => void
   retryHost: (id: string) => void
@@ -975,18 +989,42 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     addHost: (input) => {
-      const url = normalizeHostUrl(input.url)
+      const mode = input.mode ?? 'direct'
+      const relayUrl = input.relayUrl?.trim().replace(/\/+$/, '') || undefined
+      const hostId = input.hostId?.trim() || undefined
+      const fingerprint = input.fingerprint ? normalizeFingerprint(input.fingerprint) : undefined
+      if (mode === 'relay') {
+        if (!relayUrl || !/^https?:\/\//i.test(relayUrl)) throw new Error('请填写有效的中继地址')
+        if (!hostId) throw new Error('请填写 Host ID')
+        if (!fingerprint || !isValidFingerprint(fingerprint)) {
+          throw new Error('必须填写 Host 公钥指纹（64 位十六进制），否则无法校验端到端加密')
+        }
+      }
+      const rawUrl = mode === 'relay' && relayUrl && hostId ? relayHostUrl(relayUrl, hostId) : input.url
+      const url = normalizeHostUrl(rawUrl)
       const name = input.name.trim() || new URL(url).host
-      const existing = get().hosts.find((h) => h.url === url)
+      const existing = get().hosts.find((h) => h.url === url && (h.mode ?? 'direct') === mode)
       if (existing) {
-        get().updateHost(existing.id, { name: input.name.trim() || existing.name, token: input.token })
+        const patch = {
+          name: input.name.trim() || existing.name,
+          token: input.token,
+          ...(mode === 'relay' ? { mode, relayUrl, hostId, fingerprint } : {}),
+        }
+        get().updateHost(existing.id, patch)
         if (!get().activeHostId) {
           set({ activeHostId: existing.id })
           saveLastHost(existing.id)
         }
-        return { ...existing, name: input.name.trim() || existing.name, token: input.token }
+        return { ...existing, ...patch }
       }
-      const host: HostConfig = { id: newId(), name, url, token: input.token, addedAt: Date.now() }
+      const host: HostConfig = {
+        id: newId(),
+        name,
+        url,
+        token: input.token,
+        addedAt: Date.now(),
+        ...(mode === 'relay' ? { mode, relayUrl, hostId, fingerprint } : {}),
+      }
       set((state) => ({
         hosts: [...state.hosts, host],
         runtimes: { ...state.runtimes, [host.id]: freshRuntime() },
@@ -1007,25 +1045,61 @@ export const useAppStore = create<AppState>((set, get) => {
     updateHost: (id, patch) => {
       const prev = getHost(id)
       if (!prev) return
-      let url = prev.url
-      if (patch.url !== undefined) {
-        try {
-          url = normalizeHostUrl(patch.url)
-        } catch (err) {
-          toast(err instanceof Error ? err.message : 'Host 地址无效', 'error')
+      const mode = patch.mode ?? prev.mode ?? 'direct'
+      let relayUrl = patch.relayUrl ?? prev.relayUrl
+      let hostId = patch.hostId ?? prev.hostId
+      let fingerprint =
+        patch.fingerprint !== undefined ? normalizeFingerprint(patch.fingerprint) : prev.fingerprint
+      if (mode === 'relay') {
+        relayUrl = relayUrl?.trim().replace(/\/+$/, '')
+        hostId = hostId?.trim()
+        if (!relayUrl || !/^https?:\/\//i.test(relayUrl)) {
+          toast('请填写有效的中继地址', 'error')
+          return
+        }
+        if (!hostId) {
+          toast('请填写 Host ID', 'error')
+          return
+        }
+        if (!fingerprint || !isValidFingerprint(fingerprint)) {
+          toast('必须填写 Host 公钥指纹（64 位十六进制）', 'error')
           return
         }
       }
+      let url = prev.url
+      const rawUrl =
+        mode === 'relay' && relayUrl && hostId
+          ? relayHostUrl(relayUrl, hostId)
+          : (patch.url ?? prev.url)
+      try {
+        url = normalizeHostUrl(rawUrl)
+      } catch (err) {
+        toast(err instanceof Error ? err.message : 'Host 地址无效', 'error')
+        return
+      }
       const name = (patch.name ?? prev.name).trim() || new URL(url).host
       const token = patch.token ?? prev.token
-      const next: HostConfig = { ...prev, name, url, token }
+      const next: HostConfig = {
+        ...prev,
+        name,
+        url,
+        token,
+        ...(mode === 'relay'
+          ? { mode, relayUrl, hostId, fingerprint }
+          : { mode: 'direct' as const, relayUrl: undefined, hostId: undefined, fingerprint: undefined }),
+      }
       set((state) => ({
         hosts: state.hosts.map((h) => (h.id === id ? next : h)),
       }))
       saveHosts(get().hosts)
       const conn = connections.get(id)
+      const changed =
+        url !== prev.url ||
+        token !== prev.token ||
+        mode !== (prev.mode ?? 'direct') ||
+        fingerprint !== prev.fingerprint
       if (conn) {
-        if (url !== prev.url || token !== prev.token) {
+        if (changed) {
           patchRuntime(id, { status: 'connecting', authError: undefined, error: undefined })
           conn.updateHost(next)
           void get().refreshProfiles(id)

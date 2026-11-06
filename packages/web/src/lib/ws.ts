@@ -1,10 +1,28 @@
 import type { ClientMsg, SeqServerMsg, ServerMsg } from '@tandem/protocol'
 import type { ConnectionState, HostConfig } from './types'
 import { websocketUrl } from './hostUrl'
+import {
+  RELAY_UNSUPPORTED_MESSAGE,
+  detectRelayCryptoSupport,
+  isRelayHost,
+  relayChannel,
+  relayErrorMessage,
+} from './relay'
 
 interface Handlers {
   onStatus: (state: ConnectionState, error?: string) => void
   onMessage: (msg: ServerMsg) => void
+}
+
+/** WebSocket 与 E2EWebSocket 的最小公共接口。 */
+interface HostSocket {
+  readyState: number
+  onopen: (() => void) | null
+  onmessage: ((ev: { data: unknown }) => void) | null
+  onerror: (() => void) | null
+  onclose: ((ev: { code?: number; reason?: string }) => void) | null
+  send(data: string): void
+  close(code?: number, reason?: string): void
 }
 
 /** 超过这个时间没有任何服务端消息，认为连接已半死（后台挂起、网络切换）。 */
@@ -21,7 +39,7 @@ const MAX_DELAY = 30_000
 export class HostConnection {
   private host: HostConfig
   private handlers: Handlers
-  private ws: WebSocket | null = null
+  private ws: HostSocket | null = null
   private closed = false
   private retry = 0
   private retryTimer: number | undefined
@@ -44,65 +62,97 @@ export class HostConnection {
     this.reconnectNow()
   }
 
+  private generation = 0
+
   connect(): void {
     if (this.closed) return
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+    if (this.ws && (this.ws.readyState === 1 || this.ws.readyState === 0)) {
       return
     }
     this.clearRetry()
     this.setStatus('connecting')
-    let ws: WebSocket
-    try {
-      ws = new WebSocket(websocketUrl(this.host.url, this.host.token))
-    } catch {
-      this.scheduleReconnect('Host 地址无效')
-      return
-    }
-    this.ws = ws
+    const gen = ++this.generation
 
-    ws.onopen = () => {
-      if (this.ws !== ws) return
-      this.lastActivity = Date.now()
-      this.setStatus('online')
-      for (const sessionId of this.subscriptions) {
-        const sinceSeq = this.lastSeq.get(sessionId)
-        this.rawSend({
-          type: 'subscribe',
-          sessionId,
-          ...(sinceSeq !== undefined ? { sinceSeq } : {}),
-        })
-      }
-      this.startPing()
-    }
-
-    ws.onmessage = (ev) => {
-      if (this.ws !== ws) return
-      if (typeof ev.data !== 'string') return
-      let msg: ServerMsg
-      try {
-        msg = JSON.parse(ev.data) as ServerMsg
-      } catch {
+    const attach = (ws: HostSocket) => {
+      if (gen !== this.generation || this.closed) {
+        try {
+          ws.close()
+        } catch {
+          /* 忽略 */
+        }
         return
       }
-      if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return
-      this.retry = 0
-      this.lastActivity = Date.now()
-      if (msg.type === 'pong') return
-      this.deliver(msg)
+      this.ws = ws
+
+      ws.onopen = () => {
+        if (this.ws !== ws) return
+        this.lastActivity = Date.now()
+        this.setStatus('online')
+        for (const sessionId of this.subscriptions) {
+          const sinceSeq = this.lastSeq.get(sessionId)
+          this.rawSend({
+            type: 'subscribe',
+            sessionId,
+            ...(sinceSeq !== undefined ? { sinceSeq } : {}),
+          })
+        }
+        this.startPing()
+      }
+
+      ws.onmessage = (ev) => {
+        if (this.ws !== ws) return
+        if (typeof ev.data !== 'string') return
+        let msg: ServerMsg
+        try {
+          msg = JSON.parse(ev.data) as ServerMsg
+        } catch {
+          return
+        }
+        if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return
+        this.retry = 0
+        this.lastActivity = Date.now()
+        if (msg.type === 'pong') return
+        this.deliver(msg)
+      }
+
+      ws.onerror = () => {
+        // 具体原因由 close 事件处理
+      }
+
+      ws.onclose = (ev) => {
+        if (this.ws !== ws) return
+        this.ws = null
+        this.pending.clear()
+        this.stopPing()
+        if (this.closed) return
+        const reason = isRelayHost(this.host) && ev?.reason ? relayErrorMessage(ev.reason) : undefined
+        this.scheduleReconnect(reason)
+      }
     }
 
-    ws.onerror = () => {
-      // 具体原因由 close 事件处理
+    if (isRelayHost(this.host)) {
+      void detectRelayCryptoSupport().then((ok) => {
+        if (gen !== this.generation || this.closed) return
+        if (!ok) {
+          this.scheduleReconnect(RELAY_UNSUPPORTED_MESSAGE)
+          return
+        }
+        try {
+          const socket = relayChannel(this.host).openWebSocket(
+            `/ws?token=${encodeURIComponent(this.host.token)}`,
+          )
+          attach(socket as unknown as HostSocket)
+        } catch (err) {
+          this.scheduleReconnect(relayErrorMessage(err))
+        }
+      })
+      return
     }
 
-    ws.onclose = () => {
-      if (this.ws !== ws) return
-      this.ws = null
-      this.pending.clear()
-      this.stopPing()
-      if (this.closed) return
-      this.setStatus('offline')
-      this.scheduleReconnect()
+    try {
+      attach(new WebSocket(websocketUrl(this.host.url, this.host.token)) as unknown as HostSocket)
+    } catch {
+      this.scheduleReconnect('Host 地址无效')
     }
   }
 

@@ -19,6 +19,7 @@ import { copyText } from '../lib/clipboard'
 import { cn } from '../lib/cn'
 import { useIsMobile } from '../lib/hooks'
 import { isLocalHostUrl } from '../lib/hostUrl'
+import { isRelayHost } from '../lib/relay'
 import {
   fileBaseName,
   isImagePath,
@@ -64,6 +65,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
   const [retryNonce, setRetryNonce] = useState(0)
   const [mode, setMode] = useState<'preview' | 'source'>('preview')
   const [copied, setCopied] = useState(false)
+  const [imageUrl, setImageUrl] = useState('')
   const [revealing, setRevealing] = useState(false)
   const [dragWidth, setDragWidth] = useState<number | null>(null)
   const copyTimer = useRef<number | null>(null)
@@ -74,6 +76,35 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
   const image = isImagePath(absPath)
   const markdown = isMarkdownPath(absPath)
   const label = lineLabel(preview ?? {})
+
+  // 中继 Host 的 token 在密文里，不能直接把 URL 交给 <img>，先取回内容再转 blob URL。
+  useEffect(() => {
+    if (!host || !image || !absPath) {
+      setImageUrl('')
+      return
+    }
+    if (!isRelayHost(host)) {
+      setImageUrl(api.fsRawUrl(host, absPath, cwd || undefined))
+      return
+    }
+    let cancelled = false
+    let objectUrl = ''
+    setImageUrl('')
+    api
+      .fsRawBlob(host, absPath, cwd || undefined)
+      .then((blob) => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(blob)
+        setImageUrl(objectUrl)
+      })
+      .catch(() => {
+        if (!cancelled) setImageUrl('')
+      })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [host, image, absPath, cwd, retryNonce])
 
   useEffect(() => {
     if (!host || !path) return
@@ -290,7 +321,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
           {image ? (
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
               <img
-                src={host ? api.fsRawUrl(host, absPath, cwd || undefined) : ''}
+                src={imageUrl}
                 alt={fileBaseName(absPath)}
                 className="max-h-full max-w-full rounded-lg border border-border object-contain"
               />

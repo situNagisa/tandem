@@ -26,8 +26,16 @@ import type {
   UpdateSessionInput,
   UsageStatsRow,
 } from '@tandem/protocol'
+import type { RelayPairInfo } from '@tandem/protocol'
 import type { HostConfig } from './types'
 import { requestBase } from './hostUrl'
+import {
+  RELAY_UNSUPPORTED_MESSAGE,
+  detectRelayCryptoSupport,
+  isRelayHost,
+  relayChannel,
+  relayErrorMessage,
+} from './relay'
 
 export class ApiError extends Error {
   status: number
@@ -51,7 +59,8 @@ function describe(status: number, text: string): string {
   return text.trim().slice(0, 300) || `请求失败（HTTP ${status}）`
 }
 
-async function request<T>(host: HostConfig, path: string, init: RequestInit = {}): Promise<T> {
+/** 所有 REST 请求的出口：中继 Host 走 E2E channel，直连照旧 fetch。 */
+async function send(host: HostConfig, path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers)
   if (host.token) headers.set('Authorization', `Bearer ${host.token}`)
   if (init.body !== undefined && !headers.has('Content-Type')) {
@@ -59,15 +68,37 @@ async function request<T>(host: HostConfig, path: string, init: RequestInit = {}
   }
   headers.set('Accept', 'application/json')
 
-  let res: Response
+  if (isRelayHost(host)) {
+    if (!(await detectRelayCryptoSupport())) throw new ApiError(RELAY_UNSUPPORTED_MESSAGE, 0)
+    const body =
+      typeof init.body === 'string'
+        ? init.body
+        : init.body instanceof Uint8Array
+          ? init.body
+          : undefined
+    try {
+      return await relayChannel(host).fetch(path, {
+        method: init.method,
+        headers,
+        body,
+        signal: init.signal ?? undefined,
+      })
+    } catch (err) {
+      throw new ApiError(relayErrorMessage(err), 0)
+    }
+  }
   try {
-    res = await fetch(requestBase(host.url) + path, { ...init, headers })
+    return await fetch(requestBase(host.url) + path, { ...init, headers })
   } catch (err) {
     throw new ApiError(
       err instanceof Error ? `无法连接 Host：${err.message}` : '无法连接 Host',
       0,
     )
   }
+}
+
+async function request<T>(host: HostConfig, path: string, init: RequestInit = {}): Promise<T> {
+  const res = await send(host, path, init)
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     throw new ApiError(describe(res.status, text), res.status)
@@ -221,8 +252,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ path }),
     }),
+  /** 直连时可直接作为 <img src>；中继 Host 必须用 fsRawBlob。 */
   fsRawUrl: (h: HostConfig, path: string, cwd?: string) =>
     `${requestBase(h.url)}/api/fs/raw${qs({ path, cwd, token: h.token })}`,
+  /** 中继 Host 无法直接拼 URL（token 要进密文），取回内容后转成 blob URL 使用。 */
+  fsRawBlob: async (h: HostConfig, path: string, cwd?: string): Promise<Blob> => {
+    if (!isRelayHost(h)) {
+      const res = await fetch(api.fsRawUrl(h, path, cwd))
+      if (!res.ok) throw new ApiError(describe(res.status, await res.text().catch(() => '')), res.status)
+      return res.blob()
+    }
+    const res = await send(h, `/api/fs/raw${qs({ path, cwd })}`)
+    if (!res.ok) {
+      throw new ApiError(describe(res.status, await res.text().catch(() => '')), res.status)
+    }
+    return res.blob()
+  },
 
   mcp: (h: HostConfig, cwd?: string, retry = false) =>
     request<{ servers: McpServerConfig[]; status: McpServerStatus[] }>(
@@ -239,7 +284,13 @@ export const api = {
     request<UsageStatsRow[]>(h, `/api/usage${qs({ from, to })}`),
 
   pair: (h: HostConfig) =>
-    request<{ urls: string[]; token: string; loopback?: boolean; hint?: string }>(h, '/api/pair'),
+    request<{
+      urls: string[]
+      token: string
+      loopback?: boolean
+      hint?: string
+      relay?: RelayPairInfo
+    }>(h, '/api/pair'),
 }
 
 /** 导入外部会话时可选的目标账号 / 分组 / 模型；不填则沿用原软件上下文。 */

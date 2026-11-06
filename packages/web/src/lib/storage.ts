@@ -1,4 +1,5 @@
 import type { HostConfig, Theme } from './types'
+import { isValidFingerprint, normalizeFingerprint } from './relay'
 
 const KEYS = {
   hosts: 'tandem.hosts.v1',
@@ -46,7 +47,17 @@ export function sanitizeHosts(input: unknown): HostConfig[] {
       url: h.url,
       token: h.token,
       addedAt: typeof h.addedAt === 'number' ? h.addedAt : Date.now(),
+      ...(h.mode === 'relay'
+        ? {
+            mode: 'relay' as const,
+            relayUrl: typeof h.relayUrl === 'string' ? h.relayUrl.replace(/\/+$/, '') : '',
+            hostId: typeof h.hostId === 'string' ? h.hostId : '',
+            fingerprint: typeof h.fingerprint === 'string' ? normalizeFingerprint(h.fingerprint) : '',
+          }
+        : { mode: 'direct' as const }),
     }))
+    // 中继 Host 没有有效指纹就无法保证端到端加密，宁可不加载。
+    .filter((h) => h.mode !== 'relay' || (!!h.relayUrl && !!h.hostId && isValidFingerprint(h.fingerprint)))
 }
 
 export function loadHosts(): HostConfig[] {
