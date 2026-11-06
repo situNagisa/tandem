@@ -4,7 +4,6 @@ import { ArrowDown, ArrowUp, Loader2, Plus, ShieldCheck, Trash2 } from 'lucide-r
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { api } from '../../lib/api'
-import { cn } from '../../lib/cn'
 import { Button, IconButton } from '../ui/Button'
 import { Input, SegmentedControl, Select } from '../ui/Controls'
 

@@ -31,7 +31,7 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
           tooltip={active ? `${active.name} · ${active.url.replace(/^https?:\/\//, '')}` : '选择 Host'}
           tooltipSide="top"
           className={cn(
-            'min-w-0 max-w-[150px] justify-start gap-1.5 px-1.5 text-muted',
+            'min-w-0 max-w-[150px] justify-start gap-1.5 px-1.5 text-muted max-sm:min-h-11',
             open && 'bg-[var(--t-bg-active)] text-text',
           )}
         >

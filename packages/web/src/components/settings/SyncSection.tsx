@@ -308,7 +308,7 @@ export function SyncSection() {
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button
             size="lg"
-            variant="primary"
+            variant="secondary"
             onClick={() => void exportConfig()}
             disabled={exporting || !exportPass.trim()}
           >

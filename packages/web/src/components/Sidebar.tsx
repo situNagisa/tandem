@@ -39,7 +39,7 @@ export function Sidebar({
     ),
   )
 
-  const row = 'group w-full min-h-9 justify-start gap-2 px-2.5 md:min-h-8'
+  const row = 'group w-full min-h-11 justify-start gap-2 px-2.5 md:min-h-8'
 
   const startNewSession = () => {
     // 已经在新会话页时导航不会重新挂载，需要显式清空输入并聚焦。
@@ -127,7 +127,7 @@ export function Sidebar({
       <div className="flex items-center gap-1 border-t border-border px-2 py-1.5">
         <HostSwitcher onNavigate={onNavigate} />
         <span className="flex-1" />
-        <IconButton onClick={() => openSettings()} label="设置" tooltipSide="top">
+        <IconButton onClick={() => openSettings()} label="设置" tooltipSide="top" className="max-sm:size-11">
           <Settings size={15} />
         </IconButton>
       </div>

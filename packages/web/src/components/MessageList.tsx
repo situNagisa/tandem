@@ -10,7 +10,7 @@ import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCard, type ToolUseBlock } from './ToolCard'
 import { RewindDialog } from './RewindDialog'
 import { Popover } from './ui/Popover'
-import { Button } from './ui/Button'
+import { Button, IconButton } from './ui/Button'
 import {
   ToolGroup,
   entriesFromMessages,
@@ -153,59 +153,56 @@ export const UserMessage = memo(function UserMessage({
         {text.trim() && !editing && (
           <>
             <div className="msg-actions absolute bottom-1 -left-[6.25rem] hidden flex-row gap-0.5 md:flex">
-              <button
+              <IconButton
+                size="sm"
                 onClick={copy}
-                aria-label={copied ? '已复制' : '复制消息'}
-                title={copied ? '已复制' : '复制'}
-                className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft"
+                label={copied ? '已复制' : '复制消息'}
+                tooltip={copied ? '已复制' : '复制'}
+                className="[&_svg]:size-[12.5px]"
               >
                 {copied ? <Check size={12.5} className="text-success" /> : <Copy size={12.5} />}
-              </button>
+              </IconButton>
               {!readOnly && (
                 <>
-                  <button
+                  <IconButton
+                    size="sm"
                     onClick={startEdit}
-                    aria-label="编辑并重发"
-                    title="编辑并重发"
-                    className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft"
+                    label="编辑并重发"
+                    className="[&_svg]:size-[12.5px]"
                   >
                     <PencilLine size={12.5} />
-                  </button>
-                  <button
+                  </IconButton>
+                  <IconButton
+                    size="sm"
                     onClick={() => setRewindOpen(true)}
                     disabled={running}
-                    aria-label="回退到此处"
-                    title={running ? '会话运行中，结束后才能回退' : '回退到此处'}
-                    className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft disabled:cursor-not-allowed disabled:opacity-40"
+                    label="回退到此处"
+                    tooltip={running ? '会话运行中，结束后才能回退' : '回退到此处'}
+                    className="[&_svg]:size-[12.5px]"
                   >
                     <Undo2 size={12.5} />
-                  </button>
+                  </IconButton>
                 </>
               )}
             </div>
             <div className="mt-1 flex justify-end md:hidden">
               {readOnly ? (
-                <button
+                <IconButton
                   onClick={() => void copy()}
-                  aria-label={copied ? '已复制' : '复制消息'}
-                  className="flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft"
+                  label={copied ? '已复制' : '复制消息'}
+                  className="[&_svg]:size-[13px]"
                 >
                   {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
-                </button>
+                </IconButton>
               ) : (
               <Popover
                 align="right"
                 side="top"
                 padded={false}
                 trigger={({ toggle }) => (
-                  <button
-                    onClick={toggle}
-                    aria-label="消息操作"
-                    title="消息操作"
-                    className="flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft"
-                  >
+                  <IconButton onClick={toggle} label="消息操作" className="[&_svg]:size-[15px]">
                     <MoreHorizontal size={15} />
-                  </button>
+                  </IconButton>
                 )}
               >
                 {(close) => (
@@ -366,14 +363,15 @@ export const AssistantMessage = memo(function AssistantMessage({
       {rendered}
       {message.content.length === 0 && streaming && <TypingIndicator />}
       {rawText.trim() && (
-        <button
+        <IconButton
+          size="sm"
           onClick={copyAll}
-          aria-label={copied ? '已复制' : '复制整条回复'}
-          title={copied ? '已复制' : '复制整条回复（Markdown）'}
-          className="msg-actions absolute bottom-1 right-1 z-10 flex size-7 items-center justify-center rounded-md border border-border/70 bg-surface/90 text-muted shadow-sm backdrop-blur-sm transition-colors hover:bg-bg-hover hover:text-text-soft"
+          label={copied ? '已复制' : '复制整条回复'}
+          tooltip={copied ? '已复制' : '复制整条回复（Markdown）'}
+          className="msg-actions absolute bottom-1 right-1 z-10 border border-border/70 bg-surface/90 shadow-sm backdrop-blur-sm [&_svg]:size-[12.5px]"
         >
           {copied ? <Check size={12.5} className="text-success" /> : <Copy size={12.5} />}
-        </button>
+        </IconButton>
       )}
     </div>
   )

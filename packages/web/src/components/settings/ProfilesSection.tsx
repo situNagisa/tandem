@@ -34,7 +34,6 @@ import { PROVIDER_KIND_LABELS, type HostConfig } from '../../lib/types'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
 import { Button, IconButton } from '../ui/Button'
-import { Input } from '../ui/Controls'
 
 const inputCls =
   'h-9 w-full rounded-lg border border-border bg-bg px-2.5 text-[12.5px] text-text outline-none transition-colors focus:border-border-strong'
@@ -1021,7 +1020,7 @@ export function ProfilesSection() {
         </IconButton>
         {!editing && (
           <Button
-            variant="primary"
+            variant="secondary"
             onClick={startNew}
             className="max-sm:min-h-11"
           >
@@ -1349,7 +1348,7 @@ export function ProfilesSection() {
               <p className="mx-auto mt-1 max-w-[280px] text-[11.5px] leading-5 text-muted">
                 选择服务商、粘贴 Key，模型列表会自动获取。支持 Anthropic、OpenAI、DeepSeek、Ollama 等。
               </p>
-              <Button variant="primary" onClick={startNew} className="mt-3.5">
+              <Button variant="secondary" onClick={startNew} className="mt-3.5">
                 <Plus size={13} /> 新建账号
               </Button>
             </div>

@@ -27,7 +27,7 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
 }
 
 const BASE =
-  'inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap text-[13px] font-medium leading-none transition-[background-color,border-color,color,opacity,transform] duration-[80ms] active:scale-[.98] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/70'
+  'inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap text-left text-[13px] font-medium leading-none transition-[background-color,border-color,color,opacity,transform] duration-[80ms] active:scale-[.98] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/70'
 
 function Tip({ label, side }: { label: string; side: 'top' | 'bottom' }) {
   return (

@@ -87,7 +87,7 @@ function Pill({
       disabled={disabled}
       aria-pressed={pressed}
       className={cn(
-        'min-h-10 min-w-0 max-w-full shrink-0 rounded-full px-2.5 font-normal md:min-h-[32px]',
+        'min-h-11 min-w-0 max-w-full shrink-0 rounded-full px-2.5 font-normal md:min-h-[32px]',
         className,
       )}
     >

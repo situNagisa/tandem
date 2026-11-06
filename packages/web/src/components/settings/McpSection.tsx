@@ -18,8 +18,6 @@ import { Modal } from '../ui/Modal'
 import { Button, IconButton } from '../ui/Button'
 import { Input, SegmentedControl, Switch } from '../ui/Controls'
 
-const inputCls =
-  'h-9 w-full rounded-lg border border-border bg-bg px-2.5 text-[12.5px] text-text outline-none transition-colors focus:border-border-strong'
 const labelCls = 'mb-1.5 block text-[11px] font-medium text-text-soft'
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -406,7 +404,7 @@ export function McpSection() {
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
         </IconButton>
         <Button
-          variant="primary"
+          variant="secondary"
           onClick={() => setEditor(emptyDraft())}
           disabled={!host}
           className="max-sm:min-h-11"
