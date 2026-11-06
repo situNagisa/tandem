@@ -17,6 +17,7 @@ export interface Profile {
   apiKeyMasked: string;    // 只回传掩码，明文 key 永不下发给客户端
   models: string[];        // 该账号可选模型（无分组时使用）
   defaultModel: string;
+  price?: Record<string, { input: number; output: number }>; // 每百万 token 美元，按模型覆盖内置单价
   groups?: ProfileGroup[]; // 分组：同一账号（同一服务商/中转站）下多组 key，各自可用模型不同，如 "官方渠道"/"低价渠道"
   createdAt: number;
 }
@@ -73,6 +74,7 @@ export interface CreateSessionInput {
   model?: string;
   permissionMode?: PermissionMode;
   title?: string;
+  worktree?: { branch?: string };
 }
 export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'permissionMode' | 'pinned' | 'archived'>>;
 
@@ -224,4 +226,33 @@ export interface ChangesResult { isRepo: boolean; branch?: string; files: FileCh
 export interface PermissionRule { tool: string; pattern?: string; action: 'allow' | 'ask' | 'deny' } // pattern：Bash 为命令前缀通配，如 "npm test*"；文件工具为 glob
 // GET /api/permissions -> PermissionRule[]   PUT /api/permissions PermissionRule[]   优先级 deny > ask > allow
 
-export const PROTOCOL_VERSION = 2;
+// ---------- MCP（Host 级，存 ~/.tandem/mcp.json；同时只读兼容 ~/.claude.json 与项目 .mcp.json） ----------
+export interface McpServerConfig {
+  name: string;
+  transport: 'stdio' | 'http';
+  command?: string; args?: string[]; env?: Record<string, string>; // stdio
+  url?: string; headers?: Record<string, string>;                  // http（Streamable HTTP）
+  enabled: boolean;
+  source?: 'tandem' | 'claude' | 'project';                       // 来源；非 tandem 的只读
+}
+export interface McpServerStatus { name: string; status: 'connected' | 'connecting' | 'error' | 'disabled'; error?: string; tools: string[]; source: McpServerConfig['source'] }
+// GET /api/mcp -> { servers: McpServerConfig[]; status: McpServerStatus[] }   PUT /api/mcp McpServerConfig[]（只含 tandem 来源）
+// MCP 工具在 agent 中命名为 mcp__<server>__<tool>，默认需审批，可用权限规则放行。
+
+// ---------- 子代理（Task 工具） ----------
+// 主会话调用 Task 工具时创建子会话（SessionSummary.parentId 指向主会话），子会话的消息流照常广播，权限请求冒泡到主会话订阅者。
+// SessionSummary 新增可选字段：parentId?: string; worktree?: { path: string; branch: string; baseBranch: string }
+
+// ---------- Worktree 并行会话 ----------
+// CreateSessionInput 新增可选 worktree?: { branch?: string }：在 cwd 所在仓库创建 git worktree（~/.tandem/worktrees/<repo>/<branch>），会话 cwd 指向它。
+// POST /api/sessions/:id/worktree/merge {strategy:'merge'|'squash'} -> { ok; error? }   合回 baseBranch
+// DELETE 会话时若有 worktree：未提交改动则 409，带 ?force=1 才删除
+
+// ---------- 用量统计 ----------
+export interface UsageStatsRow { day: string; hostId: string; profileId: string; model: string; inputTokens: number; outputTokens: number; costUsd: number; turns: number }
+// GET /api/usage?from=&to= -> UsageStatsRow[]   （Host 内置常见模型单价表，可在账号上覆盖 price: {input, output} 每百万 token 美元）
+
+// ---------- 配对 ----------
+// GET /api/pair -> { urls: string[]; token: string }   列出本机所有可达地址（局域网 IP、Tailscale IP），客户端据此生成二维码供手机扫码。
+
+export const PROTOCOL_VERSION = 3;
