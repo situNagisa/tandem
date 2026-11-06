@@ -204,7 +204,7 @@ export function CodeBlock({
   const empty = !shown
 
   return (
-    <div className={cn('chat-code', className)}>
+    <div className={cn('chat-code', fill && 'file-code-fill', className)}>
       {showHeader && (
         <div className="chat-code-head">
           <span className="min-w-0 flex-1 truncate text-[11.5px] text-muted">

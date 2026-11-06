@@ -97,10 +97,59 @@ function makeComponents(streaming: boolean, cwd?: string): Components {
       )
     },
     a({ href, children }) {
+      const url = href ?? ''
+      if (isExternalHref(url)) {
+        return (
+          <a href={url} target="_blank" rel="noreferrer noopener">
+            {children}
+          </a>
+        )
+      }
+      if (isAnchorHref(url)) return <a href={url}>{children}</a>
+      const ref = parseFileHref(url)
+      if (!ref) return <span>{children}</span>
+      const label = ref.lineStart
+        ? `${ref.path}:${ref.lineEnd && ref.lineEnd !== ref.lineStart ? `${ref.lineStart}-${ref.lineEnd}` : ref.lineStart}`
+        : ref.path
       return (
-        <a href={href} target="_blank" rel="noreferrer noopener">
+        <a
+          href={url}
+          title={`打开 ${label}`}
+          onClick={(e) => {
+            e.preventDefault()
+            openFileRef(ref, cwd)
+          }}
+          className="file-ref"
+        >
+          <FileText size={12} className="file-ref-icon" aria-hidden />
           {children}
         </a>
+      )
+    },
+    code({ className, children }) {
+      if ((className ?? '').includes('language-')) {
+        return <code className={className}>{children}</code>
+      }
+      const text = nodeText(children)
+      const ref = parseInlinePath(text)
+      if (!ref) return <code className={className}>{children}</code>
+      const open = () => openFileRef(ref, cwd)
+      return (
+        <code
+          className={cn(className, 'file-ref-inline')}
+          role="link"
+          tabIndex={0}
+          title={`打开 ${text}`}
+          onClick={open}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              open()
+            }
+          }}
+        >
+          {children}
+        </code>
       )
     },
   }
@@ -218,7 +267,11 @@ const MarkdownChunk = memo(function MarkdownChunk({
   const components = useMemo(() => makeComponents(streaming, cwd), [streaming, cwd])
   return (
     <div className={cn('md-chunk', streaming && 'is-streaming')}>
-      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={components}>
+      <ReactMarkdown
+        remarkPlugins={REMARK_PLUGINS}
+        components={components}
+        urlTransform={(url) => url}
+      >
         {text}
       </ReactMarkdown>
     </div>
@@ -251,6 +304,7 @@ export const Markdown = memo(function Markdown({
             key={chunk.start}
             text={chunk.text}
             streaming={streaming && i === chunks.length - 1}
+            cwd={cwd}
           />
         ) : null,
       )}
