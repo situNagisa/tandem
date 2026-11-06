@@ -1,0 +1,382 @@
+import { useEffect, useMemo, useState } from 'react'
+import { BarChart3, Loader2, RefreshCw, TriangleAlert } from 'lucide-react'
+import type { UsageStatsRow } from '@tandem/protocol'
+import { api } from '../../lib/api'
+import { useAppStore } from '../../store/useAppStore'
+import { cn } from '../../lib/cn'
+import { formatCost, formatTokens } from '../../lib/format'
+
+type RangeKey = '7d' | '30d' | 'month'
+
+const RANGES: Array<{ key: RangeKey; label: string }> = [
+  { key: '7d', label: '7 天' },
+  { key: '30d', label: '30 天' },
+  { key: 'month', label: '本月' },
+]
+
+function dayString(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function rangeOf(key: RangeKey): { from: string; to: string; days: string[] } {
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  const to = dayString(now)
+  let start = new Date(now)
+  if (key === '7d') start.setDate(start.getDate() - 6)
+  else if (key === '30d') start.setDate(start.getDate() - 29)
+  else start = new Date(now.getFullYear(), now.getMonth(), 1)
+  const days: string[] = []
+  const cursor = new Date(start)
+  while (cursor.getTime() <= now.getTime()) {
+    days.push(dayString(cursor))
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return { from: dayString(start), to, days }
+}
+
+interface AggRow extends UsageStatsRow {
+  hostConfigId: string
+  hostName: string
+  profileName: string
+}
+
+interface RankRow {
+  key: string
+  label: string
+  sub?: string
+  cost: number
+  tokens: number
+  turns: number
+}
+
+function rank(
+  rows: AggRow[],
+  keyOf: (row: AggRow) => string,
+  labelOf: (row: AggRow) => { label: string; sub?: string },
+): RankRow[] {
+  const map = new Map<string, RankRow>()
+  for (const row of rows) {
+    const key = keyOf(row)
+    const current = map.get(key)
+    const label = labelOf(row)
+    if (current) {
+      current.cost += row.costUsd
+      current.tokens += row.inputTokens + row.outputTokens
+      current.turns += row.turns
+    } else {
+      map.set(key, {
+        key,
+        label: label.label,
+        sub: label.sub,
+        cost: row.costUsd,
+        tokens: row.inputTokens + row.outputTokens,
+        turns: row.turns,
+      })
+    }
+  }
+  return [...map.values()].sort((a, b) => b.cost - a.cost || b.tokens - a.tokens)
+}
+
+function RankTable({ title, rows }: { title: string; rows: RankRow[] }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-border bg-surface">
+      <div className="border-b border-border/70 px-3 py-2 text-[11.5px] font-medium text-text-soft">
+        {title}
+      </div>
+      {rows.length === 0 ? (
+        <div className="px-3 py-4 text-[11px] text-muted">暂无数据</div>
+      ) : (
+        <div className="divide-y divide-[var(--t-border)]">
+          {rows.slice(0, 6).map((row) => (
+            <div key={row.key} className="flex items-center gap-2 px-3 py-1.5">
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-mono text-[11px] text-text" title={row.label}>
+                  {row.label}
+                </div>
+                {row.sub && <div className="truncate text-[9.5px] text-muted">{row.sub}</div>}
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="font-mono text-[11px] tabular-nums text-text">{formatCost(row.cost)}</div>
+                <div className="text-[9px] tabular-nums text-muted">{formatTokens(row.tokens)} tok</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DayChart({ days, values }: { days: string[]; values: number[] }) {
+  const [hover, setHover] = useState<number | null>(null)
+  const width = 640
+  const height = 168
+  const padding = { left: 40, right: 8, top: 12, bottom: 22 }
+  const plotW = width - padding.left - padding.right
+  const plotH = height - padding.top - padding.bottom
+  const max = Math.max(...values, 0)
+  const scale = max > 0 ? plotH / max : 0
+  const slot = plotW / Math.max(1, days.length)
+  const barW = Math.max(2, Math.min(26, slot * 0.62))
+  const labelEvery = Math.max(1, Math.ceil(days.length / 6))
+  const hoverValue = hover !== null ? values[hover] : 0
+  const hoverDay = hover !== null ? days[hover] : ''
+
+  return (
+    <div className="relative">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full" role="img" aria-label="按天花费柱状图">
+        {[0, 0.5, 1].map((frac) => {
+          const y = padding.top + plotH * frac
+          return (
+            <line
+              key={frac}
+              x1={padding.left}
+              x2={width - padding.right}
+              y1={y}
+              y2={y}
+              stroke="var(--t-border)"
+              strokeWidth={1}
+            />
+          )
+        })}
+        <text x={padding.left - 6} y={padding.top + 4} textAnchor="end" fontSize={9} fill="var(--t-muted)">
+          {max > 0 ? formatCost(max) : '$0'}
+        </text>
+        <text x={padding.left - 6} y={padding.top + plotH} textAnchor="end" fontSize={9} fill="var(--t-muted)">
+          $0
+        </text>
+        {days.map((day, i) => {
+          const value = values[i] ?? 0
+          const h = value > 0 ? Math.max(2, value * scale) : 0
+          const x = padding.left + slot * i + (slot - barW) / 2
+          const y = padding.top + plotH - h
+          const active = hover === i
+          return (
+            <g key={day} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+              <rect x={padding.left + slot * i} y={padding.top} width={slot} height={plotH} fill="transparent" />
+              {h > 0 && (
+                <rect
+                  x={x}
+                  y={y}
+                  width={barW}
+                  height={h}
+                  rx={2}
+                  fill={active ? 'var(--t-accent)' : 'var(--t-text-soft)'}
+                  opacity={active ? 0.9 : 0.28}
+                />
+              )}
+              {i % labelEvery === 0 && (
+                <text
+                  x={x + barW / 2}
+                  y={height - 6}
+                  textAnchor="middle"
+                  fontSize={8.5}
+                  fill="var(--t-muted)"
+                >
+                  {day.slice(5)}
+                </text>
+              )}
+            </g>
+          )
+        })}
+      </svg>
+      {hover !== null && (
+        <div
+          className="pointer-events-none absolute top-1 rounded-md border border-border bg-surface px-2 py-1 text-[10px] text-text shadow-[var(--t-shadow-sm)]"
+          style={{
+            left: `calc(${((hover + 0.5) / Math.max(1, days.length)) * 100}% - 40px)`,
+          }}
+        >
+          <div className="font-mono">{hoverDay}</div>
+          <div className="tabular-nums text-text-soft">{formatCost(hoverValue)}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function UsageSection() {
+  const hosts = useAppStore((s) => s.hosts)
+  const runtimes = useAppStore((s) => s.runtimes)
+  const [range, setRange] = useState<RangeKey>('7d')
+  const [rows, setRows] = useState<AggRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [nonce, setNonce] = useState(0)
+  const { from, to, days } = useMemo(() => rangeOf(range), [range])
+  const profileKey = useMemo(
+    () =>
+      hosts
+        .map((h) => (runtimes[h.id]?.profiles ?? []).map((p) => `${p.id}:${p.name}`).join(','))
+        .join('|'),
+    [hosts, runtimes],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    const jobs = hosts.map(async (host) => {
+      const data = await api.usage(host, from, to)
+      const profiles = runtimes[host.id]?.profiles ?? []
+      return data.map((row) => {
+        const profile = profiles.find((p) => p.id === row.profileId)
+        return {
+          ...row,
+          hostConfigId: host.id,
+          hostName: host.name,
+          profileName: profile?.name ?? row.profileId,
+        }
+      })
+    })
+    Promise.allSettled(jobs)
+      .then((results) => {
+        if (cancelled) return
+        const merged: AggRow[] = []
+        const errors: string[] = []
+        for (const result of results) {
+          if (result.status === 'fulfilled') merged.push(...result.value)
+          else errors.push(result.reason instanceof Error ? result.reason.message : '读取失败')
+        }
+        setRows(merged)
+        if (errors.length) setError(`部分 Host 用量读取失败：${errors[0]}`)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [hosts, from, to, nonce, profileKey])
+
+  const daily = useMemo(() => {
+    const map = new Map<string, number>(days.map((day) => [day, 0]))
+    for (const row of rows) {
+      if (map.has(row.day)) map.set(row.day, (map.get(row.day) ?? 0) + row.costUsd)
+    }
+    return days.map((day) => map.get(day) ?? 0)
+  }, [rows, days])
+
+  const totals = useMemo(() => {
+    let cost = 0
+    let input = 0
+    let output = 0
+    let turns = 0
+    for (const row of rows) {
+      cost += row.costUsd
+      input += row.inputTokens
+      output += row.outputTokens
+      turns += row.turns
+    }
+    return { cost, input, output, turns }
+  }, [rows])
+
+  const modelRanks = useMemo(
+    () => rank(rows, (row) => row.model, (row) => ({ label: row.model })),
+    [rows],
+  )
+  const accountRanks = useMemo(
+    () =>
+      rank(
+        rows,
+        (row) => `${row.hostConfigId}:${row.profileId}`,
+        (row) => ({ label: row.profileName, sub: row.hostName }),
+      ),
+    [rows],
+  )
+  const hostRanks = useMemo(
+    () =>
+      rank(
+        rows,
+        (row) => row.hostConfigId,
+        (row) => ({ label: row.hostName }),
+      ),
+    [rows],
+  )
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <h3 className="text-[14px] font-semibold">用量</h3>
+        <span className="text-[11px] text-muted">跨 Host 汇总</span>
+        <span className="flex-1" />
+        <div className="flex rounded-lg border border-border bg-surface p-0.5">
+          {RANGES.map((item) => (
+            <button
+              key={item.key}
+              onClick={() => setRange(item.key)}
+              className={cn(
+                'rounded-md px-2 py-1 text-[11px] transition-colors',
+                range === item.key
+                  ? 'bg-[var(--t-bg-active)] text-text'
+                  : 'text-muted hover:text-text',
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setNonce((n) => n + 1)}
+          disabled={loading}
+          aria-label="刷新"
+          title="刷新"
+          className="flex size-7 items-center justify-center rounded-md border border-border text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-50"
+        >
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[11px] text-danger">
+          <TriangleAlert size={12} /> {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
+          <div className="text-[10px] text-muted">总花费</div>
+          <div className="mt-0.5 font-mono text-[17px] tabular-nums text-text">{formatCost(totals.cost)}</div>
+        </div>
+        <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
+          <div className="text-[10px] text-muted">输入 token</div>
+          <div className="mt-0.5 font-mono text-[17px] tabular-nums text-text">{formatTokens(totals.input)}</div>
+        </div>
+        <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
+          <div className="text-[10px] text-muted">输出 token</div>
+          <div className="mt-0.5 font-mono text-[17px] tabular-nums text-text">{formatTokens(totals.output)}</div>
+        </div>
+        <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
+          <div className="text-[10px] text-muted">回合</div>
+          <div className="mt-0.5 font-mono text-[17px] tabular-nums text-text">{totals.turns}</div>
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-xl border border-border bg-surface p-3">
+        <div className="mb-2 flex items-center gap-1.5 text-[11.5px] font-medium text-text-soft">
+          <BarChart3 size={13} className="text-muted" /> 按天花费
+          {loading && <Loader2 size={11} className="animate-spin text-muted" />}
+          <span className="flex-1" />
+          <span className="text-[10px] font-normal text-muted">
+            {from} — {to}
+          </span>
+        </div>
+        <DayChart days={days} values={daily} />
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <RankTable title="按模型" rows={modelRanks} />
+        <RankTable title="按账号" rows={accountRanks} />
+        <RankTable title="按 Host" rows={hostRanks} />
+      </div>
+
+      <p className="mt-4 text-[10.5px] leading-4 text-muted">
+        花费为参考价（每百万 token 美元），内置常见模型单价；可在「账号与模型」编辑账号时按模型覆盖单价。
+      </p>
+    </div>
+  )
+}

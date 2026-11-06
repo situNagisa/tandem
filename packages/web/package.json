@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "@tandem/protocol": "0.1.0",
+    "@types/qrcode": "^1.5.6",
     "diff": "^9.0.0",
     "highlight.js": "^11.12.0",
     "lucide-react": "^1.69.0",
+    "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-markdown": "^10.1.0",

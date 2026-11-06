@@ -20,6 +20,7 @@ interface UiState {
   sidebarWidth: number
   collapsedProjects: Record<string, boolean>
   showArchived: boolean
+  showSubagents: boolean
   panelOpen: boolean
   changesOpen: boolean
   changesWidth: number
@@ -39,6 +40,7 @@ interface UiState {
   setSidebarWidth: (width: number) => void
   toggleProject: (key: string) => void
   setShowArchived: (show: boolean) => void
+  setShowSubagents: (show: boolean) => void
   setPanelOpen: (open: boolean) => void
   togglePanel: () => void
   setChangesOpen: (open: boolean) => void
@@ -66,6 +68,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   sidebarWidth: loadSidebarWidth(),
   collapsedProjects: loadCollapsedProjects(),
   showArchived: false,
+  showSubagents: prefs.showSubagents ?? false,
   panelOpen: prefs.panelOpen ?? true,
   changesOpen: false,
   changesWidth: Math.min(760, Math.max(380, prefs.changesWidth ?? 520)),
@@ -100,6 +103,10 @@ export const useUiStore = create<UiState>((set, get) => ({
     set({ collapsedProjects: next })
   },
   setShowArchived: (show) => set({ showArchived: show }),
+  setShowSubagents: (show) => {
+    saveUiPrefs({ showSubagents: show })
+    set({ showSubagents: show })
+  },
   setPanelOpen: (open) => {
     saveUiPrefs({ panelOpen: open })
     set({ panelOpen: open })

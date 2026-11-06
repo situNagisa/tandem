@@ -736,3 +736,17 @@ html.dark {
   vertical-align: -0.15em;
   animation: tandem-caret 1s steps(1) infinite;
 }
+
+/* Electron 桌面端：整块可拖动，交互元素保持可点击。 */
+.desktop-drag {
+  -webkit-app-region: drag;
+}
+.desktop-drag button,
+.desktop-drag a,
+.desktop-drag input,
+.desktop-drag textarea,
+.desktop-drag select,
+.desktop-drag [role='button'],
+.desktop-drag [data-no-drag] {
+  -webkit-app-region: no-drag;
+}

@@ -1,4 +1,4 @@
-import { Monitor, Palette, RefreshCw, Server, ShieldCheck, Sparkles } from 'lucide-react'
+import { BarChart3, Monitor, Palette, Plug, RefreshCw, Server, ShieldCheck, Sparkles } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
@@ -8,11 +8,15 @@ import { HostsSection } from './HostsSection'
 import { AppearanceSection } from './AppearanceSection'
 import { SyncSection } from './SyncSection'
 import { PermissionsSection } from './PermissionsSection'
+import { McpSection } from './McpSection'
+import { UsageSection } from './UsageSection'
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'profiles', label: '账号与模型', icon: Sparkles },
   { id: 'hosts', label: 'Host 管理', icon: Server },
   { id: 'permissions', label: '权限', icon: ShieldCheck },
+  { id: 'mcp', label: 'MCP', icon: Plug },
+  { id: 'usage', label: '用量', icon: BarChart3 },
   { id: 'sync', label: '同步与备份', icon: RefreshCw },
   { id: 'appearance', label: '外观', icon: Palette },
 ]
@@ -28,7 +32,7 @@ export function SettingsDialog() {
       open={open}
       onClose={close}
       title="设置"
-      description="Host、账号与模型、配置迁移，以及界面外观。"
+      description="Host、账号与模型、MCP、用量、配置迁移，以及界面外观。"
       className="max-w-3xl"
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
     >
@@ -60,6 +64,8 @@ export function SettingsDialog() {
           {tab === 'profiles' && <ProfilesSection />}
           {tab === 'hosts' && <HostsSection />}
           {tab === 'permissions' && <PermissionsSection />}
+          {tab === 'mcp' && <McpSection />}
+          {tab === 'usage' && <UsageSection />}
           {tab === 'sync' && <SyncSection />}
           {tab === 'appearance' && <AppearanceSection />}
         </div>

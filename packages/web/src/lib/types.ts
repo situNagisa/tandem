@@ -69,6 +69,21 @@ export interface ActiveSession {
   /** 已完成的工具结果，按 toolUseId 索引 */
   toolResults: Record<string, ToolResultBlock>
   turnError?: string
+  /** Task 子代理会话（parentId 指向当前会话），按子会话 id 索引。 */
+  subagents: Record<string, SubagentSession>
+}
+
+/** 主会话内嵌查看的 Task 子代理状态。 */
+export interface SubagentSession {
+  summary: SessionSummary | null
+  messages: UiMessage[]
+  pending: PermissionRequest[]
+  loading: boolean
+  running: boolean
+  streamingMessageId?: string
+  liveToolInputs: Record<string, string>
+  toolResults: Record<string, ToolResultBlock>
+  error?: string
 }
 
 export interface Toast {
@@ -78,7 +93,7 @@ export interface Toast {
 }
 
 export type Theme = 'light' | 'dark' | 'system'
-export type SettingsTab = 'profiles' | 'hosts' | 'permissions' | 'appearance' | 'sync'
+export type SettingsTab = 'profiles' | 'hosts' | 'permissions' | 'mcp' | 'usage' | 'appearance' | 'sync'
 
 export type AppRoute =
   | { kind: 'home' }

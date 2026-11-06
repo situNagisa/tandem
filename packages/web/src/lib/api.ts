@@ -11,6 +11,8 @@ import type {
   FsEntry,
   HostInfo,
   ListModelsInput,
+  McpServerConfig,
+  McpServerStatus,
   ModelInfo,
   PermissionRule,
   Profile,
@@ -20,6 +22,7 @@ import type {
   SessionSummary,
   SlashCommand,
   UpdateSessionInput,
+  UsageStatsRow,
 } from '@tandem/protocol'
 import type { HostConfig } from './types'
 import { requestBase } from './hostUrl'
@@ -119,8 +122,18 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(input),
     }),
-  deleteSession: (h: HostConfig, id: string) =>
-    request<void>(h, `/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  deleteSession: (h: HostConfig, id: string, force = false) =>
+    request<void>(
+      h,
+      `/api/sessions/${encodeURIComponent(id)}${force ? '?force=1' : ''}`,
+      { method: 'DELETE' },
+    ),
+  mergeWorktree: (h: HostConfig, id: string, strategy: 'merge' | 'squash') =>
+    request<{ ok: boolean; error?: string }>(
+      h,
+      `/api/sessions/${encodeURIComponent(id)}/worktree/merge`,
+      { method: 'POST', body: JSON.stringify({ strategy }) },
+    ),
   forkSession: (h: HostConfig, id: string) =>
     request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/fork`, { method: 'POST' }),
 
@@ -194,6 +207,23 @@ export const api = {
     }),
 
   commands: (h: HostConfig) => request<SlashCommand[]>(h, '/api/commands'),
+
+  mcp: (h: HostConfig, cwd?: string) =>
+    request<{ servers: McpServerConfig[]; status: McpServerStatus[] }>(
+      h,
+      `/api/mcp${qs({ cwd })}`,
+    ),
+  saveMcp: (h: HostConfig, servers: McpServerConfig[]) =>
+    request<{ servers: McpServerConfig[]; status: McpServerStatus[] }>(h, '/api/mcp', {
+      method: 'PUT',
+      body: JSON.stringify(servers),
+    }),
+
+  usage: (h: HostConfig, from?: string, to?: string) =>
+    request<UsageStatsRow[]>(h, `/api/usage${qs({ from, to })}`),
+
+  pair: (h: HostConfig) =>
+    request<{ urls: string[]; token: string; hint?: string }>(h, '/api/pair'),
 }
 
 /** 导入外部会话时可选的目标账号 / 分组 / 模型；不填则沿用原软件上下文。 */

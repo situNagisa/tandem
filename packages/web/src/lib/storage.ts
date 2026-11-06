@@ -77,6 +77,7 @@ export interface UiPrefs {
   changesWidth?: number
   collapsedProjects?: string[]
   notifications?: boolean
+  showSubagents?: boolean
 }
 
 /** 随配置迁移打包的客户端设置：Host 列表、主题、侧栏偏好等 localStorage 内容。 */

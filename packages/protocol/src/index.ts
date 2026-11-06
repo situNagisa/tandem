@@ -57,6 +57,8 @@ export interface SessionSummary {
   pinned?: boolean;        // 置顶
   archived?: boolean;      // 归档（列表默认隐藏）
   env?: SessionEnv;        // 会话执行环境，用于侧栏按 项目/分支 自动归类
+  parentId?: string;       // Task 子代理会话指向主会话
+  worktree?: { path: string; branch: string; baseBranch: string }; // 隔离分支会话
   createdAt: number;
   updatedAt: number;
   usage: Usage;
