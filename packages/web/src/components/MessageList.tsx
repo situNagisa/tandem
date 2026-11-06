@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ContentBlock } from '@tandem/protocol'
-import { Check, Copy, PencilLine } from 'lucide-react'
+import { Check, Copy, PencilLine, Undo2 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { cn } from '../lib/cn'
 import { copyText } from '../lib/clipboard'
@@ -8,6 +8,7 @@ import type { UiMessage } from '../lib/types'
 import { Markdown } from './Markdown'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCard, type ToolUseBlock } from './ToolCard'
+import { RewindDialog } from './RewindDialog'
 import {
   ToolGroup,
   entriesFromMessages,
@@ -41,6 +42,8 @@ export const UserMessage = memo(function UserMessage({
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
+  const [rewindOpen, setRewindOpen] = useState(false)
+  const running = useAppStore((s) => s.active?.running ?? false)
   const timer = useRef<number | null>(null)
   const editRef = useRef<HTMLTextAreaElement>(null)
   const blocks = message.content.filter((b) => b.type !== 'tool_result')
@@ -168,12 +171,24 @@ export const UserMessage = memo(function UserMessage({
             >
               <PencilLine size={12.5} />
             </button>
+            <button
+              onClick={() => setRewindOpen(true)}
+              disabled={running}
+              aria-label="回退到此处"
+              title={running ? '会话运行中，结束后才能回退' : '回退到此处'}
+              className="flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft disabled:cursor-not-allowed disabled:opacity-40 md:size-7"
+            >
+              <Undo2 size={12.5} />
+            </button>
           </div>
         )}
         {message.queued && (
           <div className="mt-1 text-right text-[11px] text-muted">已排队，当前回合结束后发送</div>
         )}
       </div>
+      {rewindOpen && (
+        <RewindDialog message={message} onClose={() => setRewindOpen(false)} />
+      )}
     </div>
   )
 })
