@@ -66,9 +66,11 @@ export interface SessionSummary {
   effort?: ReasoningEffort; // 思考强度：映射到 Anthropic thinking budget / OpenAI reasoning_effort；模型不支持时忽略
   status: SessionStatus;
   pinned?: boolean;        // 置顶
+  pinnedTurns?: string[];  // 被 pin 的轮次（用户消息 id），轮次导航中特殊显示
   archived?: boolean;      // 归档（列表默认隐藏）
   env?: SessionEnv;        // 会话执行环境，用于侧栏按 项目/分支 自动归类
   importedFrom?: { source: ExternalSource; id: string }; // 从 Claude Code / Codex 导入的副本
+  forkedFrom?: { sessionId: string; messageId?: string; title?: string }; // 分叉来源：会话页显示「分叉自」，父会话在分叉点显示子会话入口
   parentId?: string;       // Task 子代理会话指向主会话（孙代理指向子代理）
   depth?: number;          // 0 主会话 / 1 子代理 / 2 孙代理…；侧栏只显示主会话（parentId 为空）
   worktree?: { path: string; branch: string; baseBranch: string }; // 隔离分支会话
@@ -113,7 +115,7 @@ export interface CreateSessionInput {
 }
 export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'max';
 // cwd：会话中途切换工作目录（下一轮生效，重新检测 env）
-export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'permissionMode' | 'pinned' | 'archived' | 'effort' | 'cwd'>>;
+export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'permissionMode' | 'pinned' | 'archived' | 'effort' | 'cwd' | 'pinnedTurns'>>;
 
 // ---------- 外部会话（本机已有的 Claude Code / Codex 会话） ----------
 // 原则：只读原软件的文件，绝不写回；"导入"= 复制成 Tandem 会话后继续（可换任意模型）。
@@ -303,7 +305,7 @@ export type BlockDelta =
 // GET    /api/sessions/:id            -> Session
 // PATCH  /api/sessions/:id UpdateSessionInput -> SessionSummary  (运行中切换模型/账号：下一轮生效)
 // DELETE /api/sessions/:id
-// POST   /api/sessions/:id/fork       -> SessionSummary   复制会话（含历史）为新会话
+// POST   /api/sessions/:id/fork { messageId? } -> SessionSummary   分叉：复制到 messageId（含）为止的历史为新会话，写 forkedFrom；缺省复制全部
 // GET    /api/sessions/:id/branches   -> { current?: string; branches: string[] }   cwd 所在仓库的本地分支
 // POST   /api/sessions/:id/checkout { branch, create?: boolean } -> SessionSummary  会话中途切换分支（有未提交改动时 409）
 // POST   /api/sessions/:id/worktree { branch? } -> SessionSummary  会话中途切到新 worktree 中继续（之后的工具都在 worktree 内执行）
