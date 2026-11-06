@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, Plus, ShieldAlert } from 'lucide-react'
+import { Bot, Loader2, Plus, ShieldAlert } from 'lucide-react'
 import type { PermissionDecision, PermissionRequest, PermissionRule } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -181,6 +181,9 @@ export function PermissionCard({
 }) {
   const decide = useAppStore((s) => s.decidePermission)
   const hostId = useAppStore((s) => s.active?.hostId ?? null)
+  const subagentTitle = useAppStore(
+    (s) => s.active?.subagents[request.sessionId]?.summary?.title ?? null,
+  )
   const cwd = useAppStore((s) => s.active?.summary?.cwd ?? '')
   const [ruleDraft, setRuleDraft] = useState<PermissionRule | null>(null)
   const input = useMemo(() => asRecord(request.input), [request.input])
@@ -283,6 +286,12 @@ export function PermissionCard({
               <span className="text-[11px] text-muted">另有 {more} 个待审批</span>
             )}
           </div>
+          {subagentTitle && (
+            <div className="mt-1 flex items-center gap-1 text-[11px] text-muted">
+              <Bot size={11} className="shrink-0 text-accent/80" />
+              <span className="min-w-0 truncate">来自子代理：{subagentTitle}</span>
+            </div>
+          )}
           <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-[1.6] text-text-soft">
             {request.description}
           </p>

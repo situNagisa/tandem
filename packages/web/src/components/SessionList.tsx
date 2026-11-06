@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Archive,
@@ -7,6 +7,7 @@ import {
   Copy,
   FolderGit2,
   GitBranch,
+  GitMerge,
   Loader2,
   MessageSquarePlus,
   MoreHorizontal,
@@ -15,9 +16,11 @@ import {
   PinOff,
   Server,
   Trash2,
+  TriangleAlert,
 } from 'lucide-react'
 import type { SessionSummary } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
+import { api, ApiError } from '../lib/api'
 import { useUiStore } from '../store/useUiStore'
 import { useNow } from '../lib/hooks'
 import { clearRunning, runningSince } from '../lib/runClock'
@@ -34,6 +37,7 @@ interface ProjectGroup {
   name: string
   branch?: string
   items: SessionSummary[]
+  children: Record<string, SessionSummary[]>
 }
 
 interface HostGroup {
@@ -51,8 +55,16 @@ interface MenuState {
   y: number
 }
 
+/** 服务端把 worktree 放在 ~/.tandem/worktrees/<repo>/<branch>，从中还原项目名以便与主仓库归组。 */
+function worktreeRepoName(s: SessionSummary): string | undefined {
+  const p = s.worktree?.path
+  if (!p) return undefined
+  const m = p.replace(/\\/g, '/').match(/\/worktrees\/([^/]+)\//)
+  return m?.[1]
+}
+
 function projectName(s: SessionSummary): string {
-  return s.env?.repoName || basename(s.cwd) || '未命名项目'
+  return worktreeRepoName(s) || s.env?.repoName || basename(s.cwd) || '未命名项目'
 }
 
 function isRunningStatus(status: SessionSummary['status']): boolean {
@@ -64,6 +76,7 @@ function buildGroups(
   runtimes: ReturnType<typeof useAppStore.getState>['runtimes'],
   query: string,
   showArchived: boolean,
+  showSubagents: boolean,
 ): { pinned: Array<{ hostId: string; session: SessionSummary }>; hosts: HostGroup[] } {
   const q = query.trim().toLowerCase()
   const pinned: Array<{ hostId: string; session: SessionSummary }> = []
@@ -89,8 +102,11 @@ function buildGroups(
       )
     })
 
+    const tops = matched.filter((s) => !s.parentId)
+    const children = matched.filter((s) => s.parentId)
+    const topIds = new Set(tops.map((s) => s.id))
     const regular: SessionSummary[] = []
-    for (const s of matched) {
+    for (const s of tops) {
       if (s.pinned && !showArchived) pinned.push({ hostId: h.id, session: s })
       else regular.push(s)
     }
@@ -102,11 +118,29 @@ function buildGroups(
       const key = `${h.id}:${name}`
       let group = map.get(key)
       if (!group) {
-        group = { key, name, branch: s.env?.branch, items: [] }
+        group = {
+          key,
+          name,
+          branch: s.worktree ? undefined : s.env?.branch,
+          items: [],
+          children: {},
+        }
         map.set(key, group)
       }
-      if (!group.branch && s.env?.branch) group.branch = s.env.branch
+      if (!group.branch && s.env?.branch && !s.worktree) group.branch = s.env.branch
       group.items.push(s)
+    }
+    if (showSubagents) {
+      for (const child of children) {
+        if (!child.parentId || !topIds.has(child.parentId)) continue
+        const parent = tops.find((s) => s.id === child.parentId)
+        if (!parent) continue
+        const group = map.get(`${h.id}:${projectName(parent)}`)
+        if (!group) continue
+        const list = group.children[child.parentId] ?? []
+        list.push(child)
+        group.children[child.parentId] = list
+      }
     }
     const projects = [...map.values()]
       .map((g) => ({ ...g, items: g.items.slice().sort((a, b) => b.updatedAt - a.updatedAt) }))
@@ -116,7 +150,7 @@ function buildGroups(
       name: h.name,
       online: rt?.status === 'online',
       projects,
-      count: regular.length,
+      count: regular.length + Object.values(projects).reduce((n, p) => n + Object.values(p.children).reduce((m, l) => m + l.length, 0), 0),
     })
   }
 
@@ -132,6 +166,7 @@ function RowMenu({
   onFork,
   onArchive,
   onDelete,
+  onMerge,
 }: {
   state: MenuState
   onClose: () => void
@@ -140,6 +175,7 @@ function RowMenu({
   onFork: () => void
   onArchive: () => void
   onDelete: () => void
+  onMerge: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ left: state.x, top: state.y })
@@ -202,6 +238,11 @@ function RowMenu({
       <button className={item} onClick={() => { onClose(); onFork() }}>
         <Copy size={14} className="text-muted" /> 复制会话
       </button>
+      {state.session.worktree && (
+        <button className={item} onClick={() => { onClose(); onMerge() }}>
+          <GitMerge size={14} className="text-muted" /> 合并回 {state.session.worktree.baseBranch}
+        </button>
+      )}
       <button className={item} onClick={() => { onClose(); onArchive() }}>
         {state.session.archived ? (
           <ArchiveRestore size={14} className="text-muted" />
@@ -243,6 +284,8 @@ export function SessionList({
   const toggleProject = useUiStore((s) => s.toggleProject)
   const showArchived = useUiStore((s) => s.showArchived)
   const setShowArchived = useUiStore((s) => s.setShowArchived)
+  const showSubagents = useUiStore((s) => s.showSubagents)
+  const setShowSubagents = useUiStore((s) => s.setShowSubagents)
 
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
@@ -251,6 +294,14 @@ export function SessionList({
     hostId: string
     session: SessionSummary
     busy: boolean
+    dirty?: boolean
+  } | null>(null)
+  const [merge, setMerge] = useState<{
+    hostId: string
+    session: SessionSummary
+    strategy: 'merge' | 'squash'
+    busy: boolean
+    error?: string
   } | null>(null)
   const renameRef = useRef<HTMLInputElement>(null)
   const renameDoneRef = useRef(false)
@@ -282,8 +333,8 @@ export function SessionList({
   }
 
   const { pinned, hosts: groups } = useMemo(
-    () => buildGroups(hosts, runtimes, query, showArchived),
-    [hosts, runtimes, query, showArchived],
+    () => buildGroups(hosts, runtimes, query, showArchived, showSubagents),
+    [hosts, runtimes, query, showArchived, showSubagents],
   )
 
   const anyRunning = useMemo(
@@ -328,6 +379,10 @@ export function SessionList({
   }, [renaming])
 
   const total = groups.reduce((n, g) => n + g.count, 0) + (showArchived ? 0 : pinned.length)
+  const hasSubagents = useMemo(
+    () => Object.values(runtimes).some((rt) => rt.sessions.some((s) => s.parentId)),
+    [runtimes],
+  )
   const noHosts = hosts.length === 0
 
   const startRename = (s: SessionSummary) => {
@@ -366,10 +421,17 @@ export function SessionList({
         onArchive: () =>
           void updateSession(menu.hostId, menu.session.id, { archived: !menu.session.archived }),
         onDelete: () => setConfirm({ hostId: menu.hostId, session: menu.session, busy: false }),
+        onMerge: () =>
+          setMerge({
+            hostId: menu.hostId,
+            session: menu.session,
+            strategy: 'merge',
+            busy: false,
+          }),
       }
     : null
 
-  const renderRow = (hostId: string, s: SessionSummary) => {
+  const renderRow = (hostId: string, s: SessionSummary, depth = 0) => {
     const isActive = s.id === activeSessionId
     const renamingThis = renaming === s.id
     const importedFrom = importedSources.get(`${hostId}:${s.id}`)
@@ -397,7 +459,8 @@ export function SessionList({
         aria-current={isActive ? 'page' : undefined}
         title={s.title || '未命名会话'}
         className={cn(
-          'anim-row-in group relative flex min-h-11 cursor-default items-center gap-2 rounded-lg pl-2 pr-8 text-[13px] outline-none transition-colors duration-[120ms] md:min-h-8',
+          'anim-row-in group relative flex min-h-11 cursor-default items-center gap-2 rounded-lg pr-8 text-[13px] outline-none transition-colors duration-[120ms] md:min-h-8',
+          depth > 0 ? 'pl-6' : 'pl-2',
           isActive
             ? 'bg-[var(--t-bg-active)] text-text'
             : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
@@ -436,6 +499,15 @@ export function SessionList({
         ) : (
           <span className="min-w-0 flex-1 truncate leading-5">
             {s.title || '未命名会话'}
+          </span>
+        )}
+        {!renamingThis && s.worktree && (
+          <span
+            title={`worktree 分支 ${s.worktree.branch}（基于 ${s.worktree.baseBranch}）`}
+            className="flex max-w-[82px] shrink-0 items-center gap-0.5 text-[9.5px] text-muted"
+          >
+            <GitBranch size={9} className="shrink-0" />
+            <span className="truncate font-mono">{s.worktree.branch}</span>
           </span>
         )}
         {!renamingThis && (
@@ -517,6 +589,21 @@ export function SessionList({
         <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted">
           {showArchived ? '已归档' : query ? '搜索结果' : '会话'}
         </span>
+        {!showArchived && hasSubagents && (
+          <button
+            onClick={() => setShowSubagents(!showSubagents)}
+            aria-pressed={showSubagents}
+            title={showSubagents ? '隐藏子代理会话' : '在主会话下显示子代理会话'}
+            className={cn(
+              'ml-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] transition-colors',
+              showSubagents
+                ? 'bg-[var(--t-bg-active)] text-text-soft'
+                : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text-soft',
+            )}
+          >
+            <GitBranch size={10} /> 子代理
+          </button>
+        )}
         {showArchived && (
           <button
             onClick={() => setShowArchived(false)}
@@ -624,7 +711,13 @@ export function SessionList({
                         inert={projCollapsed}
                       >
                         <div className="expand-inner space-y-0.5 pl-3">
-                          {project.items.map((s) => renderRow(host.id, s))}
+                          {project.items.map((s) => (
+                            <Fragment key={`${host.id}:${s.id}`}>
+                              {renderRow(host.id, s)}
+                              {showSubagents &&
+                                project.children[s.id]?.map((child) => renderRow(host.id, child, 1))}
+                            </Fragment>
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -649,7 +742,7 @@ export function SessionList({
         onClose={() => {
           if (!confirm?.busy) setConfirm(null)
         }}
-        title="删除会话"
+        title={confirm?.dirty ? 'worktree 有未提交改动' : '删除会话'}
         className="max-w-md"
         footer={
           <>
@@ -665,25 +758,124 @@ export function SessionList({
                 if (!confirm) return
                 setConfirm({ ...confirm, busy: true })
                 try {
-                  await deleteSession(confirm.hostId, confirm.session.id)
+                  await deleteSession(confirm.hostId, confirm.session.id, !!confirm.dirty)
                   setConfirm(null)
-                } catch {
-                  setConfirm((c) => (c ? { ...c, busy: false } : c))
+                } catch (err) {
+                  const dirty =
+                    (err instanceof ApiError && err.status === 409) ||
+                    (err instanceof Error && /未提交改动/.test(err.message))
+                  if (dirty) setConfirm((c) => (c ? { ...c, busy: false, dirty: true } : c))
+                  else {
+                    useUiStore.getState().toast(
+                      err instanceof Error ? err.message : '删除会话失败',
+                      'error',
+                    )
+                    setConfirm((c) => (c ? { ...c, busy: false } : c))
+                  }
                 }
               }}
               disabled={confirm?.busy}
               className="flex min-h-9 items-center gap-1.5 rounded-lg bg-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
             >
               {confirm?.busy && <Loader2 size={13} className="animate-spin" />}
-              删除
+              {confirm?.dirty ? '仍然删除' : '删除'}
             </button>
           </>
         }
       >
-        <p className="text-[13px] leading-6 text-text-soft">
-          确定删除「{confirm?.session.title || '未命名会话'}」？会话记录将从 Host 上移除，且无法恢复。
-        </p>
+        {confirm?.dirty ? (
+          <div className="mb-2 flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[12px] leading-5 text-danger">
+            <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+            有未提交改动，仍然删除？worktree 目录与分支会被一并清除，改动将无法恢复。
+          </div>
+        ) : (
+          <p className="text-[13px] leading-6 text-text-soft">
+            确定删除「{confirm?.session.title || '未命名会话'}」？会话记录将从 Host 上移除，且无法恢复。
+          </p>
+        )}
         <p className="mt-1.5 break-all font-mono text-[10.5px] text-muted">{confirm?.session.cwd}</p>
+      </Modal>
+
+      <Modal
+        open={!!merge}
+        onClose={() => {
+          if (!merge?.busy) setMerge(null)
+        }}
+        title="合并 worktree"
+        className="max-w-md"
+        footer={
+          <>
+            <button
+              onClick={() => setMerge(null)}
+              disabled={merge?.busy}
+              className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
+            >
+              取消
+            </button>
+            <button
+              onClick={async () => {
+                if (!merge) return
+                const host = hosts.find((h) => h.id === merge.hostId)
+                if (!host) return
+                setMerge({ ...merge, busy: true, error: undefined })
+                try {
+                  const res = await api.mergeWorktree(host, merge.session.id, merge.strategy)
+                  if (!res.ok) throw new Error(res.error || '合并失败')
+                  useUiStore.getState().toast('已合并回基准分支', 'success')
+                  setMerge(null)
+                  void useAppStore.getState().refreshSessions(merge.hostId)
+                } catch (err) {
+                  setMerge((m) =>
+                    m ? { ...m, busy: false, error: err instanceof Error ? err.message : '合并失败' } : m,
+                  )
+                }
+              }}
+              disabled={merge?.busy}
+              className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12.5px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60"
+            >
+              {merge?.busy && <Loader2 size={13} className="animate-spin" />}
+              合并
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-[12.5px] leading-5 text-text-soft">
+          <p>
+            把 <span className="font-mono text-text">{merge?.session.worktree?.branch}</span> 合回{' '}
+            <span className="font-mono text-text">{merge?.session.worktree?.baseBranch}</span>。
+          </p>
+          <div className="flex gap-2">
+            {(['merge', 'squash'] as const).map((strategy) => (
+              <button
+                key={strategy}
+                onClick={() => merge && setMerge({ ...merge, strategy, error: undefined })}
+                className={cn(
+                  'flex-1 rounded-lg border px-2.5 py-2 text-left text-[11.5px] transition-colors',
+                  merge?.strategy === strategy
+                    ? 'border-accent bg-accent-soft/60 text-text'
+                    : 'border-border bg-surface text-muted hover:border-border-strong',
+                )}
+              >
+                <span className="block font-medium">
+                  {strategy === 'merge' ? 'Merge' : 'Squash'}
+                </span>
+                <span className="mt-0.5 block text-[10.5px] leading-4">
+                  {strategy === 'merge' ? '保留分支提交记录' : '压缩为一个提交'}
+                </span>
+              </button>
+            ))}
+          </div>
+          {merge?.error && (
+            <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[11.5px] text-danger">
+              <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+              <span className="min-w-0 flex-1">
+                {merge.error}
+                {/冲突|conflict/i.test(merge.error) &&
+                  ' 请先在 worktree 中解决冲突（或在会话里让助手处理）后重试。'}
+              </span>
+            </div>
+          )}
+        </div>
       </Modal>
     </nav>
   )

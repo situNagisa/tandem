@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   FileDiff,
   GitBranch,
+  GitFork,
   Menu,
   PanelLeft,
   PanelRight,
@@ -17,6 +18,7 @@ import { basename, formatElapsed } from '../lib/format'
 import { clearRunning, runningSince } from '../lib/runClock'
 import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
+import { isDesktop, isMacDesktop, isWindowsDesktop } from '../lib/desktop'
 import { ConnectionDot } from './StatusDot'
 
 function StatePill({
@@ -148,9 +150,18 @@ export function TopBar() {
 
   const project = summary?.env?.repoName || basename(summary?.cwd ?? '')
   const branch = summary?.env?.branch
+  const worktree = summary?.worktree
 
   return (
-    <header className="relative z-20 flex h-12 shrink-0 items-center gap-1.5 bg-bg px-2 md:px-3">
+    <header
+      className={cn(
+        'relative z-20 flex h-12 shrink-0 items-center gap-1.5 bg-bg px-2 md:px-3',
+        isDesktop && 'desktop-drag',
+        isWindowsDesktop && 'pr-[140px]',
+        isMacDesktop && sidebarCollapsed && 'pl-[72px]',
+      )}
+      style={isWindowsDesktop ? { paddingRight: 140 } : undefined}
+    >
       <button
         onClick={() => {
           if (isMobile) setMobileSidebar(true)
@@ -215,7 +226,14 @@ export function TopBar() {
         )}
 
         {hasSession && (
-          <span className="hidden min-w-0 shrink items-center gap-1 rounded-md bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[10.5px] leading-4 text-text-soft sm:flex">
+          <span
+            className="hidden min-w-0 shrink items-center gap-1 rounded-md bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[10.5px] leading-4 text-text-soft sm:flex"
+            title={
+              worktree
+                ? `隔离分支（worktree）${worktree.branch}，基于 ${worktree.baseBranch}`
+                : undefined
+            }
+          >
             <span className="max-w-[90px] truncate">{host?.name ?? 'Host'}</span>
             {project && (
               <>
@@ -223,12 +241,17 @@ export function TopBar() {
                 <span className="max-w-[110px] truncate">{project}</span>
               </>
             )}
-            {branch && (
+            {(worktree?.branch || branch) && (
               <>
                 <span className="hidden text-muted sm:inline">·</span>
                 <span className="hidden min-w-0 items-center gap-0.5 sm:flex">
-                  <GitBranch size={10} className="shrink-0 text-muted" />
-                  <span className="max-w-[110px] truncate">{branch}</span>
+                  {worktree ? (
+                    <GitFork size={10} className="shrink-0 text-accent/80" />
+                  ) : (
+                    <GitBranch size={10} className="shrink-0 text-muted" />
+                  )}
+                  <span className="max-w-[110px] truncate">{worktree?.branch || branch}</span>
+                  {worktree && <span className="text-[9px] text-muted">worktree</span>}
                 </span>
               </>
             )}

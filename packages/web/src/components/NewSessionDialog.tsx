@@ -8,6 +8,8 @@ import {
   EyeOff,
   Folder,
   FolderOpen,
+  GitFork,
+  ScanLine,
   Loader2,
   Plus,
   RefreshCw,
@@ -26,6 +28,8 @@ import { defaultChoiceFor, groupName } from '../lib/profileModels'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
 import { Composer } from './Composer'
+import { useGitRepo } from '../lib/useGitRepo'
+import { QrScanDialog, scannerSupported } from './QrScanDialog'
 
 const HINTS = [
   '介绍一下这个项目的结构和启动方式',
@@ -83,20 +87,27 @@ function Pill({
   onClick,
   className,
   title,
+  disabled,
+  pressed,
 }: {
   children: ReactNode
   onClick: () => void
   className?: string
   title?: string
+  disabled?: boolean
+  pressed?: boolean
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={title}
+      disabled={disabled}
+      aria-pressed={pressed}
       className={cn(
         'flex h-10 min-w-0 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-surface/60 px-2.5 text-[11.5px] text-text-soft transition-colors duration-[120ms] hover:border-border-strong hover:bg-[var(--t-bg-hover)] hover:text-text md:h-8',
         className,
+        disabled && 'cursor-not-allowed opacity-45 hover:border-border hover:bg-surface/60',
       )}
     >
       {children}
@@ -517,6 +528,8 @@ export function NewSessionView() {
   const [groupId, setGroupId] = useState<string | undefined>(undefined)
   const [model, setModel] = useState('')
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
+  const [worktree, setWorktree] = useState(false)
+  const [worktreeBranch, setWorktreeBranch] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -571,6 +584,11 @@ export function NewSessionView() {
 
   const selectedProfile = profiles.find((p) => p.id === profileId) ?? null
   const selectedGroupName = groupName(selectedProfile ?? undefined, groupId)
+  const gitRepo = useGitRepo(host, cwd)
+
+  useEffect(() => {
+    if (gitRepo === 'no') setWorktree(false)
+  }, [gitRepo])
 
   const submit = async (content: ContentBlock[]): Promise<boolean> => {
     if (!host) return false
@@ -592,7 +610,16 @@ export function NewSessionView() {
     try {
       await startSession(
         host.id,
-        { cwd: cwd.trim(), profileId, ...(groupId ? { groupId } : {}), model, permissionMode },
+        {
+          cwd: cwd.trim(),
+          profileId,
+          ...(groupId ? { groupId } : {}),
+          model,
+          permissionMode,
+          ...(worktree && gitRepo === 'yes'
+            ? { worktree: { ...(worktreeBranch.trim() ? { branch: worktreeBranch.trim() } : {}) } }
+            : {}),
+        },
         content,
       )
       rememberDir(host.id, cwd.trim())
@@ -681,6 +708,40 @@ export function NewSessionView() {
               ) : null
             }
           </Picker>
+
+          <Pill
+            onClick={() => {
+              if (gitRepo !== 'yes') return
+              setWorktree((v) => !v)
+              setError(null)
+            }}
+            pressed={worktree}
+            disabled={gitRepo !== 'yes'}
+            title={
+              gitRepo === 'checking'
+                ? '正在检测 git 仓库…'
+                : gitRepo === 'no'
+                  ? '当前目录不在 git 仓库中，无法创建 worktree'
+                  : '在隔离的 git worktree 中运行，改动不影响当前分支'
+            }
+            className={worktree ? 'border-accent/40 bg-accent-soft/60 text-text' : undefined}
+          >
+            <GitFork size={12} className={worktree ? 'text-accent' : 'text-muted'} />
+            隔离分支（worktree）
+          </Pill>
+
+          {worktree && gitRepo === 'yes' && (
+            <label className="flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface/60 px-2.5 md:h-8">
+              <GitFork size={11} className="shrink-0 text-muted" />
+              <input
+                value={worktreeBranch}
+                onChange={(e) => setWorktreeBranch(e.target.value)}
+                placeholder="分支名（自动 tandem/…）"
+                spellCheck={false}
+                className="w-[128px] bg-transparent font-mono text-[10.5px] text-text outline-none placeholder:text-muted"
+              />
+            </label>
+          )}
 
           <Picker
             panelClass="w-auto"
@@ -773,6 +834,8 @@ export function ConnectView() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [ok, setOk] = useState(false)
+  const [scanOpen, setScanOpen] = useState(false)
+  const canScan = useMemo(scannerSupported, [])
 
   const parseLink = () => {
     setError(null)
@@ -797,11 +860,9 @@ export function ConnectView() {
     }
   }
 
-  const connect = async () => {
+  const connectTarget = async (targetUrl: string, targetToken: string) => {
     setError(null)
     setOk(false)
-    const targetUrl = url.trim()
-    const targetToken = token.trim()
     if (!targetUrl) {
       setError('请填写 Host 地址')
       return
@@ -831,6 +892,27 @@ export function ConnectView() {
       setError(err instanceof Error ? err.message : '连接失败，请检查地址与 Token')
     } finally {
       setBusy(false)
+    }
+  }
+
+  const connect = () => void connectTarget(url.trim(), token.trim())
+
+  const onScanned = (raw: string) => {
+    setScanOpen(false)
+    try {
+      let candidate = raw.trim()
+      if (!/^https?:\/\//i.test(candidate)) candidate = 'http://' + candidate
+      const u = new URL(candidate)
+      const t = u.searchParams.get('token') ?? ''
+      u.searchParams.delete('token')
+      const base = (u.origin + u.pathname).replace(/\/+$/, '')
+      setLink(raw.trim())
+      setUrl(base)
+      setToken(t)
+      setParsed({ url: base, token: t })
+      void connectTarget(base, t)
+    } catch {
+      setError('二维码内容不是有效的 Tandem 配对链接')
     }
   }
 
@@ -941,8 +1023,18 @@ export function ConnectView() {
             </div>
           )}
 
+          {canScan && (
+            <button
+              onClick={() => setScanOpen(true)}
+              disabled={busy}
+              className="mt-2 flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-surface text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-60"
+            >
+              <ScanLine size={14} /> 扫码连接
+            </button>
+          )}
+
           <button
-            onClick={() => void connect()}
+            onClick={connect}
             disabled={busy}
             className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-accent text-[12.5px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60"
           >
@@ -955,6 +1047,7 @@ export function ConnectView() {
           Token 只保存在本机浏览器中。手机与电脑连接同一 Host 时，会话实时同步。
         </p>
       </div>
+      {scanOpen && <QrScanDialog onClose={() => setScanOpen(false)} onResult={onScanned} />}
     </div>
   )
 }

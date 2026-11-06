@@ -15,6 +15,8 @@ import { useUiStore } from '../store/useUiStore'
 import { useAppStore } from '../store/useAppStore'
 import { modLabel } from '../lib/format'
 import { navigate } from '../lib/router'
+import { cn } from '../lib/cn'
+import { isDesktop, isMacDesktop } from '../lib/desktop'
 import { BrandMark } from './BrandMark'
 import { HostSwitcher } from './HostSwitcher'
 import { SessionList } from './SessionList'
@@ -56,7 +58,10 @@ export function Sidebar({
 
   return (
     <aside className="flex h-full w-full shrink-0 flex-col border-r border-border bg-sidebar">
-      <div className="flex items-center gap-2 px-3.5 pb-1 pt-3.5">
+      <div
+        className={cn('flex items-center gap-2 px-3.5 pb-1 pt-3.5', isDesktop && 'desktop-drag')}
+        style={isMacDesktop ? { paddingLeft: 72 } : undefined}
+      >
         <BrandMark size={22} />
         <span className="font-serif text-[18px] font-medium leading-none tracking-tight">Tandem</span>
         <span className="flex-1" />

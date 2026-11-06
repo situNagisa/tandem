@@ -7,6 +7,7 @@ import {
   Copy,
   FolderGit2,
   GitBranch,
+  GitFork,
   Loader2,
   Trash2,
   X,
@@ -16,6 +17,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { copyText } from '../lib/clipboard'
 import { cn } from '../lib/cn'
+import { ApiError } from '../lib/api'
 import {
   formatCost,
   formatRelative,
@@ -81,6 +83,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const [copied, setCopied] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [dirtyWorktree, setDirtyWorktree] = useState(false)
 
   const completed = todos.filter((t) => t.status === 'completed').length
   const progress = todos.length ? Math.round((completed / todos.length) * 100) : 0
@@ -100,10 +103,15 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     if (!hostId || !sessionId || !summary || deleting) return
     setDeleting(true)
     try {
-      await deleteSession(hostId, sessionId)
+      await deleteSession(hostId, sessionId, dirtyWorktree)
       setConfirmDelete(false)
+      setDirtyWorktree(false)
     } catch (err) {
-      toast(err instanceof Error ? err.message : '删除会话失败', 'error')
+      if ((err instanceof ApiError && err.status === 409) || (err instanceof Error && /未提交改动/.test(err.message))) {
+        setDirtyWorktree(true)
+      } else {
+        toast(err instanceof Error ? err.message : '删除会话失败', 'error')
+      }
     } finally {
       setDeleting(false)
     }
@@ -197,13 +205,17 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
                 {formatTokens(usage?.outputTokens ?? 0)}
               </span>
             </span>
-            <span className="text-muted">·</span>
-            <span>
-              花费{' '}
-              <span className="font-mono tabular-nums text-text">
-                {formatCost(usage?.costUsd)}
-              </span>
-            </span>
+            {usage?.costUsd !== undefined && (
+              <>
+                <span className="text-muted">·</span>
+                <span>
+                  花费{' '}
+                  <span className="font-mono tabular-nums text-text">
+                    ${usage?.costUsd.toFixed(2)}
+                  </span>
+                </span>
+              </>
+            )}
           </div>
         </Section>
 
@@ -249,6 +261,22 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
                 </span>
               </DetailRow>
             )}
+            {summary?.worktree && (
+              <DetailRow label="worktree">
+                <span className="block space-y-0.5">
+                  <span className="flex items-center gap-1 text-text">
+                    <GitFork size={11} className="text-accent/80" />
+                    <span className="font-mono text-[11.5px]">{summary.worktree.branch}</span>
+                  </span>
+                  <span className="block text-[10.5px] text-muted">
+                    基于 {summary.worktree.baseBranch}
+                  </span>
+                  <span className="block break-all font-mono text-[10px] text-muted">
+                    {summary.worktree.path}
+                  </span>
+                </span>
+              </DetailRow>
+            )}
             <DetailRow label="Host">
               <span className="flex items-center gap-1.5">
                 <ConnectionDot state={hostStatus} />
@@ -279,7 +307,10 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
 
       <div className="shrink-0 border-t border-border px-4 py-2.5">
         <button
-          onClick={() => setConfirmDelete(true)}
+          onClick={() => {
+            setDirtyWorktree(false)
+            setConfirmDelete(true)
+          }}
           disabled={deleting || !summary}
           className="flex min-h-8 items-center gap-1.5 rounded-md px-1 text-[12px] text-muted transition-colors hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -291,7 +322,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       <Modal
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
-        title="删除会话"
+        title={dirtyWorktree ? 'worktree 有未提交改动' : '删除会话'}
         className="max-w-md"
         footer={
           <>
@@ -308,14 +339,22 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
               className="flex min-h-9 items-center gap-1.5 rounded-lg bg-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
             >
               {deleting && <Loader2 size={13} className="animate-spin" />}
-              删除
+              {dirtyWorktree ? '仍然删除' : '删除'}
             </button>
           </>
         }
       >
-        <p className="text-[13px] leading-6 text-text-soft">
-          确定删除「{summary?.title || '未命名会话'}」？该操作不可撤销。
-        </p>
+        {dirtyWorktree ? (
+          <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[12px] leading-5 text-danger">
+            <span className="min-w-0 flex-1">
+              有未提交改动，仍然删除？worktree 目录与分支会被一并清除，改动将无法恢复。
+            </span>
+          </div>
+        ) : (
+          <p className="text-[13px] leading-6 text-text-soft">
+            确定删除「{summary?.title || '未命名会话'}」？该操作不可撤销。
+          </p>
+        )}
       </Modal>
     </aside>
   )

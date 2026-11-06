@@ -6,6 +6,7 @@ import type {
   ExternalSource,
   Message,
   PermissionDecision,
+  PermissionRequest,
   PermissionMode,
   RewindInput,
   ServerMsg,
@@ -36,6 +37,7 @@ import type {
   ConnectionState,
   HostConfig,
   HostRuntime,
+  SubagentSession,
   ToolResultBlock,
   UiMessage,
 } from '../lib/types'
@@ -88,11 +90,50 @@ interface AppState {
     patch: UpdateSessionInput,
   ) => Promise<SessionSummary | null>
   forkSession: (hostId: string, sessionId: string) => Promise<SessionSummary | null>
-  deleteSession: (hostId: string, sessionId: string) => Promise<void>
+  deleteSession: (hostId: string, sessionId: string, force?: boolean) => Promise<void>
+  /** 单独停止一个 Task 子代理会话。 */
+  interruptSubagent: (childId: string) => void
+  /** 把 worktree 分支合回基准分支。 */
+  mergeWorktree: (hostId: string, sessionId: string, strategy: 'merge' | 'squash') => Promise<boolean>
 }
 
 const connections = new Map<string, HostConnection>()
 const commandsInFlight = new Set<string>()
+/** 当前主会话已订阅的子代理会话，避免重复 subscribe 触发快照。 */
+const childSubscriptions = new Map<string, Set<string>>()
+
+function emptySubagent(summary: SessionSummary | null = null): SubagentSession {
+  return {
+    summary,
+    messages: [],
+    pending: [],
+    loading: true,
+    running: summary ? isRunningStatus(summary.status) : false,
+    liveToolInputs: {},
+    toolResults: {},
+  }
+}
+
+function summaryOf(s: Session): SessionSummary {
+  return {
+    id: s.id,
+    title: s.title,
+    cwd: s.cwd,
+    profileId: s.profileId,
+    ...(s.groupId ? { groupId: s.groupId } : {}),
+    model: s.model,
+    permissionMode: s.permissionMode,
+    status: s.status,
+    ...(s.pinned ? { pinned: true } : {}),
+    ...(s.archived ? { archived: true } : {}),
+    ...(s.env ? { env: s.env } : {}),
+    ...(s.parentId ? { parentId: s.parentId } : {}),
+    ...(s.worktree ? { worktree: s.worktree } : {}),
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+    usage: s.usage,
+  }
+}
 
 function newId(): string {
   try {
@@ -131,24 +172,6 @@ function sameOrigin(url: string, origin: string): boolean {
   }
 }
 
-function summaryOf(s: Session): SessionSummary {
-  return {
-    id: s.id,
-    title: s.title,
-    cwd: s.cwd,
-    profileId: s.profileId,
-    ...(s.groupId ? { groupId: s.groupId } : {}),
-    model: s.model,
-    permissionMode: s.permissionMode,
-    status: s.status,
-    ...(s.pinned ? { pinned: true } : {}),
-    ...(s.archived ? { archived: true } : {}),
-    ...(s.env ? { env: s.env } : {}),
-    createdAt: s.createdAt,
-    updatedAt: s.updatedAt,
-    usage: s.usage,
-  }
-}
 
 function isRunningStatus(status: SessionSummary['status']): boolean {
   return status === 'running' || status === 'waiting_permission'
@@ -204,6 +227,109 @@ export const useAppStore = create<AppState>((set, get) => {
     })
   }
 
+  const patchSubagent = (
+    hostId: string,
+    childId: string,
+    updater: (sub: SubagentSession) => SubagentSession,
+  ): void => {
+    set((state) => {
+      const active = state.active
+      if (!active || active.hostId !== hostId || !active.subagents[childId]) return state
+      return {
+        active: {
+          ...active,
+          subagents: { ...active.subagents, [childId]: updater(active.subagents[childId]) },
+        },
+      }
+    })
+  }
+
+  const addSubagent = (hostId: string, summary: SessionSummary): void => {
+    set((state) => {
+      const active = state.active
+      if (!active || active.hostId !== hostId || summary.parentId !== active.sessionId) return state
+      const prev = active.subagents[summary.id]
+      if (prev) {
+        if (prev.summary === summary) return state
+        return {
+          active: {
+            ...active,
+            subagents: { ...active.subagents, [summary.id]: { ...prev, summary } },
+          },
+        }
+      }
+      return {
+        active: {
+          ...active,
+          subagents: { ...active.subagents, [summary.id]: emptySubagent(summary) },
+        },
+      }
+    })
+    subscribeChild(hostId, summary.id)
+  }
+
+  const subscribeChild = (hostId: string, childId: string): void => {
+    const active = get().active
+    if (!active || active.hostId !== hostId) return
+    let set = childSubscriptions.get(hostId)
+    if (!set) {
+      set = new Set()
+      childSubscriptions.set(hostId, set)
+    }
+    if (set.has(childId)) return
+    set.add(childId)
+    connections.get(hostId)?.subscribe(childId)
+  }
+
+  const syncChildren = (hostId: string, parentId: string): void => {
+    const active = get().active
+    if (!active || active.hostId !== hostId || active.sessionId !== parentId) return
+    const sessions = get().runtimes[hostId]?.sessions ?? []
+    for (const child of sessions) {
+      if (child.parentId === parentId) addSubagent(hostId, child)
+    }
+  }
+
+  const clearChildSubscriptions = (hostId: string): void => {
+    const set = childSubscriptions.get(hostId)
+    if (!set) return
+    const conn = connections.get(hostId)
+    for (const id of set) conn?.unsubscribe(id)
+    childSubscriptions.delete(hostId)
+  }
+
+  const applySubagentSnapshot = (
+    hostId: string,
+    session: Session,
+    pendingPermissions: PermissionRequest[],
+  ): void => {
+    const summary = summaryOf(session)
+    set((state) => {
+      const active = state.active
+      if (!active || active.hostId !== hostId || session.parentId !== active.sessionId) return state
+      const last = session.messages[session.messages.length - 1]
+      return {
+        active: {
+          ...active,
+          subagents: {
+            ...active.subagents,
+            [session.id]: {
+              summary,
+              messages: session.messages,
+              pending: pendingPermissions,
+              loading: false,
+              running: isRunningStatus(session.status),
+              streamingMessageId:
+                session.status === 'running' && last?.role === 'assistant' ? last.id : undefined,
+              liveToolInputs: {},
+              toolResults: collectToolResults(session.messages),
+            },
+          },
+        },
+      }
+    })
+  }
+
   const applySessionSummary = (hostId: string, summary: SessionSummary): void => {
     set((state) => {
       const rt = state.runtimes[hostId]
@@ -228,6 +354,7 @@ export const useAppStore = create<AppState>((set, get) => {
       }
       return { runtimes, active }
     })
+    if (summary.parentId) addSubagent(hostId, summary)
   }
 
   const activeSummaryForSession = (
@@ -341,7 +468,16 @@ export const useAppStore = create<AppState>((set, get) => {
         break
       }
       case 'session_snapshot': {
-        applySnapshot(hostId, msg.session, msg.pendingPermissions)
+        const snapshotActive = get().active
+        if (
+          snapshotActive &&
+          msg.session.id !== snapshotActive.sessionId &&
+          msg.session.parentId
+        ) {
+          applySubagentSnapshot(hostId, msg.session, msg.pendingPermissions)
+        } else {
+          applySnapshot(hostId, msg.session, msg.pendingPermissions)
+        }
         break
       }
       case 'session_updated': {
@@ -351,6 +487,12 @@ export const useAppStore = create<AppState>((set, get) => {
       case 'session_deleted': {
         const active = get().active
         removeSummary(hostId, msg.sessionId)
+        if (active?.hostId === hostId && active.subagents[msg.sessionId]) {
+          childSubscriptions.get(hostId)?.delete(msg.sessionId)
+          const subagents = { ...active.subagents }
+          delete subagents[msg.sessionId]
+          set({ active: { ...active, subagents } })
+        }
         if (active && active.hostId === hostId && active.sessionId === msg.sessionId) {
           connections.get(hostId)?.unsubscribe(msg.sessionId)
           set({ active: null })
@@ -360,6 +502,28 @@ export const useAppStore = create<AppState>((set, get) => {
         break
       }
       case 'message_start': {
+        const startActive = get().active
+        if (startActive?.hostId === hostId && startActive.subagents[msg.sessionId]) {
+          patchSubagent(hostId, msg.sessionId, (sub) => {
+            const message = msg.message
+            const messages = sub.messages.some((m) => m.id === message.id)
+              ? sub.messages.map((m) => (m.id === message.id ? message : m))
+              : [...sub.messages, message]
+            return {
+              ...sub,
+              messages,
+              loading: false,
+              running: message.role === 'assistant' ? true : sub.running,
+              streamingMessageId:
+                message.role === 'assistant' ? message.id : sub.streamingMessageId,
+              toolResults:
+                message.role === 'user'
+                  ? collectToolResults([message], sub.toolResults)
+                  : sub.toolResults,
+            }
+          })
+          break
+        }
         patchActive(hostId, msg.sessionId, (active) => {
           const message = msg.message
           let messages = active.messages
@@ -391,6 +555,38 @@ export const useAppStore = create<AppState>((set, get) => {
       }
       case 'block_delta': {
         const delta = msg.delta
+        const deltaActive = get().active
+        if (deltaActive?.hostId === hostId && deltaActive.subagents[msg.sessionId]) {
+          patchSubagent(hostId, msg.sessionId, (sub) => {
+            if (delta.kind === 'tool_input') {
+              const key = `${msg.messageId}:${msg.index}`
+              return {
+                ...sub,
+                liveToolInputs: {
+                  ...sub.liveToolInputs,
+                  [key]: (sub.liveToolInputs[key] ?? '') + delta.partialJson,
+                },
+              }
+            }
+            const messages = sub.messages.map((m) => {
+              if (m.id !== msg.messageId) return m
+              const content = m.content.slice()
+              while (content.length < msg.index) content.push({ type: 'text', text: '' })
+              if (delta.kind === 'block_start') content[msg.index] = delta.block
+              else {
+                const block = content[msg.index]
+                if (block && (block.type === 'text' || block.type === 'thinking')) {
+                  content[msg.index] = { ...block, text: block.text + delta.text }
+                } else {
+                  content[msg.index] = { type: 'text', text: delta.text }
+                }
+              }
+              return { ...m, content }
+            })
+            return { ...sub, messages, running: true }
+          })
+          break
+        }
         patchActive(hostId, msg.sessionId, (active) => {
           if (delta.kind === 'tool_input') {
             const key = `${msg.messageId}:${msg.index}`
@@ -423,6 +619,27 @@ export const useAppStore = create<AppState>((set, get) => {
         break
       }
       case 'message_end': {
+        const endActive = get().active
+        if (endActive?.hostId === hostId && endActive.subagents[msg.sessionId]) {
+          patchSubagent(hostId, msg.sessionId, (sub) => {
+            const message = msg.message
+            const messages = sub.messages.some((m) => m.id === message.id)
+              ? sub.messages.map((m) => (m.id === message.id ? message : m))
+              : [...sub.messages, message]
+            const prefix = `${message.id}:`
+            return {
+              ...sub,
+              messages,
+              liveToolInputs: Object.fromEntries(
+                Object.entries(sub.liveToolInputs).filter(([k]) => !k.startsWith(prefix)),
+              ),
+              toolResults: collectToolResults([message], sub.toolResults),
+              streamingMessageId:
+                sub.streamingMessageId === message.id ? undefined : sub.streamingMessageId,
+            }
+          })
+          break
+        }
         patchActive(hostId, msg.sessionId, (active) => {
           const message = msg.message
           let messages: UiMessage[]
@@ -449,6 +666,19 @@ export const useAppStore = create<AppState>((set, get) => {
       case 'permission_request': {
         const req = msg.request
         const active = get().active
+        if (
+          active &&
+          active.hostId === hostId &&
+          active.subagents[req.sessionId]
+        ) {
+          patchSubagent(hostId, req.sessionId, (sub) => ({
+            ...sub,
+            pending: sub.pending.some((p) => p.id === req.id) ? sub.pending : [...sub.pending, req],
+            running: true,
+          }))
+          const summary = get().runtimes[hostId]?.sessions.find((s) => s.id === req.sessionId)
+          if (summary) applySessionSummary(hostId, { ...summary, status: 'waiting_permission' })
+        }
         if (active && active.hostId === hostId && active.sessionId === req.sessionId) {
           patchActive(hostId, req.sessionId, (a) => {
             const pending = a.pending.some((p) => p.id === req.id) ? a.pending : [...a.pending, req]
@@ -474,6 +704,23 @@ export const useAppStore = create<AppState>((set, get) => {
       case 'permission_resolved': {
         const active = get().active
         if (!active || active.hostId !== hostId) break
+        if (active.subagents[msg.sessionId]) {
+          patchSubagent(hostId, msg.sessionId, (sub) => {
+            const pending = sub.pending.filter((p) => p.id !== msg.requestId)
+            return {
+              ...sub,
+              pending,
+              running: pending.length > 0 ? true : sub.summary?.status === 'running',
+              summary: sub.summary
+                ? {
+                    ...sub.summary,
+                    status: pending.length > 0 ? 'waiting_permission' : 'running',
+                  }
+                : null,
+            }
+          })
+          break
+        }
         patchActive(hostId, msg.sessionId, (a) => {
           const pending = a.pending.filter((p) => p.id !== msg.requestId)
           const status = pending.length === 0 ? 'running' : 'waiting_permission'
@@ -490,10 +737,44 @@ export const useAppStore = create<AppState>((set, get) => {
         break
       }
       case 'todos': {
+        const todoActive = get().active
+        if (todoActive?.hostId === hostId && todoActive.subagents[msg.sessionId]) {
+          patchSubagent(hostId, msg.sessionId, (sub) => ({
+            ...sub,
+            summary: sub.summary ? { ...sub.summary, updatedAt: Date.now() } : null,
+          }))
+          break
+        }
         patchActive(hostId, msg.sessionId, (a) => ({ ...a, todos: msg.todos }))
         break
       }
       case 'turn_end': {
+        const turnActive = get().active
+        if (turnActive?.hostId === hostId && turnActive.subagents[msg.sessionId]) {
+          patchSubagent(hostId, msg.sessionId, (sub) => {
+            const messageId = sub.streamingMessageId
+            return {
+              ...sub,
+              running: false,
+              pending: [],
+              streamingMessageId: undefined,
+              liveToolInputs: messageId
+                ? Object.fromEntries(
+                    Object.entries(sub.liveToolInputs).filter(([k]) => !k.startsWith(`${messageId}:`)),
+                  )
+                : sub.liveToolInputs,
+              error: msg.reason === 'error' ? (msg.error ?? '子代理执行出错') : undefined,
+              summary: sub.summary
+                ? {
+                    ...sub.summary,
+                    status: msg.reason === 'error' ? ('error' as const) : ('idle' as const),
+                    updatedAt: Date.now(),
+                  }
+                : null,
+            }
+          })
+          break
+        }
         patchActive(hostId, msg.sessionId, (a) => {
           const messageId = a.streamingMessageId
           const liveToolInputs = messageId
@@ -758,6 +1039,8 @@ export const useAppStore = create<AppState>((set, get) => {
           authError: undefined,
           error: undefined,
         })
+        const active = get().active
+        if (active?.hostId === hostId) syncChildren(hostId, active.sessionId)
       } catch (err) {
         if (!getHost(hostId)) return
         const auth = err instanceof ApiError && (err.status === 401 || err.status === 403)
@@ -965,7 +1248,10 @@ export const useAppStore = create<AppState>((set, get) => {
     openSession: (hostId, sessionId) => {
       const current = get().active
       if (current && current.hostId === hostId && current.sessionId === sessionId) return
-      if (current) connections.get(current.hostId)?.unsubscribe(current.sessionId)
+      if (current) {
+        connections.get(current.hostId)?.unsubscribe(current.sessionId)
+        clearChildSubscriptions(current.hostId)
+      }
 
       get().activateHost(hostId)
       const host = getHost(hostId)
@@ -985,12 +1271,14 @@ export const useAppStore = create<AppState>((set, get) => {
           stopping: false,
           liveToolInputs: {},
           toolResults: {},
+          subagents: {},
         },
       })
       if (!rt?.sessionsLoaded) void get().refreshSessions(hostId)
 
       const conn = ensureConnection(hostId)
       conn?.subscribe(sessionId)
+      syncChildren(hostId, sessionId)
       // WebSocket 尚未连上时，先用 REST 拉一份只读快照，避免空白等待。
       if (!conn || conn.status !== 'online') void loadSessionFallback(hostId, sessionId)
       else {
@@ -1006,7 +1294,10 @@ export const useAppStore = create<AppState>((set, get) => {
 
     closeSession: () => {
       const active = get().active
-      if (active) connections.get(active.hostId)?.unsubscribe(active.sessionId)
+      if (active) {
+        connections.get(active.hostId)?.unsubscribe(active.sessionId)
+        clearChildSubscriptions(active.hostId)
+      }
       set({ active: null })
     },
 
@@ -1065,6 +1356,35 @@ export const useAppStore = create<AppState>((set, get) => {
         return
       }
       patchActive(active.hostId, active.sessionId, (a) => ({ ...a, stopping: true }))
+    },
+
+    interruptSubagent: (childId) => {
+      const active = get().active
+      if (!active) return
+      const conn = connections.get(active.hostId) ?? ensureConnection(active.hostId)
+      const ok = conn?.send({ type: 'interrupt', sessionId: childId }) ?? false
+      if (!ok) {
+        toast('Host 未连接，无法停止子代理', 'error')
+        return
+      }
+      patchSubagent(active.hostId, childId, (sub) => ({
+        ...sub,
+        summary: sub.summary ? { ...sub.summary, status: 'running' } : null,
+      }))
+    },
+
+    mergeWorktree: async (hostId, sessionId, strategy) => {
+      const host = getHost(hostId)
+      if (!host) return false
+      try {
+        const result = await api.mergeWorktree(host, sessionId, strategy)
+        if (!result.ok) throw new Error(result.error || '合并失败')
+        toast('已合并回基准分支', 'success')
+        return true
+      } catch (err) {
+        toast(err instanceof Error ? err.message : '合并失败', 'error')
+        return false
+      }
     },
 
     decidePermission: (requestId, decision) => {
@@ -1187,6 +1507,7 @@ export const useAppStore = create<AppState>((set, get) => {
           stopping: false,
           liveToolInputs: {},
           toolResults: {},
+          subagents: {},
         },
       })
       navigate({ kind: 'session', hostId, sessionId: summary.id })
@@ -1232,14 +1553,15 @@ export const useAppStore = create<AppState>((set, get) => {
       }
     },
 
-    deleteSession: async (hostId, sessionId) => {
+    deleteSession: async (hostId, sessionId, force = false) => {
       const host = getHost(hostId)
       if (!host) return
-      await api.deleteSession(host, sessionId)
+      await api.deleteSession(host, sessionId, force)
       removeSummary(hostId, sessionId)
       const active = get().active
       if (active && active.hostId === hostId && active.sessionId === sessionId) {
         connections.get(hostId)?.unsubscribe(sessionId)
+        clearChildSubscriptions(hostId)
         set({ active: null })
         navigate({ kind: 'host', hostId })
       }
