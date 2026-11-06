@@ -460,7 +460,7 @@ function buildKeys(
   // 未传任何 Key：保留原列表；老分组/新分组兜底用账号 key
   if (old?.keys?.length) return old.keys;
   const fallback = old?.apiKey || fallbackKey;
-  return fallback ? [{ id: `${old?.id ?? 'group'}-k1`, apiKey: fallback }] : [];
+  return fallback ? [{ id: old?.id ? `${old.id}-k1` : randomUUID(), apiKey: fallback }] : [];
 }
 
 /** 去掉值为 undefined 的可选字段，保证 JSON 干净（清状态时不残留旧值）。 */
