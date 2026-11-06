@@ -137,7 +137,7 @@ export function Switch({ checked, onChange, disabled, label, className }: Switch
         'relative h-5 w-9 shrink-0 rounded-full border transition-colors duration-[120ms] disabled:cursor-not-allowed disabled:opacity-40',
         checked
           ? 'border-transparent bg-[color-mix(in_srgb,var(--t-text)_45%,transparent)]'
-          : 'border-border bg-[var(--t-bg-active)]',
+          : 'border-transparent bg-[color-mix(in_srgb,var(--t-text)_18%,transparent)]',
         className,
       )}
     >

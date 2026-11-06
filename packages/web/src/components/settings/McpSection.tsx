@@ -16,9 +16,7 @@ import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
 import { Button, IconButton } from '../ui/Button'
-import { Input, SegmentedControl, Switch } from '../ui/Controls'
-
-const labelCls = 'mb-1.5 block text-[11px] font-medium text-text-soft'
+import { Input, SegmentedControl, Select, Switch } from '../ui/Controls'
 
 const SOURCE_LABEL: Record<string, string> = {
   tandem: 'Tandem',
@@ -147,10 +145,10 @@ function McpEditor({
       className="max-w-lg"
       footer={
         <>
-          <Button size="lg" onClick={onClose} disabled={busy}>
+          <Button onClick={onClose} disabled={busy}>
             取消
           </Button>
-          <Button size="lg" variant="primary" onClick={save} disabled={busy || !valid}>
+          <Button variant="primary" onClick={save} disabled={busy || !valid}>
             {busy && <Loader2 size={14} className="animate-spin" />}
             保存
           </Button>
@@ -159,9 +157,8 @@ function McpEditor({
     >
       <div className="space-y-3">
         <div>
-          <label className={labelCls}>名称</label>
+          <label className="settings-label">名称</label>
           <Input
-            size="lg"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="例如 github、playwright"
@@ -183,9 +180,8 @@ function McpEditor({
         {form.transport === 'stdio' ? (
           <>
             <div>
-              <label className={labelCls}>命令</label>
+              <label className="settings-label">命令</label>
               <Input
-                size="lg"
                 value={form.command}
                 onChange={(e) => setForm({ ...form, command: e.target.value })}
                 placeholder="npx"
@@ -194,34 +190,33 @@ function McpEditor({
               />
             </div>
             <div>
-              <label className={labelCls}>参数（每行一个）</label>
+              <label className="settings-label">参数（每行一个）</label>
               <textarea
                 value={form.args}
                 onChange={(e) => setForm({ ...form, args: e.target.value })}
                 placeholder={'-y\n@modelcontextprotocol/server-filesystem\n/home/me'}
                 spellCheck={false}
                 rows={3}
-                className="w-full resize-y rounded-lg border border-border bg-bg px-2.5 py-2 font-mono text-[11px] leading-5 text-text outline-none focus:border-border-strong"
+                className="settings-textarea"
               />
             </div>
             <div>
-              <label className={labelCls}>环境变量（KEY=value，每行一个）</label>
+              <label className="settings-label">环境变量（KEY=value，每行一个）</label>
               <textarea
                 value={form.env}
                 onChange={(e) => setForm({ ...form, env: e.target.value })}
                 placeholder="GITHUB_TOKEN=ghp_…"
                 spellCheck={false}
                 rows={2}
-                className="w-full resize-y rounded-lg border border-border bg-bg px-2.5 py-2 font-mono text-[11px] leading-5 text-text outline-none focus:border-border-strong"
+                className="settings-textarea"
               />
             </div>
           </>
         ) : (
           <>
             <div>
-              <label className={labelCls}>地址</label>
+              <label className="settings-label">地址</label>
               <Input
-                size="lg"
                 value={form.url}
                 onChange={(e) => setForm({ ...form, url: e.target.value })}
                 placeholder="https://example.com/mcp"
@@ -230,27 +225,27 @@ function McpEditor({
               />
             </div>
             <div>
-              <label className={labelCls}>请求头（Name: value，每行一个）</label>
+              <label className="settings-label">请求头（Name: value，每行一个）</label>
               <textarea
                 value={form.headers}
                 onChange={(e) => setForm({ ...form, headers: e.target.value })}
                 placeholder="Authorization: Bearer …"
                 spellCheck={false}
                 rows={3}
-                className="w-full resize-y rounded-lg border border-border bg-bg px-2.5 py-2 font-mono text-[11px] leading-5 text-text outline-none focus:border-border-strong"
+                className="settings-textarea"
               />
             </div>
           </>
         )}
-        <label className="flex items-center gap-2 text-[12px] text-text-soft">
-          <input
-            type="checkbox"
+        <div className="flex min-h-8 items-center gap-3">
+          <span className="text-[12px] text-text-soft">启用（保存后立即尝试连接）</span>
+          <span className="flex-1" />
+          <Switch
             checked={form.enabled}
-            onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
-            className="size-3.5 accent-[var(--t-text)]"
+            onChange={(enabled) => setForm({ ...form, enabled })}
+            label="启用 MCP 服务器"
           />
-          启用（保存后立即尝试连接）
-        </label>
+        </div>
         {error && (
           <div className="flex items-center gap-1.5 text-[11.5px] text-danger">
             <TriangleAlert size={12} /> {error}
@@ -381,18 +376,19 @@ export function McpSection() {
         <span className="text-[11px] text-muted">stdio / Streamable HTTP</span>
         <span className="flex-1" />
         {hosts.length > 1 && (
-          <select
+          <Select
             value={hostId ?? ''}
             onChange={(e) => setHostId(e.target.value)}
             aria-label="选择 Host"
-            className="h-8 rounded-lg border border-border bg-surface px-2 text-[11.5px] text-text outline-none focus:border-border-strong"
+            wrapperClassName="w-auto max-w-[180px]"
+            className="text-[11.5px]"
           >
             {hosts.map((h) => (
               <option key={h.id} value={h.id}>
                 {h.name}
               </option>
             ))}
-          </select>
+          </Select>
         )}
         <IconButton
           onClick={() => void load(false, true)}
@@ -414,8 +410,10 @@ export function McpSection() {
       </div>
 
       {!hosts.length && (
-        <div className="rounded-xl border border-dashed border-border bg-bg/30 px-4 py-8 text-center text-[12px] text-muted">
-          先连接一台 Host，再配置 MCP。
+        <div className="settings-empty">
+          <span className="settings-empty-icon"><Plug size={17} /></span>
+          <p className="settings-empty-title">还没有连接 Host</p>
+          <p className="settings-empty-hint">先连接一台 Host，再配置 MCP 服务器。</p>
         </div>
       )}
 
@@ -426,16 +424,16 @@ export function McpSection() {
       )}
 
       {loading && servers.length === 0 && (
-        <div className="flex items-center gap-2 py-8 text-[12px] text-muted">
-          <Loader2 size={13} className="animate-spin" /> 正在读取 MCP 配置…
+        <div className="flex items-center justify-center gap-2 py-10 text-[12px] text-muted">
+          <Loader2 size={14} className="animate-spin" /> 正在读取 MCP 配置…
         </div>
       )}
 
       {!loading && host && servers.length === 0 && (
-        <div className="rounded-xl border border-dashed border-border bg-bg/30 px-4 py-8 text-center">
-          <Plug size={20} className="mx-auto text-muted" />
-          <p className="mt-2 text-[12.5px] text-text-soft">还没有 MCP 服务器</p>
-          <p className="mt-1 text-[11px] text-muted">添加后，模型可调用其工具，默认需要审批。</p>
+        <div className="settings-empty">
+          <span className="settings-empty-icon"><Plug size={17} /></span>
+          <p className="settings-empty-title">还没有 MCP 服务器</p>
+          <p className="settings-empty-hint">添加后，模型可调用其工具，默认需要审批。</p>
         </div>
       )}
 
@@ -448,7 +446,7 @@ export function McpSection() {
           const readonly = source !== 'tandem'
           const isOpen = !!expanded[config.name]
           return (
-            <div key={config.name} className="rounded-xl border border-border bg-surface transition-colors hover:border-border-strong/60">
+            <div key={config.name} className="settings-item">
               <div className="flex items-start gap-2.5 p-3">
                 <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', style.dot)} />
                 <div className="min-w-0 flex-1">
@@ -497,7 +495,7 @@ export function McpSection() {
                   )}
                 </div>
                 {!readonly && (
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="settings-actions" data-open={isOpen || undefined}>
                     <Switch
                       checked={config.enabled}
                       onChange={() => toggle(config)}
@@ -570,7 +568,7 @@ export function McpSection() {
         })}
       </div>
 
-      <p className="mt-4 text-[10.5px] leading-4 text-muted">
+      <p className="settings-note">
         Tandem 来源可编辑；Claude 与项目来源只读，仅用于展示与合并。MCP 工具默认需要审批，可在「权限」中添加放行规则。
       </p>
 
@@ -595,11 +593,10 @@ export function McpSection() {
         className="max-w-md"
         footer={
           <>
-            <Button size="lg" onClick={() => setRemoveTarget(null)} disabled={saving}>
+            <Button onClick={() => setRemoveTarget(null)} disabled={saving}>
               取消
             </Button>
             <Button
-              size="lg"
               variant="danger-ghost"
               onClick={() => void confirmRemove()}
               disabled={saving}

@@ -135,7 +135,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
             <p className="mt-2 text-[10.5px] leading-5 text-muted">
               桌面端也可在托盘菜单开启「允许局域网访问」，然后回到这里重新检测。
             </p>
-            <Button size="lg" onClick={() => setNonce((n) => n + 1)} className="mt-3">
+            <Button onClick={() => setNonce((n) => n + 1)} className="mt-3">
               <RefreshCw size={12} /> 重新检测
             </Button>
           </div>

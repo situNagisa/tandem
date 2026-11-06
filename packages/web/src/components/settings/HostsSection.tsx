@@ -36,8 +36,7 @@ import {
 import type { HostConfig } from '../../lib/types'
 
 const inputCls =
-  'h-9 w-full rounded-lg border border-border bg-surface px-2.5 text-[12.5px] text-text outline-none transition-colors focus:border-border-strong'
-const labelCls = 'mb-1.5 block text-[11px] font-medium text-muted'
+  'h-8 w-full rounded-lg border border-border bg-surface px-2.5 text-[12px] text-text outline-none transition-colors placeholder:text-muted focus:border-border-strong'
 
 export function HostsSection() {
   const hosts = useAppStore((s) => s.hosts)
@@ -228,10 +227,9 @@ export function HostsSection() {
       {adding && (
         <div className="mb-4 rounded-xl border border-border bg-surface p-3.5">
           <div>
-            <label className={labelCls}>配对链接（直连或中继）</label>
+            <label className="settings-label">配对链接（直连或中继）</label>
             <div className="flex gap-1.5">
               <Input
-                size="lg"
                 value={link}
                 onChange={(e) => setLink(e.target.value)}
                 placeholder="https://relay.example.com/h/…/#pair=… 或 http://…/?token=…"
@@ -240,7 +238,6 @@ export function HostsSection() {
                 className="min-w-0 flex-1 font-mono text-[12px]"
               />
               <Button
-                size="lg"
                 onClick={() => void connectLink(link)}
                 disabled={saving || !link.trim()}
                 className="shrink-0"
@@ -283,18 +280,16 @@ export function HostsSection() {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className={labelCls}>名称（可选）</label>
+              <label className="settings-label">名称（可选）</label>
               <Input
-                size="lg"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="例如：局域网工作站"
               />
             </div>
             <div>
-              <label className={labelCls}>访问 Token</label>
+              <label className="settings-label">访问 Token</label>
               <Input
-                size="lg"
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 placeholder="Host 启动日志或配对链接中的 Token"
@@ -305,19 +300,17 @@ export function HostsSection() {
             </div>
             {mode === 'direct' ? (
               <div className="sm:col-span-2">
-                <label className={labelCls}>Host 地址</label>
+                <label className="settings-label">Host 地址</label>
                 <div className="flex gap-1.5">
                   <Input
-                    size="lg"
-                    value={url}
+                        value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     placeholder="http://192.168.1.10:7878"
                     spellCheck={false}
                     className="font-mono text-[12px]"
                   />
                   <Button
-                    size="lg"
-                    onClick={() => setUrl(window.location.origin)}
+                        onClick={() => setUrl(window.location.origin)}
                     tooltip="使用当前地址"
                     className="shrink-0 px-2 text-[11px]"
                   >
@@ -331,7 +324,7 @@ export function HostsSection() {
             ) : (
               <>
                 <div className="sm:col-span-2">
-                  <label className={labelCls}>中继地址</label>
+                  <label className="settings-label">中继地址</label>
                   <input
                     value={relayUrl}
                     onChange={(e) => setRelayUrl(e.target.value)}
@@ -341,7 +334,7 @@ export function HostsSection() {
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Host ID</label>
+                  <label className="settings-label">Host ID</label>
                   <input
                     value={hostId}
                     onChange={(e) => setHostId(e.target.value)}
@@ -351,7 +344,7 @@ export function HostsSection() {
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>公钥指纹（必填）</label>
+                  <label className="settings-label">公钥指纹（必填）</label>
                   <input
                     value={fingerprint}
                     onChange={(e) => setFingerprint(e.target.value)}
@@ -377,11 +370,10 @@ export function HostsSection() {
             </div>
           )}
           <div className="mt-3 flex justify-end gap-2">
-            <Button size="lg" onClick={() => setAdding(false)}>
+            <Button onClick={() => setAdding(false)}>
               取消
             </Button>
             <Button
-              size="lg"
               variant="primary"
               onClick={handleAdd}
               disabled={saving || (mode === 'relay' && cryptoSupported === false)}
@@ -395,10 +387,10 @@ export function HostsSection() {
 
       <div className="space-y-2">
         {hosts.length === 0 && (
-          <div className="rounded-xl border border-dashed border-border bg-bg/30 px-4 py-8 text-center">
-            <Server size={22} className="mx-auto text-muted" />
-            <p className="mt-2 text-[12.5px] text-text-soft">还没有 Host</p>
-            <p className="mt-1 text-[11.5px] text-muted">
+          <div className="settings-empty">
+            <span className="settings-empty-icon"><Server size={17} /></span>
+            <p className="settings-empty-title">还没有 Host</p>
+            <p className="settings-empty-hint">
               在目标机器启动 Tandem Host，然后添加它的地址与 Token。
             </p>
           </div>
@@ -409,7 +401,7 @@ export function HostsSection() {
           return (
             <div
               key={h.id}
-              className="rounded-xl border border-border bg-surface p-3 transition-colors hover:border-border-strong/60"
+              className="settings-item p-3"
             >
               <div className="flex items-start gap-2.5">
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-text-soft">
@@ -469,7 +461,7 @@ export function HostsSection() {
                     </div>
                   )}
                 </div>
-                <div className="hidden shrink-0 items-center gap-1 sm:flex">
+                <div className="settings-actions hidden sm:flex" data-open={editing || undefined}>
                   <IconButton
                     size="sm"
                     onClick={() => setPairHost(h.id)}
@@ -544,7 +536,7 @@ export function HostsSection() {
               {editing && (
                 <div className="mt-3 grid gap-2.5 border-t border-border/70 pt-3 sm:grid-cols-2">
                   <div>
-                    <label className={labelCls}>名称</label>
+                    <label className="settings-label">名称</label>
                     <input
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
@@ -552,7 +544,7 @@ export function HostsSection() {
                     />
                   </div>
                   <div>
-                    <label className={labelCls}>Token</label>
+                    <label className="settings-label">Token</label>
                     <input
                       value={editToken}
                       onChange={(e) => setEditToken(e.target.value)}
@@ -564,7 +556,7 @@ export function HostsSection() {
                   {h.mode === 'relay' ? (
                     <>
                       <div className="sm:col-span-2">
-                        <label className={labelCls}>中继地址</label>
+                        <label className="settings-label">中继地址</label>
                         <input
                           value={editRelayUrl}
                           onChange={(e) => setEditRelayUrl(e.target.value)}
@@ -573,7 +565,7 @@ export function HostsSection() {
                         />
                       </div>
                       <div>
-                        <label className={labelCls}>Host ID</label>
+                        <label className="settings-label">Host ID</label>
                         <input
                           value={editHostId}
                           onChange={(e) => setEditHostId(e.target.value)}
@@ -582,7 +574,7 @@ export function HostsSection() {
                         />
                       </div>
                       <div>
-                        <label className={labelCls}>公钥指纹</label>
+                        <label className="settings-label">公钥指纹</label>
                         <input
                           value={editFingerprint}
                           onChange={(e) => setEditFingerprint(e.target.value)}
@@ -593,7 +585,7 @@ export function HostsSection() {
                     </>
                   ) : (
                     <div className="sm:col-span-2">
-                      <label className={labelCls}>地址</label>
+                      <label className="settings-label">地址</label>
                       <input
                         value={editUrl}
                         onChange={(e) => setEditUrl(e.target.value)}
@@ -603,10 +595,10 @@ export function HostsSection() {
                     </div>
                   )}
                   <div className="flex items-center justify-end gap-2 sm:col-span-2">
-                    <Button size="sm" onClick={() => setEditId(null)}>
+                    <Button onClick={() => setEditId(null)}>
                       取消
                     </Button>
-                    <Button size="sm" variant="primary" onClick={saveEdit}>
+                    <Button variant="primary" onClick={saveEdit}>
                       <Check size={12} /> 保存
                     </Button>
                   </div>
@@ -617,7 +609,7 @@ export function HostsSection() {
         })}
       </div>
 
-      <p className="mt-4 text-[10.5px] leading-4 text-muted">
+      <p className="settings-note">
         修改地址或 Token 会自动重连并重新订阅当前会话。多个标签页/手机可以同时连接同一 Host。
       </p>
       <Modal
@@ -627,11 +619,10 @@ export function HostsSection() {
         className="max-w-md"
         footer={
           <>
-            <Button size="lg" onClick={() => setRemoveTarget(null)}>
+            <Button onClick={() => setRemoveTarget(null)}>
               取消
             </Button>
             <Button
-              size="lg"
               variant="danger-ghost"
               onClick={() => {
                 if (!removeTarget) return

@@ -50,7 +50,7 @@ export function SettingsDialog() {
                 onClick={() => setTab(t.id)}
                 aria-current={tab === t.id ? 'page' : undefined}
                 className={cn(
-                  'min-h-11 w-full min-w-0 justify-start gap-2 px-2.5 text-left sm:min-h-[32px]',
+                  'min-h-11 w-full min-w-0 justify-start gap-2 px-2.5 text-left text-[12.5px] font-normal sm:min-h-8',
                   tab === t.id && 'bg-[var(--t-bg-active)] text-text',
                 )}
                 icon={<Icon size={14} />}

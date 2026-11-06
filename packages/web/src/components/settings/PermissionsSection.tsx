@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { PermissionRule } from '@tandem/protocol'
-import { ArrowDown, ArrowUp, Loader2, Plus, ShieldCheck, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Loader2, Plus, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { api } from '../../lib/api'
@@ -93,48 +93,58 @@ export function PermissionsSection() {
   }
 
   if (!host) {
-    return <p className="text-[12.5px] text-muted">先添加一台 Host 才能配置权限规则。</p>
+    return (
+      <div className="settings-empty">
+        <span className="settings-empty-icon"><ShieldCheck size={17} /></span>
+        <p className="settings-empty-title">还没有连接 Host</p>
+        <p className="settings-empty-hint">先添加一台 Host，才能配置权限规则。</p>
+      </div>
+    )
   }
 
   return (
     <div className="space-y-4">
       <div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ShieldCheck size={15} className="text-text-soft" />
-          <h2 className="text-[14px] font-semibold">权限规则</h2>
-          <span className="rounded bg-bg-hover px-1.5 py-0.5 text-[10.5px] text-muted">{host.name}</span>
+          <h3 className="text-[14px] font-semibold">权限规则</h3>
+          <span className="rounded-[4px] bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-muted">
+            {host.name}
+          </span>
         </div>
-        <p className="mt-1 text-[12px] leading-5 text-muted">
-          规则保存在 Host 上，对所有会话生效。优先级为
-          <span className="mx-1 text-danger">拒绝</span>&gt;
-          <span className="mx-1 text-text-soft">询问</span>&gt;
-          <span className="mx-1 text-success">允许</span>
-          ；Bash 的 pattern 是命令前缀通配，文件工具是相对工作目录的 glob。
+        <p className="mt-1 text-[11px] leading-5 text-muted">
+          规则保存在 Host 上，对所有会话生效。优先级为拒绝 &gt; 询问 &gt; 允许；Bash 的
+          pattern 是命令前缀通配，文件工具是相对工作目录的 glob。
         </p>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-8 text-muted">
-          <Loader2 size={16} className="animate-spin" />
+        <div className="flex items-center justify-center gap-2 py-10 text-[12px] text-muted">
+          <Loader2 size={14} className="animate-spin" /> 正在读取权限规则…
         </div>
       ) : error ? (
-        <p className="rounded-lg border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[12px] text-danger">
-          {error}
-        </p>
+        <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[11.5px] leading-5 text-danger">
+          <TriangleAlert size={12} className="mt-0.5 shrink-0" /> {error}
+        </div>
       ) : (
         <div className="space-y-2">
           {rules.length === 0 && (
-            <p className="rounded-lg border border-dashed border-border px-3 py-5 text-center text-[12px] text-muted">
-              暂无规则。未命中的工具调用会按会话权限模式处理。
-            </p>
+            <div className="settings-empty">
+              <span className="settings-empty-icon">
+                <ShieldCheck size={17} />
+              </span>
+              <p className="settings-empty-title">暂无权限规则</p>
+              <p className="settings-empty-hint">
+                未命中的工具调用会按会话权限模式处理。添加规则可减少重复审批。
+              </p>
+            </div>
           )}
           {rules.map((rule, index) => (
             <div
               key={index}
-              className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-bg/40 px-2 py-2"
+              className="settings-item flex flex-wrap items-center gap-1.5 px-2 py-2"
             >
               <Select
-                size="sm"
                 value={rule.tool}
                 onChange={(e) => update(index, { tool: e.target.value })}
                 aria-label="工具"
@@ -149,7 +159,6 @@ export function PermissionsSection() {
                 ))}
               </Select>
               <Input
-                size="sm"
                 value={rule.pattern ?? ''}
                 onChange={(e) => update(index, { pattern: e.target.value || undefined })}
                 placeholder={placeholderFor(rule.tool)}
@@ -158,36 +167,35 @@ export function PermissionsSection() {
               />
               <SegmentedControl
                 aria-label="规则动作"
-                size="sm"
                 className="shrink-0"
                 options={ACTIONS.map((action) => ({ value: action.value, label: action.label }))}
                 value={rule.action}
                 onChange={(action) => update(index, { action })}
               />
-              <div className="flex shrink-0 items-center">
+              <div className="settings-actions">
                 <IconButton
-                  size="sm"
                   onClick={() => move(index, -1)}
                   disabled={index === 0}
                   label="上移规则"
+                  tooltip="上移"
                   className="size-7 [&_svg]:size-3"
                 >
                   <ArrowUp size={12} />
                 </IconButton>
                 <IconButton
-                  size="sm"
                   onClick={() => move(index, 1)}
                   disabled={index === rules.length - 1}
                   label="下移规则"
+                  tooltip="下移"
                   className="size-7 [&_svg]:size-3"
                 >
                   <ArrowDown size={12} />
                 </IconButton>
                 <IconButton
-                  size="sm"
                   variant="danger-ghost"
                   onClick={() => setRules((prev) => prev.filter((_, i) => i !== index))}
                   label="删除规则"
+                  tooltip="删除"
                   className="size-7 [&_svg]:size-3"
                 >
                   <Trash2 size={12} />
@@ -201,7 +209,7 @@ export function PermissionsSection() {
             onClick={() =>
               setRules((prev) => [...prev, { tool: 'Bash', pattern: '', action: 'ask' }])
             }
-            className="border-dashed"
+            className="w-full justify-center border-dashed"
           >
             <Plus size={13} /> 添加规则
           </Button>
@@ -214,12 +222,10 @@ export function PermissionsSection() {
         </span>
         <span className="flex-1" />
         {dirty && (
-          <Button size="sm" onClick={() => setRules(saved)}>
-            撤销
-          </Button>
+          <Button onClick={() => setRules(saved)}>撤销</Button>
         )}
-        <Button size="sm" variant="primary" onClick={() => void save()} disabled={!dirty || saving}>
-          {saving && <Loader2 size={11} className="animate-spin" />}
+        <Button variant="primary" onClick={() => void save()} disabled={!dirty || saving}>
+          {saving && <Loader2 size={12} className="animate-spin" />}
           保存
         </Button>
       </div>

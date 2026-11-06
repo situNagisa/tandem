@@ -380,19 +380,17 @@ export function UsageSection() {
         <span className="flex-1" />
         <SegmentedControl
           aria-label="统计范围"
-          size="sm"
           value={range}
           onChange={setRange}
           options={RANGES.map((item) => ({ value: item.key, label: item.label }))}
         />
         <IconButton
-          size="sm"
           onClick={() => setNonce((n) => n + 1)}
           disabled={loading}
           label="刷新"
-          className="size-7 [&_svg]:size-3"
+          tooltip="刷新用量"
         >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
         </IconButton>
       </div>
 
@@ -439,7 +437,7 @@ export function UsageSection() {
         {hosts.length > 1 && <RankTable title="按 Host" rows={hostRanks} />}
       </div>
 
-      <p className="mt-4 text-[10.5px] leading-4 text-muted">
+      <p className="settings-note">
         花费为参考价（每百万 token 美元），内置常见模型单价；可在「账号与模型」编辑账号时按模型覆盖单价。
       </p>
     </div>

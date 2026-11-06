@@ -23,10 +23,6 @@ import { cn } from '../../lib/cn'
 import { Button, IconButton } from '../ui/Button'
 import { Input, Select } from '../ui/Controls'
 
-const inputCls =
-  'h-9 w-full rounded-lg border border-border bg-bg px-2.5 text-[12.5px] text-text outline-none transition-colors focus:border-border-strong'
-const labelCls = 'mb-1.5 block text-[11px] font-medium text-text-soft'
-
 function bundleText(bundle: ConfigBundle): string {
   return JSON.stringify(bundle, null, 2)
 }
@@ -217,8 +213,10 @@ export function SyncSection() {
 
   if (!host) {
     return (
-      <div className="flex h-full items-center justify-center text-[12.5px] text-muted">
-        先添加一台 Host，再同步配置。
+      <div className="settings-empty">
+        <span className="settings-empty-icon"><ShieldCheck size={17} /></span>
+        <p className="settings-empty-title">还没有连接 Host</p>
+        <p className="settings-empty-hint">先添加一台 Host，再同步配置。</p>
       </div>
     )
   }
@@ -273,10 +271,9 @@ export function SyncSection() {
         </div>
 
         <div className="mt-3">
-          <label className={labelCls}>加密口令</label>
+          <label className="settings-label">加密口令</label>
           <div className="relative">
             <Input
-              size="lg"
               value={exportPass}
               onChange={(e) => {
                 setExportPass(e.target.value)
@@ -287,14 +284,16 @@ export function SyncSection() {
               autoComplete="new-password"
               className="pr-9"
             />
-            <IconButton
-              size="sm"
-              onClick={() => setShowExportPass((v) => !v)}
-              label={showExportPass ? '隐藏口令' : '显示口令'}
-              className="absolute right-1 top-1/2 size-7 -translate-y-1/2 [&_svg]:size-[13px]"
-            >
-              {showExportPass ? <EyeOff size={13} /> : <Eye size={13} />}
-            </IconButton>
+            <span className="absolute right-1 top-1/2 -translate-y-1/2">
+              <IconButton
+                size="sm"
+                onClick={() => setShowExportPass((v) => !v)}
+                label={showExportPass ? '隐藏口令' : '显示口令'}
+                className="size-7 [&_svg]:size-[13px]"
+              >
+                {showExportPass ? <EyeOff size={13} /> : <Eye size={13} />}
+              </IconButton>
+            </span>
           </div>
         </div>
 
@@ -307,8 +306,7 @@ export function SyncSection() {
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button
-            size="lg"
-            variant="secondary"
+            variant="primary"
             onClick={() => void exportConfig()}
             disabled={exporting || !exportPass.trim()}
           >
@@ -317,14 +315,14 @@ export function SyncSection() {
           </Button>
           {bundle && (
             <>
-              <Button size="lg" onClick={() => downloadBundle(bundle)}>
+              <Button onClick={() => downloadBundle(bundle)}>
                 <FileJson size={12} /> 再次下载
               </Button>
-              <Button size="lg" onClick={() => void copyBundle()}>
+              <Button onClick={() => void copyBundle()}>
                 {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
                 {copied ? '已复制' : '复制内容'}
               </Button>
-              <Button size="lg" onClick={() => void shareBundle()}>
+              <Button onClick={() => void shareBundle()}>
                 <Share2 size={12} /> 分享
               </Button>
             </>
@@ -335,7 +333,7 @@ export function SyncSection() {
             tandem-config.json · {new Date(bundle.createdAt).toLocaleString()} · {bundle.hostName}
           </p>
         )}
-        <p className="mt-2 text-[10px] leading-4 text-muted">
+        <p className="settings-help">
           手机或 App 里下载不便时，可用「分享」或「复制内容」把文件发到另一台设备。
         </p>
       </div>
@@ -376,10 +374,9 @@ export function SyncSection() {
         </Button>
 
         <div className="mt-3">
-          <label className={labelCls}>口令</label>
+          <label className="settings-label">口令</label>
           <div className="relative">
             <Input
-              size="lg"
               value={importPass}
               onChange={(e) => {
                 setImportPass(e.target.value)
@@ -390,19 +387,21 @@ export function SyncSection() {
               autoComplete="off"
               className="pr-9"
             />
-            <IconButton
-              size="sm"
-              onClick={() => setShowImportPass((v) => !v)}
-              label={showImportPass ? '隐藏口令' : '显示口令'}
-              className="absolute right-1 top-1/2 size-7 -translate-y-1/2 [&_svg]:size-[13px]"
-            >
-              {showImportPass ? <EyeOff size={13} /> : <Eye size={13} />}
-            </IconButton>
+            <span className="absolute right-1 top-1/2 -translate-y-1/2">
+              <IconButton
+                size="sm"
+                onClick={() => setShowImportPass((v) => !v)}
+                label={showImportPass ? '隐藏口令' : '显示口令'}
+                className="size-7 [&_svg]:size-[13px]"
+              >
+                {showImportPass ? <EyeOff size={13} /> : <Eye size={13} />}
+              </IconButton>
+            </span>
           </div>
         </div>
 
         <div className="mt-3">
-          <label className={labelCls}>导入方式</label>
+          <label className="settings-label">导入方式</label>
           <div className="grid gap-1.5 sm:grid-cols-2">
             {(
               [
@@ -450,7 +449,6 @@ export function SyncSection() {
           </span>
           <span className="flex-1" />
           <Button
-            size="lg"
             variant="primary"
             onClick={() => void importConfig()}
             disabled={importing || !importBundle}

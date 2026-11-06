@@ -34,10 +34,11 @@ import { PROVIDER_KIND_LABELS, type HostConfig } from '../../lib/types'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
 import { Button, IconButton } from '../ui/Button'
+import { Select } from '../ui/Controls'
 
 const inputCls =
-  'h-9 w-full rounded-lg border border-border bg-bg px-2.5 text-[12.5px] text-text outline-none transition-colors focus:border-border-strong'
-const labelCls = 'mb-1.5 block text-[11px] font-medium text-text-soft'
+  'h-8 w-full rounded-lg border border-border bg-surface px-2.5 text-[12px] text-text outline-none transition-colors placeholder:text-muted focus:border-border-strong'
+const labelCls = 'settings-label'
 
 /** 分组协议下拉的简短名称（与用户熟悉的叫法一致）。 */
 const GROUP_KIND_LABELS: Record<ProviderKind, string> = {
@@ -445,10 +446,9 @@ function GroupEditor({
         </div>
         <div>
           <label className={labelCls}>协议类型</label>
-          <select
+          <Select
             value={kind}
             onChange={(e) => setKind(e.target.value as ProviderKind)}
-            className={inputCls}
             aria-label="分组协议类型"
           >
             {Object.entries(GROUP_KIND_LABELS).map(([value, label]) => (
@@ -456,7 +456,7 @@ function GroupEditor({
                 {label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <label className={labelCls}>分组 Key</label>
@@ -474,14 +474,16 @@ function GroupEditor({
               autoComplete="off"
               className={cn(inputCls, 'pr-9 font-mono text-[11.5px]')}
             />
-            <IconButton
-              size="sm"
-              onClick={() => setShowKey((v) => !v)}
-              label={showKey ? '隐藏 Key' : '显示 Key'}
-              className="absolute right-1 top-1/2 size-7 -translate-y-1/2 [&_svg]:size-[13px]"
-            >
-              {showKey ? <EyeOff size={13} /> : <Eye size={13} />}
-            </IconButton>
+            <span className="absolute right-1 top-1/2 -translate-y-1/2">
+              <IconButton
+                size="sm"
+                onClick={() => setShowKey((v) => !v)}
+                label={showKey ? '隐藏 Key' : '显示 Key'}
+                className="size-7 [&_svg]:size-[13px]"
+              >
+                {showKey ? <EyeOff size={13} /> : <Eye size={13} />}
+              </IconButton>
+            </span>
           </div>
         </div>
       </div>
@@ -504,7 +506,7 @@ function GroupEditor({
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <Button size="sm" onClick={() => void fetchModels()} disabled={fetching} className="text-[11px]">
+        <Button onClick={() => void fetchModels()} disabled={fetching}>
           {fetching ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
           自动拉取模型
         </Button>
@@ -595,17 +597,20 @@ function GroupEditor({
           <span className="text-[10.5px] text-muted">已选 {selected.length} 个</span>
           <span className="flex-1" />
           <span className="text-[10.5px] text-muted">默认</span>
-          <select
+          <Select
             value={defaultModel}
             onChange={(e) => setDefaultModel(e.target.value)}
-            className="h-7 max-w-[200px] rounded-md border border-border bg-surface px-1 font-mono text-[10px] outline-none focus:border-border-strong"
+            aria-label="默认模型"
+            size="sm"
+            wrapperClassName="w-auto max-w-[200px]"
+            className="font-mono text-[10.5px]"
           >
             {selected.map((id) => (
               <option key={id} value={id}>
                 {id}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
 
@@ -616,10 +621,10 @@ function GroupEditor({
       )}
 
       <div className="mt-2.5 flex justify-end gap-1.5">
-        <Button size="sm" variant="ghost" onClick={onCancel} className="text-[11px]">
+        <Button variant="ghost" onClick={onCancel}>
           取消
         </Button>
-        <Button size="sm" variant="primary" onClick={save} className="text-[11px]">
+        <Button variant="primary" onClick={save}>
           保存分组
         </Button>
       </div>
@@ -977,8 +982,10 @@ export function ProfilesSection() {
 
   if (!host) {
     return (
-      <div className="flex h-full items-center justify-center text-[12.5px] text-muted">
-        先添加一台 Host，再配置账号。
+      <div className="settings-empty">
+        <span className="settings-empty-icon"><KeyRound size={17} /></span>
+        <p className="settings-empty-title">还没有连接 Host</p>
+        <p className="settings-empty-hint">先添加一台 Host，再配置账号与模型。</p>
       </div>
     )
   }
@@ -994,20 +1001,22 @@ export function ProfilesSection() {
         </span>
         <span className="flex-1" />
         {hosts.length > 1 && (
-          <select
+          <Select
             value={hostId ?? ''}
             onChange={(e) => {
               setHostId(e.target.value)
               reset()
             }}
-            className={cn(inputCls, 'h-8 w-auto max-w-[180px] text-[11.5px]')}
+            aria-label="选择 Host"
+            wrapperClassName="w-auto max-w-[180px]"
+            className="text-[11.5px]"
           >
             {hosts.map((h) => (
               <option key={h.id} value={h.id}>
                 {h.name}
               </option>
             ))}
-          </select>
+          </Select>
         )}
         <IconButton
           onClick={() => host && void refreshProfiles(host.id)}
@@ -1233,7 +1242,7 @@ export function ProfilesSection() {
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <span className="flex-1" />
-                <Button size="lg" variant="primary" onClick={() => setStep(3)}>
+                <Button variant="primary" onClick={() => setStep(3)}>
                   下一步 <ArrowRight size={13} />
                 </Button>
               </div>
@@ -1301,20 +1310,19 @@ export function ProfilesSection() {
               )}
 
               <div className="mt-4 flex items-center gap-2">
-                <Button size="lg" variant="ghost" onClick={() => setStep(2)}>
+                <Button variant="ghost" onClick={() => setStep(2)}>
                   <ArrowLeft size={12} /> 上一步
                 </Button>
                 <span className="flex-1" />
                 {editingProfile && (
                   <Button
-                    size="lg"
                     variant="danger-ghost"
                     onClick={() => setDeleteTarget(editingProfile)}
                   >
                     <Trash2 size={12} /> 删除
                   </Button>
                 )}
-                <Button size="lg" variant="primary" onClick={() => void save()} disabled={saving}>
+                <Button variant="primary" onClick={() => void save()} disabled={saving}>
                   {saving && <Loader2 size={14} className="animate-spin" />}
                   保存账号
                 </Button>
@@ -1328,7 +1336,7 @@ export function ProfilesSection() {
           {loading && profiles.length === 0 && (
             <div className="space-y-2">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="flex items-center gap-3 rounded-xl border border-border bg-surface p-3">
+                <div key={i} className="settings-item flex items-center gap-3 p-3">
                   <div className="skeleton size-8 rounded-lg" />
                   <div className="flex-1 space-y-2">
                     <div className="skeleton h-3 w-1/3" />
@@ -1340,15 +1348,13 @@ export function ProfilesSection() {
           )}
 
           {!loading && profiles.length === 0 && (
-            <div className="rounded-xl border border-dashed border-border bg-bg/30 px-4 py-9 text-center">
-              <span className="mx-auto flex size-10 items-center justify-center rounded-xl bg-[var(--t-bg-active)] text-text-soft">
-                <KeyRound size={19} />
-              </span>
-              <p className="mt-3 text-[12.5px] font-medium text-text-soft">还没有配置账号</p>
-              <p className="mx-auto mt-1 max-w-[280px] text-[11.5px] leading-5 text-muted">
+            <div className="settings-empty">
+              <span className="settings-empty-icon"><KeyRound size={17} /></span>
+              <p className="settings-empty-title">还没有配置账号</p>
+              <p className="settings-empty-hint">
                 选择服务商、粘贴 Key，模型列表会自动获取。支持 Anthropic、OpenAI、DeepSeek、Ollama 等。
               </p>
-              <Button variant="secondary" onClick={startNew} className="mt-3.5">
+              <Button variant="secondary" onClick={startNew} className="mt-3">
                 <Plus size={13} /> 新建账号
               </Button>
             </div>
@@ -1361,7 +1367,7 @@ export function ProfilesSection() {
               return (
                 <div
                   key={p.id}
-                  className="rounded-xl border border-border bg-surface p-3 transition-colors hover:border-border-strong/60"
+                  className="settings-item p-3"
                 >
                   <div className="flex items-start gap-2.5">
                     {brand ? (
@@ -1431,25 +1437,27 @@ export function ProfilesSection() {
                         </div>
                       )}
                     </div>
-                    <div className="hidden shrink-0 items-center gap-1 sm:flex">
-                      <Button
+                    <div className="settings-actions hidden sm:flex">
+                      <IconButton
                         size="sm"
                         onClick={() => void test(p)}
                         disabled={testingId === p.id}
-                        className="px-2 text-[10.5px]"
+                        label={`测试 ${p.name}`}
+                        tooltip="测试连接"
+                        className="size-7 [&_svg]:size-3"
                       >
                         {testingId === p.id ? (
-                          <Loader2 size={11} className="animate-spin" />
+                          <Loader2 size={12} className="animate-spin" />
                         ) : (
-                          <Wifi size={11} />
+                          <Wifi size={12} />
                         )}
-                        测试
-                      </Button>
+                      </IconButton>
                       <IconButton
                         size="sm"
                         onClick={() => startEdit(p)}
                         label={`编辑 ${p.name}`}
-                        className="[&_svg]:size-3"
+                        tooltip="编辑"
+                        className="size-7 [&_svg]:size-3"
                       >
                         <Pencil size={12} />
                       </IconButton>
@@ -1458,7 +1466,8 @@ export function ProfilesSection() {
                         variant="danger-ghost"
                         onClick={() => setDeleteTarget(p)}
                         label={`删除 ${p.name}`}
-                        className="[&_svg]:size-3"
+                        tooltip="删除"
+                        className="size-7 [&_svg]:size-3"
                       >
                         <Trash2 size={12} />
                       </IconButton>
@@ -1489,7 +1498,7 @@ export function ProfilesSection() {
                       variant="danger-ghost"
                       onClick={() => setDeleteTarget(p)}
                       label={`删除 ${p.name}`}
-                      className="size-11 border border-danger/25"
+                      className="size-11"
                     >
                       <Trash2 size={12} />
                     </IconButton>
@@ -1500,7 +1509,7 @@ export function ProfilesSection() {
           </div>
 
           {profiles.length > 0 && (
-            <p className="mt-3 text-[10.5px] leading-4 text-muted">
+            <p className="settings-note">
               提示：切换账号/模型只会影响后续回合；当前回合会继续使用原来的模型。
             </p>
           )}
@@ -1514,11 +1523,10 @@ export function ProfilesSection() {
         className="max-w-md"
         footer={
           <>
-            <Button size="lg" onClick={() => setDeleteTarget(null)}>
+            <Button onClick={() => setDeleteTarget(null)}>
               取消
             </Button>
             <Button
-              size="lg"
               variant="danger-ghost"
               onClick={() => deleteTarget && void remove(deleteTarget)}
             >

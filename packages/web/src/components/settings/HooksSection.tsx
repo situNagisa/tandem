@@ -130,7 +130,13 @@ export function HooksSection() {
   }
 
   if (!host) {
-    return <p className="text-[12.5px] text-muted">先添加一台 Host 才能配置 Hooks。</p>
+    return (
+      <div className="settings-empty">
+        <span className="settings-empty-icon"><Webhook size={17} /></span>
+        <p className="settings-empty-title">还没有连接 Host</p>
+        <p className="settings-empty-hint">先添加一台 Host，才能配置 Hooks。</p>
+      </div>
+    )
   }
 
   if (loading) {
@@ -146,10 +152,12 @@ export function HooksSection() {
       <div>
         <div className="flex items-center gap-2">
           <Webhook size={15} className="text-text-soft" />
-          <h2 className="text-[14px] font-semibold">Hooks</h2>
-          <span className="rounded bg-bg-hover px-1.5 py-0.5 text-[10.5px] text-muted">{host.name}</span>
+          <h3 className="text-[14px] font-semibold">Hooks</h3>
+          <span className="rounded-[4px] bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-muted">
+            {host.name}
+          </span>
         </div>
-        <p className="mt-1 text-[12px] leading-5 text-muted">
+        <p className="mt-1 text-[11px] leading-5 text-muted">
           兼容 Claude Code 的 hooks 配置形状。命令通过 stdin 收到包含 session_id、cwd、hook_event_name、
           tool_name、tool_input、tool_response 的 JSON；退出码 0 继续，2 阻止并把 stderr 回填给模型，
           其他非 0 只记录警告。stdout 可返回 decision / reason / continue 字段，超时默认 60 秒。
@@ -181,18 +189,21 @@ export function HooksSection() {
                       <SourceHeader label={SOURCE_LABEL[source]} path={info.path} readOnly={false} />
                       <div className="space-y-2">
                         {draft.length === 0 && (
-                          <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-[12px] text-muted">
-                            暂无 Tandem Hooks。可添加命令在工具执行或消息提交前后运行。
-                          </p>
+                          <div className="settings-empty">
+                            <span className="settings-empty-icon"><Webhook size={17} /></span>
+                            <p className="settings-empty-title">暂无 Tandem Hooks</p>
+                            <p className="settings-empty-hint">
+                              可添加命令在工具执行或消息提交前后运行。
+                            </p>
+                          </div>
                         )}
                         {draft.map((entry, index) => (
                           <div
                             key={entry.id || index}
-                            className="space-y-1.5 rounded-lg border border-border bg-bg/40 px-2 py-2"
+                            className="settings-item space-y-1.5 px-2 py-2"
                           >
                             <div className="flex flex-wrap items-center gap-1.5">
                               <Select
-                                size="sm"
                                 value={entry.event}
                                 onChange={(e) => update(index, { event: e.target.value as HookEvent })}
                                 aria-label="事件"
@@ -205,7 +216,6 @@ export function HooksSection() {
                                 ))}
                               </Select>
                               <Input
-                                size="sm"
                                 value={entry.matcher ?? ''}
                                 onChange={(e) =>
                                   update(index, { matcher: e.target.value || undefined })
@@ -215,7 +225,6 @@ export function HooksSection() {
                                 className="min-w-0 flex-1 font-mono"
                               />
                               <Input
-                                size="sm"
                                 type="number"
                                 min={1}
                                 max={600}
@@ -230,7 +239,6 @@ export function HooksSection() {
                                 className="w-[64px] shrink-0 text-center tabular-nums"
                               />
                               <IconButton
-                                size="sm"
                                 variant="danger-ghost"
                                 onClick={() =>
                                   setDraft((prev) => prev.filter((_, i) => i !== index))
@@ -242,7 +250,6 @@ export function HooksSection() {
                               </IconButton>
                             </div>
                             <Input
-                              size="sm"
                               value={entry.command}
                               onChange={(e) => update(index, { command: e.target.value })}
                               placeholder='命令，如 "$CLAUDE_PROJECT_DIR/.claude/hooks/lint.sh"'
@@ -274,12 +281,11 @@ export function HooksSection() {
                           </span>
                           <span className="flex-1" />
                           {dirty && (
-                            <Button size="sm" onClick={() => setDraft(saved)}>
+                            <Button onClick={() => setDraft(saved)}>
                               撤销
                             </Button>
                           )}
                           <Button
-                            size="sm"
                             variant="primary"
                             onClick={() => void save()}
                             disabled={!dirty || saving || draft.some((entry) => !entry.command.trim())}
@@ -348,7 +354,6 @@ export function HooksSection() {
                 </div>
                 {cwd && (
                   <Button
-                    size="sm"
                     variant={data.projectTrusted ? 'ghost' : 'secondary'}
                     onClick={() => void setTrust(!data.projectTrusted)}
                     disabled={trusting}

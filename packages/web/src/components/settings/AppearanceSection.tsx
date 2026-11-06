@@ -101,10 +101,10 @@ export function AppearanceSection() {
               key={t.id}
               onClick={() => setTheme(t.id)}
               className={cn(
-                'relative rounded-xl border p-2 text-left transition-all duration-150',
+                'relative rounded-xl border p-2 text-left transition-colors duration-[120ms]',
                 selected
-                  ? 'border-[var(--t-border-strong)] bg-[var(--t-surface-2)]'
-                  : 'border-border bg-surface hover:border-border-strong/70',
+                  ? 'border-[#5a5a5a] bg-[var(--t-surface-2)]'
+                  : 'border-border bg-surface hover:border-[var(--t-border-strong)]',
               )}
               aria-pressed={selected}
             >
@@ -129,7 +129,7 @@ export function AppearanceSection() {
 
       <div className="mt-5 rounded-xl border border-border bg-surface p-3.5">
         <div className="text-[12px] font-medium">键盘快捷键</div>
-        <dl className="mt-2 grid gap-x-4 gap-y-1.5 text-[11.5px] sm:grid-cols-2">
+        <dl className="mt-2 grid gap-x-6 sm:grid-cols-2">
           {[
             ['发送消息', 'Enter'],
             ['换行', 'Shift + Enter'],
@@ -142,11 +142,10 @@ export function AppearanceSection() {
             ['切换上 / 下一个会话', `${modLabel} ⇧ [ / ]`],
             ['侧栏内切换会话', '↑ / ↓'],
           ].map(([label, keys]) => (
-            <div key={label} className="flex min-w-0 items-center gap-2">
-              <dt className="truncate text-muted">{label}</dt>
-              <span className="min-w-3 flex-1 border-b border-dashed border-border/60" />
-              <dd className="shrink-0">
-                <kbd className="rounded border border-border bg-[var(--t-bg)] px-1.5 py-0.5 font-mono text-[10px] text-text-soft">
+            <div key={label} className="flex min-h-7 min-w-0 items-center gap-2 text-[12px]">
+              <dt className="truncate text-text-soft">{label}</dt>
+              <dd className="ml-auto shrink-0">
+                <kbd className="rounded-[4px] border border-border bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[9.5px] leading-none text-text-soft">
                   {keys}
                 </kbd>
               </dd>
