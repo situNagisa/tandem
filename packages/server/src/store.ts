@@ -48,6 +48,11 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   else delete rec.groupId;
   if (typeof raw.parentId === 'string' && raw.parentId) rec.parentId = raw.parentId;
   else delete rec.parentId;
+  if (typeof raw.depth === 'number' && Number.isInteger(raw.depth) && raw.depth >= 0) {
+    rec.depth = raw.depth;
+  } else {
+    delete rec.depth;
+  }
   const worktree = normalizeWorktree(raw.worktree);
   if (worktree) rec.worktree = worktree;
   else delete rec.worktree;
@@ -152,6 +157,24 @@ export class SessionStore {
       } catch (err) {
         console.warn(`[tandem] 跳过损坏的会话文件 ${file}:`, (err as Error).message);
       }
+    }
+    this.inferDepths();
+  }
+
+  /** 旧数据没有 depth：沿 parentId 链推算（主会话为 0）。 */
+  private inferDepths(): void {
+    for (const rec of this.records.values()) {
+      if (rec.depth !== undefined) continue;
+      let depth = 0;
+      let cursor: SessionRecord | undefined = rec;
+      const seen = new Set<string>([rec.id]);
+      while (cursor?.parentId && !seen.has(cursor.parentId)) {
+        seen.add(cursor.parentId);
+        depth++;
+        cursor = this.records.get(cursor.parentId);
+      }
+      rec.depth = depth;
+      this.markDirty(rec.id, false);
     }
   }
 

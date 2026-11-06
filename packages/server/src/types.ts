@@ -4,6 +4,7 @@ import type {
   ContentBlock,
   ExternalSource,
   Message,
+  ModelCapabilities,
   PermissionDecision,
   PermissionRequest,
   ProviderKind,
@@ -23,6 +24,7 @@ export interface StoredProfileGroup {
   baseUrl?: string;
   models: string[];
   defaultModel: string;
+  modelCapabilities?: Record<string, ModelCapabilities>;
 }
 
 /** 持久化的账号：apiKey 只存在本机 profiles.json 中，永不下发。 */
@@ -36,6 +38,7 @@ export interface StoredProfile {
   defaultModel: string;
   /** 每百万 token 美元，覆盖内置参考单价（按模型名精确或前缀匹配）。 */
   price?: Record<string, { input: number; output: number }>;
+  modelCapabilities?: Record<string, ModelCapabilities>;
   groups?: StoredProfileGroup[];
   createdAt: number;
 }
@@ -58,14 +61,18 @@ export interface HostConfig {
 /** 会话记录：协议 Session + 仅服务端使用的字段。 */
 export interface SessionRecord extends Session {
   allowedTools: string[];
-  /** 子代理会话：指向派发它的主会话。 */
+  /** 子代理会话：指向派发它的会话。 */
   parentId?: string;
+  /** 代理层级：0 主会话 / 1 子代理 / 2 孙代理… */
+  depth?: number;
   /** worktree 会话：路径/分支/基准分支。 */
   worktree?: { path: string; branch: string; baseBranch: string };
   /** worktree 所属原仓库（仅内部使用，用于 merge/清理）。 */
   worktreeRepoRoot?: string;
   /** 从外部会话导入时记录来源；仅内部使用，不下发（协议 Session 无此字段）。 */
   importedFrom?: { source: ExternalSource; id: string };
+  /** 最近一次请求的上下文占用（内存态，随 session_updated 下发）。 */
+  context?: import('@tandem/protocol').ContextBreakdown;
 }
 
 export interface PendingPermission {

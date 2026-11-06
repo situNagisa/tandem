@@ -6,6 +6,7 @@ import path from 'node:path';
 import type {
   Checkpoint,
   ContentBlock,
+  ContextBreakdown,
   HookEntry,
   HookEvent,
   HostInfo,
@@ -14,6 +15,7 @@ import type {
   PermissionDecision,
   PermissionMode,
   PermissionRequest,
+  ReasoningEffort,
   RewindInput,
   Session,
   SessionStatus,
@@ -64,6 +66,12 @@ import { PLAN_ALLOWED, TOOLS, TOOL_MAP, describeTool } from './tools/index.js';
 import { completeText, listModels as fetchModelList, streamChat } from './providers/index.js';
 import type { ListModelsResult } from './providers/index.js';
 import { buildSystemPrompt } from './agent/prompt.js';
+import {
+  cacheHitRateOf,
+  estimateBreakdown,
+  contextWindowForModel,
+  calibrateBreakdown,
+} from './context.js';
 import { errorMessage } from './util/text.js';
 import { detectSessionEnv } from './util/git.js';
 import { expandHome, isSubPath, resolvePath } from './util/path.js';
@@ -74,6 +82,8 @@ const PERMISSION_MODES = new Set<PermissionMode>([
   'plan',
   'bypassPermissions',
 ]);
+
+const EFFORTS = new Set<ReasoningEffort>(['off', 'low', 'medium', 'high', 'max']);
 
 interface PermissionEntry {
   sessionId: string;
@@ -155,11 +165,46 @@ export class Host {
       ...(rec.archived ? { archived: true } : {}),
       ...(rec.env ? { env: { ...rec.env } } : {}),
       ...(rec.parentId ? { parentId: rec.parentId } : {}),
+      ...(typeof rec.depth === 'number' ? { depth: rec.depth } : {}),
       ...(rec.worktree ? { worktree: { ...rec.worktree } } : {}),
       createdAt: rec.createdAt,
       updatedAt: rec.updatedAt,
       usage: { ...rec.usage },
+      ...(rec.context ? { context: rec.context } : {}),
     };
+  }
+
+  /** 把本次请求的上下文估算记到会话上；broadcast=true 时随 session_updated 推送。 */
+  setContext(rec: SessionRecord, context: ContextBreakdown, broadcast = true): void {
+    rec.context = context;
+    if (broadcast) this.broadcastSummary(rec);
+  }
+
+  /** 校准本轮上下文（真实 usage 已拿到）。 */
+  calibrateContext(rec: SessionRecord, context: ContextBreakdown, actualInputTokens: number): void {
+    const calibrated = calibrateBreakdown(context, actualInputTokens, cacheHitRateOf(rec.usage));
+    this.setContext(rec, calibrated);
+  }
+
+  /** GET /api/sessions/:id/context：无真实记录时按当前消息粗略估算。 */
+  contextFor(rec: SessionRecord): ContextBreakdown {
+    if (rec.context) return rec.context;
+    const model = rec.model || this.profileFor(rec.profileId, rec.groupId)?.defaultModel || '';
+    const profile = this.profileFor(rec.profileId, rec.groupId);
+    const system = buildSystemPrompt(rec.cwd, {
+      planMode: rec.permissionMode === 'plan',
+    });
+    const tools = this.toolDefinitions(rec);
+    void profile;
+    const estimate = estimateBreakdown({
+      model,
+      system,
+      tools,
+      messages: rec.messages,
+      cwd: rec.cwd,
+      cacheHitRate: cacheHitRateOf(rec.usage),
+    });
+    return { ...estimate, contextWindow: contextWindowForModel(model) };
   }
 
   /** 检测 cwd 的 git 环境；变化时广播 session_updated。 */
@@ -199,11 +244,12 @@ export class Host {
     return fetchModelList(input, profile);
   }
 
-  /** 本轮可用的工具：内置工具（子代理不含 Task）+ 当前 cwd 已连接的 MCP 工具。 */
+  /** 本轮可用的工具：内置工具（depth < 3 才含 Task）+ 当前 cwd 已连接的 MCP 工具。 */
   toolDefinitions(rec: SessionRecord, allowTask = true): ToolDefinition[] {
+    const canDelegate = allowTask && (rec.depth ?? 0) < 3;
     const base = TOOLS.filter(
       (tool) =>
-        (allowTask || tool.name !== 'Task') &&
+        (canDelegate || tool.name !== 'Task') &&
         // 仅计划模式暴露 ExitPlanMode，其它模式下不打扰模型
         (tool.name !== 'ExitPlanMode' || rec.permissionMode === 'plan'),
     );
@@ -348,6 +394,7 @@ export class Host {
     groupId?: unknown;
     model?: unknown;
     permissionMode?: unknown;
+    effort?: unknown;
     title?: unknown;
     worktree?: unknown;
   }): Promise<SessionRecord> {
@@ -379,6 +426,10 @@ export class Host {
     const permissionMode = PERMISSION_MODES.has(input.permissionMode as PermissionMode)
       ? (input.permissionMode as PermissionMode)
       : 'default';
+    if (input.effort !== undefined && !EFFORTS.has(input.effort as ReasoningEffort)) {
+      throw new Error(`无效的 effort: ${String(input.effort)}`);
+    }
+    const effort = input.effort as ReasoningEffort | undefined;
 
     // worktree 会话：先创建 worktree，会话 cwd 指向新目录
     const shortId = randomUUID().slice(0, 8);
@@ -407,6 +458,8 @@ export class Host {
       ...(groupId ? { groupId } : {}),
       model,
       permissionMode,
+      ...(effort ? { effort } : {}),
+      depth: 0,
       status: 'idle',
       createdAt: now,
       updatedAt: now,
@@ -766,6 +819,22 @@ export class Host {
     for (const pending of [...rt.pending.values()]) pending.resolve('deny');
   }
 
+  /** 沿 parentId 链返回所有祖先会话（由近及远）。 */
+  private ancestorsOf(rec: SessionRecord): SessionRecord[] {
+    const out: SessionRecord[] = [];
+    const seen = new Set<string>([rec.id]);
+    let cursor = rec;
+    while (cursor.parentId) {
+      if (seen.has(cursor.parentId)) break;
+      seen.add(cursor.parentId);
+      const parent = this.store.get(cursor.parentId);
+      if (!parent) break;
+      out.push(parent);
+      cursor = parent;
+    }
+    return out;
+  }
+
   /** Task 工具：创建子会话并运行完整 agent 循环；最后一条 assistant 文本作为结果。 */
   async runSubagent(
     parent: SessionRecord,
@@ -773,6 +842,8 @@ export class Host {
     signal: AbortSignal,
   ): Promise<ToolResult> {
     if (signal.aborted) return { content: '用户中断', isError: true };
+    const depth = (parent.depth ?? 0) + 1;
+    if (depth > 3) return { content: '已达到最大代理层级，不能再派发子代理', isError: true };
     const now = Date.now();
     const sub: SessionRecord = {
       id: randomUUID(),
@@ -790,6 +861,7 @@ export class Host {
       todos: [],
       allowedTools: [...parent.allowedTools],
       parentId: parent.id,
+      depth,
     };
     this.store.add(sub);
     this.broadcastSummary(sub);
@@ -821,7 +893,7 @@ export class Host {
     signal.addEventListener('abort', onAbort, { once: true });
     if (signal.aborted) this.interrupt(sub.id);
     try {
-      const result = await runTurn(this, sub, { allowTask: false });
+      const result = await runTurn(this, sub, { allowTask: depth < 3 });
       if (result.lastText) return { content: result.lastText };
       if (result.reason === 'error') {
         return { content: `子代理执行失败: ${result.error ?? '未知错误'}`, isError: true };
@@ -1054,7 +1126,11 @@ export class Host {
       toolName,
       input,
       description: describeTool(toolName, input),
+      ...(rec.parentId
+        ? { depth: rec.depth ?? 1, sourceTitle: rec.title }
+        : {}),
     };
+    const ancestors = this.ancestorsOf(rec);
 
     return new Promise((resolve) => {
       let settled = false;
@@ -1074,9 +1150,9 @@ export class Host {
           sessionId: rec.id,
           decision,
         });
-        // 子代理的审批状态同步给主会话订阅者
-        if (rec.parentId) {
-          this.hub.broadcastSession(rec.parentId, {
+        // 逐级冒泡：祖先会话（子代理/主会话）的订阅者都能同步审批状态
+        for (const ancestor of ancestors) {
+          this.hub.broadcastSession(ancestor.id, {
             type: 'permission_resolved',
             requestId: request.id,
             sessionId: rec.id,
@@ -1104,9 +1180,9 @@ export class Host {
 
       this.setStatus(rec, 'waiting_permission');
       this.hub.broadcastSession(rec.id, { type: 'permission_request', request });
-      // 子代理的权限请求同时广播给主会话订阅者，便于在主会话里直接审批
-      if (rec.parentId) {
-        this.hub.broadcastSession(rec.parentId, { type: 'permission_request', request });
+      // 子代理/孙代理的权限请求逐级冒泡，主会话订阅者可直接审批
+      for (const ancestor of ancestors) {
+        this.hub.broadcastSession(ancestor.id, { type: 'permission_request', request });
       }
     });
   }
@@ -1219,6 +1295,30 @@ export class Host {
     if (rec.title && rec.title !== '新会话') return;
     const title = `/${cmd.name}${cmd.args ? ` ${cmd.args}` : ''}`.replace(/\s+/g, ' ').trim();
     rec.title = title.slice(0, 40);
+  }
+
+  /** 会话内低调提示：单行灰字展示，不发送给模型。 */
+  appendNotice(rec: SessionRecord, text: string): void {
+    const message: Message = {
+      id: randomUUID(),
+      role: 'assistant',
+      content: [{ type: 'text', text }],
+      createdAt: Date.now(),
+      notice: true,
+    };
+    rec.messages.push(message);
+    this.hub.broadcastSession(rec.id, {
+      type: 'message_start',
+      sessionId: rec.id,
+      message,
+    });
+    this.hub.broadcastSession(rec.id, {
+      type: 'message_end',
+      sessionId: rec.id,
+      message,
+    });
+    this.store.markDirty(rec.id, true);
+    this.broadcastSummary(rec);
   }
 
   private appendLocalAssistant(rec: SessionRecord, text: string): void {

@@ -9,6 +9,12 @@ export type ProviderKind =
   | 'openai-compatible'  // DeepSeek / Qwen / Moonshot / OpenRouter / Ollama 等兼容接口
   | 'gemini';            // Google Gemini (走 OpenAI 兼容端点)
 
+/** 单个模型的能力覆盖；缺省字段按 provider 能力或内置表推断。 */
+export interface ModelCapabilities {
+  efforts?: ReasoningEffort[];
+  contextWindow?: number;
+}
+
 export interface Profile {
   id: string;
   name: string;            // 显示名，如 "公司 Anthropic"、"个人 OpenAI"
@@ -18,6 +24,7 @@ export interface Profile {
   models: string[];        // 该账号可选模型（无分组时使用）
   defaultModel: string;
   price?: Record<string, { input: number; output: number }>; // 每百万 token 美元，按模型覆盖内置单价
+  modelCapabilities?: Record<string, ModelCapabilities>; // 手动覆盖模型能力（思考强度/上下文）
   groups?: ProfileGroup[]; // 分组：同一账号（同一服务商/中转站）下多组 key，各自可用模型不同，如 "官方渠道"/"低价渠道"
   createdAt: number;
 }
@@ -29,8 +36,9 @@ export interface ProfileGroup {
   baseUrl?: string;        // 缺省用账号 baseUrl
   models: string[];
   defaultModel: string;
+  modelCapabilities?: Record<string, ModelCapabilities>;
 }
-export interface ProfileGroupInput { id?: string; name: string; kind?: ProviderKind; apiKey?: string; baseUrl?: string; models: string[]; defaultModel: string }
+export interface ProfileGroupInput { id?: string; name: string; kind?: ProviderKind; apiKey?: string; baseUrl?: string; models: string[]; defaultModel: string; modelCapabilities?: Record<string, ModelCapabilities> }
 export interface ProfileInput {
   name: string;
   kind: ProviderKind;
@@ -39,6 +47,7 @@ export interface ProfileInput {
   models: string[];
   defaultModel: string;
   price?: Record<string, { input: number; output: number }>;
+  modelCapabilities?: Record<string, ModelCapabilities>;
   groups?: ProfileGroupInput[]; // 传入即整体替换；带 id 且不带 apiKey 表示保留原 key
 }
 
@@ -61,11 +70,13 @@ export interface SessionSummary {
   env?: SessionEnv;        // 会话执行环境，用于侧栏按 项目/分支 自动归类
   importedFrom?: { source: ExternalSource; id: string }; // 从 Claude Code / Codex 导入的副本
   parentId?: string;       // Task 子代理会话指向主会话（孙代理指向子代理）
-  depth?: number;          // 0 主会话 / 1 子代理 / 2 孙代理…；侧栏只显示 depth 0
+  depth?: number;          // 0 主会话 / 1 子代理 / 2 孙代理…；侧栏只显示主会话（parentId 为空）
   worktree?: { path: string; branch: string; baseBranch: string }; // 隔离分支会话
   createdAt: number;
   updatedAt: number;
   usage: Usage;
+  /** 最近一次请求的上下文占用（随 session_updated 推送，也可 GET /api/sessions/:id/context）。 */
+  context?: ContextBreakdown;
 }
 export interface SessionEnv {
   repoRoot?: string;       // cwd 所在 git 仓库根目录（非仓库则无）
@@ -166,6 +177,8 @@ export interface PermissionRequest {
   toolName: string;
   input: unknown;
   description: string;     // 人类可读描述，如 "运行命令: npm test"
+  depth?: number;          // 冒泡来源层级：1 子代理 / 2 孙代理；主会话请求不填
+  sourceTitle?: string;    // 冒泡来源会话标题，用于审批卡标注
 }
 // ExitPlanMode 的决策语义：allow_always = 批准并自动接受编辑（acceptEdits）；
 // allow = 批准但逐个询问（default）；deny 可带 reason（用户要求继续完善计划）。
