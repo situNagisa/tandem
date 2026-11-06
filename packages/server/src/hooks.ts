@@ -13,6 +13,7 @@ import type {
   PermissionMode,
 } from '@tandem/protocol';
 import { isSubPath } from './util/path.js';
+import { cmdUtf8Command, decodeProcessOutput } from './util/encoding.js';
 
 export const HOOK_EVENTS: HookEvent[] = [
   'PreToolUse',
@@ -226,7 +227,7 @@ function execHookCommand(
   return new Promise((resolve) => {
     const isWin = process.platform === 'win32';
     const child = isWin
-      ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', command], {
+      ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', cmdUtf8Command(command)], {
           cwd,
           env: process.env,
           windowsHide: true,
@@ -239,8 +240,11 @@ function execHookCommand(
           stdio: ['pipe', 'pipe', 'pipe'],
         });
 
-    let stdout = '';
-    let stderr = '';
+    const outChunks: Buffer[] = [];
+    const errChunks: Buffer[] = [];
+    let outBytes = 0;
+    let errBytes = 0;
+    let stderrExtra = '';
     let timedOut = false;
     let aborted = false;
     let settled = false;
@@ -258,7 +262,14 @@ function execHookCommand(
       settled = true;
       clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
-      resolve({ code, signal: sig, stdout, stderr, timedOut, aborted });
+      resolve({
+        code,
+        signal: sig,
+        stdout: decodeProcessOutput(Buffer.concat(outChunks)),
+        stderr: decodeProcessOutput(Buffer.concat(errChunks)) + stderrExtra,
+        timedOut,
+        aborted,
+      });
     };
 
     const timer = setTimeout(() => {
@@ -272,13 +283,17 @@ function execHookCommand(
     signal?.addEventListener('abort', onAbort, { once: true });
 
     child.stdout?.on('data', (chunk: Buffer) => {
-      if (stdout.length < MAX_OUTPUT) stdout = (stdout + chunk.toString('utf8')).slice(0, MAX_OUTPUT);
+      if (outBytes >= MAX_OUTPUT * 2) return;
+      outBytes += chunk.length;
+      outChunks.push(chunk);
     });
     child.stderr?.on('data', (chunk: Buffer) => {
-      if (stderr.length < MAX_OUTPUT) stderr = (stderr + chunk.toString('utf8')).slice(0, MAX_OUTPUT);
+      if (errBytes >= MAX_OUTPUT * 2) return;
+      errBytes += chunk.length;
+      errChunks.push(chunk);
     });
     child.on('error', (err) => {
-      stderr += `\n${err.message}`;
+      stderrExtra = `\n${err.message}`;
       finish(-1, null);
     });
     child.on('close', (code, sig) => finish(code, sig));

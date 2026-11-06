@@ -2,6 +2,7 @@
 import { spawn } from 'node:child_process';
 import type { ToolContext, ToolDefinition, ToolResult } from '../types.js';
 import { truncateMiddle } from '../util/text.js';
+import { cmdUtf8Command, decodeProcessOutput } from '../util/encoding.js';
 
 const MAX_BUFFER = 2_000_000;
 
@@ -50,7 +51,7 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
 
   const isWin = process.platform === 'win32';
   const child = isWin
-    ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', command], {
+    ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', cmdUtf8Command(command)], {
         cwd: ctx.cwd,
         windowsHide: true,
         env: process.env,
@@ -61,21 +62,29 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
         env: process.env,
       });
 
-  let stdout = '';
-  let stderr = '';
+  const outChunks: Buffer[] = [];
+  const errChunks: Buffer[] = [];
+  let outBytes = 0;
+  let errBytes = 0;
   let truncated = false;
   let timedOut = false;
 
   const collect = (target: 'out' | 'err', chunk: Buffer) => {
-    const current = target === 'out' ? stdout : stderr;
-    if (current.length >= MAX_BUFFER) {
+    const used = target === 'out' ? outBytes : errBytes;
+    if (used >= MAX_BUFFER * 2) {
       truncated = true;
       return;
     }
-    const text = chunk.toString('utf8');
-    if (target === 'out') stdout = (current + text).slice(0, MAX_BUFFER);
-    else stderr = (current + text).slice(0, MAX_BUFFER);
-    if (current.length + text.length > MAX_BUFFER) truncated = true;
+    // 先按字节攒起来，结束时统一解码：Windows 中文输出是 GBK，按块 toString('utf8')
+    // 既会乱码，也可能把多字节字符从中间截断。
+    if (target === 'out') {
+      outChunks.push(chunk);
+      outBytes += chunk.length;
+    } else {
+      errChunks.push(chunk);
+      errBytes += chunk.length;
+    }
+    if (used + chunk.length > MAX_BUFFER * 2) truncated = true;
   };
 
   child.stdout?.on('data', (chunk: Buffer) => collect('out', chunk));
@@ -119,9 +128,11 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
       finish({ content: `无法启动命令: ${err.message}`, isError: true });
     });
     child.on('close', (code) => {
+      const stdout = decodeProcessOutput(Buffer.concat(outChunks));
+      const stderr = decodeProcessOutput(Buffer.concat(errChunks));
       const parts: string[] = [];
-      if (stdout) parts.push(stdout.replace(/\s+$/, ''));
-      if (stderr) parts.push(`[stderr]\n${stderr.replace(/\s+$/, '')}`);
+      if (stdout) parts.push(stdout.replace(/\s+$/, '').slice(0, MAX_BUFFER));
+      if (stderr) parts.push(`[stderr]\n${stderr.replace(/\s+$/, '').slice(0, MAX_BUFFER)}`);
       if (parts.length === 0) parts.push('(无输出)');
       let text = parts.join('\n');
       if (truncated) text += '\n[输出过长，已截断]';
