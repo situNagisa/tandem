@@ -29,9 +29,10 @@ import { basename, formatElapsed, formatRelative } from '../lib/format'
 import { rememberDir } from '../lib/storage'
 import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
-import { ConnectionDot, SessionStatusDot } from './StatusDot'
+import { SessionStatusDot } from './StatusDot'
 import { Modal } from './ui/Modal'
 import { Button, IconButton } from './ui/Button'
+import { Tooltip } from './ui/Tooltip'
 
 const EMPTY: SessionSummary[] = []
 
@@ -460,21 +461,6 @@ export function SessionList({
     return formatElapsed(now - runningSince(key, s.updatedAt))
   }
 
-  // 导入来源：服务端摘要不带来源字段，从外部会话扫描结果反查。
-  const importedSources = useMemo(() => {
-    const map = new Map<string, { mark: string; label: string }>()
-    for (const h of hosts) {
-      for (const ext of runtimes[h.id]?.externalSessions ?? []) {
-        if (!ext.importedSessionId) continue
-        map.set(`${h.id}:${ext.importedSessionId}`, {
-          mark: ext.source === 'codex' ? 'Codex' : 'CC',
-          label: ext.source === 'codex' ? 'Codex' : 'Claude Code',
-        })
-      }
-    }
-    return map
-  }, [hosts, runtimes])
-
   useEffect(() => {
     if (renaming) {
       renameRef.current?.focus()
@@ -549,7 +535,6 @@ export function SessionList({
   const renderRow = (hostId: string, s: SessionSummary, depth = 0) => {
     const isActive = s.id === activeSessionId
     const renamingThis = renaming === s.id
-    const importedFrom = importedSources.get(`${hostId}:${s.id}`)
     const elapsed = runningElapsed(hostId, s)
     const runningLabel = s.status === 'waiting_permission' ? '待审批' : '运行中'
     return (
@@ -574,18 +559,20 @@ export function SessionList({
         aria-current={isActive ? 'page' : undefined}
         title={s.title || '未命名会话'}
         className={cn(
-          'anim-row-in group relative flex min-h-11 cursor-default items-center gap-2 rounded-none py-1 pr-8 text-[13px] outline-none transition-colors duration-[120ms] md:min-h-[30px] md:py-0',
-          depth > 0 ? 'pl-8' : 'pl-3.5',
+          'anim-row-in group relative flex h-11 cursor-default items-center gap-2 rounded-lg pl-2 pr-1 text-[14px] outline-none transition-colors duration-[120ms] md:h-[34px]',
+          depth > 0 && 'ml-5',
           isActive
-            ? 'text-text shadow-[inset_2px_0_0_var(--t-text)]'
-            : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
+            ? 'bg-[var(--t-bg-active)] text-text'
+            : 'text-text hover:bg-[var(--t-bg-hover)]',
         )}
       >
-        {s.status !== 'idle' && (
-          <span className="pointer-events-none absolute left-[5px] top-1/2 flex -translate-y-1/2 items-center">
+        <span className="pointer-events-none flex size-4 shrink-0 items-center justify-center">
+          {s.status !== 'idle' ? (
             <SessionStatusDot status={s.status} />
-          </span>
-        )}
+          ) : (
+            <span className="size-1.5 rounded-full border border-current opacity-35" />
+          )}
+        </span>
         {renamingThis ? (
           <input
             ref={renameRef}
@@ -614,53 +601,31 @@ export function SessionList({
             aria-label="重命名会话"
           />
         ) : (
-          <span className="min-w-0 flex-1 truncate leading-5">
+          <span className="min-w-0 flex-1 truncate text-[14px] leading-5">
             {s.title || '未命名会话'}
           </span>
         )}
         {!renamingThis && s.worktree && (
           <span
             title={`worktree 分支 ${s.worktree.branch}（基于 ${s.worktree.baseBranch}）`}
-            className="flex max-w-[60px] shrink-0 items-center gap-0.5 text-[9.5px] text-muted"
+            className="flex max-w-[48px] shrink-0 items-center gap-0.5 text-[9.5px] text-text-tertiary"
           >
             <GitBranch size={9} className="shrink-0" />
             <span className="truncate font-mono">{s.worktree.branch}</span>
           </span>
         )}
         {!renamingThis && (
-          <>
+          <span className="relative flex h-full w-[62px] shrink-0 items-center justify-end">
             <span
-              className="session-row-tail flex min-w-0 items-center justify-end gap-1"
-              style={elapsed ? { width: 56 } : undefined}
+              className={cn(
+                'hidden max-w-full truncate text-[10.5px] tabular-nums transition-opacity md:inline',
+                elapsed && 'text-[9.5px]',
+                s.status === 'waiting_permission' ? 'text-accent' : 'text-text-tertiary',
+                isActive ? 'opacity-0' : 'group-hover:opacity-0',
+              )}
+              title={elapsed ? `${runningLabel} · ${elapsed}` : undefined}
             >
-              {importedFrom && (
-                <span
-                  title={`从 ${importedFrom.label} 导入`}
-                  className="shrink-0 text-[9.5px] leading-none text-muted"
-                >
-                  {importedFrom.mark}
-                </span>
-              )}
-              {elapsed ? (
-                <span
-                  className={cn(
-                    'shrink-0 text-[9.5px] tabular-nums',
-                    s.status === 'waiting_permission' ? 'text-accent' : 'text-text-soft',
-                  )}
-                  title={`${runningLabel} · ${elapsed}`}
-                >
-                  {runningLabel} · {elapsed}
-                </span>
-              ) : (
-                <span
-                  className={cn(
-                    'hidden shrink-0 text-[10.5px] tabular-nums text-muted transition-opacity group-hover:opacity-0 md:inline',
-                    isActive && 'text-text-soft',
-                  )}
-                >
-                  {formatRelative(s.updatedAt)}
-                </span>
-              )}
+              {elapsed ? `${runningLabel} · ${elapsed}` : formatRelative(s.updatedAt)}
             </span>
             <IconButton
               size="sm"
@@ -672,11 +637,16 @@ export function SessionList({
               }}
               label="会话操作"
               tooltip=""
-              className="absolute right-0.5 top-1/2 size-8! -translate-y-1/2 opacity-100 focus-visible:opacity-100 md:size-6! md:opacity-0 md:group-hover:opacity-100 [&_svg]:size-[15px]"
+              className={cn(
+                'absolute right-0 top-1/2 size-7! -translate-y-1/2 focus-visible:opacity-100 [&_svg]:size-[15px]',
+                isActive
+                  ? 'opacity-100'
+                  : 'opacity-100 md:opacity-0 md:group-hover:opacity-100',
+              )}
             >
               <MoreHorizontal size={15} />
             </IconButton>
-          </>
+          </span>
         )}
       </div>
     )
@@ -729,8 +699,8 @@ export function SessionList({
 
         {!showArchived && pinned.length > 0 && (
           <div className="mb-1">
-            <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.08em] text-muted">
-              <Pin size={10} />
+            <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[12px] font-medium text-text-tertiary">
+              <Pin size={11} />
               置顶
             </div>
             <div className="space-y-0.5">{pinned.map(({ hostId, session }) => renderRow(hostId, session))}</div>
@@ -739,34 +709,32 @@ export function SessionList({
 
         {(() => {
           const multiHost = hosts.length > 1
-          const renderExternal = (hostId: string, ext: ExternalItem, showTime = false) => (
-            <button
-              key={`${hostId}:${ext.source}:${ext.id}`}
-              onClick={() => openExternal(hostId, ext)}
-              title={[
-                ext.title || '外部会话',
-                `${formatRelative(ext.updatedAt)} · ${ext.messageCount} 条消息`,
-                `${ext.cwd} · ${ext.source === 'codex' ? 'Codex' : 'Claude Code'}`,
-              ].join('\n')}
-              className="anim-row-in group/ex flex min-h-11 w-full min-w-0 items-center gap-2 rounded-none py-1 pl-3.5 pr-2 text-left text-[13px] text-text-soft outline-none transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-[30px] md:py-0"
-            >
-              <span
-                className="w-4 min-w-4 shrink-0 text-left text-[8.5px] font-medium tracking-tight text-muted"
-                aria-label={ext.source === 'codex' ? 'Codex' : 'Claude Code'}
+          const renderExternal = (hostId: string, ext: ExternalItem) => {
+            const sourceLabel = ext.source === 'codex' ? 'Codex' : 'Claude Code'
+            return (
+              <Tooltip
+                key={`${hostId}:${ext.source}:${ext.id}`}
+                label={`${sourceLabel} 会话 · 只读`}
+                side="top"
+                className="block w-full"
               >
-                {ext.source === 'codex' ? 'Codex' : 'CC'}
-              </span>
-              <span className="min-w-0 flex-1 truncate leading-5">{ext.title || '未命名会话'}</span>
-              {showTime && (
-                <span className="shrink-0 text-[10px] tabular-nums text-muted">
-                  {formatRelative(ext.updatedAt)}
-                </span>
-              )}
-              <span className="hidden shrink-0 text-[10.5px] tabular-nums text-muted group-hover/ex:inline">
-                {formatRelative(ext.updatedAt)}
-              </span>
-            </button>
-          )
+                <button
+                  onClick={() => openExternal(hostId, ext)}
+                  className="anim-row-in flex h-11 w-full min-w-0 items-center gap-2 rounded-lg pl-2 pr-2 text-left text-[14px] text-text-tertiary outline-none transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-secondary md:h-[34px]"
+                >
+                  <span className="flex size-4 shrink-0 items-center justify-center">
+                    <span className="size-1.5 rounded-full border border-current opacity-35" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate leading-5">
+                    {ext.title || '未命名会话'}
+                  </span>
+                  <span className="w-[64px] shrink-0 truncate text-right text-[10.5px] tabular-nums text-text-tertiary">
+                    {formatRelative(ext.updatedAt)}
+                  </span>
+                </button>
+              </Tooltip>
+            )
+          }
 
           const renderProject = (hostId: string, project: ProjectGroup, indented: boolean) => {
             const projCollapsed = !!collapsed[project.key]
@@ -779,12 +747,6 @@ export function SessionList({
             const externalSourceLabel = project.externals.some((e) => e.source === 'claude-code')
               ? 'Claude Code'
               : 'Codex'
-            // 同组内标题重复时，标题后补时间，便于区分不同 id 的同名外部会话。
-            const externalTitleCount = new Map<string, number>()
-            for (const ext of project.externals) {
-              const title = ext.title || '未命名会话'
-              externalTitleCount.set(title, (externalTitleCount.get(title) ?? 0) + 1)
-            }
             const entries = [
               ...project.items.map((s) => (
                 <Fragment key={`${hostId}:${s.id}`}>
@@ -793,38 +755,33 @@ export function SessionList({
                     project.children[s.id]?.map((child) => renderRow(hostId, child, 1))}
                 </Fragment>
               )),
-              ...shownExternals.map((ext) =>
-                renderExternal(
-                  hostId,
-                  ext,
-                  (externalTitleCount.get(ext.title || '未命名会话') ?? 0) > 1,
-                ),
-              ),
+              ...shownExternals.map((ext) => renderExternal(hostId, ext)),
             ]
             const count = project.items.length + project.externals.length
             return (
               <div key={project.key} className="min-w-0">
-                <div className="group/proj flex min-h-7 min-w-0 items-center rounded-md pr-0.5 transition-colors hover:bg-[var(--t-bg-hover)]">
+                <div className="group/proj flex h-8 min-w-0 items-center rounded-lg pr-0.5 transition-colors hover:bg-[var(--t-bg-hover)]">
                   <button
                     onClick={() => toggleProject(project.key)}
                     className={cn(
-                      'flex min-h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md text-left text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted transition-colors duration-[120ms] hover:text-text-secondary',
-                      indented ? 'pl-6' : 'pl-2',
+                      'flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left text-[13px] font-medium text-text-secondary transition-colors duration-[120ms] hover:text-text',
+                      indented ? 'pl-5' : 'pl-1.5',
                     )}
                     aria-expanded={!projCollapsed}
                     title={`${project.name}${project.branch ? ` · ${project.branch}` : ''} (${count})`}
                   >
                     <ChevronRight
-                      size={10}
+                      size={11}
                       className={cn(
-                        'shrink-0 text-muted transition-transform duration-150',
+                        'shrink-0 text-text-tertiary opacity-70 transition-transform duration-150',
                         !projCollapsed && 'rotate-90',
                       )}
                     />
+                    <FolderGit2 size={13} className="shrink-0 text-text-tertiary" />
                     <span className="min-w-0 flex-1 truncate">{project.name}</span>
                     {project.branch && (
-                      <span className="flex min-w-0 max-w-[45%] items-center gap-0.5 text-[9px] font-normal normal-case tracking-normal text-muted/80">
-                        <GitBranch size={8} className="shrink-0" />
+                      <span className="flex min-w-0 max-w-[42%] items-center gap-0.5 text-[10.5px] font-normal text-text-tertiary">
+                        <GitBranch size={9} className="shrink-0" />
                         <span className="truncate">{project.branch}</span>
                       </span>
                     )}
@@ -837,7 +794,8 @@ export function SessionList({
                     }}
                     tooltip={`在 ${project.name} 新建会话`}
                     label={`在 ${project.name} 新建会话`}
-                    className="size-6! opacity-0 focus-visible:opacity-100 group-hover/proj:opacity-100 [&_svg]:size-[13px]"
+                    tooltipSide="top"
+                    className="size-7! opacity-100 focus-visible:opacity-100 md:opacity-0 md:group-hover/proj:opacity-100 [&_svg]:size-[13px]"
                   >
                     <Plus size={13} />
                   </IconButton>
@@ -848,14 +806,14 @@ export function SessionList({
                   aria-hidden={projCollapsed}
                   inert={projCollapsed}
                 >
-                  <div className={cn('expand-inner space-y-0.5', indented ? 'pl-10' : 'pl-4')}>
+                  <div className={cn('expand-inner space-y-0.5', indented ? 'pl-6' : 'pl-4')}>
                     {entries}
                     {hiddenExternalCount > 0 && (
                       <button
                         onClick={() =>
                           setExpandedExternal((s) => ({ ...s, [project.key]: true }))
                         }
-                        className="flex min-h-7 w-full items-center gap-1.5 rounded-md pl-2 pr-2 text-left text-[11.5px] text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
+                        className="flex h-8 w-full items-center gap-1.5 rounded-lg pl-2 pr-2 text-left text-[12px] text-text-tertiary transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-secondary"
                       >
                         <ChevronRight size={11} className="shrink-0 rotate-90" />
                         更多 {externalSourceLabel} 会话（{hiddenExternalCount}）
@@ -870,7 +828,7 @@ export function SessionList({
                             return next
                           })
                         }
-                        className="flex min-h-7 w-full items-center gap-1.5 rounded-md pl-2 pr-2 text-left text-[11.5px] text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
+                        className="flex h-8 w-full items-center gap-1.5 rounded-lg pl-2 pr-2 text-left text-[12px] text-text-tertiary transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-secondary"
                       >
                         <ChevronRight size={11} className="shrink-0" />
                         收起 {externalSourceLabel} 会话
@@ -899,17 +857,19 @@ export function SessionList({
               <div key={host.id} className="mt-2">
                 <button
                   onClick={() => toggleProject(hostKey)}
-                  className="flex min-h-7 w-full min-w-0 items-center gap-1.5 rounded-md px-2 text-left text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-secondary"
+                  className={cn(
+                    'flex h-8 w-full min-w-0 items-center gap-1.5 rounded-lg px-2 text-left text-[12px] font-medium transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)]',
+                    host.online ? 'text-text-secondary hover:text-text' : 'text-text-tertiary',
+                  )}
                   aria-expanded={!hostCollapsed}
                 >
                   <ChevronRight
-                    size={10}
-                    className={cn('shrink-0 text-muted transition-transform duration-150', !hostCollapsed && 'rotate-90')}
+                    size={11}
+                    className={cn('shrink-0 opacity-70 transition-transform duration-150', !hostCollapsed && 'rotate-90')}
                   />
-                  <Server size={11} className="shrink-0 text-muted" />
+                  <Server size={12} className="shrink-0 opacity-70" />
                   <span className="min-w-0 flex-1 truncate">{host.name}</span>
-                  <ConnectionDot state={host.online ? 'online' : 'offline'} className="size-1.5" />
-                  <span className="text-[9px] font-normal tabular-nums opacity-60">{host.count}</span>
+                  <span className="text-[10px] font-normal tabular-nums text-text-tertiary">{host.count}</span>
                 </button>
                 <div
                   className="expand-grid mt-0.5"

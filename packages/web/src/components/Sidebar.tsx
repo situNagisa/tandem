@@ -87,7 +87,7 @@ export function Sidebar({
           size="sm"
           onClick={toggle}
           label="筛选会话"
-          tooltip="筛选"
+          tooltip={open ? '' : '筛选'}
           tooltipSide="bottom"
           aria-expanded={open}
           aria-haspopup="menu"

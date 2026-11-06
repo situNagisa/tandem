@@ -49,33 +49,35 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
               const isActive = h.id === activeHostId
               const online = rt?.status === 'online'
               const platform = rt?.info?.platform
-              return (
-                <Tooltip
+              const row = (
+                <button
                   key={h.id}
-                  label={online ? '在线' : '离线，暂时无法连接'}
-                  className="block w-full"
+                  role="menuitem"
+                  onClick={() => {
+                    close()
+                    if (isActive) return
+                    activateHost(h.id)
+                    navigate({ kind: 'host', hostId: h.id })
+                    onNavigate?.()
+                  }}
+                  className={cn(
+                    'menu-item',
+                    online ? 'text-text' : 'text-text-tertiary',
+                    isActive && 'bg-[var(--t-bg-active)]',
+                  )}
                 >
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      close()
-                      if (isActive) return
-                      activateHost(h.id)
-                      navigate({ kind: 'host', hostId: h.id })
-                      onNavigate?.()
-                    }}
-                    className={cn(
-                      'menu-item',
-                      online ? 'text-text' : 'text-text-tertiary',
-                      isActive && 'bg-[var(--t-bg-active)]',
-                    )}
-                  >
-                    <span className="min-w-0 flex-1 truncate">{h.name}</span>
-                    {platform && (
-                      <span className="shrink-0 text-[11px] text-text-tertiary">{platform}</span>
-                    )}
-                    {isActive && <Check size={13} className="shrink-0 text-text" />}
-                  </button>
+                  <span className="min-w-0 flex-1 truncate">{h.name}</span>
+                  {platform && (
+                    <span className="shrink-0 text-[11px] text-text-tertiary">{platform}</span>
+                  )}
+                  {isActive && <Check size={13} className="shrink-0 text-text" />}
+                </button>
+              )
+              return online ? (
+                row
+              ) : (
+                <Tooltip key={h.id} label="离线，暂时无法连接" className="block w-full">
+                  {row}
                 </Tooltip>
               )
             })}

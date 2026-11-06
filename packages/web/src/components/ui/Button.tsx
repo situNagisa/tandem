@@ -71,7 +71,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     >
       {icon}
       {children}
-      {tooltip && <Tip label={tooltip} side={tooltipSide} />}
+      {tooltip ? <Tip label={tooltip} side={tooltipSide} /> : null}
     </button>
   )
 })
@@ -116,7 +116,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       {...rest}
     >
       {children}
-      <Tip label={tip} side={tooltipSide} />
+      {tip ? <Tip label={tip} side={tooltipSide} /> : null}
     </button>
   )
 })

@@ -75,16 +75,20 @@ function useHoverAnchor(host: () => HTMLElement | null) {
     const el = host()
     if (!el) return
     const onScroll = () => setAnchor(null)
+    const onFocusIn = () => {
+      // 鼠标点击不弹出 tooltip，仅键盘聚焦时显示。
+      if (el.matches(':focus-visible')) update()
+    }
     el.addEventListener('mouseenter', update)
     el.addEventListener('mouseleave', hide)
-    el.addEventListener('focusin', update)
+    el.addEventListener('focusin', onFocusIn)
     el.addEventListener('focusout', hide)
     window.addEventListener('scroll', onScroll, true)
     window.addEventListener('resize', onScroll)
     return () => {
       el.removeEventListener('mouseenter', update)
       el.removeEventListener('mouseleave', hide)
-      el.removeEventListener('focusin', update)
+      el.removeEventListener('focusin', onFocusIn)
       el.removeEventListener('focusout', hide)
       window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', onScroll)
@@ -127,7 +131,7 @@ export function Tooltip({
   const anchor = useHoverAnchor(host)
   return (
     <>
-      <span ref={wrapRef} className={cn('inline-flex min-w-0 max-w-full', className)}>
+      <span ref={wrapRef} className={cn('min-w-0 max-w-full', className)}>
         {children}
       </span>
       <TipBubble label={label} side={side} anchor={anchor} />
