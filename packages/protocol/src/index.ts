@@ -205,6 +205,9 @@ export type BlockDelta =
 // POST   /api/external-sessions/:source/:id/import -> SessionSummary  复制为 Tandem 会话
 // POST   /api/config/export ConfigExportInput -> ConfigBundle
 // POST   /api/config/import ConfigImportInput -> ConfigImportResult
+// GET    /api/fs/read?path=&cwd=        -> { path: string; content: string; truncated: boolean; isBinary: boolean; size: number; language?: string }
+//        文件预览：path 可为绝对路径或相对 cwd；限制在 Host 用户可读范围内，>1MB 截断
+// POST   /api/fs/reveal { path }       -> { ok: boolean }  在 Host 本机用系统文件管理器/编辑器打开（仅当客户端与 Host 同机时有意义）
 // GET    /api/commands                -> SlashCommand[]
 export interface SlashCommand { name: string; description: string; source: 'builtin' | 'project' | 'user' }
 
