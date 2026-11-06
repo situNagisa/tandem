@@ -17,7 +17,14 @@ import type {
   SlashCommand,
   Todo,
 } from '@tandem/protocol';
-import { ProfileStore, loadHostConfig, providerDefaultBaseUrl, tandemHome } from './config.js';
+import {
+  ProfileStore,
+  effectiveProfile,
+  loadHostConfig,
+  providerDefaultBaseUrl,
+  tandemHome,
+} from './config.js';
+import { ExternalSessionStore } from './external.js';
 import { Hub } from './events.js';
 import { SessionStore } from './store.js';
 import type { HostConfig, SessionRecord, SessionRuntime, StoredProfile } from './types.js';
@@ -55,6 +62,8 @@ export class Host {
   readonly home: string;
   readonly profiles: ProfileStore;
   readonly store: SessionStore;
+  /** 外部会话（Claude Code / Codex）扫描缓存，只读。 */
+  readonly external = new ExternalSessionStore(this);
   readonly hub = new Hub();
   readonly version: string;
   private runtimes = new Map<string, SessionRuntime>();
@@ -94,6 +103,7 @@ export class Host {
       title: rec.title,
       cwd: rec.cwd,
       profileId: rec.profileId,
+      ...(rec.groupId ? { groupId: rec.groupId } : {}),
       model: rec.model,
       permissionMode: rec.permissionMode,
       status: rec.status,
@@ -121,9 +131,17 @@ export class Host {
     this.broadcastSummary(rec);
   }
 
-  /** 拉取模型列表：apiKey 缺省时用 profileId 对应账号已存的 key。 */
+  /** 取会话运行时的有效账号：account + 分组（key/baseUrl/模型按分组覆盖）。 */
+  profileFor(profileId: string, groupId?: string): StoredProfile | undefined {
+    const profile = this.profiles.get(profileId);
+    return profile ? effectiveProfile(profile, groupId) : undefined;
+  }
+
+  /** 拉取模型列表：apiKey/baseUrl 缺省时用账号（或分组）已存的值。 */
   listModels(input: ListModelsInput): Promise<ListModelsResult> {
-    const profile = input.profileId ? this.profiles.get(input.profileId) : undefined;
+    const profile = input.profileId
+      ? this.profileFor(input.profileId, input.groupId)
+      : undefined;
     return fetchModelList(input, profile);
   }
 
@@ -160,6 +178,7 @@ export class Host {
   createSession(input: {
     cwd?: unknown;
     profileId?: unknown;
+    groupId?: unknown;
     model?: unknown;
     permissionMode?: unknown;
     title?: unknown;
@@ -178,8 +197,15 @@ export class Host {
     const profileId = typeof input.profileId === 'string' ? input.profileId : '';
     const profile = this.profiles.get(profileId);
     if (!profile) throw new Error('账号不存在，请先创建账号');
+    const groupId =
+      typeof input.groupId === 'string' && input.groupId.trim() ? input.groupId.trim() : undefined;
+    if (groupId && !profile.groups?.some((g) => g.id === groupId)) throw new Error('分组不存在');
+    const effective = effectiveProfile(profile, groupId);
     const model =
-      (typeof input.model === 'string' && input.model.trim()) || profile.defaultModel || profile.models[0] || '';
+      (typeof input.model === 'string' && input.model.trim()) ||
+      effective.defaultModel ||
+      effective.models[0] ||
+      '';
     if (!model) throw new Error('该账号没有可用模型');
 
     const permissionMode = PERMISSION_MODES.has(input.permissionMode as PermissionMode)
@@ -191,6 +217,7 @@ export class Host {
       title: typeof input.title === 'string' && input.title.trim() ? input.title.trim() : '新会话',
       cwd,
       profileId,
+      ...(groupId ? { groupId } : {}),
       model,
       permissionMode,
       status: 'idle',
@@ -211,6 +238,7 @@ export class Host {
     patch: {
       title?: unknown;
       profileId?: unknown;
+      groupId?: unknown;
       model?: unknown;
       permissionMode?: unknown;
       pinned?: unknown;
@@ -231,9 +259,25 @@ export class Host {
       const profile = this.profiles.get(patch.profileId);
       if (!profile) throw new Error('账号不存在');
       rec.profileId = profile.id;
-      // 换账号时默认切换到该账号的默认模型
+      // 换账号时分组不再适用，默认切到该账号的默认模型
+      delete rec.groupId;
       if (typeof patch.model !== 'string' || !patch.model.trim()) {
         rec.model = profile.defaultModel || profile.models[0] || rec.model;
+      }
+    }
+    if (typeof patch.groupId === 'string') {
+      const groupId = patch.groupId.trim();
+      if (groupId) {
+        const profile = this.profiles.get(rec.profileId);
+        const group = profile?.groups?.find((g) => g.id === groupId);
+        if (!group) throw new Error('分组不存在');
+        rec.groupId = groupId;
+        // 切换分组时若没显式指定模型，用该分组的默认模型
+        if (typeof patch.model !== 'string' || !patch.model.trim()) {
+          rec.model = group.defaultModel || group.models[0] || rec.model;
+        }
+      } else {
+        delete rec.groupId;
       }
     }
     if (typeof patch.model === 'string' && patch.model.trim()) rec.model = patch.model.trim();
@@ -261,6 +305,7 @@ export class Host {
       title: `${src.title || '新会话'}（副本）`,
       cwd: src.cwd,
       profileId: src.profileId,
+      ...(src.groupId ? { groupId: src.groupId } : {}),
       model: src.model,
       permissionMode: src.permissionMode,
       status: 'idle',
@@ -385,7 +430,7 @@ export class Host {
    * baseTitle 是发起请求时的标题，用于判断期间是否被用户手动改过。
    */
   private async autoTitle(rec: SessionRecord, firstText: string, baseTitle: string): Promise<void> {
-    const profile = this.profiles.get(rec.profileId);
+    const profile = this.profileFor(rec.profileId, rec.groupId);
     const model = rec.model || profile?.defaultModel || '';
     if (!profile?.apiKey || !model) return;
 
@@ -590,7 +635,7 @@ export class Host {
         return true;
       }
       case 'model': {
-        const profile = this.profiles.get(rec.profileId);
+        const profile = this.profileFor(rec.profileId, rec.groupId);
         const models = profile?.models ?? [];
         if (cmd.args) {
           rec.model = cmd.args.split(/\s+/)[0]!;
@@ -694,7 +739,7 @@ export class Host {
 
     try {
       this.setStatus(rec, 'running');
-      const profile = this.profiles.get(rec.profileId);
+      const profile = this.profileFor(rec.profileId, rec.groupId);
       if (!profile?.apiKey) throw new Error('当前账号未配置 API Key');
       const model = rec.model || profile.defaultModel;
       if (!model) throw new Error('当前账号没有配置模型');

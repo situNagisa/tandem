@@ -33,7 +33,7 @@ export async function runTurn(host: Host, rec: SessionRecord): Promise<void> {
       }
 
       host.setStatus(rec, 'running');
-      const profile = host.profiles.get(rec.profileId);
+      const profile = host.profileFor(rec.profileId, rec.groupId);
       if (!profile) throw new Error('当前会话的账号不存在，请在界面上重新选择账号');
       const model = rec.model || profile.defaultModel;
       if (!model) throw new Error('当前账号没有配置模型');

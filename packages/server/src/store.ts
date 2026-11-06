@@ -44,6 +44,14 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   const env = normalizeEnv(raw.env);
   if (env) rec.env = env;
   else delete rec.env;
+  if (typeof raw.groupId === 'string' && raw.groupId) rec.groupId = raw.groupId;
+  else delete rec.groupId;
+  const from = raw.importedFrom as { source?: unknown; id?: unknown } | undefined;
+  if (from && (from.source === 'claude-code' || from.source === 'codex') && typeof from.id === 'string' && from.id) {
+    rec.importedFrom = { source: from.source, id: from.id };
+  } else {
+    delete rec.importedFrom;
+  }
   return rec;
 }
 

@@ -3,8 +3,14 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSy
 import { randomBytes, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
-import type { Profile, ProfileInput, ProviderKind } from '@tandem/protocol';
-import type { HostConfig, StoredProfile } from './types.js';
+import type {
+  Profile,
+  ProfileGroup,
+  ProfileGroupInput,
+  ProfileInput,
+  ProviderKind,
+} from '@tandem/protocol';
+import type { HostConfig, StoredProfile, StoredProfileGroup } from './types.js';
 
 export function tandemHome(): string {
   const fromEnv = process.env.TANDEM_HOME?.trim();
@@ -72,12 +78,17 @@ export class ProfileStore {
     const data = readJson<{ profiles?: StoredProfile[] }>(this.file);
     for (const p of data?.profiles ?? []) {
       if (p && typeof p.id === 'string' && KINDS.includes(p.kind)) {
-        this.profiles.set(p.id, {
+        const profile: StoredProfile = {
           ...p,
           apiKey: p.apiKey ?? '',
           models: Array.isArray(p.models) ? p.models : [],
           defaultModel: p.defaultModel ?? p.models?.[0] ?? '',
-        });
+        };
+        // 老数据没有 groups，按无分组账号处理
+        const groups = normalizeStoredGroups(p.groups);
+        if (groups.length) profile.groups = groups;
+        else delete profile.groups;
+        this.profiles.set(p.id, profile);
       }
     }
   }
@@ -102,6 +113,8 @@ export class ProfileStore {
       defaultModel: input.defaultModel || normalizeModels(input.models)[0] || '',
       createdAt: now,
     };
+    const groups = buildGroups(input.groups);
+    if (groups?.length) profile.groups = groups;
     this.profiles.set(profile.id, profile);
     this.save();
     return profile;
@@ -121,6 +134,12 @@ export class ProfileStore {
       // 不传或传空字符串表示保持原 key
       apiKey: input.apiKey ? String(input.apiKey) : current.apiKey,
     };
+    // 传了 groups 就整体替换；带 id 且不带 apiKey 的分组保留原 key
+    if (input.groups !== undefined) {
+      const groups = buildGroups(input.groups, current.groups);
+      if (groups?.length) next.groups = groups;
+      else delete next.groups;
+    }
     this.profiles.set(id, next);
     this.save();
     return next;
@@ -142,8 +161,41 @@ export class ProfileStore {
       apiKeyMasked: maskApiKey(profile.apiKey),
       models: [...profile.models],
       defaultModel: profile.defaultModel,
+      ...(profile.groups?.length ? { groups: profile.groups.map((g) => toPublicGroup(g)) } : {}),
       createdAt: profile.createdAt,
     };
+  }
+
+  /** 配置迁移导入：merge 按 name+kind 合并，replace 全量替换。 */
+  importMany(
+    incoming: StoredProfile[],
+    mode: 'merge' | 'replace',
+  ): { added: number; updated: number } {
+    let added = 0;
+    let updated = 0;
+    if (mode === 'replace') {
+      this.profiles.clear();
+      for (const item of incoming) {
+        const id = this.profiles.has(item.id) ? randomUUID() : item.id;
+        this.profiles.set(id, { ...item, id });
+        added++;
+      }
+      this.save();
+      return { added, updated };
+    }
+    for (const item of incoming) {
+      const matched = this.list().find((p) => p.name === item.name && p.kind === item.kind);
+      if (matched) {
+        this.profiles.set(matched.id, { ...item, id: matched.id });
+        updated++;
+      } else {
+        const id = this.profiles.has(item.id) ? randomUUID() : item.id;
+        this.profiles.set(id, { ...item, id });
+        added++;
+      }
+    }
+    this.save();
+    return { added, updated };
   }
 
   private save(): void {
@@ -159,6 +211,82 @@ function normalizeModels(models: unknown): string[] {
 function normalizeBaseUrl(url: unknown): string | undefined {
   const value = typeof url === 'string' ? url.trim() : '';
   return value || undefined;
+}
+
+/** 兼容老数据：groups 缺失/异常时忽略。 */
+export function normalizeStoredGroups(value: unknown): StoredProfileGroup[] {
+  if (!Array.isArray(value)) return [];
+  const out: StoredProfileGroup[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue;
+    const g = raw as Partial<StoredProfileGroup>;
+    const name = typeof g.name === 'string' ? g.name.trim() : '';
+    if (!name) continue;
+    const models = normalizeModels(g.models);
+    out.push({
+      id: typeof g.id === 'string' && g.id ? g.id : randomUUID(),
+      name,
+      apiKey: typeof g.apiKey === 'string' ? g.apiKey : '',
+      baseUrl: normalizeBaseUrl(g.baseUrl),
+      models,
+      defaultModel:
+        (typeof g.defaultModel === 'string' && g.defaultModel.trim()) || models[0] || '',
+    });
+  }
+  return out;
+}
+
+/** 把接口传入的分组转成存储结构；prev 用于按 id 保留未重传的 key/baseUrl。 */
+function buildGroups(
+  input: ProfileGroupInput[] | undefined,
+  prev: StoredProfileGroup[] = [],
+): StoredProfileGroup[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const prevById = new Map(prev.map((g) => [g.id, g]));
+  const out: StoredProfileGroup[] = [];
+  for (const raw of input) {
+    if (!raw || typeof raw !== 'object') continue;
+    const name = String(raw.name ?? '').trim();
+    if (!name) continue;
+    const id = typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : randomUUID();
+    const old = prevById.get(id);
+    const models = normalizeModels(raw.models);
+    out.push({
+      id,
+      name,
+      // 带 id 不带 apiKey 表示保留原 key
+      apiKey: typeof raw.apiKey === 'string' && raw.apiKey ? raw.apiKey : old?.apiKey ?? '',
+      baseUrl: raw.baseUrl !== undefined ? normalizeBaseUrl(raw.baseUrl) : old?.baseUrl,
+      models,
+      defaultModel:
+        (typeof raw.defaultModel === 'string' && raw.defaultModel.trim()) || old?.defaultModel || models[0] || '',
+    });
+  }
+  return out;
+}
+
+function toPublicGroup(group: StoredProfileGroup): ProfileGroup {
+  return {
+    id: group.id,
+    name: group.name,
+    apiKeyMasked: maskApiKey(group.apiKey),
+    ...(group.baseUrl ? { baseUrl: group.baseUrl } : {}),
+    models: [...group.models],
+    defaultModel: group.defaultModel,
+  };
+}
+
+/** 会话运行时使用的有效账号：分组覆盖 key/baseUrl/模型，缺省回落到账号自身。 */
+export function effectiveProfile(profile: StoredProfile, groupId?: string): StoredProfile {
+  const group = groupId ? profile.groups?.find((g) => g.id === groupId) : undefined;
+  if (!group) return profile;
+  return {
+    ...profile,
+    apiKey: group.apiKey || profile.apiKey,
+    baseUrl: group.baseUrl ?? profile.baseUrl,
+    models: group.models.length ? [...group.models] : [...profile.models],
+    defaultModel: group.defaultModel || group.models[0] || profile.defaultModel,
+  };
 }
 
 export function providerDefaultBaseUrl(kind: ProviderKind): string {

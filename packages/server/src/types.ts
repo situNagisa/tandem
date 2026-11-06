@@ -1,6 +1,7 @@
 // 服务端内部类型：在协议类型之上补充持久化/运行时字段。
 import type {
   ContentBlock,
+  ExternalSource,
   Message,
   PermissionDecision,
   PermissionRequest,
@@ -11,6 +12,16 @@ import type {
   Usage,
 } from '@tandem/protocol';
 
+/** 持久化的账号分组：明文 key 只在本机，接口只回掩码。 */
+export interface StoredProfileGroup {
+  id: string;
+  name: string;
+  apiKey: string;
+  baseUrl?: string;
+  models: string[];
+  defaultModel: string;
+}
+
 /** 持久化的账号：apiKey 只存在本机 profiles.json 中，永不下发。 */
 export interface StoredProfile {
   id: string;
@@ -20,6 +31,7 @@ export interface StoredProfile {
   apiKey: string;
   models: string[];
   defaultModel: string;
+  groups?: StoredProfileGroup[];
   createdAt: number;
 }
 
@@ -28,9 +40,11 @@ export interface HostConfig {
   token: string;
 }
 
-/** 会话记录：协议 Session + 仅服务端使用的权限白名单。 */
+/** 会话记录：协议 Session + 仅服务端使用的字段。 */
 export interface SessionRecord extends Session {
   allowedTools: string[];
+  /** 从外部会话导入时记录来源；仅内部使用，不下发（协议 Session 无此字段）。 */
+  importedFrom?: { source: ExternalSource; id: string };
 }
 
 export interface PendingPermission {

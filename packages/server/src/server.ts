@@ -9,10 +9,15 @@ import websocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import type {
   ClientMsg,
+  ConfigBundle,
+  ConfigExportInput,
+  ConfigImportInput,
   CreateSessionInput,
+  ExternalSource,
   FsEntry,
   ListModelsInput,
   PermissionDecision,
+  ProfileGroupInput,
   ProfileInput,
   ProviderKind,
   UpdateSessionInput,
@@ -20,6 +25,7 @@ import type {
 import type { Host } from './host.js';
 import type { WsClient } from './events.js';
 import { testProfile } from './providers/index.js';
+import { exportBundle, importBundle } from './migrate.js';
 import { walkFiles } from './util/fs-walk.js';
 import { expandHome, toPosix } from './util/path.js';
 import { truncateEnd } from './util/text.js';
@@ -32,6 +38,16 @@ function bad(reply: FastifyReply, message: string, code = 400): FastifyReply {
 
 function str(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function isExternalSource(value: string): value is ExternalSource {
+  return value === 'claude-code' || value === 'codex';
+}
+
+/** 迁移错误默认按 400 返回，避免把口令错误当服务器故障。 */
+function statusOf(err: unknown): number {
+  const status = (err as { statusCode?: number }).statusCode;
+  return typeof status === 'number' && status >= 400 && status < 500 ? status : 400;
 }
 
 function parseProfileInput(body: unknown): ProfileInput {
@@ -52,7 +68,29 @@ function parseProfileInput(body: unknown): ProfileInput {
     apiKey: typeof raw.apiKey === 'string' ? raw.apiKey : undefined,
     models,
     defaultModel,
+    groups: parseGroupInputs(raw.groups),
   };
+}
+
+/** 分组入参：未传 groups 表示不修改；传入即整体替换。 */
+function parseGroupInputs(value: unknown): ProfileGroupInput[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+    .map((item) => {
+      const models = Array.isArray(item.models)
+        ? [...new Set(item.models.map((m) => str(m)).filter(Boolean))]
+        : [];
+      return {
+        ...(str(item.id) ? { id: str(item.id) } : {}),
+        name: str(item.name),
+        ...(typeof item.apiKey === 'string' && item.apiKey ? { apiKey: item.apiKey } : {}),
+        ...(str(item.baseUrl) ? { baseUrl: str(item.baseUrl) } : {}),
+        models,
+        defaultModel: str(item.defaultModel) || models[0] || '',
+      };
+    })
+    .filter((group) => !!group.name);
 }
 
 /** @文件补全的模糊匹配打分；不匹配返回 null。 */
@@ -153,8 +191,13 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
 
   app.post('/api/profiles/:id/test', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const profile = host.profiles.get(id);
-    if (!profile) return bad(reply, '账号不存在', 404);
+    const body = (req.body ?? {}) as { groupId?: unknown };
+    const groupId = str(body.groupId) || undefined;
+    const base = host.profiles.get(id);
+    if (!base) return bad(reply, '账号不存在', 404);
+    if (groupId && !base.groups?.some((g) => g.id === groupId)) return bad(reply, '分组不存在');
+    // 测试分组时用分组的 key/baseUrl
+    const profile = host.profileFor(id, groupId)!;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
     try {
@@ -182,6 +225,7 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
       baseUrl: str(raw.baseUrl) || undefined,
       apiKey: str(raw.apiKey) || undefined,
       profileId,
+      groupId: str(raw.groupId) || undefined,
     });
   });
 
@@ -230,6 +274,61 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
     const rec = host.forkSession(id);
     if (!rec) return bad(reply, '会话不存在', 404);
     return host.toSummary(rec);
+  });
+
+  // ---------- 外部会话（只读，不写原软件文件） ----------
+  app.get('/api/external-sessions', async (req, reply) => {
+    const query = req.query as { source?: string };
+    const source = str(query.source);
+    if (source && !isExternalSource(source)) return bad(reply, 'source 无效');
+    return host.external.list(source ? (source as ExternalSource) : undefined);
+  });
+
+  app.get('/api/external-sessions/:source/:id', async (req, reply) => {
+    const { source, id } = req.params as { source: string; id: string };
+    if (!isExternalSource(source)) return bad(reply, 'source 无效');
+    const session = host.external.preview(source, id);
+    if (!session) return bad(reply, '外部会话不存在', 404);
+    return session;
+  });
+
+  app.post('/api/external-sessions/:source/:id/import', async (req, reply) => {
+    const { source, id } = req.params as { source: string; id: string };
+    if (!isExternalSource(source)) return bad(reply, 'source 无效');
+    try {
+      const rec = host.external.importSession(source, id, (req.body ?? {}) as Record<string, unknown>);
+      if (!rec) return bad(reply, '外部会话不存在', 404);
+      await host.refreshEnv(rec.id);
+      return reply.code(201).send(host.toSummary(rec));
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  // ---------- 配置迁移 ----------
+  app.post('/api/config/export', async (req, reply) => {
+    const body = (req.body ?? {}) as Partial<ConfigExportInput>;
+    try {
+      return exportBundle(host.profiles.list(), os.hostname(), {
+        passphrase: typeof body.passphrase === 'string' ? body.passphrase : '',
+        ...(body.clientSettings !== undefined ? { clientSettings: body.clientSettings } : {}),
+      });
+    } catch (err) {
+      return bad(reply, (err as Error).message, statusOf(err));
+    }
+  });
+
+  app.post('/api/config/import', async (req, reply) => {
+    const body = (req.body ?? {}) as Partial<ConfigImportInput>;
+    try {
+      return importBundle(host.profiles, {
+        passphrase: typeof body.passphrase === 'string' ? body.passphrase : '',
+        bundle: body.bundle as ConfigBundle,
+        mode: body.mode as ConfigImportInput['mode'],
+      });
+    } catch (err) {
+      return bad(reply, (err as Error).message, statusOf(err));
+    }
   });
 
   // ---------- 文件系统 ----------
