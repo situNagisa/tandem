@@ -1,0 +1,122 @@
+# Tandem 功能探索 v1（2026-11-07）
+
+> 增量口径：只写 `docs/research.md`（11-05）之后的新变化或该文未覆盖的部分；Desktop 定时任务、Remote Control、computer use、Channels、Dispatch 等已述内容不复述。
+> **部署边界（硬约束）**：Tandem 部署在公司内网，不做任何公网部署/暴露，不接第三方推送或云服务。候选功能必须能在**纯本地 / 局域网**跑通；"不依赖公网"计入契合度。调研中的云端动向仅作参照。
+> 方法：官方 changelog / release notes 直读，每产品 1–3 页。成本口径：S ≤3 天，M 1–2 周，L 3 周+（单人）。
+
+## 1. 新动向速览
+
+> 一个反向信号：竞品这轮几乎都在加深云端绑定（Copilot 托管沙箱、Cursor hosted app、Claude 网关、Delta 托管），推送也默认走 FCM/APNs。对"内网不出网"的团队，这恰是 Tandem 的空档。
+
+### Claude Code（v2.1.310 → 319，10/23–11/06）
+- **网关预算池化**：`pooled gateway budgets`、分层网关策略、网关花费汇总（v2.1.316）——企业开始按团队/网关治理多 Key 成本。
+- **后台化收口**：终端 MCP 任务可转后台；`/tasks` 增加已完成 agent 历史；拒绝动作改为"直接 deny 不弹窗"（v2.1.319）。
+- **云端例程运维化**：scheduled task 对"意外 connector"告警、任务链接与持久化修复、cloud-loop 生命周期提示；但**定时任务会话仍不会自动接 Remote Control**（issue #92296/#95802/#106325，9–11 月连续报）。
+- **推送仍是薄弱点**：v2.1.317 修"重复推送"，v2.1.318 修 iPhone 云会话状态——跨端通知可靠性反复返工。
+- **Agent teams 长期预览**：v2.1.311/317 修 team 任务列表与恢复；teammate 权限、`TeammateIdle` hook 已进主线。
+- **Claude Marketplace**（9/23）：插件/连接器/agent 一处发现安装，skills 生态从"文件"变"市场"。
+
+### OpenAI Codex（CLI 0.164–0.167 / iOS 11-02）
+- **Agent command center**：未读会话与结果进命令中心与 resume picker；`cross-provider session switching`（0.167，11-06）——官方开始做跨 provider 会话切换。
+- **后台/审批**：managed command checkpoint 需人工批准；queued prompt 等审批；Plan 模式下排队消息尊重中断。
+- **记忆 v2**：新 profile 默认启用，支持从其它 agent 导入记忆（0.165，10-27）；空闲会话自动摘要（Claude 侧同期）。
+- **移动端**：iOS 全屏 composer 管附件、follow-up 默认 steer 进行中任务、已读状态跨端同步；语音/音视频回放。
+- **Work + GPT-6.1 Terra**（10-26）：带图像理解与 computer-use，移动端 Work 可用。
+
+### Cursor（10/13–11/06）
+- **语音通话式 agent**（11-06）：IDE / web / agent workspace / iOS 实时语音，Grok Voice，可配隐私保留策略。
+- **Hosted app creation**（11-05）：云 agent 建应用、接数据库、安全检查、发布并团队共享——从"改代码"走向"交付可运行产物"。
+- **Agent SDK + 本地评测**（10-20）：agent as code、channels/tools、本地 eval、可部署到 Cursor 或自建基础设施。
+- **Cloud canvases + Environments API**（10-16）：可分享画布；环境最多 300 仓库。
+- **Origin marketplace**（10-13）：部署/CI/评审/安全/监控集成，Cursor 自建 Git 托管开始做生态。
+- **移动端 1.9–1.16**：PR 审阅、按行打开云 agent 文件、Projects 协调者/worker 双流、语音通话锁屏/灵动岛、听写字幕。
+
+### Google（Jules → Antigravity）
+- **Jules 关停**：10-29 公告，11-11 起只读、12-31 关闭，统一并入 Antigravity——又一个单点 agent 被收编（Roo、Conductor 之后）。
+- **Antigravity 自定义 agent**：可选工具/prompt/rules/skills/hooks；`/plan` 计划评审；agent 选择持久化。
+- **后台子代理**：实时状态卡、停止、直接发消息、侧栏导航；**云端 remote agents** 向 Pro/Ultra 开放。
+- **Automations**：原 Scheduled Tasks 更名，支持按需/定时/暂停/运行历史/按任务选模型。
+- **Marketplace + Customizations**（9 月）：插件、MCP 配置、UI 扩展、skill 发现；内嵌浏览器（10 月）。
+
+### GitHub Copilot（9–10 月）
+- **Connected cloud experience**（10-28）：同一会话在 github.com / GitHub Mobile / CLI / Copilot app / VS Code / Slack / Teams 间接续，上下文同步。
+- **云端沙箱**：默认 GitHub 托管隔离沙箱、快照恢复、取消 1 小时总时长限制；11 月起单独计费。
+- **Agent Host（VS Code）**：会话与窗口解耦，关窗继续跑。
+- **移动端**：语音指令、图片/文件、远程 steer 已注册的本地会话。
+- **治理**：限制 agent 的文件/网络/凭据访问；Actions 与云沙箱合并为美元额度池。
+- **自动化**：VS Code 9 月版加入 recurring automations、agent merge。
+
+### Happy / Omnara
+- **Happy Harness**：一个桌面 app 编排 Claude/Codex/Grok/Gemini（经 Antigravity）/任意 ACP agent；子代理可跨模型、agent 间互发消息、**scheduled messages**、持久 bot。
+- **Durable sessions**："Agents That Never Die"——关窗/重启后带完整上下文继续。
+- **Auto mode**：读写自由、其余交给 OS 沙箱，跨界动作自动审而不是弹窗。
+- **团队**：自建 team server，成员各用各的账号共享项目/会话；**Tailcat** 中继只传密文、不开端口。
+- **语音**：手机端 ElevenLabs，20 分钟/30 天免费，自带 key 不限。
+- **Omnara**：手机 app 仍停在 2026-04 版本（监控/审 diff/批准），近期无新动作——"遥控器"路线增长乏力。
+
+### Warp
+- **Oz 云 agent 团队化**（9/9）：runs/runners/agents/environments/API keys/model catalog 全部按 team 作用域。
+- **中断可续**：SIGTERM/SIGINT 保存 handoff snapshot；10/15 起周期性 workspace checkpoint；恢复保留历史和排队 follow-up。
+- **无人值守语义**：需要输入即"blocked"停止，而不是干等（10/7）；完成判定等待后台工作/子代理/定时唤醒（10/15）。
+- **成本可见**：美元与 credits 双显示、按类别拆分、spend-limit 告警、Agent CLI `/usage`。
+- **PR**：只有 Code Review 修补，无新 PR 工作流——终端出身的产品在 PR 环上仍弱。
+
+### Zed / Delta
+- **Delta 公开 beta**（9/16）：面向"和 agent 一起写代码、评审产物"的多人环境，口号直接是 **Replace PRs**。
+- **Claude Code 多人化**（10/27）：`/delta share` 出链接，队友 `/delta join` 用自己的 Claude 会话加入；**共享对话 + 未提交 worktree**，文件由 Delta CLI 跨机同步。
+- **并行 agent / 终端线程**：按 thread 混用不同 agent；1.25 二进制缩小约 30%；1.27 降 agent panel 内存。
+- 启示：协作粒度正从"分支/PR"下移到"**会话 + 未提交工作区**"，与 Tandem 的 Host 事实源同构。
+
+## 2. 候选功能清单
+
+> 契合度：H=Host 多机，M=多端，R=E2E 中继，P=协议/现有数据模型。★=强契合。"不依赖公网"=纯内网可交付；"受限"=部分端/场景要公网或第三方服务，需裁剪。
+
+| # | 功能 | 用户场景（Tandem 用户视角） | 竞品参考 | 契合度 | 成本 | 不依赖公网 | 优先级 |
+|---|---|---|---|---|---|---|---|
+| 1 | 后台任务面板 | 手机上看到内网三台机器上正在跑的命令/子代理，点进去接管或停掉 | Claude `/tasks`、Codex command center、Warp Oz | H★ M★ R | M | ✓ | P0 |
+| 2 | 定时任务（Host cron） | "每天 9 点让值班机汇总昨天合并的 PR"，结果推到手机 | Claude scheduled tasks、Antigravity Automations、Warp Automations、Copilot recurring | H★ M★ | M | ✓ | P0 |
+| 3 | 手机审批台 + 推送 | 开会时收到"要跑 rm -rf"的提醒，锁屏直接允许/拒绝并附一句 | Claude Remote Control、Copilot Mobile、Happy push | M★ R★ | S/M | Android/桌面 ✓，iOS 受限 | P0 |
+| 4 | 同组多 Key 自动切换 + 预算告警 | 官方 key 限流时自动落到同账号低价组，日预算超 80% 提醒 | Claude pooled gateway budgets、Warp spend limits、Copilot 美元池 | P★ H | S/M | ✓ | P0 |
+| 5 | PR / CI 集成 | 会话结束一键开 PR，CI 红了自动修一轮，绿了手机点 merge | Claude GitHub Actions、Copilot coding agent、Cursor Origin | H M★ | M | 需出站 GitHub | P1 |
+| 6 | Skills 兼容 + 本地市场 | 直接挂 `~/.claude/skills` 与团队 skill 仓库，内网源按需装 | Claude Marketplace、Antigravity Marketplace、Happy Skills | P★ M | M | ✓ | P1 |
+| 7 | 项目记忆 | 每个项目一份可编辑记忆，压缩后不丢，换机器跟着走 | Codex memory v2、Claude auto memory、Antigravity rules | P★ H | S/M | ✓ | P1 |
+| 8 | 会话只读分享链接（内网） | 把排障会话发给同内网同事看，不暴露 key 和绝对路径，可随时撤销 | Delta share、Claude 分享、Conductor workspace 链接 | R M | M | 仅内网可达链接 | P1 |
+| 9 | 多人协作（同会话） | 两人同时看一个会话，一个写一个审，审批可转交 | Happy teams、Delta multiplayer、Conductor | H★ M★ | L | ✓（内网 team server） | P2 |
+| 10 | 语音输入 | 走路时按住说话给 agent 下指令，审批时语音留意见 | Happy ElevenLabs、Cursor voice call、Copilot 移动语音 | M★ R | S/M | ✓（本地 STT） | P1 |
+| 11 | 浏览器 / 电脑操作 | 让 Host 打开本地页面复现 bug，截图流回手机并分级授权点击 | Claude computer use、Antigravity 内嵌浏览器、Codex Terra | H★ M | L | ✓ | P2 |
+| 12 | 成本报表与预算 | 按机器/账号/分组/模型看花费，设月预算，异常自动推送 | Warp cost popover、Claude gateway totals、Copilot 额度池 | P★ H M | S/M | ✓ | P1 |
+| 13 | 通知收件箱 | 一个列表汇总所有 Host 上"需要我"的会话，已读跨端同步 | Codex command center、Cursor Inbox | M★ R | S | ✓ | P1 |
+| 14 | 跨模型子代理 | 主会话用 Claude 规划，派子代理用便宜模型跑测试/搜代码 | Happy 跨模型子代理、Claude agent teams | P★ | M | ✓ | P1 |
+| 15 | 常驻会话 / 断点续跑 | Host 重启或断网后，运行中的任务接着跑，不重来 | Happy durable、Warp handoff snapshot、Codex snapshots | H★ M | M/L | ✓ | P1 |
+| 16 | 团队权限 / 审批转交 | 给内网同事只读或可审批权限，关键操作留审计 | Omnara RBAC、Copilot org policies、Claude enterprise roles | H M | L | ✓ | P2 |
+| 17 | 轨迹回放 / 评测集 | 把线上会话导出成回归用例，换模型/提示词前后对比 | Cursor Agent SDK evals、Claude `/debug`、Delta 回放 | P★ | M | ✓ | P2 |
+| 18 | 锁屏实时活动 | iPhone 灵动岛/锁屏常驻显示正在跑的会话和审批按钮 | Cursor 语音锁屏、Codex iOS | M★ | M | iOS 受限（APNs） | P2 |
+| 19 | 手机向任意 Host 派单 | 在内网另一栋楼时把任务丢给工位那台机器，不用先切 Host 再开会话 | Claude Dispatch、Copilot Mission Control | H★ M★ R | S | ✓（内网/VPN） | P1 |
+| 20 | 自建 Key 网关（可选） | 团队所有 Key 走 Tandem 网关统一限流、记账、脱敏日志 | Claude gateway policies、LiteLLM | H P | L | ✓ | P2 |
+
+### 推送方案取舍（对应 #3/#13，按"纯内网"重估）
+
+- **先纠正前提**：Web Push 依赖浏览器厂商推送服务（Chrome→FCM、Safari→APNs），必须对公网可达；**FCM/APNs 本身即第三方云**。在硬约束下两者都只能标"受限/排除"，不能做默认通道。
+- **主方案：本地长连接 + 本地通知**。Android 用前台服务（常驻通知）保持 WS/relay 连接，收到 `permission_request` 即发 local notification，锁屏可操作；桌面走 Electron 托盘 + 原生通知；PWA 仅前台可靠。
+- **可选局域网推送总线：自托管 ntfy（内网）**。Android 客户端直连内网 ntfy 可用、零公网；但 iOS 官方 app 的推送要经 ntfy.sh 上游，**不采用**。可作为"内网多设备广播"的轻量补充。
+- **iOS 诚实预期**：无 APNs 就不能后台实时唤醒；只能前台保活 + 重连补拉 + 角标。审批台体验在 Android/桌面完整，iOS 为"打开即同步"。
+- **建议**：协议加 `notify` 抽象（local / lan-ntfy / webpush 预留），默认 local-only；审批回执仍走现有 WS/relay，不依赖推送通道。
+
+## 3. 推荐的下一批 3 个
+
+1. **#3 手机审批台 + 推送（含 #13 收件箱）**——Tandem 已有 `permission_request` 多端广播与 relay，只缺送达层；采用"本地长连接 + 本地通知"纯内网闭环，不碰 FCM/APNs，成本 S/M，能立刻把现有功能变成日常可用（iOS 后台实时性受限，需在文案上说明）。
+2. **#2 定时任务 + #1 后台任务面板**——Host 常驻 + 多机是竞品结构性缺的（Claude 定时任务绑云、Copilot 绑 GitHub、Warp 绑 Oz 云）；"关掉电脑也让内网值班机干活"的叙事只有 Tandem 讲得圆，且全本地，成本 M。
+3. **#4 同组多 Key 自动切换 + 预算告警**——协议里 `Profile.groups` 与 `UsageStatsRow` 已就位，是低成本高感知的差异化；Claude/Copilot 受限于单一账号体系，Conductor/Happy 有 BYO 但无治理；不依赖任何外部服务。
+
+## 4. 来源
+
+- Claude Code releases：https://github.com/anthropics/claude-code/releases ；scheduled/remote 问题 #92296 https://github.com/anthropics/claude-code/issues/92296 ；#106325 https://github.com/anthropics/claude-code/issues/106325 ；Marketplace https://claude.com/marketplace
+- Codex changelog：https://developers.openai.com/codex/changelog
+- Cursor changelog：https://cursor.com/changelog ；mobile release notes https://cursor.com/docs/release-notes/mobile ；Agent SDK https://cursor.com/changelog
+- Antigravity changelog：https://antigravity.google/docs/changelog ；Jules turndown https://jules.google/docs/changelog/2026-10-29
+- Copilot connected cloud：https://github.blog/changelog/2026-10-28-work-from-anywhere-with-a-new-connected-copilot-cloud-experience/ ；VS Code Universe https://github.blog/changelog/2026-10-28-github-copilot-in-vs-code-universe-releases/
+- Happy：https://happy.engineering/welcome/ ；https://happy.engineering/docs/ ；team/multiplayer https://happy.engineering/docs/
+- Omnara：https://www.omnara.co/ ；App Store https://apps.apple.com/us/app/omnara-claude-codex-mobile/id6748426727
+- Warp changelog：https://docs.warp.dev/changelog/2026
+- Delta：https://delta.dev/blog/claude-code-multiplayer ；Zed releases https://zed.dev/releases/stable
+- 推送（受限参考）：Web Push 依赖浏览器推送服务 https://web.dev/articles/push-notifications-overview ；ntfy 自托管 https://docs.ntfy.sh/install/ ；Android 前台服务 https://developer.android.com/develop/background-work/services/fgs
