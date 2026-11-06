@@ -11,6 +11,7 @@ export interface StreamRequest {
   /** provider 把内容块写入这个数组（引用共享，便于出错/中断时保留部分内容）。 */
   blocks: ContentBlock[];
   signal: AbortSignal;
+  idleTimeoutSec: number;
   maxTokens: number;
   onBlockStart: (index: number, block: ContentBlock) => void;
   onText: (index: number, text: string) => void;

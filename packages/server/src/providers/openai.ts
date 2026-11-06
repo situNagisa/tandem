@@ -3,6 +3,7 @@ import type { ContentBlock, Message, Usage } from '@tandem/protocol';
 import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import { isAbortError, truncateEnd } from '../util/text.js';
 import { readSse } from './sse.js';
+import { createIdleTimeout, idleTimeoutError } from './idle-timeout.js';
 import type { StreamRequest, StreamResult } from './types.js';
 
 type AnyRecord = Record<string, any>;
@@ -76,6 +77,8 @@ function baseUrlOf(req: StreamRequest): string {
 
 export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
   const url = joinEndpoint(baseUrlOf(req), '/chat/completions');
+  const idle = createIdleTimeout(req.signal, req.idleTimeoutSec);
+
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     accept: 'text/event-stream',
@@ -111,7 +114,7 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
-      signal: req.signal,
+      signal: idle.signal,
     });
     // 部分兼容服务不支持 stream_options，去掉后重试
     if (!res.ok) {
@@ -123,7 +126,7 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
           method: 'POST',
           headers,
           body: JSON.stringify(retry),
-          signal: req.signal,
+          signal: idle.signal,
         });
       } else {
         throw new Error(`API ${res.status}: ${truncateEnd(text || res.statusText, 800)}`);
@@ -178,7 +181,7 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
 
   try {
     const res = await send(body);
-    for await (const ev of readSse(res)) {
+    for await (const ev of readSse(res, idle.reset)) {
       if (ev.data === '[DONE]') break;
       let json: AnyRecord;
       try {
@@ -246,11 +249,13 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
       }
     }
   } catch (err) {
+    if (idle.timedOut) throw idleTimeoutError(req.idleTimeoutSec);
     if (!isAbortError(err) && !req.signal.aborted) {
       finishToolInputs();
       throw err;
     }
   } finally {
+    idle.clear();
     finishToolInputs();
   }
 

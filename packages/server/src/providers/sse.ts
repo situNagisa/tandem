@@ -4,7 +4,7 @@ export interface SseEvent {
   data: string;
 }
 
-export async function* readSse(response: Response): AsyncGenerator<SseEvent> {
+export async function* readSse(response: Response, onData?: () => void): AsyncGenerator<SseEvent> {
   if (!response.body) throw new Error('响应没有 body，无法读取流');
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -13,6 +13,7 @@ export async function* readSse(response: Response): AsyncGenerator<SseEvent> {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+      onData?.();
       buffer += decoder.decode(value, { stream: true });
       let idx: number;
       while ((idx = buffer.search(/\r?\n\r?\n/)) >= 0) {

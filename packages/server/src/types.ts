@@ -39,6 +39,7 @@ export interface StoredProfile {
 export interface HostConfig {
   hostId: string;
   token: string;
+  idleTimeoutSec?: number;
 }
 
 /** 会话记录：协议 Session + 仅服务端使用的字段。 */

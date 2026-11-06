@@ -54,8 +54,16 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
   const config: HostConfig = {
     hostId: typeof existing?.hostId === 'string' && existing.hostId ? existing.hostId : randomUUID(),
     token: typeof existing?.token === 'string' && existing.token ? existing.token : randomBytes(24).toString('hex'),
+    idleTimeoutSec:
+      typeof existing?.idleTimeoutSec === 'number' && Number.isFinite(existing.idleTimeoutSec) && existing.idleTimeoutSec > 0
+        ? existing.idleTimeoutSec
+        : 180,
   };
-  if (existing?.hostId !== config.hostId || existing?.token !== config.token) {
+  if (
+    existing?.hostId !== config.hostId ||
+    existing?.token !== config.token ||
+    existing?.idleTimeoutSec !== config.idleTimeoutSec
+  ) {
     writePrivateFile(file, JSON.stringify(config, null, 2));
   }
   return config;

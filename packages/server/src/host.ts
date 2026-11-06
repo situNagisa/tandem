@@ -432,8 +432,8 @@ export class Host {
     });
     this.store.markDirty(rec.id, true);
     this.broadcastSummary(rec);
-    if (needsTitle && isFirstUserMessage) void this.autoTitle(rec, text, rec.title);
     await runTurn(this, rec);
+    if (needsTitle && isFirstUserMessage) void this.autoTitle(rec, text, rec.title);
   }
 
   /**
@@ -446,7 +446,7 @@ export class Host {
     if (!profile?.apiKey || !model) return;
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20_000);
+    const timer = setTimeout(() => controller.abort(), 45_000);
     try {
       const raw = await completeText({
         profile,
@@ -455,7 +455,7 @@ export class Host {
         prompt:
           '请为下面这段用户的首条消息生成一个简短的中文标题，不超过 20 个字，概括用户真正想做的事：\n\n' +
           firstText.slice(0, 2000),
-        maxTokens: 64,
+        maxTokens: 200,
         signal: controller.signal,
       });
       const title = cleanTitle(raw);

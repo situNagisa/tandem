@@ -3,6 +3,7 @@ import type { ContentBlock, Message, Usage } from '@tandem/protocol';
 import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import { isAbortError, truncateEnd } from '../util/text.js';
 import { readSse } from './sse.js';
+import { createIdleTimeout, idleTimeoutError } from './idle-timeout.js';
 import type { StreamRequest, StreamResult } from './types.js';
 
 type AnyBlock = Record<string, any>;
@@ -92,6 +93,8 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
     body.thinking = { type: 'enabled', budget_tokens: 1024 };
   }
 
+  const idle = createIdleTimeout(req.signal, req.idleTimeoutSec);
+
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     accept: 'text/event-stream',
@@ -107,7 +110,7 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
-      signal: req.signal,
+      signal: idle.signal,
     });
     // 少数模型/代理不支持 thinking，退化为普通请求
     if (!res.ok && res.status === 400 && body.thinking) {
@@ -119,7 +122,7 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
           method: 'POST',
           headers,
           body: JSON.stringify(retryBody),
-          signal: req.signal,
+          signal: idle.signal,
         });
       } else {
         throw new Error(`Anthropic API ${res.status}: ${truncateEnd(text, 800)}`);
@@ -150,7 +153,7 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
 
   try {
     const res = await send(body);
-    for await (const ev of readSse(res)) {
+    for await (const ev of readSse(res, idle.reset)) {
       if (ev.data === '[DONE]') break;
       let json: AnyBlock;
       try {
@@ -232,11 +235,13 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
       }
     }
   } catch (err) {
+    if (idle.timedOut) throw idleTimeoutError(req.idleTimeoutSec);
     if (!isAbortError(err) && !req.signal.aborted) {
       finishToolInputs();
       throw err;
     }
   } finally {
+    idle.clear();
     finishToolInputs();
   }
 

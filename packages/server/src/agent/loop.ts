@@ -64,6 +64,7 @@ export async function runTurn(host: Host, rec: SessionRecord): Promise<void> {
           tools: TOOLS,
           blocks: assistant.content,
           signal: abort.signal,
+          idleTimeoutSec: host.config.idleTimeoutSec ?? 180,
           maxTokens: MAX_TOKENS,
           onBlockStart: (index, block) => {
             host.hub.broadcastSession(rec.id, {
