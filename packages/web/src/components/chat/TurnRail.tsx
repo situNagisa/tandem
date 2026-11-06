@@ -112,12 +112,12 @@ export function TurnRail({
   useLayoutEffect(() => {
     const parent = navRef.current?.parentElement
     if (!parent) return
-    const measure = () => setAvailable(Math.max(80, parent.clientHeight - 24))
+    const measure = () => setAvailable(Math.max(80, parent.clientHeight - 48))
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(parent)
     return () => ro.disconnect()
-  }, [])
+  }, [total])
 
   // 当前轮：取视口顶部最早出现的那一轮；贴底时取最后一轮。
   useEffect(() => {
