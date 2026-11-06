@@ -8,7 +8,7 @@ import { formatTokens } from '../../lib/format'
 import { Popover } from '../ui/Popover'
 import { Tip } from '../ui/Tooltip'
 
-const PART_META: Record<
+export const CONTEXT_PART_META: Record<
   ContextBreakdown['parts'][number]['kind'],
   { label: string; color: string }
 > = {
@@ -27,7 +27,8 @@ function colorFor(rate: number): string {
   return 'var(--t-text-secondary)'
 }
 
-export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean }) {
+/** 上下文占用的共享数据源：输入框上下文环与右侧栏上下文卡片共用。 */
+export function useContextBreakdown() {
   const hostId = useAppStore((s) => s.active?.hostId ?? null)
   const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
   const live = useAppStore((s) => s.active?.summary?.context)
@@ -54,11 +55,6 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
     }
   }, [hostId, sessionId])
 
-  const send = useAppStore((s) => s.send)
-  const running = useAppStore((s) => s.active?.running ?? false)
-
-  if (!sessionId) return null
-
   const context = live ?? fetched
   const usageTotal = (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)
   // 新会话只有系统提示/工具的粗略估算，没有真实请求数据：显示静态空环，避免像加载中
@@ -66,7 +62,26 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
   const window = Math.max(1, context?.contextWindow || 1)
   const used = noData ? 0 : Math.max(0, context?.usedTokens || 0)
   const rate = noData ? 0 : Math.min(1, used / window)
-  const pct = Math.round(rate * 100)
+  return {
+    sessionId,
+    context,
+    usage,
+    noData,
+    window,
+    used,
+    rate,
+    pct: Math.round(rate * 100),
+  }
+}
+
+export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean }) {
+  const { sessionId, context, usage, noData, window, used, rate, pct } =
+    useContextBreakdown()
+  const send = useAppStore((s) => s.send)
+  const running = useAppStore((s) => s.active?.running ?? false)
+
+  if (!sessionId) return null
+
   const stroke = colorFor(rate)
   const circumference = 2 * Math.PI * 6.5
 
@@ -143,7 +158,7 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
               {rows.map((part) => {
                 const width = (part.tokens / window) * 100
                 if (width <= 0) return null
-                const meta = PART_META[part.kind]
+                const meta = CONTEXT_PART_META[part.kind]
                 return (
                   <div
                     key={part.kind}
@@ -160,7 +175,7 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
             </div>
             <div className="mt-2.5 space-y-1">
               {rows.map((part) => {
-                const meta = PART_META[part.kind]
+                const meta = CONTEXT_PART_META[part.kind]
                 const share = window > 0 ? (part.tokens / window) * 100 : 0
                 return (
                   <div key={part.kind} className="flex items-center gap-2 text-[11px] leading-4">

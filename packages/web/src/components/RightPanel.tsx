@@ -10,6 +10,7 @@ import {
   Copy,
   FileDiff,
   FolderGit2,
+  Gauge,
   GitBranch,
   GitFork,
   GripVertical,
@@ -42,6 +43,7 @@ import {
 import { PERMISSION_MODE_LABELS } from '../lib/types'
 import { ConnectionDot, SessionStatusDot } from './StatusDot'
 import { Markdown } from './Markdown'
+import { CONTEXT_PART_META, useContextBreakdown } from './chat/ContextMeter'
 import { Modal } from './ui/Modal'
 import { Popover } from './ui/Popover'
 import { MenuItem, MenuList } from './ui/Menu'
@@ -62,13 +64,14 @@ const TODO_ICONS = {
   pending: Circle,
 } as const
 
-type GroupId = 'plan' | 'todos' | 'agents' | 'usage' | 'changes' | 'details'
+type GroupId = 'plan' | 'todos' | 'agents' | 'usage' | 'context' | 'changes' | 'details'
 
 const GROUPS: Array<{ id: GroupId; label: string; Icon: typeof ListTodo }> = [
   { id: 'plan', label: '当前计划', Icon: ScrollText },
   { id: 'todos', label: '待办', Icon: ListTodo },
   { id: 'agents', label: '代理', Icon: Bot },
   { id: 'usage', label: '用量', Icon: BarChart3 },
+  { id: 'context', label: '上下文', Icon: Gauge },
   { id: 'changes', label: '改动摘要', Icon: FileDiff },
   { id: 'details', label: '详情', Icon: Info },
 ]
@@ -284,6 +287,81 @@ function AgentsCard() {
   )
 }
 
+/** 右侧栏上下文卡片：与输入框上下文环同源，紧凑展示占用、分类与缓存命中率。 */
+function ContextCard() {
+  const { context, noData, window, used, pct } = useContextBreakdown()
+  if (noData || !context) {
+    return <p className="text-[11px] leading-4 text-muted">暂无上下文数据</p>
+  }
+  const parts = context.parts.filter((part) => part.kind !== 'free')
+  const free = Math.max(0, window - used)
+  const rows = [...parts, { kind: 'free' as const, tokens: free }]
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-mono text-[11px] tabular-nums text-text-soft">
+          {formatTokens(used)} / {formatTokens(window)}
+        </span>
+        <span className="font-mono text-[10px] tabular-nums text-muted">{pct}%</span>
+      </div>
+      <div className="mt-1.5 flex h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+        {rows.map((part) => {
+          const width = (part.tokens / window) * 100
+          if (width <= 0) return null
+          const meta = CONTEXT_PART_META[part.kind]
+          return (
+            <div
+              key={part.kind}
+              title={`${meta.label} ${formatTokens(part.tokens)}`}
+              style={{
+                width: `${width}%`,
+                backgroundColor: meta.color,
+                opacity: part.kind === 'free' ? 1 : 0.88,
+              }}
+              className={cn(part.kind === 'free' && 'bg-[var(--t-surface-2)]')}
+            />
+          )
+        })}
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
+        {rows.map((part) => {
+          const meta = CONTEXT_PART_META[part.kind]
+          return (
+            <div
+              key={part.kind}
+              className="flex min-w-0 items-center gap-1.5 text-[10px] leading-4"
+            >
+              <span
+                className="size-1.5 shrink-0 rounded-[2px] border border-border/60"
+                style={{ backgroundColor: part.kind === 'free' ? 'transparent' : meta.color }}
+              />
+              <span
+                className={cn(
+                  'min-w-0 flex-1 truncate',
+                  part.kind === 'free' ? 'text-muted' : 'text-text-soft',
+                )}
+              >
+                {meta.label}
+              </span>
+              <span className="shrink-0 font-mono tabular-nums text-text-soft">
+                {formatTokens(part.tokens)}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+      <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-border pt-1.5 text-[10px]">
+        <span className="text-muted">缓存命中率</span>
+        <span className="font-mono tabular-nums text-text-soft">
+          {context.cacheHitRate !== undefined
+            ? `${Math.round(context.cacheHitRate * 100)}%`
+            : '—'}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 export function RightPanel({ onClose }: { onClose: () => void }) {
   const hostId = useAppStore((s) => s.active?.hostId ?? null)
   const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
@@ -351,6 +429,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       todos: true,
       agents: agentCount > 0,
       usage: true,
+      context: true,
       changes: fileChanges.length > 0,
       details: true,
     }),
@@ -496,6 +575,9 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     }
     if (id === 'agents') {
       return <AgentsCard />
+    }
+    if (id === 'context') {
+      return <ContextCard />
     }
     if (id === 'todos') {
       if (todos.length === 0) return <p className="text-[11px] text-muted">暂无待办</p>
