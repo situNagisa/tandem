@@ -533,7 +533,7 @@ function ModelPanel({
     >
       {showAccounts && (
         <div ref={accountsRef} className="shrink-0 border-r border-border">
-          <MenuList aria-label="账号" className="max-h-[320px] w-[156px] overflow-y-auto">
+          <MenuList aria-label="账号" className="max-h-[320px] w-[min(156px,27vw)] overflow-y-auto">
             {profiles.map((profile) => (
               <MenuItem
                 key={profile.id}
@@ -558,7 +558,7 @@ function ModelPanel({
 
       {showGroups && (
         <div ref={groupsRef} className="shrink-0 border-r border-border">
-          <MenuList aria-label="分组" className="max-h-[320px] w-[156px] overflow-y-auto">
+          <MenuList aria-label="分组" className="max-h-[320px] w-[min(156px,27vw)] overflow-y-auto">
             {groups.map((g) => (
               <MenuItem
                 key={g.groupId ?? 'default'}
@@ -582,7 +582,7 @@ function ModelPanel({
       )}
 
       <div ref={modelsRef} className="flex min-w-0 shrink-0 flex-col">
-        <MenuList aria-label="选择模型" className="max-h-[300px] w-[200px] overflow-y-auto">
+        <MenuList aria-label="选择模型" className="max-h-[300px] w-[min(200px,38vw)] overflow-y-auto">
           {loading && profiles.length === 0 && (
             <div className="flex items-center gap-2 px-2 py-3 text-[12px] text-muted">
               <Loader2 size={13} className="animate-spin" /> 加载账号…
