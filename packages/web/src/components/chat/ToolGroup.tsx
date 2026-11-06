@@ -83,12 +83,12 @@ export const ToolGroup = memo(
             使用了 {tools.length} 个工具
           </span>
           {anyError && <span className="shrink-0 text-[11.5px] text-danger">· 有错误</span>}
-          <ChevronRight size={12} className="tool-chevron ml-auto shrink-0 text-muted" />
+          <ChevronRight size={12} className="tool-chevron shrink-0 text-muted" />
         </button>
         {mounted && (
           <div className="collapse-grid" data-open={open}>
             <div className="collapse-inner">
-              <div className="my-1 ml-1.5 border-l border-border py-0.5 pl-2">
+              <div className="my-1 ml-2 py-0.5 pl-1">
               {entries.map((entry, i) =>
                 entry.kind === 'thinking' ? (
                   <ThinkingBlock key={`k-${i}`} text={entry.text} streaming={entry.streaming} />

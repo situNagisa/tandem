@@ -543,16 +543,24 @@
   background: var(--t-bg-hover, color-mix(in srgb, var(--t-text) 5%, transparent));
 }
 .tool-group-head {
-  min-height: 30px;
-  padding: 0 2px;
-  border-radius: 0;
-  border-bottom: 1px solid var(--t-border);
+  width: auto;
+  max-width: 100%;
+  min-height: 26px;
+  padding: 0 6px 0 4px;
+  border-radius: 6px;
   font-size: 11px;
   letter-spacing: 0.03em;
 }
 .tool-group-head:hover {
-  background: transparent;
+  background: var(--t-bg-hover, color-mix(in srgb, var(--t-text) 5%, transparent));
   color: var(--t-text-soft);
+}
+.tool-group-head .tool-chevron {
+  opacity: 0.6;
+}
+.tool-group-head:hover .tool-chevron,
+.tool-group-head[aria-expanded="true"] .tool-chevron {
+  opacity: 0.9;
 }
 .tool-row .tool-chevron {
   opacity: 0;
