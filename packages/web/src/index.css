@@ -240,6 +240,15 @@ html.dark {
   }
 }
 
+@keyframes tandem-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 @keyframes tandem-slide-up {
   from {
     opacity: 0;
@@ -251,6 +260,50 @@ html.dark {
   }
 }
 
+@keyframes tandem-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes tandem-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes tandem-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tandem-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 @keyframes tandem-pop {
   from {
     opacity: 0;
@@ -259,6 +312,17 @@ html.dark {
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@keyframes tandem-pop-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97);
   }
 }
 
@@ -316,12 +380,61 @@ html.dark {
   animation: tandem-fade-in 160ms var(--t-ease-out) both;
 }
 
+.anim-fade-out {
+  animation: tandem-fade-out 160ms var(--t-ease-out) both;
+}
+
+.anim-scale-in {
+  animation: tandem-pop 160ms var(--t-ease-out) both;
+}
+
+.anim-scale-out {
+  animation: tandem-pop-out 160ms var(--t-ease-out) both;
+}
+
 .anim-pop {
   animation: tandem-pop 160ms var(--t-ease-out) both;
 }
 
 .anim-slide-up {
-  animation: tandem-slide-up 160ms var(--t-ease-out) both;
+  animation: tandem-slide-up 220ms var(--t-ease-out) both;
+}
+
+.anim-wizard-forward {
+  animation: tandem-slide-in-right 220ms var(--t-ease-out) both;
+}
+
+.anim-wizard-back {
+  animation: tandem-slide-in-left 220ms var(--t-ease-out) both;
+}
+
+.anim-row-in {
+  animation: tandem-row-in 160ms var(--t-ease-out) both;
+}
+
+.anim-toast-in {
+  animation: tandem-toast-in 220ms var(--t-ease-out) both;
+}
+
+.expand-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 220ms var(--t-ease-out);
+}
+
+.expand-grid[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+
+.expand-grid > .expand-inner {
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 160ms var(--t-ease-out);
+}
+
+.expand-grid[data-open="true"] > .expand-inner {
+  opacity: 1;
 }
 
 .anim-dialog {
@@ -379,7 +492,14 @@ html.dark {
   .anim-slide-up,
   .anim-dialog,
   .anim-drawer-left,
-  .anim-drawer-right {
+  .anim-drawer-right,
+  .anim-scale-in,
+  .anim-fade-out,
+  .anim-scale-out,
+  .anim-wizard-forward,
+  .anim-wizard-back,
+  .anim-row-in,
+  .anim-toast-in {
     animation-name: tandem-fade-in !important;
     transform: none !important;
   }

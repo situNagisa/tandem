@@ -54,6 +54,17 @@
   }
 }
 
+@keyframes chat-pop-out {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97) translateY(2px);
+  }
+}
+
 @keyframes chat-permission-in {
   from {
     opacity: 0;
@@ -473,6 +484,11 @@
   background: var(--t-surface);
   box-shadow: var(--t-shadow-md, 0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04));
   animation: chat-pop-in 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+
+.popover-panel[data-closing="true"] {
+  pointer-events: none;
+  animation: chat-pop-out 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
 }
 .popover-panel[data-side="bottom"] {
   transform-origin: top left;

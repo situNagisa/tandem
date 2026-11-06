@@ -26,9 +26,26 @@ export function Popover({
   onOpenChange,
 }: PopoverProps) {
   const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const [closing, setClosing] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const close = useCallback(() => setOpen(false), [])
   useClickOutside(ref, close, open)
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true)
+      setClosing(false)
+      return
+    }
+    if (!mounted) return
+    setClosing(true)
+    const timer = window.setTimeout(() => {
+      setMounted(false)
+      setClosing(false)
+    }, 160)
+    return () => window.clearTimeout(timer)
+  }, [open, mounted])
 
   useEffect(() => {
     onOpenChange?.(open)
@@ -49,11 +66,14 @@ export function Popover({
   return (
     <div ref={ref} className={cn('relative', className)}>
       {trigger({ open, toggle: () => setOpen((v) => !v), close })}
-      {open && (
+      {mounted && (
         <div
           role="menu"
           data-side={side}
           data-align={align}
+          data-closing={closing || undefined}
+          aria-hidden={closing || undefined}
+          inert={closing}
           className={cn(
             'popover-panel absolute z-50',
             padded && 'p-1.5',

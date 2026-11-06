@@ -26,7 +26,7 @@ export function Toasts() {
           <div
             key={t.id}
             role="status"
-            className="anim-pop pointer-events-auto flex w-full max-w-md origin-top-right items-start gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-[12.5px] leading-5 text-text shadow-[var(--t-shadow-md)]"
+            className="anim-toast-in pointer-events-auto flex w-full max-w-md origin-top-right items-start gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-[12.5px] leading-5 text-text shadow-[var(--t-shadow-md)]"
           >
             <Icon size={15} className={cn('mt-0.5 shrink-0', ICON_COLOR[t.kind])} />
             <span className="min-w-0 flex-1 break-words">{t.text}</span>

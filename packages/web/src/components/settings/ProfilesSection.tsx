@@ -832,6 +832,7 @@ export function ProfilesSection() {
 
           <Steps step={step} />
 
+          <div key={step} className="anim-wizard-forward">
           {step === 1 && (
             <div>
               <p className="mb-2.5 text-[11.5px] text-muted">选择服务商，预设会自动填好接口地址和推荐模型。</p>
@@ -1114,9 +1115,9 @@ export function ProfilesSection() {
               )}
 
               {fetching ? (
-                <div className="space-y-1.5">
+                <div className="space-y-1.5" role="status" aria-label="正在获取模型列表">
                   {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="flex items-center gap-2.5 px-2 py-1.5">
+                    <div key={i} className="flex items-center gap-2.5 px-2 py-2">
                       <div className="skeleton size-4 rounded" />
                       <div className="skeleton h-3 flex-1" style={{ maxWidth: `${70 - i * 6}%` }} />
                     </div>
@@ -1322,6 +1323,7 @@ export function ProfilesSection() {
               </div>
             </div>
           )}
+          </div>
         </div>
       ) : (
         <div>

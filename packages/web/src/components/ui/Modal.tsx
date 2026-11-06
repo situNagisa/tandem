@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { cn } from '../../lib/cn'
@@ -27,6 +27,23 @@ export function Modal({
   align = 'center',
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
+  const [mounted, setMounted] = useState(open)
+  const [closing, setClosing] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true)
+      setClosing(false)
+      return
+    }
+    if (!mounted) return
+    setClosing(true)
+    const timer = window.setTimeout(() => {
+      setMounted(false)
+      setClosing(false)
+    }, 160)
+    return () => window.clearTimeout(timer)
+  }, [open, mounted])
 
   useEffect(() => {
     if (!open) return
@@ -51,14 +68,16 @@ export function Modal({
     return () => window.clearTimeout(t)
   }, [open])
 
-  if (!open) return null
+  if (!mounted) return null
 
   return createPortal(
     <div
       className={cn(
-        'anim-fade-in fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/25 p-3 backdrop-blur-[2px] dark:bg-black/50',
+        'fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/25 p-3 backdrop-blur-[2px] dark:bg-black/50',
+        closing ? 'anim-fade-out pointer-events-none' : 'anim-fade-in',
         align === 'center' ? 'items-center sm:p-6' : 'items-start pt-[8vh] sm:pt-[12vh]',
       )}
+      aria-hidden={closing || undefined}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
@@ -69,7 +88,8 @@ export function Modal({
         aria-modal="true"
         aria-label={typeof title === 'string' ? title : undefined}
         className={cn(
-          'anim-dialog my-auto flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-2xl border border-border bg-surface text-text shadow-[var(--t-shadow-lg)]',
+          'my-auto flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-2xl border border-border bg-surface text-text shadow-[var(--t-shadow-lg)]',
+          closing ? 'anim-scale-out' : 'anim-dialog',
           align === 'top' && 'my-0',
           className ?? 'max-w-lg',
         )}

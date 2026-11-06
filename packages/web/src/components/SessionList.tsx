@@ -340,7 +340,7 @@ export function SessionList({
         onContextMenu={(e) => openMenu(e, hostId, s)}
         aria-current={isActive ? 'page' : undefined}
         className={cn(
-          'group relative flex min-h-11 cursor-default items-center gap-2 rounded-lg pl-2 pr-1 text-[13px] outline-none transition-colors duration-100 md:min-h-8',
+          'anim-row-in group relative flex min-h-11 cursor-default items-center gap-2 rounded-lg pl-2 pr-1 text-[13px] outline-none transition-colors duration-100 md:min-h-8',
           isActive
             ? 'bg-[var(--t-bg-active)] text-text'
             : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
@@ -503,8 +503,13 @@ export function SessionList({
               <ConnectionDot state={host.online ? 'online' : 'offline'} className="size-1.5" />
               <span className="text-[10px] font-normal tabular-nums text-muted">{host.count}</span>
             </button>
-            {!hostCollapsed && (
-              <div className="mt-0.5 space-y-1">
+            <div
+              className="expand-grid mt-0.5"
+              data-open={!hostCollapsed}
+              aria-hidden={hostCollapsed}
+              inert={hostCollapsed}
+            >
+              <div className="expand-inner space-y-1">
                 {host.projects.map((project) => {
                   const projCollapsed = !!collapsed[project.key]
                   return (
@@ -531,16 +536,21 @@ export function SessionList({
                           {project.items.length}
                         </span>
                       </button>
-                      {!projCollapsed && (
-                        <div className="mt-0.5 space-y-0.5 pl-3">
+                      <div
+                        className="expand-grid mt-0.5"
+                        data-open={!projCollapsed}
+                        aria-hidden={projCollapsed}
+                        inert={projCollapsed}
+                      >
+                        <div className="expand-inner space-y-0.5 pl-3">
                           {project.items.map((s) => renderRow(host.id, s))}
                         </div>
-                      )}
+                      </div>
                     </div>
                   )
                 })}
               </div>
-            )}
+            </div>
           </div>
         )
       })}
