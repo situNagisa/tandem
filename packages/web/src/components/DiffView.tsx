@@ -230,7 +230,7 @@ function CommentMarker({
       </RPopover.Anchor>
       <RPopover.Portal>
         <RPopover.Content
-          side="left"
+          side="bottom"
           align="start"
           sideOffset={6}
           collisionPadding={8}

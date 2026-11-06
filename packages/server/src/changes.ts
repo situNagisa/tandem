@@ -1,7 +1,8 @@
 // 改动审阅：基于会话 cwd 所在 git 仓库的状态、diff、丢弃与提交。
 // 所有 git 调用都用 execFile 参数数组，绝不拼 shell 字符串。
 import { execFile } from 'node:child_process';
-import { readFileSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { ChangesResult, DiffEmptyReason, FileChange } from '@tandem/protocol';
@@ -211,6 +212,16 @@ export async function getChanges(cwd: string): Promise<ChangesResult> {
   return { isRepo: true, ...(branch ? { branch } : {}), files };
 }
 
+/** 未跟踪文件 diff 的空文件基准：用临时空文件而不是 /dev/null / NUL，Windows 上同样可靠。 */
+let emptyBaseline: string | undefined;
+function emptyBaselinePath(): string {
+  if (!emptyBaseline) {
+    emptyBaseline = path.join(mkdtempSync(path.join(os.tmpdir(), 'tandem-diff-')), 'empty');
+  }
+  writeFileSync(emptyBaseline, '');
+  return emptyBaseline;
+}
+
 /** 单个文件是否落在某个未跟踪目录下（git status 会把整个目录折叠成一条 `dir/`）。 */
 function inUntrackedDir(file: string, entry: StatusEntry): boolean {
   return entry.status === 'untracked' && entry.path.endsWith('/') && file.startsWith(entry.path);
@@ -251,8 +262,7 @@ export async function getFileDiff(
     status.find((item) => inUntrackedDir(rel, item));
 
   if (entry?.status === 'untracked') {
-    const devNull = process.platform === 'win32' ? 'NUL' : '/dev/null';
-    const result = await runGit(root, ['diff', '--no-index', '--', devNull, rel]);
+    const result = await runGit(root, ['diff', '--no-index', '--', emptyBaselinePath(), rel]);
     // --no-index 有差异时退出码为 1，属正常情况
     if (result.code !== 0 && !result.stdout) {
       throw new Error(result.stderr.trim() || '无法生成 diff');
