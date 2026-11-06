@@ -144,7 +144,7 @@ export interface FsEntry { name: string; path: string; isDir: boolean }
 
 // ---------- WebSocket: 客户端 -> 服务端 ----------
 export type ClientMsg =
-  | { type: 'subscribe'; sessionId: string }        // 订阅某会话的实时事件（可多端同时订阅）
+  | { type: 'subscribe'; sessionId: string; sinceSeq?: number } // 订阅；带 sinceSeq 时服务端补发 seq>sinceSeq 的事件（缓冲不够则改发 snapshot）
   | { type: 'unsubscribe'; sessionId: string }
   | { type: 'send'; sessionId: string; content: ContentBlock[] }  // 发送用户消息；运行中发送则排队
   | { type: 'interrupt'; sessionId: string }        // 中断当前轮（Esc）
@@ -166,6 +166,9 @@ export type ServerMsg =
   | { type: 'turn_end'; sessionId: string; reason: 'done' | 'interrupted' | 'error'; error?: string }
   | { type: 'error'; message: string }
   | { type: 'pong' };
+
+// 会话级事件序号：所有带 sessionId 的 ServerMsg 都附带 seq（单会话内单调递增），客户端记录最后 seq 用于断线重放。
+export type SeqServerMsg = ServerMsg & { seq?: number };
 
 export type BlockDelta =
   | { kind: 'block_start'; block: ContentBlock }     // 新 block 出现（tool_use 时 input 可能为空对象）
@@ -196,4 +199,29 @@ export type BlockDelta =
 // GET    /api/commands                -> SlashCommand[]
 export interface SlashCommand { name: string; description: string; source: 'builtin' | 'project' | 'user' }
 
-export const PROTOCOL_VERSION = 1;
+// ---------- 检查点（每轮开始前对本轮将改动的文件做快照） ----------
+export interface Checkpoint {
+  id: string;
+  sessionId: string;
+  messageId: string;       // 触发本轮的用户消息 id
+  createdAt: number;
+  files: { path: string; existed: boolean }[]; // 本轮被 Write/Edit 改动的文件（相对 cwd）
+}
+export interface RewindInput { checkpointId: string; restoreFiles: boolean; restoreConversation: boolean }
+// GET  /api/sessions/:id/checkpoints -> Checkpoint[]
+// POST /api/sessions/:id/rewind RewindInput -> Session   恢复到该用户消息之前（文件和/或对话）
+
+// ---------- 改动审阅（git 工作区） ----------
+export interface FileChange { path: string; status: 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked'; additions: number; deletions: number; oldPath?: string }
+export interface ChangesResult { isRepo: boolean; branch?: string; files: FileChange[] }
+// GET  /api/sessions/:id/changes                 -> ChangesResult
+// GET  /api/sessions/:id/changes/diff?path=      -> { path: string; diff: string }  (统一 diff 文本)
+// POST /api/sessions/:id/changes/revert {paths}  -> ChangesResult  丢弃这些文件的工作区改动
+// POST /api/sessions/:id/changes/commit {message, paths?} -> { ok: boolean; commit?: string; error?: string }
+// 行内评论：客户端把评论拼成一条用户消息发送（"关于 src/a.ts 第 12 行：..."），无需新接口。
+
+// ---------- 权限规则（Host 级，存 ~/.tandem/permissions.json；会话级 allow_always 仍保留） ----------
+export interface PermissionRule { tool: string; pattern?: string; action: 'allow' | 'ask' | 'deny' } // pattern：Bash 为命令前缀通配，如 "npm test*"；文件工具为 glob
+// GET /api/permissions -> PermissionRule[]   PUT /api/permissions PermissionRule[]   优先级 deny > ask > allow
+
+export const PROTOCOL_VERSION = 2;
