@@ -52,7 +52,7 @@ interface AppState {
   setPermissionMode: (mode: PermissionMode) => Promise<void>
   setModel: (profileId: string, model: string) => Promise<void>
   createSession: (hostId: string, input: CreateSessionInput) => Promise<SessionSummary>
-  startSession: (hostId: string, input: CreateSessionInput, text: string) => Promise<SessionSummary>
+  startSession: (hostId: string, input: CreateSessionInput, content: ContentBlock[]) => Promise<SessionSummary>
   updateSession: (
     hostId: string,
     sessionId: string,
@@ -920,7 +920,7 @@ export const useAppStore = create<AppState>((set, get) => {
       return summary
     },
 
-    startSession: async (hostId, input, text) => {
+    startSession: async (hostId, input, content) => {
       const host = getHost(hostId)
       if (!host) throw new Error('Host 不存在')
       const summary = await api.createSession(host, input)
@@ -942,7 +942,7 @@ export const useAppStore = create<AppState>((set, get) => {
       })
       navigate({ kind: 'session', hostId, sessionId: summary.id })
       ensureConnection(hostId)?.subscribe(summary.id)
-      get().send([{ type: 'text', text }])
+      get().send(content)
       return summary
     },
 

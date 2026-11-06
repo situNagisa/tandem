@@ -16,7 +16,7 @@ import {
   Sparkles,
   TriangleAlert,
 } from 'lucide-react'
-import type { FsEntry, Profile } from '@tandem/protocol'
+import type { ContentBlock, FsEntry, PermissionMode } from '@tandem/protocol'
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -25,6 +25,7 @@ import { basename, dirname } from '../lib/format'
 import { loadRecentDirs, rememberDir } from '../lib/storage'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
+import { Composer } from './Composer'
 
 const HINTS = [
   '介绍一下这个项目的结构和启动方式',
@@ -443,6 +444,7 @@ export function NewSessionView() {
   const refreshProfiles = useAppStore((s) => s.refreshProfiles)
   const startSession = useAppStore((s) => s.startSession)
   const openSettings = useUiStore((s) => s.openSettings)
+  const seedPrompt = useUiStore((s) => s.seedPrompt)
 
   const [hostId, setHostId] = useState(activeHostId ?? hosts[0]?.id ?? '')
   const host = hosts.find((h) => h.id === hostId) ?? null
@@ -454,11 +456,9 @@ export function NewSessionView() {
   const [cwd, setCwd] = useState('')
   const [profileId, setProfileId] = useState('')
   const [model, setModel] = useState('')
-  const [text, setText] = useState('')
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const composingRef = useRef(false)
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? '早上好' : hour < 18 ? '下午好' : '晚上好'
@@ -496,39 +496,37 @@ export function NewSessionView() {
     }
   }, [profiles, profileId])
 
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(200, Math.max(48, el.scrollHeight))}px`
-  }, [text])
-
   const selectedProfile = profiles.find((p) => p.id === profileId) ?? null
-  const canSend =
-    !!host &&
-    hostReady &&
-    !!cwd.trim() &&
-    !!profileId &&
-    !!model &&
-    !!text.trim() &&
-    !sending
 
-  const submit = async () => {
-    if (!canSend || !host) return
-    const body = text.trim()
-    if (!body) return
+  const submit = async (content: ContentBlock[]): Promise<boolean> => {
+    if (!host) return false
+    if (!hostReady) {
+      setError('Host 未连接，暂时无法发送')
+      return false
+    }
+    if (!cwd.trim()) {
+      setError('先选择一个工作目录')
+      return false
+    }
+    if (!profileId || !model) {
+      setError('先选择账号与模型')
+      return false
+    }
+    if (!content.length) return false
     setSending(true)
     setError(null)
     try {
       await startSession(
         host.id,
-        { cwd: cwd.trim(), profileId, model, permissionMode: 'default' },
-        body,
+        { cwd: cwd.trim(), profileId, model, permissionMode },
+        content,
       )
       rememberDir(host.id, cwd.trim())
+      return true
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建会话失败')
       setSending(false)
+      return false
     }
   }
 
@@ -555,56 +553,26 @@ export function NewSessionView() {
           </p>
         </div>
 
-        <div className="rounded-[20px] border border-border bg-surface shadow-[var(--t-shadow-md)] transition-colors duration-150 focus-within:border-border-strong">
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onCompositionStart={() => {
-              composingRef.current = true
-            }}
-            onCompositionEnd={() => {
-              composingRef.current = false
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && !composingRef.current) {
-                e.preventDefault()
-                void submit()
-              }
-            }}
-            autoFocus
-            rows={2}
-            placeholder="描述一个任务，或粘贴一段代码…"
-            aria-label="输入第一条消息"
-            className="block max-h-[200px] min-h-[70px] w-full resize-none bg-transparent px-4 pt-3.5 text-[15px] leading-6 text-text outline-none placeholder:text-muted"
-          />
-          <div className="flex items-center gap-2 px-3 pb-2.5 pt-1">
-            <span className="hidden text-[10.5px] text-muted sm:block">
-              Enter 发送 · Shift+Enter 换行
-            </span>
-            <span className="flex-1" />
-            {!hostReady && host && (
-              <span className="text-[10.5px] text-warning">
-                {runtime?.status === 'connecting' ? '连接中…' : 'Host 离线'}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => void submit()}
-              disabled={!canSend}
-              aria-label="发送"
-              title="发送"
-              className={cn(
-                'flex size-10 shrink-0 items-center justify-center rounded-full transition-all duration-150 md:size-8',
-                canSend
-                  ? 'bg-accent text-on-accent shadow-sm hover:bg-accent-hover active:scale-95'
-                  : 'bg-[var(--t-bg-active)] text-muted',
-              )}
-            >
-              {sending ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={16} />}
-            </button>
-          </div>
-        </div>
+        <Composer
+          sessionless
+          model={model}
+          profileId={profileId}
+          permissionMode={permissionMode}
+          onModelChange={chooseAccount}
+          onPermissionModeChange={setPermissionMode}
+          hostId={hostId}
+          cwd={cwd}
+          placeholder="描述一个任务，或粘贴一段代码…"
+          autoFocus
+          disabled={sending || !hostReady}
+          onSubmit={submit}
+        />
+
+        {!hostReady && host && (
+          <p className="mt-2 text-center text-[11px] text-warning">
+            {runtime?.status === 'connecting' ? '正在连接 Host…' : 'Host 当前离线，连上后即可发送。'}
+          </p>
+        )}
 
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
           <Picker
@@ -701,10 +669,7 @@ export function NewSessionView() {
             {HINTS.map((hint) => (
               <button
                 key={hint}
-                onClick={() => {
-                  setText(hint)
-                  textareaRef.current?.focus()
-                }}
+                onClick={() => seedPrompt(hint)}
                 className="max-w-full truncate rounded-md px-2 py-1 text-[11.5px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
               >
                 {hint}
