@@ -394,6 +394,9 @@ export function TurnRail({
     window.clearTimeout(openTimer.current)
     openTimer.current = 0
     if (dragRef.current || useFeedbackStore.getState().active) return
+    // 指针移到行尾图钉等面板内元素时，hit 也会收到 pointerleave，不应收起。
+    const related = event.relatedTarget as Element | null
+    if (related && navRef.current?.contains(related)) return
     sceneRef.current?.setPointer(null)
     window.clearTimeout(closeTimer.current)
     if (document.activeElement === hitRef.current && hitRef.current?.matches(':focus-visible')) return
