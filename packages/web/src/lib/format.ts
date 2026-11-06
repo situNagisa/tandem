@@ -42,6 +42,17 @@ export function formatTime(ts: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+/** 运行时长：32s / 1m 05s / 1h 02m。 */
+export function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  if (total < 60) return `${total}s`
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  if (m < 60) return `${m}m ${String(s).padStart(2, '0')}s`
+  const h = Math.floor(m / 60)
+  return `${h}h ${String(m % 60).padStart(2, '0')}m`
+}
+
 /** 兼容 Windows 与 POSIX 路径。 */
 export function basename(path: string): string {
   if (!path) return ''

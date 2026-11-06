@@ -18,6 +18,8 @@ interface PopoverProps {
   padded?: boolean
   panelClassName?: string
   className?: string
+  /** 受控打开状态；不传时组件自行管理。 */
+  open?: boolean
   onOpenChange?: (open: boolean) => void
 }
 
@@ -30,14 +32,23 @@ export function Popover({
   padded = true,
   panelClassName,
   className,
+  open: openProp,
   onOpenChange,
 }: PopoverProps) {
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = openProp ?? internalOpen
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (openProp === undefined) setInternalOpen(next)
+      onOpenChange?.(next)
+    },
+    [openProp, onOpenChange],
+  )
   const [mounted, setMounted] = useState(false)
   const [closing, setClosing] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const close = useCallback(() => setOpen(false), [])
+  const close = useCallback(() => setOpen(false), [setOpen])
   useClickOutside(ref, close, open)
 
   // 靠近视口边缘的触发器（如手机输入框里的模型按钮）会把面板顶出屏幕，
@@ -83,10 +94,6 @@ export function Popover({
   }, [open, mounted])
 
   useEffect(() => {
-    onOpenChange?.(open)
-  }, [open, onOpenChange])
-
-  useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -100,7 +107,7 @@ export function Popover({
 
   return (
     <div ref={ref} className={cn('relative', className)}>
-      {trigger({ open, toggle: () => setOpen((v) => !v), close })}
+      {trigger({ open, toggle: () => setOpen(!open), close })}
       {mounted && (
         <div
           ref={panelRef}

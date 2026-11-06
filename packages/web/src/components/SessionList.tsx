@@ -19,7 +19,8 @@ import {
 import type { SessionSummary } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
-import { basename, formatRelative } from '../lib/format'
+import { useNow } from '../lib/hooks'
+import { basename, formatElapsed, formatRelative } from '../lib/format'
 import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
 import { ConnectionDot, SessionStatusDot } from './StatusDot'
@@ -51,6 +52,10 @@ interface MenuState {
 
 function projectName(s: SessionSummary): string {
   return s.env?.repoName || basename(s.cwd) || '未命名项目'
+}
+
+function isRunningStatus(status: SessionSummary['status']): boolean {
+  return status === 'running' || status === 'waiting_permission'
 }
 
 function buildGroups(
@@ -280,6 +285,31 @@ export function SessionList({
     [hosts, runtimes, query, showArchived],
   )
 
+  const anyRunning = useMemo(
+    () =>
+      pinned.some(({ session }) => isRunningStatus(session.status)) ||
+      groups.some((g) =>
+        g.projects.some((p) => p.items.some((s) => isRunningStatus(s.status))),
+      ),
+    [pinned, groups],
+  )
+  const now = useNow(anyRunning)
+  const runSinceRef = useRef(new Map<string, number>())
+
+  const runningElapsed = (hostId: string, s: SessionSummary): string | null => {
+    const key = `${hostId}:${s.id}`
+    if (!isRunningStatus(s.status)) {
+      runSinceRef.current.delete(key)
+      return null
+    }
+    let since = runSinceRef.current.get(key)
+    if (since === undefined) {
+      since = Math.min(Date.now(), s.updatedAt || Date.now())
+      runSinceRef.current.set(key, since)
+    }
+    return formatElapsed(now - since)
+  }
+
   // 导入来源：服务端摘要不带来源字段，从外部会话扫描结果反查。
   const importedSources = useMemo(() => {
     const map = new Map<string, { mark: string; label: string }>()
@@ -348,6 +378,8 @@ export function SessionList({
     const isActive = s.id === activeSessionId
     const renamingThis = renaming === s.id
     const importedFrom = importedSources.get(`${hostId}:${s.id}`)
+    const elapsed = runningElapsed(hostId, s)
+    const runningLabel = s.status === 'waiting_permission' ? '待审批' : '运行中'
     return (
       <div
         key={`${hostId}:${s.id}`}
@@ -413,7 +445,10 @@ export function SessionList({
         )}
         {!renamingThis && (
           <>
-            <span className="session-row-tail flex min-w-0 items-center justify-end gap-1">
+            <span
+              className="session-row-tail flex min-w-0 items-center justify-end gap-1"
+              style={elapsed ? { width: 72 } : undefined}
+            >
               {importedFrom && (
                 <span
                   title={`从 ${importedFrom.label} 导入`}
@@ -422,14 +457,26 @@ export function SessionList({
                   {importedFrom.mark}
                 </span>
               )}
-              <span
-                className={cn(
-                  'hidden shrink-0 text-[10.5px] tabular-nums text-muted transition-opacity group-hover:opacity-0 md:inline',
-                  isActive && 'text-text-soft',
-                )}
-              >
-                {formatRelative(s.updatedAt)}
-              </span>
+              {elapsed ? (
+                <span
+                  className={cn(
+                    'shrink-0 text-[9.5px] tabular-nums',
+                    s.status === 'waiting_permission' ? 'text-accent' : 'text-text-soft',
+                  )}
+                  title={`${runningLabel} · ${elapsed}`}
+                >
+                  {runningLabel} · {elapsed}
+                </span>
+              ) : (
+                <span
+                  className={cn(
+                    'hidden shrink-0 text-[10.5px] tabular-nums text-muted transition-opacity group-hover:opacity-0 md:inline',
+                    isActive && 'text-text-soft',
+                  )}
+                >
+                  {formatRelative(s.updatedAt)}
+                </span>
+              )}
             </span>
             <button
               onClick={(e) => {

@@ -61,6 +61,18 @@ export function useLatestRef<T>(value: T): RefObject<T> {
   return ref
 }
 
+/** 每秒刷新的当前时间，用于运行中计时；不活跃时不启动定时器。 */
+export function useNow(active = true, interval = 1000): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active) return
+    setNow(Date.now())
+    const timer = window.setInterval(() => setNow(Date.now()), interval)
+    return () => window.clearInterval(timer)
+  }, [active, interval])
+  return now
+}
+
 /** 监听横向滚动容器，返回左右是否还有被内容遮住的部分。 */
 export function useHorizontalOverflow<T extends HTMLElement>(deps: unknown[] = []) {
   const ref = useRef<T>(null)

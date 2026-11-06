@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ContentBlock } from '@tandem/protocol'
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy, PencilLine } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { cn } from '../lib/cn'
 import { copyText } from '../lib/clipboard'
@@ -39,7 +39,10 @@ export const UserMessage = memo(function UserMessage({
   animate: boolean
 }) {
   const [copied, setCopied] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
   const timer = useRef<number | null>(null)
+  const editRef = useRef<HTMLTextAreaElement>(null)
   const blocks = message.content.filter((b) => b.type !== 'tool_result')
   const images = blocks.filter(
     (b): b is Extract<ContentBlock, { type: 'image' }> => b.type === 'image',
@@ -56,6 +59,14 @@ export const UserMessage = memo(function UserMessage({
     [],
   )
 
+  useEffect(() => {
+    if (!editing) return
+    const el = editRef.current
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  }, [editing])
+
   if (!text.trim() && images.length === 0) return null
 
   const copy = async () => {
@@ -63,6 +74,23 @@ export const UserMessage = memo(function UserMessage({
     setCopied(true)
     if (timer.current) window.clearTimeout(timer.current)
     timer.current = window.setTimeout(() => setCopied(false), 1500)
+  }
+
+  const startEdit = () => {
+    setDraft(text)
+    setEditing(true)
+  }
+
+  const submitEdit = () => {
+    const next = draft.trim()
+    if (!next) return
+    if (next === text.trim()) {
+      setEditing(false)
+      return
+    }
+    if (useAppStore.getState().send([{ type: 'text', text: next }])) {
+      setEditing(false)
+    }
   }
 
   return (
@@ -80,20 +108,67 @@ export const UserMessage = memo(function UserMessage({
             ))}
           </div>
         )}
-        {text.trim() && (
-          <div className="whitespace-pre-wrap break-words rounded-2xl bg-surface-2 px-4 py-2.5 text-[15px] leading-[1.65] text-text">
-            {text}
+        {editing ? (
+          <div className="rounded-2xl bg-surface-2 px-3 py-2.5 text-left">
+            <textarea
+              ref={editRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setEditing(false)
+                } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault()
+                  submitEdit()
+                }
+              }}
+              rows={3}
+              aria-label="编辑并重发"
+              className="min-h-16 w-full resize-y bg-transparent text-[15px] leading-[1.65] text-text outline-none"
+            />
+            <div className="mt-1 flex items-center justify-end gap-1.5">
+              <button
+                onClick={() => setEditing(false)}
+                className="rounded-md px-2 py-1 text-[11.5px] text-muted transition-colors hover:bg-bg-hover hover:text-text"
+              >
+                取消
+              </button>
+              <button
+                onClick={submitEdit}
+                disabled={!draft.trim()}
+                className="rounded-md bg-accent px-2.5 py-1 text-[11.5px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
+              >
+                编辑并重发
+              </button>
+            </div>
           </div>
+        ) : (
+          text.trim() && (
+            <div className="whitespace-pre-wrap break-words rounded-2xl bg-surface-2 px-4 py-2.5 text-[15px] leading-[1.65] text-text">
+              {text}
+            </div>
+          )
         )}
-        {text.trim() && (
-          <button
-            onClick={copy}
-            aria-label={copied ? '已复制' : '复制消息'}
-            title={copied ? '已复制' : '复制'}
-            className="msg-copy absolute -left-8 bottom-1 flex size-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft"
-          >
-            {copied ? <Check size={12.5} className="text-success" /> : <Copy size={12.5} />}
-          </button>
+        {text.trim() && !editing && (
+          <div className="msg-actions absolute -left-9 bottom-0 flex flex-col gap-0.5">
+            <button
+              onClick={copy}
+              aria-label={copied ? '已复制' : '复制消息'}
+              title={copied ? '已复制' : '复制'}
+              className="flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft md:size-7"
+            >
+              {copied ? <Check size={12.5} className="text-success" /> : <Copy size={12.5} />}
+            </button>
+            <button
+              onClick={startEdit}
+              aria-label="编辑并重发"
+              title="编辑并重发"
+              className="flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft md:size-7"
+            >
+              <PencilLine size={12.5} />
+            </button>
+          </div>
         )}
         {message.queued && (
           <div className="mt-1 text-right text-[11px] text-muted">已排队，当前回合结束后发送</div>
@@ -113,6 +188,26 @@ export const AssistantMessage = memo(function AssistantMessage({
   animate: boolean
 }) {
   const lastIndex = message.content.length - 1
+  const [copied, setCopied] = useState(false)
+  const copyTimer = useRef<number | null>(null)
+  const rawText = message.content
+    .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n\n')
+
+  useEffect(
+    () => () => {
+      if (copyTimer.current) window.clearTimeout(copyTimer.current)
+    },
+    [],
+  )
+
+  const copyAll = async () => {
+    if (!(await copyText(rawText))) return
+    setCopied(true)
+    if (copyTimer.current) window.clearTimeout(copyTimer.current)
+    copyTimer.current = window.setTimeout(() => setCopied(false), 1500)
+  }
 
   const rendered: ReactNode[] = []
   let i = 0
@@ -175,9 +270,19 @@ export const AssistantMessage = memo(function AssistantMessage({
   }
 
   return (
-    <div className={cn('flex flex-col', animate && 'chat-msg-enter')}>
+    <div className={cn('msg-group relative flex flex-col', animate && 'chat-msg-enter')}>
       {rendered}
       {message.content.length === 0 && streaming && <TypingIndicator />}
+      {rawText.trim() && (
+        <button
+          onClick={copyAll}
+          aria-label={copied ? '已复制' : '复制整条回复'}
+          title={copied ? '已复制' : '复制整条回复（Markdown）'}
+          className="msg-actions absolute -bottom-6 right-0 flex size-6 items-center justify-center rounded-md bg-bg/85 text-muted backdrop-blur-sm transition-colors hover:bg-bg-hover hover:text-text-soft"
+        >
+          {copied ? <Check size={12.5} className="text-success" /> : <Copy size={12.5} />}
+        </button>
+      )}
     </div>
   )
 })
@@ -291,24 +396,30 @@ export function MessageList({ showSkeleton }: { showSkeleton?: boolean }) {
       {segments.map((seg) => {
         if (seg.kind === 'run') {
           return (
-            <ToolGroup
-              key={seg.key}
-              entries={entriesFromMessages(seg.messages, streamingId)}
-              animate={seg.animate}
-            />
+            <div key={seg.key} className="msg-row">
+              <ToolGroup
+                entries={entriesFromMessages(seg.messages, streamingId)}
+                animate={seg.animate}
+              />
+            </div>
           )
         }
         const m = seg.message
         if (m.role === 'user') {
-          return <UserMessage key={m.id} message={m} animate={seg.animate} />
+          return (
+            <div key={m.id} className="msg-row">
+              <UserMessage message={m} animate={seg.animate} />
+            </div>
+          )
         }
         return (
-          <AssistantMessage
-            key={m.id}
-            message={m}
-            streaming={!!streamingId && m.id === streamingId}
-            animate={seg.animate}
-          />
+          <div key={m.id} className="msg-row">
+            <AssistantMessage
+              message={m}
+              streaming={!!streamingId && m.id === streamingId}
+              animate={seg.animate}
+            />
+          </div>
         )
       })}
     </div>

@@ -1,7 +1,9 @@
-import { Monitor, Moon, Smartphone, Sun } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Bell, Monitor, Moon, Smartphone, Sun } from 'lucide-react'
 import type { Theme } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { modLabel } from '../../lib/format'
+import { requestNotificationPermission } from '../../lib/attention'
 import { cn } from '../../lib/cn'
 
 const THEMES: Array<{ id: Theme; label: string; desc: string; icon: typeof Sun }> = [
@@ -46,6 +48,38 @@ function ThemePreview({ mode }: { mode: Theme }) {
 export function AppearanceSection() {
   const theme = useUiStore((s) => s.theme)
   const setTheme = useUiStore((s) => s.setTheme)
+  const notifications = useUiStore((s) => s.notifications)
+  const setNotifications = useUiStore((s) => s.setNotifications)
+  const toast = useUiStore((s) => s.toast)
+  const [permission, setPermission] = useState<NotificationPermission>(() =>
+    typeof Notification === 'undefined' ? 'denied' : Notification.permission,
+  )
+
+  useEffect(() => {
+    if (typeof Notification === 'undefined') return
+    setPermission(Notification.permission)
+  }, [notifications])
+
+  const toggleNotifications = async () => {
+    if (notifications) {
+      setNotifications(false)
+      return
+    }
+    if (typeof Notification === 'undefined') {
+      toast('当前浏览器不支持系统通知', 'info')
+      return
+    }
+    const result =
+      Notification.permission === 'default'
+        ? await requestNotificationPermission()
+        : Notification.permission
+    setPermission(result)
+    if (result !== 'granted') {
+      toast('浏览器没有授予通知权限，可在站点设置中开启', 'info')
+      return
+    }
+    setNotifications(true)
+  }
 
   return (
     <div>
@@ -84,17 +118,23 @@ export function AppearanceSection() {
 
       <div className="mt-5 rounded-xl border border-border bg-surface p-3.5">
         <div className="text-[12px] font-medium">键盘快捷键</div>
-        <dl className="mt-2 grid gap-1.5 text-[11.5px] sm:grid-cols-2">
+        <dl className="mt-2 grid gap-x-4 gap-y-1.5 text-[11.5px] sm:grid-cols-2">
           {[
+            ['发送消息', 'Enter'],
+            ['换行', 'Shift + Enter'],
+            ['中断当前回合', 'Esc'],
+            ['切换权限模式', 'Shift + Tab'],
+            ['调出上一条发送', '↑（输入框为空）'],
             ['新会话', `${modLabel} N`],
             ['搜索会话', `${modLabel} K`],
             ['收起 / 展开侧栏', `${modLabel} B`],
-            ['中断当前回合', 'Esc'],
+            ['切换上 / 下一个会话', `${modLabel} ⇧ [ / ]`],
+            ['侧栏内切换会话', '↑ / ↓'],
           ].map(([label, keys]) => (
-            <div key={label} className="flex items-center gap-2">
-              <dt className="text-muted">{label}</dt>
-              <span className="flex-1 border-b border-dashed border-border/60" />
-              <dd>
+            <div key={label} className="flex min-w-0 items-center gap-2">
+              <dt className="truncate text-muted">{label}</dt>
+              <span className="min-w-3 flex-1 border-b border-dashed border-border/60" />
+              <dd className="shrink-0">
                 <kbd className="rounded border border-border bg-[var(--t-bg)] px-1.5 py-0.5 font-mono text-[10px] text-text-soft">
                   {keys}
                 </kbd>
@@ -102,6 +142,42 @@ export function AppearanceSection() {
             </div>
           ))}
         </dl>
+      </div>
+
+      <div className="mt-3 rounded-xl border border-border bg-surface p-3.5">
+        <div className="flex items-center gap-2">
+          <Bell size={14} className="text-muted" />
+          <div className="min-w-0 flex-1">
+            <div className="text-[12.5px] font-medium">桌面通知</div>
+            <p className="mt-0.5 text-[11px] leading-5 text-muted">
+              页面不可见时，回合结束与审批请求通过系统通知提醒；标题与 favicon 也会保留角标。
+            </p>
+          </div>
+          <button
+            role="switch"
+            aria-checked={notifications}
+            aria-label="桌面通知"
+            onClick={() => void toggleNotifications()}
+            className={cn(
+              'relative h-6 w-10 shrink-0 rounded-full border transition-colors duration-[120ms]',
+              notifications
+                ? 'border-accent/50 bg-accent'
+                : 'border-border bg-[var(--t-bg-active)]',
+            )}
+          >
+            <span
+              className={cn(
+                'absolute top-0.5 size-[18px] rounded-full bg-white shadow-sm transition-[left] duration-[120ms]',
+                notifications ? 'left-[18px]' : 'left-0.5',
+              )}
+            />
+          </button>
+        </div>
+        {permission === 'denied' && (
+          <p className="mt-2 text-[10.5px] leading-5 text-warning">
+            浏览器已拒绝通知权限，可在地址栏的站点设置里重新允许。
+          </p>
+        )}
       </div>
 
       <div className="mt-3 rounded-xl border border-border bg-surface p-3.5">

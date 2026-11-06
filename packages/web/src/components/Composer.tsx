@@ -37,6 +37,12 @@ import { useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
 import { PROVIDER_KIND_LABELS } from '../lib/types'
 import { groupName, profileModelGroups } from '../lib/profileModels'
+import {
+  loadDraft,
+  loadSentHistory,
+  pushSentHistory,
+  saveDraft,
+} from '../lib/storage'
 import { Popover } from './ui/Popover'
 import '../styles/chat.css'
 
@@ -77,6 +83,14 @@ interface Attachment {
   dataBase64: string
   name: string
 }
+
+interface PastedText {
+  id: string
+  text: string
+  lines: number
+}
+
+const PASTE_COLLAPSE_THRESHOLD = 2000
 
 interface Completion {
   kind: 'slash' | 'file'
@@ -464,6 +478,8 @@ function ModelMenu({
   onSelect,
   onManage,
   onOpen,
+  open,
+  onOpenChange,
 }: {
   profiles: Profile[]
   profileId: string
@@ -474,6 +490,8 @@ function ModelMenu({
   onSelect: (profileId: string, groupId: string | undefined, model: string) => void
   onManage: () => void
   onOpen?: () => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }) {
   const currentProfile = profiles.find((p) => p.id === profileId) ?? null
   const currentGroup = groupName(currentProfile ?? undefined, groupId)
@@ -482,15 +500,17 @@ function ModelMenu({
       side="top"
       align="right"
       padded={false}
+      open={open}
+      onOpenChange={onOpenChange}
       panelClassName="w-[320px] max-w-[calc(100vw-1.5rem)]"
-      trigger={({ open, toggle }) => (
+      trigger={({ open: isOpen, toggle }) => (
         <button
           onClick={() => {
-            if (!open) onOpen?.()
+            if (!isOpen) onOpen?.()
             toggle()
           }}
           disabled={disabled}
-          aria-expanded={open}
+          aria-expanded={isOpen}
           aria-haspopup="menu"
           title={
             currentProfile
@@ -500,7 +520,7 @@ function ModelMenu({
           aria-label="选择模型"
           className={cn(
             'flex h-11 min-w-0 max-w-[220px] items-center gap-1 rounded-lg px-2 text-[12.5px] text-muted transition-colors hover:bg-bg-hover hover:text-text-soft md:h-8',
-            open && 'bg-bg-hover text-text-soft',
+            isOpen && 'bg-bg-hover text-text-soft',
             disabled && 'opacity-50',
           )}
         >
@@ -597,11 +617,13 @@ function CompletionMenu({
               <span className="block truncate font-mono text-[12.5px] text-text">
                 <Highlight text={item.label} query={completion.query} />
               </span>
-              {item.description && (
-                <span className="block truncate text-[10.5px] leading-4 text-muted">
+              <span className="block truncate text-[10.5px] leading-4 text-muted">
+                {item.description ? (
                   <Highlight text={item.description} query={completion.query} />
-                </span>
-              )}
+                ) : (
+                  '插入相对路径'
+                )}
+              </span>
             </span>
             {item.badge && (
               <span className="shrink-0 rounded border border-border px-1 text-[9.5px] text-muted">
@@ -610,6 +632,11 @@ function CompletionMenu({
             )}
           </button>
         ))}
+      </div>
+      <div className="menu-hint flex items-center gap-1 border-t border-border">
+        {completion.kind === 'slash'
+          ? '↑↓ 选择 · Enter 插入 · /model 直接打开模型选择'
+          : '↑↓ 选择 · Enter 插入路径 · 输入 @ 搜索项目文件'}
       </div>
     </div>
   )
@@ -720,31 +747,50 @@ export function Composer({
   const currentModel = sessionless ? (modelProp ?? '') : (summary?.model ?? '')
   const currentProfileId = sessionless ? (profileIdProp ?? '') : (summary?.profileId ?? '')
   const currentGroupId = sessionless ? groupIdProp : summary?.groupId
+  const draftKey = sessionId ? `${activeHostId ?? ''}:${sessionId}` : `new:${effectiveHostId ?? ''}`
 
-  const [text, setText] = useState('')
+  const [text, setText] = useState(() => loadDraft(draftKey))
+  const [pasted, setPasted] = useState<PastedText[]>([])
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [completion, setCompletion] = useState<Completion | null>(null)
   const [index, setIndex] = useState(0)
   const [fileItems, setFileItems] = useState<string[]>([])
   const [fileLoading, setFileLoading] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const [modelMenuOpen, setModelMenuOpen] = useState(false)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const composingRef = useRef(false)
   const fileSeq = useRef(0)
-  const prevSessionRef = useRef<string | null>(sessionId)
+  const prevSessionRef = useRef<string | null>(draftKey)
+  const textRef = useRef(text)
+  textRef.current = text
 
-  // 切换会话时清空输入，避免把草稿发到另一个会话
+  // 切换会话时保存上一条草稿，并恢复目标会话的草稿
   useEffect(() => {
-    if (prevSessionRef.current !== sessionId) {
-      prevSessionRef.current = sessionId
-      setText('')
-      setAttachments([])
-      setCompletion(null)
-    }
-  }, [sessionId])
+    if (prevSessionRef.current === draftKey) return
+    if (prevSessionRef.current) saveDraft(prevSessionRef.current, textRef.current)
+    prevSessionRef.current = draftKey
+    setText(loadDraft(draftKey))
+    setPasted([])
+    setAttachments([])
+    setCompletion(null)
+  }, [draftKey])
+
+  // 输入过程中防抖保存草稿
+  useEffect(() => {
+    const timer = window.setTimeout(() => saveDraft(draftKey, text), 180)
+    return () => window.clearTimeout(timer)
+  }, [draftKey, text])
+
+  useEffect(
+    () => () => {
+      saveDraft(prevSessionRef.current ?? '', textRef.current)
+    },
+    [],
+  )
 
   useEffect(() => {
     if (disabled) return
@@ -864,6 +910,15 @@ export function Composer({
     if (!completion) return
     const before = text.slice(0, completion.start)
     const after = text.slice(completion.end)
+    if (item.kind === 'slash' && item.value.toLowerCase() === 'model') {
+      setText(before + after)
+      setCompletion(null)
+      if (effectiveHostId && profiles.length === 0 && !profilesLoading) {
+        void refreshProfiles(effectiveHostId)
+      }
+      setModelMenuOpen(true)
+      return
+    }
     const insertion = `${item.value} `
     const next = before + insertion + after
     setText(next)
@@ -943,6 +998,21 @@ export function Composer({
     if (files.length) {
       e.preventDefault()
       void addImages(files)
+      return
+    }
+    // 大段文本折叠成胶囊，避免把输入框撑满；发送时再展开。
+    const plain = clipboard.getData('text/plain')
+    if (plain.length > PASTE_COLLAPSE_THRESHOLD) {
+      e.preventDefault()
+      const lines = plain.split('\n').length
+      setPasted((prev) => [
+        ...prev,
+        {
+          id: `paste-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          text: plain,
+          lines,
+        },
+      ])
     }
   }
 
@@ -953,13 +1023,17 @@ export function Composer({
     if (files.length) void addImages(files)
   }
 
-  const hasContent = text.trim().length > 0 || attachments.length > 0
+  const pastedText = pasted.map((p) => p.text).join('\n\n')
+  const outgoingText = [text.trim(), pastedText].filter(Boolean).join('\n\n')
+  const hasContent = outgoingText.length > 0 || attachments.length > 0
   const canSend = hasContent && !disabled && (onSubmit ? true : !!summary)
 
   const resetInput = () => {
     setText('')
+    setPasted([])
     setAttachments([])
     setCompletion(null)
+    saveDraft(draftKey, '')
     window.requestAnimationFrame(() => {
       const el = textareaRef.current
       if (!el) return
@@ -968,11 +1042,15 @@ export function Composer({
     })
   }
 
+  const rememberSent = (value: string) => {
+    if (!value) return
+    pushSentHistory(draftKey, value)
+  }
+
   const handleSend = async () => {
     if (!canSend) return
-    const trimmed = text.trim()
     const blocks: ContentBlock[] = []
-    if (trimmed) blocks.push({ type: 'text', text: trimmed })
+    if (outgoingText) blocks.push({ type: 'text', text: outgoingText })
     for (const a of attachments) {
       blocks.push({ type: 'image', mediaType: a.mediaType, dataBase64: a.dataBase64 })
     }
@@ -984,6 +1062,7 @@ export function Composer({
         return
       }
       if (result === false) return
+      rememberSent(outgoingText)
       resetInput()
       return
     }
@@ -993,6 +1072,7 @@ export function Composer({
       return
     }
     if (!send(blocks)) return
+    rememberSent(outgoingText)
     resetInput()
   }
 
@@ -1064,6 +1144,31 @@ export function Composer({
         e.preventDefault()
         e.stopPropagation()
         stop()
+      }
+      return
+    }
+    if (
+      e.key === 'ArrowUp' &&
+      !composing &&
+      !completion &&
+      text.length === 0 &&
+      !e.shiftKey &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey
+    ) {
+      const el = textareaRef.current
+      if (el && el.selectionStart === 0 && el.selectionEnd === 0) {
+        const last = loadSentHistory(draftKey)[0]
+        if (last) {
+          e.preventDefault()
+          setText(last)
+          window.requestAnimationFrame(() => {
+            const box = textareaRef.current
+            if (!box) return
+            box.setSelectionRange(last.length, last.length)
+          })
+        }
       }
       return
     }
@@ -1153,6 +1258,30 @@ export function Composer({
               ))}
             </div>
           )}
+          {pasted.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {pasted.map((p) => (
+                <div
+                  key={p.id}
+                  title={`${p.lines} 行 · ${p.text.length} 字`}
+                  className="flex max-w-full items-center gap-1.5 rounded-lg border border-border bg-surface-2 py-1 pl-2 pr-1 text-[11.5px] text-text-soft"
+                >
+                  <FileText size={13} className="shrink-0 text-muted" />
+                  <span className="truncate">粘贴的文本 · {p.lines} 行</span>
+                  <span className="shrink-0 text-[10px] tabular-nums text-muted">
+                    {p.text.length > 999 ? `${(p.text.length / 1000).toFixed(1)}k` : p.text.length} 字
+                  </span>
+                  <button
+                    onClick={() => setPasted((prev) => prev.filter((x) => x.id !== p.id))}
+                    aria-label="移除粘贴的文本"
+                    className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <textarea
             ref={textareaRef}
             value={text}
@@ -1199,6 +1328,8 @@ export function Composer({
             model={currentModel}
             loading={profilesLoading}
             disabled={disabled || (!sessionless && !summary)}
+            open={modelMenuOpen}
+            onOpenChange={setModelMenuOpen}
             onSelect={changeModel}
             onManage={() => openSettings('profiles')}
             onOpen={() => {
