@@ -300,12 +300,24 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const profileName = useAppStore((s) => {
     if (!hostId || !summary?.profileId) return null
     const profile = s.runtimes[hostId]?.profiles.find((p) => p.id === summary.profileId)
-    if (!profile) return '未知账号'
+    if (!profile) return null
+    // 老会话的 groupId 可能写的是分组名
     const group = summary.groupId
-      ? profile.groups?.find((g) => g.id === summary.groupId)?.name
+      ? profile.groups?.find((g) => g.id === summary.groupId || g.name === summary.groupId)?.name
       : undefined
     return group ? `${profile.name} › ${group}` : profile.name
   })
+  const profilesLoaded = useAppStore((s) =>
+    hostId ? (s.runtimes[hostId]?.profilesLoaded ?? false) : false,
+  )
+  const profilesLoading = useAppStore((s) =>
+    hostId ? (s.runtimes[hostId]?.profilesLoading ?? false) : false,
+  )
+  const refreshProfiles = useAppStore((s) => s.refreshProfiles)
+  useEffect(() => {
+    if (!hostId || profilesLoaded || profilesLoading) return
+    void refreshProfiles(hostId)
+  }, [hostId, profilesLoaded, profilesLoading, refreshProfiles])
   const deleteSession = useAppStore((s) => s.deleteSession)
   const toast = useUiStore((s) => s.toast)
   const setChangesOpen = useUiStore((s) => s.setChangesOpen)
@@ -605,7 +617,10 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         <DetailRow label="模型">
           <span className="font-mono text-[11px]">{summary?.model ?? '—'}</span>
         </DetailRow>
-        <DetailRow label="账号">{profileName ?? (summary?.profileId ? '未知账号' : '—')}</DetailRow>
+        <DetailRow label="账号">
+          {profileName ??
+            (summary?.profileId ? (profilesLoaded ? '未知账号' : '加载中…') : '—')}
+        </DetailRow>
         <DetailRow label="权限">
           {summary ? PERMISSION_MODE_LABELS[summary.permissionMode] : '—'}
         </DetailRow>

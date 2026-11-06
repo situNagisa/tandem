@@ -1488,6 +1488,8 @@ export const useAppStore = create<AppState>((set, get) => {
         },
       })
       if (!rt?.sessionsLoaded) void get().refreshSessions(hostId)
+      // 详情面板要在打开会话后立刻显示账号名：账号列表未就绪时补拉一次
+      if (!rt?.profilesLoaded && !rt?.profilesLoading) void get().refreshProfiles(hostId)
 
       const conn = ensureConnection(hostId)
       conn?.subscribe(sessionId)
