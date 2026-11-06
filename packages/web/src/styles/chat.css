@@ -116,18 +116,26 @@
   animation-delay: 280ms;
 }
 
-/* 用户消息 / 助手消息的悬停操作条 */
+/* 用户消息 / 助手消息的悬停操作条：位于消息下方，悬停时淡入 */
 .msg-actions {
   opacity: 0;
+  pointer-events: none;
   transition: opacity 120ms ease;
 }
 .msg-group:hover .msg-actions,
 .msg-actions:focus-within {
   opacity: 1;
+  pointer-events: auto;
+}
+.msg-more {
+  display: none;
 }
 @media (hover: none) {
   .msg-actions {
-    opacity: 0.6;
+    display: none;
+  }
+  .msg-more {
+    display: flex;
   }
 }
 
@@ -193,8 +201,8 @@
 /* ---------- Markdown 排版（覆盖 index.css 的 .md 基础样式） ---------- */
 
 .md.chat-md {
-  font-size: 15px;
-  line-height: 1.65;
+  font-size: 14.5px;
+  line-height: 1.68;
   letter-spacing: 0.002em;
 }
 
@@ -254,7 +262,7 @@
 .md.chat-md blockquote {
   margin: 1em 0;
   padding: 0.05em 0 0.05em 0.95em;
-  border-left: 2px solid color-mix(in srgb, var(--t-accent) 38%, var(--t-border));
+  border-left: 2px solid var(--t-border-strong);
   color: var(--t-text-soft);
 }
 .md.chat-md blockquote p {
@@ -335,7 +343,7 @@
   font-family: var(--t-font-mono, ui-monospace, "SF Mono", Consolas, monospace);
   font-size: 0.86em;
   padding: 0.12em 0.34em;
-  border: 1px solid var(--t-code-border, transparent);
+  border: 0;
   border-radius: 4px;
   background: var(--t-code-bg, var(--t-surface-2));
 }
@@ -360,21 +368,27 @@
   margin: 1em 0;
   overflow-x: auto;
   border-collapse: collapse;
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: 13px;
+  line-height: 1.6;
 }
 .md.chat-md th,
 .md.chat-md td {
-  padding: 0.45em 0.75em;
-  border: 1px solid var(--t-border);
+  padding: 0.4em 0.7em;
+  border: 0;
+  border-bottom: 1px solid var(--t-border);
   text-align: left;
 }
 .md.chat-md thead th {
-  background: color-mix(in srgb, var(--t-surface-2) 55%, transparent);
+  border-bottom-color: var(--t-border-strong);
+  background: color-mix(in srgb, var(--t-surface-2) 32%, transparent);
+  color: var(--t-text-soft);
   font-weight: 600;
 }
 .md.chat-md tbody tr:nth-child(even) {
-  background: color-mix(in srgb, var(--t-surface-2) 38%, transparent);
+  background: transparent;
+}
+.md.chat-md tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .md.chat-md img {
@@ -1066,70 +1080,100 @@ mark.chat-match {
   top: 50%;
   z-index: 6;
   display: flex;
-  height: min(68%, 520px);
-  width: 20px;
+  flex-direction: column;
+  align-items: flex-end;
   transform: translateY(-50%);
-  justify-content: flex-end;
   pointer-events: none;
 }
 
-.turn-rail-track {
-  position: relative;
-  height: 100%;
-  width: 16px;
+.turn-rail-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   pointer-events: auto;
+  touch-action: none;
+  cursor: default;
+}
+
+.turn-edge {
+  height: 14px;
+  min-width: 24px;
+  padding: 0 1px;
+  border: 0;
+  background: transparent;
+  color: var(--t-text-tertiary);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 14px;
+  text-align: right;
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+.turn-edge[data-active="true"],
+.turn-edge:hover {
+  color: var(--t-text);
+}
+.turn-edge:focus-visible {
+  outline: 1px solid var(--t-border-strong);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+
+.turn-fade {
+  display: block;
+  width: 14px;
+  height: 2px;
+  margin: 2px 0;
+  border-radius: 2px;
+  background: var(--t-text-tertiary);
+  transition: opacity 120ms ease;
 }
 
 .turn-tick {
-  position: absolute;
-  left: 0;
   display: flex;
-  width: 16px;
-  height: 9px;
+  width: 24px;
+  height: 6px;
   align-items: center;
   justify-content: flex-end;
   padding: 0;
   border: 0;
   background: transparent;
-  transform: translateY(-50%);
   cursor: pointer;
 }
 
 .turn-tick-line {
   display: block;
-  width: 7px;
+  width: 14px;
   height: 2px;
   border-radius: 2px;
   background: var(--t-text-tertiary);
-  opacity: 0.5;
+  opacity: 0.55;
   transition:
-    width 120ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
     opacity 120ms ease,
     background-color 120ms ease;
 }
 
 .turn-tick:hover .turn-tick-line,
 .turn-tick:focus-visible .turn-tick-line {
-  width: 12px;
-  opacity: 0.9;
+  opacity: 1;
   background: var(--t-text-secondary);
 }
 
 .turn-tick[data-active="true"] .turn-tick-line {
-  width: 14px;
+  width: 20px;
   opacity: 1;
   background: var(--t-text);
 }
 
 .turn-tick:focus-visible {
   outline: 1px solid var(--t-border-strong);
-  outline-offset: 2px;
+  outline-offset: 1px;
   border-radius: 3px;
 }
 
 .turn-tip {
   position: absolute;
-  right: 20px;
+  right: 30px;
   top: 50%;
   z-index: 10;
   max-width: 230px;
@@ -1161,17 +1205,25 @@ mark.chat-match {
 
 .turn-rail-count {
   position: absolute;
-  right: 0;
-  bottom: -18px;
+  right: calc(100% + 8px);
+  top: 50%;
+  padding: 2px 6px;
+  border: 1px solid var(--t-border);
+  border-radius: 5px;
+  background: var(--t-bg-elevated);
   color: var(--t-text-tertiary);
-  font-size: 10px;
+  font-size: 10.5px;
   font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  white-space: nowrap;
   opacity: 0;
   pointer-events: none;
+  transform: translateY(-50%);
   transition: opacity 120ms ease;
 }
 
-.turn-rail:hover .turn-rail-count {
+.turn-rail:hover .turn-rail-count,
+.turn-rail:focus-within .turn-rail-count {
   opacity: 1;
 }
 
@@ -1187,8 +1239,10 @@ mark.chat-match {
 
 @media (prefers-reduced-motion: reduce) {
   .turn-tick-line,
+  .turn-fade,
   .turn-tip,
-  .turn-rail-count {
+  .turn-rail-count,
+  .turn-edge {
     transition: none;
   }
 }

@@ -1,6 +1,14 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ContentBlock } from '@tandem/protocol'
-import { Check, Copy, MoreHorizontal, PencilLine, Undo2 } from 'lucide-react'
+import {
+  Check,
+  Copy,
+  Loader2,
+  MoreHorizontal,
+  PencilLine,
+  RefreshCw,
+  Undo2,
+} from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { cn } from '../lib/cn'
 import { copyText } from '../lib/clipboard'
@@ -102,7 +110,7 @@ export const UserMessage = memo(function UserMessage({
 
   return (
     <div className={cn('msg-group flex justify-end', animate && 'chat-msg-enter')}>
-      <div className="relative min-w-0 max-w-[85%]">
+      <div className="relative min-w-0 max-w-[80%]">
         {images.length > 0 && (
           <div className="mb-1.5 flex flex-wrap justify-end gap-1.5">
             {images.map((img, i) => (
@@ -110,13 +118,13 @@ export const UserMessage = memo(function UserMessage({
                 key={i}
                 src={dataUrl(img)}
                 alt={`图片 ${i + 1}`}
-                className="max-h-64 max-w-full rounded-xl border border-border object-contain"
+                className="max-h-64 max-w-full rounded-[14px] border border-border object-contain"
               />
             ))}
           </div>
         )}
         {editing ? (
-          <div className="rounded-2xl bg-surface-2 px-3 py-2.5 text-left">
+          <div className="rounded-[14px] bg-surface-2 px-3 py-2.5 text-left">
             <textarea
               ref={editRef}
               value={draft}
@@ -132,7 +140,7 @@ export const UserMessage = memo(function UserMessage({
               }}
               rows={3}
               aria-label="编辑并重发"
-              className="min-h-16 w-full resize-y bg-transparent text-[15px] leading-[1.65] text-text outline-none"
+              className="min-h-16 w-full resize-y bg-transparent text-[14.5px] leading-[1.68] text-text outline-none"
             />
             <div className="mt-1 flex items-center justify-end gap-1.5">
               <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
@@ -145,14 +153,14 @@ export const UserMessage = memo(function UserMessage({
           </div>
         ) : (
           text.trim() && (
-            <div className="whitespace-pre-wrap break-words rounded-2xl bg-surface-2 px-4 py-2.5 text-[15px] leading-[1.65] text-text">
+            <div className="whitespace-pre-wrap break-words rounded-[14px] bg-surface-2 px-4 py-2.5 text-[14.5px] leading-[1.68] text-text">
               {text}
             </div>
           )
         )}
         {text.trim() && !editing && (
           <>
-            <div className="msg-actions absolute bottom-1 -left-[6.25rem] hidden flex-row gap-0.5 md:flex">
+            <div className="msg-actions mt-0.5 flex h-6 justify-end gap-0.5 -mb-[18px]">
               <IconButton
                 size="sm"
                 onClick={copy}
@@ -185,7 +193,7 @@ export const UserMessage = memo(function UserMessage({
                 </>
               )}
             </div>
-            <div className="mt-1 flex justify-end md:hidden">
+            <div className="msg-more mt-0.5 h-6 justify-end -mb-[18px]">
               {readOnly ? (
                 <IconButton
                   onClick={() => void copy()}
@@ -259,15 +267,26 @@ export const AssistantMessage = memo(function AssistantMessage({
   animate,
   toolResults,
   cwd,
+  readOnly = false,
+  turnUser,
+  checkpointId,
 }: {
   message: UiMessage
   streaming: boolean
   animate: boolean
   toolResults?: Record<string, ToolResultBlock>
   cwd?: string
+  readOnly?: boolean
+  /** 本轮对应的用户消息；助理消息的操作条以它为回退/重新生成的锚点。 */
+  turnUser?: UiMessage
+  /** 本轮用户消息对应的检查点 id。 */
+  checkpointId?: string
 }) {
   const lastIndex = message.content.length - 1
   const [copied, setCopied] = useState(false)
+  const [rewindOpen, setRewindOpen] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
+  const running = useAppStore((s) => s.active?.running ?? false)
   const copyTimer = useRef<number | null>(null)
   const rawText = message.content
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
@@ -286,6 +305,19 @@ export const AssistantMessage = memo(function AssistantMessage({
     setCopied(true)
     if (copyTimer.current) window.clearTimeout(copyTimer.current)
     copyTimer.current = window.setTimeout(() => setCopied(false), 1500)
+  }
+
+  const regenerate = async () => {
+    if (!turnUser || !checkpointId || regenerating || running) return
+    setRegenerating(true)
+    const store = useAppStore.getState()
+    const ok = await store.rewind({
+      checkpointId,
+      restoreFiles: false,
+      restoreConversation: true,
+    })
+    if (ok) store.send(turnUser.content.filter((b) => b.type !== 'tool_result'))
+    setRegenerating(false)
   }
 
   const rendered: ReactNode[] = []
@@ -362,16 +394,101 @@ export const AssistantMessage = memo(function AssistantMessage({
     <div className={cn('msg-group relative flex flex-col', animate && 'chat-msg-enter')}>
       {rendered}
       {message.content.length === 0 && streaming && <TypingIndicator />}
-      {rawText.trim() && (
-        <IconButton
-          size="sm"
-          onClick={copyAll}
-          label={copied ? '已复制' : '复制整条回复'}
-          tooltip={copied ? '已复制' : '复制整条回复（Markdown）'}
-          className="msg-actions absolute bottom-1 right-1 z-10 border border-border/70 bg-surface/90 shadow-sm backdrop-blur-sm [&_svg]:size-[12.5px]"
-        >
-          {copied ? <Check size={12.5} className="text-success" /> : <Copy size={12.5} />}
-        </IconButton>
+      {rawText.trim() && !streaming && (
+        <>
+          <div className="msg-actions mt-0.5 flex h-6 justify-start gap-0.5 -mb-[18px]">
+            <IconButton
+              size="sm"
+              onClick={copyAll}
+              label={copied ? '已复制' : '复制整条回复'}
+              tooltip={copied ? '已复制' : '复制整条回复（Markdown）'}
+              className="[&_svg]:size-[12.5px]"
+            >
+              {copied ? <Check size={12.5} className="text-success" /> : <Copy size={12.5} />}
+            </IconButton>
+            {!readOnly && turnUser && (
+              <IconButton
+                size="sm"
+                onClick={() => setRewindOpen(true)}
+                disabled={running}
+                label="回退到此处"
+                tooltip={running ? '会话运行中，结束后才能回退' : '回退到此处'}
+                className="[&_svg]:size-[12.5px]"
+              >
+                <Undo2 size={12.5} />
+              </IconButton>
+            )}
+            {!readOnly && turnUser && checkpointId && (
+              <IconButton
+                size="sm"
+                onClick={() => void regenerate()}
+                disabled={running || regenerating}
+                label="重新生成"
+                tooltip={running ? '会话运行中，结束后才能重新生成' : '重新生成'}
+                className="[&_svg]:size-[12.5px]"
+              >
+                {regenerating ? (
+                  <Loader2 size={12.5} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={12.5} />
+                )}
+              </IconButton>
+            )}
+          </div>
+          <div className="msg-more mt-0.5 h-6 justify-start -mb-[18px]">
+            <Popover
+              align="left"
+              side="bottom"
+              padded={false}
+              trigger={({ toggle }) => (
+                <IconButton onClick={toggle} label="回复操作" className="[&_svg]:size-[15px]">
+                  <MoreHorizontal size={15} />
+                </IconButton>
+              )}
+            >
+              {(close) => (
+                <div className="p-1">
+                  <button
+                    onClick={() => {
+                      close()
+                      void copyAll()
+                    }}
+                    className="menu-item"
+                  >
+                    <Copy size={13} /> {copied ? '已复制' : '复制整条回复'}
+                  </button>
+                  {!readOnly && turnUser && (
+                    <button
+                      onClick={() => {
+                        close()
+                        setRewindOpen(true)
+                      }}
+                      disabled={running}
+                      className="menu-item disabled:opacity-40"
+                    >
+                      <Undo2 size={13} /> 回退到此处
+                    </button>
+                  )}
+                  {!readOnly && turnUser && checkpointId && (
+                    <button
+                      onClick={() => {
+                        close()
+                        void regenerate()
+                      }}
+                      disabled={running || regenerating}
+                      className="menu-item disabled:opacity-40"
+                    >
+                      <RefreshCw size={13} /> 重新生成
+                    </button>
+                  )}
+                </div>
+              )}
+            </Popover>
+          </div>
+        </>
+      )}
+      {rewindOpen && turnUser && (
+        <RewindDialog message={turnUser} onClose={() => setRewindOpen(false)} />
       )}
     </div>
   )
@@ -403,6 +520,7 @@ export function MessageList({
   readOnly = false,
   toolResults,
   cwd,
+  checkpoints,
 }: {
   showSkeleton?: boolean
   /** 传入时渲染这份消息（如外部会话只读预览），不读当前活动会话。 */
@@ -410,6 +528,8 @@ export function MessageList({
   readOnly?: boolean
   toolResults?: Record<string, ToolResultBlock>
   cwd?: string
+  /** 用户消息 id → 检查点 id，用于操作条判断能否回退/重新生成。 */
+  checkpoints?: Map<string, string>
 }) {
   const storeMessages = useAppStore((s) => s.active?.messages ?? EMPTY)
   const storeSessionId = useAppStore((s) => s.active?.sessionId ?? null)
@@ -505,6 +625,17 @@ export function MessageList({
     turnIndex.set(m.id, turn++)
   }
 
+  // 助理消息的操作条以它前面最近一条可见用户消息作为本轮锚点。
+  const turnUserByAssistant = new Map<string, UiMessage>()
+  let lastUser: UiMessage | undefined
+  for (const m of messages) {
+    if (m.role === 'user') {
+      if (m.content.some((b) => b.type !== 'tool_result')) lastUser = m
+    } else if (lastUser) {
+      turnUserByAssistant.set(m.id, lastUser)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 pb-2">
       {segments.map((seg) => {
@@ -545,6 +676,13 @@ export function MessageList({
               animate={seg.animate}
               toolResults={toolResults}
               cwd={cwd}
+              readOnly={readOnly}
+              turnUser={turnUserByAssistant.get(m.id)}
+              checkpointId={
+                turnUserByAssistant.get(m.id)
+                  ? checkpoints?.get(turnUserByAssistant.get(m.id)!.id)
+                  : undefined
+              }
             />
           </div>
         )

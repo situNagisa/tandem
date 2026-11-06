@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ChevronDown, RotateCcw, ShieldAlert, TriangleAlert, X } from 'lucide-react'
+import { ChevronDown, ShieldAlert, TriangleAlert } from 'lucide-react'
 import type { HookEventNotice, PermissionRequest } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
+import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { MessageList } from './MessageList'
 import { SessionWelcome, HomeView } from './Welcome'
@@ -11,6 +12,7 @@ import { PlanCard } from './PlanCard'
 import { Button, IconButton } from './ui/Button'
 import { Composer } from './Composer'
 import { TurnRail } from './chat/TurnRail'
+import { TurnErrorNotice } from './chat/TurnErrorNotice'
 import '../styles/chat.css'
 
 const EMPTY_PENDING: PermissionRequest[] = []
@@ -36,7 +38,6 @@ export function ChatView() {
     hostId ? s.runtimes[hostId]?.authError : undefined,
   )
   const reloadActiveSession = useAppStore((s) => s.reloadActiveSession)
-  const clearTurnError = useAppStore((s) => s.clearTurnError)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -47,23 +48,26 @@ export function ChatView() {
   // 打开会话后的贴底校准：content-visibility 的预估高度会让首次 scrollHeight 偏小。
   const initialScrollFor = useRef<string | null>(null)
   const [showJump, setShowJump] = useState(false)
-  const [turnErrorExpanded, setTurnErrorExpanded] = useState(false)
-  const [turnErrorClamped, setTurnErrorClamped] = useState(false)
-  const turnErrorRef = useRef<HTMLDivElement>(null)
+  // 消息操作条用：用户消息 id → 检查点 id。回合结束后刷新。
+  const [checkpoints, setCheckpoints] = useState<Map<string, string>>(new Map())
 
   useEffect(() => {
-    setTurnErrorExpanded(false)
-  }, [turnError])
-
-  useEffect(() => {
-    const el = turnErrorRef.current
-    if (!el || turnErrorExpanded) return
-    const check = () => setTurnErrorClamped(el.scrollHeight > el.clientHeight + 1)
-    check()
-    const ro = new ResizeObserver(check)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [turnError, turnErrorExpanded])
+    if (!hostId || !sessionId || running) return
+    const host = useAppStore.getState().hosts.find((h) => h.id === hostId)
+    if (!host) return
+    let cancelled = false
+    api
+      .checkpoints(host, sessionId)
+      .then((list) => {
+        if (!cancelled) setCheckpoints(new Map(list.map((cp) => [cp.messageId, cp.id])))
+      })
+      .catch(() => {
+        if (!cancelled) setCheckpoints(new Map())
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [hostId, sessionId, running, messageCount])
 
   const retryTurn = () => {
     const state = useAppStore.getState()
@@ -227,7 +231,10 @@ export function ChatView() {
               ) : messageCount === 0 ? (
                 <SessionWelcome />
               ) : (
-                <MessageList />
+                <MessageList checkpoints={checkpoints} />
+              )}
+              {turnError && (
+                <TurnErrorNotice error={turnError} running={running} onRetry={retryTurn} />
               )}
               {error && (
                 <div className="mb-3 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-danger/30 bg-danger-soft/50 px-3 py-2 text-[12px] text-danger">
@@ -274,56 +281,6 @@ export function ChatView() {
 
       <div className="shrink-0 bg-bg px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5 md:px-6 md:pb-5 md:pt-2">
         <div className="mx-auto w-full max-w-[760px]">
-          {turnError && (
-            <div className="mb-2 rounded-xl border border-border bg-surface px-3 py-2">
-              <div className="flex items-start gap-2">
-                <TriangleAlert size={14} className="mt-0.5 shrink-0 text-danger" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[11.5px] font-medium text-danger">回合出错</div>
-                  <div
-                    ref={turnErrorRef}
-                    className={cn(
-                      'mt-0.5 whitespace-pre-wrap break-words text-[12px] leading-5 text-text-soft',
-                      !turnErrorExpanded && 'line-clamp-3',
-                    )}
-                  >
-                    {turnError}
-                  </div>
-                </div>
-                <IconButton
-                  size="sm"
-                  onClick={clearTurnError}
-                  label="关闭回合错误"
-                  tooltip="关闭"
-                  className="-mr-1 -mt-0.5 [&_svg]:size-[13px]"
-                >
-                  <X size={13} />
-                </IconButton>
-              </div>
-              <div className="mt-1.5 flex items-center gap-1 pl-[22px]">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={retryTurn}
-                  disabled={running}
-                  className="h-6! px-2 text-[11px] [&_svg]:size-3"
-                >
-                  <RotateCcw size={11} />
-                  重试
-                </Button>
-                {turnErrorClamped && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setTurnErrorExpanded((v) => !v)}
-                    className="h-6! px-1.5 text-[11px]"
-                  >
-                    {turnErrorExpanded ? '收起' : '展开'}
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
           {hookEvents.some((event) => !event.ok || event.blocked) && (
             <div className="mb-1 space-y-0.5 px-1">
               {hookEvents
