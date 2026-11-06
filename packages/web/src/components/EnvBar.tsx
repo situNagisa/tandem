@@ -3,13 +3,12 @@ import {
   ArrowUp,
   Check,
   ChevronDown,
-  ChevronLeft,
+  Clock,
   Folder,
   FolderOpen,
   GitBranch,
   GitFork,
   Loader2,
-  RefreshCw,
   Server,
   TriangleAlert,
 } from 'lucide-react'
@@ -22,8 +21,9 @@ import { loadMigration, loadRecentDirs, rememberDir, rememberMigration } from '.
 import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
-import { Button, IconButton } from './ui/Button'
+import { Button } from './ui/Button'
 import { Input } from './ui/Controls'
+import { MenuDivider, MenuItem, MenuList } from './ui/Menu'
 import { Popover } from './ui/Popover'
 import { Tooltip } from './ui/Tooltip'
 
@@ -185,112 +185,119 @@ export function FolderBrowser({
     }
   }, [host, path, refreshKey])
 
-  const go = (next: string) => {
+  const open = (next: string) => {
     setPath(next)
     setDraft(next)
     setRefreshKey((k) => k + 1)
   }
   const parent = dirname(path)
 
+  // Tab 补全：用当前输入最后一段匹配到的子目录名替换。
+  const complete = () => {
+    const idx = Math.max(draft.lastIndexOf('/'), draft.lastIndexOf('\\'))
+    const prefix = draft.slice(idx + 1)
+    const match = entries.find((e) => e.name.toLowerCase().startsWith(prefix.toLowerCase()))
+    if (match) setDraft(draft.slice(0, idx + 1) + match.name)
+  }
+
+  const rowClass =
+    'flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-[13px] leading-none text-text-soft outline-none transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text focus-visible:bg-[var(--t-bg-hover)] focus-visible:text-text'
+
   return (
-    <div className="w-[min(340px,calc(100vw-2rem))]">
-      {recents.length > 0 && (
-        <div className="flex flex-wrap gap-1 px-1 pb-1.5">
-          {recents.slice(0, 4).map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => go(d)}
-              title={d}
-              className={cn(
-                'max-w-[140px] truncate rounded-md px-1.5 py-0.5 text-[10.5px] transition-colors',
-                d === path
-                  ? 'bg-[var(--t-bg-active)] text-text'
-                  : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text',
-              )}
-            >
-              {basename(d) || d}
-            </button>
+    <div className="w-[min(320px,calc(100vw-2rem))]">
+      <MenuList aria-label="选择文件夹">
+        <div className="max-h-[264px] overflow-y-auto">
+          {recents.length > 0 && (
+            <>
+              {recents.slice(0, 4).map((d) => (
+                <MenuItem key={d} icon={<Clock size={13} />} hint={d} onSelect={() => open(d)}>
+                  {basename(d) || d}
+                </MenuItem>
+              ))}
+              <MenuDivider />
+            </>
+          )}
+          <MenuItem
+            icon={<ArrowUp size={13} />}
+            disabled={!parent}
+            disabledReason="已经是根目录"
+            onSelect={() => parent && open(parent)}
+          >
+            ..
+          </MenuItem>
+          {loading && entries.length === 0 && (
+            <div className="flex h-[150px] items-center justify-center gap-2 text-[11.5px] text-muted">
+              <Loader2 size={12} className="animate-spin" /> 读取目录…
+            </div>
+          )}
+          {!loading && error && (
+            <div className="flex h-[150px] flex-col items-center justify-center gap-1 px-4 text-center text-[11px] text-danger">
+              <TriangleAlert size={14} />
+              {error}
+            </div>
+          )}
+          {!loading && !error && entries.length === 0 && (
+            <div className="flex h-[150px] items-center justify-center text-[11.5px] text-muted">
+              没有子文件夹
+            </div>
+          )}
+          {entries.map((entry) => (
+            <div key={entry.path} className="group/dir relative">
+              <button
+                type="button"
+                data-menu-item=""
+                onClick={() => open(entry.path)}
+                onDoubleClick={() => onUse(entry.path)}
+                className={cn(rowClass, 'pr-8')}
+              >
+                <Folder size={13} className="shrink-0 text-muted" />
+                <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+              </button>
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onUse(entry.path)
+                }}
+                aria-label={`选择 ${entry.name}`}
+                className="absolute right-1 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted opacity-70 transition-opacity hover:bg-[var(--t-bg-hover)] hover:text-text md:opacity-0 md:group-hover/dir:opacity-100 md:focus-visible:opacity-100"
+              >
+                <Check size={12} />
+              </button>
+            </div>
           ))}
         </div>
-      )}
-      <div className="flex items-center gap-1 px-1 pb-1.5">
-        <IconButton
-          size="sm"
-          onClick={() => parent && go(parent)}
-          disabled={!parent}
-          label="上一级"
-          className="size-7 [&_svg]:size-[13px]"
+        <MenuDivider />
+        <MenuItem
+          icon={<Check size={13} />}
+          disabled={!path}
+          disabledReason="还没有打开任何目录"
+          onSelect={() => onUse(path)}
         >
-          <ArrowUp size={13} />
-        </IconButton>
-        <Input
-          size="sm"
+          {useLabel}
+        </MenuItem>
+      </MenuList>
+      <div className="mt-1 border-t border-border pt-1">
+        <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
               const next = draft.trim()
-              if (next) go(next)
+              if (next) onUse(next)
+            } else if (e.key === 'Tab') {
+              e.preventDefault()
+              complete()
             }
           }}
           spellCheck={false}
+          autoComplete="off"
           aria-label="目录路径"
-          className="min-w-0 flex-1 font-mono text-[11px]"
+          placeholder="输入绝对路径，Enter 选定"
+          className="h-8 w-full min-w-0 bg-transparent px-2 font-mono text-[11.5px] text-text outline-none placeholder:text-muted"
         />
-        <IconButton
-          size="sm"
-          onClick={() => setRefreshKey((k) => k + 1)}
-          label="刷新目录"
-          className="size-7 [&_svg]:size-3"
-        >
-          <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
-        </IconButton>
-      </div>
-      <div className="h-[188px] overflow-y-auto rounded-lg bg-[var(--t-bg)] p-1">
-        {loading && entries.length === 0 && (
-          <div className="flex h-full items-center justify-center gap-2 text-[11.5px] text-muted">
-            <Loader2 size={12} className="animate-spin" /> 读取目录…
-          </div>
-        )}
-        {!loading && error && (
-          <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center text-[11px] text-danger">
-            <TriangleAlert size={14} />
-            {error}
-          </div>
-        )}
-        {!loading && !error && entries.length === 0 && (
-          <div className="flex h-full items-center justify-center text-[11.5px] text-muted">
-            没有子文件夹
-          </div>
-        )}
-        {entries.map((entry) => (
-          <button
-            type="button"
-            key={entry.path}
-            onClick={() => go(entry.path)}
-            className="flex min-h-8 w-full items-center gap-2 rounded-md px-1.5 text-left text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-          >
-            <Folder size={13} className="shrink-0 text-muted" />
-            <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-            <ChevronLeft size={11} className="shrink-0 rotate-180 text-muted opacity-40" />
-          </button>
-        ))}
-      </div>
-      <div className="mt-1.5 flex items-center gap-1.5 px-1">
-        <Button size="sm" variant="ghost" onClick={() => go(home ?? path)} className="text-[10.5px]">
-          主目录
-        </Button>
-        <span className="flex-1" />
-        <Button
-          size="sm"
-          variant="primary"
-          onClick={() => onUse(path)}
-          disabled={!path}
-        >
-          <Check size={11} /> {useLabel}
-        </Button>
       </div>
     </div>
   )
