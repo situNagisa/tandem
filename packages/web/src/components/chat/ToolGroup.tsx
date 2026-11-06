@@ -1,6 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 import { ChevronRight, Layers, Loader2 } from 'lucide-react'
-import type { UiMessage } from '../../lib/types'
+import type { ToolResultBlock, UiMessage } from '../../lib/types'
 import { useAppStore } from '../../store/useAppStore'
 import { cn } from '../../lib/cn'
 import { ThinkingBlock } from '../ThinkingBlock'
@@ -41,12 +41,18 @@ export const ToolGroup = memo(
   function ToolGroup({
     entries,
     animate,
+    toolResults,
+    cwd,
   }: {
     entries: ToolRunEntry[]
     animate?: boolean
+    /** 外部会话只读预览：显式传入工具结果，不读活动会话。 */
+    toolResults?: Record<string, ToolResultBlock>
+    cwd?: string
   }) {
     const [open, setOpen] = useState(false)
-    const results = useAppStore((s) => s.active?.toolResults)
+    const storeResults = useAppStore((s) => s.active?.toolResults)
+    const results = toolResults ?? storeResults
     const tools = entries.filter(
       (e): e is Extract<ToolRunEntry, { kind: 'tool' }> => e.kind === 'tool',
     )
@@ -87,6 +93,8 @@ export const ToolGroup = memo(
                     messageId={entry.messageId}
                     index={entry.index}
                     streaming={entry.streaming}
+                    toolResults={toolResults}
+                    cwd={cwd}
                   />
                 ),
               )}
@@ -97,7 +105,10 @@ export const ToolGroup = memo(
     )
   },
   (prev, next) =>
-    prev.animate === next.animate && sameEntries(prev.entries, next.entries),
+    prev.animate === next.animate &&
+    prev.toolResults === next.toolResults &&
+    prev.cwd === next.cwd &&
+    sameEntries(prev.entries, next.entries),
 )
 
 /** 把一组 assistant 消息里的思考与工具块按原顺序摊平。 */

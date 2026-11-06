@@ -19,6 +19,7 @@ import {
 import { diffLines } from 'diff'
 import type { ContentBlock, Todo } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
+import type { ToolResultBlock } from '../lib/types'
 import { cn } from '../lib/cn'
 import { firstLine, truncate } from '../lib/format'
 import { CodeBlock } from './CodeBlock'
@@ -198,6 +199,8 @@ export const ToolCard = memo(function ToolCard({
   index,
   streaming,
   subagentId,
+  toolResults,
+  cwd: cwdProp,
 }: {
   block: ToolUseBlock
   messageId: string
@@ -205,20 +208,25 @@ export const ToolCard = memo(function ToolCard({
   streaming: boolean
   /** 在 Task 子代理消息流里渲染时传入，用于取子会话的工具状态。 */
   subagentId?: string
+  /** 外部会话只读预览：显式传入工具结果，不读活动会话。 */
+  toolResults?: Record<string, ToolResultBlock>
+  cwd?: string
 }) {
   const [open, setOpen] = useState(false)
-  const cwd = useAppStore((s) => s.active?.summary?.cwd)
+  const storeCwd = useAppStore((s) => s.active?.summary?.cwd)
+  const cwd = cwdProp ?? storeCwd
   const subagents = useAppStore((s) => s.active?.subagents)
   const raw = useAppStore((s) =>
     subagentId
       ? (s.active?.subagents[subagentId]?.liveToolInputs[`${messageId}:${index}`] ?? '')
       : (s.active?.liveToolInputs[`${messageId}:${index}`] ?? ''),
   )
-  const result = useAppStore((s) =>
+  const storeResult = useAppStore((s) =>
     subagentId
       ? s.active?.subagents[subagentId]?.toolResults[block.id]
       : s.active?.toolResults[block.id],
   )
+  const result = toolResults ? toolResults[block.id] : storeResult
   const isError = !!result?.isError
   const running = streaming && !result
   const mcp = useMemo(() => parseMcpName(block.name), [block.name])
@@ -278,8 +286,8 @@ export const ToolCard = memo(function ToolCard({
       suffix =
         oldString || newString ? (
           <span className="shrink-0 font-mono text-[11.5px]">
-            <span className="text-success">+{editStats.added}</span>{' '}
-            <span className="text-danger">−{editStats.removed}</span>
+            <span className="text-text-soft">+{editStats.added}</span>{' '}
+            <span className="text-muted">−{editStats.removed}</span>
           </span>
         ) : null
       break

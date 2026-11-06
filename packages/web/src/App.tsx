@@ -8,6 +8,7 @@ import { cn } from './lib/cn'
 import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
 import { ChatView } from './components/ChatView'
+import { ExternalSessionView } from './components/ExternalSessionView'
 import { RightPanel } from './components/RightPanel'
 import { ChangeReviewPanel } from './components/ChangeReviewPanel'
 import { SettingsDialog } from './components/settings/SettingsDialog'
@@ -56,6 +57,13 @@ export default function App() {
       store.activateHost(route.hostId)
       store.openSession(route.hostId, route.sessionId)
     } else if (route.kind === 'host') {
+      if (!store.hosts.some((h) => h.id === route.hostId)) {
+        navigate({ kind: 'home' })
+        return
+      }
+      store.activateHost(route.hostId)
+      store.closeSession()
+    } else if (route.kind === 'external') {
       if (!store.hosts.some((h) => h.id === route.hostId)) {
         navigate({ kind: 'home' })
         return
@@ -242,7 +250,16 @@ export default function App() {
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
         <div className="flex min-h-0 flex-1">
-          <ChatView />
+          {route.kind === 'external' ? (
+            <ExternalSessionView
+              key={`${route.hostId}:${route.source}:${route.id}`}
+              hostId={route.hostId}
+              source={route.source}
+              externalId={route.id}
+            />
+          ) : (
+            <ChatView />
+          )}
           {!isMobile && changesOpen && hasSession && (
             <div className="anim-fade-in flex min-h-0 shrink-0">
               <ChangeReviewPanel onClose={() => setChangesOpen(false)} />

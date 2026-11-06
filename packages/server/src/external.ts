@@ -456,9 +456,13 @@ function idFromFile(file: string): string {
   return uuid ? uuid[0] : base;
 }
 
+const WATCH_INTERVAL_MS = 30_000;
+
 /** 扫描并缓存外部会话；按文件 mtime+size 增量更新。 */
 export class ExternalSessionStore {
   private cache = new Map<string, CacheEntry>();
+  private watchTimer?: NodeJS.Timeout;
+  private signature = '';
 
   constructor(private readonly host: Host) {}
 
@@ -555,6 +559,38 @@ export class ExternalSessionStore {
     return meta;
   }
 
+  /** 轻量文件签名：只 stat，不解析内容，用于 30s 定时发现外部会话变动。 */
+  private fileSignature(): string {
+    const parts: string[] = [];
+    for (const source of ['claude-code', 'codex'] as ExternalSource[]) {
+      for (const item of this.listFiles(source)) {
+        const stat = statSafe(item.file);
+        if (stat) parts.push(`${item.file}:${stat.mtimeMs}:${stat.size}`);
+      }
+    }
+    return parts.sort().join('|');
+  }
+
+  /** 定时扫描外部目录，文件变化时通知 Host 广播事件（只读，不写原文件）。 */
+  startWatching(onChange: () => void): void {
+    if (this.watchTimer) return;
+    this.signature = this.fileSignature();
+    this.watchTimer = setInterval(() => {
+      const next = this.fileSignature();
+      if (next === this.signature) return;
+      this.signature = next;
+      onChange();
+    }, WATCH_INTERVAL_MS);
+    // 不阻止进程退出
+    this.watchTimer.unref?.();
+  }
+
+  stopWatching(): void {
+    if (!this.watchTimer) return;
+    clearInterval(this.watchTimer);
+    this.watchTimer = undefined;
+  }
+
   /** 已导入的外部会话 -> Tandem 会话 id。 */
   private importedMap(): Map<string, string> {
     const map = new Map<string, string>();
@@ -565,7 +601,8 @@ export class ExternalSessionStore {
     return map;
   }
 
-  list(source?: ExternalSource): ExternalSession[] {
+  /** since（毫秒时间戳）存在时只返回该时间之后有更新的会话，供增量刷新。 */
+  list(source?: ExternalSource, since?: number): ExternalSession[] {
     const sources: ExternalSource[] = source ? [source] : ['claude-code', 'codex'];
     const imported = this.importedMap();
     const seenFiles = new Set<string>();
@@ -597,7 +634,9 @@ export class ExternalSessionStore {
     for (const file of [...this.cache.keys()]) {
       if (!seenFiles.has(file) && !statSafe(file)) this.cache.delete(file);
     }
-    return result.sort((a, b) => b.updatedAt - a.updatedAt);
+    return result
+      .filter((s) => since === undefined || s.updatedAt > since)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
   /** 找到源会话文件并完整解析。 */
@@ -668,6 +707,7 @@ export class ExternalSessionStore {
     rec.importedFrom = { source, id: parsed.id };
     this.host.store.markDirty(rec.id, false);
     this.host.broadcastSummary(rec);
+    this.host.notifyExternalSessionsChanged();
     return rec;
   }
 }

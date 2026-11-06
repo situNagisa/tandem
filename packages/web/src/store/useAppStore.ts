@@ -35,6 +35,7 @@ import { useUiStore } from './useUiStore'
 import type {
   ActiveSession,
   ConnectionState,
+  ExternalSessionItem,
   HostConfig,
   HostRuntime,
   SubagentSession,
@@ -47,6 +48,8 @@ interface AppState {
   hosts: HostConfig[]
   activeHostId: string | null
   runtimes: Record<string, HostRuntime>
+  /** 外部会话按 hostId 汇总（元素带 hostId，方便侧栏合并展示）。 */
+  externalSessions: Record<string, ExternalSessionItem[]>
   active: ActiveSession | null
   /** 回合结束后自增，改动审阅据此刷新。 */
   changesNonce: number
@@ -63,7 +66,7 @@ interface AppState {
   refreshSessions: (hostId: string) => Promise<void>
   refreshProfiles: (hostId: string) => Promise<void>
   refreshCommands: (hostId: string) => Promise<SlashCommand[]>
-  refreshExternalSessions: (hostId: string, force?: boolean) => Promise<ExternalSession[]>
+  refreshExternalSessions: (hostId: string, force?: boolean) => Promise<ExternalSessionItem[]>
   importExternalSession: (
     hostId: string,
     source: ExternalSource,
@@ -211,6 +214,24 @@ export const useAppStore = create<AppState>((set, get) => {
       const rt = state.runtimes[hostId]
       if (!rt) return state
       return { runtimes: { ...state.runtimes, [hostId]: { ...rt, ...patch } } }
+    })
+  }
+
+  /** 外部会话列表同时写入 runtime 和按 hostId 的汇总表。 */
+  const setExternalSessions = (
+    hostId: string,
+    updater: (list: ExternalSessionItem[]) => ExternalSessionItem[],
+  ): void => {
+    set((state) => {
+      const rt = state.runtimes[hostId]
+      const current = state.externalSessions[hostId] ?? rt?.externalSessions ?? []
+      const next = updater(current)
+      return {
+        ...(rt
+          ? { runtimes: { ...state.runtimes, [hostId]: { ...rt, externalSessions: next } } }
+          : {}),
+        externalSessions: { ...state.externalSessions, [hostId]: next },
+      }
     })
   }
 
@@ -482,6 +503,10 @@ export const useAppStore = create<AppState>((set, get) => {
       }
       case 'session_updated': {
         applySessionSummary(hostId, msg.session)
+        break
+      }
+      case 'external_sessions_changed': {
+        void get().refreshExternalSessions(hostId, true)
         break
       }
       case 'session_deleted': {
@@ -856,6 +881,7 @@ export const useAppStore = create<AppState>((set, get) => {
     hosts: [],
     activeHostId: null,
     runtimes: {},
+    externalSessions: {},
     active: null,
     changesNonce: 0,
 
@@ -1122,10 +1148,13 @@ export const useAppStore = create<AppState>((set, get) => {
       if (rt.externalLoaded && !force) return rt.externalSessions
       patchRuntime(hostId, { externalLoading: true, externalError: undefined })
       try {
-        const list = await api.externalSessions(host)
+        const list = (await api.externalSessions(host)).map((item) => ({
+          ...item,
+          hostId,
+        }))
         if (!getHost(hostId)) return list
+        setExternalSessions(hostId, () => list)
         patchRuntime(hostId, {
-          externalSessions: list,
           externalLoaded: true,
           externalLoading: false,
           externalError: undefined,
@@ -1148,16 +1177,13 @@ export const useAppStore = create<AppState>((set, get) => {
       try {
         const summary = await api.importExternalSession(host, source, id, input)
         applySessionSummary(hostId, summary)
-        const rt = get().runtimes[hostId]
-        if (rt) {
-          patchRuntime(hostId, {
-            externalSessions: rt.externalSessions.map((x) =>
-              x.source === source && x.id === id
-                ? { ...x, importedSessionId: summary.id }
-                : x,
-            ),
-          })
-        }
+        setExternalSessions(hostId, (list) =>
+          list.map((x) =>
+            x.source === source && x.id === id
+              ? { ...x, importedSessionId: summary.id }
+              : x,
+          ),
+        )
         navigate({ kind: 'session', hostId, sessionId: summary.id })
         toast('已导入为 Tandem 会话，可以继续对话', 'success')
         return summary

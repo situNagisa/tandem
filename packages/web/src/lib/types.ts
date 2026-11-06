@@ -1,6 +1,7 @@
 import type {
   ContentBlock,
   ExternalSession,
+  ExternalSource,
   HostInfo,
   Message,
   PermissionRequest,
@@ -21,6 +22,11 @@ export interface HostConfig {
 
 export type ConnectionState = 'connecting' | 'online' | 'offline'
 
+/** 外部会话的客户端视图：附带所属 Host，便于侧栏与路由直接使用。 */
+export interface ExternalSessionItem extends ExternalSession {
+  hostId: string
+}
+
 /** 每个 Host 在前端的运行时状态（不持久化）。 */
 export interface HostRuntime {
   status: ConnectionState
@@ -34,7 +40,7 @@ export interface HostRuntime {
   commands: SlashCommand[]
   commandsLoaded: boolean
   /** 本机已有的 Claude Code / Codex 会话（只读扫描结果）。 */
-  externalSessions: ExternalSession[]
+  externalSessions: ExternalSessionItem[]
   externalLoaded: boolean
   externalLoading: boolean
   externalError?: string
@@ -99,6 +105,7 @@ export type AppRoute =
   | { kind: 'home' }
   | { kind: 'host'; hostId: string }
   | { kind: 'session'; hostId: string; sessionId: string }
+  | { kind: 'external'; hostId: string; source: ExternalSource; id: string }
 
 export const PROVIDER_KIND_LABELS: Record<string, string> = {
   anthropic: 'Anthropic',

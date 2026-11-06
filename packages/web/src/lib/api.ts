@@ -176,8 +176,11 @@ export const api = {
   fsComplete: (h: HostConfig, cwd: string, q: string) =>
     request<string[]>(h, `/api/fs/complete${qs({ cwd, q })}`),
 
-  externalSessions: (h: HostConfig, source?: ExternalSource) =>
-    request<ExternalSession[]>(h, `/api/external-sessions${qs({ source })}`),
+  externalSessions: (h: HostConfig, source?: ExternalSource, since?: number) =>
+    request<ExternalSession[]>(
+      h,
+      `/api/external-sessions${qs({ source, since: since !== undefined ? String(since) : undefined })}`,
+    ),
   externalSession: (h: HostConfig, source: ExternalSource, id: string) =>
     request<Session>(
       h,

@@ -171,6 +171,8 @@ export type ServerMsg =
   | { type: 'permission_resolved'; requestId: string; sessionId: string; decision: PermissionDecision }
   | { type: 'todos'; sessionId: string; todos: Todo[] }
   | { type: 'turn_end'; sessionId: string; reason: 'done' | 'interrupted' | 'error'; error?: string }
+  // 外部会话（Claude Code / Codex）文件有变动，客户端应重新拉取列表
+  | { type: 'external_sessions_changed' }
   | { type: 'error'; message: string }
   | { type: 'pong' };
 

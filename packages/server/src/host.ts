@@ -98,6 +98,13 @@ export class Host {
     this.version = readVersion();
     // 启动时连接已启用的 MCP 服务器；失败只记录状态，不影响 Host 启动
     this.mcp.start();
+    // 外部会话目录有变化时通知客户端刷新侧栏（30s 定时扫描）
+    this.external.startWatching(() => this.notifyExternalSessionsChanged());
+  }
+
+  /** 外部会话列表可能变化（文件更新 / 导入状态变化），广播给所有客户端。 */
+  notifyExternalSessionsChanged(): void {
+    this.hub.broadcastAll({ type: 'external_sessions_changed' });
   }
 
   info(): HostInfo {
@@ -452,6 +459,8 @@ export class Host {
     this.store.delete(id);
     this.hub.dropSession(id);
     this.hub.broadcastAll({ type: 'session_deleted', sessionId: id });
+    // 删除导入的会话后，原外部会话应重新出现在侧栏
+    if (rec.importedFrom) this.notifyExternalSessionsChanged();
     if (rec.worktree) {
       await removeWorktree(
         rec.worktreeRepoRoot ?? (await gitRepoRoot(rec.cwd)) ?? '',
@@ -1129,6 +1138,7 @@ export class Host {
   }
   /** 进程退出：落盘会话/用量，关闭 MCP 子进程。 */
   async shutdown(): Promise<void> {
+    this.external.stopWatching();
     this.store.flush();
     this.usage.flush();
     await this.mcp.close();

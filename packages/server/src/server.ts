@@ -435,10 +435,14 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
 
   // ---------- 外部会话（只读，不写原软件文件） ----------
   app.get('/api/external-sessions', async (req, reply) => {
-    const query = req.query as { source?: string };
+    const query = req.query as { source?: string; since?: string };
     const source = str(query.source);
     if (source && !isExternalSource(source)) return bad(reply, 'source 无效');
-    return host.external.list(source ? (source as ExternalSource) : undefined);
+    const since = Number(query.since);
+    return host.external.list(
+      source ? (source as ExternalSource) : undefined,
+      Number.isFinite(since) && since > 0 ? since : undefined,
+    );
   });
 
   app.get('/api/external-sessions/:source/:id', async (req, reply) => {

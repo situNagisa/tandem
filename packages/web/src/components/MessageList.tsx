@@ -4,7 +4,7 @@ import { Check, Copy, MoreHorizontal, PencilLine, Undo2 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { cn } from '../lib/cn'
 import { copyText } from '../lib/clipboard'
-import type { UiMessage } from '../lib/types'
+import type { ToolResultBlock, UiMessage } from '../lib/types'
 import { Markdown } from './Markdown'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCard, type ToolUseBlock } from './ToolCard'
@@ -36,9 +36,11 @@ function dataUrl(block: Extract<ContentBlock, { type: 'image' }>): string {
 export const UserMessage = memo(function UserMessage({
   message,
   animate,
+  readOnly = false,
 }: {
   message: UiMessage
   animate: boolean
+  readOnly?: boolean
 }) {
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -165,25 +167,38 @@ export const UserMessage = memo(function UserMessage({
               >
                 {copied ? <Check size={12.5} className="text-success" /> : <Copy size={12.5} />}
               </button>
-              <button
-                onClick={startEdit}
-                aria-label="编辑并重发"
-                title="编辑并重发"
-                className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft"
-              >
-                <PencilLine size={12.5} />
-              </button>
-              <button
-                onClick={() => setRewindOpen(true)}
-                disabled={running}
-                aria-label="回退到此处"
-                title={running ? '会话运行中，结束后才能回退' : '回退到此处'}
-                className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Undo2 size={12.5} />
-              </button>
+              {!readOnly && (
+                <>
+                  <button
+                    onClick={startEdit}
+                    aria-label="编辑并重发"
+                    title="编辑并重发"
+                    className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft"
+                  >
+                    <PencilLine size={12.5} />
+                  </button>
+                  <button
+                    onClick={() => setRewindOpen(true)}
+                    disabled={running}
+                    aria-label="回退到此处"
+                    title={running ? '会话运行中，结束后才能回退' : '回退到此处'}
+                    className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Undo2 size={12.5} />
+                  </button>
+                </>
+              )}
             </div>
             <div className="mt-1 flex justify-end md:hidden">
+              {readOnly ? (
+                <button
+                  onClick={() => void copy()}
+                  aria-label={copied ? '已复制' : '复制消息'}
+                  className="flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft"
+                >
+                  {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
+                </button>
+              ) : (
               <Popover
                 align="right"
                 side="top"
@@ -232,6 +247,7 @@ export const UserMessage = memo(function UserMessage({
                   </div>
                 )}
               </Popover>
+              )}
             </div>
           </>
         )}
@@ -250,10 +266,14 @@ export const AssistantMessage = memo(function AssistantMessage({
   message,
   streaming,
   animate,
+  toolResults,
+  cwd,
 }: {
   message: UiMessage
   streaming: boolean
   animate: boolean
+  toolResults?: Record<string, ToolResultBlock>
+  cwd?: string
 }) {
   const lastIndex = message.content.length - 1
   const [copied, setCopied] = useState(false)
@@ -316,7 +336,14 @@ export const AssistantMessage = memo(function AssistantMessage({
         streaming,
       }))
       if (run.length >= 3) {
-        rendered.push(<ToolGroup key={`${message.id}-g-${i}`} entries={run} />)
+        rendered.push(
+          <ToolGroup
+            key={`${message.id}-g-${i}`}
+            entries={run}
+            toolResults={toolResults}
+            cwd={cwd}
+          />,
+        )
       } else {
         for (const item of run) {
           if (item.kind !== 'tool') continue
@@ -327,6 +354,8 @@ export const AssistantMessage = memo(function AssistantMessage({
               messageId={message.id}
               index={item.index}
               streaming={streaming}
+              toolResults={toolResults}
+              cwd={cwd}
             />,
           )
         }
@@ -375,10 +404,26 @@ function SkeletonMessages() {
   )
 }
 
-export function MessageList({ showSkeleton }: { showSkeleton?: boolean }) {
-  const messages = useAppStore((s) => s.active?.messages ?? EMPTY)
-  const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
-  const streamingId = useAppStore((s) => s.active?.streamingMessageId)
+export function MessageList({
+  showSkeleton,
+  messages: messagesProp,
+  readOnly = false,
+  toolResults,
+  cwd,
+}: {
+  showSkeleton?: boolean
+  /** 传入时渲染这份消息（如外部会话只读预览），不读当前活动会话。 */
+  messages?: UiMessage[]
+  readOnly?: boolean
+  toolResults?: Record<string, ToolResultBlock>
+  cwd?: string
+}) {
+  const storeMessages = useAppStore((s) => s.active?.messages ?? EMPTY)
+  const storeSessionId = useAppStore((s) => s.active?.sessionId ?? null)
+  const storeStreamingId = useAppStore((s) => s.active?.streamingMessageId)
+  const messages = messagesProp ?? storeMessages
+  const sessionId = messagesProp ? null : storeSessionId
+  const streamingId = messagesProp ? undefined : storeStreamingId
 
   // 首屏加载的消息不播放进入动画；之后新增的消息才淡入上移。
   // animated 里的类名会一直保留，避免流式更新时把进场动画截断。
@@ -468,6 +513,8 @@ export function MessageList({ showSkeleton }: { showSkeleton?: boolean }) {
               <ToolGroup
                 entries={entriesFromMessages(seg.messages, streamingId)}
                 animate={seg.animate}
+                toolResults={toolResults}
+                cwd={cwd}
               />
             </div>
           )
@@ -476,7 +523,7 @@ export function MessageList({ showSkeleton }: { showSkeleton?: boolean }) {
         if (m.role === 'user') {
           return (
             <div key={m.id} className="msg-row">
-              <UserMessage message={m} animate={seg.animate} />
+              <UserMessage message={m} animate={seg.animate} readOnly={readOnly} />
             </div>
           )
         }
@@ -486,6 +533,8 @@ export function MessageList({ showSkeleton }: { showSkeleton?: boolean }) {
               message={m}
               streaming={!!streamingId && m.id === streamingId}
               animate={seg.animate}
+              toolResults={toolResults}
+              cwd={cwd}
             />
           </div>
         )
