@@ -1,0 +1,31 @@
+# Tandem 项目手册（给接手的人 / agent）
+
+任何新会话、子代理、或新加入的人，先读这一页再动手。它保证上下文被清空后，工作可以无损接续。
+
+## 产品
+类 Claude Code Desktop 的 agent 工作台；多端（PC/浏览器/安卓）互联；每会话可选账号/分组/模型/思考强度；可管理远程机器上的任务。产品所有者：徐奥（通过飞书话题沟通）。
+
+## 事实来源（按优先级）
+1. `docs/design.md` —— 设计规范 + 末尾各轮「用户打分结论 / 反馈结论」。**用户明确提过的要求以这里为准**，不要回退。
+2. `docs/PROGRESS.md` —— 每轮做了什么、遗留什么。
+3. `packages/protocol/src/index.ts` —— 客户端与 Host 的唯一契约；改接口先改这里。
+4. `README.md` —— 构建、打包、目录。
+5. 评审与测试记录：`docs/review-v*.md`、`docs/qa-v6.md`、`docs/bugs-v6.md`、`docs/e2e-report*.md`、`docs/scorecard-v*/`。
+
+## 工作方式
+- 用户可随时反馈，不必等他；每轮自己定优先级。视觉方向性选择才发「打分卡」（编号 + 现状/方案对比图）。
+- 用户的具体问题通过产品内「反馈模式」（Ctrl+Shift+F）导出 `tandem-feedback-*.json` 发到飞书；用 `lark-cli im +messages-mget --message-ids <id> --download-resources` 下载，`node scripts/feedback-unpack.mjs <json> <outDir>` 解包后逐条处理，逐条回报并附修复后截图。
+- 交付前协调者亲自用 Playwright 点击验收用户反馈的每一条（只截静态图会漏掉"点了没反应、弹层被裁"类问题）。
+- 每轮结束：`npm run build`，`npm run apk -w @tandem/mobile`，`npm run dist:win -w @tandem/desktop`（产物会复制到 Windows「下载」目录），更新 `docs/PROGRESS.md`。
+
+## 约束
+- 测试 Host 一律用 `TANDEM_HOME=/tmp/xxx` 与独立端口，不碰 `~/.tandem`。真实 Key 只在复制到 /tmp 的副本里用，测试后删除；Key 与中转 URL 不进日志/文档。
+- `~/.claude`、`~/.codex` 只读。
+- 杀进程用 `ps -eo pid,args | awk '/<特征>/ && !/awk/ {print $1}' | xargs -r kill`，不要 `pkill -f`（会杀掉执行命令的 shell）。
+- 不读 git remote 的值；不 push（除非用户要求）。
+- 多个子代理并行时按文件划分所有权；改共享文件前 `git diff <file>`，不覆盖他人未提交改动；每批构建通过即提交。
+
+## 架构速览
+- `packages/server`：Fastify REST + WS；agent 循环 `src/agent/loop.ts`；providers（anthropic / openai 兼容）；工具 `src/tools/`；权限、hooks、MCP、worktree、用量、外部会话 `src/external.ts`、中继客户端 `src/relay/`。
+- `packages/web`：React 19 + Tailwind v4 + zustand；`src/components/ui/*` 是统一组件（Button、Menu、Tooltip…），新 UI 必须复用。
+- `packages/desktop`（Electron）、`packages/mobile`（Capacitor）、`packages/relay`（自托管中继，E2E）。
