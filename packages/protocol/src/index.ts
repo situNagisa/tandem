@@ -37,6 +37,7 @@ export interface ProfileInput {
   apiKey?: string;         // 更新时不传表示不改
   models: string[];
   defaultModel: string;
+  price?: Record<string, { input: number; output: number }>;
   groups?: ProfileGroupInput[]; // 传入即整体替换；带 id 且不带 apiKey 表示保留原 key
 }
 
