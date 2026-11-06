@@ -1,18 +1,9 @@
 import { useMemo } from 'react'
-import {
-  ArrowUpRight,
-  Bot,
-  CircleDot,
-  FileText,
-  FolderTree,
-  Loader2,
-  SquareTerminal,
-} from 'lucide-react'
+import { Bot, FolderTree, Loader2, SquareTerminal } from 'lucide-react'
 import type { ContentBlock } from '@tandem/protocol'
-import type { HostConfig, SubagentSession } from '../../lib/types'
+import type { SubagentSession } from '../../lib/types'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
-import { useSessionChanges } from '../../lib/useChanges'
 import { cn } from '../../lib/cn'
 import { IconButton } from '../ui/Button'
 import { Popover } from '../ui/Popover'
@@ -246,81 +237,20 @@ export function SubagentsButton() {
   )
 }
 
-/** 顶栏「文件」：会话改动文件入口，点击在右侧文件预览面板打开。 */
-export function FilesButton({
-  host,
-  sessionId,
-  changesNonce,
-}: {
-  host: HostConfig | null | undefined
-  sessionId: string | null | undefined
-  changesNonce: number
-}) {
-  const { changes } = useSessionChanges(host, sessionId, changesNonce, !!sessionId)
-  const openFilePreview = useUiStore((s) => s.openFilePreview)
-  const cwd = useAppStore((s) => s.active?.summary?.cwd ?? '')
-  const files = changes?.files ?? []
-
+/**
+ * 顶栏「文件」：调用文件浏览器的打开方法（预览面板左侧文件树）。
+ * 具体实现由文件预览面板提供，这里只做入口。
+ */
+export function FilesButton() {
+  const openFileBrowser = useAppStore((s) => s.openFileBrowser)
   return (
-    <Popover
-      align="right"
-      padded={false}
-      trigger={({ open, toggle }) => (
-        <IconButton
-          onClick={toggle}
-          label="文件"
-          tooltip={open ? '' : '文件'}
-          aria-expanded={open}
-          className={cn('text-text max-sm:size-11', open && 'bg-[var(--t-bg-active)]')}
-        >
-          <FolderTree size={16} />
-        </IconButton>
-      )}
+    <IconButton
+      onClick={() => openFileBrowser()}
+      label="文件"
+      tooltip="文件"
+      className="text-text max-sm:size-11"
     >
-      {(close) => (
-        <div className="w-[320px] max-w-[calc(100vw-1.5rem)]">
-          <div className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-text-tertiary">
-            <FolderTree size={11} />
-            改动文件
-            {files.length > 0 && <span className="ml-auto tabular-nums">{files.length}</span>}
-          </div>
-          {files.length === 0 ? (
-            <p className="px-2 pb-2 pt-1 text-[12px] leading-5 text-muted">当前会话还没有改动文件</p>
-          ) : (
-            <div className="max-h-[360px] overflow-y-auto pb-1">
-              {files.map((file) => (
-                <button
-                  key={file.path}
-                  type="button"
-                  onClick={() => {
-                    close()
-                    if (!sessionId) return
-                    openFilePreview({ path: file.path, cwd })
-                  }}
-                  className="flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-[var(--t-bg-hover)]"
-                  title={`${file.path}  +${file.additions} −${file.deletions}`}
-                >
-                  <FileText size={12} className="shrink-0 text-text-tertiary" />
-                  <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-text">
-                    {file.path}
-                  </span>
-                  <span className="shrink-0 font-mono text-[11px] text-[var(--t-git-plus)]">
-                    +{file.additions}
-                  </span>
-                  <span className="shrink-0 font-mono text-[11px] text-[var(--t-git-minus)]">
-                    −{file.deletions}
-                  </span>
-                  <ArrowUpRight size={11} className="shrink-0 text-muted" />
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="flex items-center gap-1.5 border-t border-border/60 px-2 py-1.5 text-[11px] text-muted">
-            <CircleDot size={10} />
-            点击文件在右侧预览
-          </div>
-        </div>
-      )}
-    </Popover>
+      <FolderTree size={16} />
+    </IconButton>
   )
 }
