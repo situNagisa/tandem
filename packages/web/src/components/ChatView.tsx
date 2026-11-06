@@ -7,6 +7,7 @@ import { cn } from '../lib/cn'
 import { MessageList } from './MessageList'
 import { SessionWelcome, HomeView } from './Welcome'
 import { PermissionCard } from './PermissionCard'
+import { Button, IconButton } from './ui/Button'
 import { Composer } from './Composer'
 import { TurnRail } from './chat/TurnRail'
 import '../styles/chat.css'
@@ -229,12 +230,14 @@ export function ChatView() {
                 <div className="mb-3 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-danger/30 bg-danger-soft/50 px-3 py-2 text-[12px] text-danger">
                   <TriangleAlert size={14} className="shrink-0" />
                   <span className="min-w-0 flex-1">{error}</span>
-                  <button
+                  <Button
+                    size="sm"
+                    variant="secondary"
                     onClick={reloadActiveSession}
-                    className="shrink-0 rounded-md border border-danger/30 px-2 py-0.5 text-[11px] transition-colors hover:bg-danger/10"
+                    className="border-danger/30 px-2 text-[11px]"
                   >
                     重新加载
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
@@ -251,19 +254,19 @@ export function ChatView() {
           }}
         />
 
-        <button
+        <IconButton
           onClick={() => scrollToBottom(true)}
-          aria-label="回到底部"
-          title="回到底部"
+          label="回到底部"
+          tooltipSide="top"
           className={cn(
-            'chat-jump absolute bottom-4 left-1/2 z-10 flex size-11 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-surface text-text-soft shadow-md hover:text-text md:size-8',
+            'chat-jump absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-surface text-text-soft shadow-md hover:text-text max-md:size-11',
             showJump
               ? 'pointer-events-auto translate-y-0 opacity-100'
               : 'pointer-events-none opacity-0',
           )}
         >
           <ChevronDown size={16} />
-        </button>
+        </IconButton>
       </div>
 
       <div className="shrink-0 bg-bg px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5 md:px-6 md:pb-5 md:pt-2">
@@ -284,31 +287,36 @@ export function ChatView() {
                     {turnError}
                   </div>
                 </div>
-                <button
+                <IconButton
+                  size="sm"
                   onClick={clearTurnError}
-                  aria-label="关闭回合错误"
-                  title="关闭"
-                  className="-mr-1 -mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+                  label="关闭回合错误"
+                  tooltip="关闭"
+                  className="-mr-1 -mt-0.5 [&_svg]:size-[13px]"
                 >
                   <X size={13} />
-                </button>
+                </IconButton>
               </div>
               <div className="mt-1.5 flex items-center gap-1 pl-[22px]">
-                <button
+                <Button
+                  size="sm"
+                  variant="secondary"
                   onClick={retryTurn}
                   disabled={running}
-                  className="flex h-6 items-center gap-1 rounded-md border border-border px-2 text-[11px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
+                  className="h-6 px-2 text-[11px] [&_svg]:size-3"
                 >
                   <RotateCcw size={11} />
                   重试
-                </button>
+                </Button>
                 {turnErrorClamped && (
-                  <button
+                  <Button
+                    size="sm"
+                    variant="ghost"
                     onClick={() => setTurnErrorExpanded((v) => !v)}
-                    className="h-6 rounded-md px-1.5 text-[11px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+                    className="h-6 px-1.5 text-[11px]"
                   >
                     {turnErrorExpanded ? '收起' : '展开'}
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>

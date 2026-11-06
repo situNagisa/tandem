@@ -26,6 +26,7 @@ import {
 import { PERMISSION_MODE_LABELS } from '../lib/types'
 import { ConnectionDot, SessionStatusDot } from './StatusDot'
 import { Modal } from './ui/Modal'
+import { Button, IconButton } from './ui/Button'
 
 const EMPTY_TODOS: Todo[] = []
 
@@ -127,13 +128,9 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
           </span>
         )}
         <span className="flex-1" />
-        <button
-          onClick={onClose}
-          aria-label="关闭信息面板"
-          className="-mr-1 flex size-11 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:size-8"
-        >
+        <IconButton onClick={onClose} label="关闭信息面板" className="-mr-1 max-md:size-11">
           <X size={15} />
-        </button>
+        </IconButton>
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
@@ -233,14 +230,15 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
                   {summary?.cwd ?? '—'}
                 </span>
                 {summary?.cwd && (
-                  <button
+                  <IconButton
+                    size="sm"
                     onClick={copyCwd}
-                    aria-label="复制工作目录"
-                    title="复制"
-                    className="mt-0.5 shrink-0 text-muted opacity-60 transition-opacity hover:opacity-100"
+                    label="复制工作目录"
+                    tooltip="复制"
+                    className="mt-0.5 size-5 opacity-60 hover:opacity-100 [&_svg]:size-3"
                   >
                     {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
-                  </button>
+                  </IconButton>
                 )}
               </span>
             </DetailRow>
@@ -305,17 +303,19 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="shrink-0 border-t border-border px-4 py-2.5">
-        <button
+        <Button
+          size="sm"
+          variant="danger-ghost"
           onClick={() => {
             setDirtyWorktree(false)
             setConfirmDelete(true)
           }}
           disabled={deleting || !summary}
-          className="flex min-h-8 items-center gap-1.5 rounded-md px-1 text-[12px] text-muted transition-colors hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
+          className="px-1 text-[12px] [&_svg]:size-3"
         >
           {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
           删除会话
-        </button>
+        </Button>
       </div>
 
       <Modal
@@ -325,21 +325,18 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         className="max-w-md"
         footer={
           <>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              disabled={deleting}
-              className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
-            >
+            <Button size="lg" onClick={() => setConfirmDelete(false)} disabled={deleting}>
               取消
-            </button>
-            <button
+            </Button>
+            <Button
+              size="lg"
+              variant="danger-ghost"
               onClick={() => void onDelete()}
               disabled={deleting}
-              className="flex min-h-9 items-center gap-1.5 rounded-lg btn-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
             >
-              {deleting && <Loader2 size={13} className="animate-spin" />}
+              {deleting && <Loader2 size={14} className="animate-spin" />}
               {dirtyWorktree ? '仍然删除' : '删除'}
-            </button>
+            </Button>
           </>
         }
       >

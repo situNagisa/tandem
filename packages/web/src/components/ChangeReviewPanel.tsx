@@ -19,6 +19,8 @@ import { useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
 import { DiffView } from './DiffView'
 import { Modal } from './ui/Modal'
+import { Button, IconButton } from './ui/Button'
+import { Input } from './ui/Controls'
 
 interface LineComment {
   id: number
@@ -49,15 +51,16 @@ function InlineComment({
     ref.current?.focus()
   }, [])
   return (
-    <div className="flex w-[min(420px,78vw)] items-center gap-1.5 border-y border-accent/30 bg-accent-soft/40 px-2 py-1.5">
-      <MessageSquarePlus size={12} className="shrink-0 text-accent" />
-      <input
+    <div className="flex w-[min(420px,78vw)] items-center gap-1.5 border-y border-border bg-[var(--t-bg-hover)] px-2 py-1.5">
+      <MessageSquarePlus size={12} className="shrink-0 text-muted" />
+      <Input
         ref={ref}
+        size="sm"
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="对这一行写审阅意见…"
         aria-label="行内评论"
-        className="h-7 min-w-0 flex-1 rounded border border-border bg-bg px-2 text-[12px] text-text outline-none focus:border-accent/60"
+        className="min-w-0 flex-1"
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault()
@@ -69,22 +72,20 @@ function InlineComment({
           }
         }}
       />
-      <button
+      <Button
+        size="sm"
+        variant="primary"
         onClick={() => {
           const next = text.trim()
           if (next) onSubmit(next)
         }}
         disabled={!text.trim()}
-        className="flex h-7 shrink-0 items-center gap-1 rounded bg-accent px-2 text-[11.5px] font-medium text-on-accent disabled:opacity-50"
       >
         添加 <CornerDownLeft size={10} />
-      </button>
-      <button
-        onClick={onCancel}
-        className="h-7 shrink-0 rounded px-1.5 text-[11.5px] text-muted hover:bg-bg-hover hover:text-text"
-      >
+      </Button>
+      <Button size="sm" variant="ghost" onClick={onCancel}>
         取消
-      </button>
+      </Button>
     </div>
   )
 }
@@ -320,21 +321,12 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
           </span>
         )}
         <span className="flex-1" />
-        <button
-          onClick={reload}
-          aria-label="刷新改动"
-          title="刷新"
-          className="flex size-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:size-7"
-        >
+        <IconButton onClick={reload} label="刷新改动" tooltip="刷新" className="max-md:size-9">
           <RefreshCw size={13} className={cn(loading && 'animate-spin')} />
-        </button>
-        <button
-          onClick={onClose}
-          aria-label="关闭改动审阅"
-          className="-mr-1 flex size-10 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:size-7"
-        >
+        </IconButton>
+        <IconButton onClick={onClose} label="关闭改动审阅" className="-mr-1 max-md:size-10">
           <X size={15} />
-        </button>
+        </IconButton>
       </div>
 
       {changes && !changes.isRepo ? (
@@ -348,12 +340,9 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
       ) : error ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
           <p className="text-[12.5px] text-danger">{error}</p>
-          <button
-            onClick={reload}
-            className="rounded-md border border-border px-2.5 py-1 text-[11.5px] text-text-soft hover:bg-bg-hover"
-          >
+          <Button size="sm" onClick={reload}>
             重试
-          </button>
+          </Button>
         </div>
       ) : loading && !changes ? (
         <div className="flex flex-1 items-center justify-center text-muted">
@@ -376,7 +365,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                   className={cn(
                     'group flex w-full items-center border-l-2 transition-colors',
                     selected === file.path
-                      ? 'border-accent bg-bg-active/60'
+                      ? 'border-[var(--t-border-strong)] bg-bg-active/60'
                       : 'border-transparent hover:bg-[var(--t-bg-hover)]',
                   )}
                 >
@@ -402,14 +391,16 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                     <span className="shrink-0 font-mono text-[10.5px] text-text-soft">+{file.additions}</span>
                     <span className="shrink-0 font-mono text-[10.5px] text-muted">−{file.deletions}</span>
                   </button>
-                  <button
+                  <IconButton
+                    size="sm"
+                    variant="danger-ghost"
                     onClick={() => setRevertTarget(file)}
-                    aria-label={`丢弃 ${file.path} 的改动`}
-                    title="丢弃此文件的改动"
-                    className="mr-1 flex size-8 shrink-0 items-center justify-center rounded text-muted opacity-100 transition-opacity hover:bg-bg-hover hover:text-danger focus:opacity-100 md:size-6 md:opacity-0 md:group-hover:opacity-100"
+                    label={`丢弃 ${file.path} 的改动`}
+                    tooltip="丢弃此文件的改动"
+                    className="mr-1 md:size-6 md:opacity-0 md:group-hover:opacity-100 [&_svg]:size-3"
                   >
                     <Trash2 size={12} />
-                  </button>
+                  </IconButton>
                 </div>
               )
             })}
@@ -423,12 +414,14 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 </span>
                 <span className="flex-1" />
                 <span className="shrink-0 text-[10.5px] text-muted">点击行添加评论</span>
-                <button
+                <Button
+                  size="sm"
+                  variant="danger-ghost"
                   onClick={() => setRevertTarget(selectedFile)}
-                  className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] text-muted transition-colors hover:bg-danger-soft hover:text-danger"
+                  className="px-1.5 text-[10.5px] [&_svg]:size-3"
                 >
                   <Trash2 size={10} /> 丢弃改动
-                </button>
+                </Button>
               </div>
             )}
             {diffLoading ? (
@@ -453,24 +446,26 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                   const showInput = activeLine === info.line
                   if (lineComments.length === 0 && !showInput) return null
                   return (
-                    <div className="border-y border-accent/15 bg-accent-soft/25">
+                    <div className="border-y border-border bg-[var(--t-bg-hover)]">
                       {lineComments.map((c) => (
                         <div
                           key={c.id}
                           className="flex items-start gap-2 px-3 py-1.5 text-[11.5px] leading-5"
                         >
-                          <MessageSquarePlus size={11} className="mt-1 shrink-0 text-accent" />
+                          <MessageSquarePlus size={11} className="mt-1 shrink-0 text-muted" />
                           <span className="min-w-0 flex-1 break-words text-text-soft">{c.text}</span>
-                          <button
+                          <IconButton
+                            size="sm"
+                            variant="danger-ghost"
                             onClick={(e) => {
                               e.stopPropagation()
                               setComments((prev) => prev.filter((x) => x.id !== c.id))
                             }}
-                            aria-label={`删除第 ${c.line} 行评论`}
-                            className="shrink-0 text-muted hover:text-danger"
+                            label={`删除第 ${c.line} 行评论`}
+                            className="size-5 [&_svg]:size-3"
                           >
                             <X size={11} />
-                          </button>
+                          </IconButton>
                         </div>
                       ))}
                       {showInput && (
@@ -497,31 +492,34 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                     <span className="min-w-0 flex-1 truncate text-text-soft" title={c.text}>
                       {c.text}
                     </span>
-                    <button
+                    <IconButton
+                      size="sm"
+                      variant="danger-ghost"
                       onClick={() => setComments((prev) => prev.filter((x) => x.id !== c.id))}
-                      aria-label="删除评论"
-                      className="shrink-0 text-muted hover:text-danger"
+                      label="删除评论"
+                      className="size-5 [&_svg]:size-3"
                     >
                       <X size={11} />
-                    </button>
+                    </IconButton>
                   </div>
                 ))}
                 <div className="flex justify-end pt-1">
-                  <button
+                  <Button
+                    size="sm"
+                    variant="primary"
                     onClick={sendComments}
                     disabled={sendingComments}
-                    className="flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
                   >
                     <MessageSquarePlus size={12} />
                     把 {comments.length} 条评论发给 agent
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
 
             <div className="space-y-2 px-3 py-2.5">
               <div className="flex items-center gap-1.5">
-                <input
+                <Input
                   value={commitMessage}
                   onChange={(e) => setCommitMessage(e.target.value)}
                   onKeyDown={(e) => {
@@ -532,16 +530,17 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                   }}
                   placeholder="提交信息"
                   aria-label="提交信息"
-                  className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-bg px-2.5 text-[12px] text-text outline-none placeholder:text-muted focus:border-accent/60"
+                  className="min-w-0 flex-1"
                 />
-                <button
+                <Button
+                  size="sm"
+                  variant="primary"
                   onClick={requestCommit}
                   disabled={!commitMessage.trim() || committing}
-                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
                 >
                   {committing && <Loader2 size={11} className="animate-spin" />}
                   提交全部
-                </button>
+                </Button>
               </div>
               <div className="flex items-center gap-1.5 text-[10.5px] leading-4 text-muted">
                 <span>
@@ -549,12 +548,14 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                   {untrackedCount > 0 ? `（含 ${untrackedCount} 个未跟踪）` : ''}
                 </span>
                 <span className="flex-1" />
-                <button
+                <Button
+                  size="sm"
+                  variant="ghost"
                   onClick={askAgentCommit}
-                  className="flex shrink-0 items-center gap-1 transition-colors hover:text-text"
+                  className="h-6 px-1 text-[10.5px] [&_svg]:size-3"
                 >
                   <Wand2 size={11} /> 让 agent 写提交信息
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -568,21 +569,18 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
         className="max-w-md"
         footer={
           <>
-            <button
-              onClick={() => setRevertTarget(null)}
-              disabled={reverting}
-              className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
-            >
+            <Button size="lg" onClick={() => setRevertTarget(null)} disabled={reverting}>
               取消
-            </button>
-            <button
+            </Button>
+            <Button
+              size="lg"
+              variant="danger-ghost"
               onClick={() => void doRevert()}
               disabled={reverting}
-              className="flex min-h-9 items-center gap-1.5 rounded-lg btn-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
             >
-              {reverting && <Loader2 size={13} className="animate-spin" />}
+              {reverting && <Loader2 size={14} className="animate-spin" />}
               丢弃改动
-            </button>
+            </Button>
           </>
         }
       >
@@ -604,21 +602,18 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
         className="max-w-md"
         footer={
           <>
-            <button
-              onClick={() => setCommitConfirmOpen(false)}
-              disabled={committing}
-              className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
-            >
+            <Button size="lg" onClick={() => setCommitConfirmOpen(false)} disabled={committing}>
               取消
-            </button>
-            <button
+            </Button>
+            <Button
+              size="lg"
+              variant="primary"
               onClick={() => void doCommit()}
               disabled={committing}
-              className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
             >
-              {committing && <Loader2 size={13} className="animate-spin" />}
+              {committing && <Loader2 size={14} className="animate-spin" />}
               提交并关闭
-            </button>
+            </Button>
           </>
         }
       >

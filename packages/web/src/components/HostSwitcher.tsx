@@ -4,6 +4,7 @@ import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
 import { Popover } from './ui/Popover'
 import { ConnectionDot } from './StatusDot'
+import { Button, IconButton } from './ui/Button'
 
 export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
   const hosts = useAppStore((s) => s.hosts)
@@ -22,13 +23,15 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
       padded={false}
       panelClassName="w-[272px] max-w-[calc(100vw-1rem)] p-1.5"
       trigger={({ open, toggle }) => (
-        <button
+        <Button
+          variant="ghost"
           onClick={toggle}
           aria-expanded={open}
           aria-haspopup="menu"
-          title={active ? `${active.name} · ${active.url.replace(/^https?:\/\//, '')}` : '选择 Host'}
+          tooltip={active ? `${active.name} · ${active.url.replace(/^https?:\/\//, '')}` : '选择 Host'}
+          tooltipSide="top"
           className={cn(
-            'flex h-8 min-w-0 max-w-[150px] items-center gap-1.5 rounded-lg px-1.5 text-left text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text',
+            'min-w-0 max-w-[150px] justify-start gap-1.5 px-1.5 text-muted',
             open && 'bg-[var(--t-bg-active)] text-text',
           )}
         >
@@ -38,7 +41,7 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             {active && platform ? <span className="text-muted"> · {platform}</span> : null}
           </span>
           {runtime && <ConnectionDot state={runtime.status} className="size-1" />}
-        </button>
+        </Button>
       )}
     >
       {(close) => (
@@ -83,14 +86,14 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
                     {isActive && <Check size={13} className="shrink-0 text-text" />}
                   </button>
                   {rt?.status === 'offline' && (
-                    <button
+                    <IconButton
+                      size="sm"
                       onClick={() => retryHost(h.id)}
-                      title="立即重连"
-                      aria-label="立即重连"
-                      className="mr-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-[var(--t-bg-hover)] hover:text-text"
+                      label="立即重连"
+                      className="mr-1 size-7 [&_svg]:size-3"
                     >
                       <RefreshCw size={12} />
-                    </button>
+                    </IconButton>
                   )}
                 </div>
               )

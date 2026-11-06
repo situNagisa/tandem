@@ -6,6 +6,7 @@ import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import type { UiMessage } from '../lib/types'
 import { Modal } from './ui/Modal'
+import { Button } from './ui/Button'
 
 type Mode = 'both' | 'conversation' | 'code'
 
@@ -111,21 +112,13 @@ export function RewindDialog({
       className="max-w-lg"
       footer={
         <>
-          <button
-            onClick={onClose}
-            disabled={submitting}
-            className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
-          >
+          <Button size="lg" onClick={onClose} disabled={submitting}>
             取消
-          </button>
-          <button
-            onClick={() => void submit()}
-            disabled={disabled}
-            className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12.5px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
-          >
-            {submitting && <Loader2 size={13} className="animate-spin" />}
+          </Button>
+          <Button size="lg" variant="primary" onClick={() => void submit()} disabled={disabled}>
+            {submitting && <Loader2 size={14} className="animate-spin" />}
             回退
-          </button>
+          </Button>
         </>
       }
     >
@@ -173,14 +166,14 @@ export function RewindDialog({
                   className={cn(
                     'flex w-full items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors',
                     active
-                      ? 'border-accent/50 bg-accent-soft/40'
+                      ? 'border-[var(--t-border-strong)] bg-[var(--t-bg-active)]'
                       : 'border-border bg-surface/50 hover:bg-[var(--t-bg-hover)]',
                   )}
                 >
                   <span
                     className={cn(
                       'mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md',
-                      active ? 'bg-accent-soft text-accent' : 'bg-bg-hover text-muted',
+                      active ? 'bg-[var(--t-bg-active)] text-text' : 'bg-bg-hover text-muted',
                     )}
                   >
                     <Icon size={13} />

@@ -18,6 +18,8 @@ import { api } from '../lib/api'
 import { copyText } from '../lib/clipboard'
 import { cn } from '../lib/cn'
 import { useIsMobile } from '../lib/hooks'
+import { Button, IconButton } from './ui/Button'
+import { SegmentedControl } from './ui/Controls'
 import { isLocalHostUrl } from '../lib/hostUrl'
 import { isRelayHost } from '../lib/relay'
 import {
@@ -234,61 +236,53 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
                 :{label}
               </span>
             )}
-            <button
+            <IconButton
+              size="sm"
               onClick={() => void copyPath()}
-              aria-label="复制文件路径"
-              title={copied ? '已复制' : `复制路径：${absPath}`}
-              className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+              label="复制文件路径"
+              tooltip={copied ? '已复制' : `复制路径：${absPath}`}
+              tooltipSide="bottom"
+              className="size-6 [&_svg]:size-3"
             >
               {copied ? <Check size={12} className="text-success" /> : <Copy size={11.5} />}
-            </button>
+            </IconButton>
           </div>
           <div className="truncate font-mono text-[10px] text-muted" title={absPath}>
             {absPath || path}
           </div>
         </div>
         {host && isLocalHostUrl(host.url) && (
-          <button
+          <Button
+            size="sm"
             onClick={() => void reveal()}
             disabled={revealing || !data}
-            title="在 Host 的文件管理器中显示"
-            className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-border px-2 text-[11px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
+            tooltip="在 Host 的文件管理器中显示"
           >
             {revealing ? <Loader2 size={11} className="animate-spin" /> : <ExternalLink size={11} />}
             在本机打开
-          </button>
+          </Button>
         )}
-        <button
+        <IconButton
           onClick={onClose}
-          aria-label="关闭文件预览"
-          className="-mr-1 flex size-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:size-7"
+          label="关闭文件预览"
+          className="-mr-1 max-md:size-9"
         >
           <X size={15} />
-        </button>
+        </IconButton>
       </div>
 
       {markdown && data && !data.isBinary && (
         <div className="flex shrink-0 items-center gap-1 border-b border-border/70 px-3 py-1.5">
-          <div className="flex rounded-md bg-[var(--t-bg-subtle)] p-0.5">
-            <button
-              onClick={() => setMode('preview')}
-              className={cn(
-                'flex h-6 items-center gap-1 rounded px-2 text-[11px] transition-colors',
-                mode === 'preview' ? 'bg-[var(--t-bg-active)] text-text' : 'text-muted hover:text-text-soft',
-              )}
-            >
-              <Eye size={11} /> 预览
-            </button>
-            <button
-              onClick={() => setMode('source')}
-              className={cn(
-                'flex h-6 items-center gap-1 rounded px-2 text-[11px] transition-colors',
-                mode === 'source' ? 'bg-[var(--t-bg-active)] text-text' : 'text-muted hover:text-text-soft',
-              )}
-            >
-              <Code2 size={11} /> 源码
-            </button>
-          </div>
+          <SegmentedControl
+            aria-label="文件视图"
+            size="sm"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: 'preview', label: <><Eye size={11} /> 预览</> },
+              { value: 'source', label: <><Code2 size={11} /> 源码</> },
+            ]}
+          />
         </div>
       )}
 
@@ -304,12 +298,9 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
           <p className="max-w-full break-all rounded-md bg-[var(--t-bg-subtle)] px-2 py-1 font-mono text-[11px] text-text-secondary">
             {absPath}
           </p>
-          <button
-            onClick={() => setRetryNonce((n) => n + 1)}
-            className="mt-1 flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-[11.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-          >
+          <Button size="sm" onClick={() => setRetryNonce((n) => n + 1)} className="mt-1">
             <RotateCcw size={11} /> 重试
-          </button>
+          </Button>
         </div>
       ) : data ? (
         <div className="flex min-h-0 flex-1 flex-col">
