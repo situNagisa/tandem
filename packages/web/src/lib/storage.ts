@@ -78,6 +78,7 @@ export interface UiPrefs {
   collapsedProjects?: string[]
   notifications?: boolean
   showSubagents?: boolean
+  showExternalSessions?: boolean
 }
 
 /** 随配置迁移打包的客户端设置：Host 列表、主题、侧栏偏好等 localStorage 内容。 */

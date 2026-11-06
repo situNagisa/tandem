@@ -21,6 +21,7 @@ interface UiState {
   collapsedProjects: Record<string, boolean>
   showArchived: boolean
   showSubagents: boolean
+  showExternalSessions: boolean
   panelOpen: boolean
   changesOpen: boolean
   changesWidth: number
@@ -41,6 +42,7 @@ interface UiState {
   toggleProject: (key: string) => void
   setShowArchived: (show: boolean) => void
   setShowSubagents: (show: boolean) => void
+  setShowExternalSessions: (show: boolean) => void
   setPanelOpen: (open: boolean) => void
   togglePanel: () => void
   setChangesOpen: (open: boolean) => void
@@ -69,6 +71,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   collapsedProjects: loadCollapsedProjects(),
   showArchived: false,
   showSubagents: prefs.showSubagents ?? false,
+  showExternalSessions: prefs.showExternalSessions ?? true,
   panelOpen: prefs.panelOpen ?? true,
   changesOpen: false,
   changesWidth: Math.min(760, Math.max(380, prefs.changesWidth ?? 520)),
@@ -106,6 +109,10 @@ export const useUiStore = create<UiState>((set, get) => ({
   setShowSubagents: (show) => {
     saveUiPrefs({ showSubagents: show })
     set({ showSubagents: show })
+  },
+  setShowExternalSessions: (show) => {
+    saveUiPrefs({ showExternalSessions: show })
+    set({ showExternalSessions: show })
   },
   setPanelOpen: (open) => {
     saveUiPrefs({ panelOpen: open })

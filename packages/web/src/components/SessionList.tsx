@@ -343,6 +343,8 @@ export function SessionList({
   const setShowArchived = useUiStore((s) => s.setShowArchived)
   const showSubagents = useUiStore((s) => s.showSubagents)
   const setShowSubagents = useUiStore((s) => s.setShowSubagents)
+  const showExternalSessions = useUiStore((s) => s.showExternalSessions)
+  const setShowExternalSessions = useUiStore((s) => s.setShowExternalSessions)
   // 同事会提供 externalSessions（顶层数组或按 hostId 的 Record 均可），未就绪时为 undefined。
   const externalRaw = useAppStore(
     (s) => (s as typeof s & { externalSessions?: unknown }).externalSessions,
@@ -350,6 +352,7 @@ export function SessionList({
   const activateHost = useAppStore((s) => s.activateHost)
 
   const [menu, setMenu] = useState<MenuState | null>(null)
+  const [expandedExternal, setExpandedExternal] = useState<Record<string, boolean>>({})
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const [confirm, setConfirm] = useState<{
@@ -422,9 +425,14 @@ export function SessionList({
     return list.filter((x) => !x.importedSessionId)
   }, [hosts, runtimes, externalRaw])
 
+  const visibleExternals = useMemo(
+    () => (showExternalSessions ? externalItems : []),
+    [externalItems, showExternalSessions],
+  )
+
   const { pinned, hosts: groups } = useMemo(
-    () => buildGroups(hosts, runtimes, externalItems, query, showArchived, showSubagents),
-    [hosts, runtimes, externalItems, query, showArchived, showSubagents],
+    () => buildGroups(hosts, runtimes, visibleExternals, query, showArchived, showSubagents),
+    [hosts, runtimes, visibleExternals, query, showArchived, showSubagents],
   )
 
   const anyRunning = useMemo(
@@ -709,6 +717,25 @@ export function SessionList({
             <GitBranch size={10} /> 子代理
           </button>
         )}
+        {!showArchived && (
+          <button
+            onClick={() => setShowExternalSessions(!showExternalSessions)}
+            aria-pressed={showExternalSessions}
+            title={
+              showExternalSessions
+                ? '在侧栏隐藏 Claude Code / Codex 会话'
+                : '在侧栏显示 Claude Code / Codex 会话'
+            }
+            className={cn(
+              'ml-auto flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[9.5px] tracking-tight transition-colors',
+              showExternalSessions
+                ? 'bg-[var(--t-bg-active)] text-text-soft'
+                : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text-soft',
+            )}
+          >
+            <span className="truncate">Claude Code / Codex</span>
+          </button>
+        )}
         {showArchived && (
           <button
             onClick={() => setShowArchived(false)}
@@ -770,22 +797,25 @@ export function SessionList({
 
           const renderProject = (hostId: string, project: ProjectGroup, indented: boolean) => {
             const projCollapsed = !!collapsed[project.key]
+            // 搜索时展示全部；平时外部会话默认只露最近 5 条，避免淹没 Tandem 会话
+            const searching = !!query.trim()
+            const externalExpanded = !!expandedExternal[project.key]
+            const shownExternals =
+              searching || externalExpanded ? project.externals : project.externals.slice(0, 5)
+            const hiddenExternalCount = project.externals.length - shownExternals.length
+            const externalSourceLabel = project.externals.some((e) => e.source === 'claude-code')
+              ? 'Claude Code'
+              : 'Codex'
             const entries = [
-              ...project.items.map((s) => ({
-                at: s.updatedAt,
-                node: (
-                  <Fragment key={`${hostId}:${s.id}`}>
-                    {renderRow(hostId, s)}
-                    {showSubagents &&
-                      project.children[s.id]?.map((child) => renderRow(hostId, child, 1))}
-                  </Fragment>
-                ),
-              })),
-              ...project.externals.map((ext) => ({
-                at: ext.updatedAt,
-                node: renderExternal(hostId, ext),
-              })),
-            ].sort((a, b) => b.at - a.at)
+              ...project.items.map((s) => (
+                <Fragment key={`${hostId}:${s.id}`}>
+                  {renderRow(hostId, s)}
+                  {showSubagents &&
+                    project.children[s.id]?.map((child) => renderRow(hostId, child, 1))}
+                </Fragment>
+              )),
+              ...shownExternals.map((ext) => renderExternal(hostId, ext)),
+            ]
             const count = project.items.length + project.externals.length
             return (
               <div key={project.key}>
@@ -837,7 +867,33 @@ export function SessionList({
                   inert={projCollapsed}
                 >
                   <div className={cn('expand-inner space-y-0.5', indented ? 'pl-10' : 'pl-4')}>
-                    {entries.map((e) => e.node)}
+                    {entries}
+                    {hiddenExternalCount > 0 && (
+                      <button
+                        onClick={() =>
+                          setExpandedExternal((s) => ({ ...s, [project.key]: true }))
+                        }
+                        className="flex min-h-8 w-full items-center gap-1.5 rounded-lg pl-2 pr-2 text-left text-[12px] text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
+                      >
+                        <ChevronRight size={11} className="shrink-0 rotate-90" />
+                        更多 {externalSourceLabel} 会话（{hiddenExternalCount}）
+                      </button>
+                    )}
+                    {!searching && externalExpanded && project.externals.length > 5 && (
+                      <button
+                        onClick={() =>
+                          setExpandedExternal((s) => {
+                            const next = { ...s }
+                            delete next[project.key]
+                            return next
+                          })
+                        }
+                        className="flex min-h-8 w-full items-center gap-1.5 rounded-lg pl-2 pr-2 text-left text-[12px] text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
+                      >
+                        <ChevronRight size={11} className="shrink-0" />
+                        收起 {externalSourceLabel} 会话
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
