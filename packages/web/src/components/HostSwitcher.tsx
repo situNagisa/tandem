@@ -16,8 +16,8 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <Popover
-      side="bottom"
-      align="right"
+      side="right"
+      align="left"
       padded={false}
       panelClassName="w-[210px] rounded-[10px] p-[5px]"
       trigger={({ open, toggle }) => (

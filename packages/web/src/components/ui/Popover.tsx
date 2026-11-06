@@ -6,7 +6,7 @@ interface PopoverProps {
   trigger: (state: { open: boolean; toggle: () => void; close: () => void }) => ReactNode
   children: (close: () => void) => ReactNode
   align?: 'left' | 'right' | 'center'
-  side?: 'bottom' | 'top'
+  side?: 'bottom' | 'top' | 'right' | 'left'
   /** 面板是否带默认内边距；自定义菜单（如带搜索框）可设为 false。 */
   padded?: boolean
   panelClassName?: string
