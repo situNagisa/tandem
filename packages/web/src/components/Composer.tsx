@@ -1428,7 +1428,7 @@ export function Composer({
             }}
           />
           <Button
-            variant="primary"
+            variant="accent"
             onClick={running ? stop : () => void handleSend()}
             disabled={running ? stopping : !canSend}
             data-state={sendState}
