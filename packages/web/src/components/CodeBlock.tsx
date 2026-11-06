@@ -170,7 +170,7 @@ export function CodeBlock({
             }
             // 无语言标注：在受控候选集里自动检测；置信度太低就保持纯文本。
             const auto = hljs.highlightAuto(shown, [...AUTO_LANGUAGES])
-            if (!auto.language || auto.relevance < 3) return
+            if (!auto.language || auto.relevance < 2) return
             if (cancelled) return
             writeCache(key, shown, auto.value, auto.language)
             setHighlighted({ code: shown, html: auto.value, language: auto.language })
