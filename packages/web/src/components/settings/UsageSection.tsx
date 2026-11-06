@@ -3,7 +3,6 @@ import { BarChart3, Loader2, RefreshCw, TriangleAlert } from 'lucide-react'
 import type { UsageStatsRow } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
-import { cn } from '../../lib/cn'
 import { formatCost, formatTokens } from '../../lib/format'
 import { IconButton } from '../ui/Button'
 import { SegmentedControl } from '../ui/Controls'
@@ -371,6 +370,25 @@ export function UsageSection() {
       ),
     [rows],
   )
+  const keyRanks = useMemo(
+    () =>
+      rank(
+        rows.filter((row) => !!row.keyId),
+        (row) => `${row.hostConfigId}:${row.profileId}:${row.groupId ?? ''}:${row.keyId}`,
+        (row) => {
+          const profile = (runtimes[row.hostConfigId]?.profiles ?? []).find(
+            (p) => p.id === row.profileId,
+          )
+          const group = profile?.groups?.find((g) => g.id === row.groupId)
+          const key = group?.keys?.find((k) => k.id === row.keyId)
+          return {
+            label: key?.label?.trim() || key?.apiKeyMasked?.slice(-4) || row.keyId?.slice(-8) || 'Key',
+            sub: `${profile?.name ?? row.profileName}${group ? ` / ${group.name}` : ''}`,
+          }
+        },
+      ),
+    [rows, runtimes],
+  )
 
   return (
     <div>
@@ -431,9 +449,10 @@ export function UsageSection() {
         <DayChart days={days} values={daily} />
       </div>
 
-      <div className={cn('mt-3 grid gap-2', hosts.length > 1 ? 'sm:grid-cols-3' : 'sm:grid-cols-2')}>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <RankTable title="按模型" rows={modelRanks} />
         <RankTable title="按账号" rows={accountRanks} />
+        <RankTable title="按 Key" rows={keyRanks} />
         {hosts.length > 1 && <RankTable title="按 Host" rows={hostRanks} />}
       </div>
 

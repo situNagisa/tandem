@@ -47,6 +47,19 @@ export function Toasts() {
             >
               {t.text}
             </span>
+            {t.actionLabel && t.onClick && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  t.onClick?.()
+                  dismiss(t.id)
+                }}
+                className="h-6 shrink-0 rounded-md px-1.5 text-[13px] font-medium text-text transition-colors hover:bg-[var(--t-bg-active)]"
+              >
+                {t.actionLabel}
+              </button>
+            )}
             <IconButton
               size="sm"
               onClick={(e) => {

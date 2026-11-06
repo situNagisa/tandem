@@ -53,6 +53,10 @@ interface UiState {
   agentFocus: { id: string; nonce: number } | null
   /** 自增通知输入框清空并聚焦（已在新会话页时再点“新会话”）。 */
   composerResetNonce: number
+  /** 每次 /schedule 自增，定时任务页监听到后打开新建表单。 */
+  scheduleComposeNonce: number
+  /** 后台任务面板：指定 Host/会话，可带要直接查看的任务。 */
+  backgroundPanel: { hostId: string; sessionId: string; taskId?: string } | null
 
   setTheme: (theme: Theme) => void
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -81,12 +85,19 @@ interface UiState {
   setNewSessionOpen: (open: boolean) => void
   setSearchOpen: (open: boolean) => void
   setNotifications: (enabled: boolean) => void
-  toast: (text: string, kind?: Toast['kind'], options?: { onClick?: () => void }) => void
+  toast: (
+    text: string,
+    kind?: Toast['kind'],
+    options?: { onClick?: () => void; actionLabel?: string },
+  ) => void
   dismissToast: (id: number) => void
   seedPrompt: (text: string) => void
   clearPromptSeed: () => void
   focusAgent: (id: string) => void
   resetComposer: () => void
+  openBackgroundTasks: (hostId: string, sessionId: string, taskId?: string) => void
+  openScheduleComposer: () => void
+  closeBackgroundTasks: () => void
 }
 
 const prefs = loadUiPrefs()
@@ -118,6 +129,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   promptSeed: null,
   agentFocus: null,
   composerResetNonce: 0,
+  backgroundPanel: null,
+  scheduleComposeNonce: 0,
 
   setTheme: (theme) => {
     saveTheme(theme)
@@ -195,6 +208,17 @@ export const useUiStore = create<UiState>((set, get) => ({
       mobilePanel: false,
     })),
   closeSettings: () => set({ settingsOpen: false }),
+  openBackgroundTasks: (hostId, sessionId, taskId) =>
+    set({ backgroundPanel: { hostId, sessionId, ...(taskId ? { taskId } : {}) } }),
+  closeBackgroundTasks: () => set({ backgroundPanel: null }),
+  openScheduleComposer: () =>
+    set((s) => ({
+      settingsOpen: true,
+      settingsTab: 'schedules',
+      scheduleComposeNonce: s.scheduleComposeNonce + 1,
+      mobileSidebar: false,
+      mobilePanel: false,
+    })),
   setSettingsTab: (tab) => set({ settingsTab: tab }),
   setNewSessionOpen: (open) => set({ newSessionOpen: open, mobileSidebar: false }),
   setSearchOpen: (open) => set({ searchOpen: open }),
@@ -211,7 +235,16 @@ export const useUiStore = create<UiState>((set, get) => ({
     recentToastAt.set(text, now)
     const id = toastSeq++
     set((s) => ({
-      toasts: [...s.toasts.slice(-3), { id, kind, text, onClick: options?.onClick }],
+      toasts: [
+        ...s.toasts.slice(-3),
+        {
+          id,
+          kind,
+          text,
+          onClick: options?.onClick,
+          ...(options?.actionLabel ? { actionLabel: options.actionLabel } : {}),
+        },
+      ],
     }))
     const timer = window.setTimeout(() => {
       toastTimers.delete(id)

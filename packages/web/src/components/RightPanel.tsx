@@ -24,7 +24,7 @@ import {
   X,
 } from 'lucide-react'
 import type { Todo } from '@tandem/protocol'
-import type { SubagentSession } from '../lib/types'
+import type { SubagentSession, UiMessage } from '../lib/types'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useSessionChanges } from '../lib/useChanges'
@@ -50,6 +50,7 @@ import { MenuItem, MenuList } from './ui/Menu'
 import { Button, IconButton } from './ui/Button'
 
 const EMPTY_TODOS: Todo[] = []
+const EMPTY_MESSAGES: UiMessage[] = []
 
 const STATUS_TEXT: Record<string, string> = {
   idle: '空闲',
@@ -366,6 +367,8 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const hostId = useAppStore((s) => s.active?.hostId ?? null)
   const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
   const summary = useAppStore((s) => s.active?.summary ?? null)
+  const messages = useAppStore((s) => s.active?.messages ?? EMPTY_MESSAGES)
+  const profiles = useAppStore((s) => (hostId ? s.runtimes[hostId]?.profiles : undefined))
   const todos = useAppStore((s) => s.active?.todos ?? EMPTY_TODOS)
   const plan = useAppStore((s) => s.active?.plan ?? null)
   const subagents = useAppStore((s) => s.active?.subagents)
@@ -419,6 +422,27 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const completed = todos.filter((t) => t.status === 'completed').length
   const progress = todos.length ? Math.round((completed / todos.length) * 100) : 0
   const usage = summary?.usage
+  const keyUsage = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const message of messages) {
+      const keyId = message.usage?.keyId
+      if (keyId && message.role === 'assistant') {
+        counts.set(keyId, (counts.get(keyId) ?? 0) + 1)
+      }
+    }
+    if (counts.size <= 1) return null
+    const profile = profiles?.find((p) => p.id === summary?.profileId)
+    const group = profile?.groups?.find(
+      (g) => g.id === summary?.groupId || g.name === summary?.groupId,
+    )
+    return [...counts]
+      .map(([id, count]) => {
+        const key = group?.keys.find((k) => k.id === id)
+        const label = key?.label?.trim() || key?.apiKeyMasked?.slice(-4) || id.slice(-4)
+        return `${label} ×${count}`
+      })
+      .join(' · ')
+  }, [messages, profiles, summary?.profileId, summary?.groupId])
   const fileChanges = changes?.isRepo ? changes.files : []
   const additions = fileChanges.reduce((n, f) => n + f.additions, 0)
   const deletions = fileChanges.reduce((n, f) => n + f.deletions, 0)
@@ -657,6 +681,14 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
               </div>
             ))}
           </div>
+          {keyUsage && (
+            <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-border pt-1.5">
+              <span className="shrink-0 text-[12px] text-muted">Key</span>
+              <span className="min-w-0 truncate font-mono text-[13px] tabular-nums text-text-soft">
+                {keyUsage}
+              </span>
+            </div>
+          )}
           <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-border pt-1.5">
             <span className="text-[12px] text-muted">缓存命中率</span>
             <span className="font-mono text-[13px] tabular-nums text-text-soft">

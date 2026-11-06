@@ -34,6 +34,8 @@ import {
 import { navigate, parseHash } from '../lib/router'
 import { notifyPermission, notifyTurnEnd } from '../lib/attention'
 import { useUiStore } from './useUiStore'
+import { useTaskStore } from './useTaskStore'
+import { useScheduleStore } from './useScheduleStore'
 import type {
   ActiveSession,
   ConnectionState,
@@ -258,7 +260,7 @@ function hostHashFor(hostId: string | null): import('../lib/types').AppRoute {
 function toast(
   text: string,
   kind: 'info' | 'success' | 'error' = 'info',
-  options?: { onClick?: () => void },
+  options?: { onClick?: () => void; actionLabel?: string },
 ): void {
   useUiStore.getState().toast(text, kind, options)
 }
@@ -589,6 +591,17 @@ export const useAppStore = create<AppState>((set, get) => {
         void get().refreshExternalSessions(hostId, true)
         break
       }
+      case 'task_updated': {
+        useTaskStore
+          .getState()
+          .applyEvent(hostId, msg.task, msg.content, msg.since, msg.truncated)
+        break
+      }
+      case 'schedules_updated': {
+        const host = getHost(hostId)
+        if (host) void useScheduleStore.getState().refresh(host)
+        break
+      }
       case 'session_deleted': {
         const active = get().active
         removeSummary(hostId, msg.sessionId)
@@ -871,6 +884,28 @@ export const useAppStore = create<AppState>((set, get) => {
       }
       case 'plan': {
         patchActive(hostId, msg.sessionId, (a) => ({ ...a, plan: msg.plan }))
+        break
+      }
+      case 'budget_alert': {
+        const profilesNow = get().runtimes[hostId]?.profiles ?? []
+        const profile = profilesNow.find((p) => p.id === msg.profileId)
+        const group = profile?.groups?.find((g) => g.id === msg.groupId)
+        const name =
+          group?.name ??
+          profile?.name ??
+          (msg.scope === 'model' ? (msg.model ?? '模型') : '全局')
+        const period = msg.period === 'day' ? '今日' : msg.period === 'week' ? '本周' : '本月'
+        const percent =
+          msg.limitUsd > 0 ? Math.max(0, Math.round((msg.spentUsd / msg.limitUsd) * 100)) : 100
+        const text = `${period} ${name} 预算已用 ${percent}%`
+        if (msg.level === '100') {
+          toast(text, 'error', {
+            actionLabel: '查看',
+            onClick: () => useUiStore.getState().openSettings('budgets'),
+          })
+        } else {
+          toast(text, 'info')
+        }
         break
       }
       case 'hook_event': {

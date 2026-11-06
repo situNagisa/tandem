@@ -120,6 +120,8 @@ export interface Toast {
   text: string
   /** 点击提示时执行（如跳到出错的会话）。 */
   onClick?: () => void
+  /** 提示右侧的操作按钮文案（如「查看」）。 */
+  actionLabel?: string
 }
 
 export type Theme = 'light' | 'dark' | 'system'

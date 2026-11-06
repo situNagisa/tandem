@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
-import { TriangleAlert } from 'lucide-react'
+import { Loader2, TriangleAlert } from 'lucide-react'
+import { api } from '../../lib/api'
+import { useAppStore } from '../../store/useAppStore'
+import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
 
 /** 取服务端错误文案的第一句，并去掉「host 返回 500：」这类技术前缀。 */
@@ -23,10 +26,29 @@ export function TurnErrorNotice({
   onRetry: () => void
 }) {
   const [open, setOpen] = useState(false)
+  const [allowing, setAllowing] = useState(false)
+  const budgetBlocked = /预算已达上限/.test(error) && /临时放行/.test(error)
 
   useEffect(() => {
     setOpen(false)
   }, [error])
+
+  const allowOnce = async () => {
+    const { active, hosts } = useAppStore.getState()
+    const host = hosts.find((h) => h.id === active?.hostId)
+    if (!host || !active || allowing) return
+    setAllowing(true)
+    try {
+      await api.budgetAllowOnce(host, active.sessionId)
+      onRetry()
+    } catch (err) {
+      useUiStore
+        .getState()
+        .toast(err instanceof Error ? err.message : '放行失败', 'error')
+    } finally {
+      setAllowing(false)
+    }
+  }
 
   return (
     <div className="mt-3 flex max-w-full flex-col items-start gap-1.5" role="status">
@@ -36,6 +58,17 @@ export function TurnErrorNotice({
           {readableReason(error)}
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-0.5">
+          {budgetBlocked && (
+            <button
+              type="button"
+              onClick={() => void allowOnce()}
+              disabled={running || allowing}
+              className="flex h-6 items-center gap-1 rounded-full px-2 text-[13px] font-medium text-text transition-colors hover:bg-bg-hover disabled:pointer-events-none disabled:opacity-40"
+            >
+              {allowing && <Loader2 size={11} className="animate-spin" />}
+              本次放行
+            </button>
+          )}
           <button
             type="button"
             onClick={onRetry}
