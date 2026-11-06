@@ -143,6 +143,9 @@ export function ExternalSessionsDialog({
       ? importProfile.models
       : [importProfile.defaultModel].filter(Boolean)
   }, [importProfile, importGroupId])
+  const importModelValue = importModelList.includes(importModel)
+    ? importModel
+    : (importModelList[0] ?? '')
 
   const counts = useMemo(() => {
     const map: Record<string, number> = {}
@@ -203,7 +206,7 @@ export function ExternalSessionsDialog({
     const created = await importExternalSession(hostId, selected.source, selected.id, {
       profileId: importProfile.id,
       ...(importGroupId ? { groupId: importGroupId } : {}),
-      ...(importModel ? { model: importModel } : {}),
+      ...(importModelValue ? { model: importModelValue } : {}),
     })
     setImporting(false)
     if (created) closePanel()
@@ -325,7 +328,7 @@ export function ExternalSessionsDialog({
                   </select>
                 ) : null}
                 <select
-                  value={importModelList.includes(importModel) ? importModel : (importModelList[0] ?? '')}
+                  value={importModelValue}
                   onChange={(e) => setImportModel(e.target.value)}
                   aria-label="导入后使用的模型"
                   className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-surface px-1.5 font-mono text-[10.5px] outline-none focus:border-border-strong"

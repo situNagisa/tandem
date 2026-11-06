@@ -557,8 +557,14 @@ export function NewSessionView() {
       setModel(choice?.model ?? '')
       return
     }
-    if (groupId && !current.groups?.some((g) => g.id === groupId)) {
-      setGroupId(current.groups?.[0]?.id)
+    if (current.groups?.length) {
+      if (!groupId || !current.groups.some((g) => g.id === groupId)) {
+        const g = current.groups[0]
+        setGroupId(g.id)
+        setModel(g.defaultModel || g.models[0] || '')
+      }
+    } else if (groupId) {
+      setGroupId(undefined)
     }
   }, [profiles, profileId, groupId])
 
