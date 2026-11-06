@@ -175,6 +175,7 @@ export interface MenuItemProps {
   disabled?: boolean
   onSelect?: () => void
   onMouseDown?: (e: ReactMouseEvent<HTMLButtonElement>) => void
+  onMouseEnter?: () => void
   role?: 'menuitem' | 'menuitemradio' | 'menuitemcheckbox'
   ariaChecked?: boolean
   className?: string
@@ -192,6 +193,7 @@ export function MenuItem({
   disabled = false,
   onSelect,
   onMouseDown,
+  onMouseEnter,
   role = 'menuitem',
   ariaChecked,
   className,
@@ -214,6 +216,7 @@ export function MenuItem({
       onMouseDown={(e) => {
         if (!disabled) onMouseDown?.(e)
       }}
+      onMouseEnter={onMouseEnter}
       className={cn(
         'flex h-[26px] w-full shrink-0 items-center gap-1.5 rounded-md px-1.5 text-left text-[12.5px] leading-none text-text-soft transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text data-[active=true]:bg-[var(--t-bg-hover)] data-[active=true]:text-text data-[selected=true]:bg-[color-mix(in_srgb,var(--t-bg-active)_55%,transparent)] focus-visible:bg-[var(--t-bg-hover)] focus-visible:text-text focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-soft aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:text-text-soft',
         selected && 'text-text',

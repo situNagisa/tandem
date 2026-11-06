@@ -8,6 +8,7 @@ import {
   type ClipboardEvent as ReactClipboardEvent,
   type DragEvent as ReactDragEvent,
   type ReactNode,
+  type RefObject,
 } from 'react'
 import type {
   ContentBlock,
@@ -21,6 +22,7 @@ import {
   AtSign,
   Brain,
   ChevronDown,
+  ChevronRight,
   Ellipsis,
   FileText,
   Image as ImageIcon,
@@ -28,7 +30,6 @@ import {
   Map,
   Paperclip,
   PencilLine,
-  Search,
   Shield,
   ShieldOff,
   Slash as SlashIcon,
@@ -60,7 +61,6 @@ import {
 import { Popover } from './ui/Popover'
 import { ContextMeter } from './chat/ContextMeter'
 import { Button, IconButton } from './ui/Button'
-import { SegmentedControl } from './ui/Controls'
 import { MenuDivider, MenuItem, MenuList } from './ui/Menu'
 import {
   setThinkingMode,
@@ -459,106 +459,145 @@ function ModelPanel({
   onManage: () => void
   close: () => void
 }) {
-  const [query, setQuery] = useState('')
-  const tabs = useMemo(() => {
-    return profiles.flatMap((profile) => {
-      const groups = profileModelGroups(profile)
-      const multi = (profile.groups?.length ?? 0) > 1
-      return groups.map((group) => ({
-        key: `${profile.id}:${group.groupId ?? 'default'}`,
-        profile,
-        groupId: group.groupId,
-        label: multi ? `${profile.name} › ${group.name}` : profile.name,
-        models: group.models,
-      }))
-    })
-  }, [profiles])
-  const currentKey = `${profileId}:${groupId ?? 'default'}`
-  const [activeKey, setActiveKey] = useState(currentKey)
+  const accountsRef = useRef<HTMLDivElement>(null)
+  const groupsRef = useRef<HTMLDivElement>(null)
+  const modelsRef = useRef<HTMLDivElement>(null)
+  const [accountId, setAccountId] = useState(profileId || profiles[0]?.id || '')
+  const account = profiles.find((p) => p.id === accountId) ?? profiles[0] ?? null
+  const groups = useMemo(() => (account ? profileModelGroups(account) : []), [account])
+  const [groupKey, setGroupKey] = useState<string | undefined>(groupId ?? groups[0]?.groupId)
+  const group = groups.find((g) => (g.groupId ?? undefined) === (groupKey ?? undefined)) ?? groups[0]
+  const models = group?.models ?? []
 
   useEffect(() => {
-    if (tabs.some((tab) => tab.key === activeKey)) return
-    setActiveKey(tabs.some((tab) => tab.key === currentKey) ? currentKey : (tabs[0]?.key ?? ''))
-  }, [tabs, activeKey, currentKey])
+    if (profiles.length === 0) return
+    if (profiles.some((p) => p.id === accountId)) return
+    setAccountId(profileId || profiles[0].id)
+  }, [profiles, accountId, profileId])
 
-  const activeTab = tabs.find((tab) => tab.key === activeKey) ?? tabs[0]
-  const showSearch = tabs.reduce((n, tab) => n + tab.models.length, 0) > 8
-  const q = query.trim().toLowerCase()
-  const models = activeTab
-    ? activeTab.models.filter(
-        (m) => !q || m.toLowerCase().includes(q) || prettyModel(m).toLowerCase().includes(q),
-      )
-    : []
+  useEffect(() => {
+    if (groups.some((g) => (g.groupId ?? undefined) === (groupKey ?? undefined))) return
+    setGroupKey(groups[0]?.groupId)
+  }, [groups, groupKey])
+
+  const focusColumn = (ref: RefObject<HTMLDivElement | null>) => {
+    window.requestAnimationFrame(() => {
+      ref.current?.querySelector<HTMLElement>('[data-menu-item]:not(:disabled)')?.focus()
+    })
+  }
+
+  const pickAccount = (next: Profile) => {
+    if (next.id === account?.id) return
+    setAccountId(next.id)
+    const nextGroups = profileModelGroups(next)
+    const keep = nextGroups.find((g) => g.groupId === groupId) ?? nextGroups[0]
+    setGroupKey(keep?.groupId)
+  }
 
   const choose = (nextModel: string) => {
-    if (!activeTab) return
+    if (!account || !group) return
     close()
     if (
-      activeTab.profile.id !== profileId ||
-      (activeTab.groupId ?? undefined) !== (groupId ?? undefined) ||
+      account.id !== profileId ||
+      (group.groupId ?? undefined) !== (groupId ?? undefined) ||
       nextModel !== model
     ) {
-      onSelect(activeTab.profile.id, activeTab.groupId, nextModel)
+      onSelect(account.id, group.groupId, nextModel)
     }
   }
 
+  const onPanelKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
+    const columns = [accountsRef.current, groupsRef.current, modelsRef.current].filter(
+      (col): col is HTMLDivElement => !!col,
+    )
+    const index = columns.findIndex((col) => col.contains(document.activeElement))
+    if (index < 0) return
+    const next = columns[index + (e.key === 'ArrowRight' ? 1 : -1)]
+    if (!next) return
+    e.preventDefault()
+    e.stopPropagation()
+    next.querySelector<HTMLElement>('[data-menu-item]:not(:disabled)')?.focus()
+  }
+
+  const accountSelected = account?.id === profileId
+  const groupSelected = accountSelected && (group?.groupId ?? undefined) === (groupId ?? undefined)
+  const selectedEffort = efforts.includes(effort) ? effort : nearestEffort(efforts, effort)
+  const showAccounts = profiles.length > 1
+  const showGroups = groups.length > 1
+
   return (
-    <div className="w-[360px] max-w-[calc(100vw-1.5rem)]">
-      <MenuList aria-label="选择模型" className="p-0">
-        <div className="no-scrollbar flex shrink-0 gap-1 overflow-x-auto border-b border-border px-1.5 py-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => {
-                setActiveKey(tab.key)
-                setQuery('')
-              }}
-              className={cn(
-                'h-6 shrink-0 whitespace-nowrap rounded-md px-1.5 text-[11.5px] transition-colors',
-                tab.key === activeKey
-                  ? 'bg-[var(--t-bg-active)] text-text'
-                  : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text',
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
+    <div
+      className="flex max-w-[calc(100vw-1.5rem)] items-stretch"
+      onKeyDown={onPanelKeyDown}
+    >
+      {showAccounts && (
+        <div ref={accountsRef} className="shrink-0 border-r border-border">
+          <MenuList aria-label="账号" className="max-h-[320px] w-[156px] overflow-y-auto">
+            {profiles.map((profile) => (
+              <MenuItem
+                key={profile.id}
+                role="menuitemradio"
+                ariaChecked={profile.id === profileId}
+                selected={profile.id === profileId}
+                onMouseEnter={() => pickAccount(profile)}
+                onSelect={() => {
+                  pickAccount(profile)
+                  focusColumn(showGroups ? groupsRef : modelsRef)
+                }}
+                trailing={
+                  profile.id === account?.id && showGroups ? <ChevronRight size={12} /> : undefined
+                }
+              >
+                {profile.name}
+              </MenuItem>
+            ))}
+          </MenuList>
         </div>
-        {showSearch && (
-          <div className="flex h-7 shrink-0 items-center gap-1.5 border-b border-border px-2 text-muted">
-            <Search size={12} className="shrink-0" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="搜索模型"
-              aria-label="搜索模型"
-              spellCheck={false}
-              className="min-w-0 flex-1 bg-transparent text-[12.5px] text-text outline-none placeholder:text-muted"
-            />
-          </div>
-        )}
-        <div className="max-h-[300px] shrink-0 overflow-y-auto p-1">
+      )}
+
+      {showGroups && (
+        <div ref={groupsRef} className="shrink-0 border-r border-border">
+          <MenuList aria-label="分组" className="max-h-[320px] w-[156px] overflow-y-auto">
+            {groups.map((g) => (
+              <MenuItem
+                key={g.groupId ?? 'default'}
+                role="menuitemradio"
+                ariaChecked={groupSelected && g.groupId === group?.groupId}
+                selected={groupSelected && g.groupId === group?.groupId}
+                onMouseEnter={() => setGroupKey(g.groupId)}
+                onSelect={() => {
+                  setGroupKey(g.groupId)
+                  focusColumn(modelsRef)
+                }}
+                trailing={
+                  g.groupId === group?.groupId ? <ChevronRight size={12} /> : undefined
+                }
+              >
+                {g.name}
+              </MenuItem>
+            ))}
+          </MenuList>
+        </div>
+      )}
+
+      <div ref={modelsRef} className="flex min-w-0 shrink-0 flex-col">
+        <MenuList aria-label="选择模型" className="max-h-[300px] w-[200px] overflow-y-auto">
           {loading && profiles.length === 0 && (
-            <div className="flex items-center gap-2 px-2 py-4 text-[12px] text-muted">
+            <div className="flex items-center gap-2 px-2 py-3 text-[12px] text-muted">
               <Loader2 size={13} className="animate-spin" /> 加载账号…
             </div>
           )}
-          {!loading && models.length === 0 && (
+          {!loading && profiles.length === 0 && (
             <div className="px-2 py-3 text-[12px] leading-5 text-muted">
-              {profiles.length === 0
-                ? '这台 Host 还没有配置账号。'
-                : activeTab
-                  ? '没有匹配的模型。'
-                  : '没有可用模型。'}
+              这台 Host 还没有配置账号。
             </div>
           )}
+          {profiles.length > 0 && models.length === 0 && (
+            <div className="px-2 py-3 text-[12px] leading-5 text-muted">没有可用模型。</div>
+          )}
           {models.map((m) => {
-            const selected =
-              !!activeTab &&
-              activeTab.profile.id === profileId &&
-              (activeTab.groupId ?? undefined) === (groupId ?? undefined) &&
-              m === model
+            const selected = groupSelected && m === model
             return (
               <MenuItem
                 key={m}
@@ -566,40 +605,47 @@ function ModelPanel({
                 title={m}
                 role="menuitemradio"
                 ariaChecked={selected}
-                onMouseDown={(e) => e.preventDefault()}
                 onSelect={() => choose(m)}
               >
-                <span className="text-[12.5px]">
-                  <Highlight text={prettyModel(m)} query={query} />
-                </span>
+                {prettyModel(m)}
               </MenuItem>
             )
           })}
-        </div>
-      </MenuList>
-      <div className="border-t border-border p-1.5">
-        <div className="flex items-center justify-between gap-2">
-          {efforts.length > 0 && (
-            <SegmentedControl
-              size="sm"
-              aria-label="思考强度"
-              value={efforts.includes(effort) ? effort : nearestEffort(efforts, effort)}
-              options={efforts.map((value) => ({ value, label: EFFORT_LABEL[value] }))}
-              onChange={onEffortChange}
-            />
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              close()
-              onManage()
-            }}
-            className="shrink-0 px-1.5 text-[12px]"
-          >
-            管理账号…
-          </Button>
-        </div>
+        </MenuList>
+        {efforts.length > 0 && (
+          <>
+            <MenuDivider />
+            <div className="flex items-center gap-0.5 px-1 pb-0.5" role="group" aria-label="思考强度">
+              {efforts.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => onEffortChange(value)}
+                  aria-pressed={value === selectedEffort}
+                  title={`思考强度：${EFFORT_LABEL[value]}`}
+                  className={cn(
+                    'h-6 min-w-0 flex-1 rounded-md px-1 text-[11.5px] transition-colors',
+                    value === selectedEffort
+                      ? 'bg-[var(--t-bg-active)] text-text'
+                      : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
+                  )}
+                >
+                  {EFFORT_LABEL[value]}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            close()
+            onManage()
+          }}
+          className="mt-0.5 self-end rounded px-1.5 py-0.5 text-[11px] text-muted transition-colors hover:text-text-soft"
+        >
+          管理账号…
+        </button>
       </div>
     </div>
   )
@@ -649,7 +695,7 @@ function ModelMenu({
       padded={false}
       open={open}
       onOpenChange={onOpenChange}
-      panelClassName="w-[360px] max-w-[calc(100vw-1.5rem)]"
+      panelClassName="w-auto max-w-[calc(100vw-1.5rem)]"
       trigger={({ open: isOpen, toggle }) => (
         <Button
           variant="ghost"
