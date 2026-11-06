@@ -104,30 +104,32 @@ function HostMenu({
   const hosts = useAppStore((s) => s.hosts)
   const runtimes = useAppStore((s) => s.runtimes)
   return (
-    <div className="w-[248px]">
+    <MenuList aria-label="切换主机" className="w-[248px]">
       {hosts.map((h) => {
         const rt = runtimes[h.id]
+        const detail = [
+          h.url.replace(/^https?:\/\//, ''),
+          rt?.info?.platform,
+          h.mode === 'relay' ? '中继 · 加密' : '直连',
+        ]
+          .filter(Boolean)
+          .join(' · ')
         return (
-          <MenuRow
+          <MenuItem
             key={h.id}
-            active={h.id === hostId}
-            onClick={() => {
+            icon={<ConnectionDot state={rt?.status ?? 'connecting'} />}
+            selected={h.id === hostId}
+            hint={detail}
+            onSelect={() => {
               if (h.id !== hostId) onPick(h.id)
               close()
             }}
           >
-            <ConnectionDot state={rt?.status ?? 'connecting'} />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate">{h.name}</span>
-              <span className="block truncate font-mono text-[10px] text-muted">
-                {h.url.replace(/^https?:\/\//, '')}
-              </span>
-            </span>
-            {h.id === hostId && <Check size={13} className="shrink-0 text-text" />}
-          </MenuRow>
+            {h.name}
+          </MenuItem>
         )
       })}
-    </div>
+    </MenuList>
   )
 }
 

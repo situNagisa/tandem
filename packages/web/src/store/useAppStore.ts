@@ -1090,6 +1090,9 @@ export const useAppStore = create<AppState>((set, get) => {
       const url = normalizeHostUrl(rawUrl)
       const name = input.name.trim() || new URL(url).host
       const existing = get().hosts.find((h) => h.url === url && (h.mode ?? 'direct') === mode)
+      if (!existing && get().hosts.some((h) => h.name.trim().toLowerCase() === name.toLowerCase())) {
+        throw new Error(`名称「${name}」已被使用，请换一个唯一的名称`)
+      }
       if (existing) {
         const patch = {
           name: input.name.trim() || existing.name,

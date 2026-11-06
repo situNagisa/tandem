@@ -47,13 +47,18 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             const rt = runtimes[h.id]
             const isActive = h.id === activeHostId
             const online = rt?.status === 'online'
-            const platform = rt?.info?.platform
+            const detail = [
+              h.url.replace(/^https?:\/\//, ''),
+              rt?.info?.platform,
+              h.mode === 'relay' ? '中继 · 加密' : '直连',
+            ]
+              .filter(Boolean)
+              .join(' · ')
             return (
               <MenuItem
                 key={h.id}
                 selected={isActive}
-                trailing={platform}
-                hint={online ? undefined : '离线，暂时无法连接'}
+                hint={online ? detail : `离线 · ${detail}`}
                 className={online ? '!text-text' : '!text-text-tertiary'}
                 onSelect={() => {
                   close()

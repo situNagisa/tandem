@@ -85,6 +85,17 @@ export function HostsSection() {
 
   const handleAdd = () => {
     setAddError(null)
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      setAddError('请填写主机名称')
+      return
+    }
+    if (
+      hosts.some((h) => h.name.trim().toLowerCase() === trimmedName.toLowerCase())
+    ) {
+      setAddError('名称已被使用，请换一个唯一的名称')
+      return
+    }
     if (!token.trim()) {
       setAddError('请填写 Host Token')
       return
@@ -186,6 +197,15 @@ export function HostsSection() {
     if (!editId) return
     const host = hosts.find((x) => x.id === editId)
     if (!host) return
+    const nextName = editName.trim()
+    if (!nextName) {
+      toast('名称不能为空', 'error')
+      return
+    }
+    if (hosts.some((h) => h.id !== editId && h.name.trim().toLowerCase() === nextName.toLowerCase())) {
+      toast('名称已被使用，请换一个唯一的名称', 'error')
+      return
+    }
     try {
       if (host.mode === 'relay') {
         if (!isValidFingerprint(editFingerprint)) throw new Error('必须填写 Host 公钥指纹（64 位十六进制）')
@@ -280,11 +300,11 @@ export function HostsSection() {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="settings-label">名称（可选）</label>
+              <label className="settings-label">名称（必填）</label>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="例如：局域网工作站"
+                placeholder="唯一名称，例如：局域网工作站"
               />
             </div>
             <div>
@@ -536,7 +556,7 @@ export function HostsSection() {
               {editing && (
                 <div className="mt-3 grid gap-2.5 border-t border-border/70 pt-3 sm:grid-cols-2">
                   <div>
-                    <label className="settings-label">名称</label>
+                    <label className="settings-label">名称（必填）</label>
                     <input
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
