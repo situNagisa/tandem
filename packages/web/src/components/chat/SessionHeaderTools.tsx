@@ -1,122 +1,49 @@
-import { useMemo } from 'react'
-import { Bot, FolderTree, Loader2, SquareTerminal } from 'lucide-react'
-import type { ContentBlock } from '@tandem/protocol'
+import { useEffect, useMemo } from 'react'
+import { Bot, FolderTree, SquareTerminal } from 'lucide-react'
 import type { SubagentSession } from '../../lib/types'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
+import { useTaskStore } from '../../store/useTaskStore'
 import { cn } from '../../lib/cn'
 import { IconButton } from '../ui/Button'
 import { Popover } from '../ui/Popover'
 
 const EMPTY_SUBS: Record<string, SubagentSession> = {}
+const EMPTY_TASKS: import('@tandem/protocol').BackgroundTask[] = []
 
-interface RunningItem {
-  kind: 'tool' | 'agent'
-  key: string
-  name: string
-  detail?: string
-  id?: string
-}
-
-function toolSummary(block: Extract<ContentBlock, { type: 'tool_use' }>): string {
-  const input = block.input
-  if (!input || typeof input !== 'object') return ''
-  const record = input as Record<string, unknown>
-  const first = record.command ?? record.description ?? record.path ?? record.file_path ?? record.query
-  return typeof first === 'string' ? first : ''
-}
-
-/** 顶栏「后台任务」：本会话正在运行的工具与子代理（后台任务能力落地前的等价视图）。 */
+/** 顶栏「后台任务」：打开本会话后台任务面板，角标为运行中数量。 */
 export function BackgroundTasksButton() {
-  const running = useAppStore((s) => s.active?.running ?? false)
-  const messages = useAppStore((s) => s.active?.messages)
-  const toolResults = useAppStore((s) => s.active?.toolResults)
-  const subagents = useAppStore((s) => s.active?.subagents) ?? EMPTY_SUBS
+  const active = useAppStore((s) => s.active)
+  const hosts = useAppStore((s) => s.hosts)
+  const tasks = useTaskStore((s) => (active ? s.byHost[active.hostId] ?? EMPTY_TASKS : EMPTY_TASKS))
+  const openBackgroundTasks = useUiStore((s) => s.openBackgroundTasks)
+  const host = hosts.find((h) => h.id === active?.hostId)
+  const count = active
+    ? tasks.filter((task) => task.sessionId === active.sessionId && task.status === 'running').length
+    : 0
 
-  const items = useMemo(() => {
-    const list: RunningItem[] = []
-    if (running) {
-      for (const message of messages ?? []) {
-        for (const block of message.content) {
-          if (block.type !== 'tool_use' || toolResults?.[block.id]) continue
-          list.push({
-            kind: 'tool',
-            key: block.id,
-            name: block.name,
-            detail: toolSummary(block),
-          })
-        }
-      }
-    }
-    for (const sub of Object.values(subagents)) {
-      const summary = sub.summary
-      if (!summary) continue
-      if (!(sub.running || summary.status === 'running' || summary.status === 'waiting_permission')) {
-        continue
-      }
-      list.push({
-        kind: 'agent',
-        key: summary.id,
-        id: summary.id,
-        name: summary.title || '子代理',
-        detail: summary.status === 'waiting_permission' ? '待审批' : '运行中',
-      })
-    }
-    return list
-  }, [running, messages, toolResults, subagents])
+  useEffect(() => {
+    if (host) void useTaskStore.getState().refresh(host)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [host?.id, active?.sessionId])
 
   return (
-    <Popover
-      align="right"
-      padded={false}
-      trigger={({ open, toggle }) => (
-        <IconButton
-          onClick={toggle}
-          label="后台任务"
-          tooltip={open ? '' : '后台任务'}
-          aria-expanded={open}
-          className={cn('text-text max-sm:size-11', open && 'bg-[var(--t-bg-active)]')}
-        >
-          <SquareTerminal size={16} />
-        </IconButton>
-      )}
+    <IconButton
+      onClick={() => {
+        if (active) openBackgroundTasks(active.hostId, active.sessionId)
+      }}
+      disabled={!active}
+      label="后台任务"
+      tooltip="后台任务"
+      className="relative text-text! max-sm:size-11"
     >
-      {() => (
-        <div className="w-[300px] max-w-[calc(100vw-1.5rem)]">
-          <div className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-text-tertiary">
-            <SquareTerminal size={11} />
-            后台任务
-            {items.length > 0 && <span className="ml-auto tabular-nums">{items.length}</span>}
-          </div>
-          {items.length === 0 ? (
-            <p className="px-2 pb-2 pt-1 text-[12px] leading-5 text-muted">
-              没有正在运行的工具或子代理
-            </p>
-          ) : (
-            <div className="max-h-[320px] overflow-y-auto pb-1">
-              {items.map((item) => (
-                <div key={`${item.kind}:${item.key}`} className="flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5">
-                  <span className="mt-0.5 shrink-0 text-text-soft">
-                    {item.kind === 'agent' ? <Bot size={13} /> : <Loader2 size={13} className="animate-spin" />}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12.5px] leading-4 text-text">
-                      {item.name}
-                      {item.kind === 'agent' && <span className="ml-1 text-muted">子代理</span>}
-                    </div>
-                    {item.detail && (
-                      <div className="truncate font-mono text-[11px] leading-4 text-muted" title={item.detail}>
-                        {item.detail}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      <SquareTerminal size={16} />
+      {count > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 flex size-[14px] items-center justify-center rounded-full bg-accent text-[9px] font-medium tabular-nums text-on-accent">
+          {count > 9 ? '9+' : count}
+        </span>
       )}
-    </Popover>
+    </IconButton>
   )
 }
 
@@ -179,7 +106,7 @@ export function SubagentsButton() {
           label="子代理"
           tooltip={open ? '' : '子代理'}
           aria-expanded={open}
-          className={cn('text-text max-sm:size-11', open && 'bg-[var(--t-bg-active)]')}
+          className={cn('text-text! max-sm:size-11', open && 'bg-[var(--t-bg-active)]')}
         >
           <Bot size={16} />
         </IconButton>
@@ -248,7 +175,7 @@ export function FilesButton() {
       onClick={() => openFileBrowser()}
       label="文件"
       tooltip="文件"
-      className="text-text max-sm:size-11"
+      className="text-text! max-sm:size-11"
     >
       <FolderTree size={16} />
     </IconButton>

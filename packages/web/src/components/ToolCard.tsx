@@ -13,6 +13,7 @@ import {
   Loader2,
   Search,
   Square,
+  SquareTerminal,
   Terminal,
   Wrench,
 } from 'lucide-react'
@@ -40,6 +41,8 @@ interface ToolMeta {
 
 const TOOL_META: Record<string, ToolMeta> = {
   Bash: { icon: Terminal, verb: '运行' },
+  BashOutput: { icon: Terminal, verb: '读取后台输出' },
+  KillBash: { icon: Square, verb: '终止后台任务' },
   Read: { icon: FileText, verb: '读取' },
   Write: { icon: FilePlus2, verb: '写入' },
   Edit: { icon: FilePenLine, verb: '编辑' },
@@ -260,6 +263,8 @@ export const ToolCard = memo(function ToolCard({
   const subagents = useAppStore((s) => s.active?.subagents)
   const activeSessionId = useAppStore((s) => s.active?.sessionId)
   const agentFocus = useUiStore((s) => s.agentFocus)
+  const openBackgroundTasks = useUiStore((s) => s.openBackgroundTasks)
+  const activeHostId = useAppStore((s) => s.active?.hostId)
   const raw = useAppStore((s) =>
     subagentId
       ? (s.active?.subagents[subagentId]?.liveToolInputs[`${messageId}:${index}`] ?? '')
@@ -338,6 +343,10 @@ export const ToolCard = memo(function ToolCard({
   const waitingInput = running && !raw && Object.keys(input).length === 0
   const displayPath = shortPath(filePath, cwd)
   const readLines = output ? output.split('\n').length : 0
+  const backgroundId =
+    block.name === 'Bash'
+      ? /Command running in background with ID: (bash_[A-Za-z0-9_-]+)/.exec(output)?.[1]
+      : undefined
   const Icon = displayMeta.icon
 
   const editStats = useMemo(
@@ -350,6 +359,12 @@ export const ToolCard = memo(function ToolCard({
   switch (block.name) {
     case 'Bash':
       target = firstLine(command, 120)
+      break
+    case 'BashOutput':
+      target = pick('bash_id')
+      break
+    case 'KillBash':
+      target = pick('shell_id')
       break
     case 'Read':
       target = displayPath
@@ -618,6 +633,18 @@ export const ToolCard = memo(function ToolCard({
         )}
         <ChevronRight size={12} className="tool-chevron shrink-0 text-muted" />
       </button>
+      {backgroundId && activeHostId && (subagentId ?? activeSessionId) && (
+        <button
+          type="button"
+          onClick={() =>
+            openBackgroundTasks(activeHostId, subagentId ?? activeSessionId!, backgroundId)
+          }
+          className="mt-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11.5px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
+        >
+          <SquareTerminal size={12} />
+          后台运行 · 查看输出
+        </button>
+      )}
       {mounted && (
         <div className="collapse-grid" data-open={open}>
           <div className="collapse-inner">

@@ -14,6 +14,7 @@ import { ChangeReviewPanel } from './components/ChangeReviewPanel'
 import { FilePreviewPanel } from './components/FilePreviewPanel'
 import { SettingsDialog } from './components/settings/SettingsDialog'
 import { SearchDialog } from './components/SearchDialog'
+import { BackgroundTasksPanel } from './components/BackgroundTasksPanel'
 import { Toasts } from './components/ui/Toasts'
 import { FeedbackMode } from './components/feedback/FeedbackMode'
 import { OverlayScrollbar } from './components/ui/OverlayScrollbar'
@@ -342,6 +343,7 @@ export default function App() {
       )}
 
       <SettingsDialog />
+      <BackgroundTasksPanel />
       <SearchDialog />
       <Toasts />
       <FeedbackMode />

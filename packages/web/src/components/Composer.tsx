@@ -932,6 +932,7 @@ export function Composer({
   const composerResetNonce = useUiStore((s) => s.composerResetNonce)
   const toast = useUiStore((s) => s.toast)
   const openSettings = useUiStore((s) => s.openSettings)
+  const openScheduleComposer = useUiStore((s) => s.openScheduleComposer)
 
   const effectiveHostId = hostIdProp ?? activeHostId
   const cwd = cwdProp ?? summary?.cwd
@@ -1288,6 +1289,12 @@ export function Composer({
 
   const handleSend = async () => {
     if (!canSend) return
+    // /schedule 只打开创建界面，不作为消息发送
+    if (!attachments.length && outgoingText.trim() === '/schedule') {
+      openScheduleComposer()
+      resetInput()
+      return
+    }
     const blocks: ContentBlock[] = []
     if (outgoingText) blocks.push({ type: 'text', text: outgoingText })
     for (const a of attachments) {

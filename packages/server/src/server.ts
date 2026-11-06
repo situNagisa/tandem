@@ -22,6 +22,7 @@ import type {
   ProviderKind,
   RelayPairInfo,
   RewindInput,
+  ScheduleInput,
   UpdateSessionInput,
 } from '@tandem/protocol';
 import type { Host } from './host.js';
@@ -32,7 +33,7 @@ import { exportBundle, importBundle } from './migrate.js';
 import { walkFiles } from './util/fs-walk.js';
 import { readForPreview, readImage, revealFile } from './util/file-preview.js';
 import { expandHome, resolveHostPath, toPosix } from './util/path.js';
-import { truncateEnd } from './util/text.js';
+import { errorMessage, truncateEnd } from './util/text.js';
 
 const PROVIDER_KINDS: ProviderKind[] = ['anthropic', 'openai', 'openai-compatible', 'gemini'];
 
@@ -770,6 +771,61 @@ export async function createApp(
       return { ok: false, error: `文件不存在: ${abs}` };
     }
     return revealFile(abs, isDir);
+  });
+
+  // ---------- 后台任务 ----------
+  app.get('/api/tasks', async (req) => {
+    const query = req.query as { sessionId?: string };
+    return host.tasks.list(str(query.sessionId) || undefined);
+  });
+
+  app.get('/api/tasks/:id/output', async (req, reply) => {
+    const params = req.params as { id: string };
+    const query = req.query as { since?: string };
+    const since = Number(query.since);
+    const result = host.tasks.output(params.id, Number.isFinite(since) ? since : 0);
+    if (!result) return bad(reply, '后台任务不存在', 404);
+    return result;
+  });
+
+  app.post('/api/tasks/:id/kill', async (req, reply) => {
+    const params = req.params as { id: string };
+    const task = await host.tasks.kill(params.id);
+    if (!task) return bad(reply, '后台任务不存在', 404);
+    return task;
+  });
+
+  // ---------- 定时任务 ----------
+  app.get('/api/schedules', async () => host.schedules.list());
+
+  app.post('/api/schedules', async (req, reply) => {
+    try {
+      return host.schedules.upsert(req.body as ScheduleInput);
+    } catch (err) {
+      return bad(reply, errorMessage(err));
+    }
+  });
+
+  app.put('/api/schedules/:id', async (req, reply) => {
+    const params = req.params as { id: string };
+    try {
+      return host.schedules.upsert(req.body as ScheduleInput, params.id);
+    } catch (err) {
+      return bad(reply, errorMessage(err));
+    }
+  });
+
+  app.delete('/api/schedules/:id', async (req, reply) => {
+    const params = req.params as { id: string };
+    if (!host.schedules.remove(params.id)) return bad(reply, '定时任务不存在', 404);
+    return { ok: true };
+  });
+
+  app.post('/api/schedules/:id/run', async (req, reply) => {
+    const params = req.params as { id: string };
+    const result = await host.schedules.run(params.id, true);
+    if (!result.ok && result.error === '定时任务不存在') return bad(reply, result.error, 404);
+    return result;
   });
 
   // ---------- 斜杠命令 ----------

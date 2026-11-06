@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import type { ToolContext, ToolDefinition, ToolResult } from '../types.js';
 import { truncateMiddle } from '../util/text.js';
 import { cmdUtf8Command, decodeProcessOutput } from '../util/encoding.js';
+import type { BackgroundTaskManager } from '../tasks.js';
 
 const MAX_BUFFER = 2_000_000;
 
@@ -28,7 +29,8 @@ export const definition: ToolDefinition = {
       },
       run_in_background: {
         type: 'boolean',
-        description: 'Run the command in the background (not supported yet).',
+        description:
+          'Run the command in the background and return a bash_id immediately. Use BashOutput to read new output and KillBash to stop it.',
       },
     },
     required: ['command'],
@@ -40,7 +42,19 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
   const command = typeof input.command === 'string' ? input.command.trim() : '';
   if (!command) return { content: '缺少 command 参数', isError: true };
   if (input.run_in_background === true) {
-    return { content: '暂不支持后台运行（run_in_background），请使用 timeout 同步执行。', isError: true };
+    const manager = (ctx as ToolContext & { backgroundTasks?: BackgroundTaskManager }).backgroundTasks;
+    if (!manager) return { content: '后台任务管理器不可用', isError: true };
+    const task = await manager.start({
+      sessionId: ctx.session.id,
+      command,
+      cwd: ctx.cwd,
+      ...(typeof input.description === 'string' && input.description.trim()
+        ? { description: input.description.trim() }
+        : {}),
+    });
+    return {
+      content: `Command running in background with ID: ${task.id}\nOutput is being written to ~/.tandem/tasks/${task.id}.log. Use BashOutput with bash_id "${task.id}" to read new output.`,
+    };
   }
 
   let timeout = Number(input.timeout);

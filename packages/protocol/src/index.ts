@@ -88,6 +88,7 @@ export interface SessionSummary {
   env?: SessionEnv;        // 会话执行环境，用于侧栏按 项目/分支 自动归类
   importedFrom?: { source: ExternalSource; id: string }; // 从 Claude Code / Codex 导入的副本
   forkedFrom?: { sessionId: string; messageId?: string; title?: string }; // 分叉来源：会话页显示「分叉自」，父会话在分叉点显示子会话入口
+  scheduledBy?: { id: string; name: string }; // 由定时任务创建；侧栏显示小时钟，tooltip 为任务名
   parentId?: string;       // Task 子代理会话指向主会话（孙代理指向子代理）
   depth?: number;          // 0 主会话 / 1 子代理 / 2 孙代理…；侧栏只显示主会话（parentId 为空）
   worktree?: { path: string; branch: string; baseBranch: string }; // 隔离分支会话
@@ -345,8 +346,11 @@ export type ServerMsg =
   | { type: 'todos'; sessionId: string; todos: Todo[] }
   | { type: 'plan'; sessionId: string; plan?: SessionPlan }                 // 计划提交/批准/拒绝
   | ({ type: 'hook_event' } & HookEventNotice)                              // Hook 执行记录（成功默认不展示）
+  | ({ type: 'budget_alert' } & BudgetAlert)                                // 预算告警：全局广播，触发会话内同时插 notice
   | { type: 'turn_end'; sessionId: string; reason: 'done' | 'interrupted' | 'error'; error?: string }
   // 外部会话（Claude Code / Codex）文件有变动，客户端应重新拉取列表
+  | { type: 'task_updated'; sessionId: string; task: BackgroundTask; content?: string; since?: number; truncated?: boolean }
+  | { type: 'schedules_updated' }
   | { type: 'external_sessions_changed' }
   | { type: 'error'; message: string }
   | { type: 'pong' };
@@ -466,5 +470,79 @@ export interface RelayPairInfo {
   /** Host 当前是否已连上 relay。 */
   connected: boolean;
 }
+
+// ---------- 后台任务（Bash run_in_background） ----------
+// Host 内 BackgroundTaskManager 管理；输出环形缓冲最多 1MB，完整输出落盘 ~/.tandem/tasks/<id>.log。
+// Host 重启后：已结束任务保留可查看，运行中任务标记为 lost。
+export type BackgroundTaskStatus = 'running' | 'exited' | 'killed' | 'lost';
+export interface BackgroundTask {
+  id: string;              // bash_id，如 bash_a1b2c3d4
+  sessionId: string;
+  command: string;
+  description?: string;
+  cwd: string;
+  startedAt: number;
+  endedAt?: number;
+  status: BackgroundTaskStatus;
+  exitCode?: number;
+  /** 当前累计输出字符数（GET output?since= 的位移口径）。 */
+  outputChars: number;
+}
+export interface BackgroundTaskOutput {
+  task: BackgroundTask;
+  content: string;         // since 之后的新增文本
+  since: number;           // 下次请求应传的位移
+  /** since 早于环形缓冲起点，content 已从可用的最早位置开始。 */
+  truncated?: boolean;
+}
+// GET  /api/tasks?sessionId=            -> BackgroundTask[]（sessionId 缺省返回全部，按 startedAt 倒序）
+// GET  /api/tasks/:id/output?since=     -> BackgroundTaskOutput
+// POST /api/tasks/:id/kill              -> BackgroundTask
+// 工具：Bash {run_in_background:true} 返回 bash_id；BashOutput {bash_id, filter?} 增量读取；KillBash {shell_id} 终止。
+// WS：task_updated 携带状态与节流后的新增输出。
+
+// ---------- 定时任务（Host 级，存 ~/.tandem/schedules.json） ----------
+// cron 为 5 段标准表达式；为便于本机测试也接受 6 段（首段为秒）。由 Host 进程内调度，不依赖公网。
+export type ScheduleTargetKind = 'new' | 'session';
+export interface ScheduleTarget {
+  kind: ScheduleTargetKind;
+  /** kind=session 时追加到该会话。 */
+  sessionId?: string;
+}
+export interface ScheduleRunRecord {
+  at: number;
+  sessionId?: string;
+  ok: boolean;
+  error?: string;
+}
+export interface Schedule {
+  id: string;
+  name: string;
+  cron: string;
+  enabled: boolean;
+  target: ScheduleTarget;
+  cwd: string;
+  profileId?: string;      // kind=new 时必填；kind=session 时缺省沿用会话
+  groupId?: string;
+  model?: string;
+  effort?: ReasoningEffort;
+  permissionMode: PermissionMode; // 默认 acceptEdits；bypassPermissions 必须显式选择
+  prompt: string;
+  /** Host 未运行时错过触发点，启动后补跑一次（仅一次）。 */
+  catchUp?: boolean;
+  /** 计算字段：下次触发时间（epoch ms），禁用时为空。 */
+  nextRunAt?: number;
+  lastRun?: ScheduleRunRecord;
+  createdAt: number;
+  updatedAt: number;
+}
+export type ScheduleInput = Omit<Schedule, 'id' | 'createdAt' | 'updatedAt' | 'nextRunAt' | 'lastRun'> & { id?: string };
+// GET    /api/schedules            -> Schedule[]（含 nextRunAt）
+// POST   /api/schedules ScheduleInput -> Schedule
+// PUT    /api/schedules/:id ScheduleInput -> Schedule
+// DELETE /api/schedules/:id
+// POST   /api/schedules/:id/run    -> { ok: boolean; sessionId?: string; error?: string }  立即运行一次
+// 由定时任务新建的会话带 SessionSummary.scheduledBy，侧栏显示小时钟。
+// 斜杠命令 /schedule 由客户端拦截并打开「定时任务」设置页。
 
 export const PROTOCOL_VERSION = 3;

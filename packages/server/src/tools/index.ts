@@ -10,11 +10,15 @@ import { definition as todo, run as runTodo } from './todo.js';
 import { definition as webfetch, run as runWebfetch } from './webfetch.js';
 import { definition as task, run as runTask } from './task.js';
 import { definition as exitPlan, run as runExitPlan } from './exit-plan.js';
+import { definition as bashOutput, run as runBashOutput } from './bash-output.js';
+import { definition as killBash, run as runKillBash } from './kill-bash.js';
 
 type ToolRunner = (input: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>;
 
 export const TOOLS: ToolDefinition[] = [
   bash,
+  bashOutput,
+  killBash,
   read,
   write,
   edit,
@@ -28,6 +32,8 @@ export const TOOLS: ToolDefinition[] = [
 
 const RUNNERS: Record<string, ToolRunner> = {
   Bash: runBash,
+  BashOutput: runBashOutput,
+  KillBash: runKillBash,
   Read: runRead,
   Write: runWrite,
   Edit: runEdit,
@@ -42,7 +48,7 @@ const RUNNERS: Record<string, ToolRunner> = {
 export const TOOL_MAP = new Map(TOOLS.map((tool) => [tool.name, tool]));
 
 /** plan 模式允许的工具（纯只读）；ExitPlanMode 是提交计划的特殊工具。 */
-export const PLAN_ALLOWED = new Set(['Read', 'Glob', 'Grep', 'WebFetch', 'TodoWrite', 'ExitPlanMode']);
+export const PLAN_ALLOWED = new Set(['Read', 'Glob', 'Grep', 'WebFetch', 'BashOutput', 'TodoWrite', 'ExitPlanMode']);
 
 export function isReadOnlyTool(name: string): boolean {
   return TOOL_MAP.get(name)?.readOnly === true;
@@ -73,6 +79,8 @@ export async function executeTool(
 /** 给审批弹窗用的中文描述。 */
 export function describeTool(name: string, input: unknown): string {
   const args = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+  if (name === 'BashOutput') return `读取后台任务输出: ${String(args.bash_id ?? '')}`;
+  if (name === 'KillBash') return `终止后台任务: ${String(args.shell_id ?? '')}`;
   if (name === 'Bash') {
     const command = String(args.command ?? '').split('\n')[0].slice(0, 200);
     return `运行命令: ${command}`;

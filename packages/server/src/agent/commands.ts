@@ -12,6 +12,7 @@ export const BUILTIN_COMMANDS: SlashCommand[] = [
   { name: 'model', description: '查看或切换当前会话模型：/model <模型名>（下一轮生效）', source: 'builtin' },
   { name: 'init', description: '分析当前仓库并生成 AGENTS.md', source: 'builtin' },
   { name: 'cost', description: '查看本会话的 token 用量与花费摘要', source: 'builtin' },
+  { name: 'schedule', description: '新建定时任务（打开「定时任务」设置页）', source: 'builtin' },
   { name: 'help', description: '显示所有可用命令', source: 'builtin' },
 ];
 

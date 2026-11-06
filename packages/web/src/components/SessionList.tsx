@@ -4,6 +4,7 @@ import {
   Archive,
   ArchiveRestore,
   ChevronRight,
+  Clock,
   Copy,
   Eye,
   Folder,
@@ -615,6 +616,11 @@ export function SessionList({
           />
         ) : (
           <span className="min-w-0 flex-1 truncate text-[14px] leading-5">
+            {s.scheduledBy && (
+              <span title={`定时任务：${s.scheduledBy.name}`} className="mr-1 inline-block align-[-1px] text-muted">
+                <Clock size={12} />
+              </span>
+            )}
             {s.title || '未命名会话'}
           </span>
         )}

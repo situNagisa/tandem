@@ -61,6 +61,8 @@ import {
   orderedAvailableKeys,
   profileWithKey,
 } from './key-rotation.js';
+import { BackgroundTaskManager } from './tasks.js';
+import { ScheduleManager } from './schedules.js';
 import {
   checkoutBranch,
   createWorktree,
@@ -120,6 +122,8 @@ export class Host {
   readonly mcp: McpManager;
   readonly usage: UsageStore;
   readonly budgets: BudgetStore;
+  readonly tasks: BackgroundTaskManager;
+  readonly schedules: ScheduleManager;
   readonly hub = new Hub();
   readonly version: string;
   private runtimes = new Map<string, SessionRuntime>();
@@ -142,6 +146,19 @@ export class Host {
     this.mcp = new McpManager(home);
     this.usage = new UsageStore(home);
     this.budgets = new BudgetStore(home, this.usage);
+    this.tasks = new BackgroundTaskManager(home, (task, content, truncated) => {
+      this.hub.broadcastAll({
+        type: 'task_updated',
+        sessionId: task.sessionId,
+        task,
+        ...(content ? { content } : {}),
+        ...(task.outputChars !== undefined ? { since: task.outputChars } : {}),
+        ...(truncated ? { truncated: true } : {}),
+      });
+    });
+    this.schedules = new ScheduleManager(home, this, () => {
+      this.hub.broadcastAll({ type: 'schedules_updated' });
+    });
     this.version = readVersion();
     // 启动时连接已启用的 MCP 服务器；失败只记录状态，不影响 Host 启动
     this.mcp.start();
@@ -207,12 +224,22 @@ export class Host {
       ...(rec.parentId ? { parentId: rec.parentId } : {}),
       ...(typeof rec.depth === 'number' ? { depth: rec.depth } : {}),
       ...(rec.forkedFrom ? { forkedFrom: { ...rec.forkedFrom } } : {}),
+      ...(rec.scheduledBy ? { scheduledBy: { ...rec.scheduledBy } } : {}),
       ...(rec.worktree ? { worktree: { ...rec.worktree } } : {}),
       createdAt: rec.createdAt,
       updatedAt: rec.updatedAt,
       usage: { ...rec.usage },
       ...(rec.context ? { context: rec.context } : {}),
     };
+  }
+
+  /** 定时任务新建的会话：打上来源标记，侧栏显示小时钟。 */
+  markScheduled(id: string, info: { id: string; name: string }): void {
+    const rec = this.store.get(id);
+    if (!rec) return;
+    rec.scheduledBy = info;
+    this.store.markDirty(id, true);
+    this.broadcastSummary(rec);
   }
 
   /** 把本次请求的上下文估算记到会话上；broadcast=true 时随 session_updated 推送。 */
@@ -1516,6 +1543,10 @@ export class Host {
         await this.sendToModel(rec, [{ type: 'text', text: INIT_PROMPT }]);
         return true;
       }
+      case 'schedule': {
+        this.appendLocalAssistant(rec, '请在客户端「设置 → 定时任务」中新建或管理定时任务（输入 /schedule 可直接打开）。');
+        return true;
+      }
       case 'help': {
         const commands = this.listCommands(rec.cwd);
         const lines = commands.map((c) => `/${c.name} - ${c.description}（${labelOfSource(c.source)}）`);
@@ -1738,6 +1769,8 @@ export class Host {
   }
   /** 进程退出：落盘会话/用量，关闭 MCP 子进程。 */
   async shutdown(): Promise<void> {
+    this.tasks.dispose();
+    this.schedules.dispose();
     this.external.stopWatching();
     this.store.flush();
     this.usage.flush();
