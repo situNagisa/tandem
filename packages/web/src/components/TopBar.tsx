@@ -37,7 +37,7 @@ function StatePill({
   if (connecting) {
     return (
       <span className={pill}>
-        <span className="size-1.5 rounded-full bg-accent/80 running-dot" />
+        <span className="size-1.5 rounded-full bg-text-secondary/80 running-dot" />
         连接中
       </span>
     )
@@ -56,7 +56,7 @@ function StatePill({
   if (running || status === 'running') {
     return (
       <span className={pill}>
-        <span className="size-1.5 rounded-full bg-accent running-dot" />
+        <span className="size-1.5 rounded-full bg-text-secondary running-dot" />
         运行中{elapsed ? ` · ${elapsed}` : ''}
       </span>
     )

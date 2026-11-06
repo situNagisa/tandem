@@ -175,7 +175,7 @@ function TodoList({ todos }: { todos: Todo[] }) {
                 t.status === 'completed'
                   ? 'text-success'
                   : t.status === 'in_progress'
-                    ? 'text-accent'
+                    ? 'text-text-secondary'
                     : 'text-muted',
               )}
             />
@@ -331,8 +331,14 @@ export const ToolCard = memo(function ToolCard({
     }
   }
   if (isTask) {
+    const subFailed = sub?.summary?.status === 'error' || !!sub?.error
     suffix = (
-      <span className={cn('shrink-0 text-[10.5px]', sub?.running ? 'text-accent' : 'text-muted')}>
+      <span
+        className={cn(
+          'shrink-0 text-[10.5px]',
+          sub?.running ? 'text-text-secondary' : subFailed ? 'text-danger' : 'text-muted',
+        )}
+      >
         {sub?.running
           ? '运行中'
           : sub?.summary?.status === 'error'
@@ -525,13 +531,21 @@ function SubagentStream({ id }: { id: string }) {
   if (!sub) {
     return <div className="py-2 text-[11.5px] text-muted">正在等待子代理会话…</div>
   }
+  const subFailed = sub.summary?.status === 'error' || !!sub.error
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-[var(--t-bg)]">
       <div className="flex items-center gap-2 border-b border-border/70 px-2.5 py-1.5 text-[10.5px] text-muted">
-        <Bot size={12} className={sub.running ? 'text-accent' : 'text-muted'} />
+        <Bot
+          size={12}
+          className={sub.running ? 'text-text-secondary' : subFailed ? 'text-danger' : 'text-muted'}
+        />
         <span>子代理会话</span>
-        <span className={cn(sub.running ? 'text-accent' : '')}>
-          {sub.running ? '运行中' : sub.loading ? '加载中…' : '已结束'}
+        <span
+          className={cn(
+            sub.running ? 'text-text-secondary' : subFailed ? 'text-danger' : '',
+          )}
+        >
+          {sub.running ? '运行中' : sub.loading ? '加载中…' : subFailed ? '出错' : '已结束'}
         </span>
         <span className="flex-1" />
         {sub.running && (
