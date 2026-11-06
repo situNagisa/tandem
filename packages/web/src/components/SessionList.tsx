@@ -310,7 +310,7 @@ function RowMenu({
       </button>
       <div className="my-1 h-px bg-[var(--t-border)]" />
       <button
-        className="flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] text-danger transition-colors hover:bg-danger-soft"
+        className="flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-danger"
         onClick={() => { onClose(); onDelete() }}
       >
         <Trash2 size={14} /> 删除
@@ -836,7 +836,7 @@ export function SessionList({
                   aria-hidden={projCollapsed}
                   inert={projCollapsed}
                 >
-                  <div className={cn('expand-inner space-y-0.5', indented ? 'pl-6' : 'pl-3')}>
+                  <div className={cn('expand-inner space-y-0.5', indented ? 'pl-10' : 'pl-4')}>
                     {entries.map((e) => e.node)}
                   </div>
                 </div>

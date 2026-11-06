@@ -130,10 +130,8 @@ function AddRuleDialog({
                   'h-8 flex-1 text-[12px] transition-colors',
                   rule.action === action.value
                     ? action.value === 'deny'
-                      ? 'bg-danger-soft text-danger'
-                      : action.value === 'ask'
-                        ? 'bg-warning-soft text-warning'
-                        : 'bg-success-soft text-success'
+                      ? 'bg-[var(--t-bg-active)] text-danger'
+                      : 'bg-[var(--t-bg-active)] text-text'
                     : 'bg-surface text-muted hover:text-text',
                 )}
               >
