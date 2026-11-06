@@ -599,9 +599,60 @@
   line-height: 1.65;
 }
 .chat-diff-row {
+  position: relative;
   display: flex;
   min-width: max-content;
   white-space: pre;
+}
+.chat-diff-row[data-selected] {
+  outline: 1px solid color-mix(in srgb, var(--t-accent) 42%, transparent);
+  outline-offset: -1px;
+}
+.diff-comment-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 1px;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--t-accent) 72%, transparent);
+  pointer-events: none;
+}
+.diff-comment-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  width: 11px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.diff-comment-mark::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 1px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--t-accent);
+  opacity: 0.72;
+  transition: width 100ms ease, opacity 100ms ease;
+}
+.diff-comment-mark:hover::before,
+.diff-comment-mark[data-open]::before {
+  width: 3px;
+  opacity: 1;
+}
+.diff-composer-anchor {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 1.65em;
+  pointer-events: none;
 }
 .chat-diff-row .ln {
   flex: none;

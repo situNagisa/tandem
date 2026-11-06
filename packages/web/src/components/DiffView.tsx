@@ -1,6 +1,16 @@
-import { Fragment, memo, useMemo, useState, type ReactNode } from 'react'
+import {
+  Fragment,
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react'
 import { diffLines } from 'diff'
-import { ArrowLeftRight, ChevronsUpDown } from 'lucide-react'
+import * as RPopover from '@radix-ui/react-popover'
+import { ArrowLeftRight, ChevronsUpDown, MessageSquarePlus } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { useHorizontalOverflow } from '../lib/hooks'
 
@@ -16,6 +26,17 @@ export interface DiffLineInfo {
   side: 'old' | 'new'
   text: string
   type: DiffLine['type']
+}
+
+export interface DiffCommentDraft {
+  side: 'old' | 'new'
+  startLine: number
+  endLine: number
+  text: string
+}
+
+export interface DiffComment extends DiffCommentDraft {
+  id: number
 }
 
 /** 解析统一 diff（git diff 输出）为按行结构。 */
@@ -115,6 +136,218 @@ function buildRows(rows: DiffLine[], expanded: Set<string>): Row[] {
   return out
 }
 
+function lineLabel(start: number, end: number) {
+  return start === end ? `第 ${start} 行` : `第 ${start}–${end} 行`
+}
+
+/** 行评论标记：悬停预览，点击后固定浮层，可编辑或删除。 */
+function CommentMarker({
+  comment,
+  onEdit,
+  onDelete,
+}: {
+  comment: DiffComment
+  onEdit: (id: number, text: string) => void
+  onDelete: (id: number) => void
+}) {
+  const [hover, setHover] = useState(false)
+  const [pinned, setPinned] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(comment.text)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (!editing) setText(comment.text)
+  }, [comment.text, editing])
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus()
+  }, [editing])
+
+  const close = () => {
+    setPinned(false)
+    setHover(false)
+    setEditing(false)
+  }
+
+  const save = () => {
+    const next = text.trim()
+    if (next) onEdit(comment.id, next)
+    close()
+  }
+
+  return (
+    <RPopover.Root
+      open={hover || pinned}
+      onOpenChange={(open) => {
+        if (!open) close()
+      }}
+    >
+      <RPopover.Anchor asChild>
+        <button
+          type="button"
+          className="diff-comment-mark"
+          data-open={pinned || undefined}
+          aria-label={`${lineLabel(comment.startLine, comment.endLine)}的评论`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseEnter={() => setHover(true)}
+          onMouseLeave={() => setHover(false)}
+          onClick={(e) => {
+            e.stopPropagation()
+            setPinned(true)
+            setHover(true)
+          }}
+        />
+      </RPopover.Anchor>
+      <RPopover.Portal>
+        <RPopover.Content
+          side="right"
+          align="start"
+          sideOffset={6}
+          collisionPadding={8}
+          avoidCollisions
+          sticky="always"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          className="popover-panel z-[85] w-[260px] p-2.5"
+        >
+          <p className="mb-1 font-mono text-[10px] text-muted">
+            {lineLabel(comment.startLine, comment.endLine)}
+          </p>
+          {editing ? (
+            <>
+              <textarea
+                ref={inputRef}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    save()
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault()
+                    setEditing(false)
+                  }
+                }}
+                rows={2}
+                aria-label="编辑行评论"
+                className="w-full resize-none rounded-md border border-border bg-bg px-2 py-1.5 text-[12px] leading-5 text-text outline-none focus:border-[var(--t-border-strong)]"
+              />
+              <div className="mt-1.5 flex justify-end gap-1">
+                <button
+                  type="button"
+                  className="menu-item h-6 px-2 text-[11px]"
+                  onClick={() => setEditing(false)}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className="menu-item h-6 px-2 text-[11px] text-text"
+                  disabled={!text.trim()}
+                  onClick={save}
+                >
+                  保存
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="whitespace-pre-wrap break-words text-[12px] leading-5 text-text-soft">
+                {comment.text}
+              </p>
+              <div className="mt-1.5 flex justify-end gap-1">
+                <button
+                  type="button"
+                  className="menu-item h-6 px-2 text-[11px]"
+                  onClick={() => setEditing(true)}
+                >
+                  编辑
+                </button>
+                <button
+                  type="button"
+                  className="menu-item h-6 px-2 text-[11px] hover:text-danger"
+                  onClick={() => {
+                    onDelete(comment.id)
+                    close()
+                  }}
+                >
+                  删除
+                </button>
+              </div>
+            </>
+          )}
+        </RPopover.Content>
+      </RPopover.Portal>
+    </RPopover.Root>
+  )
+}
+
+function Composer({
+  label,
+  onSave,
+  onCancel,
+}: {
+  label: string
+  onSave: (text: string) => void
+  onCancel: () => void
+}) {
+  const [text, setText] = useState('')
+  const ref = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    ref.current?.focus()
+  }, [])
+
+  const save = () => {
+    const next = text.trim()
+    if (next) onSave(next)
+  }
+
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      save()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      onCancel()
+    }
+  }
+
+  return (
+    <div className="flex w-[min(360px,calc(100vw-16px))] items-start gap-1.5">
+      <MessageSquarePlus size={13} className="mt-2 shrink-0 text-[var(--t-accent)]" />
+      <div className="min-w-0 flex-1">
+        <textarea
+          ref={ref}
+          rows={1}
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value)
+            const el = e.currentTarget
+            el.style.height = 'auto'
+            el.style.height = `${Math.min(el.scrollHeight, 96)}px`
+          }}
+          onKeyDown={onKeyDown}
+          placeholder={`对${label}写审阅意见…`}
+          aria-label="行内评论"
+          className="block max-h-24 w-full resize-none rounded-md border border-border bg-bg px-2 py-1.5 text-[12px] leading-5 text-text outline-none placeholder:text-muted focus:border-[var(--t-border-strong)]"
+        />
+        <p className="mt-1 px-0.5 text-[10px] leading-3 text-muted">
+          Enter 保存 · Shift+Enter 换行 · Esc 取消
+        </p>
+      </div>
+      <button
+        type="button"
+        disabled={!text.trim()}
+        onClick={save}
+        className="mt-0.5 h-7 shrink-0 rounded-md bg-[var(--t-primary-bg)] px-2 text-[11px] font-medium text-[var(--t-primary-fg)] disabled:opacity-40"
+      >
+        保存
+      </button>
+    </div>
+  )
+}
+
 export const DiffView = memo(function DiffView({
   oldText = '',
   newText = '',
@@ -123,8 +356,10 @@ export const DiffView = memo(function DiffView({
   oldLabel,
   newLabel,
   maxHeight = 460,
-  onLineClick,
-  rowExtra,
+  comments = [],
+  onAddComment,
+  onEditComment,
+  onDeleteComment,
 }: {
   oldText?: string
   newText?: string
@@ -134,10 +369,15 @@ export const DiffView = memo(function DiffView({
   oldLabel?: string
   newLabel?: string
   maxHeight?: number
-  onLineClick?: (info: DiffLineInfo) => void
-  rowExtra?: (info: DiffLineInfo) => ReactNode
+  comments?: DiffComment[]
+  onAddComment?: (draft: DiffCommentDraft) => void
+  onEditComment?: (id: number, text: string) => void
+  onDeleteComment?: (id: number) => void
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const [selection, setSelection] = useState<{ startIdx: number; endIdx: number } | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const dragRef = useRef(false)
 
   const { rows, truncated, added, removed } = useMemo(() => {
     if (unified !== undefined) {
@@ -193,6 +433,51 @@ export const DiffView = memo(function DiffView({
     display.length,
   ])
 
+  const selectable = !!onAddComment
+
+  useEffect(() => {
+    if (!dragging) return
+    const up = () => {
+      dragRef.current = false
+      setDragging(false)
+    }
+    window.addEventListener('pointerup', up)
+    return () => window.removeEventListener('pointerup', up)
+  }, [dragging])
+
+  useEffect(() => {
+    setSelection(null)
+    dragRef.current = false
+    setDragging(false)
+  }, [unified, fileName])
+
+  const selectionInfo = useMemo(() => {
+    if (!selection) return null
+    const startIdx = Math.min(selection.startIdx, selection.endIdx)
+    const endIdx = Math.max(selection.startIdx, selection.endIdx)
+    const startRow = display[startIdx]
+    const endRow = display[endIdx]
+    if (!startRow || !endRow || startRow.type === 'gap' || endRow.type === 'gap') return null
+    const start = lineInfo(startRow)
+    const end = lineInfo(endRow)
+    if (!start.line || !end.line) return null
+    return {
+      startIdx,
+      endIdx,
+      side: start.side,
+      startLine: start.line,
+      endLine: end.line,
+      label: lineLabel(start.line, end.line),
+    }
+  }, [selection, display])
+
+  const selectRow = (idx: number, shift: boolean) => {
+    if (!selectable) return
+    setSelection((prev) =>
+      shift && prev ? { startIdx: prev.startIdx, endIdx: idx } : { startIdx: idx, endIdx: idx },
+    )
+  }
+
   const expand = (key: string) => {
     setExpanded((prev) => {
       const next = new Set(prev)
@@ -207,8 +492,8 @@ export const DiffView = memo(function DiffView({
         <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-text-soft" title={fileName}>
           {fileName || '改动'}
         </span>
-        <span className="shrink-0 font-mono text-[11px] text-text-soft">+{added}</span>
-        <span className="shrink-0 font-mono text-[11px] text-muted">−{removed}</span>
+        <span className="shrink-0 font-mono text-[11px] text-[var(--t-git-plus)]">+{added}</span>
+        <span className="shrink-0 font-mono text-[11px] text-[var(--t-git-minus)]">−{removed}</span>
       </div>
       <div className="x-scroll-wrap">
         <div
@@ -230,13 +515,44 @@ export const DiffView = memo(function DiffView({
               )
             }
             const info = lineInfo(row)
+            const rowComments = comments.filter(
+              (c) => c.side === info.side && info.line >= c.startLine && info.line <= c.endLine,
+            )
+            const anchorComment = rowComments.find(
+              (c) => c.side === info.side && c.startLine === info.line,
+            )
+            const selectedRow =
+              selectionInfo !== null && i >= selectionInfo.startIdx && i <= selectionInfo.endIdx
+            const isAnchor = selectionInfo !== null && i === selectionInfo.endIdx
             return (
-              <Fragment key={i}>
+              <Fragment key={`${info.side}-${info.line}-${i}`}>
                 <div
-                  className={cn('chat-diff-row', onLineClick && 'cursor-pointer')}
+                  className={cn('chat-diff-row', selectable && 'cursor-pointer')}
                   data-kind={row.type}
-                  onClick={onLineClick ? () => onLineClick(info) : undefined}
-                  title={onLineClick ? '点击添加行内评论' : undefined}
+                  data-selected={selectedRow || undefined}
+                  onPointerDown={
+                    selectable
+                      ? (e) => {
+                          if (e.button !== 0) return
+                          e.preventDefault()
+                          selectRow(i, e.shiftKey)
+                          dragRef.current = true
+                          setDragging(true)
+                        }
+                      : undefined
+                  }
+                  onPointerEnter={
+                    selectable
+                      ? () => {
+                          if (dragRef.current) {
+                            setSelection((prev) =>
+                              prev ? { startIdx: prev.startIdx, endIdx: i } : { startIdx: i, endIdx: i },
+                            )
+                          }
+                        }
+                      : undefined
+                  }
+                  title={selectable ? '点击或拖选行添加评论' : undefined}
                 >
                   <span className="ln" style={{ width: `${maxLineDigits + 0.75}ch` }}>
                     {row.type === 'del' ? row.oldNo : row.newNo}
@@ -245,8 +561,62 @@ export const DiffView = memo(function DiffView({
                     {row.type === 'add' ? '+' : row.type === 'del' ? '−' : ' '}
                   </span>
                   <span className="text">{row.text || ' '}</span>
+                  {rowComments.length > 0 &&
+                    (anchorComment && onEditComment && onDeleteComment ? (
+                      <CommentMarker
+                        comment={anchorComment}
+                        onEdit={onEditComment}
+                        onDelete={onDeleteComment}
+                      />
+                    ) : (
+                      <span className="diff-comment-line" aria-hidden />
+                    ))}
+                  {isAnchor && selectionInfo && (
+                    <RPopover.Root
+                      open={!dragging}
+                      onOpenChange={(open) => {
+                        if (!open) {
+                          setSelection(null)
+                          dragRef.current = false
+                          setDragging(false)
+                        }
+                      }}
+                    >
+                      <RPopover.Anchor asChild>
+                        <span
+                          className="diff-composer-anchor"
+                          style={{ left: `${maxLineDigits + 2.5}ch` }}
+                        />
+                      </RPopover.Anchor>
+                      <RPopover.Portal>
+                        <RPopover.Content
+                          side="bottom"
+                          align="start"
+                          sideOffset={6}
+                          collisionPadding={8}
+                          avoidCollisions
+                          sticky="always"
+                          onOpenAutoFocus={(e) => e.preventDefault()}
+                          className="popover-panel z-[85] p-2"
+                        >
+                          <Composer
+                            label={selectionInfo.label}
+                            onSave={(text) => {
+                              onAddComment?.({
+                                side: selectionInfo.side,
+                                startLine: selectionInfo.startLine,
+                                endLine: selectionInfo.endLine,
+                                text,
+                              })
+                              setSelection(null)
+                            }}
+                            onCancel={() => setSelection(null)}
+                          />
+                        </RPopover.Content>
+                      </RPopover.Portal>
+                    </RPopover.Root>
+                  )}
                 </div>
-                {rowExtra?.(info)}
               </Fragment>
             )
           })}
