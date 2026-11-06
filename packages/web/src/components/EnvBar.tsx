@@ -28,7 +28,7 @@ import { Popover } from './ui/Popover'
 import { Tooltip } from './ui/Tooltip'
 
 const triggerClass =
-  'flex h-[26px] shrink-0 items-center gap-1 rounded-md px-1.5 text-[12.5px] leading-4 text-text-soft outline-none transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:pointer-events-none disabled:opacity-40'
+  'flex h-6 shrink-0 items-center gap-1 rounded-lg bg-[var(--t-bg-subtle)] px-2 text-[12.5px] leading-4 text-text-secondary outline-none transition-colors hover:bg-[var(--t-bg-active)] hover:text-text disabled:pointer-events-none disabled:opacity-40'
 
 function EnvTrigger({
   icon,
@@ -516,7 +516,7 @@ export function EnvBar({
   }
 
   return (
-    <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto py-0.5 pb-1.5">
+    <div className="flex min-w-0 items-center gap-1 overflow-x-auto pb-1.5">
       <Popover
         side="top"
         panelClassName="w-auto"
@@ -669,7 +669,7 @@ export function EnvBar({
           <span
             className={cn(
               'relative ml-0.5 h-[12px] w-[20px] shrink-0 rounded-full transition-colors',
-              isWorktree ? 'bg-text-soft' : 'bg-[var(--t-bg-active)]',
+              isWorktree ? 'bg-text-soft' : 'bg-[var(--t-border-strong)]',
             )}
           >
             <span
