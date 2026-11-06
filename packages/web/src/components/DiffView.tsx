@@ -12,7 +12,7 @@ import { diffLines } from 'diff'
 import * as RPopover from '@radix-ui/react-popover'
 import { ArrowLeftRight, ChevronsUpDown, MessageSquarePlus } from 'lucide-react'
 import { cn } from '../lib/cn'
-import { useHorizontalOverflow } from '../lib/hooks'
+import { useHorizontalOverflow, useIsMobile } from '../lib/hooks'
 
 interface DiffLine {
   type: 'add' | 'del' | 'ctx'
@@ -208,6 +208,9 @@ function CommentMarker({
           avoidCollisions
           sticky="always"
           onOpenAutoFocus={(e) => e.preventDefault()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerEnter={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
           className="popover-panel z-[85] w-[260px] p-2.5"
         >
           <p className="mb-1 font-mono text-[10px] text-muted">
@@ -314,28 +317,24 @@ function Composer({
   }
 
   return (
-    <div className="flex w-[min(360px,calc(100vw-16px))] items-start gap-1.5">
+    <div className="flex w-[min(340px,calc(100vw-16px))] items-start gap-1.5">
       <MessageSquarePlus size={13} className="mt-2 shrink-0 text-[var(--t-accent)]" />
-      <div className="min-w-0 flex-1">
-        <textarea
-          ref={ref}
-          rows={1}
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value)
-            const el = e.currentTarget
-            el.style.height = 'auto'
-            el.style.height = `${Math.min(el.scrollHeight, 96)}px`
-          }}
-          onKeyDown={onKeyDown}
-          placeholder={`对${label}写审阅意见…`}
-          aria-label="行内评论"
-          className="block max-h-24 w-full resize-none rounded-md border border-border bg-bg px-2 py-1.5 text-[12px] leading-5 text-text outline-none placeholder:text-muted focus:border-[var(--t-border-strong)]"
-        />
-        <p className="mt-1 px-0.5 text-[10px] leading-3 text-muted">
-          Enter 保存 · Shift+Enter 换行 · Esc 取消
-        </p>
-      </div>
+      <textarea
+        ref={ref}
+        rows={1}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value)
+          const el = e.currentTarget
+          el.style.height = 'auto'
+          el.style.height = `${Math.min(el.scrollHeight, 96)}px`
+        }}
+        onKeyDown={onKeyDown}
+        placeholder={`对${label}写审阅意见…`}
+        aria-label="行内评论"
+        title="Enter 保存 · Shift+Enter 换行 · Esc 取消"
+        className="block max-h-24 min-w-0 flex-1 resize-none rounded-md border border-border bg-bg px-2 py-1.5 text-[12px] leading-5 text-text outline-none placeholder:text-muted focus:border-[var(--t-border-strong)]"
+      />
       <button
         type="button"
         disabled={!text.trim()}
@@ -374,6 +373,7 @@ export const DiffView = memo(function DiffView({
   onEditComment?: (id: number, text: string) => void
   onDeleteComment?: (id: number) => void
 }) {
+  const isMobile = useIsMobile()
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [selection, setSelection] = useState<{ startIdx: number; endIdx: number } | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -434,16 +434,6 @@ export const DiffView = memo(function DiffView({
   ])
 
   const selectable = !!onAddComment
-
-  useEffect(() => {
-    if (!dragging) return
-    const up = () => {
-      dragRef.current = false
-      setDragging(false)
-    }
-    window.addEventListener('pointerup', up)
-    return () => window.removeEventListener('pointerup', up)
-  }, [dragging])
 
   useEffect(() => {
     setSelection(null)
@@ -538,6 +528,12 @@ export const DiffView = memo(function DiffView({
                           selectRow(i, e.shiftKey)
                           dragRef.current = true
                           setDragging(true)
+                          const up = () => {
+                            dragRef.current = false
+                            setDragging(false)
+                            window.removeEventListener('pointerup', up)
+                          }
+                          window.addEventListener('pointerup', up)
                         }
                       : undefined
                   }
@@ -590,13 +586,21 @@ export const DiffView = memo(function DiffView({
                       </RPopover.Anchor>
                       <RPopover.Portal>
                         <RPopover.Content
-                          side="bottom"
-                          align="start"
-                          sideOffset={6}
+                          side={isMobile ? 'bottom' : 'right'}
+                          align={isMobile ? 'start' : 'center'}
+                          sideOffset={8}
                           collisionPadding={8}
                           avoidCollisions
                           sticky="always"
                           onOpenAutoFocus={(e) => e.preventDefault()}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onPointerEnter={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
+                          onPointerDownOutside={(e) => {
+                            if ((e.target as HTMLElement).closest?.('.chat-diff-row')) {
+                              e.preventDefault()
+                            }
+                          }}
                           className="popover-panel z-[85] p-2"
                         >
                           <Composer

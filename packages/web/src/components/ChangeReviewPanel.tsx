@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FileChange } from '@tandem/protocol'
 import {
+  AlertTriangle,
   FileDiff,
   FolderGit2,
   Loader2,
@@ -444,6 +445,13 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 <span className="text-muted">·</span>
                 <span className="font-medium text-text">发给 agent</span>
               </button>
+            )}
+
+            {untrackedCount > 0 && (
+              <div className="flex h-6 items-center gap-1.5 border-b border-border/60 px-3 text-[10.5px] text-muted">
+                <AlertTriangle size={10} className="shrink-0" />
+                含 {untrackedCount} 个未跟踪文件，提交时会一并加入版本库
+              </div>
             )}
 
             <div className="flex items-end gap-1.5 px-2.5 py-2">
