@@ -2,11 +2,13 @@ import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ContentBlock } from '@tandem/protocol'
 import {
   Check,
+  ChevronRight,
   Copy,
   Loader2,
   MoreHorizontal,
   PencilLine,
   RefreshCw,
+  ScrollText,
   Undo2,
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
@@ -45,6 +47,44 @@ function TypingIndicator() {
 
 function dataUrl(block: Extract<ContentBlock, { type: 'image' }>): string {
   return `data:${block.mediaType};base64,${block.dataBase64}`
+}
+
+/** 外部会话的系统注入（AGENTS.md、skills_instructions 等）：默认折叠成一行灰字。 */
+function ContextNote({ kind, text }: { kind: string; text: string }) {
+  const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  return (
+    <div className="my-0.5 min-w-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => {
+          setMounted(true)
+          setOpen((v) => !v)
+        }}
+        className="flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11.5px] leading-none text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
+      >
+        <ScrollText size={12} className="shrink-0 opacity-70" />
+        <span className="min-w-0 truncate">注入上下文 · {kind}</span>
+        <ChevronRight
+          size={11}
+          className={cn(
+            'shrink-0 opacity-60 transition-transform duration-150',
+            open && 'rotate-90',
+          )}
+        />
+      </button>
+      {mounted && (
+        <div className="collapse-grid" data-open={open}>
+          <div className="collapse-inner">
+            <pre className="my-1 max-h-[360px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--t-bg-subtle)] px-2.5 py-2 font-mono text-[11px] leading-5 text-text-soft">
+              {text}
+            </pre>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export const UserMessage = memo(function UserMessage({
@@ -721,6 +761,9 @@ export function MessageList({
         }
         const m = seg.message
         if (m.role === 'user') {
+          const contexts = m.content.filter(
+            (b): b is Extract<ContentBlock, { type: 'context' }> => b.type === 'context',
+          )
           return (
             <div
               key={m.id}
@@ -731,6 +774,13 @@ export function MessageList({
                 m.content.some((b) => b.type === 'text' && b.text.trim()) ? 'true' : undefined
               }
             >
+              {contexts.length > 0 && (
+                <div className="mb-1 space-y-0.5">
+                  {contexts.map((ctx, i) => (
+                    <ContextNote key={i} kind={ctx.kind} text={ctx.text} />
+                  ))}
+                </div>
+              )}
               <UserMessage message={m} animate={seg.animate} readOnly={readOnly} />
               {hookLine(m.id)}
             </div>

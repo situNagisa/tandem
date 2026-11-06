@@ -152,7 +152,9 @@ export type ContentBlock =
   | { type: 'thinking'; text: string }
   | { type: 'image'; mediaType: string; dataBase64: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; toolUseId: string; content: string; isError?: boolean };
+  | { type: 'tool_result'; toolUseId: string; content: string; isError?: boolean }
+  /** 外部会话里系统注入的上下文（AGENTS.md、skills_instructions 等），前端折叠展示。 */
+  | { type: 'context'; kind: string; text: string };
 
 export interface Message {
   id: string;

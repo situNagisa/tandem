@@ -51,7 +51,7 @@ const CODEX_SESSIONS_DIR = path.join('.codex', 'sessions');
 const CODEX_INDEX_FILE = path.join('.codex', 'session_index.jsonl');
 
 /** 解析规则变化时递增，旧条目自动失效。 */
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 
 /** 外部工具注入的整块标签：系统提醒、提及列表、IDE 上下文、Codex 环境说明等。 */
 const DROP_TAGS = [
@@ -80,15 +80,19 @@ const DROP_TAGS = [
 /** 命令回显块：转换为简短的 "/命令 参数" 文本。 */
 const COMMAND_TAGS = ['command-name', 'command-message', 'command-args'];
 
-/** 整条消息都是注入时直接丢弃的起始特征（无法可靠地只删其中一段）。 */
-const INJECTED_MARKERS: RegExp[] = [
-  /^#+\s*AGENTS\.md instructions\b/im,
-  /<INSTRUCTIONS>/,
-  /<!--\s*CODEGRAPH_START/i,
-  /^The following is the Codex agent history\b/im,
-  /^This session is being continued from a previous conversation\b/im,
-  /^Caveat: The messages below were generated\b/im,
+/** 整条消息都是注入时直接收进上下文块的特征（无法可靠地只删其中一段）。 */
+const INJECTED_MARKERS: Array<{ re: RegExp; kind: string }> = [
+  { re: /^#*\s*AGENTS\.md instructions\b/im, kind: 'AGENTS.md' },
+  { re: /<!--\s*CODEGRAPH_START/i, kind: 'codegraph' },
+  { re: /^The following is the Codex agent history\b/im, kind: 'agent history' },
+  { re: /^This session is being continued from a previous conversation\b/im, kind: 'conversation history' },
+  { re: /^Caveat: The messages below were generated\b/im, kind: 'caveat' },
 ];
+
+interface InjectedContext {
+  kind: string;
+  text: string;
+}
 
 /** Claude Code 的斜杠命令里，只有元命令不值得作为标题。 */
 const META_COMMAND = /^\/(?:model|clear|effort|agents|statusline|help|login|logout|compact|config|permissions|resume|vim|terminal-setup|init|cost|doctor|memory|mcp|hooks|plugin|export|import)(?:\s|$)/i;
@@ -110,29 +114,46 @@ function unwrapMentions(text: string): string {
   return text.replace(/@\[([^\]\n]+)\](?:\([^)\n]*\))?/g, '$1');
 }
 
-/** 未闭合的注入标签（如被截断的 <INSTRUCTIONS>）会把整条消息吞掉。 */
-function dropUnclosedLeadingBlock(text: string): string {
-  const match = text.match(/^\s*<([a-zA-Z][\w: -]*?)(?:\s[^>]*)?>/);
-  if (!match) return text;
-  const name = match[1]!.trim().toLowerCase();
-  if (!DROP_TAGS.some((tag) => tag.toLowerCase() === name)) return text;
-  return '';
-}
+/**
+ * 把 Claude Code / Codex 注入到用户消息里的标签块收进可折叠的上下文，
+ * 只留下真正的用户文本。整段注入（AGENTS.md 等）保留全文，前端默认折叠。
+ */
+function extractInjected(text: string): { text: string; contexts: InjectedContext[] } {
+  const contexts: InjectedContext[] = [];
+  const marker = INJECTED_MARKERS.find((item) => item.re.test(text));
+  if (marker) {
+    const value = text.trim();
+    if (value) contexts.push({ kind: marker.kind, text: value });
+    return { text: '', contexts };
+  }
 
-/** 剥离 Claude Code / Codex 注入到用户消息里的标签块，只留真正的用户文本。 */
-function cleanInjectedText(text: string): string {
-  if (INJECTED_MARKERS.some((re) => re.test(text))) return '';
   const command = commandSummary(text);
   let out = text;
   for (const tag of COMMAND_TAGS) out = out.replace(tagged(tag), '');
-  for (const tag of DROP_TAGS) out = out.replace(tagged(tag), '');
-  out = dropUnclosedLeadingBlock(out);
+  for (const tag of DROP_TAGS) {
+    const re = new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`, 'gi');
+    out = out.replace(re, (_whole, inner: string) => {
+      const value = String(inner ?? '').trim();
+      if (value) contexts.push({ kind: tag, text: value });
+      return '';
+    });
+  }
+  // 未闭合的注入标签（如被截断的 <INSTRUCTIONS>）整块收进上下文。
+  const unclosed = out.match(/^\s*<([a-zA-Z][\w: -]*?)(?:\s[^>]*)?>/);
+  if (unclosed) {
+    const name = unclosed[1]!.trim();
+    if (DROP_TAGS.some((tag) => tag.toLowerCase() === name.toLowerCase())) {
+      const value = out.trim();
+      if (value) contexts.push({ kind: name, text: value });
+      out = '';
+    }
+  }
   out = unwrapMentions(out)
     .replace(/\u001b\[[0-9;]*m/g, '')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-  return command ? `${command}${out ? `\n${out}` : ''}` : out;
+  return { text: command ? `${command}${out ? `\n${out}` : ''}` : out, contexts };
 }
 
 /** 明显是系统注入/命令回显的内容，不作为标题。 */
@@ -147,7 +168,7 @@ function isInjectedText(text: string): boolean {
   if (value === '已授权' || /^(?:approved|denied)$/i.test(value)) return true;
   if (META_COMMAND.test(value)) return true;
   if (/^\/\S+$/.test(value)) return true;
-  if (INJECTED_MARKERS.some((re) => re.test(value))) return true;
+  if (INJECTED_MARKERS.some((item) => item.re.test(value))) return true;
   return false;
 }
 
@@ -166,7 +187,7 @@ function cleanTitle(text: string): string {
   return [...plain].slice(0, 60).join('').trim();
 }
 
-/** 用户文本块统一过一遍注入清理；清理后为空的块直接丢弃。 */
+/** 用户文本块统一过一遍注入清理：注入内容转成折叠上下文，空文本块丢弃。 */
 function cleanUserBlocks(blocks: ContentBlock[]): ContentBlock[] {
   const out: ContentBlock[] = [];
   for (const block of blocks) {
@@ -174,7 +195,10 @@ function cleanUserBlocks(blocks: ContentBlock[]): ContentBlock[] {
       out.push(block);
       continue;
     }
-    const text = cleanInjectedText(block.text);
+    const { text, contexts } = extractInjected(block.text);
+    for (const context of contexts) {
+      out.push({ type: 'context', kind: context.kind, text: context.text });
+    }
     if (text) out.push({ ...block, text });
   }
   return out;
