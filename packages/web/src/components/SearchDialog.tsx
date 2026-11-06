@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Pin, Search, Server } from 'lucide-react'
-import type { SessionSummary } from '@tandem/protocol'
+import { Pin, Search } from 'lucide-react'
+import type { ExternalSession, ExternalSource, SessionStatus, SessionSummary } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { navigate } from '../lib/router'
@@ -10,65 +10,177 @@ import { Modal } from './ui/Modal'
 import { SessionStatusDot } from './StatusDot'
 
 interface Result {
+  key: string
   hostId: string
   hostName: string
-  session: SessionSummary
+  title: string
+  cwd: string
+  updatedAt: number
+  status: SessionStatus
+  project: string
+  pinned?: boolean
+  archived?: boolean
+  sessionId?: string
+  external?: ExternalSession
 }
+
+type Scope = 'all' | 'project' | 'external'
+
+const SOURCE_LABEL: Record<ExternalSource, string> = {
+  'claude-code': 'Claude Code',
+  codex: 'Codex',
+}
+
+const SCOPES: Array<{ value: Scope; label: string }> = [
+  { value: 'all', label: '全部' },
+  { value: 'project', label: '本项目' },
+  { value: 'external', label: '外部会话' },
+]
+
+function projectOf(cwd: string, env?: SessionSummary['env']): string {
+  return env?.repoName || basename(cwd) || cwd
+}
+
+function dayGroup(ts: number): 'today' | 'yesterday' | 'earlier' {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  if (ts >= today) return 'today'
+  if (ts >= today - 86_400_000) return 'yesterday'
+  return 'earlier'
+}
+
+const GROUP_LABEL = { today: '今天', yesterday: '昨天', earlier: '更早' } as const
 
 export function SearchDialog() {
   const open = useUiStore((s) => s.searchOpen)
   const setOpen = useUiStore((s) => s.setSearchOpen)
   const hosts = useAppStore((s) => s.hosts)
   const runtimes = useAppStore((s) => s.runtimes)
+  const active = useAppStore((s) => s.active)
   const [query, setQuery] = useState('')
+  const [scope, setScope] = useState<Scope>('all')
   const [index, setIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!open) return
     setQuery('')
+    setScope('all')
     setIndex(0)
     const t = window.setTimeout(() => inputRef.current?.focus(), 40)
     return () => window.clearTimeout(t)
   }, [open])
 
-  const results = useMemo<Result[]>(() => {
-    const q = query.trim().toLowerCase()
-    const all: Result[] = []
+  const project = useMemo(() => {
+    const summary = active?.summary
+    if (!summary) return null
+    return {
+      hostId: active.hostId,
+      key: projectOf(summary.cwd, summary.env),
+    }
+  }, [active])
+
+  const all = useMemo<Result[]>(() => {
+    const out: Result[] = []
     for (const h of hosts) {
       const rt = runtimes[h.id]
       for (const session of rt?.sessions ?? []) {
-        all.push({ hostId: h.id, hostName: h.name, session })
+        out.push({
+          key: `s:${h.id}:${session.id}`,
+          hostId: h.id,
+          hostName: h.name,
+          title: session.title || '未命名会话',
+          cwd: session.cwd,
+          updatedAt: session.updatedAt,
+          status: session.status,
+          project: projectOf(session.cwd, session.env),
+          pinned: session.pinned,
+          archived: session.archived,
+          sessionId: session.id,
+        })
+      }
+      for (const ext of rt?.externalSessions ?? []) {
+        out.push({
+          key: `x:${h.id}:${ext.source}:${ext.id}`,
+          hostId: h.id,
+          hostName: h.name,
+          title: ext.title || '未命名会话',
+          cwd: ext.cwd,
+          updatedAt: ext.updatedAt,
+          status: 'idle',
+          project: projectOf(ext.cwd),
+          external: ext,
+        })
       }
     }
-    all.sort((a, b) => b.session.updatedAt - a.session.updatedAt)
+    return out.sort((a, b) => b.updatedAt - a.updatedAt)
+  }, [hosts, runtimes])
+
+  const scoped = useMemo(() => {
+    if (scope === 'external') return all.filter((r) => r.external)
+    if (scope === 'project') {
+      if (!project) return []
+      return all.filter(
+        (r) =>
+          !r.external && r.hostId === project.hostId && r.project === project.key,
+      )
+    }
+    return all
+  }, [all, scope, project])
+
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase()
     const filtered = q
-      ? all.filter(
+      ? scoped.filter(
           (r) =>
-            r.session.title.toLowerCase().includes(q) ||
-            r.session.cwd.toLowerCase().includes(q) ||
-            r.session.model.toLowerCase().includes(q) ||
+            r.title.toLowerCase().includes(q) ||
+            r.cwd.toLowerCase().includes(q) ||
+            r.project.toLowerCase().includes(q) ||
             r.hostName.toLowerCase().includes(q),
         )
-      : all
-    return filtered.slice(0, 40)
-  }, [hosts, runtimes, query])
+      : scoped
+    return filtered.slice(0, 60)
+  }, [scoped, query])
+
+  const grouped = useMemo(() => {
+    const buckets: Record<'today' | 'yesterday' | 'earlier', Result[]> = {
+      today: [],
+      yesterday: [],
+      earlier: [],
+    }
+    for (const r of results) buckets[dayGroup(r.updatedAt)].push(r)
+    return (['today', 'yesterday', 'earlier'] as const)
+      .filter((k) => buckets[k].length > 0)
+      .map((k) => ({ key: k, label: GROUP_LABEL[k], items: buckets[k] }))
+  }, [results])
 
   useEffect(() => {
     setIndex(0)
-  }, [query])
+  }, [query, scope])
+
+  useEffect(() => {
+    setIndex((i) => Math.min(i, Math.max(0, results.length - 1)))
+  }, [results.length])
 
   const openResult = (r: Result) => {
     setOpen(false)
-    navigate({ kind: 'session', hostId: r.hostId, sessionId: r.session.id })
+    if (r.external) {
+      navigate({ kind: 'external', hostId: r.hostId, source: r.external.source, id: r.external.id })
+      return
+    }
+    if (r.sessionId) {
+      navigate({ kind: 'session', hostId: r.hostId, sessionId: r.sessionId })
+    }
   }
+
+  let flatIndex = 0
 
   return (
     <Modal
       open={open}
       onClose={() => setOpen(false)}
       align="top"
-      className="max-w-xl"
+      className="max-w-[680px]"
       bodyClassName="p-0"
     >
       <div className="flex items-center gap-2.5 border-b border-border px-4">
@@ -99,64 +211,81 @@ export function SearchDialog() {
         </kbd>
       </div>
 
-      <div className="max-h-[52vh] overflow-y-auto p-2">
+      <div className="max-h-[54vh] overflow-y-auto px-1.5 py-1">
         {results.length === 0 && (
           <p className="px-3 py-8 text-center text-[13px] text-muted">
-            {query ? '没有找到匹配的会话' : '暂无可搜索的会话'}
+            {query ? '没有找到匹配的会话' : scope === 'project' && !project ? '当前没有可定位的项目' : '暂无可搜索的会话'}
           </p>
         )}
-        {results.map((r, i) => (
-          <button
-            key={`${r.hostId}:${r.session.id}`}
-            onMouseEnter={() => setIndex(i)}
-            onClick={() => openResult(r)}
-            className={cn(
-              'flex min-h-11 w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-[120ms]',
-              i === index ? 'bg-[var(--t-bg-active)]' : 'hover:bg-[var(--t-bg-hover)]',
-            )}
-          >
-            <span className="mt-[7px] flex w-3 shrink-0 justify-center">
-              <SessionStatusDot status={r.session.status} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-1.5">
-                <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
-                  {r.session.title || '未命名会话'}
-                </span>
-                {r.session.pinned && <Pin size={10} className="shrink-0 text-muted" />}
-                {r.session.archived && (
-                  <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1 text-[9px] text-muted">
-                    已归档
+        {grouped.map((group) => (
+          <div key={group.key}>
+            <div className="px-2.5 pb-1 pt-2 text-[10px] font-medium tracking-[0.08em] text-muted">
+              {group.label}
+            </div>
+            {group.items.map((r) => {
+              const i = flatIndex++
+              return (
+                <button
+                  key={r.key}
+                  onMouseEnter={() => setIndex(i)}
+                  onClick={() => openResult(r)}
+                  className={cn(
+                    'flex h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left transition-colors duration-[120ms]',
+                    i === index ? 'bg-[var(--t-bg-active)]' : 'hover:bg-[var(--t-bg-hover)]',
+                  )}
+                >
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+                    {r.title}
                   </span>
-                )}
-              </span>
-              <span className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-muted">
-                <Server size={10} className="shrink-0" />
-                <span className="shrink-0">{r.hostName}</span>
-                <span className="text-border-strong">·</span>
-                <span className="truncate">{r.session.env?.repoName || basename(r.session.cwd) || r.session.cwd}</span>
-                {r.session.env?.branch && (
-                  <>
-                    <span className="text-border-strong">·</span>
-                    <span className="max-w-[120px] truncate">{r.session.env.branch}</span>
-                  </>
-                )}
-                <span className="text-border-strong">·</span>
-                <span className="shrink-0">{formatRelative(r.session.updatedAt)}</span>
-              </span>
-            </span>
-            {i === index && (
-              <kbd className="mt-0.5 shrink-0 rounded border border-border px-1 text-[10px] leading-4 text-muted">
-                ↵
-              </kbd>
-            )}
-          </button>
+                  {r.pinned && <Pin size={10} className="shrink-0 text-muted" />}
+                  {r.archived && (
+                    <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1 text-[9px] text-muted">
+                      已归档
+                    </span>
+                  )}
+                  <span
+                    className={cn(
+                      'shrink-0 truncate rounded border border-border px-1 py-px text-[10px] text-muted',
+                      r.external ? 'max-w-[104px]' : 'max-w-[120px]',
+                    )}
+                    title={`${r.hostName} · ${r.project}`}
+                  >
+                    {r.external ? SOURCE_LABEL[r.external.source] : r.project}
+                  </span>
+                  <span className="w-[54px] shrink-0 text-right text-[10px] text-muted">
+                    {formatRelative(r.updatedAt)}
+                  </span>
+                  <span className="flex w-2 shrink-0 justify-center">
+                    <SessionStatusDot status={r.status} />
+                  </span>
+                  <span className="w-3 shrink-0 text-[10px] text-muted">{i === index ? '↵' : ''}</span>
+                </button>
+              )
+            })}
+          </div>
         ))}
       </div>
-      <div className="flex items-center gap-3 border-t border-border px-4 py-2 text-[11px] text-muted">
-        <span>↑↓ 选择</span>
-        <span>Enter 打开</span>
-        <span className="ml-auto">Ctrl/⌘ + K</span>
+
+      <div className="flex items-center gap-1 border-t border-border px-3 py-2">
+        <div className="flex items-center gap-0.5">
+          {SCOPES.map((s) => (
+            <button
+              key={s.value}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setScope(s.value)}
+              aria-pressed={scope === s.value}
+              className={cn(
+                'h-6 rounded-md px-2 text-[11.5px] transition-colors duration-[120ms]',
+                scope === s.value
+                  ? 'bg-[var(--t-bg-active)] text-text'
+                  : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text-soft',
+              )}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <span className="ml-auto text-[10.5px] text-muted">{results.length} 个结果</span>
       </div>
     </Modal>
   )
