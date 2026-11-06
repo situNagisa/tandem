@@ -47,6 +47,20 @@ export async function runTurn(
   // 按需连接项目级 MCP，并顺带重试之前失败的服务器；失败不影响本轮
   await host.mcp.prepare(rec.cwd).catch(() => {});
   const tools = host.toolDefinitions(rec, allowTask);
+  const hookEntries = host.hooks.entriesForRun(rec.cwd);
+  let stopHookAttempts = 0;
+
+  // SessionStart：每个会话首次运行时执行一次，stdout/JSON 作为附加上下文
+  let sessionStartContext = '';
+  if (!rt.sessionStartDone) {
+    rt.sessionStartDone = true;
+    const start = await host.runHooks(rec, hookEntries, 'SessionStart', { source: 'startup' });
+    sessionStartContext = start.contexts.join('\n\n');
+  }
+  const promptHookContext = [sessionStartContext, rt.pendingHookContext]
+    .filter(Boolean)
+    .join('\n\n');
+  delete rt.pendingHookContext;
 
   try {
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
@@ -81,7 +95,11 @@ export async function runTurn(
         result = await streamChat({
           profile,
           model,
-          system: buildSystemPrompt(rec.cwd, { allowTask }),
+          system: buildSystemPrompt(rec.cwd, {
+            allowTask,
+            planMode: rec.permissionMode === 'plan',
+            hookContext: promptHookContext,
+          }),
           // 排除刚插入的空 assistant 占位
           messages: rec.messages.slice(0, -1),
           tools,
@@ -190,6 +208,43 @@ export async function runTurn(
 
       const toolUses = assistant.content.filter((b) => b.type === 'tool_use');
       if (toolUses.length === 0) {
+        // Stop hook：exit 2 / decision=block 时把 stderr 回填给模型并继续（最多两次）
+        if (reason !== 'interrupted' && !abort.signal.aborted) {
+          const stop = await host.runHooks(rec, hookEntries, 'Stop', {
+            stopHookActive: stopHookAttempts > 0,
+            signal: abort.signal,
+          });
+          if (stop.blocked && stopHookAttempts < 2) {
+            stopHookAttempts++;
+            const feedback: Message = {
+              id: randomUUID(),
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: `[Stop Hook 反馈] 用户配置的 Hook 要求继续处理：\n${
+                    stop.feedback.join('\n\n') || '（Hook 未提供具体原因）'
+                  }`,
+                },
+              ],
+              createdAt: Date.now(),
+            };
+            rec.messages.push(feedback);
+            host.hub.broadcastSession(rec.id, {
+              type: 'message_start',
+              sessionId: rec.id,
+              message: feedback,
+            });
+            host.hub.broadcastSession(rec.id, {
+              type: 'message_end',
+              sessionId: rec.id,
+              message: feedback,
+            });
+            host.store.markDirty(rec.id, true);
+            host.broadcastSummary(rec);
+            continue;
+          }
+        }
         if (reason !== 'interrupted') reason = 'done';
         loopCompleted = true;
         break;
@@ -203,7 +258,7 @@ export async function runTurn(
               content: '用户中断',
               isError: true,
             }))
-          : await executeToolUses(host, rec, toolUses, abort.signal);
+          : await executeToolUses(host, rec, toolUses, abort.signal, hookEntries);
 
       const toolMessage: Message = {
         id: randomUUID(),
@@ -290,6 +345,7 @@ async function executeToolUses(
   rec: SessionRecord,
   toolUses: Array<Extract<ContentBlock, { type: 'tool_use' }>>,
   signal: AbortSignal,
+  hookEntries: import('@tandem/protocol').HookEntry[],
 ): Promise<ContentBlock[]> {
   const perTool: ContentBlock[][] = new Array(toolUses.length);
 
@@ -317,6 +373,41 @@ async function executeToolUses(
     if (signal.aborted) {
       return [{ type: 'tool_result', toolUseId: tool.id, content: '用户中断', isError: true }];
     }
+    const pre = await host.runHooks(rec, hookEntries, 'PreToolUse', {
+      toolName: tool.name,
+      toolInput: tool.input,
+      signal,
+    });
+    if (pre.blocked) {
+      return [
+        {
+          type: 'tool_result',
+          toolUseId: tool.id,
+          content: `Hook 阻止了该工具调用：\n${pre.feedback.join('\n') || '（Hook 未提供原因）'}`,
+          isError: true,
+        },
+      ];
+    }
+
+    // ExitPlanMode：不执行工具，转为计划审批；批准后切换权限模式并继续本轮
+    if (tool.name === 'ExitPlanMode') {
+      const planArg =
+        tool.input && typeof tool.input === 'object'
+          ? (tool.input as Record<string, unknown>).plan
+          : '';
+      const decision = await host.requestPlanApproval(rec, planArg, tool.id, signal);
+      return [
+        {
+          type: 'tool_result',
+          toolUseId: tool.id,
+          content: decision.allowed
+            ? decision.reason ?? '计划已获批准，请开始执行。'
+            : `计划未获批准：${decision.reason ?? '用户要求继续完善计划'}`,
+          ...(decision.allowed ? {} : { isError: true }),
+        },
+      ];
+    }
+
     const auth = await host.authorize(rec, tool.name, tool.input, tool.id, signal);
     if (!auth.allowed) {
       return [
@@ -351,7 +442,16 @@ async function executeToolUses(
       def?.mcp && tool.name.startsWith('mcp__')
         ? await host.mcp.callTool(def.mcp.server, def.mcp.tool, tool.input, signal)
         : await executeTool(tool.name, tool.input, toolCtx);
-    const content = truncateMiddle(res.content || '(无输出)');
+    let content = truncateMiddle(res.content || '(无输出)');
+    const post = await host.runHooks(rec, hookEntries, 'PostToolUse', {
+      toolName: tool.name,
+      toolInput: tool.input,
+      toolResponse: content,
+      signal,
+    });
+    if (post.blocked && post.feedback.length > 0) {
+      content += `\n\n[Hook 反馈]\n${post.feedback.join('\n')}`;
+    }
     const blocks: ContentBlock[] = [
       {
         type: 'tool_result',

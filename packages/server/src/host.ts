@@ -6,6 +6,8 @@ import path from 'node:path';
 import type {
   Checkpoint,
   ContentBlock,
+  HookEntry,
+  HookEvent,
   HostInfo,
   ListModelsInput,
   Message,
@@ -29,6 +31,12 @@ import {
 import { CheckpointStore } from './checkpoints.js';
 import { ExternalSessionStore } from './external.js';
 import { Hub } from './events.js';
+import {
+  HookManager,
+  runHookEntries,
+  type HookExecutionContext,
+  type HookRunResult,
+} from './hooks.js';
 import { McpManager } from './mcp.js';
 import { PermissionRuleStore } from './permissions.js';
 import { SessionStore } from './store.js';
@@ -67,7 +75,7 @@ const PERMISSION_MODES = new Set<PermissionMode>([
 
 interface PermissionEntry {
   sessionId: string;
-  resolve: (decision: PermissionDecision) => void;
+  resolve: (decision: PermissionDecision, reason?: string) => void;
 }
 
 export class Host {
@@ -79,6 +87,7 @@ export class Host {
   readonly external = new ExternalSessionStore(this);
   readonly checkpoints: CheckpointStore;
   readonly permissionRules: PermissionRuleStore;
+  readonly hooks: HookManager;
   readonly mcp: McpManager;
   readonly usage: UsageStore;
   readonly hub = new Hub();
@@ -93,6 +102,7 @@ export class Host {
     this.store = new SessionStore(home);
     this.checkpoints = new CheckpointStore(home);
     this.permissionRules = new PermissionRuleStore(home);
+    this.hooks = new HookManager(home);
     this.mcp = new McpManager(home);
     this.usage = new UsageStore(home);
     this.version = readVersion();
@@ -227,6 +237,7 @@ export class Host {
       ...this.toSummary(rec),
       messages: rec.messages,
       todos: rec.todos,
+      ...(rec.plan ? { plan: { ...rec.plan } } : {}),
     };
   }
 
@@ -424,6 +435,7 @@ export class Host {
       todos: structuredClone(src.todos),
       allowedTools: [...src.allowedTools],
       ...(src.env ? { env: { ...src.env } } : {}),
+      ...(src.plan ? { plan: structuredClone(src.plan) } : {}),
     };
     this.store.add(rec);
     this.broadcastSummary(rec);
@@ -532,6 +544,25 @@ export class Host {
       .join('\n')
       .replace(/\s+/g, ' ')
       .trim();
+    const rt = this.ensureRuntime(rec.id);
+
+    // UserPromptSubmit：可阻止消息，stdout/JSON 作为下一轮系统提示的附加上下文
+    if (text) {
+      const hookResult = await this.runHooks(rec, this.hooks.entriesForRun(rec.cwd), 'UserPromptSubmit', {
+        prompt: text,
+      });
+      if (hookResult.blocked) {
+        this.appendLocalAssistant(
+          rec,
+          `用户消息被 Hook 阻止：\n${hookResult.feedback.join('\n') || '（Hook 没有给出原因）'}`,
+        );
+        return;
+      }
+      if (hookResult.contexts.length > 0) {
+        rt.pendingHookContext = hookResult.contexts.join('\n\n');
+      }
+    }
+
     // 首条用户消息且标题仍是默认值时，先截取正文做兜底标题，再异步让模型生成更短的标题
     const isFirstUserMessage = !rec.messages.some((m) => m.role === 'user');
     const needsTitle = (!rec.title || rec.title === '新会话') && !!text;
@@ -544,7 +575,6 @@ export class Host {
     };
     rec.messages.push(message);
     // 每轮开始创建检查点：本轮 Write/Edit 执行前把原文件快照进去
-    const rt = this.ensureRuntime(rec.id);
     rt.checkpoint = this.checkpoints.create(rec.id, message.id);
     this.hub.broadcastSession(rec.id, {
       type: 'message_start',
@@ -773,7 +803,79 @@ export class Host {
     return this.toSession(rec);
   }
 
+  // ---------- Hooks ----------
+
+  /** 执行一组已加载的 hooks，并把每条执行记录广播给客户端。 */
+  async runHooks(
+    rec: SessionRecord,
+    entries: HookEntry[],
+    event: HookEvent,
+    context: Omit<HookExecutionContext, 'sessionId' | 'cwd' | 'permissionMode'>,
+  ): Promise<HookRunResult> {
+    return runHookEntries(
+      entries,
+      event,
+      { sessionId: rec.id, cwd: rec.cwd, permissionMode: rec.permissionMode, ...context },
+      (outcome) => {
+        this.hub.broadcastSession(rec.id, {
+          type: 'hook_event',
+          sessionId: rec.id,
+          event,
+          name: outcome.name,
+          ok: outcome.ok,
+          durationMs: outcome.durationMs,
+          ...(outcome.blocked ? { blocked: true } : {}),
+          ...(outcome.message ? { message: outcome.message } : {}),
+        });
+      },
+    );
+  }
+
   // ---------- 权限 ----------
+
+  /** plan 模式：将 ExitPlanMode 转为需要用户决策的特殊审批。 */
+  async requestPlanApproval(
+    rec: SessionRecord,
+    planInput: unknown,
+    toolUseId: string,
+    signal: AbortSignal,
+  ): Promise<{ allowed: boolean; reason?: string }> {
+    if (rec.permissionMode !== 'plan') {
+      return { allowed: false, reason: 'ExitPlanMode 只能在计划模式下使用' };
+    }
+    const content = typeof planInput === 'string' ? planInput.trim() : '';
+    if (!content) {
+      return { allowed: false, reason: '计划内容为空：请通过 plan 参数提交 markdown 计划' };
+    }
+    if (signal.aborted) return { allowed: false, reason: '用户中断' };
+
+    rec.plan = { content, createdAt: Date.now(), status: 'pending' };
+    this.store.markDirty(rec.id, true);
+    this.hub.broadcastSession(rec.id, { type: 'plan', sessionId: rec.id, plan: { ...rec.plan } });
+
+    const result = await this.askPermission(rec, 'ExitPlanMode', { plan: content }, toolUseId, signal);
+    if (signal.aborted) return { allowed: false, reason: '用户中断' };
+    if (!result.allowed) {
+      rec.plan = { ...rec.plan, status: 'rejected' };
+      this.store.markDirty(rec.id, true);
+      this.hub.broadcastSession(rec.id, { type: 'plan', sessionId: rec.id, plan: { ...rec.plan } });
+      return { allowed: false, reason: result.reason ?? '用户要求继续完善计划' };
+    }
+
+    const mode: 'acceptEdits' | 'default' = result.decision === 'allow_always' ? 'acceptEdits' : 'default';
+    rec.permissionMode = mode;
+    rec.plan = { ...rec.plan, status: 'approved', approvalMode: mode };
+    this.store.markDirty(rec.id, true);
+    this.hub.broadcastSession(rec.id, { type: 'plan', sessionId: rec.id, plan: { ...rec.plan } });
+    this.broadcastSummary(rec);
+    return {
+      allowed: true,
+      reason:
+        mode === 'acceptEdits'
+          ? '计划已获批准，已切换到自动接受编辑模式，请开始执行计划。'
+          : '计划已获批准，请开始执行计划（编辑操作会逐个询问）。',
+    };
+  }
 
   async authorize(
     rec: SessionRecord,
@@ -837,7 +939,7 @@ export class Host {
     input: unknown,
     toolUseId: string,
     signal: AbortSignal,
-  ): Promise<{ allowed: boolean; reason?: string }> {
+  ): Promise<{ allowed: boolean; reason?: string; decision?: PermissionDecision }> {
     const rt = this.ensureRuntime(rec.id);
     const request: PermissionRequest = {
       id: randomUUID(),
@@ -850,14 +952,16 @@ export class Host {
 
     return new Promise((resolve) => {
       let settled = false;
-      const settle = (decision: PermissionDecision) => {
+      const settle = (decision: PermissionDecision, customReason?: string) => {
         if (settled) return;
         settled = true;
         this.permissions.delete(request.id);
         rt.pending.delete(request.id);
         signal.removeEventListener('abort', onAbort);
 
-        if (decision === 'allow_always') this.addAllowed(rec, toolName, input);
+        if (decision === 'allow_always' && toolName !== 'ExitPlanMode') {
+          this.addAllowed(rec, toolName, input);
+        }
         this.hub.broadcastSession(rec.id, {
           type: 'permission_resolved',
           requestId: request.id,
@@ -878,8 +982,12 @@ export class Host {
         }
         resolve({
           allowed: decision !== 'deny',
+          decision,
           reason:
-            decision === 'deny' ? (signal.aborted ? '用户中断' : '用户拒绝了该操作') : undefined,
+            decision === 'deny'
+              ? customReason?.trim() ||
+                (signal.aborted ? '用户中断' : '用户拒绝了该操作')
+              : undefined,
         });
       };
       const onAbort = () => settle('deny');
@@ -897,12 +1005,16 @@ export class Host {
     });
   }
 
-  resolvePermission(requestId: string, decision: PermissionDecision): void {
+  resolvePermission(requestId: string, decision: PermissionDecision, reason?: string): void {
     if (decision !== 'allow' && decision !== 'allow_always' && decision !== 'deny') return;
-    this.permissions.get(requestId)?.resolve(decision);
+    this.permissions.get(requestId)?.resolve(
+      decision,
+      typeof reason === 'string' ? reason : undefined,
+    );
   }
 
   private addAllowed(rec: SessionRecord, toolName: string, input: unknown): void {
+    if (toolName === 'ExitPlanMode') return;
     let entry = toolName;
     if (toolName === 'Bash' && input && typeof input === 'object') {
       const command = String((input as Record<string, unknown>).command ?? '');
@@ -924,6 +1036,9 @@ export class Host {
     switch (cmd.name) {
       case 'clear': {
         rec.messages = [];
+        delete rec.plan;
+        const clearedRt = this.runtimes.get(rec.id);
+        if (clearedRt) clearedRt.sessionStartDone = false;
         this.store.markDirty(rec.id, true);
         this.setStatus(rec, 'idle');
         this.broadcastSummary(rec);

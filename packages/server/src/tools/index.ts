@@ -9,10 +9,22 @@ import { definition as grep, run as runGrep } from './grep.js';
 import { definition as todo, run as runTodo } from './todo.js';
 import { definition as webfetch, run as runWebfetch } from './webfetch.js';
 import { definition as task, run as runTask } from './task.js';
+import { definition as exitPlan, run as runExitPlan } from './exit-plan.js';
 
 type ToolRunner = (input: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>;
 
-export const TOOLS: ToolDefinition[] = [bash, read, write, edit, glob, grep, todo, webfetch, task];
+export const TOOLS: ToolDefinition[] = [
+  bash,
+  read,
+  write,
+  edit,
+  glob,
+  grep,
+  todo,
+  webfetch,
+  task,
+  exitPlan,
+];
 
 const RUNNERS: Record<string, ToolRunner> = {
   Bash: runBash,
@@ -24,12 +36,13 @@ const RUNNERS: Record<string, ToolRunner> = {
   TodoWrite: runTodo,
   WebFetch: runWebfetch,
   Task: runTask,
+  ExitPlanMode: runExitPlan,
 };
 
 export const TOOL_MAP = new Map(TOOLS.map((tool) => [tool.name, tool]));
 
-/** plan 模式允许的工具（纯只读）。 */
-export const PLAN_ALLOWED = new Set(['Read', 'Glob', 'Grep', 'WebFetch', 'TodoWrite']);
+/** plan 模式允许的工具（纯只读）；ExitPlanMode 是提交计划的特殊工具。 */
+export const PLAN_ALLOWED = new Set(['Read', 'Glob', 'Grep', 'WebFetch', 'TodoWrite', 'ExitPlanMode']);
 
 export function isReadOnlyTool(name: string): boolean {
   return TOOL_MAP.get(name)?.readOnly === true;
@@ -68,6 +81,7 @@ export function describeTool(name: string, input: unknown): string {
   if (name === 'Edit') return `编辑文件: ${String(args.file_path ?? '')}`;
   if (name === 'WebFetch') return `访问网页: ${String(args.url ?? '')}`;
   if (name === 'Task') return `启动子代理: ${String(args.description ?? '').slice(0, 80)}`;
+  if (name === 'ExitPlanMode') return '提交执行计划，等待批准';
   if (name.startsWith('mcp__')) {
     const [, server, ...rest] = name.split('__');
     return `调用 MCP 工具: ${server ?? ''}/${rest.join('__')}`;

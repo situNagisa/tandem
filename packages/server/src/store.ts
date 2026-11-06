@@ -65,6 +65,9 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
       branch: rec.worktree.branch,
     };
   }
+  const plan = normalizePlan(raw.plan);
+  if (plan) rec.plan = plan;
+  else delete rec.plan;
   const from = raw.importedFrom as { source?: unknown; id?: unknown } | undefined;
   if (from && (from.source === 'claude-code' || from.source === 'codex') && typeof from.id === 'string' && from.id) {
     rec.importedFrom = { source: from.source, id: from.id };
@@ -72,6 +75,26 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
     delete rec.importedFrom;
   }
   return rec;
+}
+
+function normalizePlan(value: unknown): SessionRecord['plan'] {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.content !== 'string' || !raw.content.trim()) return undefined;
+  const status =
+    raw.status === 'approved' || raw.status === 'rejected' || raw.status === 'pending'
+      ? raw.status
+      : 'pending';
+  const approvalMode =
+    raw.approvalMode === 'acceptEdits' || raw.approvalMode === 'default'
+      ? raw.approvalMode
+      : undefined;
+  return {
+    content: raw.content,
+    createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
+    status,
+    ...(approvalMode ? { approvalMode } : {}),
+  };
 }
 
 function normalizeWorktree(

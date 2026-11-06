@@ -123,7 +123,7 @@ export interface Message {
   model?: string;
 }
 
-export interface Session extends SessionSummary { messages: Message[]; todos: Todo[] }
+export interface Session extends SessionSummary { messages: Message[]; todos: Todo[]; plan?: SessionPlan }
 
 export interface Todo { content: string; status: 'pending' | 'in_progress' | 'completed' }
 
@@ -136,7 +136,54 @@ export interface PermissionRequest {
   input: unknown;
   description: string;     // 人类可读描述，如 "运行命令: npm test"
 }
+// ExitPlanMode 的决策语义：allow_always = 批准并自动接受编辑（acceptEdits）；
+// allow = 批准但逐个询问（default）；deny 可带 reason（用户要求继续完善计划）。
 export type PermissionDecision = 'allow' | 'allow_always' | 'deny';
+
+// ---------- Hooks（兼容 Claude Code 配置形状） ----------
+export type HookEvent = 'PreToolUse' | 'PostToolUse' | 'UserPromptSubmit' | 'Stop' | 'SessionStart';
+/** tandem 可编辑；其余三个来自 Claude Code 的只读配置。 */
+export type HookSource = 'tandem' | 'claude-user' | 'claude-project' | 'claude-project-local';
+export interface HookEntry {
+  id: string;
+  event: HookEvent;
+  matcher?: string;          // 工具名正则，可用 | 分隔；留空匹配全部
+  command: string;
+  timeout?: number;          // 秒，默认 60
+  source: HookSource;
+}
+export interface HookSourceInfo {
+  source: HookSource;
+  path: string;
+  readOnly: boolean;
+  exists: boolean;
+}
+export interface HookSettings {
+  cwd?: string;
+  entries: HookEntry[];
+  sources: HookSourceInfo[];
+  hasProjectHooks: boolean;
+  /** 项目目录 hooks 需先信任才会执行；信任列表存 ~/.tandem/hooks-trust.json。 */
+  projectTrusted: boolean;
+}
+/** Hook 执行记录：客户端只在 blocked / !ok 时以灰色单行展示。 */
+export interface HookEventNotice {
+  sessionId: string;
+  event: HookEvent;
+  name: string;              // 命令名（如 lint.sh）
+  ok: boolean;               // 命令是否正常退出（decision=block 仍算 ok）
+  durationMs: number;
+  blocked?: boolean;
+  message?: string;          // stderr / JSON reason / 超时信息
+}
+
+// ---------- 计划模式 ----------
+export interface SessionPlan {
+  content: string;           // markdown
+  createdAt: number;
+  status: 'pending' | 'approved' | 'rejected';
+  approvalMode?: 'acceptEdits' | 'default';
+}
 
 // ---------- Host 信息 ----------
 export interface HostInfo {
@@ -166,7 +213,7 @@ export type ClientMsg =
   | { type: 'unsubscribe'; sessionId: string }
   | { type: 'send'; sessionId: string; content: ContentBlock[] }  // 发送用户消息；运行中发送则排队
   | { type: 'interrupt'; sessionId: string }        // 中断当前轮（Esc）
-  | { type: 'permission'; requestId: string; decision: PermissionDecision }
+  | { type: 'permission'; requestId: string; decision: PermissionDecision; reason?: string } // reason 仅用于 ExitPlanMode 的“继续完善”反馈
   | { type: 'ping' };
 
 // ---------- WebSocket: 服务端 -> 客户端 ----------
@@ -181,6 +228,8 @@ export type ServerMsg =
   | { type: 'permission_request'; request: PermissionRequest }
   | { type: 'permission_resolved'; requestId: string; sessionId: string; decision: PermissionDecision }
   | { type: 'todos'; sessionId: string; todos: Todo[] }
+  | { type: 'plan'; sessionId: string; plan?: SessionPlan }                 // 计划提交/批准/拒绝
+  | ({ type: 'hook_event' } & HookEventNotice)                              // Hook 执行记录（成功默认不展示）
   | { type: 'turn_end'; sessionId: string; reason: 'done' | 'interrupted' | 'error'; error?: string }
   // 外部会话（Claude Code / Codex）文件有变动，客户端应重新拉取列表
   | { type: 'external_sessions_changed' }
@@ -233,6 +282,11 @@ export interface Checkpoint {
 export interface RewindInput { checkpointId: string; restoreFiles: boolean; restoreConversation: boolean }
 // GET  /api/sessions/:id/checkpoints -> Checkpoint[]
 // POST /api/sessions/:id/rewind RewindInput -> Session   恢复到该用户消息之前（文件和/或对话）
+
+// ---------- Hooks ----------
+// GET  /api/hooks?cwd=            -> HookSettings   汇总 ~/.claude、<cwd>/.claude 与 ~/.tandem/hooks.json
+// PUT  /api/hooks { cwd?, entries } -> HookSettings  只写 ~/.tandem/hooks.json（entries 为 tandem 来源的扁平条目）
+// PUT  /api/hooks/trust { cwd, trusted } -> HookSettings  项目 hooks 信任列表（~/.tandem/hooks-trust.json）
 
 // ---------- 改动审阅（git 工作区） ----------
 export interface FileChange { path: string; status: 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked'; additions: number; deletions: number; oldPath?: string }

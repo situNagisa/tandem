@@ -70,7 +70,7 @@ export interface SessionRecord extends Session {
 
 export interface PendingPermission {
   request: PermissionRequest;
-  resolve: (decision: PermissionDecision) => void;
+  resolve: (decision: PermissionDecision, reason?: string) => void;
 }
 
 /** 每个会话的内存运行时状态（不落盘）。 */
@@ -85,6 +85,10 @@ export interface SessionRuntime {
   deleted: boolean;
   /** 本轮检查点：Write/Edit 执行前把文件原内容快照进去。 */
   checkpoint?: Checkpoint;
+  /** 本会话的 SessionStart hook 是否已执行。 */
+  sessionStartDone?: boolean;
+  /** UserPromptSubmit hook 的附加上下文，下一轮系统提示使用后清空。 */
+  pendingHookContext?: string;
 }
 
 export interface ToolDefinition {

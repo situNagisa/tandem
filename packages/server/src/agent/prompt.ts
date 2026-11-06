@@ -24,7 +24,10 @@ function isGitRepo(cwd: string): boolean {
   return false;
 }
 
-export function buildSystemPrompt(cwd: string, options: { allowTask?: boolean } = {}): string {
+export function buildSystemPrompt(
+  cwd: string,
+  options: { allowTask?: boolean; planMode?: boolean; hookContext?: string } = {},
+): string {
   const date = new Date().toISOString().slice(0, 10);
   const env = [
     `- 工作目录（cwd）：${cwd}`,
@@ -53,6 +56,11 @@ export function buildSystemPrompt(cwd: string, options: { allowTask?: boolean } 
 - 遵守项目规范：如果仓库里有 AGENTS.md / CLAUDE.md，以其中的约定为准。
 - 语言：用用户使用的语言回答，本产品默认中文。代码注释遵循项目习惯，不要写解释“代码在做什么”的废话注释。
 
+${options.planMode ? `# 计划模式（重要）
+当前处于计划模式：只能调研（Read / Glob / Grep / WebFetch 等只读工具），不要修改文件或运行有副作用的命令。
+完成调研后，必须调用 ExitPlanMode 工具提交计划，参数为 { plan: "<markdown>" }；计划要具体到文件与步骤。
+用户批准前不得实施。如果用户要求继续完善，根据反馈修改计划后再次调用 ExitPlanMode。
+` : ''}
 # 工具使用要点
 - Bash：在 cwd 内执行非交互命令；设置合理的 timeout；输出过长会被截断。不要用交互式命令（vim、top 等）。
 - Read：支持 offset/limit，大文件分段读取；图片文件会以图片形式返回。
@@ -67,6 +75,7 @@ ${options.allowTask !== false ? '- Task：把独立、多步的子任务派给�
 # 环境
 ${env}
 ${instructions ? `\n# 项目说明\n${instructions}` : ''}
+${options.hookContext ? `\n# Hook 附加上下文\n${options.hookContext}` : ''}
 
 # 安全边界
 - 不要主动访问或泄露用户的密钥、token、凭证；不要执行可疑的远程脚本。
