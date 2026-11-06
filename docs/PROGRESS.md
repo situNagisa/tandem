@@ -33,10 +33,13 @@
 - [x] 真实模型 e2e（docs/e2e-report.md）：修复工具乱序、悬空 tool_calls
 - [x] 内部评审 v4（docs/review-v4.md）：P1 10 条全修，P2 修 13，遗留 3
 
-## 迭代 5（进行中）
-- [ ] server：MCP、子代理 Task、worktree 会话、用量统计、配对
-- [ ] 桌面端 Electron（Windows 安装包、托盘、内置 Host）
-- [ ] web：上述功能界面 + 扫码配对 + 桌面标题栏适配
+## 迭代 5（2026-11-06）
+- [x] server：MCP、子代理 Task、worktree 会话、用量统计、配对
+- [x] 桌面端 Electron（Windows NSIS 安装包、托盘、内置 Host）——未在 Windows 实机启动验证
+- [x] web：上述功能界面 + 扫码配对 + 桌面标题栏适配
+- [x] 内部评审 v5（docs/review-v5.md）：P1 6 全修，P2 21 修 17
+- [ ] 用户体验 v5
+- 下一步候选：Windows 实机验证桌面端；Anthropic provider 真实 key 测试；中继服务（NAT 穿透、不在同一局域网也能连）；hooks；计划模式面板；PR 集成；定时任务
 - 遗留：深色行内代码/diff 对比、移动端 diff 横滑提示、顶栏控件偏多、账号卡缩进
 
 ## 用户反馈记录
