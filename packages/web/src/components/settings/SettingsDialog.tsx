@@ -26,7 +26,7 @@ export function SettingsDialog() {
       open={open}
       onClose={close}
       title="设置"
-      description="Host、账号与模型，以及界面外观。"
+      description="Host、账号与模型、配置迁移，以及界面外观。"
       className="max-w-3xl"
       bodyClassName="p-0 overflow-hidden"
     >

@@ -827,7 +827,10 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     applyClientSettings: (settings, mode) => {
-      const imported = sanitizeHosts(settings.hosts)
+      // 文件里没有 Host 列表时（例如旧版本/其他端导出），保留本机 Host，避免清空。
+      const hasHosts = Array.isArray(settings.hosts)
+      const imported = hasHosts ? sanitizeHosts(settings.hosts) : []
+      const replaceHosts = mode === 'replace' && hasHosts
       const normalized = (url: string): string => {
         try {
           return normalizeHostUrl(url)
@@ -837,7 +840,7 @@ export const useAppStore = create<AppState>((set, get) => {
       }
       const before = get().hosts
       let hosts: HostConfig[]
-      if (mode === 'replace') {
+      if (replaceHosts) {
         for (const id of connections.keys()) {
           connections.get(id)?.close()
         }
@@ -850,26 +853,35 @@ export const useAppStore = create<AppState>((set, get) => {
         })
       } else {
         hosts = before.slice()
-        for (const h of imported) {
-          const existing = hosts.find((x) => normalized(x.url) === normalized(h.url))
-          if (existing) continue
-          const id = hosts.some((x) => x.id === h.id) ? newId() : h.id
-          hosts.push({ ...h, id })
+        if (hasHosts) {
+          for (const h of imported) {
+            const existing = hosts.find((x) => normalized(x.url) === normalized(h.url))
+            if (existing) continue
+            const id = hosts.some((x) => x.id === h.id) ? newId() : h.id
+            hosts.push({ ...h, id })
+          }
         }
       }
 
-      const runtimes = mode === 'replace' ? {} : { ...get().runtimes }
+      const runtimes = replaceHosts ? {} : { ...get().runtimes }
       for (const h of hosts) {
         if (!runtimes[h.id]) runtimes[h.id] = freshRuntime()
       }
-      let activeHostId =
-        mode === 'replace'
-          ? (hosts.find((h) => h.id === settings.lastHost)?.id ?? hosts[0]?.id ?? null)
-          : get().activeHostId && hosts.some((h) => h.id === get().activeHostId)
-            ? get().activeHostId
-            : (hosts[0]?.id ?? null)
+      const activeHostId = replaceHosts
+        ? (hosts.find((h) => h.id === settings.lastHost)?.id ?? hosts[0]?.id ?? null)
+        : get().activeHostId && hosts.some((h) => h.id === get().activeHostId)
+          ? get().activeHostId
+          : (hosts[0]?.id ?? null)
 
-      set({ hosts, runtimes, activeHostId })
+      const active = get().active
+      if (replaceHosts && active) connections.get(active.hostId)?.unsubscribe(active.sessionId)
+      set({
+        hosts,
+        runtimes,
+        activeHostId,
+        ...(replaceHosts ? { active: null } : {}),
+      })
+      if (replaceHosts && active) navigate({ kind: 'home' })
       saveHosts(hosts)
       if (activeHostId) saveLastHost(activeHostId)
 
@@ -901,10 +913,10 @@ export const useAppStore = create<AppState>((set, get) => {
         saveRecentDirsMap(merged)
       }
 
-      if (activeHostId) {
-        ensureConnection(activeHostId)
-        void get().refreshProfiles(activeHostId)
-        void get().refreshSessions(activeHostId)
+      for (const h of hosts) {
+        ensureConnection(h.id)
+        void get().refreshProfiles(h.id)
+        void get().refreshSessions(h.id)
       }
     },
 
