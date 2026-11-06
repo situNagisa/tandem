@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Loader2, ScanLine, TriangleAlert, X } from 'lucide-react'
 import { Modal } from './ui/Modal'
+import { Button } from './ui/Button'
 
 interface BarcodeDetectorLike {
   detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>>
@@ -118,12 +119,9 @@ export function QrScanDialog({
             <span className="min-w-0 flex-1">{error}</span>
           </div>
         )}
-        <button
-          onClick={onClose}
-          className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-border text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
-        >
+        <Button size="lg" onClick={onClose} className="w-full">
           <X size={13} /> 取消
-        </button>
+        </Button>
       </div>
     </Modal>
   )

@@ -10,6 +10,7 @@ import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCard, type ToolUseBlock } from './ToolCard'
 import { RewindDialog } from './RewindDialog'
 import { Popover } from './ui/Popover'
+import { Button } from './ui/Button'
 import {
   ToolGroup,
   entriesFromMessages,
@@ -134,19 +135,12 @@ export const UserMessage = memo(function UserMessage({
               className="min-h-16 w-full resize-y bg-transparent text-[15px] leading-[1.65] text-text outline-none"
             />
             <div className="mt-1 flex items-center justify-end gap-1.5">
-              <button
-                onClick={() => setEditing(false)}
-                className="rounded-md px-2 py-1 text-[11.5px] text-muted transition-colors hover:bg-bg-hover hover:text-text"
-              >
+              <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
                 取消
-              </button>
-              <button
-                onClick={submitEdit}
-                disabled={!draft.trim()}
-                className="rounded-md bg-accent px-2.5 py-1 text-[11.5px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
-              >
+              </Button>
+              <Button size="sm" variant="primary" onClick={submitEdit} disabled={!draft.trim()}>
                 编辑并重发
-              </button>
+              </Button>
             </div>
           </div>
         ) : (

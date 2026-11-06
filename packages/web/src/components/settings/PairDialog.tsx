@@ -8,6 +8,8 @@ import type { RelayPairInfo } from '@tandem/protocol'
 import type { HostConfig } from '../../lib/types'
 import { buildRelayPairLink } from '../../lib/pairLink'
 import { Modal } from '../ui/Modal'
+import { Button, IconButton } from '../ui/Button'
+import { SegmentedControl } from '../ui/Controls'
 
 export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () => void }) {
   const [urls, setUrls] = useState<string[]>([])
@@ -133,41 +135,27 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
             <p className="mt-2 text-[10.5px] leading-5 text-muted">
               桌面端也可在托盘菜单开启「允许局域网访问」，然后回到这里重新检测。
             </p>
-            <button
-              onClick={() => setNonce((n) => n + 1)}
-              className="mt-3 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[11.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-            >
+            <Button size="lg" onClick={() => setNonce((n) => n + 1)} className="mt-3">
               <RefreshCw size={12} /> 重新检测
-            </button>
+            </Button>
           </div>
         )}
 
         {relay && token && (
-          <div className="flex rounded-md bg-[var(--t-bg-subtle)] p-0.5">
-            <button
-              onClick={() => setSource('direct')}
-              disabled={urls.length === 0}
-              className={cn(
-                'flex h-7 flex-1 items-center justify-center gap-1 rounded px-2 text-[11px] transition-colors disabled:opacity-40',
-                source === 'direct'
-                  ? 'bg-[var(--t-bg-active)] text-text'
-                  : 'text-muted hover:text-text-soft',
-              )}
-            >
-              <Wifi size={11} /> 直连
-            </button>
-            <button
-              onClick={() => setSource('relay')}
-              className={cn(
-                'flex h-7 flex-1 items-center justify-center gap-1 rounded px-2 text-[11px] transition-colors',
-                source === 'relay'
-                  ? 'bg-[var(--t-bg-active)] text-text'
-                  : 'text-muted hover:text-text-soft',
-              )}
-            >
-              中继 · 加密
-            </button>
-          </div>
+          <SegmentedControl
+            aria-label="配对方式"
+            className="flex w-full"
+            value={source}
+            onChange={setSource}
+            options={[
+              {
+                value: 'direct',
+                label: <><Wifi size={11} /> 直连</>,
+                disabled: urls.length === 0,
+              },
+              { value: 'relay', label: '中继 · 加密' },
+            ]}
+          />
         )}
 
         {(content || (!loopback && urls.length > 0)) && (
@@ -207,14 +195,14 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
                 <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-text-soft">
                   {content}
                 </span>
-                <button
+                <IconButton
+                  size="sm"
                   onClick={() => void copy()}
-                  aria-label="复制配对链接"
-                  title="复制配对链接"
-                  className="flex size-8 shrink-0 items-center justify-center rounded text-muted hover:bg-[var(--t-bg-hover)] hover:text-text sm:size-6"
+                  label="复制配对链接"
+                  className="size-8 sm:size-6 [&_svg]:size-[11px]"
                 >
                   {copied ? <Check size={11} className="text-success" /> : <Copy size={11} />}
-                </button>
+                </IconButton>
               </div>
             </div>
           </>

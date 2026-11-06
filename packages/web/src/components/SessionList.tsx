@@ -32,6 +32,7 @@ import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
 import { ConnectionDot, SessionStatusDot } from './StatusDot'
 import { Modal } from './ui/Modal'
+import { Button, IconButton } from './ui/Button'
 
 const EMPTY: SessionSummary[] = []
 
@@ -658,19 +659,20 @@ export function SessionList({
                 </span>
               )}
             </span>
-            <button
+            <IconButton
+              size="sm"
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
                 const rect = e.currentTarget.getBoundingClientRect()
                 setMenu({ hostId, session: s, x: rect.right - 4, y: rect.bottom + 4 })
               }}
-              aria-label="会话操作"
-              title="更多操作"
-              className="absolute right-0.5 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted opacity-100 transition-opacity hover:bg-[var(--t-bg-hover)] hover:text-text focus-visible:opacity-100 md:size-6 md:opacity-0 md:group-hover:opacity-100"
+              label="会话操作"
+              tooltip="更多操作"
+              className="absolute right-0.5 top-1/2 size-8 -translate-y-1/2 opacity-100 focus-visible:opacity-100 md:size-6 md:opacity-0 md:group-hover:opacity-100 [&_svg]:size-[15px]"
             >
               <MoreHorizontal size={15} />
-            </button>
+            </IconButton>
           </>
         )}
       </div>
@@ -982,14 +984,12 @@ export function SessionList({
         className="max-w-md"
         footer={
           <>
-            <button
-              onClick={() => setConfirm(null)}
-              disabled={confirm?.busy}
-              className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
-            >
+            <Button size="lg" onClick={() => setConfirm(null)} disabled={confirm?.busy}>
               取消
-            </button>
-            <button
+            </Button>
+            <Button
+              size="lg"
+              variant="danger-ghost"
               onClick={async () => {
                 if (!confirm) return
                 setConfirm({ ...confirm, busy: true })
@@ -1011,11 +1011,10 @@ export function SessionList({
                 }
               }}
               disabled={confirm?.busy}
-              className="flex min-h-9 items-center gap-1.5 rounded-lg btn-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
             >
-              {confirm?.busy && <Loader2 size={13} className="animate-spin" />}
+              {confirm?.busy && <Loader2 size={14} className="animate-spin" />}
               {confirm?.dirty ? '仍然删除' : '删除'}
-            </button>
+            </Button>
           </>
         }
       >
@@ -1041,14 +1040,12 @@ export function SessionList({
         className="max-w-md"
         footer={
           <>
-            <button
-              onClick={() => setMerge(null)}
-              disabled={merge?.busy}
-              className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
-            >
+            <Button size="lg" onClick={() => setMerge(null)} disabled={merge?.busy}>
               取消
-            </button>
-            <button
+            </Button>
+            <Button
+              size="lg"
+              variant="primary"
               onClick={async () => {
                 if (!merge) return
                 const host = hosts.find((h) => h.id === merge.hostId)
@@ -1067,11 +1064,10 @@ export function SessionList({
                 }
               }}
               disabled={merge?.busy}
-              className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12.5px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60"
             >
-              {merge?.busy && <Loader2 size={13} className="animate-spin" />}
+              {merge?.busy && <Loader2 size={14} className="animate-spin" />}
               合并
-            </button>
+            </Button>
           </>
         }
       >
@@ -1088,7 +1084,7 @@ export function SessionList({
                 className={cn(
                   'flex-1 rounded-lg border px-2.5 py-2 text-left text-[11.5px] transition-colors',
                   merge?.strategy === strategy
-                    ? 'border-accent bg-accent-soft/60 text-text'
+                    ? 'border-[var(--t-border-strong)] bg-[var(--t-bg-active)] text-text'
                     : 'border-border bg-surface text-muted hover:border-border-strong',
                 )}
               >

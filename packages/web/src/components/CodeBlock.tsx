@@ -4,6 +4,7 @@ import { cn } from '../lib/cn'
 import { languageLabel, loadHighlighter } from '../lib/highlight'
 import { copyText } from '../lib/clipboard'
 import { useHorizontalOverflow } from '../lib/hooks'
+import { IconButton } from './ui/Button'
 
 const MAX_CHARS = 200_000
 const HIGHLIGHT_CACHE_MAX = 80
@@ -213,18 +214,19 @@ export function CodeBlock({
           {fileName && (
             <span className="shrink-0 text-[10.5px] text-muted">{languageLabel(language)}</span>
           )}
-          <button
+          <IconButton
+            size="sm"
             onClick={copy}
-            aria-label={copied ? '已复制' : '复制代码'}
-            title={copied ? '已复制' : '复制'}
-            className="-mr-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
+            label={copied ? '已复制' : '复制代码'}
+            tooltip={copied ? '已复制' : '复制'}
+            className="-mr-1 size-6 [&_svg]:size-[13px]"
           >
             {copied ? (
               <Check size={13} className="text-success" />
             ) : (
               <Copy size={12.5} className="opacity-80" />
             )}
-          </button>
+          </IconButton>
         </div>
       )}
       <div className={cn('x-scroll-wrap', fill && 'flex min-h-0 flex-1 flex-col')}>

@@ -23,6 +23,7 @@ import type { ToolResultBlock } from '../lib/types'
 import { cn } from '../lib/cn'
 import { firstLine, truncate } from '../lib/format'
 import { CodeBlock } from './CodeBlock'
+import { Button } from './ui/Button'
 import { DiffView } from './DiffView'
 import { Markdown, openFileRef } from './Markdown'
 import { ThinkingBlock } from './ThinkingBlock'
@@ -571,12 +572,14 @@ function SubagentStream({ id }: { id: string }) {
         </span>
         <span className="flex-1" />
         {sub.running && (
-          <button
+          <Button
+            size="sm"
+            variant="danger-ghost"
             onClick={() => stopSubagent(id)}
-            className="flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-text-soft transition-colors hover:border-danger/30 hover:text-danger"
+            className="h-6 gap-1 px-1.5 text-[10px] [&_svg]:size-[9px]"
           >
             <Square size={9} /> 停止子代理
-          </button>
+          </Button>
         )}
       </div>
       <div ref={listRef} className="max-h-[380px] space-y-2.5 overflow-y-auto px-2.5 py-2">

@@ -59,6 +59,7 @@ export interface SegmentedOption<T extends string> {
   value: T
   label: ReactNode
   title?: string
+  disabled?: boolean
 }
 
 export interface SegmentedControlProps<T extends string> {
@@ -96,9 +97,10 @@ export function SegmentedControl<T extends string>({
             type="button"
             title={option.title}
             aria-pressed={selected}
+            disabled={option.disabled}
             onClick={() => onChange(option.value)}
             className={cn(
-              'inline-flex flex-1 items-center justify-center gap-1 whitespace-nowrap rounded-md font-medium leading-none transition-colors duration-[120ms]',
+              'inline-flex flex-1 items-center justify-center gap-1 whitespace-nowrap rounded-md font-medium leading-none transition-colors duration-[120ms] disabled:cursor-not-allowed disabled:opacity-40',
               item,
               selected
                 ? 'bg-[var(--t-bg-active)] text-text'
