@@ -2,11 +2,14 @@
 // Tandem Host 守护进程入口。
 import { Host } from './host.js';
 import { createApp } from './server.js';
-import { loadHostConfig, tandemHome } from './config.js';
+import { loadHostConfig, saveRelayConfig, tandemHome } from './config.js';
+import { RelayAgent } from './relay/agent.js';
+import { generateHostKey } from './relay/e2e.js';
 
 interface CliOptions {
   port: number;
   host: string;
+  relay?: string;
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -41,11 +44,12 @@ function parseArgs(argv: string[]): CliOptions {
 }
 
 function printHelp(): void {
-  console.log(`用法: tandem-host [--port 7878] [--host 127.0.0.1]
+  console.log(`用法: tandem-host [--port 7878] [--host 127.0.0.1] [--relay wss://relay.example.com]
 
 选项:
   -p, --port <端口>   监听端口（默认 7878）
       --host <地址>   监听地址（默认 127.0.0.1；局域网访问用 0.0.0.0）
+      --relay <URL>   经中继服务让异地客户端连入（写入 config.json 的 relay，之后无需再传）
   -h, --help          显示帮助
 
 环境变量:
@@ -56,8 +60,18 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const home = tandemHome();
   const config = loadHostConfig(home);
+  // 启用中继：--relay 写入 config.json（hostKey 首次自动生成），之后无需再传
+  const relayUrl = options.relay ?? config.relay?.url;
+  if (relayUrl) {
+    const hostKey = config.relay?.hostKey ?? generateHostKey();
+    if (relayUrl !== config.relay?.url || hostKey !== config.relay?.hostKey) {
+      saveRelayConfig(home, { ...config.relay, url: relayUrl, hostKey });
+    }
+    config.relay = { ...config.relay, url: relayUrl, hostKey };
+  }
+  let relayAgent: RelayAgent | undefined;
   const host = new Host(config, home);
-  const app = await createApp(host);
+  const app = await createApp(host, { relay: { pairInfo: () => relayAgent?.pairInfo() } });
 
   try {
     await app.listen({ port: options.port, host: options.host });
@@ -77,6 +91,14 @@ async function main(): Promise<void> {
   console.log(`  监听:     ${options.host}:${actualPort}`);
   console.log(`  数据目录: ${home}`);
   console.log(`  Host ID:  ${config.hostId}`);
+  if (config.relay?.hostKey) {
+    relayAgent = new RelayAgent({ ...config.relay, hostKey: config.relay.hostKey }, config.hostId, actualPort);
+    relayAgent.start();
+    const info = relayAgent.pairInfo();
+    console.log(`  中继:     ${info.url}${info.requireE2E ? '（仅加密）' : ''}`);
+    console.log(`  公钥指纹: ${info.fingerprint.match(/.{8}/g)!.join(' ')}`);
+    console.log('            （客户端用加密通道连接时需核对此指纹）');
+  }
   console.log('');
 
   let closing = false;
@@ -84,6 +106,7 @@ async function main(): Promise<void> {
     if (closing) return;
     closing = true;
     console.log(`\n[tandem] 收到 ${signal}，正在退出…`);
+    relayAgent?.stop();
     try {
       await app.close();
     } catch {

@@ -20,6 +20,7 @@ import type {
   ProfileGroupInput,
   ProfileInput,
   ProviderKind,
+  RelayPairInfo,
   RewindInput,
   UpdateSessionInput,
 } from '@tandem/protocol';
@@ -123,7 +124,10 @@ function fuzzyScore(query: string, target: string): number | null {
   return qi === q.length ? score - t.length * 0.1 : null;
 }
 
-export async function createApp(host: Host): Promise<FastifyInstance> {
+export async function createApp(
+  host: Host,
+  extras: { relay?: { pairInfo(): RelayPairInfo | undefined } } = {},
+): Promise<FastifyInstance> {
   const app = Fastify({
     logger: false,
     bodyLimit: 30 * 1024 * 1024,
@@ -407,7 +411,14 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
   });
 
   // ---------- 配对（手机扫码连接） ----------
-  app.get('/api/pair', async () => {
+  const withRelay = (base: { urls: string[]; token: string; loopback?: boolean; hint?: string }) => {
+    const relay = extras.relay?.pairInfo();
+    if (!relay) return base;
+    if (relay.requireE2E) return { ...base, relay };
+    const { loopback: _loopback, hint: _hint, ...rest } = base;
+    return { ...rest, urls: [...base.urls, relay.url], relay };
+  };
+  const pairLocal = () => {
     const address = app.server.address();
     const port =
       address && typeof address === 'object' && address.port
@@ -434,7 +445,8 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
     }
     if (urls.length === 0) urls.push(`http://127.0.0.1:${port}`);
     return { urls, token: host.config.token };
-  });
+  };
+  app.get('/api/pair', async () => withRelay(pairLocal()));
 
   // ---------- 外部会话（只读，不写原软件文件） ----------
   app.get('/api/external-sessions', async (req, reply) => {

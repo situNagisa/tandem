@@ -10,7 +10,7 @@ import type {
   ProfileInput,
   ProviderKind,
 } from '@tandem/protocol';
-import type { HostConfig, StoredProfile, StoredProfileGroup } from './types.js';
+import type { HostConfig, RelayConfig, StoredProfile, StoredProfileGroup } from './types.js';
 
 export function tandemHome(): string {
   const fromEnv = process.env.TANDEM_HOME?.trim();
@@ -45,6 +45,17 @@ export function readJson<T>(file: string): T | undefined {
   }
 }
 
+function isRelayConfig(value: unknown): value is RelayConfig {
+  return !!value && typeof value === 'object' && typeof (value as RelayConfig).url === 'string' && !!(value as RelayConfig).url;
+}
+
+/** 单独更新 config.json 里的 relay 字段（保留其余内容）。 */
+export function saveRelayConfig(home: string, relay: RelayConfig): void {
+  const file = path.join(home, 'config.json');
+  const existing = readJson<Record<string, unknown>>(file) ?? {};
+  writePrivateFile(file, JSON.stringify({ ...existing, relay }, null, 2));
+}
+
 /** 读取或初始化 host 配置（hostId + token）。 */
 export function loadHostConfig(home = tandemHome()): HostConfig {
   ensureDir(home);
@@ -58,6 +69,7 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
       typeof existing?.idleTimeoutSec === 'number' && Number.isFinite(existing.idleTimeoutSec) && existing.idleTimeoutSec > 0
         ? existing.idleTimeoutSec
         : 180,
+    ...(isRelayConfig(existing?.relay) ? { relay: existing.relay } : {}),
   };
   if (
     existing?.hostId !== config.hostId ||
