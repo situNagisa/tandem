@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { zstdDecompressSync } from 'node:zlib';
 import type {
   ContentBlock,
   ExternalSession,
@@ -28,9 +29,12 @@ interface Meta {
 
 interface Parsed extends Meta {
   messages: Message[];
+  /** Codex 内部 subagent（guardian 等）会话，不展示给用户。 */
+  hidden?: boolean;
 }
 
 interface CacheEntry {
+  version: number;
   mtimeMs: number;
   size: number;
   meta: Meta | null;
@@ -44,6 +48,10 @@ export interface ExternalImportInput {
 
 const PROJECTS_DIR = path.join('.claude', 'projects');
 const CODEX_SESSIONS_DIR = path.join('.codex', 'sessions');
+const CODEX_INDEX_FILE = path.join('.codex', 'session_index.jsonl');
+
+/** 解析规则变化时递增，旧条目自动失效。 */
+const CACHE_VERSION = 2;
 
 /** 外部工具注入的整块标签：系统提醒、提及列表、IDE 上下文、Codex 环境说明等。 */
 const DROP_TAGS = [
@@ -51,17 +59,42 @@ const DROP_TAGS = [
   'session-mentions',
   'ide_opened_file',
   'ide_selection',
-  'environment_context',
-  'user_instructions',
+  'ide_line',
+  'ide_context',
+  'user-prompt-submit-hook',
+  'local-command-caveat',
   'local-command-stdout',
   'local-command-stderr',
+  'task-notification',
+  'environment_context',
+  'user_instructions',
+  'skills_instructions',
+  'permissions instructions',
+  'app-context',
+  'collaboration_mode',
+  'multi_agent_mode',
+  'turn_aborted',
+  'INSTRUCTIONS',
 ];
 
 /** 命令回显块：转换为简短的 "/命令 参数" 文本。 */
 const COMMAND_TAGS = ['command-name', 'command-message', 'command-args'];
 
+/** 整条消息都是注入时直接丢弃的起始特征（无法可靠地只删其中一段）。 */
+const INJECTED_MARKERS: RegExp[] = [
+  /^#+\s*AGENTS\.md instructions\b/im,
+  /<INSTRUCTIONS>/,
+  /<!--\s*CODEGRAPH_START/i,
+  /^The following is the Codex agent history\b/im,
+  /^This session is being continued from a previous conversation\b/im,
+  /^Caveat: The messages below were generated\b/im,
+];
+
+/** Claude Code 的斜杠命令里，只有元命令不值得作为标题。 */
+const META_COMMAND = /^\/(?:model|clear|effort|agents|statusline|help|login|logout|compact|config|permissions|resume|vim|terminal-setup|init|cost|doctor|memory|mcp|hooks|plugin|export|import)(?:\s|$)/i;
+
 function tagged(tag: string): RegExp {
-  return new RegExp(`<${tag}>[\\s\\S]*?</${tag}>`, 'g');
+  return new RegExp(`<${tag}(?:\\s[^>]*)?>[\\s\\S]*?</${tag}>`, 'gi');
 }
 
 function commandSummary(text: string): string {
@@ -77,13 +110,25 @@ function unwrapMentions(text: string): string {
   return text.replace(/@\[([^\]\n]+)\](?:\([^)\n]*\))?/g, '$1');
 }
 
+/** 未闭合的注入标签（如被截断的 <INSTRUCTIONS>）会把整条消息吞掉。 */
+function dropUnclosedLeadingBlock(text: string): string {
+  const match = text.match(/^\s*<([a-zA-Z][\w: -]*?)(?:\s[^>]*)?>/);
+  if (!match) return text;
+  const name = match[1]!.trim().toLowerCase();
+  if (!DROP_TAGS.some((tag) => tag.toLowerCase() === name)) return text;
+  return '';
+}
+
 /** 剥离 Claude Code / Codex 注入到用户消息里的标签块，只留真正的用户文本。 */
 function cleanInjectedText(text: string): string {
+  if (INJECTED_MARKERS.some((re) => re.test(text))) return '';
   const command = commandSummary(text);
   let out = text;
   for (const tag of COMMAND_TAGS) out = out.replace(tagged(tag), '');
   for (const tag of DROP_TAGS) out = out.replace(tagged(tag), '');
+  out = dropUnclosedLeadingBlock(out);
   out = unwrapMentions(out)
+    .replace(/\u001b\[[0-9;]*m/g, '')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -98,12 +143,26 @@ function isInjectedText(text: string): boolean {
   if (/^caveat:/i.test(value)) return true;
   if (value.startsWith('[Request interrupted')) return true;
   if (value.startsWith('This session is being continued')) return true;
+  if (value.startsWith('The following is the Codex agent history')) return true;
+  if (value === '已授权' || /^(?:approved|denied)$/i.test(value)) return true;
+  if (META_COMMAND.test(value)) return true;
   if (/^\/\S+$/.test(value)) return true;
+  if (INJECTED_MARKERS.some((re) => re.test(value))) return true;
   return false;
 }
 
 function cleanTitle(text: string): string {
-  const plain = unwrapMentions(text).replace(/\s+/g, ' ').trim();
+  const line = text.split(/\r?\n/).map((part) => part.trim()).find(Boolean) ?? '';
+  const plain = unwrapMentions(line)
+    .replace(/\u001b\[[0-9;]*m/g, '')
+    .replace(/^#{1,6}\s*/, '')
+    .replace(/^>\s*/, '')
+    .replace(/^[-*+]\s+/, '')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/[`*_~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return [...plain].slice(0, 60).join('').trim();
 }
 
@@ -128,6 +187,16 @@ function parseTime(value: unknown): number {
     if (Number.isFinite(ts)) return ts;
   }
   return 0;
+}
+
+/** Codex 新版本会把 rollout 写成 .jsonl.zst；读取时解压到内存，绝不回写。 */
+function readSessionText(file: string): string {
+  try {
+    const raw = readFileSync(file);
+    return file.endsWith('.zst') ? zstdDecompressSync(raw).toString('utf8') : raw.toString('utf8');
+  } catch {
+    return '';
+  }
 }
 
 /** tool_result 的内容可能是字符串或内容块数组。 */
@@ -216,16 +285,15 @@ function messageFrom(role: Message['role'], id: string, content: ContentBlock[],
  * collect=true 时产出完整消息（预览/导入用）。
  */
 function parseClaudeFile(file: string, collect: boolean, fallbackId: string): Parsed {
-  let text = '';
-  try {
-    text = readFileSync(file, 'utf8');
-  } catch {
-    text = '';
-  }
+  const text = readSessionText(file);
   const lines = text.split(/\r?\n/);
-  let id = fallbackId;
+  const id = fallbackId;
   let cwd = '';
   let title = '';
+  let summaryTitle = '';
+  let customTitle = '';
+  let agentName = '';
+  let firstUserTitle = '';
   let createdAt = 0;
   let updatedAt = 0;
   let count = 0;
@@ -253,8 +321,17 @@ function parseClaudeFile(file: string, collect: boolean, fallbackId: string): Pa
       continue;
     }
     if (!o || typeof o !== 'object') continue;
-    if (o.type === 'summary' && !title && typeof o.summary === 'string') {
-      title = cleanTitle(o.summary);
+    if (o.type === 'summary' && typeof o.summary === 'string' && !summaryTitle) {
+      summaryTitle = cleanTitle(o.summary);
+      continue;
+    }
+    // Claude Code 会话标题：custom-title 是当前标题，agent-name 是较早的写法
+    if (o.type === 'custom-title' && typeof o.customTitle === 'string' && o.customTitle.trim()) {
+      customTitle = cleanTitle(o.customTitle);
+      continue;
+    }
+    if (o.type === 'agent-name' && typeof o.agentName === 'string' && o.agentName.trim()) {
+      agentName = cleanTitle(o.agentName);
       continue;
     }
     if (o.type !== 'user' && o.type !== 'assistant') continue;
@@ -283,13 +360,13 @@ function parseClaudeFile(file: string, collect: boolean, fallbackId: string): Pa
     if (!blocks.length) continue;
 
     const toolOnly = blocks.every((b) => b.type === 'tool_result');
-    // 首条真实用户文本作为标题（跳过命令/系统注入内容）
-    if (role === 'user' && !title && !toolOnly) {
-      const text = blocks
+    // 首条真实用户文本作为兜底标题（跳过命令/系统注入内容）
+    if (role === 'user' && !firstUserTitle && !toolOnly) {
+      const userText = blocks
         .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
         .map((b) => b.text)
         .join('\n');
-      if (text && !isInjectedText(text)) title = cleanTitle(text);
+      if (userText && !isInjectedText(userText)) firstUserTitle = cleanTitle(userText);
     }
 
     const messageId =
@@ -324,12 +401,14 @@ function parseClaudeFile(file: string, collect: boolean, fallbackId: string): Pa
   }
 
   const stat = statSafe(file);
+  const created = createdAt || stat?.birthtimeMs || stat?.mtimeMs || 0;
+  title = summaryTitle || customTitle || agentName || firstUserTitle;
   return {
     source: 'claude-code',
     id,
-    title: title || fallbackTitle(cwd),
+    title: title || fallbackTitle(cwd, created),
     cwd,
-    createdAt: createdAt || stat?.birthtimeMs || stat?.mtimeMs || 0,
+    createdAt: created,
     updatedAt: updatedAt || stat?.mtimeMs || 0,
     messageCount: count,
     file,
@@ -337,18 +416,72 @@ function parseClaudeFile(file: string, collect: boolean, fallbackId: string): Pa
   };
 }
 
-/** Codex rollout：session_meta / response_item 等事件，按公开格式尽力解析。 */
-function parseCodexFile(file: string, collect: boolean, fallbackId: string): Parsed {
-  let text = '';
-  try {
-    text = readFileSync(file, 'utf8');
-  } catch {
-    text = '';
+/** Codex 消息内容可能是字符串或 input_text/output_text/local_image 数组。 */
+function convertCodexContent(content: unknown): ContentBlock[] {
+  const blocks: ContentBlock[] = [];
+  if (typeof content === 'string') {
+    if (content.trim()) blocks.push({ type: 'text', text: content });
+    return blocks;
   }
-  const lines = text.split(/\r?\n/);
-  const id = fallbackId;
+  if (!Array.isArray(content)) return blocks;
+  for (const item of content) {
+    if (typeof item === 'string') {
+      if (item.trim()) blocks.push({ type: 'text', text: item });
+      continue;
+    }
+    if (!item || typeof item !== 'object') continue;
+    const block = item as Record<string, unknown>;
+    if (typeof block.text === 'string' && block.text) {
+      blocks.push({ type: 'text', text: block.text });
+    } else if (block.type === 'image' && typeof block.data === 'string') {
+      // 图片在协议里需要 base64 与 mediaType，结构不确定时保留占位
+      const mediaType = typeof block.media_type === 'string' ? block.media_type : 'image/png';
+      blocks.push({ type: 'image', mediaType, dataBase64: block.data });
+    } else if (block.type === 'local_image') {
+      blocks.push({ type: 'text', text: '[图片]' });
+    }
+  }
+  return blocks;
+}
+
+/**
+ * Codex rollout：session_meta / event_msg / response_item。
+ * 新版本把真实用户输入放在 event_msg 的 UserMessage 里，response_item 的 user
+ * 消息常混入 AGENTS.md、环境说明等注入；有 event 流时以 event 流为准，避免重复。
+ */
+function parseCodexFile(file: string, collect: boolean, fallbackId: string, knownTitle = ''): Parsed {
+  const lines = readSessionText(file).split(/\r?\n/);
+  const records: Array<{ o: Record<string, unknown>; ts: number }> = [];
+  let hasUserEvent = false;
+  let hasAgentEvent = false;
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    let o: Record<string, unknown>;
+    try {
+      o = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (!o || typeof o !== 'object') continue;
+    records.push({ o, ts: parseTime(o.timestamp) });
+    if (o.type !== 'event_msg') continue;
+    const payload = o.payload as Record<string, unknown> | undefined;
+    if (!payload || typeof payload !== 'object') continue;
+    const kind = typeof payload.type === 'string' ? payload.type : '';
+    if (kind === 'item_completed') {
+      const item = payload.item as Record<string, unknown> | undefined;
+      if (item?.type === 'UserMessage') hasUserEvent = true;
+      else if (item?.type === 'AgentMessage') hasAgentEvent = true;
+    } else if (kind === 'user_message') {
+      hasUserEvent = true;
+    } else if (kind === 'agent_message') {
+      hasAgentEvent = true;
+    }
+  }
+
   let cwd = '';
-  let title = '';
+  let firstUserTitle = '';
+  let hidden = false;
   let createdAt = 0;
   let updatedAt = 0;
   let count = 0;
@@ -360,45 +493,38 @@ function parseCodexFile(file: string, collect: boolean, fallbackId: string): Par
     if (collect) messages.push(messageFrom(role, randomUUID(), content, ts));
   };
 
-  const handleMessage = (role: string, content: unknown, ts: number): void => {
-    const blocks: ContentBlock[] = [];
-    if (typeof content === 'string') {
-      if (content.trim()) blocks.push({ type: 'text', text: content });
-    } else if (Array.isArray(content)) {
-      for (const item of content) {
-        if (typeof item === 'string') {
-          if (item.trim()) blocks.push({ type: 'text', text: item });
-          continue;
-        }
-        if (!item || typeof item !== 'object') continue;
-        const block = item as Record<string, unknown>;
-        if (typeof block.text === 'string' && block.text) {
-          blocks.push({ type: 'text', text: block.text });
-        } else if (block.type === 'image' && typeof block.data === 'string') {
-          // 图片在协议里需要 base64 与 mediaType，结构不确定时保留占位
-          const mediaType = typeof block.media_type === 'string' ? block.media_type : 'image/png';
-          blocks.push({ type: 'image', mediaType, dataBase64: block.data });
-        }
+  const handleText = (role: 'user' | 'assistant', content: unknown, ts: number): void => {
+    let blocks = convertCodexContent(content);
+    if (!blocks.length) return;
+    if (role === 'user') {
+      blocks = cleanUserBlocks(blocks);
+      if (!blocks.length) return;
+      if (blocks.every((b) => b.type === 'text' && isInjectedText(b.text))) return;
+      const textOnly = blocks
+        .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
+        .map((b) => b.text)
+        .join('\n');
+      if (!firstUserTitle && textOnly && !isInjectedText(textOnly)) {
+        firstUserTitle = cleanTitle(textOnly);
       }
     }
-    if (!blocks.length) return;
-    // 跳过 Codex 注入的环境说明/指令，避免污染标题与预览
-    const cleaned = role === 'user' ? cleanUserBlocks(blocks) : blocks;
-    if (!cleaned.length) return;
-    if (role === 'user' && cleaned.every((b) => b.type === 'text' && isInjectedText(b.text))) return;
-    const textOnly = cleaned
-      .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
-      .map((b) => b.text)
-      .join('\n');
-    if (role === 'user' && !title && textOnly && !isInjectedText(textOnly)) title = cleanTitle(textOnly);
-    push(role === 'assistant' ? 'assistant' : 'user', cleaned, ts);
+    push(role, blocks, ts);
   };
 
   const handleResponseItem = (payload: Record<string, unknown>, ts: number): void => {
     switch (payload.type) {
-      case 'message':
-        handleMessage(String(payload.role ?? ''), payload.content, ts);
+      case 'message': {
+        const role = String(payload.role ?? '');
+        // developer 是 Codex 的权限/技能/协作说明，不属于对话内容
+        if (role === 'developer') break;
+        if (role === 'user') {
+          // 有 event_msg 时，response_item 的 user 只是回放，且多为注入
+          if (!hasUserEvent) handleText('user', payload.content, ts);
+        } else if (role === 'assistant') {
+          if (!hasAgentEvent) handleText('assistant', payload.content, ts);
+        }
         break;
+      }
       case 'reasoning': {
         const parts: string[] = [];
         for (const key of ['summary', 'content'] as const) {
@@ -450,16 +576,21 @@ function parseCodexFile(file: string, collect: boolean, fallbackId: string): Par
     }
   };
 
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    let o: Record<string, unknown>;
-    try {
-      o = JSON.parse(line) as Record<string, unknown>;
-    } catch {
-      continue;
+  const handleEvent = (payload: Record<string, unknown>, ts: number): void => {
+    const kind = typeof payload.type === 'string' ? payload.type : '';
+    if (kind === 'item_completed') {
+      const item = payload.item as Record<string, unknown> | undefined;
+      if (!item || typeof item !== 'object') return;
+      if (item.type === 'UserMessage') handleText('user', item.content, ts);
+      else if (item.type === 'AgentMessage') handleText('assistant', item.content, ts);
+      return;
     }
-    if (!o || typeof o !== 'object') continue;
-    const ts = parseTime(o.timestamp);
+    // 兼容旧版 event_msg：user_message / agent_message 直接带 message 字符串
+    if (kind === 'user_message') handleText('user', payload.message, ts);
+    else if (kind === 'agent_message') handleText('assistant', payload.message, ts);
+  };
+
+  for (const { o, ts } of records) {
     if (ts) {
       if (!createdAt) createdAt = ts;
       updatedAt = Math.max(updatedAt, ts);
@@ -470,6 +601,9 @@ function parseCodexFile(file: string, collect: boolean, fallbackId: string): Par
     if (o.type === 'session_meta') {
       // 以文件名中的 uuid 作为会话 id，与列表路径保持一致
       if (typeof payload.cwd === 'string' && payload.cwd) cwd ||= payload.cwd;
+      if (payload.thread_source === 'subagent') hidden = true;
+      const source = payload.source as Record<string, unknown> | undefined;
+      if (source && typeof source === 'object' && source.subagent) hidden = true;
       const metaTs = parseTime(payload.timestamp);
       if (metaTs && !createdAt) createdAt = metaTs;
       continue;
@@ -478,25 +612,31 @@ function parseCodexFile(file: string, collect: boolean, fallbackId: string): Par
       if (typeof payload.cwd === 'string' && payload.cwd) cwd ||= payload.cwd;
       continue;
     }
+    if (o.type === 'event_msg') {
+      handleEvent(payload, ts);
+      continue;
+    }
     if (o.type === 'response_item') {
       handleResponseItem(payload, ts);
       continue;
     }
     // 兼容更早的扁平格式
-    if (o.type === 'message') handleMessage(String(o.role ?? ''), o.content, ts);
+    if (o.type === 'message') handleText(String(o.role ?? '') === 'assistant' ? 'assistant' : 'user', o.content, ts);
   }
 
   const stat = statSafe(file);
+  const created = createdAt || stat?.birthtimeMs || stat?.mtimeMs || 0;
   return {
     source: 'codex',
-    id,
-    title: title || fallbackTitle(cwd),
+    id: fallbackId,
+    title: knownTitle || firstUserTitle || fallbackTitle(cwd, created),
     cwd,
-    createdAt: createdAt || stat?.birthtimeMs || stat?.mtimeMs || 0,
+    createdAt: created,
     updatedAt: updatedAt || stat?.mtimeMs || 0,
     messageCount: count,
     file,
     messages: collect ? messages : [],
+    ...(hidden ? { hidden: true } : {}),
   };
 }
 
@@ -508,9 +648,24 @@ function statSafe(file: string) {
   }
 }
 
-function fallbackTitle(cwd: string): string {
-  const base = cwd ? path.basename(cwd) : '';
-  return base ? `外部会话 · ${base}` : '外部会话';
+function projectName(cwd: string): string {
+  const parts = cwd.split(/[\\/]+/).filter(Boolean);
+  return parts[parts.length - 1] ?? '';
+}
+
+function formatDate(ts: number): string {
+  if (!ts) return '';
+  const date = new Date(ts);
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function fallbackTitle(cwd: string, createdAt: number): string {
+  const base = projectName(cwd);
+  const date = formatDate(createdAt);
+  if (base && date) return `${base} 的会话 · ${date}`;
+  if (base) return `${base} 的会话`;
+  return date ? `外部会话 · ${date}` : '外部会话';
 }
 
 /** 从 rollout-xxx-<uuid>.jsonl 等文件名里取兜底 id。 */
@@ -525,6 +680,7 @@ const WATCH_INTERVAL_MS = 30_000;
 /** 扫描并缓存外部会话；按文件 mtime+size 增量更新。 */
 export class ExternalSessionStore {
   private cache = new Map<string, CacheEntry>();
+  private titleCache?: { mtimeMs: number; size: number; titles: Map<string, string> };
   private watchTimer?: NodeJS.Timeout;
   private signature = '';
 
@@ -580,7 +736,10 @@ export class ExternalSessionStore {
         const stat = statSafe(full);
         if (!stat) continue;
         if (stat.isDirectory()) walk(full, depth + 1);
-        else if (name.endsWith('.jsonl') && name.startsWith('rollout-')) {
+        else if (
+          name.startsWith('rollout-') &&
+          (name.endsWith('.jsonl') || name.endsWith('.jsonl.zst'))
+        ) {
           out.push({ file: full, fallbackId: idFromFile(full) });
         }
       }
@@ -597,16 +756,27 @@ export class ExternalSessionStore {
       return null;
     }
     const cached = this.cache.get(file);
-    if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) return cached.meta;
+    if (
+      cached &&
+      cached.version === CACHE_VERSION &&
+      cached.mtimeMs === stat.mtimeMs &&
+      cached.size === stat.size
+    ) {
+      return cached.meta;
+    }
 
     let parsed: Parsed;
     try {
       parsed = source === 'claude-code'
         ? parseClaudeFile(file, false, fallbackId)
-        : parseCodexFile(file, false, fallbackId);
+        : parseCodexFile(file, false, fallbackId, this.codexTitles().get(fallbackId) ?? '');
     } catch (err) {
       console.warn(`[tandem] 无法解析外部会话 ${file}:`, (err as Error).message);
-      this.cache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, meta: null });
+      this.cache.set(file, { version: CACHE_VERSION, mtimeMs: stat.mtimeMs, size: stat.size, meta: null });
+      return null;
+    }
+    if (parsed.hidden) {
+      this.cache.set(file, { version: CACHE_VERSION, mtimeMs: stat.mtimeMs, size: stat.size, meta: null });
       return null;
     }
     const meta: Meta = {
@@ -619,8 +789,45 @@ export class ExternalSessionStore {
       messageCount: parsed.messageCount,
       file,
     };
-    this.cache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, meta });
+    this.cache.set(file, { version: CACHE_VERSION, mtimeMs: stat.mtimeMs, size: stat.size, meta });
     return meta;
+  }
+
+  /** Codex 会话标题索引（session_index.jsonl，用户重命名/自动生成）。 */
+  private codexTitles(): Map<string, string> {
+    const file = path.join(os.homedir(), CODEX_INDEX_FILE);
+    const stat = statSafe(file);
+    if (!stat) {
+      this.titleCache = undefined;
+      return new Map();
+    }
+    if (
+      this.titleCache &&
+      this.titleCache.mtimeMs === stat.mtimeMs &&
+      this.titleCache.size === stat.size
+    ) {
+      return this.titleCache.titles;
+    }
+    const titles = new Map<string, string>();
+    const updated = new Map<string, string>();
+    for (const line of readSessionText(file).split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      let o: Record<string, unknown>;
+      try {
+        o = JSON.parse(line) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const id = typeof o.id === 'string' ? o.id : '';
+      const name = typeof o.thread_name === 'string' ? o.thread_name : '';
+      if (!id || !name.trim() || isInjectedText(name)) continue;
+      const at = typeof o.updated_at === 'string' ? o.updated_at : '';
+      if (titles.has(id) && (updated.get(id) ?? '') > at) continue;
+      titles.set(id, cleanTitle(name));
+      updated.set(id, at);
+    }
+    this.titleCache = { mtimeMs: stat.mtimeMs, size: stat.size, titles };
+    return titles;
   }
 
   /** 轻量文件签名：只 stat，不解析内容，用于 30s 定时发现外部会话变动。 */
@@ -712,7 +919,7 @@ export class ExternalSessionStore {
       if (best && best.updatedAt >= meta.updatedAt) continue;
       const parsed = source === 'claude-code'
         ? parseClaudeFile(item.file, collect, item.fallbackId)
-        : parseCodexFile(item.file, collect, item.fallbackId);
+        : parseCodexFile(item.file, collect, item.fallbackId, this.codexTitles().get(item.fallbackId) ?? '');
       best = { ...parsed, ...meta, messages: parsed.messages };
     }
     return best;
