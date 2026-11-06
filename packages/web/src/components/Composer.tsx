@@ -13,6 +13,7 @@ import type { ContentBlock, PermissionMode, Profile, SlashCommand } from '@tande
 import {
   ArrowUp,
   AtSign,
+  Brain,
   Check,
   ChevronDown,
   FileText,
@@ -44,6 +45,12 @@ import {
   saveDraft,
 } from '../lib/storage'
 import { Popover } from './ui/Popover'
+import {
+  setThinkingMode,
+  THINKING_MODE_META,
+  useThinkingMode,
+  type ThinkingMode,
+} from './ThinkingBlock'
 import '../styles/chat.css'
 
 const EMPTY_PROFILES: Profile[] = []
@@ -264,6 +271,60 @@ function PermissionModeMenu({
           })}
           <div className="menu-divider" />
           <div className="menu-hint">Shift+Tab 快速切换</div>
+        </div>
+      )}
+    </Popover>
+  )
+}
+
+const THINKING_MODES: ThinkingMode[] = ['show', 'collapse', 'hidden']
+
+function ThinkingModeMenu() {
+  const mode = useThinkingMode()
+  const meta = THINKING_MODE_META[mode]
+  return (
+    <Popover
+      side="top"
+      align="left"
+      panelClassName="w-[220px]"
+      trigger={({ open, toggle }) => (
+        <button
+          onClick={toggle}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          title={`思考过程：${meta.label}`}
+          aria-label={`思考过程：${meta.label}`}
+          className={cn('composer-icon-btn', open && 'bg-bg-hover text-text-soft')}
+        >
+          <Brain size={16} />
+        </button>
+      )}
+    >
+      {(close) => (
+        <div>
+          <div className="menu-section">思考过程</div>
+          {THINKING_MODES.map((item) => (
+            <button
+              key={item}
+              data-selected={item === mode}
+              onClick={() => {
+                close()
+                setThinkingMode(item)
+              }}
+              className="menu-item"
+              role="menuitemradio"
+              aria-checked={item === mode}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-[12.5px] leading-4">{THINKING_MODE_META[item].label}</span>
+                <span className="block truncate text-[10.5px] leading-4 text-muted">
+                  {THINKING_MODE_META[item].hint}
+                </span>
+              </span>
+              {item === mode && <Check size={13} className="shrink-0 text-text-secondary" />}
+            </button>
+          ))}
+          <div className="menu-hint">设置会记住，对所有会话生效</div>
         </div>
       )}
     </Popover>
@@ -1319,6 +1380,7 @@ export function Composer({
           >
             <Paperclip size={16} />
           </button>
+          <ThinkingModeMenu />
           <PermissionModeMenu mode={mode} disabled={disabled} onChange={changeMode} />
           <span className="min-w-0 flex-1" />
           <ModelMenu
