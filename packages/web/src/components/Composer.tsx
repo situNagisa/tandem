@@ -9,12 +9,17 @@ import {
   type DragEvent as ReactDragEvent,
   type ReactNode,
 } from 'react'
-import type { ContentBlock, PermissionMode, Profile, SlashCommand } from '@tandem/protocol'
+import type {
+  ContentBlock,
+  PermissionMode,
+  Profile,
+  ReasoningEffort,
+  SlashCommand,
+} from '@tandem/protocol'
 import {
   ArrowUp,
   AtSign,
   Brain,
-  Check,
   ChevronDown,
   Ellipsis,
   FileText,
@@ -24,7 +29,6 @@ import {
   Paperclip,
   PencilLine,
   Search,
-  Settings2,
   Shield,
   ShieldOff,
   Slash as SlashIcon,
@@ -37,8 +41,14 @@ import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
-import { PROVIDER_KIND_LABELS } from '../lib/types'
 import { groupName, profileModelGroups } from '../lib/profileModels'
+import {
+  EFFORTS,
+  EFFORT_LABEL,
+  effortSuffix,
+  loadLastEffort,
+  rememberEffort,
+} from '../lib/effort'
 import {
   loadDraft,
   loadSentHistory,
@@ -47,6 +57,7 @@ import {
 } from '../lib/storage'
 import { Popover } from './ui/Popover'
 import { Button, IconButton } from './ui/Button'
+import { SegmentedControl } from './ui/Controls'
 import { MenuDivider, MenuItem, MenuList } from './ui/Menu'
 import {
   setThinkingMode,
@@ -128,6 +139,9 @@ export interface ComposerProps {
   permissionMode?: PermissionMode
   onModelChange?: (profileId: string, groupId: string | undefined, model: string) => void
   onPermissionModeChange?: (mode: PermissionMode) => void
+  /** 无会话模式的思考强度；缺省读上次使用值。 */
+  effort?: ReasoningEffort
+  onEffortChange?: (effort: ReasoningEffort) => void
   /** 文件补全与斜杠命令使用的 Host / 工作目录；缺省用当前会话。 */
   hostId?: string
   cwd?: string
@@ -420,8 +434,10 @@ function ModelPanel({
   profileId,
   groupId,
   model,
+  effort,
   loading,
   onSelect,
+  onEffortChange,
   onManage,
   close,
 }: {
@@ -429,185 +445,152 @@ function ModelPanel({
   profileId: string
   groupId?: string
   model: string
+  effort: ReasoningEffort
   loading: boolean
   onSelect: (profileId: string, groupId: string | undefined, model: string) => void
+  onEffortChange: (effort: ReasoningEffort) => void
   onManage: () => void
   close: () => void
 }) {
   const [query, setQuery] = useState('')
-  const [active, setActive] = useState(0)
-  const listRef = useRef<HTMLDivElement>(null)
-
-  // 账号 › 分组 二级结构；无分组的老账号只有账号层。
-  const accounts = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return profiles
-      .map((p) => {
-        const profileHit = !q || p.name.toLowerCase().includes(q)
-        const groups = profileModelGroups(p)
-          .map((g) => {
-            const groupHit = profileHit || (g.groupId ? g.name.toLowerCase().includes(q) : false)
-            return {
-              ...g,
-              models: g.models.filter(
-                (m) =>
-                  groupHit ||
-                  m.toLowerCase().includes(q) ||
-                  prettyModel(m).toLowerCase().includes(q),
-              ),
-            }
-          })
-          .filter((g) => g.models.length > 0)
-        return { profile: p, groups }
-      })
-      .filter((a) => a.groups.length > 0)
-  }, [profiles, query])
-
-  const flat = useMemo(
-    () =>
-      accounts.flatMap((a) =>
-        a.groups.flatMap((g) =>
-          g.models.map((m) => ({ profile: a.profile, groupId: g.groupId, model: m })),
-        ),
-      ),
-    [accounts],
-  )
+  const tabs = useMemo(() => {
+    return profiles.flatMap((profile) => {
+      const groups = profileModelGroups(profile)
+      const multi = (profile.groups?.length ?? 0) > 1
+      return groups.map((group) => ({
+        key: `${profile.id}:${group.groupId ?? 'default'}`,
+        profile,
+        groupId: group.groupId,
+        label: multi ? `${profile.name} › ${group.name}` : profile.name,
+        models: group.models,
+      }))
+    })
+  }, [profiles])
+  const currentKey = `${profileId}:${groupId ?? 'default'}`
+  const [activeKey, setActiveKey] = useState(currentKey)
 
   useEffect(() => {
-    setActive(0)
-  }, [query])
+    if (tabs.some((tab) => tab.key === activeKey)) return
+    setActiveKey(tabs.some((tab) => tab.key === currentKey) ? currentKey : (tabs[0]?.key ?? ''))
+  }, [tabs, activeKey, currentKey])
 
-  useEffect(() => {
-    setActive((i) => Math.min(i, Math.max(0, flat.length - 1)))
-  }, [flat.length])
+  const activeTab = tabs.find((tab) => tab.key === activeKey) ?? tabs[0]
+  const showSearch = tabs.reduce((n, tab) => n + tab.models.length, 0) > 8
+  const q = query.trim().toLowerCase()
+  const models = activeTab
+    ? activeTab.models.filter(
+        (m) => !q || m.toLowerCase().includes(q) || prettyModel(m).toLowerCase().includes(q),
+      )
+    : []
 
-  useEffect(() => {
-    const el = listRef.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)
-    el?.scrollIntoView({ block: 'nearest' })
-  }, [active])
-
-  const choose = (index: number) => {
-    const item = flat[index]
-    if (!item) return
+  const choose = (nextModel: string) => {
+    if (!activeTab) return
     close()
     if (
-      item.profile.id !== profileId ||
-      item.groupId !== groupId ||
-      item.model !== model
+      activeTab.profile.id !== profileId ||
+      (activeTab.groupId ?? undefined) !== (groupId ?? undefined) ||
+      nextModel !== model
     ) {
-      onSelect(item.profile.id, item.groupId, item.model)
+      onSelect(activeTab.profile.id, activeTab.groupId, nextModel)
     }
   }
 
-  const onKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (e.nativeEvent.isComposing || e.keyCode === 229) return
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setActive((i) => Math.min(flat.length - 1, i + 1))
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setActive((i) => Math.max(0, i - 1))
-    } else if (e.key === 'Enter') {
-      e.preventDefault()
-      choose(active)
-    } else if (e.key === 'Escape') {
-      e.preventDefault()
-      close()
-    }
-  }
-
-  let index = -1
   return (
-    <div>
-      <div className="menu-search">
-        <Search size={13} className="shrink-0" />
-        <input
-          autoFocus
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={onKey}
-          placeholder="搜索模型、账号或分组"
-          aria-label="搜索模型"
-          spellCheck={false}
-        />
-        <span className="menu-kbd">esc</span>
-      </div>
-      <div ref={listRef} className="max-h-[300px] overflow-y-auto p-1.5">
-        {loading && profiles.length === 0 && (
-          <div className="flex items-center gap-2 px-2 py-4 text-[12px] text-muted">
-            <Loader2 size={13} className="animate-spin" /> 加载账号…
+    <div className="w-[360px] max-w-[calc(100vw-1.5rem)]">
+      <MenuList aria-label="选择模型" className="p-0">
+        <div className="no-scrollbar flex shrink-0 gap-1 overflow-x-auto border-b border-border px-2 py-1.5">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => {
+                setActiveKey(tab.key)
+                setQuery('')
+              }}
+              className={cn(
+                'h-7 shrink-0 whitespace-nowrap rounded-md px-2 text-[12px] transition-colors',
+                tab.key === activeKey
+                  ? 'bg-[var(--t-bg-active)] text-text'
+                  : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text',
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {showSearch && (
+          <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-border px-2.5 text-muted">
+            <Search size={12} className="shrink-0" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜索模型"
+              aria-label="搜索模型"
+              spellCheck={false}
+              className="min-w-0 flex-1 bg-transparent text-[12.5px] text-text outline-none placeholder:text-muted"
+            />
           </div>
         )}
-        {!loading && flat.length === 0 && (
-          <div className="px-2 py-3 text-[12px] leading-5 text-muted">
-            {profiles.length === 0 ? '这台 Host 还没有配置账号。' : '没有匹配的模型。'}
-          </div>
-        )}
-        {accounts.map((account) => (
-          <div key={account.profile.id} className="pb-0.5">
-            <div className="menu-section flex items-center gap-1.5">
-              <span className="min-w-0 truncate text-[11.5px] font-semibold text-text-soft">
-                {account.profile.name}
-              </span>
-              <span className="shrink-0 rounded border border-border px-1 text-[9.5px] font-normal text-muted">
-                {PROVIDER_KIND_LABELS[account.profile.kind] ?? account.profile.kind}
-              </span>
+        <div className="max-h-[300px] shrink-0 overflow-y-auto p-1">
+          {loading && profiles.length === 0 && (
+            <div className="flex items-center gap-2 px-2 py-4 text-[12px] text-muted">
+              <Loader2 size={13} className="animate-spin" /> 加载账号…
             </div>
-            {account.groups.map((g) => (
-              <div key={`${account.profile.id}:${g.groupId ?? 'default'}`}>
-                {account.profile.groups?.length ? (
-                  <div className="flex items-center gap-1.5 px-2 pb-0.5 pt-0.5 text-[10px] text-muted">
-                    <span className="min-w-0 truncate">分组 · {g.name}</span>
-                    <span className="ml-auto shrink-0 tabular-nums">{g.models.length}</span>
-                  </div>
-                ) : null}
-                {g.models.map((m) => {
-                  index += 1
-                  const i = index
-                  const selected =
-                    account.profile.id === profileId &&
-                    (g.groupId ?? undefined) === (groupId ?? undefined) &&
-                    m === model
-                  return (
-                    <button
-                      key={`${account.profile.id}:${g.groupId ?? 'default'}:${m}`}
-                      data-index={i}
-                      data-active={i === active}
-                      data-selected={selected}
-                      onMouseEnter={() => setActive(i)}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => choose(i)}
-                      className="menu-item"
-                    >
-                      <span
-                        className={cn(
-                          'min-w-0 flex-1 truncate font-mono text-[12px]',
-                          (account.profile.groups?.length ?? 0) > 0 && 'pl-1.5',
-                        )}
-                      >
-                        <Highlight text={m} query={query} />
-                      </span>
-                      {selected && <Check size={13} className="shrink-0 text-text-secondary" />}
-                    </button>
-                  )
-                })}
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-      <div className="menu-divider" />
-      <div className="p-1">
-        <button
-          onClick={() => {
-            close()
-            onManage()
-          }}
-          className="menu-item"
-        >
-          <Settings2 size={13} /> 管理账号…
-        </button>
-        <div className="menu-hint hidden sm:block">↑↓ 选择 · Enter 确认 · Esc 关闭</div>
+          )}
+          {!loading && models.length === 0 && (
+            <div className="px-2 py-3 text-[12px] leading-5 text-muted">
+              {profiles.length === 0
+                ? '这台 Host 还没有配置账号。'
+                : activeTab
+                  ? '没有匹配的模型。'
+                  : '没有可用模型。'}
+            </div>
+          )}
+          {models.map((m) => {
+            const selected =
+              !!activeTab &&
+              activeTab.profile.id === profileId &&
+              (activeTab.groupId ?? undefined) === (groupId ?? undefined) &&
+              m === model
+            return (
+              <MenuItem
+                key={m}
+                selected={selected}
+                hint={prettyModel(m) !== m ? prettyModel(m) : undefined}
+                role="menuitemradio"
+                ariaChecked={selected}
+                onMouseDown={(e) => e.preventDefault()}
+                onSelect={() => choose(m)}
+              >
+                <span className="font-mono text-[12px]">
+                  <Highlight text={m} query={query} />
+                </span>
+              </MenuItem>
+            )
+          })}
+        </div>
+      </MenuList>
+      <div className="border-t border-border p-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <SegmentedControl
+            size="sm"
+            aria-label="思考强度"
+            value={effort}
+            options={EFFORTS.map((value) => ({ value, label: EFFORT_LABEL[value] }))}
+            onChange={onEffortChange}
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              close()
+              onManage()
+            }}
+            className="shrink-0 px-1.5 text-[12px]"
+          >
+            管理账号…
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -618,31 +601,33 @@ function ModelMenu({
   profileId,
   groupId,
   model,
+  effort,
   loading,
   disabled,
   onSelect,
+  onEffortChange,
   onManage,
   onOpen,
   open,
   onOpenChange,
-  compact = false,
 }: {
   profiles: Profile[]
   profileId: string
   groupId?: string
   model: string
+  effort: ReasoningEffort
   loading: boolean
   disabled?: boolean
   onSelect: (profileId: string, groupId: string | undefined, model: string) => void
+  onEffortChange: (effort: ReasoningEffort) => void
   onManage: () => void
   onOpen?: () => void
   open: boolean
   onOpenChange: (open: boolean) => void
-  compact?: boolean
 }) {
   const currentProfile = profiles.find((p) => p.id === profileId) ?? null
   const currentGroup = groupName(currentProfile ?? undefined, groupId)
-  const label = compact ? shortModelName(model) : prettyModel(model)
+  const label = model ? `${shortModelName(model)}${effortSuffix(effort)}` : '选择模型'
   return (
     <Popover
       side="top"
@@ -650,7 +635,7 @@ function ModelMenu({
       padded={false}
       open={open}
       onOpenChange={onOpenChange}
-      panelClassName="w-[320px] max-w-[calc(100vw-1.5rem)]"
+      panelClassName="w-[360px] max-w-[calc(100vw-1.5rem)]"
       trigger={({ open: isOpen, toggle }) => (
         <Button
           variant="ghost"
@@ -684,8 +669,10 @@ function ModelMenu({
           profileId={profileId}
           groupId={groupId}
           model={model}
+          effort={effort}
           loading={loading}
           onSelect={onSelect}
+          onEffortChange={onEffortChange}
           onManage={onManage}
           close={close}
         />
@@ -829,6 +816,8 @@ export function Composer({
   permissionMode: permissionModeProp,
   onModelChange,
   onPermissionModeChange,
+  effort: effortProp,
+  onEffortChange,
   hostId: hostIdProp,
   cwd: cwdProp,
   placeholder,
@@ -871,6 +860,7 @@ export function Composer({
   const interrupt = useAppStore((s) => s.interrupt)
   const setPermissionMode = useAppStore((s) => s.setPermissionMode)
   const setModel = useAppStore((s) => s.setModel)
+  const updateSession = useAppStore((s) => s.updateSession)
   const refreshProfiles = useAppStore((s) => s.refreshProfiles)
   const refreshCommands = useAppStore((s) => s.refreshCommands)
   const seed = useUiStore((s) => s.promptSeed)
@@ -887,6 +877,8 @@ export function Composer({
   const currentModel = sessionless ? (modelProp ?? '') : (summary?.model ?? '')
   const currentProfileId = sessionless ? (profileIdProp ?? '') : (summary?.profileId ?? '')
   const currentGroupId = sessionless ? groupIdProp : summary?.groupId
+  const [localEffort, setLocalEffort] = useState<ReasoningEffort>(loadLastEffort)
+  const effort = sessionless ? (effortProp ?? localEffort) : (summary?.effort ?? 'off')
   const draftKey = sessionId ? `${activeHostId ?? ''}:${sessionId}` : `new:${effectiveHostId ?? ''}`
 
   const [text, setText] = useState(() => loadDraft(draftKey))
@@ -1258,6 +1250,18 @@ export function Composer({
     else void setModel(nextProfileId, nextGroupId, nextModel)
   }
 
+  const changeEffort = (next: ReasoningEffort) => {
+    rememberEffort(next)
+    setLocalEffort(next)
+    if (sessionless) {
+      onEffortChange?.(next)
+      return
+    }
+    if (activeHostId && summary) {
+      void updateSession(activeHostId, summary.id, { effort: next })
+    }
+  }
+
   const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     const composing = composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229
     if (
@@ -1491,12 +1495,13 @@ export function Composer({
             profileId={currentProfileId}
             groupId={currentGroupId}
             model={currentModel}
+            effort={effort}
             loading={profilesLoading}
             disabled={disabled || (!sessionless && !summary)}
             open={modelMenuOpen}
             onOpenChange={setModelMenuOpen}
             onSelect={changeModel}
-            compact={isMobile}
+            onEffortChange={changeEffort}
             onManage={() => openSettings('profiles')}
             onOpen={() => {
               if (effectiveHostId && profiles.length === 0 && !profilesLoading) {
