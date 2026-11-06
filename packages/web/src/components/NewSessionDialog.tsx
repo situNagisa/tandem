@@ -456,7 +456,9 @@ function AccountMenu({
       ) : null}
       <div className="border-t border-border pt-1.5">
         <div className="flex items-center gap-1.5 px-2 pb-1">
-          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted">模型</span>
+          <span className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.08em] text-muted">
+            模型{activeGroup ? ` · ${activeGroup.name}` : ''}
+          </span>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
