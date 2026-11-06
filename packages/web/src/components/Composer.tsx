@@ -797,6 +797,7 @@ export function Composer({
   const refreshCommands = useAppStore((s) => s.refreshCommands)
   const seed = useUiStore((s) => s.promptSeed)
   const clearPromptSeed = useUiStore((s) => s.clearPromptSeed)
+  const composerResetNonce = useUiStore((s) => s.composerResetNonce)
   const toast = useUiStore((s) => s.toast)
   const openSettings = useUiStore((s) => s.openSettings)
 
@@ -872,6 +873,23 @@ export function Composer({
       el.setSelectionRange(seed.text.length, seed.text.length)
     })
   }, [seed, clearPromptSeed])
+
+  useEffect(() => {
+    if (!composerResetNonce) return
+    setText('')
+    setPasted([])
+    setAttachments([])
+    setCompletion(null)
+    saveDraft(draftKey, '')
+    window.requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.style.height = '28px'
+      el.focus()
+    })
+    // 只响应“新会话”按钮的显式重置，不随草稿 key 变化重跑。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composerResetNonce])
 
   useEffect(() => {
     const el = textareaRef.current

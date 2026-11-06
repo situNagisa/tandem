@@ -775,11 +775,15 @@ export function SessionList({
 
         {(() => {
           const multiHost = hosts.length > 1
-          const renderExternal = (hostId: string, ext: ExternalItem) => (
+          const renderExternal = (hostId: string, ext: ExternalItem, showTime = false) => (
             <button
               key={`${hostId}:${ext.source}:${ext.id}`}
               onClick={() => openExternal(hostId, ext)}
-              title={`${ext.title || '外部会话'} · ${ext.cwd} · ${ext.source === 'codex' ? 'Codex' : 'Claude Code'}`}
+              title={[
+                ext.title || '外部会话',
+                `${formatRelative(ext.updatedAt)} · ${ext.messageCount} 条消息`,
+                `${ext.cwd} · ${ext.source === 'codex' ? 'Codex' : 'Claude Code'}`,
+              ].join('\n')}
               className="anim-row-in group/ex flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg pl-2 pr-2 text-left text-[13.5px] text-text-soft outline-none transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-8"
             >
               <span
@@ -789,6 +793,11 @@ export function SessionList({
                 {ext.source === 'codex' ? 'Codex' : 'CC'}
               </span>
               <span className="min-w-0 flex-1 truncate leading-5">{ext.title || '未命名会话'}</span>
+              {showTime && (
+                <span className="shrink-0 text-[10px] tabular-nums text-muted">
+                  {formatRelative(ext.updatedAt)}
+                </span>
+              )}
               <span className="hidden shrink-0 text-[10.5px] tabular-nums text-muted group-hover/ex:inline">
                 {formatRelative(ext.updatedAt)}
               </span>
@@ -806,6 +815,12 @@ export function SessionList({
             const externalSourceLabel = project.externals.some((e) => e.source === 'claude-code')
               ? 'Claude Code'
               : 'Codex'
+            // 同组内标题重复时，标题后补时间，便于区分不同 id 的同名外部会话。
+            const externalTitleCount = new Map<string, number>()
+            for (const ext of project.externals) {
+              const title = ext.title || '未命名会话'
+              externalTitleCount.set(title, (externalTitleCount.get(title) ?? 0) + 1)
+            }
             const entries = [
               ...project.items.map((s) => (
                 <Fragment key={`${hostId}:${s.id}`}>
@@ -814,7 +829,13 @@ export function SessionList({
                     project.children[s.id]?.map((child) => renderRow(hostId, child, 1))}
                 </Fragment>
               )),
-              ...shownExternals.map((ext) => renderExternal(hostId, ext)),
+              ...shownExternals.map((ext) =>
+                renderExternal(
+                  hostId,
+                  ext,
+                  (externalTitleCount.get(ext.title || '未命名会话') ?? 0) > 1,
+                ),
+              ),
             ]
             const count = project.items.length + project.externals.length
             return (

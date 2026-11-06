@@ -10,7 +10,7 @@ import {
 import { useUiStore } from '../store/useUiStore'
 import { useAppStore } from '../store/useAppStore'
 import { modLabel } from '../lib/format'
-import { navigate } from '../lib/router'
+import { navigate, parseHash } from '../lib/router'
 import { cn } from '../lib/cn'
 import { isDesktop, isMacDesktop } from '../lib/desktop'
 import { BrandMark } from './BrandMark'
@@ -30,6 +30,7 @@ export function Sidebar({
   const openSettings = useUiStore((s) => s.openSettings)
   const showArchived = useUiStore((s) => s.showArchived)
   const setShowArchived = useUiStore((s) => s.setShowArchived)
+  const resetComposer = useUiStore((s) => s.resetComposer)
   const archivedCount = useAppStore((s) =>
     Object.values(s.runtimes).reduce(
       (n, rt) => n + rt.sessions.filter((x) => x.archived).length,
@@ -41,6 +42,8 @@ export function Sidebar({
     'group flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[13px] text-text-soft transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-8'
 
   const startNewSession = () => {
+    // 已经在新会话页时导航不会重新挂载，需要显式清空输入并聚焦。
+    if (parseHash().kind === 'home') resetComposer()
     setShowArchived(false)
     navigate({ kind: 'home' })
     onNavigate?.()

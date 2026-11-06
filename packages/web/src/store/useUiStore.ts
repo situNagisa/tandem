@@ -34,6 +34,8 @@ interface UiState {
   notifications: boolean
   toasts: Toast[]
   promptSeed: { text: string; nonce: number } | null
+  /** 自增通知输入框清空并聚焦（已在新会话页时再点“新会话”）。 */
+  composerResetNonce: number
 
   setTheme: (theme: Theme) => void
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -60,6 +62,7 @@ interface UiState {
   dismissToast: (id: number) => void
   seedPrompt: (text: string) => void
   clearPromptSeed: () => void
+  resetComposer: () => void
 }
 
 const prefs = loadUiPrefs()
@@ -84,6 +87,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   notifications: prefs.notifications ?? true,
   toasts: [],
   promptSeed: null,
+  composerResetNonce: 0,
 
   setTheme: (theme) => {
     saveTheme(theme)
@@ -165,6 +169,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   },
   seedPrompt: (text) => set({ promptSeed: { text, nonce: Date.now() } }),
   clearPromptSeed: () => set({ promptSeed: null }),
+  resetComposer: () => set((s) => ({ composerResetNonce: s.composerResetNonce + 1 })),
 }))
 
 export function applyTheme(theme: Theme): void {
