@@ -93,3 +93,11 @@
 - [x] Host 内 cron 调度（5 段，测试可 6 段带秒）：~/.tandem/schedules.json、新建/追加会话、账号/分组/模型/effort/权限、catchUp、`/api/schedules` CRUD + 立即运行；会话带 scheduledBy，侧栏小时钟
 - [x] web：顶栏后台任务面板（实时输出/跟随/终止）、Bash 卡「后台运行 · 查看输出」、设置「定时任务」页（预设 cron/下次时间/最近结果）、`/schedule` 打开新建表单
 - 验证：本地 8111 实测 BashOutput 取到 sleep 输出、KillBash 终止长任务、10 秒 cron 触发建会话；Playwright 截图与点击（面板、设置、立即运行、开关、/schedule）
+
+## 迭代 13（2026-11-07）
+- [x] 反馈包 #4（28 条）全部处理，分 4 路（选择器/会话页/设置页/审阅与文件）
+- [x] 新功能（来自 docs/explore-v1.md）：同组多 Key 故障切换/轮询 + 预算提醒/阻止；后台任务（run_in_background、BashOutput、KillBash、面板）；定时任务（cron、设置页、/schedule）
+- [x] 会话分叉（按消息）、轮次固定、文件浏览器、overlay 滚动条、Hook/Bash 输出 GBK 回退解码
+- 约束更新：开发环境禁止公网部署/暴露；需公网验证时写步骤请用户代测
+- 待用户在 Windows 实机确认：D:\ 路径文件预览/在本机打开、未跟踪文件 diff、子目录 cwd 的 diff、Hook 中文输出
+- 下一批候选：局域网手机审批台（本地通知）、skills 兼容、PR/CI 集成
