@@ -5,7 +5,6 @@ import { modLabel } from '../lib/format'
 import { navigate, parseHash } from '../lib/router'
 import { cn } from '../lib/cn'
 import { isDesktop, isMacDesktop } from '../lib/desktop'
-import { BrandMark } from './BrandMark'
 import { HostSwitcher } from './HostSwitcher'
 import { Popover } from './ui/Popover'
 import { Button, IconButton } from './ui/Button'
@@ -97,7 +96,6 @@ export function Sidebar({
         className={cn('flex items-center gap-2 px-3.5 pb-2 pt-3.5', isDesktop && 'desktop-drag')}
         style={isMacDesktop ? { paddingLeft: 72 } : undefined}
       >
-        <BrandMark size={20} />
         <span className="font-serif text-[17px] font-medium leading-none tracking-tight">Tandem</span>
         <span className="flex-1" />
         {inDrawer ? (
