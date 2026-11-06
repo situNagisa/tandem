@@ -710,19 +710,25 @@
   text-align: center;
   font-size: 11px;
   user-select: none;
-  opacity: 0.7;
+  opacity: 1;
+}
+.chat-diff-row[data-kind="add"] .ln,
+.chat-diff-row[data-kind="add"] .sign {
+  color: var(--t-add-bar);
+}
+.chat-diff-row[data-kind="del"] .ln,
+.chat-diff-row[data-kind="del"] .sign {
+  color: var(--t-del-bar);
 }
 .chat-diff-row .text {
   padding-right: 12px;
 }
 .chat-diff-row[data-kind="add"] {
   background: var(--t-add-bg, rgba(255, 255, 255, 0.06));
-  box-shadow: inset 2px 0 0 var(--t-add-bar, #8a9a7b);
   color: var(--t-add-fg, inherit);
 }
 .chat-diff-row[data-kind="del"] {
   background: var(--t-del-bg, rgba(255, 255, 255, 0.06));
-  box-shadow: inset 2px 0 0 var(--t-del-bar, #a87363);
   color: var(--t-del-fg, inherit);
 }
 .chat-diff-row[data-kind="ctx"] {
@@ -1101,7 +1107,8 @@ mark.chat-match {
 
 .turn-rail {
   position: absolute;
-  right: 12px;
+  /* 贴在对话滚动区右边缘内侧、原生滚动条左侧 */
+  right: 18px;
   top: 50%;
   z-index: 6;
   display: flex;
@@ -1122,7 +1129,7 @@ mark.chat-match {
 
 .turn-edge {
   height: 14px;
-  min-width: 24px;
+  min-width: 18px;
   padding: 0 1px;
   border: 0;
   background: transparent;
@@ -1146,9 +1153,9 @@ mark.chat-match {
 
 .turn-fade {
   display: block;
-  width: 14px;
+  width: 18px;
   height: 2px;
-  margin: 2px 0;
+  margin: 3px 0;
   border-radius: 2px;
   background: var(--t-text-tertiary);
   transition: opacity 120ms ease;
@@ -1157,8 +1164,8 @@ mark.chat-match {
 .turn-tick {
   position: relative;
   display: flex;
-  width: 24px;
-  height: 6px;
+  width: 18px;
+  height: 10px;
   align-items: center;
   justify-content: flex-end;
   padding: 0;
@@ -1166,10 +1173,16 @@ mark.chat-match {
   background: transparent;
   cursor: pointer;
 }
+/* 视觉刻度 18×2，命中区扩展到 8px 宽 × 32px 高 */
+.turn-tick::before {
+  content: '';
+  position: absolute;
+  inset: -11px -4px;
+}
 
 .turn-tick-num {
   position: absolute;
-  right: 26px;
+  right: 24px;
   top: 50%;
   color: var(--t-text);
   font-size: 10px;
@@ -1183,7 +1196,7 @@ mark.chat-match {
 
 .turn-tick-line {
   display: block;
-  width: 14px;
+  width: 18px;
   height: 2px;
   border-radius: 2px;
   background: var(--t-text-tertiary);
@@ -1200,14 +1213,14 @@ mark.chat-match {
 }
 
 .turn-tick[data-active="true"] .turn-tick-line {
-  width: 20px;
-  height: 2.5px;
+  width: 18px;
+  height: 2px;
   opacity: 1;
   background: var(--t-text);
 }
 
 .turn-tick[data-active="true"] .turn-tip {
-  right: 44px;
+  right: 34px;
 }
 
 .turn-tick:focus-visible {
@@ -1218,7 +1231,7 @@ mark.chat-match {
 
 .turn-tip {
   position: absolute;
-  right: 30px;
+  right: 28px;
   top: 50%;
   z-index: 10;
   max-width: 230px;

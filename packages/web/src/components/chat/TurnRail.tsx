@@ -20,7 +20,7 @@ export interface TurnMark {
 }
 
 const EMPTY_TURNS: TurnMark[] = []
-const ROW = 6
+const ROW = 10
 const EDGE_H = 14
 const FADE_COUNT = 3
 const MIN_WINDOW = 5

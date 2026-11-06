@@ -27,9 +27,11 @@ import { defaultChoiceFor } from '../lib/profileModels'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
 import { Popover } from './ui/Popover'
+import { MenuItem, MenuList } from './ui/Menu'
 import { Button, IconButton } from './ui/Button'
 import { Input } from './ui/Controls'
 import { Composer } from './Composer'
+import { EnvBar } from './EnvBar'
 import { useGitRepo } from '../lib/useGitRepo'
 import { QrScanDialog, scannerSupported } from './QrScanDialog'
 import { parsePairLink, type PairTarget } from '../lib/pairLink'
@@ -472,6 +474,22 @@ export function NewSessionView() {
           </p>
         </div>
 
+        <div className="mb-1">
+          <EnvBar
+            variant="new"
+            hostId={hostId}
+            cwd={cwd}
+            env={gitRepo === 'yes' ? { repoRoot: cwd } : undefined}
+            worktreeOn={worktree}
+            onHostChange={chooseHost}
+            onCwdChange={setCwd}
+            onWorktreeChange={(on) => {
+              setWorktree(on)
+              setError(null)
+            }}
+          />
+        </div>
+
         <Composer
           sessionless
           model={model}
@@ -493,74 +511,6 @@ export function NewSessionView() {
             {runtime?.status === 'connecting' ? '正在连接 Host…' : 'Host 当前离线，连上后即可发送。'}
           </p>
         )}
-
-        <div className="no-scrollbar mt-3 flex items-center gap-1.5 overflow-x-auto pb-0.5 max-md:-mx-4 max-md:px-4 md:flex-wrap md:justify-center">
-          <Picker
-            panelClass="w-auto"
-            trigger={({ open, toggle }) => (
-              <Pill onClick={toggle} title="选择 Host" className={open ? 'bg-[var(--t-bg-active)]' : undefined}>
-                <ConnectionDot state={runtime?.status ?? 'connecting'} className="size-1.5" />
-                <Server size={12} className="text-muted" />
-                <span className="max-w-[120px] truncate">{host?.name ?? '选择 Host'}</span>
-                <ChevronDown size={11} className="text-muted" />
-              </Pill>
-            )}
-          >
-            {(close) => <HostMenu hostId={hostId} onChange={chooseHost} close={close} />}
-          </Picker>
-
-          <Picker
-            panelClass="w-auto"
-            trigger={({ open, toggle }) => (
-              <Pill onClick={toggle} title={cwd || '选择工作目录'} className={open ? 'bg-[var(--t-bg-active)]' : undefined}>
-                <FolderOpen size={12} className="text-muted" />
-                <span className="max-w-[160px] truncate">{cwd ? basename(cwd) || cwd : '工作目录'}</span>
-                <ChevronDown size={11} className="text-muted" />
-              </Pill>
-            )}
-          >
-            {(close) =>
-              host ? (
-                <FolderMenu hostId={host.id} cwd={cwd} onSelect={setCwd} close={close} />
-              ) : null
-            }
-          </Picker>
-
-          <Pill
-            onClick={() => {
-              if (gitRepo !== 'yes') return
-              setWorktree((v) => !v)
-              setError(null)
-            }}
-            pressed={worktree}
-            disabled={gitRepo !== 'yes'}
-            title={
-              gitRepo === 'checking'
-                ? '正在检测 git 仓库…'
-                : gitRepo === 'no'
-                  ? '当前目录不在 git 仓库中，无法创建 worktree'
-                  : '在隔离的 git worktree 中运行，改动不影响当前分支'
-            }
-            className={worktree ? 'bg-[var(--t-bg-active)] text-text' : undefined}
-          >
-            <GitFork size={12} className="text-muted" />
-            {gitRepo === 'no' ? '隔离分支（需 Git 仓库）' : '隔离分支（worktree）'}
-          </Pill>
-
-          {worktree && gitRepo === 'yes' && (
-            <label className="flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface/60 px-2.5 md:h-8">
-              <GitFork size={11} className="shrink-0 text-muted" />
-              <input
-                value={worktreeBranch}
-                onChange={(e) => setWorktreeBranch(e.target.value)}
-                placeholder="分支名（自动 tandem/…）"
-                spellCheck={false}
-                className="w-[128px] bg-transparent font-mono text-[10.5px] text-text outline-none placeholder:text-muted"
-              />
-            </label>
-          )}
-
-        </div>
 
         {error && (
           <div className="mt-3 flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft/60 px-3 py-2 text-[12px] text-danger">

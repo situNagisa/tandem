@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   FileDiff,
-  GitBranch,
-  GitFork,
   Menu,
   PanelLeft,
   PanelRight,
@@ -12,9 +10,9 @@ import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useIsMobile, useNow } from '../lib/hooks'
 import { useSessionChanges } from '../lib/useChanges'
-import { basename, formatElapsed } from '../lib/format'
+import { formatElapsed } from '../lib/format'
 import { clearRunning, runningSince } from '../lib/runClock'
-import { navigate } from '../lib/router'
+import { navigate, useRoute } from '../lib/router'
 import { cn } from '../lib/cn'
 import { isDesktop, isMacDesktop, isWindowsDesktop } from '../lib/desktop'
 import { ConnectionDot } from './StatusDot'
@@ -72,6 +70,19 @@ export function TopBar() {
   const host = useAppStore((s) => s.hosts.find((h) => h.id === s.activeHostId) ?? null)
   const runtime = useAppStore((s) => (activeHostId ? s.runtimes[activeHostId] : undefined))
   const hasSession = useAppStore((s) => !!s.active)
+  const route = useRoute()
+  const externalTitle = useAppStore((s) => {
+    if (route.kind !== 'external') return null
+    return (
+      s.externalSessions[route.hostId]?.find(
+        (x) => x.source === route.source && x.id === route.id,
+      )?.title ??
+      s.runtimes[route.hostId]?.externalSessions.find(
+        (x) => x.source === route.source && x.id === route.id,
+      )?.title ??
+      null
+    )
+  })
   const summary = useAppStore((s) => s.active?.summary ?? null)
   const status = summary?.status
   const running = useAppStore((s) => s.active?.running ?? false)
@@ -140,10 +151,6 @@ export function TopBar() {
       committingRef.current = false
     }
   }
-
-  const project = summary?.env?.repoName || basename(summary?.cwd ?? '')
-  const branch = summary?.env?.branch
-  const worktree = summary?.worktree
 
   return (
     <header
@@ -215,43 +222,19 @@ export function TopBar() {
               />
             </button>
           )
+        ) : route.kind === 'external' ? (
+          <div className="flex min-w-0 items-center gap-1.5 px-1">
+            <h1 className="truncate text-[14px] font-medium leading-5">
+              {externalTitle || '外部会话'}
+            </h1>
+            <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[10px] leading-4 text-muted">
+              只读
+            </span>
+          </div>
         ) : (
           <h1 className="truncate px-1 text-[14px] font-medium leading-5">
             {host?.name || 'Tandem'}
           </h1>
-        )}
-
-        {hasSession && (
-          <span
-            className="hidden min-w-0 shrink items-center gap-1 rounded-md bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[10.5px] leading-4 text-text-soft sm:flex"
-            title={
-              worktree
-                ? `隔离分支（worktree）${worktree.branch}，基于 ${worktree.baseBranch}`
-                : undefined
-            }
-          >
-            <span className="max-w-[90px] truncate">{host?.name ?? 'Host'}</span>
-            {project && (
-              <>
-                <span className="text-muted">·</span>
-                <span className="max-w-[110px] truncate">{project}</span>
-              </>
-            )}
-            {(worktree?.branch || branch) && (
-              <>
-                <span className="hidden text-muted sm:inline">·</span>
-                <span className="hidden min-w-0 items-center gap-0.5 sm:flex">
-                  {worktree ? (
-                    <GitFork size={10} className="shrink-0 text-muted" />
-                  ) : (
-                    <GitBranch size={10} className="shrink-0 text-muted" />
-                  )}
-                  <span className="max-w-[110px] truncate">{worktree?.branch || branch}</span>
-                  {worktree && <span className="text-[9px] text-muted">worktree</span>}
-                </span>
-              </>
-            )}
-          </span>
         )}
 
         {hasSession ? (

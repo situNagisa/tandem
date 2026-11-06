@@ -39,6 +39,7 @@ import type {
   ConnectionState,
   ExternalSessionItem,
   HostConfig,
+  HookNotice,
   HostRuntime,
   SubagentSession,
   ToolResultBlock,
@@ -816,7 +817,14 @@ export const useAppStore = create<AppState>((set, get) => {
         break
       }
       case 'hook_event': {
-        const notice: HookEventNotice = {
+        const hookActive = get().active
+        const notice: HookNotice = {
+          ...(hookActive && hookActive.sessionId === msg.sessionId
+            ? {
+                messageId:
+                  hookActive.messages[hookActive.messages.length - 1]?.id,
+              }
+            : {}),
           sessionId: msg.sessionId,
           event: msg.event,
           name: msg.name,

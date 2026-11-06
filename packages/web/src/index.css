@@ -32,12 +32,12 @@
   --t-success: #737373;
   --t-success-soft: transparent;
 
-  --t-add-bg: rgba(138, 154, 123, 0.1);
+  --t-add-bg: #e6ffec;
   --t-add-fg: var(--t-text);
-  --t-del-bg: rgba(168, 115, 99, 0.1);
+  --t-del-bg: #ffebe9;
   --t-del-fg: var(--t-text);
-  --t-add-bar: #8a9a7b;
-  --t-del-bar: #a87363;
+  --t-add-bar: #1a7f37;
+  --t-del-bar: #cf222e;
   --t-comment-row-bg: rgba(45, 35, 22, 0.05);
   /* 行内代码：浅色模式用比正文略深的纸色，边框拉开层次 */
   --t-code-bg: #efece4;
@@ -46,8 +46,8 @@
   --t-git-added: #527a45;
   --t-git-deleted: #a85d50;
   --t-git-renamed: #7a6a94;
-  --t-git-plus: #527a45;
-  --t-git-minus: #a85d50;
+  --t-git-plus: #1a7f37;
+  --t-git-minus: #cf222e;
 
   --t-code-block-bg: #f1ede4;
 
@@ -104,12 +104,12 @@ html.dark {
   --t-success: #8a8a8a;
   --t-success-soft: transparent;
 
-  --t-add-bg: rgba(255, 255, 255, 0.06);
+  --t-add-bg: rgba(46, 160, 67, 0.15);
   --t-add-fg: var(--t-text);
-  --t-del-bg: rgba(255, 255, 255, 0.06);
+  --t-del-bg: rgba(248, 81, 73, 0.15);
   --t-del-fg: var(--t-text);
-  --t-add-bar: #8a9a7b;
-  --t-del-bar: #a87363;
+  --t-add-bar: #3fb950;
+  --t-del-bar: #f85149;
   --t-comment-row-bg: rgba(255, 255, 255, 0.035);
   --t-code-bg: #333333;
   --t-code-border: rgba(255, 255, 255, 0.1);
@@ -117,8 +117,8 @@ html.dark {
   --t-git-added: #8db580;
   --t-git-deleted: #d98a7f;
   --t-git-renamed: #a99bbd;
-  --t-git-plus: #8db580;
-  --t-git-minus: #d98a7f;
+  --t-git-plus: #3fb950;
+  --t-git-minus: #f85149;
 
   --t-code-block-bg: #1e1e1e;
 

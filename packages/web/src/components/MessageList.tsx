@@ -12,7 +12,7 @@ import {
 import { useAppStore } from '../store/useAppStore'
 import { cn } from '../lib/cn'
 import { copyText } from '../lib/clipboard'
-import type { ToolResultBlock, UiMessage } from '../lib/types'
+import type { HookNotice, ToolResultBlock, UiMessage } from '../lib/types'
 import { Markdown } from './Markdown'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCard, type ToolUseBlock } from './ToolCard'
@@ -24,9 +24,11 @@ import {
   entriesFromMessages,
   type ToolRunEntry,
 } from './chat/ToolGroup'
+import { HookNoticeLine } from './chat/HookNoticeLine'
 import '../styles/chat.css'
 
 const EMPTY: UiMessage[] = []
+const EMPTY_HOOKS: HookNotice[] = []
 
 function TypingIndicator() {
   return (
@@ -534,7 +536,9 @@ export function MessageList({
   const storeMessages = useAppStore((s) => s.active?.messages ?? EMPTY)
   const storeSessionId = useAppStore((s) => s.active?.sessionId ?? null)
   const storeStreamingId = useAppStore((s) => s.active?.streamingMessageId)
+  const storeHooks = useAppStore((s) => s.active?.hookEvents ?? EMPTY_HOOKS)
   const messages = messagesProp ?? storeMessages
+  const hooks = messagesProp ? EMPTY_HOOKS : storeHooks
   const sessionId = messagesProp ? null : storeSessionId
   const streamingId = messagesProp ? undefined : storeStreamingId
 
@@ -617,6 +621,23 @@ export function MessageList({
   }
   flushRun()
 
+  const hooksByMessage = new Map<string, HookNotice[]>()
+  const messageIds = new Set(messages.map((m) => m.id))
+  const orphanHooks: HookNotice[] = []
+  for (const hook of hooks) {
+    if (hook.messageId && messageIds.has(hook.messageId)) {
+      const list = hooksByMessage.get(hook.messageId)
+      if (list) list.push(hook)
+      else hooksByMessage.set(hook.messageId, [hook])
+    } else {
+      orphanHooks.push(hook)
+    }
+  }
+  const hookLine = (id: string) => {
+    const list = hooksByMessage.get(id)
+    return list && list.length > 0 ? <HookNoticeLine notices={list} /> : null
+  }
+
   const turnIndex = new Map<string, number>()
   let turn = 0
   for (const m of messages) {
@@ -664,6 +685,7 @@ export function MessageList({
               }
             >
               <UserMessage message={m} animate={seg.animate} readOnly={readOnly} />
+              {hookLine(m.id)}
             </div>
           )
         }
@@ -693,9 +715,11 @@ export function MessageList({
                   : undefined
               }
             />
+            {hookLine(m.id)}
           </div>
         )
       })}
+      {!messagesProp && orphanHooks.length > 0 && <HookNoticeLine notices={orphanHooks} />}
     </div>
   )
 }

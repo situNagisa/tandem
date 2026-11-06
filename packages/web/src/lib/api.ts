@@ -172,6 +172,28 @@ export const api = {
     ),
   forkSession: (h: HostConfig, id: string) =>
     request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/fork`, { method: 'POST' }),
+  branches: (h: HostConfig, id: string) =>
+    request<{ current?: string; branches: string[] }>(
+      h,
+      `/api/sessions/${encodeURIComponent(id)}/branches`,
+    ),
+  checkout: (h: HostConfig, id: string, branch: string, create = false) =>
+    request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/checkout`, {
+      method: 'POST',
+      body: JSON.stringify({ branch, create }),
+    }),
+  worktree: (h: HostConfig, id: string, branch?: string) =>
+    request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/worktree`, {
+      method: 'POST',
+      body: JSON.stringify({ ...(branch ? { branch } : {}) }),
+    }),
+  exportSession: (h: HostConfig, id: string) =>
+    request<Session>(h, `/api/sessions/${encodeURIComponent(id)}/export`),
+  importSession: (h: HostConfig, input: { session: Session; cwd?: string }) =>
+    request<SessionSummary>(h, '/api/sessions/import', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   checkpoints: (h: HostConfig, id: string) =>
     request<Checkpoint[]>(h, `/api/sessions/${encodeURIComponent(id)}/checkpoints`),

@@ -9,6 +9,7 @@ const KEYS = {
   lastHost: 'tandem.lastHost.v1',
   drafts: 'tandem.drafts.v1',
   sentHistory: 'tandem.sentHistory.v1',
+  migrations: 'tandem.migrations.v1',
 } as const
 
 function readJson<T>(key: string, fallback: T): T {
@@ -171,6 +172,19 @@ export function rememberDir(hostId: string, dir: string): void {
   const next = [dir, ...(map[hostId] ?? []).filter((d) => d !== dir)].slice(0, 8)
   map[hostId] = next
   writeJson(KEYS.recentDirs, map)
+}
+
+/** 跨 Host 迁移后，在原会话上留一条本机标记（Host 端记录已复制到目标 Host）。 */
+export function rememberMigration(hostId: string, sessionId: string, targetName: string): void {
+  const map = readJson<Record<string, string>>(KEYS.migrations, {})
+  map[`${hostId}:${sessionId}`] = targetName
+  writeJson(KEYS.migrations, map)
+}
+
+export function loadMigration(hostId: string, sessionId: string): string | undefined {
+  const map = readJson<Record<string, string>>(KEYS.migrations, {})
+  const value = map[`${hostId}:${sessionId}`]
+  return typeof value === 'string' && value ? value : undefined
 }
 
 export function loadLastHost(): string | null {

@@ -91,9 +91,14 @@ export interface ActiveSession {
   /** 当前计划（计划模式提交后保存，右侧信息栏可回看）。 */
   plan?: SessionPlan
   /** Hook 执行记录；界面只展示阻止/出错的条目。 */
-  hookEvents: HookEventNotice[]
+  hookEvents: HookNotice[]
   /** Task 子代理会话（parentId 指向当前会话），按子会话 id 索引。 */
   subagents: Record<string, SubagentSession>
+}
+
+/** 客户端补充锚点：错误提示内联在产生它的消息之后。 */
+export interface HookNotice extends HookEventNotice {
+  messageId?: string
 }
 
 /** 主会话内嵌查看的 Task 子代理状态。 */

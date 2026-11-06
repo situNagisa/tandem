@@ -5,7 +5,6 @@ import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { navigate } from '../lib/router'
-import { basename, formatRelative } from '../lib/format'
 import { defaultChoiceFor } from '../lib/profileModels'
 import type { ToolResultBlock } from '../lib/types'
 import { MessageList } from './MessageList'
@@ -95,10 +94,7 @@ export function ExternalSessionView({
   const importedSessionId = item?.importedSessionId
   const profiles = runtime?.profiles ?? []
   const label = SOURCE_LABEL[source]
-  const title = session?.title || item?.title || '外部会话'
   const cwd = session?.cwd || item?.cwd || ''
-  const updatedAt = session?.updatedAt ?? item?.updatedAt ?? 0
-  const messageCount = session?.messages.length ?? item?.messageCount ?? 0
 
   const continueInTandem = async () => {
     if (importedSessionId) {
@@ -124,32 +120,6 @@ export function ExternalSessionView({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <header className="shrink-0 border-b border-border px-4 py-3 md:px-6">
-        <div className="mx-auto w-full max-w-[808px]">
-          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10.5px] text-muted">
-            <span>{label} · 只读</span>
-            {updatedAt > 0 && (
-              <>
-                <span>·</span>
-                <span>{formatRelative(updatedAt)}</span>
-              </>
-            )}
-            {messageCount > 0 && (
-              <>
-                <span>·</span>
-                <span>{messageCount} 条消息</span>
-              </>
-            )}
-          </div>
-          <h1 className="mt-0.5 truncate text-[15px] font-medium leading-6">{title}</h1>
-          {cwd && (
-            <p className="mt-0.5 truncate font-mono text-[10.5px] text-muted" title={cwd}>
-              {basename(cwd) || cwd}
-              <span className="ml-1.5 font-sans">{cwd}</span>
-            </p>
-          )}
-        </div>
-      </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="mx-auto flex min-h-full w-full max-w-[808px] flex-col px-4 pb-8 pt-4 md:px-6 md:pt-5">

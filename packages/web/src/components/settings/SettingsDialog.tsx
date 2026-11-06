@@ -36,7 +36,7 @@ export function SettingsDialog() {
       onClose={close}
       title="设置"
       description="Host、账号与模型、权限与 Hooks、MCP、用量、配置迁移，以及界面外观。"
-      className="h-[min(640px,86dvh)] max-w-[min(880px,92vw)] max-sm:fixed max-sm:inset-0 max-sm:my-0 max-sm:h-auto max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:pt-[env(safe-area-inset-top)]"
+      className="h-[min(760px,90dvh)] w-[min(1120px,94vw)] max-w-none max-sm:fixed max-sm:inset-0 max-sm:my-0 max-sm:h-auto max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:pt-[env(safe-area-inset-top)]"
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
     >
       <div className="flex h-full min-h-0 flex-col sm:flex-row">
