@@ -52,7 +52,7 @@ function statusOf(err: unknown): number {
   return typeof status === 'number' && status >= 400 && status < 500 ? status : 400;
 }
 
-function parseProfileInput(body: unknown): ProfileInput & { price?: unknown } {
+function parseProfileInput(body: unknown): ProfileInput {
   const raw = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
   const kind = str(raw.kind) as ProviderKind;
   if (!PROVIDER_KINDS.includes(kind)) throw new Error('provider 类型无效');
@@ -71,8 +71,9 @@ function parseProfileInput(body: unknown): ProfileInput & { price?: unknown } {
     models,
     defaultModel,
     groups: parseGroupInputs(raw.groups),
-    // 协议 ProfileInput 暂未声明 price；这里按扩展字段接收，供配置覆盖单价
-    ...(raw.price !== undefined ? { price: raw.price } : {}),
+    ...(raw.price && typeof raw.price === 'object'
+      ? { price: raw.price as NonNullable<ProfileInput['price']> }
+      : {}),
   };
 }
 
