@@ -693,7 +693,7 @@ export function NewSessionView() {
                     : '账号'}
                 </span>
                 {model && (
-                  <span className="max-w-[130px] truncate font-mono text-[10.5px] text-muted">
+                  <span className="hidden max-w-[130px] truncate font-mono text-[10.5px] text-muted sm:inline">
                     {model}
                   </span>
                 )}

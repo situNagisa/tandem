@@ -20,6 +20,7 @@ import type { SessionSummary } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useNow } from '../lib/hooks'
+import { clearRunning, runningSince } from '../lib/runClock'
 import { basename, formatElapsed, formatRelative } from '../lib/format'
 import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
@@ -294,20 +295,14 @@ export function SessionList({
     [pinned, groups],
   )
   const now = useNow(anyRunning)
-  const runSinceRef = useRef(new Map<string, number>())
 
   const runningElapsed = (hostId: string, s: SessionSummary): string | null => {
     const key = `${hostId}:${s.id}`
     if (!isRunningStatus(s.status)) {
-      runSinceRef.current.delete(key)
+      clearRunning(key)
       return null
     }
-    let since = runSinceRef.current.get(key)
-    if (since === undefined) {
-      since = Math.min(Date.now(), s.updatedAt || Date.now())
-      runSinceRef.current.set(key, since)
-    }
-    return formatElapsed(now - since)
+    return formatElapsed(now - runningSince(key, s.updatedAt))
   }
 
   // 导入来源：服务端摘要不带来源字段，从外部会话扫描结果反查。

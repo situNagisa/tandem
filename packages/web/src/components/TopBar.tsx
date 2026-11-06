@@ -14,6 +14,7 @@ import { useUiStore } from '../store/useUiStore'
 import { useIsMobile, useNow } from '../lib/hooks'
 import { useSessionChanges } from '../lib/useChanges'
 import { basename, formatElapsed } from '../lib/format'
+import { clearRunning, runningSince } from '../lib/runClock'
 import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
@@ -80,8 +81,15 @@ export function TopBar() {
   const running = useAppStore((s) => s.active?.running ?? false)
   const ticking = running || status === 'waiting_permission'
   const now = useNow(ticking)
+  const runKey = summary ? `${activeHostId ?? ''}:${summary.id}` : null
   const elapsed =
-    ticking && summary ? formatElapsed(now - summary.updatedAt) : undefined
+    ticking && summary && runKey
+      ? formatElapsed(now - runningSince(runKey, summary.updatedAt))
+      : undefined
+
+  useEffect(() => {
+    if (runKey && !ticking) clearRunning(runKey)
+  }, [runKey, ticking])
   const updateSession = useAppStore((s) => s.updateSession)
   const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
   const changesNonce = useAppStore((s) => s.changesNonce)
@@ -314,7 +322,10 @@ export function TopBar() {
           onClick={() => openSettings()}
           aria-label="设置"
           title="设置"
-          className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:size-9"
+          className={cn(
+            'size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:size-9',
+            hasSession && isMobile ? 'hidden' : 'flex',
+          )}
         >
           <Settings size={17} />
         </button>

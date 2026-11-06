@@ -185,7 +185,7 @@ export const DiffView = memo(function DiffView({
   }, [oldText, newText, unified])
 
   const display = useMemo(() => buildRows(rows, expanded), [rows, expanded])
-  const { ref: bodyRef, canRight, update: updateOverflow } = useHorizontalOverflow<HTMLDivElement>([
+  const { ref: bodyRef, canLeft, canRight, update: updateOverflow } = useHorizontalOverflow<HTMLDivElement>([
     display.length,
   ])
 
@@ -252,9 +252,11 @@ export const DiffView = memo(function DiffView({
           )}
         </div>
         <div className="x-scroll-fade" data-visible={canRight} aria-hidden />
-        <div className="x-scroll-hint" data-visible={canRight}>
-          <ArrowLeftRight size={10} /> 左右滑动查看
-        </div>
+        {canLeft || canRight ? (
+          <div className="x-scroll-foot">
+            <ArrowLeftRight size={10} /> 左右滑动查看
+          </div>
+        ) : null}
       </div>
       {(oldLabel || newLabel) && (
         <div className="flex gap-3 border-t border-border px-3 py-1 text-[10px] text-muted">

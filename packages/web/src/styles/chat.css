@@ -171,29 +171,22 @@
 .x-scroll-fade[data-visible="true"] {
   opacity: 1;
 }
-.x-scroll-hint {
-  position: absolute;
-  right: 8px;
-  bottom: 7px;
+.x-scroll-foot {
   display: flex;
+  height: 24px;
   align-items: center;
+  justify-content: center;
   gap: 4px;
-  padding: 2px 7px;
-  border: 1px solid var(--t-border);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--t-surface) 88%, transparent);
-  color: var(--t-text-soft);
+  border-top: 1px solid color-mix(in srgb, var(--t-border) 70%, transparent);
+  background: color-mix(in srgb, var(--t-bg) 35%, transparent);
+  color: var(--t-muted);
   font-family: var(--t-font-sans);
   font-size: 10px;
-  line-height: 16px;
-  white-space: nowrap;
-  box-shadow: var(--t-shadow-sm);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
-.x-scroll-hint[data-visible="true"] {
-  opacity: 1;
+@media (min-width: 768px) {
+  .x-scroll-foot {
+    display: none;
+  }
 }
 
 /* 侧栏会话行：预留右侧尾部宽度，标题再长也不会盖住时间与 ⋯ */

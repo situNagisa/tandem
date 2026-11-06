@@ -66,7 +66,7 @@ export function CodeBlock({
   )
 
   const html = highlighted && highlighted.code === shown ? highlighted.html : null
-  const { ref: preRef, canRight, update: updateOverflow } = useHorizontalOverflow<HTMLPreElement>([
+  const { ref: preRef, canLeft, canRight, update: updateOverflow } = useHorizontalOverflow<HTMLPreElement>([
     shown,
     html,
   ])
@@ -115,9 +115,11 @@ export function CodeBlock({
           )}
         </pre>
         <div className="x-scroll-fade" data-visible={canRight} aria-hidden />
-        <div className="x-scroll-hint" data-visible={canRight}>
-          <ArrowLeftRight size={10} /> 左右滑动查看
-        </div>
+        {canLeft || canRight ? (
+          <div className="x-scroll-foot">
+            <ArrowLeftRight size={10} /> 左右滑动查看
+          </div>
+        ) : null}
       </div>
     </div>
   )
