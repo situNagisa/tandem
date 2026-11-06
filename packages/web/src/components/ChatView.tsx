@@ -303,7 +303,7 @@ export function ChatView() {
                   variant="secondary"
                   onClick={retryTurn}
                   disabled={running}
-                  className="h-6 px-2 text-[11px] [&_svg]:size-3"
+                  className="h-6! px-2 text-[11px] [&_svg]:size-3"
                 >
                   <RotateCcw size={11} />
                   重试
@@ -313,7 +313,7 @@ export function ChatView() {
                     size="sm"
                     variant="ghost"
                     onClick={() => setTurnErrorExpanded((v) => !v)}
-                    className="h-6 px-1.5 text-[11px]"
+                    className="h-6! px-1.5 text-[11px]"
                   >
                     {turnErrorExpanded ? '收起' : '展开'}
                   </Button>

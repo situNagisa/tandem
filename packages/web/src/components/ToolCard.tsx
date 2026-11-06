@@ -576,7 +576,7 @@ function SubagentStream({ id }: { id: string }) {
             size="sm"
             variant="danger-ghost"
             onClick={() => stopSubagent(id)}
-            className="h-6 gap-1 px-1.5 text-[10px] [&_svg]:size-[9px]"
+            className="h-6! gap-1 px-1.5 text-[10px] [&_svg]:size-[9px]"
           >
             <Square size={9} /> 停止子代理
           </Button>

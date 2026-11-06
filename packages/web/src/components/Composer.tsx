@@ -1362,7 +1362,7 @@ export function Composer({
                     size="sm"
                     onClick={() => setPasted((prev) => prev.filter((x) => x.id !== p.id))}
                     label="移除粘贴的文本"
-                    className="size-6 [&_svg]:size-3"
+                    className="size-6! [&_svg]:size-3"
                   >
                     <X size={12} />
                   </IconButton>

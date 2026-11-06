@@ -535,7 +535,7 @@ export function HostsSection() {
                   variant="danger-ghost"
                   onClick={() => setRemoveTarget({ id: h.id, name: h.name })}
                   label="移除 Host"
-                  className="size-10"
+                  className="size-10!"
                 >
                   <Trash2 size={12} />
                 </IconButton>

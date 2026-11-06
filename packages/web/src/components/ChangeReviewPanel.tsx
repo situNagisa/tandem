@@ -462,7 +462,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                               setComments((prev) => prev.filter((x) => x.id !== c.id))
                             }}
                             label={`删除第 ${c.line} 行评论`}
-                            className="size-5 [&_svg]:size-3"
+                            className="size-5! [&_svg]:size-3"
                           >
                             <X size={11} />
                           </IconButton>
@@ -497,7 +497,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                       variant="danger-ghost"
                       onClick={() => setComments((prev) => prev.filter((x) => x.id !== c.id))}
                       label="删除评论"
-                      className="size-5 [&_svg]:size-3"
+                      className="size-5! [&_svg]:size-3"
                     >
                       <X size={11} />
                     </IconButton>
@@ -552,7 +552,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                   size="sm"
                   variant="ghost"
                   onClick={askAgentCommit}
-                  className="h-6 px-1 text-[10.5px] [&_svg]:size-3"
+                  className="h-6! px-1 text-[10.5px] [&_svg]:size-3"
                 >
                   <Wand2 size={11} /> 让 agent 写提交信息
                 </Button>

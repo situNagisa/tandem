@@ -242,7 +242,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
               label="复制文件路径"
               tooltip={copied ? '已复制' : `复制路径：${absPath}`}
               tooltipSide="bottom"
-              className="size-6 [&_svg]:size-3"
+              className="size-6! [&_svg]:size-3"
             >
               {copied ? <Check size={12} className="text-success" /> : <Copy size={11.5} />}
             </IconButton>

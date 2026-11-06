@@ -66,7 +66,7 @@
 - 焦点：`focus-visible` 2px 橙色外环、offset 2；不与 hover 混用。
 - disabled：40% 不透明、`cursor: not-allowed`、不响应 hover。
 - 按下：`scale(.98)`，80ms；不影响布局。
-- 图标按钮必须有 `aria-label`；需要说明时用统一 Tooltip（悬停/聚焦出现，文案 ≤220px），不再各写 `title`。
+- 图标按钮必须有 `aria-label`；需要说明时用统一 Tooltip（悬停/聚焦出现，文案 ≤220px），不再各写 `title`。发送按钮保留圆形，字号与图标仍按 md 档。
 - 输入框 / 下拉 / 分段控件高度与按钮档对齐（28 / 32 / 36），分段控件容器用 `--bg-subtle`、选中用 `--bg-active`；开关 36×20，选中态也用中性灰，不用橙色。
 - 移动端 <768px 的触控目标仍保持 ≥44px：可在外层容器放宽，不改变桌面档位。
 - 橙色的边界不变：只用于品牌、发送、焦点、待审批；选中态一律中性（`--border-strong` + `--bg-subtle`/`--bg-active` + 勾选标记），不用橙边框、橙 ring、橙点。

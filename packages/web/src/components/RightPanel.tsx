@@ -235,7 +235,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
                     onClick={copyCwd}
                     label="复制工作目录"
                     tooltip="复制"
-                    className="mt-0.5 size-5 opacity-60 hover:opacity-100 [&_svg]:size-3"
+                    className="mt-0.5 size-5! opacity-60 hover:opacity-100 [&_svg]:size-3"
                   >
                     {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
                   </IconButton>

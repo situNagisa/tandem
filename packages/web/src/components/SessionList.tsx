@@ -669,7 +669,7 @@ export function SessionList({
               }}
               label="会话操作"
               tooltip="更多操作"
-              className="absolute right-0.5 top-1/2 size-8 -translate-y-1/2 opacity-100 focus-visible:opacity-100 md:size-6 md:opacity-0 md:group-hover:opacity-100 [&_svg]:size-[15px]"
+              className="absolute right-0.5 top-1/2 size-8! -translate-y-1/2 opacity-100 focus-visible:opacity-100 md:size-6! md:opacity-0 md:group-hover:opacity-100 [&_svg]:size-[15px]"
             >
               <MoreHorizontal size={15} />
             </IconButton>
@@ -876,7 +876,7 @@ export function SessionList({
                     }}
                     tooltip={`在 ${project.name} 新建会话`}
                     label={`在 ${project.name} 新建会话`}
-                    className="size-6 opacity-0 focus-visible:opacity-100 group-hover/proj:opacity-100 [&_svg]:size-[13px]"
+                    className="size-6! opacity-0 focus-visible:opacity-100 group-hover/proj:opacity-100 [&_svg]:size-[13px]"
                   >
                     <Plus size={13} />
                   </IconButton>

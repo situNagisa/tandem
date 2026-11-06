@@ -199,7 +199,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
                   size="sm"
                   onClick={() => void copy()}
                   label="复制配对链接"
-                  className="size-8 sm:size-6 [&_svg]:size-[11px]"
+                  className="size-8! sm:size-6! [&_svg]:size-[11px]"
                 >
                   {copied ? <Check size={11} className="text-success" /> : <Copy size={11} />}
                 </IconButton>

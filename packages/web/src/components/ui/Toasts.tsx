@@ -54,7 +54,7 @@ export function Toasts() {
                 dismiss(t.id)
               }}
               label="关闭提示"
-              className="-mr-1 -mt-0.5 size-6 opacity-60 hover:opacity-100 [&_svg]:size-[13px]"
+              className="-mr-1 -mt-0.5 size-6! opacity-60 hover:opacity-100 [&_svg]:size-[13px]"
             >
               <X size={13} />
             </IconButton>
