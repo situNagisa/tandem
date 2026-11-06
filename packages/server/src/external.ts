@@ -47,11 +47,14 @@ export interface ExternalImportInput {
 }
 
 const PROJECTS_DIR = path.join('.claude', 'projects');
-const CODEX_SESSIONS_DIR = path.join('.codex', 'sessions');
-const CODEX_INDEX_FILE = path.join('.codex', 'session_index.jsonl');
+/** 与 Codex CLI 一致：CODEX_HOME 指向 ~/.codex 的替代目录（测试也用它指向假目录）。 */
+const CODEX_HOME = process.env.CODEX_HOME?.trim();
+const CODEX_ROOT = CODEX_HOME || path.join(os.homedir(), '.codex');
+const CODEX_SESSIONS_DIR = path.join(CODEX_ROOT, 'sessions');
+const CODEX_INDEX_FILE = path.join(CODEX_ROOT, 'session_index.jsonl');
 
 /** 解析规则变化时递增，旧条目自动失效。 */
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 
 /** 外部工具注入的整块标签：系统提醒、提及列表、IDE 上下文、Codex 环境说明等。 */
 const DROP_TAGS = [
@@ -205,6 +208,31 @@ function cleanTitle(text: string): string {
     .replace(/\s+/g, ' ')
     .trim();
   return [...plain].slice(0, 60).join('').trim();
+}
+
+/** 标题本身是注入文本（含旧版本导入时存下的坏标题，例如 "# AGENTS.md instructions …"）。 */
+export function isInjectedTitle(title: string): boolean {
+  const value = title.replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  if (/AGENTS\.md instructions/i.test(value)) return true;
+  if (/<INSTRUCTIONS>/i.test(value)) return true;
+  if (/CODEGRAPH_(?:START|END)/i.test(value)) return true;
+  return isInjectedText(value);
+}
+
+/** 从消息里找第一条真实用户文本重新生成标题；都不可用时退回项目名 + 日期。 */
+export function titleFromMessages(messages: Message[], cwd: string, createdAt: number): string {
+  for (const message of messages) {
+    if (message.role !== 'user') continue;
+    const text = message.content
+      .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n');
+    if (!text.trim()) continue;
+    const title = cleanTitle(text);
+    if (title && !isInjectedTitle(title)) return title;
+  }
+  return fallbackTitle(cwd, createdAt);
 }
 
 /** 用户文本块统一过一遍注入清理：注入内容转成折叠上下文，空文本块丢弃。 */
@@ -446,7 +474,8 @@ function parseClaudeFile(file: string, collect: boolean, fallbackId: string): Pa
 
   const stat = statSafe(file);
   const created = createdAt || stat?.birthtimeMs || stat?.mtimeMs || 0;
-  title = summaryTitle || customTitle || agentName || firstUserTitle;
+  const rawTitle = summaryTitle || customTitle || agentName || firstUserTitle;
+  title = rawTitle && !isInjectedTitle(rawTitle) ? rawTitle : fallbackTitle(cwd, created);
   return {
     source: 'claude-code',
     id,
@@ -673,7 +702,10 @@ function parseCodexFile(file: string, collect: boolean, fallbackId: string, know
   return {
     source: 'codex',
     id: fallbackId,
-    title: knownTitle || firstUserTitle || fallbackTitle(cwd, created),
+    title:
+      (knownTitle && !isInjectedTitle(knownTitle) ? knownTitle : '') ||
+      (firstUserTitle && !isInjectedTitle(firstUserTitle) ? firstUserTitle : '') ||
+      fallbackTitle(cwd, created),
     cwd,
     createdAt: created,
     updatedAt: updatedAt || stat?.mtimeMs || 0,
@@ -734,7 +766,7 @@ export class ExternalSessionStore {
     const root =
       source === 'claude-code'
         ? path.join(os.homedir(), PROJECTS_DIR)
-        : path.join(os.homedir(), CODEX_SESSIONS_DIR);
+        : CODEX_SESSIONS_DIR;
     const out: Array<{ file: string; fallbackId: string }> = [];
     if (source === 'claude-code') {
       let dirs: string[] = [];
@@ -839,7 +871,7 @@ export class ExternalSessionStore {
 
   /** Codex 会话标题索引（session_index.jsonl，用户重命名/自动生成）。 */
   private codexTitles(): Map<string, string> {
-    const file = path.join(os.homedir(), CODEX_INDEX_FILE);
+    const file = CODEX_INDEX_FILE;
     const stat = statSafe(file);
     if (!stat) {
       this.titleCache = undefined;
@@ -1016,7 +1048,10 @@ export class ExternalSessionStore {
       profileId,
       groupId,
       model: typeof input.model === 'string' && input.model.trim() ? input.model.trim() : undefined,
-      title: parsed.title || '外部会话',
+      title:
+        (parsed.title && !isInjectedTitle(parsed.title)
+          ? parsed.title
+          : titleFromMessages(parsed.messages, parsed.cwd, parsed.createdAt)) || '外部会话',
     });
     rec.messages = parsed.messages;
     rec.importedFrom = { source, id: parsed.id };

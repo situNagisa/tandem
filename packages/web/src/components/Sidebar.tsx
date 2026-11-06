@@ -91,7 +91,7 @@ export function Sidebar({
   )
 
   return (
-    <aside className="flex h-full w-full shrink-0 flex-col overflow-x-hidden border-r border-border bg-sidebar">
+    <aside className="flex h-full w-full shrink-0 flex-col overflow-x-hidden border-r border-border bg-sidebar dark:[--t-text-secondary:#cfcfcf] dark:[--t-text-tertiary:#9a9a9a]">
       <div
         className={cn('flex items-center gap-2 px-3.5 pb-2 pt-3.5', isDesktop && 'desktop-drag')}
         style={isMacDesktop ? { paddingLeft: 72 } : undefined}

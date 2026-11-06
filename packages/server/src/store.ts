@@ -3,6 +3,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync
 import path from 'node:path';
 import type { PermissionMode, SessionEnv } from '@tandem/protocol';
 import type { SessionRecord } from './types.js';
+import { isInjectedTitle, titleFromMessages } from './external.js';
 
 const SAVE_DELAY_MS = 300;
 const PERMISSION_MODES = new Set<PermissionMode>([
@@ -168,6 +169,19 @@ export class SessionStore {
       }
     }
     this.inferDepths();
+    this.repairInjectedTitles();
+  }
+
+  /**
+   * 旧版本导入外部会话时可能把注入文本（AGENTS.md、CODEGRAPH 等）存成标题；
+   * 启动时只修一次：按已有消息重新生成，找不到真实用户文本则退回项目名 + 日期。
+   */
+  private repairInjectedTitles(): void {
+    for (const rec of this.records.values()) {
+      if (!isInjectedTitle(rec.title)) continue;
+      rec.title = titleFromMessages(rec.messages, rec.cwd, rec.createdAt);
+      this.markDirty(rec.id, false);
+    }
   }
 
   /** 旧数据没有 depth：沿 parentId 链推算（主会话为 0）。 */
