@@ -116,7 +116,12 @@ function elementAtPoint(x: number, y: number): Element | null {
   for (const element of document.elementsFromPoint(x, y)) {
     if (isUiTarget(element)) continue
     if (element === document.documentElement) continue
-    return element
+    // 点在图标的 path/文字上时落到最近的可交互控件，截图才是整个按钮。
+    return (
+      element.closest(
+        'button, a[href], [role="button"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
+      ) ?? element
+    )
   }
   return null
 }
@@ -374,8 +379,11 @@ export function FeedbackMode() {
     let down: { x: number; y: number; pointerId: number } | null = null
     let lastPoint: { x: number; y: number } | null = null
 
+    // 捕获层自身也带 data-feedback-ui，它不是可交互 UI，事件必须继续拦截。
     const isFeedbackUi = (target: EventTarget | null) =>
-      target instanceof Element && target.closest(`[${UI_ATTR}]`) !== null
+      target instanceof Element &&
+      target.closest('[data-feedback-capture]') === null &&
+      target.closest(`[${UI_ATTR}]`) !== null
 
     const hoverAt = (x: number, y: number, alt: boolean) => {
       if (editorRef.current) return

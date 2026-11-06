@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { useHorizontalOverflow, useIsMobile } from '../lib/hooks'
+import { useFeedbackStore } from '../store/useFeedbackStore'
 
 interface DiffLine {
   type: 'add' | 'del' | 'ctx'
@@ -237,6 +238,15 @@ function CommentMarker({
           avoidCollisions
           sticky="always"
           onOpenAutoFocus={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => {
+            if (useFeedbackStore.getState().active) e.preventDefault()
+          }}
+          onFocusOutside={(e) => {
+            if (useFeedbackStore.getState().active) e.preventDefault()
+          }}
+          onInteractOutside={(e) => {
+            if (useFeedbackStore.getState().active) e.preventDefault()
+          }}
           onPointerDown={(e) => e.stopPropagation()}
           onPointerEnter={(e) => {
             e.stopPropagation()

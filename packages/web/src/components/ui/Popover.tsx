@@ -1,6 +1,7 @@
 import { useCallback, useState, type ReactNode } from 'react'
 import * as RPopover from '@radix-ui/react-popover'
 import { cn } from '../../lib/cn'
+import { useFeedbackStore } from '../../store/useFeedbackStore'
 
 interface PopoverProps {
   trigger: (state: { open: boolean; toggle: () => void; close: () => void }) => ReactNode
@@ -62,6 +63,15 @@ export function Popover({
           sticky="always"
           hideWhenDetached
           onOpenAutoFocus={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => {
+            if (useFeedbackStore.getState().active) e.preventDefault()
+          }}
+          onFocusOutside={(e) => {
+            if (useFeedbackStore.getState().active) e.preventDefault()
+          }}
+          onInteractOutside={(e) => {
+            if (useFeedbackStore.getState().active) e.preventDefault()
+          }}
           className={cn(
             'popover-panel z-[80] outline-none',
             padded && 'p-1.5',

@@ -109,12 +109,24 @@ export async function captureElementShot(element: Element): Promise<string | nul
   try {
     const box = element.getBoundingClientRect()
     const scale = Math.min(2, Math.max(1, window.devicePixelRatio || 1))
-    const raw = await domToPng(element as HTMLElement, {
-      scale,
-      filter: screenshotFilter,
-      timeout: 12_000,
-      backgroundColor: null,
-    })
+    // 根节点自身的 translate（如右侧 -translate-y-1/2）会让离屏克隆错位裁切，截图期间去掉。
+    const html = element as HTMLElement
+    const inlineTransform = html.style.transform
+    const inlineTranslate = html.style.translate
+    if (getComputedStyle(html).transform !== 'none') html.style.transform = 'none'
+    if (getComputedStyle(html).translate !== 'none') html.style.translate = 'none'
+    let raw: string
+    try {
+      raw = await domToPng(html, {
+        scale,
+        filter: screenshotFilter,
+        timeout: 12_000,
+        backgroundColor: null,
+      })
+    } finally {
+      html.style.transform = inlineTransform
+      html.style.translate = inlineTranslate
+    }
     const img = await loadImage(raw)
     const maxScale = Math.min(1, MAX_IMAGE_WIDTH / Math.max(1, img.width + 32 * scale))
     const pad = Math.round(16 * scale)
