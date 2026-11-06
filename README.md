@@ -31,13 +31,23 @@ npm run dev:web                  # Web 开发服务器（代理到 127.0.0.1:787
 
 ## 打包
 ### 安卓 APK
+需要 **JDK 21** 和 **Android SDK**（platform-tools、Capacitor 所需的 platforms 与 build-tools）。脚本会自动查找，找不到时提示缺什么。
+
 ```bash
-# 环境变量可选：缺省 JAVA_HOME=/usr/lib/jvm/java-21-openjdk，ANDROID_HOME=~/Android/Sdk
-export JAVA_HOME=/path/to/jdk-21
-export ANDROID_HOME=$HOME/Android/Sdk
+npm install
 npm run apk -w @tandem/mobile
 ```
-脚本会构建 web → `cap sync android` → `gradlew assembleDebug`，产物在 `dist-apk/tandem-debug.apk`（WSL 下同时复制到 Windows「下载」目录）。用 Android Studio 调试：`npm run open -w @tandem/mobile`。
+构建 web → `cap sync android` → Gradle `assembleDebug`；产物 `dist-apk/tandem-debug.apk`，并复制到「下载」目录（Windows 本机或 WSL 下的 Windows 用户目录）。用 Android Studio 调试：`npm run open -w @tandem/mobile`。
+
+**Linux / WSL**：`sudo pacman -S jdk21-openjdk`（或 apt 安装 openjdk-21-jdk）；SDK 默认找 `~/Android/Sdk`。
+
+**Windows**：
+1. 安装 Android Studio（自带 JBR 21，脚本会自动使用 `C:\Program Files\Android\Android Studio\jbr`），首次打开时按向导安装 SDK（默认 `%LOCALAPPDATA%\Android\Sdk`）。
+   或单独安装 Temurin JDK 21，并设置 `JAVA_HOME`。
+2. SDK 不在默认位置时设置 `ANDROID_HOME`：`setx ANDROID_HOME "D:\Android\Sdk"`（重开终端生效）。
+3. 在 PowerShell 或 cmd 中运行上面的两条命令。
+
+**macOS**：安装 Android Studio 即可（SDK 默认 `~/Library/Android/sdk`）。
 
 ### Windows 安装包
 ```bash
