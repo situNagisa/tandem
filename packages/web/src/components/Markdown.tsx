@@ -25,7 +25,7 @@ function nodeText(node: ReactNode): string {
 }
 
 function codeInfo(children: ReactNode): { code: string; language?: string } | null {
-  if (!isValidElement(children)) return null
+  if (!isValidElement(children) || children.type !== 'code') return null
   const props = children.props as { className?: string; children?: ReactNode }
   const code = nodeText(props.children).replace(/\n$/, '')
   if (!code) return null
