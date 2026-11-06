@@ -338,13 +338,20 @@ export function NewSessionView() {
     }
   }, [activeHostId, hostId, hosts])
 
+  // Host 的 homeDir 通过 WS 稍后到达：hostId 首次渲染时 info 可能还没有，
+  // 因此把 homeDir 也列入依赖，等它到达后再补上默认工作目录。
+  const cwdHostRef = useRef('')
+  const homeDir = runtime?.info?.homeDir
   useEffect(() => {
     if (!hostId) return
     const rt = useAppStore.getState().runtimes[hostId]
+    const hostChanged = cwdHostRef.current !== hostId
+    cwdHostRef.current = hostId
     const recent = loadRecentDirs(hostId)
-    setCwd(recent[0] ?? rt?.info?.homeDir ?? '')
+    const fallback = recent[0] ?? rt?.info?.homeDir ?? ''
+    setCwd((prev) => (hostChanged || !prev ? fallback : prev))
     void refreshProfiles(hostId)
-  }, [hostId, refreshProfiles])
+  }, [hostId, homeDir, refreshProfiles])
 
   useEffect(() => {
     const onSeed = (e: Event) => {
@@ -498,7 +505,7 @@ export function NewSessionView() {
             trigger={({ open, toggle }) => (
               <Pill onClick={toggle} title={cwd || '选择工作目录'} className={open ? 'bg-[var(--t-bg-active)]' : undefined}>
                 <FolderOpen size={12} className="text-muted" />
-                <span className="max-w-[160px] truncate">{basename(cwd) || '工作目录'}</span>
+                <span className="max-w-[160px] truncate">{cwd ? basename(cwd) || cwd : '工作目录'}</span>
                 <ChevronDown size={11} className="text-muted" />
               </Pill>
             )}
