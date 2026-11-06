@@ -1,0 +1,51 @@
+appId: com.tandem.desktop
+productName: Tandem
+copyright: Copyright (c) Tandem
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - main.js
+  - preload.js
+  - package.json
+
+asar: true
+
+# 整目录拷贝（而非分别拷 server / web）：electron-builder 会过滤根层 node_modules，
+# 放在 resources/server/node_modules 属于嵌套目录，才能随包带上 Host 的生产依赖。
+extraResources:
+  - from: resources
+    to: .
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: Tandem-Setup-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Tandem
+  uninstallDisplayName: Tandem
+
+mac:
+  icon: build/icon.png
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+  artifactName: Tandem-${version}-${arch}.${ext}
+
+linux:
+  icon: build/icon.png
+  category: Development
+  target:
+    - AppImage
+  artifactName: Tandem-${version}-${arch}.${ext}

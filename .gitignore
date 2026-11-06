@@ -6,3 +6,7 @@ dist-apk
 packages/mobile/android/.gradle
 packages/mobile/android/app/build
 packages/mobile/android/build
+dist-desktop
+packages/desktop/dist
+packages/desktop/resources
+packages/desktop/build
