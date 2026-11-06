@@ -563,14 +563,14 @@ function ModelPanel({
               <MenuItem
                 key={m}
                 selected={selected}
-                hint={prettyModel(m) !== m ? prettyModel(m) : undefined}
+                title={m}
                 role="menuitemradio"
                 ariaChecked={selected}
                 onMouseDown={(e) => e.preventDefault()}
                 onSelect={() => choose(m)}
               >
-                <span className="font-mono text-[12px]">
-                  <Highlight text={m} query={query} />
+                <span className="text-[12.5px]">
+                  <Highlight text={prettyModel(m)} query={query} />
                 </span>
               </MenuItem>
             )
