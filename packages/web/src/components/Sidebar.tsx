@@ -1,14 +1,4 @@
-import {
-  Archive,
-  ArchiveRestore,
-  Check,
-  PanelLeftClose,
-  Plus,
-  Search,
-  Settings,
-  SlidersHorizontal,
-  X,
-} from 'lucide-react'
+import { Check, PanelLeftClose, Plus, Search, Settings, SlidersHorizontal, X } from 'lucide-react'
 import { useUiStore } from '../store/useUiStore'
 import { useAppStore } from '../store/useAppStore'
 import { modLabel } from '../lib/format'
@@ -86,6 +76,50 @@ export function Sidebar({
     onNavigate?.()
   }
 
+  const filter = (
+    <Popover
+      side="bottom"
+      align="right"
+      padded={false}
+      panelClassName="w-[210px] rounded-[10px] p-[5px]"
+      trigger={({ open, toggle }) => (
+        <IconButton
+          size="sm"
+          onClick={toggle}
+          label="筛选会话"
+          tooltip="筛选"
+          tooltipSide="bottom"
+          aria-expanded={open}
+          aria-haspopup="menu"
+          className={cn('max-sm:size-11', open && 'bg-[var(--t-bg-active)] text-text')}
+        >
+          <SlidersHorizontal size={14} />
+        </IconButton>
+      )}
+    >
+      {() => (
+        <div>
+          <FilterItem
+            checked={showExternalSessions}
+            label="Claude Code / Codex"
+            onClick={() => setShowExternalSessions(!showExternalSessions)}
+          />
+          <FilterItem
+            checked={showSubagents}
+            label="子代理会话"
+            onClick={() => setShowSubagents(!showSubagents)}
+          />
+          <div className="my-1 border-t border-border" />
+          <FilterItem
+            checked={showArchived}
+            label={archivedCount > 0 ? `已归档会话（${archivedCount}）` : '已归档会话'}
+            onClick={() => setShowArchived(!showArchived)}
+          />
+        </div>
+      )}
+    </Popover>
+  )
+
   return (
     <aside className="flex h-full w-full shrink-0 flex-col overflow-x-hidden border-r border-border bg-sidebar">
       <div
@@ -142,66 +176,29 @@ export function Sidebar({
         </Button>
       </div>
 
-      <SessionList query="" onNavigate={onNavigate} />
+      <SessionList
+        query=""
+        onNavigate={onNavigate}
+        headerActions={
+          <>
+            <HostSwitcher onNavigate={onNavigate} />
+            {filter}
+          </>
+        }
+      />
 
-      <div className="px-2 pb-1">
+      <div className="border-t border-border px-2 py-1.5">
         <Button
           variant="ghost"
-          onClick={() => setShowArchived(!showArchived)}
-          aria-pressed={showArchived}
-          className={cn(row, 'text-[12px] text-muted')}
+          onClick={() => {
+            openSettings()
+            onNavigate?.()
+          }}
+          className={cn(row, 'text-[12.5px] text-text-tertiary')}
         >
-          {showArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-          {showArchived ? '返回全部会话' : '已归档'}
-          {archivedCount > 0 && (
-            <span className="ml-auto rounded-full bg-[var(--t-bg-active)] px-1.5 text-[10px] tabular-nums text-text-soft">
-              {archivedCount}
-            </span>
-          )}
+          <Settings size={15} className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate">设置</span>
         </Button>
-      </div>
-
-      <div className="flex items-center gap-1 border-t border-border px-2 py-1.5">
-        <HostSwitcher onNavigate={onNavigate} />
-        <span className="flex-1" />
-        <Popover
-          side="top"
-          align="right"
-          padded={false}
-          panelClassName="w-[210px] rounded-[10px] p-[5px]"
-          trigger={({ open, toggle }) => (
-            <IconButton
-              onClick={toggle}
-              label="筛选侧栏"
-              tooltip="筛选"
-              tooltipSide="top"
-              aria-expanded={open}
-              aria-haspopup="menu"
-              className={cn('max-sm:size-11', open && 'bg-[var(--t-bg-active)] text-text')}
-            >
-              <SlidersHorizontal size={15} />
-            </IconButton>
-          )}
-        >
-          {() => (
-            <div>
-              <div className="menu-section">显示</div>
-              <FilterItem
-                checked={showExternalSessions}
-                label="Claude Code / Codex"
-                onClick={() => setShowExternalSessions(!showExternalSessions)}
-              />
-              <FilterItem
-                checked={showSubagents}
-                label="子代理会话"
-                onClick={() => setShowSubagents(!showSubagents)}
-              />
-            </div>
-          )}
-        </Popover>
-        <IconButton onClick={() => openSettings()} label="设置" tooltipSide="top" className="max-sm:size-11">
-          <Settings size={15} />
-        </IconButton>
       </div>
     </aside>
   )

@@ -1,66 +1,59 @@
-import { Check, RefreshCw, Server } from 'lucide-react'
+import { Check, ChevronDown } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
+import { useUiStore } from '../store/useUiStore'
 import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
 import { Popover } from './ui/Popover'
-import { ConnectionDot } from './StatusDot'
-import { Button, IconButton } from './ui/Button'
+import { Tooltip } from './ui/Tooltip'
 
 export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
   const hosts = useAppStore((s) => s.hosts)
   const activeHostId = useAppStore((s) => s.activeHostId)
   const runtimes = useAppStore((s) => s.runtimes)
   const activateHost = useAppStore((s) => s.activateHost)
-  const retryHost = useAppStore((s) => s.retryHost)
+  const openSettings = useUiStore((s) => s.openSettings)
   const active = hosts.find((h) => h.id === activeHostId) ?? null
-  const runtime = active ? runtimes[active.id] : undefined
-  const platform = runtime?.info?.platform
 
   return (
     <Popover
-      side="top"
-      align="left"
+      side="bottom"
+      align="right"
       padded={false}
-      panelClassName="w-[272px] max-w-[calc(100vw-1rem)] rounded-[10px] p-[5px]"
+      panelClassName="w-[210px] rounded-[10px] p-[5px]"
       trigger={({ open, toggle }) => (
-        <Button
-          variant="ghost"
+        <button
+          type="button"
           onClick={toggle}
           aria-expanded={open}
           aria-haspopup="menu"
-          tooltip={open ? '' : active ? `${active.name} · ${active.url.replace(/^https?:\/\//, '')}` : '选择 Host'}
-          tooltipSide="top"
           className={cn(
-            'min-w-0 max-w-[150px] justify-start gap-1.5 px-1.5 text-muted max-sm:min-h-11',
+            'flex h-6 max-w-[110px] min-w-0 items-center gap-0.5 rounded-md px-1.5 text-[11.5px] text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text',
             open && 'bg-[var(--t-bg-active)] text-text',
           )}
         >
-          <Server size={12} className="shrink-0 opacity-70" />
-          <span className="min-w-0 truncate text-[11.5px]">
-            {active ? active.name : '选择 Host'}
-            {active && platform ? <span className="text-muted"> · {platform}</span> : null}
-          </span>
-          {runtime && <ConnectionDot state={runtime.status} className="size-1" />}
-        </Button>
+          <span className="min-w-0 truncate">{active ? active.name : '选择主机'}</span>
+          <ChevronDown size={12} className="shrink-0 opacity-60" />
+        </button>
       )}
     >
       {(close) => (
         <div>
-          <div className="menu-section">Hosts</div>
           <div className="max-h-64 overflow-y-auto">
             {hosts.length === 0 && (
-              <p className="px-2.5 py-3 text-[12.5px] text-muted">还没有 Host，先添加一台吧。</p>
+              <p className="px-2.5 py-3 text-[12.5px] text-text-tertiary">
+                还没有主机，先添加一台吧。
+              </p>
             )}
             {hosts.map((h) => {
               const rt = runtimes[h.id]
               const isActive = h.id === activeHostId
+              const online = rt?.status === 'online'
+              const platform = rt?.info?.platform
               return (
-                <div
+                <Tooltip
                   key={h.id}
-                  className={cn(
-                    'flex items-center gap-1 rounded-md transition-colors hover:bg-[var(--t-bg-hover)]',
-                    isActive && 'bg-[var(--t-bg-active)]',
-                  )}
+                  label={online ? '在线' : '离线，暂时无法连接'}
+                  className="block w-full"
                 >
                   <button
                     role="menuitem"
@@ -71,31 +64,34 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
                       navigate({ kind: 'host', hostId: h.id })
                       onNavigate?.()
                     }}
-                    className="flex min-h-10 min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 py-1.5 text-left"
+                    className={cn(
+                      'menu-item',
+                      online ? 'text-text' : 'text-text-tertiary',
+                      isActive && 'bg-[var(--t-bg-active)]',
+                    )}
                   >
-                    <ConnectionDot state={rt?.status ?? 'connecting'} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-medium">{h.name}</span>
-                      <span className="block truncate text-[10.5px] text-muted">
-                        {rt?.info?.platform ? `${rt.info.platform} · ` : ''}
-                        {h.url.replace(/^https?:\/\//, '')}
-                      </span>
-                    </span>
+                    <span className="min-w-0 flex-1 truncate">{h.name}</span>
+                    {platform && (
+                      <span className="shrink-0 text-[11px] text-text-tertiary">{platform}</span>
+                    )}
                     {isActive && <Check size={13} className="shrink-0 text-text" />}
                   </button>
-                  {rt?.status === 'offline' && (
-                    <IconButton
-                      size="sm"
-                      onClick={() => retryHost(h.id)}
-                      label="立即重连"
-                      className="mr-1 size-7 [&_svg]:size-3"
-                    >
-                      <RefreshCw size={12} />
-                    </IconButton>
-                  )}
-                </div>
+                </Tooltip>
               )
             })}
+          </div>
+          <div className="mt-1 border-t border-border pt-1">
+            <button
+              role="menuitem"
+              onClick={() => {
+                close()
+                openSettings('hosts')
+                onNavigate?.()
+              }}
+              className="menu-item"
+            >
+              管理主机…
+            </button>
           </div>
         </div>
       )}

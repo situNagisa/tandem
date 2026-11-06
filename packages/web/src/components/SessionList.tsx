@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Archive,
@@ -329,9 +329,11 @@ function RowMenu({
 export function SessionList({
   query,
   onNavigate,
+  headerActions,
 }: {
   query: string
   onNavigate?: () => void
+  headerActions?: ReactNode
 }) {
   const hosts = useAppStore((s) => s.hosts)
   const runtimes = useAppStore((s) => s.runtimes)
@@ -701,18 +703,11 @@ export function SessionList({
       className="min-h-0 flex-1 overflow-x-clip overflow-y-auto px-2 pb-3"
       aria-label="会话列表"
     >
-      <div className="flex min-h-7 items-center gap-1 px-2.5 pb-0.5 pt-2">
-        <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted">
+      <div className="flex h-8 items-center gap-1 pb-0.5 pl-2.5 pr-0.5 pt-1.5">
+        <span className="text-[12px] font-medium text-text-tertiary">
           {showArchived ? '已归档' : query ? '搜索结果' : '会话'}
         </span>
-        {showArchived && (
-          <button
-            onClick={() => setShowArchived(false)}
-            className="ml-auto rounded-md px-1.5 py-0.5 text-[10.5px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-          >
-            返回全部
-          </button>
-        )}
+        <div className="ml-auto flex min-w-0 items-center gap-0.5">{headerActions}</div>
       </div>
 
         {total === 0 && (
