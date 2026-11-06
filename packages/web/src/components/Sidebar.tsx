@@ -2,6 +2,7 @@ import { useState } from 'react'
 import {
   Archive,
   ArchiveRestore,
+  History,
   Moon,
   PanelLeftClose,
   Plus,
@@ -17,6 +18,7 @@ import { navigate } from '../lib/router'
 import { BrandMark } from './BrandMark'
 import { HostSwitcher } from './HostSwitcher'
 import { SessionList } from './SessionList'
+import { ExternalSessionsDialog } from './ExternalSessionsDialog'
 
 export function Sidebar({
   inDrawer = false,
@@ -26,6 +28,7 @@ export function Sidebar({
   onNavigate?: () => void
 }) {
   const [query, setQuery] = useState('')
+  const [importOpen, setImportOpen] = useState(false)
   const setSearchOpen = useUiStore((s) => s.setSearchOpen)
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed)
   const setMobileSidebar = useUiStore((s) => s.setMobileSidebar)
@@ -120,6 +123,17 @@ export function Sidebar({
 
       <div className="px-2.5 pb-1">
         <button
+          onClick={() => setImportOpen(true)}
+          className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-8"
+        >
+          <History size={14} />
+          导入会话
+          <span className="ml-auto hidden text-[9.5px] text-muted/80 md:inline">CC / Codex</span>
+        </button>
+      </div>
+
+      <div className="px-2.5 pb-1">
+        <button
           onClick={() => setShowArchived(!showArchived)}
           aria-pressed={showArchived}
           className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-8"
@@ -151,6 +165,8 @@ export function Sidebar({
           {isDark ? <Sun size={14} /> : <Moon size={14} />}
         </button>
       </div>
+
+      <ExternalSessionsDialog open={importOpen} onClose={() => setImportOpen(false)} />
     </aside>
   )
 }

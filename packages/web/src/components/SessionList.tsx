@@ -255,6 +255,21 @@ export function SessionList({
     [hosts, runtimes, query, showArchived],
   )
 
+  // 导入来源：服务端摘要不带来源字段，从外部会话扫描结果反查。
+  const importedSources = useMemo(() => {
+    const map = new Map<string, { mark: string; label: string }>()
+    for (const h of hosts) {
+      for (const ext of runtimes[h.id]?.externalSessions ?? []) {
+        if (!ext.importedSessionId) continue
+        map.set(`${h.id}:${ext.importedSessionId}`, {
+          mark: ext.source === 'codex' ? 'Codex' : 'CC',
+          label: ext.source === 'codex' ? 'Codex' : 'Claude Code',
+        })
+      }
+    }
+    return map
+  }, [hosts, runtimes])
+
   useEffect(() => {
     if (renaming) {
       renameRef.current?.focus()
@@ -306,6 +321,7 @@ export function SessionList({
   const renderRow = (hostId: string, s: SessionSummary) => {
     const isActive = s.id === activeSessionId
     const renamingThis = renaming === s.id
+    const importedFrom = importedSources.get(`${hostId}:${s.id}`)
     return (
       <div
         key={`${hostId}:${s.id}`}
@@ -367,6 +383,14 @@ export function SessionList({
         )}
         {!renamingThis && (
           <>
+            {importedFrom && (
+              <span
+                title={`从 ${importedFrom.label} 导入`}
+                className="shrink-0 text-[9.5px] leading-none text-muted/80"
+              >
+                {importedFrom.mark}
+              </span>
+            )}
             <span
               className={cn(
                 'hidden shrink-0 text-[10.5px] tabular-nums text-muted transition-opacity group-hover:opacity-0 md:inline',
