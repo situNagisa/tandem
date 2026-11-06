@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ChevronDown, ShieldAlert, TriangleAlert } from 'lucide-react'
+import { ChevronDown, RotateCcw, ShieldAlert, TriangleAlert, X } from 'lucide-react'
 import type { PermissionRequest } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -32,6 +32,7 @@ export function ChatView() {
     hostId ? s.runtimes[hostId]?.authError : undefined,
   )
   const reloadActiveSession = useAppStore((s) => s.reloadActiveSession)
+  const clearTurnError = useAppStore((s) => s.clearTurnError)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -42,6 +43,31 @@ export function ChatView() {
   // 打开会话后的贴底校准：content-visibility 的预估高度会让首次 scrollHeight 偏小。
   const initialScrollFor = useRef<string | null>(null)
   const [showJump, setShowJump] = useState(false)
+  const [turnErrorExpanded, setTurnErrorExpanded] = useState(false)
+  const [turnErrorClamped, setTurnErrorClamped] = useState(false)
+  const turnErrorRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setTurnErrorExpanded(false)
+  }, [turnError])
+
+  useEffect(() => {
+    const el = turnErrorRef.current
+    if (!el || turnErrorExpanded) return
+    const check = () => setTurnErrorClamped(el.scrollHeight > el.clientHeight + 1)
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [turnError, turnErrorExpanded])
+
+  const retryTurn = () => {
+    const state = useAppStore.getState()
+    const active = state.active
+    if (!active || active.running) return
+    const last = active.messages.slice().reverse().find((m) => m.role === 'user')
+    if (last) state.send(last.content)
+  }
 
   const stickToBottom = useCallback(() => {
     if (!pinnedRef.current) return
@@ -243,9 +269,48 @@ export function ChatView() {
       <div className="shrink-0 bg-bg px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5 md:px-6 md:pb-5 md:pt-2">
         <div className="mx-auto w-full max-w-[760px]">
           {turnError && (
-            <div className="mb-2 flex items-center gap-2 rounded-xl border border-danger/30 bg-danger-soft/50 px-3 py-2 text-[12px] text-danger">
-              <TriangleAlert size={14} className="shrink-0" />
-              <span className="min-w-0 flex-1">回合出错：{turnError}</span>
+            <div className="mb-2 rounded-xl border border-border bg-surface px-3 py-2">
+              <div className="flex items-start gap-2">
+                <TriangleAlert size={14} className="mt-0.5 shrink-0 text-danger" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11.5px] font-medium text-danger">回合出错</div>
+                  <div
+                    ref={turnErrorRef}
+                    className={cn(
+                      'mt-0.5 whitespace-pre-wrap break-words text-[12px] leading-5 text-text-soft',
+                      !turnErrorExpanded && 'line-clamp-3',
+                    )}
+                  >
+                    {turnError}
+                  </div>
+                </div>
+                <button
+                  onClick={clearTurnError}
+                  aria-label="关闭回合错误"
+                  title="关闭"
+                  className="-mr-1 -mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+              <div className="mt-1.5 flex items-center gap-1 pl-[22px]">
+                <button
+                  onClick={retryTurn}
+                  disabled={running}
+                  className="flex h-6 items-center gap-1 rounded-md border border-border px-2 text-[11px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
+                >
+                  <RotateCcw size={11} />
+                  重试
+                </button>
+                {turnErrorClamped && (
+                  <button
+                    onClick={() => setTurnErrorExpanded((v) => !v)}
+                    className="h-6 rounded-md px-1.5 text-[11px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+                  >
+                    {turnErrorExpanded ? '收起' : '展开'}
+                  </button>
+                )}
+              </div>
             </div>
           )}
           {pending.length > 0 && (

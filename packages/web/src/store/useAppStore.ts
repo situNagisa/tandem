@@ -29,7 +29,7 @@ import {
   saveRecentDirsMap,
   type ClientSettingsBundle,
 } from '../lib/storage'
-import { navigate } from '../lib/router'
+import { navigate, parseHash } from '../lib/router'
 import { notifyPermission, notifyTurnEnd } from '../lib/attention'
 import { useUiStore } from './useUiStore'
 import type {
@@ -79,6 +79,7 @@ interface AppState {
   openSession: (hostId: string, sessionId: string) => void
   closeSession: () => void
   reloadActiveSession: () => void
+  clearTurnError: () => void
   send: (blocks: ContentBlock[]) => boolean
   interrupt: () => void
   decidePermission: (requestId: string, decision: PermissionDecision) => void
@@ -194,8 +195,12 @@ function hostHashFor(hostId: string | null): import('../lib/types').AppRoute {
   return hostId ? { kind: 'host', hostId } : { kind: 'home' }
 }
 
-function toast(text: string, kind: 'info' | 'success' | 'error' = 'info'): void {
-  useUiStore.getState().toast(text, kind)
+function toast(
+  text: string,
+  kind: 'info' | 'success' | 'error' = 'info',
+  options?: { onClick?: () => void },
+): void {
+  useUiStore.getState().toast(text, kind, options)
 }
 
 function appendSummary(list: SessionSummary[], summary: SessionSummary): SessionSummary[] {
@@ -843,8 +848,20 @@ export const useAppStore = create<AppState>((set, get) => {
           }
         })
         if (msg.reason === 'error') {
-          const host = getHost(hostId)
-          toast(`${host?.name ?? 'Host'}：${msg.error ?? '回合执行出错'}`, 'error')
+          const route = parseHash()
+          const viewing =
+            route.kind === 'session' &&
+            route.hostId === hostId &&
+            route.sessionId === msg.sessionId
+          // 正在看这个会话时由对话底部横幅展示，避免同一条错误出现两次。
+          if (!viewing) {
+            const title =
+              get().runtimes[hostId]?.sessions.find((s) => s.id === msg.sessionId)?.title ||
+              '未命名会话'
+            toast(`会话「${title}」出错`, 'error', {
+              onClick: () => navigate({ kind: 'session', hostId, sessionId: msg.sessionId }),
+            })
+          }
         }
         set((state) => ({ changesNonce: state.changesNonce + 1 }))
         if (activeSummaryForSession(hostId, msg.sessionId)) {
@@ -1354,6 +1371,12 @@ export const useAppStore = create<AppState>((set, get) => {
       } else {
         void loadSessionFallback(active.hostId, active.sessionId)
       }
+    },
+
+    clearTurnError: () => {
+      const active = get().active
+      if (!active) return
+      patchActive(active.hostId, active.sessionId, (a) => ({ ...a, turnError: undefined }))
     },
 
     send: (blocks) => {

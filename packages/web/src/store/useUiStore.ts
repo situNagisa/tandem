@@ -56,7 +56,7 @@ interface UiState {
   setNewSessionOpen: (open: boolean) => void
   setSearchOpen: (open: boolean) => void
   setNotifications: (enabled: boolean) => void
-  toast: (text: string, kind?: Toast['kind']) => void
+  toast: (text: string, kind?: Toast['kind'], options?: { onClick?: () => void }) => void
   dismissToast: (id: number) => void
   seedPrompt: (text: string) => void
   clearPromptSeed: () => void
@@ -144,9 +144,11 @@ export const useUiStore = create<UiState>((set, get) => ({
     saveUiPrefs({ notifications: enabled })
     set({ notifications: enabled })
   },
-  toast: (text, kind = 'info') => {
+  toast: (text, kind = 'info', options) => {
     const id = toastSeq++
-    set((s) => ({ toasts: [...s.toasts.slice(-3), { id, kind, text }] }))
+    set((s) => ({
+      toasts: [...s.toasts.slice(-3), { id, kind, text, onClick: options?.onClick }],
+    }))
     const timer = window.setTimeout(() => {
       toastTimers.delete(id)
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))

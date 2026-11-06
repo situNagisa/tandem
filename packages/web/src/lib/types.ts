@@ -96,6 +96,8 @@ export interface Toast {
   id: number
   kind: 'info' | 'success' | 'error'
   text: string
+  /** 点击提示时执行（如跳到出错的会话）。 */
+  onClick?: () => void
 }
 
 export type Theme = 'light' | 'dark' | 'system'
