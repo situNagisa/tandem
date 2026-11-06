@@ -222,6 +222,11 @@ async function executeToolUses(
         },
       ];
     }
+    // 写类工具执行前做检查点快照（Bash 改动无法追踪：命令任意，不纳入检查点）
+    if ((tool.name === 'Write' || tool.name === 'Edit') && tool.input && typeof tool.input === 'object') {
+      const filePath = (tool.input as Record<string, unknown>).file_path;
+      if (typeof filePath === 'string' && filePath) host.snapshotForCheckpoint(rec, filePath);
+    }
     const toolCtx = {
       cwd: rec.cwd,
       session: rec,

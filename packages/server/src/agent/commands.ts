@@ -1,4 +1,4 @@
-// 斜杠命令：内置命令 + cwd/.claude/commands 与 ~/.claude/commands 下的自定义 md。
+// 斜杠命令：内置命令 + 项目/用户自定义 md（.tandem/commands 与 .claude/commands）。
 import { existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -11,6 +11,7 @@ export const BUILTIN_COMMANDS: SlashCommand[] = [
   { name: 'compact', description: '用模型总结当前对话并替换为摘要，释放上下文', source: 'builtin' },
   { name: 'model', description: '查看或切换当前会话模型：/model <模型名>（下一轮生效）', source: 'builtin' },
   { name: 'init', description: '分析当前仓库并生成 AGENTS.md', source: 'builtin' },
+  { name: 'cost', description: '查看本会话的 token 用量与花费摘要', source: 'builtin' },
   { name: 'help', description: '显示所有可用命令', source: 'builtin' },
 ];
 
@@ -70,18 +71,20 @@ function scanCommandDir(dir: string, source: 'project' | 'user'): SlashCommand[]
   return commands.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function projectCommandDir(cwd: string): string {
-  return path.join(cwd, '.claude', 'commands');
+/** 项目自定义命令目录：Tandem 优先，兼容 Claude Code。 */
+function projectCommandDirs(cwd: string): string[] {
+  return [path.join(cwd, '.tandem', 'commands'), path.join(cwd, '.claude', 'commands')];
 }
 
-function userCommandDir(): string {
-  return path.join(os.homedir(), '.claude', 'commands');
+/** 用户级自定义命令目录：Tandem 优先，兼容 Claude Code。 */
+function userCommandDirs(): string[] {
+  return [path.join(os.homedir(), '.tandem', 'commands'), path.join(os.homedir(), '.claude', 'commands')];
 }
 
-/** 列出内置 + 项目 + 用户命令（重名时项目覆盖用户）。 */
+/** 列出内置 + 项目 + 用户命令（重名时项目覆盖用户，.tandem 覆盖 .claude）。 */
 export function listCommands(cwd: string): SlashCommand[] {
-  const project = scanCommandDir(projectCommandDir(cwd), 'project');
-  const user = scanCommandDir(userCommandDir(), 'user');
+  const project = projectCommandDirs(cwd).flatMap((dir) => scanCommandDir(dir, 'project'));
+  const user = userCommandDirs().flatMap((dir) => scanCommandDir(dir, 'user'));
   const byName = new Map<string, SlashCommand>();
   for (const cmd of user) byName.set(cmd.name, cmd);
   for (const cmd of project) byName.set(cmd.name, cmd);
@@ -92,7 +95,7 @@ export function listCommands(cwd: string): SlashCommand[] {
 /** 读取自定义命令正文（项目优先）。 */
 export function findCommandBody(name: string, cwd: string): string | undefined {
   if (!name || name.includes('..') || path.isAbsolute(name)) return undefined;
-  for (const dir of [projectCommandDir(cwd), userCommandDir()]) {
+  for (const dir of [...projectCommandDirs(cwd), ...userCommandDirs()]) {
     const file = path.join(dir, `${name}.md`);
     if (existsSync(file)) {
       try {

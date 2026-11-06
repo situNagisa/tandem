@@ -1,5 +1,6 @@
 // WebSocket 广播中心：多客户端订阅同一会话，实时同步。
-import type { ServerMsg } from '@tandem/protocol';
+// 每个会话维护单调递增的 seq 与最近若干事件的环形缓冲，供断线客户端补发。
+import type { SeqServerMsg, ServerMsg } from '@tandem/protocol';
 
 /** 只依赖 ws 的最小接口，避免和具体实现耦合。 */
 export interface WsClient {
@@ -7,9 +8,16 @@ export interface WsClient {
   send(data: string): void;
 }
 
+/** 每会话保留的事件条数（含 block_delta）。 */
+export const EVENT_BUFFER_LIMIT = 2000;
+
 export class Hub {
   private clients = new Set<WsClient>();
   private subs = new Map<string, Set<WsClient>>();
+  /** 会话事件序号：只增不减。 */
+  private seqs = new Map<string, number>();
+  /** 会话事件环形缓冲：按 seq 递增排列，最多 EVENT_BUFFER_LIMIT 条。 */
+  private buffers = new Map<string, SeqServerMsg[]>();
 
   add(client: WsClient): void {
     this.clients.add(client);
@@ -42,9 +50,21 @@ export class Hub {
   /** 会话删除后不再向订阅者推送该会话的后续事件。 */
   dropSession(sessionId: string): void {
     this.subs.delete(sessionId);
+    this.buffers.delete(sessionId);
+    this.seqs.delete(sessionId);
   }
 
-  send(client: WsClient, msg: ServerMsg): void {
+  /** 对话/文件被回退后，旧事件不再适用于新状态：清空缓冲让客户端改用快照。 */
+  resetSession(sessionId: string): void {
+    this.buffers.delete(sessionId);
+  }
+
+  /** 会话当前 seq（尚无事件时为 0）。 */
+  currentSeq(sessionId: string): number {
+    return this.seqs.get(sessionId) ?? 0;
+  }
+
+  send(client: WsClient, msg: SeqServerMsg): void {
     if (client.readyState !== 1) return; // WebSocket.OPEN
     try {
       client.send(JSON.stringify(msg));
@@ -53,11 +73,49 @@ export class Hub {
     }
   }
 
-  /** 只发给某会话的订阅者。 */
-  broadcastSession(sessionId: string, msg: ServerMsg): void {
+  /** 分配 seq 并写入该会话的环形缓冲。 */
+  private record(sessionId: string, msg: ServerMsg): SeqServerMsg {
+    const seq = this.currentSeq(sessionId) + 1;
+    this.seqs.set(sessionId, seq);
+    const withSeq = { ...msg, seq };
+    let buffer = this.buffers.get(sessionId);
+    if (!buffer) {
+      buffer = [];
+      this.buffers.set(sessionId, buffer);
+    }
+    buffer.push(withSeq);
+    if (buffer.length > EVENT_BUFFER_LIMIT) {
+      buffer.splice(0, buffer.length - EVENT_BUFFER_LIMIT);
+    }
+    return withSeq;
+  }
+
+  /** 广播会话事件：无论有无订阅者都分配 seq 并缓存，便于断线重放。 */
+  broadcastSession(sessionId: string, msg: ServerMsg): SeqServerMsg {
+    const withSeq = this.record(sessionId, msg);
     const set = this.subs.get(sessionId);
-    if (!set) return;
-    for (const client of set) this.send(client, msg);
+    if (set) {
+      for (const client of set) this.send(client, withSeq);
+    }
+    return withSeq;
+  }
+
+  /**
+   * 断线重放：返回 seq > sinceSeq 的全部缓存事件。
+   * 缓冲无法覆盖（Host 重启、回退清空、或 sinceSeq 超前）时返回 undefined，调用方改发快照。
+   */
+  replay(sessionId: string, sinceSeq: number): SeqServerMsg[] | undefined {
+    if (!Number.isFinite(sinceSeq) || sinceSeq < 0) return undefined;
+    const current = this.currentSeq(sessionId);
+    if (sinceSeq > current) return undefined;
+    if (sinceSeq === current) return [];
+    const buffer = this.buffers.get(sessionId) ?? [];
+    const first = buffer[0]?.seq;
+    // 缓冲为空说明这些事件不在内存里（重启/清空），只能发快照
+    if (first === undefined) return undefined;
+    // 覆盖条件：缓冲里从 first 起连续，且 sinceSeq+1 落在缓冲范围内
+    if (sinceSeq < first - 1) return undefined;
+    return buffer.filter((event) => (event.seq ?? 0) > sinceSeq);
   }
 
   /** 发给所有连接（用于会话列表刷新/删除）。 */

@@ -4,6 +4,7 @@ import { readFileSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type {
+  Checkpoint,
   ContentBlock,
   HostInfo,
   ListModelsInput,
@@ -11,6 +12,7 @@ import type {
   PermissionDecision,
   PermissionMode,
   PermissionRequest,
+  RewindInput,
   Session,
   SessionStatus,
   SessionSummary,
@@ -24,8 +26,10 @@ import {
   providerDefaultBaseUrl,
   tandemHome,
 } from './config.js';
+import { CheckpointStore } from './checkpoints.js';
 import { ExternalSessionStore } from './external.js';
 import { Hub } from './events.js';
+import { PermissionRuleStore } from './permissions.js';
 import { SessionStore } from './store.js';
 import type { HostConfig, SessionRecord, SessionRuntime, StoredProfile } from './types.js';
 import { runTurn } from './agent/loop.js';
@@ -43,7 +47,7 @@ import type { ListModelsResult } from './providers/index.js';
 import { buildSystemPrompt } from './agent/prompt.js';
 import { errorMessage } from './util/text.js';
 import { detectSessionEnv } from './util/git.js';
-import { expandHome } from './util/path.js';
+import { expandHome, isSubPath, resolvePath } from './util/path.js';
 
 const PERMISSION_MODES = new Set<PermissionMode>([
   'default',
@@ -64,6 +68,8 @@ export class Host {
   readonly store: SessionStore;
   /** 外部会话（Claude Code / Codex）扫描缓存，只读。 */
   readonly external = new ExternalSessionStore(this);
+  readonly checkpoints: CheckpointStore;
+  readonly permissionRules: PermissionRuleStore;
   readonly hub = new Hub();
   readonly version: string;
   private runtimes = new Map<string, SessionRuntime>();
@@ -74,6 +80,8 @@ export class Host {
     this.config = config ?? loadHostConfig(home);
     this.profiles = new ProfileStore(home);
     this.store = new SessionStore(home);
+    this.checkpoints = new CheckpointStore(home);
+    this.permissionRules = new PermissionRuleStore(home);
     this.version = readVersion();
   }
 
@@ -409,6 +417,9 @@ export class Host {
       createdAt: Date.now(),
     };
     rec.messages.push(message);
+    // 每轮开始创建检查点：本轮 Write/Edit 执行前把原文件快照进去
+    const rt = this.ensureRuntime(rec.id);
+    rt.checkpoint = this.checkpoints.create(rec.id, message.id);
     this.hub.broadcastSession(rec.id, {
       type: 'message_start',
       sessionId: rec.id,
@@ -498,6 +509,71 @@ export class Host {
     this.broadcastSummary(rec);
   }
 
+  // ---------- 检查点 ----------
+
+  /** Write/Edit 执行前调用：把文件当前内容（或“不存在”）存进本轮检查点。 */
+  snapshotForCheckpoint(rec: SessionRecord, rawPath: string): void {
+    const rt = this.runtimes.get(rec.id);
+    const checkpoint = rt?.checkpoint;
+    if (!checkpoint) return;
+    const abs = resolvePath(rec.cwd, rawPath);
+    // cwd 之外的文件不纳入检查点，避免回退时误改仓库外内容
+    if (!isSubPath(rec.cwd, abs)) return;
+    this.checkpoints.snapshotFile(checkpoint, rec.cwd, abs);
+  }
+
+  listCheckpoints(sessionId: string): Checkpoint[] {
+    return this.checkpoints.list(sessionId);
+  }
+
+  /** 会话是否正在执行（运行中不允许回退）。 */
+  isRunning(sessionId: string): boolean {
+    const rt = this.runtimes.get(sessionId);
+    return !!rt && (rt.running || rt.draining);
+  }
+
+  /**
+   * 回退到某个检查点：restoreFiles 按时间倒序恢复（最早快照最终生效），
+   * restoreConversation 把对话截断到触发该检查点的用户消息之前。
+   */
+  rewind(sessionId: string, input: RewindInput): Session | undefined {
+    const rec = this.store.get(sessionId);
+    if (!rec) return undefined;
+    if (this.isRunning(sessionId)) throw httpError('会话正在运行，无法回退', 409);
+    if (!input || typeof input.checkpointId !== 'string' || !input.checkpointId) {
+      throw httpError('checkpointId 不能为空', 400);
+    }
+
+    const list = this.checkpoints.list(sessionId);
+    const target = list.find((cp) => cp.id === input.checkpointId);
+    if (!target) throw httpError('检查点不存在', 404);
+
+    if (input.restoreFiles) {
+      // 从最新检查点往最早恢复，同一文件最终落到最早的那份快照
+      const ordered = [...list].sort((a, b) => b.createdAt - a.createdAt);
+      for (const cp of ordered) {
+        if (cp.createdAt < target.createdAt && cp.id !== target.id) continue;
+        for (const file of cp.files) this.checkpoints.restoreFile(cp, rec.cwd, file);
+      }
+    }
+    if (input.restoreConversation) {
+      const index = rec.messages.findIndex((m) => m.id === target.messageId);
+      if (index >= 0) rec.messages = rec.messages.slice(0, index);
+    }
+
+    // 被回退的检查点不再有效
+    this.checkpoints.removeFrom(sessionId, target.id);
+    const rt = this.runtimes.get(sessionId);
+    if (rt) delete rt.checkpoint;
+    this.store.markDirty(sessionId, true);
+    this.setStatus(rec, 'idle');
+    // 旧事件不再适用于回退后的状态，清空缓冲让客户端以快照为准
+    this.hub.resetSession(sessionId);
+    this.broadcastSummary(rec);
+    this.broadcastSnapshot(rec);
+    return this.toSession(rec);
+  }
+
   // ---------- 权限 ----------
 
   async authorize(
@@ -516,9 +592,21 @@ export class Host {
     }
     if (!def) return { allowed: true }; // 交给执行器返回“未知工具”
 
+    // Host 级规则：deny > ask > allow，deny 在 bypassPermissions 下依然生效
+    const rule = this.permissionRules.evaluate(toolName, input, rec.cwd);
+    if (rule === 'deny') {
+      return { allowed: false, reason: `被权限规则拒绝: ${describeTool(toolName, input)}` };
+    }
+    if (mode === 'bypassPermissions') return { allowed: true };
+    if (rule === 'ask') {
+      if (signal.aborted) return { allowed: false, reason: '用户中断' };
+      return this.askPermission(rec, toolName, input, toolUseId, signal);
+    }
+    if (rule === 'allow') return { allowed: true };
+
     // 只读且无需审批的工具直接放行
     if (def.readOnly && !def.requiresApproval) return { allowed: true };
-    if (mode === 'bypassPermissions') return { allowed: true };
+    // 会话级 allow_always 优先于权限模式的默认行为
     if (this.isAllowed(rec, toolName, input)) return { allowed: true };
     if (mode === 'acceptEdits' && (toolName === 'Write' || toolName === 'Edit')) {
       return { allowed: true };
@@ -668,6 +756,11 @@ export class Host {
         this.appendLocalAssistant(rec, `可用命令:\n${lines.join('\n')}`);
         return true;
       }
+      case 'cost': {
+        // 本地统计用量与花费，不调用模型
+        this.appendLocalAssistant(rec, costSummary(rec));
+        return true;
+      }
       default:
         break;
     }
@@ -720,6 +813,7 @@ export class Host {
 
   private broadcastSnapshot(rec: SessionRecord): void {
     const rt = this.runtimes.get(rec.id);
+    // 快照作为一条会话事件下发，客户端据此重置到当前 seq
     this.hub.broadcastSession(rec.id, {
       type: 'session_snapshot',
       session: this.toSession(rec),
@@ -816,6 +910,25 @@ export class Host {
       void this.refreshEnv(rec.id);
     }
   }
+}
+
+/** 带 HTTP 状态码的错误，供 server 路由按状态返回（如运行中回退 409）。 */
+function httpError(message: string, statusCode: number): Error {
+  return Object.assign(new Error(message), { statusCode });
+}
+
+/** /cost 的本地摘要：token 用量 + 已记录花费。 */
+function costSummary(rec: SessionRecord): string {
+  const usage = rec.usage;
+  const cost =
+    typeof usage.costUsd === 'number' ? `$${usage.costUsd.toFixed(4)}` : '未记录（该账号未配置单价）';
+  return [
+    '本会话用量',
+    `- 输入 token: ${usage.inputTokens.toLocaleString('en-US')}`,
+    `- 输出 token: ${usage.outputTokens.toLocaleString('en-US')}`,
+    `- 累计花费: ${cost}`,
+    `- 当前模型: ${rec.model || '(未设置)'}`,
+  ].join('\n');
 }
 
 function labelOfSource(source: SlashCommand['source']): string {

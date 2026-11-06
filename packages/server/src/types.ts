@@ -1,5 +1,6 @@
 // 服务端内部类型：在协议类型之上补充持久化/运行时字段。
 import type {
+  Checkpoint,
   ContentBlock,
   ExternalSource,
   Message,
@@ -62,6 +63,8 @@ export interface SessionRuntime {
   queue: ContentBlock[][];
   pending: Map<string, PendingPermission>;
   deleted: boolean;
+  /** 本轮检查点：Write/Edit 执行前把文件原内容快照进去。 */
+  checkpoint?: Checkpoint;
 }
 
 export interface ToolDefinition {

@@ -20,9 +20,11 @@ import type {
   ProfileGroupInput,
   ProfileInput,
   ProviderKind,
+  RewindInput,
   UpdateSessionInput,
 } from '@tandem/protocol';
 import type { Host } from './host.js';
+import { commitChanges, getChanges, getFileDiff, revertChanges } from './changes.js';
 import type { WsClient } from './events.js';
 import { testProfile } from './providers/index.js';
 import { exportBundle, importBundle } from './migrate.js';
@@ -276,6 +278,82 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
     return host.toSummary(rec);
   });
 
+  // ---------- 检查点 ----------
+  app.get('/api/sessions/:id/checkpoints', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!host.getSession(id)) return bad(reply, '会话不存在', 404);
+    return host.listCheckpoints(id);
+  });
+
+  app.post('/api/sessions/:id/rewind', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!host.getSession(id)) return bad(reply, '会话不存在', 404);
+    const body = (req.body ?? {}) as Partial<RewindInput>;
+    try {
+      return host.rewind(id, {
+        checkpointId: typeof body.checkpointId === 'string' ? body.checkpointId : '',
+        restoreFiles: body.restoreFiles === true,
+        restoreConversation: body.restoreConversation === true,
+      });
+    } catch (err) {
+      return bad(reply, (err as Error).message, statusOf(err));
+    }
+  });
+
+  // ---------- 改动审阅（git 工作区） ----------
+  app.get('/api/sessions/:id/changes', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    return getChanges(rec.cwd);
+  });
+
+  app.get('/api/sessions/:id/changes/diff', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    const query = req.query as { path?: string };
+    const filePath = str(query.path);
+    if (!filePath) return bad(reply, 'path 不能为空');
+    try {
+      return await getFileDiff(rec.cwd, filePath);
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.post('/api/sessions/:id/changes/revert', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    const body = (req.body ?? {}) as { paths?: unknown };
+    if (!Array.isArray(body.paths)) return bad(reply, 'paths 必须是数组');
+    try {
+      return await revertChanges(rec.cwd, body.paths.filter((p): p is string => typeof p === 'string'));
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.post('/api/sessions/:id/changes/commit', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    const body = (req.body ?? {}) as { message?: unknown; paths?: unknown };
+    return commitChanges(rec.cwd, body.message, body.paths);
+  });
+
+  // ---------- 权限规则（Host 级） ----------
+  app.get('/api/permissions', async () => host.permissionRules.list());
+
+  app.put('/api/permissions', async (req, reply) => {
+    try {
+      return host.permissionRules.set(req.body);
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
   // ---------- 外部会话（只读，不写原软件文件） ----------
   app.get('/api/external-sessions', async (req, reply) => {
     const query = req.query as { source?: string };
@@ -427,10 +505,24 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
             return;
           }
           host.hub.subscribe(client, msg.sessionId);
+          const sinceSeq =
+            typeof msg.sinceSeq === 'number' && Number.isFinite(msg.sinceSeq)
+              ? msg.sinceSeq
+              : undefined;
+          if (sinceSeq !== undefined) {
+            const events = host.hub.replay(msg.sessionId, sinceSeq);
+            if (events) {
+              // 缓冲覆盖：按序补发，客户端不必再要快照
+              for (const event of events) host.hub.send(client, event);
+              break;
+            }
+            // 缓冲不覆盖（Host 重启 / 已回退）：退回全量快照
+          }
           host.hub.send(client, {
             type: 'session_snapshot',
             session: snapshot.session,
             pendingPermissions: snapshot.pendingPermissions,
+            seq: host.hub.currentSeq(msg.sessionId),
           });
           break;
         }
