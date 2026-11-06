@@ -144,6 +144,7 @@ function summaryOf(s: Session): SessionSummary {
     model: s.model,
     permissionMode: s.permissionMode,
     status: s.status,
+    ...(s.effort ? { effort: s.effort } : {}),
     ...(s.pinned ? { pinned: true } : {}),
     ...(s.archived ? { archived: true } : {}),
     ...(s.env ? { env: s.env } : {}),

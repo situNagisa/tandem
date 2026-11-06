@@ -28,8 +28,12 @@ export function builtinCapabilities(kind: ProviderKind, model: string): ModelCap
   const caps: ModelCapabilities = {};
 
   const claude = /^claude-/.test(id);
-  const claudeThinking = /claude-(?:3-7|(?:sonnet|opus|haiku)-(?:4|5))/.test(id);
-  const openaiReasoning = /^(?:o[1-9](?:-|$)|gpt-(?:5|6))/.test(id);
+  // 常见 id：claude-sonnet-4 / 4-5 / 4.5、opus-4 / 4-1、haiku-4-5、3-7-sonnet 等（可带日期后缀）
+  const claudeThinking =
+    /claude-(?:3[-.]7|(?:sonnet|opus|haiku)-(?:4|5)(?:[-.]\d+)*)(?:-|$)/.test(id) ||
+    /claude-4(?:[-.]\d+)*(?:-|$).*(?:sonnet|opus|haiku)/.test(id);
+  // o1/o3/o4-mini 等推理模型与 gpt-5 / gpt-5.1 / gpt-6 系列
+  const openaiReasoning = /^(?:o[1-9](?:[-.]|$)|gpt-(?:5|6)(?:[-.]|$))/.test(id);
   const geminiThinking = /^gemini-(?:2\.5|3)/.test(id);
 
   if (kind === 'anthropic') {
