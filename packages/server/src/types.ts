@@ -14,13 +14,31 @@ import type {
   Usage,
 } from '@tandem/protocol';
 
+/** 持久化的分组 Key：明文只在本机 profiles.json，接口只回掩码与运行状态。 */
+export interface StoredProfileKey {
+  id: string;
+  label?: string;
+  apiKey: string;
+  /** 401/403 后自动置位，需用户手动重新启用。 */
+  disabled?: boolean;
+  /** 冷却截止（epoch ms）。 */
+  cooldownUntil?: number;
+  /** 连续冷却失败次数，用于 60s→30min 指数退避；成功后清零。 */
+  failures?: number;
+  lastError?: string;
+  lastErrorAt?: number;
+}
+
 /** 持久化的账号分组：明文 key 只在本机，接口只回掩码。 */
 export interface StoredProfileGroup {
   id: string;
   name: string;
   /** 该分组的协议；缺省继承账号 kind。同一 baseUrl 下可混用 Anthropic / OpenAI。 */
   kind?: ProviderKind;
+  /** 兼容旧数据：等同于 keys[0].apiKey（分组没有 Key 时回落到账号 key）。 */
   apiKey: string;
+  keys?: StoredProfileKey[];
+  keyStrategy?: import('@tandem/protocol').KeyStrategy;
   baseUrl?: string;
   models: string[];
   defaultModel: string;
@@ -96,6 +114,8 @@ export interface SessionRuntime {
   sessionStartDone?: boolean;
   /** UserPromptSubmit hook 的附加上下文，下一轮系统提示使用后清空。 */
   pendingHookContext?: string;
+  /** 预算 block 下用户在会话内临时放行一次；下一次模型请求后清除。 */
+  budgetAllowOnce?: boolean;
 }
 
 export interface ToolDefinition {

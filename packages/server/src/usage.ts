@@ -139,7 +139,9 @@ export class UsageStore {
     const data = this.load();
     for (const row of data?.rows ?? []) {
       if (!row || typeof row.day !== 'string' || typeof row.model !== 'string') continue;
-      const key = rowKey(row.day, row.hostId, row.profileId, row.model);
+      const keyId = typeof row.keyId === 'string' && row.keyId ? row.keyId : undefined;
+      const groupId = typeof row.groupId === 'string' && row.groupId ? row.groupId : undefined;
+      const key = rowKey(row.day, row.hostId, row.profileId, row.model, keyId, groupId);
       const existing = this.rows.get(key);
       if (existing) {
         existing.inputTokens += num(row.inputTokens);
@@ -156,6 +158,8 @@ export class UsageStore {
           outputTokens: num(row.outputTokens),
           costUsd: num(row.costUsd),
           turns: num(row.turns),
+          ...(keyId ? { keyId } : {}),
+          ...(groupId ? { groupId } : {}),
         });
       }
     }
@@ -170,9 +174,14 @@ export class UsageStore {
     outputTokens: number;
     costUsd: number;
     day?: string;
+    /** 多 Key 分组：实际使用的 Key id / 分组 id，用于按 Key/分组统计与预算。 */
+    keyId?: string;
+    groupId?: string;
   }): void {
     const day = input.day ?? localDay();
-    const key = rowKey(day, input.hostId, input.profileId, input.model);
+    const keyId = input.keyId || undefined;
+    const groupId = input.groupId || undefined;
+    const key = rowKey(day, input.hostId, input.profileId, input.model, keyId, groupId);
     let row = this.rows.get(key);
     if (!row) {
       row = {
@@ -184,6 +193,8 @@ export class UsageStore {
         outputTokens: 0,
         costUsd: 0,
         turns: 0,
+        ...(keyId ? { keyId } : {}),
+        ...(groupId ? { groupId } : {}),
       };
       this.rows.set(key, row);
     }
@@ -236,8 +247,15 @@ export class UsageStore {
   }
 }
 
-function rowKey(day: string, hostId: string, profileId: string, model: string): string {
-  return `${day}\u0000${hostId}\u0000${profileId}\u0000${model}`;
+function rowKey(
+  day: string,
+  hostId: string,
+  profileId: string,
+  model: string,
+  keyId?: string,
+  groupId?: string,
+): string {
+  return `${day}\u0000${hostId}\u0000${profileId}\u0000${model}\u0000${keyId ?? ''}\u0000${groupId ?? ''}`;
 }
 
 function num(value: unknown): number {

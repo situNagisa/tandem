@@ -4,15 +4,23 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import type {
+  KeyStrategy,
   ModelCapabilities,
   Profile,
   ProfileGroup,
   ProfileGroupInput,
   ProfileInput,
+  ProfileKey,
   ProviderKind,
   ReasoningEffort,
 } from '@tandem/protocol';
-import type { HostConfig, RelayConfig, StoredProfile, StoredProfileGroup } from './types.js';
+import type {
+  HostConfig,
+  RelayConfig,
+  StoredProfile,
+  StoredProfileGroup,
+  StoredProfileKey,
+} from './types.js';
 
 export function tandemHome(): string {
   const fromEnv = process.env.TANDEM_HOME?.trim();
@@ -106,7 +114,7 @@ export class ProfileStore {
           models: Array.isArray(p.models) ? p.models : [],
           defaultModel: p.defaultModel ?? p.models?.[0] ?? '',
         };
-        // 老数据没有 groups，按无分组账号处理
+        // 老数据没有 groups，按无分组账号处理；分组里的单 apiKey 迁移为 keys[0]
         const groups = normalizeStoredGroups(p.groups);
         if (groups.length) profile.groups = groups;
         else delete profile.groups;
@@ -193,6 +201,24 @@ export class ProfileStore {
     const ok = this.profiles.delete(id);
     if (ok) this.save();
     return ok;
+  }
+
+  /** 记录分组 Key 的运行状态（停用/冷却/最近错误）；keyId 为空时忽略。 */
+  updateKeyState(
+    profileId: string,
+    groupId: string | undefined,
+    keyId: string | undefined,
+    patch: Partial<Omit<StoredProfileKey, 'id' | 'apiKey'>>,
+  ): StoredProfileKey | undefined {
+    if (!keyId || !groupId) return undefined;
+    const profile = this.profiles.get(profileId);
+    const group = profile?.groups?.find((g) => g.id === groupId);
+    const key = group?.keys?.find((k) => k.id === keyId);
+    if (!profile || !group || !key) return undefined;
+    Object.assign(key, patch);
+    if (group.keys?.[0] === key) group.apiKey = key.apiKey;
+    this.save();
+    return key;
   }
 
   /** 转换成协议里的 Profile（apiKey 只给掩码）。 */
@@ -308,6 +334,45 @@ function normalizeBaseUrl(url: unknown): string | undefined {
   return value || undefined;
 }
 
+function normalizeKeyStrategy(value: unknown): KeyStrategy | undefined {
+  return value === 'round_robin' || value === 'failover' ? value : undefined;
+}
+
+/** 兼容老数据：单个 apiKey 迁移为 keys[0]（id 用分组 id 派生，保证多次加载稳定）。 */
+function normalizeStoredKeys(
+  value: unknown,
+  legacyApiKey: string,
+  groupId: string,
+): StoredProfileKey[] {
+  const out: StoredProfileKey[] = [];
+  if (Array.isArray(value)) {
+    for (const raw of value) {
+      if (!raw || typeof raw !== 'object') continue;
+      const k = raw as Partial<StoredProfileKey>;
+      const apiKey = typeof k.apiKey === 'string' ? k.apiKey : '';
+      if (!apiKey) continue;
+      out.push({
+        id: typeof k.id === 'string' && k.id ? k.id : randomUUID(),
+        ...(typeof k.label === 'string' && k.label.trim() ? { label: k.label.trim() } : {}),
+        apiKey,
+        ...(k.disabled ? { disabled: true } : {}),
+        ...(typeof k.cooldownUntil === 'number' && k.cooldownUntil > 0
+          ? { cooldownUntil: k.cooldownUntil }
+          : {}),
+        ...(typeof k.failures === 'number' && k.failures > 0 ? { failures: k.failures } : {}),
+        ...(typeof k.lastError === 'string' && k.lastError ? { lastError: k.lastError } : {}),
+        ...(typeof k.lastErrorAt === 'number' && k.lastErrorAt > 0
+          ? { lastErrorAt: k.lastErrorAt }
+          : {}),
+      });
+    }
+  }
+  if (out.length === 0 && legacyApiKey) {
+    out.push({ id: `${groupId}-k1`, apiKey: legacyApiKey });
+  }
+  return out;
+}
+
 /** 兼容老数据：groups 缺失/异常时忽略。 */
 export function normalizeStoredGroups(value: unknown): StoredProfileGroup[] {
   if (!Array.isArray(value)) return [];
@@ -319,11 +384,16 @@ export function normalizeStoredGroups(value: unknown): StoredProfileGroup[] {
     if (!name) continue;
     const models = normalizeModels(g.models);
     const caps = normalizeModelCapabilities(g.modelCapabilities);
+    const id = typeof g.id === 'string' && g.id ? g.id : randomUUID();
+    const apiKey = typeof g.apiKey === 'string' ? g.apiKey : '';
+    const keys = normalizeStoredKeys(g.keys, apiKey, id);
     out.push({
-      id: typeof g.id === 'string' && g.id ? g.id : randomUUID(),
+      id,
       name,
       ...(KINDS.includes(g.kind as ProviderKind) ? { kind: g.kind as ProviderKind } : {}),
-      apiKey: typeof g.apiKey === 'string' ? g.apiKey : '',
+      apiKey: keys[0]?.apiKey ?? '',
+      keys,
+      ...(normalizeKeyStrategy(g.keyStrategy) ? { keyStrategy: normalizeKeyStrategy(g.keyStrategy) } : {}),
       baseUrl: normalizeBaseUrl(g.baseUrl),
       models,
       defaultModel:
@@ -331,6 +401,64 @@ export function normalizeStoredGroups(value: unknown): StoredProfileGroup[] {
       ...(caps ? { modelCapabilities: caps } : {}),
     });
   }
+  return out;
+}
+
+/**
+ * 接口传入的 apiKeys 整体替换分组 Key 列表：带 id 且不带 apiKey 表示保留原 key；
+ * 新条目必须带 apiKey（不重复存明文）。未传 apiKeys 时沿用旧的单 apiKey 语义。
+ */
+function buildKeys(
+  raw: ProfileGroupInput,
+  old: StoredProfileGroup | undefined,
+  fallbackKey: string,
+): StoredProfileKey[] {
+  const oldById = new Map((old?.keys ?? []).map((k) => [k.id, k]));
+  if (Array.isArray(raw.apiKeys)) {
+    const out: StoredProfileKey[] = [];
+    const seen = new Set<string>();
+    for (const item of raw.apiKeys) {
+      if (!item || typeof item !== 'object') continue;
+      const itemId = typeof item.id === 'string' ? item.id.trim() : '';
+      const prev = itemId ? oldById.get(itemId) : undefined;
+      const apiKey = typeof item.apiKey === 'string' && item.apiKey ? item.apiKey : prev?.apiKey;
+      if (!apiKey) continue;
+      const id = prev?.id ?? (itemId && !seen.has(itemId) ? itemId : randomUUID());
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const label = typeof item.label === 'string' ? item.label.trim() : prev?.label;
+      // 重新填写了 key 视为用户修复了该 Key：清除 disabled/冷却状态
+      const reset = !prev || (typeof item.apiKey === 'string' && !!item.apiKey && item.apiKey !== prev.apiKey);
+      out.push({
+        ...(prev ?? {}),
+        id,
+        ...(label ? { label } : {}),
+        apiKey,
+        ...(reset ? { disabled: undefined, cooldownUntil: undefined, failures: undefined } : {}),
+      });
+    }
+    return out.map(cleanStoredKey);
+  }
+  // 旧字段 apiKey：替换为单 Key
+  if (typeof raw.apiKey === 'string' && raw.apiKey) {
+    const id = old?.keys?.[0]?.id ?? randomUUID();
+    return [{ id, apiKey: raw.apiKey }];
+  }
+  // 未传任何 Key：保留原列表；老分组/新分组兜底用账号 key
+  if (old?.keys?.length) return old.keys;
+  const fallback = old?.apiKey || fallbackKey;
+  return fallback ? [{ id: `${old?.id ?? 'group'}-k1`, apiKey: fallback }] : [];
+}
+
+/** 去掉值为 undefined 的可选字段，保证 JSON 干净（清状态时不残留旧值）。 */
+function cleanStoredKey(key: StoredProfileKey): StoredProfileKey {
+  const out: StoredProfileKey = { id: key.id, apiKey: key.apiKey };
+  if (key.label) out.label = key.label;
+  if (key.disabled) out.disabled = true;
+  if (typeof key.cooldownUntil === 'number' && key.cooldownUntil > 0) out.cooldownUntil = key.cooldownUntil;
+  if (typeof key.failures === 'number' && key.failures > 0) out.failures = key.failures;
+  if (key.lastError) out.lastError = key.lastError;
+  if (typeof key.lastErrorAt === 'number' && key.lastErrorAt > 0) out.lastErrorAt = key.lastErrorAt;
   return out;
 }
 
@@ -355,15 +483,16 @@ function buildGroups(
       raw.modelCapabilities !== undefined
         ? normalizeModelCapabilities(raw.modelCapabilities)
         : old?.modelCapabilities;
+    const keys = buildKeys(raw, old, fallbackKey);
+    const keyStrategy = normalizeKeyStrategy(raw.keyStrategy) ?? old?.keyStrategy;
     out.push({
       id,
       name,
       ...(kind ? { kind } : {}),
-      // 带 id 不带 apiKey 表示保留原 key；老账号迁移出的分组沿用账号 key
-      apiKey:
-        typeof raw.apiKey === 'string' && raw.apiKey
-          ? raw.apiKey
-          : old?.apiKey ?? fallbackKey,
+      // apiKey 是 keys[0] 的镜像（兼容旧代码/旧客户端）
+      apiKey: keys[0]?.apiKey ?? '',
+      keys,
+      ...(keyStrategy ? { keyStrategy } : {}),
       baseUrl: raw.baseUrl !== undefined ? normalizeBaseUrl(raw.baseUrl) : old?.baseUrl,
       models,
       defaultModel:
@@ -374,12 +503,26 @@ function buildGroups(
   return out;
 }
 
+function toPublicKey(key: StoredProfileKey): ProfileKey {
+  return {
+    id: key.id,
+    ...(key.label ? { label: key.label } : {}),
+    apiKeyMasked: maskApiKey(key.apiKey),
+    ...(key.disabled ? { disabled: true } : {}),
+    ...(key.cooldownUntil ? { cooldownUntil: key.cooldownUntil } : {}),
+    ...(key.lastError ? { lastError: key.lastError } : {}),
+  };
+}
+
 function toPublicGroup(group: StoredProfileGroup): ProfileGroup {
+  const keys = group.keys ?? [];
   return {
     id: group.id,
     name: group.name,
     ...(group.kind ? { kind: group.kind } : {}),
-    apiKeyMasked: maskApiKey(group.apiKey),
+    apiKeyMasked: maskApiKey(keys[0]?.apiKey ?? group.apiKey),
+    keys: keys.map((key) => toPublicKey(key)),
+    ...(group.keyStrategy ? { keyStrategy: group.keyStrategy } : {}),
     ...(group.baseUrl ? { baseUrl: group.baseUrl } : {}),
     models: [...group.models],
     defaultModel: group.defaultModel,

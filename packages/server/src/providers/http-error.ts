@@ -1,5 +1,27 @@
 import { truncateEnd } from '../util/text.js';
 
+/** 带 HTTP 状态码的 provider 错误：多 Key 切换据此判定停用 / 冷却。 */
+export class ProviderHttpError extends Error {
+  readonly status: number;
+  readonly url: string;
+
+  constructor(status: number, message: string, url: string) {
+    super(message);
+    this.name = 'ProviderHttpError';
+    this.status = status;
+    this.url = url;
+  }
+}
+
+export function providerHttpError(
+  status: number,
+  body: string,
+  url: string,
+  statusText = '',
+): ProviderHttpError {
+  return new ProviderHttpError(status, describeHttpError(status, body, url, statusText), url);
+}
+
 /** 把 provider 的 HTTP 错误响应整理成用户能看懂的一句话（不把 HTML 页面原样抛给界面）。 */
 export function describeHttpError(status: number, body: string, url: string, statusText = ''): string {
   const text = (body || '').trim();

@@ -1,5 +1,5 @@
 // OpenAI Chat Completions 适配（openai / openai-compatible / gemini OpenAI 兼容端点）。
-import { describeHttpError } from './http-error.js';
+import { providerHttpError } from './http-error.js';
 import type { ContentBlock, Message, Usage } from '@tandem/protocol';
 import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import { isAbortError, truncateEnd } from '../util/text.js';
@@ -154,9 +154,9 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
         delete current.stream_options;
         continue;
       }
-      throw new Error(describeHttpError(res.status, text, url, res.statusText));
+      throw providerHttpError(res.status, text, url, res.statusText);
     }
-    throw new Error(describeHttpError(400, '请求参数不被模型支持', url));
+    throw providerHttpError(400, '请求参数不被模型支持', url);
   };
 
   const usage: Usage = { inputTokens: 0, outputTokens: 0 };

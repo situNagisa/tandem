@@ -1,7 +1,7 @@
 // 非流式一次性小请求：用于自动生成会话标题等短任务。
 import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import type { StoredProfile } from '../types.js';
-import { describeHttpError } from './http-error.js';
+import { providerHttpError } from './http-error.js';
 import { truncateEnd } from '../util/text.js';
 
 type AnyRecord = Record<string, any>;
@@ -39,7 +39,7 @@ export async function completeText(req: CompleteRequest): Promise<string> {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(describeHttpError(res.status, text, base, res.statusText));
+      throw providerHttpError(res.status, text, base, res.statusText);
     }
     const data = (await res.json()) as AnyRecord;
     return (Array.isArray(data.content) ? data.content : [])
@@ -76,7 +76,7 @@ export async function completeText(req: CompleteRequest): Promise<string> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(describeHttpError(res.status, text, base, res.statusText));
+    throw providerHttpError(res.status, text, base, res.statusText);
   }
   const data = (await res.json()) as AnyRecord;
   const content = data.choices?.[0]?.message?.content;

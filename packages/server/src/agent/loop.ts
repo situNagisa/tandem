@@ -76,11 +76,15 @@ export async function runTurn(
       }
 
       host.setStatus(rec, 'running');
-      const profile = host.profileFor(rec.profileId, rec.groupId);
+      const selection = host.keyCandidates(rec.profileId, rec.groupId);
+      const profile = selection.effective ?? host.profileFor(rec.profileId, rec.groupId);
       if (!profile) throw new Error('当前会话的账号不存在，请在界面上重新选择账号');
       const model = rec.model || profile.defaultModel;
       if (!model) throw new Error('当前账号没有配置模型');
-      if (!profile.apiKey) throw new Error('当前账号没有配置 API Key');
+      if (!selection.candidates.some((candidate) => candidate.profile.apiKey)) {
+        throw new Error(host.keysUnavailableMessage(rec.profileId, rec.groupId) ?? '当前账号没有配置 API Key');
+      }
+      host.assertBudget(rec, model);
 
       const assistant: Message = {
         id: randomUUID(),
@@ -116,49 +120,81 @@ export async function runTurn(
       host.setContext(rec, contextEstimate, false);
 
       let result: Awaited<ReturnType<typeof streamChat>> | undefined;
+      let usedKeyId: string | undefined;
+      const keyErrors = new Map<string, string>();
+      let lastError: unknown;
       try {
-        result = await streamChat({
-          profile,
-          model,
-          system,
-          messages: requestMessages,
-          tools,
-          blocks: assistant.content,
-          signal: abort.signal,
-          idleTimeoutSec: host.config.idleTimeoutSec ?? 180,
-          maxTokens: MAX_TOKENS,
-          effort: rec.effort,
-          onEffortDropped: () => {
-            effortDropped = true;
-          },
-          onBlockStart: (index, block) => {
-            host.hub.broadcastSession(rec.id, {
-              type: 'block_delta',
-              sessionId: rec.id,
-              messageId: assistant.id,
-              index,
-              delta: { kind: 'block_start', block },
+        // 同组多 Key：按策略逐个尝试；仅在尚未输出任何 token 时透明重试
+        for (const candidate of selection.candidates) {
+          let started = false;
+          try {
+            result = await streamChat({
+              profile: candidate.profile,
+              model,
+              system,
+              messages: requestMessages,
+              tools,
+              blocks: assistant.content,
+              signal: abort.signal,
+              idleTimeoutSec: host.config.idleTimeoutSec ?? 180,
+              maxTokens: MAX_TOKENS,
+              effort: rec.effort,
+              onEffortDropped: () => {
+                effortDropped = true;
+              },
+              onBlockStart: (index, block) => {
+                started = true;
+                host.hub.broadcastSession(rec.id, {
+                  type: 'block_delta',
+                  sessionId: rec.id,
+                  messageId: assistant.id,
+                  index,
+                  delta: { kind: 'block_start', block },
+                });
+              },
+              onText: (index, text) => {
+                started = true;
+                host.hub.broadcastSession(rec.id, {
+                  type: 'block_delta',
+                  sessionId: rec.id,
+                  messageId: assistant.id,
+                  index,
+                  delta: { kind: 'text', text },
+                });
+              },
+              onToolInput: (index, partialJson) => {
+                host.hub.broadcastSession(rec.id, {
+                  type: 'block_delta',
+                  sessionId: rec.id,
+                  messageId: assistant.id,
+                  index,
+                  delta: { kind: 'tool_input', partialJson },
+                });
+              },
             });
-          },
-          onText: (index, text) => {
-            host.hub.broadcastSession(rec.id, {
-              type: 'block_delta',
-              sessionId: rec.id,
-              messageId: assistant.id,
-              index,
-              delta: { kind: 'text', text },
-            });
-          },
-          onToolInput: (index, partialJson) => {
-            host.hub.broadcastSession(rec.id, {
-              type: 'block_delta',
-              sessionId: rec.id,
-              messageId: assistant.id,
-              index,
-              delta: { kind: 'tool_input', partialJson },
-            });
-          },
-        });
+            host.markKeySuccess(rec.profileId, rec.groupId, candidate.keyId);
+            usedKeyId = candidate.keyId;
+            break;
+          } catch (err) {
+            lastError = err;
+            if (rt.interrupted || abort.signal.aborted) throw err;
+            if (candidate.keyId && !started) keyErrors.set(candidate.keyId, errorMessage(err));
+            // 已开始输出，或错误不属于 Key 级故障（400 等）：按原错误路径处理
+            const retry = !started && host.markKeyFailure(rec.profileId, rec.groupId, candidate.keyId, err);
+            if (!retry) throw err;
+            assistant.content.length = 0;
+          }
+        }
+        if (!result) {
+          if (lastError !== undefined) {
+            const unavailable = host.keysUnavailableMessage(rec.profileId, rec.groupId, keyErrors);
+            if (unavailable) throw new Error(unavailable);
+            throw lastError;
+          }
+          throw new Error(
+            host.keysUnavailableMessage(rec.profileId, rec.groupId) ?? '当前账号没有可用的 API Key',
+          );
+        }
       } catch (err) {
         if (rt.interrupted || abort.signal.aborted) reason = 'interrupted';
         else {
@@ -184,7 +220,11 @@ export async function runTurn(
           reasoningTokens,
         };
         const cost = price ? costOfUsage(price, usage, profile.kind) : undefined;
-        assistant.usage = { ...usage, ...(cost !== undefined ? { costUsd: cost } : {}) };
+        assistant.usage = {
+          ...usage,
+          ...(cost !== undefined ? { costUsd: cost } : {}),
+          ...(usedKeyId ? { keyId: usedKeyId } : {}),
+        };
         rec.usage.inputTokens += inputTokens;
         rec.usage.outputTokens += outputTokens;
         rec.usage.cacheReadTokens = (rec.usage.cacheReadTokens ?? 0) + cacheReadTokens;
@@ -200,7 +240,10 @@ export async function runTurn(
           inputTokens: inputTokens + cacheReadTokens + cacheWriteTokens,
           outputTokens,
           costUsd: cost ?? 0,
+          ...(usedKeyId ? { keyId: usedKeyId } : {}),
+          ...(rec.groupId ? { groupId: rec.groupId } : {}),
         });
+        host.observeBudgets(rec);
       }
 
       // 无论成功失败都下发最终消息（失败时可能是部分内容）；成功时带上本次用量
