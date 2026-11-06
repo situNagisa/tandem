@@ -44,7 +44,7 @@ import { McpManager } from './mcp.js';
 import { PermissionRuleStore } from './permissions.js';
 import { SessionStore } from './store.js';
 import type { HostConfig, SessionRecord, SessionRuntime, StoredProfile, ToolDefinition, ToolResult } from './types.js';
-import { UsageStore, costOf, priceForModel } from './usage.js';
+import { UsageStore, costOfUsage, priceForModel } from './usage.js';
 import {
   checkoutBranch,
   createWorktree,
@@ -1472,18 +1472,23 @@ export class Host {
           createdAt: Date.now(),
         },
       ];
-      rec.usage.inputTokens += result.usage.inputTokens || 0;
-      rec.usage.outputTokens += result.usage.outputTokens || 0;
+      const usage = result.usage;
+      const inputTokens = usage.inputTokens || 0;
+      const outputTokens = usage.outputTokens || 0;
+      const cacheReadTokens = usage.cacheReadTokens || 0;
+      const cacheWriteTokens = usage.cacheWriteTokens || 0;
+      rec.usage.inputTokens += inputTokens;
+      rec.usage.outputTokens += outputTokens;
+      rec.usage.cacheReadTokens = (rec.usage.cacheReadTokens ?? 0) + cacheReadTokens;
+      rec.usage.cacheWriteTokens = (rec.usage.cacheWriteTokens ?? 0) + cacheWriteTokens;
       const price = priceForModel(profile, model);
-      const inputTokens = result.usage.inputTokens || 0;
-      const outputTokens = result.usage.outputTokens || 0;
-      const cost = costOf(price, inputTokens, outputTokens);
-      if (price) rec.usage.costUsd = (rec.usage.costUsd ?? 0) + cost;
+      const cost = costOfUsage(price, { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens }, profile.kind);
+      if (price) rec.usage.costUsd = Math.round(((rec.usage.costUsd ?? 0) + cost) * 1e8) / 1e8;
       this.usage.record({
         hostId: this.config.hostId,
         profileId: rec.profileId,
         model,
-        inputTokens,
+        inputTokens: inputTokens + cacheReadTokens + cacheWriteTokens,
         outputTokens,
         costUsd: cost,
       });

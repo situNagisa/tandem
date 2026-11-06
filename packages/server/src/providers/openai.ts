@@ -3,7 +3,7 @@ import { describeHttpError } from './http-error.js';
 import type { ContentBlock, Message, Usage } from '@tandem/protocol';
 import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import { isAbortError, truncateEnd } from '../util/text.js';
-import { readSse } from './sse.js';
+import { readSse, fetchSse } from './sse.js';
 import { createIdleTimeout, idleTimeoutError } from './idle-timeout.js';
 import type { StreamRequest, StreamResult } from './types.js';
 
@@ -97,7 +97,7 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
     stream_options: { include_usage: true },
   };
   // 新版 OpenAI 推理模型使用 max_completion_tokens；兼容接口仍用 max_tokens
-  if (req.profile.kind === 'openai' && /^(o[1-9]|gpt-5)/i.test(req.model)) {
+  if (req.profile.kind === 'openai' && /^(o[1-9]|gpt-5|gpt-6)/i.test(req.model)) {
     body.max_completion_tokens = req.maxTokens;
   } else {
     body.max_tokens = req.maxTokens;
@@ -122,7 +122,7 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
     let droppedEffort = false;
     let droppedStreamOptions = false;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const res = await fetch(url, {
+      const res = await fetchSse(url, {
         method: 'POST',
         headers,
         body: JSON.stringify(current),
@@ -311,7 +311,7 @@ export async function testOpenAI(
     },
     body: JSON.stringify({
       model,
-      ...(kind === 'openai' && /^(o[1-9]|gpt-5)/i.test(model)
+      ...(kind === 'openai' && /^(o[1-9]|gpt-5|gpt-6)/i.test(model)
         ? { max_completion_tokens: 16 }
         : { max_tokens: 1 }),
       messages: [{ role: 'user', content: 'ping' }],

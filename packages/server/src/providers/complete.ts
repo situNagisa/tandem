@@ -60,7 +60,7 @@ export async function completeText(req: CompleteRequest): Promise<string> {
     stream: false,
   };
   // 新版 OpenAI 推理模型使用 max_completion_tokens；兼容接口仍用 max_tokens
-  if (req.profile.kind === 'openai' && /^(o[1-9]|gpt-5)/i.test(req.model)) {
+  if (req.profile.kind === 'openai' && /^(o[1-9]|gpt-5|gpt-6)/i.test(req.model)) {
     body.max_completion_tokens = maxTokens;
   } else {
     body.max_tokens = maxTokens;
