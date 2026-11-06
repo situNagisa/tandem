@@ -914,6 +914,7 @@ export function MessageList({
                 </div>
               )}
               <UserMessage message={m} animate={seg.animate} readOnly={readOnly} />
+              {forkLinks(m.id)}
               {hookLine(m.id)}
             </div>
           )
@@ -944,6 +945,7 @@ export function MessageList({
                   : undefined
               }
             />
+            {forkLinks(m.id)}
             {hookLine(m.id)}
           </div>
         )
