@@ -13,6 +13,8 @@ import {
 
 let toastSeq = 1
 const toastTimers = new Map<number, number>()
+const TOAST_DEDUPE_MS = 3000
+const recentToastAt = new Map<string, number>()
 
 interface UiState {
   theme: Theme
@@ -149,6 +151,12 @@ export const useUiStore = create<UiState>((set, get) => ({
     set({ notifications: enabled })
   },
   toast: (text, kind = 'info', options) => {
+    const now = Date.now()
+    for (const [key, at] of recentToastAt) {
+      if (now - at >= TOAST_DEDUPE_MS) recentToastAt.delete(key)
+    }
+    if (recentToastAt.has(text)) return
+    recentToastAt.set(text, now)
     const id = toastSeq++
     set((s) => ({
       toasts: [...s.toasts.slice(-3), { id, kind, text, onClick: options?.onClick }],
