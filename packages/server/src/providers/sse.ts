@@ -1,7 +1,22 @@
 // SSE 解析：按空行分隔事件，支持 data 多行。
+import { isAbortError } from '../util/text.js';
+
 export interface SseEvent {
   event?: string;
   data: string;
+}
+
+/**
+ * 发起流式请求。连接池里的空闲连接可能已被对端关闭，首个请求会以 fetch failed 失败；
+ * 在拿到响应之前重试一次，避免整轮直接报错。中断/超时不重试。
+ */
+export async function fetchSse(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    if (init.signal?.aborted || isAbortError(err)) throw err;
+    return fetch(url, init);
+  }
 }
 
 export async function* readSse(response: Response, onData?: () => void): AsyncGenerator<SseEvent> {

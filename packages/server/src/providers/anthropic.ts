@@ -3,14 +3,20 @@ import { describeHttpError } from './http-error.js';
 import type { ContentBlock, Message, Usage } from '@tandem/protocol';
 import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import { isAbortError, truncateEnd } from '../util/text.js';
-import { readSse } from './sse.js';
+import { readSse, fetchSse } from './sse.js';
 import { createIdleTimeout, idleTimeoutError } from './idle-timeout.js';
+import { builtinCapabilities, overrideFor } from './capabilities.js';
 import type { StreamRequest, StreamResult } from './types.js';
 
 type AnyBlock = Record<string, any>;
 
-function supportsThinking(model: string): boolean {
-  return /claude-(?:3-7|[a-z]+-4)/.test(model);
+/** 能力表（账号覆盖 > 内置）明确支持该档位时才启用 thinking；未知能力的模型保守关闭。 */
+function supportsThinking(model: string, profile: StreamRequest['profile'], effort: StreamRequest['effort']): boolean {
+  if (!effort || effort === 'off') return false;
+  const efforts =
+    overrideFor(profile.modelCapabilities, model)?.efforts ??
+    builtinCapabilities(profile.kind, model).efforts;
+  return !!efforts && efforts.includes(effort);
 }
 
 const THINKING_BUDGETS: Partial<Record<NonNullable<StreamRequest['effort']>, number>> = {
@@ -31,7 +37,9 @@ export function toAnthropicMessages(messages: Message[]): AnyBlock[] {
       } else if (block.type === 'thinking') {
         // 有签名才回传（开启 extended thinking 后工具循环要求原样带回）
         const signature = (block as AnyBlock).signature;
-        if (signature) content.push({ type: 'thinking', thinking: block.text, signature });
+        const redacted = (block as AnyBlock).redacted;
+        if (redacted) content.push({ type: 'redacted_thinking', data: redacted });
+        else if (signature) content.push({ type: 'thinking', thinking: block.text, signature });
       } else if (block.type === 'image') {
         content.push({
           type: 'image',
@@ -83,10 +91,9 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
     ...(index === req.tools.length - 1 ? { cache_control: { type: 'ephemeral' } } : {}),
   }));
 
-  const budget =
-    req.effort && req.effort !== 'off' && supportsThinking(req.model)
-      ? THINKING_BUDGETS[req.effort]
-      : undefined;
+  const budget = supportsThinking(req.model, req.profile, req.effort)
+    ? THINKING_BUDGETS[req.effort!]
+    : undefined;
   const body: AnyBlock = {
     model: req.model,
     max_tokens: budget ? Math.max(req.maxTokens, budget + 4096) : req.maxTokens,
@@ -118,18 +125,19 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
   const inputBuf = new Map<number, string>();
   const applyUsage = (u: AnyBlock) => {
     if (!u) return;
-    if (typeof u.input_tokens === 'number') usage.inputTokens = u.input_tokens;
-    if (typeof u.output_tokens === 'number') usage.outputTokens = u.output_tokens;
+    // 流式 usage 是累计值：message_delta 可能只带部分字段（甚至为 0），不能覆盖 message_start 的结果
+    if (typeof u.input_tokens === 'number') usage.inputTokens = Math.max(usage.inputTokens, u.input_tokens);
+    if (typeof u.output_tokens === 'number') usage.outputTokens = Math.max(usage.outputTokens, u.output_tokens);
     if (typeof u.cache_read_input_tokens === 'number') {
-      usage.cacheReadTokens = u.cache_read_input_tokens;
+      usage.cacheReadTokens = Math.max(usage.cacheReadTokens ?? 0, u.cache_read_input_tokens);
     }
     if (typeof u.cache_creation_input_tokens === 'number') {
-      usage.cacheWriteTokens = u.cache_creation_input_tokens;
+      usage.cacheWriteTokens = Math.max(usage.cacheWriteTokens ?? 0, u.cache_creation_input_tokens);
     }
   };
 
   const send = async (payload: AnyBlock) => {
-    let res = await fetch(url, {
+    let res = await fetchSse(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
@@ -141,7 +149,7 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
       if (/thinking|budget_tokens|reasoning|unsupported|not support|max_tokens/i.test(text)) {
         const retryBody = { ...payload, max_tokens: req.maxTokens } as AnyBlock;
         delete retryBody.thinking;
-        res = await fetch(url, {
+        res = await fetchSse(url, {
           method: 'POST',
           headers,
           body: JSON.stringify(retryBody),
@@ -196,7 +204,11 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
           let block: ContentBlock | undefined;
           if (cb.type === 'text') block = { type: 'text', text: cb.text ?? '' };
           else if (cb.type === 'thinking') block = { type: 'thinking', text: cb.thinking ?? '' };
-          else if (cb.type === 'redacted_thinking') block = { type: 'thinking', text: '[思考内容已加密]' };
+          else if (cb.type === 'redacted_thinking') {
+            block = { type: 'thinking', text: '[思考内容已加密]' };
+            // 工具循环要求把加密块原样带回，data 存在内部字段，不进入协议
+            (block as AnyBlock).redacted = cb.data;
+          }
           else if (cb.type === 'tool_use') {
             block = { type: 'tool_use', id: cb.id, name: cb.name, input: {} };
             inputBuf.set(index, '');
