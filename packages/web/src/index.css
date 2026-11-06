@@ -58,12 +58,16 @@
   --t-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --t-ease-in: cubic-bezier(0.4, 0, 1, 1);
 
+  /* 中文只走无衬线：Windows 上任何落到 system 衬线/等宽的回退都会变成宋体。 */
   --t-font-sans: -apple-system, "Segoe UI Variable", "Segoe UI", system-ui, "PingFang SC",
-    "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
-  --t-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, "Songti SC",
-    "Noto Serif SC", serif;
+    "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", sans-serif;
+  /* 衬线只给 "Tandem" 字标与问候语；中文回退仍用无衬线，避免宋体。 */
+  --t-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, "PingFang SC",
+    "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  /* 等宽仅对拉丁字符生效；中文回退到无衬线（Consolas 等自身不带中文，落到 monospace 关键字就是宋体）。 */
   --t-font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas,
-    "Liberation Mono", monospace;
+    "Liberation Mono", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC",
+    monospace;
 
   --syn-comment: #6f6f6f;
   --syn-keyword: #9c6b58;
@@ -229,6 +233,20 @@ html.dark {
   select {
     font: inherit;
     color: inherit;
+  }
+
+  /* Portal 浮层（tooltip / 菜单 / 弹窗）不在 body 的字体继承链里时也强制无衬线。 */
+  .ui-tip,
+  .popover-panel,
+  [role='dialog'],
+  [role='tooltip'],
+  [role='menu'] {
+    font-family: var(--t-font-sans);
+  }
+
+  /* 图表等 SVG 文本同样走无衬线；显式 class（如 font-mono）仍然覆盖。 */
+  svg text {
+    font-family: var(--t-font-sans);
   }
 
   ::placeholder {
