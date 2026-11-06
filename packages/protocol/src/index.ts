@@ -15,10 +15,20 @@ export interface Profile {
   kind: ProviderKind;
   baseUrl?: string;        // 自定义端点
   apiKeyMasked: string;    // 只回传掩码，明文 key 永不下发给客户端
-  models: string[];        // 该账号可选模型
+  models: string[];        // 该账号可选模型（无分组时使用）
   defaultModel: string;
+  groups?: ProfileGroup[]; // 分组：同一账号（同一服务商/中转站）下多组 key，各自可用模型不同，如 "官方渠道"/"低价渠道"
   createdAt: number;
 }
+export interface ProfileGroup {
+  id: string;
+  name: string;
+  apiKeyMasked: string;
+  baseUrl?: string;        // 缺省用账号 baseUrl
+  models: string[];
+  defaultModel: string;
+}
+export interface ProfileGroupInput { id?: string; name: string; apiKey?: string; baseUrl?: string; models: string[]; defaultModel: string }
 export interface ProfileInput {
   name: string;
   kind: ProviderKind;
@@ -26,6 +36,7 @@ export interface ProfileInput {
   apiKey?: string;         // 更新时不传表示不改
   models: string[];
   defaultModel: string;
+  groups?: ProfileGroupInput[]; // 传入即整体替换；带 id 且不带 apiKey 表示保留原 key
 }
 
 // ---------- 会话 ----------
@@ -37,6 +48,7 @@ export interface SessionSummary {
   title: string;
   cwd: string;             // 会话工作目录（在 host 机器上）
   profileId: string;
+  groupId?: string;        // 选用账号下的哪个分组（无分组账号不填）
   model: string;
   permissionMode: PermissionMode;
   status: SessionStatus;
@@ -57,11 +69,12 @@ export interface Usage { inputTokens: number; outputTokens: number; costUsd?: nu
 export interface CreateSessionInput {
   cwd: string;
   profileId: string;
+  groupId?: string;
   model?: string;
   permissionMode?: PermissionMode;
   title?: string;
 }
-export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'model' | 'permissionMode' | 'pinned' | 'archived'>>;
+export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'permissionMode' | 'pinned' | 'archived'>>;
 
 // ---------- 外部会话（本机已有的 Claude Code / Codex 会话） ----------
 // 原则：只读原软件的文件，绝不写回；"导入"= 复制成 Tandem 会话后继续（可换任意模型）。
@@ -84,7 +97,7 @@ export interface ConfigImportInput { passphrase: string; bundle: ConfigBundle; m
 export interface ConfigImportResult { profilesAdded: number; profilesUpdated: number; clientSettings?: unknown }
 
 // 拉取模型列表：填 Key 后自动获取可用模型（无需手填）
-export interface ListModelsInput { kind: ProviderKind; baseUrl?: string; apiKey?: string; profileId?: string } // apiKey 缺省时用 profileId 已存的 key
+export interface ListModelsInput { kind: ProviderKind; baseUrl?: string; apiKey?: string; profileId?: string; groupId?: string } // apiKey 缺省时用 profileId 已存的 key
 export interface ModelInfo { id: string; displayName?: string; contextWindow?: number }
 
 // ---------- 消息 ----------
