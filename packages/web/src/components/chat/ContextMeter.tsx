@@ -53,6 +53,9 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
     }
   }, [hostId, sessionId])
 
+  const send = useAppStore((s) => s.send)
+  const running = useAppStore((s) => s.active?.running ?? false)
+
   const context = live ?? fetched
   if (!context || !sessionId) return null
 
@@ -62,9 +65,6 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
   const pct = Math.round(rate * 100)
   const stroke = colorFor(rate)
   const circumference = 2 * Math.PI * 6.5
-
-  const send = useAppStore((s) => s.send)
-  const running = useAppStore((s) => s.active?.running ?? false)
 
   const compact = (close: () => void) => {
     if (running || compactDisabled) return
@@ -77,7 +77,7 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
       side="top"
       padded={false}
       panelClassName="w-[min(92vw,352px)] p-3"
-      trigger={({ toggle }) => (
+      trigger={({ toggle, open }) => (
         <button
           type="button"
           onClick={toggle}
@@ -98,10 +98,12 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
               transform="rotate(-90 9 9)"
             />
           </svg>
-          <Tip
-            label={`上下文 ${pct}% · ${formatTokens(used)} / ${formatTokens(window)}`}
-            side="top"
-          />
+          {!open && (
+            <Tip
+              label={`上下文 ${pct}% · ${formatTokens(used)} / ${formatTokens(window)}`}
+              side="top"
+            />
+          )}
         </button>
       )}
     >
