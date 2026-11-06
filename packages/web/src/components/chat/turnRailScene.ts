@@ -332,7 +332,7 @@ export class RailScene {
       // 图钉：悬停行或已固定时显示；静止态用右侧小圆点标出被固定的轮。
       const pinned = !!this.turns[t - 1]?.pinned
       it.p.style.opacity = f3(textIn * (pinned ? 0.62 + 0.38 * lit : hov > 0.5 ? 1 : 0))
-      it.p.dataset.on = pinned || hov > 0.5 ? 'true' : 'false'
+      it.p.dataset.on = (pinned && textIn > 0.4) || hov > 0.5 ? 'true' : 'false'
       it.p.dataset.pinned = pinned ? 'true' : 'false'
       it.d.style.opacity = f3(pinned ? (1 - smooth(0.05, 0.45, pc)) * (0.55 + 0.45 * act) : 0)
       const restS = 0.42 + 0.4 * Math.exp(-Math.abs(dr) / 4)
