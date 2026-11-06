@@ -23,7 +23,13 @@ import type {
   PermissionRule,
   Profile,
   ProfileInput,
+  BackgroundTask,
+  BackgroundTaskOutput,
+  BudgetRule,
+  BudgetStatus,
   RewindInput,
+  Schedule,
+  ScheduleInput,
   Session,
   SessionSummary,
   SlashCommand,
@@ -139,10 +145,12 @@ export const api = {
     }),
   deleteProfile: (h: HostConfig, id: string) =>
     request<void>(h, `/api/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  testProfile: (h: HostConfig, id: string, groupId?: string) =>
+  testProfile: (h: HostConfig, id: string, groupId?: string, keyId?: string) =>
     request<{ ok: boolean; error?: string }>(h, `/api/profiles/${encodeURIComponent(id)}/test`, {
       method: 'POST',
-      ...(groupId ? { body: JSON.stringify({ groupId }) } : {}),
+      ...(groupId || keyId
+        ? { body: JSON.stringify({ ...(groupId ? { groupId } : {}), ...(keyId ? { keyId } : {}) }) }
+        : {}),
     }),
   listModels: (h: HostConfig, input: ListModelsInput) =>
     request<{ ok: boolean; models: ModelInfo[]; error?: string }>(h, '/api/models', {
@@ -340,6 +348,44 @@ export const api = {
 
   usage: (h: HostConfig, from?: string, to?: string) =>
     request<UsageStatsRow[]>(h, `/api/usage${qs({ from, to })}`),
+
+  budgets: (h: HostConfig) => request<BudgetRule[]>(h, '/api/budgets'),
+  saveBudgets: (h: HostConfig, rules: BudgetRule[]) =>
+    request<BudgetRule[]>(h, '/api/budgets', { method: 'PUT', body: JSON.stringify(rules) }),
+  budgetStatus: (h: HostConfig) => request<BudgetStatus[]>(h, '/api/budgets/status'),
+  budgetAllowOnce: (h: HostConfig, sessionId: string) =>
+    request<{ ok: boolean }>(
+      h,
+      `/api/sessions/${encodeURIComponent(sessionId)}/budget-allow-once`,
+      { method: 'POST' },
+    ),
+
+  tasks: (h: HostConfig, sessionId?: string) =>
+    request<BackgroundTask[]>(h, `/api/tasks${qs({ sessionId })}`),
+  taskOutput: (h: HostConfig, id: string, since = 0) =>
+    request<BackgroundTaskOutput>(
+      h,
+      `/api/tasks/${encodeURIComponent(id)}/output${qs({ since: String(since) })}`,
+    ),
+  killTask: (h: HostConfig, id: string) =>
+    request<BackgroundTask>(h, `/api/tasks/${encodeURIComponent(id)}/kill`, { method: 'POST' }),
+
+  schedules: (h: HostConfig) => request<Schedule[]>(h, '/api/schedules'),
+  createSchedule: (h: HostConfig, input: ScheduleInput) =>
+    request<Schedule>(h, '/api/schedules', { method: 'POST', body: JSON.stringify(input) }),
+  updateSchedule: (h: HostConfig, id: string, input: ScheduleInput) =>
+    request<Schedule>(h, `/api/schedules/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  deleteSchedule: (h: HostConfig, id: string) =>
+    request<void>(h, `/api/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  runSchedule: (h: HostConfig, id: string) =>
+    request<{ ok: boolean; sessionId?: string; error?: string }>(
+      h,
+      `/api/schedules/${encodeURIComponent(id)}/run`,
+      { method: 'POST' },
+    ),
 
   pair: (h: HostConfig) =>
     request<{

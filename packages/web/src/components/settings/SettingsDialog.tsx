@@ -1,4 +1,4 @@
-import { BarChart3, Monitor, Palette, Plug, RefreshCw, Server, Settings, ShieldCheck, Sparkles, Webhook } from 'lucide-react'
+import { BarChart3, CalendarClock, Monitor, Palette, Plug, RefreshCw, Server, Settings, ShieldCheck, Sparkles, Wallet, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
@@ -12,6 +12,8 @@ import { PermissionsSection } from './PermissionsSection'
 import { McpSection } from './McpSection'
 import { HooksSection } from './HooksSection'
 import { UsageSection } from './UsageSection'
+import { SchedulesSection } from './SchedulesSection'
+import { BudgetsSection } from './BudgetsSection'
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'profiles', label: '账号与模型', icon: Sparkles },
@@ -19,6 +21,8 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'permissions', label: '权限', icon: ShieldCheck },
   { id: 'hooks', label: 'Hooks', icon: Webhook },
   { id: 'mcp', label: 'MCP', icon: Plug },
+  { id: 'schedules', label: '定时任务', icon: CalendarClock },
+  { id: 'budgets', label: '预算', icon: Wallet },
   { id: 'usage', label: '用量', icon: BarChart3 },
   { id: 'sync', label: '同步与备份', icon: RefreshCw },
   { id: 'appearance', label: '外观', icon: Palette },
@@ -78,6 +82,8 @@ export function SettingsDialog() {
             {tab === 'permissions' && <PermissionsSection />}
             {tab === 'hooks' && <HooksSection />}
             {tab === 'mcp' && <McpSection />}
+            {tab === 'schedules' && <SchedulesSection />}
+            {tab === 'budgets' && <BudgetsSection />}
             {tab === 'usage' && <UsageSection />}
             {tab === 'sync' && <SyncSection />}
             {tab === 'appearance' && <AppearanceSection />}
