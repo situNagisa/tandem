@@ -314,8 +314,11 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     hostId ? (s.runtimes[hostId]?.profilesLoading ?? false) : false,
   )
   const refreshProfiles = useAppStore((s) => s.refreshProfiles)
+  const profileRetryRef = useRef<string | null>(null)
   useEffect(() => {
     if (!hostId || profilesLoaded || profilesLoading) return
+    if (profileRetryRef.current === hostId) return
+    profileRetryRef.current = hostId
     void refreshProfiles(hostId)
   }, [hostId, profilesLoaded, profilesLoading, refreshProfiles])
   const deleteSession = useAppStore((s) => s.deleteSession)
