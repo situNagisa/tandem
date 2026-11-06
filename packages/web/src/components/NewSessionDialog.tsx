@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowUp,
+  ArrowUpRight,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -461,7 +462,7 @@ export function NewSessionView() {
 
   return (
     <div className="flex min-h-full flex-col items-center justify-center px-4 py-10 md:py-14">
-      <div className="anim-slide-up w-full max-w-[680px]">
+      <div className="anim-slide-up w-full max-w-[720px]">
         <div className="mb-7 text-center md:mb-9">
           <h1 className="font-serif text-[30px] leading-tight tracking-[-0.015em] text-text md:text-[34px]">
             {greeting}，今天想做点什么？
@@ -580,18 +581,19 @@ export function NewSessionView() {
 
         <div className="mt-8">
           <div className="mb-2 text-center text-[10px] font-medium uppercase tracking-[0.1em] text-muted">
-            试试
+            常用
           </div>
-          <div className="flex flex-col items-center gap-1">
+          <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-0.5 max-md:-mx-4 max-md:px-4 md:justify-center">
             {HINTS.map((hint) => (
               <Button
                 key={hint}
                 size="sm"
                 variant="secondary"
                 onClick={() => seedPrompt(hint)}
-                className="max-w-full truncate rounded-full px-2.5 font-normal text-muted hover:text-text-soft"
+                className="h-[30px] shrink-0 gap-1.5 rounded-lg px-2.5 text-[11.5px] font-normal text-text-soft hover:text-text max-md:h-11"
               >
-                {hint}
+                <span className="whitespace-nowrap">{hint}</span>
+                <ArrowUpRight size={11} className="shrink-0 text-muted" />
               </Button>
             ))}
           </div>
