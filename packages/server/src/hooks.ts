@@ -82,13 +82,6 @@ interface ExecResult {
   aborted: boolean;
 }
 
-function sourceLabel(source: HookSource): string {
-  if (source === 'tandem') return 'Tandem';
-  if (source === 'claude-user') return 'Claude Code 用户设置';
-  if (source === 'claude-project') return '项目 Claude 设置';
-  return '项目本地 Claude 设置';
-}
-
 function sourcePath(home: string, source: HookSource, cwd?: string): string {
   if (source === 'tandem') return path.join(home, 'hooks.json');
   if (source === 'claude-user') return path.join(os.homedir(), '.claude', 'settings.json');
@@ -161,11 +154,23 @@ export function hookMatcherMatches(matcher: string | undefined, value: string): 
   });
 }
 
-/** 从命令首词推断展示名：/path/to/lint.sh --x -> lint.sh */
+/** 从命令推断展示名：/path/to/lint.sh -> lint.sh；node /x/lint.mjs 也取脚本名。 */
 export function hookCommandName(command: string): string {
-  const first = command.trim().split(/\s+/)[0]?.replace(/^["']|["']$/g, '') ?? '';
-  const base = first ? path.basename(first) : '';
-  return base || 'hook';
+  const tokens = command
+    .trim()
+    .split(/\s+/)
+    .map((token) => token.replace(/^["']|["']$/g, ''))
+    .filter(Boolean);
+  let target = tokens[0] ?? '';
+  const interpreter = path.basename(target);
+  if (['node', 'tsx', 'bun', 'deno', 'python', 'python3', 'bash', 'sh', 'zsh'].includes(interpreter)) {
+    const script = tokens
+      .slice(1)
+      .find((token) => !token.startsWith('-') && /\.(?:[cm]?[jt]s|py|sh)$/.test(token));
+    if (script) target = script;
+  }
+  const base = target ? path.basename(target) : '';
+  return base.slice(0, 60) || 'hook';
 }
 
 function clipMessage(text: string): string | undefined {
@@ -229,7 +234,7 @@ function execHookCommand(
         })
       : spawn('/bin/bash', ['-c', command], {
           cwd,
-          env: process.env,
+          env: { ...process.env, CLAUDE_PROJECT_DIR: cwd },
           detached: true,
           stdio: ['pipe', 'pipe', 'pipe'],
         });
@@ -421,7 +426,6 @@ export class HookManager {
     for (const source of SOURCE_ORDER) {
       if ((source === 'claude-project' || source === 'claude-project-local') && !resolved) continue;
       const file = sourcePath(this.home, source, resolved);
-      if (source !== 'tandem' && !resolved && source !== 'claude-user') continue;
       const exists = !!file && existsSync(file);
       sources.push({ source, path: file, readOnly: source !== 'tandem', exists });
       if (file) entries.push(...readHooksFile(file, source));
@@ -522,5 +526,3 @@ export class HookManager {
     renameSync(tmp, file);
   }
 }
-
-export { sourceLabel };

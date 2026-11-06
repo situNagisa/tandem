@@ -282,7 +282,7 @@ export function HooksSection() {
                             size="sm"
                             variant="primary"
                             onClick={() => void save()}
-                            disabled={!dirty || saving}
+                            disabled={!dirty || saving || draft.some((entry) => !entry.command.trim())}
                           >
                             {saving && <Loader2 size={11} className="animate-spin" />}
                             保存

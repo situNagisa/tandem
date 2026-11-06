@@ -825,10 +825,12 @@ export const useAppStore = create<AppState>((set, get) => {
           ...(msg.blocked ? { blocked: true } : {}),
           ...(msg.message ? { message: msg.message } : {}),
         }
-        patchActive(hostId, msg.sessionId, (a) => ({
-          ...a,
-          hookEvents: [...a.hookEvents, notice].slice(-30),
-        }))
+        if (!notice.ok || notice.blocked) {
+          patchActive(hostId, msg.sessionId, (a) => ({
+            ...a,
+            hookEvents: [...a.hookEvents, notice].slice(-20),
+          }))
+        }
         break
       }
       case 'turn_end': {
