@@ -78,3 +78,12 @@
 - [x] 字号批量：正文/控件 13px、辅助 12px、kbd/徽标 11px；设置页正文 13；344 处 class + 153 处设置页 + CSS 规则
 - [x] docs/design.md 新增「字号与对比度」，标注新旧值；2588/1280 深/浅截图自查
 - 说明：Sidebar/ToolCard/EnvBar/Menu/TurnRail/FeedbackMode 由并行同事负责，未覆盖其未提交改动
+
+## 迭代 12（2026-11-07）——反馈模式驱动
+- [x] 反馈模式 v1：圈选导出 json → 飞书 → scripts/feedback-unpack.mjs；修复点击穿透、快捷键/选中导致弹层消失、hover 冻结
+- [x] 反馈包 #1（7 条）、#2（8 条）、#3（5 条）全部处理
+- [x] 轮次条重新设计：刻度 → 轮次大纲形变面板（弹簧动画、拖动预览、边缘加速、手机底部抽屉）
+- [x] Tooltip 重做为标准行为（500ms 延迟、跳过延迟、小号无箭头）
+- [x] 全局提亮文字 token、字号下限（正文≥13、辅助≥12，375 处）
+- [x] 真实模型 e2e v2（docs/e2e-report-v2.md）：codex 分组全通过，修 6 个 bug；claude 分组被中转限制为仅 Claude Code 客户端，未能真测
+- [x] 交互走查 v6（docs/qa-v6.md）；AGENTS.md 项目手册
