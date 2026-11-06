@@ -669,7 +669,7 @@ export function SessionList({
                 setMenu({ hostId, session: s, x: rect.right - 4, y: rect.bottom + 4 })
               }}
               label="会话操作"
-              tooltip="更多操作"
+              tooltip=""
               className="absolute right-0.5 top-1/2 size-8! -translate-y-1/2 opacity-100 focus-visible:opacity-100 md:size-6! md:opacity-0 md:group-hover:opacity-100 [&_svg]:size-[15px]"
             >
               <MoreHorizontal size={15} />
@@ -698,7 +698,7 @@ export function SessionList({
     <nav
       ref={navRef}
       onKeyDown={onNavKeyDown}
-      className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 pb-3"
+      className="min-h-0 flex-1 overflow-x-clip overflow-y-auto px-2 pb-3"
       aria-label="会话列表"
     >
       <div className="flex min-h-7 items-center gap-1 px-2.5 pb-0.5 pt-2">
