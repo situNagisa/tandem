@@ -1,140 +1,225 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react'
-import { createPortal } from 'react-dom'
+import { useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { cn } from '../../lib/cn'
 
-type Side = 'top' | 'bottom'
-
+const SHOW_DELAY = 500
+const SKIP_DELAY = 300
 const GAP = 6
-const PADDING = 8
+const EDGE = 8
+const TIP_ID = 'tandem-tooltip'
 
-function TipBubble({
-  label,
-  side,
-  anchor,
-}: {
-  label: string
-  side: Side
-  anchor: DOMRect | null
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+let showTimer: number | null = null
+let currentHost: HTMLElement | null = null
+let lastHideAt = 0
+let tipEl: HTMLDivElement | null = null
 
-  useLayoutEffect(() => {
-    if (!anchor || !ref.current) {
-      setPos(null)
-      return
-    }
-    const el = ref.current
-    const { width, height } = el.getBoundingClientRect()
-    let placement = side
-    if (side === 'top' && anchor.top - height - GAP < PADDING) placement = 'bottom'
-    else if (
-      side === 'bottom' &&
-      anchor.bottom + height + GAP > window.innerHeight - PADDING
-    ) {
-      placement = 'top'
-    }
-    const top = placement === 'top' ? anchor.top - height - GAP : anchor.bottom + GAP
-    const left = anchor.left + anchor.width / 2 - width / 2
-    setPos({
-      left: Math.max(PADDING, Math.min(left, window.innerWidth - width - PADDING)),
-      top: Math.max(PADDING, Math.min(top, window.innerHeight - height - PADDING)),
-    })
-  }, [anchor, side, label])
-
-  if (!anchor) return null
-  return createPortal(
-    <div
-      ref={ref}
-      role="tooltip"
-      className={cn('ui-tip-portal', pos && 'ui-tip-portal--in')}
-      style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: -9999 }}
-    >
-      {label}
-    </div>,
-    document.body,
-  )
+function canHover(): boolean {
+  return typeof window !== 'undefined' && !window.matchMedia('(hover: none)').matches
 }
 
-function useHoverAnchor(host: () => HTMLElement | null) {
-  const [anchor, setAnchor] = useState<DOMRect | null>(null)
-  const update = useCallback(() => {
-    const el = host()
-    if (el) setAnchor(el.getBoundingClientRect())
-  }, [host])
-  const hide = useCallback(() => setAnchor(null), [])
+function layer(): HTMLDivElement {
+  if (tipEl?.isConnected) return tipEl
+  const existing = document.getElementById(TIP_ID)
+  if (existing instanceof HTMLDivElement) {
+    tipEl = existing
+    return tipEl
+  }
+  tipEl = document.createElement('div')
+  tipEl.id = TIP_ID
+  tipEl.className = 'ui-tip'
+  tipEl.setAttribute('role', 'tooltip')
+  tipEl.setAttribute('aria-hidden', 'true')
+  document.body.appendChild(tipEl)
+  return tipEl
+}
 
+function hideTip(): void {
+  if (showTimer !== null) {
+    window.clearTimeout(showTimer)
+    showTimer = null
+  }
+  if (!currentHost) return
+  currentHost = null
+  lastHideAt = performance.now()
+  tipEl?.removeAttribute('data-open')
+}
+
+function showTip(host: HTMLElement, label: string): void {
+  if (!host.isConnected || !label) return
+  const el = layer()
+  currentHost = host
+  el.textContent = label
+  el.removeAttribute('data-open')
+  el.style.left = '-9999px'
+  el.style.top = '-9999px'
+
+  const box = host.getBoundingClientRect()
+  const width = el.offsetWidth
+  const height = el.offsetHeight
+  let top = box.bottom + GAP
+  if (top + height > window.innerHeight - EDGE && box.top - height - GAP >= EDGE) {
+    top = box.top - height - GAP
+  }
+  top = Math.min(Math.max(top, EDGE), Math.max(EDGE, window.innerHeight - height - EDGE))
+  let left = box.left + box.width / 2 - width / 2
+  left = Math.min(Math.max(left, EDGE), Math.max(EDGE, window.innerWidth - width - EDGE))
+  el.style.left = `${Math.round(left)}px`
+  el.style.top = `${Math.round(top)}px`
+
+  requestAnimationFrame(() => {
+    if (currentHost === host) el.setAttribute('data-open', '')
+  })
+}
+
+function scheduleTip(host: HTMLElement, label: string): void {
+  if (!canHover() || !label) return
+  if (currentHost === host) return
+  if (showTimer !== null) {
+    window.clearTimeout(showTimer)
+    showTimer = null
+  }
+  // 相邻 tooltip 之间快速移动时跳过等待。
+  if (currentHost !== null || performance.now() - lastHideAt < SKIP_DELAY) {
+    showTip(host, label)
+    return
+  }
+  showTimer = window.setTimeout(() => {
+    showTimer = null
+    showTip(host, label)
+  }, SHOW_DELAY)
+}
+
+// 鼠标移开、点击、滚动、按键立即隐藏。
+if (typeof window !== 'undefined') {
+  document.addEventListener('pointerdown', hideTip, true)
+  document.addEventListener('keydown', hideTip, true)
+  document.addEventListener('wheel', hideTip, true)
+  document.addEventListener('scroll', hideTip, true)
+  window.addEventListener('resize', hideTip)
+}
+
+// 原生 title 也统一走标准 tooltip：悬停时暂存并移除 title，避免浏览器原生浮层。
+const tipHosts = new WeakSet<Element>()
+const titleCache = new WeakMap<HTMLElement, string>()
+let titleHost: HTMLElement | null = null
+
+function restoreTitle(): void {
+  if (!titleHost) return
+  const host = titleHost
+  titleHost = null
+  const title = titleCache.get(host)
+  if (title && !host.hasAttribute('title')) host.setAttribute('title', title)
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener(
+    'pointerover',
+    (e) => {
+      if (!canHover()) return
+      const target = e.target instanceof Element ? e.target : null
+      const host = target?.closest<HTMLElement>('[title]') ?? null
+      if (host === titleHost) return
+      if (titleHost && (!host || !titleHost.contains(host))) restoreTitle()
+      if (!host || tipHosts.has(host)) return
+      const title = host.getAttribute('title')?.trim()
+      if (!title) return
+      titleHost = host
+      titleCache.set(host, title)
+      host.removeAttribute('title')
+      scheduleTip(host, title)
+    },
+    true,
+  )
+  document.addEventListener(
+    'pointerout',
+    (e) => {
+      if (!titleHost) return
+      const related = e.relatedTarget instanceof Node ? e.relatedTarget : null
+      if (related && titleHost.contains(related)) return
+      restoreTitle()
+      hideTip()
+    },
+    true,
+  )
+  document.addEventListener(
+    'focusin',
+    (e) => {
+      const target = e.target instanceof Element ? e.target : null
+      if (!target?.matches(':focus-visible')) return
+      const host = target.closest<HTMLElement>('[title]')
+      if (!host || tipHosts.has(host)) return
+      const title = host.getAttribute('title')?.trim()
+      if (title) scheduleTip(host, title)
+    },
+    true,
+  )
+  document.addEventListener('focusout', hideTip, true)
+}
+
+function useTipAnchor(getHost: () => HTMLElement | null, label: string): void {
   useEffect(() => {
-    const el = host()
-    if (!el) return
-    const onScroll = () => setAnchor(null)
-    const onFocusIn = () => {
-      // 鼠标点击不弹出 tooltip，仅键盘聚焦时显示。
-      if (el.matches(':focus-visible')) update()
-    }
-    el.addEventListener('mouseenter', update)
-    el.addEventListener('mouseleave', hide)
-    el.addEventListener('focusin', onFocusIn)
-    el.addEventListener('focusout', hide)
-    window.addEventListener('scroll', onScroll, true)
-    window.addEventListener('resize', onScroll)
-    return () => {
-      el.removeEventListener('mouseenter', update)
-      el.removeEventListener('mouseleave', hide)
-      el.removeEventListener('focusin', onFocusIn)
-      el.removeEventListener('focusout', hide)
-      window.removeEventListener('scroll', onScroll, true)
-      window.removeEventListener('resize', onScroll)
-    }
-  }, [host, update, hide])
+    const host = getHost()
+    if (!host) return
+    tipHosts.add(host)
 
-  return anchor
+    const onEnter = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return
+      scheduleTip(host, label)
+    }
+    const onLeave = () => hideTip()
+    const onFocusIn = (e: FocusEvent) => {
+      if (!(e.target instanceof Element) || !e.target.matches(':focus-visible')) return
+      scheduleTip(host, label)
+    }
+    const onFocusOut = (e: FocusEvent) => {
+      const related = e.relatedTarget instanceof Node ? e.relatedTarget : null
+      if (related && host.contains(related)) return
+      hideTip()
+    }
+
+    host.addEventListener('pointerenter', onEnter)
+    host.addEventListener('pointerleave', onLeave)
+    host.addEventListener('focusin', onFocusIn)
+    host.addEventListener('focusout', onFocusOut)
+    return () => {
+      tipHosts.delete(host)
+      host.removeEventListener('pointerenter', onEnter)
+      host.removeEventListener('pointerleave', onLeave)
+      host.removeEventListener('focusin', onFocusIn)
+      host.removeEventListener('focusout', onFocusOut)
+      if (currentHost === host) hideTip()
+    }
+  }, [getHost, label])
 }
 
 /**
- * 挂在宿主元素内部的 tooltip 标记：借用父元素作为定位锚点，
- * 气泡通过 Portal 渲染到 body，避免被侧栏等 overflow 容器裁切。
+ * 挂在宿主元素内部的 tooltip 标记：借用父元素作为定位锚点。
+ * side 仅为兼容旧调用保留，标准行为固定显示在下方，空间不足时翻到上方。
  */
-export function Tip({ label, side = 'bottom' }: { label: string; side?: Side }) {
+export function Tip({ label }: { label: string; side?: 'top' | 'bottom' }) {
   const markerRef = useRef<HTMLSpanElement>(null)
   const host = useCallback(() => markerRef.current?.parentElement ?? null, [])
-  const anchor = useHoverAnchor(host)
-  return (
-    <>
-      <span ref={markerRef} hidden aria-hidden />
-      <TipBubble label={label} side={side} anchor={anchor} />
-    </>
-  )
+  useTipAnchor(host, label)
+  return <span ref={markerRef} hidden aria-hidden />
 }
 
 /** 用包裹元素作为锚点的 tooltip；children 可以是整行条目。 */
 export function Tooltip({
   label,
-  side = 'top',
   className,
   children,
 }: {
   label: string
-  side?: Side
+  /** 兼容旧调用；标准 tooltip 固定下方，空间不足时翻转。 */
+  side?: 'top' | 'bottom'
   className?: string
   children: ReactNode
 }) {
   const wrapRef = useRef<HTMLSpanElement>(null)
   const host = useCallback(() => wrapRef.current, [])
-  const anchor = useHoverAnchor(host)
+  useTipAnchor(host, label)
   return (
-    <>
-      <span ref={wrapRef} className={cn('min-w-0 max-w-full', className)}>
-        {children}
-      </span>
-      <TipBubble label={label} side={side} anchor={anchor} />
-    </>
+    <span ref={wrapRef} className={cn('min-w-0 max-w-full', className)}>
+      {children}
+    </span>
   )
 }

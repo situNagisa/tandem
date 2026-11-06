@@ -1,18 +1,17 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react'
-import { createPortal } from 'react-dom'
 import { Check, ChevronDown } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import type { ControlSize } from './Button'
 import { Popover } from './Popover'
+import { Tip } from './Tooltip'
 
 export interface MenuListProps {
   children: ReactNode
@@ -37,13 +36,11 @@ function itemFromEvent(target: EventTarget | null): HTMLElement | null {
   if (!(target instanceof HTMLElement)) return null
   const item = target.closest<HTMLElement>('[data-menu-item]')
   if (!item) return null
-  // 禁用的选项也允许悬停：用 tooltip 说明不可选的原因。
-  if (item.getAttribute('aria-disabled') === 'true' && !item.dataset.tip) return null
   return item
 }
 
 /**
- * 统一弹出列表：30px 单行选项，说明通过右侧浮层 tooltip 展示。
+ * 统一弹出列表：30px 单行选项，说明与禁用原因走标准 tooltip（悬停 500ms 后显示）。
  * 不使用组标题；需要分组时用 MenuDivider 细分隔线。
  */
 export function MenuList({
@@ -56,8 +53,6 @@ export function MenuList({
 }: MenuListProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [active, setActive] = useState<HTMLElement | null>(null)
-  const [tipText, setTipText] = useState('')
-  const [tipPos, setTipPos] = useState<{ left: number; top: number; width: number } | null>(null)
 
   const setActiveItem = useCallback((el: HTMLElement | null) => {
     for (const prev of ref.current?.querySelectorAll<HTMLElement>('[data-active]') ?? []) {
@@ -66,41 +61,10 @@ export function MenuList({
     if (el && el.isConnected) {
       el.setAttribute('data-active', 'true')
       setActive(el)
-      setTipText(el.dataset.tip ?? '')
     } else {
       setActive(null)
-      setTipText('')
     }
   }, [])
-
-  const placeTip = useCallback(() => {
-    if (!active || !active.isConnected || !tipText) {
-      setTipPos(null)
-      return
-    }
-    const rect = active.getBoundingClientRect()
-    const width = Math.min(240, Math.max(160, window.innerWidth - 16))
-    let left = rect.right + 10
-    if (left + width > window.innerWidth - 8) left = rect.left - width - 10
-    left = Math.max(8, Math.min(left, window.innerWidth - width - 8))
-    const top = Math.max(76, Math.min(rect.top + rect.height / 2, window.innerHeight - 76))
-    setTipPos({ left, top, width })
-  }, [active, tipText])
-
-  useLayoutEffect(() => {
-    placeTip()
-  }, [placeTip])
-
-  useEffect(() => {
-    if (!active) return
-    const update = () => placeTip()
-    window.addEventListener('resize', update)
-    window.addEventListener('scroll', update, true)
-    return () => {
-      window.removeEventListener('resize', update)
-      window.removeEventListener('scroll', update, true)
-    }
-  }, [active, placeTip])
 
   useEffect(() => {
     if (activeIndex === undefined) return
@@ -194,23 +158,6 @@ export function MenuList({
       >
         {children}
       </div>
-      {tipPos &&
-        tipText &&
-        createPortal(
-          <div
-            role="tooltip"
-            className="pointer-events-none fixed z-[95] rounded-md border border-border bg-surface px-2 py-1 text-[11.5px] leading-[1.45] text-text-soft shadow-[var(--t-shadow-sm)]"
-            style={{
-              left: tipPos.left,
-              top: tipPos.top,
-              width: tipPos.width,
-              transform: 'translateY(-50%)',
-            }}
-          >
-            {tipText}
-          </div>,
-          document.body,
-        )}
     </>
   )
 }
@@ -218,7 +165,7 @@ export function MenuList({
 export interface MenuItemProps {
   children: ReactNode
   icon?: ReactNode
-  /** 悬停/键盘高亮时显示在列表旁的说明。 */
+  /** 悬停/键盘聚焦时以标准 tooltip 展示的说明。 */
   hint?: string
   /** 禁用原因：选项不可选时悬停显示，替代 hint。 */
   disabledReason?: string
@@ -260,7 +207,6 @@ export function MenuItem({
       tabIndex={disabled ? -1 : undefined}
       title={title}
       data-menu-item=""
-      data-tip={disabled ? (disabledReason ?? hint) : hint}
       data-selected={selected || undefined}
       onClick={() => {
         if (!disabled) onSelect?.()
@@ -283,6 +229,9 @@ export function MenuItem({
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {trailing && <span className="shrink-0 text-[10.5px] text-muted">{trailing}</span>}
       {selected && <Check size={13} className="shrink-0 text-text-secondary" />}
+      {(disabled ? (disabledReason ?? hint) : hint) ? (
+        <Tip label={disabled ? (disabledReason ?? hint)! : hint!} />
+      ) : null}
     </button>
   )
 }
