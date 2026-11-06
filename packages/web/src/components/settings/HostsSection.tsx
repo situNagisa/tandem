@@ -461,7 +461,7 @@ export function HostsSection() {
                     </div>
                   )}
                 </div>
-                <div className="settings-actions hidden sm:flex" data-open={editing || undefined}>
+                <div className="settings-actions hidden sm:flex" data-desktop-only="" data-open={editing || undefined}>
                   <IconButton
                     size="sm"
                     onClick={() => setPairHost(h.id)}

@@ -887,6 +887,12 @@ html.dark {
     opacity: 1;
   }
 }
+/* 移动端用卡片底部的整宽操作行，避免图标行与文字行重复出现。 */
+@media (max-width: 639px) {
+  .settings-actions[data-desktop-only] {
+    display: none;
+  }
+}
 .settings-empty {
   border: 1px dashed var(--t-border);
   border-radius: 12px;

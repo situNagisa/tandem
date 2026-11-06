@@ -1165,7 +1165,7 @@ mark.chat-match {
   position: relative;
   display: flex;
   width: 18px;
-  height: 10px;
+  height: 16px;
   align-items: center;
   justify-content: flex-end;
   padding: 0;
@@ -1173,11 +1173,11 @@ mark.chat-match {
   background: transparent;
   cursor: pointer;
 }
-/* 视觉刻度 18×2，命中区扩展到 8px 宽 × 32px 高 */
+/* 视觉刻度 18×2，命中区扩展到 26px 宽 × 16px 高，不与相邻刻度重叠 */
 .turn-tick::before {
   content: '';
   position: absolute;
-  inset: -11px -4px;
+  inset: 0 -4px;
 }
 
 .turn-tick-num {

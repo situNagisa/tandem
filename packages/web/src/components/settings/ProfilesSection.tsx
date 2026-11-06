@@ -1425,7 +1425,7 @@ export function ProfilesSection() {
                         </div>
                       )}
                     </div>
-                    <div className="settings-actions hidden sm:flex">
+                    <div className="settings-actions hidden sm:flex" data-desktop-only="">
                       <IconButton
                         size="sm"
                         onClick={() => void test(p)}

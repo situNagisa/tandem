@@ -20,7 +20,7 @@ export interface TurnMark {
 }
 
 const EMPTY_TURNS: TurnMark[] = []
-const ROW = 10
+const ROW = 16
 const EDGE_H = 14
 const FADE_COUNT = 3
 const MIN_WINDOW = 5
@@ -234,10 +234,11 @@ export function TurnRail({
 
   const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0) return
-    const tick = (event.target as HTMLElement).closest<HTMLElement>('[data-turn-nav]')
-    if (!tick) return
-    const turn = Number(tick.dataset.turnNav)
-    if (!Number.isFinite(turn)) return
+    const target = event.target as HTMLElement
+    if (!target.closest('[data-turn-nav]')) return
+    // 用指针 Y 计算最近刻度：相邻刻度的命中区在边缘可能重叠，以几何位置为准。
+    const turn = turnAtPoint(event.clientY)
+    if (turn == null) return
     dragging.current = true
     frozenStart.current = start
     setDraggingView(true)
@@ -348,7 +349,10 @@ export function TurnRail({
             <button
               key={mark.id}
               type="button"
-              onClick={() => jump(mark.turn)}
+              onClick={(event) => {
+                // 指针按下时已按坐标跳转；松手后窗口会重排，再走一次 click 会落到相邻刻度。
+                if (event.detail === 0) jump(mark.turn)
+              }}
               data-turn-nav={mark.turn}
               data-active={active ? 'true' : undefined}
               aria-label={`跳转到${label}`}

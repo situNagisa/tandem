@@ -717,7 +717,7 @@ function CompletionMenu({
   if (completion.kind === 'slash' && loading) emptyText = '加载命令…'
   else if (completion.kind === 'file' && loading) emptyText = '搜索文件…'
   else if (completion.kind === 'slash') emptyText = '没有匹配的命令'
-  else if (completion.kind === 'file') emptyText = '没有匹配的文件'
+  else if (completion.kind === 'file') emptyText = completion.query ? '没有匹配的文件' : '输入文件名或目录以搜索'
 
   return (
     <div className="absolute inset-x-0 bottom-full z-40 mb-2">
