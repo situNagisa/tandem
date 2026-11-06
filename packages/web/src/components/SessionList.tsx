@@ -559,7 +559,11 @@ export function SessionList({
         }}
         onContextMenu={(e) => openMenu(e, hostId, s)}
         aria-current={isActive ? 'page' : undefined}
-        title={s.title || '未命名会话'}
+        title={
+          s.worktree
+            ? `${s.title || '未命名会话'} · worktree ${s.worktree.branch}（基于 ${s.worktree.baseBranch}）`
+            : s.title || '未命名会话'
+        }
         className={cn(
           'anim-row-in group relative flex h-11 cursor-default items-center gap-2 rounded-lg pl-2 pr-1 text-[14px] outline-none transition-colors duration-[120ms] md:h-[34px]',
           depth > 0 && 'ml-5',
@@ -605,15 +609,6 @@ export function SessionList({
         ) : (
           <span className="min-w-0 flex-1 truncate text-[14px] leading-5">
             {s.title || '未命名会话'}
-          </span>
-        )}
-        {!renamingThis && s.worktree && (
-          <span
-            title={`worktree 分支 ${s.worktree.branch}（基于 ${s.worktree.baseBranch}）`}
-            className="flex max-w-[48px] shrink-0 items-center gap-0.5 text-[9.5px] text-text-tertiary"
-          >
-            <GitBranch size={9} className="shrink-0" />
-            <span className="truncate font-mono">{s.worktree.branch}</span>
           </span>
         )}
         {!renamingThis && (
