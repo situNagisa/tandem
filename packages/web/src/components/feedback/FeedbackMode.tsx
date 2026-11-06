@@ -559,7 +559,14 @@ export function FeedbackMode() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!useFeedbackStore.getState().active) return
-      if (e.target instanceof Element && e.target.closest(`[${UI_ATTR}]`)) return
+      if (e.target instanceof Element && e.target.closest(`[${UI_ATTR}]`)) {
+        // 反馈 UI 内放行输入，但 Tab 不交给设置等弹窗的焦点陷阱。
+        if (e.key === 'Tab') {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+        }
+        return
+      }
       if (e.key === 'Escape') return
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.shiftKey && e.key.toLowerCase() === 'f') return
