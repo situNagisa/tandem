@@ -293,7 +293,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           onClick={copyAll}
           aria-label={copied ? '已复制' : '复制整条回复'}
           title={copied ? '已复制' : '复制整条回复（Markdown）'}
-          className="msg-actions absolute -bottom-6 right-0 flex size-6 items-center justify-center rounded-md bg-bg/85 text-muted backdrop-blur-sm transition-colors hover:bg-bg-hover hover:text-text-soft"
+          className="msg-actions absolute bottom-1 right-1 z-10 flex size-7 items-center justify-center rounded-md border border-border/70 bg-surface/90 text-muted shadow-sm backdrop-blur-sm transition-colors hover:bg-bg-hover hover:text-text-soft"
         >
           {copied ? <Check size={12.5} className="text-success" /> : <Copy size={12.5} />}
         </button>
