@@ -39,6 +39,8 @@ export function ChatView() {
   const frameRef = useRef<number | null>(null)
   // 平滑滚动到顶前，避免 ResizeObserver 在同一帧插入瞬移
   const programmaticUntil = useRef(0)
+  // 打开会话后的贴底校准：content-visibility 的预估高度会让首次 scrollHeight 偏小。
+  const initialScrollFor = useRef<string | null>(null)
   const [showJump, setShowJump] = useState(false)
 
   const stickToBottom = useCallback(() => {
@@ -68,9 +70,24 @@ export function ChatView() {
   useLayoutEffect(() => {
     pinnedRef.current = true
     setShowJump(false)
+    initialScrollFor.current = sessionId
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [sessionId])
+
+  // 消息挂载后高度仍会变化（代码高亮、content-visibility 回收），在最初几百毫秒内多次校准。
+  useEffect(() => {
+    if (!sessionId || loading || initialScrollFor.current !== sessionId) return
+    const timers = [0, 80, 240, 600].map((delay) =>
+      window.setTimeout(() => {
+        if (initialScrollFor.current !== sessionId || !pinnedRef.current) return
+        const el = scrollRef.current
+        if (el) el.scrollTop = el.scrollHeight
+        if (delay === 600) initialScrollFor.current = null
+      }, delay),
+    )
+    return () => timers.forEach((timer) => window.clearTimeout(timer))
+  }, [sessionId, loading, messageCount])
 
   useLayoutEffect(() => {
     stickToBottom()

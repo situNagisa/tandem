@@ -33,7 +33,7 @@ const STATUS_META: Record<FileChange['status'], { letter: string; className: str
   added: { letter: 'A', className: 'text-success' },
   deleted: { letter: 'D', className: 'text-danger' },
   renamed: { letter: 'R', className: 'text-accent' },
-  untracked: { letter: 'U', className: 'text-muted' },
+  untracked: { letter: 'U', className: 'text-warning' },
 }
 
 function InlineComment({
@@ -116,6 +116,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
   const [reverting, setReverting] = useState(false)
   const [commitMessage, setCommitMessage] = useState('')
   const [committing, setCommitting] = useState(false)
+  const [commitConfirmOpen, setCommitConfirmOpen] = useState(false)
   const [dragWidth, setDragWidth] = useState<number | null>(null)
   const commentSeq = useRef(1)
   const diffCache = useRef(new Map<string, string>())
@@ -123,6 +124,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
   const files = changes?.files ?? []
   const totalAdd = files.reduce((n, f) => n + f.additions, 0)
   const totalDel = files.reduce((n, f) => n + f.deletions, 0)
+  const untrackedCount = files.filter((f) => f.status === 'untracked').length
 
   // 文件列表变化时保持一个有效选中项
   useEffect(() => {
@@ -240,10 +242,16 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
     }
   }
 
+  const requestCommit = () => {
+    if (committing || !commitMessage.trim() || files.length === 0) return
+    setCommitConfirmOpen(true)
+  }
+
   const doCommit = async () => {
     if (!host || !sessionId || committing) return
     const message = commitMessage.trim()
     if (!message) return
+    setCommitConfirmOpen(false)
     setCommitting(true)
     try {
       const result = await api.commitChanges(host, sessionId, message)
@@ -293,7 +301,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
           aria-orientation="vertical"
           aria-label="调整面板宽度"
           onPointerDown={startResize}
-          className="absolute left-0 top-0 z-10 h-full w-1.5 -translate-x-1/2 cursor-col-resize touch-none hover:bg-accent/30"
+          className="absolute left-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none hover:bg-accent/30"
         />
       )}
 
@@ -363,54 +371,46 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
             {files.map((file) => {
               const meta = STATUS_META[file.status] ?? STATUS_META.modified
               return (
-                <button
+                <div
                   key={file.path}
-                  onClick={() => {
-                    setSelected(file.path)
-                    setActiveLine(null)
-                  }}
                   className={cn(
-                    'group flex w-full items-center gap-2 border-l-2 px-2.5 py-1.5 text-left transition-colors',
+                    'group flex w-full items-center border-l-2 transition-colors',
                     selected === file.path
                       ? 'border-accent bg-bg-active/60'
                       : 'border-transparent hover:bg-[var(--t-bg-hover)]',
                   )}
                 >
-                  <span className={cn('w-3.5 shrink-0 text-center font-mono text-[11px]', meta.className)}>
-                    {meta.letter}
-                  </span>
-                  <span
-                    className={cn(
-                      'min-w-0 flex-1 truncate font-mono text-[11.5px]',
-                      selected === file.path ? 'text-text' : 'text-text-soft',
-                    )}
-                    title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
+                  <button
+                    onClick={() => {
+                      setSelected(file.path)
+                      setActiveLine(null)
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2.5 text-left"
                   >
-                    {file.path}
-                  </span>
-                  <span className="shrink-0 font-mono text-[10.5px] text-success">+{file.additions}</span>
-                  <span className="shrink-0 font-mono text-[10.5px] text-danger">−{file.deletions}</span>
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    aria-label="丢弃改动"
+                    <span className={cn('w-3.5 shrink-0 text-center font-mono text-[11px]', meta.className)}>
+                      {meta.letter}
+                    </span>
+                    <span
+                      className={cn(
+                        'min-w-0 flex-1 truncate font-mono text-[11.5px]',
+                        selected === file.path ? 'text-text' : 'text-text-soft',
+                      )}
+                      title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
+                    >
+                      {file.path}
+                    </span>
+                    <span className="shrink-0 font-mono text-[10.5px] text-success">+{file.additions}</span>
+                    <span className="shrink-0 font-mono text-[10.5px] text-danger">−{file.deletions}</span>
+                  </button>
+                  <button
+                    onClick={() => setRevertTarget(file)}
+                    aria-label={`丢弃 ${file.path} 的改动`}
                     title="丢弃此文件的改动"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setRevertTarget(file)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        setRevertTarget(file)
-                      }
-                    }}
-                    className="flex size-6 shrink-0 items-center justify-center rounded text-muted opacity-0 transition-opacity hover:bg-bg-hover hover:text-danger group-hover:opacity-100 focus:opacity-100"
+                    className="mr-1 flex size-8 shrink-0 items-center justify-center rounded text-muted opacity-100 transition-opacity hover:bg-bg-hover hover:text-danger focus:opacity-100 md:size-6 md:opacity-0 md:group-hover:opacity-100"
                   >
                     <Trash2 size={12} />
-                  </span>
-                </button>
+                  </button>
+                </div>
               )
             })}
           </div>
@@ -448,37 +448,42 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                   if (!info.line) return
                   setActiveLine((prev) => (prev === info.line ? null : info.line))
                 }}
-                rowExtra={(info) =>
-                  activeLine === info.line ? (
-                    <InlineComment
-                      onSubmit={(text) => addComment(info.line, info.side, text)}
-                      onCancel={() => setActiveLine(null)}
-                    />
-                  ) : null
-                }
+                rowExtra={(info) => {
+                  const lineComments = fileComments.filter((c) => c.line === info.line)
+                  const showInput = activeLine === info.line
+                  if (lineComments.length === 0 && !showInput) return null
+                  return (
+                    <div className="border-y border-accent/15 bg-accent-soft/25">
+                      {lineComments.map((c) => (
+                        <div
+                          key={c.id}
+                          className="flex items-start gap-2 px-3 py-1.5 text-[11.5px] leading-5"
+                        >
+                          <MessageSquarePlus size={11} className="mt-1 shrink-0 text-accent" />
+                          <span className="min-w-0 flex-1 break-words text-text-soft">{c.text}</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setComments((prev) => prev.filter((x) => x.id !== c.id))
+                            }}
+                            aria-label={`删除第 ${c.line} 行评论`}
+                            className="shrink-0 text-muted hover:text-danger"
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      ))}
+                      {showInput && (
+                        <InlineComment
+                          onSubmit={(text) => addComment(info.line, info.side, text)}
+                          onCancel={() => setActiveLine(null)}
+                        />
+                      )}
+                    </div>
+                  )
+                }}
               />
             ) : null}
-            {fileComments.length > 0 && (
-              <div className="mt-3 space-y-1">
-                <p className="text-[10.5px] font-medium text-muted">本文件评论</p>
-                {fileComments.map((c) => (
-                  <div
-                    key={c.id}
-                    className="flex items-start gap-2 rounded-md bg-surface-2/60 px-2 py-1.5 text-[11.5px] leading-5"
-                  >
-                    <span className="shrink-0 font-mono text-[10.5px] text-accent">第 {c.line} 行</span>
-                    <span className="min-w-0 flex-1 break-words text-text-soft">{c.text}</span>
-                    <button
-                      onClick={() => setComments((prev) => prev.filter((x) => x.id !== c.id))}
-                      aria-label="删除评论"
-                      className="shrink-0 text-muted hover:text-danger"
-                    >
-                      <X size={11} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           <div className="shrink-0 border-t border-border">
@@ -522,7 +527,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
                       e.preventDefault()
-                      void doCommit()
+                      requestCommit()
                     }
                   }}
                   placeholder="提交信息"
@@ -530,20 +535,27 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                   className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-bg px-2.5 text-[12px] text-text outline-none placeholder:text-muted focus:border-accent/60"
                 />
                 <button
-                  onClick={() => void doCommit()}
+                  onClick={requestCommit}
                   disabled={!commitMessage.trim() || committing}
                   className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
                 >
                   {committing && <Loader2 size={11} className="animate-spin" />}
-                  提交
+                  提交全部
                 </button>
               </div>
-              <button
-                onClick={askAgentCommit}
-                className="flex items-center gap-1 text-[11px] text-muted transition-colors hover:text-text"
-              >
-                <Wand2 size={11} /> 让 agent 写提交信息
-              </button>
+              <div className="flex items-center gap-1.5 text-[10.5px] leading-4 text-muted">
+                <span>
+                  将暂存并提交全部 {files.length} 个文件
+                  {untrackedCount > 0 ? `（含 ${untrackedCount} 个未跟踪）` : ''}
+                </span>
+                <span className="flex-1" />
+                <button
+                  onClick={askAgentCommit}
+                  className="flex shrink-0 items-center gap-1 transition-colors hover:text-text"
+                >
+                  <Wand2 size={11} /> 让 agent 写提交信息
+                </button>
+              </div>
             </div>
           </div>
         </>
@@ -581,6 +593,48 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
         {revertTarget?.status === 'untracked' && (
           <p className="mt-2 rounded-lg border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[12px] leading-5 text-danger">
             这是未跟踪文件，丢弃会直接删除该文件（及其内容）。
+          </p>
+        )}
+      </Modal>
+
+      <Modal
+        open={commitConfirmOpen}
+        onClose={() => setCommitConfirmOpen(false)}
+        title="提交全部改动"
+        className="max-w-md"
+        footer={
+          <>
+            <button
+              onClick={() => setCommitConfirmOpen(false)}
+              disabled={committing}
+              className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
+            >
+              取消
+            </button>
+            <button
+              onClick={() => void doCommit()}
+              disabled={committing}
+              className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
+            >
+              {committing && <Loader2 size={13} className="animate-spin" />}
+              提交并关闭
+            </button>
+          </>
+        }
+      >
+        <p className="text-[13px] leading-6 text-text-soft">
+          将暂存并提交全部 <span className="font-medium text-text">{files.length}</span> 个文件
+          {untrackedCount > 0 ? `，其中 ${untrackedCount} 个未跟踪文件会首次加入版本库` : ''}。
+        </p>
+        <div className="mt-3 rounded-lg border border-border bg-bg/60 px-3 py-2">
+          <p className="text-[10.5px] text-muted">提交信息</p>
+          <p className="mt-0.5 whitespace-pre-wrap break-words text-[12.5px] leading-5 text-text">
+            {commitMessage.trim()}
+          </p>
+        </div>
+        {untrackedCount > 0 && (
+          <p className="mt-3 text-[11.5px] leading-5 text-warning">
+            {untrackedCount} 个未跟踪文件会被一并提交；如果其中有临时文件，请先取消并丢弃。
           </p>
         )}
       </Modal>

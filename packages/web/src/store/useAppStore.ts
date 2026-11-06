@@ -51,6 +51,7 @@ interface AppState {
 
   initialize: () => void
   checkConnections: () => void
+  goOffline: () => void
   bumpChanges: () => void
   addHost: (input: { name: string; url: string; token: string }) => HostConfig
   updateHost: (id: string, patch: Partial<Pick<HostConfig, 'name' | 'url' | 'token'>>) => void
@@ -565,6 +566,10 @@ export const useAppStore = create<AppState>((set, get) => {
       for (const [hostId, conn] of connections) {
         if (getHost(hostId)) conn.checkAlive()
       }
+    },
+
+    goOffline: () => {
+      for (const conn of connections.values()) conn.markOffline()
     },
 
     bumpChanges: () => set((state) => ({ changesNonce: state.changesNonce + 1 })),

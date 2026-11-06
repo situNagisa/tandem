@@ -103,5 +103,8 @@ export function presetForProfile(profile: {
     const byUrl = PROVIDER_PRESETS.find((p) => normalize(p.baseUrl) === baseUrl)
     if (byUrl) return byUrl
   }
-  return PROVIDER_PRESETS.find((p) => p.kind === profile.kind)
+  // 同 kind 只有一个预设时才能安全回退；兼容接口有多个品牌，
+  // 不能把自定义端点误标成列表里的第一个（如 DeepSeek）。
+  const sameKind = PROVIDER_PRESETS.filter((p) => p.kind === profile.kind)
+  return sameKind.length === 1 ? sameKind[0] : undefined
 }

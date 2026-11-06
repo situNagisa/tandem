@@ -145,6 +145,23 @@ export class HostConnection {
     this.rawSend({ type: 'ping' })
   }
 
+  /** 浏览器报告断网：停止重试并立即显示离线，等 online 事件再重建。 */
+  markOffline(): void {
+    if (this.closed) return
+    this.clearRetry()
+    this.stopPing()
+    const old = this.ws
+    this.ws = null
+    if (old) {
+      try {
+        old.close()
+      } catch {
+        /* 忽略 */
+      }
+    }
+    this.setStatus('offline')
+  }
+
   /** 立即重连（用户点“重试”或网络恢复时）。 */
   reconnectNow(): void {
     if (this.closed) return

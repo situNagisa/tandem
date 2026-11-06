@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ContentBlock } from '@tandem/protocol'
-import { Check, Copy, PencilLine, Undo2 } from 'lucide-react'
+import { Check, Copy, MoreHorizontal, PencilLine, Undo2 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { cn } from '../lib/cn'
 import { copyText } from '../lib/clipboard'
@@ -9,6 +9,7 @@ import { Markdown } from './Markdown'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCard, type ToolUseBlock } from './ToolCard'
 import { RewindDialog } from './RewindDialog'
+import { Popover } from './ui/Popover'
 import {
   ToolGroup,
   entriesFromMessages,
@@ -154,33 +155,85 @@ export const UserMessage = memo(function UserMessage({
           )
         )}
         {text.trim() && !editing && (
-          <div className="msg-actions absolute -left-9 bottom-0 flex flex-col gap-0.5">
-            <button
-              onClick={copy}
-              aria-label={copied ? '已复制' : '复制消息'}
-              title={copied ? '已复制' : '复制'}
-              className="flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft md:size-7"
-            >
-              {copied ? <Check size={12.5} className="text-success" /> : <Copy size={12.5} />}
-            </button>
-            <button
-              onClick={startEdit}
-              aria-label="编辑并重发"
-              title="编辑并重发"
-              className="flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft md:size-7"
-            >
-              <PencilLine size={12.5} />
-            </button>
-            <button
-              onClick={() => setRewindOpen(true)}
-              disabled={running}
-              aria-label="回退到此处"
-              title={running ? '会话运行中，结束后才能回退' : '回退到此处'}
-              className="flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft disabled:cursor-not-allowed disabled:opacity-40 md:size-7"
-            >
-              <Undo2 size={12.5} />
-            </button>
-          </div>
+          <>
+            <div className="msg-actions absolute bottom-1 -left-[6.25rem] hidden flex-row gap-0.5 md:flex">
+              <button
+                onClick={copy}
+                aria-label={copied ? '已复制' : '复制消息'}
+                title={copied ? '已复制' : '复制'}
+                className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft"
+              >
+                {copied ? <Check size={12.5} className="text-success" /> : <Copy size={12.5} />}
+              </button>
+              <button
+                onClick={startEdit}
+                aria-label="编辑并重发"
+                title="编辑并重发"
+                className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft"
+              >
+                <PencilLine size={12.5} />
+              </button>
+              <button
+                onClick={() => setRewindOpen(true)}
+                disabled={running}
+                aria-label="回退到此处"
+                title={running ? '会话运行中，结束后才能回退' : '回退到此处'}
+                className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Undo2 size={12.5} />
+              </button>
+            </div>
+            <div className="mt-1 flex justify-end md:hidden">
+              <Popover
+                align="right"
+                side="top"
+                padded={false}
+                trigger={({ toggle }) => (
+                  <button
+                    onClick={toggle}
+                    aria-label="消息操作"
+                    title="消息操作"
+                    className="flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover hover:text-text-soft"
+                  >
+                    <MoreHorizontal size={15} />
+                  </button>
+                )}
+              >
+                {(close) => (
+                  <div className="p-1">
+                    <button
+                      onClick={() => {
+                        close()
+                        void copy()
+                      }}
+                      className="menu-item"
+                    >
+                      <Copy size={13} /> {copied ? '已复制' : '复制消息'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        close()
+                        startEdit()
+                      }}
+                      className="menu-item"
+                    >
+                      <PencilLine size={13} /> 编辑并重发
+                    </button>
+                    <button
+                      onClick={() => {
+                        close()
+                        setRewindOpen(true)
+                      }}
+                      disabled={running}
+                      className="menu-item disabled:opacity-40"
+                    >
+                      <Undo2 size={13} /> 回退到此处
+                    </button>
+                  </div>
+                )}
+              </Popover>
+            </div>
+          </>
         )}
         {message.queued && (
           <div className="mt-1 text-right text-[11px] text-muted">已排队，当前回合结束后发送</div>

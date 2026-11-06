@@ -269,7 +269,7 @@ export function TopBar() {
         >
           <FileDiff size={13.5} className={cn('shrink-0', changesOpen ? 'text-accent' : 'text-muted')} />
           <span className="hidden font-sans text-[11px] sm:inline">改动</span>
-          {fileCount > 0 && (
+          {fileCount > 0 && !changesOpen && (
             <>
               <span className="text-success">+{additions}</span>
               <span className="text-danger">−{deletions}</span>

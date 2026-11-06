@@ -151,6 +151,9 @@ export default function App() {
     const reconnect = () => {
       useAppStore.getState().checkConnections()
     }
+    const goOffline = () => {
+      useAppStore.getState().goOffline()
+    }
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         clearAttention()
@@ -158,9 +161,11 @@ export default function App() {
       }
     }
     window.addEventListener('online', reconnect)
+    window.addEventListener('offline', goOffline)
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       window.removeEventListener('online', reconnect)
+      window.removeEventListener('offline', goOffline)
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [])

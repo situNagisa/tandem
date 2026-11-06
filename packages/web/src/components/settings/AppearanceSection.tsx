@@ -57,8 +57,11 @@ export function AppearanceSection() {
 
   useEffect(() => {
     if (typeof Notification === 'undefined') return
-    setPermission(Notification.permission)
-  }, [notifications])
+    const current = Notification.permission
+    setPermission(current)
+    // 浏览器权限被拒后，持久化的开关不能继续显示为开启。
+    if (current === 'denied' && notifications) setNotifications(false)
+  }, [notifications, setNotifications])
 
   const toggleNotifications = async () => {
     if (notifications) {
@@ -157,9 +160,10 @@ export function AppearanceSection() {
             role="switch"
             aria-checked={notifications}
             aria-label="桌面通知"
+            disabled={permission === 'denied'}
             onClick={() => void toggleNotifications()}
             className={cn(
-              'relative h-6 w-10 shrink-0 rounded-full border transition-colors duration-[120ms]',
+              'relative h-6 w-10 shrink-0 rounded-full border transition-colors duration-[120ms] disabled:cursor-not-allowed disabled:opacity-45',
               notifications
                 ? 'border-accent/50 bg-accent'
                 : 'border-border bg-[var(--t-bg-active)]',

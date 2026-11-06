@@ -47,8 +47,12 @@ export function RewindDialog({
   const hostId = useAppStore((s) => s.active?.hostId ?? null)
   const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
   const running = useAppStore((s) => s.active?.running ?? false)
+  const messages = useAppStore((s) => s.active?.messages ?? [])
   const rewind = useAppStore((s) => s.rewind)
   const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
+
+  const targetIndex = messages.findIndex((m) => m.id === message.id)
+  const afterCount = targetIndex >= 0 ? messages.length - targetIndex : 0
 
   const [checkpoint, setCheckpoint] = useState<Checkpoint | null>(null)
   const [loading, setLoading] = useState(true)
@@ -134,14 +138,28 @@ export function RewindDialog({
           {error}
         </p>
       ) : !checkpoint ? (
-        <div className="space-y-2 py-3 text-center">
-          <p className="text-[13px] text-text-soft">这条消息没有可用的检查点</p>
-          <p className="text-[11.5px] leading-5 text-muted">
-            检查点只在本轮开始前有文件被修改时创建。若这一轮没有改过文件，就无法回退。
-          </p>
+        <div className="space-y-3">
+          <div className="rounded-lg border border-border bg-bg/60 px-3 py-2">
+            <p className="text-[10.5px] text-muted">目标消息</p>
+            <p className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-5 text-text-soft [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden">
+              {messageText(message) || '（这条消息没有文本内容）'}
+            </p>
+          </div>
+          <div className="space-y-2 py-2 text-center">
+            <p className="text-[13px] text-text-soft">这条消息没有可用的检查点</p>
+            <p className="text-[11.5px] leading-5 text-muted">
+              检查点只在本轮开始前有文件被修改时创建。若这一轮没有改过文件，就无法回退。
+            </p>
+          </div>
         </div>
       ) : (
         <div className="space-y-3">
+          <div className="rounded-lg border border-border bg-bg/60 px-3 py-2">
+            <p className="text-[10.5px] text-muted">回退到这条消息之前</p>
+            <p className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-5 text-text-soft [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden">
+              {messageText(message) || '（这条消息没有文本内容）'}
+            </p>
+          </div>
           <div className="space-y-1.5" role="radiogroup" aria-label="恢复范围">
             {OPTIONS.map((option) => {
               const Icon = option.icon
@@ -180,11 +198,21 @@ export function RewindDialog({
 
           <div className="flex items-start gap-2 rounded-lg border border-warning/25 bg-warning-soft/40 px-3 py-2 text-[11.5px] leading-5 text-warning">
             <TriangleAlert size={13} className="mt-0.5 shrink-0" />
-            <span>
-              会撤销此消息之后 Tandem 的文件修改（Bash 命令造成的改动无法撤销）。
-              {mode !== 'conversation' && checkpoint.files.length > 0 && (
-                <> 本轮快照涉及 {checkpoint.files.length} 个文件。</>
+            <span className="space-y-1">
+              {mode !== 'conversation' && (
+                <span className="block">
+                  文件会回到此消息之前的状态（Bash 命令造成的改动无法撤销）。
+                  {checkpoint.files.length > 0 && ` 本轮快照涉及 ${checkpoint.files.length} 个文件。`}
+                </span>
               )}
+              {mode !== 'code' && (
+                <span className="block">
+                  {afterCount > 0
+                    ? `这条消息及其后 ${afterCount - 1} 条对话将被删除。`
+                    : '这条消息会从对话中移除。'}
+                </span>
+              )}
+              {mode === 'conversation' && <span className="block">当前文件保持不变。</span>}
             </span>
           </div>
 
