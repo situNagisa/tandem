@@ -29,6 +29,7 @@ import type { WsClient } from './events.js';
 import { testProfile } from './providers/index.js';
 import { exportBundle, importBundle } from './migrate.js';
 import { walkFiles } from './util/fs-walk.js';
+import { readForPreview, readImage, revealFile } from './util/file-preview.js';
 import { expandHome, toPosix } from './util/path.js';
 import { truncateEnd } from './util/text.js';
 
@@ -553,6 +554,61 @@ export async function createApp(host: Host): Promise<FastifyInstance> {
     }
     scored.sort((a, b) => b.score - a.score || a.rel.length - b.rel.length);
     return scored.slice(0, 50).map((item) => item.rel);
+  });
+
+  /** 文件链接的路径：绝对路径直接用，相对路径以 cwd（默认进程 cwd）为基准。 */
+  function resolvePreviewPath(rawPath: string, cwdRaw: string): string {
+    const expanded = expandHome(rawPath);
+    if (path.isAbsolute(expanded)) return path.normalize(expanded);
+    const cwd = cwdRaw ? path.resolve(expandHome(cwdRaw)) : process.cwd();
+    return path.resolve(cwd, expanded);
+  }
+
+  app.get('/api/fs/read', async (req, reply) => {
+    const query = req.query as { path?: string; cwd?: string };
+    const raw = str(query.path);
+    if (!raw) return bad(reply, 'path 不能为空');
+    const abs = resolvePreviewPath(raw, str(query.cwd));
+    try {
+      return await readForPreview(abs);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') return bad(reply, `文件不存在: ${abs}`, 404);
+      if (code === 'EACCES') return bad(reply, `没有权限读取: ${abs}`, 403);
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.get('/api/fs/raw', async (req, reply) => {
+    const query = req.query as { path?: string; cwd?: string };
+    const raw = str(query.path);
+    if (!raw) return bad(reply, 'path 不能为空');
+    const abs = resolvePreviewPath(raw, str(query.cwd));
+    try {
+      const image = await readImage(abs);
+      return reply
+        .type(image.mime)
+        .header('Cache-Control', 'no-store')
+        .send(image.data);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') return bad(reply, `文件不存在: ${abs}`, 404);
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.post('/api/fs/reveal', async (req, reply) => {
+    const body = (req.body ?? {}) as { path?: unknown; cwd?: unknown };
+    const raw = str(body.path);
+    if (!raw) return bad(reply, 'path 不能为空');
+    const abs = resolvePreviewPath(raw, str(body.cwd));
+    let isDir: boolean;
+    try {
+      isDir = statSync(abs).isDirectory();
+    } catch {
+      return { ok: false, error: `文件不存在: ${abs}` };
+    }
+    return revealFile(abs, isDir);
   });
 
   // ---------- 斜杠命令 ----------

@@ -1,7 +1,18 @@
 import { isValidElement, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { FileText } from 'lucide-react'
 import { cn } from '../lib/cn'
+import { useAppStore } from '../store/useAppStore'
+import { useUiStore } from '../store/useUiStore'
+import {
+  isAnchorHref,
+  isExternalHref,
+  parseFileHref,
+  parseInlinePath,
+  splitFileRefs,
+  type FileRef,
+} from '../lib/fileLinks'
 import { CodeBlock } from './CodeBlock'
 
 function nodeText(node: ReactNode): string {
@@ -22,7 +33,56 @@ function codeInfo(children: ReactNode): { code: string; language?: string } | nu
   return { code, language: match?.[1] }
 }
 
-function makeComponents(streaming: boolean): Components {
+export function openFileRef(ref: FileRef, cwd?: string): void {
+  const fallback = useAppStore.getState().active?.summary?.cwd ?? ''
+  useUiStore.getState().openFilePreview({
+    path: ref.path,
+    cwd: cwd || fallback,
+    ...(ref.lineStart ? { lineStart: ref.lineStart } : {}),
+    ...(ref.lineEnd ? { lineEnd: ref.lineEnd } : {}),
+  })
+}
+
+/** 把消息里的纯文本路径也变成文件链接，不改动代码、既有链接与行内代码。 */
+function remarkFileLinks() {
+  return (tree: unknown) => {
+    const walk = (node: { type?: string; children?: unknown[] }) => {
+      if (!node || !Array.isArray(node.children)) return
+      if (
+        node.type === 'link' ||
+        node.type === 'linkReference' ||
+        node.type === 'code' ||
+        node.type === 'inlineCode' ||
+        node.type === 'html'
+      ) {
+        return
+      }
+      const next: unknown[] = []
+      for (const child of node.children as Array<{ type?: string; value?: string }>) {
+        if (child?.type === 'text' && typeof child.value === 'string') {
+          for (const segment of splitFileRefs(child.value)) {
+            if (typeof segment === 'string') {
+              if (segment) next.push({ type: 'text', value: segment })
+            } else {
+              next.push({
+                type: 'link',
+                url: segment.text,
+                children: [{ type: 'text', value: segment.text }],
+              })
+            }
+          }
+        } else {
+          walk(child as { type?: string; children?: unknown[] })
+          next.push(child)
+        }
+      }
+      node.children = next
+    }
+    walk(tree as { type?: string; children?: unknown[] })
+  }
+}
+
+function makeComponents(streaming: boolean, cwd?: string): Components {
   return {
     pre({ children }) {
       const info = codeInfo(children)
@@ -46,7 +106,7 @@ function makeComponents(streaming: boolean): Components {
   }
 }
 
-const REMARK_PLUGINS = [remarkGfm]
+const REMARK_PLUGINS = [remarkGfm, remarkFileLinks]
 
 /**
  * 流式时按动画帧合并 delta；文本越长渲染间隔越大，避免整段 Markdown
@@ -149,11 +209,13 @@ function splitChunks(text: string): Chunk[] {
 const MarkdownChunk = memo(function MarkdownChunk({
   text,
   streaming,
+  cwd,
 }: {
   text: string
   streaming: boolean
+  cwd?: string
 }) {
-  const components = useMemo(() => makeComponents(streaming), [streaming])
+  const components = useMemo(() => makeComponents(streaming, cwd), [streaming, cwd])
   return (
     <div className={cn('md-chunk', streaming && 'is-streaming')}>
       <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={components}>
@@ -167,11 +229,14 @@ export const Markdown = memo(function Markdown({
   text,
   streaming = false,
   className,
+  cwd,
 }: {
   text: string
   /** 流式输出时在最后一段尾部显示闪烁光标。 */
   streaming?: boolean
   className?: string
+  /** 文件链接的解析基准（外部会话传入该会话 cwd，默认活动会话 cwd）。 */
+  cwd?: string
 }) {
   const shown = useStreamingText(text, streaming)
   const chunks = useMemo(

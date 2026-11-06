@@ -9,6 +9,8 @@ import type {
   ExternalSession,
   ExternalSource,
   FsEntry,
+  FsReadResult,
+  FsRevealResult,
   HostInfo,
   ListModelsInput,
   McpServerConfig,
@@ -211,6 +213,16 @@ export const api = {
     }),
 
   commands: (h: HostConfig) => request<SlashCommand[]>(h, '/api/commands'),
+
+  fsRead: (h: HostConfig, path: string, cwd?: string) =>
+    request<FsReadResult>(h, `/api/fs/read${qs({ path, cwd })}`),
+  fsReveal: (h: HostConfig, path: string) =>
+    request<FsRevealResult>(h, '/api/fs/reveal', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+  fsRawUrl: (h: HostConfig, path: string, cwd?: string) =>
+    `${requestBase(h.url)}/api/fs/raw${qs({ path, cwd, token: h.token })}`,
 
   mcp: (h: HostConfig, cwd?: string, retry = false) =>
     request<{ servers: McpServerConfig[]; status: McpServerStatus[] }>(

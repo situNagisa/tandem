@@ -308,6 +308,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             key={`${message.id}-t-${i}`}
             text={block.text}
             streaming={streaming && i === lastIndex}
+            cwd={cwd}
           />,
         )
       }

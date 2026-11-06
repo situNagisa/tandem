@@ -24,7 +24,7 @@ import { cn } from '../lib/cn'
 import { firstLine, truncate } from '../lib/format'
 import { CodeBlock } from './CodeBlock'
 import { DiffView } from './DiffView'
-import { Markdown } from './Markdown'
+import { Markdown, openFileRef } from './Markdown'
 import { ThinkingBlock } from './ThinkingBlock'
 
 export type ToolUseBlock = Extract<ContentBlock, { type: 'tool_use' }>
@@ -493,7 +493,29 @@ export const ToolCard = memo(function ToolCard({
           <Icon size={14} className={cn('shrink-0', isError ? 'text-danger' : 'text-muted')} />
         )}
         <span className={cn('shrink-0', isError && 'text-danger')}>{meta.verb}</span>
-        {target && (
+        {target && filePath && (block.name === 'Read' || block.name === 'Edit' || block.name === 'Write') ? (
+          <span
+            role="link"
+            tabIndex={0}
+            title={`打开 ${filePath}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              openFileRef({ path: filePath }, cwd)
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return
+              e.preventDefault()
+              e.stopPropagation()
+              openFileRef({ path: filePath }, cwd)
+            }}
+            className={cn(
+              'file-ref min-w-0 truncate font-mono text-[12.5px]',
+              isError ? 'text-danger' : 'text-text-soft',
+            )}
+          >
+            {target}
+          </span>
+        ) : target ? (
           <span
             className={cn(
               'min-w-0 truncate font-mono text-[12.5px]',
@@ -502,7 +524,7 @@ export const ToolCard = memo(function ToolCard({
           >
             {target}
           </span>
-        )}
+        ) : null}
         {suffix && (
           <span className={cn('shrink-0', isError ? 'text-danger' : 'text-muted')}>{suffix}</span>
         )}

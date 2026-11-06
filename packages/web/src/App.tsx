@@ -11,6 +11,7 @@ import { ChatView } from './components/ChatView'
 import { ExternalSessionView } from './components/ExternalSessionView'
 import { RightPanel } from './components/RightPanel'
 import { ChangeReviewPanel } from './components/ChangeReviewPanel'
+import { FilePreviewPanel } from './components/FilePreviewPanel'
 import { SettingsDialog } from './components/settings/SettingsDialog'
 import { SearchDialog } from './components/SearchDialog'
 import { Toasts } from './components/ui/Toasts'
@@ -28,6 +29,8 @@ export default function App() {
   const setPanelOpen = useUiStore((s) => s.setPanelOpen)
   const changesOpen = useUiStore((s) => s.changesOpen)
   const setChangesOpen = useUiStore((s) => s.setChangesOpen)
+  const filePreview = useUiStore((s) => s.filePreview)
+  const closeFilePreview = useUiStore((s) => s.closeFilePreview)
   const theme = useUiStore((s) => s.theme)
   const mobileSidebar = useUiStore((s) => s.mobileSidebar)
   const mobilePanel = useUiStore((s) => s.mobilePanel)
@@ -80,6 +83,7 @@ export default function App() {
     ui.setMobileSidebar(false)
     ui.setMobilePanel(false)
     ui.setChangesOpen(false)
+    ui.closeFilePreview()
   }, [route])
 
   useEffect(() => {
@@ -260,12 +264,17 @@ export default function App() {
           ) : (
             <ChatView />
           )}
-          {!isMobile && changesOpen && hasSession && (
+          {!isMobile && filePreview && (
+            <div className="anim-fade-in flex min-h-0 shrink-0">
+              <FilePreviewPanel onClose={closeFilePreview} />
+            </div>
+          )}
+          {!isMobile && !filePreview && changesOpen && hasSession && (
             <div className="anim-fade-in flex min-h-0 shrink-0">
               <ChangeReviewPanel onClose={() => setChangesOpen(false)} />
             </div>
           )}
-          {!isMobile && panelOpen && !changesOpen && hasSession && (
+          {!isMobile && !filePreview && panelOpen && !changesOpen && hasSession && (
             <div className="anim-fade-in shrink-0">
               <RightPanel onClose={() => setPanelOpen(false)} />
             </div>
@@ -309,6 +318,12 @@ export default function App() {
       {isMobile && changesOpen && hasSession && (
         <div className="fixed inset-0 z-40 bg-bg md:hidden">
           <ChangeReviewPanel onClose={() => setChangesOpen(false)} />
+        </div>
+      )}
+
+      {isMobile && filePreview && (
+        <div className="fixed inset-0 z-40 bg-bg md:hidden">
+          <FilePreviewPanel onClose={closeFilePreview} />
         </div>
       )}
 

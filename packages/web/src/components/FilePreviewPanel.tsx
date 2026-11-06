@@ -1,0 +1,329 @@
+import { useEffect, useRef, useState } from 'react'
+import type { FsReadResult } from '@tandem/protocol'
+import {
+  Check,
+  Code2,
+  Copy,
+  ExternalLink,
+  Eye,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
+  RotateCcw,
+  X,
+} from 'lucide-react'
+import { useAppStore } from '../store/useAppStore'
+import { useUiStore } from '../store/useUiStore'
+import { api } from '../lib/api'
+import { copyText } from '../lib/clipboard'
+import { cn } from '../lib/cn'
+import { useIsMobile } from '../lib/hooks'
+import { isLocalHostUrl } from '../lib/hostUrl'
+import {
+  fileBaseName,
+  isImagePath,
+  isMarkdownPath,
+  lineLabel,
+} from '../lib/fileLinks'
+import { CodeBlock } from './CodeBlock'
+import { Markdown } from './Markdown'
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+/** 服务端 404 时拿不到解析结果，客户端按同样规则拼出绝对路径供用户判断。 */
+function resolveAbsolute(path: string, cwd: string): string {
+  let raw = path
+  if (/^file:/i.test(raw)) {
+    try {
+      raw = decodeURIComponent(new URL(raw).pathname)
+    } catch {
+      raw = raw.replace(/^file:\/\//i, '')
+    }
+  }
+  if (raw.startsWith('/') || /^[A-Za-z]:[\\/]/.test(raw)) return raw
+  if (!cwd) return raw
+  return `${cwd.replace(/[\\/]+$/, '')}/${raw}`
+}
+
+export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
+  const isMobile = useIsMobile()
+  const preview = useUiStore((s) => s.filePreview)
+  const widthPref = useUiStore((s) => s.filePreviewWidth)
+  const setWidth = useUiStore((s) => s.setFilePreviewWidth)
+  const toast = useUiStore((s) => s.toast)
+  const hostId = useAppStore((s) => s.active?.hostId ?? s.activeHostId)
+  const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
+
+  const [data, setData] = useState<FsReadResult | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [retryNonce, setRetryNonce] = useState(0)
+  const [mode, setMode] = useState<'preview' | 'source'>('preview')
+  const [copied, setCopied] = useState(false)
+  const [revealing, setRevealing] = useState(false)
+  const [dragWidth, setDragWidth] = useState<number | null>(null)
+  const copyTimer = useRef<number | null>(null)
+
+  const path = preview?.path ?? ''
+  const cwd = preview?.cwd ?? ''
+  const absPath = data?.path ?? (path ? resolveAbsolute(path, cwd) : '')
+  const image = isImagePath(absPath)
+  const markdown = isMarkdownPath(absPath)
+  const label = lineLabel(preview ?? {})
+
+  useEffect(() => {
+    if (!host || !path) return
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    setData(null)
+    api
+      .fsRead(host, path, cwd || undefined)
+      .then((result) => {
+        if (!cancelled) setData(result)
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : '读取文件失败')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [host, path, cwd, retryNonce])
+
+  useEffect(() => {
+    setMode('preview')
+  }, [path])
+
+  useEffect(
+    () => () => {
+      if (copyTimer.current) window.clearTimeout(copyTimer.current)
+    },
+    [],
+  )
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
+      onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  if (!preview) return null
+
+  const width = dragWidth ?? widthPref
+
+  const startResize = (e: React.PointerEvent) => {
+    if (e.button !== 0 || isMobile) return
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = widthPref
+    setDragWidth(startWidth)
+    const move = (ev: PointerEvent) => setDragWidth(startWidth - (ev.clientX - startX))
+    const up = (ev: PointerEvent) => {
+      setWidth(startWidth - (ev.clientX - startX))
+      setDragWidth(null)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
+  const copyPath = async () => {
+    if (!absPath) return
+    if (!(await copyText(absPath))) {
+      toast('复制失败', 'error')
+      return
+    }
+    setCopied(true)
+    if (copyTimer.current) window.clearTimeout(copyTimer.current)
+    copyTimer.current = window.setTimeout(() => setCopied(false), 1500)
+  }
+
+  const reveal = async () => {
+    if (!host || !absPath || revealing) return
+    setRevealing(true)
+    try {
+      const result = await api.fsReveal(host, absPath)
+      if (result.ok) toast('已在 Host 上打开文件位置', 'success')
+      else toast(result.error || 'Host 无法打开文件位置', 'error')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '打开失败', 'error')
+    } finally {
+      setRevealing(false)
+    }
+  }
+
+  const highlightRange = preview.lineStart
+    ? { start: preview.lineStart, end: preview.lineEnd ?? preview.lineStart }
+    : undefined
+
+  return (
+    <aside
+      className="relative flex h-full min-h-0 w-full flex-col border-l border-border bg-sidebar"
+      style={{ width: isMobile ? '100%' : width, transition: dragWidth !== null ? 'none' : undefined }}
+    >
+      {!isMobile && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调整文件预览宽度"
+          onPointerDown={startResize}
+          className="absolute left-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none hover:bg-accent/30"
+        />
+      )}
+
+      <div className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border/70 px-3 py-1.5">
+        <FileText size={15} className="shrink-0 text-text-soft" />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span
+              className="min-w-0 truncate font-mono text-[12px] text-text"
+              title={absPath || path}
+            >
+              {fileBaseName(path || absPath)}
+            </span>
+            {label && (
+              <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[10px] text-text-secondary">
+                :{label}
+              </span>
+            )}
+            <button
+              onClick={() => void copyPath()}
+              aria-label="复制文件路径"
+              title={copied ? '已复制' : `复制路径：${absPath}`}
+              className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+            >
+              {copied ? <Check size={12} className="text-success" /> : <Copy size={11.5} />}
+            </button>
+          </div>
+          <div className="truncate font-mono text-[10px] text-muted" title={absPath}>
+            {absPath || path}
+          </div>
+        </div>
+        {host && isLocalHostUrl(host.url) && (
+          <button
+            onClick={() => void reveal()}
+            disabled={revealing || !data}
+            title="在 Host 的文件管理器中显示"
+            className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-border px-2 text-[11px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
+          >
+            {revealing ? <Loader2 size={11} className="animate-spin" /> : <ExternalLink size={11} />}
+            在本机打开
+          </button>
+        )}
+        <button
+          onClick={onClose}
+          aria-label="关闭文件预览"
+          className="-mr-1 flex size-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:size-7"
+        >
+          <X size={15} />
+        </button>
+      </div>
+
+      {markdown && data && !data.isBinary && (
+        <div className="flex shrink-0 items-center gap-1 border-b border-border/70 px-3 py-1.5">
+          <div className="flex rounded-md bg-[var(--t-bg-subtle)] p-0.5">
+            <button
+              onClick={() => setMode('preview')}
+              className={cn(
+                'flex h-6 items-center gap-1 rounded px-2 text-[11px] transition-colors',
+                mode === 'preview' ? 'bg-[var(--t-bg-active)] text-text' : 'text-muted hover:text-text-soft',
+              )}
+            >
+              <Eye size={11} /> 预览
+            </button>
+            <button
+              onClick={() => setMode('source')}
+              className={cn(
+                'flex h-6 items-center gap-1 rounded px-2 text-[11px] transition-colors',
+                mode === 'source' ? 'bg-[var(--t-bg-active)] text-text' : 'text-muted hover:text-text-soft',
+              )}
+            >
+              <Code2 size={11} /> 源码
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex flex-1 items-center justify-center text-muted">
+          <Loader2 size={16} className="animate-spin" />
+        </div>
+      ) : error ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+          <FileText size={26} className="text-muted/50" />
+          <p className="text-[13px] font-medium text-text-soft">无法打开这个文件</p>
+          <p className="max-w-[420px] text-[12px] leading-5 text-danger">{error}</p>
+          <p className="max-w-full break-all rounded-md bg-[var(--t-bg-subtle)] px-2 py-1 font-mono text-[11px] text-text-secondary">
+            {absPath}
+          </p>
+          <button
+            onClick={() => setRetryNonce((n) => n + 1)}
+            className="mt-1 flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-[11.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+          >
+            <RotateCcw size={11} /> 重试
+          </button>
+        </div>
+      ) : data ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          {data.truncated && (
+            <div className="shrink-0 border-b border-border/70 bg-[var(--t-bg-subtle)] px-3 py-1.5 text-[11px] text-text-secondary">
+              文件较大（{formatSize(data.size)}），仅显示前 1 MB。
+            </div>
+          )}
+          {image ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+              <img
+                src={host ? api.fsRawUrl(host, absPath, cwd || undefined) : ''}
+                alt={fileBaseName(absPath)}
+                className="max-h-full max-w-full rounded-lg border border-border object-contain"
+              />
+            </div>
+          ) : data.isBinary ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+              <ImageIcon size={26} className="text-muted/50" />
+              <p className="text-[13px] font-medium text-text-soft">二进制文件</p>
+              <p className="text-[11.5px] text-muted">
+                无法以文本预览（{formatSize(data.size)}）
+              </p>
+            </div>
+          ) : markdown && mode === 'preview' ? (
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 md:px-6">
+              <Markdown text={data.content} cwd={cwd} className="file-preview-md" />
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 p-3">
+              <CodeBlock
+                code={data.content}
+                language={data.language}
+                showHeader={false}
+                maxHeight={null}
+                lineNumbers
+                highlightRange={highlightRange}
+                scrollToLine={preview.lineStart}
+                fill
+                className="h-full"
+              />
+            </div>
+          )}
+        </div>
+      ) : null}
+    </aside>
+  )
+}

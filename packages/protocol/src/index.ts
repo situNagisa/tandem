@@ -149,6 +149,17 @@ export interface HostInfo {
 
 export interface FsEntry { name: string; path: string; isDir: boolean }
 
+export interface FsReadResult {
+  path: string;            // 解析后的绝对路径
+  content: string;
+  truncated: boolean;      // 超过 1MB 时截断
+  isBinary: boolean;
+  size: number;
+  language?: string;       // 按扩展名推断的 highlight.js 语言
+}
+
+export interface FsRevealResult { ok: boolean; error?: string }
+
 // ---------- WebSocket: 客户端 -> 服务端 ----------
 export type ClientMsg =
   | { type: 'subscribe'; sessionId: string; sinceSeq?: number } // 订阅；带 sinceSeq 时服务端补发 seq>sinceSeq 的事件（缓冲不够则改发 snapshot）

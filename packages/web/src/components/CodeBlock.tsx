@@ -80,11 +80,17 @@ interface CodeBlockProps {
   language?: string
   fileName?: string
   showHeader?: boolean
-  maxHeight?: number
+  maxHeight?: number | null
   placeholder?: string
   className?: string
   /** 流式代码尚未稳定：先显示纯文本，结束后再高亮。 */
   streaming?: boolean
+  /** 文件预览：左侧行号与可定位的目标行区间。 */
+  lineNumbers?: boolean
+  highlightRange?: { start: number; end: number }
+  scrollToLine?: number
+  /** 撑满父容器，由内部滚动（文件预览面板用）。 */
+  fill?: boolean
 }
 
 export function CodeBlock({
@@ -96,6 +102,10 @@ export function CodeBlock({
   placeholder,
   className,
   streaming = false,
+  lineNumbers = false,
+  highlightRange,
+  scrollToLine,
+  fill = false,
 }: CodeBlockProps) {
   const [highlighted, setHighlighted] = useState<{ code: string; html: string } | null>(null)
   const [copied, setCopied] = useState(false)
@@ -110,6 +120,19 @@ export function CodeBlock({
     shown,
     html,
   ])
+  const scrollBoxRef = useRef<HTMLDivElement>(null)
+  const lineCount = useMemo(() => (shown ? shown.split('\n').length : 0), [shown])
+
+  // 文件预览打开时滚到目标行（上方留约 1/3 视口）。
+  useEffect(() => {
+    if (!lineNumbers || !scrollToLine) return
+    const el = scrollBoxRef.current
+    if (!el) return
+    const raf = window.requestAnimationFrame(() => {
+      el.scrollTop = Math.max(0, 12 + (scrollToLine - 1) * 20 - el.clientHeight / 3)
+    })
+    return () => window.cancelAnimationFrame(raf)
+  }, [lineNumbers, scrollToLine, shown])
 
   useEffect(() => {
     if (!language || streaming) return
@@ -204,16 +227,49 @@ export function CodeBlock({
           </button>
         </div>
       )}
-      <div className="x-scroll-wrap">
-        <pre ref={preRef} onScroll={updateOverflow} style={{ maxHeight }}>
-          {empty ? (
-            <span className="italic text-muted">{placeholder ?? '（空）'}</span>
-          ) : html ? (
-            <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
-          ) : (
-            <code>{shown}</code>
-          )}
-        </pre>
+      <div className={cn('x-scroll-wrap', fill && 'flex min-h-0 flex-1 flex-col')}>
+        {lineNumbers ? (
+          <div
+            ref={scrollBoxRef}
+            className="file-code-scroll"
+            style={fill ? { height: '100%' } : maxHeight != null ? { maxHeight } : undefined}
+          >
+            <div className="file-code-grid">
+              {highlightRange && (
+                <div
+                  className="file-code-range"
+                  aria-hidden
+                  style={{
+                    top: 12 + (highlightRange.start - 1) * 20,
+                    height: Math.max(1, highlightRange.end - highlightRange.start + 1) * 20,
+                  }}
+                />
+              )}
+              <div className="file-code-gutter" aria-hidden>
+                {Array.from({ length: lineCount }, (_, i) => i + 1).join('\n')}
+              </div>
+              <pre ref={preRef}>
+                {empty ? (
+                  <span className="italic text-muted">{placeholder ?? '（空）'}</span>
+                ) : html ? (
+                  <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
+                ) : (
+                  <code>{shown}</code>
+                )}
+              </pre>
+            </div>
+          </div>
+        ) : (
+          <pre ref={preRef} onScroll={updateOverflow} style={maxHeight != null ? { maxHeight } : undefined}>
+            {empty ? (
+              <span className="italic text-muted">{placeholder ?? '（空）'}</span>
+            ) : html ? (
+              <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
+            ) : (
+              <code>{shown}</code>
+            )}
+          </pre>
+        )}
         <div className="x-scroll-fade" data-visible={canRight} aria-hidden />
         {canLeft || canRight ? (
           <div className="x-scroll-foot">

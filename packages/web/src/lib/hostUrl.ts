@@ -9,6 +9,16 @@ export function normalizeHostUrl(input: string): string {
   return (u.origin + u.pathname).replace(/\/+$/, '')
 }
 
+/** Host 是否就在用户当前这台机器（文件预览的“在本机打开”只在这时有意义）。 */
+export function isLocalHostUrl(url: string): boolean {
+  try {
+    const host = new URL(normalizeHostUrl(url)).hostname.toLowerCase()
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]'
+  } catch {
+    return false
+  }
+}
+
 export function isSameOrigin(url: string): boolean {
   try {
     return new URL(url).origin === window.location.origin

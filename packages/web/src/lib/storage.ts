@@ -75,6 +75,7 @@ export interface UiPrefs {
   panelOpen?: boolean
   sidebarWidth?: number
   changesWidth?: number
+  filePreviewWidth?: number
   collapsedProjects?: string[]
   notifications?: boolean
   showSubagents?: boolean

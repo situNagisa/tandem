@@ -16,6 +16,13 @@ const toastTimers = new Map<number, number>()
 const TOAST_DEDUPE_MS = 3000
 const recentToastAt = new Map<string, number>()
 
+export interface FilePreviewTarget {
+  path: string
+  cwd: string
+  lineStart?: number
+  lineEnd?: number
+}
+
 interface UiState {
   theme: Theme
   sidebarCollapsed: boolean
@@ -27,6 +34,8 @@ interface UiState {
   panelOpen: boolean
   changesOpen: boolean
   changesWidth: number
+  filePreview: FilePreviewTarget | null
+  filePreviewWidth: number
   mobileSidebar: boolean
   mobilePanel: boolean
   settingsOpen: boolean
@@ -52,6 +61,9 @@ interface UiState {
   setChangesOpen: (open: boolean) => void
   toggleChanges: () => void
   setChangesWidth: (width: number) => void
+  openFilePreview: (target: FilePreviewTarget) => void
+  closeFilePreview: () => void
+  setFilePreviewWidth: (width: number) => void
   setMobileSidebar: (open: boolean) => void
   setMobilePanel: (open: boolean) => void
   openSettings: (tab?: SettingsTab) => void
@@ -80,6 +92,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   panelOpen: prefs.panelOpen ?? true,
   changesOpen: false,
   changesWidth: Math.min(760, Math.max(380, prefs.changesWidth ?? 520)),
+  filePreview: null,
+  filePreviewWidth: Math.min(900, Math.max(380, prefs.filePreviewWidth ?? 560)),
   mobileSidebar: false,
   mobilePanel: false,
   settingsOpen: false,
@@ -132,6 +146,13 @@ export const useUiStore = create<UiState>((set, get) => ({
     const next = Math.min(760, Math.max(380, Math.round(width)))
     saveUiPrefs({ changesWidth: next })
     set({ changesWidth: next })
+  },
+  openFilePreview: (target) => set({ filePreview: target }),
+  closeFilePreview: () => set({ filePreview: null }),
+  setFilePreviewWidth: (width) => {
+    const next = Math.min(900, Math.max(380, Math.round(width)))
+    saveUiPrefs({ filePreviewWidth: next })
+    set({ filePreviewWidth: next })
   },
   setMobileSidebar: (open) => set({ mobileSidebar: open }),
   setMobilePanel: (open) => set({ mobilePanel: open }),
