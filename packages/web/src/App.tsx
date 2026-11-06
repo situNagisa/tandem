@@ -168,13 +168,18 @@ export default function App() {
     <div className="app-root flex overflow-hidden bg-bg pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)] text-text">
       {!isMobile && (
         <div
-          className="relative h-full shrink-0"
+          className="relative h-full shrink-0 overflow-hidden"
           style={{
             width: sidebarCollapsed ? 0 : effectiveWidth,
             transition: dragWidth !== null ? 'none' : 'width 220ms var(--t-ease-out)',
           }}
+          aria-hidden={sidebarCollapsed}
         >
-          <div className="h-full overflow-hidden" style={{ width: effectiveWidth }}>
+          <div
+            className="h-full overflow-hidden"
+            style={{ width: effectiveWidth }}
+            inert={sidebarCollapsed}
+          >
             <Sidebar />
           </div>
           {!sidebarCollapsed && (
