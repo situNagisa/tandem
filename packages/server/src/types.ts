@@ -17,6 +17,8 @@ import type {
 export interface StoredProfileGroup {
   id: string;
   name: string;
+  /** 该分组的协议；缺省继承账号 kind。同一 baseUrl 下可混用 Anthropic / OpenAI。 */
+  kind?: ProviderKind;
   apiKey: string;
   baseUrl?: string;
   models: string[];

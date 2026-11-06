@@ -38,6 +38,14 @@ const inputCls =
   'h-9 w-full rounded-lg border border-border bg-bg px-2.5 text-[12.5px] text-text outline-none transition-colors focus:border-border-strong'
 const labelCls = 'mb-1.5 block text-[11px] font-medium text-text-soft'
 
+/** 分组协议下拉的简短名称（与用户熟悉的叫法一致）。 */
+const GROUP_KIND_LABELS: Record<ProviderKind, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  'openai-compatible': 'OpenAI 兼容',
+  gemini: 'Gemini',
+}
+
 type Step = 1 | 2 | 3
 
 type PriceMap = Record<string, { input: number; output: number }>
@@ -242,6 +250,29 @@ function defaultGroupDraft(kind: ProviderKind, models: string[] = [], defaultMod
   }
 }
 
+/** 与服务端一致：分组协议与账号不同且未填 URL 时，去掉账号完整端点并补该协议常见版本段。 */
+function inferGroupBaseUrl(baseUrl: string | undefined, kind: ProviderKind): string | undefined {
+  const value = baseUrl?.trim()
+  if (!value) return undefined
+  let base = value.replace(/\/+$/, '')
+  base = base
+    .replace(/\/(?:v1\/)?messages$/i, '')
+    .replace(/\/(?:v1\/)?chat\/completions$/i, '')
+    .replace(/\/models$/i, '')
+  if (!base) return undefined
+  if (kind === 'anthropic') return base
+  try {
+    const pathname = new URL(base).pathname.replace(/\/+$/, '')
+    if (!pathname || pathname === '/') {
+      return `${base}/${kind === 'gemini' ? 'v1beta/openai' : 'v1'}`
+    }
+    if (kind === 'gemini' && pathname === '/v1beta') return `${base}/openai`
+  } catch {
+    /* 交给服务端报错 */
+  }
+  return base
+}
+
 /** 分组协议对应的 Base URL 提示（完整端点原样使用，否则由 provider 拼接路径）。 */
 function groupBaseUrlPlaceholder(kind: ProviderKind): string {
   switch (kind) {
@@ -311,19 +342,29 @@ function GroupEditor({
   const fetchModels = async () => {
     if (fetching) return
     const typed = apiKey.trim()
-    if (!typed && !existing?.id) {
+    const canUseStoredKey = !typed && !!profileId && (!!existing?.id || !!existing?.inheritedKey)
+    if (!typed && !canUseStoredKey) {
       setFetchError('先填写这个分组的 Key，再获取模型。')
       return
     }
     setFetching(true)
     setFetchError(null)
     try {
+      const targetBase =
+        baseUrl.trim() ||
+        (kind !== profileKind
+          ? inferGroupBaseUrl(profileBaseUrl, kind)
+          : profileBaseUrl) ||
+        undefined
       const res = await api.listModels(host, {
         kind,
-        baseUrl: baseUrl.trim() || profileBaseUrl || undefined,
+        baseUrl: targetBase,
         ...(typed
           ? { apiKey: typed }
-          : { profileId: profileId!, groupId: existing!.id }),
+          : {
+              profileId: profileId!,
+              ...(existing?.id ? { groupId: existing.id } : {}),
+            }),
       })
       if (!res.ok) throw new Error(res.error || '无法获取模型列表')
       const sorted = (res.models ?? [])
@@ -362,7 +403,7 @@ function GroupEditor({
       setError('请填写分组名称')
       return
     }
-    if (!existing?.id && !apiKey.trim()) {
+    if (!existing?.id && !existing?.inheritedKey && !apiKey.trim()) {
       setError('新分组需要填写 Key')
       return
     }
@@ -373,8 +414,10 @@ function GroupEditor({
     onSave({
       id: existing?.id,
       name: name.trim(),
+      kind,
       apiKey: apiKey.trim(),
       apiKeyMasked: existing?.apiKeyMasked,
+      inheritedKey: existing?.inheritedKey,
       baseUrl: baseUrl.trim(),
       models: selected,
       defaultModel: selected.includes(defaultModel) ? defaultModel : selected[0],
@@ -389,7 +432,7 @@ function GroupEditor({
           {existing ? `编辑分组「${existing.name}」` : '添加分组'}
         </span>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-3">
         <div>
           <label className={labelCls}>分组名称</label>
           <input
@@ -398,6 +441,21 @@ function GroupEditor({
             placeholder="例如：官方渠道 / 低价渠道"
             className={inputCls}
           />
+        </div>
+        <div>
+          <label className={labelCls}>协议类型</label>
+          <select
+            value={kind}
+            onChange={(e) => setKind(e.target.value as ProviderKind)}
+            className={inputCls}
+            aria-label="分组协议类型"
+          >
+            {Object.entries(GROUP_KIND_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className={labelCls}>分组 Key</label>
@@ -430,10 +488,17 @@ function GroupEditor({
         <input
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder={profileBaseUrl || 'https://api.example.com/v1'}
+          placeholder={profileBaseUrl || groupBaseUrlPlaceholder(kind)}
           spellCheck={false}
           className={cn(inputCls, 'font-mono text-[11px]')}
         />
+        <p className="mt-1 text-[10px] leading-4 text-muted">
+          {kind === 'anthropic'
+            ? 'Anthropic 协议会自动拼接 /v1/messages；填完整端点也可以。'
+            : 'OpenAI 系协议会自动拼接 /chat/completions。'}
+          {kind !== profileKind &&
+            ' 分组协议与账号不同时，未填 URL 会按该协议从账号 URL 推断（去掉原协议端点并补版本路径）。'}
+        </p>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -673,15 +738,30 @@ export function ProfilesSection() {
     setShowAdvanced(!!p.baseUrl && p.baseUrl !== brand?.baseUrl)
     setPrice(p.price ? { ...p.price } : {})
     setGroups(
-      (p.groups ?? []).map((g) => ({
-        id: g.id,
-        name: g.name,
-        apiKey: '',
-        apiKeyMasked: g.apiKeyMasked,
-        baseUrl: g.baseUrl ?? '',
-        models: g.models,
-        defaultModel: g.defaultModel || g.models[0] || '',
-      })),
+      p.groups?.length
+        ? p.groups.map((g) => ({
+            id: g.id,
+            name: g.name,
+            kind: g.kind ?? p.kind,
+            apiKey: '',
+            apiKeyMasked: g.apiKeyMasked,
+            baseUrl: g.baseUrl ?? '',
+            models: g.models,
+            defaultModel: g.defaultModel || g.models[0] || '',
+          }))
+        : [
+            // 老账号没有分组：展示为一个隐式分组，保存时迁移为显式分组
+            {
+              name: '默认',
+              kind: p.kind,
+              apiKey: '',
+              apiKeyMasked: p.apiKeyMasked,
+              inheritedKey: true,
+              baseUrl: '',
+              models: p.models.length ? p.models : [p.defaultModel].filter(Boolean),
+              defaultModel: p.defaultModel || p.models[0] || '',
+            },
+          ],
     )
   }
 
@@ -700,7 +780,14 @@ export function ProfilesSection() {
     setSelected(p?.models ?? [])
     setDefaultModel(p?.defaultModel ?? p?.models[0] ?? '')
     setManualMode(false)
-    setGroups([])
+    const models = p?.models ?? []
+    setGroups([
+      defaultGroupDraft(
+        p?.kind ?? 'openai-compatible',
+        models,
+        p?.defaultModel ?? models[0] ?? '',
+      ),
+    ])
     setGroupEditor(null)
     setPrice({})
   }
@@ -793,32 +880,44 @@ export function ProfilesSection() {
   const save = async () => {
     if (!host) return
     const name = form.name.trim()
-    const modelList = selected.filter((id) => id.trim())
     if (!name) {
       setError('请填写账号名称')
       setStep(2)
       return
     }
-    if (editing === 'new' && !form.apiKey.trim() && groups.length === 0) {
-      setError('请填写 API Key')
+    if (groups.length === 0) {
+      setError('至少保留一个分组')
       setStep(2)
       return
     }
-    const fallback = groups[0]
-    const models = modelList.length ? modelList : (fallback?.models ?? [])
-    if (models.length === 0) {
-      setError('至少选择一个模型，或为账号添加一个分组')
-      setStep(3)
-      return
+    for (const group of groups) {
+      if (!group.name.trim()) {
+        setError('分组名称不能为空')
+        setStep(2)
+        return
+      }
+      if (!group.id && !group.inheritedKey && !group.apiKey.trim()) {
+        setError(`分组「${group.name}」需要填写 Key`)
+        setStep(2)
+        return
+      }
+      if (group.models.length === 0) {
+        setError(`分组「${group.name}」至少选择一个模型`)
+        setStep(2)
+        return
+      }
     }
-    const def = modelList.length
-      ? modelList.includes(defaultModel)
-        ? defaultModel
-        : modelList[0]
-      : fallback!.defaultModel || fallback!.models[0] || models[0]
+    const primary = groups[0]
+    const models = [...new Set(groups.flatMap((g) => g.models))]
+    const def =
+      primary.defaultModel ||
+      primary.models.find((id) => id === primary.defaultModel) ||
+      primary.models[0] ||
+      models[0]
     const groupInputs: ProfileGroupInput[] = groups.map((g) => ({
       ...(g.id ? { id: g.id } : {}),
       name: g.name,
+      kind: g.kind,
       ...(g.apiKey.trim() ? { apiKey: g.apiKey.trim() } : {}),
       ...(g.baseUrl.trim() ? { baseUrl: g.baseUrl.trim() } : {}),
       models: g.models,
@@ -826,7 +925,8 @@ export function ProfilesSection() {
     }))
     const input: ProfileInput = {
       name,
-      kind: form.kind,
+      // 账号协议取首个分组，实际会话运行按各组 kind 覆盖
+      kind: primary.kind,
       baseUrl: form.baseUrl.trim() || undefined,
       apiKey: form.apiKey.trim() || undefined,
       models,
@@ -870,7 +970,8 @@ export function ProfilesSection() {
     if (!host) return
     setTestingId(p.id)
     try {
-      const res = await api.testProfile(host, p.id)
+      // 有分组时用首个分组的协议/Key 测试；账号自身可能没有 Key
+      const res = await api.testProfile(host, p.id, p.groups?.[0]?.id)
       setTestResults((prev) => ({ ...prev, [p.id]: res }))
     } catch (err) {
       setTestResults((prev) => ({
@@ -1037,88 +1138,24 @@ export function ProfilesSection() {
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>API Key</label>
-                  <div className="relative">
-                    <input
-                      value={form.apiKey}
-                      onChange={(e) => setForm((f) => ({ ...f, apiKey: e.target.value }))}
-                      onBlur={maybeAutoFetch}
-                      type={showKey ? 'text' : 'password'}
-                      placeholder={
-                        editingProfile
-                          ? `已保存：${editingProfile.apiKeyMasked ?? '••••'}（留空不修改）`
-                          : 'sk-…'
-                      }
-                      spellCheck={false}
-                      autoComplete="off"
-                      className={cn(inputCls, 'pr-9 font-mono text-[11.5px]')}
-                    />
-                    <button
-                      onClick={() => setShowKey((v) => !v)}
-                      aria-label={showKey ? '隐藏 Key' : '显示 Key'}
-                      className="absolute right-1 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-[var(--t-bg-hover)] hover:text-text"
-                    >
-                      {showKey ? <EyeOff size={13} /> : <Eye size={13} />}
-                    </button>
-                  </div>
+                  <label className={labelCls}>Base URL</label>
+                  <input
+                    value={form.baseUrl}
+                    onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))}
+                    placeholder={groupBaseUrlPlaceholder(form.kind)}
+                    spellCheck={false}
+                    className={cn(inputCls, 'font-mono text-[11px]')}
+                  />
                   <p className="mt-1 text-[10px] leading-4 text-muted">
-                    {editingProfile
-                      ? '留空保留原 Key；失焦后会用已保存的 Key 获取模型。'
-                      : '失焦或点击「获取模型」时自动拉取可用模型。'}
+                    一个账号对应一个 URL。Key、协议和模型都在下面的分组里配置，同一 URL 下可混合不同协议。
                   </p>
-                </div>
-
-                <div>
-                  <button
-                    onClick={() => setShowAdvanced((v) => !v)}
-                    className="flex items-center gap-1 text-[10.5px] text-muted transition-colors hover:text-text"
-                  >
-                    <ChevronDown
-                      size={11}
-                      className={cn('transition-transform duration-150', showAdvanced && 'rotate-180')}
-                    />
-                    高级设置（接口类型与 Base URL）
-                  </button>
-                  {showAdvanced && (
-                    <div className="mt-2 grid gap-2 rounded-lg border border-border bg-bg/40 p-2.5 sm:grid-cols-2">
-                      <div>
-                        <label className={labelCls}>接口类型</label>
-                        <select
-                          value={form.kind}
-                          onChange={(e) =>
-                            setForm((f) => ({ ...f, kind: e.target.value as ProviderKind }))
-                          }
-                          className={inputCls}
-                        >
-                          {Object.entries(PROVIDER_KIND_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>
-                              {label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className={labelCls}>Base URL</label>
-                        <input
-                          value={form.baseUrl}
-                          onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))}
-                          onBlur={() => {
-                            if (form.apiKey.trim()) maybeAutoFetch()
-                          }}
-                          placeholder="https://api.example.com/v1"
-                          spellCheck={false}
-                          className={cn(inputCls, 'font-mono text-[11px]')}
-                        />
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <div className="mt-3 rounded-xl border border-border bg-bg/30 p-3">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Layers size={13} className="text-accent" />
                     <span className="text-[12px] font-medium">账号分组</span>
-                    <span className="text-[10px] text-muted">可选</span>
+                    <span className="text-[10px] text-muted">每组可独立协议与 Key</span>
                     <span className="flex-1" />
                     <button
                       onClick={() => setGroupEditor({ index: 'new' })}
@@ -1129,7 +1166,7 @@ export function ProfilesSection() {
                     </button>
                   </div>
                   <p className="mt-1 text-[10px] leading-4 text-muted">
-                    同一账号下可有多组 Key（如官方渠道 / 低价渠道），各自可用模型不同；没有分组时沿用账号 Key。
+                    同一账号 URL 下可有多组 Key（如官方渠道 / 低价渠道），每组可单独选择协议与模型；会话按所选分组的协议运行。
                   </p>
 
                   {groupEditor ? (
@@ -1161,9 +1198,14 @@ export function ProfilesSection() {
                           className="flex items-center gap-2 rounded-lg bg-surface/70 px-2 py-1.5"
                         >
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[11.5px] text-text">{g.name}</span>
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              <span className="truncate text-[11.5px] text-text">{g.name}</span>
+                              <span className="shrink-0 rounded border border-border px-1 text-[9px] text-muted">
+                                {GROUP_KIND_LABELS[g.kind]}
+                              </span>
+                            </span>
                             <span className="block truncate font-mono text-[9.5px] text-muted">
-                              {g.apiKeyMasked || (g.apiKey ? '新 Key（待保存）' : '无 Key')} ·{' '}
+                              {g.apiKeyMasked || (g.apiKey ? '新 Key（待保存）' : g.inheritedKey ? '沿用账号 Key' : '无 Key')} ·{' '}
                               {g.models.length} 个模型
                             </span>
                           </span>
@@ -1198,24 +1240,7 @@ export function ProfilesSection() {
               )}
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
-                {editingProfile && (
-                  <button
-                    onClick={() => void fetchModels(true)}
-                    disabled={fetching}
-                    className="flex min-h-9 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-60"
-                  >
-                    {fetching ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-                    刷新模型列表
-                  </button>
-                )}
                 <span className="flex-1" />
-                <button
-                  onClick={() => void fetchModels(!!editingProfile)}
-                  disabled={fetching}
-                  className="flex min-h-9 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-60"
-                >
-                  <Sparkles size={13} /> 获取模型
-                </button>
                 <button
                   onClick={() => setStep(3)}
                   className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover"
@@ -1231,203 +1256,53 @@ export function ProfilesSection() {
               <div className="mb-3 flex items-center gap-2">
                 <ProviderLogo preset={preset ?? undefined} size={28} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12px] font-medium">{form.name || preset?.name || '选择模型'}</div>
+                  <div className="truncate text-[12px] font-medium">{form.name || preset?.name || '确认分组'}</div>
                   <div className="text-[10px] text-muted">
-                    {available.length > 0 ? `${available.length} 个可用模型` : '等待获取模型列表'}
+                    {groups.length} 个分组 · 会话使用所选分组自己的协议与 Key
                   </div>
                 </div>
-                <button
-                  onClick={() => void fetchModels(!!editingProfile)}
-                  disabled={fetching}
-                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[10.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
-                >
-                  <RefreshCw size={11} className={fetching ? 'animate-spin' : ''} />
-                  {editingProfile ? '刷新模型列表' : '重新获取'}
-                </button>
               </div>
 
-              {groups.length > 0 && (
-                <div className="mb-2 rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[10.5px] leading-4 text-muted">
-                  已配置 {groups.length} 个分组（{groups.map((g) => g.name).join(' / ')}）。账号默认模型可以留空，会话里实际选择的是分组模型。
-                </div>
-              )}
+              <div className="space-y-1.5">
+                {groups.map((g, i) => (
+                  <div
+                    key={g.id ?? `confirm-${i}`}
+                    className="flex items-center gap-2 rounded-lg border border-border bg-bg/40 px-2.5 py-2"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-[11.5px] text-text">{g.name}</span>
+                        <span className="shrink-0 rounded border border-border px-1 text-[9px] text-muted">
+                          {GROUP_KIND_LABELS[g.kind]}
+                        </span>
+                      </span>
+                      <span className="block truncate font-mono text-[9.5px] text-muted">
+                        {g.apiKeyMasked || (g.apiKey ? '新 Key' : g.inheritedKey ? '沿用账号 Key' : '无 Key')} · 默认{' '}
+                        {g.defaultModel || g.models[0] || '未设置'} · {g.models.length} 个模型
+                      </span>
+                    </span>
+                    <button
+                      onClick={() => {
+                        setStep(2)
+                        setGroupEditor({ index: i })
+                      }}
+                      className="shrink-0 rounded-md border border-border px-2 py-0.5 text-[10.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+                    >
+                      编辑
+                    </button>
+                  </div>
+                ))}
+              </div>
 
-              {fetching ? (
-                <div className="space-y-1.5" role="status" aria-label="正在获取模型列表">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="flex items-center gap-2.5 px-2 py-2">
-                      <div className="skeleton size-4 rounded" />
-                      <div className="skeleton h-3 flex-1" style={{ maxWidth: `${70 - i * 6}%` }} />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <>
-                  {fetchError && (
-                    <div className="mb-2 rounded-xl border border-danger/25 bg-danger-soft/50 p-3">
-                      <div className="flex items-start gap-2 text-[11.5px] leading-5 text-danger">
-                        <TriangleAlert size={13} className="mt-0.5 shrink-0" />
-                        <span className="min-w-0 flex-1">无法获取模型列表：{fetchError}</span>
-                      </div>
-                      <div className="mt-2 flex gap-1.5">
-                        <button
-                          onClick={() => void fetchModels(!!editingProfile)}
-                          className="h-7 rounded-md border border-danger/30 px-2 text-[10.5px] text-danger transition-colors hover:bg-danger/10"
-                        >
-                          重试
-                        </button>
-                        <button
-                          onClick={() => setManualMode(true)}
-                          className="h-7 rounded-md border border-border px-2 text-[10.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
-                        >
-                          手动输入模型
-                        </button>
-                      </div>
-                    </div>
-                  )}
+              <div className="mt-3 rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[10.5px] leading-4 text-muted">
+                账号 URL 共用；每个分组按自己的协议拼接请求路径（Anthropic：…/v1/messages，OpenAI：…/chat/completions）。
+              </div>
 
-                  {available.length > 0 && !manualMode && (
-                    <>
-                      <div className="relative mb-2">
-                        <Search
-                          size={12}
-                          className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted"
-                        />
-                        <input
-                          value={modelQuery}
-                          onChange={(e) => setModelQuery(e.target.value)}
-                          placeholder="搜索模型"
-                          className="h-8 w-full rounded-lg border border-border bg-bg pl-7 pr-2 text-[11.5px] outline-none focus:border-border-strong"
-                        />
-                      </div>
-                      <div className="max-h-[230px] overflow-y-auto rounded-lg border border-border bg-bg/30 p-1">
-                        {filteredModels.map((m) => {
-                          const checked = selected.includes(m.id)
-                          return (
-                            <label
-                              key={m.id}
-                              className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--t-bg-hover)]"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleModel(m.id)}
-                                className="sr-only"
-                              />
-                              <span
-                                className={cn(
-                                  'flex size-4 shrink-0 items-center justify-center rounded border transition-colors',
-                                  checked
-                                    ? 'border-accent bg-accent text-on-accent'
-                                    : 'border-border-strong bg-surface',
-                                )}
-                              >
-                                {checked && <Check size={10} strokeWidth={3} />}
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate text-[11.5px] text-text">
-                                  {m.displayName || m.id}
-                                </span>
-                                {m.displayName && (
-                                  <span className="block truncate font-mono text-[9.5px] text-muted">
-                                    {m.id}
-                                  </span>
-                                )}
-                              </span>
-                              {checked && defaultModel === m.id && (
-                                <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1.5 py-px text-[9px] text-text-secondary">
-                                  默认
-                                </span>
-                              )}
-                            </label>
-                          )
-                        })}
-                        {filteredModels.length === 0 && (
-                          <p className="px-2 py-4 text-center text-[11px] text-muted">没有匹配的模型</p>
-                        )}
-                      </div>
-                    </>
-                  )}
-
-                  {(manualMode || available.length === 0) && (
-                    <div className="rounded-lg border border-dashed border-border bg-bg/30 p-3">
-                      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-text-soft">
-                        <KeyRound size={12} className="text-muted" /> 手动输入模型
-                      </div>
-                      <div className="flex gap-1.5">
-                        <input
-                          value={manualInput}
-                          onChange={(e) => setManualInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault()
-                              addManualModel()
-                            }
-                          }}
-                          placeholder="例如 claude-sonnet-4-5"
-                          spellCheck={false}
-                          className={cn(inputCls, 'h-8 font-mono text-[11px]')}
-                        />
-                        <button
-                          onClick={addManualModel}
-                          disabled={!manualInput.trim()}
-                          className="h-8 shrink-0 rounded-lg border border-border px-2.5 text-[11px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
-                        >
-                          添加
-                        </button>
-                      </div>
-                      {selectedModels.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {selectedModels.map((m) => (
-                            <span
-                              key={m.id}
-                              className="flex items-center gap-1 rounded-md bg-[var(--t-bg-active)] px-1.5 py-0.5 font-mono text-[10px] text-text-soft"
-                            >
-                              {m.id}
-                              <button
-                                onClick={() => toggleModel(m.id)}
-                                aria-label={`移除 ${m.id}`}
-                                className="text-muted hover:text-danger"
-                              >
-                                <X size={9} />
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {!manualMode && available.length > 0 && (
-                        <button
-                          onClick={() => setManualMode(true)}
-                          className="mt-2 text-[10.5px] text-accent hover:underline"
-                        >
-                          也可以手动添加模型
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {selected.length > 0 && (
-                    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-[var(--t-bg)] px-2.5 py-2">
-                      <span className="text-[11px] text-muted">已选 {selected.length} 个</span>
-                      <span className="flex-1" />
-                      <label className="text-[11px] text-muted">默认</label>
-                      <select
-                        value={defaultModel}
-                        onChange={(e) => setDefaultModel(e.target.value)}
-                        className="h-7 max-w-[220px] rounded-md border border-border bg-surface px-1.5 font-mono text-[10.5px] outline-none focus:border-border-strong"
-                      >
-                        {selected.map((id) => (
-                          <option key={id} value={id}>
-                            {id}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  <PriceOverrides models={selected} price={price} onChange={setPrice} />
-                </>
-              )}
+              <PriceOverrides
+                models={[...new Set(groups.flatMap((g) => g.models))]}
+                price={price}
+                onChange={setPrice}
+              />
 
               {error && (
                 <div className="mt-3 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft/50 px-3 py-2 text-[11.5px] text-danger">
@@ -1454,7 +1329,7 @@ export function ProfilesSection() {
                 )}
                 <button
                   onClick={() => void save()}
-                  disabled={saving || fetching}
+                  disabled={saving}
                   className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-4 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60"
                 >
                   {saving && <Loader2 size={13} className="animate-spin" />}
@@ -1524,11 +1399,25 @@ export function ProfilesSection() {
                         </span>
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-muted">
-                        <span className="font-mono">{p.apiKeyMasked || '无 Key'}</span>
-                        <span>·</span>
-                        <span className="max-w-[180px] truncate font-mono">{p.defaultModel}</span>
-                        <span>·</span>
-                        <span>{p.models.length} 个模型</span>
+                        {p.groups?.length ? (
+                          <>
+                            <span>{p.groups.length} 个分组</span>
+                            <span>·</span>
+                            <span className="max-w-[200px] truncate">
+                              {p.groups
+                                .map((g) => GROUP_KIND_LABELS[g.kind ?? p.kind])
+                                .join(' / ')}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-mono">{p.apiKeyMasked || '无 Key'}</span>
+                            <span>·</span>
+                            <span className="max-w-[180px] truncate font-mono">{p.defaultModel}</span>
+                            <span>·</span>
+                            <span>{p.models.length} 个模型</span>
+                          </>
+                        )}
                         {p.baseUrl && (
                           <>
                             <span className="hidden sm:inline">·</span>
@@ -1544,7 +1433,9 @@ export function ProfilesSection() {
                             {p.groups.length} 个分组
                           </span>
                           <span className="min-w-0 truncate">
-                            {p.groups.map((g) => g.name).join(' / ')}
+                            {p.groups
+                              .map((g) => `${g.name}（${GROUP_KIND_LABELS[g.kind ?? p.kind]}）`)
+                              .join(' / ')}
                           </span>
                         </div>
                       ) : null}

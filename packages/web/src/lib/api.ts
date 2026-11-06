@@ -102,9 +102,10 @@ export const api = {
     }),
   deleteProfile: (h: HostConfig, id: string) =>
     request<void>(h, `/api/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  testProfile: (h: HostConfig, id: string) =>
+  testProfile: (h: HostConfig, id: string, groupId?: string) =>
     request<{ ok: boolean; error?: string }>(h, `/api/profiles/${encodeURIComponent(id)}/test`, {
       method: 'POST',
+      ...(groupId ? { body: JSON.stringify({ groupId }) } : {}),
     }),
   listModels: (h: HostConfig, input: ListModelsInput) =>
     request<{ ok: boolean; models: ModelInfo[]; error?: string }>(h, '/api/models', {

@@ -1,6 +1,6 @@
 // 从各 provider 拉取可用模型列表：填 Key 后自动获取，无需手填。
 import type { ListModelsInput, ModelInfo, ProviderKind } from '@tandem/protocol';
-import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
+import { inferProtocolBaseUrl, joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import type { StoredProfile } from '../types.js';
 import { errorMessage, isAbortError, truncateEnd } from '../util/text.js';
 
@@ -184,8 +184,12 @@ export async function listModels(
 ): Promise<ListModelsResult> {
   const kind: ProviderKind = input.kind;
   const apiKey = (input.apiKey ?? '').trim() || profile?.apiKey || '';
+  const inheritedBase =
+    profile && kind !== profile.kind
+      ? inferProtocolBaseUrl(profile.baseUrl, kind)
+      : profile?.baseUrl;
   const baseUrl =
-    (input.baseUrl ?? '').trim() || profile?.baseUrl || providerDefaultBaseUrl(kind);
+    (input.baseUrl ?? '').trim() || inheritedBase || providerDefaultBaseUrl(kind);
   if (!apiKey) return { ok: false, models: [], error: '未配置 API Key' };
   if (!baseUrl) return { ok: false, models: [], error: '未配置 baseUrl（OpenAI 兼容接口需要填写端点地址）' };
 

@@ -86,9 +86,11 @@ function parseGroupInputs(value: unknown): ProfileGroupInput[] | undefined {
       const models = Array.isArray(item.models)
         ? [...new Set(item.models.map((m) => str(m)).filter(Boolean))]
         : [];
+      const kind = str(item.kind) as ProviderKind;
       return {
         ...(str(item.id) ? { id: str(item.id) } : {}),
         name: str(item.name),
+        ...(PROVIDER_KINDS.includes(kind) ? { kind } : {}),
         ...(typeof item.apiKey === 'string' && item.apiKey ? { apiKey: item.apiKey } : {}),
         ...(str(item.baseUrl) ? { baseUrl: str(item.baseUrl) } : {}),
         models,

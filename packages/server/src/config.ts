@@ -126,7 +126,7 @@ export class ProfileStore {
     };
     const price = normalizePrice((input as { price?: unknown }).price);
     if (price) profile.price = price;
-    const groups = buildGroups(input.groups);
+    const groups = buildGroups(input.groups, [], String(input.apiKey ?? ''));
     if (groups?.length) profile.groups = groups;
     this.profiles.set(profile.id, profile);
     this.save();
@@ -156,7 +156,7 @@ export class ProfileStore {
     }
     // 传了 groups 就整体替换；带 id 且不带 apiKey 的分组保留原 key
     if (input.groups !== undefined) {
-      const groups = buildGroups(input.groups, current.groups);
+      const groups = buildGroups(input.groups, current.groups, current.apiKey);
       if (groups?.length) next.groups = groups;
       else delete next.groups;
     }
@@ -265,6 +265,7 @@ export function normalizeStoredGroups(value: unknown): StoredProfileGroup[] {
     out.push({
       id: typeof g.id === 'string' && g.id ? g.id : randomUUID(),
       name,
+      ...(KINDS.includes(g.kind as ProviderKind) ? { kind: g.kind as ProviderKind } : {}),
       apiKey: typeof g.apiKey === 'string' ? g.apiKey : '',
       baseUrl: normalizeBaseUrl(g.baseUrl),
       models,
@@ -279,6 +280,7 @@ export function normalizeStoredGroups(value: unknown): StoredProfileGroup[] {
 function buildGroups(
   input: ProfileGroupInput[] | undefined,
   prev: StoredProfileGroup[] = [],
+  fallbackKey = '',
 ): StoredProfileGroup[] | undefined {
   if (!Array.isArray(input)) return undefined;
   const prevById = new Map(prev.map((g) => [g.id, g]));
@@ -290,11 +292,16 @@ function buildGroups(
     const id = typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : randomUUID();
     const old = prevById.get(id);
     const models = normalizeModels(raw.models);
+    const kind = raw.kind && KINDS.includes(raw.kind) ? raw.kind : old?.kind;
     out.push({
       id,
       name,
-      // 带 id 不带 apiKey 表示保留原 key
-      apiKey: typeof raw.apiKey === 'string' && raw.apiKey ? raw.apiKey : old?.apiKey ?? '',
+      ...(kind ? { kind } : {}),
+      // 带 id 不带 apiKey 表示保留原 key；老账号迁移出的分组沿用账号 key
+      apiKey:
+        typeof raw.apiKey === 'string' && raw.apiKey
+          ? raw.apiKey
+          : old?.apiKey ?? fallbackKey,
       baseUrl: raw.baseUrl !== undefined ? normalizeBaseUrl(raw.baseUrl) : old?.baseUrl,
       models,
       defaultModel:
@@ -308,6 +315,7 @@ function toPublicGroup(group: StoredProfileGroup): ProfileGroup {
   return {
     id: group.id,
     name: group.name,
+    ...(group.kind ? { kind: group.kind } : {}),
     apiKeyMasked: maskApiKey(group.apiKey),
     ...(group.baseUrl ? { baseUrl: group.baseUrl } : {}),
     models: [...group.models],
@@ -315,14 +323,45 @@ function toPublicGroup(group: StoredProfileGroup): ProfileGroup {
   };
 }
 
-/** 会话运行时使用的有效账号：分组覆盖 key/baseUrl/模型，缺省回落到账号自身。 */
+/**
+ * 分组协议与账号不同、且分组没有单独填 Base URL 时，从账号 URL 推断该协议的 API 根路径：
+ * 去掉账号 URL 上已有的完整端点（如 /v1/messages、/chat/completions），
+ * 无路径的域名按协议补上常见版本段（OpenAI 系 /v1，Gemini /v1beta/openai）。
+ * 用户在分组里显式填写的 Base URL 保持原样。
+ */
+export function inferProtocolBaseUrl(baseUrl: string | undefined, kind: ProviderKind): string | undefined {
+  if (!baseUrl) return undefined;
+  let base = baseUrl.trim().replace(/\/+$/, '');
+  base = base
+    .replace(/\/(?:v1\/)?messages$/i, '')
+    .replace(/\/(?:v1\/)?chat\/completions$/i, '')
+    .replace(/\/models$/i, '');
+  if (!base) return undefined;
+  if (kind === 'anthropic') return base;
+  try {
+    const pathname = new URL(base).pathname.replace(/\/+$/, '');
+    if (!pathname || pathname === '/') {
+      return `${base}/${kind === 'gemini' ? 'v1beta/openai' : 'v1'}`;
+    }
+    if (kind === 'gemini' && pathname === '/v1beta') return `${base}/openai`;
+  } catch {
+    // 非法 URL 交给 provider 报错
+  }
+  return base;
+}
+
+/** 会话运行时使用的有效账号：分组覆盖协议/key/baseUrl/模型，缺省回落到账号自身。 */
 export function effectiveProfile(profile: StoredProfile, groupId?: string): StoredProfile {
   const group = groupId ? profile.groups?.find((g) => g.id === groupId) : undefined;
   if (!group) return profile;
+  const kind = group.kind ?? profile.kind;
   return {
     ...profile,
+    kind,
     apiKey: group.apiKey || profile.apiKey,
-    baseUrl: group.baseUrl ?? profile.baseUrl,
+    baseUrl:
+      group.baseUrl ??
+      (kind !== profile.kind ? inferProtocolBaseUrl(profile.baseUrl, kind) : profile.baseUrl),
     models: group.models.length ? [...group.models] : [...profile.models],
     defaultModel: group.defaultModel || group.models[0] || profile.defaultModel,
   };
