@@ -1,4 +1,5 @@
 // Anthropic Messages API 适配：SSE 流式、tool use、thinking、图片、prompt caching。
+import { describeHttpError } from './http-error.js';
 import type { ContentBlock, Message, Usage } from '@tandem/protocol';
 import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import { isAbortError, truncateEnd } from '../util/text.js';
@@ -125,12 +126,12 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
           signal: idle.signal,
         });
       } else {
-        throw new Error(`Anthropic API ${res.status}: ${truncateEnd(text, 800)}`);
+        throw new Error(describeHttpError(res.status, text, url, res.statusText));
       }
     }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(`Anthropic API ${res.status}: ${truncateEnd(text || res.statusText, 800)}`);
+      throw new Error(describeHttpError(res.status, text, url, res.statusText));
     }
     return res;
   };
