@@ -13,6 +13,13 @@ function supportsThinking(model: string): boolean {
   return /claude-(?:3-7|[a-z]+-4)/.test(model);
 }
 
+const THINKING_BUDGETS: Partial<Record<NonNullable<StreamRequest['effort']>, number>> = {
+  low: 2048,
+  medium: 8192,
+  high: 16384,
+  max: 32000,
+};
+
 /** 内部 Message -> Anthropic messages；合并连续同角色，保证 user/assistant 交替。 */
 export function toAnthropicMessages(messages: Message[]): AnyBlock[] {
   const out: AnyBlock[] = [];
@@ -76,9 +83,13 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
     ...(index === req.tools.length - 1 ? { cache_control: { type: 'ephemeral' } } : {}),
   }));
 
+  const budget =
+    req.effort && req.effort !== 'off' && supportsThinking(req.model)
+      ? THINKING_BUDGETS[req.effort]
+      : undefined;
   const body: AnyBlock = {
     model: req.model,
-    max_tokens: req.maxTokens,
+    max_tokens: budget ? Math.max(req.maxTokens, budget + 4096) : req.maxTokens,
     system: [
       {
         type: 'text',
@@ -90,8 +101,8 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
     stream: true,
   };
   if (tools.length > 0) body.tools = tools;
-  if (supportsThinking(req.model)) {
-    body.thinking = { type: 'enabled', budget_tokens: 1024 };
+  if (budget) {
+    body.thinking = { type: 'enabled', budget_tokens: budget };
   }
 
   const idle = createIdleTimeout(req.signal, req.idleTimeoutSec);
@@ -103,8 +114,19 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
     'anthropic-version': '2023-06-01',
   };
 
-  const usage: Usage = { inputTokens: 0, outputTokens: 0 };
+  const usage: Usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   const inputBuf = new Map<number, string>();
+  const applyUsage = (u: AnyBlock) => {
+    if (!u) return;
+    if (typeof u.input_tokens === 'number') usage.inputTokens = u.input_tokens;
+    if (typeof u.output_tokens === 'number') usage.outputTokens = u.output_tokens;
+    if (typeof u.cache_read_input_tokens === 'number') {
+      usage.cacheReadTokens = u.cache_read_input_tokens;
+    }
+    if (typeof u.cache_creation_input_tokens === 'number') {
+      usage.cacheWriteTokens = u.cache_creation_input_tokens;
+    }
+  };
 
   const send = async (payload: AnyBlock) => {
     let res = await fetch(url, {
@@ -113,11 +135,11 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
       body: JSON.stringify(payload),
       signal: idle.signal,
     });
-    // 少数模型/代理不支持 thinking，退化为普通请求
-    if (!res.ok && res.status === 400 && body.thinking) {
+    // 少数模型/代理不支持 thinking：去掉后重试一次
+    if (!res.ok && res.status === 400 && payload.thinking) {
       const text = await res.text();
-      if (/thinking/i.test(text)) {
-        const retryBody = { ...payload } as AnyBlock;
+      if (/thinking|budget_tokens|reasoning|unsupported|not support|max_tokens/i.test(text)) {
+        const retryBody = { ...payload, max_tokens: req.maxTokens } as AnyBlock;
         delete retryBody.thinking;
         res = await fetch(url, {
           method: 'POST',
@@ -125,6 +147,7 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
           body: JSON.stringify(retryBody),
           signal: idle.signal,
         });
+        if (res.ok) req.onEffortDropped?.();
       } else {
         throw new Error(describeHttpError(res.status, text, url, res.statusText));
       }
@@ -164,11 +187,7 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
       }
       switch (json.type) {
         case 'message_start': {
-          const u = json.message?.usage;
-          if (u) {
-            usage.inputTokens = u.input_tokens ?? 0;
-            usage.outputTokens = u.output_tokens ?? 0;
-          }
+          applyUsage(json.message?.usage);
           break;
         }
         case 'content_block_start': {
@@ -224,8 +243,7 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
           break;
         }
         case 'message_delta': {
-          const u = json.usage;
-          if (u?.output_tokens != null) usage.outputTokens = u.output_tokens;
+          applyUsage(json.usage);
           break;
         }
         case 'error': {

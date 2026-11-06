@@ -183,19 +183,17 @@ export class Host {
   /** 校准本轮上下文（真实 usage 已拿到）。 */
   calibrateContext(rec: SessionRecord, context: ContextBreakdown, actualInputTokens: number): void {
     const calibrated = calibrateBreakdown(context, actualInputTokens, cacheHitRateOf(rec.usage));
-    this.setContext(rec, calibrated);
+    this.setContext(rec, calibrated, false);
   }
 
   /** GET /api/sessions/:id/context：无真实记录时按当前消息粗略估算。 */
   contextFor(rec: SessionRecord): ContextBreakdown {
     if (rec.context) return rec.context;
     const model = rec.model || this.profileFor(rec.profileId, rec.groupId)?.defaultModel || '';
-    const profile = this.profileFor(rec.profileId, rec.groupId);
     const system = buildSystemPrompt(rec.cwd, {
       planMode: rec.permissionMode === 'plan',
     });
     const tools = this.toolDefinitions(rec);
-    void profile;
     const estimate = estimateBreakdown({
       model,
       system,
@@ -1476,10 +1474,17 @@ function costSummary(rec: SessionRecord): string {
   const usage = rec.usage;
   const cost =
     typeof usage.costUsd === 'number' ? `$${usage.costUsd.toFixed(4)}` : '未记录（该账号未配置单价）';
+  const hit = cacheHitRateOf(usage);
+  const totalInput =
+    usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
   return [
     '本会话用量',
-    `- 输入 token: ${usage.inputTokens.toLocaleString('en-US')}`,
+    `- 输入 token: ${usage.inputTokens.toLocaleString('en-US')}（未命中缓存）`,
     `- 输出 token: ${usage.outputTokens.toLocaleString('en-US')}`,
+    `- 缓存读: ${(usage.cacheReadTokens ?? 0).toLocaleString('en-US')}`,
+    `- 缓存写: ${(usage.cacheWriteTokens ?? 0).toLocaleString('en-US')}`,
+    `- 缓存命中率: ${hit !== undefined ? `${Math.round(hit * 100)}%` : '—'}`,
+    `- 总输入（含缓存）: ${totalInput.toLocaleString('en-US')}`,
     `- 累计花费: ${cost}`,
     `- 当前模型: ${rec.model || '(未设置)'}`,
   ].join('\n');

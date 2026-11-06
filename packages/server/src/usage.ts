@@ -2,7 +2,7 @@
 // 单价为"参考价"（每百万 token 美元），账号上配置的 price 优先覆盖。
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { UsageStatsRow } from '@tandem/protocol';
+import type { ProviderKind, Usage, UsageStatsRow } from '@tandem/protocol';
 import type { StoredProfile } from './types.js';
 
 export interface Price {
@@ -92,6 +92,29 @@ export function costOf(price: Price | undefined, inputTokens: number, outputToke
   if (!price) return 0;
   const cost = (inputTokens * price.input + outputTokens * price.output) / 1_000_000;
   // 保留 8 位，避免浮点噪声堆积
+  return Math.round(cost * 1e8) / 1e8;
+}
+
+/**
+ * 按模型单价与缓存倍率计算一次调用花费。
+ * Anthropic 缓存读取 0.1×输入价、写入 1.25×；OpenAI 系 cached 输入 0.5×。
+ */
+export function costOfUsage(
+  price: Price | undefined,
+  usage: Usage,
+  kind: ProviderKind,
+): number {
+  if (!price) return 0;
+  const cacheRead = usage.cacheReadTokens ?? 0;
+  const cacheWrite = usage.cacheWriteTokens ?? 0;
+  const readMultiplier = kind === 'anthropic' ? 0.1 : 0.5;
+  const writeMultiplier = kind === 'anthropic' ? 1.25 : 0;
+  const cost =
+    (usage.inputTokens * price.input +
+      cacheRead * price.input * readMultiplier +
+      cacheWrite * price.input * writeMultiplier +
+      usage.outputTokens * price.output) /
+    1_000_000;
   return Math.round(cost * 1e8) / 1e8;
 }
 

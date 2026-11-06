@@ -9,6 +9,10 @@ import type { StreamRequest, StreamResult } from './types.js';
 
 type AnyRecord = Record<string, any>;
 
+function numOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
 /** 内部消息 -> OpenAI messages（tool_use/tool_result 映射为 tool_calls / role:tool）。 */
 export function toOpenAIMessages(messages: Message[], system: string): AnyRecord[] {
   const out: AnyRecord[] = [{ role: 'system', content: system }];
@@ -98,6 +102,9 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
   } else {
     body.max_tokens = req.maxTokens;
   }
+  if (req.effort && req.effort !== 'off') {
+    body.reasoning_effort = req.effort === 'max' ? 'high' : req.effort;
+  }
   if (req.tools.length > 0) {
     body.tools = req.tools.map((tool) => ({
       type: 'function',
@@ -111,33 +118,45 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
   }
 
   const send = async (payload: AnyRecord) => {
-    let res = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-      signal: idle.signal,
-    });
-    // 部分兼容服务不支持 stream_options，去掉后重试
-    if (!res.ok) {
-      const text = await res.text();
-      if (/stream_options|include_usage/i.test(text)) {
-        const retry = { ...payload } as AnyRecord;
-        delete retry.stream_options;
-        res = await fetch(url, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(retry),
-          signal: idle.signal,
-        });
-      } else {
-        throw new Error(describeHttpError(res.status, text, url, res.statusText));
+    const current = { ...payload } as AnyRecord;
+    let droppedEffort = false;
+    let droppedStreamOptions = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(current),
+        signal: idle.signal,
+      });
+      if (res.ok) {
+        if (droppedEffort) req.onEffortDropped?.();
+        return res;
       }
-    }
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
+      const text = await res.text();
+      // 模型/兼容服务不支持 reasoning_effort：去掉后重试一次
+      if (
+        !droppedEffort &&
+        current.reasoning_effort &&
+        res.status === 400 &&
+        /reasoning|unsupported|unknown|invalid.*param|not support/i.test(text)
+      ) {
+        droppedEffort = true;
+        delete current.reasoning_effort;
+        continue;
+      }
+      // 部分兼容服务不支持 stream_options，去掉后重试
+      if (
+        !droppedStreamOptions &&
+        current.stream_options &&
+        /stream_options|include_usage/i.test(text)
+      ) {
+        droppedStreamOptions = true;
+        delete current.stream_options;
+        continue;
+      }
       throw new Error(describeHttpError(res.status, text, url, res.statusText));
     }
-    return res;
+    throw new Error(describeHttpError(400, '请求参数不被模型支持', url));
   };
 
   const usage: Usage = { inputTokens: 0, outputTokens: 0 };
@@ -194,8 +213,19 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
         throw new Error(json.error.message ?? '模型接口返回错误');
       }
       if (json.usage) {
-        usage.inputTokens = json.usage.prompt_tokens ?? usage.inputTokens;
-        usage.outputTokens = json.usage.completion_tokens ?? usage.outputTokens;
+        const rawPrompt = numOr(json.usage.prompt_tokens, 0);
+        // OpenAI 的 prompt_tokens 已包含 cached_tokens；内部 Usage 记录未命中部分。
+        const cached = numOr(
+          json.usage.prompt_tokens_details?.cached_tokens,
+          numOr(json.usage.prompt_cache_hit_tokens, 0),
+        );
+        usage.inputTokens = Math.max(0, rawPrompt - cached);
+        usage.cacheReadTokens = cached;
+        usage.outputTokens = numOr(json.usage.completion_tokens, usage.outputTokens);
+        usage.reasoningTokens = numOr(
+          json.usage.completion_tokens_details?.reasoning_tokens,
+          numOr(json.usage.reasoning_tokens, 0),
+        );
       }
       const choice = json.choices?.[0];
       if (!choice) continue;

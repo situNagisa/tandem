@@ -7,7 +7,8 @@ import { streamChat } from '../providers/index.js';
 import { executeTool } from '../tools/index.js';
 import { isReadOnlySubagentInput } from '../tools/task.js';
 import { errorMessage, truncateMiddle } from '../util/text.js';
-import { costOf, priceForModel } from '../usage.js';
+import { costOfUsage, priceForModel } from '../usage.js';
+import { cacheHitRateOf, estimateBreakdown } from '../context.js';
 import { buildSystemPrompt } from './prompt.js';
 
 const MAX_ITERATIONS = 100;
@@ -43,6 +44,8 @@ export async function runTurn(
   let reason: 'done' | 'interrupted' | 'error' = 'done';
   let errorText: string | undefined;
   let loopCompleted = false;
+  let effortDropped = false;
+  let effortNoticeShown = false;
 
   // 按需连接项目级 MCP，并顺带重试之前失败的服务器；失败不影响本轮
   await host.mcp.prepare(rec.cwd).catch(() => {});
@@ -93,23 +96,39 @@ export async function runTurn(
         message: assistant,
       });
 
+      const system = buildSystemPrompt(rec.cwd, {
+        allowTask,
+        planMode: rec.permissionMode === 'plan',
+        hookContext: promptHookContext,
+      });
+      const requestMessages = rec.messages.slice(0, -1).filter((m) => !m.notice);
+      // 请求前估算各部分占用；拿到真实 usage 后再按比例校准
+      const contextEstimate = estimateBreakdown({
+        model,
+        system,
+        tools,
+        messages: requestMessages,
+        cwd: rec.cwd,
+        cacheHitRate: cacheHitRateOf(rec.usage),
+      });
+      host.setContext(rec, contextEstimate, false);
+
       let result: Awaited<ReturnType<typeof streamChat>> | undefined;
       try {
         result = await streamChat({
           profile,
           model,
-          system: buildSystemPrompt(rec.cwd, {
-            allowTask,
-            planMode: rec.permissionMode === 'plan',
-            hookContext: promptHookContext,
-          }),
-          // 排除刚插入的空 assistant 占位
-          messages: rec.messages.slice(0, -1),
+          system,
+          messages: requestMessages,
           tools,
           blocks: assistant.content,
           signal: abort.signal,
           idleTimeoutSec: host.config.idleTimeoutSec ?? 180,
           maxTokens: MAX_TOKENS,
+          effort: rec.effort,
+          onEffortDropped: () => {
+            effortDropped = true;
+          },
           onBlockStart: (index, block) => {
             host.hub.broadcastSession(rec.id, {
               type: 'block_delta',
@@ -146,33 +165,54 @@ export async function runTurn(
         }
       }
 
-      // 无论成功失败都下发最终消息（失败时可能是部分内容）
+      if (result) {
+        const inputTokens = result.usage.inputTokens || 0;
+        const outputTokens = result.usage.outputTokens || 0;
+        const cacheReadTokens = result.usage.cacheReadTokens || 0;
+        const cacheWriteTokens = result.usage.cacheWriteTokens || 0;
+        const reasoningTokens = result.usage.reasoningTokens || 0;
+        // 单价：账号 price 覆盖 > 内置参考价；未知模型只统计 token
+        const price = priceForModel(profile, model);
+        const usage = {
+          ...result.usage,
+          inputTokens,
+          outputTokens,
+          cacheReadTokens,
+          cacheWriteTokens,
+          reasoningTokens,
+        };
+        const cost = price ? costOfUsage(price, usage, profile.kind) : undefined;
+        assistant.usage = { ...usage, ...(cost !== undefined ? { costUsd: cost } : {}) };
+        rec.usage.inputTokens += inputTokens;
+        rec.usage.outputTokens += outputTokens;
+        rec.usage.cacheReadTokens = (rec.usage.cacheReadTokens ?? 0) + cacheReadTokens;
+        rec.usage.cacheWriteTokens = (rec.usage.cacheWriteTokens ?? 0) + cacheWriteTokens;
+        rec.usage.reasoningTokens = (rec.usage.reasoningTokens ?? 0) + reasoningTokens;
+        if (cost !== undefined) rec.usage.costUsd = roundCost((rec.usage.costUsd ?? 0) + cost);
+        host.calibrateContext(rec, contextEstimate, inputTokens + cacheReadTokens + cacheWriteTokens);
+        host.usage.record({
+          hostId: host.config.hostId,
+          profileId: rec.profileId,
+          model,
+          // 日统计的输入包含缓存读写，保持总输入口径一致
+          inputTokens: inputTokens + cacheReadTokens + cacheWriteTokens,
+          outputTokens,
+          costUsd: cost ?? 0,
+        });
+      }
+
+      // 无论成功失败都下发最终消息（失败时可能是部分内容）；成功时带上本次用量
       host.hub.broadcastSession(rec.id, {
         type: 'message_end',
         sessionId: rec.id,
         message: assistant,
       });
       host.store.markDirty(rec.id, true);
-
-      if (result) {
-        const inputTokens = result.usage.inputTokens || 0;
-        const outputTokens = result.usage.outputTokens || 0;
-        rec.usage.inputTokens += inputTokens;
-        rec.usage.outputTokens += outputTokens;
-        // 单价：账号 price 覆盖 > 内置参考价；未知模型只统计 token
-        const price = priceForModel(profile, model);
-        const cost = costOf(price, inputTokens, outputTokens);
-        if (price) rec.usage.costUsd = roundCost((rec.usage.costUsd ?? 0) + cost);
-        host.usage.record({
-          hostId: host.config.hostId,
-          profileId: rec.profileId,
-          model,
-          inputTokens,
-          outputTokens,
-          costUsd: cost,
-        });
-      }
       host.broadcastSummary(rec);
+      if (result && effortDropped && !effortNoticeShown) {
+        effortNoticeShown = true;
+        host.appendNotice(rec, '当前模型不支持思考强度，本轮已自动忽略。');
+      }
 
       if (!result) {
         // 请求失败或中断时若已解析出 tool_use，必须补上对应 tool_result，

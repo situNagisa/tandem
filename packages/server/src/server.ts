@@ -76,6 +76,9 @@ function parseProfileInput(body: unknown): ProfileInput {
     ...(raw.price && typeof raw.price === 'object'
       ? { price: raw.price as NonNullable<ProfileInput['price']> }
       : {}),
+    ...(raw.modelCapabilities && typeof raw.modelCapabilities === 'object'
+      ? { modelCapabilities: raw.modelCapabilities as NonNullable<ProfileInput['modelCapabilities']> }
+      : {}),
   };
 }
 
@@ -97,6 +100,12 @@ function parseGroupInputs(value: unknown): ProfileGroupInput[] | undefined {
         ...(str(item.baseUrl) ? { baseUrl: str(item.baseUrl) } : {}),
         models,
         defaultModel: str(item.defaultModel) || models[0] || '',
+        ...(item.modelCapabilities && typeof item.modelCapabilities === 'object'
+          ? {
+              modelCapabilities:
+                item.modelCapabilities as NonNullable<ProfileGroupInput['modelCapabilities']>,
+            }
+          : {}),
       };
     })
     .filter((group) => !!group.name);
@@ -261,6 +270,13 @@ export async function createApp(
     const rec = host.getSession(id);
     if (!rec) return bad(reply, '会话不存在', 404);
     return host.toSession(rec);
+  });
+
+  app.get('/api/sessions/:id/context', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    return host.contextFor(rec);
   });
 
   app.patch('/api/sessions/:id', async (req, reply) => {
