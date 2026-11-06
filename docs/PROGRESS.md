@@ -72,3 +72,9 @@
 - [x] 上下文环 + /context 分段面板、缓存命中率、每条消息与会话花费
 - [x] 子/孙代理：侧栏隐藏、会话内层级树、代理卡、审批来源
 - 待复验：轮次条新位置、审阅 diff 新配色、设置大窗口
+
+## 迭代 12（2026-11-07）全局文字提亮
+- [x] 深色 --t-text #EFEFEF→#F5F5F5、secondary #B9B9B9→#D2D2D2、tertiary #8A8A8A→#A3A3A3；浅色 #111/#3F3F3F/#5C5C5C；hairline/strong 与选中态同步提对比
+- [x] 字号批量：正文/控件 13px、辅助 12px、kbd/徽标 11px；设置页正文 13；344 处 class + 153 处设置页 + CSS 规则
+- [x] docs/design.md 新增「字号与对比度」，标注新旧值；2588/1280 深/浅截图自查
+- 说明：Sidebar/ToolCard/EnvBar/Menu/TurnRail/FeedbackMode 由并行同事负责，未覆盖其未提交改动
