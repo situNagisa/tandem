@@ -4,7 +4,9 @@ import { Check, Copy, Loader2, RefreshCw, Smartphone, Unplug, TriangleAlert, Wif
 import { api } from '../../lib/api'
 import { copyText } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
+import type { RelayPairInfo } from '@tandem/protocol'
 import type { HostConfig } from '../../lib/types'
+import { buildRelayPairLink } from '../../lib/pairLink'
 import { Modal } from '../ui/Modal'
 
 export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () => void }) {
@@ -12,6 +14,8 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
   const [token, setToken] = useState('')
   const [hint, setHint] = useState<string | undefined>()
   const [loopback, setLoopback] = useState(false)
+  const [relay, setRelay] = useState<RelayPairInfo | undefined>()
+  const [source, setSource] = useState<'direct' | 'relay'>('direct')
   const [nonce, setNonce] = useState(0)
   const [active, setActive] = useState(0)
   const [svg, setSvg] = useState('')
@@ -31,6 +35,8 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
         setToken(data.token)
         setHint(data.hint)
         setLoopback(!!data.loopback)
+        setRelay(data.relay)
+        setSource(data.relay && (data.relay.requireE2E || data.loopback) ? 'relay' : 'direct')
         setActive(0)
       })
       .catch((err) => {
@@ -45,10 +51,15 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
   }, [host, nonce])
 
   const url = urls[active] ?? ''
-  const content = useMemo(
+  const directContent = useMemo(
     () => (url && token ? `${url}/?token=${encodeURIComponent(token)}` : ''),
     [url, token],
   )
+  const relayContent = useMemo(
+    () => (relay && token ? buildRelayPairLink(relay, token) : ''),
+    [relay, token],
+  )
+  const content = source === 'relay' ? relayContent : directContent
 
   useEffect(() => {
     if (!content) {
@@ -88,9 +99,11 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
       onClose={onClose}
       title="连接手机"
       description={
-        loopback
-          ? 'Host 目前只监听本机回环地址，手机无法扫码连接。'
-          : '手机与 Host 在同一局域网或 Tailscale 网络时，用 Tandem App 扫码即可连接。'
+        relay
+          ? '经中继连接无需同一局域网；二维码携带 Host 公钥指纹，扫码后走端到端加密。'
+          : loopback
+            ? 'Host 目前只监听本机回环地址，手机无法扫码连接。'
+            : '手机与 Host 在同一局域网或 Tailscale 网络时，用 Tandem App 扫码即可连接。'
       }
       className="max-w-md"
     >
@@ -106,7 +119,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
           </div>
         )}
 
-        {!loading && loopback && (
+        {!loading && loopback && !relay && (
           <div className="rounded-xl border border-warning/30 bg-warning-soft/40 px-4 py-5 text-center">
             <Unplug size={26} className="mx-auto text-warning" />
             <p className="mt-2 text-[13px] font-medium text-text">手机暂时连不上这台 Host</p>
@@ -129,9 +142,37 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
           </div>
         )}
 
-        {urls.length > 0 && !loopback && (
+        {relay && token && (
+          <div className="flex rounded-md bg-[var(--t-bg-subtle)] p-0.5">
+            <button
+              onClick={() => setSource('direct')}
+              disabled={urls.length === 0}
+              className={cn(
+                'flex h-7 flex-1 items-center justify-center gap-1 rounded px-2 text-[11px] transition-colors disabled:opacity-40',
+                source === 'direct'
+                  ? 'bg-[var(--t-bg-active)] text-text'
+                  : 'text-muted hover:text-text-soft',
+              )}
+            >
+              <Wifi size={11} /> 直连
+            </button>
+            <button
+              onClick={() => setSource('relay')}
+              className={cn(
+                'flex h-7 flex-1 items-center justify-center gap-1 rounded px-2 text-[11px] transition-colors',
+                source === 'relay'
+                  ? 'bg-[var(--t-bg-active)] text-text'
+                  : 'text-muted hover:text-text-soft',
+              )}
+            >
+              中继 · 加密
+            </button>
+          </div>
+        )}
+
+        {(content || (!loopback && urls.length > 0)) && (
           <>
-            {urls.length > 1 && (
+            {source === 'direct' && urls.length > 1 && (
               <div className="flex flex-wrap gap-1">
                 {urls.map((item, i) => (
                   <button
@@ -179,7 +220,16 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
           </>
         )}
 
-        {hint && !loopback && (
+        {source === 'relay' && relay && (
+          <div className="rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[10.5px] leading-5 text-muted">
+            <div className="mb-1 text-text-soft">Host 公钥指纹（SHA-256）</div>
+            <div className="break-all font-mono text-[10px] text-text-secondary">{relay.fingerprint}</div>
+            <p className="mt-1">链接里含 token 与指纹，请只发给可信设备；连接时指纹不符会拒绝连接。</p>
+            {!relay.connected && <p className="mt-1 text-warning">Host 当前未连上中继，扫码后可能暂时无法连接。</p>}
+          </div>
+        )}
+
+        {hint && !loopback && source === 'direct' && (
           <div className="rounded-lg border border-warning/30 bg-warning-soft/50 px-2.5 py-2 text-[11px] leading-5 text-warning">
             <div className="flex items-start gap-2">
               <TriangleAlert size={12} className="mt-0.5 shrink-0" />
@@ -188,7 +238,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
           </div>
         )}
 
-        {!loopback && (
+        {!loopback && source === 'direct' && (
           <div className="rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[10.5px] leading-5 text-muted">
             <div className="mb-1 flex items-center gap-1.5 text-text-soft">
               <Smartphone size={12} /> 让局域网可访问

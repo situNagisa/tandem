@@ -29,6 +29,8 @@ import { Popover } from './ui/Popover'
 import { Composer } from './Composer'
 import { useGitRepo } from '../lib/useGitRepo'
 import { QrScanDialog, scannerSupported } from './QrScanDialog'
+import { parsePairLink, type PairTarget } from '../lib/pairLink'
+import { RELAY_UNSUPPORTED_MESSAGE, useRelayCryptoSupport } from '../lib/relay'
 
 const HINTS = [
   '介绍一下这个项目的结构和启动方式',
@@ -603,12 +605,13 @@ export function ConnectView() {
   const [url, setUrl] = useState('')
   const [token, setToken] = useState('')
   const [showToken, setShowToken] = useState(false)
-  const [parsed, setParsed] = useState<{ url: string; token: string } | null>(null)
+  const [parsed, setParsed] = useState<PairTarget | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [ok, setOk] = useState(false)
   const [scanOpen, setScanOpen] = useState(false)
   const canScan = useMemo(scannerSupported, [])
+  const cryptoSupported = useRelayCryptoSupport()
   const coarsePointer = useMemo(
     () => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches,
     [],
@@ -622,30 +625,39 @@ export function ConnectView() {
       return
     }
     try {
-      let candidate = raw
-      if (!/^https?:\/\//i.test(candidate)) candidate = 'http://' + candidate
-      const u = new URL(candidate)
-      const t = u.searchParams.get('token') ?? ''
-      u.searchParams.delete('token')
-      const base = (u.origin + u.pathname).replace(/\/+$/, '')
-      setUrl(base)
-      if (t) setToken(t)
-      setParsed({ url: base, token: t })
-      if (!t) setError('链接里没有 token，请手动填写 Token')
-    } catch {
-      setError('链接格式不正确，示例：http://192.168.1.10:7878/?token=xxxx')
+      const target = parsePairLink(raw)
+      if (!target) {
+        setError('链接格式不正确，示例：http://192.168.1.10:7878/?token=xxxx')
+        return
+      }
+      applyTarget(target)
+      if (target.kind === 'direct' && !target.token) {
+        setError('链接里没有 token，请手动填写 Token')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '链接格式不正确')
     }
   }
 
-  const connectTarget = async (targetUrl: string, targetToken: string) => {
+  const applyTarget = (target: PairTarget) => {
+    setUrl(target.url)
+    setToken(target.token)
+    setParsed(target)
+  }
+
+  const connectTarget = async (target: PairTarget) => {
     setError(null)
     setOk(false)
-    if (!targetUrl) {
+    if (!target.url) {
       setError('请填写 Host 地址')
       return
     }
-    if (!targetToken) {
+    if (!target.token) {
       setError('请填写 Host Token')
+      return
+    }
+    if (target.kind === 'relay' && cryptoSupported === false) {
+      setError(RELAY_UNSUPPORTED_MESSAGE)
       return
     }
     setBusy(true)
@@ -653,15 +665,35 @@ export function ConnectView() {
       const probe = {
         id: 'probe',
         name: 'probe',
-        url: targetUrl,
-        token: targetToken,
+        url: target.url,
+        token: target.token,
         addedAt: Date.now(),
+        ...(target.kind === 'relay'
+          ? {
+              mode: 'relay' as const,
+              relayUrl: target.relayUrl,
+              hostId: target.hostId,
+              fingerprint: target.fingerprint,
+            }
+          : {}),
       }
       const info = await api.host(probe)
+      const fallbackName =
+        target.kind === 'relay'
+          ? `${new URL(target.relayUrl).host} · ${target.hostId.slice(0, 8)}`
+          : new URL(target.url.startsWith('http') ? target.url : 'http://' + target.url).host
       const host = addHost({
-        name: info.name || new URL(targetUrl.startsWith('http') ? targetUrl : 'http://' + targetUrl).host,
-        url: targetUrl,
-        token: targetToken,
+        name: info.name || fallbackName,
+        url: target.url,
+        token: target.token,
+        ...(target.kind === 'relay'
+          ? {
+              mode: 'relay' as const,
+              relayUrl: target.relayUrl,
+              hostId: target.hostId,
+              fingerprint: target.fingerprint,
+            }
+          : {}),
       })
       setOk(true)
       toast(`已连接 ${host.name}`, 'success')
@@ -672,24 +704,24 @@ export function ConnectView() {
     }
   }
 
-  const connect = () => void connectTarget(url.trim(), token.trim())
+  const connect = () => {
+    if (parsed?.kind === 'relay') {
+      void connectTarget(parsed)
+      return
+    }
+    void connectTarget({ kind: 'direct', url: url.trim(), token: token.trim() })
+  }
 
   const onScanned = (raw: string) => {
     setScanOpen(false)
     try {
-      let candidate = raw.trim()
-      if (!/^https?:\/\//i.test(candidate)) candidate = 'http://' + candidate
-      const u = new URL(candidate)
-      const t = u.searchParams.get('token') ?? ''
-      u.searchParams.delete('token')
-      const base = (u.origin + u.pathname).replace(/\/+$/, '')
+      const target = parsePairLink(raw)
+      if (!target) throw new Error('二维码内容不是有效的 Tandem 配对链接')
       setLink(raw.trim())
-      setUrl(base)
-      setToken(t)
-      setParsed({ url: base, token: t })
-      void connectTarget(base, t)
-    } catch {
-      setError('二维码内容不是有效的 Tandem 配对链接')
+      applyTarget(target)
+      void connectTarget(target)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '二维码内容不是有效的 Tandem 配对链接')
     }
   }
 
@@ -726,7 +758,7 @@ export function ConnectView() {
                   parseLink()
                 }
               }}
-              placeholder="http://192.168.1.10:7878/?token=…"
+              placeholder="直连链接，或含 #pair=… 的中继配对链接"
               spellCheck={false}
               autoComplete="off"
               className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-bg px-2.5 font-mono text-[11.5px] outline-none transition-colors focus:border-border-strong"
@@ -741,9 +773,23 @@ export function ConnectView() {
           {parsed && (
             <div className="mt-2 rounded-lg bg-[var(--t-bg)] px-2.5 py-1.5 text-[10.5px] leading-4 text-muted">
               <div className="truncate font-mono">{parsed.url}</div>
-              <div className="truncate font-mono">
-                Token {parsed.token ? `· ${parsed.token.slice(0, 10)}…` : '· 未找到'}
-              </div>
+              {parsed.kind === 'relay' ? (
+                <>
+                  <div className="truncate font-mono">中继 · 端到端加密</div>
+                  <div className="truncate font-mono">
+                    指纹 {parsed.fingerprint.slice(0, 16)}…
+                  </div>
+                </>
+              ) : (
+                <div className="truncate font-mono">
+                  Token {parsed.token ? `· ${parsed.token.slice(0, 10)}…` : '· 未找到'}
+                </div>
+              )}
+            </div>
+          )}
+          {parsed?.kind === 'relay' && cryptoSupported === false && (
+            <div className="mt-2 rounded-lg border border-warning/30 bg-warning-soft/40 px-2.5 py-2 text-[10.5px] leading-5 text-warning">
+              {RELAY_UNSUPPORTED_MESSAGE}
             </div>
           )}
 
@@ -771,6 +817,7 @@ export function ConnectView() {
               value={token}
               onChange={(e) => {
                 setToken(e.target.value)
+                setParsed(null)
                 setError(null)
               }}
               type={showToken ? 'text' : 'password'}
