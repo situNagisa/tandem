@@ -17,7 +17,6 @@ import { useUiStore } from '../store/useUiStore'
 import { copyText } from '../lib/clipboard'
 import { cn } from '../lib/cn'
 import {
-  basename,
   formatCost,
   formatRelative,
   formatTime,
@@ -44,11 +43,9 @@ const TODO_ICONS = {
 
 function Section({ title, extra, children }: { title: string; extra?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section>
-      <div className="mb-1.5 flex items-center gap-2">
-        <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted">
-          {title}
-        </h3>
+    <section className="border-t border-border pt-3.5 first:border-t-0 first:pt-0">
+      <div className="mb-2 flex items-center gap-2">
+        <h3 className="text-[12px] font-medium text-text-secondary">{title}</h3>
         <span className="flex-1" />
         {extra}
       </div>
@@ -59,9 +56,9 @@ function Section({ title, extra, children }: { title: string; extra?: React.Reac
 
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-2 py-1 text-[12px]">
-      <span className="w-16 shrink-0 text-muted">{label}</span>
-      <span className="min-w-0 flex-1 break-words text-text-soft">{children}</span>
+    <div className="grid grid-cols-[60px_minmax(0,1fr)] items-start gap-3 py-1.5 text-[13px] leading-5">
+      <span className="text-muted">{label}</span>
+      <span className="min-w-0 break-words text-text-soft">{children}</span>
     </div>
   )
 }
@@ -89,7 +86,6 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const completed = todos.filter((t) => t.status === 'completed').length
   const progress = todos.length ? Math.round((completed / todos.length) * 100) : 0
   const usage = summary?.usage
-  const totalTokens = (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)
 
   const copyCwd = async () => {
     if (!summary?.cwd) return
@@ -115,7 +111,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <aside className="flex h-full w-full flex-col border-l border-border bg-sidebar md:w-[304px]">
+    <aside className="flex h-full w-full flex-col border-l border-border bg-sidebar md:w-[300px]">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 px-3.5">
         <h2 className="text-[12.5px] font-semibold">会话信息</h2>
         {summary && (
@@ -134,101 +130,90 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-3.5">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
         <Section
           title="待办"
           extra={
             todos.length > 0 && (
-              <span className="text-[10.5px] text-muted">
+              <span className="text-[11px] tabular-nums text-muted">
                 {completed}/{todos.length}
               </span>
             )
           }
         >
-          <div className="rounded-xl border border-border bg-surface p-2.5">
-            {todos.length === 0 ? (
-              <p className="py-1 text-[12px] text-muted">暂无待办。agent 使用 TodoWrite 后显示在这里。</p>
-            ) : (
-              <>
-                <div className="mb-2 h-1 overflow-hidden rounded-full bg-surface-2">
-                  <div
-                    className="h-full rounded-full bg-accent transition-[width] duration-300"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-                <ul className="space-y-1.5">
-                  {todos.map((t, i) => {
-                    const Icon = TODO_ICONS[t.status] ?? Circle
-                    return (
-                      <li key={i} className="flex items-start gap-2 text-[12px] leading-5">
-                        <Icon
-                          size={13.5}
-                          className={cn(
-                            'mt-0.5 shrink-0',
-                            t.status === 'completed'
-                              ? 'text-success'
-                              : t.status === 'in_progress'
-                                ? 'text-accent'
-                                : 'text-muted',
-                          )}
-                        />
-                        <span
-                          className={cn(
-                            t.status === 'completed'
-                              ? 'text-muted line-through'
-                              : t.status === 'in_progress'
-                                ? 'text-text'
-                                : 'text-text-soft',
-                          )}
-                        >
-                          {t.content}
-                        </span>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </>
-            )}
-          </div>
+          {todos.length === 0 ? (
+            <p className="text-[11.5px] text-muted">暂无待办</p>
+          ) : (
+            <>
+              <div className="mb-2 h-0.5 overflow-hidden rounded-full bg-surface-2">
+                <div
+                  className="h-full rounded-full bg-accent/70 transition-[width] duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <ul className="space-y-1.5">
+                {todos.map((t, i) => {
+                  const Icon = TODO_ICONS[t.status] ?? Circle
+                  return (
+                    <li key={i} className="flex items-start gap-2 text-[12.5px] leading-5">
+                      <Icon
+                        size={13}
+                        className={cn(
+                          'mt-0.5 shrink-0',
+                          t.status === 'in_progress' ? 'text-text-secondary' : 'text-muted',
+                        )}
+                      />
+                      <span
+                        className={cn(
+                          'min-w-0',
+                          t.status === 'completed'
+                            ? 'text-muted line-through'
+                            : t.status === 'in_progress'
+                              ? 'text-text'
+                              : 'text-text-soft',
+                        )}
+                      >
+                        {t.content}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          )}
         </Section>
 
         <Section title="用量">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-xl border border-border bg-surface p-2.5">
-              <div className="text-[10px] text-muted">输入 Token</div>
-              <div className="mt-0.5 font-mono text-[15px] text-text">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-text-soft">
+            <span>
+              输入{' '}
+              <span className="font-mono tabular-nums text-text">
                 {formatTokens(usage?.inputTokens ?? 0)}
-              </div>
-            </div>
-            <div className="rounded-xl border border-border bg-surface p-2.5">
-              <div className="text-[10px] text-muted">输出 Token</div>
-              <div className="mt-0.5 font-mono text-[15px] text-text">
+              </span>
+            </span>
+            <span className="text-muted">·</span>
+            <span>
+              输出{' '}
+              <span className="font-mono tabular-nums text-text">
                 {formatTokens(usage?.outputTokens ?? 0)}
-              </div>
-            </div>
-            <div className="rounded-xl border border-border bg-surface p-2.5">
-              <div className="text-[10px] text-muted">合计</div>
-              <div className="mt-0.5 font-mono text-[15px] text-text">
-                {formatTokens(totalTokens)}
-              </div>
-            </div>
-            <div className="rounded-xl border border-border bg-surface p-2.5">
-              <div className="text-[10px] text-muted">花费</div>
-              <div className="mt-0.5 font-mono text-[15px] text-text">
+              </span>
+            </span>
+            <span className="text-muted">·</span>
+            <span>
+              花费{' '}
+              <span className="font-mono tabular-nums text-text">
                 {formatCost(usage?.costUsd)}
-              </div>
-            </div>
+              </span>
+            </span>
           </div>
         </Section>
 
         <Section title="详情">
-          <div className="rounded-xl border border-border bg-surface px-3 py-2">
+          <div className="divide-y divide-[var(--t-border)] border-y border-border">
             <DetailRow label="模型">
-              <span className="font-mono text-[11.5px]">{summary?.model ?? '—'}</span>
+              <span className="font-mono text-[12px]">{summary?.model ?? '—'}</span>
             </DetailRow>
-            <DetailRow label="账号">
-              {profileName ?? summary?.profileId ?? '—'}
-            </DetailRow>
+            <DetailRow label="账号">{profileName ?? summary?.profileId ?? '—'}</DetailRow>
             <DetailRow label="权限">
               {summary ? PERMISSION_MODE_LABELS[summary.permissionMode] : '—'}
             </DetailRow>
@@ -241,7 +226,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
             </DetailRow>
             <DetailRow label="工作目录">
               <span className="group/cwd flex items-start gap-1">
-                <span className="min-w-0 flex-1 break-all font-mono text-[11px]">
+                <span className="min-w-0 flex-1 break-all font-mono text-[11.5px]">
                   {summary?.cwd ?? '—'}
                 </span>
                 {summary?.cwd && (
@@ -278,9 +263,6 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
                 <span className="truncate">{host?.name ?? '—'}</span>
               </span>
             </DetailRow>
-            <DetailRow label="目录">
-              <span className="font-mono text-[11px]">{basename(summary?.cwd ?? '') || '—'}</span>
-            </DetailRow>
             <DetailRow label="更新">
               {summary ? (
                 <span title={formatTime(summary.updatedAt)}>
@@ -301,19 +283,19 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
             </DetailRow>
           </div>
         </Section>
-
-        <Section title="危险操作">
-          <button
-            onClick={() => setConfirmDelete(true)}
-            disabled={deleting || !summary}
-            className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-danger/25 bg-surface px-3 text-[12px] text-danger transition-colors hover:bg-danger-soft/60 disabled:opacity-50 md:min-h-10"
-          >
-            {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-            删除会话
-          </button>
-        </Section>
-        <div className="pb-1 text-center text-[10px] text-muted/70">Tandem · 多端实时协同</div>
       </div>
+
+      <div className="shrink-0 border-t border-border px-4 py-2.5">
+        <button
+          onClick={() => setConfirmDelete(true)}
+          disabled={deleting || !summary}
+          className="flex min-h-8 items-center gap-1.5 rounded-md px-1 text-[12px] text-muted transition-colors hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+          删除会话
+        </button>
+      </div>
+
       <Modal
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
