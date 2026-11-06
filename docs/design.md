@@ -44,6 +44,33 @@
 - 圆角：小控件 6，按钮/菜单项 8，卡片/Popover 12，输入框卡片 18–20，发送按钮圆形。
 - 阴影：`--shadow-sm: 0 1px 2px rgba(0,0,0,.04)`；`--shadow-md: 0 4px 16px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.04)`（Popover/输入框）；`--shadow-lg: 0 12px 40px rgba(0,0,0,.12)`（对话框）。深色模式阴影加深、边框承担层次。
 
+## 按钮与控件
+
+全应用共用 `src/components/ui/Button.tsx`（Button / IconButton）与 `Controls.tsx`（Input / Select / SegmentedControl / Switch），不再手写高度、圆角与 hover。
+
+**尺寸档**（高度 / 圆角 / 图标 / 水平内边距）：
+
+| 档位 | 高度 | 圆角 | 图标 | 用途 |
+|---|---|---|---|---|
+| sm | 28 | 6 | 14 | 密集工具栏、菜单、图标按钮 |
+| md（默认） | 32 | 8 | 16 | 常规按钮、对话框次要操作 |
+| lg | 36 | 10 | 16 | 对话框主操作、空态主按钮 |
+
+- 文字统一 13px / 500；不随档位改字号，图标按档位 14 / 16。
+- 变体：
+  - `primary`：橙色底 + `--on-accent` 文字，**仅发送、确认/允许等极少数主操作**。
+  - `secondary`：`--bg-subtle` 底 + 1px hairline 边框，默认变体。
+  - `ghost`：无底无框，hover `--bg-hover`。
+  - `danger-ghost`：中性按钮，hover 仅文字转 `--danger`，不做红底红框。
+  - `icon`：正方形，同尺寸档（IconButton）。
+- 焦点：`focus-visible` 2px 橙色外环、offset 2；不与 hover 混用。
+- disabled：40% 不透明、`cursor: not-allowed`、不响应 hover。
+- 按下：`scale(.98)`，80ms；不影响布局。
+- 图标按钮必须有 `aria-label`；需要说明时用统一 Tooltip（悬停/聚焦出现，文案 ≤220px），不再各写 `title`。
+- 输入框 / 下拉 / 分段控件高度与按钮档对齐（28 / 32 / 36），分段控件容器用 `--bg-subtle`、选中用 `--bg-active`；开关 36×20，选中态也用中性灰，不用橙色。
+- 移动端 <768px 的触控目标仍保持 ≥44px：可在外层容器放宽，不改变桌面档位。
+- 橙色的边界不变：只用于品牌、发送、焦点、待审批；选中态一律中性（`--border-strong` + `--bg-subtle`/`--bg-active` + 勾选标记），不用橙边框、橙 ring、橙点。
+
 ## 动效
 - 时长：微交互 120ms，Popover/菜单 160ms，抽屉/对话框 220ms。
 - 缓动：`--ease-out: cubic-bezier(.16,1,.3,1)`；退出用 `cubic-bezier(.4,0,1,1)` 且更快（100ms）。
