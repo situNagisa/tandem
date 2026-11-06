@@ -21,7 +21,7 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
       side="top"
       align="left"
       padded={false}
-      panelClassName="w-[272px] max-w-[calc(100vw-1rem)] p-1.5"
+      panelClassName="w-[272px] max-w-[calc(100vw-1rem)] rounded-[10px] p-[5px]"
       trigger={({ open, toggle }) => (
         <Button
           variant="ghost"
@@ -46,9 +46,7 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
     >
       {(close) => (
         <div>
-          <div className="px-2.5 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted">
-            Hosts
-          </div>
+          <div className="menu-section">Hosts</div>
           <div className="max-h-64 overflow-y-auto">
             {hosts.length === 0 && (
               <p className="px-2.5 py-3 text-[12.5px] text-muted">还没有 Host，先添加一台吧。</p>
@@ -60,7 +58,7 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
                 <div
                   key={h.id}
                   className={cn(
-                    'flex items-center gap-1 rounded-lg transition-colors hover:bg-[var(--t-bg-hover)]',
+                    'flex items-center gap-1 rounded-md transition-colors hover:bg-[var(--t-bg-hover)]',
                     isActive && 'bg-[var(--t-bg-active)]',
                   )}
                 >
@@ -73,11 +71,11 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
                       navigate({ kind: 'host', hostId: h.id })
                       onNavigate?.()
                     }}
-                    className="flex min-h-10 min-w-0 flex-1 items-center gap-2.5 px-2.5 py-1.5 text-left"
+                    className="flex min-h-10 min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 py-1.5 text-left"
                   >
                     <ConnectionDot state={rt?.status ?? 'connecting'} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12.5px] font-medium">{h.name}</span>
+                      <span className="block truncate text-[13px] font-medium">{h.name}</span>
                       <span className="block truncate text-[10.5px] text-muted">
                         {rt?.info?.platform ? `${rt.info.platform} · ` : ''}
                         {h.url.replace(/^https?:\/\//, '')}

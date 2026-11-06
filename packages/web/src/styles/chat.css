@@ -687,12 +687,12 @@
 
 .menu-item {
   display: flex;
-  min-height: 34px;
+  min-height: 32px;
   width: 100%;
   align-items: center;
   gap: 8px;
-  padding: 0 10px;
-  border-radius: 8px;
+  padding: 0 9px;
+  border-radius: 6px;
   color: var(--t-text-soft);
   font-size: 13px;
   text-align: left;
@@ -709,16 +709,21 @@
   background: color-mix(in srgb, var(--t-bg-active, rgba(31, 30, 29, 0.08)) 65%, transparent);
   color: var(--t-text);
 }
-.menu-section {
-  padding: 8px 10px 4px;
+:where(.menu-item) > svg {
+  flex: none;
   color: var(--t-muted);
-  font-size: 11px;
+}
+.menu-section {
+  padding: 6px 8px 3px;
+  color: var(--t-muted);
+  font-size: 9.5px;
   font-weight: 500;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .menu-divider {
   height: 1px;
-  margin: 5px 4px;
+  margin: 4px 4px;
   background: var(--t-border);
 }
 .menu-hint {

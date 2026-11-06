@@ -5,7 +5,6 @@ import {
   ArchiveRestore,
   ChevronRight,
   Copy,
-  Folder,
   FolderGit2,
   GitBranch,
   GitMerge,
@@ -272,20 +271,23 @@ function RowMenu({
   }, [onClose])
 
   const item =
-    'flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text'
+    'flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text'
 
   return createPortal(
     <div
       ref={ref}
       role="menu"
-      className="anim-pop fixed z-[70] w-[184px] origin-top-left rounded-xl border border-border bg-surface p-1 shadow-[var(--t-shadow-md)]"
+      className="anim-pop fixed z-[70] w-[196px] origin-top-left rounded-[10px] border border-border bg-surface p-[5px] shadow-[var(--t-shadow-md)]"
       style={{ left: pos.left, top: pos.top }}
       onClick={(e) => e.stopPropagation()}
     >
-      <button className={item} onClick={() => { onClose(); onRename() }}>
+      <div className="px-2 pb-1 pt-1 text-[9.5px] font-medium uppercase tracking-[0.08em] text-muted">
+        会话
+      </div>
+      <button type="button" role="menuitem" className={item} onClick={() => { onClose(); onRename() }}>
         <Pencil size={14} className="text-muted" /> 重命名
       </button>
-      <button className={item} onClick={() => { onClose(); onTogglePin() }}>
+      <button type="button" role="menuitem" className={item} onClick={() => { onClose(); onTogglePin() }}>
         {state.session.pinned ? (
           <PinOff size={14} className="text-muted" />
         ) : (
@@ -293,15 +295,15 @@ function RowMenu({
         )}
         {state.session.pinned ? '取消置顶' : '置顶'}
       </button>
-      <button className={item} onClick={() => { onClose(); onFork() }}>
+      <button type="button" role="menuitem" className={item} onClick={() => { onClose(); onFork() }}>
         <Copy size={14} className="text-muted" /> 复制会话
       </button>
       {state.session.worktree && (
-        <button className={item} onClick={() => { onClose(); onMerge() }}>
+        <button type="button" role="menuitem" className={item} onClick={() => { onClose(); onMerge() }}>
           <GitMerge size={14} className="text-muted" /> 合并回 {state.session.worktree.baseBranch}
         </button>
       )}
-      <button className={item} onClick={() => { onClose(); onArchive() }}>
+      <button type="button" role="menuitem" className={item} onClick={() => { onClose(); onArchive() }}>
         {state.session.archived ? (
           <ArchiveRestore size={14} className="text-muted" />
         ) : (
@@ -309,13 +311,16 @@ function RowMenu({
         )}
         {state.session.archived ? '取消归档' : '归档'}
       </button>
-      <div className="my-1 h-px bg-[var(--t-border)]" />
-      <button
-        className="flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-danger"
-        onClick={() => { onClose(); onDelete() }}
-      >
-        <Trash2 size={14} /> 删除
-      </button>
+      <div className="mt-1 border-t border-border pt-1">
+        <button
+          type="button"
+          role="menuitem"
+          className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-danger"
+          onClick={() => { onClose(); onDelete() }}
+        >
+          <Trash2 size={14} /> 删除
+        </button>
+      </div>
     </div>,
     document.body,
   )
@@ -343,9 +348,7 @@ export function SessionList({
   const showArchived = useUiStore((s) => s.showArchived)
   const setShowArchived = useUiStore((s) => s.setShowArchived)
   const showSubagents = useUiStore((s) => s.showSubagents)
-  const setShowSubagents = useUiStore((s) => s.setShowSubagents)
   const showExternalSessions = useUiStore((s) => s.showExternalSessions)
-  const setShowExternalSessions = useUiStore((s) => s.setShowExternalSessions)
   // 同事会提供 externalSessions（顶层数组或按 hostId 的 Record 均可），未就绪时为 undefined。
   const externalRaw = useAppStore(
     (s) => (s as typeof s & { externalSessions?: unknown }).externalSessions,
@@ -478,10 +481,6 @@ export function SessionList({
   }, [renaming])
 
   const total = groups.reduce((n, g) => n + g.count, 0) + (showArchived ? 0 : pinned.length)
-  const hasSubagents = useMemo(
-    () => Object.values(runtimes).some((rt) => rt.sessions.some((s) => s.parentId)),
-    [runtimes],
-  )
   const noHosts = hosts.length === 0
 
   const startRename = (s: SessionSummary) => {
@@ -573,16 +572,18 @@ export function SessionList({
         aria-current={isActive ? 'page' : undefined}
         title={s.title || '未命名会话'}
         className={cn(
-          'anim-row-in group relative flex min-h-11 cursor-default items-center gap-2 rounded-lg pr-8 text-[13.5px] outline-none transition-colors duration-[120ms] md:min-h-8',
-          depth > 0 ? 'pl-6' : 'pl-2',
+          'anim-row-in group relative flex min-h-11 cursor-default items-center gap-2 rounded-none py-1 pr-8 text-[13px] outline-none transition-colors duration-[120ms] md:min-h-[30px] md:py-0',
+          depth > 0 ? 'pl-8' : 'pl-3.5',
           isActive
-            ? 'bg-[var(--t-bg-active)] text-text'
+            ? 'text-text shadow-[inset_2px_0_0_var(--t-text)]'
             : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
         )}
       >
-        <span className="flex w-3 shrink-0 justify-center">
-          <SessionStatusDot status={s.status} />
-        </span>
+        {s.status !== 'idle' && (
+          <span className="pointer-events-none absolute left-[5px] top-1/2 flex -translate-y-1/2 items-center">
+            <SessionStatusDot status={s.status} />
+          </span>
+        )}
         {renamingThis ? (
           <input
             ref={renameRef}
@@ -697,47 +698,13 @@ export function SessionList({
     <nav
       ref={navRef}
       onKeyDown={onNavKeyDown}
-      className="min-h-0 flex-1 overflow-y-auto px-2 pb-3"
+      className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 pb-3"
       aria-label="会话列表"
     >
-      <div className="flex items-center gap-1 px-2 pb-1 pt-3">
+      <div className="flex min-h-7 items-center gap-1 px-2.5 pb-0.5 pt-2">
         <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted">
           {showArchived ? '已归档' : query ? '搜索结果' : '会话'}
         </span>
-        {!showArchived && hasSubagents && (
-          <button
-            onClick={() => setShowSubagents(!showSubagents)}
-            aria-pressed={showSubagents}
-            title={showSubagents ? '隐藏子代理会话' : '在主会话下显示子代理会话'}
-            className={cn(
-              'ml-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] transition-colors',
-              showSubagents
-                ? 'bg-[var(--t-bg-active)] text-text-soft'
-                : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text-soft',
-            )}
-          >
-            <GitBranch size={10} /> 子代理
-          </button>
-        )}
-        {!showArchived && (
-          <button
-            onClick={() => setShowExternalSessions(!showExternalSessions)}
-            aria-pressed={showExternalSessions}
-            title={
-              showExternalSessions
-                ? '在侧栏隐藏 Claude Code / Codex 会话'
-                : '在侧栏显示 Claude Code / Codex 会话'
-            }
-            className={cn(
-              'ml-auto flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[9.5px] tracking-tight transition-colors',
-              showExternalSessions
-                ? 'bg-[var(--t-bg-active)] text-text-soft'
-                : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text-soft',
-            )}
-          >
-            <span className="truncate">Claude Code / Codex</span>
-          </button>
-        )}
         {showArchived && (
           <button
             onClick={() => setShowArchived(false)}
@@ -767,8 +734,8 @@ export function SessionList({
 
         {!showArchived && pinned.length > 0 && (
           <div className="mb-1">
-            <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-[11px] font-medium text-muted">
-              <Pin size={11} />
+            <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.08em] text-muted">
+              <Pin size={10} />
               置顶
             </div>
             <div className="space-y-0.5">{pinned.map(({ hostId, session }) => renderRow(hostId, session))}</div>
@@ -786,10 +753,10 @@ export function SessionList({
                 `${formatRelative(ext.updatedAt)} · ${ext.messageCount} 条消息`,
                 `${ext.cwd} · ${ext.source === 'codex' ? 'Codex' : 'Claude Code'}`,
               ].join('\n')}
-              className="anim-row-in group/ex flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg pl-2 pr-2 text-left text-[13.5px] text-text-soft outline-none transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-8"
+              className="anim-row-in group/ex flex min-h-11 w-full min-w-0 items-center gap-2 rounded-none py-1 pl-3.5 pr-2 text-left text-[13px] text-text-soft outline-none transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-[30px] md:py-0"
             >
               <span
-                className="min-w-4 shrink-0 text-left text-[8.5px] font-medium tracking-tight text-muted"
+                className="w-4 min-w-4 shrink-0 text-left text-[8.5px] font-medium tracking-tight text-muted"
                 aria-label={ext.source === 'codex' ? 'Codex' : 'Claude Code'}
               >
                 {ext.source === 'codex' ? 'Codex' : 'CC'}
@@ -841,29 +808,28 @@ export function SessionList({
             ]
             const count = project.items.length + project.externals.length
             return (
-              <div key={project.key}>
-                <div className="group/proj flex min-h-8 items-center rounded-lg pr-0.5 transition-colors hover:bg-[var(--t-bg-hover)]">
+              <div key={project.key} className="min-w-0">
+                <div className="group/proj flex min-h-7 min-w-0 items-center rounded-md pr-0.5 transition-colors hover:bg-[var(--t-bg-hover)]">
                   <button
                     onClick={() => toggleProject(project.key)}
                     className={cn(
-                      'flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left text-[13px] text-text-secondary transition-colors duration-[120ms] hover:text-text',
+                      'flex min-h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md text-left text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted transition-colors duration-[120ms] hover:text-text-secondary',
                       indented ? 'pl-6' : 'pl-2',
                     )}
                     aria-expanded={!projCollapsed}
-                    title={project.cwd || project.name}
+                    title={`${project.name}${project.branch ? ` · ${project.branch}` : ''} (${count})`}
                   >
                     <ChevronRight
-                      size={11}
+                      size={10}
                       className={cn(
                         'shrink-0 text-muted transition-transform duration-150',
                         !projCollapsed && 'rotate-90',
                       )}
                     />
-                    <Folder size={12} className="shrink-0 text-muted" />
-                    <span className="min-w-0 max-w-[52%] truncate">{project.name}</span>
+                    <span className="min-w-0 flex-1 truncate">{project.name}</span>
                     {project.branch && (
-                      <span className="flex min-w-0 items-center gap-0.5 text-[10px] text-muted">
-                        <GitBranch size={9} className="shrink-0" />
+                      <span className="flex min-w-0 max-w-[45%] items-center gap-0.5 text-[9px] font-normal normal-case tracking-normal text-muted/80">
+                        <GitBranch size={8} className="shrink-0" />
                         <span className="truncate">{project.branch}</span>
                       </span>
                     )}
@@ -880,9 +846,6 @@ export function SessionList({
                   >
                     <Plus size={13} />
                   </IconButton>
-                  <span className="w-5 shrink-0 text-right text-[10px] tabular-nums text-muted">
-                    {count}
-                  </span>
                 </div>
                 <div
                   className="expand-grid mt-0.5"
@@ -897,7 +860,7 @@ export function SessionList({
                         onClick={() =>
                           setExpandedExternal((s) => ({ ...s, [project.key]: true }))
                         }
-                        className="flex min-h-8 w-full items-center gap-1.5 rounded-lg pl-2 pr-2 text-left text-[12px] text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
+                        className="flex min-h-7 w-full items-center gap-1.5 rounded-md pl-2 pr-2 text-left text-[11.5px] text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
                       >
                         <ChevronRight size={11} className="shrink-0 rotate-90" />
                         更多 {externalSourceLabel} 会话（{hiddenExternalCount}）
@@ -912,7 +875,7 @@ export function SessionList({
                             return next
                           })
                         }
-                        className="flex min-h-8 w-full items-center gap-1.5 rounded-lg pl-2 pr-2 text-left text-[12px] text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
+                        className="flex min-h-7 w-full items-center gap-1.5 rounded-md pl-2 pr-2 text-left text-[11.5px] text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
                       >
                         <ChevronRight size={11} className="shrink-0" />
                         收起 {externalSourceLabel} 会话
@@ -941,17 +904,17 @@ export function SessionList({
               <div key={host.id} className="mt-2">
                 <button
                   onClick={() => toggleProject(hostKey)}
-                  className="flex min-h-8 w-full items-center gap-1.5 rounded-lg px-2 text-left text-[13px] font-medium text-text-secondary transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text"
+                  className="flex min-h-7 w-full min-w-0 items-center gap-1.5 rounded-md px-2 text-left text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-secondary"
                   aria-expanded={!hostCollapsed}
                 >
                   <ChevronRight
-                    size={11}
+                    size={10}
                     className={cn('shrink-0 text-muted transition-transform duration-150', !hostCollapsed && 'rotate-90')}
                   />
-                  <Server size={12} className="shrink-0 text-muted" />
+                  <Server size={11} className="shrink-0 text-muted" />
                   <span className="min-w-0 flex-1 truncate">{host.name}</span>
                   <ConnectionDot state={host.online ? 'online' : 'offline'} className="size-1.5" />
-                  <span className="text-[10px] font-normal tabular-nums text-muted">{host.count}</span>
+                  <span className="text-[9px] font-normal tabular-nums opacity-60">{host.count}</span>
                 </button>
                 <div
                   className="expand-grid mt-0.5"

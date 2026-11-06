@@ -1,10 +1,12 @@
 import {
   Archive,
   ArchiveRestore,
+  Check,
   PanelLeftClose,
   Plus,
   Search,
   Settings,
+  SlidersHorizontal,
   X,
 } from 'lucide-react'
 import { useUiStore } from '../store/useUiStore'
@@ -15,8 +17,39 @@ import { cn } from '../lib/cn'
 import { isDesktop, isMacDesktop } from '../lib/desktop'
 import { BrandMark } from './BrandMark'
 import { HostSwitcher } from './HostSwitcher'
+import { Popover } from './ui/Popover'
 import { Button, IconButton } from './ui/Button'
 import { SessionList } from './SessionList'
+
+function FilterItem({
+  checked,
+  label,
+  onClick,
+}: {
+  checked: boolean
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={checked}
+      onClick={onClick}
+      className="menu-item"
+    >
+      <span
+        className={cn(
+          'flex size-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors',
+          checked ? 'border-text-tertiary/60 bg-[var(--t-bg-active)]' : 'border-border-strong',
+        )}
+      >
+        {checked && <Check size={10} className="text-text" />}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+    </button>
+  )
+}
 
 export function Sidebar({
   inDrawer = false,
@@ -31,6 +64,10 @@ export function Sidebar({
   const openSettings = useUiStore((s) => s.openSettings)
   const showArchived = useUiStore((s) => s.showArchived)
   const setShowArchived = useUiStore((s) => s.setShowArchived)
+  const showExternalSessions = useUiStore((s) => s.showExternalSessions)
+  const setShowExternalSessions = useUiStore((s) => s.setShowExternalSessions)
+  const showSubagents = useUiStore((s) => s.showSubagents)
+  const setShowSubagents = useUiStore((s) => s.setShowSubagents)
   const resetComposer = useUiStore((s) => s.resetComposer)
   const archivedCount = useAppStore((s) =>
     Object.values(s.runtimes).reduce(
@@ -50,7 +87,7 @@ export function Sidebar({
   }
 
   return (
-    <aside className="flex h-full w-full shrink-0 flex-col border-r border-border bg-sidebar">
+    <aside className="flex h-full w-full shrink-0 flex-col overflow-x-hidden border-r border-border bg-sidebar">
       <div
         className={cn('flex items-center gap-2 px-3.5 pb-2 pt-3.5', isDesktop && 'desktop-drag')}
         style={isMacDesktop ? { paddingLeft: 72 } : undefined}
@@ -127,6 +164,41 @@ export function Sidebar({
       <div className="flex items-center gap-1 border-t border-border px-2 py-1.5">
         <HostSwitcher onNavigate={onNavigate} />
         <span className="flex-1" />
+        <Popover
+          side="top"
+          align="right"
+          padded={false}
+          panelClassName="w-[210px] rounded-[10px] p-[5px]"
+          trigger={({ open, toggle }) => (
+            <IconButton
+              onClick={toggle}
+              label="筛选侧栏"
+              tooltip="筛选"
+              tooltipSide="top"
+              aria-expanded={open}
+              aria-haspopup="menu"
+              className={cn('max-sm:size-11', open && 'bg-[var(--t-bg-active)] text-text')}
+            >
+              <SlidersHorizontal size={15} />
+            </IconButton>
+          )}
+        >
+          {() => (
+            <div>
+              <div className="menu-section">显示</div>
+              <FilterItem
+                checked={showExternalSessions}
+                label="Claude Code / Codex"
+                onClick={() => setShowExternalSessions(!showExternalSessions)}
+              />
+              <FilterItem
+                checked={showSubagents}
+                label="子代理会话"
+                onClick={() => setShowSubagents(!showSubagents)}
+              />
+            </div>
+          )}
+        </Popover>
         <IconButton onClick={() => openSettings()} label="设置" tooltipSide="top" className="max-sm:size-11">
           <Settings size={15} />
         </IconButton>
