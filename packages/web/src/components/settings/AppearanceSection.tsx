@@ -129,7 +129,7 @@ export function AppearanceSection() {
 
       <div className="mt-5 rounded-xl border border-border bg-surface p-3.5">
         <div className="text-[12px] font-medium">键盘快捷键</div>
-        <dl className="mt-2 grid gap-x-6 sm:grid-cols-2">
+        <dl className="mt-2 grid gap-x-6 sm:grid-cols-[repeat(2,minmax(0,380px))]">
           {[
             ['发送消息', 'Enter'],
             ['换行', 'Shift + Enter'],
@@ -144,8 +144,8 @@ export function AppearanceSection() {
           ].map(([label, keys]) => (
             <div key={label} className="flex min-h-7 min-w-0 items-center gap-2 text-[12px]">
               <dt className="truncate text-text-soft">{label}</dt>
-              <dd className="ml-auto shrink-0">
-                <kbd className="rounded-[4px] border border-border bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[9.5px] leading-none text-text-soft">
+              <dd className="shrink-0">
+                <kbd className="whitespace-nowrap rounded-[4px] border border-border bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[9.5px] leading-none text-text-soft">
                   {keys}
                 </kbd>
               </dd>

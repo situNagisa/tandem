@@ -172,6 +172,15 @@ html.dark {
   --animate-shimmer: shimmer 1.6s linear infinite;
 }
 
+/* 面板基础宽度放在组件层：工具类（w-*）在 utilities 层，调用方才能覆盖它。
+   写进基础类的 w-full 会与调用方的 w-[...] 变成同一层里的两个 width 规则，
+   由 Tailwind 生成顺序决定胜负（w-full 排在任意值后面），尺寸参数就失效了。 */
+@layer components {
+  .modal-panel {
+    width: 100%;
+  }
+}
+
 @layer base {
   * {
     border-color: var(--t-border);

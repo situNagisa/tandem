@@ -152,7 +152,7 @@ export function Modal({
         aria-modal="true"
         aria-label={typeof title === 'string' ? title : undefined}
         className={cn(
-          'my-auto flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-2xl border border-border bg-surface text-text shadow-[var(--t-shadow-lg)] outline-none',
+          'modal-panel my-auto flex max-h-[92dvh] flex-col overflow-hidden rounded-2xl border border-border bg-surface text-text shadow-[var(--t-shadow-lg)] outline-none',
           closing ? 'anim-scale-out' : 'anim-dialog',
           align === 'top' && 'my-0',
           className ?? 'max-w-lg',

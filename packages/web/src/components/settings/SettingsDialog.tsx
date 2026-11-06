@@ -36,7 +36,7 @@ export function SettingsDialog() {
       onClose={close}
       title="设置"
       description="Host、账号与模型、权限与 Hooks、MCP、用量、配置迁移，以及界面外观。"
-      className="h-[min(760px,90dvh)] w-[min(1120px,94vw)] max-w-none max-sm:fixed max-sm:inset-0 max-sm:my-0 max-sm:h-auto max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:pt-[env(safe-area-inset-top)]"
+      className="h-[clamp(600px,82vh,920px)] w-[min(94vw,clamp(880px,72vw,1320px))] max-w-none max-sm:fixed max-sm:inset-0 max-sm:my-0 max-sm:h-auto max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:pt-[env(safe-area-inset-top)]"
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
     >
       <div className="flex h-full min-h-0 flex-col sm:flex-row">
@@ -67,14 +67,16 @@ export function SettingsDialog() {
           key={tab}
           className="min-h-0 min-w-0 flex-1 animate-[tandem-fade-in_120ms_ease-out_both] overflow-y-auto overscroll-contain p-4 motion-reduce:animate-none sm:p-5 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]"
         >
-          {tab === 'profiles' && <ProfilesSection />}
-          {tab === 'hosts' && <HostsSection />}
-          {tab === 'permissions' && <PermissionsSection />}
-          {tab === 'hooks' && <HooksSection />}
-          {tab === 'mcp' && <McpSection />}
-          {tab === 'usage' && <UsageSection />}
-          {tab === 'sync' && <SyncSection />}
-          {tab === 'appearance' && <AppearanceSection />}
+          <div className="w-full max-w-[880px]">
+            {tab === 'profiles' && <ProfilesSection />}
+            {tab === 'hosts' && <HostsSection />}
+            {tab === 'permissions' && <PermissionsSection />}
+            {tab === 'hooks' && <HooksSection />}
+            {tab === 'mcp' && <McpSection />}
+            {tab === 'usage' && <UsageSection />}
+            {tab === 'sync' && <SyncSection />}
+            {tab === 'appearance' && <AppearanceSection />}
+          </div>
         </div>
       </div>
     </Modal>
