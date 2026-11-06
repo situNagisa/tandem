@@ -396,7 +396,7 @@ export function McpSection() {
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
         </IconButton>
         <Button
-          variant="secondary"
+          variant="primary"
           onClick={() => setEditor(emptyDraft())}
           disabled={!host}
           className="max-sm:min-h-11"

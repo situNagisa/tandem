@@ -131,7 +131,7 @@ export function AppearanceSection() {
 
       <div className="mt-5 rounded-xl border border-border bg-surface p-3.5">
         <div className="text-[13px] font-medium">键盘快捷键</div>
-        <dl className="mt-2 grid gap-x-6 sm:grid-cols-[repeat(2,minmax(0,380px))]">
+        <dl className="mt-2 grid gap-x-6 sm:grid-cols-2 lg:grid-cols-3">
           {[
             ['发送消息', 'Enter'],
             ['换行', 'Shift + Enter'],
@@ -202,7 +202,7 @@ export function AppearanceSection() {
         </div>
         <Button
           size="md"
-          variant="secondary"
+          variant="primary"
           icon={<MessageSquarePlus size={14} />}
           onClick={() => useFeedbackStore.getState().enter()}
         >

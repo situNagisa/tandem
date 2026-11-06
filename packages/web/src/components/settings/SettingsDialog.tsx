@@ -1,4 +1,4 @@
-import { BarChart3, Monitor, Palette, Plug, RefreshCw, Server, ShieldCheck, Sparkles, Webhook } from 'lucide-react'
+import { BarChart3, Monitor, Palette, Plug, RefreshCw, Server, Settings, ShieldCheck, Sparkles, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
@@ -34,9 +34,14 @@ export function SettingsDialog() {
     <Modal
       open={open}
       onClose={close}
-      title="设置"
-      description="Host、账号与模型、权限与 Hooks、MCP、用量、配置迁移，以及界面外观。"
-      className="h-[clamp(600px,82vh,920px)] w-[min(94vw,clamp(880px,72vw,1320px))] max-w-none max-sm:fixed max-sm:inset-0 max-sm:my-0 max-sm:h-auto max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:pt-[env(safe-area-inset-top)]"
+      ariaLabel="设置"
+      title={
+        <span className="flex items-center gap-2">
+          <Settings size={14} className="text-muted" />
+          设置
+        </span>
+      }
+      className="h-[clamp(600px,82vh,920px)] w-[min(94vw,clamp(880px,72vw,1320px))] max-w-none [&>div:first-child]:h-11 [&>div:first-child]:items-center [&>div:first-child]:py-0 max-sm:fixed max-sm:inset-0 max-sm:my-0 max-sm:h-auto max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:pt-[env(safe-area-inset-top)]"
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
     >
       <div className="flex h-full min-h-0 flex-col sm:flex-row">
@@ -67,7 +72,7 @@ export function SettingsDialog() {
           key={tab}
           className="min-h-0 min-w-0 flex-1 animate-[tandem-fade-in_120ms_ease-out_both] overflow-y-auto overscroll-contain p-4 motion-reduce:animate-none sm:p-5 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]"
         >
-          <div className="w-full max-w-[880px]">
+          <div className="mx-auto w-full max-w-[1100px]">
             {tab === 'profiles' && <ProfilesSection />}
             {tab === 'hosts' && <HostsSection />}
             {tab === 'permissions' && <PermissionsSection />}

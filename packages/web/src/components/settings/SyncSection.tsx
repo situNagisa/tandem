@@ -254,205 +254,207 @@ export function SyncSection() {
         </span>
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-4">
-        <div className="flex items-center gap-2">
-          <span className="flex size-7 items-center justify-center rounded-lg bg-[var(--t-bg-active)] text-text-soft">
-            <Download size={14} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h4 className="text-[13px] font-semibold">导出配置</h4>
-            <p className="text-[13px] text-muted">
-              账号（含分组）、Host 列表、主题、侧栏偏好打包为一个文件
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-3">
-          <label className="settings-label">加密口令</label>
-          <div className="relative">
-            <Input
-              value={exportPass}
-              onChange={(e) => {
-                setExportPass(e.target.value)
-                setExportError(null)
-              }}
-              type={showExportPass ? 'text' : 'password'}
-              placeholder="设置一个只有你知道的口令"
-              autoComplete="new-password"
-              className="pr-9"
-            />
-            <span className="absolute right-1 top-1/2 -translate-y-1/2">
-              <IconButton
-                size="sm"
-                onClick={() => setShowExportPass((v) => !v)}
-                label={showExportPass ? '隐藏口令' : '显示口令'}
-                className="size-7 [&_svg]:size-[13px]"
-              >
-                {showExportPass ? <EyeOff size={13} /> : <Eye size={13} />}
-              </IconButton>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <div className="flex items-center gap-2">
+            <span className="flex size-7 items-center justify-center rounded-lg bg-[var(--t-bg-active)] text-text-soft">
+              <Download size={14} />
             </span>
+            <div className="min-w-0 flex-1">
+              <h4 className="text-[13px] font-semibold">导出配置</h4>
+              <p className="text-[13px] text-muted">
+                账号（含分组）、Host 列表、主题、侧栏偏好打包为一个文件
+              </p>
+            </div>
           </div>
-        </div>
 
-        {exportError && (
-          <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-1.5 text-[13px] text-danger">
-            <TriangleAlert size={12} className="mt-0.5 shrink-0" />
-            {exportError}
+          <div className="mt-3">
+            <label className="settings-label">加密口令</label>
+            <div className="relative">
+              <Input
+                value={exportPass}
+                onChange={(e) => {
+                  setExportPass(e.target.value)
+                  setExportError(null)
+                }}
+                type={showExportPass ? 'text' : 'password'}
+                placeholder="设置一个只有你知道的口令"
+                autoComplete="new-password"
+                className="pr-9"
+              />
+              <span className="absolute right-1 top-1/2 -translate-y-1/2">
+                <IconButton
+                  size="sm"
+                  onClick={() => setShowExportPass((v) => !v)}
+                  label={showExportPass ? '隐藏口令' : '显示口令'}
+                  className="size-7 [&_svg]:size-[13px]"
+                >
+                  {showExportPass ? <EyeOff size={13} /> : <Eye size={13} />}
+                </IconButton>
+              </span>
+            </div>
           </div>
-        )}
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button
-            variant="primary"
-            onClick={() => void exportConfig()}
-            disabled={exporting || !exportPass.trim()}
-          >
-            {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-            导出并下载
-          </Button>
-          {bundle && (
-            <>
-              <Button onClick={() => downloadBundle(bundle)}>
-                <FileJson size={12} /> 再次下载
-              </Button>
-              <Button onClick={() => void copyBundle()}>
-                {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
-                {copied ? '已复制' : '复制内容'}
-              </Button>
-              <Button onClick={() => void shareBundle()}>
-                <Share2 size={12} /> 分享
-              </Button>
-            </>
+          {exportError && (
+            <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-1.5 text-[13px] text-danger">
+              <TriangleAlert size={12} className="mt-0.5 shrink-0" />
+              {exportError}
+            </div>
           )}
-        </div>
-        {bundle && (
-          <p className="mt-2 font-mono text-[13px] text-muted">
-            tandem-config.json · {new Date(bundle.createdAt).toLocaleString()} · {bundle.hostName}
-          </p>
-        )}
-        <p className="settings-help">
-          手机或 App 里下载不便时，可用「分享」或「复制内容」把文件发到另一台设备。
-        </p>
-      </div>
 
-      <div className="mt-3 rounded-xl border border-border bg-surface p-4">
-        <div className="flex items-center gap-2">
-          <span className="flex size-7 items-center justify-center rounded-lg bg-[var(--t-bg-active)] text-text-soft">
-            <Upload size={14} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h4 className="text-[13px] font-semibold">导入配置</h4>
-            <p className="text-[13px] text-muted">
-              选择之前导出的 tandem-config.json，输入口令后合并或替换
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button
+              variant="primary"
+              onClick={() => void exportConfig()}
+              disabled={exporting || !exportPass.trim()}
+            >
+              {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+              导出并下载
+            </Button>
+            {bundle && (
+              <>
+                <Button onClick={() => downloadBundle(bundle)}>
+                  <FileJson size={12} /> 再次下载
+                </Button>
+                <Button onClick={() => void copyBundle()}>
+                  {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
+                  {copied ? '已复制' : '复制内容'}
+                </Button>
+                <Button onClick={() => void shareBundle()}>
+                  <Share2 size={12} /> 分享
+                </Button>
+              </>
+            )}
+          </div>
+          {bundle && (
+            <p className="mt-2 font-mono text-[13px] text-muted">
+              tandem-config.json · {new Date(bundle.createdAt).toLocaleString()} · {bundle.hostName}
             </p>
-          </div>
+          )}
+          <p className="settings-help">
+            手机或 App 里下载不便时，可用「分享」或「复制内容」把文件发到另一台设备。
+          </p>
         </div>
 
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/json,.json"
-          hidden
-          onChange={(e) => {
-            void pickFile(e.target.files?.[0])
-            e.target.value = ''
-          }}
-        />
-        <Button
-          variant="secondary"
-          onClick={() => fileRef.current?.click()}
-          className="mt-3 w-full justify-start border-dashed text-left font-normal"
-        >
-          <FileJson size={13} className="shrink-0 text-muted" />
-          <span className="min-w-0 flex-1 truncate">
-            {fileName || '选择配置文件…'}
-          </span>
-          {importBundle && <Check size={12} className="shrink-0 text-success" />}
-        </Button>
-
-        <div className="mt-3">
-          <label className="settings-label">口令</label>
-          <div className="relative">
-            <Input
-              value={importPass}
-              onChange={(e) => {
-                setImportPass(e.target.value)
-                setImportError(null)
-              }}
-              type={showImportPass ? 'text' : 'password'}
-              placeholder="导出时设置的口令"
-              autoComplete="off"
-              className="pr-9"
-            />
-            <span className="absolute right-1 top-1/2 -translate-y-1/2">
-              <IconButton
-                size="sm"
-                onClick={() => setShowImportPass((v) => !v)}
-                label={showImportPass ? '隐藏口令' : '显示口令'}
-                className="size-7 [&_svg]:size-[13px]"
-              >
-                {showImportPass ? <EyeOff size={13} /> : <Eye size={13} />}
-              </IconButton>
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <div className="flex items-center gap-2">
+            <span className="flex size-7 items-center justify-center rounded-lg bg-[var(--t-bg-active)] text-text-soft">
+              <Upload size={14} />
             </span>
+            <div className="min-w-0 flex-1">
+              <h4 className="text-[13px] font-semibold">导入配置</h4>
+              <p className="text-[13px] text-muted">
+                选择之前导出的 tandem-config.json，输入口令后合并或替换
+              </p>
+            </div>
           </div>
-        </div>
 
-        <div className="mt-3">
-          <label className="settings-label">导入方式</label>
-          <div className="grid gap-1.5 sm:grid-cols-2">
-            {(
-              [
-                ['merge', '合并', '保留现有账号，同名账号以文件为准'],
-                ['replace', '替换', '清空现有账号与 Host 后按文件恢复'],
-              ] as const
-            ).map(([value, label, hint]) => (
-              <button
-                key={value}
-                onClick={() => setMode(value)}
-                aria-pressed={mode === value}
-                className={cn(
-                  'rounded-lg border px-2.5 py-2 text-left transition-colors',
-                  mode === value
-                    ? 'border-[var(--t-border-strong)] bg-[var(--t-bg-active)]'
-                    : 'border-border bg-bg/40 hover:bg-[var(--t-bg-hover)]',
-                )}
-              >
-                <span className="flex items-center gap-1.5 text-[13px] font-medium">
-                  {label}
-                  {mode === value && <Check size={11} className="text-text" />}
-                </span>
-                <span className="mt-0.5 block text-[13px] leading-4 text-muted">{hint}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {importError && (
-          <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-1.5 text-[13px] leading-5 text-danger">
-            <TriangleAlert size={12} className="mt-0.5 shrink-0" />
-            {importError}
-          </div>
-        )}
-        {importResult && (
-          <div className="mt-2 rounded-lg border border-success/25 bg-success-soft/50 px-2.5 py-2 text-[13px] text-success">
-            导入完成：新增 {importResult.profilesAdded} 个账号，更新 {importResult.profilesUpdated} 个
-            {importResult.clientSettings ? '；本机 Host 与界面设置已应用' : ''}。
-          </div>
-        )}
-
-        <div className="mt-3 flex items-center gap-2">
-          <span className="flex items-center gap-1 text-[13px] text-muted">
-            <ArrowLeftRight size={11} /> 应用到「{host.name}」
-          </span>
-          <span className="flex-1" />
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={(e) => {
+              void pickFile(e.target.files?.[0])
+              e.target.value = ''
+            }}
+          />
           <Button
-            variant="primary"
-            onClick={() => void importConfig()}
-            disabled={importing || !importBundle}
+            variant="secondary"
+            onClick={() => fileRef.current?.click()}
+            className="mt-3 w-full justify-start border-dashed text-left font-normal"
           >
-            {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-            导入配置
+            <FileJson size={13} className="shrink-0 text-muted" />
+            <span className="min-w-0 flex-1 truncate">
+              {fileName || '选择配置文件…'}
+            </span>
+            {importBundle && <Check size={12} className="shrink-0 text-success" />}
           </Button>
+
+          <div className="mt-3">
+            <label className="settings-label">口令</label>
+            <div className="relative">
+              <Input
+                value={importPass}
+                onChange={(e) => {
+                  setImportPass(e.target.value)
+                  setImportError(null)
+                }}
+                type={showImportPass ? 'text' : 'password'}
+                placeholder="导出时设置的口令"
+                autoComplete="off"
+                className="pr-9"
+              />
+              <span className="absolute right-1 top-1/2 -translate-y-1/2">
+                <IconButton
+                  size="sm"
+                  onClick={() => setShowImportPass((v) => !v)}
+                  label={showImportPass ? '隐藏口令' : '显示口令'}
+                  className="size-7 [&_svg]:size-[13px]"
+                >
+                  {showImportPass ? <EyeOff size={13} /> : <Eye size={13} />}
+                </IconButton>
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <label className="settings-label">导入方式</label>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {(
+                [
+                  ['merge', '合并', '保留现有账号，同名账号以文件为准'],
+                  ['replace', '替换', '清空现有账号与 Host 后按文件恢复'],
+                ] as const
+              ).map(([value, label, hint]) => (
+                <button
+                  key={value}
+                  onClick={() => setMode(value)}
+                  aria-pressed={mode === value}
+                  className={cn(
+                    'rounded-lg border px-2.5 py-2 text-left transition-colors',
+                    mode === value
+                      ? 'border-[var(--t-border-strong)] bg-[var(--t-bg-active)]'
+                      : 'border-border bg-bg/40 hover:bg-[var(--t-bg-hover)]',
+                  )}
+                >
+                  <span className="flex items-center gap-1.5 text-[13px] font-medium">
+                    {label}
+                    {mode === value && <Check size={11} className="text-text" />}
+                  </span>
+                  <span className="mt-0.5 block text-[13px] leading-4 text-muted">{hint}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {importError && (
+            <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-1.5 text-[13px] leading-5 text-danger">
+              <TriangleAlert size={12} className="mt-0.5 shrink-0" />
+              {importError}
+            </div>
+          )}
+          {importResult && (
+            <div className="mt-2 rounded-lg border border-success/25 bg-success-soft/50 px-2.5 py-2 text-[13px] text-success">
+              导入完成：新增 {importResult.profilesAdded} 个账号，更新 {importResult.profilesUpdated} 个
+              {importResult.clientSettings ? '；本机 Host 与界面设置已应用' : ''}。
+            </div>
+          )}
+
+          <div className="mt-3 flex items-center gap-2">
+            <span className="flex items-center gap-1 text-[13px] text-muted">
+              <ArrowLeftRight size={11} /> 应用到「{host.name}」
+            </span>
+            <span className="flex-1" />
+            <Button
+              variant="primary"
+              onClick={() => void importConfig()}
+              disabled={importing || !importBundle}
+            >
+              {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              导入配置
+            </Button>
+          </div>
         </div>
       </div>
     </div>

@@ -112,6 +112,17 @@ export function PermissionsSection() {
           <span className="rounded-[4px] bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-muted">
             {host.name}
           </span>
+          <span className="flex-1" />
+          <Button
+            variant="primary"
+            onClick={() =>
+              setRules((prev) => [...prev, { tool: 'Bash', pattern: '', action: 'ask' }])
+            }
+            disabled={loading || !!error}
+            className="max-sm:min-h-11"
+          >
+            <Plus size={13} /> 添加规则
+          </Button>
         </div>
         <p className="mt-1 text-[13px] leading-5 text-muted">
           规则保存在 Host 上，对所有会话生效。优先级为拒绝 &gt; 询问 &gt; 允许；Bash 的
@@ -206,16 +217,6 @@ export function PermissionsSection() {
               </div>
             </div>
           ))}
-
-          <Button
-            variant="secondary"
-            onClick={() =>
-              setRules((prev) => [...prev, { tool: 'Bash', pattern: '', action: 'ask' }])
-            }
-            className="w-full justify-center border-dashed"
-          >
-            <Plus size={13} /> 添加规则
-          </Button>
         </div>
       )}
 

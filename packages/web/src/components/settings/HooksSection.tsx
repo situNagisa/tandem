@@ -256,7 +256,7 @@ export function HooksSection() {
                         ))}
                         <div className="flex flex-wrap items-center gap-2">
                           <Button
-                            variant="secondary"
+                            variant="primary"
                             onClick={() =>
                               setDraft((prev) => [
                                 ...prev,
@@ -268,7 +268,6 @@ export function HooksSection() {
                                 },
                               ])
                             }
-                            className="border-dashed"
                           >
                             <Plus size={13} /> 添加 Hook
                           </Button>

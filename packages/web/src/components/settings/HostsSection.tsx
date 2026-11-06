@@ -235,7 +235,7 @@ export function HostsSection() {
         <span className="text-[13px] text-muted">每台 Host 对应一个 WS 长连接</span>
         <span className="flex-1" />
         <Button
-          variant="secondary"
+          variant="primary"
           onClick={() => setAdding((v) => !v)}
           className="max-sm:min-h-11"
         >

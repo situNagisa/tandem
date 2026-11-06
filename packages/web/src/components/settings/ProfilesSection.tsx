@@ -35,6 +35,8 @@ import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
 import { Button, IconButton } from '../ui/Button'
 import { MenuSelect } from '../ui/Menu'
+import { Tip } from '../ui/Tooltip'
+import { ProviderIcon } from '../ProviderIcon'
 
 const inputCls =
   'h-8 w-full rounded-lg border border-border bg-surface px-2.5 text-[13px] text-text outline-none transition-colors placeholder:text-muted focus:border-border-strong'
@@ -164,62 +166,28 @@ function emptyForm(): FormState {
   return { name: '', kind: 'openai-compatible', baseUrl: '', apiKey: '' }
 }
 
-function initialOf(name: string): string {
-  const trimmed = name.trim()
-  if (!trimmed) return '?'
-  return /[a-zA-Z]/.test(trimmed[0]) ? trimmed[0].toUpperCase() : trimmed[0]
-}
-
-function ProviderLogo({ preset, size = 34 }: { preset?: ProviderPreset; size?: number }) {
-  const color = preset?.color ?? 'var(--t-accent)'
-  const label = preset ? initialOf(preset.name) : '自'
-  return (
-    <span
-      className="flex shrink-0 items-center justify-center rounded-lg font-semibold text-white"
-      style={{ background: color, width: size, height: size, fontSize: size * 0.42 }}
-      aria-hidden
-    >
-      {label}
-    </span>
-  )
-}
-
 function Steps({ step }: { step: Step }) {
-  const items = ['服务商', '密钥', '模型']
   return (
-    <div className="mb-4 flex items-center gap-1">
-      {items.map((label, i) => {
-        const n = (i + 1) as Step
-        return (
-          <div key={label} className="flex items-center gap-1">
-            <span
-              className={cn(
-                'flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[13px] transition-colors',
-                n === step
-                  ? 'bg-[var(--t-bg-active)] font-medium text-text'
-                  : n < step
-                    ? 'text-text-soft'
-                    : 'text-muted',
-              )}
-            >
-              <span
-                className={cn(
-                  'flex size-4 items-center justify-center rounded-full text-[11px]',
-                  n === step
-                    ? 'bg-[var(--t-text)] text-[var(--t-bg)]'
-                    : n < step
-                      ? 'bg-[var(--t-bg-active)] text-text-soft'
-                      : 'border border-border text-muted',
-                )}
-              >
-                {n < step ? <Check size={9} /> : n}
-              </span>
-              {label}
-            </span>
-            {i < items.length - 1 && <span className="h-px w-4 bg-[var(--t-border)]" />}
-          </div>
-        )
-      })}
+    <div
+      className="flex items-center gap-1"
+      role="img"
+      aria-label={`第 ${step} 步，共 3 步`}
+    >
+      {([1, 2, 3] as Step[]).map((n) => (
+        <span
+          key={n}
+          className={cn(
+            'flex size-[18px] items-center justify-center rounded-full text-[10px] tabular-nums',
+            n === step
+              ? 'bg-[var(--t-text)] font-medium text-[var(--t-bg)]'
+              : n < step
+                ? 'bg-[var(--t-bg-active)] text-text-soft'
+                : 'border border-border text-muted',
+          )}
+        >
+          {n}
+        </span>
+      ))}
     </div>
   )
 }
@@ -652,6 +620,7 @@ export function ProfilesSection() {
   const [testingId, setTestingId] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; error?: string }>>({})
   const [deleteTarget, setDeleteTarget] = useState<Profile | null>(null)
+  const [expandedProfile, setExpandedProfile] = useState<string | null>(null)
   const [groups, setGroups] = useState<GroupDraft[]>([])
   const [groupEditor, setGroupEditor] = useState<{ index: number | 'new' } | null>(null)
   const [price, setPrice] = useState<PriceMap>({})
@@ -1017,7 +986,7 @@ export function ProfilesSection() {
         </IconButton>
         {!editing && (
           <Button
-            variant="secondary"
+            variant="primary"
             onClick={startNew}
             className="max-sm:min-h-11"
           >
@@ -1035,39 +1004,33 @@ export function ProfilesSection() {
       {editing ? (
         <div className="rounded-xl border border-border bg-surface p-4">
           <div className="mb-3 flex items-center gap-2">
-            <IconButton
-              onClick={() => (step === 1 ? reset() : setStep((s) => (s === 3 ? 2 : 1)))}
-              label="返回"
-            >
-              <ArrowLeft size={15} />
-            </IconButton>
-            <div className="min-w-0 flex-1">
-              <h4 className="text-[13px] font-semibold">
-                {editing === 'new' ? '新建账号' : `编辑「${editingProfile?.name ?? '账号'}」`}
-              </h4>
-              <p className="text-[13px] text-muted">
-                {editing === 'new' ? '三步完成，模型自动获取' : '修改后会立即保存到 Host'}
-              </p>
-            </div>
+            {step > 1 && (
+              <IconButton
+                onClick={() => setStep((s) => (s === 3 ? 2 : 1))}
+                label="返回"
+              >
+                <ArrowLeft size={15} />
+              </IconButton>
+            )}
+            <Steps step={step} />
+            <span className="flex-1" />
             <IconButton onClick={reset} label="关闭">
               <X size={15} />
             </IconButton>
           </div>
 
-          <Steps step={step} />
-
           <div key={step} className="anim-wizard-forward">
           {step === 1 && (
             <div>
               <p className="mb-2.5 text-[13px] text-muted">选择服务商，预设会自动填好接口地址和推荐模型。</p>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
                 {PROVIDER_PRESETS.map((p) => (
                   <button
                     key={p.id}
                     onClick={() => choosePreset(p)}
                     className="group flex items-center gap-2.5 rounded-xl border border-border bg-bg/40 p-2.5 text-left transition-colors duration-[120ms] hover:border-border-strong hover:bg-[var(--t-bg-hover)]"
                   >
-                    <ProviderLogo preset={p} size={32} />
+                    <ProviderIcon preset={p} size={20} className="text-text-soft" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[13px] font-medium">{p.name}</span>
                       <span className="block truncate text-[13px] text-muted">
@@ -1080,7 +1043,7 @@ export function ProfilesSection() {
                   onClick={() => choosePreset(null)}
                   className="flex items-center gap-2.5 rounded-xl border border-dashed border-border bg-transparent p-2.5 text-left transition-colors duration-[120ms] hover:border-border-strong hover:bg-[var(--t-bg-hover)]"
                 >
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted">
+                  <span className="flex size-5 shrink-0 items-center justify-center text-muted">
                     <Plus size={14} />
                   </span>
                   <span className="min-w-0 flex-1">
@@ -1093,26 +1056,37 @@ export function ProfilesSection() {
           )}
 
           {step === 2 && (
-            <div>
-              <div className="mb-3 flex items-center gap-2.5 rounded-xl bg-[var(--t-bg)] px-3 py-2">
-                <ProviderLogo preset={preset ?? undefined} size={30} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-medium">
-                    {preset?.name ?? '自定义接口'}
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
+              <aside className="space-y-2.5">
+                <div className="flex items-center gap-2.5 rounded-xl bg-[var(--t-bg)] px-3 py-2">
+                  <ProviderIcon
+                    preset={preset ?? undefined}
+                    name={form.name}
+                    size={22}
+                    className="text-text-soft"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-medium">
+                      {preset?.name ?? '自定义接口'}
+                    </span>
+                    <span className="block truncate text-[13px] text-muted">
+                      {PROVIDER_KIND_LABELS[form.kind] ?? form.kind}
+                    </span>
                   </span>
-                  <span className="block truncate text-[13px] text-muted">
-                    {PROVIDER_KIND_LABELS[form.kind] ?? form.kind}
-                  </span>
-                </span>
-                <button
-                  onClick={() => setStep(1)}
-                  className="text-[13px] text-muted underline-offset-2 hover:text-text hover:underline"
-                >
-                  更换
-                </button>
-              </div>
+                  <button
+                    onClick={() => setStep(1)}
+                    className="text-[13px] text-muted underline-offset-2 hover:text-text hover:underline"
+                  >
+                    更换
+                  </button>
+                </div>
+                <p className="text-[13px] leading-5 text-muted">
+                  Key 保存在 Host 端，不会下发到浏览器。每个分组可单独设置协议与模型，会话按所选分组运行。
+                </p>
+              </aside>
 
-              <div className="space-y-3">
+              <div className="min-w-0">
+                <div className="space-y-3">
                 <div>
                   <label className={labelCls}>账号名称</label>
                   <input
@@ -1234,22 +1208,34 @@ export function ProfilesSection() {
                   下一步 <ArrowRight size={13} />
                 </Button>
               </div>
+              </div>
             </div>
           )}
 
           {step === 3 && (
-            <div>
-              <div className="mb-3 flex items-center gap-2">
-                <ProviderLogo preset={preset ?? undefined} size={28} />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-medium">{form.name || preset?.name || '确认分组'}</div>
-                  <div className="text-[13px] text-muted">
-                    {groups.length} 个分组 · 会话使用所选分组自己的协议与 Key
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
+              <aside className="space-y-2.5">
+                <div className="flex items-center gap-2.5">
+                  <ProviderIcon
+                    preset={preset ?? undefined}
+                    name={form.name}
+                    size={22}
+                    className="text-text-soft"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-medium">{form.name || preset?.name || '确认分组'}</div>
+                    <div className="text-[13px] text-muted">
+                      {groups.length} 个分组 · 会话使用所选分组自己的协议与 Key
+                    </div>
                   </div>
                 </div>
-              </div>
+                <div className="rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[13px] leading-4 text-muted">
+                  账号 URL 共用；每个分组按自己的协议拼接请求路径（Anthropic：…/v1/messages，OpenAI：…/chat/completions）。
+                </div>
+              </aside>
 
-              <div className="space-y-1.5">
+              <div className="min-w-0">
+                <div className="space-y-1.5">
                 {groups.map((g, i) => (
                   <div
                     key={g.id ?? `confirm-${i}`}
@@ -1278,10 +1264,6 @@ export function ProfilesSection() {
                     </button>
                   </div>
                 ))}
-              </div>
-
-              <div className="mt-3 rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[13px] leading-4 text-muted">
-                账号 URL 共用；每个分组按自己的协议拼接请求路径（Anthropic：…/v1/messages，OpenAI：…/chat/completions）。
               </div>
 
               <PriceOverrides
@@ -1315,6 +1297,7 @@ export function ProfilesSection() {
                   保存账号
                 </Button>
               </div>
+              </div>
             </div>
           )}
           </div>
@@ -1342,7 +1325,7 @@ export function ProfilesSection() {
               <p className="settings-empty-hint">
                 选择服务商、粘贴 Key，模型列表会自动获取。支持 Anthropic、OpenAI、DeepSeek、Ollama 等。
               </p>
-              <Button variant="secondary" onClick={startNew} className="mt-3">
+              <Button variant="primary" onClick={startNew} className="mt-3">
                 <Plus size={13} /> 新建账号
               </Button>
             </div>
@@ -1352,94 +1335,38 @@ export function ProfilesSection() {
             {profiles.map((p) => {
               const result = testResults[p.id]
               const brand = presetForProfile(p)
+              const groupCount = p.groups?.length ?? 0
+              const isOpen = expandedProfile === p.id
               return (
-                <div
-                  key={p.id}
-                  className="settings-item p-3"
-                >
-                  <div className="flex items-start gap-2.5">
-                    {brand ? (
-                      <ProviderLogo preset={brand} size={32} />
-                    ) : (
-                      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[var(--t-bg-active)] text-[13px] font-semibold text-text-soft">
-                        {initialOf(p.name)}
+                <div key={p.id} className="settings-item" data-open={isOpen || undefined}>
+                  <div className="flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedProfile(isOpen ? null : p.id)}
+                      aria-expanded={isOpen}
+                      className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-left"
+                    >
+                      <ProviderIcon
+                        preset={brand}
+                        name={p.name}
+                        size={18}
+                        className="text-text-soft"
+                      />
+                      <span className="truncate text-[13px] font-medium">{p.name}</span>
+                      <span className="shrink-0 text-[13px] text-muted">
+                        {groupCount ? `${groupCount} 个分组` : `${p.models.length} 个模型`}
                       </span>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="truncate text-[13px] font-semibold">{p.name}</span>
-                        <span className="rounded border border-border px-1 text-[11px] text-muted">
-                          {PROVIDER_KIND_LABELS[p.kind] ?? p.kind}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-muted">
-                        {p.groups?.length ? (
-                          <>
-                            <span>{p.groups.length} 个分组</span>
-                            <span>·</span>
-                            <span className="max-w-[200px] truncate">
-                              {p.groups
-                                .map((g) => GROUP_KIND_LABELS[g.kind ?? p.kind])
-                                .join(' / ')}
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="font-mono">{p.apiKeyMasked || '无 Key'}</span>
-                            <span>·</span>
-                            <span className="max-w-[180px] truncate font-mono">{p.defaultModel}</span>
-                            <span>·</span>
-                            <span>{p.models.length} 个模型</span>
-                          </>
+                      <span className="flex-1" />
+                      <ChevronDown
+                        size={12}
+                        className={cn(
+                          'shrink-0 text-muted transition-transform duration-150',
+                          isOpen && 'rotate-180',
                         )}
-                        {p.baseUrl && (
-                          <>
-                            <span className="hidden sm:inline">·</span>
-                            <span className="hidden max-w-[180px] truncate font-mono sm:inline">
-                              {p.baseUrl}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                      {p.groups?.length ? (
-                        <div className="mt-1 flex min-w-0 items-center gap-1 text-[13px] text-muted">
-                          <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1 text-[13px] leading-4">
-                            {p.groups.length} 个分组
-                          </span>
-                          <span className="min-w-0 truncate">
-                            {p.groups
-                              .map((g) => `${g.name}（${GROUP_KIND_LABELS[g.kind ?? p.kind]}）`)
-                              .join(' / ')}
-                          </span>
-                        </div>
-                      ) : null}
-                      {result && (
-                        <div
-                          className={cn(
-                            'mt-1 flex items-center gap-1 text-[13px]',
-                            result.ok ? 'text-success' : 'text-danger',
-                          )}
-                        >
-                          {result.ok ? <Check size={11} /> : <TriangleAlert size={11} />}
-                          {result.ok ? '测试通过' : result.error || '测试失败'}
-                        </div>
-                      )}
-                    </div>
-                    <div className="settings-actions hidden sm:flex" data-desktop-only="">
-                      <IconButton
-                        size="sm"
-                        onClick={() => void test(p)}
-                        disabled={testingId === p.id}
-                        label={`测试 ${p.name}`}
-                        tooltip="测试连接"
-                        className="size-7 [&_svg]:size-3"
-                      >
-                        {testingId === p.id ? (
-                          <Loader2 size={12} className="animate-spin" />
-                        ) : (
-                          <Wifi size={12} />
-                        )}
-                      </IconButton>
+                      />
+                      {p.baseUrl && <Tip label={p.baseUrl} />}
+                    </button>
+                    <div className="settings-actions pr-2" data-open={isOpen || undefined}>
                       <IconButton
                         size="sm"
                         onClick={() => startEdit(p)}
@@ -1461,36 +1388,68 @@ export function ProfilesSection() {
                       </IconButton>
                     </div>
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5 border-t border-border pt-2 sm:hidden">
-                    <Button
-                      size="md"
-                      onClick={() => void test(p)}
-                      disabled={testingId === p.id}
-                      className="mr-auto min-h-11 text-[13px]"
-                    >
-                      {testingId === p.id ? (
-                        <Loader2 size={12} className="animate-spin" />
+
+                  {isOpen && (
+                    <div className="border-t border-border px-3 pb-3 pt-2">
+                      {groupCount ? (
+                        <div className="space-y-1">
+                          {p.groups?.map((g) => (
+                            <div
+                              key={g.id}
+                              className="flex items-center gap-2 rounded-lg bg-bg/40 px-2 py-1.5"
+                            >
+                              <span className="min-w-0 flex-1 truncate text-[13px] text-text">
+                                {g.name}
+                              </span>
+                              <span className="shrink-0 rounded border border-border px-1 text-[11px] text-muted">
+                                {GROUP_KIND_LABELS[g.kind ?? p.kind]}
+                              </span>
+                              <span className="shrink-0 text-[12px] text-muted">
+                                {g.models.length} 个模型
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       ) : (
-                        <Wifi size={12} />
+                        <div className="flex items-center gap-2 rounded-lg bg-bg/40 px-2 py-1.5">
+                          <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-text">
+                            {p.defaultModel || p.models[0] || '未设置模型'}
+                          </span>
+                          <span className="shrink-0 text-[12px] text-muted">
+                            {p.models.length} 个模型
+                          </span>
+                        </div>
                       )}
-                      测试连接
-                    </Button>
-                    <Button
-                      size="md"
-                      onClick={() => startEdit(p)}
-                      className="min-h-11 text-[13px]"
-                    >
-                      <Pencil size={12} /> 编辑
-                    </Button>
-                    <IconButton
-                      variant="danger-ghost"
-                      onClick={() => setDeleteTarget(p)}
-                      label={`删除 ${p.name}`}
-                      className="size-11"
-                    >
-                      <Trash2 size={12} />
-                    </IconButton>
-                  </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={() => void test(p)}
+                          disabled={testingId === p.id}
+                        >
+                          {testingId === p.id ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Wifi size={12} />
+                          )}
+                          测试连接
+                        </Button>
+                        {result && (
+                          <span
+                            className={cn(
+                              'flex min-w-0 items-center gap-1 text-[13px]',
+                              result.ok ? 'text-success' : 'text-danger',
+                            )}
+                          >
+                            {result.ok ? <Check size={11} /> : <TriangleAlert size={11} />}
+                            <span className="truncate">
+                              {result.ok ? '测试通过' : result.error || '测试失败'}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })}

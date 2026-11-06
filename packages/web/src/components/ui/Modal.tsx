@@ -8,6 +8,8 @@ interface ModalProps {
   open: boolean
   onClose: () => void
   title?: ReactNode
+  /** title 为节点时用于 dialog 的无障碍名称。 */
+  ariaLabel?: string
   description?: ReactNode
   children: ReactNode
   footer?: ReactNode
@@ -23,6 +25,7 @@ export function Modal({
   open,
   onClose,
   title,
+  ariaLabel,
   description,
   children,
   footer,
@@ -150,7 +153,7 @@ export function Modal({
         role="dialog"
         tabIndex={-1}
         aria-modal="true"
-        aria-label={typeof title === 'string' ? title : undefined}
+        aria-label={ariaLabel ?? (typeof title === 'string' ? title : undefined)}
         className={cn(
           'modal-panel my-auto flex max-h-[92dvh] flex-col overflow-hidden rounded-2xl border border-border bg-surface text-text shadow-[var(--t-shadow-lg)] outline-none',
           closing ? 'anim-scale-out' : 'anim-dialog',
