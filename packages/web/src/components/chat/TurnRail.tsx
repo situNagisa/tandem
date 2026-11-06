@@ -330,7 +330,7 @@ export function TurnRail({
   useEffect(() => {
     if (feedbackActive || !open) return
     const timer = window.setTimeout(() => {
-      if (!dragRef.current && !hitRef.current?.matches(':hover')) closePanel()
+      if (!dragRef.current && !navRef.current?.matches(':hover')) closePanel()
     }, 300)
     return () => window.clearTimeout(timer)
   }, [feedbackActive, open, closePanel])
