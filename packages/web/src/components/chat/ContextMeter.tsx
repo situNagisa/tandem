@@ -32,6 +32,7 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
   const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
   const live = useAppStore((s) => s.active?.summary?.context)
   const usage = useAppStore((s) => s.active?.summary?.usage)
+  const messageCount = useAppStore((s) => s.active?.messages.length ?? 0)
   const [fetched, setFetched] = useState<ContextBreakdown | null>(null)
 
   useEffect(() => {
@@ -56,12 +57,15 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
   const send = useAppStore((s) => s.send)
   const running = useAppStore((s) => s.active?.running ?? false)
 
-  const context = live ?? fetched
-  if (!context || !sessionId) return null
+  if (!sessionId) return null
 
-  const window = Math.max(1, context.contextWindow || 1)
-  const used = Math.max(0, context.usedTokens || 0)
-  const rate = Math.min(1, used / window)
+  const context = live ?? fetched
+  const usageTotal = (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)
+  // 新会话只有系统提示/工具的粗略估算，没有真实请求数据：显示静态空环，避免像加载中
+  const noData = !context || (messageCount === 0 && usageTotal === 0)
+  const window = Math.max(1, context?.contextWindow || 1)
+  const used = noData ? 0 : Math.max(0, context?.usedTokens || 0)
+  const rate = noData ? 0 : Math.min(1, used / window)
   const pct = Math.round(rate * 100)
   const stroke = colorFor(rate)
   const circumference = 2 * Math.PI * 6.5
@@ -81,26 +85,32 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
         <button
           type="button"
           onClick={toggle}
-          aria-label={`上下文 ${pct}%`}
+          aria-label={noData ? '暂无上下文数据' : `上下文 ${pct}%`}
           className="relative flex size-7 shrink-0 items-center justify-center rounded-md text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text max-sm:size-11"
         >
-          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" data-empty={noData || undefined}>
             <circle cx="9" cy="9" r="6.5" fill="none" stroke="var(--t-border)" strokeWidth="2.4" />
-            <circle
-              cx="9"
-              cy="9"
-              r="6.5"
-              fill="none"
-              stroke={stroke}
-              strokeWidth="2.4"
-              strokeLinecap="round"
-              strokeDasharray={`${circumference * rate} ${circumference}`}
-              transform="rotate(-90 9 9)"
-            />
+            {rate > 0 && (
+              <circle
+                cx="9"
+                cy="9"
+                r="6.5"
+                fill="none"
+                stroke={stroke}
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeDasharray={`${circumference * rate} ${circumference}`}
+                transform="rotate(-90 9 9)"
+              />
+            )}
           </svg>
           {!open && (
             <Tip
-              label={`上下文 ${pct}% · ${formatTokens(used)} / ${formatTokens(window)}`}
+              label={
+                noData
+                  ? '暂无上下文数据'
+                  : `上下文 ${pct}% · ${formatTokens(used)} / ${formatTokens(window)}`
+              }
               side="top"
             />
           )}
@@ -108,6 +118,15 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
       )}
     >
       {(close) => {
+        if (noData || !context) {
+          return (
+            <div className="flex items-baseline gap-2 text-[12px]">
+              <span className="font-medium text-text">上下文</span>
+              <span className="text-muted">暂无上下文数据</span>
+              <span className="ml-auto font-mono text-[11px] tabular-nums text-muted">0%</span>
+            </div>
+          )
+        }
         const parts = context.parts.filter((part) => part.kind !== 'free')
         const free = Math.max(0, window - used)
         const rows = [...parts, { kind: 'free' as const, tokens: free }]
