@@ -18,7 +18,6 @@ import { diffLines } from 'diff'
 import type { ContentBlock, Todo } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { cn } from '../lib/cn'
-import { languageFromPath } from '../lib/highlight'
 import { firstLine, truncate } from '../lib/format'
 import { CodeBlock } from './CodeBlock'
 import { DiffView } from './DiffView'
@@ -231,16 +230,17 @@ export const ToolCard = memo(function ToolCard({
       break
     case 'Read':
       target = displayPath
-      if (result) suffix = `· ${readLines} 行`
+      if (result && !isError) suffix = `· ${readLines} 行`
       break
     case 'Edit':
       target = displayPath
-      suffix = (
-        <span className="shrink-0 font-mono text-[11.5px]">
-          <span className="text-success">+{editStats.added}</span>{' '}
-          <span className="text-danger">−{editStats.removed}</span>
-        </span>
-      )
+      suffix =
+        oldString || newString ? (
+          <span className="shrink-0 font-mono text-[11.5px]">
+            <span className="text-success">+{editStats.added}</span>{' '}
+            <span className="text-danger">−{editStats.removed}</span>
+          </span>
+        ) : null
       break
     case 'Write':
       target = displayPath

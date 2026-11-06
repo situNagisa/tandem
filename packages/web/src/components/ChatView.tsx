@@ -135,14 +135,13 @@ export function ChatView() {
     const el = scrollRef.current
     if (!el) return
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight
-    if (programmaticUntil.current) {
-      if (distance < PIN_THRESHOLD) {
-        pinnedRef.current = true
-        setShowJump(false)
-        if (distance < 2) programmaticUntil.current = 0
-        return
-      }
+    if (programmaticUntil.current > Date.now()) {
+      pinnedRef.current = true
+      setShowJump(false)
+      if (distance < 2) programmaticUntil.current = 0
+      return
     }
+    programmaticUntil.current = 0
     pinnedRef.current = distance < PIN_THRESHOLD
     const next = distance > JUMP_THRESHOLD
     setShowJump((prev) => (prev === next ? prev : next))
@@ -197,7 +196,7 @@ export function ChatView() {
         >
           <div
             ref={contentRef}
-            className="mx-auto flex min-h-full w-full max-w-[760px] flex-col px-4 pb-8 pt-3 md:px-6 md:pt-5"
+            className="mx-auto flex min-h-full w-full max-w-[808px] flex-col px-4 pb-8 pt-3 md:px-6 md:pt-5"
           >
             <div className="flex flex-1 flex-col">
               {loading && messageCount === 0 ? (
@@ -228,7 +227,7 @@ export function ChatView() {
           aria-label="回到底部"
           title="回到底部"
           className={cn(
-            'chat-jump absolute bottom-4 left-1/2 z-10 flex size-8 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-surface text-text-soft shadow-md hover:text-text',
+            'chat-jump absolute bottom-4 left-1/2 z-10 flex size-11 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-surface text-text-soft shadow-md hover:text-text md:size-8',
             showJump
               ? 'pointer-events-auto translate-y-0 opacity-100'
               : 'pointer-events-none opacity-0',
@@ -238,7 +237,7 @@ export function ChatView() {
         </button>
       </div>
 
-      <div className="shrink-0 bg-bg px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5 md:px-6 md:pb-5 md:pt-2">
+      <div className="shrink-0 bg-bg px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5 md:px-6 md:pb-5 md:pt-2">
         <div className="mx-auto w-full max-w-[760px]">
           {turnError && (
             <div className="mb-2 flex items-center gap-2 rounded-xl border border-danger/30 bg-danger-soft/50 px-3 py-2 text-[12px] text-danger">
@@ -247,7 +246,11 @@ export function ChatView() {
             </div>
           )}
           {pending.length > 0 && (
-            <PermissionCard request={pending[0]} more={pending.length - 1} />
+            <PermissionCard
+              key={pending[0].id}
+              request={pending[0]}
+              more={pending.length - 1}
+            />
           )}
           <Composer />
         </div>

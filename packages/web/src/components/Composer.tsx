@@ -96,8 +96,8 @@ interface CompletionEntry {
 }
 
 export interface ComposerProps {
-  /** 覆盖默认发送。返回 false（或 reject）时保留输入内容。 */
-  onSubmit?: (content: ContentBlock[]) => boolean | void | Promise<boolean | void>
+  /** 覆盖默认发送。返回 false（或 reject）时保留输入内容，其余返回视为成功并清空。 */
+  onSubmit?: (content: ContentBlock[]) => unknown | Promise<unknown>
   /** 无会话模式：模型、权限模式由外部受控，running 也由外部提供。 */
   sessionless?: boolean
   model?: string
@@ -126,8 +126,23 @@ function prettyModel(id: string): string {
     'claude-sonnet-4': 'Claude Sonnet 4',
     'claude-haiku-4-5': 'Claude Haiku 4.5',
     'claude-3-7-sonnet': 'Claude Sonnet 3.7',
+    'gpt-5': 'GPT-5',
+    'gpt-4o': 'GPT-4o',
+    'gemini-2.5-pro': 'Gemini 2.5 Pro',
   }
   if (known[id]) return known[id]
+  const family = /^claude-(\d+)-(\d+)-(sonnet|opus|haiku)/.exec(id)
+  if (family) {
+    return `Claude ${family[3][0].toUpperCase()}${family[3].slice(1)} ${family[1]}.${family[2]}`
+  }
+  const family2 = /^claude-(sonnet|opus|haiku)-(\d+)-(\d+)/.exec(id)
+  if (family2) {
+    return `Claude ${family2[1][0].toUpperCase()}${family2[1].slice(1)} ${family2[2]}.${family2[3]}`
+  }
+  const family3 = /^claude-(\d+)-(sonnet|opus|haiku)/.exec(id)
+  if (family3) {
+    return `Claude ${family3[2][0].toUpperCase()}${family3[2].slice(1)} ${family3[1]}`
+  }
   let s = id.replace(/^claude-/, 'Claude ')
   s = s.replace(/-\d{8}$/, '')
   s = s.replace(/-(\d+)-(\d+)$/, ' $1.$2')
@@ -416,7 +431,7 @@ function ModelMenu({
           title={currentProfile ? `${currentProfile.name} · ${model}` : '选择账号与模型'}
           aria-label="选择模型"
           className={cn(
-            'flex h-8 min-w-0 max-w-[220px] items-center gap-1 rounded-lg px-2 text-[12.5px] text-muted transition-colors hover:bg-bg-hover hover:text-text-soft',
+            'flex h-11 min-w-0 max-w-[220px] items-center gap-1 rounded-lg px-2 text-[12.5px] text-muted transition-colors hover:bg-bg-hover hover:text-text-soft md:h-8',
             open && 'bg-bg-hover text-text-soft',
             disabled && 'opacity-50',
           )}
@@ -579,7 +594,7 @@ export function Composer({
   const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
   const summary = useAppStore((s) => s.active?.summary ?? null)
   const storeRunning = useAppStore((s) => s.active?.running ?? false)
-  const stopping = useAppStore((s) => s.active?.stopping ?? false)
+  const storeStopping = useAppStore((s) => s.active?.stopping ?? false)
   const activeHostId = useAppStore((s) => s.active?.hostId ?? null)
   const hostStatus = useAppStore((s) =>
     (hostIdProp ?? activeHostId) ? (s.runtimes[hostIdProp ?? activeHostId!]?.status ?? 'offline') : 'offline',
@@ -618,6 +633,7 @@ export function Composer({
   const effectiveHostId = hostIdProp ?? activeHostId
   const cwd = cwdProp ?? summary?.cwd
   const running = runningProp ?? storeRunning
+  const stopping = runningProp === undefined && storeStopping
   const mode = sessionless ? (permissionModeProp ?? 'default') : (summary?.permissionMode ?? 'default')
   const currentModel = sessionless ? (modelProp ?? '') : (summary?.model ?? '')
   const currentProfileId = sessionless ? (profileIdProp ?? '') : (summary?.profileId ?? '')
@@ -648,8 +664,9 @@ export function Composer({
   }, [sessionId])
 
   useEffect(() => {
-    if (isMobile || disabled) return
-    if (!autoFocus && sessionless) return
+    if (disabled) return
+    // 会话模式沿用自动聚焦；无会话页只在 autoFocus 时聚焦。
+    if (!autoFocus && (isMobile || sessionless)) return
     const t = window.setTimeout(() => textareaRef.current?.focus(), 60)
     return () => window.clearTimeout(t)
   }, [sessionId, isMobile, autoFocus, sessionless, disabled])
@@ -866,7 +883,7 @@ export function Composer({
       blocks.push({ type: 'image', mediaType: a.mediaType, dataBase64: a.dataBase64 })
     }
     if (onSubmit) {
-      let result: boolean | void
+      let result: unknown
       try {
         result = await onSubmit(blocks)
       } catch {

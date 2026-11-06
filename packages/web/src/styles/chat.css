@@ -92,6 +92,7 @@
 
 .chat-scroll {
   scrollbar-gutter: stable;
+  overflow-anchor: none;
 }
 
 .chat-jump {
@@ -289,6 +290,7 @@
   height: 32px;
   padding: 0 6px 0 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--t-border) 65%, transparent);
+  background: color-mix(in srgb, var(--t-bg) 30%, transparent);
   color: var(--t-muted);
   font-size: 11.5px;
 }
@@ -712,6 +714,25 @@ mark.chat-match {
   inset: 0 auto 0 0;
   width: 3px;
   background: var(--t-accent);
+}
+
+@media (max-width: 767px) {
+  .menu-item {
+    min-height: 44px;
+  }
+  .tool-row {
+    min-height: 44px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  .composer-pill {
+    height: 36px;
+  }
+  .msg-copy {
+    width: 32px;
+    height: 32px;
+    left: -2.25rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

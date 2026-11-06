@@ -47,7 +47,6 @@ export const UserMessage = memo(function UserMessage({
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
     .map((b) => b.text)
     .join('\n\n')
-  if (!text.trim() && images.length === 0) return null
 
   useEffect(
     () => () => {
@@ -55,6 +54,8 @@ export const UserMessage = memo(function UserMessage({
     },
     [],
   )
+
+  if (!text.trim() && images.length === 0) return null
 
   const copy = async () => {
     if (!(await copyText(text))) return
@@ -111,7 +112,6 @@ export const AssistantMessage = memo(function AssistantMessage({
   animate: boolean
 }) {
   const lastIndex = message.content.length - 1
-  const lastBlock = message.content[lastIndex]
 
   const rendered: ReactNode[] = []
   let i = 0
@@ -177,7 +177,6 @@ export const AssistantMessage = memo(function AssistantMessage({
     <div className={cn('flex flex-col', animate && 'chat-msg-enter')}>
       {rendered}
       {message.content.length === 0 && streaming && <TypingIndicator />}
-      {streaming && lastBlock?.type === 'thinking' && !lastBlock.text && <TypingIndicator />}
     </div>
   )
 })
@@ -208,18 +207,27 @@ export function MessageList({ showSkeleton }: { showSkeleton?: boolean }) {
   const streamingId = useAppStore((s) => s.active?.streamingMessageId)
 
   // 首屏加载的消息不播放进入动画；之后新增的消息才淡入上移。
-  const seen = useRef<{ sessionId: string | null; primed: boolean; ids: Set<string> }>({
+  // animated 里的类名会一直保留，避免流式更新时把进场动画截断。
+  const seen = useRef<{
+    sessionId: string | null
+    primed: boolean
+    ids: Set<string>
+    animated: Set<string>
+  }>({
     sessionId: null,
     primed: false,
     ids: new Set(),
+    animated: new Set(),
   })
   if (seen.current.sessionId !== sessionId) {
-    seen.current = { sessionId, primed: false, ids: new Set() }
+    seen.current = { sessionId, primed: false, ids: new Set(), animated: new Set() }
   }
-  const animateIds = new Set<string>()
   if (seen.current.primed) {
-    for (const m of messages) if (!seen.current.ids.has(m.id)) animateIds.add(m.id)
+    for (const m of messages) {
+      if (!seen.current.ids.has(m.id)) seen.current.animated.add(m.id)
+    }
   }
+  const animateIds = seen.current.animated
 
   useEffect(() => {
     const state = seen.current
