@@ -274,7 +274,8 @@ export class RelayAgent {
       } else if (wasReady) {
         this.log(`连接断开（${code}${reason.length ? ` ${reason.toString()}` : ''}），将重连`);
       }
-      const base = Math.min(60_000, 1000 * 2 ** this.attempt++);
+      // 4409：同一密钥的另一实例已接管，避免两个实例互相顶替
+      const base = Math.max(code === 4409 ? 15_000 : 0, Math.min(60_000, 1000 * 2 ** this.attempt++));
       this.timer = setTimeout(() => this.connect(), base * (0.5 + Math.random() * 0.5));
     });
   }
