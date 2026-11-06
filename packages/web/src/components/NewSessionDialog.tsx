@@ -734,7 +734,7 @@ export function ConnectView() {
       <div className="anim-slide-up w-full max-w-[440px]">
         <div className="text-center">
           <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-surface shadow-[var(--t-shadow-sm)] ring-1 ring-border">
-            <Server size={22} className="text-accent" />
+            <Server size={22} className="text-text-soft" />
           </div>
           <h1 className="mt-5 font-serif text-[27px] leading-tight tracking-[-0.01em] md:text-[30px]">
             连接你的 Host

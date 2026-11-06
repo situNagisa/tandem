@@ -242,7 +242,7 @@ export function TopBar() {
                 <span className="hidden text-muted sm:inline">·</span>
                 <span className="hidden min-w-0 items-center gap-0.5 sm:flex">
                   {worktree ? (
-                    <GitFork size={10} className="shrink-0 text-accent/80" />
+                    <GitFork size={10} className="shrink-0 text-muted" />
                   ) : (
                     <GitBranch size={10} className="shrink-0 text-muted" />
                   )}

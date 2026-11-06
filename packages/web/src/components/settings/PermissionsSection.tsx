@@ -101,7 +101,7 @@ export function PermissionsSection() {
     <div className="space-y-4">
       <div>
         <div className="flex items-center gap-2">
-          <ShieldCheck size={15} className="text-accent" />
+          <ShieldCheck size={15} className="text-text-soft" />
           <h2 className="text-[14px] font-semibold">权限规则</h2>
           <span className="rounded bg-bg-hover px-1.5 py-0.5 text-[10.5px] text-muted">{host.name}</span>
         </div>

@@ -302,7 +302,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
           aria-orientation="vertical"
           aria-label="调整面板宽度"
           onPointerDown={startResize}
-          className="absolute left-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none hover:bg-accent/30"
+          className="absolute left-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none hover:bg-[var(--t-border-strong)]/30"
         />
       )}
 

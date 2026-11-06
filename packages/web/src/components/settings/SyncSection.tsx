@@ -252,7 +252,7 @@ export function SyncSection() {
       </div>
 
       <div className="mb-3 flex items-start gap-2 rounded-xl border border-border bg-bg/40 px-3 py-2.5 text-[11px] leading-5 text-text-soft">
-        <ShieldCheck size={14} className="mt-0.5 shrink-0 text-accent" />
+        <ShieldCheck size={14} className="mt-0.5 shrink-0 text-muted" />
         <span>
           配置文件包含账号与分组里<strong className="font-medium text-text">加密的 API Key</strong>
           ，以及本机的 Host 列表、主题和侧栏偏好。请妥善保管文件和口令；口令忘记后无法恢复。

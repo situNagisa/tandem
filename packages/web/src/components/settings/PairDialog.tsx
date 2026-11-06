@@ -169,7 +169,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
                     className={cn(
                       'flex items-center gap-1 rounded-md border px-1.5 py-1 font-mono text-[10px] transition-colors',
                       i === active
-                        ? 'border-accent/40 bg-accent-soft/50 text-text'
+                        ? 'border-[var(--t-border-strong)] bg-[var(--t-bg-active)] text-text'
                         : 'border-border text-muted hover:text-text',
                     )}
                   >

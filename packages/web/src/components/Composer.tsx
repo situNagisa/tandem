@@ -510,7 +510,7 @@ function ModelPanel({
                       >
                         <Highlight text={m} query={query} />
                       </span>
-                      {selected && <Check size={13} className="shrink-0 text-accent" />}
+                      {selected && <Check size={13} className="shrink-0 text-text-secondary" />}
                     </button>
                   )
                 })}

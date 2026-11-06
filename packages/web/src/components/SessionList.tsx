@@ -868,17 +868,18 @@ export function SessionList({
                       </span>
                     )}
                   </button>
-                  <button
+                  <IconButton
+                    size="sm"
                     onClick={(e) => {
                       e.stopPropagation()
                       newSessionIn(hostId, project.cwd || '')
                     }}
-                    title={`在 ${project.name} 新建会话`}
-                    aria-label={`在 ${project.name} 新建会话`}
-                    className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted opacity-0 transition-opacity hover:bg-[var(--t-bg-active)] hover:text-text focus-visible:opacity-100 group-hover/proj:opacity-100"
+                    tooltip={`在 ${project.name} 新建会话`}
+                    label={`在 ${project.name} 新建会话`}
+                    className="size-6 opacity-0 focus-visible:opacity-100 group-hover/proj:opacity-100 [&_svg]:size-[13px]"
                   >
                     <Plus size={13} />
-                  </button>
+                  </IconButton>
                   <span className="w-5 shrink-0 text-right text-[10px] tabular-nums text-muted">
                     {count}
                   </span>

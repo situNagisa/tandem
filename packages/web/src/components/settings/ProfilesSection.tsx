@@ -429,7 +429,7 @@ function GroupEditor({
   return (
     <div className="rounded-xl border border-border-strong/60 bg-bg/40 p-3">
       <div className="mb-2 flex items-center gap-1.5">
-        <Layers size={13} className="text-accent" />
+        <Layers size={13} className="text-text-soft" />
         <span className="text-[12px] font-medium">
           {existing ? `编辑分组「${existing.name}」` : '添加分组'}
         </span>
@@ -475,13 +475,14 @@ function GroupEditor({
               autoComplete="off"
               className={cn(inputCls, 'pr-9 font-mono text-[11.5px]')}
             />
-            <button
+            <IconButton
+              size="sm"
               onClick={() => setShowKey((v) => !v)}
-              aria-label={showKey ? '隐藏 Key' : '显示 Key'}
-              className="absolute right-1 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-[var(--t-bg-hover)] hover:text-text"
+              label={showKey ? '隐藏 Key' : '显示 Key'}
+              className="absolute right-1 top-1/2 size-7 -translate-y-1/2 [&_svg]:size-[13px]"
             >
               {showKey ? <EyeOff size={13} /> : <Eye size={13} />}
-            </button>
+            </IconButton>
           </div>
         </div>
       </div>
@@ -504,14 +505,10 @@ function GroupEditor({
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <button
-          onClick={() => void fetchModels()}
-          disabled={fetching}
-          className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 text-[11px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
-        >
+        <Button size="sm" onClick={() => void fetchModels()} disabled={fetching} className="text-[11px]">
           {fetching ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
           自动拉取模型
-        </button>
+        </Button>
         {existing && (
           <span className="text-[10px] text-muted">留空 Key 时使用已保存的 Key</span>
         )}
@@ -620,18 +617,12 @@ function GroupEditor({
       )}
 
       <div className="mt-2.5 flex justify-end gap-1.5">
-        <button
-          onClick={onCancel}
-          className="h-8 rounded-lg px-2.5 text-[11px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-        >
+        <Button size="sm" variant="ghost" onClick={onCancel} className="text-[11px]">
           取消
-        </button>
-        <button
-          onClick={save}
-          className="h-8 rounded-lg bg-accent px-3 text-[11px] font-medium text-on-accent transition-colors hover:bg-accent-hover"
-        >
+        </Button>
+        <Button size="sm" variant="primary" onClick={save} className="text-[11px]">
           保存分组
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -1151,7 +1142,7 @@ export function ProfilesSection() {
 
                 <div className="mt-3 rounded-xl border border-border bg-bg/30 p-3">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <Layers size={13} className="text-accent" />
+                    <Layers size={13} className="text-text-soft" />
                     <span className="text-[12px] font-medium">账号分组</span>
                     <span className="text-[10px] text-muted">每组可独立协议与 Key</span>
                     <span className="flex-1" />

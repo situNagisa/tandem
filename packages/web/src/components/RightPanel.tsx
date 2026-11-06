@@ -150,7 +150,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
             <>
               <div className="mb-2 h-0.5 overflow-hidden rounded-full bg-surface-2">
                 <div
-                  className="h-full rounded-full bg-accent/70 transition-[width] duration-300"
+                  className="h-full rounded-full bg-[var(--t-text-tertiary)]/70 transition-[width] duration-300"
                   style={{ width: `${progress}%` }}
                 />
               </div>
@@ -262,7 +262,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
               <DetailRow label="worktree">
                 <span className="block space-y-0.5">
                   <span className="flex items-center gap-1 text-text">
-                    <GitFork size={11} className="text-accent/80" />
+                    <GitFork size={11} className="text-muted" />
                     <span className="font-mono text-[11.5px]">{summary.worktree.branch}</span>
                   </span>
                   <span className="block text-[10.5px] text-muted">
