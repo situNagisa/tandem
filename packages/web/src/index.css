@@ -4,18 +4,18 @@
 
 :root {
   /* 色板 v3：暖色中性灰 + 唯一强调色 Claude 橙 */
-  --t-bg: #faf9f7;
-  --t-sidebar: #f3f2ee;
-  --t-surface: #ffffff;
-  --t-surface-2: #edece8;
-  --t-bg-hover: rgba(0, 0, 0, 0.04);
-  --t-bg-active: rgba(0, 0, 0, 0.07);
-  --t-border: rgba(0, 0, 0, 0.08);
-  --t-border-strong: rgba(0, 0, 0, 0.14);
-  --t-text: #1a1a1a;
-  --t-text-soft: #5c5c5c;
+  --t-bg: #f7f5f0;
+  --t-sidebar: #eae6dd;
+  --t-surface: #fcfbf8;
+  --t-surface-2: #f0ece3;
+  --t-bg-hover: rgba(55, 43, 26, 0.055);
+  --t-bg-active: rgba(55, 43, 26, 0.09);
+  --t-border: rgba(45, 35, 22, 0.11);
+  --t-border-strong: rgba(45, 35, 22, 0.20);
+  --t-text: #171410;
+  --t-text-soft: #51493e;
   --t-text-secondary: var(--t-text-soft);
-  --t-muted: #737373;
+  --t-muted: #6b6357;
   --t-text-tertiary: var(--t-muted);
   --t-accent: #d97757;
   --t-accent-hover: #c6613f;
@@ -39,8 +39,8 @@
   --t-add-bar: #8a9a7b;
   --t-del-bar: #a87363;
   /* 行内代码：浅色模式用比正文略深的纸色，边框拉开层次 */
-  --t-code-bg: color-mix(in srgb, var(--t-surface-2) 82%, var(--t-text) 4%);
-  --t-code-border: color-mix(in srgb, var(--t-border) 80%, transparent);
+  --t-code-bg: #efece4;
+  --t-code-border: rgba(45, 35, 22, 0.16);
   --t-git-modified: #4a72a8;
   --t-git-added: #527a45;
   --t-git-deleted: #a85d50;
@@ -48,10 +48,10 @@
   --t-git-plus: #527a45;
   --t-git-minus: #a85d50;
 
-  --t-code-block-bg: #edece8;
+  --t-code-block-bg: #f1ede4;
 
-  --t-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --t-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --t-shadow-sm: 0 1px 2px rgba(60, 45, 25, 0.06);
+  --t-shadow-md: 0 8px 28px rgba(60, 45, 25, 0.10), 0 1px 3px rgba(60, 45, 25, 0.06);
   --t-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.12);
   --t-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --t-ease-in: cubic-bezier(0.4, 0, 1, 1);

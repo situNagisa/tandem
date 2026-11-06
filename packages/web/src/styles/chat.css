@@ -1192,3 +1192,43 @@ mark.chat-match {
     transition: none;
   }
 }
+
+/* ---------- 浅色模式：加深侧栏与标题/表头层级（scorecard-v8 10B） ---------- */
+html:not(.dark) .md.chat-md h2 {
+  font-size: 18px;
+  padding-bottom: 0.32em;
+  border-bottom: 1px solid var(--t-border);
+}
+html:not(.dark) .md.chat-md table {
+  display: table;
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  background: var(--t-surface);
+}
+html:not(.dark) .md.chat-md th,
+html:not(.dark) .md.chat-md td {
+  border: 0;
+  border-bottom: 1px solid var(--t-border);
+}
+html:not(.dark) .md.chat-md thead th {
+  background: #ece8df;
+  border-bottom-color: var(--t-border-strong);
+}
+html:not(.dark) .md.chat-md tbody tr:nth-child(even) {
+  background: transparent;
+}
+html:not(.dark) .md.chat-md tbody tr:last-child td {
+  border-bottom: 0;
+}
+html:not(.dark) .md.chat-md blockquote {
+  padding: 0.3em 0.9em;
+  border-radius: 0 8px 8px 0;
+  background: #f1ece2;
+}
+html:not(.dark) .composer-card {
+  border-color: rgba(45, 35, 22, 0.26);
+  box-shadow: 0 8px 30px rgba(60, 45, 25, 0.12), 0 2px 6px rgba(60, 45, 25, 0.07);
+}
+html:not(.dark) .composer-card:focus-within {
+  border-color: rgba(45, 35, 22, 0.36);
+}
