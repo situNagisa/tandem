@@ -38,6 +38,7 @@
   --t-del-fg: var(--t-text);
   --t-add-bar: #8a9a7b;
   --t-del-bar: #a87363;
+  --t-comment-row-bg: rgba(45, 35, 22, 0.05);
   /* 行内代码：浅色模式用比正文略深的纸色，边框拉开层次 */
   --t-code-bg: #efece4;
   --t-code-border: rgba(45, 35, 22, 0.16);
@@ -109,6 +110,7 @@ html.dark {
   --t-del-fg: var(--t-text);
   --t-add-bar: #8a9a7b;
   --t-del-bar: #a87363;
+  --t-comment-row-bg: rgba(255, 255, 255, 0.035);
   --t-code-bg: #333333;
   --t-code-border: rgba(255, 255, 255, 0.1);
   --t-git-modified: #7fa7d9;

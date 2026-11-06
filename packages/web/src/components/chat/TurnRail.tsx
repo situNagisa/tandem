@@ -289,7 +289,8 @@ export function TurnRail({
   }, [jump, total])
 
   const fullCapacity = Math.max(1, Math.floor(available / ROW))
-  const windowed = total > fullCapacity
+  // 超过可容纳数量的一半就窗口化，避免刻度被压到 4px 间距难以分辨。
+  const windowed = total > Math.max(1, Math.floor(fullCapacity / 2))
   const windowSize = windowed
     ? Math.max(
         MIN_WINDOW,
@@ -355,6 +356,11 @@ export function TurnRail({
               className="turn-tick"
             >
               <span className="turn-tick-line" />
+              {active && (
+                <span className="turn-tick-num" aria-hidden>
+                  {mark.turn}
+                </span>
+              )}
               <span className="turn-tip" role="tooltip">
                 {label}
               </span>

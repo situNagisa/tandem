@@ -627,44 +627,64 @@
   outline: 1px solid color-mix(in srgb, var(--t-accent) 42%, transparent);
   outline-offset: -1px;
 }
+.chat-diff-row[data-commented]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--t-comment-row-bg, rgba(255, 255, 255, 0.035));
+  pointer-events: none;
+}
+.chat-diff-row[data-commented] > .ln,
+.chat-diff-row[data-commented] > .sign,
+.chat-diff-row[data-commented] > .text,
+.chat-diff-row[data-commented] > .diff-comment-btn {
+  position: relative;
+  z-index: 1;
+}
 .diff-comment-line {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 4px;
+  left: 2px;
+  z-index: 2;
   width: 2px;
   border-radius: 1px;
-  background: color-mix(in srgb, var(--t-accent) 72%, transparent);
+  background: var(--t-text-secondary);
+  opacity: 0.85;
   pointer-events: none;
 }
-.diff-comment-mark {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 2;
-  width: 11px;
-  padding: 0;
+.diff-comment-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  align-self: center;
+  gap: 2px;
+  height: 1.55em;
+  margin-left: 8px;
+  padding: 0 4px;
   border: 0;
-  background: transparent;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--t-bg-active) 55%, transparent);
+  color: var(--t-text-secondary);
+  font-family: var(--t-font-sans);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
   cursor: pointer;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
 }
-.diff-comment-mark::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 4px;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--t-accent);
-  opacity: 0.72;
-  transition: width 100ms ease, opacity 100ms ease;
+.diff-comment-btn svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
 }
-.diff-comment-mark:hover::before,
-.diff-comment-mark[data-open]::before {
-  width: 3px;
-  opacity: 1;
+.diff-comment-btn:hover,
+.diff-comment-btn[data-open] {
+  color: var(--t-text);
+  background: var(--t-bg-active);
 }
 .diff-composer-anchor {
   position: absolute;
@@ -1135,6 +1155,7 @@ mark.chat-match {
 }
 
 .turn-tick {
+  position: relative;
   display: flex;
   width: 24px;
   height: 6px;
@@ -1144,6 +1165,20 @@ mark.chat-match {
   border: 0;
   background: transparent;
   cursor: pointer;
+}
+
+.turn-tick-num {
+  position: absolute;
+  right: 26px;
+  top: 50%;
+  color: var(--t-text);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .turn-tick-line {
@@ -1166,8 +1201,13 @@ mark.chat-match {
 
 .turn-tick[data-active="true"] .turn-tick-line {
   width: 20px;
+  height: 2.5px;
   opacity: 1;
   background: var(--t-text);
+}
+
+.turn-tick[data-active="true"] .turn-tip {
+  right: 44px;
 }
 
 .turn-tick:focus-visible {

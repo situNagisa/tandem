@@ -10,7 +10,12 @@ import {
 } from 'react'
 import { diffLines } from 'diff'
 import * as RPopover from '@radix-ui/react-popover'
-import { ArrowLeftRight, ChevronsUpDown, MessageSquarePlus } from 'lucide-react'
+import {
+  ArrowLeftRight,
+  ChevronsUpDown,
+  MessageSquare,
+  MessageSquarePlus,
+} from 'lucide-react'
 import { cn } from '../lib/cn'
 import { useHorizontalOverflow, useIsMobile } from '../lib/hooks'
 
@@ -140,40 +145,36 @@ function lineLabel(start: number, end: number) {
   return start === end ? `第 ${start} 行` : `第 ${start}–${end} 行`
 }
 
-/** 行评论标记：悬停预览，点击后固定浮层，可编辑或删除。 */
+/** 行评论标记：行尾图标 + 条数，悬停预览，点击后固定浮层，可编辑或删除。 */
 function CommentMarker({
-  comment,
+  comments,
   onEdit,
   onDelete,
 }: {
-  comment: DiffComment
+  comments: DiffComment[]
   onEdit: (id: number, text: string) => void
   onDelete: (id: number) => void
 }) {
   const [hover, setHover] = useState(false)
   const [pinned, setPinned] = useState(false)
-  const [editing, setEditing] = useState(false)
-  const [text, setText] = useState(comment.text)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [text, setText] = useState('')
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    if (!editing) setText(comment.text)
-  }, [comment.text, editing])
-
-  useEffect(() => {
-    if (editing) inputRef.current?.focus()
-  }, [editing])
+    if (editingId !== null) inputRef.current?.focus()
+  }, [editingId])
 
   const close = () => {
     setPinned(false)
     setHover(false)
-    setEditing(false)
+    setEditingId(null)
   }
 
   const save = () => {
     const next = text.trim()
-    if (next) onEdit(comment.id, next)
-    close()
+    if (editingId !== null && next) onEdit(editingId, next)
+    setEditingId(null)
   }
 
   return (
@@ -186,9 +187,9 @@ function CommentMarker({
       <RPopover.Anchor asChild>
         <button
           type="button"
-          className="diff-comment-mark"
+          className="diff-comment-btn"
           data-open={pinned || undefined}
-          aria-label={`${lineLabel(comment.startLine, comment.endLine)}的评论`}
+          aria-label={`${lineLabel(comments[0].startLine, comments[0].endLine)}的评论，共 ${comments.length} 条`}
           onPointerDown={(e) => e.stopPropagation()}
           onMouseEnter={() => setHover(true)}
           onMouseLeave={() => setHover(false)}
@@ -197,11 +198,14 @@ function CommentMarker({
             setPinned(true)
             setHover(true)
           }}
-        />
+        >
+          <MessageSquare size={12} aria-hidden />
+          <span>{comments.length}</span>
+        </button>
       </RPopover.Anchor>
       <RPopover.Portal>
         <RPopover.Content
-          side="right"
+          side="left"
           align="start"
           sideOffset={6}
           collisionPadding={8}
@@ -211,74 +215,83 @@ function CommentMarker({
           onPointerDown={(e) => e.stopPropagation()}
           onPointerEnter={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
-          className="popover-panel z-[85] w-[260px] p-2.5"
+          className="popover-panel z-[85] w-[270px] p-2.5"
         >
-          <p className="mb-1 font-mono text-[10px] text-muted">
-            {lineLabel(comment.startLine, comment.endLine)}
-          </p>
-          {editing ? (
-            <>
-              <textarea
-                ref={inputRef}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    save()
-                  } else if (e.key === 'Escape') {
-                    e.preventDefault()
-                    setEditing(false)
-                  }
-                }}
-                rows={2}
-                aria-label="编辑行评论"
-                className="w-full resize-none rounded-md border border-border bg-bg px-2 py-1.5 text-[12px] leading-5 text-text outline-none focus:border-[var(--t-border-strong)]"
-              />
-              <div className="mt-1.5 flex justify-end gap-1">
-                <button
-                  type="button"
-                  className="rounded px-2 py-1 text-[11px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
-                  onClick={() => setEditing(false)}
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  className="rounded px-2 py-1 text-[11px] text-text hover:bg-[var(--t-bg-hover)]"
-                  disabled={!text.trim()}
-                  onClick={save}
-                >
-                  保存
-                </button>
+          <div className="space-y-2">
+            {comments.map((comment) => (
+              <div key={comment.id}>
+                <p className="mb-1 font-mono text-[10px] text-muted">
+                  {lineLabel(comment.startLine, comment.endLine)}
+                </p>
+                {editingId === comment.id ? (
+                  <>
+                    <textarea
+                      ref={inputRef}
+                      value={text}
+                      onChange={(e) => setText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          save()
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault()
+                          setEditingId(null)
+                        }
+                      }}
+                      rows={2}
+                      aria-label="编辑行评论"
+                      className="w-full resize-none rounded-md border border-border bg-bg px-2 py-1.5 text-[12px] leading-5 text-text outline-none focus:border-[var(--t-border-strong)]"
+                    />
+                    <div className="mt-1.5 flex justify-end gap-1">
+                      <button
+                        type="button"
+                        className="rounded px-2 py-1 text-[11px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
+                        onClick={() => setEditingId(null)}
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-md bg-[var(--t-primary-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--t-primary-fg)] transition-opacity disabled:opacity-40"
+                        disabled={!text.trim()}
+                        onClick={save}
+                      >
+                        保存
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="whitespace-pre-wrap break-words text-[12px] leading-5 text-text-soft">
+                      {comment.text}
+                    </p>
+                    <div className="mt-1 flex justify-end gap-1">
+                      <button
+                        type="button"
+                        className="rounded px-2 py-1 text-[11px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
+                        onClick={() => {
+                          setText(comment.text)
+                          setEditingId(comment.id)
+                        }}
+                      >
+                        编辑
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded px-2 py-1 text-[11px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-danger"
+                        onClick={() => {
+                          onDelete(comment.id)
+                          close()
+                        }}
+                      >
+                        删除
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
-            </>
-          ) : (
-            <>
-              <p className="whitespace-pre-wrap break-words text-[12px] leading-5 text-text-soft">
-                {comment.text}
-              </p>
-              <div className="mt-1.5 flex justify-end gap-1">
-                <button
-                  type="button"
-                  className="rounded px-2 py-1 text-[11px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
-                  onClick={() => setEditing(true)}
-                >
-                  编辑
-                </button>
-                <button
-                  type="button"
-                  className="rounded px-2 py-1 text-[11px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-danger"
-                  onClick={() => {
-                    onDelete(comment.id)
-                    close()
-                  }}
-                >
-                  删除
-                </button>
-              </div>
-            </>
-          )}
+            ))}
+          </div>
         </RPopover.Content>
       </RPopover.Portal>
     </RPopover.Root>
@@ -435,6 +448,18 @@ export const DiffView = memo(function DiffView({
 
   const selectable = !!onAddComment
 
+  // 同一行起的多条评论合并成一个行尾标记，浮层里逐条展示。
+  const anchored = useMemo(() => {
+    const map = new Map<string, DiffComment[]>()
+    for (const comment of comments) {
+      const key = `${comment.side}:${comment.startLine}`
+      const list = map.get(key)
+      if (list) list.push(comment)
+      else map.set(key, [comment])
+    }
+    return map
+  }, [comments])
+
   useEffect(() => {
     setSelection(null)
     dragRef.current = false
@@ -508,9 +533,7 @@ export const DiffView = memo(function DiffView({
             const rowComments = comments.filter(
               (c) => c.side === info.side && info.line >= c.startLine && info.line <= c.endLine,
             )
-            const anchorComment = rowComments.find(
-              (c) => c.side === info.side && c.startLine === info.line,
-            )
+            const anchorComments = anchored.get(`${info.side}:${info.line}`)
             const selectedRow =
               selectionInfo !== null && i >= selectionInfo.startIdx && i <= selectionInfo.endIdx
             const isAnchor = selectionInfo !== null && i === selectionInfo.endIdx
@@ -519,6 +542,7 @@ export const DiffView = memo(function DiffView({
                 <div
                   className={cn('chat-diff-row', selectable && 'cursor-pointer')}
                   data-kind={row.type}
+                  data-commented={rowComments.length > 0 || undefined}
                   data-selected={selectedRow || undefined}
                   onPointerDown={
                     selectable
@@ -557,16 +581,14 @@ export const DiffView = memo(function DiffView({
                     {row.type === 'add' ? '+' : row.type === 'del' ? '−' : ' '}
                   </span>
                   <span className="text">{row.text || ' '}</span>
-                  {rowComments.length > 0 &&
-                    (anchorComment && onEditComment && onDeleteComment ? (
-                      <CommentMarker
-                        comment={anchorComment}
-                        onEdit={onEditComment}
-                        onDelete={onDeleteComment}
-                      />
-                    ) : (
-                      <span className="diff-comment-line" aria-hidden />
-                    ))}
+                  {rowComments.length > 0 && <span className="diff-comment-line" aria-hidden />}
+                  {anchorComments && anchorComments.length > 0 && onEditComment && onDeleteComment ? (
+                    <CommentMarker
+                      comments={anchorComments}
+                      onEdit={onEditComment}
+                      onDelete={onDeleteComment}
+                    />
+                  ) : null}
                   {isAnchor && selectionInfo && (
                     <RPopover.Root
                       open={!dragging}

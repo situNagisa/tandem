@@ -421,6 +421,14 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       )
     }
     if (id === 'usage') {
+      const hasUsage =
+        !!usage &&
+        ((usage.inputTokens ?? 0) > 0 ||
+          (usage.outputTokens ?? 0) > 0 ||
+          (usage.costUsd ?? 0) > 0)
+      if (!hasUsage) {
+        return <p className="text-[11px] leading-4 text-muted">暂无用量</p>
+      }
       const stats = [
         { label: '输入', value: formatTokens(usage?.inputTokens ?? 0) },
         { label: '输出', value: formatTokens(usage?.outputTokens ?? 0) },
