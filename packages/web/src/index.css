@@ -21,6 +21,9 @@
   --t-accent-hover: #c6613f;
   --t-accent-soft: rgba(217, 119, 87, 0.12);
   --t-on-accent: #ffffff;
+  --t-primary-bg: #1a1a1a;
+  --t-primary-fg: #ffffff;
+  --t-primary-hover: #2e2e2e;
   --t-danger: #b4533f;
   /* 错误只用文字；soft 保持透明，避免色块 */
   --t-danger-soft: transparent;
@@ -82,6 +85,9 @@ html.dark {
   --t-accent-hover: #e08868;
   --t-accent-soft: rgba(217, 119, 87, 0.14);
   --t-on-accent: #ffffff;
+  --t-primary-bg: #efefef;
+  --t-primary-fg: #191919;
+  --t-primary-hover: #dcdcdc;
   --t-danger: #d08770;
   --t-danger-soft: transparent;
   --t-warning: #8a8a8a;

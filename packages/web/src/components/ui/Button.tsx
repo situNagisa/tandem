@@ -2,7 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { cn } from '../../lib/cn'
 
 export type ControlSize = 'sm' | 'md' | 'lg'
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger-ghost'
+export type ButtonVariant = 'primary' | 'accent' | 'secondary' | 'ghost' | 'danger-ghost'
 
 const SIZE_CLASS: Record<ControlSize, string> = {
   sm: 'h-[28px] rounded-md px-2.5 gap-1.5 [&_svg]:size-3.5',
@@ -17,7 +17,9 @@ const ICON_SIZE_CLASS: Record<ControlSize, string> = {
 }
 
 const VARIANT_CLASS: Record<ButtonVariant, string> = {
-  primary: 'border border-transparent bg-accent text-on-accent hover:bg-accent-hover',
+  primary:
+    'border border-transparent bg-[var(--t-primary-bg)] text-[var(--t-primary-fg)] hover:bg-[var(--t-primary-hover)]',
+  accent: 'border border-transparent bg-accent text-on-accent hover:bg-accent-hover',
   secondary:
     'border border-border bg-[var(--t-surface-2)] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
   ghost:
