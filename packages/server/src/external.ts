@@ -214,10 +214,13 @@ function cleanTitle(text: string): string {
 export function isInjectedTitle(title: string): boolean {
   const value = title.replace(/\s+/g, ' ').trim();
   if (!value) return false;
-  if (/AGENTS\.md instructions/i.test(value)) return true;
-  if (/<INSTRUCTIONS>/i.test(value)) return true;
+  // 只判定“标题本身就是注入内容”，避免误伤正文里提到 AGENTS.md 的正常标题。
+  if (/^(?:#+\s*)?AGENTS\.md instructions\b/i.test(value)) return true;
   if (/CODEGRAPH_(?:START|END)/i.test(value)) return true;
-  return isInjectedText(value);
+  if (/^(?:The following is the Codex agent history|This session is being continued from a previous conversation|Caveat: The messages below were generated)\b/i.test(value)) return true;
+  const tag = value.match(/^<\/?([a-zA-Z][\w: -]*?)(?:\s[^>]*)?>/);
+  if (tag && DROP_TAGS.some((item) => item.toLowerCase() === tag[1]!.trim().toLowerCase())) return true;
+  return false;
 }
 
 /** 从消息里找第一条真实用户文本重新生成标题；都不可用时退回项目名 + 日期。 */
