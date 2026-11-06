@@ -54,6 +54,7 @@ export interface SessionSummary {
   groupId?: string;        // 选用账号下的哪个分组（无分组账号不填）
   model: string;
   permissionMode: PermissionMode;
+  effort?: ReasoningEffort; // 思考强度：映射到 Anthropic thinking budget / OpenAI reasoning_effort；模型不支持时忽略
   status: SessionStatus;
   pinned?: boolean;        // 置顶
   archived?: boolean;      // 归档（列表默认隐藏）
@@ -81,7 +82,9 @@ export interface CreateSessionInput {
   title?: string;
   worktree?: { branch?: string };
 }
-export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'permissionMode' | 'pinned' | 'archived'>>;
+export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'max';
+// cwd：会话中途切换工作目录（下一轮生效，重新检测 env）
+export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'permissionMode' | 'pinned' | 'archived' | 'effort' | 'cwd'>>;
 
 // ---------- 外部会话（本机已有的 Claude Code / Codex 会话） ----------
 // 原则：只读原软件的文件，绝不写回；"导入"= 复制成 Tandem 会话后继续（可换任意模型）。
@@ -258,6 +261,11 @@ export type BlockDelta =
 // PATCH  /api/sessions/:id UpdateSessionInput -> SessionSummary  (运行中切换模型/账号：下一轮生效)
 // DELETE /api/sessions/:id
 // POST   /api/sessions/:id/fork       -> SessionSummary   复制会话（含历史）为新会话
+// GET    /api/sessions/:id/branches   -> { current?: string; branches: string[] }   cwd 所在仓库的本地分支
+// POST   /api/sessions/:id/checkout { branch, create?: boolean } -> SessionSummary  会话中途切换分支（有未提交改动时 409）
+// POST   /api/sessions/:id/worktree { branch? } -> SessionSummary  会话中途切到新 worktree 中继续（之后的工具都在 worktree 内执行）
+// GET    /api/sessions/:id/export     -> Session（完整）   POST /api/sessions/import { session: Session; cwd?: string } -> SessionSummary
+//        跨 Host 迁移会话：客户端从 A 导出、向 B 导入（cwd 可改为 B 上的目录），实现"中途更换主机"
 // GET    /api/fs/list?path=           -> FsEntry[]   目录选择器
 // GET    /api/fs/complete?cwd=&q=     -> string[]    @文件 补全（相对 cwd 的路径）
 // GET    /api/external-sessions?source=   -> ExternalSession[]    扫描 ~/.claude/projects、~/.codex/sessions
