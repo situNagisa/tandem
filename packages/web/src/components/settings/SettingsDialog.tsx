@@ -33,10 +33,10 @@ export function SettingsDialog() {
       onClose={close}
       title="设置"
       description="Host、账号与模型、MCP、用量、配置迁移，以及界面外观。"
-      className="max-w-3xl"
+      className="h-[min(640px,86dvh)] max-w-[min(880px,92vw)] max-sm:fixed max-sm:inset-0 max-sm:my-0 max-sm:h-auto max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:pt-[env(safe-area-inset-top)]"
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
     >
-      <div className="flex min-h-[360px] max-h-[min(76dvh,640px)] flex-col sm:flex-row">
+      <div className="flex h-full min-h-0 flex-col sm:flex-row">
         <nav className="grid shrink-0 grid-cols-2 gap-1 border-b border-border bg-bg/40 p-2 sm:flex sm:w-44 sm:flex-col sm:border-b-0 sm:border-r sm:p-3">
           {TABS.map((t) => {
             const Icon = t.icon
@@ -60,7 +60,11 @@ export function SettingsDialog() {
             <Monitor size={11} /> Tandem 0.1 · Web
           </div>
         </nav>
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-5">
+        <div
+          key={tab}
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-4 motion-reduce:animate-none sm:p-5 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]"
+          style={{ animation: 'tandem-fade-in 120ms var(--t-ease-out) both' }}
+        >
           {tab === 'profiles' && <ProfilesSection />}
           {tab === 'hosts' && <HostsSection />}
           {tab === 'permissions' && <PermissionsSection />}
