@@ -355,6 +355,7 @@ export function SessionList({
   const showArchived = useUiStore((s) => s.showArchived)
   const setShowArchived = useUiStore((s) => s.setShowArchived)
   const showExternalSessions = useUiStore((s) => s.showExternalSessions)
+  const hiddenExternalSources = useUiStore((s) => s.hiddenExternalSources)
   // 同事会提供 externalSessions（顶层数组或按 hostId 的 Record 均可），未就绪时为 undefined。
   const externalRaw = useAppStore(
     (s) => (s as typeof s & { externalSessions?: unknown }).externalSessions,
@@ -436,8 +437,11 @@ export function SessionList({
   }, [hosts, runtimes, externalRaw])
 
   const visibleExternals = useMemo(
-    () => (showExternalSessions ? externalItems : []),
-    [externalItems, showExternalSessions],
+    () =>
+      showExternalSessions
+        ? externalItems.filter((x) => !hiddenExternalSources.includes(x.source))
+        : [],
+    [externalItems, showExternalSessions, hiddenExternalSources],
   )
 
   const { pinned, hosts: groups } = useMemo(

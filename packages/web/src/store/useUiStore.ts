@@ -31,6 +31,7 @@ interface UiState {
   showArchived: boolean
   showSubagents: boolean
   showExternalSessions: boolean
+  hiddenExternalSources: string[]
   panelOpen: boolean
   changesOpen: boolean
   changesWidth: number
@@ -61,6 +62,7 @@ interface UiState {
   setPanelOpen: (open: boolean) => void
   togglePanel: () => void
   setChangesOpen: (open: boolean) => void
+  setExternalSourceVisible: (source: string, visible: boolean) => void
   toggleChanges: () => void
   setChangesWidth: (width: number) => void
   openFilePreview: (target: FilePreviewTarget) => void
@@ -97,6 +99,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   changesWidth: Math.min(760, Math.max(380, prefs.changesWidth ?? 520)),
   filePreview: null,
   filePreviewWidth: Math.min(900, Math.max(380, prefs.filePreviewWidth ?? 560)),
+  hiddenExternalSources: prefs.hiddenExternalSources ?? [],
   mobileSidebar: false,
   mobilePanel: false,
   settingsOpen: false,
@@ -145,6 +148,14 @@ export const useUiStore = create<UiState>((set, get) => ({
   togglePanel: () => get().setPanelOpen(!get().panelOpen),
   setChangesOpen: (open) =>
     set((s) => ({ changesOpen: open, ...(open ? { panelOpen: false } : {}) })),
+  setExternalSourceVisible: (source, visible) => {
+    const next = new Set(get().hiddenExternalSources)
+    if (visible) next.delete(source)
+    else next.add(source)
+    const hiddenExternalSources = [...next]
+    saveUiPrefs({ hiddenExternalSources })
+    set({ hiddenExternalSources })
+  },
   toggleChanges: () => get().setChangesOpen(!get().changesOpen),
   setChangesWidth: (width) => {
     const next = Math.min(760, Math.max(380, Math.round(width)))

@@ -11,6 +11,11 @@ import { Button, IconButton } from './ui/Button'
 import { MenuDivider, MenuItem, MenuList } from './ui/Menu'
 import { SessionList } from './SessionList'
 
+const EXTERNAL_SOURCES = [
+  { value: 'claude-code', label: 'Claude Code' },
+  { value: 'codex', label: 'Codex' },
+] as const
+
 export function Sidebar({
   inDrawer = false,
   onNavigate,
@@ -26,6 +31,8 @@ export function Sidebar({
   const setShowArchived = useUiStore((s) => s.setShowArchived)
   const showExternalSessions = useUiStore((s) => s.showExternalSessions)
   const setShowExternalSessions = useUiStore((s) => s.setShowExternalSessions)
+  const hiddenExternalSources = useUiStore((s) => s.hiddenExternalSources)
+  const setExternalSourceVisible = useUiStore((s) => s.setExternalSourceVisible)
   const resetComposer = useUiStore((s) => s.resetComposer)
   const archivedCount = useAppStore((s) =>
     Object.values(s.runtimes).reduce(
@@ -67,14 +74,26 @@ export function Sidebar({
     >
       {() => (
         <MenuList aria-label="筛选会话">
-          <MenuItem
-            role="menuitemcheckbox"
-            ariaChecked={showExternalSessions}
-            selected={showExternalSessions}
-            onSelect={() => setShowExternalSessions(!showExternalSessions)}
-          >
-            Claude Code / Codex
-          </MenuItem>
+          {EXTERNAL_SOURCES.map((source) => {
+            const visible = showExternalSessions && !hiddenExternalSources.includes(source.value)
+            return (
+              <MenuItem
+                key={source.value}
+                role="menuitemcheckbox"
+                ariaChecked={visible}
+                selected={visible}
+                onSelect={() => {
+                  if (!showExternalSessions) {
+                    setShowExternalSessions(true)
+                    return
+                  }
+                  setExternalSourceVisible(source.value, !visible)
+                }}
+              >
+                {source.label}
+              </MenuItem>
+            )
+          })}
           <MenuDivider />
           <MenuItem
             role="menuitemcheckbox"
