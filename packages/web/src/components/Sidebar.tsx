@@ -1,4 +1,4 @@
-import { Check, PanelLeftClose, Plus, Search, Settings, SlidersHorizontal, X } from 'lucide-react'
+import { PanelLeftClose, Plus, Search, Settings, SlidersHorizontal, X } from 'lucide-react'
 import { useUiStore } from '../store/useUiStore'
 import { useAppStore } from '../store/useAppStore'
 import { modLabel } from '../lib/format'
@@ -9,37 +9,8 @@ import { BrandMark } from './BrandMark'
 import { HostSwitcher } from './HostSwitcher'
 import { Popover } from './ui/Popover'
 import { Button, IconButton } from './ui/Button'
+import { MenuDivider, MenuItem, MenuList } from './ui/Menu'
 import { SessionList } from './SessionList'
-
-function FilterItem({
-  checked,
-  label,
-  onClick,
-}: {
-  checked: boolean
-  label: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitemcheckbox"
-      aria-checked={checked}
-      onClick={onClick}
-      className="menu-item"
-    >
-      <span
-        className={cn(
-          'flex size-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors',
-          checked ? 'border-text-tertiary/60 bg-[var(--t-bg-active)]' : 'border-border-strong',
-        )}
-      >
-        {checked && <Check size={10} className="text-text" />}
-      </span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-    </button>
-  )
-}
 
 export function Sidebar({
   inDrawer = false,
@@ -98,24 +69,34 @@ export function Sidebar({
       )}
     >
       {() => (
-        <div>
-          <FilterItem
-            checked={showExternalSessions}
-            label="Claude Code / Codex"
-            onClick={() => setShowExternalSessions(!showExternalSessions)}
-          />
-          <FilterItem
-            checked={showSubagents}
-            label="子代理会话"
-            onClick={() => setShowSubagents(!showSubagents)}
-          />
-          <div className="my-1 border-t border-border" />
-          <FilterItem
-            checked={showArchived}
-            label={archivedCount > 0 ? `已归档会话（${archivedCount}）` : '已归档会话'}
-            onClick={() => setShowArchived(!showArchived)}
-          />
-        </div>
+        <MenuList aria-label="筛选会话">
+          <MenuItem
+            role="menuitemcheckbox"
+            ariaChecked={showExternalSessions}
+            selected={showExternalSessions}
+            onSelect={() => setShowExternalSessions(!showExternalSessions)}
+          >
+            Claude Code / Codex
+          </MenuItem>
+          <MenuItem
+            role="menuitemcheckbox"
+            ariaChecked={showSubagents}
+            selected={showSubagents}
+            onSelect={() => setShowSubagents(!showSubagents)}
+          >
+            子代理会话
+          </MenuItem>
+          <MenuDivider />
+          <MenuItem
+            role="menuitemcheckbox"
+            ariaChecked={showArchived}
+            selected={showArchived}
+            trailing={archivedCount > 0 ? archivedCount : undefined}
+            onSelect={() => setShowArchived(!showArchived)}
+          >
+            已归档会话
+          </MenuItem>
+        </MenuList>
       )}
     </Popover>
   )

@@ -32,6 +32,7 @@ import { cn } from '../lib/cn'
 import { SessionStatusDot } from './StatusDot'
 import { Modal } from './ui/Modal'
 import { Button, IconButton } from './ui/Button'
+import { MenuDivider, MenuItem, MenuList } from './ui/Menu'
 import { Tooltip } from './ui/Tooltip'
 
 const EMPTY: SessionSummary[] = []
@@ -271,57 +272,73 @@ function RowMenu({
     }
   }, [onClose])
 
-  const item =
-    'flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text'
-
   return createPortal(
     <div
       ref={ref}
-      role="menu"
       className="anim-pop fixed z-[70] w-[196px] origin-top-left rounded-[10px] border border-border bg-surface p-[5px] shadow-[var(--t-shadow-md)]"
       style={{ left: pos.left, top: pos.top }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="px-2 pb-1 pt-1 text-[9.5px] font-medium uppercase tracking-[0.08em] text-muted">
-        会话
-      </div>
-      <button type="button" role="menuitem" className={item} onClick={() => { onClose(); onRename() }}>
-        <Pencil size={14} className="text-muted" /> 重命名
-      </button>
-      <button type="button" role="menuitem" className={item} onClick={() => { onClose(); onTogglePin() }}>
-        {state.session.pinned ? (
-          <PinOff size={14} className="text-muted" />
-        ) : (
-          <Pin size={14} className="text-muted" />
-        )}
-        {state.session.pinned ? '取消置顶' : '置顶'}
-      </button>
-      <button type="button" role="menuitem" className={item} onClick={() => { onClose(); onFork() }}>
-        <Copy size={14} className="text-muted" /> 复制会话
-      </button>
-      {state.session.worktree && (
-        <button type="button" role="menuitem" className={item} onClick={() => { onClose(); onMerge() }}>
-          <GitMerge size={14} className="text-muted" /> 合并回 {state.session.worktree.baseBranch}
-        </button>
-      )}
-      <button type="button" role="menuitem" className={item} onClick={() => { onClose(); onArchive() }}>
-        {state.session.archived ? (
-          <ArchiveRestore size={14} className="text-muted" />
-        ) : (
-          <Archive size={14} className="text-muted" />
-        )}
-        {state.session.archived ? '取消归档' : '归档'}
-      </button>
-      <div className="mt-1 border-t border-border pt-1">
-        <button
-          type="button"
-          role="menuitem"
-          className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-danger"
-          onClick={() => { onClose(); onDelete() }}
+      <MenuList aria-label="会话操作">
+        <MenuItem
+          icon={<Pencil size={14} />}
+          onSelect={() => {
+            onClose()
+            onRename()
+          }}
         >
-          <Trash2 size={14} /> 删除
-        </button>
-      </div>
+          重命名
+        </MenuItem>
+        <MenuItem
+          icon={state.session.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+          onSelect={() => {
+            onClose()
+            onTogglePin()
+          }}
+        >
+          {state.session.pinned ? '取消置顶' : '置顶'}
+        </MenuItem>
+        <MenuItem
+          icon={<Copy size={14} />}
+          onSelect={() => {
+            onClose()
+            onFork()
+          }}
+        >
+          复制会话
+        </MenuItem>
+        {state.session.worktree && (
+          <MenuItem
+            icon={<GitMerge size={14} />}
+            onSelect={() => {
+              onClose()
+              onMerge()
+            }}
+          >
+            合并回 {state.session.worktree.baseBranch}
+          </MenuItem>
+        )}
+        <MenuItem
+          icon={state.session.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+          onSelect={() => {
+            onClose()
+            onArchive()
+          }}
+        >
+          {state.session.archived ? '取消归档' : '归档'}
+        </MenuItem>
+        <MenuDivider />
+        <MenuItem
+          danger
+          icon={<Trash2 size={14} />}
+          onSelect={() => {
+            onClose()
+            onDelete()
+          }}
+        >
+          删除
+        </MenuItem>
+      </MenuList>
     </div>,
     document.body,
   )
