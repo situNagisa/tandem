@@ -31,6 +31,15 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
     usage: {
       inputTokens: num(usage.inputTokens),
       outputTokens: num(usage.outputTokens),
+      ...(typeof usage.cacheReadTokens === 'number'
+        ? { cacheReadTokens: num(usage.cacheReadTokens) }
+        : {}),
+      ...(typeof usage.cacheWriteTokens === 'number'
+        ? { cacheWriteTokens: num(usage.cacheWriteTokens) }
+        : {}),
+      ...(typeof usage.reasoningTokens === 'number'
+        ? { reasoningTokens: num(usage.reasoningTokens) }
+        : {}),
       ...(typeof usage.costUsd === 'number' ? { costUsd: usage.costUsd } : {}),
     },
     allowedTools: Array.isArray(raw.allowedTools) ? raw.allowedTools : [],
