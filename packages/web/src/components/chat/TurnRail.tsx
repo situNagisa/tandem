@@ -89,6 +89,17 @@ export function TurnRail({
   const wheelLock = useRef(0)
   const dragging = useRef(false)
   const lastDragTurn = useRef(0)
+  const frozenStart = useRef(0)
+  const [draggingView, setDraggingView] = useState(false)
+  const suppressUntil = useRef(0)
+  const correctTimer = useRef<number | null>(null)
+
+  useEffect(
+    () => () => {
+      if (correctTimer.current) window.clearTimeout(correctTimer.current)
+    },
+    [],
+  )
 
   useEffect(() => {
     activeRef.current = activeTurn
@@ -125,7 +136,9 @@ export function TurnRail({
               const shown = [...visible.entries()]
                 .filter(([, on]) => on)
                 .map(([index]) => index)
-              if (shown.length) setActiveTurn(Math.min(...shown) + 1)
+              if (shown.length && performance.now() >= suppressUntil.current) {
+                setActiveTurn(Math.min(...shown) + 1)
+              }
             },
             { root, rootMargin: '0px 0px -85% 0px', threshold: 0 },
           )
@@ -133,6 +146,7 @@ export function TurnRail({
     if (io) for (const node of nodes) io.observe(node)
 
     const onScroll = () => {
+      if (performance.now() < suppressUntil.current) return
       const distance = root.scrollHeight - root.scrollTop - root.clientHeight
       if (distance < 40) setActiveTurn(total)
       else if (root.scrollTop < 40) setActiveTurn(1)
@@ -152,11 +166,34 @@ export function TurnRail({
       setActiveTurn(turn)
       onBeforeJump?.()
       const mark = turns[turn - 1]
-      const el = root.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(mark.id)}"]`)
-      if (!el) return
-      const top =
-        el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - 16
-      root.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' })
+      const targetTop = () => {
+        if (turn === 1) return 0
+        if (turn === total) return Math.max(0, root.scrollHeight - root.clientHeight)
+        const el = root.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(mark.id)}"]`)
+        if (!el) return null
+        return Math.max(
+          0,
+          el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - 16,
+        )
+      }
+      const top = targetTop()
+      if (top == null) return
+      // 长距离跳转用瞬移：content-visibility 的估算行高会让平滑动画在中途反复改落点。
+      const animate = smooth && Math.abs(root.scrollTop - top) < 2400
+      suppressUntil.current = performance.now() + (animate ? 900 : 300)
+      root.scrollTo({ top, behavior: animate ? 'smooth' : 'auto' })
+      // 行高在渲染后才会变成真实值，跳转后重新校准一次落点。
+      if (correctTimer.current) window.clearTimeout(correctTimer.current)
+      correctTimer.current = window.setTimeout(
+        () => {
+          suppressUntil.current = 0
+          const corrected = targetTop()
+          if (corrected != null && Math.abs(root.scrollTop - corrected) > 4) {
+            root.scrollTop = corrected
+          }
+        },
+        animate ? 620 : 120,
+      )
     },
     [scrollRef, turns, total, onBeforeJump],
   )
@@ -202,6 +239,8 @@ export function TurnRail({
     const turn = Number(tick.dataset.turnNav)
     if (!Number.isFinite(turn)) return
     dragging.current = true
+    frozenStart.current = start
+    setDraggingView(true)
     lastDragTurn.current = turn
     event.currentTarget.setPointerCapture(event.pointerId)
     jump(turn, false)
@@ -216,7 +255,9 @@ export function TurnRail({
   }
 
   const endDrag = () => {
+    if (!dragging.current) return
     dragging.current = false
+    setDraggingView(false)
   }
 
   useEffect(() => {
@@ -257,9 +298,13 @@ export function TurnRail({
     : total
   const size = Math.min(total, windowSize)
   const activeIndex = clamp(activeTurn - 1, 0, Math.max(0, total - 1))
-  const start = windowed
+  const centeredStart = windowed
     ? clamp(activeIndex - Math.floor(size / 2), 0, Math.max(0, total - size))
     : 0
+  // 拖动期间冻结窗口，避免刻度在指针下移动导致选择跳变；松手后再让窗口跟随当前轮。
+  const start = draggingView
+    ? clamp(frozenStart.current, 0, Math.max(0, total - size))
+    : centeredStart
   const visible = useMemo(() => turns.slice(start, start + size), [turns, start, size])
 
   if (total < 2) return null

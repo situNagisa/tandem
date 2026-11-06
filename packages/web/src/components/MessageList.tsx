@@ -160,7 +160,7 @@ export const UserMessage = memo(function UserMessage({
         )}
         {text.trim() && !editing && (
           <>
-            <div className="msg-actions mt-0.5 flex h-6 justify-end gap-0.5 -mb-[18px]">
+            <div className="msg-actions mt-0.5 flex h-7 justify-end gap-0.5">
               <IconButton
                 size="sm"
                 onClick={copy}
@@ -193,12 +193,12 @@ export const UserMessage = memo(function UserMessage({
                 </>
               )}
             </div>
-            <div className="msg-more mt-0.5 h-6 justify-end -mb-[18px]">
+            <div className="msg-more mt-0.5 h-7 justify-end max-md:h-11">
               {readOnly ? (
                 <IconButton
                   onClick={() => void copy()}
                   label={copied ? '已复制' : '复制消息'}
-                  className="[&_svg]:size-[13px]"
+                  className="[&_svg]:size-[13px] max-md:size-11 [&_svg]:max-md:size-[17px]"
                 >
                   {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
                 </IconButton>
@@ -208,7 +208,7 @@ export const UserMessage = memo(function UserMessage({
                 side="top"
                 padded={false}
                 trigger={({ toggle }) => (
-                  <IconButton onClick={toggle} label="消息操作" className="[&_svg]:size-[15px]">
+                  <IconButton onClick={toggle} label="消息操作" className="[&_svg]:size-[15px] max-md:size-11 [&_svg]:max-md:size-[17px]">
                     <MoreHorizontal size={15} />
                   </IconButton>
                 )}
@@ -396,7 +396,7 @@ export const AssistantMessage = memo(function AssistantMessage({
       {message.content.length === 0 && streaming && <TypingIndicator />}
       {rawText.trim() && !streaming && (
         <>
-          <div className="msg-actions mt-0.5 flex h-6 justify-start gap-0.5 -mb-[18px]">
+          <div className="msg-actions mt-0.5 flex h-7 justify-start gap-0.5">
             <IconButton
               size="sm"
               onClick={copyAll}
@@ -406,7 +406,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             >
               {copied ? <Check size={12.5} className="text-success" /> : <Copy size={12.5} />}
             </IconButton>
-            {!readOnly && turnUser && (
+            {!readOnly && turnUser && checkpointId && (
               <IconButton
                 size="sm"
                 onClick={() => setRewindOpen(true)}
@@ -435,13 +435,13 @@ export const AssistantMessage = memo(function AssistantMessage({
               </IconButton>
             )}
           </div>
-          <div className="msg-more mt-0.5 h-6 justify-start -mb-[18px]">
+          <div className="msg-more mt-0.5 h-7 justify-start max-md:h-11">
             <Popover
               align="left"
               side="bottom"
               padded={false}
               trigger={({ toggle }) => (
-                <IconButton onClick={toggle} label="回复操作" className="[&_svg]:size-[15px]">
+                <IconButton onClick={toggle} label="回复操作" className="[&_svg]:size-[15px] max-md:size-11 [&_svg]:max-md:size-[17px]">
                   <MoreHorizontal size={15} />
                 </IconButton>
               )}
@@ -457,7 +457,7 @@ export const AssistantMessage = memo(function AssistantMessage({
                   >
                     <Copy size={13} /> {copied ? '已复制' : '复制整条回复'}
                   </button>
-                  {!readOnly && turnUser && (
+                  {!readOnly && turnUser && checkpointId && (
                     <button
                       onClick={() => {
                         close()
@@ -659,6 +659,9 @@ export function MessageList({
               className="msg-row"
               data-turn-id={m.id}
               data-turn-index={turnIndex.get(m.id)}
+              data-actions={
+                m.content.some((b) => b.type === 'text' && b.text.trim()) ? 'true' : undefined
+              }
             >
               <UserMessage message={m} animate={seg.animate} readOnly={readOnly} />
             </div>
@@ -669,6 +672,12 @@ export function MessageList({
             key={m.id}
             className="msg-row"
             data-streaming={streamingId === m.id ? 'true' : undefined}
+            data-actions={
+              streamingId !== m.id &&
+              m.content.some((b) => b.type === 'text' && b.text.trim())
+                ? 'true'
+                : undefined
+            }
           >
             <AssistantMessage
               message={m}

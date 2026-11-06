@@ -145,6 +145,11 @@
   contain-intrinsic-size: auto 96px;
 }
 
+/* 操作条在行内占位，用负外边距抵掉列表间距；行高仍包含操作条，避免被 content-visibility 裁切 */
+.msg-row[data-actions="true"] {
+  margin-bottom: -24px;
+}
+
 /* 横向滚动的代码 / diff：右侧渐隐 + 滑动提示，明确“还能往右看” */
 .x-scroll-wrap {
   position: relative;
@@ -1205,8 +1210,8 @@ mark.chat-match {
 
 .turn-rail-count {
   position: absolute;
-  right: calc(100% + 8px);
-  top: 50%;
+  right: 0;
+  top: calc(100% + 6px);
   padding: 2px 6px;
   border: 1px solid var(--t-border);
   border-radius: 5px;
@@ -1218,7 +1223,6 @@ mark.chat-match {
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-50%);
   transition: opacity 120ms ease;
 }
 
