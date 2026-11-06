@@ -31,6 +31,7 @@ import {
 } from '../lib/fileLinks'
 import { CodeBlock } from './CodeBlock'
 import { Markdown } from './Markdown'
+import { FileBrowser } from './FileBrowser'
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -54,6 +55,10 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
   const preview = useUiStore((s) => s.filePreview)
   const widthPref = useUiStore((s) => s.filePreviewWidth)
   const setWidth = useUiStore((s) => s.setFilePreviewWidth)
+  const browserVisible = useUiStore((s) => s.fileBrowserVisible)
+  const setBrowserVisible = useUiStore((s) => s.setFileBrowserVisible)
+  const browserWidthPref = useUiStore((s) => s.fileBrowserWidth)
+  const setBrowserWidth = useUiStore((s) => s.setFileBrowserWidth)
   const toast = useUiStore((s) => s.toast)
   const hostId = useAppStore((s) => s.active?.hostId ?? s.activeHostId)
   const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
@@ -68,6 +73,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
   const [imageUrl, setImageUrl] = useState('')
   const [revealing, setRevealing] = useState(false)
   const [dragWidth, setDragWidth] = useState<number | null>(null)
+  const [dragTreeWidth, setDragTreeWidth] = useState<number | null>(null)
   const copyTimer = useRef<number | null>(null)
 
   const path = preview?.path ?? ''
@@ -107,7 +113,12 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
   }, [host, image, absPath, cwd, retryNonce])
 
   useEffect(() => {
-    if (!host || !path) return
+    if (!host || !path) {
+      setData(null)
+      setError(null)
+      setLoading(false)
+      return
+    }
     let cancelled = false
     setLoading(true)
     setError(null)
@@ -164,6 +175,27 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
     const up = (ev: PointerEvent) => {
       setWidth(startWidth - (ev.clientX - startX))
       setDragWidth(null)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
+  const startTreeResize = (e: React.PointerEvent) => {
+    if (e.button !== 0 || isMobile) return
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = browserWidthPref
+    setDragTreeWidth(startWidth)
+    const move = (ev: PointerEvent) => setDragTreeWidth(startWidth + (ev.clientX - startX))
+    const up = (ev: PointerEvent) => {
+      setBrowserWidth(startWidth + (ev.clientX - startX))
+      setDragTreeWidth(null)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       document.body.style.cursor = ''
@@ -233,6 +265,18 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
           </span>
         )}
         <span className="flex-1" />
+        {cwd && !isMobile && (
+          <SegmentedControl
+            aria-label="文件浏览器"
+            size="sm"
+            value={browserVisible ? 'tree' : 'preview'}
+            onChange={(value) => setBrowserVisible(value === 'tree')}
+            options={[
+              { value: 'preview', label: '仅预览' },
+              { value: 'tree', label: '树+预览' },
+            ]}
+          />
+        )}
         {markdown && data && !data.isBinary && (
           <SegmentedControl
             aria-label="文件视图"
@@ -269,7 +313,38 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
         </IconButton>
       </div>
 
-      {loading ? (
+      <div className="flex min-h-0 flex-1">
+        {browserVisible && !isMobile && cwd && host && (
+          <>
+            <div
+              className="min-h-0 shrink-0 border-r border-border"
+              style={{ width: dragTreeWidth ?? browserWidthPref }}
+            >
+              <FileBrowser
+                host={host}
+                cwd={cwd}
+                selectedPath={normalizeFileRefPath(absPath)}
+                onPick={(picked) => useUiStore.getState().openFilePreview({ path: picked, cwd })}
+              />
+            </div>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整文件树宽度"
+              onPointerDown={startTreeResize}
+              className="w-1 shrink-0 cursor-col-resize touch-none transition-colors hover:bg-[var(--t-border-strong)]/30"
+            />
+          </>
+        )}
+        <div className="flex min-h-0 flex-1 flex-col">
+          {!path && (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+              <FileText size={26} className="text-muted/50" />
+              <p className="text-[13px] font-medium text-text-soft">从左侧文件树选择文件</p>
+              <p className="text-[12px] text-muted">点击文件即可在右侧预览</p>
+            </div>
+          )}
+          {loading ? (
         <div className="flex flex-1 items-center justify-center text-muted">
           <Loader2 size={16} className="animate-spin" />
         </div>
@@ -329,6 +404,8 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
           )}
         </div>
       ) : null}
+        </div>
+      </div>
     </aside>
   )
 }

@@ -37,6 +37,9 @@ interface UiState {
   changesWidth: number
   filePreview: FilePreviewTarget | null
   filePreviewWidth: number
+  /** 预览面板左侧的文件浏览器是否展开。 */
+  fileBrowserVisible: boolean
+  fileBrowserWidth: number
   mobileSidebar: boolean
   mobilePanel: boolean
   settingsOpen: boolean
@@ -59,15 +62,17 @@ interface UiState {
   setShowArchived: (show: boolean) => void
   setShowSubagents: (show: boolean) => void
   setShowExternalSessions: (show: boolean) => void
+  setExternalSourceVisible: (source: string, visible: boolean) => void
   setPanelOpen: (open: boolean) => void
   togglePanel: () => void
   setChangesOpen: (open: boolean) => void
-  setExternalSourceVisible: (source: string, visible: boolean) => void
   toggleChanges: () => void
   setChangesWidth: (width: number) => void
   openFilePreview: (target: FilePreviewTarget) => void
   closeFilePreview: () => void
   setFilePreviewWidth: (width: number) => void
+  setFileBrowserVisible: (visible: boolean) => void
+  setFileBrowserWidth: (width: number) => void
   setMobileSidebar: (open: boolean) => void
   setMobilePanel: (open: boolean) => void
   openSettings: (tab?: SettingsTab) => void
@@ -94,12 +99,14 @@ export const useUiStore = create<UiState>((set, get) => ({
   showArchived: false,
   showSubagents: prefs.showSubagents ?? false,
   showExternalSessions: prefs.showExternalSessions ?? true,
+  hiddenExternalSources: prefs.hiddenExternalSources ?? [],
   panelOpen: prefs.panelOpen ?? true,
   changesOpen: false,
   changesWidth: Math.min(760, Math.max(380, prefs.changesWidth ?? 520)),
   filePreview: null,
   filePreviewWidth: Math.min(900, Math.max(380, prefs.filePreviewWidth ?? 560)),
-  hiddenExternalSources: prefs.hiddenExternalSources ?? [],
+  fileBrowserVisible: prefs.fileBrowserVisible ?? false,
+  fileBrowserWidth: Math.min(360, Math.max(160, prefs.fileBrowserWidth ?? 220)),
   mobileSidebar: false,
   mobilePanel: false,
   settingsOpen: false,
@@ -141,13 +148,6 @@ export const useUiStore = create<UiState>((set, get) => ({
     saveUiPrefs({ showExternalSessions: show })
     set({ showExternalSessions: show })
   },
-  setPanelOpen: (open) => {
-    saveUiPrefs({ panelOpen: open })
-    set({ panelOpen: open })
-  },
-  togglePanel: () => get().setPanelOpen(!get().panelOpen),
-  setChangesOpen: (open) =>
-    set((s) => ({ changesOpen: open, ...(open ? { panelOpen: false } : {}) })),
   setExternalSourceVisible: (source, visible) => {
     const next = new Set(get().hiddenExternalSources)
     if (visible) next.delete(source)
@@ -156,6 +156,13 @@ export const useUiStore = create<UiState>((set, get) => ({
     saveUiPrefs({ hiddenExternalSources })
     set({ hiddenExternalSources })
   },
+  setPanelOpen: (open) => {
+    saveUiPrefs({ panelOpen: open })
+    set({ panelOpen: open })
+  },
+  togglePanel: () => get().setPanelOpen(!get().panelOpen),
+  setChangesOpen: (open) =>
+    set((s) => ({ changesOpen: open, ...(open ? { panelOpen: false } : {}) })),
   toggleChanges: () => get().setChangesOpen(!get().changesOpen),
   setChangesWidth: (width) => {
     const next = Math.min(760, Math.max(380, Math.round(width)))
@@ -168,6 +175,15 @@ export const useUiStore = create<UiState>((set, get) => ({
     const next = Math.min(900, Math.max(380, Math.round(width)))
     saveUiPrefs({ filePreviewWidth: next })
     set({ filePreviewWidth: next })
+  },
+  setFileBrowserVisible: (visible) => {
+    saveUiPrefs({ fileBrowserVisible: visible })
+    set({ fileBrowserVisible: visible })
+  },
+  setFileBrowserWidth: (width) => {
+    const next = Math.min(360, Math.max(160, Math.round(width)))
+    saveUiPrefs({ fileBrowserWidth: next })
+    set({ fileBrowserWidth: next })
   },
   setMobileSidebar: (open) => set({ mobileSidebar: open }),
   setMobilePanel: (open) => set({ mobilePanel: open }),

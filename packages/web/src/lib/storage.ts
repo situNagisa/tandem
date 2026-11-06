@@ -94,6 +94,9 @@ export interface UiPrefs {
   showExternalSessions?: boolean
   /** 侧栏筛选里被关掉的来源（claude-code / codex）。 */
   hiddenExternalSources?: string[]
+  /** 文件预览里的文件浏览器：是否展开、树宽。 */
+  fileBrowserVisible?: boolean
+  fileBrowserWidth?: number
 }
 
 /** 随配置迁移打包的客户端设置：Host 列表、主题、侧栏偏好等 localStorage 内容。 */

@@ -63,6 +63,8 @@ interface AppState {
   checkConnections: () => void
   goOffline: () => void
   bumpChanges: () => void
+  /** 打开文件浏览器（预览面板左侧树）；path 给定时同时预览该文件。 */
+  openFileBrowser: (path?: string) => void
   addHost: (input: {
     name: string
     url: string
@@ -1013,6 +1015,16 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     bumpChanges: () => set((state) => ({ changesNonce: state.changesNonce + 1 })),
+    openFileBrowser: (path) => {
+      const cwd = get().active?.summary?.cwd
+      if (!cwd) {
+        useUiStore.getState().toast('当前会话没有工作目录', 'error')
+        return
+      }
+      const ui = useUiStore.getState()
+      ui.setFileBrowserVisible(true)
+      ui.openFilePreview({ path: path ?? '', cwd })
+    },
 
     initialize: () => {
       if (get().initialized) return
