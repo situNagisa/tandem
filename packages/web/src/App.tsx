@@ -16,6 +16,7 @@ import { SettingsDialog } from './components/settings/SettingsDialog'
 import { SearchDialog } from './components/SearchDialog'
 import { Toasts } from './components/ui/Toasts'
 import { FeedbackMode } from './components/feedback/FeedbackMode'
+import { OverlayScrollbar } from './components/ui/OverlayScrollbar'
 
 export default function App() {
   useViewportHeight()
@@ -344,6 +345,7 @@ export default function App() {
       <SearchDialog />
       <Toasts />
       <FeedbackMode />
+      <OverlayScrollbar />
     </div>
   )
 }

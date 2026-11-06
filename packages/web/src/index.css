@@ -1000,3 +1000,40 @@ html.feedback-mode [data-feedback-hover] .settings-actions {
 html.feedback-mode [data-feedback-hover].settings-item {
   border-color: var(--t-border-strong);
 }
+
+/* ---------- overlay 滚动条：隐藏原生条，由 OverlayScrollbar 自绘 ---------- */
+#root,
+#root * {
+  scrollbar-width: none;
+  scrollbar-gutter: auto;
+}
+#root *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.overlay-scrollbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 70;
+  width: 6px;
+  height: 40px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--t-text) 32%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(-100px, -100px, 0);
+  transition:
+    opacity 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    background-color 120ms ease;
+  will-change: transform, height, opacity;
+}
+.overlay-scrollbar[data-visible="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+.overlay-scrollbar:hover,
+.overlay-scrollbar[data-dragging="true"] {
+  background: color-mix(in srgb, var(--t-text) 48%, transparent);
+}
