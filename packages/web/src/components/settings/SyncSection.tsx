@@ -303,7 +303,7 @@ export function SyncSection() {
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             onClick={() => void exportConfig()}
-            disabled={exporting}
+            disabled={exporting || !exportPass.trim()}
             className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60"
           >
             {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}

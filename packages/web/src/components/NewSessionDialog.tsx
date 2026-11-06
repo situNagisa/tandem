@@ -398,7 +398,9 @@ export function NewSessionView() {
     if (gitRepo === 'no') setWorktree(false)
   }, [gitRepo])
 
+  const sendingRef = useRef(false)
   const submit = async (content: ContentBlock[]): Promise<boolean> => {
+    if (sendingRef.current) return false
     if (!host) return false
     if (!hostReady) {
       setError('Host 未连接，暂时无法发送')
@@ -413,6 +415,7 @@ export function NewSessionView() {
       return false
     }
     if (!content.length) return false
+    sendingRef.current = true
     setSending(true)
     setError(null)
     try {
@@ -434,6 +437,7 @@ export function NewSessionView() {
       return true
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建会话失败')
+      sendingRef.current = false
       setSending(false)
       return false
     }

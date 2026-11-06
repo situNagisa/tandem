@@ -30,8 +30,29 @@ export function Modal({
   align = 'center',
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
   const [mounted, setMounted] = useState(open)
   const [closing, setClosing] = useState(false)
+
+  // 打开前记住触发元素，关闭/卸载后把焦点还回去，避免焦点掉到 body。
+  const focusReturnActiveRef = useRef(false)
+  useEffect(() => {
+    if (!open) return
+    focusReturnActiveRef.current = true
+    if (!returnFocusRef.current) {
+      const active = document.activeElement
+      returnFocusRef.current = active instanceof HTMLElement ? active : null
+    }
+    return () => {
+      focusReturnActiveRef.current = false
+      const target = returnFocusRef.current
+      returnFocusRef.current = null
+      if (!target?.isConnected) return
+      window.setTimeout(() => {
+        if (!focusReturnActiveRef.current && target.isConnected) target.focus()
+      }, 0)
+    }
+  }, [open])
 
   useEffect(() => {
     if (open) {
@@ -57,6 +78,35 @@ export function Modal({
       if (e.key === 'Escape' && !e.defaultPrevented) {
         e.preventDefault()
         onClose()
+        return
+      }
+      if (e.key !== 'Tab') return
+      const panel = panelRef.current
+      if (!panel) return
+      const list = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.getClientRects().length > 0)
+      if (list.length === 0) {
+        e.preventDefault()
+        panel.focus()
+        return
+      }
+      const active = document.activeElement as HTMLElement | null
+      const first = list[0]
+      const last = list[list.length - 1]
+      if (!active || !panel.contains(active)) {
+        e.preventDefault()
+        first.focus()
+        return
+      }
+      if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
+      } else if (e.shiftKey && active === first) {
+        e.preventDefault()
+        last.focus()
       }
     }
     document.addEventListener('keydown', onKey)
@@ -70,10 +120,12 @@ export function Modal({
   useEffect(() => {
     if (!open) return
     const t = window.setTimeout(() => {
-      const el = panelRef.current?.querySelector<HTMLElement>(
+      const panel = panelRef.current
+      if (!panel || panel.contains(document.activeElement)) return
+      const el = panel.querySelector<HTMLElement>(
         'input:not([type="hidden"]), textarea, select, button[data-autofocus]',
       )
-      el?.focus()
+      ;(el ?? panel).focus()
     }, 30)
     return () => window.clearTimeout(t)
   }, [open])
@@ -95,10 +147,11 @@ export function Modal({
       <div
         ref={panelRef}
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-label={typeof title === 'string' ? title : undefined}
         className={cn(
-          'my-auto flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-2xl border border-border bg-surface text-text shadow-[var(--t-shadow-lg)]',
+          'my-auto flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-2xl border border-border bg-surface text-text shadow-[var(--t-shadow-lg)] outline-none',
           closing ? 'anim-scale-out' : 'anim-dialog',
           align === 'top' && 'my-0',
           className ?? 'max-w-lg',

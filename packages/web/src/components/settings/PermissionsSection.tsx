@@ -153,7 +153,7 @@ export function PermissionsSection() {
                 onChange={(e) => update(index, { pattern: e.target.value || undefined })}
                 placeholder={placeholderFor(rule.tool)}
                 aria-label="匹配模式"
-                className={cn(inputCls, 'min-w-0 flex-1 font-mono text-[11.5px]')}
+                className={cn(inputCls, 'min-w-0 flex-1 font-mono text-[11.5px] max-sm:order-last max-sm:basis-full')}
               />
               <div className="flex shrink-0 overflow-hidden rounded-md border border-border">
                 {ACTIONS.map((action) => (
