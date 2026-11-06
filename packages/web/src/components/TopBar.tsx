@@ -290,8 +290,8 @@ export function TopBar() {
           <span className="hidden font-sans text-[12px] sm:inline">改动</span>
           {fileCount > 0 && !changesOpen && (
             <>
-              <span className="text-[var(--t-text-tertiary)]">+{additions}</span>
-              <span className="text-[var(--t-text-tertiary)]">−{deletions}</span>
+              <span className="text-[var(--t-git-plus)]">+{additions}</span>
+              <span className="text-[var(--t-git-minus)]">−{deletions}</span>
             </>
           )}
         </Button>
