@@ -1,5 +1,6 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { cn } from '../../lib/cn'
+import { Tip } from './Tooltip'
 
 export type ControlSize = 'sm' | 'md' | 'lg'
 export type ButtonVariant = 'primary' | 'accent' | 'secondary' | 'ghost' | 'danger-ghost'
@@ -30,18 +31,6 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
 
 const BASE =
   'inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap text-left text-[13px] font-medium leading-none transition-[background-color,border-color,color,opacity,transform] duration-[80ms] active:scale-[.98] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/70'
-
-function Tip({ label, side }: { label: string; side: 'top' | 'bottom' }) {
-  return (
-    <span
-      role="tooltip"
-      aria-hidden
-      className={cn('ui-tip', side === 'top' ? 'ui-tip--top' : 'ui-tip--bottom')}
-    >
-      {label}
-    </span>
-  )
-}
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
@@ -75,8 +64,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         BASE,
         SIZE_CLASS[size],
         VARIANT_CLASS[variant],
-        (tooltip || tooltipSide) && 'relative',
-        tooltip && 'ui-tip-host',
         className,
       )}
       aria-label={rest['aria-label'] ?? (tooltip && !children ? tooltip : undefined)}
@@ -124,7 +111,6 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
         BASE,
         ICON_SIZE_CLASS[size],
         VARIANT_CLASS[variant],
-        'relative ui-tip-host',
         className,
       )}
       {...rest}
