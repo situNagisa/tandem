@@ -269,9 +269,10 @@ export async function createApp(
       const patch = (req.body ?? {}) as Partial<UpdateSessionInput>;
       const rec = host.updateSession(id, patch);
       if (!rec) return bad(reply, '会话不存在', 404);
+      if (typeof patch.cwd === 'string') await host.refreshEnv(id);
       return host.toSummary(rec);
     } catch (err) {
-      return bad(reply, (err as Error).message);
+      return bad(reply, (err as Error).message, statusOf(err));
     }
   });
 
@@ -306,6 +307,58 @@ export async function createApp(
     const rec = host.forkSession(id);
     if (!rec) return bad(reply, '会话不存在', 404);
     return host.toSummary(rec);
+  });
+
+  // ---------- 会话环境：分支 / worktree / 跨 Host 迁移 ----------
+  app.get('/api/sessions/:id/branches', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      return await host.sessionBranches(id);
+    } catch (err) {
+      return bad(reply, (err as Error).message, statusOf(err));
+    }
+  });
+
+  app.post('/api/sessions/:id/checkout', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { branch?: unknown; create?: unknown };
+    const branch = str(body.branch);
+    if (!branch) return bad(reply, 'branch 不能为空');
+    try {
+      const rec = await host.checkoutSessionBranch(id, branch, body.create === true);
+      return host.toSummary(rec);
+    } catch (err) {
+      return bad(reply, (err as Error).message, statusOf(err));
+    }
+  });
+
+  app.post('/api/sessions/:id/worktree', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { branch?: unknown };
+    try {
+      const rec = await host.enterSessionWorktree(id, str(body.branch) || undefined);
+      return host.toSummary(rec);
+    } catch (err) {
+      return bad(reply, (err as Error).message, statusOf(err));
+    }
+  });
+
+  app.get('/api/sessions/:id/export', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    return host.toSession(rec);
+  });
+
+  app.post('/api/sessions/import', async (req, reply) => {
+    try {
+      const body = (req.body ?? {}) as { session?: unknown; cwd?: unknown };
+      const rec = await host.importSession(body);
+      await host.refreshEnv(rec.id);
+      return reply.code(201).send(host.toSummary(rec));
+    } catch (err) {
+      return bad(reply, (err as Error).message, statusOf(err));
+    }
   });
 
   // ---------- 检查点 ----------

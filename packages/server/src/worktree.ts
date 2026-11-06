@@ -186,6 +186,50 @@ export async function removeWorktree(
   }
 }
 
+/** 列出 cwd 所在仓库的本地分支（git branch --format）。 */
+export async function listBranches(
+  cwd: string,
+): Promise<{ current?: string; branches: string[] }> {
+  const repoRoot = await gitRepoRoot(cwd);
+  if (!repoRoot) return { branches: [] };
+  const current = (await git(cwd, ['branch', '--show-current'])).trim() || undefined;
+  const out = await git(repoRoot, ['branch', '--format=%(refname:short)']);
+  const branches = out
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  return { ...(current ? { current } : {}), branches };
+}
+
+/** 切换分支；有未提交改动（含未跟踪文件）时拒绝，抛 409。 */
+export async function checkoutBranch(
+  cwd: string,
+  branch: string,
+  create: boolean,
+): Promise<void> {
+  const name = branch.trim();
+  if (!name) throw new Error('分支名不能为空');
+  try {
+    await git(cwd, ['check-ref-format', '--branch', name], 5_000);
+  } catch {
+    throw new Error(`无效的分支名: ${name}`);
+  }
+  const state = await worktreeCleanliness(cwd);
+  if (state.dirty) {
+    const err = new Error('有未提交改动，请先提交或暂存后再切换分支') as Error & {
+      statusCode?: number;
+    };
+    err.statusCode = 409;
+    throw err;
+  }
+  try {
+    await git(cwd, create ? ['checkout', '-b', name] : ['checkout', name]);
+  } catch (err) {
+    throw new Error(`切换分支失败: ${gitErrorText(err)}`);
+  }
+}
+
 export function gitErrorText(err: unknown): string {
   const e = err as { stderr?: unknown; message?: string };
   const stderr = typeof e.stderr === 'string' ? e.stderr.trim() : '';

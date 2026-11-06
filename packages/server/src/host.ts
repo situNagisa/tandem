@@ -43,8 +43,10 @@ import { SessionStore } from './store.js';
 import type { HostConfig, SessionRecord, SessionRuntime, StoredProfile, ToolDefinition, ToolResult } from './types.js';
 import { UsageStore, costOf, priceForModel } from './usage.js';
 import {
+  checkoutBranch,
   createWorktree,
   gitRepoRoot,
+  listBranches,
   mergeWorktree,
   removeWorktree,
   worktreeCleanliness,
@@ -147,6 +149,7 @@ export class Host {
       model: rec.model,
       permissionMode: rec.permissionMode,
       status: rec.status,
+      ...(rec.effort ? { effort: rec.effort } : {}),
       // 可选字段只在有值时下发，老客户端不受影响
       ...(rec.pinned ? { pinned: true } : {}),
       ...(rec.archived ? { archived: true } : {}),
@@ -235,6 +238,77 @@ export class Host {
     );
     if (result.ok) void this.refreshEnv(id);
     return result;
+  }
+
+  /** 会话中途切换工作目录、分支或进入 worktree。 */
+  async sessionBranches(id: string): Promise<{ current?: string; branches: string[] }> {
+    const rec = this.store.get(id);
+    if (!rec) throw httpError('会话不存在', 404);
+    return listBranches(rec.cwd);
+  }
+
+  async checkoutSessionBranch(id: string, branch: string, create: boolean): Promise<SessionRecord> {
+    const rec = this.store.get(id);
+    if (!rec) throw httpError('会话不存在', 404);
+    if (this.isRunning(id)) throw httpError('会话正在运行，无法切换分支', 409);
+    await checkoutBranch(rec.cwd, branch, create);
+    await this.refreshEnv(id);
+    return rec;
+  }
+
+  async enterSessionWorktree(id: string, branch?: string): Promise<SessionRecord> {
+    const rec = this.store.get(id);
+    if (!rec) throw httpError('会话不存在', 404);
+    if (this.isRunning(id)) throw httpError('会话正在运行，无法创建 worktree', 409);
+    if (rec.worktree) throw new Error('该会话已在 worktree 中');
+    const info = await createWorktree(this.home, rec.cwd, branch, randomUUID().slice(0, 8));
+    rec.cwd = info.path;
+    rec.worktree = { path: info.path, branch: info.branch, baseBranch: info.baseBranch };
+    rec.worktreeRepoRoot = info.repoRoot;
+    rec.env = {
+      repoRoot: info.repoRoot,
+      repoName: path.basename(info.repoRoot),
+      branch: info.branch,
+    };
+    this.store.markDirty(rec.id, false);
+    this.broadcastSummary(rec);
+    return rec;
+  }
+
+  /** 跨 Host 迁移：复制完整会话为新 id，可指定目标 Host 上的 cwd。 */
+  async importSession(input: { session?: unknown; cwd?: unknown }): Promise<SessionRecord> {
+    const source = input.session as Session | undefined;
+    if (!source || typeof source !== 'object' || !Array.isArray(source.messages)) {
+      throw new Error('session 无效');
+    }
+    const rawCwd =
+      typeof input.cwd === 'string' && input.cwd.trim() ? input.cwd.trim() : source.cwd;
+    if (!rawCwd) throw new Error('cwd 不能为空');
+    const profiles = this.profiles.list();
+    const profile = this.profiles.get(source.profileId) ?? profiles[0];
+    if (!profile) throw new Error('目标 Host 还没有账号，请先创建账号');
+    const groupId =
+      profile.id === source.profileId &&
+      source.groupId &&
+      profile.groups?.some((g) => g.id === source.groupId)
+        ? source.groupId
+        : undefined;
+    const rec = await this.createSession({
+      cwd: rawCwd,
+      profileId: profile.id,
+      title: source.title || '导入的会话',
+      permissionMode: source.permissionMode,
+      ...(groupId ? { groupId } : {}),
+      ...(profile.id === source.profileId && source.model ? { model: source.model } : {}),
+    });
+    rec.messages = structuredClone(source.messages);
+    rec.todos = Array.isArray(source.todos) ? structuredClone(source.todos) : [];
+    if (source.plan) rec.plan = structuredClone(source.plan);
+    if (source.usage) rec.usage = { ...source.usage };
+    if (source.effort) rec.effort = source.effort;
+    this.store.markDirty(rec.id, false);
+    this.broadcastSummary(rec);
+    return rec;
   }
 
   toSession(rec: SessionRecord): Session {
@@ -367,12 +441,39 @@ export class Host {
       permissionMode?: unknown;
       pinned?: unknown;
       archived?: unknown;
+      effort?: unknown;
+      cwd?: unknown;
     },
   ): SessionRecord | undefined {
     const rec = this.store.get(id);
     if (!rec) return undefined;
 
     if (typeof patch.title === 'string' && patch.title.trim()) rec.title = patch.title.trim();
+    if (typeof patch.cwd === 'string' && patch.cwd.trim()) {
+      if (this.isRunning(id)) throw httpError('会话正在运行，无法切换目录', 409);
+      const cwd = path.resolve(expandHome(patch.cwd.trim()));
+      let stat;
+      try {
+        stat = statSync(cwd);
+      } catch {
+        throw new Error(`工作目录不存在: ${cwd}`);
+      }
+      if (!stat.isDirectory()) throw new Error(`工作目录不是目录: ${cwd}`);
+      if (cwd !== rec.cwd) {
+        rec.cwd = cwd;
+        // 换目录后旧的 worktree 元数据不再适用，重新检测环境
+        delete rec.worktree;
+        delete rec.worktreeRepoRoot;
+        delete rec.env;
+      }
+    }
+    if (typeof patch.effort === 'string') {
+      const effort = patch.effort as SessionSummary['effort'];
+      if (!['off', 'low', 'medium', 'high', 'max'].includes(effort ?? '')) {
+        throw new Error(`无效的 effort: ${patch.effort}`);
+      }
+      rec.effort = effort;
+    }
     if (typeof patch.permissionMode === 'string') {
       if (!PERMISSION_MODES.has(patch.permissionMode as PermissionMode)) {
         throw new Error(`无效的 permissionMode: ${patch.permissionMode}`);
