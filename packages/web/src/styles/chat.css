@@ -1112,241 +1112,171 @@ mark.chat-match {
   content-visibility: visible;
 }
 
-/* ---------- 轮次导航 ---------- */
+/* ---------- 轮次导航 ----------
+ * 静止是一列刻度；靠近后同一批元素以弹簧"长"成大纲行（位置/透明度由 turnRailScene 每帧写入，
+ * 这里只负责静态外观）。面板浮在内容上方，不占布局，右缘留出原生滚动条。 */
 
 .turn-rail {
-  --tick-w: 18px;
-  --tick-row: 10px;
+  --turn-ph: 400px;
+  --turn-rest-h: 150px;
   position: absolute;
   /* 贴在对话滚动区右边缘内侧、原生滚动条左侧 */
   right: 18px;
   top: 50%;
   z-index: 6;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  transform: translateY(-50%);
+  width: 0;
+  height: 0;
   pointer-events: none;
 }
 
-.turn-rail-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  padding: 6px 0 6px 10px;
+.turn-bg {
+  position: absolute;
+  top: calc(var(--turn-ph) / -2);
+  right: -10px;
+  width: 280px;
+  height: var(--turn-ph);
+  border: 1px solid var(--t-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--t-surface) 82%, transparent);
+  box-shadow: var(--t-shadow-md);
+  opacity: 0;
+  transform-origin: right center;
+  will-change: transform, opacity;
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  backdrop-filter: blur(14px) saturate(1.15);
+}
+
+/* 行在这里被裁切；顶/底各 14px 渐隐，行滚出面板时不会硬切 */
+.turn-clip {
+  position: absolute;
+  top: calc(var(--turn-ph) / -2);
+  right: -10px;
+  width: 280px;
+  height: var(--turn-ph);
+  overflow: hidden;
+  border-radius: 14px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+}
+
+.turn-item {
+  position: absolute;
+  top: calc(50% - 14px);
+  right: 0;
+  left: 0;
+  height: 28px;
+  color: var(--t-text);
+  will-change: transform, opacity;
+}
+
+.turn-item-n {
+  position: absolute;
+  top: 0;
+  left: 14px;
+  width: 30px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 28px;
+  opacity: 0;
+}
+
+.turn-item-t {
+  position: absolute;
+  top: 0;
+  right: 38px;
+  left: 44px;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 28px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0;
+}
+
+/* 刻度线：右缘位置与静止态一致，展开后留在每行末尾 */
+.turn-item-k {
+  position: absolute;
+  top: 13px;
+  right: 10px;
+  width: 22px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--t-text);
+  opacity: 0.4;
+  transform-origin: right center;
+}
+
+.turn-ind {
+  position: absolute;
+  top: calc(50% - 14px);
+  right: 6px;
+  left: 6px;
+  height: 28px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--t-text) 8%, transparent);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.turn-rail[data-pressed="true"] .turn-ind {
+  background: color-mix(in srgb, var(--t-text) 14%, transparent);
+}
+
+.turn-cur {
+  position: absolute;
+  top: calc(50% - 8px);
+  left: 5px;
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--t-text);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+/* 命中区：静止时只覆盖刻度列，展开后覆盖整个面板 */
+.turn-hit {
+  position: absolute;
+  top: calc(var(--turn-rest-h) / -2 - 12px);
+  right: -12px;
+  width: 56px;
+  height: calc(var(--turn-rest-h) + 24px);
+  border-radius: 10px;
+  outline: none;
   pointer-events: auto;
   touch-action: none;
   cursor: default;
-  transition: padding 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
-
-/* 靠近/悬停整条放大：刻度 18→32px，行距 8→12px（含 2px 线高即 10→14px）。 */
-.turn-rail:hover,
-.turn-rail:focus-within,
-.turn-rail[data-dragging="true"] {
-  --tick-w: 32px;
-  --tick-row: 14px;
-}
-
-.turn-edge {
-  height: var(--tick-row);
-  min-width: var(--tick-w);
-  padding: 0 1px;
-  border: 0;
-  background: transparent;
-  color: var(--t-text-tertiary);
-  font-size: 9.5px;
-  font-variant-numeric: tabular-nums;
-  line-height: var(--tick-row);
-  text-align: right;
+.turn-rail[data-open="true"] .turn-hit {
+  top: calc(var(--turn-ph) / -2);
+  right: -10px;
+  width: 280px;
+  height: var(--turn-ph);
   cursor: pointer;
-  transition:
-    color 120ms ease,
-    height 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
-    min-width 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
-.turn-edge[data-active="true"],
-.turn-edge:hover {
-  color: var(--t-text);
-}
-.turn-edge:focus-visible {
-  outline: 1px solid var(--t-border-strong);
-  outline-offset: 1px;
-  border-radius: 3px;
+.turn-rail[data-pressed="true"] .turn-hit {
+  cursor: ns-resize;
 }
 
-.turn-fade {
-  display: block;
-  width: var(--tick-w);
-  height: 2px;
-  margin: 3px 0;
-  border-radius: 2px;
-  background: var(--t-text-tertiary);
-  transition:
-    opacity 120ms ease,
-    width 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
-}
-
-.turn-tick {
-  position: relative;
-  display: flex;
-  width: var(--tick-w);
-  height: var(--tick-row);
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  transition:
-    width 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
-    height 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
-}
-/* 视觉刻度 18×2，命中区扩展到 26px 宽 × 16px 高，不与相邻刻度重叠 */
-.turn-tick::before {
-  content: '';
+.turn-count {
   position: absolute;
-  inset: 0 -4px;
-}
-
-.turn-tick-num {
-  position: absolute;
-  right: calc(var(--tick-w) + 6px);
-  top: 50%;
-  color: var(--t-text);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
-  pointer-events: none;
-  transform: translateY(-50%);
-}
-
-.turn-tick-line {
-  display: block;
-  width: 100%;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--t-text-tertiary);
-  opacity: 0.55;
-  transition:
-    opacity 120ms ease,
-    background-color 120ms ease,
-    transform 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
-}
-
-.turn-tick:hover .turn-tick-line,
-.turn-tick:focus-visible .turn-tick-line {
-  opacity: 1;
-  background: var(--t-text-secondary);
-}
-
-.turn-tick[data-active="true"] .turn-tick-line {
-  width: 100%;
-  height: 2px;
-  opacity: 1;
-  background: var(--t-text);
-}
-
-.turn-tick[data-active="true"] .turn-tip {
-  right: calc(var(--tick-w) + 14px);
-}
-
-.turn-tick:focus-visible {
-  outline: 1px solid var(--t-border-strong);
-  outline-offset: 1px;
-  border-radius: 3px;
-}
-
-.turn-tip {
-  position: absolute;
-  right: calc(var(--tick-w) + 10px);
-  top: 50%;
-  z-index: 10;
-  max-width: 230px;
-  overflow: hidden;
-  padding: 4px 8px;
+  top: calc(var(--turn-ph) / 2 + 6px);
+  right: -10px;
+  padding: 2px 9px;
   border: 1px solid var(--t-border);
-  border-radius: 6px;
-  background: var(--t-bg-elevated);
-  box-shadow: var(--t-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04));
-  color: var(--t-text-soft);
-  font-size: 11.5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--t-surface) 82%, transparent);
+  color: var(--t-text-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
   line-height: 1.4;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-50%) scale(0.98);
-  transform-origin: right center;
-  transition:
-    opacity 120ms ease,
-    transform 120ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
-}
-
-.turn-tick:hover .turn-tip,
-.turn-tick:focus-visible .turn-tip {
-  opacity: 1;
-  transform: translateY(-50%) scale(1);
-}
-
-.turn-drag-preview {
-  position: absolute;
-  right: calc(var(--tick-w) + 14px);
-  z-index: 20;
-  width: 240px;
-  padding: 8px 10px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
-  box-shadow: var(--t-shadow-md);
-  color: var(--t-text);
-  text-align: left;
-  pointer-events: none;
-  transform: translateY(-50%);
-}
-
-.turn-drag-preview-head {
-  color: var(--t-muted);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.3;
-}
-
-.turn-drag-preview-text {
-  display: -webkit-box;
-  margin-top: 3px;
-  overflow: hidden;
-  color: var(--t-text);
-  font-size: 11.5px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.turn-rail-count {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  padding: 2px 6px;
-  border: 1px solid var(--t-border);
-  border-radius: 5px;
-  background: var(--t-bg-elevated);
-  color: var(--t-text-tertiary);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.3;
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
   transition: opacity 120ms ease;
 }
-
-.turn-rail:hover .turn-rail-count,
-.turn-rail:focus-within .turn-rail-count {
+.turn-rail[data-open="true"] .turn-count {
   opacity: 1;
+  transition-delay: 100ms;
 }
 
 .msg-row[data-turn-id] {
@@ -1360,12 +1290,132 @@ mark.chat-match {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .turn-tick-line,
-  .turn-fade,
-  .turn-tip,
-  .turn-rail-count,
-  .turn-edge {
+  .turn-count {
     transition: none;
+  }
+}
+
+/* 手机端：顶栏"第 N/M 轮"打开的底部抽屉大纲 */
+.turn-sheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.turn-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  animation: tandem-fade-in 160ms var(--t-ease-out) both;
+}
+.turn-sheet {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: min(74vh, 600px);
+  padding-bottom: env(safe-area-inset-bottom);
+  border-radius: 18px 18px 0 0;
+  background: var(--t-surface);
+  box-shadow: var(--t-shadow-lg);
+  animation: turn-sheet-in 220ms var(--t-ease-out) both;
+}
+.turn-sheet-root[data-leaving="true"] .turn-sheet {
+  animation: turn-sheet-out 160ms var(--t-ease-in) both;
+}
+.turn-sheet-root[data-leaving="true"] .turn-sheet-backdrop {
+  animation: tandem-fade-out 160ms var(--t-ease-out) both;
+}
+@keyframes turn-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes turn-sheet-out {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+.turn-sheet-head {
+  display: flex;
+  height: 48px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 0 16px;
+  border-bottom: 1px solid var(--t-border);
+  color: var(--t-text-soft);
+  font-size: 13px;
+}
+.turn-sheet-close {
+  display: flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--t-text-soft);
+}
+.turn-sheet-list {
+  height: min(60vh, 480px);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.turn-sheet-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--t-text);
+  font-size: 14px;
+  text-align: left;
+}
+.turn-sheet-row:active {
+  background: var(--t-bg-hover);
+}
+.turn-sheet-row[data-active="true"] {
+  background: var(--t-bg-active);
+  box-shadow: inset 3px 0 0 var(--t-text);
+}
+.turn-sheet-num {
+  width: 30px;
+  flex-shrink: 0;
+  color: var(--t-text-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.turn-sheet-text {
+  display: -webkit-box;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .turn-sheet,
+  .turn-sheet-backdrop,
+  .turn-sheet-root[data-leaving="true"] .turn-sheet,
+  .turn-sheet-root[data-leaving="true"] .turn-sheet-backdrop {
+    animation-duration: 1ms;
   }
 }
 

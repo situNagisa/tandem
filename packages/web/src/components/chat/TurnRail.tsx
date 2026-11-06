@@ -2,28 +2,30 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
+import { useTurnNavStore } from '../../store/useTurnNavStore'
+import { useIsMobile } from '../../lib/hooks'
 import type { UiMessage } from '../../lib/types'
+import { createScrollFollower, type ScrollFollower } from './turnRailMotion'
+import { POOL, RailScene } from './turnRailScene'
+import { TurnOutlineSheet } from './TurnOutlineSheet'
 
 export interface TurnMark {
   id: string
   /** 1-based 轮次序号 */
   turn: number
+  /** 用户消息首行 */
   preview: string
 }
 
 const EMPTY_TURNS: TurnMark[] = []
-const ROW = 14
-const EDGE_H = 14
-const FADE_COUNT = 3
-const MIN_WINDOW = 5
 
 let cachedMessages: UiMessage[] | null = null
 let cachedTurns: TurnMark[] = EMPTY_TURNS
@@ -35,21 +37,24 @@ function selectTurns(state: { active: { messages: UiMessage[] } | null }): TurnM
   const next: TurnMark[] = []
   messages.forEach((message) => {
     if (message.role !== 'user') return
-    const text = message.content
-      .filter((b) => b.type !== 'tool_result')
-      .map((b) => {
-        if (b.type === 'text') return b.text
-        if (b.type === 'image') return '图片'
-        return ''
-      })
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim()
+    let hasImage = false
+    const texts: string[] = []
+    for (const b of message.content) {
+      if (b.type === 'text') texts.push(b.text)
+      else if (b.type === 'image') hasImage = true
+    }
+    const firstLine =
+      texts
+        .join('\n')
+        .split('\n')
+        .map((line) => line.replace(/\s+/g, ' ').trim())
+        .find(Boolean) ?? ''
+    const text = firstLine || (hasImage ? '图片' : '')
     if (!text) return
     next.push({
       id: message.id,
       turn: next.length + 1,
-      preview: text.length > 90 ? `${text.slice(0, 90)}…` : text,
+      preview: text.length > 120 ? `${text.slice(0, 120)}…` : text,
     })
   })
   const same =
@@ -63,7 +68,7 @@ function selectTurns(state: { active: { messages: UiMessage[] } | null }): TurnM
   return next
 }
 
-function useTurnMarks(): TurnMark[] {
+export function useTurnMarks(): TurnMark[] {
   return useAppStore(selectTurns)
 }
 
@@ -71,6 +76,12 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
+const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' '])
+
+/**
+ * 轮次导航：静止时是一列刻度；靠近后刻度"长"成半透明的轮次大纲面板（同一批元素做 FLIP 形变）。
+ * 悬停高亮、按下拖动 = 对话区跟手预览，松手确定；滚轮逐轮；Alt+↑/↓；手机端走底部抽屉。
+ */
 export function TurnRail({
   scrollRef,
   sessionId,
@@ -82,45 +93,141 @@ export function TurnRail({
 }) {
   const turns = useTurnMarks()
   const total = turns.length
+  const isMobile = useIsMobile()
+  const railOn = total >= 2 && !isMobile
   const [activeTurn, setActiveTurn] = useState(1)
-  const [available, setAvailable] = useState(480)
-  const navRef = useRef<HTMLElement>(null)
-  const activeRef = useRef(activeTurn)
-  const wheelLock = useRef(0)
-  const dragging = useRef(false)
-  const lastDragTurn = useRef(0)
-  const frozenStart = useRef(0)
-  const [draggingView, setDraggingView] = useState(false)
-  const [dragTurn, setDragTurn] = useState<number | null>(null)
-  const [dragTop, setDragTop] = useState(0)
-  const dragTurnRef = useRef<number | null>(null)
-  const suppressUntil = useRef(0)
-  const correctTimer = useRef<number | null>(null)
+  const [open, setOpen] = useState(false)
+  const [pressed, setPressed] = useState(false)
 
-  useEffect(
-    () => () => {
-      if (correctTimer.current) window.clearTimeout(correctTimer.current)
-    },
-    [],
-  )
+  const navRef = useRef<HTMLElement>(null)
+  const bgRef = useRef<HTMLDivElement>(null)
+  const indRef = useRef<HTMLDivElement>(null)
+  const curRef = useRef<HTMLDivElement>(null)
+  const hitRef = useRef<HTMLDivElement>(null)
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([])
+  const sceneRef = useRef<RailScene | null>(null)
+  const followerRef = useRef<ScrollFollower | null>(null)
+
+  const turnsRef = useRef(turns)
+  turnsRef.current = turns
+  const totalRef = useRef(total)
+  totalRef.current = total
+  const activeRef = useRef(activeTurn)
+  const beforeJumpRef = useRef(onBeforeJump)
+  beforeJumpRef.current = onBeforeJump
+  // 跳转后以目标轮为准，直到用户自己再滚动（贴底/顶部取不到真实落点时不要被观察器改写）
+  const sticky = useRef(false)
+  const dragRef = useRef(false)
+  const snapNext = useRef(true)
+  const openTimer = useRef(0)
+  const closeTimer = useRef(0)
+  const wheelAcc = useRef({ sum: 0, at: 0 })
 
   useEffect(() => {
-    activeRef.current = activeTurn
-  }, [activeTurn])
+    followerRef.current = createScrollFollower(
+      () => scrollRef.current,
+      () => {
+        sticky.current = false
+      },
+    )
+    return () => {
+      followerRef.current?.destroy()
+      followerRef.current = null
+      window.clearTimeout(openTimer.current)
+      window.clearTimeout(closeTimer.current)
+    }
+  }, [scrollRef])
+
+  useEffect(() => {
+    snapNext.current = true
+    sticky.current = false
+    followerRef.current?.cancel()
+  }, [sessionId])
 
   useEffect(() => {
     setActiveTurn(total || 1)
   }, [sessionId, total])
 
+  const go = useCallback(
+    (turn: number, opts?: { recenter?: boolean; instant?: boolean }) => {
+      const count = totalRef.current
+      if (count < 1) return
+      const target = clamp(Math.round(turn), 1, count)
+      activeRef.current = target
+      setActiveTurn(target)
+      sticky.current = true
+      beforeJumpRef.current?.()
+      followerRef.current?.to(() => {
+        const root = scrollRef.current
+        const mark = turnsRef.current[target - 1]
+        if (!root || !mark) return null
+        if (target === 1) return 0
+        if (target === totalRef.current) return Math.max(0, root.scrollHeight - root.clientHeight)
+        const el = root.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(mark.id)}"]`)
+        if (!el) return null
+        return Math.max(
+          0,
+          el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - 16,
+        )
+      }, opts?.instant)
+      const scene = sceneRef.current
+      scene?.setActive(target)
+      if (opts?.recenter !== false) scene?.setCenter(target)
+    },
+    [scrollRef],
+  )
+  const goRef = useRef(go)
+  goRef.current = go
+
+  // 场景生命周期：DOM 池 + 弹簧；可用高度变化时重算窗口。
   useLayoutEffect(() => {
-    const parent = navRef.current?.parentElement
-    if (!parent) return
-    const measure = () => setAvailable(Math.max(80, parent.clientHeight - 48))
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(parent)
-    return () => ro.disconnect()
-  }, [total])
+    const root = navRef.current
+    const bg = bgRef.current
+    const ind = indRef.current
+    const cur = curRef.current
+    if (!railOn || !root || !bg || !ind || !cur) return
+    const items = itemRefs.current.slice(0, POOL).filter((el): el is HTMLDivElement => !!el)
+    const scene = new RailScene({ root, bg, ind, cur, items })
+    sceneRef.current = scene
+    scene.onDragRow = (turn) => goRef.current(turn, { recenter: false })
+    scene.setData(turnsRef.current)
+    scene.setActive(activeRef.current, true)
+    scene.setCenter(activeRef.current, true)
+    const parent = root.parentElement
+    let ro: ResizeObserver | null = null
+    if (parent) {
+      scene.setAvail(parent.clientHeight)
+      ro = new ResizeObserver(() => scene.setAvail(parent.clientHeight))
+      ro.observe(parent)
+    }
+    return () => {
+      ro?.disconnect()
+      scene.destroy()
+      sceneRef.current = null
+    }
+  }, [railOn])
+
+  useLayoutEffect(() => {
+    sceneRef.current?.setData(turns)
+  }, [turns])
+
+  useEffect(() => {
+    activeRef.current = activeTurn
+    const scene = sceneRef.current
+    if (scene) {
+      scene.setActive(activeTurn, snapNext.current)
+      if (!dragRef.current) scene.setCenter(activeTurn, snapNext.current)
+    }
+    snapNext.current = false
+    useTurnNavStore.getState().setProgress(activeTurn, total)
+  }, [activeTurn, total, railOn, sessionId])
+
+  useEffect(
+    () => () => {
+      useTurnNavStore.setState({ total: 0, active: 1, sheetOpen: false })
+    },
+    [],
+  )
 
   // 当前轮：取视口顶部最早出现的那一轮；贴底时取最后一轮。
   useEffect(() => {
@@ -136,10 +243,8 @@ export function TurnRail({
                 const index = Number((entry.target as HTMLElement).dataset.turnIndex)
                 if (Number.isFinite(index)) visible.set(index, entry.isIntersecting)
               }
-              const shown = [...visible.entries()]
-                .filter(([, on]) => on)
-                .map(([index]) => index)
-              if (shown.length && performance.now() >= suppressUntil.current) {
+              const shown = [...visible.entries()].filter(([, on]) => on).map(([index]) => index)
+              if (shown.length && !sticky.current && !dragRef.current) {
                 setActiveTurn(Math.min(...shown) + 1)
               }
             },
@@ -149,7 +254,7 @@ export function TurnRail({
     if (io) for (const node of nodes) io.observe(node)
 
     const onScroll = () => {
-      if (performance.now() < suppressUntil.current) return
+      if (sticky.current || dragRef.current) return
       const distance = root.scrollHeight - root.scrollTop - root.clientHeight
       if (distance < 40) setActiveTurn(total)
       else if (root.scrollTop < 40) setActiveTurn(1)
@@ -162,263 +267,262 @@ export function TurnRail({
     }
   }, [scrollRef, turns, sessionId, total])
 
-  const jump = useCallback(
-    (turn: number, smooth = true) => {
-      const root = scrollRef.current
-      if (!root || turn < 1 || turn > total) return
-      setActiveTurn(turn)
-      onBeforeJump?.()
-      const mark = turns[turn - 1]
-      const targetTop = () => {
-        if (turn === 1) return 0
-        if (turn === total) return Math.max(0, root.scrollHeight - root.clientHeight)
-        const el = root.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(mark.id)}"]`)
-        if (!el) return null
-        return Math.max(
-          0,
-          el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - 16,
-        )
-      }
-      const top = targetTop()
-      if (top == null) return
-      // 长距离跳转用瞬移：content-visibility 的估算行高会让平滑动画在中途反复改落点。
-      const animate = smooth && Math.abs(root.scrollTop - top) < 2400
-      suppressUntil.current = performance.now() + (animate ? 900 : 300)
-      root.scrollTo({ top, behavior: animate ? 'smooth' : 'auto' })
-      // 行高在渲染后才会变成真实值，跳转后重新校准一次落点。
-      if (correctTimer.current) window.clearTimeout(correctTimer.current)
-      correctTimer.current = window.setTimeout(
-        () => {
-          suppressUntil.current = 0
-          const corrected = targetTop()
-          if (corrected != null && Math.abs(root.scrollTop - corrected) > 4) {
-            root.scrollTop = corrected
-          }
-        },
-        animate ? 620 : 120,
-      )
-    },
-    [scrollRef, turns, total, onBeforeJump],
-  )
-
-  // 在条上滚轮 = 逐轮移动。
-  useEffect(() => {
-    const nav = navRef.current
-    if (!nav || total < 2) return
-    const onWheel = (event: WheelEvent) => {
-      if (Math.abs(event.deltaY) < 3) return
-      event.preventDefault()
-      const now = performance.now()
-      if (now - wheelLock.current < 70) return
-      wheelLock.current = now
-      const next = clamp(activeRef.current + (event.deltaY > 0 ? 1 : -1), 1, total)
-      if (next !== activeRef.current) jump(next)
-    }
-    nav.addEventListener('wheel', onWheel, { passive: false })
-    return () => nav.removeEventListener('wheel', onWheel)
-  }, [jump, total])
-
-  // 拖动 = 连续选择（逐轮吸附）。
-  const turnAtPoint = (clientY: number): number | null => {
-    const nodes = navRef.current?.querySelectorAll<HTMLElement>('[data-turn-nav]')
-    if (!nodes) return null
-    let best: number | null = null
-    let bestDistance = Number.POSITIVE_INFINITY
-    nodes.forEach((node) => {
-      const rect = node.getBoundingClientRect()
-      const distance = Math.abs(clientY - (rect.top + rect.height / 2))
-      if (distance < bestDistance) {
-        bestDistance = distance
-        best = Number(node.dataset.turnNav)
-      }
-    })
-    return best
-  }
-
-  const showDragPreview = (turn: number, clientY: number) => {
-    dragTurnRef.current = turn
-    setDragTurn(turn)
-    const nav = navRef.current
-    if (!nav) return
-    const rect = nav.getBoundingClientRect()
-    setDragTop(Math.max(18, Math.min(clientY - rect.top, rect.height - 18)))
-  }
-
-  const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
-    if (event.button !== 0) return
-    const target = event.target as HTMLElement
-    if (!target.closest('[data-turn-nav]')) return
-    // 用指针 Y 计算最近刻度：相邻刻度的命中区在边缘可能重叠，以几何位置为准。
-    const turn = turnAtPoint(event.clientY)
-    if (turn == null) return
-    dragging.current = true
-    frozenStart.current = start
-    setDraggingView(true)
-    lastDragTurn.current = turn
-    showDragPreview(turn, event.clientY)
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
-
-  const onPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
-    if (!dragging.current) return
-    const turn = turnAtPoint(event.clientY)
-    if (turn == null) return
-    showDragPreview(turn, event.clientY)
-    if (turn === lastDragTurn.current) return
-    lastDragTurn.current = turn
-  }
-
-  const endDrag = (cancelled = false) => {
-    if (!dragging.current) return
-    dragging.current = false
-    setDraggingView(false)
-    const turn = dragTurnRef.current
-    dragTurnRef.current = null
-    setDragTurn(null)
-    if (!cancelled && turn != null) jump(turn, true)
-  }
-
+  // Alt+↑/↓：逐轮移动；其他滚动类按键视为用户接管滚动。
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
-      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
       const target = event.target as HTMLElement | null
-      // 输入框获得焦点时也允许用 Alt+↑/↓ 翻轮；只排除消息编辑等其他输入区域。
-      if (
-        target &&
+      const typing =
+        !!target &&
         (target.tagName === 'INPUT' ||
           target.tagName === 'TEXTAREA' ||
           target.tagName === 'SELECT' ||
-          target.isContentEditable) &&
-        !target.closest('.composer-card')
-      ) {
+          target.isContentEditable)
+      if (!event.altKey && !event.ctrlKey && !event.metaKey && SCROLL_KEYS.has(event.key) && !typing) {
+        sticky.current = false
         return
       }
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+      // 输入框获得焦点时也允许用 Alt+↑/↓ 翻轮；只排除消息编辑等其他输入区域。
+      if (typing && !target?.closest('.composer-card')) return
       const ui = useUiStore.getState()
       if (ui.settingsOpen || ui.newSessionOpen || ui.searchOpen || ui.mobileSidebar) return
-      if (total === 0) return
+      const count = totalRef.current
+      if (count === 0) return
       event.preventDefault()
-      const current = clamp(activeRef.current, 1, total)
-      const next = clamp(current + (event.key === 'ArrowDown' ? 1 : -1), 1, total)
-      if (next !== current) jump(next)
+      const current = clamp(activeRef.current, 1, count)
+      const next = clamp(current + (event.key === 'ArrowDown' ? 1 : -1), 1, count)
+      if (next !== current) go(next)
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [jump, total])
+  }, [go])
 
-  const fullCapacity = Math.max(1, Math.floor(available / ROW))
-  // 超过可容纳数量的一半就窗口化，避免刻度被压到 4px 间距难以分辨。
-  const windowed = total > Math.max(1, Math.floor(fullCapacity / 2))
-  const windowSize = windowed
-    ? Math.max(
-        MIN_WINDOW,
-        Math.floor((available - EDGE_H * 2 - FADE_COUNT * 2 * ROW) / ROW),
-      )
-    : total
-  const size = Math.min(total, windowSize)
-  const activeIndex = clamp(activeTurn - 1, 0, Math.max(0, total - 1))
-  const centeredStart = windowed
-    ? clamp(activeIndex - Math.floor(size / 2), 0, Math.max(0, total - size))
-    : 0
-  // 拖动期间冻结窗口，避免刻度在指针下移动导致选择跳变；松手后再让窗口跟随当前轮。
-  const start = draggingView
-    ? clamp(frozenStart.current, 0, Math.max(0, total - size))
-    : centeredStart
-  const visible = useMemo(() => turns.slice(start, start + size), [turns, start, size])
+  const closePanel = useCallback(() => {
+    window.clearTimeout(openTimer.current)
+    window.clearTimeout(closeTimer.current)
+    openTimer.current = 0
+    closeTimer.current = 0
+    setOpen(false)
+    sceneRef.current?.setOpen(false)
+    sceneRef.current?.setCenter(activeRef.current)
+  }, [])
 
-  if (total < 2) return null
+  const openPanel = useCallback(() => {
+    window.clearTimeout(closeTimer.current)
+    closeTimer.current = 0
+    setOpen(true)
+    sceneRef.current?.setOpen(true)
+  }, [])
+
+  // 滚轮 = 逐轮移动：鼠标滚轮每格一轮，触控板累积到阈值再走一轮。
+  useEffect(() => {
+    const hit = hitRef.current
+    if (!railOn || !hit) return
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey) return
+      event.preventDefault()
+      let dy = event.deltaY
+      if (event.deltaMode === 1) dy *= 16
+      else if (event.deltaMode === 2) dy *= 300
+      if (Math.abs(dy) < 1) return
+      const now = performance.now()
+      const acc = wheelAcc.current
+      if (now - acc.at > 250) acc.sum = 0
+      acc.at = now
+      let steps = 0
+      if (Math.abs(dy) >= 50) {
+        steps = Math.sign(dy)
+        acc.sum = 0
+      } else {
+        acc.sum += dy
+        if (Math.abs(acc.sum) >= 36) {
+          steps = Math.trunc(acc.sum / 36)
+          acc.sum -= steps * 36
+        }
+      }
+      if (!steps) return
+      sceneRef.current?.setHoverEnabled(false)
+      go(activeRef.current + clamp(steps, -3, 3))
+    }
+    hit.addEventListener('wheel', onWheel, { passive: false })
+    return () => hit.removeEventListener('wheel', onWheel)
+  }, [railOn, go])
+
+  const pointerY = (event: ReactPointerEvent<HTMLElement>): number =>
+    event.clientY - (navRef.current?.getBoundingClientRect().top ?? 0)
+
+  const onPointerEnter = (event: ReactPointerEvent<HTMLElement>) => {
+    window.clearTimeout(closeTimer.current)
+    closeTimer.current = 0
+    if (event.pointerType === 'touch' || sceneRef.current?.open || openTimer.current) return
+    // 路过滚动条/刻度时不要立刻展开
+    openTimer.current = window.setTimeout(() => {
+      openTimer.current = 0
+      openPanel()
+    }, 70)
+  }
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const scene = sceneRef.current
+    if (!scene) return
+    scene.setPointer(pointerY(event))
+    if (event.pointerType !== 'touch') scene.setHoverEnabled(true)
+  }
+
+  const onPointerLeave = (event: ReactPointerEvent<HTMLElement>) => {
+    window.clearTimeout(openTimer.current)
+    openTimer.current = 0
+    if (dragRef.current) return
+    sceneRef.current?.setPointer(null)
+    window.clearTimeout(closeTimer.current)
+    if (document.activeElement === hitRef.current && hitRef.current?.matches(':focus-visible')) return
+    closeTimer.current = window.setTimeout(closePanel, event.pointerType === 'touch' ? 900 : 140)
+  }
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    const scene = sceneRef.current
+    if (!scene || (event.pointerType === 'mouse' && event.button !== 0)) return
+    event.preventDefault()
+    hitRef.current?.focus({ preventScroll: true })
+    event.currentTarget.setPointerCapture(event.pointerId)
+    window.clearTimeout(openTimer.current)
+    openTimer.current = 0
+    const y = pointerY(event)
+    scene.setPointer(y)
+    const wasExpanded = scene.expanded
+    if (!scene.open) openPanel()
+    dragRef.current = true
+    setPressed(true)
+    scene.setDragging(true)
+    // 触摸时面板还没展开：这一下只负责展开，随后拖动再选行
+    if (event.pointerType === 'touch' && !wasExpanded) return
+    go(scene.rowAt(y), { recenter: false })
+  }
+
+  const endDrag = (event: ReactPointerEvent<HTMLElement>, cancelled: boolean) => {
+    if (!dragRef.current) return
+    dragRef.current = false
+    setPressed(false)
+    const scene = sceneRef.current
+    scene?.setDragging(false)
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    if (!cancelled) go(activeRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    const inside =
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom
+    if (!inside || event.pointerType === 'touch') {
+      scene?.setPointer(null)
+      window.clearTimeout(closeTimer.current)
+      closeTimer.current = window.setTimeout(closePanel, event.pointerType === 'touch' ? 900 : 140)
+    }
+  }
+
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    const count = totalRef.current
+    const current = activeRef.current
+    let next: number | null = null
+    if (event.key === 'ArrowUp') next = current - 1
+    else if (event.key === 'ArrowDown') next = current + 1
+    else if (event.key === 'PageUp') next = current - 10
+    else if (event.key === 'PageDown') next = current + 10
+    else if (event.key === 'Home') next = 1
+    else if (event.key === 'End') next = count
+    else if (event.key === 'Escape') {
+      closePanel()
+      event.currentTarget.blur()
+      return
+    }
+    if (next == null || event.altKey) return
+    event.preventDefault()
+    event.stopPropagation()
+    sceneRef.current?.setHoverEnabled(false)
+    go(next)
+  }
+
+  const sheetOpen = useTurnNavStore((s) => s.sheetOpen)
+  const setSheetOpen = useTurnNavStore((s) => s.setSheetOpen)
+  useEffect(() => {
+    if (!isMobile && useTurnNavStore.getState().sheetOpen) setSheetOpen(false)
+  }, [isMobile, setSheetOpen])
+
+  const current = turns[activeTurn - 1]
 
   return (
-    <nav
-      ref={navRef}
-      className="turn-rail"
-      aria-label="轮次导航"
-      data-dragging={draggingView ? 'true' : undefined}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={() => endDrag()}
-      onPointerCancel={() => endDrag(true)}
-    >
-      <div className="turn-rail-stack">
-        {windowed && (
-          <button
-            type="button"
-            className="turn-edge"
-            data-active={start === 0 ? 'true' : undefined}
-            onClick={() => jump(1)}
-            aria-label="跳到第 1 轮"
-          >
-            1
-          </button>
-        )}
-        {windowed &&
-          Array.from({ length: FADE_COUNT }, (_, i) => (
-            <span
-              key={`fade-top-${i}`}
-              aria-hidden
-              className="turn-fade"
-              style={{ opacity: start > 0 ? 0.1 + i * 0.1 : 0 }}
-            />
-          ))}
-        {visible.map((mark) => {
-          const active = mark.turn === activeTurn
-          const label = `第 ${mark.turn} 轮 · ${mark.preview}`
-          return (
-            <button
-              key={mark.id}
-              type="button"
-              onClick={(event) => {
-                // 指针按下时已按坐标跳转；松手后窗口会重排，再走一次 click 会落到相邻刻度。
-                if (event.detail === 0) jump(mark.turn)
-              }}
-              data-turn-nav={mark.turn}
-              data-active={active ? 'true' : undefined}
-              aria-label={`跳转到${label}`}
-              aria-current={active ? 'true' : undefined}
-              className="turn-tick"
-            >
-              <span className="turn-tick-line" />
-              {active && mark.turn !== 1 && mark.turn !== total && (
-                <span className="turn-tick-num" aria-hidden>
-                  {mark.turn}
-                </span>
-              )}
-              <span className="turn-tip" role="tooltip">
-                {label}
-              </span>
-            </button>
-          )
-        })}
-        {windowed &&
-          Array.from({ length: FADE_COUNT }, (_, i) => (
-            <span
-              key={`fade-bottom-${i}`}
-              aria-hidden
-              className="turn-fade"
-              style={{ opacity: start + size < total ? 0.3 - i * 0.1 : 0 }}
-            />
-          ))}
-        {windowed && (
-          <button
-            type="button"
-            className="turn-edge"
-            data-active={start + size >= total ? 'true' : undefined}
-            onClick={() => jump(total)}
-            aria-label={`跳到第 ${total} 轮`}
-          >
-            {total}
-          </button>
-        )}
-      </div>
-      {dragTurn != null && (
-        <div className="turn-drag-preview" style={{ top: dragTop }} aria-hidden>
-          <div className="turn-drag-preview-head">第 {dragTurn} 轮</div>
-          <div className="turn-drag-preview-text">{turns[dragTurn - 1]?.preview}</div>
-        </div>
+    <>
+      {railOn && (
+        <nav
+          ref={navRef}
+          className="turn-rail"
+          aria-label="轮次导航"
+          data-open={open ? 'true' : undefined}
+          data-pressed={pressed ? 'true' : undefined}
+        >
+          <div ref={bgRef} className="turn-bg" aria-hidden />
+          <div className="turn-clip" aria-hidden>
+            <div ref={indRef} className="turn-ind" />
+            <div ref={curRef} className="turn-cur" />
+            {Array.from({ length: POOL }, (_, i) => (
+              <div
+                key={i}
+                ref={(el) => {
+                  itemRefs.current[i] = el
+                }}
+                className="turn-item"
+              >
+                <span className="turn-item-n" />
+                <span className="turn-item-t" />
+                <span className="turn-item-k" />
+              </div>
+            ))}
+          </div>
+          <div
+            ref={hitRef}
+            className="turn-hit"
+            role="slider"
+            tabIndex={0}
+            aria-label="切换轮次"
+            aria-orientation="vertical"
+            aria-valuemin={1}
+            aria-valuemax={total}
+            aria-valuenow={activeTurn}
+            aria-valuetext={`第 ${activeTurn} 轮${current ? ` · ${current.preview}` : ''}`}
+            onPointerEnter={onPointerEnter}
+            onPointerMove={onPointerMove}
+            onPointerLeave={onPointerLeave}
+            onPointerDown={onPointerDown}
+            onPointerUp={(e) => endDrag(e, false)}
+            onPointerCancel={(e) => endDrag(e, true)}
+            onKeyDown={onKeyDown}
+            onFocus={(e) => {
+              if (e.currentTarget.matches(':focus-visible')) openPanel()
+            }}
+            onBlur={() => {
+              if (!dragRef.current) closePanel()
+            }}
+          />
+          <span className="turn-count" aria-hidden>
+            第 {activeTurn} / {total} 轮
+          </span>
+        </nav>
       )}
-      <span className="turn-rail-count" aria-hidden>
-        第 {activeTurn} / {total} 轮
-      </span>
-    </nav>
+      {isMobile && (
+        <TurnOutlineSheet
+          open={sheetOpen && total >= 2}
+          turns={turns}
+          active={activeTurn}
+          onClose={() => setSheetOpen(false)}
+          onPick={(turn) => {
+            setSheetOpen(false)
+            go(turn)
+          }}
+        />
+      )}
+    </>
   )
 }
