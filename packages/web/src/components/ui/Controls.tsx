@@ -30,14 +30,15 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 
 export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> {
   size?: ControlSize
+  wrapperClassName?: string
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
-  { size = 'md', className, children, ...rest },
+  { size = 'md', className, wrapperClassName, children, ...rest },
   ref,
 ) {
   return (
-    <span className="relative inline-flex w-full min-w-0 items-center">
+    <span className={cn('relative inline-flex min-w-0 items-center', wrapperClassName ?? 'w-full')}>
       <select
         ref={ref}
         className={cn(FIELD_BASE, FIELD_SIZE[size], 'appearance-none pr-7', className)}

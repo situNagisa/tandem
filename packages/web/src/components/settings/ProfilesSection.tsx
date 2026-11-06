@@ -33,6 +33,8 @@ import { PROVIDER_PRESETS, presetForProfile, type ProviderPreset } from '../../l
 import { PROVIDER_KIND_LABELS, type HostConfig } from '../../lib/types'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
+import { Button, IconButton } from '../ui/Button'
+import { Input } from '../ui/Controls'
 
 const inputCls =
   'h-9 w-full rounded-lg border border-border bg-bg px-2.5 text-[12.5px] text-text outline-none transition-colors focus:border-border-strong'
@@ -194,7 +196,7 @@ function Steps({ step }: { step: Step }) {
               className={cn(
                 'flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] transition-colors',
                 n === step
-                  ? 'bg-accent-soft font-medium text-accent'
+                  ? 'bg-[var(--t-bg-active)] font-medium text-text'
                   : n < step
                     ? 'text-text-soft'
                     : 'text-muted',
@@ -204,7 +206,7 @@ function Steps({ step }: { step: Step }) {
                 className={cn(
                   'flex size-4 items-center justify-center rounded-full text-[9px]',
                   n === step
-                    ? 'bg-accent text-on-accent'
+                    ? 'bg-[var(--t-text)] text-[var(--t-bg)]'
                     : n < step
                       ? 'bg-[var(--t-bg-active)] text-text-soft'
                       : 'border border-border text-muted',
@@ -547,7 +549,7 @@ function GroupEditor({
                     className={cn(
                       'flex size-3.5 shrink-0 items-center justify-center rounded border transition-colors',
                       checked
-                        ? 'border-accent bg-accent text-on-accent'
+                        ? 'border-[var(--t-text)] bg-[var(--t-text)] text-[var(--t-bg)]'
                         : 'border-border-strong bg-surface',
                     )}
                   >
@@ -1017,22 +1019,23 @@ export function ProfilesSection() {
             ))}
           </select>
         )}
-        <button
+        <IconButton
           onClick={() => host && void refreshProfiles(host.id)}
           disabled={loading}
-          title="刷新"
-          aria-label="刷新账号"
-          className="flex size-11 items-center justify-center rounded-lg border border-border bg-surface text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50 sm:size-8"
+          label="刷新账号"
+          tooltip="刷新"
+          className="max-sm:size-11"
         >
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-        </button>
+        </IconButton>
         {!editing && (
-          <button
+          <Button
+            variant="primary"
             onClick={startNew}
-            className="flex min-h-11 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover sm:min-h-8"
+            className="max-sm:min-h-11"
           >
             <Plus size={13} /> 新建账号
-          </button>
+          </Button>
         )}
       </div>
 
@@ -1045,13 +1048,12 @@ export function ProfilesSection() {
       {editing ? (
         <div className="rounded-xl border border-border bg-surface p-4">
           <div className="mb-3 flex items-center gap-2">
-            <button
+            <IconButton
               onClick={() => (step === 1 ? reset() : setStep((s) => (s === 3 ? 2 : 1)))}
-              className="flex size-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-              aria-label="返回"
+              label="返回"
             >
               <ArrowLeft size={15} />
-            </button>
+            </IconButton>
             <div className="min-w-0 flex-1">
               <h4 className="text-[13px] font-semibold">
                 {editing === 'new' ? '新建账号' : `编辑「${editingProfile?.name ?? '账号'}」`}
@@ -1060,13 +1062,9 @@ export function ProfilesSection() {
                 {editing === 'new' ? '三步完成，模型自动获取' : '修改后会立即保存到 Host'}
               </p>
             </div>
-            <button
-              onClick={reset}
-              className="flex size-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-              aria-label="关闭"
-            >
+            <IconButton onClick={reset} label="关闭">
               <X size={15} />
-            </button>
+            </IconButton>
           </div>
 
           <Steps step={step} />
@@ -1157,13 +1155,14 @@ export function ProfilesSection() {
                     <span className="text-[12px] font-medium">账号分组</span>
                     <span className="text-[10px] text-muted">每组可独立协议与 Key</span>
                     <span className="flex-1" />
-                    <button
+                    <Button
+                      size="sm"
                       onClick={() => setGroupEditor({ index: 'new' })}
                       disabled={!!groupEditor}
-                      className="flex h-7 items-center gap-1 rounded-md border border-border bg-surface px-2 text-[10.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
+                      className="px-2 text-[10.5px]"
                     >
                       <Plus size={11} /> 添加分组
-                    </button>
+                    </Button>
                   </div>
                   <p className="mt-1 text-[10px] leading-4 text-muted">
                     同一账号 URL 下可有多组 Key（如官方渠道 / 低价渠道），每组可单独选择协议与模型；会话按所选分组的协议运行。
@@ -1209,22 +1208,25 @@ export function ProfilesSection() {
                               {g.models.length} 个模型
                             </span>
                           </span>
-                          <button
+                          <IconButton
+                            size="sm"
                             onClick={() => setGroupEditor({ index: i })}
-                            aria-label={`编辑分组 ${g.name}`}
-                            className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+                            label={`编辑分组 ${g.name}`}
+                            className="size-7 [&_svg]:size-[11px]"
                           >
                             <Pencil size={11} />
-                          </button>
-                          <button
+                          </IconButton>
+                          <IconButton
+                            size="sm"
+                            variant="danger-ghost"
                             onClick={() =>
                               setGroups((prev) => prev.filter((_, index) => index !== i))
                             }
-                            aria-label={`删除分组 ${g.name}`}
-                            className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-danger-soft hover:text-danger"
+                            label={`删除分组 ${g.name}`}
+                            className="size-7 [&_svg]:size-[11px]"
                           >
                             <Trash2 size={11} />
-                          </button>
+                          </IconButton>
                         </div>
                       ))}
                     </div>
@@ -1241,12 +1243,9 @@ export function ProfilesSection() {
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <span className="flex-1" />
-                <button
-                  onClick={() => setStep(3)}
-                  className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover"
-                >
+                <Button size="lg" variant="primary" onClick={() => setStep(3)}>
                   下一步 <ArrowRight size={13} />
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -1312,29 +1311,23 @@ export function ProfilesSection() {
               )}
 
               <div className="mt-4 flex items-center gap-2">
-                <button
-                  onClick={() => setStep(2)}
-                  className="flex min-h-9 items-center gap-1 rounded-lg px-2 text-[11.5px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-                >
+                <Button size="lg" variant="ghost" onClick={() => setStep(2)}>
                   <ArrowLeft size={12} /> 上一步
-                </button>
+                </Button>
                 <span className="flex-1" />
                 {editingProfile && (
-                  <button
+                  <Button
+                    size="lg"
+                    variant="danger-ghost"
                     onClick={() => setDeleteTarget(editingProfile)}
-                    className="flex min-h-9 items-center gap-1.5 rounded-lg border border-danger/25 px-3 text-[12px] text-danger transition-colors hover:bg-danger-soft/50"
                   >
                     <Trash2 size={12} /> 删除
-                  </button>
+                  </Button>
                 )}
-                <button
-                  onClick={() => void save()}
-                  disabled={saving}
-                  className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-4 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60"
-                >
-                  {saving && <Loader2 size={13} className="animate-spin" />}
+                <Button size="lg" variant="primary" onClick={() => void save()} disabled={saving}>
+                  {saving && <Loader2 size={14} className="animate-spin" />}
                   保存账号
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -1358,19 +1351,16 @@ export function ProfilesSection() {
 
           {!loading && profiles.length === 0 && (
             <div className="rounded-xl border border-dashed border-border bg-bg/30 px-4 py-9 text-center">
-              <span className="mx-auto flex size-10 items-center justify-center rounded-xl bg-accent-soft text-accent">
+              <span className="mx-auto flex size-10 items-center justify-center rounded-xl bg-[var(--t-bg-active)] text-text-soft">
                 <KeyRound size={19} />
               </span>
               <p className="mt-3 text-[12.5px] font-medium text-text-soft">还没有配置账号</p>
               <p className="mx-auto mt-1 max-w-[280px] text-[11.5px] leading-5 text-muted">
                 选择服务商、粘贴 Key，模型列表会自动获取。支持 Anthropic、OpenAI、DeepSeek、Ollama 等。
               </p>
-              <button
-                onClick={startNew}
-                className="mt-3.5 inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover"
-              >
+              <Button variant="primary" onClick={startNew} className="mt-3.5">
                 <Plus size={13} /> 新建账号
-              </button>
+              </Button>
             </div>
           )}
 
@@ -1452,10 +1442,11 @@ export function ProfilesSection() {
                       )}
                     </div>
                     <div className="hidden shrink-0 items-center gap-1 sm:flex">
-                      <button
+                      <Button
+                        size="sm"
                         onClick={() => void test(p)}
                         disabled={testingId === p.id}
-                        className="flex h-7 items-center gap-1 rounded-md border border-border px-2 text-[10.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
+                        className="px-2 text-[10.5px]"
                       >
                         {testingId === p.id ? (
                           <Loader2 size={11} className="animate-spin" />
@@ -1463,28 +1454,32 @@ export function ProfilesSection() {
                           <Wifi size={11} />
                         )}
                         测试
-                      </button>
-                      <button
+                      </Button>
+                      <IconButton
+                        size="sm"
                         onClick={() => startEdit(p)}
-                        aria-label={`编辑 ${p.name}`}
-                        className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+                        label={`编辑 ${p.name}`}
+                        className="[&_svg]:size-3"
                       >
                         <Pencil size={12} />
-                      </button>
-                      <button
+                      </IconButton>
+                      <IconButton
+                        size="sm"
+                        variant="danger-ghost"
                         onClick={() => setDeleteTarget(p)}
-                        aria-label={`删除 ${p.name}`}
-                        className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-danger-soft hover:text-danger"
+                        label={`删除 ${p.name}`}
+                        className="[&_svg]:size-3"
                       >
                         <Trash2 size={12} />
-                      </button>
+                      </IconButton>
                     </div>
                   </div>
                   <div className="mt-2 flex items-center justify-end gap-1.5 border-t border-border pt-2 sm:hidden">
-                    <button
+                    <Button
+                      size="md"
                       onClick={() => void test(p)}
                       disabled={testingId === p.id}
-                      className="mr-auto flex min-h-11 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[11px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
+                      className="mr-auto min-h-11 text-[11px]"
                     >
                       {testingId === p.id ? (
                         <Loader2 size={12} className="animate-spin" />
@@ -1492,20 +1487,22 @@ export function ProfilesSection() {
                         <Wifi size={12} />
                       )}
                       测试连接
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      size="md"
                       onClick={() => startEdit(p)}
-                      className="flex min-h-11 items-center gap-1 rounded-lg border border-border px-2.5 text-[11px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
+                      className="min-h-11 text-[11px]"
                     >
                       <Pencil size={12} /> 编辑
-                    </button>
-                    <button
+                    </Button>
+                    <IconButton
+                      variant="danger-ghost"
                       onClick={() => setDeleteTarget(p)}
-                      aria-label={`删除 ${p.name}`}
-                      className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-lg border border-danger/25 px-2.5 text-[11px] text-danger transition-colors hover:bg-danger-soft"
+                      label={`删除 ${p.name}`}
+                      className="size-11 border border-danger/25"
                     >
                       <Trash2 size={12} />
-                    </button>
+                    </IconButton>
                   </div>
                 </div>
               )
@@ -1527,18 +1524,16 @@ export function ProfilesSection() {
         className="max-w-md"
         footer={
           <>
-            <button
-              onClick={() => setDeleteTarget(null)}
-              className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
-            >
+            <Button size="lg" onClick={() => setDeleteTarget(null)}>
               取消
-            </button>
-            <button
+            </Button>
+            <Button
+              size="lg"
+              variant="danger-ghost"
               onClick={() => deleteTarget && void remove(deleteTarget)}
-              className="min-h-9 rounded-lg btn-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90"
             >
               删除
-            </button>
+            </Button>
           </>
         }
       >

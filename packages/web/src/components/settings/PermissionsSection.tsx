@@ -5,6 +5,8 @@ import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
+import { Button, IconButton } from '../ui/Button'
+import { Input, SegmentedControl, Select } from '../ui/Controls'
 
 const TOOL_OPTIONS = ['Bash', 'Write', 'Edit', 'Read', 'Glob', 'Grep', 'WebFetch', '*']
 
@@ -13,9 +15,6 @@ const ACTIONS: Array<{ value: PermissionRule['action']; label: string }> = [
   { value: 'ask', label: '询问' },
   { value: 'deny', label: '拒绝' },
 ]
-
-const inputCls =
-  'h-8 rounded-md border border-border bg-surface px-2 text-[12px] text-text outline-none transition-colors focus:border-border-strong'
 
 function placeholderFor(tool: string): string {
   if (tool === 'Bash') return '命令前缀，如 npm test*'
@@ -135,11 +134,13 @@ export function PermissionsSection() {
               key={index}
               className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-bg/40 px-2 py-2"
             >
-              <select
+              <Select
+                size="sm"
                 value={rule.tool}
                 onChange={(e) => update(index, { tool: e.target.value })}
                 aria-label="工具"
-                className={cn(inputCls, 'w-[96px] font-mono text-[11.5px]')}
+                wrapperClassName="w-[96px] shrink-0"
+                className="font-mono"
               >
                 {!TOOL_OPTIONS.includes(rule.tool) && <option value={rule.tool}>{rule.tool}</option>}
                 {TOOL_OPTIONS.map((tool) => (
@@ -147,68 +148,64 @@ export function PermissionsSection() {
                     {tool === '*' ? '全部工具' : tool}
                   </option>
                 ))}
-              </select>
-              <input
+              </Select>
+              <Input
+                size="sm"
                 value={rule.pattern ?? ''}
                 onChange={(e) => update(index, { pattern: e.target.value || undefined })}
                 placeholder={placeholderFor(rule.tool)}
                 aria-label="匹配模式"
-                className={cn(inputCls, 'min-w-0 flex-1 font-mono text-[11.5px] max-sm:order-last max-sm:basis-full')}
+                className="min-w-0 flex-1 font-mono max-sm:order-last max-sm:basis-full"
               />
-              <div className="flex shrink-0 overflow-hidden rounded-md border border-border">
-                {ACTIONS.map((action) => (
-                  <button
-                    key={action.value}
-                    onClick={() => update(index, { action: action.value })}
-                    className={cn(
-                      'h-8 px-2 text-[11.5px] transition-colors',
-                      rule.action === action.value
-                        ? action.value === 'deny'
-                          ? 'bg-[var(--t-bg-active)] text-danger'
-                          : 'bg-[var(--t-bg-active)] text-text'
-                        : 'bg-surface text-muted hover:text-text',
-                    )}
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
+              <SegmentedControl
+                aria-label="规则动作"
+                size="sm"
+                className="shrink-0"
+                options={ACTIONS.map((action) => ({ value: action.value, label: action.label }))}
+                value={rule.action}
+                onChange={(action) => update(index, { action })}
+              />
               <div className="flex shrink-0 items-center">
-                <button
+                <IconButton
+                  size="sm"
                   onClick={() => move(index, -1)}
                   disabled={index === 0}
-                  aria-label="上移规则"
-                  className="flex size-7 items-center justify-center rounded text-muted hover:bg-bg-hover hover:text-text disabled:opacity-30"
+                  label="上移规则"
+                  className="size-7 [&_svg]:size-3"
                 >
                   <ArrowUp size={12} />
-                </button>
-                <button
+                </IconButton>
+                <IconButton
+                  size="sm"
                   onClick={() => move(index, 1)}
                   disabled={index === rules.length - 1}
-                  aria-label="下移规则"
-                  className="flex size-7 items-center justify-center rounded text-muted hover:bg-bg-hover hover:text-text disabled:opacity-30"
+                  label="下移规则"
+                  className="size-7 [&_svg]:size-3"
                 >
                   <ArrowDown size={12} />
-                </button>
-                <button
+                </IconButton>
+                <IconButton
+                  size="sm"
+                  variant="danger-ghost"
                   onClick={() => setRules((prev) => prev.filter((_, i) => i !== index))}
-                  aria-label="删除规则"
-                  className="flex size-7 items-center justify-center rounded text-muted hover:bg-danger-soft hover:text-danger"
+                  label="删除规则"
+                  className="size-7 [&_svg]:size-3"
                 >
                   <Trash2 size={12} />
-                </button>
+                </IconButton>
               </div>
             </div>
           ))}
 
-          <button
+          <Button
+            variant="secondary"
             onClick={() =>
               setRules((prev) => [...prev, { tool: 'Bash', pattern: '', action: 'ask' }])
             }
-            className="flex h-9 items-center gap-1.5 rounded-lg border border-dashed border-border px-3 text-[12px] text-text-soft transition-colors hover:bg-bg-hover hover:text-text"
+            className="border-dashed"
           >
             <Plus size={13} /> 添加规则
-          </button>
+          </Button>
         </div>
       )}
 
@@ -218,21 +215,14 @@ export function PermissionsSection() {
         </span>
         <span className="flex-1" />
         {dirty && (
-          <button
-            onClick={() => setRules(saved)}
-            className="h-8 rounded-lg border border-border px-3 text-[12px] text-text-soft hover:bg-bg-hover"
-          >
+          <Button size="sm" onClick={() => setRules(saved)}>
             撤销
-          </button>
+          </Button>
         )}
-        <button
-          onClick={() => void save()}
-          disabled={!dirty || saving}
-          className="flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
-        >
+        <Button size="sm" variant="primary" onClick={() => void save()} disabled={!dirty || saving}>
           {saving && <Loader2 size={11} className="animate-spin" />}
           保存
-        </button>
+        </Button>
       </div>
     </div>
   )

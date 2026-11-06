@@ -15,6 +15,8 @@ import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
+import { Button, IconButton } from '../ui/Button'
+import { Input, SegmentedControl, Switch } from '../ui/Controls'
 
 const inputCls =
   'h-9 w-full rounded-lg border border-border bg-bg px-2.5 text-[12.5px] text-text outline-none transition-colors focus:border-border-strong'
@@ -147,62 +149,50 @@ function McpEditor({
       className="max-w-lg"
       footer={
         <>
-          <button
-            onClick={onClose}
-            disabled={busy}
-            className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
-          >
+          <Button size="lg" onClick={onClose} disabled={busy}>
             取消
-          </button>
-          <button
-            onClick={save}
-            disabled={busy || !valid}
-            className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12.5px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
-          >
-            {busy && <Loader2 size={13} className="animate-spin" />}
+          </Button>
+          <Button size="lg" variant="primary" onClick={save} disabled={busy || !valid}>
+            {busy && <Loader2 size={14} className="animate-spin" />}
             保存
-          </button>
+          </Button>
         </>
       }
     >
       <div className="space-y-3">
         <div>
           <label className={labelCls}>名称</label>
-          <input
+          <Input
+            size="lg"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="例如 github、playwright"
             spellCheck={false}
-            className={cn(inputCls, 'font-mono text-[11.5px]')}
+            className="font-mono text-[12px]"
           />
           <p className="mt-1 text-[10.5px] text-muted">工具名前缀为 mcp__{form.name.trim() || 'server'}__…</p>
         </div>
-        <div className="flex gap-1.5">
-          {(['stdio', 'http'] as const).map((transport) => (
-            <button
-              key={transport}
-              onClick={() => setForm({ ...form, transport })}
-              className={cn(
-                'flex min-h-8 flex-1 items-center justify-center gap-1.5 rounded-lg border text-[11.5px] transition-colors',
-                form.transport === transport
-                  ? 'border-accent/40 bg-accent-soft/50 text-text'
-                  : 'border-border bg-surface text-muted hover:border-border-strong',
-              )}
-            >
-              {transport === 'stdio' ? 'stdio' : 'Streamable HTTP'}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          aria-label="传输方式"
+          className="flex w-full"
+          value={form.transport}
+          onChange={(transport) => setForm({ ...form, transport })}
+          options={[
+            { value: 'stdio', label: 'stdio' },
+            { value: 'http', label: 'Streamable HTTP' },
+          ]}
+        />
         {form.transport === 'stdio' ? (
           <>
             <div>
               <label className={labelCls}>命令</label>
-              <input
+              <Input
+                size="lg"
                 value={form.command}
                 onChange={(e) => setForm({ ...form, command: e.target.value })}
                 placeholder="npx"
                 spellCheck={false}
-                className={cn(inputCls, 'font-mono text-[11.5px]')}
+                className="font-mono text-[12px]"
               />
             </div>
             <div>
@@ -232,12 +222,13 @@ function McpEditor({
           <>
             <div>
               <label className={labelCls}>地址</label>
-              <input
+              <Input
+                size="lg"
                 value={form.url}
                 onChange={(e) => setForm({ ...form, url: e.target.value })}
                 placeholder="https://example.com/mcp"
                 spellCheck={false}
-                className={cn(inputCls, 'font-mono text-[11.5px]')}
+                className="font-mono text-[12px]"
               />
             </div>
             <div>
@@ -258,7 +249,7 @@ function McpEditor({
             type="checkbox"
             checked={form.enabled}
             onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
-            className="size-3.5 accent-[var(--t-accent)]"
+            className="size-3.5 accent-[var(--t-text)]"
           />
           启用（保存后立即尝试连接）
         </label>
@@ -405,22 +396,23 @@ export function McpSection() {
             ))}
           </select>
         )}
-        <button
+        <IconButton
           onClick={() => void load(false, true)}
           disabled={loading || !host}
-          aria-label="刷新并重连"
-          title="刷新状态，并重连失败的服务器"
-          className="flex size-11 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-50 sm:size-8"
+          label="刷新并重连"
+          tooltip="刷新状态，并重连失败的服务器"
+          className="max-sm:size-11"
         >
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-        </button>
-        <button
+        </IconButton>
+        <Button
+          variant="primary"
           onClick={() => setEditor(emptyDraft())}
           disabled={!host}
-          className="flex min-h-11 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[11.5px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50 sm:min-h-8"
+          className="max-sm:min-h-11"
         >
           <Plus size={13} /> 添加服务器
-        </button>
+        </Button>
       </div>
 
       {!hosts.length && (
@@ -508,45 +500,29 @@ export function McpSection() {
                 </div>
                 {!readonly && (
                   <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      role="switch"
-                      aria-checked={config.enabled}
-                      aria-label={`${config.enabled ? '停用' : '启用'} ${config.name}`}
-                      onClick={() => toggle(config)}
+                    <Switch
+                      checked={config.enabled}
+                      onChange={() => toggle(config)}
                       disabled={saving}
-                      title={config.enabled ? '停用' : '启用'}
-                      className="flex size-11 shrink-0 items-center justify-center disabled:opacity-50 sm:size-7"
-                    >
-                      <span
-                        className={cn(
-                          'relative h-4 w-7 rounded-full transition-colors',
-                          config.enabled ? 'bg-accent' : 'bg-[var(--t-bg-active)]',
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            'absolute top-0.5 size-3 rounded-full bg-white shadow-sm transition-transform',
-                            config.enabled ? 'translate-x-3.5' : 'translate-x-0.5',
-                          )}
-                        />
-                      </span>
-                    </button>
-                    <button
+                      label={`${config.enabled ? '停用' : '启用'} ${config.name}`}
+                    />
+                    <IconButton
                       onClick={() => setEditor(toDraft(config))}
-                      aria-label={`编辑 ${config.name}`}
-                      title="编辑"
-                      className="flex size-11 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text sm:size-7"
+                      label={`编辑 ${config.name}`}
+                      tooltip="编辑"
+                      className="max-sm:size-11"
                     >
                       <Pencil size={12} />
-                    </button>
-                    <button
+                    </IconButton>
+                    <IconButton
+                      variant="danger-ghost"
                       onClick={() => remove(config)}
-                      aria-label={`删除 ${config.name}`}
-                      title="删除"
-                      className="flex size-11 items-center justify-center rounded-md text-muted transition-colors hover:bg-danger-soft hover:text-danger sm:size-7"
+                      label={`删除 ${config.name}`}
+                      tooltip="删除"
+                      className="max-sm:size-11"
                     >
                       <Trash2 size={12} />
-                    </button>
+                    </IconButton>
                   </div>
                 )}
                 {readonly && <span className="shrink-0 text-[10px] text-muted">只读</span>}
@@ -621,21 +597,18 @@ export function McpSection() {
         className="max-w-md"
         footer={
           <>
-            <button
-              onClick={() => setRemoveTarget(null)}
-              disabled={saving}
-              className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
-            >
+            <Button size="lg" onClick={() => setRemoveTarget(null)} disabled={saving}>
               取消
-            </button>
-            <button
+            </Button>
+            <Button
+              size="lg"
+              variant="danger-ghost"
               onClick={() => void confirmRemove()}
               disabled={saving}
-              className="flex min-h-9 items-center gap-1.5 rounded-lg btn-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
             >
-              {saving && <Loader2 size={13} className="animate-spin" />}
+              {saving && <Loader2 size={14} className="animate-spin" />}
               移除
-            </button>
+            </Button>
           </>
         }
       >

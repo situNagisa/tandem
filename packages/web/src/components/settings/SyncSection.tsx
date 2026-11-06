@@ -20,6 +20,8 @@ import { useUiStore } from '../../store/useUiStore'
 import { collectClientSettings, type ClientSettingsBundle } from '../../lib/storage'
 import { copyText } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
+import { Button, IconButton } from '../ui/Button'
+import { Input, Select } from '../ui/Controls'
 
 const inputCls =
   'h-9 w-full rounded-lg border border-border bg-bg px-2.5 text-[12.5px] text-text outline-none transition-colors focus:border-border-strong'
@@ -230,21 +232,22 @@ export function SyncSection() {
         </span>
         <span className="flex-1" />
         {hosts.length > 1 && (
-          <select
+          <Select
             value={hostId}
             onChange={(e) => {
               setHostId(e.target.value)
               setBundle(null)
               setImportResult(null)
             }}
-            className={cn(inputCls, 'h-8 w-auto max-w-[180px] text-[11.5px]')}
+            wrapperClassName="w-auto max-w-[180px]"
+            className="text-[11.5px]"
           >
             {hosts.map((h) => (
               <option key={h.id} value={h.id}>
                 {h.name}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </div>
 
@@ -258,7 +261,7 @@ export function SyncSection() {
 
       <div className="rounded-xl border border-border bg-surface p-4">
         <div className="flex items-center gap-2">
-          <span className="flex size-7 items-center justify-center rounded-lg bg-accent-soft text-accent">
+          <span className="flex size-7 items-center justify-center rounded-lg bg-[var(--t-bg-active)] text-text-soft">
             <Download size={14} />
           </span>
           <div className="min-w-0 flex-1">
@@ -272,7 +275,8 @@ export function SyncSection() {
         <div className="mt-3">
           <label className={labelCls}>加密口令</label>
           <div className="relative">
-            <input
+            <Input
+              size="lg"
               value={exportPass}
               onChange={(e) => {
                 setExportPass(e.target.value)
@@ -281,15 +285,16 @@ export function SyncSection() {
               type={showExportPass ? 'text' : 'password'}
               placeholder="设置一个只有你知道的口令"
               autoComplete="new-password"
-              className={cn(inputCls, 'pr-9')}
+              className="pr-9"
             />
-            <button
+            <IconButton
+              size="sm"
               onClick={() => setShowExportPass((v) => !v)}
-              aria-label={showExportPass ? '隐藏口令' : '显示口令'}
-              className="absolute right-1 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-[var(--t-bg-hover)] hover:text-text"
+              label={showExportPass ? '隐藏口令' : '显示口令'}
+              className="absolute right-1 top-1/2 size-7 -translate-y-1/2 [&_svg]:size-[13px]"
             >
               {showExportPass ? <EyeOff size={13} /> : <Eye size={13} />}
-            </button>
+            </IconButton>
           </div>
         </div>
 
@@ -301,35 +306,27 @@ export function SyncSection() {
         )}
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
+          <Button
+            size="lg"
+            variant="primary"
             onClick={() => void exportConfig()}
             disabled={exporting || !exportPass.trim()}
-            className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60"
           >
-            {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+            {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             导出并下载
-          </button>
+          </Button>
           {bundle && (
             <>
-              <button
-                onClick={() => downloadBundle(bundle)}
-                className="flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-[11.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
-              >
+              <Button size="lg" onClick={() => downloadBundle(bundle)}>
                 <FileJson size={12} /> 再次下载
-              </button>
-              <button
-                onClick={() => void copyBundle()}
-                className="flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-[11.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
-              >
+              </Button>
+              <Button size="lg" onClick={() => void copyBundle()}>
                 {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
                 {copied ? '已复制' : '复制内容'}
-              </button>
-              <button
-                onClick={() => void shareBundle()}
-                className="flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-[11.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
-              >
+              </Button>
+              <Button size="lg" onClick={() => void shareBundle()}>
                 <Share2 size={12} /> 分享
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -366,21 +363,23 @@ export function SyncSection() {
             e.target.value = ''
           }}
         />
-        <button
+        <Button
+          variant="secondary"
           onClick={() => fileRef.current?.click()}
-          className="mt-3 flex min-h-9 w-full items-center gap-2 rounded-lg border border-dashed border-border bg-bg/40 px-3 text-left text-[11.5px] text-text-soft transition-colors hover:border-border-strong hover:bg-[var(--t-bg-hover)]"
+          className="mt-3 w-full justify-start border-dashed text-left font-normal"
         >
           <FileJson size={13} className="shrink-0 text-muted" />
           <span className="min-w-0 flex-1 truncate">
             {fileName || '选择配置文件…'}
           </span>
           {importBundle && <Check size={12} className="shrink-0 text-success" />}
-        </button>
+        </Button>
 
         <div className="mt-3">
           <label className={labelCls}>口令</label>
           <div className="relative">
-            <input
+            <Input
+              size="lg"
               value={importPass}
               onChange={(e) => {
                 setImportPass(e.target.value)
@@ -389,15 +388,16 @@ export function SyncSection() {
               type={showImportPass ? 'text' : 'password'}
               placeholder="导出时设置的口令"
               autoComplete="off"
-              className={cn(inputCls, 'pr-9')}
+              className="pr-9"
             />
-            <button
+            <IconButton
+              size="sm"
               onClick={() => setShowImportPass((v) => !v)}
-              aria-label={showImportPass ? '隐藏口令' : '显示口令'}
-              className="absolute right-1 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-[var(--t-bg-hover)] hover:text-text"
+              label={showImportPass ? '隐藏口令' : '显示口令'}
+              className="absolute right-1 top-1/2 size-7 -translate-y-1/2 [&_svg]:size-[13px]"
             >
               {showImportPass ? <EyeOff size={13} /> : <Eye size={13} />}
-            </button>
+            </IconButton>
           </div>
         </div>
 
@@ -417,13 +417,13 @@ export function SyncSection() {
                 className={cn(
                   'rounded-lg border px-2.5 py-2 text-left transition-colors',
                   mode === value
-                    ? 'border-accent/40 bg-accent-soft'
+                    ? 'border-[var(--t-border-strong)] bg-[var(--t-bg-active)]'
                     : 'border-border bg-bg/40 hover:bg-[var(--t-bg-hover)]',
                 )}
               >
                 <span className="flex items-center gap-1.5 text-[11.5px] font-medium">
                   {label}
-                  {mode === value && <Check size={11} className="text-accent" />}
+                  {mode === value && <Check size={11} className="text-text" />}
                 </span>
                 <span className="mt-0.5 block text-[10px] leading-4 text-muted">{hint}</span>
               </button>
@@ -449,14 +449,15 @@ export function SyncSection() {
             <ArrowLeftRight size={11} /> 应用到「{host.name}」
           </span>
           <span className="flex-1" />
-          <button
+          <Button
+            size="lg"
+            variant="primary"
             onClick={() => void importConfig()}
             disabled={importing || !importBundle}
-            className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60"
           >
-            {importing ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+            {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
             导入配置
-          </button>
+          </Button>
         </div>
       </div>
     </div>

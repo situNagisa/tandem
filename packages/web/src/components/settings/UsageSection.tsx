@@ -5,6 +5,8 @@ import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { cn } from '../../lib/cn'
 import { formatCost, formatTokens } from '../../lib/format'
+import { IconButton } from '../ui/Button'
+import { SegmentedControl } from '../ui/Controls'
 
 type RangeKey = '7d' | '30d' | 'month'
 
@@ -376,31 +378,22 @@ export function UsageSection() {
         <h3 className="text-[14px] font-semibold">用量</h3>
         <span className="text-[11px] text-muted">跨 Host 汇总</span>
         <span className="flex-1" />
-        <div className="flex rounded-lg border border-border bg-surface p-0.5">
-          {RANGES.map((item) => (
-            <button
-              key={item.key}
-              onClick={() => setRange(item.key)}
-              className={cn(
-                'rounded-md px-2 py-1 text-[11px] transition-colors',
-                range === item.key
-                  ? 'bg-[var(--t-bg-active)] text-text'
-                  : 'text-muted hover:text-text',
-              )}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-        <button
+        <SegmentedControl
+          aria-label="统计范围"
+          size="sm"
+          value={range}
+          onChange={setRange}
+          options={RANGES.map((item) => ({ value: item.key, label: item.label }))}
+        />
+        <IconButton
+          size="sm"
           onClick={() => setNonce((n) => n + 1)}
           disabled={loading}
-          aria-label="刷新"
-          title="刷新"
-          className="flex size-7 items-center justify-center rounded-md border border-border text-muted transition-colors hover:bg-surface-2 hover:text-text disabled:opacity-50"
+          label="刷新"
+          className="size-7 [&_svg]:size-3"
         >
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-        </button>
+        </IconButton>
       </div>
 
       {error && (
