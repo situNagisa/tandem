@@ -465,7 +465,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 }}
                 placeholder="提交信息"
                 aria-label="提交信息"
-                className="min-h-7 max-h-24 min-w-0 flex-1 resize-none rounded-md border border-border bg-[var(--t-bg)] px-2 py-1.5 text-[12px] leading-4 text-text outline-none placeholder:text-muted focus:border-[var(--t-border-strong)]"
+                className="min-h-7 max-h-24 min-w-0 flex-1 resize-none rounded-md border border-border bg-[var(--t-bg)] px-2 py-1.5 text-[12px] leading-4 text-text outline-none transition-[min-height] placeholder:text-muted focus:min-h-14 focus:border-[var(--t-border-strong)]"
               />
               <Button
                 size="sm"

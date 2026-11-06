@@ -626,7 +626,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 1px;
+  left: 4px;
   width: 2px;
   border-radius: 1px;
   background: color-mix(in srgb, var(--t-accent) 72%, transparent);
@@ -649,7 +649,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 1px;
+  left: 4px;
   width: 2px;
   border-radius: 1px;
   background: var(--t-accent);

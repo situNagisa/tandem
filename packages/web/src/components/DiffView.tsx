@@ -235,14 +235,14 @@ function CommentMarker({
               <div className="mt-1.5 flex justify-end gap-1">
                 <button
                   type="button"
-                  className="menu-item h-6 px-2 text-[11px]"
+                  className="rounded px-2 py-1 text-[11px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
                   onClick={() => setEditing(false)}
                 >
                   取消
                 </button>
                 <button
                   type="button"
-                  className="menu-item h-6 px-2 text-[11px] text-text"
+                  className="rounded px-2 py-1 text-[11px] text-text hover:bg-[var(--t-bg-hover)]"
                   disabled={!text.trim()}
                   onClick={save}
                 >
@@ -258,14 +258,14 @@ function CommentMarker({
               <div className="mt-1.5 flex justify-end gap-1">
                 <button
                   type="button"
-                  className="menu-item h-6 px-2 text-[11px]"
+                  className="rounded px-2 py-1 text-[11px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
                   onClick={() => setEditing(true)}
                 >
                   编辑
                 </button>
                 <button
                   type="button"
-                  className="menu-item h-6 px-2 text-[11px] hover:text-danger"
+                  className="rounded px-2 py-1 text-[11px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-danger"
                   onClick={() => {
                     onDelete(comment.id)
                     close()
