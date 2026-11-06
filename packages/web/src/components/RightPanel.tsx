@@ -19,7 +19,6 @@ import { copyText } from '../lib/clipboard'
 import { cn } from '../lib/cn'
 import { ApiError } from '../lib/api'
 import {
-  formatCost,
   formatRelative,
   formatTime,
   formatTokens,

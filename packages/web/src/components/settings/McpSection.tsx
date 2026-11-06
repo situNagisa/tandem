@@ -8,7 +8,6 @@ import {
   RefreshCw,
   Trash2,
   TriangleAlert,
-  X,
 } from 'lucide-react'
 import type { McpServerConfig, McpServerStatus } from '@tandem/protocol'
 import { api } from '../../lib/api'

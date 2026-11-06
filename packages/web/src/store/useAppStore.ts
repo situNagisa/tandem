@@ -676,6 +676,12 @@ export const useAppStore = create<AppState>((set, get) => {
             pending: sub.pending.some((p) => p.id === req.id) ? sub.pending : [...sub.pending, req],
             running: true,
           }))
+          // 子代理审批冒泡到主会话审批卡
+          patchActive(hostId, active.sessionId, (a) => ({
+            ...a,
+            pending: a.pending.some((p) => p.id === req.id) ? a.pending : [...a.pending, req],
+            running: true,
+          }))
           const summary = get().runtimes[hostId]?.sessions.find((s) => s.id === req.sessionId)
           if (summary) applySessionSummary(hostId, { ...summary, status: 'waiting_permission' })
         }
@@ -716,6 +722,16 @@ export const useAppStore = create<AppState>((set, get) => {
                     ...sub.summary,
                     status: pending.length > 0 ? 'waiting_permission' : 'running',
                   }
+                : null,
+            }
+          })
+          patchActive(hostId, active.sessionId, (a) => {
+            const pending = a.pending.filter((p) => p.id !== msg.requestId)
+            return {
+              ...a,
+              pending,
+              summary: a.summary
+                ? { ...a.summary, status: pending.length > 0 ? 'waiting_permission' : 'running' }
                 : null,
             }
           })
