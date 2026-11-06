@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { cn } from '../../lib/cn'
+import { IconButton } from './Button'
 
 interface ModalProps {
   open: boolean
@@ -164,13 +165,9 @@ export function Modal({
               {title && <h2 className="truncate text-[15px] font-medium tracking-[-0.01em]">{title}</h2>}
               {description && <p className="mt-0.5 text-[12px] leading-5 text-muted">{description}</p>}
             </div>
-            <button
-              onClick={onClose}
-              aria-label="关闭"
-              className="-mr-1 flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text sm:size-8"
-            >
+            <IconButton onClick={onClose} label="关闭" className="-mr-1 max-sm:size-11">
               <X size={16} />
-            </button>
+            </IconButton>
           </div>
         )}
         <div className={cn('min-h-0 flex-1 overflow-y-auto', bodyClassName ?? 'p-5')}>{children}</div>

@@ -15,6 +15,7 @@ import { cn } from '../lib/cn'
 import { isDesktop, isMacDesktop } from '../lib/desktop'
 import { BrandMark } from './BrandMark'
 import { HostSwitcher } from './HostSwitcher'
+import { Button, IconButton } from './ui/Button'
 import { SessionList } from './SessionList'
 
 export function Sidebar({
@@ -38,8 +39,7 @@ export function Sidebar({
     ),
   )
 
-  const row =
-    'group flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[13px] text-text-soft transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-8'
+  const row = 'group w-full min-h-9 justify-start gap-2 px-2.5 md:min-h-8'
 
   const startNewSession = () => {
     // 已经在新会话页时导航不会重新挂载，需要显式清空输入并聚焦。
@@ -59,53 +59,57 @@ export function Sidebar({
         <span className="font-serif text-[17px] font-medium leading-none tracking-tight">Tandem</span>
         <span className="flex-1" />
         {inDrawer ? (
-          <button
+          <IconButton
             onClick={() => setMobileSidebar(false)}
-            aria-label="关闭侧栏"
-            className="flex size-11 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:size-8"
+            label="关闭侧栏"
+            tooltipSide="bottom"
+            className="max-sm:size-11"
           >
             <X size={16} />
-          </button>
+          </IconButton>
         ) : (
-          <button
+          <IconButton
             onClick={() => setSidebarCollapsed(true)}
-            aria-label="收起侧栏"
-            title={`收起侧栏 (${modLabel} B)`}
-            className="hidden size-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:flex"
+            label="收起侧栏"
+            tooltip={`收起侧栏 (${modLabel} B)`}
+            className="hidden md:inline-flex"
           >
             <PanelLeftClose size={15} />
-          </button>
+          </IconButton>
         )}
       </div>
 
       <div className="px-2 pb-1">
-        <button onClick={startNewSession} className={row}>
+        <Button variant="ghost" onClick={startNewSession} className={row}>
           <Plus size={15} className="shrink-0 opacity-70" />
           <span className="min-w-0 flex-1 truncate">新会话</span>
           <kbd className="hidden shrink-0 text-[10px] font-normal text-muted md:inline">
             {modLabel} N
           </kbd>
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           onClick={() => {
             setSearchOpen(true)
             onNavigate?.()
           }}
           className={row}
-          title={`搜索全部 Host 的会话 (${modLabel} K)`}
+          tooltip={`搜索全部 Host 的会话 (${modLabel} K)`}
+          tooltipSide="bottom"
         >
           <Search size={15} className="shrink-0 opacity-70" />
           <span className="min-w-0 flex-1 truncate">搜索</span>
           <kbd className="hidden shrink-0 text-[10px] font-normal text-muted md:inline">
             {modLabel} K
           </kbd>
-        </button>
+        </Button>
       </div>
 
       <SessionList query="" onNavigate={onNavigate} />
 
       <div className="px-2 pb-1">
-        <button
+        <Button
+          variant="ghost"
           onClick={() => setShowArchived(!showArchived)}
           aria-pressed={showArchived}
           className={cn(row, 'text-[12px] text-muted')}
@@ -117,20 +121,15 @@ export function Sidebar({
               {archivedCount}
             </span>
           )}
-        </button>
+        </Button>
       </div>
 
       <div className="flex items-center gap-1 border-t border-border px-2 py-1.5">
         <HostSwitcher onNavigate={onNavigate} />
         <span className="flex-1" />
-        <button
-          onClick={() => openSettings()}
-          aria-label="设置"
-          title="设置"
-          className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-        >
+        <IconButton onClick={() => openSettings()} label="设置" tooltipSide="top">
           <Settings size={15} />
-        </button>
+        </IconButton>
       </div>
     </aside>
   )

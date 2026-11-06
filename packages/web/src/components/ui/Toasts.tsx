@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
+import { IconButton } from './Button'
 
 const ICONS = {
   info: Info,
@@ -46,16 +47,17 @@ export function Toasts() {
             >
               {t.text}
             </span>
-            <button
+            <IconButton
+              size="sm"
               onClick={(e) => {
                 e.stopPropagation()
                 dismiss(t.id)
               }}
-              className="-mr-1 -mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted opacity-60 transition-opacity hover:bg-[var(--t-bg-hover)] hover:opacity-100"
-              aria-label="关闭提示"
+              label="关闭提示"
+              className="-mr-1 -mt-0.5 size-6 opacity-60 hover:opacity-100 [&_svg]:size-[13px]"
             >
               <X size={13} />
-            </button>
+            </IconButton>
           </div>
         )
       })}

@@ -3,6 +3,7 @@ import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
+import { Button } from '../ui/Button'
 import { ProfilesSection } from './ProfilesSection'
 import { HostsSection } from './HostsSection'
 import { AppearanceSection } from './AppearanceSection'
@@ -41,19 +42,19 @@ export function SettingsDialog() {
           {TABS.map((t) => {
             const Icon = t.icon
             return (
-              <button
+              <Button
                 key={t.id}
+                variant="ghost"
                 onClick={() => setTab(t.id)}
+                aria-current={tab === t.id ? 'page' : undefined}
                 className={cn(
-                  'flex min-h-11 min-w-0 items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] transition-colors duration-[120ms] sm:min-h-9',
-                  tab === t.id
-                    ? 'bg-surface text-text shadow-[var(--t-shadow-sm)] ring-1 ring-border'
-                    : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
+                  'min-h-11 w-full min-w-0 justify-start gap-2 px-2.5 text-left sm:min-h-[32px]',
+                  tab === t.id && 'bg-[var(--t-bg-active)] text-text',
                 )}
+                icon={<Icon size={14} />}
               >
-                <Icon size={14} className={tab === t.id ? 'text-accent' : 'text-muted'} />
                 {t.label}
-              </button>
+              </Button>
             )
           })}
           <div className="mt-auto hidden items-center gap-1.5 px-2.5 pb-1 text-[10px] text-muted sm:flex">

@@ -8,6 +8,8 @@ import { cn } from '../lib/cn'
 import { CodeBlock } from './CodeBlock'
 import { DiffView } from './DiffView'
 import { Modal } from './ui/Modal'
+import { Button } from './ui/Button'
+import { Input, SegmentedControl, Select } from './ui/Controls'
 
 const FILE_TOOLS = new Set(['Read', 'Write', 'Edit', 'Glob', 'Grep'])
 const TOOL_OPTIONS = ['Bash', 'Write', 'Edit', 'Read', 'Glob', 'Grep', 'WebFetch', '*']
@@ -47,8 +49,6 @@ function AddRuleDialog({
   const toast = useUiStore((s) => s.toast)
   const [rule, setRule] = useState<PermissionRule>(draft)
   const [saving, setSaving] = useState(false)
-  const inputCls =
-    'h-8 rounded-md border border-border bg-surface px-2 text-[12px] text-text outline-none focus:border-border-strong'
 
   const save = async () => {
     if (!host || saving) return
@@ -74,31 +74,28 @@ function AddRuleDialog({
       className="max-w-md"
       footer={
         <>
-          <button
-            onClick={onClose}
-            disabled={saving}
-            className="min-h-9 rounded-lg border border-border bg-surface px-3.5 text-[12.5px] text-text-soft hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
-          >
+          <Button size="lg" onClick={onClose} disabled={saving}>
             取消
-          </button>
-          <button
+          </Button>
+          <Button
+            size="lg"
+            variant="primary"
             onClick={() => void save()}
             disabled={saving || !host}
-            className="flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-[12.5px] font-medium text-on-accent hover:bg-accent-hover disabled:opacity-60"
           >
-            {saving && <Loader2 size={13} className="animate-spin" />}
+            {saving && <Loader2 size={14} className="animate-spin" />}
             添加规则
-          </button>
+          </Button>
         </>
       }
     >
       <div className="space-y-3">
         <label className="block space-y-1">
           <span className="text-[11.5px] text-muted">工具</span>
-          <select
+          <Select
             value={rule.tool}
             onChange={(e) => setRule((r) => ({ ...r, tool: e.target.value }))}
-            className={cn(inputCls, 'w-full font-mono text-[11.5px]')}
+            className="font-mono"
           >
             {!TOOL_OPTIONS.includes(rule.tool) && <option value={rule.tool}>{rule.tool}</option>}
             {TOOL_OPTIONS.map((tool) => (
@@ -106,39 +103,28 @@ function AddRuleDialog({
                 {tool === '*' ? '全部工具' : tool}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="block space-y-1">
           <span className="text-[11.5px] text-muted">
             匹配模式{rule.tool === 'Bash' ? '（命令前缀，可用 * 通配）' : '（文件 glob，留空匹配全部）'}
           </span>
-          <input
+          <Input
             value={rule.pattern ?? ''}
             onChange={(e) => setRule((r) => ({ ...r, pattern: e.target.value }))}
             placeholder={rule.tool === 'Bash' ? 'npm test*' : 'src/**/*.ts'}
-            className={cn(inputCls, 'w-full font-mono text-[11.5px]')}
+            className="font-mono"
           />
         </label>
         <div className="space-y-1">
           <span className="text-[11.5px] text-muted">动作</span>
-          <div className="flex overflow-hidden rounded-md border border-border">
-            {ACTIONS.map((action) => (
-              <button
-                key={action.value}
-                onClick={() => setRule((r) => ({ ...r, action: action.value }))}
-                className={cn(
-                  'h-8 flex-1 text-[12px] transition-colors',
-                  rule.action === action.value
-                    ? action.value === 'deny'
-                      ? 'bg-[var(--t-bg-active)] text-danger'
-                      : 'bg-[var(--t-bg-active)] text-text'
-                    : 'bg-surface text-muted hover:text-text',
-                )}
-              >
-                {action.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            aria-label="规则动作"
+            className="flex w-full"
+            options={ACTIONS.map((action) => ({ value: action.value, label: action.label }))}
+            value={rule.action}
+            onChange={(action) => setRule((r) => ({ ...r, action }))}
+          />
         </div>
       </div>
     </Modal>
@@ -299,34 +285,42 @@ export function PermissionCard({
         <div className="max-h-[min(34dvh,320px)] overflow-y-auto px-4 pb-2.5">{preview}</div>
       )}
       <div className="flex flex-wrap items-center justify-end gap-1.5 border-t border-border/70 px-3 py-2.5">
-        <button
+        <Button
+          size="sm"
+          variant="ghost"
           onClick={() => handle('deny')}
-          className="flex min-h-11 items-center gap-1 rounded-lg px-3 text-[12.5px] text-text-soft transition-colors hover:bg-bg-hover hover:text-text sm:min-h-8"
+          className="min-h-11 sm:min-h-[28px]"
         >
           拒绝
           <Kbd>3</Kbd>
-        </button>
-        <button
+        </Button>
+        <Button
+          size="sm"
           onClick={() => handle('allow_always')}
-          className="flex min-h-11 items-center gap-1 rounded-lg border border-border bg-surface px-3 text-[12.5px] text-text-soft transition-colors hover:bg-bg-hover hover:text-text sm:min-h-8"
+          className="min-h-11 sm:min-h-[28px]"
         >
           总是允许
           <Kbd>2</Kbd>
-        </button>
-        <button
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
           onClick={() => setRuleDraft(quickRule(toolName, input, cwd))}
-          className="flex min-h-11 items-center gap-1 rounded-lg px-2.5 text-[12px] text-muted transition-colors hover:bg-bg-hover hover:text-text sm:min-h-8"
-          title="把这条件添加为 Host 级权限规则"
+          tooltip="把这条件添加为 Host 级权限规则"
+          tooltipSide="top"
+          className="min-h-11 sm:min-h-[28px]"
         >
           <Plus size={11} /> 添加为规则…
-        </button>
-        <button
+        </Button>
+        <Button
+          size="sm"
+          variant="primary"
           onClick={() => handle('allow')}
-          className="flex min-h-11 items-center gap-1 rounded-lg bg-accent px-3.5 text-[12.5px] font-medium text-on-accent transition-colors hover:bg-accent-hover sm:min-h-8"
+          className="min-h-11 sm:min-h-[28px]"
         >
           允许
           <Kbd inverse>1</Kbd>
-        </button>
+        </Button>
       </div>
       {ruleDraft && (
         <AddRuleDialog draft={ruleDraft} hostId={hostId} onClose={() => setRuleDraft(null)} />

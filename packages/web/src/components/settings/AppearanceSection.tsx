@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Bell, Monitor, Moon, Smartphone, Sun } from 'lucide-react'
+import { Bell, Check, Monitor, Moon, Smartphone, Sun } from 'lucide-react'
 import type { Theme } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { modLabel } from '../../lib/format'
 import { requestNotificationPermission } from '../../lib/attention'
 import { cn } from '../../lib/cn'
+import { Switch } from '../ui/Controls'
 
 const THEMES: Array<{ id: Theme; label: string; desc: string; icon: typeof Sun }> = [
   { id: 'light', label: '浅色', desc: '暖白纸面，白天更清爽', icon: Sun },
@@ -100,18 +101,25 @@ export function AppearanceSection() {
               key={t.id}
               onClick={() => setTheme(t.id)}
               className={cn(
-                'rounded-xl border p-2 text-left transition-all duration-150',
+                'relative rounded-xl border p-2 text-left transition-all duration-150',
                 selected
-                  ? 'border-accent/45 bg-accent-soft/30 ring-1 ring-accent/30'
+                  ? 'border-[var(--t-border-strong)] bg-[var(--t-surface-2)]'
                   : 'border-border bg-surface hover:border-border-strong/70',
               )}
               aria-pressed={selected}
             >
+              {selected && (
+                <span
+                  className="absolute right-3.5 top-3.5 z-10 flex size-4 items-center justify-center rounded-full bg-[var(--t-text)] text-[var(--t-bg)]"
+                  aria-hidden
+                >
+                  <Check size={10} strokeWidth={3} />
+                </span>
+              )}
               <ThemePreview mode={t.id} />
               <div className="mt-2 flex items-center gap-1.5 px-0.5">
-                <Icon size={13} className={selected ? 'text-accent' : 'text-muted'} />
+                <Icon size={13} className={selected ? 'text-text-soft' : 'text-muted'} />
                 <span className="text-[12px] font-medium">{t.label}</span>
-                {selected && <span className="ml-auto size-1.5 rounded-full bg-accent" aria-hidden />}
               </div>
               <p className="mt-0.5 px-0.5 text-[10px] leading-4 text-muted">{t.desc}</p>
             </button>
@@ -156,26 +164,12 @@ export function AppearanceSection() {
               页面不可见时，回合结束与审批请求通过系统通知提醒；标题与 favicon 也会保留角标。
             </p>
           </div>
-          <button
-            role="switch"
-            aria-checked={notifications}
-            aria-label="桌面通知"
+          <Switch
+            checked={notifications}
+            onChange={() => void toggleNotifications()}
             disabled={permission === 'denied'}
-            onClick={() => void toggleNotifications()}
-            className={cn(
-              'relative h-6 w-10 shrink-0 rounded-full border transition-colors duration-[120ms] disabled:cursor-not-allowed disabled:opacity-45',
-              notifications
-                ? 'border-accent/50 bg-accent'
-                : 'border-border bg-[var(--t-bg-active)]',
-            )}
-          >
-            <span
-              className={cn(
-                'absolute top-0.5 size-[18px] rounded-full bg-white shadow-sm transition-[left] duration-[120ms]',
-                notifications ? 'left-[18px]' : 'left-0.5',
-              )}
-            />
-          </button>
+            label="桌面通知"
+          />
         </div>
         {permission === 'denied' && (
           <p className="mt-2 text-[10.5px] leading-5 text-warning">

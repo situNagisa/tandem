@@ -8,8 +8,8 @@ import { navigate } from '../lib/router'
 import { basename, formatRelative } from '../lib/format'
 import { defaultChoiceFor } from '../lib/profileModels'
 import type { ToolResultBlock } from '../lib/types'
-import { cn } from '../lib/cn'
 import { MessageList } from './MessageList'
+import { Button } from './ui/Button'
 
 const SOURCE_LABEL: Record<ExternalSource, string> = {
   'claude-code': 'Claude Code',
@@ -180,21 +180,16 @@ export function ExternalSessionView({
           <p className="min-w-0 flex-1 text-[11.5px] leading-5 text-text-soft">
             {label} 原始会话，仅只读查看。导入后可在 Tandem 中继续对话，原文件不会被修改。
           </p>
-          <button
+          <Button
+            variant={importedSessionId ? 'secondary' : 'primary'}
             onClick={() => void continueInTandem()}
             disabled={importing}
-            className={cn(
-              'flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3.5 text-[12px] font-medium transition-colors sm:min-h-8',
-              importedSessionId
-                ? 'border border-border bg-surface text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text'
-                : 'bg-accent text-on-accent hover:bg-accent-hover',
-              importing && 'opacity-60',
-            )}
+            className="min-h-10 shrink-0 px-3.5 sm:min-h-[32px]"
           >
-            {importing && <Loader2 size={13} className="animate-spin" />}
+            {importing && <Loader2 size={14} className="animate-spin" />}
             {importedSessionId ? '已在 Tandem 中继续 · 打开' : '在 Tandem 中继续'}
-            {!importing && <ArrowUpRight size={13} />}
-          </button>
+            {!importing && <ArrowUpRight size={14} />}
+          </Button>
         </div>
       </div>
     </div>
