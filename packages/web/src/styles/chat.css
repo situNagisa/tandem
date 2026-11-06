@@ -604,7 +604,6 @@
   white-space: pre;
 }
 .chat-diff-row .ln {
-  width: 4ch;
   flex: none;
   padding: 0;
   text-align: right;
@@ -616,8 +615,8 @@
 .chat-diff-row .sign {
   width: 1ch;
   flex: none;
-  margin-left: 4px;
-  margin-right: 8px;
+  margin-left: 0;
+  margin-right: 4px;
   text-align: center;
   font-size: 11px;
   user-select: none;

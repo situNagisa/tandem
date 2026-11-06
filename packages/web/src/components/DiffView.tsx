@@ -184,6 +184,10 @@ export const DiffView = memo(function DiffView({
     }
   }, [oldText, newText, unified])
 
+  const maxLineDigits = useMemo(
+    () => Math.max(1, ...rows.map((row) => String(lineInfo(row).line).length)),
+    [rows],
+  )
   const display = useMemo(() => buildRows(rows, expanded), [rows, expanded])
   const { ref: bodyRef, canLeft, canRight, update: updateOverflow } = useHorizontalOverflow<HTMLDivElement>([
     display.length,
@@ -234,8 +238,9 @@ export const DiffView = memo(function DiffView({
                   onClick={onLineClick ? () => onLineClick(info) : undefined}
                   title={onLineClick ? '点击添加行内评论' : undefined}
                 >
-                  <span className="ln">{row.oldNo ?? ''}</span>
-                  <span className="ln">{row.newNo ?? ''}</span>
+                  <span className="ln" style={{ width: `${maxLineDigits + 0.75}ch` }}>
+                    {row.type === 'del' ? row.oldNo : row.newNo}
+                  </span>
                   <span className={cn('sign', row.type === 'add' && 'text-[var(--t-add-bar)]', row.type === 'del' && 'text-[var(--t-del-bar)]')}>
                     {row.type === 'add' ? '+' : row.type === 'del' ? '−' : ' '}
                   </span>
