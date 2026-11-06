@@ -33,6 +33,10 @@ function parseArgs(argv: string[]): CliOptions {
       options.host = next();
     } else if (arg.startsWith('--host=')) {
       options.host = arg.slice('--host='.length);
+    } else if (arg === '--relay') {
+      options.relay = next();
+    } else if (arg.startsWith('--relay=')) {
+      options.relay = arg.slice('--relay='.length);
     } else {
       throw new Error(`未知参数: ${arg}`);
     }
