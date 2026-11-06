@@ -21,12 +21,12 @@ import type { ContentBlock, FsEntry, PermissionMode } from '@tandem/protocol'
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
-import { useClickOutside } from '../lib/hooks'
 import { basename, dirname } from '../lib/format'
 import { loadRecentDirs, rememberDir } from '../lib/storage'
 import { defaultChoiceFor, groupName } from '../lib/profileModels'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
+import { Popover } from './ui/Popover'
 import { Composer } from './Composer'
 import { useGitRepo } from '../lib/useGitRepo'
 import { QrScanDialog, scannerSupported } from './QrScanDialog'
@@ -48,37 +48,16 @@ function Picker({
   align?: 'left' | 'right'
   panelClass?: string
 }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useClickOutside(ref, () => setOpen(false), open)
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setOpen(false)
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [open])
-
   return (
-    <div ref={ref} className="relative">
-      {trigger({ open, toggle: () => setOpen((v) => !v), close: () => setOpen(false) })}
-      {open && (
-        <div
-          className={cn(
-            'anim-pop absolute top-full z-50 mt-2 overflow-hidden rounded-xl border border-border bg-surface p-1.5 shadow-[var(--t-shadow-md)]',
-            align === 'left' ? 'left-0' : 'right-0',
-            panelClass,
-          )}
-        >
-          {children(() => setOpen(false))}
-        </div>
-      )}
-    </div>
+    <Popover
+      trigger={trigger}
+      align={align}
+      side="bottom"
+      padded={false}
+      panelClassName={cn('p-1.5', panelClass)}
+    >
+      {children}
+    </Popover>
   )
 }
 
@@ -126,7 +105,6 @@ function HostMenu({
 }) {
   const hosts = useAppStore((s) => s.hosts)
   const runtimes = useAppStore((s) => s.runtimes)
-  const openSettings = useUiStore((s) => s.openSettings)
   return (
     <div className="w-[252px]">
       <div className="px-2 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted">
@@ -154,17 +132,6 @@ function HostMenu({
           </button>
         )
       })}
-      <div className="mt-1 border-t border-border pt-1">
-        <button
-          onClick={() => {
-            close()
-            openSettings('hosts')
-          }}
-          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[11px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-        >
-          <Plus size={12} /> 添加 / 管理 Host
-        </button>
-      </div>
     </div>
   )
 }
@@ -381,17 +348,17 @@ function AccountMenu({
 
   if (profiles.length === 0) {
     return (
-      <div className="w-[280px] px-3 py-4 text-center">
+      <div className="w-[280px] px-3 py-3 text-center">
         <p className="text-[12.5px] text-text-soft">还没有配置账号</p>
-        <p className="mt-1 text-[11px] leading-5 text-muted">添加一个服务商账号后即可选择模型。</p>
+        <p className="mt-1 text-[11px] leading-5 text-muted">在设置中添加一个服务商账号后即可选择模型。</p>
         <button
           onClick={() => {
             close()
             openSettings('profiles')
           }}
-          className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[11.5px] font-medium text-on-accent transition-colors hover:bg-accent-hover"
+          className="mt-2 text-[11px] text-muted underline-offset-2 transition-colors hover:text-text hover:underline"
         >
-          <Plus size={12} /> 添加账号
+          管理账号…
         </button>
       </div>
     )
@@ -406,9 +373,9 @@ function AccountMenu({
             close()
             openSettings('profiles')
           }}
-          className="ml-auto text-[10.5px] text-accent transition-opacity hover:opacity-80"
+          className="ml-auto text-[10.5px] text-muted transition-colors hover:text-text"
         >
-          管理账号
+          管理账号…
         </button>
       </div>
       <div className="flex gap-1 overflow-x-auto pb-1.5">
@@ -513,7 +480,6 @@ export function NewSessionView() {
   const activateHost = useAppStore((s) => s.activateHost)
   const refreshProfiles = useAppStore((s) => s.refreshProfiles)
   const startSession = useAppStore((s) => s.startSession)
-  const openSettings = useUiStore((s) => s.openSettings)
   const seedPrompt = useUiStore((s) => s.seedPrompt)
 
   const [hostId, setHostId] = useState(activeHostId ?? hosts[0]?.id ?? '')
@@ -554,6 +520,18 @@ export function NewSessionView() {
     setCwd(recent[0] ?? rt?.info?.homeDir ?? '')
     void refreshProfiles(hostId)
   }, [hostId, refreshProfiles])
+
+  useEffect(() => {
+    const onSeed = (e: Event) => {
+      const detail = (e as CustomEvent<{ hostId?: string; cwd?: string }>).detail
+      if (!detail) return
+      if (detail.hostId) setHostId(detail.hostId)
+      if (detail.cwd) setCwd(detail.cwd)
+      setError(null)
+    }
+    window.addEventListener('tandem:new-session', onSeed)
+    return () => window.removeEventListener('tandem:new-session', onSeed)
+  }, [])
 
   useEffect(() => {
     if (!profiles.length) {
@@ -790,14 +768,7 @@ export function NewSessionView() {
 
         {!profiles.length && !profilesLoading && hostReady && (
           <p className="mt-4 text-center text-[11.5px] text-muted">
-            还没有账号，
-            <button
-              onClick={() => openSettings('profiles')}
-              className="text-accent underline-offset-2 hover:underline"
-            >
-              添加一个账号
-            </button>
-            ，选择模型后即可开始。
+            还没有账号，请先在设置中添加账号，再选择模型。
           </p>
         )}
 

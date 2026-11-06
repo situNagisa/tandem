@@ -335,7 +335,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
             <button
               onClick={() => void onDelete()}
               disabled={deleting}
-              className="flex min-h-9 items-center gap-1.5 rounded-lg bg-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
+              className="flex min-h-9 items-center gap-1.5 rounded-lg btn-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
             >
               {deleting && <Loader2 size={13} className="animate-spin" />}
               {dirtyWorktree ? '仍然删除' : '删除'}

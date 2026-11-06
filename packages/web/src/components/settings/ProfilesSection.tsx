@@ -217,20 +217,48 @@ function Steps({ step }: { step: Step }) {
 interface GroupDraft {
   id?: string
   name: string
+  kind: ProviderKind
   apiKey: string
   apiKeyMasked?: string
+  /** 老账号无分组时按账号字段合成的隐式分组，Key 留在账号上 */
+  inheritedKey?: boolean
   baseUrl: string
   models: string[]
   defaultModel: string
 }
 
-function emptyGroupDraft(): GroupDraft {
-  return { name: '', apiKey: '', baseUrl: '', models: [], defaultModel: '' }
+function emptyGroupDraft(kind: ProviderKind = 'openai-compatible'): GroupDraft {
+  return { name: '', kind, apiKey: '', baseUrl: '', models: [], defaultModel: '' }
+}
+
+function defaultGroupDraft(kind: ProviderKind, models: string[] = [], defaultModel = ''): GroupDraft {
+  return {
+    name: '默认',
+    kind,
+    apiKey: '',
+    baseUrl: '',
+    models,
+    defaultModel: defaultModel || models[0] || '',
+  }
+}
+
+/** 分组协议对应的 Base URL 提示（完整端点原样使用，否则由 provider 拼接路径）。 */
+function groupBaseUrlPlaceholder(kind: ProviderKind): string {
+  switch (kind) {
+    case 'anthropic':
+      return 'https://api.anthropic.com（自动拼接 /v1/messages）'
+    case 'openai':
+      return 'https://api.openai.com/v1（自动拼接 /chat/completions）'
+    case 'gemini':
+      return 'https://generativelanguage.googleapis.com/v1beta/openai'
+    default:
+      return 'https://api.example.com/v1'
+  }
 }
 
 function GroupEditor({
   host,
-  kind,
+  kind: profileKind,
   profileId,
   profileBaseUrl,
   existing,
@@ -238,6 +266,7 @@ function GroupEditor({
   onCancel,
 }: {
   host: HostConfig
+  /** 账号协议，分组未选协议时继承 */
   kind: ProviderKind
   profileId?: string
   profileBaseUrl?: string
@@ -246,6 +275,7 @@ function GroupEditor({
   onCancel: () => void
 }) {
   const [name, setName] = useState(existing?.name ?? '')
+  const [kind, setKind] = useState<ProviderKind>(existing?.kind ?? profileKind)
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState(existing?.baseUrl ?? '')
   const [showKey, setShowKey] = useState(false)
@@ -1614,7 +1644,7 @@ export function ProfilesSection() {
             </button>
             <button
               onClick={() => deleteTarget && void remove(deleteTarget)}
-              className="min-h-9 rounded-lg bg-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90"
+              className="min-h-9 rounded-lg btn-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90"
             >
               删除
             </button>

@@ -7,8 +7,6 @@ import {
   PanelLeft,
   PanelRight,
   Pencil,
-  Plus,
-  Settings,
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -53,12 +51,7 @@ function StatePill({
     )
   }
   if (status === 'error') {
-    return (
-      <span className={pill}>
-        <span className="size-1.5 rounded-full bg-danger/80" />
-        出错
-      </span>
-    )
+    return <span className={cn(pill, 'text-danger')}>出错</span>
   }
   if (running || status === 'running') {
     return (
@@ -77,7 +70,6 @@ export function TopBar() {
   const host = useAppStore((s) => s.hosts.find((h) => h.id === s.activeHostId) ?? null)
   const runtime = useAppStore((s) => (activeHostId ? s.runtimes[activeHostId] : undefined))
   const hasSession = useAppStore((s) => !!s.active)
-  const hasHosts = useAppStore((s) => s.hosts.length > 0)
   const summary = useAppStore((s) => s.active?.summary ?? null)
   const status = summary?.status
   const running = useAppStore((s) => s.active?.running ?? false)
@@ -109,7 +101,6 @@ export function TopBar() {
   const togglePanel = useUiStore((s) => s.togglePanel)
   const setMobilePanel = useUiStore((s) => s.setMobilePanel)
   const retryHost = useAppStore((s) => s.retryHost)
-  const openSettings = useUiStore((s) => s.openSettings)
 
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -303,24 +294,6 @@ export function TopBar() {
         </button>
       )}
 
-      {hasHosts && (
-        <button
-          onClick={() => {
-            navigate({ kind: 'home' })
-            useUiStore.getState().setShowArchived(false)
-          }}
-          aria-label="新会话"
-          title="新会话"
-          className={cn(
-            'size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:size-9',
-            hasSession && isMobile ? 'hidden' : 'flex',
-            sidebarCollapsed ? 'md:flex' : 'md:hidden',
-          )}
-        >
-          <Plus size={18} />
-        </button>
-      )}
-
       {hasSession && (
         <button
           onClick={() => {
@@ -342,23 +315,9 @@ export function TopBar() {
         </button>
       )}
 
-      {hasSession && (
-        <button
-          onClick={() => openSettings()}
-          aria-label="设置"
-          title="设置"
-          className={cn(
-            'size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text md:size-9',
-            hasSession && isMobile ? 'hidden' : 'flex',
-          )}
-        >
-          <Settings size={17} />
-        </button>
-      )}
-
       {offline && (
         <div className="pointer-events-none absolute inset-x-0 top-full z-20 flex h-6 items-center justify-center gap-1.5 border-b border-border/60 bg-bg/95 text-[10.5px] text-muted backdrop-blur-sm">
-          <span className="size-1.5 rounded-full bg-warning/70 running-dot" />
+          <span className="size-1.5 rounded-full bg-muted/60 running-dot" />
           <span>重新连接中…</span>
           <button
             onClick={() => activeHostId && retryHost(activeHostId)}

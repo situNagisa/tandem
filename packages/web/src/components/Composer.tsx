@@ -460,7 +460,7 @@ function ModelPanel({
           }}
           className="menu-item"
         >
-          <Settings2 size={13} /> 管理账号与模型
+          <Settings2 size={13} /> 管理账号…
         </button>
         <div className="menu-hint hidden sm:block">↑↓ 选择 · Enter 确认 · Esc 关闭</div>
       </div>

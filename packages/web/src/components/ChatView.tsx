@@ -31,7 +31,6 @@ export function ChatView() {
     hostId ? s.runtimes[hostId]?.authError : undefined,
   )
   const reloadActiveSession = useAppStore((s) => s.reloadActiveSession)
-  const openSettings = useUiStore((s) => s.openSettings)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -174,13 +173,9 @@ export function ChatView() {
       {authError && (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-danger/25 bg-danger-soft/50 px-4 py-1.5 text-[11.5px] text-danger">
           <ShieldAlert size={13} className="shrink-0" />
-          <span className="min-w-0 flex-1">Host 认证失败：{authError}</span>
-          <button
-            onClick={() => openSettings('hosts')}
-            className="shrink-0 rounded-md border border-danger/30 px-2 py-0.5 text-[11px] transition-colors hover:bg-danger/10"
-          >
-            检查设置
-          </button>
+          <span className="min-w-0 flex-1">
+            Host 认证失败：{authError}（请在设置的 Host 管理中检查 Token）
+          </span>
         </div>
       )}
       <div className="relative flex min-h-0 flex-1">

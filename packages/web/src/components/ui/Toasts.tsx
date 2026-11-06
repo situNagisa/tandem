@@ -10,7 +10,7 @@ const ICONS = {
 
 const ICON_COLOR = {
   info: 'text-muted',
-  success: 'text-success',
+  success: 'text-muted',
   error: 'text-danger',
 } as const
 

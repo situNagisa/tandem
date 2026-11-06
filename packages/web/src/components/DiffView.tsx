@@ -203,8 +203,8 @@ export const DiffView = memo(function DiffView({
         <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-text-soft" title={fileName}>
           {fileName || '改动'}
         </span>
-        <span className="shrink-0 font-mono text-[11px] text-success">+{added}</span>
-        <span className="shrink-0 font-mono text-[11px] text-danger">−{removed}</span>
+        <span className="shrink-0 font-mono text-[11px] text-text-soft">+{added}</span>
+        <span className="shrink-0 font-mono text-[11px] text-muted">−{removed}</span>
       </div>
       <div className="x-scroll-wrap">
         <div
@@ -236,7 +236,7 @@ export const DiffView = memo(function DiffView({
                 >
                   <span className="ln">{row.oldNo ?? ''}</span>
                   <span className="ln">{row.newNo ?? ''}</span>
-                  <span className={cn('sign', row.type === 'add' && 'text-success', row.type === 'del' && 'text-danger')}>
+                  <span className={cn('sign', row.type === 'add' && 'text-[var(--t-add-bar)]', row.type === 'del' && 'text-[var(--t-del-bar)]')}>
                     {row.type === 'add' ? '+' : row.type === 'del' ? '−' : ' '}
                   </span>
                   <span className="text">{row.text || ' '}</span>

@@ -3,9 +3,9 @@ import type { ConnectionState } from '../lib/types'
 import { cn } from '../lib/cn'
 
 const CONNECTION_STYLE: Record<ConnectionState, string> = {
-  online: 'bg-success/70',
-  connecting: 'bg-accent/80 running-dot',
-  offline: 'bg-muted/50',
+  online: 'bg-text-tertiary/70',
+  connecting: 'bg-text-secondary/60 running-dot',
+  offline: 'bg-muted/40',
 }
 
 export function ConnectionDot({
@@ -31,8 +31,8 @@ export function SessionStatusDot({ status }: { status: SessionStatus }) {
   if (status === 'running') {
     return (
       <span className="relative inline-flex size-2 shrink-0" title="运行中">
-        <span className="absolute inset-0 rounded-full bg-accent/25 running-dot" />
-        <span className="relative m-auto size-1.5 rounded-full bg-accent" />
+        <span className="absolute inset-0 rounded-full bg-text-secondary/25 running-dot" />
+        <span className="relative m-auto size-1.5 rounded-full bg-text-secondary" />
       </span>
     )
   }
@@ -40,7 +40,7 @@ export function SessionStatusDot({ status }: { status: SessionStatus }) {
     return <span className="inline-block size-2 shrink-0 rounded-full bg-accent" title="等待审批" />
   }
   if (status === 'error') {
-    return <span className="inline-block size-2 shrink-0 rounded-full bg-danger" title="出错" />
+    return <span className="inline-block size-2 shrink-0 rounded-full bg-text-tertiary/70" title="出错" />
   }
   return (
     <span

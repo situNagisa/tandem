@@ -517,11 +517,13 @@
   padding-right: 12px;
 }
 .chat-diff-row[data-kind="add"] {
-  background: var(--t-add-bg, rgba(90, 143, 90, 0.12));
+  background: var(--t-add-bg, rgba(255, 255, 255, 0.06));
+  box-shadow: inset 2px 0 0 var(--t-add-bar, #8a9a7b);
   color: var(--t-add-fg, inherit);
 }
 .chat-diff-row[data-kind="del"] {
-  background: var(--t-del-bg, rgba(191, 77, 67, 0.12));
+  background: var(--t-del-bg, rgba(255, 255, 255, 0.06));
+  box-shadow: inset 2px 0 0 var(--t-del-bar, #a87363);
   color: var(--t-del-fg, inherit);
 }
 .chat-diff-row[data-kind="ctx"] {

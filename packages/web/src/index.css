@@ -3,36 +3,38 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  /* 色板：暖色中性灰 + 唯一强调色 Claude 橙 */
-  --t-bg: #faf9f5;
-  --t-sidebar: #f5f4ed;
+  /* 色板 v3：暖色中性灰 + 唯一强调色 Claude 橙 */
+  --t-bg: #faf9f7;
+  --t-sidebar: #f3f2ee;
   --t-surface: #ffffff;
-  --t-surface-2: #f0eee6;
-  --t-bg-hover: rgba(31, 30, 29, 0.05);
-  --t-bg-active: rgba(31, 30, 29, 0.08);
-  --t-border: rgba(31, 30, 29, 0.1);
-  --t-border-strong: rgba(31, 30, 29, 0.18);
-  --t-text: #1f1e1d;
-  --t-text-soft: #5e5d59;
+  --t-surface-2: #edece8;
+  --t-bg-hover: rgba(0, 0, 0, 0.04);
+  --t-bg-active: rgba(0, 0, 0, 0.07);
+  --t-border: rgba(0, 0, 0, 0.08);
+  --t-border-strong: rgba(0, 0, 0, 0.14);
+  --t-text: #1a1a1a;
+  --t-text-soft: #5c5c5c;
   --t-text-secondary: var(--t-text-soft);
-  /* 次要文字：在 bg / sidebar / surface / surface-2 上对比度最低 4.73:1（WCAG AA ≥4.5:1） */
-  --t-muted: #6b6961;
+  --t-muted: #737373;
   --t-text-tertiary: var(--t-muted);
   --t-accent: #d97757;
   --t-accent-hover: #c6613f;
   --t-accent-soft: rgba(217, 119, 87, 0.12);
   --t-on-accent: #ffffff;
-  --t-danger: #bf4d43;
-  --t-danger-soft: rgba(191, 77, 67, 0.1);
-  --t-warning: #a9752f;
-  --t-warning-soft: rgba(169, 117, 47, 0.12);
-  --t-success: #5a8f5a;
-  --t-success-soft: rgba(90, 143, 90, 0.12);
+  --t-danger: #b4533f;
+  /* 错误只用文字；soft 保持透明，避免色块 */
+  --t-danger-soft: transparent;
+  --t-warning: #737373;
+  --t-warning-soft: transparent;
+  --t-success: #737373;
+  --t-success-soft: transparent;
 
-  --t-add-bg: rgba(90, 143, 90, 0.12);
-  --t-add-fg: #3f6b3f;
-  --t-del-bg: rgba(191, 77, 67, 0.12);
-  --t-del-fg: #963b33;
+  --t-add-bg: rgba(138, 154, 123, 0.1);
+  --t-add-fg: var(--t-text);
+  --t-del-bg: rgba(168, 115, 99, 0.1);
+  --t-del-fg: var(--t-text);
+  --t-add-bar: #8a9a7b;
+  --t-del-bar: #a87363;
   /* 行内代码：浅色模式用比正文略深的纸色，边框拉开层次 */
   --t-code-bg: color-mix(in srgb, var(--t-surface-2) 82%, var(--t-text) 4%);
   --t-code-border: color-mix(in srgb, var(--t-border) 80%, transparent);
@@ -50,63 +52,64 @@
   --t-font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas,
     "Liberation Mono", monospace;
 
-  --syn-comment: #6b6961;
-  --syn-keyword: #b4553a;
-  --syn-string: #5f7f4c;
-  --syn-number: #3f7c86;
-  --syn-title: #7a5a86;
-  --syn-attr: #99702e;
-  --syn-builtin: #9a5d34;
+  --syn-comment: #8a8a8a;
+  --syn-keyword: #9c6b58;
+  --syn-string: #6f7d63;
+  --syn-number: #687f83;
+  --syn-title: #7d7184;
+  --syn-attr: #8a7654;
+  --syn-builtin: #8f7059;
   --syn-meta: #7c7468;
 
   --app-height: 100dvh;
 }
 
 html.dark {
-  --t-bg: #262624;
-  --t-sidebar: #1f1e1d;
-  --t-surface: #30302e;
-  --t-surface-2: #2b2a27;
+  --t-bg: #191919;
+  --t-sidebar: #1f1f1f;
+  --t-surface: #303030;
+  --t-surface-2: #2a2a2a;
   --t-bg-hover: rgba(255, 255, 255, 0.05);
-  --t-bg-active: rgba(255, 255, 255, 0.09);
-  --t-border: rgba(255, 255, 255, 0.08);
-  --t-border-strong: rgba(255, 255, 255, 0.16);
-  --t-text: #f5f4ee;
-  --t-text-soft: #c2c0b6;
+  --t-bg-active: #404040;
+  --t-border: rgba(255, 255, 255, 0.07);
+  --t-border-strong: rgba(255, 255, 255, 0.14);
+  --t-text: #efefef;
+  --t-text-soft: #b9b9b9;
   --t-text-secondary: var(--t-text-soft);
-  /* 次要文字：在 bg / sidebar / surface / surface-2 上对比度最低 4.69:1（WCAG AA ≥4.5:1） */
-  --t-muted: #9c9a91;
+  --t-muted: #8a8a8a;
   --t-text-tertiary: var(--t-muted);
   --t-accent: #d97757;
   --t-accent-hover: #e08868;
-  --t-accent-soft: rgba(217, 119, 87, 0.16);
+  --t-accent-soft: rgba(217, 119, 87, 0.14);
   --t-on-accent: #ffffff;
-  --t-danger: #e07a70;
-  --t-danger-soft: rgba(224, 122, 112, 0.14);
-  --t-warning: #d6a45c;
-  --t-warning-soft: rgba(214, 164, 92, 0.14);
-  --t-success: #7db87d;
-  --t-success-soft: rgba(125, 184, 125, 0.14);
+  --t-danger: #d08770;
+  --t-danger-soft: transparent;
+  --t-warning: #8a8a8a;
+  --t-warning-soft: transparent;
+  --t-success: #8a8a8a;
+  --t-success-soft: transparent;
 
-  --t-add-bg: rgba(125, 184, 125, 0.22);
-  --t-add-fg: #b7e0b7;
-  --t-del-bg: rgba(224, 122, 112, 0.22);
-  --t-del-fg: #f0b1aa;
-  --t-code-bg: #3a3936;
-  --t-code-border: rgba(255, 255, 255, 0.13);
+  --t-add-bg: rgba(255, 255, 255, 0.06);
+  --t-add-fg: var(--t-text);
+  --t-del-bg: rgba(255, 255, 255, 0.06);
+  --t-del-fg: var(--t-text);
+  --t-add-bar: #8a9a7b;
+  --t-del-bar: #a87363;
+  --t-code-bg: #333333;
+  --t-code-border: rgba(255, 255, 255, 0.1);
 
   --t-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --t-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.36), 0 1px 3px rgba(0, 0, 0, 0.3);
   --t-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
 
-  --syn-comment: #9c9a91;
-  --syn-keyword: #e49a78;
-  --syn-string: #a9c994;
-  --syn-number: #8ecad8;
-  --syn-title: #cfb0e8;
-  --syn-attr: #e1bf7f;
-  --syn-builtin: #e4b083;
-  --syn-meta: #a49c90;
+  --syn-comment: #8a8a8a;
+  --syn-keyword: #c99a85;
+  --syn-string: #a6b597;
+  --syn-number: #94b0b5;
+  --syn-title: #bdb0c4;
+  --syn-attr: #c4b18c;
+  --syn-builtin: #c5a48c;
+  --syn-meta: #9a948a;
 }
 
 @theme inline {
@@ -223,6 +226,21 @@ html.dark {
   ::-webkit-scrollbar-corner {
     background: transparent;
   }
+}
+
+/* 危险操作：中性按钮，仅 hover 时文字转 --danger（不做红底红框） */
+.btn-danger {
+  border: 1px solid var(--t-border);
+  background: var(--t-surface);
+}
+.btn-danger,
+.btn-danger.text-on-accent {
+  color: var(--t-text-soft);
+}
+.btn-danger:hover:not(:disabled) {
+  color: var(--t-danger);
+  border-color: color-mix(in srgb, var(--t-danger) 35%, var(--t-border));
+  background: var(--t-bg-hover);
 }
 
 .app-root {

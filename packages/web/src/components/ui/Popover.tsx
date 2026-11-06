@@ -1,18 +1,11 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react'
-import { useClickOutside } from '../../lib/hooks'
+import { useCallback, useState, type ReactNode } from 'react'
+import * as RPopover from '@radix-ui/react-popover'
 import { cn } from '../../lib/cn'
 
 interface PopoverProps {
   trigger: (state: { open: boolean; toggle: () => void; close: () => void }) => ReactNode
   children: (close: () => void) => ReactNode
-  align?: 'left' | 'right'
+  align?: 'left' | 'right' | 'center'
   side?: 'bottom' | 'top'
   /** 面板是否带默认内边距；自定义菜单（如带搜索框）可设为 false。 */
   padded?: boolean
@@ -23,7 +16,10 @@ interface PopoverProps {
   onOpenChange?: (open: boolean) => void
 }
 
-/** 轻量下拉：点击外部或 Esc 关闭，统一使用 chat.css 中的 popover-panel 视觉。 */
+/**
+ * 统一弹出层：Radix Popover 负责 Portal 与边界避让（翻转 + 平移），
+ * 侧栏、输入框附近的菜单都不会被滚动容器裁切。
+ */
 export function Popover({
   trigger,
   children,
@@ -44,90 +40,37 @@ export function Popover({
     },
     [openProp, onOpenChange],
   )
-  const [mounted, setMounted] = useState(false)
-  const [closing, setClosing] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  const panelRef = useRef<HTMLDivElement>(null)
   const close = useCallback(() => setOpen(false), [setOpen])
-  useClickOutside(ref, close, open)
-
-  // 靠近视口边缘的触发器（如手机输入框里的模型按钮）会把面板顶出屏幕，
-  // 打开后按实际宽度横向校准，保留 8px 安全边距。translate 独立于入场 scale。
-  useLayoutEffect(() => {
-    if (!open) return
-    const place = () => {
-      const el = panelRef.current
-      const anchor = ref.current
-      if (!el || !anchor) return
-      el.style.translate = '0px 0px'
-      // 用 offset 几何量而不是 getBoundingClientRect：入场动画带有 scale，
-      // 直接量会在动画结束前误判边界。
-      const anchorRect = anchor.getBoundingClientRect()
-      const left = anchorRect.left + el.offsetLeft
-      const right = left + el.offsetWidth
-      const margin = 8
-      let dx = 0
-      if (left < margin) dx = margin - left
-      else if (right > window.innerWidth - margin) {
-        dx = window.innerWidth - margin - right
-      }
-      if (dx) el.style.translate = `${dx}px 0px`
-    }
-    place()
-    window.addEventListener('resize', place)
-    return () => window.removeEventListener('resize', place)
-  }, [open, mounted])
-
-  useEffect(() => {
-    if (open) {
-      setMounted(true)
-      setClosing(false)
-      return
-    }
-    if (!mounted) return
-    setClosing(true)
-    const timer = window.setTimeout(() => {
-      setMounted(false)
-      setClosing(false)
-    }, 160)
-    return () => window.clearTimeout(timer)
-  }, [open, mounted])
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setOpen(false)
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [open])
 
   return (
-    <div ref={ref} className={cn('relative', className)}>
-      {trigger({ open, toggle: () => setOpen(!open), close })}
-      {mounted && (
-        <div
-          ref={panelRef}
+    <RPopover.Root open={open} onOpenChange={setOpen}>
+      <RPopover.Anchor asChild>
+        <div className={cn('relative', className)}>
+          {trigger({ open, toggle: () => setOpen(!open), close })}
+        </div>
+      </RPopover.Anchor>
+      <RPopover.Portal>
+        <RPopover.Content
           role="menu"
           data-side={side}
           data-align={align}
-          data-closing={closing || undefined}
-          aria-hidden={closing || undefined}
-          inert={closing}
+          side={side}
+          align={align === 'right' ? 'end' : align === 'center' ? 'center' : 'start'}
+          sideOffset={8}
+          collisionPadding={8}
+          avoidCollisions
+          sticky="always"
+          hideWhenDetached
+          onOpenAutoFocus={(e) => e.preventDefault()}
           className={cn(
-            'popover-panel absolute z-50',
+            'popover-panel z-[80] outline-none',
             padded && 'p-1.5',
-            side === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2',
-            align === 'left' ? 'left-0' : 'right-0',
             panelClassName,
           )}
         >
           {children(close)}
-        </div>
-      )}
-    </div>
+        </RPopover.Content>
+      </RPopover.Portal>
+    </RPopover.Root>
   )
 }

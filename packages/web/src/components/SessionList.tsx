@@ -5,6 +5,7 @@ import {
   ArchiveRestore,
   ChevronRight,
   Copy,
+  Folder,
   FolderGit2,
   GitBranch,
   GitMerge,
@@ -14,17 +15,19 @@ import {
   Pencil,
   Pin,
   PinOff,
+  Plus,
   Server,
   Trash2,
   TriangleAlert,
 } from 'lucide-react'
-import type { SessionSummary } from '@tandem/protocol'
+import type { ExternalSession, SessionSummary } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { api, ApiError } from '../lib/api'
 import { useUiStore } from '../store/useUiStore'
 import { useNow } from '../lib/hooks'
 import { clearRunning, runningSince } from '../lib/runClock'
 import { basename, formatElapsed, formatRelative } from '../lib/format'
+import { rememberDir } from '../lib/storage'
 import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
 import { ConnectionDot, SessionStatusDot } from './StatusDot'
@@ -32,11 +35,17 @@ import { Modal } from './ui/Modal'
 
 const EMPTY: SessionSummary[] = []
 
+interface ExternalItem extends ExternalSession {
+  hostId: string
+}
+
 interface ProjectGroup {
   key: string
   name: string
+  cwd?: string
   branch?: string
   items: SessionSummary[]
+  externals: ExternalItem[]
   children: Record<string, SessionSummary[]>
 }
 
@@ -74,6 +83,7 @@ function isRunningStatus(status: SessionSummary['status']): boolean {
 function buildGroups(
   hosts: Array<{ id: string; name: string }>,
   runtimes: ReturnType<typeof useAppStore.getState>['runtimes'],
+  externalSessions: ExternalItem[],
   query: string,
   showArchived: boolean,
   showSubagents: boolean,
@@ -110,8 +120,6 @@ function buildGroups(
       if (s.pinned && !showArchived) pinned.push({ hostId: h.id, session: s })
       else regular.push(s)
     }
-    if (regular.length === 0) continue
-
     const map = new Map<string, ProjectGroup>()
     for (const s of regular) {
       const name = projectName(s)
@@ -121,8 +129,10 @@ function buildGroups(
         group = {
           key,
           name,
+          cwd: s.cwd,
           branch: s.worktree ? undefined : s.env?.branch,
           items: [],
+          externals: [],
           children: {},
         }
         map.set(key, group)
@@ -130,6 +140,33 @@ function buildGroups(
       if (!group.branch && s.env?.branch && !s.worktree) group.branch = s.env.branch
       group.items.push(s)
     }
+
+    // 外部会话（Claude Code / Codex）按 cwd 并入对应项目；字段缺失时自然为空。
+    if (!showArchived) {
+      for (const ext of externalSessions) {
+        if (ext.hostId !== h.id) continue
+        if (q) {
+          const hay = `${ext.title} ${ext.cwd} ${ext.source}`.toLowerCase()
+          if (!hay.includes(q)) continue
+        }
+        const base = basename(ext.cwd) || '未命名项目'
+        let group: ProjectGroup | null =
+          [...map.values()].find((g) => (g.cwd && g.cwd === ext.cwd) || g.name === base) ?? null
+        if (!group) {
+          group = {
+            key: `${h.id}:${base}`,
+            name: base,
+            cwd: ext.cwd,
+            items: [],
+            externals: [],
+            children: {},
+          }
+          map.set(group.key, group)
+        }
+        group.externals.push(ext)
+      }
+    }
+    if (regular.length === 0 && ![...map.values()].some((g) => g.externals.length > 0)) continue
     if (showSubagents) {
       for (const child of children) {
         if (!child.parentId || !topIds.has(child.parentId)) continue
@@ -143,14 +180,28 @@ function buildGroups(
       }
     }
     const projects = [...map.values()]
-      .map((g) => ({ ...g, items: g.items.slice().sort((a, b) => b.updatedAt - a.updatedAt) }))
-      .sort((a, b) => (b.items[0]?.updatedAt ?? 0) - (a.items[0]?.updatedAt ?? 0))
+      .map((g) => ({
+        ...g,
+        items: g.items.slice().sort((a, b) => b.updatedAt - a.updatedAt),
+        externals: g.externals.slice().sort((a, b) => b.updatedAt - a.updatedAt),
+      }))
+      .sort((a, b) => {
+        const at = Math.max(a.items[0]?.updatedAt ?? 0, a.externals[0]?.updatedAt ?? 0)
+        const bt = Math.max(b.items[0]?.updatedAt ?? 0, b.externals[0]?.updatedAt ?? 0)
+        return bt - at
+      })
     groups.push({
       id: h.id,
       name: h.name,
       online: rt?.status === 'online',
       projects,
-      count: regular.length + Object.values(projects).reduce((n, p) => n + Object.values(p.children).reduce((m, l) => m + l.length, 0), 0),
+      count:
+        regular.length +
+        projects.reduce((n, p) => n + p.externals.length, 0) +
+        Object.values(projects).reduce(
+          (n, p) => n + Object.values(p.children).reduce((m, l) => m + l.length, 0),
+          0,
+        ),
     })
   }
 
@@ -184,9 +235,15 @@ function RowMenu({
     const el = ref.current
     if (!el) return
     const rect = el.getBoundingClientRect()
-    const left = Math.min(state.x, window.innerWidth - rect.width - 8)
-    const top = Math.min(state.y, window.innerHeight - rect.height - 8)
-    setPos({ left: Math.max(8, left), top: Math.max(8, top) })
+    // 靠近视口右侧/底部时向内翻转，避免菜单被边缘裁切。
+    let left = state.x
+    let top = state.y
+    if (left + rect.width > window.innerWidth - 8) left = state.x - rect.width
+    if (top + rect.height > window.innerHeight - 8) top = state.y - rect.height
+    setPos({
+      left: Math.max(8, Math.min(left, window.innerWidth - rect.width - 8)),
+      top: Math.max(8, Math.min(top, window.innerHeight - rect.height - 8)),
+    })
   }, [state.x, state.y])
 
   useEffect(() => {
@@ -286,6 +343,11 @@ export function SessionList({
   const setShowArchived = useUiStore((s) => s.setShowArchived)
   const showSubagents = useUiStore((s) => s.showSubagents)
   const setShowSubagents = useUiStore((s) => s.setShowSubagents)
+  // 同事会提供 externalSessions（顶层数组或按 hostId 的 Record 均可），未就绪时为 undefined。
+  const externalRaw = useAppStore(
+    (s) => (s as typeof s & { externalSessions?: unknown }).externalSessions,
+  )
+  const activateHost = useAppStore((s) => s.activateHost)
 
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
@@ -332,9 +394,37 @@ export function SessionList({
     next.click()
   }
 
+  const externalItems = useMemo(() => {
+    const list: ExternalItem[] = []
+    for (const h of hosts) {
+      for (const ext of runtimes[h.id]?.externalSessions ?? []) {
+        list.push({ ...ext, hostId: h.id })
+      }
+    }
+    // 顶层 externalSessions 兼容两种形态：ExternalSession[]（带 hostId）或 Record<hostId, ...>。
+    const top: Array<ExternalSession & { hostId?: string }> = []
+    if (Array.isArray(externalRaw)) {
+      top.push(...(externalRaw as Array<ExternalSession & { hostId?: string }>))
+    } else if (externalRaw && typeof externalRaw === 'object') {
+      for (const [hostId, value] of Object.entries(externalRaw as Record<string, unknown>)) {
+        if (!Array.isArray(value)) continue
+        for (const ext of value as ExternalSession[]) top.push({ ...ext, hostId })
+      }
+    }
+    for (const ext of top) {
+      const hostId = ext.hostId ?? hosts[0]?.id
+      if (!hostId) continue
+      if (list.some((x) => x.hostId === hostId && x.source === ext.source && x.id === ext.id)) {
+        continue
+      }
+      list.push({ ...ext, hostId })
+    }
+    return list.filter((x) => !x.importedSessionId)
+  }, [hosts, runtimes, externalRaw])
+
   const { pinned, hosts: groups } = useMemo(
-    () => buildGroups(hosts, runtimes, query, showArchived, showSubagents),
-    [hosts, runtimes, query, showArchived, showSubagents],
+    () => buildGroups(hosts, runtimes, externalItems, query, showArchived, showSubagents),
+    [hosts, runtimes, externalItems, query, showArchived, showSubagents],
   )
 
   const anyRunning = useMemo(
@@ -406,6 +496,21 @@ export function SessionList({
     onNavigate?.()
   }
 
+  const openExternal = (hostId: string, ext: ExternalItem) => {
+    window.location.hash = `#/h/${encodeURIComponent(hostId)}/x/${encodeURIComponent(ext.source)}/${encodeURIComponent(ext.id)}`
+    onNavigate?.()
+  }
+
+  const newSessionIn = (hostId: string, cwd: string) => {
+    activateHost(hostId)
+    if (cwd) rememberDir(hostId, cwd)
+    // 已经在新会话页时不会重新挂载，用事件把 Host / 目录同步过去。
+    window.dispatchEvent(new CustomEvent('tandem:new-session', { detail: { hostId, cwd } }))
+    setShowArchived(false)
+    navigate({ kind: 'home' })
+    onNavigate?.()
+  }
+
   const openMenu = (e: React.MouseEvent, hostId: string, session: SessionSummary) => {
     e.preventDefault()
     e.stopPropagation()
@@ -459,7 +564,7 @@ export function SessionList({
         aria-current={isActive ? 'page' : undefined}
         title={s.title || '未命名会话'}
         className={cn(
-          'anim-row-in group relative flex min-h-11 cursor-default items-center gap-2 rounded-lg pr-8 text-[13px] outline-none transition-colors duration-[120ms] md:min-h-8',
+          'anim-row-in group relative flex min-h-11 cursor-default items-center gap-2 rounded-lg pr-8 text-[13.5px] outline-none transition-colors duration-[120ms] md:min-h-8',
           depth > 0 ? 'pl-6' : 'pl-2',
           isActive
             ? 'bg-[var(--t-bg-active)] text-text'
@@ -614,120 +719,174 @@ export function SessionList({
         )}
       </div>
 
-      {total === 0 && (
-        <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-[var(--t-bg-hover)] text-muted">
-            <MessageSquarePlus size={18} />
-          </div>
-          <p className="text-[12.5px] leading-5 text-muted">
-            {query
-              ? '没有匹配的会话'
-              : showArchived
-                ? '没有已归档的会话'
-                : noHosts
-                  ? '还没有连接 Host，连接后会话会出现在这里。'
-                  : '还没有会话，开始第一次对话吧。'}
-          </p>
-          {!query && !showArchived && (
-            <button
-              onClick={() => {
-                navigate({ kind: 'home' })
-                onNavigate?.()
-              }}
-              className="rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
-            >
-              {noHosts ? '连接 Host' : '新建会话'}
-            </button>
-          )}
-        </div>
-      )}
-
-      {!showArchived && pinned.length > 0 && (
-        <div className="mb-1">
-          <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-[10.5px] font-medium text-muted">
-            <Pin size={11} />
-            置顶
-          </div>
-          <div className="space-y-0.5">{pinned.map(({ hostId, session }) => renderRow(hostId, session))}</div>
-        </div>
-      )}
-
-      {groups.map((host) => {
-        const hostKey = `host:${host.id}`
-        const hostCollapsed = !!collapsed[hostKey]
-        return (
-          <div key={host.id} className="mt-1.5">
-            <button
-              onClick={() => toggleProject(hostKey)}
-              className="flex min-h-8 w-full items-center gap-1.5 rounded-md px-2 text-left text-[12px] font-semibold text-text-soft transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text"
-              aria-expanded={!hostCollapsed}
-            >
-              <ChevronRight
-                size={12}
-                className={cn('shrink-0 text-muted transition-transform duration-150', !hostCollapsed && 'rotate-90')}
-              />
-              <Server size={12} className="shrink-0 text-muted" />
-              <span className="min-w-0 flex-1 truncate">{host.name}</span>
-              <ConnectionDot state={host.online ? 'online' : 'offline'} className="size-1.5" />
-              <span className="text-[10px] font-normal tabular-nums text-muted">{host.count}</span>
-            </button>
-            <div
-              className="expand-grid mt-0.5"
-              data-open={!hostCollapsed}
-              aria-hidden={hostCollapsed}
-              inert={hostCollapsed}
-            >
-              <div className="expand-inner space-y-1">
-                {host.projects.map((project) => {
-                  const projCollapsed = !!collapsed[project.key]
-                  return (
-                    <div key={project.key}>
-                      <button
-                        onClick={() => toggleProject(project.key)}
-                        className="flex min-h-7 w-full items-center gap-1.5 rounded-md px-2 pl-5 text-left text-[11px] text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
-                        aria-expanded={!projCollapsed}
-                        title={project.name}
-                      >
-                        <ChevronRight
-                          size={11}
-                          className={cn('shrink-0 transition-transform duration-150', !projCollapsed && 'rotate-90')}
-                        />
-                        <FolderGit2 size={12} className="shrink-0" />
-                        <span className="min-w-0 max-w-[45%] truncate text-text-soft">{project.name}</span>
-                        {project.branch && (
-                          <span className="flex min-w-0 items-center gap-0.5 text-[10px] text-muted">
-                            <GitBranch size={9} className="shrink-0" />
-                            <span className="truncate">{project.branch}</span>
-                          </span>
-                        )}
-                        <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted">
-                          {project.items.length}
-                        </span>
-                      </button>
-                      <div
-                        className="expand-grid mt-0.5"
-                        data-open={!projCollapsed}
-                        aria-hidden={projCollapsed}
-                        inert={projCollapsed}
-                      >
-                        <div className="expand-inner space-y-0.5 pl-3">
-                          {project.items.map((s) => (
-                            <Fragment key={`${host.id}:${s.id}`}>
-                              {renderRow(host.id, s)}
-                              {showSubagents &&
-                                project.children[s.id]?.map((child) => renderRow(host.id, child, 1))}
-                            </Fragment>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+        {total === 0 && (
+          <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-[var(--t-bg-hover)] text-muted">
+              <MessageSquarePlus size={18} />
             </div>
+            <p className="text-[12.5px] leading-5 text-muted">
+              {query
+                ? '没有匹配的会话'
+                : showArchived
+                  ? '没有已归档的会话'
+                  : noHosts
+                    ? '还没有连接 Host，在左下角设置中添加。'
+                    : '还没有会话，从上方「新会话」开始。'}
+            </p>
           </div>
-        )
-      })}
+        )}
+
+        {!showArchived && pinned.length > 0 && (
+          <div className="mb-1">
+            <div className="flex items-center gap-1.5 px-2 pb-1 pt-2 text-[11px] font-medium text-muted">
+              <Pin size={11} />
+              置顶
+            </div>
+            <div className="space-y-0.5">{pinned.map(({ hostId, session }) => renderRow(hostId, session))}</div>
+          </div>
+        )}
+
+        {(() => {
+          const multiHost = hosts.length > 1
+          const renderExternal = (hostId: string, ext: ExternalItem) => (
+            <button
+              key={`${hostId}:${ext.source}:${ext.id}`}
+              onClick={() => openExternal(hostId, ext)}
+              title={`${ext.title || '外部会话'} · ${ext.cwd}`}
+              className="anim-row-in group/ex flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg pl-2 pr-2 text-left text-[13.5px] text-text-soft outline-none transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text md:min-h-8"
+            >
+              <span
+                className="w-4 shrink-0 text-center text-[8.5px] font-medium tracking-tight text-muted"
+                aria-label={ext.source === 'codex' ? 'Codex' : 'Claude Code'}
+              >
+                {ext.source === 'codex' ? 'Codex' : 'CC'}
+              </span>
+              <span className="min-w-0 flex-1 truncate leading-5">{ext.title || '未命名会话'}</span>
+              <span className="hidden shrink-0 text-[10.5px] tabular-nums text-muted group-hover/ex:inline">
+                {formatRelative(ext.updatedAt)}
+              </span>
+            </button>
+          )
+
+          const renderProject = (hostId: string, project: ProjectGroup, indented: boolean) => {
+            const projCollapsed = !!collapsed[project.key]
+            const entries = [
+              ...project.items.map((s) => ({
+                at: s.updatedAt,
+                node: (
+                  <Fragment key={`${hostId}:${s.id}`}>
+                    {renderRow(hostId, s)}
+                    {showSubagents &&
+                      project.children[s.id]?.map((child) => renderRow(hostId, child, 1))}
+                  </Fragment>
+                ),
+              })),
+              ...project.externals.map((ext) => ({
+                at: ext.updatedAt,
+                node: renderExternal(hostId, ext),
+              })),
+            ].sort((a, b) => b.at - a.at)
+            const count = project.items.length + project.externals.length
+            return (
+              <div key={project.key}>
+                <div className="group/proj flex min-h-8 items-center rounded-lg pr-0.5 transition-colors hover:bg-[var(--t-bg-hover)]">
+                  <button
+                    onClick={() => toggleProject(project.key)}
+                    className={cn(
+                      'flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left text-[13px] text-text-secondary transition-colors duration-[120ms] hover:text-text',
+                      indented ? 'pl-6' : 'pl-2',
+                    )}
+                    aria-expanded={!projCollapsed}
+                    title={project.cwd || project.name}
+                  >
+                    <ChevronRight
+                      size={11}
+                      className={cn(
+                        'shrink-0 text-muted transition-transform duration-150',
+                        !projCollapsed && 'rotate-90',
+                      )}
+                    />
+                    <Folder size={12} className="shrink-0 text-muted" />
+                    <span className="min-w-0 max-w-[52%] truncate">{project.name}</span>
+                    {project.branch && (
+                      <span className="flex min-w-0 items-center gap-0.5 text-[10px] text-muted">
+                        <GitBranch size={9} className="shrink-0" />
+                        <span className="truncate">{project.branch}</span>
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      newSessionIn(hostId, project.cwd || '')
+                    }}
+                    title={`在 ${project.name} 新建会话`}
+                    aria-label={`在 ${project.name} 新建会话`}
+                    className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted opacity-0 transition-opacity hover:bg-[var(--t-bg-active)] hover:text-text focus-visible:opacity-100 group-hover/proj:opacity-100"
+                  >
+                    <Plus size={13} />
+                  </button>
+                  <span className="w-5 shrink-0 text-right text-[10px] tabular-nums text-muted">
+                    {count}
+                  </span>
+                </div>
+                <div
+                  className="expand-grid mt-0.5"
+                  data-open={!projCollapsed}
+                  aria-hidden={projCollapsed}
+                  inert={projCollapsed}
+                >
+                  <div className={cn('expand-inner space-y-0.5', indented ? 'pl-6' : 'pl-3')}>
+                    {entries.map((e) => e.node)}
+                  </div>
+                </div>
+              </div>
+            )
+          }
+
+          if (!multiHost) {
+            return (
+              <div className="space-y-1 pt-1">
+                {groups.flatMap((host) =>
+                  host.projects.map((project) => renderProject(host.id, project, false)),
+                )}
+              </div>
+            )
+          }
+
+          return groups.map((host) => {
+            const hostKey = `host:${host.id}`
+            const hostCollapsed = !!collapsed[hostKey]
+            return (
+              <div key={host.id} className="mt-2">
+                <button
+                  onClick={() => toggleProject(hostKey)}
+                  className="flex min-h-8 w-full items-center gap-1.5 rounded-lg px-2 text-left text-[13px] font-medium text-text-secondary transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text"
+                  aria-expanded={!hostCollapsed}
+                >
+                  <ChevronRight
+                    size={11}
+                    className={cn('shrink-0 text-muted transition-transform duration-150', !hostCollapsed && 'rotate-90')}
+                  />
+                  <Server size={12} className="shrink-0 text-muted" />
+                  <span className="min-w-0 flex-1 truncate">{host.name}</span>
+                  <ConnectionDot state={host.online ? 'online' : 'offline'} className="size-1.5" />
+                  <span className="text-[10px] font-normal tabular-nums text-muted">{host.count}</span>
+                </button>
+                <div
+                  className="expand-grid mt-0.5"
+                  data-open={!hostCollapsed}
+                  aria-hidden={hostCollapsed}
+                  inert={hostCollapsed}
+                >
+                  <div className="expand-inner space-y-1 pt-0.5">
+                    {host.projects.map((project) => renderProject(host.id, project, true))}
+                  </div>
+                </div>
+              </div>
+            )
+          })
+        })()}
 
       {menu && menuActions && (
         <RowMenu
@@ -775,7 +934,7 @@ export function SessionList({
                 }
               }}
               disabled={confirm?.busy}
-              className="flex min-h-9 items-center gap-1.5 rounded-lg bg-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
+              className="flex min-h-9 items-center gap-1.5 rounded-lg btn-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
             >
               {confirm?.busy && <Loader2 size={13} className="animate-spin" />}
               {confirm?.dirty ? '仍然删除' : '删除'}

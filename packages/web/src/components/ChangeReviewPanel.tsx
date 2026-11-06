@@ -30,10 +30,10 @@ interface LineComment {
 
 const STATUS_META: Record<FileChange['status'], { letter: string; className: string }> = {
   modified: { letter: 'M', className: 'text-text-soft' },
-  added: { letter: 'A', className: 'text-success' },
-  deleted: { letter: 'D', className: 'text-danger' },
-  renamed: { letter: 'R', className: 'text-accent' },
-  untracked: { letter: 'U', className: 'text-warning' },
+  added: { letter: 'A', className: 'text-text-soft' },
+  deleted: { letter: 'D', className: 'text-[var(--t-del-bar)]' },
+  renamed: { letter: 'R', className: 'text-text-soft' },
+  untracked: { letter: 'U', className: 'text-muted' },
 }
 
 function InlineComment({
@@ -315,8 +315,8 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
         )}
         {files.length > 0 && (
           <span className="flex shrink-0 items-center gap-1 font-mono text-[10.5px]">
-            <span className="text-success">+{totalAdd}</span>
-            <span className="text-danger">−{totalDel}</span>
+            <span className="text-text-soft">+{totalAdd}</span>
+            <span className="text-muted">−{totalDel}</span>
           </span>
         )}
         <span className="flex-1" />
@@ -399,8 +399,8 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                     >
                       {file.path}
                     </span>
-                    <span className="shrink-0 font-mono text-[10.5px] text-success">+{file.additions}</span>
-                    <span className="shrink-0 font-mono text-[10.5px] text-danger">−{file.deletions}</span>
+                    <span className="shrink-0 font-mono text-[10.5px] text-text-soft">+{file.additions}</span>
+                    <span className="shrink-0 font-mono text-[10.5px] text-muted">−{file.deletions}</span>
                   </button>
                   <button
                     onClick={() => setRevertTarget(file)}
@@ -578,7 +578,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
             <button
               onClick={() => void doRevert()}
               disabled={reverting}
-              className="flex min-h-9 items-center gap-1.5 rounded-lg bg-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
+              className="flex min-h-9 items-center gap-1.5 rounded-lg btn-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
             >
               {reverting && <Loader2 size={13} className="animate-spin" />}
               丢弃改动

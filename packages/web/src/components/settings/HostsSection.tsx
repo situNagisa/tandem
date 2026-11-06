@@ -382,7 +382,7 @@ export function HostsSection() {
                 setEditId(null)
                 setRemoveTarget(null)
               }}
-              className="min-h-9 rounded-lg bg-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90"
+              className="min-h-9 rounded-lg btn-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90"
             >
               移除
             </button>

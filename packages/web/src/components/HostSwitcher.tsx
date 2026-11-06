@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import { Check, ChevronsUpDown, Plus, RefreshCw, Server, Settings2 } from 'lucide-react'
+import { Check, RefreshCw, Server, Settings2 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { navigate } from '../lib/router'
-import { useClickOutside } from '../lib/hooks'
 import { cn } from '../lib/cn'
+import { Popover } from './ui/Popover'
 import { ConnectionDot } from './StatusDot'
 
 export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
@@ -16,56 +15,37 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
   const openSettings = useUiStore((s) => s.openSettings)
   const active = hosts.find((h) => h.id === activeHostId) ?? null
   const runtime = active ? runtimes[active.id] : undefined
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useClickOutside(ref, () => setOpen(false), open)
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setOpen(false)
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [open])
-
-  const close = () => setOpen(false)
+  const platform = runtime?.info?.platform
 
   return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className={cn(
-          'flex min-h-11 w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] md:min-h-0',
-          open && 'bg-[var(--t-bg-active)]',
-        )}
-      >
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[var(--t-bg-active)] text-text-soft">
-          <Server size={13} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[12.5px] font-medium leading-4 text-text">
-            {active?.name ?? '选择 Host'}
-          </span>
-          <span className="block truncate text-[10.5px] leading-4 text-muted">
-            {active ? active.url.replace(/^https?:\/\//, '') : '尚未添加任何 Host'}
-          </span>
-        </span>
-        {runtime && <ConnectionDot state={runtime.status} />}
-        <ChevronsUpDown size={13} className="shrink-0 text-muted" />
-      </button>
-
-      {open && (
-        <div
-          role="menu"
-          className="anim-pop absolute left-0 top-full z-50 mt-1.5 w-[272px] max-w-[calc(100vw-1.25rem)] origin-top-left rounded-xl border border-border bg-surface p-1.5 shadow-[var(--t-shadow-md)]"
+    <Popover
+      side="top"
+      align="left"
+      padded={false}
+      panelClassName="w-[272px] max-w-[calc(100vw-1rem)] p-1.5"
+      trigger={({ open, toggle }) => (
+        <button
+          onClick={toggle}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          title={active ? `${active.name} · ${active.url.replace(/^https?:\/\//, '')}` : '选择 Host'}
+          className={cn(
+            'flex h-8 min-w-0 max-w-[150px] items-center gap-1.5 rounded-lg px-1.5 text-left text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text',
+            open && 'bg-[var(--t-bg-active)] text-text',
+          )}
         >
-          <div className="px-2.5 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted">
+          <Server size={12} className="shrink-0 opacity-70" />
+          <span className="min-w-0 truncate text-[11.5px]">
+            {active ? active.name : '选择 Host'}
+            {active && platform ? <span className="text-muted"> · {platform}</span> : null}
+          </span>
+          {runtime && <ConnectionDot state={runtime.status} className="size-1" />}
+        </button>
+      )}
+    >
+      {(close) => (
+        <div>
+          <div className="px-2.5 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted">
             Hosts
           </div>
           <div className="max-h-64 overflow-y-auto">
@@ -127,21 +107,11 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
             >
-              <Plus size={13} /> 添加远程 Host
-            </button>
-            <button
-              role="menuitem"
-              onClick={() => {
-                close()
-                openSettings('hosts')
-              }}
-              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-            >
-              <Settings2 size={13} /> 管理 Host
+              <Settings2 size={13} /> 管理 Host…
             </button>
           </div>
         </div>
       )}
-    </div>
+    </Popover>
   )
 }

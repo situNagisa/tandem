@@ -27,9 +27,9 @@ const SOURCE_LABEL: Record<string, string> = {
 }
 
 const STATUS_STYLE: Record<McpServerStatus['status'] | 'unknown', { dot: string; text: string; label: string }> = {
-  connected: { dot: 'bg-success', text: 'text-success', label: '已连接' },
-  connecting: { dot: 'bg-accent running-dot', text: 'text-accent', label: '连接中' },
-  error: { dot: 'bg-danger', text: 'text-danger', label: '出错' },
+  connected: { dot: 'bg-text-tertiary/70', text: 'text-text-soft', label: '已连接' },
+  connecting: { dot: 'bg-text-secondary running-dot', text: 'text-text-secondary', label: '连接中' },
+  error: { dot: 'bg-text-tertiary/70', text: 'text-danger', label: '出错' },
   disabled: { dot: 'border border-border-strong bg-transparent', text: 'text-muted', label: '已停用' },
   unknown: { dot: 'bg-border-strong', text: 'text-muted', label: '未连接' },
 }
@@ -631,7 +631,7 @@ export function McpSection() {
             <button
               onClick={() => void confirmRemove()}
               disabled={saving}
-              className="flex min-h-9 items-center gap-1.5 rounded-lg bg-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
+              className="flex min-h-9 items-center gap-1.5 rounded-lg btn-danger px-3.5 text-[12.5px] font-medium text-on-accent transition-opacity hover:opacity-90 disabled:opacity-60"
             >
               {saving && <Loader2 size={13} className="animate-spin" />}
               移除
