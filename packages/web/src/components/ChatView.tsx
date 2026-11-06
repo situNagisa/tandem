@@ -8,6 +8,7 @@ import { MessageList } from './MessageList'
 import { SessionWelcome, HomeView } from './Welcome'
 import { PermissionCard } from './PermissionCard'
 import { Composer } from './Composer'
+import { TurnRail } from './chat/TurnRail'
 import '../styles/chat.css'
 
 const EMPTY_PENDING: PermissionRequest[] = []
@@ -213,6 +214,16 @@ export function ChatView() {
             </div>
           </div>
         </div>
+
+        <TurnRail
+          scrollRef={scrollRef}
+          sessionId={sessionId}
+          onBeforeJump={() => {
+            pinnedRef.current = false
+            programmaticUntil.current = 0
+            setShowJump(false)
+          }}
+        />
 
         <button
           onClick={() => scrollToBottom(true)}

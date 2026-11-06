@@ -504,6 +504,14 @@ export function MessageList({
   }
   flushRun()
 
+  const turnIndex = new Map<string, number>()
+  let turn = 0
+  for (const m of messages) {
+    if (m.role !== 'user') continue
+    if (m.content.every((b) => b.type === 'tool_result')) continue
+    turnIndex.set(m.id, turn++)
+  }
+
   return (
     <div className="flex flex-col gap-6 pb-2">
       {segments.map((seg) => {
@@ -522,13 +530,22 @@ export function MessageList({
         const m = seg.message
         if (m.role === 'user') {
           return (
-            <div key={m.id} className="msg-row">
+            <div
+              key={m.id}
+              className="msg-row"
+              data-turn-id={m.id}
+              data-turn-index={turnIndex.get(m.id)}
+            >
               <UserMessage message={m} animate={seg.animate} readOnly={readOnly} />
             </div>
           )
         }
         return (
-          <div key={m.id} className="msg-row">
+          <div
+            key={m.id}
+            className="msg-row"
+            data-streaming={streamingId === m.id ? 'true' : undefined}
+          >
             <AssistantMessage
               message={m}
               streaming={!!streamingId && m.id === streamingId}
