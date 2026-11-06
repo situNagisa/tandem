@@ -1,5 +1,6 @@
 import type {
   ContentBlock,
+  ExternalSession,
   HostInfo,
   Message,
   PermissionRequest,
@@ -32,6 +33,11 @@ export interface HostRuntime {
   sessionsLoading: boolean
   commands: SlashCommand[]
   commandsLoaded: boolean
+  /** 本机已有的 Claude Code / Codex 会话（只读扫描结果）。 */
+  externalSessions: ExternalSession[]
+  externalLoaded: boolean
+  externalLoading: boolean
+  externalError?: string
   /** WS 断线原因 / REST 错误提示 */
   error?: string
   /** Token 被拒绝：需要用户去设置里修改 */
@@ -72,7 +78,7 @@ export interface Toast {
 }
 
 export type Theme = 'light' | 'dark' | 'system'
-export type SettingsTab = 'profiles' | 'hosts' | 'appearance'
+export type SettingsTab = 'profiles' | 'hosts' | 'appearance' | 'sync'
 
 export type AppRoute =
   | { kind: 'home' }

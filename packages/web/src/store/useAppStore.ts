@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import type {
   ContentBlock,
   CreateSessionInput,
+  ExternalSession,
+  ExternalSource,
   Message,
   PermissionDecision,
   PermissionMode,
@@ -11,10 +13,20 @@ import type {
   SlashCommand,
   UpdateSessionInput,
 } from '@tandem/protocol'
-import { api, ApiError } from '../lib/api'
+import { api, ApiError, type ExternalImportInput } from '../lib/api'
 import { HostConnection } from '../lib/ws'
 import { normalizeHostUrl } from '../lib/hostUrl'
-import { loadHosts, loadLastHost, saveHosts, saveLastHost } from '../lib/storage'
+import {
+  loadHosts,
+  loadLastHost,
+  readRecentDirsMap,
+  sanitizeHosts,
+  saveCollapsedProjects,
+  saveHosts,
+  saveLastHost,
+  saveRecentDirsMap,
+  type ClientSettingsBundle,
+} from '../lib/storage'
 import { navigate } from '../lib/router'
 import { useUiStore } from './useUiStore'
 import type {
@@ -42,6 +54,15 @@ interface AppState {
   refreshSessions: (hostId: string) => Promise<void>
   refreshProfiles: (hostId: string) => Promise<void>
   refreshCommands: (hostId: string) => Promise<SlashCommand[]>
+  refreshExternalSessions: (hostId: string, force?: boolean) => Promise<ExternalSession[]>
+  importExternalSession: (
+    hostId: string,
+    source: ExternalSource,
+    id: string,
+    input?: ExternalImportInput,
+  ) => Promise<SessionSummary | null>
+  /** 应用配置迁移带回的客户端设置（Host 列表 / 主题 / 侧栏偏好）。 */
+  applyClientSettings: (settings: ClientSettingsBundle, mode: 'merge' | 'replace') => void
 
   openSession: (hostId: string, sessionId: string) => void
   closeSession: () => void
@@ -50,7 +71,7 @@ interface AppState {
   interrupt: () => void
   decidePermission: (requestId: string, decision: PermissionDecision) => void
   setPermissionMode: (mode: PermissionMode) => Promise<void>
-  setModel: (profileId: string, model: string) => Promise<void>
+  setModel: (profileId: string, groupId: string | undefined, model: string) => Promise<void>
   createSession: (hostId: string, input: CreateSessionInput) => Promise<SessionSummary>
   startSession: (hostId: string, input: CreateSessionInput, content: ContentBlock[]) => Promise<SessionSummary>
   updateSession: (
@@ -84,6 +105,9 @@ function freshRuntime(): HostRuntime {
     sessionsLoading: false,
     commands: [],
     commandsLoaded: false,
+    externalSessions: [],
+    externalLoaded: false,
+    externalLoading: false,
   }
 }
 
@@ -105,6 +129,7 @@ function summaryOf(s: Session): SessionSummary {
     title: s.title,
     cwd: s.cwd,
     profileId: s.profileId,
+    ...(s.groupId ? { groupId: s.groupId } : {}),
     model: s.model,
     permissionMode: s.permissionMode,
     status: s.status,
@@ -304,6 +329,7 @@ export const useAppStore = create<AppState>((set, get) => {
         patchRuntime(hostId, { info: msg.host, status: 'online', error: undefined })
         void get().refreshProfiles(hostId)
         void get().refreshSessions(hostId)
+        void get().refreshExternalSessions(hostId)
         break
       }
       case 'session_snapshot': {
@@ -747,6 +773,141 @@ export const useAppStore = create<AppState>((set, get) => {
       }
     },
 
+    refreshExternalSessions: async (hostId, force = false) => {
+      const host = getHost(hostId)
+      const rt = get().runtimes[hostId]
+      if (!host || !rt) return []
+      if (rt.externalLoading) return rt.externalSessions
+      if (rt.externalLoaded && !force) return rt.externalSessions
+      patchRuntime(hostId, { externalLoading: true, externalError: undefined })
+      try {
+        const list = await api.externalSessions(host)
+        if (!getHost(hostId)) return list
+        patchRuntime(hostId, {
+          externalSessions: list,
+          externalLoaded: true,
+          externalLoading: false,
+          externalError: undefined,
+        })
+        return list
+      } catch (err) {
+        if (getHost(hostId)) {
+          patchRuntime(hostId, {
+            externalLoading: false,
+            externalError: err instanceof Error ? err.message : '读取外部会话失败',
+          })
+        }
+        return get().runtimes[hostId]?.externalSessions ?? []
+      }
+    },
+
+    importExternalSession: async (hostId, source, id, input = {}) => {
+      const host = getHost(hostId)
+      if (!host) return null
+      try {
+        const summary = await api.importExternalSession(host, source, id, input)
+        applySessionSummary(hostId, summary)
+        const rt = get().runtimes[hostId]
+        if (rt) {
+          patchRuntime(hostId, {
+            externalSessions: rt.externalSessions.map((x) =>
+              x.source === source && x.id === id
+                ? { ...x, importedSessionId: summary.id }
+                : x,
+            ),
+          })
+        }
+        navigate({ kind: 'session', hostId, sessionId: summary.id })
+        toast('已导入为 Tandem 会话，可以继续对话', 'success')
+        return summary
+      } catch (err) {
+        toast(err instanceof Error ? err.message : '导入会话失败', 'error')
+        return null
+      }
+    },
+
+    applyClientSettings: (settings, mode) => {
+      const imported = sanitizeHosts(settings.hosts)
+      const normalized = (url: string): string => {
+        try {
+          return normalizeHostUrl(url)
+        } catch {
+          return url
+        }
+      }
+      const before = get().hosts
+      let hosts: HostConfig[]
+      if (mode === 'replace') {
+        for (const id of connections.keys()) {
+          connections.get(id)?.close()
+        }
+        connections.clear()
+        const seen = new Set<string>()
+        hosts = imported.map((h) => {
+          const id = h.id && !seen.has(h.id) ? h.id : newId()
+          seen.add(id)
+          return { ...h, id }
+        })
+      } else {
+        hosts = before.slice()
+        for (const h of imported) {
+          const existing = hosts.find((x) => normalized(x.url) === normalized(h.url))
+          if (existing) continue
+          const id = hosts.some((x) => x.id === h.id) ? newId() : h.id
+          hosts.push({ ...h, id })
+        }
+      }
+
+      const runtimes = mode === 'replace' ? {} : { ...get().runtimes }
+      for (const h of hosts) {
+        if (!runtimes[h.id]) runtimes[h.id] = freshRuntime()
+      }
+      let activeHostId =
+        mode === 'replace'
+          ? (hosts.find((h) => h.id === settings.lastHost)?.id ?? hosts[0]?.id ?? null)
+          : get().activeHostId && hosts.some((h) => h.id === get().activeHostId)
+            ? get().activeHostId
+            : (hosts[0]?.id ?? null)
+
+      set({ hosts, runtimes, activeHostId })
+      saveHosts(hosts)
+      if (activeHostId) saveLastHost(activeHostId)
+
+      const ui = useUiStore.getState()
+      if (settings.theme === 'light' || settings.theme === 'dark' || settings.theme === 'system') {
+        ui.setTheme(settings.theme)
+      }
+      const prefs = settings.ui ?? {}
+      if (typeof prefs.sidebarCollapsed === 'boolean') ui.setSidebarCollapsed(prefs.sidebarCollapsed)
+      if (typeof prefs.sidebarWidth === 'number') ui.setSidebarWidth(prefs.sidebarWidth)
+      if (typeof prefs.panelOpen === 'boolean') ui.setPanelOpen(prefs.panelOpen)
+      if (Array.isArray(prefs.collapsedProjects)) {
+        const map: Record<string, boolean> = {}
+        for (const key of prefs.collapsedProjects) {
+          if (typeof key === 'string') map[key] = true
+        }
+        useUiStore.setState({ collapsedProjects: map })
+        saveCollapsedProjects(map)
+      }
+
+      if (settings.recentDirs && typeof settings.recentDirs === 'object') {
+        const merged = mode === 'replace' ? {} : readRecentDirsMap()
+        for (const [hostId, dirs] of Object.entries(settings.recentDirs)) {
+          if (!Array.isArray(dirs)) continue
+          const clean = dirs.filter((d): d is string => typeof d === 'string')
+          const prev = merged[hostId] ?? []
+          merged[hostId] = [...new Set([...prev, ...clean])].slice(0, 8)
+        }
+        saveRecentDirsMap(merged)
+      }
+
+      if (activeHostId) {
+        ensureConnection(activeHostId)
+        void get().refreshProfiles(activeHostId)
+        void get().refreshSessions(activeHostId)
+      }
+    },
+
     openSession: (hostId, sessionId) => {
       const current = get().active
       if (current && current.hostId === hostId && current.sessionId === sessionId) return
@@ -893,16 +1054,20 @@ export const useAppStore = create<AppState>((set, get) => {
       }
     },
 
-    setModel: async (profileId, model) => {
+    setModel: async (profileId, groupId, model) => {
       const active = get().active
       const host = active ? getHost(active.hostId) : undefined
       if (!active?.summary || !host) return
       const prev = active.summary
-      const optimistic: SessionSummary = { ...prev, profileId, model }
+      const optimistic: SessionSummary = { ...prev, profileId, model, groupId }
       patchActive(active.hostId, active.sessionId, (a) => ({ ...a, summary: optimistic }))
       applySessionSummary(active.hostId, optimistic)
       try {
-        const updated = await api.patchSession(host, prev.id, { profileId, model })
+        const updated = await api.patchSession(host, prev.id, {
+          profileId,
+          model,
+          ...(groupId ? { groupId } : {}),
+        })
         applySessionSummary(active.hostId, updated)
       } catch (err) {
         applySessionSummary(active.hostId, prev)

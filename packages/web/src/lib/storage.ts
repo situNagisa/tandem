@@ -26,12 +26,29 @@ function writeJson(key: string, value: unknown): void {
   }
 }
 
+/** 过滤掉结构不完整的 Host（也用于导入配置时的输入校验）。 */
+export function sanitizeHosts(input: unknown): HostConfig[] {
+  if (!Array.isArray(input)) return []
+  return input
+    .filter(
+      (h): h is HostConfig =>
+        !!h &&
+        typeof h === 'object' &&
+        typeof (h as HostConfig).id === 'string' &&
+        typeof (h as HostConfig).url === 'string' &&
+        typeof (h as HostConfig).token === 'string',
+    )
+    .map((h) => ({
+      id: h.id,
+      name: typeof h.name === 'string' ? h.name : h.url,
+      url: h.url,
+      token: h.token,
+      addedAt: typeof h.addedAt === 'number' ? h.addedAt : Date.now(),
+    }))
+}
+
 export function loadHosts(): HostConfig[] {
-  const list = readJson<HostConfig[]>(KEYS.hosts, [])
-  if (!Array.isArray(list)) return []
-  return list.filter(
-    (h) => h && typeof h.id === 'string' && typeof h.url === 'string' && typeof h.token === 'string',
-  )
+  return sanitizeHosts(readJson<unknown>(KEYS.hosts, []))
 }
 
 export function saveHosts(hosts: HostConfig[]): void {
@@ -51,11 +68,20 @@ export function saveTheme(theme: Theme): void {
   }
 }
 
-interface UiPrefs {
+export interface UiPrefs {
   sidebarCollapsed?: boolean
   panelOpen?: boolean
   sidebarWidth?: number
   collapsedProjects?: string[]
+}
+
+/** 随配置迁移打包的客户端设置：Host 列表、主题、侧栏偏好等 localStorage 内容。 */
+export interface ClientSettingsBundle {
+  hosts?: HostConfig[]
+  theme?: Theme
+  ui?: UiPrefs
+  recentDirs?: Record<string, string[]>
+  lastHost?: string | null
 }
 
 export function loadUiPrefs(): UiPrefs {
@@ -114,5 +140,32 @@ export function saveLastHost(hostId: string): void {
     localStorage.setItem(KEYS.lastHost, hostId)
   } catch {
     /* 忽略 */
+  }
+}
+
+export function readRecentDirsMap(): Record<string, string[]> {
+  const map = readJson<Record<string, string[]>>(KEYS.recentDirs, {})
+  if (!map || typeof map !== 'object') return {}
+  const out: Record<string, string[]> = {}
+  for (const [hostId, dirs] of Object.entries(map)) {
+    if (Array.isArray(dirs)) {
+      out[hostId] = dirs.filter((d): d is string => typeof d === 'string').slice(0, 8)
+    }
+  }
+  return out
+}
+
+export function saveRecentDirsMap(map: Record<string, string[]>): void {
+  writeJson(KEYS.recentDirs, map)
+}
+
+/** 收集将要随 ConfigBundle 打包的客户端设置。 */
+export function collectClientSettings(): ClientSettingsBundle {
+  return {
+    hosts: loadHosts(),
+    theme: loadTheme(),
+    ui: loadUiPrefs(),
+    recentDirs: readRecentDirsMap(),
+    lastHost: loadLastHost(),
   }
 }

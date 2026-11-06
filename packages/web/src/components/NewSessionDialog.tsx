@@ -23,6 +23,7 @@ import { useUiStore } from '../store/useUiStore'
 import { useClickOutside } from '../lib/hooks'
 import { basename, dirname } from '../lib/format'
 import { loadRecentDirs, rememberDir } from '../lib/storage'
+import { defaultChoiceFor, groupName } from '../lib/profileModels'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
 import { Composer } from './Composer'
@@ -324,14 +325,16 @@ function FolderMenu({
 function AccountMenu({
   hostId,
   profileId,
+  groupId,
   model,
   onSelect,
   close,
 }: {
   hostId: string
   profileId: string
+  groupId?: string
   model: string
-  onSelect: (profileId: string, model: string) => void
+  onSelect: (profileId: string, groupId: string | undefined, model: string) => void
   close: () => void
 }) {
   const openSettings = useUiStore((s) => s.openSettings)
@@ -341,11 +344,30 @@ function AccountMenu({
   const selected = profiles.find((p) => p.id === profileId) ?? profiles[0] ?? null
   const [activeId, setActiveId] = useState(selected?.id ?? '')
   const active = profiles.find((p) => p.id === activeId) ?? selected
+  const [activeGroupId, setActiveGroupId] = useState(
+    groupId ?? selected?.groups?.[0]?.id ?? '',
+  )
+  useEffect(() => {
+    if (!active) return
+    const keep =
+      groupId && active.groups?.some((g) => g.id === groupId) ? groupId : undefined
+    setActiveGroupId(keep ?? active.groups?.[0]?.id ?? '')
+  }, [active?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const activeGroup =
+    active?.groups?.find((g) => g.id === activeGroupId) ?? active?.groups?.[0] ?? null
   const models = useMemo(() => {
-    const list = active?.models?.length ? active.models : active?.defaultModel ? [active.defaultModel] : []
+    const list = activeGroup
+      ? activeGroup.models.length
+        ? activeGroup.models
+        : [activeGroup.defaultModel].filter(Boolean)
+      : active?.models?.length
+        ? active.models
+        : active?.defaultModel
+          ? [active.defaultModel]
+          : []
     const q = query.trim().toLowerCase()
     return q ? list.filter((m) => m.toLowerCase().includes(q)) : list
-  }, [active, query])
+  }, [active, activeGroup, query])
 
   if (profiles.length === 0) {
     return (
@@ -385,7 +407,14 @@ function AccountMenu({
             key={p.id}
             onClick={() => {
               setActiveId(p.id)
-              if (p.id !== profileId) onSelect(p.id, p.defaultModel || p.models[0] || '')
+              const choice = defaultChoiceFor(p)
+              setActiveGroupId(choice?.groupId ?? '')
+              if (
+                p.id !== profileId ||
+                (choice?.groupId ?? undefined) !== (groupId ?? undefined)
+              ) {
+                onSelect(p.id, choice?.groupId, choice?.model ?? '')
+              }
             }}
             className={cn(
               'flex shrink-0 flex-col items-start rounded-lg border px-2 py-1.5 text-left transition-colors',
@@ -395,10 +424,36 @@ function AccountMenu({
             )}
           >
             <span className="max-w-[120px] truncate text-[11.5px] font-medium">{p.name}</span>
-            <span className="max-w-[120px] truncate text-[9.5px] text-muted">{p.defaultModel}</span>
+            <span className="max-w-[120px] truncate text-[9.5px] text-muted">
+              {p.groups?.length ? `${p.groups.length} 个分组` : p.defaultModel}
+            </span>
           </button>
         ))}
       </div>
+      {active?.groups?.length ? (
+        <div className="flex items-center gap-1.5 overflow-x-auto px-2 pb-1.5">
+          <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.08em] text-muted">
+            分组
+          </span>
+          {active.groups.map((g) => (
+            <button
+              key={g.id}
+              onClick={() => {
+                setActiveGroupId(g.id)
+                onSelect(active.id, g.id, g.defaultModel || g.models[0] || '')
+              }}
+              className={cn(
+                'max-w-[120px] shrink-0 truncate rounded-md px-1.5 py-0.5 text-[10.5px] transition-colors',
+                g.id === activeGroup?.id
+                  ? 'bg-[var(--t-bg-active)] text-text'
+                  : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text',
+              )}
+            >
+              {g.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="border-t border-border pt-1.5">
         <div className="flex items-center gap-1.5 px-2 pb-1">
           <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted">模型</span>
@@ -411,13 +466,16 @@ function AccountMenu({
         </div>
         <div className="max-h-[174px] overflow-y-auto">
           {models.map((m) => {
-            const isCurrent = active?.id === profileId && m === model
+            const isCurrent =
+              active?.id === profileId &&
+              (activeGroup?.id ?? undefined) === (groupId ?? undefined) &&
+              m === model
             return (
               <button
-                key={m}
+                key={`${activeGroup?.id ?? 'default'}:${m}`}
                 onClick={() => {
                   if (!active) return
-                  onSelect(active.id, m)
+                  onSelect(active.id, activeGroup?.id, m)
                   close()
                 }}
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--t-bg-hover)]"
@@ -455,6 +513,7 @@ export function NewSessionView() {
 
   const [cwd, setCwd] = useState('')
   const [profileId, setProfileId] = useState('')
+  const [groupId, setGroupId] = useState<string | undefined>(undefined)
   const [model, setModel] = useState('')
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
   const [sending, setSending] = useState(false)
@@ -485,18 +544,26 @@ export function NewSessionView() {
   useEffect(() => {
     if (!profiles.length) {
       setProfileId('')
+      setGroupId(undefined)
       setModel('')
       return
     }
     const current = profiles.find((p) => p.id === profileId)
     if (!current) {
       const p = profiles[0]
+      const choice = defaultChoiceFor(p)
       setProfileId(p.id)
-      setModel(p.defaultModel || p.models[0] || '')
+      setGroupId(choice?.groupId)
+      setModel(choice?.model ?? '')
+      return
     }
-  }, [profiles, profileId])
+    if (groupId && !current.groups?.some((g) => g.id === groupId)) {
+      setGroupId(current.groups?.[0]?.id)
+    }
+  }, [profiles, profileId, groupId])
 
   const selectedProfile = profiles.find((p) => p.id === profileId) ?? null
+  const selectedGroupName = groupName(selectedProfile ?? undefined, groupId)
 
   const submit = async (content: ContentBlock[]): Promise<boolean> => {
     if (!host) return false
@@ -518,7 +585,7 @@ export function NewSessionView() {
     try {
       await startSession(
         host.id,
-        { cwd: cwd.trim(), profileId, model, permissionMode },
+        { cwd: cwd.trim(), profileId, ...(groupId ? { groupId } : {}), model, permissionMode },
         content,
       )
       rememberDir(host.id, cwd.trim())
@@ -536,8 +603,9 @@ export function NewSessionView() {
     setError(null)
   }
 
-  const chooseAccount = (pid: string, m: string) => {
+  const chooseAccount = (pid: string, gid: string | undefined, m: string) => {
     setProfileId(pid)
+    setGroupId(gid)
     setModel(m)
   }
 
@@ -557,6 +625,7 @@ export function NewSessionView() {
           sessionless
           model={model}
           profileId={profileId}
+          groupId={groupId}
           permissionMode={permissionMode}
           onModelChange={chooseAccount}
           onPermissionModeChange={setPermissionMode}
@@ -612,7 +681,9 @@ export function NewSessionView() {
               <Pill onClick={toggle} title="选择账号与模型" className={open ? 'bg-[var(--t-bg-active)]' : undefined}>
                 <Sparkles size={12} className="text-muted" />
                 <span className="max-w-[110px] truncate">
-                  {selectedProfile?.name ?? '账号'}
+                  {selectedProfile
+                    ? `${selectedProfile.name}${selectedGroupName ? ` › ${selectedGroupName}` : ''}`
+                    : '账号'}
                 </span>
                 {model && (
                   <span className="max-w-[130px] truncate font-mono text-[10.5px] text-muted">
@@ -628,6 +699,7 @@ export function NewSessionView() {
                 <AccountMenu
                   hostId={host.id}
                   profileId={profileId}
+                  groupId={groupId}
                   model={model}
                   onSelect={chooseAccount}
                   close={close}

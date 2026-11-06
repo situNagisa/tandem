@@ -1,5 +1,11 @@
 import type {
+  ConfigBundle,
+  ConfigExportInput,
+  ConfigImportInput,
+  ConfigImportResult,
   CreateSessionInput,
+  ExternalSession,
+  ExternalSource,
   FsEntry,
   HostInfo,
   ListModelsInput,
@@ -118,5 +124,43 @@ export const api = {
     request<FsEntry[]>(h, `/api/fs/list${qs({ path })}`),
   fsComplete: (h: HostConfig, cwd: string, q: string) =>
     request<string[]>(h, `/api/fs/complete${qs({ cwd, q })}`),
+
+  externalSessions: (h: HostConfig, source?: ExternalSource) =>
+    request<ExternalSession[]>(h, `/api/external-sessions${qs({ source })}`),
+  externalSession: (h: HostConfig, source: ExternalSource, id: string) =>
+    request<Session>(
+      h,
+      `/api/external-sessions/${encodeURIComponent(source)}/${encodeURIComponent(id)}`,
+    ),
+  importExternalSession: (
+    h: HostConfig,
+    source: ExternalSource,
+    id: string,
+    input: ExternalImportInput = {},
+  ) =>
+    request<SessionSummary>(
+      h,
+      `/api/external-sessions/${encodeURIComponent(source)}/${encodeURIComponent(id)}/import`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+
+  exportConfig: (h: HostConfig, input: ConfigExportInput) =>
+    request<ConfigBundle>(h, '/api/config/export', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  importConfig: (h: HostConfig, input: ConfigImportInput) =>
+    request<ConfigImportResult>(h, '/api/config/import', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
   commands: (h: HostConfig) => request<SlashCommand[]>(h, '/api/commands'),
+}
+
+/** 导入外部会话时可选的目标账号 / 分组 / 模型；不填则沿用原软件上下文。 */
+export interface ExternalImportInput {
+  profileId?: string
+  groupId?: string
+  model?: string
 }

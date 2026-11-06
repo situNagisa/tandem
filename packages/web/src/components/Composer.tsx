@@ -36,6 +36,7 @@ import { useUiStore } from '../store/useUiStore'
 import { useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
 import { PROVIDER_KIND_LABELS } from '../lib/types'
+import { groupName, profileModelGroups } from '../lib/profileModels'
 import { Popover } from './ui/Popover'
 import '../styles/chat.css'
 
@@ -102,8 +103,9 @@ export interface ComposerProps {
   sessionless?: boolean
   model?: string
   profileId?: string
+  groupId?: string
   permissionMode?: PermissionMode
-  onModelChange?: (profileId: string, model: string) => void
+  onModelChange?: (profileId: string, groupId: string | undefined, model: string) => void
   onPermissionModeChange?: (mode: PermissionMode) => void
   /** 文件补全与斜杠命令使用的 Host / 工作目录；缺省用当前会话。 */
   hostId?: string
@@ -234,13 +236,10 @@ function PermissionModeMenu({
   )
 }
 
-function profilesModels(p: Profile): string[] {
-  return p.models.length ? p.models : [p.defaultModel].filter(Boolean)
-}
-
 function ModelPanel({
   profiles,
   profileId,
+  groupId,
   model,
   loading,
   onSelect,
@@ -249,9 +248,10 @@ function ModelPanel({
 }: {
   profiles: Profile[]
   profileId: string
+  groupId?: string
   model: string
   loading: boolean
-  onSelect: (profileId: string, model: string) => void
+  onSelect: (profileId: string, groupId: string | undefined, model: string) => void
   onManage: () => void
   close: () => void
 }) {
@@ -259,25 +259,39 @@ function ModelPanel({
   const [active, setActive] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
 
-  const groups = useMemo(() => {
+  // 账号 › 分组 二级结构；无分组的老账号只有账号层。
+  const accounts = useMemo(() => {
     const q = query.trim().toLowerCase()
     return profiles
       .map((p) => {
-        const models = profilesModels(p)
         const profileHit = !q || p.name.toLowerCase().includes(q)
-        return {
-          profile: p,
-          models: models.filter(
-            (m) => profileHit || m.toLowerCase().includes(q) || prettyModel(m).toLowerCase().includes(q),
-          ),
-        }
+        const groups = profileModelGroups(p)
+          .map((g) => {
+            const groupHit = profileHit || (g.groupId ? g.name.toLowerCase().includes(q) : false)
+            return {
+              ...g,
+              models: g.models.filter(
+                (m) =>
+                  groupHit ||
+                  m.toLowerCase().includes(q) ||
+                  prettyModel(m).toLowerCase().includes(q),
+              ),
+            }
+          })
+          .filter((g) => g.models.length > 0)
+        return { profile: p, groups }
       })
-      .filter((g) => g.models.length > 0)
+      .filter((a) => a.groups.length > 0)
   }, [profiles, query])
 
   const flat = useMemo(
-    () => groups.flatMap((g) => g.models.map((m) => ({ profile: g.profile, model: m }))),
-    [groups],
+    () =>
+      accounts.flatMap((a) =>
+        a.groups.flatMap((g) =>
+          g.models.map((m) => ({ profile: a.profile, groupId: g.groupId, model: m })),
+        ),
+      ),
+    [accounts],
   )
 
   useEffect(() => {
@@ -297,8 +311,12 @@ function ModelPanel({
     const item = flat[index]
     if (!item) return
     close()
-    if (item.profile.id !== profileId || item.model !== model) {
-      onSelect(item.profile.id, item.model)
+    if (
+      item.profile.id !== profileId ||
+      item.groupId !== groupId ||
+      item.model !== model
+    ) {
+      onSelect(item.profile.id, item.groupId, item.model)
     }
   }
 
@@ -329,7 +347,7 @@ function ModelPanel({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKey}
-          placeholder="搜索模型或账号"
+          placeholder="搜索模型、账号或分组"
           aria-label="搜索模型"
           spellCheck={false}
         />
@@ -346,38 +364,56 @@ function ModelPanel({
             {profiles.length === 0 ? '这台 Host 还没有配置账号。' : '没有匹配的模型。'}
           </div>
         )}
-        {groups.map((g) => (
-          <div key={g.profile.id} className="pb-0.5">
+        {accounts.map((account) => (
+          <div key={account.profile.id} className="pb-0.5">
             <div className="menu-section flex items-center gap-1.5">
               <span className="min-w-0 truncate text-[11.5px] font-semibold text-text-soft">
-                {g.profile.name}
+                {account.profile.name}
               </span>
               <span className="shrink-0 rounded border border-border px-1 text-[9.5px] font-normal text-muted">
-                {PROVIDER_KIND_LABELS[g.profile.kind] ?? g.profile.kind}
+                {PROVIDER_KIND_LABELS[account.profile.kind] ?? account.profile.kind}
               </span>
             </div>
-            {g.models.map((m) => {
-              index += 1
-              const i = index
-              const selected = g.profile.id === profileId && m === model
-              return (
-                <button
-                  key={`${g.profile.id}:${m}`}
-                  data-index={i}
-                  data-active={i === active}
-                  data-selected={selected}
-                  onMouseEnter={() => setActive(i)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => choose(i)}
-                  className="menu-item"
-                >
-                  <span className="min-w-0 flex-1 truncate font-mono text-[12px]">
-                    <Highlight text={m} query={query} />
-                  </span>
-                  {selected && <Check size={13} className="shrink-0 text-accent" />}
-                </button>
-              )
-            })}
+            {account.groups.map((g) => (
+              <div key={`${account.profile.id}:${g.groupId ?? 'default'}`}>
+                {account.profile.groups?.length ? (
+                  <div className="flex items-center gap-1.5 px-2 pb-0.5 pt-0.5 text-[10px] text-muted">
+                    <span className="min-w-0 truncate">分组 · {g.name}</span>
+                    <span className="ml-auto shrink-0 tabular-nums">{g.models.length}</span>
+                  </div>
+                ) : null}
+                {g.models.map((m) => {
+                  index += 1
+                  const i = index
+                  const selected =
+                    account.profile.id === profileId &&
+                    (g.groupId ?? undefined) === (groupId ?? undefined) &&
+                    m === model
+                  return (
+                    <button
+                      key={`${account.profile.id}:${g.groupId ?? 'default'}:${m}`}
+                      data-index={i}
+                      data-active={i === active}
+                      data-selected={selected}
+                      onMouseEnter={() => setActive(i)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => choose(i)}
+                      className="menu-item"
+                    >
+                      <span
+                        className={cn(
+                          'min-w-0 flex-1 truncate font-mono text-[12px]',
+                          (account.profile.groups?.length ?? 0) > 0 && 'pl-1.5',
+                        )}
+                      >
+                        <Highlight text={m} query={query} />
+                      </span>
+                      {selected && <Check size={13} className="shrink-0 text-accent" />}
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
           </div>
         ))}
       </div>
@@ -401,6 +437,7 @@ function ModelPanel({
 function ModelMenu({
   profiles,
   profileId,
+  groupId,
   model,
   loading,
   disabled,
@@ -410,14 +447,16 @@ function ModelMenu({
 }: {
   profiles: Profile[]
   profileId: string
+  groupId?: string
   model: string
   loading: boolean
   disabled?: boolean
-  onSelect: (profileId: string, model: string) => void
+  onSelect: (profileId: string, groupId: string | undefined, model: string) => void
   onManage: () => void
   onOpen?: () => void
 }) {
   const currentProfile = profiles.find((p) => p.id === profileId) ?? null
+  const currentGroup = groupName(currentProfile ?? undefined, groupId)
   return (
     <Popover
       side="top"
@@ -433,7 +472,11 @@ function ModelMenu({
           disabled={disabled}
           aria-expanded={open}
           aria-haspopup="menu"
-          title={currentProfile ? `${currentProfile.name} · ${model}` : '选择账号与模型'}
+          title={
+            currentProfile
+              ? `${currentProfile.name}${currentGroup ? ` › ${currentGroup}` : ''} · ${model}`
+              : '选择账号与模型'
+          }
           aria-label="选择模型"
           className={cn(
             'flex h-11 min-w-0 max-w-[220px] items-center gap-1 rounded-lg px-2 text-[12.5px] text-muted transition-colors hover:bg-bg-hover hover:text-text-soft md:h-8',
@@ -450,6 +493,7 @@ function ModelMenu({
         <ModelPanel
           profiles={profiles}
           profileId={profileId}
+          groupId={groupId}
           model={model}
           loading={loading}
           onSelect={onSelect}
@@ -583,6 +627,7 @@ export function Composer({
   sessionless = false,
   model: modelProp,
   profileId: profileIdProp,
+  groupId: groupIdProp,
   permissionMode: permissionModeProp,
   onModelChange,
   onPermissionModeChange,
@@ -642,6 +687,7 @@ export function Composer({
   const mode = sessionless ? (permissionModeProp ?? 'default') : (summary?.permissionMode ?? 'default')
   const currentModel = sessionless ? (modelProp ?? '') : (summary?.model ?? '')
   const currentProfileId = sessionless ? (profileIdProp ?? '') : (summary?.profileId ?? '')
+  const currentGroupId = sessionless ? groupIdProp : summary?.groupId
 
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -923,9 +969,13 @@ export function Composer({
     changeMode(MODES[(idx + 1) % MODES.length])
   }
 
-  const changeModel = (nextProfileId: string, nextModel: string) => {
-    if (sessionless) onModelChange?.(nextProfileId, nextModel)
-    else void setModel(nextProfileId, nextModel)
+  const changeModel = (
+    nextProfileId: string,
+    nextGroupId: string | undefined,
+    nextModel: string,
+  ) => {
+    if (sessionless) onModelChange?.(nextProfileId, nextGroupId, nextModel)
+    else void setModel(nextProfileId, nextGroupId, nextModel)
   }
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -1102,6 +1152,7 @@ export function Composer({
           <ModelMenu
             profiles={profiles}
             profileId={currentProfileId}
+            groupId={currentGroupId}
             model={currentModel}
             loading={profilesLoading}
             disabled={disabled || (!sessionless && !summary)}

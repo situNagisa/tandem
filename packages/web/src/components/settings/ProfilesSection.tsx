@@ -7,6 +7,7 @@ import {
   Eye,
   EyeOff,
   KeyRound,
+  Layers,
   Loader2,
   Pencil,
   Plus,
@@ -18,12 +19,18 @@ import {
   Wifi,
   X,
 } from 'lucide-react'
-import type { ModelInfo, Profile, ProfileInput, ProviderKind } from '@tandem/protocol'
+import type {
+  ModelInfo,
+  Profile,
+  ProfileGroupInput,
+  ProfileInput,
+  ProviderKind,
+} from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { PROVIDER_PRESETS, presetForProfile, type ProviderPreset } from '../../lib/presets'
-import { PROVIDER_KIND_LABELS } from '../../lib/types'
+import { PROVIDER_KIND_LABELS, type HostConfig } from '../../lib/types'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
 
@@ -104,6 +111,332 @@ function Steps({ step }: { step: Step }) {
   )
 }
 
+interface GroupDraft {
+  id?: string
+  name: string
+  apiKey: string
+  apiKeyMasked?: string
+  baseUrl: string
+  models: string[]
+  defaultModel: string
+}
+
+function emptyGroupDraft(): GroupDraft {
+  return { name: '', apiKey: '', baseUrl: '', models: [], defaultModel: '' }
+}
+
+function GroupEditor({
+  host,
+  kind,
+  profileId,
+  profileBaseUrl,
+  existing,
+  onSave,
+  onCancel,
+}: {
+  host: HostConfig
+  kind: ProviderKind
+  profileId?: string
+  profileBaseUrl?: string
+  existing?: GroupDraft
+  onSave: (draft: GroupDraft) => void
+  onCancel: () => void
+}) {
+  const [name, setName] = useState(existing?.name ?? '')
+  const [apiKey, setApiKey] = useState('')
+  const [baseUrl, setBaseUrl] = useState(existing?.baseUrl ?? '')
+  const [showKey, setShowKey] = useState(false)
+  const [available, setAvailable] = useState<ModelInfo[]>(
+    () => (existing?.models ?? []).map((id) => ({ id })),
+  )
+  const [selected, setSelected] = useState<string[]>(existing?.models ?? [])
+  const [defaultModel, setDefaultModel] = useState(
+    existing?.defaultModel ?? existing?.models[0] ?? '',
+  )
+  const [query, setQuery] = useState('')
+  const [manualInput, setManualInput] = useState('')
+  const [fetching, setFetching] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return available
+    return available.filter(
+      (m) => m.id.toLowerCase().includes(q) || (m.displayName ?? '').toLowerCase().includes(q),
+    )
+  }, [available, query])
+
+  const toggleModel = (id: string) => {
+    setSelected((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      setDefaultModel((d) => (next.includes(d) ? d : next[0] ?? ''))
+      return next
+    })
+  }
+
+  const fetchModels = async () => {
+    if (fetching) return
+    const typed = apiKey.trim()
+    if (!typed && !existing?.id) {
+      setFetchError('先填写这个分组的 Key，再获取模型。')
+      return
+    }
+    setFetching(true)
+    setFetchError(null)
+    try {
+      const res = await api.listModels(host, {
+        kind,
+        baseUrl: baseUrl.trim() || profileBaseUrl || undefined,
+        ...(typed
+          ? { apiKey: typed }
+          : { profileId: profileId!, groupId: existing!.id }),
+      })
+      if (!res.ok) throw new Error(res.error || '无法获取模型列表')
+      const sorted = (res.models ?? [])
+        .slice()
+        .sort((a, b) => (a.displayName ?? a.id).localeCompare(b.displayName ?? b.id, 'zh-Hans-CN'))
+      if (sorted.length === 0) {
+        setFetchError('服务商没有返回可用模型，可以手动输入模型 ID。')
+        return
+      }
+      const ids = new Set(sorted.map((m) => m.id))
+      const kept = selected.filter((id) => ids.has(id))
+      const initial = kept.length ? kept : sorted.slice(0, 3).map((m) => m.id)
+      setAvailable(sorted)
+      setSelected(initial)
+      setDefaultModel((prev) => (initial.includes(prev) ? prev : initial[0] ?? ''))
+    } catch (err) {
+      setFetchError(
+        err instanceof Error && err.message ? err.message : '无法获取模型列表，请检查 Key 与 Base URL。',
+      )
+    } finally {
+      setFetching(false)
+    }
+  }
+
+  const addManual = () => {
+    const id = manualInput.trim()
+    if (!id) return
+    if (!available.some((m) => m.id === id)) setAvailable((prev) => [...prev, { id }])
+    setSelected((prev) => (prev.includes(id) ? prev : [...prev, id]))
+    setDefaultModel((d) => d || id)
+    setManualInput('')
+  }
+
+  const save = () => {
+    if (!name.trim()) {
+      setError('请填写分组名称')
+      return
+    }
+    if (!existing?.id && !apiKey.trim()) {
+      setError('新分组需要填写 Key')
+      return
+    }
+    if (selected.length === 0) {
+      setError('至少选择一个模型')
+      return
+    }
+    onSave({
+      id: existing?.id,
+      name: name.trim(),
+      apiKey: apiKey.trim(),
+      apiKeyMasked: existing?.apiKeyMasked,
+      baseUrl: baseUrl.trim(),
+      models: selected,
+      defaultModel: selected.includes(defaultModel) ? defaultModel : selected[0],
+    })
+  }
+
+  return (
+    <div className="rounded-xl border border-border-strong/60 bg-bg/40 p-3">
+      <div className="mb-2 flex items-center gap-1.5">
+        <Layers size={13} className="text-accent" />
+        <span className="text-[12px] font-medium">
+          {existing ? `编辑分组「${existing.name}」` : '添加分组'}
+        </span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div>
+          <label className={labelCls}>分组名称</label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="例如：官方渠道 / 低价渠道"
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>分组 Key</label>
+          <div className="relative">
+            <input
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              type={showKey ? 'text' : 'password'}
+              placeholder={
+                existing
+                  ? `已保存：${existing.apiKeyMasked ?? '••••'}（留空不修改）`
+                  : 'sk-…'
+              }
+              spellCheck={false}
+              autoComplete="off"
+              className={cn(inputCls, 'pr-9 font-mono text-[11.5px]')}
+            />
+            <button
+              onClick={() => setShowKey((v) => !v)}
+              aria-label={showKey ? '隐藏 Key' : '显示 Key'}
+              className="absolute right-1 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-[var(--t-bg-hover)] hover:text-text"
+            >
+              {showKey ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="mt-2">
+        <label className={labelCls}>Base URL（可选，缺省沿用账号）</label>
+        <input
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+          placeholder={profileBaseUrl || 'https://api.example.com/v1'}
+          spellCheck={false}
+          className={cn(inputCls, 'font-mono text-[11px]')}
+        />
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <button
+          onClick={() => void fetchModels()}
+          disabled={fetching}
+          className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 text-[11px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
+        >
+          {fetching ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          自动拉取模型
+        </button>
+        {existing && (
+          <span className="text-[10px] text-muted">留空 Key 时使用已保存的 Key</span>
+        )}
+      </div>
+      {fetchError && (
+        <p className="mt-1.5 flex items-start gap-1 text-[10.5px] leading-4 text-danger">
+          <TriangleAlert size={11} className="mt-0.5 shrink-0" /> {fetchError}
+        </p>
+      )}
+
+      {available.length > 0 && (
+        <>
+          <div className="relative mt-2">
+            <Search
+              size={11}
+              className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted"
+            />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜索模型"
+              className="h-7 w-full rounded-md border border-border bg-bg pl-6 pr-2 text-[11px] outline-none focus:border-border-strong"
+            />
+          </div>
+          <div className="mt-1.5 max-h-[150px] overflow-y-auto rounded-lg border border-border bg-bg/30 p-1">
+            {filtered.map((m) => {
+              const checked = selected.includes(m.id)
+              return (
+                <label
+                  key={m.id}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-[var(--t-bg-hover)]"
+                >
+                  <input type="checkbox" checked={checked} onChange={() => toggleModel(m.id)} className="sr-only" />
+                  <span
+                    className={cn(
+                      'flex size-3.5 shrink-0 items-center justify-center rounded border transition-colors',
+                      checked
+                        ? 'border-accent bg-accent text-on-accent'
+                        : 'border-border-strong bg-surface',
+                    )}
+                  >
+                    {checked && <Check size={9} strokeWidth={3} />}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-text-soft">
+                    {m.id}
+                  </span>
+                  {checked && m.id === defaultModel && (
+                    <span className="shrink-0 rounded bg-accent-soft px-1 text-[9px] text-accent">默认</span>
+                  )}
+                </label>
+              )
+            })}
+            {filtered.length === 0 && (
+              <p className="px-2 py-3 text-center text-[10.5px] text-muted">没有匹配的模型</p>
+            )}
+          </div>
+        </>
+      )}
+
+      <div className="mt-1.5 flex gap-1.5">
+        <input
+          value={manualInput}
+          onChange={(e) => setManualInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              addManual()
+            }
+          }}
+          placeholder="手动添加模型 ID"
+          spellCheck={false}
+          className={cn(inputCls, 'h-7 font-mono text-[10.5px]')}
+        />
+        <button
+          onClick={addManual}
+          disabled={!manualInput.trim()}
+          className="h-7 shrink-0 rounded-md border border-border px-2 text-[10.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
+        >
+          添加
+        </button>
+      </div>
+
+      {selected.length > 0 && (
+        <div className="mt-2 flex items-center gap-2">
+          <span className="text-[10.5px] text-muted">已选 {selected.length} 个</span>
+          <span className="flex-1" />
+          <span className="text-[10.5px] text-muted">默认</span>
+          <select
+            value={defaultModel}
+            onChange={(e) => setDefaultModel(e.target.value)}
+            className="h-7 max-w-[200px] rounded-md border border-border bg-surface px-1 font-mono text-[10px] outline-none focus:border-border-strong"
+          >
+            {selected.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {error && (
+        <p className="mt-1.5 flex items-start gap-1 text-[10.5px] text-danger">
+          <TriangleAlert size={11} className="mt-0.5 shrink-0" /> {error}
+        </p>
+      )}
+
+      <div className="mt-2.5 flex justify-end gap-1.5">
+        <button
+          onClick={onCancel}
+          className="h-8 rounded-lg px-2.5 text-[11px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+        >
+          取消
+        </button>
+        <button
+          onClick={save}
+          className="h-8 rounded-lg bg-accent px-3 text-[11px] font-medium text-on-accent transition-colors hover:bg-accent-hover"
+        >
+          保存分组
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function ProfilesSection() {
   const hosts = useAppStore((s) => s.hosts)
   const activeHostId = useAppStore((s) => s.activeHostId)
@@ -131,6 +464,8 @@ export function ProfilesSection() {
   const [testingId, setTestingId] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; error?: string }>>({})
   const [deleteTarget, setDeleteTarget] = useState<Profile | null>(null)
+  const [groups, setGroups] = useState<GroupDraft[]>([])
+  const [groupEditor, setGroupEditor] = useState<{ index: number | 'new' } | null>(null)
   const lastAutoFetch = useRef('')
   const fetchInFlight = useRef(false)
 
@@ -174,6 +509,8 @@ export function ProfilesSection() {
     setError(null)
     setShowKey(false)
     setShowAdvanced(false)
+    setGroups([])
+    setGroupEditor(null)
     lastAutoFetch.current = ''
   }
 
@@ -199,6 +536,17 @@ export function ProfilesSection() {
     setSelected(p.models)
     setDefaultModel(p.defaultModel || p.models[0] || '')
     setShowAdvanced(!!p.baseUrl && p.baseUrl !== brand?.baseUrl)
+    setGroups(
+      (p.groups ?? []).map((g) => ({
+        id: g.id,
+        name: g.name,
+        apiKey: '',
+        apiKeyMasked: g.apiKeyMasked,
+        baseUrl: g.baseUrl ?? '',
+        models: g.models,
+        defaultModel: g.defaultModel || g.models[0] || '',
+      })),
+    )
   }
 
   const choosePreset = (p: ProviderPreset | null) => {
@@ -216,6 +564,8 @@ export function ProfilesSection() {
     setSelected(p?.models ?? [])
     setDefaultModel(p?.defaultModel ?? p?.models[0] ?? '')
     setManualMode(false)
+    setGroups([])
+    setGroupEditor(null)
   }
 
   const applyFetched = (list: ModelInfo[], keepProfileModels: boolean) => {
@@ -312,24 +662,39 @@ export function ProfilesSection() {
       setStep(2)
       return
     }
-    if (editing === 'new' && !form.apiKey.trim()) {
+    if (editing === 'new' && !form.apiKey.trim() && groups.length === 0) {
       setError('请填写 API Key')
       setStep(2)
       return
     }
-    if (modelList.length === 0) {
-      setError('至少选择一个模型')
+    const fallback = groups[0]
+    const models = modelList.length ? modelList : (fallback?.models ?? [])
+    if (models.length === 0) {
+      setError('至少选择一个模型，或为账号添加一个分组')
       setStep(3)
       return
     }
-    const def = modelList.includes(defaultModel) ? defaultModel : modelList[0]
+    const def = modelList.length
+      ? modelList.includes(defaultModel)
+        ? defaultModel
+        : modelList[0]
+      : fallback!.defaultModel || fallback!.models[0] || models[0]
+    const groupInputs: ProfileGroupInput[] = groups.map((g) => ({
+      ...(g.id ? { id: g.id } : {}),
+      name: g.name,
+      ...(g.apiKey.trim() ? { apiKey: g.apiKey.trim() } : {}),
+      ...(g.baseUrl.trim() ? { baseUrl: g.baseUrl.trim() } : {}),
+      models: g.models,
+      defaultModel: g.defaultModel || g.models[0] || '',
+    }))
     const input: ProfileInput = {
       name,
       kind: form.kind,
       baseUrl: form.baseUrl.trim() || undefined,
       apiKey: form.apiKey.trim() || undefined,
-      models: modelList,
+      models,
       defaultModel: def,
+      groups: groupInputs,
     }
     setSaving(true)
     setError(null)
@@ -609,6 +974,81 @@ export function ProfilesSection() {
                     </div>
                   )}
                 </div>
+
+                <div className="mt-3 rounded-xl border border-border bg-bg/30 p-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Layers size={13} className="text-accent" />
+                    <span className="text-[12px] font-medium">账号分组</span>
+                    <span className="text-[10px] text-muted">可选</span>
+                    <span className="flex-1" />
+                    <button
+                      onClick={() => setGroupEditor({ index: 'new' })}
+                      disabled={!!groupEditor}
+                      className="flex h-7 items-center gap-1 rounded-md border border-border bg-surface px-2 text-[10.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"
+                    >
+                      <Plus size={11} /> 添加分组
+                    </button>
+                  </div>
+                  <p className="mt-1 text-[10px] leading-4 text-muted">
+                    同一账号下可有多组 Key（如官方渠道 / 低价渠道），各自可用模型不同；没有分组时沿用账号 Key。
+                  </p>
+
+                  {groupEditor ? (
+                    <div className="mt-2">
+                      <GroupEditor
+                        host={host}
+                        kind={form.kind}
+                        profileId={editing !== 'new' ? (editing ?? undefined) : undefined}
+                        profileBaseUrl={form.baseUrl.trim() || preset?.baseUrl || undefined}
+                        existing={
+                          groupEditor.index === 'new' ? undefined : groups[groupEditor.index]
+                        }
+                        onCancel={() => setGroupEditor(null)}
+                        onSave={(draft) => {
+                          setGroups((prev) =>
+                            groupEditor.index === 'new'
+                              ? [...prev, draft]
+                              : prev.map((g, i) => (i === groupEditor.index ? draft : g)),
+                          )
+                          setGroupEditor(null)
+                        }}
+                      />
+                    </div>
+                  ) : groups.length > 0 ? (
+                    <div className="mt-2 space-y-1">
+                      {groups.map((g, i) => (
+                        <div
+                          key={g.id ?? `new-${i}`}
+                          className="flex items-center gap-2 rounded-lg bg-surface/70 px-2 py-1.5"
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[11.5px] text-text">{g.name}</span>
+                            <span className="block truncate font-mono text-[9.5px] text-muted">
+                              {g.apiKeyMasked || (g.apiKey ? '新 Key（待保存）' : '无 Key')} ·{' '}
+                              {g.models.length} 个模型
+                            </span>
+                          </span>
+                          <button
+                            onClick={() => setGroupEditor({ index: i })}
+                            aria-label={`编辑分组 ${g.name}`}
+                            className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+                          >
+                            <Pencil size={11} />
+                          </button>
+                          <button
+                            onClick={() =>
+                              setGroups((prev) => prev.filter((_, index) => index !== i))
+                            }
+                            aria-label={`删除分组 ${g.name}`}
+                            className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-danger-soft hover:text-danger"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               </div>
 
               {error && (
@@ -666,6 +1106,12 @@ export function ProfilesSection() {
                   {editingProfile ? '刷新模型列表' : '重新获取'}
                 </button>
               </div>
+
+              {groups.length > 0 && (
+                <div className="mb-2 rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[10.5px] leading-4 text-muted">
+                  已配置 {groups.length} 个分组（{groups.map((g) => g.name).join(' / ')}）。账号默认模型可以留空，会话里实际选择的是分组模型。
+                </div>
+              )}
 
               {fetching ? (
                 <div className="space-y-1.5">
@@ -950,6 +1396,15 @@ export function ProfilesSection() {
                           </>
                         )}
                       </div>
+                      {p.groups?.length ? (
+                        <div className="mt-1 flex min-w-0 items-center gap-1 text-[10px] text-muted">
+                          <Layers size={10} className="shrink-0" />
+                          <span className="shrink-0">{p.groups.length} 个分组：</span>
+                          <span className="min-w-0 truncate">
+                            {p.groups.map((g) => g.name).join(' / ')}
+                          </span>
+                        </div>
+                      ) : null}
                       {result && (
                         <div
                           className={cn(
