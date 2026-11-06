@@ -45,6 +45,8 @@ interface UiState {
   notifications: boolean
   toasts: Toast[]
   promptSeed: { text: string; nonce: number } | null
+  /** 右侧代理列表点击后，定位并展开消息流中的对应 Task 卡片。 */
+  agentFocus: { id: string; nonce: number } | null
   /** 自增通知输入框清空并聚焦（已在新会话页时再点“新会话”）。 */
   composerResetNonce: number
 
@@ -76,6 +78,7 @@ interface UiState {
   dismissToast: (id: number) => void
   seedPrompt: (text: string) => void
   clearPromptSeed: () => void
+  focusAgent: (id: string) => void
   resetComposer: () => void
 }
 
@@ -103,6 +106,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   notifications: prefs.notifications ?? true,
   toasts: [],
   promptSeed: null,
+  agentFocus: null,
   composerResetNonce: 0,
 
   setTheme: (theme) => {
@@ -198,6 +202,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   },
   seedPrompt: (text) => set({ promptSeed: { text, nonce: Date.now() } }),
   clearPromptSeed: () => set({ promptSeed: null }),
+  focusAgent: (id) =>
+    set((s) => ({ agentFocus: { id, nonce: (s.agentFocus?.nonce ?? 0) + 1 } })),
   resetComposer: () => set((s) => ({ composerResetNonce: s.composerResetNonce + 1 })),
 }))
 

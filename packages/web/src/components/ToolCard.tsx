@@ -19,9 +19,12 @@ import {
 import { diffLines } from 'diff'
 import type { ContentBlock, Todo } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
+import { useUiStore } from '../store/useUiStore'
+import { useNow } from '../lib/hooks'
+import { runningSince } from '../lib/runClock'
 import type { ToolResultBlock } from '../lib/types'
 import { cn } from '../lib/cn'
-import { firstLine, truncate } from '../lib/format'
+import { firstLine, formatElapsed, truncate } from '../lib/format'
 import { CodeBlock } from './CodeBlock'
 import { Button } from './ui/Button'
 import { DiffView } from './DiffView'
@@ -60,6 +63,43 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {}
+}
+
+function agentKind(depth: number): string {
+  return depth <= 1 ? '子代理' : depth === 2 ? '孙代理' : `第${depth}层代理`
+}
+
+function agentTag(depth: number): string {
+  return depth <= 1 ? '子' : depth === 2 ? '孙' : `${depth}`
+}
+
+/** target 是否为 ancestor 的后代（用于定位时逐层展开祖先 Task 卡片）。 */
+function isAgentDescendant(
+  subagents: Record<string, { summary: SessionSummaryLike | null }> | undefined,
+  targetId: string,
+  ancestorId: string,
+): boolean {
+  let cursor = subagents?.[targetId]
+  const seen = new Set<string>()
+  while (cursor?.summary?.parentId && !seen.has(cursor.summary.parentId)) {
+    if (cursor.summary.parentId === ancestorId) return true
+    seen.add(cursor.summary.parentId)
+    cursor = subagents?.[cursor.summary.parentId]
+  }
+  return false
+}
+
+interface SessionSummaryLike {
+  id: string
+  parentId?: string
+  depth?: number
+}
+
+function AgentElapsed({ id, since, running }: { id: string; since: number; running: boolean }) {
+  const now = useNow(running)
+  if (!running) return null
+  const start = runningSince(`agent:${id}`, since)
+  return <span className="tabular-nums">{formatElapsed(now - start)}</span>
 }
 
 function str(value: unknown): string {
@@ -218,6 +258,8 @@ export const ToolCard = memo(function ToolCard({
   const storeCwd = useAppStore((s) => s.active?.summary?.cwd)
   const cwd = cwdProp ?? storeCwd
   const subagents = useAppStore((s) => s.active?.subagents)
+  const activeSessionId = useAppStore((s) => s.active?.sessionId)
+  const agentFocus = useUiStore((s) => s.agentFocus)
   const raw = useAppStore((s) =>
     subagentId
       ? (s.active?.subagents[subagentId]?.liveToolInputs[`${messageId}:${index}`] ?? '')
@@ -235,11 +277,45 @@ export const ToolCard = memo(function ToolCard({
   const meta = TOOL_META[block.name] ?? (mcp ? { icon: Wrench, verb: '调用' } : { icon: Wrench, verb: '使用' })
   const isTask = block.name === 'Task'
   const taskDescription = isTask ? str(asRecord(block.input).description) || partialString(raw, 'description') || '' : ''
+  const parentId = subagentId ?? activeSessionId
   const sub = isTask && subagents
     ? Object.values(subagents)
-        .filter((item) => item.summary?.title === taskDescription)
+        .filter(
+          (item) =>
+            item.summary?.parentId === parentId &&
+            item.summary?.title === taskDescription,
+        )
         .sort((a, b) => (b.summary?.createdAt ?? 0) - (a.summary?.createdAt ?? 0))[0]
     : undefined
+  const parentDepth = subagentId
+    ? (subagents?.[subagentId]?.summary?.depth ?? 1)
+    : 0
+  const agentDepth = sub?.summary?.depth ?? parentDepth + 1
+  const displayMeta = isTask
+    ? { ...meta, verb: agentKind(agentDepth) }
+    : meta
+  const cardRef = useRef<HTMLDivElement>(null)
+  const focusAncestor = useMemo(
+    () =>
+      !!agentFocus &&
+      !!sub?.summary &&
+      isAgentDescendant(subagents, agentFocus.id, sub.summary.id),
+    [agentFocus, sub?.summary?.id, subagents],
+  )
+  useEffect(() => {
+    if (!agentFocus || !sub?.summary) return
+    if (agentFocus.id === sub.summary.id || focusAncestor) {
+      setMounted(true)
+      setOpen(true)
+    }
+    if (agentFocus.id === sub.summary.id) {
+      const timer = window.setTimeout(
+        () => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+        60,
+      )
+      return () => window.clearTimeout(timer)
+    }
+  }, [agentFocus?.nonce])
 
   const input = useMemo(() => {
     if (raw) {
@@ -262,7 +338,7 @@ export const ToolCard = memo(function ToolCard({
   const waitingInput = running && !raw && Object.keys(input).length === 0
   const displayPath = shortPath(filePath, cwd)
   const readLines = output ? output.split('\n').length : 0
-  const Icon = meta.icon
+  const Icon = displayMeta.icon
 
   const editStats = useMemo(
     () => (block.name === 'Edit' ? diffStats(oldString, newString) : { added: 0, removed: 0 }),
@@ -340,17 +416,21 @@ export const ToolCard = memo(function ToolCard({
           sub?.running ? 'text-text-secondary' : subFailed ? 'text-danger' : 'text-muted',
         )}
       >
-        {sub?.running
-          ? '运行中'
-          : sub?.summary?.status === 'error'
-            ? '出错'
-            : sub?.summary
-              ? '已结束'
-              : running
-                ? '启动中…'
-                : result
-                  ? '已结束'
-                  : ''}
+        {sub?.running ? (
+          <>
+            运行中 <AgentElapsed id={sub.summary?.id ?? ''} since={sub.summary?.createdAt ?? Date.now()} running />
+          </>
+        ) : sub?.summary?.status === 'error' ? (
+          '出错'
+        ) : sub?.summary ? (
+          '已结束'
+        ) : running ? (
+          '启动中…'
+        ) : result ? (
+          '已结束'
+        ) : (
+          ''
+        )}
       </span>
     )
   }
@@ -444,6 +524,7 @@ export const ToolCard = memo(function ToolCard({
           output={output}
           isError={isError}
           running={running}
+          depth={agentDepth}
         />
       )
     }
@@ -478,7 +559,7 @@ export const ToolCard = memo(function ToolCard({
   })() : null
 
   return (
-    <div className="my-0.5">
+    <div className="my-0.5" ref={cardRef}>
       <button
         onClick={() => {
           setMounted(true)
@@ -488,12 +569,18 @@ export const ToolCard = memo(function ToolCard({
         title={fullTarget || undefined}
         className="tool-row"
       >
-        {running ? (
+        {running || (isTask && sub?.running) ? (
           <Loader2 size={14} className="shrink-0 animate-spin text-text-secondary" />
         ) : (
           <Icon size={14} className={cn('shrink-0', isError ? 'text-danger' : 'text-muted')} />
         )}
-        <span className={cn('shrink-0', isError && 'text-danger')}>{meta.verb}</span>
+        {isTask && (
+          <span className="shrink-0 text-[9.5px] font-normal text-muted">
+            {agentTag(agentDepth)}
+          </span>
+        )}
+        <span className={cn('shrink-0', isError && 'text-danger')}>{displayMeta.verb}</span>
+        {isTask && target && <span className="shrink-0 text-muted">·</span>}
         {target && filePath && (block.name === 'Read' || block.name === 'Edit' || block.name === 'Write') ? (
           <span
             role="link"
@@ -542,33 +629,59 @@ export const ToolCard = memo(function ToolCard({
   )
 })
 
-function SubagentStream({ id }: { id: string }) {
+function SubagentStream({ id, depth }: { id: string; depth: number }) {
   const sub = useAppStore((s) => s.active?.subagents[id])
   const stopSubagent = useAppStore((s) => s.interruptSubagent)
   const listRef = useRef<HTMLDivElement>(null)
+  const subDepth = sub?.summary?.depth ?? depth
   useEffect(() => {
     if (!sub?.running) return
     const el = listRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [sub?.running, sub?.messages.length])
   if (!sub) {
-    return <div className="py-2 text-[11.5px] text-muted">正在等待子代理会话…</div>
+    return <div className="py-2 text-[11.5px] text-muted">正在等待{agentKind(depth)}会话…</div>
   }
   const subFailed = sub.summary?.status === 'error' || !!sub.error
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-[var(--t-bg)]">
+    <div
+      className={cn(
+        'overflow-hidden rounded-lg border border-border bg-[var(--t-bg)]',
+        subDepth > 1 && 'border-l-2 border-l-border/80',
+      )}
+    >
       <div className="flex items-center gap-2 border-b border-border/70 px-2.5 py-1.5 text-[10.5px] text-muted">
-        <Bot
-          size={12}
-          className={sub.running ? 'text-text-secondary' : subFailed ? 'text-danger' : 'text-muted'}
-        />
-        <span>子代理会话</span>
+        {sub.running ? (
+          <Loader2 size={12} className="shrink-0 animate-spin text-text-secondary" />
+        ) : (
+          <Bot
+            size={12}
+            className={subFailed ? 'text-danger' : 'text-muted'}
+          />
+        )}
+        <span className="text-[9.5px] text-muted">{agentTag(subDepth)}</span>
+        <span>{agentKind(subDepth)}会话</span>
         <span
           className={cn(
             sub.running ? 'text-text-secondary' : subFailed ? 'text-danger' : '',
           )}
         >
-          {sub.running ? '运行中' : sub.loading ? '加载中…' : subFailed ? '出错' : '已结束'}
+          {sub.running ? (
+            <>
+              运行中
+              <AgentElapsed
+                id={id}
+                since={sub.summary?.createdAt ?? Date.now()}
+                running
+              />
+            </>
+          ) : sub.loading ? (
+            '加载中…'
+          ) : subFailed ? (
+            '出错'
+          ) : (
+            '已结束'
+          )}
         </span>
         <span className="flex-1" />
         {sub.running && (
@@ -578,7 +691,7 @@ function SubagentStream({ id }: { id: string }) {
             onClick={() => stopSubagent(id)}
             className="h-6! gap-1 px-1.5 text-[10px] [&_svg]:size-[9px]"
           >
-            <Square size={9} /> 停止子代理
+            <Square size={9} /> 停止{agentKind(subDepth)}
           </Button>
         )}
       </div>
@@ -597,7 +710,7 @@ function SubagentStream({ id }: { id: string }) {
             if (!text.trim()) return null
             return (
               <div key={m.id} className="rounded-lg bg-surface-2 px-2.5 py-1.5 text-[11.5px] leading-5 text-text-soft">
-                <div className="mb-0.5 text-[9.5px] text-muted">子代理任务</div>
+                <div className="mb-0.5 text-[9.5px] text-muted">{agentKind(subDepth)}任务</div>
                 <div className="whitespace-pre-wrap break-words">{text}</div>
               </div>
             )
@@ -648,6 +761,7 @@ function TaskBody({
   output,
   isError,
   running,
+  depth,
 }: {
   input: Record<string, unknown>
   raw: string
@@ -655,6 +769,7 @@ function TaskBody({
   output: string
   isError: boolean
   running: boolean
+  depth: number
 }) {
   const description =
     str(input.description) || partialString(raw, 'description') || str(input.prompt).slice(0, 80)
@@ -664,7 +779,9 @@ function TaskBody({
     <div className="space-y-2">
       <div className="rounded-lg border border-border/70 bg-[var(--t-bg)] px-2.5 py-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[12px] font-medium text-text">{description || '子代理任务'}</span>
+          <span className="text-[12px] font-medium text-text">
+            {agentKind(depth)} · {description || '未命名任务'}
+          </span>
           <span className="rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[9.5px] text-muted">
             {type}
           </span>
@@ -681,10 +798,12 @@ function TaskBody({
         )}
       </div>
       {sub?.summary ? (
-        <SubagentStream id={sub.summary.id} />
+        <div className={cn(depth > 1 && 'ml-2 border-l border-border/70 pl-2')}>
+          <SubagentStream id={sub.summary.id} depth={depth} />
+        </div>
       ) : (
         <div className="text-[11.5px] text-muted">
-          {running ? '正在创建子代理会话…' : '没有找到子代理会话'}
+          {running ? `正在创建${agentKind(depth)}会话…` : `没有找到${agentKind(depth)}会话`}
         </div>
       )}
       {output && (isError || !sub?.summary) && (

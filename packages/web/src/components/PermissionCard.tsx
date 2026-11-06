@@ -165,9 +165,11 @@ export function PermissionCard({
 }) {
   const decide = useAppStore((s) => s.decidePermission)
   const hostId = useAppStore((s) => s.active?.hostId ?? null)
-  const subagentTitle = useAppStore(
-    (s) => s.active?.subagents[request.sessionId]?.summary?.title ?? null,
+  const subagentSummary = useAppStore(
+    (s) => s.active?.subagents[request.sessionId]?.summary ?? null,
   )
+  const subagentTitle = subagentSummary?.title ?? request.sourceTitle ?? null
+  const sourceDepth = request.depth ?? subagentSummary?.depth ?? 1
   const cwd = useAppStore((s) => s.active?.summary?.cwd ?? '')
   const [ruleDraft, setRuleDraft] = useState<PermissionRule | null>(null)
   const input = useMemo(() => asRecord(request.input), [request.input])
@@ -271,7 +273,9 @@ export function PermissionCard({
           {subagentTitle && (
             <div className="mt-1 flex items-center gap-1 text-[11px] text-muted">
               <Bot size={11} className="shrink-0 text-accent/80" />
-              <span className="min-w-0 truncate">来自子代理：{subagentTitle}</span>
+              <span className="min-w-0 truncate">
+                来自{sourceDepth === 1 ? '子代理' : sourceDepth === 2 ? '孙代理' : `第${sourceDepth}层代理`}：{subagentTitle}
+              </span>
             </div>
           )}
           <p className="mt-1 whitespace-pre-wrap break-words text-[12.5px] leading-[1.55] text-text-soft">

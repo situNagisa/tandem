@@ -88,7 +88,6 @@ function buildGroups(
   externalSessions: ExternalItem[],
   query: string,
   showArchived: boolean,
-  showSubagents: boolean,
 ): { pinned: Array<{ hostId: string; session: SessionSummary }>; hosts: HostGroup[] } {
   const q = query.trim().toLowerCase()
   const pinned: Array<{ hostId: string; session: SessionSummary }> = []
@@ -114,9 +113,8 @@ function buildGroups(
       )
     })
 
+    // 子代理/孙代理会话只出现在对应主会话的消息流里，侧栏与搜索结果一律隐藏
     const tops = matched.filter((s) => !s.parentId)
-    const children = matched.filter((s) => s.parentId)
-    const topIds = new Set(tops.map((s) => s.id))
     const regular: SessionSummary[] = []
     for (const s of tops) {
       if (s.pinned && !showArchived) pinned.push({ hostId: h.id, session: s })
@@ -169,18 +167,6 @@ function buildGroups(
       }
     }
     if (regular.length === 0 && ![...map.values()].some((g) => g.externals.length > 0)) continue
-    if (showSubagents) {
-      for (const child of children) {
-        if (!child.parentId || !topIds.has(child.parentId)) continue
-        const parent = tops.find((s) => s.id === child.parentId)
-        if (!parent) continue
-        const group = map.get(`${h.id}:${projectName(parent)}`)
-        if (!group) continue
-        const list = group.children[child.parentId] ?? []
-        list.push(child)
-        group.children[child.parentId] = list
-      }
-    }
     const projects = [...map.values()]
       .map((g) => ({
         ...g,
@@ -367,7 +353,6 @@ export function SessionList({
   const toggleProject = useUiStore((s) => s.toggleProject)
   const showArchived = useUiStore((s) => s.showArchived)
   const setShowArchived = useUiStore((s) => s.setShowArchived)
-  const showSubagents = useUiStore((s) => s.showSubagents)
   const showExternalSessions = useUiStore((s) => s.showExternalSessions)
   // 同事会提供 externalSessions（顶层数组或按 hostId 的 Record 均可），未就绪时为 undefined。
   const externalRaw = useAppStore(
@@ -455,8 +440,8 @@ export function SessionList({
   )
 
   const { pinned, hosts: groups } = useMemo(
-    () => buildGroups(hosts, runtimes, visibleExternals, query, showArchived, showSubagents),
-    [hosts, runtimes, visibleExternals, query, showArchived, showSubagents],
+    () => buildGroups(hosts, runtimes, visibleExternals, query, showArchived),
+    [hosts, runtimes, visibleExternals, query, showArchived],
   )
 
   const anyRunning = useMemo(
@@ -766,11 +751,7 @@ export function SessionList({
               : 'Codex'
             const entries = [
               ...project.items.map((s) => (
-                <Fragment key={`${hostId}:${s.id}`}>
-                  {renderRow(hostId, s)}
-                  {showSubagents &&
-                    project.children[s.id]?.map((child) => renderRow(hostId, child, 1))}
-                </Fragment>
+                <Fragment key={`${hostId}:${s.id}`}>{renderRow(hostId, s)}</Fragment>
               )),
               ...shownExternals.map((ext) => renderExternal(hostId, ext)),
             ]

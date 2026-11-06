@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Pin, Search } from 'lucide-react'
+import { Bot, Pin, Search } from 'lucide-react'
 import type { ExternalSession, ExternalSource, SessionStatus, SessionSummary } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -20,6 +20,7 @@ interface Result {
   project: string
   pinned?: boolean
   archived?: boolean
+  depth?: number
   sessionId?: string
   external?: ExternalSession
 }
@@ -59,6 +60,7 @@ export function SearchDialog() {
   const active = useAppStore((s) => s.active)
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState<Scope>('all')
+  const [includeSubagents, setIncludeSubagents] = useState(false)
   const [index, setIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -66,6 +68,7 @@ export function SearchDialog() {
     if (!open) return
     setQuery('')
     setScope('all')
+    setIncludeSubagents(false)
     setIndex(0)
     const t = window.setTimeout(() => inputRef.current?.focus(), 40)
     return () => window.clearTimeout(t)
@@ -85,6 +88,7 @@ export function SearchDialog() {
     for (const h of hosts) {
       const rt = runtimes[h.id]
       for (const session of rt?.sessions ?? []) {
+        if (session.parentId && !includeSubagents) continue
         out.push({
           key: `s:${h.id}:${session.id}`,
           hostId: h.id,
@@ -96,6 +100,7 @@ export function SearchDialog() {
           project: projectOf(session.cwd, session.env),
           pinned: session.pinned,
           archived: session.archived,
+          depth: session.depth,
           sessionId: session.id,
         })
       }
@@ -114,7 +119,7 @@ export function SearchDialog() {
       }
     }
     return out.sort((a, b) => b.updatedAt - a.updatedAt)
-  }, [hosts, runtimes])
+  }, [hosts, runtimes, includeSubagents])
 
   const scoped = useMemo(() => {
     if (scope === 'external') return all.filter((r) => r.external)
@@ -234,6 +239,11 @@ export function SearchDialog() {
                     i === index ? 'bg-[var(--t-bg-active)]' : 'hover:bg-[var(--t-bg-hover)]',
                   )}
                 >
+                  {typeof r.depth === 'number' && r.depth > 0 && (
+                    <span className="shrink-0 text-[9.5px] text-muted">
+                      {r.depth === 1 ? '子' : r.depth === 2 ? '孙' : `第${r.depth}层`}
+                    </span>
+                  )}
                   <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
                     {r.title}
                   </span>
@@ -285,6 +295,19 @@ export function SearchDialog() {
             </button>
           ))}
         </div>
+        <button
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setIncludeSubagents((v) => !v)}
+          aria-pressed={includeSubagents}
+          className={cn(
+            'ml-2 flex h-6 items-center gap-1 rounded-md px-2 text-[11px] transition-colors duration-[120ms]',
+            includeSubagents
+              ? 'bg-[var(--t-bg-active)] text-text'
+              : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text-soft',
+          )}
+        >
+          <Bot size={11} /> 包含子代理
+        </button>
         <span className="ml-auto text-[10.5px] text-muted">{results.length} 个结果</span>
       </div>
     </Modal>

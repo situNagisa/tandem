@@ -27,12 +27,10 @@ export function Sidebar({
   const setShowArchived = useUiStore((s) => s.setShowArchived)
   const showExternalSessions = useUiStore((s) => s.showExternalSessions)
   const setShowExternalSessions = useUiStore((s) => s.setShowExternalSessions)
-  const showSubagents = useUiStore((s) => s.showSubagents)
-  const setShowSubagents = useUiStore((s) => s.setShowSubagents)
   const resetComposer = useUiStore((s) => s.resetComposer)
   const archivedCount = useAppStore((s) =>
     Object.values(s.runtimes).reduce(
-      (n, rt) => n + rt.sessions.filter((x) => x.archived).length,
+      (n, rt) => n + rt.sessions.filter((x) => x.archived && !x.parentId).length,
       0,
     ),
   )
@@ -77,14 +75,6 @@ export function Sidebar({
             onSelect={() => setShowExternalSessions(!showExternalSessions)}
           >
             Claude Code / Codex
-          </MenuItem>
-          <MenuItem
-            role="menuitemcheckbox"
-            ariaChecked={showSubagents}
-            selected={showSubagents}
-            onSelect={() => setShowSubagents(!showSubagents)}
-          >
-            子代理会话
           </MenuItem>
           <MenuDivider />
           <MenuItem
