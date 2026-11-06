@@ -326,6 +326,15 @@ export function TurnRail({
     sceneRef.current?.setOpen(true)
   }, [])
 
+  // 退出反馈模式后，如果指针早已不在大纲上，补一次收起（反馈模式的捕获层不会触发 pointerleave）。
+  useEffect(() => {
+    if (feedbackActive || !open) return
+    const timer = window.setTimeout(() => {
+      if (!dragRef.current && !hitRef.current?.matches(':hover')) closePanel()
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [feedbackActive, open, closePanel])
+
   // 滚轮 = 逐轮移动：鼠标滚轮每格一轮，触控板累积到阈值再走一轮。
   useEffect(() => {
     const hit = hitRef.current
