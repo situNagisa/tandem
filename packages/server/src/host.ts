@@ -864,6 +864,7 @@ export class Host {
         tools: [],
         blocks,
         signal: abort.signal,
+        idleTimeoutSec: this.config.idleTimeoutSec ?? 180,
         maxTokens: 4096,
         onBlockStart: () => {},
         onText: () => {},
