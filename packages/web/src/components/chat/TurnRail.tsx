@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -11,6 +12,7 @@ import {
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { useTurnNavStore } from '../../store/useTurnNavStore'
+import { useFeedbackStore } from '../../store/useFeedbackStore'
 import { useIsMobile } from '../../lib/hooks'
 import type { UiMessage } from '../../lib/types'
 import { createScrollFollower, type ScrollFollower } from './turnRailMotion'
@@ -92,6 +94,13 @@ export function TurnRail({
   onBeforeJump?: () => void
 }) {
   const turns = useTurnMarks()
+  const pinnedTurns = useAppStore((s) => s.active?.summary?.pinnedTurns)
+  const feedbackActive = useFeedbackStore((s) => s.active)
+  const sceneTurns = useMemo(() => {
+    if (!pinnedTurns || pinnedTurns.length === 0) return turns
+    const pinned = new Set(pinnedTurns)
+    return turns.map((turn) => (pinned.has(turn.id) ? { ...turn, pinned: true } : turn))
+  }, [turns, pinnedTurns])
   const total = turns.length
   const isMobile = useIsMobile()
   const railOn = total >= 2 && !isMobile
@@ -110,6 +119,8 @@ export function TurnRail({
 
   const turnsRef = useRef(turns)
   turnsRef.current = turns
+  const sceneTurnsRef = useRef(sceneTurns)
+  sceneTurnsRef.current = sceneTurns
   const totalRef = useRef(total)
   totalRef.current = total
   const activeRef = useRef(activeTurn)
@@ -190,7 +201,7 @@ export function TurnRail({
     const scene = new RailScene({ root, bg, ind, cur, items })
     sceneRef.current = scene
     scene.onDragRow = (turn) => goRef.current(turn, { recenter: false })
-    scene.setData(turnsRef.current)
+    scene.setData(sceneTurnsRef.current)
     scene.setActive(activeRef.current, true)
     scene.setCenter(activeRef.current, true)
     const parent = root.parentElement
@@ -208,8 +219,8 @@ export function TurnRail({
   }, [railOn])
 
   useLayoutEffect(() => {
-    sceneRef.current?.setData(turns)
-  }, [turns])
+    sceneRef.current?.setData(sceneTurns)
+  }, [sceneTurns])
 
   useEffect(() => {
     activeRef.current = activeTurn
@@ -373,7 +384,7 @@ export function TurnRail({
   const onPointerLeave = (event: ReactPointerEvent<HTMLElement>) => {
     window.clearTimeout(openTimer.current)
     openTimer.current = 0
-    if (dragRef.current) return
+    if (dragRef.current || useFeedbackStore.getState().active) return
     sceneRef.current?.setPointer(null)
     window.clearTimeout(closeTimer.current)
     if (document.activeElement === hitRef.current && hitRef.current?.matches(':focus-visible')) return
@@ -450,6 +461,18 @@ export function TurnRail({
     if (!isMobile && useTurnNavStore.getState().sheetOpen) setSheetOpen(false)
   }, [isMobile, setSheetOpen])
 
+  const togglePinnedTurn = (messageId: string) => {
+    if (!messageId) return
+    const state = useAppStore.getState()
+    const active = state.active
+    if (!active?.summary) return
+    const current = active.summary.pinnedTurns ?? []
+    const next = current.includes(messageId)
+      ? current.filter((id) => id !== messageId)
+      : [...current, messageId]
+    void state.updateSession(active.hostId, active.sessionId, { pinnedTurns: next })
+  }
+
   const current = turns[activeTurn - 1]
 
   return (
@@ -461,9 +484,20 @@ export function TurnRail({
           aria-label="轮次导航"
           data-open={open ? 'true' : undefined}
           data-pressed={pressed ? 'true' : undefined}
+          data-feedback={feedbackActive ? 'true' : undefined}
         >
           <div ref={bgRef} className="turn-bg" aria-hidden />
-          <div className="turn-clip" aria-hidden>
+          <div
+            className="turn-clip"
+            aria-hidden
+            onClick={(event) => {
+              const pin = (event.target as HTMLElement).closest<HTMLElement>('.turn-item-p[data-turn]')
+              if (!pin) return
+              event.preventDefault()
+              event.stopPropagation()
+              togglePinnedTurn(pin.dataset.turn ?? '')
+            }}
+          >
             <div ref={indRef} className="turn-ind" />
             <div ref={curRef} className="turn-cur" />
             {Array.from({ length: POOL }, (_, i) => (
@@ -478,6 +512,12 @@ export function TurnRail({
                 <span className="turn-item-t" />
                 <span className="turn-item-k" />
                 <span className="turn-item-r" />
+                <span className="turn-item-p">
+                  <svg viewBox="0 0 16 16" aria-hidden>
+                    <path d="M9.9 1.6a1 1 0 0 0-1.5 0L7 3l-3.4.8a.85.85 0 0 0-.4 1.4L5 7 2.3 10.6a.7.7 0 0 0 .9.9L7 9l1.8 1.8a.85.85 0 0 0 1.4-.4L11 7l1.4-1.4a1 1 0 0 0 0-1.5z" />
+                  </svg>
+                </span>
+                <span className="turn-item-d" />
               </div>
             ))}
           </div>

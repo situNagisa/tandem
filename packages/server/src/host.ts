@@ -181,6 +181,7 @@ export class Host {
       ...(rec.effort ? { effort: rec.effort } : {}),
       // 可选字段只在有值时下发，老客户端不受影响
       ...(rec.pinned ? { pinned: true } : {}),
+      ...(rec.pinnedTurns && rec.pinnedTurns.length ? { pinnedTurns: [...rec.pinnedTurns] } : {}),
       ...(rec.archived ? { archived: true } : {}),
       ...(rec.env ? { env: { ...rec.env } } : {}),
       ...(rec.parentId ? { parentId: rec.parentId } : {}),
@@ -546,6 +547,7 @@ export class Host {
       model?: unknown;
       permissionMode?: unknown;
       pinned?: unknown;
+      pinnedTurns?: unknown;
       archived?: unknown;
       effort?: unknown;
       cwd?: unknown;
@@ -616,6 +618,13 @@ export class Host {
     if (typeof patch.pinned === 'boolean') {
       if (patch.pinned) rec.pinned = true;
       else delete rec.pinned;
+    }
+    if (Array.isArray(patch.pinnedTurns)) {
+      const ids = [...new Set(
+        patch.pinnedTurns.filter((id): id is string => typeof id === 'string' && id.length > 0),
+      )].slice(0, 200);
+      if (ids.length) rec.pinnedTurns = ids;
+      else delete rec.pinnedTurns;
     }
     if (typeof patch.archived === 'boolean') {
       if (patch.archived) rec.archived = true;

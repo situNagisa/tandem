@@ -15,6 +15,7 @@ export interface SceneTurn {
   id: string
   turn: number
   preview: string
+  pinned?: boolean
 }
 
 export interface SceneEls {
@@ -31,6 +32,8 @@ interface ItemRef {
   t: HTMLElement
   k: HTMLElement
   r: HTMLElement
+  p: HTMLElement
+  d: HTMLElement
   bound: number
   shown: boolean
 }
@@ -77,6 +80,8 @@ export class RailScene {
       t: el.children[1] as HTMLElement,
       k: el.children[2] as HTMLElement,
       r: el.children[3] as HTMLElement,
+      p: el.children[4] as HTMLElement,
+      d: el.children[5] as HTMLElement,
       bound: -1,
       shown: true,
     }))
@@ -273,6 +278,7 @@ export class RailScene {
     it.n.textContent = String(turn)
     it.r.textContent = String(turn)
     it.t.textContent = mark?.preview ?? ''
+    it.p.dataset.turn = mark?.id ?? ''
     it.bound = turn
   }
 
@@ -323,6 +329,12 @@ export class RailScene {
       it.t.style.opacity = f3(textIn * (0.66 + 0.34 * lit))
       it.n.style.opacity = f3(textIn * (0.5 + 0.5 * lit))
       it.r.style.opacity = f3(act * (1 - smooth(0, 0.35, pc)))
+      // 图钉：悬停行或已固定时显示；静止态用右侧小圆点标出被固定的轮。
+      const pinned = !!this.turns[t - 1]?.pinned
+      it.p.style.opacity = f3(textIn * (pinned ? 0.62 + 0.38 * lit : hov > 0.5 ? 1 : 0))
+      it.p.dataset.on = pinned || hov > 0.5 ? 'true' : 'false'
+      it.p.dataset.pinned = pinned ? 'true' : 'false'
+      it.d.style.opacity = f3(pinned ? (1 - smooth(0.05, 0.45, pc)) * (0.55 + 0.45 * act) : 0)
       const restS = 0.42 + 0.4 * Math.exp(-Math.abs(dr) / 4)
       const sx = lerp(restS + 0.55 * act, 0.5 + 0.4 * lit, pc)
       const sy = 1 + 0.5 * act * (1 - pc)

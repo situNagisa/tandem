@@ -7,6 +7,7 @@ import {
   Loader2,
   MoreHorizontal,
   PencilLine,
+  Pin,
   RefreshCw,
   ScrollText,
   Undo2,
@@ -108,6 +109,8 @@ export const UserMessage = memo(function UserMessage({
   const [draft, setDraft] = useState('')
   const [rewindOpen, setRewindOpen] = useState(false)
   const running = useAppStore((s) => s.active?.running ?? false)
+  const pinnedTurns = useAppStore((s) => s.active?.summary?.pinnedTurns)
+  const pinned = !!pinnedTurns?.includes(message.id)
   const timer = useRef<number | null>(null)
   const editRef = useRef<HTMLTextAreaElement>(null)
   const blocks = message.content.filter((b) => b.type !== 'tool_result')
@@ -141,6 +144,17 @@ export const UserMessage = memo(function UserMessage({
     setCopied(true)
     if (timer.current) window.clearTimeout(timer.current)
     timer.current = window.setTimeout(() => setCopied(false), 1500)
+  }
+
+  const togglePin = () => {
+    const state = useAppStore.getState()
+    const active = state.active
+    if (!active?.summary) return
+    const current = active.summary.pinnedTurns ?? []
+    const next = current.includes(message.id)
+      ? current.filter((id) => id !== message.id)
+      : [...current, message.id]
+    void state.updateSession(active.hostId, active.sessionId, { pinnedTurns: next })
   }
 
   const startEdit = () => {
@@ -226,6 +240,15 @@ export const UserMessage = memo(function UserMessage({
                 <>
                   <IconButton
                     size="sm"
+                    onClick={togglePin}
+                    label={pinned ? '取消固定此轮' : '固定此轮'}
+                    tooltip={pinned ? '取消固定此轮' : '固定此轮（轮次大纲中特殊显示）'}
+                    className={cn('[&_svg]:size-[12.5px]', pinned && 'text-accent')}
+                  >
+                    <Pin size={12.5} fill={pinned ? 'currentColor' : 'none'} />
+                  </IconButton>
+                  <IconButton
+                    size="sm"
                     onClick={startEdit}
                     label="编辑并重发"
                     className="[&_svg]:size-[12.5px]"
@@ -275,6 +298,15 @@ export const UserMessage = memo(function UserMessage({
                       }}
                     >
                       {copied ? '已复制' : '复制消息'}
+                    </MenuItem>
+                    <MenuItem
+                      icon={<Pin />}
+                      onSelect={() => {
+                        close()
+                        togglePin()
+                      }}
+                    >
+                      {pinned ? '取消固定此轮' : '固定此轮'}
                     </MenuItem>
                     <MenuItem
                       icon={<PencilLine />}

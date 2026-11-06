@@ -49,6 +49,15 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   };
   if (raw.pinned === true) rec.pinned = true;
   else delete rec.pinned;
+  if (Array.isArray(raw.pinnedTurns)) {
+    const ids = [...new Set(
+      raw.pinnedTurns.filter((id): id is string => typeof id === 'string' && id.length > 0),
+    )].slice(0, 200);
+    if (ids.length) rec.pinnedTurns = ids;
+    else delete rec.pinnedTurns;
+  } else {
+    delete rec.pinnedTurns;
+  }
   if (raw.archived === true) rec.archived = true;
   else delete rec.archived;
   const env = normalizeEnv(raw.env);
