@@ -16,7 +16,8 @@ import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
 import { Button, IconButton } from '../ui/Button'
-import { Input, SegmentedControl, Select, Switch } from '../ui/Controls'
+import { Input, SegmentedControl, Switch } from '../ui/Controls'
+import { MenuSelect } from '../ui/Menu'
 
 const SOURCE_LABEL: Record<string, string> = {
   tandem: 'Tandem',
@@ -376,19 +377,14 @@ export function McpSection() {
         <span className="text-[11px] text-muted">stdio / Streamable HTTP</span>
         <span className="flex-1" />
         {hosts.length > 1 && (
-          <Select
+          <MenuSelect
             value={hostId ?? ''}
-            onChange={(e) => setHostId(e.target.value)}
+            onChange={setHostId}
             aria-label="选择 Host"
+            options={hosts.map((h) => ({ value: h.id, label: h.name }))}
             wrapperClassName="w-auto max-w-[180px]"
             className="text-[11.5px]"
-          >
-            {hosts.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.name}
-              </option>
-            ))}
-          </Select>
+          />
         )}
         <IconButton
           onClick={() => void load(false, true)}

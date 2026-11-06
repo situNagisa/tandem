@@ -111,33 +111,27 @@ function HostMenu({
   const hosts = useAppStore((s) => s.hosts)
   const runtimes = useAppStore((s) => s.runtimes)
   return (
-    <div className="w-[252px]">
-      <div className="px-2 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted">
-        执行 Host
-      </div>
+    <MenuList aria-label="执行 Host" className="w-[220px]">
       {hosts.map((h) => {
         const rt = runtimes[h.id]
         return (
-          <button
+          <MenuItem
             key={h.id}
-            onClick={() => {
+            icon={<ConnectionDot state={rt?.status ?? 'connecting'} />}
+            hint={`${rt?.info?.platform ? `${rt.info.platform} · ` : ''}${h.url.replace(/^https?:\/\//, '')}`}
+            selected={h.id === hostId}
+            role="menuitemradio"
+            ariaChecked={h.id === hostId}
+            onSelect={() => {
               onChange(h.id)
               close()
             }}
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-[var(--t-bg-hover)]"
           >
-            <ConnectionDot state={rt?.status ?? 'connecting'} />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[12.5px]">{h.name}</span>
-              <span className="block truncate font-mono text-[10px] text-muted">
-                {h.url.replace(/^https?:\/\//, '')}
-              </span>
-            </span>
-            {h.id === hostId && <Check size={13} className="shrink-0 text-text" />}
-          </button>
+            {h.name}
+          </MenuItem>
         )
       })}
-    </div>
+    </MenuList>
   )
 }
 

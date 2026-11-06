@@ -18,6 +18,7 @@ import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCard, type ToolUseBlock } from './ToolCard'
 import { RewindDialog } from './RewindDialog'
 import { Popover } from './ui/Popover'
+import { MenuItem, MenuList } from './ui/Menu'
 import { Button, IconButton } from './ui/Button'
 import {
   ToolGroup,
@@ -216,36 +217,37 @@ export const UserMessage = memo(function UserMessage({
                 )}
               >
                 {(close) => (
-                  <div className="p-1">
-                    <button
-                      onClick={() => {
+                  <MenuList aria-label="消息操作">
+                    <MenuItem
+                      icon={<Copy />}
+                      onSelect={() => {
                         close()
                         void copy()
                       }}
-                      className="menu-item"
                     >
-                      <Copy size={13} /> {copied ? '已复制' : '复制消息'}
-                    </button>
-                    <button
-                      onClick={() => {
+                      {copied ? '已复制' : '复制消息'}
+                    </MenuItem>
+                    <MenuItem
+                      icon={<PencilLine />}
+                      onSelect={() => {
                         close()
                         startEdit()
                       }}
-                      className="menu-item"
                     >
-                      <PencilLine size={13} /> 编辑并重发
-                    </button>
-                    <button
-                      onClick={() => {
+                      编辑并重发
+                    </MenuItem>
+                    <MenuItem
+                      icon={<Undo2 />}
+                      disabled={running}
+                      hint={running ? '会话运行中，结束后才能回退' : undefined}
+                      onSelect={() => {
                         close()
                         setRewindOpen(true)
                       }}
-                      disabled={running}
-                      className="menu-item disabled:opacity-40"
                     >
-                      <Undo2 size={13} /> 回退到此处
-                    </button>
-                  </div>
+                      回退到此处
+                    </MenuItem>
+                  </MenuList>
                 )}
               </Popover>
               )}
@@ -449,41 +451,43 @@ export const AssistantMessage = memo(function AssistantMessage({
               )}
             >
               {(close) => (
-                <div className="p-1">
-                  <button
-                    onClick={() => {
+                <MenuList aria-label="回复操作">
+                  <MenuItem
+                    icon={<Copy />}
+                    onSelect={() => {
                       close()
                       void copyAll()
                     }}
-                    className="menu-item"
                   >
-                    <Copy size={13} /> {copied ? '已复制' : '复制整条回复'}
-                  </button>
+                    {copied ? '已复制' : '复制整条回复'}
+                  </MenuItem>
                   {!readOnly && turnUser && checkpointId && (
-                    <button
-                      onClick={() => {
+                    <MenuItem
+                      icon={<Undo2 />}
+                      disabled={running}
+                      hint={running ? '会话运行中，结束后才能回退' : undefined}
+                      onSelect={() => {
                         close()
                         setRewindOpen(true)
                       }}
-                      disabled={running}
-                      className="menu-item disabled:opacity-40"
                     >
-                      <Undo2 size={13} /> 回退到此处
-                    </button>
+                      回退到此处
+                    </MenuItem>
                   )}
                   {!readOnly && turnUser && checkpointId && (
-                    <button
-                      onClick={() => {
+                    <MenuItem
+                      icon={<RefreshCw />}
+                      disabled={running || regenerating}
+                      hint={running ? '会话运行中，结束后才能重新生成' : undefined}
+                      onSelect={() => {
                         close()
                         void regenerate()
                       }}
-                      disabled={running || regenerating}
-                      className="menu-item disabled:opacity-40"
                     >
-                      <RefreshCw size={13} /> 重新生成
-                    </button>
+                      重新生成
+                    </MenuItem>
                   )}
-                </div>
+                </MenuList>
               )}
             </Popover>
           </div>

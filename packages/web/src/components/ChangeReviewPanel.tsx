@@ -22,6 +22,7 @@ import { DiffView, type DiffCommentDraft } from './DiffView'
 import { Modal } from './ui/Modal'
 import { Button, IconButton } from './ui/Button'
 import { Popover } from './ui/Popover'
+import { MenuItem, MenuList } from './ui/Menu'
 
 interface LineComment extends DiffCommentDraft {
   id: number
@@ -488,7 +489,8 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
               <Popover
                 align="right"
                 side="top"
-                panelClassName="w-52"
+                padded={false}
+                panelClassName="w-[200px]"
                 trigger={({ toggle }) => (
                   <IconButton
                     size="sm"
@@ -501,40 +503,38 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 )}
               >
                 {(close) => (
-                  <div className="py-0.5">
-                    <button
-                      type="button"
-                      className="menu-item text-[11.5px]"
-                      onClick={() => {
+                  <MenuList aria-label="更多提交操作">
+                    <MenuItem
+                      icon={<Wand2 />}
+                      onSelect={() => {
                         close()
                         askAgentCommit()
                       }}
                     >
-                      <Wand2 size={12} /> 让 agent 写提交信息
-                    </button>
+                      让 agent 写提交信息
+                    </MenuItem>
                     {comments.length > 0 && (
-                      <button
-                        type="button"
-                        className="menu-item text-[11.5px]"
-                        onClick={() => {
+                      <MenuItem
+                        icon={<MessageSquarePlus />}
+                        onSelect={() => {
                           close()
                           setComments([])
                         }}
                       >
-                        <MessageSquarePlus size={12} /> 清空 {comments.length} 条评论
-                      </button>
+                        清空 {comments.length} 条评论
+                      </MenuItem>
                     )}
-                    <button
-                      type="button"
-                      className="menu-item text-[11.5px] text-danger"
-                      onClick={() => {
+                    <MenuItem
+                      icon={<Trash2 />}
+                      danger
+                      onSelect={() => {
                         close()
                         setDiscardAllOpen(true)
                       }}
                     >
-                      <Trash2 size={12} /> 全部丢弃改动
-                    </button>
-                  </div>
+                      全部丢弃改动
+                    </MenuItem>
+                  </MenuList>
                 )}
               </Popover>
             </div>

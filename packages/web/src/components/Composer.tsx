@@ -47,6 +47,7 @@ import {
 } from '../lib/storage'
 import { Popover } from './ui/Popover'
 import { Button, IconButton } from './ui/Button'
+import { MenuDivider, MenuItem, MenuList } from './ui/Menu'
 import {
   setThinkingMode,
   THINKING_MODE_META,
@@ -192,6 +193,46 @@ function Highlight({ text, query }: { text: string; query: string }) {
   )
 }
 
+function PermissionModeRows({
+  mode,
+  close,
+  onChange,
+}: {
+  mode: PermissionMode
+  close: () => void
+  onChange: (mode: PermissionMode) => void
+}) {
+  return (
+    <>
+      {MODES.map((m) => {
+        const item = MODE_META[m]
+        const ItemIcon = item.icon
+        return (
+          <MenuItem
+            key={m}
+            icon={
+              <ItemIcon
+                className={m === 'bypassPermissions' ? 'text-danger' : 'text-text-secondary'}
+              />
+            }
+            hint={item.hint}
+            selected={m === mode}
+            danger={m === 'bypassPermissions'}
+            role="menuitemradio"
+            ariaChecked={m === mode}
+            onSelect={() => {
+              close()
+              if (m !== mode) onChange(m)
+            }}
+          >
+            {item.label}
+          </MenuItem>
+        )
+      })}
+    </>
+  )
+}
+
 function PermissionModeItems({
   mode,
   close,
@@ -202,50 +243,9 @@ function PermissionModeItems({
   onChange: (mode: PermissionMode) => void
 }) {
   return (
-    <div>
-      <div className="menu-section">权限模式</div>
-      {MODES.map((m) => {
-        const item = MODE_META[m]
-        const ItemIcon = item.icon
-        return (
-          <button
-            key={m}
-            data-selected={m === mode}
-            onClick={() => {
-              close()
-              if (m !== mode) onChange(m)
-            }}
-            className="menu-item"
-            role="menuitemradio"
-            aria-checked={m === mode}
-          >
-            <ItemIcon
-              size={14}
-              className={cn(
-                'shrink-0',
-                m === 'bypassPermissions' ? 'text-danger' : 'text-text-secondary',
-              )}
-            />
-            <span className="min-w-0 flex-1">
-              <span
-                className={cn(
-                  'block text-[12.5px] leading-4',
-                  m === 'bypassPermissions' && 'text-danger',
-                )}
-              >
-                {item.label}
-              </span>
-              <span className="block truncate text-[10.5px] leading-4 text-muted">
-                {item.hint}
-              </span>
-            </span>
-            {m === mode && <Check size={13} className="shrink-0 text-text-secondary" />}
-          </button>
-        )
-      })}
-      <div className="menu-divider" />
-      <div className="menu-hint">Shift+Tab 快速切换</div>
-    </div>
+    <MenuList aria-label="权限模式">
+      <PermissionModeRows mode={mode} close={close} onChange={onChange} />
+    </MenuList>
   )
 }
 
@@ -264,7 +264,8 @@ function PermissionModeMenu({
     <Popover
       side="top"
       align="left"
-      panelClassName="w-[264px]"
+      padded={false}
+      panelClassName="w-[220px]"
       trigger={({ open, toggle }) => (
         <Button
           variant="ghost"
@@ -311,7 +312,8 @@ function ThinkingModeMenu() {
     <Popover
       side="top"
       align="left"
-      panelClassName="w-[220px]"
+      padded={false}
+      panelClassName="w-[188px]"
       trigger={({ open, toggle }) => (
         <IconButton
           onClick={toggle}
@@ -330,34 +332,34 @@ function ThinkingModeMenu() {
   )
 }
 
-function ThinkingModeItems({ close }: { close: () => void }) {
+function ThinkingModeRows({ close }: { close: () => void }) {
   const mode = useThinkingMode()
   return (
-    <div>
-      <div className="menu-section">思考过程</div>
+    <>
       {THINKING_MODES.map((item) => (
-        <button
+        <MenuItem
           key={item}
-          data-selected={item === mode}
-          onClick={() => {
+          hint={THINKING_MODE_META[item].hint}
+          selected={item === mode}
+          role="menuitemradio"
+          ariaChecked={item === mode}
+          onSelect={() => {
             close()
             setThinkingMode(item)
           }}
-          className="menu-item"
-          role="menuitemradio"
-          aria-checked={item === mode}
         >
-          <span className="min-w-0 flex-1">
-            <span className="block text-[12.5px] leading-4">{THINKING_MODE_META[item].label}</span>
-            <span className="block truncate text-[10.5px] leading-4 text-muted">
-              {THINKING_MODE_META[item].hint}
-            </span>
-          </span>
-          {item === mode && <Check size={13} className="shrink-0 text-text-secondary" />}
-        </button>
+          {THINKING_MODE_META[item].label}
+        </MenuItem>
       ))}
-      <div className="menu-hint">设置会记住，对所有会话生效</div>
-    </div>
+    </>
+  )
+}
+
+function ThinkingModeItems({ close }: { close: () => void }) {
+  return (
+    <MenuList aria-label="思考过程">
+      <ThinkingModeRows close={close} />
+    </MenuList>
   )
 }
 
@@ -376,7 +378,8 @@ function MobileMoreMenu({
     <Popover
       side="top"
       align="left"
-      panelClassName="w-[248px] max-w-[calc(100vw-1.5rem)]"
+      padded={false}
+      panelClassName="w-[232px] max-w-[calc(100vw-1.5rem)]"
       trigger={({ open, toggle }) => (
         <IconButton
           onClick={toggle}
@@ -402,11 +405,11 @@ function MobileMoreMenu({
       )}
     >
       {(close) => (
-        <div>
-          <ThinkingModeItems close={close} />
-          <div className="menu-divider" />
-          <PermissionModeItems mode={mode} close={close} onChange={onChange} />
-        </div>
+        <MenuList aria-label="更多设置">
+          <ThinkingModeRows close={close} />
+          <MenuDivider />
+          <PermissionModeRows mode={mode} close={close} onChange={onChange} />
+        </MenuList>
       )}
     </Popover>
   )
@@ -706,26 +709,6 @@ function CompletionMenu({
   onIndex: (i: number) => void
   onSelect: (item: CompletionEntry) => void
 }) {
-  const listRef = useRef<HTMLDivElement>(null)
-  const [tipTop, setTipTop] = useState(0)
-  const active = items[index]
-
-  useEffect(() => {
-    const el = listRef.current?.querySelector<HTMLElement>(`[data-index="${index}"]`)
-    el?.scrollIntoView({ block: 'nearest' })
-  }, [index, items.length])
-
-  const syncTip = useCallback(() => {
-    const list = listRef.current
-    const el = list?.querySelector<HTMLElement>(`[data-index="${index}"]`)
-    if (!list || !el) return
-    setTipTop(Math.max(2, el.offsetTop - list.scrollTop - 1))
-  }, [index])
-
-  useEffect(() => {
-    syncTip()
-  }, [syncTip, items.length, completion.kind])
-
   let emptyText: ReactNode = '没有匹配项'
   if (completion.kind === 'slash' && loading) emptyText = '加载命令…'
   else if (completion.kind === 'file' && loading) emptyText = '搜索文件…'
@@ -739,7 +722,13 @@ function CompletionMenu({
         data-side="top"
         data-align="left"
       >
-        <div ref={listRef} className="max-h-[232px] overflow-y-auto p-1" onScroll={syncTip}>
+        <MenuList
+          aria-label="补全"
+          activeIndex={items.length ? index : undefined}
+          onActiveIndexChange={onIndex}
+          keyboard={false}
+          className="max-h-[232px] overflow-y-auto"
+        >
           {loading && items.length === 0 && (
             <div className="flex items-center gap-2 px-2 py-2 text-[12px] text-muted">
               <Loader2 size={13} className="animate-spin" /> {emptyText}
@@ -748,28 +737,28 @@ function CompletionMenu({
           {!loading && items.length === 0 && (
             <div className="px-2 py-2 text-[12px] text-muted">{emptyText}</div>
           )}
-          {items.map((item, i) => {
+          {items.map((item) => {
             const isDir = item.kind === 'file' && item.label.endsWith('/')
             const clean = isDir ? item.label.slice(0, -1) : item.label
             const cut = item.kind === 'file' ? clean.lastIndexOf('/') : -1
             const name = cut < 0 ? item.label : clean.slice(cut + 1) + (isDir ? '/' : '')
             const dir = cut < 0 ? '' : clean.slice(0, cut + 1)
             return (
-              <button
+              <MenuItem
                 key={`${item.kind}:${item.value}`}
-                data-index={i}
-                data-active={i === index}
+                icon={
+                  item.kind === 'slash' ? (
+                    <Terminal size={12} className="text-muted" />
+                  ) : (
+                    <FileText size={12} className="text-muted" />
+                  )
+                }
+                hint={item.kind === 'slash' ? item.description || '无说明' : item.label}
+                trailing={item.badge && item.badge !== '内置' ? item.badge : undefined}
                 onMouseDown={(e) => e.preventDefault()}
-                onMouseEnter={() => onIndex(i)}
-                onClick={() => onSelect(item)}
-                className="completion-row"
+                onSelect={() => onSelect(item)}
               >
-                {item.kind === 'slash' ? (
-                  <Terminal size={12} className="shrink-0 text-muted" />
-                ) : (
-                  <FileText size={12} className="shrink-0 text-muted" />
-                )}
-                <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-text">
+                <span className="font-mono text-[13px]">
                   {item.kind === 'file' ? (
                     <>
                       <Highlight text={name} query={completion.query} />
@@ -783,32 +772,10 @@ function CompletionMenu({
                     <Highlight text={item.label} query={completion.query} />
                   )}
                 </span>
-                {item.badge && item.badge !== '内置' && (
-                  <span className="shrink-0 text-[9.5px] text-muted">{item.badge}</span>
-                )}
-                {i === index && (
-                  <span className="shrink-0 text-[11px] leading-none text-muted">↵</span>
-                )}
-              </button>
+              </MenuItem>
             )
           })}
-        </div>
-        {active && (
-          <div className="completion-tip hidden lg:block" style={{ top: tipTop }} aria-hidden>
-            {active.kind === 'slash' ? (
-              <span className="block text-[11.5px] leading-[1.5] text-text-soft">
-                {active.description || '无说明'}
-              </span>
-            ) : (
-              <>
-                <span className="block break-all font-mono text-[11px] leading-[1.5] text-text-soft">
-                  {active.label}
-                </span>
-                <span className="mt-1 block text-[10px] text-muted">插入相对路径</span>
-              </>
-            )}
-          </div>
-        )}
+        </MenuList>
       </div>
     </div>
   )

@@ -38,6 +38,7 @@ import { ConnectionDot, SessionStatusDot } from './StatusDot'
 import { Markdown } from './Markdown'
 import { Modal } from './ui/Modal'
 import { Popover } from './ui/Popover'
+import { MenuItem, MenuList } from './ui/Menu'
 import { Button, IconButton } from './ui/Button'
 
 const EMPTY_TODOS: Todo[] = []
@@ -582,7 +583,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
           side="bottom"
           align="right"
           padded={false}
-          panelClassName="w-[214px] rounded-[10px] p-[5px]"
+          panelClassName="w-[200px]"
           trigger={({ open, toggle }) => (
             <IconButton
               onClick={toggle}
@@ -597,38 +598,26 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
           )}
         >
           {() => (
-            <div>
-              <div className="menu-section">显示分组</div>
+            <MenuList aria-label="显示分组">
               {GROUPS.map((g) => {
                 const shown = !prefs.hidden.includes(g.id)
                 const avail = available[g.id]
                 return (
-                  <button
+                  <MenuItem
                     key={g.id}
-                    type="button"
-                    role="menuitemcheckbox"
-                    aria-checked={shown}
-                    aria-label={`${shown ? '隐藏' : '显示'}${g.label}`}
+                    icon={<g.Icon />}
+                    selected={shown}
                     disabled={!avail}
-                    onClick={() => toggleGroup(g.id)}
-                    className={cn('menu-item', !avail && 'opacity-40')}
+                    hint={avail ? undefined : '暂无数据'}
+                    role="menuitemcheckbox"
+                    ariaChecked={shown}
+                    onSelect={() => toggleGroup(g.id)}
                   >
-                    <g.Icon size={13} />
-                    <span className="min-w-0 flex-1 truncate">{g.label}</span>
-                    {!avail && <span className="shrink-0 text-[9px]">暂无</span>}
-                    <span
-                      className={cn(
-                        'flex size-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors',
-                        shown ? 'border-text-tertiary/60 bg-[var(--t-bg-active)]' : 'border-border-strong',
-                      )}
-                    >
-                      {shown && <Check size={10} className="text-text" />}
-                    </span>
-                  </button>
+                    {g.label}
+                  </MenuItem>
                 )
               })}
-              <div className="menu-hint">拖动卡片左侧手柄可调整顺序</div>
-            </div>
+            </MenuList>
           )}
         </Popover>
         <IconButton onClick={onClose} label="关闭信息面板" className="-mr-1 max-md:size-11">

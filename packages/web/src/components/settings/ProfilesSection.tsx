@@ -34,7 +34,7 @@ import { PROVIDER_KIND_LABELS, type HostConfig } from '../../lib/types'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
 import { Button, IconButton } from '../ui/Button'
-import { Select } from '../ui/Controls'
+import { MenuSelect } from '../ui/Menu'
 
 const inputCls =
   'h-8 w-full rounded-lg border border-border bg-surface px-2.5 text-[12px] text-text outline-none transition-colors placeholder:text-muted focus:border-border-strong'
@@ -446,17 +446,15 @@ function GroupEditor({
         </div>
         <div>
           <label className={labelCls}>协议类型</label>
-          <Select
+          <MenuSelect
             value={kind}
-            onChange={(e) => setKind(e.target.value as ProviderKind)}
+            onChange={(next) => setKind(next as ProviderKind)}
             aria-label="分组协议类型"
-          >
-            {Object.entries(GROUP_KIND_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
+            options={Object.entries(GROUP_KIND_LABELS).map(([value, label]) => ({
+              value,
+              label,
+            }))}
+          />
         </div>
         <div>
           <label className={labelCls}>分组 Key</label>
@@ -597,20 +595,15 @@ function GroupEditor({
           <span className="text-[10.5px] text-muted">已选 {selected.length} 个</span>
           <span className="flex-1" />
           <span className="text-[10.5px] text-muted">默认</span>
-          <Select
+          <MenuSelect
             value={defaultModel}
-            onChange={(e) => setDefaultModel(e.target.value)}
+            onChange={setDefaultModel}
             aria-label="默认模型"
             size="sm"
+            options={selected.map((id) => ({ value: id, label: id }))}
             wrapperClassName="w-auto max-w-[200px]"
             className="font-mono text-[10.5px]"
-          >
-            {selected.map((id) => (
-              <option key={id} value={id}>
-                {id}
-              </option>
-            ))}
-          </Select>
+          />
         </div>
       )}
 
@@ -1001,22 +994,17 @@ export function ProfilesSection() {
         </span>
         <span className="flex-1" />
         {hosts.length > 1 && (
-          <Select
+          <MenuSelect
             value={hostId ?? ''}
-            onChange={(e) => {
-              setHostId(e.target.value)
+            onChange={(id) => {
+              setHostId(id)
               reset()
             }}
             aria-label="选择 Host"
+            options={hosts.map((h) => ({ value: h.id, label: h.name }))}
             wrapperClassName="w-auto max-w-[180px]"
             className="text-[11.5px]"
-          >
-            {hosts.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.name}
-              </option>
-            ))}
-          </Select>
+          />
         )}
         <IconButton
           onClick={() => host && void refreshProfiles(host.id)}

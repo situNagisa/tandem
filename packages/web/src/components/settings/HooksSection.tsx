@@ -5,7 +5,8 @@ import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { api } from '../../lib/api'
 import { Button, IconButton } from '../ui/Button'
-import { Input, Select } from '../ui/Controls'
+import { Input } from '../ui/Controls'
+import { MenuSelect } from '../ui/Menu'
 
 const EVENTS: HookEvent[] = ['PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Stop', 'SessionStart']
 
@@ -203,18 +204,13 @@ export function HooksSection() {
                             className="settings-item space-y-1.5 px-2 py-2"
                           >
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <Select
+                              <MenuSelect
                                 value={entry.event}
-                                onChange={(e) => update(index, { event: e.target.value as HookEvent })}
+                                onChange={(event) => update(index, { event })}
                                 aria-label="事件"
+                                options={EVENTS.map((event) => ({ value: event, label: event }))}
                                 wrapperClassName="w-[132px] shrink-0"
-                              >
-                                {EVENTS.map((event) => (
-                                  <option key={event} value={event}>
-                                    {event}
-                                  </option>
-                                ))}
-                              </Select>
+                              />
                               <Input
                                 value={entry.matcher ?? ''}
                                 onChange={(e) =>

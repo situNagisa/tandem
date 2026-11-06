@@ -5,7 +5,8 @@ import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { api } from '../../lib/api'
 import { Button, IconButton } from '../ui/Button'
-import { Input, SegmentedControl, Select } from '../ui/Controls'
+import { Input, SegmentedControl } from '../ui/Controls'
+import { MenuSelect } from '../ui/Menu'
 
 const TOOL_OPTIONS = ['Bash', 'Write', 'Edit', 'Read', 'Glob', 'Grep', 'WebFetch', '*']
 
@@ -144,20 +145,22 @@ export function PermissionsSection() {
               key={index}
               className="settings-item flex flex-wrap items-center gap-1.5 px-2 py-2"
             >
-              <Select
+              <MenuSelect
                 value={rule.tool}
-                onChange={(e) => update(index, { tool: e.target.value })}
+                onChange={(tool) => update(index, { tool })}
                 aria-label="工具"
+                options={[
+                  ...(!TOOL_OPTIONS.includes(rule.tool)
+                    ? [{ value: rule.tool, label: rule.tool }]
+                    : []),
+                  ...TOOL_OPTIONS.map((tool) => ({
+                    value: tool,
+                    label: tool === '*' ? '全部工具' : tool,
+                  })),
+                ]}
                 wrapperClassName="w-[96px] shrink-0"
                 className="font-mono"
-              >
-                {!TOOL_OPTIONS.includes(rule.tool) && <option value={rule.tool}>{rule.tool}</option>}
-                {TOOL_OPTIONS.map((tool) => (
-                  <option key={tool} value={tool}>
-                    {tool === '*' ? '全部工具' : tool}
-                  </option>
-                ))}
-              </Select>
+              />
               <Input
                 value={rule.pattern ?? ''}
                 onChange={(e) => update(index, { pattern: e.target.value || undefined })}

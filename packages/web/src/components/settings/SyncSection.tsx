@@ -21,7 +21,8 @@ import { collectClientSettings, type ClientSettingsBundle } from '../../lib/stor
 import { copyText } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
 import { Button, IconButton } from '../ui/Button'
-import { Input, Select } from '../ui/Controls'
+import { Input } from '../ui/Controls'
+import { MenuSelect } from '../ui/Menu'
 
 function bundleText(bundle: ConfigBundle): string {
   return JSON.stringify(bundle, null, 2)
@@ -230,22 +231,18 @@ export function SyncSection() {
         </span>
         <span className="flex-1" />
         {hosts.length > 1 && (
-          <Select
+          <MenuSelect
             value={hostId}
-            onChange={(e) => {
-              setHostId(e.target.value)
+            onChange={(id) => {
+              setHostId(id)
               setBundle(null)
               setImportResult(null)
             }}
+            options={hosts.map((h) => ({ value: h.id, label: h.name }))}
+            aria-label="选择 Host"
             wrapperClassName="w-auto max-w-[180px]"
             className="text-[11.5px]"
-          >
-            {hosts.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.name}
-              </option>
-            ))}
-          </Select>
+          />
         )}
       </div>
 
