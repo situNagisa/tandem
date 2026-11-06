@@ -191,6 +191,13 @@ export function SyncSection() {
       setImportResult(result)
       if (result.clientSettings && typeof result.clientSettings === 'object') {
         applyClientSettings(result.clientSettings as ClientSettingsBundle, mode)
+        const next = useAppStore.getState()
+        const nextHosts = next.hosts
+        setHostId((prev) =>
+          nextHosts.some((h) => h.id === prev)
+            ? prev
+            : (next.activeHostId ?? nextHosts[0]?.id ?? ''),
+        )
       } else {
         await refreshProfiles(host.id)
         await refreshSessions(host.id)
