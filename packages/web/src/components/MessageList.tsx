@@ -13,6 +13,7 @@ import {
   entriesFromMessages,
   type ToolRunEntry,
 } from './chat/ToolGroup'
+import '../styles/chat.css'
 
 const EMPTY: UiMessage[] = []
 

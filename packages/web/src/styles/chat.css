@@ -242,6 +242,10 @@
   background: none;
   font-size: inherit;
 }
+.md.chat-md .chat-code pre {
+  margin: 0;
+  padding: 12px 14px;
+}
 
 .md.chat-md table {
   display: block;
@@ -504,6 +508,7 @@
   color: var(--t-text);
 }
 .menu-item[data-selected="true"] {
+  background: color-mix(in srgb, var(--t-bg-active, rgba(31, 30, 29, 0.08)) 65%, transparent);
   color: var(--t-text);
 }
 .menu-section {
@@ -670,6 +675,10 @@ mark.chat-match {
   font-size: 16px;
   line-height: 1.6;
   color: var(--t-text);
+}
+.composer-textarea:focus,
+.composer-textarea:focus-visible {
+  outline: none;
 }
 @media (min-width: 768px) {
   .composer-textarea {

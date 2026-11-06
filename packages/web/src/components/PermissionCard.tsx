@@ -23,7 +23,7 @@ function Kbd({ children, inverse }: { children: React.ReactNode; inverse?: boole
       className={cn(
         'ml-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded border px-1 text-[10px] font-normal leading-none',
         inverse
-          ? 'border-white/25 text-white/70'
+          ? 'border-[color-mix(in_srgb,var(--t-on-accent)_30%,transparent)] text-[color-mix(in_srgb,var(--t-on-accent)_75%,transparent)]'
           : 'border-border/90 text-muted',
       )}
     >

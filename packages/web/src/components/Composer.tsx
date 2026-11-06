@@ -185,6 +185,8 @@ function PermissionModeMenu({
         <button
           onClick={toggle}
           disabled={disabled}
+          aria-expanded={open}
+          aria-haspopup="menu"
           title={`权限模式：${meta.label}（Shift+Tab 切换）`}
           aria-label={`权限模式：${meta.label}`}
           className={cn('composer-pill', open && 'bg-bg-hover text-text', disabled && 'opacity-50')}
@@ -301,6 +303,7 @@ function ModelPanel({
   }
 
   const onKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       setActive((i) => Math.min(flat.length - 1, i + 1))
@@ -428,6 +431,8 @@ function ModelMenu({
             toggle()
           }}
           disabled={disabled}
+          aria-expanded={open}
+          aria-haspopup="menu"
           title={currentProfile ? `${currentProfile.name} · ${model}` : '选择账号与模型'}
           aria-label="选择模型"
           className={cn(
@@ -926,12 +931,14 @@ export function Composer({
   const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     const composing = composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229
     if (
+      !composing &&
       completion &&
       (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End')
     ) {
       setCompletion(null)
     }
     if (completion) {
+      if (composing) return
       if (e.key === 'Escape') {
         e.preventDefault()
         e.stopPropagation()
@@ -1045,7 +1052,7 @@ export function Composer({
                   <button
                     onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
                     aria-label="移除图片"
-                    className="absolute right-0.5 top-0.5 flex size-5 items-center justify-center rounded-full bg-black/60 text-white opacity-70 transition-opacity hover:opacity-100 md:opacity-0 md:group-hover:opacity-90"
+                    className="absolute right-0.5 top-0.5 flex size-5 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--t-text)_62%,transparent)] text-[var(--t-bg)] opacity-70 transition-opacity hover:opacity-100 md:opacity-0 md:group-hover:opacity-90"
                   >
                     <X size={11} />
                   </button>
