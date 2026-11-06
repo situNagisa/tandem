@@ -243,7 +243,6 @@ export async function runTurn(
           ...(usedKeyId ? { keyId: usedKeyId } : {}),
           ...(rec.groupId ? { groupId: rec.groupId } : {}),
         });
-        host.observeBudgets(rec);
       }
 
       // 无论成功失败都下发最终消息（失败时可能是部分内容）；成功时带上本次用量
@@ -258,6 +257,8 @@ export async function runTurn(
         effortNoticeShown = true;
         host.appendNotice(rec, '当前模型不支持思考强度，本轮已自动忽略。');
       }
+      // 用量落账后检查预算；notice 放在本轮回复之后，避免打断输出顺序
+      if (result) host.observeBudgets(rec);
 
       if (!result) {
         // 请求失败或中断时若已解析出 tool_use，必须补上对应 tool_result，

@@ -38,7 +38,12 @@ export class BudgetStore {
   ) {
     this.file = path.join(home, 'budgets.json');
     const data = readJson<BudgetFile>(this.file);
-    this.rules = normalizeRules(data?.rules ?? [], false);
+    try {
+      this.rules = normalizeRules(data?.rules ?? [], false);
+    } catch (err) {
+      console.warn('[tandem] 预算规则无效，已忽略:', (err as Error).message);
+      this.rules = [];
+    }
   }
 
   list(): BudgetRule[] {

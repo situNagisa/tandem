@@ -17,14 +17,14 @@ export interface KeyFailure {
 
 /** 从 provider 错误里判定该 Key 的处理方式：401/403 停用，429/额度不足/5xx 冷却。 */
 export function classifyKeyFailure(err: unknown): KeyFailure {
-  const status = (err as { status?: unknown } | undefined)?.status;
+  const rawStatus = (err as { status?: unknown } | undefined)?.status;
+  const status = typeof rawStatus === 'number' ? rawStatus : undefined;
   const message = errorMessage(err);
-  if (status === 401 || status === 403) return { kind: 'disable', status, message };
-  if (status === 429 || (typeof status === 'number' && status >= 500)) {
+  const quota = /额度|配额|quota|insufficient|billing|rate.?limit|too many requests|exceeded/i.test(message);
+  // 403 也可能是额度耗尽（部分中转/OpenAI 兼容服务），此时按冷却而不是永久停用处理
+  if ((status === 401 || status === 403) && !quota) return { kind: 'disable', status, message };
+  if (status === 429 || (typeof status === 'number' && status >= 500) || quota) {
     return { kind: 'cooldown', status, message };
-  }
-  if (/额度|配额|quota|insufficient|billing|rate.?limit|too many requests|exceeded/i.test(message)) {
-    return { kind: 'cooldown', message };
   }
   if (/\b401\b|unauthorized|invalid.*(api.?)?key/i.test(message)) return { kind: 'disable', message };
   if (/\b403\b|forbidden/i.test(message)) return { kind: 'disable', message };

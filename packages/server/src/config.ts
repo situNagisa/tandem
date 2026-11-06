@@ -427,14 +427,27 @@ function buildKeys(
       if (seen.has(id)) continue;
       seen.add(id);
       const label = typeof item.label === 'string' ? item.label.trim() : prev?.label;
-      // 重新填写了 key 视为用户修复了该 Key：清除 disabled/冷却状态
-      const reset = !prev || (typeof item.apiKey === 'string' && !!item.apiKey && item.apiKey !== prev.apiKey);
+      // 重新填写 key / 显式 disabled=false 视为用户修复并重新启用该 Key
+      const reset =
+        !prev ||
+        (typeof item.apiKey === 'string' && !!item.apiKey) ||
+        (item as { disabled?: unknown }).disabled === false;
+      const manuallyDisabled = (item as { disabled?: unknown }).disabled === true;
       out.push({
         ...(prev ?? {}),
         id,
         ...(label ? { label } : {}),
         apiKey,
-        ...(reset ? { disabled: undefined, cooldownUntil: undefined, failures: undefined } : {}),
+        ...(reset
+          ? {
+              disabled: undefined,
+              cooldownUntil: undefined,
+              failures: undefined,
+              lastError: undefined,
+              lastErrorAt: undefined,
+            }
+          : {}),
+        ...(manuallyDisabled ? { disabled: true } : {}),
       });
     }
     return out.map(cleanStoredKey);
