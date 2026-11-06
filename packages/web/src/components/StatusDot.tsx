@@ -3,9 +3,9 @@ import type { ConnectionState } from '../lib/types'
 import { cn } from '../lib/cn'
 
 const CONNECTION_STYLE: Record<ConnectionState, string> = {
-  online: 'bg-success',
-  connecting: 'bg-accent running-dot',
-  offline: 'bg-muted/60',
+  online: 'bg-success/70',
+  connecting: 'bg-accent/80 running-dot',
+  offline: 'bg-muted/50',
 }
 
 export function ConnectionDot({
@@ -17,7 +17,11 @@ export function ConnectionDot({
 }) {
   return (
     <span
-      className={cn('inline-block size-2 shrink-0 rounded-full', CONNECTION_STYLE[state], className)}
+      className={cn(
+        'inline-block size-1.5 shrink-0 rounded-full',
+        CONNECTION_STYLE[state],
+        className,
+      )}
       title={state === 'online' ? '在线' : state === 'connecting' ? '连接中' : '离线'}
     />
   )

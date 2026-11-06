@@ -28,25 +28,26 @@ function StatePill({
   offline: boolean
   connecting: boolean
 }) {
+  const pill = 'flex shrink-0 items-center gap-1.5 text-[10.5px] text-text-secondary'
   if (offline) {
     return (
-      <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-danger-soft px-2 py-0.5 text-[10.5px] font-medium text-danger">
-        <span className="size-1.5 rounded-full bg-danger" />
+      <span className={pill}>
+        <span className="size-1.5 rounded-full bg-muted/50" />
         离线
       </span>
     )
   }
   if (connecting) {
     return (
-      <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--t-bg-hover)] px-2 py-0.5 text-[10.5px] font-medium text-muted">
-        <span className="size-1.5 rounded-full bg-accent running-dot" />
+      <span className={pill}>
+        <span className="size-1.5 rounded-full bg-accent/80 running-dot" />
         连接中
       </span>
     )
   }
   if (status === 'waiting_permission') {
     return (
-      <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 text-[10.5px] font-medium text-accent">
+      <span className={pill}>
         <span className="size-1.5 rounded-full bg-accent" />
         待审批
       </span>
@@ -54,15 +55,15 @@ function StatePill({
   }
   if (status === 'error') {
     return (
-      <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-danger-soft px-2 py-0.5 text-[10.5px] font-medium text-danger">
-        <span className="size-1.5 rounded-full bg-danger" />
+      <span className={pill}>
+        <span className="size-1.5 rounded-full bg-danger/80" />
         出错
       </span>
     )
   }
   if (running || status === 'running') {
     return (
-      <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-accent-soft px-2 py-0.5 text-[10.5px] font-medium text-accent">
+      <span className={pill}>
         <span className="size-1.5 rounded-full bg-accent running-dot" />
         运行中
       </span>

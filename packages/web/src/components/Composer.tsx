@@ -55,22 +55,19 @@ const MODE_META: Record<
     label: string
     hint: string
     icon: typeof Shield
-    tone: string
   }
 > = {
-  default: { label: '询问', hint: '每次执行工具前询问', icon: Shield, tone: 'text-muted' },
+  default: { label: '询问', hint: '每次执行工具前询问', icon: Shield },
   acceptEdits: {
     label: '自动接受编辑',
     hint: '自动接受文件修改，其他仍询问',
     icon: PencilLine,
-    tone: 'text-success',
   },
-  plan: { label: '计划模式', hint: '只做规划，不直接执行改动', icon: Map, tone: 'text-accent' },
+  plan: { label: '计划模式', hint: '只做规划，不直接执行改动', icon: Map },
   bypassPermissions: {
     label: '全部允许',
     hint: '不再询问，请谨慎使用',
     icon: ShieldOff,
-    tone: 'text-danger',
   },
 }
 
@@ -193,8 +190,16 @@ function PermissionModeMenu({
           aria-label={`权限模式：${meta.label}`}
           className={cn('composer-pill', open && 'bg-bg-hover text-text', disabled && 'opacity-50')}
         >
-          <Icon size={13} className={cn('shrink-0', meta.tone)} />
-          <span className="truncate">{meta.label}</span>
+          <Icon
+            size={13}
+            className={cn(
+              'shrink-0',
+              mode === 'bypassPermissions' ? 'text-danger' : 'text-text-secondary',
+            )}
+          />
+          <span className={cn('truncate', mode === 'bypassPermissions' && 'text-danger')}>
+            {meta.label}
+          </span>
           <ChevronDown size={11} className="shrink-0 opacity-50" />
         </button>
       )}
@@ -217,14 +222,29 @@ function PermissionModeMenu({
                 role="menuitemradio"
                 aria-checked={m === mode}
               >
-                <ItemIcon size={14} className={cn('shrink-0', item.tone)} />
+                <ItemIcon
+                  size={14}
+                  className={cn(
+                    'shrink-0',
+                    m === 'bypassPermissions' ? 'text-danger' : 'text-text-secondary',
+                  )}
+                />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[12.5px] leading-4">{item.label}</span>
+                  <span
+                    className={cn(
+                      'block text-[12.5px] leading-4',
+                      m === 'bypassPermissions' && 'text-danger',
+                    )}
+                  >
+                    {item.label}
+                  </span>
                   <span className="block truncate text-[10.5px] leading-4 text-muted">
                     {item.hint}
                   </span>
                 </span>
-                {m === mode && <Check size={13} className="shrink-0 text-accent" />}
+                {m === mode && (
+                  <Check size={13} className="shrink-0 text-text-secondary" />
+                )}
               </button>
             )
           })}

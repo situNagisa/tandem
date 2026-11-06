@@ -14,7 +14,9 @@
   --t-border-strong: rgba(31, 30, 29, 0.18);
   --t-text: #1f1e1d;
   --t-text-soft: #5e5d59;
+  --t-text-secondary: var(--t-text-soft);
   --t-muted: #8f8d86;
+  --t-text-tertiary: var(--t-muted);
   --t-accent: #d97757;
   --t-accent-hover: #c6613f;
   --t-accent-soft: rgba(217, 119, 87, 0.12);
@@ -67,7 +69,9 @@ html.dark {
   --t-border-strong: rgba(255, 255, 255, 0.16);
   --t-text: #f5f4ee;
   --t-text-soft: #c2c0b6;
+  --t-text-secondary: var(--t-text-soft);
   --t-muted: #8a8880;
+  --t-text-tertiary: var(--t-muted);
   --t-accent: #d97757;
   --t-accent-hover: #e08868;
   --t-accent-soft: rgba(217, 119, 87, 0.16);
@@ -109,7 +113,9 @@ html.dark {
   --color-border-strong: var(--t-border-strong);
   --color-text: var(--t-text);
   --color-text-soft: var(--t-text-soft);
+  --color-text-secondary: var(--t-text-secondary);
   --color-muted: var(--t-muted);
+  --color-text-tertiary: var(--t-text-tertiary);
   --color-accent: var(--t-accent);
   --color-accent-hover: var(--t-accent-hover);
   --color-accent-soft: var(--t-accent-soft);

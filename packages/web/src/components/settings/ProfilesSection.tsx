@@ -359,7 +359,7 @@ function GroupEditor({
                     {m.id}
                   </span>
                   {checked && m.id === defaultModel && (
-                    <span className="shrink-0 rounded bg-accent-soft px-1 text-[9px] text-accent">默认</span>
+                    <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1 text-[9px] text-text-secondary">默认</span>
                   )}
                 </label>
               )
@@ -1196,7 +1196,7 @@ export function ProfilesSection() {
                                 )}
                               </span>
                               {checked && defaultModel === m.id && (
-                                <span className="shrink-0 rounded bg-accent-soft px-1.5 py-px text-[9px] text-accent">
+                                <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1.5 py-px text-[9px] text-text-secondary">
                                   默认
                                 </span>
                               )}

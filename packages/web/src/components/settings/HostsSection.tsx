@@ -212,7 +212,7 @@ export function HostsSection() {
                           : '离线'}
                     </span>
                     {h.id === activeHostId && (
-                      <span className="rounded-full bg-accent-soft px-1.5 py-px text-[9.5px] font-medium text-accent">
+                      <span className="rounded border border-border px-1.5 py-px text-[9.5px] text-text-secondary">
                         当前
                       </span>
                     )}
