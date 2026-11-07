@@ -76,7 +76,6 @@ import { persist as persistRunState } from './run-state.js';
 import {
   BUILTIN_NAMES,
   findCommandBody,
-  listCommands,
   parseSlashCommand,
   type ParsedCommand,
 } from './agent/commands.js';
@@ -110,6 +109,16 @@ import {
 } from './host/helpers.js';
 import { inboxSnapshot, pushInbox, recordCi } from './host/inbox.js';
 import { importSession, notifyExternalSessionsChanged } from './host/external.js';
+import {
+  appendLocalAssistant,
+  appendNotice,
+  broadcastSnapshot,
+  handleCommand,
+  listCommands,
+  listSkills,
+  setSkillState,
+  titleFromCommand,
+} from './host/commands.js';
 import { runHooks } from './host/hooks.js';
 import {
   isRunning,
@@ -596,7 +605,7 @@ export class Host {
     await this.sendToModel(rec, content);
   }
 
-  private async sendToModel(rec: SessionRecord, content: ContentBlock[]): Promise<void> {
+  async sendToModel(rec: SessionRecord, content: ContentBlock[]): Promise<void> {
     const text = content
       .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
       .map((b) => b.text)
@@ -807,220 +816,35 @@ export class Host {
   // ---------- 斜杠命令 ----------
 
   listCommands(cwd: string): SlashCommand[] {
-    // 技能命令排在后面，重名时让内置/自定义命令优先
-    const commands = listCommands(cwd);
-    const names = new Set(commands.map((cmd) => cmd.name));
-    for (const skill of this.skills.commands(cwd)) {
-      if (!names.has(skill.name)) {
-        names.add(skill.name);
-        commands.push(skill);
-      }
-    }
-    return commands;
+    return listCommands(this, cwd);
   }
 
   listSkills(cwd: string): SkillInfo[] {
-    return this.skills.list(cwd);
+    return listSkills(this, cwd);
   }
 
   setSkillState(disabled: string[], cwd: string): SkillInfo[] {
-    return this.skills.setDisabled(disabled, cwd);
+    return setSkillState(this, disabled, cwd);
   }
 
-  private async handleCommand(rec: SessionRecord, cmd: ParsedCommand): Promise<boolean> {
-    switch (cmd.name) {
-      case 'clear': {
-        rec.messages = [];
-        delete rec.plan;
-        const clearedRt = this.runtimes.get(rec.id);
-        if (clearedRt) clearedRt.sessionStartDone = false;
-        this.store.markDirty(rec.id, true);
-        this.setStatus(rec, 'idle');
-        this.broadcastSummary(rec);
-        this.broadcastSnapshot(rec);
-        return true;
-      }
-      case 'compact': {
-        await this.compactSession(rec);
-        return true;
-      }
-      case 'model': {
-        const profile = this.profileFor(rec.profileId, rec.groupId);
-        const models = profile?.models ?? [];
-        if (cmd.args) {
-          rec.model = cmd.args.split(/\s+/)[0]!;
-          this.store.markDirty(rec.id, true);
-          this.broadcastSummary(rec);
-          this.appendLocalAssistant(
-            rec,
-            `已切换模型为 ${rec.model}（下一轮生效）。${models.length ? `\n可选模型: ${models.join(', ')}` : ''}`,
-          );
-        } else {
-          this.appendLocalAssistant(
-            rec,
-            [
-              `当前模型: ${rec.model}`,
-              models.length ? `可选模型: ${models.join(', ')}` : '该账号未列出模型',
-              '切换方式: /model <模型名>，或在界面上选择（下一轮生效）。',
-            ].join('\n'),
-          );
-        }
-        return true;
-      }
-      case 'init': {
-        this.titleFromCommand(rec, cmd);
-        await this.sendToModel(rec, [
-          { type: 'text', text: this.promptTemplates.get('init', rec.cwd) },
-        ]);
-        return true;
-      }
-      case 'schedule': {
-        this.appendLocalAssistant(rec, '请在客户端「设置 → 定时任务」中新建或管理定时任务（输入 /schedule 可直接打开）。');
-        return true;
-      }
-      case 'help': {
-        const commands = this.listCommands(rec.cwd);
-        const lines = commands.map((c) => `/${c.name} - ${c.description}（${labelOfSource(c.source)}）`);
-        this.appendLocalAssistant(rec, `可用命令:\n${lines.join('\n')}`);
-        return true;
-      }
-      case 'cost': {
-        // 本地统计用量与花费，不调用模型
-        this.appendLocalAssistant(rec, costSummary(rec));
-        return true;
-      }
-      case 'memory': {
-        const project = this.memory.read('project', rec.cwd);
-        const global = this.memory.read('global');
-        const projectBody = bodyOfMemory(project.text).trim();
-        const globalBody = bodyOfMemory(global.text).trim();
-        this.appendLocalAssistant(
-          rec,
-          [
-            `## 项目记忆（${project.name} · ${project.entries} 条）`,
-            projectBody || '（空）',
-            '',
-            `## 全局记忆（${global.entries} 条）`,
-            globalBody || '（空）',
-            '',
-            '可在右侧「记忆」卡片或「设置 → 记忆」中编辑；输入 #记住 <内容> 可直接追加。',
-          ].join('\n'),
-        );
-        return true;
-      }
-      default:
-        break;
-    }
-
-    // 自定义命令：cwd/.claude/commands 或 ~/.claude/commands 下的 md
-    const body = findCommandBody(cmd.name, rec.cwd);
-    if (body !== undefined) {
-      this.titleFromCommand(rec, cmd);
-      const expanded = body.replace(/\$ARGUMENTS/g, cmd.args);
-      await this.sendToModel(rec, [{ type: 'text', text: expanded }]);
-      return true;
-    }
-
-    // Skill：/<skill-name> 显式加载技能正文
-    const skillInfo = this.skills.list(rec.cwd).find((skill) => skill.name === cmd.name);
-    if (skillInfo) {
-      if (!skillInfo.enabled) {
-        this.appendLocalAssistant(
-          rec,
-          `技能「${cmd.name}」已停用。可在「设置 → Skills」中重新启用，或直接用自然语言描述任务。`,
-        );
-        return true;
-      }
-      if (!skillInfo.userInvocable) {
-        this.appendLocalAssistant(
-          rec,
-          `技能「${cmd.name}」不允许用户直接调用（user-invocable: false），模型会在需要时自行使用。`,
-        );
-        return true;
-      }
-      const skill = this.skills.resolve(cmd.name, rec.cwd);
-      if (skill) {
-        this.titleFromCommand(rec, cmd);
-        let expanded = skill.body.replace(/\$ARGUMENTS/g, cmd.args);
-        if (cmd.args && !skill.body.includes('$ARGUMENTS')) {
-          expanded += `\n\n用户参数：${cmd.args}`;
-        }
-        await this.sendToModel(rec, [
-          { type: 'text', text: `[使用技能 ${skill.info.name}]\n\n${expanded}` },
-        ]);
-        return true;
-      }
-    }
-
-    this.appendLocalAssistant(
-      rec,
-      `未知命令 /${cmd.name}。输入 /help 查看可用命令。`,
-    );
-    return true;
+  handleCommand(rec: SessionRecord, cmd: ParsedCommand): Promise<boolean> {
+    return handleCommand(this, rec, cmd);
   }
 
-  /** 命令展开后，用命令本身作为新会话标题，避免标题变成整段提示词。 */
-  private titleFromCommand(rec: SessionRecord, cmd: ParsedCommand): void {
-    if (rec.title && rec.title !== '新会话') return;
-    const title = `/${cmd.name}${cmd.args ? ` ${cmd.args}` : ''}`.replace(/\s+/g, ' ').trim();
-    rec.title = title.slice(0, 40);
+  titleFromCommand(rec: SessionRecord, cmd: ParsedCommand): void {
+    return titleFromCommand(this, rec, cmd);
   }
 
-  /** 会话内低调提示：单行灰字展示，不发送给模型。 */
   appendNotice(rec: SessionRecord, text: string): void {
-    const message: Message = {
-      id: randomUUID(),
-      role: 'assistant',
-      content: [{ type: 'text', text }],
-      createdAt: Date.now(),
-      notice: true,
-    };
-    rec.messages.push(message);
-    this.hub.broadcastSession(rec.id, {
-      type: 'message_start',
-      sessionId: rec.id,
-      message,
-    });
-    this.hub.broadcastSession(rec.id, {
-      type: 'message_end',
-      sessionId: rec.id,
-      message,
-    });
-    this.store.markDirty(rec.id, true);
-    this.broadcastSummary(rec);
+    return appendNotice(this, rec, text);
   }
 
-  private appendLocalAssistant(rec: SessionRecord, text: string): void {
-    const message: Message = {
-      id: randomUUID(),
-      role: 'assistant',
-      content: [{ type: 'text', text }],
-      createdAt: Date.now(),
-    };
-    rec.messages.push(message);
-    this.hub.broadcastSession(rec.id, {
-      type: 'message_start',
-      sessionId: rec.id,
-      message,
-    });
-    this.hub.broadcastSession(rec.id, {
-      type: 'message_end',
-      sessionId: rec.id,
-      message,
-    });
-    this.store.markDirty(rec.id, true);
-    this.setStatus(rec, 'idle');
-    this.broadcastSummary(rec);
+  appendLocalAssistant(rec: SessionRecord, text: string): void {
+    return appendLocalAssistant(this, rec, text);
   }
 
   broadcastSnapshot(rec: SessionRecord): void {
-    const rt = this.runtimes.get(rec.id);
-    // 快照作为一条会话事件下发，客户端据此重置到当前 seq
-    this.hub.broadcastSession(rec.id, {
-      type: 'session_snapshot',
-      session: this.toSession(rec),
-      pendingPermissions: rt ? [...rt.pending.values()].map((p) => p.request) : [],
-    });
+    return broadcastSnapshot(this, rec);
   }
 
   /** /compact：让模型总结历史并替换为一条摘要消息。 */
