@@ -17,6 +17,7 @@ import { SettingsDialog } from './components/settings/SettingsDialog'
 import { MemoryEditorDialog } from './components/MemoryEditorDialog'
 import { SearchDialog } from './components/SearchDialog'
 import { BackgroundTasksPanel } from './components/BackgroundTasksPanel'
+import { BrowserPanel } from './components/BrowserPanel'
 import { InboxDialog } from './components/inbox/InboxDialog'
 import { DispatchDialog } from './components/DispatchDialog'
 import { Toasts } from './components/ui/Toasts'
@@ -373,6 +374,7 @@ export default function App() {
       <SettingsDialog />
       <MemoryEditorDialog />
       <BackgroundTasksPanel />
+      <BrowserPanel />
       <InboxDialog />
       <DispatchDialogHost />
       <SearchDialog />

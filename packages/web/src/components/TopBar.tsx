@@ -22,7 +22,7 @@ import { isDesktop, isMacDesktop, isWindowsDesktop } from '../lib/desktop'
 import { ConnectionDot } from './StatusDot'
 import { Button, IconButton } from './ui/Button'
 import { Input } from './ui/Controls'
-import { BackgroundTasksButton, FilesButton, SubagentsButton } from './chat/SessionHeaderTools'
+import { BackgroundTasksButton, BrowserButton, FilesButton, SubagentsButton } from './chat/SessionHeaderTools'
 import { EvalRunsButton } from './evals/EvalRunsButton'
 import { PrButton, PrPanel } from './PrPanel'
 
@@ -347,6 +347,7 @@ export function TopBar() {
         <>
           <BackgroundTasksButton />
           <SubagentsButton />
+          <BrowserButton />
           <FilesButton />
           <PrButton />
         </>
@@ -355,6 +356,7 @@ export function TopBar() {
       {hasSession && isMobile && (
         <>
           <BackgroundTasksButton />
+          <BrowserButton />
           {!hasBackgroundTasks && <PrButton />}
         </>
       )}

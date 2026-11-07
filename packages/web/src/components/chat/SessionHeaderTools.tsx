@@ -1,9 +1,10 @@
 import { useEffect, useMemo } from 'react'
-import { Bot, FolderTree, SquareTerminal } from 'lucide-react'
+import { Bot, FolderTree, Globe2, SquareTerminal } from 'lucide-react'
 import type { SubagentSession } from '../../lib/types'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { useTaskStore } from '../../store/useTaskStore'
+import { useBrowserStore } from '../../store/useBrowserStore'
 import { cn } from '../../lib/cn'
 import { IconButton } from '../ui/Button'
 import { Popover } from '../ui/Popover'
@@ -166,6 +167,31 @@ export function SubagentsButton() {
         </div>
       )}
     </Popover>
+  )
+}
+
+/** 顶栏「浏览器」：查看当前会话在 Host 上打开的页面与最新截图。 */
+export function BrowserButton() {
+  const active = useAppStore((s) => s.active)
+  const browserState = useBrowserStore((s) =>
+    active ? s.states[active.sessionId] : undefined,
+  )
+  const openBrowserPanel = useUiStore((s) => s.openBrowserPanel)
+  return (
+    <IconButton
+      onClick={() => {
+        if (active) openBrowserPanel(active.hostId, active.sessionId)
+      }}
+      disabled={!active}
+      label="浏览器"
+      tooltip="浏览器"
+      className="relative text-text! max-sm:size-11"
+    >
+      <Globe2 size={16} />
+      {browserState?.active ? (
+        <span className="absolute right-1 top-1 size-1.5 rounded-full bg-success" />
+      ) : null}
+    </IconButton>
   )
 }
 

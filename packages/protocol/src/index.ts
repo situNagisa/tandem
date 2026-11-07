@@ -302,6 +302,38 @@ export interface HostSettings {
 // GET  /api/settings -> HostSettings
 // PUT  /api/settings HostSettings -> HostSettings
 
+// ---------- 浏览器操作（~/.tandem/browser.json） ----------
+/** Host 浏览器工具设置：默认关闭；默认只允许访问本机地址与 file://。 */
+export interface BrowserSettings {
+  enabled: boolean;
+  /** 额外允许的域名/内网网段模式：如 example.com、*.corp.example.com、10.*、192.168.*。本机地址始终允许。 */
+  allowedHosts: string[];
+  /** 无头模式；关闭后 Host 会弹出可见窗口（仅当客户端与 Host 同机时可见）。 */
+  headless: boolean;
+}
+// GET  /api/browser/settings -> BrowserSettings
+// PUT  /api/browser/settings BrowserSettings -> BrowserSettings
+/** GET /api/browser/status：Playwright 与 Chromium 是否可用。 */
+export interface BrowserStatus {
+  available: boolean;
+  version?: string;
+  browser?: string;
+  error?: string;
+}
+/** 每个会话的浏览器实时状态（WS browser_state 与 GET /api/sessions/:id/browser/state）。 */
+export interface BrowserState {
+  sessionId: string;
+  /** 浏览器上下文是否打开。 */
+  active: boolean;
+  url?: string;
+  title?: string;
+  /** 最新截图 id；GET /api/sessions/:id/browser/screenshot?shot=<id> 取图。 */
+  screenshotId?: string;
+  updatedAt: number;
+  error?: string;
+}
+// GET /api/sessions/:id/browser/screenshot?shot=shot_1 -> image/jpeg
+
 /** GET /api/stt/capabilities：本机 Whisper 探测结果，用于设置页展示与客户端降级。 */
 export interface SttCapabilities {
   configured: boolean;
@@ -488,6 +520,7 @@ export type ServerMsg =
   | { type: 'inbox_event'; event: InboxEvent }                             // 收件箱增量事件
   | { type: 'vcs_updated'; sessionId: string; state: VcsState }            // 当前会话 PR/CI 状态变化（60s 轮询）
   | { type: 'injections'; sessionId: string; injections: InjectionSnapshot } // 本轮系统提示的注入段落清单/变化
+  | { type: 'browser_state'; sessionId: string; state: BrowserState }      // 浏览器当前页面/最新截图（工具调用后刷新）
   // 外部会话（Claude Code / Codex）文件有变动，客户端应重新拉取列表
   | { type: 'task_updated'; sessionId: string; task: BackgroundTask; content?: string; since?: number; truncated?: boolean }
   | { type: 'schedules_updated' }
@@ -676,7 +709,8 @@ export interface PrActionResult {
 // WS: vcs_updated   当前会话 PR 状态变化（Host 每 60s 轮询有 PR 且被订阅的会话）
 
 // ---------- 权限规则（Host 级，存 ~/.tandem/permissions.json；会话级 allow_always 仍保留） ----------
-export interface PermissionRule { tool: string; pattern?: string; action: 'allow' | 'ask' | 'deny' } // pattern：Bash 为命令前缀通配，如 "npm test*"；文件工具为 glob
+export interface PermissionRule { tool: string; pattern?: string; action: 'allow' | 'ask' | 'deny' } // pattern：Bash 为命令前缀通配，如 "npm test*"；文件工具为 glob；browser_* 为域名模式，如 "192.168.*"
+// tool 支持 * 通配（如 browser_*）。浏览器工具还有一道硬边界：域名必须在本机地址或设置 → 浏览器的允许列表内。
 // GET /api/permissions -> PermissionRule[]   PUT /api/permissions PermissionRule[]   优先级 deny > ask > allow
 
 // ---------- MCP（Host 级，存 ~/.tandem/mcp.json；同时只读兼容 ~/.claude.json 与项目 .mcp.json） ----------

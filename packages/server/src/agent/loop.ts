@@ -601,6 +601,7 @@ async function executeToolUses(
       home: host.home,
       memory: host.memory,
       backgroundTasks: host.tasks,
+      browser: host.browser,
     };
     const def = host.toolDefinition(tool.name, rec.cwd);
     const res =

@@ -29,6 +29,7 @@ import type {
   Todo,
 } from '@tandem/protocol';
 import { ProfileStore, loadHostConfig, tandemHome } from './config.js';
+import { BrowserManager } from './browser.js';
 import { CheckpointStore } from './checkpoints.js';
 import { ExternalSessionStore } from './external.js';
 import { Hub } from './events.js';
@@ -175,6 +176,8 @@ export class Host {
   /** 评测：用例存储与后台批量运行。 */
   readonly evals: EvalManager;
   readonly hub = new Hub();
+  /** 浏览器操作（Playwright）：每会话独立上下文，空闲 10 分钟关闭。 */
+  readonly browser: BrowserManager;
   /** 跨会话收件箱（审批/回合结束/预算摘要），手机审批台的数据源。 */
   readonly inbox = new Inbox();
   readonly version: string;
@@ -221,6 +224,21 @@ export class Host {
       this.hub.broadcastAll({ type: 'schedules_updated' });
     });
     this.evals = new EvalManager(this);
+    this.browser = new BrowserManager(home, {
+      isSessionHostAllowed: (sessionId, host) => {
+        const rec = this.store.get(sessionId);
+        if (!rec) return false;
+        const entry = `BrowserNavigate:${host}`;
+        return rec.allowedTools.includes(entry) || rec.allowedTools.includes('browser_navigate');
+      },
+      onState: (state) => {
+        this.hub.broadcastSession(state.sessionId, {
+          type: 'browser_state',
+          sessionId: state.sessionId,
+          state,
+        });
+      },
+    });
     this.version = readVersion();
     // 启动时连接已启用的 MCP 服务器；失败只记录状态，不影响 Host 启动
     this.mcp.start();
@@ -635,6 +653,7 @@ export class Host {
     this.external.stopWatching();
     this.store.flush();
     this.usage.flush();
+    await this.browser.dispose();
     await this.mcp.close();
   }
 }

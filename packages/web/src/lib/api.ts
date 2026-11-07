@@ -42,6 +42,9 @@ import type {
   ProfileInput,
   BackgroundTask,
   BackgroundTaskOutput,
+  BrowserSettings,
+  BrowserState,
+  BrowserStatus,
   BudgetRule,
   BudgetStatus,
   RewindInput,
@@ -173,6 +176,27 @@ export const api = {
   settings: (h: HostConfig) => request<HostSettings>(h, '/api/settings'),
   updateSettings: (h: HostConfig, input: HostSettings) =>
     request<HostSettings>(h, '/api/settings', { method: 'PUT', body: JSON.stringify(input) }),
+
+  browserSettings: (h: HostConfig) => request<BrowserSettings>(h, '/api/browser/settings'),
+  updateBrowserSettings: (h: HostConfig, input: BrowserSettings) =>
+    request<BrowserSettings>(h, '/api/browser/settings', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  browserStatus: (h: HostConfig) => request<BrowserStatus>(h, '/api/browser/status'),
+  browserState: (h: HostConfig, sessionId: string) =>
+    request<BrowserState>(h, `/api/sessions/${encodeURIComponent(sessionId)}/browser/state`),
+  browserScreenshot: async (h: HostConfig, sessionId: string, shotId?: string) => {
+    const res = await send(
+      h,
+      `/api/sessions/${encodeURIComponent(sessionId)}/browser/screenshot${qs({ shot: shotId })}`,
+    )
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new ApiError(describe(res.status, text), res.status)
+    }
+    return res.blob()
+  },
 
   sttCapabilities: (h: HostConfig) => request<SttCapabilities>(h, '/api/stt/capabilities'),
   testStt: (h: HostConfig) => request<SttTestResult>(h, '/api/stt/test', { method: 'POST' }),

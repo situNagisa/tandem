@@ -11,6 +11,7 @@ import type { HookNotice, UiMessage } from '../../lib/types'
 import { useUiStore } from '../useUiStore'
 import { useTaskStore } from '../useTaskStore'
 import { useScheduleStore } from '../useScheduleStore'
+import { useBrowserStore } from '../useBrowserStore'
 import { useVcsStore } from '../../lib/useVcs'
 import { childSubscriptions, collectToolResults, connections, toast } from './helpers'
 import type { SessionCore } from './sessionCore'
@@ -66,6 +67,10 @@ export function createServerMessageHandler(
         const now = get().active
         if (!now || now.hostId !== hostId || now.sessionId !== msg.sessionId) break
         set({ active: { ...now, injections: msg.injections } })
+        break
+      }
+      case 'browser_state': {
+        useBrowserStore.getState().apply(msg.state)
         break
       }
       case 'inbox_snapshot': {

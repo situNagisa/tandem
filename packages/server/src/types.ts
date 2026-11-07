@@ -206,6 +206,8 @@ export interface ToolContext {
   memory?: import('./memory.js').MemoryStore;
   /** 后台 Bash 任务管理器；Bash / BashOutput / KillBash 使用。 */
   backgroundTasks?: import('./tasks.js').BackgroundTaskManager;
+  /** 浏览器操作管理器；browser_* 工具使用。 */
+  browser?: import('./browser.js').BrowserManager;
 }
 
 export type { ContentBlock, Message, Session, SessionStatus, Todo, Usage };

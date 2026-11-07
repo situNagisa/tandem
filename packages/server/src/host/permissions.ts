@@ -62,8 +62,21 @@ export async function authorize(host: Host, rec: SessionRecord,
   }
   if (!def) return { allowed: true }; // 交给执行器返回“未知工具”
 
+  // 浏览器安全边界：默认只允许本机/白名单域名，这条与权限模式无关（bypass 也不能绕过）
+  if (toolName.startsWith('browser_')) {
+    if (!host.browser.settings.enabled) {
+      return { allowed: false, reason: '浏览器工具已禁用：请在设置 → 浏览器中启用' };
+    }
+    if (toolName === 'browser_navigate') {
+      const url = (input as Record<string, unknown> | null)?.url;
+      const check = host.browser.checkNavigation(typeof url === 'string' ? url : '');
+      if (!check.ok) return { allowed: false, reason: check.error ?? '不允许访问该地址' };
+    }
+  }
+
   // Host 级规则：deny > ask > allow，deny 在 bypassPermissions 下依然生效
-  const rule = host.permissionRules.evaluate(toolName, input, rec.cwd);
+  const browserHost = browserHostOf(host, rec, toolName, input);
+  const rule = host.permissionRules.evaluate(toolName, input, rec.cwd, { browserHost });
   if (rule === 'deny') {
     return { allowed: false, reason: `被权限规则拒绝: ${describeTool(toolName, input)}` };
   }
@@ -94,16 +107,27 @@ export async function authorize(host: Host, rec: SessionRecord,
   return host.askPermission(rec, toolName, input, toolUseId, signal);
 }
 
+function browserHostOf(host: Host, rec: SessionRecord, toolName: string, input: unknown): string | undefined {
+  if (!toolName.startsWith('browser_')) return undefined;
+  return host.browser.hostFor(toolName, input, rec.id);
+}
+
 export function isAllowed(host: Host, rec: SessionRecord, toolName: string, input: unknown): boolean {
   const command =
     toolName === 'Bash' && input && typeof input === 'object'
       ? String((input as Record<string, unknown>).command ?? '').replace(/\s+/g, ' ').trim()
       : '';
+  const navigateHost =
+    toolName === 'browser_navigate' ? host.browser.hostFor(toolName, input, rec.id) : undefined;
   for (const entry of rec.allowedTools) {
     if (entry === toolName) return true;
     if (toolName === 'Bash' && entry.startsWith('Bash:')) {
       const prefix = entry.slice('Bash:'.length);
       if (prefix && command.startsWith(prefix)) return true;
+    }
+    if (toolName === 'browser_navigate' && entry.startsWith('BrowserNavigate:')) {
+      const allowedHost = entry.slice('BrowserNavigate:'.length);
+      if (allowedHost && allowedHost === navigateHost) return true;
     }
   }
   return false;
@@ -275,6 +299,11 @@ export function addAllowed(host: Host, rec: SessionRecord, toolName: string, inp
   if (toolName === 'Bash' && input && typeof input === 'object') {
     const command = String((input as Record<string, unknown>).command ?? '');
     entry = `Bash:${commandPrefix(command)}`;
+  }
+  // 浏览器访问按域名记住：allow_always 只放行同一个域名，换域名仍会再次询问
+  if (toolName === 'browser_navigate') {
+    const domain = host.browser.hostFor(toolName, input, rec.id);
+    if (domain) entry = `BrowserNavigate:${domain}`;
   }
   if (!rec.allowedTools.includes(entry)) {
     rec.allowedTools.push(entry);

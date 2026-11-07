@@ -454,6 +454,7 @@ export async function deleteSession(host: Host, id: string, force = false): Prom
     host.runtimes.delete(id);
   }
   host.store.delete(id);
+  void host.browser.closeSession(id, false);
   host.hub.dropSession(id);
   host.hub.broadcastAll({ type: 'session_deleted', sessionId: id });
   // 删除导入的会话后，原外部会话应重新出现在侧栏

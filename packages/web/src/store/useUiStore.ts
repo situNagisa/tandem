@@ -69,6 +69,8 @@ interface UiState {
   scheduleComposeNonce: number
   /** 后台任务面板：指定 Host/会话，可带要直接查看的任务。 */
   backgroundPanel: { hostId: string; sessionId: string; taskId?: string } | null
+  /** 浏览器面板：最新截图与 URL。 */
+  browserPanel: { hostId: string; sessionId: string } | null
   /** PR 面板；composeTitle 用于「提交并创建 PR」预填标题。 */
   prOpen: boolean
   prComposeTitle: string
@@ -123,6 +125,8 @@ interface UiState {
   openBackgroundTasks: (hostId: string, sessionId: string, taskId?: string) => void
   openScheduleComposer: () => void
   closeBackgroundTasks: () => void
+  openBrowserPanel: (hostId: string, sessionId: string) => void
+  closeBrowserPanel: () => void
   openPrPanel: (title?: string) => void
   closePrPanel: () => void
   openMemoryEditor: (input: { scope: MemoryScope; project?: string }) => void
@@ -170,6 +174,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   agentFocus: null,
   composerResetNonce: 0,
   backgroundPanel: null,
+  browserPanel: null,
   prOpen: false,
   prComposeTitle: '',
   memoryEditor: null,
@@ -254,6 +259,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   openBackgroundTasks: (hostId, sessionId, taskId) =>
     set({ backgroundPanel: { hostId, sessionId, ...(taskId ? { taskId } : {}) } }),
   closeBackgroundTasks: () => set({ backgroundPanel: null }),
+  openBrowserPanel: (hostId, sessionId) => set({ browserPanel: { hostId, sessionId } }),
+  closeBrowserPanel: () => set({ browserPanel: null }),
   openPrPanel: (title) => set({ prOpen: true, prComposeTitle: title ?? '' }),
   closePrPanel: () => set({ prOpen: false, prComposeTitle: '' }),
   openMemoryEditor: (input) => set({ memoryEditor: input }),

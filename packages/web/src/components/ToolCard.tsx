@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState, type ComponentType, type Re
 import {
   Bot,
   Brain,
+  Camera,
   ChevronRight,
   Circle,
   CircleCheck,
@@ -10,8 +11,12 @@ import {
   FilePlus2,
   FileText,
   Globe,
+  Keyboard,
   ListChecks,
+  ListTree,
   Loader2,
+  MousePointerClick,
+  ScrollText,
   Search,
   Square,
   Sparkles,
@@ -28,8 +33,10 @@ import { runningSince } from '../lib/runClock'
 import type { ToolResultBlock } from '../lib/types'
 import { cn } from '../lib/cn'
 import { firstLine, formatElapsed, truncate } from '../lib/format'
+import { useBrowserShot } from '../lib/browserShot'
 import { CodeBlock } from './CodeBlock'
 import { Button } from './ui/Button'
+import { Modal } from './ui/Modal'
 import { DiffView } from './DiffView'
 import { Markdown, openFileRef } from './Markdown'
 import { ThinkingBlock } from './ThinkingBlock'
@@ -55,6 +62,13 @@ const TOOL_META: Record<string, ToolMeta> = {
   Task: { icon: Bot, verb: '子代理' },
   Skill: { icon: Sparkles, verb: '使用技能' },
   Memory: { icon: Brain, verb: '记住' },
+  browser_navigate: { icon: Globe, verb: '浏览器 · 打开' },
+  browser_snapshot: { icon: ListTree, verb: '浏览器 · 快照' },
+  browser_click: { icon: MousePointerClick, verb: '浏览器 · 点击' },
+  browser_type: { icon: Keyboard, verb: '浏览器 · 输入' },
+  browser_screenshot: { icon: Camera, verb: '浏览器 · 截图' },
+  browser_console: { icon: ScrollText, verb: '浏览器 · 控制台' },
+  browser_close: { icon: Square, verb: '浏览器 · 关闭' },
 }
 
 /** mcp__server__tool → { server, tool }。 */
@@ -241,6 +255,51 @@ function TodoList({ todos }: { todos: Todo[] }) {
   )
 }
 
+/** 浏览器截图缩略图：点开看大图。 */
+function BrowserShotThumb({
+  hostId,
+  sessionId,
+  shotId,
+}: {
+  hostId: string
+  sessionId: string
+  shotId: string
+}) {
+  const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
+  const { url, error } = useBrowserShot(host, sessionId, shotId)
+  const [open, setOpen] = useState(false)
+  if (error) return <p className="mt-1 text-[11.5px] text-danger">截图加载失败：{error}</p>
+  if (!url) return <p className="mt-1 text-[11.5px] text-muted">截图加载中…</p>
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="查看浏览器截图大图"
+        className="mt-1 block max-w-full overflow-hidden rounded-lg border border-border bg-[var(--t-bg)] transition-colors hover:border-border-strong"
+      >
+        <img
+          src={url}
+          alt="浏览器截图"
+          className="block h-24 w-auto max-w-full object-cover object-top"
+        />
+      </button>
+      {open && (
+        <Modal
+          open
+          onClose={() => setOpen(false)}
+          ariaLabel="浏览器截图"
+          title="浏览器截图"
+          className="w-[min(94vw,1100px)] max-w-none"
+          bodyClassName="p-2"
+        >
+          <img src={url} alt="浏览器截图大图" className="mx-auto block h-auto max-h-[75vh] w-auto max-w-full object-contain" />
+        </Modal>
+      )}
+    </>
+  )
+}
+
 export const ToolCard = memo(function ToolCard({
   block,
   messageId,
@@ -351,6 +410,10 @@ export const ToolCard = memo(function ToolCard({
     block.name === 'Bash'
       ? /Command running in background with ID: (bash_[A-Za-z0-9_-]+)/.exec(output)?.[1]
       : undefined
+  const browserShotId =
+    block.name === 'browser_screenshot' && result && !isError
+      ? /screenshotId=(shot_\d+)/.exec(output)?.[1]
+      : undefined
   const Icon = displayMeta.icon
 
   const editStats = useMemo(
@@ -418,6 +481,36 @@ export const ToolCard = memo(function ToolCard({
           : pick('text') || pick('old') || (running ? '…' : '更新记忆')
       break
     }
+    case 'browser_navigate': {
+      const url = pick('url')
+      target = urlHost(url) || url
+      break
+    }
+    case 'browser_click': {
+      const label = /已点击 "([^"]+)"/.exec(output)?.[1]
+      target = label ? `'${truncate(label, 40)}'` : pick('ref') || (running ? '…' : '点击')
+      break
+    }
+    case 'browser_type': {
+      const label = /已在 "([^"]+)"/.exec(output)?.[1]
+      const text = /输入"([^"]{0,40})"/.exec(output)?.[1]
+      target = label
+        ? `'${truncate(label, 30)}'${text ? ` 输入 "${truncate(text, 24)}"` : ''}`
+        : pick('ref') || (running ? '…' : '输入')
+      break
+    }
+    case 'browser_screenshot':
+      target = input.fullPage === true ? '整页' : '当前视口'
+      break
+    case 'browser_snapshot':
+      target = '当前页面'
+      break
+    case 'browser_console':
+      target = '最近输出与报错'
+      break
+    case 'browser_close':
+      target = ''
+      break
     default:
       target = mcp ? `${mcp.server} · ${mcp.tool}` : block.name
   }
@@ -669,6 +762,13 @@ export const ToolCard = memo(function ToolCard({
           <SquareTerminal size={12} />
           后台运行 · 查看输出
         </button>
+      )}
+      {browserShotId && activeHostId && (subagentId ?? activeSessionId) && (
+        <BrowserShotThumb
+          hostId={activeHostId}
+          sessionId={subagentId ?? activeSessionId!}
+          shotId={browserShotId}
+        />
       )}
       {mounted && (
         <div className="collapse-grid" data-open={open}>

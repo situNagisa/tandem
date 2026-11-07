@@ -212,6 +212,8 @@ export function toolDefinitions(host: Host, rec: SessionRecord, allowTask = true
         (tool.name !== 'Skill' || hasSkills) &&
         // 仅计划模式暴露 ExitPlanMode，其它模式下不打扰模型
         (tool.name !== 'ExitPlanMode' || rec.permissionMode === 'plan') &&
+        // 浏览器工具默认关闭，启用后才对模型可见
+        (!tool.name.startsWith('browser_') || host.browser.settings.enabled) &&
         allowed(tool.name),
     )
     .map((tool) =>

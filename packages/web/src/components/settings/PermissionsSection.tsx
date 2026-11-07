@@ -8,7 +8,7 @@ import { Button, IconButton } from '../ui/Button'
 import { Input, SegmentedControl } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 
-const TOOL_OPTIONS = ['Bash', 'Write', 'Edit', 'Read', 'Glob', 'Grep', 'WebFetch', '*']
+const TOOL_OPTIONS = ['Bash', 'Write', 'Edit', 'Read', 'Glob', 'Grep', 'WebFetch', 'browser_navigate', 'browser_*', '*']
 
 const ACTIONS: Array<{ value: PermissionRule['action']; label: string }> = [
   { value: 'allow', label: '允许' },
@@ -19,6 +19,7 @@ const ACTIONS: Array<{ value: PermissionRule['action']; label: string }> = [
 function placeholderFor(tool: string): string {
   if (tool === 'Bash') return '命令前缀，如 npm test*'
   if (tool === 'Write' || tool === 'Edit' || tool === 'Read') return '文件 glob，如 src/**/*.ts'
+  if (tool.startsWith('browser_')) return '域名模式，如 192.168.* 或 *.corp.example.com'
   return '留空表示匹配该工具的所有调用'
 }
 
@@ -126,7 +127,8 @@ export function PermissionsSection() {
         </div>
         <p className="mt-1 text-[13px] leading-5 text-muted">
           规则保存在 Host 上，对所有会话生效。优先级为拒绝 &gt; 询问 &gt; 允许；Bash 的
-          pattern 是命令前缀通配，文件工具是相对工作目录的 glob。
+          pattern 是命令前缀通配，文件工具是相对工作目录的 glob，browser_* 的 pattern 是域名模式。
+          浏览器还有一道硬边界：不在设置 → 浏览器允许列表里的域名一律拒绝。
         </p>
       </div>
 

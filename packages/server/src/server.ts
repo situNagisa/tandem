@@ -33,6 +33,7 @@ import { registerScheduleRoutes } from './routes/schedules.js';
 import { registerEvalRoutes } from './routes/evals.js';
 import { registerCommandRoutes } from './routes/commands.js';
 import { registerSkillRoutes } from './routes/skills.js';
+import { registerBrowserRoutes } from './routes/browser.js';
 import { registerWsRoutes } from './routes/ws.js';
 
 export async function createApp(
@@ -111,6 +112,7 @@ export async function createApp(
   registerEvalRoutes(app, deps);
   registerCommandRoutes(app, deps);
   registerSkillRoutes(app, deps);
+  registerBrowserRoutes(app, deps);
   registerWsRoutes(app, deps);
 
   // PR/CI 轮询：只覆盖已被客户端打开且有 PR 的会话

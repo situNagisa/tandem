@@ -1,4 +1,4 @@
-import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, FlaskConical, Mic, Monitor, Palette, Plug, RefreshCw, ScrollText, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Wallet, Webhook } from 'lucide-react'
+import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, FlaskConical, Mic, Monitor, MousePointerClick, Palette, Plug, RefreshCw, ScrollText, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Wallet, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
@@ -22,11 +22,13 @@ import { BudgetsSection } from './BudgetsSection'
 import { NotificationsSection } from './NotificationsSection'
 import { GeneralSettings } from './GeneralSettings'
 import { VoiceSection } from './VoiceSection'
+import { BrowserSection } from './BrowserSection'
 import { EvalsSection } from './EvalsSection'
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'general', label: '通用', icon: SlidersHorizontal },
   { id: 'voice', label: '语音', icon: Mic },
+  { id: 'browser', label: '浏览器', icon: MousePointerClick },
   { id: 'profiles', label: '账号与模型', icon: Sparkles },
   { id: 'hosts', label: 'Host 管理', icon: Server },
   { id: 'permissions', label: '权限', icon: ShieldCheck },
@@ -97,6 +99,7 @@ export function SettingsDialog() {
           <div className="mx-auto w-full max-w-[1100px]">
             {tab === 'general' && <GeneralSettings />}
             {tab === 'voice' && <VoiceSection />}
+            {tab === 'browser' && <BrowserSection />}
             {tab === 'profiles' && <ProfilesSection />}
             {tab === 'hosts' && <HostsSection />}
             {tab === 'permissions' && <PermissionsSection />}

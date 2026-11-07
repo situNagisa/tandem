@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { PermissionRule } from '@tandem/protocol';
+import { hostMatchesPattern } from './browser.js';
 import { matchGlob } from './util/glob.js';
 import { isSubPath, toPosix } from './util/path.js';
 
@@ -11,6 +12,15 @@ export type RuleDecision = 'deny' | 'ask' | 'allow';
 
 const ACTIONS = new Set<RuleDecision>(['allow', 'ask', 'deny']);
 const FILE_TOOLS = new Set(['Read', 'Write', 'Edit', 'Glob', 'Grep']);
+const BROWSER_TOOLS = new Set([
+  'browser_navigate',
+  'browser_snapshot',
+  'browser_click',
+  'browser_type',
+  'browser_screenshot',
+  'browser_console',
+  'browser_close',
+]);
 
 export class PermissionRuleStore {
   private file: string;
@@ -34,13 +44,19 @@ export class PermissionRuleStore {
 
   /**
    * 命中规则的动作：deny 优先，其次 ask，最后 allow；都未命中返回 undefined。
+   * browserHost：浏览器工具用于匹配域名模式的当前/目标域名。
    */
-  evaluate(toolName: string, input: unknown, cwd: string): RuleDecision | undefined {
+  evaluate(
+    toolName: string,
+    input: unknown,
+    cwd: string,
+    context?: { browserHost?: string },
+  ): RuleDecision | undefined {
     let hit: RuleDecision | undefined;
     const args = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
     for (const rule of this.rules) {
-      if (rule.tool !== '*' && rule.tool.toLowerCase() !== toolName.toLowerCase()) continue;
-      if (!matchesInput(rule, args, cwd)) continue;
+      if (!toolMatches(rule.tool, toolName)) continue;
+      if (!matchesInput(rule, toolName, args, cwd, context?.browserHost)) continue;
       if (rule.action === 'deny') return 'deny';
       if (rule.action === 'ask') hit = 'ask';
       else if (!hit) hit = 'allow';
@@ -109,17 +125,36 @@ function matchCommand(command: string, pattern: string): boolean {
   return new RegExp(`^${escaped}`).test(command);
 }
 
-function matchesInput(rule: PermissionRule, args: Record<string, unknown>, cwd: string): boolean {
-  if (rule.tool === 'Bash') {
+function toolMatches(pattern: string, toolName: string): boolean {
+  const value = pattern.trim();
+  if (!value) return false;
+  if (value === '*') return true;
+  if (/[*?\[]/.test(value)) return matchGlob(toolName, value);
+  return value.toLowerCase() === toolName.toLowerCase();
+}
+
+function matchesInput(
+  rule: PermissionRule,
+  toolName: string,
+  args: Record<string, unknown>,
+  cwd: string,
+  browserHost?: string,
+): boolean {
+  if (toolName === 'Bash') {
     return matchCommand(normalizeCommand(args.command), rule.pattern ?? '');
   }
-  if (FILE_TOOLS.has(rule.tool)) {
+  if (FILE_TOOLS.has(toolName)) {
     const raw = typeof args.file_path === 'string' ? args.file_path : '';
     if (!raw) return !rule.pattern;
     if (!rule.pattern) return true;
     const abs = path.resolve(cwd, raw);
     if (!isSubPath(cwd, abs)) return false; // cwd 外的文件不参与 glob 匹配
     return matchGlob(toPosix(path.relative(cwd, abs)), rule.pattern);
+  }
+  if (BROWSER_TOOLS.has(toolName)) {
+    if (!rule.pattern) return true;
+    if (!browserHost) return false;
+    return hostMatchesPattern(browserHost, rule.pattern);
   }
   // 其它工具没有可匹配的路径/命令：只有不带 pattern 的规则才命中
   return !rule.pattern;
