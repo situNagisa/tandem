@@ -61,7 +61,8 @@
 | 文件/目录 | 职责 |
 |---|---|
 | `src/App.tsx` | 布局、hash 路由、全局快捷键、移动端抽屉 |
-| `src/store/useAppStore.ts` | Host 连接、会话/消息/审批/子代理状态；**巨石，拆分计划见 §8** |
+| `src/store/useAppStore.ts` | 全局 store 入口：只做初始 state 与各 slice 的组合（见 §8） |
+| `src/store/appStore/` | `types.ts` 状态与 action 签名；`helpers.ts` 纯工具与连接表；`sessionCore.ts` 会话内部辅助（`patchActive`/`applySnapshot`/`ensureConnection` 等）；`serverMessages.ts` WS 消息 switch；`hostsSlice.ts`、`sessionsSlice.ts`、`messagesSlice.ts`、`inboxSlice.ts`、`worktreeSlice.ts`、`uiSlice.ts` 按职责拆分的 action |
 | `src/store/useUiStore.ts` | 弹窗、侧栏、右栏、主题等纯 UI 状态 |
 | `src/store/useFeedbackStore.ts` | 反馈模式条目与标注状态 |
 | `src/lib/api.ts` | 所有 REST 调用（带 Host token） |
@@ -121,7 +122,7 @@ Web/Desktop/Android
 |---|---|
 | 加一个工具 | `server/src/tools/<name>.ts` 实现 `definition` + `run`；在 `tools/index.ts` 的 `TOOLS/TOOL_MAP` 注册；涉及权限时设 `readOnly/requiresApproval`；前端工具卡在 `ToolCard.tsx` |
 | 加一个 REST 接口 | 先在 `protocol` 注释/types 定义；`server/src/server.ts` 加路由（后续放 `routes/`）；`web/src/lib/api.ts` 加方法 |
-| 加一个 WS 事件 | `protocol` 的 `ServerMsg/ClientMsg`；server 用 `Hub.broadcastSession/broadcastAll`；web `useAppStore` 事件 switch + `ws.ts` 类型 |
+| 加一个 WS 事件 | `protocol` 的 `ServerMsg/ClientMsg`；server 用 `Hub.broadcastSession/broadcastAll`；web `appStore/serverMessages.ts` 事件 switch + `ws.ts` 类型 |
 | 加一个设置页 | `web/src/lib/types.ts` 的 `SettingsTab`；`SettingsDialog.tsx` 的 `TABS` 与条件渲染；页面放 `components/settings/`；数据走 `api.ts` |
 | 加一个菜单/弹层 | 只用 `components/ui/Menu.tsx`、`Modal.tsx`、`Controls.tsx`；不要手写 role 或原生 select |
 | 改会话发送/循环 | `server/src/host.ts` 的 `send/handleUserContent/sendToModel` → `agent/loop.ts` |
@@ -160,7 +161,7 @@ node scripts/check.mjs --skip-smoke  # 子代理最低要求
 |---|---|---|
 | `server/src/host.ts` | 640 | **已拆**：实现在 `host/`（sessions / turns / commands / permissions / keys / usage / subagents / vcs / rewind / hooks / inbox / external / helpers），Host 只留状态与一行转调 |
 | `server/src/server.ts` | 140 | **已拆**：路由在 `routes/` 按资源注册 |
-| `web/src/store/useAppStore.ts` | 2100+ | 未拆：计划 connection / sessions / runs / inbox slices |
+| `web/src/store/useAppStore.ts` | 39 | **已拆**：实现在 `store/appStore/`（types / helpers / sessionCore / serverMessages / hostsSlice / sessionsSlice / messagesSlice / inboxSlice / worktreeSlice / uiSlice），useAppStore 只保留初始 state 与 slice 组合 |
 | `web/src/components/settings/ProfilesSection.tsx` | 990 | **已拆**：`settings/profiles/`（shared / PriceOverrides / GroupEditor / KeysPanel） |
 | `web/src/components/Composer.tsx` | 1020 | **已拆**：`components/composer/`（completion / ComposerMenus / ModelMenu / CompletionMenu）+ `lib/modelName.ts` |
 | `web/src/components/RightPanel.tsx` | 880 | **已拆**：`components/right-panel/`（shared / AgentsCard / ContextCard） |
