@@ -231,3 +231,11 @@
 - [x] 超大 diff 截断 1MB/2 万行并提示（16MB/278ms→1MB/146ms）；文件浏览器大目录 `content-visibility`
 - 未做：会话消息分页（31MB 全量下发仍在）、侧栏/搜索虚拟列表（实测 200+3000 下 10–26ms，无收益）、服务端事件广播合并
 - 验证：`node scripts/check.mjs`：build / ui-audit / test / smoke 通过；regression 45/46，唯一失败是并行无障碍任务新增的 a11y 扫描（工具卡对比度/标签，与本轮文件无关）
+
+## 迭代 27（2026-11-07）自建 Key 网关（可选，默认关闭）
+- [x] 协议：`GatewaySettings/GatewayModelRoute/GatewayToken/GatewayOverview/GatewayLogEntry/GatewayMemberUsage`；`ProviderKind` 新增 `tandem-gateway`；`UsageStatsRow.memberId/memberName`
+- [x] Host：`server/src/gateway/{store,stats,proxy,redact}.ts` + `routes/gateway.ts`；`/gateway/v1/{models,chat/completions,messages}` 网关令牌鉴权（只存 SHA-256）、成员每日/每月美元限额、RPM 滑动窗口、模型白名单、多 Key 轮换/冷却、沿用预算 block；记账写入 `usage.json`（带成员，不重复计数）；日志只记元数据，调试正文自动脱敏 + 24h TTL，关闭即清空
+- [x] Web：设置「网关」页（模式开关 + 可信内网提示、模型路由、令牌签发/限额/吊销、每 5 秒成员统计、日志与调试）；用量页新增「按成员」；账号类型「Tandem 网关」（地址 + 网关令牌，自动拉模型）
+- [x] `docs/gateway.md`：架构、协议对应、限额/限流、日志与调试、默认值、威胁模型、运维与已知限制
+- 验证：双 Host（`/tmp/tandem-gw`:8271 网关、`/tmp/tandem-gwc`:8272 客户端）+ 本地 mock（OpenAI/Anthropic SSE）；客户端用网关账号跑会话经网关落到 mock（上游收到 `sk-up-*`，不含网关令牌）；用量按成员记账；超限额 429、吊销后 401、白名单 403、RPM 429；日志无正文；Playwright 截图 `/tmp/gw-shots/`
+- 备注：网关为 HTTP 明文，仅可信内网；OpenAI 入口只路由 OpenAI 兼容分组，Anthropic 入口只路由 Anthropic 分组，不跨协议翻译

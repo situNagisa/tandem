@@ -13,7 +13,7 @@ const GEMINI_EFFORTS: ReasoningEffort[] = ['off', 'low', 'medium', 'high'];
 /** 无法确定能力时，按 provider 的默认档位展示。 */
 export function defaultEffortsForKind(kind: ProviderKind): ReasoningEffort[] {
   if (kind === 'anthropic') return [...ANTHROPIC_EFFORTS];
-  if (kind === 'openai' || kind === 'gemini' || kind === 'openai-compatible') {
+  if (kind === 'openai' || kind === 'gemini' || kind === 'openai-compatible' || kind === 'tandem-gateway') {
     return [...OPENAI_EFFORTS];
   }
   return [...ANTHROPIC_EFFORTS];
@@ -24,6 +24,7 @@ export function providerEffortsFor(kind: ProviderKind): ReasoningEffort[] {
 }
 
 export function builtinCapabilities(kind: ProviderKind, model: string): ModelCapabilities {
+  const effectiveKind: ProviderKind = kind === 'tandem-gateway' ? 'openai-compatible' : kind;
   const id = model.toLowerCase();
   const caps: ModelCapabilities = {};
 
@@ -36,7 +37,7 @@ export function builtinCapabilities(kind: ProviderKind, model: string): ModelCap
   const openaiReasoning = /^(?:o[1-9](?:[-.]|$)|gpt-(?:5|6)(?:[-.]|$))/.test(id);
   const geminiThinking = /^gemini-(?:2\.5|3)/.test(id);
 
-  if (kind === 'anthropic') {
+  if (effectiveKind === 'anthropic') {
     // claude 3.7 / 4 / 4.x / 5 系列支持 extended thinking（预算可调）
     if (claudeThinking) caps.efforts = [...ANTHROPIC_EFFORTS];
     else if (claude) caps.efforts = [];
@@ -45,7 +46,7 @@ export function builtinCapabilities(kind: ProviderKind, model: string): ModelCap
     caps.efforts = [];
   } else if (claudeThinking || openaiReasoning || geminiThinking) {
     // 走 OpenAI 兼容端点时统一用 reasoning_effort；max 在服务端映射为 high
-    caps.efforts = kind === 'gemini' ? [...GEMINI_EFFORTS] : [...OPENAI_EFFORTS];
+    caps.efforts = effectiveKind === 'gemini' ? [...GEMINI_EFFORTS] : [...OPENAI_EFFORTS];
   } else if (claude || /^(?:gpt-|o\d|chatgpt-|gemini-)/.test(id)) {
     caps.efforts = [];
   }

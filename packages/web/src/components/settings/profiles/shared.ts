@@ -19,6 +19,7 @@ export const GROUP_KIND_LABELS: Record<ProviderKind, string> = {
   openai: 'OpenAI',
   'openai-compatible': 'OpenAI 兼容',
   gemini: 'Gemini',
+  'tandem-gateway': 'Tandem 网关',
 }
 
 export type Step = 1 | 2 | 3
@@ -96,6 +97,8 @@ export function groupBaseUrlPlaceholder(kind: ProviderKind): string {
       return 'https://api.openai.com/v1（自动拼接 /chat/completions）'
     case 'gemini':
       return 'https://generativelanguage.googleapis.com/v1beta/openai'
+    case 'tandem-gateway':
+      return 'http://网关 Host:8271（自动拼接 /gateway/v1）'
     default:
       return 'https://api.example.com/v1'
   }

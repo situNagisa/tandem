@@ -10,7 +10,7 @@ export interface RouteDeps {
   relay?: RelayPairInfoSource;
 }
 
-export const PROVIDER_KINDS: ProviderKind[] = ['anthropic', 'openai', 'openai-compatible', 'gemini'];
+export const PROVIDER_KINDS: ProviderKind[] = ['anthropic', 'openai', 'openai-compatible', 'gemini', 'tandem-gateway'];
 
 export function bad(reply: FastifyReply, message: string, code = 400): FastifyReply {
   return reply.code(code).send({ error: message });

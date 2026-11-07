@@ -48,6 +48,7 @@ import type {
   ToolResult,
 } from './types.js';
 import { UsageStore } from './usage.js';
+import { GatewayStore } from './gateway/store.js';
 import { BudgetStore } from './budgets.js';
 import { Inbox } from './inbox.js';
 import { BackgroundTaskManager } from './tasks.js';
@@ -172,6 +173,8 @@ export class Host {
   /** 项目/全局长期记忆（Tandem 私有）。 */
   readonly memory: MemoryStore;
   readonly usage: UsageStore;
+  /** 自建 Key 网关（默认关闭）：设置、成员令牌、元数据日志与临时调试正文。 */
+  readonly gateway: GatewayStore;
   readonly budgets: BudgetStore;
   readonly tasks: BackgroundTaskManager;
   readonly schedules: ScheduleManager;
@@ -222,6 +225,7 @@ export class Host {
     this.promptTemplates = new PromptTemplateStore(home);
     this.memory = new MemoryStore(home);
     this.usage = new UsageStore(home);
+    this.gateway = new GatewayStore(home);
     this.budgets = new BudgetStore(home, this.usage);
     this.tasks = new BackgroundTaskManager(home, (task, content, truncated) => {
       this.hub.broadcastAll({

@@ -136,7 +136,7 @@ export interface Toast {
 }
 
 export type Theme = 'light' | 'dark' | 'system'
-export type SettingsTab = 'general' | 'profiles' | 'hosts' | 'team' | 'permissions' | 'hooks' | 'mcp' | 'skills' | 'schedules' | 'budgets' | 'usage' | 'appearance' | 'sync' | 'memory' | 'subagents' | 'prompts' | 'shares' | 'voice' | 'notifications' | 'browser' | 'evals'
+export type SettingsTab = 'general' | 'profiles' | 'hosts' | 'team' | 'gateway' | 'permissions' | 'hooks' | 'mcp' | 'skills' | 'schedules' | 'budgets' | 'usage' | 'appearance' | 'sync' | 'memory' | 'subagents' | 'prompts' | 'shares' | 'voice' | 'notifications' | 'browser' | 'evals'
 
 export type AppRoute =
   | { kind: 'home' }
@@ -150,6 +150,7 @@ export const PROVIDER_KIND_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   'openai-compatible': '兼容接口',
   gemini: 'Google Gemini',
+  'tandem-gateway': 'Tandem 网关',
 }
 
 export const PERMISSION_MODE_LABELS: Record<string, string> = {

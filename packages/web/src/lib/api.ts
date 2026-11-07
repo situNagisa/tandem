@@ -22,6 +22,12 @@ import type {
   ExternalSession,
   ExternalSource,
   FsEntry,
+  GatewayOverview,
+  GatewaySettings,
+  GatewayToken,
+  GatewayTokenInput,
+  GatewayTokenIssued,
+  GatewayTokenUpdateInput,
   FsReadResult,
   FsRevealResult,
   HookEntry,
@@ -199,6 +205,24 @@ export const api = {
     request<void>(h, `/api/team/members/${encodeURIComponent(id)}/revoke`, { method: 'POST' }),
   teamAudit: (h: HostConfig, limit = 200) =>
     request<TeamAuditEntry[]>(h, `/api/team/audit?limit=${limit}`),
+  gateway: (h: HostConfig) => request<GatewayOverview>(h, '/api/gateway'),
+  updateGatewaySettings: (h: HostConfig, input: GatewaySettings) =>
+    request<GatewaySettings>(h, '/api/gateway/settings', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  issueGatewayToken: (h: HostConfig, input: GatewayTokenInput) =>
+    request<GatewayTokenIssued>(h, '/api/gateway/tokens', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateGatewayToken: (h: HostConfig, id: string, input: GatewayTokenUpdateInput) =>
+    request<GatewayToken>(h, `/api/gateway/tokens/${encodeURIComponent(id)}`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  revokeGatewayToken: (h: HostConfig, id: string) =>
+    request<void>(h, `/api/gateway/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   transferPermission: (h: HostConfig, requestId: string, toMemberId: string) =>
     request<PermissionRequest>(h, `/api/permissions/${encodeURIComponent(requestId)}/transfer`, {
       method: 'POST',

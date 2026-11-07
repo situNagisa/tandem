@@ -18,7 +18,7 @@ import { chromium } from 'playwright'
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
 const HOST_ENTRY = path.join(ROOT, 'packages/server/dist/cli.js')
 const SETTINGS_TABS = [
-  '通用', '语音', '浏览器', '账号与模型', 'Host 管理', '权限', 'Hooks', 'MCP', 'Skills',
+  '通用', '语音', '浏览器', '账号与模型', 'Host 管理', '网关', '权限', 'Hooks', 'MCP', 'Skills',
   '记忆', '子代理', '提示词', '评测', '定时任务', '预算', '用量', '通知', '同步与备份', '外观',
 ]
 

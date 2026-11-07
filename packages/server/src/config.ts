@@ -121,7 +121,7 @@ export function maskApiKey(key: string): string {
   return `${key.slice(0, 4)}****${key.slice(-4)}`;
 }
 
-const KINDS: ProviderKind[] = ['anthropic', 'openai', 'openai-compatible', 'gemini'];
+const KINDS: ProviderKind[] = ['anthropic', 'openai', 'openai-compatible', 'gemini', 'tandem-gateway'];
 
 export class ProfileStore {
   private file: string;
@@ -629,6 +629,8 @@ export function providerDefaultBaseUrl(kind: ProviderKind): string {
       return 'https://api.openai.com/v1';
     case 'gemini':
       return 'https://generativelanguage.googleapis.com/v1beta/openai';
+    case 'tandem-gateway':
+      return '';
     case 'openai-compatible':
     default:
       return '';

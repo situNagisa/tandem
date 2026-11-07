@@ -141,7 +141,9 @@ export class UsageStore {
       if (!row || typeof row.day !== 'string' || typeof row.model !== 'string') continue;
       const keyId = typeof row.keyId === 'string' && row.keyId ? row.keyId : undefined;
       const groupId = typeof row.groupId === 'string' && row.groupId ? row.groupId : undefined;
-      const key = rowKey(row.day, row.hostId, row.profileId, row.model, keyId, groupId);
+      const memberId = typeof row.memberId === 'string' && row.memberId ? row.memberId : undefined;
+      const memberName = memberId && typeof row.memberName === 'string' ? row.memberName : undefined;
+      const key = rowKey(row.day, row.hostId, row.profileId, row.model, keyId, groupId, memberId);
       const existing = this.rows.get(key);
       if (existing) {
         existing.inputTokens += num(row.inputTokens);
@@ -160,6 +162,8 @@ export class UsageStore {
           turns: num(row.turns),
           ...(keyId ? { keyId } : {}),
           ...(groupId ? { groupId } : {}),
+          ...(memberId ? { memberId } : {}),
+          ...(memberName ? { memberName } : {}),
         });
       }
     }
@@ -177,11 +181,16 @@ export class UsageStore {
     /** 多 Key 分组：实际使用的 Key id / 分组 id，用于按 Key/分组统计与预算。 */
     keyId?: string;
     groupId?: string;
+    /** 网关转发的请求：归属成员（用量页按成员统计与成员限额）。 */
+    memberId?: string;
+    memberName?: string;
   }): void {
     const day = input.day ?? localDay();
     const keyId = input.keyId || undefined;
     const groupId = input.groupId || undefined;
-    const key = rowKey(day, input.hostId, input.profileId, input.model, keyId, groupId);
+    const memberId = input.memberId || undefined;
+    const memberName = memberId ? input.memberName || undefined : undefined;
+    const key = rowKey(day, input.hostId, input.profileId, input.model, keyId, groupId, memberId);
     let row = this.rows.get(key);
     if (!row) {
       row = {
@@ -195,6 +204,8 @@ export class UsageStore {
         turns: 0,
         ...(keyId ? { keyId } : {}),
         ...(groupId ? { groupId } : {}),
+        ...(memberId ? { memberId } : {}),
+        ...(memberName ? { memberName } : {}),
       };
       this.rows.set(key, row);
     }
@@ -254,8 +265,9 @@ function rowKey(
   model: string,
   keyId?: string,
   groupId?: string,
+  memberId?: string,
 ): string {
-  return `${day}\u0000${hostId}\u0000${profileId}\u0000${model}\u0000${keyId ?? ''}\u0000${groupId ?? ''}`;
+  return `${day}\u0000${hostId}\u0000${profileId}\u0000${model}\u0000${keyId ?? ''}\u0000${groupId ?? ''}\u0000${memberId ?? ''}`;
 }
 
 function num(value: unknown): number {

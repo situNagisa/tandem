@@ -1,5 +1,6 @@
 // 非流式一次性小请求：用于自动生成会话标题等短任务。
 import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
+import { tandemGatewayBase } from './openai.js';
 import type { StoredProfile } from '../types.js';
 import { providerHttpError } from './http-error.js';
 import { truncateEnd } from '../util/text.js';
@@ -65,7 +66,10 @@ export async function completeText(req: CompleteRequest): Promise<string> {
   } else {
     body.max_tokens = maxTokens;
   }
-  const res = await fetch(joinEndpoint(base, '/chat/completions'), {
+  const url = req.profile.kind === 'tandem-gateway'
+    ? joinEndpoint(tandemGatewayBase(base), '/gateway/v1/chat/completions')
+    : joinEndpoint(base, '/chat/completions');
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',

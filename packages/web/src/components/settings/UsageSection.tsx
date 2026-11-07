@@ -370,6 +370,15 @@ export function UsageSection() {
       ),
     [rows],
   )
+  const memberRanks = useMemo(
+    () =>
+      rank(
+        rows.filter((row) => !!row.memberId),
+        (row) => `${row.hostConfigId}:${row.memberId}`,
+        (row) => ({ label: row.memberName ?? row.memberId ?? '成员', sub: `${row.hostName} · 网关` }),
+      ),
+    [rows],
+  )
   const keyRanks = useMemo(
     () =>
       rank(
@@ -453,6 +462,7 @@ export function UsageSection() {
         <RankTable title="按模型" rows={modelRanks} />
         <RankTable title="按账号" rows={accountRanks} />
         <RankTable title="按 Key" rows={keyRanks} />
+        {memberRanks.length > 0 && <RankTable title="按成员" rows={memberRanks} />}
         {hosts.length > 1 && <RankTable title="按 Host" rows={hostRanks} />}
       </div>
 

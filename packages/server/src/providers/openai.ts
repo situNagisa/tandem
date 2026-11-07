@@ -72,6 +72,11 @@ export function toOpenAIMessages(messages: Message[], system: string): AnyRecord
   return out;
 }
 
+/** Tandem 网关地址允许带或不带 /gateway/v1，统一去掉后再拼端点。 */
+export function tandemGatewayBase(base: string): string {
+  return base.trim().replace(/\/+$/, '').replace(/\/gateway\/v1$/i, '');
+}
+
 function baseUrlOf(req: StreamRequest): string {
   const base = req.profile.baseUrl || providerDefaultBaseUrl(req.profile.kind);
   if (!base) {
@@ -80,8 +85,13 @@ function baseUrlOf(req: StreamRequest): string {
   return base;
 }
 
+function chatUrl(base: string, kind: StreamRequest['profile']['kind']): string {
+  if (kind === 'tandem-gateway') return joinEndpoint(tandemGatewayBase(base), '/gateway/v1/chat/completions');
+  return joinEndpoint(base, '/chat/completions');
+}
+
 export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
-  const url = joinEndpoint(baseUrlOf(req), '/chat/completions');
+  const url = chatUrl(baseUrlOf(req), req.profile.kind);
   const idle = createIdleTimeout(req.signal, req.idleTimeoutSec);
 
   const headers: Record<string, string> = {
@@ -303,7 +313,10 @@ export async function testOpenAI(
 ): Promise<{ ok: boolean; error?: string }> {
   const base = baseUrl || providerDefaultBaseUrl(kind);
   if (!base) return { ok: false, error: '未配置 baseUrl' };
-  const res = await fetch(joinEndpoint(base, '/chat/completions'), {
+  const url = kind === 'tandem-gateway'
+    ? joinEndpoint(tandemGatewayBase(base), '/gateway/v1/chat/completions')
+    : joinEndpoint(base, '/chat/completions');
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',

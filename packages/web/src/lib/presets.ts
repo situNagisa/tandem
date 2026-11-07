@@ -55,6 +55,15 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     color: '#6366F1',
   },
   {
+    id: 'tandem-gateway',
+    name: 'Tandem 网关',
+    kind: 'tandem-gateway',
+    baseUrl: '',
+    models: [],
+    defaultModel: '',
+    color: '#2563EB',
+  },
+  {
     id: 'ollama',
     name: 'Ollama',
     kind: 'openai-compatible',

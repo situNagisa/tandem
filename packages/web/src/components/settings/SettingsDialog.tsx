@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, FlaskConical, Mic, Monitor, MousePointerClick, Palette, Plug, RefreshCw, ScrollText, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Users, Wallet, Webhook } from 'lucide-react'
+import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, FlaskConical, Mic, Monitor, MousePointerClick, Network, Palette, Plug, RefreshCw, ScrollText, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Users, Wallet, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { useAppStore } from '../../store/useAppStore'
@@ -9,6 +9,7 @@ import { Button } from '../ui/Button'
 import { ProfilesSection } from './ProfilesSection'
 import { HostsSection } from './HostsSection'
 import { TeamSection } from './TeamSection'
+import { GatewaySection } from './GatewaySection'
 import { AppearanceSection } from './AppearanceSection'
 import { SyncSection } from './SyncSection'
 import { PermissionsSection } from './PermissionsSection'
@@ -35,6 +36,7 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'profiles', label: '账号与模型', icon: Sparkles },
   { id: 'hosts', label: 'Host 管理', icon: Server },
   { id: 'team', label: '成员', icon: Users },
+  { id: 'gateway', label: '网关', icon: Network },
   { id: 'permissions', label: '权限', icon: ShieldCheck },
   { id: 'hooks', label: 'Hooks', icon: Webhook },
   { id: 'mcp', label: 'MCP', icon: Plug },
@@ -84,7 +86,7 @@ export function SettingsDialog() {
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
     >
       <div className="flex h-full min-h-0 flex-col sm:flex-row">
-        <nav aria-label="设置页签" className="grid shrink-0 grid-cols-3 gap-1 border-b border-border bg-bg/40 p-2 sm:flex sm:w-44 sm:flex-col sm:border-b-0 sm:border-r sm:p-3">
+        <nav aria-label="设置页签" className="grid shrink-0 grid-cols-3 gap-1 border-b border-border bg-bg/40 p-2 max-sm:max-h-[340px] max-sm:overflow-y-auto sm:flex sm:w-44 sm:flex-col sm:border-b-0 sm:border-r sm:p-3">
           {tabs.map((t) => {
             const Icon = t.icon
             return (
@@ -118,6 +120,7 @@ export function SettingsDialog() {
             {tab === 'profiles' && <ProfilesSection />}
             {tab === 'hosts' && <HostsSection />}
             {tab === 'team' && <TeamSection />}
+            {tab === 'gateway' && <GatewaySection />}
             {tab === 'permissions' && <PermissionsSection />}
             {tab === 'hooks' && <HooksSection />}
             {tab === 'mcp' && <McpSection />}

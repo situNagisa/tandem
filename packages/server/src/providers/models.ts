@@ -9,6 +9,7 @@ import type {
 import { inferProtocolBaseUrl, joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import type { StoredProfile } from '../types.js';
 import { errorMessage, isAbortError, truncateEnd } from '../util/text.js';
+import { tandemGatewayBase } from './openai.js';
 import {
   applyModelCapabilities,
   defaultEffortsForKind,
@@ -208,6 +209,23 @@ async function listOpenAICompatible(
   return sortNewestFirst(dedupe(models));
 }
 
+/** Tandem 网关模型列表：网关按成员白名单过滤后返回 OpenAI 兼容格式。 */
+async function listTandemGateway(baseUrl: string, apiKey: string, signal: AbortSignal): Promise<ModelInfo[]> {
+  const data = await getJson(
+    joinEndpoint(tandemGatewayBase(baseUrl), '/gateway/v1/models'),
+    { authorization: `Bearer ${apiKey}` },
+    signal,
+  );
+  const items: any[] = Array.isArray(data.data) ? data.data : [];
+  const models: ModelInfo[] = [];
+  for (const item of items) {
+    const id = typeof item?.id === 'string' ? item.id.trim() : '';
+    if (!id) continue;
+    models.push({ id });
+  }
+  return sortNewestFirst(dedupe(models));
+}
+
 async function listGeminiNative(apiKey: string, signal: AbortSignal): Promise<ModelInfo[]> {
   const data = await getJson(
     `${GEMINI_NATIVE_MODELS_URL}?key=${encodeURIComponent(apiKey)}`,
@@ -273,6 +291,9 @@ export async function listModels(
       applyModelCapabilities(model, capabilityKind, profile?.modelCapabilities),
     );
   try {
+    if (kind === 'tandem-gateway') {
+      return { ok: true, models: decorate(await listTandemGateway(baseUrl, apiKey, signal)) };
+    }
     if (kind === 'anthropic') {
       return { ok: true, models: decorate(await listAnthropic(baseUrl, apiKey, signal)) };
     }
@@ -287,6 +308,9 @@ export async function listModels(
     }
     return { ok: true, models: decorate(await listOpenAICompatible(baseUrl, apiKey, signal)) };
   } catch (err) {
+    if (kind === 'tandem-gateway' && err instanceof HttpError && (err.status === 401 || err.status === 403)) {
+      return { ok: false, models: [], error: '网关令牌无效或已被吊销' };
+    }
     return { ok: false, models: [], error: friendlyError(err, baseUrl) };
   } finally {
     clearTimeout(timer);

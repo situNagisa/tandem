@@ -132,6 +132,7 @@ const OWNER_ANY_PREFIXES = [
   '/api/tasks',
   '/api/permissions',
   '/api/memory',
+  '/api/gateway',
 ];
 const OWNER_MUTATION_PREFIXES = ['/api/profiles', '/api/models'];
 const TEAM_OWNER_PATHS = ['/api/team/members', '/api/team/invites', '/api/team/audit'];

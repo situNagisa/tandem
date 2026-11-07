@@ -7,7 +7,8 @@ export type ProviderKind =
   | 'anthropic'          // Anthropic Messages API
   | 'openai'             // OpenAI Chat Completions
   | 'openai-compatible'  // DeepSeek / Qwen / Moonshot / OpenRouter / Ollama 等兼容接口
-  | 'gemini';            // Google Gemini (走 OpenAI 兼容端点)
+  | 'gemini'             // Google Gemini (走 OpenAI 兼容端点)
+  | 'tandem-gateway';    // 团队自建 Tandem 网关（OpenAI 兼容入口；地址填网关 Host，Key 填网关令牌）
 
 /** 单个模型的能力覆盖；缺省字段按 provider 能力或内置表推断。 */
 export interface ModelCapabilities {
@@ -967,8 +968,111 @@ export interface InjectionSnapshot {
 // DELETE 会话时若有 worktree：未提交改动则 409，带 ?force=1 才删除
 
 // ---------- 用量统计 ----------
-export interface UsageStatsRow { day: string; hostId: string; profileId: string; model: string; inputTokens: number; outputTokens: number; costUsd: number; turns: number; keyId?: string; groupId?: string }
+export interface UsageStatsRow { day: string; hostId: string; profileId: string; model: string; inputTokens: number; outputTokens: number; costUsd: number; turns: number; keyId?: string; groupId?: string; memberId?: string; memberName?: string }
 // GET /api/usage?from=&to= -> UsageStatsRow[]   （Host 内置常见模型单价表，可在账号上覆盖 price: {input, output} 每百万 token 美元）
+// 经网关转发的请求额外带 memberId/memberName：用量页据此显示「按成员」维度，不会重复计数（一条请求只有一行）。
+
+// ---------- 自建 Key 网关（可选，默认关闭） ----------
+// 仅在内网使用：成员把模型请求发到某台 Host 的 /gateway/v1/*，由网关统一替换 Key、限流、记账与脱敏日志。
+// 网关令牌与团队成员绑定；Host 只存令牌哈希，明文只在签发响应里出现一次。
+export interface GatewayModelRoute {
+  id: string;
+  /** 网关本机账号（Host 上的 Profile）。 */
+  profileId: string;
+  /** 账号下的分组；缺省用账号自身（含账号级 Key）。 */
+  groupId?: string;
+  /** 该路由承接的模型名（与请求里的 model 精确匹配，大小写不敏感）。 */
+  models: string[];
+}
+export interface GatewaySettings {
+  /** 默认关闭；开启后 /gateway/v1/* 才可用。 */
+  enabled: boolean;
+  routes: GatewayModelRoute[];
+  /** 调试正文：临时记录请求/响应并自动脱敏，24 小时后自动删除；默认关闭。 */
+  debugBodies: boolean;
+}
+export interface GatewayToken {
+  id: string;
+  memberId: string;
+  memberName: string;
+  createdAt: number;
+  revokedAt?: number;
+  lastUsedAt?: number;
+  /** 每日花费上限（美元）；缺省不限。 */
+  dailyLimitUsd?: number;
+  /** 每月花费上限（美元）；缺省不限。 */
+  monthlyLimitUsd?: number;
+  /** 每分钟请求数上限。 */
+  rpm: number;
+  /** 可用模型白名单；空数组表示路由里的全部模型都可用。 */
+  allowedModels: string[];
+}
+export interface GatewayTokenInput {
+  memberId: string;
+  dailyLimitUsd?: number;
+  monthlyLimitUsd?: number;
+  rpm?: number;
+  allowedModels?: string[];
+}
+export interface GatewayTokenUpdateInput {
+  /** null 表示清除该限额。 */
+  dailyLimitUsd?: number | null;
+  monthlyLimitUsd?: number | null;
+  rpm?: number;
+  allowedModels?: string[];
+}
+export interface GatewayTokenIssued {
+  /** 明文网关令牌，只在签发时返回一次。 */
+  token: string;
+  grant: GatewayToken;
+}
+export interface GatewayMemberUsage {
+  memberId: string;
+  memberName: string;
+  todayRequests: number;
+  todayInputTokens: number;
+  todayOutputTokens: number;
+  todayCostUsd: number;
+  monthCostUsd: number;
+  tokenCount: number;
+  dailyLimitUsd?: number;
+  monthlyLimitUsd?: number;
+  rpm?: number;
+  lastUsedAt?: number;
+}
+/** 网关请求日志：只含元数据，不含请求/响应正文。 */
+export interface GatewayLogEntry {
+  at: number;
+  memberId?: string;
+  memberName?: string;
+  model: string;
+  protocol: 'openai' | 'anthropic';
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  durationMs: number;
+  status: number;
+  stream: boolean;
+  route?: string;
+  error?: string;
+}
+export interface GatewayOverview {
+  settings: GatewaySettings;
+  tokens: GatewayToken[];
+  usage: GatewayMemberUsage[];
+  logs: GatewayLogEntry[];
+  /** 仍保留在磁盘上的调试正文条数（24 小时内；关闭调试模式即清空）。 */
+  debugCount: number;
+}
+// GET    /gateway/v1/models              OpenAI 兼容模型列表（Bearer 或 x-api-key 网关令牌）
+// POST   /gateway/v1/chat/completions    OpenAI 兼容转发
+// POST   /gateway/v1/messages            Anthropic 兼容转发
+// GET    /api/gateway                    -> GatewayOverview（仅所有者）
+// PUT    /api/gateway/settings {enabled,routes,debugBodies} -> GatewaySettings（仅所有者）
+// POST   /api/gateway/tokens {memberId,...} -> GatewayTokenIssued（仅所有者，明文令牌只返回一次）
+// POST   /api/gateway/tokens/:id {dailyLimitUsd?,monthlyLimitUsd?,rpm?,allowedModels?} -> GatewayToken（仅所有者）
+// DELETE /api/gateway/tokens/:id         -> 204（仅所有者，立即吊销）
+// GET    /api/gateway/logs?limit=100     -> GatewayLogEntry[]（仅所有者，只含元数据）
 
 // ---------- 配对 ----------
 // GET /api/pair -> { urls: string[]; token: string; loopback?: boolean; hint?: string; relay?: RelayPairInfo }   列出本机所有可达地址（局域网 IP、Tailscale IP），客户端据此生成二维码供手机扫码；loopback=true 表示只监听本机、扫码不可用。

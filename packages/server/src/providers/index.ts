@@ -17,6 +17,7 @@ export async function streamChat(req: StreamRequest): Promise<StreamResult> {
     case 'openai':
     case 'openai-compatible':
     case 'gemini':
+    case 'tandem-gateway':
       return streamOpenAI(req);
     default:
       throw new Error(`不支持的 provider 类型: ${(req.profile as StoredProfile).kind}`);

@@ -24,6 +24,7 @@ import { registerMcpRoutes } from './routes/mcp.js';
 import { registerSubagentPresetRoutes } from './routes/subagent-presets.js';
 import { registerPromptTemplateRoutes } from './routes/prompt-templates.js';
 import { registerUsageRoutes } from './routes/usage.js';
+import { registerGatewayRoutes } from './routes/gateway.js';
 import { registerBudgetRoutes } from './routes/budgets.js';
 import { registerPairRoutes } from './routes/pair.js';
 import { registerExternalRoutes } from './routes/external.js';
@@ -121,6 +122,7 @@ export async function createApp(
   registerSubagentPresetRoutes(app, deps);
   registerPromptTemplateRoutes(app, deps);
   registerUsageRoutes(app, deps);
+  registerGatewayRoutes(app, deps);
   registerBudgetRoutes(app, deps);
   registerPairRoutes(app, deps);
   registerExternalRoutes(app, deps);
@@ -140,6 +142,7 @@ export async function createApp(
   app.addHook('onClose', async () => {
     stopPrPolling();
     host.team.close();
+    host.gateway.flush();
   });
 
   // ---------- 静态 Web UI ----------
