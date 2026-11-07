@@ -326,7 +326,7 @@ export interface BudgetAlert {
 // ---------- 收件箱（跨会话的“需要我”事件流） ----------
 // 客户端连上 WS 后发 subscribe_inbox，服务端把全 Host 的审批/回合结束/预算等摘要推给该连接。
 // 事件按 Host 内全局 seq 单调递增，客户端重连时带 sinceSeq 补齐；缓冲不覆盖则收到 inbox_snapshot。
-export type InboxEventKind = 'permission' | 'permission_resolved' | 'turn_end' | 'budget'
+export type InboxEventKind = 'permission' | 'permission_resolved' | 'turn_end' | 'budget' | 'ci'
 export interface InboxEvent {
   seq: number;
   kind: InboxEventKind;
@@ -351,6 +351,15 @@ export interface InboxEvent {
   budgetSessionTitle?: string;
   /** 预算告警的可读描述，如「今日 公司 Anthropic 预算已用 80%」。 */
   budgetText?: string;
+  /** kind=ci：PR 状态 / CI 检查变化。 */
+  ci?: {
+    prNumber: number;
+    prUrl: string;
+    checksState?: PrChecksState;
+    checkName?: string;
+    /** 可读描述，如「PR #12 CI 失败：build」。 */
+    text: string;
+  };
 }
 export interface InboxSnapshot {
   /** Host 当前收件箱 seq；客户端记录用于下次 sinceSeq。 */
@@ -390,6 +399,7 @@ export type ServerMsg =
   | { type: 'turn_end'; sessionId: string; reason: 'done' | 'interrupted' | 'error'; error?: string }
   | { type: 'inbox_snapshot'; snapshot: InboxSnapshot }                     // 订阅收件箱后的全量（或补齐失败时）
   | { type: 'inbox_event'; event: InboxEvent }                             // 收件箱增量事件
+  | { type: 'vcs_updated'; sessionId: string; state: VcsState }            // 当前会话 PR/CI 状态变化（60s 轮询）
   // 外部会话（Claude Code / Codex）文件有变动，客户端应重新拉取列表
   | { type: 'task_updated'; sessionId: string; task: BackgroundTask; content?: string; since?: number; truncated?: boolean }
   | { type: 'schedules_updated' }
@@ -490,6 +500,91 @@ export type DiffEmptyReason = 'mode' | 'eol' | 'rename' | 'none'
 // POST /api/sessions/:id/changes/revert {paths}  -> ChangesResult  丢弃这些文件的工作区改动
 // POST /api/sessions/:id/changes/commit {message, paths?} -> { ok: boolean; commit?: string; error?: string }
 // 行内评论：客户端把评论拼成一条用户消息发送（"关于 src/a.ts 第 12 行：..."），无需新接口。
+
+// ---------- VCS / PR / CI ----------
+// Host 通过本机已安装并登录的 GitHub CLI (gh) / GitLab CLI (glab) 操作远程仓库，
+// 不在 Host 内保存任何托管平台令牌。
+export type VcsProvider = 'github' | 'gitlab' | 'none' | 'other';
+export interface VcsCapability {
+  isRepo: boolean;
+  /** 仓库根目录（Host 机器上的绝对路径）。 */
+  root?: string;
+  branch?: string;
+  upstream?: string;
+  ahead: number;
+  behind: number;
+  provider: VcsProvider;
+  /** 远程主机名（如 github.com），不返回完整 remote URL。 */
+  remoteHost?: string;
+  cli: 'gh' | 'glab' | 'none';
+  cliInstalled: boolean;
+  authenticated: boolean;
+  /** 已登录的 CLI 用户名。 */
+  cliUser?: string;
+  /** 安装/登录官方文档链接。 */
+  docUrl?: string;
+  error?: string;
+}
+export type PrState = 'OPEN' | 'CLOSED' | 'MERGED' | 'DRAFT' | 'UNKNOWN';
+export type PrCheckStatus =
+  | 'queued'
+  | 'in_progress'
+  | 'success'
+  | 'failure'
+  | 'cancelled'
+  | 'skipped'
+  | 'neutral'
+  | 'pending'
+  | 'unknown';
+export interface PrCheck {
+  name: string;
+  status: PrCheckStatus;
+  conclusion?: string;
+  durationMs?: number;
+  url?: string;
+  workflow?: string;
+  /** CI 提供方的运行 id（gh run view 用）。 */
+  runId?: string;
+}
+export type PrChecksState = 'none' | 'pending' | 'success' | 'failure' | 'unknown';
+export interface PullRequestInfo {
+  number: number;
+  title: string;
+  state: PrState;
+  url: string;
+  isDraft: boolean;
+  reviewDecision?: string;
+  mergeable?: string;
+  baseRefName?: string;
+  headRefName?: string;
+  updatedAt?: number;
+  checks: PrCheck[];
+  checksState: PrChecksState;
+}
+export interface VcsState {
+  vcs: VcsCapability;
+  pr?: PullRequestInfo;
+}
+export interface CreatePrInput {
+  title: string;
+  body?: string;
+  base?: string;
+  draft?: boolean;
+}
+export type PrMergeMethod = 'squash' | 'merge' | 'rebase';
+export interface PrActionResult {
+  ok: boolean;
+  error?: string;
+  state?: VcsState;
+}
+// GET  /api/sessions/:id/vcs            -> VcsState   仓库/分支/上游/CLI 能力与当前分支 PR
+// GET  /api/sessions/:id/pr             -> VcsState   同 vcs（语义化别名，供 PR 面板刷新）
+// POST /api/sessions/:id/pr CreatePrInput -> PrActionResult
+//        先 git push -u origin HEAD，再 gh pr create / glab mr create；客户端须二次确认
+// POST /api/sessions/:id/pr/merge { method: PrMergeMethod } -> PrActionResult
+// POST /api/sessions/:id/pr/fix { checkName, url?, runId? } -> { ok; sent?: boolean; error? }
+//        读取失败日志（gh run view <id> --log-failed，截断）并作为用户消息发给当前会话
+// WS: vcs_updated   当前会话 PR 状态变化（Host 每 60s 轮询有 PR 且被订阅的会话）
 
 // ---------- 权限规则（Host 级，存 ~/.tandem/permissions.json；会话级 allow_always 仍保留） ----------
 export interface PermissionRule { tool: string; pattern?: string; action: 'allow' | 'ask' | 'deny' } // pattern：Bash 为命令前缀通配，如 "npm test*"；文件工具为 glob

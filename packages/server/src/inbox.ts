@@ -76,6 +76,14 @@ export class Inbox {
     });
   }
 
+  recordCi(
+    sessionId: string,
+    sessionTitle: string,
+    ci: NonNullable<InboxEvent['ci']>,
+  ): InboxEvent {
+    return this.push({ kind: 'ci', sessionId, sessionTitle, ci });
+  }
+
   recordBudget(
     alert: BudgetAlert,
     text: string,

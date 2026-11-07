@@ -58,6 +58,11 @@ export class Hub {
     if (set.size === 0) this.subs.delete(sessionId);
   }
 
+  /** 当前是否有客户端打开（订阅）该会话，供 PR 轮询按需工作。 */
+  hasSubscribers(sessionId: string): boolean {
+    return (this.subs.get(sessionId)?.size ?? 0) > 0;
+  }
+
   /** 会话删除后不再向订阅者推送该会话的后续事件。 */
   dropSession(sessionId: string): void {
     this.subs.delete(sessionId);

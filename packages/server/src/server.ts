@@ -17,6 +17,7 @@ import type {
   FsEntry,
   ListModelsInput,
   PermissionDecision,
+  PrMergeMethod,
   ProfileGroupInput,
   ProfileInput,
   ProviderKind,
@@ -27,6 +28,13 @@ import type {
 } from '@tandem/protocol';
 import type { Host } from './host.js';
 import { commitChanges, getChanges, getFileDiff, revertChanges } from './changes.js';
+import {
+  createPullRequest,
+  failedCheckPrompt,
+  getVcsState,
+  mergePullRequest,
+  startPrPolling,
+} from './vcs.js';
 import type { WsClient } from './events.js';
 import { testProfile } from './providers/index.js';
 import { exportBundle, importBundle } from './migrate.js';
@@ -487,6 +495,81 @@ export async function createApp(
     return commitChanges(rec.cwd, body.message, body.paths);
   });
 
+  // ---------- VCS / PR / CI（本机 git + gh / glab） ----------
+  app.get('/api/sessions/:id/vcs', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    try {
+      return await getVcsState(rec.cwd, rec.id);
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.get('/api/sessions/:id/pr', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    try {
+      return await getVcsState(rec.cwd, rec.id);
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.post('/api/sessions/:id/pr', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      return await createPullRequest(rec.cwd, rec.id, {
+        title: str(body.title),
+        ...(typeof body.body === 'string' ? { body: body.body } : {}),
+        ...(str(body.base) ? { base: str(body.base) } : {}),
+        ...(body.draft === true ? { draft: true } : {}),
+      });
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.post('/api/sessions/:id/pr/merge', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    const body = (req.body ?? {}) as { method?: unknown };
+    const method = str(body.method);
+    if (method !== 'squash' && method !== 'merge' && method !== 'rebase') {
+      return bad(reply, '合并方式无效');
+    }
+    try {
+      return await mergePullRequest(rec.cwd, rec.id, method as PrMergeMethod);
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.post('/api/sessions/:id/pr/fix', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const result = await failedCheckPrompt(rec.cwd, {
+        checkName: body.checkName,
+        runId: body.runId,
+        url: body.url,
+      });
+      if (!result.ok || !result.message) return result;
+      await host.send(rec.id, [{ type: 'text', text: result.message }]);
+      return { ok: true, sent: true, checkName: result.checkName };
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
   // ---------- 权限规则（Host 级） ----------
   app.get('/api/permissions', async () => host.permissionRules.list());
 
@@ -944,6 +1027,10 @@ export async function createApp(
     socket.on('close', () => host.hub.remove(client));
     socket.on('error', () => host.hub.remove(client));
   });
+
+  // PR/CI 轮询：只覆盖已被客户端打开且有 PR 的会话
+  const stopPrPolling = startPrPolling(host);
+  app.addHook('onClose', async () => stopPrPolling());
 
   // ---------- 静态 Web UI ----------
   if (hasWeb) {

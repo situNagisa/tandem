@@ -189,6 +189,11 @@ export class Host {
   inboxSnapshot(sinceSeq?: number) {
     return this.inbox.snapshot(sinceSeq);
   }
+
+  /** PR/CI 状态变化写入收件箱（轮询器调用）。 */
+  recordCi(sessionId: string, sessionTitle: string, ci: NonNullable<InboxEvent['ci']>): void {
+    this.pushInbox(this.inbox.recordCi(sessionId, sessionTitle, ci));
+  }
   info(): HostInfo {
     return {
       id: this.config.hostId,
