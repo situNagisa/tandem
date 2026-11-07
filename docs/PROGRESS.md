@@ -303,4 +303,5 @@
 - [x] 网络白名单：curl/wget/git clone/fetch/push、npm/pip install、ssh/scp/nc 等静态识别；非白名单主机转审批；断网沙箱逐次审批临时放行；「总是允许」把域名加入白名单
 - [x] 权限规则：文件工具 pattern 支持绝对路径 / ~ 目录前缀；目录外写入「总是允许」生成路径规则
 - [x] 设置-权限页沙箱区：开关、平台支持、网络策略、严格模式、白名单编辑与包管理器官方源一键加入；`docs/sandbox.md` 说明能防/不能防
+- [x] worktree 工作数据例外：`~/.tandem/worktrees/`、`~/.tandem/checkpoints/` 不算受保护配置，worktree 会话在 acceptEdits 下写自己的 cwd 不弹审批（配置/会话/索引仍受保护）；回归新增 1 条
 - 验证：`TANDEM_HOME=/tmp/tandem-sandbox` 端口 8313；直接调用判定与 Bash 工具 13/13（cwd 放行、~/.ssh 与 /etc 越界、example.invalid 判定阶段拦截且不发请求、localhost 放行）；本机 bwrap 验证 cwd 可写、/home 越界失败、断网 curl 失败；`e2e/regression.mjs` 新增越界写入审批卡回归；独立 worktree `node scripts/check.mjs` 全过

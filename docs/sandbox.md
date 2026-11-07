@@ -17,7 +17,7 @@
 
 以下路径属于**受保护路径**，任何写入都转审批（bypassPermissions 也不例外，且不能被 allow 规则绕过）：
 
-- `~/.ssh`、`~/.aws`、`~/.gnupg`、`~/.tandem`、`~/.claude`、`~/.codex`；
+- `~/.ssh`、`~/.aws`、`~/.gnupg`、`~/.tandem`、`~/.claude`、`~/.codex`；其中 `~/.tandem/worktrees/` 与 `~/.tandem/checkpoints/` 是会话自身的工作数据，不受此保护（worktree 会话写自己的 cwd 不会转审批），其余配置/会话/索引仍受保护；
 - 系统目录：`/etc`、`/usr`、`/bin`、`/sbin`、`/boot`、`/dev`、`/proc`、`/sys`、`/var/lib` 等；macOS 的 `/System`、`/Library`、`/Applications`；Windows 的 `%SystemRoot%`、`Program Files`、`ProgramData`；
 - 项目里的 `.git/hooks`；
 - 文件名以 `.env` 开头的文件（`.env`、`.env.local`、`.envrc` 等）。

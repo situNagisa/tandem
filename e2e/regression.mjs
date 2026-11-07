@@ -23,6 +23,7 @@ import {
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { chromium } from 'playwright'
 import { AxeBuilder } from '@axe-core/playwright'
@@ -1956,6 +1957,35 @@ async function main() {
       const text = await card.innerText()
       assert.match(text, /工作目录之外/, '审批卡没有说明写入工作目录之外')
       assert.match(text, /tandem-reg-outside\.txt/, '审批卡没有显示越界路径')
+    })
+
+    desktop('沙箱：worktree 会话写 cwd 内文件不弹审批', async () => {
+      const { evaluateSandbox } = await import(
+        pathToFileURL(path.join(ROOT, 'packages/server/dist/sandbox.js')).href
+      )
+      const wtCwd = path.join(configDir, 'worktrees', 'repo', 'tandem-demo')
+      const settings = { enabled: true, network: 'host', strict: false, allowedHosts: ['localhost'] }
+      const base = {
+        settings,
+        cwd: wtCwd,
+        worktreePath: wtCwd,
+        home: os.homedir(),
+        tandemHome: configDir,
+      }
+      const write = evaluateSandbox(
+        'Write',
+        { file_path: path.join(wtCwd, 'src', 'a.ts'), content: 'x' },
+        base,
+      )
+      assert.equal(write.notices.length, 0, `worktree 内写入被拦截：${write.notices[0]?.reason ?? ''}`)
+      const bash = evaluateSandbox('Bash', { command: 'echo x > src/a.ts' }, base)
+      assert.equal(bash.notices.length, 0, `worktree 内 Bash 写入被拦截：${bash.notices[0]?.reason ?? ''}`)
+      const config = evaluateSandbox(
+        'Write',
+        { file_path: path.join(configDir, 'config.json'), content: 'x' },
+        base,
+      )
+      assert.equal(config.notices[0]?.kind, 'protected', 'Tandem 配置文件没有受保护')
     })
 
     desktop('审批策略：危险命令审批卡不出现项目快捷规则', async (page) => {

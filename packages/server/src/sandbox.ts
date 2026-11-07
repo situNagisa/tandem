@@ -395,7 +395,6 @@ const PROTECTED_HOME_DIRS: Array<{ rel: string; label: string }> = [
   { rel: '.ssh', label: 'SSH 配置与密钥' },
   { rel: '.aws', label: 'AWS 凭据' },
   { rel: '.gnupg', label: 'GPG 密钥' },
-  { rel: '.tandem', label: 'Tandem 配置' },
   { rel: '.claude', label: 'Claude Code 配置（只读）' },
   { rel: '.codex', label: 'Codex 配置（只读）' },
 ];
@@ -436,10 +435,23 @@ export function protectedPathReason(
   const normalized = normalizeSlashes(target);
   const lower = platform === 'win32' ? normalized.toLowerCase() : normalized;
 
-  const homeDirs: Array<{ dir: string; label: string }> = [
-    ...PROTECTED_HOME_DIRS.map((item) => ({ dir: path.join(opts.home, item.rel), label: item.label })),
-    { dir: opts.tandemHome, label: 'Tandem 配置' },
-  ];
+  // Tandem 数据目录：配置/会话/索引等受保护；worktrees 与 checkpoints 是会话自身的工作数据，
+  // 不按受保护路径拦截（worktree 会话的 cwd 在这里，写自己的文件不应弹审批）。
+  const tandemRoots = [...new Set(
+    [opts.tandemHome, path.join(opts.home, '.tandem')].map((item) => api.resolve(item)),
+  )];
+  for (const root of tandemRoots) {
+    if (!subPathOf(api, root, target)) continue;
+    const rel = normalizeSlashes(api.relative(root, target));
+    const top = rel.split('/')[0] ?? '';
+    if (top === 'worktrees' || top === 'checkpoints') continue;
+    return 'Tandem 配置';
+  }
+
+  const homeDirs = PROTECTED_HOME_DIRS.map((item) => ({
+    dir: path.join(opts.home, item.rel),
+    label: item.label,
+  }));
   for (const item of homeDirs) {
     if (subPathOf(api, api.resolve(item.dir), target)) return item.label;
   }
