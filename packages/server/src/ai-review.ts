@@ -1,8 +1,10 @@
 // 提交前 AI 评审：后台开一个只读子会话，按文件分批把工作区 diff 交给评审模型，
 // 结果按新文件行号挂到改动审阅；非法行号直接丢弃并计数。
+import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import type {
   AiReviewFinding,
   AiReviewRun,
@@ -189,6 +191,33 @@ function chunkText(files: DiffFile[]): string {
   return files.map((file) => `### 文件：${file.path}\n${file.diff}`).join('\n');
 }
 
+const execGit = promisify(execFile);
+
+async function gitText(cwd: string, args: string[]): Promise<string> {
+  const { stdout } = await execGit('git', ['-c', 'core.quotepath=false', '-C', cwd, ...args], {
+    timeout: 30_000,
+    maxBuffer: 16 * 1024 * 1024,
+    encoding: 'utf8',
+  });
+  return String(stdout ?? '');
+}
+
+/** 卡片分支的已提交 diff：base..HEAD，跳过删除文件，保留重命名后的新路径。 */
+async function rangeDiffFiles(cwd: string, base: string): Promise<{ files: DiffFile[] }> {
+  const root = await repoRootOf(cwd);
+  if (!root) throw new Error('当前目录不是 git 仓库');
+  const names = await gitText(root, ['diff', '--name-only', '--no-renames', `${base}..HEAD`]);
+  const files: DiffFile[] = [];
+  for (const raw of names.split('\n')) {
+    const file = normalizeFindingPath(raw);
+    if (!file) continue;
+    const diff = await gitText(root, ['diff', `${base}..HEAD`, '--', file]).catch(() => '');
+    if (!diff.trim()) continue;
+    files.push({ path: file, diff, newLines: newLineNumbers(diff) });
+  }
+  return { files };
+}
+
 export class AiReviewManager {
   private readonly host: Host;
   private readonly runs = new Map<string, AiReviewRun>();
@@ -210,8 +239,11 @@ export class AiReviewManager {
     return run && run.sessionId === sessionId ? snapshot(run) : undefined;
   }
 
-  /** 立即返回 running 状态，评审在后台子会话里完成；同一会话同时只跑一个。 */
-  start(rec: SessionRecord, paths?: unknown): AiReviewRun {
+  /**
+   * 立即返回 running 状态，评审在后台子会话里完成；同一会话同时只跑一个。
+   * base 指定时评审 base..HEAD 的已提交 diff（看板卡片分支），否则评审工作区改动。
+   */
+  start(rec: SessionRecord, paths?: unknown, options?: { base?: string }): AiReviewRun {
     const activeId = this.active.get(rec.id);
     const activeRun = activeId ? this.runs.get(activeId) : undefined;
     if (activeRun?.status === 'running') return snapshot(activeRun);
@@ -231,7 +263,7 @@ export class AiReviewManager {
     const wanted = Array.isArray(paths)
       ? new Set(paths.filter((item): item is string => typeof item === 'string'))
       : undefined;
-    void this.execute(rec, run, wanted)
+    void this.execute(rec, run, wanted, options?.base)
       .catch((err) => {
         run.status = 'error';
         run.error = errorMessage(err);
@@ -318,28 +350,47 @@ export class AiReviewManager {
     rec: SessionRecord,
     run: AiReviewRun,
     wanted?: Set<string>,
+    base?: string,
   ): Promise<void> {
     const target = this.resolveTarget(rec);
     run.model = target.model;
-    const changes = await getChanges(rec.cwd);
-    if (!changes.isRepo) throw new Error('当前目录不是 git 仓库');
     const files: DiffFile[] = [];
     let total = 0;
-    for (const file of changes.files) {
-      if (wanted && wanted.size > 0 && !wanted.has(file.path)) continue;
-      if (total >= MAX_TOTAL_CHARS) {
-        run.truncated = true;
-        break;
+    if (base) {
+      const range = await rangeDiffFiles(rec.cwd, base);
+      for (const file of range.files) {
+        if (wanted && wanted.size > 0 && !wanted.has(file.path)) continue;
+        if (total >= MAX_TOTAL_CHARS) {
+          run.truncated = true;
+          break;
+        }
+        let diff = file.diff;
+        if (diff.length > MAX_CHUNK_CHARS) {
+          diff = diff.slice(0, MAX_CHUNK_CHARS);
+          run.truncated = true;
+        }
+        files.push({ path: file.path, diff, newLines: newLineNumbers(diff) });
+        total += diff.length;
       }
-      const result = await getFileDiff(rec.cwd, file.path).catch(() => undefined);
-      if (!result?.diff.trim()) continue;
-      let diff = result.diff;
-      if (diff.length > MAX_CHUNK_CHARS) {
-        diff = diff.slice(0, MAX_CHUNK_CHARS);
-        run.truncated = true;
+    } else {
+      const changes = await getChanges(rec.cwd);
+      if (!changes.isRepo) throw new Error('当前目录不是 git 仓库');
+      for (const file of changes.files) {
+        if (wanted && wanted.size > 0 && !wanted.has(file.path)) continue;
+        if (total >= MAX_TOTAL_CHARS) {
+          run.truncated = true;
+          break;
+        }
+        const result = await getFileDiff(rec.cwd, file.path).catch(() => undefined);
+        if (!result?.diff.trim()) continue;
+        let diff = result.diff;
+        if (diff.length > MAX_CHUNK_CHARS) {
+          diff = diff.slice(0, MAX_CHUNK_CHARS);
+          run.truncated = true;
+        }
+        files.push({ path: file.path, diff, newLines: newLineNumbers(diff) });
+        total += diff.length;
       }
-      files.push({ path: file.path, diff, newLines: newLineNumbers(diff) });
-      total += diff.length;
     }
     if (files.length === 0) {
       run.status = 'done';

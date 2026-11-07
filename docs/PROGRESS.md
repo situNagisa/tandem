@@ -345,3 +345,13 @@
 - [x] 任务看板 v1（docs/taskboard.md）；配额预估与会话交接
 - 用户决定：暂不做 iOS（docs/ios-eval.md）；要做任务看板
 - 看板 v1 未做：运行时追加卡、内嵌会话/分屏、AI 评审/PR 聚合、冲突自动解决
+
+## 迭代 38（2026-11-08）任务看板 v2
+- [x] 协议：`BoardExec.aiReview`、`BoardCard.proposedBy/proposedByCardId/review`、`BoardCardResult.conflictFiles`、`Board.autoAcceptProposals/pr`、`BoardPrState/BoardPrInput/BoardPrResult`、`BoardCardAction` 增加 `resolve`、收件箱 board 事件增加 `proposal`、`PROTOCOL_VERSION=4`
+- [x] 运行时提议：`ProposeCards` 工具只在卡片会话可见（含 orchestrate）；提议落成待办顶部草稿并标「由 X 提议」；dependsOn 支持同批标题/序号与已有卡；未解析/成环整批拒绝、同来源重复跳过；看板设置 `autoAcceptProposals=N`（默认关，最多 10）时不超过 N 张才自动排队；收件箱 proposal 事件
+- [x] AI 评审接入：`AiReviewManager.start(...,{base})` 评审卡片分支 `baseCommit..HEAD`；blocker 停待评审，`card.review` 落盘；抽屉按行号列意见、默认全选，「让这张卡修复」发回同会话、「仍然通过」放行
+- [x] PR 聚合：新 `board/pr.ts` 在临时 worktree 按依赖顺序建集成分支并 `git merge --no-ff`，冲突中止并回报文件；`createPullRequest` push + gh/glab 开 PR，描述含各卡标题/摘要/花费；`Board.pr` 落盘，60s 刷新状态与 CI，看板顶部回显；`GET /vcs` + 复用 `CliGuide` 给无 gh/无 origin 指引；vcs 平台识别改读 `remote.origin.url` 原始值（insteadOf 不影响识别，便于本地验证）
+- [x] 分屏：抽屉「在分屏中打开」把看板（合成 `board:<id>` 窗格）与卡片会话并排，复用 SplitWorkspace 与持久化；看板窗格不订阅 WS、不参与 active 会话
+- [x] 冲突辅助：`MergeResult.conflicts` 采集冲突文件；`result.conflictFiles` 落盘；抽屉列文件 + 「让 agent 解决冲突」（`action=resolve`，同 worktree 新一轮），完成后再由用户点合并
+- [x] 验证：`TANDEM_HOME=/tmp/tandem-board2` 端口 8341、本地 mock（OpenAI SSE，支持 ProposeCards/评审 JSON/Write/Bash）、`/tmp/board2-repo` + bare origin + 假 gh；11 项 API/Playwright 全过（提议草稿/接受/自动接受、AI 评审 blocker/修复/仍然通过、冲突列表/解决/再合并、PR 聚合与 CI、看板分屏、无 origin 指引、手机 390×844）；截图 `/tmp/board2-shots/`；`e2e/regression.mjs` 新增「任务看板 v2」用例
+- 保守取舍：自动接受只在整批 ≤N 时全接受，超过则全留草稿；AI 评审超时/失败按无 blocker 处理（仍受审批门约束）；PR 集成分支失败时保留分支以便排查；冲突解决不自动合并

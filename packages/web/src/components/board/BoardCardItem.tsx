@@ -31,8 +31,13 @@ export function CardStatusLine({ card, board }: { card: BoardCard; board: Board 
   }
   if (card.status === 'review' || card.status === 'done') {
     const result = card.result
+    const blockers = card.review?.findings.filter((finding) => finding.severity === 'blocker').length ?? 0
     return (
       <>
+        {card.review?.status === 'running' ? <p className="text-[12px] text-text-tertiary">AI 评审中…</p> : null}
+        {card.review?.status === 'done' && blockers > 0 ? (
+          <p className="text-[12px] text-danger">AI 评审：{blockers} 个阻塞问题</p>
+        ) : null}
         {result?.summary ? (
           <p className={cn('text-[12px] text-text-secondary', card.status === 'review' ? 'line-clamp-2' : 'truncate')}>{result.summary}</p>
         ) : null}
@@ -69,6 +74,7 @@ export function BoardCardItem({
   const meta: string[] = []
   if (card.exec.preset) meta.push(card.exec.preset)
   if (card.exec.gate) meta.push('需确认')
+  if (card.exec.aiReview) meta.push('AI 评审')
   const cost = result?.costUsd
   return (
     <div
@@ -102,6 +108,9 @@ export function BoardCardItem({
             <CornerUpLeft size={11} aria-hidden className="shrink-0" />
             <span className="truncate">{deps.join('、')}</span>
           </p>
+        ) : null}
+        {card.proposedBy ? (
+          <p className="truncate text-[12px] text-text-tertiary">由 {card.proposedBy} 提议</p>
         ) : null}
         <CardStatusLine card={card} board={board} />
         {(meta.length > 0 || result) && (

@@ -1,6 +1,6 @@
 import { navigate } from './router'
 import type { SessionTarget } from './types'
-import { paneKey } from './split'
+import { isBoardPane, paneKey } from './split'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 
@@ -46,6 +46,8 @@ export function openSplitSessionAt(
 
 /** 点击/快捷键切换聚焦窗格：立即更新 active，让右栏与改动审阅跟上。 */
 export function focusSplitPane(target: SessionTarget): void {
+  // 看板窗格没有 active 会话；保持当前会话焦点，避免路由切走看板。
+  if (isBoardPane(target)) return
   const store = useAppStore.getState()
   store.focusSessionView(target.hostId, target.sessionId)
   go(target)
@@ -65,7 +67,7 @@ export function closeSplitPaneAt(target: SessionTarget): void {
     (pane) => !(pane.hostId === target.hostId && pane.sessionId === target.sessionId),
   )
   ui.closeSplitPane(target.hostId, target.sessionId)
-  store.closeSessionView(target.hostId, target.sessionId)
+  if (!isBoardPane(target)) store.closeSessionView(target.hostId, target.sessionId)
   if (!wasFocused) return
   const next = remaining[Math.max(0, Math.min(index, remaining.length - 1))]
   if (next) go(next)
@@ -78,6 +80,7 @@ export function clearSplitWorkspace(): void {
   const store = useAppStore.getState()
   const active = focusedTarget()
   for (const pane of ui.splitPanes) {
+    if (isBoardPane(pane)) continue
     if (!sameTarget(pane, active)) store.closeSessionView(pane.hostId, pane.sessionId)
   }
   ui.clearSplit()

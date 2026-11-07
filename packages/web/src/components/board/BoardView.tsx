@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Kanban, MoreHorizontal, Plus, Sparkles } from 'lucide-react'
-import type { Board, BoardCard, BoardCardAction, BoardCardStatus, BoardSummary } from '@tandem/protocol'
+import { ChevronDown, GitMerge, GitPullRequest, Kanban, MoreHorizontal, Plus, Settings, Sparkles } from 'lucide-react'
+import type { Board, BoardCard, BoardCardAction, BoardCardStatus, BoardSummary, PrState } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { COLUMNS, MOBILE_GROUPS, boardCost, cardsOf, formatUsd, planDrop } from '../../lib/board'
 import { navigateBoard, type BoardRoute } from '../../lib/boardRoute'
@@ -16,9 +16,25 @@ import { Menu } from '../ui/Menu'
 import { Modal } from '../ui/Modal'
 import { BoardCardItem } from './BoardCardItem'
 import { CardActionBar, CardDetail, CardDrawerHeader, type CardActions } from './BoardDrawer'
-import { CardEditorDialog, ConfirmDialog, CreateBoardDialog, NoteDialog, PlanDialog } from './BoardDialogs'
+import { BoardPrDialog, BoardSettingsDialog, CardEditorDialog, ConfirmDialog, CreateBoardDialog, NoteDialog, PlanDialog } from './BoardDialogs'
 
 const NO_BOARDS: BoardSummary[] = []
+
+const PR_LABEL: Record<PrState, string> = {
+  OPEN: '开放',
+  DRAFT: '草稿',
+  MERGED: '已合并',
+  CLOSED: '已关闭',
+  UNKNOWN: '未知',
+}
+
+function prChecksText(state: Board['pr']): string | undefined {
+  if (!state || state.checksState === 'none' || !state.checksState) return undefined
+  if (state.checksState === 'success') return 'CI 通过'
+  if (state.checksState === 'failure') return 'CI 失败'
+  if (state.checksState === 'pending') return 'CI 运行中'
+  return 'CI 未知'
+}
 
 export function BoardView({ route }: { route: BoardRoute }) {
   const isMobile = useIsMobile()
@@ -42,6 +58,9 @@ export function BoardView({ route }: { route: BoardRoute }) {
   const [rejecting, setRejecting] = useState<BoardCard | null>(null)
   const [deleting, setDeleting] = useState<BoardCard | null>(null)
   const [deletingBoard, setDeletingBoard] = useState(false)
+  const [prOpen, setPrOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const openBoardSplit = useUiStore((s) => s.openBoardSplit)
 
   const list = summaries ?? NO_BOARDS
   const firstId = list[0]?.id
@@ -99,10 +118,21 @@ export function BoardView({ route }: { route: BoardRoute }) {
       openSession: (c) => {
         if (c.sessionId) navigate({ kind: 'session', hostId: host.id, sessionId: c.sessionId })
       },
+      openSplit: (c) => {
+        if (!c.sessionId) return
+        if (isMobile) {
+          navigate({ kind: 'session', hostId: host.id, sessionId: c.sessionId })
+          return
+        }
+        openBoardSplit(host.id, board.id, c.sessionId)
+        navigate({ kind: 'session', hostId: host.id, sessionId: c.sessionId })
+      },
+      resolveConflicts: (c) => void act(c, 'resolve'),
+      fixReview: (c, note) => void act(c, 'reject', { note }),
       edit: (c) => setEditor({ card: c }),
       remove: (c) => setDeleting(c),
     }
-  }, [host, board, act, reload, fail, toast])
+  }, [host, board, act, reload, fail, toast, isMobile, openBoardSplit])
 
   if (!host) return <div className="flex flex-1 items-center justify-center text-[13px] text-muted">Host 不存在</div>
 
@@ -186,7 +216,9 @@ export function BoardView({ route }: { route: BoardRoute }) {
         </>
       )}
       <Menu.Item onSelect={() => setCreating(true)}>新建看板…</Menu.Item>
+      <Menu.Item onSelect={() => setSettingsOpen(true)}>看板设置…</Menu.Item>
       <Menu.Item onSelect={() => void mergeAll()}>按依赖顺序合并全部已完成卡</Menu.Item>
+      <Menu.Item onSelect={() => setPrOpen(true)}>开 PR…</Menu.Item>
       <Menu.Separator />
       <Menu.Item danger onSelect={() => setDeletingBoard(true)}>
         删除看板…
@@ -214,8 +246,33 @@ export function BoardView({ route }: { route: BoardRoute }) {
               {progress}
             </span>
           )}
+          {!isMobile && board.pr?.url ? (
+            <a
+              href={board.pr.url}
+              target="_blank"
+              rel="noreferrer"
+              data-testid="board-pr-status"
+              className="inline-flex min-w-0 items-center gap-1 text-[12px] text-text-secondary hover:text-text"
+            >
+              <GitPullRequest size={12} aria-hidden />
+              <span className="truncate">
+                PR{board.pr.number ? ` #${board.pr.number}` : ''} · {board.pr.state ? PR_LABEL[board.pr.state] : '已创建'}
+                {prChecksText(board.pr) ? ` · ${prChecksText(board.pr)}` : ''}
+              </span>
+            </a>
+          ) : null}
           <div className="ml-auto flex items-center gap-1.5">
             {!isMobile && parallelSelect}
+            {!isMobile && (
+              <Button icon={<GitMerge />} onClick={() => void mergeAll()}>
+                合并
+              </Button>
+            )}
+            {!isMobile && (
+              <Button icon={<GitPullRequest />} onClick={() => setPrOpen(true)}>
+                开 PR
+              </Button>
+            )}
             {!isMobile && (
               <Button icon={<Sparkles />} onClick={() => setPlanning(true)}>
                 AI 拆分
@@ -246,6 +303,9 @@ export function BoardView({ route }: { route: BoardRoute }) {
                   <Menu.Item onSelect={() => void changeParallel(String((board.maxParallel % 4) + 1))}>
                     并发上限：{board.maxParallel}（点击切换）
                   </Menu.Item>
+                  <Menu.Item onSelect={() => setSettingsOpen(true)}>看板设置…</Menu.Item>
+                  <Menu.Item onSelect={() => setPrOpen(true)}>开 PR…</Menu.Item>
+                  <Menu.Item onSelect={() => void mergeAll()}>按依赖顺序合并全部已完成卡</Menu.Item>
                 </Menu>
               </>
             )}
@@ -253,6 +313,18 @@ export function BoardView({ route }: { route: BoardRoute }) {
           {isMobile && (
             <span className="w-full text-[12px] text-text-tertiary" data-testid="board-progress">
               {progress}
+              {board.pr?.url ? (
+                <a
+                  href={board.pr.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ml-1.5 text-text-secondary hover:text-text"
+                  data-testid="board-pr-status"
+                >
+                  · PR{board.pr.number ? ` #${board.pr.number}` : ''} · {board.pr.state ? PR_LABEL[board.pr.state] : '已创建'}
+                  {prChecksText(board.pr) ? ` · ${prChecksText(board.pr)}` : ''}
+                </a>
+              ) : null}
             </span>
           )}
         </header>
@@ -349,6 +421,23 @@ export function BoardView({ route }: { route: BoardRoute }) {
           const card = rejecting
           setRejecting(null)
           if (card) void act(card, 'reject', { note })
+        }}
+      />
+      <BoardSettingsDialog
+        open={settingsOpen}
+        host={host}
+        board={board}
+        onClose={() => setSettingsOpen(false)}
+        onSaved={() => void reload()}
+      />
+      <BoardPrDialog
+        open={prOpen}
+        host={host}
+        board={board}
+        onClose={() => setPrOpen(false)}
+        onCreated={(url) => {
+          toast(url ? 'PR 已创建，看板顶部会显示状态与 CI' : 'PR 已创建', 'success')
+          void reload()
         }}
       />
       <ConfirmDialog

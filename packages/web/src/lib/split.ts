@@ -69,3 +69,20 @@ export function sanitizeSplitState(input: unknown): SplitState | null {
   const rows = sanitizeWeights(raw.rows, rowCount(layout)) ?? equalWeights(rowCount(layout))
   return { panes, layout, cols, rows }
 }
+
+/** 看板作为分屏窗格时用合成 sessionId 参与 paneKey；真实会话不会以 board: 开头。 */
+export const BOARD_PANE_PREFIX = 'board:'
+
+export function boardPaneSessionId(boardId: string): string {
+  return `${BOARD_PANE_PREFIX}${boardId}`
+}
+
+export function boardIdOfPane(pane: { sessionId: string }): string | undefined {
+  return pane.sessionId.startsWith(BOARD_PANE_PREFIX)
+    ? pane.sessionId.slice(BOARD_PANE_PREFIX.length)
+    : undefined
+}
+
+export function isBoardPane(pane: { sessionId: string }): boolean {
+  return !!boardIdOfPane(pane)
+}

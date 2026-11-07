@@ -14,6 +14,7 @@ import { definition as bashOutput, run as runBashOutput } from './bash-output.js
 import { definition as killBash, run as runKillBash } from './kill-bash.js';
 import { definition as skill, run as runSkill } from './skill.js';
 import { definition as memory, run as runMemory } from './memory.js';
+import { definition as proposeCards, run as runProposeCards } from './propose-cards.js';
 import {
   clickDefinition as browserClick,
   closeDefinition as browserClose,
@@ -48,6 +49,7 @@ export const TOOLS: ToolDefinition[] = [
   exitPlan,
   skill,
   memory,
+  proposeCards,
   browserNavigate,
   browserSnapshot,
   browserClick,
@@ -72,6 +74,7 @@ const RUNNERS: Record<string, ToolRunner> = {
   ExitPlanMode: runExitPlan,
   Skill: runSkill,
   Memory: runMemory,
+  ProposeCards: runProposeCards,
   browser_navigate: runBrowserNavigate,
   browser_snapshot: runBrowserSnapshot,
   browser_click: runBrowserClick,

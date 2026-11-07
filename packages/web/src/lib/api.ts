@@ -6,6 +6,9 @@ import type {
   BoardCardInput,
   BoardInput,
   BoardPlanDraft,
+  BoardPrInput,
+  BoardPrResult,
+  BoardPrState,
   BoardSummary,
   ChangesResult,
   Checkpoint,
@@ -744,6 +747,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ drafts }),
     }),
+  openBoardPr: (h: HostConfig, boardId: string, input: BoardPrInput) =>
+    request<BoardPrResult>(h, `/api/boards/${encodeURIComponent(boardId)}/pr`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  boardPr: (h: HostConfig, boardId: string) =>
+    request<{ pr?: BoardPrState }>(h, `/api/boards/${encodeURIComponent(boardId)}/pr`),
+  boardVcs: (h: HostConfig, boardId: string) =>
+    request<VcsState>(h, `/api/boards/${encodeURIComponent(boardId)}/vcs`),
 
   evalSuites: (h: HostConfig) => request<{ suites: string[] }>(h, '/api/evals/suites'),
   evalCases: (h: HostConfig, suite?: string) =>

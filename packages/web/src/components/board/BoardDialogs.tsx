@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Check, FolderOpen, Loader2, Sparkles, Trash2 } from 'lucide-react'
-import type { Board, BoardCard, BoardCardInput, BoardExec, BoardPlanDraft, PermissionMode, Profile, SubagentPreset } from '@tandem/protocol'
+import type { Board, BoardCard, BoardCardInput, BoardExec, BoardPlanDraft, PermissionMode, PrState, Profile, SubagentPreset, VcsCapability } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
 import { dependencyCandidates } from '../../lib/board'
+import { profileModelGroups } from '../../lib/profileModels'
 import { loadRecentDirs, rememberDir } from '../../lib/storage'
 import type { HostConfig } from '../../lib/types'
 import { Button, IconButton } from '../ui/Button'
+import { CliGuide } from '../PrPanel'
 import { Input, Select, Switch, Textarea } from '../ui/Controls'
 import { Modal } from '../ui/Modal'
 import { Popover } from '../ui/Popover'
@@ -191,14 +193,23 @@ export function CardEditorDialog({
   const [prompt, setPrompt] = useState('')
   const [deps, setDeps] = useState<string[]>([])
   const [preset, setPreset] = useState('')
+  const [model, setModel] = useState('')
+  const [profiles, setProfiles] = useState<Profile[]>([])
   const [mode, setMode] = useState<PermissionMode>('acceptEdits')
   const [worktree, setWorktree] = useState(true)
   const [gate, setGate] = useState(false)
+  const [aiReview, setAiReview] = useState(false)
   const [budget, setBudget] = useState('')
   const [presets, setPresets] = useState<SubagentPreset[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const candidates = useMemo(() => dependencyCandidates(card ?? { id: '' }, board.cards), [card, board.cards])
+  const modelOptions = useMemo(() => {
+    const profile =
+      profiles.find((item) => item.id === (board.defaults.profileId ?? '')) ?? profiles[0]
+    if (!profile) return []
+    return [...new Set(profileModelGroups(profile).flatMap((group) => group.models))]
+  }, [profiles, board.defaults.profileId])
 
   useEffect(() => {
     if (!open) return
@@ -206,15 +217,21 @@ export function CardEditorDialog({
     setPrompt(card?.prompt ?? '')
     setDeps(card?.deps ?? [])
     setPreset(card?.exec.preset ?? '')
+    setModel(card?.exec.model ?? '')
     setMode(card?.exec.permissionMode ?? board.defaults.permissionMode ?? 'acceptEdits')
     setWorktree(card?.exec.worktree ?? board.defaults.worktree ?? true)
     setGate(card?.exec.gate ?? false)
+    setAiReview(card?.exec.aiReview ?? false)
     setBudget(card?.exec.budgetUsd ? String(card.exec.budgetUsd) : '')
     setError(null)
     api
       .subagentPresets(host, board.cwd)
       .then((res) => setPresets(res.presets))
       .catch(() => setPresets([]))
+    api
+      .profiles(host)
+      .then(setProfiles)
+      .catch(() => setProfiles([]))
   }, [open, card, board, host])
 
   const save = async (release: boolean) => {
@@ -226,7 +243,9 @@ export function CardEditorDialog({
       permissionMode: mode,
       worktree,
       gate,
+      aiReview,
       ...(preset ? { preset } : {}),
+      ...(model ? { model } : {}),
       ...(Number(budget) > 0 ? { budgetUsd: Number(budget) } : {}),
     }
     setBusy(true)
@@ -328,6 +347,18 @@ export function CardEditorDialog({
             </Select>
           </div>
         </div>
+        <div>
+          <FieldLabel>模型</FieldLabel>
+          <Select aria-label="卡片模型" value={model} onChange={(e) => setModel(e.target.value)}>
+            <option value="">看板默认</option>
+            <option value="auto">自动（按模型路由候选池）</option>
+            {modelOptions.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </Select>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <label className="flex items-center justify-between gap-2 text-[13px] text-text-secondary">
             独立 worktree
@@ -337,6 +368,10 @@ export function CardEditorDialog({
             完成后需我确认
             <Switch checked={gate} onChange={setGate} label="审批门" />
           </label>
+          <label className="col-span-2 flex items-center justify-between gap-2 text-[13px] text-text-secondary">
+            完成后 AI 评审（有 blocker 时停在待评审）
+            <Switch checked={aiReview} disabled={!board.isGit} onChange={setAiReview} label="完成后 AI 评审" />
+          </label>
         </div>
         <div>
           <FieldLabel>单卡预算上限（美元，留空不限）</FieldLabel>
@@ -344,6 +379,254 @@ export function CardEditorDialog({
         </div>
         {error ? <p className="text-[13px] text-danger">{error}</p> : null}
       </div>
+    </Modal>
+  )
+}
+
+export function BoardSettingsDialog({
+  open,
+  host,
+  board,
+  onClose,
+  onSaved,
+}: {
+  open: boolean
+  host: HostConfig
+  board: Board
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [autoAccept, setAutoAccept] = useState((board.autoAcceptProposals ?? 0) > 0)
+  const [max, setMax] = useState(String(Math.max(1, board.autoAcceptProposals ?? 3)))
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setAutoAccept((board.autoAcceptProposals ?? 0) > 0)
+    setMax(String(Math.max(1, board.autoAcceptProposals ?? 3)))
+    setError(null)
+  }, [open, board.autoAcceptProposals])
+
+  const save = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await api.updateBoard(host, board.id, {
+        autoAcceptProposals: autoAccept ? Number(max) : 0,
+      })
+      onSaved()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      ariaLabel="看板设置"
+      title="看板设置"
+      className="w-[min(460px,94vw)]"
+      bodyClassName="p-4"
+      footer={
+        <div className="flex items-center justify-end gap-2">
+          <Button onClick={onClose}>取消</Button>
+          <Button variant="primary" disabled={busy} onClick={() => void save()}>
+            保存
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <label className="flex items-center justify-between gap-3 text-[13px] text-text-secondary">
+          <span>
+            自动接受提议
+            <span className="mt-0.5 block text-[12px] text-text-tertiary">
+              卡片会话用 ProposeCards 提议的后续工作，数量不超过上限时直接排队；默认关，提议先进入待办等确认。
+            </span>
+          </span>
+          <Switch checked={autoAccept} onChange={setAutoAccept} label="自动接受提议" />
+        </label>
+        {autoAccept ? (
+          <div>
+            <FieldLabel>一次最多自动接受（张）</FieldLabel>
+            <Select aria-label="自动接受上限" value={max} onChange={(e) => setMax(e.target.value)}>
+              {[1, 2, 3, 4, 5, 6, 8, 10].map((n) => (
+                <option key={n} value={String(n)}>
+                  {`${n} 张以内`}
+                </option>
+              ))}
+            </Select>
+            <p className="mt-1 text-[12px] text-text-tertiary">超过上限时全部留在待办，由你逐张确认。</p>
+          </div>
+        ) : null}
+        {error ? <p className="text-[13px] text-danger">{error}</p> : null}
+      </div>
+    </Modal>
+  )
+}
+
+const PR_STATE_LABEL: Record<PrState, string> = {
+  OPEN: '开放',
+  DRAFT: '草稿',
+  MERGED: '已合并',
+  CLOSED: '已关闭',
+  UNKNOWN: '未知',
+}
+
+export function BoardPrDialog({
+  open,
+  host,
+  board,
+  onClose,
+  onCreated,
+}: {
+  open: boolean
+  host: HostConfig
+  board: Board
+  onClose: () => void
+  onCreated: (url?: string) => void
+}) {
+  const candidates = useMemo(
+    () => board.cards.filter((card) => card.status === 'done' && card.result?.branch && !card.result.mergedAt),
+    [board.cards],
+  )
+  const [selected, setSelected] = useState<string[]>([])
+  const [vcs, setVcs] = useState<VcsCapability | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [conflicts, setConflicts] = useState<string[]>([])
+  const [created, setCreated] = useState<{ url?: string; branch?: string } | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    // 只在这张弹窗打开时初始化；看板每 2 秒轮询会换掉 cards 数组，不能因此重置选择与创建状态。
+    setSelected(
+      board.cards
+        .filter((card) => card.status === 'done' && card.result?.branch && !card.result.mergedAt)
+        .map((card) => card.id),
+    )
+    setError(null)
+    setConflicts([])
+    setCreated(null)
+    setVcs(null)
+    api
+      .boardVcs(host, board.id)
+      .then((state) => setVcs(state.vcs))
+      .catch(() => setVcs(null))
+  }, [open, host, board.id])
+
+  const toggle = (id: string) =>
+    setSelected((list) => (list.includes(id) ? list.filter((item) => item !== id) : [...list, id]))
+
+  const submit = async () => {
+    if (selected.length === 0) return
+    setBusy(true)
+    setError(null)
+    setConflicts([])
+    try {
+      const result = await api.openBoardPr(host, board.id, { cardIds: selected })
+      if (!result.ok) {
+        setError(result.error ?? '创建 PR 失败')
+        setConflicts(result.conflictFiles ?? [])
+        return
+      }
+      setCreated({ url: result.pr?.url, branch: result.branch })
+      onCreated(result.pr?.url)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '创建 PR 失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const canCreate = !!vcs && (vcs.provider === 'github' || vcs.provider === 'gitlab') && vcs.cliInstalled && vcs.authenticated
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      ariaLabel="开 PR"
+      title="开 PR"
+      className={cn('max-h-[min(720px,90dvh)] w-[min(620px,94vw)]', MOBILE_FULL)}
+      bodyClassName={BODY}
+      footer={
+        <div className="flex items-center justify-end gap-2">
+          <Button onClick={onClose}>{created ? '完成' : '取消'}</Button>
+          {!created ? (
+            <Button variant="primary" disabled={busy || selected.length === 0 || !canCreate} onClick={() => void submit()}>
+              {busy ? '正在创建…' : `创建 PR（${selected.length} 张）`}
+            </Button>
+          ) : null}
+        </div>
+      }
+    >
+      {created ? (
+        <div className="space-y-2 text-[13px] text-text-secondary">
+          <p>PR 已创建在集成分支 <code className="text-[12px]">{created.branch}</code> 上，看板顶部会显示状态与 CI。</p>
+          {created.url ? (
+            <a href={created.url} target="_blank" rel="noreferrer" className="text-[13px] text-[var(--t-accent-strong)] hover:underline">
+              {created.url}
+            </a>
+          ) : null}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-[12px] leading-relaxed text-muted">
+            选中的卡会按依赖顺序合到一个集成分支，再推送到 origin 并用 gh/glab 开一个 PR；不会改动主仓库工作区。
+          </p>
+          {candidates.length === 0 ? (
+            <p className="text-[13px] text-text-secondary">没有可开 PR 的已完成卡（需要 worktree 分支且尚未合并）。</p>
+          ) : (
+            <div className="space-y-1.5" data-testid="board-pr-cards">
+              {candidates.map((card) => {
+                const on = selected.includes(card.id)
+                return (
+                  <button
+                    key={card.id}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => toggle(card.id)}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-[13px] transition-colors',
+                      on ? 'border-border-strong bg-[var(--t-bg-active)] text-text' : 'border-border text-text-secondary hover:bg-[var(--t-bg-hover)]',
+                    )}
+                  >
+                    <span className={cn('flex size-4 shrink-0 items-center justify-center rounded border', on ? 'border-border-strong bg-surface' : 'border-border')}>
+                      {on ? <Check size={12} aria-hidden /> : null}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{card.title}</span>
+                    <span className="shrink-0 text-[12px] tabular-nums text-text-tertiary">
+                      {card.result?.files ?? 0} 文件 · ${(card.result?.costUsd ?? 0).toFixed(2)}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          {vcs && !canCreate ? <CliGuide vcs={vcs} /> : null}
+          {vcs && canCreate ? (
+            <p className="text-[12px] text-text-tertiary">将使用 {vcs.cli}（{vcs.cliUser ?? '已登录'}）在 {vcs.remoteHost ?? vcs.provider} 上创建 PR。</p>
+          ) : null}
+          {conflicts.length > 0 ? (
+            <div className="rounded-lg border border-border p-3 text-[13px]">
+              <p className="font-medium text-danger">集成分支合并冲突</p>
+              <ul className="mt-1 list-disc pl-5 text-text-secondary">
+                {conflicts.map((file) => (
+                  <li key={file}>
+                    <code className="text-[12px]">{file}</code>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {error ? <p className="text-[13px] text-danger">{error}</p> : null}
+        </div>
+      )}
     </Modal>
   )
 }

@@ -7,7 +7,8 @@ import {
 } from 'react'
 import { X } from 'lucide-react'
 import type { SessionTarget, SplitLayout } from '../../lib/types'
-import { paneKey } from '../../lib/split'
+import { boardIdOfPane, isBoardPane, paneKey } from '../../lib/split'
+import { useBoardStore } from '../../store/useBoardStore'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { useIsMobile } from '../../lib/hooks'
@@ -20,6 +21,7 @@ import {
 import { ChatView } from '../ChatView'
 import { IconButton } from '../ui/Button'
 import { SessionScopeProvider } from '../session/SessionScope'
+import { BoardView } from '../board/BoardView'
 
 interface AxisItem {
   key: string
@@ -39,6 +41,7 @@ export function SplitWorkspace() {
   useEffect(() => {
     if (panes.length < 2) return
     for (const pane of panes) {
+      if (isBoardPane(pane)) continue
       useAppStore.getState().openSessionView(pane.hostId, pane.sessionId)
     }
   }, [panes])
@@ -120,6 +123,10 @@ function SinglePaneDrop() {
 
 function PaneFrame({ pane, focused }: { pane: SessionTarget; focused: boolean }) {
   const key = paneKey(pane.hostId, pane.sessionId)
+  const boardId = boardIdOfPane(pane)
+  const boardName = useBoardStore((s) =>
+    boardId ? s.summaries[pane.hostId]?.find((item) => item.id === boardId)?.name : undefined,
+  )
   const summary = useAppStore((s) => s.sessionViews[key]?.summary ?? null)
   const running = useAppStore((s) => s.sessionViews[key]?.running ?? false)
   const status = summary?.status
@@ -134,8 +141,39 @@ function PaneFrame({ pane, focused }: { pane: SessionTarget; focused: boolean })
           : 'bg-border-strong'
 
   const focus = () => {
-    if (focused) return
+    if (boardId || focused) return
     focusSplitPane(pane)
+  }
+
+  if (boardId) {
+    return (
+      <div
+        data-split-pane={key}
+        className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-bg ring-1 ring-inset ring-border/70"
+      >
+        <div className="flex h-7 shrink-0 items-center gap-1.5 border-b border-border/70 bg-surface/60 px-2 text-[11.5px] text-text-secondary">
+          <span className="size-1.5 shrink-0 rounded-full bg-border-strong" aria-hidden />
+          <span className="min-w-0 flex-1 truncate" title={boardName ?? '任务看板'}>
+            任务看板{boardName ? ` · ${boardName}` : ''}
+          </span>
+          <IconButton
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              closeSplitPaneAt(pane)
+            }}
+            label="关闭窗格"
+            tooltip="关闭窗格 (Ctrl+W)"
+            className="size-6! [&_svg]:size-3!"
+          >
+            <X size={12} />
+          </IconButton>
+        </div>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <BoardView route={{ hostId: pane.hostId, boardId }} />
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -564,17 +602,24 @@ function MobileSplitPager({
             transition: dragging ? 'none' : 'transform 220ms var(--t-ease-out)',
           }}
         >
-          {panes.map((pane) => (
-            <div
-              key={paneKey(pane.hostId, pane.sessionId)}
-              className="flex h-full min-w-0 flex-col"
-              style={{ width: `${100 / panes.length}%` }}
-            >
-              <SessionScopeProvider target={pane}>
-                <ChatView />
-              </SessionScopeProvider>
-            </div>
-          ))}
+          {panes.map((pane) => {
+            const boardId = boardIdOfPane(pane)
+            return (
+              <div
+                key={paneKey(pane.hostId, pane.sessionId)}
+                className="flex h-full min-w-0 flex-col"
+                style={{ width: `${100 / panes.length}%` }}
+              >
+                {boardId ? (
+                  <BoardView route={{ hostId: pane.hostId, boardId }} />
+                ) : (
+                  <SessionScopeProvider target={pane}>
+                    <ChatView />
+                  </SessionScopeProvider>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
       <div className="sr-only" aria-live="polite">

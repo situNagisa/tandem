@@ -1,4 +1,4 @@
-# 任务看板设计（v1）
+# 任务看板设计（v1 + v2）
 
 > 来源：explore-v2 第 4 条；产品所有者 2026-11-08 确认要做（"我感觉这个很有用"）。遵守 design.md：紧凑、去冗余、白色主按钮、中性色（橙只用于待审批提示）、不连公网。
 > 一句话：**一个项目一块看板，每张卡 = 一个后台运行的会话；卡与卡有依赖、审批门、并发上限与预算；人只在"需要我"的列出手。**
@@ -43,7 +43,7 @@
 - 非 git 目录或 `worktree=false`：直接在 `cwd` 运行，**同一目录同时只跑一张卡**（避免互相踩文件）。
 
 **收件箱 / 通知**：新增 `InboxEventKind='board'`：卡片待评审、失败、整块看板跑完（无排队/运行中）。卡片会话内的工具审批沿用现有 `permission` 事件（标题=卡片标题）；卡片会话不再产生 `turn_end` 收件箱项，避免与 board 事件重复。手机本地通知沿用收件箱通道。
-**AI 评审**：待评审卡的详情留"AI 评审"入口位（另一位同事的 ChangeReviewPanel 就绪后接入，评审通过可作为审批门的建议，不自动放行）。**PR/CI**：卡会话里照常用 PrPanel；看板 v1 不做 PR 聚合。**分屏**：卡详情"打开会话"走普通会话路由；分屏就绪后补"在分屏中并排看运行中的卡"。**侧栏**：卡片会话不进侧栏会话列表（避免 5 张卡淹没列表），入口统一在"任务看板"。
+**AI 评审（v2）**：卡片执行配置 `aiReview` 打开后，完成时复用提交前 AI 评审的只读子会话，评审 `baseCommit..HEAD` 的卡片分支 diff；有 blocker 停在待评审，抽屉里显示意见与「让这张卡修复 / 仍然通过」。**PR/CI（v2）**：看板顶部「开 PR」把若干已完成卡按依赖顺序合到集成分支，复用 gh/glab 开一个 PR，状态与 CI 回显在顶部。**分屏（v2）**：卡详情「在分屏中打开」把卡片会话与看板窗格并排（看板窗格的合成 sessionId 为 `board:<boardId>`，不订阅真实会话）。**冲突（v2）**：合并冲突记录文件列表，抽屉可让 agent 在自己的 worktree 解决，仍需用户再点合并。**侧栏**：卡片会话不进侧栏会话列表（避免 5 张卡淹没列表），入口统一在"任务看板"。
 
 ## 4. 协调者（规划器）
 - 看板头部"AI 拆分…"：用户写一句目标 → `POST /api/boards/:id/plan` 一次性调用看板默认账号/模型（`completeText`），输入=目标 + 项目轻量上下文（目录首两层、README/AGENTS.md 前 4KB，只读），输出 JSON：`[{ref,title,prompt,deps:[ref],preset?,gate?}]`。
@@ -67,5 +67,16 @@
 
 ## 7. v1 范围与以后
 **v1 做**：看板/卡片增删改与落盘；依赖 + 环检测；调度、并发上限、重试、预算上限、断点续跑；每卡 worktree + 依赖分支合入 + 自动提交 + 手动合并（单卡/按序全部）；审批门（通过/打回）；AI 拆分草稿（确认后创建）；收件箱 board 事件；桌面看板（拖动 + 抽屉）与手机列表；回归用例（`e2e/regression.mjs`）与 server 单测。
-**以后做（明确不在 v1）**：协调者运行时追加卡片（`BoardAddCards` + 提案审批）；抽屉内嵌完整会话 / 分屏并排看多卡；接入 AI 评审结果与 PR/CI 聚合到卡片；`auto` 合并之外的"CI 绿才合并"；冲突一键"让 agent 解决"；看板定时触发（对接 schedules）与卡片模板；评测集联动（把看板当评测运行）；依赖连线可视化；看板级总预算；跨 Host 看板；多人协作/认领；卡片拆分/子卡；导入导出。
+**v2 已做**：运行时提议（`ProposeCards` + 待办草稿 + 自动接受上限）；卡片 AI 评审与「让这张卡修复」；PR 聚合与 CI 回显；看板作为分屏窗格；合并冲突列表与「让 agent 解决冲突」。**以后做**：`auto` 合并之外的"CI 绿才合并"；看板定时触发（对接 schedules）与卡片模板；评测集联动（把看板当评测运行）；依赖连线可视化；看板级总预算；跨 Host 看板；多人协作/认领；卡片拆分/子卡；导入导出。
 **风险与取舍**：同一仓库多卡并行 + 多依赖合入可能冲突，v1 选择"冲突即失败、人处理"而非自动解决；`maxParallel` 受限于账号速率限制，默认保守为 2；卡会话不进侧栏会降低"顺手继续聊"的可发现性，靠卡详情"打开会话"补偿。
+
+
+## 8. v2 范围（已实现）
+
+> 回归：`e2e/regression.mjs` 的「任务看板 v2：运行时提议、AI 评审修复、冲突解决、PR 聚合与分屏」；独立验证：`TANDEM_HOME=/tmp/tandem-board2`、端口 8341、mock provider + `/tmp` git 仓库/bare origin + 假 gh，截图在 `/tmp/board2-shots/`（2552×1274 与 390×844）。
+
+1. **运行时追加卡片**：卡片会话可调用 `ProposeCards { cards: [{ title, prompt, dependsOn? }] }`（只对 `SessionRecord.board` 的顶层卡会话暴露）。提议落成 `status='todo'` 的卡，`proposedBy` 记录来源卡标题、`proposedByCardId` 记录来源 id，排在待办列顶部并出现在收件箱；`dependsOn` 支持同批提议的标题/1-based 序号或看板已有卡的标题/id，未解析或成环整批拒绝，不产生半成品。用户点「接受并排队」进入 queued；看板设置 `autoAcceptProposals = N`（0=关，默认关）时，一次提议 **不超过 N 张才全部自动 queued**，超过则全部留在待办等确认。重复（同来源卡 + 同标题 + 未执行）自动跳过。
+2. **AI 评审**：`BoardExec.aiReview`；完成时把卡片分支 `baseCommit..HEAD` 的已提交 diff 交给 `AiReviewManager.start(rec, paths, { base })`，复用只读子会话与「审查」预设。评审结果快照落盘在 `card.review`（含 findings/file/line/verdict/ignored）；`verdict='blocker'` 时卡片停在「待评审」，否则按审批门决定 done/review。抽屉列出按严重度标注的意见（默认全选），「让这张卡修复」把选中意见拼成 reviewNote 发回同一会话，「仍然通过」直接放行。评审用量计入卡片会话。
+3. **PR 聚合**：`POST /api/boards/:id/pr { cardIds, base? }` / `GET .../pr` / `GET .../vcs`。服务端在临时 worktree 从基准分支建集成分支 `tandem/board-<看板短id>-pr-<ts>`，按 `topoOrder` 依次 `git merge --no-ff` 选中的已完成卡分支；冲突则 abort、返回 `conflictFiles`，不碰主工作区。成功后用 `createPullRequest` push 集成分支并调 gh/glab 开 PR，描述自动汇总各卡标题、摘要、文件数、花费与合计。`Board.pr` 落盘并每 60s 用 gh/glab 刷新状态/CI，顶部显示 `PR #n · 开状态 · CI`。未安装/未登录 gh 时弹窗复用 PR 面板的 `CliGuide` 指引；无 origin 也给出说明。
+4. **分屏打开会话**：卡片抽屉「在分屏中打开」调用 `useUiStore.openBoardSplit`，看板作为左窗格（合成 sessionId `board:<boardId>`，不订阅 WS）+ 卡片会话作为另一窗格，复用现有 SplitWorkspace/分隔条/持久化；看板窗格不参与 active 会话焦点，关闭时也不发会话订阅。手机抽屉该按钮退化为普通「打开会话」。
+5. **冲突处理**：`MergeResult` 增加 `conflicts[]`（abort 前采集 `git diff --name-only --diff-filter=U`），`BoardCard.result.conflictFiles` 落盘。合并失败后抽屉显示冲突文件列表与「让 agent 解决冲突」：`action='resolve'` 把冲突文件与 `git merge <base>` 指引写进 reviewNote，卡片回到排队并复用同一 worktree 会话；agent 解决后自动提交，卡片回 done，**仍需用户再点「合并」**（不自动合并）。

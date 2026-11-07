@@ -861,7 +861,7 @@ export interface InboxEvent {
     boardName: string;
     cardId?: string;
     cardTitle?: string;
-    event: 'review' | 'failed' | 'finished';
+    event: 'review' | 'failed' | 'finished' | 'proposal';
     text: string;
   };
   /** kind=handoff：额度将尽，等待用户选择切换/等待/暂停。 */
@@ -1799,6 +1799,7 @@ export interface BoardExec {
   budgetUsd?: number;            // 单卡花费上限，缺省不限
   maxRetries?: number;           // 回合出错后同会话重试次数，缺省 1
   gate?: boolean;                // 审批门：回合结束后停在 review，人通过后才算 done、下游才启动
+  aiReview?: boolean;            // 完成后用提交前 AI 评审看这张卡的 diff；有 blocker 时停在 review
 }
 export interface BoardCardResult {
   summary: string;               // 最后一条 assistant 文本
@@ -1811,6 +1812,8 @@ export interface BoardCardResult {
   durationMs: number;
   mergedAt?: number;
   mergeError?: string;
+  /** 最近一次合并冲突的文件（仓库相对路径）；成功合并后清除。 */
+  conflictFiles?: string[];
 }
 export interface BoardCard {
   id: string;
@@ -1836,8 +1839,15 @@ export interface BoardCard {
   baseCommit?: string;
   /** 失败重试的最早时间（epoch ms）；排队中的卡到点才会被调度。 */
   retryAt?: number;
-  /** 预留：运行时由协调者提议的卡片（v2）。 */
+  /** 由卡片会话通过 ProposeCards 提议：来源卡片标题（「由 X 提议」）。 */
   proposedBy?: string;
+  /** 来源卡片 id。 */
+  proposedByCardId?: string;
+  /**
+   * 这张卡完成后的 AI 评审结果快照（随看板落盘，重启后仍可查看）。
+   * findings 的 file/line 对应卡片分支相对 baseCommit 的 diff。
+   */
+  review?: AiReviewRun;
   startedAt?: number;
   finishedAt?: number;
   createdAt: number;
@@ -1853,9 +1863,26 @@ export interface Board {
   maxParallel: number;           // 1–8，缺省 2
   mergePolicy: BoardMergePolicy;
   defaults: BoardExec;           // 看板默认执行配置（卡 > 看板）
+  /** 自动接受卡片会话的提议：>0 时，一次提议不超过该张数就直接排队；0/缺省 = 关。 */
+  autoAcceptProposals?: number;
+  /** 最近一次"开 PR"的集成分支与 PR/CI 状态。 */
+  pr?: BoardPrState;
   cards: BoardCard[];
   createdAt: number;
   updatedAt: number;
+}
+
+/** 看板聚合 PR：多张已完成卡按依赖顺序合到集成分支后开一个 PR。 */
+export interface BoardPrState {
+  branch: string;
+  cardIds: string[];
+  url?: string;
+  number?: number;
+  state?: PrState;
+  checksState?: PrChecksState;
+  checks?: PrCheck[];
+  updatedAt: number;
+  error?: string;
 }
 export interface BoardSummary {
   id: string;
@@ -1867,7 +1894,9 @@ export interface BoardSummary {
   costUsd: number;
   updatedAt: number;
 }
-export type BoardInput = Partial<Pick<Board, 'name' | 'cwd' | 'maxParallel' | 'mergePolicy' | 'defaults'>>;
+export type BoardInput = Partial<
+  Pick<Board, 'name' | 'cwd' | 'maxParallel' | 'mergePolicy' | 'defaults' | 'autoAcceptProposals'>
+>;
 export interface BoardCardInput {
   title?: string;
   prompt?: string;
@@ -1875,6 +1904,14 @@ export interface BoardCardInput {
   exec?: BoardExec;
   /** 创建时直接放行（queued）；缺省 todo。 */
   status?: 'todo' | 'queued';
+}
+
+/** ProposeCards 工具入参：卡片会话在回合中提议的后续工作。 */
+export interface BoardProposalCard {
+  title: string;
+  prompt: string;
+  /** 其他提议卡的标题或 1-based 序号，也可以是看板已有卡的 id/标题。 */
+  dependsOn?: string[];
 }
 export interface BoardPlanDraft {
   ref: string;                   // 草稿内部引用（deps 用它指向其他草稿）
@@ -1884,7 +1921,31 @@ export interface BoardPlanDraft {
   preset?: string;
   gate?: boolean;
 }
-export type BoardCardAction = 'start' | 'unqueue' | 'stop' | 'retry' | 'approve' | 'reject' | 'merge';
+export type BoardCardAction =
+  | 'start'
+  | 'unqueue'
+  | 'stop'
+  | 'retry'
+  | 'approve'
+  | 'reject'
+  | 'merge'
+  /** done 且最近一次合并冲突：让卡片会话在自己的 worktree 里解决冲突并提交，仍需用户再点合并。 */
+  | 'resolve';
+
+export interface BoardPrInput {
+  cardIds: string[];
+  /** 目标分支；缺省看板基准分支。 */
+  base?: string;
+}
+export interface BoardPrResult {
+  ok: boolean;
+  error?: string;
+  branch?: string;
+  /** PR 创建/刷新后的看板状态。 */
+  pr?: BoardPrState;
+  /** 合并冲突的文件（创建集成分支时）。 */
+  conflictFiles?: string[];
+}
 // GET    /api/boards                          -> BoardSummary[]
 // POST   /api/boards BoardInput               -> Board（cwd 必填；defaults.profileId 缺省取第一个账号）
 // GET    /api/boards/:id                      -> Board（cards 含实时 activity/blocked）
@@ -1898,6 +1959,12 @@ export type BoardCardAction = 'start' | 'unqueue' | 'stop' | 'retry' | 'approve'
 // POST   /api/boards/:id/merge-all {strategy?} -> {merged: string[]; failed: {cardId: string; error: string}[]}
 // POST   /api/boards/:id/plan {goal}          -> {drafts: BoardPlanDraft[]}（只返回草稿，不创建）
 // POST   /api/boards/:id/plan/apply {drafts}  -> {cards: BoardCard[]}（确认后创建，状态 todo）
+// POST   /api/boards/:id/pr {cardIds, base?}  -> BoardPrResult（按依赖顺序合到集成分支并开 PR；未安装 gh/glab 时返回 error）
+// GET    /api/boards/:id/pr                   -> {pr?: BoardPrState}（用 gh/glab 刷新状态与 CI）
+// GET    /api/boards/:id/vcs                  -> VcsState（看板目录的 PR 能力检测，给"没有 gh"的指引）
+// 卡片会话内的 ProposeCards 工具直接落成 todo 卡（proposedBy 标记来源）；autoAcceptProposals>0 且数量不超过 N 时直接 queued。
+// 卡片执行配置 aiReview=true：完成后对卡片分支（baseCommit..HEAD）跑只读 AI 评审；有 blocker 时停在 review。
+// 合并冲突时 result.conflictFiles 记录冲突文件；action=resolve 让卡片会话在 worktree 解决，仍需用户再点 merge。
 // WS board_updated {boardId} 广播：客户端重新拉取该看板；收件箱 kind=board 见 InboxEvent.board。
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;

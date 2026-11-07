@@ -92,7 +92,11 @@ function eventSummary(event: InboxEvent): { title: string; body?: string } {
   if (event.kind === 'board' && event.board) {
     const info = event.board
     return {
-      title: info.cardTitle ? `${info.cardTitle} · ${info.event === 'review' ? '待评审' : info.event === 'failed' ? '失败' : '完成'}` : `${info.boardName} 已跑完`,
+      title: info.cardTitle
+        ? `${info.cardTitle} · ${
+            info.event === 'review' ? '待评审' : info.event === 'failed' ? '失败' : info.event === 'proposal' ? '提议了后续卡片' : '完成'
+          }`
+        : `${info.boardName} 已跑完`,
       body: info.text,
     }
   }

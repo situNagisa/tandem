@@ -545,7 +545,7 @@ export class Host {
   mergeSessionWorktree(
     id: string,
     strategy: 'merge' | 'squash',
-  ): Promise<{ ok: boolean; error?: string }> {
+  ): Promise<{ ok: boolean; error?: string; conflicts?: string[] }> {
     return mergeSessionWorktree(this, id, strategy);
   }
 

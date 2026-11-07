@@ -14,6 +14,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -199,6 +200,83 @@ function createMockProvider() {
       res.end()
       return
     }
+    // ---------- 看板 v2：卡片会话里的工具调用 ----------
+    const lastRole = body.messages?.at(-1)?.role
+    const userTexts = (body.messages ?? [])
+      .filter((m) => m.role === 'user')
+      .map((m) =>
+        typeof m.content === 'string'
+          ? m.content
+          : (m.content ?? []).map((part) => part.text ?? '').join('\n'),
+      )
+    const latest = userTexts.at(-1) ?? ''
+    const allUser = userTexts.join('\n')
+    if (body.stream === true && lastRole !== 'tool') {
+      const respondTool = (name, input) => {
+        res.writeHead(200, {
+          'content-type': 'text/event-stream',
+          'cache-control': 'no-cache',
+          connection: 'keep-alive',
+        })
+        const send = (payload) => res.write(`data: ${JSON.stringify(payload)}\n\n`)
+        send({
+          id: 'chatcmpl-board-tool',
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                role: 'assistant',
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: `call_${Date.now()}`,
+                    type: 'function',
+                    function: { name, arguments: JSON.stringify(input) },
+                  },
+                ],
+              },
+            },
+          ],
+        })
+        send({
+          id: 'chatcmpl-board-tool',
+          object: 'chat.completion.chunk',
+          choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+        })
+        send({
+          id: 'chatcmpl-board-tool',
+          object: 'chat.completion.chunk',
+          choices: [],
+          usage: { prompt_tokens: 30, completion_tokens: 10, total_tokens: 40 },
+        })
+        res.write('data: [DONE]\n\n')
+        res.end()
+      }
+      if (latest.includes('合并到 main 时发生冲突')) {
+        respondTool('Bash', {
+          command:
+            "git merge main --no-edit || { printf 'resolved-by-agent\\n' > conflict.txt && git add conflict.txt && git commit -m 'resolve conflict'; }",
+          description: '解决冲突',
+        })
+        return
+      }
+      if (allUser.includes('BOARD_PROPOSE')) {
+        respondTool('ProposeCards', {
+          cards: [
+            { title: '回归补测试', prompt: '回复“补测试完成”即可' },
+            { title: '回归补文档', prompt: '回复“补文档完成”即可', dependsOn: ['回归补测试'] },
+          ],
+        })
+        return
+      }
+      const boardWrite = latest.match(/^BOARD_WRITE (.+)$/m)
+      if (boardWrite) {
+        const [file, ...rest] = boardWrite[1].split(' ')
+        respondTool('Write', { file_path: file, content: `${rest.join(' ')}\n` })
+        return
+      }
+    }
     if (body.stream !== true) {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(
@@ -245,6 +323,53 @@ function writeJson(file, data) {
 
 function startHost({ home, token, hostId }) {
   const configDir = path.join(home, 'tandem')
+  // 假 gh：PR 聚合用例只打本地 bare 仓库，不连公网。其它用例不会调用它。
+  const fakeGh = path.join(home, 'fake-gh')
+  writeFileSync(
+    fakeGh,
+    `#!/usr/bin/env node
+const fs = require('node:fs')
+const { execSync } = require('node:child_process')
+const args = process.argv.slice(2)
+const state = ${JSON.stringify(path.join(home, 'gh-state.json'))}
+const log = ${JSON.stringify(path.join(home, 'gh.log'))}
+if (args[0] === '--version') { console.log('gh version 2.60.0 (fake)'); process.exit(0) }
+if (args[0] === 'auth') { console.log('github.com\\n  ✓ Logged in to github.com account reg-tester (keyring)'); process.exit(0) }
+if (args[0] === 'pr' && args[1] === 'create') {
+  const title = args[args.indexOf('--title') + 1] || 'PR'
+  const body = args[args.indexOf('--body') + 1] || ''
+  const branch = execSync('git branch --show-current', { encoding: 'utf8' }).trim()
+  const info = {
+    number: 9,
+    url: 'https://github.com/reg/board/pull/9',
+    title,
+    body,
+    branch,
+    state: 'OPEN',
+    isDraft: false,
+    statusCheckRollup: [
+      { __typename: 'CheckRun', name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS', detailsUrl: 'https://github.com/reg/board/actions/runs/1' },
+    ],
+  }
+  fs.writeFileSync(state, JSON.stringify(info, null, 2))
+  fs.appendFileSync(log, JSON.stringify({ args, branch }) + '\\n')
+  console.log(info.url)
+  process.exit(0)
+}
+if (args[0] === 'pr' && args[1] === 'view') {
+  let info = { number: 9, url: 'https://github.com/reg/board/pull/9', title: '看板 PR', state: 'OPEN', isDraft: false, statusCheckRollup: [
+    { __typename: 'CheckRun', name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS', detailsUrl: 'https://github.com/reg/board/actions/runs/1' },
+  ], mergeable: 'MERGEABLE', baseRefName: 'main' }
+  try { info = { ...info, ...JSON.parse(fs.readFileSync(state, 'utf8')) } } catch {}
+  fs.appendFileSync(log, JSON.stringify({ args }) + '\\n')
+  console.log(JSON.stringify(info))
+  process.exit(0)
+}
+console.error('fake gh: unsupported ' + args.join(' '))
+process.exit(1)
+`,
+  )
+  chmodSync(fakeGh, 0o755)
   mkdirSync(path.join(configDir, 'sessions'), { recursive: true })
   writeFileSync(
     path.join(configDir, 'config.json'),
@@ -267,6 +392,7 @@ function startHost({ home, token, hostId }) {
       ...process.env,
       HOME: path.join(home, 'home'),
       TANDEM_HOME: configDir,
+      TANDEM_GH_PATH: fakeGh,
       CODEX_HOME: path.join(home, 'home', '.codex'),
       NO_PROXY: '127.0.0.1,localhost',
       no_proxy: '127.0.0.1,localhost',
@@ -2743,7 +2869,8 @@ async function main() {
     const waitUntil = async (label, fn, timeout = 40_000) => {
       const start = Date.now()
       while (Date.now() - start < timeout) {
-        if (await fn()) return
+        const value = await fn()
+        if (value) return value
         await sleep(200)
       }
       throw new Error(`等待超时：${label}`)
@@ -2884,6 +3011,169 @@ async function main() {
       await page.getByRole('region', { name: '完成', exact: true }).getByText('待评审卡').waitFor({ timeout: 10_000 })
       assert.equal(await page.getByRole('region', { name: '需要我', exact: true }).count(), 0, '通过后「需要我」分组应消失')
     })
+
+      desktop('任务看板 v2：运行时提议、AI 评审修复、冲突解决、PR 聚合与分屏', async (page) => {
+        const origin = path.join(home, 'board-origin.git')
+        execFileSync('git', ['init', '-q', '--bare', origin], { stdio: 'pipe' })
+        const gitRepo = (...args) => execFileSync('git', args, { cwd: repo, stdio: 'pipe' })
+        gitRepo('remote', 'add', 'origin', 'https://github.com/reg/board.git')
+        gitRepo('config', `url.file://${origin}.insteadOf`, 'https://github.com/reg/board.git')
+        gitRepo('push', '-q', 'origin', 'HEAD')
+
+        const board = await boardCall('', {
+          method: 'POST',
+          body: {
+            cwd: repo,
+            name: 'v2 回归看板',
+            maxParallel: 2,
+            defaults: { profileId: 'p-main', permissionMode: 'bypassPermissions' },
+          },
+        })
+        const bid = board.id
+        const call = (p, init = {}) => boardCall(`/${bid}${p}`, init)
+        const act = (cid, action, extra = {}) =>
+          call(`/cards/${cid}/action`, { method: 'POST', body: { action, ...extra } })
+        const cards = async () => (await call('')).cards
+        const drawer = page.getByTestId('board-drawer')
+
+        // AI 评审：blocker 停在待评审 → 抽屉里让卡片修复 → 仍然通过
+        const reviewed = await call('/cards', {
+          method: 'POST',
+          body: {
+            title: 'V2 评审卡',
+            prompt: 'BOARD_WRITE src/hello.ts hello-2',
+            exec: { aiReview: true, permissionMode: 'bypassPermissions' },
+            status: 'queued',
+          },
+        })
+        const reviewCard = await waitUntil('看板卡进入 AI 评审', async () => {
+          const card = (await cards()).find((item) => item.id === reviewed.id)
+          return card?.status === 'review' && card.review?.verdict === 'blocker' ? card : undefined
+        })
+        assert.equal(reviewCard.review.findings[0].file, 'src/hello.ts')
+        assert.ok(reviewCard.review.findings[0].line >= 1)
+        await openBoardPage(page, bid)
+        await page.locator(`[data-column="review"] [data-card-id="${reviewed.id}"]`).click()
+        await drawer.getByTestId('board-review').waitFor()
+        assert.match(await drawer.getByTestId('board-review').innerText(), /阻塞/)
+        await drawer.getByRole('button', { name: '让这张卡修复' }).click()
+        await waitUntil('修复后再次待评审', async () => {
+          const card = (await cards()).find((item) => item.id === reviewed.id)
+          return card?.status === 'review' ? card : undefined
+        })
+        await drawer.getByRole('button', { name: '仍然通过' }).click({ timeout: 20_000 })
+        await waitUntil('仍然通过后完成', async () => (await cards()).find((item) => item.id === reviewed.id)?.status === 'done')
+
+        // 运行时提议：草稿在待办顶部，抽屉接受；看板设置自动接受
+        const proposer = await call('/cards', {
+          method: 'POST',
+          body: {
+            title: 'V2 提议源',
+            prompt: 'BOARD_PROPOSE',
+            exec: { permissionMode: 'bypassPermissions' },
+            status: 'queued',
+          },
+        })
+        await waitUntil('提议源完成并产生草稿', async () => {
+          const list = await cards()
+          return list.find((item) => item.id === proposer.id)?.status === 'done' &&
+            list.filter((item) => item.proposedByCardId === proposer.id).length === 2
+        })
+        let list = await cards()
+        const proposal = list.find((item) => item.proposedByCardId === proposer.id && item.title === '回归补测试')
+        const proposalDoc = list.find((item) => item.proposedByCardId === proposer.id && item.title === '回归补文档')
+        assert.equal(proposal.status, 'todo')
+        assert.equal(proposal.proposedBy, 'V2 提议源')
+        assert.deepEqual(proposalDoc.deps, [proposal.id])
+        assert.ok(
+          list.filter((item) => item.status === 'todo').sort((a, b) => a.order - b.order).slice(0, 2)
+            .every((item) => item.proposedByCardId === proposer.id),
+          '提议没有排在待办顶部',
+        )
+        await page.locator(`[data-column="todo"] [data-card-id="${proposal.id}"]`).click()
+        assert.match(await drawer.innerText(), /由 V2 提议源 提议/)
+        await drawer.getByRole('button', { name: '接受并排队' }).click()
+        await waitUntil('提议接受后完成', async () => (await cards()).find((item) => item.id === proposal.id)?.status === 'done')
+
+        await call('', { method: 'PUT', body: { autoAcceptProposals: 2 } })
+        const proposer2 = await call('/cards', {
+          method: 'POST',
+          body: {
+            title: 'V2 自动提议源',
+            prompt: 'BOARD_PROPOSE',
+            exec: { permissionMode: 'bypassPermissions' },
+            status: 'queued',
+          },
+        })
+        await waitUntil('自动接受提议', async () => {
+          const items = (await cards()).filter((item) => item.proposedByCardId === proposer2.id)
+          return items.length === 2 && items.every((item) => item.status !== 'todo') ? items : undefined
+        })
+
+        // 冲突：合并失败 → 抽屉列文件 → 让 agent 解决 → 再点合并
+        const x = await call('/cards', {
+          method: 'POST',
+          body: {
+            title: 'V2 冲突甲',
+            prompt: 'BOARD_WRITE conflict.txt from-a',
+            exec: { permissionMode: 'bypassPermissions' },
+            status: 'queued',
+          },
+        })
+        const y = await call('/cards', {
+          method: 'POST',
+          body: {
+            title: 'V2 冲突乙',
+            prompt: 'BOARD_WRITE conflict.txt from-b',
+            exec: { permissionMode: 'bypassPermissions' },
+            status: 'queued',
+          },
+        })
+        await waitUntil('冲突卡完成', async () => {
+          const items = await cards()
+          return [x, y].every((item) => items.find((c) => c.id === item.id)?.status === 'done')
+        })
+        await act(x.id, 'merge')
+        await page.locator(`[data-column="done"] [data-card-id="${y.id}"]`).click()
+        await drawer.getByRole('button', { name: /合并到/ }).click()
+        await drawer.getByTestId('board-conflicts').waitFor({ timeout: 20_000 })
+        assert.match(await drawer.getByTestId('board-conflicts').innerText(), /conflict\.txt/)
+        await drawer.getByRole('button', { name: '让 agent 解决冲突' }).click()
+        await waitUntil('解决冲突后完成', async () => (await cards()).find((item) => item.id === y.id)?.status === 'done')
+        await drawer.getByRole('button', { name: /合并到/ }).click()
+        await waitUntil('冲突卡再次合并成功', async () => (await cards()).find((item) => item.id === y.id)?.result?.mergedAt)
+
+        // 分屏：看板作为窗格 + 卡片会话
+        await page.locator(`[data-column="done"] [data-card-id="${reviewed.id}"]`).click()
+        await drawer.getByRole('button', { name: '在分屏中打开' }).click()
+        await page.waitForFunction(() => document.querySelectorAll('[data-split-pane]').length >= 2, null, { timeout: 15_000 })
+        await page.locator('[data-split-pane*=":board:"]').waitFor({ timeout: 15_000 })
+        assert.match(await page.evaluate(() => localStorage.getItem('tandem.split.v1') ?? ''), /board:/)
+
+        // PR：开 PR 弹窗 → 集成分支 → 假 gh → 顶部 CI 状态
+        await openBoardPage(page, bid)
+        await page.getByRole('button', { name: '开 PR', exact: true }).click()
+        const prDialog = page.getByRole('dialog', { name: '开 PR' })
+        await prDialog.waitFor()
+        await prDialog.getByTestId('board-pr-cards').waitFor()
+        await prDialog.getByRole('button', { name: /创建 PR/ }).click()
+        await prDialog.getByText(/PR 已创建在集成分支/).waitFor({ timeout: 60_000 })
+        await prDialog.getByRole('button', { name: '完成', exact: true }).click()
+        const prBoard = await call('')
+        assert.ok(prBoard.pr?.url?.includes('/pull/9'))
+        assert.ok(prBoard.pr.branch.startsWith('tandem/board-'))
+        const ghState = JSON.parse(readFileSync(path.join(home, 'gh-state.json'), 'utf8'))
+        assert.match(ghState.body, /V2 评审卡/)
+        assert.match(ghState.body, /合计花费/)
+        assert.ok(execFileSync('git', ['-C', origin, 'branch', '--list', 'tandem/board-*'], { stdio: 'pipe' }).toString().includes(prBoard.pr.branch))
+        const refreshed = await waitUntil('看板 PR CI 回显', async () => {
+          const res = await call('/pr')
+          return res.pr?.checksState === 'success' ? res.pr : undefined
+        })
+        assert.equal(refreshed.state, 'OPEN')
+        await page.getByTestId('board-pr-status').waitFor({ timeout: 15_000 })
+        assert.match(await page.getByTestId('board-pr-status').innerText(), /CI 通过/)
+      })
 
     // ------------------------------------------------------------------ 执行
 

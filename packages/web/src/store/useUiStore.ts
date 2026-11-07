@@ -12,7 +12,7 @@ import {
   type Toast,
 } from '../lib/types'
 import type { InviteTarget } from '../lib/inviteLink'
-import { columnCount, equalWeights, MAX_SPLIT_PANES, rowCount } from '../lib/split'
+import { boardPaneSessionId, columnCount, equalWeights, MAX_SPLIT_PANES, rowCount } from '../lib/split'
 import {
   loadCollapsedProjects,
   loadPinnedProjects,
@@ -177,6 +177,8 @@ interface UiState {
   closeMemoryEditor: () => void
   /** 在分屏中打开：自动补位/替换聚焦窗格。 */
   openSplitPane: (current: SessionTarget | null, target: SessionTarget) => void
+  /** 看板 + 卡片会话一起进分屏：看板作为左窗格，会话作为另一窗格。 */
+  openBoardSplit: (hostId: string, boardId: string, sessionId: string) => void
   /** 侧栏会话拖到主区左/右/下半边。 */
   openSplitPaneAt: (
     current: SessionTarget | null,
@@ -502,6 +504,27 @@ export const useUiStore = create<UiState>((set, get) => {
     else if (panes.length === 3) {
       layout = state.splitLayout === 'grid2x2' ? 'grid2x2' : 'cols3'
     } else layout = 'grid2x2'
+    const weights = layoutWeights(layout, {
+      panes: state.splitPanes,
+      layout: state.splitLayout,
+      cols: state.splitCols,
+      rows: state.splitRows,
+    })
+    commitSplit({ panes, layout, ...weights })
+  },
+
+  openBoardSplit: (hostId, boardId, sessionId) => {
+    const state = get()
+    const boardPane = { hostId, sessionId: boardPaneSessionId(boardId) }
+    const sessionPane = { hostId, sessionId }
+    let panes = state.splitPanes.filter(
+      (pane) => !(pane.hostId === hostId && (pane.sessionId === boardPane.sessionId || pane.sessionId === sessionPane.sessionId)),
+    )
+    panes.unshift(boardPane)
+    panes.push(sessionPane)
+    if (panes.length > MAX_SPLIT_PANES) panes = panes.slice(0, MAX_SPLIT_PANES)
+    if (panes.length < 2) panes.push(sessionPane)
+    const layout: SplitLayout = panes.length === 2 ? 'cols2' : panes.length === 3 ? 'cols3' : 'grid2x2'
     const weights = layoutWeights(layout, {
       panes: state.splitPanes,
       layout: state.splitLayout,

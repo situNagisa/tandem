@@ -220,6 +220,8 @@ export interface ToolContext {
   callMcp?: (server: string, tool: string, input: unknown) => Promise<ToolResult>;
   /** Skill 工具：按名称取已启用技能的正文与目录。 */
   getSkill?: (name: string) => { info: import('@tandem/protocol').SkillInfo; body: string } | undefined;
+  /** ProposeCards 工具：仅看板卡片会话有值，把提议落成待办草稿（或按看板设置自动排队）。 */
+  proposeCards?: (input: unknown) => Promise<ToolResult>;
   /** Tandem home（记忆/配置根目录）。 */
   home?: string;
   /** 项目记忆存储；Memory 工具直接读写它。 */

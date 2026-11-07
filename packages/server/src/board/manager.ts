@@ -21,11 +21,12 @@ import { expandHome } from '../util/path.js';
 import { errorMessage } from '../util/text.js';
 import { gitRepoRoot } from '../worktree.js';
 import { EFFORTS, PERMISSION_MODES } from '../host/helpers.js';
-import type { SessionRecord } from '../types.js';
+import type { SessionRecord, ToolResult } from '../types.js';
 import type { Host } from '../host.js';
 import { commitAndStat, currentHead, mergeBranchInto } from './git.js';
 import { decideSchedule, topoOrder, validateDrafts, wouldCycle } from './graph.js';
 import { planCards } from './planner.js';
+import { openBoardPr, refreshBoardPr } from './pr.js';
 import { BoardStore } from './store.js';
 
 const TICK_MS = 1000;
@@ -50,6 +51,8 @@ function retryDelayMs(): number {
   return Number.isFinite(raw) && raw >= 0 ? raw : 30_000;
 }
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 function clampParallel(value: unknown): number {
   const n = Math.floor(Number(value));
   if (!Number.isFinite(n)) return DEFAULT_PARALLEL;
@@ -70,7 +73,14 @@ function cleanExec(input: BoardExec | undefined): BoardExec {
   if (typeof input.budgetUsd === 'number' && input.budgetUsd > 0) exec.budgetUsd = input.budgetUsd;
   if (typeof input.maxRetries === 'number' && input.maxRetries >= 0) exec.maxRetries = Math.min(5, Math.floor(input.maxRetries));
   if (typeof input.gate === 'boolean') exec.gate = input.gate;
+  if (typeof input.aiReview === 'boolean') exec.aiReview = input.aiReview;
   return exec;
+}
+
+function clampAutoAccept(value: unknown): number {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(10, n);
 }
 
 function shortOf(id: string): string {
@@ -129,6 +139,8 @@ export class BoardManager {
   /** 有过运行且尚未发出"整块跑完"通知的看板。 */
   private readonly active = new Set<string>();
   private mergeChain: Promise<unknown> = Promise.resolve();
+  /** 聚合 PR 最近一次状态刷新时间（毫秒），避免每次 tick 都调 gh/glab。 */
+  private readonly prRefreshedAt = new Map<string, number>();
 
   constructor(private readonly host: Host, home: string) {
     this.store = new BoardStore(home);
@@ -224,6 +236,7 @@ export class BoardManager {
       maxParallel: clampParallel(input.maxParallel),
       mergePolicy: input.mergePolicy === 'auto' ? 'auto' : 'manual',
       defaults,
+      autoAcceptProposals: clampAutoAccept(input.autoAcceptProposals),
       cards: [],
       createdAt: now,
       updatedAt: now,
@@ -238,6 +251,7 @@ export class BoardManager {
     if (typeof input.name === 'string' && input.name.trim()) board.name = input.name.trim().slice(0, 80);
     if (input.maxParallel !== undefined) board.maxParallel = clampParallel(input.maxParallel);
     if (input.mergePolicy === 'auto' || input.mergePolicy === 'manual') board.mergePolicy = input.mergePolicy;
+    if (input.autoAcceptProposals !== undefined) board.autoAcceptProposals = clampAutoAccept(input.autoAcceptProposals);
     if (input.defaults) {
       board.defaults = { ...cleanExec(input.defaults) };
       if (!board.defaults.permissionMode) board.defaults.permissionMode = 'acceptEdits';
@@ -409,6 +423,20 @@ export class BoardManager {
         this.commit(board);
         await this.mergeCard(board, card, opts.strategy === 'merge' ? 'merge' : 'squash');
         return card;
+      case 'resolve': {
+        must('done');
+        if (!card.result?.mergeError) throw new Error('这张卡没有待解决的合并冲突');
+        const files = card.result.conflictFiles ?? [];
+        const base = board.baseBranch ?? '基准分支';
+        card.reviewNote =
+          `合并到 ${base} 时发生冲突${files.length ? `，冲突文件：\n${files.map((file) => `- ${file}`).join('\n')}` : ''}\n\n` +
+          `请在你当前的 worktree 里解决这些冲突：先 \`git merge ${base}\`（如果提示已是最新或状态不对，用 \`git status\` 查看），` +
+          `手工编辑解决冲突后 \`git add\` 并提交；不要切换分支、不要动主仓库工作区。完成后说明你改了哪些冲突。`;
+        card.attempts = 0;
+        delete card.error;
+        this.setStatus(board, card, 'queued');
+        break;
+      }
       default:
         throw new Error('未知操作');
     }
@@ -435,11 +463,11 @@ export class BoardManager {
     return { merged, failed };
   }
 
-  private mergeCard(board: Board, card: BoardCard, strategy: 'merge' | 'squash'): Promise<{ ok: boolean; error?: string }> {
-    const run = async (): Promise<{ ok: boolean; error?: string }> => {
+  private mergeCard(board: Board, card: BoardCard, strategy: 'merge' | 'squash'): Promise<{ ok: boolean; error?: string; conflicts?: string[] }> {
+    const run = async (): Promise<{ ok: boolean; error?: string; conflicts?: string[] }> => {
       if (!card.sessionId || !card.result?.branch) return { ok: false, error: '该卡片没有可合并的分支' };
       if (card.result.mergedAt) return { ok: true };
-      let result: { ok: boolean; error?: string };
+      let result: { ok: boolean; error?: string; conflicts?: string[] };
       try {
         result = await this.host.mergeSessionWorktree(card.sessionId, strategy);
       } catch (err) {
@@ -449,8 +477,11 @@ export class BoardManager {
         if (result.ok) {
           card.result.mergedAt = Date.now();
           delete card.result.mergeError;
+          delete card.result.conflictFiles;
         } else {
           card.result.mergeError = result.error ?? '合并失败';
+          if (result.conflicts && result.conflicts.length > 0) card.result.conflictFiles = result.conflicts;
+          else delete card.result.conflictFiles;
         }
       }
       card.updatedAt = Date.now();
@@ -506,6 +537,133 @@ export class BoardManager {
     return created;
   }
 
+  // ---------- 运行时提议卡片 ----------
+
+  /** ProposeCards 工具入口：卡片会话提议的后续工作落成草稿；看板设置允许时少量提议直接排队。 */
+  async proposeFromSession(rec: SessionRecord, input: unknown): Promise<ToolResult> {
+    if (!rec.board) return { content: '当前会话不是任务看板卡片，不能提议卡片', isError: true };
+    const board = this.boards.get(rec.board.boardId);
+    if (!board) return { content: '看板已删除，无法提议卡片', isError: true };
+    const source = board.cards.find((card) => card.id === rec.board!.cardId);
+    if (!source) return { content: '来源卡片已删除，无法提议卡片', isError: true };
+    const rawCards =
+      input && typeof input === 'object' && Array.isArray((input as Record<string, unknown>).cards)
+        ? ((input as Record<string, unknown>).cards as unknown[])
+        : [];
+    if (rawCards.length === 0) return { content: 'cards 不能为空', isError: true };
+    if (rawCards.length > 12) return { content: '一次最多提议 12 张卡片', isError: true };
+
+    const parsed = rawCards.map((item) => {
+      const raw = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+      const title = typeof raw.title === 'string' ? raw.title.trim().slice(0, 120) : '';
+      const prompt = typeof raw.prompt === 'string' ? raw.prompt.trim() : '';
+      const dependsOn = Array.isArray(raw.dependsOn)
+        ? raw.dependsOn.filter((dep): dep is string => typeof dep === 'string' && dep.trim() !== '').map((dep) => dep.trim())
+        : [];
+      return { title, prompt, dependsOn };
+    });
+    for (const item of parsed) {
+      if (!item.title || !item.prompt) return { content: '每张提议卡都需要 title 与 prompt', isError: true };
+    }
+
+    // 同一来源卡 + 相同标题的未执行提议视为重复（回合重试时模型可能再次调用）
+    const duplicates = parsed.filter((item) =>
+      board.cards.some(
+        (card) =>
+          card.proposedByCardId === source.id &&
+          card.title === item.title &&
+          (card.status === 'todo' || card.status === 'queued'),
+      ),
+    );
+    const fresh = parsed.filter((item) => !duplicates.includes(item));
+    if (fresh.length === 0) {
+      return { content: `这些提议已存在（${duplicates.map((item) => item.title).join('、')}），未重复创建。` };
+    }
+
+    const idOf = new Map<string, string>();
+    fresh.forEach((item, index) => idOf.set(`#${index + 1}`, randomUUID()));
+    const resolveDep = (dep: string, self: string): string | undefined => {
+      const index = /^\d+$/.test(dep) ? Number(dep) - 1 : -1;
+      if (index >= 0 && index < fresh.length) {
+        const id = idOf.get(`#${index + 1}`)!;
+        return id === self ? undefined : id;
+      }
+      const proposed = fresh.find((item) => item.title.toLowerCase() === dep.toLowerCase());
+      if (proposed) {
+        const id = idOf.get(`#${fresh.indexOf(proposed) + 1}`)!;
+        return id === self ? undefined : id;
+      }
+      const existing = board.cards.find((card) => card.id === dep || card.title.toLowerCase() === dep.toLowerCase());
+      return existing && existing.id !== self ? existing.id : undefined;
+    };
+
+    const now = Date.now();
+    const created: BoardCard[] = [];
+    for (const [index, item] of fresh.entries()) {
+      const id = idOf.get(`#${index + 1}`)!;
+      const deps: string[] = [];
+      for (const dep of item.dependsOn) {
+        const resolved = resolveDep(dep, id);
+        if (!resolved) {
+          return { content: `无法解析 「${item.title}」 的依赖：${dep}（可用同批标题/序号或看板已有卡标题/id）`, isError: true };
+        }
+        if (!deps.includes(resolved)) deps.push(resolved);
+      }
+      created.push({
+        id,
+        title: item.title,
+        prompt: item.prompt,
+        deps,
+        status: 'todo',
+        order: 0,
+        exec: {},
+        attempts: 0,
+        proposedBy: source.title,
+        proposedByCardId: source.id,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    // 依赖成环（含与已有卡的环）直接拒绝，不留半成品
+    for (const card of created) {
+      if (wouldCycle([...board.cards, ...created.filter((item) => item.id !== card.id)], card.id, card.deps)) {
+        return { content: `提议的依赖形成了环（${card.title}）`, isError: true };
+      }
+    }
+
+    const autoMax = clampAutoAccept(board.autoAcceptProposals);
+    const auto = autoMax > 0 && created.length <= autoMax;
+    for (const card of created) {
+      card.status = auto ? 'queued' : 'todo';
+      board.cards.push(card);
+    }
+    // 新卡放在目标列顶部（按输入顺序）
+    for (const status of ['todo', 'queued'] as const) {
+      const group = created.filter((card) => card.status === status);
+      if (group.length === 0) continue;
+      const min = Math.min(1000, ...board.cards.filter((card) => card.status === status && !group.includes(card)).map((card) => card.order));
+      group.forEach((card, index) => {
+        card.order = min - (group.length - index) * 1000;
+      });
+    }
+    this.commit(board);
+    this.kick();
+    if (!auto) {
+      this.notify(
+        board,
+        source,
+        'proposal',
+        `「${source.title}」提议了 ${created.length} 张后续卡片：${created.map((card) => card.title).join('、')}`,
+      );
+    }
+    const dupNote = duplicates.length > 0 ? `；跳过 ${duplicates.length} 张重复提议` : '';
+    return {
+      content: auto
+        ? `已自动接受并排队 ${created.length} 张卡：${created.map((card) => card.title).join('、')}${dupNote}`
+        : `已创建 ${created.length} 张待确认提议（在看板待办列顶部，标注「由 ${source.title} 提议」）：${created.map((card) => card.title).join('、')}${dupNote}`,
+    };
+  }
+
   // ---------- 会话钩子 ----------
 
   /** sendToModel 回合结束时由 Host 调用，给收尾判断提供精确的结束原因。 */
@@ -532,6 +690,49 @@ export class BoardManager {
     setImmediate(() => this.tick());
   }
 
+  // ---------- 聚合 PR ----------
+
+  /** 选若干已完成卡，按依赖顺序合到集成分支并开 PR（gh/glab）。 */
+  async openPr(boardId: string, cardIds: unknown, base?: unknown): Promise<import('@tandem/protocol').BoardPrResult> {
+    const board = this.require(boardId);
+    const result = await openBoardPr(this.host, board, cardIds, base);
+    if (result.ok && result.pr) {
+      board.pr = result.pr;
+      this.prRefreshedAt.set(board.id, Date.now());
+      this.commit(board);
+    }
+    return result;
+  }
+
+  /** 立即用 gh/glab 刷新聚合 PR 状态。 */
+  async refreshPr(boardId: string): Promise<{ pr?: import('@tandem/protocol').BoardPrState }> {
+    const board = this.require(boardId);
+    const pr = await refreshBoardPr(board);
+    if (pr) {
+      board.pr = pr;
+      this.prRefreshedAt.set(board.id, Date.now());
+      this.commit(board);
+    }
+    return pr ? { pr } : {};
+  }
+
+  /** 每 60 秒刷新一次有 PR 的看板；状态/CI 变化由 board_updated 推给客户端。 */
+  private maybeRefreshPr(board: Board): void {
+    if (!board.pr?.branch) return;
+    if (board.pr.state === 'MERGED' || board.pr.state === 'CLOSED') return;
+    const last = this.prRefreshedAt.get(board.id) ?? 0;
+    if (Date.now() - last < 60_000) return;
+    this.prRefreshedAt.set(board.id, Date.now());
+    void refreshBoardPr(board)
+      .then((pr) => {
+        if (!pr) return;
+        const before = JSON.stringify(board.pr ?? null);
+        board.pr = pr;
+        if (before !== JSON.stringify(pr)) this.commit(board);
+      })
+      .catch(() => undefined);
+  }
+
   private tick(): void {
     for (const board of this.boards.values()) {
       try {
@@ -539,6 +740,7 @@ export class BoardManager {
         this.schedule(board);
         this.maybeFinished(board);
         this.refreshDerived(board, true);
+        this.maybeRefreshPr(board);
       } catch (err) {
         console.warn('[tandem] 看板调度出错:', errorMessage(err));
       }
@@ -795,10 +997,34 @@ export class BoardManager {
     card.result = result;
     card.finishedAt = Date.now();
     delete card.error;
-    if (card.exec.gate ?? board.defaults.gate) {
+    const wantAiReview = (card.exec.aiReview ?? board.defaults.aiReview) && !!rec.worktree && !!card.baseCommit;
+    if (wantAiReview) {
+      const started = this.host.aiReviews.start(rec, undefined, { base: card.baseCommit });
+      let review = started;
+      // 评审在后台只读子会话里跑；等它结束再决定卡片去向（有 blocker 停在待评审）
+      for (let i = 0; i < 400; i += 1) {
+        const current = this.host.aiReviews.get(rec.id, started.id);
+        if (current && current.status !== 'running') {
+          review = current;
+          break;
+        }
+        await sleep(500);
+      }
+      card.review = review;
+      result.costUsd = rec.usage.costUsd ?? result.costUsd;
+      card.updatedAt = Date.now();
+      this.commit(board);
+    }
+    const blocker = card.review?.status === 'done' && card.review.verdict === 'blocker';
+    if ((card.exec.gate ?? board.defaults.gate) || blocker) {
       this.setStatus(board, card, 'review');
       this.commit(board);
-      this.notify(board, card, 'review', `「${card.title}」已完成，等待你评审`);
+      this.notify(
+        board,
+        card,
+        'review',
+        blocker ? `「${card.title}」已完成，AI 评审发现阻塞问题，等待你处理` : `「${card.title}」已完成，等待你评审`,
+      );
     } else {
       this.setStatus(board, card, 'done');
       this.commit(board);
@@ -848,7 +1074,7 @@ export class BoardManager {
 
   // ---------- 内部工具 ----------
 
-  private notify(board: Board, card: BoardCard | undefined, event: 'review' | 'failed' | 'finished', text: string): void {
+  private notify(board: Board, card: BoardCard | undefined, event: 'review' | 'failed' | 'finished' | 'proposal', text: string): void {
     this.host.pushInbox(
       this.host.inbox.recordBoard({
         boardId: board.id,

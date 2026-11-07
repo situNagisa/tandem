@@ -150,6 +150,7 @@ export function orchestrateTools(host: Host, rec: SessionRecord): ToolDefinition
     'WebFetch',
     'BashOutput',
     ...(rec.permissionMode === 'plan' ? ['ExitPlanMode'] : []),
+    ...(rec.board ? ['ProposeCards'] : []),
   ]);
   return TOOLS.filter((tool) => allowed.has(tool.name));
 }
@@ -214,6 +215,8 @@ export function toolDefinitions(host: Host, rec: SessionRecord, allowTask = true
         (tool.name !== 'ExitPlanMode' || rec.permissionMode === 'plan') &&
         // 浏览器工具默认关闭，启用后才对模型可见
         (!tool.name.startsWith('browser_') || host.browser.settings.enabled) &&
+        // 只有看板卡片会话能提议新卡
+        (tool.name !== 'ProposeCards' || !!rec.board) &&
         allowed(tool.name),
     )
     .map((tool) =>

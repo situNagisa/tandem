@@ -784,6 +784,9 @@ async function executeToolUses(
       runSubagent: (input: { description: string; prompt: string; subagentType?: string; model?: string }) =>
         host.runSubagent(rec, input, signal),
       getSkill: (name: string) => host.skills.resolve(name, rec.cwd),
+      ...(rec.board
+        ? { proposeCards: (input: unknown) => host.boards.proposeFromSession(rec, input) }
+        : {}),
       home: host.home,
       memory: host.memory,
       backgroundTasks: host.tasks,

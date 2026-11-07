@@ -82,6 +82,8 @@ export async function createWorktree(
 export interface MergeResult {
   ok: boolean;
   error?: string;
+  /** 合并冲突的文件（仓库相对路径）；中止前采集。 */
+  conflicts?: string[];
 }
 
 /** 把 worktree 分支合回 baseBranch；冲突时 abort 并返回错误。 */
@@ -111,21 +113,28 @@ export async function mergeWorktree(
     }
     return { ok: true };
   } catch (err) {
-    const conflicted = await hasConflicts(repoRoot);
-    if (conflicted) {
+    const conflicts = await conflictFiles(repoRoot);
+    if (conflicts.length > 0) {
       await abortMerge(repoRoot);
-      return { ok: false, error: `合并冲突，已中止（请先解决 ${branch} 与 ${baseBranch} 的差异）` };
+      return {
+        ok: false,
+        error: `合并冲突，已中止（请先解决 ${branch} 与 ${baseBranch} 的差异）`,
+        conflicts,
+      };
     }
     return { ok: false, error: `合并失败: ${gitErrorText(err)}` };
   }
 }
 
-async function hasConflicts(repoRoot: string): Promise<boolean> {
+async function conflictFiles(repoRoot: string): Promise<string[]> {
   try {
     const out = await git(repoRoot, ['diff', '--name-only', '--diff-filter=U'], 5_000);
-    return out.trim().length > 0;
+    return out
+      .split('\n')
+      .map((line) => line.trim().replace(/\\/g, '/'))
+      .filter(Boolean);
   } catch {
-    return false;
+    return [];
   }
 }
 

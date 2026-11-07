@@ -30,7 +30,7 @@ export async function refreshEnv(host: Host, id: string): Promise<void> {
 }
 
 export async function mergeSessionWorktree(host: Host, id: string,
-    strategy: 'merge' | 'squash',): Promise<{ ok: boolean; error?: string }> {
+    strategy: 'merge' | 'squash',): Promise<{ ok: boolean; error?: string; conflicts?: string[] }> {
   const rec = host.store.get(id);
   if (!rec) throw httpError('会话不存在', 404);
   if (!rec.worktree) return { ok: false, error: '该会话不是 worktree 会话' };

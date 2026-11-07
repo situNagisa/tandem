@@ -24,7 +24,7 @@
 | `src/cli.ts` | 入口：解析 `--port/--host/--relay`，创建 Host + Fastify，信号退出 |
 | `src/server.ts` | Fastify 服务：启动、token 鉴权、WS 升级、静态托管；路由按资源在 `routes/` 下注册 |
 | `src/routes/` | REST/WS 路由：`common.ts`（依赖与鉴权）、`team.ts`（成员/邀请/审计/身份）、`sessions.ts`、`permissions.ts`、`host.ts`、`profiles.ts`、`models.ts`、`usage.ts`、`tasks.ts`、`mcp.ts`、`skills.ts`、`hooks.ts`、`memory.ts`、`schedules.ts`、`evals.ts`、`subagent-presets.ts`、`prompt-templates.ts`、`commands.ts`、`external.ts`、`fs.ts`、`pair.ts`、`budgets.ts`、`config.ts`、`ws.ts` |
-| `src/board/` + `routes/board.ts` | 任务看板：`manager.ts`（调度器：依赖/并发上限/重试/审批门/单卡预算/worktree 合入依赖与按序合并/重启续跑，1s tick）、`graph.ts`（环检测、`decideSchedule`、规划草稿解析，纯函数）、`git.ts`（自动提交与统计、依赖分支合入）、`planner.ts`（AI 拆分，一次性 `completeText`，只返回草稿）、`store.ts`（`~/.tandem/boards/<id>.json`）；卡片 = 带 `SessionRecord.board` 的顶层会话 |
+| `src/board/` + `routes/board.ts` | 任务看板：`manager.ts`（调度器：依赖/并发上限/重试/审批门/单卡预算/worktree 合入依赖与按序合并/重启续跑/AI 评审收尾/冲突解决/运行时提议，1s tick）、`graph.ts`（环检测、`decideSchedule`、规划草稿解析，纯函数）、`git.ts`（自动提交与统计、依赖分支合入）、`planner.ts`（AI 拆分，一次性 `completeText`，只返回草稿）、`pr.ts`（集成分支 + gh/glab 聚合 PR 与状态刷新）、`store.ts`（`~/.tandem/boards/<id>.json`）；卡片 = 带 `SessionRecord.board` 的顶层会话；`tools/propose-cards.ts` 是卡片会话的提议工具 |
 | `src/host.ts` | Host 类：持有全部状态与构造，方法按职责转调到 `host/`（外部 API 不变） |
 | `src/team/` | 内网团队：`store.ts`（成员/邀请/审计持久化，只存 token 与邀请码哈希）、`access.ts`（角色边界、项目可见性、REST 白名单）、`audit.ts` |
 | `src/host/` | Host 实现按职责拆分（纯搬移）：`sessions.ts`（读取/转换/CRUD）、`turns.ts`（发送/回合/排队/中断/compact）、`commands.ts`（斜杠命令/本地消息）、`permissions.ts`（审批/plan/恢复）、`keys.ts`（账号/分组/Key 轮询）、`usage.ts`（上下文/预算/模型）、`subagents.ts`（子代理/委派/工具可见性）、`vcs.ts`（git 环境/worktree）、`rewind.ts`（检查点回退）、`hooks.ts`、`inbox.ts`、`external.ts`（外部会话通知/导入）、`helpers.ts`（无状态纯函数） |

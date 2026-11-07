@@ -243,12 +243,15 @@ async function detectCli(provider: VcsProvider): Promise<{
 }
 
 async function readCapability(root: string): Promise<VcsCapability> {
-  const [branchOut, remoteOut] = await Promise.all([
+  const [branchOut, remoteOut, remoteRaw] = await Promise.all([
     run('git', gitArgs(['-C', root, 'branch', '--show-current']), root, GIT_TIMEOUT_MS),
     run('git', gitArgs(['-C', root, 'remote', 'get-url', 'origin']), root, GIT_TIMEOUT_MS),
+    // 配置里的原始 URL：url.<local>.insteadOf 会把 get-url 展开成本地路径，展示与平台识别仍应以原始地址为准
+    run('git', gitArgs(['-C', root, 'config', '--get', 'remote.origin.url']), root, GIT_TIMEOUT_MS),
   ]);
   const branch = branchOut.code === 0 ? branchOut.stdout.trim() : '';
-  const remoteHost = remoteOut.code === 0 ? hostOfRemote(remoteOut.stdout) : undefined;
+  const remoteUrl = remoteRaw.code === 0 && remoteRaw.stdout.trim() ? remoteRaw.stdout : remoteOut.stdout;
+  const remoteHost = (remoteRaw.code === 0 || remoteOut.code === 0) ? hostOfRemote(remoteUrl) : undefined;
   const provider = providerOfHost(remoteHost);
   const [upstream, aheadBehind, cli] = await Promise.all([
     readUpstream(root),
@@ -268,12 +271,13 @@ async function readCapability(root: string): Promise<VcsCapability> {
   };
 }
 
-async function readGhPr(root: string): Promise<PullRequestInfo | undefined> {
+async function readGhPr(root: string, ref?: string): Promise<PullRequestInfo | undefined> {
   const result = await run(
     cliBin('github'),
     [
       'pr',
       'view',
+      ...(ref ? [ref] : []),
       '--json',
       'number,title,state,url,isDraft,reviewDecision,statusCheckRollup,mergeable,baseRefName,headRefName,updatedAt',
     ],
@@ -314,8 +318,8 @@ async function readGhPr(root: string): Promise<PullRequestInfo | undefined> {
   };
 }
 
-async function readGlabMr(root: string): Promise<PullRequestInfo | undefined> {
-  const result = await run(cliBin('gitlab'), ['mr', 'view', '--output', 'json'], root);
+async function readGlabMr(root: string, ref?: string): Promise<PullRequestInfo | undefined> {
+  const result = await run(cliBin('gitlab'), ['mr', 'view', ...(ref ? [ref] : []), '--output', 'json'], root);
   if (result.code !== 0) return undefined;
   let raw: Record<string, unknown>;
   try {
@@ -355,16 +359,16 @@ async function readGlabMr(root: string): Promise<PullRequestInfo | undefined> {
   };
 }
 
-async function readPr(root: string, provider: VcsProvider): Promise<PullRequestInfo | undefined> {
-  if (provider === 'github') return readGhPr(root);
-  if (provider === 'gitlab') return readGlabMr(root);
+async function readPr(root: string, provider: VcsProvider, ref?: string): Promise<PullRequestInfo | undefined> {
+  if (provider === 'github') return readGhPr(root, ref);
+  if (provider === 'gitlab') return readGlabMr(root, ref);
   return undefined;
 }
 
 const prCache = new Map<string, PullRequestInfo | undefined>();
 
 /** 读当前会话的 VCS 能力与 PR；sessionId 用于轮询缓存。 */
-export async function getVcsState(cwd: string, sessionId?: string): Promise<VcsState> {
+export async function getVcsState(cwd: string, sessionId?: string, ref?: string): Promise<VcsState> {
   const root = await repoRootOf(cwd);
   if (!root) {
     return {
@@ -382,7 +386,7 @@ export async function getVcsState(cwd: string, sessionId?: string): Promise<VcsS
   const vcs = await readCapability(root);
   let pr: PullRequestInfo | undefined;
   if (vcs.authenticated && (vcs.provider === 'github' || vcs.provider === 'gitlab')) {
-    pr = await readPr(root, vcs.provider);
+    pr = await readPr(root, vcs.provider, ref);
   }
   if (sessionId) prCache.set(sessionId, pr);
   return { vcs, ...(pr ? { pr } : {}) };

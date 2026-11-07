@@ -16,6 +16,7 @@ import { SplitOpenDialog } from './components/split/SplitOpenDialog'
 import { ExternalSessionView } from './components/ExternalSessionView'
 import { BoardView } from './components/board/BoardView'
 import { useBoardRoute } from './lib/boardRoute'
+import { isBoardPane } from './lib/split'
 import { RightPanel } from './components/RightPanel'
 import { ChangeReviewPanel } from './components/ChangeReviewPanel'
 import { FilePreviewPanel } from './components/FilePreviewPanel'
@@ -150,6 +151,7 @@ export default function App() {
   useEffect(() => {
     if (!initialized || route.kind !== 'session' || splitPanes.length < 2) return
     for (const pane of splitPanes) {
+      if (isBoardPane(pane)) continue
       useAppStore.getState().openSessionView(pane.hostId, pane.sessionId)
     }
   }, [initialized, route, splitPanes])

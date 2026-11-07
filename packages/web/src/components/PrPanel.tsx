@@ -78,7 +78,7 @@ function cliName(vcs: VcsCapability): string {
   return vcs.cli === 'glab' ? 'glab' : 'gh'
 }
 
-function CliGuide({ vcs }: { vcs: VcsCapability }) {
+export function CliGuide({ vcs }: { vcs: VcsCapability }) {
   if (vcs.provider === 'other') {
     return (
       <div className="rounded-lg border border-border bg-[var(--t-bg-hover)] p-3 text-[13px] leading-6 text-text-soft">

@@ -1,10 +1,11 @@
 // 任务看板 REST：看板/卡片 CRUD、动作、列内排序、AI 拆分草稿。协议见 protocol 的「任务看板」段。
 import type { FastifyInstance } from 'fastify';
-import type { BoardCardAction, BoardCardInput, BoardInput, BoardPlanDraft } from '@tandem/protocol';
+import type { BoardCardAction, BoardCardInput, BoardInput, BoardPlanDraft, BoardPrInput } from '@tandem/protocol';
+import { getVcsState } from '../vcs.js';
 import { errorMessage } from '../util/text.js';
 import { bad, statusOf, type RouteDeps } from './common.js';
 
-const ACTIONS = new Set<BoardCardAction>(['start', 'unqueue', 'stop', 'retry', 'approve', 'reject', 'merge']);
+const ACTIONS = new Set<BoardCardAction>(['start', 'unqueue', 'stop', 'retry', 'approve', 'reject', 'merge', 'resolve']);
 
 export function registerBoardRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const { host } = deps;
@@ -109,6 +110,29 @@ export function registerBoardRoutes(app: FastifyInstance, deps: RouteDeps): void
     } catch (err) {
       return bad(reply, errorMessage(err), statusOf(err));
     }
+  });
+
+  app.post('/api/boards/:id/pr', async (req, reply) => {
+    const body = (req.body ?? {}) as BoardPrInput;
+    try {
+      return await boards().openPr((req.params as { id: string }).id, body.cardIds, body.base);
+    } catch (err) {
+      return bad(reply, errorMessage(err), statusOf(err));
+    }
+  });
+
+  app.get('/api/boards/:id/pr', async (req, reply) => {
+    try {
+      return await boards().refreshPr((req.params as { id: string }).id);
+    } catch (err) {
+      return bad(reply, errorMessage(err), statusOf(err));
+    }
+  });
+
+  app.get('/api/boards/:id/vcs', async (req, reply) => {
+    const board = boards().get((req.params as { id: string }).id);
+    if (!board) return bad(reply, '看板不存在', 404);
+    return getVcsState(board.cwd);
   });
 
   app.post('/api/boards/:id/plan/apply', async (req, reply) => {
