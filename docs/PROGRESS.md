@@ -110,3 +110,12 @@
 - [x] `#/dev/ui` 组件画廊（设置-外观底部入口），展示原语全部状态，支持反馈模式圈选
 - [x] `scripts/ui-audit.mjs` 防回退检查：ui/ 外 role=menu/listbox、popover-panel、硬编码菜单行高、原生 select；当前 0 问题
 - 截图：/tmp/ui-lib/{gallery,model-main,model-effort,model-account-group}.png
+
+## 迭代 14（2026-11-07）局域网手机审批台
+- [x] 协议/服务端：`subscribe_inbox` 全局订阅（Host 内单调 seq + 400 条环形缓冲 + 未处理审批表）；摘要事件覆盖 permission_request / permission_resolved / turn_end(error) / budget / ExitPlanMode 计划审批，`inbox_snapshot` 冷启动与断线补齐；子代理审批只记一条并带来源标题
+- [x] 客户端：收件箱 store、多 Host 汇总；侧栏顶部收件箱图标 + 未读数徽标、收件箱弹层（允许/拒绝/打开会话，手机全屏）；手机首页「新会话 / 收件箱」Tab，打开 App 有待审批时直接落在收件箱；审批一次点击即可完成
+- [x] 通知：浏览器沿用 Notification；安卓 `@capacitor/local-notifications` 纯本地通知，审批带「允许 / 拒绝」action types，点击打开会话；设置「通知」页（桌面通知 / App 本地通知 / 后台保持连接 / 事件类型开关）
+- [x] 后台保持：`@capawesome-team/capacitor-android-foreground-service` 前台服务（dataSync，常驻通知「Tandem 正在保持连接」），默认关闭、设置内说明耗电；回前台 `checkAlive` + inbox/session sinceSeq 重放补拉
+- [x] 修复既有 bug：`permission_request` 缺顶层 sessionId 导致客户端 seq 出现空洞，后续 `permission_resolved` 被永久暂存、跨端审批卡不消失
+- 验证：TANDEM_HOME=/tmp/tandem-inbox:8133；Playwright 1440×900 + 390×844 双页，手机收件箱允许后桌面审批卡消失、服务端 pending 归零、手机收件箱转「已允许」；回合完成入列表；设置通知页可开合；`npm run apk` 打包成功
+- 待真机确认：APK 安装、同局域网连接、锁屏/后台通知与操作按钮、前台服务耗电
