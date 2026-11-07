@@ -451,7 +451,7 @@ function BoardColumns({
               void onDrop(card, column.status, beforeId)
             }}
             className={cn(
-              'flex min-h-0 w-[236px] min-w-[236px] shrink-0 flex-col rounded-xl bg-[var(--t-surface-2)]/60 transition-[opacity,box-shadow] duration-[120ms]',
+              'flex min-h-0 w-[236px] min-w-[236px] max-w-[380px] flex-1 flex-col rounded-xl bg-[var(--t-surface-2)]/60 transition-[opacity,box-shadow] duration-[120ms]',
               drag && !valid && 'opacity-50',
               active && 'ring-1 ring-border-strong',
             )}
@@ -513,7 +513,7 @@ function BoardList({ board, actions, onOpen }: { board: Board; actions: CardActi
             <h2 className="px-1 pb-1 pt-2 text-[13px] font-medium text-text-secondary">
               {group.label} <span className="text-[12px] font-normal tabular-nums text-text-tertiary">{cards.length}</span>
             </h2>
-            <div className="space-y-1.5">
+            <div className="space-y-3">
               {cards.map((card) => (
                 <div key={card.id} className="space-y-1.5">
                   <BoardCardItem card={card} board={board} onOpen={() => onOpen(card)} />

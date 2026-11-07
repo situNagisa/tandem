@@ -97,7 +97,7 @@ export function BoardCardItem({
         <span className="line-clamp-2 min-w-0 flex-1 text-[14px] font-medium leading-snug text-text">{card.title}</span>
       </div>
       <div className="mt-1 min-w-0 space-y-0.5 pl-[22px]">
-        {deps.length > 0 ? (
+        {deps.length > 0 && !(card.status === 'queued' && card.blocked === 'waiting') ? (
           <p className="flex min-w-0 items-center gap-1 text-[12px] text-text-tertiary">
             <CornerUpLeft size={11} aria-hidden className="shrink-0" />
             <span className="truncate">{deps.join('、')}</span>

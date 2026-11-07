@@ -24,6 +24,7 @@
 | `src/cli.ts` | 入口：解析 `--port/--host/--relay`，创建 Host + Fastify，信号退出 |
 | `src/server.ts` | Fastify 服务：启动、token 鉴权、WS 升级、静态托管；路由按资源在 `routes/` 下注册 |
 | `src/routes/` | REST/WS 路由：`common.ts`（依赖与鉴权）、`team.ts`（成员/邀请/审计/身份）、`sessions.ts`、`permissions.ts`、`host.ts`、`profiles.ts`、`models.ts`、`usage.ts`、`tasks.ts`、`mcp.ts`、`skills.ts`、`hooks.ts`、`memory.ts`、`schedules.ts`、`evals.ts`、`subagent-presets.ts`、`prompt-templates.ts`、`commands.ts`、`external.ts`、`fs.ts`、`pair.ts`、`budgets.ts`、`config.ts`、`ws.ts` |
+| `src/board/` + `routes/board.ts` | 任务看板：`manager.ts`（调度器：依赖/并发上限/重试/审批门/单卡预算/worktree 合入依赖与按序合并/重启续跑，1s tick）、`graph.ts`（环检测、`decideSchedule`、规划草稿解析，纯函数）、`git.ts`（自动提交与统计、依赖分支合入）、`planner.ts`（AI 拆分，一次性 `completeText`，只返回草稿）、`store.ts`（`~/.tandem/boards/<id>.json`）；卡片 = 带 `SessionRecord.board` 的顶层会话 |
 | `src/host.ts` | Host 类：持有全部状态与构造，方法按职责转调到 `host/`（外部 API 不变） |
 | `src/team/` | 内网团队：`store.ts`（成员/邀请/审计持久化，只存 token 与邀请码哈希）、`access.ts`（角色边界、项目可见性、REST 白名单）、`audit.ts` |
 | `src/host/` | Host 实现按职责拆分（纯搬移）：`sessions.ts`（读取/转换/CRUD）、`turns.ts`（发送/回合/排队/中断/compact）、`commands.ts`（斜杠命令/本地消息）、`permissions.ts`（审批/plan/恢复）、`keys.ts`（账号/分组/Key 轮询）、`usage.ts`（上下文/预算/模型）、`subagents.ts`（子代理/委派/工具可见性）、`vcs.ts`（git 环境/worktree）、`rewind.ts`（检查点回退）、`hooks.ts`、`inbox.ts`、`external.ts`（外部会话通知/导入）、`helpers.ts`（无状态纯函数） |
@@ -84,6 +85,7 @@
 | `src/components/chat/*` | 轮次导航、上下文环、消息辅助组件 |
 | `src/components/feedback/*` | 反馈模式浮条、区域截图、标注、抽屉 |
 | `src/components/split/*` | 多会话分屏：桌面 2/3 列与 2×2、上下分屏、分隔条、拖拽分区、手机圆点滑动、分屏打开选择器 |
+| `src/components/board/*` | 任务看板视图：`BoardView`（七列拖动 / 手机分组列表 / 对话框编排）、`BoardCardItem`、`BoardDrawer`（详情与动作）、`BoardDialogs`（创建看板、卡片编辑、AI 拆分、打回意见、确认）；`lib/board.ts`（列与拖动规则等纯函数）、`lib/boardRoute.ts`、`store/useBoardStore.ts`（缓存 + 轮询，`board_updated` 加速刷新） |
 | `src/components/session/SessionScope.tsx` | 会话作用域：窗格内组件读取自己的 `ActiveSession`，快捷键/焦点与全局 `active` 对齐 |
 | `src/lib/split.ts` / `splitActions.ts` | 分屏布局校验与持久化、窗格增删替换、聚焦/关闭、拖拽落区 |
 | `src/styles/` + `index.css` | 设计 tokens 与复杂组件样式（Tailwind v4） |
@@ -142,6 +144,7 @@ Web/Desktop/Android
 | 改外部会话导入 | `server/src/external.ts`（扫描/清洗/标题）+ `ExternalSessionView.tsx` |
 | 改定时任务 | `server/src/schedules.ts` + `settings/SchedulesSection.tsx` |
 | 改评测/轨迹回放 | `server/src/evals.ts` + `routes/evals.ts`；前端 `store/useEvalStore.ts` + `settings/EvalsSection.tsx` + `components/evals/*` |
+| 改任务看板 | 契约 `protocol` 的 Board* 类型；调度与状态机 `server/src/board/manager.ts`，纯规则 `graph.ts`；接口 `routes/board.ts`；前端 `components/board/*` + `lib/board.ts` + `store/useBoardStore.ts`；设计与取舍 `docs/taskboard.md`；回归 `e2e/board.mjs`（API 级）与 `e2e/regression.mjs` 的「任务看板」用例 |
 | 改预算/用量 | `server/src/budgets.ts`、`usage.ts` + 对应设置页 |
 | 改多 Key 调度 | `server/src/key-rotation.ts` + `host.ts` 的 `keyCandidates/markKeyFailure` |
 | 加斜杠命令 | `server/src/agent/commands.ts` + `host.ts` 的 `handleCommand` |

@@ -317,3 +317,13 @@
 - [x] 性能：会话视图存入 `sessionViews`，`active` 只指向聚焦窗格；非聚焦窗格的流式增量合并到 ~110ms 节拍，聚焦窗格保持 30ms
 - [x] 回归：`e2e/regression.mjs` 新增 3 条——双窗格分别收发/焦点切右栏/拖动比例后刷新恢复；侧栏拖拽分区 + Ctrl+1 + Ctrl+W + 命令面板分屏；手机圆点滑动与关闭窗格
 - 验证：`TANDEM_HOME=/tmp/tandem-split` 端口 8311 + 本地 mock OpenAI SSE；Playwright 截图 `/tmp/split-shots/`；`node scripts/check.mjs` 全量通过
+
+
+## 迭代 36（2026-11-08）任务看板 v1
+- [x] 协议与服务端：`Board/BoardCard` 类型、REST（看板/卡片/动作/排序/合并全部/AI 拆分与确认）、WS `board_updated`、收件箱 `board` 事件（待评审/失败/整块跑完）；`server/src/board/` 调度器：依赖、并发上限（默认 2，全局 6）、同目录独占、失败同会话退避重试、单卡预算上限（不重试）、审批门（通过/打回写意见）、每卡 worktree 并合入依赖分支、自动提交与改动统计、按依赖顺序手动合并、合并冲突中止并报错、`~/.tandem/boards/` 落盘与 Host 重启续跑
+- [x] 前端：侧栏「任务看板」行（右侧数字=待评审+待审批+失败）、命令面板「打开任务看板」；桌面七列 + 原生拖动（只表达人的意图，不可投放的列变淡）+ 右侧详情抽屉；手机分组列表（「需要我」置顶、行内通过/打回/重试，按钮 ≥44px）+ 全屏详情；创建看板 / 新建与编辑卡片 / AI 拆分草稿 / 打回意见对话框；卡片会话不进侧栏，收件箱 board 事件点击跳转看板
+- [x] 测试：`server/test/board.test.ts`、`web/src/lib/board.test.ts`；`e2e/board.mjs`（mock provider + git 仓库，16 步 API 级：依赖顺序、并发、审批门、合并、冲突、重试、预算、工具审批、重启续跑）；`e2e/regression.mjs` 新增 2 条（桌面：侧栏入口/拖动放行/依赖等待/打回与通过/卡片会话不进侧栏；手机：分组列表/行内通过/全屏详情）
+- 保守取舍：路由用 `#/h/:hostId/b[/:boardId]`（复用 Host 激活）；列表以 2s 轮询为主、`board_updated` 只加速；待审批卡不占并发槽；默认手动合并（`mergePolicy` 可设 auto）；冲突不自动解决；`AI 拆分` 只出草稿；观察员/审批员角色不显示看板入口
+- 未做（v2）：运行时协调者追加卡（`BoardAddCards` 提案）、卡详情内嵌会话/分屏并排、AI 评审接入审批门、PR/CI 聚合、冲突自动解决、定时看板、批量放行/多选
+- 验证：`TANDEM_HOME=/tmp/tandem-board` 端口 8321；截图 `/tmp/board-shots/`（桌面 2552×1274：七列、抽屉、打回、拖动中、AI 拆分、新建卡片、收件箱、空态；手机 390×844：列表、详情、侧栏入口）
+
