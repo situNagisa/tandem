@@ -175,6 +175,16 @@ export function guardMemberRequest(
   if (pathname === '/api/commands' && upper === 'GET') return undefined;
   if (pathname.startsWith('/api/fs/') && upper === 'GET') return undefined;
 
+  if (pathname === '/api/search' && upper === 'GET') return undefined;
+  const readMatch = /^\/api\/sessions\/([^/]+)\/read$/.exec(pathname);
+  if (readMatch && upper === 'POST') {
+    const rec = host.getSession(decodeURIComponent(readMatch[1]!));
+    if (!memberCanSeeSession(principal, rec)) {
+      return { code: 404, message: '会话不存在' };
+    }
+    return undefined;
+  }
+
   if (pathname === '/api/sessions') {
     if (upper === 'GET') return undefined;
     if (upper === 'POST') {

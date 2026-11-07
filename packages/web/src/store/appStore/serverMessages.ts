@@ -690,6 +690,14 @@ export function createServerMessageHandler(
           reason: msg.reason,
           error: msg.error,
         })
+        // 用户正开着这个会话且页面可见：视为已读，同步清除其他端的未读标记。
+        if (
+          document.visibilityState === 'visible' &&
+          get().active?.hostId === hostId &&
+          get().active?.sessionId === msg.sessionId
+        ) {
+          void get().markSessionRead(hostId, msg.sessionId)
+        }
         break
       }
       case 'error': {

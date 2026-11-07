@@ -99,9 +99,11 @@ export interface SessionSummary {
   retryInfo?: RetryInfo;
   /** Host 重启后检测到未完成运行，按设置暂停等待用户确认（POST /api/sessions/:id/resume）。 */
   resumePaused?: boolean;
-  pinned?: boolean;        // 置顶
+  pinned?: boolean;        // 全局置顶（显示在侧栏「置顶」区）
+  pinnedInProject?: boolean; // 项目内固定（只在该项目分组内置顶，与全局置顶区分）
   pinnedTurns?: string[];  // 被 pin 的轮次（用户消息 id），轮次导航中特殊显示
   archived?: boolean;      // 归档（列表默认隐藏）
+  unread?: boolean;        // 回合已完成、用户尚未打开过；读取接口 POST /api/sessions/:id/read 清除
   env?: SessionEnv;        // 会话执行环境，用于侧栏按 项目/分支 自动归类
   importedFrom?: { source: ExternalSource; id: string }; // 从 Claude Code / Codex 导入的副本
   forkedFrom?: { sessionId: string; messageId?: string; title?: string }; // 分叉来源：会话页显示「分叉自」，父会话在分叉点显示子会话入口
@@ -168,7 +170,7 @@ export interface CreateSessionInput {
 }
 export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'max';
 // cwd：会话中途切换工作目录（下一轮生效，重新检测 env）
-export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'permissionMode' | 'pinned' | 'archived' | 'effort' | 'delegation' | 'cwd' | 'pinnedTurns'>>;
+export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'cwd' | 'pinnedTurns'>>;
 
 // ---------- 外部会话（本机已有的 Claude Code / Codex 会话） ----------
 // 原则：只读原软件的文件，绝不写回；"导入"= 复制成 Tandem 会话后继续（可换任意模型）。
@@ -182,6 +184,50 @@ export interface ExternalSession {
   messageCount: number;
   importedSessionId?: string; // 已导入过则给出对应 Tandem 会话 id
 }
+
+// ---------- 全文搜索（Host 本地索引，覆盖 Tandem 与外部会话） ----------
+export type SearchSource = 'tandem' | ExternalSource;
+export type SearchStatusFilter = 'all' | 'running' | 'waiting_permission' | 'error' | 'unread';
+export interface SearchFilters {
+  /** 只看某个来源；缺省 all。 */
+  source?: SearchSource | 'all';
+  /** 项目名（仓库名或 cwd basename）；缺省 all。 */
+  project?: string;
+  status?: SearchStatusFilter;
+  /** 归档会话默认不参与搜索。 */
+  includeArchived?: boolean;
+}
+export interface SearchHighlight {
+  start: number;
+  end: number;
+}
+export interface SearchHit {
+  source: SearchSource;
+  /** Tandem 会话 id；外部会话为原软件会话 id。 */
+  sessionId: string;
+  /** 命中消息 id；空会话只有标题命中时为空字符串。 */
+  messageId: string;
+  /** 命中消息在会话 messages 数组中的下标；-1 表示仅标题命中。 */
+  messageIndex: number;
+  title: string;
+  project: string;
+  role: 'user' | 'assistant';
+  /** 命中片段（已截取上下文，未转义）。 */
+  snippet: string;
+  /** 高亮区间，相对 snippet。 */
+  highlights: SearchHighlight[];
+  updatedAt: number;
+  score: number;
+}
+export interface SearchResponse {
+  q: string;
+  tookMs: number;
+  total: number;
+  hits: SearchHit[];
+}
+// GET /api/search?q=&filters=  -> SearchResponse
+// filters 为 SearchFilters 的 JSON（URL 编码）；也接受 source/project/status/includeArchived 单独查询参数。
+// 中文按字符 + bigram、英文按词建立倒排索引，短语命中由 Host 做精确过滤。
 
 // ---------- 配置迁移（换电脑不用重配） ----------
 // 导出包含账号（含明文 key）与客户端设置，用用户口令加密（scrypt + AES-256-GCM）。
@@ -749,6 +795,8 @@ export type BlockDelta =
 // GET    /api/sessions/:id/branches   -> { current?: string; branches: string[] }   cwd 所在仓库的本地分支
 // POST   /api/sessions/:id/checkout { branch, create?: boolean } -> SessionSummary  会话中途切换分支（有未提交改动时 409）
 // POST   /api/sessions/:id/worktree { branch? } -> SessionSummary  会话中途切到新 worktree 中继续（之后的工具都在 worktree 内执行）
+// POST   /api/sessions/:id/read       -> SessionSummary  标记已读（多端同步，清除 unread）
+// GET    /api/search?q=&filters=      -> SearchResponse  本机全文索引（Tandem + Claude Code / Codex）
 // GET    /api/sessions/:id/export     -> Session（完整）   POST /api/sessions/import { session: Session; cwd?: string } -> SessionSummary
 //        跨 Host 迁移会话：客户端从 A 导出、向 B 导入（cwd 可改为 B 上的目录），实现"中途更换主机"
 // GET    /api/fs/list?path=           -> FsEntry[]   目录选择器

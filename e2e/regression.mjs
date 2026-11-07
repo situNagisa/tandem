@@ -330,6 +330,22 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
       message('n2', 'assistant', '目录结构如下。', { model: 'mock-1' }),
       message('n3', 'user', '再列一下文件'),
     ]),
+    // 状态筛选用：专用未读会话（其他用例不打开它，避免提前清除未读）
+    mk('unreadonly', '未读筛选专用会话', [
+      message('uo1', 'user', '这个会话只用于未读筛选。'),
+      message('uo2', 'assistant', '完成后保持未读。', { model: 'mock-1' }),
+    ], { unread: true, updatedAt: Date.now() - 1700 }),
+    // 全文搜索：中文短语只出现在 s2，用于断言命中片段与跳转高亮
+    mk('search', '全文检索会话', [
+      message('s1', 'user', '帮我确认离线索引是否覆盖中文词句。'),
+      message('s2', 'assistant', 'Elasticsearch 索引已重建，中文短语检索正常。', {
+        model: 'mock-1',
+      }),
+      message('s3', 'user', '再看一下工具命令。'),
+      message('s4', 'assistant', '执行 npm run build 并检查 src/hello.ts。', {
+        model: 'mock-1',
+      }),
+    ], { updatedAt: Date.now() - 1800 }),
     mk('retry', '网络重试会话', [
       message('r1', 'user', '继续'),
       message('r2', 'assistant', '网络不好，稍后重试。'),
@@ -742,6 +758,31 @@ async function main() {
     const hostPort = await host.ready
     const base = `http://127.0.0.1:${hostPort}`
     const appUrl = `${base}/?token=${token}#/h/${hostId}`
+
+    // 全文搜索 API：中英文短语都能命中同一条消息，并返回片段/消息 id。
+    const zhSearch = await api(
+      base,
+      token,
+      `/api/search?q=${encodeURIComponent('中文短语')}`,
+    )
+    assert.ok(
+      zhSearch.hits.some(
+        (hit) =>
+          hit.sessionId === 'search' &&
+          hit.messageId === 's2' &&
+          hit.snippet.includes('中文短语'),
+      ),
+      `中文全文搜索未命中：${JSON.stringify(zhSearch.hits.slice(0, 2))}`,
+    )
+    const enSearch = await api(
+      base,
+      token,
+      `/api/search?q=${encodeURIComponent('Elasticsearch 索引')}`,
+    )
+    assert.ok(
+      enSearch.hits.some((hit) => hit.sessionId === 'search' && hit.messageId === 's2'),
+      `英文全文搜索未命中：${JSON.stringify(enSearch.hits.slice(0, 2))}`,
+    )
 
     // 团队：一次真实邀请 + 接受，供成员页/审计断言。
     const invite = await api(base, token, '/api/team/invites', {
@@ -1336,6 +1377,7 @@ async function main() {
       await row.getByRole('button', { name: '回退到此处' }).click()
       const dialog = page.getByRole('dialog', { name: '回退到此处' })
       await dialog.waitFor({ state: 'visible' })
+      await dialog.getByText('第 2 轮：检查文件').waitFor({ timeout: 5_000 })
       assert.match(await dialog.innerText(), /第 2 轮：检查文件/, '没有展示被回退的用户消息')
       withinViewport(await dialog.boundingBox(), DESKTOP, '回退对话框')
       await dialog.getByRole('button', { name: '取消', exact: true }).click()
@@ -2017,6 +2059,54 @@ async function main() {
         .first()
       await newSession.waitFor({ state: 'visible', timeout: 3_000 })
       await page.keyboard.press('Escape')
+    })
+
+    desktop('会话筛选：状态筛选与「已筛选 · 清除」', async (page) => {
+      const row = (id) => page.locator(`[data-session-row][data-session-id="${id}"]`)
+      await row('long').waitFor({ state: 'visible', timeout: 10_000 })
+      await page.getByRole('button', { name: '筛选会话' }).click()
+      await page.getByRole('menuitemradio', { name: '已完成未读' }).click()
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(250)
+      await row('unreadonly').waitFor({ state: 'visible', timeout: 5_000 })
+      assert.equal(await row('long').isVisible(), false, '状态筛选后仍显示其他会话')
+      const tag = page.getByRole('button', { name: /已筛选/ })
+      await tag.waitFor({ state: 'visible', timeout: 3_000 })
+      await tag.click()
+      await row('long').waitFor({ state: 'visible', timeout: 5_000 })
+      assert.equal(await page.getByRole('button', { name: /已筛选/ }).count(), 0, '清除后筛选标签仍在')
+    })
+
+    desktop('全文搜索：命中片段、打开会话并高亮消息', async (page) => {
+      await page.keyboard.press('Control+k')
+      const input = page.getByRole('textbox', { name: '搜索会话、命令与设置' })
+      await input.waitFor({ state: 'visible', timeout: 5_000 })
+      await input.fill('中文短语')
+      const hit = page
+        .locator('[data-search-hit]')
+        .filter({ hasText: '全文检索会话' })
+        .first()
+      await hit.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.ok(
+        (await hit.locator('mark.chat-match').count()) > 0,
+        '搜索命中没有高亮片段',
+      )
+      assert.ok(
+        ((await hit.textContent()) ?? '').includes('中文短语'),
+        '搜索命中片段缺少关键词',
+      )
+      await hit.click()
+      await page.waitForFunction(() => window.location.hash.includes('/s/search'), null, {
+        timeout: 10_000,
+      })
+      await page.waitForFunction(
+        () =>
+          document
+            .querySelector('[data-message-id="s2"]')
+            ?.classList.contains('msg-jump-hit') === true,
+        null,
+        { timeout: 12_000 },
+      )
     })
 
     desktop('快捷键：外观页由命令注册表生成、自定义生效、冲突提示', async (page) => {

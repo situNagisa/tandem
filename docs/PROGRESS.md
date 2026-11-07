@@ -286,3 +286,12 @@
 - [x] CLI：`tandem-host doctor [--checks …] [--json]` 输出同款报告，失败项退出码 1
 - [x] Web：设置-Host 管理每台 Host 增加「诊断」；诊断面板状态图标/说明/可复制修复命令、「复制报告」「重新检查」；账号连通性默认不执行；本机 Host 连接失败时提示里提供「运行诊断」
 - 验证：`TANDEM_HOME=/tmp/tandem-doctor` 端口 8302 + 本地 mock provider（8399，正常账号）与不存在地址（43991，坏账号）；坏账号 fail 且排第一、正常账号 ok，报告无 Key；截图 `/tmp/doctor-shots/`；`e2e/regression.mjs` 新增「Host 诊断：面板打开、失败项排在最前、报告不含 Key」；隔离 worktree `node scripts/check.mjs --skip-smoke` 全部通过（63/63 回归）
+
+## 迭代 33（2026-11-08）会话筛选 + 项目级固定 + 全文搜索
+- [x] 侧栏筛选：状态（全部/运行中/待审批/出错/已完成未读）、主机、项目、来源（Tandem/Claude Code/Codex）可组合；标题行显示「已筛选 · 清除」；归档会话默认隐藏
+- [x] 固定：会话支持「在项目中置顶」（`pinnedInProject`，与全局置顶区分）；项目组可固定到当前 Host 项目列表顶部，偏好随客户端保存
+- [x] 未读：主会话回合完成（done/error）置 `unread`，会话名加粗 + 强调小圆点；打开会话、回合结束时正在查看、切回前台均调用 `POST /api/sessions/:id/read`，经 Host 广播实现多端同步
+- [x] 全文索引：`server/src/search.ts` 纯 JS 倒排（无原生依赖），落盘 `~/.tandem/index/search.json`（600）；英文按词、中文按单字 + bigram + `Intl.Segmenter`；覆盖 Tandem 消息正文、外部会话正文、工具命令/文件路径；会话写入与外部文件 mtime 增量更新；归档默认排除，`includeArchived` 可含
+- [x] REST：`GET /api/search?q=&filters=` 返回 sessionId/source/messageId/messageIndex/snippet/highlights；`POST /api/sessions/:id/read`；成员只搜可见会话
+- [x] 命令面板：Ctrl/Cmd+K 会话分组改为全文搜索（多 Host 并行），显示高亮片段；选中打开会话（含外部只读会话）后滚动到命中消息并短暂高亮；新增「含已归档」勾选
+- 验证：`TANDEM_HOME=/tmp/tandem-search` + 端口 8301，302 个会话 × 50 条中英消息 + 假 Claude Code 外部会话；中英文短语、工具命令、归档开关、source 筛选均正确；查询 2–5ms（墙钟 <7ms，含 40ms 的宽泛查询仍 <200ms）；导入新会话与外部文件追加均增量命中；Playwright 截图 `/tmp/search-shots/`（未读、筛选、项目固定、搜索片段、Tandem/外部跳转高亮）；`e2e/regression.mjs` 新增状态筛选与全文搜索跳转用例，API 断言中英文短语

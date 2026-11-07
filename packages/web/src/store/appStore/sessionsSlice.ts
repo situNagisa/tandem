@@ -19,6 +19,7 @@ export type SessionsSlice = Pick<
   | 'startSession'
   | 'dispatchSession'
   | 'updateSession'
+  | 'markSessionRead'
   | 'forkSession'
   | 'deleteSession'
 >
@@ -77,6 +78,7 @@ export function createSessionsSlice(
       const conn = ensureConnection(hostId)
       conn?.subscribe(sessionId)
       core.syncChildren(hostId, sessionId)
+      if (summary?.unread) void get().markSessionRead(hostId, sessionId)
       // 系统提示注入段落：会话开头展开查看（与 WS 推送互为备份）
       void api
         .injections(host, sessionId)
@@ -259,6 +261,26 @@ export function createSessionsSlice(
         applySessionSummary(hostId, prev)
         toast(err instanceof Error ? err.message : '更新会话失败', 'error')
         return null
+      }
+    },
+
+    markSessionRead: async (hostId, sessionId) => {
+      const host = getHost(hostId)
+      if (!host) return
+      const rt = get().runtimes[hostId]
+      const active = get().active
+      const current =
+        rt?.sessions.find((s) => s.id === sessionId) ??
+        (active?.hostId === hostId && active.sessionId === sessionId ? active.summary : null)
+      if (current?.unread) {
+        const { unread: _unread, ...rest } = current
+        applySessionSummary(hostId, rest)
+      }
+      try {
+        const updated = await api.markSessionRead(host, sessionId)
+        applySessionSummary(hostId, updated)
+      } catch {
+        // 多端已读是尽力而为：离线时保留本地显示，下次打开再同步
       }
     },
 

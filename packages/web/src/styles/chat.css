@@ -145,6 +145,26 @@
   contain-intrinsic-size: auto 96px;
 }
 
+/* 全文搜索跳转：命中消息短暂高亮 */
+.msg-row.msg-jump-hit {
+  animation: msg-jump-highlight 2.8s ease-out;
+  border-radius: 8px;
+}
+@keyframes msg-jump-highlight {
+  0% {
+    background: color-mix(in srgb, var(--t-accent) 22%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-accent) 35%, transparent);
+  }
+  70% {
+    background: color-mix(in srgb, var(--t-accent) 12%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--t-accent) 18%, transparent);
+  }
+  100% {
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
 /* 操作条在行内占位，用负外边距抵掉列表间距；行高仍包含操作条，避免被 content-visibility 裁切 */
 .msg-row[data-actions="true"] {
   margin-bottom: -24px;

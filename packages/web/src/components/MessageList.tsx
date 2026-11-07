@@ -325,7 +325,14 @@ function MessageListInner({
         const el = document.querySelector<HTMLElement>(
           `[data-message-id="${CSS.escape(messageId)}"]`,
         )
-        el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        if (!el) return
+        const row = el.closest<HTMLElement>('.msg-row') ?? el
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        row.classList.remove('msg-jump-hit')
+        // 强制重启动画：连续搜索不同命中时也能看见高亮
+        void row.offsetWidth
+        row.classList.add('msg-jump-hit')
+        window.setTimeout(() => row.classList.remove('msg-jump-hit'), 2800)
       }
       window.setTimeout(scroll, 80)
       window.setTimeout(scroll, 300)

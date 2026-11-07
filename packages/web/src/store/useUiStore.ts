@@ -1,13 +1,21 @@
 import { create } from 'zustand'
 import type { MemoryScope } from '@tandem/protocol'
-import type { SettingsTab, Theme, Toast } from '../lib/types'
+import {
+  DEFAULT_SESSION_FILTER,
+  type SessionFilter,
+  type SettingsTab,
+  type Theme,
+  type Toast,
+} from '../lib/types'
 import type { InviteTarget } from '../lib/inviteLink'
 import {
   loadCollapsedProjects,
+  loadPinnedProjects,
   loadSidebarWidth,
   loadTheme,
   loadUiPrefs,
   saveCollapsedProjects,
+  savePinnedProjects,
   saveSidebarWidth,
   saveTheme,
   saveUiPrefs,
@@ -34,6 +42,10 @@ interface UiState {
   showSubagents: boolean
   showExternalSessions: boolean
   hiddenExternalSources: string[]
+  /** 侧栏会话筛选（状态 / 主机 / 项目 / 来源组合）。 */
+  sessionFilter: SessionFilter
+  /** 固定在侧栏顶部的项目分组 key。 */
+  pinnedProjects: string[]
   panelOpen: boolean
   changesOpen: boolean
   changesWidth: number
@@ -95,6 +107,9 @@ interface UiState {
   setShowSubagents: (show: boolean) => void
   setShowExternalSessions: (show: boolean) => void
   setExternalSourceVisible: (source: string, visible: boolean) => void
+  setSessionFilter: (patch: Partial<SessionFilter>) => void
+  clearSessionFilter: () => void
+  toggleProjectPinned: (key: string) => void
   setPanelOpen: (open: boolean) => void
   togglePanel: () => void
   setChangesOpen: (open: boolean) => void
@@ -159,6 +174,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   showSubagents: prefs.showSubagents ?? false,
   showExternalSessions: prefs.showExternalSessions ?? true,
   hiddenExternalSources: prefs.hiddenExternalSources ?? [],
+  sessionFilter: { ...DEFAULT_SESSION_FILTER },
+  pinnedProjects: loadPinnedProjects(),
   panelOpen: prefs.panelOpen ?? true,
   changesOpen: false,
   changesWidth: Math.min(760, Math.max(380, prefs.changesWidth ?? 520)),
@@ -235,6 +252,17 @@ export const useUiStore = create<UiState>((set, get) => ({
     const hiddenExternalSources = [...next]
     saveUiPrefs({ hiddenExternalSources })
     set({ hiddenExternalSources })
+  },
+  setSessionFilter: (patch) =>
+    set((s) => ({ sessionFilter: { ...s.sessionFilter, ...patch } })),
+  clearSessionFilter: () => set({ sessionFilter: { ...DEFAULT_SESSION_FILTER } }),
+  toggleProjectPinned: (key) => {
+    const current = get().pinnedProjects
+    const next = current.includes(key)
+      ? current.filter((item) => item !== key)
+      : [...current, key]
+    savePinnedProjects(next)
+    set({ pinnedProjects: next })
   },
   setPanelOpen: (open) => {
     saveUiPrefs({ panelOpen: open })

@@ -116,6 +116,8 @@ export interface AppState {
     sessionId: string,
     patch: UpdateSessionInput,
   ) => Promise<SessionSummary | null>
+  /** 标记已读并同步到 Host（多端共享未读状态）。 */
+  markSessionRead: (hostId: string, sessionId: string) => Promise<void>
   forkSession: (hostId: string, sessionId: string, messageId?: string) => Promise<SessionSummary | null>
   deleteSession: (hostId: string, sessionId: string, force?: boolean) => Promise<void>
   /** 单独停止一个 Task 子代理会话。 */

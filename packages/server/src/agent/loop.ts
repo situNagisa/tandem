@@ -573,6 +573,10 @@ export async function runTurn(
     // 本轮结束：清除运行意图（若还有排队消息则保留 queue，等 drainQueue）
     finishRun(host, rec);
     host.setStatus(rec, reason === 'error' ? 'error' : 'idle');
+    // 回合完成即未读；用户正在看时客户端会立刻调用 read 接口清除（多端同步）。
+    if ((rec.depth ?? 0) === 0 && !rec.evalRun && reason !== 'interrupted') {
+      rec.unread = true;
+    }
     host.store.markDirty(rec.id, true);
     host.hub.broadcastSession(rec.id, {
       type: 'turn_end',

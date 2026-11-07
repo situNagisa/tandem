@@ -40,6 +40,17 @@ interface CacheEntry {
   meta: Meta | null;
 }
 
+export interface ExternalIndexEntry {
+  source: ExternalSource;
+  id: string;
+  title: string;
+  cwd: string;
+  updatedAt: number;
+  file: string;
+  mtimeMs: number;
+  size: number;
+}
+
 export interface ExternalImportInput {
   profileId?: unknown;
   groupId?: unknown;
@@ -375,6 +386,7 @@ function parseClaudeFile(file: string, collect: boolean, fallbackId: string): Pa
   const messages: Message[] = [];
   let last: Message | undefined;
   let lastToolOnly = false;
+  let lineNo = 0;
 
   const start = (role: Message['role'], blockId: string, content: ContentBlock[], ts: number): void => {
     const message = messageFrom(role, blockId, content, ts);
@@ -388,6 +400,7 @@ function parseClaudeFile(file: string, collect: boolean, fallbackId: string): Pa
   };
 
   for (const line of lines) {
+    lineNo += 1;
     if (!line.trim()) continue;
     let o: Record<string, unknown>;
     try {
@@ -449,7 +462,8 @@ function parseClaudeFile(file: string, collect: boolean, fallbackId: string): Pa
         ? msg.id
         : typeof o.uuid === 'string' && o.uuid
           ? o.uuid
-          : randomUUID();
+          // 搜索命中后要能重新定位同一条消息：用文件 + 行号生成稳定 id
+          : `${fallbackId}:l${lineNo}`;
 
     if (role === 'user' && toolOnly) {
       // 同一轮的工具结果合并成一条用户消息
@@ -561,12 +575,14 @@ function parseCodexFile(file: string, collect: boolean, fallbackId: string, know
   let createdAt = 0;
   let updatedAt = 0;
   let count = 0;
+  let messageSeq = 0;
   const messages: Message[] = [];
 
   const push = (role: Message['role'], content: ContentBlock[], ts: number): void => {
     if (!content.length) return;
     count++;
-    if (collect) messages.push(messageFrom(role, randomUUID(), content, ts));
+    // 消息 id 稳定（按会话 + 序号），全文搜索跳转时重新解析仍能对上同一条。
+    if (collect) messages.push(messageFrom(role, `${fallbackId}:m${messageSeq++}`, content, ts));
   };
 
   const handleText = (role: 'user' | 'assistant', content: unknown, ts: number): void => {
@@ -951,6 +967,32 @@ export class ExternalSessionStore {
       if (from) map.set(`${from.source}:${from.id}`, rec.id);
     }
     return map;
+  }
+
+  /** 全文索引用：每个外部会话最新文件的 mtime/size（不解析正文，仅 stat + 轻量 meta）。 */
+  indexEntries(): ExternalIndexEntry[] {
+    const out = new Map<string, ExternalIndexEntry>();
+    for (const source of ['claude-code', 'codex'] as ExternalSource[]) {
+      for (const item of this.listFiles(source)) {
+        const meta = this.metaOf(source, item.file, item.fallbackId);
+        const stat = statSafe(item.file);
+        if (!meta || !stat) continue;
+        const key = `${source}:${meta.id}`;
+        const prev = out.get(key);
+        if (prev && prev.updatedAt >= meta.updatedAt) continue;
+        out.set(key, {
+          source,
+          id: meta.id,
+          title: meta.title,
+          cwd: meta.cwd,
+          updatedAt: meta.updatedAt,
+          file: item.file,
+          mtimeMs: stat.mtimeMs,
+          size: stat.size,
+        });
+      }
+    }
+    return [...out.values()];
   }
 
   /** since（毫秒时间戳）存在时只返回该时间之后有更新的会话，供增量刷新。 */

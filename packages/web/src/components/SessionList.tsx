@@ -32,6 +32,7 @@ import { basename, formatElapsed, formatRelative } from '../lib/format'
 import { rememberDir } from '../lib/storage'
 import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
+import { isSessionFilterActive, type SessionFilter } from '../lib/types'
 import { SessionStatusDot } from './StatusDot'
 import { Modal } from './ui/Modal'
 import { Button, IconButton } from './ui/Button'
@@ -83,8 +84,21 @@ function projectName(s: SessionSummary): string {
   return worktreeRepoName(s) || s.env?.repoName || basename(s.cwd) || '未命名项目'
 }
 
+/** 侧栏项目归组名；Sidebar 的筛选菜单复用同一口径。 */
+export function sessionProjectName(s: SessionSummary): string {
+  return projectName(s)
+}
+
 function isRunningStatus(status: SessionSummary['status']): boolean {
   return status === 'running' || status === 'waiting_permission' || status === 'retrying'
+}
+
+function matchesStatus(s: SessionSummary, filter: SessionFilter['status']): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'running') return s.status === 'running' || s.status === 'retrying';
+  if (filter === 'waiting_permission') return s.status === 'waiting_permission';
+  if (filter === 'error') return s.status === 'error';
+  return s.unread === true;
 }
 
 function buildGroups(
@@ -93,20 +107,28 @@ function buildGroups(
   externalSessions: ExternalItem[],
   query: string,
   showArchived: boolean,
+  filter: SessionFilter,
+  pinnedProjects: string[],
 ): { pinned: Array<{ hostId: string; session: SessionSummary }>; hosts: HostGroup[] } {
   const q = query.trim().toLowerCase()
   const pinned: Array<{ hostId: string; session: SessionSummary }> = []
   const groups: HostGroup[] = []
+  const allowTandem = filter.source === 'all' || filter.source === 'tandem'
+  const allowExternal =
+    filter.source === 'all' || filter.source === 'claude-code' || filter.source === 'codex'
 
   for (const h of hosts) {
+    if (filter.hostId !== 'all' && h.id !== filter.hostId) continue
     const rt = runtimes[h.id]
-    const all = rt?.sessions ?? EMPTY
+    const all = allowTandem ? (rt?.sessions ?? EMPTY) : EMPTY
     const matched = all.filter((s) => {
       if (showArchived) {
         if (!s.archived) return false
       } else if (s.archived) {
         return false
       }
+      if (!matchesStatus(s, filter.status)) return false
+      if (filter.project !== 'all' && projectName(s) !== filter.project) return false
       if (!q) return true
       return (
         s.title.toLowerCase().includes(q) ||
@@ -147,14 +169,16 @@ function buildGroups(
     }
 
     // 外部会话（Claude Code / Codex）按 cwd 并入对应项目；字段缺失时自然为空。
-    if (!showArchived) {
+    if (!showArchived && allowExternal && filter.status === 'all') {
       for (const ext of externalSessions) {
         if (ext.hostId !== h.id) continue
+        if (filter.source !== 'all' && ext.source !== filter.source) continue
+        const base = basename(ext.cwd) || '未命名项目'
+        if (filter.project !== 'all' && base !== filter.project) continue
         if (q) {
           const hay = `${ext.title} ${ext.cwd} ${ext.source}`.toLowerCase()
           if (!hay.includes(q)) continue
         }
-        const base = basename(ext.cwd) || '未命名项目'
         let group: ProjectGroup | null =
           [...map.values()].find((g) => (g.cwd && g.cwd === ext.cwd) || g.name === base) ?? null
         if (!group) {
@@ -175,10 +199,20 @@ function buildGroups(
     const projects = [...map.values()]
       .map((g) => ({
         ...g,
-        items: g.items.slice().sort((a, b) => b.updatedAt - a.updatedAt),
+        items: g.items
+          .slice()
+          .sort(
+            (a, b) =>
+              Number(!!b.pinnedInProject) - Number(!!a.pinnedInProject) ||
+              b.updatedAt - a.updatedAt,
+          ),
         externals: g.externals.slice().sort((a, b) => b.updatedAt - a.updatedAt),
       }))
       .sort((a, b) => {
+        // 项目级固定优先于普通项目；同类按最近活动排序
+        const ap = pinnedProjects.includes(a.key)
+        const bp = pinnedProjects.includes(b.key)
+        if (ap !== bp) return ap ? -1 : 1
         const at = Math.max(a.items[0]?.updatedAt ?? 0, a.externals[0]?.updatedAt ?? 0)
         const bt = Math.max(b.items[0]?.updatedAt ?? 0, b.externals[0]?.updatedAt ?? 0)
         return bt - at
@@ -207,6 +241,7 @@ function RowMenu({
   onClose,
   onRename,
   onTogglePin,
+  onTogglePinProject,
   onFork,
   onShare,
   onSaveEval,
@@ -218,6 +253,7 @@ function RowMenu({
   onClose: () => void
   onRename: () => void
   onTogglePin: () => void
+  onTogglePinProject: () => void
   onFork: () => void
   onShare: () => void
   onSaveEval: () => void
@@ -251,6 +287,12 @@ function RowMenu({
         onSelect={onTogglePin}
       >
         {state.session.pinned ? '取消置顶' : '置顶'}
+      </Menu.Item>
+      <Menu.Item
+        icon={state.session.pinnedInProject ? <PinOff size={14} /> : <Pin size={14} />}
+        onSelect={onTogglePinProject}
+      >
+        {state.session.pinnedInProject ? '取消项目置顶' : '在项目中置顶'}
       </Menu.Item>
       <Menu.Item icon={<Copy size={14} />} onSelect={onFork}>
         复制会话
@@ -305,6 +347,11 @@ export function SessionList({
   const setShowArchived = useUiStore((s) => s.setShowArchived)
   const showExternalSessions = useUiStore((s) => s.showExternalSessions)
   const hiddenExternalSources = useUiStore((s) => s.hiddenExternalSources)
+  const sessionFilter = useUiStore((s) => s.sessionFilter)
+  const pinnedProjects = useUiStore((s) => s.pinnedProjects)
+  const toggleProjectPinned = useUiStore((s) => s.toggleProjectPinned)
+  const clearSessionFilter = useUiStore((s) => s.clearSessionFilter)
+  const filterActive = isSessionFilterActive(sessionFilter)
   // 同事会提供 externalSessions（顶层数组或按 hostId 的 Record 均可），未就绪时为 undefined。
   const externalRaw = useAppStore(
     (s) => (s as typeof s & { externalSessions?: unknown }).externalSessions,
@@ -398,8 +445,17 @@ export function SessionList({
   )
 
   const { pinned, hosts: groups } = useMemo(
-    () => buildGroups(hosts, runtimes, visibleExternals, query, showArchived),
-    [hosts, runtimes, visibleExternals, query, showArchived],
+    () =>
+      buildGroups(
+        hosts,
+        runtimes,
+        visibleExternals,
+        query,
+        showArchived,
+        sessionFilter,
+        pinnedProjects,
+      ),
+    [hosts, runtimes, visibleExternals, query, showArchived, sessionFilter, pinnedProjects],
   )
 
   const anyRunning = useMemo(
@@ -478,6 +534,10 @@ export function SessionList({
         onRename: () => startRename(menu.session),
         onTogglePin: () =>
           void updateSession(menu.hostId, menu.session.id, { pinned: !menu.session.pinned }),
+        onTogglePinProject: () =>
+          void updateSession(menu.hostId, menu.session.id, {
+            pinnedInProject: !menu.session.pinnedInProject,
+          }),
         onFork: () => void forkSession(menu.hostId, menu.session.id),
         onShare: () => setShare({ hostId: menu.hostId, session: menu.session }),
         onSaveEval: () => setEvalSave({ hostId: menu.hostId, session: menu.session }),
@@ -573,14 +633,32 @@ export function SessionList({
                 <span className="size-1.5 rounded-full border border-current opacity-35" />
               )}
             </span>
-            <span className="min-w-0 flex-1 truncate text-[14px] leading-5">
+            <span
+              className={cn(
+                'min-w-0 flex-1 truncate text-[14px] leading-5',
+                s.unread && 'font-semibold',
+              )}
+            >
               {s.scheduledBy && (
                 <span title={`定时任务：${s.scheduledBy.name}`} className="mr-1 inline-block align-[-1px] text-muted">
                   <Clock size={12} />
                 </span>
               )}
+              {s.pinnedInProject && (
+                <span title="已在项目中置顶" className="mr-1 inline-block align-[-1px] text-text-tertiary">
+                  <Pin size={11} />
+                </span>
+              )}
               {s.title || '未命名会话'}
             </span>
+            {s.unread && (
+              <span
+                className="size-1.5 shrink-0 rounded-full bg-accent-strong"
+                title="未读"
+                aria-label="未读"
+                data-unread-dot="true"
+              />
+            )}
             <span className="relative flex h-full w-11 shrink-0 items-center justify-end md:w-[62px]">
               <span
                 className={cn(
@@ -646,6 +724,18 @@ export function SessionList({
         <span className="text-[12px] font-medium text-text-tertiary">
           {showArchived ? '已归档' : query ? '搜索结果' : '会话'}
         </span>
+        {filterActive && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearSessionFilter}
+            tooltip="清除状态 / 主机 / 项目 / 来源筛选"
+            tooltipSide="bottom"
+            className="h-5 rounded-full border border-accent-strong/25 bg-accent-soft/60 px-1.5 text-[11px] font-normal text-accent-text"
+          >
+            已筛选 <span aria-hidden>·</span> 清除
+          </Button>
+        )}
         <div className="ml-auto flex min-w-0 items-center gap-0.5">{headerActions}</div>
       </div>
 
@@ -657,11 +747,13 @@ export function SessionList({
             <p className="text-[13px] leading-5 text-muted">
               {query
                 ? '没有匹配的会话'
-                : showArchived
-                  ? '没有已归档的会话'
-                  : noHosts
-                    ? '还没有连接 Host，在左下角设置中添加。'
-                    : '还没有会话，从上方「新会话」开始。'}
+                : filterActive
+                  ? '没有符合筛选的会话'
+                  : showArchived
+                    ? '没有已归档的会话'
+                    : noHosts
+                      ? '还没有连接 Host，在左下角设置中添加。'
+                      : '还没有会话，从上方「新会话」开始。'}
             </p>
           </div>
         )}
@@ -707,6 +799,7 @@ export function SessionList({
 
           const renderProject = (hostId: string, project: ProjectGroup, indented: boolean) => {
             const projCollapsed = !!collapsed[project.key]
+            const projectPinned = pinnedProjects.includes(project.key)
             // 搜索时展示全部；平时外部会话默认只露最近 5 条，避免淹没 Tandem 会话
             const searching = !!query.trim()
             const externalExpanded = !!expandedExternal[project.key]
@@ -751,6 +844,25 @@ export function SessionList({
                       </span>
                     )}
                   </button>
+                  <IconButton
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleProjectPinned(project.key)
+                    }}
+                    label={projectPinned ? `取消固定项目 ${project.name}` : `固定项目 ${project.name}`}
+                    tooltip={projectPinned ? '取消固定项目' : '固定项目到侧栏顶部'}
+                    tooltipSide="top"
+                    aria-pressed={projectPinned}
+                    className={cn(
+                      'size-7! focus-visible:opacity-100 max-sm:size-11! [&_svg]:size-[13px]',
+                      projectPinned
+                        ? 'text-accent-text opacity-100'
+                        : 'opacity-100 md:opacity-0 md:group-hover/proj:opacity-100',
+                    )}
+                  >
+                    {projectPinned ? <Pin size={13} /> : <PinOff size={13} />}
+                  </IconButton>
                   <IconButton
                     size="sm"
                     onClick={(e) => {

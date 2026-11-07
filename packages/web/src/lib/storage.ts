@@ -100,6 +100,8 @@ export interface UiPrefs {
   showExternalSessions?: boolean
   /** 侧栏筛选里被关掉的来源（claude-code / codex）。 */
   hiddenExternalSources?: string[]
+  /** 固定在侧栏顶部的项目分组 key（`${hostId}:${项目名}`）。 */
+  pinnedProjects?: string[]
   /** 文件预览里的文件浏览器：是否展开、树宽。 */
   fileBrowserVisible?: boolean
   fileBrowserWidth?: number
@@ -142,6 +144,15 @@ export function loadCollapsedProjects(): Record<string, boolean> {
 
 export function saveCollapsedProjects(map: Record<string, boolean>): void {
   saveUiPrefs({ collapsedProjects: Object.keys(map).filter((k) => map[k]) })
+}
+
+export function loadPinnedProjects(): string[] {
+  const list = loadUiPrefs().pinnedProjects
+  return Array.isArray(list) ? list.filter((key): key is string => typeof key === 'string') : []
+}
+
+export function savePinnedProjects(list: string[]): void {
+  saveUiPrefs({ pinnedProjects: [...new Set(list)] })
 }
 
 export function loadRecentDirs(hostId: string): string[] {

@@ -38,6 +38,7 @@ import type { HookExecutionContext, HookRunResult } from './hooks.js';
 import { McpManager } from './mcp.js';
 import { PermissionRuleStore } from './permissions.js';
 import { ApprovalHistoryStore } from './approval.js';
+import { SearchIndex } from './search.js';
 import { SessionStore } from './store.js';
 import type {
   HostConfig,
@@ -107,6 +108,7 @@ import {
   getSession,
   info,
   listSessions,
+  markRead,
   markScheduled,
   recoverAfterRestart,
   resumePausedSession,
@@ -161,6 +163,8 @@ export class Host {
   readonly home: string;
   readonly profiles: ProfileStore;
   readonly store: SessionStore;
+  /** 会话全文索引（Tandem + 外部会话），落盘 ~/.tandem/index/search.json。 */
+  readonly searchIndex: SearchIndex;
   /** 外部会话（Claude Code / Codex）扫描缓存，只读。 */
   readonly external = new ExternalSessionStore(this);
   readonly checkpoints: CheckpointStore;
@@ -223,6 +227,10 @@ export class Host {
     });
     this.profiles = new ProfileStore(home);
     this.store = new SessionStore(home);
+    this.searchIndex = new SearchIndex(this, home);
+    // 会话写入/删除时增量更新全文索引（150ms 合并），首条搜索前也会强制 flush。
+    this.store.onDirty = (rec) => this.searchIndex.touchSession(rec.id);
+    this.store.onDelete = (id) => this.searchIndex.touchSession(id);
     this.checkpoints = new CheckpointStore(home);
     this.permissionRules = new PermissionRuleStore(home);
     this.approvalHistory = new ApprovalHistoryStore(home);
@@ -273,6 +281,7 @@ export class Host {
   }
 
   notifyExternalSessionsChanged(): void {
+    this.searchIndex.touchExternal();
     return notifyExternalSessionsChanged(this);
   }
 
@@ -333,6 +342,10 @@ export class Host {
 
   toSummary(rec: SessionRecord): SessionSummary {
     return toSummary(this, rec);
+  }
+
+  markRead(id: string): SessionRecord | undefined {
+    return markRead(this, id);
   }
 
   markScheduled(id: string, info: { id: string; name: string }): void {
@@ -703,6 +716,7 @@ export class Host {
     this.schedules.dispose();
     this.external.stopWatching();
     this.store.flush();
+    this.searchIndex.flush();
     this.usage.flush();
     await this.browser.dispose();
     await this.mcp.close();

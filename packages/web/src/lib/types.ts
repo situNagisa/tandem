@@ -73,6 +73,37 @@ export interface HostRuntime {
 export type ToolResultBlock = Extract<ContentBlock, { type: 'tool_result' }>
 
 /** 界面上的消息：多出本地乐观状态字段。 */
+export type SessionFilterStatus =
+  | 'all'
+  | 'running'
+  | 'waiting_permission'
+  | 'error'
+  | 'unread'
+
+/** 侧栏会话筛选：状态 / 主机 / 项目 / 来源可自由组合。 */
+export interface SessionFilter {
+  status: SessionFilterStatus
+  hostId: string
+  project: string
+  source: 'all' | 'tandem' | 'claude-code' | 'codex'
+}
+
+export const DEFAULT_SESSION_FILTER: SessionFilter = {
+  status: 'all',
+  hostId: 'all',
+  project: 'all',
+  source: 'all',
+}
+
+export function isSessionFilterActive(filter: SessionFilter): boolean {
+  return (
+    filter.status !== 'all' ||
+    filter.hostId !== 'all' ||
+    filter.project !== 'all' ||
+    filter.source !== 'all'
+  )
+}
+
 export interface UiMessage extends Message {
   local?: boolean
   queued?: boolean

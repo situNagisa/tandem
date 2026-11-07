@@ -4,6 +4,9 @@ import type {
   CreateSessionInput,
   PrMergeMethod,
   RewindInput,
+  SearchFilters,
+  SearchHit,
+  SearchStatusFilter,
   UpdateSessionInput,
 } from '@tandem/protocol';
 import { commitChanges, getChanges, getFileDiff, revertChanges } from '../changes.js';
@@ -12,10 +15,92 @@ import { bad, statusOf, str, type RouteDeps } from './common.js';
 import { memberCanAccessPath, memberCanSeeSession, principalOf } from '../team/access.js';
 import { recordAudit } from '../team/audit.js';
 import { expandHome } from '../util/path.js';
+import type { SessionRecord } from '../types.js';
 import path from 'node:path';
+
+const SEARCH_STATUS: SearchStatusFilter[] = [
+  'all',
+  'running',
+  'waiting_permission',
+  'error',
+  'unread',
+];
+
+function searchFilters(query: Record<string, unknown>): SearchFilters {
+  let base: SearchFilters = {};
+  if (typeof query.filters === 'string' && query.filters.trim()) {
+    try {
+      const parsed = JSON.parse(query.filters) as SearchFilters;
+      if (parsed && typeof parsed === 'object') base = parsed;
+    } catch {
+      // 非法 JSON 忽略，按单参数处理
+    }
+  }
+  const source = str(query.source) || base.source;
+  if (source === 'tandem' || source === 'claude-code' || source === 'codex') {
+    base.source = source;
+  } else {
+    delete base.source;
+  }
+  const status = str(query.status) || base.status;
+  base.status = SEARCH_STATUS.includes(status as SearchStatusFilter)
+    ? (status as SearchStatusFilter)
+    : 'all';
+  const project = str(query.project) || base.project;
+  if (project && project !== 'all') base.project = project;
+  else delete base.project;
+  const archived = str(query.includeArchived);
+  base.includeArchived =
+    archived === '1' || archived === 'true' || base.includeArchived === true;
+  return base;
+}
+
+function statusMatches(rec: SessionRecord | undefined, status: SearchStatusFilter): boolean {
+  if (!rec || status === 'all') return true;
+  if (status === 'running') return rec.status === 'running' || rec.status === 'retrying';
+  if (status === 'waiting_permission') return rec.status === 'waiting_permission';
+  if (status === 'error') return rec.status === 'error';
+  return rec.unread === true;
+}
 
 export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const { host } = deps;
+
+  // 会话全文搜索（Host 本地索引；结果按成员可见性与筛选条件过滤）。
+  app.get('/api/search', async (req) => {
+    const principal = principalOf(req);
+    const query = (req.query ?? {}) as Record<string, unknown>;
+    const q = str(query.q) || str(query.query);
+    if (!q) return { q: '', tookMs: 0, total: 0, hits: [] };
+    const filters = searchFilters(query);
+    const result = await host.searchIndex.search(q, filters);
+    const imported = new Set(
+      host
+        .listSessions()
+        .filter((rec) => rec.importedFrom)
+        .map((rec) => `${rec.importedFrom!.source}:${rec.importedFrom!.id}`),
+    );
+    const hits: SearchHit[] = [];
+    for (const hit of result.hits) {
+      if (hit.source === 'tandem') {
+        const rec = host.store.get(hit.sessionId);
+        if (!rec || rec.evalRun) continue;
+        if (!memberCanSeeSession(principal, rec)) continue;
+        if (rec.archived && !filters.includeArchived) continue;
+        if (!statusMatches(rec, filters.status ?? 'all')) continue;
+        if (filters.project && hit.project !== filters.project) continue;
+        hits.push({ ...hit, title: rec.title || '未命名会话', updatedAt: rec.updatedAt });
+      } else {
+        // 外部会话没有 Tandem 内状态；成员暂不开放外部原文搜索。
+        if (principal.kind !== 'owner') continue;
+        if (imported.has(`${hit.source}:${hit.sessionId}`)) continue;
+        if (filters.status && filters.status !== 'all') continue;
+        if (filters.project && hit.project !== filters.project) continue;
+        hits.push(hit);
+      }
+    }
+    return { ...result, total: hits.length, hits: hits.slice(0, 100) };
+  });
 
   app.get('/api/sessions', async (req) => {
     const principal = principalOf(req);
@@ -93,6 +178,13 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
     } catch (err) {
       return bad(reply, (err as Error).message, statusOf(err));
     }
+  });
+
+  app.post('/api/sessions/:id/read', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.markRead(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    return host.toSummary(rec);
   });
 
   app.delete('/api/sessions/:id', async (req, reply) => {

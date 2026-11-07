@@ -136,8 +136,10 @@ export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
     ...(rec.delegation ? { delegation: rec.delegation } : {}),
     // 可选字段只在有值时下发，老客户端不受影响
     ...(rec.pinned ? { pinned: true } : {}),
+    ...(rec.pinnedInProject ? { pinnedInProject: true } : {}),
     ...(rec.pinnedTurns && rec.pinnedTurns.length ? { pinnedTurns: [...rec.pinnedTurns] } : {}),
     ...(rec.archived ? { archived: true } : {}),
+    ...(rec.unread ? { unread: true } : {}),
     ...(rec.env ? { env: { ...rec.env } } : {}),
     ...(rec.parentId ? { parentId: rec.parentId } : {}),
     ...(typeof rec.depth === 'number' ? { depth: rec.depth } : {}),
@@ -181,6 +183,17 @@ export function snapshot(host: Host, id: string): { session: Session; pendingPer
 
 export function broadcastSummary(host: Host, rec: SessionRecord): void {
   host.hub.broadcastAll({ type: 'session_updated', session: host.toSummary(rec) });
+}
+
+/** 标记已读：清除未读并广播给所有端（手机/桌面共享同一份状态）。 */
+export function markRead(host: Host, id: string): SessionRecord | undefined {
+  const rec = host.store.get(id);
+  if (!rec) return undefined;
+  if (!rec.unread) return rec;
+  delete rec.unread;
+  host.store.markDirty(rec.id, false);
+  host.broadcastSummary(rec);
+  return rec;
 }
 
 export function setStatus(host: Host, rec: SessionRecord, status: SessionStatus): void {
@@ -300,6 +313,7 @@ export function updateSession(host: Host, id: string,
       model?: unknown;
       permissionMode?: unknown;
       pinned?: unknown;
+      pinnedInProject?: unknown;
       pinnedTurns?: unknown;
       archived?: unknown;
       effort?: unknown;
@@ -377,6 +391,10 @@ export function updateSession(host: Host, id: string,
   if (typeof patch.pinned === 'boolean') {
     if (patch.pinned) rec.pinned = true;
     else delete rec.pinned;
+  }
+  if (typeof patch.pinnedInProject === 'boolean') {
+    if (patch.pinnedInProject) rec.pinnedInProject = true;
+    else delete rec.pinnedInProject;
   }
   if (Array.isArray(patch.pinnedTurns)) {
     const ids = [...new Set(

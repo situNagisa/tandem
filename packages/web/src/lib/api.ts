@@ -65,6 +65,8 @@ import type {
   SaveEvalCaseInput,
   Schedule,
   ScheduleInput,
+  SearchFilters,
+  SearchResponse,
   SecretInput,
   SecretMeta,
   SecretsOverview,
@@ -323,6 +325,15 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(input),
     }),
+  markSessionRead: (h: HostConfig, id: string) =>
+    request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/read`, {
+      method: 'POST',
+    }),
+  search: (h: HostConfig, q: string, filters: SearchFilters = {}) =>
+    request<SearchResponse>(
+      h,
+      `/api/search${qs({ q, filters: JSON.stringify(filters) })}`,
+    ),
   deleteSession: (h: HostConfig, id: string, force = false) =>
     request<void>(
       h,

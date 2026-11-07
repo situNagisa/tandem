@@ -63,6 +63,9 @@ export default function App() {
   const setMobileSidebar = useUiStore((s) => s.setMobileSidebar)
   const setMobilePanel = useUiStore((s) => s.setMobilePanel)
   const hasSession = useAppStore((s) => !!s.active)
+  const activeHostId = useAppStore((s) => s.active?.hostId ?? null)
+  const activeSessionId = useAppStore((s) => s.active?.sessionId ?? null)
+  const activeUnread = useAppStore((s) => s.active?.summary?.unread ?? false)
 
   const [dragWidth, setDragWidth] = useState<number | null>(null)
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
@@ -118,6 +121,18 @@ export default function App() {
     ui.setChangesOpen(false)
     ui.closeFilePreview()
   }, [route])
+
+  // 回合在后台完成（页面不可见）或切回前台时，当前会话视为已读。
+  useEffect(() => {
+    if (!activeUnread || !activeHostId || !activeSessionId) return
+    const mark = () => {
+      if (document.visibilityState !== 'visible') return
+      void useAppStore.getState().markSessionRead(activeHostId, activeSessionId)
+    }
+    mark()
+    document.addEventListener('visibilitychange', mark)
+    return () => document.removeEventListener('visibilitychange', mark)
+  }, [activeUnread, activeHostId, activeSessionId])
 
   useEffect(() => {
     applyTheme(theme)

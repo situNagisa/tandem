@@ -63,6 +63,8 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   };
   if (raw.pinned === true) rec.pinned = true;
   else delete rec.pinned;
+  if (raw.pinnedInProject === true) rec.pinnedInProject = true;
+  else delete rec.pinnedInProject;
   if (Array.isArray(raw.pinnedTurns)) {
     const ids = [...new Set(
       raw.pinnedTurns.filter((id): id is string => typeof id === 'string' && id.length > 0),
@@ -74,6 +76,8 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   }
   if (raw.archived === true) rec.archived = true;
   else delete rec.archived;
+  if (raw.unread === true) rec.unread = true;
+  else delete rec.unread;
   const env = normalizeEnv(raw.env);
   if (env) rec.env = env;
   else delete rec.env;
@@ -271,6 +275,10 @@ export class SessionStore {
   private versions = new Map<string, number>();
   /** 消息分段日志的落盘进度：已写入条数、最后一条的内容、是否已迁移。 */
   private persistState = new Map<string, PersistState>();
+  /** Host 注入：会话写入后增量更新全文索引。 */
+  onDirty?: (rec: SessionRecord) => void;
+  /** Host 注入：会话删除后清理全文索引。 */
+  onDelete?: (id: string) => void;
 
   constructor(home: string) {
     this.dir = path.join(home, 'sessions');
@@ -363,6 +371,7 @@ export class SessionStore {
         // ignore
       }
     }
+    this.onDelete?.(id);
   }
 
   /** 标记需要写盘；bump 为 true 时更新 updatedAt（用户/助手消息、元数据变更）。 */
@@ -380,6 +389,7 @@ export class SessionStore {
         void this.write(id);
       }, SAVE_DELAY_MS),
     );
+    this.onDirty?.(rec);
   }
 
   /**
@@ -389,6 +399,7 @@ export class SessionStore {
   saveNow(id: string): void {
     const rec = this.records.get(id);
     if (!rec) return;
+    this.onDirty?.(rec);
     this.versions.set(id, (this.versions.get(id) ?? 0) + 1);
     const timer = this.timers.get(id);
     if (timer) {

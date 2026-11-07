@@ -1,14 +1,16 @@
+import { useMemo } from 'react'
 import { Inbox, PanelLeftClose, Plus, Search, Send, Settings, SlidersHorizontal, X } from 'lucide-react'
 import { useUiStore } from '../store/useUiStore'
 import { useAppStore } from '../store/useAppStore'
-import { modLabel } from '../lib/format'
+import { basename, modLabel } from '../lib/format'
 import { navigate, parseHash } from '../lib/router'
 import { cn } from '../lib/cn'
+import { isSessionFilterActive, type SessionFilter } from '../lib/types'
 import { isDesktop, isMacDesktop } from '../lib/desktop'
 import { HostSwitcher } from './HostSwitcher'
 import { Button, IconButton } from './ui/Button'
 import { Menu } from './ui/Menu'
-import { SessionList } from './SessionList'
+import { SessionList, sessionProjectName } from './SessionList'
 import { useInboxCount } from './inbox/InboxView'
 
 const EXTERNAL_SOURCES = [
@@ -37,6 +39,12 @@ export function Sidebar({
   const setInboxOpen = useUiStore((s) => s.setInboxOpen)
   const setDispatchOpen = useUiStore((s) => s.setDispatchOpen)
   const activeHostId = useAppStore((s) => s.activeHostId)
+  const hosts = useAppStore((s) => s.hosts)
+  const runtimes = useAppStore((s) => s.runtimes)
+  const sessionFilter = useUiStore((s) => s.sessionFilter)
+  const setSessionFilter = useUiStore((s) => s.setSessionFilter)
+  const clearSessionFilter = useUiStore((s) => s.clearSessionFilter)
+  const filterActive = isSessionFilterActive(sessionFilter)
   const teamRole = useAppStore((s) =>
     s.activeHostId ? s.runtimes[s.activeHostId]?.team?.role : undefined,
   )
@@ -50,6 +58,31 @@ export function Sidebar({
   )
 
   const row = 'group w-full min-h-11 justify-start gap-2 px-2.5 md:min-h-8'
+  const projectOptions = useMemo(() => {
+    const names = new Set<string>()
+    for (const host of hosts) {
+      const rt = runtimes[host.id]
+      for (const session of rt?.sessions ?? []) {
+        if (!session.parentId) names.add(sessionProjectName(session))
+      }
+      for (const external of rt?.externalSessions ?? []) {
+        if (!external.importedSessionId) names.add(basename(external.cwd) || '未命名项目')
+      }
+    }
+    return [...names].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+  }, [hosts, runtimes])
+  const hostLabel =
+    sessionFilter.hostId === 'all'
+      ? '全部'
+      : (hosts.find((host) => host.id === sessionFilter.hostId)?.name ?? '全部')
+  const sourceLabel =
+    sessionFilter.source === 'all'
+      ? '全部'
+      : sessionFilter.source === 'tandem'
+        ? 'Tandem'
+        : sessionFilter.source === 'claude-code'
+          ? 'Claude Code'
+          : 'Codex'
 
   const startNewSession = () => {
     // 已经在新会话页时导航不会重新挂载，需要显式清空输入并聚焦。
@@ -73,12 +106,112 @@ export function Sidebar({
           tooltipSide="bottom"
           aria-expanded={open}
           aria-haspopup="menu"
-          className={cn('max-sm:size-11', open && 'bg-[var(--t-bg-active)] text-text')}
+          className={cn(
+            'max-sm:size-11',
+            open && 'bg-[var(--t-bg-active)] text-text',
+            filterActive && 'text-accent-text',
+          )}
         >
           <SlidersHorizontal size={14} />
         </IconButton>
       )}
     >
+      <Menu.Label>状态</Menu.Label>
+      <Menu.RadioGroup
+        value={sessionFilter.status}
+        onValueChange={(value) =>
+          setSessionFilter({ status: value as SessionFilter['status'] })
+        }
+      >
+        <Menu.RadioItem value="all" keepOpen>
+          全部状态
+        </Menu.RadioItem>
+        <Menu.RadioItem value="running" keepOpen>
+          运行中
+        </Menu.RadioItem>
+        <Menu.RadioItem value="waiting_permission" keepOpen>
+          待审批
+        </Menu.RadioItem>
+        <Menu.RadioItem value="error" keepOpen>
+          出错
+        </Menu.RadioItem>
+        <Menu.RadioItem value="unread" keepOpen>
+          已完成未读
+        </Menu.RadioItem>
+      </Menu.RadioGroup>
+      <Menu.Separator />
+      <Menu.Sub>
+        <Menu.SubTrigger trailing={hostLabel}>主机</Menu.SubTrigger>
+        <Menu.SubContent aria-label="按主机筛选">
+          <Menu.RadioGroup
+            value={sessionFilter.hostId}
+            onValueChange={(value) => setSessionFilter({ hostId: value })}
+          >
+            <Menu.RadioItem value="all" keepOpen>
+              全部主机
+            </Menu.RadioItem>
+            {hosts.map((host) => (
+              <Menu.RadioItem key={host.id} value={host.id} keepOpen>
+                {host.name}
+              </Menu.RadioItem>
+            ))}
+          </Menu.RadioGroup>
+        </Menu.SubContent>
+      </Menu.Sub>
+      <Menu.Sub>
+        <Menu.SubTrigger
+          trailing={sessionFilter.project === 'all' ? '全部' : sessionFilter.project}
+        >
+          项目
+        </Menu.SubTrigger>
+        <Menu.SubContent aria-label="按项目筛选">
+          <Menu.RadioGroup
+            value={sessionFilter.project}
+            onValueChange={(value) => setSessionFilter({ project: value })}
+          >
+            <Menu.RadioItem value="all" keepOpen>
+              全部项目
+            </Menu.RadioItem>
+            {projectOptions.map((name) => (
+              <Menu.RadioItem key={name} value={name} keepOpen>
+                {name}
+              </Menu.RadioItem>
+            ))}
+          </Menu.RadioGroup>
+        </Menu.SubContent>
+      </Menu.Sub>
+      <Menu.Sub>
+        <Menu.SubTrigger trailing={sourceLabel}>来源</Menu.SubTrigger>
+        <Menu.SubContent aria-label="按来源筛选">
+          <Menu.RadioGroup
+            value={sessionFilter.source}
+            onValueChange={(value) =>
+              setSessionFilter({ source: value as SessionFilter['source'] })
+            }
+          >
+            <Menu.RadioItem value="all" keepOpen>
+              全部来源
+            </Menu.RadioItem>
+            <Menu.RadioItem value="tandem" keepOpen>
+              Tandem
+            </Menu.RadioItem>
+            <Menu.RadioItem value="claude-code" keepOpen>
+              Claude Code
+            </Menu.RadioItem>
+            <Menu.RadioItem value="codex" keepOpen>
+              Codex
+            </Menu.RadioItem>
+          </Menu.RadioGroup>
+        </Menu.SubContent>
+      </Menu.Sub>
+      {filterActive && (
+        <>
+          <Menu.Separator />
+          <Menu.Item onSelect={clearSessionFilter}>清除筛选</Menu.Item>
+        </>
+      )}
+      <Menu.Separator />
+      <Menu.Label>显示</Menu.Label>
       {EXTERNAL_SOURCES.map((source) => {
         const visible = showExternalSessions && !hiddenExternalSources.includes(source.value)
         return (
@@ -97,7 +230,6 @@ export function Sidebar({
           </Menu.CheckItem>
         )
       })}
-      <Menu.Separator />
       <Menu.CheckItem
         checked={showArchived}
         onCheckedChange={() => setShowArchived(!showArchived)}
