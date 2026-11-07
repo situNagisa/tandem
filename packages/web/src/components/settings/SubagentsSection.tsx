@@ -386,6 +386,7 @@ export function SubagentsSection() {
                 disabled={!draft.profileId}
               >
                 <option value="">默认 / Claude 别名</option>
+                <option value="auto">自动（按模型路由候选池）</option>
                 {modelChoices(profiles, draft.profileId, draft.groupId).map((model) => (
                   <option key={model} value={model}>
                     {model}

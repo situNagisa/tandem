@@ -34,6 +34,7 @@ import { copyText } from '../lib/clipboard'
 import { cn } from '../lib/cn'
 import { ApiError, api } from '../lib/api'
 import { useNow } from '../lib/hooks'
+import { prettyModel } from '../lib/modelName'
 import { runningSince } from '../lib/runClock'
 import {
   formatCost,
@@ -515,6 +516,14 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
           <div className="mt-0.5 font-mono text-[19px] leading-6 tabular-nums text-text">
             {formatCost(usage?.costUsd)}
           </div>
+          {summary?.autoRoute && (summary.routeSavings?.savedUsd ?? 0) > 0 && (
+            <div className="mt-1 text-[12px] leading-4 text-muted" data-route-savings>
+              自动路由节省约 {formatCost(summary.routeSavings?.savedUsd)}
+              {summary.routeSavings?.baselineModel
+                ? `（对比全程使用强力档 ${prettyModel(summary.routeSavings.baselineModel)}）`
+                : '（对比全程使用强力档）'}
+            </div>
+          )}
           <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5">
             {stats.map((s) => (
               <div key={s.label} className="flex min-w-0 items-baseline justify-between gap-2">
@@ -621,7 +630,11 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     return (
       <div className="space-y-0">
         <DetailRow label="模型">
-          <span className="font-mono text-[12px]">{summary?.model ?? '—'}</span>
+          <span className="font-mono text-[12px]">
+            {summary?.autoRoute
+              ? `自动 · ${summary.route?.model ?? summary.model ?? '—'}`
+              : (summary?.model ?? '—')}
+          </span>
         </DetailRow>
         <DetailRow label="账号">
           {profileName ??

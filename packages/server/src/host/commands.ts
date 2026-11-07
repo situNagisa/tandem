@@ -1,6 +1,6 @@
 // 斜杠命令、技能列表与会话内本地消息（提示/通知/快照）。
 import { randomUUID } from 'node:crypto';
-import type { Message, SkillInfo, SlashCommand } from '@tandem/protocol';
+import type { Message, ModelRouteDecision, SkillInfo, SlashCommand } from '@tandem/protocol';
 import { BUILTIN_NAMES, findCommandBody, listCommands as loadCommands } from '../agent/commands.js';
 import type { ParsedCommand } from '../agent/commands.js';
 import { bodyOfMemory } from '../memory.js';
@@ -167,13 +167,14 @@ export function titleFromCommand(host: Host, rec: SessionRecord, cmd: ParsedComm
   rec.title = title.slice(0, 40);
 }
 
-export function appendNotice(host: Host, rec: SessionRecord, text: string): void {
+export function appendNotice(host: Host, rec: SessionRecord, text: string, route?: ModelRouteDecision): void {
   const message: Message = {
     id: randomUUID(),
     role: 'assistant',
     content: [{ type: 'text', text }],
     createdAt: Date.now(),
     notice: true,
+    ...(route ? { route } : {}),
   };
   rec.messages.push(message);
   host.hub.broadcastSession(rec.id, {

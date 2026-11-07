@@ -87,6 +87,28 @@ export function priceForModel(profile: StoredProfile | undefined, model: string)
   return undefined;
 }
 
+/** 缓存读取价相对输入价的倍率（展示与计费保持一致）。 */
+export function cacheReadMultiplier(kind: ProviderKind): number {
+  return kind === 'anthropic' ? 0.1 : 0.5;
+}
+
+/** 缓存写入价相对输入价的倍率；不单独计费的 provider 返回 0。 */
+export function cacheWriteMultiplier(kind: ProviderKind): number {
+  return kind === 'anthropic' ? 1.25 : 0;
+}
+
+/** 把单价折算成菜单展示用的每百万 token 价格（含缓存命中）。 */
+export function priceInfoFor(price: Price, kind: ProviderKind): import('@tandem/protocol').ModelPriceInfo {
+  const round = (value: number) => Math.round(value * 1e6) / 1e6;
+  const write = cacheWriteMultiplier(kind);
+  return {
+    input: price.input,
+    output: price.output,
+    cacheRead: round(price.input * cacheReadMultiplier(kind)),
+    ...(write > 0 ? { cacheWrite: round(price.input * write) } : {}),
+  };
+}
+
 /** 计算单次调用花费（美元）。 */
 export function costOf(price: Price | undefined, inputTokens: number, outputTokens: number): number {
   if (!price) return 0;
@@ -107,8 +129,8 @@ export function costOfUsage(
   if (!price) return 0;
   const cacheRead = usage.cacheReadTokens ?? 0;
   const cacheWrite = usage.cacheWriteTokens ?? 0;
-  const readMultiplier = kind === 'anthropic' ? 0.1 : 0.5;
-  const writeMultiplier = kind === 'anthropic' ? 1.25 : 0;
+  const readMultiplier = cacheReadMultiplier(kind);
+  const writeMultiplier = cacheWriteMultiplier(kind);
   const cost =
     (usage.inputTokens * price.input +
       cacheRead * price.input * readMultiplier +

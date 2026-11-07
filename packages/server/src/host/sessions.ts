@@ -27,6 +27,7 @@ import type { Host } from '../host.js';
 import { DELEGATIONS, EFFORTS, PERMISSION_MODES, httpError, sanitizeVoiceSettings } from './helpers.js';
 import { notifyExternalSessionsChanged } from './external.js';
 import { normalizeHandoffSettings } from '../handoff.js';
+import { normalizeRoutingSettings } from '../routing-settings.js';
 
 export function info(host: Host): HostInfo {
   return {
@@ -51,6 +52,9 @@ export function settings(host: Host): HostSettings {
     context: normalizeContextSettings(host.config.context),
     ...(host.config.aiReview ? { aiReview: sanitizeAiReview(host.config.aiReview) } : {}),
     ...(host.config.handoff ? { handoff: normalizeHandoffSettings(host.config.handoff) } : {}),
+    ...(normalizeRoutingSettings(host.config.modelRouting)
+      ? { modelRouting: normalizeRoutingSettings(host.config.modelRouting)! }
+      : {}),
     sandbox: host.sandbox.get(),
   };
 }
@@ -100,6 +104,11 @@ export function updateSettings(host: Host, input: Partial<HostSettings>): HostSe
     if (next) host.config.handoff = next;
     else delete host.config.handoff;
   }
+  if (input.modelRouting !== undefined) {
+    const next = normalizeRoutingSettings(input.modelRouting);
+    if (next) host.config.modelRouting = next;
+    else delete host.config.modelRouting;
+  }
   saveHostSettings(host.home, {
     resumeOnRestart: host.settings().resumeOnRestart,
     ...(host.config.defaultDelegation ? { defaultDelegation: host.config.defaultDelegation } : {}),
@@ -107,6 +116,7 @@ export function updateSettings(host: Host, input: Partial<HostSettings>): HostSe
     context: normalizeContextSettings(host.config.context),
     ...(host.config.aiReview ? { aiReview: sanitizeAiReview(host.config.aiReview) } : {}),
     ...(host.config.handoff ? { handoff: normalizeHandoffSettings(host.config.handoff) } : {}),
+    modelRouting: normalizeRoutingSettings(host.config.modelRouting) ?? null,
   });
   return host.settings();
 }
@@ -164,6 +174,9 @@ export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
     profileId: rec.profileId,
     ...(rec.groupId ? { groupId: rec.groupId } : {}),
     model: rec.model,
+    ...(rec.autoRoute ? { autoRoute: true } : {}),
+    ...(rec.route ? { route: { ...rec.route, scores: { ...rec.route.scores } } } : {}),
+    ...(rec.routeSavings ? { routeSavings: { ...rec.routeSavings } } : {}),
     permissionMode: rec.permissionMode,
     status: rec.status,
     ...(rec.retryInfo ? { retryInfo: { ...rec.retryInfo } } : {}),
@@ -247,6 +260,7 @@ export async function createSession(host: Host, input: {
     profileId?: unknown;
     groupId?: unknown;
     model?: unknown;
+    autoRoute?: unknown;
     permissionMode?: unknown;
     effort?: unknown;
     delegation?: unknown;
@@ -271,8 +285,10 @@ export async function createSession(host: Host, input: {
     typeof input.groupId === 'string' && input.groupId.trim() ? input.groupId.trim() : undefined;
   if (groupId && !profile.groups?.some((g) => g.id === groupId)) throw new Error('分组不存在');
   const effective = effectiveProfile(profile, groupId);
+  const requestedModel = typeof input.model === 'string' ? input.model.trim() : '';
+  const autoRoute = input.autoRoute === true || requestedModel === 'auto';
   const model =
-    (typeof input.model === 'string' && input.model.trim()) ||
+    (!autoRoute && requestedModel) ||
     effective.defaultModel ||
     effective.models[0] ||
     '';
@@ -317,6 +333,7 @@ export async function createSession(host: Host, input: {
     profileId,
     ...(groupId ? { groupId } : {}),
     model,
+    ...(autoRoute ? { autoRoute: true } : {}),
     permissionMode,
     ...(effort ? { effort } : {}),
     delegation,
@@ -351,6 +368,7 @@ export function updateSession(host: Host, id: string,
       profileId?: unknown;
       groupId?: unknown;
       model?: unknown;
+      autoRoute?: unknown;
       permissionMode?: unknown;
       pinned?: unknown;
       pinnedInProject?: unknown;
@@ -427,7 +445,19 @@ export function updateSession(host: Host, id: string,
       delete rec.groupId;
     }
   }
-  if (typeof patch.model === 'string' && patch.model.trim()) rec.model = patch.model.trim();
+  if (typeof patch.model === 'string' && patch.model.trim()) {
+    const nextModel = patch.model.trim();
+    if (nextModel === 'auto') {
+      rec.autoRoute = true;
+    } else {
+      rec.model = nextModel;
+      delete rec.autoRoute;
+    }
+  }
+  if (typeof patch.autoRoute === 'boolean') {
+    if (patch.autoRoute) rec.autoRoute = true;
+    else delete rec.autoRoute;
+  }
   if (typeof patch.pinned === 'boolean') {
     if (patch.pinned) rec.pinned = true;
     else delete rec.pinned;

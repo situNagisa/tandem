@@ -93,6 +93,8 @@ export interface HostConfig {
   aiReview?: import('@tandem/protocol').AiReviewSettings;
   /** 额度将尽时的默认交接策略。 */
   handoff?: import('@tandem/protocol').HandoffSettings;
+  /** 自动模型路由：候选池与偏好。 */
+  modelRouting?: import('@tandem/protocol').ModelRoutingSettings;
   relay?: RelayConfig;
 }
 
@@ -129,6 +131,18 @@ export interface SessionRecord extends Session {
   board?: { boardId: string; cardId: string };
   /** 额度将尽时的会话交接状态（持久化，随 SessionSummary 下发）。 */
   handoff?: import('@tandem/protocol').HandoffState;
+  /** 自动模型路由的运行态：升级偏移、连续简单成功与失败标记（持久化，不下发）。 */
+  routeState?: {
+    tierBias: number;
+    simpleSuccesses: number;
+    toolFailStreak: number;
+    lastFailed: boolean;
+    lastTier?: import('@tandem/protocol').ModelTier;
+    lastModel?: string;
+    /** 失败后下一轮至少升到这一档（成功后清除）。 */
+    escalateFloor?: number;
+    lastTrigger?: 'failure' | 'simple-success';
+  };
   /** 最近一次配额预估（运行态，随 summary/context 下发）。 */
   quota?: import('@tandem/protocol').QuotaEstimate;
 }

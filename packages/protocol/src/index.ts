@@ -93,6 +93,66 @@ export type SessionStatus = 'idle' | 'running' | 'waiting_permission' | 'retryin
 /** 委派策略：会话级控制主会话如何/是否使用 Task 子代理。 */
 export type DelegationStrategy = 'orchestrate' | 'more' | 'less' | 'none';
 
+// ---------- 自动模型路由 ----------
+/** 候选模型的档位：快速（省钱）/ 均衡 / 强力（质量）。 */
+export type ModelTier = 'fast' | 'balanced' | 'power';
+/** 路由偏好：省钱优先 / 均衡 / 质量优先。 */
+export type RoutePreference = 'cost' | 'balanced' | 'quality';
+/** 候选池的一项（账号 › 分组 › 模型），由用户在「设置 → 模型路由」勾选。 */
+export interface RouteCandidate {
+  profileId: string;
+  groupId?: string;
+  model: string;
+  tier: ModelTier;
+}
+export interface ModelRoutingSettings {
+  candidates: RouteCandidate[];
+  preference: RoutePreference;
+  /** 可选：用小模型判断难度（一次很小的请求，默认关闭）。 */
+  judge?: boolean;
+}
+/** 本轮路由打分明细（会话提示行 hover 展示）。 */
+export interface RouteScores {
+  /** 0–100，越高越难。 */
+  complexity: number;
+  messageChars: number;
+  keywords: string[];
+  hasImage: boolean;
+  contextTokens: number;
+  /** 本轮之前已累计的工具调用深度。 */
+  toolDepth: number;
+  previousFailed: boolean;
+  /** 上一轮模型自述不确定。 */
+  uncertain: boolean;
+  delegation: DelegationStrategy;
+  /** 0–1：预算/限流压力。 */
+  budgetPressure: number;
+  preference: RoutePreference;
+  /** 失败升级带来的档位偏移。 */
+  tierBias: number;
+  simpleSuccesses: number;
+  toolFailStreak: number;
+  judge?: 'easy' | 'medium' | 'hard';
+  escalated?: boolean;
+  downgraded?: boolean;
+}
+export interface ModelRouteDecision {
+  profileId: string;
+  groupId?: string;
+  model: string;
+  tier: ModelTier;
+  /** 一句话理由，如「简单改名」「连续工具失败，升级一档」。 */
+  reason: string;
+  scores: RouteScores;
+  at: number;
+}
+/** 自动路由节省统计（对比全程使用最强候选）。 */
+export interface AutoRouteSavings {
+  savedUsd: number;
+  baselineModel: string;
+  calls: number;
+}
+
 export interface RetryInfo {
   /** 第几次重试（从 1 开始）。 */
   attempt: number;
@@ -108,6 +168,12 @@ export interface SessionSummary {
   profileId: string;
   groupId?: string;        // 选用账号下的哪个分组（无分组账号不填）
   model: string;
+  /** 自动模型路由：每轮在「设置 → 模型路由」候选池中选择模型。 */
+  autoRoute?: boolean;
+  /** 最近一次自动路由决策（当前生效模型与理由）。 */
+  route?: ModelRouteDecision;
+  /** 自动路由累计节省（对比全程使用强力档）。 */
+  routeSavings?: AutoRouteSavings;
   permissionMode: PermissionMode;
   effort?: ReasoningEffort; // 思考强度：映射到 Anthropic thinking budget / OpenAI reasoning_effort；模型不支持时忽略
   /** 委派策略；缺省按 Host 设置（默认 less）。 */
@@ -246,7 +312,9 @@ export interface CreateSessionInput {
   cwd: string;
   profileId: string;
   groupId?: string;
+  /** 传 'auto' 表示启用自动模型路由（仍需 profileId 作为回退账号）。 */
   model?: string;
+  autoRoute?: boolean;
   permissionMode?: PermissionMode;
   effort?: ReasoningEffort;
   delegation?: DelegationStrategy;
@@ -255,7 +323,7 @@ export interface CreateSessionInput {
 }
 export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'max';
 // cwd：会话中途切换工作目录（下一轮生效，重新检测 env）
-export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'cwd' | 'pinnedTurns'>>;
+export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'autoRoute' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'cwd' | 'pinnedTurns'>>;
 
 // ---------- 外部会话（本机已有的 Claude Code / Codex 会话） ----------
 // 原则：只读原软件的文件，绝不写回；"导入"= 复制成 Tandem 会话后继续（可换任意模型）。
@@ -327,6 +395,14 @@ export interface ModelInfo {
   id: string; displayName?: string; contextWindow?: number;
   efforts?: ReasoningEffort[]; // 该模型支持的思考强度档位；缺省表示未知（客户端按 provider 默认显示）；[] 表示不支持思考
 }
+/** 参考单价（每百万 token 美元）；缓存价按 provider 缓存放大的输入价折算。 */
+export interface ModelPriceInfo {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+}
+// GET /api/models/prices?profileId=&groupId= -> { prices: Record<model, ModelPriceInfo> }
 // 思考强度能力来源：provider 模型列表接口若提供（如 OpenRouter supported_parameters、Anthropic models 的 capabilities）则用之；
 // 否则 Host 内置能力表按模型 id 前缀匹配（如 claude-*-4/4.5/5 支持 thinking；o1/o3/o4/gpt-5 系列支持 reasoning_effort；deepseek-reasoner 不可调）。
 // GET /api/models/capabilities?profileId=&groupId=&model= -> ModelInfo   单个模型的能力（含 efforts、contextWindow）
@@ -352,6 +428,8 @@ export interface Message {
   model?: string;
   /** 服务端记录的低调提示（如模型不支持思考强度），界面以单行灰字展示。 */
   notice?: boolean;
+  /** 自动路由切换提示：本轮实际使用的模型与打分明细（hover 展示）。 */
+  route?: ModelRouteDecision;
   /** 压缩摘要消息：参与模型请求，但界面不直接展示（由 compaction 提示展开查看）。 */
   summary?: boolean;
   /** 自动/手动压缩后的单行提示，界面可展开查看摘要全文。 */
@@ -537,6 +615,8 @@ export interface HostSettings {
   aiReview?: AiReviewSettings;
   /** 配额将尽时的默认交接策略。 */
   handoff?: HandoffSettings;
+  /** 自动模型路由：候选池、偏好与小模型难度判断。 */
+  modelRouting?: ModelRoutingSettings;
   /** 命令沙箱与网络白名单（~/.tandem/sandbox.json）。 */
   sandbox?: SandboxSettings;
 }

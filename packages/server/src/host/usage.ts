@@ -5,6 +5,7 @@ import type {
   InjectionSegment,
   ListModelsInput,
   ModelInfo,
+  ModelPriceInfo,
 } from '@tandem/protocol';
 import { buildSystemPromptParts } from '../agent/prompt.js';
 import { normalizeContextSettings } from '../context-settings.js';
@@ -17,6 +18,7 @@ import {
 import { listModels as fetchModelList } from '../providers/index.js';
 import type { ListModelsResult } from '../providers/index.js';
 import { applyModelCapabilities } from '../providers/capabilities.js';
+import { priceForModel, priceInfoFor } from '../usage.js';
 import type { SessionRecord } from '../types.js';
 import type { Host } from '../host.js';
 import { formatUsd } from './helpers.js';
@@ -156,8 +158,8 @@ export function contextFor(host: Host, rec: SessionRecord): ContextBreakdown {
   const quota = host.estimateQuota(rec);
   // 设置可能在会话期间改过：返回时用当前阈值覆盖旧快照
   if (rec.context) return { ...rec.context, autoCompact, quota };
-  const profile = host.profileFor(rec.profileId, rec.groupId);
-  const model = rec.model || profile?.defaultModel || '';
+  const profile = host.profileFor(rec.route?.profileId ?? rec.profileId, rec.route?.groupId ?? rec.groupId);
+  const model = rec.route?.model || rec.model || profile?.defaultModel || '';
   const system = host.buildSystemFor(rec).system;
   const tools = host.toolDefinitions(rec);
   const messages = trimOldToolResults(
@@ -180,11 +182,12 @@ export function contextFor(host: Host, rec: SessionRecord): ContextBreakdown {
   };
 }
 
-export function assertBudget(host: Host, rec: SessionRecord, model: string): void {
+export function assertBudget(host: Host, rec: SessionRecord, model: string,
+    scope?: { profileId?: string; groupId?: string }): void {
   host.boards.assertCardBudget(rec);
   const status = host.budgets.blockingRule({
-    profileId: rec.profileId,
-    groupId: rec.groupId,
+    profileId: scope?.profileId ?? rec.profileId,
+    groupId: scope?.groupId ?? rec.groupId,
     model,
   });
   if (!status) return;
@@ -241,6 +244,20 @@ export function listModels(host: Host, input: ListModelsInput): Promise<ListMode
     ? host.profileFor(input.profileId, input.groupId)
     : undefined;
   return fetchModelList(input, profile);
+}
+
+/** 菜单参考单价：账号覆盖优先，其次内置表；每百万 token 美元。 */
+export function modelPrices(host: Host, profileId: string,
+    groupId?: string): Record<string, ModelPriceInfo> {
+  const profile = host.profileFor(profileId, groupId);
+  if (!profile) return {};
+  const models = profile.models.length ? profile.models : [profile.defaultModel].filter(Boolean);
+  const out: Record<string, ModelPriceInfo> = {};
+  for (const model of models) {
+    const price = priceForModel(profile, model);
+    if (price) out[model] = priceInfoFor(price, profile.kind);
+  }
+  return out;
 }
 
 export async function modelCapabilities(host: Host, profileId: string,

@@ -137,6 +137,7 @@ import {
   injectionsFor,
   listModels,
   modelCapabilities,
+  modelPrices,
   observeBudgets,
   promptOptions,
   recordInjections,
@@ -429,7 +430,7 @@ export class Host {
     return findModelForAlias(this, alias, preferredProfileId, preferredGroupId);
   }
 
-  subagentConfig(parent: SessionRecord, presetName?: string, modelOverride?: string): { profileId: string; groupId?: string; model: string; effort?: ReasoningEffort; permissionMode: PermissionMode; delegation: DelegationStrategy; toolWhitelist?: string[]; systemPromptExtra?: string; presetName?: string; } {
+  subagentConfig(parent: SessionRecord, presetName?: string, modelOverride?: string): { profileId: string; groupId?: string; model: string; autoRoute?: boolean; effort?: ReasoningEffort; permissionMode: PermissionMode; delegation: DelegationStrategy; toolWhitelist?: string[]; systemPromptExtra?: string; presetName?: string; } {
     return subagentConfig(this, parent, presetName, modelOverride);
   }
 
@@ -449,8 +450,8 @@ export class Host {
     return keysUnavailableMessage(this, profileId, groupId, errors);
   }
 
-  assertBudget(rec: SessionRecord, model: string): void {
-    return assertBudget(this, rec, model);
+  assertBudget(rec: SessionRecord, model: string, scope?: { profileId?: string; groupId?: string }): void {
+    return assertBudget(this, rec, model, scope);
   }
 
   allowBudgetOnce(sessionId: string): boolean {
@@ -508,6 +509,10 @@ export class Host {
 
   modelCapabilities(profileId: string, groupId: string | undefined, model: string): Promise<ModelInfo | undefined> {
     return modelCapabilities(this, profileId, groupId, model);
+  }
+
+  modelPrices(profileId: string, groupId?: string) {
+    return modelPrices(this, profileId, groupId);
   }
 
   delegationFor(rec: SessionRecord): DelegationStrategy {
@@ -588,6 +593,7 @@ export class Host {
     profileId?: unknown;
     groupId?: unknown;
     model?: unknown;
+    autoRoute?: unknown;
     permissionMode?: unknown;
     effort?: unknown;
     delegation?: unknown;
@@ -604,6 +610,7 @@ export class Host {
       profileId?: unknown;
       groupId?: unknown;
       model?: unknown;
+      autoRoute?: unknown;
       permissionMode?: unknown;
       pinned?: unknown;
       pinnedTurns?: unknown;

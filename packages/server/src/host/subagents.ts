@@ -16,7 +16,7 @@ import type { Host } from '../host.js';
 
 export function subagentConfig(host: Host, parent: SessionRecord,
     presetName?: string,
-    modelOverride?: string): { profileId: string; groupId?: string; model: string; effort?: ReasoningEffort; permissionMode: PermissionMode; delegation: DelegationStrategy; toolWhitelist?: string[]; systemPromptExtra?: string; presetName?: string; } {
+    modelOverride?: string): { profileId: string; groupId?: string; model: string; autoRoute?: boolean; effort?: ReasoningEffort; permissionMode: PermissionMode; delegation: DelegationStrategy; toolWhitelist?: string[]; systemPromptExtra?: string; presetName?: string; } {
   const preset = presetName ? host.subagentPresets.resolve(presetName, parent.cwd) : undefined;
   let profileId = parent.profileId;
   let groupId = parent.groupId;
@@ -29,6 +29,8 @@ export function subagentConfig(host: Host, parent: SessionRecord,
   }
 
   let model = modelOverride?.trim() || preset?.model?.trim() || '';
+  let autoRoute = model === 'auto';
+  if (autoRoute) model = '';
   const alias = modelAliasOf(model);
   if (alias) {
     const found = host.findModelForAlias(alias, profileId, groupId);
@@ -49,6 +51,7 @@ export function subagentConfig(host: Host, parent: SessionRecord,
     profileId,
     ...(groupId ? { groupId } : {}),
     model,
+    ...(autoRoute ? { autoRoute: true } : {}),
     ...((preset?.effort ?? parent.effort) ? { effort: preset?.effort ?? parent.effort } : {}),
     permissionMode: preset?.permissionMode ?? parent.permissionMode,
     delegation: preset?.delegation ?? 'less',
@@ -79,6 +82,7 @@ export async function runSubagent(host: Host, parent: SessionRecord,
     profileId: config.profileId,
     ...(config.groupId ? { groupId: config.groupId } : {}),
     model: config.model,
+    ...(config.autoRoute ? { autoRoute: true } : {}),
     permissionMode: config.permissionMode,
     ...(config.effort ? { effort: config.effort } : {}),
     delegation: config.delegation,

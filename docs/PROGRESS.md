@@ -355,3 +355,9 @@
 - [x] 冲突辅助：`MergeResult.conflicts` 采集冲突文件；`result.conflictFiles` 落盘；抽屉列文件 + 「让 agent 解决冲突」（`action=resolve`，同 worktree 新一轮），完成后再由用户点合并
 - [x] 验证：`TANDEM_HOME=/tmp/tandem-board2` 端口 8341、本地 mock（OpenAI SSE，支持 ProposeCards/评审 JSON/Write/Bash）、`/tmp/board2-repo` + bare origin + 假 gh；11 项 API/Playwright 全过（提议草稿/接受/自动接受、AI 评审 blocker/修复/仍然通过、冲突列表/解决/再合并、PR 聚合与 CI、看板分屏、无 origin 指引、手机 390×844）；截图 `/tmp/board2-shots/`；`e2e/regression.mjs` 新增「任务看板 v2」用例
 - 保守取舍：自动接受只在整批 ≤N 时全接受，超过则全留草稿；AI 评审超时/失败按无 blocker 处理（仍受审批门约束）；PR 集成分支失败时保留分支以便排查；冲突解决不自动合并
+
+## 迭代 39（2026-11-08）自动模型路由
+- [x] 协议：`ModelRoutingSettings/RouteCandidate/ModelRouteDecision/RouteScores`、会话 `autoRoute/route/routeSavings`、`Message.route`、`ModelPriceInfo`、`HostSettings.modelRouting`；会话 PATCH 支持 `model:'auto'` 或 `autoRoute`
+- [x] 服务端：`model-routing.ts` 纯规则打分（消息长度/关键词/图片/上下文窗口/上轮失败/自述不确定/工具深度/委派/预算与 Key 可用性），按快速·均衡·强力档位与省钱·均衡·质量偏好选模型；可选小模型判难度（默认关）；连续 2 次工具失败或 JSON 输出无效升一档，连续 3 轮简单成功回落；每次切换插入带打分明细的提示行；统计相对强力档的节省
+- [x] 前端：模型菜单顶部「自动」+ 每模型输入/输出/缓存参考单价；自动模式按钮显示「自动 · 当前模型名」；右栏用量卡显示「自动路由节省约 $x」；设置新增「模型路由」页（账号›分组›模型勾选、档位、偏好、难度判断）；子代理预设与看板卡片模型可选「自动」
+- 验证：`TANDEM_HOME=/tmp/tandem-route` 端口 8342 + 本地 mock（3 模型，可触发双工具失败）；简单→快速、长难→强力、失败→升级、连续 3 次简单成功→回落；截图 `/tmp/route-shots/`；`e2e/regression.mjs` 新增回归；`node scripts/check.mjs` 全过

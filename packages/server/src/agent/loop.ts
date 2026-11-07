@@ -22,6 +22,19 @@ import { withNetworkRetry } from './retry.js';
 import { KeysExhaustedError } from '../key-rotation.js';
 import { replayUnfinishedTools } from './resume.js';
 import {
+  chooseAutoRoute,
+  judgeDifficulty,
+  looksLikeInvalidJson,
+  noteInvalidOutput,
+  noteToolFailure,
+  noteTurnEnd,
+  recordRouteSavings,
+  routeSignalsOf,
+  routingSettingsOf,
+  type RouteSignals,
+} from '../model-routing.js';
+import { appendNotice } from '../host/commands.js';
+import {
   finishRun,
   noteMessageCompleted,
   setAssistantMessage,
@@ -58,11 +71,13 @@ export async function runTurn(
 ): Promise<TurnResult> {
   const rt = host.ensureRuntime(rec.id);
   if (rt.running || rt.deleted) return { reason: 'error', error: '会话正在运行' };
+  const entryStatus = rec.status;
   rt.running = true;
   rt.interrupted = false;
   const abort = new AbortController();
   rt.abort = abort;
   const allowTask = options.allowTask !== false;
+  const routingSettings = rec.autoRoute ? routingSettingsOf(host) : undefined;
   // 运行意图落盘：Host 崩溃/重启后据此续跑；trigger 为当前轮的用户消息
   const turnMessageId =
     options.turnMessageId ??
@@ -79,6 +94,10 @@ export async function runTurn(
   let autoCompacts = 0;
   // 单轮内最多交接三次，避免备用分组也不可用时无限切换
   let handoffs = 0;
+  // 自动路由：本轮是否出现工具失败（用于简单成功计数）与难度判断缓存
+  let turnHadToolFailure = false;
+  let judgedDifficulty: RouteSignals['judge'] | undefined;
+  let judgeAttempted = false;
 
   // 按需连接项目级 MCP，并顺带重试之前失败的服务器；失败不影响本轮
   await host.mcp.prepare(rec.cwd).catch(() => {});
@@ -115,10 +134,50 @@ export async function runTurn(
       }
 
       host.setStatus(rec, 'running');
-      const selection = host.keyCandidates(rec.profileId, rec.groupId);
-      const profile = selection.effective ?? host.profileFor(rec.profileId, rec.groupId);
+      // 自动路由：每轮（含工具循环的每次请求）按当前信号重新选模型
+      let routed: import('@tandem/protocol').ModelRouteDecision | undefined;
+      if (rec.autoRoute && routingSettings) {
+        const turnMessage = rec.messages.find((message) => message.id === turnMessageId);
+        const toolDepth = countToolDepth(rec, turnMessageId);
+        if (routingSettings.judge && !judgeAttempted) {
+          judgeAttempted = true;
+          const text = (turnMessage?.content ?? [])
+            .filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
+            .map((block) => block.text)
+            .join('\n');
+          judgedDifficulty = await judgeDifficulty(host, routingSettings, text);
+        }
+        const signals = routeSignalsOf(
+          host,
+          rec,
+          turnMessage,
+          toolDepth,
+          entryStatus === 'error' || rec.routeState?.lastFailed === true,
+        );
+        if (judgedDifficulty) signals.judge = judgedDifficulty;
+        const previous = rec.route;
+        routed = chooseAutoRoute(host, rec, signals);
+        if (
+          routed &&
+          (!previous ||
+            previous.profileId !== routed.profileId ||
+            (previous.groupId ?? '') !== (routed.groupId ?? '') ||
+            previous.model !== routed.model)
+        ) {
+          appendNotice(
+            host,
+            rec,
+            `自动：本轮使用 ${routed.model}（理由：${routed.reason}）`,
+            routed,
+          );
+        }
+      }
+      const requestProfileId = routed?.profileId ?? rec.profileId;
+      const requestGroupId = routed?.groupId ?? (routed ? undefined : rec.groupId);
+      const selection = host.keyCandidates(requestProfileId, requestGroupId);
+      const profile = selection.effective ?? host.profileFor(requestProfileId, requestGroupId);
       if (!profile) throw new Error('当前会话的账号不存在，请在界面上重新选择账号');
-      const model = rec.model || profile.defaultModel;
+      const model = routed?.model || rec.model || profile.defaultModel;
       if (!model) throw new Error('当前账号没有配置模型');
       // 分组 Key 全部冷却/停用：交给交接流程（切换备用分组或等待重置），而不是直接失败
       if (!selection.candidates.some((candidate) => candidate.profile.apiKey)) {
@@ -130,15 +189,15 @@ export async function runTurn(
           break;
         }
         throw new KeysExhaustedError(
-          host.keysUnavailableMessage(rec.profileId, rec.groupId) ?? '当前账号没有配置 API Key',
+          host.keysUnavailableMessage(requestProfileId, requestGroupId) ?? '当前账号没有配置 API Key',
         );
       }
       // 预算到达阻止阈值：先尝试交接（allow-once 时跳过，仍按原逻辑放行一次）
       const blockedBudget = rt.budgetAllowOnce
         ? undefined
         : host.budgets.blockingRule({
-            profileId: rec.profileId,
-            ...(rec.groupId ? { groupId: rec.groupId } : {}),
+            profileId: requestProfileId,
+            ...(requestGroupId ? { groupId: requestGroupId } : {}),
             model,
           });
       if (blockedBudget && handoffs < 3) {
@@ -148,7 +207,7 @@ export async function runTurn(
         reason = 'interrupted';
         break;
       }
-      host.assertBudget(rec, model);
+      host.assertBudget(rec, model, { profileId: requestProfileId, groupId: requestGroupId });
       // 预计 2 轮内耗尽：仅在本轮尚未交接时主动提示一次
       if (handoffs === 0) {
         const quota = host.refreshQuota(rec);
@@ -262,10 +321,10 @@ export async function runTurn(
               abort.signal,
               async () => {
                 keyErrors.clear();
-                const attemptKeys = host.keyCandidates(rec.profileId, rec.groupId);
+                const attemptKeys = host.keyCandidates(requestProfileId, requestGroupId);
                 if (attemptKeys.candidates.length === 0) {
                   throw new KeysExhaustedError(
-                    host.keysUnavailableMessage(rec.profileId, rec.groupId) ??
+                    host.keysUnavailableMessage(requestProfileId, requestGroupId) ??
                       '当前账号没有可用的 API Key',
                   );
                 }
@@ -277,7 +336,7 @@ export async function runTurn(
                     const attempt = await streamChat({
                       profile: candidate.profile,
                       onRateLimit: (info) =>
-                        host.recordKeyQuota(rec.profileId, rec.groupId, candidate.keyId, info),
+                        host.recordKeyQuota(requestProfileId, requestGroupId, candidate.keyId, info),
                       model,
                       system: redact(system),
                       messages: requestMessages,
@@ -320,7 +379,7 @@ export async function runTurn(
                         });
                       },
                     });
-                    host.markKeySuccess(rec.profileId, rec.groupId, candidate.keyId);
+                    host.markKeySuccess(requestProfileId, requestGroupId, candidate.keyId);
                     usedKeyId = candidate.keyId;
                     return attempt;
                   } catch (err) {
@@ -330,15 +389,15 @@ export async function runTurn(
                     // 已开始输出，或错误不属于 Key 级故障（400 等）：按原错误路径处理
                     const retry =
                       !started &&
-                      host.markKeyFailure(rec.profileId, rec.groupId, candidate.keyId, err);
+                      host.markKeyFailure(requestProfileId, requestGroupId, candidate.keyId, err);
                     if (!retry) throw err;
                     assistant.content.length = 0;
                   }
                 }
                 if (attemptError !== undefined) {
                   const unavailable = host.keysUnavailableMessage(
-                    rec.profileId,
-                    rec.groupId,
+                    requestProfileId,
+                    requestGroupId,
                     keyErrors,
                   );
                   const status = (attemptError as { status?: unknown } | undefined)?.status;
@@ -350,7 +409,7 @@ export async function runTurn(
                   throw attemptError;
                 }
                 throw new KeysExhaustedError(
-                  host.keysUnavailableMessage(rec.profileId, rec.groupId) ??
+                  host.keysUnavailableMessage(requestProfileId, requestGroupId) ??
                     '当前账号没有可用的 API Key',
                 );
               },
@@ -412,7 +471,7 @@ export async function runTurn(
       } catch (err) {
         const exhausted =
           err instanceof KeysExhaustedError ||
-          (!!host.keysUnavailableMessage(rec.profileId, rec.groupId) &&
+          (!!host.keysUnavailableMessage(requestProfileId, requestGroupId) &&
             (err as { status?: unknown } | undefined)?.status === 429);
         if (!rt.interrupted && !abort.signal.aborted && exhausted) {
           // 请求失败前未产生任何输出：移除空 assistant 占位，交接到备用分组后重新请求
@@ -423,6 +482,11 @@ export async function runTurn(
             host.broadcastSnapshot(rec);
           }
           assistant.content.length = 0;
+          // 自动路由：先给其他候选一次机会（失败 Key 已进入冷却），再走交接
+          if (rec.autoRoute && routed && handoffs === 0) {
+            handoffs += 1;
+            continue;
+          }
           const outcome = await host.triggerHandoff(rec, 'ratelimit', abort.signal);
           handoffs += 1;
           if (outcome === 'continue') continue;
@@ -430,6 +494,10 @@ export async function runTurn(
         } else if (rt.interrupted || abort.signal.aborted) reason = 'interrupted';
         else {
           reason = 'error';
+          if (rec.autoRoute && err instanceof SyntaxError) {
+            noteInvalidOutput(rec);
+            turnHadToolFailure = true;
+          }
           errorText = errorMessage(err);
         }
       }
@@ -465,15 +533,18 @@ export async function runTurn(
         host.calibrateContext(rec, contextEstimate, inputTokens + cacheReadTokens + cacheWriteTokens);
         host.usage.record({
           hostId: host.config.hostId,
-          profileId: rec.profileId,
+          profileId: requestProfileId,
           model,
           // 日统计的输入包含缓存读写，保持总输入口径一致
           inputTokens: inputTokens + cacheReadTokens + cacheWriteTokens,
           outputTokens,
           costUsd: cost ?? 0,
           ...(usedKeyId ? { keyId: usedKeyId } : {}),
-          ...(rec.groupId ? { groupId: rec.groupId } : {}),
+          ...(requestGroupId ? { groupId: requestGroupId } : {}),
         });
+        if (rec.autoRoute && routed) {
+          recordRouteSavings(host, rec, assistant.usage!, cost);
+        }
         host.refreshQuota(rec);
       }
 
@@ -540,6 +611,16 @@ export async function runTurn(
 
       const toolUses = assistant.content.filter((b) => b.type === 'tool_use');
       if (toolUses.length === 0) {
+        if (rec.autoRoute) {
+          const answer = assistant.content
+            .filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
+            .map((block) => block.text)
+            .join('\n');
+          if (looksLikeInvalidJson(answer)) {
+            noteInvalidOutput(rec);
+            turnHadToolFailure = true;
+          }
+        }
         // Stop hook：exit 2 / decision=block 时把 stderr 回填给模型并继续（最多两次）
         if (reason !== 'interrupted' && !abort.signal.aborted) {
           const stop = await host.runHooks(rec, hookEntries, 'Stop', {
@@ -594,6 +675,10 @@ export async function runTurn(
             }))
           : await executeToolUses(host, rec, toolUses, abort.signal, hookEntries, redact);
 
+      if (rec.autoRoute && reason !== 'interrupted') {
+        if (noteToolFailure(rec, resultBlocks)) turnHadToolFailure = true;
+      }
+
       const toolMessage: Message = {
         id: randomUUID(),
         role: 'user',
@@ -639,6 +724,9 @@ export async function runTurn(
     rt.turnMessageId = undefined;
     // 本轮结束：清除运行意图（若还有排队消息则保留 queue，等 drainQueue）
     finishRun(host, rec);
+    if (rec.autoRoute && routingSettings) {
+      noteTurnEnd(rec, reason, routingSettings.preference, turnHadToolFailure);
+    }
     host.setStatus(rec, reason === 'error' ? 'error' : 'idle');
     // 回合完成即未读；用户正在看时客户端会立刻调用 read 接口清除（多端同步）。
     if ((rec.depth ?? 0) === 0 && !rec.evalRun && reason !== 'interrupted') {
@@ -662,6 +750,20 @@ export async function runTurn(
     ...(errorText ? { error: errorText } : {}),
     ...(lastAssistantText(rec) ? { lastText: lastAssistantText(rec) } : {}),
   };
+}
+
+/** 本轮已执行的工具调用数（自动路由的工具深度信号）。 */
+function countToolDepth(rec: SessionRecord, turnMessageId?: string): number {
+  let started = !turnMessageId;
+  let count = 0;
+  for (const message of rec.messages) {
+    if (!started) {
+      if (message.id === turnMessageId) started = true;
+      continue;
+    }
+    count += message.content.filter((block) => block.type === 'tool_use').length;
+  }
+  return count;
 }
 
 /** 最近一条包含文本的 assistant 消息内容（用于 Task 结果）。 */

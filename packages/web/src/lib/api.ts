@@ -51,6 +51,7 @@ import type {
   McpServerConfig,
   McpServerStatus,
   ModelInfo,
+  ModelPriceInfo,
   PermissionInsights,
   PermissionRule,
   SandboxStatus,
@@ -322,6 +323,11 @@ export const api = {
     request<ModelInfo>(
       h,
       `/api/models/capabilities${qs({ profileId, groupId, model })}`,
+    ),
+  modelPrices: (h: HostConfig, profileId: string, groupId?: string) =>
+    request<{ prices: Record<string, ModelPriceInfo> }>(
+      h,
+      `/api/models/prices${qs({ profileId, groupId })}`,
     ),
 
   sessions: (h: HostConfig) => request<SessionSummary[]>(h, '/api/sessions'),

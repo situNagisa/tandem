@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, FlaskConical, KeyRound, Mic, Monitor, MousePointerClick, Network, Palette, Plug, RefreshCw, ScrollText, Search, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Users, Wallet, Webhook } from 'lucide-react'
+import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, FlaskConical, GitFork, KeyRound, Mic, Monitor, MousePointerClick, Network, Palette, Plug, RefreshCw, ScrollText, Search, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Users, Wallet, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { useAppStore } from '../../store/useAppStore'
@@ -32,12 +32,14 @@ import { GeneralSettings } from './GeneralSettings'
 import { VoiceSection } from './VoiceSection'
 import { BrowserSection } from './BrowserSection'
 import { EvalsSection } from './EvalsSection'
+import { ModelRoutingSection } from './ModelRoutingSection'
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'general', label: SETTINGS_TAB_LABELS.general, icon: SlidersHorizontal },
   { id: 'voice', label: SETTINGS_TAB_LABELS.voice, icon: Mic },
   { id: 'browser', label: SETTINGS_TAB_LABELS.browser, icon: MousePointerClick },
   { id: 'profiles', label: SETTINGS_TAB_LABELS.profiles, icon: Sparkles },
+  { id: 'routing', label: SETTINGS_TAB_LABELS.routing, icon: GitFork },
   { id: 'hosts', label: SETTINGS_TAB_LABELS.hosts, icon: Server },
   { id: 'team', label: SETTINGS_TAB_LABELS.team, icon: Users },
   { id: 'gateway', label: SETTINGS_TAB_LABELS.gateway, icon: Network },
@@ -240,6 +242,7 @@ export function SettingsDialog() {
             {tab === 'voice' && <VoiceSection />}
             {tab === 'browser' && <BrowserSection />}
             {tab === 'profiles' && <ProfilesSection />}
+            {tab === 'routing' && <ModelRoutingSection />}
             {tab === 'hosts' && <HostsSection />}
             {tab === 'team' && <TeamSection />}
             {tab === 'gateway' && <GatewaySection />}

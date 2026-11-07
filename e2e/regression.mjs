@@ -50,6 +50,8 @@ function listen(server) {
 function createMockProvider() {
   // 配额交接用例：主分组第一次成功、之后 429；备用分组始终可用。
   let quotaHits = 0
+  // 自动路由用例：记录每次请求实际使用的模型，便于断言升级/回落。
+  const routeSeen = []
   const rateLimitHeaders = {
     'x-ratelimit-limit-requests': '100',
     'x-ratelimit-remaining-requests': '90',
@@ -107,6 +109,71 @@ function createMockProvider() {
       return
     }
     // 配额交接：主分组第一次成功，之后返回 429 与限流头；备用分组始终成功。
+    if (typeof body.model === 'string' && body.model.startsWith('route-')) {
+      routeSeen.push({ model: body.model, stream: body.stream === true })
+      if (body.stream !== true) {
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(
+          JSON.stringify({
+            id: 'chatcmpl-route',
+            object: 'chat.completion',
+            choices: [{ index: 0, message: { role: 'assistant', content: '自动路由' }, finish_reason: 'stop' }],
+            usage: { prompt_tokens: 10, completion_tokens: 3 },
+          }),
+        )
+        return
+      }
+      const messages = body.messages ?? []
+      const userText = messages
+        .filter((message) => message.role === 'user')
+        .map((message) => (typeof message.content === 'string' ? message.content : JSON.stringify(message.content)))
+        .join('\n')
+      const hasToolResult = messages.some((message) => message.role === 'tool')
+      res.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+      })
+      const send = (payload) => res.write(`data: ${JSON.stringify(payload)}\n\n`)
+      const chunk = (delta, finish = null) =>
+        send({
+          id: 'chatcmpl-route',
+          object: 'chat.completion.chunk',
+          choices: [{ index: 0, delta, finish_reason: finish }],
+        })
+      if (body.model === 'route-mini' && userText.includes('触发失败') && !hasToolResult) {
+        chunk({ role: 'assistant', content: '执行两个会失败的命令。' })
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: 'call_route_fail_1',
+              type: 'function',
+              function: { name: 'Bash', arguments: JSON.stringify({ command: 'exit 1', description: '失败命令 1' }) },
+            },
+            {
+              index: 1,
+              id: 'call_route_fail_2',
+              type: 'function',
+              function: { name: 'Bash', arguments: JSON.stringify({ command: 'exit 2', description: '失败命令 2' }) },
+            },
+          ],
+        })
+        chunk({}, 'tool_calls')
+      } else {
+        chunk({ role: 'assistant', content: `路由模型 ${body.model} 已回复。` })
+        chunk({}, 'stop')
+      }
+      send({
+        id: 'chatcmpl-route',
+        object: 'chat.completion.chunk',
+        choices: [],
+        usage: { prompt_tokens: 1000, completion_tokens: 100, total_tokens: 1100 },
+      })
+      res.write('data: [DONE]\n\n')
+      res.end()
+      return
+    }
     if (body.model === 'quota-model') {
       quotaHits += 1
       if (quotaHits > 1) {
@@ -313,7 +380,7 @@ function createMockProvider() {
     res.write('data: [DONE]\n\n')
     res.end()
   })
-  return server
+  return Object.assign(server, { routeSeen })
 }
 
 function writeJson(file, data) {
@@ -549,6 +616,21 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
           defaultModel: 'quota-backup-model',
         },
       ],
+    },
+    {
+      id: 'p-route',
+      name: '自动路由账号',
+      kind: 'openai-compatible',
+      baseUrl,
+      apiKey: 'reg-key-route',
+      models: ['route-mini', 'route-mid', 'route-power'],
+      defaultModel: 'route-mini',
+      price: {
+        'route-mini': { input: 0.1, output: 0.2 },
+        'route-mid': { input: 1, output: 2 },
+        'route-power': { input: 10, output: 20 },
+      },
+      createdAt: Date.now() - 28_000,
     },
   ]
   writeJson(path.join(configDir, 'profiles.json'), { profiles })
@@ -3010,6 +3092,137 @@ async function main() {
       await approve.tap()
       await page.getByRole('region', { name: '完成', exact: true }).getByText('待评审卡').waitFor({ timeout: 10_000 })
       assert.equal(await page.getByRole('region', { name: '需要我', exact: true }).count(), 0, '通过后「需要我」分组应消失')
+    })
+
+    // ------------------------------------------------------------------ 自动模型路由
+
+    desktop('自动模型路由：简单快速、困难强力、失败升级、连续成功回落与节省统计', async (page) => {
+      await api(base, token, '/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          resumeOnRestart: 'auto',
+          modelRouting: {
+            preference: 'balanced',
+            candidates: [
+              { profileId: 'p-route', model: 'route-mini', tier: 'fast' },
+              { profileId: 'p-route', model: 'route-mid', tier: 'balanced' },
+              { profileId: 'p-route', model: 'route-power', tier: 'power' },
+            ],
+          },
+        }),
+      })
+      const session = await api(base, token, '/api/sessions', {
+        method: 'POST',
+        body: JSON.stringify({
+          cwd: repo,
+          profileId: 'p-route',
+          model: 'auto',
+          permissionMode: 'bypassPermissions',
+          title: '自动路由回归',
+        }),
+      })
+      assert.equal(session.autoRoute, true, '创建会话时未启用自动路由')
+
+      await page.waitForFunction(
+        () => {
+          try {
+            return JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]').length > 0
+          } catch {
+            return false
+          }
+        },
+        null,
+        { timeout: 20_000 },
+      )
+      const clientHostId = await page.evaluate(
+        () => JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')[0]?.id ?? null,
+      )
+      await page.evaluate((hash) => {
+        window.location.hash = hash
+      }, `#/h/${clientHostId}/s/${session.id}`)
+      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 15_000 })
+      await page.getByRole('button', { name: /^选择模型：自动/ }).first().waitFor({ timeout: 15_000 })
+
+      const sessionOf = () => api(base, token, `/api/sessions/${session.id}`)
+      const sendTurn = async (text, expected) => {
+        const before = (await sessionOf()).messages.length
+        await page.locator('textarea[aria-label="消息输入框"]').fill(text)
+        await page.getByRole('button', { name: '发送消息' }).click()
+        await waitUntil(`自动路由回复：${text.slice(0, 10)}`, async () => {
+          const current = await sessionOf()
+          return (
+            current.status === 'idle' &&
+            current.messages.length > before &&
+            JSON.stringify(current.messages).includes(expected)
+          )
+        })
+        return sessionOf()
+      }
+
+      const simple = await sendTurn('改个名', '路由模型 route-mini 已回复。')
+      assert.equal(simple.route?.model, 'route-mini', '简单任务未走快速档')
+      assert.match(simple.route?.reason ?? '', /简单/, '简单任务理由不明确')
+      assert.ok(
+        simple.messages.some((message) => message.notice && message.route?.model === 'route-mini'),
+        '自动路由切换未插入提示行',
+      )
+
+      // 困难 + 长消息：偏强力档
+      const hard = await sendTurn(
+        '请帮我重构整个并发架构，解释为什么这里会有死锁和竞态，并设计迁移方案。'.repeat(4),
+        '路由模型 route-power 已回复。',
+      )
+      assert.equal(hard.route?.model, 'route-power', '困难任务未升级到强力档')
+
+      // 两个工具调用同时失败：下一次请求自动升级一档
+      const failed = await sendTurn('触发失败 改个名', '路由模型 route-mid 已回复。')
+      assert.equal(failed.route?.model, 'route-mid', '工具连续失败后未升级')
+      assert.ok(failed.route?.scores?.escalated, '升级决策没有打上 escalated 标记')
+
+      // 连续 3 轮简单成功：下一轮回落一档
+      for (let i = 0; i < 3; i++) {
+        const mid = await sendTurn('简单总结一下', '路由模型 route-mid 已回复。')
+        assert.equal(mid.route?.model, 'route-mid', `第 ${i + 1} 轮回落过早`)
+      }
+      const downgraded = await sendTurn('简单总结一下', '路由模型 route-mini 已回复。')
+      assert.equal(downgraded.route?.model, 'route-mini', '连续简单成功后未回落')
+      assert.ok(downgraded.route?.scores?.downgraded, '回落决策没有打上 downgraded 标记')
+      assert.ok((downgraded.routeSavings?.savedUsd ?? 0) > 0, '自动路由节省统计没有累计')
+
+      // 模型按钮显示「自动 · 当前模型名」，切换提示可 hover 看打分明细
+      await page.getByRole('button', { name: /自动 · Route Mini/ }).first().waitFor({ timeout: 10_000 })
+      assert.match(
+        (await page.getByRole('button', { name: /^选择模型：/ }).first().getAttribute('aria-label')) ?? '',
+        /自动 · Route Mini/,
+      )
+      const lastNotice = page.locator('[data-route-notice]').last()
+      const detail = (await lastNotice.getAttribute('title')) ?? ''
+      assert.match(detail, /复杂度 \d+\/100/, '提示行缺少打分明细')
+      await lastNotice.scrollIntoViewIfNeeded()
+      await page.waitForTimeout(200)
+      await lastNotice.hover({ position: { x: 8, y: 4 } })
+      await page.locator('#tandem-tooltip[data-open]').waitFor({ timeout: 5000 })
+      assert.match(
+        (await page.locator('#tandem-tooltip').innerText().catch(() => '')) ?? '',
+        /复杂度 \d+\/100/,
+        'hover 后没有展示打分明细',
+      )
+      assert.ok(
+        provider.routeSeen.some((item) => item.model === 'route-mini') &&
+          provider.routeSeen.some((item) => item.model === 'route-power') &&
+          provider.routeSeen.some((item) => item.model === 'route-mid'),
+        'mock provider 没有收到三种档位的请求',
+      )
+
+      // 菜单展示参考单价与「自动」项
+      await page.getByRole('button', { name: /^选择模型：/ }).first().click()
+      const menu = page.getByRole('menu')
+      await menu.waitFor()
+      const menuText = await menu.innerText()
+      assert.match(menuText, /自动/, '模型菜单缺少「自动」')
+      assert.match(menuText, /输入 \$0\.1 · 输出 \$0\.2/, '模型菜单缺少参考单价')
+      assert.match(menuText, /缓存 \$0\.05/, '模型菜单缺少缓存命中价')
+      await page.keyboard.press('Escape')
     })
 
       desktop('任务看板 v2：运行时提议、AI 评审修复、冲突解决、PR 聚合与分屏', async (page) => {

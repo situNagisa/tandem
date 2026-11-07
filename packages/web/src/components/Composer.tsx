@@ -12,6 +12,7 @@ import {
 } from 'react'
 import type {
   ContentBlock,
+  ModelPriceInfo,
   PermissionMode,
   Profile,
   ReasoningEffort,
@@ -210,6 +211,7 @@ export function Composer({
       : false,
   )
   const send = useAppStore((s) => s.send)
+  const hosts = useAppStore((s) => s.hosts)
   const ensureWorktree = useAppStore((s) => s.ensureWorktree)
   const interrupt = useAppStore((s) => s.interrupt)
   const setPermissionMode = useAppStore((s) => s.setPermissionMode)
@@ -226,11 +228,14 @@ export function Composer({
   const openMemoryEditor = useUiStore((s) => s.openMemoryEditor)
 
   const effectiveHostId = hostIdProp ?? activeHostId
+  const effectiveHost = hosts.find((h) => h.id === effectiveHostId)
   const cwd = cwdProp ?? summary?.cwd
   const running = runningProp ?? storeRunning
   const stopping = runningProp === undefined && storeStopping
   const mode = sessionless ? (permissionModeProp ?? 'default') : (summary?.permissionMode ?? 'default')
   const currentModel = sessionless ? (modelProp ?? '') : (summary?.model ?? '')
+  const autoRoute = sessionless ? currentModel === 'auto' : summary?.autoRoute === true
+  const routedModel = summary?.route?.model
   const currentProfileId = sessionless ? (profileIdProp ?? '') : (summary?.profileId ?? '')
   const currentGroupId = sessionless ? groupIdProp : summary?.groupId
   const [localEffort, setLocalEffort] = useState<ReasoningEffort>(loadLastEffort)
@@ -251,6 +256,9 @@ export function Composer({
   const [fileLoading, setFileLoading] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
+  const [priceCache, setPriceCache] = useState<
+    Record<string, Record<string, ModelPriceInfo> | 'loading'>
+  >({})
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const voiceRef = useRef<VoiceButtonHandle>(null)
@@ -339,7 +347,7 @@ export function Composer({
   // 当前模型支持哪些思考强度；请求失败按 provider 默认处理
   useEffect(() => {
     setModelEfforts(undefined)
-    if (!effectiveHostId || !currentProfileId || !currentModel) return
+    if (!effectiveHostId || !currentProfileId || !currentModel || autoRoute) return
     const host = useAppStore.getState().hosts.find((h) => h.id === effectiveHostId)
     if (!host) return
     let cancelled = false
@@ -354,7 +362,7 @@ export function Composer({
     return () => {
       cancelled = true
     }
-  }, [effectiveHostId, currentProfileId, currentGroupId, currentModel])
+  }, [effectiveHostId, currentProfileId, currentGroupId, currentModel, autoRoute])
 
   useEffect(() => {
     if (!completion || completion.kind !== 'file') {
@@ -652,6 +660,36 @@ export function Composer({
   ) => {
     if (sessionless) onModelChange?.(nextProfileId, nextGroupId, nextModel)
     else void setModel(nextProfileId, nextGroupId, nextModel, scopeTarget)
+  }
+
+  const loadModelPrices = useCallback(
+    (profileId: string, groupId: string | undefined) => {
+      if (!effectiveHost || !profileId) return
+      const key = `${profileId}:${groupId ?? ''}`
+      setPriceCache((prev) => (prev[key] ? prev : { ...prev, [key]: 'loading' }))
+      api
+        .modelPrices(effectiveHost, profileId, groupId)
+        .then((res) => setPriceCache((prev) => ({ ...prev, [key]: res.prices })))
+        .catch(() =>
+          setPriceCache((prev) => {
+            const next = { ...prev }
+            delete next[key]
+            return next
+          }),
+        )
+    },
+    [effectiveHost],
+  )
+
+  const priceKey = `${currentProfileId}:${currentGroupId ?? ''}`
+  const cachedPrices = priceCache[priceKey]
+  const modelPrices = cachedPrices === 'loading' ? undefined : cachedPrices
+
+  const changeAutoRoute = () => {
+    const profile = currentProfileId || profiles[0]?.id
+    if (!profile) return
+    const group = currentGroupId ?? profileModelGroups(profiles.find((p) => p.id === profile) ?? null)[0]?.groupId
+    changeModel(profile, group, 'auto')
   }
 
   const changeEffort = (next: ReasoningEffort, remember = true) => {
@@ -977,6 +1015,9 @@ export function Composer({
             profileId={currentProfileId}
             groupId={currentGroupId}
             model={currentModel}
+            autoRoute={autoRoute}
+            autoModel={autoRoute ? routedModel : undefined}
+            prices={modelPrices}
             effort={effort}
             efforts={supportedEfforts}
             loading={profilesLoading}
@@ -984,6 +1025,8 @@ export function Composer({
             open={modelMenuOpen}
             onOpenChange={setModelMenuOpen}
             onSelect={changeModel}
+            onSelectAuto={changeAutoRoute}
+            onLoadPrices={loadModelPrices}
             onEffortChange={changeEffort}
             onManage={() => openSettings('profiles')}
             onOpen={() => {

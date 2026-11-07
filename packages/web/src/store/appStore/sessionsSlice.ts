@@ -216,7 +216,13 @@ export function createSessionsSlice(
       const host = view ? getHost(view.hostId) : undefined
       if (!view?.summary || !host) return
       const prev = view.summary
-      const optimistic: SessionSummary = { ...prev, profileId, model, groupId }
+      const optimistic: SessionSummary = {
+        ...prev,
+        profileId,
+        model: model === 'auto' ? prev.model : model,
+        ...(model === 'auto' ? { autoRoute: true } : { autoRoute: undefined }),
+        groupId,
+      }
       patchView(view.hostId, view.sessionId, (a) => ({ ...a, summary: optimistic }))
       applySessionSummary(view.hostId, optimistic)
       try {

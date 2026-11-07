@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Profile, ReasoningEffort } from '@tandem/protocol'
-import { ChevronDown, Loader2 } from 'lucide-react'
+import type { ModelPriceInfo, Profile, ReasoningEffort } from '@tandem/protocol'
+import { ChevronDown, Loader2, Sparkles } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { EFFORT_LABEL, effortSuffix, nearestEffort } from '../../lib/effort'
 import { prettyModel, shortModelName } from '../../lib/modelName'
@@ -8,15 +8,31 @@ import { groupName, profileModelGroups } from '../../lib/profileModels'
 import { Button } from '../ui/Button'
 import { Menu } from '../ui/Menu'
 
+/** 参考单价：每百万 token 美元；只保留必要的小数位。 */
+function priceText(price: ModelPriceInfo | undefined): string {
+  if (!price) return '单价未知'
+  const fmt = (value: number) => String(Number(value.toFixed(4)))
+  const cache =
+    price.cacheRead !== undefined && price.cacheRead > 0
+      ? ` · 缓存 $${fmt(price.cacheRead)}`
+      : ''
+  return `输入 $${fmt(price.input)} · 输出 $${fmt(price.output)} / 百万 tok${cache}`
+}
+
 function ModelPanel({
   profiles,
   profileId,
   groupId,
   model,
+  autoRoute,
+  autoModel,
+  prices,
   effort,
   efforts,
   loading,
   onSelect,
+  onSelectAuto,
+  onLoadPrices,
   onEffortChange,
   onManage,
 }: {
@@ -24,10 +40,15 @@ function ModelPanel({
   profileId: string
   groupId?: string
   model: string
+  autoRoute: boolean
+  autoModel?: string
+  prices?: Record<string, ModelPriceInfo>
   effort: ReasoningEffort
   efforts: ReasoningEffort[]
   loading: boolean
   onSelect: (profileId: string, groupId: string | undefined, model: string) => void
+  onSelectAuto: () => void
+  onLoadPrices?: (profileId: string, groupId: string | undefined) => void
   onEffortChange: (effort: ReasoningEffort) => void
   onManage: () => void
 }) {
@@ -41,10 +62,16 @@ function ModelPanel({
   const showAccounts = profiles.length > 1 || groups.length > 1
 
   useEffect(() => {
-    if (profiles.length === 0) return
-    if (profiles.some((p) => p.id === accountId)) return
-    setAccountId(profileId || profiles[0].id)
-  }, [profiles, accountId, profileId])
+    if (profiles.length > 0 && (!accountId || !profiles.some((p) => p.id === accountId))) {
+      setAccountId(profileId || profiles[0]?.id || '')
+    }
+  }, [profiles, accountId])
+
+  useEffect(() => {
+    if (account) onLoadPrices?.(account.id, group?.groupId)
+    // 只在账号/分组变化时加载，避免 prices 回调引用变化导致重复请求
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account?.id, group?.groupId])
 
   useEffect(() => {
     if (groups.some((g) => (g.groupId ?? undefined) === (groupKey ?? undefined))) return
@@ -90,8 +117,32 @@ function ModelPanel({
       {profiles.length > 0 && models.length === 0 && (
         <div className="px-2 py-2 text-[12px] leading-5 text-muted">没有可用模型。</div>
       )}
+      {models.length > 0 && (
+        <>
+          <Menu.Item
+            selected={autoRoute}
+            textValue="自动"
+            onSelect={onSelectAuto}
+            className="h-auto min-h-[40px] py-1"
+            hint="按本轮难度在「设置 → 模型路由」候选池中选择，失败自动升级、简单任务回落"
+          >
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="flex items-center gap-1 truncate text-[13px] leading-4">
+                <Sparkles size={12} className="shrink-0 text-text-tertiary" />
+                自动
+              </span>
+              <span className="truncate text-[11px] leading-4 text-muted">
+                {autoModel
+                  ? `当前 ${prettyModel(autoModel)} · 每轮按难度选择`
+                  : '每轮按难度在候选池中选择'}
+              </span>
+            </span>
+          </Menu.Item>
+          <Menu.Separator />
+        </>
+      )}
       {models.map((m) => {
-        const selected = groupSelected && m === model
+        const selected = !autoRoute && groupSelected && m === model
         const friendly = prettyModel(m)
         return (
           <Menu.Item
@@ -104,12 +155,15 @@ function ModelPanel({
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="truncate text-[13px] leading-4">{friendly}</span>
               <span className="truncate font-mono text-[12px] leading-4 text-muted">{m}</span>
+              <span className="truncate font-mono text-[11px] leading-4 text-muted/80">
+                {priceText(prices?.[m])}
+              </span>
             </span>
           </Menu.Item>
         )
       })}
 
-      {efforts.length > 0 && (
+      {!autoRoute && efforts.length > 0 && (
         <>
           <Menu.Separator />
           <Menu.Sub>
@@ -199,11 +253,16 @@ export function ModelMenu({
   profileId,
   groupId,
   model,
+  autoRoute = false,
+  autoModel,
+  prices,
   effort,
   efforts,
   loading,
   disabled,
   onSelect,
+  onSelectAuto,
+  onLoadPrices,
   onEffortChange,
   onManage,
   onOpen,
@@ -215,11 +274,17 @@ export function ModelMenu({
   profileId: string
   groupId?: string
   model: string
+  /** 自动路由开启时，模型按钮显示「自动 · 当前模型名」。 */
+  autoRoute?: boolean
+  autoModel?: string
+  prices?: Record<string, ModelPriceInfo>
   effort: ReasoningEffort
   efforts: ReasoningEffort[]
   loading: boolean
   disabled?: boolean
   onSelect: (profileId: string, groupId: string | undefined, model: string) => void
+  onSelectAuto: () => void
+  onLoadPrices?: (profileId: string, groupId: string | undefined) => void
   onEffortChange: (effort: ReasoningEffort) => void
   onManage: () => void
   onOpen?: () => void
@@ -229,10 +294,12 @@ export function ModelMenu({
 }) {
   const currentProfile = profiles.find((p) => p.id === profileId) ?? null
   const currentGroup = groupName(currentProfile ?? undefined, groupId)
-  const showEffort = efforts.length > 0 && efforts.includes(effort)
-  const label = model
-    ? `${shortModelName(model)}${showEffort ? effortSuffix(effort) : ''}`
-    : '选择模型'
+  const showEffort = !autoRoute && efforts.length > 0 && efforts.includes(effort)
+  const label = autoRoute
+    ? `自动${autoModel ? ` · ${shortModelName(autoModel)}` : ''}`
+    : model
+      ? `${shortModelName(model)}${showEffort ? effortSuffix(effort) : ''}`
+      : '选择模型'
   return (
     <Menu
       side="top"
@@ -243,7 +310,7 @@ export function ModelMenu({
         onOpenChange(next)
       }}
       aria-label="选择模型"
-      className="w-[300px]"
+      className="w-[320px]"
       trigger={({ open: isOpen }) => (
         <Button
           variant="ghost"
@@ -253,15 +320,17 @@ export function ModelMenu({
           tooltip={
             isOpen
               ? undefined
-              : currentProfile
-                ? `${currentProfile.name}${currentGroup ? ` › ${currentGroup}` : ''} · ${model}`
-                : '选择账号与模型'
+              : autoRoute
+                ? `自动路由 · 当前 ${autoModel ?? model}（候选池在设置 → 模型路由）`
+                : currentProfile
+                  ? `${currentProfile.name}${currentGroup ? ` › ${currentGroup}` : ''} · ${model}`
+                  : '选择账号与模型'
           }
           tooltipSide="top"
           aria-label={`选择模型：${label}`}
           className={cn(
             'min-w-0 max-w-[220px] justify-start gap-1 px-2 font-normal max-sm:min-h-11 max-sm:max-w-[36vw]',
-            compact && 'max-w-[104px] px-1.5',
+            compact && 'max-w-[128px] px-1.5',
             isOpen && 'bg-[var(--t-bg-hover)] text-text-soft',
           )}
         >
@@ -275,10 +344,15 @@ export function ModelMenu({
         profileId={profileId}
         groupId={groupId}
         model={model}
+        autoRoute={autoRoute}
+        autoModel={autoModel}
+        prices={prices}
         effort={effort}
         efforts={efforts}
         loading={loading}
         onSelect={onSelect}
+        onSelectAuto={onSelectAuto}
+        onLoadPrices={onLoadPrices}
         onEffortChange={onEffortChange}
         onManage={onManage}
       />

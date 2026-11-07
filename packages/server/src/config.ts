@@ -23,6 +23,7 @@ import type {
   StoredProfileKey,
 } from './types.js';
 import { normalizeContextSettings } from './context-settings.js';
+import { normalizeRoutingSettings } from './routing-settings.js';
 
 export function tandemHome(): string {
   const fromEnv = process.env.TANDEM_HOME?.trim();
@@ -96,6 +97,9 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
     ...(existing?.handoff && typeof existing.handoff === 'object'
       ? { handoff: existing.handoff }
       : {}),
+    ...(normalizeRoutingSettings(existing?.modelRouting)
+      ? { modelRouting: normalizeRoutingSettings(existing?.modelRouting)! }
+      : {}),
     ...(isRelayConfig(existing?.relay) ? { relay: existing.relay } : {}),
   };
   if (
@@ -121,11 +125,14 @@ export function saveHostSettings(
     context?: ContextSettings;
     aiReview?: import('@tandem/protocol').AiReviewSettings;
     handoff?: import('@tandem/protocol').HandoffSettings;
+    modelRouting?: import('@tandem/protocol').ModelRoutingSettings | null;
   },
 ): void {
   const file = path.join(home, 'config.json');
   const existing = readJson<Record<string, unknown>>(file) ?? {};
-  writePrivateFile(file, JSON.stringify({ ...existing, ...settings }, null, 2));
+  const merged: Record<string, unknown> = { ...existing, ...settings };
+  if (settings.modelRouting === null) delete merged.modelRouting;
+  writePrivateFile(file, JSON.stringify(merged, null, 2));
 }
 
 export function maskApiKey(key: string): string {

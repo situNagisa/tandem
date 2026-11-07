@@ -914,6 +914,7 @@ export class BoardManager {
       profileId: config.profileId,
       ...(config.groupId ? { groupId: config.groupId } : {}),
       model: config.model,
+      ...(config.autoRoute ? { autoRoute: true } : {}),
       permissionMode: exec.permissionMode ?? config.permissionMode,
       ...(config.effort ? { effort: config.effort } : {}),
       ...(exec.preset ? { delegation: config.delegation } : {}),

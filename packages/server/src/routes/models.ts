@@ -6,6 +6,16 @@ import { PROVIDER_KINDS, bad, str, type RouteDeps } from './common.js';
 export function registerModelRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const { host } = deps;
 
+  app.get('/api/models/prices', async (req, reply) => {
+    const query = (req.query ?? {}) as Record<string, unknown>;
+    const profileId = str(query.profileId);
+    if (!profileId) return bad(reply, 'profileId 不能为空');
+    if (!host.profileFor(profileId, str(query.groupId) || undefined)) {
+      return bad(reply, '账号不存在', 404);
+    }
+    return { prices: host.modelPrices(profileId, str(query.groupId) || undefined) };
+  });
+
   app.get('/api/models/capabilities', async (req, reply) => {
     const query = (req.query ?? {}) as Record<string, unknown>;
     const profileId = str(query.profileId);

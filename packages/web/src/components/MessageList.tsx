@@ -5,6 +5,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useSessionView } from './session/SessionScope'
 import { cn } from '../lib/cn'
 import { navigate } from '../lib/router'
+import { prettyModel } from '../lib/modelName'
 import type { HookNotice, ToolResultBlock, UiMessage } from '../lib/types'
 import { ToolGroup, entriesFromMessages } from './chat/ToolGroup'
 import { HookNoticeLine } from './chat/HookNoticeLine'
@@ -54,10 +55,14 @@ const NoticeRow = memo(function NoticeRow({
   animate: boolean
 }) {
   const [open, setOpen] = useState(false)
-  const text = message.content
+  const route = message.route
+  const rawText = message.content
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
     .map((b) => b.text)
     .join(' ')
+  const text = route
+    ? `自动：本轮使用 ${prettyModel(route.model)}（理由：${route.reason}）`
+    : rawText
   if (message.compaction) {
     return (
       <div
@@ -88,11 +93,34 @@ const NoticeRow = memo(function NoticeRow({
     <div
       className={cn('msg-row px-1 text-[12px] leading-4 text-muted', animate && 'chat-msg-enter')}
       data-message-id={message.id}
+      {...(route ? { 'data-route-notice': '', title: routeDetailText(route) } : {})}
     >
       {text}
     </div>
   )
 })
+
+/** hover 时的打分明细：一条紧凑字符串，交给统一 tooltip 展示。 */
+function routeDetailText(route: NonNullable<UiMessage['route']>): string {
+  const scores = route.scores
+  const tier = { fast: '快速', balanced: '均衡', power: '强力' }[route.tier]
+  const delegation = { orchestrate: '编排', more: '较多', less: '较少', none: '不用' }[
+    scores.delegation
+  ]
+  return [
+    `复杂度 ${scores.complexity}/100`,
+    `消息 ${scores.messageChars} 字`,
+    `关键词 ${scores.keywords.length ? scores.keywords.join('、') : '无'}`,
+    `上下文 ${scores.contextTokens ? `${Math.round(scores.contextTokens / 1000)}k tok` : '未计'}`,
+    `图片 ${scores.hasImage ? '是' : '否'}`,
+    `上轮失败 ${scores.previousFailed ? '是' : '否'}`,
+    `不确定 ${scores.uncertain ? '是' : '否'}`,
+    `工具深度 ${scores.toolDepth}`,
+    `委派 ${delegation}`,
+    `预算压力 ${Math.round((scores.budgetPressure ?? 0) * 100)}%`,
+    `档位 ${tier}${scores.escalated ? ' · 升级' : ''}${scores.downgraded ? ' · 回落' : ''}`,
+  ].join('；')
+}
 
 const UserRow = memo(function UserRow({
   message,

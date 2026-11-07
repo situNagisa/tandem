@@ -6,6 +6,7 @@ export const SETTINGS_TAB_LABELS: Record<SettingsTab, string> = {
   voice: '语音',
   browser: '浏览器',
   profiles: '账号与模型',
+  routing: '模型路由',
   hosts: 'Host 管理',
   team: '成员',
   gateway: '网关',
@@ -62,6 +63,10 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'profiles.models', tab: 'profiles', title: '模型列表', keywords: ['模型', '默认模型'] },
   { id: 'profiles.key-strategy', tab: 'profiles', title: 'Key 调度策略', keywords: ['Key', '故障切换', '轮询', '冷却', '调度'] },
   { id: 'profiles.prices', tab: 'profiles', title: '模型价格覆盖', keywords: ['价格', '计费', '费用'] },
+
+  { id: 'routing.candidates', tab: 'routing', title: '自动路由候选池', keywords: ['自动', '路由', '候选', '模型', '档位', '快速', '强力'] },
+  { id: 'routing.preference', tab: 'routing', title: '路由偏好', keywords: ['省钱', '均衡', '质量', '偏好'] },
+  { id: 'routing.judge', tab: 'routing', title: '用小模型判断难度', keywords: ['判断', '难度', '小模型', '自动路由'] },
 
   { id: 'hosts.list', tab: 'hosts', title: 'Host 列表', keywords: ['主机', '服务器', '连接'] },
   { id: 'hosts.add', tab: 'hosts', title: '添加 Host', keywords: ['新增', '服务器', '扫码'] },
