@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PrCheck, PrMergeMethod, PullRequestInfo, VcsCapability } from '@tandem/protocol'
 import {
   AlertTriangle,
+  Bot,
   CheckCircle2,
   CircleDashed,
   Clock3,
@@ -16,6 +17,7 @@ import {
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useVcsStore, vcsKey } from '../lib/useVcs'
+import { aiReviewKey, useAiReviewStore } from '../lib/useAiReview'
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { Button, IconButton } from './ui/Button'
@@ -263,6 +265,11 @@ export function PrPanel() {
   )
   const refresh = useVcsStore((s) => s.refresh)
   const apply = useVcsStore((s) => s.apply)
+  const reviewEntry = useAiReviewStore((s) =>
+    host && sessionId ? s.byKey[aiReviewKey(host.id, sessionId)] : undefined,
+  )
+  const startAiReview = useAiReviewStore((s) => s.start)
+  const setChangesOpen = useUiStore((s) => s.setChangesOpen)
 
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
@@ -332,6 +339,15 @@ export function PrPanel() {
     () => (pr?.checks ?? []).filter((check) => check.status === 'failure'),
     [pr],
   )
+
+  const startPrePrReview = async () => {
+    if (!host || !sessionId) return
+    const review = await startAiReview(host, sessionId)
+    if (!review) return
+    toast('AI 评审已开始，意见会挂到改动审阅的行上', 'info')
+    close()
+    setChangesOpen(true)
+  }
 
   const startDraft = () => {
     if (!sessionId || !host) return
@@ -573,6 +589,23 @@ export function PrPanel() {
                     创建 PR
                   </h3>
                   <span className="flex-1" />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void startPrePrReview()}
+                    disabled={reviewEntry?.starting || reviewEntry?.review?.status === 'running'}
+                    icon={
+                      reviewEntry?.starting || reviewEntry?.review?.status === 'running' ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <Bot size={12} />
+                      )
+                    }
+                  >
+                    {reviewEntry?.starting || reviewEntry?.review?.status === 'running'
+                      ? '评审中…'
+                      : '开 PR 前评审'}
+                  </Button>
                   <Button
                     size="sm"
                     variant="ghost"

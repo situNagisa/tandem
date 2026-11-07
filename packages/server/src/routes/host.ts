@@ -19,6 +19,7 @@ export function registerHostRoutes(app: FastifyInstance, deps: RouteDeps): void 
       resumeOnRestart?: unknown;
       voice?: unknown;
       context?: unknown;
+      aiReview?: unknown;
     };
     return host.updateSettings({
       ...(body.resumeOnRestart === 'auto' || body.resumeOnRestart === 'pause'
@@ -27,6 +28,9 @@ export function registerHostRoutes(app: FastifyInstance, deps: RouteDeps): void 
       ...(body.voice && typeof body.voice === 'object' ? { voice: body.voice as VoiceSettings } : {}),
       ...(body.context && typeof body.context === 'object'
         ? { context: body.context as ContextSettings }
+        : {}),
+      ...(body.aiReview && typeof body.aiReview === 'object'
+        ? { aiReview: body.aiReview as import('@tandem/protocol').AiReviewSettings }
         : {}),
     });
   });

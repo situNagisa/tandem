@@ -1,4 +1,5 @@
 import type {
+  AiReviewRun,
   ChangesResult,
   Checkpoint,
   ConfigBundle,
@@ -394,6 +395,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ paths }),
     }),
+  startAiReview: (h: HostConfig, id: string, paths?: string[]) =>
+    request<{ review: AiReviewRun }>(h, `/api/sessions/${encodeURIComponent(id)}/ai-review`, {
+      method: 'POST',
+      body: JSON.stringify(paths?.length ? { paths } : {}),
+    }),
+  aiReview: (h: HostConfig, id: string, reviewId: string) =>
+    request<{ review: AiReviewRun }>(
+      h,
+      `/api/sessions/${encodeURIComponent(id)}/ai-review/${encodeURIComponent(reviewId)}`,
+    ),
+  markAiReviewFalsePositive: (h: HostConfig, id: string, reviewId: string, findingId: string) =>
+    request<{ ok: boolean }>(
+      h,
+      `/api/sessions/${encodeURIComponent(id)}/ai-review/${encodeURIComponent(reviewId)}/false-positive`,
+      { method: 'POST', body: JSON.stringify({ findingId }) },
+    ),
   commitChanges: (h: HostConfig, id: string, message: string, paths?: string[]) =>
     request<{ ok: boolean; commit?: string; error?: string }>(
       h,

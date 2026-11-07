@@ -12,9 +12,11 @@ import { diffLines } from 'diff'
 import * as RPopover from '@radix-ui/react-popover'
 import {
   ArrowLeftRight,
+  Bot,
   ChevronsUpDown,
   MessageSquare,
 } from 'lucide-react'
+import type { AiReviewSeverity } from '@tandem/protocol'
 import { cn } from '../lib/cn'
 import { useHorizontalOverflow } from '../lib/hooks'
 import { useFeedbackStore } from '../store/useFeedbackStore'
@@ -44,6 +46,24 @@ export interface DiffCommentDraft {
 
 export interface DiffComment extends DiffCommentDraft {
   id: number
+}
+
+/** AI 评审意见：与人工评论共用行尾标记，但用中性灰 + 机器人图标区分。 */
+export interface AiDiffComment {
+  id: string
+  side: 'old' | 'new'
+  startLine: number
+  endLine: number
+  severity: AiReviewSeverity
+  title: string
+  detail: string
+  suggestion?: string
+}
+
+const SEVERITY_META: Record<AiReviewSeverity, { label: string; className: string }> = {
+  blocker: { label: '阻塞', className: 'text-danger' },
+  warn: { label: '警告', className: 'text-warning' },
+  nit: { label: '细节', className: 'text-muted' },
 }
 
 /** 解析统一 diff（git diff 输出）为按行结构。 */
@@ -338,6 +358,149 @@ function CommentMarker({
   )
 }
 
+/** AI 评审标记：点击展开问题详情，可采纳为人工评论、忽略或标记为误报。 */
+function AiMarker({
+  comment,
+  onAction,
+}: {
+  comment: AiDiffComment
+  onAction: (id: string, action: 'accept' | 'ignore' | 'false_positive') => void
+}) {
+  const [open, setOpen] = useState(false)
+  const leaveTimer = useRef<number | null>(null)
+  const meta = SEVERITY_META[comment.severity]
+
+  useEffect(
+    () => () => {
+      if (leaveTimer.current) window.clearTimeout(leaveTimer.current)
+    },
+    [],
+  )
+
+  const holdOpen = () => {
+    if (leaveTimer.current) window.clearTimeout(leaveTimer.current)
+    leaveTimer.current = null
+    setOpen(true)
+  }
+  const scheduleLeave = () => {
+    if (leaveTimer.current) window.clearTimeout(leaveTimer.current)
+    leaveTimer.current = window.setTimeout(() => setOpen(false), 180)
+  }
+  const close = () => {
+    if (leaveTimer.current) window.clearTimeout(leaveTimer.current)
+    leaveTimer.current = null
+    setOpen(false)
+  }
+
+  return (
+    <RPopover.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) close()
+      }}
+    >
+      <RPopover.Anchor asChild>
+        <button
+          type="button"
+          className="diff-comment-btn diff-ai-btn"
+          data-ai="true"
+          data-open={open || undefined}
+          aria-label={`AI 评审：${meta.label} · ${comment.title}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseEnter={holdOpen}
+          onMouseLeave={scheduleLeave}
+          onClick={(e) => {
+            e.stopPropagation()
+            setOpen(true)
+          }}
+        >
+          <Bot size={12} aria-hidden />
+        </button>
+      </RPopover.Anchor>
+      <RPopover.Portal>
+        <RPopover.Content
+          side="bottom"
+          align="start"
+          sideOffset={6}
+          collisionPadding={8}
+          avoidCollisions
+          sticky="always"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => {
+            if (useFeedbackStore.getState().active) e.preventDefault()
+          }}
+          onFocusOutside={(e) => {
+            if (useFeedbackStore.getState().active) e.preventDefault()
+          }}
+          onInteractOutside={(e) => {
+            if (useFeedbackStore.getState().active) e.preventDefault()
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerEnter={(e) => {
+            e.stopPropagation()
+            holdOpen()
+          }}
+          onPointerLeave={scheduleLeave}
+          onClick={(e) => e.stopPropagation()}
+          className={cn(popoverSurfaceClass, 'z-[85] w-[320px] p-2.5')}
+        >
+          <div className="flex items-center gap-1.5">
+            <Bot size={12} className="shrink-0 text-muted" />
+            <span className={cn('shrink-0 text-[11px] font-medium', meta.className)}>{meta.label}</span>
+            <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-text" title={comment.title}>
+              {comment.title}
+            </span>
+            <span className="shrink-0 font-mono text-[10px] text-muted">
+              {lineLabel(comment.startLine, comment.endLine)}
+            </span>
+          </div>
+          <p className="mt-1.5 whitespace-pre-wrap break-words text-[12px] leading-5 text-text-soft">
+            {comment.detail}
+          </p>
+          {comment.suggestion && (
+            <p className="mt-1.5 whitespace-pre-wrap break-words rounded-md bg-[var(--t-bg-hover)] px-2 py-1.5 text-[12px] leading-5 text-text-soft">
+              <span className="text-muted">建议：</span>
+              {comment.suggestion}
+            </p>
+          )}
+          <div className="mt-2 flex items-center justify-end gap-1">
+            <button
+              type="button"
+              className="rounded px-2 py-1 text-[12px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
+              onClick={() => {
+                onAction(comment.id, 'false_positive')
+                close()
+              }}
+            >
+              标记误报
+            </button>
+            <button
+              type="button"
+              className="rounded px-2 py-1 text-[12px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
+              onClick={() => {
+                onAction(comment.id, 'ignore')
+                close()
+              }}
+            >
+              忽略
+            </button>
+            <button
+              type="button"
+              className="rounded-md bg-[var(--t-primary-bg)] px-2.5 py-1 text-[12px] font-medium text-[var(--t-primary-fg)]"
+              onClick={() => {
+                onAction(comment.id, 'accept')
+                close()
+              }}
+            >
+              采纳
+            </button>
+          </div>
+        </RPopover.Content>
+      </RPopover.Portal>
+    </RPopover.Root>
+  )
+}
+
 function Composer({
   label,
   onSave,
@@ -407,6 +570,8 @@ export const DiffView = memo(function DiffView({
   onAddComment,
   onEditComment,
   onDeleteComment,
+  aiComments = [],
+  onAiAction,
 }: {
   oldText?: string
   newText?: string
@@ -422,6 +587,8 @@ export const DiffView = memo(function DiffView({
   onAddComment?: (draft: DiffCommentDraft) => void
   onEditComment?: (id: number, text: string) => void
   onDeleteComment?: (id: number) => void
+  aiComments?: AiDiffComment[]
+  onAiAction?: (id: string, action: 'accept' | 'ignore' | 'false_positive') => void
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [selection, setSelection] = useState<{ startIdx: number; endIdx: number } | null>(null)
@@ -495,6 +662,17 @@ export const DiffView = memo(function DiffView({
     }
     return map
   }, [comments])
+
+  const aiAnchored = useMemo(() => {
+    const map = new Map<string, AiDiffComment[]>()
+    for (const comment of aiComments) {
+      const key = `${comment.side}:${comment.endLine}`
+      const list = map.get(key)
+      if (list) list.push(comment)
+      else map.set(key, [comment])
+    }
+    return map
+  }, [aiComments])
 
   useEffect(() => {
     setSelection(null)
@@ -570,6 +748,7 @@ export const DiffView = memo(function DiffView({
               (c) => c.side === info.side && info.line >= c.startLine && info.line <= c.endLine,
             )
             const anchorComments = anchored.get(`${info.side}:${info.line}`)
+            const aiAnchor = aiAnchored.get(`${info.side}:${info.line}`)
             const selectedRow =
               selectionInfo !== null && i >= selectionInfo.startIdx && i <= selectionInfo.endIdx
             const isAnchor = selectionInfo !== null && i === selectionInfo.endIdx
@@ -644,6 +823,14 @@ export const DiffView = memo(function DiffView({
                       onEdit={onEditComment}
                       onDelete={onDeleteComment}
                     />
+                  ) : null}
+                  {aiAnchor && aiAnchor.length > 0 && onAiAction ? (
+                    <>
+                      <span className="diff-ai-line" aria-hidden />
+                      {aiAnchor.map((comment) => (
+                        <AiMarker key={comment.id} comment={comment} onAction={onAiAction} />
+                      ))}
+                    </>
                   ) : null}
                   {isAnchor && selectionInfo && (
                     <RPopover.Root

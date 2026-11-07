@@ -4,6 +4,7 @@ import { statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type {
+  AiReviewSettings,
   ContextSettings,
   DelegationStrategy,
   HostInfo,
@@ -47,6 +48,21 @@ export function settings(host: Host): HostSettings {
         : 'less',
     ...(host.config.voice ? { voice: host.config.voice } : {}),
     context: normalizeContextSettings(host.config.context),
+    ...(host.config.aiReview ? { aiReview: sanitizeAiReview(host.config.aiReview) } : {}),
+  };
+}
+
+function sanitizeAiReview(input: AiReviewSettings): AiReviewSettings {
+  const profileId = typeof input.profileId === 'string' && input.profileId.trim() ? input.profileId.trim() : undefined;
+  const groupId = typeof input.groupId === 'string' && input.groupId.trim() ? input.groupId.trim() : undefined;
+  const model = typeof input.model === 'string' && input.model.trim() ? input.model.trim() : undefined;
+  const effort = EFFORTS.has(input.effort as ReasoningEffort) ? (input.effort as ReasoningEffort) : undefined;
+  return {
+    ...(profileId ? { profileId } : {}),
+    ...(groupId ? { groupId } : {}),
+    ...(model ? { model } : {}),
+    ...(effort ? { effort } : {}),
+    ...(input.blockOnBlocker === true ? { blockOnBlocker: true } : {}),
   };
 }
 
@@ -68,11 +84,17 @@ export function updateSettings(host: Host, input: Partial<HostSettings>): HostSe
   if (input.context && typeof input.context === 'object') {
     host.config.context = normalizeContextSettings(input.context as Partial<ContextSettings>);
   }
+  if (input.aiReview !== undefined) {
+    const next = sanitizeAiReview(input.aiReview ?? {});
+    if (Object.keys(next).length) host.config.aiReview = next;
+    else delete host.config.aiReview;
+  }
   saveHostSettings(host.home, {
     resumeOnRestart: host.settings().resumeOnRestart,
     ...(host.config.defaultDelegation ? { defaultDelegation: host.config.defaultDelegation } : {}),
     ...(host.config.voice ? { voice: host.config.voice } : {}),
     context: normalizeContextSettings(host.config.context),
+    ...(host.config.aiReview ? { aiReview: sanitizeAiReview(host.config.aiReview) } : {}),
   });
   return host.settings();
 }
@@ -149,6 +171,7 @@ export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
     createdAt: rec.createdAt,
     updatedAt: rec.updatedAt,
     usage: { ...rec.usage },
+    ...(rec.aiReviewUsage ? { aiReviewUsage: { ...rec.aiReviewUsage } } : {}),
     ...(rec.context ? { context: rec.context } : {}),
     ...(secretsCount ? { secretsCount } : {}),
   };

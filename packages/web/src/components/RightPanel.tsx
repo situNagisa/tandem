@@ -192,6 +192,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const completed = todos.filter((t) => t.status === 'completed').length
   const progress = todos.length ? Math.round((completed / todos.length) * 100) : 0
   const usage = summary?.usage
+  const reviewUsage = summary?.aiReviewUsage
   const subUsage = useMemo(() => {
     const list = Object.values(subagents ?? {})
       .map((sub) => sub.summary)
@@ -491,7 +492,8 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
             (usage.outputTokens ?? 0) > 0 ||
             (usage.cacheReadTokens ?? 0) > 0 ||
             (usage.cacheWriteTokens ?? 0) > 0 ||
-            (usage.costUsd ?? 0) > 0))
+            (usage.costUsd ?? 0) > 0)) ||
+        !!reviewUsage
       if (!hasUsage) {
         return <p className="text-[12px] leading-4 text-muted">暂无用量</p>
       }
@@ -547,6 +549,15 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
                   {formatCost((usage?.costUsd ?? 0) + subUsage.cost)}
                 </span>
               </div>
+            </div>
+          )}
+          {reviewUsage && (
+            <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-border pt-1.5">
+              <span className="text-[12px] text-muted">AI 评审</span>
+              <span className="font-mono text-[13px] tabular-nums text-text-soft">
+                {formatCost(reviewUsage.costUsd)} ·{' '}
+                {formatTokens(reviewUsage.inputTokens + reviewUsage.outputTokens)} tok
+              </span>
             </div>
           )}
           {keyUsage && (

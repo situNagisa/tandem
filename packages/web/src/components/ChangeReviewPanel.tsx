@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { DiffEmptyReason, FileChange } from '@tandem/protocol'
+import type { AiReviewFinding, AiReviewSeverity, DiffEmptyReason, FileChange } from '@tandem/protocol'
 import {
   AlertTriangle,
+  Bot,
   FileDiff,
   FolderGit2,
   GitPullRequest,
@@ -17,6 +18,7 @@ import {
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useSessionChanges } from '../lib/useChanges'
+import { aiReviewKey, useAiReviewStore } from '../lib/useAiReview'
 import { api } from '../lib/api'
 import { useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
@@ -70,6 +72,24 @@ function saveSplitRatio(ratio: number): void {
   }
 }
 
+const SEVERITY_LABEL: Record<AiReviewSeverity, string> = {
+  blocker: '阻塞',
+  warn: '警告',
+  nit: '细节',
+}
+
+const VERDICT_META: Record<string, { label: string; className: string }> = {
+  commit: { label: '可以提交', className: 'text-[var(--t-git-plus)]' },
+  suggest: { label: '建议修改', className: 'text-warning' },
+  blocker: { label: '有阻塞问题', className: 'text-danger' },
+}
+
+function findingCommentText(finding: AiReviewFinding): string {
+  return `[AI 评审·${SEVERITY_LABEL[finding.severity]}] ${finding.title}\n${finding.detail}${
+    finding.suggestion ? `\n建议：${finding.suggestion}` : ''
+  }`
+}
+
 function emptyReasonLabel(reason?: DiffEmptyReason): string | undefined {
   if (reason === 'mode') return '仅文件模式变化（无内容差异）'
   if (reason === 'eol') return '仅换行符或空白变化（无可见内容差异）'
@@ -87,6 +107,13 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
   const setChangesWidth = useUiStore((s) => s.setChangesWidth)
   const toast = useUiStore((s) => s.toast)
   const openPrPanel = useUiStore((s) => s.openPrPanel)
+  const reviewEntry = useAiReviewStore((s) =>
+    host && sessionId ? s.byKey[aiReviewKey(host.id, sessionId)] : undefined,
+  )
+  const startAiReview = useAiReviewStore((s) => s.start)
+  const setReviewStatus = useAiReviewStore((s) => s.setStatus)
+  const markFalsePositive = useAiReviewStore((s) => s.markFalsePositive)
+  const clearReview = useAiReviewStore((s) => s.clear)
 
   const { changes, loading, error, reload, setChanges } = useSessionChanges(
     host,
@@ -112,6 +139,8 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
   const [dragWidth, setDragWidth] = useState<number | null>(null)
   const [splitRatio, setSplitRatio] = useState<number>(() => loadSplitRatio())
   const [dragSplit, setDragSplit] = useState<number | null>(null)
+  const [blockOnBlocker, setBlockOnBlocker] = useState(false)
+  const acceptedRef = useRef<{ reviewId?: string; ids: Set<string> }>({ ids: new Set() })
   const commentSeq = useRef(1)
   const diffCache = useRef(new Map<string, { diff: string; emptyReason?: DiffEmptyReason; truncated?: boolean }>())
   const splitBodyRef = useRef<HTMLDivElement>(null)
@@ -120,6 +149,65 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     if (!commitMessage && commitRef.current) commitRef.current.style.height = ''
   }, [commitMessage])
+
+  // 是否在设置里勾选「有 blocker 时阻止提交」
+  useEffect(() => {
+    if (!host) return
+    let cancelled = false
+    api
+      .settings(host)
+      .then((next) => {
+        if (!cancelled) setBlockOnBlocker(next.aiReview?.blockOnBlocker === true)
+      })
+      .catch(() => {
+        if (!cancelled) setBlockOnBlocker(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [host?.id])
+
+  const review = reviewEntry?.review
+  const reviewStatuses = reviewEntry?.statuses ?? {}
+  const activeFindings = useMemo(
+    () =>
+      (review?.findings ?? []).filter((item) => {
+        const status = reviewStatuses[item.id]
+        return status !== 'ignored' && status !== 'false_positive'
+      }),
+    [review, reviewStatuses],
+  )
+  const severityCounts = useMemo(() => {
+    const counts: Record<AiReviewSeverity, number> = { blocker: 0, warn: 0, nit: 0 }
+    for (const item of activeFindings) counts[item.severity]++
+    return counts
+  }, [activeFindings])
+  const blockerCount = severityCounts.blocker
+
+  // 采纳后转成人工评论，随「发送给 agent」一起发出。
+  useEffect(() => {
+    if (!review) return
+    if (acceptedRef.current.reviewId !== review.id) {
+      acceptedRef.current = { reviewId: review.id, ids: new Set() }
+    }
+    const fresh = review.findings.filter(
+      (item) => reviewStatuses[item.id] === 'accepted' && !acceptedRef.current.ids.has(item.id),
+    )
+    if (fresh.length === 0) return
+    for (const item of fresh) acceptedRef.current.ids.add(item.id)
+    setComments((prev) => [
+      ...prev,
+      ...fresh.map((item) => ({
+        id: commentSeq.current++,
+        path: item.file,
+        side: 'new' as const,
+        startLine: item.line,
+        endLine: item.endLine ?? item.line,
+        text: findingCommentText(item),
+      })),
+    ])
+    toast(`已采纳 ${fresh.length} 条 AI 意见到待发送评论`, 'success')
+  }, [review, reviewStatuses, toast])
 
   const files = changes?.files ?? []
   const totalAdd = files.reduce((n, f) => n + f.additions, 0)
@@ -237,6 +325,37 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
     window.addEventListener('pointerup', up)
   }
 
+  const runAiReview = async () => {
+    if (!host || !sessionId) return
+    const result = await startAiReview(host, sessionId)
+    if (result) {
+      toast('AI 评审已开始，完成后意见会挂到对应行', 'info')
+    }
+  }
+
+  const handleAiAction = (findingId: string, action: 'accept' | 'ignore' | 'false_positive') => {
+    if (!host || !sessionId) return
+    if (action === 'accept') {
+      setReviewStatus(host.id, sessionId, findingId, 'accepted')
+      return
+    }
+    if (action === 'ignore') {
+      setReviewStatus(host.id, sessionId, findingId, 'ignored')
+      return
+    }
+    if (!review) return
+    void markFalsePositive(host, sessionId, review.id, findingId).then((ok) => {
+      toast(
+        ok ? '已标记为误报，下次评审会避免重复报告' : '已在本机忽略，但写入项目记忆失败',
+        ok ? 'success' : 'error',
+      )
+    })
+  }
+
+  const dismissReview = () => {
+    if (host && sessionId) clearReview(aiReviewKey(host.id, sessionId))
+  }
+
   const addComment = (draft: DiffCommentDraft) => {
     if (!selected) return
     setComments((prev) => [
@@ -299,6 +418,10 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
 
   const requestCommit = () => {
     if (committing || !commitMessage.trim() || files.length === 0) return
+    if (blockOnBlocker && blockerCount > 0) {
+      toast(`AI 评审还有 ${blockerCount} 个阻塞问题，已按设置阻止提交`, 'error')
+      return
+    }
     setCommitConfirmOpen(true)
   }
 
@@ -329,6 +452,10 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
 
   const commitAndCreatePr = async () => {
     if (!host || !sessionId || committing) return
+    if (blockOnBlocker && blockerCount > 0) {
+      toast(`AI 评审还有 ${blockerCount} 个阻塞问题，已按设置阻止提交`, 'error')
+      return
+    }
     const message = commitMessage.trim()
     if (!message) {
       toast('请先填写提交信息', 'error')
@@ -372,6 +499,22 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
     () => comments.filter((c) => c.path === selected),
     [comments, selected],
   )
+  const aiComments = useMemo(
+    () =>
+      activeFindings
+        .filter((item) => item.file === selected && !reviewStatuses[item.id])
+        .map((item) => ({
+          id: item.id,
+          side: 'new' as const,
+          startLine: item.line,
+          endLine: item.endLine ?? item.line,
+          severity: item.severity,
+          title: item.title,
+          detail: item.detail,
+          ...(item.suggestion ? { suggestion: item.suggestion } : {}),
+        })),
+    [activeFindings, reviewStatuses, selected],
+  )
 
   return (
     <aside
@@ -403,6 +546,24 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
           </span>
         )}
         <span className="flex-1" />
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => void runAiReview()}
+          disabled={!host || !sessionId || reviewEntry?.starting || review?.status === 'running'}
+          icon={
+            reviewEntry?.starting || review?.status === 'running' ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Bot size={13} />
+            )
+          }
+          aria-label="AI 评审"
+          tooltip="用评审模型检查当前改动"
+          className="shrink-0 px-1.5 text-[12px]"
+        >
+          <span className="max-sm:hidden">AI 评审</span>
+        </Button>
         <IconButton onClick={reload} label="刷新改动" tooltip="刷新" className="max-md:size-11">
           <RefreshCw size={13} className={cn(loading && 'animate-spin')} />
         </IconButton>
@@ -410,6 +571,76 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
           <X size={15} />
         </IconButton>
       </div>
+
+      {(reviewEntry?.starting || reviewEntry?.error || review) && (
+        <div className="shrink-0 border-b border-border/70 bg-[var(--t-bg-hover)]/40 px-3 py-2 text-[12px]">
+          {review?.status === 'running' || reviewEntry?.starting ? (
+            <div className="flex items-center gap-1.5 text-text-soft">
+              <Loader2 size={12} className="animate-spin" />
+              正在用 {review?.model ?? '评审模型'} 检查改动…
+            </div>
+          ) : reviewEntry?.error ? (
+            <div className="flex items-center gap-1.5 text-danger">
+              <AlertTriangle size={12} />
+              <span className="min-w-0 flex-1">AI 评审失败：{reviewEntry.error}</span>
+              <button
+                type="button"
+                className="shrink-0 rounded px-2 py-0.5 text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
+                onClick={() => void runAiReview()}
+              >
+                重试
+              </button>
+            </div>
+          ) : review?.status === 'error' ? (
+            <div className="flex items-center gap-1.5 text-danger">
+              <AlertTriangle size={12} />
+              <span className="min-w-0 flex-1">AI 评审失败：{review.error ?? '未知错误'}</span>
+            </div>
+          ) : review ? (
+            <>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <Bot size={12} className="shrink-0 text-muted" />
+                <span className={cn('font-medium', VERDICT_META[review.verdict ?? 'suggest']?.className)}>
+                  {VERDICT_META[review.verdict ?? 'suggest']?.label ?? '评审完成'}
+                </span>
+                <span className="text-muted">
+                  阻塞 {severityCounts.blocker} · 警告 {severityCounts.warn} · 细节 {severityCounts.nit}
+                </span>
+                {review.ignored > 0 && (
+                  <span className="text-muted">· 已忽略 {review.ignored} 条指向不存在行的意见</span>
+                )}
+                {review.truncated && <span className="text-muted">· 改动过大，只评审了部分文件</span>}
+                <span className="flex-1" />
+                <button
+                  type="button"
+                  className="shrink-0 rounded px-1.5 py-0.5 text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
+                  onClick={() => void runAiReview()}
+                >
+                  重新评审
+                </button>
+                <IconButton
+                  size="sm"
+                  label="关闭 AI 评审结果"
+                  onClick={dismissReview}
+                  className="md:size-6 [&_svg]:size-3"
+                >
+                  <X size={12} />
+                </IconButton>
+              </div>
+              {review.summary && (
+                <p className="mt-1 whitespace-pre-wrap break-words leading-5 text-text-soft">
+                  {review.summary}
+                </p>
+              )}
+              {review.fallbackText && (
+                <pre className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-bg/60 px-2 py-1.5 font-mono text-[11px] leading-4 text-text-soft">
+                  {review.fallbackText}
+                </pre>
+              )}
+            </>
+          ) : null}
+        </div>
+      )}
 
       {changes && !changes.isRepo ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
@@ -554,6 +785,8 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                   setComments((prev) => prev.map((c) => (c.id === id ? { ...c, text } : c)))
                 }
                 onDeleteComment={(id) => setComments((prev) => prev.filter((c) => c.id !== id))}
+                aiComments={aiComments}
+                onAiAction={handleAiAction}
               />
               </>
             ) : null}
@@ -653,12 +886,31 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 aria-label="提交信息"
                 className="min-h-7 max-h-24 min-w-0 flex-1 resize-none rounded-md border border-border bg-[var(--t-bg)] px-2 py-1.5 text-[12px] leading-4 text-text outline-none transition-[min-height] placeholder:text-muted focus:min-h-14 focus:border-[var(--t-border-strong)] max-sm:min-h-11"
               />
+              {blockerCount > 0 && (
+                <span
+                  className="flex shrink-0 items-center gap-1 text-[12px] text-warning"
+                  title={
+                    blockOnBlocker
+                      ? '设置已开启「有 blocker 时阻止提交」'
+                      : '建议先处理阻塞问题；可在设置中改为阻止提交'
+                  }
+                >
+                  <AlertTriangle size={12} />
+                  {blockerCount} 个阻塞
+                </span>
+              )}
               <Button
                 size="sm"
                 variant="primary"
                 onClick={requestCommit}
-                disabled={!commitMessage.trim() || committing}
-                title={untrackedCount > 0 ? `包含 ${untrackedCount} 个未跟踪文件` : undefined}
+                disabled={!commitMessage.trim() || committing || (blockOnBlocker && blockerCount > 0)}
+                title={
+                  blockOnBlocker && blockerCount > 0
+                    ? 'AI 评审有阻塞问题，已按设置阻止提交'
+                    : untrackedCount > 0
+                      ? `包含 ${untrackedCount} 个未跟踪文件`
+                      : undefined
+                }
                 className="max-sm:min-h-11"
               >
                 {committing && <Loader2 size={11} className="animate-spin" />}
@@ -681,6 +933,9 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                   </IconButton>
                 )}
               >
+                <Menu.Item icon={<Bot />} onSelect={() => void runAiReview()}>
+                  评审后再提交
+                </Menu.Item>
                 <Menu.Item icon={<Wand2 />} onSelect={askAgentCommit}>
                   让 agent 写提交信息
                 </Menu.Item>

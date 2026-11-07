@@ -114,6 +114,8 @@ export interface SessionSummary {
   createdAt: number;
   updatedAt: number;
   usage: Usage;
+  /** 提交前 AI 评审累计用量（已计入 usage，单列展示）。 */
+  aiReviewUsage?: Usage;
   /** 最近一次请求的上下文占用（随 session_updated 推送，也可 GET /api/sessions/:id/context）。 */
   context?: ContextBreakdown;
   /** 本项目（仓库根或 cwd）+ 全局可用的 secret 数量；右栏「详情」显示，不含值。 */
@@ -434,6 +436,8 @@ export interface HostSettings {
   voice?: VoiceSettings;
   /** 上下文自动压缩与工具输出裁剪。缺省用 DEFAULT_CONTEXT_SETTINGS。 */
   context?: ContextSettings;
+  /** 提交前 AI 评审的模型与拦截策略。 */
+  aiReview?: AiReviewSettings;
 }
 // GET  /api/settings -> HostSettings
 // PUT  /api/settings HostSettings -> HostSettings
@@ -861,6 +865,54 @@ export interface FileChange { path: string; status: 'modified' | 'added' | 'dele
 export interface ChangesResult { isRepo: boolean; branch?: string; files: FileChange[] }
 /** 单文件 diff 为空时的原因：仅文件模式变化 / 仅换行符或空白变化 / 仅重命名 / 确实没有差异。 */
 export type DiffEmptyReason = 'mode' | 'eol' | 'rename' | 'none'
+
+// ---------- 提交前 AI 评审 ----------
+// 评审在后台只读子会话中运行，结果按行挂到改动审阅；不影响主会话，除非用户采纳意见。
+export type AiReviewSeverity = 'blocker' | 'warn' | 'nit'
+export type AiReviewVerdict = 'commit' | 'suggest' | 'blocker'
+export interface AiReviewFinding {
+  id: string;
+  file: string;
+  /** 新文件行号（1-based）；找不到对应 diff 行时会被 Host 丢弃。 */
+  line: number;
+  endLine?: number;
+  severity: AiReviewSeverity;
+  title: string;
+  detail: string;
+  suggestion?: string;
+}
+export interface AiReviewRun {
+  id: string;
+  sessionId: string;
+  status: 'running' | 'done' | 'error';
+  verdict?: AiReviewVerdict;
+  summary?: string;
+  findings: AiReviewFinding[];
+  /** 模型给出但指向不存在行/文件的条目数。 */
+  ignored: number;
+  /** 模型输出不是合法 JSON 时保留的原文（面板作为总评展示）。 */
+  fallbackText?: string;
+  /** 改动过大，只评审了部分文件。 */
+  truncated?: boolean;
+  model?: string;
+  error?: string;
+  createdAt: number;
+  finishedAt?: number;
+}
+export interface AiReviewSettings {
+  /** 留空表示使用「审查」子代理预设，没有则该会话当前模型。 */
+  profileId?: string;
+  groupId?: string;
+  model?: string;
+  effort?: ReasoningEffort;
+  /** 有 blocker 时禁止提交（默认只提示）。 */
+  blockOnBlocker?: boolean;
+}
+// POST /api/sessions/:id/ai-review { paths? } -> { review: AiReviewRun }（立即返回 running，后台执行）
+// GET  /api/sessions/:id/ai-review/:reviewId -> { review: AiReviewRun }
+// GET  /api/sessions/:id/ai-review -> { review?: AiReviewRun }（最近一次）
+// POST /api/sessions/:id/ai-review/:reviewId/false-positive { findingId } -> { ok: true }（写入项目记忆）
+
 // GET  /api/sessions/:id/changes                 -> ChangesResult
 // GET  /api/sessions/:id/changes/diff?path=      -> { path: string; diff: string; emptyReason?: DiffEmptyReason; truncated?: true }  (统一 diff 文本；超大时截断)
 // POST /api/sessions/:id/changes/revert {paths}  -> ChangesResult  丢弃这些文件的工作区改动
@@ -1109,6 +1161,7 @@ export type PromptTemplateKey =
   | 'ciFix'
   | 'autoTitle'
   | 'evalReview'
+  | 'aiReview'
   | 'memoryRule'
   | 'persona'
   | 'taskDescription'

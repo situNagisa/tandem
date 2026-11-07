@@ -192,6 +192,32 @@ AGENTS.md 需要面向后续接手工作的 agent，内容简洁、可执行，�
 \`\`\`
 verdict 只能是 pass 或 fail。不要输出其他内容。`,
   },
+  aiReview: {
+    key: 'aiReview',
+    label: '提交前 AI 评审提示',
+    description:
+      '评审子会话检查工作区改动并输出行内意见。变量：{{diff}} 统一 diff、{{context}} 项目约定与记忆、{{falsePositives}} 既往误报。',
+    category: 'aux',
+    variables: ['{{diff}}', '{{context}}', '{{falsePositives}}'],
+    text: `你是提交前的代码评审员。请检查下面这份工作区改动，只报告确实影响正确性、安全性、性能或可维护性的问题；不要复述改动，不要提出与本次改动无关的重构建议。
+
+## 项目约定与记忆
+{{context}}
+
+## 既往误报（不要重复报告这些问题）
+{{falsePositives}}
+
+## 待评审改动（统一 diff；行号是新文件行号）
+{{diff}}
+
+## 输出要求
+只输出一个 JSON 对象，不要输出 Markdown 代码块或任何解释。格式：
+{"verdict":"commit|suggest|blocker","summary":"一句话总体结论","items":[{"file":"相对仓库根的路径","line":12,"endLine":14,"severity":"blocker|warn|nit","title":"简短标题","detail":"具体问题与影响","suggestion":"可选修改建议"}]}
+- verdict：commit=可以提交；suggest=建议修改但不阻塞；blocker=有阻塞问题。
+- line/endLine 必须是 diff 中实际出现的新文件行号；不要猜测不存在的行。
+- severity：blocker=会导致错误/安全风险/数据损坏；warn=明显缺陷或风险；nit=风格与可读性小问题。
+- 没有问题就返回 {"verdict":"commit","summary":"未发现问题","items":[]}。`,
+  },
   memoryRule: {
     key: 'memoryRule',
     label: '记忆写入规则',

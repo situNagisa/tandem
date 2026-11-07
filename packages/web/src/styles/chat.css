@@ -683,6 +683,18 @@
   opacity: 0.75;
   pointer-events: none;
 }
+.diff-ai-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  width: 3px;
+  border-radius: 1px;
+  background: var(--t-text-tertiary);
+  opacity: 0.55;
+  pointer-events: none;
+}
 .diff-comment-btn {
   display: inline-flex;
   flex: none;
@@ -712,6 +724,13 @@
 .diff-comment-btn[data-open] {
   color: var(--t-text);
   background: var(--t-bg-active);
+}
+.diff-comment-btn[data-ai] {
+  color: var(--t-text-tertiary);
+}
+.chat-diff-row[data-commented] > .diff-comment-btn[data-ai] {
+  position: relative;
+  z-index: 2;
 }
 .diff-composer-anchor {
   position: absolute;

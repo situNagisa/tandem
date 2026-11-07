@@ -74,6 +74,19 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   } else {
     delete rec.pinnedTurns;
   }
+  if (raw.aiReviewUsage && typeof raw.aiReviewUsage === 'object') {
+    const review = raw.aiReviewUsage as unknown as Record<string, unknown>;
+    rec.aiReviewUsage = {
+      inputTokens: num(review.inputTokens),
+      outputTokens: num(review.outputTokens),
+      ...(typeof review.cacheReadTokens === 'number' ? { cacheReadTokens: num(review.cacheReadTokens) } : {}),
+      ...(typeof review.cacheWriteTokens === 'number' ? { cacheWriteTokens: num(review.cacheWriteTokens) } : {}),
+      ...(typeof review.reasoningTokens === 'number' ? { reasoningTokens: num(review.reasoningTokens) } : {}),
+      ...(typeof review.costUsd === 'number' ? { costUsd: review.costUsd } : {}),
+    };
+  } else {
+    delete rec.aiReviewUsage;
+  }
   if (raw.archived === true) rec.archived = true;
   else delete rec.archived;
   if (raw.unread === true) rec.unread = true;

@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Gauge, RotateCcw, Server } from 'lucide-react'
+import { Bot, Gauge, RotateCcw, Server } from 'lucide-react'
 import {
   DEFAULT_CONTEXT_SETTINGS,
+  type AiReviewSettings,
   type ContextSettings,
   type HostSettings,
+  type ReasoningEffort,
 } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { api } from '../../lib/api'
-import { Input, SegmentedControl, Switch } from '../ui/Controls'
+import { EFFORT_LABEL } from '../../lib/effort'
+import { profileModelGroups } from '../../lib/profileModels'
+import { Input, SegmentedControl, Select, Switch } from '../ui/Controls'
 
 const OPTIONS = [
   {
@@ -25,6 +29,9 @@ const OPTIONS = [
 export function GeneralSettings() {
   const activeHostId = useAppStore((s) => s.activeHostId)
   const host = useAppStore((s) => s.hosts.find((h) => h.id === s.activeHostId) ?? null)
+  const runtime = useAppStore((s) => (host ? s.runtimes[host.id] : undefined))
+  const refreshProfiles = useAppStore((s) => s.refreshProfiles)
+  const profiles = runtime?.profiles ?? []
   const [settings, setSettings] = useState<HostSettings | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -46,6 +53,45 @@ export function GeneralSettings() {
       cancelled = true
     }
   }, [host, activeHostId])
+
+  useEffect(() => {
+    if (!host) return
+    if (!runtime?.profilesLoaded && !runtime?.profilesLoading) {
+      void refreshProfiles(host.id)
+    }
+  }, [host?.id, runtime?.profilesLoaded, runtime?.profilesLoading, refreshProfiles])
+
+  const aiReview = settings?.aiReview ?? {}
+  const reviewProfile = profiles.find((item) => item.id === aiReview.profileId)
+  const reviewGroups = profileModelGroups(reviewProfile)
+  const reviewGroup = reviewGroups.find((item) => (item.groupId ?? '') === (aiReview.groupId ?? ''))
+  const reviewModels = reviewGroup ? reviewGroup.models : reviewGroups.flatMap((item) => item.models)
+
+  const persistSettings = (next: HostSettings) => {
+    if (!host) return
+    const previous = settings
+    setSettings(next)
+    setSaving(true)
+    setError(null)
+    api
+      .updateSettings(host, next)
+      .then((saved) => setSettings(saved))
+      .catch((err: Error) => {
+        setSettings(previous)
+        setError(err.message || '保存失败')
+      })
+      .finally(() => setSaving(false))
+  }
+
+  const patchAiReview = (patch: Partial<AiReviewSettings>) => {
+    if (!settings) return
+    const next: AiReviewSettings = { ...aiReview, ...patch }
+    for (const key of ['profileId', 'groupId', 'model', 'effort'] as const) {
+      if (!next[key]) delete next[key]
+    }
+    if (!next.blockOnBlocker) delete next.blockOnBlocker
+    persistSettings({ ...settings, aiReview: next })
+  }
 
   const update = async (value: HostSettings['resumeOnRestart']) => {
     if (!host || saving) return
@@ -263,6 +309,116 @@ export function GeneralSettings() {
             {settings && !settings.context ? (
               <p className="mt-2 text-[12px] text-muted">当前 Host 尚未保存过上下文设置，修改后会写入 config.json。</p>
             ) : null}
+          </div>
+        </div>
+      </section>
+      <section data-setting-id="general.ai-review" className="rounded-xl border border-border bg-surface p-4">
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 text-muted">
+            <Bot size={15} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-[13px] font-medium">提交前 AI 评审</h3>
+            <p className="mt-1 text-[13px] leading-5 text-muted">
+              在提交或开 PR 前，用评审模型检查工作区改动，意见挂到具体行，可采纳为人工评论再发给 agent。
+              留空时优先使用名为「审查」的子代理预设，没有则沿用当前会话的模型。
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
+                评审账号
+                <Select
+                  value={aiReview.profileId ?? ''}
+                  onChange={(event) => patchAiReview({ profileId: event.target.value, groupId: '', model: '' })}
+                  aria-label="AI 评审账号"
+                  size="sm"
+                  disabled={!settings || saving}
+                >
+                  <option value="">默认（审查预设 / 当前会话）</option>
+                  {profiles.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
+                分组
+                <Select
+                  value={aiReview.groupId ?? ''}
+                  onChange={(event) => {
+                    const group = reviewGroups.find((item) => (item.groupId ?? '') === event.target.value)
+                    patchAiReview({
+                      groupId: event.target.value,
+                      model: group?.models[0] ?? '',
+                    })
+                  }}
+                  aria-label="AI 评审分组"
+                  size="sm"
+                  disabled={!settings || saving || !reviewProfile}
+                >
+                  <option value="">账号默认</option>
+                  {reviewGroups.map((group) => (
+                    <option key={group.groupId ?? 'default'} value={group.groupId ?? ''}>
+                      {group.name}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
+                模型
+                <Select
+                  value={aiReview.model ?? ''}
+                  onChange={(event) => patchAiReview({ model: event.target.value })}
+                  aria-label="AI 评审模型"
+                  size="sm"
+                  disabled={!settings || saving || !reviewProfile}
+                >
+                  <option value="">账号默认模型</option>
+                  {(aiReview.model && !reviewModels.includes(aiReview.model)
+                    ? [aiReview.model, ...reviewModels]
+                    : reviewModels
+                  ).map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
+                思考强度
+                <Select
+                  value={aiReview.effort ?? ''}
+                  onChange={(event) =>
+                    patchAiReview({ effort: (event.target.value || undefined) as ReasoningEffort | undefined })
+                  }
+                  aria-label="AI 评审思考强度"
+                  size="sm"
+                  disabled={!settings || saving}
+                >
+                  <option value="">继承 / 默认</option>
+                  {(Object.keys(EFFORT_LABEL) as ReasoningEffort[]).map((effort) => (
+                    <option key={effort} value={effort}>
+                      {EFFORT_LABEL[effort]}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            </div>
+            <div className="mt-3 flex items-start justify-between gap-3 border-t border-border pt-3">
+              <div className="min-w-0">
+                <div className="text-[13px]">有 blocker 时阻止提交</div>
+                <div className="mt-0.5 text-[12px] text-muted">
+                  默认只提示；开启后提交按钮在有阻塞问题时会禁用，需要先处理或忽略对应意见。
+                </div>
+              </div>
+              <Switch
+                checked={aiReview.blockOnBlocker === true}
+                onChange={(checked) => patchAiReview({ blockOnBlocker: checked })}
+                disabled={!settings || saving}
+                label="有 blocker 时阻止提交"
+              />
+            </div>
+            {!settings && !error ? <p className="mt-2 text-[12px] text-muted">读取中…</p> : null}
           </div>
         </div>
       </section>

@@ -56,6 +56,7 @@ import { Inbox } from './inbox.js';
 import { BackgroundTaskManager } from './tasks.js';
 import { ScheduleManager } from './schedules.js';
 import { EvalManager } from './evals.js';
+import { AiReviewManager } from './ai-review.js';
 import type { ListModelsResult } from './providers/index.js';
 import { SkillManager } from './skills.js';
 import { SubagentPresetStore } from './subagent-presets.js';
@@ -191,6 +192,8 @@ export class Host {
   readonly schedules: ScheduleManager;
   /** 评测：用例存储与后台批量运行。 */
   readonly evals: EvalManager;
+  /** 提交前 AI 评审：只读子会话、结果按行挂载与误报记忆。 */
+  readonly aiReviews: AiReviewManager;
   readonly hub = new Hub();
   /** 内网团队成员、邀请与审计（~/.tandem/team.json）。 */
   readonly team: TeamStore;
@@ -258,6 +261,7 @@ export class Host {
       this.hub.broadcastAll({ type: 'schedules_updated' });
     });
     this.evals = new EvalManager(this);
+    this.aiReviews = new AiReviewManager(this);
     this.browser = new BrowserManager(home, {
       isSessionHostAllowed: (sessionId, host) => {
         const rec = this.store.get(sessionId);

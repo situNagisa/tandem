@@ -41,6 +41,7 @@ export interface SettingItem {
  */
 export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'general.resume-on-restart', tab: 'general', title: 'Host 重启后的会话恢复', keywords: ['恢复', '重启', '续跑', 'resume'] },
+  { id: 'general.ai-review', tab: 'general', title: '提交前 AI 评审', keywords: ['AI', '评审', 'review', '提交', 'PR', 'blocker', '模型'] },
 
   { id: 'voice.engine', tab: 'voice', title: '语音识别方式', keywords: ['语音', '识别', '引擎', 'engine'] },
   { id: 'voice.whisper', tab: 'voice', title: 'Host 本地 Whisper', keywords: ['whisper', '后端', '可执行文件', '模型', '语言'] },

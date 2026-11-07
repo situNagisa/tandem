@@ -67,6 +67,65 @@ function createMockProvider() {
       res.end(JSON.stringify({ error: { message: 'bad json' } }))
       return
     }
+    // 提交前 AI 评审：返回固定 JSON（一条 blocker、一条 nit、一条指向不存在行的错误项）
+    if (
+      body.stream === true &&
+      JSON.stringify(body.messages ?? []).includes('你是提交前的代码评审员')
+    ) {
+      const review = JSON.stringify({
+        verdict: 'blocker',
+        summary: '发现一处阻塞问题，另有未使用常量',
+        items: [
+          {
+            file: 'src/hello.ts',
+            line: 1,
+            severity: 'blocker',
+            title: '导出的常量值被改小',
+            detail: 'hello 从 1 改成 2，可能影响依赖该值的调用方。',
+            suggestion: '确认下游是否需要同步调整。',
+          },
+          {
+            file: 'src/hello.ts',
+            line: 2,
+            severity: 'nit',
+            title: '新增常量未被使用',
+            detail: 'world 没有被任何地方引用。',
+          },
+          {
+            file: 'src/hello.ts',
+            line: 9999,
+            severity: 'warn',
+            title: '指向不存在的行',
+            detail: '这一行在 diff 里不存在，应被 Host 忽略。',
+          },
+        ],
+      })
+      res.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+      })
+      const send = (payload) => res.write(`data: ${JSON.stringify(payload)}\n\n`)
+      send({
+        id: 'chatcmpl-review',
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: { role: 'assistant', content: review }, finish_reason: null }],
+      })
+      send({
+        id: 'chatcmpl-review',
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+      })
+      send({
+        id: 'chatcmpl-review',
+        object: 'chat.completion.chunk',
+        choices: [],
+        usage: { prompt_tokens: 300, completion_tokens: 80, total_tokens: 380 },
+      })
+      res.write('data: [DONE]\n\n')
+      res.end()
+      return
+    }
     if (body.stream !== true) {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(
@@ -1248,6 +1307,31 @@ async function main() {
         await panel.getByRole('button', { name: /1 条待发送评论/ }).first().innerText(),
         /1 条评论/,
       )
+    })
+
+    desktop('提交前 AI 评审挂行、忽略无效行并采纳意见', async (page) => {
+      await openSession(page, 'long')
+      await page.getByRole('button', { name: '改动审阅' }).click()
+      const panel = page.getByRole('complementary').filter({ hasText: '改动审阅' }).first()
+      await panel.getByText('hello.ts', { exact: true }).waitFor({ timeout: 10_000 })
+      await panel.getByText('hello.ts', { exact: true }).click()
+      await panel.getByRole('button', { name: 'AI 评审', exact: true }).click()
+      await panel.getByText('有阻塞问题').waitFor({ timeout: 20_000 })
+      const text = await panel.innerText()
+      assert.match(text, /已忽略 1 条指向不存在行的意见/, '无效行意见没有被忽略并提示')
+      assert.match(text, /阻塞 1 · 警告 0 · 细节 1/, '评审结论计数不正确')
+      const markers = panel.locator('.diff-comment-btn[data-ai]')
+      await markers.first().waitFor({ timeout: 10_000 })
+      assert.equal(await markers.count(), 2, 'blocker 与 nit 应各有一个行标记')
+      assert.ok((await panel.getByText('1 个阻塞').count()) >= 1, '提交按钮旁没有阻塞提示')
+      await markers.first().click()
+      await page.getByRole('button', { name: '采纳', exact: true }).click()
+      await page
+        .getByRole('button', { name: /1 条待发送评论/ })
+        .first()
+        .waitFor({ timeout: 5_000 })
+      assert.match(await panel.innerText(), /1 条评论/, '采纳后没有进入待发送评论')
+      assert.equal(await panel.locator('.diff-comment-btn[data-ai]').count(), 1, '采纳后的 AI 标记应移除')
     })
 
     desktop('改动审阅提交范围带文件数与二次确认', async (page) => {

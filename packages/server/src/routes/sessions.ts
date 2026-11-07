@@ -343,6 +343,41 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
     return commitChanges(rec.cwd, body.message, body.paths);
   });
 
+  // ---------- 提交前 AI 评审 ----------
+  app.post('/api/sessions/:id/ai-review', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    const body = (req.body ?? {}) as { paths?: unknown };
+    return { review: host.aiReviews.start(rec, body.paths) };
+  });
+
+  app.get('/api/sessions/:id/ai-review', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!host.getSession(id)) return bad(reply, '会话不存在', 404);
+    const review = host.aiReviews.latestFor(id);
+    return review ? { review } : {};
+  });
+
+  app.get('/api/sessions/:id/ai-review/:reviewId', async (req, reply) => {
+    const { id, reviewId } = req.params as { id: string; reviewId: string };
+    if (!host.getSession(id)) return bad(reply, '会话不存在', 404);
+    const review = host.aiReviews.get(id, reviewId);
+    if (!review) return bad(reply, '评审记录不存在', 404);
+    return { review };
+  });
+
+  app.post('/api/sessions/:id/ai-review/:reviewId/false-positive', async (req, reply) => {
+    const { id, reviewId } = req.params as { id: string; reviewId: string };
+    if (!host.getSession(id)) return bad(reply, '会话不存在', 404);
+    const body = (req.body ?? {}) as { findingId?: unknown };
+    const findingId = str(body.findingId);
+    if (!findingId) return bad(reply, 'findingId 不能为空');
+    const ok = host.aiReviews.recordFalsePositive(id, reviewId, findingId);
+    if (!ok) return bad(reply, '没有找到这条评审意见', 404);
+    return { ok: true };
+  });
+
   // ---------- VCS / PR / CI（本机 git + gh / glab） ----------
   app.get('/api/sessions/:id/vcs', async (req, reply) => {
     const { id } = req.params as { id: string };

@@ -90,6 +90,9 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
         : 'less',
     ...(existing?.voice && typeof existing.voice === 'object' ? { voice: existing.voice } : {}),
     context: normalizeContextSettings(existing?.context),
+    ...(existing?.aiReview && typeof existing.aiReview === 'object'
+      ? { aiReview: existing.aiReview }
+      : {}),
     ...(isRelayConfig(existing?.relay) ? { relay: existing.relay } : {}),
   };
   if (
@@ -113,6 +116,7 @@ export function saveHostSettings(
     defaultDelegation?: import('@tandem/protocol').DelegationStrategy;
     voice?: import('@tandem/protocol').VoiceSettings;
     context?: ContextSettings;
+    aiReview?: import('@tandem/protocol').AiReviewSettings;
   },
 ): void {
   const file = path.join(home, 'config.json');

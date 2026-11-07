@@ -83,6 +83,8 @@ export interface HostConfig {
   voice?: import('@tandem/protocol').VoiceSettings;
   /** 上下文自动压缩与旧工具输出裁剪。 */
   context?: import('@tandem/protocol').ContextSettings;
+  /** 提交前 AI 评审的模型与拦截策略。 */
+  aiReview?: import('@tandem/protocol').AiReviewSettings;
   relay?: RelayConfig;
 }
 
@@ -113,6 +115,8 @@ export interface SessionRecord extends Session {
   evalRun?: { runId: string; caseName: string; configId: string };
   /** 评测配置临时覆盖的提示词（仅该会话生效，不写回 prompts.json）。 */
   promptOverrides?: Partial<Record<import('@tandem/protocol').PromptTemplateKey, string>>;
+  /** 提交前 AI 评审累计用量（已计入 usage）。 */
+  aiReviewUsage?: Usage;
 }
 
 /**
