@@ -20,7 +20,10 @@ interface ApprovalEntry {
   at: number;
   project: string;
   tool: string;
+  /** 规范化关键参数：Bash 为命令头部，文件工具为相对项目根目录的路径。 */
   key: string;
+  /** 文件工具额外记录所在目录（相对路径），用于人工排查与后续按目录归类。 */
+  dir?: string;
   decision: ApprovalDecision;
   /** 记录时整条命令/路径命中的危险模式；按 key 汇总后不参与自动允许建议。 */
   danger?: string;
@@ -232,11 +235,14 @@ export class ApprovalHistoryStore {
   }): void {
     const project = path.resolve(input.project);
     const danger = dangerForInput(input.tool, input.input);
+    const key = approvalKey(input.tool, input.input, project);
+    const dir = FILE_TOOLS.has(input.tool) && key ? toPosix(path.dirname(key)) : '';
     const entry: ApprovalEntry = {
       at: input.at ?? Date.now(),
       project,
       tool: input.tool,
-      key: approvalKey(input.tool, input.input, project),
+      key,
+      ...(dir && dir !== '.' ? { dir } : {}),
       decision: input.decision,
       ...(danger ? { danger } : {}),
     };
