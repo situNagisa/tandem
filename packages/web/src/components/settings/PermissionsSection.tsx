@@ -387,123 +387,6 @@ export function PermissionsSection() {
         )}
       </div>
 
-      <section
-        data-setting-id="permissions.sandbox"
-        className="settings-item space-y-3 px-2.5 py-2.5"
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <ShieldCheck size={14} className="text-accent-text" />
-          <h3 className="text-[13px] font-semibold">命令沙箱</h3>
-          <span className="flex-1" />
-          {sandbox && (
-            <Switch
-              checked={sandbox.enabled}
-              disabled={sandboxSaving || !sandboxStatus?.platform.available}
-              onChange={(enabled) => void updateSandbox({ enabled })}
-              label="启用命令沙箱"
-            />
-          )}
-        </div>
-        <p className="text-[12px] leading-5 text-muted">
-          {sandboxStatus?.platform.message ??
-            '静态检查跨平台生效：写工作目录之外、受保护路径与非白名单网络会转审批。'}
-          {sandboxStatus?.platform.available
-            ? ' 关闭后仍保留静态检查。'
-            : ' Windows 上仅静态检查。'}
-        </p>
-
-        <div className="space-y-1.5">
-          <span className="text-[13px]">写入保护</span>
-          <p className="text-[12px] leading-5 text-muted">
-            默认只允许写入会话工作目录、worktree 与系统临时目录。~/.ssh、~/.aws、~/.gnupg、
-            ~/.tandem、~/.claude、~/.codex、系统目录、项目 .git/hooks 与 .env* 的任何写入都会转审批，
-            不受 bypassPermissions 影响。
-          </p>
-          <label className="flex items-center justify-between gap-3 rounded-lg border border-border/70 px-2.5 py-2">
-            <span className="min-w-0">
-              <span className="block text-[13px]">严格模式</span>
-              <span className="block text-[12px] leading-5 text-muted">
-                无法静态判断写入范围的命令（脚本、构建、eval 等）也转审批；默认不拦截以避免误伤。
-              </span>
-            </span>
-            {sandbox && (
-              <Switch
-                checked={sandbox.strict}
-                disabled={sandboxSaving}
-                onChange={(strict) => void updateSandbox({ strict })}
-                label="严格模式"
-              />
-            )}
-          </label>
-        </div>
-
-        <div data-setting-id="permissions.network" className="space-y-2 border-t border-border/60 pt-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[13px]">网络策略</span>
-            <span className="flex-1" />
-            {sandbox && (
-              <SegmentedControl
-                aria-label="沙箱网络策略"
-                options={[
-                  { value: 'host', label: '可联网' },
-                  { value: 'none', label: '断网' },
-                ]}
-                value={sandbox.network}
-                onChange={(network) => void updateSandbox({ network })}
-                disabled={sandboxSaving || !sandboxStatus?.platform.networkIsolation}
-              />
-            )}
-          </div>
-          <p className="text-[12px] leading-5 text-muted">
-            {sandboxStatus?.platform.networkIsolation
-              ? '断网后需要联网的命令会失败并转审批；在审批中允许会临时放行这一次。'
-              : '当前平台不支持在沙箱内断网；网络白名单仍会对联网命令生效。'}
-          </p>
-          <span className="block text-[13px]">网络白名单</span>
-          <p className="text-[12px] leading-5 text-muted">
-            curl、wget、git clone/fetch/push、npm/pip install、ssh、scp、nc 等命令的目标主机
-            不在白名单时转审批。支持域名、*.example.com、IP 与 CIDR 网段；回环地址始终放行。
-          </p>
-          {sandbox && (
-            <>
-              <Textarea
-                value={sandboxHostText}
-                onChange={(e) => setSandboxHostText(e.target.value)}
-                aria-label="网络白名单"
-                className="min-h-20 font-mono text-[12px]"
-                placeholder={'localhost\n*.corp.example.com\n192.168.0.0/16'}
-              />
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onClick={() => void updateSandbox({}, sandboxHostText)}
-                  disabled={sandboxSaving}
-                >
-                  {sandboxSaving && <Loader2 size={11} className="animate-spin" />}
-                  保存白名单
-                </Button>
-                {sandboxStatus?.packageSources.map((source) => (
-                  <Button
-                    key={source.label}
-                    size="sm"
-                    variant="ghost"
-                    disabled={sandboxSaving}
-                    onClick={() =>
-                      void updateSandbox({
-                        allowedHosts: [...new Set([...sandbox.allowedHosts, ...source.hosts])],
-                      })
-                    }
-                  >
-                    + {source.label}
-                  </Button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </section>
-
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <ShieldCheck size={15} className="text-text-soft" />
@@ -641,6 +524,123 @@ export function PermissionsSection() {
           保存
         </Button>
       </div>
+
+      <section
+        data-setting-id="permissions.sandbox"
+        className="settings-item space-y-3 px-2.5 py-2.5"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <ShieldCheck size={14} className="text-accent-text" />
+          <h3 className="text-[13px] font-semibold">命令沙箱</h3>
+          <span className="flex-1" />
+          {sandbox && (
+            <Switch
+              checked={sandbox.enabled}
+              disabled={sandboxSaving || !sandboxStatus?.platform.available}
+              onChange={(enabled) => void updateSandbox({ enabled })}
+              label="启用命令沙箱"
+            />
+          )}
+        </div>
+        <p className="text-[12px] leading-5 text-muted">
+          {sandboxStatus?.platform.message ??
+            '静态检查跨平台生效：写工作目录之外、受保护路径与非白名单网络会转审批。'}
+          {sandboxStatus?.platform.available
+            ? ' 关闭后仍保留静态检查。'
+            : ' Windows 上仅静态检查。'}
+        </p>
+
+        <div className="space-y-1.5">
+          <span className="text-[13px]">写入保护</span>
+          <p className="text-[12px] leading-5 text-muted">
+            默认只允许写入会话工作目录、worktree 与系统临时目录。~/.ssh、~/.aws、~/.gnupg、
+            ~/.tandem、~/.claude、~/.codex、系统目录、项目 .git/hooks 与 .env* 的任何写入都会转审批，
+            不受 bypassPermissions 影响。
+          </p>
+          <label className="flex items-center justify-between gap-3 rounded-lg border border-border/70 px-2.5 py-2">
+            <span className="min-w-0">
+              <span className="block text-[13px]">严格模式</span>
+              <span className="block text-[12px] leading-5 text-muted">
+                无法静态判断写入范围的命令（脚本、构建、eval 等）也转审批；默认不拦截以避免误伤。
+              </span>
+            </span>
+            {sandbox && (
+              <Switch
+                checked={sandbox.strict}
+                disabled={sandboxSaving}
+                onChange={(strict) => void updateSandbox({ strict })}
+                label="严格模式"
+              />
+            )}
+          </label>
+        </div>
+
+        <div data-setting-id="permissions.network" className="space-y-2 border-t border-border/60 pt-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[13px]">网络策略</span>
+            <span className="flex-1" />
+            {sandbox && (
+              <SegmentedControl
+                aria-label="沙箱网络策略"
+                options={[
+                  { value: 'host', label: '可联网' },
+                  { value: 'none', label: '断网' },
+                ]}
+                value={sandbox.network}
+                onChange={(network) => void updateSandbox({ network })}
+                disabled={sandboxSaving || !sandboxStatus?.platform.networkIsolation}
+              />
+            )}
+          </div>
+          <p className="text-[12px] leading-5 text-muted">
+            {sandboxStatus?.platform.networkIsolation
+              ? '断网后需要联网的命令会失败并转审批；在审批中允许会临时放行这一次。'
+              : '当前平台不支持在沙箱内断网；网络白名单仍会对联网命令生效。'}
+          </p>
+          <span className="block text-[13px]">网络白名单</span>
+          <p className="text-[12px] leading-5 text-muted">
+            curl、wget、git clone/fetch/push、npm/pip install、ssh、scp、nc 等命令的目标主机
+            不在白名单时转审批。支持域名、*.example.com、IP 与 CIDR 网段；回环地址始终放行。
+          </p>
+          {sandbox && (
+            <>
+              <Textarea
+                value={sandboxHostText}
+                onChange={(e) => setSandboxHostText(e.target.value)}
+                aria-label="网络白名单"
+                className="min-h-20 font-mono text-[12px]"
+                placeholder={'localhost\n*.corp.example.com\n192.168.0.0/16'}
+              />
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => void updateSandbox({}, sandboxHostText)}
+                  disabled={sandboxSaving}
+                >
+                  {sandboxSaving && <Loader2 size={11} className="animate-spin" />}
+                  保存白名单
+                </Button>
+                {sandboxStatus?.packageSources.map((source) => (
+                  <Button
+                    key={source.label}
+                    size="sm"
+                    variant="ghost"
+                    disabled={sandboxSaving}
+                    onClick={() =>
+                      void updateSandbox({
+                        allowedHosts: [...new Set([...sandbox.allowedHosts, ...source.hosts])],
+                      })
+                    }
+                  >
+                    + {source.label}
+                  </Button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </section>
 
       {draft && (
         <Modal

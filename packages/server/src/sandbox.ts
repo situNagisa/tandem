@@ -11,7 +11,6 @@ import type {
   SandboxStatus,
 } from '@tandem/protocol';
 import { readJson, writePrivateFile } from './config.js';
-import { isSubPath } from './util/path.js';
 
 export const DEFAULT_ALLOWED_HOSTS = ['localhost', '127.0.0.1', '::1', '*.localhost'];
 
@@ -240,13 +239,18 @@ function pathApi(platform: NodeJS.Platform): path.PlatformPath {
   return platform === 'win32' ? path.win32 : path.posix;
 }
 
-function uniquePaths(items: string[]): string[] {
+function uniquePaths(items: string[], api: path.PlatformPath = path): string[] {
   const out: string[] = [];
   for (const item of items) {
-    const value = path.resolve(item);
+    const value = api.resolve(item);
     if (!out.includes(value)) out.push(value);
   }
   return out;
+}
+
+function subPathOf(api: path.PlatformPath, parent: string, child: string): boolean {
+  const rel = api.relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !api.isAbsolute(rel));
 }
 
 export interface SandboxEvalContext {
@@ -297,11 +301,10 @@ export function evaluateSandbox(toolName: string, input: unknown, ctx: SandboxEv
   const home = ctx.home ?? os.homedir();
   const tandemHome = ctx.tandemHome ?? path.join(home, '.tandem');
   const cwd = api.resolve(ctx.cwd);
-  const roots = uniquePaths([
-    cwd,
-    ...(ctx.worktreePath ? [api.resolve(ctx.worktreePath)] : []),
-    ...tempDirs(platform),
-  ]);
+  const roots = uniquePaths(
+    [cwd, ...(ctx.worktreePath ? [api.resolve(ctx.worktreePath)] : []), ...tempDirs(platform)],
+    api,
+  );
   const args = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
   const notices: PermissionSandboxNotice[] = [];
   let protectedWrite: SandboxEvaluation['protectedWrite'];
@@ -319,7 +322,7 @@ export function evaluateSandbox(toolName: string, input: unknown, ctx: SandboxEv
       const abs = api.resolve(cwd, expanded);
       const label = protectedPathReason(abs, { home, tandemHome, platform });
       if (label) protectedWrite = { path: abs, label };
-      else if (!roots.some((root) => isSubPath(root, abs))) outsideWrite = abs;
+      else if (!roots.some((root) => subPathOf(api, root, abs))) outsideWrite = abs;
     }
   } else if (toolName === 'Bash') {
     const command = typeof args.command === 'string' ? args.command : '';
@@ -332,7 +335,7 @@ export function evaluateSandbox(toolName: string, input: unknown, ctx: SandboxEv
       if (!target) continue;
       const label = protectedPathReason(target, { home, tandemHome, platform });
       if (label && !protectedWrite) protectedWrite = { path: target, label };
-      if (!label && !outsideWrite && !roots.some((root) => isSubPath(root, target))) {
+      if (!label && !outsideWrite && !roots.some((root) => subPathOf(api, root, target))) {
         outsideWrite = target;
       }
     }
@@ -438,7 +441,7 @@ export function protectedPathReason(
     { dir: opts.tandemHome, label: 'Tandem 配置' },
   ];
   for (const item of homeDirs) {
-    if (isSubPath(api.resolve(item.dir), target)) return item.label;
+    if (subPathOf(api, api.resolve(item.dir), target)) return item.label;
   }
 
   if (platform === 'win32') {
@@ -447,12 +450,12 @@ export function protectedPathReason(
     const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
     const programData = process.env.ProgramData || 'C:\\ProgramData';
     for (const dir of [systemRoot, programFiles, programFilesX86, programData]) {
-      if (isSubPath(api.resolve(dir), target)) return '系统目录';
+      if (subPathOf(api, api.resolve(dir), target)) return '系统目录';
     }
   } else {
     const systemDirs = platform === 'linux' ? [...POSIX_SYSTEM_DIRS, ...LINUX_PACKAGE_DIRS] : POSIX_SYSTEM_DIRS;
     for (const dir of systemDirs) {
-      if (isSubPath(api.resolve(dir), target)) return '系统目录';
+      if (subPathOf(api, api.resolve(dir), target)) return '系统目录';
     }
   }
 
@@ -504,7 +507,7 @@ type Token = { kind: 'word'; value: string; dynamic: boolean } | { kind: 'op'; o
 
 const SEPARATORS = new Set(['|', '||', '&&', ';', '\n', '&', '(', ')', '{', '}']);
 
-function tokenize(command: string): Token[] {
+function tokenize(command: string, platform: NodeJS.Platform): Token[] {
   const tokens: Token[] = [];
   let i = 0;
   let atWordStart = true;
@@ -572,7 +575,7 @@ function tokenize(command: string): Token[] {
         i++;
         while (i < command.length && command[i] !== '"') {
           const q = command[i] ?? '';
-          if (q === '\\' && i + 1 < command.length) {
+          if (q === '\\' && i + 1 < command.length && platform !== 'win32') {
             value += command[i + 1];
             i += 2;
             continue;
@@ -584,7 +587,7 @@ function tokenize(command: string): Token[] {
         i++;
         continue;
       }
-      if (c === '\\' && i + 1 < command.length) {
+      if (c === '\\' && i + 1 < command.length && platform !== 'win32') {
         value += command[i + 1];
         i += 2;
         continue;
@@ -966,6 +969,43 @@ function analyzeBashSegment(tokens: Token[], state: AnalyzeState): void {
     case 'popd':
       state.unknownWrite = true;
       break;
+    case 'copy':
+    case 'xcopy':
+    case 'robocopy':
+    case 'move':
+    case 'copy-item':
+    case 'move-item': {
+      const dest = positional[positional.length - 1];
+      if (dest && positional.length >= 2) pushWrite(state, dest);
+      break;
+    }
+    case 'del':
+    case 'erase':
+    case 'rd': {
+      for (const target of positional) pushWrite(state, target);
+      break;
+    }
+    case 'set-content':
+    case 'add-content':
+    case 'out-file':
+    case 'new-item':
+    case 'remove-item': {
+      let target: string | undefined;
+      for (let i = 0; i < args.length; i++) {
+        const arg = args[i] ?? '';
+        if (['-path', '-literalpath', '-filepath', '-name'].includes(arg.toLowerCase())) {
+          target = args[i + 1];
+          break;
+        }
+        if (/^-(path|literalpath|filepath|name):/i.test(arg)) {
+          target = arg.split(':').slice(1).join(':');
+          break;
+        }
+      }
+      if (!target) target = positional[0];
+      if (target) pushWrite(state, target);
+      break;
+    }
     case 'cp':
     case 'mv':
     case 'install':
@@ -1262,6 +1302,12 @@ function analyzeBashSegment(tokens: Token[], state: AnalyzeState): void {
       else if (positional[0]) state.unknownWrite = true;
       break;
     }
+    case 'cmd':
+    case 'powershell':
+    case 'pwsh': {
+      state.unknownWrite = true;
+      break;
+    }
     case 'make':
     case 'cmake':
     case 'ninja':
@@ -1304,7 +1350,7 @@ export function analyzeBash(
     unknownNetwork: false,
     hasNetwork: false,
   };
-  for (const segment of splitSegments(tokenize(command))) analyzeBashSegment(segment, state);
+  for (const segment of splitSegments(tokenize(command, platform))) analyzeBashSegment(segment, state);
   return {
     writes: state.writes,
     unknownWrite: state.unknownWrite,
@@ -1393,7 +1439,7 @@ function isLoopbackHost(host: string): boolean {
     value === '::1' ||
     value === '[::1]' ||
     value === '0.0.0.0' ||
-    value.startsWith('127.')
+    /^127(\.\d{1,3}){3}$/.test(value)
   );
 }
 
