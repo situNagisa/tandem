@@ -128,6 +128,8 @@ import {
   splitCompactOutput,
   type PermissionEntry,
 } from './host/helpers.js';
+import { inboxSnapshot, pushInbox, recordCi } from './host/inbox.js';
+import { importSession, notifyExternalSessionsChanged } from './host/external.js';
 
 export class Host {
   readonly config: HostConfig;
@@ -205,24 +207,20 @@ export class Host {
     this.external.startWatching(() => this.notifyExternalSessionsChanged());
   }
 
-  /** 外部会话列表可能变化（文件更新 / 导入状态变化），广播给所有客户端。 */
   notifyExternalSessionsChanged(): void {
-    this.hub.broadcastAll({ type: 'external_sessions_changed' });
+    return notifyExternalSessionsChanged(this);
   }
 
-  /** 把一条收件箱事件推给所有订阅了收件箱的连接（含手机后台连接）。 */
-  private pushInbox(event: InboxEvent): void {
-    this.hub.broadcastInbox({ type: 'inbox_event', event });
+  pushInbox(event: InboxEvent): void {
+    return pushInbox(this, event);
   }
 
-  /** 收件箱快照：客户端 subscribe_inbox 时下发，用于冷启动/重连补齐。 */
   inboxSnapshot(sinceSeq?: number) {
-    return this.inbox.snapshot(sinceSeq);
+    return inboxSnapshot(this, sinceSeq);
   }
 
-  /** PR/CI 状态变化写入收件箱（轮询器调用）。 */
   recordCi(sessionId: string, sessionTitle: string, ci: NonNullable<InboxEvent['ci']>): void {
-    this.pushInbox(this.inbox.recordCi(sessionId, sessionTitle, ci));
+    return recordCi(this, sessionId, sessionTitle, ci);
   }
   info(): HostInfo {
     return {
@@ -989,40 +987,8 @@ export class Host {
     return rec;
   }
 
-  /** 跨 Host 迁移：复制完整会话为新 id，可指定目标 Host 上的 cwd。 */
-  async importSession(input: { session?: unknown; cwd?: unknown }): Promise<SessionRecord> {
-    const source = input.session as Session | undefined;
-    if (!source || typeof source !== 'object' || !Array.isArray(source.messages)) {
-      throw new Error('session 无效');
-    }
-    const rawCwd =
-      typeof input.cwd === 'string' && input.cwd.trim() ? input.cwd.trim() : source.cwd;
-    if (!rawCwd) throw new Error('cwd 不能为空');
-    const profiles = this.profiles.list();
-    const profile = this.profiles.get(source.profileId) ?? profiles[0];
-    if (!profile) throw new Error('目标 Host 还没有账号，请先创建账号');
-    const groupId =
-      profile.id === source.profileId &&
-      source.groupId &&
-      profile.groups?.some((g) => g.id === source.groupId)
-        ? source.groupId
-        : undefined;
-    const rec = await this.createSession({
-      cwd: rawCwd,
-      profileId: profile.id,
-      title: source.title || '导入的会话',
-      permissionMode: source.permissionMode,
-      ...(groupId ? { groupId } : {}),
-      ...(profile.id === source.profileId && source.model ? { model: source.model } : {}),
-    });
-    rec.messages = structuredClone(source.messages);
-    rec.todos = Array.isArray(source.todos) ? structuredClone(source.todos) : [];
-    if (source.plan) rec.plan = structuredClone(source.plan);
-    if (source.usage) rec.usage = { ...source.usage };
-    if (source.effort) rec.effort = source.effort;
-    this.store.markDirty(rec.id, false);
-    this.broadcastSummary(rec);
-    return rec;
+  importSession(input: { session?: unknown; cwd?: unknown }): Promise<SessionRecord> {
+    return importSession(this, input);
   }
 
   toSession(rec: SessionRecord): Session {
