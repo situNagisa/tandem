@@ -58,7 +58,7 @@ function StatusPill({ result }: { result?: EvalResult | Omit<EvalResult, 'messag
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px]',
+        'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[12px]',
         passed === true
           ? 'bg-success-soft text-success'
           : passed === false
@@ -324,7 +324,7 @@ export function EvalsSection() {
         <section className="min-w-0 rounded-xl border border-border p-3">
           <div className="mb-2 flex items-center gap-2">
             <h3 className="text-[13px] font-medium">用例</h3>
-            <span className="ml-auto text-[11px] text-muted">{cases.length}</span>
+            <span className="ml-auto text-[12px] text-muted">{cases.length}</span>
           </div>
           <Select
             value={suite}
@@ -353,7 +353,7 @@ export function EvalsSection() {
                     <div className="truncate text-[12.5px] leading-5 text-text" title={item.title}>
                       {item.title}
                     </div>
-                    <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] text-muted">
+                    <div className="mt-0.5 flex flex-wrap gap-x-2 text-[12px] text-muted">
                       <span>{item.snapshot.mode === 'git' ? 'git 快照' : '目录快照'}</span>
                       {item.checkCommand && <span className="truncate font-mono">{item.checkCommand}</span>}
                     </div>
@@ -375,7 +375,7 @@ export function EvalsSection() {
         <section className="min-w-0 rounded-xl border border-border p-3">
           <div className="mb-2 flex items-center gap-2">
             <h3 className="text-[13px] font-medium">配置</h3>
-            <span className="text-[11px] text-muted">每个配置独立运行全部用例</span>
+            <span className="text-[12px] text-muted">每个配置独立运行全部用例</span>
             <Button
               size="sm"
               variant="ghost"
@@ -413,11 +413,11 @@ export function EvalsSection() {
             <div className="flex items-center gap-2">
               <Switch checked={reviewer.enabled} onChange={toggleReviewer} label="评审模型" />
               <span className="text-[12.5px] text-text-soft">评审模型</span>
-              <span className="text-[11px] text-muted">按用例的「通过标准」给结论</span>
+              <span className="text-[12px] text-muted">按用例的「通过标准」给结论</span>
             </div>
             {reviewer.enabled && (
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                <label className="flex min-w-0 flex-col gap-1 text-[11px] text-muted">
+                <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
                   评审账号
                   <Select
                     value={reviewer.profileId}
@@ -432,7 +432,7 @@ export function EvalsSection() {
                     ))}
                   </Select>
                 </label>
-                <label className="flex min-w-0 flex-col gap-1 text-[11px] text-muted">
+                <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
                   评审模型
                   <Select
                     value={reviewer.model}
@@ -455,7 +455,7 @@ export function EvalsSection() {
           </div>
 
           <div className="mt-3 flex flex-wrap items-end gap-3">
-            <label className="flex w-[120px] flex-col gap-1 text-[11px] text-muted">
+            <label className="flex w-[120px] flex-col gap-1 text-[12px] text-muted">
               并发数
               <Input
                 type="number"
@@ -470,7 +470,7 @@ export function EvalsSection() {
               />
             </label>
             <div className="ml-auto flex items-center gap-2">
-              <span className="text-[11px] text-muted">
+              <span className="text-[12px] text-muted">
                 {cases.length} 个用例 × {configs.length} 个配置 = {cases.length * configs.length} 次
               </span>
               <Button
@@ -507,7 +507,7 @@ export function EvalsSection() {
           {summary && (
             <span
               className={cn(
-                'rounded-full px-1.5 py-0.5 text-[11px]',
+                'rounded-full px-1.5 py-0.5 text-[12px]',
                 summary.status === 'running'
                   ? 'bg-[var(--t-bg-hover)] text-muted'
                   : summary.status === 'cancelled'
@@ -519,7 +519,7 @@ export function EvalsSection() {
             </span>
           )}
           {summary && (
-            <span className="text-[11.5px] text-muted">
+            <span className="text-[12px] text-muted">
               {summary.finished}/{summary.total}
             </span>
           )}
@@ -565,7 +565,7 @@ export function EvalsSection() {
           <>
             {run.status === 'running' && (
               <div className="border-b border-border px-3 py-2">
-                <div className="mb-1 flex items-center justify-between text-[11.5px] text-muted">
+                <div className="mb-1 flex items-center justify-between text-[12px] text-muted">
                   <span>运行中，已完成 {run.finished}/{run.total}</span>
                   <span>{Math.round((run.finished / Math.max(1, run.total)) * 100)}%</span>
                 </div>
@@ -580,7 +580,7 @@ export function EvalsSection() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[520px] border-collapse text-[12.5px]">
                 <thead>
-                  <tr className="border-b border-border text-left text-[11.5px] text-muted">
+                  <tr className="border-b border-border text-left text-[12px] text-muted">
                     <th className="min-w-[180px] px-3 py-2 font-medium">用例</th>
                     {run.configs.map((config) => (
                       <th key={config.id} className="min-w-[150px] px-2 py-2 font-medium">
@@ -624,7 +624,7 @@ export function EvalsSection() {
                             variant="ghost"
                             icon={<Columns2 size={11} />}
                             onClick={() => setCompareCase(testCase.name)}
-                            className="h-7 px-1.5 text-[11px]"
+                            className="h-7 px-1.5 text-[12px]"
                           >
                             并排
                           </Button>
@@ -711,7 +711,7 @@ export function EvalsSection() {
             <span className="text-muted">运行次数：</span>
             {cases.length} × {configs.length} = {cases.length * configs.length}（并发 {concurrency}）
           </div>
-          <div className="rounded-lg bg-[var(--t-bg-hover)] px-2.5 py-2 text-[11.5px] leading-5 text-muted">
+          <div className="rounded-lg bg-[var(--t-bg-hover)] px-2.5 py-2 text-[12px] leading-5 text-muted">
             git 用例会在保存时的 commit 上检出临时 worktree；非 git 用例复制保存时的目录快照。
             运行结束后临时目录删除，结果和完整轨迹保存在 ~/.tandem/evals/runs。
           </div>

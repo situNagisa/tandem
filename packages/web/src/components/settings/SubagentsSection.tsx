@@ -497,7 +497,7 @@ export function SubagentsSection() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-[13px] font-medium text-text">{preset.name}</span>
-                  <span className="rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[11px] text-muted">
+                  <span className="rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[12px] text-muted">
                     {model}
                   </span>
                   {preset.effort && (
@@ -535,10 +535,10 @@ export function SubagentsSection() {
             <div key={preset.id} className="rounded-xl border border-border/70 bg-bg/30 px-3 py-2">
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[13px] font-medium text-text-soft">{preset.name}</span>
-                <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[11px] text-muted">
+                <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[12px] text-muted">
                   {preset.source === 'project' ? '项目 agents/' : '~/.claude/agents/'}
                 </span>
-                <span className="font-mono text-[11px] text-muted">
+                <span className="font-mono text-[12px] text-muted">
                   {preset.modelAlias ? `${preset.modelAlias} → 已映射` : preset.model ?? '继承模型'}
                 </span>
               </div>

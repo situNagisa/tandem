@@ -204,7 +204,7 @@ export function PromptsSection() {
                     )}
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     {item.modified && (
-                      <span className="shrink-0 rounded bg-accent/15 px-1 py-px text-[11px] text-accent">
+                      <span className="shrink-0 rounded bg-accent/15 px-1 py-px text-[12px] text-accent">
                         {item.source === 'project' ? '项目' : '已改'}
                       </span>
                     )}
@@ -227,33 +227,33 @@ export function PromptsSection() {
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-[13.5px] font-medium text-text">{selected.label}</h3>
-                <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[11px] text-muted">
+                <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[12px] text-muted">
                   {CATEGORY_LABEL[selected.category]}
                 </span>
                 {selected.editable ? (
-                  <span className="rounded bg-accent/10 px-1.5 py-px text-[11px] text-accent">可编辑</span>
+                  <span className="rounded bg-accent/10 px-1.5 py-px text-[12px] text-accent">可编辑</span>
                 ) : (
-                  <span className="flex items-center gap-1 rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[11px] text-muted">
+                  <span className="flex items-center gap-1 rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[12px] text-muted">
                     <Lock size={9} /> 只读
                   </span>
                 )}
                 {selected.source === 'project' && (
-                  <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[11px] text-text-soft">
+                  <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[12px] text-text-soft">
                     项目覆盖
                   </span>
                 )}
                 {selected.modified && selected.source === 'user' && (
-                  <span className="rounded bg-accent/15 px-1.5 py-px text-[11px] text-accent">已修改</span>
+                  <span className="rounded bg-accent/15 px-1.5 py-px text-[12px] text-accent">已修改</span>
                 )}
                 {dirty && (
-                  <span className="rounded bg-warning/15 px-1.5 py-px text-[11px] text-warning">未保存</span>
+                  <span className="rounded bg-warning/15 px-1.5 py-px text-[12px] text-warning">未保存</span>
                 )}
               </div>
 
               <p className="text-[12px] leading-5 text-muted">{selected.description}</p>
 
               {selected.variables?.length ? (
-                <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted">
+                <div className="flex flex-wrap items-center gap-1 text-[12px] text-muted">
                   可用变量：
                   {selected.variables.map((name) => (
                     <code key={name} className="rounded bg-[var(--t-bg-hover)] px-1 py-px font-mono">
@@ -319,14 +319,14 @@ export function PromptsSection() {
                     )}
                   </>
                 )}
-                <span className="ml-auto text-[11px] text-muted">
+                <span className="ml-auto text-[12px] text-muted">
                   {draft.length} 字 · 约 {Math.ceil(draft.length / 3.5)} tokens
                 </span>
               </div>
 
               {showDiff && selected.editable && (
                 <div className="max-h-[360px] overflow-auto rounded-xl border border-border bg-[var(--t-bg-subtle)]">
-                  <div className="border-b border-border px-3 py-1.5 text-[11px] text-muted">
+                  <div className="border-b border-border px-3 py-1.5 text-[12px] text-muted">
                     默认值 → 当前编辑内容（<span className="text-danger">− 删除</span> /{' '}
                     <span className="text-success">+ 新增</span>）
                   </div>

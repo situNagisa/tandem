@@ -41,7 +41,7 @@ export function ContextNote({ kind, text }: { kind: string; text: string }) {
           setMounted(true)
           setOpen((v) => !v)
         }}
-        className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[13px] leading-none text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
+        className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[13px] leading-none text-muted transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-soft max-sm:min-h-11"
       >
         <ScrollText size={12} className="shrink-0 opacity-70" />
         <span className="min-w-0 truncate">注入上下文 · {kind}</span>
@@ -103,7 +103,7 @@ function InjectionSegments({
                 className={cn('shrink-0 opacity-60 transition-transform', open && 'rotate-90')}
               />
               <span className="min-w-0 truncate">{seg.name}</span>
-              <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[11px] text-muted">
+              <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[12px] text-muted">
                 {INJECTION_SOURCE_LABEL[seg.source] ?? seg.source}
               </span>
               {seg.sourcePath && (

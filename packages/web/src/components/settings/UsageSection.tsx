@@ -184,7 +184,7 @@ function DayChart({ days, values }: { days: string[]; values: number[] }) {
             />
           )
         })}
-        <text x={padding.left - 5} y={padding.top + 4} textAnchor="end" fontSize={9.5} fill="var(--t-muted)">
+        <text x={padding.left - 5} y={padding.top + 4} textAnchor="end" fontSize={11} fill="var(--t-muted)">
           {max > 0 ? formatCost(max) : '$0'}
         </text>
         {max > 0 && (
@@ -192,13 +192,13 @@ function DayChart({ days, values }: { days: string[]; values: number[] }) {
             x={padding.left - 5}
             y={padding.top + plotH / 2 + 3}
             textAnchor="end"
-            fontSize={9}
+            fontSize={11}
             fill="var(--t-muted)"
           >
             {formatCost(max / 2)}
           </text>
         )}
-        <text x={padding.left - 5} y={padding.top + plotH + 3} textAnchor="end" fontSize={9} fill="var(--t-muted)">
+        <text x={padding.left - 5} y={padding.top + plotH + 3} textAnchor="end" fontSize={11} fill="var(--t-muted)">
           $0
         </text>
         {days.map((day, i) => {
@@ -235,7 +235,7 @@ function DayChart({ days, values }: { days: string[]; values: number[] }) {
                   x={x + barW / 2}
                   y={height - 6}
                   textAnchor={i + labelEvery >= days.length ? 'end' : 'middle'}
-                  fontSize={9.5}
+                  fontSize={11}
                   fill="var(--t-muted)"
                 >
                   {day.slice(5)}
@@ -249,7 +249,7 @@ function DayChart({ days, values }: { days: string[]; values: number[] }) {
             x={padding.left + plotW / 2}
             y={padding.top + plotH / 2 - 2}
             textAnchor="middle"
-            fontSize={10.5}
+            fontSize={11}
             fill="var(--t-muted)"
           >
             这段时间还没有用量

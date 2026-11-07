@@ -180,13 +180,13 @@ export function SaveEvalCaseDialog({
                   ))
                 )}
               </div>
-              <p className="mt-1 text-[11px] text-muted">
+              <p className="mt-1 text-[12px] text-muted">
                 只截取这条消息的文本作为评测初始输入；后续轮次不会带入。
               </p>
             </div>
             {prompt && (
               <div className="rounded-lg border border-border bg-bg/40 px-2.5 py-2">
-                <div className="mb-1 text-[11px] text-muted">初始输入预览</div>
+                <div className="mb-1 text-[12px] text-muted">初始输入预览</div>
                 <p className="max-h-[90px] overflow-y-auto whitespace-pre-wrap break-words text-[12px] leading-5 text-text-soft">
                   {prompt}
                 </p>
@@ -210,7 +210,7 @@ export function SaveEvalCaseDialog({
                         type="button"
                         onClick={() => setSuite(item)}
                         className={cn(
-                          'rounded px-1.5 py-0.5 text-[11px] transition-colors',
+                          'rounded px-1.5 py-0.5 text-[12px] transition-colors',
                           item === suite
                             ? 'bg-[var(--t-bg-active)] text-text'
                             : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text',
@@ -233,7 +233,7 @@ export function SaveEvalCaseDialog({
                 />
               </label>
             </div>
-            <div className="rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[11.5px] leading-5 text-muted">
+            <div className="rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[12px] leading-5 text-muted">
               git 仓库：记录当前 commit，运行时在独立临时 worktree 中检出，未提交改动不会包含；
               非 git 目录：保存时复制目录快照（不含 .git / 符号链接，上限 50MB）。
             </div>

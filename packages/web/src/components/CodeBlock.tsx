@@ -236,7 +236,7 @@ export function CodeBlock({
             onClick={copy}
             label={copied ? '已复制' : '复制代码'}
             tooltip={copied ? '已复制' : '复制'}
-            className="size-6 rounded-md bg-[color-mix(in_srgb,var(--t-bg)_72%,transparent)] text-[var(--t-text-tertiary)] backdrop-blur-sm hover:bg-[var(--t-bg-active)] hover:text-text [&_svg]:size-3"
+            className="size-6 rounded-md bg-[color-mix(in_srgb,var(--t-bg)_72%,transparent)] text-[var(--t-text-tertiary)] backdrop-blur-sm hover:bg-[var(--t-bg-active)] hover:text-text max-sm:size-11! [&_svg]:size-3 max-sm:[&_svg]:size-4"
           >
             {copied ? (
               <Check size={12} className="text-success" />

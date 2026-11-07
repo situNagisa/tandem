@@ -212,7 +212,7 @@ export function SearchDialog() {
             className="h-12 min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-muted"
             aria-label="搜索会话"
           />
-          <kbd className="shrink-0 rounded border border-border bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[11px] text-muted">
+          <kbd className="shrink-0 rounded border border-border bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[12px] text-muted">
             Esc
           </kbd>
         </div>
@@ -250,13 +250,13 @@ export function SearchDialog() {
                     </span>
                     {r.pinned && <Pin size={10} className="shrink-0 text-muted" />}
                     {r.archived && (
-                      <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1 text-[11px] text-muted">
+                      <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1 text-[12px] text-muted">
                         已归档
                       </span>
                     )}
                     <span
                       className={cn(
-                        'shrink-0 truncate rounded border border-border px-1 py-px text-[11px] text-muted',
+                        'shrink-0 truncate rounded border border-border px-1 py-px text-[12px] text-muted',
                         r.external ? 'max-w-[104px]' : 'max-w-[120px]',
                       )}
                       title={`${r.hostName} · ${r.project}`}

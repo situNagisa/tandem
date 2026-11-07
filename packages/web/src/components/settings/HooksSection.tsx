@@ -154,7 +154,7 @@ export function HooksSection() {
         <div className="flex items-center gap-2">
           <Webhook size={15} className="text-text-soft" />
           <h3 className="text-[14px] font-semibold">Hooks</h3>
-          <span className="rounded-[4px] bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-muted">
+          <span className="rounded-[4px] bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[12px] text-muted">
             {host.name}
           </span>
         </div>
@@ -379,7 +379,7 @@ function SourceHeader({
     <div className="flex flex-wrap items-center gap-2">
       <h3 className="text-[13px] font-medium text-text-secondary">{label}</h3>
       {readOnly && (
-        <span className="flex items-center gap-0.5 rounded border border-border px-1 py-px text-[11px] text-muted">
+        <span className="flex items-center gap-0.5 rounded border border-border px-1 py-px text-[12px] text-muted">
           <Lock size={9} /> 只读
         </span>
       )}

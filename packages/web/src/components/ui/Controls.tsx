@@ -183,7 +183,7 @@ export function Switch({ checked, onChange, disabled, label, className }: Switch
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        'relative h-5 w-9 shrink-0 rounded-full border transition-colors duration-[120ms] disabled:cursor-not-allowed disabled:opacity-40',
+        'relative h-5 w-9 shrink-0 rounded-full border transition-colors duration-[120ms] disabled:cursor-not-allowed disabled:opacity-40 max-sm:after:absolute max-sm:after:-inset-3 max-sm:after:content-[""]',
         checked
           ? 'border-transparent bg-[color-mix(in_srgb,var(--t-text)_45%,transparent)]'
           : 'border-transparent bg-[color-mix(in_srgb,var(--t-text)_18%,transparent)]',

@@ -323,19 +323,19 @@ export function PermissionCard({
         >
           <Plus size={11} /> 添加为规则…
         </Button>
-        <div className="permission-actions flex flex-wrap items-center gap-1.5">
+        <div className="permission-actions flex flex-wrap items-center gap-1.5 max-sm:grid max-sm:w-full max-sm:grid-cols-2">
           <Button
             variant="ghost"
             onClick={() => (denyOpen ? setDenyOpen(false) : openDeny())}
             aria-expanded={denyOpen}
-            className="max-sm:min-h-11"
+            className="max-sm:order-4 max-sm:min-h-11 max-sm:w-full"
           >
             <MessageSquare size={13} /> 拒绝并说明
           </Button>
           <Button
             variant="ghost"
             onClick={() => handle('deny')}
-            className="max-sm:min-h-11"
+            className="max-sm:order-3 max-sm:min-h-11 max-sm:w-full"
           >
             拒绝
             <Kbd>3</Kbd>
@@ -343,7 +343,7 @@ export function PermissionCard({
           <Button
             variant="secondary"
             onClick={() => handle('allow_always')}
-            className="max-sm:min-h-11"
+            className="max-sm:order-2 max-sm:min-h-11 max-sm:w-full"
           >
             总是允许
             <Kbd>2</Kbd>
@@ -351,7 +351,7 @@ export function PermissionCard({
           <Button
             variant="primary"
             onClick={() => handle('allow')}
-            className="max-sm:min-h-11"
+            className="max-sm:order-1 max-sm:min-h-11 max-sm:w-full"
           >
             允许
             <Kbd inverse>1</Kbd>

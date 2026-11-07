@@ -659,7 +659,7 @@ export function ProfilesSection() {
                           <span className="min-w-0 flex-1">
                             <span className="flex min-w-0 items-center gap-1.5">
                               <span className="truncate text-[13px] text-text">{g.name}</span>
-                              <span className="shrink-0 rounded border border-border px-1 text-[11px] text-muted">
+                              <span className="shrink-0 rounded border border-border px-1 text-[12px] text-muted">
                                 {GROUP_KIND_LABELS[g.kind]}
                               </span>
                             </span>
@@ -743,7 +743,7 @@ export function ProfilesSection() {
                     <span className="min-w-0 flex-1">
                       <span className="flex min-w-0 items-center gap-1.5">
                         <span className="truncate text-[13px] text-text">{g.name}</span>
-                        <span className="shrink-0 rounded border border-border px-1 text-[11px] text-muted">
+                        <span className="shrink-0 rounded border border-border px-1 text-[12px] text-muted">
                           {GROUP_KIND_LABELS[g.kind]}
                         </span>
                       </span>
@@ -898,7 +898,7 @@ export function ProfilesSection() {
                                 <span className="min-w-0 flex-1 truncate text-[13px] text-text">
                                   {g.name}
                                 </span>
-                                <span className="shrink-0 rounded border border-border px-1 text-[11px] text-muted">
+                                <span className="shrink-0 rounded border border-border px-1 text-[12px] text-muted">
                                   {GROUP_KIND_LABELS[g.kind ?? p.kind]}
                                 </span>
                                 <span className="shrink-0 text-[12px] text-muted">

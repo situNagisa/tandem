@@ -99,12 +99,12 @@ export function PublicSharePage() {
               {data?.title || '会话分享'}
               <span className="text-muted"> · 只读分享</span>
             </h1>
-            <p className="truncate text-[11px] leading-4 text-muted">
+            <p className="truncate text-[12px] leading-4 text-muted">
               {data?.hostName ? `来自 ${data.hostName}` : 'Tandem Host'}
               {data && !data.live ? ' · 创建时快照' : data ? ' · 实时' : ''}
             </p>
           </div>
-          <span className="flex shrink-0 items-center gap-1 rounded-full border border-border px-2 py-1 text-[11px] leading-4 text-muted">
+          <span className="flex shrink-0 items-center gap-1 rounded-full border border-border px-2 py-1 text-[12px] leading-4 text-muted">
             <Eye size={11} />
             只读
           </span>
@@ -146,7 +146,7 @@ export function PublicSharePage() {
         ) : null}
       </main>
 
-      <footer className="border-t border-border px-4 py-3 text-center text-[11px] leading-4 text-muted">
+      <footer className="border-t border-border px-4 py-3 text-center text-[12px] leading-4 text-muted">
         {data?.live ? (
           <span className="inline-flex items-center gap-1">
             <Loader2 size={10} className="animate-spin" />

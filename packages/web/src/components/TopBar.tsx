@@ -92,8 +92,10 @@ function StatePill({
   if (status === 'waiting_permission') {
     return (
       <span className={pill}>
-        <span className="size-1.5 rounded-full bg-accent" />
-        待审批{elapsed ? ` · ${elapsed}` : ''}
+        <span className="size-1.5 shrink-0 rounded-full bg-accent" />
+        <span className="truncate whitespace-nowrap">
+          待审批{elapsed ? ` · ${elapsed}` : ''}
+        </span>
       </span>
     )
   }
@@ -103,8 +105,10 @@ function StatePill({
   if (running || status === 'running') {
     return (
       <span className={pill}>
-        <span className="size-1.5 rounded-full bg-text-secondary running-dot" />
-        运行中{elapsed ? ` · ${elapsed}` : ''}
+        <span className="size-1.5 shrink-0 rounded-full bg-text-secondary running-dot" />
+        <span className="truncate whitespace-nowrap">
+          运行中{elapsed ? ` · ${elapsed}` : ''}
+        </span>
       </span>
     )
   }
@@ -227,6 +231,8 @@ export function TopBar() {
         isDesktop && 'desktop-drag',
         isWindowsDesktop && 'pr-[140px]',
         isMacDesktop && sidebarCollapsed && 'pl-[72px]',
+        // 手机：标题/状态占一行，轮次与工具图标落到第二行，避免 360px 下互相挤压。
+        'max-md:h-auto max-md:min-h-12 max-md:flex-wrap max-md:pb-0.5',
       )}
       style={isWindowsDesktop ? { paddingRight: 140 } : undefined}
     >
@@ -242,7 +248,7 @@ export function TopBar() {
         {isMobile ? <Menu size={18} /> : <PanelLeft size={17} />}
       </IconButton>
 
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
         {hasSession ? (
           editing ? (
             <Input
@@ -279,7 +285,7 @@ export function TopBar() {
                 setEditing(true)
               }}
               title="点击重命名"
-              className="group flex min-w-0 max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-[var(--t-bg-hover)]"
+              className="group flex min-w-0 max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-[var(--t-bg-hover)] max-md:min-h-11"
             >
               <h1 className="truncate text-[14px] font-medium leading-5">{title}</h1>
               <Pencil
@@ -293,7 +299,7 @@ export function TopBar() {
             <h1 className="truncate text-[14px] font-medium leading-5">
               {externalTitle || '外部会话'}
             </h1>
-            <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[11px] leading-4 text-muted">
+            <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[12px] leading-4 text-muted">
               只读
             </span>
           </div>
@@ -328,20 +334,7 @@ export function TopBar() {
         )}
       </div>
 
-      {hasSession && isMobile && turnTotal >= 2 && (
-        <button
-          type="button"
-          onClick={() => setTurnSheetOpen(true)}
-          aria-label="打开轮次大纲"
-          className="flex h-11 shrink-0 items-center px-0.5"
-        >
-          <span className="rounded-full bg-[var(--t-bg-hover)] px-2 py-1 text-[12px] tabular-nums leading-4 text-text-soft transition-colors active:bg-[var(--t-bg-active)]">
-            第 {turnActive}/{turnTotal} 轮
-          </span>
-        </button>
-      )}
-
-      <EvalRunsButton />
+      {(!isMobile || !hasSession) && <EvalRunsButton />}
 
       {hasSession && !isMobile && (
         <>
@@ -353,15 +346,7 @@ export function TopBar() {
         </>
       )}
 
-      {hasSession && isMobile && (
-        <>
-          <BackgroundTasksButton />
-          <BrowserButton />
-          {!hasBackgroundTasks && <PrButton />}
-        </>
-      )}
-
-      {hasSession && changes && (
+      {hasSession && changes && !isMobile && (
         <Button
           variant="ghost"
           size="sm"
@@ -385,7 +370,7 @@ export function TopBar() {
         </Button>
       )}
 
-      {route.kind === 'home' && (
+      {route.kind === 'home' && !isMobile && (
         <IconButton
           onClick={() => setDispatchOpen(true, activeHostId ?? undefined)}
           label="派单到其他 Host"
@@ -416,6 +401,46 @@ export function TopBar() {
       )}
 
       <PrPanel />
+
+      {isMobile && hasSession && (
+        <div className="flex w-full min-w-0 items-center gap-0.5 md:hidden">
+          {turnTotal >= 2 && (
+            <button
+              type="button"
+              onClick={() => setTurnSheetOpen(true)}
+              aria-label="打开轮次大纲"
+              className="flex h-11 shrink-0 items-center px-0.5"
+            >
+              <span className="rounded-full bg-[var(--t-bg-hover)] px-2 py-1 text-[12px] tabular-nums leading-4 text-text-soft transition-colors active:bg-[var(--t-bg-active)]">
+                第 {turnActive}/{turnTotal} 轮
+              </span>
+            </button>
+          )}
+          <span className="min-w-0 flex-1" />
+          <EvalRunsButton />
+          <BackgroundTasksButton />
+          <BrowserButton />
+          {!hasBackgroundTasks && <PrButton />}
+          {changes && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setChangesOpen(!changesOpen)}
+              aria-label="改动审阅"
+              tooltip="改动审阅"
+              aria-pressed={changesOpen}
+              className={cn(
+                'size-11! justify-center gap-1 px-0 font-mono text-text! sm:size-8! sm:px-1.5',
+                changesOpen && 'bg-[var(--t-bg-active)] text-text',
+              )}
+            >
+              <FileDiff size={15} className="shrink-0 text-text!" />
+              <span className="hidden text-[var(--t-git-plus)] sm:inline">+{additions}</span>
+              <span className="hidden text-[var(--t-git-minus)] sm:inline">−{deletions}</span>
+            </Button>
+          )}
+        </div>
+      )}
 
       {offline && (
         <div className="pointer-events-none absolute inset-x-0 top-full z-20 flex h-6 items-center justify-center gap-1.5 border-b border-border/60 bg-bg/95 text-[12px] text-muted backdrop-blur-sm">

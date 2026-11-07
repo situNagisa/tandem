@@ -118,7 +118,7 @@ export function SubagentsButton() {
     >
       {(close) => (
         <div className="w-[300px] max-w-[calc(100vw-1.5rem)]">
-          <div className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-text-tertiary">
+          <div className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-[12px] font-medium uppercase tracking-[0.08em] text-text-tertiary">
             <Bot size={11} />
             子代理
             {rows.length > 0 && <span className="ml-auto tabular-nums">{rows.length}</span>}
@@ -138,11 +138,11 @@ export function SubagentsButton() {
                   className="flex min-h-8 w-full items-center gap-1.5 rounded-md px-2 text-left text-[12.5px] transition-colors hover:bg-[var(--t-bg-hover)]"
                   style={{ paddingLeft: 8 + (row.depth - 1) * 14 }}
                 >
-                  <span className="shrink-0 text-[11px] text-muted">{row.depth <= 1 ? '子' : '孙'}</span>
+                  <span className="shrink-0 text-[12px] text-muted">{row.depth <= 1 ? '子' : '孙'}</span>
                   <span className="min-w-0 flex-1 truncate text-text">{row.title}</span>
                   <span
                     className={cn(
-                      'shrink-0 text-[11px]',
+                      'shrink-0 text-[12px]',
                       row.status === 'error'
                         ? 'text-danger'
                         : row.running

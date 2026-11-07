@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
 import type { ContentBlock } from '@tandem/protocol'
 import { Check, Copy, GitFork, MoreHorizontal, PencilLine, Pin, Undo2 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
@@ -23,6 +23,10 @@ export const UserMessage = memo(function UserMessage({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [rewindOpen, setRewindOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const pressTimer = useRef<number | null>(null)
+  const pressReady = useRef(false)
+  const pressStart = useRef<{ x: number; y: number } | null>(null)
   const running = useAppStore((s) => s.active?.running ?? false)
   const pinnedTurns = useAppStore((s) => s.active?.summary?.pinnedTurns)
   const pinned = !!pinnedTurns?.includes(message.id)
@@ -40,6 +44,7 @@ export const UserMessage = memo(function UserMessage({
   useEffect(
     () => () => {
       if (timer.current) window.clearTimeout(timer.current)
+      if (pressTimer.current) window.clearTimeout(pressTimer.current)
     },
     [],
   )
@@ -53,6 +58,37 @@ export const UserMessage = memo(function UserMessage({
   }, [editing])
 
   if (!text.trim() && images.length === 0) return null
+
+  const startPress = (e: ReactTouchEvent) => {
+    if (readOnly || editing) return
+    if (pressTimer.current) window.clearTimeout(pressTimer.current)
+    pressStart.current = { x: e.touches[0]?.clientX ?? 0, y: e.touches[0]?.clientY ?? 0 }
+    pressReady.current = false
+    // 只标记已长按，等手指抬起再打开：否则菜单会出现在手指下，抬手的那一下会误触菜单项。
+    pressTimer.current = window.setTimeout(() => {
+      pressReady.current = true
+    }, 480)
+  }
+  const endPress = () => {
+    if (pressTimer.current) window.clearTimeout(pressTimer.current)
+    pressTimer.current = null
+    if (!pressReady.current) return
+    pressReady.current = false
+    window.setTimeout(() => setMenuOpen(true), 0)
+  }
+  const cancelPress = () => {
+    if (pressTimer.current) window.clearTimeout(pressTimer.current)
+    pressTimer.current = null
+    pressReady.current = false
+    pressStart.current = null
+  }
+  const movePress = (e: ReactTouchEvent) => {
+    const start = pressStart.current
+    if (!start) return
+    const touch = e.touches[0]
+    if (!touch) return
+    if (Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > 10) cancelPress()
+  }
 
   const copy = async () => {
     if (!(await copyText(text))) return
@@ -97,7 +133,20 @@ export const UserMessage = memo(function UserMessage({
 
   return (
     <div className={cn('msg-group flex justify-end', animate && 'chat-msg-enter')}>
-      <div className="relative min-w-0 max-w-[80%]">
+      <div
+        className="relative min-w-0 max-w-[80%]"
+        onTouchStart={startPress}
+        onTouchMove={movePress}
+        onTouchEnd={endPress}
+        onTouchCancel={cancelPress}
+        onContextMenu={(e) => {
+          if (readOnly) return
+          // 触屏长按由 touch 逻辑处理，避免 contextmenu 在手指未抬起时弹出菜单造成误触。
+          if (window.matchMedia('(pointer: coarse)').matches) return
+          e.preventDefault()
+          setMenuOpen(true)
+        }}
+      >
         {images.length > 0 && (
           <div className="mb-1.5 flex flex-wrap justify-end gap-1.5">
             {images.map((img, i) => (
@@ -212,6 +261,8 @@ export const UserMessage = memo(function UserMessage({
                 aria-label="消息操作"
                 align="right"
                 side="top"
+                open={menuOpen}
+                onOpenChange={setMenuOpen}
                 trigger={({ open }) => (
                   <IconButton label="消息操作" tooltip={open ? '' : undefined} className="[&_svg]:size-[15px] max-md:size-11 [&_svg]:max-md:size-[17px]">
                     <MoreHorizontal size={15} />

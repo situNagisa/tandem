@@ -95,7 +95,7 @@ function ReceiptRow({
   const before = item.annotatedScreenshot ?? item.screenshot
   return (
     <div className="mt-1.5 rounded-md border border-border bg-surface-2/60 px-2 py-1.5">
-      <div className="flex items-center gap-1.5 text-[11px]">
+      <div className="flex items-center gap-1.5 text-[12px]">
         <span
           className={cn(
             'rounded px-1.5 py-0.5 font-medium',
@@ -122,7 +122,7 @@ function ReceiptRow({
           </span>
         )}
       </div>
-      {receiptItem.note && <p className="mt-1 whitespace-pre-wrap text-[11px] leading-4 text-text-soft">{receiptItem.note}</p>}
+      {receiptItem.note && <p className="mt-1 whitespace-pre-wrap text-[12px] leading-4 text-text-soft">{receiptItem.note}</p>}
       {receiptItem.verification?.note && (
         <p className="mt-0.5 whitespace-pre-wrap text-[10.5px] leading-4 text-muted">复验备注：{receiptItem.verification.note}</p>
       )}
@@ -211,7 +211,7 @@ export function FeedbackDrawer({
 
       {receipt && (
         <div className="border-b border-border bg-surface-2/50 px-3 py-2">
-          <div className="flex items-center gap-1.5 text-[11.5px] text-text-soft">
+          <div className="flex items-center gap-1.5 text-[12px] text-text-soft">
             <FileCheck2 size={12} className="text-[#F97316]" />
             <span className="min-w-0 flex-1 truncate" title={receipt.sourceFile}>
               回执：{receipt.sourceFile || '未命名'}
@@ -323,7 +323,7 @@ export function FeedbackDrawer({
                   <button
                     type="button"
                     onClick={() => onHighlight(item)}
-                    className="mt-0.5 line-clamp-2 w-full text-left text-[11.5px] leading-4 text-text hover:text-[#F97316]"
+                    className="mt-0.5 line-clamp-2 w-full text-left text-[12px] leading-4 text-text hover:text-[#F97316]"
                     title="在页面上定位"
                   >
                     {item.text}
@@ -377,8 +377,8 @@ export function FeedbackDrawer({
       </div>
 
       <div className="border-t border-border px-3 py-2.5">
-        <p className="mb-1.5 text-[11px] font-medium text-text-soft">状态快照（每条反馈附带）</p>
-        <label className="flex items-center justify-between gap-2 py-1 text-[11.5px] text-text">
+        <p className="mb-1.5 text-[12px] font-medium text-text-soft">状态快照（每条反馈附带）</p>
+        <label className="flex items-center justify-between gap-2 py-1 text-[12px] text-text">
           <span>隐藏本地路径</span>
           <Switch
             checked={prefs.hidePaths}
@@ -386,7 +386,7 @@ export function FeedbackDrawer({
             label="隐藏本地路径"
           />
         </label>
-        <label className="flex items-center justify-between gap-2 py-1 text-[11.5px] text-text">
+        <label className="flex items-center justify-between gap-2 py-1 text-[12px] text-text">
           <span>附带最近 5 条消息正文</span>
           <Switch
             checked={prefs.includeMessages}

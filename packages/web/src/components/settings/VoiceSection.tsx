@@ -162,11 +162,11 @@ export function VoiceSection() {
               <h3 className="text-[13px] font-medium">Host 本地 Whisper</h3>
               {caps ? (
                 caps.available ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-[var(--t-success-soft)] px-2 py-0.5 text-[11px] text-success">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[var(--t-success-soft)] px-2 py-0.5 text-[12px] text-success">
                     <CheckCircle2 size={11} /> 可用
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-[var(--t-warning-soft)] px-2 py-0.5 text-[11px] text-[var(--t-warning)]">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[var(--t-warning-soft)] px-2 py-0.5 text-[12px] text-[var(--t-warning)]">
                     <XCircle size={11} /> 未配置
                   </span>
                 )
@@ -250,8 +250,8 @@ export function VoiceSection() {
                       key={`${item.engine}:${item.binaryPath}`}
                       className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-2 px-2.5 py-1.5"
                     >
-                      <span className="font-mono text-[11.5px] text-text-soft">{item.binaryPath}</span>
-                      <span className="text-[11px] text-muted">{item.engine}</span>
+                      <span className="font-mono text-[12px] text-text-soft">{item.binaryPath}</span>
+                      <span className="text-[12px] text-muted">{item.engine}</span>
                       <span className="min-w-0 flex-1" />
                       <Button
                         size="sm"
@@ -315,7 +315,7 @@ export function VoiceSection() {
                 允许使用浏览器内置识别（可能联网）
               </span>
               {!browserSpeechSupported() && !isNativeApp() ? (
-                <span className="text-[11px] text-muted">当前浏览器不支持</span>
+                <span className="text-[12px] text-muted">当前浏览器不支持</span>
               ) : null}
             </div>
           </div>

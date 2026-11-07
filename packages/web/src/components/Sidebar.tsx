@@ -127,7 +127,7 @@ export function Sidebar({
         >
           <Inbox size={16} />
           {inboxCount > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold leading-none text-on-accent">
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[11px] font-semibold leading-none text-on-accent">
               {inboxCount > 99 ? '99+' : inboxCount}
             </span>
           )}

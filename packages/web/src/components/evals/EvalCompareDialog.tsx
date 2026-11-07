@@ -45,7 +45,7 @@ function Pane({
         <span className="text-muted">{formatDuration(result?.durationMs ?? 0)}</span>
       </div>
       {result?.check && (
-        <div className="border-b border-border px-3 py-1.5 text-[11.5px]">
+        <div className="border-b border-border px-3 py-1.5 text-[12px]">
           <span className={result.check.ok ? 'text-success' : 'text-danger'}>
             检查命令 {result.check.ok ? '通过' : `失败（${result.check.exitCode ?? 'null'}）`}
           </span>

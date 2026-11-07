@@ -337,13 +337,13 @@ export function SchedulesSection() {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="truncate text-[13px] font-medium text-text">{schedule.name}</span>
                     {!schedule.enabled && (
-                      <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[11px] text-muted">已暂停</span>
+                      <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[12px] text-muted">已暂停</span>
                     )}
-                    <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px font-mono text-[11px] text-muted">
+                    <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px font-mono text-[12px] text-muted">
                       {schedule.cron}
                     </span>
                   </div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11.5px] text-muted">
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-muted">
                     <span>{describeCron(schedule.cron)}</span>
                     <span className="flex items-center gap-1">
                       <Clock size={10} />
@@ -353,7 +353,7 @@ export function SchedulesSection() {
                       {schedule.target.kind === 'new' ? '新建会话' : '追加到已有会话'}
                     </span>
                   </div>
-                  <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px]">
+                  <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[12px]">
                     <History size={10} className="shrink-0 text-muted" />
                     {last ? (
                       <span className={cn('truncate', last.ok ? 'text-muted' : 'text-danger')} title={last.error}>
@@ -666,7 +666,7 @@ function Field({
     <Tag className={cn('block min-w-0 space-y-1', className)}>
       <span className="block text-[12px] text-text-tertiary">{label}</span>
       {children}
-      {hint && <span className="block text-[11px] leading-4 text-muted">{hint}</span>}
+      {hint && <span className="block text-[12px] leading-4 text-muted">{hint}</span>}
     </Tag>
   )
 }

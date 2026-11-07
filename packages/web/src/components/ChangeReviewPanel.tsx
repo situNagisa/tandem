@@ -396,10 +396,10 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
           </span>
         )}
         <span className="flex-1" />
-        <IconButton onClick={reload} label="刷新改动" tooltip="刷新" className="max-md:size-9">
+        <IconButton onClick={reload} label="刷新改动" tooltip="刷新" className="max-md:size-11">
           <RefreshCw size={13} className={cn(loading && 'animate-spin')} />
         </IconButton>
-        <IconButton onClick={onClose} label="关闭改动审阅" className="-mr-1 max-md:size-10">
+        <IconButton onClick={onClose} label="关闭改动审阅" className="-mr-1 max-md:size-11">
           <X size={15} />
         </IconButton>
       </div>
@@ -443,7 +443,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 <div
                   key={file.path}
                   className={cn(
-                    'group flex h-7 w-full items-center border-l-2 transition-colors',
+                    'group flex h-7 w-full items-center border-l-2 transition-colors max-sm:h-11',
                     selected === file.path
                       ? 'border-[var(--t-border-strong)] bg-bg-active/60'
                       : 'border-transparent hover:bg-[var(--t-bg-hover)]',
@@ -479,7 +479,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                     onClick={() => setRevertTarget(file)}
                     label={`丢弃 ${file.path} 的改动`}
                     tooltip="丢弃此文件的改动"
-                    className="mr-0.5 md:size-6 md:opacity-0 md:group-hover:opacity-100 [&_svg]:size-3"
+                    className="mr-0.5 max-sm:size-11! md:size-6 md:opacity-0 md:group-hover:opacity-100 [&_svg]:size-3"
                   >
                     <Trash2 size={12} />
                   </IconButton>
@@ -515,7 +515,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                   size="sm"
                   variant="danger-ghost"
                   onClick={() => setRevertTarget(selectedFile)}
-                  className="px-1.5 text-[12px] [&_svg]:size-3"
+                  className="px-1.5 text-[12px] max-sm:min-h-11 [&_svg]:size-3"
                 >
                   <Trash2 size={10} /> 丢弃改动
                 </Button>
@@ -637,7 +637,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 }}
                 placeholder="提交信息"
                 aria-label="提交信息"
-                className="min-h-7 max-h-24 min-w-0 flex-1 resize-none rounded-md border border-border bg-[var(--t-bg)] px-2 py-1.5 text-[12px] leading-4 text-text outline-none transition-[min-height] placeholder:text-muted focus:min-h-14 focus:border-[var(--t-border-strong)]"
+                className="min-h-7 max-h-24 min-w-0 flex-1 resize-none rounded-md border border-border bg-[var(--t-bg)] px-2 py-1.5 text-[12px] leading-4 text-text outline-none transition-[min-height] placeholder:text-muted focus:min-h-14 focus:border-[var(--t-border-strong)] max-sm:min-h-11"
               />
               <Button
                 size="sm"
@@ -645,6 +645,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 onClick={requestCommit}
                 disabled={!commitMessage.trim() || committing}
                 title={untrackedCount > 0 ? `包含 ${untrackedCount} 个未跟踪文件` : undefined}
+                className="max-sm:min-h-11"
               >
                 {committing && <Loader2 size={11} className="animate-spin" />}
                 提交 {files.length} 个文件
@@ -660,6 +661,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                     variant="ghost"
                     label="更多提交操作"
                     tooltip={open ? '' : undefined}
+                    className="max-sm:size-11!"
                   >
                     <MoreHorizontal size={14} />
                   </IconButton>

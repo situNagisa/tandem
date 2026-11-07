@@ -268,8 +268,8 @@ function BrowserShotThumb({
   const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
   const { url, error } = useBrowserShot(host, sessionId, shotId)
   const [open, setOpen] = useState(false)
-  if (error) return <p className="mt-1 text-[11.5px] text-danger">截图加载失败：{error}</p>
-  if (!url) return <p className="mt-1 text-[11.5px] text-muted">截图加载中…</p>
+  if (error) return <p className="mt-1 text-[12px] text-danger">截图加载失败：{error}</p>
+  if (!url) return <p className="mt-1 text-[12px] text-muted">截图加载中…</p>
   return (
     <>
       <button
@@ -441,7 +441,7 @@ export const ToolCard = memo(function ToolCard({
       target = displayPath
       suffix =
         oldString || newString ? (
-          <span className="shrink-0 font-mono text-[11.5px]">
+          <span className="shrink-0 font-mono text-[12px]">
             <span className="text-text-soft">+{editStats.added}</span>{' '}
             <span className="text-muted">−{editStats.removed}</span>
           </span>
@@ -584,7 +584,7 @@ export const ToolCard = memo(function ToolCard({
             <OutputBlock text={output} isError />
           ) : (
             result &&
-            output && <div className="text-[11.5px] text-muted">{firstLine(output, 200)}</div>
+            output && <div className="text-[12px] text-muted">{firstLine(output, 200)}</div>
           )}
         </div>
       )
@@ -611,7 +611,7 @@ export const ToolCard = memo(function ToolCard({
             <span className="min-w-0 flex-1 truncate" title={filePath}>
               {displayPath || '…'}
             </span>
-            <span className="shrink-0 text-[11px] text-muted">
+            <span className="shrink-0 text-[12px] text-muted">
               {result ? `${readLines} 行` : running ? '读取中…' : ''}
             </span>
           </div>
@@ -757,7 +757,7 @@ export const ToolCard = memo(function ToolCard({
           onClick={() =>
             openBackgroundTasks(activeHostId, subagentId ?? activeSessionId!, backgroundId)
           }
-          className="mt-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11.5px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
+          className="mt-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[12px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
         >
           <SquareTerminal size={12} />
           后台运行 · 查看输出
@@ -792,7 +792,7 @@ function SubagentStream({ id, depth }: { id: string; depth: number }) {
     if (el) el.scrollTop = el.scrollHeight
   }, [sub?.running, sub?.messages.length])
   if (!sub) {
-    return <div className="py-2 text-[11.5px] text-muted">正在等待{agentKind(depth)}会话…</div>
+    return <div className="py-2 text-[12px] text-muted">正在等待{agentKind(depth)}会话…</div>
   }
   const subFailed = sub.summary?.status === 'error' || !!sub.error
   return (
@@ -854,7 +854,7 @@ function SubagentStream({ id, depth }: { id: string; depth: number }) {
       </div>
       <div ref={listRef} className="max-h-[380px] space-y-2.5 overflow-y-auto px-2.5 py-2">
         {sub.messages.length === 0 && (
-          <div className="shimmer-text py-1 text-[11.5px] text-muted">
+          <div className="shimmer-text py-1 text-[12px] text-muted">
             {sub.loading ? '正在读取子会话…' : '暂无消息'}
           </div>
         )}
@@ -866,7 +866,7 @@ function SubagentStream({ id, depth }: { id: string; depth: number }) {
               .join('\n\n')
             if (!text.trim()) return null
             return (
-              <div key={m.id} className="rounded-lg bg-surface-2 px-2.5 py-1.5 text-[11.5px] leading-5 text-text-soft">
+              <div key={m.id} className="rounded-lg bg-surface-2 px-2.5 py-1.5 text-[12px] leading-5 text-text-soft">
                 <div className="mb-0.5 text-[9.5px] text-muted">{agentKind(subDepth)}任务</div>
                 <div className="whitespace-pre-wrap break-words">{text}</div>
               </div>
@@ -905,7 +905,7 @@ function SubagentStream({ id, depth }: { id: string; depth: number }) {
             </div>
           )
         })}
-        {sub.error && <div className="text-[11.5px] text-danger">{sub.error}</div>}
+        {sub.error && <div className="text-[12px] text-danger">{sub.error}</div>}
       </div>
     </div>
   )
@@ -967,7 +967,7 @@ function TaskBody({
           <SubagentStream id={sub.summary.id} depth={depth} />
         </div>
       ) : (
-        <div className="text-[11.5px] text-muted">
+        <div className="text-[12px] text-muted">
           {running ? `正在创建${agentKind(depth)}会话…` : `没有找到${agentKind(depth)}会话`}
         </div>
       )}

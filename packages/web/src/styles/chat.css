@@ -482,8 +482,8 @@
   left: 0;
   z-index: 2;
   flex: none;
-  min-width: 44px;
-  padding: 12px 8px;
+  min-width: 30px;
+  padding: 12px 6px;
   border-right: 1px solid color-mix(in srgb, var(--t-border) 70%, transparent);
   background: var(--t-surface-2);
   color: var(--t-text-tertiary);

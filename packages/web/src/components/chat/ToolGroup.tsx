@@ -82,7 +82,7 @@ export const ToolGroup = memo(
           <span className={cn('shrink-0', anyError && 'text-danger')}>
             使用了 {tools.length} 个工具
           </span>
-          {anyError && <span className="shrink-0 text-[11.5px] text-danger">· 有错误</span>}
+          {anyError && <span className="shrink-0 text-[12px] text-danger">· 有错误</span>}
           <ChevronRight size={12} className="tool-chevron shrink-0 text-muted" />
         </button>
         {mounted && (

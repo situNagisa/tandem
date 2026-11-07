@@ -37,7 +37,7 @@ function Block({
       <div className="mb-3 flex flex-wrap items-baseline gap-2">
         <h2 className="text-[13px] font-semibold">{name}</h2>
         {note && <span className="text-[12px] text-muted">{note}</span>}
-        <code className="ml-auto rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 font-mono text-[11px] text-muted">
+        <code className="ml-auto rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 font-mono text-[12px] text-muted">
           {name}
         </code>
       </div>
@@ -205,7 +205,7 @@ export function UiGallery() {
                 <Menu.Sub>
                   <Menu.SubTrigger trailing="高">思考强度</Menu.SubTrigger>
                   <Menu.SubContent className="w-[240px]">
-                    <p className="px-2 pb-1.5 pt-1 text-[11.5px] leading-4 text-muted">
+                    <p className="px-2 pb-1.5 pt-1 text-[12px] leading-4 text-muted">
                       投入程度越高，回复越详尽，但耗时越长、用量越多。
                     </p>
                     <Menu.RadioGroup value="high" onValueChange={() => {}}>

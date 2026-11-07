@@ -137,7 +137,7 @@ function RepoLine({ vcs }: { vcs: VcsCapability }) {
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted">
       <span className="inline-flex min-w-0 items-center gap-1">
         <GitPullRequest size={12} />
-        <span className="truncate font-mono text-[11.5px] text-text-soft">
+        <span className="truncate font-mono text-[12px] text-text-soft">
           {vcs.branch || '（分离 HEAD）'}
         </span>
       </span>
@@ -177,7 +177,7 @@ function CheckRow({
           {check.workflow ? `${check.workflow} / ` : ''}
           {check.name}
         </span>
-        <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
+        <span className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
           <span>{check.status === 'failure' ? '失败' : check.status === 'success' ? '通过' : check.status === 'queued' ? '排队中' : check.status === 'in_progress' ? '运行中' : check.status === 'pending' ? '等待中' : check.status === 'skipped' ? '已跳过' : check.status === 'cancelled' ? '已取消' : check.status === 'neutral' ? '中性' : '未知'}</span>
           {durationText(check.durationMs) && <span>· {durationText(check.durationMs)}</span>}
         </span>
@@ -234,7 +234,7 @@ export function PrButton() {
       tooltip={pr ? `${label} · ${STATE_META[pr.state]?.label ?? ''}` : 'PR 与 CI'}
       aria-pressed={prOpen}
       className={cn(
-        'gap-1 px-1.5 text-text! max-md:h-8',
+        'gap-1 px-1.5 text-text! max-md:h-11 max-md:w-11 max-md:justify-center max-md:px-0',
         prOpen && 'bg-[var(--t-bg-active)]',
       )}
     >
@@ -480,7 +480,7 @@ export function PrPanel() {
                           {pr.title}
                         </span>
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11.5px] text-muted">
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] text-muted">
                         <span className={STATE_META[pr.state]?.className}>
                           {STATE_META[pr.state]?.label ?? pr.state}
                         </span>
@@ -536,7 +536,7 @@ export function PrPanel() {
                     <h3 className="text-[12px] font-medium uppercase tracking-[0.08em] text-text-tertiary">
                       CI 检查
                     </h3>
-                    <span className="text-[11.5px] text-muted">{pr.checks.length} 项</span>
+                    <span className="text-[12px] text-muted">{pr.checks.length} 项</span>
                     <span className="flex-1" />
                     <IconButton
                       size="sm"
@@ -632,7 +632,7 @@ export function PrPanel() {
                     创建 PR
                   </Button>
                 </div>
-                <p className="text-[11.5px] leading-5 text-muted">
+                <p className="text-[12px] leading-5 text-muted">
                   创建前会先执行 <span className="font-mono">git push -u origin HEAD</span>，
                   把分支 {vcs.branch ?? 'HEAD'} 推送到 {vcs.remoteHost ?? 'origin'}。
                 </p>

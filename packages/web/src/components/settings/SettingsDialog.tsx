@@ -94,7 +94,7 @@ export function SettingsDialog() {
         </nav>
         <div
           key={tab}
-          className="min-h-0 min-w-0 flex-1 animate-[tandem-fade-in_120ms_ease-out_both] overflow-y-auto overscroll-contain p-4 motion-reduce:animate-none sm:p-5 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]"
+          className="min-h-0 min-w-0 flex-1 animate-[tandem-fade-in_120ms_ease-out_both] overflow-y-auto overscroll-contain p-4 motion-reduce:animate-none sm:p-5 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:[&_button]:min-h-11 max-sm:[&_button]:min-w-11 max-sm:[&_input]:min-h-11 max-sm:[&_select]:min-h-11"
         >
           <div className="mx-auto w-full max-w-[1100px]">
             {tab === 'general' && <GeneralSettings />}

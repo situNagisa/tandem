@@ -110,7 +110,7 @@ export function PermissionsSection() {
         <div className="flex flex-wrap items-center gap-2">
           <ShieldCheck size={15} className="text-text-soft" />
           <h3 className="text-[14px] font-semibold">权限规则</h3>
-          <span className="rounded-[4px] bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-muted">
+          <span className="rounded-[4px] bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[12px] text-muted">
             {host.name}
           </span>
           <span className="flex-1" />

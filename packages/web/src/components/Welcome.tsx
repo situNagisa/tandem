@@ -122,7 +122,7 @@ export function HomeView() {
           }}
           aria-pressed={tab === 'new'}
           className={cn(
-            'flex h-9 items-center rounded-lg px-3 text-[13px] font-medium transition-colors',
+            'flex h-9 items-center rounded-lg px-3 text-[13px] font-medium transition-colors max-sm:min-h-11',
             tab === 'new'
               ? 'bg-[var(--t-bg-active)] text-text'
               : 'text-text-tertiary hover:text-text',
@@ -138,7 +138,7 @@ export function HomeView() {
           }}
           aria-pressed={tab === 'inbox'}
           className={cn(
-            'flex h-9 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-colors',
+            'flex h-9 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-colors max-sm:min-h-11',
             tab === 'inbox'
               ? 'bg-[var(--t-bg-active)] text-text'
               : 'text-text-tertiary hover:text-text',
@@ -147,7 +147,7 @@ export function HomeView() {
           <Inbox size={14} />
           收件箱
           {unreadCount > 0 && (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold leading-none text-on-accent">
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[12px] font-semibold leading-none text-on-accent">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
@@ -156,7 +156,7 @@ export function HomeView() {
         <button
           type="button"
           onClick={() => setDispatchOpen(true)}
-          className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+          className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] max-sm:min-h-11 font-medium text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
         >
           <Send size={14} />
           派单

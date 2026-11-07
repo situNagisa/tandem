@@ -439,7 +439,7 @@ export function FeedbackAnnotator({
           )}
         </div>
       </div>
-      <p className="pb-3 text-center text-[11px] text-white/60">
+      <p className="pb-3 text-center text-[12px] text-white/60">
         矩形 / 箭头拖拽绘制 · 画笔与马赛克按住涂抹 · 文字点击放置 · Ctrl+Z 撤销 · Esc 取消
       </p>
     </div>,

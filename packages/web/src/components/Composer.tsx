@@ -887,7 +887,7 @@ export function Composer({
                 <div
                   key={p.id}
                   title={`${p.lines} 行 · ${p.text.length} 字`}
-                  className="flex max-w-full items-center gap-1.5 rounded-lg border border-border bg-surface-2 py-1 pl-2 pr-1 text-[11.5px] text-text-soft"
+                  className="flex max-w-full items-center gap-1.5 rounded-lg border border-border bg-surface-2 py-1 pl-2 pr-1 text-[12px] text-text-soft"
                 >
                   <FileText size={13} className="shrink-0 text-muted" />
                   <span className="truncate">粘贴的文本 · {p.lines} 行</span>
@@ -929,7 +929,7 @@ export function Composer({
               placeholder ??
               (running ? '运行中，可继续输入，消息会排队发送…' : '给 Tandem 发消息…')
             }
-            className="composer-textarea"
+            className="composer-textarea max-sm:min-h-11"
           />
         </div>
 
@@ -958,7 +958,11 @@ export function Composer({
             </>
           )}
           <span className="min-w-0 flex-1" />
-          {!sessionless && summary && <ContextMeter compactDisabled={running} />}
+          {!sessionless && summary && (
+            <span className="contents max-sm:hidden">
+              <ContextMeter compactDisabled={running} />
+            </span>
+          )}
           <ModelMenu
             profiles={profiles}
             profileId={currentProfileId}

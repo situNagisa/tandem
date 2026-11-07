@@ -89,7 +89,7 @@ export function CompletionMenu({
                     <>
                       <Highlight text={name} query={completion.query} />
                       {dir && (
-                        <span className="ml-1.5 text-[11.5px] text-muted">
+                        <span className="ml-1.5 text-[12px] text-muted">
                           <Highlight text={dir} query={completion.query} />
                         </span>
                       )}

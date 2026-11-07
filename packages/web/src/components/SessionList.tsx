@@ -578,7 +578,7 @@ export function SessionList({
           </span>
         )}
         {!renamingThis && (
-          <span className="relative flex h-full w-[62px] shrink-0 items-center justify-end">
+          <span className="relative flex h-full w-11 shrink-0 items-center justify-end md:w-[62px]">
             <span
               className={cn(
                 'hidden max-w-full truncate text-[12px] tabular-nums transition-opacity md:inline',
@@ -601,7 +601,7 @@ export function SessionList({
               label="会话操作"
               tooltip=""
               className={cn(
-                'absolute right-0 top-1/2 size-7! -translate-y-1/2 focus-visible:opacity-100 [&_svg]:size-[15px]',
+                'absolute right-0 top-1/2 size-7! -translate-y-1/2 focus-visible:opacity-100 max-sm:size-11! [&_svg]:size-[15px]',
                 isActive
                   ? 'opacity-100'
                   : 'opacity-100 md:opacity-0 md:group-hover:opacity-100',
@@ -719,11 +719,11 @@ export function SessionList({
             const count = project.items.length + project.externals.length
             return (
               <div key={project.key} className="min-w-0">
-                <div className="group/proj flex h-8 min-w-0 items-center rounded-lg pr-0.5 transition-colors hover:bg-[var(--t-bg-hover)]">
+                <div className="group/proj flex h-8 min-w-0 items-center rounded-lg pr-0.5 transition-colors hover:bg-[var(--t-bg-hover)] max-sm:h-11">
                   <button
                     onClick={() => toggleProject(project.key)}
                     className={cn(
-                      'flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left text-[13px] font-medium text-text-secondary transition-colors duration-[120ms] hover:text-text',
+                      'flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left text-[13px] font-medium text-text-secondary transition-colors duration-[120ms] hover:text-text max-sm:h-11',
                       indented ? 'pl-5' : 'pl-1.5',
                     )}
                     aria-expanded={!projCollapsed}
@@ -754,7 +754,7 @@ export function SessionList({
                     tooltip={`在 ${project.name} 新建会话`}
                     label={`在 ${project.name} 新建会话`}
                     tooltipSide="top"
-                    className="size-7! opacity-100 focus-visible:opacity-100 md:opacity-0 md:group-hover/proj:opacity-100 [&_svg]:size-[13px]"
+                    className="size-7! opacity-100 focus-visible:opacity-100 max-sm:size-11! md:opacity-0 md:group-hover/proj:opacity-100 [&_svg]:size-[13px]"
                   >
                     <Plus size={13} />
                   </IconButton>

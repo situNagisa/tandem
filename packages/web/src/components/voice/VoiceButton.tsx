@@ -445,7 +445,7 @@ export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(funct
             {liveText ? (
               <div className="mt-1.5 line-clamp-2 text-[12px] text-text-soft">{liveText}</div>
             ) : null}
-            <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-muted">
+            <div className="mt-1.5 flex items-center justify-between gap-2 text-[12px] text-muted">
               <span className="truncate">
                 {backendRef.current === 'host'
                   ? '识别：Host 本机 Whisper'
@@ -462,7 +462,7 @@ export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(funct
             {!recording && phase === 'preparing' ? (
               <button
                 type="button"
-                className="mt-1 text-[11px] text-accent hover:underline"
+                className="mt-1 text-[12px] text-accent hover:underline"
                 onClick={() => {
                   cancel()
                   openSettings('voice')

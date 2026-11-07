@@ -147,7 +147,7 @@ export function MemorySection() {
                     {item.scope === 'global' ? '全局记忆' : item.name}
                   </span>
                   {item.scope === 'global' && (
-                    <span className="shrink-0 rounded border border-border px-1 text-[11px] text-muted">
+                    <span className="shrink-0 rounded border border-border px-1 text-[12px] text-muted">
                       全局
                     </span>
                   )}

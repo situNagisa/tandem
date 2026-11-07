@@ -64,7 +64,7 @@ export function EvalConfigCard({
           aria-label="配置名称"
           className="h-7 border-transparent bg-transparent px-1 font-medium"
         />
-        <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[11px] text-muted">
+        <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[12px] text-muted">
           {config.model || '未选模型'}
         </span>
         {canRemove && (
@@ -74,7 +74,7 @@ export function EvalConfigCard({
         )}
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
-        <label className="flex min-w-0 flex-col gap-1 text-[11px] text-muted">
+        <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
           账号
           <Select
             value={config.profileId}
@@ -90,7 +90,7 @@ export function EvalConfigCard({
           </Select>
         </label>
         {groups.length > 0 && (
-          <label className="flex min-w-0 flex-col gap-1 text-[11px] text-muted">
+          <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
             分组
             <Select
               value={config.groupId ?? groups[0]?.id ?? ''}
@@ -113,7 +113,7 @@ export function EvalConfigCard({
             </Select>
           </label>
         )}
-        <label className="flex min-w-0 flex-col gap-1 text-[11px] text-muted">
+        <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
           模型
           <Select
             value={config.model}
@@ -128,7 +128,7 @@ export function EvalConfigCard({
             ))}
           </Select>
         </label>
-        <label className="flex min-w-0 flex-col gap-1 text-[11px] text-muted">
+        <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
           思考强度
           <Select
             value={config.effort ?? ''}
@@ -148,7 +148,7 @@ export function EvalConfigCard({
             ))}
           </Select>
         </label>
-        <label className="flex min-w-0 flex-col gap-1 text-[11px] text-muted">
+        <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
           委派策略
           <Select
             value={config.delegation ?? ''}
@@ -179,7 +179,7 @@ export function EvalConfigCard({
         >
           提示词覆盖{overrideCount > 0 ? `（${overrideCount}）` : ''}
         </Button>
-        {group && <span className="truncate text-[11px] text-muted">分组：{group.name}</span>}
+        {group && <span className="truncate text-[12px] text-muted">分组：{group.name}</span>}
       </div>
     </div>
   )

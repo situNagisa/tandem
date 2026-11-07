@@ -144,7 +144,7 @@ export function BackgroundTasksPanel() {
                     close()
                     openSettings('evals')
                   }}
-                  className="ml-auto rounded px-1 text-[11px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+                  className="ml-auto rounded px-1 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
                 >
                   打开
                 </button>
@@ -154,7 +154,7 @@ export function BackgroundTasksPanel() {
                   <div key={item.id} className="rounded-md px-1 py-1">
                     <div className="flex items-center gap-1.5">
                       <span className="min-w-0 flex-1 truncate text-[12px] text-text">{item.suite}</span>
-                      <span className="shrink-0 text-[11px] tabular-nums text-muted">
+                      <span className="shrink-0 text-[12px] tabular-nums text-muted">
                         {item.finished}/{item.total}
                       </span>
                       <button
@@ -205,7 +205,7 @@ export function BackgroundTasksPanel() {
                         {firstLine(task.command, 80) || task.id}
                       </span>
                     </span>
-                    <span className="flex items-center gap-2 pl-3.5 text-[11px] text-muted">
+                    <span className="flex items-center gap-2 pl-3.5 text-[12px] text-muted">
                       <span>{statusText(task)}</span>
                       <span className="ml-auto tabular-nums">
                         {formatElapsed((task.endedAt ?? now) - task.startedAt)}
@@ -224,7 +224,7 @@ export function BackgroundTasksPanel() {
               <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
                 <span className={cn('size-2 shrink-0 rounded-full', STATUS_STYLE[current.status], current.status === 'running' && 'running-dot')} />
                 <span className="text-[12.5px] font-medium text-text">{statusText(current)}</span>
-                <span className="font-mono text-[11px] text-muted">{current.id}</span>
+                <span className="font-mono text-[12px] text-muted">{current.id}</span>
                 <span className="ml-auto flex items-center gap-1">
                   <Button
                     size="sm"
@@ -250,7 +250,7 @@ export function BackgroundTasksPanel() {
               </div>
               <div className="border-b border-border px-3 py-2">
                 <div className="break-all font-mono text-[12px] leading-5 text-text">{current.command}</div>
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted">
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-muted">
                   <span title={new Date(current.startedAt).toLocaleString()}>
                     开始 {new Date(current.startedAt).toLocaleTimeString()}
                   </span>
@@ -265,7 +265,7 @@ export function BackgroundTasksPanel() {
                   {output?.text || (current.status === 'running' ? '等待输出…' : '(无输出)')}
                 </pre>
                 {output?.truncated && (
-                  <div className="pointer-events-none absolute inset-x-0 top-0 bg-[var(--t-bg-hover)] px-3 py-1 text-[11px] text-text-soft">
+                  <div className="pointer-events-none absolute inset-x-0 top-0 bg-[var(--t-bg-hover)] px-3 py-1 text-[12px] text-text-soft">
                     较早输出已超出 1MB 缓冲，仅显示最近部分
                   </div>
                 )}

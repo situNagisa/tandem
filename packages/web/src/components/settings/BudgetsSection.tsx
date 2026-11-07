@@ -143,10 +143,10 @@ function BudgetCard({
         <span className="min-w-0 truncate text-[13px] font-medium text-text">
           {ruleName(rule, profiles)}
         </span>
-        <span className="shrink-0 rounded border border-border px-1 text-[11px] text-muted">
+        <span className="shrink-0 rounded border border-border px-1 text-[12px] text-muted">
           {PERIOD_LABEL[rule.period]}
         </span>
-        <span className="shrink-0 rounded border border-border px-1 text-[11px] text-muted">
+        <span className="shrink-0 rounded border border-border px-1 text-[12px] text-muted">
           {rule.action === 'block' ? '阻止' : '提醒'}
         </span>
         {disabled && <span className="shrink-0 text-[12px] text-muted">已停用</span>}

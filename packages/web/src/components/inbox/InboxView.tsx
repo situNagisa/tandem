@@ -150,12 +150,12 @@ function PendingCard({ entry }: { entry: Entry }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <span className="min-w-0 truncate text-[13px] font-medium">{title}</span>
-            <span className="ml-auto shrink-0 text-[11px] text-muted">
+            <span className="ml-auto shrink-0 text-[12px] text-muted">
               {formatRelative(event.at)}
             </span>
           </div>
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-muted">
-            <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[11px] text-text-tertiary">
+            <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[12px] text-text-tertiary">
               {hostNameOf(hostId)}
             </span>
             <button
@@ -166,7 +166,7 @@ function PendingCard({ entry }: { entry: Entry }) {
             >
               {event.sessionTitle || '未命名会话'}
             </button>
-            {event.depth ? <span className="shrink-0 text-[11px]">· 子代理</span> : null}
+            {event.depth ? <span className="shrink-0 text-[12px]">· 子代理</span> : null}
           </div>
           {preview && !body ? (
             <div className="mt-1.5 max-h-24 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-[var(--t-bg-hover)] px-2 py-1.5 font-mono text-[12px] leading-5 text-text-soft">
@@ -240,14 +240,14 @@ function HistoryRow({ entry }: { entry: Entry }) {
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-2">
           <span className="min-w-0 truncate text-[12.5px] text-text-soft">{title}</span>
-          <span className="ml-auto shrink-0 text-[11px] text-muted">{formatRelative(event.at)}</span>
+          <span className="ml-auto shrink-0 text-[12px] text-muted">{formatRelative(event.at)}</span>
         </span>
-        <span className="mt-0.5 flex min-w-0 gap-1.5 text-[11.5px] text-muted">
+        <span className="mt-0.5 flex min-w-0 gap-1.5 text-[12px] text-muted">
           <span className="shrink-0">{hostNameOf(hostId)}</span>
           <span className="truncate">{event.sessionTitle ?? event.budgetSessionTitle ?? ''}</span>
         </span>
         {body && event.kind !== 'permission' ? (
-          <span className="mt-0.5 block truncate text-[11.5px] text-muted">{body}</span>
+          <span className="mt-0.5 block truncate text-[12px] text-muted">{body}</span>
         ) : null}
       </span>
     </button>
@@ -300,7 +300,7 @@ export function InboxView({ embedded = false }: { embedded?: boolean }) {
               <h3 className="mb-2 flex items-center gap-1.5 px-1 text-[12px] font-medium text-muted">
                 待审批
                 {pending.length > 0 && (
-                  <span className="rounded-full bg-accent px-1.5 py-px text-[11px] font-semibold text-on-accent">
+                  <span className="rounded-full bg-accent px-1.5 py-px text-[12px] font-semibold text-on-accent">
                     {pending.length}
                   </span>
                 )}

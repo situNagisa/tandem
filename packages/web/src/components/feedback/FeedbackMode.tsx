@@ -1607,7 +1607,7 @@ export function FeedbackMode() {
             <span className="rounded bg-[#F97316]/15 px-1.5 py-0.5 text-[10.5px] font-semibold text-[#F97316]">
               复验 {verify.index + 1}/{verify.queue.length}
             </span>
-            <span className="min-w-0 flex-1 truncate text-[11.5px] text-text" title={verifyEntry.item.text}>
+            <span className="min-w-0 flex-1 truncate text-[12px] text-text" title={verifyEntry.item.text}>
               {verifyEntry.item.text}
             </span>
             <IconButton label="退出复验" size="sm" onClick={() => setVerify(null)}>

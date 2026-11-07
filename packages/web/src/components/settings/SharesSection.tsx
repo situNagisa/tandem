@@ -109,21 +109,21 @@ export function SharesSection() {
                     {share.sessionTitle || '未命名会话'}
                   </span>
                   {share.expired ? (
-                    <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[11px] text-muted">
+                    <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[12px] text-muted">
                       已过期
                     </span>
                   ) : (
                     !share.expiresAt && (
-                      <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[11px] text-muted">
+                      <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[12px] text-muted">
                         不过期
                       </span>
                     )
                   )}
-                  <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[11px] text-muted">
+                  <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[12px] text-muted">
                     {share.snapshot ? '快照' : '实时'}
                   </span>
                   {!share.hidePaths && (
-                    <span className="shrink-0 rounded bg-warning-soft px-1.5 py-0.5 text-[11px] text-warning">
+                    <span className="shrink-0 rounded bg-warning-soft px-1.5 py-0.5 text-[12px] text-warning">
                       含路径
                     </span>
                   )}

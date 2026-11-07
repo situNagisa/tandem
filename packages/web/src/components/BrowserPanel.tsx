@@ -106,7 +106,7 @@ export function BrowserPanel() {
           >
             <RefreshCw size={13} className={refreshing ? 'animate-spin' : undefined} />
           </IconButton>
-          <span className="ml-1 shrink-0 text-[11px] text-muted">
+          <span className="ml-1 shrink-0 text-[12px] text-muted">
             {state.updatedAt ? formatRelative(state.updatedAt) : ''}
           </span>
         </div>
@@ -158,7 +158,7 @@ export function BrowserPanel() {
           ) : null}
         </div>
 
-        <div className="flex shrink-0 items-center gap-1.5 border-t border-border px-3 py-2 text-[11.5px] text-muted">
+        <div className="flex shrink-0 items-center gap-1.5 border-t border-border px-3 py-2 text-[12px] text-muted">
           <ExternalLink size={11} />
           截图由 {host.name} 上的 Chromium 生成，仅在本 Host 与已连接客户端之间传输。
         </div>

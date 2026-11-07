@@ -17,7 +17,7 @@ import { Tip } from './Tooltip'
 
 /* 菜单的尺寸、颜色、间距只在这里定义一次。26px 单行、13px 字，全应用一致。 */
 const ROW_BASE =
-  'group/row flex h-[26px] w-full min-w-0 shrink-0 select-none items-center gap-1.5 rounded-md px-1.5 text-left text-[13px] leading-none text-text-soft outline-none transition-colors duration-[120ms]'
+  'group/row flex h-[26px] w-full min-w-0 shrink-0 select-none items-center gap-1.5 rounded-md px-1.5 text-left text-[13px] leading-none text-text-soft outline-none transition-colors duration-[120ms] max-sm:h-11'
 
 const ROW_STATE =
   'hover:bg-[var(--t-bg-hover)] hover:text-text focus:bg-[var(--t-bg-hover)] focus:text-text focus-visible:outline-none data-[highlighted]:bg-[var(--t-bg-hover)] data-[highlighted]:text-text data-[state=open]:bg-[var(--t-bg-hover)] data-[state=open]:text-text data-[selected=true]:bg-[color-mix(in_srgb,var(--t-bg-active)_55%,transparent)] data-[selected=true]:text-text data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[disabled]:hover:bg-transparent'
@@ -49,7 +49,7 @@ function RowContent({
         </span>
       )}
       <span className="min-w-0 flex-1 truncate">{children}</span>
-      {trailing && <span className="shrink-0 text-[11.5px] text-muted">{trailing}</span>}
+      {trailing && <span className="shrink-0 text-[12px] text-muted max-sm:text-[12px]">{trailing}</span>}
       {(selected || checked) && (
         <Check size={13} className="shrink-0 text-text-secondary" strokeWidth={2.2} />
       )}

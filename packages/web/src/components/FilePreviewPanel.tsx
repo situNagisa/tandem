@@ -260,7 +260,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
           {fileBaseName(path || absPath) || '文件'}
         </span>
         {label && (
-          <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[11px] text-text-secondary">
+          <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[12px] text-text-secondary">
             :{label}
           </span>
         )}
@@ -296,6 +296,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
             disabled={revealing || !data}
             label="在本机打开"
             tooltip="在 Host 的文件管理器中显示"
+            className="max-md:size-11"
           >
             {revealing ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />}
           </IconButton>
@@ -305,10 +306,11 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
           onClick={() => void copyPath()}
           label="复制文件路径"
           tooltip={copied ? '已复制' : `复制路径：${absPath || path}`}
+          className="max-md:size-11"
         >
           {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
         </IconButton>
-        <IconButton onClick={onClose} label="关闭文件预览" className="-mr-1 max-md:size-9">
+        <IconButton onClick={onClose} label="关闭文件预览" className="-mr-1 max-md:size-11">
           <X size={15} />
         </IconButton>
       </div>

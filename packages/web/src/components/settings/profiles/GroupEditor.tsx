@@ -290,7 +290,7 @@ export function GroupEditor({
                     {m.id}
                   </span>
                   {checked && m.id === defaultModel && (
-                    <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1 text-[11px] text-text-secondary">默认</span>
+                    <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1 text-[12px] text-text-secondary">默认</span>
                   )}
                 </label>
               )

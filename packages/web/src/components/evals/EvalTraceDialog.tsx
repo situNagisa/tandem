@@ -108,7 +108,7 @@ export function EvalTraceDialog({
                   <summary className="cursor-pointer select-none text-muted">
                     检查命令 <code className="font-mono">{result.check.command}</code>
                   </summary>
-                  <pre className="mt-1 max-h-[140px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--t-bg-hover)] px-2 py-1.5 font-mono text-[11.5px] leading-5">
+                  <pre className="mt-1 max-h-[140px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--t-bg-hover)] px-2 py-1.5 font-mono text-[12px] leading-5">
                     {result.check.output || '(无输出)'}
                   </pre>
                 </details>

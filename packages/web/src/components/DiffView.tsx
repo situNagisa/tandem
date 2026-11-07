@@ -284,14 +284,14 @@ function CommentMarker({
                     <div className="mt-1.5 flex justify-end gap-1">
                       <button
                         type="button"
-                        className="rounded px-2 py-1 text-[11px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
+                        className="rounded px-2 py-1 text-[12px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
                         onClick={() => setEditingId(null)}
                       >
                         取消
                       </button>
                       <button
                         type="button"
-                        className="rounded-md bg-[var(--t-primary-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--t-primary-fg)] transition-opacity disabled:opacity-40"
+                        className="rounded-md bg-[var(--t-primary-bg)] px-2.5 py-1 text-[12px] font-medium text-[var(--t-primary-fg)] transition-opacity disabled:opacity-40"
                         disabled={!text.trim()}
                         onClick={save}
                       >
@@ -307,7 +307,7 @@ function CommentMarker({
                     <div className="mt-1 flex justify-end gap-1">
                       <button
                         type="button"
-                        className="rounded px-2 py-1 text-[11px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
+                        className="rounded px-2 py-1 text-[12px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
                         onClick={() => {
                           setPinned(true)
                           setText(comment.text)
@@ -318,7 +318,7 @@ function CommentMarker({
                       </button>
                       <button
                         type="button"
-                        className="rounded px-2 py-1 text-[11px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-danger"
+                        className="rounded px-2 py-1 text-[12px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-danger"
                         onClick={() => {
                           onDelete(comment.id)
                           close()
@@ -540,11 +540,11 @@ export const DiffView = memo(function DiffView({
   return (
     <div className="chat-diff">
       <div className="chat-diff-head">
-        <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-text-soft" title={fileName}>
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-text-soft" title={fileName}>
           {fileName || '改动'}
         </span>
-        <span className="shrink-0 font-mono text-[11px] text-[var(--t-git-plus)]">+{added}</span>
-        <span className="shrink-0 font-mono text-[11px] text-[var(--t-git-minus)]">−{removed}</span>
+        <span className="shrink-0 font-mono text-[12px] text-[var(--t-git-plus)]">+{added}</span>
+        <span className="shrink-0 font-mono text-[12px] text-[var(--t-git-minus)]">−{removed}</span>
       </div>
       <div className="x-scroll-wrap">
         <div
@@ -683,7 +683,7 @@ export const DiffView = memo(function DiffView({
             )
           })}
           {truncated && (
-            <div className="border-t border-border px-3 py-1.5 text-[11px] text-muted">
+            <div className="border-t border-border px-3 py-1.5 text-[12px] text-muted">
               差异过长，仅显示前 {MAX_ROWS} 行
             </div>
           )}

@@ -377,7 +377,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         <button
           type="button"
           onClick={() => setChangesOpen(true)}
-          className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+          className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
         >
           审阅 <ArrowUpRight size={10} />
         </button>
@@ -528,10 +528,10 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
               </div>
               {subUsage.byModel.map(([model, item]) => (
                 <div key={model} className="flex min-w-0 items-baseline justify-between gap-2 pl-2">
-                  <span className="min-w-0 truncate font-mono text-[11px] text-muted" title={model}>
+                  <span className="min-w-0 truncate font-mono text-[12px] text-muted" title={model}>
                     {model}
                   </span>
-                  <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-muted">
+                  <span className="shrink-0 font-mono text-[12px] tabular-nums text-muted">
                     {formatCost(item.cost)}
                   </span>
                 </div>

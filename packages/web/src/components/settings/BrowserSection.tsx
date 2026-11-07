@@ -164,9 +164,9 @@ export function BrowserSection() {
         </div>
         <p className="mt-1 text-[13px] leading-5 text-muted">
           默认只允许 localhost、127.0.0.1、[::1] 和 file://。其它地址需要加到这里，支持内网网段与域名通配：
-          <code className="mx-1 rounded bg-[var(--t-bg-active)] px-1 py-0.5 font-mono text-[11.5px]">10.*</code>
-          <code className="mx-1 rounded bg-[var(--t-bg-active)] px-1 py-0.5 font-mono text-[11.5px]">192.168.*</code>
-          <code className="mx-1 rounded bg-[var(--t-bg-active)] px-1 py-0.5 font-mono text-[11.5px]">*.corp.example.com</code>
+          <code className="mx-1 rounded bg-[var(--t-bg-active)] px-1 py-0.5 font-mono text-[12px]">10.*</code>
+          <code className="mx-1 rounded bg-[var(--t-bg-active)] px-1 py-0.5 font-mono text-[12px]">192.168.*</code>
+          <code className="mx-1 rounded bg-[var(--t-bg-active)] px-1 py-0.5 font-mono text-[12px]">*.corp.example.com</code>
           每行一个。
         </p>
         <Textarea
@@ -215,7 +215,7 @@ export function BrowserSection() {
               <TriangleAlert size={13} className="mt-0.5 shrink-0" />
               <span>{status.error || '浏览器组件不可用'}</span>
             </p>
-            <p className="mt-1.5 font-mono text-[11.5px] text-text-soft">
+            <p className="mt-1.5 font-mono text-[12px] text-text-soft">
               npm i playwright && npx playwright install chromium
             </p>
           </div>

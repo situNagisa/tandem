@@ -149,7 +149,7 @@ export function AppearanceSection() {
             <div key={label} className="flex min-h-7 min-w-0 items-center gap-2 text-[13px]">
               <dt className="truncate text-text-soft">{label}</dt>
               <dd className="shrink-0">
-                <kbd className="whitespace-nowrap rounded-[4px] border border-border bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[11px] leading-none text-text-soft">
+                <kbd className="whitespace-nowrap rounded-[4px] border border-border bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[12px] leading-none text-text-soft">
                   {keys}
                 </kbd>
               </dd>

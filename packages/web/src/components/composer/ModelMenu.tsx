@@ -115,7 +115,7 @@ function ModelPanel({
           <Menu.Sub>
             <Menu.SubTrigger trailing={EFFORT_LABEL[selectedEffort]}>思考强度</Menu.SubTrigger>
             <Menu.SubContent className="w-[268px]" aria-label="思考强度">
-              <p className="px-2 pb-1.5 pt-1 text-[11.5px] leading-4 text-muted">
+              <p className="px-2 pb-1.5 pt-1 text-[12px] leading-4 text-muted">
                 投入程度越高，回复越详尽，但耗时越长、用量越多。
               </p>
               <Menu.RadioGroup
@@ -258,7 +258,7 @@ export function ModelMenu({
           tooltipSide="top"
           aria-label="选择模型"
           className={cn(
-            'min-w-0 max-w-[220px] justify-start gap-1 px-2 font-normal max-sm:min-h-11 max-sm:max-w-[40vw]',
+            'min-w-0 max-w-[220px] justify-start gap-1 px-2 font-normal max-sm:min-h-11 max-sm:max-w-[36vw]',
             isOpen && 'bg-[var(--t-bg-hover)] text-text-soft',
           )}
         >
