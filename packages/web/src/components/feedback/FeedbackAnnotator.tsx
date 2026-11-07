@@ -93,7 +93,7 @@ export function FeedbackAnnotator({
         if (!canvas.width || !canvas.height) return
         const maxW = Math.max(320, window.innerWidth - 64)
         const maxH = Math.max(240, window.innerHeight - 150)
-        const scale = Math.min(maxW / canvas.width, maxH / canvas.height, 1)
+        const scale = Math.min(maxW / canvas.width, maxH / canvas.height, 3)
         setDisplay({
           width: Math.round(canvas.width * scale),
           height: Math.round(canvas.height * scale),

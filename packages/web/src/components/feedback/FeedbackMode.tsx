@@ -345,7 +345,7 @@ function FeedbackEditor({
     onSave(text.trim(), type, priority, references, editor.annotatedShot ?? null)
   }
 
-  const annotateSource = editor.annotatedShot ?? editor.elementShot ?? null
+  const annotateSource = editor.annotatedShot ?? editor.elementShot ?? editor.pageShot?.dataURL ?? null
   const hasAnnotated = !!editor.annotatedShot
 
   return createPortal(
@@ -1028,9 +1028,10 @@ export function FeedbackMode() {
           })
         }
       }
-      // 选中时已截图；这里只在缺失（如重试）时补拍。
-      const elementShot =
-        current.elementShot === undefined || current.elementShot === null
+      // 选中时已截图；这里只在缺失（如重试）时补拍，框选区域不补拍整页元素。
+      const elementShot = current.kind === 'region'
+        ? current.elementShot ?? null
+        : current.elementShot === undefined || current.elementShot === null
           ? await captureElementShot(element ?? document.body)
           : current.elementShot
       const app = useAppStore.getState()
@@ -1148,7 +1149,7 @@ export function FeedbackMode() {
   const annotateEditorShot = () => {
     const current = editorRef.current
     if (!current) return
-    const image = current.annotatedShot ?? current.elementShot
+    const image = current.annotatedShot ?? current.elementShot ?? current.pageShot?.dataURL
     if (!image) return
     setAnnotator({ image })
   }
@@ -1358,6 +1359,7 @@ export function FeedbackMode() {
         }
         const dataURL = await readFileAsDataURL(blob)
         if (!dataURL) return
+        if (!useFeedbackStore.getState().active) return
         setPendingVideo({
           name: `repro-${Date.now()}.webm`,
           mime: blob.type,

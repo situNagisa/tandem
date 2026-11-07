@@ -357,6 +357,20 @@ export function FeedbackDrawer({
                 </div>
               </div>
               {receiptItem && <ReceiptRow receiptItem={receiptItem} item={item} />}
+              {item.references?.length ? (
+                <div className="mt-1 flex gap-1 overflow-x-auto pl-5">
+                  {item.references.map((reference) => (
+                    <img
+                      key={reference.id}
+                      src={reference.dataURL}
+                      alt={reference.name}
+                      title={`参考图：${reference.name}`}
+                      className="h-10 w-14 shrink-0 rounded border border-border object-cover"
+                      draggable={false}
+                    />
+                  ))}
+                </div>
+              ) : null}
             </div>
           )
         })}
