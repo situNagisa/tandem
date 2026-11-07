@@ -75,7 +75,7 @@ export function BrowserPanel() {
           <Globe2 size={14} className="text-muted" />
           浏览器
           {state.active ? (
-            <span className="rounded-full bg-[var(--t-bg-active)] px-1.5 py-px text-[10px] font-normal text-text-soft">
+            <span className="rounded-full bg-[var(--t-bg-active)] px-1.5 py-px text-[11px] font-normal text-text-soft">
               运行中
             </span>
           ) : null}

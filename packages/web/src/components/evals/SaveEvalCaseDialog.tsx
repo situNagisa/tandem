@@ -123,7 +123,7 @@ export function SaveEvalCaseDialog({
           存为评测用例
         </span>
       }
-      className="h-[min(86dvh,820px)] w-[min(94vw,760px)] max-w-none"
+      className="max-h-[min(86dvh,820px)] w-[min(94vw,760px)] max-w-none"
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
       footer={
         <>
@@ -202,19 +202,14 @@ export function SaveEvalCaseDialog({
                   size="sm"
                   aria-label="用例集"
                 />
-                {suites.length > 0 && (
+                {suites.filter((item) => item !== suite).length > 0 && (
                   <span className="flex flex-wrap gap-1 pt-0.5">
-                    {suites.slice(0, 6).map((item) => (
+                    {suites.filter((item) => item !== suite).slice(0, 6).map((item) => (
                       <button
                         key={item}
                         type="button"
                         onClick={() => setSuite(item)}
-                        className={cn(
-                          'rounded px-1.5 py-0.5 text-[12px] transition-colors',
-                          item === suite
-                            ? 'bg-[var(--t-bg-active)] text-text'
-                            : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text',
-                        )}
+                        className="rounded px-1.5 py-0.5 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
                       >
                         {item}
                       </button>

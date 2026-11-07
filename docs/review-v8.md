@@ -1,0 +1,75 @@
+# 体验走查 v8：内网团队共享 / 浏览器操作 / 评测集
+
+- 日期：2026-11-07
+- 范围：只走查最近新增、尚未单独走查的三组功能
+  1. 内网团队共享：设置-成员页、邀请链接+二维码、成员接受邀请、会话顶部在线头像、审批卡「转给…」、审计日志
+  2. 浏览器操作：设置-浏览器页、会话右上角浏览器面板、浏览器工具卡
+  3. 评测集：会话 ⋯「存为评测用例」、评测页、结果对比表、轨迹与并排对比
+- 环境：`TANDEM_HOME=/tmp/tandem-rv8`，Host 端口 8281；桌面 2552×1274 深色、手机 390×844（DPR 2，触摸）
+- 数据：假 profile（`profiles.json`）+ 2 个 REST 邀请并接受的成员（审批者/观察者）+ 浏览器工具调用过的会话（含截图 image block）+ 2 个评测用例、2 个配置的评测结果
+- 方法：Playwright 真实点击每个控件，记录 console error、点了没反应、弹层越界、文字溢出、字号与统一组件不一致、信息冗余；截图在 `/tmp/rv8/`
+- 结论：**console error 0 条**；找到 1 个 P1（审计日志英文枚举）、若干 P2；已修 P1 与易修 P2，回归 50/50 通过
+
+## 走查结果
+
+### 内网团队共享
+
+| # | 现象 | 级别 | 处理 |
+|---|---|---|---|
+| T1 | 审计日志把服务端枚举直接展示成英文：`接受邀请 observer`、`Bash allow`、`王敏 → approver`；与全站中文不一致 | P1 | **已修**：展示层统一映射角色与审批决定（`TeamSection.auditDetailText`） |
+| T2 | 邀请面板把 Host 只监听回环的警告拼在「角色 · 到期时间」后面，关键警告被当成次要说明 | P2 | **已修**：警告单独一行 + `TriangleAlert` + 警示色 |
+| T3 | 成员/在线状态只在打开页面时读取一次；同事接受邀请、被吊销或转交审批后要手动刷新 | P2 | **已修**：页面可见时每 8s 静默刷新，手动「刷新」保留 |
+| T4 | 邀请记录删除无二次确认（误点即删记录） | P2 | 未修，记录可重建、无安全影响；留作下轮 |
+| T5 | 会话顶部「正在查看」头像字母 10px（低于 11px 下限），且随消息滚动会滚出视口 | P2 | **字号已修**（11px）；位置保持（内容区顶部），若用户希望常驻可移到顶栏 |
+| — | 邀请链接深链入职（390×844）：填名 → 接受 → 自动加 Host、跳转、toast「已加入 JDHC-001（观察者）」，观察者首页正确显示「只读成员」 | 通过 | — |
+| — | 手机成员页：角色分段、目录标签、生成邀请链接、二维码均可用且不横向溢出 | 通过 | — |
+| — | 审批卡「转给…」：仅列在线审批者，选择后卡片显示「由 所有者 转交 · 待 王敏 处理」，目标收件箱同步出现「由 所有者 转交」 | 通过 | — |
+
+成员页桌面截图：`/tmp/rv8/03-members.png`、`/tmp/rv8/05-invite-created.png`、`/tmp/rv8/06-member-edit.png`、`/tmp/rv8/21-approval.png`、`/tmp/rv8/22-transfer-menu.png`、`/tmp/rv8/23-transferred.png`；手机：`/tmp/rv8/m-join.png`、`/tmp/rv8/m-members.png`、`/tmp/rv8/m-invite.png`、`/tmp/rv8/m-approval.png`
+
+### 浏览器操作
+
+| # | 现象 | 级别 | 处理 |
+|---|---|---|---|
+| B1 | 浏览器面板标题的「运行中」徽标 10px | P2 | **已修**：11px |
+| B2 | Host 重启后，浏览器截图只存在内存：工具卡一直显示「截图加载中…」，不报错也不结束 | P2 | 未修（涉及 ToolCard 公共渲染）；建议 8s 后转为「截图已失效（Host 重启）」。面板空态文案正确 |
+| B3 | 面板空态提示「在设置 → 浏览器启用后…」，即使已经启用也照旧显示 | P2 | 未修；文案可改为两段式（已启用/未启用） |
+| — | 设置-浏览器：开关、无头/有头、允许列表保存/脏标、组件可用状态均正常，点击有反馈、无 console error | 通过 | — |
+| — | 浏览器工具卡：`浏览器 · 打开 / 快照 / 点击 / 截图` 动词与目标正常，4 连调用折叠为「使用了 4 个工具」 | 通过 | — |
+
+截图：`/tmp/rv8/08-browser-settings.png`、`/tmp/rv8/10-browser-enabled.png`、`/tmp/rv8/17-session.png`、`/tmp/rv8/18-browser-panel.png`、`/tmp/rv8/m-browser-panel.png`
+
+### 评测集
+
+| # | 现象 | 级别 | 处理 |
+|---|---|---|---|
+| E1 | 结果表模型行、用例内部名、花费/耗时 10.5px，低于「次要文字 ≥12px」硬规则 | P1 | **已修**：统一 12px |
+| E2 | 运行选择器时间用 `toLocaleString()`，中文界面里出现 `11/7/2026, 8:20:46 PM` | P1 | **已修**：统一 `zh-CN` `MM/DD HH:mm` |
+| E3 | 「存为评测用例」窗固定 86dvh/820px，内容短时下方大片空白；用例集输入框下方又重复一枚当前值 chip | P2 | **已修**：改 `max-h` 自适应；chip 只列其它用例集 |
+| E4 | 右上角评测后台入口运行数徽标 9px | P2 | **已修**：16px 圆 + 11px |
+| E5 | 并排对比固定 1480px 宽，短轨迹时左右两栏大面积空白 | P2 | 未修；可随内容收窄到 `min(1480px, 90vw)` 并保持列宽一致 |
+| — | 结果表状态 pill（通过/未通过/取消）、花费、耗时、并排入口；点单元格打开只读轨迹；并排选择左右配置；两栏滚动独立 | 通过 | — |
+| — | 运行确认弹窗：bypassPermissions 警告、用例/配置数、并发数、临时目录说明齐全 | 通过 | — |
+| — | 手机：结果表在屏幕内、表格自身横向滚动；点单元格打开轨迹并可关闭 | 通过 | — |
+
+截图：`/tmp/rv8/11-evals.png`、`/tmp/rv8/13-eval-trace.png`、`/tmp/rv8/14-eval-compare.png`、`/tmp/rv8/15-run-confirm.png`、`/tmp/rv8/20-save-eval.png`、`/tmp/rv8/m-evals.png`、`/tmp/rv8/m-eval-trace.png`
+
+## 跨页面观察（非本轮范围）
+
+- 手机设置页用 3 列网格铺 20 个页签，首屏约一半高度被导航占用；成员/评测/浏览器页都要先滚过导航才能看到内容。`SettingsDialog.tsx` 与网关同事共用，本轮未改，建议后续单独做「移动端设置页签横向滚动/折叠」。
+- 观察者从邀请链接入职后落到「只读成员」空态，没有直接给出「去会话列表」入口；侧栏可用，但多一步。
+
+## 修复清单
+
+- `packages/web/src/components/settings/TeamSection.tsx`：审计角色/决定中文化；邀请警告独立成行；页面可见时静默轮询；次要文字 11.5→12px
+- `packages/web/src/components/settings/EvalsSection.tsx`：运行时间中文格式；结果表 10.5→12px
+- `packages/web/src/components/evals/SaveEvalCaseDialog.tsx`：高度自适应；去掉重复用例集 chip
+- `packages/web/src/components/evals/EvalRunsButton.tsx`：运行数徽标 9→11px
+- `packages/web/src/components/BrowserPanel.tsx`：运行中徽标 10→11px
+- `packages/web/src/components/ChatView.tsx`：在线头像字母 10→11px
+- `e2e/regression.mjs`：新增 4 条用例（成员页审计/二维码/警告、评测字号与时间/轨迹/并排、浏览器面板、手机评测表），回归 50/50
+
+## 验证
+
+- `node scripts/check.mjs --skip-smoke`：build / ui-audit / test / regression 全部通过（regression 50/50）
+- 未跑 smoke：本轮只改 Web 展示与回归脚本；提交前由协调者全量跑

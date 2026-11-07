@@ -53,6 +53,15 @@ function configFromProfile(profile: Profile, index: number): EvalConfig {
   }
 }
 
+function formatRunTime(ts: number): string {
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(ts)
+}
+
 function StatusPill({ result }: { result?: EvalResult | Omit<EvalResult, 'messages'> }) {
   const passed = cellPassed(result)
   return (
@@ -495,7 +504,7 @@ export function EvalsSection() {
             onChange={(next) => selectRun(host.id, next)}
             options={runs.map((item) => ({
               value: item.id,
-              label: `${item.suite} · ${new Date(item.startedAt).toLocaleString()} · ${item.finished}/${item.total}${
+              label: `${item.suite} · ${formatRunTime(item.startedAt)} · ${item.finished}/${item.total}${
                 item.status === 'running' ? ' 运行中' : item.status === 'cancelled' ? ' 已取消' : ''
               }`,
             }))}
@@ -585,7 +594,7 @@ export function EvalsSection() {
                     {run.configs.map((config) => (
                       <th key={config.id} className="min-w-[150px] px-2 py-2 font-medium">
                         <div className="truncate">{config.name}</div>
-                        <div className="truncate text-[10.5px] font-normal text-muted">{config.model}</div>
+                        <div className="truncate text-[12px] font-normal text-muted">{config.model}</div>
                       </th>
                     ))}
                     <th className="w-16 px-2 py-2" />
@@ -598,7 +607,7 @@ export function EvalsSection() {
                         <div className="truncate text-text" title={testCase.title}>
                           {testCase.title}
                         </div>
-                        <div className="text-[10.5px] text-muted">{testCase.name}</div>
+                        <div className="text-[12px] text-muted">{testCase.name}</div>
                       </td>
                       {run.configs.map((config) => {
                         const result = findResult(run, testCase.name, config.id)
@@ -610,7 +619,7 @@ export function EvalsSection() {
                               className="flex w-full flex-col items-start gap-0.5 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-[var(--t-bg-hover)]"
                             >
                               <StatusPill result={result} />
-                              <span className="text-[10.5px] tabular-nums text-muted">
+                              <span className="text-[12px] tabular-nums text-muted">
                                 {formatCost(result?.costUsd)} · {formatDuration(result?.durationMs ?? 0)}
                               </span>
                             </button>

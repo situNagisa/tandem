@@ -381,6 +381,47 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
   })
   mkdirSync(path.join(configDir, '..', 'cache-worktree'), { recursive: true })
   sessions[3].cwd = path.join(configDir, '..', 'cache-worktree')
+  // 浏览器工具调用过的会话：工具卡 + 截图 image block。
+  sessions.push({
+    ...common,
+    id: 'browser',
+    title: '浏览器走查会话',
+    messages: [
+      message('b1', 'user', '打开本地页面并截图。'),
+      {
+        id: 'b2',
+        role: 'assistant',
+        createdAt: createdAt + 20_000,
+        model: 'mock-1',
+        content: [
+          { type: 'text', text: '我先打开页面。' },
+          { type: 'tool_use', id: 'bu-n', name: 'browser_navigate', input: { url: 'http://127.0.0.1:9/' } },
+          { type: 'tool_use', id: 'bu-s', name: 'browser_screenshot', input: {} },
+        ],
+      },
+      {
+        id: 'b3',
+        role: 'user',
+        createdAt: createdAt + 30_000,
+        content: [
+          { type: 'tool_result', toolUseId: 'bu-n', content: '已打开 http://127.0.0.1:9/\n标题：走查页面' },
+          {
+            type: 'tool_result',
+            toolUseId: 'bu-s',
+            content: '截图 screenshotId=shot_reg（800×600）\n页面：http://127.0.0.1:9/\n标题：走查页面',
+          },
+          {
+            type: 'image',
+            mediaType: 'image/png',
+            dataBase64:
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+          },
+        ],
+      },
+    ],
+    createdAt: createdAt + 15_000,
+    updatedAt: createdAt + 35_000,
+  })
   for (const session of sessions) writeJson(path.join(configDir, 'sessions', `${session.id}.json`), session)
 
   writeJson(path.join(configDir, 'usage.json'), {
@@ -405,6 +446,66 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
     path.join(configDir, 'memory', '_global.md'),
     `<!-- tandem-memory ${JSON.stringify({ project: 'reg' })} -->\n- 用户喜欢深色主题\n- 默认使用中文\n`,
   )
+
+  seedEvals(configDir, repo)
+}
+
+/** 评测页走查数据：两个用例 × 两个配置，带完整轨迹。 */
+function seedEvals(configDir, repo) {
+  const now = Date.now()
+  const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo }).toString().trim()
+  const mkCase = (name, title) => ({
+    suite: 'default',
+    name,
+    title,
+    initialPrompt: title,
+    snapshot: { mode: 'git', cwd: repo, repoPath: repo, commit },
+    checkCommand: 'test -f README.md',
+    createdAt: now - 700_000,
+  })
+  const cases = [mkCase('reg-case-a', '回归用例 A'), mkCase('reg-case-b', '回归用例 B')]
+  for (const item of cases) writeJson(path.join(configDir, 'evals/default', `${item.name}.json`), item)
+  const configs = [
+    { id: 'cfg-a', name: '配置 1', profileId: 'p-main', groupId: 'g1', model: 'mock-1' },
+    { id: 'cfg-b', name: '配置 2', profileId: 'p-main', groupId: 'g2', model: 'o3' },
+  ]
+  const results = []
+  for (const item of cases) {
+    for (const config of configs) {
+      const passed = config.id === 'cfg-a'
+      results.push({
+        caseName: item.name,
+        caseTitle: item.title,
+        configId: config.id,
+        configName: config.name,
+        status: 'done',
+        completed: true,
+        passed,
+        check: { command: 'test -f README.md', exitCode: passed ? 0 : 1, ok: passed, output: '', durationMs: 8 },
+        turns: 2,
+        toolCalls: 3,
+        usage: { inputTokens: 900, outputTokens: 120 },
+        costUsd: 0.01,
+        durationMs: 40_000,
+        messages: [
+          { id: `u-${item.name}-${config.id}`, role: 'user', createdAt: now - 50_000, content: [{ type: 'text', text: item.title }] },
+          { id: `a-${item.name}-${config.id}`, role: 'assistant', createdAt: now - 40_000, model: config.model, content: [{ type: 'text', text: passed ? '完成。' : '未完成。' }] },
+        ],
+      })
+    }
+  }
+  writeJson(path.join(configDir, 'evals/runs/run_reg.json'), {
+    id: 'run_reg',
+    suite: 'default',
+    status: 'done',
+    startedAt: now - 3_600_000,
+    finishedAt: now - 3_500_000,
+    configs,
+    concurrency: 2,
+    total: results.length,
+    finished: results.length,
+    results,
+  })
 }
 
 const A11Y_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice']
@@ -473,6 +574,19 @@ async function main() {
     const hostPort = await host.ready
     const base = `http://127.0.0.1:${hostPort}`
     const appUrl = `${base}/?token=${token}#/h/${hostId}`
+
+    // 团队：一次真实邀请 + 接受，供成员页/审计断言。
+    const invite = await api(base, token, '/api/team/invites', {
+      method: 'POST',
+      body: JSON.stringify({ role: 'approver', projectDirs: [repo] }),
+    })
+    const accepted = await fetch(`${base}/api/team/invites/accept`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: invite.code, name: '王敏' }),
+    })
+    assert.ok(accepted.ok, `接受邀请失败：${accepted.status}`)
+
 
     browser = await chromium.launch({ headless: true })
     const desktopContext = await browser.newContext({ viewport: DESKTOP, deviceScaleFactor: 1 })
@@ -1396,6 +1510,72 @@ async function main() {
       assert.ok(box.height >= 43, `预览关闭按钮高度 ${Math.round(box.height)}px`)
       await close.tap()
       await close.waitFor({ state: 'hidden', timeout: 5_000 })
+    })
+
+    desktop('团队：成员页审计中文化、邀请二维码与警告分行', async (page) => {
+      const dialog = await openSettings(page, '成员', 'desktop')
+      await dialog.getByText('王敏').first().waitFor({ timeout: 10_000 })
+      const auditText = await dialog.locator('section').last().innerText()
+      assert.ok(auditText.includes('审批者'), `审计未显示中文角色：${auditText.slice(0, 120)}`)
+      assert.ok(!/\b(observer|approver|collaborator)\b/.test(auditText), `审计仍有英文枚举：${auditText.slice(0, 120)}`)
+      await dialog.getByPlaceholder('/home/you/project').first().fill(repo)
+      await dialog.getByRole('button', { name: '添加', exact: true }).last().click()
+      await dialog.getByRole('button', { name: '生成邀请链接' }).click()
+      await dialog.locator('svg[viewBox]').first().waitFor({ state: 'visible', timeout: 10_000 })
+      const warning = dialog.getByText(/只监听 127\.0\.0\.1/)
+      await warning.waitFor({ state: 'visible', timeout: 5_000 })
+      const box = await dialog.getByText(/仅展示一次/).boundingBox()
+      assert.ok(box, '邀请面板未展示')
+      await closeSettings(page)
+    })
+
+    desktop('评测：对比表字号 ≥12px、时间中文化、轨迹与并排可开', async (page) => {
+      const dialog = await openSettings(page, '评测', 'desktop')
+      await dialog.getByText('回归用例 A').first().waitFor({ timeout: 10_000 })
+      await page.waitForTimeout(500)
+      const text = await dialog.innerText()
+      assert.ok(!/\b(AM|PM)\b/.test(text), '运行时间仍是 12 小时制英文格式')
+      const minFont = await dialog.evaluate((el) => {
+        const nodes = [...el.querySelectorAll('tbody td *')].filter((n) => (n.textContent ?? '').trim())
+        return Math.min(...nodes.map((n) => parseFloat(getComputedStyle(n).fontSize)))
+      })
+      assert.ok(minFont >= 12, `结果表最小字号 ${minFont}px`)
+      await dialog.locator('tbody tr').first().locator('td').nth(1).locator('button').first().click()
+      const trace = page.getByRole('dialog', { name: '评测轨迹' })
+      await trace.waitFor({ state: 'visible', timeout: 10_000 })
+      await page.keyboard.press('Escape')
+      await trace.waitFor({ state: 'hidden', timeout: 5_000 })
+      await dialog.getByRole('button', { name: '并排' }).first().click()
+      const compare = page.getByRole('dialog', { name: '评测并排对比' })
+      await compare.waitFor({ state: 'visible', timeout: 10_000 })
+      assertNoOverflow('并排对比', await compare.evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth })))
+      await page.keyboard.press('Escape')
+      await compare.waitFor({ state: 'hidden', timeout: 5_000 })
+      await closeSettings(page)
+    })
+
+    desktop('浏览器：工具卡与浏览器面板空态', async (page) => {
+      await openSession(page, 'browser')
+      await page.getByRole('button', { name: '浏览器', exact: true }).first().click()
+      const panel = page.getByRole('dialog', { name: '浏览器' })
+      await panel.waitFor({ state: 'visible', timeout: 10_000 })
+      await panel.getByText(/本会话还没有打开浏览器|页面还没有截图/).first().waitFor({ timeout: 5_000 })
+      assertNoOverflow('浏览器面板', await panel.evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth })))
+      await page.keyboard.press('Escape')
+      await panel.waitFor({ state: 'hidden', timeout: 5_000 })
+    })
+
+    mobile('手机评测结果表可横向滚动并打开轨迹', async (page) => {
+      const dialog = await openSettings(page, '评测', 'mobile')
+      await dialog.getByText('回归用例 A').first().waitFor({ timeout: 10_000 })
+      const table = dialog.locator('.overflow-x-auto').last()
+      const info = await table.evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }))
+      assert.ok(info.clientWidth <= MOBILE.width + 1, `结果表超出屏幕：${info.clientWidth}`)
+      await dialog.locator('tbody tr').first().locator('td').nth(1).locator('button').first().tap()
+      const trace = page.getByRole('dialog', { name: '评测轨迹' })
+      await trace.waitFor({ state: 'visible', timeout: 10_000 })
+      await trace.getByRole('button', { name: '关闭' }).tap()
+      await trace.waitFor({ state: 'hidden', timeout: 5_000 })
     })
 
     desktop('无障碍扫描：主要页面 serious/critical 违规为 0', async (page) => {

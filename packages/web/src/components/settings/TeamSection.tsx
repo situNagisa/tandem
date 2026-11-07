@@ -64,6 +64,15 @@ function formatTime(ts?: number): string {
   }).format(ts)
 }
 
+/** 审计里可能带原始枚举（角色、审批决定），展示前换成中文。 */
+function auditDetailText(entry: TeamAuditEntry): string {
+  return (entry.detail ?? '')
+    .replace(/\b(observer|approver|collaborator)\b/g, (role) => ROLE_LABEL[role as MemberRole])
+    .replace(/\ballow_always\b/g, '总是允许')
+    .replace(/\ballow\b/g, '允许')
+    .replace(/\bdeny\b/g, '拒绝')
+}
+
 function DirEditor({
   dirs,
   onChange,
@@ -253,13 +262,13 @@ export function TeamSection() {
     return [...new Set(list.map((session) => session.cwd))].slice(0, 20)
   }, [host, runtimes])
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!host) {
       setOverview(null)
       setAudit([])
       return
     }
-    setLoading(true)
+    if (!silent) setLoading(true)
     setError(null)
     try {
       const [members, entries] = await Promise.all([
@@ -269,15 +278,24 @@ export function TeamSection() {
       setOverview(members)
       setAudit(entries)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '读取成员失败')
+      if (!silent) setError(err instanceof Error ? err.message : '读取成员失败')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [host])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  // 同事从邀请链接入职或审批转交后，成员/在线状态与审计应自动更新。
+  useEffect(() => {
+    if (!host) return
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load(true)
+    }, 8000)
+    return () => window.clearInterval(timer)
+  }, [host, load])
 
   useEffect(() => {
     if (!created) {
@@ -429,8 +447,13 @@ export function TeamSection() {
               </div>
               <div className="text-[12px] text-muted">
                 {ROLE_LABEL[created.invite.role]} · {formatTime(created.invite.expiresAt)} 到期
-                {created.warning ? ` · ${created.warning}` : ''}
               </div>
+              {created.warning && (
+                <p className="flex items-start gap-1.5 text-[12px] leading-5 text-warning">
+                  <TriangleAlert size={12} className="mt-1 shrink-0" />
+                  <span>{created.warning}</span>
+                </p>
+              )}
               <div className="flex gap-1.5">
                 <Button size="sm" variant="secondary" onClick={() => void copy()}>
                   {copied ? <Check size={12} /> : <Copy size={12} />}
@@ -484,10 +507,10 @@ export function TeamSection() {
                   {member.revokedAt ? '已吊销' : member.online ? '在线' : '离线'}
                 </span>
                 {member.lastSeenAt && (
-                  <span className="text-[11px] text-muted">最近 {formatTime(member.lastSeenAt)}</span>
+                  <span className="text-[12px] text-muted">最近 {formatTime(member.lastSeenAt)}</span>
                 )}
               </div>
-              <div className="mt-0.5 truncate font-mono text-[11.5px] text-muted" title={member.projectDirs.join('\n')}>
+              <div className="mt-0.5 truncate font-mono text-[12px] text-muted" title={member.projectDirs.join('\n')}>
                 {member.projectDirs.join(' · ')}
               </div>
             </div>
@@ -498,7 +521,7 @@ export function TeamSection() {
                 </Button>
                 {revokeId === member.id ? (
                   <>
-                    <span className="text-[11px] text-muted">立即断开并失效</span>
+                    <span className="text-[12px] text-muted">立即断开并失效</span>
                     <Button
                       size="sm"
                       variant="danger-ghost"
@@ -558,7 +581,7 @@ export function TeamSection() {
                       </span>
                     )}
                   </div>
-                  <div className="truncate font-mono text-[11.5px] text-muted">
+                  <div className="truncate font-mono text-[12px] text-muted">
                     {invite.projectDirs.join(' · ')}
                   </div>
                 </div>
@@ -590,7 +613,7 @@ export function TeamSection() {
                 key={entry.id}
                 className="flex items-start gap-2 border-b border-border px-3 py-2 last:border-b-0"
               >
-                <span className="mt-0.5 w-[74px] shrink-0 text-[11.5px] text-muted">
+                <span className="mt-0.5 w-[74px] shrink-0 text-[12px] text-muted">
                   {formatTime(entry.at)}
                 </span>
                 <span className="w-[86px] shrink-0 truncate text-[12px] font-medium" title={entry.actorName}>
@@ -599,10 +622,13 @@ export function TeamSection() {
                 <span className="w-[76px] shrink-0 text-[12px] text-text-soft">
                   {AUDIT_LABEL[entry.action]}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-[12px] text-muted" title={entry.sessionTitle ?? entry.detail}>
+                <span
+                  className="min-w-0 flex-1 truncate text-[12px] text-muted"
+                  title={[entry.sessionTitle, auditDetailText(entry)].filter(Boolean).join(' · ')}
+                >
                   {entry.sessionTitle ?? ''}
                   {entry.sessionTitle && entry.detail ? ' · ' : ''}
-                  {entry.detail ?? ''}
+                  {auditDetailText(entry)}
                 </span>
               </div>
             ))}

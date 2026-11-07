@@ -271,7 +271,7 @@ export function ChatView() {
                       <span
                         key={viewer.id}
                         title={`${viewer.name} · ${viewer.role === 'owner' ? '所有者' : viewer.role === 'observer' ? '观察者' : viewer.role === 'approver' ? '审批者' : '协作者'}`}
-                        className="flex size-5 items-center justify-center rounded-full border border-bg bg-[var(--t-bg-active)] text-[10px] font-medium text-text-soft"
+                        className="flex size-5 items-center justify-center rounded-full border border-bg bg-[var(--t-bg-active)] text-[11px] font-medium text-text-soft"
                       >
                         {viewer.name.slice(0, 1).toUpperCase()}
                       </span>
