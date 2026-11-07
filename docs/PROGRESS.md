@@ -289,7 +289,7 @@
 
 ## 迭代 33（2026-11-08）会话筛选 + 项目级固定 + 全文搜索
 - [x] 侧栏筛选：状态（全部/运行中/待审批/出错/已完成未读）、主机、项目、来源（Tandem/Claude Code/Codex）可组合；标题行显示「已筛选 · 清除」；归档会话默认隐藏
-- [x] 固定：会话支持「在项目中置顶」（`pinnedInProject`，与全局置顶区分）；项目组可固定到当前 Host 项目列表顶部，偏好随客户端保存
+- [x] 固定：会话支持「在项目中置顶」（`pinnedInProject`，与全局置顶区分）；项目组可固定到侧栏顶部「固定项目」区（跨 Host 优先），偏好随客户端保存
 - [x] 未读：主会话回合完成（done/error）置 `unread`，会话名加粗 + 强调小圆点；打开会话、回合结束时正在查看、切回前台均调用 `POST /api/sessions/:id/read`，经 Host 广播实现多端同步
 - [x] 全文索引：`server/src/search.ts` 纯 JS 倒排（无原生依赖），落盘 `~/.tandem/index/search.json`（600）；英文按词、中文按单字 + bigram + `Intl.Segmenter`；覆盖 Tandem 消息正文、外部会话正文、工具命令/文件路径；会话写入与外部文件 mtime 增量更新；归档默认排除，`includeArchived` 可含
 - [x] REST：`GET /api/search?q=&filters=` 返回 sessionId/source/messageId/messageIndex/snippet/highlights；`POST /api/sessions/:id/read`；成员只搜可见会话
