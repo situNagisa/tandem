@@ -401,6 +401,95 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
       assistantMessageId: 'ap2',
     },
   })
+  // 审批策略学习：同类请求已批准多次的会话（快捷选项）与危险命令会话（不应出现快捷选项）。
+  const pendingSession = (id, title, command, toolUseId) => ({
+    ...common,
+    id,
+    title,
+    messages: [
+      message(`${id}1`, 'user', '继续'),
+      {
+        id: `${id}2`,
+        role: 'assistant',
+        createdAt: approveAt - 4000,
+        model: 'mock-1',
+        content: [
+          { type: 'text', text: '我先跑一下。' },
+          { type: 'tool_use', id: toolUseId, name: 'Bash', input: { command } },
+        ],
+      },
+    ],
+    createdAt: approveAt - 10_000,
+    updatedAt: approveAt - 1000,
+    runState: {
+      version: 1,
+      startedAt: approveAt - 5000,
+      updatedAt: approveAt - 1000,
+      completedMessages: [`${id}1`, `${id}2`],
+      queue: [],
+      inFlightTools: [{ id: toolUseId, name: 'Bash', startedAt: approveAt - 1000 }],
+      pendingPermissions: [
+        {
+          id: `perm-${id}`,
+          sessionId: id,
+          toolUseId,
+          toolName: 'Bash',
+          input: { command },
+          description: `运行命令: ${command}`,
+        },
+      ],
+      phase: 'tools',
+      permissionMode: 'default',
+      assistantMessageId: `${id}2`,
+    },
+  })
+  sessions.push(pendingSession('learn', '学习审批的会话', 'vitest run', 'tu-learn'))
+  sessions.push(pendingSession('danger', '危险命令审批会话', 'rm -rf build', 'tu-danger'))
+
+  // 审批历史：vitest run 批准 4 次；rm -rf 也批准过 4 次（危险命令只能建议「询问」）。
+  const approvalAt = Date.now()
+  const approvalRows = []
+  for (let i = 0; i < 4; i++) {
+    approvalRows.push({
+      at: approvalAt - (10 + i) * 60_000,
+      project: repo,
+      tool: 'Bash',
+      key: 'vitest run',
+      decision: 'allow',
+    })
+  }
+  for (let i = 0; i < 4; i++) {
+    approvalRows.push({
+      at: approvalAt - (20 + i) * 60_000,
+      project: repo,
+      tool: 'Bash',
+      key: 'rm',
+      decision: 'allow',
+      danger: '删除命令 rm',
+    })
+  }
+  approvalRows.push({
+    at: approvalAt - 30 * 60_000,
+    project: repo,
+    tool: 'Bash',
+    key: 'git push',
+    decision: 'deny',
+    danger: 'git push',
+  })
+  writeFileSync(
+    path.join(configDir, 'approvals.jsonl'),
+    approvalRows.map((row) => JSON.stringify(row)).join('\n') + '\n',
+  )
+  writeFileSync(
+    path.join(configDir, 'approval-stats.jsonl'),
+    [
+      { at: approvalAt - 40 * 60_000, project: repo, tool: 'Read', action: 'allow' },
+      { at: approvalAt - 35 * 60_000, project: repo, tool: 'Bash', action: 'allow' },
+    ]
+      .map((row) => JSON.stringify(row))
+      .join('\n') + '\n',
+  )
+
   mkdirSync(path.join(configDir, '..', 'cache-worktree'), { recursive: true })
   const wtSession = sessions.find((s) => s.id === 'wt')
   if (wtSession) wtSession.cwd = path.join(configDir, '..', 'cache-worktree')
@@ -1584,6 +1673,45 @@ async function main() {
       for (const box of boxes) {
         assert.ok(box.x >= cardBox.x - 1 && box.x + box.width <= cardBox.x + cardBox.width + 1, '审批按钮超出卡片')
       }
+    })
+
+    desktop('审批策略：同类请求多次批准后审批卡出现项目快捷规则', async (page) => {
+      await openSession(page, 'learn')
+      const learned = page.locator('[data-permission-learned]')
+      await learned.waitFor({ timeout: 10_000 })
+      const text = await learned.innerText()
+      assert.match(text, /以后在本项目自动允许/)
+      assert.match(text, /vitest run\*/)
+    })
+
+    desktop('审批策略：危险命令审批卡不出现项目快捷规则', async (page) => {
+      await openSession(page, 'danger')
+      await page.locator('.permission-card').first().waitFor({ timeout: 10_000 })
+      await page.waitForTimeout(400)
+      assert.equal(
+        await page.locator('[data-permission-learned]').count(),
+        0,
+        '危险命令出现了自动允许快捷选项',
+      )
+    })
+
+    desktop('审批策略：权限页显示统计与建议，危险命令只建议询问', async (page) => {
+      const dialog = await openSettings(page, '权限', 'desktop')
+      const stats = await dialog.locator('[data-approval-stats]').innerText()
+      assert.match(stats, /弹窗 9 次/)
+      assert.match(stats, /被规则自动处理 2 次/)
+      const learned = dialog.locator('[data-suggestion="vitest run*"]')
+      await learned.waitFor({ timeout: 10_000 })
+      assert.match(await learned.innerText(), /自动允许/)
+      assert.equal(await learned.getByRole('button', { name: '采纳' }).count(), 1)
+      assert.equal(await learned.getByRole('button', { name: '忽略' }).count(), 1)
+      const danger = dialog.locator('[data-suggestion="rm*"]')
+      await danger.waitFor()
+      const dangerText = await danger.innerText()
+      assert.match(dangerText, /总是询问/)
+      assert.equal(/自动允许/.test(dangerText), false, '危险命令被建议自动允许')
+      await dialog.getByLabel('用一句话生成权限规则').waitFor()
+      await closeSettings(page)
     })
 
     small('手机长按用户消息打开操作菜单', async (page) => {
