@@ -5,6 +5,7 @@ import {
   PanelLeft,
   PanelRight,
   Pencil,
+  Send,
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -114,6 +115,7 @@ export function TopBar() {
   const setChangesOpen = useUiStore((s) => s.setChangesOpen)
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed)
   const setMobileSidebar = useUiStore((s) => s.setMobileSidebar)
+  const setDispatchOpen = useUiStore((s) => s.setDispatchOpen)
   const togglePanel = useUiStore((s) => s.togglePanel)
   const setMobilePanel = useUiStore((s) => s.setMobilePanel)
   const retryHost = useAppStore((s) => s.retryHost)
@@ -284,6 +286,8 @@ export function TopBar() {
         </>
       )}
 
+      {hasSession && isMobile && <PrButton />}
+
       {hasSession && changes && (
         <Button
           variant="ghost"
@@ -306,6 +310,17 @@ export function TopBar() {
             </>
           )}
         </Button>
+      )}
+
+      {route.kind === 'home' && (
+        <IconButton
+          onClick={() => setDispatchOpen(true, activeHostId ?? undefined)}
+          label="派单到其他 Host"
+          tooltip="派单到其他 Host"
+          className="max-sm:size-11"
+        >
+          <Send size={16} />
+        </IconButton>
       )}
 
       {hasSession && (
