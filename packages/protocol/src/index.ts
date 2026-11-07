@@ -71,6 +71,8 @@ export interface ProfileInput {
 // ---------- 会话 ----------
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
 export type SessionStatus = 'idle' | 'running' | 'waiting_permission' | 'retrying' | 'error';
+/** 委派策略：会话级控制主会话如何/是否使用 Task 子代理。 */
+export type DelegationStrategy = 'orchestrate' | 'more' | 'less' | 'none';
 
 export interface RetryInfo {
   /** 第几次重试（从 1 开始）。 */
@@ -89,6 +91,8 @@ export interface SessionSummary {
   model: string;
   permissionMode: PermissionMode;
   effort?: ReasoningEffort; // 思考强度：映射到 Anthropic thinking budget / OpenAI reasoning_effort；模型不支持时忽略
+  /** 委派策略；缺省按 Host 设置（默认 less）。 */
+  delegation?: DelegationStrategy;
   status: SessionStatus;
   /** 模型请求因网络错误/超时连续失败后进入「等待网络」：下一次重试时间与原因。 */
   retryInfo?: RetryInfo;
@@ -141,12 +145,13 @@ export interface CreateSessionInput {
   model?: string;
   permissionMode?: PermissionMode;
   effort?: ReasoningEffort;
+  delegation?: DelegationStrategy;
   title?: string;
   worktree?: { branch?: string };
 }
 export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'max';
 // cwd：会话中途切换工作目录（下一轮生效，重新检测 env）
-export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'permissionMode' | 'pinned' | 'archived' | 'effort' | 'cwd' | 'pinnedTurns'>>;
+export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'permissionMode' | 'pinned' | 'archived' | 'effort' | 'delegation' | 'cwd' | 'pinnedTurns'>>;
 
 // ---------- 外部会话（本机已有的 Claude Code / Codex 会话） ----------
 // 原则：只读原软件的文件，绝不写回；"导入"= 复制成 Tandem 会话后继续（可换任意模型）。
@@ -277,6 +282,8 @@ export interface HostInfo {
 export interface HostSettings {
   /** Host 重启后对未完成会话的处理：自动继续 / 恢复为暂停等我确认。 */
   resumeOnRestart: 'auto' | 'pause';
+  /** 新会话默认委派策略。 */
+  defaultDelegation?: DelegationStrategy;
 }
 // GET  /api/settings -> HostSettings
 // PUT  /api/settings HostSettings -> HostSettings
@@ -628,6 +635,70 @@ export interface McpServerStatus { name: string; status: 'connected' | 'connecti
 // ---------- 子代理（Task 工具） ----------
 // 主会话调用 Task 工具时创建子会话（SessionSummary.parentId 指向主会话），子会话的消息流照常广播，权限请求冒泡到主会话订阅者。
 // SessionSummary 新增可选字段：parentId?: string; worktree?: { path: string; branch: string; baseBranch: string }
+
+// ---------- 子代理预设（跨模型子代理） ----------
+// 预设的 name 直接作为 Task 工具的 subagent_type 暴露给模型；子代理可换账号/分组/模型/effort/权限/工具白名单。
+// 兼容只读扫描 ~/.claude/agents/*.md 与项目 .claude/agents/*.md（frontmatter: name、description、tools、model）。
+export type SubagentPresetSource = 'tandem' | 'claude' | 'project';
+export interface SubagentPreset {
+  id: string;
+  name: string;
+  description: string;
+  profileId?: string;
+  groupId?: string;
+  /** 显式模型名，或 Claude Code 别名 sonnet / opus / haiku（按用户账号里的模型映射）。 */
+  model?: string;
+  effort?: ReasoningEffort;
+  permissionMode?: PermissionMode;
+  /** 覆盖子代理自己的委派策略；缺省 less（子代理仍可再派，但默认克制）。 */
+  delegation?: DelegationStrategy;
+  /** 非空即工具白名单；空/缺省继承主会话全部工具。 */
+  allowedTools?: string[];
+  systemPrompt?: string;
+  source: SubagentPresetSource;
+  /** 只读来源文件（Claude Code / 项目 agents/*.md）。 */
+  file?: string;
+  /** 只读预设里模型仍是别名时保留原文，便于界面展示。 */
+  modelAlias?: string;
+}
+export interface SubagentPresetInput {
+  id?: string;
+  name: string;
+  description?: string;
+  profileId?: string;
+  groupId?: string;
+  model?: string;
+  effort?: ReasoningEffort;
+  permissionMode?: PermissionMode;
+  delegation?: DelegationStrategy;
+  allowedTools?: string[];
+  systemPrompt?: string;
+}
+// GET /api/subagent-presets?cwd=  -> { presets: SubagentPreset[] }（含只读文件预设）
+// PUT /api/subagent-presets { presets: SubagentPresetInput[] } -> { presets: SubagentPreset[] }（只替换 Tandem 自定义预设）
+
+// ---------- 可配置提示词 ----------
+// 子代理/委派相关段落抽成模板存 ~/.tandem/prompts.json；未修改（空值）始终跟随内置默认。
+export type PromptTemplateKey =
+  | 'taskDescription'
+  | 'delegationOrchestrate'
+  | 'delegationMore'
+  | 'delegationLess'
+  | 'delegationNone'
+  | 'subagentDefault';
+export interface PromptTemplate {
+  key: PromptTemplateKey;
+  label: string;
+  description: string;
+  /** 当前生效文本（自定义或内置默认）。 */
+  text: string;
+  defaultText: string;
+  /** 是否被用户改写。 */
+  modified: boolean;
+}
+// GET /api/prompt-templates -> { templates: PromptTemplate[] }
+// PUT /api/prompt-templates { values: Partial<Record<PromptTemplateKey,string>> } -> { templates: PromptTemplate[] }
+// 空字符串表示恢复默认。模板变量：{{presets}}、{{cwd}}、{{delegation}}。
 
 // ---------- Worktree 并行会话 ----------
 // CreateSessionInput 新增可选 worktree?: { branch?: string }：在 cwd 所在仓库创建 git worktree（~/.tandem/worktrees/<repo>/<branch>），会话 cwd 指向它。

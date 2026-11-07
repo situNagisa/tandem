@@ -9,7 +9,8 @@ export const definition: ToolDefinition = {
     'Launch a new agent to handle a complex, multi-step task autonomously. ' +
     'The subagent has access to the same tools (except Task) and working directory, and runs its own full loop. ' +
     'Use it for independent research or parallelizable work. ' +
-    'subagent_type: "Explore" or "Plan" for read-only work (these can run in parallel), "general-purpose" for tasks that may modify files.',
+    'subagent_type: "Explore" or "Plan" for read-only work (these can run in parallel), "general-purpose" for tasks that may modify files, ' +
+    'or the name of a configured subagent preset (different account/group/model/effort/tools).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -23,7 +24,13 @@ export const definition: ToolDefinition = {
       },
       subagent_type: {
         type: 'string',
-        description: 'Optional agent type: Explore, Plan, or general-purpose (default).',
+        description:
+          'Optional agent type: Explore, Plan, general-purpose (default), or a subagent preset name.',
+      },
+      model: {
+        type: 'string',
+        description:
+          'Optional model override for this subagent, e.g. a cheaper model. The preset model is used when omitted.',
       },
     },
     required: ['description', 'prompt'],
@@ -38,7 +45,8 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
   if (!ctx.runSubagent) return { content: '当前环境不支持子代理', isError: true };
   const subagentType =
     typeof input.subagent_type === 'string' ? input.subagent_type.trim() || undefined : undefined;
-  return ctx.runSubagent({ description, prompt, subagentType });
+  const model = typeof input.model === 'string' ? input.model.trim() || undefined : undefined;
+  return ctx.runSubagent({ description, prompt, subagentType, model });
 }
 
 /** 只读子代理类型：允许同一批 Task 并行执行。 */
