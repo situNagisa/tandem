@@ -508,10 +508,6 @@ export async function failedCheckPrompt(
   };
 }
 
-export function invalidateVcsCache(sessionId: string): void {
-  prCache.delete(sessionId);
-}
-
 /**
  * 每 60s 轮询“已打开（有 WS 订阅）且有 PR”的会话；变化时广播 vcs_updated 并写入收件箱。
  * 首次发现 PR 由客户端 GET /vcs 填充缓存。

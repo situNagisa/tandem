@@ -18,7 +18,6 @@ interface VcsStore {
   byKey: Record<string, VcsEntry>
   refresh: (host: HostConfig, sessionId: string, force?: boolean) => Promise<VcsState | undefined>
   apply: (hostId: string, sessionId: string, state: VcsState) => void
-  clearHost: (hostId: string) => void
 }
 
 const inflight = new Map<string, Promise<VcsState | undefined>>()
@@ -70,10 +69,4 @@ export const useVcsStore = create<VcsStore>((set, get) => ({
       },
     }))
   },
-  clearHost: (hostId) =>
-    set((s) => ({
-      byKey: Object.fromEntries(
-        Object.entries(s.byKey).filter(([key]) => !key.startsWith(`${hostId}:`)),
-      ),
-    })),
 }))
