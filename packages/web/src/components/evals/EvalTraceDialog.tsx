@@ -38,6 +38,7 @@ export function EvalTraceDialog({
       open={open}
       onClose={onClose}
       ariaLabel="评测轨迹"
+      layer={70}
       title={
         <span className="flex min-w-0 items-center gap-2">
           <VerdictIcon result={result} />

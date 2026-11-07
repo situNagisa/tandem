@@ -16,6 +16,8 @@ interface ModalProps {
   className?: string
   bodyClassName?: string
   align?: 'center' | 'top'
+  /** 叠放层级；从设置页等已打开的弹层里再打开时调高。 */
+  layer?: number
 }
 
 /** 嵌套 Modal（如设置里的删除确认）只让最上层响应 Esc，避免一次关掉两层。 */
@@ -32,6 +34,7 @@ export function Modal({
   className,
   bodyClassName,
   align = 'center',
+  layer,
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
@@ -144,6 +147,7 @@ export function Modal({
         align === 'center' ? 'items-center sm:p-6' : 'items-start pt-[8vh] sm:pt-[12vh]',
       )}
       aria-hidden={closing || undefined}
+      style={layer !== undefined ? { zIndex: layer } : undefined}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}

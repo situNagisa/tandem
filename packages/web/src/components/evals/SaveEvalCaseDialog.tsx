@@ -10,6 +10,8 @@ import { Button } from '../ui/Button'
 import { Input, Textarea } from '../ui/Controls'
 import { Modal } from '../ui/Modal'
 
+const EMPTY_SUITES: string[] = []
+
 function textOf(message: Message): string {
   return message.content
     .filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
@@ -36,7 +38,7 @@ export function SaveEvalCaseDialog({
   session: SessionSummary | null
 }) {
   const saveCase = useEvalStore((state) => state.saveCase)
-  const suites = useEvalStore((state) => (host ? state.byHost[host.id]?.suites ?? [] : []))
+  const suites = useEvalStore((state) => (host ? state.byHost[host.id]?.suites ?? EMPTY_SUITES : EMPTY_SUITES))
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

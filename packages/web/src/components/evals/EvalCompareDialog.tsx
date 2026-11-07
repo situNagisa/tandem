@@ -104,6 +104,7 @@ export function EvalCompareDialog({
       open={open}
       onClose={onClose}
       ariaLabel="评测并排对比"
+      layer={70}
       title={
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate">并排对比 · {testCase?.title ?? '评测用例'}</span>

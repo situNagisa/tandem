@@ -71,6 +71,7 @@ export function EvalPromptOverridesDialog({
       open={open}
       onClose={onClose}
       ariaLabel="提示词覆盖"
+      layer={70}
       title="提示词覆盖（仅本评测配置）"
       description="从提示词注册表挑选并临时修改；不会写入全局提示词设置。"
       className="h-[min(84dvh,800px)] w-[min(94vw,860px)] max-w-none"

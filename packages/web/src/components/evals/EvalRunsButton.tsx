@@ -5,12 +5,14 @@ import { useEvalStore } from '../../store/useEvalStore'
 import { useUiStore } from '../../store/useUiStore'
 import { IconButton } from '../ui/Button'
 
+const EMPTY_RUNS: import('@tandem/protocol').EvalRunSummary[] = []
+
 /** 顶栏「评测」：后台运行中的评测进度入口。 */
 export function EvalRunsButton() {
   const hosts = useAppStore((state) => state.hosts)
   const activeHostId = useAppStore((state) => state.activeHostId)
   const host = hosts.find((item) => item.id === activeHostId) ?? hosts[0]
-  const runs = useEvalStore((state) => (host ? state.byHost[host.id]?.runs ?? [] : []))
+  const runs = useEvalStore((state) => (host ? state.byHost[host.id]?.runs ?? EMPTY_RUNS : EMPTY_RUNS))
   const refreshRuns = useEvalStore((state) => state.refreshRuns)
   const openSettings = useUiStore((state) => state.openSettings)
   const running = runs.filter((run) => run.status === 'running').length
