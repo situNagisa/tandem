@@ -1,15 +1,15 @@
 import { create } from 'zustand'
 import type { ServerMsg } from '@tandem/protocol'
 import { api } from '../lib/api'
-import { cancelPermissionNotification } from '../lib/attention'
 import { useUiStore } from './useUiStore'
-import { connections, toast } from './appStore/helpers'
+import { toast } from './appStore/helpers'
 import type { AppState } from './appStore/types'
 import { createSessionCore } from './appStore/sessionCore'
 import { createServerMessageHandler } from './appStore/serverMessages'
 import { createHostsSlice } from './appStore/hostsSlice'
 import { createSessionsSlice } from './appStore/sessionsSlice'
 import { createMessagesSlice } from './appStore/messagesSlice'
+import { createInboxSlice } from './appStore/inboxSlice'
 
 export type { HostInboxState } from './appStore/types'
 export { depthOf } from './appStore/helpers'
@@ -19,7 +19,7 @@ export const useAppStore = create<AppState>((set, get) => {
   const core = createSessionCore(set, get, (hostId, msg) => handleServerMessage(hostId, msg))
   handleServerMessage = createServerMessageHandler(set, get, core)
 
-  const { getHost, applySessionSummary, ensureConnection } = core
+  const { getHost, applySessionSummary } = core
 
   return {
     initialized: false,
@@ -35,6 +35,7 @@ export const useAppStore = create<AppState>((set, get) => {
     ...createHostsSlice(set, get, core),
     ...createSessionsSlice(set, get, core),
     ...createMessagesSlice(set, get, core),
+    ...createInboxSlice(set, get, core),
 
     bumpChanges: () => set((state) => ({ changesNonce: state.changesNonce + 1 })),
     openFileBrowser: (path) => {
@@ -97,70 +98,6 @@ export const useAppStore = create<AppState>((set, get) => {
         toast(err instanceof Error ? err.message : '创建 worktree 失败', 'error')
         return false
       }
-    },
-
-    decideInboxPermission: (hostId, requestId, decision, reason) => {
-      const conn = connections.get(hostId) ?? ensureConnection(hostId)
-      const ok =
-        conn?.send({
-          type: 'permission',
-          requestId,
-          decision,
-          ...(reason ? { reason } : {}),
-        }) ?? false
-      if (!ok) {
-        toast('Host 未连接，无法提交审批', 'error')
-        return
-      }
-      cancelPermissionNotification(requestId)
-      // 乐观从收件箱移除；桌面端的 permission_resolved 会再广播一次校正
-      set((state) => {
-        const inbox = state.inbox[hostId]
-        if (!inbox) return state
-        const pending = inbox.pending.filter((item) => item.requestId !== requestId)
-        return {
-          inbox: {
-            ...state.inbox,
-            [hostId]: {
-              ...inbox,
-              pending,
-              unread: Math.max(0, inbox.unread - (pending.length < inbox.pending.length ? 1 : 0)),
-            },
-          },
-        }
-      })
-      set((state) => {
-        const active = state.active
-        if (!active || active.hostId !== hostId) return state
-        const pending = active.pending.filter((p) => p.id !== requestId)
-        if (pending.length === active.pending.length) return state
-        return {
-          active: {
-            ...active,
-            pending,
-            subagents: Object.fromEntries(
-              Object.entries(active.subagents).map(([id, sub]) => [
-                id,
-                { ...sub, pending: sub.pending.filter((p) => p.id !== requestId) },
-              ]),
-            ),
-          },
-        }
-      })
-    },
-
-    markInboxSeen: () => {
-      set((state) => {
-        const inbox = { ...state.inbox }
-        let changed = false
-        for (const [hostId, entry] of Object.entries(inbox)) {
-          if (entry.unread > 0) {
-            inbox[hostId] = { ...entry, unread: 0 }
-            changed = true
-          }
-        }
-        return changed ? { inbox } : state
-      })
     },
   }
 })
