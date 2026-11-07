@@ -126,3 +126,22 @@
 - [x] Web：顶栏 PR 按钮（#号 + 开放/草稿/已合并/CI 失败状态点），PR 面板（状态、检查列表/耗时/链接、打开、合并二次确认、失败检查「让 agent 修复」、未安装/未登录 gh/glab 指引），创建表单与「让 agent 起草」，审阅面板 ⋯「提交并创建 PR」（预填标题）
 - 验证：/tmp 假 gh + 本地 bare 仓库 + TANDEM_HOME=/tmp/tandem-pr:8141；Playwright 点击完成创建 PR、CI 失败展示、让 agent 修复消息、合并；截图 /tmp/pr-shots/
 - 待产品所有者按 docs/pr-ci-test.md 在 Windows 实机用真实 GitHub 代测
+
+## 迭代 16（2026-11-07）项目记忆
+- [x] 存储：`~/.tandem/memory/<sha1(项目根)[:16]>.md`（首行元数据记录项目路径与名称）+ `_global.md`；git 仓库根或 cwd 为键；与仓库内只读注入的 AGENTS.md / CLAUDE.md 明确区分
+- [x] 工具 `Memory {action: view|add|replace|remove, text?, old?, scope?}`：只记长期项目事实/约定/偏好；默认权限下按 Edit 类审批，acceptEdits 自动；系统提示注入全局 + 项目记忆（每段 6000 字截断提示），无记忆时提示模型可记录
+- [x] 用户入口：`#记住 …` 直接追加并回执；`/memory` 客户端打开编辑器、其它客户端显示当前内容；`/compact` 同一调用额外产出「项目记忆」事实并写入（无额外请求）
+- [x] 迁移：配置包载荷携带全部记忆（解密后 merge 追加，标注来源 Host）；跨 Host 迁移会话时客户端附带源项目记忆，目标已有则 `<!-- 来自 <Host> -->` 合并
+- [x] REST：GET/PUT/DELETE `/api/memory`、GET `/api/memory/list`、POST `/api/memory/import`；协议 MemoryScope/MemoryFile/MemoryListItem
+- [x] Web：右侧「记忆」卡片（前 3 条 + 条数，纳入拖拽排序/显隐）、Markdown 编辑对话框（左编辑右预览、全局入口）、设置「记忆」页（Host 切换、项目名/路径 tooltip/大小/最后修改、编辑/删除）、Memory 工具卡「记住 · 摘要」
+- 验证：TANDEM_HOME=/tmp/tandem-mem:8151；Memory 工具 add/replace/remove/view 文件变化、系统提示含记忆段、`#记住` 回执、编辑器保存落盘、配置包导入第二 Host（memoriesImported=1）、`/memory` 两路径；截图 /tmp/mem-shots/{right-panel,editor,editor-global,settings-memory,slash-memory}.png
+- 备注：并行处理中顺手修复 `profileModelGroups({})` 空账号崩溃（派单弹层导致整页白屏）与 `Switch.label` 改为可选（子代理页构建错误）
+
+## 迭代 17（2026-11-07）常驻会话 / 断点续跑
+- [x] runState 持久化：会话 running 时写当前轮用户消息 id、已完成消息、排队消息、进行中工具、待审批请求与权限模式；模型响应/工具结果后 `store.saveNow()` 原子写 + fsync（版本号防止旧异步写覆盖新快照）
+- [x] 启动恢复：扫描有 runState 的会话；只读工具重放，有副作用工具补 isError「Host 重启，此工具调用未确认是否完成」；tool_result/用户消息直接续跑；等待审批用原 requestId 恢复并重新广播 + 进收件箱；会话插入 notice「Host 重启后已恢复运行」
+- [x] 恢复策略：`config.json` 的 `resumeOnRestart: auto|pause`（设置-通用可切换，默认自动）；pause 时会话显示「重启后已暂停」，POST `/api/sessions/:id/resume` 继续
+- [x] 网络断线续跑：provider 网络错误/超时（含已有重试）全部失败后进入 `retrying`，指数退避 2s→2min、总计 30min；`SessionSummary.retryInfo {attempt,nextAt,lastError}`；重试前清空该 assistant 流式内容避免重复，已执行工具不重放；WS `retry_now` 立即重试，`interrupt` 停止
+- [x] Web：顶栏 retrying 胶囊（网络中断，X 秒后重试 · 立即重试 · 停止）、重启暂停「继续运行」；设置新增「通用」页
+- [x] 后台任务 lost 提示：重启后在该会话插入 notice，模型可决定是否重跑
+- 验证：本地 mock OpenAI SSE（第 N 次请求断流）+ TANDEM_HOME=/tmp/tandem-resume:8161；A 工具执行中 kill -9 → 补 isError 并继续完成；B 流式中断 3 次 → retrying → 最终完整回复无重复；C 等待审批时重启 → 快照/收件箱恢复审批，允许后完成；`npm run build -w @tandem/server`、`web`、`ui-audit` 通过
