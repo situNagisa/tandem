@@ -37,6 +37,10 @@ export function Sidebar({
   const setInboxOpen = useUiStore((s) => s.setInboxOpen)
   const setDispatchOpen = useUiStore((s) => s.setDispatchOpen)
   const activeHostId = useAppStore((s) => s.activeHostId)
+  const teamRole = useAppStore((s) =>
+    s.activeHostId ? s.runtimes[s.activeHostId]?.team?.role : undefined,
+  )
+  const readOnly = teamRole === 'observer' || teamRole === 'approver'
   const inboxCount = useInboxCount()
   const archivedCount = useAppStore((s) =>
     Object.values(s.runtimes).reduce(
@@ -154,6 +158,7 @@ export function Sidebar({
       </div>
 
       <div className="px-2 pb-1">
+        {!readOnly && (
         <Button variant="ghost" onClick={startNewSession} className={row}>
           <Plus size={15} className="shrink-0 opacity-70" />
           <span className="min-w-0 flex-1 truncate">新会话</span>
@@ -161,6 +166,8 @@ export function Sidebar({
             {modLabel} N
           </kbd>
         </Button>
+        )}
+        {!readOnly && (
         <Button
           variant="ghost"
           onClick={() => {
@@ -174,6 +181,7 @@ export function Sidebar({
           <Send size={15} className="shrink-0 opacity-70" />
           <span className="min-w-0 flex-1 truncate">派单</span>
         </Button>
+        )}
         <Button
           variant="ghost"
           onClick={() => {

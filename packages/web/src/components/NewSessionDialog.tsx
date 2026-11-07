@@ -109,8 +109,10 @@ export function NewSessionView() {
   // 因此把 homeDir 也列入依赖，等它到达后再补上默认工作目录。
   const cwdHostRef = useRef('')
   const homeDir = runtime?.info?.homeDir
+  const teamInfo = useAppStore((s) => (hostId ? s.runtimes[hostId]?.team : undefined))
+  const teamRole = teamInfo?.role
   useEffect(() => {
-    if (!hostId) return
+    if (!hostId || teamRole !== 'owner') return
     let cancelled = false
     const target = hosts.find((item) => item.id === hostId)
     if (target) {
@@ -124,18 +126,21 @@ export function NewSessionView() {
     return () => {
       cancelled = true
     }
-  }, [hostId, hosts])
+  }, [hostId, hosts, teamRole])
 
   useEffect(() => {
-    if (!hostId) return
+    if (!hostId || !teamInfo) return
     const rt = useAppStore.getState().runtimes[hostId]
+    const allowedDirs = teamInfo.role === 'owner' ? undefined : teamInfo.member?.projectDirs ?? []
+    const recent = loadRecentDirs(hostId).filter(
+      (dir) => !allowedDirs || allowedDirs.some((root) => dir === root || dir.startsWith(root + '/')),
+    )
     const hostChanged = cwdHostRef.current !== hostId
     cwdHostRef.current = hostId
-    const recent = loadRecentDirs(hostId)
-    const fallback = recent[0] ?? rt?.info?.homeDir ?? ''
+    const fallback = allowedDirs?.[0] ?? recent[0] ?? rt?.info?.homeDir ?? ''
     setCwd((prev) => (hostChanged || !prev ? fallback : prev))
     void refreshProfiles(hostId)
-  }, [hostId, homeDir, refreshProfiles])
+  }, [hostId, homeDir, refreshProfiles, teamInfo])
 
   useEffect(() => {
     const onSeed = (e: Event) => {
@@ -176,7 +181,11 @@ export function NewSessionView() {
     }
   }, [profiles, profileId, groupId])
 
-  const gitRepo = useGitRepo(host, cwd)
+  const gitRepo = useGitRepo(
+    host,
+    cwd,
+    teamInfo && teamInfo.role !== 'owner' ? teamInfo.member?.projectDirs : undefined,
+  )
 
   useEffect(() => {
     if (gitRepo === 'no') setWorktree(false)

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ChevronDown, GitFork, ShieldAlert, TriangleAlert } from 'lucide-react'
-import type { PermissionRequest } from '@tandem/protocol'
+import type { PermissionRequest, TeamPresence } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { api } from '../lib/api'
@@ -18,6 +18,7 @@ import { TurnErrorNotice } from './chat/TurnErrorNotice'
 import '../styles/chat.css'
 
 const EMPTY_PENDING: PermissionRequest[] = []
+const EMPTY_VIEWERS: TeamPresence[] = []
 const PIN_THRESHOLD = 80
 const JUMP_THRESHOLD = 160
 
@@ -38,6 +39,8 @@ export function ChatView() {
   const authError = useAppStore((s) =>
     hostId ? s.runtimes[hostId]?.authError : undefined,
   )
+  const team = useAppStore((s) => (hostId ? s.runtimes[hostId]?.team : undefined))
+  const viewers = useAppStore((s) => s.active?.viewers ?? EMPTY_VIEWERS)
   const reloadActiveSession = useAppStore((s) => s.reloadActiveSession)
   const hostSessions = useAppStore((s) =>
     s.active?.hostId ? s.runtimes[s.active.hostId]?.sessions : undefined,
@@ -204,6 +207,10 @@ export function ChatView() {
     programmaticUntil.current = 0
   }
 
+  const myId = team?.role === 'owner' ? 'owner' : team?.member?.id
+  const otherViewers: TeamPresence[] = viewers.filter((viewer) => viewer.id !== myId)
+  const readOnly = team?.role === 'observer' || team?.role === 'approver'
+
   if (!hasSession) {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -235,6 +242,23 @@ export function ChatView() {
             className="mx-auto flex min-h-full w-full max-w-[808px] flex-col px-4 pb-8 pt-3 md:px-6 md:pt-5"
           >
             <div className="flex flex-1 flex-col">
+              {otherViewers.length > 0 && (
+                <div className="mb-2 flex items-center justify-end gap-1.5 px-1 text-[12px] text-muted">
+                  <span className="mr-0.5">正在查看</span>
+                  <div className="flex -space-x-1.5">
+                    {otherViewers.slice(0, 4).map((viewer) => (
+                      <span
+                        key={viewer.id}
+                        title={`${viewer.name} · ${viewer.role === 'owner' ? '所有者' : viewer.role === 'observer' ? '观察者' : viewer.role === 'approver' ? '审批者' : '协作者'}`}
+                        className="flex size-5 items-center justify-center rounded-full border border-bg bg-[var(--t-bg-active)] text-[10px] font-medium text-text-soft"
+                      >
+                        {viewer.name.slice(0, 1).toUpperCase()}
+                      </span>
+                    ))}
+                  </div>
+                  {otherViewers.length > 4 && <span>+{otherViewers.length - 4}</span>}
+                </div>
+              )}
               {forkedFrom && !loading && (
                 <div className="mb-3 flex min-w-0 items-center gap-1.5 px-1 text-[12px] leading-4 text-muted">
                   <GitFork size={12} className="shrink-0 opacity-70" />
@@ -339,7 +363,15 @@ export function ChatView() {
                 more={pending.length - 1}
               />
             ))}
-          <Composer />
+          {readOnly ? (
+            <div className="mb-2 rounded-xl border border-border bg-bg/50 px-3 py-2.5 text-center text-[12px] leading-5 text-muted">
+              {team?.role === 'observer'
+                ? '只读观察者：可以查看会话内容，不能发消息或审批。'
+                : '审批者：可以处理审批请求，不能发消息或新建会话。'}
+            </div>
+          ) : (
+            <Composer />
+          )}
         </div>
       </div>
     </div>

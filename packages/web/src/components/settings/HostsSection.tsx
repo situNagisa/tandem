@@ -26,6 +26,7 @@ import { Input, SegmentedControl } from '../ui/Controls'
 import { cn } from '../../lib/cn'
 import { QrScanDialog, scannerSupported } from '../QrScanDialog'
 import { parsePairLink } from '../../lib/pairLink'
+import { parseInviteLink } from '../../lib/inviteLink'
 import {
   RELAY_UNSUPPORTED_MESSAGE,
   isValidFingerprint,
@@ -135,6 +136,13 @@ export function HostsSection() {
 
   const connectLink = async (raw: string) => {
     setAddError(null)
+    const invite = parseInviteLink(raw)
+    if (invite) {
+      useUiStore.getState().openJoinInvite(invite)
+      resetAdd()
+      setAdding(false)
+      return
+    }
     setSaving(true)
     try {
       const target = parsePairLink(raw)

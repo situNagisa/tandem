@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bot, Loader2, MessageSquare, Plus, ShieldAlert, X } from 'lucide-react'
-import type { PermissionDecision, PermissionRequest, PermissionRule } from '@tandem/protocol'
+import { ArrowRightLeft, Bot, Loader2, MessageSquare, Plus, ShieldAlert, X } from 'lucide-react'
+import type { PermissionDecision, PermissionRequest, PermissionRule, TeamMember } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { api } from '../lib/api'
@@ -11,6 +11,7 @@ import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
 import { Input, SegmentedControl, Select, Textarea } from './ui/Controls'
 import { VoiceButton } from './voice/VoiceButton'
+import { Menu } from './ui/Menu'
 
 const FILE_TOOLS = new Set(['Read', 'Write', 'Edit', 'Glob', 'Grep'])
 const TOOL_OPTIONS = ['Bash', 'Write', 'Edit', 'Read', 'Glob', 'Grep', 'WebFetch', '*']
@@ -172,6 +173,13 @@ export function PermissionCard({
   const subagentTitle = subagentSummary?.title ?? request.sourceTitle ?? null
   const sourceDepth = request.depth ?? subagentSummary?.depth ?? 1
   const cwd = useAppStore((s) => s.active?.summary?.cwd ?? '')
+  const host = useAppStore((s) => s.hosts.find((h) => h.id === s.active?.hostId) ?? null)
+  const teamRole = useAppStore((s) =>
+    s.active?.hostId ? s.runtimes[s.active.hostId]?.team?.role : undefined,
+  )
+  const [approvers, setApprovers] = useState<TeamMember[]>([])
+  const [approversLoaded, setApproversLoaded] = useState(false)
+  const [transferring, setTransferring] = useState(false)
   const [ruleDraft, setRuleDraft] = useState<PermissionRule | null>(null)
   const [denyOpen, setDenyOpen] = useState(false)
   const [denyReason, setDenyReason] = useState('')
@@ -246,6 +254,31 @@ export function PermissionCard({
     return () => document.removeEventListener('keydown', onKey)
   }, [request.id, decide])
 
+  const canTransfer = teamRole === 'owner' || teamRole === 'approver' || teamRole === 'collaborator'
+  const loadApprovers = () => {
+    if (!host || !canTransfer) return
+    api
+      .teamApprovers(host)
+      .then((list) => {
+        setApprovers(list.filter((member) => member.online && !member.revokedAt))
+        setApproversLoaded(true)
+      })
+      .catch(() => setApproversLoaded(true))
+  }
+
+  const transfer = async (toMemberId: string) => {
+    if (!host || transferring) return
+    setTransferring(true)
+    try {
+      await api.transferPermission(host, request.id, toMemberId)
+      useUiStore.getState().toast('已转交审批', 'success')
+    } catch (err) {
+      useUiStore.getState().toast(err instanceof Error ? err.message : '转交失败', 'error')
+    } finally {
+      setTransferring(false)
+    }
+  }
+
   let preview: React.ReactNode = null
   if (toolName === 'Bash' && command) {
     preview = (
@@ -304,6 +337,12 @@ export function PermissionCard({
               </span>
             </div>
           )}
+          {request.transferredFrom && (
+            <div className="mt-1 text-[12px] text-accent/90">
+              由 {request.transferredFrom.name} 转交
+              {request.assignedTo ? ` · 待 ${request.assignedTo.name} 处理` : ''}
+            </div>
+          )}
           <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-[1.55] text-text-soft">
             {request.description}
           </p>
@@ -313,16 +352,50 @@ export function PermissionCard({
         <div className="max-h-[min(34dvh,320px)] overflow-y-auto px-3.5 pb-2.5">{preview}</div>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 px-3 py-2">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => setRuleDraft(quickRule(toolName, input, cwd))}
-          tooltip="把这条件添加为 Host 级权限规则"
-          tooltipSide="top"
-          className="h-7 px-1.5 text-[12px] text-[var(--t-text-tertiary)] hover:text-text"
-        >
-          <Plus size={11} /> 添加为规则…
-        </Button>
+        <div className="flex flex-wrap items-center gap-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setRuleDraft(quickRule(toolName, input, cwd))}
+            tooltip="把这条件添加为 Host 级权限规则"
+            tooltipSide="top"
+            className="h-7 px-1.5 text-[12px] text-[var(--t-text-tertiary)] hover:text-text"
+          >
+            <Plus size={11} /> 添加为规则…
+          </Button>
+                    {canTransfer && (
+            <Menu
+              side="top"
+              align="start"
+              onOpenChange={(open) => {
+                if (open) loadApprovers()
+              }}
+              trigger={
+                <Button variant="ghost" className="max-sm:min-h-11" disabled={transferring}>
+                  <ArrowRightLeft size={13} /> 转给…
+                </Button>
+              }
+            >
+              {approvers.length === 0 ? (
+                <div className="px-2 py-1.5 text-[12px] text-muted">
+                  {approversLoaded ? '暂无在线的审批者' : '正在读取成员…'}
+                </div>
+              ) : (
+                approvers.map((member) => (
+                  <Menu.Item
+                    key={member.id}
+                    icon={<span className="text-[11px]">{member.name.slice(0, 1).toUpperCase()}</span>}
+                    hint={member.role === 'approver' ? '审批者' : '协作者'}
+                    selected={request.assignedTo?.memberId === member.id}
+                    onSelect={() => void transfer(member.id)}
+                  >
+                    {member.name}
+                  </Menu.Item>
+                ))
+              )}
+            </Menu>
+          )}
+        </div>
         <div className="permission-actions flex flex-wrap items-center gap-1.5 max-sm:grid max-sm:w-full max-sm:grid-cols-2">
           <Button
             variant="ghost"

@@ -48,7 +48,12 @@ export function registerWsRoutes(app: FastifyInstance, deps: RouteDeps): void {
           }
         : undefined,
     );
-    host.hub.send(client, { type: 'hello', host: host.info(), me: identityOf(principal, host) });
+    const helloHost = host.info();
+    host.hub.send(client, {
+      type: 'hello',
+      host: principal.kind === 'member' ? { ...helloHost, homeDir: '' } : helloHost,
+      me: identityOf(principal, host),
+    });
 
     const sendError = (message: string) => host.hub.send(client, { type: 'error', message });
     const subscribed = new Set<string>();
@@ -116,10 +121,17 @@ export function registerWsRoutes(app: FastifyInstance, deps: RouteDeps): void {
             }
             // 缓冲不覆盖（Host 重启 / 已回退）：退回全量快照
           }
+          const pendingPermissions = snapshot.pendingPermissions.filter((request) => {
+            if (!canApprove(principal.role)) return false;
+            if (principal.kind === 'member' && request.assignedTo) {
+              return request.assignedTo.memberId === principal.id;
+            }
+            return true;
+          });
           host.hub.send(client, {
             type: 'session_snapshot',
             session: snapshot.session,
-            pendingPermissions: snapshot.pendingPermissions,
+            pendingPermissions,
             seq: host.hub.currentSeq(msg.sessionId),
           });
           presence(msg.sessionId);

@@ -40,10 +40,15 @@ export function createServerMessageHandler(
     if (!rt) return
     switch (msg.type) {
       case 'hello': {
-        patchRuntime(hostId, { info: msg.host, status: 'online', error: undefined })
+        patchRuntime(hostId, {
+          info: msg.host,
+          status: 'online',
+          error: undefined,
+          team: msg.me ?? { role: 'owner', ownerName: '所有者' },
+        })
         void get().refreshProfiles(hostId)
         void get().refreshSessions(hostId)
-        void get().refreshExternalSessions(hostId)
+        if ((msg.me?.role ?? 'owner') === 'owner') void get().refreshExternalSessions(hostId)
         break
       }
       case 'session_snapshot': {
@@ -71,6 +76,53 @@ export function createServerMessageHandler(
       }
       case 'browser_state': {
         useBrowserStore.getState().apply(msg.state)
+        break
+      }
+      case 'presence': {
+        const active = get().active
+        if (!active || active.hostId !== hostId || active.sessionId !== msg.sessionId) break
+        set({ active: { ...active, viewers: msg.viewers } })
+        break
+      }
+      case 'team_updated': {
+        // 成员变化不影响当前身份；设置页会自行刷新列表
+        break
+      }
+      case 'permission_transferred': {
+        const me = get().runtimes[hostId]?.team
+        const targetId = msg.request.assignedTo?.memberId
+        const isTarget = me?.role === 'owner' || (!!me?.member && me.member.id === targetId)
+        set((state) => {
+          const active = state.active
+          const inbox = state.inbox[hostId]
+          const next: Partial<typeof state> = {}
+          if (inbox) {
+            next.inbox = {
+              ...state.inbox,
+              [hostId]: {
+                ...inbox,
+                pending: inbox.pending.filter((item) => item.requestId !== msg.requestId),
+              },
+            }
+          }
+          if (active && active.hostId === hostId) {
+            const pending = active.pending.filter((item) => item.id !== msg.requestId)
+            const shouldAdd = isTarget && active.sessionId === msg.request.sessionId
+            if (pending.length !== active.pending.length || shouldAdd) {
+              next.active = {
+                ...active,
+                pending: shouldAdd && !pending.some((p) => p.id === msg.requestId) ? [...pending, msg.request] : pending,
+                subagents: Object.fromEntries(
+                  Object.entries(active.subagents).map(([id, sub]) => [
+                    id,
+                    { ...sub, pending: sub.pending.filter((p) => p.id !== msg.requestId) },
+                  ]),
+                ),
+              }
+            }
+          }
+          return next
+        })
         break
       }
       case 'inbox_snapshot': {
@@ -122,6 +174,18 @@ export function createServerMessageHandler(
           }
         })
         if (event.kind === 'permission' && event.permission) {
+          set((state) => {
+            const active = state.active
+            if (
+              !active ||
+              active.hostId !== hostId ||
+              active.sessionId !== event.sessionId ||
+              active.pending.some((p) => p.id === event.requestId)
+            ) {
+              return state
+            }
+            return { active: { ...active, pending: [...active.pending, event.permission!] } }
+          })
           const summary = get().runtimes[hostId]?.sessions.find(
             (s) => s.id === event.sessionId,
           )

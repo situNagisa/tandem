@@ -67,6 +67,7 @@ export function createSessionsSlice(
           toolResults: {},
           hookEvents: [],
           subagents: {},
+          viewers: [],
         },
       })
       if (!rt?.sessionsLoaded) void get().refreshSessions(hostId)
@@ -219,6 +220,7 @@ export function createSessionsSlice(
           toolResults: {},
           hookEvents: [],
           subagents: {},
+          viewers: [],
         },
       })
       navigate({ kind: 'session', hostId, sessionId: summary.id })

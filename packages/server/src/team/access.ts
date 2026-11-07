@@ -164,6 +164,10 @@ export function guardMemberRequest(
     return { code: 403, message: '仅 Host 所有者可以管理成员' };
   }
   if (pathname === '/api/team/me' && upper === 'GET') return undefined;
+  if (pathname === '/api/team/approvers' && upper === 'GET') {
+    return canApprove(principal.role) ? undefined : { code: 403, message: '观察者不能转交审批' };
+  }
+  if (pathname === '/ws') return undefined;
   if (pathname === '/api/host' && upper === 'GET') return undefined;
   if (pathname === '/api/profiles' && upper === 'GET') return undefined;
   if (pathname === '/api/models/capabilities' && upper === 'GET') return undefined;

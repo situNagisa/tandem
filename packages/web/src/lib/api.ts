@@ -34,6 +34,7 @@ import type {
   McpServerStatus,
   ModelInfo,
   PermissionRule,
+  PermissionRequest,
   PrActionResult,
   PrMergeMethod,
   Profile,
@@ -65,6 +66,14 @@ import type {
   UpdateSessionInput,
   UsageStatsRow,
   VcsState,
+  AcceptTeamInviteResult,
+  CreateTeamInviteInput,
+  CreateTeamInviteResult,
+  TeamAuditEntry,
+  TeamIdentity,
+  TeamMember,
+  TeamOverview,
+  UpdateTeamMemberInput,
 } from '@tandem/protocol'
 import type { RelayPairInfo } from '@tandem/protocol'
 import type { HostConfig } from './types'
@@ -171,6 +180,30 @@ export const api = {
       body: JSON.stringify(input),
     }),
   shares: (h: HostConfig) => request<ShareInfo[]>(h, '/api/shares'),
+  teamMe: (h: HostConfig) => request<TeamIdentity>(h, '/api/team/me'),
+  teamMembers: (h: HostConfig) => request<TeamOverview>(h, '/api/team/members'),
+  teamApprovers: (h: HostConfig) => request<TeamMember[]>(h, '/api/team/approvers'),
+  createTeamInvite: (h: HostConfig, input: CreateTeamInviteInput) =>
+    request<CreateTeamInviteResult>(h, '/api/team/invites', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  deleteTeamInvite: (h: HostConfig, id: string) =>
+    request<void>(h, `/api/team/invites/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  updateTeamMember: (h: HostConfig, id: string, input: UpdateTeamMemberInput) =>
+    request<TeamMember>(h, `/api/team/members/${encodeURIComponent(id)}`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  revokeTeamMember: (h: HostConfig, id: string) =>
+    request<void>(h, `/api/team/members/${encodeURIComponent(id)}/revoke`, { method: 'POST' }),
+  teamAudit: (h: HostConfig, limit = 200) =>
+    request<TeamAuditEntry[]>(h, `/api/team/audit?limit=${limit}`),
+  transferPermission: (h: HostConfig, requestId: string, toMemberId: string) =>
+    request<PermissionRequest>(h, `/api/permissions/${encodeURIComponent(requestId)}/transfer`, {
+      method: 'POST',
+      body: JSON.stringify({ toMemberId }),
+    }),
   deleteShare: (h: HostConfig, id: string) =>
     request<void>(h, `/api/shares/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   settings: (h: HostConfig) => request<HostSettings>(h, '/api/settings'),
@@ -586,4 +619,30 @@ export async function fetchPublicShare(
     throw new ApiError(describe(res.status, text), res.status)
   }
   return (await res.json()) as PublicShare
+}
+
+
+/** 公开接口：凭一次性邀请码换取成员 token（无需 Host 主 token）。 */
+export async function acceptTeamInvite(
+  baseUrl: string,
+  code: string,
+  name: string,
+): Promise<AcceptTeamInviteResult> {
+  let res: Response
+  try {
+    res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/team/invites/accept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ code, name }),
+    })
+  } catch (err) {
+    throw new ApiError(err instanceof Error ? `无法连接 Host：${err.message}` : '无法连接 Host', 0)
+  }
+  const text = await res.text().catch(() => '')
+  if (!res.ok) throw new ApiError(describe(res.status, text), res.status)
+  try {
+    return JSON.parse(text) as AcceptTeamInviteResult
+  } catch {
+    throw new ApiError('Host 返回了无法解析的数据', res.status)
+  }
 }

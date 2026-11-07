@@ -399,6 +399,7 @@ export interface TeamPresence {
 }
 // GET    /api/team/me                 -> TeamIdentity
 // GET    /api/team/members            -> TeamOverview（仅所有者）
+// GET    /api/team/approvers          -> TeamMember[]（所有者/审批者/协作者：可用于转交的在线审批者）
 // POST   /api/team/invites {role,projectDirs} -> CreateTeamInviteResult（仅所有者）
 // DELETE /api/team/invites/:id        -> 204（仅所有者）
 // POST   /api/team/members/:id        -> TeamMember（仅所有者：改角色/目录/名称）
@@ -616,7 +617,7 @@ export type ServerMsg =
   | { type: 'message_end'; sessionId: string; message: Message }         // 最终完整消息，客户端以此为准覆盖
   | { type: 'permission_request'; request: PermissionRequest; sessionId?: string } // sessionId=广播所属会话（子代理冒泡时为主会话），供客户端按会话 seq 排序
   | { type: 'permission_resolved'; requestId: string; sessionId: string; decision: PermissionDecision }
-  | { type: 'permission_transferred'; requestId: string; request: PermissionRequest; from: string; to: string } // 审批转交：非目标审批者从待办移除
+  | { type: 'permission_transferred'; requestId: string; sessionId: string; request: PermissionRequest; from: string; to: string } // 审批转交：非目标审批者从待办移除
   | { type: 'todos'; sessionId: string; todos: Todo[] }
   | { type: 'plan'; sessionId: string; plan?: SessionPlan }                 // 计划提交/批准/拒绝
   | ({ type: 'hook_event' } & HookEventNotice)                              // Hook 执行记录（成功默认不展示）

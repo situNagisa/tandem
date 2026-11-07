@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { MemoryScope } from '@tandem/protocol'
 import type { SettingsTab, Theme, Toast } from '../lib/types'
+import type { InviteTarget } from '../lib/inviteLink'
 import {
   loadCollapsedProjects,
   loadSidebarWidth,
@@ -56,6 +57,8 @@ interface UiState {
   notifyEvents: { permission: boolean; turnEnd: boolean; error: boolean; budget: boolean }
   /** 收件箱对话框（桌面/移动端均可打开）。 */
   inboxOpen: boolean
+  /** 通过邀请链接加入 Host 的弹层。 */
+  joinInvite: InviteTarget | null
   /** 派单对话框；hostId 是预选目标。 */
   dispatchOpen: boolean
   dispatchHostId: string | null
@@ -110,6 +113,8 @@ interface UiState {
     key: 'permission' | 'turnEnd' | 'error' | 'budget',
     enabled: boolean,
   ) => void
+  openJoinInvite: (target: InviteTarget) => void
+  closeJoinInvite: () => void
   setInboxOpen: (open: boolean) => void
   setDispatchOpen: (open: boolean, hostId?: string) => void
   toast: (
@@ -167,6 +172,7 @@ export const useUiStore = create<UiState>((set, get) => ({
     budget: prefs.notifyEvents?.budget ?? true,
   },
   inboxOpen: false,
+  joinInvite: null,
   dispatchOpen: false,
   dispatchHostId: null,
   toasts: [],
@@ -294,6 +300,10 @@ export const useUiStore = create<UiState>((set, get) => ({
     set({ notifyEvents: next })
   },
   setInboxOpen: (open) => set({ inboxOpen: open }),
+
+  openJoinInvite: (target) => set({ joinInvite: target }),
+
+  closeJoinInvite: () => set({ joinInvite: null }),
   setDispatchOpen: (open, hostId) =>
     set((s) => ({ dispatchOpen: open, dispatchHostId: hostId ?? s.dispatchHostId })),
   toast: (text, kind = 'info', options) => {

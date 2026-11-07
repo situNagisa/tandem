@@ -60,6 +60,15 @@ export function registerTeamRoutes(app: FastifyInstance, deps: RouteDeps): void 
     invites: host.team.listInvites(),
   }));
 
+  // 审批转交用的轻量列表：只暴露有审批权的成员与在线状态。
+  app.get('/api/team/approvers', async (): Promise<TeamMember[]> =>
+    onlineMembers(deps)
+      .filter(
+        (member) => !member.revokedAt && (member.role === 'approver' || member.role === 'collaborator'),
+      )
+      .map((member) => ({ ...member, projectDirs: [] })),
+  );
+
   app.post('/api/team/invites', async (req, reply) => {
     const body = (req.body ?? {}) as Partial<CreateTeamInviteInput>;
     const role = str(body.role) as MemberRole;
@@ -108,8 +117,14 @@ export function registerTeamRoutes(app: FastifyInstance, deps: RouteDeps): void 
         return bad(reply, (err as Error).message);
       }
     }
+    const before = host.team.getMember(id);
+    if (!before) return bad(reply, '成员不存在', 404);
     const member = host.team.updateMember(id, patch);
     if (!member) return bad(reply, '成员不存在', 404);
+    const dirsChanged =
+      before.projectDirs.length !== member.projectDirs.length ||
+      before.projectDirs.some((dir, index) => dir !== member.projectDirs[index]);
+    if (before.role !== member.role || dirsChanged) host.hub.disconnectMember(id);
     recordAudit(host, principalOf(req), 'member.update', {
       detail: `${member.name} → ${member.role}`,
     });

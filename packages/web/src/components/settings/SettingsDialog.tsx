@@ -1,11 +1,14 @@
-import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, FlaskConical, Mic, Monitor, MousePointerClick, Palette, Plug, RefreshCw, ScrollText, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Wallet, Webhook } from 'lucide-react'
+import { useEffect } from 'react'
+import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, FlaskConical, Mic, Monitor, MousePointerClick, Palette, Plug, RefreshCw, ScrollText, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Users, Wallet, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
+import { useAppStore } from '../../store/useAppStore'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { ProfilesSection } from './ProfilesSection'
 import { HostsSection } from './HostsSection'
+import { TeamSection } from './TeamSection'
 import { AppearanceSection } from './AppearanceSection'
 import { SyncSection } from './SyncSection'
 import { PermissionsSection } from './PermissionsSection'
@@ -31,6 +34,7 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'browser', label: '浏览器', icon: MousePointerClick },
   { id: 'profiles', label: '账号与模型', icon: Sparkles },
   { id: 'hosts', label: 'Host 管理', icon: Server },
+  { id: 'team', label: '成员', icon: Users },
   { id: 'permissions', label: '权限', icon: ShieldCheck },
   { id: 'hooks', label: 'Hooks', icon: Webhook },
   { id: 'mcp', label: 'MCP', icon: Plug },
@@ -53,6 +57,17 @@ export function SettingsDialog() {
   const tab = useUiStore((s) => s.settingsTab)
   const setTab = useUiStore((s) => s.setSettingsTab)
   const close = useUiStore((s) => s.closeSettings)
+  const role = useAppStore((s) =>
+    s.activeHostId ? s.runtimes[s.activeHostId]?.team?.role : undefined,
+  )
+  // 成员连接只保留客户端自己的设置页；Host 级设置由服务端 403 兜底。
+  const memberTabs = new Set<SettingsTab>(['hosts', 'appearance', 'notifications'])
+  const tabs = role && role !== 'owner' ? TABS.filter((item) => memberTabs.has(item.id)) : TABS
+
+  useEffect(() => {
+    if (!open) return
+    if (!tabs.some((item) => item.id === tab)) setTab(tabs[0]?.id ?? 'appearance')
+  }, [open, tab, role, setTab, tabs])
 
   return (
     <Modal
@@ -70,7 +85,7 @@ export function SettingsDialog() {
     >
       <div className="flex h-full min-h-0 flex-col sm:flex-row">
         <nav className="grid shrink-0 grid-cols-3 gap-1 border-b border-border bg-bg/40 p-2 sm:flex sm:w-44 sm:flex-col sm:border-b-0 sm:border-r sm:p-3">
-          {TABS.map((t) => {
+          {tabs.map((t) => {
             const Icon = t.icon
             return (
               <Button
@@ -102,6 +117,7 @@ export function SettingsDialog() {
             {tab === 'browser' && <BrowserSection />}
             {tab === 'profiles' && <ProfilesSection />}
             {tab === 'hosts' && <HostsSection />}
+            {tab === 'team' && <TeamSection />}
             {tab === 'permissions' && <PermissionsSection />}
             {tab === 'hooks' && <HooksSection />}
             {tab === 'mcp' && <McpSection />}

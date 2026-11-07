@@ -151,8 +151,11 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       ),
     [messages],
   )
+  const teamRole = useAppStore((s) =>
+    s.active?.hostId ? s.runtimes[s.active.hostId]?.team?.role : undefined,
+  )
   useEffect(() => {
-    if (!host || !summary?.cwd) {
+    if (!host || !summary?.cwd || teamRole !== 'owner') {
       setMemory(null)
       return
     }
@@ -172,7 +175,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     return () => {
       cancelled = true
     }
-  }, [host, summary?.cwd, memoryToolCalls, memoryEditorOpen])
+  }, [host, summary?.cwd, memoryToolCalls, memoryEditorOpen, teamRole])
   const memoryPreview = useMemo(() => {
     if (!memory?.exists) return []
     const body = stripMemoryMeta(memory.text)

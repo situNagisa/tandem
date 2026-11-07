@@ -11,6 +11,8 @@ import type {
   SessionPlan,
   SessionSummary,
   SlashCommand,
+  TeamIdentity,
+  TeamPresence,
   Todo,
 } from '@tandem/protocol'
 
@@ -64,6 +66,8 @@ export interface HostRuntime {
   error?: string
   /** Token 被拒绝：需要用户去设置里修改 */
   authError?: string
+  /** 当前连接身份（hello 下发，缺省视为所有者以兼容旧 Host）。 */
+  team?: TeamIdentity
 }
 
 export type ToolResultBlock = Extract<ContentBlock, { type: 'tool_result' }>
@@ -99,6 +103,8 @@ export interface ActiveSession {
   injections?: InjectionSnapshot
   /** Task 子代理会话（parentId 指向当前会话），按子会话 id 索引。 */
   subagents: Record<string, SubagentSession>
+  /** 正在查看该会话的连接（含所有者，界面排除自己）。 */
+  viewers: TeamPresence[]
 }
 
 /** 客户端补充锚点：错误提示内联在产生它的消息之后。 */
@@ -130,7 +136,7 @@ export interface Toast {
 }
 
 export type Theme = 'light' | 'dark' | 'system'
-export type SettingsTab = 'general' | 'profiles' | 'hosts' | 'permissions' | 'hooks' | 'mcp' | 'skills' | 'schedules' | 'budgets' | 'usage' | 'appearance' | 'sync' | 'memory' | 'subagents' | 'prompts' | 'shares' | 'voice' | 'notifications' | 'browser' | 'evals'
+export type SettingsTab = 'general' | 'profiles' | 'hosts' | 'team' | 'permissions' | 'hooks' | 'mcp' | 'skills' | 'schedules' | 'budgets' | 'usage' | 'appearance' | 'sync' | 'memory' | 'subagents' | 'prompts' | 'shares' | 'voice' | 'notifications' | 'browser' | 'evals'
 
 export type AppRoute =
   | { kind: 'home' }

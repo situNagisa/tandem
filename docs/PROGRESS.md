@@ -204,3 +204,14 @@
 - [x] P1：菜单项/列表行/图标按钮补 44px（菜单、侧栏、改动审阅、设置、代码复制、预览、文件行）；审批卡按钮手机改 2×2 网格；11/11.5px 文本统一 12px（徽标 11、图表刻度 11）；用户消息 480ms 长按打开操作菜单（抬手后弹出，防误触）；文件预览行号槽 44→30px
 - [x] 回归：`e2e/regression.mjs` 新增 360×780 context 与 7 条手机用例（顶栏/输入框、菜单、审批、长按、侧栏、设置、文件预览），并新增 Host 启动即恢复的待审批种子会话
 - 验证：`node scripts/check.mjs` 全量通过（build / ui-audit / test / smoke / regression 45/45）；`npm run apk -w @tandem/mobile` 成功
+
+## 迭代 25（2026-11-07）内网团队共享 v1
+- [x] 协议：`TeamRole/MemberRole/TeamMember/TeamInvite/TeamAuditEntry/TeamIdentity/TeamPresence`；`PermissionRequest.assignedTo/transferredFrom`；WS `presence`、`permission_transferred`、`team_updated`；邀请接受公开接口
+- [x] Host：`server/src/team/{store,access,audit}.ts` + `routes/team.ts`；成员 token / 邀请码只存 SHA-256；24h 一次性邀请；成员角色与 `projectDirs` 授权；吊销立即断开 WS；角色/目录变更强制重连
+- [x] 鉴权：全局 `onRequest` 解析所有者/成员身份，成员 REST 默认拒绝白名单放行；会话列表与单会话读取按项目目录过滤（未授权 404）；fs 读写/补全限制在授权目录；账号列表对成员清空 Key 掩码；设置/Key/配置/Hooks/MCP/权限规则等仅所有者
+- [x] WS：订阅/发送/中断/重试/审批逐条检查角色与项目；审批事件只推给有审批权连接；收件箱同样过滤；`presence` 显示同会话在线成员；审批「转给…」选择在线审批者，目标收件箱标注「由 X 转交」，仅目标与所有者可处理
+- [x] 审计：邀请/成员/新建会话/发消息/审批/转交，最近 200 条，设置-成员页查看
+- [x] Web：设置「成员」页（角色/项目目录/邀请链接+二维码/成员编辑与吊销/邀请记录/审计）；邀请链接深链入职工弹层；会话顶部在线头像；成员只读时隐藏新建/派单/Composer，设置页只保留客户端项
+- [x] `docs/team.md`：角色矩阵、邀请与 token 处理、REST/WS 边界、威胁模型、可信内网限制
+- 验证：`TANDEM_HOME=/tmp/tandem-team`、端口 8252；REST 邀请/接受 + 观察者/审批者/协作者边界（观察者发消息被拒、协作者读 Key 接口 403、未授权项目会话 404）；WS 双连接审批请求过滤、转交、审批者收件箱与跨页处理；Playwright 双页面 + 邀请链接入职；截图 `/tmp/team-shots/`
+- 备注：v1 无 TLS，仅可信内网/VPN；不接第三方账号与推送；成员读账号列表只保留模型信息

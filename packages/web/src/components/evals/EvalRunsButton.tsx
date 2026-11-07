@@ -11,6 +11,9 @@ const EMPTY_RUNS: import('@tandem/protocol').EvalRunSummary[] = []
 export function EvalRunsButton() {
   const hosts = useAppStore((state) => state.hosts)
   const activeHostId = useAppStore((state) => state.activeHostId)
+  const role = useAppStore((state) =>
+    state.activeHostId ? state.runtimes[state.activeHostId]?.team?.role : undefined,
+  )
   const host = hosts.find((item) => item.id === activeHostId) ?? hosts[0]
   const runs = useEvalStore((state) => (host ? state.byHost[host.id]?.runs ?? EMPTY_RUNS : EMPTY_RUNS))
   const refreshRuns = useEvalStore((state) => state.refreshRuns)
@@ -18,7 +21,7 @@ export function EvalRunsButton() {
   const running = runs.filter((run) => run.status === 'running').length
 
   useEffect(() => {
-    if (!host) return
+    if (!host || role !== 'owner') return
     void refreshRuns(host)
     if (running === 0) return
     const timer = window.setInterval(() => void refreshRuns(host), 3000)
@@ -26,7 +29,7 @@ export function EvalRunsButton() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host?.id, running])
 
-  if (!host) return null
+  if (!host || role !== 'owner') return null
   return (
     <IconButton
       onClick={() => openSettings('evals')}

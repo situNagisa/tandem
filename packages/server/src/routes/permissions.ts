@@ -48,11 +48,10 @@ export function registerPermissionRoutes(app: FastifyInstance, deps: RouteDeps):
       name: actor.name,
       at: Date.now(),
     };
-    const event = host.inbox.retargetPermission(request);
-    if (event) host.pushInbox(event);
     const message = {
       type: 'permission_transferred' as const,
       requestId: request.id,
+      sessionId: found.rec.id,
       request,
       from: actor.name,
       to: target.name,
@@ -61,6 +60,9 @@ export function registerPermissionRoutes(app: FastifyInstance, deps: RouteDeps):
     for (const ancestor of host.ancestorsOf(found.rec)) {
       host.hub.broadcastSession(ancestor.id, message);
     }
+    // 先让客户端移除旧的待办，再推送转交后的目标事件，否则目标收件箱会被清空。
+    const event = host.inbox.retargetPermission(request);
+    if (event) host.pushInbox(event);
     recordAudit(host, actor, 'permission.transfer', {
       sessionId: found.rec.id,
       sessionTitle: found.rec.title,

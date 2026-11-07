@@ -6,7 +6,7 @@ import type { HostConfig } from './types'
 export type GitRepoState = 'checking' | 'yes' | 'no'
 
 /** 沿 cwd 向上查找 .git（目录或 worktree 的 gitfile），仅用于新会话的 worktree 开关。 */
-export function useGitRepo(host: HostConfig | null, cwd: string): GitRepoState {
+export function useGitRepo(host: HostConfig | null, cwd: string, stopAt?: string[]): GitRepoState {
   const [state, setState] = useState<GitRepoState>('checking')
 
   useEffect(() => {
@@ -30,6 +30,8 @@ export function useGitRepo(host: HostConfig | null, cwd: string): GitRepoState {
         } catch {
           break
         }
+        // 成员只能看到授权项目：到项目根就停，不再向上探测。
+        if (stopAt?.includes(current)) break
         const parent = dirname(current)
         if (!parent || parent === current) break
         current = parent
@@ -40,7 +42,7 @@ export function useGitRepo(host: HostConfig | null, cwd: string): GitRepoState {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [host, cwd])
+  }, [host, cwd, stopAt])
 
   return state
 }

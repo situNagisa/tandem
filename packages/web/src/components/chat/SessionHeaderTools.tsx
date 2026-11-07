@@ -16,6 +16,9 @@ const EMPTY_TASKS: import('@tandem/protocol').BackgroundTask[] = []
 export function BackgroundTasksButton() {
   const active = useAppStore((s) => s.active)
   const hosts = useAppStore((s) => s.hosts)
+  const role = useAppStore((s) =>
+    s.active?.hostId ? s.runtimes[s.active.hostId]?.team?.role : undefined,
+  )
   const tasks = useTaskStore((s) => (active ? s.byHost[active.hostId] ?? EMPTY_TASKS : EMPTY_TASKS))
   const openBackgroundTasks = useUiStore((s) => s.openBackgroundTasks)
   const host = hosts.find((h) => h.id === active?.hostId)
@@ -24,10 +27,11 @@ export function BackgroundTasksButton() {
     : 0
 
   useEffect(() => {
-    if (host) void useTaskStore.getState().refresh(host)
+    if (host && role === 'owner') void useTaskStore.getState().refresh(host)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host?.id, active?.sessionId])
 
+  if (role !== 'owner') return null
   return (
     <IconButton
       onClick={() => {

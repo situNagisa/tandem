@@ -23,8 +23,9 @@
 |---|---|
 | `src/cli.ts` | 入口：解析 `--port/--host/--relay`，创建 Host + Fastify，信号退出 |
 | `src/server.ts` | Fastify 服务：启动、token 鉴权、WS 升级、静态托管；路由按资源在 `routes/` 下注册 |
-| `src/routes/` | REST/WS 路由：`common.ts`（依赖与鉴权）、`sessions.ts`、`permissions.ts`、`host.ts`、`profiles.ts`、`models.ts`、`usage.ts`、`tasks.ts`、`mcp.ts`、`skills.ts`、`hooks.ts`、`memory.ts`、`schedules.ts`、`evals.ts`、`subagent-presets.ts`、`prompt-templates.ts`、`commands.ts`、`external.ts`、`fs.ts`、`pair.ts`、`budgets.ts`、`config.ts`、`ws.ts` |
+| `src/routes/` | REST/WS 路由：`common.ts`（依赖与鉴权）、`team.ts`（成员/邀请/审计/身份）、`sessions.ts`、`permissions.ts`、`host.ts`、`profiles.ts`、`models.ts`、`usage.ts`、`tasks.ts`、`mcp.ts`、`skills.ts`、`hooks.ts`、`memory.ts`、`schedules.ts`、`evals.ts`、`subagent-presets.ts`、`prompt-templates.ts`、`commands.ts`、`external.ts`、`fs.ts`、`pair.ts`、`budgets.ts`、`config.ts`、`ws.ts` |
 | `src/host.ts` | Host 类：持有全部状态与构造，方法按职责转调到 `host/`（外部 API 不变） |
+| `src/team/` | 内网团队：`store.ts`（成员/邀请/审计持久化，只存 token 与邀请码哈希）、`access.ts`（角色边界、项目可见性、REST 白名单）、`audit.ts` |
 | `src/host/` | Host 实现按职责拆分（纯搬移）：`sessions.ts`（读取/转换/CRUD）、`turns.ts`（发送/回合/排队/中断/compact）、`commands.ts`（斜杠命令/本地消息）、`permissions.ts`（审批/plan/恢复）、`keys.ts`（账号/分组/Key 轮询）、`usage.ts`（上下文/预算/模型）、`subagents.ts`（子代理/委派/工具可见性）、`vcs.ts`（git 环境/worktree）、`rewind.ts`（检查点回退）、`hooks.ts`、`inbox.ts`、`external.ts`（外部会话通知/导入）、`helpers.ts`（无状态纯函数） |
 | `src/agent/loop.ts` | 单轮 agent 循环：模型 → 工具 → tool_result → 再请求，直到结束 |
 | `src/agent/prompt.ts` | 系统提示组装（含注入段落清单） |
@@ -78,7 +79,7 @@
 | `src/components/PermissionCard.tsx` | 工具审批卡与“添加为规则” |
 | `src/components/RightPanel.tsx` | 右栏：计划、待办、子代理、上下文、PR；**巨石** |
 | `src/components/ChangeReviewPanel.tsx` | 改动审阅、行评论、提交/丢弃 |
-| `src/components/settings/*` | 设置各页；`SettingsDialog.tsx` 是导航与挂载点 |
+| `src/components/settings/*` | 设置各页；`SettingsDialog.tsx` 是导航与挂载点；`TeamSection.tsx` 是成员/邀请/审计，`JoinTeamDialog.tsx` 处理邀请链接入职 |
 | `src/components/evals/*` | 评测轨迹/并排对比/提示词覆盖/存用例弹层；设置「评测」页见 `settings/EvalsSection.tsx` |
 | `src/components/chat/*` | 轮次导航、上下文环、消息辅助组件 |
 | `src/components/feedback/*` | 反馈模式浮条、区域截图、标注、抽屉 |
@@ -125,6 +126,7 @@ Web/Desktop/Android
 |---|---|
 | 加一个工具 | `server/src/tools/<name>.ts` 实现 `definition` + `run`；在 `tools/index.ts` 的 `TOOLS/TOOL_MAP` 注册；涉及权限时设 `readOnly/requiresApproval`；前端工具卡在 `ToolCard.tsx` |
 | 加一个 REST 接口 | 先在 `protocol` 注释/types 定义；`server/src/server.ts` 加路由（后续放 `routes/`）；`web/src/lib/api.ts` 加方法 |
+| 改团队共享/成员权限 | `server/src/team/*` + `routes/team.ts` + `routes/ws.ts`；前端 `settings/TeamSection.tsx`、`JoinTeamDialog.tsx`、`lib/inviteLink.ts`；安全说明 `docs/team.md` |
 | 加一个 WS 事件 | `protocol` 的 `ServerMsg/ClientMsg`；server 用 `Hub.broadcastSession/broadcastAll`；web `appStore/serverMessages.ts` 事件 switch + `ws.ts` 类型 |
 | 加一个设置页 | `web/src/lib/types.ts` 的 `SettingsTab`；`SettingsDialog.tsx` 的 `TABS` 与条件渲染；页面放 `components/settings/`；数据走 `api.ts` |
 | 加一个菜单/弹层 | 只用 `components/ui/Menu.tsx`、`Modal.tsx`、`Controls.tsx`；不要手写 role 或原生 select |

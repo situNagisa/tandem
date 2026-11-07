@@ -98,6 +98,9 @@ export function HomeView() {
   const pendingCount = useInboxPendingCount()
   const unreadCount = useInboxCount()
   const setDispatchOpen = useUiStore((s) => s.setDispatchOpen)
+  const teamRole = useAppStore((s) =>
+    s.activeHostId ? s.runtimes[s.activeHostId]?.team?.role : undefined,
+  )
   // 手机打开 App 时若有待审批，直接落在收件箱；用户手动切换后不再自动跳。
   const [tab, setTab] = useState<'new' | 'inbox'>(() =>
     pendingCount > 0 ? 'inbox' : 'new',
@@ -109,6 +112,19 @@ export function HomeView() {
   }, [pendingCount, isMobile])
 
   if (hosts.length === 0) return <ConnectView />
+  if (teamRole === 'observer' || teamRole === 'approver') {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <div className="max-w-sm text-center">
+          <p className="text-[14px] font-medium">只读成员</p>
+          <p className="mt-1.5 text-[12.5px] leading-5 text-muted">
+            你在这个 Host 上是{teamRole === 'observer' ? '观察者' : '审批者'}，可以查看被授权项目的会话
+            {teamRole === 'approver' ? '并处理审批请求' : ''}，不能新建会话或发消息。
+          </p>
+        </div>
+      </div>
+    )
+  }
   if (!isMobile) return <NewSessionView />
 
   return (
