@@ -194,6 +194,21 @@ export function autoCompactTriggerTokens(
   return Math.floor(contextWindow * settings.autoCompactThreshold);
 }
 
+/**
+ * 是否达到自动压缩阈值。
+ * 字符数估算（约 3.5 字符/token）对中文明显偏低，只看本轮估算会让占用早已过半的会话永远不压缩；
+ * 因此同时参考上一次请求按真实 usage 校准的占用。压缩后传 undefined，避免在旧基线上重复触发。
+ */
+export function autoCompactDue(
+  estimateUsedTokens: number,
+  lastActualUsedTokens: number | undefined,
+  contextWindow: number,
+  settings: ContextSettings,
+): boolean {
+  const used = Math.max(estimateUsedTokens, lastActualUsedTokens ?? 0);
+  return used >= autoCompactTriggerTokens(contextWindow, settings);
+}
+
 /** 请求前的上下文占用估算。 */
 export function estimateBreakdown(input: EstimateInput): ContextBreakdown {
   const memory = estimateTokens(readMemory(input.cwd));

@@ -9,7 +9,7 @@ import { isReadOnlySubagentInput } from '../tools/task.js';
 import { errorMessage, truncateMiddle } from '../util/text.js';
 import { costOfUsage, priceForModel } from '../usage.js';
 import {
-  autoCompactTriggerTokens,
+  autoCompactDue,
   cacheHitRateOf,
   estimateBreakdown,
   trimOldToolResults,
@@ -256,8 +256,12 @@ export async function runTurn(
       if (
         contextSettings.autoCompact &&
         autoCompacts < 2 &&
-        contextEstimate.usedTokens >=
-          autoCompactTriggerTokens(contextEstimate.contextWindow, contextSettings)
+        autoCompactDue(
+          contextEstimate.usedTokens,
+          autoCompacts === 0 ? rec.context?.usedTokens : undefined,
+          contextEstimate.contextWindow,
+          contextSettings,
+        )
       ) {
         const compacted = await compactHistory(host, rec, rec.messages, {
           model,
