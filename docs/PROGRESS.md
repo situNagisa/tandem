@@ -119,3 +119,10 @@
 - [x] 修复既有 bug：`permission_request` 缺顶层 sessionId 导致客户端 seq 出现空洞，后续 `permission_resolved` 被永久暂存、跨端审批卡不消失
 - 验证：TANDEM_HOME=/tmp/tandem-inbox:8133；Playwright 1440×900 + 390×844 双页，手机收件箱允许后桌面审批卡消失、服务端 pending 归零、手机收件箱转「已允许」；回合完成入列表；设置通知页可开合；`npm run apk` 打包成功
 - 待真机确认：APK 安装、同局域网连接、锁屏/后台通知与操作按钮、前台服务耗电
+
+## 迭代 15（2026-11-07）PR / CI 集成
+- [x] 协议：VcsCapability / PullRequestInfo / PrCheck / VcsState、创建/合并/修复 REST、WS `vcs_updated`、收件箱 `ci` 事件
+- [x] Host：`vcs.ts` 仅用本机 git + `gh`/`glab`（execFile 参数数组，不保存令牌）；能力检测（仓库/分支/上游/ahead-behind/托管类型/CLI 安装与登录）、创建 PR 前 `git push -u origin HEAD`、合并（squash/merge/rebase）、`gh run view <id> --log-failed` 截断后作为用户消息发当前会话；每 60s 轮询有 PR 且被订阅的会话，变化广播并写收件箱
+- [x] Web：顶栏 PR 按钮（#号 + 开放/草稿/已合并/CI 失败状态点），PR 面板（状态、检查列表/耗时/链接、打开、合并二次确认、失败检查「让 agent 修复」、未安装/未登录 gh/glab 指引），创建表单与「让 agent 起草」，审阅面板 ⋯「提交并创建 PR」（预填标题）
+- 验证：/tmp 假 gh + 本地 bare 仓库 + TANDEM_HOME=/tmp/tandem-pr:8141；Playwright 点击完成创建 PR、CI 失败展示、让 agent 修复消息、合并；截图 /tmp/pr-shots/
+- 待产品所有者按 docs/pr-ci-test.md 在 Windows 实机用真实 GitHub 代测

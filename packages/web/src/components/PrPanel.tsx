@@ -38,10 +38,9 @@ const MERGE_LABEL: Record<PrMergeMethod, string> = {
 }
 
 function stateDot(pr: PullRequestInfo): string {
-  if (pr.checksState === 'failure') return 'bg-danger'
   if (pr.state === 'MERGED') return 'bg-[var(--t-git-renamed)]'
-  if (pr.state === 'DRAFT') return 'bg-muted'
-  if (pr.state === 'CLOSED') return 'bg-muted'
+  if (pr.state === 'DRAFT' || pr.state === 'CLOSED') return 'bg-muted'
+  if (pr.checksState === 'failure') return 'bg-danger'
   if (pr.checksState === 'pending') return 'bg-accent'
   return 'bg-[var(--t-git-plus)]'
 }
@@ -287,11 +286,14 @@ export function PrPanel() {
     void refresh(host, sessionId, true)
   }, [open, host?.id, sessionId, refresh])
 
+  // 每次打开面板重置表单；从「提交并创建 PR」进入时预填提交信息作为标题
   useEffect(() => {
-    if (open && composeTitle) setTitle(composeTitle)
-    // 仅在打开/预填变化时覆盖，避免打断用户输入
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, composeTitle])
+    if (!open) return
+    setTitle(composeTitle)
+    setBody('')
+    setBase('')
+    setDraft(false)
+  }, [open, sessionId, composeTitle])
 
   // 让 agent 起草：等待本轮结束，从最后一条 assistant 回复里解析 JSON
   useEffect(() => {
