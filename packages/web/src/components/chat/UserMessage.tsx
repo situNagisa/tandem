@@ -74,7 +74,8 @@ export const UserMessage = memo(function UserMessage({
     pressTimer.current = null
     if (!pressReady.current) return
     pressReady.current = false
-    window.setTimeout(() => setMenuOpen(true), 0)
+    // 延迟到本次触摸产生的合成 click 结束后再开菜单，避免抬手那一下点中菜单第一项。
+    window.setTimeout(() => setMenuOpen(true), 120)
   }
   const cancelPress = () => {
     if (pressTimer.current) window.clearTimeout(pressTimer.current)
