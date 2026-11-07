@@ -107,6 +107,10 @@ export interface SessionRecord extends Session {
   runState?: RunState;
   /** Host 重启后按设置暂停，等待用户确认继续（随 SessionSummary 下发）。 */
   resumePaused?: boolean;
+  /** 评测运行创建的内部会话：从会话列表隐藏，运行结束后删除。 */
+  evalRun?: { runId: string; caseName: string; configId: string };
+  /** 评测配置临时覆盖的提示词（仅该会话生效，不写回 prompts.json）。 */
+  promptOverrides?: Partial<Record<import('@tandem/protocol').PromptTemplateKey, string>>;
 }
 
 /**

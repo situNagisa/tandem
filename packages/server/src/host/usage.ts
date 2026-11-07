@@ -47,8 +47,21 @@ export function promptOptions(host: Host, rec: SessionRecord,
         }
       : {}),
     ...(rec.systemPromptExtra ? { extraSystemPrompt: rec.systemPromptExtra } : {}),
-    prompts: host.promptTemplates.resolved(rec.cwd),
+    prompts: withPromptOverrides(host.promptTemplates.resolved(rec.cwd), rec),
   };
+}
+
+/** 评测配置的提示词覆盖只对该会话生效，优先于项目/用户/内置。 */
+function withPromptOverrides(
+  prompts: Record<string, { text: string; source: import('@tandem/protocol').PromptSource }>,
+  rec: SessionRecord,
+): Record<string, { text: string; source: import('@tandem/protocol').PromptSource }> {
+  if (!rec.promptOverrides) return prompts;
+  const merged = { ...prompts };
+  for (const [key, text] of Object.entries(rec.promptOverrides)) {
+    if (typeof text === 'string' && text.trim()) merged[key] = { text, source: 'user' };
+  }
+  return merged;
 }
 
 export function buildSystemFor(host: Host, rec: SessionRecord,

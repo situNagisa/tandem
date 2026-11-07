@@ -97,6 +97,29 @@ export class Inbox {
     });
   }
 
+  recordEval(input: {
+    runId: string;
+    suite: string;
+    status: 'running' | 'done' | 'cancelled';
+    finished: number;
+    total: number;
+    text: string;
+    at?: number;
+  }): InboxEvent {
+    return this.push({
+      kind: 'eval',
+      eval: {
+        runId: input.runId,
+        suite: input.suite,
+        status: input.status,
+        finished: input.finished,
+        total: input.total,
+        text: input.text,
+      },
+      ...(input.at ? { at: input.at } : {}),
+    });
+  }
+
   /**
    * 订阅/重连时的快照。sinceSeq 覆盖时只返回增量事件，否则返回完整缓冲；
    * pending 始终是服务端权威的未处理审批列表。

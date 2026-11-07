@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Pause, Play, Square, SquareTerminal } from 'lucide-react'
+import { FlaskConical, Pause, Play, Square, SquareTerminal } from 'lucide-react'
 import type { BackgroundTask } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useTaskStore } from '../store/useTaskStore'
+import { useEvalStore } from '../store/useEvalStore'
 import { useUiStore } from '../store/useUiStore'
 import { useNow } from '../lib/hooks'
 import { formatElapsed, firstLine } from '../lib/format'
@@ -12,6 +13,7 @@ import { Button } from './ui/Button'
 
 const EMPTY_TASKS: BackgroundTask[] = []
 const EMPTY_OUTPUTS: Record<string, { text: string; since: number; truncated?: boolean }> = {}
+const EMPTY_RUNS: import('@tandem/protocol').EvalRunSummary[] = []
 
 const STATUS_LABEL: Record<BackgroundTask['status'], string> = {
   running: '运行中',
@@ -42,9 +44,16 @@ export function BackgroundTasksPanel() {
   const host = hosts.find((h) => h.id === panel?.hostId)
   const tasks = useTaskStore((s) => (panel ? s.byHost[panel.hostId] ?? EMPTY_TASKS : EMPTY_TASKS))
   const outputs = useTaskStore((s) => (panel ? s.outputs[panel.hostId] ?? EMPTY_OUTPUTS : EMPTY_OUTPUTS))
+  const evalRuns = useEvalStore((s) =>
+    panel ? s.byHost[panel.hostId]?.runs ?? EMPTY_RUNS : EMPTY_RUNS,
+  )
+  const refreshEvalRuns = useEvalStore((s) => s.refreshRuns)
+  const cancelEvalRun = useEvalStore((s) => s.cancelRun)
+  const runningEvals = evalRuns.filter((run) => run.status === 'running')
   const refresh = useTaskStore((s) => s.refresh)
   const loadOutput = useTaskStore((s) => s.loadOutput)
   const kill = useTaskStore((s) => s.kill)
+  const openSettings = useUiStore((s) => s.openSettings)
   const [selected, setSelected] = useState<string | undefined>(panel?.taskId)
   const [follow, setFollow] = useState(true)
   const [killedBusy, setKilledBusy] = useState(false)
@@ -64,6 +73,15 @@ export function BackgroundTasksPanel() {
     if (!host) return
     void refresh(host)
   }, [panel?.sessionId, panel?.taskId, host?.id])
+
+  // 评测运行是 Host 级后台任务：面板打开时展示进度，运行中每 2s 刷新。
+  useEffect(() => {
+    if (!panel || !host) return
+    void refreshEvalRuns(host)
+    if (runningEvals.length === 0) return
+    const timer = window.setInterval(() => void refreshEvalRuns(host), 2000)
+    return () => window.clearInterval(timer)
+  }, [panel?.hostId, host?.id, runningEvals.length, refreshEvalRuns])
 
   // 打开或切换任务时拉取全量输出
   useEffect(() => {
@@ -115,6 +133,50 @@ export function BackgroundTasksPanel() {
     >
       <div className="flex h-full min-h-0 flex-col sm:flex-row">
         <div className="flex h-[38%] w-full shrink-0 flex-col border-b border-border sm:h-auto sm:w-[280px] sm:border-b-0 sm:border-r">
+          {runningEvals.length > 0 && (
+            <div className="shrink-0 border-b border-border px-2.5 py-2">
+              <div className="mb-1 flex items-center gap-1.5 text-[12px] font-medium text-text-tertiary">
+                <FlaskConical size={12} />
+                <span>评测运行</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    close()
+                    openSettings('evals')
+                  }}
+                  className="ml-auto rounded px-1 text-[11px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+                >
+                  打开
+                </button>
+              </div>
+              <div className="space-y-1">
+                {runningEvals.map((item) => (
+                  <div key={item.id} className="rounded-md px-1 py-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="min-w-0 flex-1 truncate text-[12px] text-text">{item.suite}</span>
+                      <span className="shrink-0 text-[11px] tabular-nums text-muted">
+                        {item.finished}/{item.total}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => host && void cancelEvalRun(host, item.id)}
+                        aria-label="取消评测"
+                        className="shrink-0 rounded p-0.5 text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-danger"
+                      >
+                        <Square size={11} />
+                      </button>
+                    </div>
+                    <div className="mt-1 h-1 overflow-hidden rounded-full bg-[var(--t-bg-hover)]">
+                      <div
+                        className="h-full rounded-full bg-accent transition-[width] duration-300"
+                        style={{ width: `${(item.finished / Math.max(1, item.total)) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-1 px-3 py-2 text-[12px] font-medium text-text-tertiary">
             <span>本会话</span>
             <span className="ml-auto tabular-nums">{visible.length}</span>

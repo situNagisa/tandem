@@ -23,6 +23,7 @@ import { ConnectionDot } from './StatusDot'
 import { Button, IconButton } from './ui/Button'
 import { Input } from './ui/Controls'
 import { BackgroundTasksButton, FilesButton, SubagentsButton } from './chat/SessionHeaderTools'
+import { EvalRunsButton } from './evals/EvalRunsButton'
 import { PrButton, PrPanel } from './PrPanel'
 
 function StatePill({
@@ -339,6 +340,8 @@ export function TopBar() {
           </span>
         </button>
       )}
+
+      <EvalRunsButton />
 
       {hasSession && !isMobile && (
         <>

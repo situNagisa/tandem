@@ -402,7 +402,7 @@ export interface BudgetAlert {
 // ---------- 收件箱（跨会话的“需要我”事件流） ----------
 // 客户端连上 WS 后发 subscribe_inbox，服务端把全 Host 的审批/回合结束/预算等摘要推给该连接。
 // 事件按 Host 内全局 seq 单调递增，客户端重连时带 sinceSeq 补齐；缓冲不覆盖则收到 inbox_snapshot。
-export type InboxEventKind = 'permission' | 'permission_resolved' | 'turn_end' | 'budget' | 'ci'
+export type InboxEventKind = 'permission' | 'permission_resolved' | 'turn_end' | 'budget' | 'ci' | 'eval'
 export interface InboxEvent {
   seq: number;
   kind: InboxEventKind;
@@ -434,6 +434,16 @@ export interface InboxEvent {
     checksState?: PrChecksState;
     checkName?: string;
     /** 可读描述，如「PR #12 CI 失败：build」。 */
+    text: string;
+  };
+  /** kind=eval：评测运行开始/进度/结束。 */
+  eval?: {
+    runId: string;
+    suite: string;
+    status: 'running' | 'done' | 'cancelled';
+    finished: number;
+    total: number;
+    /** 可读描述，如「评测完成：3/4 通过」。 */
     text: string;
   };
 }
@@ -481,6 +491,7 @@ export type ServerMsg =
   // 外部会话（Claude Code / Codex）文件有变动，客户端应重新拉取列表
   | { type: 'task_updated'; sessionId: string; task: BackgroundTask; content?: string; since?: number; truncated?: boolean }
   | { type: 'schedules_updated' }
+  | { type: 'eval_run_updated'; run: EvalRunSummary }
   | { type: 'external_sessions_changed' }
   | { type: 'error'; message: string }
   | { type: 'pong' };
@@ -742,6 +753,7 @@ export type PromptTemplateKey =
   | 'prDraft'
   | 'ciFix'
   | 'autoTitle'
+  | 'evalReview'
   | 'memoryRule'
   | 'persona'
   | 'taskDescription'
@@ -939,6 +951,133 @@ export interface MemoryListItem {
 // DELETE /api/memory?scope=global|project&project=<path> -> { ok: boolean }
 // GET    /api/memory/list                                -> { global?: MemoryListItem; projects: MemoryListItem[] }
 // POST /api/memory/import { project, text, source?, mode? } -> { ok, merged }  跨 Host 迁移合并记忆
+
+// ---------- 评测（轨迹回放 / 回归用例） ----------
+// 用例存 ~/.tandem/evals/<suite>/<case>.json；运行时每个 用例×配置 在独立临时目录中
+// 以 bypassPermissions 跑一遍 agent，记录轨迹、检查命令、用量与耗时。
+export type EvalSnapshotMode = 'git' | 'copy';
+export interface EvalSnapshot {
+  mode: EvalSnapshotMode;
+  /** 原会话工作目录（展示用）。 */
+  cwd: string;
+  /** mode=git：仓库根目录与保存时记录的 commit hash。 */
+  repoPath?: string;
+  commit?: string;
+  /** 保存时仓库有未提交改动（快照只包含该 commit）。 */
+  dirty?: boolean;
+  /** mode=copy：复制出的快照目录（位于 ~/.tandem/evals 下）。 */
+  snapshotPath?: string;
+  sizeBytes?: number;
+}
+export interface EvalCase {
+  suite: string;
+  name: string;
+  title: string;
+  /** 截取起点：原会话中的用户消息 id。 */
+  startMessageId?: string;
+  initialPrompt: string;
+  snapshot: EvalSnapshot;
+  /** 用户写的通过标准（供评审模型判断）。 */
+  passCriteria?: string;
+  /** 自动检查命令，退出码 0 视为通过。 */
+  checkCommand?: string;
+  sourceSession?: { id: string; title: string };
+  createdAt: number;
+}
+export interface EvalConfig {
+  id: string;
+  name: string;
+  profileId: string;
+  groupId?: string;
+  model: string;
+  effort?: ReasoningEffort;
+  delegation?: DelegationStrategy;
+  /** 仅对该评测配置生效的提示词覆盖（key -> 文本），不写回全局设置。 */
+  promptOverrides?: Partial<Record<PromptTemplateKey, string>>;
+}
+export interface EvalReviewer {
+  profileId: string;
+  groupId?: string;
+  model: string;
+}
+export interface EvalCheckResult {
+  command: string;
+  exitCode: number | null;
+  ok: boolean;
+  output: string;
+  durationMs: number;
+}
+export interface EvalReviewResult {
+  verdict: 'pass' | 'fail';
+  reason: string;
+  model: string;
+}
+export type EvalCellStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+export interface EvalResult {
+  caseName: string;
+  caseTitle: string;
+  configId: string;
+  configName: string;
+  status: EvalCellStatus;
+  /** agent 回合是否正常结束。 */
+  completed: boolean;
+  /** 综合完成、检查命令与评审模型后的结论。 */
+  passed: boolean;
+  check?: EvalCheckResult;
+  review?: EvalReviewResult;
+  /** 模型请求轮数（assistant 消息数）。 */
+  turns: number;
+  toolCalls: number;
+  usage: Usage;
+  costUsd?: number;
+  durationMs: number;
+  finalAnswer?: string;
+  error?: string;
+  /** 完整轨迹；列表接口不返回，详情接口返回。 */
+  messages?: Message[];
+}
+export interface EvalRun {
+  id: string;
+  suite: string;
+  status: 'running' | 'done' | 'cancelled';
+  startedAt: number;
+  finishedAt?: number;
+  configs: EvalConfig[];
+  reviewer?: EvalReviewer;
+  concurrency: number;
+  total: number;
+  finished: number;
+  results: EvalResult[];
+}
+export interface EvalRunSummary extends Omit<EvalRun, 'results' | 'configs'> {
+  configs: Array<Pick<EvalConfig, 'id' | 'name' | 'model'>>;
+  results: Array<Omit<EvalResult, 'messages'>>;
+}
+export interface SaveEvalCaseInput {
+  sessionId: string;
+  /** 从这条用户消息开始截取；缺省为第一条用户消息。 */
+  messageId?: string;
+  suite?: string;
+  name?: string;
+  passCriteria?: string;
+  checkCommand?: string;
+}
+export interface StartEvalRunInput {
+  suite: string;
+  caseNames?: string[];
+  configs: EvalConfig[];
+  concurrency?: number;
+  reviewer?: EvalReviewer;
+}
+// GET    /api/evals/suites                  -> { suites: string[] }
+// GET    /api/evals/cases?suite=            -> { cases: EvalCase[] }
+// POST   /api/evals/cases SaveEvalCaseInput -> EvalCase
+// DELETE /api/evals/cases/:suite/:name
+// GET    /api/evals/runs                    -> EvalRunSummary[]（按开始时间倒序，不含轨迹）
+// POST   /api/evals/runs StartEvalRunInput  -> EvalRun（后台运行）
+// GET    /api/evals/runs/:id                -> EvalRun（含完整轨迹）
+// POST   /api/evals/runs/:id/cancel         -> { ok: boolean }
+// WS: eval_run_updated  运行进度变化（收件箱另有 eval 事件）
 
 // ---------- 会话只读分享（仅可信内网） ----------
 // 分享链接形如 http://<host>:<port>/s/<shareId>#<token>；token 只在创建时返回一次，

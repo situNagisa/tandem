@@ -166,6 +166,32 @@ AGENTS.md 需要面向后续接手工作的 agent，内容简洁、可执行，�
     variables: ['{{text}}'],
     text: '请为下面这段用户的首条消息生成一个简短的中文标题，不超过 20 个字，概括用户真正想做的事：\n\n{{text}}',
   },
+  evalReview: {
+    key: 'evalReview',
+    label: '评测评审提示',
+    description: '评审模型按通过标准判断一次评测运行是否通过。变量：{{prompt}} 任务、{{criteria}} 通过标准、{{answer}} 最终回答、{{check}} 检查命令结果。',
+    category: 'aux',
+    variables: ['{{prompt}}', '{{criteria}}', '{{answer}}', '{{check}}'],
+    text: `你在评审一次编码 agent 的评测运行。请依据「通过标准」判断这次运行是否通过。
+
+## 用户任务
+{{prompt}}
+
+## 通过标准
+{{criteria}}
+
+## 自动检查
+{{check}}
+
+## agent 最终回答
+{{answer}}
+
+只输出一个 JSON 代码块，格式：
+\`\`\`json
+{"verdict":"pass","reason":"简短理由，指出满足或未满足通过标准的具体之处"}
+\`\`\`
+verdict 只能是 pass 或 fail。不要输出其他内容。`,
+  },
   memoryRule: {
     key: 'memoryRule',
     label: '记忆写入规则',

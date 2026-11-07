@@ -16,6 +16,9 @@ import type {
   MemoryScope,
   CreatePrInput,
   DiffEmptyReason,
+  EvalCase,
+  EvalRun,
+  EvalRunSummary,
   ExternalSession,
   ExternalSource,
   FsEntry,
@@ -46,9 +49,11 @@ import type {
   SttInput,
   SttResult,
   SttTestResult,
+  SaveEvalCaseInput,
   Schedule,
   ScheduleInput,
   Session,
+  StartEvalRunInput,
   SessionSummary,
   SkillInfo,
   SlashCommand,
@@ -503,6 +508,27 @@ export const api = {
       `/api/schedules/${encodeURIComponent(id)}/run`,
       { method: 'POST' },
     ),
+
+  evalSuites: (h: HostConfig) => request<{ suites: string[] }>(h, '/api/evals/suites'),
+  evalCases: (h: HostConfig, suite?: string) =>
+    request<{ cases: EvalCase[] }>(h, `/api/evals/cases${qs({ suite })}`),
+  saveEvalCase: (h: HostConfig, input: SaveEvalCaseInput) =>
+    request<EvalCase>(h, '/api/evals/cases', { method: 'POST', body: JSON.stringify(input) }),
+  deleteEvalCase: (h: HostConfig, suite: string, name: string) =>
+    request<void>(
+      h,
+      `/api/evals/cases/${encodeURIComponent(suite)}/${encodeURIComponent(name)}`,
+      { method: 'DELETE' },
+    ),
+  evalRuns: (h: HostConfig) => request<EvalRunSummary[]>(h, '/api/evals/runs'),
+  evalRun: (h: HostConfig, id: string) =>
+    request<EvalRun>(h, `/api/evals/runs/${encodeURIComponent(id)}`),
+  startEvalRun: (h: HostConfig, input: StartEvalRunInput) =>
+    request<EvalRun>(h, '/api/evals/runs', { method: 'POST', body: JSON.stringify(input) }),
+  cancelEvalRun: (h: HostConfig, id: string) =>
+    request<{ ok: boolean }>(h, `/api/evals/runs/${encodeURIComponent(id)}/cancel`, {
+      method: 'POST',
+    }),
 
   pair: (h: HostConfig) =>
     request<{

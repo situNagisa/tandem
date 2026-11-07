@@ -97,7 +97,8 @@ export function getSession(host: Host, id: string): SessionRecord | undefined {
 }
 
 export function listSessions(host: Host): SessionRecord[] {
-  const list = host.store.list();
+  // 评测运行使用的内部会话在侧栏隐藏，轨迹随评测结果单独保存。
+  const list = host.store.list().filter((rec) => !rec.evalRun);
   for (const rec of list) host.ensureSessionEnv(rec);
   return list;
 }

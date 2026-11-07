@@ -51,6 +51,7 @@ import { BudgetStore } from './budgets.js';
 import { Inbox } from './inbox.js';
 import { BackgroundTaskManager } from './tasks.js';
 import { ScheduleManager } from './schedules.js';
+import { EvalManager } from './evals.js';
 import type { ListModelsResult } from './providers/index.js';
 import { SkillManager } from './skills.js';
 import { SubagentPresetStore } from './subagent-presets.js';
@@ -171,6 +172,8 @@ export class Host {
   readonly budgets: BudgetStore;
   readonly tasks: BackgroundTaskManager;
   readonly schedules: ScheduleManager;
+  /** 评测：用例存储与后台批量运行。 */
+  readonly evals: EvalManager;
   readonly hub = new Hub();
   /** 跨会话收件箱（审批/回合结束/预算摘要），手机审批台的数据源。 */
   readonly inbox = new Inbox();
@@ -217,6 +220,7 @@ export class Host {
     this.schedules = new ScheduleManager(home, this, () => {
       this.hub.broadcastAll({ type: 'schedules_updated' });
     });
+    this.evals = new EvalManager(this);
     this.version = readVersion();
     // 启动时连接已启用的 MCP 服务器；失败只记录状态，不影响 Host 启动
     this.mcp.start();

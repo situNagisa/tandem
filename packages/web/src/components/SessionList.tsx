@@ -6,6 +6,7 @@ import {
   Clock,
   Copy,
   Eye,
+  FlaskConical,
   Folder,
   GitBranch,
   GitMerge,
@@ -37,6 +38,7 @@ import { Button, IconButton } from './ui/Button'
 import { Menu } from './ui/Menu'
 import { Tooltip } from './ui/Tooltip'
 import { ShareDialog } from './share/ShareDialog'
+import { SaveEvalCaseDialog } from './evals/SaveEvalCaseDialog'
 
 const EMPTY: SessionSummary[] = []
 
@@ -207,6 +209,7 @@ function RowMenu({
   onTogglePin,
   onFork,
   onShare,
+  onSaveEval,
   onArchive,
   onDelete,
   onMerge,
@@ -217,6 +220,7 @@ function RowMenu({
   onTogglePin: () => void
   onFork: () => void
   onShare: () => void
+  onSaveEval: () => void
   onArchive: () => void
   onDelete: () => void
   onMerge: () => void
@@ -253,6 +257,9 @@ function RowMenu({
       </Menu.Item>
       <Menu.Item icon={<Share2 size={14} />} onSelect={onShare}>
         分享…
+      </Menu.Item>
+      <Menu.Item icon={<FlaskConical size={14} />} onSelect={onSaveEval}>
+        存为评测用例…
       </Menu.Item>
       {state.session.worktree && (
         <Menu.Item icon={<GitMerge size={14} />} onSelect={onMerge}>
@@ -306,6 +313,7 @@ export function SessionList({
 
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [share, setShare] = useState<{ hostId: string; session: SessionSummary } | null>(null)
+  const [evalSave, setEvalSave] = useState<{ hostId: string; session: SessionSummary } | null>(null)
   const [expandedExternal, setExpandedExternal] = useState<Record<string, boolean>>({})
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
@@ -470,6 +478,7 @@ export function SessionList({
           void updateSession(menu.hostId, menu.session.id, { pinned: !menu.session.pinned }),
         onFork: () => void forkSession(menu.hostId, menu.session.id),
         onShare: () => setShare({ hostId: menu.hostId, session: menu.session }),
+        onSaveEval: () => setEvalSave({ hostId: menu.hostId, session: menu.session }),
         onArchive: () =>
           void updateSession(menu.hostId, menu.session.id, { archived: !menu.session.archived }),
         onDelete: () => setConfirm({ hostId: menu.hostId, session: menu.session, busy: false }),
@@ -851,6 +860,13 @@ export function SessionList({
           onClose={() => setShare(null)}
         />
       )}
+
+      <SaveEvalCaseDialog
+        open={!!evalSave}
+        onClose={() => setEvalSave(null)}
+        host={hosts.find((item) => item.id === evalSave?.hostId) ?? null}
+        session={evalSave?.session ?? null}
+      />
 
       <Modal
         open={!!confirm}

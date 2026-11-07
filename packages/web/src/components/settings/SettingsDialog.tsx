@@ -1,4 +1,4 @@
-import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, Mic, Monitor, Palette, Plug, RefreshCw, ScrollText, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Wallet, Webhook } from 'lucide-react'
+import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, FlaskConical, Mic, Monitor, Palette, Plug, RefreshCw, ScrollText, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Wallet, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
@@ -22,6 +22,7 @@ import { BudgetsSection } from './BudgetsSection'
 import { NotificationsSection } from './NotificationsSection'
 import { GeneralSettings } from './GeneralSettings'
 import { VoiceSection } from './VoiceSection'
+import { EvalsSection } from './EvalsSection'
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'general', label: '通用', icon: SlidersHorizontal },
@@ -35,6 +36,7 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'memory', label: '记忆', icon: Brain },
   { id: 'subagents', label: '子代理', icon: Bot },
   { id: 'prompts', label: '提示词', icon: ScrollText },
+  { id: 'evals', label: '评测', icon: FlaskConical },
   { id: 'schedules', label: '定时任务', icon: CalendarClock },
   { id: 'budgets', label: '预算', icon: Wallet },
   { id: 'usage', label: '用量', icon: BarChart3 },
@@ -104,6 +106,7 @@ export function SettingsDialog() {
             {tab === 'memory' && <MemorySection />}
             {tab === 'subagents' && <SubagentsSection />}
             {tab === 'prompts' && <PromptsSection />}
+            {tab === 'evals' && <EvalsSection />}
             {tab === 'schedules' && <SchedulesSection />}
             {tab === 'shares' && <SharesSection />}
             {tab === 'budgets' && <BudgetsSection />}

@@ -3,6 +3,7 @@ import {
   BellRing,
   Check,
   CheckCircle2,
+  FlaskConical,
   GitPullRequest,
   Inbox,
   ShieldAlert,
@@ -82,6 +83,18 @@ function eventSummary(event: InboxEvent): { title: string; body?: string } {
   if (event.kind === 'ci') {
     return { title: event.ci?.text ?? 'PR 状态变化', body: event.ci ? `#${event.ci.prNumber}` : undefined }
   }
+  if (event.kind === 'eval') {
+    const info = event.eval
+    return {
+      title:
+        info?.status === 'done'
+          ? '评测完成'
+          : info?.status === 'cancelled'
+            ? '评测已取消'
+            : '评测运行中',
+      body: info?.text,
+    }
+  }
   return { title: '事件' }
 }
 
@@ -103,6 +116,7 @@ function EventIcon({ event }: { event: InboxEvent }) {
   if (event.kind === 'permission_resolved') return <Check size={14} />
   if (event.kind === 'budget') return <Wallet size={14} />
   if (event.kind === 'ci') return <GitPullRequest size={14} />
+  if (event.kind === 'eval') return <FlaskConical size={14} />
   if (event.turnReason === 'error') return <TriangleAlert size={14} />
   return <CheckCircle2 size={14} />
 }
