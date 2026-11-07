@@ -10,6 +10,7 @@ import type {
   HookEntry,
   HookEvent,
   HostInfo,
+  InboxEvent,
   ListModelsInput,
   Message,
   ModelInfo,
@@ -54,6 +55,7 @@ import type {
 } from './types.js';
 import { UsageStore, costOfUsage, priceForModel } from './usage.js';
 import { BudgetStore } from './budgets.js';
+import { Inbox } from './inbox.js';
 import {
   classifyKeyFailure,
   cooldownMsFor,
@@ -125,6 +127,8 @@ export class Host {
   readonly tasks: BackgroundTaskManager;
   readonly schedules: ScheduleManager;
   readonly hub = new Hub();
+  /** 跨会话收件箱（审批/回合结束/预算摘要），手机审批台的数据源。 */
+  readonly inbox = new Inbox();
   readonly version: string;
   private runtimes = new Map<string, SessionRuntime>();
   private permissions = new Map<string, PermissionEntry>();
@@ -169,6 +173,16 @@ export class Host {
   /** 外部会话列表可能变化（文件更新 / 导入状态变化），广播给所有客户端。 */
   notifyExternalSessionsChanged(): void {
     this.hub.broadcastAll({ type: 'external_sessions_changed' });
+  }
+
+  /** 把一条收件箱事件推给所有订阅了收件箱的连接（含手机后台连接）。 */
+  private pushInbox(event: InboxEvent): void {
+    this.hub.broadcastInbox({ type: 'inbox_event', event });
+  }
+
+  /** 收件箱快照：客户端 subscribe_inbox 时下发，用于冷启动/重连补齐。 */
+  inboxSnapshot(sinceSeq?: number) {
+    return this.inbox.snapshot(sinceSeq);
   }
 
   info(): HostInfo {
@@ -456,6 +470,10 @@ export class Host {
             }`
           : `预算提醒：「${name}」本期已用 ${formatUsd(alert.spentUsd)} / ${formatUsd(alert.limitUsd)}（${percent}%）。`;
       this.appendNotice(rec, text);
+      // 收件箱：预算告警是 Host 级事件，绑定触发本次用量的会话便于跳回
+      this.pushInbox(
+        this.inbox.recordBudget(alert, text, { id: rec.id, title: rec.title }),
+      );
     }
   }
 
@@ -1434,6 +1452,9 @@ export class Host {
           sessionId: rec.id,
           decision,
         });
+        // 收件箱：任意一端处理后，所有端从待审批列表移除
+        const resolved = this.inbox.resolvePermission(request.id, decision);
+        if (resolved) this.pushInbox(resolved);
         // 逐级冒泡：祖先会话（子代理/主会话）的订阅者都能同步审批状态
         for (const ancestor of ancestors) {
           this.hub.broadcastSession(ancestor.id, {
@@ -1464,6 +1485,8 @@ export class Host {
 
       this.setStatus(rec, 'waiting_permission');
       this.hub.broadcastSession(rec.id, { type: 'permission_request', request });
+      // 收件箱：一次请求只记一条（不按祖先重复），带上会话标题与子代理来源
+      this.pushInbox(this.inbox.recordPermission(request, rec.title));
       // 子代理/孙代理的权限请求逐级冒泡，主会话订阅者可直接审批
       for (const ancestor of ancestors) {
         this.hub.broadcastSession(ancestor.id, { type: 'permission_request', request });
@@ -1759,6 +1782,14 @@ export class Host {
         reason: failed ? (failed === '用户中断' ? 'interrupted' : 'error') : 'done',
         ...(failed && failed !== '用户中断' ? { error: failed } : {}),
       });
+      this.pushInbox(
+        this.inbox.recordTurnEnd(
+          rec.id,
+          rec.title,
+          failed ? (failed === '用户中断' ? 'interrupted' : 'error') : 'done',
+          failed && failed !== '用户中断' ? failed : undefined,
+        ),
+      );
       if (failed) {
         this.hub.broadcastSession(rec.id, { type: 'error', message: failed });
       }

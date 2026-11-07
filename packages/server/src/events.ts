@@ -14,6 +14,8 @@ export const EVENT_BUFFER_LIMIT = 2000;
 export class Hub {
   private clients = new Set<WsClient>();
   private subs = new Map<string, Set<WsClient>>();
+  /** 订阅了全局收件箱的连接（跨会话审批/回合结束等摘要）。 */
+  private inboxClients = new Set<WsClient>();
   /** 会话事件序号：只增不减。 */
   private seqs = new Map<string, number>();
   /** 会话事件环形缓冲：按 seq 递增排列，最多 EVENT_BUFFER_LIMIT 条。 */
@@ -25,10 +27,19 @@ export class Hub {
 
   remove(client: WsClient): void {
     this.clients.delete(client);
+    this.inboxClients.delete(client);
     for (const [sessionId, set] of this.subs) {
       set.delete(client);
       if (set.size === 0) this.subs.delete(sessionId);
     }
+  }
+
+  subscribeInbox(client: WsClient): void {
+    this.inboxClients.add(client);
+  }
+
+  unsubscribeInbox(client: WsClient): void {
+    this.inboxClients.delete(client);
   }
 
   subscribe(client: WsClient, sessionId: string): void {
@@ -121,5 +132,10 @@ export class Hub {
   /** 发给所有连接（用于会话列表刷新/删除）。 */
   broadcastAll(msg: ServerMsg): void {
     for (const client of this.clients) this.send(client, msg);
+  }
+
+  /** 只发给订阅了收件箱的连接。 */
+  broadcastInbox(msg: ServerMsg): void {
+    for (const client of this.inboxClients) this.send(client, msg);
   }
 }

@@ -835,6 +835,23 @@ export async function createApp(
     return host.listCommands(cwd);
   });
 
+  // ---------- Skills（兼容 Claude Code 的 SKILL.md） ----------
+  app.get('/api/skills', async (req) => {
+    const query = req.query as { cwd?: string };
+    const cwd = str(query.cwd) ? path.resolve(expandHome(str(query.cwd))) : process.cwd();
+    return host.listSkills(cwd);
+  });
+
+  app.put('/api/skills/state', async (req, reply) => {
+    const body = (req.body ?? {}) as { disabled?: unknown; cwd?: unknown };
+    if (!Array.isArray(body.disabled)) return bad(reply, 'disabled 必须是路径数组');
+    const cwd = str(body.cwd) ? path.resolve(expandHome(str(body.cwd))) : process.cwd();
+    return host.setSkillState(
+      body.disabled.filter((item): item is string => typeof item === 'string'),
+      cwd,
+    );
+  });
+
   // ---------- WebSocket ----------
   app.get('/ws', { websocket: true }, (socket, _req) => {
     const client = socket as unknown as WsClient;
@@ -886,6 +903,21 @@ export async function createApp(
         }
         case 'unsubscribe':
           host.hub.unsubscribe(client, msg.sessionId);
+          break;
+        case 'subscribe_inbox': {
+          host.hub.subscribeInbox(client);
+          const sinceSeq =
+            typeof msg.sinceSeq === 'number' && Number.isFinite(msg.sinceSeq)
+              ? msg.sinceSeq
+              : undefined;
+          host.hub.send(client, {
+            type: 'inbox_snapshot',
+            snapshot: host.inboxSnapshot(sinceSeq),
+          });
+          break;
+        }
+        case 'unsubscribe_inbox':
+          host.hub.unsubscribeInbox(client);
           break;
         case 'send':
           void host.send(msg.sessionId, msg.content).catch((err: Error) => sendError(err.message));

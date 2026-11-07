@@ -323,10 +323,50 @@ export interface BudgetAlert {
 // GET /api/budgets/status -> BudgetStatus[]   各规则当前周期用量、百分比与是否阻止
 // POST /api/sessions/:id/budget-allow-once -> { ok: boolean }   block 预算下临时放行一次（下一次模型请求后失效）
 
+// ---------- 收件箱（跨会话的“需要我”事件流） ----------
+// 客户端连上 WS 后发 subscribe_inbox，服务端把全 Host 的审批/回合结束/预算等摘要推给该连接。
+// 事件按 Host 内全局 seq 单调递增，客户端重连时带 sinceSeq 补齐；缓冲不覆盖则收到 inbox_snapshot。
+export type InboxEventKind = 'permission' | 'permission_resolved' | 'turn_end' | 'budget'
+export interface InboxEvent {
+  seq: number;
+  kind: InboxEventKind;
+  at: number;
+  /** 来源会话；预算告警等 Host 级事件可缺省。 */
+  sessionId?: string;
+  sessionTitle?: string;
+  /** 审批来自子代理/孙代理时的来源标题与层级。 */
+  sourceTitle?: string;
+  depth?: number;
+  /** kind=permission 时为完整审批请求（ExitPlanMode 的计划内容在 input.plan）。 */
+  permission?: PermissionRequest;
+  /** 是计划待批准（ExitPlanMode），客户端显示为「计划审批」。 */
+  plan?: boolean;
+  requestId?: string;
+  decision?: PermissionDecision;
+  turnReason?: 'done' | 'interrupted' | 'error';
+  error?: string;
+  budget?: BudgetAlert;
+  /** 预算告警绑定的会话（触发本次用量的会话）。 */
+  budgetSessionId?: string;
+  budgetSessionTitle?: string;
+  /** 预算告警的可读描述，如「今日 公司 Anthropic 预算已用 80%」。 */
+  budgetText?: string;
+}
+export interface InboxSnapshot {
+  /** Host 当前收件箱 seq；客户端记录用于下次 sinceSeq。 */
+  seq: number;
+  /** 最近的事件（按 seq 升序，最多数百条）。 */
+  events: InboxEvent[];
+  /** 当前仍未处理的审批（服务端权威状态，包含事件缓冲里已被挤掉的旧请求）。 */
+  pending: InboxEvent[];
+}
+
 // ---------- WebSocket: 客户端 -> 服务端 ----------
 export type ClientMsg =
   | { type: 'subscribe'; sessionId: string; sinceSeq?: number } // 订阅；带 sinceSeq 时服务端补发 seq>sinceSeq 的事件（缓冲不够则改发 snapshot）
   | { type: 'unsubscribe'; sessionId: string }
+  | { type: 'subscribe_inbox'; sinceSeq?: number } // 订阅全 Host 收件箱；带 sinceSeq 时先补发
+  | { type: 'unsubscribe_inbox' }
   | { type: 'send'; sessionId: string; content: ContentBlock[] }  // 发送用户消息；运行中发送则排队
   | { type: 'interrupt'; sessionId: string }        // 中断当前轮（Esc）
   | { type: 'permission'; requestId: string; decision: PermissionDecision; reason?: string } // reason 仅用于 ExitPlanMode 的“继续完善”反馈
@@ -348,6 +388,8 @@ export type ServerMsg =
   | ({ type: 'hook_event' } & HookEventNotice)                              // Hook 执行记录（成功默认不展示）
   | ({ type: 'budget_alert' } & BudgetAlert)                                // 预算告警：全局广播，触发会话内同时插 notice
   | { type: 'turn_end'; sessionId: string; reason: 'done' | 'interrupted' | 'error'; error?: string }
+  | { type: 'inbox_snapshot'; snapshot: InboxSnapshot }                     // 订阅收件箱后的全量（或补齐失败时）
+  | { type: 'inbox_event'; event: InboxEvent }                             // 收件箱增量事件
   // 外部会话（Claude Code / Codex）文件有变动，客户端应重新拉取列表
   | { type: 'task_updated'; sessionId: string; task: BackgroundTask; content?: string; since?: number; truncated?: boolean }
   | { type: 'schedules_updated' }
@@ -392,8 +434,34 @@ export type BlockDelta =
 // GET    /api/fs/read?path=&cwd=        -> { path: string; content: string; truncated: boolean; isBinary: boolean; size: number; language?: string }
 //        文件预览：path 可为绝对路径或相对 cwd；限制在 Host 用户可读范围内，>1MB 截断
 // POST   /api/fs/reveal { path }       -> { ok: boolean }  在 Host 本机用系统文件管理器/编辑器打开（仅当客户端与 Host 同机时有意义）
-// GET    /api/commands                -> SlashCommand[]
-export interface SlashCommand { name: string; description: string; source: 'builtin' | 'project' | 'user' }
+// GET    /api/commands                -> SlashCommand[]   （含用户可调用的 skills，source 为 skill）
+export interface SlashCommand {
+  name: string;
+  description: string;
+  source: 'builtin' | 'project' | 'user' | 'skill';
+}
+
+// ---------- Skills（兼容 Claude Code 的 SKILL.md） ----------
+/** 来源：~/.claude/skills、<cwd>/.claude/skills、~/.tandem/skills、~/.claude/plugins 下的 skills。 */
+export type SkillSource = 'user' | 'project' | 'tandem' | 'plugin';
+export interface SkillInfo {
+  name: string;
+  description: string;
+  source: SkillSource;
+  /** SKILL.md 的绝对路径（原文件只读，启用状态另存 ~/.tandem/skills-state.json）。 */
+  path: string;
+  /** 技能目录，用于继续 Read 附带的脚本/模板。 */
+  dir: string;
+  enabled: boolean;
+  /** frontmatter 中 disable-model-invocation 为真时不写入系统提示，仅可 /<name> 调用。 */
+  modelInvocable: boolean;
+  /** frontmatter 中 user-invocable 为假时不出现在 / 菜单。 */
+  userInvocable: boolean;
+  /** 可选的 allowed-tools 声明（仅展示，权限仍由 Tandem 的审批/规则决定）。 */
+  allowedTools?: string[];
+}
+// GET /api/skills?cwd=                     -> SkillInfo[]   扫描并合并各来源（同名时 project > tandem > user > plugin）
+// PUT /api/skills/state { disabled, cwd? } -> SkillInfo[]   停用列表按绝对路径存 ~/.tandem/skills-state.json，不改原文件
 
 // ---------- 检查点（每轮开始前对本轮将改动的文件做快照） ----------
 export interface Checkpoint {
