@@ -29,6 +29,18 @@ export interface Profile {
   groups?: ProfileGroup[]; // 分组：同一账号（同一服务商/中转站）下多组 key，各自可用模型不同，如 "官方渠道"/"低价渠道"
   createdAt: number;
 }
+/** provider 响应头里带回的限流额度；没有该头时缺省，不参与预估。 */
+export interface KeyQuota {
+  remainingRequests?: number;
+  limitRequests?: number;
+  remainingTokens?: number;
+  limitTokens?: number;
+  /** 请求数配额的重置时间（epoch ms）。 */
+  resetRequestsAt?: number;
+  /** token 配额的重置时间（epoch ms）。 */
+  resetTokensAt?: number;
+  updatedAt: number;
+}
 /** 同组多 Key 的调度策略：按顺序优先（failover，默认）或轮询（round_robin）。 */
 export type KeyStrategy = 'failover' | 'round_robin';
 /** 分组里的一个 Key。明文只存在 Host 的 profiles.json，接口只回掩码与运行状态。 */
@@ -42,6 +54,10 @@ export interface ProfileKey {
   cooldownUntil?: number;
   /** 最近一次失败的可读原因。 */
   lastError?: string;
+  /** provider 返回的剩余额度/重置时间（用于会话交接预估）。 */
+  quota?: KeyQuota;
+  /** 最近累计的 429 次数（成功请求不清零，便于排查限流）。 */
+  rateLimitHits?: number;
 }
 export interface ProfileKeyInput { id?: string; label?: string; apiKey?: string; disabled?: boolean } // 带 id 不带 apiKey 表示保留原 key；disabled=false 表示手动重新启用
 export interface ProfileGroup {
@@ -55,8 +71,10 @@ export interface ProfileGroup {
   models: string[];
   defaultModel: string;
   modelCapabilities?: Record<string, ModelCapabilities>;
+  /** 备用分组链（同一账号内，按顺序）：额度将尽时交接给第一个可用的分组。 */
+  fallbackGroupIds?: string[];
 }
-export interface ProfileGroupInput { id?: string; name: string; kind?: ProviderKind; apiKey?: string; /** 旧的单 Key 字段，等价于 apiKeys=[{apiKey}] */ apiKeys?: ProfileKeyInput[]; keyStrategy?: KeyStrategy; baseUrl?: string; models: string[]; defaultModel: string; modelCapabilities?: Record<string, ModelCapabilities> }
+export interface ProfileGroupInput { id?: string; name: string; kind?: ProviderKind; apiKey?: string; /** 旧的单 Key 字段，等价于 apiKeys=[{apiKey}] */ apiKeys?: ProfileKeyInput[]; keyStrategy?: KeyStrategy; baseUrl?: string; models: string[]; defaultModel: string; modelCapabilities?: Record<string, ModelCapabilities>; fallbackGroupIds?: string[] }
 export interface ProfileInput {
   name: string;
   kind: ProviderKind;
@@ -119,6 +137,10 @@ export interface SessionSummary {
   aiReviewUsage?: Usage;
   /** 最近一次请求的上下文占用（随 session_updated 推送，也可 GET /api/sessions/:id/context）。 */
   context?: ContextBreakdown;
+  /** 配额将尽时的交接状态（卡片/等待/已交接）；无交接时不填。 */
+  handoff?: HandoffState;
+  /** 按最近几轮消耗速度预估的剩余可跑轮数。 */
+  quota?: QuotaEstimate;
   /** 本项目（仓库根或 cwd）+ 全局可用的 secret 数量；右栏「详情」显示，不含值。 */
   secretsCount?: number;
 }
@@ -135,6 +157,62 @@ export interface Usage {
   reasoningTokens?: number;  // 输出中的推理 token（OpenAI reasoning_tokens 等，已含在 outputTokens 内）
   costUsd?: number;
   keyId?: string;            // 本轮实际使用的分组 Key id（多 Key 切换后便于统计）
+}
+
+// ---------- 配额预估与会话交接 ----------
+/** 会话交接策略：询问 / 自动切到备用分组 / 自动等待重置。 */
+export type HandoffPolicy = 'ask' | 'switch' | 'wait';
+export type HandoffReason = 'ratelimit' | 'budget' | 'forecast';
+export type HandoffStatus = 'pending' | 'switching' | 'waiting' | 'done' | 'paused' | 'failed';
+/** 交接来源/目标（profileId + groupId + 模型 + 展示名）。 */
+export interface HandoffPeer {
+  profileId: string;
+  groupId?: string;
+  model?: string;
+  label: string;
+}
+export interface HandoffState {
+  id: string;
+  reason: HandoffReason;
+  status: HandoffStatus;
+  createdAt: number;
+  from: HandoffPeer;
+  /** 可切换的备用分组/模型；没有备用链时缺省，只保留等待/暂停。 */
+  target?: HandoffPeer;
+  /** 等待策略的预计恢复时间（epoch ms）。 */
+  resumeAt?: number;
+  /** 卡片正文，如「muze › codex 额度将尽。继续方式：…」。 */
+  message: string;
+  via?: 'auto' | 'user';
+  resolvedAt?: number;
+}
+/** 当前会话按最近消耗速度的预估；随 session_updated / 上下文面板下发。 */
+export interface QuotaEstimate {
+  /** 预计还能跑的轮数（取预算与限流中更紧的一项）。 */
+  turnsLeft?: number;
+  limitedBy?: 'budget' | 'ratelimit';
+  avgCostPerTurn?: number;
+  avgTokensPerTurn?: number;
+  budget?: {
+    ruleId: string;
+    label: string;
+    percent: number;
+    remainingUsd: number;
+    resetAt: number;
+  };
+  key?: {
+    remainingRequests?: number;
+    remainingTokens?: number;
+    resetAt?: number;
+    /** 当前分组是否所有 Key 都在冷却。 */
+    cooling: boolean;
+  };
+  updatedAt: number;
+}
+export interface HandoffSettings {
+  policy: HandoffPolicy;
+  /** 自动切换策略的默认目标；缺省先用当前分组的备用分组链。 */
+  target?: { profileId: string; groupId?: string; model?: string };
 }
 // 上下文里最占空间的单条内容（消息或工具结果），供面板点选跳转
 export interface ContextTopItem {
@@ -157,6 +235,8 @@ export interface ContextBreakdown {
   topItems?: ContextTopItem[];
   /** 自动压缩触发配置；老 Host 缺失时不展示提示。 */
   autoCompact?: { enabled: boolean; threshold: number };
+  /** 按当前速度的剩余轮数预估（用量卡/上下文面板共用）。 */
+  quota?: QuotaEstimate;
   updatedAt: number;
 }
 
@@ -249,6 +329,8 @@ export interface ModelInfo {
 // 否则 Host 内置能力表按模型 id 前缀匹配（如 claude-*-4/4.5/5 支持 thinking；o1/o3/o4/gpt-5 系列支持 reasoning_effort；deepseek-reasoner 不可调）。
 // GET /api/models/capabilities?profileId=&groupId=&model= -> ModelInfo   单个模型的能力（含 efforts、contextWindow）
 // GET /api/sessions/:id/context -> ContextBreakdown
+// POST /api/sessions/:id/handoff { action: 'switch' | 'wait' | 'pause' } -> SessionSummary
+//        额度将尽时选择继续方式：切换备用分组 / 等待重置后自动继续 / 暂停。
 
 // ---------- 消息 ----------
 export type ContentBlock =
@@ -451,6 +533,8 @@ export interface HostSettings {
   context?: ContextSettings;
   /** 提交前 AI 评审的模型与拦截策略。 */
   aiReview?: AiReviewSettings;
+  /** 配额将尽时的默认交接策略。 */
+  handoff?: HandoffSettings;
   /** 命令沙箱与网络白名单（~/.tandem/sandbox.json）。 */
   sandbox?: SandboxSettings;
 }
@@ -725,7 +809,7 @@ export interface BudgetAlert {
 // ---------- 收件箱（跨会话的“需要我”事件流） ----------
 // 客户端连上 WS 后发 subscribe_inbox，服务端把全 Host 的审批/回合结束/预算等摘要推给该连接。
 // 事件按 Host 内全局 seq 单调递增，客户端重连时带 sinceSeq 补齐；缓冲不覆盖则收到 inbox_snapshot。
-export type InboxEventKind = 'permission' | 'permission_resolved' | 'turn_end' | 'budget' | 'ci' | 'eval' | 'board'
+export type InboxEventKind = 'permission' | 'permission_resolved' | 'turn_end' | 'budget' | 'ci' | 'eval' | 'board' | 'handoff'
 export interface InboxEvent {
   seq: number;
   kind: InboxEventKind;
@@ -778,6 +862,8 @@ export interface InboxEvent {
     event: 'review' | 'failed' | 'finished';
     text: string;
   };
+  /** kind=handoff：额度将尽，等待用户选择切换/等待/暂停。 */
+  handoff?: { state: HandoffState; text: string };
 }
 export interface InboxSnapshot {
   /** Host 当前收件箱 seq；客户端记录用于下次 sinceSeq。 */
