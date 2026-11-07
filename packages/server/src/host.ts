@@ -115,6 +115,18 @@ import {
 import { inboxSnapshot, pushInbox, recordCi } from './host/inbox.js';
 import { importSession, notifyExternalSessionsChanged } from './host/external.js';
 import {
+  delegationFor,
+  delegationKey,
+  delegationPrompt,
+  orchestrateTools,
+  presetSummary,
+  runSubagent,
+  subagentConfig,
+  taskToolDescription,
+  toolDefinition,
+  toolDefinitions,
+} from './host/subagents.js';
+import {
   allowBudgetOnce,
   assertBudget,
   buildSystemFor,
@@ -349,61 +361,8 @@ export class Host {
     return findModelForAlias(this, alias, preferredProfileId, preferredGroupId);
   }
 
-  /** 合并主会话与子代理预设：账号/分组/模型/effort/权限/工具白名单/附加提示。 */
-  private subagentConfig(
-    parent: SessionRecord,
-    presetName?: string,
-    modelOverride?: string,
-  ): {
-    profileId: string;
-    groupId?: string;
-    model: string;
-    effort?: ReasoningEffort;
-    permissionMode: PermissionMode;
-    delegation: DelegationStrategy;
-    toolWhitelist?: string[];
-    systemPromptExtra?: string;
-    presetName?: string;
-  } {
-    const preset = presetName ? this.subagentPresets.resolve(presetName, parent.cwd) : undefined;
-    let profileId = parent.profileId;
-    let groupId = parent.groupId;
-    if (preset?.profileId && this.profiles.get(preset.profileId)) {
-      profileId = preset.profileId;
-      groupId =
-        preset.groupId && this.groupFor(profileId, preset.groupId) ? preset.groupId : undefined;
-    } else if (preset?.groupId && this.groupFor(profileId, preset.groupId)) {
-      groupId = preset.groupId;
-    }
-
-    let model = modelOverride?.trim() || preset?.model?.trim() || '';
-    const alias = modelAliasOf(model);
-    if (alias) {
-      const found = this.findModelForAlias(alias, profileId, groupId);
-      if (found) {
-        profileId = found.profileId;
-        groupId = found.groupId;
-        model = found.model;
-      } else {
-        // 找不到对应模型时沿用主会话，不把 sonnet 之类的别名直接发给 provider
-        profileId = parent.profileId;
-        groupId = parent.groupId;
-        model = parent.model;
-      }
-    }
-    if (!model) model = this.profileFor(profileId, groupId)?.defaultModel || parent.model;
-
-    return {
-      profileId,
-      ...(groupId ? { groupId } : {}),
-      model,
-      ...((preset?.effort ?? parent.effort) ? { effort: preset?.effort ?? parent.effort } : {}),
-      permissionMode: preset?.permissionMode ?? parent.permissionMode,
-      delegation: preset?.delegation ?? 'less',
-      ...(preset?.allowedTools?.length ? { toolWhitelist: [...preset.allowedTools] } : {}),
-      ...(preset?.systemPrompt ? { systemPromptExtra: preset.systemPrompt } : {}),
-      ...(preset ? { presetName: preset.name } : {}),
-    };
+  subagentConfig(parent: SessionRecord, presetName?: string, modelOverride?: string): { profileId: string; groupId?: string; model: string; effort?: ReasoningEffort; permissionMode: PermissionMode; delegation: DelegationStrategy; toolWhitelist?: string[]; systemPromptExtra?: string; presetName?: string; } {
+    return subagentConfig(this, parent, presetName, modelOverride);
   }
 
   keyCandidates(profileId: string, groupId?: string): { group?: StoredProfileGroup; effective?: StoredProfile; candidates: Array<{ keyId?: string; label?: string; profile: StoredProfile }>; } {
@@ -442,110 +401,36 @@ export class Host {
     return modelCapabilities(this, profileId, groupId, model);
   }
 
-  /** 会话的委派策略；子会话缺省 less。 */
   delegationFor(rec: SessionRecord): DelegationStrategy {
-    return rec.delegation ?? ((rec.depth ?? 0) === 0 ? this.settings().defaultDelegation ?? 'less' : 'less');
+    return delegationFor(this, rec);
   }
 
-  /** 编排模式下主会话只保留规划/汇总所需的最小工具集。 */
-  private orchestrateTools(rec: SessionRecord): ToolDefinition[] {
-    const allowed = new Set([
-      'Task',
-      'TodoWrite',
-      'Read',
-      'Glob',
-      'Grep',
-      'WebFetch',
-      'BashOutput',
-      ...(rec.permissionMode === 'plan' ? ['ExitPlanMode'] : []),
-    ]);
-    return TOOLS.filter((tool) => allowed.has(tool.name));
+  orchestrateTools(rec: SessionRecord): ToolDefinition[] {
+    return orchestrateTools(this, rec);
   }
 
-  /** 子代理预设列表（用于 Task 工具说明与系统提示）。 */
   presetSummary(cwd: string): string {
-    const presets = this.subagentPresets.list(cwd);
-    if (presets.length === 0) return '（无自定义预设）';
-    return presets
-      .map((preset) => `${preset.name}${preset.description ? `（${preset.description}）` : ''}`)
-      .join('；');
+    return presetSummary(this, cwd);
   }
 
-  /** Task 工具描述属于只读提示词（与工具实现强绑定），{{presets}} 替换为预设列表。 */
   taskToolDescription(cwd: string): string {
-    return TASK_DESCRIPTION_DEFAULT.replace(/\{\{presets\}\}/g, this.presetSummary(cwd));
+    return taskToolDescription(this, cwd);
   }
 
-  /** 当前委派策略对应的注册表 key。 */
   delegationKey(rec: SessionRecord): PromptTemplateKey {
-    const strategy = this.delegationFor(rec);
-    return strategy === 'orchestrate'
-      ? 'delegationOrchestrate'
-      : strategy === 'more'
-        ? 'delegationMore'
-        : strategy === 'none'
-          ? 'delegationNone'
-          : 'delegationLess';
+    return delegationKey(this, rec);
   }
 
-  /** 当前会话应注入的委派策略提示词。 */
   delegationPrompt(rec: SessionRecord): string {
-    const strategy = this.delegationFor(rec);
-    return this.promptTemplates.render(
-      this.delegationKey(rec),
-      {
-        presets: this.presetSummary(rec.cwd),
-        cwd: rec.cwd,
-        delegation: strategy,
-      },
-      rec.cwd,
-    );
+    return delegationPrompt(this, rec);
   }
 
-  /** 本轮可用的工具：内置工具（depth < 3 才含 Task）+ 当前 cwd 已连接的 MCP 工具。 */
   toolDefinitions(rec: SessionRecord, allowTask = true): ToolDefinition[] {
-    const strategy = this.delegationFor(rec);
-    const canDelegate = allowTask && strategy !== 'none' && (rec.depth ?? 0) < 3;
-    const hasSkills = this.skills
-      .list(rec.cwd)
-      .some((skill) => skill.enabled && skill.modelInvocable);
-    const whitelist = rec.toolWhitelist?.length
-      ? new Set(rec.toolWhitelist.map((name) => name.toLowerCase()))
-      : null;
-    const allowed = (name: string) => !whitelist || whitelist.has(name.toLowerCase());
-    const orchestrating = strategy === 'orchestrate' && (rec.depth ?? 0) === 0;
-    const source = orchestrating
-      ? this.orchestrateTools(rec).filter((tool) => allowed(tool.name))
-      : TOOLS;
-    const base = source
-      .filter(
-        (tool) =>
-          (canDelegate || tool.name !== 'Task') &&
-          // 没有可用技能时不暴露 Skill，避免模型空调用
-          (tool.name !== 'Skill' || hasSkills) &&
-          // 仅计划模式暴露 ExitPlanMode，其它模式下不打扰模型
-          (tool.name !== 'ExitPlanMode' || rec.permissionMode === 'plan') &&
-          allowed(tool.name),
-      )
-      .map((tool) =>
-        tool.name === 'Task'
-          ? { ...tool, description: this.taskToolDescription(rec.cwd) }
-          : tool,
-      );
-    // 编排模式主会话不接 MCP，避免绕过委派直接产生副作用
-    const mcp = orchestrating
-      ? []
-      : this.mcp.toolDefinitions(rec.cwd).filter((tool) => allowed(tool.name));
-    return [...base, ...mcp];
+    return toolDefinitions(this, rec, allowTask);
   }
 
-  /** 按名称找工具定义（含动态 MCP 工具），供权限判定/调用路由使用。 */
   toolDefinition(name: string, cwd: string): ToolDefinition | undefined {
-    return (
-      TOOL_MAP.get(name) ??
-      this.mcp.toolDefinitions(cwd).find((tool) => tool.name === name) ??
-      this.mcp.findTool(name)
-    );
+    return toolDefinition(this, name, cwd);
   }
 
   mergeSessionWorktree(id: string,
@@ -849,85 +734,8 @@ export class Host {
     return out;
   }
 
-  /** Task 工具：创建子会话并运行完整 agent 循环；最后一条 assistant 文本作为结果。 */
-  async runSubagent(
-    parent: SessionRecord,
-    input: { description: string; prompt: string; subagentType?: string; model?: string },
-    signal: AbortSignal,
-  ): Promise<ToolResult> {
-    if (signal.aborted) return { content: '用户中断', isError: true };
-    const depth = (parent.depth ?? 0) + 1;
-    if (depth > 3) return { content: '已达到最大代理层级，不能再派发子代理', isError: true };
-    const config = this.subagentConfig(parent, input.subagentType, input.model);
-    const systemPromptExtra = [
-      this.promptTemplates.render('subagentDefault', {}, parent.cwd),
-      config.systemPromptExtra,
-    ]
-      .filter((part): part is string => !!part && part.trim().length > 0)
-      .join('\n\n');
-    const now = Date.now();
-    const sub: SessionRecord = {
-      id: randomUUID(),
-      title: input.description.slice(0, 120) || '子代理',
-      cwd: parent.cwd,
-      profileId: config.profileId,
-      ...(config.groupId ? { groupId: config.groupId } : {}),
-      model: config.model,
-      permissionMode: config.permissionMode,
-      ...(config.effort ? { effort: config.effort } : {}),
-      delegation: config.delegation,
-      status: 'idle',
-      createdAt: now,
-      updatedAt: now,
-      usage: { inputTokens: 0, outputTokens: 0 },
-      messages: [],
-      todos: [],
-      allowedTools: [...parent.allowedTools],
-      ...(config.toolWhitelist ? { toolWhitelist: config.toolWhitelist } : {}),
-      ...(systemPromptExtra ? { systemPromptExtra } : {}),
-      parentId: parent.id,
-      depth,
-    };
-    this.store.add(sub);
-    this.broadcastSummary(sub);
-
-    const promptMessage: Message = {
-      id: randomUUID(),
-      role: 'user',
-      content: [{ type: 'text', text: input.prompt }],
-      createdAt: Date.now(),
-    };
-    sub.messages.push(promptMessage);
-    const subRt = this.ensureRuntime(sub.id);
-    subRt.checkpoint = this.checkpoints.create(sub.id, promptMessage.id);
-    this.hub.broadcastSession(sub.id, {
-      type: 'message_start',
-      sessionId: sub.id,
-      message: promptMessage,
-    });
-    this.hub.broadcastSession(sub.id, {
-      type: 'message_end',
-      sessionId: sub.id,
-      message: promptMessage,
-    });
-    this.store.markDirty(sub.id, true);
-    this.broadcastSummary(sub);
-
-    // 主会话中断时级联中断子会话
-    const onAbort = () => this.interrupt(sub.id);
-    signal.addEventListener('abort', onAbort, { once: true });
-    if (signal.aborted) this.interrupt(sub.id);
-    try {
-      const result = await runTurn(this, sub, { allowTask: depth < 3 });
-      if (result.lastText) return { content: result.lastText };
-      if (result.reason === 'error') {
-        return { content: `子代理执行失败: ${result.error ?? '未知错误'}`, isError: true };
-      }
-      if (result.reason === 'interrupted') return { content: '子代理已被中断', isError: true };
-      return { content: '（子代理没有返回文本）' };
-    } finally {
-      signal.removeEventListener('abort', onAbort);
-    }
+  runSubagent(parent: SessionRecord, input: { description: string; prompt: string; subagentType?: string; model?: string }, signal: AbortSignal): Promise<ToolResult> {
+    return runSubagent(this, parent, input, signal);
   }
 
   updateTodos(rec: SessionRecord, todos: Todo[]): void {
