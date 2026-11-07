@@ -11,6 +11,71 @@ export interface FeedbackRect {
   pageY: number
 }
 
+export type FeedbackPriority = 'P0' | 'P1' | 'P2'
+
+export type FeedbackSelectMode = 'element' | 'region'
+
+export interface FeedbackReference {
+  id: string
+  name: string
+  dataURL: string
+  addedAt: number
+}
+
+export interface FeedbackTraceEntry {
+  time: number
+  kind: 'click' | 'key' | 'route' | 'ws' | 'toast'
+  detail: string
+}
+
+export interface FeedbackSnapshotMessage {
+  role: string
+  createdAt: number
+  text: string
+}
+
+export interface FeedbackSnapshot {
+  capturedAt: number
+  route: string
+  viewport: { width: number; height: number; dpr: number }
+  theme: string
+  hidePaths: boolean
+  client: { platform: string; language: string; ua: string }
+  ui: Record<string, unknown>
+  host?: Record<string, unknown>
+  session?: Record<string, unknown>
+  messages?: FeedbackSnapshotMessage[]
+}
+
+export interface FeedbackVideo {
+  name: string
+  mime: string
+  dataURL: string
+  durationMs: number
+  sizeBytes: number
+}
+
+export type ReceiptStatus = 'fixed' | 'wontfix' | 'needs-info'
+
+export interface FeedbackReceiptItem {
+  id: string
+  status: ReceiptStatus
+  note?: string
+  afterImage?: string
+  /** 用户复验结果，随「复验」导出。 */
+  verification?: { result: 'pass' | 'fail'; note?: string; at: number }
+}
+
+export interface FeedbackReceipt {
+  version: number
+  sourceFile: string
+  items: FeedbackReceiptItem[]
+}
+
+export function receiptStatusLabel(status: ReceiptStatus): string {
+  return status === 'fixed' ? '已修复' : status === 'wontfix' ? '不修复' : '需更多信息'
+}
+
 export interface FeedbackItem {
   id: string
   type: FeedbackType
@@ -33,9 +98,20 @@ export interface FeedbackItem {
   createdAt: number
   /** dataURL；元素截图优先，失败时为整页缩略图。 */
   screenshot?: string
-  screenshotKind?: 'element' | 'page'
+  screenshotKind?: 'element' | 'page' | 'region'
   /** 元素截图是在四周补了 16px 背景的版本。 */
   screenshotPadding?: number
+  /** 选择方式：点选元素 / 拖拽框选区域。 */
+  mode?: FeedbackSelectMode
+  priority?: FeedbackPriority
+  /** 标注后的截图（dataURL）；原图始终保留在 screenshot。 */
+  annotatedScreenshot?: string
+  references?: FeedbackReference[]
+  /** 反馈前 60 秒的操作轨迹。 */
+  trace?: FeedbackTraceEntry[]
+  snapshot?: FeedbackSnapshot
+  /** 录屏附件（webm，仅本地）。 */
+  video?: FeedbackVideo
 }
 
 export interface FeedbackPageShot {
@@ -50,6 +126,7 @@ export interface FeedbackPageShot {
 export interface FeedbackStoredState {
   items: FeedbackItem[]
   pageShots: FeedbackPageShot[]
+  receipt?: FeedbackReceipt | null
 }
 
 export const FEEDBACK_STORAGE_KEY = 'tandem.feedback.v1'
@@ -97,10 +174,10 @@ export async function loadFeedbackState(): Promise<FeedbackStoredState> {
   }
   try {
     const raw = localStorage.getItem(FEEDBACK_STORAGE_KEY)
-    if (!raw) return { items: [], pageShots: [] }
+    if (!raw) return { items: [], pageShots: [], receipt: null }
     return sanitizeStored(JSON.parse(raw) as FeedbackStoredState)
   } catch {
-    return { items: [], pageShots: [] }
+    return { items: [], pageShots: [], receipt: null }
   }
 }
 
@@ -111,7 +188,21 @@ function sanitizeStored(input: FeedbackStoredState): FeedbackStoredState {
   const pageShots = Array.isArray(input?.pageShots)
     ? input.pageShots.filter((shot) => shot && typeof shot.dataURL === 'string')
     : []
-  return { items, pageShots: pageShots.slice(-MAX_PAGE_SHOTS) }
+  const receipt = sanitizeReceipt(input?.receipt)
+  return { items, pageShots: pageShots.slice(-MAX_PAGE_SHOTS), receipt }
+}
+
+function sanitizeReceipt(input: unknown): FeedbackReceipt | null {
+  if (!input || typeof input !== 'object') return null
+  const receipt = input as FeedbackReceipt
+  if (!Array.isArray(receipt.items)) return null
+  const items = receipt.items.filter(
+    (item) =>
+      item &&
+      typeof item.id === 'string' &&
+      (item.status === 'fixed' || item.status === 'wontfix' || item.status === 'needs-info'),
+  )
+  return { version: receipt.version ?? 1, sourceFile: receipt.sourceFile ?? '', items }
 }
 
 export async function saveFeedbackState(state: FeedbackStoredState): Promise<void> {
@@ -121,7 +212,7 @@ export async function saveFeedbackState(state: FeedbackStoredState): Promise<voi
     await new Promise<void>((resolve) => {
       try {
         const tx = db.transaction(DB_STORE, 'readwrite')
-        tx.objectStore(DB_STORE).put({ items: state.items, pageShots }, DB_KEY)
+        tx.objectStore(DB_STORE).put({ items: state.items, pageShots, receipt: state.receipt ?? null }, DB_KEY)
         tx.oncomplete = () => resolve()
         tx.onerror = () => resolve()
         tx.onabort = () => resolve()
@@ -134,8 +225,14 @@ export async function saveFeedbackState(state: FeedbackStoredState): Promise<voi
   // 镜像只保留文字与坐标，避免撑爆 5MB 配额；截图仍可从 IndexedDB 读回。
   try {
     const meta = {
-      items: state.items.slice(-20).map(({ screenshot: _screenshot, ...rest }) => rest),
+      items: state.items.slice(-20).map(({ screenshot: _screenshot, annotatedScreenshot: _annotated, references: _refs, video: _video, ...rest }) => rest),
       pageShots: [],
+      receipt: state.receipt
+        ? {
+            ...state.receipt,
+            items: state.receipt.items.map(({ afterImage: _afterImage, ...rest }) => rest),
+          }
+        : null,
     }
     localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(meta))
   } catch {
@@ -154,6 +251,25 @@ export function feedbackTypeLabel(type: FeedbackType): string {
 export function feedbackFilename(date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `tandem-feedback-${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}.json`
+}
+
+/** 解析维护者回执；非法结构返回 null。 */
+export function parseFeedbackReceipt(raw: string): FeedbackReceipt | null {
+  try {
+    const data = JSON.parse(raw) as FeedbackReceipt
+    return sanitizeReceipt(data)
+  } catch {
+    return null
+  }
+}
+
+export function readFileAsDataURL(file: Blob): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null)
+    reader.onerror = () => resolve(null)
+    reader.readAsDataURL(file)
+  })
 }
 
 function triggerDownload(data: string, filename: string): boolean {

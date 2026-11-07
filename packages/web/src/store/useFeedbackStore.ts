@@ -4,6 +4,7 @@ import {
   saveFeedbackState,
   type FeedbackItem,
   type FeedbackPageShot,
+  type FeedbackReceipt,
 } from '../lib/feedback'
 
 interface FeedbackState {
@@ -11,17 +12,26 @@ interface FeedbackState {
   hydrated: boolean
   items: FeedbackItem[]
   pageShots: FeedbackPageShot[]
+  receipt: FeedbackReceipt | null
   enter: () => void
   exit: () => void
   hydrate: () => Promise<void>
   upsertItem: (item: FeedbackItem) => void
   removeItem: (id: string) => void
+  moveItem: (from: number, to: number) => void
+  importReceipt: (receipt: FeedbackReceipt) => void
+  clearReceipt: () => void
+  setVerification: (id: string, result: 'pass' | 'fail', note?: string) => void
   addPageShot: (shot: FeedbackPageShot) => void
   clear: () => void
 }
 
-function persist(items: FeedbackItem[], pageShots: FeedbackPageShot[]): void {
-  void saveFeedbackState({ items, pageShots })
+function persist(
+  items: FeedbackItem[],
+  pageShots: FeedbackPageShot[],
+  receipt: FeedbackReceipt | null,
+): void {
+  void saveFeedbackState({ items, pageShots, receipt })
 }
 
 export const useFeedbackStore = create<FeedbackState>()((set, get) => ({
@@ -29,6 +39,7 @@ export const useFeedbackStore = create<FeedbackState>()((set, get) => ({
   hydrated: false,
   items: [],
   pageShots: [],
+  receipt: null,
 
   enter: () => {
     set({ active: true })
@@ -49,7 +60,12 @@ export const useFeedbackStore = create<FeedbackState>()((set, get) => ({
     for (const shot of get().pageShots) {
       if (!shots.some((entry) => entry.id === shot.id)) shots.push(shot)
     }
-    set({ hydrated: true, items: merged, pageShots: shots })
+    set({
+      hydrated: true,
+      items: merged,
+      pageShots: shots,
+      receipt: get().receipt ?? stored.receipt ?? null,
+    })
   },
 
   upsertItem: (item) => {
@@ -57,23 +73,55 @@ export const useFeedbackStore = create<FeedbackState>()((set, get) => ({
     const index = items.findIndex((entry) => entry.id === item.id)
     const next = index >= 0 ? items.map((entry) => (entry.id === item.id ? item : entry)) : [...items, item]
     set({ items: next })
-    persist(next, get().pageShots)
+    persist(next, get().pageShots, get().receipt)
   },
 
   removeItem: (id) => {
     const next = get().items.filter((item) => item.id !== id)
     set({ items: next })
-    persist(next, get().pageShots)
+    persist(next, get().pageShots, get().receipt)
+  },
+
+  moveItem: (from, to) => {
+    const items = get().items.slice()
+    if (from < 0 || from >= items.length || to < 0 || to >= items.length || from === to) return
+    const [moved] = items.splice(from, 1)
+    items.splice(to, 0, moved)
+    set({ items })
+    persist(items, get().pageShots, get().receipt)
+  },
+
+  importReceipt: (receipt) => {
+    set({ receipt })
+    persist(get().items, get().pageShots, receipt)
+  },
+
+  clearReceipt: () => {
+    set({ receipt: null })
+    persist(get().items, get().pageShots, null)
+  },
+
+  setVerification: (id, result, note) => {
+    const receipt = get().receipt
+    if (!receipt) return
+    const items = receipt.items.map((entry) =>
+      entry.id === id
+        ? { ...entry, verification: { result, note, at: Date.now() } }
+        : entry,
+    )
+    const next = { ...receipt, items }
+    set({ receipt: next })
+    persist(get().items, get().pageShots, next)
   },
 
   addPageShot: (shot) => {
     const next = [...get().pageShots.filter((entry) => entry.route !== shot.route), shot].slice(-12)
     set({ pageShots: next })
-    persist(get().items, next)
+    persist(get().items, next, get().receipt)
   },
 
   clear: () => {
-    set({ items: [], pageShots: [] })
-    persist([], [])
+    set({ items: [], pageShots: [], receipt: null })
+    persist([], [], null)
   },
 }))

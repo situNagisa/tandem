@@ -162,6 +162,35 @@ export async function captureElementShot(element: Element): Promise<string | nul
   }
 }
 
+/** 框选区域截图：整页渲染后按页面坐标裁切，跨多个元素也能完整截到。 */
+export async function captureRegionShot(rect: FeedbackRect): Promise<string | null> {
+  try {
+    const scale = Math.min(2, Math.max(1, window.devicePixelRatio || 1))
+    const raw = await domToPng(document.body, {
+      scale,
+      filter: screenshotFilter,
+      timeout: 15_000,
+      backgroundColor: getComputedStyle(document.body).backgroundColor || '#ffffff',
+    })
+    const img = await loadImage(raw)
+    const bodyBox = document.body.getBoundingClientRect()
+    const sx = Math.max(0, (rect.pageX - bodyBox.left - window.scrollX) * scale)
+    const sy = Math.max(0, (rect.pageY - bodyBox.top - window.scrollY) * scale)
+    const sw = Math.max(1, Math.min(img.width - sx, rect.width * scale))
+    const sh = Math.max(1, Math.min(img.height - sy, rect.height * scale))
+    const maxScale = Math.min(1, MAX_IMAGE_WIDTH / Math.max(sw, 1))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(sw * maxScale))
+    canvas.height = Math.max(1, Math.round(sh * maxScale))
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
+    return canvas.toDataURL('image/png')
+  } catch {
+    return null
+  }
+}
+
 function loadImage(dataUrl: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
