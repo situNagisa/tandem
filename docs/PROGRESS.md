@@ -153,3 +153,14 @@
 - [x] 提示词模板：`~/.tandem/prompts.json`（{values:{taskDescription,delegationOrchestrate,delegationMore,delegationLess,delegationNone,subagentDefault}}），空值跟随内置默认，支持 {{presets}}/{{cwd}}/{{delegation}}；后续并入全局提示词注册表
 - [x] 手机派单：新会话页/顶栏/侧栏/手机首页「收件箱」旁「派单」入口；选 Host（在线/离线）、项目（最近+浏览）、账号/模型（该 Host 上次使用）、权限、任务 → 目标 Host 建会话并运行，停留在原页 Toast「已派单到 <Host> · 查看」；收件箱照常收到审批/完成事件
 - 验证：两个 Host（/tmp/tandem-xa:8171、/tmp/tandem-xb:8172）+ 本地 mock OpenAI SSE；主模型 strong-model → Task 探索预设 → 子代理请求 model=cheap-model 且工具白名单 Read/Glob/Grep；Claude agent 文件 sonnet → claude-sonnet-4-5；四档 tools 与系统提示（mock 日志 strategy/定制标记）不同；Playwright 390×844 向 B 派单成功、停留首页、Toast 查看跳转、收件箱出现回合完成；截图 /tmp/xagent-shots/
+
+## 迭代 19（2026-11-07）反馈模式 v2
+- [x] 框选区域：浮条切换「点选 / 框选」，拖拽任意矩形（跨元素）截图；区域截图按页面坐标裁切，条目标记为框选
+- [x] 截图标注：Canvas 编辑器（矩形/箭头/画笔/文字/马赛克，橙白红三色，撤销重做）；导出保留原图与标注图
+- [x] 参考图：编辑浮窗内 Ctrl+V 粘贴 / 拖入 / 选择图片（≤6 张），条目抽屉显示缩略图，随反馈导出
+- [x] 操作轨迹：内存环形缓冲 200 条（点击选择器+可见文本、功能键与快捷键、路由、WS 断连/重连、toast、前端错误），每条附带反馈前 60 秒；不记录输入文字；可选 getDisplayMedia 本地录屏（≤60s、≤8MB）附加到下一条
+- [x] 状态快照：路由、会话摘要（id/标题/状态/模型/消息数，可选最近 5 条正文）、UI 偏好、视口、主题、Host 平台版本；白名单采集，绝不含 key/token/配置内容；本地路径默认保留，抽屉可开「隐藏路径」
+- [x] 条目抽屉：缩略图、类型、P0/P1/P2、文字、参考图缩略；编辑/删除/拖拽排序/页面定位高亮
+- [x] 回执复验闭环：导入 `tandem-feedback-receipt-*.json`、状态与说明、前/后对比滑块；顺序跳转路由+选择器高亮，逐条「通过 / 仍有问题（备注）」，导出 kind=verification 的复验文件
+- [x] 脚本：`feedback-unpack.mjs` 支持标注/参考/轨迹/录屏/快照独立文件并在 feedback.md 引用；新增 `feedback-receipt.mjs`（Markdown/JSON 草稿 → 回执）；README 反馈小节更新
+- 验证：TANDEM_HOME=/tmp/tandem-fb2v（8191 被占用，改用 8193）+ Vite 5179；Playwright：进入反馈模式 → 点选 + 框选 → Canvas 画框标注 → 剪贴板事件粘贴参考图 → 导出（捕获下载）→ 解包 2 条/8 附件 → 生成并导入回执 → 复验 2 条（通过/仍有问题）→ 导出复验结果 → 退出；截图 /tmp/fbv2-shots/；`npm run build -w @tandem/web`、`ui-audit` 通过
