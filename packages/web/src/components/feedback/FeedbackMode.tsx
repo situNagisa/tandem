@@ -936,7 +936,7 @@ export function FeedbackMode() {
     }
   }, [])
 
-  // 复验：切到对应路由并把目标滚到视口中间。
+  // 复验：切到对应路由并把目标滚到视口中间；路由渲染有延迟时轮询等待。
   useEffect(() => {
     if (!verify) return
     const entry = verify.queue[verify.index]
@@ -944,12 +944,28 @@ export function FeedbackMode() {
     if (entry.item.route && window.location.hash !== entry.item.route) {
       window.location.hash = entry.item.route
     }
-    const timer = window.setTimeout(() => {
+    let interval: number | null = null
+    let attempts = 0
+    const locate = () => {
       const element = safeQuery(entry.item.selector)
-      element?.scrollIntoView({ block: 'center', inline: 'center' })
+      if (element) element.scrollIntoView({ block: 'center', inline: 'center' })
       setTick((value) => value + 1)
+      return !!element
+    }
+    const timer = window.setTimeout(() => {
+      if (locate()) return
+      interval = window.setInterval(() => {
+        attempts += 1
+        if (locate() || attempts >= 7) {
+          if (interval) window.clearInterval(interval)
+          interval = null
+        }
+      }, 500)
     }, 420)
-    return () => window.clearTimeout(timer)
+    return () => {
+      window.clearTimeout(timer)
+      if (interval) window.clearInterval(interval)
+    }
   }, [verify?.index, verify?.queue])
 
   useEffect(() => {

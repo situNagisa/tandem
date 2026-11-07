@@ -24,7 +24,7 @@ export interface FeedbackReference {
 
 export interface FeedbackTraceEntry {
   time: number
-  kind: 'click' | 'key' | 'route' | 'ws' | 'toast'
+  kind: 'click' | 'key' | 'route' | 'ws' | 'toast' | 'error'
   detail: string
 }
 

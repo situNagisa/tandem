@@ -36,6 +36,7 @@ const TRACE_LABELS = {
   route: '路由',
   ws: '连接',
   toast: '提示',
+  error: '错误',
 }
 const EXT_BY_MIME = {
   'image/png': 'png',

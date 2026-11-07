@@ -3,7 +3,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { cssSelectorFor, visibleTextSnippet } from './feedbackCapture'
 
-export type FeedbackTraceKind = 'click' | 'key' | 'route' | 'ws' | 'toast'
+export type FeedbackTraceKind = 'click' | 'key' | 'route' | 'ws' | 'toast' | 'error'
 
 export interface FeedbackTraceEntry {
   time: number

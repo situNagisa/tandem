@@ -1,4 +1,5 @@
 /** 反馈模式采集的全局错误（环形缓冲，最近 50 条）。在 main.tsx 最早安装。 */
+import { recordFeedbackTrace } from './feedbackTrace'
 
 export interface FeedbackErrorEntry {
   time: number
@@ -14,6 +15,7 @@ let installed = false
 
 function push(entry: FeedbackErrorEntry): void {
   entries.push(entry)
+  recordFeedbackTrace('error', `${entry.source}: ${entry.message}`)
   if (entries.length > MAX_ERRORS) entries.splice(0, entries.length - MAX_ERRORS)
   try {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(entries))
