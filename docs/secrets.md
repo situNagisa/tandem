@@ -6,7 +6,7 @@
 
 - 存储：`~/.tandem/secrets.json`，文件权限 `600`；值是 AES-256-GCM 密文（`v1:iv:tag:ciphertext`）。
 - 密钥：`~/.tandem/secrets.key`（随机 32 字节，`600`，与密文分开存放）。Windows 上 `chmod` 可能无效，此时依赖用户目录 ACL。
-- 项目键：向上查找 `.git`（文件或目录，兼容 worktree），找到仓库根；不在仓库内则用会话 cwd。全局 secret 对所有项目生效，同名时项目覆盖全局。
+- 项目键：向上查找 `.git`（文件或目录）；worktree 的 `.git` 文件会指回主仓库，归到主仓库根；不在仓库内则用会话 cwd。全局 secret 对所有项目生效，同名时项目覆盖全局。
 - 作用范围：`bash`（Bash + 后台任务）、`mcp`（stdio MCP）、`hooks`（Claude Code 兼容 Hooks）。同一条 secret 可多选。
 - REST：
   - `GET /api/secrets?cwd=` → 全局/各项目元信息、可选项目、通用打码开关。

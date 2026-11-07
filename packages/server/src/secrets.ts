@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readFileSync,
   renameSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
@@ -53,11 +54,24 @@ function writePrivateFile(file: string, data: string): void {
   }
 }
 
-/** 项目键：向上找 .git（文件或目录，兼容 worktree）；找不到就用 cwd 本身。 */
+/** 项目键：向上找 .git；worktree 的 .git 文件指回主仓库时归到主仓库根。 */
 export function resolveSecretProject(cwd: string): string {
   let dir = path.resolve(cwd);
   for (let i = 0; i < 40; i++) {
-    if (existsSync(path.join(dir, '.git'))) return dir;
+    const marker = path.join(dir, '.git');
+    if (existsSync(marker)) {
+      try {
+        if (statSync(marker).isFile()) {
+          const match = /^gitdir:\s*(.+)$/m.exec(readFileSync(marker, 'utf8'));
+          const gitdir = match ? path.resolve(dir, match[1]!.trim()).replace(/\\/g, '/') : '';
+          const index = gitdir.lastIndexOf('/.git/worktrees/');
+          if (index > 0) return gitdir.slice(0, index);
+        }
+      } catch {
+        // .git 不可读时按普通目录处理
+      }
+      return dir;
+    }
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
