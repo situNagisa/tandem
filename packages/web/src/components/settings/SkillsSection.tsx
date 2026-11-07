@@ -61,6 +61,12 @@ export function SkillsSection() {
     void load()
   }, [hostId, load])
 
+  // 预览只展示正文；frontmatter 里的元数据已在列表与弹层标题中展示
+  const previewBody = useMemo(
+    () => previewText.replace(/^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, ''),
+    [previewText],
+  )
+
   const groups = useMemo(() => {
     const map = new Map<SkillSource, SkillInfo[]>()
     for (const skill of skills) {
@@ -254,6 +260,16 @@ export function SkillsSection() {
             <span className="truncate font-mono text-[13px]">{preview?.name}</span>
           </span>
         }
+        description={
+          preview ? (
+            <span className="block min-w-0">
+              <span className="block text-[12.5px] leading-5 text-text-soft">{preview.description}</span>
+              <span className="block truncate font-mono text-[11.5px] text-muted" title={preview.path}>
+                {preview.path}
+              </span>
+            </span>
+          ) : undefined
+        }
         className="h-[clamp(420px,76vh,820px)] w-[min(94vw,860px)] max-w-none"
         bodyClassName="min-h-0 flex-1 overflow-y-auto p-4"
       >
@@ -267,7 +283,7 @@ export function SkillsSection() {
             <Loader2 size={14} className="animate-spin" />
           </div>
         ) : (
-          <Markdown text={previewText || '（空文件）'} cwd={cwd} />
+          <Markdown text={previewBody.trim() || '（空文件）'} cwd={cwd} />
         )}
       </Modal>
     </div>
