@@ -29,8 +29,20 @@ function normalizeValues(input: unknown): Record<string, string> {
   return values;
 }
 
+/** 项目根：cwd 所在的 git 仓库根（含 worktree 的 .git 文件）；非仓库则用 cwd。 */
+function projectRoot(cwd: string): string {
+  let dir = path.resolve(cwd);
+  for (let i = 0; i < 20; i++) {
+    if (existsSync(path.join(dir, '.git'))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return path.resolve(cwd);
+}
+
 function projectFile(cwd: string): string {
-  return path.join(cwd, '.tandem', 'prompts.json');
+  return path.join(projectRoot(cwd), '.tandem', 'prompts.json');
 }
 
 export class PromptTemplateStore {
