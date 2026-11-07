@@ -1,6 +1,17 @@
-// 系统提示：类 Claude Code 的工作方式 + 环境信息 + 项目说明文件。
+// 系统提示：按注册表分段构建（类 Claude Code 的工作方式 + 环境信息 + 项目说明文件），
+// 同时把每段内容、来源与 token 估算交给 Host 记录，供会话开头的「注入上下文」展开查看。
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import type { InjectionSegment, InjectionSource, PromptSource } from '@tandem/protocol';
+import {
+  EDITABLE_PROMPTS,
+  READONLY_PROMPTS,
+  type ReadonlyPromptDef,
+} from '../prompts/registry.js';
+
+function estimateTokens(text: string): number {
+  return text ? Math.ceil(text.length / 3.5) : 0;
+}
 
 function readInstructionFile(file: string): string | undefined {
   try {
@@ -24,63 +35,130 @@ function isGitRepo(cwd: string): boolean {
   return false;
 }
 
-export function buildSystemPrompt(
+function readonlyText(key: string): string {
+  return READONLY_PROMPTS.find((item) => item.key === key)?.text ?? '';
+}
+
+function readonlyDef(key: string): ReadonlyPromptDef | undefined {
+  return READONLY_PROMPTS.find((item) => item.key === key);
+}
+
+export type ResolvedPrompt = { text: string; source: PromptSource };
+
+export interface PromptOptions {
+  allowTask?: boolean;
+  planMode?: boolean;
+  hookContext?: string;
+  skills?: string;
+  /** 来自 MemoryStore.promptSection 的项目记忆段。 */
+  memory?: string;
+  /** 子代理预设（名称 + 描述），列在 Task 工具说明里。 */
+  subagents?: Array<{ name: string; description?: string }>;
+  /** 子代理预设的附加系统提示。 */
+  extraSystemPrompt?: string;
+  /** 当前委派策略提示词（由 Host 按策略模板渲染）。 */
+  delegationPrompt?: string;
+  /** 当前委派策略对应的模板 key，用于标注来源。 */
+  delegationKey?: string;
+  /** Host 解析后的可编辑提示词（项目覆盖 > 用户自定义 > 内置默认）。 */
+  prompts?: Record<string, ResolvedPrompt | undefined>;
+}
+
+function textOf(options: PromptOptions, key: string): string {
+  return options.prompts?.[key]?.text ?? EDITABLE_PROMPTS[key]?.text ?? '';
+}
+
+function sourceOf(options: PromptOptions, key: string): InjectionSource {
+  return options.prompts?.[key]?.source ?? 'builtin';
+}
+
+/** 构建系统提示的各个注入段落。 */
+export function buildSystemPromptParts(
   cwd: string,
-  options: { allowTask?: boolean; planMode?: boolean; hookContext?: string; skills?: string } = {},
-): string {
+  options: PromptOptions = {},
+): InjectionSegment[] {
   const date = new Date().toISOString().slice(0, 10);
-  const env = [
-    `- 工作目录（cwd）：${cwd}`,
-    `- 平台：${process.platform} (${process.arch})`,
-    `- 日期：${date}`,
-    `- Git 仓库：${isGitRepo(cwd) ? '是' : '否'}`,
-  ].join('\n');
+  const env = readonlyText('environment')
+    .replace(/\{\{cwd\}\}/g, cwd)
+    .replace(/\{\{platform\}\}/g, process.platform)
+    .replace(/\{\{arch\}\}/g, process.arch)
+    .replace(/\{\{date\}\}/g, date)
+    .replace(/\{\{git\}\}/g, isGitRepo(cwd) ? '是' : '否');
 
-  const agents = readInstructionFile(path.join(cwd, 'AGENTS.md'));
-  const claude = readInstructionFile(path.join(cwd, 'CLAUDE.md'));
-  const instructions = [
-    agents ? `## AGENTS.md（${path.join(cwd, 'AGENTS.md')}）\n${agents}` : '',
-    claude ? `## CLAUDE.md（${path.join(cwd, 'CLAUDE.md')}）\n${claude}` : '',
-  ]
-    .filter(Boolean)
+  const taskLine =
+    options.allowTask !== false
+      ? `- Task：把独立、多步的子任务派给子代理。description 是简短标题，prompt 要自包含；subagent_type 可选 Explore/Plan（只读，可同批并行）、general-purpose（可改文件）${options.subagents?.length ? '，或以下子代理预设' : ''}。可用 model 参数临时指定子代理模型。子代理最后一条文本会作为工具结果返回，不要用它处理必须共享同一上下文的小事。${options.subagents?.length ? `\n${options.subagents.map((agent) => `  - ${agent.name}${agent.description ? `：${agent.description}` : ''}`).join('\n')}` : ''}`
+      : '';
+  const toolGuidance = readonlyText('toolGuidance').replace(/\{\{taskLine\}\}/g, taskLine).replace(/\n\n- MCP/, '\n- MCP');
+
+  const parts: InjectionSegment[] = [];
+  const push = (
+    id: string,
+    name: string,
+    source: InjectionSource,
+    content: string,
+    sourcePath?: string,
+  ) => {
+    const text = content.trim();
+    if (!text) return;
+    parts.push({
+      id,
+      name,
+      source,
+      ...(sourcePath ? { sourcePath } : {}),
+      tokens: estimateTokens(text),
+      content: text,
+    });
+  };
+
+  push('persona', '身份说明', 'builtin', readonlyText('persona'));
+  push(
+    'baseBehavior',
+    '基础行为与工作方式',
+    sourceOf(options, 'baseBehavior'),
+    `# 工作方式\n${textOf(options, 'baseBehavior')}`,
+  );
+  if (options.planMode) {
+    push(
+      'planMode',
+      '计划模式',
+      sourceOf(options, 'planMode'),
+      `# 计划模式（重要）\n${textOf(options, 'planMode')}`,
+    );
+  }
+  push('toolGuidance', '工具使用要点', 'builtin', `# 工具使用要点\n${toolGuidance}`);
+  if (options.skills?.trim()) push('skills', 'Skills 列表', 'skill', options.skills);
+  if (options.memory?.trim()) push('memory', '项目记忆', 'memory', options.memory);
+  if (options.delegationPrompt?.trim()) {
+    const source = options.delegationKey
+      ? sourceOf(options, options.delegationKey)
+      : 'builtin';
+    push('delegation', '委派策略', source, options.delegationPrompt);
+  }
+  if (options.extraSystemPrompt?.trim()) {
+    push('subagent', '子代理预设附加提示', 'session', `# 子代理预设\n${options.extraSystemPrompt}`);
+  }
+  push('environment', '环境信息', 'generated', `# 环境\n${env}`);
+
+  for (const name of ['AGENTS.md', 'CLAUDE.md'] as const) {
+    const file = path.join(cwd, name);
+    const text = readInstructionFile(file);
+    if (text) push(`project:${name}`, name, 'project', `## ${name}（${file}）\n${text}`, file);
+  }
+  if (options.hookContext?.trim()) {
+    push('hook', 'Hook 附加上下文', 'hook', `# Hook 附加上下文\n${options.hookContext}`);
+  }
+  push('safety', '安全边界', 'builtin', `# 安全边界\n${readonlyText('safety')}`);
+  return parts;
+}
+
+export function buildSystemPrompt(cwd: string, options: PromptOptions = {}): string {
+  return buildSystemPromptParts(cwd, options)
+    .map((part) => part.content)
     .join('\n\n');
+}
 
-  return `你是 Tandem 中的编码 agent，运行在用户自己的机器上。你可以通过工具读取和修改文件、运行命令、搜索代码、访问网页，帮助用户完成软件工程任务。
-
-# 工作方式
-- 先读后改：修改代码前，先用 Glob / Grep / Read 了解相关文件、调用方和现有约定，不要凭空猜测或臆造 API。
-- 用工具干活：读文件、搜索、运行命令、写文件都必须调用工具，不要声称执行了实际没做的操作。
-- 改动聚焦：只做用户要求的事，保持最小 diff，遵循项目现有风格；不要顺手重构无关代码，不要新增无用的抽象或文档。
-- 如实汇报：完成后简要说明改了什么、做了哪些验证、还有什么未解决；不要夸大结果。
-- 谨慎对待破坏性操作：删除文件、reset、force push、修改系统配置前先确认；不要提交（commit）或推送代码，除非用户明确要求。
-- 遵守项目规范：如果仓库里有 AGENTS.md / CLAUDE.md，以其中的约定为准。
-- 语言：用用户使用的语言回答，本产品默认中文。代码注释遵循项目习惯，不要写解释“代码在做什么”的废话注释。
-
-${options.planMode ? `# 计划模式（重要）
-当前处于计划模式：只能调研（Read / Glob / Grep / WebFetch 等只读工具），不要修改文件或运行有副作用的命令。
-完成调研后，必须调用 ExitPlanMode 工具提交计划，参数为 { plan: "<markdown>" }；计划要具体到文件与步骤。
-用户批准前不得实施。如果用户要求继续完善，根据反馈修改计划后再次调用 ExitPlanMode。
-` : ''}
-# 工具使用要点
-- Bash：在 cwd 内执行非交互命令；设置合理的 timeout；输出过长会被截断。不要用交互式命令（vim、top 等）。
-- Read：支持 offset/limit，大文件分段读取；图片文件会以图片形式返回。
-- Edit：old_string 必须在文件中唯一；匹配失败时先重新 Read，带上更多上下文再试。
-- Write：整文件覆盖，修改已有文件优先用 Edit。
-- Glob / Grep：搜索优先用工具而不是 Bash 的 find/grep；Grep 会遵循 .gitignore。
-- TodoWrite：多步骤任务用它维护进度，同一时间保持一项 in_progress。
-- WebFetch：获取网页内容；基于内容回答，必要时说明来源。
-${options.allowTask !== false ? '- Task：把独立、多步的子任务派给子代理。description 是简短标题，prompt 要自包含；subagent_type 可选 Explore/Plan（只读，可同批并行）或 general-purpose（可改文件）。子代理最后一条文本会作为工具结果返回，不要用它处理必须共享同一上下文的小事。' : ''}
-- MCP 工具：名称形如 mcp__<服务器>__<工具>，参数 schema 由该服务器提供；默认需要用户审批，可按权限规则放行。调用失败时读取错误信息，必要时重试或改用其它工具。
-- Skill：按名称加载技能说明。只有当任务确实匹配某个技能描述时才调用，加载后严格按正文执行。
-
-${options.skills ?? ''}
-# 环境
-${env}
-${instructions ? `\n# 项目说明\n${instructions}` : ''}
-${options.hookContext ? `\n# Hook 附加上下文\n${options.hookContext}` : ''}
-
-# 安全边界
-- 不要主动访问或泄露用户的密钥、token、凭证；不要执行可疑的远程脚本。
-- 不要绕过工具权限或审批机制。
-`;
+/** 注册表里的只读段落（设置页展示用）。 */
+export function readonlyPromptText(key: string): string {
+  return readonlyDef(key)?.text ?? '';
 }

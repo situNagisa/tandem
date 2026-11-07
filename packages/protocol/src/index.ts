@@ -171,7 +171,7 @@ export interface ExternalSession {
 export interface ConfigBundle { version: 1; encrypted: string; salt: string; iv: string; createdAt: number; hostName: string }
 export interface ConfigExportInput { passphrase: string; clientSettings?: unknown } // clientSettings：客户端的 Host 列表、主题等，原样打包
 export interface ConfigImportInput { passphrase: string; bundle: ConfigBundle; mode: 'merge' | 'replace' }
-export interface ConfigImportResult { profilesAdded: number; profilesUpdated: number; clientSettings?: unknown }
+export interface ConfigImportResult { profilesAdded: number; profilesUpdated: number; clientSettings?: unknown; memoriesImported?: number }
 
 // 拉取模型列表：填 Key 后自动获取可用模型（无需手填）
 export interface ListModelsInput { kind: ProviderKind; baseUrl?: string; apiKey?: string; profileId?: string; groupId?: string } // apiKey 缺省时用 profileId 已存的 key
@@ -429,6 +429,7 @@ export type ServerMsg =
   | { type: 'inbox_snapshot'; snapshot: InboxSnapshot }                     // 订阅收件箱后的全量（或补齐失败时）
   | { type: 'inbox_event'; event: InboxEvent }                             // 收件箱增量事件
   | { type: 'vcs_updated'; sessionId: string; state: VcsState }            // 当前会话 PR/CI 状态变化（60s 轮询）
+  | { type: 'injections'; sessionId: string; injections: InjectionSnapshot } // 本轮系统提示的注入段落清单/变化
   // 外部会话（Claude Code / Codex）文件有变动，客户端应重新拉取列表
   | { type: 'task_updated'; sessionId: string; task: BackgroundTask; content?: string; since?: number; truncated?: boolean }
   | { type: 'schedules_updated' }
@@ -678,27 +679,84 @@ export interface SubagentPresetInput {
 // PUT /api/subagent-presets { presets: SubagentPresetInput[] } -> { presets: SubagentPreset[] }（只替换 Tandem 自定义预设）
 
 // ---------- 可配置提示词 ----------
-// 子代理/委派相关段落抽成模板存 ~/.tandem/prompts.json；未修改（空值）始终跟随内置默认。
+// 所有内置提示词登记在 Host 的注册表；可编辑项存 ~/.tandem/prompts.json（未修改时跟随内置默认），
+// 项目可用 <cwd>/.tandem/prompts.json 覆盖（只读，优先级高于用户级）。
 export type PromptTemplateKey =
-  | 'taskDescription'
+  | 'baseBehavior'
+  | 'planMode'
   | 'delegationOrchestrate'
   | 'delegationMore'
   | 'delegationLess'
   | 'delegationNone'
-  | 'subagentDefault';
+  | 'subagentDefault'
+  | 'compact'
+  | 'init'
+  | 'prDraft'
+  | 'ciFix'
+  | 'autoTitle'
+  | 'memoryRule'
+  | 'persona'
+  | 'taskDescription'
+  | 'toolGuidance'
+  | 'safety'
+  | 'environment';
+export type PromptCategory = 'system' | 'workflow' | 'command' | 'aux';
+export type PromptSource = 'builtin' | 'user' | 'project';
 export interface PromptTemplate {
   key: PromptTemplateKey;
   label: string;
   description: string;
-  /** 当前生效文本（自定义或内置默认）。 */
+  /** 当前生效文本（项目覆盖 > 用户自定义 > 内置默认）。 */
   text: string;
   defaultText: string;
-  /** 是否被用户改写。 */
+  /** 是否与内置默认不同（用户或项目改写）。 */
   modified: boolean;
+  category: PromptCategory;
+  /** 是否允许在设置页编辑；只读项仍可查看全文。 */
+  editable: boolean;
+  /** 只读原因。 */
+  readOnlyReason?: string;
+  /** 模板支持的变量名。 */
+  variables?: string[];
+  /** 当前文本来源。 */
+  source: PromptSource;
+  /** 项目级覆盖文本（存在时 text 优先取它）。 */
+  projectText?: string;
 }
-// GET /api/prompt-templates -> { templates: PromptTemplate[] }
+// GET /api/prompt-templates?cwd= -> { templates: PromptTemplate[] }
 // PUT /api/prompt-templates { values: Partial<Record<PromptTemplateKey,string>> } -> { templates: PromptTemplate[] }
-// 空字符串表示恢复默认。模板变量：{{presets}}、{{cwd}}、{{delegation}}。
+// 空字符串表示恢复默认。模板变量：{{presets}}、{{cwd}}、{{delegation}}、{{name}}、{{log}}、{{text}}。
+
+// ---------- 系统提示注入段落 ----------
+export type InjectionSource = 'builtin' | 'user' | 'project' | 'memory' | 'skill' | 'generated' | 'hook' | 'session';
+export interface InjectionSegment {
+  id: string;
+  name: string;
+  source: InjectionSource;
+  /** 项目文件/记忆文件等来源路径。 */
+  sourcePath?: string;
+  /** token 估算（字符数/3.5）。 */
+  tokens: number;
+  content: string;
+}
+export interface InjectionChange {
+  /** 变化发生在哪条用户消息触发的那一轮之前。 */
+  beforeMessageId?: string;
+  at: number;
+  added: string[];
+  removed: string[];
+  /** 展示用摘要，如「+记忆 −计划模式」。 */
+  summary: string;
+}
+export interface InjectionSnapshot {
+  segments: InjectionSegment[];
+  totalTokens: number;
+  updatedAt: number;
+  /** 本会话发生过的上下文变化（新的在前）。 */
+  changes: InjectionChange[];
+}
+// GET /api/sessions/:id/injections -> InjectionSnapshot
+// 变化时通过 WS 推送 { type: 'injections', sessionId, injections }。
 
 // ---------- Worktree 并行会话 ----------
 // CreateSessionInput 新增可选 worktree?: { branch?: string }：在 cwd 所在仓库创建 git worktree（~/.tandem/worktrees/<repo>/<branch>），会话 cwd 指向它。
@@ -800,5 +858,38 @@ export type ScheduleInput = Omit<Schedule, 'id' | 'createdAt' | 'updatedAt' | 'n
 // POST   /api/schedules/:id/run    -> { ok: boolean; sessionId?: string; error?: string }  立即运行一次
 // 由定时任务新建的会话带 SessionSummary.scheduledBy，侧栏显示小时钟。
 // 斜杠命令 /schedule 由客户端拦截并打开「定时任务」设置页。
+
+// ---------- 项目记忆（Tandem 私有，与仓库内 AGENTS.md / CLAUDE.md 区分） ----------
+// 每个项目（git 仓库根或 cwd）一份 ~/.tandem/memory/<hash>.md；global 为 _global.md。
+// 记忆可被 Memory 工具写入（需审批，acceptEdits 下自动），也可在客户端 Markdown 编辑器中手工编辑。
+export type MemoryScope = 'project' | 'global';
+export interface MemoryFile {
+  scope: MemoryScope;
+  /** 项目根路径（scope=project 时有）。 */
+  project?: string;
+  /** 项目名（仓库根目录名）或「全局」。 */
+  name: string;
+  /** 原始 Markdown，首行可能含 Tandem 元数据注释。 */
+  text: string;
+  exists: boolean;
+  /** 最后修改时间（epoch ms）；不存在为 0。 */
+  updatedAt: number;
+  size: number;
+  /** 条目数（以 - / * 开头的列表行）。 */
+  entries: number;
+}
+export interface MemoryListItem {
+  scope: MemoryScope;
+  project?: string;
+  name: string;
+  size: number;
+  updatedAt: number;
+  entries: number;
+}
+// GET    /api/memory?scope=global|project&project=<path>  -> MemoryFile
+// PUT    /api/memory { scope, project?, text }           -> MemoryFile
+// DELETE /api/memory?scope=global|project&project=<path> -> { ok: boolean }
+// GET    /api/memory/list                                -> { global?: MemoryListItem; projects: MemoryListItem[] }
+// POST /api/memory/import { project, text, source?, mode? } -> { ok, merged }  跨 Host 迁移合并记忆
 
 export const PROTOCOL_VERSION = 3;

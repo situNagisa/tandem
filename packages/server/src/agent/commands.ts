@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { SlashCommand } from '@tandem/protocol';
 import { walkFiles } from '../util/fs-walk.js';
 import { toPosix } from '../util/path.js';
+import { EDITABLE_PROMPTS } from '../prompts/registry.js';
 
 export const BUILTIN_COMMANDS: SlashCommand[] = [
   { name: 'clear', description: '清空当前会话的消息历史', source: 'builtin' },
@@ -12,19 +13,12 @@ export const BUILTIN_COMMANDS: SlashCommand[] = [
   { name: 'model', description: '查看或切换当前会话模型：/model <模型名>（下一轮生效）', source: 'builtin' },
   { name: 'init', description: '分析当前仓库并生成 AGENTS.md', source: 'builtin' },
   { name: 'cost', description: '查看本会话的 token 用量与花费摘要', source: 'builtin' },
+  { name: 'memory', description: '查看/编辑项目记忆与全局记忆', source: 'builtin' },
   { name: 'schedule', description: '新建定时任务（打开「定时任务」设置页）', source: 'builtin' },
   { name: 'help', description: '显示所有可用命令', source: 'builtin' },
 ];
 
-export const INIT_PROMPT = `请分析当前仓库：先用工具浏览目录结构、README、包管理配置、构建/测试脚本和关键源码，然后根据实际情况在仓库根目录创建或更新 AGENTS.md。
-
-AGENTS.md 需要面向后续接手工作的 agent，内容简洁、可执行，包含：
-- 项目概览与技术栈
-- 目录结构与关键模块
-- 常用命令（安装、开发、构建、测试、lint）
-- 代码风格与约定、注意事项、容易踩的坑
-
-不要臆测：只写你在仓库中确认过的信息。如果 AGENTS.md 已存在，请在其基础上补充或修正，不要覆盖掉仍然有效的内容。`;
+export const INIT_PROMPT = EDITABLE_PROMPTS.init.text;
 
 function parseDescription(content: string): string {
   const frontmatter = content.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);

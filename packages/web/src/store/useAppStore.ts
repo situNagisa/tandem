@@ -136,6 +136,12 @@ interface AppState {
   setModel: (profileId: string, groupId: string | undefined, model: string) => Promise<void>
   createSession: (hostId: string, input: CreateSessionInput) => Promise<SessionSummary>
   startSession: (hostId: string, input: CreateSessionInput, content: ContentBlock[]) => Promise<SessionSummary>
+  /** 向任意 Host 派单：创建会话并发送，不切换当前打开的会话。 */
+  dispatchSession: (
+    hostId: string,
+    input: CreateSessionInput,
+    content: ContentBlock[],
+  ) => Promise<{ summary: SessionSummary; sent: boolean }>
   updateSession: (
     hostId: string,
     sessionId: string,
@@ -181,6 +187,7 @@ function summaryOf(s: Session): SessionSummary {
     permissionMode: s.permissionMode,
     status: s.status,
     ...(s.effort ? { effort: s.effort } : {}),
+    ...(s.delegation ? { delegation: s.delegation } : {}),
     ...(s.pinned ? { pinned: true } : {}),
     ...(s.pinnedTurns && s.pinnedTurns.length ? { pinnedTurns: [...s.pinnedTurns] } : {}),
     ...(s.forkedFrom ? { forkedFrom: { ...s.forkedFrom } } : {}),
@@ -611,6 +618,12 @@ export const useAppStore = create<AppState>((set, get) => {
       }
       case 'session_updated': {
         applySessionSummary(hostId, msg.session)
+        break
+      }
+      case 'injections': {
+        const now = get().active
+        if (!now || now.hostId !== hostId || now.sessionId !== msg.sessionId) break
+        set({ active: { ...now, injections: msg.injections } })
         break
       }
       case 'inbox_snapshot': {
@@ -1680,6 +1693,15 @@ export const useAppStore = create<AppState>((set, get) => {
       const conn = ensureConnection(hostId)
       conn?.subscribe(sessionId)
       syncChildren(hostId, sessionId)
+      // 系统提示注入段落：会话开头展开查看（与 WS 推送互为备份）
+      void api
+        .injections(host, sessionId)
+        .then((injections) => {
+          const now = get().active
+          if (!now || now.hostId !== hostId || now.sessionId !== sessionId) return
+          set({ active: { ...now, injections } })
+        })
+        .catch(() => {})
       // WebSocket 尚未连上时，先用 REST 拉一份只读快照，避免空白等待。
       if (!conn || conn.status !== 'online') void loadSessionFallback(hostId, sessionId)
       else {
@@ -2055,6 +2077,17 @@ export const useAppStore = create<AppState>((set, get) => {
       ensureConnection(hostId)?.subscribe(summary.id)
       get().send(content)
       return summary
+    },
+
+    dispatchSession: async (hostId, input, content) => {
+      const host = getHost(hostId)
+      if (!host) throw new Error('Host 不存在')
+      if (get().runtimes[hostId]?.status !== 'online') throw new Error('Host 离线，无法派单')
+      const summary = await api.createSession(host, input)
+      applySessionSummary(hostId, summary)
+      const conn = ensureConnection(hostId)
+      const sent = conn?.send({ type: 'send', sessionId: summary.id, content }) ?? false
+      return { summary, sent }
     },
 
     updateSession: async (hostId, sessionId, patch) => {

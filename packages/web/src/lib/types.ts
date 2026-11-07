@@ -4,6 +4,7 @@ import type {
   ExternalSource,
   HookEventNotice,
   HostInfo,
+  InjectionSnapshot,
   Message,
   PermissionRequest,
   Profile,
@@ -94,6 +95,8 @@ export interface ActiveSession {
   plan?: SessionPlan
   /** Hook 执行记录；界面只展示阻止/出错的条目。 */
   hookEvents: HookNotice[]
+  /** 本轮系统提示的注入段落清单（会话开头可展开查看）。 */
+  injections?: InjectionSnapshot
   /** Task 子代理会话（parentId 指向当前会话），按子会话 id 索引。 */
   subagents: Record<string, SubagentSession>
 }
@@ -127,7 +130,7 @@ export interface Toast {
 }
 
 export type Theme = 'light' | 'dark' | 'system'
-export type SettingsTab = 'general' | 'profiles' | 'hosts' | 'permissions' | 'hooks' | 'mcp' | 'skills' | 'schedules' | 'budgets' | 'usage' | 'appearance' | 'sync'
+export type SettingsTab = 'general' | 'profiles' | 'hosts' | 'permissions' | 'hooks' | 'mcp' | 'skills' | 'schedules' | 'budgets' | 'usage' | 'appearance' | 'sync' | 'memory' | 'subagents' | 'prompts'
 
 export type AppRoute =
   | { kind: 'home' }

@@ -7,6 +7,9 @@ import type {
   ConfigImportInput,
   ConfigImportResult,
   CreateSessionInput,
+  MemoryFile,
+  MemoryListItem,
+  MemoryScope,
   CreatePrInput,
   DiffEmptyReason,
   ExternalSession,
@@ -18,6 +21,7 @@ import type {
   HookSettings,
   HostInfo,
   HostSettings,
+  InjectionSnapshot,
   ListModelsInput,
   McpServerConfig,
   McpServerStatus,
@@ -26,6 +30,8 @@ import type {
   PrActionResult,
   PrMergeMethod,
   Profile,
+  PromptTemplate,
+  PromptTemplateKey,
   ProfileInput,
   BackgroundTask,
   BackgroundTaskOutput,
@@ -38,6 +44,8 @@ import type {
   SessionSummary,
   SkillInfo,
   SlashCommand,
+  SubagentPreset,
+  SubagentPresetInput,
   UpdateSessionInput,
   UsageStatsRow,
   VcsState,
@@ -294,6 +302,47 @@ export const api = {
     request<HookSettings>(h, '/api/hooks/trust', {
       method: 'PUT',
       body: JSON.stringify({ cwd, trusted }),
+    }),
+
+  subagentPresets: (h: HostConfig, cwd?: string) =>
+    request<{ presets: SubagentPreset[] }>(h, `/api/subagent-presets${qs({ cwd })}`),
+  saveSubagentPresets: (h: HostConfig, presets: SubagentPresetInput[], cwd?: string) =>
+    request<{ presets: SubagentPreset[] }>(h, '/api/subagent-presets', {
+      method: 'PUT',
+      body: JSON.stringify({ presets, ...(cwd ? { cwd } : {}) }),
+    }),
+  promptTemplates: (h: HostConfig, cwd?: string) =>
+    request<{ templates: PromptTemplate[] }>(h, `/api/prompt-templates${qs({ cwd })}`),
+  savePromptTemplates: (
+    h: HostConfig,
+    values: Partial<Record<PromptTemplateKey, string>>,
+    cwd?: string,
+  ) =>
+    request<{ templates: PromptTemplate[] }>(h, '/api/prompt-templates', {
+      method: 'PUT',
+      body: JSON.stringify({ values, ...(cwd ? { cwd } : {}) }),
+    }),
+  injections: (h: HostConfig, sessionId: string) =>
+    request<InjectionSnapshot>(h, `/api/sessions/${sessionId}/injections`),
+
+  memory: (h: HostConfig, scope: MemoryScope, project?: string) =>
+    request<MemoryFile>(h, `/api/memory${qs({ scope, project })}`),
+  saveMemory: (h: HostConfig, input: { scope: MemoryScope; project?: string; text: string }) =>
+    request<MemoryFile>(h, '/api/memory', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  deleteMemory: (h: HostConfig, scope: MemoryScope, project?: string) =>
+    request<{ ok: boolean }>(h, `/api/memory${qs({ scope, project })}`, { method: 'DELETE' }),
+  memoryList: (h: HostConfig) =>
+    request<{ global?: MemoryListItem; projects: MemoryListItem[] }>(h, '/api/memory/list'),
+  importMemory: (
+    h: HostConfig,
+    input: { project: string; text: string; source?: string; scope?: MemoryScope },
+  ) =>
+    request<{ ok: boolean; merged: boolean; entries: number }>(h, '/api/memory/import', {
+      method: 'POST',
+      body: JSON.stringify(input),
     }),
 
   permissions: (h: HostConfig) => request<PermissionRule[]>(h, '/api/permissions'),

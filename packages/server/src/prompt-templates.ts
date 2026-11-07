@@ -1,68 +1,37 @@
-// 可配置提示词：子代理/委派相关段落存 ~/.tandem/prompts.json，未修改时跟随内置默认。
-import { renameSync, writeFileSync } from 'node:fs';
+// 提示词注册表落地：可编辑提示词存 ~/.tandem/prompts.json，项目可用 <cwd>/.tandem/prompts.json 覆盖（只读）。
+// 未修改时一律跟随内置默认（Host 升级后自动生效）；只读提示词只在设置页展示。
+import { existsSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { PromptTemplate, PromptTemplateKey } from '@tandem/protocol';
+import type {
+  PromptCategory,
+  PromptSource,
+  PromptTemplate,
+  PromptTemplateKey,
+} from '@tandem/protocol';
 import { ensureDir, readJson, tandemHome } from './config.js';
+import { EDITABLE_PROMPTS, READONLY_PROMPTS } from './prompts/registry.js';
+import type { ResolvedPrompt } from './agent/prompt.js';
 
 interface PromptFile {
-  values?: Partial<Record<PromptTemplateKey, string>>;
+  values?: Partial<Record<string, string>>;
 }
 
-export const PROMPT_DEFAULTS: Record<
-  PromptTemplateKey,
-  { label: string; description: string; text: string }
-> = {
-  taskDescription: {
-    label: 'Task 工具说明',
-    description: '展示给主会话模型的 Task 工具描述；{{presets}} 会替换为预设名称与描述。',
-    text:
-      'Launch a new agent to handle a complex, multi-step task autonomously. ' +
-      'The subagent has access to its own tools and working directory, and runs its own full loop. ' +
-      'Use it for independent research or parallelizable work. ' +
-      'subagent_type: "Explore" or "Plan" for read-only work, "general-purpose" for tasks that may modify files, ' +
-      'or one of the configured presets: {{presets}}. ' +
-      'You can override the subagent model with the optional model parameter.',
-  },
-  delegationOrchestrate: {
-    label: '委派策略：编排',
-    description: '主会话只规划/汇总，读写与命令都交给子代理。',
-    text:
-      '# 委派策略：编排（orchestrate）\n' +
-      '你只负责规划、拆分与汇总：所有读写文件、搜索、运行测试和命令都交给子代理执行。' +
-      '每轮先用 Task 派发可独立并行的子任务，保持主会话上下文精简；' +
-      '自己只读少量关键文件用于决策。收到子代理结果后汇总给用户，不要亲自实现。\n' +
-      '子代理完成后直接输出结论，不要重复派发同一任务。',
-  },
-  delegationMore: {
-    label: '委派策略：多派',
-    description: '鼓励并行派发可独立的子任务。',
-    text:
-      '# 委派策略：多派（more）\n' +
-      '尽量把可独立、可并行的子任务交给子代理（探索、测试、审查分别派发），主会话负责整合结论。' +
-      '小改动或必须共享上下文的操作可以自己做。',
-  },
-  delegationLess: {
-    label: '委派策略：少派',
-    description: '默认行为：只有明显独立且多步的任务才派。',
-    text:
-      '# 委派策略：少派（less，默认）\n' +
-      '只有明显独立且多步的任务才派子代理；大多数工作直接自己做，避免为小事付出额外上下文与延迟。',
-  },
-  delegationNone: {
-    label: '委派策略：不派',
-    description: '不提供 Task 工具时注入的说明。',
-    text: '# 委派策略：不派（none）\n不要派发子代理，所有工作自己完成。',
-  },
-  subagentDefault: {
-    label: '子代理默认附加提示',
-    description: '追加到每个子代理系统提示的通用要求。',
-    text:
-      '你是由主会话派发的子代理。只完成交给你的子任务，不改动无关文件；' +
-      '完成后用简洁中文给出结论、关键文件路径与验证结果。',
-  },
-};
+const EDITABLE_KEYS = Object.keys(EDITABLE_PROMPTS) as PromptTemplateKey[];
 
-const KEYS = Object.keys(PROMPT_DEFAULTS) as PromptTemplateKey[];
+function normalizeValues(input: unknown): Record<string, string> {
+  if (!input || typeof input !== 'object') return {};
+  const raw = (input as PromptFile).values ?? (input as Record<string, unknown>);
+  const values: Record<string, string> = {};
+  for (const key of EDITABLE_KEYS) {
+    const value = (raw as Record<string, unknown>)[key];
+    if (typeof value === 'string' && value.trim()) values[key] = value;
+  }
+  return values;
+}
+
+function projectFile(cwd: string): string {
+  return path.join(cwd, '.tandem', 'prompts.json');
+}
 
 export class PromptTemplateStore {
   private file: string;
@@ -71,46 +40,98 @@ export class PromptTemplateStore {
   constructor(home = tandemHome()) {
     this.file = path.join(home, 'prompts.json');
     const data = readJson<PromptFile>(this.file);
-    for (const key of KEYS) {
-      const value = data?.values?.[key];
-      if (typeof value === 'string' && value.trim()) this.values[key] = value;
+    this.values = normalizeValues(data?.values) as Partial<Record<PromptTemplateKey, string>>;
+  }
+
+  /** 项目级覆盖：只读，每次按需读取（项目文件通常很小）。 */
+  private projectValues(cwd?: string): Record<string, string> {
+    if (!cwd) return {};
+    try {
+      const file = projectFile(cwd);
+      if (!existsSync(file)) return {};
+      return normalizeValues(readJson<PromptFile>(file)?.values);
+    } catch {
+      return {};
     }
   }
 
-  get(key: PromptTemplateKey): string {
-    return this.values[key] ?? PROMPT_DEFAULTS[key].text;
+  private resolve(key: PromptTemplateKey, cwd?: string): { text: string; source: PromptSource } {
+    const project = this.projectValues(cwd);
+    if (project[key]) return { text: project[key]!, source: 'project' };
+    if (this.values[key]) return { text: this.values[key]!, source: 'user' };
+    const def = EDITABLE_PROMPTS[key];
+    return { text: def?.text ?? '', source: 'builtin' };
   }
 
-  /** 渲染模板变量：{{presets}} / {{cwd}} / {{delegation}}。 */
-  render(key: PromptTemplateKey, vars: Record<string, string> = {}): string {
-    return this.get(key).replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+  get(key: PromptTemplateKey, cwd?: string): string {
+    return this.resolve(key, cwd).text;
+  }
+
+  sourceOf(key: PromptTemplateKey, cwd?: string): PromptSource {
+    return this.resolve(key, cwd).source;
+  }
+
+  /** 当前 cwd 下所有可编辑提示词的有效文本与来源（项目覆盖 > 用户 > 内置）。 */
+  resolved(cwd?: string): Record<string, ResolvedPrompt> {
+    const out: Record<string, ResolvedPrompt> = {};
+    for (const key of EDITABLE_KEYS) out[key] = this.resolve(key, cwd);
+    return out;
+  }
+
+  /** 渲染模板变量：{{presets}} / {{cwd}} / {{delegation}} / {{name}} / {{log}} / {{text}}。 */
+  render(key: PromptTemplateKey, vars: Record<string, string> = {}, cwd?: string): string {
+    return this.get(key, cwd).replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
       name in vars ? vars[name]! : match,
     );
   }
 
-  list(): PromptTemplate[] {
-    return KEYS.map((key) => {
-      const def = PROMPT_DEFAULTS[key];
-      const custom = this.values[key];
-      return {
+  /** 设置页清单：可编辑项 + 只读项；带项目覆盖信息。 */
+  list(cwd?: string): PromptTemplate[] {
+    const project = this.projectValues(cwd);
+    const entries: PromptTemplate[] = [];
+    for (const key of EDITABLE_KEYS) {
+      const def = EDITABLE_PROMPTS[key]!;
+      const resolved = this.resolve(key, cwd);
+      entries.push({
         key,
         label: def.label,
         description: def.description,
-        text: custom ?? def.text,
+        text: resolved.text,
         defaultText: def.text,
-        modified: !!custom && custom !== def.text,
-      };
-    });
+        modified: resolved.source !== 'builtin',
+        category: def.category as PromptCategory,
+        editable: true,
+        variables: def.variables,
+        source: resolved.source,
+        ...(project[key] ? { projectText: project[key] } : {}),
+      });
+    }
+    for (const def of READONLY_PROMPTS) {
+      entries.push({
+        key: def.key as PromptTemplateKey,
+        label: def.label,
+        description: def.description,
+        text: def.text,
+        defaultText: def.text,
+        modified: false,
+        category: def.category as PromptCategory,
+        editable: false,
+        readOnlyReason: def.reason,
+        variables: def.variables,
+        source: 'builtin',
+      });
+    }
+    return entries;
   }
 
-  save(input: unknown): PromptTemplate[] {
+  save(input: unknown, cwd?: string): PromptTemplate[] {
     if (!input || typeof input !== 'object') throw new Error('values 必须是对象');
     const raw = input as Record<string, unknown>;
-    for (const key of KEYS) {
+    for (const key of EDITABLE_KEYS) {
       if (!(key in raw)) continue;
       const value = raw[key];
       if (typeof value !== 'string') continue;
-      if (!value.trim() || value === PROMPT_DEFAULTS[key].text) delete this.values[key];
+      if (!value.trim() || value === EDITABLE_PROMPTS[key]!.text) delete this.values[key];
       else this.values[key] = value;
     }
     ensureDir(path.dirname(this.file));
@@ -120,6 +141,6 @@ export class PromptTemplateStore {
       mode: 0o600,
     });
     renameSync(tmp, this.file);
-    return this.list();
+    return this.list(cwd);
   }
 }

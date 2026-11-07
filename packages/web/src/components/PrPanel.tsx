@@ -334,20 +334,25 @@ export function PrPanel() {
   )
 
   const startDraft = () => {
-    if (!sessionId) return
+    if (!sessionId || !host) return
     draftBaseline.current = messages?.length ?? 0
     sawRunning.current = false
     setDrafting(true)
-    const ok = send([
-      {
-        type: 'text',
-        text: '请根据当前分支相对基线分支的 git diff，为这次改动写一个 Pull Request 标题和描述。不要修改文件、不要提交或推送。只输出一个 JSON 代码块，格式：\n```json\n{"title":"简洁的标题","body":"Markdown 描述，说明改了什么、为什么"}\n```',
-      },
-    ])
-    if (!ok) {
-      setDrafting(false)
-      toast('Host 未连接，无法让 agent 起草', 'error')
-    }
+    // 起草提示词可在「设置 → 提示词 → PR 起草提示」中修改
+    const fallback =
+      '请根据当前分支相对基线分支的 git diff，为这次改动写一个 Pull Request 标题和描述。不要修改文件、不要提交或推送。只输出一个 JSON 代码块，格式：\n```json\n{"title":"简洁的标题","body":"Markdown 描述，说明改了什么、为什么"}\n```'
+    const cwd = useAppStore.getState().active?.summary?.cwd
+    void api
+      .promptTemplates(host, cwd)
+      .then(({ templates }) => templates.find((item) => item.key === 'prDraft')?.text ?? fallback)
+      .catch(() => fallback)
+      .then((text) => {
+        const ok = send([{ type: 'text', text }])
+        if (!ok) {
+          setDrafting(false)
+          toast('Host 未连接，无法让 agent 起草', 'error')
+        }
+      })
   }
 
   const doCreate = async () => {
