@@ -131,6 +131,7 @@ export function TopBar() {
   })
   const summary = useAppStore((s) => s.active?.summary ?? null)
   const status = summary?.status
+  const retrying = status === 'retrying' || !!summary?.retryInfo
   const running = useAppStore((s) => s.active?.running ?? false)
   const activeSessionHostId = useAppStore((s) => s.active?.hostId ?? null)
   const activeSessionId = useAppStore((s) => s.active?.sessionId ?? null)
@@ -216,6 +217,7 @@ export function TopBar() {
   }
 
   return (
+    <>
     <header
       className={cn(
         'relative z-20 flex shrink-0 items-center gap-1.5 bg-bg px-2 md:px-3',
@@ -300,7 +302,7 @@ export function TopBar() {
           </h1>
         )}
 
-        {hasSession ? (
+        {hasSession && !(isMobile && retrying) ? (
           <StatePill
             running={running}
             status={status}
@@ -423,5 +425,21 @@ export function TopBar() {
         </div>
       )}
     </header>
+    {isMobile && hasSession && retrying && (
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-border bg-surface px-3 py-1.5 text-[12px] text-text-secondary">
+        <span className="size-1.5 shrink-0 rounded-full bg-warning running-dot" />
+        <span className="min-w-0 flex-1 truncate">
+          网络中断，{Math.max(0, retrySeconds ?? 0)} 秒后重试
+        </span>
+        <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[12px]" onClick={retryNow}>
+          立即重试
+        </Button>
+        <span className="text-border-strong">·</span>
+        <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[12px]" onClick={interrupt}>
+          停止
+        </Button>
+      </div>
+    )}
+    </>
   )
 }

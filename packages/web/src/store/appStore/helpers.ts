@@ -35,6 +35,8 @@ export function summaryOf(s: Session): SessionSummary {
     model: s.model,
     permissionMode: s.permissionMode,
     status: s.status,
+    ...(s.retryInfo ? { retryInfo: { ...s.retryInfo } } : {}),
+    ...(s.resumePaused ? { resumePaused: true as const } : {}),
     ...(s.effort ? { effort: s.effort } : {}),
     ...(s.delegation ? { delegation: s.delegation } : {}),
     ...(s.pinned ? { pinned: true } : {}),

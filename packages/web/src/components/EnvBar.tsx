@@ -585,7 +585,7 @@ export function EnvBar({
   }
 
   return (
-    <div className="flex min-w-0 items-center gap-1 overflow-x-auto pb-1.5">
+    <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto pb-1.5 sm:gap-1">
       <Menu
         side="top"
         align="left"
@@ -683,6 +683,7 @@ export function EnvBar({
       <Popover
         side="top"
         padded={false}
+        className={cn('shrink-0', !isSession && !env?.repoRoot && 'max-sm:hidden')}
         panelClassName="w-auto rounded-[10px] p-[5px]"
         trigger={({ open, toggle }) => (
           <EnvTrigger
@@ -778,7 +779,7 @@ export function EnvBar({
           )}
         >
           <GitFork size={12} className={isWorktree ? 'text-text-soft' : 'text-muted'} />
-          <span>Worktree</span>
+          <span className="hidden sm:inline">Worktree</span>
           <Switch
             checked={isWorktree}
             onChange={toggleWorktree}

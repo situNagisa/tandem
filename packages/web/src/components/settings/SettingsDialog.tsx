@@ -65,7 +65,7 @@ export function SettingsDialog() {
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
     >
       <div className="flex h-full min-h-0 flex-col sm:flex-row">
-        <nav className="grid shrink-0 grid-cols-2 gap-1 border-b border-border bg-bg/40 p-2 sm:flex sm:w-44 sm:flex-col sm:border-b-0 sm:border-r sm:p-3">
+        <nav className="grid shrink-0 grid-cols-3 gap-1 border-b border-border bg-bg/40 p-2 sm:flex sm:w-44 sm:flex-col sm:border-b-0 sm:border-r sm:p-3">
           {TABS.map((t) => {
             const Icon = t.icon
             return (
