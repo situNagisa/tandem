@@ -74,15 +74,7 @@ import {
 } from './key-rotation.js';
 import { BackgroundTaskManager } from './tasks.js';
 import { ScheduleManager } from './schedules.js';
-import {
-  checkoutBranch,
-  createWorktree,
-  gitRepoRoot,
-  listBranches,
-  mergeWorktree,
-  removeWorktree,
-  worktreeCleanliness,
-} from './worktree.js';
+import { removeWorktree, worktreeCleanliness } from './worktree.js';
 import { runTurn } from './agent/loop.js';
 import { persist as persistRunState } from './run-state.js';
 import {
@@ -129,6 +121,13 @@ import {
 } from './host/helpers.js';
 import { inboxSnapshot, pushInbox, recordCi } from './host/inbox.js';
 import { importSession, notifyExternalSessionsChanged } from './host/external.js';
+import {
+  checkoutSessionBranch,
+  enterSessionWorktree,
+  mergeSessionWorktree,
+  refreshEnv,
+  sessionBranches,
+} from './host/vcs.js';
 import {
   broadcastSummary,
   createSession,
@@ -433,27 +432,8 @@ export class Host {
     });
   }
 
-  /** 检测 cwd 的 git 环境；变化时广播 session_updated。 */
-  async refreshEnv(id: string): Promise<void> {
-    const rec = this.store.get(id);
-    if (!rec) return;
-    // worktree 内跑 git 会把 worktree 目录当成仓库根，项目名变成分支目录名。
-    // 统一用原仓库根 + worktree 分支，保证侧栏/顶栏与主仓库一致。
-    const env =
-      rec.worktree && rec.worktreeRepoRoot
-        ? {
-            repoRoot: rec.worktreeRepoRoot,
-            repoName: path.basename(rec.worktreeRepoRoot),
-            branch: rec.worktree.branch,
-          }
-        : await detectSessionEnv(rec.cwd);
-    const before = JSON.stringify(rec.env ?? null);
-    const after = JSON.stringify(env ?? null);
-    if (before === after) return;
-    if (env) rec.env = env;
-    else delete rec.env;
-    this.store.markDirty(rec.id, false);
-    this.broadcastSummary(rec);
+  refreshEnv(id: string): Promise<void> {
+    return refreshEnv(this, id);
   }
 
   /** 取会话运行时的有效账号：account + 分组（key/baseUrl/模型按分组覆盖）。 */
@@ -864,60 +844,21 @@ export class Host {
     );
   }
 
-  /** 把 worktree 分支合回基准分支。 */
-  async mergeSessionWorktree(
-    id: string,
-    strategy: 'merge' | 'squash',
-  ): Promise<{ ok: boolean; error?: string }> {
-    const rec = this.store.get(id);
-    if (!rec) throw httpError('会话不存在', 404);
-    if (!rec.worktree) return { ok: false, error: '该会话不是 worktree 会话' };
-    if (this.isRunning(id)) return { ok: false, error: '会话正在运行，无法合并' };
-    const repoRoot = rec.worktreeRepoRoot ?? (await gitRepoRoot(rec.worktree.path));
-    if (!repoRoot) return { ok: false, error: '找不到 worktree 所属的原仓库' };
-    const result = await mergeWorktree(
-      repoRoot,
-      rec.worktree.baseBranch,
-      rec.worktree.branch,
-      strategy,
-    );
-    if (result.ok) void this.refreshEnv(id);
-    return result;
+  mergeSessionWorktree(id: string,
+      strategy: 'merge' | 'squash',): Promise<{ ok: boolean; error?: string }> {
+    return mergeSessionWorktree(this, id, strategy);
   }
 
-  /** 会话中途切换工作目录、分支或进入 worktree。 */
-  async sessionBranches(id: string): Promise<{ current?: string; branches: string[] }> {
-    const rec = this.store.get(id);
-    if (!rec) throw httpError('会话不存在', 404);
-    return listBranches(rec.cwd);
+  sessionBranches(id: string): Promise<{ current?: string; branches: string[] }> {
+    return sessionBranches(this, id);
   }
 
-  async checkoutSessionBranch(id: string, branch: string, create: boolean): Promise<SessionRecord> {
-    const rec = this.store.get(id);
-    if (!rec) throw httpError('会话不存在', 404);
-    if (this.isRunning(id)) throw httpError('会话正在运行，无法切换分支', 409);
-    await checkoutBranch(rec.cwd, branch, create);
-    await this.refreshEnv(id);
-    return rec;
+  checkoutSessionBranch(id: string, branch: string, create: boolean): Promise<SessionRecord> {
+    return checkoutSessionBranch(this, id, branch, create);
   }
 
-  async enterSessionWorktree(id: string, branch?: string): Promise<SessionRecord> {
-    const rec = this.store.get(id);
-    if (!rec) throw httpError('会话不存在', 404);
-    if (this.isRunning(id)) throw httpError('会话正在运行，无法创建 worktree', 409);
-    if (rec.worktree) throw new Error('该会话已在 worktree 中');
-    const info = await createWorktree(this.home, rec.cwd, branch, randomUUID().slice(0, 8));
-    rec.cwd = info.path;
-    rec.worktree = { path: info.path, branch: info.branch, baseBranch: info.baseBranch };
-    rec.worktreeRepoRoot = info.repoRoot;
-    rec.env = {
-      repoRoot: info.repoRoot,
-      repoName: path.basename(info.repoRoot),
-      branch: info.branch,
-    };
-    this.store.markDirty(rec.id, false);
-    this.broadcastSummary(rec);
-    return rec;
+  enterSessionWorktree(id: string, branch?: string): Promise<SessionRecord> {
+    return enterSessionWorktree(this, id, branch);
   }
 
   importSession(input: { session?: unknown; cwd?: unknown }): Promise<SessionRecord> {
