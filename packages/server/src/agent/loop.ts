@@ -9,7 +9,6 @@ import { isReadOnlySubagentInput } from '../tools/task.js';
 import { errorMessage, truncateMiddle } from '../util/text.js';
 import { costOfUsage, priceForModel } from '../usage.js';
 import { cacheHitRateOf, estimateBreakdown } from '../context.js';
-import { buildSystemPrompt } from './prompt.js';
 import { withNetworkRetry } from './retry.js';
 import { replayUnfinishedTools } from './resume.js';
 import {
@@ -125,22 +124,13 @@ export async function runTurn(
       });
       setAssistantMessage(host, rec, assistant.id);
 
-      const system = buildSystemPrompt(rec.cwd, {
+      const built = host.buildSystemFor(rec, {
         allowTask,
-        planMode: rec.permissionMode === 'plan',
         hookContext: promptHookContext,
-        skills: host.skills.promptSection(rec.cwd),
-        memory: host.memory.promptSection(rec.cwd),
-        delegationPrompt: host.delegationPrompt(rec),
-        ...(allowTask
-          ? {
-              subagents: host.subagentPresets
-                .list(rec.cwd)
-                .map((preset) => ({ name: preset.name, description: preset.description })),
-            }
-          : {}),
-        ...(rec.systemPromptExtra ? { extraSystemPrompt: rec.systemPromptExtra } : {}),
       });
+      const system = built.system;
+      // 记录本轮实际注入的段落；变化时随 WS 推送，会话开头可展开查看
+      host.recordInjections(rec, built.parts, turnMessageId);
       const requestMessages = rec.messages.slice(0, -1).filter((m) => !m.notice);
       // 请求前估算各部分占用；拿到真实 usage 后再按比例校准
       const contextEstimate = estimateBreakdown({

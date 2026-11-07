@@ -481,6 +481,7 @@ export async function mergePullRequest(
 export async function failedCheckPrompt(
   cwd: string,
   check: { checkName?: unknown; runId?: unknown; url?: unknown },
+  renderPrompt?: (name: string, log: string) => string,
 ): Promise<{ ok: boolean; error?: string; message?: string; checkName?: string }> {
   const name = str(check.checkName) || 'CI 检查';
   const root = await repoRootOf(cwd);
@@ -504,7 +505,9 @@ export async function failedCheckPrompt(
   return {
     ok: true,
     checkName: name,
-    message: `CI 检查「${name}」失败。失败日志如下：\n\n\`\`\`\n${clipped}\n\`\`\`\n\n请定位失败原因并修复；修复后说明改了哪些文件。`,
+    message:
+      renderPrompt?.(name, clipped) ??
+      `CI 检查「${name}」失败。失败日志如下：\n\n\`\`\`\n${clipped}\n\`\`\`\n\n请定位失败原因并修复；修复后说明改了哪些文件。`,
   };
 }
 

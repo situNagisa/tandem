@@ -5,8 +5,6 @@ import type {
   HostSettings,
   PermissionMode,
   Profile,
-  PromptTemplate,
-  PromptTemplateKey,
   ReasoningEffort,
   SubagentPreset,
   SubagentPresetInput,
@@ -137,9 +135,6 @@ export function SubagentsSection() {
   const [draft, setDraft] = useState<Draft | null>(null)
   const [dirty, setDirty] = useState(false)
   const [settings, setSettings] = useState<HostSettings | null>(null)
-  const [templates, setTemplates] = useState<PromptTemplate[]>([])
-  const [drafts, setDrafts] = useState<Partial<Record<PromptTemplateKey, string>>>({})
-  const [savingPrompts, setSavingPrompts] = useState(false)
 
   const load = () => {
     if (!host) {
@@ -172,17 +167,13 @@ export function SubagentsSection() {
   useEffect(() => {
     if (!host) {
       setSettings(null)
-      setTemplates([])
-      setDrafts({})
       return
     }
     let cancelled = false
-    Promise.all([api.settings(host), api.promptTemplates(host)])
-      .then(([nextSettings, result]) => {
-        if (cancelled) return
-        setSettings(nextSettings)
-        setTemplates(result.templates)
-        setDrafts(Object.fromEntries(result.templates.map((item) => [item.key, item.text])))
+    api
+      .settings(host)
+      .then((nextSettings) => {
+        if (!cancelled) setSettings(nextSettings)
       })
       .catch(() => {})
     return () => {
@@ -250,29 +241,6 @@ export function SubagentsSection() {
     } catch (err) {
       setSettings(previous)
       toast(err instanceof Error ? err.message : '保存失败', 'error')
-    }
-  }
-
-  const promptDirty = templates.some((item) => (drafts[item.key] ?? item.text) !== item.text)
-
-  const savePrompts = async () => {
-    if (!host || savingPrompts) return
-    setSavingPrompts(true)
-    try {
-      const values: Partial<Record<PromptTemplateKey, string>> = {}
-      for (const item of templates) {
-        const text = drafts[item.key] ?? item.text
-        if (text === item.defaultText) values[item.key] = ''
-        else values[item.key] = text
-      }
-      const result = await api.savePromptTemplates(host, values)
-      setTemplates(result.templates)
-      setDrafts(Object.fromEntries(result.templates.map((item) => [item.key, item.text])))
-      toast('提示词已保存', 'success')
-    } catch (err) {
-      toast(err instanceof Error ? err.message : '保存提示词失败', 'error')
-    } finally {
-      setSavingPrompts(false)
     }
   }
 
@@ -583,58 +551,7 @@ export function SubagentsSection() {
         </div>
       )}
 
-      <div className="space-y-2 border-t border-border pt-3">
-        <div className="flex flex-wrap items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <h3 className="text-[12.5px] font-medium text-text-soft">提示词</h3>
-            <p className="mt-0.5 text-[11.5px] leading-5 text-muted">
-              未修改时跟随内置默认（Host 升级后自动生效）。支持变量 {'{{presets}}'}、{'{{cwd}}'}、{'{{delegation}}'}。
-            </p>
-          </div>
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={savePrompts}
-            disabled={!promptDirty || savingPrompts || !hostReady}
-            icon={savingPrompts ? <Loader2 size={13} className="animate-spin" /> : undefined}
-          >
-            保存提示词
-          </Button>
-        </div>
-        {templates.map((item) => {
-          const text = drafts[item.key] ?? item.text
-          const modified = text !== item.defaultText
-          return (
-            <div key={item.key} className="rounded-xl border border-border bg-surface p-3">
-              <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                <span className="text-[12.5px] font-medium text-text">{item.label}</span>
-                {modified && (
-                  <span className="rounded bg-accent/15 px-1.5 py-px text-[10.5px] text-accent">
-                    已修改
-                  </span>
-                )}
-                <span className="flex-1" />
-                {modified && (
-                  <button
-                    type="button"
-                    onClick={() => setDrafts((prev) => ({ ...prev, [item.key]: item.defaultText }))}
-                    className="text-[11.5px] text-muted transition-colors hover:text-text"
-                  >
-                    恢复默认
-                  </button>
-                )}
-              </div>
-              <p className="mb-1.5 text-[11.5px] text-muted">{item.description}</p>
-              <textarea
-                value={text}
-                onChange={(e) => setDrafts((prev) => ({ ...prev, [item.key]: e.target.value }))}
-                rows={item.key === 'taskDescription' ? 4 : 3}
-                className="w-full resize-y rounded-lg border border-border bg-surface px-2.5 py-2 font-mono text-[12px] leading-5 text-text outline-none placeholder:text-muted focus:border-border-strong"
-              />
-            </div>
-          )
-        })}
-      </div>
+      <p className="border-t border-border pt-3 text-[11.5px] text-muted">提示词统一在「设置 → 提示词」中编辑；未修改时跟随内置默认。</p>
     </div>
   )
 }
