@@ -14,6 +14,8 @@ export function quotaLine(quota?: QuotaEstimate): string | undefined {
 /** 交接卡「等待重置」按钮里的相对时间。 */
 export function handoffWaitLabel(resumeAt?: number, now = Date.now()): string {
   if (!resumeAt) return '等待额度重置（自动继续）'
-  const minutes = Math.max(1, Math.round((resumeAt - now) / 60_000))
+  const seconds = Math.max(0, Math.round((resumeAt - now) / 1000))
+  if (seconds < 90) return `等待额度重置（约 ${seconds} 秒后自动继续）`
+  const minutes = Math.max(1, Math.round(seconds / 60))
   return `等待额度重置（约 ${minutes} 分钟后自动继续）`
 }

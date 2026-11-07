@@ -47,6 +47,43 @@ function listen(server) {
 }
 
 function createMockProvider() {
+  // 配额交接用例：主分组第一次成功、之后 429；备用分组始终可用。
+  let quotaHits = 0
+  const rateLimitHeaders = {
+    'x-ratelimit-limit-requests': '100',
+    'x-ratelimit-remaining-requests': '90',
+    'x-ratelimit-limit-tokens': '100000',
+    'x-ratelimit-remaining-tokens': '90000',
+    'x-ratelimit-reset-requests': '30s',
+    'x-ratelimit-reset-tokens': '30s',
+  }
+  const quotaStream = (res, text) => {
+    res.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      connection: 'keep-alive',
+      ...rateLimitHeaders,
+    })
+    const send = (payload) => res.write(`data: ${JSON.stringify(payload)}\n\n`)
+    send({
+      id: 'chatcmpl-quota',
+      object: 'chat.completion.chunk',
+      choices: [{ index: 0, delta: { role: 'assistant', content: text } }],
+    })
+    send({
+      id: 'chatcmpl-quota',
+      object: 'chat.completion.chunk',
+      choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+    })
+    send({
+      id: 'chatcmpl-quota',
+      object: 'chat.completion.chunk',
+      choices: [],
+      usage: { prompt_tokens: 120, completion_tokens: 20, total_tokens: 140 },
+    })
+    res.write('data: [DONE]\n\n')
+    res.end()
+  }
   const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && req.url.endsWith('/models')) {
       res.writeHead(200, { 'content-type': 'application/json' })
@@ -66,6 +103,41 @@ function createMockProvider() {
     } catch {
       res.writeHead(400, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ error: { message: 'bad json' } }))
+      return
+    }
+    // 配额交接：主分组第一次成功，之后返回 429 与限流头；备用分组始终成功。
+    if (body.model === 'quota-model') {
+      quotaHits += 1
+      if (quotaHits > 1) {
+        res.writeHead(429, {
+          'content-type': 'application/json',
+          'retry-after': '3',
+          'x-ratelimit-limit-requests': '100',
+          'x-ratelimit-remaining-requests': '0',
+          'x-ratelimit-reset-requests': '3s',
+          'x-ratelimit-remaining-tokens': '0',
+          'x-ratelimit-reset-tokens': '3s',
+        })
+        res.end(JSON.stringify({ error: { message: 'rate limit exceeded' } }))
+        return
+      }
+      quotaStream(res, '配额主分组回复：第二次请求完成。')
+      return
+    }
+    if (body.model === 'quota-backup-model') {
+      if (body.stream === true) {
+        quotaStream(res, '配额备用分组回复：已继续。')
+      } else {
+        res.writeHead(200, { 'content-type': 'application/json', ...rateLimitHeaders })
+        res.end(
+          JSON.stringify({
+            id: 'chatcmpl-quota',
+            object: 'chat.completion',
+            choices: [{ index: 0, message: { role: 'assistant', content: '配额备用分组' }, finish_reason: 'stop' }],
+            usage: { prompt_tokens: 20, completion_tokens: 5 },
+          }),
+        )
+      }
       return
     }
     // 提交前 AI 评审：返回固定 JSON（一条 blocker、一条 nit、一条指向不存在行的错误项）
@@ -326,6 +398,32 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
       defaultModel: 'custom-1',
       createdAt: Date.now() - 20_000,
     },
+    {
+      id: 'p-quota',
+      name: '限流账号',
+      kind: 'openai-compatible',
+      baseUrl,
+      models: ['quota-model'],
+      defaultModel: 'quota-model',
+      createdAt: Date.now() - 30_000,
+      groups: [
+        {
+          id: 'g-quota-main',
+          name: '主分组',
+          keys: [{ id: 'k-quota-main', label: '主', apiKey: 'reg-key-quota-main' }],
+          models: ['quota-model'],
+          defaultModel: 'quota-model',
+          fallbackGroupIds: ['g-quota-backup'],
+        },
+        {
+          id: 'g-quota-backup',
+          name: '备用分组',
+          keys: [{ id: 'k-quota-backup', label: '备', apiKey: 'reg-key-quota-backup' }],
+          models: ['quota-backup-model'],
+          defaultModel: 'quota-backup-model',
+        },
+      ],
+    },
   ]
   writeJson(path.join(configDir, 'profiles.json'), { profiles })
 
@@ -385,6 +483,19 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
   const sessions = [
     mk('long', '回归长会话', longMessages),
     mk('links', '文件链接会话', linksMessages, { updatedAt: Date.now() - 1500 }),
+    // 配额交接：主分组第一次请求成功后下一次 429，备用分组接住。
+    mk('quota', '配额交接会话', [
+      message('q1', 'user', '第一轮：介绍一下项目'),
+      message('q2', 'assistant', '配额主分组回复：第一轮完成。', {
+        model: 'quota-model',
+        usage: { inputTokens: 120, outputTokens: 20, costUsd: 0.001 },
+      }),
+    ], {
+      profileId: 'p-quota',
+      groupId: 'g-quota-main',
+      model: 'quota-model',
+      updatedAt: Date.now() - 1550,
+    }),
     mk('nockpt', '无检查点会话', [
       message('n1', 'user', '先看看目录'),
       message('n2', 'assistant', '目录结构如下。', { model: 'mock-1' }),
@@ -1074,6 +1185,50 @@ async function main() {
       )
       assert.notEqual(after, before, '点击最大占用项后没有跳转到对应消息')
     })
+
+    desktop('配额将尽时交接卡可切换备用分组', async (page) => {
+      await openSession(page, 'quota')
+      await waitOnline(page)
+      await waitModelReady(page)
+      const box = page.locator('textarea[aria-label="消息输入框"]').first()
+      await box.fill('第二轮：继续实现')
+      await box.press('Enter')
+      await page.getByText('配额主分组回复：第二次请求完成。').first().waitFor({ timeout: 20_000 })
+
+      // 用量卡显示按当前速度的预估（受限于 Key 限流）
+      const quotaLine = page.locator('[data-quota-line="usage"]')
+      await quotaLine.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.match(await quotaLine.innerText(), /按当前速度约可再跑 \d+ 轮（受限于：Key 限流）/)
+
+      // 主分组下一次请求 429：出现交接卡（默认策略「询问」）
+      await box.fill('第三轮：继续实现')
+      await box.press('Enter')
+      const card = page.locator('[data-handoff-card="true"]')
+      await card.waitFor({ state: 'visible', timeout: 20_000 })
+      const cardText = await card.innerText()
+      assert.match(cardText, /额度将尽/)
+      assert.match(cardText, /切换到 .*备用分组/, `交接卡缺少备用分组：${cardText}`)
+      await page.screenshot({ path: path.join(shots, 'quota-handoff-card.png') })
+
+      await card.getByRole('button', { name: /^切换到 / }).click()
+      await page.getByText(/已从 .* 交接到 /).first().waitFor({ timeout: 20_000 })
+      await page.getByText('配额备用分组回复：已继续。').first().waitFor({ timeout: 20_000 })
+      await page.screenshot({ path: path.join(shots, 'quota-handoff-switched.png') })
+
+      const after = await api(base, token, '/api/sessions/quota')
+      assert.equal(after.groupId, 'g-quota-backup', '切换后会话应使用备用分组')
+      assert.equal(after.model, 'quota-backup-model', '切换后应使用备用分组的默认模型')
+      assert.equal(after.handoff?.status, 'done', '交接状态应为 done')
+      assert.ok(after.handoff?.checkpointId, '切换前应保存检查点')
+      const checkpoints = await api(base, token, '/api/sessions/quota/checkpoints')
+      assert.ok(
+        checkpoints.some((item) => item.id === after.handoff.checkpointId),
+        '检查点列表里找不到交接检查点',
+      )
+      const quotaAfter = page.locator('[data-quota-line="usage"]')
+      assert.match(await quotaAfter.innerText(), /按当前速度约可再跑 \d+ 轮/)
+    })
+
 
     desktop('Secrets 工具输出显示打码标签', async (page) => {
       await openSession(page, 'secrets')

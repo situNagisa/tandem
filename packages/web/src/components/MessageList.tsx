@@ -263,6 +263,9 @@ function MessageListInner({
   const hooks = messagesProp ? EMPTY_HOOKS : storeHooks
   const activeHostId = useSessionView((s) => s?.hostId ?? null)
   const storeInjections = useSessionView((s) => (messagesProp ? undefined : s?.injections))
+  const handoffStatus = useSessionView((s) =>
+    messagesProp ? undefined : s?.summary?.handoff?.status,
+  )
   const hostSessions = useAppStore((s) =>
     activeHostId ? s.runtimes[activeHostId]?.sessions : undefined,
   )
@@ -560,7 +563,10 @@ function MessageListInner({
           />
         )
       })}
-      {!messagesProp && <HandoffCard />}
+      {!messagesProp &&
+        handoffStatus &&
+        handoffStatus !== 'done' &&
+        handoffStatus !== 'failed' && <HandoffCard />}
       {!messagesProp && orphanHooks.length > 0 && <HookNoticeLine notices={orphanHooks} />}
     </div>
   )

@@ -106,7 +106,9 @@ async function waitAndContinue(
 ): Promise<void> {
   state.status = 'waiting';
   persistHandoff(host, rec, state);
-  await sleepUntil((state.resumeAt ?? Date.now() + 60_000) - Date.now(), signal);
+  // 多等 1 秒再恢复：provider 的重置时间常按秒截断，卡点重试仍可能撞 429
+  const resumeAt = state.resumeAt ?? Date.now() + 60_000;
+  await sleepUntil(Math.max(0, resumeAt + 1000 - Date.now()), signal);
   state.status = 'done';
   state.resolvedAt = Date.now();
   persistHandoff(host, rec, state);
