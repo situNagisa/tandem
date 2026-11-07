@@ -128,7 +128,8 @@ Web/Desktop/Android
 | 加一个 REST 接口 | 先在 `protocol` 注释/types 定义；`server/src/server.ts` 加路由（后续放 `routes/`）；`web/src/lib/api.ts` 加方法 |
 | 改团队共享/成员权限 | `server/src/team/*` + `routes/team.ts` + `routes/ws.ts`；前端 `settings/TeamSection.tsx`、`JoinTeamDialog.tsx`、`lib/inviteLink.ts`；安全说明 `docs/team.md` |
 | 加一个 WS 事件 | `protocol` 的 `ServerMsg/ClientMsg`；server 用 `Hub.broadcastSession/broadcastAll`；web `appStore/serverMessages.ts` 事件 switch + `ws.ts` 类型 |
-| 加一个设置页 | `web/src/lib/types.ts` 的 `SettingsTab`；`SettingsDialog.tsx` 的 `TABS` 与条件渲染；页面放 `components/settings/`；数据走 `api.ts` |
+| 加一个设置页 | `web/src/lib/types.ts` 的 `SettingsTab`；`SettingsDialog.tsx` 的 `TABS` 与条件渲染；页面放 `components/settings/`；数据走 `api.ts`。设置项要进 `lib/settingsRegistry.ts` 并给容器加 `data-setting-id`，命令面板/设置搜索才能定位 |
+| 加一个命令/快捷键 | `web/src/lib/commands.ts` 的 `COMMANDS`（id、标题、关键词、默认快捷键、run）；外观页快捷键表与全局监听自动读取，自定义存 localStorage |
 | 加一个菜单/弹层 | 只用 `components/ui/Menu.tsx`、`Modal.tsx`、`Controls.tsx`；不要手写 role 或原生 select |
 | 改会话发送/循环 | `server/src/host.ts` 的 `send/handleUserContent/sendToModel` → `agent/loop.ts` |
 | 改 provider | `server/src/providers/<kind>.ts` + `providers/index.ts`；协议类型在 `providers/types.ts` |

@@ -391,6 +391,7 @@ export function SearchDialog() {
                       key={item.key}
                       data-palette-index={i}
                       data-palette-kind={item.kind}
+                      data-palette-active={i === index ? 'true' : undefined}
                       onMouseEnter={() => setIndex(i)}
                       onClick={() => runItem(item)}
                       className={cn(

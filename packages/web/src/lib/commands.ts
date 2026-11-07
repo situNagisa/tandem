@@ -59,6 +59,7 @@ export const COMMANDS: AppCommand[] = [
     id: 'session.dispatch',
     title: '派单到其他 Host',
     keywords: ['派单', '任务', 'dispatch'],
+    defaultShortcut: 'mod+alt+d',
     run: () => {
       const store = useAppStore.getState()
       useUiStore.getState().setDispatchOpen(true, store.active?.hostId ?? store.activeHostId ?? undefined)
@@ -68,6 +69,7 @@ export const COMMANDS: AppCommand[] = [
     id: 'app.toggle-theme',
     title: '切换主题',
     keywords: ['外观', '深色', '浅色', '主题', 'theme'],
+    defaultShortcut: 'mod+alt+t',
     run: () => {
       const ui = useUiStore.getState()
       const next = ui.theme === 'light' ? 'dark' : ui.theme === 'dark' ? 'system' : 'light'
@@ -99,7 +101,7 @@ export const COMMANDS: AppCommand[] = [
     id: 'app.inbox',
     title: '打开收件箱',
     keywords: ['收件箱', '审批', '提醒', 'inbox'],
-    defaultShortcut: 'mod+shift+i',
+    defaultShortcut: 'mod+alt+i',
     run: () => {
       useUiStore.getState().setInboxOpen(true)
     },
@@ -117,7 +119,7 @@ export const COMMANDS: AppCommand[] = [
     id: 'session.changes',
     title: '打开改动审阅',
     keywords: ['改动', 'diff', '审阅', '提交'],
-    defaultShortcut: 'mod+shift+g',
+    defaultShortcut: 'mod+alt+g',
     run: () => {
       const active = requireActive()
       if (!active) return
@@ -128,6 +130,7 @@ export const COMMANDS: AppCommand[] = [
     id: 'session.permission-mode',
     title: '切换权限模式',
     keywords: ['权限', '审批', '自动接受', '计划模式'],
+    defaultShortcut: 'mod+alt+p',
     run: () => {
       const active = requireActive()
       if (!active?.summary) return
@@ -141,6 +144,7 @@ export const COMMANDS: AppCommand[] = [
     id: 'session.model',
     title: '切换模型',
     keywords: ['模型', 'model', '下一个'],
+    defaultShortcut: 'mod+alt+m',
     run: () => {
       const active = requireActive()
       if (!active?.summary) return
@@ -166,6 +170,7 @@ export const COMMANDS: AppCommand[] = [
     id: 'session.delegation',
     title: '切换委派策略',
     keywords: ['委派', '子代理', 'delegation'],
+    defaultShortcut: 'mod+alt+l',
     run: () => {
       const active = requireActive()
       if (!active?.summary) return
@@ -181,6 +186,7 @@ export const COMMANDS: AppCommand[] = [
     id: 'session.compact',
     title: '压缩上下文',
     keywords: ['上下文', '压缩', 'compact'],
+    defaultShortcut: 'mod+alt+c',
     run: () => {
       const active = requireActive()
       if (!active) return

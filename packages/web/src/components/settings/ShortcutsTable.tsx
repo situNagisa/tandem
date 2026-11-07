@@ -72,7 +72,7 @@ export function ShortcutsTable() {
           全部恢复默认
         </Button>
       </div>
-      <dl className="mt-2 grid gap-x-6 sm:grid-cols-2 lg:grid-cols-3">
+      <dl className="mt-2 grid gap-x-6 sm:grid-cols-2">
         {COMMANDS.map((command) => {
           const shortcut = getCommandShortcut(command.id)
           const isRecording = recording === command.id
@@ -82,7 +82,7 @@ export function ShortcutsTable() {
               data-command-shortcut={command.id}
               className="flex min-h-8 min-w-0 items-center gap-2 text-[13px]"
             >
-              <dt className="min-w-0 flex-1 truncate text-text-soft">{command.title}</dt>
+              <dt title={command.title} className="min-w-0 flex-1 truncate text-text-soft">{command.title}</dt>
               <dd className="flex shrink-0 items-center gap-1">
                 <kbd
                   className={cn(

@@ -1744,6 +1744,17 @@ async function main() {
       await dialog.waitFor({ state: 'visible', timeout: 10_000 })
       const marker = dialog.locator('[data-setting-id="notifications.desktop"]')
       await marker.waitFor({ state: 'visible', timeout: 10_000 })
+      // 定位在打开设置后异步执行，等高亮真正加上再断言，避免弹层入场动画期间读到旧状态。
+      await page
+        .waitForFunction(
+          () =>
+            (document.querySelector('[data-setting-id="notifications.desktop"]')?.className ?? '')
+              .toString()
+              .includes('setting-highlight'),
+          null,
+          { timeout: 5_000 },
+        )
+        .catch(() => {})
       const cls = (await marker.getAttribute('class')) ?? ''
       assert.ok(cls.includes('setting-highlight'), '定位后没有高亮目标设置项')
       const navTab = dialog.locator('nav').first().getByRole('button', { name: '通知', exact: true })

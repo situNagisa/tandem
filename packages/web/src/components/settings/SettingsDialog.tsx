@@ -142,7 +142,7 @@ export function SettingsDialog() {
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
     >
       <div className="flex h-full min-h-0 flex-col sm:flex-row">
-        <nav aria-label="设置页签" className="grid shrink-0 grid-cols-3 gap-1 border-b border-border bg-bg/40 p-2 max-sm:max-h-[340px] max-sm:overflow-y-auto sm:flex sm:w-52 sm:flex-col sm:border-b-0 sm:border-r sm:p-3">
+        <nav aria-label="设置页签" className="grid shrink-0 grid-cols-3 gap-1 overflow-y-auto border-b border-border bg-bg/40 p-2 max-sm:max-h-[340px] sm:flex sm:min-h-0 sm:w-52 sm:flex-col sm:border-b-0 sm:border-r sm:p-3">
           <div className="col-span-3 shrink-0 sm:col-span-1">
             <div className="relative">
               <Search
