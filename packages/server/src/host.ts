@@ -12,12 +12,17 @@ import type {
   HostInfo,
   HostSettings,
   InboxEvent,
+  InjectionChange,
+  InjectionSegment,
+  InjectionSnapshot,
   ListModelsInput,
   Message,
   ModelInfo,
+  PromptTemplateKey,
   PermissionDecision,
   PermissionMode,
   PermissionRequest,
+  DelegationStrategy,
   ReasoningEffort,
   RewindInput,
   Session,
@@ -82,7 +87,6 @@ import { recoverAfterRestart, resumeSession } from './agent/resume.js';
 import { persist as persistRunState } from './run-state.js';
 import {
   BUILTIN_NAMES,
-  INIT_PROMPT,
   findCommandBody,
   listCommands,
   parseSlashCommand,
@@ -92,8 +96,12 @@ import { PLAN_ALLOWED, TOOLS, TOOL_MAP, describeTool } from './tools/index.js';
 import { completeText, listModels as fetchModelList, streamChat } from './providers/index.js';
 import type { ListModelsResult } from './providers/index.js';
 import { applyModelCapabilities } from './providers/capabilities.js';
-import { buildSystemPrompt } from './agent/prompt.js';
+import { buildSystemPromptParts } from './agent/prompt.js';
 import { SkillManager } from './skills.js';
+import { SubagentPresetStore, modelAliasOf } from './subagent-presets.js';
+import { PromptTemplateStore } from './prompt-templates.js';
+import { TASK_DESCRIPTION_DEFAULT } from './prompts/registry.js';
+import { MemoryStore, bodyOfMemory, normalizeFactLines } from './memory.js';
 import {
   cacheHitRateOf,
   estimateBreakdown,
@@ -111,6 +119,7 @@ const PERMISSION_MODES = new Set<PermissionMode>([
 ]);
 
 const EFFORTS = new Set<ReasoningEffort>(['off', 'low', 'medium', 'high', 'max']);
+const DELEGATIONS = new Set<DelegationStrategy>(['orchestrate', 'more', 'less', 'none']);
 
 interface PermissionEntry {
   sessionId: string;
@@ -130,6 +139,12 @@ export class Host {
   readonly mcp: McpManager;
   /** Claude Code 兼容 skills（只读扫描，启用状态存 ~/.tandem/skills-state.json）。 */
   readonly skills: SkillManager;
+  /** 子代理预设：Tandem 自定义 + Claude Code agents/*.md 只读兼容。 */
+  readonly subagentPresets: SubagentPresetStore;
+  /** 可配置提示词（Task 说明 / 四档委派 / 子代理默认附加提示）。 */
+  readonly promptTemplates: PromptTemplateStore;
+  /** 项目/全局长期记忆（Tandem 私有）。 */
+  readonly memory: MemoryStore;
   readonly usage: UsageStore;
   readonly budgets: BudgetStore;
   readonly tasks: BackgroundTaskManager;
@@ -140,6 +155,11 @@ export class Host {
   readonly version: string;
   private runtimes = new Map<string, SessionRuntime>();
   private permissions = new Map<string, PermissionEntry>();
+  /** 每轮系统提示的注入段落清单与变化历史（内存态，GET /injections 时按需重算）。 */
+  private injections = new Map<
+    string,
+    { segments: InjectionSegment[]; changes: InjectionChange[]; updatedAt: number }
+  >();
   /** 单模型能力缓存，避免每次打开选择器都请求 provider 模型列表。 */
   private capabilityCache = new Map<string, { at: number; info: ModelInfo }>();
   /** 已尝试过环境检测的会话：非 git 目录也记住，避免列表轮询反复执行 git。 */
@@ -157,6 +177,9 @@ export class Host {
     this.hooks = new HookManager(home);
     this.mcp = new McpManager(home);
     this.skills = new SkillManager({ home });
+    this.subagentPresets = new SubagentPresetStore(home);
+    this.promptTemplates = new PromptTemplateStore(home);
+    this.memory = new MemoryStore(home);
     this.usage = new UsageStore(home);
     this.budgets = new BudgetStore(home, this.usage);
     this.tasks = new BackgroundTaskManager(home, (task, content, truncated) => {
@@ -211,14 +234,33 @@ export class Host {
   // ---------- Host 行为设置 ----------
 
   settings(): HostSettings {
-    return { resumeOnRestart: this.config.resumeOnRestart === 'pause' ? 'pause' : 'auto' };
+    return {
+      resumeOnRestart: this.config.resumeOnRestart === 'pause' ? 'pause' : 'auto',
+      defaultDelegation:
+        this.config.defaultDelegation === 'orchestrate' ||
+        this.config.defaultDelegation === 'more' ||
+        this.config.defaultDelegation === 'none'
+          ? this.config.defaultDelegation
+          : 'less',
+    };
   }
 
   updateSettings(input: Partial<HostSettings>): HostSettings {
     if (input.resumeOnRestart === 'auto' || input.resumeOnRestart === 'pause') {
       this.config.resumeOnRestart = input.resumeOnRestart;
     }
-    saveHostSettings(this.home, { resumeOnRestart: this.settings().resumeOnRestart });
+    if (
+      input.defaultDelegation === 'orchestrate' ||
+      input.defaultDelegation === 'more' ||
+      input.defaultDelegation === 'less' ||
+      input.defaultDelegation === 'none'
+    ) {
+      this.config.defaultDelegation = input.defaultDelegation;
+    }
+    saveHostSettings(this.home, {
+      resumeOnRestart: this.settings().resumeOnRestart,
+      ...(this.config.defaultDelegation ? { defaultDelegation: this.config.defaultDelegation } : {}),
+    });
     return this.settings();
   }
 
@@ -282,6 +324,7 @@ export class Host {
       ...(rec.retryInfo ? { retryInfo: { ...rec.retryInfo } } : {}),
       ...(rec.resumePaused ? { resumePaused: true } : {}),
       ...(rec.effort ? { effort: rec.effort } : {}),
+      ...(rec.delegation ? { delegation: rec.delegation } : {}),
       // 可选字段只在有值时下发，老客户端不受影响
       ...(rec.pinned ? { pinned: true } : {}),
       ...(rec.pinnedTurns && rec.pinnedTurns.length ? { pinnedTurns: [...rec.pinnedTurns] } : {}),
@@ -320,15 +363,124 @@ export class Host {
     this.setContext(rec, calibrated, false);
   }
 
+  /** 本轮系统提示的构建参数（可编辑提示词按 cwd 解析项目覆盖）。 */
+  private promptOptions(
+    rec: SessionRecord,
+    opts: { allowTask?: boolean; hookContext?: string } = {},
+  ) {
+    const allowTask = opts.allowTask !== false;
+    return {
+      allowTask,
+      planMode: rec.permissionMode === 'plan',
+      hookContext: opts.hookContext,
+      skills: this.skills.promptSection(rec.cwd),
+      memory: this.memory.promptSection(
+        rec.cwd,
+        this.promptTemplates.get('memoryRule', rec.cwd),
+      ),
+      delegationPrompt: this.delegationPrompt(rec),
+      delegationKey: this.delegationKey(rec),
+      ...(allowTask
+        ? {
+            subagents: this.subagentPresets
+              .list(rec.cwd)
+              .map((preset) => ({ name: preset.name, description: preset.description })),
+          }
+        : {}),
+      ...(rec.systemPromptExtra ? { extraSystemPrompt: rec.systemPromptExtra } : {}),
+      prompts: this.promptTemplates.resolved(rec.cwd),
+    };
+  }
+
+  /** 构建系统提示（字符串 + 分段），loop 与上下文估算共用。 */
+  buildSystemFor(
+    rec: SessionRecord,
+    opts: { allowTask?: boolean; hookContext?: string } = {},
+  ): { system: string; parts: InjectionSegment[] } {
+    const parts = buildSystemPromptParts(rec.cwd, this.promptOptions(rec, opts));
+    return { system: parts.map((part) => part.content).join('\n\n'), parts };
+  }
+
+  /** 记录/推送本会话当前生效的注入段落；内容变化时追加一条变化记录。 */
+  recordInjections(
+    rec: SessionRecord,
+    segments: InjectionSegment[],
+    beforeMessageId?: string,
+  ): InjectionSnapshot {
+    const prev = this.injections.get(rec.id);
+    const changes = prev?.changes ?? [];
+    let changed = !prev;
+    if (prev) {
+      const prevMap = new Map(prev.segments.map((item) => [item.id, item]));
+      const nextMap = new Map(segments.map((item) => [item.id, item]));
+      const added = segments.filter((item) => !prevMap.has(item.id)).map((item) => item.name);
+      const removed = prev.segments.filter((item) => !nextMap.has(item.id)).map((item) => item.name);
+      const modified = segments
+        .filter((item) => {
+          const before = prevMap.get(item.id);
+          return before && before.content !== item.content;
+        })
+        .map((item) => item.name);
+      if (added.length || removed.length || modified.length) {
+        changed = true;
+        changes.unshift({
+          ...(beforeMessageId ? { beforeMessageId } : {}),
+          at: Date.now(),
+          added: [...added, ...modified],
+          removed,
+          summary: [
+            ...added.map((name) => `+${name}`),
+            ...removed.map((name) => `−${name}`),
+            ...modified.map((name) => `~${name}`),
+          ].join(' '),
+        });
+        if (changes.length > 20) changes.length = 20;
+      }
+    }
+    const snapshot: InjectionSnapshot = {
+      segments,
+      totalTokens: segments.reduce((sum, item) => sum + item.tokens, 0),
+      updatedAt: Date.now(),
+      changes,
+    };
+    this.injections.set(rec.id, {
+      segments,
+      changes,
+      updatedAt: snapshot.updatedAt,
+    });
+    if (changed) {
+      this.hub.broadcastSession(rec.id, { type: 'injections', sessionId: rec.id, injections: snapshot });
+    }
+    return snapshot;
+  }
+
+  /** GET /api/sessions/:id/injections：没有运行记录时按当前状态重算一份。 */
+  injectionsFor(rec: SessionRecord): InjectionSnapshot {
+    const cached = this.injections.get(rec.id);
+    if (cached) {
+      return {
+        segments: cached.segments,
+        totalTokens: cached.segments.reduce((sum, item) => sum + item.tokens, 0),
+        updatedAt: cached.updatedAt,
+        changes: cached.changes,
+      };
+    }
+    const { parts } = this.buildSystemFor(rec, { allowTask: (rec.depth ?? 0) === 0 });
+    this.injections.set(rec.id, { segments: parts, changes: [], updatedAt: Date.now() });
+    return {
+      segments: parts,
+      totalTokens: parts.reduce((sum, item) => sum + item.tokens, 0),
+      updatedAt: Date.now(),
+      changes: [],
+    };
+  }
+
   /** GET /api/sessions/:id/context：无真实记录时按当前消息粗略估算。 */
   contextFor(rec: SessionRecord): ContextBreakdown {
     if (rec.context) return rec.context;
     const profile = this.profileFor(rec.profileId, rec.groupId);
     const model = rec.model || profile?.defaultModel || '';
-    const system = buildSystemPrompt(rec.cwd, {
-      planMode: rec.permissionMode === 'plan',
-      skills: this.skills.promptSection(rec.cwd),
-    });
+    const system = this.buildSystemFor(rec).system;
     const tools = this.toolDefinitions(rec);
     return estimateBreakdown({
       model,
@@ -373,6 +525,101 @@ export class Host {
 
   groupFor(profileId: string, groupId?: string): StoredProfileGroup | undefined {
     return groupId ? this.profiles.get(profileId)?.groups?.find((g) => g.id === groupId) : undefined;
+  }
+
+  /** 在用户配置的账号里找包含 sonnet/opus/haiku 的模型，优先主会话账号与分组。 */
+  private findModelForAlias(
+    alias: string,
+    preferredProfileId: string,
+    preferredGroupId?: string,
+  ): { profileId: string; groupId?: string; model: string } | undefined {
+    const profiles = this.profiles
+      .list()
+      .slice()
+      .sort((a, b) => (a.id === preferredProfileId ? -1 : b.id === preferredProfileId ? 1 : 0));
+    for (const profile of profiles) {
+      const groups = profile.groups?.length
+        ? profile.groups
+            .slice()
+            .sort((a, b) =>
+              profile.id === preferredProfileId && a.id === preferredGroupId
+                ? -1
+                : profile.id === preferredProfileId && b.id === preferredGroupId
+                  ? 1
+                  : 0,
+            )
+        : [undefined];
+      for (const group of groups) {
+        const effective = effectiveProfile(profile, group?.id);
+        const models = effective.models?.length ? effective.models : [effective.defaultModel];
+        const model = models.find((item) => item.toLowerCase().includes(alias));
+        if (model) {
+          return {
+            profileId: profile.id,
+            ...(group?.id && group.id !== preferredGroupId ? { groupId: group.id } : group?.id ? { groupId: group.id } : {}),
+            model,
+          };
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /** 合并主会话与子代理预设：账号/分组/模型/effort/权限/工具白名单/附加提示。 */
+  private subagentConfig(
+    parent: SessionRecord,
+    presetName?: string,
+    modelOverride?: string,
+  ): {
+    profileId: string;
+    groupId?: string;
+    model: string;
+    effort?: ReasoningEffort;
+    permissionMode: PermissionMode;
+    delegation: DelegationStrategy;
+    toolWhitelist?: string[];
+    systemPromptExtra?: string;
+    presetName?: string;
+  } {
+    const preset = presetName ? this.subagentPresets.resolve(presetName, parent.cwd) : undefined;
+    let profileId = parent.profileId;
+    let groupId = parent.groupId;
+    if (preset?.profileId && this.profiles.get(preset.profileId)) {
+      profileId = preset.profileId;
+      groupId =
+        preset.groupId && this.groupFor(profileId, preset.groupId) ? preset.groupId : undefined;
+    } else if (preset?.groupId && this.groupFor(profileId, preset.groupId)) {
+      groupId = preset.groupId;
+    }
+
+    let model = modelOverride?.trim() || preset?.model?.trim() || '';
+    const alias = modelAliasOf(model);
+    if (alias) {
+      const found = this.findModelForAlias(alias, profileId, groupId);
+      if (found) {
+        profileId = found.profileId;
+        groupId = found.groupId;
+        model = found.model;
+      } else {
+        // 找不到对应模型时沿用主会话，不把 sonnet 之类的别名直接发给 provider
+        profileId = parent.profileId;
+        groupId = parent.groupId;
+        model = parent.model;
+      }
+    }
+    if (!model) model = this.profileFor(profileId, groupId)?.defaultModel || parent.model;
+
+    return {
+      profileId,
+      ...(groupId ? { groupId } : {}),
+      model,
+      ...((preset?.effort ?? parent.effort) ? { effort: preset?.effort ?? parent.effort } : {}),
+      permissionMode: preset?.permissionMode ?? parent.permissionMode,
+      delegation: preset?.delegation ?? 'less',
+      ...(preset?.allowedTools?.length ? { toolWhitelist: [...preset.allowedTools] } : {}),
+      ...(preset?.systemPrompt ? { systemPromptExtra: preset.systemPrompt } : {}),
+      ...(preset ? { presetName: preset.name } : {}),
+    };
   }
 
   /**
@@ -572,21 +819,101 @@ export class Host {
     return info;
   }
 
+  /** 会话的委派策略；子会话缺省 less。 */
+  delegationFor(rec: SessionRecord): DelegationStrategy {
+    return rec.delegation ?? ((rec.depth ?? 0) === 0 ? this.settings().defaultDelegation ?? 'less' : 'less');
+  }
+
+  /** 编排模式下主会话只保留规划/汇总所需的最小工具集。 */
+  private orchestrateTools(rec: SessionRecord): ToolDefinition[] {
+    const allowed = new Set([
+      'Task',
+      'TodoWrite',
+      'Read',
+      'Glob',
+      'Grep',
+      'WebFetch',
+      'BashOutput',
+      ...(rec.permissionMode === 'plan' ? ['ExitPlanMode'] : []),
+    ]);
+    return TOOLS.filter((tool) => allowed.has(tool.name));
+  }
+
+  /** 子代理预设列表（用于 Task 工具说明与系统提示）。 */
+  presetSummary(cwd: string): string {
+    const presets = this.subagentPresets.list(cwd);
+    if (presets.length === 0) return '（无自定义预设）';
+    return presets
+      .map((preset) => `${preset.name}${preset.description ? `（${preset.description}）` : ''}`)
+      .join('；');
+  }
+
+  /** Task 工具描述属于只读提示词（与工具实现强绑定），{{presets}} 替换为预设列表。 */
+  taskToolDescription(cwd: string): string {
+    return TASK_DESCRIPTION_DEFAULT.replace(/\{\{presets\}\}/g, this.presetSummary(cwd));
+  }
+
+  /** 当前委派策略对应的注册表 key。 */
+  delegationKey(rec: SessionRecord): PromptTemplateKey {
+    const strategy = this.delegationFor(rec);
+    return strategy === 'orchestrate'
+      ? 'delegationOrchestrate'
+      : strategy === 'more'
+        ? 'delegationMore'
+        : strategy === 'none'
+          ? 'delegationNone'
+          : 'delegationLess';
+  }
+
+  /** 当前会话应注入的委派策略提示词。 */
+  delegationPrompt(rec: SessionRecord): string {
+    const strategy = this.delegationFor(rec);
+    return this.promptTemplates.render(
+      this.delegationKey(rec),
+      {
+        presets: this.presetSummary(rec.cwd),
+        cwd: rec.cwd,
+        delegation: strategy,
+      },
+      rec.cwd,
+    );
+  }
+
   /** 本轮可用的工具：内置工具（depth < 3 才含 Task）+ 当前 cwd 已连接的 MCP 工具。 */
   toolDefinitions(rec: SessionRecord, allowTask = true): ToolDefinition[] {
-    const canDelegate = allowTask && (rec.depth ?? 0) < 3;
+    const strategy = this.delegationFor(rec);
+    const canDelegate = allowTask && strategy !== 'none' && (rec.depth ?? 0) < 3;
     const hasSkills = this.skills
       .list(rec.cwd)
       .some((skill) => skill.enabled && skill.modelInvocable);
-    const base = TOOLS.filter(
-      (tool) =>
-        (canDelegate || tool.name !== 'Task') &&
-        // 没有可用技能时不暴露 Skill，避免模型空调用
-        (tool.name !== 'Skill' || hasSkills) &&
-        // 仅计划模式暴露 ExitPlanMode，其它模式下不打扰模型
-        (tool.name !== 'ExitPlanMode' || rec.permissionMode === 'plan'),
-    );
-    return [...base, ...this.mcp.toolDefinitions(rec.cwd)];
+    const whitelist = rec.toolWhitelist?.length
+      ? new Set(rec.toolWhitelist.map((name) => name.toLowerCase()))
+      : null;
+    const allowed = (name: string) => !whitelist || whitelist.has(name.toLowerCase());
+    const orchestrating = strategy === 'orchestrate' && (rec.depth ?? 0) === 0;
+    const source = orchestrating
+      ? this.orchestrateTools(rec).filter((tool) => allowed(tool.name))
+      : TOOLS;
+    const base = source
+      .filter(
+        (tool) =>
+          (canDelegate || tool.name !== 'Task') &&
+          // 没有可用技能时不暴露 Skill，避免模型空调用
+          (tool.name !== 'Skill' || hasSkills) &&
+          // 仅计划模式暴露 ExitPlanMode，其它模式下不打扰模型
+          (tool.name !== 'ExitPlanMode' || rec.permissionMode === 'plan') &&
+          allowed(tool.name),
+      )
+      .map((tool) =>
+        tool.name === 'Task'
+          ? { ...tool, description: this.taskToolDescription(rec.cwd) }
+          : tool,
+      );
+    // 编排模式主会话不接 MCP，避免绕过委派直接产生副作用
+    const mcp = orchestrating
+      ? []
+      : this.mcp.toolDefinitions(rec.cwd).filter((tool) => allowed(tool.name));
+    return [...base, ...mcp];
   }
 
   /** 按名称找工具定义（含动态 MCP 工具），供权限判定/调用路由使用。 */
@@ -728,6 +1055,7 @@ export class Host {
     model?: unknown;
     permissionMode?: unknown;
     effort?: unknown;
+    delegation?: unknown;
     title?: unknown;
     worktree?: unknown;
   }): Promise<SessionRecord> {
@@ -763,6 +1091,11 @@ export class Host {
       throw new Error(`无效的 effort: ${String(input.effort)}`);
     }
     const effort = input.effort as ReasoningEffort | undefined;
+    if (input.delegation !== undefined && !DELEGATIONS.has(input.delegation as DelegationStrategy)) {
+      throw new Error(`无效的 delegation: ${String(input.delegation)}`);
+    }
+    const delegation =
+      (input.delegation as DelegationStrategy | undefined) ?? this.settings().defaultDelegation ?? 'less';
 
     // worktree 会话：先创建 worktree，会话 cwd 指向新目录
     const shortId = randomUUID().slice(0, 8);
@@ -792,6 +1125,7 @@ export class Host {
       model,
       permissionMode,
       ...(effort ? { effort } : {}),
+      delegation,
       depth: 0,
       status: 'idle',
       createdAt: now,
@@ -829,6 +1163,7 @@ export class Host {
       pinnedTurns?: unknown;
       archived?: unknown;
       effort?: unknown;
+      delegation?: unknown;
       cwd?: unknown;
     },
   ): SessionRecord | undefined {
@@ -861,6 +1196,12 @@ export class Host {
         throw new Error(`无效的 effort: ${patch.effort}`);
       }
       rec.effort = effort;
+    }
+    if (typeof patch.delegation === 'string') {
+      if (!DELEGATIONS.has(patch.delegation as DelegationStrategy)) {
+        throw new Error(`无效的 delegation: ${patch.delegation}`);
+      }
+      rec.delegation = patch.delegation as DelegationStrategy;
     }
     if (typeof patch.permissionMode === 'string') {
       if (!PERMISSION_MODES.has(patch.permissionMode as PermissionMode)) {
@@ -940,6 +1281,8 @@ export class Host {
       ...(src.groupId ? { groupId: src.groupId } : {}),
       model: src.model,
       permissionMode: src.permissionMode,
+      ...(src.effort ? { effort: src.effort } : {}),
+      ...(src.delegation ? { delegation: src.delegation } : {}),
       status: 'idle',
       createdAt: now,
       updatedAt: now,
@@ -1036,12 +1379,28 @@ export class Host {
     // 运行中发送：排队，等本轮（含工具循环）结束后执行
     if (rt.running || rt.draining) {
       rt.queue.push(blocks);
+      persistRunState(this, rec);
       return;
     }
     await this.handleUserContent(rec, blocks);
   }
 
   private async handleUserContent(rec: SessionRecord, content: ContentBlock[]): Promise<void> {
+    // #记住…：直接写入项目记忆，不发给模型
+    const remembered = rememberTextOf(content);
+    if (remembered !== undefined) {
+      if (!remembered) {
+        this.appendNotice(rec, '用法：#记住 <要长期保留的项目事实或约定>');
+        return;
+      }
+      try {
+        const file = this.memory.add(rec.cwd, remembered);
+        this.appendNotice(rec, `已记住（${file.name} · ${file.entries} 条）：${remembered}`);
+      } catch (err) {
+        this.appendNotice(rec, `写入项目记忆失败：${errorMessage(err)}`);
+      }
+      return;
+    }
     const first = content[0];
     if (content.length === 1 && first?.type === 'text' && first.text.trim().startsWith('/')) {
       const cmd = parseSlashCommand(first.text);
@@ -1109,7 +1468,13 @@ export class Host {
     });
     this.store.markDirty(rec.id, true);
     this.broadcastSummary(rec);
-    await runTurn(this, rec);
+    const result = await runTurn(this, rec);
+    // 主会话回合结束写入收件箱（子代理只把结果回传父会话，不单独提醒）
+    if ((rec.depth ?? 0) === 0) {
+      this.pushInbox(
+        this.inbox.recordTurnEnd(rec.id, rec.title, result.reason, result.error),
+      );
+    }
     if (needsTitle && isFirstUserMessage) void this.autoTitle(rec, text, rec.title);
   }
 
@@ -1130,9 +1495,11 @@ export class Host {
         profile,
         model,
         system: '你是会话标题生成器。只输出标题本身，不要解释、不要引号、不要标点。',
-        prompt:
-          '请为下面这段用户的首条消息生成一个简短的中文标题，不超过 20 个字，概括用户真正想做的事：\n\n' +
-          firstText.slice(0, 2000),
+        prompt: this.promptTemplates.render(
+          'autoTitle',
+          { text: firstText.slice(0, 2000) },
+          rec.cwd,
+        ),
         maxTokens: 200,
         signal: controller.signal,
       });
@@ -1204,21 +1571,30 @@ export class Host {
   /** Task 工具：创建子会话并运行完整 agent 循环；最后一条 assistant 文本作为结果。 */
   async runSubagent(
     parent: SessionRecord,
-    input: { description: string; prompt: string; subagentType?: string },
+    input: { description: string; prompt: string; subagentType?: string; model?: string },
     signal: AbortSignal,
   ): Promise<ToolResult> {
     if (signal.aborted) return { content: '用户中断', isError: true };
     const depth = (parent.depth ?? 0) + 1;
     if (depth > 3) return { content: '已达到最大代理层级，不能再派发子代理', isError: true };
+    const config = this.subagentConfig(parent, input.subagentType, input.model);
+    const systemPromptExtra = [
+      this.promptTemplates.render('subagentDefault', {}, parent.cwd),
+      config.systemPromptExtra,
+    ]
+      .filter((part): part is string => !!part && part.trim().length > 0)
+      .join('\n\n');
     const now = Date.now();
     const sub: SessionRecord = {
       id: randomUUID(),
       title: input.description.slice(0, 120) || '子代理',
       cwd: parent.cwd,
-      profileId: parent.profileId,
-      ...(parent.groupId ? { groupId: parent.groupId } : {}),
-      model: parent.model,
-      permissionMode: parent.permissionMode,
+      profileId: config.profileId,
+      ...(config.groupId ? { groupId: config.groupId } : {}),
+      model: config.model,
+      permissionMode: config.permissionMode,
+      ...(config.effort ? { effort: config.effort } : {}),
+      delegation: config.delegation,
       status: 'idle',
       createdAt: now,
       updatedAt: now,
@@ -1226,6 +1602,8 @@ export class Host {
       messages: [],
       todos: [],
       allowedTools: [...parent.allowedTools],
+      ...(config.toolWhitelist ? { toolWhitelist: config.toolWhitelist } : {}),
+      ...(systemPromptExtra ? { systemPromptExtra } : {}),
       parentId: parent.id,
       depth,
     };
@@ -1449,11 +1827,18 @@ export class Host {
     }
     if (rule === 'allow') return { allowed: true };
 
+    // Memory 的 view 是纯读取；写入按 Edit 类操作审批
+    if (toolName === 'Memory' && (input as Record<string, unknown> | null)?.action === 'view') {
+      return { allowed: true };
+    }
     // 只读且无需审批的工具直接放行
     if (def.readOnly && !def.requiresApproval) return { allowed: true };
     // 会话级 allow_always 优先于权限模式的默认行为
     if (this.isAllowed(rec, toolName, input)) return { allowed: true };
-    if (mode === 'acceptEdits' && (toolName === 'Write' || toolName === 'Edit')) {
+    if (
+      mode === 'acceptEdits' &&
+      (toolName === 'Write' || toolName === 'Edit' || toolName === 'Memory')
+    ) {
       return { allowed: true };
     }
     if (!def.requiresApproval) return { allowed: true };
@@ -1723,7 +2108,9 @@ export class Host {
       }
       case 'init': {
         this.titleFromCommand(rec, cmd);
-        await this.sendToModel(rec, [{ type: 'text', text: INIT_PROMPT }]);
+        await this.sendToModel(rec, [
+          { type: 'text', text: this.promptTemplates.get('init', rec.cwd) },
+        ]);
         return true;
       }
       case 'schedule': {
@@ -1739,6 +2126,25 @@ export class Host {
       case 'cost': {
         // 本地统计用量与花费，不调用模型
         this.appendLocalAssistant(rec, costSummary(rec));
+        return true;
+      }
+      case 'memory': {
+        const project = this.memory.read('project', rec.cwd);
+        const global = this.memory.read('global');
+        const projectBody = bodyOfMemory(project.text).trim();
+        const globalBody = bodyOfMemory(global.text).trim();
+        this.appendLocalAssistant(
+          rec,
+          [
+            `## 项目记忆（${project.name} · ${project.entries} 条）`,
+            projectBody || '（空）',
+            '',
+            `## 全局记忆（${global.entries} 条）`,
+            globalBody || '（空）',
+            '',
+            '可在右侧「记忆」卡片或「设置 → 记忆」中编辑；输入 #记住 <内容> 可直接追加。',
+          ].join('\n'),
+        );
         return true;
       }
       default:
@@ -1890,9 +2296,7 @@ export class Host {
         content: [
           {
             type: 'text',
-            text:
-              '请把上面的对话压缩成一份可供后续继续工作的摘要。保留：用户目标、已完成的改动、' +
-              '关键文件路径与命令、重要决定、未完成事项。不要调用工具，直接输出摘要正文。',
+            text: this.promptTemplates.get('compact', rec.cwd),
           },
         ],
         createdAt: Date.now(),
@@ -1903,7 +2307,7 @@ export class Host {
         result = await streamChat({
           profile,
           model,
-          system: buildSystemPrompt(rec.cwd),
+          system: this.buildSystemFor(rec, { allowTask: false }).system,
           messages: [...rec.messages, instruction],
           tools: [],
           blocks,
@@ -1919,12 +2323,21 @@ export class Host {
         this.markKeyFailure(rec.profileId, rec.groupId, compactKey?.keyId, err);
         throw err;
       }
-      const summary = blocks
+      const raw = blocks
         .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
         .map((b) => b.text)
         .join('\n')
         .trim();
+      // 同一次调用里顺带产出可长期保留的事实，写入项目记忆（成本与单独请求相近但少一次往返）
+      const { summary, facts } = splitCompactOutput(raw);
       if (!summary) throw new Error('模型没有返回摘要内容');
+      if (facts.length > 0) {
+        try {
+          this.memory.add(rec.cwd, facts.join('\n'));
+        } catch (err) {
+          console.warn('[tandem] 写入项目记忆失败:', errorMessage(err));
+        }
+      }
 
       rec.messages = [
         {
@@ -2009,6 +2422,29 @@ function formatUsd(value: number): string {
 /** 带 HTTP 状态码的错误，供 server 路由按状态返回（如运行中回退 409）。 */
 function httpError(message: string, statusCode: number): Error {
   return Object.assign(new Error(message), { statusCode });
+}
+
+/** `#记住 …` 的正文；不是该前缀时返回 undefined。支持 `#记住：` / `#记住 `。 */
+function rememberTextOf(content: ContentBlock[]): string | undefined {
+  if (content.length !== 1) return undefined;
+  const first = content[0];
+  if (!first || first.type !== 'text') return undefined;
+  const text = first.text.trim();
+  if (!text.startsWith('#记住')) return undefined;
+  return text.replace(/^#记住\s*[:：]?\s*/, '').trim();
+}
+
+/** /compact 输出拆成摘要与长期记忆事实；模型未按格式输出时整段当摘要。 */
+function splitCompactOutput(raw: string): { summary: string; facts: string[] } {
+  const match = /^#{2,3}\s*项目记忆\s*$/m.exec(raw);
+  if (!match) return { summary: raw.trim(), facts: [] };
+  const before = raw.slice(0, match.index).trim();
+  const after = raw.slice(match.index + match[0].length).trim();
+  const summary = before.replace(/^#{2,3}\s*摘要\s*$/m, '').trim() || before;
+  const facts = normalizeFactLines(after).filter(
+    (line) => !/^[-*]\s*(无|none|暂无|无。)\s*$/i.test(line),
+  );
+  return { summary: summary || after, facts };
 }
 
 /** /cost 的本地摘要：token 用量 + 已记录花费。 */

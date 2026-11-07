@@ -14,13 +14,28 @@ import { RightPanel } from './components/RightPanel'
 import { ChangeReviewPanel } from './components/ChangeReviewPanel'
 import { FilePreviewPanel } from './components/FilePreviewPanel'
 import { SettingsDialog } from './components/settings/SettingsDialog'
+import { MemoryEditorDialog } from './components/MemoryEditorDialog'
 import { SearchDialog } from './components/SearchDialog'
 import { BackgroundTasksPanel } from './components/BackgroundTasksPanel'
 import { InboxDialog } from './components/inbox/InboxDialog'
+import { DispatchDialog } from './components/DispatchDialog'
 import { Toasts } from './components/ui/Toasts'
 import { FeedbackMode } from './components/feedback/FeedbackMode'
 import { OverlayScrollbar } from './components/ui/OverlayScrollbar'
 import { UiGallery } from './components/ui/UiGallery'
+
+function DispatchDialogHost() {
+  const open = useUiStore((s) => s.dispatchOpen)
+  const hostId = useUiStore((s) => s.dispatchHostId)
+  const setOpen = useUiStore((s) => s.setDispatchOpen)
+  return (
+    <DispatchDialog
+      open={open}
+      initialHostId={hostId ?? undefined}
+      onClose={() => setOpen(false)}
+    />
+  )
+}
 
 export default function App() {
   useViewportHeight()
@@ -356,8 +371,10 @@ export default function App() {
       )}
 
       <SettingsDialog />
+      <MemoryEditorDialog />
       <BackgroundTasksPanel />
       <InboxDialog />
+      <DispatchDialogHost />
       <SearchDialog />
       <Toasts />
       <FeedbackMode />

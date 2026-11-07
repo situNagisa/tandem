@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowUp,
+  Bot,
   Check,
   ChevronDown,
   Clock,
@@ -13,7 +14,7 @@ import {
   Server,
   TriangleAlert,
 } from 'lucide-react'
-import type { FsEntry, SessionEnv } from '@tandem/protocol'
+import type { DelegationStrategy, FsEntry, SessionEnv } from '@tandem/protocol'
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -475,8 +476,18 @@ export interface EnvBarProps {
   onHostChange?: (hostId: string) => void
   onCwdChange?: (cwd: string) => void
   onWorktreeChange?: (on: boolean) => void
+  /** 新会话页的委派策略；会话内直接从 summary 读取。 */
+  delegation?: DelegationStrategy
+  onDelegationChange?: (strategy: DelegationStrategy) => void
   disabled?: boolean
 }
+
+const DELEGATION_OPTIONS: Array<{ value: DelegationStrategy; label: string; hint: string }> = [
+  { value: 'orchestrate', label: '编排', hint: '主会话只规划/汇总，读写与命令交给子代理' },
+  { value: 'more', label: '多派', hint: '鼓励并行派发独立子任务' },
+  { value: 'less', label: '少派', hint: '只有明显独立且多步的任务才派（默认）' },
+  { value: 'none', label: '不派', hint: '不提供 Task 工具，主会话自己完成' },
+]
 
 /**
  * 输入框上方的环境条：主机 / 文件夹 / 分支 / Worktree。
@@ -492,6 +503,8 @@ export function EnvBar({
   onHostChange,
   onCwdChange,
   onWorktreeChange,
+  delegation: delegationProp,
+  onDelegationChange,
   disabled,
 }: EnvBarProps) {
   const hosts = useAppStore((s) => s.hosts)
@@ -501,6 +514,7 @@ export function EnvBar({
   const running = useAppStore((s) => s.active?.running ?? false)
   const toast = useUiStore((s) => s.toast)
 
+  const [savingDelegation, setSavingDelegation] = useState(false)
   const [migrating, setMigrating] = useState(false)
   const [targetHostId, setTargetHostId] = useState<string | null>(null)
 
@@ -531,6 +545,19 @@ export function EnvBar({
     try {
       const full = await api.exportSession(host, sessionId)
       const created = await api.importSession(target, { session: full, cwd: targetCwd })
+      // 项目记忆跟着会话走：目标 Host 已有记忆时由 Host 合并追加并标注来源。
+      try {
+        const memory = await api.memory(host, 'project', full.cwd)
+        if (memory.exists && memory.text.trim()) {
+          await api.importMemory(target, {
+            project: targetCwd,
+            text: memory.text,
+            source: host.name,
+          })
+        }
+      } catch {
+        // 记忆迁移失败不影响会话迁移本身
+      }
       rememberMigration(hostId, sessionId, target.name)
       rememberDir(target.id, targetCwd)
       await useAppStore.getState().refreshSessions(target.id)
@@ -561,7 +588,7 @@ export function EnvBar({
     <div className="flex min-w-0 items-center gap-1 overflow-x-auto pb-1.5">
       <Menu
         side="top"
-        align="start"
+        align="left"
         className={targetHostId ? 'w-auto p-1' : 'w-auto min-w-[200px]'}
         aria-label={isSession ? '切换主机' : '选择 Host'}
         trigger={({ open }) => (
@@ -688,6 +715,58 @@ export function EnvBar({
             />
           ) : null
         }
+      </Popover>
+
+      <Popover
+        side="top"
+        align="left"
+        className="shrink-0"
+        panelClassName="w-[240px]"
+        trigger={({ open, toggle }) => {
+          const strategy = isSession ? summary?.delegation ?? 'less' : delegationProp ?? 'less'
+          const current = DELEGATION_OPTIONS.find((item) => item.value === strategy) ?? DELEGATION_OPTIONS[2]
+          return (
+            <EnvTrigger
+              icon={<Bot size={12} className="text-muted" />}
+              label={savingDelegation ? '保存中…' : current.label}
+              onClick={toggle}
+              open={open}
+              disabled={locked && !isSession}
+              title={`委派策略：${current.hint}`}
+            />
+          )
+        }}
+      >
+        {(close) => {
+          const strategy = isSession ? summary?.delegation ?? 'less' : delegationProp ?? 'less'
+          return (
+            <div className="p-0.5">
+              {DELEGATION_OPTIONS.map((option) => (
+                <MenuItem
+                  key={option.value}
+                  selected={option.value === strategy}
+                  hint={option.hint}
+                  onSelect={() => {
+                    close()
+                    if (option.value === strategy) return
+                    if (!isSession) {
+                      onDelegationChange?.(option.value)
+                      return
+                    }
+                    if (!host || !sessionId) return
+                    setSavingDelegation(true)
+                    void useAppStore
+                      .getState()
+                      .updateSession(host.id, sessionId, { delegation: option.value })
+                      .finally(() => setSavingDelegation(false))
+                  }}
+                >
+                  {option.label}
+                </MenuItem>
+              ))}
+            </div>
+          )
+        }}
       </Popover>
 
       <Tooltip label={worktreeTip} side="top" className="shrink-0">

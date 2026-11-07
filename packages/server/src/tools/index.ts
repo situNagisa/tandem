@@ -13,6 +13,7 @@ import { definition as exitPlan, run as runExitPlan } from './exit-plan.js';
 import { definition as bashOutput, run as runBashOutput } from './bash-output.js';
 import { definition as killBash, run as runKillBash } from './kill-bash.js';
 import { definition as skill, run as runSkill } from './skill.js';
+import { definition as memory, run as runMemory } from './memory.js';
 
 type ToolRunner = (input: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>;
 
@@ -30,6 +31,7 @@ export const TOOLS: ToolDefinition[] = [
   task,
   exitPlan,
   skill,
+  memory,
 ];
 
 const RUNNERS: Record<string, ToolRunner> = {
@@ -46,6 +48,7 @@ const RUNNERS: Record<string, ToolRunner> = {
   Task: runTask,
   ExitPlanMode: runExitPlan,
   Skill: runSkill,
+  Memory: runMemory,
 };
 
 export const TOOL_MAP = new Map(TOOLS.map((tool) => [tool.name, tool]));
@@ -94,6 +97,11 @@ export function describeTool(name: string, input: unknown): string {
   if (name === 'Task') return `启动子代理: ${String(args.description ?? '').slice(0, 80)}`;
   if (name === 'ExitPlanMode') return '提交执行计划，等待批准';
   if (name === 'Skill') return `使用技能: ${String(args.skill ?? '')}`;
+  if (name === 'Memory') {
+    const action = String(args.action ?? '');
+    const text = String(args.text ?? args.old ?? '').replace(/\s+/g, ' ').slice(0, 80);
+    return `记忆${action === 'view' ? '查看' : action === 'add' ? '新增' : action === 'replace' ? '替换' : action === 'remove' ? '删除' : '更新'}: ${text || '（空）'}`;
+  }
   if (name.startsWith('mcp__')) {
     const [, server, ...rest] = name.split('__');
     return `调用 MCP 工具: ${server ?? ''}/${rest.join('__')}`;

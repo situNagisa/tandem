@@ -1,4 +1,4 @@
-import { BarChart3, Bell, BookOpen, CalendarClock, Monitor, Palette, Plug, RefreshCw, Server, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Wallet, Webhook } from 'lucide-react'
+import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, Monitor, Palette, Plug, RefreshCw, ScrollText, Server, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Wallet, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
@@ -11,6 +11,9 @@ import { SyncSection } from './SyncSection'
 import { PermissionsSection } from './PermissionsSection'
 import { McpSection } from './McpSection'
 import { SkillsSection } from './SkillsSection'
+import { MemorySection } from './MemorySection'
+import { SubagentsSection } from './SubagentsSection'
+import { PromptsSection } from './PromptsSection'
 import { HooksSection } from './HooksSection'
 import { UsageSection } from './UsageSection'
 import { SchedulesSection } from './SchedulesSection'
@@ -26,6 +29,9 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'hooks', label: 'Hooks', icon: Webhook },
   { id: 'mcp', label: 'MCP', icon: Plug },
   { id: 'skills', label: 'Skills', icon: BookOpen },
+  { id: 'memory', label: '记忆', icon: Brain },
+  { id: 'subagents', label: '子代理', icon: Bot },
+  { id: 'prompts', label: '提示词', icon: ScrollText },
   { id: 'schedules', label: '定时任务', icon: CalendarClock },
   { id: 'budgets', label: '预算', icon: Wallet },
   { id: 'usage', label: '用量', icon: BarChart3 },
@@ -90,6 +96,9 @@ export function SettingsDialog() {
             {tab === 'hooks' && <HooksSection />}
             {tab === 'mcp' && <McpSection />}
             {tab === 'skills' && <SkillsSection />}
+            {tab === 'memory' && <MemorySection />}
+            {tab === 'subagents' && <SubagentsSection />}
+            {tab === 'prompts' && <PromptsSection />}
             {tab === 'schedules' && <SchedulesSection />}
             {tab === 'budgets' && <BudgetsSection />}
             {tab === 'usage' && <UsageSection />}

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { MemoryScope } from '@tandem/protocol'
 import type { SettingsTab, Theme, Toast } from '../lib/types'
 import {
   loadCollapsedProjects,
@@ -55,6 +56,9 @@ interface UiState {
   notifyEvents: { permission: boolean; turnEnd: boolean; error: boolean; budget: boolean }
   /** 收件箱对话框（桌面/移动端均可打开）。 */
   inboxOpen: boolean
+  /** 派单对话框；hostId 是预选目标。 */
+  dispatchOpen: boolean
+  dispatchHostId: string | null
   toasts: Toast[]
   promptSeed: { text: string; nonce: number } | null
   /** 右侧代理列表点击后，定位并展开消息流中的对应 Task 卡片。 */
@@ -68,6 +72,8 @@ interface UiState {
   /** PR 面板；composeTitle 用于「提交并创建 PR」预填标题。 */
   prOpen: boolean
   prComposeTitle: string
+  /** 记忆 Markdown 编辑器；project 为项目根路径，global 时忽略。 */
+  memoryEditor: { scope: MemoryScope; project?: string } | null
 
   setTheme: (theme: Theme) => void
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -103,6 +109,7 @@ interface UiState {
     enabled: boolean,
   ) => void
   setInboxOpen: (open: boolean) => void
+  setDispatchOpen: (open: boolean, hostId?: string) => void
   toast: (
     text: string,
     kind?: Toast['kind'],
@@ -118,6 +125,8 @@ interface UiState {
   closeBackgroundTasks: () => void
   openPrPanel: (title?: string) => void
   closePrPanel: () => void
+  openMemoryEditor: (input: { scope: MemoryScope; project?: string }) => void
+  closeMemoryEditor: () => void
 }
 
 const prefs = loadUiPrefs()
@@ -154,6 +163,8 @@ export const useUiStore = create<UiState>((set, get) => ({
     budget: prefs.notifyEvents?.budget ?? true,
   },
   inboxOpen: false,
+  dispatchOpen: false,
+  dispatchHostId: null,
   toasts: [],
   promptSeed: null,
   agentFocus: null,
@@ -161,6 +172,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   backgroundPanel: null,
   prOpen: false,
   prComposeTitle: '',
+  memoryEditor: null,
   scheduleComposeNonce: 0,
 
   setTheme: (theme) => {
@@ -244,6 +256,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   closeBackgroundTasks: () => set({ backgroundPanel: null }),
   openPrPanel: (title) => set({ prOpen: true, prComposeTitle: title ?? '' }),
   closePrPanel: () => set({ prOpen: false, prComposeTitle: '' }),
+  openMemoryEditor: (input) => set({ memoryEditor: input }),
+  closeMemoryEditor: () => set({ memoryEditor: null }),
   openScheduleComposer: () =>
     set((s) => ({
       settingsOpen: true,
@@ -273,6 +287,8 @@ export const useUiStore = create<UiState>((set, get) => ({
     set({ notifyEvents: next })
   },
   setInboxOpen: (open) => set({ inboxOpen: open }),
+  setDispatchOpen: (open, hostId) =>
+    set((s) => ({ dispatchOpen: open, dispatchHostId: hostId ?? s.dispatchHostId })),
   toast: (text, kind = 'info', options) => {
     const now = Date.now()
     for (const [key, at] of recentToastAt) {

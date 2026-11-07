@@ -858,6 +858,7 @@ export function Composer({
   const toast = useUiStore((s) => s.toast)
   const openSettings = useUiStore((s) => s.openSettings)
   const openScheduleComposer = useUiStore((s) => s.openScheduleComposer)
+  const openMemoryEditor = useUiStore((s) => s.openMemoryEditor)
 
   const effectiveHostId = hostIdProp ?? activeHostId
   const cwd = cwdProp ?? summary?.cwd
@@ -1217,6 +1218,13 @@ export function Composer({
     // /schedule 只打开创建界面，不作为消息发送
     if (!attachments.length && outgoingText.trim() === '/schedule') {
       openScheduleComposer()
+      resetInput()
+      return
+    }
+    // /memory 直接打开当前项目的记忆编辑器
+    if (!attachments.length && outgoingText.trim() === '/memory') {
+      if (summary?.cwd) openMemoryEditor({ scope: 'project', project: summary.cwd })
+      else toast('当前会话没有项目目录', 'info')
       resetInput()
       return
     }

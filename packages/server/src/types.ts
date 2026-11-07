@@ -77,6 +77,8 @@ export interface HostConfig {
   idleTimeoutSec?: number;
   /** Host 重启后对未完成会话：自动继续（默认）/ 恢复为暂停等我确认。 */
   resumeOnRestart?: 'auto' | 'pause';
+  /** 新会话默认委派策略（缺省 less）。 */
+  defaultDelegation?: import('@tandem/protocol').DelegationStrategy;
   relay?: RelayConfig;
 }
 

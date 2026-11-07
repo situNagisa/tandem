@@ -8,17 +8,20 @@ export interface ProfileModelGroup {
 }
 
 /** 账号可选的模型：有分组时按分组展开，老账号仍返回单一组。 */
-export function profileModelGroups(profile: Profile): ProfileModelGroup[] {
+export function profileModelGroups(profile: Profile | undefined | null): ProfileModelGroup[] {
+  if (!profile) return []
   if (profile.groups?.length) {
     return profile.groups
       .map((g) => ({
         groupId: g.id,
         name: g.name,
-        models: g.models.length ? g.models : [g.defaultModel].filter(Boolean),
+        models: (g.models ?? []).length ? g.models : [g.defaultModel].filter(Boolean),
       }))
       .filter((g) => g.models.length > 0)
   }
-  const models = profile.models.length ? profile.models : [profile.defaultModel].filter(Boolean)
+  const models = (profile.models ?? []).length
+    ? profile.models
+    : [profile.defaultModel].filter(Boolean)
   return models.length ? [{ name: '默认', models }] : []
 }
 

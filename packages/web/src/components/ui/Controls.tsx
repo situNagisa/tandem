@@ -144,7 +144,8 @@ export interface SwitchProps {
   checked: boolean
   onChange: (checked: boolean) => void
   disabled?: boolean
-  label: string
+  /** 无障碍名称；已有可见文字标签时可省略。 */
+  label?: string
   className?: string
 }
 

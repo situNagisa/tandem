@@ -37,7 +37,8 @@ import {
 } from './vcs.js';
 import type { WsClient } from './events.js';
 import { testProfile } from './providers/index.js';
-import { exportBundle, importBundle } from './migrate.js';
+import { exportBundle, importBundle, type MemoryBundleEntry } from './migrate.js';
+import { bodyOfMemory } from './memory.js';
 import { walkFiles } from './util/fs-walk.js';
 import { readForPreview, readImage, revealFile } from './util/file-preview.js';
 import { expandHome, resolveHostPath, toPosix } from './util/path.js';
@@ -329,6 +330,13 @@ export async function createApp(
     return host.contextFor(rec);
   });
 
+  app.get('/api/sessions/:id/injections', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    return host.injectionsFor(rec);
+  });
+
   // Host 重启后暂停的会话：用户确认后继续运行
   app.post('/api/sessions/:id/resume', async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -574,11 +582,12 @@ export async function createApp(
     if (!rec) return bad(reply, '会话不存在', 404);
     const body = (req.body ?? {}) as Record<string, unknown>;
     try {
-      const result = await failedCheckPrompt(rec.cwd, {
-        checkName: body.checkName,
-        runId: body.runId,
-        url: body.url,
-      });
+      const result = await failedCheckPrompt(
+        rec.cwd,
+        { checkName: body.checkName, runId: body.runId, url: body.url },
+        (name, log) =>
+          host.promptTemplates.render('ciFix', { name, log }, rec.cwd),
+      );
       if (!result.ok || !result.message) return result;
       await host.send(rec.id, [{ type: 'text', text: result.message }]);
       return { ok: true, sent: true, checkName: result.checkName };
@@ -634,6 +643,40 @@ export async function createApp(
     try {
       const servers = await host.mcp.save(req.body);
       return { servers, status: host.mcp.status() };
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  // ---------- 子代理预设 ----------
+  app.get('/api/subagent-presets', async (req) => {
+    const query = req.query as { cwd?: string };
+    const cwd = str(query.cwd) ? path.resolve(expandHome(str(query.cwd))) : undefined;
+    return { presets: host.subagentPresets.list(cwd) };
+  });
+
+  app.put('/api/subagent-presets', async (req, reply) => {
+    const body = (req.body ?? {}) as { cwd?: unknown; presets?: unknown };
+    const cwd = str(body.cwd) ? path.resolve(expandHome(str(body.cwd))) : undefined;
+    try {
+      return { presets: host.subagentPresets.save(body.presets, cwd) };
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  // ---------- 提示词注册表 ----------
+  app.get('/api/prompt-templates', async (req) => {
+    const query = req.query as { cwd?: string };
+    const cwd = str(query.cwd) ? path.resolve(expandHome(str(query.cwd))) : undefined;
+    return { templates: host.promptTemplates.list(cwd) };
+  });
+
+  app.put('/api/prompt-templates', async (req, reply) => {
+    const body = (req.body ?? {}) as { values?: unknown; cwd?: unknown };
+    const cwd = str(body.cwd) ? path.resolve(expandHome(str(body.cwd))) : undefined;
+    try {
+      return { templates: host.promptTemplates.save(body.values, cwd) };
     } catch (err) {
       return bad(reply, (err as Error).message);
     }
@@ -733,10 +776,29 @@ export async function createApp(
   app.post('/api/config/export', async (req, reply) => {
     const body = (req.body ?? {}) as Partial<ConfigExportInput>;
     try {
-      return exportBundle(host.profiles.list(), os.hostname(), {
-        passphrase: typeof body.passphrase === 'string' ? body.passphrase : '',
-        ...(body.clientSettings !== undefined ? { clientSettings: body.clientSettings } : {}),
-      });
+      const { global, projects } = host.memory.list();
+      const memories: MemoryBundleEntry[] = [];
+      const push = (file: typeof global) => {
+        const text = bodyOfMemory(file.text).trim();
+        if (!text) return;
+        memories.push({
+          scope: file.scope,
+          ...(file.project ? { project: file.project } : {}),
+          name: file.name,
+          text,
+        });
+      };
+      push(global);
+      for (const file of projects) push(file);
+      return exportBundle(
+        host.profiles.list(),
+        os.hostname(),
+        {
+          passphrase: typeof body.passphrase === 'string' ? body.passphrase : '',
+          ...(body.clientSettings !== undefined ? { clientSettings: body.clientSettings } : {}),
+        },
+        memories,
+      );
     } catch (err) {
       return bad(reply, (err as Error).message, statusOf(err));
     }
@@ -745,13 +807,75 @@ export async function createApp(
   app.post('/api/config/import', async (req, reply) => {
     const body = (req.body ?? {}) as Partial<ConfigImportInput>;
     try {
-      return importBundle(host.profiles, {
-        passphrase: typeof body.passphrase === 'string' ? body.passphrase : '',
-        bundle: body.bundle as ConfigBundle,
-        mode: body.mode as ConfigImportInput['mode'],
-      });
+      return importBundle(
+        host.profiles,
+        {
+          passphrase: typeof body.passphrase === 'string' ? body.passphrase : '',
+          bundle: body.bundle as ConfigBundle,
+          mode: body.mode as ConfigImportInput['mode'],
+        },
+        host.memory,
+      );
     } catch (err) {
       return bad(reply, (err as Error).message, statusOf(err));
+    }
+  });
+
+  // ---------- 项目记忆 ----------
+  app.get('/api/memory', async (req, reply) => {
+    const query = req.query as { scope?: string; project?: string };
+    const scope = query.scope === 'global' ? 'global' : 'project';
+    try {
+      return host.memory.read(scope, str(query.project) || undefined);
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.put('/api/memory', async (req, reply) => {
+    const body = (req.body ?? {}) as { scope?: unknown; project?: unknown; text?: unknown };
+    const scope = body.scope === 'global' ? 'global' : 'project';
+    const project = typeof body.project === 'string' ? body.project : undefined;
+    if (typeof body.text !== 'string') return bad(reply, 'text 必须是字符串');
+    try {
+      return host.memory.write(scope, project, body.text);
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.delete('/api/memory', async (req, reply) => {
+    const query = req.query as { scope?: string; project?: string };
+    const scope = query.scope === 'global' ? 'global' : 'project';
+    try {
+      return { ok: host.memory.remove(scope, str(query.project) || undefined) };
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
+  app.get('/api/memory/list', async () => host.memory.listItems());
+
+  app.post('/api/memory/import', async (req, reply) => {
+    const body = (req.body ?? {}) as {
+      project?: unknown;
+      text?: unknown;
+      source?: unknown;
+      scope?: unknown;
+    };
+    if (typeof body.project !== 'string' || !body.project) return bad(reply, 'project 不能为空');
+    if (typeof body.text !== 'string' || !body.text.trim()) return bad(reply, 'text 不能为空');
+    const scope = body.scope === 'global' ? 'global' : 'project';
+    try {
+      const result = host.memory.merge(
+        scope,
+        scope === 'project' ? body.project : undefined,
+        body.text,
+        typeof body.source === 'string' ? body.source : '其它 Host',
+      );
+      return { ok: true, merged: result.merged, entries: result.file.entries };
+    } catch (err) {
+      return bad(reply, (err as Error).message);
     }
   });
 

@@ -3,6 +3,7 @@ import {
   ArrowUpRight,
   BarChart3,
   Bot,
+  Brain,
   Check,
   Circle,
   CircleCheck,
@@ -23,14 +24,14 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import type { Todo } from '@tandem/protocol'
+import type { MemoryFile, Todo } from '@tandem/protocol'
 import type { SubagentSession, UiMessage } from '../lib/types'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useSessionChanges } from '../lib/useChanges'
 import { copyText } from '../lib/clipboard'
 import { cn } from '../lib/cn'
-import { ApiError } from '../lib/api'
+import { ApiError, api } from '../lib/api'
 import { useNow } from '../lib/hooks'
 import { runningSince } from '../lib/runClock'
 import {
@@ -65,7 +66,7 @@ const TODO_ICONS = {
   pending: Circle,
 } as const
 
-type GroupId = 'plan' | 'todos' | 'agents' | 'usage' | 'context' | 'changes' | 'details'
+type GroupId = 'plan' | 'todos' | 'agents' | 'usage' | 'context' | 'changes' | 'memory' | 'details'
 
 const GROUPS: Array<{ id: GroupId; label: string; Icon: typeof ListTodo }> = [
   { id: 'plan', label: '当前计划', Icon: ScrollText },
@@ -74,6 +75,7 @@ const GROUPS: Array<{ id: GroupId; label: string; Icon: typeof ListTodo }> = [
   { id: 'usage', label: '用量', Icon: BarChart3 },
   { id: 'context', label: '上下文', Icon: Gauge },
   { id: 'changes', label: '改动摘要', Icon: FileDiff },
+  { id: 'memory', label: '记忆', Icon: Brain },
   { id: 'details', label: '详情', Icon: Info },
 ]
 
@@ -230,7 +232,7 @@ function AgentRow({ sub, depth }: { sub: SubagentSession; depth: number }) {
       onClick={() => id && focusAgent(id)}
       className="flex min-h-8 w-full items-center gap-1.5 rounded-md pr-1 text-left text-[13px] transition-colors hover:bg-[var(--t-bg-hover)]"
       style={{ paddingLeft: 4 + Math.max(0, depth - 1) * 14 }}
-      title={sub.summary?.title}
+      title={sub.summary ? `${sub.summary.title} · ${sub.summary.model}` : undefined}
     >
       <span className="shrink-0 text-[12px] text-muted">
         {depth <= 1 ? '子' : depth === 2 ? '孙' : depth}
@@ -238,6 +240,11 @@ function AgentRow({ sub, depth }: { sub: SubagentSession; depth: number }) {
       <span className="min-w-0 flex-1 truncate text-text-soft">
         {sub.summary?.title || '未命名代理'}
       </span>
+      {sub.summary?.model && (
+        <span className="max-w-[92px] shrink-0 truncate font-mono text-[10.5px] text-muted" title={`模型：${sub.summary.model}`}>
+          {sub.summary.model}
+        </span>
+      )}
       <span
         className={cn(
           'shrink-0 text-[12px]',
@@ -421,10 +428,75 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const cardRefs = useRef(new Map<GroupId, HTMLElement>())
   const positionsRef = useRef(new Map<GroupId, number>())
   const { changes } = useSessionChanges(host, sessionId, changesNonce, !!sessionId)
+  const memoryEditorOpen = useUiStore((s) => !!s.memoryEditor)
+  const openMemoryEditor = useUiStore((s) => s.openMemoryEditor)
+  const [memory, setMemory] = useState<MemoryFile | null>(null)
+  const [memoryLoading, setMemoryLoading] = useState(false)
+  // 工具写入记忆后刷新卡片（messages 中 Memory 调用数变化）
+  const memoryToolCalls = useMemo(
+    () =>
+      messages.reduce(
+        (n, message) =>
+          n + message.content.filter((b) => b.type === 'tool_use' && b.name === 'Memory').length,
+        0,
+      ),
+    [messages],
+  )
+  useEffect(() => {
+    if (!host || !summary?.cwd) {
+      setMemory(null)
+      return
+    }
+    let cancelled = false
+    setMemoryLoading(true)
+    api
+      .memory(host, 'project', summary.cwd)
+      .then((file) => {
+        if (!cancelled) setMemory(file)
+      })
+      .catch(() => {
+        if (!cancelled) setMemory(null)
+      })
+      .finally(() => {
+        if (!cancelled) setMemoryLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [host, summary?.cwd, memoryToolCalls, memoryEditorOpen])
+  const memoryPreview = useMemo(() => {
+    if (!memory?.exists) return []
+    const body = memory.text.replace(/^<!--\s*tandem-memory.*?-->\s*/, '')
+    return body
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => /^[-*]\s+\S/.test(line))
+      .slice(0, 3)
+      .map((line) => line.replace(/^[-*]\s+/, ''))
+  }, [memory])
 
   const completed = todos.filter((t) => t.status === 'completed').length
   const progress = todos.length ? Math.round((completed / todos.length) * 100) : 0
   const usage = summary?.usage
+  const subUsage = useMemo(() => {
+    const list = Object.values(subagents ?? {})
+      .map((sub) => sub.summary)
+      .filter((item): item is NonNullable<typeof item> => !!item)
+    const byModel = new Map<string, { cost: number; tokens: number }>()
+    let cost = 0
+    let tokens = 0
+    for (const item of list) {
+      const itemCost = item.usage.costUsd ?? 0
+      const itemTokens = item.usage.inputTokens + item.usage.outputTokens
+      cost += itemCost
+      tokens += itemTokens
+      const entry = byModel.get(item.model) ?? { cost: 0, tokens: 0 }
+      entry.cost += itemCost
+      entry.tokens += itemTokens
+      byModel.set(item.model, entry)
+    }
+    return { count: list.length, cost, tokens, byModel: [...byModel.entries()] }
+  }, [subagents])
   const keyUsage = useMemo(() => {
     const counts = new Map<string, number>()
     for (const message of messages) {
@@ -458,6 +530,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       usage: true,
       context: true,
       changes: fileChanges.length > 0,
+      memory: true,
       details: true,
     }),
     [plan, fileChanges.length, agentCount],
@@ -578,6 +651,18 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         </span>
       )
     }
+    if (id === 'memory') {
+      return (
+        <button
+          type="button"
+          onClick={() => summary?.cwd && openMemoryEditor({ scope: 'project', project: summary.cwd })}
+          disabled={!summary?.cwd}
+          className="rounded px-1 py-0.5 text-[11px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
+        >
+          编辑
+        </button>
+      )
+    }
     if (id === 'changes') {
       return (
         <button
@@ -593,6 +678,43 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   }
 
   const renderBody = (id: GroupId) => {
+    if (id === 'memory') {
+      if (memoryLoading && !memory) {
+        return (
+          <p className="flex items-center gap-1.5 text-[12px] text-muted">
+            <Loader2 size={11} className="animate-spin" /> 读取中…
+          </p>
+        )
+      }
+      return (
+        <div>
+          {memoryPreview.length > 0 ? (
+            <ul className="space-y-1 text-[12px] leading-[18px] text-text-soft">
+              {memoryPreview.map((line, i) => (
+                <li key={i} className="flex items-start gap-1.5">
+                  <span className="mt-[7px] size-1 shrink-0 rounded-full bg-[var(--t-text-tertiary)]" />
+                  <span className="min-w-0 truncate">{line}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[12px] leading-4 text-muted">
+              暂无记忆。输入「#记住 …」或让 agent 记录长期事实。
+            </p>
+          )}
+          <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-border pt-1.5 text-[12px]">
+            <span className="text-muted">共 {memory?.entries ?? 0} 条</span>
+            <button
+              type="button"
+              onClick={() => openMemoryEditor({ scope: 'global' })}
+              className="rounded px-1 py-0.5 text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+            >
+              全局记忆
+            </button>
+          </div>
+        </div>
+      )
+    }
     if (id === 'plan' && plan) {
       return (
         <div className="max-h-[180px] overflow-y-auto rounded-md border border-border/70 bg-bg/25 px-2.5 py-2 text-[13px] leading-[18px]">
@@ -649,12 +771,13 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     }
     if (id === 'usage') {
       const hasUsage =
-        !!usage &&
-        ((usage.inputTokens ?? 0) > 0 ||
-          (usage.outputTokens ?? 0) > 0 ||
-          (usage.cacheReadTokens ?? 0) > 0 ||
-          (usage.cacheWriteTokens ?? 0) > 0 ||
-          (usage.costUsd ?? 0) > 0)
+        subUsage.count > 0 ||
+        (!!usage &&
+          ((usage.inputTokens ?? 0) > 0 ||
+            (usage.outputTokens ?? 0) > 0 ||
+            (usage.cacheReadTokens ?? 0) > 0 ||
+            (usage.cacheWriteTokens ?? 0) > 0 ||
+            (usage.costUsd ?? 0) > 0))
       if (!hasUsage) {
         return <p className="text-[12px] leading-4 text-muted">暂无用量</p>
       }
@@ -684,6 +807,34 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
               </div>
             ))}
           </div>
+          {subUsage.count > 0 && (
+            <div className="mt-2 space-y-1 border-t border-border pt-1.5">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[12px] text-muted">
+                  子代理（{subUsage.count}）
+                </span>
+                <span className="font-mono text-[13px] tabular-nums text-text-soft">
+                  {formatCost(subUsage.cost)} · {formatTokens(subUsage.tokens)} tok
+                </span>
+              </div>
+              {subUsage.byModel.map(([model, item]) => (
+                <div key={model} className="flex min-w-0 items-baseline justify-between gap-2 pl-2">
+                  <span className="min-w-0 truncate font-mono text-[11px] text-muted" title={model}>
+                    {model}
+                  </span>
+                  <span className="shrink-0 font-mono text-[11.5px] tabular-nums text-muted">
+                    {formatCost(item.cost)}
+                  </span>
+                </div>
+              ))}
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[12px] text-muted">合计</span>
+                <span className="font-mono text-[13px] tabular-nums text-text">
+                  {formatCost((usage?.costUsd ?? 0) + subUsage.cost)}
+                </span>
+              </div>
+            </div>
+          )}
           {keyUsage && (
             <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-border pt-1.5">
               <span className="shrink-0 text-[12px] text-muted">Key</span>

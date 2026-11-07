@@ -5,23 +5,38 @@ import type {
   ConfigExportInput,
   ConfigImportInput,
   ConfigImportResult,
+  MemoryScope,
   ProviderKind,
 } from '@tandem/protocol';
 import { normalizeStoredGroups, type ProfileStore } from './config.js';
 import type { StoredProfile } from './types.js';
+import { MemoryStore } from './memory.js';
 
 const KINDS: ProviderKind[] = ['anthropic', 'openai', 'openai-compatible', 'gemini'];
 const KEY_LEN = 32;
 const IV_LEN = 12;
 const TAG_LEN = 16;
 
+/** 随配置包迁移的记忆条目（正文不含 Tandem 元数据行；project 为源机器上的项目根）。 */
+export interface MemoryBundleEntry {
+  scope: MemoryScope;
+  project?: string;
+  name: string;
+  text: string;
+}
+
 interface BundlePayload {
   profiles: StoredProfile[];
   clientSettings?: unknown;
+  memories?: MemoryBundleEntry[];
 }
 
 export class BundleError extends Error {
   readonly statusCode = 400;
+}
+
+function bundleHostLabel(bundle: ConfigBundle): string {
+  return typeof bundle?.hostName === 'string' && bundle.hostName.trim() ? bundle.hostName.trim() : '其它机器';
 }
 
 function fail(message: string): never {
@@ -33,12 +48,14 @@ export function exportBundle(
   profiles: StoredProfile[],
   hostName: string,
   input: ConfigExportInput,
+  memories: MemoryBundleEntry[] = [],
 ): ConfigBundle {
   const passphrase = String(input?.passphrase ?? '');
   if (!passphrase) fail('口令不能为空');
   const payload: BundlePayload = {
     profiles,
     ...(input.clientSettings !== undefined ? { clientSettings: input.clientSettings } : {}),
+    ...(memories.length ? { memories } : {}),
   };
   const salt = randomBytes(16);
   const iv = randomBytes(IV_LEN);
@@ -122,8 +139,12 @@ function normalizeImportedProfile(raw: unknown): StoredProfile | undefined {
   return profile;
 }
 
-/** 导入配置：校验口令后按 merge/replace 合并账号，并返回客户端设置。 */
-export function importBundle(store: ProfileStore, input: ConfigImportInput): ConfigImportResult {
+/** 导入配置：校验口令后按 merge/replace 合并账号与记忆，并返回客户端设置。 */
+export function importBundle(
+  store: ProfileStore,
+  input: ConfigImportInput,
+  memories?: MemoryStore,
+): ConfigImportResult {
   const passphrase = String(input?.passphrase ?? '');
   if (!passphrase) fail('口令不能为空');
   if (input.mode !== 'merge' && input.mode !== 'replace') fail('mode 只能是 merge 或 replace');
@@ -133,9 +154,29 @@ export function importBundle(store: ProfileStore, input: ConfigImportInput): Con
     .map(normalizeImportedProfile)
     .filter((p): p is StoredProfile => !!p);
   const { added, updated } = store.importMany(profiles, input.mode);
+  let memoriesImported = 0;
+  if (memories && Array.isArray(payload.memories)) {
+    for (const item of payload.memories) {
+      if (!item || typeof item !== 'object') continue;
+      const scope: MemoryScope = item.scope === 'global' ? 'global' : 'project';
+      if (scope === 'project' && (typeof item.project !== 'string' || !item.project)) continue;
+      try {
+        const result = memories.merge(
+          scope,
+          scope === 'project' ? item.project : undefined,
+          String(item.text ?? ''),
+          `配置包 · ${bundleHostLabel(input.bundle)}`,
+        );
+        if (result.merged) memoriesImported++;
+      } catch {
+        // 单条记忆失败不影响账号导入
+      }
+    }
+  }
   return {
     profilesAdded: added,
     profilesUpdated: updated,
     ...(payload.clientSettings !== undefined ? { clientSettings: payload.clientSettings } : {}),
+    ...(memories ? { memoriesImported } : {}),
   };
 }

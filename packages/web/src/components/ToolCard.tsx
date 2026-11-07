@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import {
   Bot,
+  Brain,
   ChevronRight,
   Circle,
   CircleCheck,
@@ -53,6 +54,7 @@ const TOOL_META: Record<string, ToolMeta> = {
   WebFetch: { icon: Globe, verb: '获取' },
   Task: { icon: Bot, verb: '子代理' },
   Skill: { icon: Sparkles, verb: '使用技能' },
+  Memory: { icon: Brain, verb: '记住' },
 }
 
 /** mcp__server__tool → { server, tool }。 */
@@ -408,6 +410,14 @@ export const ToolCard = memo(function ToolCard({
     case 'Skill':
       target = pick('skill')
       break
+    case 'Memory': {
+      const action = pick('action')
+      target =
+        action === 'view'
+          ? '查看记忆'
+          : pick('text') || pick('old') || (running ? '…' : '更新记忆')
+      break
+    }
     default:
       target = mcp ? `${mcp.server} · ${mcp.tool}` : block.name
   }
@@ -600,7 +610,7 @@ export const ToolCard = memo(function ToolCard({
           </span>
         )}
         <span className={cn('shrink-0', isError && 'text-danger')}>{displayMeta.verb}</span>
-        {(isTask || block.name === 'Skill') && target && (
+        {(isTask || block.name === 'Skill' || block.name === 'Memory') && target && (
           <span className="shrink-0 text-muted">·</span>
         )}
         {target && filePath && (block.name === 'Read' || block.name === 'Edit' || block.name === 'Write') ? (
@@ -635,6 +645,14 @@ export const ToolCard = memo(function ToolCard({
             {target}
           </span>
         ) : null}
+        {isTask && sub?.summary?.model && (
+          <span
+            className="max-w-[130px] shrink-0 truncate rounded bg-[var(--t-bg-active)] px-1 py-px font-mono text-[9.5px] font-normal text-muted"
+            title={`子代理模型：${sub.summary.model}`}
+          >
+            {sub.summary.model}
+          </span>
+        )}
         {suffix && (
           <span className={cn('shrink-0', isError ? 'text-danger' : 'text-muted')}>{suffix}</span>
         )}
@@ -685,6 +703,11 @@ function SubagentStream({ id, depth }: { id: string; depth: number }) {
       )}
     >
       <div className="flex items-center gap-2 border-b border-border/70 px-2.5 py-1.5 text-[10.5px] text-muted">
+        {sub.summary?.model && (
+          <span className="max-w-[150px] shrink-0 truncate font-mono" title={`模型：${sub.summary.model}`}>
+            {sub.summary.model}
+          </span>
+        )}
         {sub.running ? (
           <Loader2 size={12} className="shrink-0 animate-spin text-text-secondary" />
         ) : (
@@ -799,7 +822,7 @@ function TaskBody({
 }: {
   input: Record<string, unknown>
   raw: string
-  sub: { summary: { id: string } | null } | undefined
+  sub: { summary: { id: string; model?: string } | null } | undefined
   output: string
   isError: boolean
   running: boolean
@@ -819,6 +842,14 @@ function TaskBody({
           <span className="rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[9.5px] text-muted">
             {type}
           </span>
+          {sub?.summary?.model && (
+            <span
+              className="max-w-[220px] truncate rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[9.5px] text-muted"
+              title={`子代理模型：${sub.summary.model}`}
+            >
+              {sub.summary.model}
+            </span>
+          )}
         </div>
         {prompt && (
           <details className="mt-1">
