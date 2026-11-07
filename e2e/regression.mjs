@@ -7,7 +7,9 @@
  * 不读真实 Key、不碰 ~/.tandem。成功退出码 0，任一断言失败退出码 1 并保留临时目录与截图。
  *
  * 前置：npm run build（check.mjs 会先构建）。
- * 用法：npm run regression
+ * 用法：
+ *   npm run regression
+ *   node e2e/regression.mjs --only "更多菜单"   只跑名称包含该片段的用例
  */
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
@@ -32,6 +34,9 @@ const MOBILE = { width: 390, height: 844 }
 const SMALL = { width: 360, height: 780 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const onlyIndex = process.argv.indexOf('--only')
+const ONLY = onlyIndex >= 0 ? (process.argv[onlyIndex + 1] ?? '') : ''
 
 function listen(server) {
   return new Promise((resolve, reject) => {
@@ -542,6 +547,16 @@ function withinViewport(box, viewport, label) {
   assert.ok(box.y >= -1, `${label}: 上缘越界 y=${box.y}`)
   assert.ok(box.x + box.width <= viewport.width + 1, `${label}: 右缘越界 ${box.x + box.width} > ${viewport.width}`)
   assert.ok(box.y + box.height <= viewport.height + 1, `${label}: 下缘越界 ${box.y + box.height} > ${viewport.height}`)
+}
+
+/**
+ * 等元素上的入场动画结束再测量：弹层带 scale(0.97) 的 chat-pop-in，
+ * 动画途中测得的高度/位置都是缩小的中间态（44px 会读成 43px）。
+ */
+async function waitAnimations(locator) {
+  await locator.evaluate(async (el) => {
+    await Promise.all(el.getAnimations().map((animation) => animation.finished.catch(() => {})))
+  })
 }
 
 async function main() {
@@ -1418,6 +1433,7 @@ async function main() {
       await page.getByRole('button', { name: /更多设置/ }).click()
       const menu = page.locator('[role="menu"]').first()
       await menu.waitFor()
+      await waitAnimations(menu)
       const info = await menu.evaluate((el) => {
         const r = el.getBoundingClientRect()
         const items = [...el.querySelectorAll('[role="menuitem"], [role="menuitemradio"]')].map(
@@ -1597,7 +1613,10 @@ async function main() {
 
     // ------------------------------------------------------------------ 执行
 
-    for (const check of checks) {
+    const selected = ONLY ? checks.filter((item) => item.name.includes(ONLY)) : checks
+    if (ONLY && !selected.length) throw new Error(`--only "${ONLY}" 没有匹配任何用例`)
+
+    for (const check of selected) {
       let ctx =
         check.viewport === 'mobile'
           ? mobileContext
@@ -1635,7 +1654,7 @@ async function main() {
     }
 
     console.log(`\n=== regression 汇总 ===`)
-    console.log(`通过 ${passed} / ${checks.length} 条，失败 ${failures.length} 条`)
+    console.log(`通过 ${passed} / ${selected.length} 条，失败 ${failures.length} 条`)
     for (const failure of failures) console.log(`- ${failure.name}：${failure.message}`)
     if (failures.length) process.exitCode = 1
   } catch (error) {
