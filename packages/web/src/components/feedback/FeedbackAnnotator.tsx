@@ -50,6 +50,7 @@ export function FeedbackAnnotator({
   const [textAt, setTextAt] = useState<{ x: number; y: number } | null>(null)
   const [textValue, setTextValue] = useState('')
   const [ready, setReady] = useState(false)
+  const textCommitRef = useRef<string | null>(null)
   const drawingRef = useRef<{
     pointerId: number
     startX: number
@@ -218,6 +219,7 @@ export function FeedbackAnnotator({
     canvas.setPointerCapture(e.pointerId)
     const point = canvasPoint(e)
     if (tool === 'text') {
+      textCommitRef.current = null
       setTextAt(point)
       setTextValue('')
       return
@@ -295,6 +297,10 @@ export function FeedbackAnnotator({
     const ctx = canvas?.getContext('2d')
     if (!canvas || !ctx || !textAt) return
     const value = textValue.trim()
+    // Enter 提交后输入框卸载还会触发一次 blur，避免重复落字。
+    const key = `${textAt.x}:${textAt.y}:${value}`
+    if (textCommitRef.current === key) return
+    textCommitRef.current = key
     setTextAt(null)
     setTextValue('')
     if (!value) return

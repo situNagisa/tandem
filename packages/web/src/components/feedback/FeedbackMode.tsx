@@ -1372,6 +1372,7 @@ export function FeedbackMode() {
     return {
       rect: element ? rectFor(element) : viewportRectFor(verifyEntry.item),
       found: !!element,
+      region: !verifyEntry.item.selector,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [verifyEntry, tick])
@@ -1470,7 +1471,7 @@ export function FeedbackMode() {
               top: verifyLive.rect.y,
               width: verifyLive.rect.width,
               height: verifyLive.rect.height,
-              boxShadow: verifyLive.found
+              boxShadow: verifyLive.found || verifyLive.region
                 ? '0 0 0 2px #F97316, 0 0 0 8px rgba(249,115,22,.22)'
                 : '0 0 0 2px #EF4444, 0 0 0 8px rgba(239,68,68,.18)',
             }}
@@ -1478,10 +1479,14 @@ export function FeedbackMode() {
             <span
               className={cn(
                 'absolute -top-5 left-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium leading-none text-white',
-                verifyLive.found ? 'bg-[#F97316]' : 'bg-red-500',
+                verifyLive.found || verifyLive.region ? 'bg-[#F97316]' : 'bg-red-500',
               )}
             >
-              {verifyLive.found ? '复验目标' : '未找到元素（按记录位置定位）'}
+              {verifyLive.region
+                ? '框选区域（按记录位置定位）'
+                : verifyLive.found
+                  ? '复验目标'
+                  : '未找到元素（按记录位置定位）'}
             </span>
           </div>
         )}
@@ -1591,7 +1596,7 @@ export function FeedbackMode() {
               <X size={13} />
             </IconButton>
           </div>
-          {!verifyLive?.found && (
+          {verifyLive && !verifyLive.found && !verifyLive.region && (
             <p className="mt-1 text-[10px] text-red-500">
               当前页面没有找到对应元素，已按记录的位置高亮；可能已被修复或移走。
             </p>
