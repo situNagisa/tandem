@@ -122,7 +122,7 @@ export function BackgroundTasksPanel() {
           <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
             {visible.length === 0 ? (
               <p className="px-2.5 py-3 text-[12.5px] leading-5 text-muted">
-                没有后台任务。让 agent 用 Bash 的 run_in_background 启动命令后会出现在这里。
+                没有后台任务。agent 在后台运行命令（例如跑测试、起服务）时会出现在这里。
               </p>
             ) : (
               visible.map((task) => {
@@ -170,6 +170,7 @@ export function BackgroundTasksPanel() {
                     onClick={() => setFollow((v) => !v)}
                     icon={follow ? <Pause size={13} /> : <Play size={13} />}
                     tooltip={follow ? '暂停自动滚动' : '恢复自动滚动'}
+                    className="max-sm:h-11"
                   >
                     {follow ? '跟随中' : '已暂停'}
                   </Button>
@@ -179,6 +180,7 @@ export function BackgroundTasksPanel() {
                     disabled={current.status !== 'running' || killedBusy}
                     onClick={() => void killCurrent()}
                     icon={<Square size={12} />}
+                    className="max-sm:h-11"
                   >
                     终止
                   </Button>

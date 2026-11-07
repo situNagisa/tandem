@@ -600,6 +600,7 @@ async function executeToolUses(
       getSkill: (name: string) => host.skills.resolve(name, rec.cwd),
       home: host.home,
       memory: host.memory,
+      backgroundTasks: host.tasks,
     };
     const def = host.toolDefinition(tool.name, rec.cwd);
     const res =

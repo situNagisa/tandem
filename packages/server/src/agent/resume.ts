@@ -284,6 +284,7 @@ async function runRecoveredTool(
     getSkill: (name: string) => host.skills.resolve(name, rec.cwd),
     home: host.home,
     memory: host.memory,
+    backgroundTasks: host.tasks,
   };
   let content = '';
   let isError = false;

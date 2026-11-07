@@ -129,6 +129,12 @@ export function SchedulesSection() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!confirmDelete) return
+    const timer = window.setTimeout(() => setConfirmDelete(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [confirmDelete])
+
+  useEffect(() => {
     if (host) void refresh(host)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host?.id])
@@ -227,7 +233,10 @@ export function SchedulesSection() {
           result.sessionId ? `已运行，结果在会话中查看` : '已运行',
           'success',
           result.sessionId
-            ? { onClick: () => openSession(host.id, result.sessionId!) }
+            ? {
+                onClick: () => openSession(host.id, result.sessionId!),
+                actionLabel: '查看会话',
+              }
             : undefined,
         )
       } else {
@@ -283,7 +292,14 @@ export function SchedulesSection() {
           >
             <RefreshCw size={13} className={cn(loading && 'animate-spin')} />
           </IconButton>
-          <Button variant="primary" size="sm" onClick={openCreate} disabled={!host} icon={<Plus size={13} />}>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={openCreate}
+            disabled={!host}
+            icon={<Plus size={13} />}
+            className="max-sm:h-11"
+          >
             新建任务
           </Button>
         </div>
@@ -321,9 +337,9 @@ export function SchedulesSection() {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="truncate text-[13px] font-medium text-text">{schedule.name}</span>
                     {!schedule.enabled && (
-                      <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[10px] text-muted">已暂停</span>
+                      <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[11px] text-muted">已暂停</span>
                     )}
-                    <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px font-mono text-[10px] text-muted">
+                    <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px font-mono text-[11px] text-muted">
                       {schedule.cron}
                     </span>
                   </div>
@@ -364,6 +380,7 @@ export function SchedulesSection() {
                     disabled={runningId === schedule.id}
                     onClick={() => void run(schedule)}
                     icon={runningId === schedule.id ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                    className="max-sm:h-11"
                   >
                     立即运行
                   </Button>
@@ -371,6 +388,7 @@ export function SchedulesSection() {
                     size="sm"
                     label="编辑"
                     tooltip="编辑"
+                    className="max-sm:size-11"
                     onClick={() =>
                       setEditing({
                         id: schedule.id,
@@ -385,7 +403,7 @@ export function SchedulesSection() {
                     variant="danger-ghost"
                     onClick={() => void remove(schedule)}
                     icon={<Trash2 size={12} />}
-                    className={cn(confirmDelete === schedule.id && 'text-danger')}
+                    className={cn('min-w-[64px] max-sm:h-11', confirmDelete === schedule.id && 'text-danger')}
                   >
                     {confirmDelete === schedule.id ? '确认删除' : '删除'}
                   </Button>
@@ -405,10 +423,20 @@ export function SchedulesSection() {
         bodyClassName="max-h-[calc(85vh-56px)] overflow-y-auto p-4 sm:p-5"
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setEditing(null)} disabled={saving}>
+            <Button
+              variant="ghost"
+              onClick={() => setEditing(null)}
+              disabled={saving}
+              className="max-sm:h-11"
+            >
               取消
             </Button>
-            <Button variant="primary" onClick={() => void save()} disabled={saving}>
+            <Button
+              variant="primary"
+              onClick={() => void save()}
+              disabled={saving}
+              className="max-sm:h-11"
+            >
               {saving ? '保存中…' : '保存'}
             </Button>
           </div>
@@ -454,7 +482,7 @@ export function SchedulesSection() {
               </Field>
             </div>
 
-            <Field label="目标">
+            <Field label="目标" as="div">
               <div className="flex gap-1.5">
                 <Button
                   size="sm"
@@ -625,19 +653,21 @@ function Field({
   label,
   hint,
   className,
+  as: Tag = 'label',
   children,
 }: {
   label: string
   hint?: string
   className?: string
+  as?: 'label' | 'div'
   children: ReactNode
 }) {
   return (
-    <label className={cn('block min-w-0 space-y-1', className)}>
+    <Tag className={cn('block min-w-0 space-y-1', className)}>
       <span className="block text-[12px] text-text-tertiary">{label}</span>
       {children}
       {hint && <span className="block text-[11px] leading-4 text-muted">{hint}</span>}
-    </label>
+    </Tag>
   )
 }
 

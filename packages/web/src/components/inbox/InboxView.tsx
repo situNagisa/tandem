@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import type { InboxEvent, PermissionDecision } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
+import { useUiStore } from '../../store/useUiStore'
 import { navigate } from '../../lib/router'
 import { formatRelative } from '../../lib/format'
 import { cn } from '../../lib/cn'
@@ -52,8 +53,12 @@ function eventSummary(event: InboxEvent): { title: string; body?: string } {
         ...(first ? { body: first.replace(/^#+\s*/, '') } : {}),
       }
     }
+    const input = permission.input as { command?: unknown } | null
     return {
-      title: permission.description || `${permission.toolName} 请求权限`,
+      title:
+        permission.toolName === 'Bash' && typeof input?.command === 'string'
+          ? '运行命令'
+          : permission.description || `${permission.toolName} 请求权限`,
       body: event.sourceTitle
         ? `来自子代理「${event.sourceTitle}」`
         : undefined,
@@ -80,6 +85,17 @@ function eventSummary(event: InboxEvent): { title: string; body?: string } {
   return { title: '事件' }
 }
 
+/** 审批涉及的具体内容：命令 / 文件路径，避免只看到被截断的一行标题。 */
+function permissionPreview(event: InboxEvent): string | undefined {
+  const input = event.permission?.input
+  if (!input || typeof input !== 'object') return undefined
+  const raw = input as Record<string, unknown>
+  for (const key of ['command', 'file_path', 'path', 'url', 'pattern']) {
+    if (typeof raw[key] === 'string' && raw[key]) return raw[key] as string
+  }
+  return undefined
+}
+
 function EventIcon({ event }: { event: InboxEvent }) {
   if (event.kind === 'permission') {
     return event.plan ? <ShieldAlert size={14} /> : <BellRing size={14} />
@@ -98,8 +114,10 @@ function PendingCard({ entry }: { entry: Entry }) {
   if (!permission) return null
   const isPlan = event.plan || permission.toolName === 'ExitPlanMode'
   const { title, body } = eventSummary(event)
+  const preview = permissionPreview(event)
   const open = () => {
     if (!event.sessionId) return
+    useUiStore.getState().setInboxOpen(false)
     navigate({ kind: 'session', hostId, sessionId: event.sessionId })
   }
   const submit = (decision: PermissionDecision) => decide(hostId, event.requestId ?? permission.id, decision)
@@ -136,8 +154,13 @@ function PendingCard({ entry }: { entry: Entry }) {
             </button>
             {event.depth ? <span className="shrink-0 text-[11px]">· 子代理</span> : null}
           </div>
+          {preview && !body ? (
+            <div className="mt-1.5 max-h-24 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-[var(--t-bg-hover)] px-2 py-1.5 font-mono text-[12px] leading-5 text-text-soft">
+              {preview}
+            </div>
+          ) : null}
           {body ? (
-            <div className="mt-1.5 max-h-20 overflow-hidden whitespace-pre-wrap break-words rounded-md bg-[var(--t-bg-hover)] px-2 py-1.5 font-mono text-[11.5px] leading-5 text-text-soft">
+            <div className="mt-1.5 max-h-20 overflow-hidden whitespace-pre-wrap break-words rounded-md bg-[var(--t-bg-hover)] px-2 py-1.5 font-mono text-[12px] leading-5 text-text-soft">
               {body}
             </div>
           ) : null}
@@ -146,7 +169,7 @@ function PendingCard({ entry }: { entry: Entry }) {
               size="sm"
               variant="primary"
               onClick={() => submit(isPlan ? 'allow_always' : 'allow')}
-              className="max-sm:h-10 max-sm:px-4"
+              className="max-sm:h-11 max-sm:px-4"
             >
               {isPlan ? '批准计划' : '允许'}
             </Button>
@@ -154,7 +177,7 @@ function PendingCard({ entry }: { entry: Entry }) {
               size="sm"
               variant="danger-ghost"
               onClick={() => submit('deny')}
-              className="max-sm:h-10 max-sm:px-4"
+              className="max-sm:h-11 max-sm:px-4"
               icon={<X size={13} />}
             >
               拒绝
@@ -164,7 +187,7 @@ function PendingCard({ entry }: { entry: Entry }) {
               variant="ghost"
               onClick={open}
               disabled={!event.sessionId}
-              className="ml-auto max-sm:h-10"
+              className="ml-auto max-sm:h-11"
             >
               打开会话
             </Button>
@@ -181,6 +204,7 @@ function HistoryRow({ entry }: { entry: Entry }) {
   const open = () => {
     const sessionId = event.sessionId ?? event.budgetSessionId
     if (!sessionId) return
+    useUiStore.getState().setInboxOpen(false)
     navigate({ kind: 'session', hostId, sessionId })
   }
   return (
@@ -262,7 +286,7 @@ export function InboxView({ embedded = false }: { embedded?: boolean }) {
               <h3 className="mb-2 flex items-center gap-1.5 px-1 text-[12px] font-medium text-muted">
                 待审批
                 {pending.length > 0 && (
-                  <span className="rounded-full bg-accent px-1.5 py-px text-[10.5px] font-semibold text-on-accent">
+                  <span className="rounded-full bg-accent px-1.5 py-px text-[11px] font-semibold text-on-accent">
                     {pending.length}
                   </span>
                 )}

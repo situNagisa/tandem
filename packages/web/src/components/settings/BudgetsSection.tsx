@@ -119,6 +119,7 @@ function BudgetCard({
   status,
   profiles,
   disabled,
+  confirming,
   onEdit,
   onDelete,
   onToggle,
@@ -127,6 +128,7 @@ function BudgetCard({
   status?: BudgetStatus
   profiles: Profile[]
   disabled: boolean
+  confirming: boolean
   onEdit: () => void
   onDelete: () => void
   onToggle: (enabled: boolean) => void
@@ -160,7 +162,7 @@ function BudgetCard({
             size="sm"
             onClick={onEdit}
             label="编辑预算规则"
-            className="size-7 [&_svg]:size-3"
+            className="size-7 max-sm:size-11 [&_svg]:size-3"
           >
             <Pencil size={12} />
           </IconButton>
@@ -168,8 +170,9 @@ function BudgetCard({
             size="sm"
             variant="danger-ghost"
             onClick={onDelete}
-            label="删除预算规则"
-            className="size-7 [&_svg]:size-3"
+            label={confirming ? '确认删除预算规则' : '删除预算规则'}
+            tooltip={confirming ? '再次点击删除' : undefined}
+            className={cn('size-7 max-sm:size-11 [&_svg]:size-3', confirming && 'text-danger')}
           >
             <Trash2 size={12} />
           </IconButton>
@@ -224,7 +227,14 @@ export function BudgetsSection() {
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [nonce, setNonce] = useState(0)
+
+  useEffect(() => {
+    if (!confirmDelete) return
+    const timer = window.setTimeout(() => setConfirmDelete(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [confirmDelete])
 
   const host = hosts.find((h) => h.id === hostId) ?? null
   const profiles = useMemo(
@@ -329,6 +339,12 @@ export function BudgetsSection() {
 
   const removeRule = async (rule: BudgetRule) => {
     if (!host) return
+    if (confirmDelete !== rule.id) {
+      setConfirmDelete(rule.id)
+      toast(`再次点击删除「${ruleName(rule, profiles)}」`, 'info')
+      return
+    }
+    setConfirmDelete(null)
     try {
       const saved = await api.saveBudgets(
         host,
@@ -391,12 +407,14 @@ export function BudgetsSection() {
           onClick={() => setNonce((n) => n + 1)}
           disabled={loading}
           tooltip="刷新预算"
+          className="max-sm:h-11"
         >
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> 刷新
         </Button>
         <Button
           variant="primary"
           size="sm"
+          className="max-sm:h-11"
           onClick={() => {
             setError(null)
             setDraft(emptyDraft())
@@ -440,6 +458,7 @@ export function BudgetsSection() {
               status={statusByRule.get(rule.id)}
               profiles={profiles}
               disabled={rule.enabled === false}
+              confirming={confirmDelete === rule.id}
               onEdit={() => {
                 setError(null)
                 setDraft(draftOf(rule))
@@ -462,10 +481,15 @@ export function BudgetsSection() {
         className="max-w-lg"
         footer={
           <>
-            <Button onClick={() => setDraft(null)} disabled={saving}>
+            <Button onClick={() => setDraft(null)} disabled={saving} className="max-sm:h-11">
               取消
             </Button>
-            <Button variant="primary" onClick={() => void save()} disabled={saving}>
+            <Button
+              variant="primary"
+              onClick={() => void save()}
+              disabled={saving}
+              className="max-sm:h-11"
+            >
               {saving && <Loader2 size={12} className="animate-spin" />} 保存
             </Button>
           </>
@@ -490,6 +514,7 @@ export function BudgetsSection() {
               <div>
                 <label className="settings-label">账号</label>
                 <Select
+                  aria-label="账号"
                   value={draft.profileId}
                   onChange={(e) => patchDraft({ profileId: e.target.value, groupId: '' })}
                 >
@@ -507,12 +532,17 @@ export function BudgetsSection() {
               <div>
                 <label className="settings-label">分组</label>
                 <Select
+                  aria-label="分组"
                   value={draft.groupId}
                   onChange={(e) => patchDraft({ groupId: e.target.value })}
                   disabled={!draftProfile?.groups?.length}
                 >
                   <option value="">
-                    {draftProfile?.groups?.length ? '选择分组' : '该账号没有分组'}
+                    {!draftProfile
+                      ? '请先选择账号'
+                      : draftProfile.groups?.length
+                        ? '选择分组'
+                        : '该账号没有分组'}
                   </option>
                   {draftProfile?.groups?.map((g) => (
                     <option key={g.id} value={g.id}>
@@ -527,6 +557,7 @@ export function BudgetsSection() {
               <div>
                 <label className="settings-label">模型</label>
                 <Input
+                  aria-label="模型"
                   value={draft.model}
                   onChange={(e) => patchDraft({ model: e.target.value })}
                   placeholder="例如 claude-sonnet-4-5"
@@ -557,6 +588,7 @@ export function BudgetsSection() {
               <div>
                 <label className="settings-label">上限（USD）</label>
                 <Input
+                  aria-label="上限（USD）"
                   type="number"
                   min={0.01}
                   step={0.01}
@@ -586,6 +618,7 @@ export function BudgetsSection() {
             <div>
               <label className="settings-label">备注名（可选）</label>
               <Input
+                aria-label="备注名（可选）"
                 value={draft.label}
                 onChange={(e) => patchDraft({ label: e.target.value })}
                 placeholder="例如 本月 muze 预算"

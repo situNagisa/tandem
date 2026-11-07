@@ -200,6 +200,8 @@ export interface ToolContext {
   home?: string;
   /** 项目记忆存储；Memory 工具直接读写它。 */
   memory?: import('./memory.js').MemoryStore;
+  /** 后台 Bash 任务管理器；Bash / BashOutput / KillBash 使用。 */
+  backgroundTasks?: import('./tasks.js').BackgroundTaskManager;
 }
 
 export type { ContentBlock, Message, Session, SessionStatus, Todo, Usage };

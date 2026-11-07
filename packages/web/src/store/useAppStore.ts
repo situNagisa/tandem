@@ -766,7 +766,7 @@ export const useAppStore = create<AppState>((set, get) => {
         const period = msg.period === 'day' ? '今日' : msg.period === 'week' ? '本周' : '本月'
         const percent =
           msg.limitUsd > 0 ? Math.max(0, Math.round((msg.spentUsd / msg.limitUsd) * 100)) : 100
-        const text = `${period} ${name} 预算已用 ${percent}%`
+        const text = `${period} ${name}预算已用 ${percent}%`
         if (msg.level === '100') {
           toast(text, 'error', {
             actionLabel: '查看',

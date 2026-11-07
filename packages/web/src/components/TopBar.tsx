@@ -11,6 +11,7 @@ import {
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useTurnNavStore } from '../store/useTurnNavStore'
+import { useTaskStore } from '../store/useTaskStore'
 import { useIsMobile, useNow } from '../lib/hooks'
 import { useSessionChanges } from '../lib/useChanges'
 import { formatElapsed } from '../lib/format'
@@ -131,6 +132,13 @@ export function TopBar() {
   const summary = useAppStore((s) => s.active?.summary ?? null)
   const status = summary?.status
   const running = useAppStore((s) => s.active?.running ?? false)
+  const activeSessionHostId = useAppStore((s) => s.active?.hostId ?? null)
+  const activeSessionId = useAppStore((s) => s.active?.sessionId ?? null)
+  const hasBackgroundTasks = useTaskStore((s) =>
+    activeSessionHostId && activeSessionId
+      ? (s.byHost[activeSessionHostId] ?? []).some((task) => task.sessionId === activeSessionId)
+      : false,
+  )
   const ticking = running || status === 'waiting_permission' || status === 'retrying'
   const now = useNow(ticking)
   const retrySeconds = summary?.retryInfo
@@ -339,7 +347,12 @@ export function TopBar() {
         </>
       )}
 
-      {hasSession && isMobile && <PrButton />}
+      {hasSession && isMobile && (
+        <>
+          <BackgroundTasksButton />
+          {!hasBackgroundTasks && <PrButton />}
+        </>
+      )}
 
       {hasSession && changes && (
         <Button
@@ -358,8 +371,8 @@ export function TopBar() {
           <span className="hidden font-sans text-[12px] sm:inline">改动</span>
           {fileCount > 0 && !changesOpen && (
             <>
-              <span className="text-[var(--t-git-plus)]">+{additions}</span>
-              <span className="text-[var(--t-git-minus)]">−{deletions}</span>
+              <span className="hidden text-[var(--t-git-plus)] sm:inline">+{additions}</span>
+              <span className="hidden text-[var(--t-git-minus)] sm:inline">−{deletions}</span>
             </>
           )}
         </Button>
