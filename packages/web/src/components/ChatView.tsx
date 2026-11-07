@@ -9,6 +9,7 @@ import { isLocalHostUrl, isSameOrigin } from '../lib/hostUrl'
 import { useElementWidth } from '../lib/hooks'
 import { cn } from '../lib/cn'
 import { MessageList } from './MessageList'
+import { HandoffCard } from './chat/HandoffCard'
 import { SessionWelcome, HomeView } from './Welcome'
 import { PermissionCard } from './PermissionCard'
 import { PlanCard } from './PlanCard'
@@ -335,7 +336,10 @@ export function ChatView() {
               {loading && messageCount === 0 ? (
                 <MessageList showSkeleton />
               ) : messageCount === 0 ? (
-                <SessionWelcome />
+                <>
+                  <SessionWelcome />
+                  <HandoffCard />
+                </>
               ) : (
                 <MessageList checkpoints={checkpoints} />
               )}

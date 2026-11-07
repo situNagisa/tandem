@@ -327,3 +327,11 @@
 - 未做（v2）：运行时协调者追加卡（`BoardAddCards` 提案）、卡详情内嵌会话/分屏并排、AI 评审接入审批门、PR/CI 聚合、冲突自动解决、定时看板、批量放行/多选
 - 验证：`TANDEM_HOME=/tmp/tandem-board` 端口 8321；截图 `/tmp/board-shots/`（桌面 2552×1274：七列、抽屉、打回、拖动中、AI 拆分、新建卡片、收件箱、空态；手机 390×844：列表、详情、侧栏入口）
 
+
+## 迭代 37（2026-11-08）配额预估 + 会话交接
+- [x] 协议：`KeyQuota`（remaining/limit/reset）、`ProfileKey.quota/rateLimitHits`、`ProfileGroup.fallbackGroupIds`、`HandoffState/HandoffPolicy/QuotaEstimate`、`HostSettings.handoff`、收件箱 `handoff` 事件、`POST /api/sessions/:id/handoff`
+- [x] 服务端：provider 解析 OpenAI `x-ratelimit-*` / Anthropic `anthropic-ratelimit-*` 与 `retry-after`；429 按 Key 记额度、累计次数并按重置时间冷却；`quota.ts` 按最近 3 轮消耗估算可跑轮数（预算与限流取更紧者）；`host/handoff.ts` 在 Key 全冷却、预算阻止、预计 ≤2 轮时交接：先存检查点 → 改账号/分组/模型 → 用现有自动压缩压到目标窗口 → 写「已从 X 交接到 Y」；默认询问，可设自动切换/自动等待；等待多留 1 秒避免按秒截断的重置时间卡点再 429；子代理与看板卡片走同一循环
+- [x] 前端：消息流尾部交接卡（切换备用分组 / 等待额度重置 / 暂停，等待时显示到点时间）；右栏用量卡与上下文卡显示「按当前速度约可再跑 N 轮（受限于：预算 / Key 限流）」；设置·通用新增额度交接策略与默认备用账号/分组/模型；账号编辑的分组可配置按顺序的备用分组链（上下移/移除/添加）；收件箱展示交接事件
+- [x] 回归：`e2e/regression.mjs` 新增「配额将尽时交接卡可切换备用分组」（mock 主分组首次成功、其后 429；断言用量预估行、交接卡、切换后模型/分组、检查点、交接提示）
+- 保守取舍：备用链仅限同一账号的分组（跨账号需在设置里显式指定默认目标）；切换前压缩失败则保留原历史继续并提示；Host 重启不恢复等待计时器（发新消息会取消交接卡）
+- 验证：`TANDEM_HOME=/tmp/tandem-handoff2` 端口 8332、本地 mock（8333）双分组；询问策略：第 2 轮 429 → 交接卡 → 切换备用分组完成回合，检查点存在、提示为「已从 限流账号 › 主分组（q-model） 交接到 限流账号 › 备用分组（backup-model） · 已保存检查点」；自动等待策略：3 秒后自动继续只留一条「额度已重置，继续运行」；收件箱收到 handoff 事件；截图 `/tmp/handoff-shots/`；`node scripts/check.mjs` 全过（含新增回归 74/74）
