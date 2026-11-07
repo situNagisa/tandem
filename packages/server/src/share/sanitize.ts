@@ -129,13 +129,14 @@ function sanitizeBlock(
         ...block,
         input: sanitizeUnknown(block.input, cwd, options.hidePaths, envValues),
       };
-    case 'tool_result':
+    case 'tool_result': {
+      // 即使只保留摘要，摘要本身也要先脱敏 / 隐藏路径。
+      const safe = sanitizeText(block.content, cwd, options.hidePaths, envValues);
       return {
         ...block,
-        content: options.includeToolOutputs
-          ? sanitizeText(block.content, cwd, options.hidePaths, envValues)
-          : summarizeToolOutput(block.content, block.isError),
+        content: options.includeToolOutputs ? safe : summarizeToolOutput(safe, block.isError),
       };
+    }
     case 'image':
       // 用户主动分享的截图保留；base64 本身不含文本信息。
       return { ...block };

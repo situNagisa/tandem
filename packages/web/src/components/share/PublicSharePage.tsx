@@ -54,11 +54,16 @@ export function PublicSharePage() {
       } catch (err) {
         if (cancelled) return
         setLoading(false)
-        setError(err instanceof Error ? err.message : '无法读取分享内容')
-        // 网络抖动时继续重试；明确 404 时停止轮询
-        if (!(err instanceof Error && 'status' in err && (err as { status?: number }).status === 404)) {
-          timer.current = window.setTimeout(load, 5000)
+        const status = err instanceof Error && 'status' in err ? (err as { status?: number }).status : undefined
+        // 已撤销 / 过期：立刻清掉页面上的旧内容，避免链接失效后仍能看到缓存。
+        if (status === 404) {
+          setData(null)
+          setError('分享链接无效或已撤销')
+          return
         }
+        setError(err instanceof Error ? err.message : '无法读取分享内容')
+        // 网络抖动时继续重试
+        timer.current = window.setTimeout(load, 5000)
       }
     }
     void load()
