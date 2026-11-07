@@ -64,6 +64,10 @@ import type {
   SaveEvalCaseInput,
   Schedule,
   ScheduleInput,
+  SecretInput,
+  SecretMeta,
+  SecretsOverview,
+  SecretsSettings,
   Session,
   StartEvalRunInput,
   SessionSummary,
@@ -412,6 +416,26 @@ export const api = {
     request<HookSettings>(h, '/api/hooks/trust', {
       method: 'PUT',
       body: JSON.stringify({ cwd, trusted }),
+    }),
+
+  secrets: (h: HostConfig, cwd?: string) =>
+    request<SecretsOverview>(h, `/api/secrets${qs({ cwd })}`),
+  createSecret: (h: HostConfig, input: SecretInput) =>
+    request<SecretMeta>(h, '/api/secrets', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateSecret: (h: HostConfig, id: string, input: SecretInput) =>
+    request<SecretMeta>(h, `/api/secrets/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+  deleteSecret: (h: HostConfig, id: string) =>
+    request<{ ok: boolean }>(h, `/api/secrets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  saveSecretsSettings: (h: HostConfig, settings: SecretsSettings) =>
+    request<SecretsSettings>(h, '/api/secrets/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
     }),
 
   subagentPresets: (h: HostConfig, cwd?: string) =>

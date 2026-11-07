@@ -246,6 +246,7 @@ async function runRecoveredTool(
   signal: AbortSignal,
   hookEntries: HookEntry[],
 ): Promise<ContentBlock[]> {
+  const redact = host.secrets.redactorFor(rec.cwd);
   const pre = await host.runHooks(rec, hookEntries, 'PreToolUse', {
     toolName: tool.name,
     toolInput: tool.input,
@@ -257,7 +258,7 @@ async function runRecoveredTool(
       {
         type: 'tool_result',
         toolUseId: tool.id,
-        content: `Hook 阻止了该工具调用：\n${pre.feedback.join('\n') || '（Hook 未提供原因）'}`,
+        content: redact(`Hook 阻止了该工具调用：\n${pre.feedback.join('\n') || '（Hook 未提供原因）'}`),
         isError: true,
       },
     ];
@@ -285,6 +286,8 @@ async function runRecoveredTool(
     home: host.home,
     memory: host.memory,
     backgroundTasks: host.tasks,
+    secretEnv: host.secrets.envFor(rec.cwd, 'bash'),
+    redact,
   };
   let content = '';
   let isError = false;
@@ -295,11 +298,11 @@ async function runRecoveredTool(
       def?.mcp && tool.name.startsWith('mcp__')
         ? await host.mcp.callTool(def.mcp.server, def.mcp.tool, tool.input, signal)
         : await executeTool(tool.name, tool.input, toolCtx);
-    content = truncateMiddle(res.content || '(无输出)');
+    content = redact(truncateMiddle(res.content || '(无输出)'));
     isError = !!res.isError;
     images = res.images;
   } catch (err) {
-    content = `工具执行失败：${errorMessage(err)}`;
+    content = redact(`工具执行失败：${errorMessage(err)}`);
     isError = true;
   }
   const post = await host.runHooks(rec, hookEntries, 'PostToolUse', {
@@ -310,7 +313,7 @@ async function runRecoveredTool(
     signal,
   });
   if (post.blocked && post.feedback.length > 0) {
-    content += `\n\n[Hook 反馈]\n${post.feedback.join('\n')}`;
+    content += redact(`\n\n[Hook 反馈]\n${post.feedback.join('\n')}`);
   }
   const blocks: ContentBlock[] = [
     { type: 'tool_result', toolUseId: tool.id, content, ...(isError ? { isError: true } : {}) },

@@ -114,6 +114,8 @@ export interface SessionSummary {
   usage: Usage;
   /** 最近一次请求的上下文占用（随 session_updated 推送，也可 GET /api/sessions/:id/context）。 */
   context?: ContextBreakdown;
+  /** 本项目（仓库根或 cwd）+ 全局可用的 secret 数量；右栏「详情」显示，不含值。 */
+  secretsCount?: number;
 }
 export interface SessionEnv {
   repoRoot?: string;       // cwd 所在 git 仓库根目录（非仓库则无）
@@ -912,6 +914,48 @@ export interface PermissionRuleDraft {
 // DELETE /api/permissions/suggestions/:id -> { ok }（忽略建议）
 // POST /api/permissions/rules { rule } -> PermissionRule[]（确认草稿后保存单条规则）
 // POST /api/permissions/draft { sessionId, text } -> PermissionRuleDraft（用当前会话模型解析；危险模式返回 400）
+
+// ---------- 项目 Secrets（~/.tandem/secrets.json，值 AES-GCM 加密、接口永不回传） ----------
+/** secret 注入的子系统：Bash/后台任务、stdio MCP、Hooks。 */
+export type SecretScope = 'bash' | 'mcp' | 'hooks';
+/** 公开元信息：只有名称、描述、作用范围与使用时间，没有值。 */
+export interface SecretMeta {
+  id: string;
+  name: string;
+  description?: string;
+  scopes: SecretScope[];
+  /** 所属项目（git 仓库根或 cwd 的绝对路径）；缺省为全局 secret。 */
+  project?: string;
+  createdAt: number;
+  updatedAt: number;
+  /** 最近一次注入到进程环境的时间。 */
+  lastUsedAt?: number;
+}
+export interface SecretInput {
+  name: string;
+  /** 创建时必填；更新时省略/留空表示保留原值。 */
+  value?: string;
+  description?: string;
+  scopes: SecretScope[];
+  project?: string;
+}
+export interface SecretsSettings {
+  /** 对 sk-…、ghp_…、AKIA…、私钥块等常见 Key 形态做通用打码；关闭后只打码本机 secrets。 */
+  genericMask: boolean;
+}
+export interface SecretsOverview {
+  global: SecretMeta[];
+  projects: Array<{ project: string; secrets: SecretMeta[] }>;
+  /** 设置页项目下拉可选项（已存过 secret 的项目 + 最近会话的项目根）。 */
+  knownProjects: string[];
+  settings: SecretsSettings;
+}
+// GET    /api/secrets?cwd=        -> SecretsOverview
+// POST   /api/secrets SecretInput -> SecretMeta
+// PATCH  /api/secrets/:id SecretInput -> SecretMeta（value 省略表示保留）
+// DELETE /api/secrets/:id         -> { ok: true }
+// PUT    /api/secrets/settings SecretsSettings -> SecretsSettings
+// 注入到 Bash/后台任务/Hooks/stdio MCP 的环境变量；所有工具输出在进入会话前按值打码为 [secret:NAME]。
 
 // ---------- MCP（Host 级，存 ~/.tandem/mcp.json；同时只读兼容 ~/.claude.json 与项目 .mcp.json） ----------
 export interface McpServerConfig {

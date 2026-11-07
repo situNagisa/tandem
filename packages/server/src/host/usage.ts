@@ -39,6 +39,7 @@ export function promptOptions(host: Host, rec: SessionRecord,
     planMode: rec.permissionMode === 'plan',
     hookContext: opts.hookContext,
     skills: host.skills.promptSection(rec.cwd),
+    secrets: host.secrets.promptSection(rec.cwd),
     memory: host.memory.promptSection(
       rec.cwd,
       host.promptTemplates.get('memoryRule', rec.cwd),

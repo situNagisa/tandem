@@ -17,6 +17,7 @@ import {
 import { isContextLengthError } from '../providers/http-error.js';
 import { compactHistory } from '../host/compaction.js';
 import { normalizeContextSettings } from '../context-settings.js';
+import { redactMessages } from '../redact.js';
 import { withNetworkRetry } from './retry.js';
 import { replayUnfinishedTools } from './resume.js';
 import {
@@ -80,6 +81,8 @@ export async function runTurn(
   await host.mcp.prepare(rec.cwd).catch(() => {});
   const tools = host.toolDefinitions(rec, allowTask);
   const hookEntries = host.hooks.entriesForRun(rec.cwd);
+  // 本项目 + 全局 secrets 的打码函数：工具输出、Hook 反馈、模型请求都经过它
+  const redact = host.secrets.redactorFor(rec.cwd);
   let stopHookAttempts = 0;
 
   // SessionStart：每个会话首次运行时执行一次，stdout/JSON 作为附加上下文
@@ -90,11 +93,11 @@ export async function runTurn(
       source: options.resume ? 'resume' : 'startup',
       signal: abort.signal,
     });
-    sessionStartContext = start.contexts.join('\n\n');
+    sessionStartContext = redact(start.contexts.join('\n\n'));
   }
-  const promptHookContext = [sessionStartContext, rt.pendingHookContext]
-    .filter(Boolean)
-    .join('\n\n');
+  const promptHookContext = redact(
+    [sessionStartContext, rt.pendingHookContext].filter(Boolean).join('\n\n'),
+  );
   delete rt.pendingHookContext;
 
   try {
@@ -124,11 +127,15 @@ export async function runTurn(
         enabled: contextSettings.autoCompact,
         threshold: contextSettings.autoCompactThreshold,
       };
+      // 发给模型前统一打码：既防止用户粘贴的值再次上行，也让上下文占用里的预览不含明文
       const buildRequestMessages = (excludeId?: string): Message[] =>
-        trimOldToolResults(
-          rec.messages.filter((m) => !m.notice && m.id !== excludeId),
-          contextSettings,
-        ).messages;
+        redactMessages(
+          trimOldToolResults(
+            rec.messages.filter((m) => !m.notice && m.id !== excludeId),
+            contextSettings,
+          ).messages,
+          redact,
+        );
       const measure = (systemText: string, messages: Message[]) =>
         estimateBreakdown({
           model,
@@ -231,7 +238,7 @@ export async function runTurn(
                     const attempt = await streamChat({
                       profile: candidate.profile,
                       model,
-                      system,
+                      system: redact(system),
                       messages: requestMessages,
                       tools,
                       blocks: assistant.content,
@@ -480,9 +487,11 @@ export async function runTurn(
               content: [
                 {
                   type: 'text',
-                  text: `[Stop Hook 反馈] 用户配置的 Hook 要求继续处理：\n${
-                    stop.feedback.join('\n\n') || '（Hook 未提供具体原因）'
-                  }`,
+                  text: redact(
+                    `[Stop Hook 反馈] 用户配置的 Hook 要求继续处理：\n${
+                      stop.feedback.join('\n\n') || '（Hook 未提供具体原因）'
+                    }`,
+                  ),
                 },
               ],
               createdAt: Date.now(),
@@ -516,7 +525,7 @@ export async function runTurn(
               content: '用户中断',
               isError: true,
             }))
-          : await executeToolUses(host, rec, toolUses, abort.signal, hookEntries);
+          : await executeToolUses(host, rec, toolUses, abort.signal, hookEntries, redact);
 
       const toolMessage: Message = {
         id: randomUUID(),
@@ -557,6 +566,7 @@ export async function runTurn(
       errorText = errorMessage(err);
     }
   } finally {
+    if (errorText) errorText = redact(errorText);
     rt.running = false;
     rt.abort = undefined;
     rt.turnMessageId = undefined;
@@ -608,6 +618,7 @@ async function executeToolUses(
   toolUses: Array<Extract<ContentBlock, { type: 'tool_use' }>>,
   signal: AbortSignal,
   hookEntries: import('@tandem/protocol').HookEntry[],
+  redact: (text: string) => string,
 ): Promise<ContentBlock[]> {
   const perTool: ContentBlock[][] = new Array(toolUses.length);
 
@@ -646,7 +657,7 @@ async function executeToolUses(
         {
           type: 'tool_result',
           toolUseId: tool.id,
-          content: `Hook 阻止了该工具调用：\n${pre.feedback.join('\n') || '（Hook 未提供原因）'}`,
+          content: redact(`Hook 阻止了该工具调用：\n${pre.feedback.join('\n') || '（Hook 未提供原因）'}`),
           isError: true,
         },
       ];
@@ -677,7 +688,7 @@ async function executeToolUses(
         {
           type: 'tool_result',
           toolUseId: tool.id,
-          content: auth.reason ?? '操作被拒绝',
+          content: redact(auth.reason ?? '操作被拒绝'),
           isError: true,
         },
       ];
@@ -706,13 +717,15 @@ async function executeToolUses(
       memory: host.memory,
       backgroundTasks: host.tasks,
       browser: host.browser,
+      secretEnv: host.secrets.envFor(rec.cwd, 'bash'),
+      redact,
     };
     const def = host.toolDefinition(tool.name, rec.cwd);
     const res =
       def?.mcp && tool.name.startsWith('mcp__')
         ? await host.mcp.callTool(def.mcp.server, def.mcp.tool, tool.input, signal)
         : await executeTool(tool.name, tool.input, toolCtx);
-    let content = truncateMiddle(res.content || '(无输出)');
+    let content = redact(truncateMiddle(res.content || '(无输出)'));
     const post = await host.runHooks(rec, hookEntries, 'PostToolUse', {
       toolName: tool.name,
       toolInput: tool.input,
@@ -721,7 +734,7 @@ async function executeToolUses(
       signal,
     });
     if (post.blocked && post.feedback.length > 0) {
-      content += `\n\n[Hook 反馈]\n${post.feedback.join('\n')}`;
+      content += redact(`\n\n[Hook 反馈]\n${post.feedback.join('\n')}`);
     }
     const blocks: ContentBlock[] = [
       {

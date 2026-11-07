@@ -37,6 +37,7 @@ import { useBrowserShot } from '../lib/browserShot'
 import { CodeBlock } from './CodeBlock'
 import { Button } from './ui/Button'
 import { Modal } from './ui/Modal'
+import { Tooltip } from './ui/Tooltip'
 import { DiffView } from './DiffView'
 import { Markdown, openFileRef } from './Markdown'
 import { ThinkingBlock } from './ThinkingBlock'
@@ -212,7 +213,21 @@ function OutputBlock({
       className={cn('tool-output', isError && 'is-error')}
       style={{ maxHeight }}
     >
-      {shown}
+      {shown.split(/(\[secret:[A-Za-z0-9_-]+\])/g).map((part, index) => {
+        const match = /^\[secret:([A-Za-z0-9_-]+)\]$/.exec(part)
+        if (!match) return part
+        const name = match[1]!
+        return (
+          <Tooltip key={index} label={`已隐藏 secret：${name}`} className="inline">
+            <span
+              data-secret-redacted={name}
+              className="mx-px inline-flex items-center rounded border border-warning/30 bg-warning-soft/50 px-1 font-mono text-[11px] leading-[16px] text-warning"
+            >
+              {part}
+            </span>
+          </Tooltip>
+        )
+      })}
     </div>
   )
 }

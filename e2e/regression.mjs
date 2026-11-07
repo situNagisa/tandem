@@ -352,6 +352,37 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
         updatedAt: Date.now() - 2500,
       },
     ),
+    mk('secrets', 'Secrets 打码会话', [
+      message('s1', 'user', '读一下数据库密码'),
+      {
+        id: 's2',
+        role: 'assistant',
+        createdAt,
+        model: 'mock-1',
+        content: [
+          { type: 'text', text: '我运行命令看看。' },
+          {
+            type: 'tool_use',
+            id: 'tu-secret',
+            name: 'Bash',
+            input: { command: 'echo $DB_PASSWORD; env | grep DB_; printf %s "$DB_PASSWORD" | base64' },
+          },
+        ],
+      },
+      {
+        id: 's3',
+        role: 'user',
+        createdAt: createdAt + 2000,
+        content: [
+          {
+            type: 'tool_result',
+            toolUseId: 'tu-secret',
+            content:
+              'DB_PASSWORD=[secret:DB_PASSWORD]\n[secret:DB_PASSWORD]\n[secret:DB_PASSWORD]',
+          },
+        ],
+      },
+    ], { updatedAt: Date.now() - 1700 }),
   ]
   // 待审批会话：Host 启动时按 resumeState 恢复并重新广播权限请求，供手机审批卡走查。
   const approveAt = Date.now() - 1200
@@ -881,6 +912,25 @@ async function main() {
         () => document.querySelector('.chat-scroll')?.scrollTop ?? 0,
       )
       assert.notEqual(after, before, '点击最大占用项后没有跳转到对应消息')
+    })
+
+    desktop('Secrets 工具输出显示打码标签', async (page) => {
+      await openSession(page, 'secrets')
+      await page.locator('.tool-row').first().click()
+      const tag = page.locator('[data-secret-redacted="DB_PASSWORD"]').first()
+      await tag.waitFor({ state: 'visible', timeout: 5_000 })
+      assert.equal(await tag.innerText(), '[secret:DB_PASSWORD]', '打码标签文案不对')
+      const detail = await page.locator('.tool-detail').first().innerText()
+      assert.ok(detail.includes('[secret:DB_PASSWORD]'), '工具输出里没有打码标签')
+      assert.ok(!detail.includes('S3cr3t'), '工具输出泄露了 secret 明文')
+      await tag.hover()
+      await page.waitForFunction(
+        () => document.getElementById('tandem-tooltip')?.hasAttribute('data-open'),
+        null,
+        { timeout: 5_000 },
+      )
+      const tip = await page.locator('#tandem-tooltip').innerText()
+      assert.match(tip, /已隐藏 secret：DB_PASSWORD/, `hover 提示不对：${tip}`)
     })
 
     desktop('轮次条点击第 30 轮精准定位（不跳到相邻轮）', async (page) => {

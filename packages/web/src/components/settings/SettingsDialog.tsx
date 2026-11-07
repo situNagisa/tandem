@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, FlaskConical, Mic, Monitor, MousePointerClick, Network, Palette, Plug, RefreshCw, ScrollText, Search, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Users, Wallet, Webhook } from 'lucide-react'
+import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, FlaskConical, KeyRound, Mic, Monitor, MousePointerClick, Network, Palette, Plug, RefreshCw, ScrollText, Search, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Users, Wallet, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { useAppStore } from '../../store/useAppStore'
@@ -22,6 +22,7 @@ import { MemorySection } from './MemorySection'
 import { SubagentsSection } from './SubagentsSection'
 import { PromptsSection } from './PromptsSection'
 import { HooksSection } from './HooksSection'
+import { SecretsSection } from './SecretsSection'
 import { SharesSection } from './SharesSection'
 import { UsageSection } from './UsageSection'
 import { SchedulesSection } from './SchedulesSection'
@@ -43,6 +44,7 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'permissions', label: SETTINGS_TAB_LABELS.permissions, icon: ShieldCheck },
   { id: 'hooks', label: SETTINGS_TAB_LABELS.hooks, icon: Webhook },
   { id: 'mcp', label: SETTINGS_TAB_LABELS.mcp, icon: Plug },
+  { id: 'secrets', label: SETTINGS_TAB_LABELS.secrets, icon: KeyRound },
   { id: 'skills', label: SETTINGS_TAB_LABELS.skills, icon: BookOpen },
   { id: 'memory', label: SETTINGS_TAB_LABELS.memory, icon: Brain },
   { id: 'subagents', label: SETTINGS_TAB_LABELS.subagents, icon: Bot },
@@ -244,6 +246,7 @@ export function SettingsDialog() {
             {tab === 'permissions' && <PermissionsSection />}
             {tab === 'hooks' && <HooksSection />}
             {tab === 'mcp' && <McpSection />}
+        {tab === 'secrets' && <SecretsSection />}
             {tab === 'skills' && <SkillsSection />}
             {tab === 'memory' && <MemorySection />}
             {tab === 'subagents' && <SubagentsSection />}

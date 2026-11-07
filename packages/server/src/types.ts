@@ -210,6 +210,10 @@ export interface ToolContext {
   backgroundTasks?: import('./tasks.js').BackgroundTaskManager;
   /** 浏览器操作管理器；browser_* 工具使用。 */
   browser?: import('./browser.js').BrowserManager;
+  /** 本项目/全局 secrets 注入的 bash 环境变量。 */
+  secretEnv?: Record<string, string>;
+  /** 工具输出进入会话前打码（匹配本机 secrets 值及常见 Key 形态）。 */
+  redact?: (text: string) => string;
 }
 
 export type { ContentBlock, Message, Session, SessionStatus, Todo, Usage };

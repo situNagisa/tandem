@@ -147,6 +147,7 @@ export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
     updatedAt: rec.updatedAt,
     usage: { ...rec.usage },
     ...(rec.context ? { context: rec.context } : {}),
+    ...(host.secrets.countFor(rec.cwd) ? { secretsCount: host.secrets.countFor(rec.cwd) } : {}),
   };
 }
 

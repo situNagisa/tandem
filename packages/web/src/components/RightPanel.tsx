@@ -16,6 +16,7 @@ import {
   GitFork,
   GripVertical,
   Info,
+  KeyRound,
   ListTodo,
   Loader2,
   Maximize2,
@@ -93,6 +94,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const subagents = useAppStore((s) => s.active?.subagents)
   const agentCount = subagents ? Object.keys(subagents).length : 0
   const changesNonce = useAppStore((s) => s.changesNonce)
+  const openSettings = useUiStore((s) => s.openSettings)
   const host = useAppStore((s) => s.hosts.find((h) => h.id === s.active?.hostId) ?? null)
   const hostStatus = useAppStore((s) =>
     hostId ? (s.runtimes[hostId]?.status ?? 'offline') : 'offline',
@@ -657,6 +659,18 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
             </span>
           </DetailRow>
         )}
+        <DetailRow label="Secrets">
+          <button
+            type="button"
+            onClick={() => openSettings('secrets')}
+            className="flex items-center gap-1 rounded px-1 py-0.5 text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+            title="打开设置 → Secrets"
+          >
+            <KeyRound size={10} className="text-muted" />
+            {summary?.secretsCount ? `${summary.secretsCount} 个可用` : '未配置'}
+            <ArrowUpRight size={10} className="text-muted" />
+          </button>
+        </DetailRow>
         <DetailRow label="Host">
           <span className="flex items-center gap-1.5">
             <ConnectionDot state={hostStatus} />

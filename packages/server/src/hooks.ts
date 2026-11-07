@@ -53,6 +53,8 @@ export interface HookExecutionContext {
   source?: string;
   stopHookActive?: boolean;
   signal?: AbortSignal;
+  /** 注入的 secret 环境变量（hooks 作用范围）。 */
+  env?: Record<string, string>;
 }
 
 export interface HookOutcome {
@@ -223,19 +225,20 @@ function execHookCommand(
   stdin: string,
   timeoutSec: number,
   signal?: AbortSignal,
+  secretEnv?: Record<string, string>,
 ): Promise<ExecResult> {
   return new Promise((resolve) => {
     const isWin = process.platform === 'win32';
     const child = isWin
       ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', cmdUtf8Command(command)], {
           cwd,
-          env: process.env,
+          env: { ...process.env, ...secretEnv },
           windowsHide: true,
           stdio: ['pipe', 'pipe', 'pipe'],
         })
       : spawn('/bin/bash', ['-c', command], {
           cwd,
-          env: { ...process.env, CLAUDE_PROJECT_DIR: cwd },
+          env: { ...process.env, ...secretEnv, CLAUDE_PROJECT_DIR: cwd },
           detached: true,
           stdio: ['pipe', 'pipe', 'pipe'],
         });
@@ -400,6 +403,7 @@ export async function runHookEntries(
       buildHookStdin(event, ctx),
       timeoutSec,
       ctx.signal,
+      ctx.env,
     );
     const evaluated = evaluateExec(event, exec, timeoutSec);
     const outcome: HookOutcome = {

@@ -35,6 +35,8 @@ interface TaskInternal {
   /** 已随 WS 推送到的位移。 */
   sent: number;
   killed: boolean;
+  /** 输出进入缓冲/日志前先按项目 secrets 打码。 */
+  redact?: (text: string) => string;
 }
 
 export type TaskUpdateListener = (
@@ -189,6 +191,10 @@ export class BackgroundTaskManager {
     command: string;
     cwd: string;
     description?: string;
+    /** 项目/全局 secrets 注入（bash 作用范围）。 */
+    env?: Record<string, string>;
+    /** 输出在写入内存缓冲、日志与 WS 推送前打码。 */
+    redact?: (text: string) => string;
   }): Promise<BackgroundTask> {
     const id = `bash_${randomUUID().slice(0, 8)}`;
     const task: BackgroundTask = {
@@ -212,6 +218,7 @@ export class BackgroundTaskManager {
       lastEmit: 0,
       sent: 0,
       killed: false,
+      ...(input.redact ? { redact: input.redact } : {}),
     };
     this.tasks.set(id, item);
     this.persist(task);
@@ -226,13 +233,13 @@ export class BackgroundTaskManager {
       ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', cmdUtf8Command(input.command)], {
           cwd: input.cwd,
           windowsHide: true,
-          env: process.env,
+          env: { ...process.env, ...input.env },
           stdio: ['ignore', 'pipe', 'pipe'],
         })
       : spawn('/bin/bash', ['-c', input.command], {
           cwd: input.cwd,
           detached: true,
-          env: process.env,
+          env: { ...process.env, ...input.env },
           stdio: ['ignore', 'pipe', 'pipe'],
         });
     item.child = child;
@@ -280,6 +287,7 @@ export class BackgroundTaskManager {
   }
 
   private append(item: TaskInternal, text: string): void {
+    text = item.redact ? item.redact(text) : text;
     item.output += text;
     if (item.output.length > RING_LIMIT) {
       const overflow = item.output.length - RING_LIMIT;

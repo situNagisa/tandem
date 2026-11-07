@@ -12,7 +12,13 @@ export async function runHooks(host: Host, rec: SessionRecord,
   return runHookEntries(
     entries,
     event,
-    { sessionId: rec.id, cwd: rec.cwd, permissionMode: rec.permissionMode, ...context },
+    {
+      sessionId: rec.id,
+      cwd: rec.cwd,
+      permissionMode: rec.permissionMode,
+      env: host.secrets.envFor(rec.cwd, 'hooks'),
+      ...context,
+    },
     (outcome) => {
       host.hub.broadcastSession(rec.id, {
         type: 'hook_event',

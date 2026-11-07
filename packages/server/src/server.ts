@@ -20,6 +20,7 @@ import { registerModelRoutes } from './routes/models.js';
 import { registerSessionRoutes } from './routes/sessions.js';
 import { registerPermissionRoutes } from './routes/permissions.js';
 import { registerHookRoutes } from './routes/hooks.js';
+import { registerSecretRoutes } from './routes/secrets.js';
 import { registerMcpRoutes } from './routes/mcp.js';
 import { registerSubagentPresetRoutes } from './routes/subagent-presets.js';
 import { registerPromptTemplateRoutes } from './routes/prompt-templates.js';
@@ -118,6 +119,7 @@ export async function createApp(
   registerSessionRoutes(app, deps);
   registerPermissionRoutes(app, deps);
   registerHookRoutes(app, deps);
+  registerSecretRoutes(app, deps);
   registerMcpRoutes(app, deps);
   registerSubagentPresetRoutes(app, deps);
   registerPromptTemplateRoutes(app, deps);

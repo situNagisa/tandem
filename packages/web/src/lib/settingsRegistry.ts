@@ -12,6 +12,7 @@ export const SETTINGS_TAB_LABELS: Record<SettingsTab, string> = {
   permissions: '权限',
   hooks: 'Hooks',
   mcp: 'MCP',
+  secrets: 'Secrets',
   skills: 'Skills',
   memory: '记忆',
   subagents: '子代理',
@@ -50,6 +51,9 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'browser.display', tab: 'browser', title: '浏览器显示模式', keywords: ['显示', '侧栏', '面板'] },
   { id: 'browser.allowlist', tab: 'browser', title: '域名允许列表', keywords: ['域名', '白名单', '允许'] },
   { id: 'browser.tools', tab: 'browser', title: '浏览器组件', keywords: ['工具', '截图', '组件'] },
+
+  { id: 'secrets.list', tab: 'secrets', title: '项目 Secrets', keywords: ['secret', '密钥', '环境变量', '密码', '令牌', '注入'] },
+  { id: 'secrets.generic-mask', tab: 'secrets', title: '通用 Key 打码', keywords: ['打码', '脱敏', 'sk-', 'ghp_', 'AKIA', '私钥'] },
 
   { id: 'profiles.accounts', tab: 'profiles', title: '账号列表', keywords: ['账号', '服务商', 'Key'] },
   { id: 'profiles.groups', tab: 'profiles', title: '账号分组', keywords: ['分组', '渠道', '协议'] },

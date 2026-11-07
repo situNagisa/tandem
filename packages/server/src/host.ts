@@ -60,6 +60,7 @@ import { SkillManager } from './skills.js';
 import { SubagentPresetStore } from './subagent-presets.js';
 import { PromptTemplateStore } from './prompt-templates.js';
 import { MemoryStore } from './memory.js';
+import { SecretsStore } from './secrets.js';
 import { TeamStore } from './team/store.js';
 import { memberCanSeeSession } from './team/access.js';
 import type { ParsedCommand } from './agent/commands.js';
@@ -176,6 +177,8 @@ export class Host {
   readonly promptTemplates: PromptTemplateStore;
   /** 项目/全局长期记忆（Tandem 私有）。 */
   readonly memory: MemoryStore;
+  /** 项目/全局 Secrets：值加密落盘，只注入进程环境并按值打码输出。 */
+  readonly secrets: SecretsStore;
   readonly usage: UsageStore;
   /** 自建 Key 网关（默认关闭）：设置、成员令牌、元数据日志与临时调试正文。 */
   readonly gateway: GatewayStore;
@@ -224,11 +227,12 @@ export class Host {
     this.permissionRules = new PermissionRuleStore(home);
     this.approvalHistory = new ApprovalHistoryStore(home);
     this.hooks = new HookManager(home);
-    this.mcp = new McpManager(home);
+    this.mcp = new McpManager(home, (cwd) => this.secrets.envFor(cwd, 'mcp'));
     this.skills = new SkillManager({ home });
     this.subagentPresets = new SubagentPresetStore(home);
     this.promptTemplates = new PromptTemplateStore(home);
     this.memory = new MemoryStore(home);
+    this.secrets = new SecretsStore(home);
     this.usage = new UsageStore(home);
     this.gateway = new GatewayStore(home);
     this.budgets = new BudgetStore(home, this.usage);
@@ -695,6 +699,7 @@ export class Host {
   /** 进程退出：落盘会话/用量，关闭 MCP 子进程。 */
   async shutdown(): Promise<void> {
     this.tasks.dispose();
+    this.secrets.dispose();
     this.schedules.dispose();
     this.external.stopWatching();
     this.store.flush();

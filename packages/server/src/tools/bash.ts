@@ -51,6 +51,8 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
       ...(typeof input.description === 'string' && input.description.trim()
         ? { description: input.description.trim() }
         : {}),
+      ...(ctx.secretEnv ? { env: ctx.secretEnv } : {}),
+      ...(ctx.redact ? { redact: ctx.redact } : {}),
     });
     return {
       content: `Command running in background with ID: ${task.id}\nOutput is being written to ~/.tandem/tasks/${task.id}.log. Use BashOutput with bash_id "${task.id}" to read new output.`,
@@ -68,12 +70,12 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
     ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', cmdUtf8Command(command)], {
         cwd: ctx.cwd,
         windowsHide: true,
-        env: process.env,
+        env: { ...process.env, ...ctx.secretEnv },
       })
     : spawn('/bin/bash', ['-c', command], {
         cwd: ctx.cwd,
         detached: true,
-        env: process.env,
+        env: { ...process.env, ...ctx.secretEnv },
       });
 
   const outChunks: Buffer[] = [];

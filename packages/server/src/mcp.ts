@@ -28,6 +28,10 @@ interface Connection {
   tools: McpTool[];
   lastAttempt: number;
   connecting?: Promise<void>;
+  /** 启动时的项目环境（secret 注入）；变化时重连。 */
+  cwd?: string;
+  envKey?: string;
+  secretEnv?: Record<string, string>;
 }
 
 export class McpManager {
@@ -37,7 +41,11 @@ export class McpManager {
   /** 合并配置缓存：避免每次工具调用都重新读取可能很大的 ~/.claude.json。 */
   private cache = new Map<string, { at: number; list: McpServerConfig[] }>();
 
-  constructor(home: string) {
+  constructor(
+    home: string,
+    /** 按 cwd 返回要注入 stdio 子进程的 secrets（mcp 作用范围）。 */
+    private readonly secretEnvFor?: (cwd?: string) => Record<string, string>,
+  ) {
     this.file = path.join(home, 'mcp.json');
     this.own = loadOwnConfigs(this.file);
   }
@@ -80,6 +88,8 @@ export class McpManager {
   /** 按需连接：为当前会话补充项目级 MCP，并重试失败的服务器（有冷却时间）。 */
   async prepare(cwd: string | undefined, force = false, retryErrors = true): Promise<void> {
     const configs = this.servers(cwd);
+    const secretEnv = this.secretEnvFor?.(cwd) ?? {};
+    const envKey = JSON.stringify(Object.entries(secretEnv).sort(([a], [b]) => a.localeCompare(b)));
     const jobs: Promise<void>[] = [];
     for (const config of configs) {
       if (!config.enabled) {
@@ -88,17 +98,23 @@ export class McpManager {
       }
       const conn = this.connections.get(config.name);
       if (conn && sameConfig(conn.config, config)) {
-        if (conn.status === 'connected' || conn.connecting) continue;
-        // 只读查看（设置页轮询）不应反复重连失败项，避免把上次的错误状态
-        // 覆盖成「连接中」；显式刷新/重连才允许重试。
-        if (conn.status === 'error' && !retryErrors) continue;
-        if (conn.status === 'error' && !force && Date.now() - conn.lastAttempt < RETRY_COOLDOWN_MS) {
-          continue;
+        if (conn.status === 'connected') {
+          if ((conn.envKey ?? '') === envKey) continue;
+          // 项目 secrets 变化：用新环境重启 stdio 服务器
+          await this.disconnect(config.name);
+        } else if (conn.connecting) continue;
+        else {
+          // 只读查看（设置页轮询）不应反复重连失败项，避免把上次的错误状态
+          // 覆盖成「连接中」；显式刷新/重连才允许重试。
+          if (conn.status === 'error' && !retryErrors) continue;
+          if (conn.status === 'error' && !force && Date.now() - conn.lastAttempt < RETRY_COOLDOWN_MS) {
+            continue;
+          }
         }
       } else if (conn) {
         await this.disconnect(config.name);
       }
-      jobs.push(this.connect(config));
+      jobs.push(this.connect(config, cwd, envKey, secretEnv));
     }
     if (jobs.length > 0) await Promise.allSettled(jobs);
   }
@@ -154,8 +170,11 @@ export class McpManager {
       // 优先沿用连接自身的配置（可能是项目级 MCP，全局列表里没有）
       const config = conn?.config ?? this.servers().find((c) => c.name === server);
       if (!config || !config.enabled) return { content: `MCP 服务器未启用: ${server}`, isError: true };
+      const cwd = conn?.cwd;
+      const envKey = conn?.envKey;
+      const secretEnv = conn?.secretEnv;
       if (conn) await this.disconnect(server);
-      await this.connect(config);
+      await this.connect(config, cwd, envKey, secretEnv);
       conn = this.connections.get(server);
     }
     if (!conn || conn.status !== 'connected') {
@@ -219,7 +238,12 @@ export class McpManager {
     }
   }
 
-  private connect(config: McpServerConfig): Promise<void> {
+  private connect(
+    config: McpServerConfig,
+    cwd?: string,
+    envKey?: string,
+    secretEnv?: Record<string, string>,
+  ): Promise<void> {
     const existing = this.connections.get(config.name);
     if (existing?.connecting) return existing.connecting;
     const client = new Client({ name: 'tandem-host', version: '0.1.0' }, { capabilities: {} });
@@ -229,11 +253,14 @@ export class McpManager {
       status: 'connecting',
       tools: [],
       lastAttempt: Date.now(),
+      ...(cwd ? { cwd } : {}),
+      ...(envKey !== undefined ? { envKey } : {}),
+      ...(secretEnv ? { secretEnv } : {}),
     };
     this.connections.set(config.name, conn);
     const task = (async () => {
       try {
-        const transport = createTransport(config);
+        const transport = createTransport(config, secretEnv);
         await client.connect(transport, { timeout: CONNECT_TIMEOUT_MS });
         const tools: McpTool[] = [];
         let cursor: string | undefined;
@@ -278,7 +305,7 @@ function asArguments(input: unknown): Record<string, unknown> {
     : {};
 }
 
-function createTransport(config: McpServerConfig) {
+function createTransport(config: McpServerConfig, secretEnv?: Record<string, string>) {
   if (config.transport === 'http') {
     if (!config.url) throw new Error('HTTP MCP 服务器缺少 url');
     return new StreamableHTTPClientTransport(new URL(config.url), {
@@ -290,6 +317,7 @@ function createTransport(config: McpServerConfig) {
   for (const [key, value] of Object.entries(process.env)) {
     if (typeof value === 'string') env[key] = value;
   }
+  Object.assign(env, secretEnv ?? {});
   Object.assign(env, config.env ?? {});
   return new StdioClientTransport({
     command: config.command,
