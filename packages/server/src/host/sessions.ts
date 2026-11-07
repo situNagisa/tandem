@@ -120,6 +120,7 @@ export function ensureSessionEnv(host: Host, rec: SessionRecord): void {
 }
 
 export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
+  const secretsCount = host.secrets.countFor(rec.cwd);
   return {
     id: rec.id,
     title: rec.title,
@@ -147,7 +148,7 @@ export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
     updatedAt: rec.updatedAt,
     usage: { ...rec.usage },
     ...(rec.context ? { context: rec.context } : {}),
-    ...(host.secrets.countFor(rec.cwd) ? { secretsCount: host.secrets.countFor(rec.cwd) } : {}),
+    ...(secretsCount ? { secretsCount } : {}),
   };
 }
 

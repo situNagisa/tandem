@@ -420,12 +420,14 @@ export class SecretsStore {
   }
 
   countFor(project?: string): number {
+    if (this.data.secrets.length === 0) return 0;
     return this.effective(project).length;
   }
 
   /** 按作用范围组装注入环境；同时刷新 lastUsedAt。 */
   envFor(project: string | undefined, scope: SecretScope): Record<string, string> {
     const out: Record<string, string> = {};
+    if (this.data.secrets.length === 0) return out;
     const used: StoredSecret[] = [];
     for (const secret of this.effective(project)) {
       if (!secret.scopes.includes(scope)) continue;
@@ -442,6 +444,7 @@ export class SecretsStore {
 
   /** 系统提示里只列名称/描述/作用范围，绝不带值。 */
   promptSection(project?: string): string {
+    if (this.data.secrets.length === 0) return '';
     const entries = this.effective(project);
     if (!entries.length) return '';
     const scopeLabel: Record<SecretScope, string> = { bash: 'Bash', mcp: 'MCP', hooks: 'Hooks' };
@@ -462,6 +465,7 @@ export class SecretsStore {
 
   /** 会话级打码函数：按当前项目快照匹配值及其 base64/URL 编码变体。 */
   redactorFor(project?: string): (text: string) => string {
+    if (this.data.secrets.length === 0) return (text) => text;
     const key = project ? resolveSecretProject(project) : '';
     const cached = this.redactorCache.get(key);
     if (cached && cached.version === this.version) return cached.fn;

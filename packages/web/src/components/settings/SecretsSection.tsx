@@ -51,6 +51,7 @@ export function SecretsSection() {
   const [deleting, setDeleting] = useState<SecretMeta | null>(null)
   const [removing, setRemoving] = useState(false)
   const [customProject, setCustomProject] = useState(false)
+  const [projectTouched, setProjectTouched] = useState(false)
 
   const load = useCallback(async () => {
     if (!host) return
@@ -70,6 +71,14 @@ export function SecretsSection() {
     if (!hostId) return
     void load()
   }, [hostId, load])
+
+  // 没有全局 secret 时默认展示第一个项目，避免打开页面看到空列表
+  useEffect(() => {
+    if (!overview || projectTouched || project) return
+    if (overview.global.length === 0 && overview.projects.length > 0) {
+      setProject(overview.projects[0]!.project)
+    }
+  }, [overview, project, projectTouched])
 
   const projectOptions = useMemo(() => {
     const list = overview?.knownProjects ?? []
@@ -232,6 +241,7 @@ export function SecretsSection() {
         <MenuSelect
           value={project}
           onChange={(value) => {
+            setProjectTouched(true)
             setProject(value)
             setCustomProject(value === '__custom__')
           }}

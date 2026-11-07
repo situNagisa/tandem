@@ -52,6 +52,7 @@ export function summaryOf(s: Session): SessionSummary {
     updatedAt: s.updatedAt,
     usage: s.usage,
     ...(s.context ? { context: s.context } : {}),
+    ...(typeof s.secretsCount === 'number' ? { secretsCount: s.secretsCount } : {}),
   }
 }
 
