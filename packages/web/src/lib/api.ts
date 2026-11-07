@@ -16,6 +16,7 @@ import type {
   MemoryScope,
   CreatePrInput,
   DiffEmptyReason,
+  DoctorReport,
   EvalCase,
   EvalRun,
   EvalRunSummary,
@@ -185,6 +186,15 @@ function qs(params: Record<string, string | undefined>): string {
 
 export const api = {
   host: (h: HostConfig) => request<HostInfo>(h, '/api/host'),
+
+  doctor: (h: HostConfig, options: { checks?: string[]; clientTime?: number } = {}) =>
+    request<DoctorReport>(
+      h,
+      `/api/doctor${qs({
+        checks: options.checks?.length ? options.checks.join(',') : undefined,
+        clientTime: options.clientTime !== undefined ? String(options.clientTime) : undefined,
+      })}`,
+    ),
 
   createShare: (h: HostConfig, sessionId: string, input: CreateShareInput) =>
     request<CreateShareResult>(h, `/api/sessions/${encodeURIComponent(sessionId)}/shares`, {

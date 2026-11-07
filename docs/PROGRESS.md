@@ -279,3 +279,10 @@
 - [x] 自然语言生成规则：设置-权限页输入一句话，用当前会话模型生成结构化草稿，界面确认后才保存；草稿与保存均过危险模式表，命中直接拒绝并说明原因
 - [x] 效果统计：设置-权限页显示「过去 7 天：弹窗 N 次，被规则自动处理 M 次」（`approval-stats.jsonl` 记录规则自动放行/拒绝）
 - 验证：`TANDEM_HOME=/tmp/tandem-approval` 端口 8293 + 本地 mock provider（8294）；脚本模拟审批历史确认建议正确、rm 不被建议自动允许、草稿确认前不落盘、危险草稿 400 拒绝；Playwright 截图 `/tmp/approval-shots/`；`e2e/regression.mjs` 新增 3 条（快捷项出现、危险命令不出现、权限页统计与建议）；`node scripts/check.mjs` 全量通过
+
+## 迭代 32（2026-11-08）Host 诊断（doctor）
+- [x] 协议：`DoctorStatus/DoctorCheck/DoctorReport`；`GET /api/doctor?checks=&clientTime=` 逐项检查：Node、数据目录可写、磁盘空间、监听地址、Windows 防火墙（netsh 粗判）、账号/分组/Key 连通性（勾选后执行、跳过停用 Key、复用最小请求）、git、gh/glab 安装与登录、rg、Playwright、Whisper、MCP 状态、Hooks JSON 语法、`~/.claude`/`~/.codex` 可读、Windows 代码页、时钟偏差
+- [x] 报告按 失败 → 警告 → 跳过 → 正常 排序；服务端统一脱敏 Key/token/URL 凭据，`text` 与 `textHidden`（主目录替换为 ~）两种纯文本
+- [x] CLI：`tandem-host doctor [--checks …] [--json]` 输出同款报告，失败项退出码 1
+- [x] Web：设置-Host 管理每台 Host 增加「诊断」；诊断面板状态图标/说明/可复制修复命令、「复制报告」「重新检查」；账号连通性默认不执行；本机 Host 连接失败时提示里提供「运行诊断」
+- 验证：`TANDEM_HOME=/tmp/tandem-doctor` 端口 8302 + 本地 mock provider（8399，正常账号）与不存在地址（43991，坏账号）；坏账号 fail 且排第一、正常账号 ok，报告无 Key；截图 `/tmp/doctor-shots/`；`e2e/regression.mjs` 新增「Host 诊断：面板打开、失败项排在最前、报告不含 Key」；隔离 worktree `node scripts/check.mjs --skip-smoke` 全部通过（63/63 回归）

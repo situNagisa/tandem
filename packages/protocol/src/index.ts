@@ -312,6 +312,35 @@ export interface HostInfo {
   homeDir: string;
 }
 
+// ---------- Host 诊断（doctor） ----------
+export type DoctorStatus = 'ok' | 'warn' | 'fail' | 'skip';
+
+export interface DoctorCheck {
+  /** 稳定 id；账号/分组/MCP 服务器会追加后缀。 */
+  id: string;
+  title: string;
+  status: DoctorStatus;
+  detail: string;
+  /** 可复制的修复命令或步骤（已脱敏）；无需处理时为空。 */
+  fix?: string;
+}
+
+export interface DoctorReport {
+  generatedAt: number;
+  host: { id: string; name: string; platform: string; version: string };
+  listen: { host: string; port: number };
+  /** 已按 fail → warn → skip → ok 排序。 */
+  checks: DoctorCheck[];
+  /** 纯文本报告（已脱敏）。 */
+  text: string;
+  /** 纯文本报告：用户主目录替换为 ~。 */
+  textHidden: string;
+  /** 实际执行的检查项 id。 */
+  ran: string[];
+}
+// GET /api/doctor?checks=node,dataDir,profiles&clientTime=<epoch ms> -> DoctorReport
+// checks 省略时执行除账号连通性外的全部检查（profiles 会向模型服务商发最小请求）。
+
 /** 语音输入（Host 本机 Whisper）配置。只保存路径，不保存任何音频/文本。 */
 export interface VoiceSettings {
   /** auto：按可执行文件名判断；也可强制 whisper-cpp / faster-whisper。 */

@@ -78,6 +78,8 @@ interface UiState {
   backgroundPanel: { hostId: string; sessionId: string; taskId?: string } | null
   /** 浏览器面板：最新截图与 URL。 */
   browserPanel: { hostId: string; sessionId: string } | null
+  /** Host 诊断面板：目标 Host id。 */
+  doctorHostId: string | null
   /** PR 面板；composeTitle 用于「提交并创建 PR」预填标题。 */
   prOpen: boolean
   prComposeTitle: string
@@ -138,6 +140,8 @@ interface UiState {
   closeBackgroundTasks: () => void
   openBrowserPanel: (hostId: string, sessionId: string) => void
   closeBrowserPanel: () => void
+  openDoctor: (hostId: string) => void
+  closeDoctor: () => void
   openPrPanel: (title?: string) => void
   closePrPanel: () => void
   openMemoryEditor: (input: { scope: MemoryScope; project?: string }) => void
@@ -189,6 +193,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   composerResetNonce: 0,
   backgroundPanel: null,
   browserPanel: null,
+  doctorHostId: null,
   prOpen: false,
   prComposeTitle: '',
   memoryEditor: null,
@@ -284,6 +289,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   closeBackgroundTasks: () => set({ backgroundPanel: null }),
   openBrowserPanel: (hostId, sessionId) => set({ browserPanel: { hostId, sessionId } }),
   closeBrowserPanel: () => set({ browserPanel: null }),
+  openDoctor: (hostId) => set({ doctorHostId: hostId }),
+  closeDoctor: () => set({ doctorHostId: null }),
   openPrPanel: (title) => set({ prOpen: true, prComposeTitle: title ?? '' }),
   closePrPanel: () => set({ prOpen: false, prComposeTitle: '' }),
   openMemoryEditor: (input) => set({ memoryEditor: input }),

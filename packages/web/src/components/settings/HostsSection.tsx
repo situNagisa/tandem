@@ -10,13 +10,14 @@ import {
   ScanLine,
   Server,
   Smartphone,
+  Stethoscope,
   Trash2,
   TriangleAlert,
   X,
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
 import { api } from '../../lib/api'
-import { normalizeHostUrl } from '../../lib/hostUrl'
+import { normalizeHostUrl, isLocalHostUrl, isSameOrigin } from '../../lib/hostUrl'
 import { useUiStore } from '../../store/useUiStore'
 import { ConnectionDot } from '../StatusDot'
 import { PairDialog } from './PairDialog'
@@ -48,6 +49,7 @@ export function HostsSection() {
   const removeHost = useAppStore((s) => s.removeHost)
   const retryHost = useAppStore((s) => s.retryHost)
   const toast = useUiStore((s) => s.toast)
+  const openDoctor = useUiStore((s) => s.openDoctor)
 
   const [adding, setAdding] = useState(false)
   const [mode, setMode] = useState<'direct' | 'relay'>('direct')
@@ -489,8 +491,27 @@ export function HostsSection() {
                       <TriangleAlert size={11} className="mt-0.5 shrink-0" /> {rt.error}
                     </div>
                   )}
+                  {(rt?.authError || rt?.error || rt?.status === 'offline') &&
+                    (isLocalHostUrl(h.url) || isSameOrigin(h.url)) && (
+                      <Button
+                        onClick={() => openDoctor(h.id)}
+                        className="mt-1 min-h-8 px-2 text-[12px]"
+                      >
+                        <Stethoscope size={11} /> 运行诊断
+                      </Button>
+                    )}
                 </div>
                 <div className="settings-actions hidden sm:flex" data-desktop-only="" data-open={editing || undefined}>
+                  <IconButton
+                    size="sm"
+                    data-setting-id="hosts.doctor"
+                    onClick={() => openDoctor(h.id)}
+                    label="诊断"
+                    tooltip="诊断这台 Host"
+                    className="size-7 [&_svg]:size-3"
+                  >
+                    <Stethoscope size={12} />
+                  </IconButton>
                   <IconButton
                     size="sm"
                     data-setting-id="hosts.pair"
@@ -532,6 +553,13 @@ export function HostsSection() {
                 </div>
               </div>
               <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5 border-t border-border/60 pt-2 sm:hidden">
+                <Button
+                  size="md"
+                  onClick={() => openDoctor(h.id)}
+                  className="min-h-10 px-2.5 text-[13px]"
+                >
+                  <Stethoscope size={12} /> 诊断
+                </Button>
                 <Button
                   size="md"
                   onClick={() => setPairHost(h.id)}

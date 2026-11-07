@@ -22,6 +22,7 @@ import { BackgroundTasksPanel } from './components/BackgroundTasksPanel'
 import { BrowserPanel } from './components/BrowserPanel'
 import { InboxDialog } from './components/inbox/InboxDialog'
 import { DispatchDialog } from './components/DispatchDialog'
+import { DoctorDialog } from './components/DoctorDialog'
 import { Toasts } from './components/ui/Toasts'
 import { FeedbackMode } from './components/feedback/FeedbackMode'
 import { OverlayScrollbar } from './components/ui/OverlayScrollbar'
@@ -381,6 +382,7 @@ export default function App() {
       <BrowserPanel />
       <InboxDialog />
       <DispatchDialogHost />
+      <DoctorDialog />
       <SearchDialog />
       <Toasts />
       <FeedbackMode />

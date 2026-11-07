@@ -5,6 +5,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { api } from '../lib/api'
 import { navigate } from '../lib/router'
+import { isLocalHostUrl, isSameOrigin } from '../lib/hostUrl'
 import { cn } from '../lib/cn'
 import { MessageList } from './MessageList'
 import { SessionWelcome, HomeView } from './Welcome'
@@ -40,6 +41,12 @@ export function ChatView() {
     hostId ? s.runtimes[hostId]?.authError : undefined,
   )
   const team = useAppStore((s) => (hostId ? s.runtimes[hostId]?.team : undefined))
+  const activeHost = useAppStore((s) =>
+    hostId ? s.hosts.find((item) => item.id === hostId) : undefined,
+  )
+  const openDoctor = useUiStore((s) => s.openDoctor)
+  const canDoctor =
+    !!activeHost && (isLocalHostUrl(activeHost.url) || isSameOrigin(activeHost.url))
   const viewers = useAppStore((s) => s.active?.viewers ?? EMPTY_VIEWERS)
   const reloadActiveSession = useAppStore((s) => s.reloadActiveSession)
   const hostSessions = useAppStore((s) =>
@@ -248,6 +255,14 @@ export function ChatView() {
           <span className="min-w-0 flex-1">
             Host 认证失败：{authError}（请在设置的 Host 管理中检查 Token）
           </span>
+          {canDoctor && hostId && (
+            <Button
+              onClick={() => openDoctor(hostId)}
+              className="min-h-7 shrink-0 px-2 text-[12px]"
+            >
+              运行诊断
+            </Button>
+          )}
         </div>
       )}
       <div className="relative flex min-h-0 flex-1">

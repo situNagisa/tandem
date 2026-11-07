@@ -15,6 +15,7 @@ import { isPublicTeamPath, registerTeamRoutes } from './routes/team.js';
 import { guardMemberRequest, ownerPrincipal, type Principal } from './team/access.js';
 import type { RouteDeps } from './routes/common.js';
 import { registerHostRoutes } from './routes/host.js';
+import { registerDoctorRoutes } from './routes/doctor.js';
 import { registerProfileRoutes } from './routes/profiles.js';
 import { registerModelRoutes } from './routes/models.js';
 import { registerSessionRoutes } from './routes/sessions.js';
@@ -109,6 +110,7 @@ export async function createApp(
   const deps: RouteDeps = { host, ...(extras.relay ? { relay: extras.relay } : {}) };
 
   registerHostRoutes(app, deps);
+  registerDoctorRoutes(app, deps);
   registerTeamRoutes(app, deps);
 
   // 本机语音转写（用户自己的 Whisper；不联网）

@@ -39,6 +39,15 @@ export async function testProfile(
     return await testOpenAI(profile.baseUrl, profile.kind, profile.apiKey, model, signal);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: truncateEnd(message, 500) };
+    // undici 的 fetch 只给出 "fetch failed"，真正原因（ECONNREFUSED 等）在 cause 里
+    const cause = err && typeof err === 'object' ? (err as { cause?: unknown }).cause : undefined;
+    const causeMessage =
+      cause instanceof Error
+        ? cause.message
+        : cause && typeof cause === 'object' && typeof (cause as { message?: unknown }).message === 'string'
+          ? (cause as { message: string }).message
+          : '';
+    const detail = causeMessage && causeMessage !== message ? `${message}（${causeMessage}）` : message;
+    return { ok: false, error: truncateEnd(detail, 500) };
   }
 }

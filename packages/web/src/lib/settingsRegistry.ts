@@ -65,6 +65,7 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'hosts.add', tab: 'hosts', title: '添加 Host', keywords: ['新增', '服务器', '扫码'] },
   { id: 'hosts.mode', tab: 'hosts', title: '连接方式', keywords: ['直连', '中继', 'relay'] },
   { id: 'hosts.pair', tab: 'hosts', title: '连接手机', keywords: ['手机', '配对', '扫码'] },
+  { id: 'hosts.doctor', tab: 'hosts', title: 'Host 诊断', keywords: ['诊断', 'doctor', '检查', '环境', '报告'] },
 
   { id: 'team.invite-role', tab: 'team', title: '邀请角色', keywords: ['成员', '邀请', '权限'] },
   { id: 'team.members', tab: 'team', title: '成员列表', keywords: ['成员', '角色'] },

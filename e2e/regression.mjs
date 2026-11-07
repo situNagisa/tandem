@@ -988,6 +988,50 @@ async function main() {
       await closeSettings(page)
     })
 
+    desktop('Host 诊断：面板打开、失败项排在最前、报告不含 Key', async (page) => {
+      const dialog = await openSettings(page, 'Host 管理', 'desktop')
+      await dialog.getByRole('button', { name: '诊断', exact: true }).first().click()
+      const doctor = page.getByRole('dialog', { name: 'Host 诊断' })
+      await doctor.waitFor({ state: 'visible', timeout: 10_000 })
+      await doctor.locator('[data-doctor-check]').first().waitFor({ timeout: 60_000 })
+      const skipText = (await doctor.locator('[data-doctor-check="profiles"]').textContent()) ?? ''
+      assert.ok(skipText.includes('未执行'), `默认不应执行账号连通性：${skipText.slice(0, 80)}`)
+
+      // 勾选后：mock 账号正常，自建端点（127.0.0.1:4321）连不上
+      const toggle = doctor.getByRole('switch', { name: '检测账号连通性' })
+      await toggle.click()
+      await toggle.waitFor({ state: 'visible' })
+      await page.waitForFunction(
+        () => document.querySelector('[role="switch"][aria-label="检测账号连通性"]')?.getAttribute('aria-checked') === 'true',
+        null,
+        { timeout: 5_000 },
+      )
+      await doctor.getByRole('button', { name: '重新检查' }).click()
+      await doctor
+        .locator('[data-doctor-check^="profile."][data-doctor-status="fail"]')
+        .first()
+        .waitFor({ timeout: 90_000 })
+      const statuses = await doctor
+        .locator('[data-doctor-check]')
+        .evaluateAll((els) => els.map((el) => el.getAttribute('data-doctor-status')))
+      assert.equal(statuses[0], 'fail', `失败项没有排在最前：${statuses.join(',')}`)
+      assert.ok(statuses.lastIndexOf('ok') > statuses.indexOf('fail'), '正常项应排在失败项之后')
+      const text = (await doctor.textContent()) ?? ''
+      assert.ok(text.includes('自建端点'), '诊断面板缺少坏账号结果')
+      assert.ok(text.includes('连接正常'), '诊断面板缺少正常账号结果')
+      assert.ok(!/reg-key/.test(text), '诊断面板泄露了 Key')
+
+      await doctor.getByRole('button', { name: '复制报告' }).click()
+      await page.waitForTimeout(250)
+      const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => ''))
+      if (clip) {
+        assert.ok(!/reg-key/.test(clip), '诊断报告泄露了 Key')
+        assert.ok(clip.includes('Tandem Host 诊断报告'), '复制内容不是诊断报告')
+      }
+      await page.keyboard.press('Escape')
+      await closeSettings(page)
+    })
+
     desktop('设置弹窗焦点陷阱与关闭后焦点还原', async (page) => {
       await page.locator('aside').getByRole('button', { name: '设置', exact: true }).click()
       const dialog = page.getByRole('dialog', { name: '设置' })
