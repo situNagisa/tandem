@@ -252,7 +252,7 @@ export function DispatchDialog({
                   type="button"
                   onClick={() => setCwd(dir)}
                   className={cn(
-                    'h-7 shrink-0 rounded-md bg-[var(--t-bg-subtle)] px-2 text-[11.5px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text',
+                    'h-7 shrink-0 rounded-md bg-[var(--t-bg-subtle)] px-2 text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text',
                     cwd === dir && 'bg-[var(--t-bg-active)] text-text',
                   )}
                   title={dir}
@@ -351,7 +351,7 @@ export function DispatchDialog({
         )}
 
         <div className="flex items-center justify-between gap-2 pt-1">
-          <span className="text-[11.5px] text-muted">发送后本页不跳转，可在收件箱跟进审批与完成。</span>
+          <span className="text-[12px] text-muted">发送后本页不跳转，可在收件箱跟进审批与完成。</span>
           <Button
             variant="primary"
             onClick={submit}

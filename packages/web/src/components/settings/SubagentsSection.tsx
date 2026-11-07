@@ -292,7 +292,7 @@ export function SubagentsSection() {
             </option>
           ))}
         </Select>
-        <span className="text-[11.5px] text-muted">会话内可在输入框上方的环境条随时切换。</span>
+        <span className="text-[12px] text-muted">会话内可在输入框上方的环境条随时切换。</span>
       </div>
 
       {error && <div className="rounded-lg border border-danger/25 bg-danger-soft/50 px-3 py-2 text-[12px] text-danger">{error}</div>}
@@ -455,7 +455,7 @@ export function SubagentsSection() {
               {TOOL_OPTIONS.map((tool) => (
                 <div key={tool.name} className="flex items-center justify-between gap-2 rounded-md px-1 py-0.5">
                   <span className="min-w-0 truncate text-[12.5px] text-text-soft">
-                    {tool.label} <span className="font-mono text-[11px] text-muted">{tool.name}</span>
+                    {tool.label} <span className="font-mono text-[12px] text-muted">{tool.name}</span>
                   </span>
                   <Switch
                     checked={draft.allowedTools.includes(tool.name)}
@@ -497,14 +497,14 @@ export function SubagentsSection() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-[13px] font-medium text-text">{preset.name}</span>
-                  <span className="rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[10.5px] text-muted">
+                  <span className="rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[11px] text-muted">
                     {model}
                   </span>
                   {preset.effort && (
-                    <span className="text-[11px] text-muted">effort {preset.effort}</span>
+                    <span className="text-[12px] text-muted">effort {preset.effort}</span>
                   )}
                   {preset.delegation && (
-                    <span className="text-[11px] text-muted">
+                    <span className="text-[12px] text-muted">
                       委派 {DELEGATION_LABEL[preset.delegation].split('（')[0]}
                     </span>
                   )}
@@ -535,10 +535,10 @@ export function SubagentsSection() {
             <div key={preset.id} className="rounded-xl border border-border/70 bg-bg/30 px-3 py-2">
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[13px] font-medium text-text-soft">{preset.name}</span>
-                <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[10.5px] text-muted">
+                <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[11px] text-muted">
                   {preset.source === 'project' ? '项目 agents/' : '~/.claude/agents/'}
                 </span>
-                <span className="font-mono text-[10.5px] text-muted">
+                <span className="font-mono text-[11px] text-muted">
                   {preset.modelAlias ? `${preset.modelAlias} → 已映射` : preset.model ?? '继承模型'}
                 </span>
               </div>
@@ -551,7 +551,7 @@ export function SubagentsSection() {
         </div>
       )}
 
-      <p className="border-t border-border pt-3 text-[11.5px] text-muted">提示词统一在「设置 → 提示词」中编辑；未修改时跟随内置默认。</p>
+      <p className="border-t border-border pt-3 text-[12px] text-muted">提示词统一在「设置 → 提示词」中编辑；未修改时跟随内置默认。</p>
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Sparkles, TriangleAlert } from 'lucide-react'
+import { BookOpen, Loader2, Sparkles, TriangleAlert } from 'lucide-react'
 import type { SkillInfo, SkillSource } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
@@ -133,10 +133,13 @@ export function SkillsSection() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-[14px] font-semibold">Skills</h3>
-        <span className="text-[13px] text-muted">兼容 Claude Code 的 SKILL.md</span>
-        <span className="flex-1" />
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <h2 className="flex items-center gap-1.5 text-[15px] font-medium text-text">
+            <BookOpen size={15} className="text-muted" /> Skills
+          </h2>
+          <p className="mt-1 text-[12.5px] leading-5 text-muted">兼容 Claude Code 的 SKILL.md</p>
+        </div>
         {hosts.length > 1 && (
           <MenuSelect
             value={hostId ?? ''}
@@ -184,8 +187,8 @@ export function SkillsSection() {
         <div key={source} className="space-y-2">
           <div className="flex items-baseline gap-2">
             <h4 className="text-[13px] font-semibold text-text-soft">{SOURCE_LABEL[source]}</h4>
-            <span className="font-mono text-[11.5px] text-muted">{SOURCE_HINT[source]}</span>
-            <span className="text-[11.5px] text-muted">· {items.length}</span>
+            <span className="font-mono text-[12px] text-muted">{SOURCE_HINT[source]}</span>
+            <span className="text-[12px] text-muted">· {items.length}</span>
           </div>
           {items.map((skill) => (
             <div key={skill.path} className="settings-item">
@@ -218,11 +221,11 @@ export function SkillsSection() {
                   <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-text-soft">
                     {skill.description || '（无描述）'}
                   </p>
-                  <p className="mt-0.5 truncate font-mono text-[11.5px] text-muted" title={skill.path}>
+                  <p className="mt-0.5 truncate font-mono text-[12px] text-muted" title={skill.path}>
                     {skill.path}
                   </p>
                 </div>
-                <div className="settings-actions">
+                <div className="settings-actions" data-open="true">
                   <IconButton
                     onClick={() => void openPreview(skill)}
                     label={`预览 ${skill.name}`}
@@ -264,7 +267,7 @@ export function SkillsSection() {
           preview ? (
             <span className="block min-w-0">
               <span className="block text-[12.5px] leading-5 text-text-soft">{preview.description}</span>
-              <span className="block truncate font-mono text-[11.5px] text-muted" title={preview.path}>
+              <span className="block truncate font-mono text-[12px] text-muted" title={preview.path}>
                 {preview.path}
               </span>
             </span>

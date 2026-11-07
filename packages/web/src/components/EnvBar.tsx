@@ -31,7 +31,7 @@ import { Tooltip } from './ui/Tooltip'
 
 /* 透明底：环境条直接坐在对话背景上，只在悬停/展开时给一点底色。 */
 const triggerClass =
-  'flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[12.5px] leading-4 text-text-secondary outline-none transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:pointer-events-none disabled:opacity-40'
+  'flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[13px] leading-4 text-text-secondary outline-none transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:pointer-events-none disabled:opacity-40 max-sm:h-11 max-sm:px-2'
 
 function EnvTrigger({
   icon,
@@ -66,8 +66,8 @@ function EnvTrigger({
       )}
     >
       {icon}
-      <span className="max-w-[160px] truncate">{label}</span>
-      {!pressed && <ChevronDown size={11} className="shrink-0 text-muted" />}
+      <span className="max-w-[160px] truncate max-sm:max-w-[96px]">{label}</span>
+      {!pressed && <ChevronDown size={11} className="shrink-0 text-muted max-sm:hidden" />}
     </button>
   )
 }
@@ -318,18 +318,18 @@ export function FolderBrowser({
             ..
           </MenuItem>
           {loading && entries.length === 0 && (
-            <div className="flex h-[120px] items-center justify-center gap-2 text-[11.5px] text-muted">
+            <div className="flex h-[120px] items-center justify-center gap-2 text-[12px] text-muted">
               <Loader2 size={12} className="animate-spin" /> 读取目录…
             </div>
           )}
           {!loading && error && (
-            <div className="flex h-[120px] flex-col items-center justify-center gap-1 px-4 text-center text-[11px] text-danger">
+            <div className="flex h-[120px] flex-col items-center justify-center gap-1 px-4 text-center text-[12px] text-danger">
               <TriangleAlert size={14} />
               {error}
             </div>
           )}
           {!loading && !error && filtered.length === 0 && (
-            <div className="flex h-[120px] items-center justify-center text-[11.5px] text-muted">
+            <div className="flex h-[120px] items-center justify-center text-[12px] text-muted">
               {query.trim() ? '没有匹配的文件夹' : '没有子文件夹'}
             </div>
           )}
@@ -410,7 +410,7 @@ function BranchMenu({
     <div className="w-[240px]">
       <MenuList aria-label="切换分支" className="max-h-[260px] overflow-y-auto">
         {loading && (
-          <div className="flex items-center gap-2 px-2 py-2 text-[11.5px] text-muted">
+          <div className="flex items-center gap-2 px-2 py-2 text-[12px] text-muted">
             <Loader2 size={12} className="animate-spin" /> 读取分支…
           </div>
         )}
@@ -427,7 +427,7 @@ function BranchMenu({
             </MenuItem>
           ))}
         {!loading && branches.length === 0 && (
-          <p className="px-2 py-2 text-[11.5px] text-muted">当前目录不是 git 仓库</p>
+          <p className="px-2 py-2 text-[12px] text-muted">当前目录不是 git 仓库</p>
         )}
       </MenuList>
       <div className="mt-1 border-t border-border pt-1">
@@ -441,7 +441,7 @@ function BranchMenu({
               placeholder="新分支名"
               spellCheck={false}
               aria-label="新分支名"
-              className="min-w-0 flex-1 font-mono text-[11.5px]"
+              className="min-w-0 flex-1 font-mono text-[12px]"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && name.trim()) void run(name.trim(), true)
               }}
@@ -585,7 +585,7 @@ export function EnvBar({
   }
 
   return (
-    <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto pb-1.5 sm:gap-1">
+    <div className="flex min-w-0 flex-wrap items-center gap-0.5 pb-1.5 sm:flex-nowrap sm:gap-1">
       <Menu
         side="top"
         align="left"
@@ -775,6 +775,7 @@ export function EnvBar({
           className={cn(
             triggerClass,
             'inline-flex cursor-default',
+            !env?.repoRoot && 'max-sm:hidden',
             isWorktree && 'bg-[var(--t-bg-active)] text-text',
           )}
         >
@@ -790,7 +791,7 @@ export function EnvBar({
         </div>
       </Tooltip>
       {migration && (
-        <span className="ml-2 shrink-0 truncate text-[11px] text-muted">
+        <span className="ml-2 shrink-0 truncate text-[12px] text-muted">
           已迁移到 {migration}
         </span>
       )}

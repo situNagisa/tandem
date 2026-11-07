@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { stripMemoryMeta } from '../lib/memory'
 import { Brain, Loader2, Save } from 'lucide-react'
 import type { MemoryFile } from '@tandem/protocol'
 import { api } from '../lib/api'
@@ -34,7 +35,7 @@ export function MemoryEditorDialog() {
       .then((result) => {
         if (cancelled) return
         setFile(result)
-        setText(result.text)
+        setText(stripMemoryMeta(result.text))
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : '读取记忆失败')
@@ -47,9 +48,9 @@ export function MemoryEditorDialog() {
     }
   }, [target, host])
 
-  const dirty = !!file && text !== file.text
-  // 预览隐藏 Tandem 元数据行（textarea 里保留，便于整篇编辑时原样保存）
-  const previewText = text.replace(/^<!--\s*tandem-memory.*?-->\s*/, '')
+  const dirty = !!file && text !== stripMemoryMeta(file.text)
+  // 预览直接使用编辑内容（元数据已在载入时剥离）
+  const previewText = text
   const scopeLabel = target?.scope === 'global' ? '全局记忆' : `项目记忆 · ${file?.name ?? ''}`
 
   const save = async () => {
@@ -63,7 +64,7 @@ export function MemoryEditorDialog() {
         text,
       })
       setFile(saved)
-      setText(saved.text)
+      setText(stripMemoryMeta(saved.text))
       toast('记忆已保存', 'success')
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败')
@@ -126,7 +127,7 @@ export function MemoryEditorDialog() {
             spellCheck={false}
             aria-label="记忆 Markdown"
             placeholder={'- 项目使用 pnpm 而不是 npm\n- 用户偏好中文回复'}
-            className="min-h-0 flex-1 resize-none bg-transparent px-3 py-2.5 font-mono text-[12.5px] leading-[1.7] text-text outline-none placeholder:text-muted/60"
+            className="min-h-0 flex-1 resize-none bg-transparent px-3 py-2.5 font-mono text-[13px] leading-[1.7] text-text outline-none placeholder:text-muted/60"
           />
         </div>
         <div className="flex min-h-0 flex-1 flex-col">

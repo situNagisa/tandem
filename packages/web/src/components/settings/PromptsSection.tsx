@@ -1,5 +1,5 @@
 // 设置-提示词：统一注册表入口。左侧按类别列出全部提示词，右侧查看/编辑（只读项标注原因）。
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PromptCategory, PromptTemplate, PromptTemplateKey } from '@tandem/protocol'
 import { AlertTriangle, FileCode2, Loader2, Lock, RotateCcw, Save, ScrollText, Sparkles } from 'lucide-react'
 import { api } from '../../lib/api'
@@ -65,6 +65,19 @@ export function PromptsSection() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showDiff, setShowDiff] = useState(false)
+  const editorRef = useRef<HTMLDivElement>(null)
+
+  // 小屏下列表与编辑区上下堆叠：选中后把编辑区滚进视口，避免“点了没反应”。
+  const selectItem = (key: PromptTemplateKey) => {
+    setSelectedKey(key)
+    setShowDiff(false)
+    if (!window.matchMedia('(max-width: 639px)').matches) return
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() =>
+        editorRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }),
+      ),
+    )
+  }
 
   const load = () => {
     if (!host) return
@@ -169,19 +182,16 @@ export function PromptsSection() {
             if (!list.length) return null
             return (
               <div key={category} className="space-y-0.5">
-                <div className="px-2 py-1 text-[10.5px] font-medium uppercase tracking-wide text-muted">
+                <div className="px-2 py-1 text-[12px] font-medium uppercase tracking-wide text-muted">
                   {CATEGORY_LABEL[category]}
                 </div>
                 {list.map((item) => (
                   <button
                     key={item.key}
                     type="button"
-                    onClick={() => {
-                      setSelectedKey(item.key)
-                      setShowDiff(false)
-                    }}
+                    onClick={() => selectItem(item.key)}
                     className={cn(
-                      'flex w-full min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[12.5px] transition-colors',
+                      'flex w-full min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors',
                       selectedKey === item.key
                         ? 'bg-[var(--t-bg-active)] text-text'
                         : 'text-text-soft hover:bg-[var(--t-bg-hover)]',
@@ -194,7 +204,7 @@ export function PromptsSection() {
                     )}
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     {item.modified && (
-                      <span className="shrink-0 rounded bg-accent/15 px-1 py-px text-[9.5px] text-accent">
+                      <span className="shrink-0 rounded bg-accent/15 px-1 py-px text-[11px] text-accent">
                         {item.source === 'project' ? '项目' : '已改'}
                       </span>
                     )}
@@ -208,7 +218,7 @@ export function PromptsSection() {
           })}
         </nav>
 
-        <div className="min-w-0 flex-1">
+        <div ref={editorRef} className="min-w-0 flex-1 scroll-mt-2">
           {!selected ? (
             <div className="rounded-xl border border-border/70 px-3 py-6 text-center text-[12.5px] text-muted">
               {loading ? '正在加载提示词…' : '没有可展示的提示词'}
@@ -217,33 +227,33 @@ export function PromptsSection() {
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-[13.5px] font-medium text-text">{selected.label}</h3>
-                <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[10.5px] text-muted">
+                <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[11px] text-muted">
                   {CATEGORY_LABEL[selected.category]}
                 </span>
                 {selected.editable ? (
-                  <span className="rounded bg-accent/10 px-1.5 py-px text-[10.5px] text-accent">可编辑</span>
+                  <span className="rounded bg-accent/10 px-1.5 py-px text-[11px] text-accent">可编辑</span>
                 ) : (
-                  <span className="flex items-center gap-1 rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[10.5px] text-muted">
+                  <span className="flex items-center gap-1 rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[11px] text-muted">
                     <Lock size={9} /> 只读
                   </span>
                 )}
                 {selected.source === 'project' && (
-                  <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[10.5px] text-text-soft">
+                  <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[11px] text-text-soft">
                     项目覆盖
                   </span>
                 )}
                 {selected.modified && selected.source === 'user' && (
-                  <span className="rounded bg-accent/15 px-1.5 py-px text-[10.5px] text-accent">已修改</span>
+                  <span className="rounded bg-accent/15 px-1.5 py-px text-[11px] text-accent">已修改</span>
                 )}
                 {dirty && (
-                  <span className="rounded bg-warning/15 px-1.5 py-px text-[10.5px] text-warning">未保存</span>
+                  <span className="rounded bg-warning/15 px-1.5 py-px text-[11px] text-warning">未保存</span>
                 )}
               </div>
 
-              <p className="text-[11.5px] leading-5 text-muted">{selected.description}</p>
+              <p className="text-[12px] leading-5 text-muted">{selected.description}</p>
 
               {selected.variables?.length ? (
-                <div className="flex flex-wrap items-center gap-1 text-[10.5px] text-muted">
+                <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted">
                   可用变量：
                   {selected.variables.map((name) => (
                     <code key={name} className="rounded bg-[var(--t-bg-hover)] px-1 py-px font-mono">
@@ -254,14 +264,14 @@ export function PromptsSection() {
               ) : null}
 
               {selected.readOnlyReason && (
-                <div className="flex items-start gap-1.5 rounded-lg border border-border/70 bg-[var(--t-bg-subtle)] px-2.5 py-2 text-[11.5px] leading-5 text-muted">
+                <div className="flex items-start gap-1.5 rounded-lg border border-border/70 bg-[var(--t-bg-subtle)] px-2.5 py-2 text-[12px] leading-5 text-muted">
                   <AlertTriangle size={12} className="mt-0.5 shrink-0 text-warning" />
                   <span>只读原因：{selected.readOnlyReason}</span>
                 </div>
               )}
 
               {selected.source === 'project' && (
-                <div className="flex items-start gap-1.5 rounded-lg border border-border/70 bg-[var(--t-bg-subtle)] px-2.5 py-2 text-[11.5px] leading-5 text-muted">
+                <div className="flex items-start gap-1.5 rounded-lg border border-border/70 bg-[var(--t-bg-subtle)] px-2.5 py-2 text-[12px] leading-5 text-muted">
                   <FileCode2 size={12} className="mt-0.5 shrink-0" />
                   <span>
                     当前生效内容来自项目文件 <code>.tandem/prompts.json</code>
@@ -279,7 +289,7 @@ export function PromptsSection() {
                 rows={selected.key === 'toolGuidance' || selected.key === 'baseBehavior' ? 14 : 10}
                 spellCheck={false}
                 className={cn(
-                  'w-full resize-y rounded-xl border border-border bg-surface px-3 py-2.5 font-mono text-[12px] leading-5 text-text outline-none placeholder:text-muted focus:border-border-strong',
+                  'w-full resize-y rounded-xl border border-border bg-surface px-3 py-2.5 font-mono text-[13px] leading-5 text-text outline-none placeholder:text-muted focus:border-border-strong',
                   !selected.editable && 'cursor-default bg-[var(--t-bg-subtle)] text-text-soft',
                 )}
               />
@@ -309,18 +319,18 @@ export function PromptsSection() {
                     )}
                   </>
                 )}
-                <span className="ml-auto text-[10.5px] text-muted">
+                <span className="ml-auto text-[11px] text-muted">
                   {draft.length} 字 · 约 {Math.ceil(draft.length / 3.5)} tokens
                 </span>
               </div>
 
               {showDiff && selected.editable && (
                 <div className="max-h-[360px] overflow-auto rounded-xl border border-border bg-[var(--t-bg-subtle)]">
-                  <div className="border-b border-border px-3 py-1.5 text-[10.5px] text-muted">
+                  <div className="border-b border-border px-3 py-1.5 text-[11px] text-muted">
                     默认值 → 当前编辑内容（<span className="text-danger">− 删除</span> /{' '}
                     <span className="text-success">+ 新增</span>）
                   </div>
-                  <pre className="px-3 py-2 font-mono text-[11.5px] leading-5">
+                  <pre className="px-3 py-2 font-mono text-[12px] leading-5">
                     {lineDiff(selected.defaultText, draft).map((line, index) => (
                       <div
                         key={index}

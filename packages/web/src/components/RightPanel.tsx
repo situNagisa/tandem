@@ -42,6 +42,7 @@ import {
   formatTokens,
 } from '../lib/format'
 import { PERMISSION_MODE_LABELS } from '../lib/types'
+import { stripMemoryMeta } from '../lib/memory'
 import { ConnectionDot, SessionStatusDot } from './StatusDot'
 import { Markdown } from './Markdown'
 import { CONTEXT_PART_META, useContextBreakdown } from './chat/ContextMeter'
@@ -174,7 +175,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   }, [host, summary?.cwd, memoryToolCalls, memoryEditorOpen])
   const memoryPreview = useMemo(() => {
     if (!memory?.exists) return []
-    const body = memory.text.replace(/^<!--\s*tandem-memory.*?-->\s*/, '')
+    const body = stripMemoryMeta(memory.text)
     return body
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -365,7 +366,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
           type="button"
           onClick={() => summary?.cwd && openMemoryEditor({ scope: 'project', project: summary.cwd })}
           disabled={!summary?.cwd}
-          className="rounded px-1 py-0.5 text-[11px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
+          className="rounded px-1 py-0.5 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
         >
           编辑
         </button>
