@@ -22,6 +22,15 @@ export function useSessionTarget(): SessionTarget | null {
   return useContext(SessionScopeContext)
 }
 
+/** 作用域会话是否正聚焦；没有 Provider 时视为聚焦（单窗格）。 */
+export function isTargetFocused(target: SessionTarget | null): boolean {
+  if (!target) return true
+  const active = useAppStore.getState().active
+  return (
+    !!active && active.hostId === target.hostId && active.sessionId === target.sessionId
+  )
+}
+
 /** 订阅作用域内的会话视图；没有 Provider 时等价于 s.active。 */
 export function useSessionView<T>(selector: (view: ActiveSession | null) => T): T {
   const target = useContext(SessionScopeContext)

@@ -464,7 +464,21 @@ function buildAppMenu() {
         { role: 'togglefullscreen', label: '全屏' },
       ],
     },
-    { role: 'windowMenu', label: '窗口' },
+    {
+      label: '窗口',
+      submenu: [
+        { role: 'minimize', label: '最小化' },
+        { role: 'zoom', label: '缩放' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: '全屏' },
+        { type: 'separator' },
+        {
+          label: '关闭窗口',
+          accelerator: 'CmdOrCtrl+Shift+W',
+          click: () => BrowserWindow.getFocusedWindow()?.close(),
+        },
+      ],
+    },
   ]);
 }
 

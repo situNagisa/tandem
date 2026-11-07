@@ -3,7 +3,7 @@ import { ArrowRightLeft, Bot, Loader2, MessageSquare, Plus, ShieldAlert, ShieldC
 import type { PermissionDecision, PermissionRequest, PermissionRule, TeamMember } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
-import { useSessionTarget, useSessionView } from './session/SessionScope'
+import { isTargetFocused, useSessionTarget, useSessionView } from './session/SessionScope'
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { CodeBlock } from './CodeBlock'
@@ -264,6 +264,7 @@ export function PermissionCard({
   // 新审批出现时，若焦点在空的输入框里，把焦点交给「允许」：
   // 键盘用户可以直接按 1/2/3，不必先 Tab 一圈；正在输入排队消息时不抢焦点。
   useEffect(() => {
+    if (!isTargetFocused(scopeTarget ?? null)) return
     const focusable = () => {
       const now = document.activeElement as HTMLElement | null
       const composer = now?.closest('.composer-card')
@@ -279,7 +280,7 @@ export function PermissionCard({
       cardRef.current?.querySelector<HTMLElement>('[data-permission-allow]')?.focus()
     }, 120)
     return () => window.clearTimeout(timer)
-  }, [request.id])
+  }, [request.id, scopeTarget])
 
   const canTransfer = teamRole === 'owner' || teamRole === 'approver' || teamRole === 'collaborator'
   const loadApprovers = () => {

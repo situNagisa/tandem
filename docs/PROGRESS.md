@@ -305,3 +305,15 @@
 - [x] 设置-权限页沙箱区：开关、平台支持、网络策略、严格模式、白名单编辑与包管理器官方源一键加入；`docs/sandbox.md` 说明能防/不能防
 - [x] worktree 工作数据例外：`~/.tandem/worktrees/`、`~/.tandem/checkpoints/` 不算受保护配置，worktree 会话在 acceptEdits 下写自己的 cwd 不弹审批（配置/会话/索引仍受保护）；回归新增 1 条
 - 验证：`TANDEM_HOME=/tmp/tandem-sandbox` 端口 8313；直接调用判定与 Bash 工具 13/13（cwd 放行、~/.ssh 与 /etc 越界、example.invalid 判定阶段拦截且不发请求、localhost 放行）；本机 bwrap 验证 cwd 可写、/home 越界失败、断网 curl 失败；`e2e/regression.mjs` 新增越界写入审批卡回归；独立 worktree `node scripts/check.mjs` 全过
+
+
+## 迭代 35（2026-11-08）多会话分屏
+- [x] 桌面：会话页拆成 2 列 / 3 列 / 2×2 网格，拖到下半边时上下分屏；每个窗格是完整 ChatView（消息流、输入框、审批卡、环境条），独立订阅、独立滚动
+- [x] 入口：侧栏 ⋯「在分屏中打开」、Ctrl/Cmd+点击会话、命令面板「分屏打开…」选择弹层、侧栏会话拖到主区左/右/下半边；顶栏分屏菜单切换布局/合并
+- [x] 焦点：窗格有强调色细边框；Ctrl/Cmd+1..4 切焦点、Ctrl/Cmd+W 关闭当前窗格；右栏、改动审阅、文件预览与顶栏都跟随聚焦窗格
+- [x] 布局：打开哪些会话、列/行比例存 localStorage，刷新后恢复；分隔条可拖动、双击均分；2 列/3 列/2×2 菜单按窗格数禁用不适用项
+- [x] 窄窗格（<440px）：隐藏轮次条，环境条折叠为图标，输入框工具栏收起思考/权限/上下文，模型与发送按钮不再溢出
+- [x] 手机：顶部小圆点指示已打开会话，左右滑动切换（不做同屏分屏）；圆点可点、右侧可关闭当前窗格
+- [x] 性能：会话视图存入 `sessionViews`，`active` 只指向聚焦窗格；非聚焦窗格的流式增量合并到 ~110ms 节拍，聚焦窗格保持 30ms
+- [x] 回归：`e2e/regression.mjs` 新增 3 条——双窗格分别收发/焦点切右栏/拖动比例后刷新恢复；侧栏拖拽分区 + Ctrl+1 + Ctrl+W + 命令面板分屏；手机圆点滑动与关闭窗格
+- 验证：`TANDEM_HOME=/tmp/tandem-split` 端口 8311 + 本地 mock OpenAI SSE；Playwright 截图 `/tmp/split-shots/`；`node scripts/check.mjs` 全量通过

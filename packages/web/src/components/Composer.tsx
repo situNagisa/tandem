@@ -40,7 +40,7 @@ import {
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
-import { useSessionTarget, useSessionView } from './session/SessionScope'
+import { isTargetFocused, useSessionTarget, useSessionView } from './session/SessionScope'
 import { useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
 import { groupName, profileModelGroups } from '../lib/profileModels'
@@ -296,7 +296,7 @@ export function Composer({
   }, [sessionId, isMobile, autoFocus, sessionless, disabled])
 
   useEffect(() => {
-    if (!seed) return
+    if (!seed || !isTargetFocused(scopeTarget ?? null)) return
     setText(seed.text)
     clearPromptSeed()
     window.requestAnimationFrame(() => {
@@ -305,7 +305,7 @@ export function Composer({
       el.focus()
       el.setSelectionRange(seed.text.length, seed.text.length)
     })
-  }, [seed, clearPromptSeed])
+  }, [seed, clearPromptSeed, scopeTarget])
 
   useEffect(() => {
     if (!composerResetNonce) return
@@ -800,6 +800,7 @@ export function Composer({
   // 桌面快捷键：按住 Ctrl+Shift+Space 说话，松开转写。
   useEffect(() => {
     const onVoiceKeyDown = (e: KeyboardEvent) => {
+      if (!isTargetFocused(scopeTarget ?? null)) return
       if (!e.ctrlKey || !e.shiftKey || e.code !== 'Space' || e.repeat) return
       const target = e.target as HTMLElement | null
       const editable =
@@ -824,7 +825,7 @@ export function Composer({
       window.removeEventListener('keydown', onVoiceKeyDown)
       window.removeEventListener('keyup', onVoiceKeyUp)
     }
-  }, [disabled])
+  }, [disabled, scopeTarget])
 
   const sendState = running ? 'running' : canSend ? 'ready' : 'idle'
 

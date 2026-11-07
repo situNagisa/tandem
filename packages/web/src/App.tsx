@@ -7,6 +7,7 @@ import { clearAttention } from './lib/attention'
 import { commandForEvent } from './lib/commands'
 import { closeFocusedPane, focusSplitPane } from './lib/splitActions'
 import { initNativeBridge, syncBackgroundService } from './lib/nativeBridge'
+import { isDesktop } from './lib/desktop'
 import { cn } from './lib/cn'
 import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
@@ -206,8 +207,8 @@ export default function App() {
       }
       if (ui.settingsOpen || ui.searchOpen) return
       const splitPanes = ui.splitPanes
-      if (splitPanes.length >= 2 && !ui.splitPickerOpen) {
-        if (/^[1-4]$/.test(e.key)) {
+      if (!ui.splitPickerOpen) {
+        if (splitPanes.length >= 2 && /^[1-4]$/.test(e.key)) {
           const pane = splitPanes[Number(e.key) - 1]
           if (pane) {
             e.preventDefault()
@@ -216,7 +217,8 @@ export default function App() {
             return
           }
         }
-        if (key === 'w') {
+        // 浏览器保留 Ctrl+W 关闭标签页；桌面壳里用它关闭当前窗格/会话。
+        if (key === 'w' && (splitPanes.length >= 2 || isDesktop)) {
           e.preventDefault()
           e.stopPropagation()
           closeFocusedPane()

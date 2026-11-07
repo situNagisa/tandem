@@ -17,7 +17,7 @@ import { Composer } from './Composer'
 import { EnvBar } from './EnvBar'
 import { TurnRail } from './chat/TurnRail'
 import { TurnErrorNotice } from './chat/TurnErrorNotice'
-import { useSessionTarget, useSessionView } from './session/SessionScope'
+import { isTargetFocused, useSessionTarget, useSessionView } from './session/SessionScope'
 import '../styles/chat.css'
 
 const EMPTY_PENDING: PermissionRequest[] = []
@@ -191,6 +191,7 @@ export function ChatView() {
   useEffect(() => {
     if (!running) return
     const onKey = (e: KeyboardEvent) => {
+      if (!isTargetFocused(sessionTarget ?? null)) return
       if (e.key !== 'Escape' || e.defaultPrevented || e.repeat) return
       const ui = useUiStore.getState()
       if (
@@ -217,7 +218,7 @@ export function ChatView() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [running])
+  }, [running, sessionTarget])
 
   const onScroll = () => {
     const el = scrollRef.current

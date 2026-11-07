@@ -10,7 +10,7 @@ import {
   type RefObject,
 } from 'react'
 import { useAppStore } from '../../store/useAppStore'
-import { useSessionView } from '../session/SessionScope'
+import { isTargetFocused, useSessionTarget, useSessionView } from '../session/SessionScope'
 import { useUiStore } from '../../store/useUiStore'
 import { useTurnNavStore } from '../../store/useTurnNavStore'
 import { useFeedbackStore } from '../../store/useFeedbackStore'
@@ -28,15 +28,12 @@ export interface TurnMark {
   preview: string
 }
 
-const EMPTY_TURNS: TurnMark[] = []
+const EMPTY_MESSAGES: UiMessage[] = []
+const turnCache = new WeakMap<UiMessage[], TurnMark[]>()
 
-let cachedMessages: UiMessage[] | null = null
-let cachedTurns: TurnMark[] = EMPTY_TURNS
-
-function selectTurns(state: { active: { messages: UiMessage[] } | null }): TurnMark[] {
-  const messages = state.active?.messages
-  if (!messages) return EMPTY_TURNS
-  if (messages === cachedMessages) return cachedTurns
+function turnsFromMessages(messages: UiMessage[]): TurnMark[] {
+  const cached = turnCache.get(messages)
+  if (cached) return cached
   const next: TurnMark[] = []
   messages.forEach((message) => {
     if (message.role !== 'user') return
@@ -60,19 +57,14 @@ function selectTurns(state: { active: { messages: UiMessage[] } | null }): TurnM
       preview: text.length > 120 ? `${text.slice(0, 120)}…` : text,
     })
   })
-  const same =
-    next.length === cachedTurns.length &&
-    next.every(
-      (mark, i) => mark.id === cachedTurns[i].id && mark.preview === cachedTurns[i].preview,
-    )
-  cachedMessages = messages
-  if (same) return cachedTurns
-  cachedTurns = next
+  turnCache.set(messages, next)
   return next
 }
 
+/** 当前窗格自己的轮次刻度（不读全局 active，分屏时各窗格互不串台）。 */
 export function useTurnMarks(): TurnMark[] {
-  return useAppStore(selectTurns)
+  const messages = useSessionView((view) => view?.messages ?? EMPTY_MESSAGES)
+  return useMemo(() => turnsFromMessages(messages), [messages])
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -95,6 +87,7 @@ export function TurnRail({
   onBeforeJump?: () => void
 }) {
   const turns = useTurnMarks()
+  const scopeTarget = useSessionTarget()
   const pinnedTurns = useSessionView((s) => s?.summary?.pinnedTurns)
   const feedbackActive = useFeedbackStore((s) => s.active)
   const sceneTurns = useMemo(() => {
@@ -231,14 +224,18 @@ export function TurnRail({
       if (!dragRef.current) scene.setCenter(activeTurn, snapNext.current)
     }
     snapNext.current = false
-    useTurnNavStore.getState().setProgress(activeTurn, total)
-  }, [activeTurn, total, railOn, sessionId])
+    if (isTargetFocused(scopeTarget)) {
+      useTurnNavStore.getState().setProgress(activeTurn, total)
+    }
+  }, [activeTurn, total, railOn, sessionId, scopeTarget])
 
   useEffect(
     () => () => {
-      useTurnNavStore.setState({ total: 0, active: 1, sheetOpen: false })
+      if (isTargetFocused(scopeTarget)) {
+        useTurnNavStore.setState({ total: 0, active: 1, sheetOpen: false })
+      }
     },
-    [],
+    [scopeTarget],
   )
 
   // 当前轮：取视口顶部最早出现的那一轮；贴底时取最后一轮。
@@ -293,6 +290,7 @@ export function TurnRail({
         sticky.current = false
         return
       }
+      if (!isTargetFocused(scopeTarget)) return
       if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
       if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
       // 输入框获得焦点时也允许用 Alt+↑/↓ 翻轮；只排除消息编辑等其他输入区域。
@@ -308,7 +306,7 @@ export function TurnRail({
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [go])
+  }, [go, scopeTarget])
 
   const closePanel = useCallback(() => {
     window.clearTimeout(openTimer.current)

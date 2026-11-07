@@ -540,7 +540,10 @@ export function SessionList({
   const menuActions = menu
     ? {
         onRename: () => startRename(menu.session),
-        onSplit: () => openSplitSession({ hostId: menu.hostId, sessionId: menu.session.id }),
+        onSplit: () => {
+          openSplitSession({ hostId: menu.hostId, sessionId: menu.session.id })
+          onNavigate?.()
+        },
         onTogglePin: () =>
           void updateSession(menu.hostId, menu.session.id, { pinned: !menu.session.pinned }),
         onTogglePinProject: () =>

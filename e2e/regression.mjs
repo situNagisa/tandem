@@ -459,6 +459,21 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
         ],
       },
     ], { updatedAt: Date.now() - 1700 }),
+    // 分屏：两个独立会话，待办用于验证右栏跟随聚焦窗格。
+    mk('split-a', '分屏会话 A', [
+      message('spa1', 'user', '分屏 A 的第一条消息'),
+      message('spa2', 'assistant', '分屏 A 已有回复。', { model: 'mock-1' }),
+    ], {
+      todos: [{ content: '分屏 A 的待办', status: 'pending' }],
+      updatedAt: Date.now() - 1600,
+    }),
+    mk('split-b', '分屏会话 B', [
+      message('spb1', 'user', '分屏 B 的第一条消息'),
+      message('spb2', 'assistant', '分屏 B 已有回复。', { model: 'mock-1' }),
+    ], {
+      todos: [{ content: '分屏 B 的待办', status: 'pending' }],
+      updatedAt: Date.now() - 1650,
+    }),
   ]
   // 待审批会话：Host 启动时按 resumeState 恢复并重新广播权限请求，供手机审批卡走查。
   const approveAt = Date.now() - 1200
@@ -2316,6 +2331,250 @@ async function main() {
       assert.ok(kinds.length > 0, '手机命令面板没有设置结果')
       assert.ok(kinds.every((kind) => kind === 'setting'), '手机命令面板前缀筛选失效')
       await page.keyboard.press('Escape')
+    })
+
+    desktop('分屏：双窗格收发、焦点跟随右栏与比例恢复', async (page) => {
+      await page.evaluate(() => localStorage.removeItem('tandem.split.v1'))
+      await openSession(page, 'split-a')
+      await page
+        .locator('[data-session-row][data-session-id="split-b"]')
+        .click({ modifiers: ['Control'] })
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-split-pane]').length === 2,
+        null,
+        { timeout: 10_000 },
+      )
+      await page.waitForTimeout(500)
+      const panes = page.locator('[data-split-pane]')
+      assert.equal(await panes.count(), 2, '分屏窗格数量不是 2')
+      assert.match(
+        (await page.locator('[data-split-pane][data-focused="true"]').textContent()) ?? '',
+        /分屏会话 B/,
+        'Ctrl+点击后焦点不在新窗格',
+      )
+
+      // 窗格 B 独立发送并收到回复。
+      const paneB = panes.nth(1)
+      await paneB.locator('textarea[aria-label="消息输入框"]').fill('分屏 B 测试')
+      await paneB.locator('textarea[aria-label="消息输入框"]').press('Enter')
+      await paneB.locator('.msg-row', { hasText: '分屏 B 测试' }).waitFor({ timeout: 10_000 })
+      await paneB.locator('.msg-row', { hasText: '回归回复。' }).waitFor({ timeout: 15_000 })
+
+      // 焦点切到 A：右栏待办跟随。
+      await panes.nth(0).getByText('分屏会话 A', { exact: true }).click()
+      await page.waitForFunction(
+        () =>
+          (document.querySelector('[data-split-pane][data-focused="true"]')?.textContent ?? '').includes(
+            '分屏会话 A',
+          ),
+        null,
+        { timeout: 10_000 },
+      )
+      await page.getByText('分屏 A 的待办').first().waitFor({ timeout: 10_000 })
+
+      // 窗格 A 独立发送，不与 B 串台。
+      const paneA = panes.nth(0)
+      await paneA.locator('textarea[aria-label="消息输入框"]').fill('分屏 A 测试')
+      await paneA.locator('textarea[aria-label="消息输入框"]').press('Enter')
+      await paneA.locator('.msg-row', { hasText: '分屏 A 测试' }).waitFor({ timeout: 10_000 })
+      await paneA.locator('.msg-row', { hasText: '回归回复。' }).waitFor({ timeout: 15_000 })
+      assert.equal(
+        await paneB.locator('.msg-row', { hasText: '分屏 A 测试' }).count(),
+        0,
+        'A 的消息串到 B 窗格',
+      )
+      assert.equal(
+        await paneA.locator('.msg-row', { hasText: '分屏 B 测试' }).count(),
+        0,
+        'B 的消息串到 A 窗格',
+      )
+
+      // 再切回 B：右栏待办跟着变。
+      await panes.nth(1).getByText('分屏会话 B', { exact: true }).click()
+      await page.getByText('分屏 B 的待办').first().waitFor({ timeout: 10_000 })
+
+      // 拖动分隔条后比例写入 localStorage。
+      const splitter = page.locator('[data-split-splitter="x"]').first()
+      const box = await splitter.boundingBox()
+      assert.ok(box, '找不到分屏分隔条')
+      await page.mouse.move(box.x + box.width / 2, box.y + 80)
+      await page.mouse.down()
+      await page.mouse.move(box.x + box.width / 2 - 70, box.y + 80, { steps: 8 })
+      await page.mouse.up()
+      await page.waitForTimeout(300)
+      const saved = await page.evaluate(() => {
+        const raw = localStorage.getItem('tandem.split.v1')
+        return raw ? JSON.parse(raw) : null
+      })
+      assert.ok(saved && saved.panes.length === 2, '分屏布局未写入 localStorage')
+      assert.ok(saved.cols[0] < 0.49, `拖动分隔条后比例未更新：${saved.cols[0]}`)
+      const ratioOf = async () =>
+        page.locator('[data-split-pane]').evaluateAll((els) => {
+          const widths = els.map((el) => el.getBoundingClientRect().width)
+          return widths[0] / widths.reduce((sum, width) => sum + width, 0)
+        })
+      const ratioBefore = await ratioOf()
+
+      // 刷新后两个窗格、聚焦会话与比例都恢复。
+      await page.reload()
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-split-pane]').length === 2,
+        null,
+        { timeout: 15_000 },
+      )
+      await page.waitForTimeout(900)
+      assert.match(
+        (await page.locator('[data-split-pane][data-focused="true"]').textContent()) ?? '',
+        /分屏会话 B/,
+        '刷新后聚焦窗格丢失',
+      )
+      await page.getByText('分屏 B 的待办').first().waitFor({ timeout: 10_000 })
+      const ratioAfter = await ratioOf()
+      assert.ok(
+        Math.abs(ratioBefore - ratioAfter) < 0.05,
+        `刷新后分屏比例未恢复：${ratioBefore} -> ${ratioAfter}`,
+      )
+      await page.evaluate(() => localStorage.removeItem('tandem.split.v1'))
+    })
+
+    desktop('分屏：拖拽分区、Ctrl+1 焦点与 Ctrl+W 关闭', async (page) => {
+      await page.evaluate(() => localStorage.removeItem('tandem.split.v1'))
+      await openSession(page, 'split-a')
+      const root = page.locator('[data-split-root]')
+      const box = await root.boundingBox()
+      assert.ok(box, '单窗格缺少拖拽落区')
+      await page
+        .locator('[data-session-row][data-session-id="split-b"]')
+        .dragTo(root, {
+          targetPosition: { x: box.width * 0.8, y: box.height * 0.4 },
+        })
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-split-pane]').length === 2,
+        null,
+        { timeout: 10_000 },
+      )
+      await page.waitForTimeout(400)
+      assert.match(
+        (await page.locator('[data-split-pane][data-focused="true"]').textContent()) ?? '',
+        /分屏会话 B/,
+        '拖入右半边后焦点不在新窗格',
+      )
+
+      await page.keyboard.press('Control+1')
+      await page.waitForTimeout(400)
+      assert.match(
+        (await page.locator('[data-split-pane][data-focused="true"]').textContent()) ?? '',
+        /分屏会话 A/,
+        'Ctrl+1 未切到第一个窗格',
+      )
+
+      // 浏览器可能拦截真实 Ctrl+W，这里派发同形态的键盘事件验证应用快捷键。
+      await page.evaluate(() => {
+        window.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'w',
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        )
+      })
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-split-pane]').length === 0,
+        null,
+        { timeout: 10_000 },
+      )
+      assert.match(
+        (await page.locator('header h1').first().textContent()) ?? '',
+        /分屏会话 B/,
+        'Ctrl+W 关闭聚焦窗格后未落到相邻会话',
+      )
+
+      // 命令面板「分屏打开…」+ 会话选择弹层。
+      await page.keyboard.press('Control+k')
+      const paletteInput = page.getByRole('textbox', { name: '搜索会话、命令与设置' })
+      await paletteInput.fill('分屏打开')
+      await page.getByText('分屏打开…', { exact: true }).click()
+      const dialog = page.getByRole('dialog').filter({ hasText: '分屏打开会话' })
+      await dialog.waitFor({ timeout: 10_000 })
+      await dialog.getByPlaceholder('搜索会话标题、目录或 Host…').fill('分屏会话 A')
+      await page.waitForTimeout(250)
+      await dialog.getByRole('button', { name: /分屏会话 A/ }).click()
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-split-pane]').length === 2,
+        null,
+        { timeout: 10_000 },
+      )
+      await page.waitForTimeout(400)
+      assert.match(
+        (await page.locator('[data-split-pane][data-focused="true"]').textContent()) ?? '',
+        /分屏会话 A/,
+        '命令面板分屏打开后焦点不在新窗格',
+      )
+      await page.evaluate(() => localStorage.removeItem('tandem.split.v1'))
+    })
+
+    mobile('手机分屏：圆点指示与左右滑动切换', async (page) => {
+      await page.evaluate(() => localStorage.removeItem('tandem.split.v1'))
+      await openSession(page, 'split-a')
+      await page.getByRole('button', { name: '打开侧栏' }).click()
+      await page.waitForTimeout(300)
+      const row = page.locator('[data-session-row][data-session-id="split-b"]')
+      await row.getByRole('button', { name: '会话操作' }).click()
+      await page.getByRole('menuitem', { name: '在分屏中打开' }).click()
+      await page.waitForTimeout(800)
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(400)
+
+      const tabs = page.getByRole('tab')
+      assert.equal(await tabs.count(), 2, '手机分屏圆点数量不是 2')
+      assert.equal(await tabs.nth(1).getAttribute('aria-selected'), 'true')
+      await tabs.nth(0).click()
+      await page.waitForTimeout(500)
+      assert.match(
+        (await page.locator('header h1').first().textContent()) ?? '',
+        /分屏会话 A/,
+        '点击圆点未切到第一个窗格',
+      )
+
+      const box = await page.locator('[data-split-pager]').boundingBox()
+      assert.ok(box, '手机分屏容器不存在')
+      const client = await page.context().newCDPSession(page)
+      const y = box.y + Math.min(120, box.height * 0.3)
+      const startX = box.x + box.width * 0.8
+      await client.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: startX, y }],
+      })
+      for (let i = 1; i <= 6; i++) {
+        await client.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x: startX - (box.width * 0.1) * i, y }],
+        })
+        await sleep(20)
+      }
+      await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      await page.waitForTimeout(700)
+      assert.match(
+        (await page.locator('header h1').first().textContent()) ?? '',
+        /分屏会话 B/,
+        '左滑后未切到第二个窗格',
+      )
+      assert.equal(await tabs.nth(1).getAttribute('aria-selected'), 'true')
+
+      // 手机也能退出分屏：关闭当前窗格后回到单会话。
+      await page.getByRole('button', { name: '关闭当前窗格' }).click()
+      await page.waitForFunction(
+        () => document.querySelectorAll('[role="tab"]').length === 0,
+        null,
+        { timeout: 10_000 },
+      )
+      assert.match(
+        (await page.locator('header h1').first().textContent()) ?? '',
+        /分屏会话 A/,
+        '手机关闭当前窗格后未回到相邻会话',
+      )
+      await page.evaluate(() => localStorage.removeItem('tandem.split.v1'))
     })
 
     // ------------------------------------------------------------------ 执行

@@ -43,7 +43,7 @@ export function SplitWorkspace() {
     }
   }, [panes])
 
-  if (panes.length < 2) return <ChatView />
+  if (panes.length < 2) return isMobile ? <ChatView /> : <SinglePaneDrop />
   const focusedKey =
     focusedHostId && focusedSessionId ? paneKey(focusedHostId, focusedSessionId) : null
   return isMobile ? (
@@ -56,6 +56,65 @@ export function SplitWorkspace() {
       rows={rows}
       focusedKey={focusedKey}
     />
+  )
+}
+
+function SinglePaneDrop() {
+  const [drop, setDrop] = useState<'left' | 'right' | 'bottom' | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const zoneAt = (event: React.DragEvent): 'left' | 'right' | 'bottom' => {
+    const box = rootRef.current?.getBoundingClientRect()
+    if (!box) return 'right'
+    const rx = (event.clientX - box.left) / Math.max(1, box.width)
+    const ry = (event.clientY - box.top) / Math.max(1, box.height)
+    if (ry > 0.6) return 'bottom'
+    return rx < 0.5 ? 'left' : 'right'
+  }
+  return (
+    <div
+      ref={rootRef}
+      data-split-root=""
+      className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
+      onDragOver={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes('application/x-tandem-split')) return
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'copy'
+        setDrop(zoneAt(event))
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+        setDrop(null)
+      }}
+      onDrop={(event) => {
+        const raw = event.dataTransfer.getData('application/x-tandem-split')
+        setDrop(null)
+        if (!raw) return
+        event.preventDefault()
+        try {
+          const target = JSON.parse(raw) as SessionTarget
+          if (typeof target.hostId !== 'string' || typeof target.sessionId !== 'string') return
+          openSplitSessionAt(target, zoneAt(event))
+        } catch {
+          // 忽略非会话拖拽
+        }
+      }}
+    >
+      <ChatView />
+      {drop && (
+        <div className="pointer-events-none absolute inset-0 z-10">
+          <div
+            className={cn(
+              'absolute flex items-center justify-center border-2 border-dashed border-[var(--t-accent-strong)] bg-[var(--t-accent-soft)]/25 text-[12px] font-medium text-accent-text backdrop-blur-[1px]',
+              drop === 'left' && 'inset-y-0 left-0 w-1/2',
+              drop === 'right' && 'inset-y-0 right-0 w-1/2',
+              drop === 'bottom' && 'inset-x-0 bottom-0 h-1/2',
+            )}
+          >
+            {drop === 'left' ? '在左侧分屏打开' : drop === 'right' ? '在右侧分屏打开' : '在下方分屏打开'}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -203,6 +262,7 @@ function SplitAxis({
           {index < items.length - 1 && (
             <div
               role="separator"
+              data-split-splitter={axis}
               aria-orientation={axis === 'x' ? 'vertical' : 'horizontal'}
               aria-label="拖动调整窗格大小，双击均分"
               onPointerDown={(event) => startDrag(event, index)}
@@ -318,6 +378,7 @@ function DesktopSplit({
   return (
     <div
       ref={rootRef}
+      data-split-root=""
       className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-border/40"
       onDragOver={(event) => {
         if (!Array.from(event.dataTransfer.types).includes('application/x-tandem-split')) return
@@ -376,6 +437,7 @@ function MobileSplitPager({
   const [dragX, setDragX] = useState(0)
   const [dragging, setDragging] = useState(false)
   const start = useRef<{ x: number; y: number; locked: boolean | null; dx: number } | null>(null)
+  const swipedRef = useRef(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
   const goTo = (index: number) => {
@@ -388,31 +450,38 @@ function MobileSplitPager({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div
-        role="tablist"
-        aria-label="分屏会话切换"
-        className="flex h-7 shrink-0 items-center justify-center gap-2 border-b border-border/60"
-      >
-        {panes.map((pane, index) => (
-          <button
-            key={paneKey(pane.hostId, pane.sessionId)}
-            type="button"
-            role="tab"
-            aria-selected={index === current}
-            aria-label={`第 ${index + 1} 个会话，共 ${panes.length} 个`}
-            onClick={() => goTo(index)}
-            className="flex size-6 items-center justify-center rounded-full"
-          >
-            <span
-              className={cn(
-                'rounded-full transition-all duration-150',
-                index === current
-                  ? 'size-2 bg-[var(--t-accent-strong)]'
-                  : 'size-1.5 bg-border-strong',
-              )}
-            />
-          </button>
-        ))}
+      <div className="relative flex h-8 shrink-0 items-center justify-center border-b border-border/60">
+        <div role="tablist" aria-label="分屏会话切换" className="flex items-center gap-2">
+          {panes.map((pane, index) => (
+            <button
+              key={paneKey(pane.hostId, pane.sessionId)}
+              type="button"
+              role="tab"
+              aria-selected={index === current}
+              aria-label={`第 ${index + 1} 个会话，共 ${panes.length} 个`}
+              onClick={() => goTo(index)}
+              className="flex size-6 items-center justify-center rounded-full"
+            >
+              <span
+                className={cn(
+                  'rounded-full transition-all duration-150',
+                  index === current
+                    ? 'size-2 bg-[var(--t-accent-strong)]'
+                    : 'size-1.5 bg-border-strong',
+                )}
+              />
+            </button>
+          ))}
+        </div>
+        <IconButton
+          size="sm"
+          onClick={() => closeSplitPaneAt(panes[current]!)}
+          label="关闭当前窗格"
+          tooltip="关闭当前窗格"
+          className="absolute right-1 size-7! [&_svg]:size-3.5!"
+        >
+          <X size={13} />
+        </IconButton>
       </div>
       <div
         ref={rootRef}
@@ -456,6 +525,12 @@ function MobileSplitPager({
               : dx
           setDragX(resisted)
         }}
+        onClickCapture={(event) => {
+          if (!swipedRef.current) return
+          swipedRef.current = false
+          event.preventDefault()
+          event.stopPropagation()
+        }}
         onTouchEnd={() => {
           const info = start.current
           start.current = null
@@ -465,6 +540,12 @@ function MobileSplitPager({
             return
           }
           const threshold = Math.min(72, (rootRef.current?.clientWidth ?? 320) * 0.18)
+          if (Math.abs(info.dx) > threshold) {
+            swipedRef.current = true
+            window.setTimeout(() => {
+              swipedRef.current = false
+            }, 350)
+          }
           if (info.dx < -threshold) goTo(current + 1)
           else if (info.dx > threshold) goTo(current - 1)
           else setDragX(0)

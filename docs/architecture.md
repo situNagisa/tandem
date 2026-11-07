@@ -83,6 +83,9 @@
 | `src/components/evals/*` | 评测轨迹/并排对比/提示词覆盖/存用例弹层；设置「评测」页见 `settings/EvalsSection.tsx` |
 | `src/components/chat/*` | 轮次导航、上下文环、消息辅助组件 |
 | `src/components/feedback/*` | 反馈模式浮条、区域截图、标注、抽屉 |
+| `src/components/split/*` | 多会话分屏：桌面 2/3 列与 2×2、上下分屏、分隔条、拖拽分区、手机圆点滑动、分屏打开选择器 |
+| `src/components/session/SessionScope.tsx` | 会话作用域：窗格内组件读取自己的 `ActiveSession`，快捷键/焦点与全局 `active` 对齐 |
+| `src/lib/split.ts` / `splitActions.ts` | 分屏布局校验与持久化、窗格增删替换、聚焦/关闭、拖拽落区 |
 | `src/styles/` + `index.css` | 设计 tokens 与复杂组件样式（Tailwind v4） |
 
 ## 4. 数据流
