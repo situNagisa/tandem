@@ -23,7 +23,7 @@
 |---|---|
 | `src/cli.ts` | 入口：解析 `--port/--host/--relay`，创建 Host + Fastify，信号退出 |
 | `src/server.ts` | Fastify 服务：启动、token 鉴权、WS 升级、静态托管；路由按资源在 `routes/` 下注册 |
-| `src/routes/` | REST/WS 路由：`common.ts`（依赖与鉴权）、`sessions.ts`、`permissions.ts`、`host.ts`、`profiles.ts`、`models.ts`、`usage.ts`、`tasks.ts`、`mcp.ts`、`skills.ts`、`hooks.ts`、`memory.ts`、`schedules.ts`、`subagent-presets.ts`、`prompt-templates.ts`、`commands.ts`、`external.ts`、`fs.ts`、`pair.ts`、`budgets.ts`、`config.ts`、`ws.ts` |
+| `src/routes/` | REST/WS 路由：`common.ts`（依赖与鉴权）、`sessions.ts`、`permissions.ts`、`host.ts`、`profiles.ts`、`models.ts`、`usage.ts`、`tasks.ts`、`mcp.ts`、`skills.ts`、`hooks.ts`、`memory.ts`、`schedules.ts`、`evals.ts`、`subagent-presets.ts`、`prompt-templates.ts`、`commands.ts`、`external.ts`、`fs.ts`、`pair.ts`、`budgets.ts`、`config.ts`、`ws.ts` |
 | `src/host.ts` | Host 类：持有全部状态与构造，方法按职责转调到 `host/`（外部 API 不变） |
 | `src/host/` | Host 实现按职责拆分（纯搬移）：`sessions.ts`（读取/转换/CRUD）、`turns.ts`（发送/回合/排队/中断/compact）、`commands.ts`（斜杠命令/本地消息）、`permissions.ts`（审批/plan/恢复）、`keys.ts`（账号/分组/Key 轮询）、`usage.ts`（上下文/预算/模型）、`subagents.ts`（子代理/委派/工具可见性）、`vcs.ts`（git 环境/worktree）、`rewind.ts`（检查点回退）、`hooks.ts`、`inbox.ts`、`external.ts`（外部会话通知/导入）、`helpers.ts`（无状态纯函数） |
 | `src/agent/loop.ts` | 单轮 agent 循环：模型 → 工具 → tool_result → 再请求，直到结束 |
@@ -50,6 +50,7 @@
 | `src/budgets.ts` / `src/usage.ts` | 预算规则、周期累计、用量与价格计算 |
 | `src/key-rotation.ts` | 同组多 Key：可用性、failover/round-robin、失败分类与冷却 |
 | `src/checkpoints.ts` / `src/worktree.ts` | 文件检查点回退、git worktree 会话 |
+| `src/evals.ts` | 评测：用例落盘 `~/.tandem/evals`、git/目录快照、临时工作区、批量运行、检查命令、评审模型与结果持久化 |
 | `src/inbox.ts` | 跨会话收件箱（审批/回合结束/预算/CI） |
 | `src/config.ts` | `~/.tandem` 路径、账号存储、Host 配置、密钥掩码 |
 | `src/migrate.ts` | 配置加密导出/导入 |
@@ -64,6 +65,7 @@
 | `src/store/useAppStore.ts` | 全局 store 入口：只做初始 state 与各 slice 的组合（见 §8） |
 | `src/store/appStore/` | `types.ts` 状态与 action 签名；`helpers.ts` 纯工具与连接表；`sessionCore.ts` 会话内部辅助（`patchActive`/`applySnapshot`/`ensureConnection` 等）；`serverMessages.ts` WS 消息 switch；`hostsSlice.ts`、`sessionsSlice.ts`、`messagesSlice.ts`、`inboxSlice.ts`、`worktreeSlice.ts`、`uiSlice.ts` 按职责拆分的 action |
 | `src/store/useUiStore.ts` | 弹窗、侧栏、右栏、主题等纯 UI 状态 |
+| `src/store/useEvalStore.ts` | 评测用例/运行/轨迹缓存与轮询（独立于 useAppStore） |
 | `src/store/useFeedbackStore.ts` | 反馈模式条目与标注状态 |
 | `src/lib/api.ts` | 所有 REST 调用（带 Host token） |
 | `src/lib/ws.ts` | WS 连接、重连、seq 重放、收件箱订阅 |
@@ -77,6 +79,7 @@
 | `src/components/RightPanel.tsx` | 右栏：计划、待办、子代理、上下文、PR；**巨石** |
 | `src/components/ChangeReviewPanel.tsx` | 改动审阅、行评论、提交/丢弃 |
 | `src/components/settings/*` | 设置各页；`SettingsDialog.tsx` 是导航与挂载点 |
+| `src/components/evals/*` | 评测轨迹/并排对比/提示词覆盖/存用例弹层；设置「评测」页见 `settings/EvalsSection.tsx` |
 | `src/components/chat/*` | 轮次导航、上下文环、消息辅助组件 |
 | `src/components/feedback/*` | 反馈模式浮条、区域截图、标注、抽屉 |
 | `src/styles/` + `index.css` | 设计 tokens 与复杂组件样式（Tailwind v4） |
@@ -132,6 +135,7 @@ Web/Desktop/Android
 | 改 diff/改动审阅 | `server/src/changes.ts` + `web/src/lib/useChanges.ts` + `ChangeReviewPanel.tsx` |
 | 改外部会话导入 | `server/src/external.ts`（扫描/清洗/标题）+ `ExternalSessionView.tsx` |
 | 改定时任务 | `server/src/schedules.ts` + `settings/SchedulesSection.tsx` |
+| 改评测/轨迹回放 | `server/src/evals.ts` + `routes/evals.ts`；前端 `store/useEvalStore.ts` + `settings/EvalsSection.tsx` + `components/evals/*` |
 | 改预算/用量 | `server/src/budgets.ts`、`usage.ts` + 对应设置页 |
 | 改多 Key 调度 | `server/src/key-rotation.ts` + `host.ts` 的 `keyCandidates/markKeyFailure` |
 | 加斜杠命令 | `server/src/agent/commands.ts` + `host.ts` 的 `handleCommand` |

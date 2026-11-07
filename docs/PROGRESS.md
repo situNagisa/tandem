@@ -183,3 +183,10 @@
 - [x] 审批卡新增「拒绝并说明」：文字/语音填写原因，`decidePermission(deny, reason)` 作为工具结果返回 agent
 - 验证：TANDEM_HOME=/tmp/tandem-voice:8202 + 假 whisper 脚本；Playwright 假麦克风按住录制→上传→转写→插入、点击持续录音、Ctrl+Shift+Space、Esc 取消、设置页测试通过；审批卡语音填原因并拒绝，mock provider 收到原因文本；截图 /tmp/voice-shots/；`npm run apk -w @tandem/mobile` 成功
 - 备注：语音识别全部走用户自己的 Host 或设备系统能力，不接云端；Tandem 不自动下载模型
+
+## 迭代 22（2026-11-07）轨迹回放与评测集
+- [x] 协议：`EvalCase/EvalSnapshot/EvalConfig/EvalRun/EvalResult` 等；REST `/api/evals/{suites,cases,runs}`；`InboxEventKind` 增加 `eval`；WS `eval_run_updated`；提示词注册表新增 `evalReview`
+- [x] 存用例：会话 ⋯「存为评测用例」从任一用户消息截取初始输入；git 仓库记录仓库路径 + commit（运行时临时 worktree 检出，未提交改动不包含），非 git 目录复制快照（跳过 .git/符号链接，50MB 上限）；可选通过标准与自动检查命令
+- [x] 运行：设置「评测」页选用例集 + 多个配置（账号/分组/模型/思考强度/委派策略/提示词覆盖）+ 可选评审模型 + 并发数；每个 用例×配置 在独立临时目录以 bypassPermissions 运行（运行前明确警告），记录完成状态、检查命令、轮数、工具数、token、花费、耗时、最终回答与完整轨迹；支持后台运行/取消/重启中断标记
+- [x] 对比：表格行=用例、列=配置，单元格显示通过/失败、花费、耗时；点开完整轨迹（复用 MessageList 只读），两个配置并排对比；导出 Markdown；运行进度在收件箱（eval 事件）与右上角后台任务面板（含取消）可见；评测内部会话不出现在侧栏、不产生回合完成通知
+- 验证：TANDEM_HOME=/tmp/tandem-evals:8231 + 本地 mock OpenAI SSE（writer 写 done.txt / lazy 不写）；git 用例检查 `test -f done.txt`，两配置结果一过一失败；Playwright 覆盖结果表、轨迹、并排对比、提示词覆盖、UI 启动、导出、存用例、评审模型、非 git 目录快照、后台面板/收件箱进度与取消；截图 /tmp/evals-shots/；`node scripts/check.mjs` 全量通过
