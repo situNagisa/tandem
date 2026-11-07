@@ -20,6 +20,7 @@ export function registerHostRoutes(app: FastifyInstance, deps: RouteDeps): void 
       voice?: unknown;
       context?: unknown;
       aiReview?: unknown;
+      sandbox?: unknown;
     };
     return host.updateSettings({
       ...(body.resumeOnRestart === 'auto' || body.resumeOnRestart === 'pause'
@@ -32,6 +33,11 @@ export function registerHostRoutes(app: FastifyInstance, deps: RouteDeps): void 
       ...(body.aiReview && typeof body.aiReview === 'object'
         ? { aiReview: body.aiReview as import('@tandem/protocol').AiReviewSettings }
         : {}),
+      ...(body.sandbox && typeof body.sandbox === 'object'
+        ? { sandbox: body.sandbox as import('@tandem/protocol').SandboxSettings }
+        : {}),
     });
   });
+
+  app.get('/api/sandbox/status', async () => host.sandboxStatusInfo());
 }

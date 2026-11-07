@@ -109,7 +109,10 @@ function AddRuleDialog({
         </label>
         <label className="block space-y-1">
           <span className="text-[13px] text-muted">
-            匹配模式{rule.tool === 'Bash' ? '（命令前缀，可用 * 通配）' : '（文件 glob，留空匹配全部）'}
+            匹配模式
+            {rule.tool === 'Bash'
+              ? '（命令前缀，可用 * 通配）'
+              : '（文件 glob、绝对路径或 ~/目录，留空匹配全部）'}
           </span>
           <Input
             value={rule.pattern ?? ''}
@@ -389,6 +392,15 @@ export function PermissionCard({
           <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-[1.55] text-text-soft">
             {request.description}
           </p>
+          {request.sandbox && (
+            <p
+              data-permission-sandbox=""
+              className="mt-1 flex items-start gap-1 text-[12px] leading-[1.5] text-warning"
+            >
+              <ShieldAlert size={12} className="mt-0.5 shrink-0" />
+              <span className="min-w-0 break-words">{request.sandbox.reason}</span>
+            </p>
+          )}
         </div>
       </div>
       {preview && (

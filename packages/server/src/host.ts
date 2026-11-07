@@ -21,6 +21,7 @@ import type {
   PromptTemplateKey,
   ReasoningEffort,
   RewindInput,
+  SandboxStatus,
   Session,
   SessionStatus,
   SessionSummary,
@@ -38,6 +39,7 @@ import type { HookExecutionContext, HookRunResult } from './hooks.js';
 import { McpManager } from './mcp.js';
 import { PermissionRuleStore } from './permissions.js';
 import { ApprovalHistoryStore } from './approval.js';
+import { SandboxSettingsStore, sandboxProfile, sandboxStatus as sandboxStatusOf } from './sandbox.js';
 import { SearchIndex } from './search.js';
 import { SessionStore } from './store.js';
 import type {
@@ -170,6 +172,10 @@ export class Host {
   readonly external = new ExternalSessionStore(this);
   readonly checkpoints: CheckpointStore;
   readonly permissionRules: PermissionRuleStore;
+  /** 命令沙箱与网络白名单（~/.tandem/sandbox.json）。 */
+  readonly sandbox: SandboxSettingsStore;
+  /** 用户为断网沙箱里的单次命令临时放行联网（toolUseId）。 */
+  readonly sandboxNetworkAllow = new Set<string>();
   /** 审批历史与策略学习（~/.tandem/approvals.jsonl）。 */
   readonly approvalHistory: ApprovalHistoryStore;
   readonly hooks: HookManager;
@@ -236,6 +242,7 @@ export class Host {
     this.store.onDelete = (id) => this.searchIndex.touchSession(id);
     this.checkpoints = new CheckpointStore(home);
     this.permissionRules = new PermissionRuleStore(home);
+    this.sandbox = new SandboxSettingsStore(home);
     this.approvalHistory = new ApprovalHistoryStore(home);
     this.hooks = new HookManager(home);
     this.mcp = new McpManager(home, (cwd) => this.secrets.envFor(cwd, 'mcp'));
@@ -316,6 +323,16 @@ export class Host {
 
   updateSettings(input: Partial<HostSettings>): HostSettings {
     return updateSettings(this, input);
+  }
+
+  sandboxStatusInfo(): SandboxStatus {
+    return sandboxStatusOf(this.sandbox.get());
+  }
+
+  /** Bash 工具执行前取沙箱启动参数；断网时用户临时放行会消费掉一次 toolUseId。 */
+  sandboxProfileFor(toolUseId: string) {
+    const allowNetwork = this.sandboxNetworkAllow.delete(toolUseId);
+    return sandboxProfile(this.sandbox.get(), allowNetwork);
   }
 
   recoverAfterRestart(): Promise<void> {
@@ -640,8 +657,8 @@ export class Host {
     return isAllowed(this, rec, toolName, input);
   }
 
-  askPermission(rec: SessionRecord, toolName: string, input: unknown, toolUseId: string, signal: AbortSignal): Promise<{ allowed: boolean; reason?: string; decision?: PermissionDecision }> {
-    return askPermission(this, rec, toolName, input, toolUseId, signal);
+  askPermission(rec: SessionRecord, toolName: string, input: unknown, toolUseId: string, signal: AbortSignal, sandboxNotice?: import('@tandem/protocol').PermissionSandboxNotice): Promise<{ allowed: boolean; reason?: string; decision?: PermissionDecision }> {
+    return askPermission(this, rec, toolName, input, toolUseId, signal, sandboxNotice);
   }
 
   resolvePermission(requestId: string, decision: PermissionDecision, reason?: string): void {

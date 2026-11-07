@@ -6,7 +6,7 @@ import path from 'node:path';
 import type { PermissionRule } from '@tandem/protocol';
 import { hostMatchesPattern } from './browser.js';
 import { matchGlob } from './util/glob.js';
-import { isSubPath, toPosix } from './util/path.js';
+import { expandHome, isSubPath, toPosix } from './util/path.js';
 
 export type RuleDecision = 'deny' | 'ask' | 'allow';
 
@@ -148,6 +148,12 @@ export function matchCommand(command: string, pattern: string): boolean {
   return new RegExp(`^${escaped}`).test(command);
 }
 
+/** 文件工具规则是否按绝对路径（目录前缀）匹配。 */
+export function isAbsolutePattern(pattern: string): boolean {
+  const value = pattern.trim();
+  return value.startsWith('~') || path.isAbsolute(value) || /^[A-Za-z]:[\\/]/.test(value);
+}
+
 function toolMatches(pattern: string, toolName: string): boolean {
   const value = pattern.trim();
   if (!value) return false;
@@ -170,8 +176,13 @@ function matchesInput(
     const raw = typeof args.file_path === 'string' ? args.file_path : '';
     if (!raw) return !rule.pattern;
     if (!rule.pattern) return true;
-    const abs = path.resolve(cwd, raw);
-    if (!isSubPath(cwd, abs)) return false; // cwd 外的文件不参与 glob 匹配
+    const abs = path.resolve(cwd, expandHome(raw));
+    // 绝对路径（含 ~/）规则按目录前缀匹配：允许写入 ~/projects/other 即允许其子文件。
+    if (isAbsolutePattern(rule.pattern)) {
+      const target = path.resolve(expandHome(rule.pattern));
+      return isSubPath(target, abs);
+    }
+    if (!isSubPath(cwd, abs)) return false; // cwd 外的文件不参与相对 glob 匹配
     return matchGlob(toPosix(path.relative(cwd, abs)), rule.pattern);
   }
   if (BROWSER_TOOLS.has(toolName)) {

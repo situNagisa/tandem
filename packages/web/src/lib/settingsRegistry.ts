@@ -79,6 +79,8 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'gateway.stats', tab: 'gateway', title: '今日统计', keywords: ['统计', '用量'] },
   { id: 'gateway.logs', tab: 'gateway', title: '日志与调试', keywords: ['日志', '调试'] },
 
+  { id: 'permissions.sandbox', tab: 'permissions', title: '命令沙箱', keywords: ['沙箱', 'bwrap', '隔离', '写保护'] },
+  { id: 'permissions.network', tab: 'permissions', title: '网络白名单', keywords: ['网络', '白名单', '域名', '断网', '联网'] },
   { id: 'permissions.rules', tab: 'permissions', title: '权限规则', keywords: ['权限', '规则', '允许', '拒绝', '审批'] },
   { id: 'permissions.add', tab: 'permissions', title: '添加权限规则', keywords: ['新增', '规则'] },
 

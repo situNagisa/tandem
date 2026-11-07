@@ -301,6 +301,18 @@ export interface PermissionRequest {
   transferredFrom?: { memberId: string; name: string; at: number };
   /** 从审批历史学到的建议：同类请求已多次批准时，客户端可在「总是允许」旁提供一键规则。 */
   learned?: { pattern: string; allows: number; project: string };
+  /** 命令沙箱/网络白名单触发审批时的说明（写工作目录之外、受保护路径、非白名单主机等）。 */
+  sandbox?: PermissionSandboxNotice;
+}
+
+/** 沙箱/网络策略导致转审批的原因；客户端在审批卡上单独高亮显示。 */
+export interface PermissionSandboxNotice {
+  kind: 'write-outside' | 'protected' | 'network' | 'network-offline' | 'unknown-write';
+  reason: string;
+  /** 触发路径（写入类）或主机名（联网类）。 */
+  target?: string;
+  /** 联网类：涉及的主机列表；「总是允许」时会加入网络白名单。 */
+  hosts?: string[];
 }
 // ExitPlanMode 的决策语义：allow_always = 批准并自动接受编辑（acceptEdits）；
 // allow = 批准但逐个询问（default）；deny 可带 reason（用户要求继续完善计划）。
@@ -438,9 +450,45 @@ export interface HostSettings {
   context?: ContextSettings;
   /** 提交前 AI 评审的模型与拦截策略。 */
   aiReview?: AiReviewSettings;
+  /** 命令沙箱与网络白名单（~/.tandem/sandbox.json）。 */
+  sandbox?: SandboxSettings;
 }
 // GET  /api/settings -> HostSettings
 // PUT  /api/settings HostSettings -> HostSettings
+
+// ---------- 命令沙箱与网络白名单 ----------
+// 静态检查跨平台生效；真正的文件系统隔离仅在 Linux bwrap / macOS sandbox-exec 可用时启用。
+export interface SandboxSettings {
+  /** 可用时启用真沙箱（Linux bwrap / macOS sandbox-exec）。 */
+  enabled: boolean;
+  /** 真沙箱内的网络策略：host=可联网；none=断网（需要联网的命令逐次审批后临时放行）。 */
+  network: 'host' | 'none';
+  /** 严格模式：无法静态判断写入范围的命令也转审批（默认不拦截，避免误伤）。 */
+  strict: boolean;
+  /** 网络白名单：域名、*.example.com、IP 或 CIDR 网段；回环地址始终放行。 */
+  allowedHosts: string[];
+}
+export interface SandboxPlatformStatus {
+  platform: 'linux' | 'darwin' | 'win32' | 'other';
+  /** bwrap / sandbox-exec 是否可用；不可用时只做静态检查。 */
+  available: boolean;
+  engine: 'bwrap' | 'sandbox-exec' | '';
+  /** 面向用户的一句话说明（含安装建议）。 */
+  message: string;
+  /** 当前平台是否能对命令断网。 */
+  networkIsolation: boolean;
+}
+export interface SandboxPackageSource {
+  label: string;
+  hosts: string[];
+}
+export interface SandboxStatus {
+  platform: SandboxPlatformStatus;
+  settings: SandboxSettings;
+  /** 包管理器官方源，设置页可一键加入白名单。 */
+  packageSources: SandboxPackageSource[];
+}
+// GET /api/sandbox/status -> SandboxStatus
 
 // ---------- 内网团队共享（成员 / 邀请 / 审计） ----------
 // 全部在 Host 本地完成：邀请码与成员 token 只存 SHA-256，无第三方账号体系。
@@ -1007,7 +1055,7 @@ export interface PrActionResult {
 // ---------- 权限规则（Host 级，存 ~/.tandem/permissions.json；会话级 allow_always 仍保留） ----------
 export interface PermissionRule {
   tool: string;
-  pattern?: string;         // Bash 为命令前缀通配，如 "npm test*"；文件工具为 glob；browser_* 为域名模式，如 "192.168.*"
+  pattern?: string;         // Bash 为命令前缀通配，如 "npm test*"；文件工具为相对 glob、绝对路径或 ~/目录（按目录前缀匹配）；browser_* 为域名模式，如 "192.168.*"
   action: 'allow' | 'ask' | 'deny';
   project?: string;         // 可选：绝对路径，仅对该项目（含子目录）生效；缺省为全局
 }

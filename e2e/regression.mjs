@@ -552,6 +552,51 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
   sessions.push(pendingSession('learn', '学习审批的会话', 'vitest run', 'tu-learn'))
   sessions.push(pendingSession('danger', '危险命令审批会话', 'rm -rf build', 'tu-danger'))
 
+  // 命令沙箱：acceptEdits 下写工作目录之外仍必须出现审批卡（沙箱说明由 Host 恢复时重算）。
+  const outsideWrite = path.join(os.homedir(), 'tandem-reg-outside.txt')
+  sessions.push({
+    ...common,
+    id: 'outside',
+    title: '越界写入审批会话',
+    permissionMode: 'acceptEdits',
+    messages: [
+      message('o1', 'user', '把结果写到工作目录外。'),
+      {
+        id: 'o2',
+        role: 'assistant',
+        createdAt: approveAt - 4000,
+        model: 'mock-1',
+        content: [
+          { type: 'text', text: '我写一个文件。' },
+          { type: 'tool_use', id: 'tu-outside', name: 'Write', input: { file_path: outsideWrite, content: 'x' } },
+        ],
+      },
+    ],
+    createdAt: approveAt - 10_000,
+    updatedAt: approveAt - 1000,
+    runState: {
+      version: 1,
+      startedAt: approveAt - 5000,
+      updatedAt: approveAt - 1000,
+      completedMessages: ['o1', 'o2'],
+      queue: [],
+      inFlightTools: [{ id: 'tu-outside', name: 'Write', startedAt: approveAt - 1000 }],
+      pendingPermissions: [
+        {
+          id: 'perm-outside',
+          sessionId: 'outside',
+          toolUseId: 'tu-outside',
+          toolName: 'Write',
+          input: { file_path: outsideWrite, content: 'x' },
+          description: `写入文件: ${outsideWrite}`,
+        },
+      ],
+      phase: 'tools',
+      permissionMode: 'acceptEdits',
+      assistantMessageId: 'o2',
+    },
+  })
+
   // 审批历史：vitest run 批准 4 次；rm -rf 也批准过 4 次（危险命令只能建议「询问」）。
   const approvalAt = Date.now()
   const approvalRows = []
@@ -1902,6 +1947,15 @@ async function main() {
       const text = await learned.innerText()
       assert.match(text, /以后在本项目自动允许/)
       assert.match(text, /vitest run\*/)
+    })
+
+    desktop('命令沙箱：工作目录外写入在 acceptEdits 下仍出现审批卡', async (page) => {
+      await openSession(page, 'outside')
+      const card = page.locator('.permission-card').first()
+      await card.waitFor({ timeout: 10_000 })
+      const text = await card.innerText()
+      assert.match(text, /工作目录之外/, '审批卡没有说明写入工作目录之外')
+      assert.match(text, /tandem-reg-outside\.txt/, '审批卡没有显示越界路径')
     })
 
     desktop('审批策略：危险命令审批卡不出现项目快捷规则', async (page) => {

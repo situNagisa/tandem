@@ -195,6 +195,8 @@ export class BackgroundTaskManager {
     env?: Record<string, string>;
     /** 输出在写入内存缓冲、日志与 WS 推送前打码。 */
     redact?: (text: string) => string;
+    /** 沙箱启动命令（bwrap / sandbox-exec）；缺省直接跑 bash。 */
+    sandbox?: { file: string; args: string[] };
   }): Promise<BackgroundTask> {
     const id = `bash_${randomUUID().slice(0, 8)}`;
     const task: BackgroundTask = {
@@ -229,19 +231,27 @@ export class BackgroundTaskManager {
     }
 
     const isWin = process.platform === 'win32';
-    const child = isWin
-      ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', cmdUtf8Command(input.command)], {
-          cwd: input.cwd,
-          windowsHide: true,
-          env: { ...process.env, ...input.env },
-          stdio: ['ignore', 'pipe', 'pipe'],
-        })
-      : spawn('/bin/bash', ['-c', input.command], {
-          cwd: input.cwd,
-          detached: true,
-          env: { ...process.env, ...input.env },
-          stdio: ['ignore', 'pipe', 'pipe'],
-        });
+    const child =
+      !isWin && input.sandbox
+        ? spawn(input.sandbox.file, input.sandbox.args, {
+            cwd: input.cwd,
+            detached: true,
+            env: { ...process.env, ...input.env },
+            stdio: ['ignore', 'pipe', 'pipe'],
+          })
+        : isWin
+          ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', cmdUtf8Command(input.command)], {
+              cwd: input.cwd,
+              windowsHide: true,
+              env: { ...process.env, ...input.env },
+              stdio: ['ignore', 'pipe', 'pipe'],
+            })
+          : spawn('/bin/bash', ['-c', input.command], {
+              cwd: input.cwd,
+              detached: true,
+              env: { ...process.env, ...input.env },
+              stdio: ['ignore', 'pipe', 'pipe'],
+            });
     item.child = child;
 
     child.stdout?.on('data', (chunk: Buffer) => this.collect(item, chunk));

@@ -722,6 +722,7 @@ async function executeToolUses(
       backgroundTasks: host.tasks,
       browser: host.browser,
       secretEnv: host.secrets.envFor(rec.cwd, 'bash'),
+      sandbox: host.sandboxProfileFor(tool.id),
       redact,
     };
     const def = host.toolDefinition(tool.name, rec.cwd);

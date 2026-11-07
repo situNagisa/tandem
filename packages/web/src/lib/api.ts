@@ -43,6 +43,7 @@ import type {
   ModelInfo,
   PermissionInsights,
   PermissionRule,
+  SandboxStatus,
   PermissionRuleDraft,
   PermissionRequest,
   PrActionResult,
@@ -250,7 +251,8 @@ export const api = {
   deleteShare: (h: HostConfig, id: string) =>
     request<void>(h, `/api/shares/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   settings: (h: HostConfig) => request<HostSettings>(h, '/api/settings'),
-  updateSettings: (h: HostConfig, input: HostSettings) =>
+  sandboxStatus: (h: HostConfig) => request<SandboxStatus>(h, '/api/sandbox/status'),
+  updateSettings: (h: HostConfig, input: Partial<HostSettings>) =>
     request<HostSettings>(h, '/api/settings', { method: 'PUT', body: JSON.stringify(input) }),
 
   browserSettings: (h: HostConfig) => request<BrowserSettings>(h, '/api/browser/settings'),

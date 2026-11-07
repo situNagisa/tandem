@@ -4,6 +4,7 @@ import type { ToolContext, ToolDefinition, ToolResult } from '../types.js';
 import { truncateMiddle } from '../util/text.js';
 import { cmdUtf8Command, decodeProcessOutput } from '../util/encoding.js';
 import type { BackgroundTaskManager } from '../tasks.js';
+import { sandboxCommand, type SandboxProfile } from '../sandbox.js';
 
 const MAX_BUFFER = 2_000_000;
 
@@ -41,6 +42,7 @@ export const definition: ToolDefinition = {
 export async function run(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const command = typeof input.command === 'string' ? input.command.trim() : '';
   if (!command) return { content: '缺少 command 参数', isError: true };
+  const profile = (ctx as ToolContext & { sandbox?: SandboxProfile }).sandbox;
   if (input.run_in_background === true) {
     const manager = (ctx as ToolContext & { backgroundTasks?: BackgroundTaskManager }).backgroundTasks;
     if (!manager) return { content: '后台任务管理器不可用', isError: true };
@@ -48,6 +50,7 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
       sessionId: ctx.session.id,
       command,
       cwd: ctx.cwd,
+      ...(profile ? { sandbox: sandboxCommand(command, ctx.cwd, profile) } : {}),
       ...(typeof input.description === 'string' && input.description.trim()
         ? { description: input.description.trim() }
         : {}),
@@ -66,17 +69,24 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
   if (ctx.signal.aborted) return { content: '用户中断', isError: true };
 
   const isWin = process.platform === 'win32';
-  const child = isWin
-    ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', cmdUtf8Command(command)], {
-        cwd: ctx.cwd,
-        windowsHide: true,
-        env: { ...process.env, ...ctx.secretEnv },
-      })
-    : spawn('/bin/bash', ['-c', command], {
+  const sandboxed = isWin ? undefined : sandboxCommand(command, ctx.cwd, profile);
+  const child = sandboxed
+    ? spawn(sandboxed.file, sandboxed.args, {
         cwd: ctx.cwd,
         detached: true,
         env: { ...process.env, ...ctx.secretEnv },
-      });
+      })
+    : isWin
+      ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', cmdUtf8Command(command)], {
+          cwd: ctx.cwd,
+          windowsHide: true,
+          env: { ...process.env, ...ctx.secretEnv },
+        })
+      : spawn('/bin/bash', ['-c', command], {
+          cwd: ctx.cwd,
+          detached: true,
+          env: { ...process.env, ...ctx.secretEnv },
+        });
 
   const outChunks: Buffer[] = [];
   const errChunks: Buffer[] = [];

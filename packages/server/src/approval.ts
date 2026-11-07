@@ -7,9 +7,9 @@ import path from 'node:path';
 import type { PermissionRule, PermissionSuggestion } from '@tandem/protocol';
 import { writePrivateFile } from './config.js';
 import { commandPrefix } from './host/helpers.js';
-import { matchCommand } from './permissions.js';
+import { isAbsolutePattern, matchCommand } from './permissions.js';
 import { matchGlob } from './util/glob.js';
-import { isSubPath, toPosix } from './util/path.js';
+import { expandHome, isSubPath, toPosix } from './util/path.js';
 
 const MAX_ENTRIES = 5000;
 const FILE_TOOLS = new Set(['Read', 'Write', 'Edit', 'Glob', 'Grep']);
@@ -131,6 +131,10 @@ export function patternDanger(toolName: string, pattern: string): string | undef
     }
   }
   if (tools.some((tool) => FILE_TOOLS.has(tool))) {
+    if (isAbsolutePattern(pattern)) {
+      const label = dangerousPath(expandHome(pattern));
+      if (label) return label;
+    }
     const glob = pattern || '*';
     for (const item of DANGEROUS_FILE_SAMPLES) {
       if (matchGlob(item.sample, glob) || matchGlob(item.sample, pattern)) return item.label;
@@ -146,8 +150,9 @@ export function approvalKey(toolName: string, input: unknown, cwd: string): stri
   if (FILE_TOOLS.has(toolName)) {
     const raw = String(args.file_path ?? args.path ?? args.pattern ?? '').trim();
     if (!raw) return '';
-    const abs = path.resolve(cwd, raw);
-    return isSubPath(cwd, abs) ? toPosix(path.relative(cwd, abs)) : toPosix(raw);
+    const abs = path.resolve(cwd, expandHome(raw));
+    // 目录外的目标记录为绝对路径，建议规则可按绝对路径（目录前缀）复现。
+    return isSubPath(cwd, abs) ? toPosix(path.relative(cwd, abs)) : toPosix(abs);
   }
   return '';
 }
@@ -158,7 +163,7 @@ function patternFor(toolName: string, key: string): string {
 
 function sampleInput(toolName: string, key: string, project: string): unknown {
   if (toolName === 'Bash') return { command: key };
-  return { file_path: path.join(project, key) };
+  return { file_path: path.isAbsolute(key) ? key : path.join(project, key) };
 }
 
 function suggestionId(project: string, tool: string, pattern: string, action: string): string {

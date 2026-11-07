@@ -1,8 +1,15 @@
 // 权限审批：规则判定、plan 模式、会话级 allow、待审批冒泡与重启恢复。
 import { randomUUID } from 'node:crypto';
-import type { PermissionDecision, PermissionRequest } from '@tandem/protocol';
+import os from 'node:os';
+import type {
+  PermissionDecision,
+  PermissionRequest,
+  PermissionSandboxNotice,
+} from '@tandem/protocol';
 import { persist as persistRunState } from '../run-state.js';
 import { PLAN_ALLOWED, describeTool } from '../tools/index.js';
+import { dangerousPath } from '../approval.js';
+import { detectSandboxEngine, evaluateSandbox } from '../sandbox.js';
 import type { SessionRecord } from '../types.js';
 import type { Host } from '../host.js';
 import { commandPrefix } from './helpers.js';
@@ -74,6 +81,15 @@ export async function authorize(host: Host, rec: SessionRecord,
     }
   }
 
+  const notices = sandboxNoticesFor(host, rec, toolName, input);
+  const protectedNotice = notices.find((item) => item.kind === 'protected');
+  const offlineNotice = notices.find((item) => item.kind === 'network-offline');
+  const blockingNotice = notices.find(
+    (item) => item.kind !== 'protected' && item.kind !== 'network-offline',
+  );
+  const ask = (notice?: PermissionSandboxNotice) =>
+    host.askPermission(rec, toolName, input, toolUseId, signal, notice);
+
   // Host 级规则：deny > ask > allow，deny 在 bypassPermissions 下依然生效
   const browserHost = browserHostOf(host, rec, toolName, input);
   const rule = host.permissionRules.evaluate(toolName, input, rec.cwd, { browserHost });
@@ -83,10 +99,29 @@ export async function authorize(host: Host, rec: SessionRecord,
     }
     return { allowed: false, reason: `被权限规则拒绝: ${describeTool(toolName, input)}` };
   }
-  if (mode === 'bypassPermissions') return { allowed: true };
+  // 受保护路径（~/.ssh、.env*、.git/hooks、系统目录等）任何写入都转审批：
+  // 不受 bypassPermissions、acceptEdits、会话 allow_always 或 allow 规则影响。
+  if (protectedNotice) {
+    if (signal.aborted) return { allowed: false, reason: '用户中断' };
+    return ask(protectedNotice);
+  }
+  // 断网沙箱里的联网命令：每次都要审批，允许后仅本次命令临时放开网络。
+  if (offlineNotice) {
+    if (signal.aborted) return { allowed: false, reason: '用户中断' };
+    const result = await ask(offlineNotice);
+    if (result.allowed) host.sandboxNetworkAllow.add(toolUseId);
+    return result;
+  }
+  if (mode === 'bypassPermissions') {
+    if (blockingNotice) {
+      if (signal.aborted) return { allowed: false, reason: '用户中断' };
+      return ask(blockingNotice);
+    }
+    return { allowed: true };
+  }
   if (rule === 'ask') {
     if (signal.aborted) return { allowed: false, reason: '用户中断' };
-    return host.askPermission(rec, toolName, input, toolUseId, signal);
+    return ask(blockingNotice);
   }
   if (rule === 'allow') {
     if (toolName !== 'ExitPlanMode') {
@@ -101,6 +136,11 @@ export async function authorize(host: Host, rec: SessionRecord,
   }
   // 只读且无需审批的工具直接放行
   if (def.readOnly && !def.requiresApproval) return { allowed: true };
+  // 工作目录外写入、非白名单主机、严格模式未知写入：在会话级 allow_always 与 acceptEdits 之前。
+  if (blockingNotice) {
+    if (signal.aborted) return { allowed: false, reason: '用户中断' };
+    return ask(blockingNotice);
+  }
   // 会话级 allow_always 优先于权限模式的默认行为
   if (host.isAllowed(rec, toolName, input)) return { allowed: true };
   if (
@@ -112,7 +152,44 @@ export async function authorize(host: Host, rec: SessionRecord,
   if (!def.requiresApproval) return { allowed: true };
   if (signal.aborted) return { allowed: false, reason: '用户中断' };
 
-  return host.askPermission(rec, toolName, input, toolUseId, signal);
+  return ask();
+}
+
+/** 计算沙箱/网络原因；按受保护路径 → 断网 → 非白名单主机 → 目录外写入 → 严格模式排序。 */
+function sandboxNoticesFor(
+  host: Host,
+  rec: SessionRecord,
+  toolName: string,
+  input: unknown,
+): PermissionSandboxNotice[] {
+  if (toolName !== 'Bash' && toolName !== 'Write' && toolName !== 'Edit') return [];
+  const settings = host.sandbox.get();
+  const evaluation = evaluateSandbox(toolName, input, {
+    settings,
+    cwd: rec.cwd,
+    worktreePath: rec.worktree?.path,
+    home: os.homedir(),
+    tandemHome: host.home,
+  });
+  const notices = [...evaluation.notices];
+  const offline =
+    settings.enabled &&
+    settings.network === 'none' &&
+    !!detectSandboxEngine() &&
+    evaluation.hasNetwork;
+  if (offline) {
+    const notice: PermissionSandboxNotice = {
+      kind: 'network-offline',
+      reason: '沙箱已断网，可在审批中临时放行',
+      ...(evaluation.network.length
+        ? { hosts: [...new Set(evaluation.network.map((item) => item.host))] }
+        : {}),
+      ...(evaluation.network[0] ? { target: evaluation.network[0].host } : {}),
+    };
+    const protectedIndex = notices.findIndex((item) => item.kind === 'protected');
+    notices.splice(protectedIndex >= 0 ? protectedIndex + 1 : 0, 0, notice);
+  }
+  return notices;
 }
 
 function browserHostOf(host: Host, rec: SessionRecord, toolName: string, input: unknown): string | undefined {
@@ -145,7 +222,8 @@ export function askPermission(host: Host, rec: SessionRecord,
     toolName: string,
     input: unknown,
     toolUseId: string,
-    signal: AbortSignal): Promise<{ allowed: boolean; reason?: string; decision?: PermissionDecision }> {
+    signal: AbortSignal,
+    sandboxNotice?: PermissionSandboxNotice): Promise<{ allowed: boolean; reason?: string; decision?: PermissionDecision }> {
   const rt = host.ensureRuntime(rec.id);
   const learned = host.approvalHistory.learnedFor(
     toolName,
@@ -161,6 +239,7 @@ export function askPermission(host: Host, rec: SessionRecord,
     input,
     description: describeTool(toolName, input),
     ...(learned ? { learned } : {}),
+    ...(sandboxNotice ? { sandbox: sandboxNotice } : {}),
     ...(rec.parentId
       ? { depth: rec.depth ?? 1, sourceTitle: rec.title }
       : {}),
@@ -187,6 +266,7 @@ export function askPermission(host: Host, rec: SessionRecord,
       }
       if (decision === 'allow_always' && toolName !== 'ExitPlanMode') {
         host.addAllowed(rec, toolName, input);
+        learnFromSandboxApproval(host, toolName, sandboxNotice);
       }
       host.hub.broadcastSession(rec.id, {
         type: 'permission_resolved',
@@ -237,6 +317,26 @@ export function askPermission(host: Host, rec: SessionRecord,
   });
 }
 
+/**
+ * 「总是允许」对沙箱审批的持久化：非白名单主机加入网络白名单；
+ * 目录外写入添加绝对路径规则（与审批策略学习一致）。受保护路径不学习。
+ */
+function learnFromSandboxApproval(
+  host: Host,
+  toolName: string,
+  notice: PermissionSandboxNotice | undefined,
+): void {
+  if (!notice) return;
+  if (notice.kind === 'network' && notice.hosts?.length) {
+    host.sandbox.addHosts(notice.hosts);
+    return;
+  }
+  if (notice.kind === 'write-outside' && notice.target && (toolName === 'Write' || toolName === 'Edit')) {
+    if (dangerousPath(notice.target)) return;
+    host.permissionRules.add({ tool: toolName, pattern: notice.target, action: 'allow' });
+  }
+}
+
 export function resolvePermission(host: Host, requestId: string, decision: PermissionDecision, reason?: string): void {
   if (decision !== 'allow' && decision !== 'allow_always' && decision !== 'deny') return;
   host.permissions.get(requestId)?.resolve(
@@ -250,6 +350,10 @@ export function restorePendingPermission(host: Host, rec: SessionRecord,
     signal: AbortSignal): Promise<{ decision: PermissionDecision; reason?: string }> {
   const rt = host.ensureRuntime(rec.id);
   const ancestors = host.ancestorsOf(rec);
+  if (!request.sandbox) {
+    const notice = sandboxNoticesFor(host, rec, request.toolName, request.input)[0];
+    if (notice) request.sandbox = notice;
+  }
   const learned = host.approvalHistory.learnedFor(
     request.toolName,
     request.input,
@@ -276,6 +380,7 @@ export function restorePendingPermission(host: Host, rec: SessionRecord,
       }
       if (decision === 'allow_always' && request.toolName !== 'ExitPlanMode') {
         host.addAllowed(rec, request.toolName, request.input);
+        learnFromSandboxApproval(host, request.toolName, request.sandbox);
       }
       host.hub.broadcastSession(rec.id, {
         type: 'permission_resolved',

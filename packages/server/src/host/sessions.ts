@@ -49,6 +49,7 @@ export function settings(host: Host): HostSettings {
     ...(host.config.voice ? { voice: host.config.voice } : {}),
     context: normalizeContextSettings(host.config.context),
     ...(host.config.aiReview ? { aiReview: sanitizeAiReview(host.config.aiReview) } : {}),
+    sandbox: host.sandbox.get(),
   };
 }
 
@@ -83,6 +84,9 @@ export function updateSettings(host: Host, input: Partial<HostSettings>): HostSe
   }
   if (input.context && typeof input.context === 'object') {
     host.config.context = normalizeContextSettings(input.context as Partial<ContextSettings>);
+  }
+  if (input.sandbox && typeof input.sandbox === 'object') {
+    host.sandbox.set(input.sandbox);
   }
   if (input.aiReview !== undefined) {
     const next = sanitizeAiReview(input.aiReview ?? {});
