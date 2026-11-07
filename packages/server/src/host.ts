@@ -94,7 +94,7 @@ import { TASK_DESCRIPTION_DEFAULT } from './prompts/registry.js';
 import { MemoryStore, bodyOfMemory, normalizeFactLines } from './memory.js';
 import { errorMessage, truncateEnd } from './util/text.js';
 import { detectSessionEnv } from './util/git.js';
-import { expandHome, isSubPath, resolvePath } from './util/path.js';
+import { expandHome } from './util/path.js';
 import {
   DELEGATIONS,
   EFFORTS,
@@ -114,6 +114,12 @@ import {
 } from './host/helpers.js';
 import { inboxSnapshot, pushInbox, recordCi } from './host/inbox.js';
 import { importSession, notifyExternalSessionsChanged } from './host/external.js';
+import {
+  isRunning,
+  listCheckpoints,
+  rewind,
+  snapshotForCheckpoint,
+} from './host/rewind.js';
 import {
   addAllowed,
   ancestorsOf,
@@ -749,67 +755,20 @@ export class Host {
 
   // ---------- 检查点 ----------
 
-  /** Write/Edit 执行前调用：把文件当前内容（或“不存在”）存进本轮检查点。 */
   snapshotForCheckpoint(rec: SessionRecord, rawPath: string): void {
-    const rt = this.runtimes.get(rec.id);
-    const checkpoint = rt?.checkpoint;
-    if (!checkpoint) return;
-    const abs = resolvePath(rec.cwd, rawPath);
-    // cwd 之外的文件不纳入检查点，避免回退时误改仓库外内容
-    if (!isSubPath(rec.cwd, abs)) return;
-    this.checkpoints.snapshotFile(checkpoint, rec.cwd, abs);
+    return snapshotForCheckpoint(this, rec, rawPath);
   }
 
   listCheckpoints(sessionId: string): Checkpoint[] {
-    return this.checkpoints.list(sessionId);
+    return listCheckpoints(this, sessionId);
   }
 
-  /** 会话是否正在执行（运行中不允许回退）。 */
   isRunning(sessionId: string): boolean {
-    const rt = this.runtimes.get(sessionId);
-    return !!rt && (rt.running || rt.draining);
+    return isRunning(this, sessionId);
   }
 
-  /**
-   * 回退到某个检查点：restoreFiles 按时间倒序恢复（最早快照最终生效），
-   * restoreConversation 把对话截断到触发该检查点的用户消息之前。
-   */
   rewind(sessionId: string, input: RewindInput): Session | undefined {
-    const rec = this.store.get(sessionId);
-    if (!rec) return undefined;
-    if (this.isRunning(sessionId)) throw httpError('会话正在运行，无法回退', 409);
-    if (!input || typeof input.checkpointId !== 'string' || !input.checkpointId) {
-      throw httpError('checkpointId 不能为空', 400);
-    }
-
-    const list = this.checkpoints.list(sessionId);
-    const target = list.find((cp) => cp.id === input.checkpointId);
-    if (!target) throw httpError('检查点不存在', 404);
-
-    if (input.restoreFiles) {
-      // 从最新检查点往最早恢复，同一文件最终落到最早的那份快照
-      const ordered = [...list].sort((a, b) => b.createdAt - a.createdAt);
-      for (const cp of ordered) {
-        if (cp.createdAt < target.createdAt && cp.id !== target.id) continue;
-        for (const file of cp.files) this.checkpoints.restoreFile(cp, rec.cwd, file);
-      }
-    }
-    if (input.restoreConversation) {
-      const index = rec.messages.findIndex((m) => m.id === target.messageId);
-      if (index >= 0) rec.messages = rec.messages.slice(0, index);
-    }
-
-    // 被回退的检查点不再有效
-    this.checkpoints.removeFrom(sessionId, target.id);
-    const rt = this.runtimes.get(sessionId);
-    if (rt) delete rt.checkpoint;
-    this.store.markDirty(sessionId, true);
-    this.setStatus(rec, 'idle');
-    // 旧事件不再适用于回退后的状态，清空缓冲让客户端以快照为准
-    this.hub.resetSession(sessionId);
-    this.broadcastSummary(rec);
-    this.broadcastSnapshot(rec);
-    return this.toSession(rec);
+    return rewind(this, sessionId, input);
   }
 
   // ---------- Hooks ----------
@@ -1079,7 +1038,7 @@ export class Host {
     this.broadcastSummary(rec);
   }
 
-  private broadcastSnapshot(rec: SessionRecord): void {
+  broadcastSnapshot(rec: SessionRecord): void {
     const rt = this.runtimes.get(rec.id);
     // 快照作为一条会话事件下发，客户端据此重置到当前 seq
     this.hub.broadcastSession(rec.id, {
