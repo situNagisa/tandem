@@ -1,23 +1,11 @@
 import { create } from 'zustand'
 import type {
-  ContentBlock,
-  CreateSessionInput,
-  ExternalSession,
-  ExternalSource,
-  HookEventNotice,
-  InboxEvent,
-  Message,
-  PermissionDecision,
   PermissionRequest,
-  PermissionMode,
-  RewindInput,
   ServerMsg,
   Session,
   SessionSummary,
-  SlashCommand,
-  UpdateSessionInput,
 } from '@tandem/protocol'
-import { api, ApiError, type ExternalImportInput } from '../lib/api'
+import { api, ApiError } from '../lib/api'
 import { HostConnection } from '../lib/ws'
 import { normalizeHostUrl } from '../lib/hostUrl'
 import { isValidFingerprint, normalizeFingerprint, relayHostUrl } from '../lib/relay'
@@ -30,7 +18,6 @@ import {
   saveHosts,
   saveLastHost,
   saveRecentDirsMap,
-  type ClientSettingsBundle,
 } from '../lib/storage'
 import { navigate, parseHash } from '../lib/router'
 import { notifyBudget, notifyPermission, notifyTurnEnd, cancelPermissionNotification } from '../lib/attention'
@@ -46,265 +33,29 @@ import type {
   HookNotice,
   HostRuntime,
   SubagentSession,
-  ToolResultBlock,
   UiMessage,
 } from '../lib/types'
+import {
+  appendSummary,
+  childSubscriptions,
+  collectToolResults,
+  commandsInFlight,
+  connections,
+  emptySubagent,
+  freshRuntime,
+  hostHashFor,
+  isDescendantSummary,
+  isRunningStatus,
+  newId,
+  sameOrigin,
+  sortSessions,
+  summaryOf,
+  toast,
+} from './appStore/helpers'
+import type { AppState } from './appStore/types'
 
-/** 单台 Host 的收件箱状态（跨会话事件流 + 未处理审批）。 */
-export interface HostInboxState {
-  seq: number
-  events: InboxEvent[]
-  pending: InboxEvent[]
-  /** 未查看的提醒数（打开收件箱后清零）。 */
-  unread: number
-}
-
-interface AppState {
-  initialized: boolean
-  hosts: HostConfig[]
-  activeHostId: string | null
-  runtimes: Record<string, HostRuntime>
-  /** 各 Host 的全局收件箱；不持久化，重连时由服务端快照补齐。 */
-  inbox: Record<string, HostInboxState>
-  /** 外部会话按 hostId 汇总（元素带 hostId，方便侧栏合并展示）。 */
-  externalSessions: Record<string, ExternalSessionItem[]>
-  active: ActiveSession | null
-  /** 回合结束后自增，改动审阅据此刷新。 */
-  changesNonce: number
-  /** 已打开但尚未创建的 worktree 意图，键为 `${hostId}:${sessionId}`；发送下一条消息前创建。 */
-  worktreeIntents: Record<string, boolean>
-
-  initialize: () => void
-  checkConnections: () => void
-  goOffline: () => void
-  bumpChanges: () => void
-  /** 打开文件浏览器（预览面板左侧树）；path 给定时同时预览该文件。 */
-  openFileBrowser: (path?: string) => void
-  addHost: (input: {
-    name: string
-    url: string
-    token: string
-    mode?: HostConfig['mode']
-    relayUrl?: string
-    hostId?: string
-    fingerprint?: string
-  }) => HostConfig
-  updateHost: (
-    id: string,
-    patch: Partial<
-      Pick<HostConfig, 'name' | 'url' | 'token' | 'mode' | 'relayUrl' | 'hostId' | 'fingerprint'>
-    >,
-  ) => void
-  removeHost: (id: string) => void
-  activateHost: (id: string) => void
-  retryHost: (id: string) => void
-  refreshSessions: (hostId: string) => Promise<void>
-  refreshProfiles: (hostId: string) => Promise<void>
-  refreshCommands: (hostId: string) => Promise<SlashCommand[]>
-  refreshExternalSessions: (hostId: string, force?: boolean) => Promise<ExternalSessionItem[]>
-  importExternalSession: (
-    hostId: string,
-    source: ExternalSource,
-    id: string,
-    input?: ExternalImportInput,
-  ) => Promise<SessionSummary | null>
-  /** 应用配置迁移带回的客户端设置（Host 列表 / 主题 / 侧栏偏好）。 */
-  applyClientSettings: (settings: ClientSettingsBundle, mode: 'merge' | 'replace') => void
-
-  openSession: (hostId: string, sessionId: string) => void
-  closeSession: () => void
-  reloadActiveSession: () => void
-  clearTurnError: () => void
-  send: (blocks: ContentBlock[]) => boolean
-  interrupt: () => void
-  /** 网络中断等待重试期间立即重试。 */
-  retryNow: () => void
-  /** 恢复 Host 重启后暂停的会话。 */
-  resumePaused: () => Promise<void>
-  decidePermission: (requestId: string, decision: PermissionDecision, reason?: string) => void
-  /** 收件箱里直接审批（不要求该会话已打开）。 */
-  decideInboxPermission: (
-    hostId: string,
-    requestId: string,
-    decision: PermissionDecision,
-    reason?: string,
-  ) => void
-  /** 打开收件箱后清掉未读徽标。 */
-  markInboxSeen: () => void
-  setPermissionMode: (mode: PermissionMode) => Promise<void>
-  rewind: (input: RewindInput, seedText?: string) => Promise<boolean>
-  setModel: (profileId: string, groupId: string | undefined, model: string) => Promise<void>
-  createSession: (hostId: string, input: CreateSessionInput) => Promise<SessionSummary>
-  startSession: (hostId: string, input: CreateSessionInput, content: ContentBlock[]) => Promise<SessionSummary>
-  /** 向任意 Host 派单：创建会话并发送，不切换当前打开的会话。 */
-  dispatchSession: (
-    hostId: string,
-    input: CreateSessionInput,
-    content: ContentBlock[],
-  ) => Promise<{ summary: SessionSummary; sent: boolean }>
-  updateSession: (
-    hostId: string,
-    sessionId: string,
-    patch: UpdateSessionInput,
-  ) => Promise<SessionSummary | null>
-  forkSession: (hostId: string, sessionId: string, messageId?: string) => Promise<SessionSummary | null>
-  deleteSession: (hostId: string, sessionId: string, force?: boolean) => Promise<void>
-  /** 单独停止一个 Task 子代理会话。 */
-  interruptSubagent: (childId: string) => void
-  /** 把 worktree 分支合回基准分支。 */
-  mergeWorktree: (hostId: string, sessionId: string, strategy: 'merge' | 'squash') => Promise<boolean>
-  /** 只记录 worktree 意图，不立即创建。 */
-  setWorktreeIntent: (hostId: string, sessionId: string, on: boolean) => void
-  /** 发送消息前创建待处理的 worktree；无需创建时直接返回 true。 */
-  ensureWorktree: (hostId: string, sessionId: string) => Promise<boolean>
-}
-
-const connections = new Map<string, HostConnection>()
-const commandsInFlight = new Set<string>()
-/** 当前主会话已订阅的子代理会话，避免重复 subscribe 触发快照。 */
-const childSubscriptions = new Map<string, Set<string>>()
-
-function emptySubagent(summary: SessionSummary | null = null): SubagentSession {
-  return {
-    summary,
-    messages: [],
-    pending: [],
-    loading: true,
-    running: summary ? isRunningStatus(summary.status) : false,
-    liveToolInputs: {},
-    toolResults: {},
-  }
-}
-
-function summaryOf(s: Session): SessionSummary {
-  return {
-    id: s.id,
-    title: s.title,
-    cwd: s.cwd,
-    profileId: s.profileId,
-    ...(s.groupId ? { groupId: s.groupId } : {}),
-    model: s.model,
-    permissionMode: s.permissionMode,
-    status: s.status,
-    ...(s.effort ? { effort: s.effort } : {}),
-    ...(s.delegation ? { delegation: s.delegation } : {}),
-    ...(s.pinned ? { pinned: true } : {}),
-    ...(s.pinnedTurns && s.pinnedTurns.length ? { pinnedTurns: [...s.pinnedTurns] } : {}),
-    ...(s.forkedFrom ? { forkedFrom: { ...s.forkedFrom } } : {}),
-    ...(s.archived ? { archived: true } : {}),
-    ...(s.env ? { env: s.env } : {}),
-    ...(s.parentId ? { parentId: s.parentId } : {}),
-    ...(typeof s.depth === 'number' ? { depth: s.depth } : {}),
-    ...(s.worktree ? { worktree: s.worktree } : {}),
-    ...(s.scheduledBy ? { scheduledBy: { ...s.scheduledBy } } : {}),
-    createdAt: s.createdAt,
-    updatedAt: s.updatedAt,
-    usage: s.usage,
-    ...(s.context ? { context: s.context } : {}),
-  }
-}
-
-function newId(): string {
-  try {
-    return crypto.randomUUID()
-  } catch {
-    return `h-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  }
-}
-
-function freshRuntime(): HostRuntime {
-  return {
-    status: 'connecting',
-    profiles: [],
-    profilesLoaded: false,
-    profilesLoading: false,
-    sessions: [],
-    sessionsLoaded: false,
-    sessionsLoading: false,
-    commands: [],
-    commandsLoaded: false,
-    externalSessions: [],
-    externalLoaded: false,
-    externalLoading: false,
-  }
-}
-
-function sortSessions(list: SessionSummary[]): SessionSummary[] {
-  return list.slice().sort((a, b) => b.updatedAt - a.updatedAt)
-}
-
-function sameOrigin(url: string, origin: string): boolean {
-  try {
-    return new URL(url).origin === origin
-  } catch {
-    return false
-  }
-}
-
-
-function isRunningStatus(status: SessionSummary['status']): boolean {
-  return status === 'running' || status === 'waiting_permission' || status === 'retrying'
-}
-
-/** 旧数据没有 depth 时沿 parentId 链推算。 */
-export function depthOf(summary: SessionSummary, sessions: SessionSummary[]): number {
-  if (typeof summary.depth === 'number') return summary.depth
-  let depth = 0
-  let cursor: SessionSummary | undefined = summary
-  const seen = new Set<string>([summary.id])
-  while (cursor?.parentId && !seen.has(cursor.parentId)) {
-    seen.add(cursor.parentId)
-    depth++
-    cursor = sessions.find((s) => s.id === cursor!.parentId)
-  }
-  return depth
-}
-
-/** summary 是否位于 rootId 之后（不含 root 本身）。 */
-function isDescendantSummary(
-  sessions: SessionSummary[],
-  summary: SessionSummary,
-  rootId: string,
-): boolean {
-  let cursor: SessionSummary | undefined = summary
-  const seen = new Set<string>([summary.id])
-  while (cursor?.parentId && !seen.has(cursor.parentId)) {
-    if (cursor.parentId === rootId) return true
-    seen.add(cursor.parentId)
-    cursor = sessions.find((s) => s.id === cursor!.parentId)
-  }
-  return false
-}
-
-function collectToolResults(messages: Message[], base: Record<string, ToolResultBlock> = {}) {
-  const map: Record<string, ToolResultBlock> = { ...base }
-  for (const m of messages) {
-    for (const block of m.content) {
-      if (block.type === 'tool_result') map[block.toolUseId] = block
-    }
-  }
-  return map
-}
-
-function hostHashFor(hostId: string | null): import('../lib/types').AppRoute {
-  return hostId ? { kind: 'host', hostId } : { kind: 'home' }
-}
-
-function toast(
-  text: string,
-  kind: 'info' | 'success' | 'error' = 'info',
-  options?: { onClick?: () => void; actionLabel?: string },
-): void {
-  useUiStore.getState().toast(text, kind, options)
-}
-
-function appendSummary(list: SessionSummary[], summary: SessionSummary): SessionSummary[] {
-  const idx = list.findIndex((s) => s.id === summary.id)
-  if (idx < 0) return sortSessions([...list, summary])
-  const next = list.slice()
-  next[idx] = summary
-  return sortSessions(next)
-}
+export type { HostInboxState } from './appStore/types'
+export { depthOf } from './appStore/helpers'
 
 export const useAppStore = create<AppState>((set, get) => {
   const getHost = (id: string): HostConfig | undefined => get().hosts.find((h) => h.id === id)
