@@ -47,6 +47,8 @@ export class BackgroundTaskManager {
   private tasks = new Map<string, TaskInternal>();
   private timer?: NodeJS.Timeout;
   private readonly dir: string;
+  /** 本次启动从运行中改写为 lost 的任务，供 Host 在会话里补提示（只取一次）。 */
+  private newlyLost: BackgroundTask[] = [];
 
   constructor(
     private readonly home: string,
@@ -86,6 +88,7 @@ export class BackgroundTaskManager {
         if (task.status === 'running') {
           task.status = 'lost';
           task.endedAt = task.endedAt ?? Date.now();
+          this.newlyLost.push({ ...task });
         }
         task.outputChars = chars;
         const dropped = Math.max(0, chars - RING_LIMIT);
@@ -122,6 +125,13 @@ export class BackgroundTaskManager {
     } catch {
       // 磁盘异常不影响任务运行
     }
+  }
+
+  /** Host 启动恢复时取走「重启时仍在运行」的任务（清空，避免重复提示）。 */
+  takeNewlyLost(): BackgroundTask[] {
+    const lost = this.newlyLost;
+    this.newlyLost = [];
+    return lost;
   }
 
   list(sessionId?: string): BackgroundTask[] {

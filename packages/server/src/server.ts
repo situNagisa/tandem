@@ -202,6 +202,15 @@ export async function createApp(
 
   // ---------- Host ----------
   app.get('/api/host', async () => host.info());
+  app.get('/api/settings', async () => host.settings());
+  app.put('/api/settings', async (req) => {
+    const body = (req.body ?? {}) as { resumeOnRestart?: unknown };
+    return host.updateSettings({
+      ...(body.resumeOnRestart === 'auto' || body.resumeOnRestart === 'pause'
+        ? { resumeOnRestart: body.resumeOnRestart }
+        : {}),
+    });
+  });
 
   // ---------- 账号 ----------
   app.get('/api/profiles', async () => host.profiles.list().map((p) => host.profiles.toPublic(p)));
@@ -318,6 +327,14 @@ export async function createApp(
     const rec = host.getSession(id);
     if (!rec) return bad(reply, '会话不存在', 404);
     return host.contextFor(rec);
+  });
+
+  // Host 重启后暂停的会话：用户确认后继续运行
+  app.post('/api/sessions/:id/resume', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.resumePausedSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    return host.toSummary(rec);
   });
 
   // block 预算达到上限后，用户可在会话内临时放行一次
@@ -1007,6 +1024,9 @@ export async function createApp(
           break;
         case 'interrupt':
           host.interrupt(msg.sessionId);
+          break;
+        case 'retry_now':
+          host.retryNow(msg.sessionId);
           break;
         case 'permission':
           host.resolvePermission(

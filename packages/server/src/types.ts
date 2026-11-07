@@ -75,6 +75,8 @@ export interface HostConfig {
   hostId: string;
   token: string;
   idleTimeoutSec?: number;
+  /** Host 重启后对未完成会话：自动继续（默认）/ 恢复为暂停等我确认。 */
+  resumeOnRestart?: 'auto' | 'pause';
   relay?: RelayConfig;
 }
 

@@ -79,16 +79,25 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
       typeof existing?.idleTimeoutSec === 'number' && Number.isFinite(existing.idleTimeoutSec) && existing.idleTimeoutSec > 0
         ? existing.idleTimeoutSec
         : 180,
+    resumeOnRestart: existing?.resumeOnRestart === 'pause' ? 'pause' : 'auto',
     ...(isRelayConfig(existing?.relay) ? { relay: existing.relay } : {}),
   };
   if (
     existing?.hostId !== config.hostId ||
     existing?.token !== config.token ||
-    existing?.idleTimeoutSec !== config.idleTimeoutSec
+    existing?.idleTimeoutSec !== config.idleTimeoutSec ||
+    existing?.resumeOnRestart !== config.resumeOnRestart
   ) {
     writePrivateFile(file, JSON.stringify(config, null, 2));
   }
   return config;
+}
+
+/** 只更新 Host 行为设置，保留 token/relay 等其余字段。 */
+export function saveHostSettings(home: string, settings: { resumeOnRestart: 'auto' | 'pause' }): void {
+  const file = path.join(home, 'config.json');
+  const existing = readJson<Record<string, unknown>>(file) ?? {};
+  writePrivateFile(file, JSON.stringify({ ...existing, ...settings }, null, 2));
 }
 
 export function maskApiKey(key: string): string {

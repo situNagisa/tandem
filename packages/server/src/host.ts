@@ -10,6 +10,7 @@ import type {
   HookEntry,
   HookEvent,
   HostInfo,
+  HostSettings,
   InboxEvent,
   ListModelsInput,
   Message,
@@ -31,6 +32,7 @@ import {
   effectiveProfile,
   loadHostConfig,
   providerDefaultBaseUrl,
+  saveHostSettings,
   tandemHome,
 } from './config.js';
 import { CheckpointStore } from './checkpoints.js';
@@ -76,6 +78,8 @@ import {
   worktreeCleanliness,
 } from './worktree.js';
 import { runTurn } from './agent/loop.js';
+import { recoverAfterRestart, resumeSession } from './agent/resume.js';
+import { persist as persistRunState } from './run-state.js';
 import {
   BUILTIN_NAMES,
   INIT_PROMPT,
@@ -204,6 +208,43 @@ export class Host {
     };
   }
 
+  // ---------- Host 行为设置 ----------
+
+  settings(): HostSettings {
+    return { resumeOnRestart: this.config.resumeOnRestart === 'pause' ? 'pause' : 'auto' };
+  }
+
+  updateSettings(input: Partial<HostSettings>): HostSettings {
+    if (input.resumeOnRestart === 'auto' || input.resumeOnRestart === 'pause') {
+      this.config.resumeOnRestart = input.resumeOnRestart;
+    }
+    saveHostSettings(this.home, { resumeOnRestart: this.settings().resumeOnRestart });
+    return this.settings();
+  }
+
+  /** Host 启动后调用：扫描 runState 恢复未完成会话 + 提示丢失的后台任务。 */
+  recoverAfterRestart(): Promise<void> {
+    return recoverAfterRestart(this);
+  }
+
+  /** 用户确认「继续运行」被暂停的重启会话。 */
+  resumePausedSession(id: string): SessionRecord | undefined {
+    const rec = this.store.get(id);
+    if (!rec) return undefined;
+    void resumeSession(this, rec).catch((err) => {
+      console.warn(`[tandem] 恢复会话 ${id} 失败:`, errorMessage(err));
+    });
+    return rec;
+  }
+
+  /** 「立即重试」：提前唤醒网络退避等待。 */
+  retryNow(sessionId: string): boolean {
+    const rt = this.runtimes.get(sessionId);
+    if (!rt?.retryInfo || !rt.retryWake) return false;
+    rt.retryWake();
+    return true;
+  }
+
   // ---------- 会话读取/转换 ----------
 
   getSession(id: string): SessionRecord | undefined {
@@ -238,6 +279,8 @@ export class Host {
       model: rec.model,
       permissionMode: rec.permissionMode,
       status: rec.status,
+      ...(rec.retryInfo ? { retryInfo: { ...rec.retryInfo } } : {}),
+      ...(rec.resumePaused ? { resumePaused: true } : {}),
       ...(rec.effort ? { effort: rec.effort } : {}),
       // 可选字段只在有值时下发，老客户端不受影响
       ...(rec.pinned ? { pinned: true } : {}),
@@ -1117,6 +1160,7 @@ export class Host {
     try {
       while (rt.queue.length > 0 && !rt.deleted) {
         const next = rt.queue.shift()!;
+        persistRunState(this, rec);
         await this.handleUserContent(rec, next);
       }
     } finally {
@@ -1462,6 +1506,7 @@ export class Host {
         this.permissions.delete(request.id);
         rt.pending.delete(request.id);
         signal.removeEventListener('abort', onAbort);
+        persistRunState(this, rec);
 
         if (decision === 'allow_always' && toolName !== 'ExitPlanMode') {
           this.addAllowed(rec, toolName, input);
@@ -1502,6 +1547,7 @@ export class Host {
       rt.pending.set(request.id, { request, resolve: settle });
       this.permissions.set(request.id, { sessionId: rec.id, resolve: settle });
       signal.addEventListener('abort', onAbort, { once: true });
+      persistRunState(this, rec);
 
       this.setStatus(rec, 'waiting_permission');
       this.hub.broadcastSession(rec.id, { type: 'permission_request', request, sessionId: rec.id });
@@ -1520,6 +1566,83 @@ export class Host {
       decision,
       typeof reason === 'string' ? reason : undefined,
     );
+  }
+
+  /**
+   * Host 重启恢复：用 runState 里原样的 PermissionRequest 重新进入待审批状态，
+   * 重新广播 permission_request 并写入收件箱；返回用户的决定。
+   */
+  restorePendingPermission(
+    rec: SessionRecord,
+    request: PermissionRequest,
+    signal: AbortSignal,
+  ): Promise<{ decision: PermissionDecision; reason?: string }> {
+    const rt = this.ensureRuntime(rec.id);
+    const ancestors = this.ancestorsOf(rec);
+    return new Promise((resolve) => {
+      let settled = false;
+      const settle = (decision: PermissionDecision, customReason?: string) => {
+        if (settled) return;
+        settled = true;
+        this.permissions.delete(request.id);
+        rt.pending.delete(request.id);
+        signal.removeEventListener('abort', onAbort);
+        if (decision === 'allow_always' && request.toolName !== 'ExitPlanMode') {
+          this.addAllowed(rec, request.toolName, request.input);
+        }
+        this.hub.broadcastSession(rec.id, {
+          type: 'permission_resolved',
+          requestId: request.id,
+          sessionId: rec.id,
+          decision,
+        });
+        const resolved = this.inbox.resolvePermission(request.id, decision);
+        if (resolved) this.pushInbox(resolved);
+        for (const ancestor of ancestors) {
+          this.hub.broadcastSession(ancestor.id, {
+            type: 'permission_resolved',
+            requestId: request.id,
+            sessionId: rec.id,
+            decision,
+          });
+        }
+        if (
+          rt.pending.size === 0 &&
+          rt.running &&
+          !rt.interrupted &&
+          rec.status === 'waiting_permission'
+        ) {
+          this.setStatus(rec, 'running');
+        }
+        persistRunState(this, rec);
+        resolve({
+          decision,
+          ...(decision === 'deny'
+            ? {
+                reason:
+                  customReason?.trim() ||
+                  (signal.aborted ? '用户中断' : '用户拒绝了该操作'),
+              }
+            : {}),
+        });
+      };
+      const onAbort = () => settle('deny', signal.aborted ? '用户中断' : undefined);
+
+      rt.pending.set(request.id, { request, resolve: settle });
+      this.permissions.set(request.id, { sessionId: rec.id, resolve: settle });
+      signal.addEventListener('abort', onAbort, { once: true });
+      this.setStatus(rec, 'waiting_permission');
+      this.hub.broadcastSession(rec.id, { type: 'permission_request', request, sessionId: rec.id });
+      this.pushInbox(this.inbox.recordPermission(request, rec.title));
+      for (const ancestor of ancestors) {
+        this.hub.broadcastSession(ancestor.id, {
+          type: 'permission_request',
+          request,
+          sessionId: ancestor.id,
+        });
+      }
+      persistRunState(this, rec);
+    });
   }
 
   private addAllowed(rec: SessionRecord, toolName: string, input: unknown): void {

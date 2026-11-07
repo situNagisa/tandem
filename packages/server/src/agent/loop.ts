@@ -1,6 +1,6 @@
 // Agent 循环：用户消息 -> 模型 -> 执行工具 -> 回填 tool_result -> 继续，直到没有工具调用。
 import { randomUUID } from 'node:crypto';
-import type { ContentBlock, Message } from '@tandem/protocol';
+import type { ContentBlock, Message, PermissionRequest } from '@tandem/protocol';
 import type { Host } from '../host.js';
 import type { SessionRecord } from '../types.js';
 import { streamChat } from '../providers/index.js';
@@ -10,6 +10,16 @@ import { errorMessage, truncateMiddle } from '../util/text.js';
 import { costOfUsage, priceForModel } from '../usage.js';
 import { cacheHitRateOf, estimateBreakdown } from '../context.js';
 import { buildSystemPrompt } from './prompt.js';
+import { withNetworkRetry } from './retry.js';
+import { replayUnfinishedTools } from './resume.js';
+import {
+  finishRun,
+  noteMessageCompleted,
+  setAssistantMessage,
+  startRun,
+  toolFinished,
+  toolStarted,
+} from '../run-state.js';
 
 const MAX_ITERATIONS = 100;
 const MAX_TOKENS = 8192;
@@ -26,6 +36,10 @@ export interface TurnResult {
 export interface TurnOptions {
   /** 子代理会话里不再暴露 Task，防止递归。 */
   allowTask?: boolean;
+  /** Host 重启后的续跑：补完悬空 tool_use（重新请求审批/只读重放）后继续。 */
+  resume?: { pendingPermissions: PermissionRequest[] };
+  /** 恢复时的触发消息 id（runState 中记录）。 */
+  turnMessageId?: string;
 }
 
 export async function runTurn(
@@ -40,6 +54,12 @@ export async function runTurn(
   const abort = new AbortController();
   rt.abort = abort;
   const allowTask = options.allowTask !== false;
+  // 运行意图落盘：Host 崩溃/重启后据此续跑；trigger 为当前轮的用户消息
+  const turnMessageId =
+    options.turnMessageId ??
+    [...rec.messages].reverse().find((m) => m.role === 'user' && !m.notice)?.id;
+  startRun(host, rec, turnMessageId);
+  rt.turnMessageId = turnMessageId;
 
   let reason: 'done' | 'interrupted' | 'error' = 'done';
   let errorText: string | undefined;
@@ -58,7 +78,7 @@ export async function runTurn(
   if (!rt.sessionStartDone) {
     rt.sessionStartDone = true;
     const start = await host.runHooks(rec, hookEntries, 'SessionStart', {
-      source: 'startup',
+      source: options.resume ? 'resume' : 'startup',
       signal: abort.signal,
     });
     sessionStartContext = start.contexts.join('\n\n');
@@ -69,6 +89,10 @@ export async function runTurn(
   delete rt.pendingHookContext;
 
   try {
+    // Host 重启后：先把上一条 assistant 里悬空的 tool_use 处理掉（只读重放/补错误结果/恢复审批）
+    if (options.resume) {
+      await replayUnfinishedTools(host, rec, abort.signal, hookEntries, options.resume);
+    }
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
       if (rt.interrupted || abort.signal.aborted) {
         reason = 'interrupted';
@@ -123,79 +147,110 @@ export async function runTurn(
       let result: Awaited<ReturnType<typeof streamChat>> | undefined;
       let usedKeyId: string | undefined;
       const keyErrors = new Map<string, string>();
-      let lastError: unknown;
       try {
-        // 同组多 Key：按策略逐个尝试；仅在尚未输出任何 token 时透明重试
-        for (const candidate of selection.candidates) {
-          let started = false;
-          try {
-            result = await streamChat({
-              profile: candidate.profile,
-              model,
-              system,
-              messages: requestMessages,
-              tools,
-              blocks: assistant.content,
-              signal: abort.signal,
-              idleTimeoutSec: host.config.idleTimeoutSec ?? 180,
-              maxTokens: MAX_TOKENS,
-              effort: rec.effort,
-              onEffortDropped: () => {
-                effortDropped = true;
-              },
-              onBlockStart: (index, block) => {
-                started = true;
-                host.hub.broadcastSession(rec.id, {
-                  type: 'block_delta',
-                  sessionId: rec.id,
-                  messageId: assistant.id,
-                  index,
-                  delta: { kind: 'block_start', block },
+        // 网络错误/超时全部失败后进入「等待网络」指数退避；每次重试重新挑 Key
+        result = await withNetworkRetry(
+          host,
+          rec,
+          abort.signal,
+          async () => {
+            keyErrors.clear();
+            const attemptKeys = host.keyCandidates(rec.profileId, rec.groupId);
+            if (attemptKeys.candidates.length === 0) {
+              throw new Error(
+                host.keysUnavailableMessage(rec.profileId, rec.groupId) ??
+                  '当前账号没有可用的 API Key',
+              );
+            }
+            let attemptError: unknown;
+            // 同组多 Key：按策略逐个尝试；仅在尚未输出任何 token 时透明重试
+            for (const candidate of attemptKeys.candidates) {
+              let started = false;
+              try {
+                const attempt = await streamChat({
+                  profile: candidate.profile,
+                  model,
+                  system,
+                  messages: requestMessages,
+                  tools,
+                  blocks: assistant.content,
+                  signal: abort.signal,
+                  idleTimeoutSec: host.config.idleTimeoutSec ?? 180,
+                  maxTokens: MAX_TOKENS,
+                  effort: rec.effort,
+                  onEffortDropped: () => {
+                    effortDropped = true;
+                  },
+                  onBlockStart: (index, block) => {
+                    started = true;
+                    host.hub.broadcastSession(rec.id, {
+                      type: 'block_delta',
+                      sessionId: rec.id,
+                      messageId: assistant.id,
+                      index,
+                      delta: { kind: 'block_start', block },
+                    });
+                  },
+                  onText: (index, text) => {
+                    started = true;
+                    host.hub.broadcastSession(rec.id, {
+                      type: 'block_delta',
+                      sessionId: rec.id,
+                      messageId: assistant.id,
+                      index,
+                      delta: { kind: 'text', text },
+                    });
+                  },
+                  onToolInput: (index, partialJson) => {
+                    host.hub.broadcastSession(rec.id, {
+                      type: 'block_delta',
+                      sessionId: rec.id,
+                      messageId: assistant.id,
+                      index,
+                      delta: { kind: 'tool_input', partialJson },
+                    });
+                  },
                 });
-              },
-              onText: (index, text) => {
-                started = true;
-                host.hub.broadcastSession(rec.id, {
-                  type: 'block_delta',
-                  sessionId: rec.id,
-                  messageId: assistant.id,
-                  index,
-                  delta: { kind: 'text', text },
-                });
-              },
-              onToolInput: (index, partialJson) => {
-                host.hub.broadcastSession(rec.id, {
-                  type: 'block_delta',
-                  sessionId: rec.id,
-                  messageId: assistant.id,
-                  index,
-                  delta: { kind: 'tool_input', partialJson },
-                });
-              },
-            });
-            host.markKeySuccess(rec.profileId, rec.groupId, candidate.keyId);
-            usedKeyId = candidate.keyId;
-            break;
-          } catch (err) {
-            lastError = err;
-            if (rt.interrupted || abort.signal.aborted) throw err;
-            if (candidate.keyId && !started) keyErrors.set(candidate.keyId, errorMessage(err));
-            // 已开始输出，或错误不属于 Key 级故障（400 等）：按原错误路径处理
-            const retry = !started && host.markKeyFailure(rec.profileId, rec.groupId, candidate.keyId, err);
-            if (!retry) throw err;
+                host.markKeySuccess(rec.profileId, rec.groupId, candidate.keyId);
+                usedKeyId = candidate.keyId;
+                return attempt;
+              } catch (err) {
+                attemptError = err;
+                if (rt.interrupted || abort.signal.aborted) throw err;
+                if (candidate.keyId && !started) keyErrors.set(candidate.keyId, errorMessage(err));
+                // 已开始输出，或错误不属于 Key 级故障（400 等）：按原错误路径处理
+                const retry =
+                  !started &&
+                  host.markKeyFailure(rec.profileId, rec.groupId, candidate.keyId, err);
+                if (!retry) throw err;
+                assistant.content.length = 0;
+              }
+            }
+            if (attemptError !== undefined) {
+              const unavailable = host.keysUnavailableMessage(
+                rec.profileId,
+                rec.groupId,
+                keyErrors,
+              );
+              if (unavailable) throw new Error(unavailable);
+              throw attemptError;
+            }
+            throw new Error(
+              host.keysUnavailableMessage(rec.profileId, rec.groupId) ??
+                '当前账号没有可用的 API Key',
+            );
+          },
+          () => {
+            // 重试前清空这一条 assistant 的流式内容并让客户端覆盖显示，成功时不重复输出
             assistant.content.length = 0;
-          }
-        }
-        if (!result) {
-          if (lastError !== undefined) {
-            const unavailable = host.keysUnavailableMessage(rec.profileId, rec.groupId, keyErrors);
-            if (unavailable) throw new Error(unavailable);
-            throw lastError;
-          }
-          throw new Error(
-            host.keysUnavailableMessage(rec.profileId, rec.groupId) ?? '当前账号没有可用的 API Key',
-          );
-        }
+            host.hub.broadcastSession(rec.id, {
+              type: 'message_start',
+              sessionId: rec.id,
+              message: assistant,
+            });
+            setAssistantMessage(host, rec, assistant.id);
+          },
+        );
       } catch (err) {
         if (rt.interrupted || abort.signal.aborted) reason = 'interrupted';
         else {
@@ -254,6 +309,14 @@ export async function runTurn(
       });
       host.store.markDirty(rec.id, true);
       host.broadcastSummary(rec);
+      if (result) {
+        noteMessageCompleted(
+          host,
+          rec,
+          assistant.id,
+          assistant.content.some((b) => b.type === 'tool_use') ? 'tools' : 'model',
+        );
+      }
       if (result && effortDropped && !effortNoticeShown) {
         effortNoticeShown = true;
         host.appendNotice(rec, '当前模型不支持思考强度，本轮已自动忽略。');
@@ -369,6 +432,7 @@ export async function runTurn(
       });
       host.store.markDirty(rec.id, true);
       host.broadcastSummary(rec);
+      noteMessageCompleted(host, rec, toolMessage.id, 'model');
 
       if (reason === 'interrupted' || abort.signal.aborted) {
         reason = 'interrupted';
@@ -390,6 +454,9 @@ export async function runTurn(
   } finally {
     rt.running = false;
     rt.abort = undefined;
+    rt.turnMessageId = undefined;
+    // 本轮结束：清除运行意图（若还有排队消息则保留 queue，等 drainQueue）
+    finishRun(host, rec);
     host.setStatus(rec, reason === 'error' ? 'error' : 'idle');
     host.store.markDirty(rec.id, true);
     host.hub.broadcastSession(rec.id, {
@@ -515,6 +582,8 @@ async function executeToolUses(
       const filePath = (tool.input as Record<string, unknown>).file_path;
       if (typeof filePath === 'string' && filePath) host.snapshotForCheckpoint(rec, filePath);
     }
+    // 记录进行中的工具：Host 在同一时刻崩溃后，恢复时据此判断哪些不能自动重放
+    toolStarted(host, rec, tool.id, tool.name);
     const toolCtx = {
       cwd: rec.cwd,
       session: rec,
@@ -554,6 +623,8 @@ async function executeToolUses(
       },
     ];
     if (res.images) blocks.push(...res.images);
+    // 工具结果已拿到：立即 fsync（含 inFlightTools 清理），供重启恢复判断
+    toolFinished(host, rec, tool.id);
     return blocks;
   };
 

@@ -105,6 +105,11 @@ async function main(): Promise<void> {
   }
   console.log('');
 
+  // Host 重启恢复：续跑中断的会话（或按设置暂停），并提示丢失的后台任务
+  void host.recoverAfterRestart().catch((err) => {
+    console.warn(`[tandem] 重启恢复失败:`, (err as Error).message);
+  });
+
   let closing = false;
   const shutdown = async (signal: string) => {
     if (closing) return;
