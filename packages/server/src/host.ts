@@ -1,12 +1,10 @@
 // Host 核心：会话生命周期、agent 调度、权限审批、命令处理。
-import { randomUUID } from 'node:crypto';
-import { readFileSync, statSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+// 状态与构造留在这里；方法实现按职责拆在 host/ 下，同名方法只做一行转调。
 import type {
   Checkpoint,
   ContentBlock,
   ContextBreakdown,
+  DelegationStrategy,
   HookEntry,
   HookEvent,
   HostInfo,
@@ -16,31 +14,21 @@ import type {
   InjectionSegment,
   InjectionSnapshot,
   ListModelsInput,
-  Message,
   ModelInfo,
-  PromptTemplateKey,
   PermissionDecision,
   PermissionMode,
   PermissionRequest,
-  DelegationStrategy,
+  PromptTemplateKey,
   ReasoningEffort,
   RewindInput,
   Session,
   SessionStatus,
   SessionSummary,
-  VoiceSettings,
   SkillInfo,
   SlashCommand,
   Todo,
 } from '@tandem/protocol';
-import {
-  ProfileStore,
-  effectiveProfile,
-  loadHostConfig,
-  providerDefaultBaseUrl,
-  saveHostSettings,
-  tandemHome,
-} from './config.js';
+import { ProfileStore, loadHostConfig, tandemHome } from './config.js';
 import { CheckpointStore } from './checkpoints.js';
 import { ExternalSessionStore } from './external.js';
 import { Hub } from './events.js';
@@ -58,57 +46,18 @@ import type {
   ToolDefinition,
   ToolResult,
 } from './types.js';
-import { UsageStore, costOfUsage, priceForModel } from './usage.js';
+import { UsageStore } from './usage.js';
 import { BudgetStore } from './budgets.js';
 import { Inbox } from './inbox.js';
-import {
-  classifyKeyFailure,
-  cooldownMsFor,
-  groupUnavailableError,
-  orderedAvailableKeys,
-  profileWithKey,
-} from './key-rotation.js';
 import { BackgroundTaskManager } from './tasks.js';
 import { ScheduleManager } from './schedules.js';
-import { removeWorktree, worktreeCleanliness } from './worktree.js';
-import { runTurn } from './agent/loop.js';
-import { persist as persistRunState } from './run-state.js';
-import {
-  BUILTIN_NAMES,
-  findCommandBody,
-  parseSlashCommand,
-  type ParsedCommand,
-} from './agent/commands.js';
-import { TOOLS, TOOL_MAP } from './tools/index.js';
-import { completeText, streamChat } from './providers/index.js';
 import type { ListModelsResult } from './providers/index.js';
 import { SkillManager } from './skills.js';
-import { SubagentPresetStore, modelAliasOf } from './subagent-presets.js';
+import { SubagentPresetStore } from './subagent-presets.js';
 import { PromptTemplateStore } from './prompt-templates.js';
-import { TASK_DESCRIPTION_DEFAULT } from './prompts/registry.js';
-import { MemoryStore, bodyOfMemory, normalizeFactLines } from './memory.js';
-import { errorMessage, truncateEnd } from './util/text.js';
-import { detectSessionEnv } from './util/git.js';
-import { expandHome } from './util/path.js';
-import {
-  DELEGATIONS,
-  EFFORTS,
-  PERMISSION_MODES,
-  cleanTitle,
-  commandPrefix,
-  costSummary,
-  formatUsd,
-  httpError,
-  isContentBlock,
-  labelOfSource,
-  readVersion,
-  rememberTextOf,
-  sanitizeVoiceSettings,
-  splitCompactOutput,
-  type PermissionEntry,
-} from './host/helpers.js';
-import { inboxSnapshot, pushInbox, recordCi } from './host/inbox.js';
-import { importSession, notifyExternalSessionsChanged } from './host/external.js';
+import { MemoryStore } from './memory.js';
+import type { ParsedCommand } from './agent/commands.js';
+import { readVersion, type PermissionEntry } from './host/helpers.js';
 import {
   autoTitle,
   compactSession,
@@ -130,58 +79,10 @@ import {
   setSkillState,
   titleFromCommand,
 } from './host/commands.js';
+import { addAllowed, ancestorsOf, askPermission, authorize, isAllowed, requestPlanApproval, resolvePermission, restorePendingPermission } from './host/permissions.js';
+import { isRunning, listCheckpoints, rewind, snapshotForCheckpoint } from './host/rewind.js';
+import { importSession, notifyExternalSessionsChanged } from './host/external.js';
 import { runHooks } from './host/hooks.js';
-import {
-  isRunning,
-  listCheckpoints,
-  rewind,
-  snapshotForCheckpoint,
-} from './host/rewind.js';
-import {
-  addAllowed,
-  ancestorsOf,
-  askPermission,
-  authorize,
-  isAllowed,
-  requestPlanApproval,
-  resolvePermission,
-  restorePendingPermission,
-} from './host/permissions.js';
-import {
-  delegationFor,
-  delegationKey,
-  delegationPrompt,
-  orchestrateTools,
-  presetSummary,
-  runSubagent,
-  subagentConfig,
-  taskToolDescription,
-  toolDefinition,
-  toolDefinitions,
-} from './host/subagents.js';
-import {
-  allowBudgetOnce,
-  assertBudget,
-  buildSystemFor,
-  calibrateContext,
-  contextFor,
-  injectionsFor,
-  listModels,
-  modelCapabilities,
-  observeBudgets,
-  promptOptions,
-  recordInjections,
-  setContext,
-} from './host/usage.js';
-import {
-  findModelForAlias,
-  groupFor,
-  keyCandidates,
-  keysUnavailableMessage,
-  markKeyFailure,
-  markKeySuccess,
-  profileFor,
-} from './host/keys.js';
 import {
   checkoutSessionBranch,
   enterSessionWorktree,
@@ -210,6 +111,42 @@ import {
   updateSettings,
   updateSession,
 } from './host/sessions.js';
+import {
+  allowBudgetOnce,
+  assertBudget,
+  buildSystemFor,
+  calibrateContext,
+  contextFor,
+  injectionsFor,
+  listModels,
+  modelCapabilities,
+  observeBudgets,
+  promptOptions,
+  recordInjections,
+  setContext,
+} from './host/usage.js';
+import {
+  delegationFor,
+  delegationKey,
+  delegationPrompt,
+  orchestrateTools,
+  presetSummary,
+  runSubagent,
+  subagentConfig,
+  taskToolDescription,
+  toolDefinition,
+  toolDefinitions,
+} from './host/subagents.js';
+import {
+  findModelForAlias,
+  groupFor,
+  keyCandidates,
+  keysUnavailableMessage,
+  markKeyFailure,
+  markKeySuccess,
+  profileFor,
+} from './host/keys.js';
+import { inboxSnapshot, pushInbox, recordCi } from './host/inbox.js';
 
 export class Host {
   readonly config: HostConfig;
@@ -466,8 +403,10 @@ export class Host {
     return toolDefinition(this, name, cwd);
   }
 
-  mergeSessionWorktree(id: string,
-      strategy: 'merge' | 'squash',): Promise<{ ok: boolean; error?: string }> {
+  mergeSessionWorktree(
+    id: string,
+    strategy: 'merge' | 'squash',
+  ): Promise<{ ok: boolean; error?: string }> {
     return mergeSessionWorktree(this, id, strategy);
   }
 
@@ -506,33 +445,35 @@ export class Host {
   // ---------- 会话 CRUD ----------
 
   createSession(input: {
-      cwd?: unknown;
+    cwd?: unknown;
+    profileId?: unknown;
+    groupId?: unknown;
+    model?: unknown;
+    permissionMode?: unknown;
+    effort?: unknown;
+    delegation?: unknown;
+    title?: unknown;
+    worktree?: unknown;
+  }): Promise<SessionRecord> {
+    return createSession(this, input);
+  }
+
+  updateSession(
+    id: string,
+    patch: {
+      title?: unknown;
       profileId?: unknown;
       groupId?: unknown;
       model?: unknown;
       permissionMode?: unknown;
+      pinned?: unknown;
+      pinnedTurns?: unknown;
+      archived?: unknown;
       effort?: unknown;
       delegation?: unknown;
-      title?: unknown;
-      worktree?: unknown;
-    }): Promise<SessionRecord> {
-    return createSession(this, input);
-  }
-
-  updateSession(id: string,
-      patch: {
-        title?: unknown;
-        profileId?: unknown;
-        groupId?: unknown;
-        model?: unknown;
-        permissionMode?: unknown;
-        pinned?: unknown;
-        pinnedTurns?: unknown;
-        archived?: unknown;
-        effort?: unknown;
-        delegation?: unknown;
-        cwd?: unknown;
-      },): SessionRecord | undefined {
+      cwd?: unknown;
+    },
+  ): SessionRecord | undefined {
     return updateSession(this, id, patch);
   }
 

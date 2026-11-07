@@ -22,8 +22,10 @@
 | 文件/目录 | 职责 |
 |---|---|
 | `src/cli.ts` | 入口：解析 `--port/--host/--relay`，创建 Host + Fastify，信号退出 |
-| `src/server.ts` | REST 路由、token 鉴权、WS 升级、静态托管；**巨石，按资源拆 routes/ 进行中** |
-| `src/host.ts` | Host 核心：会话生命周期、发送/运行、审批、命令、注入快照；**巨石，拆分计划见 §8** |
+| `src/server.ts` | Fastify 服务：启动、token 鉴权、WS 升级、静态托管；路由按资源在 `routes/` 下注册 |
+| `src/routes/` | REST/WS 路由：`common.ts`（依赖与鉴权）、`sessions.ts`、`permissions.ts`、`host.ts`、`profiles.ts`、`models.ts`、`usage.ts`、`tasks.ts`、`mcp.ts`、`skills.ts`、`hooks.ts`、`memory.ts`、`schedules.ts`、`subagent-presets.ts`、`prompt-templates.ts`、`commands.ts`、`external.ts`、`fs.ts`、`pair.ts`、`budgets.ts`、`config.ts`、`ws.ts` |
+| `src/host.ts` | Host 类：持有全部状态与构造，方法按职责转调到 `host/`（外部 API 不变） |
+| `src/host/` | Host 实现按职责拆分（纯搬移）：`sessions.ts`（读取/转换/CRUD）、`turns.ts`（发送/回合/排队/中断/compact）、`commands.ts`（斜杠命令/本地消息）、`permissions.ts`（审批/plan/恢复）、`keys.ts`（账号/分组/Key 轮询）、`usage.ts`（上下文/预算/模型）、`subagents.ts`（子代理/委派/工具可见性）、`vcs.ts`（git 环境/worktree）、`rewind.ts`（检查点回退）、`hooks.ts`、`inbox.ts`、`external.ts`（外部会话通知/导入）、`helpers.ts`（无状态纯函数） |
 | `src/agent/loop.ts` | 单轮 agent 循环：模型 → 工具 → tool_result → 再请求，直到结束 |
 | `src/agent/prompt.ts` | 系统提示组装（含注入段落清单） |
 | `src/agent/commands.ts` | 斜杠命令解析与内置命令表 |
@@ -156,8 +158,8 @@ node scripts/check.mjs --skip-smoke  # 子代理最低要求
 
 | 文件 | 约行数 | 状态 |
 |---|---|---|
-| `server/src/host.ts` | 2500+ | 未拆（并行开发中）：计划 sessions / run / external / keys / permissions |
-| `server/src/server.ts` | 1200+ | 未拆（并行开发中）：计划 `routes/*.ts` 按资源 |
+| `server/src/host.ts` | 640 | **已拆**：实现在 `host/`（sessions / turns / commands / permissions / keys / usage / subagents / vcs / rewind / hooks / inbox / external / helpers），Host 只留状态与一行转调 |
+| `server/src/server.ts` | 140 | **已拆**：路由在 `routes/` 按资源注册 |
 | `web/src/store/useAppStore.ts` | 2100+ | 未拆：计划 connection / sessions / runs / inbox slices |
 | `web/src/components/settings/ProfilesSection.tsx` | 990 | **已拆**：`settings/profiles/`（shared / PriceOverrides / GroupEditor / KeysPanel） |
 | `web/src/components/Composer.tsx` | 1020 | **已拆**：`components/composer/`（completion / ComposerMenus / ModelMenu / CompletionMenu）+ `lib/modelName.ts` |
