@@ -121,7 +121,7 @@ function unwrapMentions(text: string): string {
  * 把 Claude Code / Codex 注入到用户消息里的标签块收进可折叠的上下文，
  * 只留下真正的用户文本。整段注入（AGENTS.md 等）保留全文，前端默认折叠。
  */
-function extractInjected(text: string): { text: string; contexts: InjectedContext[] } {
+export function extractInjected(text: string): { text: string; contexts: InjectedContext[] } {
   const contexts: InjectedContext[] = [];
   const marker = INJECTED_MARKERS.find((item) => item.re.test(text));
   let out = text;
@@ -195,7 +195,7 @@ function isInjectedText(text: string): boolean {
   return false;
 }
 
-function cleanTitle(text: string): string {
+export function cleanTitle(text: string): string {
   const line = text.split(/\r?\n/).map((part) => part.trim()).find(Boolean) ?? '';
   const plain = unwrapMentions(line)
     .replace(/\u001b\[[0-9;]*m/g, '')
@@ -239,7 +239,7 @@ export function titleFromMessages(messages: Message[], cwd: string, createdAt: n
 }
 
 /** 用户文本块统一过一遍注入清理：注入内容转成折叠上下文，空文本块丢弃。 */
-function cleanUserBlocks(blocks: ContentBlock[]): ContentBlock[] {
+export function cleanUserBlocks(blocks: ContentBlock[]): ContentBlock[] {
   const out: ContentBlock[] = [];
   for (const block of blocks) {
     if (block.type !== 'text') {

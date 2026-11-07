@@ -9,13 +9,15 @@
 1. `docs/design.md` —— 设计规范 + 末尾各轮「用户打分结论 / 反馈结论」。**用户明确提过的要求以这里为准**，不要回退。
 2. `docs/PROGRESS.md` —— 每轮做了什么、遗留什么。
 3. `packages/protocol/src/index.ts` —— 客户端与 Host 的唯一契约；改接口先改这里。
-4. `README.md` —— 构建、打包、目录。
-5. 评审与测试记录：`docs/review-v*.md`、`docs/qa-v6.md`、`docs/bugs-v6.md`、`docs/e2e-report*.md`、`docs/scorecard-v*/`。
+4. `docs/architecture.md` —— 模块地图、数据流、关键约定、“改 X 去哪里”。
+5. `README.md` —— 构建、打包、目录。
+6. 评审与测试记录：`docs/review-v*.md`、`docs/qa-v6.md`、`docs/bugs-v6.md`、`docs/e2e-report*.md`、`docs/scorecard-v*/`。
 
 ## 工作方式
 - 用户可随时反馈，不必等他；每轮自己定优先级。视觉方向性选择才发「打分卡」（编号 + 现状/方案对比图）。
 - 用户的具体问题通过产品内「反馈模式」（Ctrl+Shift+F）导出 `tandem-feedback-*.json` 发到飞书；用 `lark-cli im +messages-mget --message-ids <id> --download-resources` 下载，`node scripts/feedback-unpack.mjs <json> <outDir>` 解包后逐条处理，逐条回报并附修复后截图。
 - 交付前协调者亲自用 Playwright 点击验收用户反馈的每一条（只截静态图会漏掉"点了没反应、弹层被裁"类问题）。
+- **提交前运行 `node scripts/check.mjs`**（build → ui-audit → 单测 → smoke）；子代理默认至少跑 `node scripts/check.mjs --skip-smoke`。
 - 每轮结束：`npm run build`，`npm run apk -w @tandem/mobile`，`npm run dist:win -w @tandem/desktop`（产物会复制到 Windows「下载」目录），更新 `docs/PROGRESS.md`。
 
 ## 约束

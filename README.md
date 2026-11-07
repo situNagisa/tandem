@@ -28,6 +28,10 @@ npm start -- --host 0.0.0.0      # 允许局域网访问（手机连接需要）
 npm run dev:server               # Host 开发模式（热重载）
 npm run dev:web                  # Web 开发服务器（代理到 127.0.0.1:7878）
 node scripts/ui-audit.mjs        # UI 原语防回退检查：ui/ 目录外的手写菜单/弹层/原生下拉（0 问题才通过）
+
+npm test                         # 单元测试（server: node:test + tsx；web: vitest）
+npm run smoke                    # Playwright 端到端冒烟（临时 Host + 假 provider，需先 build）
+node scripts/check.mjs           # 提交前全量：build → ui-audit → test → smoke
 ```
 
 ## 打包

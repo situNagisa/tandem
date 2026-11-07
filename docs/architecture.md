@@ -1,0 +1,167 @@
+# Tandem 架构地图
+
+> 目标：新加入的人或 agent 只读这一页 + 目标目录的少量文件，就能安全修改；改完用 `node scripts/check.mjs` 自动发现回归。
+> 与 `AGENTS.md`、`docs/design.md`、`packages/protocol/src/index.ts` 冲突时，以它们为准。
+
+## 1. 顶层目录
+
+| 路径 | 职责 |
+|---|---|
+| `packages/protocol/src/index.ts` | 客户端 ↔ Host 唯一契约：REST/WS 消息、Session/Profile/Permission/Budget 等类型 |
+| `packages/server` | Host 守护进程：Fastify REST + WS、agent 循环、provider、工具、权限、持久化 |
+| `packages/web` | React 19 客户端；桌面端与安卓 App 复用同一份构建 |
+| `packages/desktop` | Electron 壳：内置 Host、窗口/托盘/通知、Windows 打包 |
+| `packages/mobile` | Capacitor 安卓壳：前台服务、本地通知、APK 打包 |
+| `packages/relay` | 自托管中继：出站隧道 + 端到端加密（本机回环测试，不对外部署） |
+| `e2e/smoke.mjs` | Playwright 端到端冒烟：临时 Host + 假 provider |
+| `scripts/ui-audit.mjs` | UI 原语防回退审计 |
+| `scripts/check.mjs` | 提交前总检查：build → ui-audit → test → smoke |
+
+## 2. Server 模块地图
+
+| 文件/目录 | 职责 |
+|---|---|
+| `src/cli.ts` | 入口：解析 `--port/--host/--relay`，创建 Host + Fastify，信号退出 |
+| `src/server.ts` | REST 路由、token 鉴权、WS 升级、静态托管；**巨石，按资源拆 routes/ 进行中** |
+| `src/host.ts` | Host 核心：会话生命周期、发送/运行、审批、命令、注入快照；**巨石，拆分计划见 §8** |
+| `src/agent/loop.ts` | 单轮 agent 循环：模型 → 工具 → tool_result → 再请求，直到结束 |
+| `src/agent/prompt.ts` | 系统提示组装（含注入段落清单） |
+| `src/agent/commands.ts` | 斜杠命令解析与内置命令表 |
+| `src/agent/resume.ts` / `retry.ts` | Host 重启续跑、网络失败重试 |
+| `src/providers/` | `anthropic.ts` / `openai.ts` 适配、SSE、模型列表、能力、HTTP 错误、空闲超时 |
+| `src/tools/` | 每个工具一个文件（Bash/Read/Write/Edit/Glob/Grep/Task/Todo/Memory/WebFetch…），`index.ts` 注册与执行 |
+| `src/store.ts` | 会话 JSON 持久化、防抖落盘、快照/恢复 |
+| `src/run-state.ts` | 运行意图落盘（断点续跑、悬空审批） |
+| `src/events.ts` | WS Hub：订阅、广播、每会话 seq、环形缓冲与断线重放 |
+| `src/external.ts` | 只读扫描 Claude Code / Codex 会话，注入清理、标题提取、导入 |
+| `src/changes.ts` | git 状态/diff/丢弃/提交（参数数组调用，不拼 shell） |
+| `src/vcs.ts` | PR/CI 能力检测、创建/合并 PR、检查轮询 |
+| `src/permissions.ts` | Host 级 allow/ask/deny 规则匹配 |
+| `src/hooks.ts` | Claude Code 兼容 hooks 执行（只读来源 + Tandem 可编辑） |
+| `src/mcp.ts` | MCP 服务器配置、连接、工具暴露 |
+| `src/skills.ts` | Claude skills 扫描与启用状态 |
+| `src/subagent-presets.ts` | 子代理预设（Tandem 自定义 + agents/*.md 只读） |
+| `src/prompt-templates.ts` / `src/prompts/registry.ts` | 可配置提示词模板与默认值 |
+| `src/memory.ts` / `src/agent/...` | 项目/全局长期记忆（写入需审批） |
+| `src/schedules.ts` | cron 解析与进程内定时任务 |
+| `src/tasks.ts` | Bash 后台任务、输出缓冲、Kill |
+| `src/budgets.ts` / `src/usage.ts` | 预算规则、周期累计、用量与价格计算 |
+| `src/key-rotation.ts` | 同组多 Key：可用性、failover/round-robin、失败分类与冷却 |
+| `src/checkpoints.ts` / `src/worktree.ts` | 文件检查点回退、git worktree 会话 |
+| `src/inbox.ts` | 跨会话收件箱（审批/回合结束/预算/CI） |
+| `src/config.ts` | `~/.tandem` 路径、账号存储、Host 配置、密钥掩码 |
+| `src/migrate.ts` | 配置加密导出/导入 |
+| `src/relay/` | 中继客户端、E2E 通道、配对信息 |
+| `src/util/` | 纯工具：路径、编码、glob、fs-walk、文本、HTML、文件预览 |
+
+## 3. Web 模块地图
+
+| 文件/目录 | 职责 |
+|---|---|
+| `src/App.tsx` | 布局、hash 路由、全局快捷键、移动端抽屉 |
+| `src/store/useAppStore.ts` | Host 连接、会话/消息/审批/子代理状态；**巨石，拆分计划见 §8** |
+| `src/store/useUiStore.ts` | 弹窗、侧栏、右栏、主题等纯 UI 状态 |
+| `src/store/useFeedbackStore.ts` | 反馈模式条目与标注状态 |
+| `src/lib/api.ts` | 所有 REST 调用（带 Host token） |
+| `src/lib/ws.ts` | WS 连接、重连、seq 重放、收件箱订阅 |
+| `src/lib/types.ts` | 客户端内部类型（UiMessage、SettingsTab、路由） |
+| `src/lib/fileLinks.ts` | 文件引用识别：Markdown 链接、行内代码、纯文本路径 |
+| `src/lib/format.ts` / `profileModels.ts` / `turnWindow.ts` | 纯函数：格式化、账号模型分组、轮次虚拟窗口 |
+| `src/components/ui/*` | Button/Menu/Modal/Tooltip/Controls 等唯一 UI 原语来源 |
+| `src/components/Composer.tsx` | 输入框、附件、模型/权限/思考菜单；**巨石** |
+| `src/components/MessageList.tsx` | 消息列表、轮次分组、流式块；**巨石** |
+| `src/components/PermissionCard.tsx` | 工具审批卡与“添加为规则” |
+| `src/components/RightPanel.tsx` | 右栏：计划、待办、子代理、上下文、PR；**巨石** |
+| `src/components/ChangeReviewPanel.tsx` | 改动审阅、行评论、提交/丢弃 |
+| `src/components/settings/*` | 设置各页；`SettingsDialog.tsx` 是导航与挂载点 |
+| `src/components/chat/*` | 轮次导航、上下文环、消息辅助组件 |
+| `src/components/feedback/*` | 反馈模式浮条、区域截图、标注、抽屉 |
+| `src/styles/` + `index.css` | 设计 tokens 与复杂组件样式（Tailwind v4） |
+
+## 4. 数据流
+
+```
+Web/Desktop/Android
+  ├─ REST (lib/api.ts) ── token ──> server.ts 路由 ──> Host 方法 / 纯模块
+  └─ WS   (lib/ws.ts)  ── token ──> /ws ──> Hub
+                                              │
+用户发送 ── WS {type:'send'} ──> Host.send ──> agent/loop.runTurn
+                                              ├─ providers/* 流式请求
+                                              ├─ 工具调用 ──> tools/*（Bash/Read/…）
+                                              ├─ 需审批 ──> Host.askPermission
+                                              │              └─ Hub: permission_request
+                                              └─ 每步 Hub: message_start / block_delta / message_end
+客户端 store ── 按 session seq 应用事件；断线带 sinceSeq 重放，不足则用 snapshot
+```
+
+- REST 负责“请求-响应”（列表、设置、diff、导入导出）；WS 负责会话内实时事件与跨端同步。
+- 所有会话事件带每会话单调 `seq`；`Hub` 保留最近 2000 条，重连用 `subscribe {sinceSeq}`。
+- 持久化：会话 `store.ts`（防抖写盘）、运行意图 `run-state.ts`（原子写）、上传/导出按需。
+- 审批语义：`allow` 本次 / `allow_always` 会话级规则 / `deny`；Host 规则 deny 在 bypass 模式下仍生效。
+- 子代理：`Task` 创建 `parentId/depth` 会话，审批冒泡到主会话，结果回传父会话。
+
+## 5. 关键约定
+
+1. **协议优先**：新增/修改 REST 字段、WS 消息、共享类型，先在 `packages/protocol/src/index.ts` 定义，再改 server/web。
+2. **UI 原语唯一来源**：菜单、弹层、下拉、按钮只能来自 `packages/web/src/components/ui/`；禁止手写 `role="menu"`、`popover-panel`、原生 `<select>`。
+3. **ui-audit**：`node scripts/ui-audit.mjs` 必须 0 问题；确需例外在该行写 `ui-audit-ignore` 并说明原因。
+4. **测试 Host 隔离**：一律 `TANDEM_HOME=/tmp/tandem-xxx` + 独立端口；不碰 `~/.tandem`。真实 Key 只放 `/tmp` 副本，测试后删除，Key/中转 URL 不进日志与文档。
+5. **Windows 路径**：客户端传来的路径统一走 `server/src/util/path.ts`（`normalizeIncomingPath` / `resolveHostPath`）；git 输出统一成仓库相对 posix 路径（`changes.ts` 的 `gitPath`）。前端展示用 `fileLinks.ts` / `format.ts`。
+6. **编码**：子进程输出必须用 `util/encoding.ts` 的 `decodeProcessOutput`（UTF-8 严格 → GBK 回退）；Windows cmd 用 `cmdUtf8Command` 先切 65001。
+7. **持久化**：写 `~/.tandem` 的文件用 `writePrivateFile`（600 + 原子替换）；新增数据文件先想清楚迁移与损坏回退。
+8. **安全边界**：Host/中继不暴露公网、不接第三方推送/云服务；中继与推送只做本机回环测试。`~/.claude`、`~/.codex` 只读。
+9. **进程管理**：测试脚本自行管理子进程；手工清理用 `ps -eo pid,args | awk '/特征/ && !/awk/ {print $1}' | xargs -r kill`，不用 `pkill -f`。
+10. **重复实现警戒**：跨端/跨模块的格式化、路径、模型能力、Key 选择逻辑先找现有纯函数，再决定是否新增。
+
+## 6. “改 X 去哪里”速查
+
+| 要做的改动 | 入口文件 / 步骤 |
+|---|---|
+| 加一个工具 | `server/src/tools/<name>.ts` 实现 `definition` + `run`；在 `tools/index.ts` 的 `TOOLS/TOOL_MAP` 注册；涉及权限时设 `readOnly/requiresApproval`；前端工具卡在 `ToolCard.tsx` |
+| 加一个 REST 接口 | 先在 `protocol` 注释/types 定义；`server/src/server.ts` 加路由（后续放 `routes/`）；`web/src/lib/api.ts` 加方法 |
+| 加一个 WS 事件 | `protocol` 的 `ServerMsg/ClientMsg`；server 用 `Hub.broadcastSession/broadcastAll`；web `useAppStore` 事件 switch + `ws.ts` 类型 |
+| 加一个设置页 | `web/src/lib/types.ts` 的 `SettingsTab`；`SettingsDialog.tsx` 的 `TABS` 与条件渲染；页面放 `components/settings/`；数据走 `api.ts` |
+| 加一个菜单/弹层 | 只用 `components/ui/Menu.tsx`、`Modal.tsx`、`Controls.tsx`；不要手写 role 或原生 select |
+| 改会话发送/循环 | `server/src/host.ts` 的 `send/handleUserContent/sendToModel` → `agent/loop.ts` |
+| 改 provider | `server/src/providers/<kind>.ts` + `providers/index.ts`；协议类型在 `providers/types.ts` |
+| 改模型能力/思考强度 | `providers/capabilities.ts`、`providers/models.ts`、`agent/prompt.ts`、前端 `ui/` 的模型菜单 |
+| 改权限规则 | `server/src/permissions.ts`（匹配）+ `host.ts` 的 `authorize` + `PermissionCard.tsx` |
+| 改 diff/改动审阅 | `server/src/changes.ts` + `web/src/lib/useChanges.ts` + `ChangeReviewPanel.tsx` |
+| 改外部会话导入 | `server/src/external.ts`（扫描/清洗/标题）+ `ExternalSessionView.tsx` |
+| 改定时任务 | `server/src/schedules.ts` + `settings/SchedulesSection.tsx` |
+| 改预算/用量 | `server/src/budgets.ts`、`usage.ts` + 对应设置页 |
+| 改多 Key 调度 | `server/src/key-rotation.ts` + `host.ts` 的 `keyCandidates/markKeyFailure` |
+| 加斜杠命令 | `server/src/agent/commands.ts` + `host.ts` 的 `handleCommand` |
+| 改系统提示/注入 | `server/src/agent/prompt.ts`、`prompts/registry.ts`、`host.ts` 的 `buildSystemFor/recordInjections` |
+| 改手机/桌面壳 | `packages/mobile`（Capacitor 插件）、`packages/desktop`（Electron 主进程/preload） |
+| 加回归用例 | server：`packages/server/test/*.test.ts`；web：`packages/web/src/**/*.test.ts`；端到端：`e2e/smoke.mjs` |
+
+## 7. 测试与检查
+
+```bash
+npm test                 # server (node:test + tsx) + web (vitest)
+npm run test:server
+npm run test:web
+npm run smoke            # 需先 npm run build
+node scripts/check.mjs   # 提交前全量
+node scripts/check.mjs --skip-smoke  # 子代理最低要求
+```
+
+- server 测试覆盖纯函数/无副作用模块：Windows 路径、外部会话注入/标题、changes 路径与未跟踪目录、多 Key、预算、GBK 解码、cron。
+- web 测试覆盖 `lib/` 纯函数：fileLinks、模型分组、格式化、轮次窗口。
+- smoke：临时 `HOME` + `TANDEM_HOME`、随机端口、本机假 OpenAI 端点；新建会话 → 流式回复 → Bash 审批 → 设置 16 页无 console error。
+- 修 bug 时先补一条能复现的用例（用例名写清现象/来源），再改代码。
+
+## 8. 已知巨石与拆分状态
+
+| 文件 | 约行数 | 状态 |
+|---|---|---|
+| `server/src/host.ts` | 2500+ | 待拆：sessions / run / external / keys / permissions |
+| `server/src/server.ts` | 1200+ | 待拆：`routes/*.ts` 按资源 |
+| `web/src/store/useAppStore.ts` | 2100+ | 待拆：connection / sessions / runs / inbox slices |
+| `web/src/components/settings/ProfilesSection.tsx` | 1700+ | 待拆：账号卡片 / 分组 / 模型选择 |
+| `web/src/components/Composer.tsx` | 1600+ | 待拆：输入区 / 模型菜单 / 附件 / 快捷键 |
+| `web/src/components/RightPanel.tsx` | 1100+ | 待拆：计划 / 待办 / 子代理 / 上下文 / PR |
+| `web/src/components/MessageList.tsx` | 1000+ | 待拆：消息行 / 轮次分组 / 流式块 |
+
+拆分原则：**纯搬移、不改行为**；每次只拆一个文件；拆前 `git status` / `git diff <file>` 确认无他人未提交改动，有就跳过；拆后立即 `node scripts/check.mjs` 并单独提交 `refactor: 拆分 X（纯搬移）`。热点文件（host/server/useAppStore/RightPanel/SettingsDialog/prompt.ts）在与并行开发冲突期间不要动。

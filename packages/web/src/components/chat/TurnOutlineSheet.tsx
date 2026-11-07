@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
+import { visibleTurnRange } from '../../lib/turnWindow'
 import type { TurnMark } from './TurnRail'
 
 const ROW_H = 52
@@ -44,9 +45,8 @@ export function TurnOutlineSheet({
   const measure = useCallback(() => {
     const el = listRef.current
     if (!el) return
-    const start = Math.max(0, Math.floor(el.scrollTop / ROW_H) - OVERSCAN)
-    const end = Math.min(turns.length, Math.ceil((el.scrollTop + el.clientHeight) / ROW_H) + OVERSCAN)
-    setRange((prev) => (prev.start === start && prev.end === end ? prev : { start, end }))
+    const next = visibleTurnRange(el.scrollTop, el.clientHeight, turns.length, ROW_H, OVERSCAN)
+    setRange((prev) => (prev.start === next.start && prev.end === next.end ? prev : next))
   }, [turns.length])
 
   useLayoutEffect(() => {

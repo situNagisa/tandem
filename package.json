@@ -2,11 +2,21 @@
   "name": "tandem",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "npm run build -w @tandem/protocol && npm run build -w @tandem/relay && npm run build -w @tandem/web && npm run build -w @tandem/server",
     "dev:server": "npm run dev -w @tandem/server",
     "dev:web": "npm run dev -w @tandem/web",
-    "start": "node packages/server/dist/cli.js"
+    "start": "node packages/server/dist/cli.js",
+    "test": "npm run test -w @tandem/server && npm run test -w @tandem/web",
+    "test:server": "npm run test -w @tandem/server",
+    "test:web": "npm run test -w @tandem/web",
+    "smoke": "node e2e/smoke.mjs",
+    "check": "node scripts/check.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.65.0"
   }
 }
