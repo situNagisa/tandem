@@ -1,5 +1,6 @@
-import type { HostConfig, Theme } from './types'
+import type { HostConfig, SplitState, Theme } from './types'
 import { isValidFingerprint, normalizeFingerprint } from './relay'
+import { sanitizeSplitState } from './split'
 
 const KEYS = {
   hosts: 'tandem.hosts.v1',
@@ -10,6 +11,7 @@ const KEYS = {
   drafts: 'tandem.drafts.v1',
   sentHistory: 'tandem.sentHistory.v1',
   migrations: 'tandem.migrations.v1',
+  split: 'tandem.split.v1',
 } as const
 
 function readJson<T>(key: string, fallback: T): T {
@@ -132,6 +134,20 @@ export function loadSidebarWidth(): number {
 
 export function saveSidebarWidth(width: number): void {
   saveUiPrefs({ sidebarWidth: width })
+}
+
+/** 多会话分屏：打开了哪些会话、布局与分隔条比例。 */
+export function loadSplitState(): SplitState | null {
+  return sanitizeSplitState(readJson<unknown>(KEYS.split, null))
+}
+
+export function saveSplitState(state: SplitState | null): void {
+  try {
+    if (!state || state.panes.length < 2) localStorage.removeItem(KEYS.split)
+    else localStorage.setItem(KEYS.split, JSON.stringify(state))
+  } catch {
+    // localStorage 不可用时只影响刷新恢复
+  }
 }
 
 export function loadCollapsedProjects(): Record<string, boolean> {

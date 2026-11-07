@@ -3,20 +3,27 @@ import type { MemoryScope } from '@tandem/protocol'
 import {
   DEFAULT_SESSION_FILTER,
   type SessionFilter,
+  type SessionTarget,
   type SettingsTab,
+  type SplitLayout,
+  type SplitPane,
+  type SplitState,
   type Theme,
   type Toast,
 } from '../lib/types'
 import type { InviteTarget } from '../lib/inviteLink'
+import { columnCount, equalWeights, MAX_SPLIT_PANES, rowCount } from '../lib/split'
 import {
   loadCollapsedProjects,
   loadPinnedProjects,
   loadSidebarWidth,
+  loadSplitState,
   loadTheme,
   loadUiPrefs,
   saveCollapsedProjects,
   savePinnedProjects,
   saveSidebarWidth,
+  saveSplitState,
   saveTheme,
   saveUiPrefs,
 } from '../lib/storage'
@@ -97,6 +104,13 @@ interface UiState {
   prComposeTitle: string
   /** 记忆 Markdown 编辑器；project 为项目根路径，global 时忽略。 */
   memoryEditor: { scope: MemoryScope; project?: string } | null
+  /** 多会话分屏：打开的窗格、布局与分隔条权重。 */
+  splitPanes: SplitPane[]
+  splitLayout: SplitLayout
+  splitCols: number[]
+  splitRows: number[]
+  /** 「分屏打开…」会话选择弹层。 */
+  splitPickerOpen: boolean
 
   setTheme: (theme: Theme) => void
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -161,12 +175,73 @@ interface UiState {
   closePrPanel: () => void
   openMemoryEditor: (input: { scope: MemoryScope; project?: string }) => void
   closeMemoryEditor: () => void
+  /** 在分屏中打开：自动补位/替换聚焦窗格。 */
+  openSplitPane: (current: SessionTarget | null, target: SessionTarget) => void
+  /** 侧栏会话拖到主区左/右/下半边。 */
+  openSplitPaneAt: (
+    current: SessionTarget | null,
+    target: SessionTarget,
+    zone: 'left' | 'right' | 'bottom',
+  ) => void
+  closeSplitPane: (hostId: string, sessionId: string) => void
+  /** 会话被删除时静默移除对应窗格。 */
+  removePaneForSession: (hostId: string, sessionId: string) => void
+  /** 普通点击侧栏/路由切换：分屏时把聚焦窗格换成目标会话。 */
+  replaceSplitPane: (focused: SessionTarget | null, target: SessionTarget) => void
+  setSplitLayout: (layout: SplitLayout) => void
+  setSplitColWeights: (weights: number[]) => void
+  setSplitRowWeights: (weights: number[]) => void
+  clearSplit: () => void
+  setSplitPickerOpen: (open: boolean) => void
 }
 
 const prefs = loadUiPrefs()
+const restoredSplit = loadSplitState()
 
-export const useUiStore = create<UiState>((set, get) => ({
-  theme: loadTheme(),
+export const useUiStore = create<UiState>((set, get) => {
+  const commitSplit = (patch: Partial<SplitState>) => {
+    const state = get()
+    const panes = patch.panes ?? state.splitPanes
+    const layout = patch.layout ?? state.splitLayout
+    const next: SplitState = {
+      panes,
+      layout,
+      cols: patch.cols ?? state.splitCols,
+      rows: patch.rows ?? state.splitRows,
+    }
+    saveSplitState(next)
+    set({
+      splitPanes: next.panes,
+      splitLayout: next.layout,
+      splitCols: next.cols,
+      splitRows: next.rows,
+    })
+  }
+
+  const layoutWeights = (layout: SplitLayout, prev?: SplitState) => ({
+    cols:
+      columnCount(layout) === (prev?.cols.length ?? 0)
+        ? prev!.cols
+        : equalWeights(columnCount(layout)),
+    rows:
+      rowCount(layout) === (prev?.rows.length ?? 0)
+        ? prev!.rows
+        : equalWeights(rowCount(layout)),
+  })
+
+  const commitLayout = (layout: SplitLayout) => {
+    const state = get()
+    const weights = layoutWeights(layout, {
+      panes: state.splitPanes,
+      layout: state.splitLayout,
+      cols: state.splitCols,
+      rows: state.splitRows,
+    })
+    commitSplit({ layout, ...weights })
+  }
+
+  return {
+    theme: loadTheme(),
   sidebarCollapsed: prefs.sidebarCollapsed ?? false,
   sidebarWidth: loadSidebarWidth(),
   collapsedProjects: loadCollapsedProjects(),
@@ -215,6 +290,11 @@ export const useUiStore = create<UiState>((set, get) => ({
   prComposeTitle: '',
   memoryEditor: null,
   scheduleComposeNonce: 0,
+  splitPanes: restoredSplit?.panes ?? [],
+  splitLayout: restoredSplit?.layout ?? 'cols2',
+  splitCols: restoredSplit?.cols ?? equalWeights(2),
+  splitRows: restoredSplit?.rows ?? equalWeights(1),
+  splitPickerOpen: false,
 
   setTheme: (theme) => {
     saveTheme(theme)
@@ -399,7 +479,148 @@ export const useUiStore = create<UiState>((set, get) => ({
   focusAgent: (id) =>
     set((s) => ({ agentFocus: { id, nonce: (s.agentFocus?.nonce ?? 0) + 1 } })),
   resetComposer: () => set((s) => ({ composerResetNonce: s.composerResetNonce + 1 })),
-}))
+
+  openSplitPane: (current, target) => {
+    const state = get()
+    const panes = state.splitPanes.slice()
+    if (panes.some((p) => p.hostId === target.hostId && p.sessionId === target.sessionId)) return
+    if (panes.length === 0) {
+      if (!current || (current.hostId === target.hostId && current.sessionId === target.sessionId)) {
+        return
+      }
+      panes.push(current, target)
+    } else if (panes.length < MAX_SPLIT_PANES) {
+      panes.push(target)
+    } else {
+      const index = current
+        ? panes.findIndex((p) => p.hostId === current.hostId && p.sessionId === current.sessionId)
+        : -1
+      panes[index >= 0 ? index : panes.length - 1] = target
+    }
+    let layout: SplitLayout
+    if (panes.length === 2) layout = 'cols2'
+    else if (panes.length === 3) {
+      layout = state.splitLayout === 'grid2x2' ? 'grid2x2' : 'cols3'
+    } else layout = 'grid2x2'
+    const weights = layoutWeights(layout, {
+      panes: state.splitPanes,
+      layout: state.splitLayout,
+      cols: state.splitCols,
+      rows: state.splitRows,
+    })
+    commitSplit({ panes, layout, ...weights })
+  },
+
+  openSplitPaneAt: (current, target, zone) => {
+    const state = get()
+    const panes = state.splitPanes.slice()
+    if (panes.some((p) => p.hostId === target.hostId && p.sessionId === target.sessionId)) return
+    if (panes.length === 0) {
+      if (!current || (current.hostId === target.hostId && current.sessionId === target.sessionId)) {
+        return
+      }
+      panes.push(current)
+    }
+    let layout = state.splitLayout
+    if (zone === 'left' || zone === 'right') {
+      if (panes.length === 1) {
+        if (zone === 'left') panes.unshift(target)
+        else panes.push(target)
+        layout = 'cols2'
+      } else {
+        const index = zone === 'left' ? 0 : panes.length - 1
+        panes[index] = target
+        layout =
+          panes.length === 2 ? 'cols2' : panes.length === 3 ? 'cols3' : 'grid2x2'
+      }
+    } else if (panes.length === 1) {
+      panes.push(target)
+      layout = 'rows2'
+    } else if (panes.length === 2) {
+      if (layout === 'rows2') {
+        panes[1] = target
+      } else {
+        panes.push(target)
+        layout = 'grid2x2'
+      }
+    } else {
+      panes[panes.length - 1] = target
+      layout = layout === 'cols3' ? 'cols3' : 'grid2x2'
+    }
+    const weights = layoutWeights(layout, {
+      panes: state.splitPanes,
+      layout: state.splitLayout,
+      cols: state.splitCols,
+      rows: state.splitRows,
+    })
+    commitSplit({ panes, layout, ...weights })
+  },
+
+  closeSplitPane: (hostId, sessionId) => {
+    const state = get()
+    const panes = state.splitPanes.filter(
+      (p) => !(p.hostId === hostId && p.sessionId === sessionId),
+    )
+    if (panes.length < 2) {
+      saveSplitState(null)
+      set({ splitPanes: [], splitLayout: 'cols2' })
+      return
+    }
+    let layout = state.splitLayout
+    if (layout === 'cols3' && panes.length === 2) layout = 'cols2'
+    if (layout === 'rows2' && panes.length > 2) layout = 'grid2x2'
+    const weights = layoutWeights(layout, {
+      panes: state.splitPanes,
+      layout: state.splitLayout,
+      cols: state.splitCols,
+      rows: state.splitRows,
+    })
+    commitSplit({ panes, layout, ...weights })
+  },
+
+  removePaneForSession: (hostId, sessionId) => {
+    const state = get()
+    if (!state.splitPanes.some((p) => p.hostId === hostId && p.sessionId === sessionId)) return
+    get().closeSplitPane(hostId, sessionId)
+  },
+
+  replaceSplitPane: (focused, target) => {
+    const state = get()
+    if (state.splitPanes.length < 2) return
+    if (state.splitPanes.some((p) => p.hostId === target.hostId && p.sessionId === target.sessionId)) return
+    const panes = state.splitPanes.slice()
+    const index = focused
+      ? panes.findIndex((p) => p.hostId === focused.hostId && p.sessionId === focused.sessionId)
+      : -1
+    panes[index >= 0 ? index : 0] = target
+    commitSplit({ panes })
+  },
+
+  setSplitLayout: (layout) => {
+    if (get().splitPanes.length < 2) return
+    commitLayout(layout)
+  },
+
+  setSplitColWeights: (weights) => {
+    const next = weights.filter((n) => Number.isFinite(n) && n > 0)
+    if (next.length !== get().splitCols.length) return
+    commitSplit({ cols: next })
+  },
+
+  setSplitRowWeights: (weights) => {
+    const next = weights.filter((n) => Number.isFinite(n) && n > 0)
+    if (next.length !== get().splitRows.length) return
+    commitSplit({ rows: next })
+  },
+
+  clearSplit: () => {
+    saveSplitState(null)
+    set({ splitPanes: [], splitLayout: 'cols2', splitCols: equalWeights(2), splitRows: equalWeights(1) })
+  },
+
+  setSplitPickerOpen: (open) => set({ splitPickerOpen: open }),
+  }
+})
 
 export function applyTheme(theme: Theme): void {
   const dark =

@@ -1,7 +1,7 @@
 import { memo, useState } from 'react'
 import { ChevronRight, Layers, Loader2 } from 'lucide-react'
 import type { ToolResultBlock, UiMessage } from '../../lib/types'
-import { useAppStore } from '../../store/useAppStore'
+import { useSessionView } from '../session/SessionScope'
 import { cn } from '../../lib/cn'
 import { ThinkingBlock } from '../ThinkingBlock'
 import { ToolCard, type ToolUseBlock } from '../ToolCard'
@@ -52,7 +52,7 @@ export const ToolGroup = memo(
   }) {
     const [open, setOpen] = useState(false)
     const [mounted, setMounted] = useState(false)
-    const storeResults = useAppStore((s) => s.active?.toolResults)
+    const storeResults = useSessionView((s) => s?.toolResults)
     const results = toolResults ?? storeResults
     const tools = entries.filter(
       (e): e is Extract<ToolRunEntry, { kind: 'tool' }> => e.kind === 'tool',

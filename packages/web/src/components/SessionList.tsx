@@ -4,6 +4,7 @@ import {
   ArchiveRestore,
   ChevronRight,
   Clock,
+  Columns2,
   Copy,
   Eye,
   FlaskConical,
@@ -31,6 +32,7 @@ import { clearRunning, runningSince } from '../lib/runClock'
 import { basename, formatElapsed, formatRelative } from '../lib/format'
 import { rememberDir } from '../lib/storage'
 import { navigate } from '../lib/router'
+import { openSplitSession } from '../lib/splitActions'
 import { cn } from '../lib/cn'
 import { isSessionFilterActive, type SessionFilter } from '../lib/types'
 import { SessionStatusDot } from './StatusDot'
@@ -240,6 +242,7 @@ function RowMenu({
   state,
   onClose,
   onRename,
+  onSplit,
   onTogglePin,
   onTogglePinProject,
   onFork,
@@ -252,6 +255,7 @@ function RowMenu({
   state: MenuState
   onClose: () => void
   onRename: () => void
+  onSplit: () => void
   onTogglePin: () => void
   onTogglePinProject: () => void
   onFork: () => void
@@ -281,6 +285,9 @@ function RowMenu({
     >
       <Menu.Item icon={<Pencil size={14} />} onSelect={onRename}>
         重命名
+      </Menu.Item>
+      <Menu.Item icon={<Columns2 size={14} />} onSelect={onSplit}>
+        在分屏中打开
       </Menu.Item>
       <Menu.Item
         icon={state.session.pinned ? <PinOff size={14} /> : <Pin size={14} />}
@@ -503,8 +510,9 @@ export function SessionList({
     await updateSession(hostId, s.id, { title })
   }
 
-  const openSession = (hostId: string, sessionId: string) => {
-    navigate({ kind: 'session', hostId, sessionId })
+  const openSession = (hostId: string, sessionId: string, split = false) => {
+    if (split) openSplitSession({ hostId, sessionId })
+    else navigate({ kind: 'session', hostId, sessionId })
     onNavigate?.()
   }
 
@@ -532,6 +540,7 @@ export function SessionList({
   const menuActions = menu
     ? {
         onRename: () => startRename(menu.session),
+        onSplit: () => openSplitSession({ hostId: menu.hostId, sessionId: menu.session.id }),
         onTogglePin: () =>
           void updateSession(menu.hostId, menu.session.id, { pinned: !menu.session.pinned }),
         onTogglePinProject: () =>
@@ -567,6 +576,14 @@ export function SessionList({
         data-session-id={s.id}
         data-host-id={hostId}
         onContextMenu={(e) => openMenu(e, hostId, s)}
+        draggable={!renamingThis}
+        onDragStart={(e) => {
+          e.dataTransfer.setData(
+            'application/x-tandem-split',
+            JSON.stringify({ hostId, sessionId: s.id }),
+          )
+          e.dataTransfer.effectAllowed = 'copy'
+        }}
         title={
           s.forkedFrom
             ? `分叉自 ${s.forkedFrom.title || '父会话'}${s.title ? ` · ${s.title}` : ''}`
@@ -622,7 +639,7 @@ export function SessionList({
           <button
             type="button"
             data-session-open="true"
-            onClick={() => openSession(hostId, s.id)}
+            onClick={(e) => openSession(hostId, s.id, !!(e.metaKey || e.ctrlKey))}
             aria-current={isActive ? 'page' : undefined}
             className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pl-2 pr-1 text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--t-accent-strong)]"
           >

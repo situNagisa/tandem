@@ -6,6 +6,7 @@ import { useUiStore } from '../store/useUiStore'
 import { api } from '../lib/api'
 import { navigate } from '../lib/router'
 import { isLocalHostUrl, isSameOrigin } from '../lib/hostUrl'
+import { useElementWidth } from '../lib/hooks'
 import { cn } from '../lib/cn'
 import { MessageList } from './MessageList'
 import { SessionWelcome, HomeView } from './Welcome'
@@ -16,6 +17,7 @@ import { Composer } from './Composer'
 import { EnvBar } from './EnvBar'
 import { TurnRail } from './chat/TurnRail'
 import { TurnErrorNotice } from './chat/TurnErrorNotice'
+import { useSessionTarget, useSessionView } from './session/SessionScope'
 import '../styles/chat.css'
 
 const EMPTY_PENDING: PermissionRequest[] = []
@@ -24,19 +26,22 @@ const PIN_THRESHOLD = 80
 const JUMP_THRESHOLD = 160
 
 export function ChatView() {
-  const hasSession = useAppStore((s) => !!s.active)
-  const hostId = useAppStore((s) => s.active?.hostId ?? null)
-  const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
-  const loading = useAppStore((s) => s.active?.loading ?? false)
-  const error = useAppStore((s) => s.active?.error)
-  const turnError = useAppStore((s) => s.active?.turnError)
-  const summary = useAppStore((s) => s.active?.summary ?? null)
-  const pending = useAppStore((s) => s.active?.pending ?? EMPTY_PENDING)
-  const messageCount = useAppStore((s) => s.active?.messages.length ?? 0)
-  const lastIsLocal = useAppStore(
-    (s) => s.active?.messages[s.active.messages.length - 1]?.local ?? false,
+  const sessionTarget = useSessionTarget() ?? undefined
+  const [rootRef, width] = useElementWidth<HTMLDivElement>()
+  const compact = width > 0 && width < 440
+  const hasSession = useSessionView((s) => !!s)
+  const hostId = useSessionView((s) => s?.hostId ?? null)
+  const sessionId = useSessionView((s) => s?.sessionId ?? null)
+  const loading = useSessionView((s) => s?.loading ?? false)
+  const error = useSessionView((s) => s?.error)
+  const turnError = useSessionView((s) => s?.turnError)
+  const summary = useSessionView((s) => s?.summary ?? null)
+  const pending = useSessionView((s) => s?.pending ?? EMPTY_PENDING)
+  const messageCount = useSessionView((s) => s?.messages.length ?? 0)
+  const lastIsLocal = useSessionView(
+    (s) => s?.messages[s.messages.length - 1]?.local ?? false,
   )
-  const running = useAppStore((s) => s.active?.running ?? false)
+  const running = useSessionView((s) => s?.running ?? false)
   const authError = useAppStore((s) =>
     hostId ? s.runtimes[hostId]?.authError : undefined,
   )
@@ -47,10 +52,10 @@ export function ChatView() {
   const openDoctor = useUiStore((s) => s.openDoctor)
   const canDoctor =
     !!activeHost && (isLocalHostUrl(activeHost.url) || isSameOrigin(activeHost.url))
-  const viewers = useAppStore((s) => s.active?.viewers ?? EMPTY_VIEWERS)
+  const viewers = useSessionView((s) => s?.viewers ?? EMPTY_VIEWERS)
   const reloadActiveSession = useAppStore((s) => s.reloadActiveSession)
   const hostSessions = useAppStore((s) =>
-    s.active?.hostId ? s.runtimes[s.active.hostId]?.sessions : undefined,
+    hostId ? s.runtimes[hostId]?.sessions : undefined,
   )
   const forkedFrom = summary?.forkedFrom
   const parentSession = forkedFrom
@@ -108,10 +113,12 @@ export function ChatView() {
 
   const retryTurn = () => {
     const state = useAppStore.getState()
-    const active = state.active
-    if (!active || active.running) return
-    const last = active.messages.slice().reverse().find((m) => m.role === 'user')
-    if (last) state.send(last.content)
+    const view = sessionTarget
+      ? state.sessionViews[`${sessionTarget.hostId}:${sessionTarget.sessionId}`]
+      : state.active
+    if (!view || view.running) return
+    const last = view.messages.slice().reverse().find((m) => m.role === 'user')
+    if (last) state.send(last.content, sessionTarget)
   }
 
   const stickToBottom = useCallback(() => {
@@ -206,7 +213,7 @@ export function ChatView() {
         return
       }
       e.preventDefault()
-      useAppStore.getState().interrupt()
+      useAppStore.getState().interrupt(sessionTarget)
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
@@ -238,14 +245,14 @@ export function ChatView() {
 
   if (!hasSession) {
     return (
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={rootRef} className="min-h-0 flex-1 overflow-y-auto">
         <HomeView />
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div ref={rootRef} data-compact={compact ? 'true' : undefined} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
         {announcement}
       </div>
@@ -275,7 +282,10 @@ export function ChatView() {
         >
           <div
             ref={contentRef}
-            className="mx-auto flex min-h-full w-full max-w-[808px] flex-col px-4 pb-8 pt-3 md:px-6 md:pt-5"
+            className={cn(
+              'mx-auto flex min-h-full w-full max-w-[808px] flex-col pb-8',
+              compact ? 'px-2.5 pt-2' : 'px-4 pt-3 md:px-6 md:pt-5',
+            )}
           >
             <div className="flex flex-1 flex-col">
               {otherViewers.length > 0 && (
@@ -338,7 +348,7 @@ export function ChatView() {
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={reloadActiveSession}
+                    onClick={() => reloadActiveSession(sessionTarget)}
                     className="border-danger/30 px-2 text-[12px]"
                   >
                     重新加载
@@ -349,15 +359,17 @@ export function ChatView() {
           </div>
         </div>
 
-        <TurnRail
-          scrollRef={scrollRef}
-          sessionId={sessionId}
-          onBeforeJump={() => {
-            pinnedRef.current = false
-            programmaticUntil.current = 0
-            setShowJump(false)
-          }}
-        />
+        {!compact && (
+          <TurnRail
+            scrollRef={scrollRef}
+            sessionId={sessionId}
+            onBeforeJump={() => {
+              pinnedRef.current = false
+              programmaticUntil.current = 0
+              setShowJump(false)
+            }}
+          />
+        )}
 
         <IconButton
           onClick={() => scrollToBottom(true)}
@@ -374,7 +386,12 @@ export function ChatView() {
         </IconButton>
       </div>
 
-      <div className="shrink-0 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5 md:px-6 md:pb-5 md:pt-2">
+      <div
+        className={cn(
+          'shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5 md:pb-5 md:pt-2',
+          compact ? 'px-2' : 'px-4 md:px-6',
+        )}
+      >
         <div className="mx-auto w-full max-w-[760px]">
           {summary && hostId && (
             <EnvBar
@@ -383,6 +400,7 @@ export function ChatView() {
               cwd={summary.cwd}
               env={summary.env}
               worktree={summary.worktree}
+              compact={compact}
             />
           )}
           {pending.length > 0 &&
@@ -406,7 +424,7 @@ export function ChatView() {
                 : '审批者：可以处理审批请求，不能发消息或新建会话。'}
             </div>
           ) : (
-            <Composer />
+            <Composer compact={compact} />
           )}
         </div>
       </div>

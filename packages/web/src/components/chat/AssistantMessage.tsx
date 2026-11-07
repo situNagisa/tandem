@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ContentBlock } from '@tandem/protocol'
 import { Check, Copy, GitFork, Loader2, MoreHorizontal, RefreshCw, Undo2 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
+import { useSessionTarget, useSessionView } from '../session/SessionScope'
 import { cn } from '../../lib/cn'
 import { copyText } from '../../lib/clipboard'
 import { formatCost, formatTokens } from '../../lib/format'
@@ -41,7 +42,8 @@ export const AssistantMessage = memo(function AssistantMessage({
   const [copied, setCopied] = useState(false)
   const [rewindOpen, setRewindOpen] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
-  const running = useAppStore((s) => s.active?.running ?? false)
+  const scopeTarget = useSessionTarget() ?? undefined
+  const running = useSessionView((s) => s?.running ?? false)
   const copyTimer = useRef<number | null>(null)
   const rawText = message.content
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
@@ -63,9 +65,12 @@ export const AssistantMessage = memo(function AssistantMessage({
   }
 
   const forkFromHere = () => {
-    const active = useAppStore.getState().active
-    if (!active) return
-    void useAppStore.getState().forkSession(active.hostId, active.sessionId, message.id)
+    const state = useAppStore.getState()
+    const view = scopeTarget
+      ? state.sessionViews[`${scopeTarget.hostId}:${scopeTarget.sessionId}`]
+      : state.active
+    if (!view) return
+    void state.forkSession(view.hostId, view.sessionId, message.id)
   }
 
   const regenerate = async () => {
@@ -77,7 +82,7 @@ export const AssistantMessage = memo(function AssistantMessage({
       restoreFiles: false,
       restoreConversation: true,
     })
-    if (ok) store.send(turnUser.content.filter((b) => b.type !== 'tool_result'))
+    if (ok) store.send(turnUser.content.filter((b) => b.type !== 'tool_result'), scopeTarget)
     setRegenerating(false)
   }
 

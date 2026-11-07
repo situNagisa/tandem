@@ -26,6 +26,7 @@ export const useAppStore = create<AppState>((set, get) => {
     externalSessions: {},
     inbox: {},
     active: null,
+    sessionViews: {},
     changesNonce: 0,
     worktreeIntents: {},
 

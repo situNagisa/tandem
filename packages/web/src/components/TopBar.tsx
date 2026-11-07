@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RetryInfo } from '@tandem/protocol'
 import {
+  Columns2,
+  Columns3,
   FileDiff,
+  LayoutGrid,
   Menu,
   PanelLeft,
   PanelRight,
   Pencil,
   Search,
   Send,
+  X,
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -19,9 +23,11 @@ import { formatElapsed } from '../lib/format'
 import { clearRunning, runningSince } from '../lib/runClock'
 import { navigate, useRoute } from '../lib/router'
 import { cn } from '../lib/cn'
+import { clearSplitWorkspace } from '../lib/splitActions'
 import { isDesktop, isMacDesktop, isWindowsDesktop } from '../lib/desktop'
 import { ConnectionDot } from './StatusDot'
 import { Button, IconButton } from './ui/Button'
+import { Menu as UiMenu } from './ui/Menu'
 import { Input } from './ui/Controls'
 import { BackgroundTasksButton, BrowserButton, FilesButton, SubagentsButton } from './chat/SessionHeaderTools'
 import { EvalRunsButton } from './evals/EvalRunsButton'
@@ -116,6 +122,73 @@ function StatePill({
     )
   }
   return null
+}
+
+function SplitMenuButton() {
+  const panes = useUiStore((s) => s.splitPanes)
+  const layout = useUiStore((s) => s.splitLayout)
+  const setSplitLayout = useUiStore((s) => s.setSplitLayout)
+  const setSplitPickerOpen = useUiStore((s) => s.setSplitPickerOpen)
+  const split = panes.length >= 2
+  return (
+    <UiMenu
+      side="bottom"
+      align="end"
+      aria-label="多会话分屏"
+      className="w-[190px]"
+      trigger={({ open }) => (
+        <IconButton
+          label="多会话分屏"
+          tooltip="多会话分屏"
+          aria-pressed={split}
+          className={cn(
+            'max-sm:size-11',
+            (open || split) && 'bg-[var(--t-bg-active)] text-text',
+          )}
+        >
+          <Columns2 size={16} />
+        </IconButton>
+      )}
+    >
+      <UiMenu.Item icon={<Columns2 size={14} />} onSelect={() => setSplitPickerOpen(true)}>
+        分屏打开会话…
+      </UiMenu.Item>
+      {split && (
+        <>
+          <UiMenu.Separator />
+          <UiMenu.Item
+            icon={<Columns2 size={14} />}
+            selected={layout === 'cols2'}
+            disabled={panes.length > 2}
+            disabledReason="当前有 3–4 个窗格，请用 3 列或 2×2"
+            onSelect={() => setSplitLayout('cols2')}
+          >
+            2 列
+          </UiMenu.Item>
+          <UiMenu.Item
+            icon={<Columns3 size={14} />}
+            selected={layout === 'cols3'}
+            disabled={panes.length > 3}
+            disabledReason="4 个窗格请用 2×2 网格"
+            onSelect={() => setSplitLayout('cols3')}
+          >
+            3 列
+          </UiMenu.Item>
+          <UiMenu.Item
+            icon={<LayoutGrid size={14} />}
+            selected={layout === 'grid2x2'}
+            onSelect={() => setSplitLayout('grid2x2')}
+          >
+            2×2 网格
+          </UiMenu.Item>
+          <UiMenu.Separator />
+          <UiMenu.Item icon={<X size={14} />} onSelect={clearSplitWorkspace}>
+            合并为单窗格
+          </UiMenu.Item>
+        </>
+      )}
+    </UiMenu>
+  )
 }
 
 export function TopBar() {
@@ -323,8 +396,8 @@ export function TopBar() {
             retryInfo={summary?.retryInfo}
             retrySeconds={retrySeconds}
             resumePaused={summary?.resumePaused}
-            onRetryNow={retryNow}
-            onStop={interrupt}
+            onRetryNow={() => retryNow()}
+            onStop={() => interrupt()}
             onResume={() => void resumePaused()}
           />
         ) : (
@@ -358,6 +431,7 @@ export function TopBar() {
           <BrowserButton />
           <FilesButton />
           <PrButton />
+          <SplitMenuButton />
         </>
       )}
 
@@ -482,11 +556,11 @@ export function TopBar() {
             ? `网络中断，${retrySeconds} 秒后重试`
             : '网络中断，正在重试…'}
         </span>
-        <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[12px]" onClick={retryNow}>
+        <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[12px]" onClick={() => retryNow()}>
           立即重试
         </Button>
         <span className="text-border-strong">·</span>
-        <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[12px]" onClick={interrupt}>
+        <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[12px]" onClick={() => interrupt()}>
           停止
         </Button>
       </div>

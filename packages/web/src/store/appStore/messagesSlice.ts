@@ -1,7 +1,7 @@
 import type { StoreApi } from 'zustand'
 import { api } from '../../lib/api'
-import type { UiMessage } from '../../lib/types'
-import { connections, newId, toast } from './helpers'
+import type { SessionTarget, UiMessage } from '../../lib/types'
+import { connections, newId, toast, viewKeyOf } from './helpers'
 import type { SessionCore } from './sessionCore'
 import type { AppState } from './types'
 
@@ -21,25 +21,30 @@ export function createMessagesSlice(
   get: StoreApi<AppState>['getState'],
   core: SessionCore,
 ): MessagesSlice {
-  const { getHost, patchActive, patchSubagent, applySessionSummary, ensureConnection } = core
+  const { getHost, patchView, patchSubagent, applySessionSummary, ensureConnection } = core
+
+  const viewOf = (target?: SessionTarget | null) => {
+    if (target) return get().sessionViews[viewKeyOf(target.hostId, target.sessionId)] ?? null
+    return get().active
+  }
 
   return {
-    clearTurnError: () => {
-      const active = get().active
-      if (!active) return
-      patchActive(active.hostId, active.sessionId, (a) => ({ ...a, turnError: undefined }))
+    clearTurnError: (target) => {
+      const view = viewOf(target)
+      if (!view) return
+      patchView(view.hostId, view.sessionId, (a) => ({ ...a, turnError: undefined }))
     },
 
-    send: (blocks) => {
-      const active = get().active
-      if (!active) return false
-      const conn = ensureConnection(active.hostId)
-      const ok = conn?.send({ type: 'send', sessionId: active.sessionId, content: blocks }) ?? false
+    send: (blocks, target) => {
+      const view = viewOf(target)
+      if (!view) return false
+      const conn = ensureConnection(view.hostId)
+      const ok = conn?.send({ type: 'send', sessionId: view.sessionId, content: blocks }) ?? false
       if (!ok) {
         toast('Host 未连接，消息未发送', 'error')
         return false
       }
-      const wasRunning = active.running
+      const wasRunning = view.running
       const local: UiMessage = {
         id: `local-${newId()}`,
         role: 'user',
@@ -48,7 +53,7 @@ export function createMessagesSlice(
         local: true,
         queued: wasRunning,
       }
-      patchActive(active.hostId, active.sessionId, (a) => ({
+      patchView(view.hostId, view.sessionId, (a) => ({
         ...a,
         messages: [...a.messages, local],
         running: true,
@@ -56,43 +61,49 @@ export function createMessagesSlice(
         turnError: undefined,
         summary: a.summary ? { ...a.summary, status: 'running', updatedAt: Date.now() } : null,
       }))
-      if (active.summary) {
-        applySessionSummary(active.hostId, { ...active.summary, status: 'running', updatedAt: Date.now() })
+      if (view.summary) {
+        applySessionSummary(view.hostId, {
+          ...view.summary,
+          status: 'running',
+          updatedAt: Date.now(),
+        })
       }
       return true
     },
 
-    interrupt: () => {
-      const active = get().active
-      if (!active || !active.running) return
-      const conn = connections.get(active.hostId) ?? ensureConnection(active.hostId)
-      const ok = conn?.send({ type: 'interrupt', sessionId: active.sessionId }) ?? false
+    interrupt: (target) => {
+      const view = viewOf(target)
+      if (!view || !view.running) return
+      const conn = connections.get(view.hostId) ?? ensureConnection(view.hostId)
+      const ok = conn?.send({ type: 'interrupt', sessionId: view.sessionId }) ?? false
       if (!ok) {
         toast('Host 未连接，无法中断', 'error')
         return
       }
-      patchActive(active.hostId, active.sessionId, (a) => ({ ...a, stopping: true }))
+      patchView(view.hostId, view.sessionId, (a) => ({ ...a, stopping: true }))
     },
 
-    retryNow: () => {
-      const active = get().active
-      if (!active) return
-      const conn = connections.get(active.hostId) ?? ensureConnection(active.hostId)
-      const ok = conn?.send({ type: 'retry_now', sessionId: active.sessionId }) ?? false
+    retryNow: (target) => {
+      const view = viewOf(target)
+      if (!view) return
+      const conn = connections.get(view.hostId) ?? ensureConnection(view.hostId)
+      const ok = conn?.send({ type: 'retry_now', sessionId: view.sessionId }) ?? false
       if (!ok) toast('Host 未连接，无法重试', 'error')
     },
 
-    resumePaused: async () => {
-      const active = get().active
-      if (!active) return
-      const host = getHost(active.hostId)
+    resumePaused: async (target) => {
+      const view = viewOf(target)
+      if (!view) return
+      const host = getHost(view.hostId)
       if (!host) return
       try {
-        const summary = await api.resumeSession(host, active.sessionId)
-        applySessionSummary(active.hostId, summary)
-        patchActive(active.hostId, active.sessionId, (a) => ({
+        const summary = await api.resumeSession(host, view.sessionId)
+        applySessionSummary(view.hostId, summary)
+        patchView(view.hostId, view.sessionId, (a) => ({
           ...a,
-          summary: a.summary ? { ...a.summary, resumePaused: undefined, status: summary.status } : summary,
+          summary: a.summary
+            ? { ...a.summary, resumePaused: undefined, status: summary.status }
+            : summary,
           running: true,
         }))
       } catch (err) {
@@ -100,25 +111,25 @@ export function createMessagesSlice(
       }
     },
 
-    interruptSubagent: (childId) => {
-      const active = get().active
-      if (!active) return
-      const conn = connections.get(active.hostId) ?? ensureConnection(active.hostId)
+    interruptSubagent: (childId, target) => {
+      const view = viewOf(target)
+      if (!view) return
+      const conn = connections.get(view.hostId) ?? ensureConnection(view.hostId)
       const ok = conn?.send({ type: 'interrupt', sessionId: childId }) ?? false
       if (!ok) {
         toast('Host 未连接，无法停止子代理', 'error')
         return
       }
-      patchSubagent(active.hostId, childId, (sub) => ({
+      patchSubagent(view.hostId, childId, (sub) => ({
         ...sub,
         summary: sub.summary ? { ...sub.summary, status: 'running' } : null,
       }))
     },
 
-    decidePermission: (requestId, decision, reason) => {
-      const active = get().active
-      if (!active) return
-      const conn = connections.get(active.hostId) ?? ensureConnection(active.hostId)
+    decidePermission: (requestId, decision, reason, target) => {
+      const view = viewOf(target)
+      if (!view) return
+      const conn = connections.get(view.hostId) ?? ensureConnection(view.hostId)
       const ok =
         conn?.send({
           type: 'permission',
@@ -130,7 +141,7 @@ export function createMessagesSlice(
         toast('Host 未连接，无法提交审批', 'error')
         return
       }
-      patchActive(active.hostId, active.sessionId, (a) => {
+      patchView(view.hostId, view.sessionId, (a) => {
         const pending = a.pending.filter((p) => p.id !== requestId)
         return {
           ...a,
@@ -140,8 +151,8 @@ export function createMessagesSlice(
             : null,
         }
       })
-      const now = get().active
-      if (now && now.summary) applySessionSummary(active.hostId, now.summary)
+      const now = get().sessionViews[viewKeyOf(view.hostId, view.sessionId)]
+      if (now?.summary) applySessionSummary(view.hostId, now.summary)
     },
   }
 }

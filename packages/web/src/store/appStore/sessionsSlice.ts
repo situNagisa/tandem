@@ -2,14 +2,25 @@ import type { SessionSummary } from '@tandem/protocol'
 import type { StoreApi } from 'zustand'
 import { api } from '../../lib/api'
 import { navigate } from '../../lib/router'
+import type { SessionTarget } from '../../lib/types'
 import { useUiStore } from '../useUiStore'
-import { connections, isRunningStatus, toast } from './helpers'
+import {
+  connections,
+  emptyActiveSession,
+  isRunningStatus,
+  matchesView,
+  toast,
+  viewKeyOf,
+} from './helpers'
 import type { SessionCore } from './sessionCore'
 import type { AppState } from './types'
 
 export type SessionsSlice = Pick<
   AppState,
   | 'openSession'
+  | 'openSessionView'
+  | 'closeSessionView'
+  | 'focusSessionView'
   | 'closeSession'
   | 'reloadActiveSession'
   | 'setPermissionMode'
@@ -31,112 +42,140 @@ export function createSessionsSlice(
 ): SessionsSlice {
   const {
     getHost,
-    patchActive,
+    patchView,
     clearChildSubscriptions,
     applySessionSummary,
     applySnapshot,
     removeSummary,
+    removeSessionView,
     ensureConnection,
   } = core
 
+  const viewOf = (target?: SessionTarget | null) => {
+    if (target) return get().sessionViews[viewKeyOf(target.hostId, target.sessionId)] ?? null
+    return get().active
+  }
+
+  const openSessionView = (hostId: string, sessionId: string): void => {
+    const key = viewKeyOf(hostId, sessionId)
+    if (get().sessionViews[key]) return
+    const host = getHost(hostId)
+    if (!host) return
+    const rt = get().runtimes[hostId]
+    const summary = rt?.sessions.find((s) => s.id === sessionId) ?? null
+    set((state) => ({
+      sessionViews: {
+        ...state.sessionViews,
+        [key]: emptyActiveSession(hostId, sessionId, summary),
+      },
+    }))
+    if (!rt?.sessionsLoaded) void get().refreshSessions(hostId)
+    // 详情面板要在打开会话后立刻显示账号名：账号列表未就绪时补拉一次
+    if (!rt?.profilesLoaded && !rt?.profilesLoading) void get().refreshProfiles(hostId)
+
+    const conn = ensureConnection(hostId)
+    conn?.subscribe(sessionId)
+    // 系统提示注入段落：会话开头展开查看（与 WS 推送互为备份）
+    void api
+      .injections(host, sessionId)
+      .then((injections) => {
+        patchView(hostId, sessionId, (view) => ({ ...view, injections }))
+      })
+      .catch(() => {})
+    if (!conn || conn.status !== 'online') void core.loadSessionFallback(hostId, sessionId)
+    else {
+      // 正常情况下 snapshot 会立刻到达；若 3 秒仍空白再兜底一次。
+      window.setTimeout(() => {
+        const view = get().sessionViews[key]
+        if (view && view.loading && view.messages.length === 0) {
+          void core.loadSessionFallback(hostId, sessionId)
+        }
+      }, 3000)
+    }
+  }
+
+  const focusView = (hostId: string, sessionId: string): void => {
+    openSessionView(hostId, sessionId)
+    const view = get().sessionViews[viewKeyOf(hostId, sessionId)]
+    if (!view) return
+    set({ active: view })
+    get().activateHost(hostId)
+    core.syncChildren(hostId, sessionId)
+    if (view.summary?.unread) void get().markSessionRead(hostId, sessionId)
+  }
+
   return {
     openSession: (hostId, sessionId) => {
-      const current = get().active
-      if (current && current.hostId === hostId && current.sessionId === sessionId) return
-      if (current) {
-        connections.get(current.hostId)?.unsubscribe(current.sessionId)
-        clearChildSubscriptions(current.hostId)
-      }
-
       get().activateHost(hostId)
       const host = getHost(hostId)
       if (!host) return
-      const rt = get().runtimes[hostId]
-      const summary = rt?.sessions.find((s) => s.id === sessionId) ?? null
-      set({
-        active: {
-          hostId,
-          sessionId,
-          summary,
-          messages: [],
-          pending: [],
-          todos: [],
-          loading: true,
-          running: summary ? isRunningStatus(summary.status) : false,
-          stopping: false,
-          liveToolInputs: {},
-          toolResults: {},
-          hookEvents: [],
-          subagents: {},
-          viewers: [],
-        },
-      })
-      if (!rt?.sessionsLoaded) void get().refreshSessions(hostId)
-      // 详情面板要在打开会话后立刻显示账号名：账号列表未就绪时补拉一次
-      if (!rt?.profilesLoaded && !rt?.profilesLoading) void get().refreshProfiles(hostId)
+      const current = get().active
+      if (current && !matchesView(current, hostId, sessionId)) {
+        const panes = useUiStore.getState().splitPanes
+        const keep = panes.some(
+          (pane) => pane.hostId === current.hostId && pane.sessionId === current.sessionId,
+        )
+        if (!keep) get().closeSessionView(current.hostId, current.sessionId)
+      }
+      focusView(hostId, sessionId)
+    },
 
-      const conn = ensureConnection(hostId)
-      conn?.subscribe(sessionId)
-      core.syncChildren(hostId, sessionId)
-      if (summary?.unread) void get().markSessionRead(hostId, sessionId)
-      // 系统提示注入段落：会话开头展开查看（与 WS 推送互为备份）
-      void api
-        .injections(host, sessionId)
-        .then((injections) => {
-          const now = get().active
-          if (!now || now.hostId !== hostId || now.sessionId !== sessionId) return
-          set({ active: { ...now, injections } })
-        })
-        .catch(() => {})
-      // WebSocket 尚未连上时，先用 REST 拉一份只读快照，避免空白等待。
-      if (!conn || conn.status !== 'online') void core.loadSessionFallback(hostId, sessionId)
-      else {
-        // 正常情况下 snapshot 会立刻到达；若 3 秒仍空白再兜底一次。
-        window.setTimeout(() => {
-          const a = get().active
-          if (a && a.hostId === hostId && a.sessionId === sessionId && a.loading && a.messages.length === 0) {
-            void core.loadSessionFallback(hostId, sessionId)
-          }
-        }, 3000)
+    openSessionView,
+
+    closeSessionView: (hostId, sessionId) => {
+      const view = get().sessionViews[viewKeyOf(hostId, sessionId)]
+      if (!view) return
+      const wasActive = matchesView(get().active, hostId, sessionId)
+      connections.get(hostId)?.unsubscribe(sessionId)
+      removeSessionView(hostId, sessionId)
+      if (wasActive) {
+        const remaining = Object.values(get().sessionViews)
+        set({ active: remaining[0] ?? null })
+      }
+      if (!Object.values(get().sessionViews).some((item) => item.hostId === hostId)) {
+        clearChildSubscriptions(hostId)
       }
     },
+
+    focusSessionView: focusView,
 
     closeSession: () => {
-      const active = get().active
-      if (active) {
-        connections.get(active.hostId)?.unsubscribe(active.sessionId)
-        clearChildSubscriptions(active.hostId)
+      const views = Object.values(get().sessionViews)
+      for (const view of views) connections.get(view.hostId)?.unsubscribe(view.sessionId)
+      for (const hostId of new Set(views.map((view) => view.hostId))) {
+        clearChildSubscriptions(hostId)
       }
-      set({ active: null })
+      set({ active: null, sessionViews: {} })
     },
 
-    reloadActiveSession: () => {
-      const active = get().active
-      if (!active) return
-      const conn = ensureConnection(active.hostId)
-      patchActive(active.hostId, active.sessionId, (a) => ({ ...a, loading: true, error: undefined }))
+    reloadActiveSession: (target) => {
+      const view = viewOf(target)
+      if (!view) return
+      const { hostId, sessionId } = view
+      const conn = ensureConnection(hostId)
+      patchView(hostId, sessionId, (a) => ({ ...a, loading: true, error: undefined }))
       if (conn?.status === 'online') {
-        conn.unsubscribe(active.sessionId)
-        conn.subscribe(active.sessionId)
+        conn.unsubscribe(sessionId)
+        conn.subscribe(sessionId)
       } else {
-        void core.loadSessionFallback(active.hostId, active.sessionId)
+        void core.loadSessionFallback(hostId, sessionId)
       }
     },
 
-    setPermissionMode: async (mode) => {
-      const active = get().active
-      const host = active ? getHost(active.hostId) : undefined
-      if (!active?.summary || !host) return
-      const prev = active.summary
+    setPermissionMode: async (mode, target) => {
+      const view = viewOf(target)
+      const host = view ? getHost(view.hostId) : undefined
+      if (!view?.summary || !host) return
+      const prev = view.summary
       if (prev.permissionMode === mode) return
       const optimistic = { ...prev, permissionMode: mode }
-      patchActive(active.hostId, active.sessionId, (a) => ({ ...a, summary: optimistic }))
-      applySessionSummary(active.hostId, optimistic)
+      patchView(view.hostId, view.sessionId, (a) => ({ ...a, summary: optimistic }))
+      applySessionSummary(view.hostId, optimistic)
       try {
         const updated = await api.patchSession(host, prev.id, { permissionMode: mode })
-        applySessionSummary(active.hostId, updated)
+        applySessionSummary(view.hostId, updated)
       } catch (err) {
-        applySessionSummary(active.hostId, prev)
+        applySessionSummary(view.hostId, prev)
         toast(err instanceof Error ? err.message : '切换权限模式失败', 'error')
       }
     },
@@ -171,23 +210,23 @@ export function createSessionsSlice(
       }
     },
 
-    setModel: async (profileId, groupId, model) => {
-      const active = get().active
-      const host = active ? getHost(active.hostId) : undefined
-      if (!active?.summary || !host) return
-      const prev = active.summary
+    setModel: async (profileId, groupId, model, target) => {
+      const view = viewOf(target)
+      const host = view ? getHost(view.hostId) : undefined
+      if (!view?.summary || !host) return
+      const prev = view.summary
       const optimistic: SessionSummary = { ...prev, profileId, model, groupId }
-      patchActive(active.hostId, active.sessionId, (a) => ({ ...a, summary: optimistic }))
-      applySessionSummary(active.hostId, optimistic)
+      patchView(view.hostId, view.sessionId, (a) => ({ ...a, summary: optimistic }))
+      applySessionSummary(view.hostId, optimistic)
       try {
         const updated = await api.patchSession(host, prev.id, {
           profileId,
           model,
           ...(groupId ? { groupId } : {}),
         })
-        applySessionSummary(active.hostId, updated)
+        applySessionSummary(view.hostId, updated)
       } catch (err) {
-        applySessionSummary(active.hostId, prev)
+        applySessionSummary(view.hostId, prev)
         toast(err instanceof Error ? err.message : '切换模型失败', 'error')
       }
     },
@@ -207,27 +246,18 @@ export function createSessionsSlice(
       if (!host) throw new Error('Host 不存在')
       const summary = await api.createSession(host, input)
       applySessionSummary(hostId, summary)
-      set({
-        active: {
-          hostId,
-          sessionId: summary.id,
-          summary,
-          messages: [],
-          pending: [],
-          todos: [],
-          loading: true,
-          running: false,
-          stopping: false,
-          liveToolInputs: {},
-          toolResults: {},
-          hookEvents: [],
-          subagents: {},
-          viewers: [],
+      const key = viewKeyOf(hostId, summary.id)
+      set((state) => ({
+        sessionViews: {
+          ...state.sessionViews,
+          [key]: emptyActiveSession(hostId, summary.id, summary),
         },
-      })
+      }))
+      const view = get().sessionViews[key]!
+      set({ active: view })
       navigate({ kind: 'session', hostId, sessionId: summary.id })
       ensureConnection(hostId)?.subscribe(summary.id)
-      get().send(content)
+      get().send(content, { hostId, sessionId: summary.id })
       return summary
     },
 
@@ -246,10 +276,8 @@ export function createSessionsSlice(
       const host = getHost(hostId)
       if (!host) return null
       const rt = get().runtimes[hostId]
-      const active = get().active
-      const prev =
-        rt?.sessions.find((s) => s.id === sessionId) ??
-        (active?.hostId === hostId && active.sessionId === sessionId ? active.summary : null)
+      const viewSummary = get().sessionViews[viewKeyOf(hostId, sessionId)]?.summary ?? null
+      const prev = rt?.sessions.find((s) => s.id === sessionId) ?? viewSummary
       if (!prev) return null
       const optimistic: SessionSummary = { ...prev, ...patch }
       applySessionSummary(hostId, optimistic)
@@ -268,10 +296,8 @@ export function createSessionsSlice(
       const host = getHost(hostId)
       if (!host) return
       const rt = get().runtimes[hostId]
-      const active = get().active
-      const current =
-        rt?.sessions.find((s) => s.id === sessionId) ??
-        (active?.hostId === hostId && active.sessionId === sessionId ? active.summary : null)
+      const viewSummary = get().sessionViews[viewKeyOf(hostId, sessionId)]?.summary ?? null
+      const current = rt?.sessions.find((s) => s.id === sessionId) ?? viewSummary
       if (current?.unread) {
         const { unread: _unread, ...rest } = current
         applySessionSummary(hostId, rest)
@@ -302,15 +328,13 @@ export function createSessionsSlice(
     deleteSession: async (hostId, sessionId, force = false) => {
       const host = getHost(hostId)
       if (!host) return
+      const wasActive = matchesView(get().active, hostId, sessionId)
       await api.deleteSession(host, sessionId, force)
       removeSummary(hostId, sessionId)
-      const active = get().active
-      if (active && active.hostId === hostId && active.sessionId === sessionId) {
-        connections.get(hostId)?.unsubscribe(sessionId)
-        clearChildSubscriptions(hostId)
-        set({ active: null })
-        navigate({ kind: 'host', hostId })
+      if (get().sessionViews[viewKeyOf(hostId, sessionId)]) {
+        get().closeSessionView(hostId, sessionId)
       }
+      if (wasActive) navigate({ kind: 'host', hostId })
       toast('会话已删除', 'success')
     },
   }

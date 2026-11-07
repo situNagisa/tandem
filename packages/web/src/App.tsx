@@ -5,11 +5,13 @@ import { navigate, useRoute } from './lib/router'
 import { useIsMobile, useViewportHeight } from './lib/hooks'
 import { clearAttention } from './lib/attention'
 import { commandForEvent } from './lib/commands'
+import { closeFocusedPane, focusSplitPane } from './lib/splitActions'
 import { initNativeBridge, syncBackgroundService } from './lib/nativeBridge'
 import { cn } from './lib/cn'
 import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
-import { ChatView } from './components/ChatView'
+import { SplitWorkspace } from './components/split/SplitWorkspace'
+import { SplitOpenDialog } from './components/split/SplitOpenDialog'
 import { ExternalSessionView } from './components/ExternalSessionView'
 import { RightPanel } from './components/RightPanel'
 import { ChangeReviewPanel } from './components/ChangeReviewPanel'
@@ -94,6 +96,18 @@ export default function App() {
         return
       }
       store.activateHost(route.hostId)
+      const ui = useUiStore.getState()
+      const key = `${route.hostId}:${route.sessionId}`
+      if (
+        ui.splitPanes.length >= 2 &&
+        !ui.splitPanes.some((pane) => `${pane.hostId}:${pane.sessionId}` === key)
+      ) {
+        const current = store.active
+        ui.replaceSplitPane(
+          current ? { hostId: current.hostId, sessionId: current.sessionId } : null,
+          { hostId: route.hostId, sessionId: route.sessionId },
+        )
+      }
       store.openSession(route.hostId, route.sessionId)
     } else if (route.kind === 'host') {
       if (!store.hosts.some((h) => h.id === route.hostId)) {
@@ -101,6 +115,7 @@ export default function App() {
         return
       }
       store.activateHost(route.hostId)
+      useUiStore.getState().clearSplit()
       store.closeSession()
     } else if (route.kind === 'external') {
       if (!store.hosts.some((h) => h.id === route.hostId)) {
@@ -108,11 +123,32 @@ export default function App() {
         return
       }
       store.activateHost(route.hostId)
+      useUiStore.getState().clearSplit()
       store.closeSession()
     } else {
+      useUiStore.getState().clearSplit()
       store.closeSession()
     }
   }, [route, initialized, hosts])
+
+  // Host 被移除后，清掉指向它的窗格，避免残留空白视图。
+  useEffect(() => {
+    if (!initialized) return
+    const ids = new Set(hosts.map((host) => host.id))
+    const ui = useUiStore.getState()
+    for (const pane of ui.splitPanes) {
+      if (!ids.has(pane.hostId)) ui.removePaneForSession(pane.hostId, pane.sessionId)
+    }
+  }, [hosts, initialized])
+
+  // 刷新后恢复分屏：把所有窗格的会话视图重新订阅；当前路由决定聚焦窗格。
+  const splitPanes = useUiStore((s) => s.splitPanes)
+  useEffect(() => {
+    if (!initialized || route.kind !== 'session' || splitPanes.length < 2) return
+    for (const pane of splitPanes) {
+      useAppStore.getState().openSessionView(pane.hostId, pane.sessionId)
+    }
+  }, [initialized, route, splitPanes])
 
   useEffect(() => {
     const ui = useUiStore.getState()
@@ -169,6 +205,24 @@ export default function App() {
         return
       }
       if (ui.settingsOpen || ui.searchOpen) return
+      const splitPanes = ui.splitPanes
+      if (splitPanes.length >= 2 && !ui.splitPickerOpen) {
+        if (/^[1-4]$/.test(e.key)) {
+          const pane = splitPanes[Number(e.key) - 1]
+          if (pane) {
+            e.preventDefault()
+            e.stopPropagation()
+            focusSplitPane(pane)
+            return
+          }
+        }
+        if (key === 'w') {
+          e.preventDefault()
+          e.stopPropagation()
+          closeFocusedPane()
+          return
+        }
+      }
       const command = commandForEvent(e)
       if (command) {
         e.preventDefault()
@@ -312,7 +366,7 @@ export default function App() {
               externalId={route.id}
             />
           ) : (
-            <ChatView />
+            <SplitWorkspace />
           )}
           {!isMobile && filePreview && (
             <div className="anim-fade-in flex min-h-0 shrink-0">
@@ -399,6 +453,7 @@ export default function App() {
       <DispatchDialogHost />
       <DoctorDialog />
       <SearchDialog />
+      <SplitOpenDialog />
       <Toasts />
       <FeedbackMode />
       <OverlayScrollbar />

@@ -10,6 +10,7 @@ import {
   type RefObject,
 } from 'react'
 import { useAppStore } from '../../store/useAppStore'
+import { useSessionView } from '../session/SessionScope'
 import { useUiStore } from '../../store/useUiStore'
 import { useTurnNavStore } from '../../store/useTurnNavStore'
 import { useFeedbackStore } from '../../store/useFeedbackStore'
@@ -94,7 +95,7 @@ export function TurnRail({
   onBeforeJump?: () => void
 }) {
   const turns = useTurnMarks()
-  const pinnedTurns = useAppStore((s) => s.active?.summary?.pinnedTurns)
+  const pinnedTurns = useSessionView((s) => s?.summary?.pinnedTurns)
   const feedbackActive = useFeedbackStore((s) => s.active)
   const sceneTurns = useMemo(() => {
     if (!pinnedTurns || pinnedTurns.length === 0) return turns

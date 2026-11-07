@@ -18,6 +18,26 @@ export function useIsMobile(): boolean {
   return useMediaQuery('(max-width: 767px)')
 }
 
+/** 元素宽度（分屏窗格紧凑排版用）；用回调 ref，元素切换后重新观察。 */
+export function useElementWidth<T extends HTMLElement>(): [
+  (node: T | null) => void,
+  number,
+] {
+  const [el, setEl] = useState<T | null>(null)
+  const [width, setWidth] = useState(0)
+  useLayoutEffect(() => {
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver((entries) => {
+      const next = Math.round(entries[0]?.contentRect.width ?? 0)
+      setWidth((prev) => (prev === next ? prev : next))
+    })
+    ro.observe(el)
+    setWidth(Math.round(el.getBoundingClientRect().width))
+    return () => ro.disconnect()
+  }, [el])
+  return [setEl, width]
+}
+
 export function useClickOutside<T extends HTMLElement>(
   ref: RefObject<T | null>,
   onOutside: () => void,

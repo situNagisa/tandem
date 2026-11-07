@@ -1,6 +1,8 @@
 import type { Message, Session, SessionSummary } from '@tandem/protocol'
 import type { HostConnection } from '../../lib/ws'
+import { paneKey } from '../../lib/split'
 import type {
+  ActiveSession,
   AppRoute,
   HostRuntime,
   SubagentSession,
@@ -12,6 +14,41 @@ export const connections = new Map<string, HostConnection>()
 export const commandsInFlight = new Set<string>()
 /** 当前主会话已订阅的子代理会话，避免重复 subscribe 触发快照。 */
 export const childSubscriptions = new Map<string, Set<string>>()
+
+export function viewKeyOf(hostId: string, sessionId: string): string {
+  return paneKey(hostId, sessionId)
+}
+
+export function matchesView(
+  view: { hostId: string; sessionId: string } | null | undefined,
+  hostId: string,
+  sessionId: string,
+): boolean {
+  return !!view && view.hostId === hostId && view.sessionId === sessionId
+}
+
+export function emptyActiveSession(
+  hostId: string,
+  sessionId: string,
+  summary: SessionSummary | null = null,
+): ActiveSession {
+  return {
+    hostId,
+    sessionId,
+    summary,
+    messages: [],
+    pending: [],
+    todos: [],
+    loading: true,
+    running: summary ? isRunningStatus(summary.status) : false,
+    stopping: false,
+    liveToolInputs: {},
+    toolResults: {},
+    hookEvents: [],
+    subagents: {},
+    viewers: [],
+  }
+}
 
 export function emptySubagent(summary: SessionSummary | null = null): SubagentSession {
   return {

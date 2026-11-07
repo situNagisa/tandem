@@ -23,7 +23,9 @@ import {
   emptySubagent,
   isDescendantSummary,
   isRunningStatus,
+  matchesView,
   summaryOf,
+  viewKeyOf,
 } from './helpers'
 import type { AppState } from './types'
 
@@ -36,6 +38,13 @@ export interface SessionCore {
     hostId: string,
     updater: (list: ExternalSessionItem[]) => ExternalSessionItem[],
   ) => void
+  /** 更新一个已打开会话视图（不含子代理）；聚焦中时同步 active。 */
+  patchView: (
+    hostId: string,
+    sessionId: string,
+    updater: (active: ActiveSession) => ActiveSession,
+  ) => void
+  /** 兼容旧调用名：语义同 patchView。 */
   patchActive: (
     hostId: string,
     sessionId: string,
@@ -58,6 +67,7 @@ export interface SessionCore {
   applySessionSummary: (hostId: string, summary: SessionSummary) => void
   activeSummaryForSession: (hostId: string, sessionId: string) => SessionSummary | null
   removeSummary: (hostId: string, sessionId: string) => void
+  removeSessionView: (hostId: string, sessionId: string) => void
   applySnapshot: (
     hostId: string,
     session: Session,
@@ -99,18 +109,33 @@ export function createSessionCore(
     })
   }
 
-  const patchActive = (
+  const patchView = (
     hostId: string,
     sessionId: string,
     updater: (active: ActiveSession) => ActiveSession,
   ): void => {
     set((state) => {
-      if (!state.active || state.active.hostId !== hostId || state.active.sessionId !== sessionId) {
-        return state
+      const key = viewKeyOf(hostId, sessionId)
+      const current = state.sessionViews[key]
+      const activeMatches = matchesView(state.active, hostId, sessionId)
+      if (!current) {
+        if (!activeMatches || !state.active) return state
+        const next = updater(state.active)
+        return {
+          active: next,
+          sessionViews: { ...state.sessionViews, [key]: next },
+        }
       }
-      return { active: updater(state.active) }
+      const next = updater(current)
+      if (next === current && (!activeMatches || state.active === current)) return state
+      return {
+        sessionViews: { ...state.sessionViews, [key]: next },
+        ...(activeMatches ? { active: next } : {}),
+      }
     })
   }
+
+  const patchActive = patchView
 
   const patchSubagent = (
     hostId: string,
@@ -118,48 +143,74 @@ export function createSessionCore(
     updater: (sub: SubagentSession) => SubagentSession,
   ): void => {
     set((state) => {
-      const active = state.active
-      if (!active || active.hostId !== hostId || !active.subagents[childId]) return state
-      return {
-        active: {
-          ...active,
-          subagents: { ...active.subagents, [childId]: updater(active.subagents[childId]) },
-        },
+      let active = state.active
+      let changed = false
+      const views = { ...state.sessionViews }
+      for (const [key, view] of Object.entries(state.sessionViews)) {
+        if (view.hostId !== hostId) continue
+        const sub = view.subagents[childId]
+        if (!sub) continue
+        const nextSub = updater(sub)
+        if (nextSub === sub) continue
+        const nextView = {
+          ...view,
+          subagents: { ...view.subagents, [childId]: nextSub },
+        }
+        views[key] = nextView
+        if (matchesView(active, view.hostId, view.sessionId)) active = nextView
+        changed = true
       }
+      if (!changed && state.active && state.active.subagents[childId]) {
+        const nextSub = updater(state.active.subagents[childId])
+        if (nextSub !== state.active.subagents[childId]) {
+          active = {
+            ...state.active,
+            subagents: { ...state.active.subagents, [childId]: nextSub },
+          }
+          changed = true
+        }
+      }
+      return changed ? { sessionViews: views, active } : state
     })
   }
 
   const addSubagent = (hostId: string, summary: SessionSummary): void => {
-    const current = get().active
-    if (!current || current.hostId !== hostId || !summary.parentId) return
     const sessions = get().runtimes[hostId]?.sessions ?? []
-    if (!isDescendantSummary(sessions, summary, current.sessionId)) return
+    let added = false
     set((state) => {
-      const active = state.active
-      if (!active || active.hostId !== hostId) return state
-      const prev = active.subagents[summary.id]
-      if (prev) {
-        if (prev.summary === summary) return state
-        return {
-          active: {
-            ...active,
-            subagents: { ...active.subagents, [summary.id]: { ...prev, summary } },
-          },
+      let active = state.active
+      let changed = false
+      const views = { ...state.sessionViews }
+      for (const [key, view] of Object.entries(state.sessionViews)) {
+        if (view.hostId !== hostId) continue
+        if (!isDescendantSummary(sessions, summary, view.sessionId)) continue
+        const prev = view.subagents[summary.id]
+        if (prev) {
+          if (prev.summary === summary) continue
+          views[key] = {
+            ...view,
+            subagents: { ...view.subagents, [summary.id]: { ...prev, summary } },
+          }
+        } else {
+          views[key] = {
+            ...view,
+            subagents: { ...view.subagents, [summary.id]: emptySubagent(summary) },
+          }
+          added = true
         }
+        if (matchesView(active, view.hostId, view.sessionId)) active = views[key]
+        changed = true
       }
-      return {
-        active: {
-          ...active,
-          subagents: { ...active.subagents, [summary.id]: emptySubagent(summary) },
-        },
-      }
+      return changed ? { sessionViews: views, active } : state
     })
-    subscribeChild(hostId, summary.id)
+    if (added) subscribeChild(hostId, summary.id)
   }
 
   const subscribeChild = (hostId: string, childId: string): void => {
-    const active = get().active
-    if (!active || active.hostId !== hostId) return
+    const hasChild = Object.values(get().sessionViews).some(
+      (view) => view.hostId === hostId && !!view.subagents[childId],
+    )
+    if (!hasChild) return
     let set = childSubscriptions.get(hostId)
     if (!set) {
       set = new Set()
@@ -171,9 +222,11 @@ export function createSessionCore(
   }
 
   const syncChildren = (hostId: string, parentId: string): void => {
-    const active = get().active
-    if (!active || active.hostId !== hostId || active.sessionId !== parentId) return
     const sessions = get().runtimes[hostId]?.sessions ?? []
+    const hasParent = Object.values(get().sessionViews).some(
+      (view) => view.hostId === hostId && view.sessionId === parentId,
+    )
+    if (!hasParent) return
     for (const child of sessions) {
       if (isDescendantSummary(sessions, child, parentId)) addSubagent(hostId, child)
     }
@@ -194,23 +247,19 @@ export function createSessionCore(
   ): void => {
     const summary = summaryOf(session)
     const sessions = get().runtimes[hostId]?.sessions ?? []
-    const activeNow = get().active
-    if (
-      !activeNow ||
-      activeNow.hostId !== hostId ||
-      !isDescendantSummary(sessions, summary, activeNow.sessionId)
-    ) {
-      return
-    }
     set((state) => {
-      const active = state.active
-      if (!active || active.hostId !== hostId) return state
-      const last = session.messages[session.messages.length - 1]
-      return {
-        active: {
-          ...active,
+      let active = state.active
+      let changed = false
+      const views = { ...state.sessionViews }
+      for (const [key, view] of Object.entries(state.sessionViews)) {
+        if (view.hostId !== hostId) continue
+        if (view.sessionId === session.id) continue
+        if (!isDescendantSummary(sessions, summary, view.sessionId)) continue
+        const last = session.messages[session.messages.length - 1]
+        const next = {
+          ...view,
           subagents: {
-            ...active.subagents,
+            ...view.subagents,
             [session.id]: {
               summary,
               messages: session.messages,
@@ -223,8 +272,12 @@ export function createSessionCore(
               toolResults: collectToolResults(session.messages),
             },
           },
-        },
+        }
+        views[key] = next
+        if (matchesView(active, view.hostId, view.sessionId)) active = next
+        changed = true
       }
+      return changed ? { sessionViews: views, active } : state
     })
   }
 
@@ -236,29 +289,34 @@ export function createSessionCore(
         ...state.runtimes,
         [hostId]: { ...rt, sessions: appendSummary(rt.sessions, summary) },
       }
-      if (!state.active || state.active.hostId !== hostId || state.active.sessionId !== summary.id) {
-        return { runtimes }
-      }
-      const active: ActiveSession = {
-        ...state.active,
+      const key = viewKeyOf(hostId, summary.id)
+      const view = state.sessionViews[key]
+      const activeMatches = matchesView(state.active, hostId, summary.id)
+      if (!view && !activeMatches) return { runtimes }
+      const base = view ?? state.active!
+      const next: ActiveSession = {
+        ...base,
         summary,
-        running: isRunningStatus(summary.status) ? true : state.active.running,
+        running: isRunningStatus(summary.status) ? true : base.running,
         turnError:
           summary.status === 'error'
-            ? (state.active.turnError ?? '回合执行出错')
+            ? (base.turnError ?? '回合执行出错')
             : summary.status === 'running'
               ? undefined
-              : state.active.turnError,
+              : base.turnError,
       }
-      return { runtimes, active }
+      return {
+        runtimes,
+        sessionViews: { ...state.sessionViews, [key]: next },
+        ...(activeMatches ? { active: next } : {}),
+      }
     })
     if (summary.parentId) addSubagent(hostId, summary)
   }
 
   const activeSummaryForSession = (hostId: string, sessionId: string): SessionSummary | null => {
-    const active = get().active
-    if (!active || active.hostId !== hostId || active.sessionId !== sessionId) return null
-    return active.summary
+    const view = get().sessionViews[viewKeyOf(hostId, sessionId)]
+    return view?.summary ?? null
   }
 
   const removeSummary = (hostId: string, sessionId: string): void => {
@@ -274,6 +332,19 @@ export function createSessionCore(
     })
   }
 
+  const removeSessionView = (hostId: string, sessionId: string): void => {
+    set((state) => {
+      const key = viewKeyOf(hostId, sessionId)
+      if (!state.sessionViews[key] && !matchesView(state.active, hostId, sessionId)) return state
+      const sessionViews = { ...state.sessionViews }
+      delete sessionViews[key]
+      return {
+        sessionViews,
+        ...(matchesView(state.active, hostId, sessionId) ? { active: null } : {}),
+      }
+    })
+  }
+
   const applySnapshot = (
     hostId: string,
     session: Session,
@@ -281,37 +352,37 @@ export function createSessionCore(
   ): void => {
     const summary = summaryOf(session)
     set((state) => {
-      if (
-        !state.active ||
-        state.active.hostId !== hostId ||
-        state.active.sessionId !== session.id
-      ) {
-        return state
-      }
+      const key = viewKeyOf(hostId, session.id)
+      const view = state.sessionViews[key]
+      const activeMatches = matchesView(state.active, hostId, session.id)
+      if (!view && !activeMatches) return state
+      const base = view ?? state.active!
       const rt = state.runtimes[hostId]
       const runtimes = rt
         ? { ...state.runtimes, [hostId]: { ...rt, sessions: appendSummary(rt.sessions, summary) } }
         : state.runtimes
       const last = session.messages[session.messages.length - 1]
+      const next: ActiveSession = {
+        ...base,
+        summary,
+        messages: session.messages,
+        pending: pendingPermissions,
+        todos: session.todos ?? [],
+        loading: false,
+        error: undefined,
+        running: isRunningStatus(session.status),
+        stopping: false,
+        streamingMessageId:
+          session.status === 'running' && last?.role === 'assistant' ? last.id : undefined,
+        liveToolInputs: {},
+        toolResults: collectToolResults(session.messages),
+        plan: session.plan,
+        hookEvents: [],
+      }
       return {
         runtimes,
-        active: {
-          ...state.active,
-          summary,
-          messages: session.messages,
-          pending: pendingPermissions,
-          todos: session.todos ?? [],
-          loading: false,
-          error: undefined,
-          running: isRunningStatus(session.status),
-          stopping: false,
-          streamingMessageId:
-            session.status === 'running' && last?.role === 'assistant' ? last.id : undefined,
-          liveToolInputs: {},
-          toolResults: collectToolResults(session.messages),
-          plan: session.plan,
-          hookEvents: [],
-        },
+        sessionViews: { ...state.sessionViews, [key]: next },
+        ...(activeMatches ? { active: next } : {}),
       }
     })
   }
@@ -319,13 +390,14 @@ export function createSessionCore(
   async function loadSessionFallback(hostId: string, sessionId: string): Promise<void> {
     const host = getHost(hostId)
     if (!host) return
+    const key = viewKeyOf(hostId, sessionId)
     try {
       const session = await api.session(host, sessionId)
-      if (!get().active || get().active?.sessionId !== sessionId) return
+      if (!get().sessionViews[key]) return
       applySnapshot(hostId, session, [])
     } catch (err) {
-      if (!get().active || get().active?.sessionId !== sessionId) return
-      patchActive(hostId, sessionId, (a) => ({
+      if (!get().sessionViews[key]) return
+      patchView(hostId, sessionId, (a) => ({
         ...a,
         loading: false,
         error: err instanceof Error ? err.message : '加载会话失败',
@@ -357,6 +429,7 @@ export function createSessionCore(
     getHost,
     patchRuntime,
     setExternalSessions,
+    patchView,
     patchActive,
     patchSubagent,
     addSubagent,
@@ -367,6 +440,7 @@ export function createSessionCore(
     applySessionSummary,
     activeSummaryForSession,
     removeSummary,
+    removeSessionView,
     applySnapshot,
     loadSessionFallback,
     ensureConnection,

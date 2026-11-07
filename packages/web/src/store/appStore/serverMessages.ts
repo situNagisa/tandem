@@ -39,13 +39,12 @@ export function createServerMessageHandler(
   const deltaQueue: Array<{ hostId: string; msg: ServerMsg }> = []
   let deltaTimer: ReturnType<typeof setTimeout> | undefined
   let applyingDeltas = false
-  const flushDeltas = (): void => {
-    if (deltaTimer !== undefined) {
-      clearTimeout(deltaTimer)
-      deltaTimer = undefined
-    }
-    if (deltaQueue.length === 0) return
-    const batch = deltaQueue.splice(0)
+  // 非聚焦窗格合并到更慢的节拍（~110ms）：多窗格同时流式时把渲染预算留给正在看的那个。
+  const backgroundDeltaQueue: Array<{ hostId: string; msg: ServerMsg }> = []
+  let backgroundTimer: ReturnType<typeof setTimeout> | undefined
+
+  const applyBatch = (batch: Array<{ hostId: string; msg: ServerMsg }>): void => {
+    if (batch.length === 0) return
     applyingDeltas = true
     try {
       for (const item of batch) handleServerMessage(item.hostId, item.msg)
@@ -54,15 +53,47 @@ export function createServerMessageHandler(
     }
   }
 
+  const flushDeltas = (): void => {
+    if (deltaTimer !== undefined) {
+      clearTimeout(deltaTimer)
+      deltaTimer = undefined
+    }
+    applyBatch(deltaQueue.splice(0))
+  }
+
+  const flushBackgroundDeltas = (): void => {
+    if (backgroundTimer !== undefined) {
+      clearTimeout(backgroundTimer)
+      backgroundTimer = undefined
+    }
+    applyBatch(backgroundDeltaQueue.splice(0))
+  }
+
+  const isFocusedDelta = (hostId: string, sessionId: string): boolean => {
+    const active = get().active
+    if (!active || active.hostId !== hostId) return false
+    return active.sessionId === sessionId || !!active.subagents[sessionId]
+  }
+
   const handleServerMessage = function handleServerMessage(hostId: string, msg: ServerMsg): void {
     const rt = get().runtimes[hostId]
     if (!rt) return
     if (msg.type === 'block_delta' && !applyingDeltas) {
-      deltaQueue.push({ hostId, msg })
-      if (deltaTimer === undefined) deltaTimer = setTimeout(flushDeltas, 30)
+      if (isFocusedDelta(hostId, msg.sessionId)) {
+        deltaQueue.push({ hostId, msg })
+        if (deltaTimer === undefined) deltaTimer = setTimeout(flushDeltas, 30)
+      } else {
+        backgroundDeltaQueue.push({ hostId, msg })
+        if (backgroundTimer === undefined) {
+          backgroundTimer = setTimeout(flushBackgroundDeltas, 110)
+        }
+      }
       return
     }
-    if (msg.type !== 'block_delta' && !applyingDeltas) flushDeltas()
+    if (msg.type !== 'block_delta' && !applyingDeltas) {
+      flushDeltas()
+      flushBackgroundDeltas()
+    }
     switch (msg.type) {
       case 'hello': {
         patchRuntime(hostId, {
@@ -77,12 +108,11 @@ export function createServerMessageHandler(
         break
       }
       case 'session_snapshot': {
-        const snapshotActive = get().active
-        if (
-          snapshotActive &&
-          msg.session.id !== snapshotActive.sessionId &&
-          msg.session.parentId
-        ) {
+        const views = Object.values(get().sessionViews)
+        const isSubagent =
+          !views.some((view) => view.sessionId === msg.session.id) &&
+          views.some((view) => !!view.subagents[msg.session.id])
+        if (isSubagent) {
           applySubagentSnapshot(hostId, msg.session, msg.pendingPermissions)
         } else {
           applySnapshot(hostId, msg.session, msg.pendingPermissions)
@@ -94,9 +124,7 @@ export function createServerMessageHandler(
         break
       }
       case 'injections': {
-        const now = get().active
-        if (!now || now.hostId !== hostId || now.sessionId !== msg.sessionId) break
-        set({ active: { ...now, injections: msg.injections } })
+        patchActive(hostId, msg.sessionId, (view) => ({ ...view, injections: msg.injections }))
         break
       }
       case 'browser_state': {
@@ -104,9 +132,7 @@ export function createServerMessageHandler(
         break
       }
       case 'presence': {
-        const active = get().active
-        if (!active || active.hostId !== hostId || active.sessionId !== msg.sessionId) break
-        set({ active: { ...active, viewers: msg.viewers } })
+        patchActive(hostId, msg.sessionId, (view) => ({ ...view, viewers: msg.viewers }))
         break
       }
       case 'team_updated': {
@@ -118,7 +144,6 @@ export function createServerMessageHandler(
         const targetId = msg.request.assignedTo?.memberId
         const isTarget = me?.role === 'owner' || (!!me?.member && me.member.id === targetId)
         set((state) => {
-          const active = state.active
           const inbox = state.inbox[hostId]
           const next: Partial<typeof state> = {}
           if (inbox) {
@@ -130,21 +155,40 @@ export function createServerMessageHandler(
               },
             }
           }
-          if (active && active.hostId === hostId) {
-            const pending = active.pending.filter((item) => item.id !== msg.requestId)
-            const shouldAdd = isTarget && active.sessionId === msg.request.sessionId
-            if (pending.length !== active.pending.length || shouldAdd) {
-              next.active = {
-                ...active,
-                pending: shouldAdd && !pending.some((p) => p.id === msg.requestId) ? [...pending, msg.request] : pending,
-                subagents: Object.fromEntries(
-                  Object.entries(active.subagents).map(([id, sub]) => [
-                    id,
-                    { ...sub, pending: sub.pending.filter((p) => p.id !== msg.requestId) },
-                  ]),
-                ),
-              }
+          let active = state.active
+          let changed = false
+          const views = { ...state.sessionViews }
+          for (const [key, view] of Object.entries(state.sessionViews)) {
+            if (view.hostId !== hostId) continue
+            const pending = view.pending.filter((item) => item.id !== msg.requestId)
+            const shouldAdd = isTarget && view.sessionId === msg.request.sessionId
+            const subagents = Object.fromEntries(
+              Object.entries(view.subagents).map(([id, sub]) => [
+                id,
+                { ...sub, pending: sub.pending.filter((p) => p.id !== msg.requestId) },
+              ]),
+            )
+            const subagentsChanged = Object.values(view.subagents).some((sub) =>
+              sub.pending.some((p) => p.id === msg.requestId),
+            )
+            if (pending.length === view.pending.length && !shouldAdd && !subagentsChanged) continue
+            const nextView = {
+              ...view,
+              pending:
+                shouldAdd && !pending.some((p) => p.id === msg.requestId)
+                  ? [...pending, msg.request]
+                  : pending,
+              subagents,
             }
+            views[key] = nextView
+            if (active && active.hostId === view.hostId && active.sessionId === view.sessionId) {
+              active = nextView
+            }
+            changed = true
+          }
+          if (changed) {
+            next.sessionViews = views
+            if (active !== state.active) next.active = active
           }
           return next
         })
@@ -198,19 +242,14 @@ export function createServerMessageHandler(
             },
           }
         })
-        if (event.kind === 'permission' && event.permission) {
-          set((state) => {
-            const active = state.active
-            if (
-              !active ||
-              active.hostId !== hostId ||
-              active.sessionId !== event.sessionId ||
-              active.pending.some((p) => p.id === event.requestId)
-            ) {
-              return state
-            }
-            return { active: { ...active, pending: [...active.pending, event.permission!] } }
-          })
+        if (event.kind === 'permission' && event.permission && event.sessionId) {
+          const permission = event.permission
+          const sessionId = event.sessionId
+          patchActive(hostId, sessionId, (view) =>
+            view.pending.some((p) => p.id === event.requestId)
+              ? view
+              : { ...view, pending: [...view.pending, permission] },
+          )
           const summary = get().runtimes[hostId]?.sessions.find(
             (s) => s.id === event.sessionId,
           )
@@ -277,21 +316,49 @@ export function createServerMessageHandler(
         removeSummary(hostId, msg.sessionId)
         if (active?.hostId === hostId && active.subagents[msg.sessionId]) {
           childSubscriptions.get(hostId)?.delete(msg.sessionId)
-          const subagents = { ...active.subagents }
-          delete subagents[msg.sessionId]
-          set({ active: { ...active, subagents } })
+          set((state) => {
+            let nextActive = state.active
+            let changed = false
+            const views = { ...state.sessionViews }
+            for (const [key, view] of Object.entries(state.sessionViews)) {
+              if (view.hostId !== hostId || !view.subagents[msg.sessionId]) continue
+              const subagents = { ...view.subagents }
+              delete subagents[msg.sessionId]
+              const nextView = { ...view, subagents }
+              views[key] = nextView
+              if (nextActive && nextActive.hostId === view.hostId && nextActive.sessionId === view.sessionId) {
+                nextActive = nextView
+              }
+              changed = true
+            }
+            return changed ? { sessionViews: views, active: nextActive } : state
+          })
+        }
+        const viewExists = Object.values(get().sessionViews).some(
+          (view) => view.hostId === hostId && view.sessionId === msg.sessionId,
+        )
+        useUiStore.getState().removePaneForSession(hostId, msg.sessionId)
+        if (viewExists) {
+          get().closeSessionView(hostId, msg.sessionId)
         }
         if (active && active.hostId === hostId && active.sessionId === msg.sessionId) {
           connections.get(hostId)?.unsubscribe(msg.sessionId)
-          set({ active: null })
-          navigate({ kind: 'host', hostId })
+          const remaining = Object.values(get().sessionViews)
+          if (remaining.length > 0) {
+            const next = remaining[0]
+            navigate({ kind: 'session', hostId: next.hostId, sessionId: next.sessionId })
+          } else {
+            navigate({ kind: 'host', hostId })
+          }
           toast('会话已被删除', 'info')
         }
         break
       }
       case 'message_start': {
-        const startActive = get().active
-        if (startActive?.hostId === hostId && startActive.subagents[msg.sessionId]) {
+        const isSubagentEvent = Object.values(get().sessionViews).some(
+          (view) => view.hostId === hostId && !!view.subagents[msg.sessionId],
+        )
+        if (isSubagentEvent) {
           patchSubagent(hostId, msg.sessionId, (sub) => {
             const message = msg.message
             const messages = sub.messages.some((m) => m.id === message.id)
@@ -343,8 +410,10 @@ export function createServerMessageHandler(
       }
       case 'block_delta': {
         const delta = msg.delta
-        const deltaActive = get().active
-        if (deltaActive?.hostId === hostId && deltaActive.subagents[msg.sessionId]) {
+        const isSubagentEvent = Object.values(get().sessionViews).some(
+          (view) => view.hostId === hostId && !!view.subagents[msg.sessionId],
+        )
+        if (isSubagentEvent) {
           patchSubagent(hostId, msg.sessionId, (sub) => {
             if (delta.kind === 'tool_input') {
               const key = `${msg.messageId}:${msg.index}`
@@ -407,8 +476,10 @@ export function createServerMessageHandler(
         break
       }
       case 'message_end': {
-        const endActive = get().active
-        if (endActive?.hostId === hostId && endActive.subagents[msg.sessionId]) {
+        const isSubagentEvent = Object.values(get().sessionViews).some(
+          (view) => view.hostId === hostId && !!view.subagents[msg.sessionId],
+        )
+        if (isSubagentEvent) {
           patchSubagent(hostId, msg.sessionId, (sub) => {
             const message = msg.message
             const messages = sub.messages.some((m) => m.id === message.id)
@@ -453,34 +524,33 @@ export function createServerMessageHandler(
       }
       case 'permission_request': {
         const req = msg.request
-        const active = get().active
-        if (
-          active &&
-          active.hostId === hostId &&
-          active.subagents[req.sessionId]
-        ) {
+        const subViews = Object.values(get().sessionViews).filter(
+          (view) => view.hostId === hostId && view.sessionId !== req.sessionId && !!view.subagents[req.sessionId],
+        )
+        if (subViews.length > 0) {
           patchSubagent(hostId, req.sessionId, (sub) => ({
             ...sub,
             pending: sub.pending.some((p) => p.id === req.id) ? sub.pending : [...sub.pending, req],
             running: true,
           }))
-          // 子代理审批冒泡到主会话审批卡
-          patchActive(hostId, active.sessionId, (a) => ({
-            ...a,
-            pending: a.pending.some((p) => p.id === req.id) ? a.pending : [...a.pending, req],
-            running: true,
-          }))
+          // 子代理审批冒泡到所在窗格的审批卡
+          for (const parent of subViews) {
+            patchActive(hostId, parent.sessionId, (a) => ({
+              ...a,
+              pending: a.pending.some((p) => p.id === req.id) ? a.pending : [...a.pending, req],
+              running: true,
+            }))
+          }
           const summary = get().runtimes[hostId]?.sessions.find((s) => s.id === req.sessionId)
           if (summary) applySessionSummary(hostId, { ...summary, status: 'waiting_permission' })
         }
-        if (active && active.hostId === hostId && active.sessionId === req.sessionId) {
-          patchActive(hostId, req.sessionId, (a) => {
-            const pending = a.pending.some((p) => p.id === req.id) ? a.pending : [...a.pending, req]
-            return { ...a, pending, running: true, stopping: false }
-          })
-          if (active.summary) {
-            applySessionSummary(hostId, { ...active.summary, status: 'waiting_permission' })
-          }
+        patchActive(hostId, req.sessionId, (a) => {
+          const pending = a.pending.some((p) => p.id === req.id) ? a.pending : [...a.pending, req]
+          return { ...a, pending, running: true, stopping: false }
+        })
+        const reqView = get().sessionViews[`${hostId}:${req.sessionId}`]
+        if (reqView?.summary) {
+          applySessionSummary(hostId, { ...reqView.summary, status: 'waiting_permission' })
         }
         const notifySummary = get().runtimes[hostId]?.sessions.find(
           (s) => s.id === req.sessionId,
@@ -496,53 +566,73 @@ export function createServerMessageHandler(
         break
       }
       case 'permission_resolved': {
-        const active = get().active
-        if (!active || active.hostId !== hostId) break
-        if (active.subagents[msg.sessionId]) {
-          patchSubagent(hostId, msg.sessionId, (sub) => {
-            const pending = sub.pending.filter((p) => p.id !== msg.requestId)
-            return {
-              ...sub,
-              pending,
-              running: pending.length > 0 ? true : sub.summary?.status === 'running',
-              summary: sub.summary
-                ? {
-                    ...sub.summary,
-                    status: pending.length > 0 ? 'waiting_permission' : 'running',
-                  }
-                : null,
+        set((state) => {
+          let nextActive = state.active
+          let changed = false
+          const views = { ...state.sessionViews }
+          for (const [key, view] of Object.entries(state.sessionViews)) {
+            if (view.hostId !== hostId) continue
+            let next = view
+            let touched = false
+            if (view.subagents[msg.sessionId]) {
+              const sub = view.subagents[msg.sessionId]!
+              const pending = sub.pending.filter((p) => p.id !== msg.requestId)
+              const parentPending = view.pending.filter((p) => p.id !== msg.requestId)
+              next = {
+                ...next,
+                pending: parentPending,
+                summary:
+                  next.summary && next.sessionId !== msg.sessionId
+                    ? {
+                        ...next.summary,
+                        status: parentPending.length > 0 ? 'waiting_permission' : 'running',
+                      }
+                    : next.summary,
+                subagents: {
+                  ...next.subagents,
+                  [msg.sessionId]: {
+                    ...sub,
+                    pending,
+                    running: pending.length > 0 ? true : sub.summary?.status === 'running',
+                    summary: sub.summary
+                      ? {
+                          ...sub.summary,
+                          status: pending.length > 0 ? 'waiting_permission' : 'running',
+                        }
+                      : null,
+                  },
+                },
+              }
+              touched = true
             }
-          })
-          patchActive(hostId, active.sessionId, (a) => {
-            const pending = a.pending.filter((p) => p.id !== msg.requestId)
-            return {
-              ...a,
-              pending,
-              summary: a.summary
-                ? { ...a.summary, status: pending.length > 0 ? 'waiting_permission' : 'running' }
-                : null,
+            if (view.sessionId === msg.sessionId) {
+              const pending = view.pending.filter((p) => p.id !== msg.requestId)
+              const status = pending.length === 0 ? 'running' : 'waiting_permission'
+              next = {
+                ...next,
+                pending,
+                summary: next.summary ? { ...next.summary, status } : null,
+              }
+              touched = true
             }
-          })
-          break
-        }
-        patchActive(hostId, msg.sessionId, (a) => {
-          const pending = a.pending.filter((p) => p.id !== msg.requestId)
-          const status = pending.length === 0 ? 'running' : 'waiting_permission'
-          return {
-            ...a,
-            pending,
-            summary: a.summary ? { ...a.summary, status } : null,
+            if (!touched) continue
+            views[key] = next
+            if (nextActive && nextActive.hostId === view.hostId && nextActive.sessionId === view.sessionId) {
+              nextActive = next
+            }
+            changed = true
           }
+          return changed ? { sessionViews: views, active: nextActive } : state
         })
-        const now = get().active
-        if (now && now.hostId === hostId && now.sessionId === msg.sessionId && now.summary) {
-          applySessionSummary(hostId, now.summary)
-        }
+        const main = get().sessionViews[`${hostId}:${msg.sessionId}`]
+        if (main?.summary) applySessionSummary(hostId, main.summary)
         break
       }
       case 'todos': {
-        const todoActive = get().active
-        if (todoActive?.hostId === hostId && todoActive.subagents[msg.sessionId]) {
+        const isSubagentEvent = Object.values(get().sessionViews).some(
+          (view) => view.hostId === hostId && !!view.subagents[msg.sessionId],
+        )
+        if (isSubagentEvent) {
           patchSubagent(hostId, msg.sessionId, (sub) => ({
             ...sub,
             summary: sub.summary ? { ...sub.summary, updatedAt: Date.now() } : null,
@@ -579,12 +669,14 @@ export function createServerMessageHandler(
         break
       }
       case 'hook_event': {
-        const hookActive = get().active
+        const hookView = Object.values(get().sessionViews).find(
+          (view) => view.hostId === hostId && view.sessionId === msg.sessionId,
+        )
         const notice: HookNotice = {
-          ...(hookActive && hookActive.sessionId === msg.sessionId
+          ...(hookView
             ? {
                 messageId:
-                  hookActive.messages[hookActive.messages.length - 1]?.id,
+                  hookView.messages[hookView.messages.length - 1]?.id,
               }
             : {}),
           sessionId: msg.sessionId,
@@ -604,8 +696,10 @@ export function createServerMessageHandler(
         break
       }
       case 'turn_end': {
-        const turnActive = get().active
-        if (turnActive?.hostId === hostId && turnActive.subagents[msg.sessionId]) {
+        const isSubagentEvent = Object.values(get().sessionViews).some(
+          (view) => view.hostId === hostId && !!view.subagents[msg.sessionId],
+        )
+        if (isSubagentEvent) {
           patchSubagent(hostId, msg.sessionId, (sub) => {
             const messageId = sub.streamingMessageId
             return {

@@ -289,10 +289,14 @@ export function createHostsSlice(
         const wasActive = state.active?.hostId === id
         let activeHostId = state.activeHostId
         if (activeHostId === id) activeHostId = hosts[0]?.id ?? null
+        const sessionViews = Object.fromEntries(
+          Object.entries(state.sessionViews).filter(([, view]) => view.hostId !== id),
+        )
         return {
           hosts,
           runtimes,
           activeHostId,
+          sessionViews,
           active: wasActive ? null : state.active,
         }
       })

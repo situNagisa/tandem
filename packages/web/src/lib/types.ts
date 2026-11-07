@@ -109,6 +109,28 @@ export interface UiMessage extends Message {
   queued?: boolean
 }
 
+/** 指向一个已打开会话的定位符：分屏窗格、会话作用域与带目标的 store action 共用。 */
+export interface SessionTarget {
+  hostId: string
+  sessionId: string
+}
+
+export type SplitLayout = 'cols2' | 'cols3' | 'grid2x2' | 'rows2'
+
+export interface SplitPane {
+  hostId: string
+  sessionId: string
+}
+
+export interface SplitState {
+  panes: SplitPane[]
+  layout: SplitLayout
+  /** 各列宽度权重，和为 1。 */
+  cols: number[]
+  /** 2×2 / 上下分屏的行高权重。 */
+  rows: number[]
+}
+
 export interface ActiveSession {
   hostId: string
   sessionId: string

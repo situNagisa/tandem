@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import type { ContextBreakdown, ContextTopItem } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
+import { useSessionTarget, useSessionView } from '../session/SessionScope'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
 import { formatTokens } from '../../lib/format'
@@ -81,11 +82,11 @@ function AutoCompactLine({ context }: { context: ContextBreakdown }) {
 
 /** 上下文占用的共享数据源：输入框上下文环与右侧栏上下文卡片共用。 */
 export function useContextBreakdown() {
-  const hostId = useAppStore((s) => s.active?.hostId ?? null)
-  const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
-  const live = useAppStore((s) => s.active?.summary?.context)
-  const usage = useAppStore((s) => s.active?.summary?.usage)
-  const messageCount = useAppStore((s) => s.active?.messages.length ?? 0)
+  const hostId = useSessionView((s) => s?.hostId ?? null)
+  const sessionId = useSessionView((s) => s?.sessionId ?? null)
+  const live = useSessionView((s) => s?.summary?.context)
+  const usage = useSessionView((s) => s?.summary?.usage)
+  const messageCount = useSessionView((s) => s?.messages.length ?? 0)
   const [fetched, setFetched] = useState<ContextBreakdown | null>(null)
 
   useEffect(() => {
@@ -130,7 +131,8 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
   const { sessionId, context, usage, noData, window, used, rate, pct } =
     useContextBreakdown()
   const send = useAppStore((s) => s.send)
-  const running = useAppStore((s) => s.active?.running ?? false)
+  const scopeTarget = useSessionTarget() ?? undefined
+  const running = useSessionView((s) => s?.running ?? false)
 
   if (!sessionId) return null
 
@@ -139,7 +141,7 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
 
   const compact = (close: () => void) => {
     if (running || compactDisabled) return
-    if (send([{ type: 'text', text: '/compact' }])) close()
+    if (send([{ type: 'text', text: '/compact' }], scopeTarget)) close()
   }
 
   return (

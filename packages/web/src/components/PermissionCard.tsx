@@ -3,6 +3,7 @@ import { ArrowRightLeft, Bot, Loader2, MessageSquare, Plus, ShieldAlert, ShieldC
 import type { PermissionDecision, PermissionRequest, PermissionRule, TeamMember } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
+import { useSessionTarget, useSessionView } from './session/SessionScope'
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
 import { CodeBlock } from './CodeBlock'
@@ -169,16 +170,17 @@ export function PermissionCard({
   more: number
 }) {
   const decide = useAppStore((s) => s.decidePermission)
-  const hostId = useAppStore((s) => s.active?.hostId ?? null)
-  const subagentSummary = useAppStore(
-    (s) => s.active?.subagents[request.sessionId]?.summary ?? null,
+  const scopeTarget = useSessionTarget() ?? undefined
+  const hostId = useSessionView((s) => s?.hostId ?? null)
+  const subagentSummary = useSessionView(
+    (s) => s?.subagents[request.sessionId]?.summary ?? null,
   )
   const subagentTitle = subagentSummary?.title ?? request.sourceTitle ?? null
   const sourceDepth = request.depth ?? subagentSummary?.depth ?? 1
-  const cwd = useAppStore((s) => s.active?.summary?.cwd ?? '')
-  const host = useAppStore((s) => s.hosts.find((h) => h.id === s.active?.hostId) ?? null)
+  const cwd = useSessionView((s) => s?.summary?.cwd ?? '')
+  const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
   const teamRole = useAppStore((s) =>
-    s.active?.hostId ? s.runtimes[s.active.hostId]?.team?.role : undefined,
+    hostId ? s.runtimes[hostId]?.team?.role : undefined,
   )
   const [approvers, setApprovers] = useState<TeamMember[]>([])
   const [approversLoaded, setApproversLoaded] = useState(false)
@@ -197,7 +199,7 @@ export function PermissionCard({
   const newString = str(input.new_string)
   const content = str(input.content)
 
-  const handle = (decision: PermissionDecision) => decide(request.id, decision)
+  const handle = (decision: PermissionDecision) => decide(request.id, decision, undefined, scopeTarget)
 
   const insertDenyText = (spoken: string) => {
     const node = denyRef.current
@@ -246,18 +248,18 @@ export function PermissionCard({
       }
       if (e.key === '1') {
         e.preventDefault()
-        decide(request.id, 'allow')
+        decide(request.id, 'allow', undefined, scopeTarget)
       } else if (e.key === '2') {
         e.preventDefault()
-        decide(request.id, 'allow_always')
+        decide(request.id, 'allow_always', undefined, scopeTarget)
       } else if (e.key === '3') {
         e.preventDefault()
-        decide(request.id, 'deny')
+        decide(request.id, 'deny', undefined, scopeTarget)
       }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [request.id, decide])
+  }, [request.id, decide, scopeTarget])
 
   // 新审批出现时，若焦点在空的输入框里，把焦点交给「允许」：
   // 键盘用户可以直接按 1/2/3，不必先 Tab 一圈；正在输入排队消息时不抢焦点。
@@ -304,7 +306,7 @@ export function PermissionCard({
         project: learned.project,
       })
       useUiStore.getState().toast('已添加项目规则，以后自动允许', 'success')
-      decide(request.id, 'allow')
+      decide(request.id, 'allow', undefined, scopeTarget)
     } catch (err) {
       useUiStore.getState().toast(err instanceof Error ? err.message : '添加规则失败', 'error')
     } finally {
@@ -542,7 +544,7 @@ export function PermissionCard({
             <Button
               size="sm"
               variant="primary"
-              onClick={() => decide(request.id, 'deny', denyReason.trim() || undefined)}
+              onClick={() => decide(request.id, 'deny', denyReason.trim() || undefined, scopeTarget)}
             >
               拒绝并提交
             </Button>

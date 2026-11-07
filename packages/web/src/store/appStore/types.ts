@@ -17,6 +17,7 @@ import type {
   ExternalSessionItem,
   HostConfig,
   HostRuntime,
+  SessionTarget,
 } from '../../lib/types'
 
 /** 单台 Host 的收件箱状态（跨会话事件流 + 未处理审批）。 */
@@ -37,7 +38,10 @@ export interface AppState {
   inbox: Record<string, HostInboxState>
   /** 外部会话按 hostId 汇总（元素带 hostId，方便侧栏合并展示）。 */
   externalSessions: Record<string, ExternalSessionItem[]>
+  /** 当前聚焦/主会话；分屏时等于 sessionViews 里被聚焦的那个对象。 */
   active: ActiveSession | null
+  /** 所有已打开会话的完整视图（分屏窗格），键为 `${hostId}:${sessionId}`。 */
+  sessionViews: Record<string, ActiveSession>
   /** 回合结束后自增，改动审阅据此刷新。 */
   changesNonce: number
   /** 已打开但尚未创建的 worktree 意图，键为 `${hostId}:${sessionId}`；发送下一条消息前创建。 */
@@ -81,16 +85,27 @@ export interface AppState {
   applyClientSettings: (settings: ClientSettingsBundle, mode: 'merge' | 'replace') => void
 
   openSession: (hostId: string, sessionId: string) => void
+  /** 后台打开一个分屏会话视图，不切换焦点。 */
+  openSessionView: (hostId: string, sessionId: string) => void
+  /** 关闭一个会话视图（不改变路由）。 */
+  closeSessionView: (hostId: string, sessionId: string) => void
+  /** 聚焦一个已打开的会话视图（若尚未打开则先打开）。 */
+  focusSessionView: (hostId: string, sessionId: string) => void
   closeSession: () => void
-  reloadActiveSession: () => void
-  clearTurnError: () => void
-  send: (blocks: ContentBlock[]) => boolean
-  interrupt: () => void
+  reloadActiveSession: (target?: SessionTarget) => void
+  clearTurnError: (target?: SessionTarget) => void
+  send: (blocks: ContentBlock[], target?: SessionTarget) => boolean
+  interrupt: (target?: SessionTarget) => void
   /** 网络中断等待重试期间立即重试。 */
-  retryNow: () => void
+  retryNow: (target?: SessionTarget) => void
   /** 恢复 Host 重启后暂停的会话。 */
-  resumePaused: () => Promise<void>
-  decidePermission: (requestId: string, decision: PermissionDecision, reason?: string) => void
+  resumePaused: (target?: SessionTarget) => Promise<void>
+  decidePermission: (
+    requestId: string,
+    decision: PermissionDecision,
+    reason?: string,
+    target?: SessionTarget,
+  ) => void
   /** 收件箱里直接审批（不要求该会话已打开）。 */
   decideInboxPermission: (
     hostId: string,
@@ -100,9 +115,14 @@ export interface AppState {
   ) => void
   /** 打开收件箱后清掉未读徽标。 */
   markInboxSeen: () => void
-  setPermissionMode: (mode: PermissionMode) => Promise<void>
+  setPermissionMode: (mode: PermissionMode, target?: SessionTarget) => Promise<void>
   rewind: (input: RewindInput, seedText?: string) => Promise<boolean>
-  setModel: (profileId: string, groupId: string | undefined, model: string) => Promise<void>
+  setModel: (
+    profileId: string,
+    groupId: string | undefined,
+    model: string,
+    target?: SessionTarget,
+  ) => Promise<void>
   createSession: (hostId: string, input: CreateSessionInput) => Promise<SessionSummary>
   startSession: (hostId: string, input: CreateSessionInput, content: ContentBlock[]) => Promise<SessionSummary>
   /** 向任意 Host 派单：创建会话并发送，不切换当前打开的会话。 */
@@ -121,7 +141,7 @@ export interface AppState {
   forkSession: (hostId: string, sessionId: string, messageId?: string) => Promise<SessionSummary | null>
   deleteSession: (hostId: string, sessionId: string, force?: boolean) => Promise<void>
   /** 单独停止一个 Task 子代理会话。 */
-  interruptSubagent: (childId: string) => void
+  interruptSubagent: (childId: string, target?: SessionTarget) => void
   /** 把 worktree 分支合回基准分支。 */
   mergeWorktree: (hostId: string, sessionId: string, strategy: 'merge' | 'squash') => Promise<boolean>
   /** 只记录 worktree 意图，不立即创建。 */

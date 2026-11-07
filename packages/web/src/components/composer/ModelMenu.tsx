@@ -209,6 +209,7 @@ export function ModelMenu({
   onOpen,
   open,
   onOpenChange,
+  compact = false,
 }: {
   profiles: Profile[]
   profileId: string
@@ -224,6 +225,7 @@ export function ModelMenu({
   onOpen?: () => void
   open: boolean
   onOpenChange: (open: boolean) => void
+  compact?: boolean
 }) {
   const currentProfile = profiles.find((p) => p.id === profileId) ?? null
   const currentGroup = groupName(currentProfile ?? undefined, groupId)
@@ -259,11 +261,12 @@ export function ModelMenu({
           aria-label={`选择模型：${label}`}
           className={cn(
             'min-w-0 max-w-[220px] justify-start gap-1 px-2 font-normal max-sm:min-h-11 max-sm:max-w-[36vw]',
+            compact && 'max-w-[104px] px-1.5',
             isOpen && 'bg-[var(--t-bg-hover)] text-text-soft',
           )}
         >
           <span className="min-w-0 truncate">{label}</span>
-          <ChevronDown size={12} className="shrink-0 opacity-60" />
+          {!compact && <ChevronDown size={12} className="shrink-0 opacity-60" />}
         </Button>
       )}
     >

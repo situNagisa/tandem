@@ -28,6 +28,7 @@ import { diffLines } from 'diff'
 import type { ContentBlock, Todo } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
+import { useSessionTarget, useSessionView } from './session/SessionScope'
 import { useNow } from '../lib/hooks'
 import { runningSince } from '../lib/runClock'
 import type { ToolResultBlock } from '../lib/types'
@@ -336,22 +337,22 @@ export const ToolCard = memo(function ToolCard({
 }) {
   const [open, setOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
-  const storeCwd = useAppStore((s) => s.active?.summary?.cwd)
+  const storeCwd = useSessionView((s) => s?.summary?.cwd)
   const cwd = cwdProp ?? storeCwd
-  const subagents = useAppStore((s) => s.active?.subagents)
-  const activeSessionId = useAppStore((s) => s.active?.sessionId)
+  const subagents = useSessionView((s) => s?.subagents)
+  const activeSessionId = useSessionView((s) => s?.sessionId)
   const agentFocus = useUiStore((s) => s.agentFocus)
   const openBackgroundTasks = useUiStore((s) => s.openBackgroundTasks)
-  const activeHostId = useAppStore((s) => s.active?.hostId)
-  const raw = useAppStore((s) =>
+  const activeHostId = useSessionView((s) => s?.hostId)
+  const raw = useSessionView((s) =>
     subagentId
-      ? (s.active?.subagents[subagentId]?.liveToolInputs[`${messageId}:${index}`] ?? '')
-      : (s.active?.liveToolInputs[`${messageId}:${index}`] ?? ''),
+      ? (s?.subagents[subagentId]?.liveToolInputs[`${messageId}:${index}`] ?? '')
+      : (s?.liveToolInputs[`${messageId}:${index}`] ?? ''),
   )
-  const storeResult = useAppStore((s) =>
+  const storeResult = useSessionView((s) =>
     subagentId
-      ? s.active?.subagents[subagentId]?.toolResults[block.id]
-      : s.active?.toolResults[block.id],
+      ? s?.subagents[subagentId]?.toolResults[block.id]
+      : s?.toolResults[block.id],
   )
   const result = toolResults ? toolResults[block.id] : storeResult
   const isError = !!result?.isError
@@ -797,7 +798,8 @@ export const ToolCard = memo(function ToolCard({
 })
 
 function SubagentStream({ id, depth }: { id: string; depth: number }) {
-  const sub = useAppStore((s) => s.active?.subagents[id])
+  const scopeTarget = useSessionTarget() ?? undefined
+  const sub = useSessionView((s) => s?.subagents[id])
   const stopSubagent = useAppStore((s) => s.interruptSubagent)
   const listRef = useRef<HTMLDivElement>(null)
   const subDepth = sub?.summary?.depth ?? depth
@@ -860,7 +862,7 @@ function SubagentStream({ id, depth }: { id: string; depth: number }) {
           <Button
             size="sm"
             variant="danger-ghost"
-            onClick={() => stopSubagent(id)}
+            onClick={() => stopSubagent(id, scopeTarget)}
             className="h-6! gap-1 px-1.5 text-[10px] [&_svg]:size-[9px]"
           >
             <Square size={9} /> 停止{agentKind(subDepth)}

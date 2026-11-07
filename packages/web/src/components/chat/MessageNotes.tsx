@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { ContentBlock, InjectionChange, InjectionSegment, InjectionSource } from '@tandem/protocol'
 import { ChevronRight, ScrollText } from 'lucide-react'
-import { useAppStore } from '../../store/useAppStore'
+import { useSessionView } from '../session/SessionScope'
 import { cn } from '../../lib/cn'
 import { formatTokens } from '../../lib/format'
 import type { UiMessage } from '../../lib/types'
@@ -144,7 +144,7 @@ function InjectionSegments({
 }
 
 export function InjectionsNote({ cwd }: { cwd?: string }) {
-  const injections = useAppStore((s) => s.active?.injections)
+  const injections = useSessionView((s) => s?.injections)
   const [open, setOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   if (!injections || injections.segments.length === 0) return null

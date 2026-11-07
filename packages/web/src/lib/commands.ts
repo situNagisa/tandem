@@ -56,6 +56,14 @@ export const COMMANDS: AppCommand[] = [
     },
   },
   {
+    id: 'split.open',
+    title: '分屏打开…',
+    keywords: ['分屏', '多会话', '窗格', 'split', 'pane'],
+    run: () => {
+      useUiStore.getState().setSplitPickerOpen(true)
+    },
+  },
+  {
     id: 'session.dispatch',
     title: '派单到其他 Host',
     keywords: ['派单', '任务', 'dispatch'],

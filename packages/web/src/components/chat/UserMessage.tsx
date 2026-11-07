@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState, type TouchEvent as ReactTouchEvent }
 import type { ContentBlock } from '@tandem/protocol'
 import { Check, Copy, GitFork, MoreHorizontal, PencilLine, Pin, Undo2 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
+import { useSessionTarget, useSessionView } from '../session/SessionScope'
 import { cn } from '../../lib/cn'
 import { copyText } from '../../lib/clipboard'
 import type { UiMessage } from '../../lib/types'
@@ -27,8 +28,9 @@ export const UserMessage = memo(function UserMessage({
   const pressTimer = useRef<number | null>(null)
   const pressReady = useRef(false)
   const pressStart = useRef<{ x: number; y: number } | null>(null)
-  const running = useAppStore((s) => s.active?.running ?? false)
-  const pinnedTurns = useAppStore((s) => s.active?.summary?.pinnedTurns)
+  const scopeTarget = useSessionTarget() ?? undefined
+  const running = useSessionView((s) => s?.running ?? false)
+  const pinnedTurns = useSessionView((s) => s?.summary?.pinnedTurns)
   const pinned = !!pinnedTurns?.includes(message.id)
   const timer = useRef<number | null>(null)
   const editRef = useRef<HTMLTextAreaElement>(null)
@@ -100,19 +102,24 @@ export const UserMessage = memo(function UserMessage({
 
   const togglePin = () => {
     const state = useAppStore.getState()
-    const active = state.active
-    if (!active?.summary) return
-    const current = active.summary.pinnedTurns ?? []
+    const view = scopeTarget
+      ? state.sessionViews[`${scopeTarget.hostId}:${scopeTarget.sessionId}`]
+      : state.active
+    if (!view?.summary) return
+    const current = view.summary.pinnedTurns ?? []
     const next = current.includes(message.id)
       ? current.filter((id) => id !== message.id)
       : [...current, message.id]
-    void state.updateSession(active.hostId, active.sessionId, { pinnedTurns: next })
+    void state.updateSession(view.hostId, view.sessionId, { pinnedTurns: next })
   }
 
   const forkFromHere = () => {
-    const active = useAppStore.getState().active
-    if (!active) return
-    void useAppStore.getState().forkSession(active.hostId, active.sessionId, message.id)
+    const state = useAppStore.getState()
+    const view = scopeTarget
+      ? state.sessionViews[`${scopeTarget.hostId}:${scopeTarget.sessionId}`]
+      : state.active
+    if (!view) return
+    void state.forkSession(view.hostId, view.sessionId, message.id)
   }
 
   const startEdit = () => {
@@ -127,7 +134,7 @@ export const UserMessage = memo(function UserMessage({
       setEditing(false)
       return
     }
-    if (useAppStore.getState().send([{ type: 'text', text: next }])) {
+    if (useAppStore.getState().send([{ type: 'text', text: next }], scopeTarget)) {
       setEditing(false)
     }
   }

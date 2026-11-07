@@ -40,6 +40,7 @@ import {
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
+import { useSessionTarget, useSessionView } from './session/SessionScope'
 import { useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
 import { groupName, profileModelGroups } from '../lib/profileModels'
@@ -153,6 +154,8 @@ export interface ComposerProps {
   /** 外部覆盖运行状态（新会话页首条消息提交后使用）。 */
   running?: boolean
   onStop?: () => void
+  /** 窄窗格：工具栏收起为图标，避免发送按钮被挤出。 */
+  compact?: boolean
 }
 
 export function Composer({
@@ -174,13 +177,15 @@ export function Composer({
   className,
   running: runningProp,
   onStop,
+  compact = false,
 }: ComposerProps) {
   const isMobile = useIsMobile()
-  const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
-  const summary = useAppStore((s) => s.active?.summary ?? null)
-  const storeRunning = useAppStore((s) => s.active?.running ?? false)
-  const storeStopping = useAppStore((s) => s.active?.stopping ?? false)
-  const activeHostId = useAppStore((s) => s.active?.hostId ?? null)
+  const scopeTarget = useSessionTarget() ?? undefined
+  const sessionId = useSessionView((s) => s?.sessionId ?? null)
+  const summary = useSessionView((s) => s?.summary ?? null)
+  const storeRunning = useSessionView((s) => s?.running ?? false)
+  const storeStopping = useSessionView((s) => s?.stopping ?? false)
+  const activeHostId = useSessionView((s) => s?.hostId ?? null)
   const hostStatus = useAppStore((s) =>
     (hostIdProp ?? activeHostId) ? (s.runtimes[hostIdProp ?? activeHostId!]?.status ?? 'offline') : 'offline',
   )
@@ -619,7 +624,7 @@ export function Composer({
       worktreeBusyRef.current = false
       if (!ready) return
     }
-    if (!send(blocks)) return
+    if (!send(blocks, scopeTarget)) return
     rememberSent(outgoingText)
     resetInput()
   }
@@ -627,12 +632,12 @@ export function Composer({
   const stop = () => {
     if (stopping) return
     if (onStop) onStop()
-    else interrupt()
+    else interrupt(scopeTarget)
   }
 
   const changeMode = (next: PermissionMode) => {
     if (sessionless) onPermissionModeChange?.(next)
-    else void setPermissionMode(next)
+    else void setPermissionMode(next, scopeTarget)
   }
 
   const cycleMode = () => {
@@ -646,7 +651,7 @@ export function Composer({
     nextModel: string,
   ) => {
     if (sessionless) onModelChange?.(nextProfileId, nextGroupId, nextModel)
-    else void setModel(nextProfileId, nextGroupId, nextModel)
+    else void setModel(nextProfileId, nextGroupId, nextModel, scopeTarget)
   }
 
   const changeEffort = (next: ReasoningEffort, remember = true) => {
@@ -951,7 +956,7 @@ export function Composer({
             disabled={disabled}
             tooltipSide="top"
           />
-          {isMobile ? (
+          {isMobile || compact ? (
             <MobileMoreMenu mode={mode} disabled={disabled} onChange={changeMode} />
           ) : (
             <>
@@ -960,12 +965,13 @@ export function Composer({
             </>
           )}
           <span className="min-w-0 flex-1" />
-          {!sessionless && summary && (
+          {!sessionless && summary && !compact && (
             <span className="contents max-sm:hidden">
               <ContextMeter compactDisabled={running} />
             </span>
           )}
           <ModelMenu
+            compact={compact}
             profiles={profiles}
             profileId={currentProfileId}
             groupId={currentGroupId}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowUpRight, FileText, GitBranch, Inbox, Search, Send, Sparkles, Wrench } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
+import { useSessionView } from './session/SessionScope'
 import { basename } from '../lib/format'
 import { useIsMobile } from '../lib/hooks'
 import { SegmentedControl } from './ui/Controls'
@@ -36,13 +37,13 @@ const SUGGESTIONS = [
 ]
 
 export function SessionWelcome() {
-  const summary = useAppStore((s) => s.active?.summary ?? null)
+  const summary = useSessionView((s) => s?.summary ?? null)
+  const hostId = useSessionView((s) => s?.hostId ?? null)
   const hostName = useAppStore(
-    (s) => s.hosts.find((h) => h.id === s.active?.hostId)?.name ?? 'Host',
+    (s) => s.hosts.find((h) => h.id === hostId)?.name ?? 'Host',
   )
   const profileName = useAppStore((s) => {
-    const profileId = s.active?.summary?.profileId
-    const hostId = s.active?.hostId
+    const profileId = summary?.profileId
     if (!profileId || !hostId) return null
     return s.runtimes[hostId]?.profiles.find((p) => p.id === profileId)?.name ?? null
   })

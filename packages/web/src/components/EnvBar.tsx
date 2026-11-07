@@ -21,6 +21,7 @@ import { useUiStore } from '../store/useUiStore'
 import { basename, dirname } from '../lib/format'
 import { loadMigration, loadRecentDirs, rememberDir, rememberMigration } from '../lib/storage'
 import { navigate } from '../lib/router'
+import { useSessionView } from './session/SessionScope'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
 import { Button } from './ui/Button'
@@ -480,6 +481,8 @@ export interface EnvBarProps {
   delegation?: DelegationStrategy
   onDelegationChange?: (strategy: DelegationStrategy) => void
   disabled?: boolean
+  /** 分屏窄窗格：只保留图标，文字折叠。 */
+  compact?: boolean
 }
 
 const DELEGATION_OPTIONS: Array<{ value: DelegationStrategy; label: string; hint: string }> = [
@@ -506,12 +509,13 @@ export function EnvBar({
   delegation: delegationProp,
   onDelegationChange,
   disabled,
+  compact = false,
 }: EnvBarProps) {
   const hosts = useAppStore((s) => s.hosts)
   const host = hosts.find((h) => h.id === hostId) ?? null
-  const summary = useAppStore((s) => s.active?.summary ?? null)
-  const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
-  const running = useAppStore((s) => s.active?.running ?? false)
+  const summary = useSessionView((s) => s?.summary ?? null)
+  const sessionId = useSessionView((s) => s?.sessionId ?? null)
+  const running = useSessionView((s) => s?.running ?? false)
   const toast = useUiStore((s) => s.toast)
 
   const [savingDelegation, setSavingDelegation] = useState(false)
@@ -585,7 +589,13 @@ export function EnvBar({
   }
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-0.5 pb-1.5 sm:flex-nowrap sm:gap-1">
+    <div
+      className={cn(
+        'flex min-w-0 flex-wrap items-center gap-0.5 pb-1.5 sm:flex-nowrap sm:gap-1',
+        compact &&
+          'flex-nowrap gap-0.5 pb-1 [&_button>span]:hidden [&_button>svg.lucide-chevron-down]:hidden',
+      )}
+    >
       <Menu
         side="top"
         align="left"

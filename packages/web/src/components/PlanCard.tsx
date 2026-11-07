@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, Maximize2, MessageSquareText, ScrollText, X } from 'lucide-react'
 import type { PermissionRequest } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
+import { useSessionTarget } from './session/SessionScope'
 import { Markdown } from './Markdown'
 import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
@@ -17,6 +18,7 @@ function planText(request: PermissionRequest): string {
 /** 计划模式下 ExitPlanMode 的审批卡片：显示在上方输入框之上，可全屏阅读。 */
 export function PlanCard({ request, more }: { request: PermissionRequest; more: number }) {
   const decide = useAppStore((s) => s.decidePermission)
+  const scopeTarget = useSessionTarget() ?? undefined
   const [expanded, setExpanded] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [feedback, setFeedback] = useState('')
@@ -30,7 +32,7 @@ export function PlanCard({ request, more }: { request: PermissionRequest; more: 
   const submitFeedback = () => {
     const text = feedback.trim()
     if (!text) return
-    decide(request.id, 'deny', text)
+    decide(request.id, 'deny', text, scopeTarget)
   }
 
   return (
@@ -104,7 +106,7 @@ export function PlanCard({ request, more }: { request: PermissionRequest; more: 
           </Button>
           <Button
             size="sm"
-            onClick={() => decide(request.id, 'allow')}
+            onClick={() => decide(request.id, 'allow', undefined, scopeTarget)}
             className="min-h-11 sm:min-h-[28px]"
           >
             批准并开始执行（逐个询问）
@@ -112,7 +114,7 @@ export function PlanCard({ request, more }: { request: PermissionRequest; more: 
           <Button
             size="sm"
             variant="primary"
-            onClick={() => decide(request.id, 'allow_always')}
+            onClick={() => decide(request.id, 'allow_always', undefined, scopeTarget)}
             icon={<Check size={13} />}
             className="min-h-11 sm:min-h-[28px]"
           >

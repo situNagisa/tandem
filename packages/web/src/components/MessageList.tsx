@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ContentBlock, InjectionChange, SessionSummary } from '@tandem/protocol'
 import { GitFork, ChevronRight } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
+import { useSessionView } from './session/SessionScope'
 import { cn } from '../lib/cn'
 import { navigate } from '../lib/router'
 import type { HookNotice, ToolResultBlock, UiMessage } from '../lib/types'
@@ -230,7 +231,8 @@ export function MessageList(props: {
   cwd?: string
   checkpoints?: Map<string, string>
 }) {
-  const sessionId = useAppStore((s) => (props.messages ? 'preview' : (s.active?.sessionId ?? 'none')))
+  const scopedSessionId = useSessionView((s) => s?.sessionId ?? null)
+  const sessionId = props.messages ? 'preview' : (scopedSessionId ?? 'none')
   const key = props.messages ? `preview:${props.messages[0]?.id ?? 'empty'}` : sessionId
   return <MessageListInner key={key} {...props} />
 }
@@ -252,16 +254,16 @@ function MessageListInner({
   /** 用户消息 id → 检查点 id，用于操作条判断能否回退/重新生成。 */
   checkpoints?: Map<string, string>
 }) {
-  const storeMessages = useAppStore((s) => s.active?.messages ?? EMPTY)
-  const storeSessionId = useAppStore((s) => s.active?.sessionId ?? null)
-  const storeStreamingId = useAppStore((s) => s.active?.streamingMessageId)
-  const storeHooks = useAppStore((s) => s.active?.hookEvents ?? EMPTY_HOOKS)
+  const storeMessages = useSessionView((s) => s?.messages ?? EMPTY)
+  const storeSessionId = useSessionView((s) => s?.sessionId ?? null)
+  const storeStreamingId = useSessionView((s) => s?.streamingMessageId)
+  const storeHooks = useSessionView((s) => s?.hookEvents ?? EMPTY_HOOKS)
   const messages = messagesProp ?? storeMessages
   const hooks = messagesProp ? EMPTY_HOOKS : storeHooks
-  const activeHostId = useAppStore((s) => s.active?.hostId ?? null)
-  const storeInjections = useAppStore((s) => (messagesProp ? undefined : s.active?.injections))
+  const activeHostId = useSessionView((s) => s?.hostId ?? null)
+  const storeInjections = useSessionView((s) => (messagesProp ? undefined : s?.injections))
   const hostSessions = useAppStore((s) =>
-    s.active?.hostId ? s.runtimes[s.active.hostId]?.sessions : undefined,
+    activeHostId ? s.runtimes[activeHostId]?.sessions : undefined,
   )
   const sessionId = messagesProp ? null : storeSessionId
   const streamingId = messagesProp ? undefined : storeStreamingId
