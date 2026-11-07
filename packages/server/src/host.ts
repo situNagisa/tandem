@@ -85,20 +85,13 @@ import {
   type ParsedCommand,
 } from './agent/commands.js';
 import { PLAN_ALLOWED, TOOLS, TOOL_MAP, describeTool } from './tools/index.js';
-import { completeText, listModels as fetchModelList, streamChat } from './providers/index.js';
+import { completeText, streamChat } from './providers/index.js';
 import type { ListModelsResult } from './providers/index.js';
-import { applyModelCapabilities } from './providers/capabilities.js';
-import { buildSystemPromptParts } from './agent/prompt.js';
 import { SkillManager } from './skills.js';
 import { SubagentPresetStore, modelAliasOf } from './subagent-presets.js';
 import { PromptTemplateStore } from './prompt-templates.js';
 import { TASK_DESCRIPTION_DEFAULT } from './prompts/registry.js';
 import { MemoryStore, bodyOfMemory, normalizeFactLines } from './memory.js';
-import {
-  cacheHitRateOf,
-  estimateBreakdown,
-  calibrateBreakdown,
-} from './context.js';
 import { errorMessage, truncateEnd } from './util/text.js';
 import { detectSessionEnv } from './util/git.js';
 import { expandHome, isSubPath, resolvePath } from './util/path.js';
@@ -121,6 +114,20 @@ import {
 } from './host/helpers.js';
 import { inboxSnapshot, pushInbox, recordCi } from './host/inbox.js';
 import { importSession, notifyExternalSessionsChanged } from './host/external.js';
+import {
+  allowBudgetOnce,
+  assertBudget,
+  buildSystemFor,
+  calibrateContext,
+  contextFor,
+  injectionsFor,
+  listModels,
+  modelCapabilities,
+  observeBudgets,
+  promptOptions,
+  recordInjections,
+  setContext,
+} from './host/usage.js';
 import {
   findModelForAlias,
   groupFor,
@@ -298,147 +305,32 @@ export class Host {
     return markScheduled(this, id, info);
   }
 
-  /** 把本次请求的上下文估算记到会话上；broadcast=true 时随 session_updated 推送。 */
   setContext(rec: SessionRecord, context: ContextBreakdown, broadcast = true): void {
-    rec.context = context;
-    if (broadcast) this.broadcastSummary(rec);
+    return setContext(this, rec, context, broadcast);
   }
 
-  /** 校准本轮上下文（真实 usage 已拿到）。 */
   calibrateContext(rec: SessionRecord, context: ContextBreakdown, actualInputTokens: number): void {
-    const calibrated = calibrateBreakdown(context, actualInputTokens, cacheHitRateOf(rec.usage));
-    this.setContext(rec, calibrated, false);
+    return calibrateContext(this, rec, context, actualInputTokens);
   }
 
-  /** 本轮系统提示的构建参数（可编辑提示词按 cwd 解析项目覆盖）。 */
-  private promptOptions(
-    rec: SessionRecord,
-    opts: { allowTask?: boolean; hookContext?: string } = {},
-  ) {
-    const allowTask = opts.allowTask !== false;
-    return {
-      allowTask,
-      planMode: rec.permissionMode === 'plan',
-      hookContext: opts.hookContext,
-      skills: this.skills.promptSection(rec.cwd),
-      memory: this.memory.promptSection(
-        rec.cwd,
-        this.promptTemplates.get('memoryRule', rec.cwd),
-      ),
-      delegationPrompt: this.delegationPrompt(rec),
-      delegationKey: this.delegationKey(rec),
-      ...(allowTask
-        ? {
-            subagents: this.subagentPresets
-              .list(rec.cwd)
-              .map((preset) => ({ name: preset.name, description: preset.description })),
-          }
-        : {}),
-      ...(rec.systemPromptExtra ? { extraSystemPrompt: rec.systemPromptExtra } : {}),
-      prompts: this.promptTemplates.resolved(rec.cwd),
-    };
+  promptOptions(rec: SessionRecord, opts: { allowTask?: boolean; hookContext?: string } = {}) {
+    return promptOptions(this, rec, opts);
   }
 
-  /** 构建系统提示（字符串 + 分段），loop 与上下文估算共用。 */
-  buildSystemFor(
-    rec: SessionRecord,
-    opts: { allowTask?: boolean; hookContext?: string } = {},
-  ): { system: string; parts: InjectionSegment[] } {
-    const parts = buildSystemPromptParts(rec.cwd, this.promptOptions(rec, opts));
-    return { system: parts.map((part) => part.content).join('\n\n'), parts };
+  buildSystemFor(rec: SessionRecord, opts: { allowTask?: boolean; hookContext?: string } = {}): { system: string; parts: InjectionSegment[] } {
+    return buildSystemFor(this, rec, opts);
   }
 
-  /** 记录/推送本会话当前生效的注入段落；内容变化时追加一条变化记录。 */
-  recordInjections(
-    rec: SessionRecord,
-    segments: InjectionSegment[],
-    beforeMessageId?: string,
-  ): InjectionSnapshot {
-    const prev = this.injections.get(rec.id);
-    const changes = prev?.changes ?? [];
-    let changed = !prev;
-    if (prev) {
-      const prevMap = new Map(prev.segments.map((item) => [item.id, item]));
-      const nextMap = new Map(segments.map((item) => [item.id, item]));
-      const added = segments.filter((item) => !prevMap.has(item.id)).map((item) => item.name);
-      const removed = prev.segments.filter((item) => !nextMap.has(item.id)).map((item) => item.name);
-      const modified = segments
-        .filter((item) => {
-          const before = prevMap.get(item.id);
-          return before && before.content !== item.content;
-        })
-        .map((item) => item.name);
-      if (added.length || removed.length || modified.length) {
-        changed = true;
-        changes.unshift({
-          ...(beforeMessageId ? { beforeMessageId } : {}),
-          at: Date.now(),
-          added: [...added, ...modified],
-          removed,
-          summary: [
-            ...added.map((name) => `+${name}`),
-            ...removed.map((name) => `−${name}`),
-            ...modified.map((name) => `~${name}`),
-          ].join(' '),
-        });
-        if (changes.length > 20) changes.length = 20;
-      }
-    }
-    const snapshot: InjectionSnapshot = {
-      segments,
-      totalTokens: segments.reduce((sum, item) => sum + item.tokens, 0),
-      updatedAt: Date.now(),
-      changes,
-    };
-    this.injections.set(rec.id, {
-      segments,
-      changes,
-      updatedAt: snapshot.updatedAt,
-    });
-    if (changed) {
-      this.hub.broadcastSession(rec.id, { type: 'injections', sessionId: rec.id, injections: snapshot });
-    }
-    return snapshot;
+  recordInjections(rec: SessionRecord, segments: InjectionSegment[], beforeMessageId?: string): InjectionSnapshot {
+    return recordInjections(this, rec, segments, beforeMessageId);
   }
 
-  /** GET /api/sessions/:id/injections：没有运行记录时按当前状态重算一份。 */
   injectionsFor(rec: SessionRecord): InjectionSnapshot {
-    const cached = this.injections.get(rec.id);
-    if (cached) {
-      return {
-        segments: cached.segments,
-        totalTokens: cached.segments.reduce((sum, item) => sum + item.tokens, 0),
-        updatedAt: cached.updatedAt,
-        changes: cached.changes,
-      };
-    }
-    const { parts } = this.buildSystemFor(rec, { allowTask: (rec.depth ?? 0) === 0 });
-    this.injections.set(rec.id, { segments: parts, changes: [], updatedAt: Date.now() });
-    return {
-      segments: parts,
-      totalTokens: parts.reduce((sum, item) => sum + item.tokens, 0),
-      updatedAt: Date.now(),
-      changes: [],
-    };
+    return injectionsFor(this, rec);
   }
 
-  /** GET /api/sessions/:id/context：无真实记录时按当前消息粗略估算。 */
   contextFor(rec: SessionRecord): ContextBreakdown {
-    if (rec.context) return rec.context;
-    const profile = this.profileFor(rec.profileId, rec.groupId);
-    const model = rec.model || profile?.defaultModel || '';
-    const system = this.buildSystemFor(rec).system;
-    const tools = this.toolDefinitions(rec);
-    return estimateBreakdown({
-      model,
-      system,
-      tools,
-      messages: rec.messages,
-      cwd: rec.cwd,
-      cacheHitRate: cacheHitRateOf(rec.usage),
-      providerKind: profile?.kind,
-      capabilityOverrides: profile?.modelCapabilities,
-    });
+    return contextFor(this, rec);
   }
 
   refreshEnv(id: string): Promise<void> {
@@ -530,104 +422,24 @@ export class Host {
     return keysUnavailableMessage(this, profileId, groupId, errors);
   }
 
-  /** 预算检查：block 规则达到 100% 时拒绝请求（会话内 allow-once 可放行一次）。 */
   assertBudget(rec: SessionRecord, model: string): void {
-    const status = this.budgets.blockingRule({
-      profileId: rec.profileId,
-      groupId: rec.groupId,
-      model,
-    });
-    if (!status) return;
-    const rt = this.ensureRuntime(rec.id);
-    if (rt.budgetAllowOnce) {
-      rt.budgetAllowOnce = false;
-      return;
-    }
-    const rule = this.budgets.list().find((item) => item.id === status.ruleId);
-    const name = rule ? this.budgets.describe(rule) : status.ruleId;
-    throw new Error(
-      `预算已达上限：${name} 本期已用 ${formatUsd(status.spentUsd)} / ${formatUsd(status.limitUsd)}（${status.percent}%），已阻止新请求。可在会话中临时放行一次。`,
-    );
+    return assertBudget(this, rec, model);
   }
 
-  /** 会话内临时放行一次 block 预算。 */
   allowBudgetOnce(sessionId: string): boolean {
-    const rec = this.store.get(sessionId);
-    if (!rec) return false;
-    this.ensureRuntime(sessionId).budgetAllowOnce = true;
-    return true;
+    return allowBudgetOnce(this, sessionId);
   }
 
-  /** 用量落账后检查预算：新跨过的档位全局广播，并在触发会话里插一条低调提示。 */
   observeBudgets(rec: SessionRecord): void {
-    const alerts = this.budgets.observe();
-    for (const alert of alerts) {
-      this.hub.broadcastAll({ type: 'budget_alert', ...alert });
-      const rule = this.budgets.list().find((item) => item.id === alert.ruleId);
-      const name = rule
-        ? this.budgets.describe(rule)
-        : this.budgets.describe({
-            scope: alert.scope,
-            period: alert.period,
-            ...(alert.profileId ? { profileId: alert.profileId } : {}),
-            ...(alert.groupId ? { groupId: alert.groupId } : {}),
-            ...(alert.model ? { model: alert.model } : {}),
-          });
-      const percent = alert.limitUsd > 0 ? Math.round((alert.spentUsd / alert.limitUsd) * 1000) / 10 : 0;
-      const text =
-        alert.level === '100'
-          ? `预算提醒：「${name}」本期已用 ${formatUsd(alert.spentUsd)} / ${formatUsd(alert.limitUsd)}（${percent}%）${
-              alert.action === 'block' ? '，后续模型请求将被拒绝，可在会话中临时放行一次。' : '。'
-            }`
-          : `预算提醒：「${name}」本期已用 ${formatUsd(alert.spentUsd)} / ${formatUsd(alert.limitUsd)}（${percent}%）。`;
-      this.appendNotice(rec, text);
-      // 收件箱：预算告警是 Host 级事件，绑定触发本次用量的会话便于跳回
-      this.pushInbox(
-        this.inbox.recordBudget(alert, text, { id: rec.id, title: rec.title }),
-      );
-    }
+    return observeBudgets(this, rec);
   }
 
-  /** 拉取模型列表：apiKey/baseUrl 缺省时用账号（或分组）已存的值。 */
   listModels(input: ListModelsInput): Promise<ListModelsResult> {
-    const profile = input.profileId
-      ? this.profileFor(input.profileId, input.groupId)
-      : undefined;
-    return fetchModelList(input, profile);
+    return listModels(this, input);
   }
 
-  /** 单个模型能力：内存缓存 provider 列表结果，失败时退回内置表与手动覆盖。 */
-  async modelCapabilities(
-    profileId: string,
-    groupId: string | undefined,
-    model: string,
-  ): Promise<ModelInfo | undefined> {
-    const profile = this.profileFor(profileId, groupId);
-    if (!profile || !model) return undefined;
-    const key = `${profileId}:${groupId ?? ''}:${model}`;
-    const cached = this.capabilityCache.get(key);
-    if (cached && Date.now() - cached.at < 5 * 60_000) return { ...cached.info };
-
-    let info: ModelInfo = { id: model };
-    try {
-      const result = await fetchModelList(
-        {
-          kind: profile.kind,
-          baseUrl: profile.baseUrl,
-          apiKey: profile.apiKey,
-          profileId,
-          groupId,
-        },
-        profile,
-      );
-      const found = result.ok ? result.models.find((m) => m.id === model) : undefined;
-      if (found) info = { ...found };
-    } catch {
-      // provider 列表不可用：仍返回内置能力
-    }
-    info = applyModelCapabilities(info, profile.kind, profile.modelCapabilities);
-    this.capabilityCache.set(key, { at: Date.now(), info: { ...info } });
-    return info;
+  modelCapabilities(profileId: string, groupId: string | undefined, model: string): Promise<ModelInfo | undefined> {
+    return modelCapabilities(this, profileId, groupId, model);
   }
 
   /** 会话的委派策略；子会话缺省 less。 */
