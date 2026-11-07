@@ -18,9 +18,19 @@ const ICON_COLOR = {
 export function Toasts() {
   const toasts = useUiStore((s) => s.toasts)
   const dismiss = useUiStore((s) => s.dismissToast)
+  const settingsOpen = useUiStore((s) => s.settingsOpen)
   if (!toasts.length) return null
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[max(5.5rem,calc(env(safe-area-inset-bottom)+5rem))] z-[60] flex flex-col items-center gap-2 px-4 md:inset-x-auto md:bottom-auto md:right-4 md:top-14 md:items-end">
+    <div
+      className={cn(
+        'pointer-events-none fixed inset-x-0 z-[60] flex flex-col items-center gap-2 px-4',
+        // 设置弹窗打开时，提示条避开弹窗右上角的关闭按钮；手机端改为弹窗标题下方，
+        // 不再压住内容区底部的卡片操作。
+        settingsOpen
+          ? 'top-[calc(env(safe-area-inset-top)+3.5rem)] bottom-auto md:inset-x-auto md:top-2 md:right-4 md:items-end'
+          : 'bottom-[max(5.5rem,calc(env(safe-area-inset-bottom)+5rem))] md:inset-x-auto md:bottom-auto md:right-4 md:top-14 md:items-end',
+      )}
+    >
       {toasts.map((t) => {
         const Icon = ICONS[t.kind]
         return (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FlaskConical, Pause, Play, Square, SquareTerminal } from 'lucide-react'
+import { FlaskConical, Pause, Play, RefreshCw, Square, SquareTerminal } from 'lucide-react'
 import type { BackgroundTask } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useTaskStore } from '../store/useTaskStore'
@@ -9,7 +9,7 @@ import { useNow } from '../lib/hooks'
 import { formatElapsed, firstLine } from '../lib/format'
 import { cn } from '../lib/cn'
 import { Modal } from './ui/Modal'
-import { Button } from './ui/Button'
+import { Button, IconButton } from './ui/Button'
 
 const EMPTY_TASKS: BackgroundTask[] = []
 const EMPTY_OUTPUTS: Record<string, { text: string; since: number; truncated?: boolean }> = {}
@@ -180,6 +180,15 @@ export function BackgroundTasksPanel() {
           <div className="flex items-center gap-1 px-3 py-2 text-[12px] font-medium text-text-tertiary">
             <span>本会话</span>
             <span className="ml-auto tabular-nums">{visible.length}</span>
+            <IconButton
+              size="sm"
+              label="刷新后台任务"
+              tooltip="刷新"
+              onClick={() => void refresh(host)}
+              className="-my-1 size-7 max-sm:size-11"
+            >
+              <RefreshCw size={12} />
+            </IconButton>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
             {visible.length === 0 ? (

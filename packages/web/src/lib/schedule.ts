@@ -10,8 +10,10 @@ function timeLabel(hour: string, minute: string): string {
 
 /** 解析简单 5 段表达式，返回中文描述；复杂表达式原样回退。 */
 export function describeCron(expr: string): string {
-  const fields = expr.trim().split(/\s+/)
-  if (fields.length !== 5) return expr
+  const fields = expr.trim().split(/\s+/).filter(Boolean)
+  if (fields.length !== 5) {
+    return fields.length < 5 ? '无法识别的 cron 表达式' : expr
+  }
   const [minute, hour, dom, month, dow] = fields as [string, string, string, string, string]
   if (month !== '*' || dom !== '*') {
     if (dom !== '*' && month === '*' && dow === '*' && /^\d+$/.test(dom) && /^\d+$/.test(hour) && /^\d+$/.test(minute)) {

@@ -187,7 +187,7 @@ export function DispatchDialog({
           <Send size={14} className="text-muted" /> 派单到其他 Host
         </span>
       }
-      className="h-[min(620px,88dvh)] w-[min(560px,94vw)] max-sm:fixed max-sm:inset-0 max-sm:my-0 max-sm:h-auto max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:pt-[env(safe-area-inset-top)]"
+      className="max-h-[min(620px,88dvh)] w-[min(560px,94vw)] max-sm:fixed max-sm:inset-0 max-sm:my-0 max-sm:h-auto max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:pt-[env(safe-area-inset-top)]"
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]"
     >
       <div className="space-y-3">

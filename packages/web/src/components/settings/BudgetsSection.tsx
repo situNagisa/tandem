@@ -184,7 +184,7 @@ function BudgetCard({
         {status ? ` · ${resetText(status.resetAt)}` : ''}
       </div>
       <div className="mt-1.5 flex items-center gap-2">
-        <div className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--t-bg-subtle)]">
+        <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--t-bg-active)]">
           <div
             className={cn(
               'h-full rounded-full transition-[width] duration-300',
@@ -386,42 +386,48 @@ export function BudgetsSection() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <h3 className="text-[14px] font-semibold">预算</h3>
-        <span className="hidden text-[13px] text-muted sm:inline">
-          按日 / 周 / 月累计花费，超过 80% 提醒，达到上限可阻止请求
-        </span>
-        <span className="flex-1" />
-        {hosts.length > 1 && (
-          <MenuSelect
-            value={hostId ?? ''}
-            onChange={(id) => setHostId(id)}
-            aria-label="选择 Host"
-            options={hosts.map((h) => ({ value: h.id, label: h.name }))}
-            wrapperClassName="w-auto max-w-[180px]"
-            className="text-[13px]"
-          />
-        )}
-        <Button
-          size="sm"
-          onClick={() => setNonce((n) => n + 1)}
-          disabled={loading}
-          tooltip="刷新预算"
-          className="max-sm:h-11"
-        >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> 刷新
-        </Button>
-        <Button
-          variant="primary"
-          size="sm"
-          className="max-sm:h-11"
-          onClick={() => {
-            setError(null)
-            setDraft(emptyDraft())
-          }}
-        >
-          <Plus size={12} /> 新建规则
-        </Button>
+      <div className="mb-4 flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="flex items-center gap-2 text-[15px] font-medium text-text">
+            <Wallet size={15} className="text-muted" />
+            预算
+          </h2>
+          <p className="mt-1 text-[12.5px] leading-5 text-muted">
+            按日 / 周 / 月累计花费，超过 80% 提醒，达到上限可阻止请求
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {hosts.length > 1 && (
+            <MenuSelect
+              value={hostId ?? ''}
+              onChange={(id) => setHostId(id)}
+              aria-label="选择 Host"
+              options={hosts.map((h) => ({ value: h.id, label: h.name }))}
+              wrapperClassName="w-auto max-w-[180px]"
+              className="text-[13px]"
+            />
+          )}
+          <Button
+            size="sm"
+            onClick={() => setNonce((n) => n + 1)}
+            disabled={loading}
+            tooltip="刷新预算"
+            className="max-sm:h-11"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> 刷新
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            className="max-sm:h-11"
+            onClick={() => {
+              setError(null)
+              setDraft(emptyDraft())
+            }}
+          >
+            <Plus size={12} /> 新建规则
+          </Button>
+        </div>
       </div>
 
       {error && !draft && (

@@ -201,6 +201,7 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
         checkpointId: typeof body.checkpointId === 'string' ? body.checkpointId : '',
         restoreFiles: body.restoreFiles === true,
         restoreConversation: body.restoreConversation === true,
+        ...(typeof body.messageId === 'string' ? { messageId: body.messageId } : {}),
       });
     } catch (err) {
       return bad(reply, (err as Error).message, statusOf(err));

@@ -28,15 +28,19 @@ export function rewind(host: Host, sessionId: string, input: RewindInput): Sessi
   const rec = host.store.get(sessionId);
   if (!rec) return undefined;
   if (host.isRunning(sessionId)) throw httpError('会话正在运行，无法回退', 409);
-  if (!input || typeof input.checkpointId !== 'string' || !input.checkpointId) {
-    throw httpError('checkpointId 不能为空', 400);
-  }
 
   const list = host.checkpoints.list(sessionId);
-  const target = list.find((cp) => cp.id === input.checkpointId);
-  if (!target) throw httpError('检查点不存在', 404);
+  const target = input.checkpointId ? list.find((cp) => cp.id === input.checkpointId) : undefined;
+  if (input.checkpointId && !target) throw httpError('检查点不存在', 404);
+  if (!target && input.restoreFiles) {
+    throw httpError('没有可用的文件检查点，只能恢复对话', 400);
+  }
+  const anchorMessageId = target?.messageId ?? input.messageId;
+  if (!target && !input.restoreConversation) {
+    throw httpError('缺少检查点，只能恢复对话', 400);
+  }
 
-  if (input.restoreFiles) {
+  if (target && input.restoreFiles) {
     // 从最新检查点往最早恢复，同一文件最终落到最早的那份快照
     const ordered = [...list].sort((a, b) => b.createdAt - a.createdAt);
     for (const cp of ordered) {
@@ -45,12 +49,14 @@ export function rewind(host: Host, sessionId: string, input: RewindInput): Sessi
     }
   }
   if (input.restoreConversation) {
-    const index = rec.messages.findIndex((m) => m.id === target.messageId);
+    if (!anchorMessageId) throw httpError('缺少要回退的消息', 400);
+    const index = rec.messages.findIndex((m) => m.id === anchorMessageId);
+    // 消息可能已被删除（例如导入会话）；此时保持对话不变而不是悄悄回退到开头
     if (index >= 0) rec.messages = rec.messages.slice(0, index);
   }
 
   // 被回退的检查点不再有效
-  host.checkpoints.removeFrom(sessionId, target.id);
+  if (target) host.checkpoints.removeFrom(sessionId, target.id);
   const rt = host.runtimes.get(sessionId);
   if (rt) delete rt.checkpoint;
   host.store.markDirty(sessionId, true);

@@ -213,6 +213,18 @@ function seedRepo(repo) {
   // Host 在 Linux 上解析为 <repo>/D:/repo/demo.ts。
   mkdirSync(path.join(repo, 'D:/repo'), { recursive: true })
   writeFileSync(path.join(repo, 'D:/repo/demo.ts'), 'const windows = true\n// windows drive file\n')
+
+  // 有未提交改动的 worktree 目录：删除 409 时应能列出文件名与分支。
+  const dirty = path.join(path.dirname(repo), 'dirty-wt')
+  mkdirSync(dirty, { recursive: true })
+  const gitDirty = (...args) => execFileSync('git', args, { cwd: dirty, stdio: 'pipe' })
+  gitDirty('init', '-q')
+  gitDirty('config', 'user.email', 'reg@example.com')
+  gitDirty('config', 'user.name', 'reg')
+  writeFileSync(path.join(dirty, 'dirty.txt'), 'clean\n')
+  gitDirty('add', '.')
+  gitDirty('commit', '-qm', 'init')
+  writeFileSync(path.join(dirty, 'dirty.txt'), 'changed\n')
 }
 
 function seedData({ configDir, repo, hostId, mockPort, today, day }) {
@@ -313,6 +325,11 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
   const sessions = [
     mk('long', '回归长会话', longMessages),
     mk('links', '文件链接会话', linksMessages, { updatedAt: Date.now() - 1500 }),
+    mk('nockpt', '无检查点会话', [
+      message('n1', 'user', '先看看目录'),
+      message('n2', 'assistant', '目录结构如下。', { model: 'mock-1' }),
+      message('n3', 'user', '再列一下文件'),
+    ]),
     mk('retry', '网络重试会话', [
       message('r1', 'user', '继续'),
       message('r2', 'assistant', '网络不好，稍后重试。'),
@@ -385,7 +402,21 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
     },
   })
   mkdirSync(path.join(configDir, '..', 'cache-worktree'), { recursive: true })
-  sessions[3].cwd = path.join(configDir, '..', 'cache-worktree')
+  const wtSession = sessions.find((s) => s.id === 'wt')
+  if (wtSession) wtSession.cwd = path.join(configDir, '..', 'cache-worktree')
+  const dirtyWt = path.join(configDir, '..', 'dirty-wt')
+  sessions.push(
+    mk(
+      'wtdirty',
+      '未提交改动的 worktree',
+      [message('d1', 'user', '改一下文件'), message('d2', 'assistant', '已修改。', { model: 'mock-1' })],
+      {
+        cwd: dirtyWt,
+        worktreeRepoRoot: repo,
+        worktree: { path: dirtyWt, branch: 'tandem/dirty', baseBranch: 'main' },
+      },
+    ),
+  )
   // 浏览器工具调用过的会话：工具卡 + 截图 image block。
   sessions.push({
     ...common,
@@ -571,6 +602,8 @@ async function main() {
   const provider = createMockProvider()
   const mockPort = await listen(provider)
   const host = startHost({ home, token, hostId })
+  // 造数用的「今天」固定为脚本启动时刻；页面里也用 page.clock 固定到同一时刻，
+  // 否则跨零点运行时界面已经进入新的一天，与造好的用量行错位。
   const today = new Date()
   const dayString = (offset) => {
     const d = new Date(today)
@@ -626,6 +659,8 @@ async function main() {
     const newPage = async (ctx, viewport) => {
       const page = await ctx.newPage()
       page.setDefaultTimeout(15_000)
+      // 所有页面统一固定在造数时刻：日期、相对时间、倒计时都以同一「今天」计算。
+      await page.clock.setFixedTime(today)
       const pageErrors = []
       page.on('pageerror', (error) => pageErrors.push(error.message))
       await page.goto(appUrl, { waitUntil: 'domcontentloaded' })
@@ -1005,6 +1040,60 @@ async function main() {
       assert.equal(lines.includes('cache'), false, '侧栏把 worktree 目录当成项目名')
     })
 
+    desktop('无检查点的会话仍可只回退对话', async (page) => {
+      await openSession(page, 'nockpt')
+      const row = page.locator('[data-turn-id="n3"]').first()
+      await row.hover()
+      await row.getByRole('button', { name: '回退到此处' }).click()
+      const dialog = page.getByRole('dialog', { name: '回退到此处' })
+      await dialog.waitFor({ state: 'visible' })
+      await page.waitForTimeout(300)
+      const text = await dialog.innerText()
+      assert.match(text, /只能恢复对话/, '没有提示只能恢复对话')
+      assert.equal(
+        await dialog.getByRole('radio', { name: /恢复代码和对话/ }).isDisabled(),
+        true,
+        '没有检查点时仍能选择恢复代码',
+      )
+      await dialog.getByRole('button', { name: '回退', exact: true }).click()
+      await dialog.waitFor({ state: 'hidden', timeout: 10_000 })
+      await page.waitForFunction(() => !document.querySelector('[data-turn-id="n3"]'))
+      assert.ok(await page.locator('[data-turn-id="n1"]').count(), '回退时误删了更早的消息')
+    })
+
+    desktop('删除 dirty worktree 的确认列出文件与分支', async (page) => {
+      await openSession(page, 'wtdirty')
+      const row = page.locator('[data-session-id="wtdirty"]').first()
+      await row.hover()
+      await row.getByRole('button', { name: '会话操作' }).click()
+      const menu = page.locator('[role="menu"]').last()
+      await menu.waitFor()
+      await menu.getByRole('menuitem', { name: '删除', exact: true }).click()
+      const dialog = page.getByRole('dialog').last()
+      await dialog.getByText('确定删除').waitFor({ timeout: 5_000 })
+      await dialog.getByRole('button', { name: '删除', exact: true }).click()
+      await page.waitForFunction(() => document.body.innerText.includes('tandem/dirty'), null, {
+        timeout: 10_000,
+      })
+      const dirtyDialog = page.getByRole('dialog').filter({ hasText: 'worktree 有未提交改动' })
+      const text = await dirtyDialog.innerText()
+      assert.match(text, /dirty\.txt/, '二次确认没有列出未提交文件')
+      assert.match(text, /tandem\/dirty/, '二次确认没有说明将删除的分支')
+      await dialog.getByRole('button', { name: '取消', exact: true }).click()
+    })
+
+    desktop('删除邀请记录需要二次确认', async (page) => {
+      await openSettings(page, '成员', 'desktop')
+      const remove = page.getByRole('button', { name: '删除邀请' }).first()
+      await remove.waitFor({ timeout: 10_000 })
+      await remove.click()
+      const dialog = page.getByRole('dialog', { name: '删除邀请记录' })
+      await dialog.waitFor({ state: 'visible' })
+      assert.match(await dialog.innerText(), /王敏|观察者|审批者/, '确认框没有说明要删除的邀请')
+      await dialog.getByRole('button', { name: '取消', exact: true }).click()
+      await closeSettings(page)
+    })
+
     desktop('移除 MCP 服务器需要二次确认', async (page) => {
       await openSettings(page, 'MCP', 'desktop')
       const remove = page.getByRole('button', { name: '删除 reg-fs' })
@@ -1333,7 +1422,10 @@ async function main() {
       assert.ok(box.width >= 300, `手机用量图只有 ${box.width}px 宽`)
       const bars = chart.locator('g[aria-label*="花费"]')
       assert.ok((await bars.count()) >= 3, '用量图没有每日柱子')
-      await bars.last().click({ force: true })
+      // 按造数时的日期定位当天柱子，不依赖「最后一根」；跨零点时也稳定。
+      const todayBar = chart.locator(`g[aria-label^="${dayString(0)} "]`)
+      await todayBar.waitFor({ timeout: 3_000 })
+      await todayBar.click({ force: true })
       await page.waitForTimeout(250)
       const tip = dialog.getByText(dayString(0), { exact: true })
       await tip.waitFor({ state: 'visible', timeout: 3_000 })

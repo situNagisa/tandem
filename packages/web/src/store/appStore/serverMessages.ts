@@ -193,7 +193,7 @@ export function createServerMessageHandler(
                 seq: Math.max(prev?.seq ?? 0, event.seq),
                 events,
                 pending,
-                unread: (prev?.unread ?? 0) + (counts && !ui.inboxOpen ? 1 : 0),
+                unread: (prev?.unread ?? 0) + (counts && !ui.inboxOpen && !ui.inboxViewOpen ? 1 : 0),
               },
             },
           }

@@ -64,6 +64,12 @@ export function useBrowserShot(
       setState({ key, url: cached, error: null })
       return
     }
+    // Host 重启后截图只存在内存，请求可能长时间没有响应；超时后给出可读结论。
+    const timer = window.setTimeout(() => {
+      // 放弃这次挂起的请求，下一次「重新加载」会重新发起。
+      pending.delete(key)
+      if (!cancelled) setState({ key, url: null, error: '截图已失效（Host 可能已重启）' })
+    }, 8000)
     loadBrowserShot(host, sessionId, shotId)
       .then((url) => {
         if (!cancelled) setState({ key, url, error: null })
@@ -71,8 +77,10 @@ export function useBrowserShot(
       .catch((err: Error) => {
         if (!cancelled) setState({ key, url: null, error: err.message || '截图加载失败' })
       })
+      .finally(() => window.clearTimeout(timer))
     return () => {
       cancelled = true
+      window.clearTimeout(timer)
     }
   }, [key, host?.id, sessionId, shotId])
 

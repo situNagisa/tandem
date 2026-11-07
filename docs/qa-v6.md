@@ -60,3 +60,10 @@
 - Playwright 脚本：`/tmp/qa6-artifacts/scripts/`
 - 构建日志：`/tmp/qa6-artifacts/build.log`
 - 原始探针结果：`/tmp/qa6-artifacts/shots/desk1280-dark/probe.json`
+
+## 2026-11-08 P2 复核
+
+- P2-3 新会话（390）常用横向条裁切：**已不复现**——新会话页已无「常用」横向卡片条。
+- P2-4 导出 Toast 遮设置关闭按钮：**已修**——设置打开时 Toast 移到弹窗标题下方（桌面顶部、手机导航上沿）。
+- P2-5 触屏消息操作孤立「…」：**已修**——触屏下「更多操作」按钮补 44px 边框与浅底，不再像装饰符号。
+

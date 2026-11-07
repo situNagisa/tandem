@@ -16,6 +16,7 @@ import type {
   CreateTeamInviteResult,
   MemberRole,
   TeamAuditEntry,
+  TeamInvite,
   TeamMember,
   TeamOverview,
 } from '@tandem/protocol'
@@ -253,6 +254,7 @@ export function TeamSection() {
   const [qr, setQr] = useState('')
   const [copied, setCopied] = useState(false)
   const [revokeId, setRevokeId] = useState<string | null>(null)
+  const [deletingInvite, setDeletingInvite] = useState<TeamInvite | null>(null)
   const [editMember, setEditMember] = useState<TeamMember | null>(null)
   const [revoking, setRevoking] = useState(false)
 
@@ -364,6 +366,7 @@ export function TeamSection() {
     if (!host) return
     try {
       await api.deleteTeamInvite(host, id)
+      setDeletingInvite(null)
       await load()
     } catch (err) {
       toast(err instanceof Error ? err.message : '删除失败', 'error')
@@ -589,7 +592,7 @@ export function TeamSection() {
                   size="sm"
                   label="删除邀请"
                   tooltip="删除邀请记录"
-                  onClick={() => void removeInvite(invite.id)}
+                  onClick={() => setDeletingInvite(invite)}
                 >
                   <Trash2 size={13} />
                 </IconButton>
@@ -645,6 +648,34 @@ export function TeamSection() {
           onSaved={() => void load()}
         />
       )}
+
+      <Modal
+        open={!!deletingInvite}
+        onClose={() => setDeletingInvite(null)}
+        title="删除邀请记录"
+        className="max-w-sm"
+        footer={
+          <>
+            <Button size="lg" onClick={() => setDeletingInvite(null)}>
+              取消
+            </Button>
+            <Button
+              size="lg"
+              variant="danger-ghost"
+              onClick={() => deletingInvite && void removeInvite(deletingInvite.id)}
+            >
+              删除
+            </Button>
+          </>
+        }
+      >
+        {deletingInvite && (
+          <p className="text-[13px] leading-6 text-text-soft">
+            删除 {ROLE_LABEL[deletingInvite.role]} · {formatTime(deletingInvite.createdAt)} 的邀请记录？
+            {deletingInvite.usedAt ? '记录已使用，删除后不影响已加入的成员。' : '未使用的邀请将立即失效。'}
+          </p>
+        )}
+      </Modal>
     </div>
   )
 }

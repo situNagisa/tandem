@@ -253,7 +253,7 @@ export const UserMessage = memo(function UserMessage({
                 <IconButton
                   onClick={() => void copy()}
                   label={copied ? '已复制' : '复制消息'}
-                  className="[&_svg]:size-[13px] max-md:size-11 [&_svg]:max-md:size-[17px]"
+                  className="[&_svg]:size-[13px] max-md:size-11 max-md:border max-md:border-border max-md:bg-[var(--t-bg-subtle)] [&_svg]:max-md:size-[17px]"
                 >
                   {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
                 </IconButton>
@@ -265,7 +265,7 @@ export const UserMessage = memo(function UserMessage({
                 open={menuOpen}
                 onOpenChange={setMenuOpen}
                 trigger={({ open }) => (
-                  <IconButton label="消息操作" tooltip={open ? '' : undefined} className="[&_svg]:size-[15px] max-md:size-11 [&_svg]:max-md:size-[17px]">
+                  <IconButton label="消息操作" tooltip={open ? '' : undefined} className="[&_svg]:size-[15px] max-md:size-11 max-md:border max-md:border-border max-md:bg-[var(--t-bg-subtle)] [&_svg]:max-md:size-[17px]">
                     <MoreHorizontal size={15} />
                   </IconButton>
                 )}

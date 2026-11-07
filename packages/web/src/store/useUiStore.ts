@@ -57,6 +57,8 @@ interface UiState {
   notifyEvents: { permission: boolean; turnEnd: boolean; error: boolean; budget: boolean }
   /** 收件箱对话框（桌面/移动端均可打开）。 */
   inboxOpen: boolean
+  /** 手机首页内嵌的收件箱视图是否可见；只用于抑制未读角标，不控制弹层。 */
+  inboxViewOpen: boolean
   /** 通过邀请链接加入 Host 的弹层。 */
   joinInvite: InviteTarget | null
   /** 派单对话框；hostId 是预选目标。 */
@@ -116,6 +118,7 @@ interface UiState {
   openJoinInvite: (target: InviteTarget) => void
   closeJoinInvite: () => void
   setInboxOpen: (open: boolean) => void
+  setInboxViewOpen: (open: boolean) => void
   setDispatchOpen: (open: boolean, hostId?: string) => void
   toast: (
     text: string,
@@ -172,6 +175,7 @@ export const useUiStore = create<UiState>((set, get) => ({
     budget: prefs.notifyEvents?.budget ?? true,
   },
   inboxOpen: false,
+  inboxViewOpen: false,
   joinInvite: null,
   dispatchOpen: false,
   dispatchHostId: null,
@@ -300,6 +304,7 @@ export const useUiStore = create<UiState>((set, get) => ({
     set({ notifyEvents: next })
   },
   setInboxOpen: (open) => set({ inboxOpen: open }),
+  setInboxViewOpen: (open) => set({ inboxViewOpen: open }),
 
   openJoinInvite: (target) => set({ joinInvite: target }),
 

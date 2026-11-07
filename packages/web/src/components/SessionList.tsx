@@ -322,6 +322,7 @@ export function SessionList({
     session: SessionSummary
     busy: boolean
     dirty?: boolean
+    detail?: string
   } | null>(null)
   const [merge, setMerge] = useState<{
     hostId: string
@@ -898,7 +899,17 @@ export function SessionList({
                   const dirty =
                     (err instanceof ApiError && err.status === 409) ||
                     (err instanceof Error && /未提交改动/.test(err.message))
-                  if (dirty) setConfirm((c) => (c ? { ...c, busy: false, dirty: true } : c))
+                  if (dirty)
+                    setConfirm((c) =>
+                      c
+                        ? {
+                            ...c,
+                            busy: false,
+                            dirty: true,
+                            detail: err instanceof Error ? err.message : undefined,
+                          }
+                        : c,
+                    )
                   else {
                     useUiStore.getState().toast(
                       err instanceof Error ? err.message : '删除会话失败',
@@ -919,7 +930,12 @@ export function SessionList({
         {confirm?.dirty ? (
           <div className="mb-2 flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[12px] leading-5 text-danger">
             <TriangleAlert size={13} className="mt-0.5 shrink-0" />
-            有未提交改动，仍然删除？worktree 目录与分支会被一并清除，改动将无法恢复。
+            <span>
+              {confirm.detail ? (
+                <span className="mb-1 block break-words">{confirm.detail}</span>
+              ) : null}
+              仍然删除？worktree 目录与分支会被一并清除，改动将无法恢复。
+            </span>
           </div>
         ) : (
           <p className="text-[13px] leading-6 text-text-soft">

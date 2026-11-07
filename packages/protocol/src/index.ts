@@ -713,9 +713,10 @@ export interface Checkpoint {
   createdAt: number;
   files: { path: string; existed: boolean }[]; // 本轮被 Write/Edit 改动的文件（相对 cwd）
 }
-export interface RewindInput { checkpointId: string; restoreFiles: boolean; restoreConversation: boolean }
+export interface RewindInput { checkpointId: string; restoreFiles: boolean; restoreConversation: boolean; messageId?: string }
 // GET  /api/sessions/:id/checkpoints -> Checkpoint[]
 // POST /api/sessions/:id/rewind RewindInput -> Session   恢复到该用户消息之前（文件和/或对话）
+// 没有检查点时（旧会话/导入会话/本轮未改文件）可传空 checkpointId + messageId，仅恢复对话
 
 // ---------- Hooks ----------
 // GET  /api/hooks?cwd=            -> HookSettings   汇总 ~/.claude、<cwd>/.claude 与 ~/.tandem/hooks.json

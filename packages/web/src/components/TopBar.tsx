@@ -66,7 +66,9 @@ function StatePill({
       <span className={cn(pill, 'rounded-full border border-border bg-surface px-2 py-1')}>
         <span className="size-1.5 rounded-full bg-warning running-dot" />
         <span className="whitespace-nowrap">
-          网络中断，{Math.max(0, retrySeconds ?? 0)} 秒后重试
+          {retrySeconds && retrySeconds > 0
+            ? `网络中断，${retrySeconds} 秒后重试`
+            : '网络中断，正在重试…'}
         </span>
         <Button size="sm" variant="ghost" className="h-5 px-1.5 text-[12px]" onClick={onRetryNow}>
           立即重试
@@ -463,7 +465,9 @@ export function TopBar() {
       <div className="flex shrink-0 items-center gap-1.5 border-b border-border bg-surface px-3 py-1.5 text-[12px] text-text-secondary">
         <span className="size-1.5 shrink-0 rounded-full bg-warning running-dot" />
         <span className="min-w-0 flex-1 truncate">
-          网络中断，{Math.max(0, retrySeconds ?? 0)} 秒后重试
+          {retrySeconds && retrySeconds > 0
+            ? `网络中断，${retrySeconds} 秒后重试`
+            : '网络中断，正在重试…'}
         </span>
         <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[12px]" onClick={retryNow}>
           立即重试

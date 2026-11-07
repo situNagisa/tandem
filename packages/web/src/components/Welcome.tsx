@@ -4,7 +4,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { basename } from '../lib/format'
 import { useIsMobile } from '../lib/hooks'
-import { cn } from '../lib/cn'
+import { SegmentedControl } from './ui/Controls'
 import { ConnectView, NewSessionView } from './NewSessionDialog'
 import { InboxView, useInboxCount, useInboxPendingCount } from './inbox/InboxView'
 
@@ -129,45 +129,34 @@ export function HomeView() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1.5">
-        <button
-          type="button"
-          onClick={() => {
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1.5">
+        <SegmentedControl<'new' | 'inbox'>
+          aria-label="首页页签"
+          value={tab}
+          onChange={(value) => {
             touched.current = true
-            setTab('new')
+            setTab(value)
           }}
-          aria-pressed={tab === 'new'}
-          className={cn(
-            'flex h-9 items-center rounded-lg px-3 text-[13px] font-medium transition-colors max-sm:min-h-11',
-            tab === 'new'
-              ? 'bg-[var(--t-bg-active)] text-text'
-              : 'text-text-tertiary hover:text-text',
-          )}
-        >
-          新会话
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            touched.current = true
-            setTab('inbox')
-          }}
-          aria-pressed={tab === 'inbox'}
-          className={cn(
-            'flex h-9 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-colors max-sm:min-h-11',
-            tab === 'inbox'
-              ? 'bg-[var(--t-bg-active)] text-text'
-              : 'text-text-tertiary hover:text-text',
-          )}
-        >
-          <Inbox size={14} />
-          收件箱
-          {unreadCount > 0 && (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-strong px-1 text-[12px] font-semibold leading-none text-on-accent">
-              {unreadCount > 99 ? '99+' : unreadCount}
-            </span>
-          )}
-        </button>
+          className="max-sm:h-11"
+          itemClassName="max-sm:h-11 max-sm:px-3"
+          options={[
+            { value: 'new', label: '新会话' },
+            {
+              value: 'inbox',
+              label: (
+                <span className="flex items-center gap-1.5">
+                  <Inbox size={14} />
+                  收件箱
+                  {unreadCount > 0 && (
+                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-strong px-1 text-[12px] font-semibold leading-none text-on-accent">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </span>
+              ),
+            },
+          ]}
+        />
         <span className="flex-1" />
         <button
           type="button"

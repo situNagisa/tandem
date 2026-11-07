@@ -268,6 +268,13 @@ export function InboxView({ embedded = false }: { embedded?: boolean }) {
     markInboxSeen()
   }, [markInboxSeen])
 
+  // 手机首页内嵌收件箱没有走桌面弹层；停留期间同样不应累计未读角标。
+  useEffect(() => {
+    if (!embedded) return
+    useUiStore.getState().setInboxViewOpen(true)
+    return () => useUiStore.getState().setInboxViewOpen(false)
+  }, [embedded])
+
   const pending: Entry[] = []
   const history: Entry[] = []
   for (const host of hosts) {
@@ -301,18 +308,14 @@ export function InboxView({ embedded = false }: { embedded?: boolean }) {
           </div>
         ) : (
           <div className="space-y-4 px-3 py-3">
-            <section>
-              <h3 className="mb-2 flex items-center gap-1.5 px-1 text-[12px] font-medium text-muted">
-                待审批
-                {pending.length > 0 && (
+            {pending.length > 0 && (
+              <section>
+                <h3 className="mb-2 flex items-center gap-1.5 px-1 text-[12px] font-medium text-muted">
+                  待审批
                   <span className="rounded-full bg-accent-strong px-1.5 py-px text-[12px] font-semibold text-on-accent">
                     {pending.length}
                   </span>
-                )}
-              </h3>
-              {pending.length === 0 ? (
-                <p className="px-1 pb-1 text-[12px] text-muted">没有需要处理的审批</p>
-              ) : (
+                </h3>
                 <div className="space-y-2">
                   {pending.map((entry) => (
                     <PendingCard
@@ -321,8 +324,8 @@ export function InboxView({ embedded = false }: { embedded?: boolean }) {
                     />
                   ))}
                 </div>
-              )}
-            </section>
+              </section>
+            )}
             {history.length > 0 && (
               <section>
                 <h3 className="mb-1 px-1 text-[12px] font-medium text-muted">最近</h3>

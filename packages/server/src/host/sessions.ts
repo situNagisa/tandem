@@ -436,8 +436,15 @@ export async function deleteSession(host: Host, id: string, force = false): Prom
   if (rec.worktree && !force) {
     const status = await worktreeCleanliness(rec.worktree.path);
     if (status.dirty) {
+      const files = (status.detail ?? '')
+        .split('\n')
+        .map((line) => line.replace(/^..\s+/, '').trim())
+        .filter(Boolean)
+        .map((path) => (path.includes(' -> ') ? path.split(' -> ').pop()! : path));
+      const shown = files.slice(0, 5).join('、');
+      const summary = files.length > 5 ? `${shown} 等 ${files.length} 个文件` : shown || `${files.length} 个文件`;
       throw httpError(
-        `worktree 有未提交改动，未删除。确认丢弃后可带 ?force=1 重试`,
+        `worktree 有未提交改动（${summary}），分支 ${rec.worktree.branch} 与 worktree 目录会被一并删除`,
         409,
       );
     }

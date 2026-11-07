@@ -113,6 +113,8 @@ export interface SegmentedControlProps<T extends string> {
   onChange: (value: T) => void
   size?: ControlSize
   className?: string
+  /** 追加到每个分段按钮上的类名（例如移动端放大触控高度）。 */
+  itemClassName?: string
   disabled?: boolean
   'aria-label'?: string
 }
@@ -123,6 +125,7 @@ export function SegmentedControl<T extends string>({
   onChange,
   size = 'md',
   className,
+  itemClassName,
   disabled,
   'aria-label': ariaLabel,
 }: SegmentedControlProps<T>) {
@@ -150,6 +153,7 @@ export function SegmentedControl<T extends string>({
             className={cn(
               'inline-flex flex-1 items-center justify-center gap-1 whitespace-nowrap rounded-md font-medium leading-none transition-colors duration-[120ms] disabled:cursor-not-allowed disabled:opacity-40',
               item,
+              itemClassName,
               selected
                 ? 'bg-[var(--t-bg-active)] text-text'
                 : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text',

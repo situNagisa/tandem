@@ -144,7 +144,7 @@ export function BrowserPanel() {
                   ? state.error
                   : state.active
                     ? '每次浏览器工具调用后会自动刷新。'
-                    : '在设置 → 浏览器启用后，让 agent 打开 localhost 页面复现问题，截图会实时出现在这里。'}
+                    : '让 agent 打开 localhost 页面复现问题，截图会实时出现在这里；如果还没启用浏览器，先在设置 → 浏览器中开启。'}
               </p>
               {shot.error ? (
                 <Button size="sm" variant="secondary" onClick={() => void refresh()}>

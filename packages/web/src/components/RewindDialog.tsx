@@ -60,7 +60,6 @@ export function RewindDialog({
   const [error, setError] = useState<string | undefined>()
   const [mode, setMode] = useState<Mode>('both')
   const [submitting, setSubmitting] = useState(false)
-
   useEffect(() => {
     if (!host || !sessionId) {
       setLoading(false)
@@ -75,6 +74,8 @@ export function RewindDialog({
         if (cancelled) return
         const target = list.find((cp) => cp.messageId === message.id) ?? null
         setCheckpoint(target)
+        // 没有检查点时只能回退对话（旧会话、导入会话或本轮没有改过文件）。
+        setMode(target ? 'both' : 'conversation')
         if (!target) setError(undefined)
       })
       .catch((err) => {
@@ -89,26 +90,36 @@ export function RewindDialog({
   }, [host, sessionId, message.id])
 
   const submit = async () => {
-    if (!checkpoint || submitting || running) return
-    setSubmitting(true)
-    const restoreFiles = mode !== 'conversation'
+    if (submitting || running) return
+    const restoreFiles = mode !== 'conversation' && !!checkpoint
     const restoreConversation = mode !== 'code'
+    if (!restoreFiles && !restoreConversation) return
+    setSubmitting(true)
     const ok = await rewind(
-      { checkpointId: checkpoint.id, restoreFiles, restoreConversation },
+      {
+        checkpointId: restoreFiles ? checkpoint!.id : '',
+        restoreFiles,
+        restoreConversation,
+        messageId: message.id,
+      },
       restoreConversation ? messageText(message) : undefined,
     )
     setSubmitting(false)
     if (ok) onClose()
   }
 
-  const disabled = running || !checkpoint || submitting
+  const disabled = running || (!checkpoint && mode !== 'conversation') || submitting
 
   return (
     <Modal
       open
       onClose={onClose}
       title="回退到此处"
-      description="选择一个恢复范围。回退后，此消息之后的 Tandem 文件修改会被撤销。"
+      description={
+        checkpoint
+          ? '选择一个恢复范围。回退后，此消息之后的 Tandem 文件修改会被撤销。'
+          : '选择一个恢复范围。这一轮没有可回退的文件改动，只能恢复对话。'
+      }
       className="max-w-lg"
       footer={
         <>
@@ -130,21 +141,6 @@ export function RewindDialog({
         <p className="rounded-lg border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[13px] text-danger">
           {error}
         </p>
-      ) : !checkpoint ? (
-        <div className="space-y-3">
-          <div className="rounded-lg border border-border bg-bg/60 px-3 py-2">
-            <p className="text-[12px] text-muted">目标消息</p>
-            <p className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-5 text-text-soft [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] overflow-hidden">
-              {messageText(message) || '（这条消息没有文本内容）'}
-            </p>
-          </div>
-          <div className="space-y-2 py-2 text-center">
-            <p className="text-[13px] text-text-soft">这条消息没有可用的检查点</p>
-            <p className="text-[13px] leading-5 text-muted">
-              检查点只在本轮开始前有文件被修改时创建。若这一轮没有改过文件，就无法回退。
-            </p>
-          </div>
-        </div>
       ) : (
         <div className="space-y-3">
           <div className="rounded-lg border border-border bg-bg/60 px-3 py-2">
@@ -153,18 +149,26 @@ export function RewindDialog({
               {messageText(message) || '（这条消息没有文本内容）'}
             </p>
           </div>
+          {!checkpoint && (
+            <p className="text-[12px] leading-5 text-muted">
+              这一轮没有可回退的文件改动（检查点只在本轮开始前有文件被修改时创建），只能恢复对话。
+            </p>
+          )}
           <div className="space-y-1.5" role="radiogroup" aria-label="恢复范围">
             {OPTIONS.map((option) => {
               const Icon = option.icon
               const active = mode === option.value
+              const needsCheckpoint = option.value !== 'conversation'
+              const optionDisabled = !checkpoint && needsCheckpoint
               return (
                 <button
                   key={option.value}
                   role="radio"
                   aria-checked={active}
+                  disabled={optionDisabled}
                   onClick={() => setMode(option.value)}
                   className={cn(
-                    'flex w-full items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors',
+                    'flex w-full items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40',
                     active
                       ? 'border-[var(--t-border-strong)] bg-[var(--t-bg-active)]'
                       : 'border-border bg-surface/50 hover:bg-[var(--t-bg-hover)]',
@@ -195,7 +199,7 @@ export function RewindDialog({
               {mode !== 'conversation' && (
                 <span className="block">
                   文件会回到此消息之前的状态（Bash 命令造成的改动无法撤销）。
-                  {checkpoint.files.length > 0 && ` 本轮快照涉及 ${checkpoint.files.length} 个文件。`}
+                  {checkpoint && checkpoint.files.length > 0 && ` 本轮快照涉及 ${checkpoint.files.length} 个文件。`}
                 </span>
               )}
               {mode !== 'code' && (
