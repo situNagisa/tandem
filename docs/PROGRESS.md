@@ -197,3 +197,10 @@
 - [x] `scripts/check.mjs` 第 5 步接入 `npm run regression`，支持 `--skip-regression`
 - [x] 回归发现并修复：同步「替换导入」缺少二次确认与危险色（review-v4 #8/#23 复发）；Host 只回环时「连接手机」仍渲染二维码/链接（review-v5 #2 复发）；模型菜单三级子菜单在 React 19 下不挂载（SubTrigger open 但 SubContent 为空）→ 分组平铺为二级级联
 - 验证：`node scripts/check.mjs` 全量通过（含 regression 38/38）
+
+## 迭代 24（2026-11-07）手机端专项走查
+- [x] `docs/review-mobile.md`：Pixel 7（412×915）与 360×780、深/浅色逐页真实触摸走查；首页/收件箱、侧栏抽屉滑动、会话（长按/工具/预览/改动/审批）、输入框更多与模型菜单、环境条、派单、设置、反馈模式
+- [x] P0：手机顶栏标题被 6–7 个图标挤到 10px、待审批胶囊与图标重叠 → 顶栏改两行（标题+状态 / 轮次胶囊+工具图标）；360px 输入框卡片横向溢出 18px → 手机隐藏上下文环、模型按钮 36vw
+- [x] P1：菜单项/列表行/图标按钮补 44px（菜单、侧栏、改动审阅、设置、代码复制、预览、文件行）；审批卡按钮手机改 2×2 网格；11/11.5px 文本统一 12px（徽标 11、图表刻度 11）；用户消息 480ms 长按打开操作菜单（抬手后弹出，防误触）；文件预览行号槽 44→30px
+- [x] 回归：`e2e/regression.mjs` 新增 360×780 context 与 7 条手机用例（顶栏/输入框、菜单、审批、长按、侧栏、设置、文件预览），并新增 Host 启动即恢复的待审批种子会话
+- 验证：`node scripts/check.mjs` 全量通过（build / ui-audit / test / smoke / regression 45/45）；`npm run apk -w @tandem/mobile` 成功

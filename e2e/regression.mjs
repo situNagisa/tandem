@@ -28,6 +28,7 @@ const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
 const HOST_ENTRY = path.join(ROOT, 'packages/server/dist/cli.js')
 const DESKTOP = { width: 2552, height: 1274 }
 const MOBILE = { width: 390, height: 844 }
+const SMALL = { width: 360, height: 780 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -329,6 +330,54 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
       },
     ),
   ]
+  // 待审批会话：Host 启动时按 resumeState 恢复并重新广播权限请求，供手机审批卡走查。
+  const approveAt = Date.now() - 1200
+  sessions.push({
+    ...common,
+    id: 'approve',
+    title: '等待审批的会话',
+    messages: [
+      {
+        id: 'ap1',
+        role: 'user',
+        content: [{ type: 'text', text: '跑一下测试，然后再提交。' }],
+        createdAt: approveAt - 5000,
+      },
+      {
+        id: 'ap2',
+        role: 'assistant',
+        content: [
+          { type: 'text', text: '我先运行测试。' },
+          { type: 'tool_use', id: 'tu-ap', name: 'Bash', input: { command: 'npm test' } },
+        ],
+        createdAt: approveAt - 4000,
+        model: 'mock-1',
+      },
+    ],
+    createdAt: approveAt - 10_000,
+    updatedAt: approveAt - 1000,
+    runState: {
+      version: 1,
+      startedAt: approveAt - 5000,
+      updatedAt: approveAt - 1000,
+      completedMessages: ['ap1', 'ap2'],
+      queue: [],
+      inFlightTools: [{ id: 'tu-ap', name: 'Bash', startedAt: approveAt - 1000 }],
+      pendingPermissions: [
+        {
+          id: 'perm-ap',
+          sessionId: 'approve',
+          toolUseId: 'tu-ap',
+          toolName: 'Bash',
+          input: { command: 'npm test' },
+          description: '运行命令: npm test',
+        },
+      ],
+      phase: 'tools',
+      permissionMode: 'default',
+      assistantMessageId: 'ap2',
+    },
+  })
   mkdirSync(path.join(configDir, '..', 'cache-worktree'), { recursive: true })
   sessions[3].cwd = path.join(configDir, '..', 'cache-worktree')
   for (const session of sessions) writeJson(path.join(configDir, 'sessions', `${session.id}.json`), session)
@@ -408,10 +457,17 @@ async function main() {
       isMobile: true,
       hasTouch: true,
     })
+    const smallContext = await browser.newContext({
+      viewport: SMALL,
+      deviceScaleFactor: 2,
+      isMobile: true,
+      hasTouch: true,
+    })
 
     const checks = []
     const desktop = (name, fn) => checks.push({ name, viewport: 'desktop', fn })
     const mobile = (name, fn) => checks.push({ name, viewport: 'mobile', fn })
+    const small = (name, fn) => checks.push({ name, viewport: 'small', fn })
 
     const newPage = async (ctx, viewport) => {
       const page = await ctx.newPage()
@@ -419,7 +475,11 @@ async function main() {
       const pageErrors = []
       page.on('pageerror', (error) => pageErrors.push(error.message))
       await page.goto(appUrl, { waitUntil: 'domcontentloaded' })
-      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+      // 手机首页默认可能是收件箱页签（有待审批时没有输入框），用「新会话」按钮兜底。
+      await page
+        .locator('textarea[aria-label="消息输入框"], button:has-text("新会话")')
+        .first()
+        .waitFor({ timeout: 20_000 })
       page.__errors = pageErrors
       page.__viewport = viewport
       return page
@@ -1184,10 +1244,144 @@ async function main() {
       await closeSettings(page)
     })
 
+    small('360 小屏：会话顶栏标题与状态不重叠、输入框不横向溢出', async (page) => {
+      await openSession(page, 'approve')
+      const info = await page.evaluate(() => {
+        const header = document.querySelector('header')
+        const hb = header.getBoundingClientRect()
+        const title = [...header.querySelectorAll('h1')].find((e) => (e.textContent || '').includes('等待审批'))
+        const tr = title?.getBoundingClientRect()
+        const pill = [...header.querySelectorAll('span')].find((e) => (e.textContent || '').trim().startsWith('待审批'))
+        const pr = pill?.getBoundingClientRect()
+        const card = document.querySelector('.composer-card')
+        const cr = card.getBoundingClientRect()
+        return {
+          headerH: hb.height,
+          headerRight: hb.right,
+          titleW: tr?.width ?? 0,
+          pillRight: pr?.right ?? 0,
+          cardRight: cr.right,
+          cardSW: card.scrollWidth,
+          cardCW: card.clientWidth,
+          docSW: document.documentElement.scrollWidth,
+        }
+      })
+      assert.ok(info.titleW >= 80, `手机顶栏标题被挤到 ${Math.round(info.titleW)}px`)
+      assert.ok(info.headerH >= 88, `手机顶栏没有分两行：${Math.round(info.headerH)}px`)
+      assert.ok(info.pillRight <= info.headerRight - 40, `状态胶囊压到了右侧图标：${Math.round(info.pillRight)} > ${Math.round(info.headerRight - 40)}`)
+      assert.ok(info.cardSW <= info.cardCW + 1, `输入框横向溢出 ${info.cardSW} > ${info.cardCW}`)
+      assert.ok(info.cardRight <= SMALL.width + 1, `输入框右缘 ${Math.round(info.cardRight)} 越界`)
+      assert.ok(info.docSW <= SMALL.width, `页面横向溢出 ${info.docSW} > ${SMALL.width}`)
+    })
+
+    small('360 小屏：更多菜单项 44px 且弹层不越界', async (page) => {
+      await openSession(page, 'long')
+      await page.getByRole('button', { name: /更多设置/ }).click()
+      const menu = page.locator('[role="menu"]').first()
+      await menu.waitFor()
+      const info = await menu.evaluate((el) => {
+        const r = el.getBoundingClientRect()
+        const items = [...el.querySelectorAll('[role="menuitem"], [role="menuitemradio"]')].map(
+          (i) => i.getBoundingClientRect().height,
+        )
+        return { top: r.top, bottom: r.bottom, vh: window.innerHeight, min: Math.min(...items), count: items.length }
+      })
+      assert.ok(info.count >= 5, `更多菜单只有 ${info.count} 项`)
+      assert.ok(info.min >= 43, `手机菜单项高度 ${Math.round(info.min)}px，低于 44px`)
+      assert.ok(info.top >= -1 && info.bottom <= info.vh + 1, `菜单超出视口 ${Math.round(info.top)}–${Math.round(info.bottom)} / ${info.vh}`)
+      await page.keyboard.press('Escape')
+    })
+
+    small('360 小屏：审批卡按钮 2×2 且触控 44px', async (page) => {
+      await openSession(page, 'approve')
+      const card = page.locator('.permission-card').first()
+      await card.waitFor()
+      const buttons = card.locator('.permission-actions button')
+      assert.equal(await buttons.count(), 4, '审批按钮不是 4 个')
+      const boxes = []
+      for (let i = 0; i < 4; i++) {
+        const box = await buttons.nth(i).boundingBox()
+        assert.ok(box, `第 ${i + 1} 个审批按钮不可见`)
+        assert.ok(box.height >= 43, `审批按钮高度 ${Math.round(box.height)}px`)
+        assert.ok(box.width >= 120, `审批按钮宽度 ${Math.round(box.width)}px`)
+        boxes.push(box)
+      }
+      assert.equal(new Set(boxes.map((b) => Math.round(b.y))).size, 2, '审批按钮没有排成两行')
+      assert.equal(new Set(boxes.map((b) => Math.round(b.x))).size, 2, '审批按钮没有排成两列')
+      const cardBox = await card.boundingBox()
+      for (const box of boxes) {
+        assert.ok(box.x >= cardBox.x - 1 && box.x + box.width <= cardBox.x + cardBox.width + 1, '审批按钮超出卡片')
+      }
+    })
+
+    small('手机长按用户消息打开操作菜单', async (page) => {
+      await openSession(page, 'long')
+      const bubble = page.locator('.msg-group .whitespace-pre-wrap.break-words').last()
+      await bubble.evaluate((el) => el.scrollIntoView({ block: 'center' }))
+      await page.waitForTimeout(250)
+      const box = await bubble.boundingBox()
+      const cdp = await page.context().newCDPSession(page)
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: box.x + 16, y: box.y + 12 }],
+      })
+      await page.waitForTimeout(650)
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      const menu = page.getByRole('menu', { name: '消息操作' })
+      await menu.waitFor({ state: 'visible', timeout: 3_000 })
+      await page.waitForTimeout(250)
+      const item = menu.getByRole('menuitem').first()
+      const itemBox = await item.boundingBox()
+      assert.ok(itemBox.height >= 43, `长按菜单项高度 ${Math.round(itemBox.height)}px`)
+      await page.keyboard.press('Escape')
+    })
+
+    small('360 小屏：侧栏行与图标触控 44px', async (page) => {
+      await page.getByRole('button', { name: '打开侧栏' }).click()
+      const aside = page.locator('aside').first()
+      await aside.waitFor({ state: 'visible' })
+      const info = await aside.evaluate((el) => {
+        const buttons = [...el.querySelectorAll('button')].map((b) => b.getBoundingClientRect().height)
+        const rows = [...el.querySelectorAll('[data-session-row]')].map((r) => r.getBoundingClientRect().height)
+        return { minButton: Math.min(...buttons), minRow: Math.min(...rows) }
+      })
+      assert.ok(info.minButton >= 43, `侧栏按钮最小高度 ${Math.round(info.minButton)}px`)
+      assert.ok(info.minRow >= 43, `会话行高度 ${Math.round(info.minRow)}px`)
+      await page.keyboard.press('Escape')
+    })
+
+    small('360 小屏：设置页按钮触控 44px', async (page) => {
+      const dialog = await openSettings(page, '账号与模型', 'mobile')
+      withinViewport(await dialog.boundingBox(), SMALL, '手机设置')
+      const min = await dialog.evaluate((el) =>
+        Math.min(...[...el.querySelectorAll('button')].map((b) => b.getBoundingClientRect().height)),
+      )
+      assert.ok(min >= 43, `设置页按钮最小高度 ${Math.round(min)}px`)
+      await closeSettings(page)
+    })
+
+    mobile('手机点按文件引用打开预览并可关闭', async (page) => {
+      await openSession(page, 'links')
+      const ref = page.locator('code.file-ref-inline, a.file-ref').first()
+      await ref.waitFor({ state: 'visible' })
+      await ref.tap()
+      const close = page.getByRole('button', { name: '关闭文件预览' })
+      await close.waitFor({ state: 'visible', timeout: 5_000 })
+      const box = await close.boundingBox()
+      assert.ok(box.height >= 43, `预览关闭按钮高度 ${Math.round(box.height)}px`)
+      await close.tap()
+      await close.waitFor({ state: 'hidden', timeout: 5_000 })
+    })
+
     // ------------------------------------------------------------------ 执行
 
     for (const check of checks) {
-      let ctx = check.viewport === 'mobile' ? mobileContext : desktopContext
+      let ctx =
+        check.viewport === 'mobile'
+          ? mobileContext
+          : check.viewport === 'small'
+            ? smallContext
+            : desktopContext
       let ownContext = false
       if (check.context === 'offline') {
         ctx = await browser.newContext({ viewport: DESKTOP, deviceScaleFactor: 1 })
