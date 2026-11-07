@@ -28,7 +28,6 @@ export async function* readSse(response: Response, onData?: () => void): AsyncGe
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      onData?.();
       buffer += decoder.decode(value, { stream: true });
       let idx: number;
       while ((idx = buffer.search(/\r?\n\r?\n/)) >= 0) {
@@ -36,13 +35,20 @@ export async function* readSse(response: Response, onData?: () => void): AsyncGe
         const sepLen = buffer[idx] === '\r' ? 4 : 2;
         buffer = buffer.slice(idx + sepLen);
         const ev = parseEvent(raw);
-        if (ev) yield ev;
+        if (ev) {
+          // 只有真正的数据事件才算“有输出”；心跳/注释不能重置空闲计时器。
+          onData?.();
+          yield ev;
+        }
       }
     }
     buffer += decoder.decode();
     if (buffer.trim()) {
       const ev = parseEvent(buffer);
-      if (ev) yield ev;
+      if (ev) {
+        onData?.();
+        yield ev;
+      }
     }
   } finally {
     reader.releaseLock();

@@ -489,7 +489,7 @@ export class BrowserManager {
       };
       const addText = (text: string) => {
         const value = norm(text);
-        if (value.length > 1) lines.push(value.slice(0, 200));
+        if (value.length > 0) lines.push(value.slice(0, 200));
       };
       const walk = (el: Element) => {
         if (lines.length >= MAX_LINES) return;
@@ -505,6 +505,11 @@ export class BrowserManager {
             emit(el, role, href ? `href=${href.slice(0, 120)}` : '');
           } else if (role === 'slider') {
             emit(el, role, `value=${(el as HTMLInputElement).value}`);
+          } else if (role === 'textbox' || role === 'searchbox' || role === 'combobox') {
+            const field = el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+            const secret = el instanceof HTMLInputElement && el.type === 'password';
+            const value = secret ? '' : norm(field.value).slice(0, 80);
+            emit(el, role, value ? `value=${JSON.stringify(value)}` : '');
           } else {
             emit(el, role);
           }
