@@ -4,6 +4,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import type {
+  ContextSettings,
   KeyStrategy,
   ModelCapabilities,
   Profile,
@@ -21,6 +22,7 @@ import type {
   StoredProfileGroup,
   StoredProfileKey,
 } from './types.js';
+import { normalizeContextSettings } from './context-settings.js';
 
 export function tandemHome(): string {
   const fromEnv = process.env.TANDEM_HOME?.trim();
@@ -87,6 +89,7 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
         ? existing.defaultDelegation
         : 'less',
     ...(existing?.voice && typeof existing.voice === 'object' ? { voice: existing.voice } : {}),
+    context: normalizeContextSettings(existing?.context),
     ...(isRelayConfig(existing?.relay) ? { relay: existing.relay } : {}),
   };
   if (
@@ -94,7 +97,8 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
     existing?.token !== config.token ||
     existing?.idleTimeoutSec !== config.idleTimeoutSec ||
     existing?.resumeOnRestart !== config.resumeOnRestart ||
-    existing?.defaultDelegation !== config.defaultDelegation
+    existing?.defaultDelegation !== config.defaultDelegation ||
+    JSON.stringify(existing?.context ?? null) !== JSON.stringify(config.context)
   ) {
     writePrivateFile(file, JSON.stringify(config, null, 2));
   }
@@ -108,6 +112,7 @@ export function saveHostSettings(
     resumeOnRestart: 'auto' | 'pause';
     defaultDelegation?: import('@tandem/protocol').DelegationStrategy;
     voice?: import('@tandem/protocol').VoiceSettings;
+    context?: ContextSettings;
   },
 ): void {
   const file = path.join(home, 'config.json');

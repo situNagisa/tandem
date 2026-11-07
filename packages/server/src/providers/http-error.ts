@@ -22,7 +22,22 @@ export function providerHttpError(
   return new ProviderHttpError(status, describeHttpError(status, body, url, statusText), url);
 }
 
-/** 把 provider 的 HTTP 错误响应整理成用户能看懂的一句话（不把 HTML 页面原样抛给界面）。 */
+/** provider 返回「上下文超长」类错误：可压缩历史后重试一次。 */
+export function isContextLengthError(err: unknown): boolean {
+  if (!err) return false;
+  const status = (err as { status?: unknown }).status;
+  const message = err instanceof Error ? err.message : String(err);
+  if (
+    !/context[_ ]length[_ ]exceeded|prompt is too long|maximum context length|context window|too many (?:input )?tokens|input is too long|reduce the length of the (?:messages|prompt)|exceeds? the (?:model'?s? )?context/i.test(
+      message,
+    ) &&
+    !/上下文.{0,12}(?:超长|过长|超过|上限)/.test(message)
+  ) {
+    return false;
+  }
+  // 有状态码时只接受 400/413；有些兼容端点用 422/500 返回，保留按文案判断
+  return typeof status !== 'number' || status === 400 || status === 413 || status === 422 || status >= 500;
+}
 export function describeHttpError(status: number, body: string, url: string, statusText = ''): string {
   const text = (body || '').trim();
   let detail = '';

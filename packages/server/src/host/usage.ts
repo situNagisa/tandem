@@ -7,7 +7,13 @@ import type {
   ModelInfo,
 } from '@tandem/protocol';
 import { buildSystemPromptParts } from '../agent/prompt.js';
-import { cacheHitRateOf, calibrateBreakdown, estimateBreakdown } from '../context.js';
+import { normalizeContextSettings } from '../context-settings.js';
+import {
+  cacheHitRateOf,
+  calibrateBreakdown,
+  estimateBreakdown,
+  trimOldToolResults,
+} from '../context.js';
 import { listModels as fetchModelList } from '../providers/index.js';
 import type { ListModelsResult } from '../providers/index.js';
 import { applyModelCapabilities } from '../providers/capabilities.js';
@@ -141,20 +147,31 @@ export function injectionsFor(host: Host, rec: SessionRecord): InjectionSnapshot
 }
 
 export function contextFor(host: Host, rec: SessionRecord): ContextBreakdown {
-  if (rec.context) return rec.context;
+  const settings = normalizeContextSettings(host.config.context);
+  const autoCompact = {
+    enabled: settings.autoCompact,
+    threshold: settings.autoCompactThreshold,
+  };
+  // 设置可能在会话期间改过：返回时用当前阈值覆盖旧快照
+  if (rec.context) return { ...rec.context, autoCompact };
   const profile = host.profileFor(rec.profileId, rec.groupId);
   const model = rec.model || profile?.defaultModel || '';
   const system = host.buildSystemFor(rec).system;
   const tools = host.toolDefinitions(rec);
+  const messages = trimOldToolResults(
+    rec.messages.filter((m) => !m.notice),
+    settings,
+  ).messages;
   return estimateBreakdown({
     model,
     system,
     tools,
-    messages: rec.messages,
+    messages,
     cwd: rec.cwd,
     cacheHitRate: cacheHitRateOf(rec.usage),
     providerKind: profile?.kind,
     capabilityOverrides: profile?.modelCapabilities,
+    autoCompact,
   });
 }
 

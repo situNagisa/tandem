@@ -2,6 +2,7 @@
 // 进入「等待网络」指数退避重试（单次最长 2 分钟，总计最长 30 分钟）。
 import type { Host } from '../host.js';
 import type { SessionRecord } from '../types.js';
+import { isContextLengthError } from '../providers/http-error.js';
 import { errorMessage, truncateEnd } from '../util/text.js';
 
 export const RETRY_WINDOW_MS = 30 * 60_000;
@@ -59,7 +60,7 @@ export async function withNetworkRetry<T>(
       if (rec.status === 'retrying') host.setStatus(rec, 'running');
       return value;
     } catch (err) {
-      if (signal.aborted || !isRetryableProviderError(err)) {
+      if (signal.aborted || isContextLengthError(err) || !isRetryableProviderError(err)) {
         clearRetry(host, rec);
         host.broadcastSummary(rec);
         throw err;

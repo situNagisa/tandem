@@ -3,13 +3,13 @@ import { randomUUID } from 'node:crypto';
 import type { ContentBlock, Message, Todo } from '@tandem/protocol';
 import { BUILTIN_NAMES, findCommandBody, parseSlashCommand } from '../agent/commands.js';
 import { runTurn } from '../agent/loop.js';
-import { completeText, streamChat } from '../providers/index.js';
+import { completeText } from '../providers/index.js';
 import { persist as persistRunState } from '../run-state.js';
-import { costOfUsage, priceForModel } from '../usage.js';
 import { errorMessage } from '../util/text.js';
 import type { SessionRecord, SessionRuntime } from '../types.js';
 import type { Host } from '../host.js';
-import { cleanTitle, isContentBlock, rememberTextOf, splitCompactOutput } from './helpers.js';
+import { compactHistory } from './compaction.js';
+import { cleanTitle, isContentBlock, rememberTextOf } from './helpers.js';
 
 export function ensureRuntime(host: Host, id: string): SessionRuntime {
   let rt = host.runtimes.get(id);
@@ -228,8 +228,7 @@ export async function compactSession(host: Host, rec: SessionRecord): Promise<vo
   try {
     host.setStatus(rec, 'running');
     const selection = host.keyCandidates(rec.profileId, rec.groupId);
-    const compactKey = selection.candidates[0];
-    const profile = compactKey?.profile ?? host.profileFor(rec.profileId, rec.groupId);
+    const profile = selection.candidates[0]?.profile ?? host.profileFor(rec.profileId, rec.groupId);
     if (!profile?.apiKey) {
       throw new Error(
         host.keysUnavailableMessage(rec.profileId, rec.groupId) ?? '当前账号未配置 API Key',
@@ -243,85 +242,15 @@ export async function compactSession(host: Host, rec: SessionRecord): Promise<vo
       return;
     }
 
-    const instruction: Message = {
-      id: randomUUID(),
-      role: 'user',
-      content: [
-        {
-          type: 'text',
-          text: host.promptTemplates.get('compact', rec.cwd),
-        },
-      ],
-      createdAt: Date.now(),
-    };
-    const blocks: ContentBlock[] = [];
-    let result: Awaited<ReturnType<typeof streamChat>>;
-    try {
-      result = await streamChat({
-        profile,
-        model,
-        system: host.buildSystemFor(rec, { allowTask: false }).system,
-        messages: [...rec.messages, instruction],
-        tools: [],
-        blocks,
-        signal: abort.signal,
-        idleTimeoutSec: host.config.idleTimeoutSec ?? 180,
-        maxTokens: 4096,
-        onBlockStart: () => {},
-        onText: () => {},
-        onToolInput: () => {},
-      });
-      host.markKeySuccess(rec.profileId, rec.groupId, compactKey?.keyId);
-    } catch (err) {
-      host.markKeyFailure(rec.profileId, rec.groupId, compactKey?.keyId, err);
-      throw err;
-    }
-    const raw = blocks
-      .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
-      .map((b) => b.text)
-      .join('\n')
-      .trim();
-    // 同一次调用里顺带产出可长期保留的事实，写入项目记忆（成本与单独请求相近但少一次往返）
-    const { summary, facts } = splitCompactOutput(raw);
-    if (!summary) throw new Error('模型没有返回摘要内容');
-    if (facts.length > 0) {
-      try {
-        host.memory.add(rec.cwd, facts.join('\n'));
-      } catch (err) {
-        console.warn('[tandem] 写入项目记忆失败:', errorMessage(err));
-      }
-    }
-
-    rec.messages = [
-      {
-        id: randomUUID(),
-        role: 'user',
-        content: [{ type: 'text', text: `[此前对话摘要]\n\n${summary}` }],
-        createdAt: Date.now(),
-      },
-    ];
-    const usage = result.usage;
-    const inputTokens = usage.inputTokens || 0;
-    const outputTokens = usage.outputTokens || 0;
-    const cacheReadTokens = usage.cacheReadTokens || 0;
-    const cacheWriteTokens = usage.cacheWriteTokens || 0;
-    rec.usage.inputTokens += inputTokens;
-    rec.usage.outputTokens += outputTokens;
-    rec.usage.cacheReadTokens = (rec.usage.cacheReadTokens ?? 0) + cacheReadTokens;
-    rec.usage.cacheWriteTokens = (rec.usage.cacheWriteTokens ?? 0) + cacheWriteTokens;
-    const price = priceForModel(profile, model);
-    const cost = costOfUsage(price, { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens }, profile.kind);
-    if (price) rec.usage.costUsd = Math.round(((rec.usage.costUsd ?? 0) + cost) * 1e8) / 1e8;
-    host.usage.record({
-      hostId: host.config.hostId,
-      profileId: rec.profileId,
+    // 手动 /compact 压缩全部历史；提示词与自动压缩共用注册表里的 compact 一条
+    const compacted = await compactHistory(host, rec, rec.messages, {
       model,
-      inputTokens: inputTokens + cacheReadTokens + cacheWriteTokens,
-      outputTokens,
-      costUsd: cost,
-      ...(compactKey?.keyId ? { keyId: compactKey.keyId } : {}),
-      ...(rec.groupId ? { groupId: rec.groupId } : {}),
+      keepTurns: 0,
+      auto: false,
+      signal: abort.signal,
     });
+    if (!compacted) throw new Error('当前没有可压缩的对话。');
+    rec.messages = compacted.messages;
     host.observeBudgets(rec);
     host.store.markDirty(rec.id, true);
     host.broadcastSummary(rec);

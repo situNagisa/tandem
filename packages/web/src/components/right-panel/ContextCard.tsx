@@ -1,6 +1,6 @@
 import { cn } from '../../lib/cn'
 import { formatTokens } from '../../lib/format'
-import { CONTEXT_PART_META, useContextBreakdown } from '../chat/ContextMeter'
+import { CONTEXT_PART_META, ContextTopItems, useContextBreakdown } from '../chat/ContextMeter'
 
 export function ContextCard() {
   const { context, noData, window, used, pct } = useContextBreakdown()
@@ -71,6 +71,20 @@ export function ContextCard() {
             ? `${Math.round(context.cacheHitRate * 100)}%`
             : '—'}
         </span>
+      </div>
+      <div className="mt-2 border-t border-border pt-1.5" data-context-top="card">
+        <div className="mb-1 flex items-baseline justify-between text-[12px] text-muted">
+          <span>最占空间</span>
+          <span>{context.topItems?.length ?? 0} 条</span>
+        </div>
+        <ContextTopItems items={context.topItems} />
+        {context.autoCompact ? (
+          <div className="mt-2 text-[12px] text-muted">
+            {context.autoCompact.enabled
+              ? `下次自动压缩将在约 ${Math.round(context.autoCompact.threshold * 100)}% 时触发`
+              : '自动压缩已关闭'}
+          </div>
+        ) : null}
       </div>
     </div>
   )

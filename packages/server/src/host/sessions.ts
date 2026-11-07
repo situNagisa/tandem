@@ -4,6 +4,7 @@ import { statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type {
+  ContextSettings,
   DelegationStrategy,
   HostInfo,
   HostSettings,
@@ -15,6 +16,7 @@ import type {
   SessionSummary,
 } from '@tandem/protocol';
 import { effectiveProfile, saveHostSettings } from '../config.js';
+import { normalizeContextSettings } from '../context-settings.js';
 import { recoverAfterRestart as recoverRuns, resumeSession } from '../agent/resume.js';
 import { createWorktree, gitRepoRoot, removeWorktree, worktreeCleanliness } from '../worktree.js';
 import { errorMessage } from '../util/text.js';
@@ -44,6 +46,7 @@ export function settings(host: Host): HostSettings {
         ? host.config.defaultDelegation
         : 'less',
     ...(host.config.voice ? { voice: host.config.voice } : {}),
+    context: normalizeContextSettings(host.config.context),
   };
 }
 
@@ -62,10 +65,14 @@ export function updateSettings(host: Host, input: Partial<HostSettings>): HostSe
   if (input.voice !== undefined) {
     host.config.voice = sanitizeVoiceSettings(input.voice);
   }
+  if (input.context && typeof input.context === 'object') {
+    host.config.context = normalizeContextSettings(input.context as Partial<ContextSettings>);
+  }
   saveHostSettings(host.home, {
     resumeOnRestart: host.settings().resumeOnRestart,
     ...(host.config.defaultDelegation ? { defaultDelegation: host.config.defaultDelegation } : {}),
     ...(host.config.voice ? { voice: host.config.voice } : {}),
+    context: normalizeContextSettings(host.config.context),
   });
   return host.settings();
 }

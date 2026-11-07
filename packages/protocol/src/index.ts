@@ -129,6 +129,16 @@ export interface Usage {
   costUsd?: number;
   keyId?: string;            // 本轮实际使用的分组 Key id（多 Key 切换后便于统计）
 }
+// 上下文里最占空间的单条内容（消息或工具结果），供面板点选跳转
+export interface ContextTopItem {
+  messageId: string;
+  role: 'user' | 'assistant';
+  kind: 'message' | 'tool_result';
+  turn: number;              // 1-based 轮次（纯 tool_result 的 user 消息并入所属轮）
+  tokens: number;
+  preview: string;           // 单行摘要
+  tool?: string;             // tool_result 对应的工具名（能查到才给）
+}
 // 上下文占用（参考 Claude Code /context）：最近一次请求实际发送给模型的组成估算
 export interface ContextBreakdown {
   model: string;
@@ -136,6 +146,10 @@ export interface ContextBreakdown {
   usedTokens: number;        // 最近一次请求的输入总量（含缓存）
   parts: { kind: 'system' | 'tools' | 'mcp' | 'memory' | 'messages' | 'tool_results' | 'free'; tokens: number }[];
   cacheHitRate?: number;     // 本会话累计：cacheRead / (input + cacheRead + cacheWrite)
+  /** 最占空间的 10 条消息/工具结果（按 token 降序）。 */
+  topItems?: ContextTopItem[];
+  /** 自动压缩触发配置；老 Host 缺失时不展示提示。 */
+  autoCompact?: { enabled: boolean; threshold: number };
   updatedAt: number;
 }
 
@@ -203,7 +217,18 @@ export interface Message {
   model?: string;
   /** 服务端记录的低调提示（如模型不支持思考强度），界面以单行灰字展示。 */
   notice?: boolean;
+  /** 压缩摘要消息：参与模型请求，但界面不直接展示（由 compaction 提示展开查看）。 */
+  summary?: boolean;
+  /** 自动/手动压缩后的单行提示，界面可展开查看摘要全文。 */
+  compaction?: CompactionNotice;
   usage?: Usage;             // assistant 消息：生成该消息的那次请求的用量与花费（一轮内多次请求各自记在对应消息上）
+}
+
+export interface CompactionNotice {
+  summary: string;           // 摘要全文
+  savedTokens: number;       // 压缩节省的估算 token
+  keptTurns: number;         // 保留原文的最近轮数
+  auto: boolean;             // 自动触发 / 手动压缩
 }
 
 export interface Session extends SessionSummary { messages: Message[]; todos: Todo[]; plan?: SessionPlan }
@@ -297,6 +322,31 @@ export interface VoiceSettings {
   language?: string;
 }
 
+/** 上下文自动管理：达到阈值自动压缩，并裁剪旧的大工具输出。 */
+export interface ContextSettings {
+  /** 请求前预计占用达到阈值时自动压缩；关闭后只在 /compact 或上下文超长报错时压缩。 */
+  autoCompact: boolean;
+  /** 触发阈值占上下文窗口的比例（0.5–0.95）。 */
+  autoCompactThreshold: number;
+  /** 自动压缩保留最近多少轮原文。 */
+  autoCompactKeepTurns: number;
+  /** 是否在发送时把较旧的大工具输出替换为占位（会话里保留原文）。 */
+  trimLargeToolResults: boolean;
+  /** 单条工具结果超过多少 token 才裁剪。 */
+  trimToolResultTokens: number;
+  /** 保留最近多少轮内的工具输出不裁剪。 */
+  trimKeepTurns: number;
+}
+
+export const DEFAULT_CONTEXT_SETTINGS: ContextSettings = {
+  autoCompact: true,
+  autoCompactThreshold: 0.85,
+  autoCompactKeepTurns: 4,
+  trimLargeToolResults: true,
+  trimToolResultTokens: 8000,
+  trimKeepTurns: 20,
+};
+
 /** Host 行为设置（~/.tandem/config.json，跨端共享）。 */
 export interface HostSettings {
   /** Host 重启后对未完成会话的处理：自动继续 / 恢复为暂停等我确认。 */
@@ -305,6 +355,8 @@ export interface HostSettings {
   defaultDelegation?: DelegationStrategy;
   /** 本机语音转写配置；未配置时客户端隐藏 Host 转写方式。 */
   voice?: VoiceSettings;
+  /** 上下文自动压缩与工具输出裁剪。缺省用 DEFAULT_CONTEXT_SETTINGS。 */
+  context?: ContextSettings;
 }
 // GET  /api/settings -> HostSettings
 // PUT  /api/settings HostSettings -> HostSettings

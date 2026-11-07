@@ -4,6 +4,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type {
   ContextBreakdown,
+  ContextSettings,
+  ContextTopItem,
   Message,
   ModelCapabilities,
   ProviderKind,
@@ -91,6 +93,105 @@ export interface EstimateInput {
   cacheHitRate?: number;
   providerKind?: ProviderKind;
   capabilityOverrides?: Record<string, ModelCapabilities>;
+  /** 自动压缩触发配置；只用于面板提示，不参与估算。 */
+  autoCompact?: { enabled: boolean; threshold: number };
+}
+
+/** 用户消息里只要不是纯 tool_result，就算新的一轮开始；压缩摘要不计一轮。 */
+export function isTurnStart(message: Message): boolean {
+  return (
+    message.role === 'user' &&
+    !message.summary &&
+    message.content.some((block) => block.type !== 'tool_result')
+  );
+}
+
+/** 每条消息所属轮次（1-based；纯 tool_result 的 user 消息归入前面最近的轮次）。 */
+export function turnNumbers(messages: Message[]): number[] {
+  let turn = 0;
+  return messages.map((message) => {
+    if (isTurnStart(message)) turn += 1;
+    return turn;
+  });
+}
+
+/** 保留最近 keepTurns 轮原文时的起始下标；不足 keepTurns 轮时返回 0。 */
+export function keepFromIndex(messages: Message[], keepTurns: number): number {
+  if (keepTurns <= 0) return 0;
+  let seen = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (!isTurnStart(messages[i]!)) continue;
+    seen += 1;
+    if (seen === keepTurns) return i;
+  }
+  return 0;
+}
+
+function previewOf(text: string): string {
+  const line = text.replace(/\s+/g, ' ').trim();
+  if (!line) return '';
+  return line.length > 80 ? `${line.slice(0, 80)}…` : line;
+}
+
+/** 消息整体 token 估算（与 estimateBreakdown 的 messages/tool_results 口径一致）。 */
+export function estimateMessagesTokens(messages: Message[]): number {
+  let total = 0;
+  for (const message of messages) {
+    total += 4;
+    for (const block of message.content) {
+      if (block.type === 'text') total += estimateTokens(block.text);
+      else if (block.type === 'thinking') total += estimateTokens(block.text);
+      else if (block.type === 'image') total += 1_200;
+      else if (block.type === 'tool_use') total += estimateTokens(JSON.stringify(block.input ?? {}));
+      else if (block.type === 'tool_result') total += estimateTokens(block.content);
+    }
+  }
+  return total;
+}
+
+export interface TrimmedMessages {
+  messages: Message[];
+  trimmed: number;
+  savedTokens: number;
+}
+
+/** 发送前把较旧的大工具输出换成占位；返回副本，会话里的原文不动。 */
+export function trimOldToolResults(
+  messages: Message[],
+  settings: ContextSettings,
+): TrimmedMessages {
+  if (!settings.trimLargeToolResults) return { messages, trimmed: 0, savedTokens: 0 };
+  const turns = turnNumbers(messages);
+  const currentTurn = turns.length > 0 ? turns[turns.length - 1]! : 0;
+  // 只裁剪「最近 N 轮之外」的工具输出
+  const cutoff = currentTurn - settings.trimKeepTurns;
+  if (cutoff <= 0) return { messages, trimmed: 0, savedTokens: 0 };
+  let trimmed = 0;
+  let savedTokens = 0;
+  const next = messages.map((message, index) => {
+    if (turns[index]! > cutoff) return message;
+    let changed = false;
+    const content = message.content.map((block) => {
+      if (block.type !== 'tool_result') return block;
+      const tokens = estimateTokens(block.content);
+      if (tokens <= settings.trimToolResultTokens) return block;
+      const lines = block.content.split('\n').length;
+      const placeholder = `[已省略 ${lines} 行，可用 Read 重新读取]`;
+      changed = true;
+      trimmed += 1;
+      savedTokens += tokens - estimateTokens(placeholder);
+      return { ...block, content: placeholder };
+    });
+    return changed ? { ...message, content } : message;
+  });
+  return { messages: next, trimmed, savedTokens };
+}
+
+export function autoCompactTriggerTokens(
+  contextWindow: number,
+  settings: ContextSettings,
+): number {
+  return Math.floor(contextWindow * settings.autoCompactThreshold);
 }
 
 /** 请求前的上下文占用估算。 */
@@ -106,16 +207,67 @@ export function estimateBreakdown(input: EstimateInput): ContextBreakdown {
 
   let messages = 0;
   let toolResults = 0;
+  let turn = 0;
+  const toolNames = new Map<string, string>();
+  const toolOwners = new Map<string, string>();
+  const items: ContextTopItem[] = [];
   for (const message of input.messages) {
+    if (isTurnStart(message)) turn += 1;
     messages += 4;
+    let messageTokens = 0;
+    let messagePreview = '';
     for (const block of message.content) {
-      if (block.type === 'text') messages += estimateTokens(block.text);
-      else if (block.type === 'thinking') messages += estimateTokens(block.text);
-      else if (block.type === 'image') messages += 1_200;
-      else if (block.type === 'tool_use') messages += estimateTokens(JSON.stringify(block.input ?? {}));
-      else if (block.type === 'tool_result') toolResults += estimateTokens(block.content);
+      if (block.type === 'text') {
+        const tokens = estimateTokens(block.text);
+        messages += tokens;
+        messageTokens += tokens;
+        if (!messagePreview) messagePreview = previewOf(block.text);
+      } else if (block.type === 'thinking') {
+        const tokens = estimateTokens(block.text);
+        messages += tokens;
+        messageTokens += tokens;
+        if (!messagePreview) messagePreview = previewOf(block.text);
+      } else if (block.type === 'image') {
+        messages += 1_200;
+        messageTokens += 1_200;
+        if (!messagePreview) messagePreview = '[图片]';
+      } else if (block.type === 'tool_use') {
+        const tokens = estimateTokens(JSON.stringify(block.input ?? {}));
+        messages += tokens;
+        messageTokens += tokens;
+        toolNames.set(block.id, block.name);
+        toolOwners.set(block.id, message.id);
+        if (!messagePreview) messagePreview = `工具调用 ${block.name}`;
+      } else if (block.type === 'tool_result') {
+        const tokens = estimateTokens(block.content);
+        toolResults += tokens;
+        if (tokens > 0) {
+          const tool = toolNames.get(block.toolUseId);
+          items.push({
+            // 指向对应 tool_use 所在消息，面板点一下能滚到工具卡
+            messageId: toolOwners.get(block.toolUseId) ?? message.id,
+            role: message.role,
+            kind: 'tool_result',
+            turn,
+            tokens,
+            preview: previewOf(block.content) || '（空输出）',
+            ...(tool ? { tool } : {}),
+          });
+        }
+      }
+    }
+    if (messageTokens > 0 && !message.summary) {
+      items.push({
+        messageId: message.id,
+        role: message.role,
+        kind: 'message',
+        turn,
+        tokens: messageTokens,
+        preview: messagePreview || '消息',
+      });
     }
   }
+  const topItems = items.sort((a, b) => b.tokens - a.tokens).slice(0, 10);
 
   const parts = toParts({ system, tools, mcp, memory, messages, tool_results: toolResults });
   const usedTokens = sumParts(parts);
@@ -124,7 +276,15 @@ export function estimateBreakdown(input: EstimateInput): ContextBreakdown {
     input.providerKind,
     input.capabilityOverrides,
   );
-  return finish(parts, usedTokens, contextWindow, input.model, input.cacheHitRate);
+  return finish(
+    parts,
+    usedTokens,
+    contextWindow,
+    input.model,
+    input.cacheHitRate,
+    input.autoCompact,
+    topItems,
+  );
 }
 
 /** 收到真实 usage 后按比例校准（保持各部分相对占比）。 */
@@ -151,6 +311,8 @@ export function calibrateBreakdown(
     estimate.contextWindow,
     estimate.model,
     cacheHitRate ?? estimate.cacheHitRate,
+    estimate.autoCompact,
+    estimate.topItems?.map((item) => ({ ...item, tokens: Math.round(item.tokens * scale) })),
   );
 }
 
@@ -169,6 +331,8 @@ function finish(
   contextWindow: number,
   model: string,
   cacheHitRate?: number,
+  autoCompact?: { enabled: boolean; threshold: number },
+  topItems?: ContextTopItem[],
 ): ContextBreakdown {
   const free = Math.max(0, contextWindow - usedTokens);
   return {
@@ -179,6 +343,8 @@ function finish(
     ...(cacheHitRate !== undefined && Number.isFinite(cacheHitRate)
       ? { cacheHitRate: Math.max(0, Math.min(1, cacheHitRate)) }
       : {}),
+    ...(autoCompact ? { autoCompact: { ...autoCompact } } : {}),
+    ...(topItems && topItems.length > 0 ? { topItems } : {}),
     updatedAt: Date.now(),
   };
 }

@@ -81,6 +81,8 @@ export interface HostConfig {
   defaultDelegation?: import('@tandem/protocol').DelegationStrategy;
   /** 本机语音转写（Whisper）配置。 */
   voice?: import('@tandem/protocol').VoiceSettings;
+  /** 上下文自动压缩与旧工具输出裁剪。 */
+  context?: import('@tandem/protocol').ContextSettings;
   relay?: RelayConfig;
 }
 

@@ -1,6 +1,6 @@
 // 上下文环与 /context 面板：按请求实际发送的组成展示 token 占用。
 import { useEffect, useState } from 'react'
-import type { ContextBreakdown } from '@tandem/protocol'
+import type { ContextBreakdown, ContextTopItem } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
@@ -25,6 +25,58 @@ function colorFor(rate: number): string {
   if (rate > 0.9) return 'var(--t-danger)'
   if (rate >= 0.7) return '#d08a45'
   return 'var(--t-text-secondary)'
+}
+
+/** 让消息列表把某条消息滚到视口中部（消息可能还没挂载，由 MessageList 负责补窗口）。 */
+export function jumpToMessage(messageId: string): void {
+  window.dispatchEvent(new CustomEvent('tandem-jump-message', { detail: { messageId } }))
+}
+
+/** 上下文面板里的「最占空间」条目；点击跳到对应消息/工具卡。 */
+export function ContextTopItems({
+  items,
+  onJump,
+}: {
+  items?: ContextTopItem[]
+  onJump?: (messageId: string) => void
+}) {
+  if (!items || items.length === 0) {
+    return <p className="px-1 py-0.5 text-[12px] text-muted">暂无占用明细（发送消息后显示）</p>
+  }
+  return (
+    <div className="space-y-0.5">
+      {items.map((item, index) => (
+        <button
+          key={`${item.messageId}-${item.kind}-${index}`}
+          type="button"
+          data-context-item="true"
+          onClick={() => (onJump ? onJump(item.messageId) : jumpToMessage(item.messageId))}
+          title={`${item.preview}（第 ${item.turn} 轮）`}
+          className="flex min-h-6 w-full min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[12px] leading-4 text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
+        >
+          <span className="shrink-0 text-muted">
+            {item.kind === 'tool_result' ? (item.tool ? `${item.tool} 输出` : '工具结果') : '消息'}
+          </span>
+          <span className="min-w-0 flex-1 truncate">{item.preview}</span>
+          <span className="shrink-0 text-muted">第 {item.turn} 轮</span>
+          <span className="w-9 shrink-0 text-right font-mono tabular-nums">
+            {formatTokens(item.tokens)}
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function AutoCompactLine({ context }: { context: ContextBreakdown }) {
+  if (!context.autoCompact) return null
+  return (
+    <div className="mt-2 text-[12px] text-muted">
+      {context.autoCompact.enabled
+        ? `下次自动压缩将在约 ${Math.round(context.autoCompact.threshold * 100)}% 时触发`
+        : '自动压缩已关闭'}
+    </div>
+  )
 }
 
 /** 上下文占用的共享数据源：输入框上下文环与右侧栏上下文卡片共用。 */
@@ -195,6 +247,20 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
                   </div>
                 )
               })}
+            </div>
+            <div className="mt-2.5 border-t border-border pt-2" data-context-top="popover">
+              <div className="mb-1 flex items-baseline justify-between text-[12px] text-muted">
+                <span>最占空间</span>
+                <span>{context.topItems?.length ?? 0} 条</span>
+              </div>
+              <ContextTopItems
+                items={context.topItems}
+                onJump={(messageId) => {
+                  close()
+                  jumpToMessage(messageId)
+                }}
+              />
+              <AutoCompactLine context={context} />
             </div>
             <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border pt-2 text-[12px] text-muted">
               <span>

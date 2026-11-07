@@ -8,7 +8,15 @@ import { executeTool } from '../tools/index.js';
 import { isReadOnlySubagentInput } from '../tools/task.js';
 import { errorMessage, truncateMiddle } from '../util/text.js';
 import { costOfUsage, priceForModel } from '../usage.js';
-import { cacheHitRateOf, estimateBreakdown } from '../context.js';
+import {
+  autoCompactTriggerTokens,
+  cacheHitRateOf,
+  estimateBreakdown,
+  trimOldToolResults,
+} from '../context.js';
+import { isContextLengthError } from '../providers/http-error.js';
+import { compactHistory } from '../host/compaction.js';
+import { normalizeContextSettings } from '../context-settings.js';
 import { withNetworkRetry } from './retry.js';
 import { replayUnfinishedTools } from './resume.js';
 import {
@@ -65,6 +73,8 @@ export async function runTurn(
   let loopCompleted = false;
   let effortDropped = false;
   let effortNoticeShown = false;
+  // 单轮内最多自动压缩两次，避免在极端历史下反复请求压缩模型
+  let autoCompacts = 0;
 
   // 按需连接项目级 MCP，并顺带重试之前失败的服务器；失败不影响本轮
   await host.mcp.prepare(rec.cwd).catch(() => {});
@@ -109,6 +119,67 @@ export async function runTurn(
       }
       host.assertBudget(rec, model);
 
+      const contextSettings = normalizeContextSettings(host.config.context);
+      const autoCompactMeta = {
+        enabled: contextSettings.autoCompact,
+        threshold: contextSettings.autoCompactThreshold,
+      };
+      const buildRequestMessages = (excludeId?: string): Message[] =>
+        trimOldToolResults(
+          rec.messages.filter((m) => !m.notice && m.id !== excludeId),
+          contextSettings,
+        ).messages;
+      const measure = (systemText: string, messages: Message[]) =>
+        estimateBreakdown({
+          model,
+          system: systemText,
+          tools,
+          messages,
+          cwd: rec.cwd,
+          cacheHitRate: cacheHitRateOf(rec.usage),
+          providerKind: profile.kind,
+          capabilityOverrides: profile.modelCapabilities,
+          autoCompact: autoCompactMeta,
+        });
+
+      let built = host.buildSystemFor(rec, { allowTask, hookContext: promptHookContext });
+      let system = built.system;
+      let requestMessages = buildRequestMessages();
+      let contextEstimate = measure(system, requestMessages);
+
+      // 请求前自动压缩：预计输入达到阈值时，把较早历史压成摘要，保留最近 N 轮原文
+      if (
+        contextSettings.autoCompact &&
+        autoCompacts < 2 &&
+        contextEstimate.usedTokens >=
+          autoCompactTriggerTokens(contextEstimate.contextWindow, contextSettings)
+      ) {
+        const compacted = await compactHistory(host, rec, rec.messages, {
+          model,
+          keepTurns: contextSettings.autoCompactKeepTurns,
+          auto: true,
+          signal: abort.signal,
+        }).catch((err) => {
+          if (!rt.interrupted && !abort.signal.aborted) {
+            host.appendNotice(rec, `自动压缩失败，已按原上下文继续：${errorMessage(err)}`);
+          }
+          return undefined;
+        });
+        if (compacted) {
+          autoCompacts += 1;
+          rec.messages = compacted.messages;
+          host.observeBudgets(rec);
+          host.store.markDirty(rec.id, true);
+          host.broadcastSnapshot(rec);
+          host.broadcastSummary(rec);
+          // 压缩可能刚写入项目记忆，重建系统提示
+          built = host.buildSystemFor(rec, { allowTask, hookContext: promptHookContext });
+          system = built.system;
+          requestMessages = buildRequestMessages();
+          contextEstimate = measure(system, requestMessages);
+        }
+      }
+
       const assistant: Message = {
         id: randomUUID(),
         role: 'assistant',
@@ -124,134 +195,167 @@ export async function runTurn(
       });
       setAssistantMessage(host, rec, assistant.id);
 
-      const built = host.buildSystemFor(rec, {
-        allowTask,
-        hookContext: promptHookContext,
-      });
-      const system = built.system;
       // 记录本轮实际注入的段落；变化时随 WS 推送，会话开头可展开查看
       host.recordInjections(rec, built.parts, turnMessageId);
-      const requestMessages = rec.messages.slice(0, -1).filter((m) => !m.notice);
+      requestMessages = buildRequestMessages(assistant.id);
       // 请求前估算各部分占用；拿到真实 usage 后再按比例校准
-      const contextEstimate = estimateBreakdown({
-        model,
-        system,
-        tools,
-        messages: requestMessages,
-        cwd: rec.cwd,
-        cacheHitRate: cacheHitRateOf(rec.usage),
-        providerKind: profile.kind,
-        capabilityOverrides: profile.modelCapabilities,
-      });
+      contextEstimate = measure(system, requestMessages);
       host.setContext(rec, contextEstimate, false);
 
       let result: Awaited<ReturnType<typeof streamChat>> | undefined;
       let usedKeyId: string | undefined;
       const keyErrors = new Map<string, string>();
+      let contextRetryUsed = false;
       try {
-        // 网络错误/超时全部失败后进入「等待网络」指数退避；每次重试重新挑 Key
-        result = await withNetworkRetry(
-          host,
-          rec,
-          abort.signal,
-          async () => {
-            keyErrors.clear();
-            const attemptKeys = host.keyCandidates(rec.profileId, rec.groupId);
-            if (attemptKeys.candidates.length === 0) {
-              throw new Error(
-                host.keysUnavailableMessage(rec.profileId, rec.groupId) ??
-                  '当前账号没有可用的 API Key',
-              );
-            }
-            let attemptError: unknown;
-            // 同组多 Key：按策略逐个尝试；仅在尚未输出任何 token 时透明重试
-            for (const candidate of attemptKeys.candidates) {
-              let started = false;
-              try {
-                const attempt = await streamChat({
-                  profile: candidate.profile,
-                  model,
-                  system,
-                  messages: requestMessages,
-                  tools,
-                  blocks: assistant.content,
-                  signal: abort.signal,
-                  idleTimeoutSec: host.config.idleTimeoutSec ?? 180,
-                  maxTokens: MAX_TOKENS,
-                  effort: rec.effort,
-                  onEffortDropped: () => {
-                    effortDropped = true;
-                  },
-                  onBlockStart: (index, block) => {
-                    started = true;
-                    host.hub.broadcastSession(rec.id, {
-                      type: 'block_delta',
-                      sessionId: rec.id,
-                      messageId: assistant.id,
-                      index,
-                      delta: { kind: 'block_start', block },
+        for (;;) {
+          try {
+            // 网络错误/超时全部失败后进入「等待网络」指数退避；每次重试重新挑 Key
+            result = await withNetworkRetry(
+              host,
+              rec,
+              abort.signal,
+              async () => {
+                keyErrors.clear();
+                const attemptKeys = host.keyCandidates(rec.profileId, rec.groupId);
+                if (attemptKeys.candidates.length === 0) {
+                  throw new Error(
+                    host.keysUnavailableMessage(rec.profileId, rec.groupId) ??
+                      '当前账号没有可用的 API Key',
+                  );
+                }
+                let attemptError: unknown;
+                // 同组多 Key：按策略逐个尝试；仅在尚未输出任何 token 时透明重试
+                for (const candidate of attemptKeys.candidates) {
+                  let started = false;
+                  try {
+                    const attempt = await streamChat({
+                      profile: candidate.profile,
+                      model,
+                      system,
+                      messages: requestMessages,
+                      tools,
+                      blocks: assistant.content,
+                      signal: abort.signal,
+                      idleTimeoutSec: host.config.idleTimeoutSec ?? 180,
+                      maxTokens: MAX_TOKENS,
+                      effort: rec.effort,
+                      onEffortDropped: () => {
+                        effortDropped = true;
+                      },
+                      onBlockStart: (index, block) => {
+                        started = true;
+                        host.hub.broadcastSession(rec.id, {
+                          type: 'block_delta',
+                          sessionId: rec.id,
+                          messageId: assistant.id,
+                          index,
+                          delta: { kind: 'block_start', block },
+                        });
+                      },
+                      onText: (index, text) => {
+                        started = true;
+                        host.hub.broadcastSession(rec.id, {
+                          type: 'block_delta',
+                          sessionId: rec.id,
+                          messageId: assistant.id,
+                          index,
+                          delta: { kind: 'text', text },
+                        });
+                      },
+                      onToolInput: (index, partialJson) => {
+                        host.hub.broadcastSession(rec.id, {
+                          type: 'block_delta',
+                          sessionId: rec.id,
+                          messageId: assistant.id,
+                          index,
+                          delta: { kind: 'tool_input', partialJson },
+                        });
+                      },
                     });
-                  },
-                  onText: (index, text) => {
-                    started = true;
-                    host.hub.broadcastSession(rec.id, {
-                      type: 'block_delta',
-                      sessionId: rec.id,
-                      messageId: assistant.id,
-                      index,
-                      delta: { kind: 'text', text },
-                    });
-                  },
-                  onToolInput: (index, partialJson) => {
-                    host.hub.broadcastSession(rec.id, {
-                      type: 'block_delta',
-                      sessionId: rec.id,
-                      messageId: assistant.id,
-                      index,
-                      delta: { kind: 'tool_input', partialJson },
-                    });
-                  },
-                });
-                host.markKeySuccess(rec.profileId, rec.groupId, candidate.keyId);
-                usedKeyId = candidate.keyId;
-                return attempt;
-              } catch (err) {
-                attemptError = err;
-                if (rt.interrupted || abort.signal.aborted) throw err;
-                if (candidate.keyId && !started) keyErrors.set(candidate.keyId, errorMessage(err));
-                // 已开始输出，或错误不属于 Key 级故障（400 等）：按原错误路径处理
-                const retry =
-                  !started &&
-                  host.markKeyFailure(rec.profileId, rec.groupId, candidate.keyId, err);
-                if (!retry) throw err;
+                    host.markKeySuccess(rec.profileId, rec.groupId, candidate.keyId);
+                    usedKeyId = candidate.keyId;
+                    return attempt;
+                  } catch (err) {
+                    attemptError = err;
+                    if (rt.interrupted || abort.signal.aborted) throw err;
+                    if (candidate.keyId && !started) keyErrors.set(candidate.keyId, errorMessage(err));
+                    // 已开始输出，或错误不属于 Key 级故障（400 等）：按原错误路径处理
+                    const retry =
+                      !started &&
+                      host.markKeyFailure(rec.profileId, rec.groupId, candidate.keyId, err);
+                    if (!retry) throw err;
+                    assistant.content.length = 0;
+                  }
+                }
+                if (attemptError !== undefined) {
+                  const unavailable = host.keysUnavailableMessage(
+                    rec.profileId,
+                    rec.groupId,
+                    keyErrors,
+                  );
+                  if (unavailable) throw new Error(unavailable);
+                  throw attemptError;
+                }
+                throw new Error(
+                  host.keysUnavailableMessage(rec.profileId, rec.groupId) ??
+                    '当前账号没有可用的 API Key',
+                );
+              },
+              () => {
+                // 重试前清空这一条 assistant 的流式内容并让客户端覆盖显示，成功时不重复输出
                 assistant.content.length = 0;
-              }
-            }
-            if (attemptError !== undefined) {
-              const unavailable = host.keysUnavailableMessage(
-                rec.profileId,
-                rec.groupId,
-                keyErrors,
-              );
-              if (unavailable) throw new Error(unavailable);
-              throw attemptError;
-            }
-            throw new Error(
-              host.keysUnavailableMessage(rec.profileId, rec.groupId) ??
-                '当前账号没有可用的 API Key',
+                host.hub.broadcastSession(rec.id, {
+                  type: 'message_start',
+                  sessionId: rec.id,
+                  message: assistant,
+                });
+                setAssistantMessage(host, rec, assistant.id);
+              },
             );
-          },
-          () => {
-            // 重试前清空这一条 assistant 的流式内容并让客户端覆盖显示，成功时不重复输出
+            break;
+          } catch (err) {
+            // provider 报「上下文超长」：压缩历史后重试一次，而不是直接失败
+            if (
+              contextRetryUsed ||
+              rt.interrupted ||
+              abort.signal.aborted ||
+              !isContextLengthError(err)
+            ) {
+              throw err;
+            }
+            contextRetryUsed = true;
+            const index = rec.messages.findIndex((m) => m.id === assistant.id);
+            const history = index >= 0 ? rec.messages.slice(0, index) : rec.messages;
+            const tail = index >= 0 ? rec.messages.slice(index) : [];
+            const compacted = await compactHistory(host, rec, history, {
+              model,
+              keepTurns: contextSettings.autoCompactKeepTurns,
+              auto: true,
+              force: true,
+              signal: abort.signal,
+            }).catch(() => undefined);
+            if (!compacted) throw err;
+            autoCompacts += 1;
+            rec.messages = [...compacted.messages, ...tail];
             assistant.content.length = 0;
+            host.observeBudgets(rec);
+            host.store.markDirty(rec.id, true);
+            host.broadcastSnapshot(rec);
+            host.broadcastSummary(rec);
+            built = host.buildSystemFor(rec, { allowTask, hookContext: promptHookContext });
+            system = built.system;
+            host.recordInjections(rec, built.parts, turnMessageId);
+            requestMessages = buildRequestMessages(assistant.id);
+            contextEstimate = measure(system, requestMessages);
+            host.setContext(rec, contextEstimate, false);
             host.hub.broadcastSession(rec.id, {
               type: 'message_start',
               sessionId: rec.id,
               message: assistant,
             });
             setAssistantMessage(host, rec, assistant.id);
-          },
-        );
+          }
+        }
       } catch (err) {
         if (rt.interrupted || abort.signal.aborted) reason = 'interrupted';
         else {

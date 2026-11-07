@@ -1,6 +1,6 @@
 // Host 信息与本机设置。
 import type { FastifyInstance } from 'fastify';
-import type { VoiceSettings } from '@tandem/protocol';
+import type { ContextSettings, VoiceSettings } from '@tandem/protocol';
 import type { RouteDeps } from './common.js';
 import { principalOf } from '../team/access.js';
 
@@ -15,12 +15,19 @@ export function registerHostRoutes(app: FastifyInstance, deps: RouteDeps): void 
   app.get('/api/settings', async () => host.settings());
 
   app.put('/api/settings', async (req) => {
-    const body = (req.body ?? {}) as { resumeOnRestart?: unknown; voice?: unknown };
+    const body = (req.body ?? {}) as {
+      resumeOnRestart?: unknown;
+      voice?: unknown;
+      context?: unknown;
+    };
     return host.updateSettings({
       ...(body.resumeOnRestart === 'auto' || body.resumeOnRestart === 'pause'
         ? { resumeOnRestart: body.resumeOnRestart }
         : {}),
       ...(body.voice && typeof body.voice === 'object' ? { voice: body.voice as VoiceSettings } : {}),
+      ...(body.context && typeof body.context === 'object'
+        ? { context: body.context as ContextSettings }
+        : {}),
     });
   });
 }

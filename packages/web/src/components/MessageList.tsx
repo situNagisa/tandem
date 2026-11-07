@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ContentBlock, InjectionChange, SessionSummary } from '@tandem/protocol'
-import { GitFork } from 'lucide-react'
+import { GitFork, ChevronRight } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { cn } from '../lib/cn'
 import { navigate } from '../lib/router'
@@ -51,13 +51,41 @@ const NoticeRow = memo(function NoticeRow({
   message: UiMessage
   animate: boolean
 }) {
+  const [open, setOpen] = useState(false)
   const text = message.content
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
     .map((b) => b.text)
     .join(' ')
+  if (message.compaction) {
+    return (
+      <div
+        className={cn('msg-row px-1 text-[12px] leading-4 text-muted', animate && 'chat-msg-enter')}
+        data-message-id={message.id}
+      >
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+          className="flex items-center gap-1 rounded px-0.5 text-left text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+        >
+          <ChevronRight
+            size={12}
+            className={cn('shrink-0 transition-transform', open && 'rotate-90')}
+          />
+          <span>{text}</span>
+        </button>
+        {open && (
+          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-surface-2/50 p-2 text-[12px] leading-4 text-text-soft">
+            {message.compaction.summary}
+          </pre>
+        )}
+      </div>
+    )
+  }
   return (
     <div
       className={cn('msg-row px-1 text-[12px] leading-4 text-muted', animate && 'chat-msg-enter')}
+      data-message-id={message.id}
     >
       {text}
     </div>
@@ -87,6 +115,7 @@ const UserRow = memo(function UserRow({
   return (
     <div
       className="msg-row"
+      data-message-id={message.id}
       data-turn-id={message.id}
       data-turn-index={turnIndex}
       data-actions={
@@ -134,6 +163,7 @@ const AssistantRow = memo(function AssistantRow({
   return (
     <div
       className="msg-row"
+      data-message-id={message.id}
       data-streaming={streaming ? 'true' : undefined}
       data-actions={
         !streaming && message.content.some((b) => b.type === 'text' && b.text.trim())
@@ -171,7 +201,10 @@ const ToolRunRow = memo(function ToolRunRow({
   cwd?: string
 }) {
   return (
-    <div className="msg-row">
+    <div className="msg-row" data-message-id={messages[0]?.id}>
+      {messages.slice(1).map((message) => (
+        <span key={message.id} data-message-id={message.id} aria-hidden="true" />
+      ))}
       <ToolGroup
         entries={entriesFromMessages(messages, streamingId)}
         animate={animate}
@@ -277,6 +310,30 @@ function MessageListInner({
     setWindowCap((cap) => cap + LOAD_MORE_STEP)
     setWindowSize((size) => size + LOAD_MORE_STEP)
   }
+
+  // 上下文面板点击「最占空间」条目：必要时扩大渲染窗口，再把目标消息滚到视口中部
+  useEffect(() => {
+    const onJump = (event: Event) => {
+      const messageId = (event as CustomEvent<{ messageId?: string }>).detail?.messageId
+      if (!messageId) return
+      const index = messages.findIndex((message) => message.id === messageId)
+      if (index < 0) return
+      const needed = messages.length - index + 20
+      if (needed > windowSize) setWindowSize(Math.min(messages.length, needed))
+      if (needed > windowCap) setWindowCap(needed)
+      const scroll = () => {
+        const el = document.querySelector<HTMLElement>(
+          `[data-message-id="${CSS.escape(messageId)}"]`,
+        )
+        el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      }
+      window.setTimeout(scroll, 80)
+      window.setTimeout(scroll, 300)
+    }
+    window.addEventListener('tandem-jump-message', onJump)
+    return () => window.removeEventListener('tandem-jump-message', onJump)
+  }, [messages, windowSize, windowCap])
+
   const visibleMessages = messages.slice(windowFrom)
 
   useEffect(() => {
@@ -319,6 +376,7 @@ function MessageListInner({
     toolRun = []
   }
   for (const m of visibleMessages) {
+    if (m.summary) continue
     if (m.notice) {
       flushRun()
       segments.push({ kind: 'notice', message: m, animate: animateIds.has(m.id) })
@@ -401,6 +459,7 @@ function MessageListInner({
   let turn = 0
   for (const m of messages) {
     if (m.role !== 'user') continue
+    if (m.summary) continue
     if (!hasUserContent(m)) continue
     turnIndex.set(m.id, turn++)
   }
@@ -410,7 +469,7 @@ function MessageListInner({
   let lastUser: UiMessage | undefined
   for (const m of messages) {
     if (m.role === 'user') {
-      if (hasUserContent(m)) lastUser = m
+      if (!m.summary && hasUserContent(m)) lastUser = m
     } else if (lastUser) {
       turnUserByAssistant.set(m.id, lastUser)
     }

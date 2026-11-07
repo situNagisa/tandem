@@ -261,3 +261,13 @@
 - [x] `web/src/lib/commands.ts`：12 条命令及默认快捷键；外观页快捷键表由注册表生成，支持本机自定义与冲突提示；反馈热键读取同一份配置
 - [x] 手机顶栏新增搜索按钮；`e2e/regression.mjs` 新增 4 条（设置定位、前缀/拼音、自定义快捷键与冲突、手机面板）
 - 验证：TANDEM_HOME=/tmp/tandem-cmdk 端口 8291 + Playwright，截图 `/tmp/cmdk-shots/`；新增 4 条回归通过。`node scripts/check.mjs --skip-smoke --skip-regression` 通过；全量 regression 仍有 3 条失败，均来自并行开发中的上下文占用面板/审批策略学习（上下文面板最大项、手机权限规则越界、工具卡 a11y），不在本轮改动文件
+
+## 迭代 30（2026-11-08）上下文自动压缩 + 占用明细
+- [x] 协议：`ContextSettings`（默认 85% 触发、保留 4 轮、8k token/20 轮裁剪）与 `DEFAULT_CONTEXT_SETTINGS`；`Message.summary/compaction`、`CompactionNotice`；`ContextBreakdown.topItems/autoCompact`
+- [x] 自动压缩：每轮请求前用实际发送内容估算，达到阈值先压缩再发送；复用注册表 `compact` 提示词，保留最近 N 轮原文与当前轮工具调用，旧大工具结果在压缩请求里按预算裁剪/截断；摘要提取的长期事实先写项目记忆
+- [x] 超长兜底：识别 Anthropic `prompt is too long` / OpenAI `context_length_exceeded` 等错误，压缩后重试一次；网络重试不再吞掉这类错误
+- [x] 工具输出裁剪：发送时把最近 N 轮之外、单条超过阈值的 tool_result 换成「[已省略 xx 行，可用 Read 重新读取]」，会话原文保留；设置可关闭
+- [x] 占用明细：上下文环面板与右栏上下文卡显示最占空间的 10 条消息/工具结果（类型、轮次、token、预览），点击滚动到对应消息；显示「下次自动压缩将在约 x% 时触发」
+- [x] 设置：通用页新增自动压缩开关、阈值、保留轮数、工具输出裁剪开关与阈值/轮数；写入 Host config.json
+- [x] 消息流：压缩后插入可展开的「已自动/已压缩 · 节省 xx tokens」单行提示，展开看摘要全文；摘要消息不再以用户气泡展示
+- 验证：`TANDEM_HOME=/tmp/tandem-autocompact` + mock provider（端口 8292，按请求体大小返回 `context_length_exceeded`）；长会话自动压缩保留 4 轮、摘要与提示入库；超长报错压缩后重试成功；旧 7k 字符工具输出在请求体被替换、会话原文仍在；手动 `/compact` 回归通过；Playwright 截图 `/tmp/compact-shots/`；`e2e/regression.mjs` 新增「上下文面板显示最大占用项」
