@@ -917,17 +917,48 @@ export function SessionList({
             )
           }
 
+          // 固定项目单独提到列表最上方（跨 Host 也优先），其余项目仍按 Host 分组。
+          const pinnedEntries = showArchived
+            ? []
+            : groups.flatMap((host) =>
+                host.projects
+                  .filter((project) => pinnedProjects.includes(project.key))
+                  .map((project) => ({ host, project })),
+              )
+          const normalGroups = groups
+            .map((host) => ({
+              ...host,
+              projects: host.projects.filter((project) => !pinnedProjects.includes(project.key)),
+            }))
+            .filter((host) => host.projects.length > 0)
+
+          const pinnedSection = pinnedEntries.length > 0 && (
+            <div className="mb-1">
+              <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[12px] font-medium text-text-tertiary">
+                <Pin size={11} />
+                固定项目
+              </div>
+              <div className="space-y-1">
+                {pinnedEntries.map(({ host, project }) => renderProject(host.id, project, false))}
+              </div>
+            </div>
+          )
+
           if (!multiHost) {
             return (
               <div className="space-y-1 pt-1">
-                {groups.flatMap((host) =>
+                {pinnedSection}
+                {normalGroups.flatMap((host) =>
                   host.projects.map((project) => renderProject(host.id, project, false)),
                 )}
               </div>
             )
           }
 
-          return groups.map((host) => {
+          return (
+            <>
+              {pinnedSection}
+              {normalGroups.map((host) => {
             const hostKey = `host:${host.id}`
             const hostCollapsed = !!collapsed[hostKey]
             return (
@@ -960,7 +991,9 @@ export function SessionList({
                 </div>
               </div>
             )
-          })
+              })}
+            </>
+          )
         })()}
 
       {menu && menuActions && (
