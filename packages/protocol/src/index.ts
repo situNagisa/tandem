@@ -70,8 +70,16 @@ export interface ProfileInput {
 
 // ---------- 会话 ----------
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
-export type SessionStatus = 'idle' | 'running' | 'waiting_permission' | 'error';
+export type SessionStatus = 'idle' | 'running' | 'waiting_permission' | 'retrying' | 'error';
 
+export interface RetryInfo {
+  /** 第几次重试（从 1 开始）。 */
+  attempt: number;
+  /** 下一次重试的时间（epoch ms）。 */
+  nextAt: number;
+  /** 最近一次失败原因（已截断）。 */
+  lastError?: string;
+}
 export interface SessionSummary {
   id: string;
   title: string;
@@ -82,6 +90,10 @@ export interface SessionSummary {
   permissionMode: PermissionMode;
   effort?: ReasoningEffort; // 思考强度：映射到 Anthropic thinking budget / OpenAI reasoning_effort；模型不支持时忽略
   status: SessionStatus;
+  /** 模型请求因网络错误/超时连续失败后进入「等待网络」：下一次重试时间与原因。 */
+  retryInfo?: RetryInfo;
+  /** Host 重启后检测到未完成运行，按设置暂停等待用户确认（POST /api/sessions/:id/resume）。 */
+  resumePaused?: boolean;
   pinned?: boolean;        // 置顶
   pinnedTurns?: string[];  // 被 pin 的轮次（用户消息 id），轮次导航中特殊显示
   archived?: boolean;      // 归档（列表默认隐藏）
@@ -261,6 +273,15 @@ export interface HostInfo {
   homeDir: string;
 }
 
+/** Host 行为设置（~/.tandem/config.json，跨端共享）。 */
+export interface HostSettings {
+  /** Host 重启后对未完成会话的处理：自动继续 / 恢复为暂停等我确认。 */
+  resumeOnRestart: 'auto' | 'pause';
+}
+// GET  /api/settings -> HostSettings
+// PUT  /api/settings HostSettings -> HostSettings
+// POST /api/sessions/:id/resume -> SessionSummary  恢复被暂停的重启会话
+
 export interface FsEntry { name: string; path: string; isDir: boolean }
 
 export interface FsReadResult {
@@ -378,6 +399,7 @@ export type ClientMsg =
   | { type: 'unsubscribe_inbox' }
   | { type: 'send'; sessionId: string; content: ContentBlock[] }  // 发送用户消息；运行中发送则排队
   | { type: 'interrupt'; sessionId: string }        // 中断当前轮（Esc）
+  | { type: 'retry_now'; sessionId: string }        // 等待网络重试期间立即重试
   | { type: 'permission'; requestId: string; decision: PermissionDecision; reason?: string } // reason 仅用于 ExitPlanMode 的“继续完善”反馈
   | { type: 'ping' };
 

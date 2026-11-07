@@ -1,8 +1,19 @@
 // 会话持久化：sessions/<id>.json，写盘节流。
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs';
 import path from 'node:path';
 import type { PermissionMode, SessionEnv } from '@tandem/protocol';
-import type { SessionRecord } from './types.js';
+import type { RunState, SessionRecord } from './types.js';
 import { isInjectedTitle, titleFromMessages } from './external.js';
 
 const SAVE_DELAY_MS = 300;
@@ -75,6 +86,18 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   const worktree = normalizeWorktree(raw.worktree);
   if (worktree) rec.worktree = worktree;
   else delete rec.worktree;
+  if (typeof raw.systemPromptExtra === 'string' && raw.systemPromptExtra) {
+    rec.systemPromptExtra = raw.systemPromptExtra;
+  } else {
+    delete rec.systemPromptExtra;
+  }
+  if (Array.isArray(raw.toolWhitelist)) {
+    const tools = raw.toolWhitelist.filter((item): item is string => typeof item === 'string' && !!item);
+    if (tools.length) rec.toolWhitelist = tools;
+    else delete rec.toolWhitelist;
+  } else {
+    delete rec.toolWhitelist;
+  }
   if (typeof raw.worktreeRepoRoot === 'string' && raw.worktreeRepoRoot) {
     rec.worktreeRepoRoot = raw.worktreeRepoRoot;
   } else {
@@ -112,7 +135,62 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   } else {
     delete rec.importedFrom;
   }
+  const runState = normalizeRunState(raw.runState);
+  if (runState) rec.runState = runState;
+  else delete rec.runState;
+  if (raw.resumePaused === true) rec.resumePaused = true;
+  else delete rec.resumePaused;
   return rec;
+}
+
+/** 兼容老版本/损坏数据：runState 字段逐一校验，非法条目丢弃。 */
+function normalizeRunState(value: unknown): RunState | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  if (raw.version !== 1) return undefined;
+  const permissions = Array.isArray(raw.pendingPermissions)
+    ? raw.pendingPermissions.filter(
+        (item): item is RunState['pendingPermissions'][number] =>
+          !!item &&
+          typeof item === 'object' &&
+          typeof (item as { id?: unknown }).id === 'string' &&
+          typeof (item as { toolUseId?: unknown }).toolUseId === 'string' &&
+          typeof (item as { toolName?: unknown }).toolName === 'string',
+      )
+    : [];
+  const queue = Array.isArray(raw.queue)
+    ? raw.queue.filter((item): item is RunState['queue'][number] => Array.isArray(item))
+    : [];
+  const inFlightTools = Array.isArray(raw.inFlightTools)
+    ? raw.inFlightTools.filter(
+        (item): item is RunState['inFlightTools'][number] =>
+          !!item &&
+          typeof item === 'object' &&
+          typeof (item as { id?: unknown }).id === 'string' &&
+          typeof (item as { name?: unknown }).name === 'string',
+      )
+    : [];
+  return {
+    version: 1,
+    startedAt: typeof raw.startedAt === 'number' ? raw.startedAt : Date.now(),
+    updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),
+    ...(typeof raw.turnMessageId === 'string' && raw.turnMessageId
+      ? { turnMessageId: raw.turnMessageId }
+      : {}),
+    completedMessages: Array.isArray(raw.completedMessages)
+      ? raw.completedMessages.filter((id): id is string => typeof id === 'string').slice(-100)
+      : [],
+    queue,
+    inFlightTools,
+    pendingPermissions: permissions,
+    phase: raw.phase === 'tools' ? 'tools' : 'model',
+    permissionMode: PERMISSION_MODES.has(raw.permissionMode as PermissionMode)
+      ? (raw.permissionMode as PermissionMode)
+      : 'default',
+    ...(typeof raw.assistantMessageId === 'string' && raw.assistantMessageId
+      ? { assistantMessageId: raw.assistantMessageId }
+      : {}),
+  };
 }
 
 function normalizePlan(value: unknown): SessionRecord['plan'] {
@@ -167,6 +245,8 @@ export class SessionStore {
   private records = new Map<string, SessionRecord>();
   private timers = new Map<string, NodeJS.Timeout>();
   private saving = new Set<string>();
+  /** 每次变更递增：异步写盘在 rename 前发现版本变化会重写最新内容，避免旧快照覆盖。 */
+  private versions = new Map<string, number>();
 
   constructor(home: string) {
     this.dir = path.join(home, 'sessions');
@@ -254,6 +334,7 @@ export class SessionStore {
     const rec = this.records.get(id);
     if (!rec) return;
     if (bump) rec.updatedAt = Date.now();
+    this.versions.set(id, (this.versions.get(id) ?? 0) + 1);
     const existing = this.timers.get(id);
     if (existing) clearTimeout(existing);
     this.timers.set(
@@ -263,6 +344,30 @@ export class SessionStore {
         void this.write(id);
       }, SAVE_DELAY_MS),
     );
+  }
+
+  /**
+   * 立即原子落盘并 fsync：模型响应完成、工具结果落账、运行意图变化时调用。
+   * 同步写保证在继续执行下一步之前数据已到磁盘（进程被 kill -9 也不丢）。
+   */
+  saveNow(id: string): void {
+    const rec = this.records.get(id);
+    if (!rec) return;
+    this.versions.set(id, (this.versions.get(id) ?? 0) + 1);
+    const timer = this.timers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      this.timers.delete(id);
+    }
+    const file = this.fileOf(id);
+    const tmp = `${file}.${process.pid}.save.tmp`;
+    try {
+      writeFileSyncFully(tmp, JSON.stringify(rec, null, 2));
+      renameSync(tmp, file);
+      fsyncDir(path.dirname(file));
+    } catch (err) {
+      console.error(`[tandem] 立即保存会话 ${id} 失败:`, (err as Error).message);
+    }
   }
 
   async write(id: string): Promise<void> {
@@ -278,8 +383,16 @@ export class SessionStore {
     const file = this.fileOf(id);
     const tmp = `${file}.${process.pid}.tmp`;
     try {
-      const data = JSON.stringify(rec, null, 2);
-      await writeFileAtomic(tmp, file, data);
+      let data = JSON.stringify(rec, null, 2);
+      // 写临时文件期间可能有 saveNow 落地：rename 前核对版本，避免旧快照覆盖新状态
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const version = this.versions.get(id) ?? 0;
+        await writeFileAtomic(tmp, data);
+        if (version === (this.versions.get(id) ?? 0)) break;
+        const latest = this.records.get(id);
+        if (latest) data = JSON.stringify(latest, null, 2);
+      }
+      renameSync(tmp, file);
     } catch (err) {
       console.error(`[tandem] 保存会话 ${id} 失败:`, (err as Error).message);
     } finally {
@@ -311,8 +424,32 @@ export class SessionStore {
   }
 }
 
-async function writeFileAtomic(tmp: string, file: string, data: string): Promise<void> {
-  const { writeFile, rename } = await import('node:fs/promises');
+async function writeFileAtomic(tmp: string, data: string): Promise<void> {
+  const { writeFile } = await import('node:fs/promises');
   await writeFile(tmp, data, { encoding: 'utf8', mode: 0o600 });
-  await rename(tmp, file);
+}
+
+/** 同步写临时文件并 fsync，保证内容真正落盘（rename 前调用）。 */
+function writeFileSyncFully(file: string, data: string): void {
+  const fd = openSync(file, 'w', 0o600);
+  try {
+    writeSync(fd, data, 0, 'utf8');
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** 目录 fsync：让 rename 本身也持久化；部分平台（Windows）不支持，忽略错误。 */
+function fsyncDir(dir: string): void {
+  try {
+    const fd = openSync(dir, 'r');
+    try {
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    // Windows / 特殊文件系统不支持目录 fsync
+  }
 }

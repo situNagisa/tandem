@@ -6,8 +6,10 @@ import type {
   Message,
   ModelCapabilities,
   PermissionDecision,
+  PermissionMode,
   PermissionRequest,
   ProviderKind,
+  RetryInfo,
   Session,
   SessionStatus,
   Todo,
@@ -85,12 +87,45 @@ export interface SessionRecord extends Session {
   depth?: number;
   /** worktree 会话：路径/分支/基准分支。 */
   worktree?: { path: string; branch: string; baseBranch: string };
+  /** 子代理预设：附加系统提示（仅该子会话生效）。 */
+  systemPromptExtra?: string;
+  /** 子代理预设：工具白名单（非空时只暴露这些工具）。 */
+  toolWhitelist?: string[];
   /** worktree 所属原仓库（仅内部使用，用于 merge/清理）。 */
   worktreeRepoRoot?: string;
   /** 从外部会话导入时记录来源；仅内部使用，不下发（协议 Session 无此字段）。 */
   importedFrom?: { source: ExternalSource; id: string };
   /** 最近一次请求的上下文占用（内存态，随 session_updated 下发）。 */
   context?: import('@tandem/protocol').ContextBreakdown;
+  /** 未完成运行的恢复意图：Host 重启后据此续跑（落盘，不随接口下发）。 */
+  runState?: RunState;
+  /** Host 重启后按设置暂停，等待用户确认继续（随 SessionSummary 下发）。 */
+  resumePaused?: boolean;
+}
+
+/**
+ * 运行意图：每完成一个模型响应/工具结果就通过 store.saveNow 原子落盘，
+ * Host 崩溃或重启后据此继续，而不是从头再来。
+ */
+export interface RunState {
+  version: 1;
+  startedAt: number;
+  updatedAt: number;
+  /** 触发当前轮的用户消息 id。 */
+  turnMessageId?: string;
+  /** 已完整落盘的消息 id（assistant 完整响应 / tool_result 消息），用于诊断与断点判断。 */
+  completedMessages: string[];
+  /** 已排队、尚未执行的用户消息。 */
+  queue: ContentBlock[][];
+  /** 正在执行中的工具调用（Host 重启后据此判断哪些不能自动重放）。 */
+  inFlightTools: Array<{ id: string; name: string; startedAt: number }>;
+  /** 等待用户审批的请求；重启后恢复为待审批并重新广播。 */
+  pendingPermissions: PermissionRequest[];
+  /** 当前阶段的粗粒度标记。 */
+  phase: 'model' | 'tools';
+  permissionMode: PermissionMode;
+  /** 本轮最后一条 assistant 消息 id。 */
+  assistantMessageId?: string;
 }
 
 export interface PendingPermission {
@@ -116,6 +151,12 @@ export interface SessionRuntime {
   pendingHookContext?: string;
   /** 预算 block 下用户在会话内临时放行一次；下一次模型请求后清除。 */
   budgetAllowOnce?: boolean;
+  /** 网络等待重试状态（随 SessionSummary.retryInfo 下发）。 */
+  retryInfo?: RetryInfo;
+  /** 「立即重试」时提前唤醒退避等待。 */
+  retryWake?: () => void;
+  /** 当前轮的触发消息 id，用于写 runState。 */
+  turnMessageId?: string;
 }
 
 export interface ToolDefinition {
@@ -144,11 +185,15 @@ export interface ToolContext {
   updateTodos: (todos: Todo[]) => void;
   setUsage?: (usage: Usage) => void;
   /** Task 工具：在当前会话下创建子代理会话并执行完整 agent 循环。 */
-  runSubagent?: (input: { description: string; prompt: string; subagentType?: string }) => Promise<ToolResult>;
+  runSubagent?: (input: { description: string; prompt: string; subagentType?: string; model?: string }) => Promise<ToolResult>;
   /** MCP 工具：把调用转发给对应服务器。 */
   callMcp?: (server: string, tool: string, input: unknown) => Promise<ToolResult>;
   /** Skill 工具：按名称取已启用技能的正文与目录。 */
   getSkill?: (name: string) => { info: import('@tandem/protocol').SkillInfo; body: string } | undefined;
+  /** Tandem home（记忆/配置根目录）。 */
+  home?: string;
+  /** 项目记忆存储；Memory 工具直接读写它。 */
+  memory?: import('./memory.js').MemoryStore;
 }
 
 export type { ContentBlock, Message, Session, SessionStatus, Todo, Usage };
