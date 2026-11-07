@@ -3,8 +3,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
-import { Popover } from './ui/Popover'
-import { MenuDivider, MenuItem, MenuList } from './ui/Menu'
+import { Menu } from './ui/Menu'
 
 export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
   const hosts = useAppStore((s) => s.hosts)
@@ -15,15 +14,14 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
   const active = hosts.find((h) => h.id === activeHostId) ?? null
 
   return (
-    <Popover
+    <Menu
       side="right"
-      align="left"
-      padded={false}
-      panelClassName="w-[210px] rounded-[10px] p-[5px]"
-      trigger={({ open, toggle }) => (
+      align="start"
+      aria-label="切换主机"
+      className="w-[210px]"
+      trigger={({ open }) => (
         <button
           type="button"
-          onClick={toggle}
           aria-expanded={open}
           aria-haspopup="menu"
           className={cn(
@@ -36,54 +34,48 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
         </button>
       )}
     >
-      {(close) => (
-        <MenuList aria-label="切换主机">
-          {hosts.length === 0 && (
-            <p className="px-2 py-2 text-[13px] text-text-tertiary">
-              还没有主机，先添加一台吧。
-            </p>
-          )}
-          {hosts.map((h) => {
-            const rt = runtimes[h.id]
-            const isActive = h.id === activeHostId
-            const online = rt?.status === 'online'
-            const detail = [
-              h.url.replace(/^https?:\/\//, ''),
-              rt?.info?.platform,
-              h.mode === 'relay' ? '中继 · 加密' : '直连',
-            ]
-              .filter(Boolean)
-              .join(' · ')
-            return (
-              <MenuItem
-                key={h.id}
-                selected={isActive}
-                hint={online ? detail : `离线 · ${detail}`}
-                className={online ? '!text-text' : '!text-text-tertiary'}
-                onSelect={() => {
-                  close()
-                  if (isActive) return
-                  activateHost(h.id)
-                  navigate({ kind: 'host', hostId: h.id })
-                  onNavigate?.()
-                }}
-              >
-                {h.name}
-              </MenuItem>
-            )
-          })}
-          <MenuDivider />
-          <MenuItem
+      {hosts.length === 0 && (
+        <p className="px-2 py-2 text-[13px] text-text-tertiary">
+          还没有主机，先添加一台吧。
+        </p>
+      )}
+      {hosts.map((h) => {
+        const rt = runtimes[h.id]
+        const isActive = h.id === activeHostId
+        const online = rt?.status === 'online'
+        const detail = [
+          h.url.replace(/^https?:\/\//, ''),
+          rt?.info?.platform,
+          h.mode === 'relay' ? '中继 · 加密' : '直连',
+        ]
+          .filter(Boolean)
+          .join(' · ')
+        return (
+          <Menu.Item
+            key={h.id}
+            selected={isActive}
+            hint={online ? detail : `离线 · ${detail}`}
+            className={online ? '!text-text' : '!text-text-tertiary'}
             onSelect={() => {
-              close()
-              openSettings('hosts')
+              if (isActive) return
+              activateHost(h.id)
+              navigate({ kind: 'host', hostId: h.id })
               onNavigate?.()
             }}
           >
-            管理主机…
-          </MenuItem>
-        </MenuList>
-      )}
-    </Popover>
+            {h.name}
+          </Menu.Item>
+        )
+      })}
+      <Menu.Separator />
+      <Menu.Item
+        onSelect={() => {
+          openSettings('hosts')
+          onNavigate?.()
+        }}
+      >
+        管理主机…
+      </Menu.Item>
+    </Menu>
   )
 }

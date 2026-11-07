@@ -1,5 +1,4 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 import {
   Archive,
   ArchiveRestore,
@@ -34,7 +33,7 @@ import { cn } from '../lib/cn'
 import { SessionStatusDot } from './StatusDot'
 import { Modal } from './ui/Modal'
 import { Button, IconButton } from './ui/Button'
-import { MenuDivider, MenuItem, MenuList } from './ui/Menu'
+import { Menu } from './ui/Menu'
 import { Tooltip } from './ui/Tooltip'
 
 const EMPTY: SessionSummary[] = []
@@ -218,117 +217,52 @@ function RowMenu({
   onDelete: () => void
   onMerge: () => void
 }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState({ left: state.x, top: state.y })
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    // 靠近视口右侧/底部时向内翻转，避免菜单被边缘裁切。
-    let left = state.x
-    let top = state.y
-    if (left + rect.width > window.innerWidth - 8) left = state.x - rect.width
-    if (top + rect.height > window.innerHeight - 8) top = state.y - rect.height
-    setPos({
-      left: Math.max(8, Math.min(left, window.innerWidth - rect.width - 8)),
-      top: Math.max(8, Math.min(top, window.innerHeight - rect.height - 8)),
-    })
-  }, [state.x, state.y])
-
-  useEffect(() => {
-    const close = (ev: Event) => {
-      if (ev.target instanceof Node && ref.current?.contains(ev.target)) return
-      onClose()
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onClose()
+  return (
+    <Menu
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose()
+      }}
+      side="bottom"
+      align="start"
+      sideOffset={2}
+      aria-label="会话操作"
+      className="w-[196px]"
+      trigger={
+        <span
+          aria-hidden
+          style={{ position: 'fixed', left: state.x, top: state.y, width: 1, height: 1 }}
+        />
       }
-    }
-    const onScroll = () => onClose()
-    document.addEventListener('pointerdown', close, true)
-    document.addEventListener('keydown', onKey, true)
-    window.addEventListener('scroll', onScroll, true)
-    window.addEventListener('resize', onScroll)
-    return () => {
-      document.removeEventListener('pointerdown', close, true)
-      document.removeEventListener('keydown', onKey, true)
-      window.removeEventListener('scroll', onScroll, true)
-      window.removeEventListener('resize', onScroll)
-    }
-  }, [onClose])
-
-  return createPortal(
-    <div
-      ref={ref}
-      className="anim-pop fixed z-[70] w-[196px] origin-top-left rounded-[10px] border border-border bg-surface p-[5px] shadow-[var(--t-shadow-md)]"
-      style={{ left: pos.left, top: pos.top }}
-      onClick={(e) => e.stopPropagation()}
     >
-      <MenuList aria-label="会话操作">
-        <MenuItem
-          icon={<Pencil size={14} />}
-          onSelect={() => {
-            onClose()
-            onRename()
-          }}
-        >
-          重命名
-        </MenuItem>
-        <MenuItem
-          icon={state.session.pinned ? <PinOff size={14} /> : <Pin size={14} />}
-          onSelect={() => {
-            onClose()
-            onTogglePin()
-          }}
-        >
-          {state.session.pinned ? '取消置顶' : '置顶'}
-        </MenuItem>
-        <MenuItem
-          icon={<Copy size={14} />}
-          onSelect={() => {
-            onClose()
-            onFork()
-          }}
-        >
-          复制会话
-        </MenuItem>
-        {state.session.worktree && (
-          <MenuItem
-            icon={<GitMerge size={14} />}
-            onSelect={() => {
-              onClose()
-              onMerge()
-            }}
-          >
-            合并回 {state.session.worktree.baseBranch}
-          </MenuItem>
-        )}
-        <MenuItem
-          icon={state.session.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-          onSelect={() => {
-            onClose()
-            onArchive()
-          }}
-        >
-          {state.session.archived ? '取消归档' : '归档'}
-        </MenuItem>
-        <MenuDivider />
-        <MenuItem
-          danger
-          icon={<Trash2 size={14} />}
-          onSelect={() => {
-            onClose()
-            onDelete()
-          }}
-        >
-          删除
-        </MenuItem>
-      </MenuList>
-    </div>,
-    document.body,
+      <Menu.Item icon={<Pencil size={14} />} onSelect={onRename}>
+        重命名
+      </Menu.Item>
+      <Menu.Item
+        icon={state.session.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+        onSelect={onTogglePin}
+      >
+        {state.session.pinned ? '取消置顶' : '置顶'}
+      </Menu.Item>
+      <Menu.Item icon={<Copy size={14} />} onSelect={onFork}>
+        复制会话
+      </Menu.Item>
+      {state.session.worktree && (
+        <Menu.Item icon={<GitMerge size={14} />} onSelect={onMerge}>
+          合并回 {state.session.worktree.baseBranch}
+        </Menu.Item>
+      )}
+      <Menu.Item
+        icon={state.session.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+        onSelect={onArchive}
+      >
+        {state.session.archived ? '取消归档' : '归档'}
+      </Menu.Item>
+      <Menu.Separator />
+      <Menu.Item danger icon={<Trash2 size={14} />} onSelect={onDelete}>
+        删除
+      </Menu.Item>
+    </Menu>
   )
 }
 

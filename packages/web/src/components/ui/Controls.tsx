@@ -1,12 +1,15 @@
 import {
+  Children,
   forwardRef,
+  isValidElement,
+  type ChangeEvent,
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
 } from 'react'
-import { ChevronDown } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import type { ControlSize } from './Button'
+import { MenuSelect } from './Menu'
 
 const FIELD_SIZE: Record<ControlSize, string> = {
   sm: 'h-[28px] rounded-md px-2 text-[13px]',
@@ -33,23 +36,42 @@ export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement
   wrapperClassName?: string
 }
 
+/**
+ * 统一下拉选择。保留原生 <option> 写法以兼容旧调用，但实际渲染的是
+ * ui/Menu 的弹出列表——尺寸、hover、选中、键盘与全应用一致。
+ */
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
-  { size = 'md', className, wrapperClassName, children, ...rest },
-  ref,
+  { size = 'md', className, wrapperClassName, children, onChange, value, disabled, ...rest },
+  _ref,
 ) {
+  const options = Children.toArray(children).flatMap((child) => {
+    if (!isValidElement<{ value?: unknown; children?: ReactNode; disabled?: boolean }>(child)) {
+      return []
+    }
+    return [
+      {
+        value: String(child.props.value ?? ''),
+        label: child.props.children,
+        disabled: child.props.disabled,
+      },
+    ]
+  })
+  const current = typeof value === 'string' || typeof value === 'number' ? String(value) : ''
   return (
-    <span className={cn('relative inline-flex min-w-0 items-center', wrapperClassName ?? 'w-full')}>
-      <select
-        ref={ref}
-        className={cn(FIELD_BASE, FIELD_SIZE[size], 'appearance-none pr-7', className)}
-        {...rest}
-      >
-        {children}
-      </select>
-      <ChevronDown
-        size={14}
-        aria-hidden
-        className="pointer-events-none absolute right-2 shrink-0 text-muted"
+    <span className={cn('relative flex min-w-0 items-center', wrapperClassName ?? 'w-full')}>
+      <MenuSelect
+        size={size}
+        value={current}
+        options={options}
+        disabled={disabled}
+        className={className}
+        aria-label={rest['aria-label']}
+        onChange={(next) => {
+          onChange?.({
+            target: { value: next },
+            currentTarget: { value: next },
+          } as ChangeEvent<HTMLSelectElement>)
+        }}
       />
     </span>
   )

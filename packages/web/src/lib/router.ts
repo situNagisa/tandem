@@ -5,6 +5,7 @@ import type { AppRoute } from './types'
 export function parseHash(hash = window.location.hash): AppRoute {
   const path = hash.replace(/^#\/?/, '').replace(/\/+$/, '')
   if (!path) return { kind: 'home' }
+  if (path === 'dev/ui') return { kind: 'dev-ui' }
   const parts = path.split('/').filter(Boolean)
   if (parts[0] === 'h' && parts[1]) {
     const hostId = decodeURIComponent(parts[1])
@@ -32,6 +33,8 @@ export function routeToHash(route: AppRoute): string {
       return `#/h/${encodeURIComponent(route.hostId)}/x/${route.source}/${encodeURIComponent(route.id)}`
     case 'host':
       return `#/h/${encodeURIComponent(route.hostId)}`
+    case 'dev-ui':
+      return '#/dev/ui'
     default:
       return '#/'
   }

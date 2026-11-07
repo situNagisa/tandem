@@ -19,6 +19,7 @@ import { cn } from '../lib/cn'
 import { useHorizontalOverflow } from '../lib/hooks'
 import { useFeedbackStore } from '../store/useFeedbackStore'
 import { Button } from './ui/Button'
+import { popoverSurfaceClass } from './ui/Popover'
 
 interface DiffLine {
   type: 'add' | 'del' | 'ctx'
@@ -253,7 +254,7 @@ function CommentMarker({
           }}
           onPointerLeave={scheduleLeave}
           onClick={(e) => e.stopPropagation()}
-          className="popover-panel z-[85] w-[270px] p-2.5"
+          className={cn(popoverSurfaceClass, 'z-[85] w-[270px] p-2.5')}
         >
           <div className="space-y-2">
             {comments.map((comment) => (
@@ -658,7 +659,7 @@ export const DiffView = memo(function DiffView({
                               e.preventDefault()
                             }
                           }}
-                          className="popover-panel z-[85] p-2"
+                          className={cn(popoverSurfaceClass, 'z-[85] p-2')}
                         >
                           <Composer
                             label={selectionInfo.label}

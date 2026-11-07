@@ -139,6 +139,8 @@ export interface MenuItemProps {
   disabled?: boolean
   textValue?: string
   onSelect?: () => void
+  /** 选择后保持菜单打开（用于切换主列表内容）。 */
+  keepOpen?: boolean
   className?: string
   title?: string
 }
@@ -155,6 +157,7 @@ const RadixMenuItem = forwardRef<HTMLDivElement, MenuItemProps>(function RadixMe
     disabled = false,
     textValue,
     onSelect,
+    keepOpen = false,
     className,
     title,
   },
@@ -168,7 +171,10 @@ const RadixMenuItem = forwardRef<HTMLDivElement, MenuItemProps>(function RadixMe
       textValue={textValue}
       title={title}
       data-selected={selected || undefined}
-      onSelect={() => onSelect?.()}
+      onSelect={(event) => {
+        if (keepOpen) event.preventDefault()
+        onSelect?.()
+      }}
       className={cn(
         ROW_BASE,
         ROW_STATE,
@@ -253,10 +259,24 @@ function MenuRadioGroup({ value, onValueChange, children }: MenuRadioGroupProps)
 
 export interface MenuRadioItemProps extends Omit<MenuItemProps, 'selected' | 'onSelect'> {
   value: string
+  onSelect?: () => void
 }
 
 const MenuRadioItem = forwardRef<HTMLDivElement, MenuRadioItemProps>(function MenuRadioItem(
-  { children, icon, hint, disabledReason, trailing, danger, disabled, value, className, title },
+  {
+    children,
+    icon,
+    hint,
+    disabledReason,
+    trailing,
+    danger,
+    disabled,
+    value,
+    keepOpen,
+    onSelect,
+    className,
+    title,
+  },
   ref,
 ) {
   const tip = disabled ? (disabledReason ?? hint) : hint
@@ -266,6 +286,10 @@ const MenuRadioItem = forwardRef<HTMLDivElement, MenuRadioItemProps>(function Me
       value={value}
       disabled={disabled}
       title={title}
+      onSelect={(event) => {
+        if (keepOpen) event.preventDefault()
+        onSelect?.()
+      }}
       className={cn(
         ROW_BASE,
         ROW_STATE,

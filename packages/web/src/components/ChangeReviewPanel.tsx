@@ -22,8 +22,8 @@ import { cn } from '../lib/cn'
 import { DiffView, type DiffCommentDraft } from './DiffView'
 import { Modal } from './ui/Modal'
 import { Button, IconButton } from './ui/Button'
+import { Menu } from './ui/Menu'
 import { Popover } from './ui/Popover'
-import { MenuItem, MenuList } from './ui/Menu'
 
 interface LineComment extends DiffCommentDraft {
   id: number
@@ -619,58 +619,34 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 {committing && <Loader2 size={11} className="animate-spin" />}
                 提交 {files.length} 个文件
               </Button>
-              <Popover
-                align="right"
+              <Menu
+                aria-label="更多提交操作"
+                align="end"
                 side="top"
-                padded={false}
-                panelClassName="w-[200px]"
-                trigger={({ open, toggle }) => (
+                className="w-[200px]"
+                trigger={({ open }) => (
                   <IconButton
                     size="sm"
                     variant="ghost"
                     label="更多提交操作"
                     tooltip={open ? '' : undefined}
-                    onClick={toggle}
                   >
                     <MoreHorizontal size={14} />
                   </IconButton>
                 )}
               >
-                {(close) => (
-                  <MenuList aria-label="更多提交操作">
-                    <MenuItem
-                      icon={<Wand2 />}
-                      onSelect={() => {
-                        close()
-                        askAgentCommit()
-                      }}
-                    >
-                      让 agent 写提交信息
-                    </MenuItem>
-                    {comments.length > 0 && (
-                      <MenuItem
-                        icon={<MessageSquarePlus />}
-                        onSelect={() => {
-                          close()
-                          setComments([])
-                        }}
-                      >
-                        清空 {comments.length} 条评论
-                      </MenuItem>
-                    )}
-                    <MenuItem
-                      icon={<Trash2 />}
-                      danger
-                      onSelect={() => {
-                        close()
-                        setDiscardAllOpen(true)
-                      }}
-                    >
-                      全部丢弃改动
-                    </MenuItem>
-                  </MenuList>
+                <Menu.Item icon={<Wand2 />} onSelect={askAgentCommit}>
+                  让 agent 写提交信息
+                </Menu.Item>
+                {comments.length > 0 && (
+                  <Menu.Item icon={<MessageSquarePlus />} onSelect={() => setComments([])}>
+                    清空 {comments.length} 条评论
+                  </Menu.Item>
                 )}
-              </Popover>
+                <Menu.Item icon={<Trash2 />} danger onSelect={() => setDiscardAllOpen(true)}>
+                  全部丢弃改动
+                </Menu.Item>
+              </Menu>
             </div>
           </div>
         </>

@@ -3,6 +3,9 @@ import * as RPopover from '@radix-ui/react-popover'
 import { cn } from '../../lib/cn'
 import { useFeedbackStore } from '../../store/useFeedbackStore'
 
+/** 弹层表面样式（尺寸、圆角、阴影、动画）唯一来源；自定义定位的 Rich Popover 也复用它。 */
+export const popoverSurfaceClass = 'popover-panel'
+
 interface PopoverProps {
   trigger: (state: { open: boolean; toggle: () => void; close: () => void }) => ReactNode
   children: (close: () => void) => ReactNode
@@ -73,7 +76,8 @@ export function Popover({
             if (useFeedbackStore.getState().active) e.preventDefault()
           }}
           className={cn(
-            'popover-panel z-[80] outline-none',
+            popoverSurfaceClass,
+            'z-[80] outline-none',
             padded && 'p-1.5',
             panelClassName,
           )}

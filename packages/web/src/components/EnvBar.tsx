@@ -23,8 +23,8 @@ import { navigate } from '../lib/router'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
 import { Button } from './ui/Button'
-import { Input } from './ui/Controls'
-import { MenuDivider, MenuItem, MenuList } from './ui/Menu'
+import { Input, Switch } from './ui/Controls'
+import { Menu, MenuItem, MenuList } from './ui/Menu'
 import { Popover } from './ui/Popover'
 import { Tooltip } from './ui/Tooltip'
 
@@ -43,7 +43,7 @@ function EnvTrigger({
 }: {
   icon: ReactNode
   label: string
-  onClick: () => void
+  onClick?: () => void
   open?: boolean
   disabled?: boolean
   title?: string
@@ -67,29 +67,6 @@ function EnvTrigger({
       {icon}
       <span className="max-w-[160px] truncate">{label}</span>
       {!pressed && <ChevronDown size={11} className="shrink-0 text-muted" />}
-    </button>
-  )
-}
-
-function MenuRow({
-  onClick,
-  children,
-  active,
-}: {
-  onClick: () => void
-  children: ReactNode
-  active?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex h-[26px] w-full items-center gap-1.5 rounded-md px-1.5 text-left text-[12.5px] transition-colors hover:bg-[var(--t-bg-hover)]',
-        active ? 'text-text' : 'text-text-soft',
-      )}
-    >
-      {children}
     </button>
   )
 }
@@ -144,16 +121,16 @@ function parseDraft(draft: string, current: string): { dir: string; query: strin
 function HostMenu({
   hostId,
   onPick,
-  close,
+  keepOpen,
 }: {
   hostId: string
   onPick: (id: string) => void
-  close: () => void
+  keepOpen?: boolean
 }) {
   const hosts = useAppStore((s) => s.hosts)
   const runtimes = useAppStore((s) => s.runtimes)
   return (
-    <MenuList aria-label="切换主机" className="min-w-[180px] max-w-[280px]">
+    <>
       {hosts.map((h) => {
         const rt = runtimes[h.id]
         const detail = [
@@ -164,21 +141,21 @@ function HostMenu({
           .filter(Boolean)
           .join(' · ')
         return (
-          <MenuItem
+          <Menu.Item
             key={h.id}
             icon={<ConnectionDot state={rt?.status ?? 'connecting'} />}
             selected={h.id === hostId}
             hint={detail}
+            keepOpen={keepOpen}
             onSelect={() => {
               if (h.id !== hostId) onPick(h.id)
-              close()
             }}
           >
             {h.name}
-          </MenuItem>
+          </Menu.Item>
         )
       })}
-    </MenuList>
+    </>
   )
 }
 
@@ -430,7 +407,7 @@ function BranchMenu({
 
   return (
     <div className="w-[240px]">
-      <div className="max-h-[260px] overflow-y-auto">
+      <MenuList aria-label="切换分支" className="max-h-[260px] overflow-y-auto">
         {loading && (
           <div className="flex items-center gap-2 px-2 py-2 text-[11.5px] text-muted">
             <Loader2 size={12} className="animate-spin" /> 读取分支…
@@ -438,20 +415,20 @@ function BranchMenu({
         )}
         {!loading &&
           branches.map((branch) => (
-            <MenuRow
+            <MenuItem
               key={branch}
-              active={branch === current}
-              onClick={() => void run(branch, false)}
+              icon={<GitBranch size={13} />}
+              selected={branch === current}
+              title={branch}
+              onSelect={() => void run(branch, false)}
             >
-              <GitBranch size={13} className="shrink-0 text-muted" />
-              <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{branch}</span>
-              {branch === current && <Check size={13} className="shrink-0 text-text" />}
-            </MenuRow>
+              <span className="font-mono text-[12.5px]">{branch}</span>
+            </MenuItem>
           ))}
         {!loading && branches.length === 0 && (
           <p className="px-2 py-2 text-[11.5px] text-muted">当前目录不是 git 仓库</p>
         )}
-      </div>
+      </MenuList>
       <div className="mt-1 border-t border-border pt-1">
         {creating ? (
           <div className="flex items-center gap-1 px-1">
@@ -478,10 +455,9 @@ function BranchMenu({
             </Button>
           </div>
         ) : (
-          <MenuRow onClick={() => setCreating(true)}>
-            <span className="text-[15px] leading-none">+</span>
-            <span>新建分支…</span>
-          </MenuRow>
+          <MenuItem icon={<span className="text-[15px] leading-none">+</span>} onSelect={() => setCreating(true)}>
+            新建分支…
+          </MenuItem>
         )}
       </div>
     </div>
@@ -583,11 +559,12 @@ export function EnvBar({
 
   return (
     <div className="flex min-w-0 items-center gap-1 overflow-x-auto pb-1.5">
-      <Popover
+      <Menu
         side="top"
-        padded={false}
-        panelClassName="w-auto rounded-[10px] p-[5px]"
-        trigger={({ open, toggle }) => (
+        align="start"
+        className={targetHostId ? 'w-auto p-1' : 'w-auto min-w-[200px]'}
+        aria-label={isSession ? '切换主机' : '选择 Host'}
+        trigger={({ open }) => (
           <EnvTrigger
             icon={
               migrating ? (
@@ -597,49 +574,41 @@ export function EnvBar({
               )
             }
             label={migrating ? '迁移中…' : host?.name ?? '主机'}
-            onClick={() => {
-              setTargetHostId(null)
-              toggle()
-            }}
+            onClick={() => setTargetHostId(null)}
             open={open}
             disabled={!!locked && !migrating}
             title={isSession ? '切换主机（会话将迁移到目标 Host）' : '选择 Host'}
           />
         )}
       >
-        {(close) =>
-          targetHostId ? (
-            <div>
-              <div className="px-1 pb-1.5 text-[11px] text-muted">
-                选择 {hosts.find((h) => h.id === targetHostId)?.name} 上的目录
-              </div>
-              <FolderBrowser
-                hostId={targetHostId}
-                onUse={(path) => {
-                  void startMigration(targetHostId, path)
-                  close()
-                }}
-                useLabel="迁移到此目录"
-              />
+        {targetHostId ? (
+          <div>
+            <div className="px-1 pb-1.5 text-[12px] text-muted">
+              选择 {hosts.find((h) => h.id === targetHostId)?.name} 上的目录
             </div>
-          ) : (
-            <HostMenu
-              hostId={hostId}
-              onPick={(id) => {
-                if (!isSession) {
-                  onHostChange?.(id)
-                  return
-                }
-                setTargetHostId(id)
+            <FolderBrowser
+              hostId={targetHostId}
+              onUse={(path) => {
+                void startMigration(targetHostId, path)
+                setTargetHostId(null)
               }}
-              close={() => {
-                if (!isSession) close()
-              }}
+              useLabel="迁移到此目录"
             />
-          )
-        }
-      </Popover>
-
+          </div>
+        ) : (
+          <HostMenu
+            hostId={hostId}
+            keepOpen={isSession}
+            onPick={(id) => {
+              if (!isSession) {
+                onHostChange?.(id)
+                return
+              }
+              setTargetHostId(id)
+            }}
+          />
+        )}
+      </Menu>
       <Popover
         side="top"
         padded={false}
@@ -722,33 +691,23 @@ export function EnvBar({
       </Popover>
 
       <Tooltip label={worktreeTip} side="top" className="shrink-0">
-        <button
-          type="button"
-          onClick={toggleWorktree}
-          disabled={locked || (!isSession && !env?.repoRoot)}
-          aria-pressed={isWorktree}
+        <div
           className={cn(
             triggerClass,
-            'inline-flex',
+            'inline-flex cursor-default',
             isWorktree && 'bg-[var(--t-bg-active)] text-text',
           )}
         >
           <GitFork size={12} className={isWorktree ? 'text-text-soft' : 'text-muted'} />
           <span>Worktree</span>
-          <span
-            className={cn(
-              'relative ml-0.5 h-[12px] w-[20px] shrink-0 rounded-full transition-colors',
-              isWorktree ? 'bg-text-soft' : 'bg-[var(--t-border-strong)]',
-            )}
-          >
-            <span
-              className={cn(
-                'absolute top-[2px] size-2 rounded-full bg-bg transition-[left]',
-                isWorktree ? 'left-[10px]' : 'left-[2px]',
-              )}
-            />
-          </span>
-        </button>
+          <Switch
+            checked={isWorktree}
+            onChange={toggleWorktree}
+            disabled={locked || (!isSession && !env?.repoRoot)}
+            label="Worktree"
+            className="ml-0.5"
+          />
+        </div>
       </Tooltip>
       {migration && (
         <span className="ml-2 shrink-0 truncate text-[11px] text-muted">

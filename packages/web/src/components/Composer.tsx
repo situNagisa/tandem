@@ -58,10 +58,10 @@ import {
   pushSentHistory,
   saveDraft,
 } from '../lib/storage'
-import { Popover } from './ui/Popover'
 import { ContextMeter } from './chat/ContextMeter'
 import { Button, IconButton } from './ui/Button'
-import { MenuDivider, MenuItem, MenuList } from './ui/Menu'
+import { Menu, MenuItem, MenuList } from './ui/Menu'
+import { popoverSurfaceClass } from './ui/Popover'
 import {
   setThinkingMode,
   THINKING_MODE_META,
@@ -213,11 +213,9 @@ function Highlight({ text, query }: { text: string; query: string }) {
 
 function PermissionModeRows({
   mode,
-  close,
   onChange,
 }: {
   mode: PermissionMode
-  close: () => void
   onChange: (mode: PermissionMode) => void
 }) {
   return (
@@ -226,7 +224,7 @@ function PermissionModeRows({
         const item = MODE_META[m]
         const ItemIcon = item.icon
         return (
-          <MenuItem
+          <Menu.Item
             key={m}
             icon={
               <ItemIcon
@@ -236,34 +234,15 @@ function PermissionModeRows({
             hint={item.hint}
             selected={m === mode}
             danger={m === 'bypassPermissions'}
-            role="menuitemradio"
-            ariaChecked={m === mode}
             onSelect={() => {
-              close()
               if (m !== mode) onChange(m)
             }}
           >
             {item.label}
-          </MenuItem>
+          </Menu.Item>
         )
       })}
     </>
-  )
-}
-
-function PermissionModeItems({
-  mode,
-  close,
-  onChange,
-}: {
-  mode: PermissionMode
-  close: () => void
-  onChange: (mode: PermissionMode) => void
-}) {
-  return (
-    <MenuList aria-label="权限模式">
-      <PermissionModeRows mode={mode} close={close} onChange={onChange} />
-    </MenuList>
   )
 }
 
@@ -279,16 +258,15 @@ function PermissionModeMenu({
   const meta = MODE_META[mode]
   const Icon = meta.icon
   return (
-    <Popover
+    <Menu
       side="top"
-      align="left"
-      padded={false}
-      panelClassName="w-[220px]"
-      trigger={({ open, toggle }) => (
+      align="start"
+      aria-label="权限模式"
+      className="w-[220px]"
+      trigger={({ open }) => (
         <Button
           variant="ghost"
           size="sm"
-          onClick={toggle}
           disabled={disabled}
           aria-expanded={open}
           aria-haspopup="menu"
@@ -314,10 +292,8 @@ function PermissionModeMenu({
         </Button>
       )}
     >
-      {(close) => (
-        <PermissionModeItems mode={mode} close={close} onChange={onChange} />
-      )}
-    </Popover>
+      <PermissionModeRows mode={mode} onChange={onChange} />
+    </Menu>
   )
 }
 
@@ -327,14 +303,13 @@ function ThinkingModeMenu() {
   const mode = useThinkingMode()
   const meta = THINKING_MODE_META[mode]
   return (
-    <Popover
+    <Menu
       side="top"
-      align="left"
-      padded={false}
-      panelClassName="w-[188px]"
-      trigger={({ open, toggle }) => (
+      align="start"
+      aria-label="思考过程"
+      className="w-[188px]"
+      trigger={({ open }) => (
         <IconButton
-          onClick={toggle}
           aria-expanded={open}
           aria-haspopup="menu"
           label={`思考过程：${meta.label}`}
@@ -346,39 +321,17 @@ function ThinkingModeMenu() {
         </IconButton>
       )}
     >
-      {(close) => <ThinkingModeItems close={close} />}
-    </Popover>
-  )
-}
-
-function ThinkingModeRows({ close }: { close: () => void }) {
-  const mode = useThinkingMode()
-  return (
-    <>
       {THINKING_MODES.map((item) => (
-        <MenuItem
+        <Menu.Item
           key={item}
           hint={THINKING_MODE_META[item].hint}
           selected={item === mode}
-          role="menuitemradio"
-          ariaChecked={item === mode}
-          onSelect={() => {
-            close()
-            setThinkingMode(item)
-          }}
+          onSelect={() => setThinkingMode(item)}
         >
           {THINKING_MODE_META[item].label}
-        </MenuItem>
+        </Menu.Item>
       ))}
-    </>
-  )
-}
-
-function ThinkingModeItems({ close }: { close: () => void }) {
-  return (
-    <MenuList aria-label="思考过程">
-      <ThinkingModeRows close={close} />
-    </MenuList>
+    </Menu>
   )
 }
 
@@ -393,15 +346,15 @@ function MobileMoreMenu({
   onChange: (mode: PermissionMode) => void
 }) {
   const meta = MODE_META[mode]
+  const thinking = useThinkingMode()
   return (
-    <Popover
+    <Menu
       side="top"
-      align="left"
-      padded={false}
-      panelClassName="w-[232px] max-w-[calc(100vw-1.5rem)]"
-      trigger={({ open, toggle }) => (
+      align="start"
+      aria-label="更多设置"
+      className="w-[232px]"
+      trigger={({ open }) => (
         <IconButton
-          onClick={toggle}
           disabled={disabled}
           aria-expanded={open}
           aria-haspopup="menu"
@@ -424,14 +377,19 @@ function MobileMoreMenu({
         </IconButton>
       )}
     >
-      {(close) => (
-        <MenuList aria-label="更多设置">
-          <ThinkingModeRows close={close} />
-          <MenuDivider />
-          <PermissionModeRows mode={mode} close={close} onChange={onChange} />
-        </MenuList>
-      )}
-    </Popover>
+      {THINKING_MODES.map((item) => (
+        <Menu.Item
+          key={item}
+          hint={THINKING_MODE_META[item].hint}
+          selected={item === thinking}
+          onSelect={() => setThinkingMode(item)}
+        >
+          {THINKING_MODE_META[item].label}
+        </Menu.Item>
+      ))}
+      <Menu.Separator />
+      <PermissionModeRows mode={mode} onChange={onChange} />
+    </Menu>
   )
 }
 
@@ -446,7 +404,6 @@ function ModelPanel({
   onSelect,
   onEffortChange,
   onManage,
-  close,
 }: {
   profiles: Profile[]
   profileId: string
@@ -458,17 +415,15 @@ function ModelPanel({
   onSelect: (profileId: string, groupId: string | undefined, model: string) => void
   onEffortChange: (effort: ReasoningEffort) => void
   onManage: () => void
-  close: () => void
 }) {
-  const accountsRef = useRef<HTMLDivElement>(null)
-  const groupsRef = useRef<HTMLDivElement>(null)
-  const modelsRef = useRef<HTMLDivElement>(null)
   const [accountId, setAccountId] = useState(profileId || profiles[0]?.id || '')
   const account = profiles.find((p) => p.id === accountId) ?? profiles[0] ?? null
   const groups = useMemo(() => (account ? profileModelGroups(account) : []), [account])
   const [groupKey, setGroupKey] = useState<string | undefined>(groupId ?? groups[0]?.groupId)
   const group = groups.find((g) => (g.groupId ?? undefined) === (groupKey ?? undefined)) ?? groups[0]
   const models = group?.models ?? []
+  const selectedEffort = efforts.includes(effort) ? effort : nearestEffort(efforts, effort)
+  const showAccounts = profiles.length > 1 || groups.length > 1
 
   useEffect(() => {
     if (profiles.length === 0) return
@@ -481,23 +436,18 @@ function ModelPanel({
     setGroupKey(groups[0]?.groupId)
   }, [groups, groupKey])
 
-  const focusColumn = (ref: RefObject<HTMLDivElement | null>) => {
-    window.requestAnimationFrame(() => {
-      ref.current?.querySelector<HTMLElement>('[data-menu-item]:not(:disabled)')?.focus()
-    })
-  }
-
-  const pickAccount = (next: Profile) => {
-    if (next.id === account?.id) return
+  const pickAccount = (next: Profile, nextGroup?: { groupId?: string }) => {
     setAccountId(next.id)
     const nextGroups = profileModelGroups(next)
-    const keep = nextGroups.find((g) => g.groupId === groupId) ?? nextGroups[0]
+    const keep =
+      nextGroup ??
+      nextGroups.find((g) => g.groupId === groupId) ??
+      nextGroups[0]
     setGroupKey(keep?.groupId)
   }
 
   const choose = (nextModel: string) => {
     if (!account || !group) return
-    close()
     if (
       account.id !== profileId ||
       (group.groupId ?? undefined) !== (groupId ?? undefined) ||
@@ -507,148 +457,124 @@ function ModelPanel({
     }
   }
 
-  const onPanelKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
-    const columns = [accountsRef.current, groupsRef.current, modelsRef.current].filter(
-      (col): col is HTMLDivElement => !!col,
-    )
-    const index = columns.findIndex((col) => col.contains(document.activeElement))
-    if (index < 0) return
-    const next = columns[index + (e.key === 'ArrowRight' ? 1 : -1)]
-    if (!next) return
-    e.preventDefault()
-    e.stopPropagation()
-    next.querySelector<HTMLElement>('[data-menu-item]:not(:disabled)')?.focus()
-  }
-
   const accountSelected = account?.id === profileId
   const groupSelected = accountSelected && (group?.groupId ?? undefined) === (groupId ?? undefined)
-  const selectedEffort = efforts.includes(effort) ? effort : nearestEffort(efforts, effort)
-  const showAccounts = profiles.length > 1
-  const showGroups = groups.length > 1
 
   return (
-    <div
-      className="flex max-w-[calc(100vw-1.5rem)] items-stretch"
-      onKeyDown={onPanelKeyDown}
-    >
+    <>
+      {loading && profiles.length === 0 && (
+        <div className="flex h-[32px] items-center gap-2 px-2 text-[12px] text-muted">
+          <Loader2 size={13} className="animate-spin" /> 加载账号…
+        </div>
+      )}
+      {!loading && profiles.length === 0 && (
+        <div className="px-2 py-2 text-[12px] leading-5 text-muted">
+          这台 Host 还没有配置账号。
+        </div>
+      )}
+      {profiles.length > 0 && models.length === 0 && (
+        <div className="px-2 py-2 text-[12px] leading-5 text-muted">没有可用模型。</div>
+      )}
+      {models.map((m) => {
+        const selected = groupSelected && m === model
+        const friendly = prettyModel(m)
+        return (
+          <Menu.Item
+            key={m}
+            selected={selected}
+            textValue={friendly}
+            onSelect={() => choose(m)}
+            className="h-auto min-h-[40px] py-1"
+          >
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="truncate text-[13px] leading-4">{friendly}</span>
+              <span className="truncate font-mono text-[12px] leading-4 text-muted">{m}</span>
+            </span>
+          </Menu.Item>
+        )
+      })}
+
+      {efforts.length > 0 && (
+        <>
+          <Menu.Separator />
+          <Menu.Sub>
+            <Menu.SubTrigger trailing={EFFORT_LABEL[selectedEffort]}>思考强度</Menu.SubTrigger>
+            <Menu.SubContent className="w-[268px]" aria-label="思考强度">
+              <p className="px-2 pb-1.5 pt-1 text-[11.5px] leading-4 text-muted">
+                投入程度越高，回复越详尽，但耗时越长、用量越多。
+              </p>
+              <Menu.RadioGroup
+                value={selectedEffort}
+                onValueChange={(next) => onEffortChange(next as ReasoningEffort)}
+              >
+                {efforts.map((value) => (
+                  <Menu.RadioItem
+                    key={value}
+                    value={value}
+                    trailing={value === 'high' ? '推荐' : undefined}
+                  >
+                    {EFFORT_LABEL[value]}
+                  </Menu.RadioItem>
+                ))}
+              </Menu.RadioGroup>
+            </Menu.SubContent>
+          </Menu.Sub>
+        </>
+      )}
+
       {showAccounts && (
-        <div ref={accountsRef} className="shrink-0 border-r border-border">
-          <MenuList aria-label="账号" className="max-h-[320px] w-[min(156px,27vw)] overflow-y-auto">
-            {profiles.map((profile) => (
-              <MenuItem
-                key={profile.id}
-                role="menuitemradio"
-                ariaChecked={profile.id === profileId}
-                selected={profile.id === profileId}
-                onMouseEnter={() => pickAccount(profile)}
-                onSelect={() => {
-                  pickAccount(profile)
-                  focusColumn(showGroups ? groupsRef : modelsRef)
-                }}
-                trailing={
-                  profile.id === account?.id && showGroups ? <ChevronRight size={12} /> : undefined
+        <>
+          <Menu.Separator />
+          <Menu.Sub>
+            <Menu.SubTrigger
+              trailing={[account?.name, group?.name].filter(Boolean).join(' › ')}
+            >
+              {profiles.length > 1 ? '切换账号' : '切换分组'}
+            </Menu.SubTrigger>
+            <Menu.SubContent className="w-[232px]" aria-label="切换账号">
+              {profiles.map((p) => {
+                const pGroups = profileModelGroups(p)
+                const currentAccount = p.id === account?.id
+                if (pGroups.length > 1) {
+                  return (
+                    <Menu.Sub key={p.id}>
+                      <Menu.SubTrigger trailing={currentAccount ? group?.name : undefined}>
+                        {p.name}
+                      </Menu.SubTrigger>
+                      <Menu.SubContent className="w-[200px]" aria-label={`${p.name} 分组`}>
+                        {pGroups.map((g) => (
+                          <Menu.Item
+                            key={g.groupId ?? 'default'}
+                            selected={currentAccount && g.groupId === group?.groupId}
+                            keepOpen
+                            onSelect={() => pickAccount(p, g)}
+                          >
+                            {g.name}
+                          </Menu.Item>
+                        ))}
+                      </Menu.SubContent>
+                    </Menu.Sub>
+                  )
                 }
-              >
-                {profile.name}
-              </MenuItem>
-            ))}
-          </MenuList>
-        </div>
+                return (
+                  <Menu.Item
+                    key={p.id}
+                    selected={currentAccount}
+                    keepOpen
+                    onSelect={() => pickAccount(p, pGroups[0])}
+                  >
+                    {p.name}
+                  </Menu.Item>
+                )
+              })}
+            </Menu.SubContent>
+          </Menu.Sub>
+        </>
       )}
 
-      {showGroups && (
-        <div ref={groupsRef} className="shrink-0 border-r border-border">
-          <MenuList aria-label="分组" className="max-h-[320px] w-[min(156px,27vw)] overflow-y-auto">
-            {groups.map((g) => (
-              <MenuItem
-                key={g.groupId ?? 'default'}
-                role="menuitemradio"
-                ariaChecked={groupSelected && g.groupId === group?.groupId}
-                selected={groupSelected && g.groupId === group?.groupId}
-                onMouseEnter={() => setGroupKey(g.groupId)}
-                onSelect={() => {
-                  setGroupKey(g.groupId)
-                  focusColumn(modelsRef)
-                }}
-                trailing={
-                  g.groupId === group?.groupId ? <ChevronRight size={12} /> : undefined
-                }
-              >
-                {g.name}
-              </MenuItem>
-            ))}
-          </MenuList>
-        </div>
-      )}
-
-      <div ref={modelsRef} className="flex min-w-0 shrink-0 flex-col">
-        <MenuList aria-label="选择模型" className="max-h-[300px] w-[min(200px,38vw)] overflow-y-auto">
-          {loading && profiles.length === 0 && (
-            <div className="flex items-center gap-2 px-2 py-3 text-[12px] text-muted">
-              <Loader2 size={13} className="animate-spin" /> 加载账号…
-            </div>
-          )}
-          {!loading && profiles.length === 0 && (
-            <div className="px-2 py-3 text-[12px] leading-5 text-muted">
-              这台 Host 还没有配置账号。
-            </div>
-          )}
-          {profiles.length > 0 && models.length === 0 && (
-            <div className="px-2 py-3 text-[12px] leading-5 text-muted">没有可用模型。</div>
-          )}
-          {models.map((m) => {
-            const selected = groupSelected && m === model
-            return (
-              <MenuItem
-                key={m}
-                selected={selected}
-                title={m}
-                role="menuitemradio"
-                ariaChecked={selected}
-                onSelect={() => choose(m)}
-              >
-                {prettyModel(m)}
-              </MenuItem>
-            )
-          })}
-        </MenuList>
-        {efforts.length > 0 && (
-          <>
-            <MenuDivider />
-            <div className="flex items-center gap-0.5 px-1 pb-0.5" role="group" aria-label="思考强度">
-              {efforts.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => onEffortChange(value)}
-                  aria-pressed={value === selectedEffort}
-                  title={`思考强度：${EFFORT_LABEL[value]}`}
-                  className={cn(
-                    'h-6 min-w-0 flex-1 rounded-md px-1 text-[11.5px] transition-colors',
-                    value === selectedEffort
-                      ? 'bg-[var(--t-bg-active)] text-text'
-                      : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
-                  )}
-                >
-                  {EFFORT_LABEL[value]}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            close()
-            onManage()
-          }}
-          className="mt-0.5 self-end rounded px-1.5 py-0.5 text-[11px] text-muted transition-colors hover:text-text-soft"
-        >
-          管理账号…
-        </button>
-      </div>
-    </div>
+      <Menu.Separator />
+      <Menu.Item onSelect={onManage}>管理账号…</Menu.Item>
+    </>
   )
 }
 
@@ -690,20 +616,19 @@ function ModelMenu({
     ? `${shortModelName(model)}${showEffort ? effortSuffix(effort) : ''}`
     : '选择模型'
   return (
-    <Popover
+    <Menu
       side="top"
-      align="right"
-      padded={false}
+      align="end"
       open={open}
-      onOpenChange={onOpenChange}
-      panelClassName="w-auto max-w-[calc(100vw-1.5rem)]"
-      trigger={({ open: isOpen, toggle }) => (
+      onOpenChange={(next) => {
+        if (next) onOpen?.()
+        onOpenChange(next)
+      }}
+      aria-label="选择模型"
+      className="w-[300px]"
+      trigger={({ open: isOpen }) => (
         <Button
           variant="ghost"
-          onClick={() => {
-            if (!isOpen) onOpen?.()
-            toggle()
-          }}
           disabled={disabled}
           aria-expanded={isOpen}
           aria-haspopup="menu"
@@ -726,22 +651,19 @@ function ModelMenu({
         </Button>
       )}
     >
-      {(close) => (
-        <ModelPanel
-          profiles={profiles}
-          profileId={profileId}
-          groupId={groupId}
-          model={model}
-          effort={effort}
-          efforts={efforts}
-          loading={loading}
-          onSelect={onSelect}
-          onEffortChange={onEffortChange}
-          onManage={onManage}
-          close={close}
-        />
-      )}
-    </Popover>
+      <ModelPanel
+        profiles={profiles}
+        profileId={profileId}
+        groupId={groupId}
+        model={model}
+        effort={effort}
+        efforts={efforts}
+        loading={loading}
+        onSelect={onSelect}
+        onEffortChange={onEffortChange}
+        onManage={onManage}
+      />
+    </Menu>
   )
 }
 
@@ -769,7 +691,7 @@ function CompletionMenu({
   return (
     <div className="absolute inset-x-0 bottom-full z-40 mb-2">
       <div
-        className="completion-panel popover-panel relative w-[600px] max-w-full"
+        className={cn(popoverSurfaceClass, 'completion-panel relative w-[600px] max-w-full')}
         data-side="top"
         data-align="left"
       >

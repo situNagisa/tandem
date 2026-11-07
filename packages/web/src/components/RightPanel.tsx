@@ -45,8 +45,7 @@ import { ConnectionDot, SessionStatusDot } from './StatusDot'
 import { Markdown } from './Markdown'
 import { CONTEXT_PART_META, useContextBreakdown } from './chat/ContextMeter'
 import { Modal } from './ui/Modal'
-import { Popover } from './ui/Popover'
-import { MenuItem, MenuList } from './ui/Menu'
+import { Menu } from './ui/Menu'
 import { Button, IconButton } from './ui/Button'
 
 const EMPTY_TODOS: Todo[] = []
@@ -830,14 +829,13 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
           </span>
         )}
         <span className="flex-1" />
-        <Popover
+        <Menu
           side="bottom"
-          align="right"
-          padded={false}
-          panelClassName="w-[200px]"
-          trigger={({ open, toggle }) => (
+          align="end"
+          aria-label="显示分组"
+          className="w-[200px]"
+          trigger={({ open }) => (
             <IconButton
-              onClick={toggle}
               label="自定义信息面板"
               tooltip={open ? '' : '自定义'}
               aria-expanded={open}
@@ -848,40 +846,34 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
             </IconButton>
           )}
         >
-          {() => (
-            <MenuList aria-label="显示分组">
-              {GROUPS.map((g) => {
-                const shown = !prefs.hidden.includes(g.id)
-                const avail = available[g.id]
-                const reason = avail
-                  ? undefined
-                  : g.id === 'plan'
-                    ? '当前会话没有计划'
-                    : g.id === 'agents'
-                      ? '当前会话没有子代理'
-                      : g.id === 'changes'
-                        ? changes && !changes.isRepo
-                          ? '非 git 仓库，无改动摘要'
-                          : '当前没有改动'
-                        : '暂无数据'
-                return (
-                  <MenuItem
-                    key={g.id}
-                    icon={<g.Icon />}
-                    selected={shown}
-                    disabled={!avail}
-                    disabledReason={reason}
-                    role="menuitemcheckbox"
-                    ariaChecked={shown}
-                    onSelect={() => toggleGroup(g.id)}
-                  >
-                    {g.label}
-                  </MenuItem>
-                )
-              })}
-            </MenuList>
-          )}
-        </Popover>
+          {GROUPS.map((g) => {
+            const shown = !prefs.hidden.includes(g.id)
+            const avail = available[g.id]
+            const reason = avail
+              ? undefined
+              : g.id === 'plan'
+                ? '当前会话没有计划'
+                : g.id === 'agents'
+                  ? '当前会话没有子代理'
+                  : g.id === 'changes'
+                    ? changes && !changes.isRepo
+                      ? '非 git 仓库，无改动摘要'
+                      : '当前没有改动'
+                    : '暂无数据'
+            return (
+              <Menu.CheckItem
+                key={g.id}
+                icon={<g.Icon />}
+                checked={shown}
+                disabled={!avail}
+                disabledReason={reason}
+                onCheckedChange={() => toggleGroup(g.id)}
+              >
+                {g.label}
+              </Menu.CheckItem>
+            )
+          })}
+        </Menu>
         <IconButton onClick={onClose} label="关闭信息面板" className="-mr-1 max-md:size-11">
           <X size={15} />
         </IconButton>

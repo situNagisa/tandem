@@ -23,9 +23,8 @@ import { Markdown } from './Markdown'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCard, type ToolUseBlock } from './ToolCard'
 import { RewindDialog } from './RewindDialog'
-import { Popover } from './ui/Popover'
 import { Tip } from './ui/Tooltip'
-import { MenuItem, MenuList } from './ui/Menu'
+import { Menu } from './ui/Menu'
 import { Button, IconButton } from './ui/Button'
 import {
   ToolGroup,
@@ -295,68 +294,61 @@ export const UserMessage = memo(function UserMessage({
                   {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
                 </IconButton>
               ) : (
-              <Popover
+              <Menu
+                aria-label="消息操作"
                 align="right"
                 side="top"
-                padded={false}
-                trigger={({ open, toggle }) => (
-                  <IconButton onClick={toggle} label="消息操作" tooltip={open ? '' : undefined} className="[&_svg]:size-[15px] max-md:size-11 [&_svg]:max-md:size-[17px]">
+                trigger={({ open }) => (
+                  <IconButton label="消息操作" tooltip={open ? '' : undefined} className="[&_svg]:size-[15px] max-md:size-11 [&_svg]:max-md:size-[17px]">
                     <MoreHorizontal size={15} />
                   </IconButton>
                 )}
               >
-                {(close) => (
-                  <MenuList aria-label="消息操作">
-                    <MenuItem
+                <>
+                    <Menu.Item
                       icon={<Copy />}
                       onSelect={() => {
-                        close()
                         void copy()
                       }}
                     >
                       {copied ? '已复制' : '复制消息'}
-                    </MenuItem>
-                    <MenuItem
+                    </Menu.Item>
+                    <Menu.Item
                       icon={<Pin />}
                       onSelect={() => {
-                        close()
                         togglePin()
                       }}
                     >
                       {pinned ? '取消固定此轮' : '固定此轮'}
-                    </MenuItem>
-                    <MenuItem
+                    </Menu.Item>
+                    <Menu.Item
                       icon={<GitFork />}
                       onSelect={() => {
-                        close()
                         forkFromHere()
                       }}
                     >
                       从这里分叉
-                    </MenuItem>
-                    <MenuItem
+                    </Menu.Item>
+                    <Menu.Item
                       icon={<PencilLine />}
                       onSelect={() => {
-                        close()
                         startEdit()
                       }}
                     >
                       编辑并重发
-                    </MenuItem>
-                    <MenuItem
+                    </Menu.Item>
+                    <Menu.Item
                       icon={<Undo2 />}
                       disabled={running}
                       disabledReason={running ? '会话运行中，结束后才能回退' : undefined}
                       onSelect={() => {
-                        close()
                         setRewindOpen(true)
                       }}
                     >
                       回退到此处
-                    </MenuItem>
-                  </MenuList>
-                )}
-              </Popover>
+                    </Menu.Item>
+</>
+              </Menu>
               )}
             </div>
           </>
@@ -582,67 +574,61 @@ export const AssistantMessage = memo(function AssistantMessage({
             )}
           </div>
           <div className="msg-more mt-0.5 h-7 justify-start max-md:h-11">
-            <Popover
+            <Menu
+              aria-label="回复操作"
               align="left"
               side="bottom"
-              padded={false}
-              trigger={({ open, toggle }) => (
-                <IconButton onClick={toggle} label="回复操作" tooltip={open ? '' : undefined} className="[&_svg]:size-[15px] max-md:size-11 [&_svg]:max-md:size-[17px]">
+              trigger={({ open }) => (
+                <IconButton label="回复操作" tooltip={open ? '' : undefined} className="[&_svg]:size-[15px] max-md:size-11 [&_svg]:max-md:size-[17px]">
                   <MoreHorizontal size={15} />
                 </IconButton>
               )}
             >
-              {(close) => (
-                <MenuList aria-label="回复操作">
-                  <MenuItem
+              <>
+                  <Menu.Item
                     icon={<Copy />}
                     onSelect={() => {
-                      close()
                       void copyAll()
                     }}
                   >
                     {copied ? '已复制' : '复制整条回复'}
-                  </MenuItem>
+                  </Menu.Item>
                   {!readOnly && (
-                    <MenuItem
+                    <Menu.Item
                       icon={<GitFork />}
                       onSelect={() => {
-                        close()
                         forkFromHere()
                       }}
                     >
                       从这里分叉
-                    </MenuItem>
+                    </Menu.Item>
                   )}
                   {!readOnly && turnUser && checkpointId && (
-                    <MenuItem
+                    <Menu.Item
                       icon={<Undo2 />}
                       disabled={running}
                       disabledReason={running ? '会话运行中，结束后才能回退' : undefined}
                       onSelect={() => {
-                        close()
                         setRewindOpen(true)
                       }}
                     >
                       回退到此处
-                    </MenuItem>
+                    </Menu.Item>
                   )}
                   {!readOnly && turnUser && checkpointId && (
-                    <MenuItem
+                    <Menu.Item
                       icon={<RefreshCw />}
                       disabled={running || regenerating}
                       disabledReason={running ? '会话运行中，结束后才能重新生成' : undefined}
                       onSelect={() => {
-                        close()
                         void regenerate()
                       }}
                     >
                       重新生成
-                    </MenuItem>
+                    </Menu.Item>
                   )}
-                </MenuList>
-              )}
-            </Popover>
+</>
+            </Menu>
           </div>
         </>
       )}

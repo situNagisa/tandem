@@ -8,6 +8,7 @@ import { cn } from '../../lib/cn'
 import { Button } from '../ui/Button'
 import { Switch } from '../ui/Controls'
 import { useFeedbackStore } from '../../store/useFeedbackStore'
+import { navigate } from '../../lib/router'
 
 const THEMES: Array<{ id: Theme; label: string; desc: string; icon: typeof Sun }> = [
   { id: 'light', label: '浅色', desc: '暖白纸面，白天更清爽', icon: Sun },
@@ -54,6 +55,7 @@ export function AppearanceSection() {
   const notifications = useUiStore((s) => s.notifications)
   const setNotifications = useUiStore((s) => s.setNotifications)
   const toast = useUiStore((s) => s.toast)
+  const closeSettings = useUiStore((s) => s.closeSettings)
   const [permission, setPermission] = useState<NotificationPermission>(() =>
     typeof Notification === 'undefined' ? 'denied' : Notification.permission,
   )
@@ -191,6 +193,21 @@ export function AppearanceSection() {
 
       <div className="mt-3 rounded-xl border border-border bg-[var(--t-bg)] p-3.5 text-[13px] leading-5 text-muted">
         Tandem 使用暖色中性灰与克制的陶土橙强调色，衬线字体只用于标题。所有字体来自系统，不加载外部资源。
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5">
+        <div className="min-w-0">
+          <div className="text-[13px] font-medium">组件画廊</div>
+          <p className="mt-0.5 text-[13px] leading-5 text-muted">
+            所有按钮、菜单、列表与控件的完整状态。在这里圈选提意见，改一处全局生效。
+          </p>
+        </div>
+        <Button size="md" variant="secondary" onClick={() => {
+            closeSettings()
+            navigate({ kind: 'dev-ui' })
+          }}>
+          打开组件画廊
+        </Button>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5">
