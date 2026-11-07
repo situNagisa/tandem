@@ -61,7 +61,8 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
     () => (relay && token ? buildRelayPairLink(relay, token) : ''),
     [relay, token],
   )
-  const content = source === 'relay' ? relayContent : directContent
+  // 只监听回环时手机扫到的地址会指向手机自己：不生成二维码与可复制链接。
+  const content = !relay && loopback ? '' : source === 'relay' ? relayContent : directContent
 
   useEffect(() => {
     if (!content) {

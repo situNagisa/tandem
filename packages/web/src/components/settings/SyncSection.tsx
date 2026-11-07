@@ -22,6 +22,7 @@ import { copyText } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
 import { Button, IconButton } from '../ui/Button'
 import { Input } from '../ui/Controls'
+import { Modal } from '../ui/Modal'
 import { MenuSelect } from '../ui/Menu'
 
 function bundleText(bundle: ConfigBundle): string {
@@ -87,7 +88,9 @@ export function SyncSection() {
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [importResult, setImportResult] = useState<ConfigImportResult | null>(null)
+  const [replaceConfirm, setReplaceConfirm] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const profileCount = useAppStore((s) => (hostId ? (s.runtimes[hostId]?.profiles?.length ?? 0) : 0))
 
   const exportConfig = async () => {
     if (!host) return
@@ -210,6 +213,23 @@ export function SyncSection() {
     } finally {
       setImporting(false)
     }
+  }
+
+  const requestImport = () => {
+    if (!importBundle) {
+      setImportError('先选择配置文件')
+      return
+    }
+    if (!importPass.trim()) {
+      setImportError('请输入导出时设置的口令')
+      return
+    }
+    setImportError(null)
+    if (mode === 'replace') {
+      setReplaceConfirm(true)
+      return
+    }
+    void importConfig()
   }
 
   if (!host) {
@@ -414,15 +434,24 @@ export function SyncSection() {
                   className={cn(
                     'rounded-lg border px-2.5 py-2 text-left transition-colors',
                     mode === value
-                      ? 'border-[var(--t-border-strong)] bg-[var(--t-bg-active)]'
+                      ? value === 'replace'
+                        ? 'border-danger/50 bg-danger-soft/30'
+                        : 'border-[var(--t-border-strong)] bg-[var(--t-bg-active)]'
                       : 'border-border bg-bg/40 hover:bg-[var(--t-bg-hover)]',
                   )}
                 >
                   <span className="flex items-center gap-1.5 text-[13px] font-medium">
                     {label}
-                    {mode === value && <Check size={11} className="text-text" />}
+                    {mode === value && <Check size={11} className={cn(value === 'replace' ? 'text-danger' : 'text-text')} />}
                   </span>
-                  <span className="mt-0.5 block text-[13px] leading-4 text-muted">{hint}</span>
+                  <span
+                    className={cn(
+                      'mt-0.5 block text-[13px] leading-4',
+                      value === 'replace' && mode === 'replace' ? 'text-danger' : 'text-muted',
+                    )}
+                  >
+                    {hint}
+                  </span>
                 </button>
               ))}
             </div>
@@ -448,7 +477,7 @@ export function SyncSection() {
             <span className="flex-1" />
             <Button
               variant="primary"
-              onClick={() => void importConfig()}
+              onClick={requestImport}
               disabled={importing || !importBundle}
             >
               {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
@@ -457,6 +486,36 @@ export function SyncSection() {
           </div>
         </div>
       </div>
+
+      <Modal
+        open={replaceConfirm}
+        onClose={() => setReplaceConfirm(false)}
+        title="替换现有配置？"
+        className="max-w-md"
+        footer={
+          <>
+            <Button size="lg" onClick={() => setReplaceConfirm(false)}>
+              取消
+            </Button>
+            <Button
+              size="lg"
+              variant="danger-ghost"
+              onClick={() => {
+                setReplaceConfirm(false)
+                void importConfig()
+              }}
+            >
+              替换并导入
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[13px] leading-6 text-text-soft">
+          将清空「{host.name}」上的 <span className="font-medium text-text">{profileCount}</span> 个账号，
+          并用文件内容覆盖本机的 <span className="font-medium text-text">{hosts.length}</span> 个 Host 记录。
+          此操作不可撤销。
+        </p>
+      </Modal>
     </div>
   )
 }

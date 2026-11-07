@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * 提交前检查：构建 → UI 原语审计 → 单元测试 → 端到端冒烟。
+ * 提交前检查：构建 → UI 原语审计 → 单元测试 → 端到端冒烟 → 回归走查。
  *
  * 用法：
- *   node scripts/check.mjs                 全量
- *   node scripts/check.mjs --skip-smoke    子代理最低要求（build + ui-audit + test）
+ *   node scripts/check.mjs                    全量
+ *   node scripts/check.mjs --skip-smoke       子代理最低要求（build + ui-audit + test + regression）
+ *   node scripts/check.mjs --skip-regression  跳过回归走查
  *   node scripts/check.mjs --skip-build    已有构建产物时只跑测试
  *   node scripts/check.mjs --keep-going    某一步失败后仍继续后续步骤
  */
@@ -14,6 +15,7 @@ import path from 'node:path'
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
 const args = new Set(process.argv.slice(2))
 const skipSmoke = args.has('--skip-smoke')
+const skipRegression = args.has('--skip-regression')
 const skipBuild = args.has('--skip-build')
 const keepGoing = args.has('--keep-going')
 
@@ -39,6 +41,12 @@ const steps = [
     command: 'npm',
     args: ['run', 'smoke'],
     skip: skipSmoke,
+  },
+  {
+    name: 'regression',
+    command: 'npm',
+    args: ['run', 'regression'],
+    skip: skipRegression,
   },
 ]
 

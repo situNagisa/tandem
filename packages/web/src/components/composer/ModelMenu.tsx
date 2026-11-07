@@ -153,24 +153,23 @@ function ModelPanel({
                 const pGroups = profileModelGroups(p)
                 const currentAccount = p.id === account?.id
                 if (pGroups.length > 1) {
+                  // 分组直接平铺在同一层：Radix 的三级子菜单在 React 19 下不渲染
+                  // （SubTrigger 已 open 但 SubContent 不挂载），这里用「账号标题 + 分组行」保持二级级联。
                   return (
-                    <Menu.Sub key={p.id}>
-                      <Menu.SubTrigger trailing={currentAccount ? group?.name : undefined}>
-                        {p.name}
-                      </Menu.SubTrigger>
-                      <Menu.SubContent className="w-[200px]" aria-label={`${p.name} 分组`}>
-                        {pGroups.map((g) => (
-                          <Menu.Item
-                            key={g.groupId ?? 'default'}
-                            selected={currentAccount && g.groupId === group?.groupId}
-                            keepOpen
-                            onSelect={() => pickAccount(p, g)}
-                          >
-                            {g.name}
-                          </Menu.Item>
-                        ))}
-                      </Menu.SubContent>
-                    </Menu.Sub>
+                    <div key={p.id}>
+                      <Menu.Label>{p.name}</Menu.Label>
+                      {pGroups.map((g) => (
+                        <Menu.Item
+                          key={g.groupId ?? 'default'}
+                          selected={currentAccount && g.groupId === group?.groupId}
+                          keepOpen
+                          onSelect={() => pickAccount(p, g)}
+                          className="pl-4"
+                        >
+                          {g.name}
+                        </Menu.Item>
+                      ))}
+                    </div>
                   )
                 }
                 return (

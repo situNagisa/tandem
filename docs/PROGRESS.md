@@ -190,3 +190,10 @@
 - [x] 运行：设置「评测」页选用例集 + 多个配置（账号/分组/模型/思考强度/委派策略/提示词覆盖）+ 可选评审模型 + 并发数；每个 用例×配置 在独立临时目录以 bypassPermissions 运行（运行前明确警告），记录完成状态、检查命令、轮数、工具数、token、花费、耗时、最终回答与完整轨迹；支持后台运行/取消/重启中断标记
 - [x] 对比：表格行=用例、列=配置，单元格显示通过/失败、花费、耗时；点开完整轨迹（复用 MessageList 只读），两个配置并排对比；导出 Markdown；运行进度在收件箱（eval 事件）与右上角后台任务面板（含取消）可见；评测内部会话不出现在侧栏、不产生回合完成通知
 - 验证：TANDEM_HOME=/tmp/tandem-evals:8231 + 本地 mock OpenAI SSE（writer 写 done.txt / lazy 不写）；git 用例检查 `test -f done.txt`，两配置结果一过一失败；Playwright 覆盖结果表、轨迹、并排对比、提示词覆盖、UI 启动、导出、存用例、评审模型、非 git 目录快照、后台面板/收件箱进度与取消；截图 /tmp/evals-shots/；`node scripts/check.mjs` 全量通过
+
+## 迭代 23（2026-11-07）回归走查与自动化防线
+- [x] `docs/regression-checklist.md`：整理 qa-v6 / bugs-v6 / review-v4/v5/v7a/b/c 中「已修」P0/P1 共 40 条（现象 + 复现步骤 + 对应用例）
+- [x] `e2e/regression.mjs`：临时 Host（`TANDEM_HOME=/tmp/tandem-reg-<随机>`、随机端口）+ 假 OpenAI 端点 + 种子仓库/账号/40 轮会话/重试/用量/权限/MCP/记忆；桌面 2552×1274、手机 390×844，38 条断言（弹层越界、点了没反应、设置窗口、轮次条定位、粘贴图片、反馈模式穿透、模型级联、环境条透明、Windows 路径链接、未跟踪目录展开等）
+- [x] `scripts/check.mjs` 第 5 步接入 `npm run regression`，支持 `--skip-regression`
+- [x] 回归发现并修复：同步「替换导入」缺少二次确认与危险色（review-v4 #8/#23 复发）；Host 只回环时「连接手机」仍渲染二维码/链接（review-v5 #2 复发）；模型菜单三级子菜单在 React 19 下不挂载（SubTrigger open 但 SubContent 为空）→ 分组平铺为二级级联
+- 验证：`node scripts/check.mjs` 全量通过（含 regression 38/38）
