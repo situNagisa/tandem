@@ -20,7 +20,8 @@ const ICON_SIZE_CLASS: Record<ControlSize, string> = {
 const VARIANT_CLASS: Record<ButtonVariant, string> = {
   primary:
     'border border-transparent bg-[var(--t-primary-bg)] text-[var(--t-primary-fg)] hover:bg-[var(--t-primary-hover)]',
-  accent: 'border border-transparent bg-accent text-on-accent hover:bg-accent-hover',
+  accent:
+    'border border-transparent bg-accent-strong text-on-accent hover:bg-accent-strong-hover',
   secondary:
     'border border-border bg-[var(--t-surface-2)] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
   ghost:
@@ -30,7 +31,7 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
 }
 
 const BASE =
-  'inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap text-left text-[13px] font-medium leading-none transition-[background-color,border-color,color,opacity,transform] duration-[80ms] active:scale-[.98] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/70'
+  'inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap text-left text-[13px] font-medium leading-none transition-[background-color,border-color,color,opacity,transform] duration-[80ms] active:scale-[.98] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--t-accent-strong)]'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant

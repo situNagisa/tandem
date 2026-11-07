@@ -23,6 +23,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { chromium } from 'playwright'
+import { AxeBuilder } from '@axe-core/playwright'
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
 const HOST_ENTRY = path.join(ROOT, 'packages/server/dist/cli.js')
@@ -406,6 +407,30 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
   )
 }
 
+const A11Y_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice']
+const A11Y_SEVERE = new Set(['serious', 'critical'])
+
+/** axe 扫描：严重（serious）与关键（critical）违规必须为 0，否则本步失败。 */
+async function auditA11y(page, label) {
+  // 等侧栏/消息的入场动画结束，避免把动画中的半透明文字算成对比度违规。
+  await page.waitForTimeout(350)
+  const analysis = await new AxeBuilder({ page }).withTags(A11Y_TAGS).analyze()
+  const severe = analysis.violations.filter((v) => A11Y_SEVERE.has(v.impact))
+  const detail = severe
+    .map((v) => `${v.id}(${v.nodes.length} 节点)`)
+    .join('、')
+  console.log(`  a11y ${label}: 严重/关键 ${severe.length} 条规则${detail ? ` — ${detail}` : ''}`)
+  for (const violation of severe) {
+    for (const node of violation.nodes.slice(0, 3)) {
+      console.log(
+        `    - ${violation.id} ${node.target.join(' ')}\n      ${(node.html ?? '').slice(0, 220)}\n      ${(node.failureSummary ?? '').split('\n').slice(1, 2).join(' ')}`,
+      )
+    }
+  }
+  assert.equal(severe.length, 0, `${label} 存在严重/关键无障碍违规：${detail}`)
+  return analysis
+}
+
 function assertNoOverflow(name, info) {
   assert.ok(info.scrollWidth <= info.clientWidth + 1, `${name}: scrollWidth ${info.scrollWidth} > clientWidth ${info.clientWidth}`)
 }
@@ -524,7 +549,7 @@ async function main() {
       await page
         .waitForFunction(
           () => {
-            const buttons = [...document.querySelectorAll('button[aria-label="选择模型"]')]
+            const buttons = [...document.querySelectorAll('button[aria-label^="选择模型"]')]
             return buttons.some((b) => (b.textContent ?? '').trim() && !(b.textContent ?? '').includes('选择模型'))
           },
           null,
@@ -1371,6 +1396,23 @@ async function main() {
       assert.ok(box.height >= 43, `预览关闭按钮高度 ${Math.round(box.height)}px`)
       await close.tap()
       await close.waitFor({ state: 'hidden', timeout: 5_000 })
+    })
+
+    desktop('无障碍扫描：主要页面 serious/critical 违规为 0', async (page) => {
+      await page.evaluate(() => (window.location.hash = '#/'))
+      await page.waitForTimeout(400)
+      await auditA11y(page, '新会话页')
+      await openSession(page, 'long')
+      await auditA11y(page, '会话页（工具卡）')
+      await openSession(page, 'approve')
+      await page.locator('.permission-card').first().waitFor()
+      await auditA11y(page, '审批卡')
+      await page.evaluate(() => (window.location.hash = '#/dev/ui'))
+      await page.getByRole('heading', { name: '组件画廊' }).waitFor()
+      await auditA11y(page, '组件画廊')
+      await openSettings(page, '通用', 'desktop')
+      await auditA11y(page, '设置 · 通用')
+      await closeSettings(page)
     })
 
     // ------------------------------------------------------------------ 执行

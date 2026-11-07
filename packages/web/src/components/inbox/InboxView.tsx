@@ -142,7 +142,7 @@ function PendingCard({ entry }: { entry: Entry }) {
         <span
           className={cn(
             'mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md',
-            isPlan ? 'bg-accent/15 text-accent' : 'bg-[var(--t-bg-active)] text-text-soft',
+            isPlan ? 'bg-accent/15 text-accent-text' : 'bg-[var(--t-bg-active)] text-text-soft',
           )}
         >
           <EventIcon event={event} />
@@ -168,7 +168,7 @@ function PendingCard({ entry }: { entry: Entry }) {
             </button>
             {event.depth ? <span className="shrink-0 text-[12px]">· 子代理</span> : null}
             {permission.transferredFrom ? (
-              <span className="shrink-0 text-[12px] text-accent/90">
+              <span className="shrink-0 text-[12px] text-accent-text">
                 · 由 {permission.transferredFrom.name} 转交
               </span>
             ) : null}
@@ -305,7 +305,7 @@ export function InboxView({ embedded = false }: { embedded?: boolean }) {
               <h3 className="mb-2 flex items-center gap-1.5 px-1 text-[12px] font-medium text-muted">
                 待审批
                 {pending.length > 0 && (
-                  <span className="rounded-full bg-accent px-1.5 py-px text-[12px] font-semibold text-on-accent">
+                  <span className="rounded-full bg-accent-strong px-1.5 py-px text-[12px] font-semibold text-on-accent">
                     {pending.length}
                   </span>
                 )}

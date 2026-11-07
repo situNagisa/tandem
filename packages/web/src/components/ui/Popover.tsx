@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
 import * as RPopover from '@radix-ui/react-popover'
 import { cn } from '../../lib/cn'
 import { useFeedbackStore } from '../../store/useFeedbackStore'
@@ -35,6 +35,7 @@ export function Popover({
   open: openProp,
   onOpenChange,
 }: PopoverProps) {
+  const anchorRef = useRef<HTMLDivElement>(null)
   const [internalOpen, setInternalOpen] = useState(false)
   const open = openProp ?? internalOpen
   const setOpen = useCallback(
@@ -49,7 +50,7 @@ export function Popover({
   return (
     <RPopover.Root open={open} onOpenChange={setOpen}>
       <RPopover.Anchor asChild>
-        <div className={cn('relative', className)}>
+        <div ref={anchorRef} className={cn('relative', className)}>
           {trigger({ open, toggle: () => setOpen(!open), close })}
         </div>
       </RPopover.Anchor>
@@ -66,6 +67,16 @@ export function Popover({
           sticky="always"
           hideWhenDetached
           onOpenAutoFocus={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => {
+            // Anchor 是包裹 div，Radix 默认把焦点还给不可聚焦的 div，会掉到 body。
+            const target = anchorRef.current?.querySelector<HTMLElement>(
+              'button, a[href], [tabindex]:not([tabindex="-1"])',
+            )
+            if (target) {
+              e.preventDefault()
+              target.focus()
+            }
+          }}
           onPointerDownOutside={(e) => {
             if (useFeedbackStore.getState().active) e.preventDefault()
           }}

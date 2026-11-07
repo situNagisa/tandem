@@ -1530,6 +1530,8 @@ export function FeedbackMode() {
       {/* 顶部浮条 */}
       <div
         {...{ [UI_ATTR]: '' }}
+        role="region"
+        aria-label="反馈模式工具栏"
         className="fixed left-1/2 top-3 z-[130] w-max max-w-[calc(100vw-16px)] -translate-x-1/2"
       >
         <div className="flex flex-wrap items-center justify-center gap-2 rounded-full border border-border bg-surface py-1 pl-3 pr-1.5 shadow-md">

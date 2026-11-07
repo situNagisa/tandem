@@ -65,7 +65,7 @@ export function UiGallery() {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-bg">
       <div className="mx-auto w-full max-w-[1180px] px-6 py-6 pb-16">
-        <header className="mb-5 flex flex-wrap items-center gap-3">
+        <div className="mb-5 flex flex-wrap items-center gap-3">
           <div>
             <h1 className="font-serif text-[24px] leading-tight">组件画廊</h1>
             <p className="mt-1 text-[13px] text-muted">
@@ -81,7 +81,7 @@ export function UiGallery() {
           >
             {theme === 'dark' ? '切到浅色' : '切到深色'}
           </Button>
-        </header>
+        </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <Block name="Button" note="sm / md / lg，五种变体" className="md:col-span-2">

@@ -62,6 +62,24 @@ export function ChatView() {
   const [showJump, setShowJump] = useState(false)
   // 消息操作条用：用户消息 id → 检查点 id。回合结束后刷新。
   const [checkpoints, setCheckpoints] = useState<Map<string, string>>(new Map())
+  // 读屏播报：新审批出现、流式回复结束。
+  const [announcement, setAnnouncement] = useState('')
+  const pendingCountRef = useRef(pending.length)
+  const runningRef = useRef(running)
+  useEffect(() => {
+    const before = pendingCountRef.current
+    pendingCountRef.current = pending.length
+    if (pending.length > before) {
+      const latest = pending[pending.length - 1]
+      setAnnouncement(
+        `新的审批请求：${latest?.description || latest?.toolName || '需要确认'}。共 ${pending.length} 项待处理`,
+      )
+    }
+  }, [pending])
+  useEffect(() => {
+    if (runningRef.current && !running) setAnnouncement('回复已完成')
+    runningRef.current = running
+  }, [running])
 
   useEffect(() => {
     if (!hostId || !sessionId || running) return
@@ -221,6 +239,9 @@ export function ChatView() {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {announcement}
+      </div>
       {authError && (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-danger/25 bg-danger-soft/50 px-4 py-1.5 text-[13px] text-danger">
           <ShieldAlert size={13} className="shrink-0" />

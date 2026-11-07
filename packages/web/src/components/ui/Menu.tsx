@@ -73,6 +73,40 @@ export interface MenuProps {
   'aria-label'?: string
 }
 
+/**
+ * Radix 的 RovingFocus 键盘导航在 React 19 的 Portal 里没有生效（箭头键不动、
+ * Enter 不选），这里补一层等价实现。只处理未被 Radix 消费的按键。
+ */
+function handleMenuKeys(event: ReactKeyboardEvent<HTMLElement>) {
+  if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
+  const target = event.target as HTMLElement | null
+  if (!target) return
+  const items = Array.from(
+    event.currentTarget.querySelectorAll<HTMLElement>(
+      '[role="menuitem"]:not([aria-disabled="true"]):not(:disabled), [role="menuitemradio"]:not([aria-disabled="true"]), [role="menuitemcheckbox"]:not([aria-disabled="true"])',
+    ),
+  ).filter((el) => el.getClientRects().length > 0)
+  if (items.length === 0) return
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+    const index = items.indexOf(target)
+    let next = 0
+    if (event.key === 'End') next = items.length - 1
+    else if (event.key === 'Home') next = 0
+    else if (event.key === 'ArrowDown') next = index < 0 ? 0 : (index + 1) % items.length
+    else next = index <= 0 ? items.length - 1 : index - 1
+    event.preventDefault()
+    const targetItem = items[next]
+    // Radix 的 RovingFocus 会在同一个按键里把焦点拉回原项，延后一帧再落焦。
+    window.requestAnimationFrame(() => targetItem?.focus())
+    return
+  }
+  if (event.key === 'Enter' || event.key === ' ') {
+    if (!target.matches('[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]')) return
+    event.preventDefault()
+    target.click()
+  }
+}
+
 function MenuRoot({
   trigger,
   children,
@@ -117,6 +151,7 @@ function MenuRoot({
               ? undefined
               : 'min(420px, var(--radix-dropdown-menu-content-available-height))',
           }}
+          onKeyDown={handleMenuKeys}
           className={cn(PANEL_BASE, className)}
         >
           {children}
@@ -381,6 +416,7 @@ function MenuSubContent({ children, className, 'aria-label': ariaLabel }: MenuSu
         alignOffset={-4}
         collisionPadding={8}
         avoidCollisions
+        onKeyDown={handleMenuKeys}
         className={cn(SUB_PANEL_BASE, className)}
       >
         {children}
@@ -673,6 +709,13 @@ export function MenuSelect<T extends string>({
   'aria-label': ariaLabel,
 }: MenuSelectProps<T>) {
   const current = options.find((option) => option.value === value)
+  const currentLabel = current?.label ?? placeholder ?? value
+  // 可见文字必须包含在无障碍名称里（axe label-content-name-mismatch）：
+  // 有字段名时拼成「字段名：当前值」，没有字段名则直接读可见值。
+  const triggerLabel =
+    ariaLabel && (typeof currentLabel === 'string' || typeof currentLabel === 'number')
+      ? `${ariaLabel}：${currentLabel}`
+      : ariaLabel
   return (
     <Menu
       aria-label={ariaLabel}
@@ -682,7 +725,7 @@ export function MenuSelect<T extends string>({
         <button
           type="button"
           disabled={disabled}
-          aria-label={ariaLabel}
+          aria-label={triggerLabel}
           aria-expanded={open}
           className={cn(
             'flex w-full min-w-0 items-center gap-1 border border-border bg-surface text-left text-text outline-none transition-[border-color,background-color] duration-[120ms] focus-visible:border-border-strong disabled:cursor-not-allowed disabled:opacity-40',
@@ -693,7 +736,7 @@ export function MenuSelect<T extends string>({
           )}
         >
           <span className={cn('min-w-0 flex-1 truncate', !current && 'text-muted')}>
-            {current?.label ?? placeholder ?? value}
+            {currentLabel}
           </span>
           <ChevronDown size={14} aria-hidden className="shrink-0 text-muted" />
         </button>

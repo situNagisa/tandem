@@ -109,7 +109,7 @@ export function Sidebar({
   )
 
   return (
-    <aside className="flex h-full w-full shrink-0 flex-col overflow-x-hidden border-r border-border bg-sidebar dark:[--t-text-secondary:#cfcfcf] dark:[--t-text-tertiary:#9a9a9a]">
+    <div className="flex h-full w-full shrink-0 flex-col overflow-x-hidden border-r border-border bg-sidebar dark:[--t-text-secondary:#cfcfcf] dark:[--t-text-tertiary:#9a9a9a]">
       <div
         className={cn('flex items-center gap-2 px-3.5 pb-2 pt-3.5', isDesktop && 'desktop-drag')}
         style={isMacDesktop ? { paddingLeft: 72 } : undefined}
@@ -131,7 +131,7 @@ export function Sidebar({
         >
           <Inbox size={16} />
           {inboxCount > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[11px] font-semibold leading-none text-on-accent">
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-strong px-1 text-[11px] font-semibold leading-none text-on-accent">
               {inboxCount > 99 ? '99+' : inboxCount}
             </span>
           )}
@@ -224,6 +224,6 @@ export function Sidebar({
           <span className="min-w-0 flex-1 truncate">设置</span>
         </Button>
       </div>
-    </aside>
+    </div>
   )
 }

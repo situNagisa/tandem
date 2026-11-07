@@ -53,7 +53,7 @@ function checkIcon(check: PrCheck) {
   if (check.status === 'success' || check.status === 'neutral') {
     return <CheckCircle2 size={14} className="text-[var(--t-git-plus)]" />
   }
-  return <Clock3 size={14} className="text-accent" />
+  return <Clock3 size={14} className="text-accent-text" />
 }
 
 function durationText(ms?: number): string | undefined {
@@ -122,7 +122,7 @@ function CliGuide({ vcs }: { vcs: VcsCapability }) {
         href={vcs.docUrl ?? (glab ? 'https://gitlab.com/gitlab-org/cli' : 'https://cli.github.com/manual/')}
         target="_blank"
         rel="noreferrer noopener"
-        className="mt-2 inline-flex items-center gap-1 text-[12px] text-accent hover:underline"
+        className="mt-2 inline-flex items-center gap-1 text-[12px] text-accent-text hover:underline"
       >
         {glab ? 'GitLab CLI 文档' : 'GitHub CLI 文档'}
         <ExternalLink size={11} />

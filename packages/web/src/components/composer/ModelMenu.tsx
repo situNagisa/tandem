@@ -256,7 +256,7 @@ export function ModelMenu({
                 : '选择账号与模型'
           }
           tooltipSide="top"
-          aria-label="选择模型"
+          aria-label={`选择模型：${label}`}
           className={cn(
             'min-w-0 max-w-[220px] justify-start gap-1 px-2 font-normal max-sm:min-h-11 max-sm:max-w-[36vw]',
             isOpen && 'bg-[var(--t-bg-hover)] text-text-soft',

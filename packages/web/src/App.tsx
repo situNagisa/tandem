@@ -245,7 +245,8 @@ export default function App() {
   return (
     <div className="app-root flex overflow-hidden bg-bg pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)] text-text">
       {!isMobile && (
-        <div
+        <aside
+          aria-label="侧栏"
           className="relative h-full shrink-0 overflow-hidden"
           style={{
             width: sidebarCollapsed ? 0 : effectiveWidth,
@@ -279,12 +280,12 @@ export default function App() {
               />
             </div>
           )}
-        </div>
+        </aside>
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
-        <div className="flex min-h-0 flex-1">
+        <main className="flex min-h-0 flex-1">
           {route.kind === 'dev-ui' ? (
             <UiGallery />
           ) : route.kind === 'external' ? (
@@ -312,7 +313,7 @@ export default function App() {
               <RightPanel onClose={() => setPanelOpen(false)} />
             </div>
           )}
-        </div>
+        </main>
       </div>
 
       {isMobile && mobileSidebar && (
@@ -322,7 +323,8 @@ export default function App() {
             style={{ opacity: Math.max(0.15, 1 + drawerOffset / 320) }}
             onClick={() => setMobileSidebar(false)}
           />
-          <div
+          <aside
+            aria-label="侧栏"
             className="anim-drawer-left absolute inset-y-0 left-0 w-[87%] max-w-[330px] bg-sidebar pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-lg"
             style={{
               transform: drawerOffset ? `translateX(${drawerOffset}px)` : undefined,
@@ -344,7 +346,7 @@ export default function App() {
             }}
           >
             <Sidebar inDrawer onNavigate={() => setMobileSidebar(false)} />
-          </div>
+          </aside>
         </div>
       )}
 

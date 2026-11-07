@@ -757,7 +757,9 @@ export function Composer({
       void handleSend()
       return
     }
-    if (e.key === 'Tab' && e.shiftKey) {
+    // 不劫持 Shift+Tab：反向 Tab 必须能离开输入框（键盘可达性）。
+    // 权限模式切换改用 Alt+Shift+Tab，仍保留单手键盘操作。
+    if (e.key === 'Tab' && e.shiftKey && e.altKey) {
       if (composing) return
       e.preventDefault()
       cycleMode()

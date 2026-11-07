@@ -355,8 +355,9 @@ export function SessionList({
     ]
     if (!next || next === rows[index]) return
     e.preventDefault()
-    next.focus()
-    next.click()
+    const control = next.querySelector<HTMLElement>('[data-session-open]') ?? next
+    control.focus()
+    control.click()
   }
 
   const externalItems = useMemo(() => {
@@ -501,23 +502,10 @@ export function SessionList({
     return (
       <div
         key={`${hostId}:${s.id}`}
-        role="button"
-        tabIndex={0}
         data-session-row="true"
         data-session-id={s.id}
         data-host-id={hostId}
-        onClick={() => {
-          if (!renamingThis) openSession(hostId, s.id)
-        }}
-        onKeyDown={(e) => {
-          if (renamingThis) return
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            openSession(hostId, s.id)
-          }
-        }}
         onContextMenu={(e) => openMenu(e, hostId, s)}
-        aria-current={isActive ? 'page' : undefined}
         title={
           s.forkedFrom
             ? `分叉自 ${s.forkedFrom.title || '父会话'}${s.title ? ` · ${s.title}` : ''}`
@@ -526,90 +514,107 @@ export function SessionList({
               : s.title || '未命名会话'
         }
         className={cn(
-          'anim-row-in group relative flex h-11 cursor-default items-center gap-2 rounded-lg pl-2 pr-1 text-[14px] outline-none transition-colors duration-[120ms] md:h-[34px]',
+          'anim-row-in group relative flex h-11 items-center rounded-lg text-[14px] transition-colors duration-[120ms] md:h-[34px]',
           depth > 0 && 'ml-5',
           isActive
             ? 'bg-[var(--t-bg-active)] text-text'
             : 'text-text hover:bg-[var(--t-bg-hover)]',
         )}
       >
-        <span className="pointer-events-none flex size-4 shrink-0 items-center justify-center">
-          {s.status !== 'idle' ? (
-            <SessionStatusDot status={s.status} />
-          ) : (
-            <span className="size-1.5 rounded-full border border-current opacity-35" />
-          )}
-        </span>
         {renamingThis ? (
-          <input
-            ref={renameRef}
-            value={renameDraft}
-            onChange={(e) => setRenameDraft(e.target.value)}
-            onClick={(e) => e.stopPropagation()}
-            onBlur={() => {
-              if (renameCancelRef.current) {
-                renameCancelRef.current = false
-                return
-              }
-              void commitRename(hostId, s)
-            }}
-            onKeyDown={(e) => {
-              e.stopPropagation()
-              if (e.key === 'Enter') {
-                e.preventDefault()
+          <>
+            <span className="pointer-events-none ml-2 flex size-4 shrink-0 items-center justify-center">
+              {s.status !== 'idle' ? (
+                <SessionStatusDot status={s.status} />
+              ) : (
+                <span className="size-1.5 rounded-full border border-current opacity-35" />
+              )}
+            </span>
+            <input
+              ref={renameRef}
+              value={renameDraft}
+              onChange={(e) => setRenameDraft(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onBlur={() => {
+                if (renameCancelRef.current) {
+                  renameCancelRef.current = false
+                  return
+                }
                 void commitRename(hostId, s)
-              } else if (e.key === 'Escape') {
-                e.preventDefault()
-                renameCancelRef.current = true
-                setRenaming(null)
-              }
-            }}
-            className="h-7 min-w-0 flex-1 rounded-md border border-border-strong bg-surface px-1.5 text-[13px] outline-none"
-            aria-label="重命名会话"
-          />
+              }}
+              onKeyDown={(e) => {
+                e.stopPropagation()
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void commitRename(hostId, s)
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  renameCancelRef.current = true
+                  setRenaming(null)
+                }
+              }}
+              className="mr-1 h-7 min-w-0 flex-1 rounded-md border border-border-strong bg-surface px-1.5 text-[13px] outline-none"
+              aria-label="重命名会话"
+            />
+          </>
         ) : (
-          <span className="min-w-0 flex-1 truncate text-[14px] leading-5">
-            {s.scheduledBy && (
-              <span title={`定时任务：${s.scheduledBy.name}`} className="mr-1 inline-block align-[-1px] text-muted">
-                <Clock size={12} />
+          <button
+            type="button"
+            data-session-open="true"
+            onClick={() => openSession(hostId, s.id)}
+            aria-current={isActive ? 'page' : undefined}
+            className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pl-2 pr-1 text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--t-accent-strong)]"
+          >
+            <span className="pointer-events-none flex size-4 shrink-0 items-center justify-center">
+              {s.status !== 'idle' ? (
+                <SessionStatusDot status={s.status} />
+              ) : (
+                <span className="size-1.5 rounded-full border border-current opacity-35" />
+              )}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[14px] leading-5">
+              {s.scheduledBy && (
+                <span title={`定时任务：${s.scheduledBy.name}`} className="mr-1 inline-block align-[-1px] text-muted">
+                  <Clock size={12} />
+                </span>
+              )}
+              {s.title || '未命名会话'}
+            </span>
+            <span className="relative flex h-full w-11 shrink-0 items-center justify-end md:w-[62px]">
+              <span
+                className={cn(
+                  'hidden max-w-full truncate text-[12px] tabular-nums transition-opacity md:inline',
+                  elapsed && 'text-[12px]',
+                  s.status === 'waiting_permission' ? 'text-accent-text' : 'text-text-tertiary',
+                  isActive ? 'opacity-0' : 'group-hover:opacity-0',
+                )}
+                title={elapsed ? `${runningLabel} · ${elapsed}` : undefined}
+              >
+                {elapsed ? `${runningLabel} · ${elapsed}` : formatRelative(s.updatedAt)}
               </span>
-            )}
-            {s.title || '未命名会话'}
-          </span>
+            </span>
+          </button>
         )}
         {!renamingThis && (
-          <span className="relative flex h-full w-11 shrink-0 items-center justify-end md:w-[62px]">
-            <span
-              className={cn(
-                'hidden max-w-full truncate text-[12px] tabular-nums transition-opacity md:inline',
-                elapsed && 'text-[12px]',
-                s.status === 'waiting_permission' ? 'text-accent' : 'text-text-tertiary',
-                isActive ? 'opacity-0' : 'group-hover:opacity-0',
-              )}
-              title={elapsed ? `${runningLabel} · ${elapsed}` : undefined}
-            >
-              {elapsed ? `${runningLabel} · ${elapsed}` : formatRelative(s.updatedAt)}
-            </span>
-            <IconButton
-              size="sm"
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                const rect = e.currentTarget.getBoundingClientRect()
-                setMenu({ hostId, session: s, x: rect.right - 4, y: rect.bottom + 4 })
-              }}
-              label="会话操作"
-              tooltip=""
-              className={cn(
-                'absolute right-0 top-1/2 size-7! -translate-y-1/2 focus-visible:opacity-100 max-sm:size-11! [&_svg]:size-[15px]',
-                isActive
-                  ? 'opacity-100'
-                  : 'opacity-100 md:opacity-0 md:group-hover:opacity-100',
-              )}
-            >
-              <MoreHorizontal size={15} />
-            </IconButton>
-          </span>
+          <IconButton
+            size="sm"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              const rect = e.currentTarget.getBoundingClientRect()
+              setMenu({ hostId, session: s, x: rect.right - 4, y: rect.bottom + 4 })
+            }}
+            label="会话操作"
+            tooltip=""
+            className={cn(
+              'absolute right-1 top-1/2 size-7! -translate-y-1/2 focus-visible:opacity-100 max-sm:size-11! [&_svg]:size-[15px]',
+              isActive
+                ? 'opacity-100'
+                : 'opacity-100 md:opacity-0 md:group-hover:opacity-100',
+            )}
+          >
+            <MoreHorizontal size={15} />
+          </IconButton>
         )}
       </div>
     )

@@ -141,7 +141,7 @@ export function keyStatus(key: ProfileKey, now: number): { text: string; tone: s
   if (key.cooldownUntil && key.cooldownUntil > now) {
     return {
       text: `冷却中 ${formatElapsed(key.cooldownUntil - now)}`,
-      tone: 'text-accent',
+      tone: 'text-accent-text',
     }
   }
   return { text: '可用', tone: 'text-muted' }

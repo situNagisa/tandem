@@ -198,13 +198,13 @@ export function PromptsSection() {
                     )}
                   >
                     {item.editable ? (
-                      <Sparkles size={11} className="shrink-0 text-accent" />
+                      <Sparkles size={11} className="shrink-0 text-accent-text" />
                     ) : (
                       <Lock size={11} className="shrink-0 text-muted" />
                     )}
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     {item.modified && (
-                      <span className="shrink-0 rounded bg-accent/15 px-1 py-px text-[12px] text-accent">
+                      <span className="shrink-0 rounded bg-accent/15 px-1 py-px text-[12px] text-accent-text">
                         {item.source === 'project' ? '项目' : '已改'}
                       </span>
                     )}
@@ -231,7 +231,7 @@ export function PromptsSection() {
                   {CATEGORY_LABEL[selected.category]}
                 </span>
                 {selected.editable ? (
-                  <span className="rounded bg-accent/10 px-1.5 py-px text-[12px] text-accent">可编辑</span>
+                  <span className="rounded bg-accent/10 px-1.5 py-px text-[12px] text-accent-text">可编辑</span>
                 ) : (
                   <span className="flex items-center gap-1 rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[12px] text-muted">
                     <Lock size={9} /> 只读
@@ -243,7 +243,7 @@ export function PromptsSection() {
                   </span>
                 )}
                 {selected.modified && selected.source === 'user' && (
-                  <span className="rounded bg-accent/15 px-1.5 py-px text-[12px] text-accent">已修改</span>
+                  <span className="rounded bg-accent/15 px-1.5 py-px text-[12px] text-accent-text">已修改</span>
                 )}
                 {dirty && (
                   <span className="rounded bg-warning/15 px-1.5 py-px text-[12px] text-warning">未保存</span>
@@ -281,6 +281,7 @@ export function PromptsSection() {
               )}
 
               <textarea
+                aria-label={`${selected.label}提示词`}
                 value={draft}
                 readOnly={!selected.editable}
                 onChange={(e) =>

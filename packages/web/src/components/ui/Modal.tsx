@@ -103,9 +103,10 @@ export function Modal({
       const active = document.activeElement as HTMLElement | null
       const first = list[0]
       const last = list[list.length - 1]
-      if (!active || !panel.contains(active)) {
+      // 焦点在面板本身（打开瞬间）或面板内不可 Tab 的元素上时，也要拉回循环。
+      if (!active || !panel.contains(active) || !list.includes(active)) {
         e.preventDefault()
-        first.focus()
+        ;(e.shiftKey ? last : first).focus()
         return
       }
       if (!e.shiftKey && active === last) {
@@ -126,14 +127,17 @@ export function Modal({
 
   useEffect(() => {
     if (!open) return
-    const t = window.setTimeout(() => {
+    const focusPanel = () => {
       const panel = panelRef.current
       if (!panel || panel.contains(document.activeElement)) return
       const el = panel.querySelector<HTMLElement>(
         'input:not([type="hidden"]), textarea, select, button[data-autofocus]',
       )
       ;(el ?? panel).focus()
-    }, 30)
+    }
+    // 先同步聚焦一次，避免调用方在打开后立刻读取焦点时还在等待定时器。
+    focusPanel()
+    const t = window.setTimeout(focusPanel, 30)
     return () => window.clearTimeout(t)
   }, [open])
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react'
 import { cn } from '../../lib/cn'
 
 const SHOW_DELAY = 500
@@ -155,11 +155,28 @@ if (typeof document !== 'undefined') {
   document.addEventListener('focusout', hideTip, true)
 }
 
-function useTipAnchor(getHost: () => HTMLElement | null, label: string): void {
+const FOCUSABLE =
+  'button, a[href], input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])'
+
+/** tooltip 文案同时作为无障碍描述：焦点落在宿主（或其内部第一个可聚焦控件）时由读屏播报。 */
+function useTipAnchor(
+  getHost: () => HTMLElement | null,
+  label: string,
+  describedBy?: string,
+): void {
   useEffect(() => {
     const host = getHost()
     if (!host) return
     tipHosts.add(host)
+
+    const descHost = host.matches(FOCUSABLE) ? host : host.querySelector<HTMLElement>(FOCUSABLE)
+    const previousDesc = descHost?.getAttribute('aria-describedby') ?? null
+    if (descHost && describedBy && !previousDesc?.split(/\s+/).includes(describedBy)) {
+      descHost.setAttribute(
+        'aria-describedby',
+        previousDesc ? `${previousDesc} ${describedBy}` : describedBy,
+      )
+    }
 
     const onEnter = (e: PointerEvent) => {
       if (e.pointerType === 'touch') return
@@ -187,8 +204,16 @@ function useTipAnchor(getHost: () => HTMLElement | null, label: string): void {
       host.removeEventListener('focusin', onFocusIn)
       host.removeEventListener('focusout', onFocusOut)
       if (currentHost === host) hideTip()
+      if (descHost && describedBy) {
+        const ids = (descHost.getAttribute('aria-describedby') ?? '')
+          .split(/\s+/)
+          .filter((id) => id && id !== describedBy)
+        if (ids.length > 0) descHost.setAttribute('aria-describedby', ids.join(' '))
+        else if (previousDesc) descHost.setAttribute('aria-describedby', previousDesc)
+        else descHost.removeAttribute('aria-describedby')
+      }
     }
-  }, [getHost, label])
+  }, [getHost, label, describedBy])
 }
 
 /**
@@ -198,8 +223,14 @@ function useTipAnchor(getHost: () => HTMLElement | null, label: string): void {
 export function Tip({ label }: { label: string; side?: 'top' | 'bottom' }) {
   const markerRef = useRef<HTMLSpanElement>(null)
   const host = useCallback(() => markerRef.current?.parentElement ?? null, [])
-  useTipAnchor(host, label)
-  return <span ref={markerRef} hidden aria-hidden />
+  const id = useId()
+  useTipAnchor(host, label, id)
+  // hidden 元素仍可被 aria-describedby 引用，且不参与可见文本 / 名称计算。
+  return (
+    <span ref={markerRef} id={id} hidden aria-hidden>
+      {label}
+    </span>
+  )
 }
 
 /** 用包裹元素作为锚点的 tooltip；children 可以是整行条目。 */
@@ -216,10 +247,14 @@ export function Tooltip({
 }) {
   const wrapRef = useRef<HTMLSpanElement>(null)
   const host = useCallback(() => wrapRef.current, [])
-  useTipAnchor(host, label)
+  const id = useId()
+  useTipAnchor(host, label, id)
   return (
     <span ref={wrapRef} className={cn('min-w-0 max-w-full', className)}>
       {children}
+      <span id={id} hidden aria-hidden>
+        {label}
+      </span>
     </span>
   )
 }

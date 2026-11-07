@@ -200,7 +200,7 @@ function BudgetCard({
         <span
           className={cn(
             'w-11 shrink-0 text-right font-mono text-[12px] tabular-nums',
-            level === 'danger' ? 'text-danger' : level === 'warn' ? 'text-accent' : 'text-muted',
+            level === 'danger' ? 'text-danger' : level === 'warn' ? 'text-accent-text' : 'text-muted',
           )}
         >
           {status ? `${Math.round(percent)}%` : '—'}

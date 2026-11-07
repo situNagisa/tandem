@@ -576,7 +576,27 @@ export const DiffView = memo(function DiffView({
             return (
               <Fragment key={`${info.side}-${info.line}-${i}`}>
                 <div
-                  className={cn('chat-diff-row', selectable && 'cursor-pointer')}
+                  className={cn(
+                    'chat-diff-row',
+                    selectable &&
+                      'cursor-pointer outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--t-accent-strong)]',
+                  )}
+                  role={selectable ? 'group' : undefined}
+                  tabIndex={selectable ? 0 : undefined}
+                  aria-label={
+                    selectable
+                      ? `${info.side === 'old' ? '旧' : '新'}文件第 ${info.line} 行：${row.text || '空行'}。按 Enter 添加评论`
+                      : undefined
+                  }
+                  onKeyDown={
+                    selectable
+                      ? (e) => {
+                          if (e.key !== 'Enter' && e.key !== ' ') return
+                          e.preventDefault()
+                          selectRow(i, e.shiftKey)
+                        }
+                      : undefined
+                  }
                   data-kind={row.type}
                   data-commented={rowComments.length > 0 || undefined}
                   data-selected={selectedRow || undefined}

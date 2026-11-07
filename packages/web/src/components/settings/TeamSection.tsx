@@ -421,7 +421,7 @@ export function TeamSection() {
             />
             <div className="min-w-0 flex-1 space-y-1.5">
               <div className="flex items-center gap-1.5 text-[12px] text-muted">
-                <ShieldCheck size={12} className="text-accent" />
+                <ShieldCheck size={12} className="text-accent-text" />
                 仅展示一次，请通过可信渠道发给同事
               </div>
               <div className="break-all rounded-md bg-[var(--t-bg-hover)] px-2 py-1.5 font-mono text-[12px] leading-5 text-text-soft">

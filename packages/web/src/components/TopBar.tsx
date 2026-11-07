@@ -351,7 +351,11 @@ export function TopBar() {
           variant="ghost"
           size="sm"
           onClick={() => setChangesOpen(!changesOpen)}
-          aria-label="改动审阅"
+          aria-label={
+            fileCount > 0
+              ? `改动+${additions}−${deletions}，打开改动审阅`
+              : '改动，打开改动审阅'
+          }
           tooltip="改动审阅"
           aria-pressed={changesOpen}
           className={cn(

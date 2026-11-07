@@ -213,7 +213,7 @@ export const UserMessage = memo(function UserMessage({
                     onClick={togglePin}
                     label={pinned ? '取消固定此轮' : '固定此轮'}
                     tooltip={pinned ? '取消固定此轮' : '固定此轮（轮次大纲中特殊显示）'}
-                    className={cn('[&_svg]:size-[12.5px]', pinned && 'text-accent')}
+                    className={cn('[&_svg]:size-[12.5px]', pinned && 'text-accent-text')}
                   >
                     <Pin size={12.5} fill={pinned ? 'currentColor' : 'none'} />
                   </IconButton>

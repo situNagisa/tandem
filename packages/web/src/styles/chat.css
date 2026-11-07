@@ -1253,7 +1253,8 @@ mark.chat-match {
   position: absolute;
   top: 0;
   right: 48px;
-  color: var(--t-text-soft);
+  /* 轮次刻度会随距离降低透明度，文字仍用主文字色，避免叠加后对比度不足。 */
+  color: var(--t-text);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   line-height: 28px;

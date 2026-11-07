@@ -326,9 +326,12 @@ export class RailScene {
       const act = Math.max(0, 1 - Math.abs(t - cx))
       const hov = hv * Math.max(0, 1 - Math.abs(t - hi))
       const lit = Math.max(act, hov)
-      it.t.style.opacity = f3(textIn * (0.66 + 0.34 * lit))
-      it.n.style.opacity = f3(textIn * (0.5 + 0.5 * lit))
-      it.r.style.opacity = f3(act * (1 - smooth(0, 0.35, pc)))
+      // 文字透明度叠加容器淡出后仍需保持可读对比度（axe color-contrast）。
+      const readable = (value: number, floor: number) =>
+        value <= 0.01 ? 0 : Math.max(value, floor)
+      it.t.style.opacity = f3(readable(textIn * (0.66 + 0.34 * lit), 0.72))
+      it.n.style.opacity = f3(readable(textIn * (0.5 + 0.5 * lit), 0.72))
+      it.r.style.opacity = f3(readable(act * (1 - smooth(0, 0.35, pc)), 0.9))
       // 图钉：悬停行或已固定时显示；静止态用右侧小圆点标出被固定的轮。
       const pinned = !!this.turns[t - 1]?.pinned
       it.p.style.opacity = f3(textIn * (pinned ? 0.62 + 0.38 * lit : hov > 0.5 ? 1 : 0))

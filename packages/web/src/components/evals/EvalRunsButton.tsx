@@ -39,7 +39,7 @@ export function EvalRunsButton() {
     >
       <FlaskConical size={16} />
       {running > 0 && (
-        <span className="absolute -right-0.5 -top-0.5 flex size-[14px] items-center justify-center rounded-full bg-accent text-[9px] font-medium tabular-nums text-on-accent">
+        <span className="absolute -right-0.5 -top-0.5 flex size-[14px] items-center justify-center rounded-full bg-accent-strong text-[9px] font-medium tabular-nums text-on-accent">
           {running > 9 ? '9+' : running}
         </span>
       )}

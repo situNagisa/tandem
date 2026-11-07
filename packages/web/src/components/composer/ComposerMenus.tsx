@@ -93,7 +93,7 @@ export function PermissionModeMenu({
           disabled={disabled}
           aria-expanded={open}
           aria-haspopup="menu"
-          tooltip={open ? undefined : `权限模式：${meta.label}（Shift+Tab 切换）`}
+          tooltip={open ? undefined : `权限模式：${meta.label}（Alt+Shift+Tab 切换）`}
           tooltipSide="top"
           aria-label={`权限模式：${meta.label}`}
           className={cn(

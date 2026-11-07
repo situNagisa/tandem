@@ -121,7 +121,7 @@ function InjectionSegments({
                       openFileRef({ path: seg.sourcePath }, cwd)
                     }
                   }}
-                  className="min-w-0 shrink truncate rounded px-1 text-[12px] text-accent underline-offset-2 hover:underline"
+                  className="min-w-0 shrink truncate rounded px-1 text-[12px] text-accent-text underline-offset-2 hover:underline"
                 >
                   {seg.sourcePath.split('/').slice(-1)[0]}
                 </span>

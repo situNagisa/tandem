@@ -182,6 +182,7 @@ export function PermissionCard({
   const [transferring, setTransferring] = useState(false)
   const [ruleDraft, setRuleDraft] = useState<PermissionRule | null>(null)
   const [denyOpen, setDenyOpen] = useState(false)
+  const cardRef = useRef<HTMLDivElement>(null)
   const [denyReason, setDenyReason] = useState('')
   const denyRef = useRef<HTMLTextAreaElement>(null)
   const input = useMemo(() => asRecord(request.input), [request.input])
@@ -254,6 +255,26 @@ export function PermissionCard({
     return () => document.removeEventListener('keydown', onKey)
   }, [request.id, decide])
 
+  // 新审批出现时，若焦点在空的输入框里，把焦点交给「允许」：
+  // 键盘用户可以直接按 1/2/3，不必先 Tab 一圈；正在输入排队消息时不抢焦点。
+  useEffect(() => {
+    const focusable = () => {
+      const now = document.activeElement as HTMLElement | null
+      const composer = now?.closest('.composer-card')
+      const idleComposer =
+        !!composer && !(composer.querySelector('textarea') as HTMLTextAreaElement | null)?.value.trim()
+      const neutral = !now || now === document.body
+      return idleComposer || neutral
+    }
+    if (!focusable()) return
+    // 新会话建立后 Composer 会在 60ms 后自动聚焦，稍等一拍再接管。
+    const timer = window.setTimeout(() => {
+      if (!focusable()) return
+      cardRef.current?.querySelector<HTMLElement>('[data-permission-allow]')?.focus()
+    }, 120)
+    return () => window.clearTimeout(timer)
+  }, [request.id])
+
   const canTransfer = teamRole === 'owner' || teamRole === 'approver' || teamRole === 'collaborator'
   const loadApprovers = () => {
     if (!host || !canTransfer) return
@@ -316,7 +337,7 @@ export function PermissionCard({
   }
 
   return (
-    <div className="permission-card mb-2.5">
+    <div ref={cardRef} className="permission-card mb-2.5">
       <div className="flex items-start gap-2 px-3.5 pb-2 pt-2.5">
         <ShieldAlert size={15} className="mt-0.5 shrink-0 text-[var(--t-text-tertiary)]" />
         <div className="min-w-0 flex-1">
@@ -331,14 +352,14 @@ export function PermissionCard({
           </div>
           {subagentTitle && (
             <div className="mt-1 flex items-center gap-1 text-[12px] text-muted">
-              <Bot size={11} className="shrink-0 text-accent/80" />
+              <Bot size={11} className="shrink-0 text-accent-text" />
               <span className="min-w-0 truncate">
                 来自{sourceDepth === 1 ? '子代理' : sourceDepth === 2 ? '孙代理' : `第${sourceDepth}层代理`}：{subagentTitle}
               </span>
             </div>
           )}
           {request.transferredFrom && (
-            <div className="mt-1 text-[12px] text-accent/90">
+            <div className="mt-1 text-[12px] text-accent-text">
               由 {request.transferredFrom.name} 转交
               {request.assignedTo ? ` · 待 ${request.assignedTo.name} 处理` : ''}
             </div>
@@ -424,6 +445,7 @@ export function PermissionCard({
           <Button
             variant="primary"
             onClick={() => handle('allow')}
+            data-permission-allow=""
             className="max-sm:order-1 max-sm:min-h-11 max-sm:w-full"
           >
             允许

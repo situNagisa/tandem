@@ -462,7 +462,7 @@ export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(funct
             {!recording && phase === 'preparing' ? (
               <button
                 type="button"
-                className="mt-1 text-[12px] text-accent hover:underline"
+                className="mt-1 text-[12px] text-accent-text hover:underline"
                 onClick={() => {
                   cancel()
                   openSettings('voice')
