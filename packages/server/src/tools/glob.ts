@@ -1,8 +1,9 @@
 // Glob：按 glob 模式查找文件（跳过 node_modules/.git）。
 import { statSync } from 'node:fs';
+import { setImmediate as yieldNow } from 'node:timers/promises';
 import path from 'node:path';
 import type { ToolContext, ToolDefinition, ToolResult } from '../types.js';
-import { walkFiles } from '../util/fs-walk.js';
+import { walkFilesAsync } from '../util/fs-walk.js';
 import { matchGlob } from '../util/glob.js';
 import { isSubPath, resolvePath, toPosix } from '../util/path.js';
 import { truncateEnd } from '../util/text.js';
@@ -43,11 +44,12 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
     return { content: `搜索路径不存在: ${base}`, isError: true };
   }
 
-  const files = walkFiles(base, { maxEntries: 50_000, signal: ctx.signal });
+  const files = await walkFilesAsync(base, { maxEntries: 50_000, signal: ctx.signal });
   const matched: Array<{ abs: string; mtime: number }> = [];
-  for (const abs of files) {
-    const rel = toPosix(path.relative(base, abs));
-    if (!matchGlob(rel, pattern)) continue;
+  // 只对匹配的文件取 mtime；每 4000 个让出一次事件循环，兼顾吞吐与流式输出。
+  const queue = files.filter((abs) => matchGlob(toPosix(path.relative(base, abs)), pattern));
+  for (let i = 0; i < queue.length; i++) {
+    const abs = queue[i]!;
     let mtime = 0;
     try {
       mtime = statSync(abs).mtimeMs;
@@ -55,6 +57,7 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
       // ignore
     }
     matched.push({ abs, mtime });
+    if (i > 0 && i % 4000 === 0) await yieldNow();
   }
 
   if (matched.length === 0) return { content: `未找到匹配 "${pattern}" 的文件` };

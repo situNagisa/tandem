@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { FsEntry } from '@tandem/protocol';
-import { walkFiles } from '../util/fs-walk.js';
+import { walkFilesAsync } from '../util/fs-walk.js';
 import { readForPreview, readImage, revealFile } from '../util/file-preview.js';
 import { expandHome, resolveHostPath, toPosix } from '../util/path.js';
 import { bad, str, type RouteDeps } from './common.js';
@@ -93,7 +93,8 @@ export function registerFsRoutes(app: FastifyInstance, deps: RouteDeps): void {
       return bad(reply, `目录不存在: ${cwd}`);
     }
 
-    const files = walkFiles(cwd, { maxEntries: 20_000 });
+    // 缓存 2s：连续输入时不再每敲一个字符都重新遍历整棵仓库
+    const files = await walkFilesAsync(cwd, { maxEntries: 20_000, cacheMs: 2_000 });
     const scored: Array<{ rel: string; score: number }> = [];
     for (const file of files) {
       const rel = toPosix(path.relative(cwd, file));

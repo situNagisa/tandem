@@ -247,11 +247,25 @@ async function emptyReason(
   return 'none';
 }
 
+const MAX_DIFF_CHARS = 1_000_000;
+const MAX_DIFF_LINES = 20_000;
+
+/** 大 diff 截断：只保留前 1MB / 2 万行，避免 16MB 响应拖垮 Host 与前端渲染。 */
+function capDiff(diff: string): { diff: string; truncated?: true } {
+  if (diff.length <= MAX_DIFF_CHARS) return { diff };
+  let text = diff.slice(0, MAX_DIFF_CHARS);
+  const newline = text.lastIndexOf('\n');
+  if (newline > 0) text = text.slice(0, newline + 1);
+  const lines = text.split('\n');
+  if (lines.length > MAX_DIFF_LINES) text = `${lines.slice(0, MAX_DIFF_LINES).join('\n')}\n`;
+  return { diff: text, truncated: true };
+}
+
 /** 单文件统一 diff。未跟踪文件（含未跟踪目录里的文件）用 --no-index 与 /dev/null 比较。 */
 export async function getFileDiff(
   cwd: string,
   input: string,
-): Promise<{ path: string; diff: string; emptyReason?: DiffEmptyReason }> {
+): Promise<{ path: string; diff: string; emptyReason?: DiffEmptyReason; truncated?: true }> {
   const root = await repoRootOf(cwd);
   if (!root) throw new Error('当前目录不是 git 仓库');
   const rel = repoRelativePath(root, input);
@@ -268,7 +282,7 @@ export async function getFileDiff(
       throw new Error(result.stderr.trim() || '无法生成 diff');
     }
     return result.stdout
-      ? { path: rel, diff: result.stdout }
+      ? { path: rel, ...capDiff(result.stdout) }
       : { path: rel, diff: '', emptyReason: 'none' };
   }
 
@@ -278,7 +292,7 @@ export async function getFileDiff(
   ]);
   const diff = `${staged.stdout}${unstaged.stdout}`;
   // 只有 “old mode / new mode / rename” 这类元信息、没有 hunk 的 diff 对用户等于无内容差异
-  if (/(^|\n)@@ /.test(diff)) return { path: rel, diff };
+  if (/(^|\n)@@ /.test(diff)) return { path: rel, ...capDiff(diff) };
   const numstat = await readNumstat(root);
   const counted = numstat.get(rel);
   return {

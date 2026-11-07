@@ -15,8 +15,27 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return stdout.trim();
 }
 
-/** 非 git 仓库、git 不可用或超时都返回 undefined，不影响会话本身。 */
+const envCache = new Map<string, { at: number; env?: SessionEnv }>();
+const envPending = new Map<string, Promise<SessionEnv | undefined>>();
+const ENV_TTL_MS = 2_500;
+
+/** 同一 cwd 的并发检测合并成一次；2.5s 内复用结果，避免侧栏首屏为同一仓库拉起上百个 git。 */
 export async function detectSessionEnv(cwd: string): Promise<SessionEnv | undefined> {
+  const hit = envCache.get(cwd);
+  if (hit && Date.now() - hit.at < ENV_TTL_MS) return hit.env ? { ...hit.env } : undefined;
+  const pending = envPending.get(cwd);
+  if (pending) return pending;
+  const task = detectSessionEnvUncached(cwd)
+    .then((env) => {
+      envCache.set(cwd, { at: Date.now(), env });
+      return env ? { ...env } : undefined;
+    })
+    .finally(() => envPending.delete(cwd));
+  envPending.set(cwd, task);
+  return task;
+}
+
+async function detectSessionEnvUncached(cwd: string): Promise<SessionEnv | undefined> {
   let repoRoot: string;
   try {
     repoRoot = await git(cwd, ['rev-parse', '--show-toplevel']);

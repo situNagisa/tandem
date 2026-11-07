@@ -1,5 +1,6 @@
 // 会话持久化：sessions/<id>.json，写盘节流。
 import {
+  appendFileSync,
   closeSync,
   fsyncSync,
   mkdirSync,
@@ -8,9 +9,11 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
   writeSync,
 } from 'node:fs';
+import { appendFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { PermissionMode, SessionEnv } from '@tandem/protocol';
 import type { RunState, SessionRecord } from './types.js';
@@ -250,6 +253,15 @@ function normalizeEnv(value: unknown): SessionEnv | undefined {  if (!value || t
   return env.repoRoot || env.repoName || env.branch ? env : undefined;
 }
 
+interface PersistState {
+  /** 已写入消息日志的条数（按消息 id 幂等重放）。 */
+  count: number;
+  /** 最后一条已写入消息的 JSON，用于检测原地更新。 */
+  lastJson: string;
+  snapshotBytes: number;
+  appendedBytes: number;
+}
+
 export class SessionStore {
   private dir: string;
   private records = new Map<string, SessionRecord>();
@@ -257,6 +269,8 @@ export class SessionStore {
   private saving = new Set<string>();
   /** 每次变更递增：异步写盘在 rename 前发现版本变化会重写最新内容，避免旧快照覆盖。 */
   private versions = new Map<string, number>();
+  /** 消息分段日志的落盘进度：已写入条数、最后一条的内容、是否已迁移。 */
+  private persistState = new Map<string, PersistState>();
 
   constructor(home: string) {
     this.dir = path.join(home, 'sessions');
@@ -273,10 +287,20 @@ export class SessionStore {
     }
     for (const file of files) {
       try {
-        const raw = JSON.parse(readFileSync(path.join(this.dir, file), 'utf8')) as SessionRecord;
+        const raw = JSON.parse(readFileSync(path.join(this.dir, file), 'utf8')) as SessionRecord & {
+          messagesFormat?: string;
+        };
         if (!raw || typeof raw.id !== 'string') continue;
+        if (raw.messagesFormat === 'jsonl') {
+          const messages = this.readMessageLog(raw.id);
+          // 分段日志缺失/损坏时回退到 JSON 里可能残留的消息
+          raw.messages = messages ?? (Array.isArray(raw.messages) ? raw.messages : []);
+        }
         const rec = normalizeRecord(raw);
         this.records.set(rec.id, rec);
+        if (raw.messagesFormat === 'jsonl') {
+          this.persistState.set(rec.id, this.stateOf(rec, true));
+        }
       } catch (err) {
         console.warn(`[tandem] 跳过损坏的会话文件 ${file}:`, (err as Error).message);
       }
@@ -332,10 +356,12 @@ export class SessionStore {
     const timer = this.timers.get(id);
     if (timer) clearTimeout(timer);
     this.timers.delete(id);
-    try {
-      rmSync(this.fileOf(id), { force: true });
-    } catch {
-      // ignore
+    for (const file of [this.fileOf(id), this.logFileOf(id)]) {
+      try {
+        rmSync(file, { force: true });
+      } catch {
+        // ignore
+      }
     }
   }
 
@@ -357,8 +383,8 @@ export class SessionStore {
   }
 
   /**
-   * 立即原子落盘并 fsync：模型响应完成、工具结果落账、运行意图变化时调用。
-   * 同步写保证在继续执行下一步之前数据已到磁盘（进程被 kill -9 也不丢）。
+   * 立即落盘并 fsync：模型响应完成、工具结果落账、运行意图变化时调用。
+   * 消息写入 <id>.jsonl 追加日志，元数据单独写小 JSON，避免每次整份重写。
    */
   saveNow(id: string): void {
     const rec = this.records.get(id);
@@ -369,12 +395,10 @@ export class SessionStore {
       clearTimeout(timer);
       this.timers.delete(id);
     }
-    const file = this.fileOf(id);
-    const tmp = `${file}.${process.pid}.save.tmp`;
     try {
-      writeFileSyncFully(tmp, JSON.stringify(rec, null, 2));
-      renameSync(tmp, file);
-      fsyncDir(path.dirname(file));
+      const state = this.persistState.get(id);
+      if (!state) this.persistFullSync(id, rec);
+      else this.persistIncrementalSync(id, rec, state);
     } catch (err) {
       console.error(`[tandem] 立即保存会话 ${id} 失败:`, (err as Error).message);
     }
@@ -382,27 +406,17 @@ export class SessionStore {
 
   async write(id: string): Promise<void> {
     const rec = this.records.get(id);
-    if (!rec || this.saving.has(id)) {
-      if (rec && this.saving.has(id)) {
-        // 正在写，稍后再写一次，保证最后一次状态落盘
-        this.markDirty(id, false);
-      }
+    if (!rec) return;
+    if (this.saving.has(id)) {
+      // 正在写，稍后再写一次，保证最后一次状态落盘
+      this.markDirty(id, false);
       return;
     }
     this.saving.add(id);
-    const file = this.fileOf(id);
-    const tmp = `${file}.${process.pid}.tmp`;
     try {
-      let data = JSON.stringify(rec, null, 2);
-      // 写临时文件期间可能有 saveNow 落地：rename 前核对版本，避免旧快照覆盖新状态
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const version = this.versions.get(id) ?? 0;
-        await writeFileAtomic(tmp, data);
-        if (version === (this.versions.get(id) ?? 0)) break;
-        const latest = this.records.get(id);
-        if (latest) data = JSON.stringify(latest, null, 2);
-      }
-      renameSync(tmp, file);
+      const state = this.persistState.get(id);
+      if (!state) await this.persistFull(id, rec);
+      else await this.persistIncremental(id, rec, state);
     } catch (err) {
       console.error(`[tandem] 保存会话 ${id} 失败:`, (err as Error).message);
     } finally {
@@ -417,14 +431,192 @@ export class SessionStore {
       this.timers.delete(id);
       const rec = this.records.get(id);
       if (!rec) continue;
-      const file = this.fileOf(id);
       try {
-        writeFileSync(`${file}.${process.pid}.flush.tmp`, JSON.stringify(rec, null, 2), { mode: 0o600 });
-        renameSync(`${file}.${process.pid}.flush.tmp`, file);
+        const state = this.persistState.get(id);
+        if (!state) this.persistFullSync(id, rec);
+        else this.persistIncrementalSync(id, rec, state);
       } catch (err) {
         console.error(`[tandem] 退出时保存会话 ${id} 失败:`, (err as Error).message);
       }
     }
+  }
+
+  // ---------- 分段消息日志（<id>.jsonl，每行一批消息；同 id 后者覆盖前者） ----------
+
+  private readMessageLog(id: string): SessionRecord['messages'] | undefined {
+    let text: string;
+    try {
+      text = readFileSync(this.logFileOf(id), 'utf8');
+    } catch {
+      return undefined;
+    }
+    const messages: SessionRecord['messages'] = [];
+    const index = new Map<string, number>();
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue;
+      let parsed: { messages?: unknown } & Record<string, unknown>;
+      try {
+        parsed = JSON.parse(line) as { messages?: unknown } & Record<string, unknown>;
+      } catch {
+        continue; // 容忍崩溃导致的最后半行
+      }
+      // 快照行直接是一条消息，增量行是 { messages: [...] }
+      const batch = Array.isArray(parsed.messages)
+        ? parsed.messages
+        : typeof parsed.id === 'string' && typeof parsed.role === 'string'
+          ? [parsed]
+          : [];
+      for (const message of batch) {
+        if (!message || typeof message !== 'object') continue;
+        const item = message as SessionRecord['messages'][number];
+        if (typeof item.id !== 'string') continue;
+        const at = index.get(item.id);
+        if (at === undefined) {
+          index.set(item.id, messages.length);
+          messages.push(item);
+        } else {
+          messages[at] = item;
+        }
+      }
+    }
+    return messages;
+  }
+
+  /** 元数据文件：不含消息正文，只有会话摘要/运行意图等小字段。 */
+  private metaJson(rec: SessionRecord): string {
+    return JSON.stringify({ ...rec, messages: [], messagesFormat: 'jsonl' }, null, 2);
+  }
+
+  private persistFullSync(id: string, rec: SessionRecord): void {
+    const logFile = this.logFileOf(id);
+    const logTmp = `${logFile}.${process.pid}.save.tmp`;
+    const messages = rec.messages;
+    let bytes = 0;
+    let payload = '';
+    for (const message of messages) {
+      const line = `${JSON.stringify(message)}\n`;
+      payload += line;
+      bytes += Buffer.byteLength(line);
+    }
+    writeFileSyncFully(logTmp, payload);
+    renameSync(logTmp, logFile);
+    this.writeMetaSync(id, rec);
+    this.persistState.set(id, {
+      count: messages.length,
+      lastJson: messages.length ? JSON.stringify(messages[messages.length - 1]) : '',
+      snapshotBytes: bytes,
+      appendedBytes: 0,
+    });
+    fsyncDir(path.dirname(logFile));
+  }
+
+  private persistIncrementalSync(id: string, rec: SessionRecord, state: PersistState): void {
+    if (rec.messages.length < state.count) {
+      this.persistFullSync(id, rec);
+      return;
+    }
+    const changedLast =
+      state.count > 0 &&
+      JSON.stringify(rec.messages[state.count - 1] ?? null) !== state.lastJson;
+    const start = changedLast ? state.count - 1 : state.count;
+    const chunk = rec.messages.slice(start);
+    if (chunk.length) {
+      const line = `${JSON.stringify({ messages: chunk })}\n`;
+      appendSyncFully(this.logFileOf(id), line);
+      state.appendedBytes += Buffer.byteLength(line);
+    }
+    state.count = rec.messages.length;
+    state.lastJson = rec.messages.length
+      ? JSON.stringify(rec.messages[rec.messages.length - 1])
+      : '';
+    this.writeMetaSync(id, rec);
+    this.maybeCompactSync(id, rec, state);
+  }
+
+  private async persistFull(id: string, rec: SessionRecord): Promise<void> {
+    const logFile = this.logFileOf(id);
+    const logTmp = `${logFile}.${process.pid}.tmp`;
+    const messages = rec.messages;
+    let bytes = 0;
+    const lines = messages.map((message) => {
+      const line = `${JSON.stringify(message)}\n`;
+      bytes += Buffer.byteLength(line);
+      return line;
+    });
+    await writeFile(logTmp, lines.join(''), { encoding: 'utf8', mode: 0o600 });
+    renameSync(logTmp, logFile);
+    await this.writeMeta(id, rec);
+    this.persistState.set(id, {
+      count: messages.length,
+      lastJson: messages.length ? JSON.stringify(messages[messages.length - 1]) : '',
+      snapshotBytes: bytes,
+      appendedBytes: 0,
+    });
+  }
+
+  private async persistIncremental(id: string, rec: SessionRecord, state: PersistState): Promise<void> {
+    if (rec.messages.length < state.count) {
+      await this.persistFull(id, rec);
+      return;
+    }
+    const changedLast =
+      state.count > 0 &&
+      JSON.stringify(rec.messages[state.count - 1] ?? null) !== state.lastJson;
+    const start = changedLast ? state.count - 1 : state.count;
+    const chunk = rec.messages.slice(start);
+    if (chunk.length) {
+      const line = `${JSON.stringify({ messages: chunk })}\n`;
+      await appendFile(this.logFileOf(id), line, { encoding: 'utf8', mode: 0o600 });
+      state.appendedBytes += Buffer.byteLength(line);
+    }
+    state.count = rec.messages.length;
+    state.lastJson = rec.messages.length
+      ? JSON.stringify(rec.messages[rec.messages.length - 1])
+      : '';
+    await this.writeMeta(id, rec);
+    if (this.shouldCompact(state)) await this.persistFull(id, rec);
+  }
+
+  private maybeCompactSync(id: string, rec: SessionRecord, state: PersistState): void {
+    if (this.shouldCompact(state)) this.persistFullSync(id, rec);
+  }
+
+  /** 追加日志超过快照 1.5 倍且至少 8MB 时压实，避免日志无限增长。 */
+  private shouldCompact(state: PersistState): boolean {
+    return state.appendedBytes > Math.max(8 * 1024 * 1024, state.snapshotBytes * 1.5);
+  }
+
+  private writeMetaSync(id: string, rec: SessionRecord): void {
+    const file = this.fileOf(id);
+    const tmp = `${file}.${process.pid}.save.tmp`;
+    writeFileSyncFully(tmp, this.metaJson(rec));
+    renameSync(tmp, file);
+  }
+
+  private async writeMeta(id: string, rec: SessionRecord): Promise<void> {
+    const file = this.fileOf(id);
+    const tmp = `${file}.${process.pid}.tmp`;
+    await writeFile(tmp, this.metaJson(rec), { encoding: 'utf8', mode: 0o600 });
+    renameSync(tmp, file);
+  }
+
+  private stateOf(rec: SessionRecord, migrated: boolean): PersistState {
+    let snapshotBytes = 0;
+    try {
+      snapshotBytes = statSync(this.logFileOf(rec.id)).size;
+    } catch {
+      // ignore
+    }
+    return {
+      count: rec.messages.length,
+      lastJson: rec.messages.length ? JSON.stringify(rec.messages[rec.messages.length - 1]) : '',
+      snapshotBytes,
+      appendedBytes: 0,
+    };
+  }
+
+  private logFileOf(id: string): string {
+    return this.fileOf(id).replace(/\.json$/, '.jsonl');
   }
 
   private fileOf(id: string): string {
@@ -442,6 +634,17 @@ async function writeFileAtomic(tmp: string, data: string): Promise<void> {
 /** 同步写临时文件并 fsync，保证内容真正落盘（rename 前调用）。 */
 function writeFileSyncFully(file: string, data: string): void {
   const fd = openSync(file, 'w', 0o600);
+  try {
+    writeSync(fd, data, 0, 'utf8');
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** 追加一小段并 fsync。 */
+function appendSyncFully(file: string, data: string): void {
+  const fd = openSync(file, 'a', 0o600);
   try {
     writeSync(fd, data, 0, 'utf8');
     fsyncSync(fd);

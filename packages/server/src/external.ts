@@ -762,6 +762,8 @@ export class ExternalSessionStore {
   private titleCache?: { mtimeMs: number; size: number; titles: Map<string, string> };
   private watchTimer?: NodeJS.Timeout;
   private signature = '';
+  /** 短时间内重复拉取（侧栏 + Ctrl+K）直接复用，避免每次都 stat 3000 个文件。 */
+  private listMemo = new Map<string, { at: number; result: ExternalSession[] }>();
 
   constructor(private readonly host: Host) {}
 
@@ -953,6 +955,9 @@ export class ExternalSessionStore {
 
   /** since（毫秒时间戳）存在时只返回该时间之后有更新的会话，供增量刷新。 */
   list(source?: ExternalSource, since?: number): ExternalSession[] {
+    const memoKey = `${source ?? 'all'}:${since ?? ''}`;
+    const memo = this.listMemo.get(memoKey);
+    if (memo && Date.now() - memo.at < 1_500) return memo.result.map((item) => ({ ...item }));
     const sources: ExternalSource[] = source ? [source] : ['claude-code', 'codex'];
     const imported = this.importedMap();
     const seenFiles = new Set<string>();
@@ -984,9 +989,12 @@ export class ExternalSessionStore {
     for (const file of [...this.cache.keys()]) {
       if (!seenFiles.has(file) && !statSafe(file)) this.cache.delete(file);
     }
-    return result
+    const out = result
       .filter((s) => since === undefined || s.updatedAt > since)
       .sort((a, b) => b.updatedAt - a.updatedAt);
+    if (this.listMemo.size > 8) this.listMemo.clear();
+    this.listMemo.set(memoKey, { at: Date.now(), result: out });
+    return out.map((item) => ({ ...item }));
   }
 
   /** 找到源会话文件并完整解析。 */
