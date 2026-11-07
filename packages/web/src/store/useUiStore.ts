@@ -65,6 +65,9 @@ interface UiState {
   scheduleComposeNonce: number
   /** 后台任务面板：指定 Host/会话，可带要直接查看的任务。 */
   backgroundPanel: { hostId: string; sessionId: string; taskId?: string } | null
+  /** PR 面板；composeTitle 用于「提交并创建 PR」预填标题。 */
+  prOpen: boolean
+  prComposeTitle: string
 
   setTheme: (theme: Theme) => void
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -113,6 +116,8 @@ interface UiState {
   openBackgroundTasks: (hostId: string, sessionId: string, taskId?: string) => void
   openScheduleComposer: () => void
   closeBackgroundTasks: () => void
+  openPrPanel: (title?: string) => void
+  closePrPanel: () => void
 }
 
 const prefs = loadUiPrefs()
@@ -154,6 +159,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   agentFocus: null,
   composerResetNonce: 0,
   backgroundPanel: null,
+  prOpen: false,
+  prComposeTitle: '',
   scheduleComposeNonce: 0,
 
   setTheme: (theme) => {
@@ -235,6 +242,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   openBackgroundTasks: (hostId, sessionId, taskId) =>
     set({ backgroundPanel: { hostId, sessionId, ...(taskId ? { taskId } : {}) } }),
   closeBackgroundTasks: () => set({ backgroundPanel: null }),
+  openPrPanel: (title) => set({ prOpen: true, prComposeTitle: title ?? '' }),
+  closePrPanel: () => set({ prOpen: false, prComposeTitle: '' }),
   openScheduleComposer: () =>
     set((s) => ({
       settingsOpen: true,

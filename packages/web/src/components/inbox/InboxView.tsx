@@ -3,6 +3,7 @@ import {
   BellRing,
   Check,
   CheckCircle2,
+  GitPullRequest,
   Inbox,
   ShieldAlert,
   TriangleAlert,
@@ -73,6 +74,9 @@ function eventSummary(event: InboxEvent): { title: string; body?: string } {
   if (event.kind === 'budget') {
     return { title: '预算提醒', body: event.budgetText ?? '' }
   }
+  if (event.kind === 'ci') {
+    return { title: event.ci?.text ?? 'PR 状态变化', body: event.ci ? `#${event.ci.prNumber}` : undefined }
+  }
   return { title: '事件' }
 }
 
@@ -82,6 +86,7 @@ function EventIcon({ event }: { event: InboxEvent }) {
   }
   if (event.kind === 'permission_resolved') return <Check size={14} />
   if (event.kind === 'budget') return <Wallet size={14} />
+  if (event.kind === 'ci') return <GitPullRequest size={14} />
   if (event.turnReason === 'error') return <TriangleAlert size={14} />
   return <CheckCircle2 size={14} />
 }

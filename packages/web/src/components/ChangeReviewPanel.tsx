@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   FileDiff,
   FolderGit2,
+  GitPullRequest,
   Loader2,
   MessageSquare,
   MessageSquarePlus,
@@ -85,6 +86,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
   const changesWidth = useUiStore((s) => s.changesWidth)
   const setChangesWidth = useUiStore((s) => s.setChangesWidth)
   const toast = useUiStore((s) => s.toast)
+  const openPrPanel = useUiStore((s) => s.openPrPanel)
 
   const { changes, loading, error, reload, setChanges } = useSessionChanges(
     host,
@@ -311,6 +313,34 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
       diffCache.current.clear()
       reload()
       bumpChanges()
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '提交失败', 'error')
+    } finally {
+      setCommitting(false)
+    }
+  }
+
+  const commitAndCreatePr = async () => {
+    if (!host || !sessionId || committing) return
+    const message = commitMessage.trim()
+    if (!message) {
+      toast('请先填写提交信息', 'error')
+      return
+    }
+    setCommitting(true)
+    try {
+      const result = await api.commitChanges(host, sessionId, message)
+      if (!result.ok) {
+        toast(result.error || '提交失败', 'error')
+        return
+      }
+      const short = result.commit?.slice(0, 7)
+      toast(short ? `已提交 ${short}，正在准备 PR` : '已提交，正在准备 PR', 'success')
+      setCommitMessage('')
+      diffCache.current.clear()
+      reload()
+      bumpChanges()
+      openPrPanel(message)
     } catch (err) {
       toast(err instanceof Error ? err.message : '提交失败', 'error')
     } finally {
@@ -637,6 +667,9 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
               >
                 <Menu.Item icon={<Wand2 />} onSelect={askAgentCommit}>
                   让 agent 写提交信息
+                </Menu.Item>
+                <Menu.Item icon={<GitPullRequest />} onSelect={() => void commitAndCreatePr()}>
+                  提交并创建 PR
                 </Menu.Item>
                 {comments.length > 0 && (
                   <Menu.Item icon={<MessageSquarePlus />} onSelect={() => setComments([])}>

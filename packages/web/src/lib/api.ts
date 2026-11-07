@@ -7,6 +7,7 @@ import type {
   ConfigImportInput,
   ConfigImportResult,
   CreateSessionInput,
+  CreatePrInput,
   DiffEmptyReason,
   ExternalSession,
   ExternalSource,
@@ -21,6 +22,8 @@ import type {
   McpServerStatus,
   ModelInfo,
   PermissionRule,
+  PrActionResult,
+  PrMergeMethod,
   Profile,
   ProfileInput,
   BackgroundTask,
@@ -36,6 +39,7 @@ import type {
   SlashCommand,
   UpdateSessionInput,
   UsageStatsRow,
+  VcsState,
 } from '@tandem/protocol'
 import type { RelayPairInfo } from '@tandem/protocol'
 import type { HostConfig } from './types'
@@ -244,6 +248,31 @@ export const api = {
       h,
       `/api/sessions/${encodeURIComponent(id)}/changes/commit`,
       { method: 'POST', body: JSON.stringify({ message, ...(paths?.length ? { paths } : {}) }) },
+    ),
+
+  vcs: (h: HostConfig, id: string) =>
+    request<VcsState>(h, `/api/sessions/${encodeURIComponent(id)}/vcs`),
+  pr: (h: HostConfig, id: string) =>
+    request<VcsState>(h, `/api/sessions/${encodeURIComponent(id)}/pr`),
+  createPr: (h: HostConfig, id: string, input: CreatePrInput) =>
+    request<PrActionResult>(h, `/api/sessions/${encodeURIComponent(id)}/pr`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  mergePr: (h: HostConfig, id: string, method: PrMergeMethod) =>
+    request<PrActionResult>(h, `/api/sessions/${encodeURIComponent(id)}/pr/merge`, {
+      method: 'POST',
+      body: JSON.stringify({ method }),
+    }),
+  fixPrCheck: (
+    h: HostConfig,
+    id: string,
+    input: { checkName: string; runId?: string; url?: string },
+  ) =>
+    request<{ ok: boolean; sent?: boolean; error?: string }>(
+      h,
+      `/api/sessions/${encodeURIComponent(id)}/pr/fix`,
+      { method: 'POST', body: JSON.stringify(input) },
     ),
 
   hooks: (h: HostConfig, cwd?: string) =>

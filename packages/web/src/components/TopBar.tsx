@@ -20,6 +20,7 @@ import { ConnectionDot } from './StatusDot'
 import { Button, IconButton } from './ui/Button'
 import { Input } from './ui/Controls'
 import { BackgroundTasksButton, FilesButton, SubagentsButton } from './chat/SessionHeaderTools'
+import { PrButton, PrPanel } from './PrPanel'
 
 function StatePill({
   running,
@@ -279,6 +280,7 @@ export function TopBar() {
           <BackgroundTasksButton />
           <SubagentsButton />
           <FilesButton />
+          <PrButton />
         </>
       )}
 
@@ -324,6 +326,8 @@ export function TopBar() {
           <PanelRight size={17} />
         </IconButton>
       )}
+
+      <PrPanel />
 
       {offline && (
         <div className="pointer-events-none absolute inset-x-0 top-full z-20 flex h-6 items-center justify-center gap-1.5 border-b border-border/60 bg-bg/95 text-[12px] text-muted backdrop-blur-sm">

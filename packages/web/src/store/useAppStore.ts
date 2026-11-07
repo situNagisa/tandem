@@ -37,6 +37,7 @@ import { notifyBudget, notifyPermission, notifyTurnEnd, cancelPermissionNotifica
 import { useUiStore } from './useUiStore'
 import { useTaskStore } from './useTaskStore'
 import { useScheduleStore } from './useScheduleStore'
+import { useVcsStore } from '../lib/useVcs'
 import type {
   ActiveSession,
   ConnectionState,
@@ -640,7 +641,10 @@ export const useAppStore = create<AppState>((set, get) => {
             pending = pending.filter((item) => item.requestId !== event.requestId)
           }
           const counts =
-            event.kind === 'permission' || event.kind === 'turn_end' || event.kind === 'budget'
+            event.kind === 'permission' ||
+            event.kind === 'turn_end' ||
+            event.kind === 'budget' ||
+            event.kind === 'ci'
           return {
             inbox: {
               ...state.inbox,
@@ -709,6 +713,10 @@ export const useAppStore = create<AppState>((set, get) => {
       case 'schedules_updated': {
         const host = getHost(hostId)
         if (host) void useScheduleStore.getState().refresh(host)
+        break
+      }
+      case 'vcs_updated': {
+        useVcsStore.getState().apply(hostId, msg.sessionId, msg.state)
         break
       }
       case 'session_deleted': {
