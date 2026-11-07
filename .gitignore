@@ -10,3 +10,4 @@ dist-desktop
 packages/desktop/dist
 packages/desktop/resources
 packages/desktop/build
+.agent-runs/
