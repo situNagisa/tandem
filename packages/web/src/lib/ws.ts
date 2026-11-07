@@ -278,7 +278,14 @@ export class HostConnection {
       this.handlers.onMessage(msg)
       return
     }
-    const sessionId = 'sessionId' in msg ? msg.sessionId : undefined
+    // permission_request 的会话 id 同时放在顶层（冒泡时是祖先会话），否则无法参与 seq 排序，
+    // 会导致紧随其后的 permission_resolved 因序号空洞被永久暂存。
+    const sessionId =
+      'sessionId' in msg && typeof msg.sessionId === 'string'
+        ? msg.sessionId
+        : msg.type === 'permission_request'
+          ? msg.request.sessionId
+          : undefined
     const seq = msg.seq
     if (!sessionId || typeof seq !== 'number') {
       this.handlers.onMessage(msg)

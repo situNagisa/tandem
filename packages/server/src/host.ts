@@ -1499,12 +1499,12 @@ export class Host {
       signal.addEventListener('abort', onAbort, { once: true });
 
       this.setStatus(rec, 'waiting_permission');
-      this.hub.broadcastSession(rec.id, { type: 'permission_request', request });
+      this.hub.broadcastSession(rec.id, { type: 'permission_request', request, sessionId: rec.id });
       // 收件箱：一次请求只记一条（不按祖先重复），带上会话标题与子代理来源
       this.pushInbox(this.inbox.recordPermission(request, rec.title));
       // 子代理/孙代理的权限请求逐级冒泡，主会话订阅者可直接审批
       for (const ancestor of ancestors) {
-        this.hub.broadcastSession(ancestor.id, { type: 'permission_request', request });
+        this.hub.broadcastSession(ancestor.id, { type: 'permission_request', request, sessionId: ancestor.id });
       }
     });
   }

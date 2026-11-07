@@ -381,7 +381,7 @@ export type ServerMsg =
   | { type: 'message_start'; sessionId: string; message: Message }       // 新消息（用户消息也走这里，用于多端同步）
   | { type: 'block_delta'; sessionId: string; messageId: string; index: number; delta: BlockDelta }
   | { type: 'message_end'; sessionId: string; message: Message }         // 最终完整消息，客户端以此为准覆盖
-  | { type: 'permission_request'; request: PermissionRequest }
+  | { type: 'permission_request'; request: PermissionRequest; sessionId?: string } // sessionId=广播所属会话（子代理冒泡时为主会话），供客户端按会话 seq 排序
   | { type: 'permission_resolved'; requestId: string; sessionId: string; decision: PermissionDecision }
   | { type: 'todos'; sessionId: string; todos: Todo[] }
   | { type: 'plan'; sessionId: string; plan?: SessionPlan }                 // 计划提交/批准/拒绝
