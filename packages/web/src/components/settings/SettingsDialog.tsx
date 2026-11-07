@@ -1,4 +1,4 @@
-import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, Monitor, Palette, Plug, RefreshCw, ScrollText, Server, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Wallet, Webhook } from 'lucide-react'
+import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, Monitor, Palette, Plug, RefreshCw, ScrollText, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Wallet, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
@@ -15,6 +15,7 @@ import { MemorySection } from './MemorySection'
 import { SubagentsSection } from './SubagentsSection'
 import { PromptsSection } from './PromptsSection'
 import { HooksSection } from './HooksSection'
+import { SharesSection } from './SharesSection'
 import { UsageSection } from './UsageSection'
 import { SchedulesSection } from './SchedulesSection'
 import { BudgetsSection } from './BudgetsSection'
@@ -36,6 +37,7 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'budgets', label: '预算', icon: Wallet },
   { id: 'usage', label: '用量', icon: BarChart3 },
   { id: 'notifications' as SettingsTab, label: '通知', icon: Bell },
+  { id: 'shares', label: '分享', icon: Share2 },
   { id: 'sync', label: '同步与备份', icon: RefreshCw },
   { id: 'appearance', label: '外观', icon: Palette },
 ]
@@ -100,6 +102,7 @@ export function SettingsDialog() {
             {tab === 'subagents' && <SubagentsSection />}
             {tab === 'prompts' && <PromptsSection />}
             {tab === 'schedules' && <SchedulesSection />}
+            {tab === 'shares' && <SharesSection />}
             {tab === 'budgets' && <BudgetsSection />}
             {tab === 'usage' && <UsageSection />}
             {(tab as string) === 'notifications' && <NotificationsSection />}

@@ -892,4 +892,51 @@ export interface MemoryListItem {
 // GET    /api/memory/list                                -> { global?: MemoryListItem; projects: MemoryListItem[] }
 // POST /api/memory/import { project, text, source?, mode? } -> { ok, merged }  跨 Host 迁移合并记忆
 
+// ---------- 会话只读分享（仅可信内网） ----------
+// 分享链接形如 http://<host>:<port>/s/<shareId>#<token>；token 只在创建时返回一次，
+// Host 只保存 SHA-256 哈希。公开接口 /api/public/shares/:id 用 Authorization: Share <token>。
+export type ShareExpiry = '1h' | '1d' | '7d' | 'never';
+export interface CreateShareInput {
+  expiresIn?: ShareExpiry;      // 默认 7d
+  includeToolOutputs?: boolean; // 默认 true；false 时工具结果只保留摘要
+  hidePaths?: boolean;          // 默认 true；绝对路径替换为项目相对路径 / <home>
+  snapshot?: boolean;           // 默认 false；true 冻结创建时的内容
+}
+export interface CreateShareResult {
+  shareId: string;
+  /** 含 fragment token 的完整链接，只在此次响应中出现。 */
+  url: string;
+  /** Host 只监听回环 / 未配置有效期等提示。 */
+  warning?: string;
+  expiresAt?: number;
+}
+export interface ShareInfo {
+  id: string;
+  sessionId: string;
+  sessionTitle: string;
+  createdAt: number;
+  expiresAt?: number;
+  expired: boolean;
+  includeToolOutputs: boolean;
+  hidePaths: boolean;
+  snapshot: boolean;
+  accessCount: number;
+  lastAccessAt?: number;
+}
+export interface PublicShare {
+  id: string;
+  hostName: string;
+  title: string;
+  model?: string;
+  createdAt: number;
+  updatedAt: number;
+  live: boolean;
+  expiresAt?: number;
+  messages: Message[];
+}
+// POST   /api/sessions/:id/shares {expiresIn?,includeToolOutputs?,hidePaths?,snapshot?} -> CreateShareResult
+// GET    /api/shares      -> ShareInfo[]
+// DELETE /api/shares/:id  -> 204（之后公开接口立即 404）
+// GET    /api/public/shares/:id  Authorization: Share <token> -> PublicShare
+
 export const PROTOCOL_VERSION = 3;

@@ -130,7 +130,7 @@ export interface Toast {
 }
 
 export type Theme = 'light' | 'dark' | 'system'
-export type SettingsTab = 'general' | 'profiles' | 'hosts' | 'permissions' | 'hooks' | 'mcp' | 'skills' | 'schedules' | 'budgets' | 'usage' | 'appearance' | 'sync' | 'memory' | 'subagents' | 'prompts'
+export type SettingsTab = 'general' | 'profiles' | 'hosts' | 'permissions' | 'hooks' | 'mcp' | 'skills' | 'schedules' | 'budgets' | 'usage' | 'appearance' | 'sync' | 'memory' | 'subagents' | 'prompts' | 'shares'
 
 export type AppRoute =
   | { kind: 'home' }

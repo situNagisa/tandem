@@ -43,6 +43,7 @@ import { walkFiles } from './util/fs-walk.js';
 import { readForPreview, readImage, revealFile } from './util/file-preview.js';
 import { expandHome, resolveHostPath, toPosix } from './util/path.js';
 import { errorMessage, truncateEnd } from './util/text.js';
+import { isPublicSharePath, registerShareRoutes } from './share/routes.js';
 
 const PROVIDER_KINDS: ProviderKind[] = ['anthropic', 'openai', 'openai-compatible', 'gemini'];
 
@@ -183,6 +184,8 @@ export async function createApp(
   app.addHook('onRequest', async (req, reply) => {
     if (req.method === 'OPTIONS') return;
     const urlPath = (req.raw.url ?? '').split('?')[0] ?? '';
+    // 只读分享的公开接口自带 Share token，不能要求 Host 主 token。
+    if (isPublicSharePath(urlPath)) return;
     if (!urlPath.startsWith('/api') && urlPath !== '/ws') return;
 
     const auth = req.headers.authorization;
@@ -200,6 +203,9 @@ export async function createApp(
     if (status >= 500) console.error('[tandem] 请求处理失败:', rawErr);
     reply.code(status).send({ error: err.message ?? '服务器内部错误' });
   });
+
+  // ---------- 会话只读分享（内网） ----------
+  registerShareRoutes(app, host);
 
   // ---------- Host ----------
   app.get('/api/host', async () => host.info());

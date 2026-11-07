@@ -7,6 +7,10 @@ import type {
   ConfigImportInput,
   ConfigImportResult,
   CreateSessionInput,
+  CreateShareInput,
+  CreateShareResult,
+  PublicShare,
+  ShareInfo,
   MemoryFile,
   MemoryListItem,
   MemoryScope,
@@ -148,6 +152,15 @@ function qs(params: Record<string, string | undefined>): string {
 
 export const api = {
   host: (h: HostConfig) => request<HostInfo>(h, '/api/host'),
+
+  createShare: (h: HostConfig, sessionId: string, input: CreateShareInput) =>
+    request<CreateShareResult>(h, `/api/sessions/${encodeURIComponent(sessionId)}/shares`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  shares: (h: HostConfig) => request<ShareInfo[]>(h, '/api/shares'),
+  deleteShare: (h: HostConfig, id: string) =>
+    request<void>(h, `/api/shares/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   settings: (h: HostConfig) => request<HostSettings>(h, '/api/settings'),
   updateSettings: (h: HostConfig, input: HostSettings) =>
     request<HostSettings>(h, '/api/settings', { method: 'PUT', body: JSON.stringify(input) }),
@@ -497,4 +510,21 @@ export interface ExternalImportInput {
   profileId?: string
   groupId?: string
   model?: string
+}
+
+/** 分享页专用：同源公开接口，只带分享 token，不带 Host 主 token。 */
+export async function fetchPublicShare(
+  shareId: string,
+  token: string,
+  poll = false,
+): Promise<PublicShare> {
+  const res = await fetch(`/api/public/shares/${encodeURIComponent(shareId)}${poll ? '?poll=1' : ''}`, {
+    headers: { Accept: 'application/json', Authorization: `Share ${token}` },
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new ApiError(describe(res.status, text), res.status)
+  }
+  return (await res.json()) as PublicShare
 }
