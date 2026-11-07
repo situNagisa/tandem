@@ -39,7 +39,9 @@ import type {
   McpServerConfig,
   McpServerStatus,
   ModelInfo,
+  PermissionInsights,
   PermissionRule,
+  PermissionRuleDraft,
   PermissionRequest,
   PrActionResult,
   PrMergeMethod,
@@ -458,6 +460,26 @@ export const api = {
     request<PermissionRule[]>(h, '/api/permissions', {
       method: 'PUT',
       body: JSON.stringify(rules),
+    }),
+  permissionInsights: (h: HostConfig) =>
+    request<PermissionInsights>(h, '/api/permissions/insights'),
+  adoptPermissionSuggestion: (h: HostConfig, id: string) =>
+    request<PermissionRule[]>(h, `/api/permissions/suggestions/${encodeURIComponent(id)}/adopt`, {
+      method: 'POST',
+    }),
+  ignorePermissionSuggestion: (h: HostConfig, id: string) =>
+    request<{ ok: boolean }>(h, `/api/permissions/suggestions/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+  addPermissionRule: (h: HostConfig, rule: PermissionRule) =>
+    request<PermissionRule[]>(h, '/api/permissions/rules', {
+      method: 'POST',
+      body: JSON.stringify({ rule }),
+    }),
+  draftPermissionRule: (h: HostConfig, sessionId: string, text: string) =>
+    request<PermissionRuleDraft>(h, '/api/permissions/draft', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId, text }),
     }),
 
   fsList: (h: HostConfig, path: string, options?: { files?: boolean }) =>

@@ -78,6 +78,9 @@ export async function authorize(host: Host, rec: SessionRecord,
   const browserHost = browserHostOf(host, rec, toolName, input);
   const rule = host.permissionRules.evaluate(toolName, input, rec.cwd, { browserHost });
   if (rule === 'deny') {
+    if (toolName !== 'ExitPlanMode') {
+      host.approvalHistory.recordAuto({ tool: toolName, project: rec.cwd, action: 'deny' });
+    }
     return { allowed: false, reason: `被权限规则拒绝: ${describeTool(toolName, input)}` };
   }
   if (mode === 'bypassPermissions') return { allowed: true };
@@ -85,7 +88,12 @@ export async function authorize(host: Host, rec: SessionRecord,
     if (signal.aborted) return { allowed: false, reason: '用户中断' };
     return host.askPermission(rec, toolName, input, toolUseId, signal);
   }
-  if (rule === 'allow') return { allowed: true };
+  if (rule === 'allow') {
+    if (toolName !== 'ExitPlanMode') {
+      host.approvalHistory.recordAuto({ tool: toolName, project: rec.cwd, action: 'allow' });
+    }
+    return { allowed: true };
+  }
 
   // Memory 的 view 是纯读取；写入按 Edit 类操作审批
   if (toolName === 'Memory' && (input as Record<string, unknown> | null)?.action === 'view') {
@@ -139,6 +147,12 @@ export function askPermission(host: Host, rec: SessionRecord,
     toolUseId: string,
     signal: AbortSignal): Promise<{ allowed: boolean; reason?: string; decision?: PermissionDecision }> {
   const rt = host.ensureRuntime(rec.id);
+  const learned = host.approvalHistory.learnedFor(
+    toolName,
+    input,
+    rec.cwd,
+    host.permissionRules,
+  );
   const request: PermissionRequest = {
     id: randomUUID(),
     sessionId: rec.id,
@@ -146,6 +160,7 @@ export function askPermission(host: Host, rec: SessionRecord,
     toolName,
     input,
     description: describeTool(toolName, input),
+    ...(learned ? { learned } : {}),
     ...(rec.parentId
       ? { depth: rec.depth ?? 1, sourceTitle: rec.title }
       : {}),
@@ -154,7 +169,7 @@ export function askPermission(host: Host, rec: SessionRecord,
 
   return new Promise((resolve) => {
     let settled = false;
-    const settle = (decision: PermissionDecision, customReason?: string) => {
+    const settle = (decision: PermissionDecision, customReason?: string, record = true) => {
       if (settled) return;
       settled = true;
       host.permissions.delete(request.id);
@@ -162,6 +177,14 @@ export function askPermission(host: Host, rec: SessionRecord,
       signal.removeEventListener('abort', onAbort);
       persistRunState(host, rec);
 
+      if (record && toolName !== 'ExitPlanMode') {
+        host.approvalHistory.record({
+          tool: toolName,
+          input,
+          project: rec.cwd,
+          decision: decision === 'allow_always' ? 'always' : decision,
+        });
+      }
       if (decision === 'allow_always' && toolName !== 'ExitPlanMode') {
         host.addAllowed(rec, toolName, input);
       }
@@ -196,7 +219,7 @@ export function askPermission(host: Host, rec: SessionRecord,
             : undefined,
       });
     };
-    const onAbort = () => settle('deny');
+    const onAbort = () => settle('deny', undefined, false);
 
     rt.pending.set(request.id, { request, resolve: settle });
     host.permissions.set(request.id, { sessionId: rec.id, resolve: settle });
@@ -227,14 +250,30 @@ export function restorePendingPermission(host: Host, rec: SessionRecord,
     signal: AbortSignal): Promise<{ decision: PermissionDecision; reason?: string }> {
   const rt = host.ensureRuntime(rec.id);
   const ancestors = host.ancestorsOf(rec);
+  const learned = host.approvalHistory.learnedFor(
+    request.toolName,
+    request.input,
+    rec.cwd,
+    host.permissionRules,
+  );
+  if (learned) request.learned = learned;
+  else delete request.learned;
   return new Promise((resolve) => {
     let settled = false;
-    const settle = (decision: PermissionDecision, customReason?: string) => {
+    const settle = (decision: PermissionDecision, customReason?: string, record = true) => {
       if (settled) return;
       settled = true;
       host.permissions.delete(request.id);
       rt.pending.delete(request.id);
       signal.removeEventListener('abort', onAbort);
+      if (record && request.toolName !== 'ExitPlanMode') {
+        host.approvalHistory.record({
+          tool: request.toolName,
+          input: request.input,
+          project: rec.cwd,
+          decision: decision === 'allow_always' ? 'always' : decision,
+        });
+      }
       if (decision === 'allow_always' && request.toolName !== 'ExitPlanMode') {
         host.addAllowed(rec, request.toolName, request.input);
       }
@@ -274,7 +313,7 @@ export function restorePendingPermission(host: Host, rec: SessionRecord,
           : {}),
       });
     };
-    const onAbort = () => settle('deny', signal.aborted ? '用户中断' : undefined);
+    const onAbort = () => settle('deny', signal.aborted ? '用户中断' : undefined, false);
 
     rt.pending.set(request.id, { request, resolve: settle });
     host.permissions.set(request.id, { sessionId: rec.id, resolve: settle });

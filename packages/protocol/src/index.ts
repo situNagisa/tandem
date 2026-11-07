@@ -224,6 +224,8 @@ export interface PermissionRequest {
   assignedTo?: { memberId: string; name: string };
   /** 转交来源（由 X 转交）；首次转交时记录。 */
   transferredFrom?: { memberId: string; name: string; at: number };
+  /** 从审批历史学到的建议：同类请求已多次批准时，客户端可在「总是允许」旁提供一键规则。 */
+  learned?: { pattern: string; allows: number; project: string };
 }
 // ExitPlanMode 的决策语义：allow_always = 批准并自动接受编辑（acceptEdits）；
 // allow = 批准但逐个询问（default）；deny 可带 reason（用户要求继续完善计划）。
@@ -820,9 +822,44 @@ export interface PrActionResult {
 // WS: vcs_updated   当前会话 PR 状态变化（Host 每 60s 轮询有 PR 且被订阅的会话）
 
 // ---------- 权限规则（Host 级，存 ~/.tandem/permissions.json；会话级 allow_always 仍保留） ----------
-export interface PermissionRule { tool: string; pattern?: string; action: 'allow' | 'ask' | 'deny' } // pattern：Bash 为命令前缀通配，如 "npm test*"；文件工具为 glob；browser_* 为域名模式，如 "192.168.*"
+export interface PermissionRule {
+  tool: string;
+  pattern?: string;         // Bash 为命令前缀通配，如 "npm test*"；文件工具为 glob；browser_* 为域名模式，如 "192.168.*"
+  action: 'allow' | 'ask' | 'deny';
+  project?: string;         // 可选：绝对路径，仅对该项目（含子目录）生效；缺省为全局
+}
 // tool 支持 * 通配（如 browser_*）。浏览器工具还有一道硬边界：域名必须在本机地址或设置 → 浏览器的允许列表内。
 // GET /api/permissions -> PermissionRule[]   PUT /api/permissions PermissionRule[]   优先级 deny > ask > allow
+
+// ---------- 审批策略学习（Host 本地：~/.tandem/approvals.jsonl，最近 5000 条） ----------
+/** 从审批历史生成的建议规则；危险命令只会建议「询问」，不会建议自动允许。 */
+export interface PermissionSuggestion {
+  id: string;
+  tool: string;
+  pattern: string;
+  action: 'allow' | 'ask';
+  project: string;          // 绝对路径
+  projectName: string;
+  allows: number;
+  denies: number;
+  reason: string;
+  dangerous?: string;       // 命中的危险模式说明
+}
+/** 权限页顶部统计与建议。 */
+export interface PermissionInsights {
+  stats: { days: number; prompts: number; autoHandled: number };
+  suggestions: PermissionSuggestion[];
+}
+/** 自然语言生成的结构化规则草稿（需用户确认后才保存）。 */
+export interface PermissionRuleDraft {
+  rule: PermissionRule;
+  explanation: string;
+}
+// GET  /api/permissions/insights -> PermissionInsights
+// POST /api/permissions/suggestions/:id/adopt -> PermissionRule[]（采纳建议）
+// DELETE /api/permissions/suggestions/:id -> { ok }（忽略建议）
+// POST /api/permissions/rules { rule } -> PermissionRule[]（确认草稿后保存单条规则）
+// POST /api/permissions/draft { sessionId, text } -> PermissionRuleDraft（用当前会话模型解析；危险模式返回 400）
 
 // ---------- MCP（Host 级，存 ~/.tandem/mcp.json；同时只读兼容 ~/.claude.json 与项目 .mcp.json） ----------
 export interface McpServerConfig {

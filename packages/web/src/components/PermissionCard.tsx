@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRightLeft, Bot, Loader2, MessageSquare, Plus, ShieldAlert, X } from 'lucide-react'
+import { ArrowRightLeft, Bot, Loader2, MessageSquare, Plus, ShieldAlert, ShieldCheck, X } from 'lucide-react'
 import type { PermissionDecision, PermissionRequest, PermissionRule, TeamMember } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -181,6 +181,7 @@ export function PermissionCard({
   const [approversLoaded, setApproversLoaded] = useState(false)
   const [transferring, setTransferring] = useState(false)
   const [ruleDraft, setRuleDraft] = useState<PermissionRule | null>(null)
+  const [learning, setLearning] = useState(false)
   const [denyOpen, setDenyOpen] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
   const [denyReason, setDenyReason] = useState('')
@@ -287,6 +288,27 @@ export function PermissionCard({
       .catch(() => setApproversLoaded(true))
   }
 
+  // 同类请求已在本项目批准多次：一键添加项目规则，然后放行这一次。
+  const applyLearned = async () => {
+    const learned = request.learned
+    if (!host || !learned || learning) return
+    setLearning(true)
+    try {
+      await api.addPermissionRule(host, {
+        tool: toolName,
+        pattern: learned.pattern,
+        action: 'allow',
+        project: learned.project,
+      })
+      useUiStore.getState().toast('已添加项目规则，以后自动允许', 'success')
+      decide(request.id, 'allow')
+    } catch (err) {
+      useUiStore.getState().toast(err instanceof Error ? err.message : '添加规则失败', 'error')
+    } finally {
+      setLearning(false)
+    }
+  }
+
   const transfer = async (toMemberId: string) => {
     if (!host || transferring) return
     setTransferring(true)
@@ -373,6 +395,26 @@ export function PermissionCard({
         <div className="max-h-[min(34dvh,320px)] overflow-y-auto px-3.5 pb-2.5">{preview}</div>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 px-3 py-2">
+        {request.learned && (
+          <div className="w-full" data-permission-learned="">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void applyLearned()}
+              disabled={learning}
+              className="h-auto min-h-7 whitespace-normal py-1 text-left text-[12px] text-accent-text max-sm:min-h-11"
+              tooltip={`已在本项目批准 ${request.learned.allows} 次。添加后同类命令不再询问；可随时在设置 → 权限中删除。`}
+              tooltipSide="top"
+            >
+              {learning ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <ShieldCheck size={12} />
+              )}
+              以后在本项目自动允许 <code className="font-mono">{request.learned.pattern}</code>
+            </Button>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-1">
           <Button
             size="sm"

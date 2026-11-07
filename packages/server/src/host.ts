@@ -37,6 +37,7 @@ import { HookManager } from './hooks.js';
 import type { HookExecutionContext, HookRunResult } from './hooks.js';
 import { McpManager } from './mcp.js';
 import { PermissionRuleStore } from './permissions.js';
+import { ApprovalHistoryStore } from './approval.js';
 import { SessionStore } from './store.js';
 import type {
   HostConfig,
@@ -85,6 +86,7 @@ import {
   titleFromCommand,
 } from './host/commands.js';
 import { addAllowed, ancestorsOf, askPermission, authorize, findPendingPermission, isAllowed, requestPlanApproval, resolvePermission, restorePendingPermission } from './host/permissions.js';
+import { addRule, adoptSuggestion, draftRule, ignoreSuggestion, permissionInsights } from './host/approvals.js';
 import { isRunning, listCheckpoints, rewind, snapshotForCheckpoint } from './host/rewind.js';
 import { importSession, notifyExternalSessionsChanged } from './host/external.js';
 import { runHooks } from './host/hooks.js';
@@ -162,6 +164,8 @@ export class Host {
   readonly external = new ExternalSessionStore(this);
   readonly checkpoints: CheckpointStore;
   readonly permissionRules: PermissionRuleStore;
+  /** 审批历史与策略学习（~/.tandem/approvals.jsonl）。 */
+  readonly approvalHistory: ApprovalHistoryStore;
   readonly hooks: HookManager;
   readonly mcp: McpManager;
   /** Claude Code 兼容 skills（只读扫描，启用状态存 ~/.tandem/skills-state.json）。 */
@@ -218,6 +222,7 @@ export class Host {
     this.store = new SessionStore(home);
     this.checkpoints = new CheckpointStore(home);
     this.permissionRules = new PermissionRuleStore(home);
+    this.approvalHistory = new ApprovalHistoryStore(home);
     this.hooks = new HookManager(home);
     this.mcp = new McpManager(home);
     this.skills = new SkillManager({ home });
@@ -628,6 +633,26 @@ export class Host {
 
   addAllowed(rec: SessionRecord, toolName: string, input: unknown): void {
     return addAllowed(this, rec, toolName, input);
+  }
+
+  permissionInsights() {
+    return permissionInsights(this);
+  }
+
+  adoptPermissionSuggestion(id: string) {
+    return adoptSuggestion(this, id);
+  }
+
+  ignorePermissionSuggestion(id: string): void {
+    ignoreSuggestion(this, id);
+  }
+
+  addPermissionRule(rule: unknown) {
+    return addRule(this, rule);
+  }
+
+  draftPermissionRule(rec: SessionRecord, text: string) {
+    return draftRule(this, rec, text);
   }
 
   // ---------- 斜杠命令 ----------

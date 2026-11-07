@@ -42,6 +42,16 @@ export class PermissionRuleStore {
     return this.list();
   }
 
+  /** 追加一条规则（已存在完全相同的规则时跳过）；非法条目返回现有规则。 */
+  add(input: unknown): PermissionRule[] {
+    const [rule] = normalizeRules([input]);
+    if (rule && !this.rules.some((item) => sameRule(item, rule))) {
+      this.rules.push(rule);
+      this.save();
+    }
+    return this.list();
+  }
+
   /**
    * 命中规则的动作：deny 优先，其次 ask，最后 allow；都未命中返回 undefined。
    * browserHost：浏览器工具用于匹配域名模式的当前/目标域名。
@@ -54,7 +64,9 @@ export class PermissionRuleStore {
   ): RuleDecision | undefined {
     let hit: RuleDecision | undefined;
     const args = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+    const project = path.resolve(cwd);
     for (const rule of this.rules) {
+      if (rule.project && !isSubPath(rule.project, project)) continue;
       if (!toolMatches(rule.tool, toolName)) continue;
       if (!matchesInput(rule, toolName, args, cwd, context?.browserHost)) continue;
       if (rule.action === 'deny') return 'deny';
@@ -72,6 +84,15 @@ export class PermissionRuleStore {
   }
 }
 
+function sameRule(a: PermissionRule, b: PermissionRule): boolean {
+  return (
+    a.tool === b.tool &&
+    (a.pattern ?? '') === (b.pattern ?? '') &&
+    a.action === b.action &&
+    (a.project ?? '') === (b.project ?? '')
+  );
+}
+
 function normalizeRules(input: unknown): PermissionRule[] {
   const raw = Array.isArray(input)
     ? input
@@ -86,10 +107,12 @@ function normalizeRules(input: unknown): PermissionRule[] {
     const action = typeof rule.action === 'string' ? rule.action.trim() : '';
     if (!tool || !ACTIONS.has(action as RuleDecision)) continue;
     const pattern = typeof rule.pattern === 'string' ? rule.pattern.trim() : '';
+    const project = typeof rule.project === 'string' ? rule.project.trim() : '';
     out.push({
       tool,
       ...(pattern ? { pattern } : {}),
       action: action as RuleDecision,
+      ...(project ? { project: path.resolve(project) } : {}),
     });
   }
   return out;
@@ -115,7 +138,7 @@ function normalizeCommand(input: unknown): string {
  * Bash 前缀通配：`*` 匹配任意字符，模式从命令开头匹配（末尾隐含通配）。
  * 没有 `*` 的模式按字面前缀匹配。
  */
-function matchCommand(command: string, pattern: string): boolean {
+export function matchCommand(command: string, pattern: string): boolean {
   if (!pattern) return true;
   const source = pattern.replace(/\s+/g, ' ').trim();
   const escaped = source
