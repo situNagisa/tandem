@@ -275,7 +275,7 @@ export function SyncSection() {
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
-        <div className="rounded-xl border border-border bg-surface p-4">
+        <div data-setting-id="sync.export" className="rounded-xl border border-border bg-surface p-4">
           <div className="flex items-center gap-2">
             <span className="flex size-7 items-center justify-center rounded-lg bg-[var(--t-bg-active)] text-text-soft">
               <Download size={14} />
@@ -356,7 +356,7 @@ export function SyncSection() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-border bg-surface p-4">
+        <div data-setting-id="sync.import" className="rounded-xl border border-border bg-surface p-4">
           <div className="flex items-center gap-2">
             <span className="flex size-7 items-center justify-center rounded-lg bg-[var(--t-bg-active)] text-text-soft">
               <Upload size={14} />

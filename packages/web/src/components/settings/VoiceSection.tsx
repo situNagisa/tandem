@@ -126,7 +126,7 @@ export function VoiceSection() {
 
   return (
     <div className="space-y-3">
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section data-setting-id="voice.engine" className="rounded-xl border border-border bg-surface p-4">
         <div className="flex items-start gap-2.5">
           <span className="mt-0.5 text-muted">
             <Mic size={15} />
@@ -152,7 +152,7 @@ export function VoiceSection() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section data-setting-id="voice.whisper" className="rounded-xl border border-border bg-surface p-4">
         <div className="flex items-start gap-2.5">
           <span className="mt-0.5 text-muted">
             <ShieldCheck size={15} />
@@ -293,7 +293,7 @@ export function VoiceSection() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section data-setting-id="voice.device" className="rounded-xl border border-border bg-surface p-4">
         <div className="flex items-start gap-2.5">
           <span className="mt-0.5 text-muted">
             <Info size={15} />
@@ -322,7 +322,7 @@ export function VoiceSection() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section data-setting-id="voice.privacy" className="rounded-xl border border-border bg-surface p-4">
         <h3 className="text-[13px] font-medium">数据流向</h3>
         <ul className="mt-2 space-y-1.5 text-[12px] leading-5 text-muted">
           <li>• Host 转写：麦克风 → 当前设备 → 你配置的 Host（局域网/本机）→ 本机 Whisper → 文本。临时音频在转写结束后立即删除。</li>

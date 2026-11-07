@@ -62,7 +62,7 @@ export function GeneralSettings() {
 
   return (
     <div className="space-y-3">
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section data-setting-id="general.resume-on-restart" className="rounded-xl border border-border bg-surface p-4">
         <div className="flex items-start gap-2.5">
           <span className="mt-0.5 text-muted">
             <RotateCcw size={15} />

@@ -61,7 +61,7 @@ export function SharesSection() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 py-5">
+    <div data-setting-id="shares.list" className="mx-auto flex w-full max-w-2xl flex-col gap-4 py-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-[15px] font-medium">

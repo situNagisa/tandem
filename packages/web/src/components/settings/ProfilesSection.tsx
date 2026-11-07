@@ -455,7 +455,7 @@ export function ProfilesSection() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div data-setting-id="profiles.accounts" className="mb-4 flex flex-wrap items-center gap-2">
         <h3 className="text-[14px] font-semibold">账号与模型</h3>
         <span className="hidden text-[13px] text-muted sm:inline">
           Key 保存在 Host 端，不会下发明文
@@ -609,7 +609,7 @@ export function ProfilesSection() {
                   </p>
                 </div>
 
-                <div className="mt-3 rounded-xl border border-border bg-bg/30 p-3">
+                <div data-setting-id="profiles.groups" className="mt-3 rounded-xl border border-border bg-bg/30 p-3">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Layers size={13} className="text-text-soft" />
                     <span className="text-[13px] font-medium">账号分组</span>
@@ -765,11 +765,13 @@ export function ProfilesSection() {
                 ))}
               </div>
 
+              <div data-setting-id="profiles.prices">
               <PriceOverrides
                 models={[...new Set(groups.flatMap((g) => g.models))]}
                 price={price}
                 onChange={setPrice}
               />
+              </div>
 
               {error && (
                 <div className="mt-3 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft/50 px-3 py-2 text-[13px] text-danger">
@@ -837,7 +839,7 @@ export function ProfilesSection() {
               const groupCount = p.groups?.length ?? 0
               const isOpen = expandedProfile === p.id
               return (
-                <div key={p.id} className="settings-item" data-open={isOpen || undefined}>
+                <div key={p.id} data-setting-id="profiles.models" className="settings-item" data-open={isOpen || undefined}>
                   <div className="flex items-center">
                     <button
                       type="button"
@@ -893,7 +895,7 @@ export function ProfilesSection() {
                       {groupCount ? (
                         <div className="space-y-1">
                           {p.groups?.map((g) => (
-                            <div key={g.id} className="rounded-lg bg-bg/40 px-2 py-1.5">
+                            <div key={g.id} data-setting-id="profiles.key-strategy" className="rounded-lg bg-bg/40 px-2 py-1.5">
                               <div className="flex items-center gap-2">
                                 <span className="min-w-0 flex-1 truncate text-[13px] text-text">
                                   {g.name}

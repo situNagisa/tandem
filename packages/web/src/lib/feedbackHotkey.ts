@@ -1,4 +1,6 @@
 import { useFeedbackStore } from '../store/useFeedbackStore'
+import { getCommandShortcut } from './commands'
+import { matchShortcut } from './shortcut'
 
 let installed = false
 
@@ -10,8 +12,8 @@ export function installFeedbackHotkey(): void {
   if (installed) return
   installed = true
   const onKey = (e: KeyboardEvent) => {
-    const mod = e.metaKey || e.ctrlKey
-    if (!mod || !e.shiftKey || e.key.toLowerCase() !== 'f') return
+    const shortcut = getCommandShortcut('app.feedback')
+    if (!shortcut || !matchShortcut(e, shortcut)) return
     e.preventDefault()
     e.stopImmediatePropagation()
     const store = useFeedbackStore.getState()

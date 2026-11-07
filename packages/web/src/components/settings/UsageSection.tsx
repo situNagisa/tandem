@@ -401,7 +401,7 @@ export function UsageSection() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div data-setting-id="usage.range" className="mb-4 flex flex-wrap items-center gap-2">
         <h3 className="text-[14px] font-semibold">用量</h3>
         <span className="text-[13px] text-muted">跨 Host 汇总</span>
         <span className="flex-1" />
@@ -446,7 +446,7 @@ export function UsageSection() {
         </div>
       </div>
 
-      <div className="mt-3 rounded-xl border border-border bg-surface p-3">
+      <div data-setting-id="usage.chart" className="mt-3 rounded-xl border border-border bg-surface p-3">
         <div className="mb-2 flex items-center gap-1.5 text-[13px] font-medium text-text-soft">
           <BarChart3 size={13} className="text-muted" /> 按天花费
           {loading && <Loader2 size={11} className="animate-spin text-muted" />}
@@ -458,7 +458,7 @@ export function UsageSection() {
         <DayChart days={days} values={daily} />
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div data-setting-id="usage.models" className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <RankTable title="按模型" rows={modelRanks} />
         <RankTable title="按账号" rows={accountRanks} />
         <RankTable title="按 Key" rows={keyRanks} />

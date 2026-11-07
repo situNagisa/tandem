@@ -132,7 +132,7 @@ export function SkillsSection() {
   }
 
   return (
-    <div className="space-y-4">
+    <div data-setting-id="skills.list" className="space-y-4">
       <div className="flex flex-wrap items-start gap-2">
         <div className="min-w-0 flex-1">
           <h2 className="flex items-center gap-1.5 text-[15px] font-medium text-text">

@@ -270,7 +270,7 @@ export function SchedulesSection() {
   }
 
   return (
-    <section className="space-y-4">
+    <section data-setting-id="schedules.list" className="space-y-4">
       <header className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="flex items-center gap-2 text-[15px] font-medium text-text">
@@ -293,6 +293,7 @@ export function SchedulesSection() {
             <RefreshCw size={13} className={cn(loading && 'animate-spin')} />
           </IconButton>
           <Button
+            data-setting-id="schedules.new"
             variant="primary"
             size="sm"
             onClick={openCreate}
@@ -584,6 +585,7 @@ export function SchedulesSection() {
                   className="font-mono text-[12px]"
                 />
               </Field>
+              <div data-setting-id="schedules.effort">
               <Field label="思考强度">
                 <Select
                   value={editing.draft.effort}
@@ -596,8 +598,10 @@ export function SchedulesSection() {
                   ))}
                 </Select>
               </Field>
+              </div>
             </div>
 
+            <div data-setting-id="schedules.permission">
             <Field
               label="权限模式"
               hint={editing.draft.permissionMode === 'bypassPermissions' ? '无人值守时会直接执行，请确认任务可信。' : undefined}
@@ -613,6 +617,7 @@ export function SchedulesSection() {
                 ))}
               </Select>
             </Field>
+            </div>
 
             <Field label="提示词">
               <textarea

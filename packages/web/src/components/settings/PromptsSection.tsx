@@ -175,7 +175,7 @@ export function PromptsSection() {
         </div>
       )}
 
-      <div className="flex min-h-[420px] flex-col gap-3 sm:flex-row">
+      <div data-setting-id="prompts.templates" className="flex min-h-[420px] flex-col gap-3 sm:flex-row">
         <nav className="w-full shrink-0 space-y-2 sm:w-56 sm:border-r sm:border-border sm:pr-2">
           {CATEGORY_ORDER.map((category) => {
             const list = grouped.get(category) ?? []
@@ -218,7 +218,7 @@ export function PromptsSection() {
           })}
         </nav>
 
-        <div ref={editorRef} className="min-w-0 flex-1 scroll-mt-2">
+        <div data-setting-id="prompts.editor" ref={editorRef} className="min-w-0 flex-1 scroll-mt-2">
           {!selected ? (
             <div className="rounded-xl border border-border/70 px-3 py-6 text-center text-[12.5px] text-muted">
               {loading ? '正在加载提示词…' : '没有可展示的提示词'}

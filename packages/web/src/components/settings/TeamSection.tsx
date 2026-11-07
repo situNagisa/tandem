@@ -406,7 +406,7 @@ export function TeamSection() {
         </div>
       )}
 
-      <section className="rounded-xl border border-border bg-surface p-3.5">
+      <section data-setting-id="team.invite-role" className="rounded-xl border border-border bg-surface p-3.5">
         <h3 className="flex items-center gap-1.5 text-[13px] font-medium">
           <UserPlus size={13} className="text-muted" />
           邀请成员
@@ -471,7 +471,7 @@ export function TeamSection() {
         )}
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-border">
+      <section data-setting-id="team.members" className="overflow-hidden rounded-xl border border-border">
         <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
           <h3 className="text-[13px] font-medium">成员（{members.length}）</h3>
           <span className="text-[12px] text-muted">
@@ -555,7 +555,7 @@ export function TeamSection() {
       </section>
 
       {invites.length > 0 && (
-        <section className="overflow-hidden rounded-xl border border-border">
+        <section data-setting-id="team.invites" className="overflow-hidden rounded-xl border border-border">
           <div className="border-b border-border px-3 py-2.5">
             <h3 className="text-[13px] font-medium">邀请记录</h3>
           </div>
@@ -602,7 +602,7 @@ export function TeamSection() {
         </section>
       )}
 
-      <section className="overflow-hidden rounded-xl border border-border">
+      <section data-setting-id="team.audit" className="overflow-hidden rounded-xl border border-border">
         <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
           <h3 className="text-[13px] font-medium">审计日志</h3>
           <span className="text-[12px] text-muted">最近 {audit.length} 条</span>

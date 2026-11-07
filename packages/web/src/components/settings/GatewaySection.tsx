@@ -293,7 +293,7 @@ export function GatewaySection() {
         </div>
       )}
 
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section data-setting-id="gateway.mode" className="rounded-xl border border-border bg-surface p-4">
         <div className="flex items-start gap-3">
           <span className="mt-0.5 text-muted"><Network size={16} /></span>
           <div className="min-w-0 flex-1">
@@ -324,7 +324,7 @@ export function GatewaySection() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section data-setting-id="gateway.routing" className="rounded-xl border border-border bg-surface p-4">
         <div className="flex items-center gap-2">
           <Gauge size={15} className="text-muted" />
           <h4 className="text-[13px] font-medium">模型路由</h4>
@@ -403,7 +403,7 @@ export function GatewaySection() {
         )}
       </section>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section data-setting-id="gateway.tokens" className="rounded-xl border border-border bg-surface p-4">
         <div className="flex flex-wrap items-center gap-2">
           <KeyRound size={15} className="text-muted" />
           <h4 className="text-[13px] font-medium">成员令牌</h4>
@@ -467,7 +467,7 @@ export function GatewaySection() {
         )}
       </section>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section data-setting-id="gateway.stats" className="rounded-xl border border-border bg-surface p-4">
         <div className="flex flex-wrap items-center gap-2">
           <Activity size={15} className="text-muted" />
           <h4 className="text-[13px] font-medium">今日统计</h4>
@@ -522,7 +522,7 @@ export function GatewaySection() {
         )}
       </section>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section data-setting-id="gateway.logs" className="rounded-xl border border-border bg-surface p-4">
         <div className="flex flex-wrap items-center gap-2">
           <ShieldAlert size={15} className="text-muted" />
           <h4 className="text-[13px] font-medium">日志与调试</h4>

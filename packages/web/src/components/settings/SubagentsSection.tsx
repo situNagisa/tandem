@@ -264,10 +264,11 @@ export function SubagentsSection() {
         <IconButton label="刷新" onClick={load} disabled={loading}>
           {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
         </IconButton>
-        <Button size="sm" variant="secondary" onClick={startCreate} icon={<Plus size={13} />}>
+        <Button data-setting-id="subagents.create" size="sm" variant="secondary" onClick={startCreate} icon={<Plus size={13} />}>
           新建预设
         </Button>
         <Button
+          data-setting-id="subagents.presets"
           size="sm"
           variant="primary"
           onClick={save}
@@ -278,7 +279,7 @@ export function SubagentsSection() {
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5">
+      <div data-setting-id="subagents.default-delegation" className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5">
         <span className="text-[12.5px] text-text-soft">新会话默认委派策略</span>
         <Select
           aria-label="新会话默认委派策略"

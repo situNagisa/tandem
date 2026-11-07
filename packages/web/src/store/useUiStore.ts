@@ -46,6 +46,8 @@ interface UiState {
   mobilePanel: boolean
   settingsOpen: boolean
   settingsTab: SettingsTab
+  /** 从命令面板/设置搜索定位到某一项：滚动并短暂高亮。 */
+  settingsFocus: { id: string; nonce: number } | null
   newSessionOpen: boolean
   searchOpen: boolean
   notifications: boolean
@@ -106,6 +108,7 @@ interface UiState {
   openSettings: (tab?: SettingsTab) => void
   closeSettings: () => void
   setSettingsTab: (tab: SettingsTab) => void
+  focusSetting: (tab: SettingsTab, id: string) => void
   setNewSessionOpen: (open: boolean) => void
   setSearchOpen: (open: boolean) => void
   setNotifications: (enabled: boolean) => void
@@ -163,6 +166,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   mobilePanel: false,
   settingsOpen: false,
   settingsTab: 'profiles',
+  settingsFocus: null,
   newSessionOpen: false,
   searchOpen: false,
   notifications: prefs.notifications ?? true,
@@ -262,10 +266,19 @@ export const useUiStore = create<UiState>((set, get) => ({
     set((s) => ({
       settingsOpen: true,
       settingsTab: tab ?? s.settingsTab,
+      settingsFocus: null,
       mobileSidebar: false,
       mobilePanel: false,
     })),
-  closeSettings: () => set({ settingsOpen: false }),
+  closeSettings: () => set({ settingsOpen: false, settingsFocus: null }),
+  focusSetting: (tab, id) =>
+    set((s) => ({
+      settingsOpen: true,
+      settingsTab: tab,
+      settingsFocus: { id, nonce: (s.settingsFocus?.nonce ?? 0) + 1 },
+      mobileSidebar: false,
+      mobilePanel: false,
+    })),
   openBackgroundTasks: (hostId, sessionId, taskId) =>
     set({ backgroundPanel: { hostId, sessionId, ...(taskId ? { taskId } : {}) } }),
   closeBackgroundTasks: () => set({ backgroundPanel: null }),
@@ -279,6 +292,7 @@ export const useUiStore = create<UiState>((set, get) => ({
     set((s) => ({
       settingsOpen: true,
       settingsTab: 'schedules',
+      settingsFocus: null,
       scheduleComposeNonce: s.scheduleComposeNonce + 1,
       mobileSidebar: false,
       mobilePanel: false,

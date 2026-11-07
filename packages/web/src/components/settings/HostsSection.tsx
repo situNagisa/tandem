@@ -238,11 +238,12 @@ export function HostsSection() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div data-setting-id="hosts.list" className="mb-4 flex flex-wrap items-center gap-2">
         <h3 className="text-[14px] font-semibold">Host 管理</h3>
         <span className="text-[13px] text-muted">每台 Host 对应一个 WS 长连接</span>
         <span className="flex-1" />
         <Button
+          data-setting-id="hosts.add"
           variant="primary"
           onClick={() => setAdding((v) => !v)}
           className="max-sm:min-h-11"
@@ -253,7 +254,7 @@ export function HostsSection() {
       </div>
 
       {adding && (
-        <div className="mb-4 rounded-xl border border-border bg-surface p-3.5">
+        <div data-setting-id="hosts.mode" className="mb-4 rounded-xl border border-border bg-surface p-3.5">
           <div>
             <label className="settings-label">配对链接（直连或中继）</label>
             <div className="flex gap-1.5">
@@ -492,6 +493,7 @@ export function HostsSection() {
                 <div className="settings-actions hidden sm:flex" data-desktop-only="" data-open={editing || undefined}>
                   <IconButton
                     size="sm"
+                    data-setting-id="hosts.pair"
                     onClick={() => setPairHost(h.id)}
                     label="连接手机"
                     tooltip="连接手机（扫码配对）"

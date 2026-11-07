@@ -84,8 +84,8 @@ export function MemorySection() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
+    <div data-setting-id="memory.content" className="space-y-4">
+      <div data-setting-id="memory.host" className="flex flex-wrap items-center gap-2">
         <div className="min-w-0">
           <h2 className="flex items-center gap-1.5 text-[15px] font-medium text-text">
             <Brain size={15} className="text-muted" />

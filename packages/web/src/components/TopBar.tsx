@@ -6,6 +6,7 @@ import {
   PanelLeft,
   PanelRight,
   Pencil,
+  Search,
   Send,
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
@@ -179,6 +180,7 @@ export function TopBar() {
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed)
   const setMobileSidebar = useUiStore((s) => s.setMobileSidebar)
   const setDispatchOpen = useUiStore((s) => s.setDispatchOpen)
+  const setSearchOpen = useUiStore((s) => s.setSearchOpen)
   const togglePanel = useUiStore((s) => s.togglePanel)
   const setMobilePanel = useUiStore((s) => s.setMobilePanel)
   const retryHost = useAppStore((s) => s.retryHost)
@@ -335,6 +337,17 @@ export function TopBar() {
           )
         )}
       </div>
+
+      {isMobile && (
+        <IconButton
+          onClick={() => setSearchOpen(true)}
+          label="搜索"
+          tooltip="搜索会话、命令与设置"
+          className="max-sm:size-11"
+        >
+          <Search size={17} />
+        </IconButton>
+      )}
 
       {(!isMobile || !hasSession) && <EvalRunsButton />}
 

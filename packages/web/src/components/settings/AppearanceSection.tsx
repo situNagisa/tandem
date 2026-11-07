@@ -6,6 +6,7 @@ import { modLabel } from '../../lib/format'
 import { requestNotificationPermission } from '../../lib/attention'
 import { cn } from '../../lib/cn'
 import { Button } from '../ui/Button'
+import { ShortcutsTable } from './ShortcutsTable'
 import { Switch } from '../ui/Controls'
 import { useFeedbackStore } from '../../store/useFeedbackStore'
 import { navigate } from '../../lib/router'
@@ -96,7 +97,7 @@ export function AppearanceSection() {
         <span className="text-[13px] text-muted">切换即时生效</span>
       </div>
 
-      <div className="grid gap-2.5 sm:grid-cols-3">
+      <div data-setting-id="appearance.theme" className="grid gap-2.5 sm:grid-cols-3">
         {THEMES.map((t) => {
           const Icon = t.icon
           const selected = theme === t.id
@@ -132,33 +133,34 @@ export function AppearanceSection() {
       </div>
 
       <div className="mt-5 rounded-xl border border-border bg-surface p-3.5">
-        <div className="text-[13px] font-medium">键盘快捷键</div>
-        <dl className="mt-2 grid gap-x-6 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            ['发送消息', 'Enter'],
-            ['换行', 'Shift + Enter'],
-            ['中断当前回合', 'Esc'],
-            ['切换权限模式', 'Shift + Tab'],
-            ['调出上一条发送', '↑（输入框为空）'],
-            ['新会话', `${modLabel} N`],
-            ['搜索会话', `${modLabel} K`],
-            ['收起 / 展开侧栏', `${modLabel} B`],
-            ['切换上 / 下一个会话', `${modLabel} ⇧ [ / ]`],
-            ['侧栏内切换会话', '↑ / ↓'],
-          ].map(([label, keys]) => (
-            <div key={label} className="flex min-h-7 min-w-0 items-center gap-2 text-[13px]">
-              <dt className="truncate text-text-soft">{label}</dt>
-              <dd className="shrink-0">
-                <kbd className="whitespace-nowrap rounded-[4px] border border-border bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[12px] leading-none text-text-soft">
-                  {keys}
-                </kbd>
-              </dd>
-            </div>
-          ))}
-        </dl>
+        <ShortcutsTable />
+        <div className="mt-3 border-t border-border pt-2.5">
+          <div className="text-[12px] text-muted">输入框与浏览</div>
+          <dl className="mt-1 grid gap-x-6 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              ['发送消息', 'Enter'],
+              ['换行', 'Shift + Enter'],
+              ['中断当前回合', 'Esc'],
+              ['切换权限模式', 'Shift + Tab'],
+              ['调出上一条发送', '↑（输入框为空）'],
+              ['打开命令面板', `${modLabel} K`],
+              ['切换上 / 下一个会话', `${modLabel} ⇧ [ / ]`],
+              ['侧栏内切换会话', '↑ / ↓'],
+            ].map(([label, keys]) => (
+              <div key={label} className="flex min-h-7 min-w-0 items-center gap-2 text-[13px]">
+                <dt className="truncate text-text-soft">{label}</dt>
+                <dd className="shrink-0">
+                  <kbd className="whitespace-nowrap rounded-[4px] border border-border bg-[var(--t-surface-2)] px-1.5 py-0.5 font-mono text-[12px] leading-none text-text-soft">
+                    {keys}
+                  </kbd>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
       </div>
 
-      <div className="mt-3 rounded-xl border border-border bg-surface p-3.5">
+      <div data-setting-id="appearance.notifications" className="mt-3 rounded-xl border border-border bg-surface p-3.5">
         <div className="flex items-center gap-2">
           <Bell size={14} className="text-muted" />
           <div className="min-w-0 flex-1">
@@ -181,7 +183,7 @@ export function AppearanceSection() {
         )}
       </div>
 
-      <div className="mt-3 rounded-xl border border-border bg-surface p-3.5">
+      <div data-setting-id="appearance.install" className="mt-3 rounded-xl border border-border bg-surface p-3.5">
         <div className="flex items-center gap-2 text-[13px] font-medium">
           <Smartphone size={14} className="text-muted" /> 安装到手机主屏
         </div>
@@ -195,7 +197,7 @@ export function AppearanceSection() {
         Tandem 使用暖色中性灰与克制的陶土橙强调色，衬线字体只用于标题。所有字体来自系统，不加载外部资源。
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5">
+      <div data-setting-id="appearance.gallery" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5">
         <div className="min-w-0">
           <div className="text-[13px] font-medium">组件画廊</div>
           <p className="mt-0.5 text-[13px] leading-5 text-muted">
@@ -210,7 +212,7 @@ export function AppearanceSection() {
         </Button>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5">
+      <div data-setting-id="appearance.feedback" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5">
         <div className="min-w-0">
           <div className="text-[13px] font-medium">反馈</div>
           <p className="mt-0.5 text-[13px] leading-5 text-muted">

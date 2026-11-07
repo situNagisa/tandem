@@ -330,7 +330,7 @@ export function EvalsSection() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
-        <section className="min-w-0 rounded-xl border border-border p-3">
+        <section data-setting-id="evals.cases" className="min-w-0 rounded-xl border border-border p-3">
           <div className="mb-2 flex items-center gap-2">
             <h3 className="text-[13px] font-medium">用例</h3>
             <span className="ml-auto text-[12px] text-muted">{cases.length}</span>
@@ -381,7 +381,7 @@ export function EvalsSection() {
           </div>
         </section>
 
-        <section className="min-w-0 rounded-xl border border-border p-3">
+        <section data-setting-id="evals.config" className="min-w-0 rounded-xl border border-border p-3">
           <div className="mb-2 flex items-center gap-2">
             <h3 className="text-[13px] font-medium">配置</h3>
             <span className="text-[12px] text-muted">每个配置独立运行全部用例</span>
@@ -418,7 +418,7 @@ export function EvalsSection() {
             </div>
           )}
 
-          <div className="mt-3 rounded-lg border border-border bg-bg/40 p-2.5">
+          <div data-setting-id="evals.reviewer" className="mt-3 rounded-lg border border-border bg-bg/40 p-2.5">
             <div className="flex items-center gap-2">
               <Switch checked={reviewer.enabled} onChange={toggleReviewer} label="评审模型" />
               <span className="text-[12.5px] text-text-soft">评审模型</span>
@@ -464,7 +464,7 @@ export function EvalsSection() {
           </div>
 
           <div className="mt-3 flex flex-wrap items-end gap-3">
-            <label className="flex w-[120px] flex-col gap-1 text-[12px] text-muted">
+            <label data-setting-id="evals.concurrency" className="flex w-[120px] flex-col gap-1 text-[12px] text-muted">
               并发数
               <Input
                 type="number"
@@ -496,7 +496,7 @@ export function EvalsSection() {
         </section>
       </div>
 
-      <section className="min-w-0 rounded-xl border border-border">
+      <section data-setting-id="evals.results" className="min-w-0 rounded-xl border border-border">
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
           <h3 className="text-[13px] font-medium">结果</h3>
           <MenuSelect

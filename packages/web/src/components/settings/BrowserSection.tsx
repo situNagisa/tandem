@@ -108,7 +108,7 @@ export function BrowserSection() {
 
   return (
     <div className="space-y-3">
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section data-setting-id="browser.enabled" className="rounded-xl border border-border bg-surface p-4">
         <div className="flex items-start gap-2.5">
           <span className="mt-0.5 text-muted">
             <MousePointerClick size={15} />
@@ -135,7 +135,7 @@ export function BrowserSection() {
         {error ? <p className="mt-2 text-[12px] text-danger">{error}</p> : null}
       </section>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section data-setting-id="browser.display" className="rounded-xl border border-border bg-surface p-4">
         <div className="flex items-center gap-2">
           <Globe2 size={14} className="text-muted" />
           <h3 className="text-[13px] font-medium">显示模式</h3>
@@ -157,7 +157,7 @@ export function BrowserSection() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section data-setting-id="browser.allowlist" className="rounded-xl border border-border bg-surface p-4">
         <div className="flex items-center gap-2">
           <ShieldCheck size={14} className="text-muted" />
           <h3 className="text-[13px] font-medium">域名允许列表</h3>
@@ -198,7 +198,7 @@ export function BrowserSection() {
         </p>
       </section>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section data-setting-id="browser.tools" className="rounded-xl border border-border bg-surface p-4">
         <div className="flex items-center gap-2">
           <RefreshCw size={14} className="text-muted" />
           <h3 className="text-[13px] font-medium">浏览器组件</h3>

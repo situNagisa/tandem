@@ -149,7 +149,7 @@ export function HooksSection() {
   }
 
   return (
-    <div className="space-y-5">
+    <div data-setting-id="hooks.list" className="space-y-5">
       <div>
         <div className="flex items-center gap-2">
           <Webhook size={15} className="text-text-soft" />

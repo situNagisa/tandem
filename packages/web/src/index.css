@@ -900,6 +900,19 @@ html.feedback-mode .ui-tip {
   font-size: 12px;
   line-height: 1.6;
 }
+.setting-highlight {
+  animation: tandem-setting-highlight 1.8s ease-out;
+}
+@keyframes tandem-setting-highlight {
+  0%,
+  35% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-accent) 55%, transparent);
+    background-color: color-mix(in srgb, var(--t-accent) 8%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
 .settings-item {
   border: 1px solid var(--t-border);
   border-radius: 10px;

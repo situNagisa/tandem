@@ -14,6 +14,7 @@ function Row({
   onChange,
   disabled,
   warning,
+  settingId,
 }: {
   icon?: React.ReactNode
   title: string
@@ -22,9 +23,10 @@ function Row({
   onChange: (checked: boolean) => void
   disabled?: boolean
   warning?: string
+  settingId?: string
 }) {
   return (
-    <div className="rounded-xl border border-border bg-surface p-3.5">
+    <div data-setting-id={settingId} className="rounded-xl border border-border bg-surface p-3.5">
       <div className="flex items-start gap-2.5">
         {icon ? <span className="mt-0.5 text-muted">{icon}</span> : null}
         <div className="min-w-0 flex-1">
@@ -142,6 +144,7 @@ export function NotificationsSection() {
 
       <div className="space-y-2.5">
         <Row
+          settingId="notifications.desktop"
           icon={<Bell size={14} />}
           title="桌面通知"
           desc="页面不可见时，回合结束、审批请求与预算告警通过系统通知提醒；标题与 favicon 保留角标。"
@@ -153,6 +156,7 @@ export function NotificationsSection() {
             : {})}
         />
         <Row
+          settingId="notifications.app"
           icon={<Smartphone size={14} />}
           title="App 通知（本地）"
           desc="安卓 App 收到审批或回合结束时弹出系统通知，审批通知带「允许 / 拒绝」按钮。全部在本机完成，不经过任何推送服务。"
@@ -163,6 +167,7 @@ export function NotificationsSection() {
             : {})}
         />
         <Row
+          settingId="notifications.background"
           icon={<Smartphone size={14} />}
           title="后台保持连接"
           desc="用 Android 前台服务常驻一条「Tandem 正在连接」通知，App 退到后台或锁屏后仍保持 WebSocket，审批可实时送达。"
@@ -177,7 +182,7 @@ export function NotificationsSection() {
         />
       </div>
 
-      <div className="mt-5 rounded-xl border border-border bg-surface p-3.5">
+      <div data-setting-id="notifications.events" className="mt-5 rounded-xl border border-border bg-surface p-3.5">
         <div className="text-[13px] font-medium">提醒哪些事件</div>
         <p className="mt-0.5 text-[13px] leading-5 text-muted">
           只影响系统通知；收件箱始终记录全部事件。

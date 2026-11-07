@@ -137,7 +137,7 @@ function BudgetCard({
   const width = Math.min(100, Math.max(0, percent))
   const level = percent >= 100 ? 'danger' : percent > 80 ? 'warn' : 'normal'
   return (
-    <div className={cn('settings-item px-3 py-2.5', disabled && 'opacity-55')}>
+    <div data-setting-id="budgets.enabled" className={cn('settings-item px-3 py-2.5', disabled && 'opacity-55')}>
       <div className="flex flex-wrap items-center gap-1.5">
         <Wallet size={13} className="shrink-0 text-text-tertiary" />
         <span className="min-w-0 truncate text-[13px] font-medium text-text">
@@ -386,7 +386,7 @@ export function BudgetsSection() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-start gap-3">
+      <div data-setting-id="budgets.rules" className="mb-4 flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="flex items-center gap-2 text-[15px] font-medium text-text">
             <Wallet size={15} className="text-muted" />
@@ -417,6 +417,7 @@ export function BudgetsSection() {
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> 刷新
           </Button>
           <Button
+            data-setting-id="budgets.edit"
             variant="primary"
             size="sm"
             className="max-sm:h-11"

@@ -4,6 +4,7 @@ import { applyTheme, useUiStore } from './store/useUiStore'
 import { navigate, useRoute } from './lib/router'
 import { useIsMobile, useViewportHeight } from './lib/hooks'
 import { clearAttention } from './lib/attention'
+import { commandForEvent } from './lib/commands'
 import { initNativeBridge, syncBackgroundService } from './lib/nativeBridge'
 import { cn } from './lib/cn'
 import { Sidebar } from './components/Sidebar'
@@ -149,17 +150,16 @@ export default function App() {
         if (ui.settingsOpen) return
         e.preventDefault()
         ui.setSearchOpen(!ui.searchOpen)
-      } else if (key === 'n') {
-        if (ui.settingsOpen) return
+        return
+      }
+      if (ui.settingsOpen || ui.searchOpen) return
+      const command = commandForEvent(e)
+      if (command) {
         e.preventDefault()
-        ui.setShowArchived(false)
-        navigate({ kind: 'home' })
-        ui.setMobileSidebar(false)
-      } else if (key === 'b') {
-        e.preventDefault()
-        if (isMobile) ui.setMobileSidebar(!ui.mobileSidebar)
-        else ui.toggleSidebar()
-      } else if (e.shiftKey && (e.code === 'BracketLeft' || e.code === 'BracketRight')) {
+        void command.run()
+        return
+      }
+      if (e.shiftKey && (e.code === 'BracketLeft' || e.code === 'BracketRight')) {
         const store = useAppStore.getState()
         const hostId = store.active?.hostId ?? store.activeHostId
         if (!hostId || ui.settingsOpen || ui.searchOpen) return

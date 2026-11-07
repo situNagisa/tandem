@@ -372,7 +372,7 @@ export function McpSection() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div data-setting-id="mcp.servers" className="mb-4 flex flex-wrap items-center gap-2">
         <h3 className="text-[14px] font-semibold">MCP 服务器</h3>
         <span className="text-[13px] text-muted">stdio / Streamable HTTP</span>
         <span className="flex-1" />
