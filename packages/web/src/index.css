@@ -1076,3 +1076,22 @@ html.feedback-mode [data-feedback-hover].settings-item {
 [data-session-open]:focus-visible {
   outline-offset: -2px;
 }
+
+/* 新功能导览：跳转目标短暂高亮，不改变布局。 */
+.tour-pulse {
+  animation: tandem-tour-pulse 1.9s var(--t-ease-out) both;
+  border-radius: 10px;
+}
+
+@keyframes tandem-tour-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--t-accent-strong) 0%, transparent);
+  }
+  18%,
+  72% {
+    box-shadow:
+      0 0 0 2px var(--t-accent-strong),
+      0 0 0 7px color-mix(in srgb, var(--t-accent-strong) 18%, transparent);
+  }
+}

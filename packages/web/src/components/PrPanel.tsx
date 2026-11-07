@@ -91,7 +91,7 @@ export function CliGuide({ vcs }: { vcs: VcsCapability }) {
     return (
       <div className="rounded-lg border border-border bg-[var(--t-bg-hover)] p-3 text-[13px] leading-6 text-text-soft">
         当前仓库没有 <span className="font-mono text-text">origin</span> 远程仓库，无法创建 PR。
-        先在 Host 机器上配置远程仓库：
+        先在 主机上配置远程仓库：
         <code className="mt-2 block rounded bg-surface px-2 py-1 font-mono text-[12px]">
           git remote add origin &lt;仓库地址&gt;
         </code>
@@ -107,7 +107,7 @@ export function CliGuide({ vcs }: { vcs: VcsCapability }) {
         {vcs.cliInstalled ? `${bin} 尚未登录` : `未安装 ${bin}`}
       </div>
       <p className="mt-1">
-        PR 与 CI 集成使用 Host 机器上的 {providerLabel(vcs)} CLI 和你的本地登录状态，
+        PR 与 CI 集成使用 主机上的 {providerLabel(vcs)} CLI 和你的本地登录状态，
         Tandem 不会保存平台令牌。
       </p>
       {!vcs.cliInstalled && (
@@ -366,7 +366,7 @@ export function PrPanel() {
         const ok = send([{ type: 'text', text }])
         if (!ok) {
           setDrafting(false)
-          toast('Host 未连接，无法让 agent 起草', 'error')
+          toast('主机未连接，无法让 agent 起草', 'error')
         }
       })
   }
@@ -731,7 +731,7 @@ export function PrPanel() {
           <span className="font-mono text-text">{pr?.baseRefName ?? '目标分支'}</span>。
           合并后不可撤销。
         </p>
-        <p className="mt-3 text-[12px] text-muted">操作在 Host 机器上通过 {vcs?.cli ?? 'gh'} 完成。</p>
+        <p className="mt-3 text-[12px] text-muted">操作在 主机上通过 {vcs?.cli ?? 'gh'} 完成。</p>
       </Modal>
     </>
   )

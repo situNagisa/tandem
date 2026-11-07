@@ -9,8 +9,8 @@ import { SegmentedControl, Switch, Textarea } from '../ui/Controls'
 
 const DEFAULT_SETTINGS: BrowserSettings = { enabled: false, allowedHosts: [], headless: true }
 const HEADLESS_OPTIONS = [
-  { value: 'headless' as const, label: '无头模式', title: '不显示窗口，适合远程 Host' },
-  { value: 'headed' as const, label: '有头模式', title: '在 Host 桌面弹出可见的浏览器窗口' },
+  { value: 'headless' as const, label: '无头模式', title: '不显示窗口，适合远程主机' },
+  { value: 'headed' as const, label: '有头模式', title: '在主机桌面弹出可见的浏览器窗口' },
 ]
 
 function parseHosts(text: string): string[] {
@@ -124,7 +124,7 @@ export function BrowserSection() {
               />
             </div>
             <p className="mt-1 text-[13px] leading-5 text-muted">
-              让 agent 在 Host 本机打开页面、复现 bug、截图回传。每个会话独立浏览器上下文，空闲 10 分钟自动关闭。
+              让 agent 在主机本机打开页面、复现 bug、截图回传。每个会话独立浏览器上下文，空闲 10 分钟自动关闭。
             </p>
             {!settings && !error ? <p className="mt-2 text-[12px] text-muted">读取中…</p> : null}
             {!enabled && settings ? (
@@ -141,7 +141,7 @@ export function BrowserSection() {
           <h3 className="text-[13px] font-medium">显示模式</h3>
         </div>
         <p className="mt-1 text-[13px] leading-5 text-muted">
-          无头模式不弹窗口，适合远程 Host；有头模式会在 Host 桌面打开可见窗口，方便本机观察。
+          无头模式不弹窗口，适合远程主机；有头模式会在主机桌面打开可见窗口，方便本机观察。
         </p>
         <div className="mt-3">
           <SegmentedControl

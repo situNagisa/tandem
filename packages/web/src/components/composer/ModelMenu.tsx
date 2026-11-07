@@ -111,7 +111,7 @@ function ModelPanel({
       )}
       {!loading && profiles.length === 0 && (
         <div className="px-2 py-2 text-[12px] leading-5 text-muted">
-          这台 Host 还没有配置账号。
+          这台主机还没有配置账号。
         </div>
       )}
       {profiles.length > 0 && models.length === 0 && (
@@ -124,7 +124,7 @@ function ModelPanel({
             textValue="自动"
             onSelect={onSelectAuto}
             className="h-auto min-h-[40px] py-1"
-            hint="按本轮难度在「设置 → 模型路由」候选池中选择，失败自动升级、简单任务回落"
+            hint="按本轮难度在「设置 → 自动路由」候选池中选择，失败自动升级、简单任务回落"
           >
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="flex items-center gap-1 truncate text-[13px] leading-4">
@@ -321,7 +321,7 @@ export function ModelMenu({
             isOpen
               ? undefined
               : autoRoute
-                ? `自动路由 · 当前 ${autoModel ?? model}（候选池在设置 → 模型路由）`
+                ? `自动路由 · 当前 ${autoModel ?? model}（候选池在设置 → 自动路由）`
                 : currentProfile
                   ? `${currentProfile.name}${currentGroup ? ` › ${currentGroup}` : ''} · ${model}`
                   : '选择账号与模型'

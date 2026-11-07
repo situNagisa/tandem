@@ -100,7 +100,7 @@ export function MemorySection() {
           <MenuSelect
             value={hostId ?? ''}
             onChange={setHostId}
-            aria-label="选择 Host"
+            aria-label="选择主机"
             options={hosts.map((h) => ({ value: h.id, label: h.name }))}
             wrapperClassName="w-auto max-w-[180px]"
             className="text-[13px]"
@@ -193,7 +193,7 @@ export function MemorySection() {
       )}
 
       <p className="text-[12px] leading-5 text-muted">
-        记忆保存在 Host 的 <span className="font-mono">~/.tandem/memory/</span>；agent 写入需要审批
+        记忆保存在主机的 <span className="font-mono">~/.tandem/memory/</span>；agent 写入需要审批
         （自动接受编辑模式下自动通过），用户输入「#记住 内容」直接追加。导出配置包时会一并加密携带。
       </p>
 

@@ -128,7 +128,7 @@ function CheckRow({ item }: { item: DoctorCheck }) {
   )
 }
 
-/** Host 诊断面板：一键检查运行环境，导出可贴给维护者的脱敏报告。 */
+/** 主机诊断面板：一键检查运行环境，导出可贴给维护者的脱敏报告。 */
 export function DoctorDialog() {
   const hostId = useUiStore((s) => s.doctorHostId)
   const close = useUiStore((s) => s.closeDoctor)
@@ -197,11 +197,11 @@ export function DoctorDialog() {
       onClose={close}
       title={
         <span className="flex items-center gap-1.5">
-          <Stethoscope size={15} /> Host 诊断 · {host?.name ?? '未知 Host'}
+          <Stethoscope size={15} /> 主机诊断 · {host?.name ?? '未知主机'}
         </span>
       }
-      description="检查这台 Host 的运行环境；失败项排在前面。不会访问公网，账号连通性需手动勾选。"
-      ariaLabel="Host 诊断"
+      description="检查这台主机的运行环境；失败项排在前面。不会访问公网，账号连通性需手动勾选。"
+      ariaLabel="主机诊断"
       className="max-w-2xl"
       bodyClassName="space-y-3 p-4"
       footer={

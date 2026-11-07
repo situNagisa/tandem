@@ -449,8 +449,8 @@ export function ProfilesSection() {
     return (
       <div className="settings-empty">
         <span className="settings-empty-icon"><KeyRound size={17} /></span>
-        <p className="settings-empty-title">还没有连接 Host</p>
-        <p className="settings-empty-hint">先添加一台 Host，再配置账号与模型。</p>
+        <p className="settings-empty-title">还没有连接主机</p>
+        <p className="settings-empty-hint">先添加一台主机，再配置账号与模型。</p>
       </div>
     )
   }
@@ -462,7 +462,7 @@ export function ProfilesSection() {
       <div data-setting-id="profiles.accounts" className="mb-4 flex flex-wrap items-center gap-2">
         <h3 className="text-[14px] font-semibold">账号与模型</h3>
         <span className="hidden text-[13px] text-muted sm:inline">
-          Key 保存在 Host 端，不会下发明文
+          Key 保存在主机端，不会下发明文
         </span>
         <span className="flex-1" />
         {hosts.length > 1 && (
@@ -472,7 +472,7 @@ export function ProfilesSection() {
               setHostId(id)
               reset()
             }}
-            aria-label="选择 Host"
+            aria-label="选择主机"
             options={hosts.map((h) => ({ value: h.id, label: h.name }))}
             wrapperClassName="w-auto max-w-[180px]"
             className="text-[13px]"
@@ -584,7 +584,7 @@ export function ProfilesSection() {
                   </button>
                 </div>
                 <p className="text-[13px] leading-5 text-muted">
-                  Key 保存在 Host 端，不会下发到浏览器。每个分组可单独设置协议与模型，会话按所选分组运行。
+                  Key 保存在主机端，不会下发到浏览器。每个分组可单独设置协议与模型，会话按所选分组运行。
                 </p>
               </aside>
 

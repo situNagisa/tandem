@@ -1,5 +1,5 @@
 // 语音输入按钮：按住说话 / 点击持续录音，松开后转写并回填到调用方光标位置。
-// 录音只在本机与用户自己的 Host 之间传输；Host 转写失败时按设置降级到设备内置识别。
+// 录音只在本机与用户自己的 主机之间传输；主机转写失败时按设置降级到设备内置识别。
 import {
   forwardRef,
   useCallback,
@@ -152,15 +152,15 @@ export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(funct
       }
       if (prefs.engine === 'host') {
         if (await hostAvailable()) return 'host'
-        throw new Error('Host 本地转写不可用，请在设置 → 语音 中配置 Whisper')
+        throw new Error('主机本地转写不可用，请在设置 → 语音 中配置 Whisper')
       }
       if (await hostAvailable()) return 'host'
       if (await nativeSpeechSupported()) return 'native'
-      throw new Error('没有可用的语音识别方式：请配置 Host Whisper，或启用系统语音服务')
+      throw new Error('没有可用的语音识别方式：请配置 主机 Whisper，或启用系统语音服务')
     }
     if (prefs.engine === 'host') {
       if (await hostAvailable()) return 'host'
-      throw new Error('Host 本地转写不可用，请在设置 → 语音 中配置 Whisper')
+      throw new Error('主机本地转写不可用，请在设置 → 语音 中配置 Whisper')
     }
     if (prefs.engine === 'system') {
       if (!prefs.browserSpeechAllowed) {
@@ -173,8 +173,8 @@ export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(funct
     if (prefs.browserSpeechAllowed && browserSpeechSupported()) return 'browser'
     throw new Error(
       host
-        ? '还没配置语音识别：可在设置 → 语音 配置 Host Whisper，或允许浏览器内置识别（可能联网）'
-        : 'Host 未连接，无法使用本机转写',
+        ? '还没配置语音识别：可在设置 → 语音 配置 主机 Whisper，或允许浏览器内置识别（可能联网）'
+        : '主机未连接，无法使用本机转写',
     )
   }
 
@@ -192,7 +192,7 @@ export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(funct
         if (!recorder) throw new Error('录音未开始')
         const clip = await recorder.stop()
         recorderRef.current = null
-        if (!host) throw new Error('Host 未连接')
+        if (!host) throw new Error('主机未连接')
         const audioBase64 = await blobToBase64(clip.blob)
         const result = await api.transcribe(host, {
           audioBase64,
@@ -448,7 +448,7 @@ export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(funct
             <div className="mt-1.5 flex items-center justify-between gap-2 text-[12px] text-muted">
               <span className="truncate">
                 {backendRef.current === 'host'
-                  ? '识别：Host 本机 Whisper'
+                  ? '识别：主机本机 Whisper'
                   : backendRef.current === 'native'
                     ? '识别：系统语音服务'
                     : backendRef.current === 'browser'

@@ -103,7 +103,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
       title="连接手机"
       description={
         relay
-          ? '经中继连接无需同一局域网；二维码携带 Host 公钥指纹，扫码后走端到端加密。'
+          ? '经中继连接无需同一局域网；二维码携带主机公钥指纹，扫码后走端到端加密。'
           : loopback
             ? 'Host 目前只监听本机回环地址，手机无法扫码连接。'
             : '手机与 Host 在同一局域网或 Tailscale 网络时，用 Tandem App 扫码即可连接。'
@@ -125,7 +125,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
         {!loading && loopback && !relay && (
           <div className="rounded-xl border border-warning/30 bg-warning-soft/40 px-4 py-5 text-center">
             <Unplug size={26} className="mx-auto text-warning" />
-            <p className="mt-2 text-[13px] font-medium text-text">手机暂时连不上这台 Host</p>
+            <p className="mt-2 text-[13px] font-medium text-text">手机暂时连不上这台主机</p>
             <p className="mx-auto mt-1 max-w-[300px] text-[13px] leading-5 text-text-soft">
               Host 只监听 <code className="rounded bg-[var(--t-bg-active)] px-1 font-mono text-[13px]">127.0.0.1</code>，
               二维码里的地址在手机上会指向手机自己。请让 Host 监听局域网地址后重新检测。
@@ -211,7 +211,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
 
         {source === 'relay' && relay && (
           <div className="rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[13px] leading-5 text-muted">
-            <div className="mb-1 text-text-soft">Host 公钥指纹（SHA-256）</div>
+            <div className="mb-1 text-text-soft">主机公钥指纹（SHA-256）</div>
             <div className="break-all font-mono text-[13px] text-text-secondary">{relay.fingerprint}</div>
             <p className="mt-1">链接里含 token 与指纹，请只发给可信设备；连接时指纹不符会拒绝连接。</p>
             {!relay.connected && <p className="mt-1 text-warning">Host 当前未连上中继，扫码后可能暂时无法连接。</p>}

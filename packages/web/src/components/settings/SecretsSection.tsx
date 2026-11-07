@@ -217,7 +217,7 @@ export function SecretsSection() {
           <MenuSelect
             value={hostId ?? ''}
             onChange={setHostId}
-            aria-label="选择 Host"
+            aria-label="选择主机"
             options={hosts.map((item) => ({ value: item.id, label: item.name }))}
             wrapperClassName="w-auto max-w-[180px]"
             className="text-[13px]"
@@ -354,7 +354,7 @@ export function SecretsSection() {
       </div>
 
       <p className="text-[12px] leading-5 text-muted">
-        值以 AES-256-GCM 加密保存在 Host 的 <span className="font-mono">~/.tandem/secrets.json</span>
+        值以 AES-256-GCM 加密保存在主机的 <span className="font-mono">~/.tandem/secrets.json</span>
         （600，密钥单独存放）；接口永不回传值。通用打码可关闭，本机 secret 值的打码不可关闭。
       </p>
 

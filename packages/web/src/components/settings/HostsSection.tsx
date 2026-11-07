@@ -100,7 +100,7 @@ export function HostsSection() {
       return
     }
     if (!token.trim()) {
-      setAddError('请填写 Host Token')
+      setAddError('请填写主机 Token')
       return
     }
     setSaving(true)
@@ -108,9 +108,9 @@ export function HostsSection() {
       if (mode === 'relay') {
         if (cryptoSupported === false) throw new Error(RELAY_UNSUPPORTED_MESSAGE)
         if (!relayUrl.trim()) throw new Error('请填写中继地址')
-        if (!hostId.trim()) throw new Error('请填写 Host ID')
+        if (!hostId.trim()) throw new Error('请填写主机 ID')
         if (!isValidFingerprint(fingerprint)) {
-          throw new Error('必须填写 Host 公钥指纹（64 位十六进制）')
+          throw new Error('必须填写主机公钥指纹（64 位十六进制）')
         }
         const base = normalizeHostUrl(relayUrl)
         addHost({
@@ -123,10 +123,10 @@ export function HostsSection() {
           fingerprint: normalizeFingerprint(fingerprint),
         })
       } else {
-        if (!url.trim()) throw new Error('请填写 Host 地址')
+        if (!url.trim()) throw new Error('请填写主机地址')
         addHost({ name: name.trim(), url: url.trim(), token: token.trim() })
       }
-      toast('Host 已添加', 'success')
+      toast('主机已添加', 'success')
       resetAdd()
       setAdding(false)
     } catch (err) {
@@ -218,7 +218,7 @@ export function HostsSection() {
     }
     try {
       if (host.mode === 'relay') {
-        if (!isValidFingerprint(editFingerprint)) throw new Error('必须填写 Host 公钥指纹（64 位十六进制）')
+        if (!isValidFingerprint(editFingerprint)) throw new Error('必须填写主机公钥指纹（64 位十六进制）')
         updateHost(editId, {
           name: editName,
           token: editToken,
@@ -231,18 +231,18 @@ export function HostsSection() {
         updateHost(editId, { name: editName, url: editUrl, token: editToken })
       }
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Host 配置无效', 'error')
+      toast(err instanceof Error ? err.message : '主机配置无效', 'error')
       return
     }
     setEditId(null)
-    toast('Host 已更新', 'success')
+    toast('主机已更新', 'success')
   }
 
   return (
     <div>
       <div data-setting-id="hosts.list" className="mb-4 flex flex-wrap items-center gap-2">
-        <h3 className="text-[14px] font-semibold">Host 管理</h3>
-        <span className="text-[13px] text-muted">每台 Host 对应一个 WS 长连接</span>
+        <h3 className="text-[14px] font-semibold">主机</h3>
+        <span className="text-[13px] text-muted">每台主机对应一个 WS 长连接</span>
         <span className="flex-1" />
         <Button
           data-setting-id="hosts.add"
@@ -251,7 +251,7 @@ export function HostsSection() {
           className="max-sm:min-h-11"
         >
           {adding ? <X size={13} /> : <Plus size={13} />}
-          {adding ? '收起' : '添加 Host'}
+          {adding ? '收起' : '添加主机'}
         </Button>
       </div>
 
@@ -279,7 +279,7 @@ export function HostsSection() {
               {canScan && (
                 <IconButton
                   onClick={() => setScanOpen(true)}
-                  label="扫码添加 Host"
+                  label="扫码添加主机"
                   tooltip="扫码"
                   className="size-9"
                 >
@@ -288,7 +288,7 @@ export function HostsSection() {
               )}
             </div>
             <p className="mt-1.5 text-[13px] leading-4 text-muted">
-              中继配对链接里的指纹会一并带入；解析后自动创建 Host。
+              中继配对链接里的指纹会一并带入；解析后自动创建主机。
             </p>
           </div>
 
@@ -323,7 +323,7 @@ export function HostsSection() {
               <Input
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
-                placeholder="Host 启动日志或配对链接中的 Token"
+                placeholder="主机启动日志或配对链接中的 Token"
                 spellCheck={false}
                 autoComplete="off"
                 className="font-mono text-[13px]"
@@ -331,7 +331,7 @@ export function HostsSection() {
             </div>
             {mode === 'direct' ? (
               <div className="sm:col-span-2">
-                <label className="settings-label">Host 地址</label>
+                <label className="settings-label">主机地址</label>
                 <div className="flex gap-1.5">
                   <Input
                         value={url}
@@ -349,7 +349,7 @@ export function HostsSection() {
                   </Button>
                 </div>
                 <p className="mt-1.5 text-[13px] leading-4 text-muted">
-                  Token 只保存在本机浏览器里；远程 Host 请确保网络可达（局域网 / Tailscale / 端口转发）。
+                  Token 只保存在本机浏览器里；远程主机请确保网络可达（局域网 / Tailscale / 端口转发）。
                 </p>
               </div>
             ) : (
@@ -365,11 +365,11 @@ export function HostsSection() {
                   />
                 </div>
                 <div>
-                  <label className="settings-label">Host ID</label>
+                  <label className="settings-label">主机 ID</label>
                   <input
                     value={hostId}
                     onChange={(e) => setHostId(e.target.value)}
-                    placeholder="中继上的 Host ID"
+                    placeholder="中继上的主机 ID"
                     spellCheck={false}
                     className={cn(inputCls, 'font-mono text-[13px]')}
                   />
@@ -385,7 +385,7 @@ export function HostsSection() {
                   />
                 </div>
                 <p className="text-[13px] leading-4 text-muted sm:col-span-2">
-                  指纹必须通过中继之外的渠道获得（Host 启动日志 / 本机配对二维码）。连接时指纹不符会拒绝连接。
+                  指纹必须通过中继之外的渠道获得（主机启动日志 / 本机配对二维码）。连接时指纹不符会拒绝连接。
                 </p>
               </>
             )}
@@ -507,7 +507,7 @@ export function HostsSection() {
                     data-setting-id="hosts.doctor"
                     onClick={() => openDoctor(h.id)}
                     label="诊断"
-                    tooltip="诊断这台 Host"
+                    tooltip="诊断这台主机"
                     className="size-7 [&_svg]:size-3"
                   >
                     <Stethoscope size={12} />
@@ -623,7 +623,7 @@ export function HostsSection() {
                         />
                       </div>
                       <div>
-                        <label className="settings-label">Host ID</label>
+                        <label className="settings-label">主机 ID</label>
                         <input
                           value={editHostId}
                           onChange={(e) => setEditHostId(e.target.value)}
@@ -668,7 +668,7 @@ export function HostsSection() {
       </div>
 
       <p className="settings-note">
-        修改地址或 Token 会自动重连并重新订阅当前会话。多个标签页/手机可以同时连接同一 Host。
+        修改地址或 Token 会自动重连并重新订阅当前会话。多个标签页/手机可以同时连接同一主机。
       </p>
       <Modal
         open={!!removeTarget}
@@ -695,7 +695,7 @@ export function HostsSection() {
         }
       >
         <p className="text-[13px] leading-6 text-text-soft">
-          移除 Host「{removeTarget?.name}」？这不会影响 Host 机器上的数据。
+          移除 Host「{removeTarget?.name}」？这不会影响 主机上的数据。
         </p>
       </Modal>
 

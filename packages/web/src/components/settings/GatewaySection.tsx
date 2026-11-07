@@ -265,8 +265,8 @@ export function GatewaySection() {
     return (
       <div className="settings-empty">
         <span className="settings-empty-icon"><Network size={17} /></span>
-        <p className="settings-empty-title">还没有连接 Host</p>
-        <p className="settings-empty-hint">先添加一台 Host，再开启网关模式。</p>
+        <p className="settings-empty-title">还没有连接主机</p>
+        <p className="settings-empty-hint">先添加一台主机，再开启网关模式。</p>
       </div>
     )
   }
@@ -275,7 +275,7 @@ export function GatewaySection() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-[14px] font-semibold">网关</h3>
-        <span className="text-[13px] text-muted">成员共用一个入口，Key 不离开这台 Host</span>
+        <span className="text-[13px] text-muted">成员共用一个入口，Key 不离开这台主机</span>
         <span className="flex-1" />
         <IconButton
           onClick={() => void load(true)}
@@ -310,7 +310,7 @@ export function GatewaySection() {
             <p className="mt-1 break-words text-[13px] leading-5 text-muted">
               开启后，内网成员可用网关令牌调用 <code className="break-all font-mono text-[12px]">/gateway/v1/chat/completions</code>、
               <code className="break-all font-mono text-[12px]">/gateway/v1/messages</code> 与 <code className="break-all font-mono text-[12px]">/gateway/v1/models</code>；
-              网关按模型路由到本机账号分组，统一限流、记账，调用者拿不到真实 Key。
+              网关按模型转发到本机账号分组，统一限流、记账，调用者拿不到真实 Key。
             </p>
             {settings?.enabled && (
               <div className="mt-2 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft/40 px-2.5 py-2 text-[13px] leading-5 text-text-soft">
@@ -327,7 +327,7 @@ export function GatewaySection() {
       <section data-setting-id="gateway.routing" className="rounded-xl border border-border bg-surface p-4">
         <div className="flex items-center gap-2">
           <Gauge size={15} className="text-muted" />
-          <h4 className="text-[13px] font-medium">模型路由</h4>
+          <h4 className="text-[13px] font-medium">模型转发</h4>
           <span className="text-[12px] text-muted">请求里的 model → 本机账号 › 分组</span>
           <span className="flex-1" />
         </div>
@@ -349,7 +349,7 @@ export function GatewaySection() {
                     size="sm"
                     variant="danger-ghost"
                     onClick={() => removeRoute(route.id)}
-                    label={`删除模型路由 ${route.models.join('、')}`}
+                    label={`删除模型转发 ${route.models.join('、')}`}
                     className="size-7 [&_svg]:size-[11px]"
                   >
                     <Trash2 size={11} />
@@ -613,7 +613,7 @@ export function GatewaySection() {
         {issuedToken ? (
           <div className="space-y-3">
             <p className="text-[13px] leading-5 text-text-soft">
-              令牌只显示这一次。复制后交给对应的成员，Host 只保存哈希。
+              令牌只显示这一次。复制后交给对应的成员，主机只保存哈希。
             </p>
             <div className="flex items-center gap-2 rounded-lg border border-border bg-bg/50 px-2.5 py-2">
               <code className="min-w-0 flex-1 break-all font-mono text-[12px]">{issuedToken}</code>

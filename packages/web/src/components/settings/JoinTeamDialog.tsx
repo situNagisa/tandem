@@ -8,7 +8,7 @@ import { Button } from '../ui/Button'
 import { Input } from '../ui/Controls'
 import { Modal } from '../ui/Modal'
 
-/** 打开邀请链接后：填写名字，凭邀请码换取成员 token 并添加 Host。 */
+/** 打开邀请链接后：填写名字，凭邀请码换取成员 token 并添加主机。 */
 export function JoinTeamDialog() {
   const invite = useUiStore((s) => s.joinInvite)
   const close = useUiStore((s) => s.closeJoinInvite)
@@ -29,7 +29,7 @@ export function JoinTeamDialog() {
   const join = async () => {
     if (!invite || joining) return
     if (!name.trim()) {
-      setError('请填写你的名字，便于 Host 记录审计')
+      setError('请填写你的名字，便于主机记录审计')
       return
     }
     setJoining(true)
@@ -63,7 +63,7 @@ export function JoinTeamDialog() {
           加入团队 Host
         </span>
       }
-      description="邀请码只能使用一次。加入后你会获得独立的成员 token，Host 只保存哈希。"
+      description="邀请码只能使用一次。加入后你会获得独立的成员 token，主机只保存哈希。"
       className="max-w-md"
       footer={
         <>

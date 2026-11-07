@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import type { RetryInfo } from '@tandem/protocol'
+import type { BackgroundTask, RetryInfo } from '@tandem/protocol'
 import {
+  Bot,
   Columns2,
-  Columns3,
   FileDiff,
-  LayoutGrid,
+  FlaskConical,
+  FolderTree,
+  GitPullRequest,
+  Globe2,
   Menu,
+  MoreHorizontal,
   PanelLeft,
   PanelRight,
   Pencil,
   Search,
-  Send,
+  SquareTerminal,
   X,
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
@@ -29,9 +33,8 @@ import { ConnectionDot } from './StatusDot'
 import { Button, IconButton } from './ui/Button'
 import { Menu as UiMenu } from './ui/Menu'
 import { Input } from './ui/Controls'
-import { BackgroundTasksButton, BrowserButton, FilesButton, SubagentsButton } from './chat/SessionHeaderTools'
-import { EvalRunsButton } from './evals/EvalRunsButton'
-import { PrButton, PrPanel } from './PrPanel'
+import { useSubagentRows } from './chat/SessionHeaderTools'
+import { PrPanel } from './PrPanel'
 
 function StatePill({
   running,
@@ -124,69 +127,145 @@ function StatePill({
   return null
 }
 
-function SplitMenuButton() {
-  const panes = useUiStore((s) => s.splitPanes)
+const EMPTY_BACKGROUND_TASKS: BackgroundTask[] = []
+
+function MoreMenu() {
+  const active = useAppStore((s) => s.active)
+  const tasks = useTaskStore((s) =>
+    active ? (s.byHost[active.hostId] ?? EMPTY_BACKGROUND_TASKS) : EMPTY_BACKGROUND_TASKS,
+  )
+  const taskCount = active
+    ? tasks.filter((task) => task.sessionId === active.sessionId && task.status === 'running').length
+    : 0
+  const rows = useSubagentRows()
+  const focusAgent = useUiStore((s) => s.focusAgent)
+  const openBackgroundTasks = useUiStore((s) => s.openBackgroundTasks)
+  const openBrowserPanel = useUiStore((s) => s.openBrowserPanel)
+  const openFileBrowser = useAppStore((s) => s.openFileBrowser)
+  const openPrPanel = useUiStore((s) => s.openPrPanel)
+  const openSettings = useUiStore((s) => s.openSettings)
+  const splitPanes = useUiStore((s) => s.splitPanes)
   const layout = useUiStore((s) => s.splitLayout)
   const setSplitLayout = useUiStore((s) => s.setSplitLayout)
   const setSplitPickerOpen = useUiStore((s) => s.setSplitPickerOpen)
-  const split = panes.length >= 2
+  const split = splitPanes.length >= 2
+
   return (
     <UiMenu
       side="bottom"
       align="end"
-      aria-label="多会话分屏"
-      className="w-[190px]"
+      aria-label="更多操作"
+      className="w-[200px]"
       trigger={({ open }) => (
         <IconButton
-          label="多会话分屏"
-          tooltip="多会话分屏"
-          aria-pressed={split}
-          className={cn(
-            'max-sm:size-11',
-            (open || split) && 'bg-[var(--t-bg-active)] text-text',
-          )}
+          label="更多"
+          tooltip="更多操作"
+          data-tour-target="more"
+          aria-expanded={open}
+          className={cn('text-text! max-sm:size-11', open && 'bg-[var(--t-bg-active)]')}
         >
-          <Columns2 size={16} />
+          <MoreHorizontal size={17} />
         </IconButton>
       )}
     >
-      <UiMenu.Item icon={<Columns2 size={14} />} onSelect={() => setSplitPickerOpen(true)}>
-        分屏打开会话…
+      <UiMenu.Item
+        icon={<SquareTerminal size={14} />}
+        trailing={taskCount > 0 ? taskCount : undefined}
+        disabled={!active}
+        onSelect={() => {
+          if (active) openBackgroundTasks(active.hostId, active.sessionId)
+        }}
+      >
+        后台任务
       </UiMenu.Item>
-      {split && (
-        <>
-          <UiMenu.Separator />
-          <UiMenu.Item
-            icon={<Columns2 size={14} />}
-            selected={layout === 'cols2'}
-            disabled={panes.length > 2}
-            disabledReason="当前有 3–4 个窗格，请用 3 列或 2×2"
-            onSelect={() => setSplitLayout('cols2')}
-          >
-            2 列
-          </UiMenu.Item>
-          <UiMenu.Item
-            icon={<Columns3 size={14} />}
-            selected={layout === 'cols3'}
-            disabled={panes.length > 3}
-            disabledReason="4 个窗格请用 2×2 网格"
-            onSelect={() => setSplitLayout('cols3')}
-          >
-            3 列
-          </UiMenu.Item>
-          <UiMenu.Item
-            icon={<LayoutGrid size={14} />}
-            selected={layout === 'grid2x2'}
-            onSelect={() => setSplitLayout('grid2x2')}
-          >
-            2×2 网格
-          </UiMenu.Item>
-          <UiMenu.Separator />
-          <UiMenu.Item icon={<X size={14} />} onSelect={clearSplitWorkspace}>
-            合并为单窗格
-          </UiMenu.Item>
-        </>
-      )}
+      <UiMenu.Sub>
+        <UiMenu.SubTrigger icon={<Bot size={14} />} trailing={rows.length > 0 ? rows.length : undefined}>
+          子代理
+        </UiMenu.SubTrigger>
+        <UiMenu.SubContent aria-label="子代理">
+          {rows.length === 0 ? (
+            <UiMenu.Label>本会话还没有子代理</UiMenu.Label>
+          ) : (
+            rows.map((row) => (
+              <UiMenu.Item
+                key={row.id}
+                className={row.depth > 1 ? 'pl-2' : undefined}
+                trailing={
+                  row.status === 'error'
+                    ? '出错'
+                    : row.status === 'waiting_permission'
+                      ? '待审批'
+                      : row.running
+                        ? '运行中'
+                        : '已结束'
+                }
+                onSelect={() => focusAgent(row.id)}
+              >
+                {row.title}
+              </UiMenu.Item>
+            ))
+          )}
+        </UiMenu.SubContent>
+      </UiMenu.Sub>
+      <UiMenu.Item
+        icon={<Globe2 size={14} />}
+        disabled={!active}
+        onSelect={() => {
+          if (active) openBrowserPanel(active.hostId, active.sessionId)
+        }}
+      >
+        浏览器
+      </UiMenu.Item>
+      <UiMenu.Item icon={<FolderTree size={14} />} onSelect={() => openFileBrowser()}>
+        文件
+      </UiMenu.Item>
+      <UiMenu.Item icon={<GitPullRequest size={14} />} onSelect={() => openPrPanel()}>
+        PR 与 CI
+      </UiMenu.Item>
+      <UiMenu.Item icon={<FlaskConical size={14} />} onSelect={() => openSettings('evals')}>
+        评测与轨迹
+      </UiMenu.Item>
+      <UiMenu.Separator />
+      <UiMenu.Sub>
+        <UiMenu.SubTrigger
+          icon={<Columns2 size={14} />}
+          trailing={split ? `${splitPanes.length} 窗格` : undefined}
+        >
+          分屏
+        </UiMenu.SubTrigger>
+        <UiMenu.SubContent aria-label="分屏">
+          <UiMenu.Item onSelect={() => setSplitPickerOpen(true)}>分屏打开会话…</UiMenu.Item>
+          {split && (
+            <>
+              <UiMenu.Separator />
+              <UiMenu.Item
+                selected={layout === 'cols2'}
+                disabled={splitPanes.length > 2}
+                onSelect={() => setSplitLayout('cols2')}
+              >
+                2 列
+              </UiMenu.Item>
+              <UiMenu.Item
+                selected={layout === 'cols3'}
+                disabled={splitPanes.length > 3}
+                onSelect={() => setSplitLayout('cols3')}
+              >
+                3 列
+              </UiMenu.Item>
+              <UiMenu.Item
+                selected={layout === 'grid2x2'}
+                onSelect={() => setSplitLayout('grid2x2')}
+              >
+                2×2 网格
+              </UiMenu.Item>
+              <UiMenu.Separator />
+              <UiMenu.Item icon={<X size={14} />} onSelect={clearSplitWorkspace}>
+                合并为单窗格
+              </UiMenu.Item>
+            </>
+          )}
+        </UiMenu.SubContent>
+      </UiMenu.Sub>
     </UiMenu>
   )
 }
@@ -214,13 +293,6 @@ export function TopBar() {
   const status = summary?.status
   const retrying = status === 'retrying' || !!summary?.retryInfo
   const running = useAppStore((s) => s.active?.running ?? false)
-  const activeSessionHostId = useAppStore((s) => s.active?.hostId ?? null)
-  const activeSessionId = useAppStore((s) => s.active?.sessionId ?? null)
-  const hasBackgroundTasks = useTaskStore((s) =>
-    activeSessionHostId && activeSessionId
-      ? (s.byHost[activeSessionHostId] ?? []).some((task) => task.sessionId === activeSessionId)
-      : false,
-  )
   const ticking = running || status === 'waiting_permission' || status === 'retrying'
   const now = useNow(ticking)
   const retrySeconds = summary?.retryInfo
@@ -252,7 +324,6 @@ export function TopBar() {
   const setChangesOpen = useUiStore((s) => s.setChangesOpen)
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed)
   const setMobileSidebar = useUiStore((s) => s.setMobileSidebar)
-  const setDispatchOpen = useUiStore((s) => s.setDispatchOpen)
   const setSearchOpen = useUiStore((s) => s.setSearchOpen)
   const togglePanel = useUiStore((s) => s.togglePanel)
   const setMobilePanel = useUiStore((s) => s.setMobilePanel)
@@ -422,19 +493,6 @@ export function TopBar() {
         </IconButton>
       )}
 
-      {(!isMobile || !hasSession) && <EvalRunsButton />}
-
-      {hasSession && !isMobile && (
-        <>
-          <BackgroundTasksButton />
-          <SubagentsButton />
-          <BrowserButton />
-          <FilesButton />
-          <PrButton />
-          <SplitMenuButton />
-        </>
-      )}
-
       {hasSession && changes && !isMobile && (
         <Button
           variant="ghost"
@@ -463,16 +521,7 @@ export function TopBar() {
         </Button>
       )}
 
-      {route.kind === 'home' && !isMobile && (
-        <IconButton
-          onClick={() => setDispatchOpen(true, activeHostId ?? undefined)}
-          label="派单到其他 Host"
-          tooltip="派单到其他 Host"
-          className="max-sm:size-11"
-        >
-          <Send size={16} />
-        </IconButton>
-      )}
+      {hasSession && !isMobile && <MoreMenu />}
 
       {hasSession && (
         <IconButton
@@ -510,10 +559,7 @@ export function TopBar() {
             </button>
           )}
           <span className="min-w-0 flex-1" />
-          <EvalRunsButton />
-          <BackgroundTasksButton />
-          <BrowserButton />
-          {!hasBackgroundTasks && <PrButton />}
+          <MoreMenu />
           {changes && (
             <Button
               variant="ghost"

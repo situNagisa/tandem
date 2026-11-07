@@ -127,7 +127,7 @@ export function DispatchDialog({
   const submit = async () => {
     if (!host || sending) return
     if (!online) {
-      setError('Host 离线，连上后才能派单')
+      setError('主机离线，连上后才能派单')
       return
     }
     if (!cwd.trim()) {
@@ -184,7 +184,7 @@ export function DispatchDialog({
       ariaLabel="派单"
       title={
         <span className="flex items-center gap-2">
-          <Send size={14} className="text-muted" /> 派单到其他 Host
+          <Send size={14} className="text-muted" /> 派单到其他主机
         </span>
       }
       className="max-h-[min(620px,88dvh)] w-[min(560px,94vw)] max-sm:fixed max-sm:inset-0 max-sm:my-0 max-sm:h-auto max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:pt-[env(safe-area-inset-top)]"
@@ -192,8 +192,8 @@ export function DispatchDialog({
     >
       <div className="space-y-3">
         <label className="block space-y-1 text-[12px] text-muted">
-          目标 Host
-          <Select aria-label="目标 Host" value={hostId} onChange={(e) => chooseHost(e.target.value)}>
+          目标主机
+          <Select aria-label="目标主机" value={hostId} onChange={(e) => chooseHost(e.target.value)}>
             {hosts.map((item) => {
               const status = runtimes[item.id]?.status
               return (
@@ -346,7 +346,7 @@ export function DispatchDialog({
 
         {!online && host && (
           <div className="text-[12px] text-warning">
-            该 Host 当前离线。派单需要目标 Host 在线（两台机器都要开着 Host）。
+            该 主机当前离线。派单需要目标主机 在线（两台机器都要开着 Host）。
           </div>
         )}
 

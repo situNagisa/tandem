@@ -105,7 +105,7 @@ export function NewSessionView() {
     }
   }, [activeHostId, hostId, hosts])
 
-  // Host 的 homeDir 通过 WS 稍后到达：hostId 首次渲染时 info 可能还没有，
+  // 主机的 homeDir 通过 WS 稍后到达：hostId 首次渲染时 info 可能还没有，
   // 因此把 homeDir 也列入依赖，等它到达后再补上默认工作目录。
   const cwdHostRef = useRef('')
   const homeDir = runtime?.info?.homeDir
@@ -196,7 +196,7 @@ export function NewSessionView() {
     if (sendingRef.current) return false
     if (!host) return false
     if (!hostReady) {
-      setError('Host 未连接，暂时无法发送')
+      setError('主机未连接，暂时无法发送')
       return false
     }
     if (!cwd.trim()) {
@@ -258,7 +258,7 @@ export function NewSessionView() {
             {greeting}，今天想做点什么？
           </h1>
           <p className="mt-2.5 text-[13px] text-muted">
-            {host ? `在 ${host.name} 上开始一次新的协作` : '连接一台 Host 后即可开始'}
+            {host ? `在 ${host.name} 上开始一次新的协作` : '连接一台主机 后即可开始'}
           </p>
           <Button
             size="sm"
@@ -267,7 +267,7 @@ export function NewSessionView() {
             onClick={() => setDispatchOpen(true, hostId)}
             className="mt-3 max-sm:h-10"
           >
-            派单到其他 Host
+            派单到其他主机
           </Button>
         </div>
 
@@ -309,7 +309,7 @@ export function NewSessionView() {
 
         {!hostReady && host && (
           <p className="mt-2 text-center text-[12px] text-warning">
-            {runtime?.status === 'connecting' ? '正在连接 Host…' : 'Host 当前离线，连上后即可发送。'}
+            {runtime?.status === 'connecting' ? '正在连接主机…' : '主机当前离线，连上后即可发送。'}
           </p>
         )}
 
@@ -372,7 +372,7 @@ export function ConnectView() {
     setError(null)
     const raw = link.trim()
     if (!raw) {
-      setError('先粘贴带 token 的 Host 链接')
+      setError('先粘贴带 token 的 主机链接')
       return
     }
     try {
@@ -400,11 +400,11 @@ export function ConnectView() {
     setError(null)
     setOk(false)
     if (!target.url) {
-      setError('请填写 Host 地址')
+      setError('请填写主机地址')
       return
     }
     if (!target.token) {
-      setError('请填写 Host Token')
+      setError('请填写主机 Token')
       return
     }
     if (target.kind === 'relay' && cryptoSupported === false) {
@@ -484,10 +484,10 @@ export function ConnectView() {
             <Server size={22} className="text-text-soft" />
           </div>
           <h1 className="mt-5 text-[27px] font-medium leading-tight tracking-[-0.01em] md:text-[30px]">
-            连接你的 Host
+            连接你的主机
           </h1>
           <p className="mx-auto mt-2 max-w-[340px] text-[13px] leading-6 text-muted">
-            Host 是实际执行任务的机器。在目标机器启动 Tandem Host，把带 token 的链接粘贴到这里。
+            主机是实际执行任务的机器。在目标机器启动 Tandem 主机，把带 token 的链接粘贴到这里。
           </p>
         </div>
 
@@ -572,7 +572,7 @@ export function ConnectView() {
                 setError(null)
               }}
               type={showToken ? 'text' : 'password'}
-              placeholder="Host 启动时输出的访问 Token"
+              placeholder="主机启动时输出的访问 Token"
               spellCheck={false}
               autoComplete="off"
               className="pr-9 font-mono text-[12px]"
@@ -628,7 +628,7 @@ export function ConnectView() {
         </div>
 
         <p className="mt-4 text-center text-[12px] leading-5 text-muted">
-          Token 只保存在本机浏览器中。手机与电脑连接同一 Host 时，会话实时同步。
+          Token 只保存在本机浏览器中。手机与电脑连接同一主机时，会话实时同步。
         </p>
       </div>
       {scanOpen && <QrScanDialog onClose={() => setScanOpen(false)} onResult={onScanned} />}

@@ -22,7 +22,7 @@ import { formatRelative } from '../../lib/format'
 import { cn } from '../../lib/cn'
 import { Button } from '../ui/Button'
 
-/** 所有 Host 的未处理数（待审批 + 未读提醒）。 */
+/** 所有主机的未处理数（待审批 + 未读提醒）。 */
 export function useInboxCount(): number {
   return useAppStore((s) =>
     Object.values(s.inbox).reduce(

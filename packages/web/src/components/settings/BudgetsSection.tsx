@@ -378,8 +378,8 @@ export function BudgetsSection() {
         <span className="settings-empty-icon">
           <Wallet size={17} />
         </span>
-        <p className="settings-empty-title">还没有连接 Host</p>
-        <p className="settings-empty-hint">预算规则保存在 Host 端，先添加一台 Host。</p>
+        <p className="settings-empty-title">还没有连接主机</p>
+        <p className="settings-empty-hint">预算规则保存在主机端，先添加一台主机。</p>
       </div>
     )
   }
@@ -401,7 +401,7 @@ export function BudgetsSection() {
             <MenuSelect
               value={hostId ?? ''}
               onChange={(id) => setHostId(id)}
-              aria-label="选择 Host"
+              aria-label="选择主机"
               options={hosts.map((h) => ({ value: h.id, label: h.name }))}
               wrapperClassName="w-auto max-w-[180px]"
               className="text-[13px]"
@@ -478,7 +478,7 @@ export function BudgetsSection() {
       )}
 
       <p className="settings-note">
-        花费按 Host 记录的用量参考价实时累计；周期按自然日 / 本周（周一起）/ 本月计算，达到 100% 时按动作提醒或阻止。
+        花费按主机记录的用量参考价实时累计；周期按自然日 / 本周（周一起）/ 本月计算，达到 100% 时按动作提醒或阻止。
       </p>
 
       <Modal

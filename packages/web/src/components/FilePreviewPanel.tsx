@@ -39,7 +39,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-/** 服务端 404 时拿不到解析结果，客户端按 Host 平台规则拼出绝对路径供用户判断。 */
+/** 服务端 404 时拿不到解析结果，客户端按 主机平台规则拼出绝对路径供用户判断。 */
 function resolveAbsolute(path: string, cwd: string, platform?: string): string {
   const raw = normalizeFileRefPath(path)
   if (!raw) return ''
@@ -83,7 +83,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
   const markdown = isMarkdownPath(absPath)
   const label = lineLabel(preview ?? {})
 
-  // 中继 Host 的 token 在密文里，不能直接把 URL 交给 <img>，先取回内容再转 blob URL。
+  // 中继主机的 token 在密文里，不能直接把 URL 交给 <img>，先取回内容再转 blob URL。
   useEffect(() => {
     if (!host || !image || !absPath) {
       setImageUrl('')
@@ -223,8 +223,8 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
     setRevealing(true)
     try {
       const result = await api.fsReveal(host, absPath)
-      if (result.ok) toast('已在 Host 上打开文件位置', 'success')
-      else toast(result.error || 'Host 无法打开文件位置', 'error')
+      if (result.ok) toast('已在主机上打开文件位置', 'success')
+      else toast(result.error || '主机无法打开文件位置', 'error')
     } catch (err) {
       toast(err instanceof Error ? err.message : '打开失败', 'error')
     } finally {
@@ -295,7 +295,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
             onClick={() => void reveal()}
             disabled={revealing || !data}
             label="在本机打开"
-            tooltip="在 Host 的文件管理器中显示"
+            tooltip="在主机的文件管理器中显示"
             className="max-md:size-11"
           >
             {revealing ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />}

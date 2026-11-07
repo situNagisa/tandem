@@ -621,7 +621,7 @@ export function Composer({
     }
     if (!summary) return
     if (hostStatus !== 'online') {
-      toast('Host 未连接，消息未发送', 'error')
+      toast('主机未连接，消息未发送', 'error')
       return
     }
     // worktree 开关只记录意图：真正发送前才创建隔离分支（创建后 cwd 已切换）。

@@ -189,7 +189,7 @@ export function AppearanceSection() {
         </div>
         <p className="mt-1.5 text-[13px] leading-5 text-muted">
           用手机浏览器打开 Tandem，在分享菜单选择「添加到主屏幕」，即可像 App 一样使用。
-          手机与电脑连接同一 Host 时，会话、审批与消息会实时同步。
+          手机与电脑连接同一主机时，会话、审批与消息会实时同步。
         </p>
       </div>
 

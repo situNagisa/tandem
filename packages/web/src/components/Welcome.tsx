@@ -119,7 +119,7 @@ export function HomeView() {
         <div className="max-w-sm text-center">
           <p className="text-[14px] font-medium">只读成员</p>
           <p className="mt-1.5 text-[12.5px] leading-5 text-muted">
-            你在这个 Host 上是{teamRole === 'observer' ? '观察者' : '审批者'}，可以查看被授权项目的会话
+            你在这个主机上是{teamRole === 'observer' ? '观察者' : '审批者'}，可以查看被授权项目的会话
             {teamRole === 'approver' ? '并处理审批请求' : ''}，不能新建会话或发消息。
           </p>
         </div>

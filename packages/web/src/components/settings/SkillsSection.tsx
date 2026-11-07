@@ -125,8 +125,8 @@ export function SkillsSection() {
     return (
       <div className="settings-empty">
         <span className="settings-empty-icon"><Sparkles size={17} /></span>
-        <p className="settings-empty-title">还没有连接 Host</p>
-        <p className="settings-empty-hint">先连接一台 Host，才能查看本机的 Skills。</p>
+        <p className="settings-empty-title">还没有连接主机</p>
+        <p className="settings-empty-hint">先连接一台主机，才能查看本机的 Skills。</p>
       </div>
     )
   }
@@ -144,7 +144,7 @@ export function SkillsSection() {
           <MenuSelect
             value={hostId ?? ''}
             onChange={setHostId}
-            aria-label="选择 Host"
+            aria-label="选择主机"
             options={hosts.map((h) => ({ value: h.id, label: h.name }))}
             wrapperClassName="w-auto max-w-[180px]"
             className="text-[13px]"
@@ -156,7 +156,7 @@ export function SkillsSection() {
       </div>
 
       <p className="text-[13px] leading-5 text-muted">
-        停用只记录在 Host 的 ~/.tandem/skills-state.json，不会修改原文件。当前目录：
+        停用只记录在主机的 ~/.tandem/skills-state.json，不会修改原文件。当前目录：
         <span className="ml-1 font-mono text-text-soft">{cwd ?? '（未选择会话，按 Host 默认目录）'}</span>
       </p>
 

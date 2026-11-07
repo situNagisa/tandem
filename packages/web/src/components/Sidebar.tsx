@@ -312,7 +312,7 @@ export function Sidebar({
             onNavigate?.()
           }}
           className={row}
-          tooltip="向任意在线 Host 派单"
+          tooltip="向任意在线主机派单"
           tooltipSide="bottom"
         >
           <Send size={15} className="shrink-0 opacity-70" />
@@ -326,6 +326,7 @@ export function Sidebar({
             navigateBoard(boardHost.id)
             onNavigate?.()
           }}
+          data-tour-target="board"
           className={cn(row, boardActive && 'bg-[var(--t-bg-active)]')}
           tooltip="把目标拆成多张卡并行做"
           tooltipSide="bottom"
@@ -345,7 +346,7 @@ export function Sidebar({
             onNavigate?.()
           }}
           className={row}
-          tooltip={`搜索全部 Host 的会话 (${modLabel} K)`}
+          tooltip={`搜索全部主机的会话 (${modLabel} K)`}
           tooltipSide="bottom"
         >
           <Search size={15} className="shrink-0 opacity-70" />

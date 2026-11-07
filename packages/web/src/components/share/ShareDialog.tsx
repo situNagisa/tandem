@@ -196,7 +196,7 @@ export function ShareDialog({
             <div className="flex items-start gap-2 rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[12px] leading-5 text-muted">
               <ShieldCheck size={13} className="mt-0.5 shrink-0 text-text-tertiary" />
               <span>
-                链接只对持有 token 的人可见，Host 不保存明文 token。密钥、环境变量与 URL
+                链接只对持有 token 的人可见，主机不保存明文 token。密钥、环境变量与 URL
                 凭据始终会被移除；<span className="text-text-soft">请只在可信内网使用</span>。
               </span>
             </div>

@@ -6,8 +6,8 @@ export const SETTINGS_TAB_LABELS: Record<SettingsTab, string> = {
   voice: '语音',
   browser: '浏览器',
   profiles: '账号与模型',
-  routing: '模型路由',
-  hosts: 'Host 管理',
+  routing: '自动路由',
+  hosts: '主机',
   team: '成员',
   gateway: '网关',
   permissions: '权限',
@@ -41,7 +41,7 @@ export interface SettingItem {
  * 页面里的对应容器必须带 data-setting-id，选中后才能滚动并高亮。
  */
 export const SETTINGS_ITEMS: SettingItem[] = [
-  { id: 'general.resume-on-restart', tab: 'general', title: 'Host 重启后的会话恢复', keywords: ['恢复', '重启', '续跑', 'resume'] },
+  { id: 'general.resume-on-restart', tab: 'general', title: '主机重启后的会话恢复', keywords: ['恢复', '重启', '续跑', 'resume'] },
   { id: 'general.ai-review', tab: 'general', title: '提交前 AI 评审', keywords: ['AI', '评审', 'review', '提交', 'PR', 'blocker', '模型'] },
   { id: 'general.handoff', tab: 'general', title: '额度交接', keywords: ['额度', '限流', '交接', '备用分组', 'quota', '429', '自动切换', '等待重置'] },
 
@@ -68,11 +68,11 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'routing.preference', tab: 'routing', title: '路由偏好', keywords: ['省钱', '均衡', '质量', '偏好'] },
   { id: 'routing.judge', tab: 'routing', title: '用小模型判断难度', keywords: ['判断', '难度', '小模型', '自动路由'] },
 
-  { id: 'hosts.list', tab: 'hosts', title: 'Host 列表', keywords: ['主机', '服务器', '连接'] },
-  { id: 'hosts.add', tab: 'hosts', title: '添加 Host', keywords: ['新增', '服务器', '扫码'] },
+  { id: 'hosts.list', tab: 'hosts', title: '主机列表', keywords: ['主机', '服务器', '连接'] },
+  { id: 'hosts.add', tab: 'hosts', title: '添加主机', keywords: ['新增', '服务器', '扫码'] },
   { id: 'hosts.mode', tab: 'hosts', title: '连接方式', keywords: ['直连', '中继', 'relay'] },
   { id: 'hosts.pair', tab: 'hosts', title: '连接手机', keywords: ['手机', '配对', '扫码'] },
-  { id: 'hosts.doctor', tab: 'hosts', title: 'Host 诊断', keywords: ['诊断', 'doctor', '检查', '环境', '报告'] },
+  { id: 'hosts.doctor', tab: 'hosts', title: '主机诊断', keywords: ['诊断', 'doctor', '检查', '环境', '报告'] },
 
   { id: 'team.invite-role', tab: 'team', title: '邀请角色', keywords: ['成员', '邀请', '权限'] },
   { id: 'team.members', tab: 'team', title: '成员列表', keywords: ['成员', '角色'] },
@@ -80,7 +80,7 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'team.audit', tab: 'team', title: '审计日志', keywords: ['审计', '日志'] },
 
   { id: 'gateway.mode', tab: 'gateway', title: '网关模式', keywords: ['网关', 'gateway'] },
-  { id: 'gateway.routing', tab: 'gateway', title: '模型路由', keywords: ['路由', '模型', '账号'] },
+  { id: 'gateway.routing', tab: 'gateway', title: '模型转发', keywords: ['路由', '模型', '账号'] },
   { id: 'gateway.tokens', tab: 'gateway', title: '成员令牌', keywords: ['令牌', 'token', '成员'] },
   { id: 'gateway.stats', tab: 'gateway', title: '今日统计', keywords: ['统计', '用量'] },
   { id: 'gateway.logs', tab: 'gateway', title: '日志与调试', keywords: ['日志', '调试'] },
@@ -94,12 +94,12 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'hooks.new', tab: 'hooks', title: '新建 Hook', keywords: ['新增', 'hook'] },
 
   { id: 'mcp.servers', tab: 'mcp', title: 'MCP 服务器', keywords: ['mcp', '服务器', '工具'] },
-  { id: 'mcp.host', tab: 'mcp', title: 'MCP Host 选择', keywords: ['mcp', '主机'] },
+  { id: 'mcp.host', tab: 'mcp', title: 'MCP 主机选择', keywords: ['mcp', '主机'] },
 
   { id: 'skills.list', tab: 'skills', title: 'Skills 列表', keywords: ['技能', 'skills'] },
   { id: 'skills.enabled', tab: 'skills', title: '启用 Skills', keywords: ['技能', '开关'] },
 
-  { id: 'memory.host', tab: 'memory', title: '记忆 Host 选择', keywords: ['记忆', '主机'] },
+  { id: 'memory.host', tab: 'memory', title: '记忆主机选择', keywords: ['记忆', '主机'] },
   { id: 'memory.content', tab: 'memory', title: '项目记忆', keywords: ['记忆', '内容', 'markdown'] },
 
   { id: 'subagents.default-delegation', tab: 'subagents', title: '新会话默认委派策略', keywords: ['委派', '子代理', '默认'] },
@@ -150,4 +150,89 @@ export const SETTING_MAP = new Map(SETTINGS_ITEMS.map((item) => [item.id, item])
 
 export function findSettingItem(id: string): SettingItem | undefined {
   return SETTING_MAP.get(id)
+}
+
+
+/* ------------------------------------------------------------------ */
+/* 设置导航分组：页面数较多，导航只展示 19 个入口；低频专家页收进「高级」。 */
+/* ------------------------------------------------------------------ */
+
+export type SettingsPageId =
+  | 'general'
+  | 'hosts'
+  | 'profiles'
+  | 'routing'
+  | 'usage-budgets'
+  | 'permissions'
+  | 'secrets'
+  | 'agent'
+  | 'schedules'
+  | 'memory'
+  | 'team-shares'
+  | 'appearance'
+  | 'notifications'
+  | 'voice'
+  | 'browser'
+  | 'extensions'
+  | 'evals'
+  | 'gateway'
+  | 'sync'
+
+export interface SettingsPage {
+  id: SettingsPageId
+  label: string
+  /** 合并页包含的原子页签，顺序即子页签顺序。 */
+  tabs: SettingsTab[]
+}
+
+export interface SettingsGroup {
+  id: string
+  label: string
+  pages: SettingsPageId[]
+  /** 默认收起（低频、偏专家的页面）。 */
+  collapsed?: boolean
+}
+
+export const SETTINGS_PAGES: SettingsPage[] = [
+  { id: 'general', label: '通用', tabs: ['general'] },
+  { id: 'hosts', label: '主机', tabs: ['hosts'] },
+  { id: 'profiles', label: '账号与模型', tabs: ['profiles'] },
+  { id: 'routing', label: '自动路由', tabs: ['routing'] },
+  { id: 'usage-budgets', label: '用量与预算', tabs: ['usage', 'budgets'] },
+  { id: 'permissions', label: '权限', tabs: ['permissions'] },
+  { id: 'secrets', label: 'Secrets', tabs: ['secrets'] },
+  { id: 'agent', label: 'Agent 能力', tabs: ['subagents', 'skills', 'prompts'] },
+  { id: 'schedules', label: '定时任务', tabs: ['schedules'] },
+  { id: 'memory', label: '记忆', tabs: ['memory'] },
+  { id: 'team-shares', label: '成员与分享', tabs: ['team', 'shares'] },
+  { id: 'appearance', label: '外观', tabs: ['appearance'] },
+  { id: 'notifications', label: '通知', tabs: ['notifications'] },
+  { id: 'voice', label: '语音', tabs: ['voice'] },
+  { id: 'browser', label: '浏览器', tabs: ['browser'] },
+  { id: 'extensions', label: '扩展', tabs: ['mcp', 'hooks'] },
+  { id: 'evals', label: '评测', tabs: ['evals'] },
+  { id: 'gateway', label: '网关', tabs: ['gateway'] },
+  { id: 'sync', label: '同步与备份', tabs: ['sync'] },
+]
+
+export const SETTINGS_GROUPS: SettingsGroup[] = [
+  { id: 'common', label: '基础', pages: ['general', 'hosts'] },
+  { id: 'models', label: '模型与账号', pages: ['profiles', 'routing', 'usage-budgets'] },
+  { id: 'safety', label: '权限与安全', pages: ['permissions', 'secrets'] },
+  { id: 'automation', label: 'Agent 与自动化', pages: ['agent', 'schedules', 'memory'] },
+  { id: 'team', label: '团队与共享', pages: ['team-shares'] },
+  { id: 'appearance', label: '外观与辅助', pages: ['appearance', 'notifications', 'voice', 'browser'] },
+  { id: 'advanced', label: '高级', pages: ['extensions', 'evals', 'gateway', 'sync'], collapsed: true },
+]
+
+export const SETTINGS_PAGE_MAP = new Map(SETTINGS_PAGES.map((page) => [page.id, page]))
+
+export function settingsPageForTab(tab: SettingsTab): SettingsPage | undefined {
+  return SETTINGS_PAGES.find((page) => page.tabs.includes(tab))
+}
+
+export function settingsGroupForTab(tab: SettingsTab): SettingsGroup | undefined {
+  const page = settingsPageForTab(tab)
+  if (!page) return undefined
+  return SETTINGS_GROUPS.find((group) => group.pages.includes(page.id))
 }

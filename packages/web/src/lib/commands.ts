@@ -80,8 +80,79 @@ export const COMMANDS: AppCommand[] = [
     },
   },
   {
+    id: 'session.background-tasks',
+    title: '后台任务',
+    keywords: ['后台', '任务', '终端', 'background', 'terminal'],
+    run: () => {
+      const active = requireActive()
+      if (!active) return
+      useUiStore.getState().openBackgroundTasks(active.hostId, active.sessionId)
+    },
+  },
+  {
+    id: 'session.subagents',
+    title: '子代理',
+    keywords: ['子代理', '代理', 'agent', 'subagent'],
+    run: () => {
+      const active = requireActive()
+      if (!active) return
+      useUiStore.getState().setPanelOpen(true)
+      useUiStore.getState().toast('子代理列表在右侧信息栏', 'info')
+    },
+  },
+  {
+    id: 'session.browser',
+    title: '浏览器',
+    keywords: ['浏览器', '网页', 'browser'],
+    run: () => {
+      const active = requireActive()
+      if (!active) return
+      useUiStore.getState().openBrowserPanel(active.hostId, active.sessionId)
+    },
+  },
+  {
+    id: 'session.files',
+    title: '文件',
+    keywords: ['文件', '目录', 'files', 'browser'],
+    run: () => {
+      useAppStore.getState().openFileBrowser()
+    },
+  },
+  {
+    id: 'session.pr',
+    title: 'PR 与 CI',
+    keywords: ['PR', 'CI', '拉取请求', '合并', 'checks'],
+    run: () => {
+      useUiStore.getState().openPrPanel()
+    },
+  },
+  {
+    id: 'session.evals',
+    title: '评测与轨迹',
+    keywords: ['评测', '轨迹', 'eval', '对比', '用例'],
+    run: () => {
+      useUiStore.getState().openSettings('evals')
+    },
+  },
+  {
+    id: 'app.whats-new',
+    title: '新功能导览',
+    keywords: ['新功能', '更新', 'changelog', 'whats new', '导览'],
+    run: () => {
+      useUiStore.getState().setTourOpen(true)
+    },
+  },
+  {
+    id: 'app.onboarding',
+    title: '重新看上手引导',
+    keywords: ['上手', '引导', '新手', 'onboarding', '帮助'],
+    run: () => {
+      useUiStore.getState().setOnboardingOpen(true)
+    },
+  },
+  {
     id: 'session.dispatch',
-    title: '派单到其他 Host',
+    title: '派单到其他主机',
     keywords: ['派单', '任务', 'dispatch'],
     defaultShortcut: 'mod+alt+d',
     run: () => {

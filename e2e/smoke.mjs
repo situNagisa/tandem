@@ -17,10 +17,12 @@ import { chromium } from 'playwright'
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
 const HOST_ENTRY = path.join(ROOT, 'packages/server/dist/cli.js')
-const SETTINGS_TABS = [
-  '通用', '语音', '浏览器', '账号与模型', '模型路由', 'Host 管理', '网关', '权限', 'Hooks', 'MCP', 'Secrets', 'Skills',
-  '记忆', '子代理', '提示词', '评测', '定时任务', '预算', '用量', '通知', '同步与备份', '外观',
+const SETTINGS_PAGES = [
+  'general', 'hosts', 'profiles', 'routing', 'usage-budgets', 'permissions', 'secrets',
+  'agent', 'schedules', 'memory', 'team-shares', 'appearance', 'notifications', 'voice',
+  'browser', 'extensions', 'evals', 'gateway', 'sync',
 ]
+const ADVANCED_PAGES = new Set(['extensions', 'evals', 'gateway', 'sync'])
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -250,9 +252,18 @@ async function main() {
     await page.getByRole('button', { name: '设置', exact: true }).last().click()
     const settings = page.getByRole('dialog', { name: '设置' })
     await settings.waitFor({ state: 'visible', timeout: 10_000 })
-    for (const tab of SETTINGS_TABS) {
-      await settings.locator('nav').getByRole('button', { name: tab, exact: true }).click()
+    for (const id of SETTINGS_PAGES) {
+      if (ADVANCED_PAGES.has(id)) {
+        const group = settings.locator('[data-settings-group="advanced"] > button').first()
+        if ((await group.getAttribute('aria-expanded')) === 'false') await group.click()
+      }
+      await settings.locator(`[data-settings-page="${id}"]`).click()
       await sleep(180)
+      const subtabs = settings.locator(`[data-settings-subtabs] button`)
+      for (let i = 0; i < (await subtabs.count()); i++) {
+        await subtabs.nth(i).click()
+        await sleep(120)
+      }
     }
 
     if (consoleErrors.length > 0) {
@@ -262,7 +273,7 @@ async function main() {
     if (profile.id == null) throw new Error('创建账号失败')
 
     console.log(
-      `smoke: 通过（新建会话 → 流式回复 → 工具审批 → 设置 ${SETTINGS_TABS.length} 页；` +
+      `smoke: 通过（新建会话 → 流式回复 → 工具审批 → 设置 ${SETTINGS_PAGES.length} 页；` +
         `provider 请求 ${seen.length} 次）`,
     )
   } catch (error) {

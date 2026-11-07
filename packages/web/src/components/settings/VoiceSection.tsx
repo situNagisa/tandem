@@ -1,4 +1,4 @@
-// 语音设置：Host 本机 Whisper（首选）与设备内置识别（次选），以及数据流向说明。
+// 语音设置：主机本机 Whisper（首选）与设备内置识别（次选），以及数据流向说明。
 import { useEffect, useState } from 'react'
 import { CheckCircle2, Info, Mic, ShieldCheck, XCircle } from 'lucide-react'
 import type { HostSettings, SttCapabilities, SttTestResult, VoiceSettings } from '@tandem/protocol'
@@ -134,7 +134,7 @@ export function VoiceSection() {
           <div className="min-w-0 flex-1">
             <h3 className="text-[13px] font-medium">识别方式</h3>
             <p className="mt-1 text-[13px] leading-5 text-muted">
-              默认优先使用你自己 Host 上的 Whisper；不可用时才降级到设备内置识别。
+              默认优先使用你自己主机上的 Whisper；不可用时才降级到设备内置识别。
               Tandem 不会下载模型，也不会调用任何云端语音服务。
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -243,7 +243,7 @@ export function VoiceSection() {
             {error ? <p className="mt-2 text-[12px] text-danger">{error}</p> : null}
             {caps && caps.detected.length > 0 ? (
               <div className="mt-3">
-                <p className="text-[12px] text-muted">在这台 Host 上自动探测到：</p>
+                <p className="text-[12px] text-muted">在这台主机上自动探测到：</p>
                 <div className="mt-1.5 flex flex-col gap-1.5">
                   {caps.detected.map((item) => (
                     <div
@@ -280,7 +280,7 @@ export function VoiceSection() {
                   两个路径填到上面。
                 </p>
                 <p>
-                  <span className="text-text-soft">faster-whisper：</span>在 Host 上
+                  <span className="text-text-soft">faster-whisper：</span>在主机上
                   <code className="mx-1 rounded bg-[var(--t-code-bg)] px-1 font-mono">pip install faster-whisper</code>
                   ，可执行文件填对应的 <code className="rounded bg-[var(--t-code-bg)] px-1 font-mono">python3</code>，
                   模型填 <code className="rounded bg-[var(--t-code-bg)] px-1 font-mono">small</code> 或本地模型目录。
@@ -333,7 +333,7 @@ export function VoiceSection() {
       </section>
 
       <p className="px-1 text-[12px] text-muted">
-        {host ? `Host 设置保存在 ${host.name} 的 config.json；设备识别开关只保存在当前设备。` : '请先选择一个 Host。'}
+        {host ? `主机设置保存在 ${host.name} 的 config.json；设备识别开关只保存在当前设备。` : '请先选择一台主机。'}
       </p>
     </div>
   )

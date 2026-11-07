@@ -374,7 +374,7 @@ export function TeamSection() {
   }
 
   if (!host) {
-    return <p className="py-6 text-[13px] text-muted">请先连接一台 Host。</p>
+    return <p className="py-6 text-[13px] text-muted">请先连接一台主机。</p>
   }
 
   const members = overview?.members ?? []

@@ -73,7 +73,7 @@ function AddRuleDialog({
       open
       onClose={onClose}
       title="添加为权限规则"
-      description="规则保存在 Host 上，立即对后续请求生效；当前这次请求仍需手动允许或拒绝。"
+      description="规则保存在主机上，立即对后续请求生效；当前这次请求仍需手动允许或拒绝。"
       className="max-w-md"
       footer={
         <>
@@ -435,7 +435,7 @@ export function PermissionCard({
             size="sm"
             variant="ghost"
             onClick={() => setRuleDraft(quickRule(toolName, input, cwd))}
-            tooltip="把这条件添加为 Host 级权限规则"
+            tooltip="把这条件添加为主机级权限规则"
             tooltipSide="top"
             className="h-7 px-1.5 text-[12px] text-[var(--t-text-tertiary)] hover:text-text"
           >

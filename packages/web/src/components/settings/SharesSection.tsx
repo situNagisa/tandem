@@ -69,7 +69,7 @@ export function SharesSection() {
             分享
           </h2>
           <p className="mt-1 text-[12px] leading-5 text-muted">
-            {host ? `当前 Host：${host.name}` : '未连接 Host'}。只读链接仅用于可信内网，
+            {host ? `当前主机：${host.name}` : '未连接主机'}。只读链接仅用于可信内网，
             链接含访问 token，请勿转发到公网。
           </p>
         </div>

@@ -395,7 +395,7 @@ export function FeedbackDrawer({
           />
         </label>
         <p className="mt-1 text-[9.5px] leading-4 text-muted">
-          快照只含路由、会话摘要、UI 偏好、视口与 Host 版本，绝不包含密钥、token 或配置文件内容。
+          快照只含路由、会话摘要、UI 偏好、视口与主机版本，绝不包含密钥、token 或配置文件内容。
         </p>
       </div>
     </aside>,

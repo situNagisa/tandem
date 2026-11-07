@@ -207,7 +207,7 @@ export function NotificationsSection() {
 
       <p className="mt-3 rounded-xl border border-border bg-[var(--t-bg)] p-3.5 text-[12.5px] leading-5 text-muted">
         通知只在手机与 Host 处于同一局域网（或已加入同一 Tailscale 网络）且 App
-        保持连接时送达。所有审批仍在 Host 上执行与记录，不依赖第三方推送服务。
+        保持连接时送达。所有审批仍在主机上执行与记录，不依赖第三方推送服务。
       </p>
     </div>
   )

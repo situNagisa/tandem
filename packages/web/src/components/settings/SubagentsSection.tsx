@@ -245,7 +245,7 @@ export function SubagentsSection() {
   }
 
   if (!host) {
-    return <p className="text-[13px] text-muted">先连接一台 Host，再配置子代理预设。</p>
+    return <p className="text-[13px] text-muted">先连接一台主机，再配置子代理预设。</p>
   }
 
   return (
@@ -297,7 +297,7 @@ export function SubagentsSection() {
       </div>
 
       {error && <div className="rounded-lg border border-danger/25 bg-danger-soft/50 px-3 py-2 text-[12px] text-danger">{error}</div>}
-      {!hostReady && <div className="text-[12px] text-warning">Host 离线，暂时无法保存预设。</div>}
+      {!hostReady && <div className="text-[12px] text-warning">主机离线，暂时无法保存预设。</div>}
 
       {draft && (
         <div className="rounded-xl border border-border bg-surface p-3">
@@ -386,7 +386,7 @@ export function SubagentsSection() {
                 disabled={!draft.profileId}
               >
                 <option value="">默认 / Claude 别名</option>
-                <option value="auto">自动（按模型路由候选池）</option>
+                <option value="auto">自动（按自动路由候选池）</option>
                 {modelChoices(profiles, draft.profileId, draft.groupId).map((model) => (
                   <option key={model} value={model}>
                     {model}

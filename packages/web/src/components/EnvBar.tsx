@@ -600,7 +600,7 @@ export function EnvBar({
         side="top"
         align="left"
         className={targetHostId ? 'w-auto p-1' : 'w-auto min-w-[200px]'}
-        aria-label={isSession ? '切换主机' : '选择 Host'}
+        aria-label={isSession ? '切换主机' : '选择主机'}
         trigger={({ open }) => (
           <EnvTrigger
             icon={
@@ -614,7 +614,7 @@ export function EnvBar({
             onClick={() => setTargetHostId(null)}
             open={open}
             disabled={!!locked && !migrating}
-            title={isSession ? '切换主机（会话将迁移到目标 Host）' : '选择 Host'}
+            title={isSession ? '切换主机（会话将迁移到目标主机）' : '选择主机'}
           />
         )}
       >

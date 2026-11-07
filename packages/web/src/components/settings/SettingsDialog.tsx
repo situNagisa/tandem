@@ -1,13 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, FlaskConical, GitFork, KeyRound, Mic, Monitor, MousePointerClick, Network, Palette, Plug, RefreshCw, ScrollText, Search, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Users, Wallet, Webhook } from 'lucide-react'
+import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, ChevronDown, FlaskConical, GitFork, Info, KeyRound, Mic, MousePointerClick, Network, Palette, Plug, RefreshCw, ScrollText, Search, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Users, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { useAppStore } from '../../store/useAppStore'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
-import { Input } from '../ui/Controls'
-import { SETTINGS_ITEMS, SETTINGS_TAB_LABELS } from '../../lib/settingsRegistry'
+import { Input, SegmentedControl } from '../ui/Controls'
+import {
+  SETTINGS_GROUPS,
+  SETTINGS_ITEMS,
+  SETTINGS_PAGES,
+  SETTINGS_PAGE_MAP,
+  SETTINGS_TAB_LABELS,
+  type SettingsPageId,
+} from '../../lib/settingsRegistry'
 import { textMatches } from '../../lib/pinyin'
 import { ProfilesSection } from './ProfilesSection'
 import { HostsSection } from './HostsSection'
@@ -34,32 +41,27 @@ import { BrowserSection } from './BrowserSection'
 import { EvalsSection } from './EvalsSection'
 import { ModelRoutingSection } from './ModelRoutingSection'
 
-const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
-  { id: 'general', label: SETTINGS_TAB_LABELS.general, icon: SlidersHorizontal },
-  { id: 'voice', label: SETTINGS_TAB_LABELS.voice, icon: Mic },
-  { id: 'browser', label: SETTINGS_TAB_LABELS.browser, icon: MousePointerClick },
-  { id: 'profiles', label: SETTINGS_TAB_LABELS.profiles, icon: Sparkles },
-  { id: 'routing', label: SETTINGS_TAB_LABELS.routing, icon: GitFork },
-  { id: 'hosts', label: SETTINGS_TAB_LABELS.hosts, icon: Server },
-  { id: 'team', label: SETTINGS_TAB_LABELS.team, icon: Users },
-  { id: 'gateway', label: SETTINGS_TAB_LABELS.gateway, icon: Network },
-  { id: 'permissions', label: SETTINGS_TAB_LABELS.permissions, icon: ShieldCheck },
-  { id: 'hooks', label: SETTINGS_TAB_LABELS.hooks, icon: Webhook },
-  { id: 'mcp', label: SETTINGS_TAB_LABELS.mcp, icon: Plug },
-  { id: 'secrets', label: SETTINGS_TAB_LABELS.secrets, icon: KeyRound },
-  { id: 'skills', label: SETTINGS_TAB_LABELS.skills, icon: BookOpen },
-  { id: 'memory', label: SETTINGS_TAB_LABELS.memory, icon: Brain },
-  { id: 'subagents', label: SETTINGS_TAB_LABELS.subagents, icon: Bot },
-  { id: 'prompts', label: SETTINGS_TAB_LABELS.prompts, icon: ScrollText },
-  { id: 'evals', label: SETTINGS_TAB_LABELS.evals, icon: FlaskConical },
-  { id: 'schedules', label: SETTINGS_TAB_LABELS.schedules, icon: CalendarClock },
-  { id: 'budgets', label: SETTINGS_TAB_LABELS.budgets, icon: Wallet },
-  { id: 'usage', label: SETTINGS_TAB_LABELS.usage, icon: BarChart3 },
-  { id: 'notifications', label: SETTINGS_TAB_LABELS.notifications, icon: Bell },
-  { id: 'shares', label: SETTINGS_TAB_LABELS.shares, icon: Share2 },
-  { id: 'sync', label: SETTINGS_TAB_LABELS.sync, icon: RefreshCw },
-  { id: 'appearance', label: SETTINGS_TAB_LABELS.appearance, icon: Palette },
-]
+const PAGE_ICONS: Record<SettingsPageId, typeof Server> = {
+  general: SlidersHorizontal,
+  hosts: Server,
+  profiles: Sparkles,
+  routing: GitFork,
+  'usage-budgets': BarChart3,
+  permissions: ShieldCheck,
+  secrets: KeyRound,
+  agent: Bot,
+  schedules: CalendarClock,
+  memory: Brain,
+  'team-shares': Users,
+  appearance: Palette,
+  notifications: Bell,
+  voice: Mic,
+  browser: MousePointerClick,
+  extensions: Plug,
+  evals: FlaskConical,
+  gateway: Network,
+  sync: RefreshCw,
+}
 
 export function SettingsDialog() {
   const open = useUiStore((s) => s.settingsOpen)
@@ -71,17 +73,58 @@ export function SettingsDialog() {
   )
   const focusSetting = useUiStore((s) => s.focusSetting)
   const focus = useUiStore((s) => s.settingsFocus)
+  const setAboutOpen = useUiStore((s) => s.setAboutOpen)
   // 成员连接只保留客户端自己的设置页；Host 级设置由服务端 403 兜底。
   const memberTabs = new Set<SettingsTab>(['hosts', 'appearance', 'notifications'])
-  const tabs = role && role !== 'owner' ? TABS.filter((item) => memberTabs.has(item.id)) : TABS
+  const visiblePages = useMemo(
+    () =>
+      SETTINGS_PAGES.map((page) => ({
+        ...page,
+        tabs:
+          role && role !== 'owner'
+            ? page.tabs.filter((item) => memberTabs.has(item))
+            : page.tabs,
+      })).filter((page) => page.tabs.length > 0),
+    [role],
+  )
+  const visiblePageIds = useMemo(
+    () => new Set(visiblePages.map((page) => page.id)),
+    [visiblePages],
+  )
+  const visibleGroups = useMemo(
+    () =>
+      SETTINGS_GROUPS.map((group) => ({
+        ...group,
+        pages: group.pages.filter((id) => visiblePageIds.has(id)),
+      })).filter((group) => group.pages.length > 0),
+    [visiblePageIds],
+  )
+  const currentPage = visiblePages.find((page) => page.tabs.includes(tab)) ?? visiblePages[0]
+  const pageTabs = currentPage?.tabs ?? []
+  const [closedGroups, setClosedGroups] = useState<Set<string>>(
+    () => new Set(SETTINGS_GROUPS.filter((group) => group.collapsed).map((group) => group.id)),
+  )
   const [query, setQuery] = useState('')
   const [searchIndex, setSearchIndex] = useState(0)
   const contentRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!open) return
-    if (!tabs.some((item) => item.id === tab)) setTab(tabs[0]?.id ?? 'appearance')
-  }, [open, tab, role, setTab, tabs])
+    if (!open || !currentPage) return
+    if (!currentPage.tabs.includes(tab)) setTab(currentPage.tabs[0])
+  }, [open, currentPage, tab, setTab])
+
+  // 命令面板定位到折叠组里的页面时，自动展开所属分组。
+  useEffect(() => {
+    if (!open || !currentPage) return
+    const group = SETTINGS_GROUPS.find((item) => item.pages.includes(currentPage.id))
+    if (!group) return
+    setClosedGroups((prev) => {
+      if (!prev.has(group.id)) return prev
+      const next = new Set(prev)
+      next.delete(group.id)
+      return next
+    })
+  }, [open, currentPage?.id])
 
   useEffect(() => {
     if (!open) {
@@ -93,13 +136,13 @@ export function SettingsDialog() {
   const searchMatches = useMemo(() => {
     const q = query.trim()
     if (!q) return []
-    const allowed = new Set(tabs.map((item) => item.id))
+    const allowed = new Set(visiblePages.flatMap((page) => page.tabs))
     return SETTINGS_ITEMS.filter(
       (item) =>
         allowed.has(item.tab) &&
         (textMatches(item.title, q) || item.keywords.some((word) => textMatches(word, q))),
     )
-  }, [query, tabs])
+  }, [query, visiblePages])
 
   // 命令面板选中设置项后：等目标页渲染出来，滚动到中间并短暂高亮。
   useEffect(() => {
@@ -129,6 +172,62 @@ export function SettingsDialog() {
     focusSetting(targetTab, id)
     setQuery('')
     setSearchIndex(0)
+  }
+
+  const renderSettingsGroup = (group: { id: string; label: string; pages: SettingsPageId[] }) => {
+    const expanded = !closedGroups.has(group.id)
+    return (
+      <div key={group.id} data-settings-group={group.id} className="col-span-3 sm:col-span-1">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() =>
+            setClosedGroups((prev) => {
+              const next = new Set(prev)
+              if (next.has(group.id)) next.delete(group.id)
+              else next.add(group.id)
+              return next
+            })
+          }
+          className="flex h-11 w-full items-center gap-1 rounded-md px-2 text-left text-[12px] font-medium text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text-soft sm:h-7"
+        >
+          <span className="min-w-0 flex-1 truncate">{group.label}</span>
+          {group.id === 'advanced' && (
+            <span className="shrink-0 text-[11px] font-normal text-muted">低频</span>
+          )}
+          <ChevronDown
+            size={12}
+            className={cn('shrink-0 transition-transform', !expanded && '-rotate-90')}
+          />
+        </button>
+        {expanded && (
+          <div className="mt-0.5 grid grid-cols-3 gap-1 sm:block sm:space-y-0.5">
+            {group.pages.map((pageId) => {
+              const page = SETTINGS_PAGE_MAP.get(pageId)
+              if (!page) return null
+              const Icon = PAGE_ICONS[page.id]
+              const active = currentPage?.id === page.id
+              return (
+                <Button
+                  key={page.id}
+                  variant="ghost"
+                  data-settings-page={page.id}
+                  onClick={() => setTab(page.tabs[0])}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'min-h-11 w-full min-w-0 justify-start gap-2 px-2.5 text-left text-[13px] font-normal sm:h-7 sm:min-h-7',
+                    active && 'bg-[var(--t-bg-active)] text-text',
+                  )}
+                  icon={<Icon size={14} />}
+                >
+                  <span className="min-w-0 flex-1 truncate">{page.label}</span>
+                </Button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -208,36 +307,57 @@ export function SettingsDialog() {
               )}
             </div>
           ) : (
-          tabs.map((t) => {
-            const Icon = t.icon
-            return (
-              <Button
-                key={t.id}
-                variant="ghost"
-                onClick={() => setTab(t.id)}
-                aria-current={tab === t.id ? 'page' : undefined}
-                className={cn(
-                  'min-h-11 w-full min-w-0 justify-start gap-2 px-2.5 text-left text-[13px] font-normal sm:min-h-8',
-                  tab === t.id && 'bg-[var(--t-bg-active)] text-text',
-                )}
-                icon={<Icon size={14} />}
-              >
-                {t.label}
-              </Button>
-            )
-          }))}
+            <div className="col-span-3 min-h-0 space-y-1 overflow-y-auto sm:col-span-1 sm:flex-1">
+              {visibleGroups.filter((group) => group.id !== 'advanced').map(renderSettingsGroup)}
+            </div>
+          )}
+          {!query.trim() && visibleGroups.some((group) => group.id === 'advanced') && (
+            <div className="col-span-3 shrink-0 border-t border-border/60 pt-1 sm:col-span-1">
+              {visibleGroups.filter((group) => group.id === 'advanced').map(renderSettingsGroup)}
+            </div>
+          )}
           {!query.trim() && (
-            <div className="mt-auto hidden items-center gap-1.5 px-2.5 pb-1 text-[13px] text-muted sm:flex">
-              <Monitor size={11} /> Tandem 0.1 · Web
+            <div className="col-span-3 mt-auto pt-2 sm:col-span-1">
+              <button
+                type="button"
+                onClick={() => {
+                  close()
+                  setAboutOpen(true)
+                }}
+                className="flex h-11 w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text-soft sm:h-auto"
+              >
+                <Info size={12} /> 关于 Tandem
+              </button>
             </div>
           )}
         </nav>
         <div
           key={tab}
           ref={contentRef}
+          data-settings-page-content={currentPage?.id}
           className="min-h-0 min-w-0 flex-1 animate-[tandem-fade-in_120ms_ease-out_both] overflow-y-auto overscroll-contain p-4 motion-reduce:animate-none sm:p-5 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:[&_button]:min-h-11 max-sm:[&_button]:min-w-11 max-sm:[&_input]:min-h-11 max-sm:[&_select]:min-h-11"
         >
           <div className="mx-auto w-full max-w-[1100px]">
+            {currentPage && pageTabs.length > 1 && (
+              <div
+                data-settings-subtabs={currentPage.id}
+                className="mb-4 flex flex-wrap items-center gap-2 border-b border-border pb-3"
+              >
+                <SegmentedControl
+                  size="sm"
+                  aria-label={`${currentPage.label}子页`}
+                  value={tab}
+                  onChange={(value) => setTab(value as SettingsTab)}
+                  options={pageTabs.map((item) => ({
+                    value: item,
+                    label: SETTINGS_TAB_LABELS[item],
+                  }))}
+                />
+                <span className="text-[12px] text-muted">
+                  同一组设置，只保留一个入口
+                </span>
+              </div>
+            )}
             {tab === 'general' && <GeneralSettings />}
             {tab === 'voice' && <VoiceSection />}
             {tab === 'browser' && <BrowserSection />}

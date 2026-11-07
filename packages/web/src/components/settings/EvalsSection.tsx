@@ -294,7 +294,7 @@ export function EvalsSection() {
   if (!host) {
     return (
       <p className="rounded-lg border border-border px-3 py-4 text-[13px] leading-6 text-muted">
-        还没有连接 Host。先在「Host 管理」中添加一台 Host，再使用评测。
+        还没有连接主机。先在设置 → 主机中添加一台主机，再使用评测。
       </p>
     )
   }

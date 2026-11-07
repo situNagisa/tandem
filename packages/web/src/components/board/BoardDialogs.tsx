@@ -351,7 +351,7 @@ export function CardEditorDialog({
           <FieldLabel>模型</FieldLabel>
           <Select aria-label="卡片模型" value={model} onChange={(e) => setModel(e.target.value)}>
             <option value="">看板默认</option>
-            <option value="auto">自动（按模型路由候选池）</option>
+            <option value="auto">自动（按自动路由候选池）</option>
             {modelOptions.map((item) => (
               <option key={item} value={item}>
                 {item}

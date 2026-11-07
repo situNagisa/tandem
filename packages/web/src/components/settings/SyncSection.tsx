@@ -236,8 +236,8 @@ export function SyncSection() {
     return (
       <div className="settings-empty">
         <span className="settings-empty-icon"><ShieldCheck size={17} /></span>
-        <p className="settings-empty-title">还没有连接 Host</p>
-        <p className="settings-empty-hint">先添加一台 Host，再同步配置。</p>
+        <p className="settings-empty-title">还没有连接主机</p>
+        <p className="settings-empty-hint">先添加一台主机，再同步配置。</p>
       </div>
     )
   }
@@ -259,7 +259,7 @@ export function SyncSection() {
               setImportResult(null)
             }}
             options={hosts.map((h) => ({ value: h.id, label: h.name }))}
-            aria-label="选择 Host"
+            aria-label="选择主机"
             wrapperClassName="w-auto max-w-[180px]"
             className="text-[13px]"
           />
@@ -270,7 +270,7 @@ export function SyncSection() {
         <ShieldCheck size={14} className="mt-0.5 shrink-0 text-muted" />
         <span>
           配置文件包含账号与分组里<strong className="font-medium text-text">加密的 API Key</strong>
-          ，以及本机的 Host 列表、主题和侧栏偏好。请妥善保管文件和口令；口令忘记后无法恢复。
+          ，以及本机的主机列表、主题和侧栏偏好。请妥善保管文件和口令；口令忘记后无法恢复。
         </span>
       </div>
 
@@ -283,7 +283,7 @@ export function SyncSection() {
             <div className="min-w-0 flex-1">
               <h4 className="text-[13px] font-semibold">导出配置</h4>
               <p className="text-[13px] text-muted">
-                账号（含分组）、Host 列表、主题、侧栏偏好打包为一个文件
+                账号（含分组）、主机列表、主题、侧栏偏好打包为一个文件
               </p>
             </div>
           </div>
@@ -512,7 +512,7 @@ export function SyncSection() {
       >
         <p className="text-[13px] leading-6 text-text-soft">
           将清空「{host.name}」上的 <span className="font-medium text-text">{profileCount}</span> 个账号，
-          并用文件内容覆盖本机的 <span className="font-medium text-text">{hosts.length}</span> 个 Host 记录。
+          并用文件内容覆盖本机的 <span className="font-medium text-text">{hosts.length}</span> 个主机记录。
           此操作不可撤销。
         </p>
       </Modal>

@@ -705,7 +705,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
             <ArrowUpRight size={10} className="text-muted" />
           </button>
         </DetailRow>
-        <DetailRow label="Host">
+        <DetailRow label="主机">
           <span className="flex items-center gap-1.5">
             <ConnectionDot state={hostStatus} />
             <span className="truncate">{host?.name ?? '—'}</span>

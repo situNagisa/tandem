@@ -67,6 +67,10 @@ interface UiState {
   settingsTab: SettingsTab
   /** 从命令面板/设置搜索定位到某一项：滚动并短暂高亮。 */
   settingsFocus: { id: string; nonce: number } | null
+  /** 新功能导览 / 关于 / 重新看上手指引。 */
+  tourOpen: boolean
+  aboutOpen: boolean
+  onboardingOpen: boolean
   newSessionOpen: boolean
   searchOpen: boolean
   notifications: boolean
@@ -140,6 +144,9 @@ interface UiState {
   closeSettings: () => void
   setSettingsTab: (tab: SettingsTab) => void
   focusSetting: (tab: SettingsTab, id: string) => void
+  setTourOpen: (open: boolean) => void
+  setAboutOpen: (open: boolean) => void
+  setOnboardingOpen: (open: boolean) => void
   setNewSessionOpen: (open: boolean) => void
   setSearchOpen: (open: boolean) => void
   setNotifications: (enabled: boolean) => void
@@ -265,6 +272,9 @@ export const useUiStore = create<UiState>((set, get) => {
   settingsOpen: false,
   settingsTab: 'profiles',
   settingsFocus: null,
+  tourOpen: false,
+  aboutOpen: false,
+  onboardingOpen: false,
   newSessionOpen: false,
   searchOpen: false,
   notifications: prefs.notifications ?? true,
@@ -394,6 +404,12 @@ export const useUiStore = create<UiState>((set, get) => {
       mobileSidebar: false,
       mobilePanel: false,
     })),
+  setTourOpen: (open) =>
+    set(open ? { tourOpen: true, aboutOpen: false, mobileSidebar: false } : { tourOpen: false }),
+  setAboutOpen: (open) =>
+    set(open ? { aboutOpen: true, settingsOpen: false, mobileSidebar: false } : { aboutOpen: false }),
+  setOnboardingOpen: (open) =>
+    set(open ? { onboardingOpen: true, aboutOpen: false } : { onboardingOpen: false }),
   openBackgroundTasks: (hostId, sessionId, taskId) =>
     set({ backgroundPanel: { hostId, sessionId, ...(taskId ? { taskId } : {}) } }),
   closeBackgroundTasks: () => set({ backgroundPanel: null }),

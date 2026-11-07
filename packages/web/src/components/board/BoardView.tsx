@@ -134,7 +134,7 @@ export function BoardView({ route }: { route: BoardRoute }) {
     }
   }, [host, board, act, reload, fail, toast, isMobile, openBoardSplit])
 
-  if (!host) return <div className="flex flex-1 items-center justify-center text-[13px] text-muted">Host 不存在</div>
+  if (!host) return <div className="flex flex-1 items-center justify-center text-[13px] text-muted">主机不存在</div>
 
   const createDialog = (
     <CreateBoardDialog

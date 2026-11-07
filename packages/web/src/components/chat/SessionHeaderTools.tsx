@@ -52,7 +52,7 @@ export function BackgroundTasksButton() {
   )
 }
 
-interface AgentRow {
+export interface SubagentRow {
   id: string
   title: string
   depth: number
@@ -60,13 +60,12 @@ interface AgentRow {
   running: boolean
 }
 
-/** 顶栏「子代理」：复用右侧栏代理卡的数据，点行定位消息流里的 Task 卡片。 */
-export function SubagentsButton() {
+/** 复用右侧栏代理卡的数据，供顶栏「更多」菜单与子代理弹层共用。 */
+export function useSubagentRows(): SubagentRow[] {
   const subagents = useAppStore((s) => s.active?.subagents) ?? EMPTY_SUBS
   const activeSessionId = useAppStore((s) => s.active?.sessionId ?? null)
-  const focusAgent = useUiStore((s) => s.focusAgent)
 
-  const rows = useMemo(() => {
+  return useMemo(() => {
     if (!activeSessionId) return []
     const children = new Map<string, string[]>()
     for (const sub of Object.values(subagents)) {
@@ -76,7 +75,7 @@ export function SubagentsButton() {
       list.push(summary.id)
       children.set(summary.parentId, list)
     }
-    const out: AgentRow[] = []
+    const out: SubagentRow[] = []
     const seen = new Set<string>()
     const walk = (parentId: string, depth: number) => {
       for (const id of children.get(parentId) ?? []) {
@@ -92,7 +91,7 @@ export function SubagentsButton() {
           summary.status === 'retrying'
         out.push({
           id,
-          title: summary.title || '未命名代理',
+          title: summary.title || '未命名子代理',
           depth,
           status: summary.status,
           running,
@@ -103,6 +102,12 @@ export function SubagentsButton() {
     walk(activeSessionId, 1)
     return out
   }, [subagents, activeSessionId])
+}
+
+/** 顶栏「子代理」：复用右侧栏代理卡的数据，点行定位消息流里的 Task 卡片。 */
+export function SubagentsButton() {
+  const focusAgent = useUiStore((s) => s.focusAgent)
+  const rows = useSubagentRows()
 
   return (
     <Popover
@@ -174,7 +179,7 @@ export function SubagentsButton() {
   )
 }
 
-/** 顶栏「浏览器」：查看当前会话在 Host 上打开的页面与最新截图。 */
+/** 顶栏「浏览器」：查看当前会话在主机上打开的页面与最新截图。 */
 export function BrowserButton() {
   const active = useAppStore((s) => s.active)
   const browserState = useBrowserStore((s) =>

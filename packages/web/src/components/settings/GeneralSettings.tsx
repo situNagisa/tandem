@@ -18,12 +18,12 @@ const OPTIONS = [
   {
     value: 'auto' as const,
     label: '自动继续',
-    title: 'Host 重启后自动接着跑，不需要手动确认',
+    title: '主机重启后自动接着跑，不需要手动确认',
   },
   {
     value: 'pause' as const,
     label: '恢复为暂停',
-    title: 'Host 重启后先在会话里显示「已暂停」，等你点继续运行',
+    title: '主机重启后先在会话里显示「已暂停」，等你点继续运行',
   },
 ]
 
@@ -176,9 +176,9 @@ export function GeneralSettings() {
             <RotateCcw size={15} />
           </span>
           <div className="min-w-0 flex-1">
-            <h3 className="text-[13px] font-medium">Host 重启后的会话恢复</h3>
+            <h3 className="text-[13px] font-medium">主机重启后的会话恢复</h3>
             <p className="mt-1 text-[13px] leading-5 text-muted">
-              Host 重启、进程崩溃或模型请求中途断网后，正在运行的任务会从断点接着跑。
+              主机重启、进程崩溃或模型请求中途断网后，正在运行的任务会从断点接着跑。
               等待审批中的工具会重新回到待审批列表；正在执行的有副作用工具不会自动重放。
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -187,7 +187,7 @@ export function GeneralSettings() {
                 value={settings?.resumeOnRestart ?? 'auto'}
                 onChange={(value) => void update(value)}
                 disabled={!settings || saving}
-                aria-label="Host 重启后的会话恢复方式"
+                aria-label="主机重启后的会话恢复方式"
               />
               {!settings && !error ? (
                 <span className="text-[12px] text-muted">读取中…</span>
@@ -206,7 +206,7 @@ export function GeneralSettings() {
         </div>
         {error ? <p className="mt-2 text-[12px] text-danger">{error}</p> : null}
       </section>
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section data-setting-id="general.auto-compact" className="rounded-xl border border-border bg-surface p-4">
         <div className="flex items-start gap-2.5">
           <span className="mt-0.5 text-muted">
             <Gauge size={15} />
@@ -328,7 +328,7 @@ export function GeneralSettings() {
               </div>
             ) : null}
             {settings && !settings.context ? (
-              <p className="mt-2 text-[12px] text-muted">当前 Host 尚未保存过上下文设置，修改后会写入 config.json。</p>
+              <p className="mt-2 text-[12px] text-muted">当前主机尚未保存过上下文设置，修改后会写入 config.json。</p>
             ) : null}
           </div>
         </div>
@@ -562,7 +562,7 @@ export function GeneralSettings() {
       </section>
       <p className="flex items-center gap-1.5 px-1 text-[12px] text-muted">
         <Server size={12} />
-        {host ? `设置保存在 ${host.name} 的 config.json，同一 Host 的所有客户端共享。` : '请先选择一个 Host。'}
+        {host ? `设置保存在 ${host.name} 的 config.json，同一主机的所有客户端共享。` : '请先选择一台主机。'}
       </p>
     </div>
   )

@@ -134,8 +134,8 @@ export function HooksSection() {
     return (
       <div className="settings-empty">
         <span className="settings-empty-icon"><Webhook size={17} /></span>
-        <p className="settings-empty-title">还没有连接 Host</p>
-        <p className="settings-empty-hint">先添加一台 Host，才能配置 Hooks。</p>
+        <p className="settings-empty-title">还没有连接主机</p>
+        <p className="settings-empty-hint">先添加一台主机，才能配置 Hooks。</p>
       </div>
     )
   }

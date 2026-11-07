@@ -275,15 +275,15 @@ export function PermissionsSection() {
     return (
       <div className="settings-empty">
         <span className="settings-empty-icon"><ShieldCheck size={17} /></span>
-        <p className="settings-empty-title">还没有连接 Host</p>
-        <p className="settings-empty-hint">先添加一台 Host，才能配置权限规则。</p>
+        <p className="settings-empty-title">还没有连接主机</p>
+        <p className="settings-empty-hint">先添加一台主机，才能配置权限规则。</p>
       </div>
     )
   }
 
   return (
     <div className="space-y-4">
-      <div className="settings-item space-y-2 px-2.5 py-2.5">
+      <div data-setting-id="permissions.learning" className="settings-item space-y-2 px-2.5 py-2.5">
         <div className="flex flex-wrap items-center gap-2">
           <Sparkles size={14} className="text-accent-text" />
           <h3 className="text-[13px] font-semibold">建议的规则</h3>
@@ -407,7 +407,7 @@ export function PermissionsSection() {
           </Button>
         </div>
         <p className="mt-1 text-[13px] leading-5 text-muted">
-          规则保存在 Host 上，对所有会话生效。优先级为拒绝 &gt; 询问 &gt; 允许；Bash 的
+          规则保存在主机上，对所有会话生效。优先级为拒绝 &gt; 询问 &gt; 允许；Bash 的
           pattern 是命令前缀通配，文件工具是相对工作目录的 glob，browser_* 的 pattern 是域名模式。
           浏览器还有一道硬边界：不在设置 → 浏览器允许列表里的域名一律拒绝。
         </p>

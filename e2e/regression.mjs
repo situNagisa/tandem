@@ -1269,6 +1269,13 @@ async function main() {
         .locator('textarea[aria-label="消息输入框"], button:has-text("新会话")')
         .first()
         .waitFor({ timeout: 20_000 })
+      // 升级导览卡固定在右下角；先关掉，避免遮挡后续用例的点击（专门的导览用例会重新触发）。
+      await page
+        .locator('[aria-label="暂时关闭新功能提示"]')
+        .first()
+        .waitFor({ state: 'visible', timeout: 1200 })
+        .then(() => page.locator('[aria-label="暂时关闭新功能提示"]').first().click())
+        .catch(() => {})
       page.__errors = pageErrors
       page.__viewport = viewport
       return page
@@ -1322,6 +1329,42 @@ async function main() {
         .catch(() => {})
     }
 
+    // 设置导航已分组：旧用例仍按页签名调用，这里映射到「分组页面 + 子页签」。
+    const SETTINGS_PAGE_BY_TAB = {
+      '通用': 'general',
+      '主机': 'hosts',
+      'Host 管理': 'hosts',
+      '账号与模型': 'profiles',
+      '自动路由': 'routing',
+      '模型路由': 'routing',
+      '用量': 'usage-budgets',
+      '预算': 'usage-budgets',
+      '用量与预算': 'usage-budgets',
+      '权限': 'permissions',
+      '权限与安全': 'permissions',
+      'Secrets': 'secrets',
+      '成员': 'team-shares',
+      '团队与共享': 'team-shares',
+      '成员与分享': 'team-shares',
+      '分享': 'team-shares',
+      '子代理': 'agent',
+      'Skills': 'agent',
+      '提示词': 'agent',
+      'Agent 能力': 'agent',
+      '定时任务': 'schedules',
+      '记忆': 'memory',
+      '评测': 'evals',
+      '网关': 'gateway',
+      '同步与备份': 'sync',
+      '外观': 'appearance',
+      '通知': 'notifications',
+      '语音': 'voice',
+      '浏览器': 'browser',
+      'MCP': 'extensions',
+      'Hooks': 'extensions',
+      '扩展': 'extensions',
+    }
+    const ADVANCED_SETTING_PAGES = new Set(['extensions', 'evals', 'gateway', 'sync'])
     const openSettings = async (page, tab, viewport) => {
       const dialog = page.getByRole('dialog', { name: '设置' })
       if (!(await dialog.isVisible().catch(() => false))) {
@@ -1334,7 +1377,23 @@ async function main() {
         }
       }
       await dialog.waitFor({ state: 'visible', timeout: 10_000 })
-      await dialog.locator('nav').first().getByRole('button', { name: tab, exact: true }).click()
+      const pageId = SETTINGS_PAGE_BY_TAB[tab] ?? 'general'
+      if (ADVANCED_SETTING_PAGES.has(pageId)) {
+        const group = dialog.locator('[data-settings-group="advanced"] > button').first()
+        if ((await group.getAttribute('aria-expanded')) === 'false') {
+          await group.click()
+          await page.waitForTimeout(120)
+        }
+      }
+      await dialog.locator(`[data-settings-page="${pageId}"]`).click()
+      await page.waitForTimeout(120)
+      const subtab = dialog
+        .locator('[data-settings-subtabs]')
+        .getByRole('button', { name: tab, exact: true })
+      if (await subtab.count()) {
+        await subtab.click()
+        await page.waitForTimeout(120)
+      }
       await page.waitForTimeout(220)
       return dialog
     }
@@ -1503,7 +1562,7 @@ async function main() {
       assert.ok(Math.abs(box.width - 1320) <= 2, `设置窗口宽度 ${box.width}，预期 1320`)
       assert.ok(Math.abs(box.height - 920) <= 2, `设置窗口高度 ${box.height}，预期 920`)
       for (const tab of ['权限', 'MCP', '用量', '同步与备份', '外观', '记忆']) {
-        await dialog.locator('nav').first().getByRole('button', { name: tab, exact: true }).click()
+        await openSettings(page, tab, 'desktop')
         await page.waitForTimeout(160)
         const next = await dialog.boundingBox()
         assert.ok(Math.abs(next.width - box.width) <= 1 && Math.abs(next.height - box.height) <= 1, `切到「${tab}」后尺寸变化`)
@@ -1515,7 +1574,7 @@ async function main() {
     desktop('Host 诊断：面板打开、失败项排在最前、报告不含 Key', async (page) => {
       const dialog = await openSettings(page, 'Host 管理', 'desktop')
       await dialog.getByRole('button', { name: '诊断', exact: true }).first().click()
-      const doctor = page.getByRole('dialog', { name: 'Host 诊断' })
+      const doctor = page.getByRole('dialog', { name: '主机诊断' })
       await doctor.waitFor({ state: 'visible', timeout: 10_000 })
       await doctor.locator('[data-doctor-check]').first().waitFor({ timeout: 60_000 })
       const skipText = (await doctor.locator('[data-doctor-check="profiles"]').textContent()) ?? ''
@@ -1550,7 +1609,7 @@ async function main() {
       const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => ''))
       if (clip) {
         assert.ok(!/reg-key/.test(clip), '诊断报告泄露了 Key')
-        assert.ok(clip.includes('Tandem Host 诊断报告'), '复制内容不是诊断报告')
+        assert.ok(/Tandem (主机|Host) 诊断报告/.test(clip), '复制内容不是诊断报告')
       }
       await page.keyboard.press('Escape')
       await closeSettings(page)
@@ -1871,7 +1930,7 @@ async function main() {
       await page.getByRole('button', { name: '连接手机' }).first().click()
       const dialog = page.getByRole('dialog', { name: '连接手机' })
       await dialog.waitFor({ state: 'visible', timeout: 10_000 })
-      await dialog.getByText('手机暂时连不上这台 Host').waitFor({ state: 'visible', timeout: 10_000 })
+      await dialog.getByText('手机暂时连不上这台主机').waitFor({ state: 'visible', timeout: 10_000 })
       assert.equal(await dialog.locator('[aria-label="配对二维码"]').count(), 0, '回环状态仍渲染了二维码')
       await page.keyboard.press('Escape')
       await closeSettings(page)
@@ -1924,7 +1983,7 @@ async function main() {
       await confirm.waitFor({ state: 'visible', timeout: 3_000 })
       withinViewport(await confirm.boundingBox(), DESKTOP, '替换确认弹窗')
       assert.match(await confirm.innerText(), /账号/, '确认文案没有说明将删除的账号数量')
-      assert.match(await confirm.innerText(), /Host/, '确认文案没有说明将删除的 Host 数量')
+      assert.match(await confirm.innerText(), /主机/, '确认文案没有说明将删除的主机数量')
       await confirm.getByRole('button', { name: '取消', exact: true }).click()
       await closeSettings(page)
     })
@@ -2001,7 +2060,7 @@ async function main() {
     desktop('设置页字号不低于 11px（记忆/提示词/Skills）', async (page) => {
       const dialog = await openSettings(page, '记忆', 'desktop')
       for (const tab of ['记忆', '提示词', 'Skills']) {
-        await dialog.locator('nav').first().getByRole('button', { name: tab, exact: true }).click()
+        await openSettings(page, tab, 'desktop')
         await page.waitForTimeout(350)
         const smallest = await dialog.evaluate((root) => {
           let min = Infinity
@@ -2499,7 +2558,10 @@ async function main() {
 
     desktop('浏览器：工具卡与浏览器面板空态', async (page) => {
       await openSession(page, 'browser')
-      await page.getByRole('button', { name: '浏览器', exact: true }).first().click()
+      await page.getByRole('button', { name: '更多', exact: true }).click()
+      const menu = page.locator('[role="menu"]').last()
+      await menu.waitFor({ state: 'visible', timeout: 5_000 })
+      await menu.getByRole('menuitem', { name: '浏览器', exact: true }).click()
       const panel = page.getByRole('dialog', { name: '浏览器' })
       await panel.waitFor({ state: 'visible', timeout: 10_000 })
       await panel.getByText(/本会话还没有打开浏览器|页面还没有截图/).first().waitFor({ timeout: 5_000 })
@@ -2605,6 +2667,113 @@ async function main() {
         .first()
       await newSession.waitFor({ state: 'visible', timeout: 3_000 })
       await page.keyboard.press('Escape')
+    })
+
+    desktop('设置分组：7 组、合并页与高级折叠', async (page) => {
+      const dialog = await openSettings(page, '通用', 'desktop')
+      const nav = dialog.locator('nav').first()
+      for (const group of ['基础', '模型与账号', '权限与安全', 'Agent 与自动化', '团队与共享', '外观与辅助', '高级']) {
+        assert.equal(
+          await nav.locator(`[data-settings-group] > button`).filter({ hasText: group }).count(),
+          1,
+          `设置导航缺少分组「${group}」`,
+        )
+      }
+      for (const pageName of ['用量与预算', 'Agent 能力', '成员与分享']) {
+        assert.equal(await nav.getByRole('button', { name: pageName, exact: true }).count(), 1, `缺少合并页「${pageName}」`)
+      }
+      const advanced = nav.locator('[data-settings-group="advanced"] > button').first()
+      assert.equal(await advanced.getAttribute('aria-expanded'), 'false', '高级组默认没有折叠')
+      assert.equal(await nav.locator('[data-settings-page="evals"]').count(), 0, '高级组折叠时仍渲染评测页')
+      assert.equal(await nav.locator('[data-settings-page]').count(), 15, '设置导航可见页面数不是 15')
+      await advanced.click()
+      await page.waitForTimeout(150)
+      assert.equal(await advanced.getAttribute('aria-expanded'), 'true', '高级组无法展开')
+      for (const id of ['extensions', 'evals', 'gateway', 'sync']) {
+        assert.equal(await nav.locator(`[data-settings-page="${id}"]`).count(), 1, `高级组缺少 ${id}`)
+      }
+      // 合并页：一个导航入口，两个子页签。
+      await nav.locator('[data-settings-page="usage-budgets"]').click()
+      await page.waitForTimeout(150)
+      const subtabs = dialog.locator('[data-settings-subtabs="usage-budgets"]')
+      await subtabs.waitFor({ state: 'visible', timeout: 3_000 })
+      assert.equal(await subtabs.getByRole('button').count(), 2, '用量与预算子页签数量不对')
+      assert.equal(await nav.locator('[data-settings-page="usage-budgets"]').getAttribute('aria-current'), 'page')
+      await closeSettings(page)
+    })
+
+    desktop('顶栏图标数 ≤5 且低频入口收进更多菜单', async (page) => {
+      await openSession(page, 'long')
+      const labels = await page.locator('header button[aria-label]').evaluateAll((els) =>
+        els
+          .filter((el) => el.getClientRects().length > 0)
+          .map((el) => el.getAttribute('aria-label') ?? ''),
+      )
+      assert.ok(labels.length <= 5, `顶栏图标 ${labels.length} 个：${labels.join(' / ')}`)
+      assert.ok(labels.some((label) => label === '更多'), '顶栏没有「更多」入口')
+      const more = page.getByRole('button', { name: '更多', exact: true })
+      await more.click()
+      const menu = page.locator('[role="menu"]').last()
+      await menu.waitFor({ state: 'visible', timeout: 3_000 })
+      for (const item of ['后台任务', '子代理', '浏览器', '文件', 'PR 与 CI', '评测与轨迹', '分屏']) {
+        assert.ok((await menu.getByRole('menuitem', { name: item }).count()) >= 1, `更多菜单缺少「${item}」`)
+      }
+      await page.keyboard.press('Escape')
+    })
+
+    desktop('命令面板可搜到更多菜单的全部入口', async (page) => {
+      for (const keyword of ['后台任务', '子代理', '浏览器', '文件', 'PR 与 CI', '评测与轨迹', '分屏打开']) {
+        await page.keyboard.press('Control+k')
+        const input = page.getByRole('textbox', { name: '搜索会话、命令与设置' })
+        await input.waitFor({ state: 'visible', timeout: 5_000 })
+        await input.fill(`>${keyword}`)
+        await page.waitForTimeout(200)
+        const row = page
+          .locator('[data-palette-kind="command"]')
+          .filter({ hasText: keyword })
+          .first()
+        assert.ok(await row.isVisible().catch(() => false), `命令面板搜不到「${keyword}」`)
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(120)
+      }
+    })
+
+    desktop('新功能导览：出现、跳转并全部标为已读', async (page) => {
+      await openSession(page, 'long')
+      await page.evaluate(() => localStorage.removeItem('tandem.changelogSeen.v1'))
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.locator('textarea[aria-label="消息输入框"]').first().waitFor({ timeout: 20_000 })
+      const pill = page.getByRole('button', { name: /新功能 · 12 项/ }).first()
+      await pill.waitFor({ state: 'visible', timeout: 10_000 })
+      await pill.click()
+      const panel = page.getByRole('region', { name: '新功能导览' })
+      await panel.waitFor({ state: 'visible', timeout: 5_000 })
+      assert.equal(await panel.getByRole('button', { name: /去看看/ }).count(), 12, '导览项不是 12 条')
+      await panel.getByRole('button', { name: /自动模型路由/ }).click()
+      const dialog = page.getByRole('dialog', { name: '设置' })
+      await dialog.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.equal(
+        await dialog.locator('[data-settings-page-content="routing"]').count(),
+        1,
+        '导览跳转没有打开自动路由页',
+      )
+      assert.equal(
+        await dialog.locator('[data-settings-page="routing"]').getAttribute('aria-current'),
+        'page',
+        '导览跳转后导航没有选中自动路由',
+      )
+      await closeSettings(page)
+      // 再次出现后标记全部已读。
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.getByRole('button', { name: /新功能 · 12 项/ }).first().waitFor({ timeout: 10_000 })
+      await page.getByRole('button', { name: /新功能 · 12 项/ }).first().click()
+      const panel2 = page.getByRole('region', { name: '新功能导览' })
+      await panel2.waitFor({ state: 'visible', timeout: 5_000 })
+      await panel2.getByRole('button', { name: '全部标为已读' }).click()
+      await page.waitForTimeout(250)
+      assert.equal(await page.getByRole('button', { name: /新功能 · 12 项/ }).count(), 0, '已读后导览卡仍出现')
+      const seen = await page.evaluate(() => localStorage.getItem('tandem.changelogSeen.v1'))
+      assert.ok(seen, '已读版本没有写入 localStorage')
     })
 
     desktop('会话筛选：状态筛选与「已筛选 · 清除」', async (page) => {

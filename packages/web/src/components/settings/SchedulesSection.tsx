@@ -278,11 +278,11 @@ export function SchedulesSection() {
             定时任务
           </h2>
           <p className="mt-1 text-[12.5px] leading-5 text-muted">
-            在 Host 上按 cron 自动新建会话或向已有会话追加提示词。全部在本机运行，不依赖公网。
+            在主机上按 cron 自动新建会话或向已有会话追加提示词。全部在本机运行，不依赖公网。
           </p>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="mr-1 text-[12px] text-muted">{host?.name ?? '未连接 Host'}</span>
+          <span className="mr-1 text-[12px] text-muted">{host?.name ?? '未连接主机'}</span>
           <IconButton
             size="sm"
             label="刷新"
@@ -309,7 +309,7 @@ export function SchedulesSection() {
       {error && <p className="rounded-lg border border-danger/30 px-3 py-2 text-[12.5px] text-danger">{error}</p>}
 
       {!host ? (
-        <p className="py-8 text-center text-[13px] text-muted">还没有连接 Host。</p>
+        <p className="py-8 text-center text-[13px] text-muted">还没有连接主机。</p>
       ) : schedules.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border px-4 py-12 text-center">
           <CalendarClock size={22} className="text-muted" />

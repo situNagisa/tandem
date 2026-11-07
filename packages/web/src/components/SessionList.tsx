@@ -772,7 +772,7 @@ export function SessionList({
                   : showArchived
                     ? '没有已归档的会话'
                     : noHosts
-                      ? '还没有连接 Host，在左下角设置中添加。'
+                      ? '还没有连接主机，在左下角设置中添加。'
                       : '还没有会话，从上方「新会话」开始。'}
             </p>
           </div>
@@ -1104,7 +1104,7 @@ export function SessionList({
           </div>
         ) : (
           <p className="text-[13px] leading-6 text-text-soft">
-            确定删除「{confirm?.session.title || '未命名会话'}」？会话记录将从 Host 上移除，且无法恢复。
+            确定删除「{confirm?.session.title || '未命名会话'}」？会话记录将从主机上移除，且无法恢复。
           </p>
         )}
         <p className="mt-1.5 break-all font-mono text-[12px] text-muted">{confirm?.session.cwd}</p>

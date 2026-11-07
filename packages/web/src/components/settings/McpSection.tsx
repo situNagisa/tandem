@@ -142,7 +142,7 @@ function McpEditor({
       open
       onClose={onClose}
       title={draft.original ? '编辑 MCP 服务器' : '添加 MCP 服务器'}
-      description="保存在 Host 的 ~/.tandem/mcp.json，会话中的工具以 mcp__server__tool 命名。"
+      description="保存在主机的 ~/.tandem/mcp.json，会话中的工具以 mcp__server__tool 命名。"
       className="max-w-lg"
       footer={
         <>
@@ -380,7 +380,7 @@ export function McpSection() {
           <MenuSelect
             value={hostId ?? ''}
             onChange={setHostId}
-            aria-label="选择 Host"
+            aria-label="选择主机"
             options={hosts.map((h) => ({ value: h.id, label: h.name }))}
             wrapperClassName="w-auto max-w-[180px]"
             className="text-[13px]"
@@ -408,8 +408,8 @@ export function McpSection() {
       {!hosts.length && (
         <div className="settings-empty">
           <span className="settings-empty-icon"><Plug size={17} /></span>
-          <p className="settings-empty-title">还没有连接 Host</p>
-          <p className="settings-empty-hint">先连接一台 Host，再配置 MCP 服务器。</p>
+          <p className="settings-empty-title">还没有连接主机</p>
+          <p className="settings-empty-hint">先连接一台主机，再配置 MCP 服务器。</p>
         </div>
       )}
 
@@ -585,7 +585,7 @@ export function McpSection() {
           if (!saving) setRemoveTarget(null)
         }}
         title="移除 MCP 服务器"
-        description="会从 Host 的 mcp.json 中删除该条目，已连接的工具立即失效。"
+        description="会从主机的 mcp.json 中删除该条目，已连接的工具立即失效。"
         className="max-w-md"
         footer={
           <>

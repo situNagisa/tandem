@@ -41,7 +41,7 @@ function AgentRow({ sub, depth }: { sub: SubagentSession; depth: number }) {
         {depth <= 1 ? '子' : depth === 2 ? '孙' : depth}
       </span>
       <span className="min-w-0 flex-1 truncate text-text-soft">
-        {sub.summary?.title || '未命名代理'}
+        {sub.summary?.title || '未命名子代理'}
       </span>
       {sub.summary?.model && (
         <span className="max-w-[92px] shrink-0 truncate font-mono text-[10.5px] text-muted" title={`模型：${sub.summary.model}`}>
@@ -91,7 +91,7 @@ export function AgentsCard() {
     return out
   }, [subagents, activeSessionId])
 
-  if (rows.length === 0) return <p className="text-[12px] text-muted">暂无代理</p>
+  if (rows.length === 0) return <p className="text-[12px] text-muted">暂无子代理</p>
   return (
     <div className="space-y-0.5">
       {rows.map(({ sub, depth }) => (
