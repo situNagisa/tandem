@@ -44,12 +44,8 @@ import {
 import { CheckpointStore } from './checkpoints.js';
 import { ExternalSessionStore } from './external.js';
 import { Hub } from './events.js';
-import {
-  HookManager,
-  runHookEntries,
-  type HookExecutionContext,
-  type HookRunResult,
-} from './hooks.js';
+import { HookManager } from './hooks.js';
+import type { HookExecutionContext, HookRunResult } from './hooks.js';
 import { McpManager } from './mcp.js';
 import { PermissionRuleStore } from './permissions.js';
 import { SessionStore } from './store.js';
@@ -114,6 +110,7 @@ import {
 } from './host/helpers.js';
 import { inboxSnapshot, pushInbox, recordCi } from './host/inbox.js';
 import { importSession, notifyExternalSessionsChanged } from './host/external.js';
+import { runHooks } from './host/hooks.js';
 import {
   isRunning,
   listCheckpoints,
@@ -773,30 +770,8 @@ export class Host {
 
   // ---------- Hooks ----------
 
-  /** 执行一组已加载的 hooks，并把每条执行记录广播给客户端。 */
-  async runHooks(
-    rec: SessionRecord,
-    entries: HookEntry[],
-    event: HookEvent,
-    context: Omit<HookExecutionContext, 'sessionId' | 'cwd' | 'permissionMode'>,
-  ): Promise<HookRunResult> {
-    return runHookEntries(
-      entries,
-      event,
-      { sessionId: rec.id, cwd: rec.cwd, permissionMode: rec.permissionMode, ...context },
-      (outcome) => {
-        this.hub.broadcastSession(rec.id, {
-          type: 'hook_event',
-          sessionId: rec.id,
-          event,
-          name: outcome.name,
-          ok: outcome.ok,
-          durationMs: outcome.durationMs,
-          ...(outcome.blocked ? { blocked: true } : {}),
-          ...(outcome.message ? { message: outcome.message } : {}),
-        });
-      },
-    );
+  runHooks(rec: SessionRecord, entries: HookEntry[], event: HookEvent, context: Omit<HookExecutionContext, 'sessionId' | 'cwd' | 'permissionMode'>): Promise<HookRunResult> {
+    return runHooks(this, rec, entries, event, context);
   }
 
   // ---------- 权限 ----------
@@ -1049,7 +1024,7 @@ export class Host {
   }
 
   /** /compact：让模型总结历史并替换为一条摘要消息。 */
-  private async compactSession(rec: SessionRecord): Promise<void> {
+  async compactSession(rec: SessionRecord): Promise<void> {
     const rt = this.ensureRuntime(rec.id);
     if (rt.running) return;
     rt.running = true;
