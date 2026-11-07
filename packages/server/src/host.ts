@@ -122,6 +122,15 @@ import {
 import { inboxSnapshot, pushInbox, recordCi } from './host/inbox.js';
 import { importSession, notifyExternalSessionsChanged } from './host/external.js';
 import {
+  findModelForAlias,
+  groupFor,
+  keyCandidates,
+  keysUnavailableMessage,
+  markKeyFailure,
+  markKeySuccess,
+  profileFor,
+} from './host/keys.js';
+import {
   checkoutSessionBranch,
   enterSessionWorktree,
   mergeSessionWorktree,
@@ -436,52 +445,16 @@ export class Host {
     return refreshEnv(this, id);
   }
 
-  /** 取会话运行时的有效账号：account + 分组（key/baseUrl/模型按分组覆盖）。 */
   profileFor(profileId: string, groupId?: string): StoredProfile | undefined {
-    const profile = this.profiles.get(profileId);
-    return profile ? effectiveProfile(profile, groupId) : undefined;
+    return profileFor(this, profileId, groupId);
   }
 
   groupFor(profileId: string, groupId?: string): StoredProfileGroup | undefined {
-    return groupId ? this.profiles.get(profileId)?.groups?.find((g) => g.id === groupId) : undefined;
+    return groupFor(this, profileId, groupId);
   }
 
-  /** 在用户配置的账号里找包含 sonnet/opus/haiku 的模型，优先主会话账号与分组。 */
-  private findModelForAlias(
-    alias: string,
-    preferredProfileId: string,
-    preferredGroupId?: string,
-  ): { profileId: string; groupId?: string; model: string } | undefined {
-    const profiles = this.profiles
-      .list()
-      .slice()
-      .sort((a, b) => (a.id === preferredProfileId ? -1 : b.id === preferredProfileId ? 1 : 0));
-    for (const profile of profiles) {
-      const groups = profile.groups?.length
-        ? profile.groups
-            .slice()
-            .sort((a, b) =>
-              profile.id === preferredProfileId && a.id === preferredGroupId
-                ? -1
-                : profile.id === preferredProfileId && b.id === preferredGroupId
-                  ? 1
-                  : 0,
-            )
-        : [undefined];
-      for (const group of groups) {
-        const effective = effectiveProfile(profile, group?.id);
-        const models = effective.models?.length ? effective.models : [effective.defaultModel];
-        const model = models.find((item) => item.toLowerCase().includes(alias));
-        if (model) {
-          return {
-            profileId: profile.id,
-            ...(group?.id && group.id !== preferredGroupId ? { groupId: group.id } : group?.id ? { groupId: group.id } : {}),
-            model,
-          };
-        }
-      }
-    }
-    return undefined;
+  findModelForAlias(alias: string, preferredProfileId: string, preferredGroupId?: string): { profileId: string; groupId?: string; model: string } | undefined {
+    return findModelForAlias(this, alias, preferredProfileId, preferredGroupId);
   }
 
   /** 合并主会话与子代理预设：账号/分组/模型/effort/权限/工具白名单/附加提示。 */
@@ -541,101 +514,20 @@ export class Host {
     };
   }
 
-  /**
-   * 本次请求可尝试的 Key 候选：按 failover / round-robin 排序，已停用/冷却中的被过滤。
-   * 分组没有 Key 或会话未选分组时，退化为账号自身的单 Key（keyId 为空）。
-   */
-  keyCandidates(
-    profileId: string,
-    groupId?: string,
-  ): {
-    group?: StoredProfileGroup;
-    effective?: StoredProfile;
-    candidates: Array<{ keyId?: string; label?: string; profile: StoredProfile }>;
-  } {
-    const profile = this.profiles.get(profileId);
-    if (!profile) return { candidates: [] };
-    const effective = effectiveProfile(profile, groupId);
-    const group = this.groupFor(profileId, groupId);
-    const keys = group?.keys ?? [];
-    if (!group || keys.length === 0) {
-      return { effective, candidates: [{ profile: effective }] };
-    }
-    const rotationKey = `${profileId}:${groupId}`;
-    const rotate = this.keyRotation.get(rotationKey) ?? 0;
-    const available = orderedAvailableKeys(keys, group.keyStrategy, rotate);
-    if (group.keyStrategy === 'round_robin' && available.length > 0) {
-      this.keyRotation.set(rotationKey, rotate + 1);
-    }
-    return {
-      group,
-      effective,
-      candidates: available.map((key) => ({
-        keyId: key.id,
-        ...(key.label ? { label: key.label } : {}),
-        profile: profileWithKey(effective, key),
-      })),
-    };
+  keyCandidates(profileId: string, groupId?: string): { group?: StoredProfileGroup; effective?: StoredProfile; candidates: Array<{ keyId?: string; label?: string; profile: StoredProfile }>; } {
+    return keyCandidates(this, profileId, groupId);
   }
 
-  /** 记录 Key 成功：清除冷却与连续失败计数。 */
   markKeySuccess(profileId: string, groupId: string | undefined, keyId?: string): void {
-    if (!keyId || !groupId) return;
-    const key = this.groupFor(profileId, groupId)?.keys?.find((k) => k.id === keyId);
-    if (!key) return;
-    if (!key.failures && !key.cooldownUntil && !key.lastError) return;
-    this.profiles.updateKeyState(profileId, groupId, keyId, {
-      failures: undefined,
-      cooldownUntil: undefined,
-      lastError: undefined,
-      lastErrorAt: undefined,
-    });
+    return markKeySuccess(this, profileId, groupId, keyId);
   }
 
-  /**
-   * 记录 Key 失败并更新停用/冷却状态；返回 true 表示可以换下一个 Key 重试。
-   * 401/403 停用该 Key；429/额度不足/5xx 冷却 60s→30min 指数退避。
-   */
-  markKeyFailure(
-    profileId: string,
-    groupId: string | undefined,
-    keyId: string | undefined,
-    err: unknown,
-  ): boolean {
-    if (!keyId || !groupId) return false;
-    const key = this.groupFor(profileId, groupId)?.keys?.find((k) => k.id === keyId);
-    if (!key) return false;
-    const failure = classifyKeyFailure(err);
-    if (failure.kind === 'none') return false;
-    const message = truncateEnd(failure.message, 300);
-    if (failure.kind === 'disable') {
-      this.profiles.updateKeyState(profileId, groupId, keyId, {
-        disabled: true,
-        cooldownUntil: undefined,
-        lastError: message,
-        lastErrorAt: Date.now(),
-      });
-    } else {
-      const failures = (key.failures ?? 0) + 1;
-      this.profiles.updateKeyState(profileId, groupId, keyId, {
-        failures,
-        cooldownUntil: Date.now() + cooldownMsFor(failures),
-        lastError: message,
-        lastErrorAt: Date.now(),
-      });
-    }
-    return true;
+  markKeyFailure(profileId: string, groupId: string | undefined, keyId: string | undefined, err: unknown): boolean {
+    return markKeyFailure(this, profileId, groupId, keyId, err);
   }
 
-  /** 分组 Key 全部不可用时的可读错误。 */
-  keysUnavailableMessage(
-    profileId: string,
-    groupId?: string,
-    errors: Map<string, string> = new Map(),
-  ): string | undefined {
-    const group = this.groupFor(profileId, groupId);
-    if (!group?.keys?.length) return undefined;
-    return groupUnavailableError(group, errors);
+  keysUnavailableMessage(profileId: string, groupId?: string, errors: Map<string, string> = new Map()): string | undefined {
+    return keysUnavailableMessage(this, profileId, groupId, errors);
   }
 
   /** 预算检查：block 规则达到 100% 时拒绝请求（会话内 allow-once 可放行一次）。 */
