@@ -16,7 +16,7 @@ let started = false
 export async function initNativeBridge(): Promise<void> {
   if (started || !isNativeApp()) return
   started = true
-  await prepareLocalNotifications()
+  if (useUiStore.getState().nativeNotifications) await prepareLocalNotifications()
   await onNativeNotificationAction((actionId, extra) => {
     const store = useAppStore.getState()
     if (actionId === 'allow' || actionId === 'deny') {

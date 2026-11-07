@@ -111,10 +111,3 @@ export class Inbox {
     return { seq: this.seq, events: this.events.slice(), pending };
   }
 }
-
-/** 预算告警的收件箱文案（与 Host 内 notice 保持一致的口径）。 */
-export function budgetInboxText(alert: BudgetAlert, name: string, spent: string, limit: string): string {
-  const percent = alert.limitUsd > 0 ? Math.round((alert.spentUsd / alert.limitUsd) * 1000) / 10 : 0;
-  const level = alert.level === '100' ? '已达上限' : '接近上限';
-  return `预算${level}：「${name}」本期已用 ${spent} / ${limit}（${percent}%）`;
-}

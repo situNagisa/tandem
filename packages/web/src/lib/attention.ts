@@ -136,7 +136,12 @@ async function postNotification({
   requestId,
   approval,
 }: AttentionInput) {
-  if (!notificationsEnabled()) return
+  const native = isNativeApp()
+  if (native) {
+    if (!useUiStore.getState().nativeNotifications) return
+  } else if (!notificationsEnabled()) {
+    return
+  }
   const now = Date.now()
   for (const [key, at] of recentNotifications) {
     if (now - at >= NOTIFICATION_DEDUPE_MS) recentNotifications.delete(key)
@@ -145,8 +150,7 @@ async function postNotification({
   recentNotifications.set(tag, now)
 
   // 安卓 App：纯本地通知（带允许/拒绝操作），不经过任何推送服务
-  if (isNativeApp()) {
-    if (!useUiStore.getState().nativeNotifications) return
+  if (native) {
     if (!hostId) return
     await postNativeNotification({
       id: notificationId(tag),
