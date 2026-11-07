@@ -58,6 +58,8 @@ import { SkillManager } from './skills.js';
 import { SubagentPresetStore } from './subagent-presets.js';
 import { PromptTemplateStore } from './prompt-templates.js';
 import { MemoryStore } from './memory.js';
+import { TeamStore } from './team/store.js';
+import { memberCanSeeSession } from './team/access.js';
 import type { ParsedCommand } from './agent/commands.js';
 import { readVersion, type PermissionEntry } from './host/helpers.js';
 import {
@@ -81,7 +83,7 @@ import {
   setSkillState,
   titleFromCommand,
 } from './host/commands.js';
-import { addAllowed, ancestorsOf, askPermission, authorize, isAllowed, requestPlanApproval, resolvePermission, restorePendingPermission } from './host/permissions.js';
+import { addAllowed, ancestorsOf, askPermission, authorize, findPendingPermission, isAllowed, requestPlanApproval, resolvePermission, restorePendingPermission } from './host/permissions.js';
 import { isRunning, listCheckpoints, rewind, snapshotForCheckpoint } from './host/rewind.js';
 import { importSession, notifyExternalSessionsChanged } from './host/external.js';
 import { runHooks } from './host/hooks.js';
@@ -176,6 +178,8 @@ export class Host {
   /** 评测：用例存储与后台批量运行。 */
   readonly evals: EvalManager;
   readonly hub = new Hub();
+  /** 内网团队成员、邀请与审计（~/.tandem/team.json）。 */
+  readonly team: TeamStore;
   /** 浏览器操作（Playwright）：每会话独立上下文，空闲 10 分钟关闭。 */
   readonly browser: BrowserManager;
   /** 跨会话收件箱（审批/回合结束/预算摘要），手机审批台的数据源。 */
@@ -198,6 +202,15 @@ export class Host {
   constructor(config?: HostConfig, home = tandemHome()) {
     this.home = home;
     this.config = config ?? loadHostConfig(home);
+    this.team = new TeamStore(home);
+    this.hub.setSessionVisibility((access, sessionId) => {
+      if (access.role === 'owner') return true;
+      const rec = this.store.get(sessionId);
+      return memberCanSeeSession(
+        { kind: 'member', id: access.id, name: access.name, role: access.role as 'observer' | 'approver' | 'collaborator', projectDirs: access.projectDirs },
+        rec,
+      );
+    });
     this.profiles = new ProfileStore(home);
     this.store = new SessionStore(home);
     this.checkpoints = new CheckpointStore(home);
@@ -256,6 +269,10 @@ export class Host {
 
   inboxSnapshot(sinceSeq?: number) {
     return inboxSnapshot(this, sinceSeq);
+  }
+
+  findPendingPermission(requestId: string) {
+    return findPendingPermission(this, requestId);
   }
 
   recordCi(sessionId: string, sessionTitle: string, ci: NonNullable<InboxEvent['ci']>): void {

@@ -4,6 +4,7 @@ import type { ProfileGroupInput, ProfileInput, ProviderKind } from '@tandem/prot
 import { testProfile } from '../providers/index.js';
 import { truncateEnd } from '../util/text.js';
 import { PROVIDER_KINDS, bad, str, type RouteDeps } from './common.js';
+import { principalOf, sanitizeProfilesForMember } from '../team/access.js';
 
 function parseProfileInput(body: unknown): ProfileInput {
   const raw = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
@@ -79,7 +80,10 @@ function parseGroupInputs(value: unknown): ProfileGroupInput[] | undefined {
 export function registerProfileRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const { host } = deps;
 
-  app.get('/api/profiles', async () => host.profiles.list().map((p) => host.profiles.toPublic(p)));
+  app.get('/api/profiles', async (req) => {
+    const list = host.profiles.list().map((p) => host.profiles.toPublic(p));
+    return principalOf(req).kind === 'owner' ? list : sanitizeProfilesForMember(list);
+  });
 
   app.post('/api/profiles', async (req, reply) => {
     try {

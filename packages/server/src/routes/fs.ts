@@ -8,6 +8,7 @@ import { walkFiles } from '../util/fs-walk.js';
 import { readForPreview, readImage, revealFile } from '../util/file-preview.js';
 import { expandHome, resolveHostPath, toPosix } from '../util/path.js';
 import { bad, str, type RouteDeps } from './common.js';
+import { memberCanAccessPath, principalOf } from '../team/access.js';
 
 /** @文件补全的模糊匹配打分；不匹配返回 null。 */
 function fuzzyScore(query: string, target: string): number | null {
@@ -34,8 +35,13 @@ function fuzzyScore(query: string, target: string): number | null {
 export function registerFsRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.get('/api/fs/list', async (req, reply) => {
     const query = req.query as { path?: string; files?: string };
-    const raw = str(query.path) || os.homedir();
+    const principal = principalOf(req);
+    const fallback = principal.kind === 'member' ? principal.projectDirs[0] : os.homedir();
+    const raw = str(query.path) || fallback || os.homedir();
     const dir = resolveHostPath(expandHome(raw));
+    if (!memberCanAccessPath(principal, dir)) {
+      return bad(reply, '只能浏览自己被授权的项目目录', 403);
+    }
     const includeFiles = str(query.files) === '1';
     let stat;
     try {
@@ -76,6 +82,9 @@ export function registerFsRoutes(app: FastifyInstance, deps: RouteDeps): void {
     const query = req.query as { cwd?: string; q?: string };
     const cwdRaw = str(query.cwd) || process.cwd();
     const cwd = path.resolve(expandHome(cwdRaw));
+    if (!memberCanAccessPath(principalOf(req), cwd)) {
+      return bad(reply, '只能在自己被授权的项目目录里搜索', 403);
+    }
     const q = str(query.q);
     if (!q) return [] as string[];
     try {
@@ -107,6 +116,9 @@ export function registerFsRoutes(app: FastifyInstance, deps: RouteDeps): void {
     const raw = str(query.path);
     if (!raw) return bad(reply, 'path 不能为空');
     const abs = resolvePreviewPath(raw, str(query.cwd));
+    if (!memberCanAccessPath(principalOf(req), abs)) {
+      return bad(reply, '只能读取自己被授权项目里的文件', 403);
+    }
     try {
       return await readForPreview(abs);
     } catch (err) {
@@ -122,6 +134,9 @@ export function registerFsRoutes(app: FastifyInstance, deps: RouteDeps): void {
     const raw = str(query.path);
     if (!raw) return bad(reply, 'path 不能为空');
     const abs = resolvePreviewPath(raw, str(query.cwd));
+    if (!memberCanAccessPath(principalOf(req), abs)) {
+      return bad(reply, '只能读取自己被授权项目里的文件', 403);
+    }
     try {
       const image = await readImage(abs);
       return reply

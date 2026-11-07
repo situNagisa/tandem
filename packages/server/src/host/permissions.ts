@@ -325,3 +325,14 @@ export function ancestorsOf(host: Host, rec: SessionRecord): SessionRecord[] {
   }
   return out;
 }
+
+/** 按 requestId 找到仍待处理的审批（含所在会话与实时请求对象）。 */
+export function findPendingPermission(host: Host, requestId: string): { rec: SessionRecord; request: PermissionRequest } | undefined {
+  for (const [sessionId, rt] of host.runtimes) {
+    const pending = rt.pending.get(requestId);
+    if (!pending) continue;
+    const rec = host.store.get(sessionId);
+    if (rec) return { rec, request: pending.request };
+  }
+  return undefined;
+}

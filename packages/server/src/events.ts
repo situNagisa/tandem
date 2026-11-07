@@ -1,11 +1,24 @@
 // WebSocket 广播中心：多客户端订阅同一会话，实时同步。
 // 每个会话维护单调递增的 seq 与最近若干事件的环形缓冲，供断线客户端补发。
-import type { SeqServerMsg, ServerMsg } from '@tandem/protocol';
+import type { SeqServerMsg, ServerMsg, TeamPresence } from '@tandem/protocol';
 
 /** 只依赖 ws 的最小接口，避免和具体实现耦合。 */
 export interface WsClient {
   readyState: number;
   send(data: string): void;
+  close?(): void;
+}
+
+/** 已鉴权的连接身份；缺省表示所有者（全权限）。 */
+export interface WsAccess {
+  id: string;
+  name: string;
+  role: 'owner' | 'observer' | 'approver' | 'collaborator';
+  projectDirs: string[];
+}
+
+function canApprove(role: WsAccess['role']): boolean {
+  return role === 'owner' || role === 'approver' || role === 'collaborator';
 }
 
 /** 每会话保留的事件条数（含 block_delta）。 */
@@ -13,6 +26,10 @@ export const EVENT_BUFFER_LIMIT = 2000;
 
 export class Hub {
   private clients = new Set<WsClient>();
+  /** 连接身份（所有者不登记）。 */
+  private access = new Map<WsClient, WsAccess>();
+  /** 会话可见性回调（由 Host 注册，用于过滤跨连接广播）。 */
+  private canViewSession?: (access: WsAccess, sessionId: string) => boolean;
   private subs = new Map<string, Set<WsClient>>();
   /** 订阅了全局收件箱的连接（跨会话审批/回合结束等摘要）。 */
   private inboxClients = new Set<WsClient>();
@@ -21,12 +38,63 @@ export class Hub {
   /** 会话事件环形缓冲：按 seq 递增排列，最多 EVENT_BUFFER_LIMIT 条。 */
   private buffers = new Map<string, SeqServerMsg[]>();
 
-  add(client: WsClient): void {
+  add(client: WsClient, access?: WsAccess): void {
     this.clients.add(client);
+    if (access) this.access.set(client, access);
+  }
+
+  setSessionVisibility(fn: (access: WsAccess, sessionId: string) => boolean): void {
+    this.canViewSession = fn;
+  }
+
+  isMemberOnline(memberId: string): boolean {
+    for (const access of this.access.values()) {
+      if (access.id === memberId) return true;
+    }
+    return false;
+  }
+
+  /** 吊销成员后断开其现有长连接。 */
+  disconnectMember(memberId: string): void {
+    for (const [client, access] of this.access) {
+      if (access.id !== memberId) continue;
+      try {
+        client.close?.();
+      } catch {
+        // 忽略已断开的连接
+      }
+      this.remove(client);
+    }
+  }
+
+  /** 当前订阅该会话的连接（含所有者），用于会话页顶部在线头像。 */
+  viewers(sessionId: string): TeamPresence[] {
+    const set = this.subs.get(sessionId);
+    if (!set) return [];
+    const seen = new Set<string>();
+    const list: TeamPresence[] = [];
+    for (const client of set) {
+      const access = this.access.get(client);
+      const entry: TeamPresence = access
+        ? { id: access.id, name: access.name, role: access.role }
+        : { id: 'owner', name: '所有者', role: 'owner' };
+      if (seen.has(entry.id)) continue;
+      seen.add(entry.id);
+      list.push(entry);
+    }
+    return list;
+  }
+
+  /** 无需 seq 的临时事件（在线状态）。 */
+  broadcastEphemeral(sessionId: string, msg: ServerMsg): void {
+    const set = this.subs.get(sessionId);
+    if (!set) return;
+    for (const client of set) this.send(client, msg);
   }
 
   remove(client: WsClient): void {
     this.clients.delete(client);
+    this.access.delete(client);
     this.inboxClients.delete(client);
     for (const [sessionId, set] of this.subs) {
       set.delete(client);
@@ -80,7 +148,48 @@ export class Hub {
     return this.seqs.get(sessionId) ?? 0;
   }
 
+  /** 成员连接只收到自己可见的会话与有权限的审批事件。 */
+  private canDeliver(client: WsClient, msg: SeqServerMsg): boolean {
+    const access = this.access.get(client);
+    if (!access) return true;
+    const visible = (sessionId?: string) =>
+      !!sessionId && (this.canViewSession ? this.canViewSession(access, sessionId) : true);
+    switch (msg.type) {
+      case 'session_updated':
+      case 'session_deleted':
+        return msg.type === 'session_deleted' || visible(msg.session.id);
+      case 'permission_request': {
+        if (!canApprove(access.role)) return false;
+        if (msg.request.assignedTo && msg.request.assignedTo.memberId !== access.id) return false;
+        return visible(msg.request.sessionId);
+      }
+      case 'permission_resolved':
+        return canApprove(access.role) && visible(msg.sessionId);
+      case 'permission_transferred':
+        return canApprove(access.role) && visible(msg.request.sessionId);
+      case 'inbox_event': {
+        const event = msg.event;
+        if (event.kind === 'permission') {
+          if (!canApprove(access.role)) return false;
+          const request = event.permission;
+          if (request?.assignedTo && request.assignedTo.memberId !== access.id) return false;
+          return !event.sessionId || visible(event.sessionId);
+        }
+        if (event.kind === 'permission_resolved') {
+          return canApprove(access.role) && (!event.sessionId || visible(event.sessionId));
+        }
+        // 预算/评测是 Host 级信息，只发给所有者
+        if (event.kind === 'budget' || event.kind === 'eval') return false;
+        if (!event.sessionId) return false;
+        return visible(event.sessionId);
+      }
+      default:
+        return true;
+    }
+  }
+
   send(client: WsClient, msg: SeqServerMsg): void {
+    if (!this.canDeliver(client, msg)) return;
     if (client.readyState !== 1) return; // WebSocket.OPEN
     try {
       client.send(JSON.stringify(msg));

@@ -11,6 +11,8 @@ import type { Host } from './host.js';
 import { startPrPolling } from './vcs.js';
 import { registerSttRoutes } from './stt.js';
 import { isPublicSharePath, registerShareRoutes } from './share/routes.js';
+import { isPublicTeamPath, registerTeamRoutes } from './routes/team.js';
+import { guardMemberRequest, ownerPrincipal, type Principal } from './team/access.js';
 import type { RouteDeps } from './routes/common.js';
 import { registerHostRoutes } from './routes/host.js';
 import { registerProfileRoutes } from './routes/profiles.js';
@@ -64,15 +66,32 @@ export async function createApp(
     const urlPath = (req.raw.url ?? '').split('?')[0] ?? '';
     // 只读分享的公开接口自带 Share token，不能要求 Host 主 token。
     if (isPublicSharePath(urlPath)) return;
+    // 接受邀请用一次性邀请码鉴权。
+    if (isPublicTeamPath(urlPath)) return;
     if (!urlPath.startsWith('/api') && urlPath !== '/ws') return;
 
     const auth = req.headers.authorization;
     const bearer = auth?.startsWith('Bearer ') ? auth.slice('Bearer '.length).trim() : undefined;
     const query = req.query as Record<string, unknown> | undefined;
     const token = bearer || (typeof query?.token === 'string' ? query.token : undefined);
-    if (token !== host.config.token) {
-      return reply.code(401).send({ error: '未授权：token 无效' });
+    if (!token) return reply.code(401).send({ error: '未授权：缺少 token' });
+    let principal: Principal;
+    if (token === host.config.token) {
+      principal = ownerPrincipal();
+    } else {
+      const member = host.team.authenticate(token);
+      if (!member) return reply.code(401).send({ error: '未授权：token 无效或已被吊销' });
+      principal = {
+        kind: 'member',
+        id: member.id,
+        name: member.name,
+        role: member.role,
+        projectDirs: member.projectDirs,
+      };
     }
+    req.team = principal;
+    const denied = guardMemberRequest(host, principal, req.method, urlPath);
+    if (denied) return reply.code(denied.code).send({ error: denied.message });
   });
 
   app.setErrorHandler((rawErr: unknown, _req, reply) => {
@@ -88,6 +107,7 @@ export async function createApp(
   const deps: RouteDeps = { host, ...(extras.relay ? { relay: extras.relay } : {}) };
 
   registerHostRoutes(app, deps);
+  registerTeamRoutes(app, deps);
 
   // 本机语音转写（用户自己的 Whisper；不联网）
   registerSttRoutes(app, host);
@@ -117,7 +137,10 @@ export async function createApp(
 
   // PR/CI 轮询：只覆盖已被客户端打开且有 PR 的会话
   const stopPrPolling = startPrPolling(host);
-  app.addHook('onClose', async () => stopPrPolling());
+  app.addHook('onClose', async () => {
+    stopPrPolling();
+    host.team.close();
+  });
 
   // ---------- 静态 Web UI ----------
   if (hasWeb) {

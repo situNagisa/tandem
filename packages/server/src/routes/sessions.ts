@@ -9,18 +9,37 @@ import type {
 import { commitChanges, getChanges, getFileDiff, revertChanges } from '../changes.js';
 import { createPullRequest, failedCheckPrompt, getVcsState, mergePullRequest } from '../vcs.js';
 import { bad, statusOf, str, type RouteDeps } from './common.js';
+import { memberCanAccessPath, memberCanSeeSession, principalOf } from '../team/access.js';
+import { recordAudit } from '../team/audit.js';
+import { expandHome } from '../util/path.js';
+import path from 'node:path';
 
 export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const { host } = deps;
 
-  app.get('/api/sessions', async () => host.listSessions().map((s) => host.toSummary(s)));
+  app.get('/api/sessions', async (req) => {
+    const principal = principalOf(req);
+    return host
+      .listSessions()
+      .filter((rec) => memberCanSeeSession(principal, rec))
+      .map((s) => host.toSummary(s));
+  });
 
   app.post('/api/sessions', async (req, reply) => {
+    const principal = principalOf(req);
     try {
       const input = (req.body ?? {}) as Partial<CreateSessionInput>;
+      if (principal.kind === 'member') {
+        const rawCwd = typeof input.cwd === 'string' ? input.cwd.trim() : '';
+        const cwd = rawCwd ? path.resolve(expandHome(rawCwd)) : '';
+        if (!cwd || !memberCanAccessPath(principal, cwd)) {
+          return bad(reply, '只能在自己被授权的项目目录里新建会话', 403);
+        }
+      }
       const rec = await host.createSession(input);
       // 创建时检测 cwd 的 git 仓库/分支，供侧栏归类
       await host.refreshEnv(rec.id);
+      recordAudit(host, principal, 'session.create', { sessionId: rec.id, sessionTitle: rec.title });
       return reply.code(201).send(host.toSummary(rec));
     } catch (err) {
       return bad(reply, (err as Error).message);
