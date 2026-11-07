@@ -156,12 +156,12 @@ node scripts/check.mjs --skip-smoke  # 子代理最低要求
 
 | 文件 | 约行数 | 状态 |
 |---|---|---|
-| `server/src/host.ts` | 2500+ | 待拆：sessions / run / external / keys / permissions |
-| `server/src/server.ts` | 1200+ | 待拆：`routes/*.ts` 按资源 |
-| `web/src/store/useAppStore.ts` | 2100+ | 待拆：connection / sessions / runs / inbox slices |
-| `web/src/components/settings/ProfilesSection.tsx` | 1700+ | 待拆：账号卡片 / 分组 / 模型选择 |
-| `web/src/components/Composer.tsx` | 1600+ | 待拆：输入区 / 模型菜单 / 附件 / 快捷键 |
-| `web/src/components/RightPanel.tsx` | 1100+ | 待拆：计划 / 待办 / 子代理 / 上下文 / PR |
-| `web/src/components/MessageList.tsx` | 1000+ | 待拆：消息行 / 轮次分组 / 流式块 |
+| `server/src/host.ts` | 2500+ | 未拆（并行开发中）：计划 sessions / run / external / keys / permissions |
+| `server/src/server.ts` | 1200+ | 未拆（并行开发中）：计划 `routes/*.ts` 按资源 |
+| `web/src/store/useAppStore.ts` | 2100+ | 未拆：计划 connection / sessions / runs / inbox slices |
+| `web/src/components/settings/ProfilesSection.tsx` | 990 | **已拆**：`settings/profiles/`（shared / PriceOverrides / GroupEditor / KeysPanel） |
+| `web/src/components/Composer.tsx` | 1020 | **已拆**：`components/composer/`（completion / ComposerMenus / ModelMenu / CompletionMenu）+ `lib/modelName.ts` |
+| `web/src/components/RightPanel.tsx` | 880 | **已拆**：`components/right-panel/`（shared / AgentsCard / ContextCard） |
+| `web/src/components/MessageList.tsx` | 330 | **已拆**：`components/chat/`（UserMessage / AssistantMessage / MessageNotes） |
 
-拆分原则：**纯搬移、不改行为**；每次只拆一个文件；拆前 `git status` / `git diff <file>` 确认无他人未提交改动，有就跳过；拆后立即 `node scripts/check.mjs` 并单独提交 `refactor: 拆分 X（纯搬移）`。热点文件（host/server/useAppStore/RightPanel/SettingsDialog/prompt.ts）在与并行开发冲突期间不要动。
+拆分原则：**纯搬移、不改行为**；每次只拆一个文件；拆前 `git status` / `git diff <file>` 确认无他人未提交改动，有就跳过；拆后立即 `node scripts/check.mjs` 并单独提交 `refactor: 拆分 X（纯搬移）`。热点文件（host/server/useAppStore/SettingsDialog/prompt.ts）在与并行开发冲突期间不要动。

@@ -164,3 +164,12 @@
 - [x] 回执复验闭环：导入 `tandem-feedback-receipt-*.json`、状态与说明、前/后对比滑块；顺序跳转路由+选择器高亮，逐条「通过 / 仍有问题（备注）」，导出 kind=verification 的复验文件
 - [x] 脚本：`feedback-unpack.mjs` 支持标注/参考/轨迹/录屏/快照独立文件并在 feedback.md 引用；新增 `feedback-receipt.mjs`（Markdown/JSON 草稿 → 回执）；README 反馈小节更新
 - 验证：TANDEM_HOME=/tmp/tandem-fb2v（8191 被占用，改用 8193）+ Vite 5179；Playwright：进入反馈模式 → 点选 + 框选 → Canvas 画框标注 → 剪贴板事件粘贴参考图 → 导出（捕获下载）→ 解包 2 条/8 附件 → 生成并导入回执 → 复验 2 条（通过/仍有问题）→ 导出复验结果 → 退出；截图 /tmp/fbv2-shots/；`npm run build -w @tandem/web`、`ui-audit` 通过
+
+## 迭代 20（2026-11-07）工程治理：架构地图 + 回归测试骨架 + 巨石拆分
+- [x] `docs/architecture.md`（167 行）：目录/模块职责、REST/WS/agent 数据流、10 条关键约定、“改 X 去哪里”速查、巨石状态
+- [x] 回归测试：server 38 条（node:test + tsx：Windows 路径、外部会话注入/标题、changes 路径与未跟踪目录、多 Key/冷却、预算、GBK 回退、cron）；web 32 条（vitest：fileLinks、模型分组/友好名、格式化、轮次窗口、补全识别）
+- [x] `e2e/smoke.mjs`：临时 HOME/TANDEM_HOME + 随机端口 + 本机假 OpenAI 端点；新建会话 → 流式回复 → Bash 审批 → 设置 16 页无 console error；通过（provider 3 请求）
+- [x] `scripts/check.mjs`：build → ui-audit → test → smoke 汇总；AGENTS 增加提交前检查（子代理 `--skip-smoke`）
+- [x] 纯搬移拆分：MessageList 1073→333（chat/UserMessage、AssistantMessage、MessageNotes）；ProfilesSection 1782→991（settings/profiles/*）；Composer 1603→1021（components/composer/* + lib/modelName）；RightPanel 1172→881（right-panel/*）
+- 未拆：`host.ts`、`server.ts`（工作期间持续有他人未提交改动）；`useAppStore.ts` 待协调 slice 拆分，避免与并发状态改动冲突
+- 验证：`node scripts/check.mjs` 全量通过（build 8.4s、ui-audit、70 条单测、smoke 23.5s）；每次拆分单独提交，提交信息 `refactor: 拆分 X（纯搬移）`
