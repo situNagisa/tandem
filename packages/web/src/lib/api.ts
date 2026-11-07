@@ -330,6 +330,11 @@ export const api = {
     request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/resume`, {
       method: 'POST',
     }),
+  handoffSession: (h: HostConfig, id: string, action: 'switch' | 'wait' | 'pause') =>
+    request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/handoff`, {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    }),
   patchSession: (h: HostConfig, id: string, input: UpdateSessionInput) =>
     request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}`, {
       method: 'PATCH',

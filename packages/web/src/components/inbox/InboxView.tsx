@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import {
+  ArrowRightLeft,
   BellRing,
   Check,
   CheckCircle2,
@@ -82,6 +83,12 @@ function eventSummary(event: InboxEvent): { title: string; body?: string } {
   if (event.kind === 'budget') {
     return { title: '预算提醒', body: event.budgetText ?? '' }
   }
+  if (event.kind === 'handoff') {
+    return {
+      title: '额度将尽，需要选择继续方式',
+      body: event.handoff?.text ?? event.handoff?.state.message ?? '',
+    }
+  }
   if (event.kind === 'ci') {
     return { title: event.ci?.text ?? 'PR 状态变化', body: event.ci ? `#${event.ci.prNumber}` : undefined }
   }
@@ -127,6 +134,7 @@ function EventIcon({ event }: { event: InboxEvent }) {
   if (event.kind === 'ci') return <GitPullRequest size={14} />
   if (event.kind === 'eval') return <FlaskConical size={14} />
   if (event.kind === 'board') return <Kanban size={14} />
+  if (event.kind === 'handoff') return <ArrowRightLeft size={14} />
   if (event.turnReason === 'error') return <TriangleAlert size={14} />
   return <CheckCircle2 size={14} />
 }

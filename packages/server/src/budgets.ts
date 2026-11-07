@@ -182,6 +182,14 @@ function ruleMatches(
   }
 }
 
+/** 某条预算规则状态是否作用于该会话上下文（配额预估/交接共用）。 */
+export function budgetStatusMatches(
+  status: Pick<BudgetStatus, 'scope' | 'profileId' | 'groupId' | 'model'>,
+  context: BudgetContext,
+): boolean {
+  return ruleMatches(status, context);
+}
+
 function normalizeRules(input: unknown[], createIds: boolean): BudgetRule[] {
   const out: BudgetRule[] = [];
   const ids = new Set<string>();

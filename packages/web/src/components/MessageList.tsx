@@ -8,6 +8,7 @@ import { navigate } from '../lib/router'
 import type { HookNotice, ToolResultBlock, UiMessage } from '../lib/types'
 import { ToolGroup, entriesFromMessages } from './chat/ToolGroup'
 import { HookNoticeLine } from './chat/HookNoticeLine'
+import { HandoffCard } from './chat/HandoffCard'
 import { UserMessage } from './chat/UserMessage'
 import { AssistantMessage } from './chat/AssistantMessage'
 import {
@@ -559,6 +560,7 @@ function MessageListInner({
           />
         )
       })}
+      {!messagesProp && <HandoffCard />}
       {!messagesProp && orphanHooks.length > 0 && <HookNoticeLine notices={orphanHooks} />}
     </div>
   )

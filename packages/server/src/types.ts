@@ -29,6 +29,10 @@ export interface StoredProfileKey {
   failures?: number;
   lastError?: string;
   lastErrorAt?: number;
+  /** provider 响应头返回的剩余额度/重置时间，用于配额预估。 */
+  quota?: import('@tandem/protocol').KeyQuota;
+  /** 累计 429 次数（成功请求不清零）。 */
+  rateLimitHits?: number;
 }
 
 /** 持久化的账号分组：明文 key 只在本机，接口只回掩码。 */
@@ -45,6 +49,8 @@ export interface StoredProfileGroup {
   models: string[];
   defaultModel: string;
   modelCapabilities?: Record<string, ModelCapabilities>;
+  /** 备用分组链（同一账号内，按顺序）。 */
+  fallbackGroupIds?: string[];
 }
 
 /** 持久化的账号：apiKey 只存在本机 profiles.json 中，永不下发。 */
@@ -85,6 +91,8 @@ export interface HostConfig {
   context?: import('@tandem/protocol').ContextSettings;
   /** 提交前 AI 评审的模型与拦截策略。 */
   aiReview?: import('@tandem/protocol').AiReviewSettings;
+  /** 额度将尽时的默认交接策略。 */
+  handoff?: import('@tandem/protocol').HandoffSettings;
   relay?: RelayConfig;
 }
 
@@ -119,6 +127,10 @@ export interface SessionRecord extends Session {
   aiReviewUsage?: Usage;
   /** 任务看板卡片会话：卡片会话不进侧栏、不产生回合结束收件箱项。 */
   board?: { boardId: string; cardId: string };
+  /** 额度将尽时的会话交接状态（持久化，随 SessionSummary 下发）。 */
+  handoff?: import('@tandem/protocol').HandoffState;
+  /** 最近一次配额预估（运行态，随 summary/context 下发）。 */
+  quota?: import('@tandem/protocol').QuotaEstimate;
 }
 
 /**

@@ -206,6 +206,7 @@ export function ProfilesSection() {
             baseUrl: g.baseUrl ?? '',
             models: g.models,
             defaultModel: g.defaultModel || g.models[0] || '',
+            ...(g.fallbackGroupIds?.length ? { fallbackGroupIds: [...g.fallbackGroupIds] } : {}),
           }))
         : [
             // 老账号没有分组：展示为一个隐式分组，保存时迁移为显式分组
@@ -380,6 +381,9 @@ export function ProfilesSection() {
       ...(g.baseUrl.trim() ? { baseUrl: g.baseUrl.trim() } : {}),
       models: g.models,
       defaultModel: g.defaultModel || g.models[0] || '',
+      ...(g.fallbackGroupIds?.length
+        ? { fallbackGroupIds: g.fallbackGroupIds.filter((id) => id !== g.id) }
+        : {}),
     }))
     const input: ProfileInput = {
       name,
@@ -638,6 +642,9 @@ export function ProfilesSection() {
                         existing={
                           groupEditor.index === 'new' ? undefined : groups[groupEditor.index]
                         }
+                        siblingGroups={groups
+                          .filter((item, index) => !!item.id && index !== groupEditor.index)
+                          .map((item) => ({ id: item.id!, name: item.name }))}
                         onCancel={() => setGroupEditor(null)}
                         onSave={(draft) => {
                           setGroups((prev) =>

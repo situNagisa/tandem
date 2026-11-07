@@ -8,6 +8,8 @@ import {
   profileWithKey,
 } from '../key-rotation.js';
 import { truncateEnd } from '../util/text.js';
+import type { KeyQuota } from '@tandem/protocol';
+import type { ProviderRateLimit } from '../providers/types.js';
 import type { StoredProfile, StoredProfileGroup } from '../types.js';
 import type { Host } from '../host.js';
 
@@ -105,23 +107,61 @@ export function markKeyFailure(host: Host, profileId: string,
   const failure = classifyKeyFailure(err);
   if (failure.kind === 'none') return false;
   const message = truncateEnd(failure.message, 300);
+  const now = Date.now();
+  const rateLimit = (err as { rateLimit?: ProviderRateLimit } | undefined)?.rateLimit;
+  const retryAfter = (err as { retryAfterMs?: number } | undefined)?.retryAfterMs;
+  const quotaPatch = rateLimit ? mergeQuota(key.quota, rateLimit) : undefined;
+  const rateLimitHits =
+    failure.status === 429 || rateLimit
+      ? (key.rateLimitHits ?? 0) + 1
+      : key.rateLimitHits;
   if (failure.kind === 'disable') {
     host.profiles.updateKeyState(profileId, groupId, keyId, {
       disabled: true,
       cooldownUntil: undefined,
       lastError: message,
-      lastErrorAt: Date.now(),
+      lastErrorAt: now,
+      ...(quotaPatch ? { quota: quotaPatch } : {}),
+      ...(rateLimitHits ? { rateLimitHits } : {}),
     });
   } else {
     const failures = (key.failures ?? 0) + 1;
+    // 429 带了重置时间就等到额度真正恢复，而不是指数退避后再次撞墙
+    const resetCandidates = [
+      rateLimit?.resetRequestsAt,
+      rateLimit?.resetTokensAt,
+      rateLimit?.unifiedResetAt,
+      retryAfter !== undefined ? now + retryAfter : undefined,
+    ].filter(
+      (value): value is number => typeof value === 'number' && Number.isFinite(value) && value > now,
+    );
+    const cooldownUntil = resetCandidates.length
+      ? Math.max(now + 1000, Math.min(...resetCandidates))
+      : now + cooldownMsFor(failures);
     host.profiles.updateKeyState(profileId, groupId, keyId, {
       failures,
-      cooldownUntil: Date.now() + cooldownMsFor(failures),
+      cooldownUntil,
       lastError: message,
-      lastErrorAt: Date.now(),
+      lastErrorAt: now,
+      ...(quotaPatch ? { quota: quotaPatch } : {}),
+      ...(rateLimitHits ? { rateLimitHits } : {}),
     });
   }
   return true;
+}
+
+/** 合并响应头额度，保留之前已知但本次没返回的字段。 */
+function mergeQuota(previous: KeyQuota | undefined, info: ProviderRateLimit): KeyQuota {
+  return {
+    ...(previous ?? {}),
+    ...(info.remainingRequests !== undefined ? { remainingRequests: info.remainingRequests } : {}),
+    ...(info.limitRequests !== undefined ? { limitRequests: info.limitRequests } : {}),
+    ...(info.remainingTokens !== undefined ? { remainingTokens: info.remainingTokens } : {}),
+    ...(info.limitTokens !== undefined ? { limitTokens: info.limitTokens } : {}),
+    ...(info.resetRequestsAt !== undefined ? { resetRequestsAt: info.resetRequestsAt } : {}),
+    ...(info.resetTokensAt !== undefined ? { resetTokensAt: info.resetTokensAt } : {}),
+    updatedAt: Date.now(),
+  };
 }
 
 export function keysUnavailableMessage(host: Host, profileId: string,

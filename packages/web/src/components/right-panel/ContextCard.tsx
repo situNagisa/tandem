@@ -1,5 +1,6 @@
 import { cn } from '../../lib/cn'
 import { formatTokens } from '../../lib/format'
+import { quotaLine } from '../../lib/quota'
 import { CONTEXT_PART_META, ContextTopItems, useContextBreakdown } from '../chat/ContextMeter'
 
 export function ContextCard() {
@@ -7,6 +8,7 @@ export function ContextCard() {
   if (noData || !context) {
     return <p className="text-[12px] leading-4 text-muted">暂无上下文数据</p>
   }
+  const quota = quotaLine(context.quota)
   const parts = context.parts.filter((part) => part.kind !== 'free')
   const free = Math.max(0, window - used)
   const rows = [...parts, { kind: 'free' as const, tokens: free }]
@@ -72,6 +74,14 @@ export function ContextCard() {
             : '—'}
         </span>
       </div>
+      {quota && (
+        <div
+          className="mt-2 border-t border-border pt-1.5 text-[12px] leading-4 text-muted"
+          data-quota-line="context"
+        >
+          {quota}
+        </div>
+      )}
       <div className="mt-2 border-t border-border pt-1.5" data-context-top="card">
         <div className="mb-1 flex items-baseline justify-between text-[12px] text-muted">
           <span>最占空间</span>

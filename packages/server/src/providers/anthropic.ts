@@ -5,6 +5,7 @@ import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import { isAbortError, truncateEnd } from '../util/text.js';
 import { readSse, fetchSse } from './sse.js';
 import { createIdleTimeout, idleTimeoutError } from './idle-timeout.js';
+import { parseRateLimitHeaders, retryAfterMs } from './rate-limit.js';
 import { builtinCapabilities, overrideFor } from './capabilities.js';
 import type { StreamRequest, StreamResult } from './types.js';
 
@@ -157,13 +158,29 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
         });
         if (res.ok) req.onEffortDropped?.();
       } else {
-        throw providerHttpError(res.status, text, url, res.statusText);
+        throw providerHttpError(
+          res.status,
+          text,
+          url,
+          res.statusText,
+          parseRateLimitHeaders('anthropic', res.headers),
+          retryAfterMs(res.headers),
+        );
       }
     }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw providerHttpError(res.status, text, url, res.statusText);
+      throw providerHttpError(
+        res.status,
+        text,
+        url,
+        res.statusText,
+        parseRateLimitHeaders('anthropic', res.headers),
+        retryAfterMs(res.headers),
+      );
     }
+    const limit = parseRateLimitHeaders('anthropic', res.headers);
+    if (limit) req.onRateLimit?.(limit);
     return res;
   };
 

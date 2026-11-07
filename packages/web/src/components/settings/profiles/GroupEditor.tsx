@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import type { ModelInfo, ProviderKind } from '@tandem/protocol'
 import {
+  ArrowDown,
+  ArrowUp,
   Check,
   Eye,
   EyeOff,
@@ -9,6 +11,7 @@ import {
   RefreshCw,
   Search,
   TriangleAlert,
+  X,
 } from 'lucide-react'
 import { api } from '../../../lib/api'
 import { cn } from '../../../lib/cn'
@@ -30,6 +33,7 @@ export function GroupEditor({
   profileId,
   profileBaseUrl,
   existing,
+  siblingGroups = [],
   onSave,
   onCancel,
 }: {
@@ -39,6 +43,8 @@ export function GroupEditor({
   profileId?: string
   profileBaseUrl?: string
   existing?: GroupDraft
+  /** 同一账号下已保存的其他分组，可加入备用链。 */
+  siblingGroups?: Array<{ id: string; name: string }>
   onSave: (draft: GroupDraft) => void
   onCancel: () => void
 }) {
@@ -59,6 +65,7 @@ export function GroupEditor({
   const [fetching, setFetching] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [fallbackIds, setFallbackIds] = useState<string[]>(existing?.fallbackGroupIds ?? [])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -158,6 +165,9 @@ export function GroupEditor({
       baseUrl: baseUrl.trim(),
       models: selected,
       defaultModel: selected.includes(defaultModel) ? defaultModel : selected[0],
+      ...(fallbackIds.length
+        ? { fallbackGroupIds: fallbackIds.filter((id) => id !== existing?.id) }
+        : {}),
     })
   }
 
@@ -236,6 +246,87 @@ export function GroupEditor({
           {kind !== profileKind &&
             ' 分组协议与账号不同时，未填 URL 会按该协议从账号 URL 推断（去掉原协议端点并补版本路径）。'}
         </p>
+      </div>
+
+      <div className="mt-2">
+        <label className={labelCls}>备用分组（额度将尽时按顺序交接）</label>
+        {fallbackIds.length > 0 ? (
+          <div className="space-y-1">
+            {fallbackIds.map((id, index) => {
+              const name = siblingGroups.find((item) => item.id === id)?.name ?? id
+              return (
+                <div
+                  key={id}
+                  className="flex items-center gap-1.5 rounded-md border border-border bg-bg/40 px-2 py-1"
+                >
+                  <span className="w-4 shrink-0 text-center font-mono text-[12px] text-muted">
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-text-soft">{name}</span>
+                  <IconButton
+                    size="sm"
+                    label={`上移备用分组 ${name}`}
+                    className="size-6 [&_svg]:size-[11px]"
+                    disabled={index === 0}
+                    onClick={() =>
+                      setFallbackIds((prev) => {
+                        const next = [...prev]
+                        ;[next[index - 1], next[index]] = [next[index]!, next[index - 1]!]
+                        return next
+                      })
+                    }
+                  >
+                    <ArrowUp size={11} />
+                  </IconButton>
+                  <IconButton
+                    size="sm"
+                    label={`下移备用分组 ${name}`}
+                    className="size-6 [&_svg]:size-[11px]"
+                    disabled={index === fallbackIds.length - 1}
+                    onClick={() =>
+                      setFallbackIds((prev) => {
+                        const next = [...prev]
+                        ;[next[index], next[index + 1]] = [next[index + 1]!, next[index]!]
+                        return next
+                      })
+                    }
+                  >
+                    <ArrowDown size={11} />
+                  </IconButton>
+                  <IconButton
+                    size="sm"
+                    variant="danger-ghost"
+                    label={`移除备用分组 ${name}`}
+                    className="size-6 [&_svg]:size-[11px]"
+                    onClick={() => setFallbackIds((prev) => prev.filter((item) => item !== id))}
+                  >
+                    <X size={11} />
+                  </IconButton>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="text-[12px] leading-4 text-muted">未配置；额度将尽时按设置里的默认策略处理。</p>
+        )}
+        {siblingGroups.filter((item) => item.id !== existing?.id && !fallbackIds.includes(item.id)).length > 0 && (
+          <div className="mt-1.5">
+            <MenuSelect
+              value=""
+              onChange={(id) => {
+                if (id) setFallbackIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
+              }}
+              aria-label="添加备用分组"
+              size="sm"
+              options={[
+                { value: '', label: '添加备用分组…' },
+                ...siblingGroups
+                  .filter((item) => item.id !== existing?.id && !fallbackIds.includes(item.id))
+                  .map((item) => ({ value: item.id, label: item.name })),
+              ]}
+            />
+          </div>
+        )}
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">

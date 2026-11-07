@@ -43,6 +43,7 @@ import {
   formatTokens,
 } from '../lib/format'
 import { PERMISSION_MODE_LABELS } from '../lib/types'
+import { quotaLine } from '../lib/quota'
 import { stripMemoryMeta } from '../lib/memory'
 import { ConnectionDot, SessionStatusDot } from './StatusDot'
 import { Markdown } from './Markdown'
@@ -507,6 +508,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         { label: '缓存读', value: formatTokens(cacheRead) },
         { label: '缓存写', value: formatTokens(cacheWrite) },
       ]
+      const quota = quotaLine(summary?.quota)
       return (
         <div>
           <div className="text-[12px] text-muted">总花费</div>
@@ -523,6 +525,14 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
               </div>
             ))}
           </div>
+          {quota && (
+            <div
+              className="mt-2 border-t border-border pt-1.5 text-[12px] leading-4 text-muted"
+              data-quota-line="usage"
+            >
+              {quota}
+            </div>
+          )}
           {subUsage.count > 0 && (
             <div className="mt-2 space-y-1 border-t border-border pt-1.5">
               <div className="flex items-baseline justify-between gap-2">

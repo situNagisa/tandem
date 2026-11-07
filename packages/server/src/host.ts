@@ -7,6 +7,7 @@ import type {
   DelegationStrategy,
   HookEntry,
   HookEvent,
+  HandoffReason,
   HostInfo,
   HostSettings,
   InboxEvent,
@@ -19,6 +20,7 @@ import type {
   PermissionMode,
   PermissionRequest,
   PromptTemplateKey,
+  QuotaEstimate,
   ReasoningEffort,
   RewindInput,
   SandboxStatus,
@@ -77,6 +79,7 @@ import {
   ensureRuntime,
   handleUserContent,
   interrupt,
+  resumeAfterHandoff,
   send,
   sendToModel,
   updateTodos,
@@ -161,6 +164,9 @@ import {
   profileFor,
 } from './host/keys.js';
 import { inboxSnapshot, pushInbox, recordCi } from './host/inbox.js';
+import { estimateFor, recordKeyQuota, refreshQuota } from './host/quota.js';
+import { cancelHandoff, chooseHandoff, triggerHandoff } from './host/handoff.js';
+import type { ProviderRateLimit } from './providers/types.js';
 
 export class Host {
   readonly config: HostConfig;
@@ -224,6 +230,8 @@ export class Host {
   envChecked = new Set<string>();
   /** 分组 Key 轮询游标（按 profileId:groupId 存内存）。 */
   keyRotation = new Map<string, number>();
+  /** 交接「等待重置」的恢复计时器（sessionId → timeout）。 */
+  handoffTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(config?: HostConfig, home = tandemHome()) {
     this.home = home;
@@ -451,6 +459,47 @@ export class Host {
 
   observeBudgets(rec: SessionRecord): void {
     return observeBudgets(this, rec);
+  }
+
+  recordKeyQuota(profileId: string, groupId: string | undefined, keyId: string | undefined, info: ProviderRateLimit): void {
+    return recordKeyQuota(this, profileId, groupId, keyId, info);
+  }
+
+  estimateQuota(rec: SessionRecord): QuotaEstimate {
+    return estimateFor(this, rec);
+  }
+
+  refreshQuota(rec: SessionRecord, broadcast = false): QuotaEstimate {
+    return refreshQuota(this, rec, broadcast);
+  }
+
+  triggerHandoff(rec: SessionRecord, reason: HandoffReason, signal?: AbortSignal): Promise<'continue' | 'stop'> {
+    return triggerHandoff(this, rec, reason, signal);
+  }
+
+  chooseHandoff(rec: SessionRecord, action: 'switch' | 'wait' | 'pause'): Promise<SessionRecord> {
+    return chooseHandoff(this, rec, action);
+  }
+
+  cancelHandoff(rec: SessionRecord): void {
+    return cancelHandoff(this, rec);
+  }
+
+  /** 根据 resumeAt 安排等待后的恢复；重复调用会替换旧计时器。 */
+  scheduleHandoffResume(sessionId: string, delay: number): void {
+    const existing = this.handoffTimers.get(sessionId);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      this.handoffTimers.delete(sessionId);
+      this.resumeAfterHandoff(sessionId, 'wait');
+    }, Math.max(0, delay));
+    this.handoffTimers.set(sessionId, timer);
+  }
+
+  resumeAfterHandoff(sessionId: string, kind: 'switch' | 'wait'): void {
+    const rec = this.store.get(sessionId);
+    if (!rec) return;
+    void resumeAfterHandoff(this, rec, kind);
   }
 
   listModels(input: ListModelsInput): Promise<ListModelsResult> {
@@ -736,6 +785,8 @@ export class Host {
   }
   /** 进程退出：落盘会话/用量，关闭 MCP 子进程。 */
   async shutdown(): Promise<void> {
+    for (const timer of this.handoffTimers.values()) clearTimeout(timer);
+    this.handoffTimers.clear();
     this.tasks.dispose();
     this.secrets.dispose();
     this.schedules.dispose();

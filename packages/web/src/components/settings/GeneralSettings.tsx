@@ -4,6 +4,7 @@ import {
   DEFAULT_CONTEXT_SETTINGS,
   type AiReviewSettings,
   type ContextSettings,
+  type HandoffSettings,
   type HostSettings,
   type ReasoningEffort,
 } from '@tandem/protocol'
@@ -67,6 +68,14 @@ export function GeneralSettings() {
   const reviewGroup = reviewGroups.find((item) => (item.groupId ?? '') === (aiReview.groupId ?? ''))
   const reviewModels = reviewGroup ? reviewGroup.models : reviewGroups.flatMap((item) => item.models)
 
+  const handoff: HandoffSettings = settings?.handoff ?? { policy: 'ask' }
+  const handoffProfile = profiles.find((item) => item.id === handoff.target?.profileId)
+  const handoffGroups = profileModelGroups(handoffProfile)
+  const handoffGroup = handoffGroups.find(
+    (item) => (item.groupId ?? '') === (handoff.target?.groupId ?? ''),
+  )
+  const handoffModels = handoffGroup ? handoffGroup.models : handoffGroups.flatMap((item) => item.models)
+
   const persistSettings = (next: HostSettings) => {
     if (!host) return
     const previous = settings
@@ -81,6 +90,18 @@ export function GeneralSettings() {
         setError(err.message || '保存失败')
       })
       .finally(() => setSaving(false))
+  }
+
+  const patchHandoff = (patch: Partial<HandoffSettings>) => {
+    if (!settings) return
+    const next: HandoffSettings = { ...handoff, ...patch }
+    if (next.target && !next.target.profileId) delete next.target
+    if (next.target) {
+      for (const key of ['groupId', 'model'] as const) {
+        if (!next.target[key]) delete next.target[key]
+      }
+    }
+    persistSettings({ ...settings, handoff: next })
   }
 
   const patchAiReview = (patch: Partial<AiReviewSettings>) => {
@@ -419,6 +440,123 @@ export function GeneralSettings() {
               />
             </div>
             {!settings && !error ? <p className="mt-2 text-[12px] text-muted">读取中…</p> : null}
+          </div>
+        </div>
+      </section>
+      <section data-setting-id="general.handoff" className="rounded-xl border border-border bg-surface p-4">
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 text-muted">
+            <Gauge size={15} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-[13px] font-medium">额度交接</h3>
+            <p className="mt-1 text-[13px] leading-5 text-muted">
+              长任务跑到一半额度/限流将尽时，不直接失败：会话会暂停并给出交接卡。
+              自动切换会先保存检查点并压缩上下文，再在备用分组上继续当前回合。
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
+                默认策略
+                <Select
+                  value={handoff.policy}
+                  onChange={(event) =>
+                    patchHandoff({ policy: event.target.value as HandoffSettings['policy'] })
+                  }
+                  aria-label="额度交接默认策略"
+                  size="sm"
+                  disabled={!settings || saving}
+                >
+                  <option value="ask">询问（推荐）</option>
+                  <option value="switch">自动切到备用分组</option>
+                  <option value="wait">自动等待重置</option>
+                </Select>
+              </label>
+              {handoff.policy === 'switch' && (
+                <>
+                  <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
+                    备用账号
+                    <Select
+                      value={handoff.target?.profileId ?? ''}
+                      onChange={(event) =>
+                        patchHandoff({
+                          target: { profileId: event.target.value },
+                        })
+                      }
+                      aria-label="交接备用账号"
+                      size="sm"
+                      disabled={!settings || saving}
+                    >
+                      <option value="">按分组备用链</option>
+                      {profiles.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
+                    备用分组
+                    <Select
+                      value={handoff.target?.groupId ?? ''}
+                      onChange={(event) => {
+                        const group = handoffGroups.find(
+                          (item) => (item.groupId ?? '') === event.target.value,
+                        )
+                        patchHandoff({
+                          target: {
+                            profileId: handoff.target?.profileId ?? '',
+                            ...(event.target.value ? { groupId: event.target.value } : {}),
+                            ...(group?.models[0] ? { model: group.models[0] } : {}),
+                          },
+                        })
+                      }}
+                      aria-label="交接备用分组"
+                      size="sm"
+                      disabled={!settings || saving || !handoffProfile}
+                    >
+                      <option value="">账号默认</option>
+                      {handoffGroups.map((group) => (
+                        <option key={group.groupId ?? 'default'} value={group.groupId ?? ''}>
+                          {group.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
+                    备用模型
+                    <Select
+                      value={handoff.target?.model ?? ''}
+                      onChange={(event) =>
+                        patchHandoff({
+                          target: {
+                            profileId: handoff.target?.profileId ?? '',
+                            ...(handoff.target?.groupId ? { groupId: handoff.target.groupId } : {}),
+                            ...(event.target.value ? { model: event.target.value } : {}),
+                          },
+                        })
+                      }
+                      aria-label="交接备用模型"
+                      size="sm"
+                      disabled={!settings || saving || !handoffProfile}
+                    >
+                      <option value="">分组默认模型</option>
+                      {(handoff.target?.model && !handoffModels.includes(handoff.target.model)
+                        ? [handoff.target.model, ...handoffModels]
+                        : handoffModels
+                      ).map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                </>
+              )}
+            </div>
+            <p className="mt-2 text-[12px] leading-4 text-muted">
+              未指定备用账号时，按「账号与模型」里每个分组配置的备用分组链选择第一个可用分组；
+              子代理与任务看板卡片遵循同一策略。
+            </p>
           </div>
         </div>
       </section>

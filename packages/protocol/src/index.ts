@@ -181,6 +181,8 @@ export interface HandoffState {
   target?: HandoffPeer;
   /** 等待策略的预计恢复时间（epoch ms）。 */
   resumeAt?: number;
+  /** 切换前保存的检查点 id（可在回退面板查看）。 */
+  checkpointId?: string;
   /** 卡片正文，如「muze › codex 额度将尽。继续方式：…」。 */
   message: string;
   via?: 'auto' | 'user';

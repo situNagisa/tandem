@@ -32,6 +32,7 @@ export type SessionsSlice = Pick<
   | 'updateSession'
   | 'markSessionRead'
   | 'forkSession'
+  | 'handoffSession'
   | 'deleteSession'
 >
 
@@ -307,6 +308,17 @@ export function createSessionsSlice(
         applySessionSummary(hostId, updated)
       } catch {
         // 多端已读是尽力而为：离线时保留本地显示，下次打开再同步
+      }
+    },
+
+    handoffSession: async (hostId, sessionId, action) => {
+      const host = getHost(hostId)
+      if (!host) return
+      try {
+        const summary = await api.handoffSession(host, sessionId, action)
+        applySessionSummary(hostId, summary)
+      } catch (err) {
+        toast(err instanceof Error ? err.message : '交接失败', 'error')
       }
     },
 

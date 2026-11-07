@@ -9,6 +9,15 @@ export const KEY_COOLDOWN_MAX_MS = 30 * 60_000;
 
 export type KeyFailureKind = 'disable' | 'cooldown' | 'none';
 
+/** 分组内已无可用 Key（全部 429/冷却）：交给会话交接处理，不再按网络错误重试。 */
+export class KeysExhaustedError extends Error {
+  readonly keysExhausted = true;
+  constructor(message: string) {
+    super(message);
+    this.name = 'KeysExhaustedError';
+  }
+}
+
 export interface KeyFailure {
   kind: KeyFailureKind;
   status?: number;

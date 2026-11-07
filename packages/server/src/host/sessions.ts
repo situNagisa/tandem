@@ -26,6 +26,7 @@ import type { SessionRecord } from '../types.js';
 import type { Host } from '../host.js';
 import { DELEGATIONS, EFFORTS, PERMISSION_MODES, httpError, sanitizeVoiceSettings } from './helpers.js';
 import { notifyExternalSessionsChanged } from './external.js';
+import { normalizeHandoffSettings } from '../handoff.js';
 
 export function info(host: Host): HostInfo {
   return {
@@ -49,6 +50,7 @@ export function settings(host: Host): HostSettings {
     ...(host.config.voice ? { voice: host.config.voice } : {}),
     context: normalizeContextSettings(host.config.context),
     ...(host.config.aiReview ? { aiReview: sanitizeAiReview(host.config.aiReview) } : {}),
+    ...(host.config.handoff ? { handoff: normalizeHandoffSettings(host.config.handoff) } : {}),
     sandbox: host.sandbox.get(),
   };
 }
@@ -93,12 +95,18 @@ export function updateSettings(host: Host, input: Partial<HostSettings>): HostSe
     if (Object.keys(next).length) host.config.aiReview = next;
     else delete host.config.aiReview;
   }
+  if (input.handoff !== undefined) {
+    const next = normalizeHandoffSettings(input.handoff);
+    if (next) host.config.handoff = next;
+    else delete host.config.handoff;
+  }
   saveHostSettings(host.home, {
     resumeOnRestart: host.settings().resumeOnRestart,
     ...(host.config.defaultDelegation ? { defaultDelegation: host.config.defaultDelegation } : {}),
     ...(host.config.voice ? { voice: host.config.voice } : {}),
     context: normalizeContextSettings(host.config.context),
     ...(host.config.aiReview ? { aiReview: sanitizeAiReview(host.config.aiReview) } : {}),
+    ...(host.config.handoff ? { handoff: normalizeHandoffSettings(host.config.handoff) } : {}),
   });
   return host.settings();
 }
@@ -147,6 +155,8 @@ export function ensureSessionEnv(host: Host, rec: SessionRecord): void {
 
 export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
   const secretsCount = host.secrets.countFor(rec.cwd);
+  const quota = host.estimateQuota(rec);
+  const context = rec.context ? { ...rec.context, quota } : undefined;
   return {
     id: rec.id,
     title: rec.title,
@@ -177,7 +187,9 @@ export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
     updatedAt: rec.updatedAt,
     usage: { ...rec.usage },
     ...(rec.aiReviewUsage ? { aiReviewUsage: { ...rec.aiReviewUsage } } : {}),
-    ...(rec.context ? { context: rec.context } : {}),
+    ...(context ? { context } : {}),
+    ...(rec.handoff ? { handoff: { ...rec.handoff } } : {}),
+    quota,
     ...(secretsCount ? { secretsCount } : {}),
   };
 }

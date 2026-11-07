@@ -1,15 +1,27 @@
 import { truncateEnd } from '../util/text.js';
+import type { ProviderRateLimit } from './types.js';
 
 /** 带 HTTP 状态码的 provider 错误：多 Key 切换据此判定停用 / 冷却。 */
 export class ProviderHttpError extends Error {
   readonly status: number;
   readonly url: string;
+  /** 429/限流响应头里的剩余额度与重置时间。 */
+  readonly rateLimit?: ProviderRateLimit;
+  readonly retryAfterMs?: number;
 
-  constructor(status: number, message: string, url: string) {
+  constructor(
+    status: number,
+    message: string,
+    url: string,
+    rateLimit?: ProviderRateLimit,
+    retryAfterMs?: number,
+  ) {
     super(message);
     this.name = 'ProviderHttpError';
     this.status = status;
     this.url = url;
+    this.rateLimit = rateLimit;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -18,8 +30,16 @@ export function providerHttpError(
   body: string,
   url: string,
   statusText = '',
+  rateLimit?: ProviderRateLimit,
+  retryAfter?: number,
 ): ProviderHttpError {
-  return new ProviderHttpError(status, describeHttpError(status, body, url, statusText), url);
+  return new ProviderHttpError(
+    status,
+    describeHttpError(status, body, url, statusText),
+    url,
+    rateLimit,
+    retryAfter,
+  );
 }
 
 /** provider 返回「上下文超长」类错误：可压缩历史后重试一次。 */

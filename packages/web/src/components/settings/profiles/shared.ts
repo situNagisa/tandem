@@ -48,6 +48,8 @@ export interface GroupDraft {
   baseUrl: string
   models: string[]
   defaultModel: string
+  /** 备用分组链（同一账号，按顺序）。 */
+  fallbackGroupIds?: string[]
 }
 
 export function emptyGroupDraft(kind: ProviderKind = 'openai-compatible'): GroupDraft {
@@ -114,6 +116,7 @@ export function groupInputOf(group: ProfileGroup): ProfileGroupInput {
     models: group.models,
     defaultModel: group.defaultModel,
     ...(group.modelCapabilities ? { modelCapabilities: group.modelCapabilities } : {}),
+    ...(group.fallbackGroupIds?.length ? { fallbackGroupIds: group.fallbackGroupIds } : {}),
     apiKeys: group.keys.map(keyInputOf),
   }
 }

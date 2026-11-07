@@ -20,6 +20,7 @@ export function registerHostRoutes(app: FastifyInstance, deps: RouteDeps): void 
       voice?: unknown;
       context?: unknown;
       aiReview?: unknown;
+      handoff?: unknown;
       sandbox?: unknown;
     };
     return host.updateSettings({
@@ -32,6 +33,9 @@ export function registerHostRoutes(app: FastifyInstance, deps: RouteDeps): void 
         : {}),
       ...(body.aiReview && typeof body.aiReview === 'object'
         ? { aiReview: body.aiReview as import('@tandem/protocol').AiReviewSettings }
+        : {}),
+      ...(body.handoff && typeof body.handoff === 'object'
+        ? { handoff: body.handoff as import('@tandem/protocol').HandoffSettings }
         : {}),
       ...(body.sandbox && typeof body.sandbox === 'object'
         ? { sandbox: body.sandbox as import('@tandem/protocol').SandboxSettings }

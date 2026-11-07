@@ -17,9 +17,23 @@ export interface StreamRequest {
   effort?: ReasoningEffort;
   /** provider 因模型不支持而去掉思考参数并重试成功时调用（每轮只记一次）。 */
   onEffortDropped?: () => void;
+  /** 响应头里的限流额度（provider 支持时）；用于按 Key 记录剩余额度。 */
+  onRateLimit?: (info: ProviderRateLimit) => void;
   onBlockStart: (index: number, block: ContentBlock) => void;
   onText: (index: number, text: string) => void;
   onToolInput: (index: number, partialJson: string) => void;
+}
+
+/** provider 限流响应头解析结果；缺省字段表示该 provider 没有返回。 */
+export interface ProviderRateLimit {
+  remainingRequests?: number;
+  limitRequests?: number;
+  remainingTokens?: number;
+  limitTokens?: number;
+  resetRequestsAt?: number;
+  resetTokensAt?: number;
+  unifiedStatus?: string;
+  unifiedResetAt?: number;
 }
 
 export interface StreamResult {

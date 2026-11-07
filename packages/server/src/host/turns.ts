@@ -76,6 +76,8 @@ export async function handleUserContent(host: Host, rec: SessionRecord, content:
 }
 
 export async function sendToModel(host: Host, rec: SessionRecord, content: ContentBlock[]): Promise<void> {
+  // 用户主动发新消息：取消尚未处理的交接卡/等待计时器，按新回合继续
+  if (rec.handoff && rec.handoff.status !== 'done') host.cancelHandoff(rec);
   const text = content
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
     .map((b) => b.text)
@@ -135,6 +137,45 @@ export async function sendToModel(host: Host, rec: SessionRecord, content: Conte
     );
   }
   if (needsTitle && isFirstUserMessage) void host.autoTitle(rec, text, rec.title);
+}
+
+/** 交接后继续当前回合（切换完成或等待重置到点）。 */
+export async function resumeAfterHandoff(
+  host: Host,
+  rec: SessionRecord,
+  kind: 'switch' | 'wait',
+): Promise<void> {
+  const rt = host.ensureRuntime(rec.id);
+  if (rt.running || rt.draining || rt.deleted) return;
+  const state = rec.handoff;
+  if (!state) return;
+  if (state.status !== 'done' && state.status !== 'switching') {
+    state.status = 'done';
+    state.resolvedAt = Date.now();
+    rec.handoff = { ...state };
+    host.store.markDirty(rec.id, true);
+    host.broadcastSummary(rec);
+  }
+  if (kind === 'wait') host.appendNotice(rec, '额度已重置，继续运行');
+  const turnMessageId = lastUserTurnMessageId(rec);
+  const result = await runTurn(host, rec, {
+    ...(turnMessageId ? { turnMessageId } : {}),
+  });
+  if (rec.board) host.boards.noteTurn(rec.id, result);
+  if ((rec.depth ?? 0) === 0 && !rec.evalRun && !rec.board) {
+    host.pushInbox(
+      host.inbox.recordTurnEnd(rec.id, rec.title, result.reason, result.error),
+    );
+  }
+}
+
+function lastUserTurnMessageId(rec: SessionRecord): string | undefined {
+  for (let i = rec.messages.length - 1; i >= 0; i--) {
+    const message = rec.messages[i]!;
+    if (message.role !== 'user' || message.summary) continue;
+    if (message.content.some((block) => block.type !== 'tool_result')) return message.id;
+  }
+  return undefined;
 }
 
 export async function autoTitle(host: Host, rec: SessionRecord, firstText: string, baseTitle: string): Promise<void> {

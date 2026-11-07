@@ -5,6 +5,7 @@ import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import { isAbortError, truncateEnd } from '../util/text.js';
 import { readSse, fetchSse } from './sse.js';
 import { createIdleTimeout, idleTimeoutError } from './idle-timeout.js';
+import { parseRateLimitHeaders, retryAfterMs } from './rate-limit.js';
 import type { StreamRequest, StreamResult } from './types.js';
 
 type AnyRecord = Record<string, any>;
@@ -140,6 +141,8 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
       });
       if (res.ok) {
         if (droppedEffort) req.onEffortDropped?.();
+        const limit = parseRateLimitHeaders('openai', res.headers);
+        if (limit) req.onRateLimit?.(limit);
         return res;
       }
       const text = await res.text();
@@ -164,7 +167,14 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
         delete current.stream_options;
         continue;
       }
-      throw providerHttpError(res.status, text, url, res.statusText);
+      throw providerHttpError(
+        res.status,
+        text,
+        url,
+        res.statusText,
+        parseRateLimitHeaders('openai', res.headers),
+        retryAfterMs(res.headers),
+      );
     }
     throw providerHttpError(400, '请求参数不被模型支持', url);
   };

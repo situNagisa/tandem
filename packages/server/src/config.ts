@@ -93,6 +93,9 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
     ...(existing?.aiReview && typeof existing.aiReview === 'object'
       ? { aiReview: existing.aiReview }
       : {}),
+    ...(existing?.handoff && typeof existing.handoff === 'object'
+      ? { handoff: existing.handoff }
+      : {}),
     ...(isRelayConfig(existing?.relay) ? { relay: existing.relay } : {}),
   };
   if (
@@ -117,6 +120,7 @@ export function saveHostSettings(
     voice?: import('@tandem/protocol').VoiceSettings;
     context?: ContextSettings;
     aiReview?: import('@tandem/protocol').AiReviewSettings;
+    handoff?: import('@tandem/protocol').HandoffSettings;
   },
 ): void {
   const file = path.join(home, 'config.json');
@@ -367,6 +371,18 @@ function normalizeBaseUrl(url: unknown): string | undefined {
   return value || undefined;
 }
 
+/** 备用分组链：去重、去空、去掉自己（同账号分组 id）。 */
+function normalizeFallbackIds(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item !== 'string') continue;
+    const id = item.trim();
+    if (id && !out.includes(id)) out.push(id);
+  }
+  return out.length ? out : undefined;
+}
+
 function normalizeKeyStrategy(value: unknown): KeyStrategy | undefined {
   return value === 'round_robin' || value === 'failover' ? value : undefined;
 }
@@ -432,6 +448,9 @@ export function normalizeStoredGroups(value: unknown): StoredProfileGroup[] {
       defaultModel:
         (typeof g.defaultModel === 'string' && g.defaultModel.trim()) || models[0] || '',
       ...(caps ? { modelCapabilities: caps } : {}),
+      ...(normalizeFallbackIds(g.fallbackGroupIds)?.length
+        ? { fallbackGroupIds: normalizeFallbackIds(g.fallbackGroupIds) }
+        : {}),
     });
   }
   return out;
@@ -505,6 +524,8 @@ function cleanStoredKey(key: StoredProfileKey): StoredProfileKey {
   if (typeof key.failures === 'number' && key.failures > 0) out.failures = key.failures;
   if (key.lastError) out.lastError = key.lastError;
   if (typeof key.lastErrorAt === 'number' && key.lastErrorAt > 0) out.lastErrorAt = key.lastErrorAt;
+  if (key.quota) out.quota = { ...key.quota };
+  if (typeof key.rateLimitHits === 'number' && key.rateLimitHits > 0) out.rateLimitHits = key.rateLimitHits;
   return out;
 }
 
@@ -531,6 +552,7 @@ function buildGroups(
         : old?.modelCapabilities;
     const keys = buildKeys(raw, old, fallbackKey);
     const keyStrategy = normalizeKeyStrategy(raw.keyStrategy) ?? old?.keyStrategy;
+    const fallbackGroupIds = normalizeFallbackIds(raw.fallbackGroupIds) ?? old?.fallbackGroupIds;
     out.push({
       id,
       name,
@@ -544,6 +566,7 @@ function buildGroups(
       defaultModel:
         (typeof raw.defaultModel === 'string' && raw.defaultModel.trim()) || old?.defaultModel || models[0] || '',
       ...(caps ? { modelCapabilities: caps } : {}),
+      ...(fallbackGroupIds?.length ? { fallbackGroupIds } : {}),
     });
   }
   return out;
@@ -557,6 +580,8 @@ function toPublicKey(key: StoredProfileKey): ProfileKey {
     ...(key.disabled ? { disabled: true } : {}),
     ...(key.cooldownUntil ? { cooldownUntil: key.cooldownUntil } : {}),
     ...(key.lastError ? { lastError: key.lastError } : {}),
+    ...(key.quota ? { quota: { ...key.quota } } : {}),
+    ...(key.rateLimitHits ? { rateLimitHits: key.rateLimitHits } : {}),
   };
 }
 
@@ -572,6 +597,7 @@ function toPublicGroup(group: StoredProfileGroup): ProfileGroup {
     ...(group.baseUrl ? { baseUrl: group.baseUrl } : {}),
     models: [...group.models],
     defaultModel: group.defaultModel,
+    ...(group.fallbackGroupIds?.length ? { fallbackGroupIds: [...group.fallbackGroupIds] } : {}),
     ...(group.modelCapabilities
       ? { modelCapabilities: structuredClone(group.modelCapabilities) }
       : {}),

@@ -2,6 +2,7 @@
 // 供手机/桌面在不打开会话时也能收到提醒并直接审批。
 import type {
   BudgetAlert,
+  HandoffState,
   InboxEvent,
   InboxSnapshot,
   PermissionDecision,
@@ -105,6 +106,18 @@ export class Inbox {
       budget: alert,
       budgetText: text,
       ...(session ? { budgetSessionId: session.id, budgetSessionTitle: session.title } : {}),
+    });
+  }
+
+  recordHandoff(
+    state: HandoffState,
+    text: string,
+    session?: { id: string; title: string },
+  ): InboxEvent {
+    return this.push({
+      kind: 'handoff',
+      handoff: { state, text },
+      ...(session ? { sessionId: session.id, sessionTitle: session.title } : {}),
     });
   }
 

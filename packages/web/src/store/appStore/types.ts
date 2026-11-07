@@ -138,6 +138,12 @@ export interface AppState {
   ) => Promise<SessionSummary | null>
   /** 标记已读并同步到 Host（多端共享未读状态）。 */
   markSessionRead: (hostId: string, sessionId: string) => Promise<void>
+  /** 额度将尽：选择切换备用分组 / 等待重置 / 暂停。 */
+  handoffSession: (
+    hostId: string,
+    sessionId: string,
+    action: 'switch' | 'wait' | 'pause',
+  ) => Promise<void>
   forkSession: (hostId: string, sessionId: string, messageId?: string) => Promise<SessionSummary | null>
   deleteSession: (hostId: string, sessionId: string, force?: boolean) => Promise<void>
   /** 单独停止一个 Task 子代理会话。 */

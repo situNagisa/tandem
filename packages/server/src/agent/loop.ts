@@ -19,6 +19,7 @@ import { compactHistory } from '../host/compaction.js';
 import { normalizeContextSettings } from '../context-settings.js';
 import { redactMessages } from '../redact.js';
 import { withNetworkRetry } from './retry.js';
+import { KeysExhaustedError } from '../key-rotation.js';
 import { replayUnfinishedTools } from './resume.js';
 import {
   finishRun,
@@ -76,6 +77,8 @@ export async function runTurn(
   let effortNoticeShown = false;
   // 单轮内最多自动压缩两次，避免在极端历史下反复请求压缩模型
   let autoCompacts = 0;
+  // 单轮内最多交接三次，避免备用分组也不可用时无限切换
+  let handoffs = 0;
 
   // 按需连接项目级 MCP，并顺带重试之前失败的服务器；失败不影响本轮
   await host.mcp.prepare(rec.cwd).catch(() => {});
@@ -117,10 +120,46 @@ export async function runTurn(
       if (!profile) throw new Error('当前会话的账号不存在，请在界面上重新选择账号');
       const model = rec.model || profile.defaultModel;
       if (!model) throw new Error('当前账号没有配置模型');
+      // 分组 Key 全部冷却/停用：交给交接流程（切换备用分组或等待重置），而不是直接失败
       if (!selection.candidates.some((candidate) => candidate.profile.apiKey)) {
-        throw new Error(host.keysUnavailableMessage(rec.profileId, rec.groupId) ?? '当前账号没有配置 API Key');
+        if (handoffs < 3) {
+          const outcome = await host.triggerHandoff(rec, 'ratelimit', abort.signal);
+          handoffs += 1;
+          if (outcome === 'continue') continue;
+          reason = 'interrupted';
+          break;
+        }
+        throw new KeysExhaustedError(
+          host.keysUnavailableMessage(rec.profileId, rec.groupId) ?? '当前账号没有配置 API Key',
+        );
+      }
+      // 预算到达阻止阈值：先尝试交接（allow-once 时跳过，仍按原逻辑放行一次）
+      const blockedBudget = rt.budgetAllowOnce
+        ? undefined
+        : host.budgets.blockingRule({
+            profileId: rec.profileId,
+            ...(rec.groupId ? { groupId: rec.groupId } : {}),
+            model,
+          });
+      if (blockedBudget && handoffs < 3) {
+        const outcome = await host.triggerHandoff(rec, 'budget', abort.signal);
+        handoffs += 1;
+        if (outcome === 'continue') continue;
+        reason = 'interrupted';
+        break;
       }
       host.assertBudget(rec, model);
+      // 预计 2 轮内耗尽：仅在本轮尚未交接时主动提示一次
+      if (handoffs === 0) {
+        const quota = host.refreshQuota(rec);
+        if (quota.turnsLeft !== undefined && quota.turnsLeft <= 2) {
+          const outcome = await host.triggerHandoff(rec, 'forecast', abort.signal);
+          handoffs += 1;
+          if (outcome === 'continue') continue;
+          reason = 'interrupted';
+          break;
+        }
+      }
 
       const contextSettings = normalizeContextSettings(host.config.context);
       const autoCompactMeta = {
@@ -225,7 +264,7 @@ export async function runTurn(
                 keyErrors.clear();
                 const attemptKeys = host.keyCandidates(rec.profileId, rec.groupId);
                 if (attemptKeys.candidates.length === 0) {
-                  throw new Error(
+                  throw new KeysExhaustedError(
                     host.keysUnavailableMessage(rec.profileId, rec.groupId) ??
                       '当前账号没有可用的 API Key',
                   );
@@ -237,6 +276,8 @@ export async function runTurn(
                   try {
                     const attempt = await streamChat({
                       profile: candidate.profile,
+                      onRateLimit: (info) =>
+                        host.recordKeyQuota(rec.profileId, rec.groupId, candidate.keyId, info),
                       model,
                       system: redact(system),
                       messages: requestMessages,
@@ -300,10 +341,15 @@ export async function runTurn(
                     rec.groupId,
                     keyErrors,
                   );
-                  if (unavailable) throw new Error(unavailable);
+                  const status = (attemptError as { status?: unknown } | undefined)?.status;
+                  if (status === 429 || unavailable) {
+                    throw new KeysExhaustedError(
+                      unavailable ?? errorMessage(attemptError ?? '额度不足'),
+                    );
+                  }
                   throw attemptError;
                 }
-                throw new Error(
+                throw new KeysExhaustedError(
                   host.keysUnavailableMessage(rec.profileId, rec.groupId) ??
                     '当前账号没有可用的 API Key',
                 );
@@ -364,7 +410,24 @@ export async function runTurn(
           }
         }
       } catch (err) {
-        if (rt.interrupted || abort.signal.aborted) reason = 'interrupted';
+        const exhausted =
+          err instanceof KeysExhaustedError ||
+          (!!host.keysUnavailableMessage(rec.profileId, rec.groupId) &&
+            (err as { status?: unknown } | undefined)?.status === 429);
+        if (!rt.interrupted && !abort.signal.aborted && exhausted) {
+          // 请求失败前未产生任何输出：移除空 assistant 占位，交接到备用分组后重新请求
+          const index = rec.messages.findIndex((m) => m.id === assistant.id);
+          if (index >= 0 && assistant.content.length === 0) {
+            rec.messages.splice(index, 1);
+            host.store.markDirty(rec.id, true);
+            host.broadcastSnapshot(rec);
+          }
+          assistant.content.length = 0;
+          const outcome = await host.triggerHandoff(rec, 'ratelimit', abort.signal);
+          handoffs += 1;
+          if (outcome === 'continue') continue;
+          reason = 'interrupted';
+        } else if (rt.interrupted || abort.signal.aborted) reason = 'interrupted';
         else {
           reason = 'error';
           errorText = errorMessage(err);
@@ -411,6 +474,7 @@ export async function runTurn(
           ...(usedKeyId ? { keyId: usedKeyId } : {}),
           ...(rec.groupId ? { groupId: rec.groupId } : {}),
         });
+        host.refreshQuota(rec);
       }
 
       // 无论成功失败都下发最终消息（失败时可能是部分内容）；成功时带上本次用量
@@ -434,7 +498,10 @@ export async function runTurn(
         host.appendNotice(rec, '当前模型不支持思考强度，本轮已自动忽略。');
       }
       // 用量落账后检查预算；notice 放在本轮回复之后，避免打断输出顺序
-      if (result) host.observeBudgets(rec);
+      if (result) {
+        host.observeBudgets(rec);
+        host.refreshQuota(rec);
+      }
 
       if (!result) {
         // 请求失败或中断时若已解析出 tool_use，必须补上对应 tool_result，

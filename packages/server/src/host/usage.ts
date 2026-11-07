@@ -153,8 +153,9 @@ export function contextFor(host: Host, rec: SessionRecord): ContextBreakdown {
     enabled: settings.autoCompact,
     threshold: settings.autoCompactThreshold,
   };
+  const quota = host.estimateQuota(rec);
   // 设置可能在会话期间改过：返回时用当前阈值覆盖旧快照
-  if (rec.context) return { ...rec.context, autoCompact };
+  if (rec.context) return { ...rec.context, autoCompact, quota };
   const profile = host.profileFor(rec.profileId, rec.groupId);
   const model = rec.model || profile?.defaultModel || '';
   const system = host.buildSystemFor(rec).system;
@@ -163,17 +164,20 @@ export function contextFor(host: Host, rec: SessionRecord): ContextBreakdown {
     rec.messages.filter((m) => !m.notice),
     settings,
   ).messages;
-  return estimateBreakdown({
-    model,
-    system,
-    tools,
-    messages,
-    cwd: rec.cwd,
-    cacheHitRate: cacheHitRateOf(rec.usage),
-    providerKind: profile?.kind,
-    capabilityOverrides: profile?.modelCapabilities,
-    autoCompact,
-  });
+  return {
+    ...estimateBreakdown({
+      model,
+      system,
+      tools,
+      messages,
+      cwd: rec.cwd,
+      cacheHitRate: cacheHitRateOf(rec.usage),
+      providerKind: profile?.kind,
+      capabilityOverrides: profile?.modelCapabilities,
+      autoCompact,
+    }),
+    quota,
+  };
 }
 
 export function assertBudget(host: Host, rec: SessionRecord, model: string): void {

@@ -160,6 +160,23 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
     return host.toSummary(rec);
   });
 
+  // 额度将尽：从交接卡选择切换备用分组 / 等待重置 / 暂停
+  app.post('/api/sessions/:id/handoff', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.store.get(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    const action = (req.body as { action?: unknown } | null)?.action;
+    if (action !== 'switch' && action !== 'wait' && action !== 'pause') {
+      return bad(reply, 'action 必须是 switch / wait / pause', 400);
+    }
+    try {
+      await host.chooseHandoff(rec, action);
+      return host.toSummary(rec);
+    } catch (err) {
+      return bad(reply, (err as Error).message, statusOf(err));
+    }
+  });
+
   // block 预算达到上限后，用户可在会话内临时放行一次
   app.post('/api/sessions/:id/budget-allow-once', async (req, reply) => {
     const { id } = req.params as { id: string };

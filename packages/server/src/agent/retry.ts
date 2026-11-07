@@ -3,6 +3,7 @@
 import type { Host } from '../host.js';
 import type { SessionRecord } from '../types.js';
 import { isContextLengthError } from '../providers/http-error.js';
+import { KeysExhaustedError } from '../key-rotation.js';
 import { errorMessage, truncateEnd } from '../util/text.js';
 
 export const RETRY_WINDOW_MS = 30 * 60_000;
@@ -12,6 +13,7 @@ const RETRY_BASE_DELAY_MS = 2_000;
 /** 只对网络/超时/服务端临时故障重试；鉴权、参数、内容过滤等 4xx 直接失败。 */
 export function isRetryableProviderError(err: unknown): boolean {
   if (!err) return false;
+  if (err instanceof KeysExhaustedError || (err as { keysExhausted?: unknown }).keysExhausted) return false;
   const name = (err as { name?: unknown }).name;
   if (name === 'AbortError') return false;
   const status = (err as { status?: unknown }).status;
