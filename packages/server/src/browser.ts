@@ -208,22 +208,36 @@ export class BrowserManager {
   }
 
   async status(): Promise<BrowserStatus> {
+    let pw: typeof import('playwright');
     try {
-      const pw = await import('playwright');
-      const executable = pw.chromium.executablePath();
-      if (!existsSync(executable)) {
-        return {
-          available: false,
-          error: `未找到 Chromium（${executable}）。在 Host 上运行：npx playwright install chromium`,
-        };
-      }
-      return { available: true, browser: executable };
+      pw = await import('playwright');
     } catch {
       return {
         available: false,
         error:
           '未安装浏览器组件（Playwright）。在 Host 上运行：npm i playwright && npx playwright install chromium',
       };
+    }
+    const executable = pw.chromium.executablePath();
+    if (existsSync(executable)) return { available: true, browser: executable };
+    // 只装了 headless shell 的机器：无头模式可用，有头模式需要完整 Chromium
+    if (!this.settings.headless) {
+      return {
+        available: false,
+        error: `未找到有头模式需要的 Chromium（${executable}）。在 Host 上运行：npx playwright install chromium`,
+      };
+    }
+    let probe: Browser | undefined;
+    try {
+      probe = await pw.chromium.launch({ headless: true });
+      return { available: true, browser: 'Chromium（headless shell）' };
+    } catch (err) {
+      return {
+        available: false,
+        error: `无法启动 Chromium：${(err as Error).message.split('\n')[0]}`,
+      };
+    } finally {
+      await probe?.close().catch(() => undefined);
     }
   }
 

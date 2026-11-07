@@ -147,7 +147,11 @@ export function MessageList({
       continue
     }
     const hasText = m.content.some((b) => b.type === 'text' && b.text.trim())
-    if (hasText) {
+    // 浏览器工具带页面截图/URL，逐张显示比折叠成「使用了 N 个工具」更有用
+    const hasBrowserTool = m.content.some(
+      (b) => b.type === 'tool_use' && b.name.startsWith('browser_'),
+    )
+    if (hasText || hasBrowserTool) {
       flushRun()
       segments.push({ kind: 'message', message: m, animate: animateIds.has(m.id) })
     } else {
