@@ -2,6 +2,7 @@ import type { DelegationStrategy, PermissionMode } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useFeedbackStore } from '../store/useFeedbackStore'
 import { useUiStore } from '../store/useUiStore'
+import { navigateBoard } from './boardRoute'
 import { navigate, parseHash } from './router'
 import { PERMISSION_MODE_LABELS } from './types'
 import { profileModelGroups } from './profileModels'
@@ -53,6 +54,21 @@ export const COMMANDS: AppCommand[] = [
       ui.setShowArchived(false)
       ui.setMobileSidebar(false)
       navigate({ kind: 'home' })
+    },
+  },
+  {
+    id: 'board.open',
+    title: '打开任务看板',
+    keywords: ['看板', '任务', '并行', 'board', 'kanban'],
+    run: () => {
+      const hostId = useAppStore.getState().activeHostId
+      if (!hostId) {
+        toast('请先连接一个 Host', 'info')
+        return
+      }
+      const ui = useUiStore.getState()
+      ui.setMobileSidebar(false)
+      navigateBoard(hostId)
     },
   },
   {

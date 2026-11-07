@@ -142,8 +142,8 @@ function buildGroups(
       )
     })
 
-    // 子代理/孙代理会话只出现在对应主会话的消息流里，侧栏与搜索结果一律隐藏
-    const tops = matched.filter((s) => !s.parentId)
+    // 子代理/孙代理会话只出现在对应主会话的消息流里，侧栏与搜索结果一律隐藏；看板卡片会话从「任务看板」进入
+    const tops = matched.filter((s) => !s.parentId && !s.board)
     const regular: SessionSummary[] = []
     for (const s of tops) {
       if (s.pinned && !showArchived) pinned.push({ hostId: h.id, session: s })

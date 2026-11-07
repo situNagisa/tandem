@@ -11,6 +11,7 @@ import type { HookNotice, UiMessage } from '../../lib/types'
 import { useUiStore } from '../useUiStore'
 import { useTaskStore } from '../useTaskStore'
 import { useScheduleStore } from '../useScheduleStore'
+import { useBoardStore } from '../useBoardStore'
 import { useBrowserStore } from '../useBrowserStore'
 import { useVcsStore } from '../../lib/useVcs'
 import { childSubscriptions, collectToolResults, connections, toast } from './helpers'
@@ -229,7 +230,8 @@ export function createServerMessageHandler(
             event.kind === 'permission' ||
             event.kind === 'turn_end' ||
             event.kind === 'budget' ||
-            event.kind === 'ci'
+            event.kind === 'ci' ||
+            event.kind === 'board'
           return {
             inbox: {
               ...state.inbox,
@@ -300,6 +302,11 @@ export function createServerMessageHandler(
         useTaskStore
           .getState()
           .applyEvent(hostId, msg.task, msg.content, msg.since, msg.truncated)
+        break
+      }
+      case 'board_updated': {
+        const host = getHost(hostId)
+        if (host) useBoardStore.getState().onUpdated(host, msg.boardId)
         break
       }
       case 'schedules_updated': {

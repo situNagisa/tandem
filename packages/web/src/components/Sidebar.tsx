@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Inbox, PanelLeftClose, Plus, Search, Send, Settings, SlidersHorizontal, X } from 'lucide-react'
+import { Inbox, Kanban, PanelLeftClose, Plus, Search, Send, Settings, SlidersHorizontal, X } from 'lucide-react'
 import { useUiStore } from '../store/useUiStore'
 import { useAppStore } from '../store/useAppStore'
 import { basename, modLabel } from '../lib/format'
@@ -12,6 +12,8 @@ import { Button, IconButton } from './ui/Button'
 import { Menu } from './ui/Menu'
 import { SessionList, sessionProjectName } from './SessionList'
 import { useInboxCount } from './inbox/InboxView'
+import { navigateBoard, useBoardRoute } from '../lib/boardRoute'
+import { useBoardBadge } from '../store/useBoardStore'
 
 const EXTERNAL_SOURCES = [
   { value: 'claude-code', label: 'Claude Code' },
@@ -50,6 +52,9 @@ export function Sidebar({
   )
   const readOnly = teamRole === 'observer' || teamRole === 'approver'
   const inboxCount = useInboxCount()
+  const boardHost = useAppStore((s) => s.hosts.find((h) => h.id === s.activeHostId) ?? null)
+  const boardBadge = useBoardBadge(boardHost)
+  const boardActive = useBoardRoute() !== null
   const archivedCount = useAppStore((s) =>
     Object.values(s.runtimes).reduce(
       (n, rt) => n + rt.sessions.filter((x) => x.archived && !x.parentId).length,
@@ -312,6 +317,25 @@ export function Sidebar({
         >
           <Send size={15} className="shrink-0 opacity-70" />
           <span className="min-w-0 flex-1 truncate">派单</span>
+        </Button>
+        )}
+        {boardHost && !readOnly && (
+        <Button
+          variant="ghost"
+          onClick={() => {
+            navigateBoard(boardHost.id)
+            onNavigate?.()
+          }}
+          className={cn(row, boardActive && 'bg-[var(--t-bg-active)]')}
+          tooltip="把目标拆成多张卡并行做"
+          tooltipSide="bottom"
+          aria-label={boardBadge > 0 ? `任务看板，${boardBadge} 张待处理` : '任务看板'}
+        >
+          <Kanban size={15} className="shrink-0 opacity-70" />
+          <span className="min-w-0 flex-1 truncate">任务看板</span>
+          {boardBadge > 0 && (
+            <span className="shrink-0 text-[12px] tabular-nums text-text-secondary">{boardBadge}</span>
+          )}
         </Button>
         )}
         <Button

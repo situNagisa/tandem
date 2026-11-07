@@ -1,5 +1,12 @@
 import type {
   AiReviewRun,
+  Board,
+  BoardCard,
+  BoardCardAction,
+  BoardCardInput,
+  BoardInput,
+  BoardPlanDraft,
+  BoardSummary,
   ChangesResult,
   Checkpoint,
   ConfigBundle,
@@ -675,6 +682,63 @@ export const api = {
       `/api/schedules/${encodeURIComponent(id)}/run`,
       { method: 'POST' },
     ),
+
+  boards: (h: HostConfig) => request<BoardSummary[]>(h, '/api/boards'),
+  board: (h: HostConfig, id: string) => request<Board>(h, `/api/boards/${encodeURIComponent(id)}`),
+  createBoard: (h: HostConfig, input: BoardInput) =>
+    request<Board>(h, '/api/boards', { method: 'POST', body: JSON.stringify(input) }),
+  updateBoard: (h: HostConfig, id: string, input: BoardInput) =>
+    request<Board>(h, `/api/boards/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(input) }),
+  deleteBoard: (h: HostConfig, id: string) =>
+    request<{ ok: boolean }>(h, `/api/boards/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  createBoardCard: (h: HostConfig, boardId: string, input: BoardCardInput) =>
+    request<BoardCard>(h, `/api/boards/${encodeURIComponent(boardId)}/cards`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateBoardCard: (h: HostConfig, boardId: string, cardId: string, input: BoardCardInput) =>
+    request<BoardCard>(h, `/api/boards/${encodeURIComponent(boardId)}/cards/${encodeURIComponent(cardId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  deleteBoardCard: (h: HostConfig, boardId: string, cardId: string) =>
+    request<{ ok: boolean }>(h, `/api/boards/${encodeURIComponent(boardId)}/cards/${encodeURIComponent(cardId)}`, {
+      method: 'DELETE',
+    }),
+  boardCardAction: (
+    h: HostConfig,
+    boardId: string,
+    cardId: string,
+    action: BoardCardAction,
+    extra: { note?: string; strategy?: 'merge' | 'squash' } = {},
+  ) =>
+    request<BoardCard>(
+      h,
+      `/api/boards/${encodeURIComponent(boardId)}/cards/${encodeURIComponent(cardId)}/action`,
+      { method: 'POST', body: JSON.stringify({ action, ...extra }) },
+    ),
+  moveBoardCard: (h: HostConfig, boardId: string, cardId: string, beforeId: string | null) =>
+    request<Board>(
+      h,
+      `/api/boards/${encodeURIComponent(boardId)}/cards/${encodeURIComponent(cardId)}/move`,
+      { method: 'POST', body: JSON.stringify({ beforeId }) },
+    ),
+  mergeBoardAll: (h: HostConfig, boardId: string) =>
+    request<{ merged: string[]; failed: Array<{ cardId: string; error: string }> }>(
+      h,
+      `/api/boards/${encodeURIComponent(boardId)}/merge-all`,
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+  planBoard: (h: HostConfig, boardId: string, goal: string) =>
+    request<{ drafts: BoardPlanDraft[] }>(h, `/api/boards/${encodeURIComponent(boardId)}/plan`, {
+      method: 'POST',
+      body: JSON.stringify({ goal }),
+    }),
+  applyBoardPlan: (h: HostConfig, boardId: string, drafts: BoardPlanDraft[]) =>
+    request<{ cards: BoardCard[] }>(h, `/api/boards/${encodeURIComponent(boardId)}/plan/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ drafts }),
+    }),
 
   evalSuites: (h: HostConfig) => request<{ suites: string[] }>(h, '/api/evals/suites'),
   evalCases: (h: HostConfig, suite?: string) =>

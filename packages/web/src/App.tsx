@@ -14,6 +14,8 @@ import { TopBar } from './components/TopBar'
 import { SplitWorkspace } from './components/split/SplitWorkspace'
 import { SplitOpenDialog } from './components/split/SplitOpenDialog'
 import { ExternalSessionView } from './components/ExternalSessionView'
+import { BoardView } from './components/board/BoardView'
+import { useBoardRoute } from './lib/boardRoute'
 import { RightPanel } from './components/RightPanel'
 import { ChangeReviewPanel } from './components/ChangeReviewPanel'
 import { FilePreviewPanel } from './components/FilePreviewPanel'
@@ -48,6 +50,7 @@ export default function App() {
   useViewportHeight()
   const isMobile = useIsMobile()
   const route = useRoute()
+  const boardRoute = useBoardRoute()
   const initialized = useAppStore((s) => s.initialized)
   const hosts = useAppStore((s) => s.hosts)
   const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed)
@@ -360,6 +363,8 @@ export default function App() {
         <main className="flex min-h-0 flex-1">
           {route.kind === 'dev-ui' ? (
             <UiGallery />
+          ) : boardRoute ? (
+            <BoardView route={boardRoute} />
           ) : route.kind === 'external' ? (
             <ExternalSessionView
               key={`${route.hostId}:${route.source}:${route.id}`}

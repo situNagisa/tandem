@@ -6,6 +6,7 @@ import {
   FlaskConical,
   GitPullRequest,
   Inbox,
+  Kanban,
   ShieldAlert,
   TriangleAlert,
   Wallet,
@@ -15,6 +16,7 @@ import type { InboxEvent, PermissionDecision } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { navigate } from '../../lib/router'
+import { navigateBoard } from '../../lib/boardRoute'
 import { formatRelative } from '../../lib/format'
 import { cn } from '../../lib/cn'
 import { Button } from '../ui/Button'
@@ -83,6 +85,13 @@ function eventSummary(event: InboxEvent): { title: string; body?: string } {
   if (event.kind === 'ci') {
     return { title: event.ci?.text ?? 'PR 状态变化', body: event.ci ? `#${event.ci.prNumber}` : undefined }
   }
+  if (event.kind === 'board' && event.board) {
+    const info = event.board
+    return {
+      title: info.cardTitle ? `${info.cardTitle} · ${info.event === 'review' ? '待评审' : info.event === 'failed' ? '失败' : '完成'}` : `${info.boardName} 已跑完`,
+      body: info.text,
+    }
+  }
   if (event.kind === 'eval') {
     const info = event.eval
     return {
@@ -117,6 +126,7 @@ function EventIcon({ event }: { event: InboxEvent }) {
   if (event.kind === 'budget') return <Wallet size={14} />
   if (event.kind === 'ci') return <GitPullRequest size={14} />
   if (event.kind === 'eval') return <FlaskConical size={14} />
+  if (event.kind === 'board') return <Kanban size={14} />
   if (event.turnReason === 'error') return <TriangleAlert size={14} />
   return <CheckCircle2 size={14} />
 }
@@ -221,6 +231,11 @@ function HistoryRow({ entry }: { entry: Entry }) {
   const { event, hostId } = entry
   const { title, body } = eventSummary(event)
   const open = () => {
+    if (event.board) {
+      useUiStore.getState().setInboxOpen(false)
+      navigateBoard(hostId, event.board.boardId)
+      return
+    }
     const sessionId = event.sessionId ?? event.budgetSessionId
     if (!sessionId) return
     useUiStore.getState().setInboxOpen(false)
