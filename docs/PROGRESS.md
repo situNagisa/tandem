@@ -101,3 +101,12 @@
 - 约束更新：开发环境禁止公网部署/暴露；需公网验证时写步骤请用户代测
 - 待用户在 Windows 实机确认：D:\ 路径文件预览/在本机打开、未跟踪文件 diff、子目录 cwd 的 diff、Hook 中文输出
 - 下一批候选：局域网手机审批台（本地通知）、skills 兼容、PR/CI 集成
+
+## 迭代 13（2026-11-07）UI 原语收口
+- [x] ui/Menu 改为 @radix-ui/react-dropdown-menu 唯一实现：Item/CheckItem/RadioItem/Separator/Label/Sub，键盘、Portal、碰撞避让、disabledReason→Tooltip、26px 行统一
+- [x] ui/ListRow + 统一 Select（原生 option 写法也走 Menu）、菜单/Popover 表面样式只留在 ui/
+- [x] 全量迁移：输入框权限/思考/更多/模型、补全行、环境条主机/分支/Worktree、侧栏筛选/主机/会话 ⋯、右栏自定义、审阅 ⋯、消息操作、设置全部下拉
+- [x] 模型选择器按参考图重做：模型列表 → 思考强度子菜单 / 切换账号→分组级联子菜单；选中分组主列表即时切换；按钮文字「模型短名 + 强度」
+- [x] `#/dev/ui` 组件画廊（设置-外观底部入口），展示原语全部状态，支持反馈模式圈选
+- [x] `scripts/ui-audit.mjs` 防回退检查：ui/ 外 role=menu/listbox、popover-panel、硬编码菜单行高、原生 select；当前 0 问题
+- 截图：/tmp/ui-lib/{gallery,model-main,model-effort,model-account-group}.png

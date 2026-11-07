@@ -527,7 +527,9 @@ function ModelPanel({
           <Menu.Separator />
           <Menu.Sub>
             <Menu.SubTrigger
-              trailing={[account?.name, group?.name].filter(Boolean).join(' › ')}
+              trailing={[account?.name, group?.groupId ? group.name : null]
+                .filter(Boolean)
+                .join(' › ')}
             >
               {profiles.length > 1 ? '切换账号' : '切换分组'}
             </Menu.SubTrigger>
