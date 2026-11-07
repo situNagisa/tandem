@@ -59,6 +59,7 @@ import { BackgroundTaskManager } from './tasks.js';
 import { ScheduleManager } from './schedules.js';
 import { EvalManager } from './evals.js';
 import { AiReviewManager } from './ai-review.js';
+import { BoardManager } from './board/manager.js';
 import type { ListModelsResult } from './providers/index.js';
 import { SkillManager } from './skills.js';
 import { SubagentPresetStore } from './subagent-presets.js';
@@ -200,6 +201,8 @@ export class Host {
   readonly evals: EvalManager;
   /** 提交前 AI 评审：只读子会话、结果按行挂载与误报记忆。 */
   readonly aiReviews: AiReviewManager;
+  /** 任务看板：卡片 = 后台会话，依赖/并发/审批门/重试调度。 */
+  readonly boards: BoardManager;
   readonly hub = new Hub();
   /** 内网团队成员、邀请与审计（~/.tandem/team.json）。 */
   readonly team: TeamStore;
@@ -269,6 +272,7 @@ export class Host {
     });
     this.evals = new EvalManager(this);
     this.aiReviews = new AiReviewManager(this);
+    this.boards = new BoardManager(this, home);
     this.browser = new BrowserManager(home, {
       isSessionHostAllowed: (sessionId, host) => {
         const rec = this.store.get(sessionId);
@@ -735,6 +739,7 @@ export class Host {
     this.tasks.dispose();
     this.secrets.dispose();
     this.schedules.dispose();
+    this.boards.dispose();
     this.external.stopWatching();
     this.store.flush();
     this.searchIndex.flush();

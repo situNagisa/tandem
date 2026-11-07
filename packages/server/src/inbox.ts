@@ -131,6 +131,10 @@ export class Inbox {
     });
   }
 
+  recordBoard(board: NonNullable<InboxEvent['board']>): InboxEvent {
+    return this.push({ kind: 'board', board });
+  }
+
   /**
    * 订阅/重连时的快照。sinceSeq 覆盖时只返回增量事件，否则返回完整缓冲；
    * pending 始终是服务端权威的未处理审批列表。

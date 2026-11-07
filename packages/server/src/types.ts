@@ -117,6 +117,8 @@ export interface SessionRecord extends Session {
   promptOverrides?: Partial<Record<import('@tandem/protocol').PromptTemplateKey, string>>;
   /** 提交前 AI 评审累计用量（已计入 usage）。 */
   aiReviewUsage?: Usage;
+  /** 任务看板卡片会话：卡片会话不进侧栏、不产生回合结束收件箱项。 */
+  board?: { boardId: string; cardId: string };
 }
 
 /**

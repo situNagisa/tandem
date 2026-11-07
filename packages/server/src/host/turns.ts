@@ -127,8 +127,9 @@ export async function sendToModel(host: Host, rec: SessionRecord, content: Conte
   host.store.markDirty(rec.id, true);
   host.broadcastSummary(rec);
   const result = await runTurn(host, rec);
-  // 主会话回合结束写入收件箱（子代理只把结果回传父会话，不单独提醒；评测内部会话不打扰）
-  if ((rec.depth ?? 0) === 0 && !rec.evalRun) {
+  if (rec.board) host.boards.noteTurn(rec.id, result);
+  // 主会话回合结束写入收件箱（子代理只把结果回传父会话，不单独提醒；评测内部会话与看板卡片不打扰）
+  if ((rec.depth ?? 0) === 0 && !rec.evalRun && !rec.board) {
     host.pushInbox(
       host.inbox.recordTurnEnd(rec.id, rec.title, result.reason, result.error),
     );

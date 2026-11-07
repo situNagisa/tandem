@@ -35,6 +35,7 @@ import { registerMemoryRoutes } from './routes/memory.js';
 import { registerFsRoutes } from './routes/fs.js';
 import { registerTaskRoutes } from './routes/tasks.js';
 import { registerScheduleRoutes } from './routes/schedules.js';
+import { registerBoardRoutes } from './routes/board.js';
 import { registerEvalRoutes } from './routes/evals.js';
 import { registerCommandRoutes } from './routes/commands.js';
 import { registerSkillRoutes } from './routes/skills.js';
@@ -135,6 +136,7 @@ export async function createApp(
   registerFsRoutes(app, deps);
   registerTaskRoutes(app, deps);
   registerScheduleRoutes(app, deps);
+  registerBoardRoutes(app, deps);
   registerEvalRoutes(app, deps);
   registerCommandRoutes(app, deps);
   registerSkillRoutes(app, deps);

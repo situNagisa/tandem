@@ -111,6 +111,7 @@ export interface SessionSummary {
   parentId?: string;       // Task 子代理会话指向主会话（孙代理指向子代理）
   depth?: number;          // 0 主会话 / 1 子代理 / 2 孙代理…；侧栏只显示主会话（parentId 为空）
   worktree?: { path: string; branch: string; baseBranch: string }; // 隔离分支会话
+  board?: { boardId: string; cardId: string; boardName?: string }; // 任务看板卡片会话：不进侧栏会话列表，从看板进入
   createdAt: number;
   updatedAt: number;
   usage: Usage;
@@ -724,7 +725,7 @@ export interface BudgetAlert {
 // ---------- 收件箱（跨会话的“需要我”事件流） ----------
 // 客户端连上 WS 后发 subscribe_inbox，服务端把全 Host 的审批/回合结束/预算等摘要推给该连接。
 // 事件按 Host 内全局 seq 单调递增，客户端重连时带 sinceSeq 补齐；缓冲不覆盖则收到 inbox_snapshot。
-export type InboxEventKind = 'permission' | 'permission_resolved' | 'turn_end' | 'budget' | 'ci' | 'eval'
+export type InboxEventKind = 'permission' | 'permission_resolved' | 'turn_end' | 'budget' | 'ci' | 'eval' | 'board'
 export interface InboxEvent {
   seq: number;
   kind: InboxEventKind;
@@ -766,6 +767,15 @@ export interface InboxEvent {
     finished: number;
     total: number;
     /** 可读描述，如「评测完成：3/4 通过」。 */
+    text: string;
+  };
+  /** kind=board：任务看板卡片待评审/失败/整块跑完。 */
+  board?: {
+    boardId: string;
+    boardName: string;
+    cardId?: string;
+    cardTitle?: string;
+    event: 'review' | 'failed' | 'finished';
     text: string;
   };
 }
@@ -817,6 +827,7 @@ export type ServerMsg =
   // 外部会话（Claude Code / Codex）文件有变动，客户端应重新拉取列表
   | { type: 'task_updated'; sessionId: string; task: BackgroundTask; content?: string; since?: number; truncated?: boolean }
   | { type: 'schedules_updated' }
+  | { type: 'board_updated'; boardId: string }
   | { type: 'eval_run_updated'; run: EvalRunSummary }
   | { type: 'external_sessions_changed' }
   | { type: 'error'; message: string }
@@ -1684,5 +1695,121 @@ export interface PublicShare {
 // GET    /api/shares      -> ShareInfo[]
 // DELETE /api/shares/:id  -> 204（之后公开接口立即 404）
 // GET    /api/public/shares/:id  Authorization: Share <token> -> PublicShare
+
+// ---------- 任务看板（docs/taskboard.md） ----------
+// 一块看板属于一个项目目录；每张卡运行时 = 一个顶层会话（SessionSummary.board 标记，不设 parentId）。
+export type BoardCardStatus = 'todo' | 'queued' | 'running' | 'approval' | 'review' | 'done' | 'failed';
+export const BOARD_COLUMNS: BoardCardStatus[] = ['todo', 'queued', 'running', 'approval', 'review', 'done', 'failed'];
+export interface BoardExec {
+  preset?: string;               // 子代理预设名：带来模型/权限/工具白名单/附加提示
+  profileId?: string;
+  groupId?: string;
+  model?: string;
+  effort?: ReasoningEffort;
+  permissionMode?: PermissionMode; // 缺省 acceptEdits
+  worktree?: boolean;            // git 仓库内缺省 true；false 或非 git 目录时同目录同时只跑一张卡
+  budgetUsd?: number;            // 单卡花费上限，缺省不限
+  maxRetries?: number;           // 回合出错后同会话重试次数，缺省 1
+  gate?: boolean;                // 审批门：回合结束后停在 review，人通过后才算 done、下游才启动
+}
+export interface BoardCardResult {
+  summary: string;               // 最后一条 assistant 文本
+  files: number;
+  additions: number;
+  deletions: number;
+  branch?: string;
+  commit?: string;
+  costUsd: number;
+  durationMs: number;
+  mergedAt?: number;
+  mergeError?: string;
+}
+export interface BoardCard {
+  id: string;
+  title: string;
+  prompt: string;
+  deps: string[];
+  status: BoardCardStatus;
+  order: number;                 // 列内排序（升序）
+  exec: BoardExec;
+  sessionId?: string;
+  attempts: number;              // 已用的自动重试次数
+  result?: BoardCardResult;
+  error?: string;
+  /** 运行中最近一次工具活动的一行描述（服务端按会话实时推导，不落盘）。 */
+  activity?: string;
+  /** 排队中的阻塞原因：waiting=等依赖；upstream_failed=有依赖失败；slot=等并发槽；dir=同目录有卡在跑。 */
+  blocked?: 'waiting' | 'upstream_failed' | 'slot' | 'dir';
+  /** review 时用户打回的意见（下次运行注入）。 */
+  reviewNote?: string;
+  /** 内部：最近一次发给会话的任务说明，用于编辑提示词后重试时重新下发。 */
+  sentPrompt?: string;
+  /** worktree 合入依赖分支后的起点提交：结果统计只算本卡自己的改动。 */
+  baseCommit?: string;
+  /** 失败重试的最早时间（epoch ms）；排队中的卡到点才会被调度。 */
+  retryAt?: number;
+  /** 预留：运行时由协调者提议的卡片（v2）。 */
+  proposedBy?: string;
+  startedAt?: number;
+  finishedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+export type BoardMergePolicy = 'manual' | 'auto';
+export interface Board {
+  id: string;
+  name: string;
+  cwd: string;                   // 项目目录（通常是仓库根）
+  isGit: boolean;
+  baseBranch?: string;
+  maxParallel: number;           // 1–8，缺省 2
+  mergePolicy: BoardMergePolicy;
+  defaults: BoardExec;           // 看板默认执行配置（卡 > 看板）
+  cards: BoardCard[];
+  createdAt: number;
+  updatedAt: number;
+}
+export interface BoardSummary {
+  id: string;
+  name: string;
+  cwd: string;
+  counts: Record<BoardCardStatus, number>;
+  /** 需要人处理的卡数：approval + review + failed。 */
+  needsMe: number;
+  costUsd: number;
+  updatedAt: number;
+}
+export type BoardInput = Partial<Pick<Board, 'name' | 'cwd' | 'maxParallel' | 'mergePolicy' | 'defaults'>>;
+export interface BoardCardInput {
+  title?: string;
+  prompt?: string;
+  deps?: string[];
+  exec?: BoardExec;
+  /** 创建时直接放行（queued）；缺省 todo。 */
+  status?: 'todo' | 'queued';
+}
+export interface BoardPlanDraft {
+  ref: string;                   // 草稿内部引用（deps 用它指向其他草稿）
+  title: string;
+  prompt: string;
+  deps: string[];
+  preset?: string;
+  gate?: boolean;
+}
+export type BoardCardAction = 'start' | 'unqueue' | 'stop' | 'retry' | 'approve' | 'reject' | 'merge';
+// GET    /api/boards                          -> BoardSummary[]
+// POST   /api/boards BoardInput               -> Board（cwd 必填；defaults.profileId 缺省取第一个账号）
+// GET    /api/boards/:id                      -> Board（cards 含实时 activity/blocked）
+// PUT    /api/boards/:id BoardInput           -> Board
+// DELETE /api/boards/:id                      -> {ok}（运行中的卡先中断；卡会话保留但解除看板标记）
+// POST   /api/boards/:id/cards BoardCardInput -> BoardCard（deps 成环/不存在返回 400）
+// PUT    /api/boards/:id/cards/:cid BoardCardInput -> BoardCard（title/prompt/deps/exec 仅 todo/queued/failed 可改）
+// DELETE /api/boards/:id/cards/:cid           -> {ok}（其他卡对它的依赖一并移除）
+// POST   /api/boards/:id/cards/:cid/action {action, note?, strategy?: 'merge'|'squash'} -> BoardCard
+// POST   /api/boards/:id/cards/:cid/move {beforeId?: string|null}  -> Board（列内排序：放到 beforeId 之前，null=列尾）
+// POST   /api/boards/:id/merge-all {strategy?} -> {merged: string[]; failed: {cardId: string; error: string}[]}
+// POST   /api/boards/:id/plan {goal}          -> {drafts: BoardPlanDraft[]}（只返回草稿，不创建）
+// POST   /api/boards/:id/plan/apply {drafts}  -> {cards: BoardCard[]}（确认后创建，状态 todo）
+// WS board_updated {boardId} 广播：客户端重新拉取该看板；收件箱 kind=board 见 InboxEvent.board。
 
 export const PROTOCOL_VERSION = 3;

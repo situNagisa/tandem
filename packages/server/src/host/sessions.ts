@@ -172,6 +172,7 @@ export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
     ...(rec.forkedFrom ? { forkedFrom: { ...rec.forkedFrom } } : {}),
     ...(rec.scheduledBy ? { scheduledBy: { ...rec.scheduledBy } } : {}),
     ...(rec.worktree ? { worktree: { ...rec.worktree } } : {}),
+    ...(rec.board ? { board: { ...rec.board, boardName: host.boards.nameOf(rec.board.boardId) } } : {}),
     createdAt: rec.createdAt,
     updatedAt: rec.updatedAt,
     usage: { ...rec.usage },

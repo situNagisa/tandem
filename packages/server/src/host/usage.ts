@@ -177,6 +177,7 @@ export function contextFor(host: Host, rec: SessionRecord): ContextBreakdown {
 }
 
 export function assertBudget(host: Host, rec: SessionRecord, model: string): void {
+  host.boards.assertCardBudget(rec);
   const status = host.budgets.blockingRule({
     profileId: rec.profileId,
     groupId: rec.groupId,
