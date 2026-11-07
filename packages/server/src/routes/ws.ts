@@ -100,7 +100,12 @@ export function registerWsRoutes(app: FastifyInstance, deps: RouteDeps): void {
             sendError('会话不存在');
             return;
           }
-          const snapshot = host.snapshot(msg.sessionId);
+          // tail 由新客户端显式携带；不传时保持旧行为（全量快照）。
+          const tail =
+            typeof msg.tail === 'number' && Number.isFinite(msg.tail)
+              ? Math.max(1, Math.min(Math.floor(msg.tail), 5000))
+              : undefined;
+          const snapshot = host.snapshot(msg.sessionId, tail);
           if (!snapshot) {
             sendError('会话不存在');
             return;
@@ -132,6 +137,15 @@ export function registerWsRoutes(app: FastifyInstance, deps: RouteDeps): void {
             type: 'session_snapshot',
             session: snapshot.session,
             pendingPermissions,
+            ...(snapshot.totalMessages !== undefined
+              ? {
+                  totalMessages: snapshot.totalMessages,
+                  ...(snapshot.firstMessageId !== undefined
+                    ? { firstMessageId: snapshot.firstMessageId }
+                    : {}),
+                  truncated: snapshot.truncated === true,
+                }
+              : {}),
             seq: host.hub.currentSeq(msg.sessionId),
           });
           presence(msg.sessionId);

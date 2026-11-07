@@ -5,16 +5,19 @@ import os from 'node:os';
 import path from 'node:path';
 import type {
   AiReviewSettings,
+  ContentBlock,
   ContextSettings,
   DelegationStrategy,
   HostInfo,
   HostSettings,
+  MessagePage,
   PermissionMode,
   PermissionRequest,
   ReasoningEffort,
   Session,
   SessionStatus,
   SessionSummary,
+  SessionTurns,
 } from '@tandem/protocol';
 import { effectiveProfile, saveHostSettings } from '../config.js';
 import { normalizeContextSettings } from '../context-settings.js';
@@ -28,6 +31,16 @@ import { DELEGATIONS, EFFORTS, PERMISSION_MODES, httpError, sanitizeVoiceSetting
 import { notifyExternalSessionsChanged } from './external.js';
 import { normalizeHandoffSettings } from '../handoff.js';
 import { normalizeRoutingSettings } from '../routing-settings.js';
+import {
+  PAGE_BYTES_MAX,
+  PAGE_LIMIT_DEFAULT,
+  PAGE_LIMIT_MAX,
+  SNAPSHOT_TAIL_BYTES,
+  SNAPSHOT_TAIL_MESSAGES,
+  sessionTurns,
+  tailMessages,
+  truncateLargeToolOutputs,
+} from './message-paging.js';
 
 export function info(host: Host): HostInfo {
   return {
@@ -224,14 +237,116 @@ export function toSession(host: Host, rec: SessionRecord): Session {
   };
 }
 
-export function snapshot(host: Host, id: string): { session: Session; pendingPermissions: PermissionRequest[] } | undefined {
+/** 分页视图：尾部消息 + 总数/首条 id；超大工具输出只保留首尾。 */
+export function toSessionPaged(host: Host, rec: SessionRecord, tail: number): Session {
+  const page = tailMessages(rec.messages, tail, SNAPSHOT_TAIL_BYTES);
+  const messages = truncateLargeToolOutputs(page);
+  return {
+    ...host.toSummary(rec),
+    messages,
+    todos: rec.todos,
+    ...(rec.plan ? { plan: { ...rec.plan } } : {}),
+    totalMessages: rec.messages.length,
+    firstMessageId: messages[0]?.id,
+    hasEarlier: page.length < rec.messages.length,
+  };
+}
+
+export function snapshot(
+  host: Host,
+  id: string,
+  tail?: number,
+): {
+  session: Session;
+  pendingPermissions: PermissionRequest[];
+  totalMessages?: number;
+  firstMessageId?: string;
+  truncated?: boolean;
+} | undefined {
   const rec = host.store.get(id);
   if (!rec) return undefined;
   const rt = host.runtimes.get(id);
+  const pendingPermissions = rt ? [...rt.pending.values()].map((p) => p.request) : [];
+  if (tail === undefined) {
+    return { session: host.toSession(rec), pendingPermissions };
+  }
+  const session = host.toSessionPaged(rec, tail);
   return {
-    session: host.toSession(rec),
-    pendingPermissions: rt ? [...rt.pending.values()].map((p) => p.request) : [],
+    session,
+    pendingPermissions,
+    totalMessages: session.totalMessages,
+    firstMessageId: session.firstMessageId,
+    truncated: session.hasEarlier === true,
   };
+}
+
+/** 向前翻页；优先按偏移倒序读日志，磁盘尚未追上时回退到内存切片。 */
+export function messagePage(
+  host: Host,
+  rec: SessionRecord,
+  beforeId: string | undefined,
+  limitInput: number | undefined,
+): MessagePage {
+  const limit = Math.max(
+    1,
+    Math.min(Number.isFinite(limitInput) ? Math.floor(limitInput as number) : PAGE_LIMIT_DEFAULT, PAGE_LIMIT_MAX),
+  );
+  const totalMessages = rec.messages.length;
+  let messages: SessionRecord['messages'] | undefined;
+  let hasEarlier = false;
+  if (beforeId) {
+    const beforeIndex = rec.messages.findIndex((message) => message.id === beforeId);
+    const disk = host.store.readMessagePage(rec.id, {
+      beforeId,
+      limit,
+      maxBytes: PAGE_BYTES_MAX,
+    });
+    // 磁盘页必须与内存中的顺序一致（防止刚回退/压缩后的旧日志），否则用内存。
+    const expectStart = beforeIndex >= 0 ? Math.max(0, beforeIndex - limit) : -1;
+    const diskMatches =
+      !!disk &&
+      beforeIndex >= 0 &&
+      disk.messages.length === beforeIndex - expectStart &&
+      disk.messages.every((message, i) => message.id === rec.messages[expectStart + i]?.id);
+    if (disk && diskMatches) {
+      messages = disk.messages;
+      hasEarlier = disk.hasEarlier;
+    } else if (beforeIndex >= 0) {
+      messages = rec.messages.slice(expectStart, beforeIndex);
+      hasEarlier = expectStart > 0;
+    } else {
+      messages = [];
+      hasEarlier = false;
+    }
+  } else {
+    messages = tailMessages(rec.messages, limit, PAGE_BYTES_MAX);
+    hasEarlier = messages.length < totalMessages;
+  }
+  const paged = truncateLargeToolOutputs(messages);
+  return {
+    messages: paged,
+    totalMessages,
+    ...(paged[0] ? { firstMessageId: paged[0].id } : {}),
+    hasEarlier,
+  };
+}
+
+export function turnsFor(host: Host, rec: SessionRecord): SessionTurns {
+  return { totalMessages: rec.messages.length, turns: sessionTurns(rec.messages) };
+}
+
+/** 单条消息的完整内容块（不截断），用于“显示全部”。 */
+export function messageBlock(
+  host: Host,
+  rec: SessionRecord,
+  messageId: string,
+  index: number,
+): ContentBlock | undefined {
+  const message = rec.messages.find((item) => item.id === messageId);
+  if (!message || !Number.isInteger(index) || index < 0 || index >= message.content.length) {
+    return undefined;
+  }
+  return message.content[index];
 }
 
 export function broadcastSummary(host: Host, rec: SessionRecord): void {

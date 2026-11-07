@@ -15,6 +15,7 @@ import type {
   InjectionSegment,
   InjectionSnapshot,
   ListModelsInput,
+  MessagePage,
   ModelInfo,
   PermissionDecision,
   PermissionMode,
@@ -27,6 +28,7 @@ import type {
   Session,
   SessionStatus,
   SessionSummary,
+  SessionTurns,
   SkillInfo,
   SlashCommand,
   Todo,
@@ -117,6 +119,8 @@ import {
   listSessions,
   markRead,
   markScheduled,
+  messageBlock,
+  messagePage,
   recoverAfterRestart,
   resumePausedSession,
   retryNow,
@@ -124,7 +128,9 @@ import {
   settings,
   snapshot,
   toSession,
+  toSessionPaged,
   toSummary,
+  turnsFor,
   updateSettings,
   updateSession,
 } from './host/sessions.js';
@@ -574,8 +580,35 @@ export class Host {
     return toSession(this, rec);
   }
 
-  snapshot(id: string): { session: Session; pendingPermissions: PermissionRequest[] } | undefined {
-    return snapshot(this, id);
+  toSessionPaged(rec: SessionRecord, tail: number): Session {
+    return toSessionPaged(this, rec, tail);
+  }
+
+  snapshot(
+    id: string,
+    tail?: number,
+  ):
+    | {
+        session: Session;
+        pendingPermissions: PermissionRequest[];
+        totalMessages?: number;
+        firstMessageId?: string;
+        truncated?: boolean;
+      }
+    | undefined {
+    return snapshot(this, id, tail);
+  }
+
+  messagePage(rec: SessionRecord, beforeId: string | undefined, limit: number | undefined): MessagePage {
+    return messagePage(this, rec, beforeId, limit);
+  }
+
+  turnsFor(rec: SessionRecord): SessionTurns {
+    return turnsFor(this, rec);
+  }
+
+  messageBlock(rec: SessionRecord, messageId: string, index: number): ContentBlock | undefined {
+    return messageBlock(this, rec, messageId, index);
   }
 
   broadcastSummary(rec: SessionRecord): void {

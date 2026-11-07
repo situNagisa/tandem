@@ -2,11 +2,14 @@
 import {
   appendFileSync,
   closeSync,
+  existsSync,
+  fstatSync,
   fsyncSync,
   mkdirSync,
   openSync,
   readdirSync,
   readFileSync,
+  readSync,
   renameSync,
   rmSync,
   statSync,
@@ -478,18 +481,8 @@ export class SessionStore {
     const index = new Map<string, number>();
     for (const line of text.split('\n')) {
       if (!line.trim()) continue;
-      let parsed: { messages?: unknown } & Record<string, unknown>;
-      try {
-        parsed = JSON.parse(line) as { messages?: unknown } & Record<string, unknown>;
-      } catch {
-        continue; // 容忍崩溃导致的最后半行
-      }
       // 快照行直接是一条消息，增量行是 { messages: [...] }
-      const batch = Array.isArray(parsed.messages)
-        ? parsed.messages
-        : typeof parsed.id === 'string' && typeof parsed.role === 'string'
-          ? [parsed]
-          : [];
+      const batch = parseMessageLogLine(line);
       for (const message of batch) {
         if (!message || typeof message !== 'object') continue;
         const item = message as SessionRecord['messages'][number];
@@ -504,6 +497,103 @@ export class SessionStore {
       }
     }
     return messages;
+  }
+
+  /**
+   * 按偏移倒序读取消息日志，只读取需要的尾部/一页，避免为了取尾部扫整个文件。
+   * beforeId 缺省时取尾部；给出时取它之前（不含）最近 limit 条消息，按时间顺序返回。
+   * 日志缺失、损坏或找不到 beforeId（例如磁盘尚未追上内存）时返回 undefined，调用方回退到内存切片。
+   */
+  readMessagePage(
+    id: string,
+    options: { beforeId?: string; limit: number; maxBytes?: number },
+  ): { messages: SessionRecord['messages']; hasEarlier: boolean } | undefined {
+    if (!existsSync(this.logFileOf(id))) return undefined;
+    const limit = Math.max(1, Math.min(Math.floor(options.limit) || 200, 5000));
+    const maxBytes = options.maxBytes && options.maxBytes > 0 ? options.maxBytes : Number.POSITIVE_INFINITY;
+    const messages: SessionRecord['messages'] = []; // 先按新→旧收集，最后反转
+    const seen = new Set<string>();
+    let bytes = 0;
+    let hasEarlier = false;
+    let foundBefore = !options.beforeId;
+
+    const take = (message: SessionRecord['messages'][number]): boolean => {
+      if (!message || typeof message.id !== 'string' || seen.has(message.id)) return false;
+      if (messages.length >= limit) {
+        hasEarlier = true;
+        return true;
+      }
+      const size = Buffer.byteLength(JSON.stringify(message));
+      if (messages.length > 0 && bytes + size > maxBytes) {
+        hasEarlier = true;
+        return true;
+      }
+      seen.add(message.id);
+      messages.push(message);
+      bytes += size;
+      return false;
+    };
+
+    this.readLogLinesBackwards(id, (line) => {
+      const batch = parseMessageLogLine(line);
+      for (let i = batch.length - 1; i >= 0; i--) {
+        const message = batch[i];
+        if (!message || typeof message.id !== 'string') continue;
+        if (!foundBefore) {
+          if (message.id === options.beforeId) foundBefore = true;
+          continue;
+        }
+        if (take(message)) return true;
+      }
+      return false;
+    });
+
+    if (!foundBefore) return undefined;
+    messages.reverse();
+    return { messages, hasEarlier };
+  }
+
+  /** 从文件末尾按块向前读取完整行；回调返回 true 时停止。 */
+  private readLogLinesBackwards(id: string, onLine: (line: string) => boolean): void {
+    let fd: number;
+    try {
+      fd = openSync(this.logFileOf(id), 'r');
+    } catch {
+      return;
+    }
+    const chunkSize = 256 * 1024;
+    try {
+      let pos = fstatSync(fd).size;
+      let carry = Buffer.alloc(0);
+      while (pos > 0) {
+        const start = Math.max(0, pos - chunkSize);
+        const length = pos - start;
+        const buffer = Buffer.allocUnsafe(length);
+        let read = 0;
+        while (read < length) {
+          const n = readSync(fd, buffer, read, length - read, start + read);
+          if (n <= 0) break;
+          read += n;
+        }
+        pos = start;
+        const combined =
+          carry.length > 0 ? Buffer.concat([buffer.subarray(0, read), carry]) : buffer.subarray(0, read);
+        let end = combined.length;
+        // 从后往前找换行：片段按「新→旧」顺序回调。
+        for (let i = combined.length - 1; i >= 0; i--) {
+          if (combined[i] !== 0x0a) continue;
+          const piece = combined.subarray(i + 1, end);
+          end = i;
+          if (piece.length === 0) continue;
+          if (onLine(piece.toString('utf8'))) return;
+        }
+        const head = combined.subarray(0, end);
+        carry = Buffer.from(head);
+      }
+      if (carry.length > 0) onLine(carry.toString('utf8'));
+    } finally {
+      closeSync(fd);
+    }
   }
 
   /** 元数据文件：不含消息正文，只有会话摘要/运行意图等小字段。 */
@@ -648,6 +738,21 @@ export class SessionStore {
     const safe = id.replace(/[^a-zA-Z0-9_-]/g, '_');
     return path.join(this.dir, `${safe}.json`);
   }
+}
+
+/** 解析一行消息日志：快照行是一条消息，增量行是 { messages: [...] }。 */
+function parseMessageLogLine(line: string): SessionRecord['messages'] {
+  let parsed: { messages?: unknown } & Record<string, unknown>;
+  try {
+    parsed = JSON.parse(line) as { messages?: unknown } & Record<string, unknown>;
+  } catch {
+    return []; // 容忍崩溃导致的最后半行
+  }
+  if (Array.isArray(parsed.messages)) return parsed.messages as SessionRecord['messages'];
+  if (typeof parsed.id === 'string' && typeof parsed.role === 'string') {
+    return [parsed as unknown as SessionRecord['messages'][number]];
+  }
+  return [];
 }
 
 async function writeFileAtomic(tmp: string, data: string): Promise<void> {

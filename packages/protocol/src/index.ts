@@ -416,9 +416,24 @@ export type ContentBlock =
   | { type: 'thinking'; text: string }
   | { type: 'image'; mediaType: string; dataBase64: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; toolUseId: string; content: string; isError?: boolean }
+  | {
+      type: 'tool_result';
+      toolUseId: string;
+      content: string;
+      isError?: boolean;
+      /** 分页视图下超大工具输出只下发首尾片段；点“显示全部”按需取完整内容。 */
+      truncated?: ToolOutputTruncation;
+    }
   /** 外部会话里系统注入的上下文（AGENTS.md、skills_instructions 等），前端折叠展示。 */
   | { type: 'context'; kind: string; text: string };
+
+/** 超大工具输出被截断时的元信息（原消息在 Host 侧仍保留全文）。 */
+export interface ToolOutputTruncation {
+  /** 原始内容字节数。 */
+  totalBytes: number;
+  /** 省略的字节数。 */
+  omittedBytes: number;
+}
 
 export interface Message {
   id: string;
@@ -444,9 +459,49 @@ export interface CompactionNotice {
   auto: boolean;             // 自动触发 / 手动压缩
 }
 
-export interface Session extends SessionSummary { messages: Message[]; todos: Todo[]; plan?: SessionPlan }
+export interface Session extends SessionSummary {
+  messages: Message[];
+  todos: Todo[];
+  plan?: SessionPlan;
+  /** 分页视图（subscribe 带 tail / GET ?tail=）：会话消息总数。 */
+  totalMessages?: number;
+  /** 分页视图：本次下发消息的第一条 id；客户端用它作为向前翻页的 before 锚点。 */
+  firstMessageId?: string;
+  /** 分页视图：是否还有更早的消息未下发。 */
+  hasEarlier?: boolean;
+}
 
 export interface Todo { content: string; status: 'pending' | 'in_progress' | 'completed' }
+
+// ---------- 会话分页 ----------
+// GET /api/sessions/:id/messages?before=<messageId>&limit=<N> -> MessagePage
+//   向前翻页：返回 before 之前（不含）最近 limit 条消息，按时间顺序；before 缺省时返回尾部一页。
+// GET /api/sessions/:id/turns -> SessionTurns
+//   轮次大纲用的轻量索引：每轮用户消息的 id 与前 80 字摘要，不读取 / 下发全文。
+// GET /api/sessions/:id/message-block?messageId=&index= -> { block: ContentBlock }
+//   取单条消息的完整内容块（超大工具输出“显示全部”用）。
+export interface MessagePage {
+  messages: Message[];
+  totalMessages: number;
+  /** 本页第一条消息 id；客户端作为下一次 before 翻页的锚点。 */
+  firstMessageId?: string;
+  /** 是否还有更早的消息。 */
+  hasEarlier: boolean;
+}
+
+export interface SessionTurnMark {
+  /** 1-based 轮号。 */
+  turn: number;
+  /** 该轮用户消息 id（用于大纲跳转与定位）。 */
+  messageId: string;
+  /** 用户消息首行，最多 80 字。 */
+  preview: string;
+}
+
+export interface SessionTurns {
+  totalMessages: number;
+  turns: SessionTurnMark[];
+}
 
 // ---------- 工具权限 ----------
 export interface PermissionRequest {
@@ -958,7 +1013,10 @@ export interface InboxSnapshot {
 
 // ---------- WebSocket: 客户端 -> 服务端 ----------
 export type ClientMsg =
-  | { type: 'subscribe'; sessionId: string; sinceSeq?: number } // 订阅；带 sinceSeq 时服务端补发 seq>sinceSeq 的事件（缓冲不够则改发 snapshot）
+  // 订阅；带 sinceSeq 时服务端补发 seq>sinceSeq 的事件（缓冲不够则改发 snapshot）。
+  // tail：快照只下发最近 N 条消息（并附带 totalMessages/firstMessageId），更早历史按需翻页；
+  // 不传 tail 时保持旧行为（全量快照）。
+  | { type: 'subscribe'; sessionId: string; sinceSeq?: number; tail?: number }
   | { type: 'unsubscribe'; sessionId: string }
   | { type: 'subscribe_inbox'; sinceSeq?: number } // 订阅全 Host 收件箱；带 sinceSeq 时先补发
   | { type: 'unsubscribe_inbox' }
@@ -971,7 +1029,15 @@ export type ClientMsg =
 // ---------- WebSocket: 服务端 -> 客户端 ----------
 export type ServerMsg =
   | { type: 'hello'; host: HostInfo; me?: TeamIdentity }
-  | { type: 'session_snapshot'; session: Session; pendingPermissions: PermissionRequest[] } // subscribe 后先下发全量
+  // subscribe 后先下发快照；带 tail 时只含尾部消息，并给出总条数与首条 id（更早历史走 messages 接口）。
+  | {
+      type: 'session_snapshot';
+      session: Session;
+      pendingPermissions: PermissionRequest[];
+      totalMessages?: number;
+      firstMessageId?: string;
+      truncated?: boolean;
+    }
   | { type: 'session_updated'; session: SessionSummary }   // 广播给所有连接（用于列表刷新）
   | { type: 'session_deleted'; sessionId: string }
   | { type: 'message_start'; sessionId: string; message: Message }       // 新消息（用户消息也走这里，用于多端同步）
@@ -1019,7 +1085,10 @@ export type BlockDelta =
 // POST   /api/models  ListModelsInput -> { ok: boolean; models: ModelInfo[]; error?: string }  从 provider 拉取模型列表
 // GET    /api/sessions                -> SessionSummary[]   (按 updatedAt 倒序)
 // POST   /api/sessions CreateSessionInput -> SessionSummary
-// GET    /api/sessions/:id            -> Session
+// GET    /api/sessions/:id            -> Session（全量；?tail=N 只含尾部 + totalMessages/firstMessageId/hasEarlier）
+// GET    /api/sessions/:id/messages?before=&limit= -> MessagePage  向前翻页（见「会话分页」）
+// GET    /api/sessions/:id/turns      -> SessionTurns  轮次大纲（轮号 / 消息 id / 前 80 字）
+// GET    /api/sessions/:id/message-block?messageId=&index= -> { block: ContentBlock }  完整内容块
 // PATCH  /api/sessions/:id UpdateSessionInput -> SessionSummary  (运行中切换模型/账号：下一轮生效)
 // DELETE /api/sessions/:id
 // POST   /api/sessions/:id/fork { messageId? } -> SessionSummary   分叉：复制到 messageId（含）为止的历史为新会话，写 forkedFrom；缺省复制全部
@@ -2046,5 +2115,139 @@ export interface BoardPrResult {
 // 卡片执行配置 aiReview=true：完成后对卡片分支（baseCommit..HEAD）跑只读 AI 评审；有 blocker 时停在 review。
 // 合并冲突时 result.conflictFiles 记录冲突文件；action=resolve 让卡片会话在 worktree 解决，仍需用户再点 merge。
 // WS board_updated {boardId} 广播：客户端重新拉取该看板；收件箱 kind=board 见 InboxEvent.board。
+
+// ---------- 远程主机：SSH 一键接入 ----------
+// 由「本机 Host」用自己的 SSH 凭据部署另一台内网机器上的 Host，并维护 ssh -N -L 隧道。
+// 密码只在当次连接使用，不落盘；默认只监听远程 127.0.0.1，不对局域网开放。
+export type SshAuthKind = 'agent' | 'key' | 'password';
+
+export interface SshTarget {
+  user: string;
+  host: string;
+  /** 默认 22。 */
+  port?: number;
+}
+
+export interface SshAuthInput {
+  kind: SshAuthKind;
+  /** kind=key 时的私钥路径（本机路径）。 */
+  keyPath?: string;
+  /** kind=password 时的密码；只在本次请求与 Host 进程内存中使用，绝不保存。 */
+  password?: string;
+}
+
+/** 首次连接前由 ssh-keyscan 得到、交给用户确认的主机公钥。 */
+export interface SshHostKeyInfo {
+  fingerprint: string;
+  keyType: string;
+  host: string;
+  port: number;
+  /** 本 Host 的 ~/.tandem/ssh_known_hosts 里是否已有该主机。 */
+  known: boolean;
+  /** known=true 且与已知公钥不同：可能被中间人替换，应阻止连接。 */
+  changed: boolean;
+}
+
+export interface SshProbeResult {
+  key: SshHostKeyInfo;
+  /** SSH 登录与远端命令是否可用。 */
+  authOk: boolean;
+  hostname?: string;
+  platform?: string;
+  arch?: string;
+  homeDir?: string;
+  node?: { path: string; version: string; major: number; ok: boolean };
+  systemd?: boolean;
+  /** 本地 Node 与远端同平台同架构时可用「从本机上传」。 */
+  nodeUpload?: { available: boolean; version?: string; platform?: string; arch?: string; reason?: string };
+  error?: string;
+}
+
+export interface SshHostInput {
+  name?: string;
+  target: SshTarget;
+  auth: SshAuthInput;
+  /** 用户已确认的 SHA256 指纹；与 keyscan 结果不一致会拒绝。 */
+  fingerprint: string;
+  /** 远程 Host 端口，默认 7878。 */
+  remotePort?: number;
+  /** true：远程 Host 监听 0.0.0.0（局域网可直连）；默认仅 127.0.0.1。 */
+  listenLan?: boolean;
+  /** 远程 node 路径；缺省自动探测。 */
+  nodePath?: string;
+  /** 远端没有 Node 时从本机上传同平台 Node 二进制。 */
+  uploadNode?: boolean;
+  /** 服务方式；缺省自动（systemd --user 可用则用 systemd，否则 nohup + cron 检查）。 */
+  service?: 'auto' | 'systemd' | 'nohup';
+}
+
+export type SshHostState = 'deploying' | 'online' | 'offline' | 'stopped' | 'error';
+
+/** 管理端看到的一台远程主机。token 只回给所有者客户端，用于把隧道地址添加为普通主机。 */
+export interface RemoteSshHost {
+  id: string;
+  name: string;
+  target: SshTarget;
+  authKind: SshAuthKind;
+  keyPath?: string;
+  /** 密码认证且本进程内存里没有密码（Host 重启后）：需要用户重新输入。 */
+  needsPassword?: boolean;
+  state: SshHostState;
+  remotePort: number;
+  listenLan: boolean;
+  localPort: number;
+  /** 客户端应添加的 Host 地址（本机回环上的 ssh 隧道）。 */
+  localUrl: string;
+  token: string;
+  hostName: string;
+  service?: 'systemd' | 'nohup';
+  remoteVersion?: string;
+  localVersion: string;
+  upgradeAvailable: boolean;
+  latencyMs?: number;
+  installedAt: number;
+  lastConnectedAt?: number;
+  lastError?: string;
+  system?: { platform: string; arch: string; hostname: string; homeDir: string; nodeVersion?: string };
+}
+
+export type SshStepStatus = 'pending' | 'running' | 'ok' | 'fail' | 'skip';
+export interface SshStep {
+  id: string;
+  title: string;
+  status: SshStepStatus;
+  detail?: string;
+}
+
+export interface SshJob {
+  id: string;
+  hostId?: string;
+  kind: 'deploy' | 'upgrade' | 'restart' | 'uninstall';
+  status: 'running' | 'ok' | 'fail';
+  steps: SshStep[];
+  error?: string;
+  startedAt: number;
+  endedAt?: number;
+  /** kind=deploy 且成功时返回，客户端据此新增 Host。 */
+  result?: SshDeployResult;
+}
+
+export interface SshDeployResult {
+  /** 已登记到本机 Host 的远程主机。 */
+  host: RemoteSshHost;
+  /** 客户端应新增的 Host 配置（name/url/token）。 */
+  client: { name: string; url: string; token: string };
+}
+
+// GET    /api/ssh-hosts                          -> RemoteSshHost[]（仅所有者）
+// POST   /api/ssh-hosts/scan-key {target}        -> SshHostKeyInfo（ssh-keyscan，不需要登录）
+// POST   /api/ssh-hosts/probe {target,auth,fingerprint} -> SshProbeResult（指纹必须与 keyscan 一致）
+// POST   /api/ssh-hosts SshHostInput             -> SshJob（异步部署；轮询 jobs/:id）
+// GET    /api/ssh-hosts/jobs/:id                 -> SshJob
+// POST   /api/ssh-hosts/:id/restart              -> SshJob
+// POST   /api/ssh-hosts/:id/upgrade              -> SshJob（重新上传当前版本，保留 ~/.tandem 数据）
+// GET    /api/ssh-hosts/:id/logs?lines=200       -> { lines: string[] }
+// DELETE /api/ssh-hosts/:id?keepData=1           -> { ok: true }（停止服务并删除 ~/.tandem-host；默认保留 ~/.tandem）
+// POST   /api/ssh-hosts/:id/password {password}  -> { ok: true }（仅写入本进程内存并重连隧道）
 
 export const PROTOCOL_VERSION = 4;

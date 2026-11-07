@@ -135,7 +135,46 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
     const { id } = req.params as { id: string };
     const rec = host.getSession(id);
     if (!rec) return bad(reply, '会话不存在', 404);
+    const query = (req.query ?? {}) as { tail?: string };
+    const tail = Number(query.tail);
+    if (query.tail !== undefined && Number.isFinite(tail) && tail > 0) {
+      return host.toSessionPaged(rec, tail);
+    }
     return host.toSession(rec);
+  });
+
+  // 向前翻页：只回一小段，客户端滚到顶/跳转未加载的轮时按需取。
+  app.get('/api/sessions/:id/messages', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    const query = (req.query ?? {}) as { before?: string; limit?: string };
+    const limit = Number(query.limit);
+    return host.messagePage(rec, str(query.before) || undefined, Number.isFinite(limit) ? limit : undefined);
+  });
+
+  // 轮次大纲：只回轮号、消息 id、前 80 字，不拉全量消息。
+  app.get('/api/sessions/:id/turns', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    return host.turnsFor(rec);
+  });
+
+  // 超大工具输出“显示全部”：按消息 id + block 下标取完整内容块。
+  app.get('/api/sessions/:id/message-block', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    const query = (req.query ?? {}) as { messageId?: string; index?: string };
+    const messageId = str(query.messageId);
+    const index = Number(query.index);
+    if (!messageId || !Number.isInteger(index) || index < 0) {
+      return bad(reply, 'messageId 与 index 不能为空');
+    }
+    const block = host.messageBlock(rec, messageId, index);
+    if (!block) return bad(reply, '内容块不存在', 404);
+    return { block };
   });
 
   app.get('/api/sessions/:id/context', async (req, reply) => {
