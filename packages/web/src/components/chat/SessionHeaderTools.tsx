@@ -81,7 +81,10 @@ export function SubagentsButton() {
         const summary = sub?.summary
         if (!sub || !summary) continue
         const running =
-          sub.running || summary.status === 'running' || summary.status === 'waiting_permission'
+          sub.running ||
+          summary.status === 'running' ||
+          summary.status === 'waiting_permission' ||
+          summary.status === 'retrying'
         out.push({
           id,
           title: summary.title || '未命名代理',
@@ -150,9 +153,11 @@ export function SubagentsButton() {
                       ? '出错'
                       : row.status === 'waiting_permission'
                         ? '待审批'
-                        : row.running
-                          ? '运行中'
-                          : '已结束'}
+                        : row.status === 'retrying'
+                          ? '等待网络'
+                          : row.running
+                            ? '运行中'
+                            : '已结束'}
                   </span>
                 </button>
               ))}

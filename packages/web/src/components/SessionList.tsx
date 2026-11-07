@@ -80,7 +80,7 @@ function projectName(s: SessionSummary): string {
 }
 
 function isRunningStatus(status: SessionSummary['status']): boolean {
-  return status === 'running' || status === 'waiting_permission'
+  return status === 'running' || status === 'waiting_permission' || status === 'retrying'
 }
 
 function buildGroups(
@@ -478,7 +478,8 @@ export function SessionList({
     const isActive = s.id === activeSessionId
     const renamingThis = renaming === s.id
     const elapsed = runningElapsed(hostId, s)
-    const runningLabel = s.status === 'waiting_permission' ? '待审批' : '运行中'
+    const runningLabel =
+      s.status === 'waiting_permission' ? '待审批' : s.status === 'retrying' ? '等待网络' : '运行中'
     return (
       <div
         key={`${hostId}:${s.id}`}

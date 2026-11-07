@@ -39,6 +39,14 @@ export function SessionStatusDot({ status }: { status: SessionStatus }) {
   if (status === 'waiting_permission') {
     return <span className="inline-block size-2 shrink-0 rounded-full bg-accent" title="等待审批" />
   }
+  if (status === 'retrying') {
+    return (
+      <span
+        className="inline-block size-2 shrink-0 rounded-full bg-warning running-dot"
+        title="网络中断，等待重试"
+      />
+    )
+  }
   if (status === 'error') {
     return <span className="inline-block size-2 shrink-0 rounded-full bg-text-tertiary/70" title="出错" />
   }

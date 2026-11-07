@@ -1,4 +1,4 @@
-import { BarChart3, Bell, BookOpen, CalendarClock, Monitor, Palette, Plug, RefreshCw, Server, Settings, ShieldCheck, Sparkles, Wallet, Webhook } from 'lucide-react'
+import { BarChart3, Bell, BookOpen, CalendarClock, Monitor, Palette, Plug, RefreshCw, Server, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Wallet, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
@@ -16,8 +16,10 @@ import { UsageSection } from './UsageSection'
 import { SchedulesSection } from './SchedulesSection'
 import { BudgetsSection } from './BudgetsSection'
 import { NotificationsSection } from './NotificationsSection'
+import { GeneralSettings } from './GeneralSettings'
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
+  { id: 'general', label: '通用', icon: SlidersHorizontal },
   { id: 'profiles', label: '账号与模型', icon: Sparkles },
   { id: 'hosts', label: 'Host 管理', icon: Server },
   { id: 'permissions', label: '权限', icon: ShieldCheck },
@@ -81,6 +83,7 @@ export function SettingsDialog() {
           className="min-h-0 min-w-0 flex-1 animate-[tandem-fade-in_120ms_ease-out_both] overflow-y-auto overscroll-contain p-4 motion-reduce:animate-none sm:p-5 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]"
         >
           <div className="mx-auto w-full max-w-[1100px]">
+            {tab === 'general' && <GeneralSettings />}
             {tab === 'profiles' && <ProfilesSection />}
             {tab === 'hosts' && <HostsSection />}
             {tab === 'permissions' && <PermissionsSection />}

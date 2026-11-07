@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { RetryInfo } from '@tandem/protocol'
 import {
   FileDiff,
   Menu,
@@ -29,12 +30,24 @@ function StatePill({
   offline,
   connecting,
   elapsed,
+  retryInfo,
+  retrySeconds,
+  resumePaused,
+  onRetryNow,
+  onStop,
+  onResume,
 }: {
   running: boolean
   status?: string
   offline: boolean
   connecting: boolean
   elapsed?: string
+  retryInfo?: RetryInfo
+  retrySeconds?: number
+  resumePaused?: boolean
+  onRetryNow?: () => void
+  onStop?: () => void
+  onResume?: () => void
 }) {
   const pill = 'flex shrink-0 items-center gap-1.5 text-[12px] text-text-secondary'
   if (offline) return null
@@ -43,6 +56,34 @@ function StatePill({
       <span className={pill}>
         <span className="size-1.5 rounded-full bg-text-secondary/80 running-dot" />
         连接中
+      </span>
+    )
+  }
+  if (status === 'retrying' || retryInfo) {
+    return (
+      <span className={cn(pill, 'rounded-full border border-border bg-surface px-2 py-1')}>
+        <span className="size-1.5 rounded-full bg-warning running-dot" />
+        <span className="whitespace-nowrap">
+          网络中断，{Math.max(0, retrySeconds ?? 0)} 秒后重试
+        </span>
+        <Button size="sm" variant="ghost" className="h-5 px-1.5 text-[12px]" onClick={onRetryNow}>
+          立即重试
+        </Button>
+        <span className="text-border-strong">·</span>
+        <Button size="sm" variant="ghost" className="h-5 px-1.5 text-[12px]" onClick={onStop}>
+          停止
+        </Button>
+      </span>
+    )
+  }
+  if (resumePaused) {
+    return (
+      <span className={cn(pill, 'rounded-full border border-border bg-surface px-2 py-1')}>
+        <span className="size-1.5 rounded-full bg-text-tertiary" />
+        <span className="whitespace-nowrap">重启后已暂停</span>
+        <Button size="sm" variant="ghost" className="h-5 px-1.5 text-[12px]" onClick={onResume}>
+          继续运行
+        </Button>
       </span>
     )
   }
@@ -90,8 +131,14 @@ export function TopBar() {
   const summary = useAppStore((s) => s.active?.summary ?? null)
   const status = summary?.status
   const running = useAppStore((s) => s.active?.running ?? false)
-  const ticking = running || status === 'waiting_permission'
+  const ticking = running || status === 'waiting_permission' || status === 'retrying'
   const now = useNow(ticking)
+  const retrySeconds = summary?.retryInfo
+    ? Math.max(0, Math.ceil((summary.retryInfo.nextAt - now) / 1000))
+    : undefined
+  const retryNow = useAppStore((s) => s.retryNow)
+  const interrupt = useAppStore((s) => s.interrupt)
+  const resumePaused = useAppStore((s) => s.resumePaused)
   const runKey = summary ? `${activeHostId ?? ''}:${summary.id}` : null
   const elapsed =
     ticking && summary && runKey
@@ -252,6 +299,12 @@ export function TopBar() {
             offline={offline}
             connecting={connecting}
             elapsed={elapsed}
+            retryInfo={summary?.retryInfo}
+            retrySeconds={retrySeconds}
+            resumePaused={summary?.resumePaused}
+            onRetryNow={retryNow}
+            onStop={interrupt}
+            onResume={() => void resumePaused()}
           />
         ) : (
           !isMobile &&

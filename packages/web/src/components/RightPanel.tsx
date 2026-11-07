@@ -55,6 +55,7 @@ const STATUS_TEXT: Record<string, string> = {
   idle: '空闲',
   running: '运行中',
   waiting_permission: '等待审批',
+  retrying: '等待网络',
   error: '出错',
 }
 
@@ -205,7 +206,8 @@ function AgentRow({ sub, depth }: { sub: SubagentSession; depth: number }) {
   const focusAgent = useUiStore((s) => s.focusAgent)
   const id = sub.summary?.id ?? ''
   const status = sub.summary?.status
-  const running = sub.running || status === 'running' || status === 'waiting_permission'
+  const running =
+    sub.running || status === 'running' || status === 'waiting_permission' || status === 'retrying'
   const now = useNow(running)
   const since = runningSince(`agent:${id}`, sub.summary?.createdAt ?? Date.now())
   const usage = sub.summary?.usage
@@ -215,7 +217,9 @@ function AgentRow({ sub, depth }: { sub: SubagentSession; depth: number }) {
     ? '出错'
     : status === 'waiting_permission'
       ? '待审批'
-      : running
+      : status === 'retrying'
+        ? '等待网络'
+        : running
         ? '运行中'
         : sub.loading
           ? '加载中'

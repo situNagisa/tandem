@@ -117,6 +117,10 @@ interface AppState {
   clearTurnError: () => void
   send: (blocks: ContentBlock[]) => boolean
   interrupt: () => void
+  /** 网络中断等待重试期间立即重试。 */
+  retryNow: () => void
+  /** 恢复 Host 重启后暂停的会话。 */
+  resumePaused: () => Promise<void>
   decidePermission: (requestId: string, decision: PermissionDecision, reason?: string) => void
   /** 收件箱里直接审批（不要求该会话已打开）。 */
   decideInboxPermission: (
@@ -232,7 +236,7 @@ function sameOrigin(url: string, origin: string): boolean {
 
 
 function isRunningStatus(status: SessionSummary['status']): boolean {
-  return status === 'running' || status === 'waiting_permission'
+  return status === 'running' || status === 'waiting_permission' || status === 'retrying'
 }
 
 /** 旧数据没有 depth 时沿 parentId 链推算。 */
@@ -1759,6 +1763,32 @@ export const useAppStore = create<AppState>((set, get) => {
         return
       }
       patchActive(active.hostId, active.sessionId, (a) => ({ ...a, stopping: true }))
+    },
+
+    retryNow: () => {
+      const active = get().active
+      if (!active) return
+      const conn = connections.get(active.hostId) ?? ensureConnection(active.hostId)
+      const ok = conn?.send({ type: 'retry_now', sessionId: active.sessionId }) ?? false
+      if (!ok) toast('Host 未连接，无法重试', 'error')
+    },
+
+    resumePaused: async () => {
+      const active = get().active
+      if (!active) return
+      const host = getHost(active.hostId)
+      if (!host) return
+      try {
+        const summary = await api.resumeSession(host, active.sessionId)
+        applySessionSummary(active.hostId, summary)
+        patchActive(active.hostId, active.sessionId, (a) => ({
+          ...a,
+          summary: a.summary ? { ...a.summary, resumePaused: undefined, status: summary.status } : summary,
+          running: true,
+        }))
+      } catch (err) {
+        toast(err instanceof Error ? err.message : '恢复失败', 'error')
+      }
     },
 
     interruptSubagent: (childId) => {

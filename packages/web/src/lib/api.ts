@@ -17,6 +17,7 @@ import type {
   HookEntry,
   HookSettings,
   HostInfo,
+  HostSettings,
   ListModelsInput,
   McpServerConfig,
   McpServerStatus,
@@ -139,6 +140,9 @@ function qs(params: Record<string, string | undefined>): string {
 
 export const api = {
   host: (h: HostConfig) => request<HostInfo>(h, '/api/host'),
+  settings: (h: HostConfig) => request<HostSettings>(h, '/api/settings'),
+  updateSettings: (h: HostConfig, input: HostSettings) =>
+    request<HostSettings>(h, '/api/settings', { method: 'PUT', body: JSON.stringify(input) }),
 
   profiles: (h: HostConfig) => request<Profile[]>(h, '/api/profiles'),
   createProfile: (h: HostConfig, input: ProfileInput) =>
@@ -178,6 +182,10 @@ export const api = {
     request<SessionSummary>(h, '/api/sessions', { method: 'POST', body: JSON.stringify(input) }),
   session: (h: HostConfig, id: string) =>
     request<Session>(h, `/api/sessions/${encodeURIComponent(id)}`),
+  resumeSession: (h: HostConfig, id: string) =>
+    request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/resume`, {
+      method: 'POST',
+    }),
   patchSession: (h: HostConfig, id: string, input: UpdateSessionInput) =>
     request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}`, {
       method: 'PATCH',
