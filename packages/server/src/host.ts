@@ -84,7 +84,6 @@ import {
   worktreeCleanliness,
 } from './worktree.js';
 import { runTurn } from './agent/loop.js';
-import { recoverAfterRestart, resumeSession } from './agent/resume.js';
 import { persist as persistRunState } from './run-state.js';
 import {
   BUILTIN_NAMES,
@@ -130,6 +129,27 @@ import {
 } from './host/helpers.js';
 import { inboxSnapshot, pushInbox, recordCi } from './host/inbox.js';
 import { importSession, notifyExternalSessionsChanged } from './host/external.js';
+import {
+  broadcastSummary,
+  createSession,
+  deleteSession,
+  ensureSessionEnv,
+  forkSession,
+  getSession,
+  info,
+  listSessions,
+  markScheduled,
+  recoverAfterRestart,
+  resumePausedSession,
+  retryNow,
+  setStatus,
+  settings,
+  snapshot,
+  toSession,
+  toSummary,
+  updateSettings,
+  updateSession,
+} from './host/sessions.js';
 
 export class Host {
   readonly config: HostConfig;
@@ -158,19 +178,19 @@ export class Host {
   /** 跨会话收件箱（审批/回合结束/预算摘要），手机审批台的数据源。 */
   readonly inbox = new Inbox();
   readonly version: string;
-  private runtimes = new Map<string, SessionRuntime>();
-  private permissions = new Map<string, PermissionEntry>();
+  runtimes = new Map<string, SessionRuntime>();
+  permissions = new Map<string, PermissionEntry>();
   /** 每轮系统提示的注入段落清单与变化历史（内存态，GET /injections 时按需重算）。 */
-  private injections = new Map<
+  injections = new Map<
     string,
     { segments: InjectionSegment[]; changes: InjectionChange[]; updatedAt: number }
   >();
   /** 单模型能力缓存，避免每次打开选择器都请求 provider 模型列表。 */
-  private capabilityCache = new Map<string, { at: number; info: ModelInfo }>();
+  capabilityCache = new Map<string, { at: number; info: ModelInfo }>();
   /** 已尝试过环境检测的会话：非 git 目录也记住，避免列表轮询反复执行 git。 */
-  private envChecked = new Set<string>();
+  envChecked = new Set<string>();
   /** 分组 Key 轮询游标（按 profileId:groupId 存内存）。 */
-  private keyRotation = new Map<string, number>();
+  keyRotation = new Map<string, number>();
 
   constructor(config?: HostConfig, home = tandemHome()) {
     this.home = home;
@@ -223,138 +243,51 @@ export class Host {
     return recordCi(this, sessionId, sessionTitle, ci);
   }
   info(): HostInfo {
-    return {
-      id: this.config.hostId,
-      name: os.hostname(),
-      platform: process.platform,
-      version: this.version,
-      homeDir: os.homedir(),
-    };
+    return info(this);
   }
 
   // ---------- Host 行为设置 ----------
 
   settings(): HostSettings {
-    return {
-      resumeOnRestart: this.config.resumeOnRestart === 'pause' ? 'pause' : 'auto',
-      defaultDelegation:
-        this.config.defaultDelegation === 'orchestrate' ||
-        this.config.defaultDelegation === 'more' ||
-        this.config.defaultDelegation === 'none'
-          ? this.config.defaultDelegation
-          : 'less',
-      ...(this.config.voice ? { voice: this.config.voice } : {}),
-    };
+    return settings(this);
   }
 
   updateSettings(input: Partial<HostSettings>): HostSettings {
-    if (input.resumeOnRestart === 'auto' || input.resumeOnRestart === 'pause') {
-      this.config.resumeOnRestart = input.resumeOnRestart;
-    }
-    if (
-      input.defaultDelegation === 'orchestrate' ||
-      input.defaultDelegation === 'more' ||
-      input.defaultDelegation === 'less' ||
-      input.defaultDelegation === 'none'
-    ) {
-      this.config.defaultDelegation = input.defaultDelegation;
-    }
-    if (input.voice !== undefined) {
-      this.config.voice = sanitizeVoiceSettings(input.voice);
-    }
-    saveHostSettings(this.home, {
-      resumeOnRestart: this.settings().resumeOnRestart,
-      ...(this.config.defaultDelegation ? { defaultDelegation: this.config.defaultDelegation } : {}),
-      ...(this.config.voice ? { voice: this.config.voice } : {}),
-    });
-    return this.settings();
+    return updateSettings(this, input);
   }
 
-  /** Host 启动后调用：扫描 runState 恢复未完成会话 + 提示丢失的后台任务。 */
   recoverAfterRestart(): Promise<void> {
     return recoverAfterRestart(this);
   }
 
-  /** 用户确认「继续运行」被暂停的重启会话。 */
   resumePausedSession(id: string): SessionRecord | undefined {
-    const rec = this.store.get(id);
-    if (!rec) return undefined;
-    void resumeSession(this, rec).catch((err) => {
-      console.warn(`[tandem] 恢复会话 ${id} 失败:`, errorMessage(err));
-    });
-    return rec;
+    return resumePausedSession(this, id);
   }
 
-  /** 「立即重试」：提前唤醒网络退避等待。 */
   retryNow(sessionId: string): boolean {
-    const rt = this.runtimes.get(sessionId);
-    if (!rt?.retryInfo || !rt.retryWake) return false;
-    rt.retryWake();
-    return true;
+    return retryNow(this, sessionId);
   }
 
   // ---------- 会话读取/转换 ----------
 
   getSession(id: string): SessionRecord | undefined {
-    const rec = this.store.get(id);
-    if (rec) this.ensureSessionEnv(rec);
-    return rec;
+    return getSession(this, id);
   }
 
   listSessions(): SessionRecord[] {
-    const list = this.store.list();
-    for (const rec of list) this.ensureSessionEnv(rec);
-    return list;
+    return listSessions(this);
   }
 
-  /** 老会话没有 env（旧版本未检测或从别处导入）时按需检测一次。 */
-  private ensureSessionEnv(rec: SessionRecord): void {
-    if (rec.env || this.envChecked.has(rec.id)) return;
-    this.envChecked.add(rec.id);
-    void this.refreshEnv(rec.id).catch(() => {
-      // 检测失败保持无 env，下次进程启动再试
-      this.envChecked.delete(rec.id);
-    });
+  ensureSessionEnv(rec: SessionRecord): void {
+    return ensureSessionEnv(this, rec);
   }
 
   toSummary(rec: SessionRecord): SessionSummary {
-    return {
-      id: rec.id,
-      title: rec.title,
-      cwd: rec.cwd,
-      profileId: rec.profileId,
-      ...(rec.groupId ? { groupId: rec.groupId } : {}),
-      model: rec.model,
-      permissionMode: rec.permissionMode,
-      status: rec.status,
-      ...(rec.retryInfo ? { retryInfo: { ...rec.retryInfo } } : {}),
-      ...(rec.resumePaused ? { resumePaused: true } : {}),
-      ...(rec.effort ? { effort: rec.effort } : {}),
-      ...(rec.delegation ? { delegation: rec.delegation } : {}),
-      // 可选字段只在有值时下发，老客户端不受影响
-      ...(rec.pinned ? { pinned: true } : {}),
-      ...(rec.pinnedTurns && rec.pinnedTurns.length ? { pinnedTurns: [...rec.pinnedTurns] } : {}),
-      ...(rec.archived ? { archived: true } : {}),
-      ...(rec.env ? { env: { ...rec.env } } : {}),
-      ...(rec.parentId ? { parentId: rec.parentId } : {}),
-      ...(typeof rec.depth === 'number' ? { depth: rec.depth } : {}),
-      ...(rec.forkedFrom ? { forkedFrom: { ...rec.forkedFrom } } : {}),
-      ...(rec.scheduledBy ? { scheduledBy: { ...rec.scheduledBy } } : {}),
-      ...(rec.worktree ? { worktree: { ...rec.worktree } } : {}),
-      createdAt: rec.createdAt,
-      updatedAt: rec.updatedAt,
-      usage: { ...rec.usage },
-      ...(rec.context ? { context: rec.context } : {}),
-    };
+    return toSummary(this, rec);
   }
 
-  /** 定时任务新建的会话：打上来源标记，侧栏显示小时钟。 */
   markScheduled(id: string, info: { id: string; name: string }): void {
-    const rec = this.store.get(id);
-    if (!rec) return;
-    rec.scheduledBy = info;
-    this.store.markDirty(id, true);
-    this.broadcastSummary(rec);
+    return markScheduled(this, id, info);
   }
 
   /** 把本次请求的上下文估算记到会话上；broadcast=true 时随 session_updated 推送。 */
@@ -992,331 +925,60 @@ export class Host {
   }
 
   toSession(rec: SessionRecord): Session {
-    return {
-      ...this.toSummary(rec),
-      messages: rec.messages,
-      todos: rec.todos,
-      ...(rec.plan ? { plan: { ...rec.plan } } : {}),
-    };
+    return toSession(this, rec);
   }
 
   snapshot(id: string): { session: Session; pendingPermissions: PermissionRequest[] } | undefined {
-    const rec = this.store.get(id);
-    if (!rec) return undefined;
-    const rt = this.runtimes.get(id);
-    return {
-      session: this.toSession(rec),
-      pendingPermissions: rt ? [...rt.pending.values()].map((p) => p.request) : [],
-    };
+    return snapshot(this, id);
   }
 
   broadcastSummary(rec: SessionRecord): void {
-    this.hub.broadcastAll({ type: 'session_updated', session: this.toSummary(rec) });
+    return broadcastSummary(this, rec);
   }
 
   setStatus(rec: SessionRecord, status: SessionStatus): void {
-    if (rec.status === status) return;
-    rec.status = status;
-    this.broadcastSummary(rec);
+    return setStatus(this, rec, status);
   }
 
   // ---------- 会话 CRUD ----------
 
-  async createSession(input: {
-    cwd?: unknown;
-    profileId?: unknown;
-    groupId?: unknown;
-    model?: unknown;
-    permissionMode?: unknown;
-    effort?: unknown;
-    delegation?: unknown;
-    title?: unknown;
-    worktree?: unknown;
-  }): Promise<SessionRecord> {
-    const rawCwd = typeof input.cwd === 'string' ? input.cwd.trim() : '';
-    if (!rawCwd) throw new Error('cwd 不能为空');
-    const cwd = path.resolve(expandHome(rawCwd));
-    let stat;
-    try {
-      stat = statSync(cwd);
-    } catch {
-      throw new Error(`工作目录不存在: ${cwd}`);
-    }
-    if (!stat.isDirectory()) throw new Error(`工作目录不是目录: ${cwd}`);
-
-    const profileId = typeof input.profileId === 'string' ? input.profileId : '';
-    const profile = this.profiles.get(profileId);
-    if (!profile) throw new Error('账号不存在，请先创建账号');
-    const groupId =
-      typeof input.groupId === 'string' && input.groupId.trim() ? input.groupId.trim() : undefined;
-    if (groupId && !profile.groups?.some((g) => g.id === groupId)) throw new Error('分组不存在');
-    const effective = effectiveProfile(profile, groupId);
-    const model =
-      (typeof input.model === 'string' && input.model.trim()) ||
-      effective.defaultModel ||
-      effective.models[0] ||
-      '';
-    if (!model) throw new Error('该账号没有可用模型');
-
-    const permissionMode = PERMISSION_MODES.has(input.permissionMode as PermissionMode)
-      ? (input.permissionMode as PermissionMode)
-      : 'default';
-    if (input.effort !== undefined && !EFFORTS.has(input.effort as ReasoningEffort)) {
-      throw new Error(`无效的 effort: ${String(input.effort)}`);
-    }
-    const effort = input.effort as ReasoningEffort | undefined;
-    if (input.delegation !== undefined && !DELEGATIONS.has(input.delegation as DelegationStrategy)) {
-      throw new Error(`无效的 delegation: ${String(input.delegation)}`);
-    }
-    const delegation =
-      (input.delegation as DelegationStrategy | undefined) ?? this.settings().defaultDelegation ?? 'less';
-
-    // worktree 会话：先创建 worktree，会话 cwd 指向新目录
-    const shortId = randomUUID().slice(0, 8);
-    let sessionCwd = cwd;
-    let worktree: SessionRecord['worktree'];
-    let worktreeRepoRoot: string | undefined;
-    if (input.worktree && typeof input.worktree === 'object') {
-      const branch = (input.worktree as { branch?: unknown }).branch;
-      const info = await createWorktree(
-        this.home,
-        cwd,
-        typeof branch === 'string' ? branch : undefined,
-        shortId,
-      );
-      sessionCwd = info.path;
-      worktree = { path: info.path, branch: info.branch, baseBranch: info.baseBranch };
-      worktreeRepoRoot = info.repoRoot;
-    }
-
-    const now = Date.now();
-    const rec: SessionRecord = {
-      id: randomUUID(),
-      title: typeof input.title === 'string' && input.title.trim() ? input.title.trim() : '新会话',
-      cwd: sessionCwd,
-      profileId,
-      ...(groupId ? { groupId } : {}),
-      model,
-      permissionMode,
-      ...(effort ? { effort } : {}),
-      delegation,
-      depth: 0,
-      status: 'idle',
-      createdAt: now,
-      updatedAt: now,
-      usage: { inputTokens: 0, outputTokens: 0 },
-      messages: [],
-      todos: [],
-      allowedTools: [],
-      ...(worktree ? { worktree } : {}),
-      ...(worktreeRepoRoot ? { worktreeRepoRoot } : {}),
-      ...(worktree && worktreeRepoRoot
-        ? {
-            env: {
-              repoRoot: worktreeRepoRoot,
-              repoName: path.basename(worktreeRepoRoot),
-              branch: worktree.branch,
-            },
-          }
-        : {}),
-    };
-    this.store.add(rec);
-    this.broadcastSummary(rec);
-    return rec;
-  }
-
-  updateSession(
-    id: string,
-    patch: {
-      title?: unknown;
+  createSession(input: {
+      cwd?: unknown;
       profileId?: unknown;
       groupId?: unknown;
       model?: unknown;
       permissionMode?: unknown;
-      pinned?: unknown;
-      pinnedTurns?: unknown;
-      archived?: unknown;
       effort?: unknown;
       delegation?: unknown;
-      cwd?: unknown;
-    },
-  ): SessionRecord | undefined {
-    const rec = this.store.get(id);
-    if (!rec) return undefined;
-
-    if (typeof patch.title === 'string' && patch.title.trim()) rec.title = patch.title.trim();
-    if (typeof patch.cwd === 'string' && patch.cwd.trim()) {
-      if (this.isRunning(id)) throw httpError('会话正在运行，无法切换目录', 409);
-      const cwd = path.resolve(expandHome(patch.cwd.trim()));
-      let stat;
-      try {
-        stat = statSync(cwd);
-      } catch {
-        throw new Error(`工作目录不存在: ${cwd}`);
-      }
-      if (!stat.isDirectory()) throw new Error(`工作目录不是目录: ${cwd}`);
-      if (cwd !== rec.cwd) {
-        rec.cwd = cwd;
-        // 换目录后旧的 worktree 元数据不再适用，重新检测环境
-        delete rec.worktree;
-        delete rec.worktreeRepoRoot;
-        delete rec.env;
-        this.envChecked.delete(id);
-      }
-    }
-    if (typeof patch.effort === 'string') {
-      const effort = patch.effort as SessionSummary['effort'];
-      if (!['off', 'low', 'medium', 'high', 'max'].includes(effort ?? '')) {
-        throw new Error(`无效的 effort: ${patch.effort}`);
-      }
-      rec.effort = effort;
-    }
-    if (typeof patch.delegation === 'string') {
-      if (!DELEGATIONS.has(patch.delegation as DelegationStrategy)) {
-        throw new Error(`无效的 delegation: ${patch.delegation}`);
-      }
-      rec.delegation = patch.delegation as DelegationStrategy;
-    }
-    if (typeof patch.permissionMode === 'string') {
-      if (!PERMISSION_MODES.has(patch.permissionMode as PermissionMode)) {
-        throw new Error(`无效的 permissionMode: ${patch.permissionMode}`);
-      }
-      rec.permissionMode = patch.permissionMode as PermissionMode;
-    }
-    if (typeof patch.profileId === 'string' && patch.profileId !== rec.profileId) {
-      const profile = this.profiles.get(patch.profileId);
-      if (!profile) throw new Error('账号不存在');
-      rec.profileId = profile.id;
-      // 换账号时分组不再适用，默认切到该账号的默认模型
-      delete rec.groupId;
-      if (typeof patch.model !== 'string' || !patch.model.trim()) {
-        rec.model = profile.defaultModel || profile.models[0] || rec.model;
-      }
-    }
-    if (typeof patch.groupId === 'string') {
-      const groupId = patch.groupId.trim();
-      if (groupId) {
-        const profile = this.profiles.get(rec.profileId);
-        const group = profile?.groups?.find((g) => g.id === groupId);
-        if (!group) throw new Error('分组不存在');
-        rec.groupId = groupId;
-        // 切换分组时若没显式指定模型，用该分组的默认模型
-        if (typeof patch.model !== 'string' || !patch.model.trim()) {
-          rec.model = group.defaultModel || group.models[0] || rec.model;
-        }
-      } else {
-        delete rec.groupId;
-      }
-    }
-    if (typeof patch.model === 'string' && patch.model.trim()) rec.model = patch.model.trim();
-    if (typeof patch.pinned === 'boolean') {
-      if (patch.pinned) rec.pinned = true;
-      else delete rec.pinned;
-    }
-    if (Array.isArray(patch.pinnedTurns)) {
-      const ids = [...new Set(
-        patch.pinnedTurns.filter((id): id is string => typeof id === 'string' && id.length > 0),
-      )].slice(0, 200);
-      if (ids.length) rec.pinnedTurns = ids;
-      else delete rec.pinnedTurns;
-    }
-    if (typeof patch.archived === 'boolean') {
-      if (patch.archived) rec.archived = true;
-      else delete rec.archived;
-    }
-
-    this.store.markDirty(rec.id, true);
-    this.broadcastSummary(rec);
-    return rec;
+      title?: unknown;
+      worktree?: unknown;
+    }): Promise<SessionRecord> {
+    return createSession(this, input);
   }
 
-  /** 复制会话（消息、todos、配置）为新会话，历史与原会话互不影响。 */
+  updateSession(id: string,
+      patch: {
+        title?: unknown;
+        profileId?: unknown;
+        groupId?: unknown;
+        model?: unknown;
+        permissionMode?: unknown;
+        pinned?: unknown;
+        pinnedTurns?: unknown;
+        archived?: unknown;
+        effort?: unknown;
+        delegation?: unknown;
+        cwd?: unknown;
+      },): SessionRecord | undefined {
+    return updateSession(this, id, patch);
+  }
+
   forkSession(id: string, messageId?: string): SessionRecord | undefined {
-    const src = this.store.get(id);
-    if (!src) return undefined;
-    let messages = structuredClone(src.messages);
-    if (messageId) {
-      const index = messages.findIndex((message) => message.id === messageId);
-      if (index < 0) throw httpError('分叉点消息不存在', 400);
-      messages = messages.slice(0, index + 1);
-      // 停在 assistant 消息上时去掉尾部未完成的 tool_use，否则下一轮请求缺少 tool_result。
-      const last = messages[messages.length - 1];
-      if (last?.role === 'assistant') {
-        last.content = last.content.filter((block) => block.type !== 'tool_use');
-        if (last.content.length === 0) messages.pop();
-      }
-    }
-    const now = Date.now();
-    const rec: SessionRecord = {
-      id: randomUUID(),
-      title: `${src.title || '新会话'}（${messageId ? '分叉' : '副本'}）`,
-      cwd: src.cwd,
-      profileId: src.profileId,
-      ...(src.groupId ? { groupId: src.groupId } : {}),
-      model: src.model,
-      permissionMode: src.permissionMode,
-      ...(src.effort ? { effort: src.effort } : {}),
-      ...(src.delegation ? { delegation: src.delegation } : {}),
-      status: 'idle',
-      createdAt: now,
-      updatedAt: now,
-      usage: { ...src.usage },
-      messages,
-      todos: structuredClone(src.todos),
-      allowedTools: [...src.allowedTools],
-      ...(src.env ? { env: { ...src.env } } : {}),
-      ...(src.plan ? { plan: structuredClone(src.plan) } : {}),
-      ...(messageId
-        ? { forkedFrom: { sessionId: src.id, messageId, title: src.title } }
-        : {}),
-    };
-    this.store.add(rec);
-    this.broadcastSummary(rec);
-    return rec;
+    return forkSession(this, id, messageId);
   }
 
-  /**
-   * 删除会话。worktree 会话有未提交改动时拒绝（409），force=true 时强制删除目录与分支。
-   */
-  async deleteSession(id: string, force = false): Promise<boolean> {
-    const rec = this.store.get(id);
-    if (!rec) return false;
-    if (rec.worktree && !force) {
-      const status = await worktreeCleanliness(rec.worktree.path);
-      if (status.dirty) {
-        throw httpError(
-          `worktree 有未提交改动，未删除。确认丢弃后可带 ?force=1 重试`,
-          409,
-        );
-      }
-    }
-    // 先级联中断正在运行的子代理
-    this.interrupt(id);
-    const rt = this.runtimes.get(id);
-    if (rt) {
-      rt.deleted = true;
-      rt.interrupted = true;
-      rt.queue = [];
-      rt.abort?.abort();
-      for (const pending of [...rt.pending.values()]) pending.resolve('deny');
-      this.runtimes.delete(id);
-    }
-    this.store.delete(id);
-    this.hub.dropSession(id);
-    this.hub.broadcastAll({ type: 'session_deleted', sessionId: id });
-    // 删除导入的会话后，原外部会话应重新出现在侧栏
-    if (rec.importedFrom) this.notifyExternalSessionsChanged();
-    if (rec.worktree) {
-      await removeWorktree(
-        rec.worktreeRepoRoot ?? (await gitRepoRoot(rec.cwd)) ?? '',
-        rec.worktree.path,
-        rec.worktree.branch,
-        force,
-      ).catch((err) => {
-        console.warn(`[tandem] 清理 worktree 失败:`, errorMessage(err));
-      });
-    }
-    return true;
+  deleteSession(id: string, force = false): Promise<boolean> {
+    return deleteSession(this, id, force);
   }
 
   get pendingCount(): number {
