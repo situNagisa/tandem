@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ContentBlock, InjectionChange, SessionSummary } from '@tandem/protocol'
 import { GitFork } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
@@ -40,7 +40,169 @@ function SkeletonMessages() {
   )
 }
 
-export function MessageList({
+/**
+ * 每行单独 memo：流式输出时只有正在增长的那条重新渲染，
+ * 避免上千条历史消息在每次 delta 时全部参与协调。
+ */
+const NoticeRow = memo(function NoticeRow({
+  message,
+  animate,
+}: {
+  message: UiMessage
+  animate: boolean
+}) {
+  const text = message.content
+    .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
+    .map((b) => b.text)
+    .join(' ')
+  return (
+    <div
+      className={cn('msg-row px-1 text-[12px] leading-4 text-muted', animate && 'chat-msg-enter')}
+    >
+      {text}
+    </div>
+  )
+})
+
+const UserRow = memo(function UserRow({
+  message,
+  animate,
+  readOnly,
+  turnIndex,
+  change,
+  fork,
+  hook,
+}: {
+  message: UiMessage
+  animate: boolean
+  readOnly: boolean
+  turnIndex?: number
+  change?: ReactNode
+  fork?: ReactNode
+  hook?: ReactNode
+}) {
+  const contexts = message.content.filter(
+    (b): b is Extract<ContentBlock, { type: 'context' }> => b.type === 'context',
+  )
+  return (
+    <div
+      className="msg-row"
+      data-turn-id={message.id}
+      data-turn-index={turnIndex}
+      data-actions={
+        message.content.some((b) => b.type === 'text' && b.text.trim()) ? 'true' : undefined
+      }
+    >
+      {change}
+      {contexts.length > 0 && (
+        <div className="mb-1 space-y-0.5">
+          {contexts.map((ctx, i) => (
+            <ContextNote key={i} kind={ctx.kind} text={ctx.text} />
+          ))}
+        </div>
+      )}
+      <UserMessage message={message} animate={animate} readOnly={readOnly} />
+      {fork}
+      {hook}
+    </div>
+  )
+})
+
+const AssistantRow = memo(function AssistantRow({
+  message,
+  streaming,
+  animate,
+  toolResults,
+  cwd,
+  readOnly,
+  turnUser,
+  checkpointId,
+  fork,
+  hook,
+}: {
+  message: UiMessage
+  streaming: boolean
+  animate: boolean
+  toolResults?: Record<string, ToolResultBlock>
+  cwd?: string
+  readOnly: boolean
+  turnUser?: UiMessage
+  checkpointId?: string
+  fork?: ReactNode
+  hook?: ReactNode
+}) {
+  return (
+    <div
+      className="msg-row"
+      data-streaming={streaming ? 'true' : undefined}
+      data-actions={
+        !streaming && message.content.some((b) => b.type === 'text' && b.text.trim())
+          ? 'true'
+          : undefined
+      }
+    >
+      <AssistantMessage
+        message={message}
+        streaming={streaming}
+        animate={animate}
+        toolResults={toolResults}
+        cwd={cwd}
+        readOnly={readOnly}
+        turnUser={turnUser}
+        checkpointId={checkpointId}
+      />
+      {fork}
+      {hook}
+    </div>
+  )
+})
+
+const ToolRunRow = memo(function ToolRunRow({
+  messages,
+  animate,
+  streamingId,
+  toolResults,
+  cwd,
+}: {
+  messages: UiMessage[]
+  animate: boolean
+  streamingId?: string
+  toolResults?: Record<string, ToolResultBlock>
+  cwd?: string
+}) {
+  return (
+    <div className="msg-row">
+      <ToolGroup
+        entries={entriesFromMessages(messages, streamingId)}
+        animate={animate}
+        toolResults={toolResults}
+        cwd={cwd}
+      />
+    </div>
+  )
+})
+
+const INITIAL_WINDOW = 60
+const BACKFILL_STEP = 150
+// 常驻 DOM 上限：再往前的历史按需点按钮加载，保证 1000 轮会话也能流畅滚动。
+const MAX_WINDOW = 400
+const LOAD_MORE_STEP = 400
+
+/** 长会话渐进渲染：先显示最近 60 条，再分批补齐更早的历史。 */
+export function MessageList(props: {
+  showSkeleton?: boolean
+  messages?: UiMessage[]
+  readOnly?: boolean
+  toolResults?: Record<string, ToolResultBlock>
+  cwd?: string
+  checkpoints?: Map<string, string>
+}) {
+  const sessionId = useAppStore((s) => (props.messages ? 'preview' : (s.active?.sessionId ?? 'none')))
+  const key = props.messages ? `preview:${props.messages[0]?.id ?? 'empty'}` : sessionId
+  return <MessageListInner key={key} {...props} />
+}
+
+function MessageListInner({
   showSkeleton,
   messages: messagesProp,
   readOnly = false,
@@ -94,6 +256,29 @@ export function MessageList({
   }
   const animateIds = seen.current.animated
 
+  // 只先挂载最近一段；挂载后按小批次向上补历史，避免一次 1s+ 的长任务。
+  const [windowSize, setWindowSize] = useState(INITIAL_WINDOW)
+  const [windowCap, setWindowCap] = useState(MAX_WINDOW)
+  // 未超过常驻上限的会话一次渲完，避免历史补进时滚动位置跳动；
+  // 只有超长会话才启用渐进窗口。
+  const effectiveWindow =
+    messages.length <= MAX_WINDOW ? messages.length : Math.min(windowSize, messages.length)
+  const windowFrom = Math.max(0, messages.length - effectiveWindow)
+  const target = Math.min(messages.length, windowCap)
+  useEffect(() => {
+    if (messages.length <= MAX_WINDOW) return
+    if (windowSize >= target) return
+    const timer = setTimeout(() => {
+      setWindowSize((size) => Math.min(target, size + BACKFILL_STEP))
+    }, 30)
+    return () => clearTimeout(timer)
+  }, [windowSize, target, messages.length])
+  const loadEarlier = () => {
+    setWindowCap((cap) => cap + LOAD_MORE_STEP)
+    setWindowSize((size) => size + LOAD_MORE_STEP)
+  }
+  const visibleMessages = messages.slice(windowFrom)
+
   useEffect(() => {
     const state = seen.current
     if (!state.primed) {
@@ -133,7 +318,7 @@ export function MessageList({
     }
     toolRun = []
   }
-  for (const m of messages) {
+  for (const m of visibleMessages) {
     if (m.notice) {
       flushRun()
       segments.push({ kind: 'notice', message: m, animate: animateIds.has(m.id) })
@@ -161,7 +346,7 @@ export function MessageList({
   flushRun()
 
   const hooksByMessage = new Map<string, HookNotice[]>()
-  const messageIds = new Set(messages.map((m) => m.id))
+  const messageIds = new Set(visibleMessages.map((m) => m.id))
   const orphanHooks: HookNotice[] = []
   for (const hook of hooks) {
     if (hook.messageId && messageIds.has(hook.messageId)) {
@@ -238,96 +423,72 @@ export function MessageList({
   return (
     <div className="flex flex-col gap-6 pb-2">
       {!messagesProp && <InjectionsNote cwd={cwd} />}
+      {messages.length > MAX_WINDOW && windowSize < messages.length && windowSize < windowCap && (
+        <div className="px-1 text-center text-[12px] text-muted" data-loading-history="true">
+          正在载入更早的消息…
+        </div>
+      )}
+      {windowFrom > 0 && windowSize >= windowCap && (
+        <div className="flex justify-center pb-1" data-load-more="true">
+          <button
+            type="button"
+            onClick={loadEarlier}
+            className="rounded-lg px-3 py-1.5 text-[12px] text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+          >
+            加载更早的 {Math.min(LOAD_MORE_STEP, windowFrom)} 条消息（共 {windowFrom} 条）
+          </button>
+        </div>
+      )}
       {segments.map((seg) => {
         if (seg.kind === 'run') {
           return (
-            <div key={seg.key} className="msg-row">
-              <ToolGroup
-                entries={entriesFromMessages(seg.messages, streamingId)}
-                animate={seg.animate}
-                toolResults={toolResults}
-                cwd={cwd}
-              />
-            </div>
+            <ToolRunRow
+              key={seg.key}
+              messages={seg.messages}
+              animate={seg.animate}
+              streamingId={streamingId}
+              toolResults={toolResults}
+              cwd={cwd}
+            />
           )
         }
         if (seg.kind === 'notice') {
-          const text = seg.message.content
-            .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
-            .map((b) => b.text)
-            .join(' ')
-          return (
-            <div
-              key={seg.message.id}
-              className={cn(
-                'msg-row px-1 text-[12px] leading-4 text-muted',
-                seg.animate && 'chat-msg-enter',
-              )}
-            >
-              {text}
-            </div>
-          )
+          return <NoticeRow key={seg.message.id} message={seg.message} animate={seg.animate} />
         }
         const m = seg.message
         if (m.role === 'user') {
-          const contexts = m.content.filter(
-            (b): b is Extract<ContentBlock, { type: 'context' }> => b.type === 'context',
-          )
           return (
-            <div
+            <UserRow
               key={m.id}
-              className="msg-row"
-              data-turn-id={m.id}
-              data-turn-index={turnIndex.get(m.id)}
-              data-actions={
-                m.content.some((b) => b.type === 'text' && b.text.trim()) ? 'true' : undefined
+              message={m}
+              animate={seg.animate}
+              readOnly={readOnly}
+              turnIndex={turnIndex.get(m.id)}
+              change={
+                changesByMessage.has(m.id) ? (
+                  <InjectionChangeNote change={changesByMessage.get(m.id)!} />
+                ) : undefined
               }
-            >
-              {changesByMessage.has(m.id) && (
-                <InjectionChangeNote change={changesByMessage.get(m.id)!} />
-              )}
-              {contexts.length > 0 && (
-                <div className="mb-1 space-y-0.5">
-                  {contexts.map((ctx, i) => (
-                    <ContextNote key={i} kind={ctx.kind} text={ctx.text} />
-                  ))}
-                </div>
-              )}
-              <UserMessage message={m} animate={seg.animate} readOnly={readOnly} />
-              {forkLinks(m.id)}
-              {hookLine(m.id)}
-            </div>
+              fork={forkLinks(m.id)}
+              hook={hookLine(m.id)}
+            />
           )
         }
+        const turnUser = turnUserByAssistant.get(m.id)
         return (
-          <div
+          <AssistantRow
             key={m.id}
-            className="msg-row"
-            data-streaming={streamingId === m.id ? 'true' : undefined}
-            data-actions={
-              streamingId !== m.id &&
-              m.content.some((b) => b.type === 'text' && b.text.trim())
-                ? 'true'
-                : undefined
-            }
-          >
-            <AssistantMessage
-              message={m}
-              streaming={!!streamingId && m.id === streamingId}
-              animate={seg.animate}
-              toolResults={toolResults}
-              cwd={cwd}
-              readOnly={readOnly}
-              turnUser={turnUserByAssistant.get(m.id)}
-              checkpointId={
-                turnUserByAssistant.get(m.id)
-                  ? checkpoints?.get(turnUserByAssistant.get(m.id)!.id)
-                  : undefined
-              }
-            />
-            {forkLinks(m.id)}
-            {hookLine(m.id)}
-          </div>
+            message={m}
+            streaming={!!streamingId && m.id === streamingId}
+            animate={seg.animate}
+            toolResults={toolResults}
+            cwd={cwd}
+            readOnly={readOnly}
+            turnUser={turnUser}
+            checkpointId={turnUser ? checkpoints?.get(turnUser.id) : undefined}
+            fork={forkLinks(m.id)}
+            hook={hookLine(m.id)}
+          />
         )
       })}
       {!messagesProp && orphanHooks.length > 0 && <HookNoticeLine notices={orphanHooks} />}

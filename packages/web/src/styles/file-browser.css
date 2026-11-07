@@ -1,0 +1,5 @@
+/* 大目录：屏幕外的文件行跳过排版/绘制，5000 个文件的目录也能快速展开。 */
+.file-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 24px;
+}

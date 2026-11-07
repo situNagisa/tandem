@@ -97,6 +97,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
   const [selected, setSelected] = useState<string | null>(null)
   const [diff, setDiff] = useState<string | null>(null)
   const [diffNote, setDiffNote] = useState<DiffEmptyReason | undefined>()
+  const [diffTruncated, setDiffTruncated] = useState(false)
   const [diffLoading, setDiffLoading] = useState(false)
   const [diffError, setDiffError] = useState<string | undefined>()
   const [comments, setComments] = useState<LineComment[]>([])
@@ -112,7 +113,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
   const [splitRatio, setSplitRatio] = useState<number>(() => loadSplitRatio())
   const [dragSplit, setDragSplit] = useState<number | null>(null)
   const commentSeq = useRef(1)
-  const diffCache = useRef(new Map<string, { diff: string; emptyReason?: DiffEmptyReason }>())
+  const diffCache = useRef(new Map<string, { diff: string; emptyReason?: DiffEmptyReason; truncated?: boolean }>())
   const splitBodyRef = useRef<HTMLDivElement>(null)
   const commitRef = useRef<HTMLTextAreaElement>(null)
 
@@ -150,6 +151,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
     if (cached !== undefined) {
       setDiff(cached.diff)
       setDiffNote(cached.emptyReason)
+      setDiffTruncated(!!cached.truncated)
       setDiffError(undefined)
       return
     }
@@ -160,9 +162,14 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
       .changesDiff(host, sessionId, selected)
       .then((result) => {
         if (cancelled) return
-        diffCache.current.set(selected, { diff: result.diff, emptyReason: result.emptyReason })
+        diffCache.current.set(selected, {
+          diff: result.diff,
+          emptyReason: result.emptyReason,
+          truncated: result.truncated,
+        })
         setDiff(result.diff)
         setDiffNote(result.emptyReason)
+        setDiffTruncated(!!result.truncated)
       })
       .catch((err) => {
         if (cancelled) return
@@ -530,6 +537,12 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 {diffError}
               </p>
             ) : diff !== null ? (
+              <>
+                {diffTruncated && (
+                  <p className="mb-2 rounded-lg border border-border bg-[var(--t-bg-hover)] px-3 py-2 text-[12px] leading-5 text-muted">
+                    diff 过大，已截断为前 1MB / 2 万行；完整内容可在终端用 git diff 查看。
+                  </p>
+                )}
               <DiffView
                 unified={diff}
                 fileName={selected ?? undefined}
@@ -542,6 +555,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 }
                 onDeleteComment={(id) => setComments((prev) => prev.filter((c) => c.id !== id))}
               />
+              </>
             ) : null}
           </div>
         </div>

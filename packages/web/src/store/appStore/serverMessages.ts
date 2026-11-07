@@ -35,9 +35,34 @@ export function createServerMessageHandler(
     applySnapshot,
   } = core
 
-  return function handleServerMessage(hostId: string, msg: ServerMsg): void {
+  // 流式增量按 ~30ms 合并：既保持视觉连续，又避免每个 SSE chunk 都触发整页渲染。
+  const deltaQueue: Array<{ hostId: string; msg: ServerMsg }> = []
+  let deltaTimer: ReturnType<typeof setTimeout> | undefined
+  let applyingDeltas = false
+  const flushDeltas = (): void => {
+    if (deltaTimer !== undefined) {
+      clearTimeout(deltaTimer)
+      deltaTimer = undefined
+    }
+    if (deltaQueue.length === 0) return
+    const batch = deltaQueue.splice(0)
+    applyingDeltas = true
+    try {
+      for (const item of batch) handleServerMessage(item.hostId, item.msg)
+    } finally {
+      applyingDeltas = false
+    }
+  }
+
+  const handleServerMessage = function handleServerMessage(hostId: string, msg: ServerMsg): void {
     const rt = get().runtimes[hostId]
     if (!rt) return
+    if (msg.type === 'block_delta' && !applyingDeltas) {
+      deltaQueue.push({ hostId, msg })
+      if (deltaTimer === undefined) deltaTimer = setTimeout(flushDeltas, 30)
+      return
+    }
+    if (msg.type !== 'block_delta' && !applyingDeltas) flushDeltas()
     switch (msg.type) {
       case 'hello': {
         patchRuntime(hostId, {
@@ -331,21 +356,21 @@ export function createServerMessageHandler(
                 },
               }
             }
-            const messages = sub.messages.map((m) => {
-              if (m.id !== msg.messageId) return m
-              const content = m.content.slice()
-              while (content.length < msg.index) content.push({ type: 'text', text: '' })
-              if (delta.kind === 'block_start') content[msg.index] = delta.block
-              else {
-                const block = content[msg.index]
-                if (block && (block.type === 'text' || block.type === 'thinking')) {
-                  content[msg.index] = { ...block, text: block.text + delta.text }
-                } else {
-                  content[msg.index] = { type: 'text', text: delta.text }
-                }
+            const at = sub.messages.findIndex((m) => m.id === msg.messageId)
+            if (at < 0) return sub
+            const content = sub.messages[at]!.content.slice()
+            while (content.length < msg.index) content.push({ type: 'text', text: '' })
+            if (delta.kind === 'block_start') content[msg.index] = delta.block
+            else {
+              const block = content[msg.index]
+              if (block && (block.type === 'text' || block.type === 'thinking')) {
+                content[msg.index] = { ...block, text: block.text + delta.text }
+              } else {
+                content[msg.index] = { type: 'text', text: delta.text }
               }
-              return { ...m, content }
-            })
+            }
+            const messages = sub.messages.slice()
+            messages[at] = { ...sub.messages[at]!, content }
             return { ...sub, messages, running: true }
           })
           break
@@ -361,22 +386,22 @@ export function createServerMessageHandler(
               },
             }
           }
-          const messages = active.messages.map((m) => {
-            if (m.id !== msg.messageId) return m
-            const content = m.content.slice()
-            while (content.length < msg.index) content.push({ type: 'text', text: '' })
-            if (delta.kind === 'block_start') {
-              content[msg.index] = delta.block
+          const at = active.messages.findIndex((m) => m.id === msg.messageId)
+          if (at < 0) return active
+          const content = active.messages[at]!.content.slice()
+          while (content.length < msg.index) content.push({ type: 'text', text: '' })
+          if (delta.kind === 'block_start') {
+            content[msg.index] = delta.block
+          } else {
+            const block = content[msg.index]
+            if (block && (block.type === 'text' || block.type === 'thinking')) {
+              content[msg.index] = { ...block, text: block.text + delta.text }
             } else {
-              const block = content[msg.index]
-              if (block && (block.type === 'text' || block.type === 'thinking')) {
-                content[msg.index] = { ...block, text: block.text + delta.text }
-              } else {
-                content[msg.index] = { type: 'text', text: delta.text }
-              }
+              content[msg.index] = { type: 'text', text: delta.text }
             }
-            return { ...m, content }
-          })
+          }
+          const messages = active.messages.slice()
+          messages[at] = { ...active.messages[at]!, content }
           return { ...active, messages, running: true }
         })
         break
@@ -676,4 +701,5 @@ export function createServerMessageHandler(
         break
     }
   }
+  return handleServerMessage
 }

@@ -334,7 +334,7 @@ export const api = {
   changes: (h: HostConfig, id: string) =>
     request<ChangesResult>(h, `/api/sessions/${encodeURIComponent(id)}/changes`),
   changesDiff: (h: HostConfig, id: string, path: string) =>
-    request<{ path: string; diff: string; emptyReason?: DiffEmptyReason }>(
+    request<{ path: string; diff: string; emptyReason?: DiffEmptyReason; truncated?: boolean }>(
       h,
       `/api/sessions/${encodeURIComponent(id)}/changes/diff${qs({ path })}`,
     ),

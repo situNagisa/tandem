@@ -14,6 +14,7 @@ import type { HostConfig } from '../lib/types'
 import { cn } from '../lib/cn'
 import { normalizeFileRefPath } from '../lib/fileLinks'
 import { Input } from './ui/Controls'
+import '../styles/file-browser.css'
 import { IconButton } from './ui/Button'
 
 /** 文件树里不展示的目录。 */
@@ -158,7 +159,7 @@ function FileRow({
       onClick={() => onPick(normalizeFileRefPath(entry.path))}
       style={{ paddingLeft: 6 + depth * 12 }}
       className={cn(
-        'flex h-6 w-full items-center gap-1 rounded pr-2 text-left transition-colors',
+        'file-row flex h-6 w-full items-center gap-1 rounded pr-2 text-left transition-colors',
         selected
           ? 'bg-[var(--t-bg-active)] text-text'
           : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
@@ -312,7 +313,7 @@ export function FileBrowser({
                 type="button"
                 onClick={() => onPick(normalizeFileRefPath(joinPath(cwd, rel)))}
                 className={cn(
-                  'flex h-6 w-full items-center gap-1 rounded pl-1.5 pr-2 text-left transition-colors',
+                  'file-row flex h-6 w-full items-center gap-1 rounded pl-1.5 pr-2 text-left transition-colors',
                   selectedPath === normalizeFileRefPath(joinPath(cwd, rel))
                     ? 'bg-[var(--t-bg-active)] text-text'
                     : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
