@@ -63,10 +63,26 @@ npm run dist:win -w @tandem/desktop
 Host 数据在 `~/.tandem`（可用 `TANDEM_HOME` 覆盖）：`config.json`（hostId、token）、`profiles.json`（Key，权限 600）、`sessions/`、`checkpoints/`、`mcp.json`、`hooks.json` 等。Claude Code / Codex 的会话只读，不会被修改。
 
 ## 反馈
-在 Web 界面里按 `Ctrl/Cmd + Shift + F`，或打开「设置 → 外观 → 进入反馈模式」。鼠标悬停元素会显示橙色选框，点击即可写反馈（`Alt + 点击`选择父元素）；写完后点顶部浮条的「导出」，会下载 `tandem-feedback-YYYYMMDD-HHmm.json`，把它发给维护者即可。导出前条目保存在本机，刷新不丢；解包查看：
+在 Web 界面里按 `Ctrl/Cmd + Shift + F`，或打开「设置 → 外观 → 进入反馈模式」。浮条上可切换「点选 / 框选」：点选元素（`Alt + 点击`选父元素），或按住拖拽框出任意区域（跨多个元素）。写反馈时可设置优先级 P0/P1/P2、`Ctrl+V` 粘贴或拖入参考图；截图可点开 Canvas 标注（矩形/箭头/画笔/文字/马赛克，橙白红三色，撤销重做）。
+
+每条反馈自动附带：标注后的图与原图、参考图、反馈前 60 秒操作轨迹（点击选择器与文本、功能键/快捷键、路由、WS 断连、toast；不记录输入的文字）、脱敏状态快照（路由、会话摘要、UI 偏好、视口、Host 版本；可勾选附带最近 5 条消息正文，可隐藏本地路径）。支持录屏复现时，浮条「录制」通过 `getDisplayMedia` 本地录制（≤60 秒、≤8MB），作为下一条反馈的附件。
+
+浮条「条目」打开右侧抽屉：缩略图、类型、优先级、文字，可编辑/删除/拖拽排序，点条目会在页面上高亮定位。
+
+导出 `tandem-feedback-YYYYMMDD-HHmm.json` 发给维护者，条目保存在本机，刷新不丢。解包：
 
 ```bash
 node scripts/feedback-unpack.mjs tandem-feedback-20260101-1200.json [outDir]
 ```
 
-会得到每条的 `NN-元素截图.png`、`page-N.png` 以及汇总的 `feedback.md`。
+会得到每条的 `NN-元素截图.png` / `NN-区域截图.png` / `NN-标注截图.png`、`NN-参考-N.png`、`NN-录屏.webm`、`NN-轨迹.md`、`NN-快照.json`、`page-N.png` 以及汇总的 `feedback.md`。
+
+维护者修复后写一份回执草稿（Markdown 或 JSON），生成回执：
+
+```bash
+node scripts/feedback-receipt.mjs tandem-feedback-20260101-1200.json receipt.md outDir
+```
+
+Markdown 草稿按条目写 `## fb-xxx`、`- status: fixed|wontfix|needs-info`、`- note: 说明`、可选 `- after: ./修复后.png`。生成的 `tandem-feedback-receipt-*.json` 发回给用户，在反馈抽屉「导入回执」后即可逐条查看状态与前后对比，并点「开始复验」按顺序跳转页面、高亮元素、标记「通过 / 仍有问题」，最后导出复验结果文件。
+
+所有数据只在本机采集与导出，不上传任何第三方服务。
