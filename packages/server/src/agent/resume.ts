@@ -56,10 +56,17 @@ export async function resumeSession(host: Host, rec: SessionRecord): Promise<voi
   }
   restoreQueue(host, rec);
   delete rec.resumePaused;
+  // 注意：先取最后一条非 notice 消息，再插入恢复 notice（notice 是 assistant，会遮住真实断点）
+  let last: SessionRecord['messages'][number] | undefined;
+  for (let i = rec.messages.length - 1; i >= 0; i--) {
+    const candidate = rec.messages[i]!;
+    if (candidate.notice) continue;
+    last = candidate;
+    break;
+  }
   host.appendNotice(rec, 'Host 重启后已恢复运行');
   host.store.markDirty(rec.id, false);
 
-  const last = rec.messages[rec.messages.length - 1];
   const unfinished = last?.role === 'assistant'
     ? last.content.filter((block): block is Extract<ContentBlock, { type: 'tool_use' }> => block.type === 'tool_use')
     : [];
@@ -114,7 +121,13 @@ export async function replayUnfinishedTools(
   hookEntries: HookEntry[],
   options: ResumeOptions,
 ): Promise<void> {
-  const last = rec.messages[rec.messages.length - 1];
+  let last: SessionRecord['messages'][number] | undefined;
+  for (let i = rec.messages.length - 1; i >= 0; i--) {
+    const candidate = rec.messages[i]!;
+    if (candidate.notice) continue;
+    last = candidate;
+    break;
+  }
   if (!last || last.role !== 'assistant') return;
   const toolUses = last.content.filter(
     (block): block is Extract<ContentBlock, { type: 'tool_use' }> => block.type === 'tool_use',

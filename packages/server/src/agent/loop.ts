@@ -123,12 +123,23 @@ export async function runTurn(
         sessionId: rec.id,
         message: assistant,
       });
+      setAssistantMessage(host, rec, assistant.id);
 
       const system = buildSystemPrompt(rec.cwd, {
         allowTask,
         planMode: rec.permissionMode === 'plan',
         hookContext: promptHookContext,
         skills: host.skills.promptSection(rec.cwd),
+        memory: host.memory.promptSection(rec.cwd),
+        delegationPrompt: host.delegationPrompt(rec),
+        ...(allowTask
+          ? {
+              subagents: host.subagentPresets
+                .list(rec.cwd)
+                .map((preset) => ({ name: preset.name, description: preset.description })),
+            }
+          : {}),
+        ...(rec.systemPromptExtra ? { extraSystemPrompt: rec.systemPromptExtra } : {}),
       });
       const requestMessages = rec.messages.slice(0, -1).filter((m) => !m.notice);
       // 请求前估算各部分占用；拿到真实 usage 后再按比例校准
@@ -594,9 +605,11 @@ async function executeToolUses(
         rec.usage.outputTokens += usage.outputTokens;
         host.store.markDirty(rec.id, false);
       },
-      runSubagent: (input: { description: string; prompt: string; subagentType?: string }) =>
+      runSubagent: (input: { description: string; prompt: string; subagentType?: string; model?: string }) =>
         host.runSubagent(rec, input, signal),
       getSkill: (name: string) => host.skills.resolve(name, rec.cwd),
+      home: host.home,
+      memory: host.memory,
     };
     const def = host.toolDefinition(tool.name, rec.cwd);
     const res =
