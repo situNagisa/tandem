@@ -28,6 +28,7 @@ import type {
   Session,
   SessionStatus,
   SessionSummary,
+  VoiceSettings,
   SkillInfo,
   SlashCommand,
   Todo,
@@ -110,6 +111,19 @@ import {
 import { errorMessage, truncateEnd } from './util/text.js';
 import { detectSessionEnv } from './util/git.js';
 import { expandHome, isSubPath, resolvePath } from './util/path.js';
+
+/** 只保留已知字段，路径原样（客户端填写的是 Host 本机路径）。 */
+function sanitizeVoiceSettings(input: VoiceSettings): VoiceSettings {
+  const engine =
+    input.engine === 'whisper-cpp' || input.engine === 'faster-whisper' ? input.engine : 'auto';
+  const text = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+  return {
+    engine,
+    binaryPath: text(input.binaryPath, 4096),
+    modelPath: text(input.modelPath, 4096),
+    language: text(input.language, 16) || 'zh',
+  };
+}
 
 const PERMISSION_MODES = new Set<PermissionMode>([
   'default',
@@ -242,6 +256,7 @@ export class Host {
         this.config.defaultDelegation === 'none'
           ? this.config.defaultDelegation
           : 'less',
+      ...(this.config.voice ? { voice: this.config.voice } : {}),
     };
   }
 
@@ -257,9 +272,13 @@ export class Host {
     ) {
       this.config.defaultDelegation = input.defaultDelegation;
     }
+    if (input.voice !== undefined) {
+      this.config.voice = sanitizeVoiceSettings(input.voice);
+    }
     saveHostSettings(this.home, {
       resumeOnRestart: this.settings().resumeOnRestart,
       ...(this.config.defaultDelegation ? { defaultDelegation: this.config.defaultDelegation } : {}),
+      ...(this.config.voice ? { voice: this.config.voice } : {}),
     });
     return this.settings();
   }

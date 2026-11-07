@@ -278,15 +278,63 @@ export interface HostInfo {
   homeDir: string;
 }
 
+/** 语音输入（Host 本机 Whisper）配置。只保存路径，不保存任何音频/文本。 */
+export interface VoiceSettings {
+  /** auto：按可执行文件名判断；也可强制 whisper-cpp / faster-whisper。 */
+  engine?: 'auto' | 'whisper-cpp' | 'faster-whisper';
+  /** whisper.cpp 的 whisper-cli/main；faster-whisper 模式填 python 解释器。留空自动探测 PATH。 */
+  binaryPath?: string;
+  /** whisper.cpp 的 ggml-*.bin 模型文件；faster-whisper 模式填模型名（如 small）或本地目录。 */
+  modelPath?: string;
+  /** 识别语言，默认 zh。 */
+  language?: string;
+}
+
 /** Host 行为设置（~/.tandem/config.json，跨端共享）。 */
 export interface HostSettings {
   /** Host 重启后对未完成会话的处理：自动继续 / 恢复为暂停等我确认。 */
   resumeOnRestart: 'auto' | 'pause';
   /** 新会话默认委派策略。 */
   defaultDelegation?: DelegationStrategy;
+  /** 本机语音转写配置；未配置时客户端隐藏 Host 转写方式。 */
+  voice?: VoiceSettings;
 }
 // GET  /api/settings -> HostSettings
 // PUT  /api/settings HostSettings -> HostSettings
+
+/** GET /api/stt/capabilities：本机 Whisper 探测结果，用于设置页展示与客户端降级。 */
+export interface SttCapabilities {
+  configured: boolean;
+  available: boolean;
+  engine: 'whisper-cpp' | 'faster-whisper' | null;
+  binaryPath?: string;
+  modelPath?: string;
+  language: string;
+  /** 自动探测到的其他候选（只用于提示）。 */
+  detected: Array<{ engine: 'whisper-cpp' | 'faster-whisper'; binaryPath: string; note?: string }>;
+  /** 不可用原因（缺模型/二进制不存在等）。 */
+  error?: string;
+}
+/** POST /api/stt { audioBase64, mimeType?, language? } -> SttResult */
+export interface SttInput {
+  audioBase64: string;
+  mimeType?: string;
+  language?: string;
+}
+export interface SttResult {
+  ok: true;
+  text: string;
+  engine: 'whisper-cpp' | 'faster-whisper';
+  elapsedMs: number;
+}
+/** POST /api/stt/test -> SttTestResult（跑一段 1 秒静音，验证可执行文件与模型可用） */
+export interface SttTestResult {
+  ok: boolean;
+  text?: string;
+  engine?: 'whisper-cpp' | 'faster-whisper';
+  elapsedMs: number;
+  error?: string;
+}
 // POST /api/sessions/:id/resume -> SessionSummary  恢复被暂停的重启会话
 
 export interface FsEntry { name: string; path: string; isDir: boolean }

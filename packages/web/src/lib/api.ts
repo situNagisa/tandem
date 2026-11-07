@@ -42,6 +42,10 @@ import type {
   BudgetRule,
   BudgetStatus,
   RewindInput,
+  SttCapabilities,
+  SttInput,
+  SttResult,
+  SttTestResult,
   Schedule,
   ScheduleInput,
   Session,
@@ -164,6 +168,11 @@ export const api = {
   settings: (h: HostConfig) => request<HostSettings>(h, '/api/settings'),
   updateSettings: (h: HostConfig, input: HostSettings) =>
     request<HostSettings>(h, '/api/settings', { method: 'PUT', body: JSON.stringify(input) }),
+
+  sttCapabilities: (h: HostConfig) => request<SttCapabilities>(h, '/api/stt/capabilities'),
+  testStt: (h: HostConfig) => request<SttTestResult>(h, '/api/stt/test', { method: 'POST' }),
+  transcribe: (h: HostConfig, input: SttInput) =>
+    request<SttResult>(h, '/api/stt', { method: 'POST', body: JSON.stringify(input) }),
 
   profiles: (h: HostConfig) => request<Profile[]>(h, '/api/profiles'),
   createProfile: (h: HostConfig, input: ProfileInput) =>

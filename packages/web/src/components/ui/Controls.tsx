@@ -6,6 +6,7 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
 } from 'react'
 import { cn } from '../../lib/cn'
 import type { ControlSize } from './Button'
@@ -29,6 +30,28 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   ref,
 ) {
   return <input ref={ref} className={cn(FIELD_BASE, FIELD_SIZE[size], className)} {...rest} />
+})
+
+export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  size?: ControlSize
+}
+
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
+  { size = 'md', className, ...rest },
+  ref,
+) {
+  return (
+    <textarea
+      ref={ref}
+      className={cn(
+        FIELD_BASE,
+        'min-h-[64px] resize-y py-1.5 leading-5',
+        size === 'sm' ? 'rounded-md px-2 text-[12.5px]' : 'rounded-lg px-2.5 text-[13px]',
+        className,
+      )}
+      {...rest}
+    />
+  )
 })
 
 export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> {

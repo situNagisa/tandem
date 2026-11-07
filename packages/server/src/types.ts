@@ -79,6 +79,8 @@ export interface HostConfig {
   resumeOnRestart?: 'auto' | 'pause';
   /** 新会话默认委派策略（缺省 less）。 */
   defaultDelegation?: import('@tandem/protocol').DelegationStrategy;
+  /** 本机语音转写（Whisper）配置。 */
+  voice?: import('@tandem/protocol').VoiceSettings;
   relay?: RelayConfig;
 }
 

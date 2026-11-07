@@ -1,4 +1,4 @@
-import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, Monitor, Palette, Plug, RefreshCw, ScrollText, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Wallet, Webhook } from 'lucide-react'
+import { BarChart3, Bell, BookOpen, Bot, Brain, CalendarClock, Mic, Monitor, Palette, Plug, RefreshCw, ScrollText, Server, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Wallet, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
@@ -21,9 +21,11 @@ import { SchedulesSection } from './SchedulesSection'
 import { BudgetsSection } from './BudgetsSection'
 import { NotificationsSection } from './NotificationsSection'
 import { GeneralSettings } from './GeneralSettings'
+import { VoiceSection } from './VoiceSection'
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'general', label: '通用', icon: SlidersHorizontal },
+  { id: 'voice', label: '语音', icon: Mic },
   { id: 'profiles', label: '账号与模型', icon: Sparkles },
   { id: 'hosts', label: 'Host 管理', icon: Server },
   { id: 'permissions', label: '权限', icon: ShieldCheck },
@@ -36,7 +38,7 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'schedules', label: '定时任务', icon: CalendarClock },
   { id: 'budgets', label: '预算', icon: Wallet },
   { id: 'usage', label: '用量', icon: BarChart3 },
-  { id: 'notifications' as SettingsTab, label: '通知', icon: Bell },
+  { id: 'notifications', label: '通知', icon: Bell },
   { id: 'shares', label: '分享', icon: Share2 },
   { id: 'sync', label: '同步与备份', icon: RefreshCw },
   { id: 'appearance', label: '外观', icon: Palette },
@@ -92,6 +94,7 @@ export function SettingsDialog() {
         >
           <div className="mx-auto w-full max-w-[1100px]">
             {tab === 'general' && <GeneralSettings />}
+            {tab === 'voice' && <VoiceSection />}
             {tab === 'profiles' && <ProfilesSection />}
             {tab === 'hosts' && <HostsSection />}
             {tab === 'permissions' && <PermissionsSection />}

@@ -173,3 +173,13 @@
 - [x] 纯搬移拆分：MessageList 1073→333（chat/UserMessage、AssistantMessage、MessageNotes）；ProfilesSection 1782→991（settings/profiles/*）；Composer 1603→1021（components/composer/* + lib/modelName）；RightPanel 1172→881（right-panel/*）
 - 未拆：`host.ts`、`server.ts`（工作期间持续有他人未提交改动）；`useAppStore.ts` 待协调 slice 拆分，避免与并发状态改动冲突
 - 验证：`node scripts/check.mjs` 全量通过（build 8.4s、ui-audit、70 条单测、smoke 23.5s）；每次拆分单独提交，提交信息 `refactor: 拆分 X（纯搬移）`
+
+## 迭代 21（2026-11-07）语音输入（本机 Whisper / 设备识别）
+- [x] 协议：`VoiceSettings`（engine/binaryPath/modelPath/language）、`HostSettings.voice`、`SttCapabilities/SttInput/SttResult/SttTestResult`
+- [x] Host：新文件 `server/src/stt.ts`，GET `/api/stt/capabilities`、POST `/api/stt`、POST `/api/stt/test`；自动探测 PATH 上的 whisper-cli/whisper-cpp/faster-whisper，不下载模型；whisper.cpp 用 `-otxt`，faster-whisper 用 python 模块；临时目录 `tandem-stt-*` 在 finally 立即删除；非 16k WAV 有 ffmpeg 才兜底转码
+- [x] Web：`VoiceButton` 按住说话/点击持续录音、波形+计时、Esc 取消、转写中加载、结果插入 Composer 光标处不自动发送、Ctrl+Shift+Space 按住；`Composer` 底栏最小接入
+- [x] 设备识别：安卓 `@capacitor-community/speech-recognition`（系统语音服务，提示离线语音包）；浏览器 Web Speech 默认禁用，设置中显式勾选才启用
+- [x] 设置新增「语音」页：识别方式偏好、Host Whisper 路径/语言/保存/测试、自动探测填入、whisper.cpp/faster-whisper 准备说明、数据流向与隐私说明
+- [x] 审批卡新增「拒绝并说明」：文字/语音填写原因，`decidePermission(deny, reason)` 作为工具结果返回 agent
+- 验证：TANDEM_HOME=/tmp/tandem-voice:8202 + 假 whisper 脚本；Playwright 假麦克风按住录制→上传→转写→插入、点击持续录音、Ctrl+Shift+Space、Esc 取消、设置页测试通过；审批卡语音填原因并拒绝，mock provider 收到原因文本；截图 /tmp/voice-shots/；`npm run apk -w @tandem/mobile` 成功
+- 备注：语音识别全部走用户自己的 Host 或设备系统能力，不接云端；Tandem 不自动下载模型

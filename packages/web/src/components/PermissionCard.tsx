@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Bot, Loader2, Plus, ShieldAlert } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Bot, Loader2, MessageSquare, Plus, ShieldAlert, X } from 'lucide-react'
 import type { PermissionDecision, PermissionRequest, PermissionRule } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -9,7 +9,8 @@ import { CodeBlock } from './CodeBlock'
 import { DiffView } from './DiffView'
 import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
-import { Input, SegmentedControl, Select } from './ui/Controls'
+import { Input, SegmentedControl, Select, Textarea } from './ui/Controls'
+import { VoiceButton } from './voice/VoiceButton'
 
 const FILE_TOOLS = new Set(['Read', 'Write', 'Edit', 'Glob', 'Grep'])
 const TOOL_OPTIONS = ['Bash', 'Write', 'Edit', 'Read', 'Glob', 'Grep', 'WebFetch', '*']
@@ -172,6 +173,9 @@ export function PermissionCard({
   const sourceDepth = request.depth ?? subagentSummary?.depth ?? 1
   const cwd = useAppStore((s) => s.active?.summary?.cwd ?? '')
   const [ruleDraft, setRuleDraft] = useState<PermissionRule | null>(null)
+  const [denyOpen, setDenyOpen] = useState(false)
+  const [denyReason, setDenyReason] = useState('')
+  const denyRef = useRef<HTMLTextAreaElement>(null)
   const input = useMemo(() => asRecord(request.input), [request.input])
   const toolName = request.toolName
   const command = str(input.command)
@@ -181,6 +185,28 @@ export function PermissionCard({
   const content = str(input.content)
 
   const handle = (decision: PermissionDecision) => decide(request.id, decision)
+
+  const insertDenyText = (spoken: string) => {
+    const node = denyRef.current
+    const start = node?.selectionStart ?? denyReason.length
+    const end = node?.selectionEnd ?? denyReason.length
+    const before = denyReason.slice(0, start)
+    const after = denyReason.slice(end)
+    const prefix = before && !/\s$/.test(before) ? ' ' : ''
+    const suffix = after && !/^\s/.test(after) ? ' ' : ''
+    const insert = `${prefix}${spoken}${suffix}`
+    const next = before + insert + after
+    setDenyReason(next)
+    window.requestAnimationFrame(() => {
+      denyRef.current?.focus()
+      denyRef.current?.setSelectionRange(start + insert.length, start + insert.length)
+    })
+  }
+
+  const openDeny = () => {
+    setDenyOpen(true)
+    window.requestAnimationFrame(() => denyRef.current?.focus())
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -300,6 +326,14 @@ export function PermissionCard({
         <div className="permission-actions flex flex-wrap items-center gap-1.5">
           <Button
             variant="ghost"
+            onClick={() => (denyOpen ? setDenyOpen(false) : openDeny())}
+            aria-expanded={denyOpen}
+            className="max-sm:min-h-11"
+          >
+            <MessageSquare size={13} /> 拒绝并说明
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => handle('deny')}
             className="max-sm:min-h-11"
           >
@@ -324,6 +358,48 @@ export function PermissionCard({
           </Button>
         </div>
       </div>
+      {denyOpen && (
+        <div className="border-t border-border/70 px-3 py-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor={`deny-reason-${request.id}`} className="text-[12px] text-muted">
+              说明拒绝原因（可选，会作为工具结果返回给 agent）
+            </label>
+            <button
+              type="button"
+              onClick={() => setDenyOpen(false)}
+              className="rounded p-0.5 text-muted hover:text-text"
+              aria-label="收起拒绝说明"
+            >
+              <X size={13} />
+            </button>
+          </div>
+          <div className="mt-1.5 flex items-end gap-1.5">
+            <Textarea
+              id={`deny-reason-${request.id}`}
+              ref={denyRef}
+              value={denyReason}
+              onChange={(e) => setDenyReason(e.target.value)}
+              rows={2}
+              placeholder="例如：先不要删这个文件，改成增量修改；或说出你的顾虑…"
+              size="sm"
+              className="min-h-[52px] flex-1"
+            />
+            <VoiceButton onText={insertDenyText} size="md" tooltipSide="top" />
+          </div>
+          <div className="mt-2 flex items-center justify-end gap-1.5">
+            <Button size="sm" variant="ghost" onClick={() => setDenyOpen(false)}>
+              取消
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => decide(request.id, 'deny', denyReason.trim() || undefined)}
+            >
+              拒绝并提交
+            </Button>
+          </div>
+        </div>
+      )}
       {ruleDraft && (
         <AddRuleDialog draft={ruleDraft} hostId={hostId} onClose={() => setRuleDraft(null)} />
       )}

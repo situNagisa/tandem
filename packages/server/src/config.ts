@@ -86,6 +86,7 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
       existing?.defaultDelegation === 'none'
         ? existing.defaultDelegation
         : 'less',
+    ...(existing?.voice && typeof existing.voice === 'object' ? { voice: existing.voice } : {}),
     ...(isRelayConfig(existing?.relay) ? { relay: existing.relay } : {}),
   };
   if (
@@ -103,7 +104,11 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
 /** 只更新 Host 行为设置，保留 token/relay 等其余字段。 */
 export function saveHostSettings(
   home: string,
-  settings: { resumeOnRestart: 'auto' | 'pause'; defaultDelegation?: import('@tandem/protocol').DelegationStrategy },
+  settings: {
+    resumeOnRestart: 'auto' | 'pause';
+    defaultDelegation?: import('@tandem/protocol').DelegationStrategy;
+    voice?: import('@tandem/protocol').VoiceSettings;
+  },
 ): void {
   const file = path.join(home, 'config.json');
   const existing = readJson<Record<string, unknown>>(file) ?? {};

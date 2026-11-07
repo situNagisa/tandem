@@ -60,6 +60,7 @@ import {
 } from '../lib/storage'
 import { ContextMeter } from './chat/ContextMeter'
 import { Button, IconButton } from './ui/Button'
+import { VoiceButton, type VoiceButtonHandle } from './voice/VoiceButton'
 import { Menu, MenuItem, MenuList } from './ui/Menu'
 import { popoverSurfaceClass } from './ui/Popover'
 import {
@@ -247,6 +248,7 @@ export function Composer({
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const voiceRef = useRef<VoiceButtonHandle>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const composingRef = useRef(false)
@@ -767,6 +769,56 @@ export function Composer({
     setCompletion(detectCompletion(value, caret))
   }
 
+  // 语音转写结果插入光标处，不自动发送。
+  const insertVoiceText = (spoken: string) => {
+    const node = textareaRef.current
+    const value = textRef.current
+    const start = node?.selectionStart ?? value.length
+    const end = node?.selectionEnd ?? value.length
+    const before = value.slice(0, start)
+    const after = value.slice(end)
+    const prefix = before && !/\s$/.test(before) ? ' ' : ''
+    const suffix = after && !/^\s/.test(after) ? ' ' : ''
+    const insert = `${prefix}${spoken}${suffix}`
+    const caret = start + insert.length
+    onChange(before + insert + after, caret)
+    window.requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(caret, caret)
+    })
+  }
+
+  // 桌面快捷键：按住 Ctrl+Shift+Space 说话，松开转写。
+  useEffect(() => {
+    const onVoiceKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || !e.shiftKey || e.code !== 'Space' || e.repeat) return
+      const target = e.target as HTMLElement | null
+      const editable =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      if (editable && target !== textareaRef.current) return
+      const ui = useUiStore.getState()
+      if (ui.settingsOpen || ui.newSessionOpen || ui.searchOpen) return
+      if (disabled) return
+      e.preventDefault()
+      voiceRef.current?.startHold()
+    }
+    const onVoiceKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') voiceRef.current?.stopHold()
+    }
+    window.addEventListener('keydown', onVoiceKeyDown)
+    window.addEventListener('keyup', onVoiceKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onVoiceKeyDown)
+      window.removeEventListener('keyup', onVoiceKeyUp)
+    }
+  }, [disabled])
+
   const sendState = running ? 'running' : canSend ? 'ready' : 'idle'
 
   return (
@@ -891,6 +943,12 @@ export function Composer({
           >
             <Paperclip size={16} />
           </IconButton>
+          <VoiceButton
+            ref={voiceRef}
+            onText={insertVoiceText}
+            disabled={disabled}
+            tooltipSide="top"
+          />
           {isMobile ? (
             <MobileMoreMenu mode={mode} disabled={disabled} onChange={changeMode} />
           ) : (

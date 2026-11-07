@@ -25,6 +25,7 @@ import type {
   RewindInput,
   ScheduleInput,
   UpdateSessionInput,
+  VoiceSettings,
 } from '@tandem/protocol';
 import type { Host } from './host.js';
 import { commitChanges, getChanges, getFileDiff, revertChanges } from './changes.js';
@@ -38,6 +39,7 @@ import {
 import type { WsClient } from './events.js';
 import { testProfile } from './providers/index.js';
 import { exportBundle, importBundle, type MemoryBundleEntry } from './migrate.js';
+import { registerSttRoutes } from './stt.js';
 import { bodyOfMemory } from './memory.js';
 import { walkFiles } from './util/fs-walk.js';
 import { readForPreview, readImage, revealFile } from './util/file-preview.js';
@@ -211,13 +213,17 @@ export async function createApp(
   app.get('/api/host', async () => host.info());
   app.get('/api/settings', async () => host.settings());
   app.put('/api/settings', async (req) => {
-    const body = (req.body ?? {}) as { resumeOnRestart?: unknown };
+    const body = (req.body ?? {}) as { resumeOnRestart?: unknown; voice?: unknown };
     return host.updateSettings({
       ...(body.resumeOnRestart === 'auto' || body.resumeOnRestart === 'pause'
         ? { resumeOnRestart: body.resumeOnRestart }
         : {}),
+      ...(body.voice && typeof body.voice === 'object' ? { voice: body.voice as VoiceSettings } : {}),
     });
   });
+
+  // 本机语音转写（用户自己的 Whisper；不联网）
+  registerSttRoutes(app, host);
 
   // ---------- 账号 ----------
   app.get('/api/profiles', async () => host.profiles.list().map((p) => host.profiles.toPublic(p)));
