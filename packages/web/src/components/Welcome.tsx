@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUpRight, FileText, GitBranch, Inbox, Search, Sparkles, Wrench } from 'lucide-react'
+import { ArrowUpRight, FileText, GitBranch, Inbox, Search, Send, Sparkles, Wrench } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { basename } from '../lib/format'
@@ -97,6 +97,7 @@ export function HomeView() {
   const isMobile = useIsMobile()
   const pendingCount = useInboxPendingCount()
   const unreadCount = useInboxCount()
+  const setDispatchOpen = useUiStore((s) => s.setDispatchOpen)
   // 手机打开 App 时若有待审批，直接落在收件箱；用户手动切换后不再自动跳。
   const [tab, setTab] = useState<'new' | 'inbox'>(() =>
     pendingCount > 0 ? 'inbox' : 'new',
@@ -150,6 +151,15 @@ export function HomeView() {
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
+        </button>
+        <span className="flex-1" />
+        <button
+          type="button"
+          onClick={() => setDispatchOpen(true)}
+          className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+        >
+          <Send size={14} />
+          派单
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">

@@ -76,6 +76,16 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   else delete rec.env;
   if (typeof raw.groupId === 'string' && raw.groupId) rec.groupId = raw.groupId;
   else delete rec.groupId;
+  if (
+    raw.delegation === 'orchestrate' ||
+    raw.delegation === 'more' ||
+    raw.delegation === 'less' ||
+    raw.delegation === 'none'
+  ) {
+    rec.delegation = raw.delegation;
+  } else {
+    delete rec.delegation;
+  }
   if (typeof raw.parentId === 'string' && raw.parentId) rec.parentId = raw.parentId;
   else delete rec.parentId;
   if (typeof raw.depth === 'number' && Number.isInteger(raw.depth) && raw.depth >= 0) {

@@ -145,3 +145,11 @@
 - [x] Web：顶栏 retrying 胶囊（网络中断，X 秒后重试 · 立即重试 · 停止）、重启暂停「继续运行」；设置新增「通用」页
 - [x] 后台任务 lost 提示：重启后在该会话插入 notice，模型可决定是否重跑
 - 验证：本地 mock OpenAI SSE（第 N 次请求断流）+ TANDEM_HOME=/tmp/tandem-resume:8161；A 工具执行中 kill -9 → 补 isError 并继续完成；B 流式中断 3 次 → retrying → 最终完整回复无重复；C 等待审批时重启 → 快照/收件箱恢复审批，允许后完成；`npm run build -w @tandem/server`、`web`、`ui-audit` 通过
+
+## 迭代 18（2026-11-07）跨模型子代理 + 手机派单 + 委派策略
+- [x] 子代理预设：`~/.tandem/subagent-presets.json`；Task 的 `subagent_type` 可用预设名，支持账号/分组/模型/effort/权限/工具白名单/附加提示/自身委派策略；只读兼容 `~/.claude/agents/*.md` 与项目 `.claude/agents/*.md`（name/description/tools/model，sonnet/opus/haiku 映射到用户模型）；Task 增加可选 `model`；工具说明与系统提示列出预设
+- [x] 子代理模型可见：Task 卡片（折叠/展开）、右侧代理树显示实际模型；用量按子代理模型单价计费，右侧用量卡单列「子代理（n）」小计与按模型拆分，并给合计
+- [x] 委派策略（会话级）：`orchestrate|more|less|none`，新会话默认在设置-子代理；环境条可切换；服务端决定 Task 是否提供、编排模式主会话工具收窄、注入对应策略提示词；子代理预设可覆盖（如探索强制不派孙代理）
+- [x] 提示词模板：`~/.tandem/prompts.json`（{values:{taskDescription,delegationOrchestrate,delegationMore,delegationLess,delegationNone,subagentDefault}}），空值跟随内置默认，支持 {{presets}}/{{cwd}}/{{delegation}}；后续并入全局提示词注册表
+- [x] 手机派单：新会话页/顶栏/侧栏/手机首页「收件箱」旁「派单」入口；选 Host（在线/离线）、项目（最近+浏览）、账号/模型（该 Host 上次使用）、权限、任务 → 目标 Host 建会话并运行，停留在原页 Toast「已派单到 <Host> · 查看」；收件箱照常收到审批/完成事件
+- 验证：两个 Host（/tmp/tandem-xa:8171、/tmp/tandem-xb:8172）+ 本地 mock OpenAI SSE；主模型 strong-model → Task 探索预设 → 子代理请求 model=cheap-model 且工具白名单 Read/Glob/Grep；Claude agent 文件 sonnet → claude-sonnet-4-5；四档 tools 与系统提示（mock 日志 strategy/定制标记）不同；Playwright 390×844 向 B 派单成功、停留首页、Toast 查看跳转、收件箱出现回合完成；截图 /tmp/xagent-shots/

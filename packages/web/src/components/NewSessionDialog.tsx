@@ -16,11 +16,12 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Send,
   Server,
   TriangleAlert,
   Wrench,
 } from 'lucide-react'
-import type { ContentBlock, FsEntry, PermissionMode, ReasoningEffort } from '@tandem/protocol'
+import type { ContentBlock, DelegationStrategy, FsEntry, PermissionMode, ReasoningEffort } from '@tandem/protocol'
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -83,10 +84,12 @@ export function NewSessionView() {
   const [model, setModel] = useState('')
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
   const [effort, setEffort] = useState<ReasoningEffort>(loadLastEffort)
+  const [delegation, setDelegation] = useState<DelegationStrategy>('less')
   const [worktree, setWorktree] = useState(false)
   const [worktreeBranch, setWorktreeBranch] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const setDispatchOpen = useUiStore((s) => s.setDispatchOpen)
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? '早上好' : hour < 18 ? '下午好' : '晚上好'
@@ -106,6 +109,23 @@ export function NewSessionView() {
   // 因此把 homeDir 也列入依赖，等它到达后再补上默认工作目录。
   const cwdHostRef = useRef('')
   const homeDir = runtime?.info?.homeDir
+  useEffect(() => {
+    if (!hostId) return
+    let cancelled = false
+    const target = hosts.find((item) => item.id === hostId)
+    if (target) {
+      api
+        .settings(target)
+        .then((settings) => {
+          if (!cancelled && settings.defaultDelegation) setDelegation(settings.defaultDelegation)
+        })
+        .catch(() => {})
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [hostId, hosts])
+
   useEffect(() => {
     if (!hostId) return
     const rt = useAppStore.getState().runtimes[hostId]
@@ -192,6 +212,7 @@ export function NewSessionView() {
           model,
           permissionMode,
           effort,
+          delegation,
           ...(worktree && gitRepo === 'yes'
             ? { worktree: { ...(worktreeBranch.trim() ? { branch: worktreeBranch.trim() } : {}) } }
             : {}),
@@ -230,6 +251,15 @@ export function NewSessionView() {
           <p className="mt-2.5 text-[13px] text-muted">
             {host ? `在 ${host.name} 上开始一次新的协作` : '连接一台 Host 后即可开始'}
           </p>
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<Send size={13} />}
+            onClick={() => setDispatchOpen(true, hostId)}
+            className="mt-3 max-sm:h-10"
+          >
+            派单到其他 Host
+          </Button>
         </div>
 
         <div className="mb-1">
@@ -239,6 +269,8 @@ export function NewSessionView() {
             cwd={cwd}
             env={gitRepo === 'yes' ? { repoRoot: cwd } : undefined}
             worktreeOn={worktree}
+            delegation={delegation}
+            onDelegationChange={setDelegation}
             onHostChange={chooseHost}
             onCwdChange={setCwd}
             onWorktreeChange={(on) => {

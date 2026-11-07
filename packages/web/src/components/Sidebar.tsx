@@ -1,4 +1,4 @@
-import { Inbox, PanelLeftClose, Plus, Search, Settings, SlidersHorizontal, X } from 'lucide-react'
+import { Inbox, PanelLeftClose, Plus, Search, Send, Settings, SlidersHorizontal, X } from 'lucide-react'
 import { useUiStore } from '../store/useUiStore'
 import { useAppStore } from '../store/useAppStore'
 import { modLabel } from '../lib/format'
@@ -35,6 +35,8 @@ export function Sidebar({
   const setExternalSourceVisible = useUiStore((s) => s.setExternalSourceVisible)
   const resetComposer = useUiStore((s) => s.resetComposer)
   const setInboxOpen = useUiStore((s) => s.setInboxOpen)
+  const setDispatchOpen = useUiStore((s) => s.setDispatchOpen)
+  const activeHostId = useAppStore((s) => s.activeHostId)
   const inboxCount = useInboxCount()
   const archivedCount = useAppStore((s) =>
     Object.values(s.runtimes).reduce(
@@ -158,6 +160,19 @@ export function Sidebar({
           <kbd className="hidden shrink-0 text-[10px] font-normal text-muted md:inline">
             {modLabel} N
           </kbd>
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setDispatchOpen(true, activeHostId ?? undefined)
+            onNavigate?.()
+          }}
+          className={row}
+          tooltip="向任意在线 Host 派单"
+          tooltipSide="bottom"
+        >
+          <Send size={15} className="shrink-0 opacity-70" />
+          <span className="min-w-0 flex-1 truncate">派单</span>
         </Button>
         <Button
           variant="ghost"

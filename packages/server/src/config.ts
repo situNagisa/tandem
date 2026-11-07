@@ -80,13 +80,20 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
         ? existing.idleTimeoutSec
         : 180,
     resumeOnRestart: existing?.resumeOnRestart === 'pause' ? 'pause' : 'auto',
+    defaultDelegation:
+      existing?.defaultDelegation === 'orchestrate' ||
+      existing?.defaultDelegation === 'more' ||
+      existing?.defaultDelegation === 'none'
+        ? existing.defaultDelegation
+        : 'less',
     ...(isRelayConfig(existing?.relay) ? { relay: existing.relay } : {}),
   };
   if (
     existing?.hostId !== config.hostId ||
     existing?.token !== config.token ||
     existing?.idleTimeoutSec !== config.idleTimeoutSec ||
-    existing?.resumeOnRestart !== config.resumeOnRestart
+    existing?.resumeOnRestart !== config.resumeOnRestart ||
+    existing?.defaultDelegation !== config.defaultDelegation
   ) {
     writePrivateFile(file, JSON.stringify(config, null, 2));
   }
@@ -94,7 +101,10 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
 }
 
 /** 只更新 Host 行为设置，保留 token/relay 等其余字段。 */
-export function saveHostSettings(home: string, settings: { resumeOnRestart: 'auto' | 'pause' }): void {
+export function saveHostSettings(
+  home: string,
+  settings: { resumeOnRestart: 'auto' | 'pause'; defaultDelegation?: import('@tandem/protocol').DelegationStrategy },
+): void {
   const file = path.join(home, 'config.json');
   const existing = readJson<Record<string, unknown>>(file) ?? {};
   writePrivateFile(file, JSON.stringify({ ...existing, ...settings }, null, 2));
