@@ -2577,6 +2577,159 @@ async function main() {
       await page.evaluate(() => localStorage.removeItem('tandem.split.v1'))
     })
 
+    // ------------------------------------------------------------------ 任务看板
+
+    const boardCall = (pathname, init = {}) =>
+      api(base, token, `/api/boards${pathname}`, {
+        ...init,
+        ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+      })
+
+    const waitUntil = async (label, fn, timeout = 40_000) => {
+      const start = Date.now()
+      while (Date.now() - start < timeout) {
+        if (await fn()) return
+        await sleep(200)
+      }
+      throw new Error(`等待超时：${label}`)
+    }
+
+    const openBoardPage = async (page, boardId) => {
+      await page.waitForFunction(
+        () => {
+          try {
+            return JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]').length > 0
+          } catch {
+            return false
+          }
+        },
+        null,
+        { timeout: 20_000 },
+      )
+      const clientHostId = await page.evaluate(
+        () => JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')[0]?.id ?? null,
+      )
+      await page.evaluate((hash) => {
+        window.location.hash = hash
+      }, `#/h/${clientHostId}/b/${boardId}`)
+      await page.getByTestId('board-view').waitFor({ timeout: 15_000 })
+    }
+
+    const boardColumn = (page, status) => page.locator(`[data-column="${status}"]`)
+    const boardCardIn = (page, status, title) =>
+      boardColumn(page, status).locator('[data-card-id]').filter({ hasText: title })
+
+    desktop('任务看板：侧栏入口、拖动放行、依赖等待、待评审打回与通过', async (page) => {
+      const board = await boardCall('', {
+        method: 'POST',
+        body: { cwd: repo, name: '回归看板', maxParallel: 1, defaults: { profileId: 'p-main' } },
+      })
+      const mk = (body) => boardCall(`/${board.id}/cards`, { method: 'POST', body })
+      const a = await mk({ title: '甲 准备数据', prompt: '回复“完成”即可', exec: { gate: true } })
+      const b = await mk({ title: '乙 依赖甲', prompt: '回复“完成”即可', deps: [a.id] })
+      const c = await mk({ title: '丙 独立任务', prompt: '回复“完成”即可' })
+
+      // 侧栏入口进入；列表晚到时先是空态，随后自动跳到第一块看板
+      await page.locator('aside').getByRole('button', { name: '任务看板', exact: true }).click()
+      await page.getByTestId('board-columns').waitFor({ timeout: 15_000 })
+      assert.match(page.url(), /#\/h\/[^/]+\/b\/[0-9a-f-]+$/, '进入看板后地址没有带看板 id')
+      for (const label of ['待办', '排队', '运行中', '待审批', '待评审', '完成', '失败']) {
+        assert.equal(await page.getByRole('region', { name: `${label}列`, exact: true }).count(), 1, `缺少「${label}」列`)
+      }
+      assert.equal(await boardColumn(page, 'todo').locator('[data-card-id]').count(), 3, '待办列应有 3 张卡')
+
+      // 不允许的投放：待办 → 完成，卡片留在原列
+      await boardCardIn(page, 'todo', '乙').dragTo(boardColumn(page, 'done'))
+      await page.waitForTimeout(700)
+      assert.equal(await boardCardIn(page, 'todo', '乙').count(), 1, '待办卡被拖进了完成列')
+      assert.equal((await boardCall(`/${board.id}`)).cards.find((x) => x.id === b.id).status, 'todo')
+
+      // 拖到「排队」= 放行；丙无依赖，直接跑完
+      await boardCardIn(page, 'todo', '丙').dragTo(boardColumn(page, 'queued'))
+      await page.locator(`[data-column="done"] [data-card-id="${c.id}"]`).waitFor({ timeout: 40_000 })
+
+      // 点乙：详情抽屉里放行；依赖未完成，卡上写明在等谁
+      await boardCardIn(page, 'todo', '乙').click()
+      const drawer = page.getByTestId('board-drawer')
+      await drawer.waitFor()
+      assert.match((await drawer.textContent()) ?? '', /依赖.*甲 准备数据/)
+      await drawer.getByRole('button', { name: '放行', exact: true }).click()
+      await boardCardIn(page, 'queued', '乙').getByText('等待 甲 准备数据').waitFor({ timeout: 10_000 })
+
+      // 放行甲：运行后停在待评审（审批门），乙继续等待
+      await boardCardIn(page, 'todo', '甲').click()
+      await drawer.getByRole('button', { name: '放行', exact: true }).click()
+      await boardCardIn(page, 'review', '甲').waitFor({ timeout: 40_000 })
+      assert.equal(await boardCardIn(page, 'queued', '乙').count(), 1, '审批门未放行时下游不应启动')
+      await auditA11y(page, '任务看板（桌面）')
+
+      // 打回并写意见：同一会话继续，再次进入待评审
+      await boardCardIn(page, 'review', '甲').click()
+      await drawer.getByRole('button', { name: '打回…', exact: true }).click()
+      const dialog = page.getByRole('dialog', { name: '打回并写意见' })
+      await dialog.waitFor()
+      const note = '请补充边界情况的说明'
+      await dialog.getByRole('textbox').fill(note)
+      await dialog.getByRole('button', { name: '打回重做', exact: true }).click()
+      await dialog.waitFor({ state: 'hidden' })
+      await waitUntil('打回后再次待评审', async () => {
+        const card = (await boardCall(`/${board.id}`)).cards.find((x) => x.id === a.id)
+        if (card.status !== 'review' || !card.sessionId) return false
+        const session = await api(base, token, `/api/sessions/${card.sessionId}`)
+        return JSON.stringify(session.messages ?? []).includes(note)
+      })
+
+      // 通过：甲完成，乙随即启动并跑完
+      await boardCardIn(page, 'review', '甲').click()
+      await drawer.getByRole('button', { name: '通过', exact: true }).click()
+      await page.locator(`[data-column="done"] [data-card-id="${a.id}"]`).waitFor({ timeout: 10_000 })
+      await page.locator(`[data-column="done"] [data-card-id="${b.id}"]`).waitFor({ timeout: 40_000 })
+      assert.match((await page.getByTestId('board-progress').textContent()) ?? '', /3\/3 完成/)
+
+      // 卡片会话不进侧栏，只能从卡详情进入
+      assert.equal(await page.locator('[data-session-row]').filter({ hasText: '甲 准备数据' }).count(), 0, '卡片会话出现在侧栏')
+      await page.locator(`[data-column="done"] [data-card-id="${a.id}"]`).click()
+      await drawer.getByRole('button', { name: '打开会话', exact: true }).click()
+      await page.waitForFunction(() => window.location.hash.includes('/s/'), null, { timeout: 10_000 })
+      assert.match((await page.locator('header h1').first().textContent()) ?? '', /甲 准备数据/)
+    })
+
+    mobile('手机任务看板：分组列表、待我处理行内通过与全屏详情', async (page) => {
+      const board = await boardCall('', {
+        method: 'POST',
+        body: { cwd: repo, name: '手机看板', maxParallel: 2, defaults: { profileId: 'p-main' } },
+      })
+      const mk = (body) => boardCall(`/${board.id}/cards`, { method: 'POST', body })
+      const gated = await mk({ title: '待评审卡', prompt: '回复“完成”即可', exec: { gate: true }, status: 'queued' })
+      await mk({ title: '稍后再做', prompt: '回复“完成”即可' })
+      await waitUntil('手机看板的卡进入待评审', async () => (await boardCall(`/${board.id}`)).cards.find((x) => x.id === gated.id).status === 'review')
+
+      await openBoardPage(page, board.id)
+      const list = page.getByTestId('board-list')
+      await list.waitFor()
+      const me = page.getByRole('region', { name: '需要我', exact: true })
+      await me.getByText('待评审卡').waitFor()
+      assertNoOverflow('手机看板', await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth })))
+      const approve = me.getByRole('button', { name: '通过', exact: true })
+      const box = await approve.boundingBox()
+      assert.ok(box && box.height >= 43.5, `手机上「通过」按钮高度不足 44px：${box?.height}`)
+
+      // 点卡片：全屏详情
+      await page.getByRole('region', { name: '待办', exact: true }).getByText('稍后再做').tap()
+      const detail = page.getByRole('dialog', { name: '卡片详情' })
+      await detail.waitFor()
+      withinViewport(await detail.boundingBox(), MOBILE, '手机卡片详情')
+      await detail.getByRole('button', { name: '放行', exact: true }).waitFor()
+      await auditA11y(page, '任务看板（手机详情）')
+      await page.keyboard.press('Escape')
+      await detail.waitFor({ state: 'hidden' })
+
+      // 行内通过：卡片移到「完成」
+      await approve.tap()
+      await page.getByRole('region', { name: '完成', exact: true }).getByText('待评审卡').waitFor({ timeout: 10_000 })
+      assert.equal(await page.getByRole('region', { name: '需要我', exact: true }).count(), 0, '通过后「需要我」分组应消失')
+    })
+
     // ------------------------------------------------------------------ 执行
 
     const selected = ONLY ? checks.filter((item) => item.name.includes(ONLY)) : checks

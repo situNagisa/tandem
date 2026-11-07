@@ -159,7 +159,7 @@ export function CreateBoardDialog({
             <Select aria-label="并发上限" value={parallel} onChange={(e) => setParallel(e.target.value)}>
               {[1, 2, 3, 4].map((n) => (
                 <option key={n} value={String(n)}>
-                  {n} 张
+                  {`${n} 张`}
                 </option>
               ))}
             </Select>

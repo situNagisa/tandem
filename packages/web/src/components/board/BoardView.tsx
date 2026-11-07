@@ -198,7 +198,7 @@ export function BoardView({ route }: { route: BoardRoute }) {
     <Select aria-label="并发上限" size="sm" value={String(board.maxParallel)} onChange={(e) => void changeParallel(e.target.value)} wrapperClassName="w-[104px]">
       {[1, 2, 3, 4].map((n) => (
         <option key={n} value={String(n)}>
-          并发 {n}
+          {`并发 ${n}`}
         </option>
       ))}
     </Select>

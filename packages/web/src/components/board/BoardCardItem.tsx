@@ -77,7 +77,6 @@ export function BoardCardItem({
       draggable={draggable}
       data-card-id={card.id}
       data-status={card.status}
-      aria-label={`${card.title}（${card.status}）`}
       onClick={onOpen}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
