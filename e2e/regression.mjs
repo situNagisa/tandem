@@ -769,6 +769,31 @@ async function main() {
       assert.ok(info.lastTop < info.client && info.lastBottom > 0, '最后一条用户消息不在视口内')
     })
 
+    desktop('上下文面板显示最大占用项', async (page) => {
+      await openSession(page, 'long')
+      const ring = page.getByRole('button', { name: /^上下文 \d+%/ }).first()
+      await ring.click()
+      await page.getByText('最占空间').first().waitFor({ state: 'visible', timeout: 5_000 })
+      const items = page.locator('[data-context-top="popover"] [data-context-item="true"]')
+      const count = await items.count()
+      assert.ok(count > 0 && count <= 10, `最大占用项数量 ${count}`)
+      const first = await items.first().innerText()
+      assert.match(first, /第 \d+ 轮/, `最大占用项缺少轮次：${first}`)
+      await page.getByText(/下次自动压缩将在约 \d+% 时触发|自动压缩已关闭/).first().waitFor({
+        state: 'visible',
+        timeout: 3_000,
+      })
+      const before = await page.evaluate(
+        () => document.querySelector('.chat-scroll')?.scrollTop ?? 0,
+      )
+      await items.first().click()
+      await page.waitForTimeout(700)
+      const after = await page.evaluate(
+        () => document.querySelector('.chat-scroll')?.scrollTop ?? 0,
+      )
+      assert.notEqual(after, before, '点击最大占用项后没有跳转到对应消息')
+    })
+
     desktop('轮次条点击第 30 轮精准定位（不跳到相邻轮）', async (page) => {
       await openSession(page, 'long')
       const nav = page.locator('nav[aria-label="轮次导航"]')
@@ -1701,6 +1726,105 @@ async function main() {
       await openSettings(page, '通用', 'desktop')
       await auditA11y(page, '设置 · 通用')
       await closeSettings(page)
+    })
+
+    desktop('命令面板：搜「桌面通知」定位到对应设置项', async (page) => {
+      await page.keyboard.press('Control+k')
+      const input = page.getByRole('textbox', { name: '搜索会话、命令与设置' })
+      await input.waitFor({ timeout: 5_000 })
+      await input.fill('桌面通知')
+      await page.waitForTimeout(220)
+      const row = page
+        .locator('[data-palette-index]')
+        .filter({ hasText: '桌面通知' })
+        .filter({ hasText: '设置 · 通知' })
+        .first()
+      await row.click()
+      const dialog = page.getByRole('dialog', { name: '设置' })
+      await dialog.waitFor({ state: 'visible', timeout: 10_000 })
+      const marker = dialog.locator('[data-setting-id="notifications.desktop"]')
+      await marker.waitFor({ state: 'visible', timeout: 10_000 })
+      const cls = (await marker.getAttribute('class')) ?? ''
+      assert.ok(cls.includes('setting-highlight'), '定位后没有高亮目标设置项')
+      const navTab = dialog.locator('nav').first().getByRole('button', { name: '通知', exact: true })
+      assert.equal(await navTab.getAttribute('aria-current'), 'page', '没有切到「通知」页')
+      const box = await marker.boundingBox()
+      assert.ok(box && box.y >= 0 && box.y < DESKTOP.height, `设置项不在视口内：${JSON.stringify(box)}`)
+      await closeSettings(page)
+    })
+
+    desktop('命令面板：前缀筛选与拼音首字母匹配', async (page) => {
+      await page.keyboard.press('Control+k')
+      const input = page.getByRole('textbox', { name: '搜索会话、命令与设置' })
+      await input.waitFor({ timeout: 5_000 })
+      const kinds = async () =>
+        page.locator('[data-palette-index]').evaluateAll((els) =>
+          els.map((el) => el.getAttribute('data-palette-kind')),
+        )
+      await input.fill('>')
+      await page.waitForTimeout(220)
+      const commandKinds = await kinds()
+      assert.ok(commandKinds.length > 0, '`>` 前缀没有命令结果')
+      assert.ok(commandKinds.every((kind) => kind === 'command'), '`>` 前缀混入了非命令结果')
+      await input.fill('#')
+      await page.waitForTimeout(220)
+      const settingKinds = await kinds()
+      assert.ok(settingKinds.length > 0, '`#` 前缀没有设置结果')
+      assert.ok(settingKinds.every((kind) => kind === 'setting'), '`#` 前缀混入了非设置结果')
+      await input.fill('@')
+      await page.waitForTimeout(220)
+      const sessionKinds = await kinds()
+      assert.ok(sessionKinds.length > 0, '`@` 前缀没有会话结果')
+      assert.ok(sessionKinds.every((kind) => kind === 'session'), '`@` 前缀混入了非会话结果')
+      await input.fill('xhh')
+      await page.waitForTimeout(220)
+      const newSession = page
+        .locator('[data-palette-kind="command"]')
+        .filter({ hasText: '新会话' })
+        .first()
+      await newSession.waitFor({ state: 'visible', timeout: 3_000 })
+      await page.keyboard.press('Escape')
+    })
+
+    desktop('快捷键：外观页由命令注册表生成、自定义生效、冲突提示', async (page) => {
+      const dialog = await openSettings(page, '外观', 'desktop')
+      const rows = dialog.locator('[data-command-shortcut]')
+      assert.ok((await rows.count()) >= 10, `快捷键表只有 ${await rows.count()} 行`)
+      const themeRow = dialog.locator('[data-command-shortcut="app.toggle-theme"]')
+      const before = await page.evaluate(() => localStorage.getItem('tandem.theme.v1'))
+      await themeRow.getByRole('button', { name: '修改 切换主题 快捷键' }).click()
+      await page.keyboard.press('Control+Shift+t')
+      await page.waitForTimeout(220)
+      const kbd = (await themeRow.locator('kbd').textContent()) ?? ''
+      assert.ok(kbd.includes('T') && kbd.includes('Shift'), `自定义快捷键未保存：${kbd}`)
+      await closeSettings(page)
+      await page.keyboard.press('Control+Shift+t')
+      await page.waitForTimeout(260)
+      const after = await page.evaluate(() => localStorage.getItem('tandem.theme.v1'))
+      assert.notEqual(after, before, '自定义快捷键没有触发切换主题')
+      const dialog2 = await openSettings(page, '外观', 'desktop')
+      const sidebarRow = dialog2.locator('[data-command-shortcut="app.toggle-sidebar"]')
+      await sidebarRow.getByRole('button', { name: '修改 切换侧栏 快捷键' }).click()
+      await page.keyboard.press('Control+Shift+t')
+      await page.waitForTimeout(220)
+      const warning = (await dialog2.getByRole('status').textContent()) ?? ''
+      assert.ok(warning.includes('冲突'), `冲突没有提示：${warning}`)
+      await dialog2.getByRole('button', { name: '全部恢复默认' }).click()
+      await closeSettings(page)
+    })
+
+    mobile('手机顶栏搜索按钮打开命令面板', async (page) => {
+      await page.getByRole('button', { name: '搜索', exact: true }).click()
+      const input = page.getByRole('textbox', { name: '搜索会话、命令与设置' })
+      await input.waitFor({ state: 'visible', timeout: 5_000 })
+      await input.fill('# 主题')
+      await page.waitForTimeout(220)
+      const kinds = await page
+        .locator('[data-palette-index]')
+        .evaluateAll((els) => els.map((el) => el.getAttribute('data-palette-kind')))
+      assert.ok(kinds.length > 0, '手机命令面板没有设置结果')
+      assert.ok(kinds.every((kind) => kind === 'setting'), '手机命令面板前缀筛选失效')
+      await page.keyboard.press('Escape')
     })
 
     // ------------------------------------------------------------------ 执行
