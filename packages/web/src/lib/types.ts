@@ -52,6 +52,8 @@ export interface HostRuntime {
   sessionsLoading: boolean
   commands: SlashCommand[]
   commandsLoaded: boolean
+  /** 已加载命令时对应的 cwd：切换会话后需要重新拉取项目技能/命令。 */
+  commandsCwd?: string
   /** 本机已有的 Claude Code / Codex 会话（只读扫描结果）。 */
   externalSessions: ExternalSessionItem[]
   externalLoaded: boolean
@@ -132,6 +134,7 @@ export type AppRoute =
   | { kind: 'host'; hostId: string }
   | { kind: 'session'; hostId: string; sessionId: string }
   | { kind: 'external'; hostId: string; source: ExternalSource; id: string }
+  | { kind: 'dev-ui' }
 
 export const PROVIDER_KIND_LABELS: Record<string, string> = {
   anthropic: 'Anthropic',

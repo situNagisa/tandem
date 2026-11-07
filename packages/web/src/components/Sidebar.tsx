@@ -1,4 +1,4 @@
-import { PanelLeftClose, Plus, Search, Settings, SlidersHorizontal, X } from 'lucide-react'
+import { Inbox, PanelLeftClose, Plus, Search, Settings, SlidersHorizontal, X } from 'lucide-react'
 import { useUiStore } from '../store/useUiStore'
 import { useAppStore } from '../store/useAppStore'
 import { modLabel } from '../lib/format'
@@ -6,10 +6,10 @@ import { navigate, parseHash } from '../lib/router'
 import { cn } from '../lib/cn'
 import { isDesktop, isMacDesktop } from '../lib/desktop'
 import { HostSwitcher } from './HostSwitcher'
-import { Popover } from './ui/Popover'
 import { Button, IconButton } from './ui/Button'
-import { MenuDivider, MenuItem, MenuList } from './ui/Menu'
+import { Menu } from './ui/Menu'
 import { SessionList } from './SessionList'
+import { useInboxCount } from './inbox/InboxView'
 
 const EXTERNAL_SOURCES = [
   { value: 'claude-code', label: 'Claude Code' },
@@ -34,6 +34,8 @@ export function Sidebar({
   const hiddenExternalSources = useUiStore((s) => s.hiddenExternalSources)
   const setExternalSourceVisible = useUiStore((s) => s.setExternalSourceVisible)
   const resetComposer = useUiStore((s) => s.resetComposer)
+  const setInboxOpen = useUiStore((s) => s.setInboxOpen)
+  const inboxCount = useInboxCount()
   const archivedCount = useAppStore((s) =>
     Object.values(s.runtimes).reduce(
       (n, rt) => n + rt.sessions.filter((x) => x.archived && !x.parentId).length,
@@ -52,15 +54,14 @@ export function Sidebar({
   }
 
   const filter = (
-    <Popover
+    <Menu
       side="right"
-      align="left"
-      padded={false}
-      panelClassName="w-[210px] rounded-[10px] p-[5px]"
-      trigger={({ open, toggle }) => (
+      align="start"
+      aria-label="筛选会话"
+      className="w-[210px]"
+      trigger={({ open }) => (
         <IconButton
           size="sm"
-          onClick={toggle}
           label="筛选会话"
           tooltip={open ? '' : '筛选'}
           tooltipSide="bottom"
@@ -72,41 +73,33 @@ export function Sidebar({
         </IconButton>
       )}
     >
-      {() => (
-        <MenuList aria-label="筛选会话">
-          {EXTERNAL_SOURCES.map((source) => {
-            const visible = showExternalSessions && !hiddenExternalSources.includes(source.value)
-            return (
-              <MenuItem
-                key={source.value}
-                role="menuitemcheckbox"
-                ariaChecked={visible}
-                selected={visible}
-                onSelect={() => {
-                  if (!showExternalSessions) {
-                    setShowExternalSessions(true)
-                    return
-                  }
-                  setExternalSourceVisible(source.value, !visible)
-                }}
-              >
-                {source.label}
-              </MenuItem>
-            )
-          })}
-          <MenuDivider />
-          <MenuItem
-            role="menuitemcheckbox"
-            ariaChecked={showArchived}
-            selected={showArchived}
-            trailing={archivedCount > 0 ? archivedCount : undefined}
-            onSelect={() => setShowArchived(!showArchived)}
+      {EXTERNAL_SOURCES.map((source) => {
+        const visible = showExternalSessions && !hiddenExternalSources.includes(source.value)
+        return (
+          <Menu.CheckItem
+            key={source.value}
+            checked={visible}
+            onCheckedChange={() => {
+              if (!showExternalSessions) {
+                setShowExternalSessions(true)
+                return
+              }
+              setExternalSourceVisible(source.value, !visible)
+            }}
           >
-            已归档会话
-          </MenuItem>
-        </MenuList>
-      )}
-    </Popover>
+            {source.label}
+          </Menu.CheckItem>
+        )
+      })}
+      <Menu.Separator />
+      <Menu.CheckItem
+        checked={showArchived}
+        onCheckedChange={() => setShowArchived(!showArchived)}
+        trailing={archivedCount > 0 ? archivedCount : undefined}
+      >
+        已归档会话
+      </Menu.CheckItem>
+    </Menu>
   )
 
   return (
@@ -117,6 +110,26 @@ export function Sidebar({
       >
         <span className="font-serif text-[17px] font-medium leading-none tracking-tight">Tandem</span>
         <span className="flex-1" />
+        <button
+          type="button"
+          onClick={() => {
+            setInboxOpen(true)
+            onNavigate?.()
+          }}
+          aria-label={inboxCount > 0 ? `收件箱，${inboxCount} 条待处理` : '收件箱'}
+          title={inboxCount > 0 ? `收件箱（${inboxCount} 条待处理）` : '收件箱'}
+          className={cn(
+            'relative inline-flex size-8 items-center justify-center rounded-md text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text max-sm:size-11',
+            inboxCount > 0 && 'text-text',
+          )}
+        >
+          <Inbox size={16} />
+          {inboxCount > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold leading-none text-on-accent">
+              {inboxCount > 99 ? '99+' : inboxCount}
+            </span>
+          )}
+        </button>
         {inDrawer ? (
           <IconButton
             onClick={() => setMobileSidebar(false)}

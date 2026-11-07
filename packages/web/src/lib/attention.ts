@@ -1,5 +1,12 @@
 import { useUiStore } from '../store/useUiStore'
 import { navigate } from './router'
+import {
+  cancelNativeNotification,
+  isNativeApp,
+  notificationId,
+  postNativeNotification,
+  type NativeNotificationInput,
+} from './native'
 
 interface AttentionInput {
   title: string
@@ -8,6 +15,10 @@ interface AttentionInput {
   hostId?: string
   sessionId?: string
   route?: 'session' | 'host'
+  /** App 本地通知的分类与操作按钮。 */
+  kind?: NativeNotificationInput['extra']['kind']
+  requestId?: string
+  approval?: boolean
 }
 
 let flashTimer: number | null = null
@@ -111,8 +122,47 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   }
 }
 
-async function postNotification({ title, body, tag, hostId, sessionId }: AttentionInput) {
+/** 同一事件可能同时经会话通道和收件箱通道到达：短时间内按 tag 去重。 */
+const recentNotifications = new Map<string, number>()
+const NOTIFICATION_DEDUPE_MS = 4000
+
+async function postNotification({
+  title,
+  body,
+  tag,
+  hostId,
+  sessionId,
+  kind = 'turn_end',
+  requestId,
+  approval,
+}: AttentionInput) {
   if (!notificationsEnabled()) return
+  const now = Date.now()
+  for (const [key, at] of recentNotifications) {
+    if (now - at >= NOTIFICATION_DEDUPE_MS) recentNotifications.delete(key)
+  }
+  if (recentNotifications.has(tag)) return
+  recentNotifications.set(tag, now)
+
+  // 安卓 App：纯本地通知（带允许/拒绝操作），不经过任何推送服务
+  if (isNativeApp()) {
+    if (!useUiStore.getState().nativeNotifications) return
+    if (!hostId) return
+    await postNativeNotification({
+      id: notificationId(tag),
+      title,
+      body,
+      approval,
+      extra: {
+        hostId,
+        ...(sessionId ? { sessionId } : {}),
+        ...(requestId ? { requestId } : {}),
+        kind,
+      },
+    })
+    return
+  }
+
   if (typeof Notification === 'undefined') return
   let permission = Notification.permission
   if (permission === 'default') permission = await requestNotificationPermission()
@@ -134,6 +184,12 @@ async function postNotification({ title, body, tag, hostId, sessionId }: Attenti
   } catch {
     /* 部分浏览器在非 PWA 环境拒绝构造通知 */
   }
+}
+
+/** 审批已在任意一端处理：撤掉手机通知上的操作按钮。 */
+export function cancelPermissionNotification(requestId: string): void {
+  if (!isNativeApp()) return
+  void cancelNativeNotification(notificationId(`tandem-permission-${requestId}`))
 }
 
 /** 回合结束：只在页面不可见时提醒。 */
@@ -160,6 +216,7 @@ export function notifyTurnEnd(input: {
     tag: `tandem-turn-${input.sessionId}`,
     hostId: input.hostId,
     sessionId: input.sessionId,
+    kind: input.reason === 'error' ? 'error' : 'turn_end',
   })
 }
 
@@ -180,5 +237,27 @@ export function notifyPermission(input: {
     tag: `tandem-permission-${input.requestId}`,
     hostId: input.hostId,
     sessionId: input.sessionId,
+    kind: 'permission',
+    requestId: input.requestId,
+    approval: true,
+  })
+}
+
+/** 预算告警：仅在 App 不可见时提醒（Host 级事件）。 */
+export function notifyBudget(input: {
+  hostId: string
+  hostName: string
+  text: string
+  level: '80' | '100'
+  ruleId: string
+}): void {
+  if (typeof document === 'undefined' || !document.hidden) return
+  flashAttention('预算提醒')
+  void postNotification({
+    title: input.level === '100' ? '预算已达上限' : '预算接近上限',
+    body: `${input.hostName} · ${input.text}`,
+    tag: `tandem-budget-${input.hostId}-${input.ruleId}-${input.level}`,
+    hostId: input.hostId,
+    kind: 'budget',
   })
 }

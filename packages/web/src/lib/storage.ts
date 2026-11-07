@@ -90,6 +90,12 @@ export interface UiPrefs {
   filePreviewWidth?: number
   collapsedProjects?: string[]
   notifications?: boolean
+  /** App 内本地通知（安卓本地通知，不经推送服务）。 */
+  nativeNotifications?: boolean
+  /** 安卓前台服务：App 退到后台后继续保持 WS 连接。 */
+  backgroundService?: boolean
+  /** 收件箱要提醒的事件类型。 */
+  notifyEvents?: { permission?: boolean; turnEnd?: boolean; error?: boolean; budget?: boolean }
   showSubagents?: boolean
   showExternalSessions?: boolean
   /** 侧栏筛选里被关掉的来源（claude-code / codex）。 */

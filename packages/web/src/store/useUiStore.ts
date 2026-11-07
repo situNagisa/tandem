@@ -47,6 +47,14 @@ interface UiState {
   newSessionOpen: boolean
   searchOpen: boolean
   notifications: boolean
+  /** App 本地通知（安卓不经推送服务，直接由常驻连接触发系统通知）。 */
+  nativeNotifications: boolean
+  /** 安卓前台服务：退到后台后保持 WS，耗电更高，默认关闭。 */
+  backgroundService: boolean
+  /** 收件箱提醒的事件类型开关。 */
+  notifyEvents: { permission: boolean; turnEnd: boolean; error: boolean; budget: boolean }
+  /** 收件箱对话框（桌面/移动端均可打开）。 */
+  inboxOpen: boolean
   toasts: Toast[]
   promptSeed: { text: string; nonce: number } | null
   /** 右侧代理列表点击后，定位并展开消息流中的对应 Task 卡片。 */
@@ -85,6 +93,13 @@ interface UiState {
   setNewSessionOpen: (open: boolean) => void
   setSearchOpen: (open: boolean) => void
   setNotifications: (enabled: boolean) => void
+  setNativeNotifications: (enabled: boolean) => void
+  setBackgroundService: (enabled: boolean) => void
+  setNotifyEvent: (
+    key: 'permission' | 'turnEnd' | 'error' | 'budget',
+    enabled: boolean,
+  ) => void
+  setInboxOpen: (open: boolean) => void
   toast: (
     text: string,
     kind?: Toast['kind'],
@@ -125,6 +140,15 @@ export const useUiStore = create<UiState>((set, get) => ({
   newSessionOpen: false,
   searchOpen: false,
   notifications: prefs.notifications ?? true,
+  nativeNotifications: prefs.nativeNotifications ?? true,
+  backgroundService: prefs.backgroundService ?? false,
+  notifyEvents: {
+    permission: prefs.notifyEvents?.permission ?? true,
+    turnEnd: prefs.notifyEvents?.turnEnd ?? true,
+    error: prefs.notifyEvents?.error ?? true,
+    budget: prefs.notifyEvents?.budget ?? true,
+  },
+  inboxOpen: false,
   toasts: [],
   promptSeed: null,
   agentFocus: null,
@@ -226,6 +250,20 @@ export const useUiStore = create<UiState>((set, get) => ({
     saveUiPrefs({ notifications: enabled })
     set({ notifications: enabled })
   },
+  setNativeNotifications: (enabled) => {
+    saveUiPrefs({ nativeNotifications: enabled })
+    set({ nativeNotifications: enabled })
+  },
+  setBackgroundService: (enabled) => {
+    saveUiPrefs({ backgroundService: enabled })
+    set({ backgroundService: enabled })
+  },
+  setNotifyEvent: (key, enabled) => {
+    const next = { ...get().notifyEvents, [key]: enabled }
+    saveUiPrefs({ notifyEvents: next })
+    set({ notifyEvents: next })
+  },
+  setInboxOpen: (open) => set({ inboxOpen: open }),
   toast: (text, kind = 'info', options) => {
     const now = Date.now()
     for (const [key, at] of recentToastAt) {

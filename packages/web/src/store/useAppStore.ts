@@ -5,6 +5,7 @@ import type {
   ExternalSession,
   ExternalSource,
   HookEventNotice,
+  InboxEvent,
   Message,
   PermissionDecision,
   PermissionRequest,
@@ -32,7 +33,7 @@ import {
   type ClientSettingsBundle,
 } from '../lib/storage'
 import { navigate, parseHash } from '../lib/router'
-import { notifyPermission, notifyTurnEnd } from '../lib/attention'
+import { notifyBudget, notifyPermission, notifyTurnEnd, cancelPermissionNotification } from '../lib/attention'
 import { useUiStore } from './useUiStore'
 import { useTaskStore } from './useTaskStore'
 import { useScheduleStore } from './useScheduleStore'
@@ -48,11 +49,22 @@ import type {
   UiMessage,
 } from '../lib/types'
 
+/** 单台 Host 的收件箱状态（跨会话事件流 + 未处理审批）。 */
+export interface HostInboxState {
+  seq: number
+  events: InboxEvent[]
+  pending: InboxEvent[]
+  /** 未查看的提醒数（打开收件箱后清零）。 */
+  unread: number
+}
+
 interface AppState {
   initialized: boolean
   hosts: HostConfig[]
   activeHostId: string | null
   runtimes: Record<string, HostRuntime>
+  /** 各 Host 的全局收件箱；不持久化，重连时由服务端快照补齐。 */
+  inbox: Record<string, HostInboxState>
   /** 外部会话按 hostId 汇总（元素带 hostId，方便侧栏合并展示）。 */
   externalSessions: Record<string, ExternalSessionItem[]>
   active: ActiveSession | null
@@ -105,6 +117,15 @@ interface AppState {
   send: (blocks: ContentBlock[]) => boolean
   interrupt: () => void
   decidePermission: (requestId: string, decision: PermissionDecision, reason?: string) => void
+  /** 收件箱里直接审批（不要求该会话已打开）。 */
+  decideInboxPermission: (
+    hostId: string,
+    requestId: string,
+    decision: PermissionDecision,
+    reason?: string,
+  ) => void
+  /** 打开收件箱后清掉未读徽标。 */
+  markInboxSeen: () => void
   setPermissionMode: (mode: PermissionMode) => Promise<void>
   rewind: (input: RewindInput, seedText?: string) => Promise<boolean>
   setModel: (profileId: string, groupId: string | undefined, model: string) => Promise<void>
@@ -587,6 +608,94 @@ export const useAppStore = create<AppState>((set, get) => {
         applySessionSummary(hostId, msg.session)
         break
       }
+      case 'inbox_snapshot': {
+        const snapshot = msg.snapshot
+        set((state) => ({
+          inbox: {
+            ...state.inbox,
+            [hostId]: {
+              seq: snapshot.seq,
+              events: snapshot.events,
+              pending: snapshot.pending,
+              unread: snapshot.pending.length,
+            },
+          },
+        }))
+        break
+      }
+      case 'inbox_event': {
+        const event = msg.event
+        const ui = useUiStore.getState()
+        set((state) => {
+          const prev = state.inbox[hostId]
+          const events = prev
+            ? [...prev.events.filter((item) => item.seq !== event.seq), event].slice(-400)
+            : [event]
+          let pending = prev?.pending ?? []
+          if (event.kind === 'permission' && event.permission) {
+            pending = pending.some((item) => item.requestId === event.requestId)
+              ? pending
+              : [...pending, event]
+          } else if (event.kind === 'permission_resolved') {
+            pending = pending.filter((item) => item.requestId !== event.requestId)
+          }
+          const counts =
+            event.kind === 'permission' || event.kind === 'turn_end' || event.kind === 'budget'
+          return {
+            inbox: {
+              ...state.inbox,
+              [hostId]: {
+                seq: Math.max(prev?.seq ?? 0, event.seq),
+                events,
+                pending,
+                unread: (prev?.unread ?? 0) + (counts && !ui.inboxOpen ? 1 : 0),
+              },
+            },
+          }
+        })
+        if (event.kind === 'permission' && event.permission) {
+          const summary = get().runtimes[hostId]?.sessions.find(
+            (s) => s.id === event.sessionId,
+          )
+          if (ui.notifyEvents.permission) {
+            notifyPermission({
+              hostId,
+              sessionId: event.sessionId ?? '',
+              sessionTitle: event.sessionTitle ?? summary?.title ?? '未命名会话',
+              hostName: getHost(hostId)?.name ?? 'Host',
+              requestId: event.requestId ?? event.permission.id,
+              description: event.plan
+                ? '提交了计划，等待批准'
+                : event.permission.description || event.permission.toolName,
+            })
+          }
+        } else if (event.kind === 'permission_resolved' && event.requestId) {
+          cancelPermissionNotification(event.requestId)
+        } else if (event.kind === 'turn_end') {
+          const isError = event.turnReason === 'error'
+          if (isError ? ui.notifyEvents.error : ui.notifyEvents.turnEnd) {
+            notifyTurnEnd({
+              hostId,
+              sessionId: event.sessionId ?? '',
+              sessionTitle: event.sessionTitle ?? '未命名会话',
+              hostName: getHost(hostId)?.name ?? 'Host',
+              reason: event.turnReason ?? 'done',
+              ...(event.error ? { error: event.error } : {}),
+            })
+          }
+        } else if (event.kind === 'budget' && event.budget && event.budgetText) {
+          if (ui.notifyEvents.budget) {
+            notifyBudget({
+              hostId,
+              hostName: getHost(hostId)?.name ?? 'Host',
+              text: event.budgetText,
+              level: event.budget.level,
+              ruleId: event.budget.ruleId,
+            })
+          }
+        }
+        break
+      }
       case 'external_sessions_changed': {
         void get().refreshExternalSessions(hostId, true)
         break
@@ -1038,6 +1147,7 @@ export const useAppStore = create<AppState>((set, get) => {
     activeHostId: null,
     runtimes: {},
     externalSessions: {},
+    inbox: {},
     active: null,
     changesNonce: 0,
     worktreeIntents: {},
@@ -1354,18 +1464,22 @@ export const useAppStore = create<AppState>((set, get) => {
     refreshCommands: async (hostId) => {
       const host = getHost(hostId)
       if (!host) return []
-      const rt = get().runtimes[hostId]
-      if (rt?.commandsLoaded) return rt.commands
-      if (commandsInFlight.has(hostId)) return rt?.commands ?? []
-      commandsInFlight.add(hostId)
+      const state = get()
+      // 项目级命令/技能随会话 cwd 变化；非活动 Host 没有 cwd 时只拉用户级
+      const cwd = state.active?.hostId === hostId ? state.active?.summary?.cwd : undefined
+      const rt = state.runtimes[hostId]
+      if (rt?.commandsLoaded && rt.commandsCwd === cwd) return rt.commands
+      const key = `${hostId}:${cwd ?? ''}`
+      if (commandsInFlight.has(key)) return rt?.commands ?? []
+      commandsInFlight.add(key)
       try {
-        const commands = await api.commands(host)
-        commandsInFlight.delete(hostId)
+        const commands = await api.commands(host, cwd)
+        commandsInFlight.delete(key)
         if (!getHost(hostId)) return commands
-        patchRuntime(hostId, { commands, commandsLoaded: true })
+        patchRuntime(hostId, { commands, commandsLoaded: true, commandsCwd: cwd })
         return commands
       } catch {
-        commandsInFlight.delete(hostId)
+        commandsInFlight.delete(key)
         return []
       }
     },
@@ -1732,6 +1846,70 @@ export const useAppStore = create<AppState>((set, get) => {
       })
       const now = get().active
       if (now && now.summary) applySessionSummary(active.hostId, now.summary)
+    },
+
+    decideInboxPermission: (hostId, requestId, decision, reason) => {
+      const conn = connections.get(hostId) ?? ensureConnection(hostId)
+      const ok =
+        conn?.send({
+          type: 'permission',
+          requestId,
+          decision,
+          ...(reason ? { reason } : {}),
+        }) ?? false
+      if (!ok) {
+        toast('Host 未连接，无法提交审批', 'error')
+        return
+      }
+      cancelPermissionNotification(requestId)
+      // 乐观从收件箱移除；桌面端的 permission_resolved 会再广播一次校正
+      set((state) => {
+        const inbox = state.inbox[hostId]
+        if (!inbox) return state
+        const pending = inbox.pending.filter((item) => item.requestId !== requestId)
+        return {
+          inbox: {
+            ...state.inbox,
+            [hostId]: {
+              ...inbox,
+              pending,
+              unread: Math.max(0, inbox.unread - (pending.length < inbox.pending.length ? 1 : 0)),
+            },
+          },
+        }
+      })
+      set((state) => {
+        const active = state.active
+        if (!active || active.hostId !== hostId) return state
+        const pending = active.pending.filter((p) => p.id !== requestId)
+        if (pending.length === active.pending.length) return state
+        return {
+          active: {
+            ...active,
+            pending,
+            subagents: Object.fromEntries(
+              Object.entries(active.subagents).map(([id, sub]) => [
+                id,
+                { ...sub, pending: sub.pending.filter((p) => p.id !== requestId) },
+              ]),
+            ),
+          },
+        }
+      })
+    },
+
+    markInboxSeen: () => {
+      set((state) => {
+        const inbox = { ...state.inbox }
+        let changed = false
+        for (const [hostId, entry] of Object.entries(inbox)) {
+          if (entry.unread > 0) {
+            inbox[hostId] = { ...entry, unread: 0 }
+            changed = true
+          }
+        }
+        return changed ? { inbox } : state
+      })
     },
 
     setPermissionMode: async (mode) => {

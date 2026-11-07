@@ -1,8 +1,12 @@
-import { ArrowUpRight, FileText, GitBranch, Search, Sparkles, Wrench } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowUpRight, FileText, GitBranch, Inbox, Search, Sparkles, Wrench } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { basename } from '../lib/format'
+import { useIsMobile } from '../lib/hooks'
+import { cn } from '../lib/cn'
 import { ConnectView, NewSessionView } from './NewSessionDialog'
+import { InboxView, useInboxCount, useInboxPendingCount } from './inbox/InboxView'
 
 const SUGGESTIONS = [
   {
@@ -90,6 +94,67 @@ export function SessionWelcome() {
 
 export function HomeView() {
   const hosts = useAppStore((s) => s.hosts)
+  const isMobile = useIsMobile()
+  const pendingCount = useInboxPendingCount()
+  const unreadCount = useInboxCount()
+  // 手机打开 App 时若有待审批，直接落在收件箱；用户手动切换后不再自动跳。
+  const [tab, setTab] = useState<'new' | 'inbox'>(() =>
+    pendingCount > 0 ? 'inbox' : 'new',
+  )
+  const touched = useRef(false)
+  useEffect(() => {
+    if (!isMobile || touched.current) return
+    if (pendingCount > 0) setTab('inbox')
+  }, [pendingCount, isMobile])
+
   if (hosts.length === 0) return <ConnectView />
-  return <NewSessionView />
+  if (!isMobile) return <NewSessionView />
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1.5">
+        <button
+          type="button"
+          onClick={() => {
+            touched.current = true
+            setTab('new')
+          }}
+          aria-pressed={tab === 'new'}
+          className={cn(
+            'flex h-9 items-center rounded-lg px-3 text-[13px] font-medium transition-colors',
+            tab === 'new'
+              ? 'bg-[var(--t-bg-active)] text-text'
+              : 'text-text-tertiary hover:text-text',
+          )}
+        >
+          新会话
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            touched.current = true
+            setTab('inbox')
+          }}
+          aria-pressed={tab === 'inbox'}
+          className={cn(
+            'flex h-9 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-colors',
+            tab === 'inbox'
+              ? 'bg-[var(--t-bg-active)] text-text'
+              : 'text-text-tertiary hover:text-text',
+          )}
+        >
+          <Inbox size={14} />
+          收件箱
+          {unreadCount > 0 && (
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold leading-none text-on-accent">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {tab === 'inbox' ? <InboxView embedded /> : <NewSessionView />}
+      </div>
+    </div>
+  )
 }

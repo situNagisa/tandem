@@ -46,6 +46,8 @@ export class HostConnection {
   private pingTimer: number | undefined
   private subscriptions = new Set<string>()
   private lastStatus: ConnectionState = 'offline'
+  /** 收件箱已应用到的最后 seq；重连时传给服务端补齐。 */
+  private inboxSeq: number | undefined
   /** 每会话已应用到的最后 seq，重连时作为 sinceSeq 请求补发。 */
   private lastSeq = new Map<string, number>()
   /** 等待前序 seq 的事件，保证按序应用。 */
@@ -96,6 +98,11 @@ export class HostConnection {
             ...(sinceSeq !== undefined ? { sinceSeq } : {}),
           })
         }
+        // 全 Host 收件箱：审批/回合结束/预算，不依赖打开哪个会话
+        this.rawSend({
+          type: 'subscribe_inbox',
+          ...(this.inboxSeq !== undefined ? { sinceSeq: this.inboxSeq } : {}),
+        })
         this.startPing()
       }
 
@@ -254,6 +261,16 @@ export class HostConnection {
    * 快照携带当前 seq，直接整体替换并抹平等待队列。
    */
   private deliver(msg: SeqServerMsg): void {
+    if (msg.type === 'inbox_snapshot') {
+      this.inboxSeq = msg.snapshot.seq
+      this.handlers.onMessage(msg)
+      return
+    }
+    if (msg.type === 'inbox_event') {
+      this.inboxSeq = msg.event.seq
+      this.handlers.onMessage(msg)
+      return
+    }
     if (msg.type === 'session_snapshot') {
       const sid = msg.session.id
       if (typeof msg.seq === 'number') this.lastSeq.set(sid, msg.seq)

@@ -4,6 +4,7 @@ import { applyTheme, useUiStore } from './store/useUiStore'
 import { navigate, useRoute } from './lib/router'
 import { useIsMobile, useViewportHeight } from './lib/hooks'
 import { clearAttention } from './lib/attention'
+import { initNativeBridge, syncBackgroundService } from './lib/nativeBridge'
 import { cn } from './lib/cn'
 import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
@@ -15,9 +16,11 @@ import { FilePreviewPanel } from './components/FilePreviewPanel'
 import { SettingsDialog } from './components/settings/SettingsDialog'
 import { SearchDialog } from './components/SearchDialog'
 import { BackgroundTasksPanel } from './components/BackgroundTasksPanel'
+import { InboxDialog } from './components/inbox/InboxDialog'
 import { Toasts } from './components/ui/Toasts'
 import { FeedbackMode } from './components/feedback/FeedbackMode'
 import { OverlayScrollbar } from './components/ui/OverlayScrollbar'
+import { UiGallery } from './components/ui/UiGallery'
 
 export default function App() {
   useViewportHeight()
@@ -37,6 +40,7 @@ export default function App() {
   const theme = useUiStore((s) => s.theme)
   const mobileSidebar = useUiStore((s) => s.mobileSidebar)
   const mobilePanel = useUiStore((s) => s.mobilePanel)
+  const backgroundService = useUiStore((s) => s.backgroundService)
   const setMobileSidebar = useUiStore((s) => s.setMobileSidebar)
   const setMobilePanel = useUiStore((s) => s.setMobilePanel)
   const hasSession = useAppStore((s) => !!s.active)
@@ -50,7 +54,14 @@ export default function App() {
 
   useEffect(() => {
     useAppStore.getState().initialize()
+    void initNativeBridge()
   }, [])
+
+  // 安卓前台服务：设置开关或 Host 数量变化时同步常驻通知
+  useEffect(() => {
+    if (!initialized) return
+    void syncBackgroundService(hosts.length)
+  }, [initialized, hosts.length, backgroundService])
 
   useEffect(() => {
     if (!initialized) return
@@ -257,7 +268,9 @@ export default function App() {
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
         <div className="flex min-h-0 flex-1">
-          {route.kind === 'external' ? (
+          {route.kind === 'dev-ui' ? (
+            <UiGallery />
+          ) : route.kind === 'external' ? (
             <ExternalSessionView
               key={`${route.hostId}:${route.source}:${route.id}`}
               hostId={route.hostId}
@@ -344,6 +357,7 @@ export default function App() {
 
       <SettingsDialog />
       <BackgroundTasksPanel />
+      <InboxDialog />
       <SearchDialog />
       <Toasts />
       <FeedbackMode />

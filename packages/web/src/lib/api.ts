@@ -307,7 +307,8 @@ export const api = {
       body: JSON.stringify(input),
     }),
 
-  commands: (h: HostConfig) => request<SlashCommand[]>(h, '/api/commands'),
+  commands: (h: HostConfig, cwd?: string) =>
+    request<SlashCommand[]>(h, `/api/commands${qs({ cwd })}`),
   skills: (h: HostConfig, cwd?: string) =>
     request<SkillInfo[]>(h, `/api/skills${qs({ cwd })}`),
   saveSkillState: (h: HostConfig, disabled: string[], cwd?: string) =>
