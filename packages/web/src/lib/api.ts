@@ -32,6 +32,7 @@ import type {
   ScheduleInput,
   Session,
   SessionSummary,
+  SkillInfo,
   SlashCommand,
   UpdateSessionInput,
   UsageStatsRow,
@@ -307,6 +308,13 @@ export const api = {
     }),
 
   commands: (h: HostConfig) => request<SlashCommand[]>(h, '/api/commands'),
+  skills: (h: HostConfig, cwd?: string) =>
+    request<SkillInfo[]>(h, `/api/skills${qs({ cwd })}`),
+  saveSkillState: (h: HostConfig, disabled: string[], cwd?: string) =>
+    request<SkillInfo[]>(h, '/api/skills/state', {
+      method: 'PUT',
+      body: JSON.stringify({ disabled, cwd }),
+    }),
 
   context: (h: HostConfig, sessionId: string) =>
     request<ContextBreakdown>(h, `/api/sessions/${encodeURIComponent(sessionId)}/context`),

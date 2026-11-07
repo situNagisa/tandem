@@ -1,4 +1,4 @@
-import { BarChart3, CalendarClock, Monitor, Palette, Plug, RefreshCw, Server, Settings, ShieldCheck, Sparkles, Wallet, Webhook } from 'lucide-react'
+import { BarChart3, BookOpen, CalendarClock, Monitor, Palette, Plug, RefreshCw, Server, Settings, ShieldCheck, Sparkles, Wallet, Webhook } from 'lucide-react'
 import type { SettingsTab } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
@@ -10,6 +10,7 @@ import { AppearanceSection } from './AppearanceSection'
 import { SyncSection } from './SyncSection'
 import { PermissionsSection } from './PermissionsSection'
 import { McpSection } from './McpSection'
+import { SkillsSection } from './SkillsSection'
 import { HooksSection } from './HooksSection'
 import { UsageSection } from './UsageSection'
 import { SchedulesSection } from './SchedulesSection'
@@ -21,6 +22,7 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Server }> = [
   { id: 'permissions', label: '权限', icon: ShieldCheck },
   { id: 'hooks', label: 'Hooks', icon: Webhook },
   { id: 'mcp', label: 'MCP', icon: Plug },
+  { id: 'skills', label: 'Skills', icon: BookOpen },
   { id: 'schedules', label: '定时任务', icon: CalendarClock },
   { id: 'budgets', label: '预算', icon: Wallet },
   { id: 'usage', label: '用量', icon: BarChart3 },
@@ -82,6 +84,7 @@ export function SettingsDialog() {
             {tab === 'permissions' && <PermissionsSection />}
             {tab === 'hooks' && <HooksSection />}
             {tab === 'mcp' && <McpSection />}
+            {tab === 'skills' && <SkillsSection />}
             {tab === 'schedules' && <SchedulesSection />}
             {tab === 'budgets' && <BudgetsSection />}
             {tab === 'usage' && <UsageSection />}

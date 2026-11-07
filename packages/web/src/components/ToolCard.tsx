@@ -13,6 +13,7 @@ import {
   Loader2,
   Search,
   Square,
+  Sparkles,
   SquareTerminal,
   Terminal,
   Wrench,
@@ -51,6 +52,7 @@ const TOOL_META: Record<string, ToolMeta> = {
   TodoWrite: { icon: ListChecks, verb: '更新待办' },
   WebFetch: { icon: Globe, verb: '获取' },
   Task: { icon: Bot, verb: '子代理' },
+  Skill: { icon: Sparkles, verb: '使用技能' },
 }
 
 /** mcp__server__tool → { server, tool }。 */
@@ -403,6 +405,9 @@ export const ToolCard = memo(function ToolCard({
     case 'Task':
       target = pick('description') || pick('prompt')
       break
+    case 'Skill':
+      target = pick('skill')
+      break
     default:
       target = mcp ? `${mcp.server} · ${mcp.tool}` : block.name
   }
@@ -595,7 +600,9 @@ export const ToolCard = memo(function ToolCard({
           </span>
         )}
         <span className={cn('shrink-0', isError && 'text-danger')}>{displayMeta.verb}</span>
-        {isTask && target && <span className="shrink-0 text-muted">·</span>}
+        {(isTask || block.name === 'Skill') && target && (
+          <span className="shrink-0 text-muted">·</span>
+        )}
         {target && filePath && (block.name === 'Read' || block.name === 'Edit' || block.name === 'Write') ? (
           <span
             role="link"

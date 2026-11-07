@@ -104,6 +104,7 @@ export async function runTurn(
         allowTask,
         planMode: rec.permissionMode === 'plan',
         hookContext: promptHookContext,
+        skills: host.skills.promptSection(rec.cwd),
       });
       const requestMessages = rec.messages.slice(0, -1).filter((m) => !m.notice);
       // 请求前估算各部分占用；拿到真实 usage 后再按比例校准
@@ -526,6 +527,7 @@ async function executeToolUses(
       },
       runSubagent: (input: { description: string; prompt: string; subagentType?: string }) =>
         host.runSubagent(rec, input, signal),
+      getSkill: (name: string) => host.skills.resolve(name, rec.cwd),
     };
     const def = host.toolDefinition(tool.name, rec.cwd);
     const res =

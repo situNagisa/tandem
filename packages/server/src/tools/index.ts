@@ -12,6 +12,7 @@ import { definition as task, run as runTask } from './task.js';
 import { definition as exitPlan, run as runExitPlan } from './exit-plan.js';
 import { definition as bashOutput, run as runBashOutput } from './bash-output.js';
 import { definition as killBash, run as runKillBash } from './kill-bash.js';
+import { definition as skill, run as runSkill } from './skill.js';
 
 type ToolRunner = (input: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>;
 
@@ -28,6 +29,7 @@ export const TOOLS: ToolDefinition[] = [
   webfetch,
   task,
   exitPlan,
+  skill,
 ];
 
 const RUNNERS: Record<string, ToolRunner> = {
@@ -43,12 +45,13 @@ const RUNNERS: Record<string, ToolRunner> = {
   WebFetch: runWebfetch,
   Task: runTask,
   ExitPlanMode: runExitPlan,
+  Skill: runSkill,
 };
 
 export const TOOL_MAP = new Map(TOOLS.map((tool) => [tool.name, tool]));
 
 /** plan 模式允许的工具（纯只读）；ExitPlanMode 是提交计划的特殊工具。 */
-export const PLAN_ALLOWED = new Set(['Read', 'Glob', 'Grep', 'WebFetch', 'BashOutput', 'TodoWrite', 'ExitPlanMode']);
+export const PLAN_ALLOWED = new Set(['Read', 'Glob', 'Grep', 'WebFetch', 'BashOutput', 'TodoWrite', 'ExitPlanMode', 'Skill']);
 
 export function isReadOnlyTool(name: string): boolean {
   return TOOL_MAP.get(name)?.readOnly === true;
@@ -90,6 +93,7 @@ export function describeTool(name: string, input: unknown): string {
   if (name === 'WebFetch') return `访问网页: ${String(args.url ?? '')}`;
   if (name === 'Task') return `启动子代理: ${String(args.description ?? '').slice(0, 80)}`;
   if (name === 'ExitPlanMode') return '提交执行计划，等待批准';
+  if (name === 'Skill') return `使用技能: ${String(args.skill ?? '')}`;
   if (name.startsWith('mcp__')) {
     const [, server, ...rest] = name.split('__');
     return `调用 MCP 工具: ${server ?? ''}/${rest.join('__')}`;

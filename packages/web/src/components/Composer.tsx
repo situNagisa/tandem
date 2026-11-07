@@ -76,6 +76,7 @@ const SOURCE_LABEL: Record<SlashCommand['source'], string> = {
   builtin: '内置',
   project: '项目',
   user: '用户',
+  skill: '技能',
 }
 const MODES: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions']
 

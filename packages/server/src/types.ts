@@ -147,6 +147,8 @@ export interface ToolContext {
   runSubagent?: (input: { description: string; prompt: string; subagentType?: string }) => Promise<ToolResult>;
   /** MCP 工具：把调用转发给对应服务器。 */
   callMcp?: (server: string, tool: string, input: unknown) => Promise<ToolResult>;
+  /** Skill 工具：按名称取已启用技能的正文与目录。 */
+  getSkill?: (name: string) => { info: import('@tandem/protocol').SkillInfo; body: string } | undefined;
 }
 
 export type { ContentBlock, Message, Session, SessionStatus, Todo, Usage };

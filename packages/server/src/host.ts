@@ -22,6 +22,7 @@ import type {
   Session,
   SessionStatus,
   SessionSummary,
+  SkillInfo,
   SlashCommand,
   Todo,
 } from '@tandem/protocol';
@@ -88,6 +89,7 @@ import { completeText, listModels as fetchModelList, streamChat } from './provid
 import type { ListModelsResult } from './providers/index.js';
 import { applyModelCapabilities } from './providers/capabilities.js';
 import { buildSystemPrompt } from './agent/prompt.js';
+import { SkillManager } from './skills.js';
 import {
   cacheHitRateOf,
   estimateBreakdown,
@@ -122,6 +124,8 @@ export class Host {
   readonly permissionRules: PermissionRuleStore;
   readonly hooks: HookManager;
   readonly mcp: McpManager;
+  /** Claude Code 兼容 skills（只读扫描，启用状态存 ~/.tandem/skills-state.json）。 */
+  readonly skills: SkillManager;
   readonly usage: UsageStore;
   readonly budgets: BudgetStore;
   readonly tasks: BackgroundTaskManager;
@@ -148,6 +152,7 @@ export class Host {
     this.permissionRules = new PermissionRuleStore(home);
     this.hooks = new HookManager(home);
     this.mcp = new McpManager(home);
+    this.skills = new SkillManager({ home });
     this.usage = new UsageStore(home);
     this.budgets = new BudgetStore(home, this.usage);
     this.tasks = new BackgroundTaskManager(home, (task, content, truncated) => {
@@ -184,7 +189,6 @@ export class Host {
   inboxSnapshot(sinceSeq?: number) {
     return this.inbox.snapshot(sinceSeq);
   }
-
   info(): HostInfo {
     return {
       id: this.config.hostId,
@@ -275,6 +279,7 @@ export class Host {
     const model = rec.model || profile?.defaultModel || '';
     const system = buildSystemPrompt(rec.cwd, {
       planMode: rec.permissionMode === 'plan',
+      skills: this.skills.promptSection(rec.cwd),
     });
     const tools = this.toolDefinitions(rec);
     return estimateBreakdown({
@@ -522,9 +527,14 @@ export class Host {
   /** 本轮可用的工具：内置工具（depth < 3 才含 Task）+ 当前 cwd 已连接的 MCP 工具。 */
   toolDefinitions(rec: SessionRecord, allowTask = true): ToolDefinition[] {
     const canDelegate = allowTask && (rec.depth ?? 0) < 3;
+    const hasSkills = this.skills
+      .list(rec.cwd)
+      .some((skill) => skill.enabled && skill.modelInvocable);
     const base = TOOLS.filter(
       (tool) =>
         (canDelegate || tool.name !== 'Task') &&
+        // 没有可用技能时不暴露 Skill，避免模型空调用
+        (tool.name !== 'Skill' || hasSkills) &&
         // 仅计划模式暴露 ExitPlanMode，其它模式下不打扰模型
         (tool.name !== 'ExitPlanMode' || rec.permissionMode === 'plan'),
     );
@@ -988,7 +998,12 @@ export class Host {
     if (content.length === 1 && first?.type === 'text' && first.text.trim().startsWith('/')) {
       const cmd = parseSlashCommand(first.text);
       // 只把已知命令当命令；以 / 开头的普通路径仍按普通消息处理
-      if (cmd && (BUILTIN_NAMES.has(cmd.name) || findCommandBody(cmd.name, rec.cwd) !== undefined)) {
+      if (
+        cmd &&
+        (BUILTIN_NAMES.has(cmd.name) ||
+          findCommandBody(cmd.name, rec.cwd) !== undefined ||
+          this.skills.list(rec.cwd).some((skill) => skill.name === cmd.name))
+      ) {
         if (await this.handleCommand(rec, cmd)) return;
       }
     }
@@ -1518,7 +1533,24 @@ export class Host {
   // ---------- 斜杠命令 ----------
 
   listCommands(cwd: string): SlashCommand[] {
-    return listCommands(cwd);
+    // 技能命令排在后面，重名时让内置/自定义命令优先
+    const commands = listCommands(cwd);
+    const names = new Set(commands.map((cmd) => cmd.name));
+    for (const skill of this.skills.commands(cwd)) {
+      if (!names.has(skill.name)) {
+        names.add(skill.name);
+        commands.push(skill);
+      }
+    }
+    return commands;
+  }
+
+  listSkills(cwd: string): SkillInfo[] {
+    return this.skills.list(cwd);
+  }
+
+  setSkillState(disabled: string[], cwd: string): SkillInfo[] {
+    return this.skills.setDisabled(disabled, cwd);
   }
 
   private async handleCommand(rec: SessionRecord, cmd: ParsedCommand): Promise<boolean> {
@@ -1592,6 +1624,37 @@ export class Host {
       const expanded = body.replace(/\$ARGUMENTS/g, cmd.args);
       await this.sendToModel(rec, [{ type: 'text', text: expanded }]);
       return true;
+    }
+
+    // Skill：/<skill-name> 显式加载技能正文
+    const skillInfo = this.skills.list(rec.cwd).find((skill) => skill.name === cmd.name);
+    if (skillInfo) {
+      if (!skillInfo.enabled) {
+        this.appendLocalAssistant(
+          rec,
+          `技能「${cmd.name}」已停用。可在「设置 → Skills」中重新启用，或直接用自然语言描述任务。`,
+        );
+        return true;
+      }
+      if (!skillInfo.userInvocable) {
+        this.appendLocalAssistant(
+          rec,
+          `技能「${cmd.name}」不允许用户直接调用（user-invocable: false），模型会在需要时自行使用。`,
+        );
+        return true;
+      }
+      const skill = this.skills.resolve(cmd.name, rec.cwd);
+      if (skill) {
+        this.titleFromCommand(rec, cmd);
+        let expanded = skill.body.replace(/\$ARGUMENTS/g, cmd.args);
+        if (cmd.args && !skill.body.includes('$ARGUMENTS')) {
+          expanded += `\n\n用户参数：${cmd.args}`;
+        }
+        await this.sendToModel(rec, [
+          { type: 'text', text: `[使用技能 ${skill.info.name}]\n\n${expanded}` },
+        ]);
+        return true;
+      }
     }
 
     this.appendLocalAssistant(
@@ -1844,6 +1907,7 @@ function costSummary(rec: SessionRecord): string {
 function labelOfSource(source: SlashCommand['source']): string {
   if (source === 'builtin') return '内置';
   if (source === 'project') return '项目';
+  if (source === 'skill') return '技能';
   return '用户';
 }
 
