@@ -271,3 +271,11 @@
 - [x] 设置：通用页新增自动压缩开关、阈值、保留轮数、工具输出裁剪开关与阈值/轮数；写入 Host config.json
 - [x] 消息流：压缩后插入可展开的「已自动/已压缩 · 节省 xx tokens」单行提示，展开看摘要全文；摘要消息不再以用户气泡展示
 - 验证：`TANDEM_HOME=/tmp/tandem-autocompact` + mock provider（端口 8292，按请求体大小返回 `context_length_exceeded`）；长会话自动压缩保留 4 轮、摘要与提示入库；超长报错压缩后重试成功；旧 7k 字符工具输出在请求体被替换、会话原文仍在；手动 `/compact` 回归通过；Playwright 截图 `/tmp/compact-shots/`；`e2e/regression.mjs` 新增「上下文面板显示最大占用项」
+
+## 迭代 31（2026-11-08）审批策略学习（减少重复弹窗）
+- [x] 审批历史：每次 allow / always / deny 记录工具名、规范化关键参数（Bash 命令头部；文件工具相对路径与目录）、项目、时间，落 `~/.tandem/approvals.jsonl`，只保留最近 5000 条
+- [x] 规则建议：同项目同类请求批准 ≥3 次且从未拒绝 → 建议自动允许；内置危险模式表（rm、git push、curl | sh、sudo、.env/.ssh 等）永不建议自动允许，改为建议「总是询问」；设置-权限页顶部一键采纳/忽略，审批卡在同类请求已批准 3 次时提供「以后在本项目自动允许 `x*`」快捷项
+- [x] `PermissionRule.project`：规则可限定到项目（含子目录），审批卡快捷项与历史建议生成的规则均带项目范围
+- [x] 自然语言生成规则：设置-权限页输入一句话，用当前会话模型生成结构化草稿，界面确认后才保存；草稿与保存均过危险模式表，命中直接拒绝并说明原因
+- [x] 效果统计：设置-权限页显示「过去 7 天：弹窗 N 次，被规则自动处理 M 次」（`approval-stats.jsonl` 记录规则自动放行/拒绝）
+- 验证：`TANDEM_HOME=/tmp/tandem-approval` 端口 8293 + 本地 mock provider（8294）；脚本模拟审批历史确认建议正确、rm 不被建议自动允许、草稿确认前不落盘、危险草稿 400 拒绝；Playwright 截图 `/tmp/approval-shots/`；`e2e/regression.mjs` 新增 3 条（快捷项出现、危险命令不出现、权限页统计与建议）；`node scripts/check.mjs` 全量通过
