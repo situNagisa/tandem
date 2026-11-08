@@ -37,6 +37,7 @@ import { DoctorDialog } from './components/DoctorDialog'
 import { Toasts } from './components/ui/Toasts'
 import { FeatureTour } from './components/tour/FeatureTour'
 import { OverlayScrollbar } from './components/ui/OverlayScrollbar'
+import { ResizeHandle } from './components/ui/ResizeHandle'
 
 // 调试专用界面整体惰性加载；发布版构建里条件为常量 false，模块不会进入产物。
 const FeedbackMode = __TANDEM_DEBUG__
@@ -94,8 +95,6 @@ export default function App() {
   const activeUnread = useAppStore((s) => s.active?.summary?.unread ?? false)
 
   const [dragWidth, setDragWidth] = useState<number | null>(null)
-  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
-  const lastWidthRef = useRef<number | null>(null)
   const [drawerOffset, setDrawerOffset] = useState(0)
   const [onboarded, setOnboarded] = useState(() => {
     try {
@@ -360,35 +359,6 @@ export default function App() {
     }
   }, [])
 
-  const startResize = (e: React.PointerEvent) => {
-    if (e.button !== 0) return
-    e.preventDefault()
-    dragRef.current = { startX: e.clientX, startWidth: sidebarWidth }
-    lastWidthRef.current = sidebarWidth
-    setDragWidth(sidebarWidth)
-    const move = (ev: PointerEvent) => {
-      const d = dragRef.current
-      if (!d) return
-      const next = Math.min(400, Math.max(220, d.startWidth + ev.clientX - d.startX))
-      lastWidthRef.current = next
-      setDragWidth(next)
-    }
-    const up = () => {
-      dragRef.current = null
-      const finalWidth = lastWidthRef.current
-      if (finalWidth !== null) useUiStore.getState().setSidebarWidth(finalWidth)
-      setDragWidth(null)
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-    }
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-  }
-
   if (initialized && !onboarded && !accountSession && (hosts.length === 0 || forceOnboarding)) {
     return <WorkstationOnboarding onDone={() => setOnboarded(true)} />
   }
@@ -413,23 +383,20 @@ export default function App() {
             <Sidebar />
           </div>
           {!sidebarCollapsed && (
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="调整侧栏宽度"
-              onPointerDown={startResize}
-              onDoubleClick={() => setSidebarWidth(272)}
-              title="拖动调整宽度，双击复位"
-              className="group absolute right-0 top-0 z-20 h-full w-2 cursor-col-resize touch-none"
-            >
-              <span
-                className={cn(
-                  'pointer-events-none absolute right-0 top-0 h-full w-px bg-transparent transition-colors duration-150',
-                  'group-hover:bg-border-strong',
-                  dragWidth !== null && 'bg-accent',
-                )}
-              />
-            </div>
+            <ResizeHandle
+              value={sidebarWidth}
+              min={220}
+              max={400}
+              edge="right"
+              onChange={setDragWidth}
+              onCommit={(next) => {
+                setSidebarWidth(next)
+                setDragWidth(null)
+              }}
+              resetValue={272}
+              label="调整侧栏宽度"
+              className="z-20"
+            />
           )}
         </aside>
       )}
