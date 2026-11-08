@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { KeyRound, Loader2, ShieldCheck } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
 import { Button } from '../ui/Button'
@@ -21,6 +21,10 @@ export function LoginDialog({ open, onClose, defaultCenterUrl = '' }: LoginDialo
   const [totp, setTotp] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (open && !centerUrl && defaultCenterUrl) setCenterUrl(defaultCenterUrl)
+  }, [open, defaultCenterUrl, centerUrl])
 
   const submit = async () => {
     if (!centerUrl.trim() || !username.trim() || !password) {
