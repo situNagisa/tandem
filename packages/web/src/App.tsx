@@ -559,7 +559,7 @@ export default function App() {
       {__TANDEM_DEBUG__ && (
         <div
           aria-hidden
-          className="pointer-events-none fixed bottom-1 right-1 z-[70] rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[10px] leading-4 text-text-tertiary"
+          className="pointer-events-none fixed bottom-1 right-1 z-[70] rounded border border-border bg-bg px-1.5 py-0.5 text-[11px] leading-4 text-text"
           title={`Tandem ${__APP_VERSION__} 调试版`}
         >
           调试版
