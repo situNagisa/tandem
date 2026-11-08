@@ -13,6 +13,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { useIsMobile } from '../../lib/hooks'
 import { cn } from '../../lib/cn'
+import { nodeContains } from '../../lib/overlay'
 import {
   closeSplitPaneAt,
   focusSplitPane,
@@ -85,7 +86,7 @@ function SinglePaneDrop() {
         setDrop(zoneAt(event))
       }}
       onDragLeave={(event) => {
-        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+        if (nodeContains(event.currentTarget, event.relatedTarget)) return
         setDrop(null)
       }}
       onDrop={(event) => {
@@ -425,7 +426,7 @@ function DesktopSplit({
         setDrop(zoneAt(event))
       }}
       onDragLeave={(event) => {
-        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+        if (nodeContains(event.currentTarget, event.relatedTarget)) return
         setDrop(null)
       }}
       onDrop={(event) => {

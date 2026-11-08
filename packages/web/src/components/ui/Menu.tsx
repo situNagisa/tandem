@@ -12,6 +12,8 @@ import {
 import * as RDropdown from '@radix-ui/react-dropdown-menu'
 import { Check, ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '../../lib/cn'
+import { nodeContains, portalLayer } from '../../lib/overlay'
+import { useFeedbackStore } from '../../store/useFeedbackStore'
 import type { ControlSize } from './Button'
 import { Tip } from './Tooltip'
 
@@ -137,6 +139,7 @@ function MenuRoot({
       <RDropdown.Trigger asChild>{node}</RDropdown.Trigger>
       <RDropdown.Portal>
         <RDropdown.Content
+          {...portalLayer('menu')}
           aria-label={ariaLabel}
           side={side}
           align={radixAlign}
@@ -152,6 +155,19 @@ function MenuRoot({
               : 'min(420px, var(--radix-dropdown-menu-content-available-height))',
           }}
           onKeyDown={handleMenuKeys}
+          // 反馈模式下点反馈编辑器/徽标属于“反馈 UI”，不能被当作外部点击把菜单关掉。
+          onPointerDownOutside={(e) => {
+            if (useFeedbackStore.getState().active) e.preventDefault()
+          }}
+          onFocusOutside={(e) => {
+            if (useFeedbackStore.getState().active) e.preventDefault()
+          }}
+          onInteractOutside={(e) => {
+            if (useFeedbackStore.getState().active) e.preventDefault()
+          }}
+          onEscapeKeyDown={(e) => {
+            if (useFeedbackStore.getState().active) e.preventDefault()
+          }}
           className={cn(PANEL_BASE, className)}
         >
           {children}
@@ -411,6 +427,7 @@ function MenuSubContent({ children, className, 'aria-label': ariaLabel }: MenuSu
   return (
     <RDropdown.Portal>
       <RDropdown.SubContent
+        {...portalLayer('submenu')}
         aria-label={ariaLabel}
         sideOffset={4}
         alignOffset={-4}
@@ -561,7 +578,7 @@ export function MenuList({
   }
 
   const onPointerLeave = () => {
-    if (ref.current?.contains(document.activeElement)) return
+    if (nodeContains(ref.current, document.activeElement)) return
     setActiveItem(null)
   }
 
@@ -579,7 +596,7 @@ export function MenuList({
         if (item) setActiveItem(item)
       }}
       onBlur={(e) => {
-        if (ref.current?.contains(e.relatedTarget as Node | null)) return
+        if (nodeContains(ref.current, e.relatedTarget)) return
         setActiveItem(null)
       }}
     >

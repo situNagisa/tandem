@@ -2298,6 +2298,141 @@ async function main() {
       await page.waitForFunction(() => !document.documentElement.classList.contains('feedback-mode'))
     })
 
+    desktop('反馈模式圈选浮层：模型菜单（含子菜单）、命令面板、环境条、看板抽屉', async (page) => {
+      await openSession(page, 'long')
+      await waitModelReady(page)
+      const editor = page.getByRole('dialog', { name: '反馈输入' })
+
+      const enterFeedback = async () => {
+        await page.keyboard.press('Control+Shift+F')
+        await page.waitForSelector('html.feedback-mode', { timeout: 5_000 })
+      }
+      const cancelEditor = async () => {
+        await editor.getByRole('button', { name: '取消', exact: true }).click()
+        await editor.waitFor({ state: 'hidden', timeout: 5_000 })
+      }
+      const exitFeedback = async () => {
+        if (await editor.isVisible().catch(() => false)) await cancelEditor()
+        await page.keyboard.press('Escape')
+        await page.waitForFunction(() => !document.documentElement.classList.contains('feedback-mode'))
+      }
+      // 反馈模式下点击浮层里的目标：编辑器必须出现，且点击不能穿透到应用。
+      const expectEditorAt = async (target, label) => {
+        const box = await target.boundingBox()
+        assert.ok(box, `${label} 不在视口内`)
+        await page.mouse.click(box.x + Math.min(box.width / 2, 48), box.y + box.height / 2)
+        await editor.waitFor({ state: 'visible', timeout: 8_000 })
+        withinViewport(await editor.boundingBox(), DESKTOP, `反馈输入浮窗（${label}）`)
+        await cancelEditor()
+      }
+
+      // 1) 模型菜单 + 级联子菜单：Radix 模态菜单把 body 锁成 pointer-events:none，
+      //    旧实现 elementsFromPoint 只拿到 <html>，所有点选失效。
+      const modelButton = page.locator('button[aria-label^="选择模型"]').first()
+      await modelButton.click()
+      const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+      await menu.waitFor()
+      const modelRow = menu.locator('[role="menuitem"]').filter({ hasText: 'mock-1' }).first()
+      await modelRow.hover()
+      await menu.getByText('切换账号', { exact: true }).hover()
+      const submenu = page.locator('[role="menu"][aria-label="切换账号"]').first()
+      await submenu.waitFor({ timeout: 5_000 })
+
+      await enterFeedback()
+      // 子菜单先圈选：反馈模式下无法再把指针移回 Radix 触发器展开子菜单。
+      await expectEditorAt(submenu.locator('[role="menuitem"]').first(), '级联子菜单项')
+      await expectEditorAt(modelRow, '模型菜单项')
+      // 指针停在轮次大纲上退出反馈模式：relatedTarget 可能是 Window，旧实现直接 contains 会抛错。
+      const rail = page.locator('.turn-hit').first()
+      const railBox = await rail.boundingBox().catch(() => null)
+      if (railBox) await page.mouse.move(railBox.x + railBox.width / 2, railBox.y + railBox.height / 2)
+      await exitFeedback()
+      await page.mouse.move(900, 500)
+      await page.waitForTimeout(250)
+      await page.keyboard.press('Escape')
+      await menu.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {})
+
+      // 2) 命令面板（Modal Portal）
+      await page.keyboard.press('Control+k')
+      const palette = page.getByRole('dialog', { name: '命令面板' })
+      await palette.waitFor({ timeout: 8_000 })
+      await enterFeedback()
+      await expectEditorAt(palette.locator('[data-palette-index]').first(), '命令面板条目')
+      await exitFeedback()
+      await page.keyboard.press('Escape')
+      await palette.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {})
+
+      // 3) 环境条下拉（Popover Portal）
+      const folderTrigger = page.locator(`button[title="${repo}"]`).first()
+      await folderTrigger.click()
+      const popover = page.locator('[role="menu"].popover-panel').first()
+      await popover.waitFor()
+      await enterFeedback()
+      await expectEditorAt(popover.getByRole('menuitem').first(), '环境条下拉项')
+      await exitFeedback()
+      await page.keyboard.press('Escape')
+      await popover.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {})
+
+      // 4) 看板卡片抽屉
+      const board = await boardCall('', {
+        method: 'POST',
+        body: { cwd: repo, name: '反馈圈选看板', maxParallel: 1, defaults: { profileId: 'p-main' } },
+      })
+      await boardCall(`/${board.id}/cards`, {
+        method: 'POST',
+        body: { title: '圈选抽屉卡', prompt: '回复“完成”即可' },
+      })
+      await openBoardPage(page, board.id)
+      await boardCardIn(page, 'todo', '圈选抽屉卡').click()
+      const drawer = page.getByTestId('board-drawer')
+      await drawer.waitFor()
+      await enterFeedback()
+      await expectEditorAt(drawer.getByText('圈选抽屉卡', { exact: true }).first(), '看板抽屉')
+      await exitFeedback()
+      await drawer.getByRole('button', { name: '关闭详情', exact: true }).first().click().catch(() => {})
+    })
+
+    desktop('模型菜单：单价未设置时可跳到该账号的单价覆盖', async (page) => {
+      await openSession(page, 'long')
+      await waitModelReady(page)
+      const modelButton = page.locator('button[aria-label^="选择模型"]').first()
+      await modelButton.click()
+      const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+      await menu.waitFor()
+      const setup = menu.getByRole('button', { name: '单价未设置 · 去设置' }).first()
+      await setup.waitFor({ timeout: 10_000 })
+      assert.equal(await menu.getByText('单价未知', { exact: false }).count(), 0, '仍在显示「单价未知」')
+      await setup.click()
+      await menu.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {})
+      const dialog = page.getByRole('dialog', { name: '设置' })
+      await dialog.waitFor({ state: 'visible', timeout: 10_000 })
+      const prices = dialog.locator('[data-setting-id="profiles.prices"]')
+      await prices.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.ok(await dialog.getByText('自定义单价').first().isVisible(), '没有定位到单价覆盖区')
+    })
+
+    desktop('新会话页环境条显示当前分支名而不是「分支」占位词', async (page) => {
+      await page.evaluate(() => (window.location.hash = '#/'))
+      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
+      await page.locator('button:has(svg.lucide-folder-open)').first().click()
+      const input = page.getByRole('textbox', { name: '筛选文件夹或输入路径' })
+      await input.waitFor()
+      await input.fill(repo)
+      await input.press('Enter')
+      const branchButton = page.locator('button[title="创建会话后可切换分支"]').first()
+      await branchButton.waitFor()
+      await page.waitForFunction(
+        () =>
+          [...document.querySelectorAll('button[title="创建会话后可切换分支"]')].some(
+            (b) => (b.textContent ?? '').trim() === 'main',
+          ),
+        null,
+        { timeout: 10_000 },
+      )
+      const label = ((await branchButton.textContent()) ?? '').trim()
+      assert.equal(label, 'main', `环境条分支显示为「${label}」`)
+    })
+
     desktop('Windows 盘符路径文件链接可打开预览', async (page) => {
       await openSession(page, 'links')
       const link = page.locator('a[title^="打开 D:/"]').first()

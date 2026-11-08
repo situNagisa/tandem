@@ -15,6 +15,7 @@ import { useUiStore } from '../../store/useUiStore'
 import { useTurnNavStore } from '../../store/useTurnNavStore'
 import { useFeedbackStore } from '../../store/useFeedbackStore'
 import { useIsMobile } from '../../lib/hooks'
+import { nodeContains } from '../../lib/overlay'
 import type { UiMessage } from '../../lib/types'
 import { createScrollFollower, type ScrollFollower } from './turnRailMotion'
 import { POOL, RailScene } from './turnRailScene'
@@ -464,8 +465,8 @@ export function TurnRail({
     openTimer.current = 0
     if (dragRef.current || useFeedbackStore.getState().active) return
     // 指针移到行尾图钉等面板内元素时，hit 也会收到 pointerleave，不应收起。
-    const related = event.relatedTarget as Element | null
-    if (related && navRef.current?.contains(related)) return
+    // relatedTarget 可能是 Window（离开文档/浮层卸载），不能直接 contains。
+    if (nodeContains(navRef.current, event.relatedTarget)) return
     sceneRef.current?.setPointer(null)
     window.clearTimeout(closeTimer.current)
     if (document.activeElement === hitRef.current && hitRef.current?.matches(':focus-visible')) return

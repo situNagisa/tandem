@@ -31,6 +31,14 @@ async function walk(dir) {
   return out
 }
 
+const GLOBAL_CHECKS = [
+  {
+    id: 'contains-related-target',
+    label: '直接 contains(…relatedTarget)：relatedTarget 可能是 Window，应改用 lib/overlay 的 nodeContains',
+    re: /\.contains\(\s*[A-Za-z_$][\w$]*\.relatedTarget/g,
+  },
+]
+
 const files = (await walk(SRC)).filter((file) => !file.startsWith(UI_DIR + '/'))
 const issues = []
 for (const file of files) {
@@ -39,6 +47,8 @@ for (const file of files) {
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i]
     if (line.includes('ui-audit-ignore')) continue
+    // 选择器查询（querySelector/closest）里的 role 字符串不是手写弹层，跳过。
+    if (/\b(?:querySelector|querySelectorAll|closest|matches)\(/.test(line)) continue
     for (const check of CHECKS) {
       check.re.lastIndex = 0
       if (!check.re.test(line)) continue
@@ -48,6 +58,41 @@ for (const file of files) {
         check: check.id,
         label: check.label,
         text: line.trim().slice(0, 160),
+      })
+    }
+  }
+}
+
+// ui/ 浮层组件：Portal 内容必须带统一标记，反馈模式命中测试才认得出。
+for (const file of await walk(UI_DIR)) {
+  const text = await readFile(file, 'utf8')
+  if (!/createPortal\(|\.Portal>/.test(text)) continue
+  if (/PORTAL_ATTR|portalLayer\(/.test(text)) continue
+  issues.push({
+    file: relative(ROOT, file),
+    line: 1,
+    check: 'portal-marker',
+    label: 'Portal 浮层未打 data-portal-layer 标记（lib/overlay 的 portalLayer）',
+    text: 'createPortal / Radix Portal',
+  })
+}
+
+// 所有源码：relatedTarget 必须是 Node，直接 contains 会在离开窗口时抛 TypeError。
+for (const file of await walk(SRC)) {
+  const text = await readFile(file, 'utf8')
+  if (file.endsWith('lib/overlay.ts')) continue
+  const lines = text.split('\n')
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i].includes('ui-audit-ignore')) continue
+    for (const check of GLOBAL_CHECKS) {
+      check.re.lastIndex = 0
+      if (!check.re.test(lines[i])) continue
+      issues.push({
+        file: relative(ROOT, file),
+        line: i + 1,
+        check: check.id,
+        label: check.label,
+        text: lines[i].trim().slice(0, 160),
       })
     }
   }

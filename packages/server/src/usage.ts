@@ -22,6 +22,8 @@ const BUILTIN_PRICES: Array<{ prefix: string; price: Price }> = [
   { prefix: 'claude-3-5-sonnet', price: { input: 3, output: 15 } },
   { prefix: 'claude-haiku-4-5', price: { input: 1, output: 5 } },
   { prefix: 'claude-3-5-haiku', price: { input: 0.8, output: 4 } },
+  { prefix: 'claude-3-sonnet', price: { input: 3, output: 15 } },
+  { prefix: 'claude-2', price: { input: 8, output: 24 } },
   { prefix: 'claude-3-haiku', price: { input: 0.25, output: 1.25 } },
   // OpenAI GPT-5 / GPT-4.1 / GPT-4o / o 系列
   { prefix: 'gpt-5-codex', price: { input: 1.25, output: 10 } },
@@ -33,8 +35,12 @@ const BUILTIN_PRICES: Array<{ prefix: string; price: Price }> = [
   { prefix: 'gpt-4.1', price: { input: 2, output: 8 } },
   { prefix: 'gpt-4o-mini', price: { input: 0.15, output: 0.6 } },
   { prefix: 'gpt-4o', price: { input: 2.5, output: 10 } },
+  { prefix: 'gpt-4-turbo', price: { input: 10, output: 30 } },
+  { prefix: 'gpt-4', price: { input: 30, output: 60 } },
+  { prefix: 'gpt-3.5-turbo', price: { input: 0.5, output: 1.5 } },
   { prefix: 'o1-pro', price: { input: 150, output: 600 } },
   { prefix: 'o1-mini', price: { input: 1.1, output: 4.4 } },
+  { prefix: 'o1-preview', price: { input: 15, output: 60 } },
   { prefix: 'o1', price: { input: 15, output: 60 } },
   { prefix: 'o3-pro', price: { input: 20, output: 80 } },
   { prefix: 'o3-mini', price: { input: 1.1, output: 4.4 } },
@@ -81,10 +87,16 @@ export function priceForModel(profile: StoredProfile | undefined, model: string)
   keys.sort((a, b) => b.length - a.length);
   if (keys[0]) return { ...overrides[keys[0]]! };
 
+  // 前缀匹配同时兼容供应商前缀与版本后缀：`us.anthropic.claude-sonnet-4-5-20250929-v1:0`
+  // 也能命中 `claude-sonnet-4-5`；取最长的前缀，避免 `gpt-4` 抢走 `gpt-4o`。
+  let best: { prefix: string; price: Price } | undefined;
   for (const entry of BUILTIN_PRICES) {
-    if (name === entry.prefix || name.startsWith(entry.prefix)) return { ...entry.price };
+    const index = name.indexOf(entry.prefix);
+    if (index < 0) continue;
+    if (index > 0 && /[a-z0-9]/.test(name[index - 1]!)) continue;
+    if (!best || entry.prefix.length > best.prefix.length) best = entry;
   }
-  return undefined;
+  return best ? { ...best.price } : undefined;
 }
 
 /** 缓存读取价相对输入价的倍率（展示与计费保持一致）。 */

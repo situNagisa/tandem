@@ -181,11 +181,8 @@ export function NewSessionView() {
     }
   }, [profiles, profileId, groupId])
 
-  const gitRepo = useGitRepo(
-    host,
-    cwd,
-    teamInfo && teamInfo.role !== 'owner' ? teamInfo.member?.projectDirs : undefined,
-  )
+  const git = useGitRepo(host, cwd)
+  const gitRepo = git.state
 
   useEffect(() => {
     if (gitRepo === 'no') setWorktree(false)
@@ -276,7 +273,8 @@ export function NewSessionView() {
             variant="new"
             hostId={hostId}
             cwd={cwd}
-            env={gitRepo === 'yes' ? { repoRoot: cwd } : undefined}
+            env={gitRepo === 'yes' ? { repoRoot: git.env?.repoRoot ?? cwd, branch: git.env?.branch } : undefined}
+            envLoading={gitRepo === 'checking'}
             worktreeOn={worktree}
             delegation={delegation}
             onDelegationChange={setDelegation}

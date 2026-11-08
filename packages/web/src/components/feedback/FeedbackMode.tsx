@@ -40,6 +40,7 @@ import {
   visibleTextSnippet,
 } from '../../lib/feedbackCapture'
 import { getFeedbackErrors } from '../../lib/feedbackErrors'
+import { elementsAtPoint } from '../../lib/overlay'
 import { getFeedbackTrace } from '../../lib/feedbackTrace'
 import { captureFeedbackSnapshot } from '../../lib/feedbackSnapshot'
 import { APP_VERSION } from '../../lib/changelog'
@@ -200,15 +201,19 @@ function isUiTarget(target: EventTarget | null): boolean {
 
 /** 捕获层之下的真实目标：跳过捕获层、高亮层与反馈自身 UI。 */
 function elementAtPoint(x: number, y: number): Element | null {
-  for (const element of document.elementsFromPoint(x, y)) {
-    if (isUiTarget(element)) continue
-    if (element === document.documentElement) continue
-    // 点在图标的 path/文字上时落到最近的可交互控件，截图才是整个按钮。
-    return (
-      element.closest(
-        'button, a[href], [role="button"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
-      ) ?? element
-    )
+  try {
+    for (const element of elementsAtPoint(x, y)) {
+      if (isUiTarget(element)) continue
+      if (element === document.documentElement) continue
+      // 点在图标的 path/文字上时落到最近的可交互控件，截图才是整个按钮。
+      return (
+        element.closest(
+          'button, a[href], [role="button"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
+        ) ?? element
+      )
+    }
+  } catch {
+    // 命中测试在浮层卸载等瞬间可能拿到失效节点：当作没选中，捕获层继续可用。
   }
   return null
 }
@@ -372,7 +377,7 @@ function FeedbackEditor({
       />
       <div
         {...{ [UI_ATTR]: '' }}
-        className="fixed z-[140] w-[min(440px,calc(100vw-16px))] rounded-xl border border-border bg-surface p-2.5 shadow-lg"
+        className="pointer-events-auto fixed z-[140] w-[min(440px,calc(100vw-16px))] rounded-xl border border-border bg-surface p-2.5 shadow-lg"
         style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: -9999 }}
         ref={panelRef}
         role="dialog"
@@ -745,6 +750,20 @@ export function FeedbackMode() {
     let down: { x: number; y: number; pointerId: number } | null = null
     let lastPoint: { x: number; y: number } | null = null
 
+    // 单个处理器抛错（如浮层卸载导致节点失效）不能冻结捕获层：
+    // 清掉拖拽/悬停状态后继续保持响应，下一次点击照常可选。
+    const safely = (fn: () => void) => {
+      try {
+        fn()
+      } catch (err) {
+        down = null
+        lastHoverRef.current = null
+        setHover(null)
+        setRegionBox(null)
+        console.warn('[feedback] 圈选处理失败，已恢复捕获层', err)
+      }
+    }
+
     // 捕获层自身也带 data-feedback-ui，它不是可交互 UI，事件必须继续拦截。
     const isFeedbackUi = (target: EventTarget | null) =>
       target instanceof Element &&
@@ -850,6 +869,10 @@ export function FeedbackMode() {
           causeId: inferred?.causeId,
           causeTitle: inferred?.causeTitle,
         })
+      } catch (err) {
+        // 截图/推断失败不能让捕获层停在“采集中”，用户下次点击必须还能用。
+        console.warn('[feedback] 圈选截图失败', err)
+        useUiStore.getState().toast('圈选失败，请再试一次', 'error')
       } finally {
         capturingRef.current = false
       }
@@ -866,7 +889,7 @@ export function FeedbackMode() {
           capturePageForRoute(route),
         ])
         if (!useFeedbackStore.getState().active) return
-        const center = document.elementsFromPoint(
+        const center = elementsAtPoint(
           rect.x + rect.width / 2,
           rect.y + rect.height / 2,
         ).find((element) => !isUiTarget(element) && element !== document.documentElement)
@@ -896,6 +919,9 @@ export function FeedbackMode() {
           causeId: inferred?.causeId,
           causeTitle: inferred?.causeTitle,
         })
+      } catch (err) {
+        console.warn('[feedback] 区域截图失败', err)
+        useUiStore.getState().toast('圈选失败，请再试一次', 'error')
       } finally {
         capturingRef.current = false
         setRegionBusy(false)
@@ -1010,25 +1036,32 @@ export function FeedbackMode() {
       'focusout',
     ]
 
-    window.addEventListener('pointerdown', onPointerDown, true)
-    window.addEventListener('pointerup', onPointerUp, true)
+    const onPointerDownSafe = (e: PointerEvent) => safely(() => onPointerDown(e))
+    const onPointerUpSafe = (e: PointerEvent) => safely(() => onPointerUp(e))
+    const onPointerMoveSafe = (e: PointerEvent) => safely(() => onPointerMove(e))
+    const onPointerCancelSafe = () => safely(onPointerCancel)
+    const onPointerLeaveSafe = () => safely(onPointerLeave)
+    const onWheelSafe = (e: WheelEvent) => safely(() => onWheel(e))
+
+    window.addEventListener('pointerdown', onPointerDownSafe, true)
+    window.addEventListener('pointerup', onPointerUpSafe, true)
     for (const type of blocked) {
       window.addEventListener(type, type === 'focusin' || type === 'focusout' ? blockFocus : blockInteraction, true)
     }
-    layer.addEventListener('pointermove', onPointerMove)
-    layer.addEventListener('pointercancel', onPointerCancel)
-    layer.addEventListener('pointerleave', onPointerLeave)
-    layer.addEventListener('wheel', onWheel, { passive: false })
+    layer.addEventListener('pointermove', onPointerMoveSafe)
+    layer.addEventListener('pointercancel', onPointerCancelSafe)
+    layer.addEventListener('pointerleave', onPointerLeaveSafe)
+    layer.addEventListener('wheel', onWheelSafe, { passive: false })
     return () => {
-      window.removeEventListener('pointerdown', onPointerDown, true)
-      window.removeEventListener('pointerup', onPointerUp, true)
+      window.removeEventListener('pointerdown', onPointerDownSafe, true)
+      window.removeEventListener('pointerup', onPointerUpSafe, true)
       for (const type of blocked) {
         window.removeEventListener(type, type === 'focusin' || type === 'focusout' ? blockFocus : blockInteraction, true)
       }
-      layer.removeEventListener('pointermove', onPointerMove)
-      layer.removeEventListener('pointercancel', onPointerCancel)
-      layer.removeEventListener('pointerleave', onPointerLeave)
-      layer.removeEventListener('wheel', onWheel)
+      layer.removeEventListener('pointermove', onPointerMoveSafe)
+      layer.removeEventListener('pointercancel', onPointerCancelSafe)
+      layer.removeEventListener('pointerleave', onPointerLeaveSafe)
+      layer.removeEventListener('wheel', onWheelSafe)
     }
   }, [active])
 
@@ -1600,7 +1633,7 @@ export function FeedbackMode() {
       <div
         ref={layerRef}
         {...{ [UI_ATTR]: '', 'data-feedback-capture': '' }}
-        className="fixed inset-0 z-[105] touch-none select-none"
+        className="pointer-events-auto fixed inset-0 z-[105] touch-none select-none"
         aria-hidden
       />
 
@@ -1716,7 +1749,7 @@ export function FeedbackMode() {
         {...{ [UI_ATTR]: '' }}
         role="region"
         aria-label="反馈模式工具栏"
-        className="fixed left-1/2 top-3 z-[130] w-max max-w-[calc(100vw-16px)] -translate-x-1/2 max-sm:top-auto max-sm:bottom-[max(4.5rem,calc(env(safe-area-inset-bottom)+4rem))]"
+        className="pointer-events-auto fixed left-1/2 top-3 z-[130] w-max max-w-[calc(100vw-16px)] -translate-x-1/2 max-sm:top-auto max-sm:bottom-[max(4.5rem,calc(env(safe-area-inset-bottom)+4rem))]"
       >
         <div className="flex flex-wrap items-center justify-center gap-2 rounded-full border border-border bg-surface py-1 pl-3 pr-1.5 shadow-md">
           <span className="size-1.5 rounded-full bg-[#F97316]" />
@@ -1800,7 +1833,7 @@ export function FeedbackMode() {
       {verify && verifyEntry && (
         <div
           {...{ [UI_ATTR]: '' }}
-          className="fixed bottom-4 left-1/2 z-[130] w-[min(560px,calc(100vw-16px))] -translate-x-1/2 rounded-xl border border-border bg-surface p-2.5 shadow-lg"
+          className="pointer-events-auto fixed bottom-4 left-1/2 z-[130] w-[min(560px,calc(100vw-16px))] -translate-x-1/2 rounded-xl border border-border bg-surface p-2.5 shadow-lg"
         >
           <div className="flex items-center gap-2">
             <span className="rounded bg-[#F97316]/15 px-1.5 py-0.5 text-[10.5px] font-semibold text-[#F97316]">

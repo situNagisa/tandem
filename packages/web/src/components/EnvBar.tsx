@@ -42,14 +42,17 @@ function EnvTrigger({
   disabled,
   title,
   pressed,
+  loading,
 }: {
   icon: ReactNode
-  label: string
+  label: ReactNode
   onClick?: () => void
   open?: boolean
   disabled?: boolean
   title?: string
   pressed?: boolean
+  /** 数据未就绪：显示骨架而不是“分支”这类占位词。 */
+  loading?: boolean
 }) {
   return (
     <button
@@ -67,7 +70,15 @@ function EnvTrigger({
       )}
     >
       {icon}
-      <span className="max-w-[160px] truncate max-sm:max-w-[96px]">{label}</span>
+      {loading ? (
+        <span
+          role="status"
+          aria-label="读取中"
+          className="inline-block h-3 w-12 animate-pulse rounded bg-[var(--t-bg-active)]"
+        />
+      ) : (
+        <span className="max-w-[160px] truncate max-sm:max-w-[96px]">{label}</span>
+      )}
       {!pressed && <ChevronDown size={11} className="shrink-0 text-muted max-sm:hidden" />}
     </button>
   )
@@ -474,6 +485,8 @@ export interface EnvBarProps {
   worktree?: { branch: string; baseBranch: string }
   /** 新会话页的本地 worktree 开关。 */
   worktreeOn?: boolean
+  /** 目录的 git 环境仍在探测：分支触发器显示骨架。 */
+  envLoading?: boolean
   onHostChange?: (hostId: string) => void
   onCwdChange?: (cwd: string) => void
   onWorktreeChange?: (on: boolean) => void
@@ -503,6 +516,7 @@ export function EnvBar({
   env,
   worktree,
   worktreeOn,
+  envLoading,
   onHostChange,
   onCwdChange,
   onWorktreeChange,
@@ -705,6 +719,7 @@ export function EnvBar({
               )
             }
             label={branch ?? (env ? '分支' : '非 Git 仓库')}
+            loading={!branch && !!envLoading}
             onClick={toggle}
             open={open}
             disabled={locked || !isSession || !sessionId || !env?.repoRoot}

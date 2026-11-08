@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react'
 import { cn } from '../../lib/cn'
+import { PORTAL_ATTR, nodeContains } from '../../lib/overlay'
 
 const SHOW_DELAY = 500
 const SKIP_DELAY = 300
@@ -26,6 +27,7 @@ function layer(): HTMLDivElement {
   tipEl = document.createElement('div')
   tipEl.id = TIP_ID
   tipEl.className = 'ui-tip'
+  tipEl.setAttribute(PORTAL_ATTR, 'tooltip')
   tipEl.setAttribute('role', 'tooltip')
   tipEl.setAttribute('aria-hidden', 'true')
   document.body.appendChild(tipEl)
@@ -118,7 +120,7 @@ if (typeof document !== 'undefined') {
       const target = e.target instanceof Element ? e.target : null
       const host = target?.closest<HTMLElement>('[title]') ?? null
       if (host === titleHost) return
-      if (titleHost && (!host || !titleHost.contains(host))) restoreTitle()
+      if (titleHost && (!host || !nodeContains(titleHost, host))) restoreTitle()
       if (!host || tipHosts.has(host)) return
       const title = host.getAttribute('title')?.trim()
       if (!title) return
@@ -133,8 +135,7 @@ if (typeof document !== 'undefined') {
     'pointerout',
     (e) => {
       if (!titleHost) return
-      const related = e.relatedTarget instanceof Node ? e.relatedTarget : null
-      if (related && titleHost.contains(related)) return
+      if (nodeContains(titleHost, e.relatedTarget)) return
       restoreTitle()
       hideTip()
     },
@@ -188,8 +189,7 @@ function useTipAnchor(
       scheduleTip(host, label)
     }
     const onFocusOut = (e: FocusEvent) => {
-      const related = e.relatedTarget instanceof Node ? e.relatedTarget : null
-      if (related && host.contains(related)) return
+      if (nodeContains(host, e.relatedTarget)) return
       hideTip()
     }
 

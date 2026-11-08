@@ -3,12 +3,13 @@ import { readdirSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import type { FsEntry } from '@tandem/protocol';
+import type { FsEntry, FsGitResult } from '@tandem/protocol';
 import { walkFilesAsync } from '../util/fs-walk.js';
 import { readForPreview, readImage, revealFile } from '../util/file-preview.js';
 import { expandHome, resolveHostPath, toPosix } from '../util/path.js';
 import { bad, str, type RouteDeps } from './common.js';
 import { memberCanAccessPath, principalOf } from '../team/access.js';
+import { detectSessionEnv } from '../util/git.js';
 
 /** @文件补全的模糊匹配打分；不匹配返回 null。 */
 function fuzzyScore(query: string, target: string): number | null {
@@ -76,6 +77,25 @@ export function registerFsRoutes(app: FastifyInstance, deps: RouteDeps): void {
       includeFiles && a.isDir !== b.isDir ? (a.isDir ? -1 : 1) : a.name.localeCompare(b.name),
     );
     return entries;
+  });
+
+  /** 目录的 git 环境：新会话页在创建会话前也要能显示当前分支。 */
+  app.get('/api/fs/git', async (req, reply) => {
+    const query = req.query as { path?: string };
+    const principal = principalOf(req);
+    const fallback = principal.kind === 'member' ? principal.projectDirs[0] : os.homedir();
+    const dir = resolveHostPath(expandHome(str(query.path) || fallback || os.homedir()));
+    if (!memberCanAccessPath(principal, dir)) {
+      return bad(reply, '只能浏览自己被授权的项目目录', 403);
+    }
+    try {
+      if (!statSync(dir).isDirectory()) return bad(reply, `不是目录: ${dir}`);
+    } catch {
+      return bad(reply, `目录不存在: ${dir}`);
+    }
+    const env = await detectSessionEnv(dir);
+    const result: FsGitResult = env ? { isRepo: true, env } : { isRepo: false };
+    return result;
   });
 
   app.get('/api/fs/complete', async (req, reply) => {

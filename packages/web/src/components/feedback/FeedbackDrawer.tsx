@@ -176,7 +176,7 @@ export function FeedbackDrawer({
   return createPortal(
     <aside
       data-feedback-ui=""
-      className="fixed bottom-0 right-0 top-0 z-[135] flex w-[min(400px,100vw)] flex-col border-l border-border bg-surface shadow-2xl"
+      className="pointer-events-auto fixed bottom-0 right-0 top-0 z-[135] flex w-[min(400px,100vw)] flex-col border-l border-border bg-surface shadow-2xl"
       aria-label="反馈条目"
     >
       <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">

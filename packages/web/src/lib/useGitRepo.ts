@@ -1,48 +1,43 @@
 import { useEffect, useState } from 'react'
+import type { SessionEnv } from '@tandem/protocol'
 import { api } from './api'
-import { dirname } from './format'
 import type { HostConfig } from './types'
 
 export type GitRepoState = 'checking' | 'yes' | 'no'
 
-/** 沿 cwd 向上查找 .git（目录或 worktree 的 gitfile），仅用于新会话的 worktree 开关。 */
-export function useGitRepo(host: HostConfig | null, cwd: string, stopAt?: string[]): GitRepoState {
-  const [state, setState] = useState<GitRepoState>('checking')
+export interface GitRepoInfo {
+  state: GitRepoState
+  /** 仓库根与当前分支；检测完成前为 undefined。 */
+  env?: SessionEnv
+}
+
+/** 目录的 git 环境：新会话页在创建会话前也要显示当前分支与 worktree 能否开启。 */
+export function useGitRepo(host: HostConfig | null, cwd: string): GitRepoInfo {
+  const [info, setInfo] = useState<GitRepoInfo>({ state: 'checking' })
 
   useEffect(() => {
     const path = cwd.trim()
     if (!host || !path) {
-      setState('no')
+      setInfo({ state: 'no' })
       return
     }
     let cancelled = false
-    setState('checking')
+    setInfo({ state: 'checking' })
+    // 目录选择时会连续变化，防抖后再探测。
     const timer = window.setTimeout(async () => {
-      let current = path
-      for (let i = 0; i < 8; i++) {
-        try {
-          const entries = await api.fsList(host, current)
-          if (cancelled) return
-          if (entries.some((entry) => entry.name === '.git')) {
-            setState('yes')
-            return
-          }
-        } catch {
-          break
-        }
-        // 成员只能看到授权项目：到项目根就停，不再向上探测。
-        if (stopAt?.includes(current)) break
-        const parent = dirname(current)
-        if (!parent || parent === current) break
-        current = parent
+      try {
+        const result = await api.fsGit(host, path)
+        if (cancelled) return
+        setInfo(result.isRepo ? { state: 'yes', env: result.env } : { state: 'no' })
+      } catch {
+        if (!cancelled) setInfo({ state: 'no' })
       }
-      if (!cancelled) setState('no')
     }, 250)
     return () => {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [host, cwd, stopAt])
+  }, [host, cwd])
 
-  return state
+  return info
 }

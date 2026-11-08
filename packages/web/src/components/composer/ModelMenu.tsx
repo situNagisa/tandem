@@ -9,8 +9,7 @@ import { Button } from '../ui/Button'
 import { Menu } from '../ui/Menu'
 
 /** 参考单价：每百万 token 美元；只保留必要的小数位。 */
-function priceText(price: ModelPriceInfo | undefined): string {
-  if (!price) return '单价未知'
+function priceText(price: ModelPriceInfo): string {
   const fmt = (value: number) => String(Number(value.toFixed(4)))
   const cache =
     price.cacheRead !== undefined && price.cacheRead > 0
@@ -27,6 +26,7 @@ function ModelPanel({
   autoRoute,
   autoModel,
   prices,
+  pricesLoading,
   effort,
   efforts,
   loading,
@@ -35,6 +35,7 @@ function ModelPanel({
   onLoadPrices,
   onEffortChange,
   onManage,
+  onSetupPrice,
 }: {
   profiles: Profile[]
   profileId: string
@@ -43,6 +44,7 @@ function ModelPanel({
   autoRoute: boolean
   autoModel?: string
   prices?: Record<string, ModelPriceInfo>
+  pricesLoading?: boolean
   effort: ReasoningEffort
   efforts: ReasoningEffort[]
   loading: boolean
@@ -51,6 +53,8 @@ function ModelPanel({
   onLoadPrices?: (profileId: string, groupId: string | undefined) => void
   onEffortChange: (effort: ReasoningEffort) => void
   onManage: () => void
+  /** 单价未设置：跳到该账号的单价覆盖设置。 */
+  onSetupPrice: (model: string) => void
 }) {
   const [accountId, setAccountId] = useState(profileId || profiles[0]?.id || '')
   const account = profiles.find((p) => p.id === accountId) ?? profiles[0] ?? null
@@ -155,9 +159,30 @@ function ModelPanel({
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="truncate text-[13px] leading-4">{friendly}</span>
               <span className="truncate font-mono text-[12px] leading-4 text-muted">{m}</span>
-              <span className="truncate font-mono text-[12px] leading-4 text-muted/80">
-                {priceText(prices?.[m])}
-              </span>
+              {prices?.[m] ? (
+                <span className="truncate font-mono text-[12px] leading-4 text-muted/80">
+                  {priceText(prices[m])}
+                </span>
+              ) : pricesLoading ? (
+                <span className="flex items-center gap-1 text-[12px] leading-4 text-muted/80">
+                  <Loader2 size={10} className="animate-spin" /> 单价读取中…
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  title={`为该账号的 ${m} 设置单价`}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onSetupPrice(m)
+                  }}
+                  className="w-fit truncate text-left text-[12px] leading-4 text-muted/80 underline decoration-dotted underline-offset-2 hover:text-text"
+                >
+                  单价未设置 · 去设置
+                </button>
+              )}
             </span>
           </Menu.Item>
         )
@@ -256,6 +281,7 @@ export function ModelMenu({
   autoRoute = false,
   autoModel,
   prices,
+  pricesLoading,
   effort,
   efforts,
   loading,
@@ -265,6 +291,7 @@ export function ModelMenu({
   onLoadPrices,
   onEffortChange,
   onManage,
+  onSetupPrice,
   onOpen,
   open,
   onOpenChange,
@@ -278,6 +305,7 @@ export function ModelMenu({
   autoRoute?: boolean
   autoModel?: string
   prices?: Record<string, ModelPriceInfo>
+  pricesLoading?: boolean
   effort: ReasoningEffort
   efforts: ReasoningEffort[]
   loading: boolean
@@ -287,6 +315,7 @@ export function ModelMenu({
   onLoadPrices?: (profileId: string, groupId: string | undefined) => void
   onEffortChange: (effort: ReasoningEffort) => void
   onManage: () => void
+  onSetupPrice: (model: string) => void
   onOpen?: () => void
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -347,6 +376,7 @@ export function ModelMenu({
         autoRoute={autoRoute}
         autoModel={autoModel}
         prices={prices}
+        pricesLoading={pricesLoading}
         effort={effort}
         efforts={efforts}
         loading={loading}
@@ -355,6 +385,7 @@ export function ModelMenu({
         onLoadPrices={onLoadPrices}
         onEffortChange={onEffortChange}
         onManage={onManage}
+        onSetupPrice={onSetupPrice}
       />
     </Menu>
   )

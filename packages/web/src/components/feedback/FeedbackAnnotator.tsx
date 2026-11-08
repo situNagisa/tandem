@@ -328,7 +328,7 @@ export function FeedbackAnnotator({
   return createPortal(
     <div
       data-feedback-ui=""
-      className="fixed inset-0 z-[160] flex flex-col bg-black/80 backdrop-blur-sm"
+      className="pointer-events-auto fixed inset-0 z-[160] flex flex-col bg-black/80 backdrop-blur-sm"
       role="dialog"
       aria-label="标注截图"
     >

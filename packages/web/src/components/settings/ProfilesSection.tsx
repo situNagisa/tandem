@@ -99,6 +99,7 @@ export function ProfilesSection() {
   const runtimes = useAppStore((s) => s.runtimes)
   const refreshProfiles = useAppStore((s) => s.refreshProfiles)
   const toast = useUiStore((s) => s.toast)
+  const settingsFocus = useUiStore((s) => s.settingsFocus)
 
   const [hostId, setHostId] = useState<string | null>(activeHostId ?? hosts[0]?.id ?? null)
   const [editing, setEditing] = useState<'new' | string | null>(null)
@@ -224,6 +225,33 @@ export function ProfilesSection() {
           ],
     )
   }
+
+  // 模型菜单的「单价未设置 · 去设置」：直接打开该账号并定位到单价区。
+  const priceFocus = useRef(0)
+  const priceFocusTimer = useRef(0)
+  useEffect(() => {
+    const id = settingsFocus?.id
+    if (!id?.startsWith('profiles.prices:')) return
+    if (priceFocus.current === settingsFocus!.nonce) return
+    const profile = profiles.find((p) => p.id === id.slice('profiles.prices:'.length))
+    if (!profile) return
+    priceFocus.current = settingsFocus!.nonce
+    startEdit(profile)
+    setStep(3)
+    window.clearTimeout(priceFocusTimer.current)
+    priceFocusTimer.current = window.setTimeout(() => {
+      const node = document.querySelector<HTMLElement>('[data-setting-id="profiles.prices"]')
+      if (!node) return
+      node.scrollIntoView({ block: 'center', behavior: 'auto' })
+      node.classList.remove('setting-highlight')
+      void node.getBoundingClientRect()
+      node.classList.add('setting-highlight')
+      window.setTimeout(() => node.classList.remove('setting-highlight'), 1800)
+    }, 150)
+    // startEdit 是稳定逻辑，只随 profile 列表变化重试；nonce 保证同一次定位只执行一次。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsFocus, profiles])
+  useEffect(() => () => window.clearTimeout(priceFocusTimer.current), [])
 
   const choosePreset = (p: ProviderPreset | null) => {
     setPreset(p)

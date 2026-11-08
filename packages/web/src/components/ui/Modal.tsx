@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { cn } from '../../lib/cn'
+import { nodeContains, portalLayer } from '../../lib/overlay'
 import { IconButton } from './Button'
 
 interface ModalProps {
@@ -104,7 +105,7 @@ export function Modal({
       const first = list[0]
       const last = list[list.length - 1]
       // 焦点在面板本身（打开瞬间）或面板内不可 Tab 的元素上时，也要拉回循环。
-      if (!active || !panel.contains(active) || !list.includes(active)) {
+      if (!active || !nodeContains(panel, active) || !list.includes(active)) {
         e.preventDefault()
         ;(e.shiftKey ? last : first).focus()
         return
@@ -129,7 +130,7 @@ export function Modal({
     if (!open) return
     const focusPanel = () => {
       const panel = panelRef.current
-      if (!panel || panel.contains(document.activeElement)) return
+      if (!panel || nodeContains(panel, document.activeElement)) return
       const el = panel.querySelector<HTMLElement>(
         'input:not([type="hidden"]), textarea, select, button[data-autofocus]',
       )
@@ -145,6 +146,7 @@ export function Modal({
 
   return createPortal(
     <div
+      {...portalLayer('modal-scrim')}
       className={cn(
         'fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/25 p-3 backdrop-blur-[2px] dark:bg-black/50',
         closing ? 'anim-fade-out pointer-events-none' : 'anim-fade-in',
@@ -157,6 +159,7 @@ export function Modal({
       }}
     >
       <div
+        {...portalLayer('modal')}
         ref={panelRef}
         role="dialog"
         tabIndex={-1}

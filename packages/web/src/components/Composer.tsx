@@ -42,6 +42,7 @@ import {
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
+import { nodeContains } from '../lib/overlay'
 import { usePreviewStore } from '../store/usePreviewStore'
 import { useDemoStore } from '../store/useDemoStore'
 import { selectionContextText, selectionLabel, selectionSource } from '../lib/previewElement'
@@ -243,6 +244,7 @@ export function Composer({
   const composerResetNonce = useUiStore((s) => s.composerResetNonce)
   const toast = useUiStore((s) => s.toast)
   const openSettings = useUiStore((s) => s.openSettings)
+  const focusSetting = useUiStore((s) => s.focusSetting)
   const openScheduleComposer = useUiStore((s) => s.openScheduleComposer)
   const openMemoryEditor = useUiStore((s) => s.openMemoryEditor)
 
@@ -427,9 +429,7 @@ export function Composer({
   useEffect(() => {
     if (!completion) return
     const onDown = (e: PointerEvent) => {
-      const target = e.target as Node | null
-      if (!target) return
-      if (menuRef.current?.contains(target) || textareaRef.current?.contains(target)) return
+      if (nodeContains(menuRef.current, e.target) || nodeContains(textareaRef.current, e.target)) return
       setCompletion(null)
     }
     document.addEventListener('pointerdown', onDown)
@@ -916,7 +916,7 @@ export function Composer({
           }
         }}
         onDragLeave={(e) => {
-          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+          if (nodeContains(e.currentTarget, e.relatedTarget)) return
           setDragging(false)
         }}
         onDrop={onDrop}
@@ -1073,6 +1073,7 @@ export function Composer({
             autoRoute={autoRoute}
             autoModel={autoRoute ? routedModel : undefined}
             prices={modelPrices}
+            pricesLoading={cachedPrices === 'loading'}
             effort={effort}
             efforts={supportedEfforts}
             loading={profilesLoading}
@@ -1084,6 +1085,11 @@ export function Composer({
             onLoadPrices={loadModelPrices}
             onEffortChange={changeEffort}
             onManage={() => openSettings('profiles')}
+            onSetupPrice={() => {
+              setModelMenuOpen(false)
+              if (currentProfileId) focusSetting('profiles', `profiles.prices:${currentProfileId}`)
+              else openSettings('profiles')
+            }}
             onOpen={() => {
               if (effectiveHostId && uiProfiles.length === 0 && !profilesLoading) {
                 void refreshProfiles(effectiveHostId)

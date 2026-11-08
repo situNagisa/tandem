@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react'
 import * as RPopover from '@radix-ui/react-popover'
 import { cn } from '../../lib/cn'
+import { portalLayer } from '../../lib/overlay'
 import { useFeedbackStore } from '../../store/useFeedbackStore'
 
 /** 弹层表面样式（尺寸、圆角、阴影、动画）唯一来源；自定义定位的 Rich Popover 也复用它。 */
@@ -56,6 +57,7 @@ export function Popover({
       </RPopover.Anchor>
       <RPopover.Portal>
         <RPopover.Content
+          {...portalLayer('popover')}
           role="menu"
           data-side={side}
           data-align={align}
