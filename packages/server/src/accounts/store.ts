@@ -576,7 +576,12 @@ export class AccountsStore {
     const access = this.effectiveHostAccess(account);
     return state.hosts
       .filter((h) => !!access[h.id])
-      .map((h) => ({ ...h, grants: undefined, viaWorkstation: true }));
+      .map((h) => ({
+        ...h,
+        // 只有主人需要看到自己主机上的授权列表；获授权方不暴露其他人的账号。
+        ...(h.ownerId === account.id ? {} : { grants: undefined }),
+        viaWorkstation: true,
+      }));
   }
 
   visibleHostsForAccount(accountId: string): WorkspaceHostInfo[] {

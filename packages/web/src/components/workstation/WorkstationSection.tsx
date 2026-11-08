@@ -336,6 +336,7 @@ function GrantDialog({
   const [dirs, setDirs] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<string | null>(null)
 
   useEffect(() => {
     if (!host) return
@@ -350,6 +351,25 @@ function GrantDialog({
   }, [host, base, token])
 
   if (!host) return null
+
+  const nameOf = (id: string) => {
+    const found = accounts.find((a) => a.id === id)
+    return found ? `${found.name}（${found.username}）` : id.slice(0, 8)
+  }
+
+  const removeGrant = async (accountId: string) => {
+    setRemoving(accountId)
+    setError(null)
+    try {
+      await workstationApi.removeGrant(base, token, host.id, accountId)
+      toast('授权已撤销', 'success')
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '撤销授权失败')
+    } finally {
+      setRemoving(null)
+    }
+  }
 
   const submit = async () => {
     if (!accountId) {
@@ -416,6 +436,25 @@ function GrantDialog({
             ))}
           </Select>
         </label>
+        {(host.grants?.length ?? 0) > 0 && (
+          <div className="space-y-1.5">
+            <div className="text-[12px] text-[var(--t-text-tertiary)]">已有授权</div>
+            {host.grants!.map((grant) => (
+              <div key={grant.accountId} className="flex items-center gap-2 rounded-lg bg-[var(--t-bg-subtle)] px-2.5 py-1.5">
+                <span className="min-w-0 flex-1 truncate text-[12.5px]">{nameOf(grant.accountId)}</span>
+                <span className="text-[11.5px] text-[var(--t-text-tertiary)]">{ROLE_LABELS[grant.role] ?? grant.role}</span>
+                <Button
+                  variant="danger-ghost"
+                  size="sm"
+                  disabled={removing === grant.accountId}
+                  onClick={() => void removeGrant(grant.accountId)}
+                >
+                  {removing === grant.accountId ? <Loader2 size={12} className="animate-spin" /> : '撤销'}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
         <label className="block space-y-1">
           <span className="text-[12px] text-[var(--t-text-tertiary)]">限定项目目录（可选，每行一个绝对路径）</span>
           <textarea
@@ -428,7 +467,7 @@ function GrantDialog({
         </label>
         {error && <p className="text-[12.5px] text-[var(--t-danger)]">{error}</p>}
         <p className="text-[12px] leading-5 text-[var(--t-text-tertiary)]">
-          不能授权给主机主人自己；撤销时在主机上移除该授权即可（v1 在授权列表里重新保存空目录并删除）。
+          不能授权给主机主人自己；撤销后对方刷新「我的主机」即不再可见，主机端也会立即按新令牌拒绝。
         </p>
       </div>
     </Modal>
