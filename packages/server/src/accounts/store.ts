@@ -901,8 +901,11 @@ export class AccountsStore {
       if (!verifyPayload(JSON.stringify(body.snapshot), body.signature, state.centerPublicKey)) throw new Error('快照签名无效');
       this.applySnapshot(body.snapshot);
     } catch (err) {
-      state.lastSyncError = (err as Error).message;
-      this.save();
+      const message = (err as Error).message;
+      if (state.lastSyncError !== message) {
+        state.lastSyncError = message;
+        this.save();
+      }
     }
   }
 
