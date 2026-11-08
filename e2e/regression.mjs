@@ -5496,8 +5496,23 @@ async function main() {
       await menu.waitFor()
       const menuText = await menu.innerText()
       assert.match(menuText, /自动/, '模型菜单缺少「自动」')
-      assert.match(menuText, /输入 \$0\.1 · 输出 \$0\.2/, '模型菜单缺少参考单价')
-      assert.match(menuText, /缓存 \$0\.05/, '模型菜单缺少缓存命中价')
+      // 反馈 #15：单价放在行 tooltip 里，行本身只显示单行模型名。
+      // 先等异步单价读入（tooltip/隐藏说明里出现价格），再悬停读取标准 tooltip。
+      await page.waitForFunction(
+        () =>
+          [...document.querySelectorAll('[role="menu"]')].some((m) =>
+            (m.textContent ?? '').includes('输入 $0.1'),
+          ),
+        null,
+        { timeout: 10_000 },
+      )
+      const routeRow = menu.getByRole('menuitem', { name: /Route Mini/ }).first()
+      await routeRow.hover()
+      const priceTip = page.locator('#tandem-tooltip[data-open]')
+      await priceTip.waitFor({ timeout: 5_000 })
+      const priceText = await priceTip.innerText()
+      assert.match(priceText, /输入 \$0\.1 · 输出 \$0\.2/, '模型菜单缺少参考单价')
+      assert.match(priceText, /缓存 \$0\.05/, '模型菜单缺少缓存命中价')
       await page.keyboard.press('Escape')
     })
 
