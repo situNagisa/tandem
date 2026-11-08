@@ -66,6 +66,7 @@ export function GroupEditor({
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [fallbackIds, setFallbackIds] = useState<string[]>(existing?.fallbackGroupIds ?? [])
+  const [multiplier, setMultiplier] = useState(String(existing?.multiplier ?? 1))
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -165,6 +166,7 @@ export function GroupEditor({
       baseUrl: baseUrl.trim(),
       models: selected,
       defaultModel: selected.includes(defaultModel) ? defaultModel : selected[0],
+      ...(Number.isFinite(Number(multiplier)) ? { multiplier: Number(multiplier) } : {}),
       ...(fallbackIds.length
         ? { fallbackGroupIds: fallbackIds.filter((id) => id !== existing?.id) }
         : {}),
@@ -246,6 +248,26 @@ export function GroupEditor({
           {kind !== profileKind &&
             ' 分组协议与账号不同时，未填 URL 会按该协议从账号 URL 推断（去掉原协议端点并补版本路径）。'}
         </p>
+      </div>
+
+      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+        <div>
+          <label className={labelCls} htmlFor={`group-multiplier-${existing?.id ?? 'new'}`}>
+            价格倍率
+          </label>
+          <input
+            id={`group-multiplier-${existing?.id ?? 'new'}`}
+            type="number"
+            min={0}
+            step={0.1}
+            value={multiplier}
+            onChange={(e) => setMultiplier(e.target.value)}
+            className={cn(inputCls, 'w-28 font-mono')}
+          />
+          <p className="mt-1 text-[12px] leading-4 text-muted">
+            默认 1.0；实际价 = 官方价 × 账号倍率 × 分组倍率，这里在账号倍率之上再叠加，如 0.8。
+          </p>
+        </div>
       </div>
 
       <div className="mt-2">

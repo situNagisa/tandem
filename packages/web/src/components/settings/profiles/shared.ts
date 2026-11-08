@@ -49,6 +49,8 @@ export interface GroupDraft {
   baseUrl: string
   models: string[]
   defaultModel: string
+  /** 价格倍率：官方价 × 账号倍率 × 分组倍率；缺省 1。 */
+  multiplier?: number
   /** 备用分组链（同一账号，按顺序）。 */
   fallbackGroupIds?: string[]
 }
@@ -116,6 +118,7 @@ export function groupInputOf(group: ProfileGroup): ProfileGroupInput {
     ...(group.keyStrategy ? { keyStrategy: group.keyStrategy } : {}),
     models: group.models,
     defaultModel: group.defaultModel,
+    ...(group.multiplier !== undefined ? { multiplier: group.multiplier } : {}),
     ...(group.modelCapabilities ? { modelCapabilities: group.modelCapabilities } : {}),
     ...(group.fallbackGroupIds?.length ? { fallbackGroupIds: group.fallbackGroupIds } : {}),
     apiKeys: group.keys.map(keyInputOf),

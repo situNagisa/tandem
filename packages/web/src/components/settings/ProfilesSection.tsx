@@ -125,6 +125,7 @@ export function ProfilesSection() {
   const [groups, setGroups] = useState<GroupDraft[]>([])
   const [groupEditor, setGroupEditor] = useState<{ index: number | 'new' } | null>(null)
   const [price, setPrice] = useState<PriceMap>({})
+  const [multiplier, setMultiplier] = useState('1')
   const lastAutoFetch = useRef('')
   const fetchInFlight = useRef(false)
 
@@ -171,6 +172,7 @@ export function ProfilesSection() {
     setGroups([])
     setGroupEditor(null)
     setPrice({})
+    setMultiplier('1')
     lastAutoFetch.current = ''
   }
 
@@ -197,6 +199,7 @@ export function ProfilesSection() {
     setDefaultModel(p.defaultModel || p.models[0] || '')
     setShowAdvanced(!!p.baseUrl && p.baseUrl !== brand?.baseUrl)
     setPrice(p.price ? { ...p.price } : {})
+    setMultiplier(String(p.multiplier ?? 1))
     setGroups(
       p.groups?.length
         ? p.groups.map((g) => ({
@@ -208,6 +211,7 @@ export function ProfilesSection() {
             baseUrl: g.baseUrl ?? '',
             models: g.models,
             defaultModel: g.defaultModel || g.models[0] || '',
+            ...(g.multiplier !== undefined ? { multiplier: g.multiplier } : {}),
             ...(g.fallbackGroupIds?.length ? { fallbackGroupIds: [...g.fallbackGroupIds] } : {}),
           }))
         : [
@@ -410,6 +414,7 @@ export function ProfilesSection() {
       ...(g.baseUrl.trim() ? { baseUrl: g.baseUrl.trim() } : {}),
       models: g.models,
       defaultModel: g.defaultModel || g.models[0] || '',
+      ...(g.multiplier !== undefined ? { multiplier: g.multiplier } : {}),
       ...(g.fallbackGroupIds?.length
         ? { fallbackGroupIds: g.fallbackGroupIds.filter((id) => id !== g.id) }
         : {}),
@@ -422,6 +427,9 @@ export function ProfilesSection() {
       apiKey: form.apiKey.trim() || undefined,
       models,
       defaultModel: def,
+      ...(Number.isFinite(Number(multiplier)) && Number(multiplier) >= 0
+        ? { multiplier: Number(multiplier) }
+        : {}),
       ...(Object.keys(price).length ? { price } : {}),
       groups: groupInputs,
     }
@@ -786,6 +794,7 @@ export function ProfilesSection() {
                       <span className="block truncate font-mono text-[13px] text-muted">
                         {g.apiKeyMasked || (g.apiKey ? '新 Key' : g.inheritedKey ? '沿用账号 Key' : '无 Key')} · 默认{' '}
                         {g.defaultModel || g.models[0] || '未设置'} · {g.models.length} 个模型
+                        {g.multiplier !== undefined && g.multiplier !== 1 ? ` · 倍率 ${g.multiplier}×` : ''}
                       </span>
                     </span>
                     <button
@@ -799,6 +808,27 @@ export function ProfilesSection() {
                     </button>
                   </div>
                 ))}
+              </div>
+
+              <div className="mb-3 rounded-lg border border-border bg-bg/40 p-3" data-setting-id="profiles.multiplier">
+                <label className={labelCls} htmlFor="profile-multiplier">
+                  价格倍率
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="profile-multiplier"
+                    type="number"
+                    min={0}
+                    step={0.1}
+                    value={multiplier}
+                    onChange={(e) => setMultiplier(e.target.value)}
+                    className={cn(inputCls, 'w-28 font-mono')}
+                  />
+                  <span className="text-[13px] text-muted">× 官方参考价</span>
+                </div>
+                <p className="mt-1.5 text-[12px] leading-4 text-muted">
+                  中转常见如 0.3×、1.5×。实际价格 = 官方参考价 × 账号倍率 × 分组倍率；按模型覆盖单价时不乘倍率。
+                </p>
               </div>
 
               <div data-setting-id="profiles.prices">
@@ -893,6 +923,11 @@ export function ProfilesSection() {
                       <span className="shrink-0 text-[13px] text-muted">
                         {groupCount ? `${groupCount} 个分组` : `${p.models.length} 个模型`}
                       </span>
+                      {p.multiplier !== undefined && p.multiplier !== 1 && (
+                        <span className="shrink-0 rounded border border-border px-1 text-[12px] text-muted">
+                          × {p.multiplier}
+                        </span>
+                      )}
                       <span className="flex-1" />
                       <ChevronDown
                         size={12}

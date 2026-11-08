@@ -257,7 +257,21 @@ export function modelPrices(host: Host, profileId: string,
   for (const model of models) {
     const resolved = resolvePriceForModel(profile, model);
     if (resolved) {
-      out[model] = { ...priceInfoFor(resolved.price, profile.kind), source: resolved.source };
+      const account = resolved.accountMultiplier ?? 1;
+      const group = resolved.groupMultiplier ?? 1;
+      const multiplied = account !== 1 || group !== 1;
+      out[model] = {
+        ...priceInfoFor(resolved.price, profile.kind),
+        source: resolved.source,
+        ...(multiplied && resolved.official
+          ? {
+              officialInput: resolved.official.input,
+              officialOutput: resolved.official.output,
+              accountMultiplier: account,
+              groupMultiplier: group,
+            }
+          : {}),
+      };
     }
   }
   return out;

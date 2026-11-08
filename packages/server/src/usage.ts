@@ -10,9 +10,13 @@ export interface Price {
   output: number;
 }
 
-/** 内置参考单价表：按前缀匹配，越具体的放在越前面。 */
+/**
+ * 内置参考单价表（参考官方定价，2026-11；单位：美元/百万 token）。
+ * 按模型名前缀匹配，越具体的放在越前面；中转倍率由账号/分组倍率叠加。
+ */
 const BUILTIN_PRICES: Array<{ prefix: string; price: Price }> = [
   // Anthropic Claude
+  { prefix: 'claude-opus-4-5', price: { input: 5, output: 25 } },
   { prefix: 'claude-opus-4-1', price: { input: 15, output: 75 } },
   { prefix: 'claude-opus-4', price: { input: 15, output: 75 } },
   { prefix: 'claude-3-opus', price: { input: 15, output: 75 } },
@@ -25,7 +29,11 @@ const BUILTIN_PRICES: Array<{ prefix: string; price: Price }> = [
   { prefix: 'claude-3-sonnet', price: { input: 3, output: 15 } },
   { prefix: 'claude-2', price: { input: 8, output: 24 } },
   { prefix: 'claude-3-haiku', price: { input: 0.25, output: 1.25 } },
-  // OpenAI GPT-5 / GPT-4.1 / GPT-4o / o 系列
+  // OpenAI GPT-6 / GPT-5 / GPT-4.1 / GPT-4o / o 系列
+  { prefix: 'gpt-6-mini', price: { input: 0.25, output: 2 } },
+  { prefix: 'gpt-6-nano', price: { input: 0.05, output: 0.4 } },
+  { prefix: 'gpt-6', price: { input: 1.25, output: 10 } },
+  { prefix: 'gpt-5-pro', price: { input: 15, output: 120 } },
   { prefix: 'gpt-5-codex', price: { input: 1.25, output: 10 } },
   { prefix: 'gpt-5-mini', price: { input: 0.25, output: 2 } },
   { prefix: 'gpt-5-nano', price: { input: 0.05, output: 0.4 } },
@@ -48,20 +56,38 @@ const BUILTIN_PRICES: Array<{ prefix: string; price: Price }> = [
   { prefix: 'o4-mini', price: { input: 1.1, output: 4.4 } },
   // DeepSeek
   { prefix: 'deepseek-reasoner', price: { input: 0.55, output: 2.19 } },
+  { prefix: 'deepseek-r1', price: { input: 0.55, output: 2.19 } },
   { prefix: 'deepseek-chat', price: { input: 0.27, output: 1.1 } },
+  { prefix: 'deepseek-coder', price: { input: 0.27, output: 1.1 } },
   { prefix: 'deepseek-v3', price: { input: 0.27, output: 1.1 } },
   // Google Gemini
+  { prefix: 'gemini-3-pro', price: { input: 1.25, output: 10 } },
+  { prefix: 'gemini-3-flash', price: { input: 0.3, output: 2.5 } },
   { prefix: 'gemini-2.5-pro', price: { input: 1.25, output: 10 } },
+  { prefix: 'gemini-2.5-flash-lite', price: { input: 0.1, output: 0.4 } },
   { prefix: 'gemini-2.5-flash', price: { input: 0.3, output: 2.5 } },
+  { prefix: 'gemini-2.0-flash-lite', price: { input: 0.075, output: 0.3 } },
   { prefix: 'gemini-2.0-flash', price: { input: 0.1, output: 0.4 } },
   { prefix: 'gemini-1.5-pro', price: { input: 1.25, output: 5 } },
   { prefix: 'gemini-1.5-flash', price: { input: 0.075, output: 0.3 } },
-  // 其他常见兼容模型
-  { prefix: 'qwen-max', price: { input: 1.6, output: 6.4 } },
-  { prefix: 'qwen-plus', price: { input: 0.4, output: 1.2 } },
+  // Kimi / Moonshot
+  { prefix: 'kimi-k2', price: { input: 0.6, output: 2.5 } },
+  { prefix: 'kimi-latest', price: { input: 2, output: 8 } },
   { prefix: 'moonshot-v1-128k', price: { input: 1.68, output: 1.68 } },
   { prefix: 'moonshot-v1-32k', price: { input: 0.84, output: 0.84 } },
   { prefix: 'moonshot-v1-8k', price: { input: 0.17, output: 0.17 } },
+  // Qwen
+  { prefix: 'qwen3-max', price: { input: 1.2, output: 6 } },
+  { prefix: 'qwen3-coder', price: { input: 0.3, output: 1.2 } },
+  { prefix: 'qwen-max', price: { input: 1.6, output: 6.4 } },
+  { prefix: 'qwen-plus', price: { input: 0.4, output: 1.2 } },
+  { prefix: 'qwen-turbo', price: { input: 0.05, output: 0.2 } },
+  { prefix: 'qwen-long', price: { input: 0.07, output: 0.28 } },
+  // GLM（智谱）
+  { prefix: 'glm-4.6', price: { input: 0.6, output: 2.2 } },
+  { prefix: 'glm-4.5', price: { input: 0.6, output: 2.2 } },
+  { prefix: 'glm-4-plus', price: { input: 0.7, output: 0.7 } },
+  { prefix: 'glm-4', price: { input: 0.6, output: 0.6 } },
 ];
 
 /** 去掉供应商前缀后的小写模型名，兼容 openrouter 的 "vendor/model" 写法。 */
@@ -75,10 +101,27 @@ function normalizeModel(model: string): string {
  * 取模型单价：账号 price 精确匹配 → 账号 price 前缀匹配 → 内置参考价。
  * 返回 undefined 表示未知模型，仍统计 token，但 cost 记 0。
  */
+export interface ResolvedPrice {
+  /** 实际生效单价（已乘倍率；账号覆盖时就是覆盖价）。 */
+  price: Price;
+  source: 'account' | 'builtin';
+  /** 内置官方参考价（未乘倍率）。 */
+  official?: Price;
+  /** 实际生效的账号/分组倍率；为 1 时不返回。 */
+  accountMultiplier?: number;
+  groupMultiplier?: number;
+}
+
+/**
+ * 取模型的实际单价：
+ * - 账号 `price` 覆盖（精确/前缀）优先，覆盖后不再乘倍率；
+ * - 否则内置官方参考价 × 账号倍率 × 分组倍率（缺省 1）。
+ * 返回 undefined 表示未知模型，仍统计 token，但 cost 记 0。
+ */
 export function resolvePriceForModel(
   profile: StoredProfile | undefined,
   model: string,
-): { price: Price; source: 'account' | 'builtin' } | undefined {
+): ResolvedPrice | undefined {
   const name = normalizeModel(model);
   if (!name) return undefined;
   const overrides = profile?.price ?? {};
@@ -99,7 +142,28 @@ export function resolvePriceForModel(
     if (index > 0 && /[a-z0-9]/.test(name[index - 1]!)) continue;
     if (!best || entry.prefix.length > best.prefix.length) best = entry;
   }
-  return best ? { price: { ...best.price }, source: 'builtin' } : undefined;
+  if (!best) return undefined;
+  const accountMultiplier = multiplierOf(profile?.multiplier);
+  const groupMultiplier = multiplierOf(profile?.groupMultiplier);
+  const multiplied = accountMultiplier !== 1 || groupMultiplier !== 1;
+  return {
+    price: {
+      input: roundPrice(best.price.input * accountMultiplier * groupMultiplier),
+      output: roundPrice(best.price.output * accountMultiplier * groupMultiplier),
+    },
+    source: 'builtin',
+    ...(multiplied ? { official: { ...best.price } } : {}),
+    ...(accountMultiplier !== 1 ? { accountMultiplier } : {}),
+    ...(groupMultiplier !== 1 ? { groupMultiplier } : {}),
+  };
+}
+
+function multiplierOf(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 1;
+}
+
+function roundPrice(value: number): number {
+  return Math.round(value * 1e6) / 1e6;
 }
 
 export function priceForModel(profile: StoredProfile | undefined, model: string): Price | undefined {

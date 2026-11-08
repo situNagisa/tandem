@@ -48,6 +48,8 @@ export interface StoredProfileGroup {
   baseUrl?: string;
   models: string[];
   defaultModel: string;
+  /** 价格倍率：官方参考价 × 账号倍率 × 分组倍率；缺省 1。 */
+  multiplier?: number;
   modelCapabilities?: Record<string, ModelCapabilities>;
   /** 备用分组链（同一账号内，按顺序）。 */
   fallbackGroupIds?: string[];
@@ -62,7 +64,11 @@ export interface StoredProfile {
   apiKey: string;
   models: string[];
   defaultModel: string;
-  /** 每百万 token 美元，覆盖内置参考单价（按模型名精确或前缀匹配）。 */
+  /** 价格倍率：官方参考价 × 账号倍率 × 分组倍率；默认 1。 */
+  multiplier?: number;
+  /** effectiveProfile 合并分组后的分组倍率（仅服务端运行时使用，不落盘）。 */
+  groupMultiplier?: number;
+  /** 每百万 token 美元，覆盖内置参考单价（按模型名精确或前缀匹配）；覆盖后不再乘倍率。 */
   price?: Record<string, { input: number; output: number }>;
   modelCapabilities?: Record<string, ModelCapabilities>;
   groups?: StoredProfileGroup[];

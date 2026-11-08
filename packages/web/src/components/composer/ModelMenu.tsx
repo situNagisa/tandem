@@ -16,6 +16,14 @@ function priceText(price: ModelPriceInfo): string {
     price.cacheRead !== undefined && price.cacheRead > 0
       ? ` · 缓存 $${fmt(price.cacheRead)}`
       : ''
+  const account = price.accountMultiplier ?? 1
+  const group = price.groupMultiplier ?? 1
+  if (price.officialInput !== undefined && (account !== 1 || group !== 1)) {
+    const factors = [`官方 $${fmt(price.officialInput)}/M`]
+    if (account !== 1) factors.push(`账号 ${fmt(account)}`)
+    if (group !== 1) factors.push(`分组 ${fmt(group)}`)
+    return `${factors.join(' × ')} = $${fmt(price.input)}/M · 输出 $${fmt(price.officialOutput ?? 0)}/M → $${fmt(price.output)}/M${cache}`
+  }
   const prefix = price.source === 'builtin' ? '参考价 · ' : ''
   return `${prefix}输入 $${fmt(price.input)} · 输出 $${fmt(price.output)} / 百万 tok${cache}`
 }
@@ -154,7 +162,7 @@ function useModelPanel({
           ? `${m} · ${priceText(price)}`
           : pricesLoading
             ? `${m} · 单价读取中…`
-            : `${m} · 单价未设置`
+            : `${m} · 无参考价 · 去设置`
         return (
           <Menu.Item
             key={m}
@@ -177,7 +185,7 @@ function useModelPanel({
                   }}
                   className="pointer-events-none rounded px-0.5 text-[12px] text-muted opacity-0 outline-none transition-opacity duration-[120ms] hover:text-text group-hover/row:pointer-events-auto group-hover/row:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
                 >
-                  设置单价
+                  去设置
                 </button>
               ) : undefined
             }

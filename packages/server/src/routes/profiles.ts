@@ -24,6 +24,9 @@ function parseProfileInput(body: unknown): ProfileInput {
     apiKey: typeof raw.apiKey === 'string' ? raw.apiKey : undefined,
     models,
     defaultModel,
+    ...(raw.multiplier !== undefined && raw.multiplier !== null && raw.multiplier !== ''
+      ? { multiplier: Number(raw.multiplier) }
+      : {}),
     groups: parseGroupInputs(raw.groups),
     ...(raw.price && typeof raw.price === 'object'
       ? { price: raw.price as NonNullable<ProfileInput['price']> }
@@ -66,6 +69,9 @@ function parseGroupInputs(value: unknown): ProfileGroupInput[] | undefined {
         ...(str(item.baseUrl) ? { baseUrl: str(item.baseUrl) } : {}),
         models,
         defaultModel: str(item.defaultModel) || models[0] || '',
+        ...(item.multiplier !== undefined && item.multiplier !== null && item.multiplier !== ''
+          ? { multiplier: Number(item.multiplier) }
+          : {}),
         ...(item.modelCapabilities && typeof item.modelCapabilities === 'object'
           ? {
               modelCapabilities:

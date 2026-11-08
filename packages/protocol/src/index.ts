@@ -25,7 +25,9 @@ export interface Profile {
   apiKeyMasked: string;    // 只回传掩码，明文 key 永不下发给客户端
   models: string[];        // 该账号可选模型（无分组时使用）
   defaultModel: string;
-  price?: Record<string, { input: number; output: number }>; // 每百万 token 美元，按模型覆盖内置单价
+  /** 价格倍率：官方参考价 × 账号倍率 × 分组倍率；默认 1。 */
+  multiplier?: number;
+  price?: Record<string, { input: number; output: number }>; // 每百万 token 美元，按模型覆盖内置单价（覆盖后不再乘倍率）
   modelCapabilities?: Record<string, ModelCapabilities>; // 手动覆盖模型能力（思考强度/上下文）
   groups?: ProfileGroup[]; // 分组：同一账号（同一服务商/中转站）下多组 key，各自可用模型不同，如 "官方渠道"/"低价渠道"
   createdAt: number;
@@ -71,11 +73,13 @@ export interface ProfileGroup {
   baseUrl?: string;        // 缺省用账号 baseUrl
   models: string[];
   defaultModel: string;
+  /** 价格倍率：缺省继承账号倍率（等效 1）。 */
+  multiplier?: number;
   modelCapabilities?: Record<string, ModelCapabilities>;
   /** 备用分组链（同一账号内，按顺序）：额度将尽时交接给第一个可用的分组。 */
   fallbackGroupIds?: string[];
 }
-export interface ProfileGroupInput { id?: string; name: string; kind?: ProviderKind; apiKey?: string; /** 旧的单 Key 字段，等价于 apiKeys=[{apiKey}] */ apiKeys?: ProfileKeyInput[]; keyStrategy?: KeyStrategy; baseUrl?: string; models: string[]; defaultModel: string; modelCapabilities?: Record<string, ModelCapabilities>; fallbackGroupIds?: string[] }
+export interface ProfileGroupInput { id?: string; name: string; kind?: ProviderKind; apiKey?: string; /** 旧的单 Key 字段，等价于 apiKeys=[{apiKey}] */ apiKeys?: ProfileKeyInput[]; keyStrategy?: KeyStrategy; baseUrl?: string; models: string[]; defaultModel: string; multiplier?: number; modelCapabilities?: Record<string, ModelCapabilities>; fallbackGroupIds?: string[] }
 export interface ProfileInput {
   name: string;
   kind: ProviderKind;
@@ -83,6 +87,8 @@ export interface ProfileInput {
   apiKey?: string;         // 更新时不传表示不改
   models: string[];
   defaultModel: string;
+  /** 价格倍率：官方参考价 × 账号倍率 × 分组倍率；默认 1。 */
+  multiplier?: number;
   price?: Record<string, { input: number; output: number }>;
   modelCapabilities?: Record<string, ModelCapabilities>;
   groups?: ProfileGroupInput[]; // 传入即整体替换；带 id 且不带 apiKey 表示保留原 key
@@ -530,6 +536,12 @@ export interface ModelPriceInfo {
   cacheWrite?: number;
   /** 价格来源：账号自定义单价，或内置参考价（菜单显示「参考价」）。 */
   source?: 'account' | 'builtin';
+  /** 内置参考价（未乘倍率），仅在倍率不为 1 时下发，用于 tooltip 计算说明。 */
+  officialInput?: number;
+  officialOutput?: number;
+  /** 实际生效的倍率；缺省视为 1。 */
+  accountMultiplier?: number;
+  groupMultiplier?: number;
 }
 // GET /api/models/prices?profileId=&groupId= -> { prices: Record<model, ModelPriceInfo> }
 // 思考强度能力来源：provider 模型列表接口若提供（如 OpenRouter supported_parameters、Anthropic models 的 capabilities）则用之；

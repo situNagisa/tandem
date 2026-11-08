@@ -202,6 +202,8 @@ export class ProfileStore {
       defaultModel: input.defaultModel || normalizeModels(input.models)[0] || '',
       createdAt: now,
     };
+    const multiplier = normalizeMultiplier((input as { multiplier?: unknown }).multiplier);
+    if (multiplier !== undefined) profile.multiplier = multiplier;
     const price = normalizePrice((input as { price?: unknown }).price);
     if (price) profile.price = price;
     const caps = normalizeModelCapabilities(input.modelCapabilities);
@@ -227,6 +229,12 @@ export class ProfileStore {
       // 不传或传空字符串表示保持原 key
       apiKey: input.apiKey ? String(input.apiKey) : current.apiKey,
     };
+    // multiplier 是协议 Profile 的倍率字段：不传保持原值，null 表示恢复默认 1。
+    if (input.multiplier !== undefined) {
+      const multiplier = normalizeMultiplier(input.multiplier);
+      if (multiplier !== undefined) next.multiplier = multiplier;
+      else delete next.multiplier;
+    }
     // price 是协议 Profile 的只读展示字段：更新时允许作为扩展字段传入，null 表示清除
     const rawPrice = (input as { price?: unknown }).price;
     if (rawPrice !== undefined) {
@@ -284,6 +292,7 @@ export class ProfileStore {
       apiKeyMasked: maskApiKey(profile.apiKey),
       models: [...profile.models],
       defaultModel: profile.defaultModel,
+      ...(profile.multiplier !== undefined ? { multiplier: profile.multiplier } : {}),
       ...(profile.price ? { price: { ...profile.price } } : {}),
       ...(profile.modelCapabilities
         ? { modelCapabilities: structuredClone(profile.modelCapabilities) }
@@ -336,6 +345,14 @@ function normalizeModels(models: unknown): string[] {
 }
 
 /** 账号单价覆盖：{ 模型名: { input, output } }，每百万 token 美元。 */
+/** 价格倍率：0 以上有限数；缺省/非法返回 undefined。 */
+export function normalizeMultiplier(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0 || n > 1000) return undefined;
+  return Math.round(n * 1e6) / 1e6;
+}
+
 export function normalizePrice(
   value: unknown,
 ): Record<string, { input: number; output: number }> | undefined {
@@ -569,6 +586,8 @@ function buildGroups(
     const keys = buildKeys(raw, old, fallbackKey);
     const keyStrategy = normalizeKeyStrategy(raw.keyStrategy) ?? old?.keyStrategy;
     const fallbackGroupIds = normalizeFallbackIds(raw.fallbackGroupIds) ?? old?.fallbackGroupIds;
+    const multiplier =
+      raw.multiplier !== undefined ? normalizeMultiplier(raw.multiplier) : old?.multiplier;
     out.push({
       id,
       name,
@@ -581,6 +600,7 @@ function buildGroups(
       models,
       defaultModel:
         (typeof raw.defaultModel === 'string' && raw.defaultModel.trim()) || old?.defaultModel || models[0] || '',
+      ...(multiplier !== undefined ? { multiplier } : {}),
       ...(caps ? { modelCapabilities: caps } : {}),
       ...(fallbackGroupIds?.length ? { fallbackGroupIds } : {}),
     });
@@ -613,6 +633,7 @@ function toPublicGroup(group: StoredProfileGroup): ProfileGroup {
     ...(group.baseUrl ? { baseUrl: group.baseUrl } : {}),
     models: [...group.models],
     defaultModel: group.defaultModel,
+    ...(group.multiplier !== undefined ? { multiplier: group.multiplier } : {}),
     ...(group.fallbackGroupIds?.length ? { fallbackGroupIds: [...group.fallbackGroupIds] } : {}),
     ...(group.modelCapabilities
       ? { modelCapabilities: structuredClone(group.modelCapabilities) }
@@ -661,6 +682,7 @@ export function effectiveProfile(profile: StoredProfile, groupId?: string): Stor
       (kind !== profile.kind ? inferProtocolBaseUrl(profile.baseUrl, kind) : profile.baseUrl),
     models: group.models.length ? [...group.models] : [...profile.models],
     defaultModel: group.defaultModel || group.models[0] || profile.defaultModel,
+    ...(group.multiplier !== undefined ? { groupMultiplier: group.multiplier } : {}),
     ...(profile.modelCapabilities || group.modelCapabilities
       ? {
           modelCapabilities: {
