@@ -9,7 +9,7 @@ export const SETTINGS_TAB_LABELS: Record<SettingsTab, string> = {
   routing: '自动路由',
   hosts: '主机',
   team: '成员',
-  accounts: '工作区',
+  accounts: '工作站',
   gateway: '网关',
   permissions: '权限',
   hooks: 'Hooks',
@@ -82,9 +82,9 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'hosts.ssh.deploy', tab: 'hosts', title: '部署并添加', keywords: ['ssh', '部署', '安装'] },
   { id: 'hosts.ssh.menu', tab: 'hosts', title: '远程主机操作', keywords: ['ssh', '重启', '升级', '日志', '卸载'] },
 
-  { id: 'accounts.workspace', tab: 'accounts', title: '工作区与账号', keywords: ['工作区', '账号', '登录', '账号中心', '加入码', 'workspace'] },
-  { id: 'accounts.members', tab: 'accounts', title: '工作区账号与授权', keywords: ['账号', '角色', '范围', '授权', '吊销'] },
-  { id: 'accounts.hosts', tab: 'accounts', title: '工作区主机', keywords: ['主机', '机器', '加入', '工作区'] },
+  { id: 'accounts.workspace', tab: 'accounts', title: '工作站与账号', keywords: ['工作站', '账号', '登录', '注册', '绑定码', 'workstation'] },
+  { id: 'accounts.members', tab: 'accounts', title: '主机授权', keywords: ['账号', '角色', '范围', '授权', '撤销'] },
+  { id: 'accounts.hosts', tab: 'accounts', title: '我的主机', keywords: ['主机', '机器', '添加', '工作站'] },
 
   { id: 'team.invite-role', tab: 'team', title: '邀请角色', keywords: ['成员', '邀请', '权限'] },
   { id: 'team.members', tab: 'team', title: '成员列表', keywords: ['成员', '角色'] },

@@ -23,13 +23,13 @@
 | [团队共享](features/team.md) | 成员/邀请/角色/审计 |
 | [模型路由](features/routing.md) | 自动路由 + 分工路由；同会话按轮切模型已废弃 |
 | [发布](features/release.md) | 版本、签名、更新源、上架材料 |
-| 工作区 / 账号 | 见 [workstation.md](workstation.md)（进行中；[accounts.md](accounts.md) 是旧模型，待迁移）。iOS：用户已决定暂不做，评估归档于 [archive/research/](archive/research/)。 |
+| 工作站（账号与主机） | [workstation.md](workstation.md)；[accounts.md](accounts.md) 是被替代的旧模型，仅作迁移参考。iOS：用户已决定暂不做，评估归档于 [archive/research/](archive/research/)。 |
 
 ## 2. 一次性记录（records）
 评审、走查、自用测试、e2e、性能、打分卡、调研、探索：写完即冻结，放 `archive/<类别>/`，文件名带日期或版本。类别：`reviews/`（评审/走查/无障碍/IA）、`e2e/`、`perf/`、`dogfood/`、`research/`、`qa/`、`scorecards/`、`plan/`、`progress/`。
 
 ## 3. 代测步骤（test guides）
-给产品所有者的真机测试步骤放 [test-guides/](test-guides/)：设备共享、PR/CI，以及 [accounts-test.md](accounts-test.md)（待并入）。
+给产品所有者的真机测试步骤放 [test-guides/](test-guides/)：设备共享、PR/CI、[工作站](test-guides/workstation.md)（个人模式 + 团队模式）。
 
 ## 4. 防膨胀规则
 - 新写的一次性记录直接放 `archive/`；功能变更只更新对应 `features/<功能>.md`，不另写新文档；同一事实只在一处记录，其他地方链接过去。

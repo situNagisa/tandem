@@ -19,7 +19,7 @@ import { textMatches } from '../../lib/pinyin'
 import { ProfilesSection } from './ProfilesSection'
 import { HostsSection } from './HostsSection'
 import { TeamSection } from './TeamSection'
-import { AccountsSection } from './AccountsSection'
+import { WorkstationSection } from '../workstation/WorkstationSection'
 import { GatewaySection } from './GatewaySection'
 import { AppearanceSection } from './AppearanceSection'
 import { SyncSection } from './SyncSection'
@@ -366,7 +366,7 @@ export function SettingsDialog() {
             {tab === 'routing' && <ModelRoutingSection />}
             {tab === 'hosts' && <HostsSection />}
             {tab === 'team' && <TeamSection />}
-            {tab === 'accounts' && <AccountsSection />}
+            {tab === 'accounts' && <WorkstationSection />}
             {tab === 'gateway' && <GatewaySection />}
             {tab === 'permissions' && <PermissionsSection />}
             {tab === 'hooks' && <HooksSection />}

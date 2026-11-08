@@ -416,7 +416,7 @@ export function Sidebar({
               </div>
             </div>
             <MenuItem icon={<Settings size={13} />} onSelect={() => openSettings('accounts')}>
-              工作区管理
+              工作站管理
             </MenuItem>
             <MenuItem icon={<LogOut size={13} />} danger onSelect={() => void logoutWorkspace()}>
               退出登录
@@ -427,11 +427,11 @@ export function Sidebar({
             variant="ghost"
             onClick={() => setLoginOpen(true)}
             className={cn(row, 'text-[12.5px] text-text-tertiary')}
-            tooltip="登录工作区账号，自动看到全部机器"
+            tooltip="登录工作站账号，看到自己的主机"
             tooltipSide="top"
           >
             <LogIn size={15} className="shrink-0" />
-            <span className="min-w-0 flex-1 truncate">登录工作区</span>
+            <span className="min-w-0 flex-1 truncate">账号登录</span>
           </Button>
         )}
         <Button

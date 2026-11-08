@@ -31,6 +31,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { chromium } from 'playwright'
 import { AxeBuilder } from '@axe-core/playwright'
 import WebSocket from 'ws'
+import { runWorkstationCheck } from './workstation-check.mjs'
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
 const HOST_ENTRY = path.join(ROOT, 'packages/server/dist/cli.js')
@@ -6385,6 +6386,15 @@ async function main() {
         false,
         '清除演示数据后仍残留演示设备',
       )
+    })
+
+    // 工作站客户端-服务：只跑工作站 + 两台主机，注册/绑定/授权/E2E 流式（API 级，独立进程）。
+    checks.push({
+      name: '工作站客户端-服务（注册/添加主机/授权/E2E 流式）',
+      viewport: 'desktop',
+      fn: async () => {
+        await runWorkstationCheck(home)
+      },
     })
 
     // ------------------------------------------------------------------ 执行

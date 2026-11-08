@@ -33,6 +33,7 @@ import { Modal } from '../ui/Modal'
 const ROLE_LABELS: Record<WorkspaceRole, string> = {
   owner: '所有者',
   admin: '管理员',
+  member: '成员',
   collaborator: '协作者',
   approver: '审批者',
   observer: '观察者',

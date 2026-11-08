@@ -1,5 +1,7 @@
 # 工作站：客户端-服务模式（替代「工作区 + 账号中心」）
 
+> 更新：2026-11-09。已实现 v1；代测步骤见 [test-guides/workstation.md](test-guides/workstation.md)。
+
 > 2026-11-09 产品所有者定的方向。任何人先向**工作站**注册账号，再**添加自己的主机**，才能开始用；没有单独的「登录账号管理平台」这一步。团队把工作站部署在一台服务器上，个人把本机当服务器；两者是同一个程序的两个可独立开启的角色。
 
 ## 1. 角色
@@ -105,4 +107,4 @@ docker run -d --name tandem-workstation -p 8481:8481 \
 - 两个账号：首个注册者为管理员；用户 2 默认看不到 h1/h2，授权 h2 后才看到。
 - 全新客户端只填 `http://127.0.0.1:8481`：登录 → 两台主机 → h1 新建会话 → 流式回复（经工作站转发，E2E）。
 - 主机端口不对客户端开放（只访问 8481）仍可用；旧 `accounts.json` 启动后自动迁移；本地模式回归不变。
-- 自动化：`e2e/regression.mjs`「工作站客户端-服务」用例；Playwright 截图 `/tmp/ws-shots/`；步骤见 `docs/workstation-test.md`。
+- 自动化：`e2e/regression.mjs`「工作站客户端-服务」用例；Playwright 截图 `/tmp/ws-shots/`；步骤见 `test-guides/workstation.md`。

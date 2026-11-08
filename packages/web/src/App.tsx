@@ -28,6 +28,7 @@ import { SearchDialog } from './components/SearchDialog'
 import { BackgroundTasksPanel } from './components/BackgroundTasksPanel'
 import { BrowserPanel } from './components/BrowserPanel'
 import { WorkstationDialog } from './components/workstation/WorkstationDialog'
+import { WorkstationOnboarding } from './components/workstation/WorkstationOnboarding'
 import { SerialTerminalDialog } from './components/workstation/SerialTerminalDialog'
 import { PreviewPanel } from './components/PreviewPanel'
 import { InboxDialog } from './components/inbox/InboxDialog'
@@ -86,6 +87,21 @@ export default function App() {
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const lastWidthRef = useRef<number | null>(null)
   const [drawerOffset, setDrawerOffset] = useState(0)
+  const [onboarded, setOnboarded] = useState(() => {
+    try {
+      if (localStorage.getItem('tandem.onboarding.force')) return false
+      return !!localStorage.getItem('tandem.onboarded.v1')
+    } catch {
+      return true
+    }
+  })
+  const forceOnboarding = (() => {
+    try {
+      return !!localStorage.getItem('tandem.onboarding.force')
+    } catch {
+      return false
+    }
+  })()
   const drawerStart = useRef<number | null>(null)
   const effectiveWidth = dragWidth ?? sidebarWidth
 
@@ -361,6 +377,10 @@ export default function App() {
     document.body.style.userSelect = 'none'
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
+  }
+
+  if (initialized && !onboarded && !accountSession && (hosts.length === 0 || forceOnboarding)) {
+    return <WorkstationOnboarding onDone={() => setOnboarded(true)} />
   }
 
   return (

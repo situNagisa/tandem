@@ -8,6 +8,7 @@ import websocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import type { RelayPairInfo } from '@tandem/protocol';
 import type { Host } from './host.js';
+import { RelayAgent } from './relay/agent.js';
 import { startPrPolling } from './vcs.js';
 import { registerSttRoutes } from './stt.js';
 import { isPublicSharePath, registerShareRoutes } from './share/routes.js';
@@ -141,7 +142,36 @@ export async function createApp(
 
   const sshHosts = new SshRemoteManager(host.home, host.version);
   app.addHook('onClose', async () => sshHosts.stop());
-  const deps: RouteDeps = { host, sshHosts, ...(extras.relay ? { relay: extras.relay } : {}) };
+  // 本机作为主机加入工作站后：主动向工作站建立出站隧道（E2E 强制）。
+  let workstationAgent: RelayAgent | undefined;
+  const startWorkstationTunnel = () => {
+    if (workstationAgent) return;
+    const join = host.accounts.workstationJoin();
+    if (!join) return;
+    const address = app.server.address();
+    const port = address && typeof address === 'object' && address.port ? address.port : 7878;
+    workstationAgent = new RelayAgent(
+      { url: join.url, hostKey: join.hostKey, requireE2E: true },
+      host.config.hostId,
+      port,
+    );
+    workstationAgent.start();
+  };
+  const stopWorkstationTunnel = () => {
+    workstationAgent?.stop();
+    workstationAgent = undefined;
+  };
+  const workstationDeps = {
+    start: startWorkstationTunnel,
+    stop: stopWorkstationTunnel,
+    status: () => {
+      const join = host.accounts.workstationJoin();
+      return { connected: !!workstationAgent, ...(join ? { url: join.url } : {}) };
+    },
+  };
+  app.addHook('onListen', async () => startWorkstationTunnel());
+  app.addHook('onClose', async () => stopWorkstationTunnel());
+  const deps: RouteDeps = { host, sshHosts, workstation: workstationDeps, ...(extras.relay ? { relay: extras.relay } : {}) };
 
   registerHostRoutes(app, deps);
   registerUpdateRoutes(app, deps);

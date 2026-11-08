@@ -150,6 +150,15 @@ import type {
   WorkspaceSetupResult,
   WorkspaceStatus,
   WorkspaceAuditEntry,
+  WorkstationAccountSummary,
+  WorkstationBindCode,
+  WorkstationGrantInput,
+  WorkstationHostClaimResult,
+  WorkstationInvite,
+  WorkstationPublicStatus,
+  WorkstationRegisterInput,
+  WorkstationSettingsInput,
+  WorkstationSetupInput,
   TeamMember,
   TeamOverview,
   UpdateTeamMemberInput,
@@ -1141,6 +1150,96 @@ export const api = {
       hint?: string
       relay?: RelayPairInfo
     }>(h, '/api/pair'),
+}
+
+/** 工作站服务：客户端只填工作站地址，账号、主机、授权都从这里取。 */
+async function wsFetch<T>(
+  baseUrl: string,
+  path: string,
+  init: { method?: string; token?: string; body?: unknown; signal?: AbortSignal } = {},
+): Promise<T> {
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (init.token) headers.Authorization = `Bearer ${init.token}`
+  if (init.body !== undefined) headers['Content-Type'] = 'application/json'
+  let res: Response
+  try {
+    res = await fetch(`${baseUrl.replace(/\/+$/, '')}${path}`, {
+      method: init.method ?? 'GET',
+      headers,
+      ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+      ...(init.signal ? { signal: init.signal } : {}),
+    })
+  } catch (err) {
+    throw new ApiError(err instanceof Error ? `无法连接工作站：${err.message}` : '无法连接工作站', 0)
+  }
+  const text = await res.text().catch(() => '')
+  if (!res.ok) throw new ApiError(describe(res.status, text), res.status)
+  if (res.status === 204 || !text) return undefined as T
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new ApiError('工作站返回了无法解析的数据', res.status)
+  }
+}
+
+export const workstationApi = {
+  publicStatus: (baseUrl: string) => wsFetch<WorkstationPublicStatus>(baseUrl, '/api/workstation/status'),
+  setup: (baseUrl: string, input: WorkstationSetupInput) =>
+    wsFetch<AccountLoginResult>(baseUrl, '/api/workstation/setup', { method: 'POST', body: input }),
+  register: (baseUrl: string, input: WorkstationRegisterInput) =>
+    wsFetch<AccountLoginResult>(baseUrl, '/api/workstation/register', { method: 'POST', body: input }),
+  login: (baseUrl: string, input: AccountLoginInput) =>
+    wsFetch<AccountLoginResult>(baseUrl, '/api/workstation/login', { method: 'POST', body: input }),
+  refresh: (baseUrl: string, refreshToken: string) =>
+    wsFetch<AccountTokens>(baseUrl, '/api/workstation/refresh', { method: 'POST', body: { refreshToken } }),
+  logout: (baseUrl: string, refreshToken: string) =>
+    wsFetch<void>(baseUrl, '/api/workstation/logout', { method: 'POST', body: { refreshToken } }).catch(() => undefined),
+  hosts: (baseUrl: string, token: string) =>
+    wsFetch<WorkspaceHostInfo[]>(baseUrl, '/api/workstation/hosts', { token }),
+  bindCode: (baseUrl: string, token: string) =>
+    wsFetch<WorkstationBindCode>(baseUrl, '/api/workstation/hosts/bind-code', { method: 'POST', token }),
+  removeHost: (baseUrl: string, token: string, hostId: string) =>
+    wsFetch<void>(baseUrl, `/api/workstation/hosts/${encodeURIComponent(hostId)}`, { method: 'DELETE', token }),
+  setGrant: (baseUrl: string, token: string, hostId: string, input: WorkstationGrantInput) =>
+    wsFetch<WorkspaceHostInfo>(baseUrl, `/api/workstation/hosts/${encodeURIComponent(hostId)}/grants`, {
+      method: 'POST',
+      token,
+      body: input,
+    }),
+  removeGrant: (baseUrl: string, token: string, hostId: string, accountId: string) =>
+    wsFetch<void>(
+      baseUrl,
+      `/api/workstation/hosts/${encodeURIComponent(hostId)}/grants/${encodeURIComponent(accountId)}`,
+      { method: 'DELETE', token },
+    ),
+  accounts: (baseUrl: string, token: string, q = '') =>
+    wsFetch<WorkstationAccountSummary[]>(
+      baseUrl,
+      `/api/workstation/accounts${q ? `?q=${encodeURIComponent(q)}` : ''}`,
+      { token },
+    ),
+  overview: (baseUrl: string, token: string) =>
+    wsFetch<WorkspaceOverview>(baseUrl, '/api/workstation/overview', { token }),
+  settings: (baseUrl: string, token: string, input: WorkstationSettingsInput) =>
+    wsFetch<WorkstationPublicStatus>(baseUrl, '/api/workstation/settings', { method: 'PATCH', token, body: input }),
+  invite: (baseUrl: string, token: string) =>
+    wsFetch<WorkstationInvite>(baseUrl, '/api/workstation/invites', { method: 'POST', token }),
+  audit: (baseUrl: string, token: string, limit = 200) =>
+    wsFetch<WorkspaceAuditEntry[]>(baseUrl, `/api/workstation/audit?limit=${limit}`, { token }),
+  localStatus: (h: HostConfig) =>
+    request<{
+      mode: WorkspaceStatus['mode']
+      role?: WorkspaceStatus['role']
+      embedded: { running: boolean; urls: string[]; port?: number }
+      join: null | { url: string; workspaceName: string; fingerprint: string; connected: boolean }
+    }>(h, '/api/workstation/local/status'),
+  enableLocal: (h: HostConfig) =>
+    request<{ urls: string[]; port: number; initialized: boolean }>(h, '/api/workstation/local/enable', {
+      method: 'POST',
+    }),
+  join: (h: HostConfig, input: { workstationUrl: string; code?: string; username?: string; password?: string }) =>
+    request<WorkspaceStatus>(h, '/api/workstation/join', { method: 'POST', body: JSON.stringify(input) }),
+  leave: (h: HostConfig) => request<void>(h, '/api/workstation/leave', { method: 'POST' }),
 }
 
 /** 导入外部会话时可选的目标账号 / 分组 / 模型；不填则沿用原软件上下文。 */

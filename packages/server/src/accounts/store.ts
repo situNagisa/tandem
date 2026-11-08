@@ -20,9 +20,16 @@ import type {
   AccountMe,
   AccountTokens,
   TeamRole,
+  WorkstationAccountSummary,
+  WorkstationGrantInput,
+  WorkstationHostClaimInput,
+  WorkstationHostClaimResult,
+  WorkstationPublicStatus,
+  WorkstationSettingsInput,
   WorkspaceAccount,
   WorkspaceAccountInput,
   WorkspaceAccountUpdateInput,
+  WorkspaceHostGrant,
   WorkspaceHostInfo,
   WorkspaceInfo,
   WorkspaceJoinInput,
@@ -34,13 +41,16 @@ import type {
   WorkspaceStatus,
 } from '@tandem/protocol';
 import { readJson, writePrivateFile } from '../config.js';
+import { generateHostKey, identityFromHostKey } from '../relay/e2e.js';
 
 export const ACCESS_TTL_MS = 30 * 60 * 1000;
 export const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const JOIN_CODE_TTL_MS = 24 * 60 * 60 * 1000;
+export const HOST_BIND_TTL_MS = 10 * 60 * 1000;
+export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SYNC_INTERVAL_MS = 10_000;
 
-const ROLES: WorkspaceRole[] = ['owner', 'admin', 'collaborator', 'approver', 'observer'];
+const ROLES: WorkspaceRole[] = ['owner', 'admin', 'member', 'collaborator', 'approver', 'observer'];
 const SCOPES: WorkspaceScope[] = ['all', 'hosts', 'projects'];
 
 interface PasswordHash {
@@ -57,15 +67,29 @@ interface StoredJoinCode {
   createdAt: number;
   expiresAt: number;
   usedAt?: number;
+  /** host：把一台主机登记到账号；account：仅邀请模式下的注册邀请。 */
+  kind?: 'host' | 'account';
+  /** 主机绑定码归属账号。 */
+  accountId?: string;
+}
+interface StoredInvite {
+  codeHash: string;
+  createdAt: number;
+  expiresAt: number;
+  usedAt?: number;
 }
 interface CenterFile {
   mode: 'center';
   version: 1;
+  /** 2 = 工作站客户端-服务模型（旧文件在 load 时迁移）。 */
+  modelVersion?: number;
+  registration?: 'open' | 'invite';
   workspace: WorkspaceInfo;
   privateKey: string;
   publicKey: string;
   accounts: StoredAccount[];
   joinCodes: StoredJoinCode[];
+  invites?: StoredInvite[];
   hosts: WorkspaceHostInfo[];
   revoked: Record<string, number>;
   invalidBefore: Record<string, number>;
@@ -77,6 +101,8 @@ interface CenterFile {
 interface MemberFile {
   mode: 'member';
   version: 1;
+  /** 2 = 本机作为主机登记到工作站。 */
+  modelVersion?: number;
   workspace: WorkspaceInfo;
   centerUrl: string;
   centerPublicKey: string;
@@ -88,6 +114,12 @@ interface MemberFile {
   joinedAt: number;
   lastSyncAt?: number;
   lastSyncError?: string;
+  /** 主机身份（Ed25519，PKCS8 PEM）：隧道注册与 E2E 共用。 */
+  hostKey?: string;
+  hostKeyPublic?: string;
+  fingerprint?: string;
+  ownerAccountId?: string;
+  hostName?: string;
 }
 
 interface TokenClaims {
@@ -101,6 +133,8 @@ interface TokenClaims {
   scope: WorkspaceScope;
   hostIds: string[];
   dirs: Record<string, string[]>;
+  /** 新模型：逐主机的有效角色与项目范围（工作站签发，主机本地验签）。 */
+  perHost?: Record<string, { role: WorkspaceRole; dirs?: string[] }>;
   iat: number;
   exp: number;
   jti: string;
@@ -233,7 +267,11 @@ function normalizeScope(value: unknown, fallback: WorkspaceScope = 'all'): Works
 }
 function mapRole(role: WorkspaceRole): TeamRole {
   if (role === 'owner' || role === 'admin') return 'owner';
+  if (role === 'member') return 'collaborator';
   return role;
+}
+function isWorkspaceAdmin(role: WorkspaceRole): boolean {
+  return role === 'owner' || role === 'admin';
 }
 
 export class AccountsStore {
@@ -251,18 +289,71 @@ export class AccountsStore {
       if (raw.mode === 'center') {
         raw.accounts ??= [];
         raw.joinCodes ??= [];
+        raw.invites ??= [];
         raw.hosts ??= [];
         raw.revoked ??= {};
         raw.invalidBefore ??= {};
         raw.usedRefresh ??= {};
         raw.audit ??= [];
         raw.snapshotVersion ??= 1;
+        raw.registration ??= 'open';
+        for (const code of raw.joinCodes) code.kind ??= 'host';
+        if (raw.modelVersion !== 2) this.migrateCenter(raw);
       } else {
         raw.hosts ??= [];
         raw.revoked ??= {};
         raw.invalidBefore ??= {};
+        if (raw.modelVersion !== 2) {
+          raw.modelVersion = 2;
+          if (!raw.hostKey) this.ensureMemberHostKey(raw);
+          this.save();
+        }
       }
     }
+  }
+
+  /** 旧「工作区 + 账号中心」→ 工作站：中心 Host 变成工作站服务，其他 Host 归首个管理员。 */
+  private migrateCenter(state: CenterFile): void {
+    state.modelVersion = 2;
+    const firstAdmin = state.accounts
+      .slice()
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .find((a) => a.role === 'owner' || a.role === 'admin');
+    state.hosts = state.hosts
+      .filter((h) => h.id !== state.workspace.centerHostId)
+      .map((h) => ({
+        ...h,
+        ...(h.ownerId ?? firstAdmin ? { ownerId: h.ownerId ?? firstAdmin?.id } : {}),
+        grants: h.grants ?? [],
+      }));
+    // 旧账号的「范围（全部/指定机器/指定项目）」转成逐主机授权。
+    for (const account of state.accounts) {
+      if (account.role === 'owner') account.role = 'admin';
+      if (isWorkspaceAdmin(account.role)) {
+        account.scope = 'all';
+        continue;
+      }
+      for (const host of state.hosts) {
+        if (account.scope !== 'all' && !account.hostIds.includes(host.id)) continue;
+        const dirs = account.projectDirsByHost[host.id] ?? [];
+        const role: WorkspaceRole = account.role === 'member' ? 'collaborator' : account.role;
+        host.grants = [
+          ...(host.grants ?? []).filter((g) => g.accountId !== account.id),
+          { accountId: account.id, role, ...(dirs.length ? { projectDirs: dirs } : {}), createdAt: Date.now() },
+        ];
+      }
+      account.scope = 'all';
+    }
+    this.save();
+  }
+
+  private ensureMemberHostKey(state: MemberFile): void {
+    if (state.hostKey) return;
+    const hostKey = generateHostKey();
+    const identity = identityFromHostKey(hostKey);
+    state.hostKey = hostKey;
+    state.hostKeyPublic = Buffer.from(identity.publicRaw).toString('base64url');
+    state.fingerprint = identity.fingerprint;
   }
 
   /** 成员 Host 定时拉取中心快照；中心模式无需轮询。 */
@@ -288,16 +379,61 @@ export class AccountsStore {
   }
 
   status(): WorkspaceStatus {
-    if (!this.state) return { mode: 'none' };
+    if (!this.state) return { mode: 'none', role: 'none', initialized: false, registration: 'open' };
     if (this.state.mode === 'center') {
-      return { mode: 'center', workspace: this.state.workspace };
+      return {
+        mode: 'center',
+        role: 'workstation',
+        initialized: true,
+        registration: this.state.registration ?? 'open',
+        workspace: this.state.workspace,
+        publicKey: this.state.publicKey,
+        hostId: this.opts.hostId,
+      };
     }
     return {
       mode: 'member',
+      role: 'host',
+      initialized: true,
       workspace: this.state.workspace,
       center: { url: this.state.centerUrl, publicKey: this.state.centerPublicKey },
       lastSyncAt: this.state.lastSyncAt,
+      ...(this.state.lastSyncError ? { lastSyncError: this.state.lastSyncError } : {}),
     };
+  }
+
+  /** 工作站服务公钥（凭据验签用）。 */
+  workstationPublicKey(): string | undefined {
+    return this.state?.mode === 'center' ? this.state.publicKey : this.state?.centerPublicKey;
+  }
+
+  /** 主机身份：隧道注册 + E2E。 */
+  hostIdentity(): { hostKey: string; publicKey: string; fingerprint: string } | undefined {
+    if (this.state?.mode !== 'member' || !this.state.hostKey) return undefined;
+    this.ensureMemberHostKey(this.state);
+    return {
+      hostKey: this.state.hostKey!,
+      publicKey: this.state.hostKeyPublic!,
+      fingerprint: this.state.fingerprint!,
+    };
+  }
+
+  workstationJoin(): { url: string; publicKey: string; hostKey: string; workspace: WorkspaceInfo; fingerprint: string } | undefined {
+    if (this.state?.mode !== 'member') return undefined;
+    const identity = this.hostIdentity();
+    if (!identity) return undefined;
+    return {
+      url: this.state.centerUrl,
+      publicKey: this.state.centerPublicKey,
+      hostKey: identity.hostKey,
+      fingerprint: identity.fingerprint,
+      workspace: this.state.workspace,
+    };
+  }
+
+  ownerAccountId(): string | undefined {
+    if (this.state?.mode === 'member') return this.state.ownerAccountId;
+    return undefined;
   }
 
   private requireCenter(): CenterFile {
@@ -374,6 +510,8 @@ export class AccountsStore {
       id: this.opts.hostId,
       name: hostName ?? this.opts.hostName,
       urls: [...new Set(urls.filter((u) => /^https?:\/\//i.test(u)))],
+      ownerId: account.id,
+      grants: [],
       addedAt: Date.now(),
       ...(this.opts.version ? { version: this.opts.version } : {}),
       ...(this.opts.platform ? { platform: this.opts.platform } : {}),
@@ -400,8 +538,56 @@ export class AccountsStore {
   }
 
   // ---------- 令牌 ----------
+  /** 逐主机有效角色：自己的主机是 owner，别人授权按 grant。管理员没有隐式访问权。 */
+  private effectiveHostAccess(account: StoredAccount): Record<string, { role: WorkspaceRole; dirs?: string[] }> {
+    const state = this.requireCenter();
+    const out: Record<string, { role: WorkspaceRole; dirs?: string[] }> = {};
+    if (account.disabled) return out;
+    // 旧工作区（尚未重启迁移）：保持旧的 scope/hostIds 语义，避免升级瞬间断权限。
+    if (state.modelVersion !== 2) {
+      for (const host of state.hosts) {
+        if (isWorkspaceAdmin(account.role) || account.scope === 'all') out[host.id] = { role: account.role };
+        else if (account.hostIds.includes(host.id)) {
+          const dirs = account.projectDirsByHost[host.id];
+          out[host.id] = { role: account.role, ...(dirs?.length ? { dirs } : {}) };
+        }
+      }
+      return out;
+    }
+    for (const host of state.hosts) {
+      if (host.ownerId === account.id) {
+        out[host.id] = { role: 'owner' };
+        continue;
+      }
+      const grant = host.grants?.find((g) => g.accountId === account.id);
+      if (grant) {
+        out[host.id] = { role: grant.role, ...(grant.projectDirs?.length ? { dirs: grant.projectDirs } : {}) };
+        continue;
+      }
+      // 旧数据里没有 ownerId 的主机：迁移期由管理员代管。
+      if (!host.ownerId && isWorkspaceAdmin(account.role)) out[host.id] = { role: 'owner' };
+    }
+    return out;
+  }
+
+  /** 自己添加的 + 别人授权的；用于登录结果与「我的主机」。 */
+  visibleHostsFor(account: StoredAccount): WorkspaceHostInfo[] {
+    const state = this.requireCenter();
+    const access = this.effectiveHostAccess(account);
+    return state.hosts
+      .filter((h) => !!access[h.id])
+      .map((h) => ({ ...h, grants: undefined, viaWorkstation: true }));
+  }
+
+  visibleHostsForAccount(accountId: string): WorkspaceHostInfo[] {
+    const state = this.requireCenter();
+    const account = state.accounts.find((a) => a.id === accountId);
+    return account ? this.visibleHostsFor(account) : [];
+  }
+
   private signAccess(account: StoredAccount, now = Date.now()): AccountTokens {
     const state = this.requireCenter();
+    const perHost = this.effectiveHostAccess(account);
     const claims = (typ: 'access' | 'refresh', ttl: number, jti: string): TokenClaims => ({
       v: 1,
       typ,
@@ -411,8 +597,9 @@ export class AccountsStore {
       name: account.name,
       role: account.role,
       scope: account.scope,
-      hostIds: account.hostIds,
-      dirs: account.projectDirsByHost,
+      hostIds: Object.keys(perHost),
+      dirs: Object.fromEntries(Object.entries(perHost).filter(([, v]) => v.dirs?.length).map(([id, v]) => [id, v.dirs!])),
+      perHost,
       iat: now,
       exp: now + ttl,
       jti,
@@ -467,21 +654,30 @@ export class AccountsStore {
       if (!account || account.disabled) return undefined;
     }
     const hostId = this.opts.hostId;
-    let allowed = claims.role === 'owner';
-    if (!allowed) {
-      if (claims.scope === 'all') allowed = true;
-      else allowed = claims.hostIds.includes(hostId);
+    const hostAccess = claims.perHost?.[hostId];
+    let role: WorkspaceRole;
+    let dirs: string[];
+    if (hostAccess) {
+      role = hostAccess.role;
+      dirs = hostAccess.dirs ?? [];
+    } else {
+      let allowed = claims.role === 'owner';
+      if (!allowed) {
+        if (claims.scope === 'all') allowed = true;
+        else allowed = claims.hostIds.includes(hostId);
+      }
+      if (!allowed) return undefined;
+      role = claims.role;
+      dirs = claims.role === 'owner' || claims.role === 'admin' ? [] : [...(claims.dirs[hostId] ?? [])];
     }
-    if (!allowed) return undefined;
-    const projectDirs = claims.role === 'owner' || claims.role === 'admin' ? [] : [...(claims.dirs[hostId] ?? [])];
     return {
       accountId: claims.sub,
       username: claims.username,
       name: claims.name,
       accountRole: claims.role,
-      role: mapRole(claims.role),
-      projectDirs,
-      allProjects: claims.scope !== 'projects' || claims.role === 'owner' || claims.role === 'admin',
+      role: mapRole(role),
+      projectDirs: role === 'owner' || role === 'admin' ? [] : dirs,
+      allProjects: role === 'owner' || role === 'admin' || !dirs.length,
     };
   }
 
@@ -502,14 +698,42 @@ export class AccountsStore {
     const account = this.state.mode === 'center'
       ? this.state.accounts.find((a) => a.id === principal.accountId)
       : undefined;
-    if (!account) return undefined;
+    if (!account && this.state.mode !== 'member') return undefined;
+    const claims = this.verifyToken(token);
+    const publicAccount: WorkspaceAccount = account
+      ? this.publicAccount(account)
+      : {
+          id: principal.accountId,
+          username: principal.username,
+          name: principal.name,
+          role: claims?.role ?? 'member',
+          scope: claims?.scope ?? 'hosts',
+          hostIds: claims?.hostIds ?? [],
+          projectDirsByHost: claims?.dirs ?? {},
+          createdAt: 0,
+        };
     return {
-      account: this.publicAccount(account),
+      account: publicAccount,
       workspace: this.state.workspace,
       hostId: this.opts.hostId,
       role: principal.role,
       projectDirs: principal.projectDirs,
     };
+  }
+
+  /** 仅校验账号令牌（工作站服务用，不要求本机是某台主机）。 */
+  accountFromToken(token: string): { account: WorkspaceAccount; claims: TokenClaims } | undefined {
+    if (this.state?.mode !== 'center') return undefined;
+    const claims = this.verifyToken(token);
+    if (!claims || claims.typ !== 'access') return undefined;
+    const account = this.state.accounts.find((a) => a.id === claims.sub && !a.disabled);
+    if (!account) return undefined;
+    return { account: this.publicAccount(account), claims };
+  }
+
+  isAdminToken(token: string): boolean {
+    const found = this.accountFromToken(token);
+    return !!found && isWorkspaceAdmin(found.account.role);
   }
 
   private accountForLogin(username: string): StoredAccount | undefined {
@@ -558,7 +782,7 @@ export class AccountsStore {
       ...this.signAccess(account),
       account: this.publicAccount(account),
       workspace: state.workspace,
-      hosts: this.hostsForAccount(account),
+      hosts: this.visibleHostsFor(account),
     };
   }
 
@@ -570,13 +794,21 @@ export class AccountsStore {
       if (claims.role === 'owner' || claims.role === 'admin' || claims.scope === 'all') return [...this.state.hosts];
       return this.state.hosts.filter((h) => claims.hostIds.includes(h.id));
     }
+    const ids = Object.keys(claims.perHost ?? {});
+    if (ids.length) {
+      return this.state.hosts.filter((h) => ids.includes(h.id)).map((h) => ({ ...h, viaWorkstation: true }));
+    }
     const account = this.state.accounts.find((a) => a.id === claims.sub);
-    return account ? this.hostsForAccount(account) : [];
+    return account ? this.visibleHostsFor(account) : [];
   }
 
   /** 工作区快照共享口令：只给加入方 Host，避免同网段任意客户端枚举全部机器。 */
   syncSecret(): string | undefined {
     return this.state?.mode === 'center' ? this.state.syncToken : this.state?.syncToken;
+  }
+
+  snapshotVersion(): number {
+    return this.state?.snapshotVersion ?? 0;
   }
 
   private hostsForAccount(account: StoredAccount): WorkspaceHostInfo[] {
@@ -714,7 +946,281 @@ export class AccountsStore {
     this.save();
   }
 
-  // ---------- 加入码 / 工作区 ----------
+  // ---------- 工作站服务：注册、主机登记、授权 ----------
+  /** 首次初始化工作站：创建管理员账号与空的 Host 列表（本机也需显式添加）。 */
+  initializeWorkstation(name: string, username: string, password: string): AccountLoginResult {
+    if (this.state) throw Object.assign(new Error('工作站已初始化'), { statusCode: 409 });
+    if (!name.trim()) throw Object.assign(new Error('请填写工作站名称'), { statusCode: 400 });
+    if (!/^[A-Za-z0-9_.-]{3,32}$/.test(username.trim())) throw Object.assign(new Error('用户名需为 3–32 位字母、数字、下划线、点或短横线'), { statusCode: 400 });
+    if (password.length < 8) throw Object.assign(new Error('密码至少 8 位'), { statusCode: 400 });
+    const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+    const now = Date.now();
+    const workspace: WorkspaceInfo = { id: randomUUID(), name: name.trim(), createdAt: now, centerHostId: this.opts.hostId };
+    const account: StoredAccount = {
+      id: randomUUID(),
+      username: username.trim(),
+      name: '管理员',
+      role: 'admin',
+      scope: 'all',
+      hostIds: [],
+      projectDirsByHost: {},
+      password: hashPassword(password),
+      deviceKeys: [],
+      createdAt: now,
+    };
+    this.state = {
+      mode: 'center',
+      version: 1,
+      modelVersion: 2,
+      registration: 'open',
+      workspace,
+      privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+      publicKey: publicKey.export({ type: 'spki', format: 'der' }).toString('base64'),
+      accounts: [account],
+      joinCodes: [],
+      invites: [],
+      hosts: [],
+      revoked: {},
+      invalidBefore: {},
+      usedRefresh: {},
+      syncToken: randomBytes(24).toString('hex'),
+      snapshotVersion: 1,
+      audit: [],
+    };
+    this.audit('system', 'workstation.create', workspace.name);
+    this.save();
+    return {
+      ...this.signAccess(account),
+      account: this.publicAccount(account),
+      workspace,
+      hosts: [],
+    };
+  }
+
+  /** 开放注册 / 仅邀请注册；首个账号自动成为管理员。 */
+  registerAccount(input: { username?: string; password?: string; name?: string; inviteCode?: string }): AccountLoginResult {
+    const state = this.requireCenter();
+    const username = (input.username ?? '').trim();
+    const password = input.password ?? '';
+    if (!/^[A-Za-z0-9_.-]{3,32}$/.test(username)) throw Object.assign(new Error('用户名需为 3–32 位字母、数字、下划线、点或短横线'), { statusCode: 400 });
+    if (password.length < 8) throw Object.assign(new Error('密码至少 8 位'), { statusCode: 400 });
+    if (state.accounts.some((a) => a.username.toLowerCase() === username.toLowerCase())) {
+      throw Object.assign(new Error('用户名已存在'), { statusCode: 409 });
+    }
+    const first = state.accounts.length === 0;
+    if (!first && (state.registration ?? 'open') === 'invite') {
+      const code = (input.inviteCode ?? '').trim();
+      const invite = state.invites?.find((i) => i.codeHash === sha256(code) && !i.usedAt && i.expiresAt > Date.now());
+      if (!invite) throw Object.assign(new Error('注册需要邀请码，或向管理员申请'), { statusCode: 403 });
+      invite.usedAt = Date.now();
+    }
+    if (state.accounts.length >= 500) throw Object.assign(new Error('账号数量已达上限'), { statusCode: 429 });
+    const account: StoredAccount = {
+      id: randomUUID(),
+      username,
+      name: (input.name ?? '').trim() || username,
+      role: first ? 'admin' : 'member',
+      scope: 'all',
+      hostIds: [],
+      projectDirsByHost: {},
+      password: hashPassword(password),
+      deviceKeys: [],
+      createdAt: Date.now(),
+    };
+    state.accounts.push(account);
+    state.snapshotVersion += 1;
+    this.audit(username, first ? 'account.register.admin' : 'account.register');
+    this.save();
+    void this.pushSnapshot();
+    return {
+      ...this.signAccess(account),
+      account: this.publicAccount(account),
+      workspace: state.workspace,
+      hosts: [],
+    };
+  }
+
+  createInvite(actor = 'admin'): { code: string; expiresAt: number } {
+    const state = this.requireCenter();
+    const now = Date.now();
+    state.invites = (state.invites ?? []).filter((i) => !i.usedAt && i.expiresAt > now).slice(-50);
+    const code = `aci_${randomBytes(18).toString('base64url')}`;
+    const expiresAt = now + INVITE_TTL_MS;
+    state.invites.push({ codeHash: sha256(code), createdAt: now, expiresAt });
+    this.audit(actor, 'invite.create');
+    this.save();
+    return { code, expiresAt };
+  }
+
+  setRegistration(input: WorkstationSettingsInput, actor = 'admin'): void {
+    const state = this.requireCenter();
+    if (input.registration) state.registration = input.registration === 'invite' ? 'invite' : 'open';
+    if (typeof input.name === 'string' && input.name.trim()) state.workspace.name = input.name.trim();
+    this.audit(actor, 'workstation.settings', state.registration);
+    this.save();
+  }
+
+  createHostBindCode(accountId: string): { code: string; expiresAt: number } {
+    const state = this.requireCenter();
+    const now = Date.now();
+    state.joinCodes = state.joinCodes.filter((c) => !c.usedAt && c.expiresAt > now).slice(-50);
+    const code = `ach_${randomBytes(18).toString('base64url')}`;
+    const expiresAt = now + HOST_BIND_TTL_MS;
+    state.joinCodes.push({ codeHash: sha256(code), createdAt: now, expiresAt, kind: 'host', accountId });
+    this.audit(accountId, 'host.bind-code');
+    this.save();
+    return { code, expiresAt };
+  }
+
+  /** 登记主机：同一 hostId 不能换主人；重复登记（同主人）刷新公钥与地址。 */
+  registerHost(accountId: string, host: WorkstationHostClaimInput['host']): WorkspaceHostInfo {
+    const state = this.requireCenter();
+    const account = state.accounts.find((a) => a.id === accountId && !a.disabled);
+    if (!account) throw Object.assign(new Error('账号不存在或已禁用'), { statusCode: 403 });
+    const id = (host.id ?? '').trim();
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(id)) throw Object.assign(new Error('Host ID 无效'), { statusCode: 400 });
+    if (!host.publicKey || !/^[A-Za-z0-9_+/=-]{40,120}$/.test(host.publicKey)) throw Object.assign(new Error('主机公钥无效'), { statusCode: 400 });
+    const fingerprint = (host.fingerprint ?? '').trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(fingerprint)) throw Object.assign(new Error('主机指纹无效'), { statusCode: 400 });
+    const existing = state.hosts.find((h) => h.id === id);
+    if (existing && existing.ownerId && existing.ownerId !== accountId) {
+      throw Object.assign(new Error('该主机已属于其他账号'), { statusCode: 409 });
+    }
+    const urls = Array.isArray(host.urls) ? [...new Set(host.urls.filter((u) => typeof u === 'string' && /^https?:\/\//i.test(u)))] : [];
+    const info: WorkspaceHostInfo = {
+      id,
+      name: (host.name ?? '').trim() || id,
+      urls,
+      publicKey: host.publicKey,
+      fingerprint,
+      ownerId: accountId,
+      online: existing?.online ?? false,
+      grants: existing?.grants ?? [],
+      addedAt: existing?.addedAt ?? Date.now(),
+      lastSeenAt: Date.now(),
+      ...(host.version ? { version: host.version } : {}),
+      ...(host.platform ? { platform: host.platform } : {}),
+    };
+    if (existing) Object.assign(existing, info);
+    else state.hosts.push(info);
+    state.snapshotVersion += 1;
+    this.audit(account.username, 'host.register', `${info.name} · ${fingerprint.slice(0, 12)}…`);
+    this.save();
+    void this.pushSnapshot();
+    return info;
+  }
+
+  claimHost(code: string, host: WorkstationHostClaimInput['host']): { account: WorkspaceAccount; host: WorkspaceHostInfo } {
+    const state = this.requireCenter();
+    const entry = state.joinCodes.find((c) => c.codeHash === sha256((code ?? '').trim()) && c.kind === 'host');
+    if (!entry || entry.usedAt || entry.expiresAt < Date.now() || !entry.accountId) {
+      throw Object.assign(new Error('绑定码无效、已使用或已过期'), { statusCode: 401 });
+    }
+    const account = state.accounts.find((a) => a.id === entry.accountId && !a.disabled);
+    if (!account) throw Object.assign(new Error('绑定码所属账号不可用'), { statusCode: 403 });
+    const info = this.registerHost(entry.accountId, host);
+    entry.usedAt = Date.now();
+    this.save();
+    return { account: this.publicAccount(account), host: info };
+  }
+
+  removeHostByOwner(hostId: string, accountId: string): void {
+    const state = this.requireCenter();
+    const host = state.hosts.find((h) => h.id === hostId);
+    if (!host) throw Object.assign(new Error('主机不存在'), { statusCode: 404 });
+    if (host.ownerId !== accountId) throw Object.assign(new Error('只有主机主人可以移除'), { statusCode: 403 });
+    state.hosts = state.hosts.filter((h) => h.id !== hostId);
+    state.snapshotVersion += 1;
+    this.audit(accountId, 'host.remove', host.name);
+    this.save();
+    void this.pushSnapshot();
+  }
+
+  setHostGrant(hostId: string, ownerAccountId: string, input: WorkstationGrantInput): WorkspaceHostInfo {
+    const state = this.requireCenter();
+    const host = state.hosts.find((h) => h.id === hostId);
+    if (!host) throw Object.assign(new Error('主机不存在'), { statusCode: 404 });
+    if (host.ownerId !== ownerAccountId) throw Object.assign(new Error('只有主机主人可以授权'), { statusCode: 403 });
+    const target = state.accounts.find((a) => a.id === input.accountId && !a.disabled);
+    if (!target) throw Object.assign(new Error('被授权账号不存在或已禁用'), { statusCode: 404 });
+    if (target.id === ownerAccountId) throw Object.assign(new Error('不能给自己的主机重复授权'), { statusCode: 400 });
+    const role: WorkspaceRole = input.role === 'owner' || input.role === 'approver' || input.role === 'observer' ? input.role : 'collaborator';
+    const dirs = Array.isArray(input.projectDirs)
+      ? [...new Set(input.projectDirs.filter((d): d is string => typeof d === 'string' && !!d.trim()).map((d) => path.resolve(d.trim())))]
+      : [];
+    const grant: WorkspaceHostGrant = {
+      accountId: target.id,
+      role,
+      ...(dirs.length ? { projectDirs: dirs } : {}),
+      createdAt: Date.now(),
+    };
+    host.grants = [...(host.grants ?? []).filter((g) => g.accountId !== target.id), grant];
+    state.snapshotVersion += 1;
+    this.audit(ownerAccountId, 'host.grant', `${host.name} → ${target.username} · ${role}${dirs.length ? ` · ${dirs.length} 个目录` : ''}`);
+    this.save();
+    void this.pushSnapshot();
+    return { ...host };
+  }
+
+  removeHostGrant(hostId: string, ownerAccountId: string, accountId: string): void {
+    const state = this.requireCenter();
+    const host = state.hosts.find((h) => h.id === hostId);
+    if (!host) throw Object.assign(new Error('主机不存在'), { statusCode: 404 });
+    if (host.ownerId !== ownerAccountId) throw Object.assign(new Error('只有主机主人可以撤销授权'), { statusCode: 403 });
+    host.grants = (host.grants ?? []).filter((g) => g.accountId !== accountId);
+    state.snapshotVersion += 1;
+    this.audit(ownerAccountId, 'host.grant.remove', host.name);
+    this.save();
+    void this.pushSnapshot();
+  }
+
+  markHostOnline(hostId: string, online: boolean): void {
+    if (this.state?.mode !== 'center') return;
+    const host = this.state.hosts.find((h) => h.id === hostId);
+    if (!host) return;
+    host.online = online;
+    host.lastSeenAt = Date.now();
+    this.save();
+  }
+
+  hostPublicKey(hostId: string): string | undefined {
+    if (this.state?.mode !== 'center') return undefined;
+    const host = this.state.hosts.find((h) => h.id === hostId);
+    return host?.publicKey;
+  }
+
+  listAccountSummaries(q = ''): WorkstationAccountSummary[] {
+    const state = this.requireCenter();
+    const needle = q.trim().toLowerCase();
+    return state.accounts
+      .filter((a) => !needle || a.username.toLowerCase().includes(needle) || a.name.toLowerCase().includes(needle))
+      .slice(0, 100)
+      .map((a) => ({ id: a.id, username: a.username, name: a.name, role: a.role, ...(a.disabled ? { disabled: true } : {}) }));
+  }
+
+  workstationStatus(urls: string[]): WorkstationPublicStatus {
+    if (this.state?.mode !== 'center') {
+      return { initialized: false, registration: 'open', urls };
+    }
+    return {
+      initialized: true,
+      name: this.state.workspace.name,
+      registration: this.state.registration ?? 'open',
+      publicKey: this.state.publicKey,
+      hostId: this.opts.hostId,
+      urls,
+      ...(this.opts.version ? { version: this.opts.version } : {}),
+    };
+  }
+
+  private firstAdminId(): string | undefined {
+    if (this.state?.mode !== 'center') return undefined;
+    return this.state.accounts
+      .slice()
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .find((a) => a.role === 'owner' || a.role === 'admin')?.id;
+  }
+
   createJoinCode(actor = 'owner'): { code: string; expiresAt: number } {
     const state = this.requireCenter();
     const now = Date.now();
@@ -746,6 +1252,8 @@ export class AccountsStore {
       id: host.id.trim(),
       name: (host.name ?? '').trim() || host.id.trim(),
       urls,
+      ownerId: this.firstAdminId(),
+      grants: [],
       addedAt: Date.now(),
       lastSeenAt: Date.now(),
       ...(host.version ? { version: host.version } : {}),
@@ -779,7 +1287,6 @@ export class AccountsStore {
 
   overview(): WorkspaceOverview {
     const state = this.requireCenter();
-    this.ensureSelfHost([]);
     return {
       workspace: state.workspace,
       hosts: [...state.hosts],
@@ -804,7 +1311,8 @@ export class AccountsStore {
     return {
       version: state.snapshotVersion,
       workspace: state.workspace,
-      hosts: [...state.hosts],
+      // 主机只需要吊销信息；不把其他账号的主机名/地址/授权广播给每台主机。
+      hosts: state.hosts.map((h) => ({ id: h.id, name: '', urls: [], addedAt: h.addedAt, online: h.online })),
       revoked: { ...state.revoked },
       invalidBefore: { ...state.invalidBefore },
       issuedAt: Date.now(),
@@ -839,6 +1347,7 @@ export class AccountsStore {
     this.state = {
       mode: 'member',
       version: 1,
+      modelVersion: 2,
       workspace: data.workspace,
       centerUrl: base,
       centerPublicKey: data.center.publicKey,
@@ -848,11 +1357,76 @@ export class AccountsStore {
       invalidBefore: {},
       snapshotVersion: data.snapshotVersion ?? 1,
       joinedAt: Date.now(),
+      hostName: host.name,
     };
+    this.ensureMemberHostKey(this.state);
     this.save();
     this.start();
     await this.syncFromCenter();
     return data as WorkspaceJoinResult;
+  }
+
+  /**
+   * 主机登记到工作站：code 或账号令牌二选一；成功后本机转为 member（host）角色。
+   * 主机私钥只在本机，工作站与客户端都只拿到公钥/指纹。
+   */
+  async registerAsHost(
+    workstationUrl: string,
+    hostInfo: { id: string; name: string; urls: string[]; version?: string; platform?: string },
+    auth: { code?: string; accessToken?: string },
+  ): Promise<WorkspaceStatus> {
+    if (this.state) throw Object.assign(new Error('本机已加入工作站'), { statusCode: 409 });
+    const base = workstationUrl.trim().replace(/\/+$/, '');
+    if (!/^https?:\/\//i.test(base)) throw Object.assign(new Error('请填写工作站地址（http://…）'), { statusCode: 400 });
+    const temporary: MemberFile = {
+      mode: 'member',
+      version: 1,
+      modelVersion: 2,
+      workspace: { id: '', name: '', createdAt: 0, centerHostId: '' },
+      centerUrl: base,
+      centerPublicKey: '',
+      syncToken: '',
+      hosts: [],
+      revoked: {},
+      invalidBefore: {},
+      snapshotVersion: 1,
+      joinedAt: Date.now(),
+      hostName: hostInfo.name,
+    };
+    this.ensureMemberHostKey(temporary);
+    const identity = { hostKey: temporary.hostKey!, publicKey: temporary.hostKeyPublic!, fingerprint: temporary.fingerprint! };
+    const body = {
+      host: { ...hostInfo, publicKey: identity.publicKey, fingerprint: identity.fingerprint },
+      ...(auth.code ? { code: auth.code } : {}),
+    };
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (auth.accessToken) headers.Authorization = `Bearer ${auth.accessToken}`;
+    const path = auth.code ? '/api/workstation/hosts/claim' : '/api/workstation/hosts/register';
+    let res: Response;
+    try {
+      res = await fetch(`${base}${path}`, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) });
+    } catch (err) {
+      throw Object.assign(new Error(`无法连接工作站：${(err as Error).message}`), { statusCode: 502 });
+    }
+    const data = (await res.json().catch(() => ({}))) as Partial<WorkstationHostClaimResult> & { error?: string };
+    if (!res.ok) throw Object.assign(new Error(data.error ?? `工作站返回 ${res.status}`), { statusCode: 502 });
+    if (!data.workspace || !data.workstation?.publicKey) throw Object.assign(new Error('工作站响应缺少工作区信息'), { statusCode: 502 });
+    this.state = {
+      ...temporary,
+      workspace: data.workspace,
+      centerPublicKey: data.workstation.publicKey,
+      syncToken: data.syncToken ?? '',
+      snapshotVersion: data.snapshotVersion ?? 1,
+    };
+    this.save();
+    this.start();
+    await this.syncFromCenter();
+    return this.status();
+  }
+
+  /** 工作站上的主机地址（主机视角）：用于状态展示。 */
+  workstationUrl(): string | undefined {
+    return this.state?.mode === 'member' ? this.state.centerUrl : undefined;
   }
 
   leaveWorkspace(): void {

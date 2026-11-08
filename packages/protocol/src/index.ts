@@ -1010,9 +1010,9 @@ export interface TeamPresence {
 // POST   /api/team/invites/accept {code,name} -> AcceptTeamInviteResult（公开接口，凭邀请码）
 // POST   /api/permissions/:requestId/transfer {toMemberId} -> PermissionRequest（所有者/审批者）
 
-// ---------- 账号制工作区（自托管账号中心，完全内网） ----------
-// 一台 Host 兼任账号中心，签发 Ed25519 令牌；加入工作区的 Host 用中心公钥本地验签。
-export type WorkspaceRole = 'owner' | 'admin' | 'collaborator' | 'approver' | 'observer';
+// ---------- 工作站（自托管账号服务 + 主机登记/转发，完全内网） ----------
+// 工作站签发 Ed25519 令牌；主机用工作站公钥本地验签，经出站隧道把请求转给本机。
+export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'collaborator' | 'approver' | 'observer';
 /** 授权范围：全部机器 / 指定机器 / 指定机器上的项目目录。 */
 export type WorkspaceScope = 'all' | 'hosts' | 'projects';
 export interface WorkspaceInfo {
@@ -1021,15 +1021,33 @@ export interface WorkspaceInfo {
   createdAt: number;
   centerHostId: string;
 }
+/** 主机主人给其他账号的授权；角色沿用 所有者/协作者/审批者/观察者。 */
+export interface WorkspaceHostGrant {
+  accountId: string;
+  role: WorkspaceRole;
+  /** 为空表示整台主机；否则只授权这些绝对路径。 */
+  projectDirs?: string[];
+  createdAt: number;
+}
 export interface WorkspaceHostInfo {
   id: string;
   name: string;
-  /** 可达地址（含端口），客户端登录后据此自动添加主机。 */
+  /** 可达地址（含端口）；经工作站访问时可为空，客户端用 工作站/h/<id>。 */
   urls: string[];
   version?: string;
   platform?: string;
   addedAt: number;
   lastSeenAt?: number;
+  /** 主机归属账号；新模型下只有主人与获授权账号可见。 */
+  ownerId?: string;
+  /** 主机 Ed25519 公钥（base64 DER）与 SHA-256 指纹，工作站隧道与 E2E 绑定用。 */
+  publicKey?: string;
+  fingerprint?: string;
+  /** 经工作站隧道在线。 */
+  online?: boolean;
+  /** 由工作站下发给客户端：客户端应通过 工作站/h/<id> 连接。 */
+  viaWorkstation?: boolean;
+  grants?: WorkspaceHostGrant[];
 }
 export interface WorkspaceAccount {
   id: string;
@@ -1105,11 +1123,21 @@ export interface WorkspaceSnapshot {
   issuedAt: number;
 }
 export interface WorkspaceStatus {
+  /** center=工作站服务；member=已加入工作站的主机；none=本地模式。 */
   mode: 'none' | 'center' | 'member';
+  /** 新命名：workstation / host / none（与 mode 对应）。 */
+  role?: 'workstation' | 'host' | 'none';
+  initialized?: boolean;
+  registration?: 'open' | 'invite';
   workspace?: WorkspaceInfo;
-  /** 加入方视角：中心地址与公钥。 */
+  /** 主机视角：工作站地址与公钥。 */
   center?: { url: string; publicKey: string };
+  /** 工作站视角：主机登记/客户端连接用的地址与公钥。 */
+  urls?: string[];
+  publicKey?: string;
+  hostId?: string;
   lastSyncAt?: number;
+  lastSyncError?: string;
 }
 export interface WorkspaceSetupInput {
   name: string;
@@ -1160,6 +1188,100 @@ export interface AccountMe {
   role: TeamRole;
   projectDirs: string[];
 }
+
+// ---------- 工作站服务公开/账号接口 ----------
+export interface WorkstationPublicStatus {
+  initialized: boolean;
+  name?: string;
+  registration: 'open' | 'invite';
+  /** 工作站 Ed25519 公钥（base64 DER）；主机登记时用它验签。 */
+  publicKey?: string;
+  hostId?: string;
+  urls: string[];
+  version?: string;
+}
+export interface WorkstationRegisterInput {
+  username: string;
+  password: string;
+  name?: string;
+  /** registration=invite 时必填。 */
+  inviteCode?: string;
+}
+export interface WorkstationSetupInput {
+  name: string;
+  username: string;
+  password: string;
+}
+export interface WorkstationBindCode {
+  code: string;
+  expiresAt: number;
+}
+export interface WorkstationHostClaimInput {
+  code: string;
+  host: {
+    id: string;
+    name: string;
+    urls?: string[];
+    version?: string;
+    platform?: string;
+    publicKey: string;
+    fingerprint: string;
+  };
+}
+export interface WorkstationHostRegisterInput {
+  host: WorkstationHostClaimInput['host'];
+}
+export interface WorkstationHostClaimResult {
+  workspace: WorkspaceInfo;
+  workstation: { url: string; publicKey: string; hostId: string };
+  hostId: string;
+  h1?: string;
+  snapshotVersion: number;
+  syncToken: string;
+}
+export interface WorkstationGrantInput {
+  accountId: string;
+  role: WorkspaceRole;
+  projectDirs?: string[];
+}
+export interface WorkstationAccountSummary {
+  id: string;
+  username: string;
+  name: string;
+  role: WorkspaceRole;
+  disabled?: boolean;
+}
+export interface WorkstationSettingsInput {
+  registration?: 'open' | 'invite';
+  name?: string;
+}
+export interface WorkstationInvite {
+  code: string;
+  expiresAt: number;
+}
+// GET    /api/workstation/status                    -> WorkstationPublicStatus（公开）
+// POST   /api/workstation/setup {name,username,password} -> AccountLoginResult（仅未初始化时）
+// POST   /api/workstation/register {username,password,inviteCode?} -> AccountLoginResult（公开；开放/邀请注册）
+// POST   /api/workstation/login {username,password?,totp?} -> AccountLoginResult（公开）
+// POST   /api/workstation/refresh {refreshToken}    -> AccountTokens（公开）
+// POST   /api/workstation/logout {refreshToken}     -> 204（公开）
+// GET    /api/workstation/me                        -> AccountMe（账号令牌）
+// GET    /api/workstation/hosts                     -> WorkspaceHostInfo[]（账号令牌；自己 + 获授权）
+// POST   /api/workstation/hosts/bind-code           -> WorkstationBindCode（账号令牌）
+// POST   /api/workstation/hosts/claim {code,host}   -> WorkstationHostClaimResult（公开；一次性绑定码）
+// POST   /api/workstation/hosts/register {host}     -> WorkstationHostClaimResult（账号令牌；主机侧登录加入）
+// DELETE /api/workstation/hosts/:id                 -> 204（主机主人）
+// POST   /api/workstation/hosts/:id/grants {accountId,role,projectDirs?} -> WorkspaceHostInfo（主机主人）
+// DELETE /api/workstation/hosts/:id/grants/:accountId -> 204（主机主人）
+// GET    /api/workstation/accounts?q=               -> WorkstationAccountSummary[]（账号令牌；授权选择用）
+// GET    /api/workstation/overview                  -> WorkspaceOverview（管理员）
+// PATCH  /api/workstation/settings {registration,name?} -> WorkstationPublicStatus（管理员）
+// POST   /api/workstation/invites                   -> WorkstationInvite（管理员；仅邀请模式注册）
+// GET    /api/workstation/audit?limit=200           -> WorkspaceAuditEntry[]（管理员）
+// POST   /api/workstation/local/enable              -> { url, urls, initialized, publicKey? }（Host 所有者：本机内嵌启动工作站）
+// POST   /api/workstation/join {workstationUrl,code?|username,password?} -> WorkspaceStatus（Host 所有者）
+// POST   /api/workstation/leave                     -> 204（Host 所有者：本机退出工作站）
+
 // GET    /api/accounts/status                      -> WorkspaceStatus（公开；客户端探测中心/成员）
 // POST   /api/accounts/setup {name,username,password} -> WorkspaceSetupResult（仅 Host 所有者 token）
 // POST   /api/accounts/login {username,password?,totp?} -> AccountLoginResult（中心公开）

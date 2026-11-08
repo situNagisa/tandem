@@ -11,6 +11,8 @@ import type {
 import type { RouteDeps } from './common.js';
 import { bad, str } from './common.js';
 import { principalOf } from '../team/access.js';
+import { embeddedDataDir, embeddedStatus, startEmbeddedWorkstation } from '../workstation/manager.js';
+import { readWorkstationMeta } from '../workstation/server.js';
 
 export function isPublicAccountPath(pathname: string): boolean {
   return (
@@ -71,6 +73,99 @@ export function registerAccountRoutes(app: FastifyInstance, deps: RouteDeps): vo
   app.get('/api/accounts/status', async (req) => {
     if (accounts().mode() === 'center') accounts().ensureSelfHost(localUrls(app));
     return accounts().status();
+  });
+
+  // ---------- 本机作为主机：工作站加入 / 本机内嵌启动工作站 ----------
+  app.get('/api/workstation/local/status', async (req, reply) => {
+    if (!isHostOwner(req)) return bad(reply, '仅 Host 所有者可以查看工作站状态', 403);
+    const join = accounts().workstationJoin();
+    const embedded = embeddedStatus(host.home);
+    return {
+      mode: accounts().mode(),
+      role: accounts().status().role,
+      embedded: { running: embedded.running, urls: embedded.urls, ...(embedded.port ? { port: embedded.port } : {}) },
+      join: join
+        ? {
+            url: join.url,
+            workspaceName: join.workspace.name,
+            fingerprint: join.fingerprint,
+            connected: deps.workstation?.status().connected ?? false,
+          }
+        : null,
+    };
+  });
+
+  app.post('/api/workstation/local/enable', async (req, reply) => {
+    if (!isHostOwner(req)) return bad(reply, '仅 Host 所有者可以启动本机工作站', 403);
+    const address = app.server.address();
+    const bound = address && typeof address === 'object' ? address.address : '127.0.0.1';
+    const bindHost = bound === '0.0.0.0' || bound === '::' || bound === '::0' ? '0.0.0.0' : '127.0.0.1';
+    try {
+      const info = await startEmbeddedWorkstation(host.home, bindHost, host.version);
+      const meta = readWorkstationMeta(embeddedDataDir(host.home));
+      return { ...info, initialized: meta.initialized };
+    } catch (err) {
+      return bad(reply, `无法启动本机工作站：${(err as Error).message}`, 500);
+    }
+  });
+
+  app.post('/api/workstation/join', async (req, reply) => {
+    if (!isHostOwner(req)) return bad(reply, '仅 Host 所有者可以把本机加入工作站', 403);
+    const body = (req.body ?? {}) as {
+      workstationUrl?: unknown;
+      code?: unknown;
+      username?: unknown;
+      password?: unknown;
+      totp?: unknown;
+    };
+    const workstationUrl = str(body.workstationUrl);
+    if (!workstationUrl) return bad(reply, '请填写工作站地址');
+    const code = str(body.code);
+    let accessToken: string | undefined;
+    const username = str(body.username);
+    if (!code) {
+      if (!username || typeof body.password !== 'string' || !body.password) {
+        return bad(reply, '请填写绑定码，或用工作站账号登录');
+      }
+      let res: Response;
+      try {
+        res = await fetch(`${workstationUrl.replace(/\/+$/, '')}/api/workstation/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username,
+            password: body.password,
+            ...(typeof body.totp === 'string' && body.totp ? { totp: body.totp } : {}),
+          }),
+          signal: AbortSignal.timeout(15_000),
+        });
+      } catch (err) {
+        return bad(reply, `无法连接工作站：${(err as Error).message}`, 502);
+      }
+      const data = (await res.json().catch(() => ({}))) as { accessToken?: string; error?: string };
+      if (!res.ok || !data.accessToken) return bad(reply, data.error ?? `工作站返回 ${res.status}`, 502);
+      accessToken = data.accessToken;
+    }
+    const status = await accounts().registerAsHost(
+      workstationUrl,
+      {
+        id: host.config.hostId,
+        name: selfName(app),
+        urls: localUrls(app),
+        ...(host.version ? { version: host.version } : {}),
+        platform: process.platform,
+      },
+      code ? { code } : { accessToken: accessToken! },
+    );
+    deps.workstation?.start();
+    return status;
+  });
+
+  app.post('/api/workstation/leave', async (req, reply) => {
+    if (!isHostOwner(req)) return bad(reply, '仅 Host 所有者可以让本机退出工作站', 403);
+    deps.workstation?.stop();
+    accounts().leaveWorkspace();
+    return reply.code(204).send();
   });
 
   app.post('/api/accounts/setup', async (req, reply) => {

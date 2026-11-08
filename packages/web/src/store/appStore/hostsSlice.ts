@@ -1,6 +1,6 @@
-import type { SessionSummary } from '@tandem/protocol'
+import type { AccountLoginResult, SessionSummary } from '@tandem/protocol'
 import type { StoreApi } from 'zustand'
-import { accountApi, api, ApiError } from '../../lib/api'
+import { accountApi, api, ApiError, workstationApi } from '../../lib/api'
 import { normalizeHostUrl } from '../../lib/hostUrl'
 import { inviteFromLocation } from '../../lib/inviteLink'
 import { isValidFingerprint, normalizeFingerprint, relayHostUrl } from '../../lib/relay'
@@ -49,6 +49,9 @@ export type HostsSlice = Pick<
   | 'importExternalSession'
   | 'applyClientSettings'
   | 'workspaceLogin'
+  | 'workspaceRegister'
+  | 'applyWorkstationLogin'
+  | 'syncWorkstationHosts'
   | 'workspaceLogout'
   | 'refreshWorkspace'
 >
@@ -615,14 +618,10 @@ export function createHostsSlice(
       }
     },
 
-    workspaceLogin: async (input) => {
-      const result = await accountApi.login(input.centerUrl.trim(), {
-        username: input.username.trim(),
-        password: input.password,
-        ...(input.totp?.trim() ? { totp: input.totp.trim() } : {}),
-      })
+    applyWorkstationLogin: (workstationUrl, result) => {
+      const base = workstationUrl.trim().replace(/\/+$/, '')
       const session: AccountSession = {
-        centerUrl: input.centerUrl.trim().replace(/\/+$/, ''),
+        centerUrl: base,
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
         accessExpiresAt: result.accessExpiresAt,
@@ -633,42 +632,62 @@ export function createHostsSlice(
       saveAccountSession(session)
       const next = [...get().hosts]
       const added: HostConfig[] = []
+      const seen = new Set<string>()
       for (const remote of result.hosts) {
-        const url = pickWorkspaceUrl(session.centerUrl, remote.urls)
-        if (!url) continue
-        const existing = next.find((h) => sameOrigin(h.url, url))
+        if (!remote.fingerprint) continue
+        seen.add(remote.id)
+        const url = relayHostUrl(base, remote.id)
+        const existing = next.find(
+          (h) => h.mode === 'relay' && h.relayUrl === base && h.hostId === remote.id,
+        )
         if (existing) {
           existing.token = result.accessToken
           existing.accountId = result.account.id
           existing.accountName = result.account.name
           existing.name = remote.name || existing.name
-          void get().refreshProfiles(existing.id)
-          void get().refreshSessions(existing.id)
+          existing.fingerprint = remote.fingerprint
           continue
         }
         const host: HostConfig = {
           id: newId(),
-          name: remote.name || new URL(url).host,
+          name: remote.name || remote.id,
           url,
           token: result.accessToken,
           addedAt: Date.now(),
+          mode: 'relay',
+          relayUrl: base,
+          hostId: remote.id,
+          fingerprint: remote.fingerprint,
           accountId: result.account.id,
           accountName: result.account.name,
         }
         next.push(host)
         added.push(host)
       }
-      const activeHostId = added[0]?.id ?? get().activeHostId ?? next[0]?.id ?? null
+      // 账号下已不可见（撤销授权/移除）的主机同步移除，保留其它直连/本地主机。
+      const cleaned = next.filter(
+        (h) =>
+          !(
+            h.mode === 'relay' &&
+            h.relayUrl === base &&
+            h.accountId === result.account.id &&
+            h.hostId &&
+            !seen.has(h.hostId)
+          ),
+      )
+      const activeHostId = cleaned.some((h) => h.id === get().activeHostId)
+        ? get().activeHostId
+        : (added[0]?.id ?? cleaned[0]?.id ?? null)
       set((state) => ({
         account: session,
-        hosts: next,
+        hosts: cleaned,
         activeHostId,
         runtimes: {
           ...state.runtimes,
           ...Object.fromEntries(added.map((h) => [h.id, freshRuntime()])),
         },
       }))
-      saveHosts(next)
+      saveHosts(cleaned)
       if (activeHostId) saveLastHost(activeHostId)
       for (const h of added) {
         deps.ensureConnection(h.id)
@@ -676,6 +695,87 @@ export function createHostsSlice(
         void get().refreshSessions(h.id)
       }
       toast(`已登录 ${session.account.name}（${session.workspace.name}）`, 'success')
+    },
+
+    workspaceLogin: async (input) => {
+      const base = input.centerUrl.trim().replace(/\/+$/, '')
+      const result = await workstationApi.login(base, {
+        username: input.username.trim(),
+        password: input.password,
+        ...(input.totp?.trim() ? { totp: input.totp.trim() } : {}),
+      })
+      get().applyWorkstationLogin(base, result)
+    },
+
+    workspaceRegister: async (input) => {
+      const base = input.workstationUrl.trim().replace(/\/+$/, '')
+      const result = await workstationApi.register(base, {
+        username: input.username.trim(),
+        password: input.password,
+        ...(input.inviteCode?.trim() ? { inviteCode: input.inviteCode.trim() } : {}),
+      })
+      get().applyWorkstationLogin(base, result)
+    },
+
+    syncWorkstationHosts: async () => {
+      const session = get().account
+      if (!session) return
+      const remoteHosts = await workstationApi.hosts(session.centerUrl, session.accessToken)
+      const current = get().hosts
+      const next = [...current]
+      const added: HostConfig[] = []
+      const seen = new Set<string>()
+      for (const remote of remoteHosts) {
+        if (!remote.fingerprint) continue
+        seen.add(remote.id)
+        const existing = next.find(
+          (h) => h.mode === 'relay' && h.relayUrl === session.centerUrl && h.hostId === remote.id,
+        )
+        if (existing) {
+          existing.token = session.accessToken
+          existing.fingerprint = remote.fingerprint
+          existing.name = remote.name || existing.name
+          continue
+        }
+        const host: HostConfig = {
+          id: newId(),
+          name: remote.name || remote.id,
+          url: relayHostUrl(session.centerUrl, remote.id),
+          token: session.accessToken,
+          addedAt: Date.now(),
+          mode: 'relay',
+          relayUrl: session.centerUrl,
+          hostId: remote.id,
+          fingerprint: remote.fingerprint,
+          accountId: session.account.id,
+          accountName: session.account.name,
+        }
+        next.push(host)
+        added.push(host)
+      }
+      const cleaned = next.filter(
+        (h) =>
+          !(
+            h.mode === 'relay' &&
+            h.relayUrl === session.centerUrl &&
+            h.accountId === session.account.id &&
+            h.hostId &&
+            !seen.has(h.hostId)
+          ),
+      )
+      set((state) => ({
+        hosts: cleaned,
+        runtimes: {
+          ...state.runtimes,
+          ...Object.fromEntries(added.map((h) => [h.id, freshRuntime()])),
+        },
+      }))
+      saveHosts(cleaned)
+      for (const h of added) {
+        deps.ensureConnection(h.id)
+        void get().refreshProfiles(h.id)
+        void get().refreshSessions(h.id)
+      }
     },
 
     workspaceLogout: async () => {

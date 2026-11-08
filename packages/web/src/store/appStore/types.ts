@@ -1,4 +1,5 @@
 import type {
+  AccountLoginResult,
   ContentBlock,
   CreateSessionInput,
   ExternalSource,
@@ -95,6 +96,17 @@ export interface AppState {
   applyClientSettings: (settings: ClientSettingsBundle, mode: 'merge' | 'replace') => void
   /** 账号中心登录：保存会话并把可访问 Host 自动加入列表。 */
   workspaceLogin: (input: { centerUrl: string; username: string; password: string; totp?: string }) => Promise<void>
+  /** 工作站注册：成功后与登录一样保存会话并加入主机。 */
+  workspaceRegister: (input: {
+    workstationUrl: string
+    username: string
+    password: string
+    inviteCode?: string
+  }) => Promise<void>
+  /** 工作站 setup 返回的结果直接落地（首次创建管理员）。 */
+  applyWorkstationLogin: (workstationUrl: string, result: AccountLoginResult) => void
+  /** 从工作站重新拉取「我的主机」：授权/撤销后刷新列表。 */
+  syncWorkstationHosts: () => Promise<void>
   /** 退出工作区账号：作废刷新令牌并移除账号添加的 Host。 */
   workspaceLogout: () => Promise<void>
   /** 刷新访问令牌并同步到所有账号 Host。 */
