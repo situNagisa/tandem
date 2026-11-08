@@ -1,5 +1,7 @@
 # 发布说明
 
+> 更新：2026-11-09。
+
 本文覆盖版本号、安卓签名、桌面更新源与上架材料。所有签名材料只放在仓库之外，发布产物只进入本机 `dist-*` 目录或内网静态目录。
 
 ## 1. 版本与发布流程
@@ -111,7 +113,7 @@ http://<Host地址>:<端口>/updates/
 2. 在 CI/本机设置 `CSC_LINK` 与 `CSC_KEY_PASSWORD`（或云签名工具），不要把证书与密码写进仓库。
 3. `electron-builder` 会自动签名 exe 与 NSIS 安装包；`CSC_IDENTITY_AUTO_DISCOVERY=false` 仅用于当前未签名流程。
 4. 用 `signtool verify /pa /v Tandem-Setup-*.exe` 校验，并在 Windows 实机确认 SmartScreen 表现。
-5. 在 `docs/release.md` 记录证书到期时间与续费负责人。
+5. 在 `docs/features/release.md` 记录证书到期时间与续费负责人。
 
 ## 5. 安卓上架材料清单
 

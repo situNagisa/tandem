@@ -1,5 +1,7 @@
 # Tandem 架构地图
 
+> 更新：2026-11-09。
+
 > 目标：新加入的人或 agent 只读这一页 + 目标目录的少量文件，就能安全修改；改完用 `node scripts/check.mjs` 自动发现回归。
 > 与 `AGENTS.md`、`docs/design.md`、`packages/protocol/src/index.ts` 冲突时，以它们为准。
 
@@ -58,7 +60,7 @@
 | `src/tasks.ts` | Bash 后台任务、输出缓冲、Kill |
 | `src/budgets.ts` / `src/usage.ts` | 预算规则、周期累计、用量与价格计算 |
 | `src/quota.ts` + `src/host/handoff.ts` | 配额预估与会话交接：读 provider 限流头与 429 冷却，按最近几轮估算可跑轮数；Key 全冷却/预算阻止/额度将尽时先存检查点再切换到备用分组或等待 |
-| `src/sandbox.ts` | 命令沙箱：Write/Edit 写保护与 Bash 静态分析、网络白名单、Linux bwrap / macOS sandbox-exec 真隔离；设置页与 `docs/sandbox.md` |
+| `src/sandbox.ts` | 命令沙箱：Write/Edit 写保护与 Bash 静态分析、网络白名单、Linux bwrap / macOS sandbox-exec 真隔离；设置页与 `docs/features/sandbox.md` |
 | `src/secrets.ts` + `routes/secrets.ts` | 项目 Secrets：`~/.tandem/secrets.json` 加密存储，按项目/全局注入进程环境，日志与工具输出脱敏 |
 | `src/doctor.ts` + `routes/doctor.ts` | Host 诊断：Node/数据目录/磁盘/监听/账号连通性/git/CLI/MCP/Hooks 等逐项检查，失败排序、Key 脱敏、纯文本报告；CLI `tandem-host doctor` 同款 |
 | `src/key-rotation.ts` | 同组多 Key：可用性、failover/round-robin、失败分类与冷却 |
@@ -151,7 +153,7 @@ Web/Desktop/Android
 |---|---|
 | 加一个工具 | `server/src/tools/<name>.ts` 实现 `definition` + `run`；在 `tools/index.ts` 的 `TOOLS/TOOL_MAP` 注册；涉及权限时设 `readOnly/requiresApproval`；前端工具卡在 `ToolCard.tsx` |
 | 加一个 REST 接口 | 先在 `protocol` 注释/types 定义；`server/src/server.ts` 加路由（后续放 `routes/`）；`web/src/lib/api.ts` 加方法 |
-| 改团队共享/成员权限 | `server/src/team/*` + `routes/team.ts` + `routes/ws.ts`；前端 `settings/TeamSection.tsx`、`JoinTeamDialog.tsx`、`lib/inviteLink.ts`；安全说明 `docs/team.md` |
+| 改团队共享/成员权限 | `server/src/team/*` + `routes/team.ts` + `routes/ws.ts`；前端 `settings/TeamSection.tsx`、`JoinTeamDialog.tsx`、`lib/inviteLink.ts`；安全说明 `docs/features/team.md` |
 | 改账号制/工作区 | 协议 `Workspace*` / `Account*`；服务端 `src/accounts/store.ts`、`routes/accounts.ts`、`server.ts` 的 token 解析；前端 `components/accounts/LoginDialog.tsx`、`settings/AccountsSection.tsx`、`hostsSlice` 的 `workspaceLogin/refreshWorkspace`；设计 `docs/accounts.md`，回归在 `e2e/regression.mjs`「账号制工作区」 |
 | 加一个 WS 事件 | `protocol` 的 `ServerMsg/ClientMsg`；server 用 `Hub.broadcastSession/broadcastAll`；web `appStore/serverMessages.ts` 事件 switch + `ws.ts` 类型 |
 | 加一个设置页 | `web/src/lib/types.ts` 的 `SettingsTab`；`SettingsDialog.tsx` 的 `TABS` 与条件渲染；页面放 `components/settings/`；数据走 `api.ts`。设置项要进 `lib/settingsRegistry.ts` 并给容器加 `data-setting-id`，命令面板/设置搜索才能定位 |
@@ -165,13 +167,13 @@ Web/Desktop/Android
 | 改外部会话导入 | `server/src/external.ts`（扫描/清洗/标题）+ `ExternalSessionView.tsx` |
 | 改定时任务 | `server/src/schedules.ts` + `settings/SchedulesSection.tsx`（`target.kind='wiki'` 直接更新项目 Wiki） |
 | 改评测/轨迹回放 | `server/src/evals.ts` + `routes/evals.ts`；前端 `store/useEvalStore.ts` + `settings/EvalsSection.tsx` + `components/evals/*` |
-| 改任务看板 | 契约 `protocol` 的 Board* 类型；调度与状态机 `server/src/board/manager.ts`，纯规则 `graph.ts`；接口 `routes/board.ts`；前端 `components/board/*` + `lib/board.ts` + `store/useBoardStore.ts`；设计与取舍 `docs/taskboard.md`；回归 `e2e/board.mjs`（API 级）与 `e2e/regression.mjs` 的「任务看板」用例 |
+| 改任务看板 | 契约 `protocol` 的 Board* 类型；调度与状态机 `server/src/board/manager.ts`，纯规则 `graph.ts`；接口 `routes/board.ts`；前端 `components/board/*` + `lib/board.ts` + `store/useBoardStore.ts`；设计与取舍 `docs/features/taskboard.md`；回归 `e2e/board.mjs`（API 级）与 `e2e/regression.mjs` 的「任务看板」用例 |
 | 改预算/用量 | `server/src/budgets.ts`、`usage.ts` + 对应设置页 |
 | 改多 Key 调度 | `server/src/key-rotation.ts` + `host.ts` 的 `keyCandidates/markKeyFailure` |
 | 加斜杠命令 | `server/src/agent/commands.ts` + `host.ts` 的 `handleCommand` |
 | 改系统提示/注入 | `server/src/agent/prompt.ts`、`prompts/registry.ts`、`host.ts` 的 `buildSystemFor/recordInjections`（项目 Wiki 提示由 `wiki.promptSection` 提供） |
 | 改手机/桌面壳 | `packages/mobile`（Capacitor 插件）、`packages/desktop`（Electron 主进程/preload） |
-| 改工作站/设备共享 | 协议 `Device*` 与 `/api/devices*`；服务端 `src/devices/manager.ts`（挂载/锁/代理/审计）、`routes/devices.ts`；前端 `components/workstation/*`、`store/useDevicesStore.ts`、`EnvBar` 设备胶囊；设计与取舍 `docs/devices.md`；真实设备代测 `docs/devices-test.md`；回归 `e2e/regression.mjs` 的「工作站」用例 |
+| 改工作站/设备共享 | 协议 `Device*` 与 `/api/devices*`；服务端 `src/devices/manager.ts`（挂载/锁/代理/审计）、`routes/devices.ts`；前端 `components/workstation/*`、`store/useDevicesStore.ts`、`EnvBar` 设备胶囊；设计与取舍 `docs/features/devices.md`；真实设备代测 `docs/test-guides/devices.md`；回归 `e2e/regression.mjs` 的「工作站」用例 |
 | 项目 Wiki | 服务端 `src/wiki.ts` + `routes/wiki.ts` + `tools/wiki-*.ts`；前端 `components/wiki/*`、`right-panel/WikiCard.tsx`、`store/useWikiStore.ts`；数据 `~/.tandem/wiki/<hash>/`；回归 `e2e/regression.mjs` 的「项目 Wiki」用例 |
 | 加回归用例 | server：`packages/server/test/*.test.ts`；web：`packages/web/src/**/*.test.ts`；端到端：`e2e/smoke.mjs` |
 

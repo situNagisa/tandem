@@ -11,7 +11,7 @@
 | `packages/desktop` | Electron 桌面端（内置 Host） |
 | `packages/mobile` | Capacitor 安卓 App |
 | `packages/relay` | 可自托管中继（不在同一局域网时连接，端到端加密） |
-| `docs/` | 计划、进度、设计规范、评审、打分卡 |
+| `docs/` | 文档入口见 `docs/README.md`：现行文档（设计/架构/功能/进度）、一次性记录归档、代测步骤 |
 
 ## 环境
 - Node.js ≥ 22（开发用 26）
@@ -71,15 +71,15 @@ npm run dist:win -w @tandem/desktop
 node scripts/release.mjs 0.2.0 --dry-run   # 查看将要修改的文件与 CHANGELOG
 node scripts/release.mjs 0.2.0             # 统一版本号、写 CHANGELOG/导览、提交并打本地标签
 ```
-只创建本地标签，不 push。详见 `docs/release.md`。
+只创建本地标签，不 push。详见 `docs/features/release.md`。
 
 ### 桌面自动更新（内网）
 `npm run dist:win` 产出的 `latest.yml`、安装包与 `.blockmap` 放到任意内网静态目录；桌面端在「设置 → 通用 → 桌面更新」填更新源（HTTP 地址或共享目录路径），留空即关闭、不发起任何请求。发现新版本会后台下载，完成后提示「新版本 x · 重启以更新」。
 
-也可以让 Host 托管：在「设置 → 通用 → Host 托管更新文件」填一个本机目录，Host 会公开 `/updates/` 静态路径（仅启用时）。未签名的 SmartScreen 影响、签名选购与上架材料见 `docs/release.md`。
+也可以让 Host 托管：在「设置 → 通用 → Host 托管更新文件」填一个本机目录，Host 会公开 `/updates/` 静态路径（仅启用时）。未签名的 SmartScreen 影响、签名选购与上架材料见 `docs/features/release.md`。
 
 ### 中继
-见 `docs/relay.md`（Docker + Caddy 一键部署：`deploy/relay/install.sh`）。
+见 `docs/features/relay.md`（Docker + Caddy 一键部署：`deploy/relay/install.sh`）。
 
 ## 数据
 Host 数据在 `~/.tandem`（可用 `TANDEM_HOME` 覆盖）：`config.json`（hostId、token）、`profiles.json`（Key，权限 600）、`sessions/`、`checkpoints/`、`mcp.json`、`hooks.json` 等。Claude Code / Codex 的会话只读，不会被修改。

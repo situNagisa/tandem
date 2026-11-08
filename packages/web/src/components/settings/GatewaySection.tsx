@@ -584,7 +584,7 @@ export function GatewaySection() {
       </section>
 
       <p className="settings-note">
-        网关仅转发到本机配置的模型账号；令牌与 Key 都不下发到成员设备。架构与威胁模型见 docs/gateway.md。
+        网关仅转发到本机配置的模型账号；令牌与 Key 都不下发到成员设备。架构与威胁模型见 docs/features/gateway.md。
       </p>
 
       <Modal

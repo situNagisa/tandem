@@ -1,6 +1,6 @@
 # Tandem 项目手册（给接手的人 / agent）
 
-任何新会话、子代理、或新加入的人，先读这一页再动手。**协调者接手时先读 `docs/HANDOFF.md`**（当前状态、进行中的工作、等用户的事项）。它保证上下文被清空后，工作可以无损接续。
+任何新会话、子代理、或新加入的人，先读这一页再动手。**协调者接手时先读 `docs/HANDOFF.md`**（当前状态、进行中的工作、等用户的事项）。它保证上下文被清空后，工作可以无损接续。文档分三层、每个功能一份说明，见 `docs/README.md`。
 
 ## 产品
 类 Claude Code Desktop 的 agent 工作台；多端（PC/浏览器/安卓）互联；每会话可选账号/分组/模型/思考强度；可管理远程机器上的任务。产品所有者：徐奥（通过飞书话题沟通）。
@@ -11,14 +11,16 @@
 3. `packages/protocol/src/index.ts` —— 客户端与 Host 的唯一契约；改接口先改这里。
 4. `docs/architecture.md` —— 模块地图、数据流、关键约定、“改 X 去哪里”。
 5. `README.md` —— 构建、打包、目录。
-6. 评审与测试记录：`docs/review-v*.md`、`docs/qa-v6.md`、`docs/bugs-v6.md`、`docs/e2e-report*.md`、`docs/scorecard-v*/`。
+6. 功能说明：`docs/features/<功能>.md`（每功能一份，索引见 `docs/README.md`）；代测步骤在 `docs/test-guides/`。
+7. 一次性记录（评审、走查、e2e、性能、打分卡、调研）：只读，见 `docs/archive/`，文件名带日期或版本。
 
 ## 工作方式
 - 用户可随时反馈，不必等他；每轮自己定优先级。视觉方向性选择才发「打分卡」（编号 + 现状/方案对比图）。
 - 用户的具体问题通过产品内「反馈模式」（Ctrl+Shift+F）导出 `tandem-feedback-*.json` 发到飞书；用 `lark-cli im +messages-mget --message-ids <id> --download-resources` 下载，`node scripts/feedback-unpack.mjs <json> <outDir>` 解包后逐条处理，逐条回报并附修复后截图。
 - 处理每条反馈前先查 `docs/feedback-ledger.md` 归到某个根因（R01…）；同一根因第二次出现必须在共享层修并加自动检查（ui-audit/单测/回归），不能只修表面。
 - 交付前协调者亲自用 Playwright 点击验收用户反馈的每一条（只截静态图会漏掉"点了没反应、弹层被裁"类问题）。
-- **提交前运行 `node scripts/check.mjs`**（build → ui-audit → 单测 → smoke）；子代理默认至少跑 `node scripts/check.mjs --skip-smoke`。
+- **提交前运行 `node scripts/check.mjs`**（build → docs-check → ui-audit → 单测 → smoke）；子代理默认至少跑 `node scripts/check.mjs --skip-smoke`。
+- **文档规则**：新写的一次性记录直接放 `docs/archive/`；功能变更只更新对应 `docs/features/<功能>.md`，不另写新文档；同一事实只在一处记录，其他地方链接过去。`scripts/docs-check.mjs` 会检查断链、根目录越界与现行文档更新日期。
 - 每轮结束：`npm run build`，`npm run apk -w @tandem/mobile`，`npm run dist:win -w @tandem/desktop`（产物会复制到 Windows「下载」目录），更新 `docs/PROGRESS.md`。
 
 ## 约束

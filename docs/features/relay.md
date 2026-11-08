@@ -1,5 +1,7 @@
 # 中继服务（@tandem/relay）
 
+> 更新：2026-11-09。
+
 让手机 / 另一台电脑在**不和 Host 同一局域网**时也能连上 Host（例如在 Windows 上管理远程 Linux 的任务）。Host 主动向公网 relay 建立**出站** WebSocket 隧道，Host 机器无需开放入站端口；客户端访问 `https://<relay>/h/<hostId>/...`，relay 经隧道把 HTTP 请求和 WebSocket 帧转发给 Host。
 
 ## 架构
@@ -115,7 +117,7 @@ relay 选项：`--max-hosts`（1000）、`--max-streams`（单 Host 并发请求
 
 ## 后续计划
 
-- 客户端接入（`packages/web` 的 `lib/api.ts` / `lib/ws.ts`、设置页添加 Host 时填指纹、配对二维码带指纹）。
+- ~~客户端接入~~（已完成：`packages/web/src/lib/relay.ts`；添加 Host 时填指纹，配对二维码携带指纹）。
 - 为每台客户端设备签发独立密钥，替代共享 token；token 轮换。
 - relay 访问控制（注册口令 / 邀请码）、按 hostId 的流量统计与配额、多实例部署（粘性路由）。
 - 静态 Web UI 通过 relay 提供时的完整性校验（SRI / 签名清单）。

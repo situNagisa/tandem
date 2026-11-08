@@ -2128,7 +2128,7 @@ export interface GatewayOverview {
 // GET /api/pair -> { urls: string[]; token: string; loopback?: boolean; hint?: string; relay?: RelayPairInfo }   列出本机所有可达地址（局域网 IP、Tailscale IP），客户端据此生成二维码供手机扫码；loopback=true 表示只监听本机、扫码不可用。
 // 启用中继（config.relay）时多一个 relay 字段：url 形如 https://relay.example.com/h/<hostId>，可直接当 Host URL（token 不变，由 Host 校验）；
 // 未设置 requireE2E 时该 url 也会追加到 urls 末尾（此时不再返回 loopback），老客户端扫码即可走明文中继。
-// 端到端加密连接用 fingerprint 做 Host 公钥校验（配对时展示给用户核对 / 二维码携带），见 @tandem/relay/client 与 docs/relay.md。
+// 端到端加密连接用 fingerprint 做 Host 公钥校验（配对时展示给用户核对 / 二维码携带），见 @tandem/relay/client 与 docs/features/relay.md。
 export interface RelayPairInfo {
   url: string;
   hostId: string;
@@ -2545,7 +2545,7 @@ export interface PublicShare {
 // DELETE /api/shares/:id  -> 204（之后公开接口立即 404）
 // GET    /api/public/shares/:id  Authorization: Share <token> -> PublicShare
 
-// ---------- 任务看板（docs/taskboard.md） ----------
+// ---------- 任务看板（docs/features/taskboard.md） ----------
 // 一块看板属于一个项目目录；每张卡运行时 = 一个顶层会话（SessionSummary.board 标记，不设 parentId）。
 export type BoardCardStatus = 'todo' | 'queued' | 'running' | 'approval' | 'review' | 'done' | 'failed';
 export const BOARD_COLUMNS: BoardCardStatus[] = ['todo', 'queued', 'running', 'approval', 'review', 'done', 'failed'];

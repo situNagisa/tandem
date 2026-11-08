@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 回归走查：把 docs/qa-v6.md、bugs-v6.md、review-v4/v5/v7a/v7b/v7c.md 中标记「已修」的
+ * 回归走查：把 docs/archive/reviews/ 下 qa-v6、bugs-v6、review-v4/v5/v7a/v7b/v7c 中标记「已修」的
  * P0/P1 交互整理成可重复执行的断言。
  *
  * 全程使用临时 Host（TANDEM_HOME=/tmp/tandem-reg-<随机>、随机端口）与假 OpenAI 兼容端点；

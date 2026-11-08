@@ -1,9 +1,9 @@
 # 回归清单（2026-11-07）
 
-来源：`docs/qa-v6.md`、`docs/bugs-v6.md`、`docs/review-v4.md`、`docs/review-v5.md`、
-`docs/review-v7a.md`、`docs/review-v7b.md`、`docs/review-v7c.md` 中标记「已修」的 P0/P1 条目。
+来源：`docs/archive/reviews/qa-v6-2026-11-07.md`、`docs/archive/reviews/bugs-v6-2026-11-06.md`、`docs/archive/reviews/review-v4-2026-11-06.md`、`docs/archive/reviews/review-v5-2026-11-06.md`、
+`docs/archive/reviews/review-v7a-2026-11-06.md`、`docs/archive/reviews/review-v7b-2026-11-06.md`、`docs/archive/reviews/review-v7c-2026-11-06.md` 中标记「已修」的 P0/P1 条目。
 每条由 `e2e/regression.mjs` 起临时 Host（`TANDEM_HOME=/tmp/tandem-reg-<随机>`、随机端口）复现，
-桌面视口 2552×1274、手机视口 390×844。`npm run regression`，或 `node scripts/check.mjs` 第 5 步。
+桌面视口 2552×1274、手机视口 390×844。`npm run regression`，或 `node scripts/check.mjs` 的 regression 步骤。
 
 ## 轮次条 / 长会话
 
