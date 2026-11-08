@@ -15,7 +15,8 @@
 | `packages/relay` | 自托管中继：出站隧道 + 端到端加密（本机回环测试，不对外部署） |
 | `e2e/smoke.mjs` | Playwright 端到端冒烟：临时 Host + 假 provider |
 | `scripts/ui-audit.mjs` | UI 原语防回退审计 |
-| `scripts/check.mjs` | 提交前总检查：build → ui-audit → test → smoke |
+| `scripts/check.mjs` | 提交前总检查：build → ui-audit → test → smoke → regression |
+| `scripts/release.mjs` | 发布：统一版本、生成 CHANGELOG/新功能导览、提交并打本地标签 |
 
 ## 2. Server 模块地图
 
@@ -23,7 +24,7 @@
 |---|---|
 | `src/cli.ts` | 入口：解析 `--port/--host/--relay`，创建 Host + Fastify，信号退出 |
 | `src/server.ts` | Fastify 服务：启动、token 鉴权、WS 升级、静态托管；路由按资源在 `routes/` 下注册 |
-| `src/routes/` | REST/WS 路由：`common.ts`（依赖与鉴权）、`ssh-hosts.ts`（SSH 远程主机）、`team.ts`（成员/邀请/审计/身份）、`sessions.ts`、`permissions.ts`、`host.ts`、`profiles.ts`、`models.ts`、`usage.ts`、`tasks.ts`、`mcp.ts`、`skills.ts`、`hooks.ts`、`memory.ts`、`schedules.ts`、`evals.ts`、`subagent-presets.ts`、`prompt-templates.ts`、`commands.ts`、`external.ts`、`fs.ts`、`pair.ts`、`budgets.ts`、`config.ts`、`ws.ts` |
+| `src/routes/` | REST/WS 路由：`common.ts`（依赖与鉴权）、`ssh-hosts.ts`（SSH 远程主机）、`team.ts`（成员/邀请/审计/身份）、`sessions.ts`、`permissions.ts`、`host.ts`、`updates.ts`（可选 `/updates/` 桌面更新文件托管）、`profiles.ts`、`models.ts`、`usage.ts`、`tasks.ts`、`mcp.ts`、`skills.ts`、`hooks.ts`、`memory.ts`、`schedules.ts`、`evals.ts`、`subagent-presets.ts`、`prompt-templates.ts`、`commands.ts`、`external.ts`、`fs.ts`、`pair.ts`、`budgets.ts`、`config.ts`、`ws.ts` |
 | `src/board/` + `routes/board.ts` | 任务看板：`manager.ts`（调度器：依赖/并发上限/重试/审批门/单卡预算/worktree 合入依赖与按序合并/重启续跑/AI 评审收尾/冲突解决/运行时提议，1s tick）、`graph.ts`（环检测、`decideSchedule`、规划草稿解析，纯函数）、`git.ts`（自动提交与统计、依赖分支合入）、`planner.ts`（AI 拆分，一次性 `completeText`，只返回草稿）、`pr.ts`（集成分支 + gh/glab 聚合 PR 与状态刷新）、`store.ts`（`~/.tandem/boards/<id>.json`）；卡片 = 带 `SessionRecord.board` 的顶层会话；`tools/propose-cards.ts` 是卡片会话的提议工具 |
 | `src/model-routing.ts` / `src/routing-settings.ts` | 自动模型路由：按消息长度/关键词/上下文/失败信号打难度分，在用户候选池按快速·均衡·强力与省钱·均衡·质量偏好选模型；连续失败升级、简单成功回落，统计相对强力档的节省；设置有会话入口 |
 | `src/host.ts` | Host 类：持有全部状态与构造，方法按职责转调到 `host/`（外部 API 不变） |

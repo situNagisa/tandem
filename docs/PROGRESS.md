@@ -410,3 +410,12 @@
 - [x] 六个近期功能双视口（2552×1274 深色 / 390×844）真实点击走查：任务看板 v2、自动模型路由、SSH 物理机向导（假 ssh）、超大会话分页、应用预览、项目 Wiki；**P0/P1 = 0**，P2 4 条记录在 `docs/review-v9.md`，截图 `/tmp/rv9b/`
 - [x] `docs/architecture.md` 模块地图补充 route/paging/preview/quota/sandbox/secrets/doctor/search；board/remote/wiki 原已有
 - 说明：SSH 完整部署与预览元素点选由既有回归覆盖；本轮无 P0/P1 代码改动，未新增回归
+
+## 迭代 45（2026-11-08）发布准备 v0.2.0
+- [x] 版本：根目录与 `packages/*` 统一 0.2.0（内部 `@tandem/*` 依赖与 lockfile 同步）；新增 `scripts/release.mjs`：按 feat/fix/perf/refactor 生成 `CHANGELOG.md`、更新新功能导览、默认提交并打本地标签（不 push）
+- [x] 客户端版本由 Vite 注入 `__APP_VERSION__`；主机列表在 Host 版本与客户端不一致时显示「版本不一致」提示（含两端版本 tooltip）
+- [x] 安卓：`npm run apk:release -w @tandem/mobile`；`~/.tandem-release/android.keystore`（缺失时 keytool 生成）+ 600 权限密码文件/`TANDEM_ANDROID_KEYSTORE_PASSWORD`；release 启用 R8 与资源压缩，产物 `dist-apk/tandem-release.apk` / `.aab`，脚本自动 `apksigner verify` 并检查 `assets/public/index.html` 与 JS；debug 流程不变
+- [x] 桌面：electron-updater generic provider；设置「通用 → 桌面更新」填 HTTP/共享目录，留空完全关闭；启动 15 秒后与每 6 小时检查；下载完成提示「新版本 x · 重启以更新」；`dist:win` 同时产出 `latest.yml`/`.blockmap`；Host 可设 `updateShareDir` 公开 `/updates/`（仅启用时）
+- [x] 文档：新增 `docs/release.md`（签名费用/SmartScreen/后续接入、国内商店与 Google Play 材料清单、产品侧隐私政策等缺口）；README 打包一节补充 release 与更新源
+- 验证：全量 `node scripts/check.mjs`（86/86 回归）通过；release APK versionName 0.2.0 / versionCode 200、v2 签名校验通过；`dist:win` 产出 `latest.yml`；本机 127.0.0.1 静态更新源把版本改为 0.2.1，用 electron-updater `GenericProvider` 实测发现新版本；Host `/api/host` 返回 0.2.0，`/updates/` 可取 latest.yml、关闭后 404、目录穿越 404
+- 未做/待用户：Windows 代码签名证书采购；安卓商店资质（软著/APP 备案/隐私政策）；桌面/安卓上架材料与产品内隐私页；本机无法运行 Electron（缺 GTK），更新下载/安装需在 Windows 实机复验
