@@ -24,7 +24,7 @@ import { useTurnNavStore } from '../store/useTurnNavStore'
 import { useTaskStore } from '../store/useTaskStore'
 import { useIsMobile, useNow } from '../lib/hooks'
 import { useSessionChanges } from '../lib/useChanges'
-import { formatElapsed } from '../lib/format'
+import { formatElapsed, firstLine } from '../lib/format'
 import { clearRunning, runningSince } from '../lib/runClock'
 import { navigate, useRoute } from '../lib/router'
 import { cn } from '../lib/cn'
@@ -130,6 +130,18 @@ function StatePill({
 
 const EMPTY_BACKGROUND_TASKS: BackgroundTask[] = []
 
+function taskStatusText(task: BackgroundTask, now: number): string {
+  const label =
+    task.status === 'running'
+      ? '运行中'
+      : task.status === 'exited'
+        ? '已结束'
+        : task.status === 'killed'
+          ? '已终止'
+          : '已丢失'
+  return `${label} · ${formatElapsed((task.endedAt ?? now) - task.startedAt)}`
+}
+
 function MoreMenu() {
   const active = useAppStore((s) => s.active)
   const tasks = useTaskStore((s) =>
@@ -138,7 +150,22 @@ function MoreMenu() {
   const taskCount = active
     ? tasks.filter((task) => task.sessionId === active.sessionId && task.status === 'running').length
     : 0
+  const sessionTasks = active
+    ? tasks
+        .filter((task) => task.sessionId === active.sessionId)
+        .sort(
+          (a, b) =>
+            Number(b.status === 'running') - Number(a.status === 'running') ||
+            b.startedAt - a.startedAt,
+        )
+        .slice(0, 8)
+    : []
   const rows = useSubagentRows()
+  const host = useAppStore((s) => s.hosts.find((h) => h.id === s.activeHostId) ?? null)
+  useEffect(() => {
+    if (host) void useTaskStore.getState().refresh(host)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [host?.id, active?.sessionId])
   const focusAgent = useUiStore((s) => s.focusAgent)
   const openBackgroundTasks = useUiStore((s) => s.openBackgroundTasks)
   const openBrowserPanel = useUiStore((s) => s.openBrowserPanel)
@@ -170,16 +197,39 @@ function MoreMenu() {
         </IconButton>
       )}
     >
-      <UiMenu.Item
-        icon={<SquareTerminal size={14} />}
-        trailing={taskCount > 0 ? taskCount : undefined}
-        disabled={!active}
-        onSelect={() => {
-          if (active) openBackgroundTasks(active.hostId, active.sessionId)
-        }}
-      >
-        后台任务
-      </UiMenu.Item>
+      <UiMenu.Sub>
+        <UiMenu.SubTrigger
+          icon={<SquareTerminal size={14} />}
+          trailing={taskCount > 0 ? taskCount : undefined}
+          disabled={!active}
+        >
+          后台任务
+        </UiMenu.SubTrigger>
+        <UiMenu.SubContent aria-label="后台任务">
+          {sessionTasks.length === 0 ? (
+            <UiMenu.Item
+              onSelect={() => {
+                if (active) openBackgroundTasks(active.hostId, active.sessionId)
+              }}
+            >
+              暂无后台任务
+            </UiMenu.Item>
+          ) : (
+            sessionTasks.map((task) => (
+              <UiMenu.Item
+                key={task.id}
+                title={task.command}
+                trailing={taskStatusText(task, Date.now())}
+                onSelect={() => {
+                  if (active) openBackgroundTasks(active.hostId, active.sessionId, task.id)
+                }}
+              >
+                {firstLine(task.command, 36) || task.id}
+              </UiMenu.Item>
+            ))
+          )}
+        </UiMenu.SubContent>
+      </UiMenu.Sub>
       <UiMenu.Sub>
         <UiMenu.SubTrigger icon={<Bot size={14} />} trailing={rows.length > 0 ? rows.length : undefined}>
           子代理

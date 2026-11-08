@@ -566,9 +566,27 @@ export function SessionList({
       }
     : null
 
-  const renderRow = (hostId: string, s: SessionSummary, depth = 0) => {
+  const renderRow = (
+    hostId: string,
+    s: SessionSummary,
+    depth = 0,
+    section: 'recent' | 'pinned' = 'recent',
+  ) => {
     const isActive = s.id === activeSessionId
     const renamingThis = renaming === s.id
+    const pinState = section === 'pinned' ? !!s.pinned : !!s.pinnedInProject
+    const togglePin = () =>
+      void updateSession(hostId, s.id, {
+        ...(section === 'pinned' ? { pinned: !s.pinned } : { pinnedInProject: !s.pinnedInProject }),
+      })
+    const pinLabel =
+      section === 'pinned'
+        ? pinState
+          ? '取消置顶'
+          : '置顶'
+        : pinState
+          ? '取消项目置顶'
+          : '在项目中置顶'
     const elapsed = runningElapsed(hostId, s)
     const runningLabel =
       s.status === 'waiting_permission' ? '待审批' : s.status === 'retrying' ? '等待网络' : '运行中'
@@ -578,6 +596,7 @@ export function SessionList({
         data-session-row="true"
         data-session-id={s.id}
         data-host-id={hostId}
+        data-session-pinned={pinState || undefined}
         onContextMenu={(e) => openMenu(e, hostId, s)}
         draggable={!renamingThis}
         onDragStart={(e) => {
@@ -665,11 +684,6 @@ export function SessionList({
                   <Clock size={12} />
                 </span>
               )}
-              {s.pinnedInProject && (
-                <span title="已在项目中置顶" className="mr-1 inline-block align-[-1px] text-text-tertiary">
-                  <Pin size={11} />
-                </span>
-              )}
               {s.title || '未命名会话'}
             </span>
             {s.unread && (
@@ -694,6 +708,26 @@ export function SessionList({
               </span>
             </span>
           </button>
+        )}
+        {!renamingThis && (
+          <IconButton
+            size="sm"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              togglePin()
+            }}
+            label={pinLabel}
+            tooltip={pinLabel}
+            tooltipSide="top"
+            aria-pressed={pinState}
+            className={cn(
+              'absolute right-8 top-1/2 size-7! -translate-y-1/2 focus-visible:opacity-100 max-sm:right-12 max-sm:size-11! [&_svg]:size-[14px]',
+              'opacity-100 md:opacity-0 md:group-hover:opacity-100',
+            )}
+          >
+            {pinState ? <PinOff size={14} /> : <Pin size={14} />}
+          </IconButton>
         )}
         {!renamingThis && (
           <IconButton
@@ -785,7 +819,7 @@ export function SessionList({
               <Pin size={11} />
               置顶
             </div>
-            <div className="space-y-0.5">{pinned.map(({ hostId, session }) => renderRow(hostId, session))}</div>
+            <div className="space-y-0.5">{pinned.map(({ hostId, session }) => renderRow(hostId, session, 0, 'pinned'))}</div>
           </div>
         )}
 
@@ -821,6 +855,8 @@ export function SessionList({
           const renderProject = (hostId: string, project: ProjectGroup, indented: boolean) => {
             const projCollapsed = !!collapsed[project.key]
             const projectPinned = pinnedProjects.includes(project.key)
+            const hostName = hosts.find((h) => h.id === hostId)?.name ?? ''
+            const projectTip = [hostName, project.cwd].filter(Boolean).join(' · ')
             // 搜索时展示全部；平时外部会话默认只露最近 5 条，避免淹没 Tandem 会话
             const searching = !!query.trim()
             const externalExpanded = !!expandedExternal[project.key]
@@ -836,9 +872,14 @@ export function SessionList({
               )),
               ...shownExternals.map((ext) => renderExternal(hostId, ext)),
             ]
-            const count = project.items.length + project.externals.length
             return (
-              <div key={project.key} className="min-w-0">
+              <div
+                key={project.key}
+                className="min-w-0"
+                data-project-row
+                data-project-key={project.key}
+                data-project-pinned={projectPinned || undefined}
+              >
                 <div className="group/proj flex h-8 min-w-0 items-center rounded-lg pr-0.5 transition-colors hover:bg-[var(--t-bg-hover)] max-sm:h-11">
                   <button
                     onClick={() => toggleProject(project.key)}
@@ -847,7 +888,7 @@ export function SessionList({
                       indented ? 'pl-5' : 'pl-1.5',
                     )}
                     aria-expanded={!projCollapsed}
-                    title={`${project.name}${project.branch ? ` · ${project.branch}` : ''} (${count})`}
+                    title={projectTip || project.name}
                   >
                     <ChevronRight
                       size={11}
@@ -872,17 +913,12 @@ export function SessionList({
                       toggleProjectPinned(project.key)
                     }}
                     label={projectPinned ? `取消固定项目 ${project.name}` : `固定项目 ${project.name}`}
-                    tooltip={projectPinned ? '取消固定项目' : '固定项目到侧栏顶部'}
+                    tooltip={projectPinned ? '取消固定项目' : '固定项目'}
                     tooltipSide="top"
                     aria-pressed={projectPinned}
-                    className={cn(
-                      'size-7! focus-visible:opacity-100 max-sm:size-11! [&_svg]:size-[13px]',
-                      projectPinned
-                        ? 'text-accent-text opacity-100'
-                        : 'opacity-100 md:opacity-0 md:group-hover/proj:opacity-100',
-                    )}
+                    className="size-7! opacity-100 focus-visible:opacity-100 max-sm:size-11! md:opacity-0 md:group-hover/proj:opacity-100 [&_svg]:size-[13px]"
                   >
-                    {projectPinned ? <Pin size={13} /> : <PinOff size={13} />}
+                    {projectPinned ? <PinOff size={13} /> : <Pin size={13} />}
                   </IconButton>
                   <IconButton
                     size="sm"
@@ -954,7 +990,7 @@ export function SessionList({
             .filter((host) => host.projects.length > 0)
 
           const pinnedSection = pinnedEntries.length > 0 && (
-            <div className="mb-1">
+            <div className="mb-1" data-pinned-projects>
               <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[12px] font-medium text-text-tertiary">
                 <Pin size={11} />
                 固定项目
@@ -964,13 +1000,24 @@ export function SessionList({
               </div>
             </div>
           )
+          const recentLabel = showArchived ? '已归档' : query.trim() ? '搜索结果' : '最近项目'
+          const hasRecent = normalGroups.some((host) => host.projects.length > 0)
 
           if (!multiHost) {
             return (
               <div className="space-y-1 pt-1">
                 {pinnedSection}
-                {normalGroups.flatMap((host) =>
-                  host.projects.map((project) => renderProject(host.id, project, false)),
+                {hasRecent && (
+                  <div data-recent-projects>
+                    <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[12px] font-medium text-text-tertiary">
+                      {recentLabel}
+                    </div>
+                    <div className="space-y-1">
+                      {normalGroups.flatMap((host) =>
+                        host.projects.map((project) => renderProject(host.id, project, false)),
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             )
@@ -979,7 +1026,12 @@ export function SessionList({
           return (
             <>
               {pinnedSection}
-              {normalGroups.map((host) => {
+              {hasRecent && (
+                <div data-recent-projects>
+                  <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[12px] font-medium text-text-tertiary">
+                    {recentLabel}
+                  </div>
+                  {normalGroups.map((host) => {
             const hostKey = `host:${host.id}`
             const hostCollapsed = !!collapsed[hostKey]
             return (
@@ -1013,6 +1065,8 @@ export function SessionList({
               </div>
             )
               })}
+                </div>
+              )}
             </>
           )
         })()}

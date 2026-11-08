@@ -102,6 +102,20 @@ const routing: ModelRoutingSettings = {
   },
 };
 
+test('偏好设置：没有候选池时仍保存非默认偏好，默认值才视为未启用（R17）', () => {
+  assert.equal(
+    normalizeRoutingSettings({ candidates: [], preference: 'balanced' }),
+    undefined,
+    '默认偏好 + 空候选池应视为未配置',
+  );
+  const cost = normalizeRoutingSettings({ candidates: [], preference: 'cost' });
+  assert.equal(cost?.preference, 'cost', '省钱偏好被丢弃');
+  assert.equal(cost?.candidates.length, 0);
+  const quality = normalizeRoutingSettings({ candidates: [], preference: 'quality', judge: true });
+  assert.equal(quality?.preference, 'quality');
+  assert.equal(quality?.judge, true, '判断难度开关被丢弃');
+});
+
 test('分工设置归一化：保留角色/领域/确认策略，去重非法领域', () => {
   const normalized = normalizeRoutingSettings({
     ...routing,

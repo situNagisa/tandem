@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   HostSettings,
   ModelRoutingSettings,
@@ -81,6 +81,7 @@ export function ModelRoutingSection() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [prices, setPrices] = useState<Record<string, ModelPriceInfo>>({})
+  const saveSeq = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -159,6 +160,7 @@ export function ModelRoutingSection() {
   const persist = (next: ModelRoutingSettings) => {
     if (!host || !settings) return
     const previous = settings
+    const seq = ++saveSeq.current
     const payload: HostSettings = {
       ...settings,
       modelRouting: next,
@@ -168,12 +170,19 @@ export function ModelRoutingSection() {
     setError(null)
     api
       .updateSettings(host, payload)
-      .then((saved) => setSettings(saved))
-      .catch((err: Error) => {
-        setSettings(previous)
-        setError(err.message || '保存失败')
+      .then((saved) => {
+        // 连续点击时只认最后一次保存的响应，避免旧响应把新选择覆盖回去。
+        if (seq === saveSeq.current) setSettings(saved)
       })
-      .finally(() => setSaving(false))
+      .catch((err: Error) => {
+        if (seq === saveSeq.current) {
+          setSettings(previous)
+          setError(err.message || '保存失败')
+        }
+      })
+      .finally(() => {
+        if (seq === saveSeq.current) setSaving(false)
+      })
   }
 
   const toggle = (row: CandidateRow, checked: boolean) => {
@@ -238,7 +247,6 @@ export function ModelRoutingSection() {
             value={routing.preference}
             options={PREFERENCE_OPTIONS.map(({ value, label }) => ({ value, label }))}
             onChange={(value) => persist({ ...routing, preference: value })}
-            disabled={saving}
             aria-label="路由偏好"
           />
         </div>

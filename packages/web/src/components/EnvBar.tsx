@@ -4,7 +4,6 @@ import {
   Bot,
   Check,
   ChevronDown,
-  Clock,
   CornerDownLeft,
   Folder,
   FolderOpen,
@@ -22,7 +21,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useDevicesStore } from '../store/useDevicesStore'
 import { basename, dirname } from '../lib/format'
-import { loadMigration, loadRecentDirs, rememberDir, rememberMigration } from '../lib/storage'
+import { loadMigration, rememberDir, rememberMigration } from '../lib/storage'
 import { navigate } from '../lib/router'
 import { useSessionView } from './session/SessionScope'
 import { cn } from '../lib/cn'
@@ -192,7 +191,6 @@ export function FolderBrowser({
 }) {
   const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
   const home = useAppStore((s) => (hostId ? s.runtimes[hostId]?.info?.homeDir : undefined))
-  const recents = useMemo(() => loadRecentDirs(hostId), [hostId])
   const [path, setPath] = useState(initial || home || '')
   const [draft, setDraft] = useState(initial || home || '')
   const [entries, setEntries] = useState<FsEntry[]>([])
@@ -321,12 +319,6 @@ export function FolderBrowser({
 
       <div ref={listRef} className="max-h-[264px] overflow-y-auto">
         <MenuList aria-label="选择文件夹" className="p-0">
-          {!query.trim() &&
-            recents.slice(0, 4).map((d) => (
-              <MenuItem key={d} icon={<Clock size={13} />} hint={d} onSelect={() => open(d)}>
-                {basename(d) || d}
-              </MenuItem>
-            ))}
           <MenuItem
             icon={<ArrowUp size={13} />}
             disabled={!parent}

@@ -11,11 +11,11 @@ import { Markdown } from '../Markdown'
 import { ThinkingBlock } from '../ThinkingBlock'
 import { ToolCard, type ToolUseBlock } from '../ToolCard'
 import { RewindDialog } from '../RewindDialog'
-import { Tip } from '../ui/Tooltip'
 import { Menu } from '../ui/Menu'
 import { IconButton } from '../ui/Button'
 import { ToolGroup, type ToolRunEntry } from './ToolGroup'
 import { TypingIndicator } from './MessageNotes'
+import { UsageTip } from './UsageTip'
 
 export const AssistantMessage = memo(function AssistantMessage({
   message,
@@ -44,6 +44,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   const [regenerating, setRegenerating] = useState(false)
   const scopeTarget = useSessionTarget() ?? undefined
   const running = useSessionView((s) => s?.running ?? false)
+  const sessionUsage = useSessionView((s) => s?.summary?.usage)
   const copyTimer = useRef<number | null>(null)
   const rawText = message.content
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
@@ -212,22 +213,12 @@ export const AssistantMessage = memo(function AssistantMessage({
               </IconButton>
             )}
             {message.usage && (
-              <span className="relative ml-auto flex cursor-default items-center pr-1 font-mono text-[12px] tabular-nums text-muted">
-                {formatTokens(message.usage.inputTokens)} → {formatTokens(message.usage.outputTokens)}
-                {message.usage.costUsd !== undefined && ` · ${formatCost(message.usage.costUsd)}`}
-                <Tip
-                  side="top"
-                  label={[
-                    `未命中输入 ${Math.round(message.usage.inputTokens).toLocaleString('en-US')}`,
-                    `缓存读 ${Math.round(message.usage.cacheReadTokens ?? 0).toLocaleString('en-US')}`,
-                    `缓存写 ${Math.round(message.usage.cacheWriteTokens ?? 0).toLocaleString('en-US')}`,
-                    `输出 ${Math.round(message.usage.outputTokens).toLocaleString('en-US')}`,
-                    `推理 ${Math.round(message.usage.reasoningTokens ?? 0).toLocaleString('en-US')}`,
-                    `花费 ${formatCost(message.usage.costUsd)}`,
-                    `模型 ${message.model ?? '未知'}`,
-                  ].join(' · ')}
-                />
-              </span>
+              <UsageTip usage={message.usage} sessionUsage={sessionUsage}>
+                输入 {formatTokens(message.usage.inputTokens)} · 输出{' '}
+                {formatTokens(message.usage.outputTokens)} · 缓存命中{' '}
+                {formatTokens(message.usage.cacheReadTokens ?? 0)} · 花费{' '}
+                {formatCost(message.usage.costUsd)}
+              </UsageTip>
             )}
           </div>
           <div className="msg-more mt-0.5 h-7 justify-start max-md:h-11">

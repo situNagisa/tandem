@@ -139,7 +139,7 @@ function normalizeDivision(value: unknown): DivisionRoutingSettings | undefined 
   };
 }
 
-/** 去掉无效候选、去重；没有任何候选时视为未启用。 */
+/** 去掉无效候选、去重；候选为空但仍保留非默认偏好/分工设置时同样保存。 */
 export function normalizeRoutingSettings(value: unknown): ModelRoutingSettings | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const raw = value as Record<string, unknown>;
@@ -160,11 +160,15 @@ export function normalizeRoutingSettings(value: unknown): ModelRoutingSettings |
       candidates.push({ profileId, ...(groupId ? { groupId } : {}), model, tier });
     }
   }
-  if (candidates.length === 0) return undefined;
   const preference = ROUTE_PREFERENCES.includes(raw.preference as RoutePreference)
     ? (raw.preference as RoutePreference)
     : 'balanced';
   const division = normalizeDivision(raw.division);
+  // 没有候选池时，只有默认（均衡、不判断难度、无分工）才算「未配置」；
+  // 用户单独调整的偏好必须保存，否则设置保存后会被判为未启用并回写旧值（R17）。
+  if (candidates.length === 0 && preference === 'balanced' && raw.judge !== true && !division) {
+    return undefined;
+  }
   return {
     candidates,
     preference,

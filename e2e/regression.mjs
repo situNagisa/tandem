@@ -1346,6 +1346,15 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
 
   const sessions = [
     mk('long', '回归长会话', longMessages),
+    // 侧栏「固定项目 / 最近项目」分组：第二个项目用于验证固定后跨组移动。
+    mk('otherproj', '另一个项目会话', [
+      message('op1', 'user', '看看另一个项目'),
+      message('op2', 'assistant', '另一个项目正常。', { model: 'mock-1' }),
+    ], {
+      cwd: previewCwd,
+      env: { repoRoot: previewCwd, repoName: 'second-project', branch: 'main' },
+      updatedAt: Date.now() - 1450,
+    }),
     mk('turns4', '四轮工具会话', [
       message('t41', 'user', '第一轮：检查目录'),
       {
@@ -1881,6 +1890,36 @@ async function main() {
   const mockPort = await listen(provider)
   // 预览页先启动，避免 Host 在会话文件写入前完成加载；Host 仍只监听本机。
   const previewApp = await seedPreviewApp(path.join(home, 'preview-app'))
+  // 后台任务悬停列表：Host 启动时从 tasks/*.json 载入，先于进程启动写入。
+  const seededTasksDir = path.join(configDir, 'tasks')
+  mkdirSync(seededTasksDir, { recursive: true })
+  for (const task of [
+    {
+      id: 'bash_reg_dev',
+      command: 'npm run dev -- --port 4173',
+      status: 'exited',
+      exitCode: 0,
+      startedAt: Date.now() - 125_000,
+      endedAt: Date.now() - 5_000,
+    },
+    {
+      id: 'bash_reg_test',
+      command: 'npm test -- --watch=false',
+      status: 'killed',
+      startedAt: Date.now() - 260_000,
+      endedAt: Date.now() - 140_000,
+    },
+  ]) {
+    writeFileSync(
+      path.join(seededTasksDir, `${task.id}.json`),
+      JSON.stringify({
+        sessionId: 'long',
+        cwd: repo,
+        outputChars: 0,
+        ...task,
+      }),
+    )
+  }
   const host = startHost({ home, token, hostId })
   // 造数用的「今天」固定为脚本启动时刻；页面里也用 page.clock 固定到同一时刻，
   // 否则跨零点运行时界面已经进入新的一天，与造好的用量行错位。
@@ -2698,6 +2737,219 @@ async function main() {
       withinViewport(await panel.boundingBox(), DESKTOP, '文件夹弹层')
       assert.equal(await panel.locator('[aria-label="使用此目录"]').count(), 1, '文件夹弹层内容未加载')
       await page.keyboard.press('Escape')
+    })
+
+    desktop('侧栏项目分「固定 / 最近」两组，固定图标语义与悬停规则（R01）', async (page) => {
+      const recent = page.locator('[data-recent-projects]')
+      await recent.waitFor({ state: 'visible' })
+      assert.match(await recent.innerText(), /最近项目/, '最近项目分组缺少标题')
+      const project = recent.locator('[data-project-row][data-project-key$=":repo"]').first()
+      await project.waitFor({ state: 'visible' })
+      const pin = project.getByRole('button', { name: '固定项目 repo', exact: true })
+      assert.equal(
+        await pin.evaluate((el) => getComputedStyle(el).opacity),
+        '0',
+        '未固定项目平时不应显示固定图标',
+      )
+      await project.hover()
+      await pin.waitFor({ state: 'visible' })
+      const pinnedIcon = (await pin.locator('svg').getAttribute('class'))?.split(/\s+/) ?? []
+      assert.ok(pinnedIcon.includes('lucide-pin'), `未固定项目的图标应为普通图钉：${pinnedIcon.join(' ')}`)
+      assert.ok(!pinnedIcon.includes('lucide-pin-off'), '未固定项目误用了带斜杠的图钉')
+      await pin.click()
+
+      const pinnedSection = page.locator('[data-pinned-projects]')
+      await pinnedSection.waitFor({ state: 'visible' })
+      assert.match(await pinnedSection.innerText(), /固定项目/, '固定分组缺少标题')
+      const pinnedProject = pinnedSection.locator('[data-project-row][data-project-key$=":repo"]').first()
+      await pinnedProject.waitFor({ state: 'visible' })
+      assert.equal(
+        await recent.locator('[data-project-row][data-project-key$=":repo"]').count(),
+        0,
+        '固定后项目仍留在最近分组',
+      )
+      await pinnedProject.hover()
+      const unpin = pinnedProject.getByRole('button', { name: '取消固定项目 repo', exact: true })
+      await unpin.waitFor({ state: 'visible' })
+      const unpinIcon = (await unpin.locator('svg').getAttribute('class'))?.split(/\s+/) ?? []
+      assert.ok(unpinIcon.includes('lucide-pin-off'), '已固定项目悬停应显示带斜杠的图钉')
+      assert.ok(!unpinIcon.includes('lucide-pin'), '已固定项目误用了普通图钉')
+      await unpin.click()
+      await recent.locator('[data-project-row][data-project-key$=":repo"]').first().waitFor({ state: 'visible' })
+      assert.equal(await page.locator('[data-pinned-projects]').count(), 0, '取消固定后固定分组仍在')
+
+      // 会话级置顶遵循同一图标规则：平时不显示，悬停显示固定 / 取消固定。
+      const sessionRow = page.locator('[data-session-row][data-session-id="long"]').first()
+      await sessionRow.hover()
+      const pinSession = sessionRow.getByRole('button', { name: '在项目中置顶', exact: true })
+      await pinSession.waitFor({ state: 'visible' })
+      const sessionPinIcon = (await pinSession.locator('svg').getAttribute('class'))?.split(/\s+/) ?? []
+      assert.ok(sessionPinIcon.includes('lucide-pin'), '未置顶会话应显示普通图钉')
+      await pinSession.click()
+      assert.equal(await sessionRow.getAttribute('data-session-pinned'), 'true', '会话置顶状态未生效')
+      await sessionRow.hover()
+      const unpinSession = sessionRow.getByRole('button', { name: '取消项目置顶', exact: true })
+      await unpinSession.waitFor({ state: 'visible' })
+      const sessionUnpinIcon = (await unpinSession.locator('svg').getAttribute('class'))?.split(/\s+/) ?? []
+      assert.ok(sessionUnpinIcon.includes('lucide-pin-off'), '已置顶会话应显示带斜杠的图钉')
+      await unpinSession.click()
+      assert.equal(await sessionRow.getAttribute('data-session-pinned'), null, '取消置顶未生效')
+    })
+
+    desktop('侧栏项目 tooltip 显示主机与完整路径（R06）', async (page) => {
+      const hostName = await page.evaluate(
+        () => JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')[0]?.name ?? '',
+      )
+      const project = page.locator('[data-project-row][data-project-key$=":repo"] button').first()
+      await project.hover()
+      await page.waitForFunction(
+        () => document.getElementById('tandem-tooltip')?.hasAttribute('data-open'),
+        null,
+        { timeout: 5_000 },
+      )
+      const tip = await page.locator('#tandem-tooltip').innerText()
+      assert.ok(tip.includes(hostName), `项目 tooltip 缺少主机名：${tip}`)
+      assert.ok(tip.includes(repo), `项目 tooltip 缺少完整路径：${tip}`)
+      assert.ok(!tip.trim().startsWith('repo ·'), `项目 tooltip 仍在重复项目名：${tip}`)
+    })
+
+    desktop('后台任务悬停展开列表并跳到对应输出（R01）', async (page) => {
+      await openSession(page, 'long')
+      await page.getByRole('button', { name: '更多', exact: true }).click()
+      const menu = page.locator('[role="menu"]').last()
+      await menu.waitFor({ state: 'visible' })
+      await menu.getByRole('menuitem', { name: /后台任务/ }).hover()
+      const submenu = page.locator('[aria-label="后台任务"]')
+      await submenu.waitFor({ state: 'visible', timeout: 5_000 })
+      const listText = await submenu.innerText()
+      assert.match(listText, /npm run dev/, `后台任务列表缺少命令：${listText}`)
+      assert.match(listText, /已结束/, `后台任务列表缺少状态：${listText}`)
+      await submenu.getByRole('menuitem', { name: /npm run dev/ }).waitFor({ state: 'visible' })
+      const taskItem = submenu.getByRole('menuitem', { name: /npm run dev/ })
+      const box = await taskItem.boundingBox()
+      assert.ok(box, '找不到后台任务列表项')
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 })
+      await page.mouse.down()
+      await page.mouse.up()
+      const dialog = page.getByRole('dialog', { name: '后台任务' })
+      await dialog.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.ok(
+        (await dialog.innerText()).includes('npm run dev -- --port 4173'),
+        '打开的面板没有定位到对应后台任务',
+      )
+      await dialog.getByRole('button', { name: '关闭' }).click()
+
+      await openSession(page, 'turns4')
+      await page.getByRole('button', { name: '更多', exact: true }).click()
+      const emptyMenu = page.locator('[role="menu"]').last()
+      await emptyMenu.waitFor({ state: 'visible' })
+      await emptyMenu.getByRole('menuitem', { name: /后台任务/ }).hover()
+      const emptySubmenu = page.locator('[aria-label="后台任务"]')
+      await emptySubmenu.waitFor({ state: 'visible', timeout: 5_000 })
+      assert.match(await emptySubmenu.innerText(), /暂无后台任务/, '没有后台任务时未显示空态')
+      await page.keyboard.press('Escape')
+    })
+
+    desktop('消息用量带短标签，悬停显示本轮/本会话小表格（R15）', async (page) => {
+      await openSession(page, 'long')
+      const summary = page.locator('[data-usage-summary]').last()
+      await summary.scrollIntoViewIfNeeded()
+      // 操作条平时 pointer-events:none，先把鼠标移进消息组再悬停用量。
+      await summary.locator('xpath=ancestor::div[contains(@class,"msg-group")]').hover()
+      const text = await summary.innerText()
+      for (const label of ['输入', '输出', '缓存命中', '花费']) {
+        assert.ok(text.includes(label), `用量缺少「${label}」标签：${text}`)
+      }
+      assert.ok(!text.includes('→'), `用量仍在使用裸箭头：${text}`)
+      await summary.hover()
+      const table = page.locator('[data-usage-table]')
+      await table.waitFor({ state: 'visible', timeout: 5_000 })
+      const tableText = await table.innerText()
+      for (const label of ['本轮', '本会话', '输入', '输出', '缓存读', '缓存写', '花费']) {
+        assert.ok(tableText.includes(label), `用量表格缺少「${label}」：${tableText}`)
+      }
+      assert.ok(!/模型 |未命中输入|推理/.test(tableText), `用量表格仍有冗余文字：${tableText}`)
+      await page.keyboard.press('Escape')
+    })
+
+    desktop('文件夹选择器不再显示最近文件夹（命令面板最近目录保留）', async (page) => {
+      await openSession(page, 'long')
+      await page.evaluate(() => {
+        const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
+        const hostId = hosts[0]?.id ?? 'local'
+        localStorage.setItem(
+          'tandem.recentDirs.v1',
+          JSON.stringify({ [hostId]: ['/tmp/tandem-recent-marker'] }),
+        )
+      })
+      const trigger = page.locator(`button[title="${repo}"]`).first()
+      await trigger.click()
+      const panel = page.locator('[role="menu"].popover-panel').first()
+      await panel.waitFor()
+      assert.equal(
+        await panel.getByText('tandem-recent-marker', { exact: false }).count(),
+        0,
+        '文件夹选择器仍显示最近文件夹',
+      )
+      const firstItem = panel.getByRole('menuitem').first()
+      assert.equal((await firstItem.innerText()).trim(), '..', '文件夹选择器首项不是上一级目录')
+      await page.keyboard.press('Escape')
+    })
+
+    desktop('自动路由偏好点击即时切换且不闪回（R17）', async (page) => {
+      const before = await api(base, token, '/api/settings')
+      assert.equal(before.modelRouting, undefined, '用例前置：路由设置应为空')
+      const dialog = await openSettings(page, '自动路由', 'desktop')
+      const group = dialog.getByRole('group', { name: '路由偏好' })
+      await group.waitFor({ state: 'visible' })
+      const clicked = async (label) => {
+        const response = page.waitForResponse(
+          (res) => res.url().includes('/api/settings') && res.request().method() === 'PUT',
+          { timeout: 10_000 },
+        )
+        await group.getByRole('button', { name: label, exact: true }).click()
+        await response
+        await page.waitForTimeout(200)
+      }
+
+      await page.evaluate(() => {
+        window.__routingPreferenceNode = document.querySelector('[data-setting-id="routing.preference"]')
+      })
+      await clicked('省钱')
+      assert.equal(
+        await group.getByRole('button', { name: '省钱', exact: true }).getAttribute('aria-pressed'),
+        'true',
+        '点击省钱后偏好没有保持选中',
+      )
+      assert.equal(
+        await group.evaluate((el) => getComputedStyle(el).opacity),
+        '1',
+        '切换偏好时控件变灰闪烁',
+      )
+      assert.ok(
+        await page.evaluate(
+          () =>
+            window.__routingPreferenceNode ===
+            document.querySelector('[data-setting-id="routing.preference"]'),
+        ),
+        '保存设置后整页重新挂载',
+      )
+      const costSaved = await api(base, token, '/api/settings')
+      assert.equal(costSaved.modelRouting?.preference, 'cost', '省钱偏好没有落库')
+
+      await clicked('质量优先')
+      assert.equal(
+        await group.getByRole('button', { name: '质量优先', exact: true }).getAttribute('aria-pressed'),
+        'true',
+        '点击质量优先后偏好没有保持选中',
+      )
+      const qualitySaved = await api(base, token, '/api/settings')
+      assert.equal(qualitySaved.modelRouting?.preference, 'quality', '质量优先偏好没有落库')
+
+      await clicked('均衡')
+      const reset = await api(base, token, '/api/settings')
+      assert.equal(reset.modelRouting, undefined, '恢复均衡后设置应回到未配置')
+      await closeSettings(page)
     })
 
     desktop('粘贴一次同一张图片只生成一个附件', async (page) => {
