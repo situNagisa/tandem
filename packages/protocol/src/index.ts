@@ -406,6 +406,8 @@ export interface ModelPriceInfo {
   output: number;
   cacheRead?: number;
   cacheWrite?: number;
+  /** 价格来源：账号自定义单价，或内置参考价（菜单显示「参考价」）。 */
+  source?: 'account' | 'builtin';
 }
 // GET /api/models/prices?profileId=&groupId= -> { prices: Record<model, ModelPriceInfo> }
 // 思考强度能力来源：provider 模型列表接口若提供（如 OpenRouter supported_parameters、Anthropic models 的 capabilities）则用之；
@@ -464,6 +466,38 @@ export interface CompactionNotice {
   auto: boolean;             // 自动触发 / 手动压缩
   /** 被压掉的原文已留档（仅最近一次压缩），可查看与撤销。 */
   canUndo?: boolean;
+}
+
+/** 轮次统计的消息形状（Message / UiMessage 都满足）。 */
+export interface TurnMessageLike {
+  role: 'user' | 'assistant';
+  summary?: boolean;
+  /** 分页缺口占位不参与轮次。 */
+  gap?: unknown;
+  content: Array<{ type: string; text?: string }>;
+}
+
+/**
+ * 是否是真实用户轮次的开始：纯 tool_result 的 user 消息、压缩摘要、分页缺口都不算一轮。
+ * 轮次大纲、压缩确认、评测与上下文面板共用这一个口径。
+ */
+export function isUserTurnMessage(message: TurnMessageLike): boolean {
+  if (message.role !== 'user' || message.summary || message.gap) return false;
+  return message.content.some(
+    (block) => block.type === 'image' || (block.type === 'text' && !!block.text?.trim()),
+  );
+}
+
+/** 真实用户轮次数。 */
+export function countTurns(messages: readonly TurnMessageLike[]): number {
+  let turns = 0;
+  for (const message of messages) if (isUserTurnMessage(message)) turns += 1;
+  return turns;
+}
+
+/** 只保留真实用户轮次的消息。 */
+export function userTurnMessages<T extends TurnMessageLike>(messages: readonly T[]): T[] {
+  return messages.filter(isUserTurnMessage);
 }
 
 export interface Session extends SessionSummary {
@@ -803,6 +837,8 @@ export interface UpdateTeamMemberInput {
 export interface TeamIdentity {
   role: TeamRole;
   member?: TeamMember;
+  /** 账号令牌登录时的账号信息（角色为工作区角色，role 字段是映射后的 Host 角色）。 */
+  account?: { id: string; username: string; name: string; role: WorkspaceRole };
   /** Host 所有者展示名，固定「所有者」。 */
   ownerName: string;
 }
@@ -847,6 +883,182 @@ export interface TeamPresence {
 // GET    /api/team/audit?limit=200    -> TeamAuditEntry[]（仅所有者，最近 200 条）
 // POST   /api/team/invites/accept {code,name} -> AcceptTeamInviteResult（公开接口，凭邀请码）
 // POST   /api/permissions/:requestId/transfer {toMemberId} -> PermissionRequest（所有者/审批者）
+
+// ---------- 账号制工作区（自托管账号中心，完全内网） ----------
+// 一台 Host 兼任账号中心，签发 Ed25519 令牌；加入工作区的 Host 用中心公钥本地验签。
+export type WorkspaceRole = 'owner' | 'admin' | 'collaborator' | 'approver' | 'observer';
+/** 授权范围：全部机器 / 指定机器 / 指定机器上的项目目录。 */
+export type WorkspaceScope = 'all' | 'hosts' | 'projects';
+export interface WorkspaceInfo {
+  id: string;
+  name: string;
+  createdAt: number;
+  centerHostId: string;
+}
+export interface WorkspaceHostInfo {
+  id: string;
+  name: string;
+  /** 可达地址（含端口），客户端登录后据此自动添加主机。 */
+  urls: string[];
+  version?: string;
+  platform?: string;
+  addedAt: number;
+  lastSeenAt?: number;
+}
+export interface WorkspaceAccount {
+  id: string;
+  username: string;
+  name: string;
+  role: WorkspaceRole;
+  scope: WorkspaceScope;
+  /** scope=hosts/projects 时生效；owner 默认为空表示全部。 */
+  hostIds: string[];
+  /** scope=projects：按 Host id 指定项目目录（绝对路径）。 */
+  projectDirsByHost: Record<string, string[]>;
+  disabled?: boolean;
+  totpEnabled?: boolean;
+  /** 只在创建账号时返回一次，用于扫码/手输到验证器。 */
+  totpSecret?: string;
+  totpUrl?: string;
+  /** 已登记的设备密钥数量（只读）。 */
+  deviceKeyCount?: number;
+  createdAt: number;
+  lastLoginAt?: number;
+}
+export interface AccountTokens {
+  accessToken: string;
+  refreshToken: string;
+  accessExpiresAt: number;
+  refreshExpiresAt: number;
+}
+export interface AccountLoginInput {
+  username: string;
+  /** 密码登录；设备密钥登录时省略。 */
+  password?: string;
+  totp?: string;
+  /** 设备密钥登录：客户端 Ed25519 公钥（base64）与对挑战串的签名。 */
+  devicePublicKey?: string;
+  deviceSignature?: string;
+  /** 签名内容 = `tandem-login|<username>|<timestamp>`。 */
+  deviceTimestamp?: number;
+}
+export interface AccountLoginResult extends AccountTokens {
+  account: WorkspaceAccount;
+  workspace: WorkspaceInfo;
+  /** 该账号可访问的 Host（已按范围过滤）。 */
+  hosts: WorkspaceHostInfo[];
+}
+export interface WorkspaceJoinHostInput {
+  id: string;
+  name: string;
+  urls: string[];
+  version?: string;
+  platform?: string;
+}
+export interface WorkspaceJoinInput {
+  /** 一次性加入码（`acj_…`）。 */
+  code: string;
+  host: WorkspaceJoinHostInput;
+}
+export interface WorkspaceJoinResult {
+  workspace: WorkspaceInfo;
+  center: { hostId: string; publicKey: string };
+  host: WorkspaceHostInfo;
+  snapshotVersion: number;
+}
+/** 中心签名的工作区快照：Host 列表 + 吊销列表。 */
+export interface WorkspaceSnapshot {
+  version: number;
+  workspace: WorkspaceInfo;
+  hosts: WorkspaceHostInfo[];
+  revoked: Record<string, number>;
+  /** 账号重新启用后，早于该时间签发的令牌一律失效。 */
+  invalidBefore?: Record<string, number>;
+  issuedAt: number;
+}
+export interface WorkspaceStatus {
+  mode: 'none' | 'center' | 'member';
+  workspace?: WorkspaceInfo;
+  /** 加入方视角：中心地址与公钥。 */
+  center?: { url: string; publicKey: string };
+  lastSyncAt?: number;
+}
+export interface WorkspaceSetupInput {
+  name: string;
+  /** 同时创建第一个所有者账号。 */
+  username: string;
+  password: string;
+}
+export interface WorkspaceSetupResult {
+  workspace: WorkspaceInfo;
+  host: WorkspaceHostInfo;
+  account: WorkspaceAccount;
+}
+export interface WorkspaceJoinCode {
+  code: string;
+  expiresAt: number;
+}
+export interface WorkspaceAccountInput {
+  username: string;
+  password?: string;
+  name?: string;
+  role: WorkspaceRole;
+  scope: WorkspaceScope;
+  hostIds?: string[];
+  projectDirsByHost?: Record<string, string[]>;
+  totp?: boolean;
+}
+export interface WorkspaceAccountUpdateInput {
+  name?: string;
+  password?: string;
+  role?: WorkspaceRole;
+  scope?: WorkspaceScope;
+  hostIds?: string[];
+  projectDirsByHost?: Record<string, string[]>;
+  disabled?: boolean;
+}
+export interface WorkspaceOverview {
+  workspace: WorkspaceInfo;
+  hosts: WorkspaceHostInfo[];
+  accounts: WorkspaceAccount[];
+  revoked: Record<string, number>;
+  /** 加入方列表为空（只有中心能给出账号）。 */
+  centerUrl?: string;
+}
+export interface AccountMe {
+  account: WorkspaceAccount;
+  workspace: WorkspaceInfo;
+  hostId: string;
+  role: TeamRole;
+  projectDirs: string[];
+}
+// GET    /api/accounts/status                      -> WorkspaceStatus（公开；客户端探测中心/成员）
+// POST   /api/accounts/setup {name,username,password} -> WorkspaceSetupResult（仅 Host 所有者 token）
+// POST   /api/accounts/login {username,password?,totp?} -> AccountLoginResult（中心公开）
+// POST   /api/accounts/refresh {refreshToken}       -> AccountTokens（中心公开；刷新令牌轮换）
+// POST   /api/accounts/logout {refreshToken}        -> 204（公开；作废当前刷新令牌）
+// GET    /api/accounts/me                           -> AccountMe（账号令牌）
+// GET    /api/accounts/hosts                        -> WorkspaceHostInfo[]（账号令牌，按范围过滤）
+// GET    /api/accounts/workspace                    -> WorkspaceOverview（中心：账号所有者/管理员；成员 Host：本机视角）
+// POST   /api/accounts/workspace/join-code          -> WorkspaceJoinCode（中心账号所有者）
+// POST   /api/accounts/workspace/join {code,host}   -> WorkspaceJoinResult（公开；一次性加入码）
+// POST   /api/accounts/workspace/sync {snapshot,signature} -> 204（公开但必须中心签名）
+// GET    /api/accounts/workspace/snapshot           -> {snapshot,signature}（中心公开；加入方 Host 轮询）
+// POST   /api/accounts/workspace/leave              -> 204（成员 Host 所有者：本机退出工作区）
+// DELETE /api/accounts/workspace/hosts/:id          -> 204（中心账号所有者：移出 Host）
+// GET    /api/accounts/accounts                     -> WorkspaceAccount[]（中心账号所有者/管理员）
+// POST   /api/accounts/accounts {…}                 -> WorkspaceAccount（中心账号所有者）
+// PATCH  /api/accounts/accounts/:id {…}             -> WorkspaceAccount（中心账号所有者）
+// POST   /api/accounts/accounts/:id/revoke          -> 204（中心账号所有者；立即吊销）
+// GET    /api/accounts/audit?limit=200              -> WorkspaceAuditEntry[]（中心账号所有者）
+
+export interface WorkspaceAuditEntry {
+  id: string;
+  at: number;
+  actor: string;
+  action: string;
+  detail?: string;
+}
 
 // ---------- 浏览器操作（~/.tandem/browser.json） ----------
 /** Host 浏览器工具设置：默认关闭；默认只允许访问本机地址与 file://。 */
@@ -1095,6 +1307,10 @@ export interface InboxEvent {
   requestId?: string;
   decision?: PermissionDecision;
   turnReason?: 'done' | 'interrupted' | 'error';
+  /** kind=turn_end：该回合的用户消息 id，收件箱行点击后可直接滚到这一轮。 */
+  messageId?: string;
+  /** 只进历史聚合，不计未读、不发系统通知（看板卡片会话等后台回合）。 */
+  silent?: boolean;
   error?: string;
   budget?: BudgetAlert;
   /** 预算告警绑定的会话（触发本次用量的会话）。 */

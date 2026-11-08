@@ -12,6 +12,7 @@ import { startPrPolling } from './vcs.js';
 import { registerSttRoutes } from './stt.js';
 import { isPublicSharePath, registerShareRoutes } from './share/routes.js';
 import { isPublicTeamPath, registerTeamRoutes } from './routes/team.js';
+import { isPublicAccountPath, registerAccountRoutes } from './routes/accounts.js';
 import { guardMemberRequest, ownerPrincipal, type Principal } from './team/access.js';
 import type { RouteDeps } from './routes/common.js';
 import { registerHostRoutes } from './routes/host.js';
@@ -79,6 +80,8 @@ export async function createApp(
     if (isPublicSharePath(urlPath)) return;
     // 接受邀请用一次性邀请码鉴权。
     if (isPublicTeamPath(urlPath)) return;
+    // 登录 / 加入码 / 中心签名快照走各自凭证，不能要求 Host token。
+    if (isPublicAccountPath(urlPath)) return;
     if (!urlPath.startsWith('/api') && urlPath !== '/ws') return;
 
     const auth = req.headers.authorization;
@@ -91,9 +94,21 @@ export async function createApp(
       principal = ownerPrincipal();
     } else {
       const member = host.team.authenticate(token);
-      const devicePeer = member ? undefined : host.devices.authenticatePeer(token);
-      if (!member && !devicePeer) return reply.code(401).send({ error: '未授权：token 无效或已被吊销' });
-      principal = member
+      const account = member ? undefined : host.accounts.authenticate(token);
+      const devicePeer = member || account ? undefined : host.devices.authenticatePeer(token);
+      if (!member && !account && !devicePeer) return reply.code(401).send({ error: '未授权：token 无效或已被吊销' });
+      principal = account
+        ? {
+            kind: 'account',
+            id: account.accountId,
+            name: account.name,
+            username: account.username,
+            accountRole: account.accountRole,
+            role: account.role,
+            projectDirs: account.projectDirs,
+            allProjects: account.allProjects,
+          }
+        : member
         ? {
             kind: 'member',
             id: member.id,
@@ -133,6 +148,7 @@ export async function createApp(
   registerDemoRoutes(app, deps);
   registerDoctorRoutes(app, deps);
   registerTeamRoutes(app, deps);
+  registerAccountRoutes(app, deps);
 
   // 本机语音转写（用户自己的 Whisper；不联网）
   registerSttRoutes(app, host);
@@ -172,6 +188,7 @@ export async function createApp(
   app.addHook('onClose', async () => {
     stopPrPolling();
     host.team.close();
+    host.accounts.close();
     host.gateway.flush();
   });
 

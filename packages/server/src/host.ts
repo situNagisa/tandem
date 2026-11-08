@@ -75,9 +75,11 @@ import { MemoryStore } from './memory.js';
 import { WikiManager } from './wiki.js';
 import { SecretsStore } from './secrets.js';
 import { TeamStore } from './team/store.js';
+import { AccountsStore } from './accounts/store.js';
 import { memberCanSeeSession } from './team/access.js';
 import type { ParsedCommand } from './agent/commands.js';
 import { readVersion, type PermissionEntry } from './host/helpers.js';
+import os from 'node:os';
 import {
   autoTitle,
   compactSession,
@@ -252,6 +254,8 @@ export class Host {
   /** 交接「等待重置」的恢复计时器（sessionId → timeout）。 */
   handoffTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  accounts!: AccountsStore;
+
   constructor(config?: HostConfig, home = tandemHome()) {
     this.home = home;
     this.config = config ?? loadHostConfig(home);
@@ -331,6 +335,17 @@ export class Host {
     });
     this.devices = new DeviceManager(this, home);
     this.version = readVersion();
+    this.accounts = new AccountsStore({
+      home,
+      hostId: this.config.hostId,
+      hostName: os.hostname(),
+      version: this.version,
+      platform: process.platform,
+    });
+    this.accounts.onRevoked = (revoked) => {
+      for (const id of Object.keys(revoked)) this.hub.disconnectMember(id);
+    };
+    this.accounts.start();
     // 启动时连接已启用的 MCP 服务器；失败只记录状态，不影响 Host 启动
     this.mcp.start();
     // 外部会话目录有变化时通知客户端刷新侧栏（30s 定时扫描）

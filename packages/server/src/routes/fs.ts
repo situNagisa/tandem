@@ -8,7 +8,7 @@ import { walkFilesAsync } from '../util/fs-walk.js';
 import { readForPreview, readImage, revealFile } from '../util/file-preview.js';
 import { expandHome, resolveHostPath, toPosix } from '../util/path.js';
 import { bad, str, type RouteDeps } from './common.js';
-import { memberCanAccessPath, principalOf } from '../team/access.js';
+import { memberCanAccessPath, principalOf, isOwnerLike } from '../team/access.js';
 import { detectSessionEnv } from '../util/git.js';
 
 /** @文件补全的模糊匹配打分；不匹配返回 null。 */
@@ -37,7 +37,7 @@ export function registerFsRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.get('/api/fs/list', async (req, reply) => {
     const query = req.query as { path?: string; files?: string };
     const principal = principalOf(req);
-    const fallback = principal.kind === 'member' ? principal.projectDirs[0] : os.homedir();
+    const fallback = !isOwnerLike(principal) ? principal.projectDirs[0] : os.homedir();
     const raw = str(query.path) || fallback || os.homedir();
     const dir = resolveHostPath(expandHome(raw));
     if (!memberCanAccessPath(principal, dir)) {
@@ -83,7 +83,7 @@ export function registerFsRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.get('/api/fs/git', async (req, reply) => {
     const query = req.query as { path?: string };
     const principal = principalOf(req);
-    const fallback = principal.kind === 'member' ? principal.projectDirs[0] : os.homedir();
+    const fallback = !isOwnerLike(principal) ? principal.projectDirs[0] : os.homedir();
     const dir = resolveHostPath(expandHome(str(query.path) || fallback || os.homedir()));
     if (!memberCanAccessPath(principal, dir)) {
       return bad(reply, '只能浏览自己被授权的项目目录', 403);

@@ -20,6 +20,18 @@ export interface MemberPrincipal {
   name: string;
   projectDirs: string[];
 }
+/** 工作区账号令牌（Ed25519，本地验签）；角色已映射到 Host 角色。 */
+export interface AccountPrincipal {
+  kind: 'account';
+  role: TeamRole;
+  id: string;
+  name: string;
+  username: string;
+  accountRole: import('@tandem/protocol').WorkspaceRole;
+  projectDirs: string[];
+  /** 授权范围是「全部机器 / 指定机器」时，视为可访问该机全部项目。 */
+  allProjects?: boolean;
+}
 /** 其他 Host 用设备级令牌（dvt_…）调用本机设备服务。 */
 export interface DevicePrincipal {
   kind: 'device';
@@ -28,7 +40,7 @@ export interface DevicePrincipal {
   name: string;
   projectDirs: string[];
 }
-export type Principal = OwnerPrincipal | MemberPrincipal | DevicePrincipal;
+export type Principal = OwnerPrincipal | MemberPrincipal | AccountPrincipal | DevicePrincipal;
 
 export const OWNER_NAME = '所有者';
 
@@ -47,12 +59,24 @@ export function principalOf(req: FastifyRequest): Principal {
 }
 
 export function isOwner(req: FastifyRequest): boolean {
-  return principalOf(req).kind === 'owner';
+  return isOwnerLike(principalOf(req));
+}
+
+/** 所有者令牌与工作区「所有者/管理员」都视为 Host 级管理员。 */
+export function isOwnerLike(principal: Principal): boolean {
+  return principal.kind === 'owner' || (principal.kind === 'account' && principal.role === 'owner');
 }
 
 export function identityOf(principal: Principal, host: Host): TeamIdentity {
   if (principal.kind === 'owner') return { role: 'owner', ownerName: OWNER_NAME };
   if (principal.kind === 'device') return { role: 'observer', ownerName: OWNER_NAME };
+  if (principal.kind === 'account') {
+    return {
+      role: principal.role,
+      ownerName: OWNER_NAME,
+      account: { id: principal.id, username: principal.username, name: principal.name, role: principal.accountRole },
+    };
+  }
   const member = host.team.getMember(principal.id);
   return {
     role: principal.role,
@@ -99,7 +123,8 @@ export function withinDirs(dir: string, roots: string[]): boolean {
 }
 
 export function memberCanAccessPath(principal: Principal, absPath: string): boolean {
-  if (principal.kind === 'owner') return true;
+  if (isOwnerLike(principal)) return true;
+  if (principal.kind === 'account' && principal.allProjects) return true;
   if (!existsSync(absPath)) {
     // 不存在的路径按字面父目录判断，避免新建会话时探测任意路径
     return withinDirs(path.dirname(path.resolve(absPath)), principal.projectDirs);
@@ -109,7 +134,8 @@ export function memberCanAccessPath(principal: Principal, absPath: string): bool
 
 export function memberCanSeeSession(principal: Principal, rec?: SessionRecord): boolean {
   if (!rec) return false;
-  if (principal.kind === 'owner') return true;
+  if (isOwnerLike(principal)) return true;
+  if (principal.kind === 'account' && principal.allProjects) return true;
   if (withinDirs(rec.cwd, principal.projectDirs)) return true;
   // worktree 会话的 cwd 在 ~/.tandem/worktrees 下，按所属仓库授权
   if (rec.worktreeRepoRoot && withinDirs(rec.worktreeRepoRoot, principal.projectDirs)) return true;
@@ -158,7 +184,15 @@ export function guardMemberRequest(
   method: string,
   pathname: string,
 ): GuardResult | undefined {
-  if (principal.kind === 'owner') return undefined;
+  const upper = method.toUpperCase();
+  if (isOwnerLike(principal)) {
+    if (principal.kind === 'account' && principal.accountRole !== 'owner') {
+      const manage = /^\/api\/accounts\/(accounts|workspace\/join-code|workspace\/hosts)(\/|$)/.test(pathname);
+      const listOnly = pathname === '/api/accounts/accounts' && upper === 'GET';
+      if (manage && !listOnly) return { code: 403, message: '仅工作区所有者可以管理账号与加入码' };
+    }
+    return undefined;
+  }
   if (principal.kind === 'device') {
     if (pathname === '/api/devices' || pathname.startsWith('/api/devices/')) {
       if (pathname.includes('/peer-tokens')) return { code: 403, message: '设备令牌不能管理其他设备令牌' };
@@ -166,8 +200,6 @@ export function guardMemberRequest(
     }
     return { code: 403, message: '设备令牌只能访问设备服务' };
   }
-  const upper = method.toUpperCase();
-
   if (TRANSFER_RE.test(pathname) && upper === 'POST') {
     return canApprove(principal.role) ? undefined : { code: 403, message: '观察者不能转交审批' };
   }
@@ -187,6 +219,9 @@ export function guardMemberRequest(
     return canSend(principal.role) ? undefined : { code: 403, message: '观察者/审批者不能操作设备' };
   }
   if (pathname === '/api/team/me' && upper === 'GET') return undefined;
+  if (pathname === '/api/accounts/me' && upper === 'GET') return undefined;
+  if (pathname === '/api/accounts/hosts' && upper === 'GET') return undefined;
+  if (pathname === '/api/accounts/workspace' && upper === 'GET') return undefined;
   if (pathname === '/api/team/approvers' && upper === 'GET') {
     return canApprove(principal.role) ? undefined : { code: 403, message: '观察者不能转交审批' };
   }

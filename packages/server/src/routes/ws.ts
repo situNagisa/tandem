@@ -13,6 +13,7 @@ import {
   canApprove,
   canSend,
   identityOf,
+  isOwnerLike,
   memberCanSeeSession,
   principalOf,
   type Principal,
@@ -26,8 +27,8 @@ function inboxVisible(principal: Principal, event: InboxEvent): boolean {
     if (target && principal.kind === 'member' && target.memberId !== principal.id) return false;
   }
   if (event.kind === 'permission_resolved' && !canApprove(principal.role)) return false;
-  if (event.kind === 'budget' || event.kind === 'eval') return principal.kind === 'owner';
-  if (!event.sessionId) return principal.kind === 'owner';
+  if (event.kind === 'budget' || event.kind === 'eval') return isOwnerLike(principal);
+  if (!event.sessionId) return isOwnerLike(principal);
   return true;
 }
 
@@ -64,12 +65,12 @@ export function registerWsRoutes(app: FastifyInstance, deps: RouteDeps): void {
     };
 
     const canSee = (sessionId: string): boolean => {
-      if (principal.kind === 'owner') return true;
+      if (isOwnerLike(principal)) return true;
       return memberCanSeeSession(principal, host.getSession(sessionId));
     };
 
     const filterInbox = (snapshot: InboxSnapshot): InboxSnapshot => {
-      if (principal.kind === 'owner') return snapshot;
+      if (isOwnerLike(principal)) return snapshot;
       const keep = (event: InboxEvent) => {
         if (!inboxVisible(principal, event)) return false;
         if (!event.sessionId) return true;

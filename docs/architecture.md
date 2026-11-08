@@ -29,6 +29,7 @@
 | `src/model-routing.ts` / `src/routing-settings.ts` | 自动模型路由：按消息长度/关键词/上下文/失败信号打难度分，在用户候选池按快速·均衡·强力与省钱·均衡·质量偏好选模型；连续失败升级、简单成功回落，统计相对强力档的节省；设置有会话入口 |
 | `src/host.ts` | Host 类：持有全部状态与构造，方法按职责转调到 `host/`（外部 API 不变） |
 | `src/team/` | 内网团队：`store.ts`（成员/邀请/审计持久化，只存 token 与邀请码哈希）、`access.ts`（角色边界、项目可见性、REST 白名单）、`audit.ts` |
+| `src/accounts/` + `routes/accounts.ts` | 账号制工作区：`store.ts`（账号中心/加入方状态 `accounts.json`、scrypt 密码与 TOTP、Ed25519 访问/刷新令牌本地验签、一次性加入码、账号角色×范围、吊销快照推送+轮询）；路由含登录/刷新/加入码/快照同步/账号管理；`server.ts` 把 `acw_…` 账号令牌接成第四种凭据；设计与取舍 `docs/accounts.md`，代测 `docs/accounts-test.md` |
 | `src/host/` | Host 实现按职责拆分（纯搬移）：`sessions.ts`（读取/转换/CRUD）、`turns.ts`（发送/回合/排队/中断/compact）、`commands.ts`（斜杠命令/本地消息）、`permissions.ts`（审批/plan/恢复）、`keys.ts`（账号/分组/Key 轮询）、`usage.ts`（上下文/预算/模型）、`subagents.ts`（子代理/委派/工具可见性）、`vcs.ts`（git 环境/worktree）、`rewind.ts`（检查点回退）、`hooks.ts`、`inbox.ts`、`external.ts`（外部会话通知/导入）、`helpers.ts`（无状态纯函数） |
 | `src/agent/loop.ts` | 单轮 agent 循环：模型 → 工具 → tool_result → 再请求，直到结束 |
 | `src/agent/prompt.ts` | 系统提示组装（含注入段落清单） |
@@ -95,7 +96,8 @@
 | `src/components/RightPanel.tsx` | 右栏：计划、待办、子代理、上下文、Wiki、PR；**巨石** |
 | `src/components/wiki/*` | 项目 Wiki 视图（页面树/全文搜索/手写段落）与生成确认（账号/模型/预算/预计花费）；右栏卡片见 `right-panel/WikiCard.tsx` |
 | `src/components/ChangeReviewPanel.tsx` | 改动审阅、行评论、提交/丢弃 |
-| `src/components/settings/*` | 设置各页；`SettingsDialog.tsx` 是导航与挂载点；`TeamSection.tsx` 是成员/邀请/审计，`JoinTeamDialog.tsx` 处理邀请链接入职 |
+| `src/components/settings/*` | 设置各页；`SettingsDialog.tsx` 是导航与挂载点；`TeamSection.tsx` 是成员/邀请/审计，`JoinTeamDialog.tsx` 处理邀请链接入职；`AccountsSection.tsx` 是工作区（创建/加入/Host/账号授权） |
+| `src/components/accounts/*` + `store/appStore/hostsSlice.ts` | 工作区登录页（账号中心地址+用户名+密码/TOTP）；登录后把可访问 Host 自动写入主机列表、令牌到期前向中心刷新，账号菜单在侧栏底部 |
 | `src/components/evals/*` | 评测轨迹/并排对比/提示词覆盖/存用例弹层；设置「评测」页见 `settings/EvalsSection.tsx` |
 | `src/components/chat/*` | 轮次导航、上下文环、消息辅助组件；`TurnRail`/`TurnOutlineSheet` 是桌面轮次条与手机底部大纲，分页跳转经 `lib/turnWindow.ts` |
 | `src/components/PreviewPanel.tsx` + `src/lib/previewElement.ts` | 应用预览画布：地址与本地候选、设备尺寸（手机默认手机档）、截图/嵌入、元素点选、改前对比与自动刷新提示 |
@@ -150,6 +152,7 @@ Web/Desktop/Android
 | 加一个工具 | `server/src/tools/<name>.ts` 实现 `definition` + `run`；在 `tools/index.ts` 的 `TOOLS/TOOL_MAP` 注册；涉及权限时设 `readOnly/requiresApproval`；前端工具卡在 `ToolCard.tsx` |
 | 加一个 REST 接口 | 先在 `protocol` 注释/types 定义；`server/src/server.ts` 加路由（后续放 `routes/`）；`web/src/lib/api.ts` 加方法 |
 | 改团队共享/成员权限 | `server/src/team/*` + `routes/team.ts` + `routes/ws.ts`；前端 `settings/TeamSection.tsx`、`JoinTeamDialog.tsx`、`lib/inviteLink.ts`；安全说明 `docs/team.md` |
+| 改账号制/工作区 | 协议 `Workspace*` / `Account*`；服务端 `src/accounts/store.ts`、`routes/accounts.ts`、`server.ts` 的 token 解析；前端 `components/accounts/LoginDialog.tsx`、`settings/AccountsSection.tsx`、`hostsSlice` 的 `workspaceLogin/refreshWorkspace`；设计 `docs/accounts.md`，回归在 `e2e/regression.mjs`「账号制工作区」 |
 | 加一个 WS 事件 | `protocol` 的 `ServerMsg/ClientMsg`；server 用 `Hub.broadcastSession/broadcastAll`；web `appStore/serverMessages.ts` 事件 switch + `ws.ts` 类型 |
 | 加一个设置页 | `web/src/lib/types.ts` 的 `SettingsTab`；`SettingsDialog.tsx` 的 `TABS` 与条件渲染；页面放 `components/settings/`；数据走 `api.ts`。设置项要进 `lib/settingsRegistry.ts` 并给容器加 `data-setting-id`，命令面板/设置搜索才能定位 |
 | 加一个命令/快捷键 | `web/src/lib/commands.ts` 的 `COMMANDS`（id、标题、关键词、默认快捷键、run）；外观页快捷键表与全局监听自动读取，自定义存 localStorage |

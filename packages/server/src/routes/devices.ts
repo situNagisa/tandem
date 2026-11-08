@@ -26,7 +26,7 @@ function clientId(req: FastifyRequest, body?: Record<string, unknown>): string {
 /** 设备服务写操作：所有者、协作者或设备级令牌。 */
 function canOperate(req: FastifyRequest): boolean {
   const principal = principalOf(req);
-  if (principal.kind === 'owner' || principal.kind === 'device') return true;
+  if (principal.kind === 'owner' || principal.kind === 'account' || principal.kind === 'device') return true;
   return canSend(principal.role);
 }
 

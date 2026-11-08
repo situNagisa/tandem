@@ -2,14 +2,14 @@
 import type { FastifyInstance } from 'fastify';
 import type { ContextSettings, VoiceSettings } from '@tandem/protocol';
 import type { RouteDeps } from './common.js';
-import { principalOf } from '../team/access.js';
+import { principalOf, isOwnerLike } from '../team/access.js';
 
 export function registerHostRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const { host } = deps;
 
   app.get('/api/host', async (req) => {
     const info = host.info();
-    return principalOf(req).kind === 'member' ? { ...info, homeDir: '' } : info;
+    return isOwnerLike(principalOf(req)) ? info : { ...info, homeDir: '' };
   });
 
   app.get('/api/settings', async () => host.settings());

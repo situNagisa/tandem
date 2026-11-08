@@ -13,7 +13,7 @@ import { commitChanges, getChanges, getFileDiff, revertChanges } from '../change
 import { clearCompactionBackup, readCompactionBackup } from '../host/compaction.js';
 import { createPullRequest, failedCheckPrompt, getVcsState, mergePullRequest } from '../vcs.js';
 import { bad, statusOf, str, type RouteDeps } from './common.js';
-import { memberCanAccessPath, memberCanSeeSession, principalOf } from '../team/access.js';
+import { isOwnerLike, memberCanAccessPath, memberCanSeeSession, principalOf } from '../team/access.js';
 import { recordAudit } from '../team/audit.js';
 import { expandHome } from '../util/path.js';
 import type { SessionRecord } from '../types.js';
@@ -93,7 +93,7 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
         hits.push({ ...hit, title: rec.title || '未命名会话', updatedAt: rec.updatedAt });
       } else {
         // 外部会话没有 Tandem 内状态；成员暂不开放外部原文搜索。
-        if (principal.kind !== 'owner') continue;
+        if (!isOwnerLike(principal)) continue;
         if (imported.has(`${hit.source}:${hit.sessionId}`)) continue;
         if (filters.status && filters.status !== 'all') continue;
         if (filters.project && hit.project !== filters.project) continue;
@@ -115,7 +115,7 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
     const principal = principalOf(req);
     try {
       const input = (req.body ?? {}) as Partial<CreateSessionInput>;
-      if (principal.kind === 'member') {
+      if (!isOwnerLike(principal)) {
         const rawCwd = typeof input.cwd === 'string' ? input.cwd.trim() : '';
         const cwd = rawCwd ? path.resolve(expandHome(rawCwd)) : '';
         if (!cwd || !memberCanAccessPath(principal, cwd)) {

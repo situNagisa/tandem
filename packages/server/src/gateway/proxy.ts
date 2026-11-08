@@ -81,6 +81,29 @@ function authenticate(host: Host, req: FastifyRequest, reply: FastifyReply, prot
     sendGatewayError(reply, protocol, 401, '缺少网关令牌：请使用 Authorization: Bearer tgw_… 或 x-api-key');
     return undefined;
   }
+  // 工作区账号令牌可直接调用网关（按账号记账）；tgw_ 令牌保持兼容。
+  if (token.startsWith('acw_')) {
+    const account = host.accounts.authenticate(token);
+    if (!account) {
+      sendGatewayError(reply, protocol, 401, '工作区账号令牌无效或已被吊销');
+      return undefined;
+    }
+    const grant: StoredGatewayToken = {
+      id: `acct:${account.accountId}`,
+      memberId: account.accountId,
+      memberName: account.name,
+      createdAt: 0,
+      rpm: 60,
+      allowedModels: [] as string[],
+      tokenHash: '',
+    };
+    const retryAfter = host.gateway.checkRate(grant);
+    if (retryAfter > 0) {
+      sendGatewayError(reply, protocol, 429, `请求过于频繁：${account.name} 的网关速率为 60 RPM，请 ${retryAfter} 秒后重试`, retryAfter);
+      return undefined;
+    }
+    return { grant, memberId: account.accountId, memberName: account.name };
+  }
   const grant = host.gateway.authenticate(token);
   if (!grant) {
     sendGatewayError(reply, protocol, 401, '网关令牌无效或已被吊销');
