@@ -46,6 +46,8 @@ export function WorkstationSection() {
   const [bind, setBind] = useState<WorkstationBindCode | null>(null)
   const [bindOpen, setBindOpen] = useState(false)
   const [grantFor, setGrantFor] = useState<WorkspaceHostInfo | null>(null)
+  const [registration, setRegistration] = useState<'open' | 'invite'>('open')
+  const [invite, setInvite] = useState<string | null>(null)
 
   const base = account?.centerUrl ?? ''
   const token = account?.accessToken ?? ''
@@ -184,6 +186,59 @@ export function WorkstationSection() {
         </div>
         {error && <p className="mt-2 text-[12.5px] text-[var(--t-danger)]">{error}</p>}
       </div>
+
+      {(account.account.role === 'admin' || account.account.role === 'owner') && (
+        <div className="rounded-xl border border-[var(--t-border)] bg-[var(--t-bg-elevated)] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-[14px] font-medium">注册与邀请</div>
+              <div className="mt-0.5 text-[12px] text-[var(--t-text-tertiary)]">
+                默认内网开放注册；改「仅邀请」后，新账号需要管理员生成的邀请码。
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={registration}
+                onChange={async (e) => {
+                  const next = e.target.value === 'invite' ? 'invite' : 'open'
+                  setRegistration(next)
+                  try {
+                    await workstationApi.settings(base, token, { registration: next })
+                    toast(next === 'invite' ? '已改为仅邀请注册' : '已改为开放注册', 'success')
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : '保存注册方式失败')
+                  }
+                }}
+              >
+                <option value="open">开放注册</option>
+                <option value="invite">仅邀请注册</option>
+              </Select>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const result = await workstationApi.invite(base, token)
+                    setInvite(result.code)
+                    await navigator.clipboard?.writeText(result.code).catch(() => undefined)
+                    toast('邀请码已生成并复制', 'success')
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : '生成邀请码失败')
+                  }
+                }}
+              >
+                <UserPlus size={13} /> 生成邀请码
+              </Button>
+            </div>
+          </div>
+          {invite && (
+            <div className="mt-2 flex items-center gap-2 rounded-lg bg-[var(--t-bg-subtle)] px-2.5 py-1.5">
+              <span className="text-[11.5px] text-[var(--t-text-tertiary)]">邀请码</span>
+              <code className="min-w-0 flex-1 truncate font-mono text-[12px]">{invite}</code>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="rounded-xl border border-[var(--t-border)] bg-[var(--t-bg-elevated)] p-4">
         <div className="flex items-center justify-between gap-2">

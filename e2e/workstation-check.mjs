@@ -137,6 +137,24 @@ export async function runWorkstationCheck(home) {
     })
     assert.equal(bob.account.role, 'member', '后续注册应为普通成员')
 
+    // 管理员可改为仅邀请注册；无邀请码注册被拒，带邀请码可注册。
+    await json(WS, '/api/workstation/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ registration: 'invite' }),
+    }, alice.accessToken)
+    const deniedRegister = await fetch(`${WS}/api/workstation/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'ws-charlie', password: 'charlie-pass-123' }),
+    })
+    assert.equal(deniedRegister.status, 403, '仅邀请模式下无邀请码注册应 403')
+    const invite = await json(WS, '/api/workstation/invites', { method: 'POST' }, alice.accessToken)
+    const charlie = await json(WS, '/api/workstation/register', {
+      method: 'POST',
+      body: JSON.stringify({ username: 'ws-charlie', password: 'charlie-pass-123', inviteCode: invite.code }),
+    })
+    assert.equal(charlie.account.role, 'member', '邀请注册应为普通成员')
+
     const hosts = [
       { proc: h1, port: h1Port },
       { proc: h2, port: h2Port },
