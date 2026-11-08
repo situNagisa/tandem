@@ -1,6 +1,6 @@
 {
   "name": "@tandem/server",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Tandem Host 守护进程",
   "type": "module",
   "main": "dist/cli.js",
@@ -17,8 +17,8 @@
     "@fastify/static": "^8.0.0",
     "@fastify/websocket": "^11.0.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "@tandem/protocol": "0.2.1",
-    "@tandem/relay": "0.2.1",
+    "@tandem/protocol": "0.3.0",
+    "@tandem/relay": "0.3.0",
     "fastify": "^5.0.0",
     "serialport": "^13.0.0",
     "ws": "^8.18.2"
