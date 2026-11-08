@@ -291,6 +291,70 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
     }
   });
 
+  app.post('/api/sessions/:id/division-plan/:planId', async (req, reply) => {
+    const id = str((req.params as { id?: string }).id);
+    const planId = str((req.params as { planId?: string }).planId);
+    const rec = id ? host.getSession(id) : undefined;
+    if (!rec) return bad(reply, '会话不存在', 404);
+    const body = (req.body ?? {}) as Partial<import('@tandem/protocol').DivisionPlanDecision>;
+    if (
+      body.action !== 'approve' &&
+      body.action !== 'direct' &&
+      body.action !== 'cheap' &&
+      body.action !== 'cancel'
+    ) {
+      return bad(reply, '无效的分工计划操作', 400);
+    }
+    const pending = host.divisionPlans.get(planId);
+    if (!pending || pending.sessionId !== rec.id) return bad(reply, '分工计划已失效', 409);
+    const tasks = Array.isArray(body.tasks)
+      ? body.tasks
+          .filter((item) => item && typeof item.id === 'string')
+          .map((item) => ({
+            id: String(item.id),
+            ...(typeof item.model === 'string' ? { model: item.model } : {}),
+            ...(item.role === 'executor' || item.role === 'specialist' ? { role: item.role } : {}),
+            ...(typeof item.domain === 'string' ? { domain: item.domain as import('@tandem/protocol').RouteDomain } : {}),
+            ...(item.deleted === true ? { deleted: true } : {}),
+          }))
+      : undefined;
+    host.resolveDivisionPlan(planId, {
+      action: body.action,
+      ...(tasks ? { tasks } : {}),
+    });
+    return { ok: true };
+  });
+
+  app.post('/api/sessions/:id/subagent-rerun', async (req, reply) => {
+    const id = str((req.params as { id?: string }).id);
+    const child = id ? host.getSession(id) : undefined;
+    if (!child?.parentId) return bad(reply, '不是子代理会话', 400);
+    const body = (req.body ?? {}) as { model?: unknown };
+    try {
+      const result = await host.rerunSubagent(
+        id,
+        typeof body.model === 'string' ? body.model.trim() || undefined : undefined,
+      );
+      if (!result) return bad(reply, '找不到可重跑的任务', 404);
+      return { ok: true, subagent: result.subagent };
+    } catch (err) {
+      return bad(reply, (err as Error).message, 409);
+    }
+  });
+
+  app.post('/api/sessions/:id/subagent-promote', async (req, reply) => {
+    const id = str((req.params as { id?: string }).id);
+    const child = id ? host.getSession(id) : undefined;
+    if (!child?.parentId) return bad(reply, '不是子代理会话', 400);
+    try {
+      const ok = await host.promoteSubagent(id);
+      if (!ok) return bad(reply, '找不到可接管的任务', 404);
+      return { ok: true };
+    } catch (err) {
+      return bad(reply, (err as Error).message, 409);
+    }
+  });
+
   app.post('/api/sessions/:id/read', async (req, reply) => {
     const { id } = req.params as { id: string };
     const rec = host.markRead(id);

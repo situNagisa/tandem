@@ -3,6 +3,7 @@ import type {
   HostSettings,
   ModelRoutingSettings,
   ModelTier,
+  ModelPriceInfo,
   Profile,
   RouteCandidate,
   RoutePreference,
@@ -13,6 +14,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { cn } from '../../lib/cn'
 import { profileModelGroups } from '../../lib/profileModels'
 import { SegmentedControl, Select, Switch } from '../ui/Controls'
+import { DivisionRoutingSection } from './DivisionRoutingSection'
 
 const TIER_LABEL: Record<ModelTier, string> = {
   fast: '快速（省钱）',
@@ -78,6 +80,7 @@ export function ModelRoutingSection() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [prices, setPrices] = useState<Record<string, ModelPriceInfo>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -110,6 +113,38 @@ export function ModelRoutingSection() {
       void refreshProfiles(host.id)
     }
   }, [host?.id, runtime?.profilesLoaded, runtime?.profilesLoading, refreshProfiles])
+
+  useEffect(() => {
+    if (!host || profiles.length === 0) return
+    let cancelled = false
+    const groups: Array<{ profileId: string; groupId?: string }> = []
+    for (const profile of profiles) {
+      for (const group of profileModelGroups(profile)) {
+        groups.push({ profileId: profile.id, ...(group.groupId ? { groupId: group.groupId } : {}) })
+      }
+    }
+    Promise.allSettled(
+      groups.map((group) =>
+        api.modelPrices(host, group.profileId, group.groupId).then((res) => ({
+          group,
+          prices: res.prices,
+        })),
+      ),
+    ).then((results) => {
+      if (cancelled) return
+      const next: Record<string, ModelPriceInfo> = {}
+      for (const result of results) {
+        if (result.status !== 'fulfilled') continue
+        for (const [model, price] of Object.entries(result.value.prices)) {
+          next[`${result.value.group.profileId}:${result.value.group.groupId ?? ''}:${model}`] = price
+        }
+      }
+      setPrices(next)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [host?.id, profiles])
 
   const routing = normalize(settings)
   const rows = useMemo(() => rowsOf(profiles), [profiles])
@@ -179,7 +214,7 @@ export function ModelRoutingSection() {
       <div className="flex items-start gap-2 text-[12px] leading-5 text-muted">
         <GitFork size={14} className="mt-0.5 shrink-0" />
         <p>
-          开启「自动」后，每轮按消息难度、上下文、失败情况与预算从候选池中选择模型。
+          开启「自动」或「分工」后，每轮按消息难度、上下文、失败情况与预算选择模型；分工模式主会话不换模型，机械子任务交给执行者。
           简单任务走快速档，连续失败自动升级，连续 3 轮简单成功回落。路由完全在本机完成。
         </p>
       </div>
@@ -222,6 +257,15 @@ export function ModelRoutingSection() {
           />
         </div>
       </section>
+
+      <DivisionRoutingSection
+        routing={routing}
+        profiles={profiles}
+        prices={prices}
+        loading={loading}
+        saving={saving}
+        onChange={persist}
+      />
 
       <section data-setting-id="routing.candidates" className="settings-item space-y-2 px-3 py-3">
         <div className="flex flex-wrap items-center gap-2">

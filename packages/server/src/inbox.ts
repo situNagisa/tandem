@@ -84,6 +84,19 @@ export class Inbox {
     });
   }
 
+  recordDivisionPlan(
+    request: import('@tandem/protocol').DivisionPlanRequest,
+    sessionTitle: string,
+  ): InboxEvent {
+    return this.push({
+      kind: 'division_plan',
+      sessionId: request.sessionId,
+      sessionTitle,
+      requestId: request.id,
+      divisionPlan: request,
+    });
+  }
+
   recordTurnEnd(
     sessionId: string,
     sessionTitle: string,

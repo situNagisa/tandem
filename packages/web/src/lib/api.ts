@@ -622,6 +622,27 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(input),
     }),
+  resolveDivisionPlan: (
+    h: HostConfig,
+    id: string,
+    planId: string,
+    decision: import('@tandem/protocol').DivisionPlanDecision,
+  ) =>
+    request<{ ok: boolean }>(
+      h,
+      `/api/sessions/${encodeURIComponent(id)}/division-plan/${encodeURIComponent(planId)}`,
+      { method: 'POST', body: JSON.stringify(decision) },
+    ),
+  rerunSubagent: (h: HostConfig, id: string, model?: string) =>
+    request<{ ok: boolean; subagent?: { id: string; model: string } }>(
+      h,
+      `/api/sessions/${encodeURIComponent(id)}/subagent-rerun`,
+      { method: 'POST', body: JSON.stringify(model ? { model } : {}) },
+    ),
+  promoteSubagent: (h: HostConfig, id: string) =>
+    request<{ ok: boolean }>(h, `/api/sessions/${encodeURIComponent(id)}/subagent-promote`, {
+      method: 'POST',
+    }),
   markSessionRead: (h: HostConfig, id: string) =>
     request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/read`, {
       method: 'POST',

@@ -167,7 +167,13 @@ export function titleFromCommand(host: Host, rec: SessionRecord, cmd: ParsedComm
   rec.title = title.slice(0, 40);
 }
 
-export function appendNotice(host: Host, rec: SessionRecord, text: string, route?: ModelRouteDecision): void {
+export function appendNotice(
+  host: Host,
+  rec: SessionRecord,
+  text: string,
+  route?: ModelRouteDecision,
+  routePlan?: import('@tandem/protocol').RoutePlan,
+): void {
   const message: Message = {
     id: randomUUID(),
     role: 'assistant',
@@ -175,6 +181,7 @@ export function appendNotice(host: Host, rec: SessionRecord, text: string, route
     createdAt: Date.now(),
     notice: true,
     ...(route ? { route } : {}),
+    ...(routePlan ? { routePlan } : {}),
   };
   rec.messages.push(message);
   host.hub.broadcastSession(rec.id, {

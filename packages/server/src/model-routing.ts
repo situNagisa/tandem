@@ -3,13 +3,20 @@ import type {
   AutoRouteSavings,
   ContentBlock,
   DelegationStrategy,
+  DivisionRoutingSettings,
+  DomainRoute,
   ModelRouteDecision,
   ModelRoutingSettings,
   ModelTier,
   ProviderKind,
+  RouteAssignment,
   RouteCandidate,
+  RouteDomain,
   RoutePreference,
+  RouteRole,
+  RoutePlan,
   RouteScores,
+  TurnRouteMode,
 } from '@tandem/protocol';
 import { builtinCapabilities, overrideFor } from './providers/capabilities.js';
 import { completeText } from './providers/index.js';
@@ -331,6 +338,455 @@ export function candidateMetas(host: Host, settings: ModelRoutingSettings): Rout
   return metas;
 }
 
+// ---------- 分工路由：规则分类、角色解析与领域推断（零额外模型调用） ----------
+
+export const DOMAIN_LABELS: Record<RouteDomain, string> = {
+  ui: '前端 UI',
+  backend: '后端',
+  test: '测试',
+  docs: '文档',
+  data: '数据',
+  ops: '运维脚本',
+  general: '通用',
+};
+
+export const ROLE_LABELS: Record<RouteRole, string> = {
+  planner: '规划',
+  executor: '执行',
+  specialist: '专长执行',
+  reviewer: '审查',
+};
+
+const MECH_RULES: Array<{ label: string; re: RegExp }> = [
+  {
+    label: '装依赖',
+    re: /安装|装一下|装好|装个|添加依赖|npm\s+(i|install)|pnpm\s+(i|install|add)|yarn\s+(add|install)|pip\s+install|cargo\s+add|go\s+get/i,
+  },
+  {
+    label: '跑命令',
+    re: /跑一下|运行|执行|跑通|跑一遍|npm\s+(run\s+)?(test|build|lint)|pnpm\s+(test|build|lint)|yarn\s+(test|build|lint)|pytest|vitest|jest|playwright|eslint|tsc\b|构建|编译|打包/i,
+  },
+  {
+    label: '机械改写',
+    re: /格式化|format|重命名|rename|批量替换|替换所有|批量修改|改所有|逐个改|生成测试|生成样板|scaffold|加注释|补注释/i,
+  },
+];
+const MULTI_STEP_RE = /批量|所有文件|全项目|逐个|多步|一次改完|然后|接着|再(?!次)|并且|同时|顺便/;
+const QUESTION_RE =
+  /为什么|怎么|如何|解释|分析一下|看看|审查|评审|评估|比较|区别|是什么|能不能|是否|哪里|why|how|what|explain|review|compare/i;
+const DIRECT_RE = /直接做|不要派|别派|不用子代理|不用分工|你自己做|你来改/i;
+const ACTION_RE = /修改|改一下|改成|新增|添加|实现|修复|修好|调整|更新|替换|删掉|删除|优化|补上|加上|样式|布局|组件/i;
+const CONTEXT_HEAVY_RE =
+  /重构|架构|迁移|并发|竞态|死锁|跨模块|分布式|性能|安全|排查|设计|权衡|方案|原理|源码|深入|分析原因|debug|refactor|architect|migrat|concurren|deadlock|race|performance|security/i;
+
+const DOMAIN_RULES: Array<{ domain: RouteDomain; ext?: RegExp; path?: RegExp; keyword?: RegExp }> = [
+  {
+    domain: 'ui',
+    ext: /\.(tsx|jsx|css|scss|sass|less|vue|svelte|html)$/i,
+    path: /(^|\/)(components?|pages?|styles?|app|ui|frontend|web)\//i,
+    keyword: /前端|样式|界面|组件|按钮|布局|颜色|间距|主题|暗色|响应式|交互|动画|tailwind|react|vue|css|ui\b/i,
+  },
+  {
+    domain: 'test',
+    ext: /\.(test|spec)\.[a-z]+$/i,
+    path: /(^|\/)(test|tests|__tests__|e2e|spec)\//i,
+    keyword: /测试|单测|回归|用例|lint|eslint|vitest|jest|pytest|playwright|覆盖率/i,
+  },
+  {
+    domain: 'docs',
+    ext: /\.(md|mdx|txt|rst)$/i,
+    path: /(^|\/)(docs?|readme|changelog)\b/i,
+    keyword: /文档|说明|注释|readme|changelog|写作|润色/i,
+  },
+  {
+    domain: 'data',
+    ext: /\.(sql|csv|parquet|ipynb|jsonl?)$/i,
+    path: /(^|\/)(data|db|migrations?|queries)\//i,
+    keyword: /数据|数据表|查询|etl|统计|报表|字段|csv|sql/i,
+  },
+  {
+    domain: 'ops',
+    ext: /(dockerfile|docker-compose|\.ya?ml|\.sh|makefile)$/i,
+    path: /(^|\/)(scripts?|deploy|ops|infra|ci|\.github)\//i,
+    keyword: /安装|依赖|构建|部署|启动|运行|编译|打包|环境|docker|ci\b/i,
+  },
+  {
+    domain: 'backend',
+    ext: /\.(go|py|java|rs|rb|php|cs)$/i,
+    path: /(^|\/)(server|api|routes?|services?|backend|db)\//i,
+    keyword: /后端|接口|服务端|数据库|路由|api\b|fastify|express/i,
+  },
+];
+
+/** 从消息文本与最近工具输入推断领域；最近工具权重更高。 */
+export function inferRouteDomain(text: string, toolInputs: string[] = []): RouteDomain {
+  const scores = new Map<RouteDomain, number>();
+  const add = (domain: RouteDomain, value: number) => {
+    scores.set(domain, (scores.get(domain) ?? 0) + value);
+  };
+  for (const rule of DOMAIN_RULES) {
+    if (rule.keyword?.test(text)) add(rule.domain, 2);
+  }
+  for (const input of toolInputs.slice(-8)) {
+    for (const rule of DOMAIN_RULES) {
+      if (rule.ext?.test(input) || rule.path?.test(input)) add(rule.domain, 3);
+      if (rule.keyword?.test(input)) add(rule.domain, 1);
+    }
+  }
+  let best: RouteDomain = 'general';
+  let bestScore = 1;
+  for (const [domain, score] of scores) {
+    if (score > bestScore) {
+      best = domain;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+/** 最近几轮工具调用里的文件路径与命令，用于领域推断。 */
+export function recentToolInputs(rec: SessionRecord, limit = 12): string[] {
+  const out: string[] = [];
+  for (let i = rec.messages.length - 1; i >= 0 && out.length < limit; i -= 1) {
+    const message = rec.messages[i]!;
+    for (const block of message.content) {
+      if (block.type !== 'tool_use') continue;
+      const input = block.input as Record<string, unknown> | undefined;
+      if (!input) continue;
+      const parts = ['file_path', 'path', 'command', 'pattern', 'description']
+        .map((key) => (typeof input[key] === 'string' ? String(input[key]) : ''))
+        .filter(Boolean);
+      if (parts.length) out.push(parts.join(' '));
+      if (out.length >= limit) break;
+    }
+  }
+  return out;
+}
+
+function priceScoreOf(price: Price | undefined): number {
+  return price ? price.input + price.output : 20;
+}
+
+function inferTierFor(settings: ModelRoutingSettings, assignment: RouteAssignment): ModelTier {
+  const candidate = settings.candidates.find(
+    (item) =>
+      item.profileId === assignment.profileId &&
+      (item.groupId ?? '') === (assignment.groupId ?? '') &&
+      item.model === assignment.model,
+  );
+  if (candidate) return candidate.tier;
+  if (assignment.tier) return assignment.tier;
+  const name = assignment.model.toLowerCase();
+  if (/opus|sonnet|gpt-5(?!.*mini)|o3(?!.*mini)|reasoner|ultra|max|pro\b/.test(name)) return 'power';
+  if (/haiku|mini|nano|flash|lite|turbo|small|deepseek-chat/.test(name)) return 'fast';
+  return 'balanced';
+}
+
+function metaForAssignment(
+  host: Host,
+  settings: ModelRoutingSettings,
+  assignment: RouteAssignment,
+): RouteCandidateMeta | undefined {
+  const profile = host.profileFor(assignment.profileId, assignment.groupId);
+  if (!profile) return undefined;
+  const models = profile.models.length ? profile.models : [profile.defaultModel].filter(Boolean);
+  if (!models.includes(assignment.model)) return undefined;
+  const override = overrideFor(profile.modelCapabilities, assignment.model);
+  const contextWindow =
+    override?.contextWindow ?? builtinCapabilities(profile.kind, assignment.model).contextWindow;
+  const price = priceForModel(profile, assignment.model);
+  const candidate: RouteCandidate = {
+    ...assignment,
+    tier: inferTierFor(settings, assignment),
+  };
+  return {
+    candidate,
+    kind: profile.kind,
+    ...(contextWindow !== undefined ? { contextWindow } : {}),
+    ...(price ? { price } : {}),
+    available: candidateAvailable(host, candidate, profile.apiKey),
+    budgetBlocked: !!host.budgets.blockingRule({
+      profileId: assignment.profileId,
+      ...(assignment.groupId ? { groupId: assignment.groupId } : {}),
+      model: assignment.model,
+    }),
+  };
+}
+
+function usableMeta(meta: RouteCandidateMeta | undefined, contextTokens: number): RouteCandidateMeta | undefined {
+  if (!meta || !meta.available || meta.budgetBlocked) return undefined;
+  if (
+    contextTokens > 0 &&
+    meta.contextWindow !== undefined &&
+    contextTokens > meta.contextWindow * 0.9
+  ) {
+    return undefined;
+  }
+  return meta;
+}
+
+function cheapestMeta(metas: RouteCandidateMeta[], contextTokens: number): RouteCandidateMeta | undefined {
+  return metas
+    .filter((meta) => usableMeta(meta, contextTokens))
+    .sort((a, b) => priceScoreOf(a.price) - priceScoreOf(b.price))[0];
+}
+
+function strongestMeta(metas: RouteCandidateMeta[], contextTokens: number): RouteCandidateMeta | undefined {
+  const usable = metas.filter((meta) => usableMeta(meta, contextTokens));
+  return (
+    usable
+      .filter((meta) => meta.candidate.tier === 'power')
+      .sort((a, b) => priceScoreOf(b.price) - priceScoreOf(a.price))[0] ??
+    usable.sort((a, b) => tierIndexOf(b.candidate.tier) - tierIndexOf(a.candidate.tier))[0]
+  );
+}
+
+/** 解析角色绑定的实际模型：绑定不可用时回落到最便宜/最强候选。 */
+export function resolveDivisionAssignment(
+  host: Host,
+  settings: ModelRoutingSettings,
+  role: RouteRole,
+  domain?: RouteDomain,
+): RouteCandidateMeta | undefined {
+  const division = settings.division ?? {};
+  const metas = candidateMetas(host, settings);
+  const contextTokens = 0;
+  if (role === 'specialist') {
+    const route = division.domains?.find((item) => item.domain === domain);
+    if (route) {
+      const meta = usableMeta(metaForAssignment(host, settings, route), contextTokens);
+      if (meta) return meta;
+    }
+    return cheapestMeta(metas, contextTokens);
+  }
+  const assignment =
+    role === 'executor' ? division.executor : role === 'reviewer' ? division.reviewer : division.planner;
+  if (assignment) {
+    const meta = usableMeta(metaForAssignment(host, settings, assignment), contextTokens);
+    if (meta) return meta;
+  }
+  return role === 'executor' ? cheapestMeta(metas, contextTokens) : strongestMeta(metas, contextTokens);
+}
+
+export function departmentAssignmentOf(
+  host: Host,
+  domain: RouteDomain,
+): RouteAssignment | undefined {
+  const settings = routingSettingsOf(host);
+  const route = settings?.division?.domains?.find((item) => item.domain === domain);
+  if (!settings || !route) return undefined;
+  const meta = usableMeta(metaForAssignment(host, settings, route), 0);
+  return meta?.candidate;
+}
+
+export function domainRouteOf(
+  host: Host,
+  domain: RouteDomain,
+): DomainRoute | undefined {
+  return routingSettingsOf(host)?.division?.domains?.find((item) => item.domain === domain);
+}
+
+export interface TurnPlanContext {
+  text: string;
+  override?: TurnRouteMode;
+}
+
+function mechanicalLabelsOf(text: string): string[] {
+  return MECH_RULES.filter((rule) => rule.re.test(text)).map((rule) => rule.label);
+}
+
+/** 用户覆盖偏好的聚合键：领域 + 机械动作。 */
+export function learnedKeyFor(text: string, domain: RouteDomain): string {
+  return `${domain}:${mechanicalLabelsOf(text).join(',') || 'general'}`;
+}
+
+/** 记录一次人工覆盖；同类任务累计后默认采用用户的选择。 */
+export function noteLearnedPreference(
+  host: Host,
+  text: string,
+  plan: RoutePlan,
+  mode: TurnRouteMode,
+): void {
+  const settings = routingSettingsOf(host);
+  if (!settings) return;
+  const key = learnedKeyFor(text, plan.domain);
+  const learned = [...(settings.division?.learned ?? [])];
+  const index = learned.findIndex((item) => item.key === key && item.mode === mode);
+  if (index >= 0) {
+    learned[index] = { ...learned[index]!, count: learned[index]!.count + 1, updatedAt: Date.now() };
+  } else {
+    learned.push({ key, domain: plan.domain, mode, count: 1, updatedAt: Date.now() });
+  }
+  host.updateSettings({
+    modelRouting: {
+      ...settings,
+      division: { ...(settings.division ?? {}), learned: learned.slice(-40) },
+    },
+  });
+}
+
+/** 规则分类：直接做 / 便宜直做 / 分工；不调用模型。 */
+export function planTurnRoute(
+  host: Host,
+  rec: SessionRecord,
+  input: TurnPlanContext,
+): RoutePlan | undefined {
+  const settings = routingSettingsOf(host);
+  if (!settings) return undefined;
+  const text = input.text.trim();
+  if (!text) return undefined;
+  const signals = routeSignalsOf(host, rec, { content: [{ type: 'text', text }] }, 0, rec.routeState?.lastFailed === true);
+  const scores = scoreRoute(signals, settings.preference, rec.routeState);
+  const complexity = scores.complexity;
+  const division = settings.division;
+  const domain = inferRouteDomain(text, recentToolInputs(rec));
+  const executorMeta = resolveDivisionAssignment(host, settings, 'executor', domain);
+  const specialistMeta = resolveDivisionAssignment(host, settings, 'specialist', domain);
+  const domainRoute = division?.domains?.find((item) => item.domain === domain);
+  const specialist =
+    !!domainRoute &&
+    !!specialistMeta &&
+    specialistMeta.candidate.profileId === domainRoute.profileId &&
+    specialistMeta.candidate.model === domainRoute.model;
+  const hasTask = host.delegationFor(rec) !== 'none' && (rec.depth ?? 0) < 3;
+  const mechanical = mechanicalLabelsOf(text);
+  const preferred = input.override ?? rec.routePreference ?? 'auto';
+  const source: RoutePlan['source'] = preferred === 'auto' ? 'rule' : 'override';
+  const learned =
+    preferred === 'auto'
+      ? division?.learned?.find(
+          (item) => item.key === learnedKeyFor(text, domain) && item.count >= 2,
+        )
+      : undefined;
+  const base: Omit<RoutePlan, 'mode' | 'reason'> = {
+    domain,
+    specialist,
+    ...(executorMeta ? { executorModel: executorMeta.candidate.model } : {}),
+    ...(specialist && specialistMeta ? { specialistModel: specialistMeta.candidate.model } : {}),
+    source,
+  };
+
+  if (preferred === 'direct') return { ...base, mode: 'direct', reason: '用户指定直接做' };
+  if (preferred === 'cheap') {
+    return executorMeta
+      ? { ...base, mode: 'cheap', reason: '用户指定便宜直做' }
+      : { ...base, mode: 'direct', reason: '没有可用的执行模型' };
+  }
+  if (preferred === 'division') {
+    return hasTask && executorMeta
+      ? { ...base, mode: 'division', reason: '用户指定分工' }
+      : { ...base, mode: 'direct', reason: hasTask ? '没有可用的执行模型' : '当前委派策略不允许子代理' };
+  }
+
+  if (DIRECT_RE.test(text)) return { ...base, mode: 'direct', reason: '用户要求自己处理' };
+  if (!hasTask) return { ...base, mode: 'direct', reason: '委派已关闭' };
+  if (learned?.mode === 'direct') {
+    return { ...base, mode: 'direct', reason: `按你此前对同类任务的选择：直接做（${learned.count} 次）` };
+  }
+  const question = QUESTION_RE.test(text);
+  const contextHeavy = CONTEXT_HEAVY_RE.test(text);
+  const multiStep = MULTI_STEP_RE.test(text);
+  const actionable = ACTION_RE.test(text);
+  const planThreshold = division?.planThreshold ?? 55;
+  const specialistMin = domainRoute?.minComplexity ?? 55;
+  const budgetTight = (signals.budgetPressure ?? 0) >= 0.5;
+
+  if (question && !mechanical.length) {
+    return { ...base, mode: 'direct', reason: '问答/解释，不需要执行分工' };
+  }
+  if (contextHeavy && !(mechanical.length >= 2 && multiStep)) {
+    return { ...base, mode: 'direct', reason: '需要大量上下文判断，留在主会话' };
+  }
+  if (
+    mechanical.length > 0 &&
+    !question &&
+    complexity < 50 &&
+    text.length <= 240 &&
+    !(mechanical.length >= 2 && multiStep)
+  ) {
+    return {
+      ...base,
+      mode: executorMeta ? 'cheap' : 'direct',
+      reason: executorMeta ? `便宜直做：${mechanical.join('、')}` : '没有可用的执行模型',
+    };
+  }
+  if (budgetTight) {
+    return {
+      ...base,
+      mode: mechanical.length && executorMeta ? 'cheap' : 'direct',
+      reason: '预算偏紧，不做分工' + (mechanical.length ? '，机械步骤交给便宜模型' : ''),
+    };
+  }
+  if (mechanical.length >= 2 && multiStep && complexity >= Math.min(planThreshold, 45)) {
+    return {
+      ...base,
+      mode: executorMeta ? 'division' : 'direct',
+      reason: executorMeta ? `分工：${mechanical.join('、')}，可拆成独立子任务` : '没有可用的执行模型',
+    };
+  }
+  if (specialist && actionable && complexity >= specialistMin) {
+    return {
+      ...base,
+      mode: 'division',
+      reason: `分工：${DOMAIN_LABELS[domain]}专长匹配，复杂度 ${complexity} ≥ ${specialistMin}`,
+    };
+  }
+  if (complexity >= 90 && multiStep && executorMeta) {
+    return { ...base, mode: 'division', reason: `分工：复杂度 ${complexity}，多步任务` };
+  }
+  return {
+    ...base,
+    mode: 'direct',
+    reason: question
+      ? '问答/解释，直接做'
+      : actionable
+        ? '小改动/单步任务，直接做'
+        : '直接做',
+  };
+}
+
+/** 分工时注入规划者系统提示：只在这一轮生效。 */
+export function routePlanPrompt(plan: RoutePlan): string {
+  if (plan.mode !== 'division') return '';
+  const lines = [
+    '[分工路由 · 本轮分工]',
+    `分类理由：${plan.reason}。`,
+    '你是规划者，主会话模型和上下文保持不变。先用只读工具定位，写出 2–5 步计划；只把可独立执行的机械子任务派发出去，不要为了分工而分工。',
+    '用 Task 派发时，prompt 必须自包含：目标、相关文件路径、明确步骤、验收命令、不要修改的范围；不要把整段对话粘贴进去。子代理只回传最后一段摘要。',
+    plan.executorModel ? `- 执行者：role="executor"（${plan.executorModel}），跑命令、装依赖、批量机械修改、生成/运行测试。` : '',
+    plan.specialistModel
+      ? `- 专长执行者：role="specialist" domain="${plan.domain}"（${plan.specialistModel}），领域相关的修改优先交给它。`
+      : '',
+    '收到摘要后由你判断：继续派发、自己只读补查、或收尾。执行失败两次就自己接管或换模型，不要反复重试同一子任务。',
+  ];
+  return lines.filter(Boolean).join('\n');
+}
+
+/** 粗估分工计划花费：执行模型单价 × (prompt 估算 + 800 输出)。 */
+export function estimateDivisionPlanCost(host: Host, plan: RoutePlan, prompts: string[]): number {
+  const settings = routingSettingsOf(host);
+  if (!settings) return 0;
+  const role: RouteRole = plan.specialist ? 'specialist' : 'executor';
+  const meta = resolveDivisionAssignment(host, settings, role, plan.domain);
+  const price = meta?.price;
+  if (!price) return 0;
+  const inputTokens = prompts.reduce((sum, prompt) => sum + Math.ceil(prompt.length / 3), 0);
+  const outputTokens = 800 * Math.max(1, prompts.length);
+  return Math.round(((inputTokens * price.input + outputTokens * price.output) / 1_000_000) * 1e6) / 1e6;
+}
+
+export function routePlanText(plan: RoutePlan): string {
+  const mode =
+    plan.mode === 'direct' ? '直接做' : plan.mode === 'cheap' ? '便宜直做' : '分工';
+  const detail =
+    plan.mode === 'cheap' && plan.executorModel
+      ? ` · ${plan.executorModel}`
+      : plan.mode === 'division' && (plan.specialistModel ?? plan.executorModel)
+        ? ` · ${plan.specialist ? DOMAIN_LABELS[plan.domain] : '执行'} ${plan.specialistModel ?? plan.executorModel}`
+        : '';
+  return `${mode}${detail}（理由：${plan.reason}）`;
+}
+
 export function ensureRouteState(rec: SessionRecord): NonNullable<SessionRecord['routeState']> {
   if (!rec.routeState) {
     rec.routeState = {
@@ -459,21 +915,33 @@ export function recordRouteSavings(
   rec: SessionRecord,
   usage: NonNullable<import('@tandem/protocol').Message['usage']>,
   actualCost: number | undefined,
-): void {
-  if (actualCost === undefined) return;
+  role?: RouteRole,
+): number | undefined {
+  if (actualCost === undefined) return undefined;
   const settings = routingSettingsOf(host);
-  if (!settings) return;
+  if (!settings) return undefined;
   const sorted = [...settings.candidates].sort((a, b) => tierIndexOf(b.tier) - tierIndexOf(a.tier));
   const baseline = sorted[0];
-  if (!baseline) return;
+  if (!baseline) return undefined;
   const profile = host.profileFor(baseline.profileId, baseline.groupId);
   const price = profile ? priceForModel(profile, baseline.model) : undefined;
-  if (!profile || !price) return;
+  if (!profile || !price) return undefined;
   const baselineCost = costOfUsage(price, usage, profile.kind);
-  const saved = (rec.routeSavings?.savedUsd ?? 0) + (baselineCost - actualCost);
+  const saved = baselineCost - actualCost;
+  const byRole = { ...(rec.routeSavings?.byRole ?? {}) };
+  if (role) {
+    const current = byRole[role] ?? { calls: 0, costUsd: 0, savedUsd: 0 };
+    byRole[role] = {
+      calls: current.calls + 1,
+      costUsd: Math.round((current.costUsd + actualCost) * 1e8) / 1e8,
+      savedUsd: Math.round((current.savedUsd + saved) * 1e8) / 1e8,
+    };
+  }
   rec.routeSavings = {
-    savedUsd: Math.round(saved * 1e8) / 1e8,
+    savedUsd: Math.round(((rec.routeSavings?.savedUsd ?? 0) + saved) * 1e8) / 1e8,
     baselineModel: baseline.model,
     calls: (rec.routeSavings?.calls ?? 0) + 1,
+    ...(Object.keys(byRole).length ? { byRole } : {}),
   };
+  return saved;
 }

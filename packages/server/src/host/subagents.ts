@@ -6,9 +6,12 @@ import type {
   PermissionMode,
   PromptTemplateKey,
   ReasoningEffort,
+  RouteDomain,
+  RouteRole,
 } from '@tandem/protocol';
 import { runTurn } from '../agent/loop.js';
 import { TASK_DESCRIPTION_DEFAULT } from '../prompts/registry.js';
+import { resolveDivisionAssignment, routingSettingsOf } from '../model-routing.js';
 import { modelAliasOf } from '../subagent-presets.js';
 import { TOOLS, TOOL_MAP } from '../tools/index.js';
 import type { SessionRecord, ToolDefinition, ToolResult } from '../types.js';
@@ -16,7 +19,25 @@ import type { Host } from '../host.js';
 
 export function subagentConfig(host: Host, parent: SessionRecord,
     presetName?: string,
-    modelOverride?: string): { profileId: string; groupId?: string; model: string; autoRoute?: boolean; effort?: ReasoningEffort; permissionMode: PermissionMode; delegation: DelegationStrategy; toolWhitelist?: string[]; systemPromptExtra?: string; presetName?: string; } {
+    modelOverride?: string,
+    role?: RouteRole,
+    domain?: RouteDomain): { profileId: string; groupId?: string; model: string; autoRoute?: boolean; effort?: ReasoningEffort; permissionMode: PermissionMode; delegation: DelegationStrategy; toolWhitelist?: string[]; systemPromptExtra?: string; presetName?: string; routeRole?: RouteRole; } {
+  // 分工路由：内置执行者/专长角色优先于子代理预设，直接解析到设置里的绑定模型。
+  if (role) {
+    const settings = routingSettingsOf(host);
+    const meta = settings ? resolveDivisionAssignment(host, settings, role, domain) : undefined;
+    if (meta) {
+      return {
+        profileId: meta.candidate.profileId,
+        ...(meta.candidate.groupId ? { groupId: meta.candidate.groupId } : {}),
+        model: modelOverride?.trim() || meta.candidate.model,
+        ...(parent.effort ? { effort: parent.effort } : {}),
+        permissionMode: parent.permissionMode,
+        delegation: 'less',
+        routeRole: role,
+      };
+    }
+  }
   const preset = presetName ? host.subagentPresets.resolve(presetName, parent.cwd) : undefined;
   let profileId = parent.profileId;
   let groupId = parent.groupId;
@@ -62,12 +83,19 @@ export function subagentConfig(host: Host, parent: SessionRecord,
 }
 
 export async function runSubagent(host: Host, parent: SessionRecord,
-    input: { description: string; prompt: string; subagentType?: string; model?: string },
+    input: {
+      description: string;
+      prompt: string;
+      subagentType?: string;
+      model?: string;
+      role?: RouteRole;
+      domain?: RouteDomain;
+    },
     signal: AbortSignal): Promise<ToolResult> {
   if (signal.aborted) return { content: '用户中断', isError: true };
   const depth = (parent.depth ?? 0) + 1;
   if (depth > 3) return { content: '已达到最大代理层级，不能再派发子代理', isError: true };
-  const config = host.subagentConfig(parent, input.subagentType, input.model);
+  const config = host.subagentConfig(parent, input.subagentType, input.model, input.role, input.domain);
   const systemPromptExtra = [
     host.promptTemplates.render('subagentDefault', {}, parent.cwd),
     config.systemPromptExtra,
@@ -85,6 +113,7 @@ export async function runSubagent(host: Host, parent: SessionRecord,
     ...(config.autoRoute ? { autoRoute: true } : {}),
     permissionMode: config.permissionMode,
     ...(config.effort ? { effort: config.effort } : {}),
+    ...(config.routeRole ? { routeRole: config.routeRole } : {}),
     delegation: config.delegation,
     status: 'idle',
     createdAt: now,
@@ -127,14 +156,36 @@ export async function runSubagent(host: Host, parent: SessionRecord,
   const onAbort = () => host.interrupt(sub.id);
   signal.addEventListener('abort', onAbort, { once: true });
   if (signal.aborted) host.interrupt(sub.id);
+  const subMeta = { subagent: { id: sub.id, model: sub.model } };
   try {
     const result = await runTurn(host, sub, { allowTask: depth < 3 });
-    if (result.lastText) return { content: result.lastText };
-    if (result.reason === 'error') {
-      return { content: `子代理执行失败: ${result.error ?? '未知错误'}`, isError: true };
+    // 分工路由：子代理花费计入父会话本轮成本，节省归因合并到父会话（用量页仍按子会话角色单独统计）。
+    const parentRt = host.ensureRuntime(parent.id);
+    parentRt.turnCostUsd = (parentRt.turnCostUsd ?? 0) + (sub.usage.costUsd ?? 0);
+    if (sub.routeSavings) {
+      const byRole = { ...(parent.routeSavings?.byRole ?? {}) };
+      for (const [roleKey, value] of Object.entries(sub.routeSavings.byRole ?? {})) {
+        const key = roleKey as RouteRole;
+        const current = byRole[key] ?? { calls: 0, costUsd: 0, savedUsd: 0 };
+        byRole[key] = {
+          calls: current.calls + value.calls,
+          costUsd: Math.round((current.costUsd + value.costUsd) * 1e8) / 1e8,
+          savedUsd: Math.round((current.savedUsd + value.savedUsd) * 1e8) / 1e8,
+        };
+      }
+      parent.routeSavings = {
+        savedUsd: (parent.routeSavings?.savedUsd ?? 0) + sub.routeSavings.savedUsd,
+        baselineModel: sub.routeSavings.baselineModel,
+        calls: (parent.routeSavings?.calls ?? 0) + sub.routeSavings.calls,
+        ...(Object.keys(byRole).length ? { byRole } : {}),
+      };
     }
-    if (result.reason === 'interrupted') return { content: '子代理已被中断', isError: true };
-    return { content: '（子代理没有返回文本）' };
+    if (result.lastText) return { content: result.lastText, ...subMeta };
+    if (result.reason === 'error') {
+      return { content: `子代理执行失败: ${result.error ?? '未知错误'}`, isError: true, ...subMeta };
+    }
+    if (result.reason === 'interrupted') return { content: '子代理已被中断', isError: true, ...subMeta };
+    return { content: '（子代理没有返回文本）', ...subMeta };
   } finally {
     signal.removeEventListener('abort', onAbort);
   }
@@ -168,7 +219,12 @@ export function presetSummary(host: Host, cwd: string): string {
 }
 
 export function taskToolDescription(host: Host, cwd: string): string {
-  return TASK_DESCRIPTION_DEFAULT.replace(/\{\{presets\}\}/g, host.presetSummary(cwd));
+  const base = TASK_DESCRIPTION_DEFAULT.replace(/\{\{presets\}\}/g, host.presetSummary(cwd));
+  return (
+    base +
+    '\n分工路由：role="executor" 把机械子任务交给配置的便宜执行模型；role="specialist" 可带 domain（ui/backend/test/docs/data/ops/general）交给领域专长模型。' +
+    '子代理只收到你写的 prompt，务必自包含：目标、文件路径、步骤、验收命令与限制；不要把整段对话粘贴进去。'
+  );
 }
 
 export function delegationKey(host: Host, rec: SessionRecord): PromptTemplateKey {

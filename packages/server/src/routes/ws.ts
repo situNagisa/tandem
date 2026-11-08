@@ -183,7 +183,7 @@ export function registerWsRoutes(app: FastifyInstance, deps: RouteDeps): void {
           }
           const rec = host.getSession(msg.sessionId);
           void host
-            .send(msg.sessionId, msg.content)
+            .send(msg.sessionId, msg.content, msg.routeMode)
             .then(() => {
               recordAudit(host, principal, 'message.send', {
                 sessionId: msg.sessionId,

@@ -543,6 +543,23 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
                 : '（对比全程使用强力档）'}
             </div>
           )}
+          {summary?.routeSavings?.byRole && (
+            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[12px] leading-4 text-muted" data-route-roles>
+              {Object.entries(summary.routeSavings.byRole).map(([role, value]) => (
+                <span key={role}>
+                  {role === 'planner'
+                    ? '规划'
+                    : role === 'executor'
+                      ? '执行'
+                      : role === 'specialist'
+                        ? '专长'
+                        : '审查'}{' '}
+                  {formatCost(value.costUsd)}
+                  {value.savedUsd > 0 ? ` · 省 ${formatCost(value.savedUsd)}` : ''}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5">
             {stats.map((s) => (
               <div key={s.label} className="flex min-w-0 items-baseline justify-between gap-2">
@@ -651,7 +668,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         <DetailRow label="模型">
           <span className="font-mono text-[12px]">
             {summary?.autoRoute
-              ? `自动 · ${summary.route?.model ?? summary.model ?? '—'}`
+              ? `${summary.routeMode === 'division' ? '分工' : '自动'} · ${summary.route?.model ?? summary.model ?? '—'}`
               : (summary?.model ?? '—')}
           </span>
         </DetailRow>

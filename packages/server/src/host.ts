@@ -253,6 +253,15 @@ export class Host {
   keyRotation = new Map<string, number>();
   /** 交接「等待重置」的恢复计时器（sessionId → timeout）。 */
   handoffTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** 分工计划待确认（planId → 等待中的 Promise）。 */
+  divisionPlans = new Map<
+    string,
+    {
+      sessionId: string;
+      request: import('@tandem/protocol').DivisionPlanRequest;
+      resolve: (decision: import('@tandem/protocol').DivisionPlanDecision) => void;
+    }
+  >();
 
   accounts!: AccountsStore;
 
@@ -480,8 +489,14 @@ export class Host {
     return findModelForAlias(this, alias, preferredProfileId, preferredGroupId);
   }
 
-  subagentConfig(parent: SessionRecord, presetName?: string, modelOverride?: string): { profileId: string; groupId?: string; model: string; autoRoute?: boolean; effort?: ReasoningEffort; permissionMode: PermissionMode; delegation: DelegationStrategy; toolWhitelist?: string[]; systemPromptExtra?: string; presetName?: string; } {
-    return subagentConfig(this, parent, presetName, modelOverride);
+  subagentConfig(
+    parent: SessionRecord,
+    presetName?: string,
+    modelOverride?: string,
+    role?: import('@tandem/protocol').RouteRole,
+    domain?: import('@tandem/protocol').RouteDomain,
+  ): { profileId: string; groupId?: string; model: string; autoRoute?: boolean; effort?: ReasoningEffort; permissionMode: PermissionMode; delegation: DelegationStrategy; toolWhitelist?: string[]; systemPromptExtra?: string; presetName?: string; routeRole?: import('@tandem/protocol').RouteRole; } {
+    return subagentConfig(this, parent, presetName, modelOverride, role, domain);
   }
 
   keyCandidates(profileId: string, groupId?: string): { group?: StoredProfileGroup; effective?: StoredProfile; candidates: Array<{ keyId?: string; label?: string; profile: StoredProfile }>; } {
@@ -677,6 +692,8 @@ export class Host {
     groupId?: unknown;
     model?: unknown;
     autoRoute?: unknown;
+    routeMode?: unknown;
+    routePreference?: unknown;
     permissionMode?: unknown;
     effort?: unknown;
     delegation?: unknown;
@@ -694,6 +711,8 @@ export class Host {
       groupId?: unknown;
       model?: unknown;
       autoRoute?: unknown;
+      routeMode?: unknown;
+      routePreference?: unknown;
       permissionMode?: unknown;
       pinned?: unknown;
       pinnedTurns?: unknown;
@@ -726,16 +745,16 @@ export class Host {
 
   // ---------- 消息入口 ----------
 
-  send(sessionId: string, content: ContentBlock[]): Promise<void> {
-    return send(this, sessionId, content);
+  send(sessionId: string, content: ContentBlock[], routeMode?: import('@tandem/protocol').TurnRouteMode): Promise<void> {
+    return send(this, sessionId, content, routeMode);
   }
 
-  handleUserContent(rec: SessionRecord, content: ContentBlock[]): Promise<void> {
-    return handleUserContent(this, rec, content);
+  handleUserContent(rec: SessionRecord, content: ContentBlock[], routeMode?: import('@tandem/protocol').TurnRouteMode): Promise<void> {
+    return handleUserContent(this, rec, content, routeMode);
   }
 
-  sendToModel(rec: SessionRecord, content: ContentBlock[]): Promise<void> {
-    return sendToModel(this, rec, content);
+  sendToModel(rec: SessionRecord, content: ContentBlock[], routeMode?: import('@tandem/protocol').TurnRouteMode): Promise<void> {
+    return sendToModel(this, rec, content, routeMode);
   }
 
   autoTitle(rec: SessionRecord, firstText: string, baseTitle: string): Promise<void> {
@@ -754,8 +773,70 @@ export class Host {
     return ancestorsOf(this, rec);
   }
 
-  runSubagent(parent: SessionRecord, input: { description: string; prompt: string; subagentType?: string; model?: string }, signal: AbortSignal): Promise<ToolResult> {
+  runSubagent(
+    parent: SessionRecord,
+    input: {
+      description: string;
+      prompt: string;
+      subagentType?: string;
+      model?: string;
+      role?: import('@tandem/protocol').RouteRole;
+      domain?: import('@tandem/protocol').RouteDomain;
+    },
+    signal: AbortSignal,
+  ): Promise<ToolResult> {
     return runSubagent(this, parent, input, signal);
+  }
+
+  /** 换模型重跑：复制子代理的首条任务，在父会话下新建一个子代理。 */
+  async rerunSubagent(childId: string, model?: string): Promise<ToolResult | undefined> {
+    const child = this.store.get(childId);
+    const parent = child?.parentId ? this.store.get(child.parentId) : undefined;
+    if (!child || !parent) return undefined;
+    if (this.ensureRuntime(parent.id).running) throw new Error('主会话正在运行，稍后再试');
+    const prompt = child.messages
+      .find((message) => message.role === 'user')
+      ?.content.filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
+      .map((block) => block.text)
+      .join('\n')
+      .trim();
+    if (!prompt) return undefined;
+    const controller = new AbortController();
+    return this.runSubagent(
+      parent,
+      {
+        description: child.title,
+        prompt,
+        ...(model ? { model } : {}),
+        ...(child.routeRole ? { role: child.routeRole } : {}),
+      },
+      controller.signal,
+    );
+  }
+
+  /** 改由主会话直接做：把子代理的原始任务作为用户消息发回父会话。 */
+  async promoteSubagent(childId: string): Promise<boolean> {
+    const child = this.store.get(childId);
+    const parent = child?.parentId ? this.store.get(child.parentId) : undefined;
+    if (!child || !parent) return false;
+    const prompt = child.messages
+      .find((message) => message.role === 'user')
+      ?.content.filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
+      .map((block) => block.text)
+      .join('\n')
+      .trim();
+    if (!prompt) return false;
+    await this.send(
+      parent.id,
+      [
+        {
+          type: 'text',
+          text: `子代理「${child.title}」已停止。请由你直接完成这个任务：\n\n${prompt}`,
+        },
+      ],
+      'direct',
+    );
+    return true;
   }
 
   updateTodos(rec: SessionRecord, todos: Todo[]): void {
@@ -858,8 +939,40 @@ export class Host {
     return titleFromCommand(this, rec, cmd);
   }
 
-  appendNotice(rec: SessionRecord, text: string): void {
-    return appendNotice(this, rec, text);
+  appendNotice(
+    rec: SessionRecord,
+    text: string,
+    route?: import('@tandem/protocol').ModelRouteDecision,
+    routePlan?: import('@tandem/protocol').RoutePlan,
+  ): void {
+    return appendNotice(this, rec, text, route, routePlan);
+  }
+
+  /** 等待用户处理分工计划卡；中断时返回 cancel。 */
+  waitDivisionPlan(
+    rec: SessionRecord,
+    request: import('@tandem/protocol').DivisionPlanRequest,
+    signal: AbortSignal,
+  ): Promise<import('@tandem/protocol').DivisionPlanDecision> {
+    return new Promise((resolve) => {
+      const done = (decision: import('@tandem/protocol').DivisionPlanDecision) => {
+        this.divisionPlans.delete(request.id);
+        resolve(decision);
+      };
+      this.divisionPlans.set(request.id, { sessionId: rec.id, request, resolve: done });
+      if (signal.aborted) done({ action: 'cancel' });
+      else signal.addEventListener('abort', () => done({ action: 'cancel' }), { once: true });
+    });
+  }
+
+  resolveDivisionPlan(
+    planId: string,
+    decision: import('@tandem/protocol').DivisionPlanDecision,
+  ): boolean {
+    const pending = this.divisionPlans.get(planId);
+    if (!pending) return false;
+    pending.resolve(decision);
+    return true;
   }
 
   appendLocalAssistant(rec: SessionRecord, text: string): void {

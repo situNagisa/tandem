@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   FlaskConical,
+  GitFork,
   GitPullRequest,
   Inbox,
   Kanban,
@@ -76,6 +77,12 @@ function eventSummary(event: InboxEvent): { title: string; body?: string } {
     const name = permission?.toolName ?? '审批'
     return {
       title: event.decision === 'deny' ? `已拒绝 · ${name}` : `已允许 · ${name}`,
+    }
+  }
+  if (event.kind === 'division_plan' && event.divisionPlan) {
+    return {
+      title: '分工计划待确认',
+      body: `${event.divisionPlan.tasks.length} 个子任务 · 预计 $${event.divisionPlan.estimatedCostUsd.toFixed(4)}`,
     }
   }
   if (event.kind === 'turn_end') {
@@ -267,6 +274,7 @@ function EventIcon({ event }: { event: InboxEvent }) {
   if (event.kind === 'permission') {
     return event.plan ? <ShieldAlert size={14} /> : <BellRing size={14} />
   }
+  if (event.kind === 'division_plan') return <GitFork size={14} />
   if (event.kind === 'permission_resolved') return <Check size={14} />
   if (event.kind === 'budget') return <Wallet size={14} />
   if (event.kind === 'handoff') return <ArrowRightLeft size={14} />

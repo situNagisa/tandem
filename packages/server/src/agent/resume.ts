@@ -289,8 +289,14 @@ async function runRecoveredTool(
       rec.usage.outputTokens += usage.outputTokens;
       host.store.markDirty(rec.id, false);
     },
-    runSubagent: (input: { description: string; prompt: string; subagentType?: string; model?: string }) =>
-      host.runSubagent(rec, input, signal),
+    runSubagent: (input: {
+      description: string;
+      prompt: string;
+      subagentType?: string;
+      model?: string;
+      role?: import('@tandem/protocol').RouteRole;
+      domain?: import('@tandem/protocol').RouteDomain;
+    }) => host.runSubagent(rec, input, signal),
     getSkill: (name: string) => host.skills.resolve(name, rec.cwd),
     home: host.home,
     memory: host.memory,

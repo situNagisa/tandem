@@ -1,14 +1,36 @@
 import { useMemo } from 'react'
+import { Ellipsis } from 'lucide-react'
 import type { SubagentSession } from '../../lib/types'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { useNow } from '../../lib/hooks'
+import { api } from '../../lib/api'
+import { Menu } from '../ui/Menu'
+import { IconButton } from '../ui/Button'
+import { profileModelGroups } from '../../lib/profileModels'
+import { useSessionView } from '../session/SessionScope'
 import { runningSince } from '../../lib/runClock'
 import { formatElapsed, formatTokens } from '../../lib/format'
 import { cn } from '../../lib/cn'
 
-function AgentRow({ sub, depth }: { sub: SubagentSession; depth: number }) {
+function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number; hostId: string | null }) {
   const focusAgent = useUiStore((s) => s.focusAgent)
+  const toast = useUiStore((s) => s.toast)
+  const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
+  const profiles = useAppStore((s) => (hostId ? s.runtimes[hostId]?.profiles ?? [] : []))
+  const modelRows = useMemo(
+    () =>
+      profiles.flatMap((profile) =>
+        profileModelGroups(profile).flatMap((group) =>
+          group.models.map((model) => ({
+            key: `${profile.id}:${group.groupId ?? ''}:${model}`,
+            label: `${profile.name} › ${group.name} › ${model}`,
+            model,
+          })),
+        ),
+      ),
+    [profiles],
+  )
   const id = sub.summary?.id ?? ''
   const status = sub.summary?.status
   const running =
@@ -29,11 +51,30 @@ function AgentRow({ sub, depth }: { sub: SubagentSession; depth: number }) {
         : sub.loading
           ? '加载中'
           : '已结束'
+  const rerun = async (model?: string) => {
+    if (!host || !id) return
+    try {
+      await api.rerunSubagent(host, id, model)
+      toast('已换模型重新派发子代理', 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '重跑失败', 'error')
+    }
+  }
+  const promote = async () => {
+    if (!host || !id) return
+    try {
+      await api.promoteSubagent(host, id)
+      toast('已交给主会话直接做', 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '转交失败', 'error')
+    }
+  }
   return (
+    <div className="group flex min-h-8 items-center gap-0.5">
     <button
       type="button"
       onClick={() => id && focusAgent(id)}
-      className="flex min-h-8 w-full items-center gap-1.5 rounded-md pr-1 text-left text-[13px] transition-colors hover:bg-[var(--t-bg-hover)]"
+      className="flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md pr-1 text-left text-[13px] transition-colors hover:bg-[var(--t-bg-hover)]"
       style={{ paddingLeft: 4 + Math.max(0, depth - 1) * 14 }}
       title={sub.summary ? `${sub.summary.title} · ${sub.summary.model}` : undefined}
     >
@@ -61,12 +102,45 @@ function AgentRow({ sub, depth }: { sub: SubagentSession; depth: number }) {
         {formatTokens(tokens)}
       </span>
     </button>
+    {!running && id && (
+      <Menu
+        side="bottom"
+        align="end"
+        className="w-[240px]"
+        aria-label={`子代理操作：${sub.summary?.title ?? ''}`}
+        trigger={({ open }) => (
+          <IconButton
+            size="sm"
+            label="子代理操作"
+            tooltip="换模型重跑 / 改由主会话直接做"
+            className={cn('size-6! shrink-0 opacity-0 group-hover:opacity-100', open && 'opacity-100')}
+          >
+            <Ellipsis size={13} />
+          </IconButton>
+        )}
+      >
+        <Menu.Sub>
+          <Menu.SubTrigger>换模型重跑</Menu.SubTrigger>
+          <Menu.SubContent className="w-[280px]" aria-label="选择重跑模型">
+            {modelRows.map((row) => (
+              <Menu.Item key={row.key} onSelect={() => void rerun(row.model)}>
+                {row.label}
+              </Menu.Item>
+            ))}
+          </Menu.SubContent>
+        </Menu.Sub>
+        <Menu.Separator />
+        <Menu.Item onSelect={() => void promote()}>改由主会话直接做</Menu.Item>
+      </Menu>
+    )}
+    </div>
   )
 }
 
 export function AgentsCard() {
   const subagents = useAppStore((s) => s.active?.subagents)
   const activeSessionId = useAppStore((s) => s.active?.sessionId)
+  const hostId = useSessionView((s) => s?.hostId ?? null)
   const rows = useMemo(() => {
     if (!subagents || !activeSessionId) return []
     const children = new Map<string, SubagentSession[]>()
@@ -95,7 +169,7 @@ export function AgentsCard() {
   return (
     <div className="space-y-0.5">
       {rows.map(({ sub, depth }) => (
-        <AgentRow key={sub.summary?.id} sub={sub} depth={depth} />
+        <AgentRow key={sub.summary?.id} sub={sub} depth={depth} hostId={hostId} />
       ))}
     </div>
   )

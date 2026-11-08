@@ -148,7 +148,13 @@ export interface SessionRecord extends Session {
     /** 失败后下一轮至少升到这一档（成功后清除）。 */
     escalateFloor?: number;
     lastTrigger?: 'failure' | 'simple-success';
+    /** 上一轮实际花费，用于成本上限与展示。 */
+    lastTurnCostUsd?: number;
   };
+  /** 分工路由：子代理会话的角色（用于按角色统计）。 */
+  routeRole?: import('@tandem/protocol').RouteRole;
+  /** 最近一次分工分类结果与原文，用户改偏好时用于学习。 */
+  lastRoutePlan?: { plan: import('@tandem/protocol').RoutePlan; text: string };
   /** 最近一次配额预估（运行态，随 summary/context 下发）。 */
   quota?: import('@tandem/protocol').QuotaEstimate;
   /** 演示工作区会话：不进入真实搜索索引/用量统计，清除演示数据时一并删除。 */
@@ -211,6 +217,12 @@ export interface SessionRuntime {
   retryWake?: () => void;
   /** 当前轮的触发消息 id，用于写 runState。 */
   turnMessageId?: string;
+  /** 分工路由：本轮累计花费（主会话 + 子代理）。 */
+  turnCostUsd?: number;
+  /** 本轮已触发成本上限。 */
+  costCapHit?: boolean;
+  /** 本轮分工计划已确认，不再重复弹卡。 */
+  divisionConfirmed?: boolean;
 }
 
 export interface ToolDefinition {
@@ -230,6 +242,8 @@ export interface ToolResult {
   isError?: boolean;
   /** 可选的附加图片块（如 Read 图片），会跟在 tool_result 后面进入用户消息。 */
   images?: ContentBlock[];
+  /** Task 子代理：创建的子会话与模型（用于「换模型重跑」）。 */
+  subagent?: { id: string; model: string };
 }
 
 export interface ToolContext {
@@ -239,7 +253,14 @@ export interface ToolContext {
   updateTodos: (todos: Todo[]) => void;
   setUsage?: (usage: Usage) => void;
   /** Task 工具：在当前会话下创建子代理会话并执行完整 agent 循环。 */
-  runSubagent?: (input: { description: string; prompt: string; subagentType?: string; model?: string }) => Promise<ToolResult>;
+  runSubagent?: (input: {
+    description: string;
+    prompt: string;
+    subagentType?: string;
+    model?: string;
+    role?: import('@tandem/protocol').RouteRole;
+    domain?: import('@tandem/protocol').RouteDomain;
+  }) => Promise<ToolResult>;
   /** MCP 工具：把调用转发给对应服务器。 */
   callMcp?: (server: string, tool: string, input: unknown) => Promise<ToolResult>;
   /** Skill 工具：按名称取已启用技能的正文与目录。 */

@@ -31,6 +31,7 @@ import { DELEGATIONS, EFFORTS, PERMISSION_MODES, httpError, sanitizeVoiceSetting
 import { notifyExternalSessionsChanged } from './external.js';
 import { normalizeHandoffSettings } from '../handoff.js';
 import { normalizeRoutingSettings } from '../routing-settings.js';
+import { noteLearnedPreference } from '../model-routing.js';
 import {
   PAGE_BYTES_MAX,
   PAGE_LIMIT_DEFAULT,
@@ -206,6 +207,8 @@ export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
     ...(rec.groupId ? { groupId: rec.groupId } : {}),
     model: rec.model,
     ...(rec.autoRoute ? { autoRoute: true } : {}),
+    ...(rec.routeMode ? { routeMode: rec.routeMode } : {}),
+    ...(rec.routePreference && rec.routePreference !== 'auto' ? { routePreference: rec.routePreference } : {}),
     ...(rec.route ? { route: { ...rec.route, scores: { ...rec.route.scores } } } : {}),
     ...(rec.routeSavings ? { routeSavings: { ...rec.routeSavings } } : {}),
     permissionMode: rec.permissionMode,
@@ -442,6 +445,8 @@ export async function createSession(host: Host, input: {
     groupId?: unknown;
     model?: unknown;
     autoRoute?: unknown;
+    routeMode?: unknown;
+    routePreference?: unknown;
     permissionMode?: unknown;
     effort?: unknown;
     delegation?: unknown;
@@ -468,8 +473,16 @@ export async function createSession(host: Host, input: {
   const effective = effectiveProfile(profile, groupId);
   const requestedModel = typeof input.model === 'string' ? input.model.trim() : '';
   const autoRoute = input.autoRoute === true || requestedModel === 'auto';
+  const routeMode = autoRoute && input.routeMode === 'division' ? 'division' : undefined;
+  const routePreference =
+    input.routePreference === 'direct' ||
+    input.routePreference === 'cheap' ||
+    input.routePreference === 'division'
+      ? input.routePreference
+      : undefined;
+  // 自动/分工模式下，显式传入的模型保留为回退模型（分工时它就是规划者模型）。
   const model =
-    (!autoRoute && requestedModel) ||
+    ((autoRoute ? requestedModel !== 'auto' : true) && requestedModel) ||
     effective.defaultModel ||
     effective.models[0] ||
     '';
@@ -515,6 +528,8 @@ export async function createSession(host: Host, input: {
     ...(groupId ? { groupId } : {}),
     model,
     ...(autoRoute ? { autoRoute: true } : {}),
+    ...(routeMode ? { routeMode } : {}),
+    ...(routePreference ? { routePreference } : {}),
     permissionMode,
     ...(effort ? { effort } : {}),
     delegation,
@@ -550,6 +565,8 @@ export function updateSession(host: Host, id: string,
       groupId?: unknown;
       model?: unknown;
       autoRoute?: unknown;
+      routeMode?: unknown;
+      routePreference?: unknown;
       permissionMode?: unknown;
       pinned?: unknown;
       pinnedInProject?: unknown;
@@ -633,11 +650,38 @@ export function updateSession(host: Host, id: string,
     } else {
       rec.model = nextModel;
       delete rec.autoRoute;
+      delete rec.routeMode;
+      delete rec.routePreference;
     }
   }
   if (typeof patch.autoRoute === 'boolean') {
     if (patch.autoRoute) rec.autoRoute = true;
-    else delete rec.autoRoute;
+    else {
+      delete rec.autoRoute;
+      delete rec.routeMode;
+      delete rec.routePreference;
+    }
+  }
+  if (patch.routeMode === 'auto' || patch.routeMode === 'division') {
+    rec.autoRoute = true;
+    if (patch.routeMode === 'division') rec.routeMode = 'division';
+    else delete rec.routeMode;
+  }
+  if (patch.routePreference === 'auto') delete rec.routePreference;
+  else if (
+    patch.routePreference === 'direct' ||
+    patch.routePreference === 'cheap' ||
+    patch.routePreference === 'division'
+  ) {
+    rec.routePreference = patch.routePreference;
+    if (rec.lastRoutePlan && rec.lastRoutePlan.plan.mode !== patch.routePreference) {
+      noteLearnedPreference(
+        host,
+        rec.lastRoutePlan.text,
+        rec.lastRoutePlan.plan,
+        patch.routePreference,
+      );
+    }
   }
   if (typeof patch.pinned === 'boolean') {
     if (patch.pinned) rec.pinned = true;

@@ -1,6 +1,13 @@
 // Agent 循环：用户消息 -> 模型 -> 执行工具 -> 回填 tool_result -> 继续，直到没有工具调用。
 import { randomUUID } from 'node:crypto';
-import type { ContentBlock, Message, PermissionRequest } from '@tandem/protocol';
+import type {
+  ContentBlock,
+  DivisionPlanDecision,
+  DivisionPlanRequest,
+  Message,
+  PermissionRequest,
+  RoutePlan,
+} from '@tandem/protocol';
 import type { Host } from '../host.js';
 import type { SessionRecord } from '../types.js';
 import { streamChat } from '../providers/index.js';
@@ -29,7 +36,9 @@ import {
   noteInvalidOutput,
   noteToolFailure,
   noteTurnEnd,
+  estimateDivisionPlanCost,
   recordRouteSavings,
+  routePlanPrompt,
   routeSignalsOf,
   routingSettingsOf,
   type RouteSignals,
@@ -65,6 +74,8 @@ export interface TurnOptions {
   resume?: { pendingPermissions: PermissionRequest[] };
   /** 恢复时的触发消息 id（runState 中记录）。 */
   turnMessageId?: string;
+  /** 分工路由：本轮规则分类结果。 */
+  routePlan?: RoutePlan;
 }
 
 export async function runTurn(
@@ -77,10 +88,16 @@ export async function runTurn(
   const entryStatus = rec.status;
   rt.running = true;
   rt.interrupted = false;
+  rt.turnCostUsd = 0;
+  rt.costCapHit = false;
+  rt.divisionConfirmed = false;
   const abort = new AbortController();
   rt.abort = abort;
   const allowTask = options.allowTask !== false;
   const routingSettings = rec.autoRoute ? routingSettingsOf(host) : undefined;
+  let routePlan = options.routePlan;
+  let mainRole: import('@tandem/protocol').RouteRole | undefined =
+    routePlan?.mode === 'division' ? 'planner' : undefined;
   // 运行意图落盘：Host 崩溃/重启后据此续跑；trigger 为当前轮的用户消息
   const turnMessageId =
     options.turnMessageId ??
@@ -130,6 +147,61 @@ export async function runTurn(
     if (options.resume) {
       await replayUnfinishedTools(host, rec, abort.signal, hookEntries, options.resume);
     }
+    // 便宜直做：整条消息交给执行者子代理，主会话不请求模型，只落一条结果。
+    if (routePlan?.mode === 'cheap') {
+      const turnMessage = rec.messages.find((message) => message.id === turnMessageId);
+      const taskText = (turnMessage?.content ?? [])
+        .filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
+        .map((block) => block.text)
+        .join('\n')
+        .trim();
+      host.setStatus(rec, 'running');
+      const prompt = [
+        '你是执行者，直接在当前工作目录完成任务；不要拆分给其他代理，不要询问，除非遇到无法继续的阻塞。',
+        `工作目录：${rec.cwd}`,
+        `任务：${taskText}`,
+        '完成后用简短中文报告：做了什么、改了哪些文件、验证命令与结果。',
+      ].join('\n');
+      const sub = await host.runSubagent(
+        rec,
+        {
+          description: taskText.slice(0, 40) || '便宜直做',
+          prompt,
+          role: 'executor',
+          domain: routePlan.domain,
+        },
+        abort.signal,
+      );
+      if (sub.isError) {
+        host.appendNotice(rec, `便宜执行失败，改由主模型直接处理：${sub.content}`);
+        routePlan = undefined;
+        mainRole = undefined;
+      } else {
+        const assistant: Message = {
+          id: randomUUID(),
+          role: 'assistant',
+          content: [{ type: 'text', text: sub.content }],
+          createdAt: Date.now(),
+          ...(routePlan.executorModel ? { model: routePlan.executorModel } : {}),
+        };
+        rec.messages.push(assistant);
+        host.hub.broadcastSession(rec.id, {
+          type: 'message_start',
+          sessionId: rec.id,
+          message: assistant,
+        });
+        host.hub.broadcastSession(rec.id, {
+          type: 'message_end',
+          sessionId: rec.id,
+          message: assistant,
+        });
+        host.store.markDirty(rec.id, true);
+        host.broadcastSummary(rec);
+        reason = 'done';
+        loopCompleted = true;
+      }
+    }
+    if (!loopCompleted) {
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
       if (rt.interrupted || abort.signal.aborted) {
         reason = 'interrupted';
@@ -137,9 +209,15 @@ export async function runTurn(
       }
 
       host.setStatus(rec, 'running');
+      if (routePlan?.mode === 'division' && rt.costCapHit) {
+        host.appendLocalAssistant(rec, '本轮已达成本上限，已停止继续请求；执行结果见上。');
+        reason = 'done';
+        loopCompleted = true;
+        break;
+      }
       // 自动路由：每轮（含工具循环的每次请求）按当前信号重新选模型
       let routed: import('@tandem/protocol').ModelRouteDecision | undefined;
-      if (rec.autoRoute && routingSettings) {
+      if (rec.autoRoute && routingSettings && !routePlan) {
         const turnMessage = rec.messages.find((message) => message.id === turnMessageId);
         const toolDepth = countToolDepth(rec, turnMessageId);
         if (routingSettings.judge && !judgeAttempted) {
@@ -251,7 +329,9 @@ export async function runTurn(
         });
 
       let built = host.buildSystemFor(rec, { allowTask, hookContext: promptHookContext });
-      let system = built.system;
+      const withRoutePlan = (text: string) =>
+        routePlan?.mode === 'division' ? `${text}\n\n${routePlanPrompt(routePlan)}` : text;
+      let system = withRoutePlan(built.system);
       let requestMessages = buildRequestMessages();
       let contextEstimate = measure(system, requestMessages);
 
@@ -286,7 +366,7 @@ export async function runTurn(
           host.broadcastSummary(rec);
           // 压缩可能刚写入项目记忆，重建系统提示
           built = host.buildSystemFor(rec, { allowTask, hookContext: promptHookContext });
-          system = built.system;
+          system = withRoutePlan(built.system);
           requestMessages = buildRequestMessages();
           contextEstimate = measure(system, requestMessages);
         }
@@ -462,7 +542,7 @@ export async function runTurn(
             host.broadcastSnapshot(rec);
             host.broadcastSummary(rec);
             built = host.buildSystemFor(rec, { allowTask, hookContext: promptHookContext });
-            system = built.system;
+            system = withRoutePlan(built.system);
             host.recordInjections(rec, built.parts, turnMessageId);
             requestMessages = buildRequestMessages(assistant.id);
             contextEstimate = measure(system, requestMessages);
@@ -537,7 +617,22 @@ export async function runTurn(
         rec.usage.cacheWriteTokens = (rec.usage.cacheWriteTokens ?? 0) + cacheWriteTokens;
         rec.usage.reasoningTokens = (rec.usage.reasoningTokens ?? 0) + reasoningTokens;
         if (cost !== undefined) rec.usage.costUsd = roundCost((rec.usage.costUsd ?? 0) + cost);
+        rt.turnCostUsd = (rt.turnCostUsd ?? 0) + (cost ?? 0);
+        if (cost !== undefined) {
+          rec.routeState = rec.routeState ?? {
+            tierBias: 0,
+            simpleSuccesses: 0,
+            toolFailStreak: 0,
+            lastFailed: false,
+          };
+          rec.routeState.lastTurnCostUsd = rt.turnCostUsd;
+        }
         host.calibrateContext(rec, contextEstimate, inputTokens + cacheReadTokens + cacheWriteTokens);
+        const routeRole = (rec.routeRole ?? mainRole) as import('@tandem/protocol').RouteRole | undefined;
+        const saved =
+          rec.autoRoute || routeRole
+            ? recordRouteSavings(host, rec, assistant.usage!, cost, routeRole)
+            : undefined;
         if (host.profiles.get(requestProfileId)?.kind !== 'demo') {
           host.usage.record({
             hostId: host.config.hostId,
@@ -549,10 +644,23 @@ export async function runTurn(
             costUsd: cost ?? 0,
             ...(usedKeyId ? { keyId: usedKeyId } : {}),
             ...(requestGroupId ? { groupId: requestGroupId } : {}),
+            ...(routeRole ? { role: routeRole } : {}),
+            ...(saved && saved > 0 ? { routeSavedUsd: saved } : {}),
           });
         }
-        if (rec.autoRoute && routed) {
-          recordRouteSavings(host, rec, assistant.usage!, cost);
+        const costCap = (routingSettings ?? (routePlan ? routingSettingsOf(host) : undefined))?.division
+          ?.costCapUsdPerTurn;
+        if (
+          routePlan?.mode === 'division' &&
+          costCap !== undefined &&
+          !rt.costCapHit &&
+          rt.turnCostUsd >= costCap
+        ) {
+          rt.costCapHit = true;
+          host.appendNotice(
+            rec,
+            `本轮花费已达上限 $${costCap.toFixed(4)}，不再继续派发或请求；已执行的结果保留。`,
+          );
         }
         host.refreshQuota(rec);
       }
@@ -674,7 +782,137 @@ export async function runTurn(
         break;
       }
 
-      const resultBlocks =
+      // 分工前确认：拦截本轮第一批 Task 调用，展示可编辑的计划卡；确认后再执行。
+      const deletedTaskResults = new Map<string, ContentBlock>();
+      let activeToolUses = toolUses;
+      const planForCard = routePlan;
+      if (planForCard?.mode === 'division' && !rt.divisionConfirmed) {
+        const taskUses = toolUses.filter((tool) => tool.name === 'Task');
+        if (taskUses.length > 0) {
+          const division = routingSettingsOf(host)?.division;
+          const confirm = division?.confirm ?? 'expensive';
+          const threshold = division?.confirmOverUsd ?? 0.05;
+          const prompts = taskUses.map((tool) => {
+            const input = tool.input as Record<string, unknown> | undefined;
+            return typeof input?.prompt === 'string' ? input.prompt : '';
+          });
+          const estimated = estimateDivisionPlanCost(host, planForCard, prompts);
+          const need =
+            confirm === 'always' ||
+            (confirm === 'expensive' && (planForCard.specialist || estimated > threshold));
+          if (need) {
+            const request: DivisionPlanRequest = {
+              id: randomUUID(),
+              sessionId: rec.id,
+              tasks: taskUses.map((tool, index) => {
+                const input = (tool.input ?? {}) as Record<string, unknown>;
+                const taskRole =
+                  input.role === 'executor' || input.role === 'specialist'
+                    ? input.role
+                    : planForCard.specialist
+                      ? 'specialist'
+                      : 'executor';
+                const fallbackModel =
+                  taskRole === 'specialist'
+                    ? planForCard.specialistModel ?? planForCard.executorModel
+                    : planForCard.executorModel;
+                return {
+                  id: `task-${index + 1}`,
+                  toolUseId: tool.id,
+                  description: typeof input.description === 'string' ? input.description : '子任务',
+                  prompt: typeof input.prompt === 'string' ? input.prompt : '',
+                  role: taskRole,
+                  ...(typeof input.domain === 'string'
+                    ? { domain: input.domain as import('@tandem/protocol').RouteDomain }
+                    : { domain: planForCard.domain }),
+                  ...(typeof input.model === 'string'
+                    ? { model: input.model }
+                    : fallbackModel
+                      ? { model: fallbackModel }
+                      : {}),
+                };
+              }),
+              estimatedCostUsd: estimated,
+              reason: planForCard.reason,
+              createdAt: Date.now(),
+            };
+            const planMessage: Message = {
+              id: randomUUID(),
+              role: 'assistant',
+              content: [
+                {
+                  type: 'text',
+                  text: `分工计划待确认 · ${request.tasks.length} 个子任务 · 预计 $${estimated.toFixed(4)}（理由：${planForCard.reason}）`,
+                },
+              ],
+              createdAt: Date.now(),
+              notice: true,
+              divisionPlan: request,
+            };
+            rec.messages.push(planMessage);
+            host.hub.broadcastSession(rec.id, {
+              type: 'message_start',
+              sessionId: rec.id,
+              message: planMessage,
+            });
+            host.hub.broadcastSession(rec.id, {
+              type: 'message_end',
+              sessionId: rec.id,
+              message: planMessage,
+            });
+            host.store.markDirty(rec.id, true);
+            host.broadcastSummary(rec);
+            host.pushInbox(host.inbox.recordDivisionPlan(request, rec.title));
+            const decision = await host.waitDivisionPlan(rec, request, abort.signal);
+            rt.divisionConfirmed = true;
+            if (decision.action === 'cancel') {
+              reason = 'interrupted';
+              break;
+            }
+            if (decision.action === 'direct') {
+              routePlan = undefined;
+              mainRole = undefined;
+              for (const tool of taskUses) {
+                deletedTaskResults.set(tool.id, {
+                  type: 'tool_result',
+                  toolUseId: tool.id,
+                  content: '用户选择改为直接做：该子任务不再派发，由主模型继续。',
+                });
+              }
+            } else {
+              const edits = new Map((decision.tasks ?? []).map((item) => [item.id, item]));
+              taskUses.forEach((tool, index) => {
+                const edit = edits.get(`task-${index + 1}`);
+                if (edit?.deleted) {
+                  deletedTaskResults.set(tool.id, {
+                    type: 'tool_result',
+                    toolUseId: tool.id,
+                    content: '用户删除了该子任务。',
+                  });
+                  return;
+                }
+                const input = { ...((tool.input ?? {}) as Record<string, unknown>) };
+                if (edit?.model) input.model = edit.model;
+                if (decision.action === 'cheap') input.role = 'executor';
+                else if (edit?.role) input.role = edit.role;
+                if (edit?.domain) input.domain = edit.domain;
+                tool.input = input;
+              });
+            }
+            activeToolUses = toolUses.filter((tool) => !deletedTaskResults.has(tool.id));
+          }
+        }
+      }
+      const executed =
+        reason === 'interrupted' || activeToolUses.length === 0
+          ? []
+          : await executeToolUses(host, rec, activeToolUses, abort.signal, hookEntries, redact);
+      const executedById = new Map(
+        executed
+          .filter((block): block is Extract<ContentBlock, { type: 'tool_result' }> => block.type === 'tool_result')
+          .map((block) => [block.toolUseId, block]),
+      );
+      const resultBlocks: ContentBlock[] =
         reason === 'interrupted'
           ? toolUses.map<ContentBlock>((t) => ({
               type: 'tool_result',
@@ -682,7 +920,16 @@ export async function runTurn(
               content: '用户中断',
               isError: true,
             }))
-          : await executeToolUses(host, rec, toolUses, abort.signal, hookEntries, redact);
+          : toolUses.map(
+              (tool) =>
+                deletedTaskResults.get(tool.id) ??
+                executedById.get(tool.id) ?? {
+                  type: 'tool_result',
+                  toolUseId: tool.id,
+                  content: '工具未执行',
+                  isError: true,
+                },
+            );
 
       if (rec.autoRoute && reason !== 'interrupted') {
         if (noteToolFailure(rec, resultBlocks)) turnHadToolFailure = true;
@@ -713,6 +960,7 @@ export async function runTurn(
         reason = 'interrupted';
         break;
       }
+    }
     }
 
     if (!loopCompleted && reason === 'done') {
@@ -898,8 +1146,14 @@ async function executeToolUses(
         rec.usage.outputTokens += usage.outputTokens;
         host.store.markDirty(rec.id, false);
       },
-      runSubagent: (input: { description: string; prompt: string; subagentType?: string; model?: string }) =>
-        host.runSubagent(rec, input, signal),
+      runSubagent: (input: {
+        description: string;
+        prompt: string;
+        subagentType?: string;
+        model?: string;
+        role?: import('@tandem/protocol').RouteRole;
+        domain?: import('@tandem/protocol').RouteDomain;
+      }) => host.runSubagent(rec, input, signal),
       getSkill: (name: string) => host.skills.resolve(name, rec.cwd),
       ...(rec.board
         ? { proposeCards: (input: unknown) => host.boards.proposeFromSession(rec, input) }

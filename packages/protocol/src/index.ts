@@ -106,11 +106,62 @@ export interface RouteCandidate {
   model: string;
   tier: ModelTier;
 }
+/** 分工路由的角色：规划者 / 执行者 / 专长执行者 / 审查者。 */
+export type RouteRole = 'planner' | 'executor' | 'specialist' | 'reviewer';
+/** 任务领域（规则推断；设置里为领域绑定专长模型）。 */
+export type RouteDomain = 'ui' | 'backend' | 'test' | 'docs' | 'data' | 'ops' | 'general';
+/** 角色或领域绑定到的具体模型（账号 › 分组 › 模型）。 */
+export interface RouteAssignment {
+  profileId: string;
+  groupId?: string;
+  model: string;
+  /** 绑定时已知的档位；缺省按候选池或价格推断。 */
+  tier?: ModelTier;
+}
+export interface DomainRoute extends RouteAssignment {
+  domain: RouteDomain;
+  /** 使用专长模型的最低复杂度（0–100）。 */
+  minComplexity: number;
+  /** 专长说明，例如「前端 UI 强项」。 */
+  note?: string;
+}
+/** 学到的路由偏好：同类任务用户多次改成某个模式后，默认采用。 */
+export interface LearnedRoutePreference {
+  /** 领域 + 机械动作签名。 */
+  key: string;
+  domain: RouteDomain;
+  mode: TurnRouteMode;
+  count: number;
+  updatedAt: number;
+}
+/** 分工前确认策略。 */
+export type DivisionConfirm = 'never' | 'expensive' | 'always';
+/** 分工路由：规划/执行/审查各自的模型与领域专长策略。 */
+export interface DivisionRoutingSettings {
+  planner?: RouteAssignment;
+  executor?: RouteAssignment;
+  reviewer?: RouteAssignment;
+  domains?: DomainRoute[];
+  /** 复杂度达到该值才进入分工；缺省 55。 */
+  planThreshold?: number;
+  /** 复杂度达到该值才审查；缺省 65。 */
+  reviewThreshold?: number;
+  /** 每轮请求花费上限（美元）；达到后停止继续派发/请求。0/缺省为关闭。 */
+  costCapUsdPerTurn?: number;
+  /** 分工前确认：从不 / 仅贵时 / 总是。缺省 expensive。 */
+  confirm?: DivisionConfirm;
+  /** 「仅贵时」的预计花费阈值（美元）；缺省 0.05。 */
+  confirmOverUsd?: number;
+  /** 用户覆盖学到的偏好。 */
+  learned?: LearnedRoutePreference[];
+}
 export interface ModelRoutingSettings {
   candidates: RouteCandidate[];
   preference: RoutePreference;
   /** 可选：用小模型判断难度（一次很小的请求，默认关闭）。 */
   judge?: boolean;
+  /** 可选：分工路由配置；模型菜单选「分工」时使用。 */
+  division?: DivisionRoutingSettings;
 }
 /** 本轮路由打分明细（会话提示行 hover 展示）。 */
 export interface RouteScores {
@@ -146,12 +197,75 @@ export interface ModelRouteDecision {
   reason: string;
   scores: RouteScores;
   at: number;
+  /** 分工路由：本次请求的角色。自动路由不填。 */
+  role?: RouteRole;
+  /** 分工路由：本次推断的领域。 */
+  domain?: RouteDomain;
+  /** 是否由领域专长模型执行。 */
+  specialist?: boolean;
+  /** 本轮已达到成本上限，本次请求被降级。 */
+  costCapped?: boolean;
+}
+/** 分工路由按角色的用量。 */
+export interface RouteRoleUsage {
+  calls: number;
+  costUsd: number;
+  savedUsd: number;
 }
 /** 自动路由节省统计（对比全程使用最强候选）。 */
 export interface AutoRouteSavings {
   savedUsd: number;
   baselineModel: string;
   calls: number;
+  /** 分工路由：按角色拆分。 */
+  byRole?: Partial<Record<RouteRole, RouteRoleUsage>>;
+}
+/** 单轮路由模式：直接做 / 便宜直做 / 分工。 */
+export type TurnRouteMode = 'direct' | 'cheap' | 'division';
+/** 会话路由偏好：自动按规则，或固定为某种模式。 */
+export type RoutePreferenceMode = 'auto' | TurnRouteMode;
+/** 分工计划卡里的一个子任务（来自规划者的 Task 调用）。 */
+export interface DivisionTaskDraft {
+  id: string;
+  toolUseId: string;
+  description: string;
+  prompt: string;
+  role?: RouteRole;
+  domain?: RouteDomain;
+  model?: string;
+}
+/** 分工前确认：计划卡内容。 */
+export interface DivisionPlanRequest {
+  id: string;
+  sessionId: string;
+  tasks: DivisionTaskDraft[];
+  estimatedCostUsd: number;
+  reason: string;
+  createdAt: number;
+}
+export interface DivisionPlanTaskEdit {
+  id: string;
+  model?: string;
+  role?: RouteRole;
+  domain?: RouteDomain;
+  deleted?: boolean;
+}
+export interface DivisionPlanDecision {
+  action: 'approve' | 'direct' | 'cheap' | 'cancel';
+  tasks?: DivisionPlanTaskEdit[];
+}
+/** 本轮路由计划（服务端规则分类，零模型调用）。 */
+export interface RoutePlan {
+  mode: TurnRouteMode;
+  reason: string;
+  domain: RouteDomain;
+  /** 是否命中领域专长映射。 */
+  specialist: boolean;
+  /** 预计执行者/专长模型（用于提示行）。 */
+  executorModel?: string;
+  specialistModel?: string;
+  /** 分类来源：规则 / 用户覆盖。 */
+  source: 'rule' | 'override';
 }
 
 export interface RetryInfo {
@@ -171,6 +285,10 @@ export interface SessionSummary {
   model: string;
   /** 自动模型路由：每轮在「设置 → 模型路由」候选池中选择模型。 */
   autoRoute?: boolean;
+  /** 自动路由细分模式：auto = 整体选一个模型；division = 规划/执行/审查分工。缺省 auto。 */
+  routeMode?: 'auto' | 'division';
+  /** 分工路由偏好：自动分类，或固定为直接/便宜直做/分工。缺省 auto。 */
+  routePreference?: RoutePreferenceMode;
   /** 最近一次自动路由决策（当前生效模型与理由）。 */
   route?: ModelRouteDecision;
   /** 自动路由累计节省（对比全程使用强力档）。 */
@@ -320,6 +438,10 @@ export interface CreateSessionInput {
   /** 传 'auto' 表示启用自动模型路由（仍需 profileId 作为回退账号）。 */
   model?: string;
   autoRoute?: boolean;
+  /** 自动路由模式；model='auto' 时生效，缺省 auto。 */
+  routeMode?: 'auto' | 'division';
+  /** 分工路由偏好；缺省 auto（按规则）。 */
+  routePreference?: RoutePreferenceMode;
   permissionMode?: PermissionMode;
   effort?: ReasoningEffort;
   delegation?: DelegationStrategy;
@@ -328,7 +450,7 @@ export interface CreateSessionInput {
 }
 export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'max';
 // cwd：会话中途切换工作目录（下一轮生效，重新检测 env）
-export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'autoRoute' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'cwd' | 'pinnedTurns'>>;
+export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'autoRoute' | 'routeMode' | 'routePreference' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'cwd' | 'pinnedTurns'>>;
 
 // ---------- 外部会话（本机已有的 Claude Code / Codex 会话） ----------
 // 原则：只读原软件的文件，绝不写回；"导入"= 复制成 Tandem 会话后继续（可换任意模型）。
@@ -452,6 +574,10 @@ export interface Message {
   notice?: boolean;
   /** 自动路由切换提示：本轮实际使用的模型与打分明细（hover 展示）。 */
   route?: ModelRouteDecision;
+  /** 分工路由：本轮模式、理由与执行者（提示行展示，可一键覆盖偏好）。 */
+  routePlan?: RoutePlan;
+  /** 分工前确认卡：待确认的子任务、模型与预计花费。 */
+  divisionPlan?: DivisionPlanRequest;
   /** 压缩摘要消息：参与模型请求，但界面不直接展示（由 compaction 提示展开查看）。 */
   summary?: boolean;
   /** 自动/手动压缩后的单行提示，界面可展开查看摘要全文。 */
@@ -1291,7 +1417,7 @@ export interface BudgetAlert {
 // ---------- 收件箱（跨会话的“需要我”事件流） ----------
 // 客户端连上 WS 后发 subscribe_inbox，服务端把全 Host 的审批/回合结束/预算等摘要推给该连接。
 // 事件按 Host 内全局 seq 单调递增，客户端重连时带 sinceSeq 补齐；缓冲不覆盖则收到 inbox_snapshot。
-export type InboxEventKind = 'permission' | 'permission_resolved' | 'turn_end' | 'budget' | 'ci' | 'eval' | 'board' | 'handoff'
+export type InboxEventKind = 'permission' | 'permission_resolved' | 'turn_end' | 'budget' | 'ci' | 'eval' | 'board' | 'handoff' | 'division_plan'
 export interface InboxEvent {
   seq: number;
   kind: InboxEventKind;
@@ -1304,6 +1430,8 @@ export interface InboxEvent {
   depth?: number;
   /** kind=permission 时为完整审批请求（ExitPlanMode 的计划内容在 input.plan）。 */
   permission?: PermissionRequest;
+  /** kind=division_plan：分工计划待确认。 */
+  divisionPlan?: DivisionPlanRequest;
   /** 是计划待批准（ExitPlanMode），客户端显示为「计划审批」。 */
   plan?: boolean;
   requestId?: string;
@@ -1371,7 +1499,7 @@ export type ClientMsg =
   | { type: 'unsubscribe'; sessionId: string }
   | { type: 'subscribe_inbox'; sinceSeq?: number } // 订阅全 Host 收件箱；带 sinceSeq 时先补发
   | { type: 'unsubscribe_inbox' }
-  | { type: 'send'; sessionId: string; content: ContentBlock[] }  // 发送用户消息；运行中发送则排队
+  | { type: 'send'; sessionId: string; content: ContentBlock[]; routeMode?: TurnRouteMode }  // 发送用户消息；routeMode 为本次覆盖；运行中发送则排队
   | { type: 'interrupt'; sessionId: string }        // 中断当前轮（Esc）
   | { type: 'retry_now'; sessionId: string }        // 等待网络重试期间立即重试
   | { type: 'permission'; requestId: string; decision: PermissionDecision; reason?: string } // reason 仅用于 ExitPlanMode 的“继续完善”反馈
@@ -1890,7 +2018,7 @@ export interface InjectionSnapshot {
 // DELETE 会话时若有 worktree：未提交改动则 409，带 ?force=1 才删除
 
 // ---------- 用量统计 ----------
-export interface UsageStatsRow { day: string; hostId: string; profileId: string; model: string; inputTokens: number; outputTokens: number; costUsd: number; turns: number; keyId?: string; groupId?: string; memberId?: string; memberName?: string }
+export interface UsageStatsRow { day: string; hostId: string; profileId: string; model: string; inputTokens: number; outputTokens: number; costUsd: number; turns: number; keyId?: string; groupId?: string; memberId?: string; memberName?: string; /** 分工路由角色。 */ role?: RouteRole; /** 对比最强档估算节省。 */ routeSavedUsd?: number }
 // GET /api/usage?from=&to= -> UsageStatsRow[]   （Host 内置常见模型单价表，可在账号上覆盖 price: {input, output} 每百万 token 美元）
 // 经网关转发的请求额外带 memberId/memberName：用量页据此显示「按成员」维度，不会重复计数（一条请求只有一行）。
 

@@ -464,3 +464,11 @@
 - [x] `node scripts/release.mjs 0.3.0`：版本与 lockfile 同步、CHANGELOG 生成、本地标签 v0.3.0（未 push）
 - 验证：发布前后各跑一次全量 `node scripts/check.mjs`，均通过（100/100 回归）
 - 产物：`tandem-release.apk` / `.aab`、`tandem-debug.apk`、`Tandem-Setup-0.3.0-x64.exe` / `.blockmap` / `latest.yml`，均已复制到 Windows「下载」
+
+## 迭代 51（2026-11-08）分工路由 v2
+- [x] 设计：`docs/routing-v2.md`（子代理分工、缓存成本账、直接做/便宜直做/分工、不分工清单、人工选择与确认、领域专长、预设）
+- [x] 协议：`routeMode/routePreference/RoutePlan/DivisionPlanRequest`、Task `role/domain`、用量 `role/routeSavedUsd`、角色节省
+- [x] 服务端：规则分类零额外模型调用；主会话模型不变；Task 角色解析到分工绑定；便宜直做跳过主模型；失败回退；成本上限阻止继续派发；确认卡（改模型/删子任务/直接做/便宜直做）与收件箱；子代理换模型重跑/主会话接管；按领域学习覆盖
+- [x] 前端：模型菜单「分工」；输入框执行方式（自动/直接/便宜/分工 + 本会话保持）；每任务提示行与一键偏好；确认卡；子代理操作菜单；设置-模型路由角色/领域/预设/确认/成本/学习偏好；用量按角色与节省
+- [x] 验证：mock 回归「分工路由」（直接做零派发、便宜直做、专长分工、缓存命中、确认卡改模型/删任务、收件箱、成本上限、学习偏好）；截图 `/tmp/route2-shots/`；真实账号冒烟 gpt-6-sol 规划 → gpt-6-luna 执行（≤20 次请求）
+- 文档：设计 `docs/routing-v2.md`；未做结构化子任务自动并行/跨任务预算/自动验收（列为后续）

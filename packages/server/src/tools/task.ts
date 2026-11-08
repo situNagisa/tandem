@@ -32,6 +32,17 @@ export const definition: ToolDefinition = {
         description:
           'Optional model override for this subagent, e.g. a cheaper model. The preset model is used when omitted.',
       },
+      role: {
+        type: 'string',
+        enum: ['executor', 'specialist'],
+        description:
+          '分工路由角色：executor = 设置里的便宜执行模型；specialist = 领域专长模型（配合 domain）。',
+      },
+      domain: {
+        type: 'string',
+        enum: ['ui', 'backend', 'test', 'docs', 'data', 'ops', 'general'],
+        description: 'role=specialist 时的任务领域。',
+      },
     },
     required: ['description', 'prompt'],
   },
@@ -46,7 +57,14 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
   const subagentType =
     typeof input.subagent_type === 'string' ? input.subagent_type.trim() || undefined : undefined;
   const model = typeof input.model === 'string' ? input.model.trim() || undefined : undefined;
-  return ctx.runSubagent({ description, prompt, subagentType, model });
+  const role =
+    input.role === 'executor' || input.role === 'specialist' ? input.role : undefined;
+  const domain =
+    typeof input.domain === 'string' &&
+    ['ui', 'backend', 'test', 'docs', 'data', 'ops', 'general'].includes(input.domain)
+      ? (input.domain as import('@tandem/protocol').RouteDomain)
+      : undefined;
+  return ctx.runSubagent({ description, prompt, subagentType, model, ...(role ? { role } : {}), ...(domain ? { domain } : {}) });
 }
 
 /** 只读子代理类型：允许同一批 Task 并行执行。 */

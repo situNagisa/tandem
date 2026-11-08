@@ -17,6 +17,7 @@ import type {
   Profile,
   ReasoningEffort,
   SlashCommand,
+  TurnRouteMode,
 } from '@tandem/protocol'
 import {
   ArrowUp,
@@ -26,6 +27,7 @@ import {
   ChevronRight,
   Ellipsis,
   FileText,
+  GitFork,
   Image as ImageIcon,
   Loader2,
   Map,
@@ -137,6 +139,17 @@ async function imageFingerprint(file: File): Promise<string> {
 const MAX_ATTACHMENTS = 6
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
+const ROUTE_MODE_OPTIONS: Array<{ value: TurnRouteMode; label: string; hint: string }> = [
+  { value: 'direct', label: '直接做', hint: '主模型自己完成，不派子代理' },
+  { value: 'cheap', label: '便宜直做', hint: '整条消息交给便宜执行者，主会话只看结果' },
+  { value: 'division', label: '分工', hint: '规划者拆解，Task 派给执行者/专长模型' },
+]
+const ROUTE_MODE_LABEL: Record<TurnRouteMode, string> = {
+  direct: '直接做',
+  cheap: '便宜直做',
+  division: '分工',
+}
+
 export interface ComposerProps {
   /** 覆盖默认发送。返回 false（或 reject）时保留输入内容，其余返回视为成功并清空。 */
   onSubmit?: (content: ContentBlock[]) => unknown | Promise<unknown>
@@ -146,7 +159,15 @@ export interface ComposerProps {
   profileId?: string
   groupId?: string
   permissionMode?: PermissionMode
-  onModelChange?: (profileId: string, groupId: string | undefined, model: string) => void
+  onModelChange?: (
+    profileId: string,
+    groupId: string | undefined,
+    model: string,
+    routeMode?: TurnRouteMode,
+  ) => void
+  /** 无会话模式的执行方式（自动/直接/便宜/分工）。 */
+  routeMode?: TurnRouteMode
+  onRouteModeChange?: (mode: TurnRouteMode | undefined) => void
   onPermissionModeChange?: (mode: PermissionMode) => void
   /** 无会话模式的思考强度；缺省读上次使用值。 */
   effort?: ReasoningEffort
@@ -173,6 +194,8 @@ export function Composer({
   groupId: groupIdProp,
   permissionMode: permissionModeProp,
   onModelChange,
+  routeMode: routeModeProp,
+  onRouteModeChange,
   onPermissionModeChange,
   effort: effortProp,
   onEffortChange,
@@ -257,6 +280,15 @@ export function Composer({
   const currentModel = sessionless ? (modelProp ?? '') : (summary?.model ?? '')
   const autoRoute = sessionless ? currentModel === 'auto' : summary?.autoRoute === true
   const routedModel = summary?.route?.model
+  const [routeOverride, setRouteOverride] = useState<TurnRouteMode | undefined>(undefined)
+  const [keepRouteMode, setKeepRouteMode] = useState(false)
+  const sessionRoutePreference =
+    summary?.routePreference && summary.routePreference !== 'auto'
+      ? summary.routePreference
+      : undefined
+  const effectiveRouteMode = sessionless
+    ? routeModeProp
+    : routeOverride ?? sessionRoutePreference
   const currentProfileId = sessionless ? (profileIdProp ?? '') : (summary?.profileId ?? '')
   const currentGroupId = sessionless ? groupIdProp : summary?.groupId
   const [localEffort, setLocalEffort] = useState<ReasoningEffort>(loadLastEffort)
@@ -658,7 +690,8 @@ export function Composer({
       worktreeBusyRef.current = false
       if (!ready) return
     }
-    if (!send(blocks, scopeTarget)) return
+    if (!send(blocks, scopeTarget, routeOverride)) return
+    setRouteOverride(undefined)
     rememberSent(outgoingText)
     resetInput()
   }
@@ -711,11 +744,34 @@ export function Composer({
   const cachedPrices = priceCache[priceKey]
   const modelPrices = cachedPrices === 'loading' ? undefined : cachedPrices
 
-  const changeAutoRoute = () => {
+  const changeAutoRoute = (mode: 'auto' | 'division' = 'auto') => {
     const profile = currentProfileId || profiles[0]?.id
     if (!profile) return
     const group = currentGroupId ?? profileModelGroups(profiles.find((p) => p.id === profile) ?? null)[0]?.groupId
-    changeModel(profile, group, 'auto')
+    if (sessionless) {
+      onModelChange?.(profile, group, 'auto', undefined)
+      onRouteModeChange?.(mode === 'division' ? 'division' : undefined)
+      return
+    }
+    void updateSession(activeHostId!, summary!.id, { model: 'auto', routeMode: mode === 'division' ? 'division' : 'auto' })
+  }
+
+  const applyRouteMode = (mode: TurnRouteMode | undefined) => {
+    setRouteOverride(mode)
+    if (sessionless) onRouteModeChange?.(mode)
+    if (keepRouteMode && !sessionless && activeHostId && summary) {
+      void updateSession(activeHostId, summary.id, { routePreference: mode ?? 'auto' })
+    }
+  }
+
+  const toggleKeepRouteMode = () => {
+    const next = !keepRouteMode
+    setKeepRouteMode(next)
+    if (next && !sessionless && activeHostId && summary) {
+      void updateSession(activeHostId, summary.id, {
+        routePreference: effectiveRouteMode ?? 'auto',
+      })
+    }
   }
 
   const changeEffort = (next: ReasoningEffort, remember = true) => {
@@ -1064,6 +1120,65 @@ export function Composer({
               <ContextMeter compactDisabled={running} />
             </span>
           )}
+          {!compact && (
+            <Menu
+              side="top"
+              align="end"
+              className="w-[252px]"
+              aria-label="执行方式"
+              trigger={({ open }) => (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-expanded={open}
+                  aria-haspopup="menu"
+                  aria-label={`执行方式：${effectiveRouteMode ? ROUTE_MODE_LABEL[effectiveRouteMode] : '自动'}`}
+                  tooltip="本条消息的执行方式；默认自动按规则判断"
+                  tooltipSide="top"
+                  className={cn(
+                    'max-w-[132px] justify-start gap-1 px-2 font-normal',
+                    open && 'bg-[var(--t-bg-hover)] text-text-soft',
+                    effectiveRouteMode && 'text-text',
+                  )}
+                >
+                  <GitFork size={12} className="shrink-0 opacity-70" />
+                  <span className="truncate">
+                    {effectiveRouteMode ? ROUTE_MODE_LABEL[effectiveRouteMode] : '自动'}
+                  </span>
+                  {!effectiveRouteMode && <ChevronDown size={11} className="shrink-0 opacity-50" />}
+                </Button>
+              )}
+            >
+              <p className="px-2 pb-1.5 pt-1 text-[12px] leading-4 text-muted">
+                只影响本条消息；主会话模型与缓存不变。自动只在多步机械任务或专长匹配时分工。
+              </p>
+              <Menu.Item selected={!effectiveRouteMode} onSelect={() => applyRouteMode(undefined)}>
+                <span className="flex flex-col gap-0.5 py-0.5">
+                  <span>自动</span>
+                  <span className="text-[12px] text-muted">按规则判断；简单任务直接做</span>
+                </span>
+              </Menu.Item>
+              {ROUTE_MODE_OPTIONS.map((option) => (
+                <Menu.Item
+                  key={option.value}
+                  selected={effectiveRouteMode === option.value}
+                  onSelect={() => applyRouteMode(option.value)}
+                >
+                  <span className="flex flex-col gap-0.5 py-0.5">
+                    <span>{option.label}</span>
+                    <span className="text-[12px] text-muted">{option.hint}</span>
+                  </span>
+                </Menu.Item>
+              ))}
+              <Menu.Separator />
+              <Menu.Item keepOpen onSelect={toggleKeepRouteMode}>
+                <span className="flex w-full items-center justify-between">
+                  <span>本会话保持</span>
+                  <span className="text-muted">{keepRouteMode ? '✓' : ''}</span>
+                </span>
+              </Menu.Item>
+            </Menu>
+          )}
           <ModelMenu
             compact={compact}
             profiles={uiProfiles}
@@ -1071,6 +1186,7 @@ export function Composer({
             groupId={currentGroupId}
             model={currentModel}
             autoRoute={autoRoute}
+            routeMode={summary?.routeMode === 'division' ? 'division' : 'auto'}
             autoModel={autoRoute ? routedModel : undefined}
             prices={modelPrices}
             pricesLoading={cachedPrices === 'loading'}

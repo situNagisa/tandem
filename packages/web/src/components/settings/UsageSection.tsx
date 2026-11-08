@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart3, Loader2, RefreshCw, TriangleAlert } from 'lucide-react'
-import type { UsageStatsRow } from '@tandem/protocol'
+import type { RouteRole, UsageStatsRow } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { formatCost, formatTokens } from '../../lib/format'
@@ -379,6 +379,19 @@ export function UsageSection() {
       ),
     [rows],
   )
+  const roleStats = useMemo(() => {
+    const map = new Map<RouteRole, { role: RouteRole; calls: number; cost: number; saved: number }>()
+    for (const row of rows) {
+      if (!row.role) continue
+      const current = map.get(row.role) ?? { role: row.role, calls: 0, cost: 0, saved: 0 }
+      current.calls += row.turns
+      current.cost += row.costUsd
+      current.saved += row.routeSavedUsd ?? 0
+      map.set(row.role, current)
+    }
+    return [...map.values()].sort((a, b) => b.cost - a.cost)
+  }, [rows])
+
   const keyRanks = useMemo(
     () =>
       rank(
@@ -465,6 +478,36 @@ export function UsageSection() {
         {memberRanks.length > 0 && <RankTable title="按成员" rows={memberRanks} />}
         {hosts.length > 1 && <RankTable title="按 Host" rows={hostRanks} />}
       </div>
+
+      {roleStats.length > 0 && (
+        <div data-setting-id="usage.roles" className="mt-3 rounded-xl border border-border bg-surface">
+          <div className="border-b border-border/70 px-3 py-2 text-[13px] font-medium text-text-soft">
+            分工路由 · 按角色
+          </div>
+          <div className="divide-y divide-[var(--t-border)]">
+            {roleStats.map((item) => (
+              <div key={item.role} className="flex items-center gap-2 px-3 py-1.5 text-[13px]">
+                <span className="min-w-0 flex-1 text-text">
+                  {item.role === 'planner'
+                    ? '规划者'
+                    : item.role === 'executor'
+                      ? '执行者'
+                      : item.role === 'specialist'
+                        ? '专长执行者'
+                        : '审查者'}
+                </span>
+                <span className="w-12 shrink-0 text-right text-[12px] text-muted">{item.calls} 次</span>
+                <span className="w-20 shrink-0 text-right font-mono tabular-nums text-text">
+                  {formatCost(item.cost)}
+                </span>
+                <span className="w-24 shrink-0 text-right font-mono text-[12px] tabular-nums text-muted" title="对比全程使用最强档的估算节省">
+                  {item.saved > 0 ? `省 ${formatCost(item.saved)}` : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <p className="settings-note">
         花费为参考价（每百万 token 美元），内置常见模型单价；可在「账号与模型」编辑账号时按模型覆盖单价。

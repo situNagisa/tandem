@@ -12,6 +12,8 @@ import { ToolGroup, entriesFromMessages } from './chat/ToolGroup'
 import { HookNoticeLine } from './chat/HookNoticeLine'
 import { CompactionNoticeLine } from './chat/CompactionNoticeLine'
 import { HandoffCard } from './chat/HandoffCard'
+import { RoutePlanLine } from './chat/RoutePlanLine'
+import { DivisionPlanCard } from './chat/DivisionPlanCard'
 import { UserMessage } from './chat/UserMessage'
 import { AssistantMessage } from './chat/AssistantMessage'
 import {
@@ -104,6 +106,25 @@ const NoticeRow = memo(function NoticeRow({
         hostId={hostId}
         sessionId={sessionId}
         animate={animate}
+      />
+    )
+  }
+  if (message.divisionPlan) {
+    return (
+      <DivisionPlanCard
+        request={message.divisionPlan}
+        hostId={hostId}
+        sessionId={sessionId}
+      />
+    )
+  }
+  if (message.routePlan) {
+    return (
+      <RoutePlanLine
+        text={rawText}
+        mode={message.routePlan.mode}
+        hostId={hostId}
+        sessionId={sessionId}
       />
     )
   }

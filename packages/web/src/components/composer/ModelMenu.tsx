@@ -25,6 +25,7 @@ function ModelPanel({
   groupId,
   model,
   autoRoute,
+  routeMode,
   autoModel,
   prices,
   pricesLoading,
@@ -43,6 +44,7 @@ function ModelPanel({
   groupId?: string
   model: string
   autoRoute: boolean
+  routeMode?: 'auto' | 'division'
   autoModel?: string
   prices?: Record<string, ModelPriceInfo>
   pricesLoading?: boolean
@@ -50,7 +52,7 @@ function ModelPanel({
   efforts: ReasoningEffort[]
   loading: boolean
   onSelect: (profileId: string, groupId: string | undefined, model: string) => void
-  onSelectAuto: () => void
+  onSelectAuto: (mode: 'auto' | 'division') => void
   onLoadPrices?: (profileId: string, groupId: string | undefined) => void
   onEffortChange: (effort: ReasoningEffort) => void
   onManage: () => void
@@ -125,9 +127,9 @@ function ModelPanel({
       {models.length > 0 && (
         <>
           <Menu.Item
-            selected={autoRoute}
+            selected={autoRoute && routeMode !== 'division'}
             textValue="自动"
-            onSelect={onSelectAuto}
+            onSelect={() => onSelectAuto('auto')}
             className="h-auto min-h-[40px] py-1"
             hint="按本轮难度在「设置 → 自动路由」候选池中选择，失败自动升级、简单任务回落"
           >
@@ -137,9 +139,26 @@ function ModelPanel({
                 自动
               </span>
               <span className="truncate text-[12px] leading-4 text-muted">
-                {autoModel
+                {autoModel && (routeMode !== 'division')
                   ? `当前 ${prettyModel(autoModel)} · 每轮按难度选择`
                   : '每轮按难度在候选池中选择'}
+              </span>
+            </span>
+          </Menu.Item>
+          <Menu.Item
+            selected={autoRoute && routeMode === 'division'}
+            textValue="分工"
+            onSelect={() => onSelectAuto('division')}
+            className="h-auto min-h-[40px] py-1"
+            hint="主会话模型保持规划者；机械子任务用 Task 派给便宜/专长执行者"
+          >
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="flex items-center gap-1 truncate text-[13px] leading-4">
+                <Sparkles size={12} className="shrink-0 text-text-tertiary" />
+                分工
+              </span>
+              <span className="truncate text-[12px] leading-4 text-muted">
+                规划/执行分离 · 主会话缓存保持
               </span>
             </span>
           </Menu.Item>
@@ -283,6 +302,7 @@ export function ModelMenu({
   groupId,
   model,
   autoRoute = false,
+  routeMode,
   autoModel,
   prices,
   pricesLoading,
@@ -307,6 +327,7 @@ export function ModelMenu({
   model: string
   /** 自动路由开启时，模型按钮显示「自动 · 当前模型名」。 */
   autoRoute?: boolean
+  routeMode?: 'auto' | 'division'
   autoModel?: string
   prices?: Record<string, ModelPriceInfo>
   pricesLoading?: boolean
@@ -329,7 +350,9 @@ export function ModelMenu({
   const currentGroup = groupName(currentProfile ?? undefined, groupId)
   const showEffort = !autoRoute && efforts.length > 0 && efforts.includes(effort)
   const label = autoRoute
-    ? `自动${autoModel ? ` · ${shortModelName(autoModel)}` : ''}`
+    ? routeMode === 'division'
+      ? `分工${model ? ` · ${shortModelName(model)}` : ''}`
+      : `自动${autoModel ? ` · ${shortModelName(autoModel)}` : ''}`
     : model
       ? `${shortModelName(model)}${showEffort ? effortSuffix(effort) : ''}`
       : '选择模型'
@@ -378,6 +401,7 @@ export function ModelMenu({
         groupId={groupId}
         model={model}
         autoRoute={autoRoute}
+        routeMode={routeMode}
         autoModel={autoModel}
         prices={prices}
         pricesLoading={pricesLoading}

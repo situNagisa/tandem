@@ -184,13 +184,15 @@ export class UsageStore {
       const groupId = typeof row.groupId === 'string' && row.groupId ? row.groupId : undefined;
       const memberId = typeof row.memberId === 'string' && row.memberId ? row.memberId : undefined;
       const memberName = memberId && typeof row.memberName === 'string' ? row.memberName : undefined;
-      const key = rowKey(row.day, row.hostId, row.profileId, row.model, keyId, groupId, memberId);
+      const role = row.role;
+      const key = rowKey(row.day, row.hostId, row.profileId, row.model, keyId, groupId, memberId, role);
       const existing = this.rows.get(key);
       if (existing) {
         existing.inputTokens += num(row.inputTokens);
         existing.outputTokens += num(row.outputTokens);
         existing.costUsd += num(row.costUsd);
         existing.turns += num(row.turns);
+        if (row.routeSavedUsd) existing.routeSavedUsd = (existing.routeSavedUsd ?? 0) + num(row.routeSavedUsd);
       } else {
         this.rows.set(key, {
           day: row.day,
@@ -205,6 +207,8 @@ export class UsageStore {
           ...(groupId ? { groupId } : {}),
           ...(memberId ? { memberId } : {}),
           ...(memberName ? { memberName } : {}),
+          ...(role ? { role } : {}),
+          ...(row.routeSavedUsd ? { routeSavedUsd: num(row.routeSavedUsd) } : {}),
         });
       }
     }
@@ -225,13 +229,18 @@ export class UsageStore {
     /** 网关转发的请求：归属成员（用量页按成员统计与成员限额）。 */
     memberId?: string;
     memberName?: string;
+    /** 分工路由角色。 */
+    role?: import('@tandem/protocol').RouteRole;
+    /** 对比最强档的估算节省。 */
+    routeSavedUsd?: number;
   }): void {
     const day = input.day ?? localDay();
     const keyId = input.keyId || undefined;
     const groupId = input.groupId || undefined;
     const memberId = input.memberId || undefined;
     const memberName = memberId ? input.memberName || undefined : undefined;
-    const key = rowKey(day, input.hostId, input.profileId, input.model, keyId, groupId, memberId);
+    const role = input.role || undefined;
+    const key = rowKey(day, input.hostId, input.profileId, input.model, keyId, groupId, memberId, role);
     let row = this.rows.get(key);
     if (!row) {
       row = {
@@ -247,12 +256,14 @@ export class UsageStore {
         ...(groupId ? { groupId } : {}),
         ...(memberId ? { memberId } : {}),
         ...(memberName ? { memberName } : {}),
+        ...(role ? { role } : {}),
       };
       this.rows.set(key, row);
     }
     row.inputTokens += Math.max(0, Math.round(input.inputTokens || 0));
     row.outputTokens += Math.max(0, Math.round(input.outputTokens || 0));
     row.costUsd += Math.max(0, input.costUsd || 0);
+    if (input.routeSavedUsd) row.routeSavedUsd = (row.routeSavedUsd ?? 0) + input.routeSavedUsd;
     row.turns += 1;
     this.scheduleSave();
   }
@@ -307,8 +318,9 @@ function rowKey(
   keyId?: string,
   groupId?: string,
   memberId?: string,
+  role?: string,
 ): string {
-  return `${day}\u0000${hostId}\u0000${profileId}\u0000${model}\u0000${keyId ?? ''}\u0000${groupId ?? ''}\u0000${memberId ?? ''}`;
+  return `${day}\u0000${hostId}\u0000${profileId}\u0000${model}\u0000${keyId ?? ''}\u0000${groupId ?? ''}\u0000${memberId ?? ''}\u0000${role ?? ''}`;
 }
 
 function num(value: unknown): number {

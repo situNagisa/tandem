@@ -35,11 +35,17 @@ export function createMessagesSlice(
       patchView(view.hostId, view.sessionId, (a) => ({ ...a, turnError: undefined }))
     },
 
-    send: (blocks, target) => {
+    send: (blocks, target, routeMode) => {
       const view = viewOf(target)
       if (!view) return false
       const conn = ensureConnection(view.hostId)
-      const ok = conn?.send({ type: 'send', sessionId: view.sessionId, content: blocks }) ?? false
+      const ok =
+        conn?.send({
+          type: 'send',
+          sessionId: view.sessionId,
+          content: blocks,
+          ...(routeMode ? { routeMode } : {}),
+        }) ?? false
       if (!ok) {
         toast('Host 未连接，消息未发送', 'error')
         return false

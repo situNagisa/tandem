@@ -1,8 +1,9 @@
 // 消息入口、回合调度、中断、排队与 /compact。
 import { randomUUID } from 'node:crypto';
-import type { ContentBlock, Message, Todo } from '@tandem/protocol';
+import type { ContentBlock, Message, RoutePlan, Todo, TurnRouteMode } from '@tandem/protocol';
 import { BUILTIN_NAMES, findCommandBody, parseSlashCommand } from '../agent/commands.js';
 import { runTurn } from '../agent/loop.js';
+import { noteLearnedPreference, planTurnRoute, routePlanText } from '../model-routing.js';
 import { completeText } from '../providers/index.js';
 import { persist as persistRunState } from '../run-state.js';
 import { errorMessage } from '../util/text.js';
@@ -27,23 +28,33 @@ export function ensureRuntime(host: Host, id: string): SessionRuntime {
   return rt;
 }
 
-export async function send(host: Host, sessionId: string, content: ContentBlock[]): Promise<void> {
+export async function send(
+  host: Host,
+  sessionId: string,
+  content: ContentBlock[],
+  routeMode?: TurnRouteMode,
+): Promise<void> {
   const rec = host.store.get(sessionId);
   if (!rec) throw new Error('会话不存在');
   const rt = host.ensureRuntime(sessionId);
   if (rt.deleted) return;
   const blocks = Array.isArray(content) ? content.filter(isContentBlock) : [];
   if (blocks.length === 0) throw new Error('消息不能为空');
-  // 运行中发送：排队，等本轮（含工具循环）结束后执行
+  // 运行中发送：排队，等本轮（含工具循环）结束后执行；一次性执行方式只对立即发送的消息生效
   if (rt.running || rt.draining) {
     rt.queue.push(blocks);
     persistRunState(host, rec);
     return;
   }
-  await host.handleUserContent(rec, blocks);
+  await host.handleUserContent(rec, blocks, routeMode);
 }
 
-export async function handleUserContent(host: Host, rec: SessionRecord, content: ContentBlock[]): Promise<void> {
+export async function handleUserContent(
+  host: Host,
+  rec: SessionRecord,
+  content: ContentBlock[],
+  routeMode?: TurnRouteMode,
+): Promise<void> {
   // #记住…：直接写入项目记忆，不发给模型
   const remembered = rememberTextOf(content);
   if (remembered !== undefined) {
@@ -72,10 +83,15 @@ export async function handleUserContent(host: Host, rec: SessionRecord, content:
       if (await host.handleCommand(rec, cmd)) return;
     }
   }
-  await host.sendToModel(rec, content);
+  await host.sendToModel(rec, content, routeMode);
 }
 
-export async function sendToModel(host: Host, rec: SessionRecord, content: ContentBlock[]): Promise<void> {
+export async function sendToModel(
+  host: Host,
+  rec: SessionRecord,
+  content: ContentBlock[],
+  routeMode?: TurnRouteMode,
+): Promise<void> {
   // 用户主动发新消息：取消尚未处理的交接卡/等待计时器，按新回合继续
   if (rec.handoff && rec.handoff.status !== 'done') host.cancelHandoff(rec);
   const text = content
@@ -128,7 +144,22 @@ export async function sendToModel(host: Host, rec: SessionRecord, content: Conte
   });
   host.store.markDirty(rec.id, true);
   host.broadcastSummary(rec);
-  const result = await runTurn(host, rec);
+  // 分工路由：规则分类（零模型调用）；提示行先插入，再开始本轮。
+  let routePlan: RoutePlan | undefined;
+  if (text && (rec.routeMode === 'division' || rec.routePreference || routeMode)) {
+    routePlan = planTurnRoute(host, rec, { text, ...(routeMode ? { override: routeMode } : {}) });
+    if (routePlan) {
+      rec.lastRoutePlan = { plan: routePlan, text };
+      host.appendNotice(rec, routePlanText(routePlan), undefined, routePlan);
+      if (routeMode && routePlan.source === 'override') {
+        const rule = planTurnRoute(host, rec, { text });
+        if (rule && rule.mode !== routePlan.mode) {
+          noteLearnedPreference(host, text, routePlan, routePlan.mode);
+        }
+      }
+    }
+  }
+  const result = await runTurn(host, rec, routePlan ? { routePlan } : {});
   if (rec.board) host.boards.noteTurn(rec.id, result);
   // 主会话回合结束写入收件箱（子代理只把结果回传父会话，不单独提醒；评测内部会话不打扰）。
   // 看板卡片也只进历史聚合、不计未读（silent），否则「最近」会长期停在「回合进行中」。

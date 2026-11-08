@@ -70,6 +70,7 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'routing.candidates', tab: 'routing', title: '自动路由候选池', keywords: ['自动', '路由', '候选', '模型', '档位', '快速', '强力'] },
   { id: 'routing.preference', tab: 'routing', title: '路由偏好', keywords: ['省钱', '均衡', '质量', '偏好'] },
   { id: 'routing.judge', tab: 'routing', title: '用小模型判断难度', keywords: ['判断', '难度', '小模型', '自动路由'] },
+  { id: 'routing.division', tab: 'routing', title: '分工路由', keywords: ['分工', '规划', '执行', '专长', 'Task', '子代理', '便宜直做', '确认'] },
 
   { id: 'hosts.list', tab: 'hosts', title: '主机列表', keywords: ['主机', '服务器', '连接'] },
   { id: 'hosts.add', tab: 'hosts', title: '添加主机', keywords: ['新增', '服务器', '扫码'] },
