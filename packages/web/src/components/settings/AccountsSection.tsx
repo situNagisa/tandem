@@ -7,6 +7,7 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  Pencil,
   Plus,
   RefreshCw,
   Shield,
@@ -78,6 +79,7 @@ export function AccountsSection() {
   const [joinCode, setJoinCode] = useState<{ code: string; expiresAt: number } | null>(null)
   const [copied, setCopied] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  const [editing, setEditing] = useState<WorkspaceAccount | null>(null)
 
   const load = useCallback(async () => {
     if (!activeHost) return
@@ -350,6 +352,7 @@ export function AccountsSection() {
                 centerHost={centerHost}
                 canEdit={isOwner && acc.role !== 'owner'}
                 onChanged={() => void load()}
+                onEdit={() => setEditing(acc)}
               />
             ))}
           </div>
@@ -369,12 +372,17 @@ export function AccountsSection() {
       <LoginDialog open={loginOpen} onClose={() => setLoginOpen(false)} defaultCenterUrl={activeHost?.url} />
       {centerHost && (
         <CreateAccountDialog
-          open={createOpen}
-          onClose={() => setCreateOpen(false)}
+          open={createOpen || !!editing}
+          account={editing ?? undefined}
+          onClose={() => {
+            setCreateOpen(false)
+            setEditing(null)
+          }}
           hosts={overview?.hosts ?? []}
           centerHost={centerHost}
           onDone={() => {
             setCreateOpen(false)
+            setEditing(null)
             void load()
           }}
         />
@@ -479,12 +487,14 @@ function AccountRow({
   centerHost,
   canEdit,
   onChanged,
+  onEdit,
 }: {
   account: WorkspaceAccount
   hosts: WorkspaceOverview['hosts']
   centerHost: ReturnType<typeof useAppStore.getState>['hosts'][number]
   canEdit: boolean
   onChanged: () => void
+  onEdit: () => void
 }) {
   const toast = useUiStore((s) => s.toast)
   const [busy, setBusy] = useState(false)
@@ -540,6 +550,11 @@ function AccountRow({
         <span className="text-[12px] text-muted">{ROLE_LABELS[account.role]}</span>
       )}
       {canEdit && (
+        <IconButton label={`编辑 ${account.username} 的授权`} onClick={onEdit}>
+          <Pencil size={13} />
+        </IconButton>
+      )}
+      {canEdit && (
         <IconButton
           label={`吊销账号 ${account.username}`}
           onClick={async () => {
@@ -564,55 +579,89 @@ function AccountRow({
 
 function CreateAccountDialog({
   open,
+  account,
   onClose,
   hosts,
   centerHost,
   onDone,
 }: {
   open: boolean
+  /** 传入表示编辑已有账号的授权。 */
+  account?: WorkspaceAccount
   onClose: () => void
   hosts: WorkspaceOverview['hosts']
   centerHost: ReturnType<typeof useAppStore.getState>['hosts'][number]
   onDone: () => void
 }) {
+  const editing = !!account
   const [username, setUsername] = useState('')
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<WorkspaceRole>('collaborator')
   const [scope, setScope] = useState<WorkspaceScope>('all')
   const [selectedHosts, setSelectedHosts] = useState<string[]>([])
-  const [dirsText, setDirsText] = useState('')
+  const [dirsByHost, setDirsByHost] = useState<Record<string, string>>({})
   const [totp, setTotp] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 打开时用当前账号（编辑）或默认值（新建）重置表单。
+  useEffect(() => {
+    if (!open) return
+    setUsername(account?.username ?? '')
+    setName(account?.name ?? '')
+    setPassword('')
+    setRole(account?.role && account.role !== 'owner' ? account.role : 'collaborator')
+    setScope(account?.scope ?? 'all')
+    setSelectedHosts(account?.hostIds ?? [])
+    setDirsByHost(
+      Object.fromEntries(
+        Object.entries(account?.projectDirsByHost ?? {}).map(([id, dirs]) => [id, dirs.join('\n')]),
+      ),
+    )
+    setTotp(false)
+    setError(null)
+  }, [open, account])
   const submit = async () => {
     setBusy(true)
     setError(null)
     try {
       const dirs: Record<string, string[]> = {}
       if (scope === 'projects') {
-        for (const line of dirsText.split('\n')) {
-          const [hostId, dir] = line.split('|').map((s) => s.trim())
-          if (!hostId || !dir) continue
-          ;(dirs[hostId] ??= []).push(dir)
+        for (const hostId of selectedHosts) {
+          const lines = (dirsByHost[hostId] ?? '')
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+          if (lines.length) dirs[hostId] = lines
         }
       }
-      const created = await accountApi.createAccount(centerHost, {
-        username,
-        name,
-        password,
-        role,
-        scope,
-        hostIds: scope === 'all' ? [] : selectedHosts,
-        projectDirsByHost: dirs,
-        totp,
-      })
-      if (created.totpSecret) {
-        window.alert(`TOTP 密钥（只显示一次）：${created.totpSecret}\n\n${created.totpUrl ?? ''}`)
+      if (editing && account) {
+        await accountApi.updateAccount(centerHost, account.id, {
+          name,
+          ...(password ? { password } : {}),
+          role,
+          scope,
+          hostIds: scope === 'all' ? [] : selectedHosts,
+          projectDirsByHost: dirs,
+        })
+      } else {
+        const created = await accountApi.createAccount(centerHost, {
+          username,
+          name,
+          password,
+          role,
+          scope,
+          hostIds: scope === 'all' ? [] : selectedHosts,
+          projectDirsByHost: dirs,
+          totp,
+        })
+        if (created.totpSecret) {
+          window.alert(`TOTP 密钥（只显示一次）：${created.totpSecret}\n\n${created.totpUrl ?? ''}`)
+        }
       }
       onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建失败')
+      setError(err instanceof Error ? err.message : '保存失败')
     } finally {
       setBusy(false)
     }
@@ -621,14 +670,14 @@ function CreateAccountDialog({
     <Modal
       open={open}
       onClose={onClose}
-      title="新建工作区账号"
+      title={editing ? '编辑账号授权' : '新建工作区账号'}
       description="按账号授权到机器与项目；吊销后该账号在所有主机上立即失效。"
       className="max-w-[520px]"
       footer={
         <div className="flex w-full justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>取消</Button>
           <Button variant="primary" onClick={() => void submit()} disabled={busy}>
-            {busy ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} 创建
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} {editing ? '保存' : '创建'}
           </Button>
         </div>
       }
@@ -637,7 +686,12 @@ function CreateAccountDialog({
         <div className="grid grid-cols-2 gap-2">
           <label className="space-y-1">
             <span className="text-[12px] text-muted">用户名</span>
-            <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="chen" />
+            <Input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="chen"
+              disabled={editing}
+            />
           </label>
           <label className="space-y-1">
             <span className="text-[12px] text-muted">显示名</span>
@@ -645,8 +699,8 @@ function CreateAccountDialog({
           </label>
         </div>
         <label className="block space-y-1">
-          <span className="text-[12px] text-muted">初始密码（至少 8 位）</span>
-          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <span className="text-[12px] text-muted">{editing ? '重置密码（留空不修改）' : '初始密码（至少 8 位）'}</span>
+          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={editing ? '留空不修改' : ''} />
         </label>
         <div className="grid grid-cols-2 gap-2">
           <label className="space-y-1">
@@ -689,23 +743,34 @@ function CreateAccountDialog({
           </div>
         )}
         {scope === 'projects' && (
-          <label className="block space-y-1">
-            <span className="text-[12px] text-muted">项目目录（每行：主机 id | 绝对路径）</span>
-            <Textarea
-              value={dirsText}
-              onChange={(e) => setDirsText(e.target.value)}
-              placeholder={`${hosts[0]?.id ?? 'host-id'} | /home/you/project`}
-              rows={3}
-            />
-            <span className="block text-[11.5px] text-muted">
-              主机 id 可在上方主机列表悬停地址栏查看；v1 只支持绝对路径。
-            </span>
+          <div className="space-y-2">
+            <span className="text-[12px] text-muted">各主机的项目目录（每行一个绝对路径）</span>
+            {selectedHosts.length === 0 && (
+              <p className="text-[12px] text-muted">先在上方勾选授权机器，再填项目目录。</p>
+            )}
+            {selectedHosts.map((hostId) => {
+              const host = hosts.find((h) => h.id === hostId)
+              return (
+                <label key={hostId} className="block space-y-1">
+                  <span className="text-[11.5px] text-muted">{host?.name ?? hostId}</span>
+                  <Textarea
+                    value={dirsByHost[hostId] ?? ''}
+                    onChange={(e) => setDirsByHost((prev) => ({ ...prev, [hostId]: e.target.value }))}
+                    placeholder="/home/you/project"
+                    rows={2}
+                  />
+                </label>
+              )
+            })}
+            <span className="block text-[11.5px] text-muted">v1 只支持绝对路径，且路径必须在该 Host 上存在。</span>
+          </div>
+        )}
+        {!editing && (
+          <label className="flex items-center gap-2 text-[12.5px] text-text-soft">
+            <input type="checkbox" checked={totp} onChange={(e) => setTotp(e.target.checked)} />
+            要求 TOTP 二次验证（创建后显示一次密钥）
           </label>
         )}
-        <label className="flex items-center gap-2 text-[12.5px] text-text-soft">
-          <input type="checkbox" checked={totp} onChange={(e) => setTotp(e.target.checked)} />
-          要求 TOTP 二次验证（创建后显示一次密钥）
-        </label>
         {error && <p className="text-[12.5px] text-[var(--t-danger)]">{error}</p>}
       </div>
     </Modal>
