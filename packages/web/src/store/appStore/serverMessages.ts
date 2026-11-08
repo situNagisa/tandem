@@ -235,11 +235,12 @@ export function createServerMessageHandler(
             pending = pending.filter((item) => item.requestId !== event.requestId)
           }
           const counts =
-            event.kind === 'permission' ||
-            event.kind === 'turn_end' ||
-            event.kind === 'budget' ||
-            event.kind === 'ci' ||
-            event.kind === 'board'
+            !event.silent &&
+            (event.kind === 'permission' ||
+              event.kind === 'turn_end' ||
+              event.kind === 'budget' ||
+              event.kind === 'ci' ||
+              event.kind === 'board')
           return {
             inbox: {
               ...state.inbox,
@@ -279,7 +280,7 @@ export function createServerMessageHandler(
           cancelPermissionNotification(event.requestId)
         } else if (event.kind === 'turn_end') {
           const isError = event.turnReason === 'error'
-          if (isError ? ui.notifyEvents.error : ui.notifyEvents.turnEnd) {
+          if (!event.silent && (isError ? ui.notifyEvents.error : ui.notifyEvents.turnEnd)) {
             notifyTurnEnd({
               hostId,
               sessionId: event.sessionId ?? '',

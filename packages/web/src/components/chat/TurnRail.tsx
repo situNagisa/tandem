@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from 'react'
+import { userTurnMessages } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { isTargetFocused, useSessionTarget, useSessionView } from '../session/SessionScope'
 import { useUiStore } from '../../store/useUiStore'
@@ -25,8 +26,10 @@ export interface TurnMark {
   id: string
   /** 1-based 轮次序号 */
   turn: number
-  /** 用户消息首行 */
+  /** 行内显示的前 120 字 */
   preview: string
+  /** 首行全文，悬停/读屏用。 */
+  full: string
 }
 
 const EMPTY_MESSAGES: UiMessage[] = []
@@ -36,8 +39,7 @@ function turnsFromMessages(messages: UiMessage[]): TurnMark[] {
   const cached = turnCache.get(messages)
   if (cached) return cached
   const next: TurnMark[] = []
-  messages.forEach((message) => {
-    if (message.role !== 'user') return
+  for (const message of userTurnMessages(messages)) {
     let hasImage = false
     const texts: string[] = []
     for (const b of message.content) {
@@ -50,14 +52,15 @@ function turnsFromMessages(messages: UiMessage[]): TurnMark[] {
         .split('\n')
         .map((line) => line.replace(/\s+/g, ' ').trim())
         .find(Boolean) ?? ''
-    const text = firstLine || (hasImage ? '图片' : '')
-    if (!text) return
+    const full = firstLine || (hasImage ? '图片' : '')
+    if (!full) continue
     next.push({
       id: message.id,
       turn: next.length + 1,
-      preview: text.length > 120 ? `${text.slice(0, 120)}…` : text,
+      preview: full.length > 120 ? `${full.slice(0, 120)}…` : full,
+      full,
     })
-  })
+  }
   turnCache.set(messages, next)
   return next
 }
@@ -77,11 +80,13 @@ export function useTurnMarks(): TurnMark[] {
         id: turn.messageId,
         turn: index + 1,
         preview: turn.preview,
+        full: turn.preview,
       })),
       ...extra.map((turn, index) => ({
         id: turn.id,
         turn: serverTurns.length + index + 1,
         preview: turn.preview,
+        full: turn.full,
       })),
     ]
   }, [messages, serverTurns])
@@ -137,6 +142,7 @@ export function TurnRail({
   const indRef = useRef<HTMLDivElement>(null)
   const curRef = useRef<HTMLDivElement>(null)
   const hitRef = useRef<HTMLDivElement>(null)
+  const tipRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   const sceneRef = useRef<RailScene | null>(null)
   const followerRef = useRef<ScrollFollower | null>(null)
@@ -387,6 +393,7 @@ export function TurnRail({
     setOpen(false)
     sceneRef.current?.setOpen(false)
     sceneRef.current?.setCenter(activeRef.current)
+    if (tipRef.current) tipRef.current.style.opacity = '0'
   }, [])
 
   const openPanel = useCallback(() => {
@@ -442,6 +449,24 @@ export function TurnRail({
   const pointerY = (event: ReactPointerEvent<HTMLElement>): number =>
     event.clientY - (navRef.current?.getBoundingClientRect().top ?? 0)
 
+  /** 大纲行悬停提示：行本身在 aria-hidden 的动画池里，用独立浮层显示首行全文。 */
+  const updateTip = (turn: number | null, y: number) => {
+    const tip = tipRef.current
+    if (!tip) return
+    const mark = turn == null ? undefined : turnsRef.current[turn - 1]
+    if (!mark || !mark.full) {
+      tip.style.opacity = '0'
+      return
+    }
+    tip.textContent = mark.full
+    tip.style.transform = `translate3d(0,${y - 16}px,0)`
+    tip.style.opacity = '1'
+  }
+
+  const hideTip = () => {
+    if (tipRef.current) tipRef.current.style.opacity = '0'
+  }
+
   const onPointerEnter = (event: ReactPointerEvent<HTMLElement>) => {
     window.clearTimeout(closeTimer.current)
     closeTimer.current = 0
@@ -456,14 +481,17 @@ export function TurnRail({
   const onPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     const scene = sceneRef.current
     if (!scene) return
-    scene.setPointer(pointerY(event))
+    const y = pointerY(event)
+    scene.setPointer(y)
     if (event.pointerType !== 'touch') scene.setHoverEnabled(true)
+    updateTip(scene.hoverTurn, y)
   }
 
   const onPointerLeave = (event: ReactPointerEvent<HTMLElement>) => {
     window.clearTimeout(openTimer.current)
     openTimer.current = 0
     if (dragRef.current || useFeedbackStore.getState().active) return
+    hideTip()
     // 指针移到行尾图钉等面板内元素时，hit 也会收到 pointerleave，不应收起。
     // relatedTarget 可能是 Window（离开文档/浮层卸载），不能直接 contains。
     if (nodeContains(navRef.current, event.relatedTarget)) return
@@ -613,7 +641,7 @@ export function TurnRail({
             aria-valuemin={1}
             aria-valuemax={total}
             aria-valuenow={activeTurn}
-            aria-valuetext={`第 ${activeTurn} 轮${current ? ` · ${current.preview}` : ''}`}
+            aria-valuetext={`第 ${activeTurn} 轮${current ? ` · ${current.full}` : ''}`}
             onPointerEnter={onPointerEnter}
             onPointerMove={onPointerMove}
             onPointerLeave={onPointerLeave}
@@ -628,6 +656,14 @@ export function TurnRail({
               if (!dragRef.current) closePanel()
             }}
           />
+          <div ref={tipRef} className="turn-tip" aria-hidden />
+          <ol className="sr-only" data-testid="turn-readout" aria-label="轮次大纲全文">
+            {turns.map((mark) => (
+              <li key={mark.id}>
+                第 {mark.turn} 轮：{mark.full}
+              </li>
+            ))}
+          </ol>
           <span className="turn-count" aria-hidden>
             第 {activeTurn} / {total} 轮
           </span>

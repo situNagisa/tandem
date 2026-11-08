@@ -25,6 +25,7 @@ import type {
   SaveEvalCaseInput,
   StartEvalRunInput,
 } from '@tandem/protocol';
+import { countTurns } from '@tandem/protocol';
 import { effectiveProfile, writePrivateFile } from './config.js';
 import { completeText } from './providers/index.js';
 import type { Host } from './host.js';
@@ -709,7 +710,8 @@ export class EvalManager {
 
   private fillMetrics(result: EvalResult, rec: SessionRecord): void {
     const assistants = rec.messages.filter((message) => message.role === 'assistant');
-    result.turns = assistants.length;
+    // 轮次按真实用户消息统计，纯 tool_result 的 user 消息不算一轮（与压缩确认/大纲一致）。
+    result.turns = countTurns(rec.messages);
     result.toolCalls = assistants.reduce(
       (count, message) => count + message.content.filter((block) => block.type === 'tool_use').length,
       0,

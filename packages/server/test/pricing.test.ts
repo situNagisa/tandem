@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { priceForModel } from '../src/usage.js';
+import { priceForModel, resolvePriceForModel } from '../src/usage.js';
 import type { StoredProfile } from '../src/types.js';
 
 test('内置单价表：常见模型按前缀命中，版本后缀与供应商前缀不影响', () => {
@@ -21,6 +21,21 @@ test('内置单价表：常见模型按前缀命中，版本后缀与供应商�
 test('内置单价表：未知模型返回 undefined，不猜价格', () => {
   assert.equal(priceForModel(undefined, 'gpt-6-luna'), undefined);
   assert.equal(priceForModel(undefined, ''), undefined);
+});
+
+test('单价来源：账号覆盖标 account，内置表标 builtin', () => {
+  const profile = {
+    price: { 'gpt-4o': { input: 9, output: 18 } },
+  } as unknown as StoredProfile;
+  assert.deepEqual(resolvePriceForModel(profile, 'gpt-4o'), {
+    price: { input: 9, output: 18 },
+    source: 'account',
+  });
+  assert.deepEqual(resolvePriceForModel(profile, 'o3'), {
+    price: { input: 2, output: 8 },
+    source: 'builtin',
+  });
+  assert.equal(resolvePriceForModel(profile, 'gpt-6-luna'), undefined);
 });
 
 test('账号单价覆盖：精确匹配 → 前缀匹配 → 内置表', () => {

@@ -35,6 +35,7 @@ import { selectionLabel, selectionSource } from '../lib/previewElement'
 import type { HostConfig } from '../lib/types'
 import { Button, IconButton } from './ui/Button'
 import { Input, SegmentedControl } from './ui/Controls'
+import { PanelBar, PanelBody } from './ui/Panel'
 
 const EMPTY_STATE: PreviewState = { sessionId: '', active: false, updatedAt: 0 }
 const EMPTY_SELECTIONS: PreviewSelection[] = []
@@ -809,15 +810,17 @@ export function PreviewPanel() {
   ) : null
 
   const header = (
-    <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 px-3">
-      <PanelTop size={15} className="shrink-0 text-text-soft" />
-      <h2 className="shrink-0 text-[13px] font-semibold">应用预览</h2>
+    <PanelBar
+      icon={<PanelTop size={15} />}
+      title="应用预览"
+      actions={
+        <IconButton onClick={close} label="关闭应用预览" tooltip="关闭" className="-mr-1">
+          <X size={15} />
+        </IconButton>
+      }
+    >
       {runningBadge}
-      <span className="flex-1" />
-      <IconButton onClick={close} label="关闭应用预览" tooltip="关闭" className="-mr-1">
-        <X size={15} />
-      </IconButton>
-    </div>
+    </PanelBar>
   )
 
   if (isMobile) {
@@ -869,7 +872,7 @@ export function PreviewPanel() {
         className="absolute left-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none hover:bg-[var(--t-border-strong)]/30"
       />
       {header}
-      <div className="flex min-h-0 flex-1 flex-col">{content}</div>
+      <PanelBody>{content}</PanelBody>
     </aside>
   )
 }

@@ -1749,7 +1749,7 @@ export function FeedbackMode() {
         {...{ [UI_ATTR]: '' }}
         role="region"
         aria-label="反馈模式工具栏"
-        className="pointer-events-auto fixed left-1/2 top-3 z-[130] w-max max-w-[calc(100vw-16px)] -translate-x-1/2 max-sm:top-auto max-sm:bottom-[max(4.5rem,calc(env(safe-area-inset-bottom)+4rem))]"
+        className="pointer-events-auto fixed left-1/2 top-3 z-[130] w-max max-w-[calc(100vw-16px)] -translate-x-1/2 max-sm:top-[max(0.75rem,env(safe-area-inset-top))]"
       >
         <div className="flex flex-wrap items-center justify-center gap-2 rounded-full border border-border bg-surface py-1 pl-3 pr-1.5 shadow-md">
           <span className="size-1.5 rounded-full bg-[#F97316]" />

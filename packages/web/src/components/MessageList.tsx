@@ -478,15 +478,21 @@ function MessageListInner({
     void useAppStore.getState().fillMessageGap(activeHostId, sessionId, gapId)
   }
 
-  // 上下文面板点击「最占空间」条目：必要时扩大渲染窗口，再把目标消息滚到视口中部
+  // 上下文面板/搜索/收件箱：必要时扩大渲染窗口，再把目标消息或工具卡滚到视口中部
   useEffect(() => {
     const onJump = (event: Event) => {
-      const messageId = (event as CustomEvent<{ messageId?: string }>).detail?.messageId
-      if (!messageId) return
-      const index = messages.findIndex((message) => message.id === messageId)
+      const detail = (event as CustomEvent<{ messageId?: string; toolUseId?: string }>).detail
+      const messageId = detail?.messageId
+      const toolUseId = detail?.toolUseId
+      if (!messageId && !toolUseId) return
+      const index = toolUseId
+        ? messages.findIndex((message) =>
+            message.content.some((block) => block.type === 'tool_use' && block.id === toolUseId),
+          )
+        : messages.findIndex((message) => message.id === messageId)
       if (index < 0) {
         // 大纲/全文搜索跳到尚未加载的历史：先按需取该段，事件会重复触发以完成定位。
-        if (!messagesProp && activeHostId && sessionId) {
+        if (messageId && !messagesProp && activeHostId && sessionId) {
           void useAppStore.getState().ensureMessageLoaded(activeHostId, sessionId, messageId)
         }
         return
@@ -495,11 +501,14 @@ function MessageListInner({
       if (needed > windowSize) setWindowSize(Math.min(messages.length, needed))
       if (needed > windowCap) setWindowCap(needed)
       const scroll = () => {
-        const el = document.querySelector<HTMLElement>(
-          `[data-message-id="${CSS.escape(messageId)}"]`,
-        )
+        const el = toolUseId
+          ? document.querySelector<HTMLElement>(`[data-tool-use-id="${CSS.escape(toolUseId)}"]`)
+          : document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId!)}"]`)
         if (!el) return
         const row = el.closest<HTMLElement>('.msg-row') ?? el
+        if (toolUseId) {
+          el.querySelector<HTMLElement>('.tool-row[aria-expanded="false"]')?.click()
+        }
         el.scrollIntoView({ block: 'center', behavior: 'smooth' })
         row.classList.remove('msg-jump-hit')
         // 强制重启动画：连续搜索不同命中时也能看见高亮

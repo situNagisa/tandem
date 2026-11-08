@@ -15,15 +15,28 @@ export function CardStatusIcon({ status }: { status: BoardCard['status'] }) {
 /** 卡片上的一行状态文案；文字色遵循设计：错误用 danger，待审批用橙，其余中性。 */
 export function CardStatusLine({ card, board }: { card: BoardCard; board: Board }) {
   if (card.status === 'running') {
-    return card.activity ? <p className="truncate text-[12px] text-text-secondary">{card.activity}</p> : null
+    return card.activity ? (
+      <p className="truncate text-[12px] text-text-secondary" title={card.activity}>
+        {card.activity}
+      </p>
+    ) : null
   }
   if (card.status === 'approval') {
-    return <p className="truncate text-[12px] text-[var(--t-accent-text)]">{card.activity ?? '等待审批'}</p>
+    return (
+      <p className="truncate text-[12px] text-[var(--t-accent-text)]" title={card.activity ?? '等待审批'}>
+        {card.activity ?? '等待审批'}
+      </p>
+    )
   }
   if (card.status === 'queued') {
     const text = queuedText(card, board.cards)
     return text ? (
-      <p className={cn('truncate text-[12px]', card.blocked === 'upstream_failed' ? 'text-danger' : 'text-text-tertiary')}>{text}</p>
+      <p
+        className={cn('truncate text-[12px]', card.blocked === 'upstream_failed' ? 'text-danger' : 'text-text-tertiary')}
+        title={text}
+      >
+        {text}
+      </p>
     ) : null
   }
   if (card.status === 'failed') {
@@ -39,7 +52,12 @@ export function CardStatusLine({ card, board }: { card: BoardCard; board: Board 
           <p className="text-[12px] text-danger">AI 评审：{blockers} 个阻塞问题</p>
         ) : null}
         {result?.summary ? (
-          <p className={cn('text-[12px] text-text-secondary', card.status === 'review' ? 'line-clamp-2' : 'truncate')}>{result.summary}</p>
+          <p
+            className={cn('text-[12px] text-text-secondary', card.status === 'review' ? 'line-clamp-2' : 'truncate')}
+            title={result.summary}
+          >
+            {result.summary}
+          </p>
         ) : null}
         {result?.mergeError ? (
           <p className="mt-0.5 line-clamp-2 text-[12px] text-danger">合并冲突：{result.mergeError}</p>
@@ -100,7 +118,12 @@ export function BoardCardItem({
     >
       <div className="flex items-start gap-2">
         <CardStatusIcon status={card.status} />
-        <span className="line-clamp-2 min-w-0 flex-1 text-[14px] font-medium leading-snug text-text">{card.title}</span>
+        <span
+          className="line-clamp-2 min-w-0 flex-1 text-[14px] font-medium leading-snug text-text"
+          title={card.title}
+        >
+          {card.title}
+        </span>
       </div>
       <div className="mt-1 min-w-0 space-y-0.5 pl-[22px]">
         {deps.length > 0 && !(card.status === 'queued' && card.blocked === 'waiting') ? (
@@ -121,7 +144,11 @@ export function BoardCardItem({
                 {result.files} 个文件 +{result.additions} −{result.deletions}
               </span>
             ) : null}
-            {meta.length > 0 ? <span className="truncate">{meta.join(' · ')}</span> : null}
+            {meta.length > 0 ? (
+              <span className="truncate" title={meta.join(' · ')}>
+                {meta.join(' · ')}
+              </span>
+            ) : null}
             {cost ? <span className="ml-auto shrink-0 tabular-nums">{formatUsd(cost)}</span> : null}
           </p>
         )}

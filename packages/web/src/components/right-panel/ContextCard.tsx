@@ -4,7 +4,7 @@ import { quotaLine } from '../../lib/quota'
 import { CONTEXT_PART_META, ContextTopItems, useContextBreakdown } from '../chat/ContextMeter'
 
 export function ContextCard() {
-  const { context, noData, window, used, pct } = useContextBreakdown()
+  const { context, noData, window, used, pct, turns } = useContextBreakdown()
   if (noData || !context) {
     return <p className="text-[12px] leading-4 text-muted">暂无上下文数据</p>
   }
@@ -18,7 +18,10 @@ export function ContextCard() {
         <span className="font-mono text-[12px] tabular-nums text-text-soft">
           {formatTokens(used)} / {formatTokens(window)}
         </span>
-        <span className="font-mono text-[12px] tabular-nums text-muted">{pct}%</span>
+        <span className="flex items-baseline gap-2">
+          <span className="text-[12px] text-muted">{turns} 轮对话</span>
+          <span className="font-mono text-[12px] tabular-nums text-muted">{pct}%</span>
+        </span>
       </div>
       <div className="mt-1.5 flex h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
         {rows.map((part) => {

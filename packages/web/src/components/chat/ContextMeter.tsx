@@ -1,5 +1,6 @@
 // 上下文环与 /context 面板：按请求实际发送的组成展示 token 占用。
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { countTurns } from '@tandem/protocol'
 import type { ContextBreakdown, ContextTopItem } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
@@ -87,7 +88,9 @@ export function useContextBreakdown() {
   const sessionId = useSessionView((s) => s?.sessionId ?? null)
   const live = useSessionView((s) => s?.summary?.context)
   const usage = useSessionView((s) => s?.summary?.usage)
-  const messageCount = useSessionView((s) => s?.messages.length ?? 0)
+  const messages = useSessionView((s) => s?.messages)
+  const messageCount = messages?.length ?? 0
+  const turns = useMemo(() => countTurns(messages ?? []), [messages])
   const [fetched, setFetched] = useState<ContextBreakdown | null>(null)
 
   useEffect(() => {
@@ -125,11 +128,12 @@ export function useContextBreakdown() {
     used,
     rate,
     pct: Math.round(rate * 100),
+    turns,
   }
 }
 
 export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean }) {
-  const { sessionId, context, usage, noData, window, used, rate, pct } =
+  const { sessionId, context, usage, noData, window, used, rate, pct, turns } =
     useContextBreakdown()
   const openCompactConfirm = useUiStore((s) => s.openCompactConfirm)
   const scopeTarget = useSessionTarget()
@@ -212,6 +216,7 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
           <div>
             <div className="mb-2 flex items-baseline gap-2">
               <span className="text-[12px] font-medium text-text">上下文</span>
+              <span className="text-[12px] text-muted">{turns} 轮对话</span>
               <span className="font-mono text-[12px] tabular-nums text-text-soft">
                 {formatTokens(used)} / {formatTokens(window)}
               </span>

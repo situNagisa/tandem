@@ -52,6 +52,7 @@ import { CONTEXT_PART_META, useContextBreakdown } from './chat/ContextMeter'
 import { Modal } from './ui/Modal'
 import { Menu } from './ui/Menu'
 import { Button, IconButton } from './ui/Button'
+import { PanelBar, PanelBody } from './ui/Panel'
 
 const EMPTY_TODOS: Todo[] = []
 const EMPTY_MESSAGES: UiMessage[] = []
@@ -753,8 +754,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <aside className="flex h-full w-full flex-col border-l border-border bg-sidebar md:w-[300px]">
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 px-3.5">
-        <h2 className="text-[13px] font-semibold">会话信息</h2>
+      <PanelBar title="会话信息">
         {summary && (
           <span className="flex items-center gap-1.5 text-[12px] text-muted">
             <SessionStatusDot status={summary.status} />
@@ -810,10 +810,9 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         <IconButton onClick={onClose} label="关闭信息面板" className="-mr-1 max-md:size-11">
           <X size={15} />
         </IconButton>
-      </div>
+      </PanelBar>
 
-      <div
-        className="min-h-0 flex-1 space-y-2 overflow-x-hidden overflow-y-auto p-3"
+      <PanelBody scroll className="space-y-2 p-3"
         onDragOver={(e) => {
           if (dragging) e.preventDefault()
         }}
@@ -877,7 +876,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
             所有分组已隐藏，点击右上角 ⋯ 恢复显示。
           </div>
         )}
-      </div>
+      </PanelBody>
 
       <div className="shrink-0 border-t border-border px-4 py-2.5">
         <Button

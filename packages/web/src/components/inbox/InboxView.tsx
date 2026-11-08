@@ -20,9 +20,11 @@ import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { navigate } from '../../lib/router'
 import { navigateBoard } from '../../lib/boardRoute'
+import { focusMessage, focusTool } from '../../lib/jump'
 import { formatRelative } from '../../lib/format'
 import { cn } from '../../lib/cn'
 import { Button } from '../ui/Button'
+import { AggregateDetailRow, AggregateRow } from '../ui/AggregateRow'
 
 /** 所有主机的未处理数（待审批 + 未读提醒）。 */
 export function useInboxCount(): number {
@@ -277,6 +279,7 @@ function EventIcon({ event }: { event: InboxEvent }) {
 
 function PendingCard({ entry }: { entry: Entry }) {
   const decide = useAppStore((s) => s.decideInboxPermission)
+  const [descOpen, setDescOpen] = useState(false)
   const { event, hostId } = entry
   const permission = event.permission
   if (!permission) return null
@@ -291,7 +294,7 @@ function PendingCard({ entry }: { entry: Entry }) {
   const submit = (decision: PermissionDecision) => decide(hostId, event.requestId ?? permission.id, decision)
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-3">
+    <div className="rounded-xl border border-border bg-surface p-3" data-testid="inbox-pending">
       <div className="flex items-start gap-2.5">
         <span
           className={cn(
@@ -303,7 +306,9 @@ function PendingCard({ entry }: { entry: Entry }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
-            <span className="min-w-0 truncate text-[13px] font-medium">{title}</span>
+            <span className="min-w-0 truncate text-[13px] font-medium" title={title}>
+              {title}
+            </span>
             <span className="ml-auto shrink-0 text-[12px] text-muted">
               {formatRelative(event.at)}
             </span>
@@ -314,9 +319,13 @@ function PendingCard({ entry }: { entry: Entry }) {
             </span>
             <button
               type="button"
-              onClick={open}
-              disabled={!event.sessionId}
-              className="min-w-0 max-w-full truncate text-text-soft underline-offset-2 hover:text-text hover:underline disabled:no-underline"
+              onClick={() => setDescOpen((value) => !value)}
+              aria-expanded={descOpen}
+              title={`${event.sessionTitle || '未命名会话'}${descOpen ? '' : '（点击展开全文）'}`}
+              className={cn(
+                'min-w-0 max-w-full text-left text-text-soft underline-offset-2 hover:text-text hover:underline',
+                !descOpen && 'line-clamp-1 max-sm:line-clamp-2',
+              )}
             >
               {event.sessionTitle || '未命名会话'}
             </button>
@@ -371,17 +380,24 @@ function PendingCard({ entry }: { entry: Entry }) {
   )
 }
 
-function openGroupTarget(hostId: string, group: HistoryGroup) {
-  const event = group.single
-  if (event?.board) {
+function openGroupTarget(hostId: string, group: HistoryGroup, detail?: InboxEvent) {
+  const single = detail ?? group.single
+  if (!detail && single?.board) {
     useUiStore.getState().setInboxOpen(false)
-    navigateBoard(hostId, event.board.boardId)
+    navigateBoard(hostId, single.board.boardId)
     return
   }
-  const sessionId = group.sessionId ?? event?.sessionId ?? event?.budgetSessionId
+  const sessionId =
+    detail?.sessionId ?? group.sessionId ?? single?.sessionId ?? single?.budgetSessionId
   if (!sessionId) return
   useUiStore.getState().setInboxOpen(false)
   navigate({ kind: 'session', hostId, sessionId })
+  if (detail) {
+    if (detail.permission?.toolUseId) focusTool(detail.permission.toolUseId)
+    else if (detail.kind === 'turn_end') focusMessage(detail.messageId)
+    return
+  }
+  if (group.turnEnd?.messageId) focusMessage(group.turnEnd.messageId)
 }
 
 function HistoryGroupRow({
@@ -397,95 +413,79 @@ function HistoryGroupRow({
   const isTurn = group.kind === 'turn'
   const hasDetails = group.children.length > 0
   const error = group.turnEnd?.turnReason === 'error'
-  const onRowClick = () => {
-    if (isTurn && hasDetails) onToggle()
-    else openGroupTarget(group.hostId, group)
-  }
+  const sessionTitle = group.sessionTitle ?? ''
   return (
-    <div data-testid="inbox-history-group">
-      <button
-        type="button"
-        onClick={onRowClick}
-        aria-expanded={isTurn && hasDetails ? expanded : undefined}
-        className="flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--t-bg-hover)]"
-      >
-        <span
-          className={cn(
-            'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md',
-            error ? 'text-danger' : isTurn ? 'text-text-soft' : 'text-text-tertiary',
-          )}
-        >
-          {group.turnEnd ? <EventIcon event={group.turnEnd} /> : group.single ? <EventIcon event={group.single} /> : <Check size={14} />}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span
-              className={cn(
-                'min-w-0 flex-1 truncate',
-                isTurn ? 'text-[13px] font-medium text-text' : 'text-[12.5px] text-text-soft',
-              )}
-            >
-              {title}
+    <AggregateRow
+      icon={
+        group.turnEnd ? (
+          <EventIcon event={group.turnEnd} />
+        ) : group.single ? (
+          <EventIcon event={group.single} />
+        ) : (
+          <Check size={14} />
+        )
+      }
+      title={title}
+      titleText={title}
+      iconClassName={error ? 'text-danger' : isTurn ? 'text-text-soft' : 'text-text-tertiary'}
+      time={formatRelative(group.at)}
+      meta={
+        <>
+          <span className="shrink-0">{hostNameOf(group.hostId)}</span>
+          <span className="min-w-0 truncate" title={sessionTitle}>
+            {sessionTitle}
+          </span>
+          {isTurn && hasDetails ? (
+            <span className="shrink-0 text-text-tertiary">
+              {expanded ? '收起明细' : `${group.children.length} 条明细`}
             </span>
-            <span className="shrink-0 text-[12px] text-muted">{formatRelative(group.at)}</span>
-            {isTurn && hasDetails ? (
-              <ChevronDown
-                size={13}
-                className={cn('shrink-0 text-muted transition-transform', expanded && 'rotate-180')}
-              />
-            ) : null}
-          </span>
-          <span className="mt-0.5 flex min-w-0 gap-1.5 text-[12px] text-muted">
-            <span className="shrink-0">{hostNameOf(group.hostId)}</span>
-            <span className="truncate">{group.sessionTitle ?? ''}</span>
-            {isTurn && hasDetails ? (
-              <span className="shrink-0 text-text-tertiary">{expanded ? '收起明细' : `${group.children.length} 条明细`}</span>
-            ) : null}
-          </span>
-          {body && !isTurn ? (
-            <span className="mt-0.5 block truncate text-[12px] text-muted">{body}</span>
           ) : null}
-        </span>
-      </button>
+        </>
+      }
+      body={body}
+      expandable={isTurn && hasDetails}
+      expanded={expanded}
+      detailCount={group.children.length}
+      onOpen={() => openGroupTarget(group.hostId, group)}
+      onToggle={onToggle}
+      className={error ? 'text-danger' : undefined}
+      testId="inbox-history-group"
+    >
       {isTurn && expanded ? (
         <div className="mb-1 ml-8 border-l border-border pl-2" data-testid="inbox-history-details">
           {group.children.map((event) => {
             const detail = eventSummary(event)
             const preview = permissionPreview(event)
+            const toolUseId = event.permission?.toolUseId
             return (
-              <div key={event.seq} className="flex items-start gap-2 px-1 py-1 text-[12px]">
-                <span className="mt-px shrink-0 text-text-tertiary">
-                  <EventIcon event={event} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline gap-2">
-                    <span className="min-w-0 truncate text-text-soft">{detail.title}</span>
-                    <span className="ml-auto shrink-0 text-muted">{formatRelative(event.at)}</span>
-                  </span>
-                  {detail.body ? (
-                    <span className="mt-0.5 block truncate text-muted">{detail.body}</span>
-                  ) : preview ? (
-                    <span className="mt-0.5 block truncate font-mono text-muted">{preview}</span>
-                  ) : null}
-                </span>
-              </div>
+              <AggregateDetailRow
+                key={event.seq}
+                icon={<EventIcon event={event} />}
+                title={detail.title}
+                titleText={[detail.title, detail.body, preview].filter(Boolean).join('\n')}
+                time={formatRelative(event.at)}
+                body={detail.body ?? preview}
+                onOpen={
+                  toolUseId || group.sessionId
+                    ? () => openGroupTarget(group.hostId, group, event)
+                    : undefined
+                }
+              />
             )
           })}
           {group.turnEnd ? (
-            <div className="flex items-start gap-2 px-1 py-1 text-[12px]">
-              <span className={cn('mt-px shrink-0', error ? 'text-danger' : 'text-text-tertiary')}>
-                <EventIcon event={group.turnEnd} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline gap-2">
-                  <span className="min-w-0 truncate text-text-soft">{eventSummary(group.turnEnd).title}</span>
-                  <span className="ml-auto shrink-0 text-muted">{formatRelative(group.turnEnd.at)}</span>
-                </span>
-                {eventSummary(group.turnEnd).body ? (
-                  <span className="mt-0.5 block truncate text-muted">{eventSummary(group.turnEnd).body}</span>
-                ) : null}
-              </span>
-            </div>
+            <AggregateDetailRow
+              icon={<EventIcon event={group.turnEnd} />}
+              title={eventSummary(group.turnEnd).title}
+              titleText={eventSummary(group.turnEnd).body}
+              time={formatRelative(group.turnEnd.at)}
+              body={eventSummary(group.turnEnd).body}
+              onOpen={
+                group.turnEnd.messageId || group.sessionId
+                  ? () => openGroupTarget(group.hostId, group, group.turnEnd)
+                  : undefined
+              }
+            />
           ) : null}
           <button
             type="button"
@@ -497,7 +497,7 @@ function HistoryGroupRow({
           </button>
         </div>
       ) : null}
-    </div>
+    </AggregateRow>
   )
 }
 

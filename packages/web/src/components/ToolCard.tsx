@@ -811,7 +811,7 @@ export const ToolCard = memo(function ToolCard({
   })() : null
 
   return (
-    <div className="my-0.5" ref={cardRef}>
+    <div className="my-0.5" ref={cardRef} data-tool-use-id={block.id}>
       <button
         onClick={() => {
           setMounted(true)

@@ -130,10 +130,14 @@ export async function sendToModel(host: Host, rec: SessionRecord, content: Conte
   host.broadcastSummary(rec);
   const result = await runTurn(host, rec);
   if (rec.board) host.boards.noteTurn(rec.id, result);
-  // 主会话回合结束写入收件箱（子代理只把结果回传父会话，不单独提醒；评测内部会话与看板卡片不打扰）
-  if ((rec.depth ?? 0) === 0 && !rec.evalRun && !rec.board) {
+  // 主会话回合结束写入收件箱（子代理只把结果回传父会话，不单独提醒；评测内部会话不打扰）。
+  // 看板卡片也只进历史聚合、不计未读（silent），否则「最近」会长期停在「回合进行中」。
+  if ((rec.depth ?? 0) === 0 && !rec.evalRun) {
     host.pushInbox(
-      host.inbox.recordTurnEnd(rec.id, rec.title, result.reason, result.error),
+      host.inbox.recordTurnEnd(rec.id, rec.title, result.reason, result.error, {
+        ...(result.turnMessageId ? { messageId: result.turnMessageId } : {}),
+        ...(rec.board ? { silent: true } : {}),
+      }),
     );
   }
   if (needsTitle && isFirstUserMessage) void host.autoTitle(rec, text, rec.title);
@@ -162,9 +166,12 @@ export async function resumeAfterHandoff(
     ...(turnMessageId ? { turnMessageId } : {}),
   });
   if (rec.board) host.boards.noteTurn(rec.id, result);
-  if ((rec.depth ?? 0) === 0 && !rec.evalRun && !rec.board) {
+  if ((rec.depth ?? 0) === 0 && !rec.evalRun) {
     host.pushInbox(
-      host.inbox.recordTurnEnd(rec.id, rec.title, result.reason, result.error),
+      host.inbox.recordTurnEnd(rec.id, rec.title, result.reason, result.error, {
+        ...(result.turnMessageId ? { messageId: result.turnMessageId } : {}),
+        ...(rec.board ? { silent: true } : {}),
+      }),
     );
   }
 }
@@ -316,6 +323,7 @@ export async function compactSession(host: Host, rec: SessionRecord): Promise<vo
         rec.title,
         failed ? (failed === '用户中断' ? 'interrupted' : 'error') : 'done',
         failed && failed !== '用户中断' ? failed : undefined,
+        rec.board ? { silent: true } : undefined,
       ),
     );
     if (failed) {

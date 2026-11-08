@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { isUserTurnMessage } from '@tandem/protocol'
 import type { ContentBlock, InjectionChange, InjectionSegment, InjectionSource } from '@tandem/protocol'
 import { ChevronRight, ScrollText } from 'lucide-react'
 import { useSessionView } from '../session/SessionScope'
@@ -23,9 +24,7 @@ export function dataUrl(block: Extract<ContentBlock, { type: 'image' }>): string
 
 /** 注入上下文不算一轮对话，只有用户真正写的文字或图片才计轮次。 */
 export function hasUserContent(message: UiMessage): boolean {
-  return message.content.some(
-    (b) => (b.type === 'text' && b.text.trim()) || b.type === 'image',
-  )
+  return isUserTurnMessage(message)
 }
 
 

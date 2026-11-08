@@ -19,6 +19,7 @@ import { cn } from '../../lib/cn'
 import { formatAgo } from '../../lib/format'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
+import { PanelBar, PanelBody } from '../ui/Panel'
 import { Input, Select, Textarea } from '../ui/Controls'
 import { Markdown } from '../Markdown'
 import { WikiGenerateDialog } from './WikiGenerateDialog'
@@ -335,7 +336,7 @@ export function WikiDialog() {
                 </div>
               ) : null}
             </div>
-            <div className="flex flex-col gap-2 border-b border-border px-4 py-2.5 md:flex-row md:items-center">
+            <PanelBar autoHeight className="flex-col gap-2 px-4 py-2.5 md:flex-row md:items-center">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[14px] font-medium">
                   {page?.title ?? (meta?.exists ? '选择页面' : '项目还没有 Wiki')}
@@ -389,7 +390,7 @@ export function WikiDialog() {
                   </Button>
                 )}
               </div>
-            </div>
+            </PanelBar>
 
             {running ? (
               <div className="border-b border-border bg-[var(--t-surface-2)]/50 px-4 py-2">
@@ -418,7 +419,7 @@ export function WikiDialog() {
               </div>
             ) : null}
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            <PanelBody scroll className="px-6 py-5">
               {entry?.error ? (
                 <p className="mb-3 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-[12px] text-danger">
                   {entry.error}
@@ -477,7 +478,7 @@ export function WikiDialog() {
                   </Button>
                 </div>
               )}
-            </div>
+            </PanelBody>
           </section>
         </div>
       </Modal>

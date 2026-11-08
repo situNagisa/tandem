@@ -15,6 +15,7 @@ import {
   Bot,
   ChevronsUpDown,
   MessageSquare,
+  WrapText,
 } from 'lucide-react'
 import type { AiReviewSeverity } from '@tandem/protocol'
 import { cn } from '../lib/cn'
@@ -572,6 +573,7 @@ export const DiffView = memo(function DiffView({
   onDeleteComment,
   aiComments = [],
   onAiAction,
+  wrapToggle = false,
 }: {
   oldText?: string
   newText?: string
@@ -589,10 +591,13 @@ export const DiffView = memo(function DiffView({
   onDeleteComment?: (id: number) => void
   aiComments?: AiDiffComment[]
   onAiAction?: (id: string, action: 'accept' | 'ignore' | 'false_positive') => void
+  /** 顶部提供「自动换行」开关（长行走软换行，不依赖横向滚动）。 */
+  wrapToggle?: boolean
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [selection, setSelection] = useState<{ startIdx: number; endIdx: number } | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [wrap, setWrap] = useState(false)
   const dragRef = useRef(false)
 
   const { rows, truncated, added, removed } = useMemo(() => {
@@ -716,13 +721,31 @@ export const DiffView = memo(function DiffView({
   }
 
   return (
-    <div className="chat-diff">
+    <div className="chat-diff" data-wrap={wrap ? 'true' : undefined}>
       <div className="chat-diff-head">
         <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-text-soft" title={fileName}>
           {fileName || '改动'}
         </span>
         <span className="shrink-0 font-mono text-[12px] text-[var(--t-git-plus)]">+{added}</span>
         <span className="shrink-0 font-mono text-[12px] text-[var(--t-git-minus)]">−{removed}</span>
+        {wrapToggle ? (
+          <button
+            type="button"
+            aria-pressed={wrap}
+            onClick={() => setWrap((value) => !value)}
+            title={wrap ? '关闭自动换行' : '自动换行（长行不横向滚动）'}
+            data-testid="diff-wrap-toggle"
+            className={cn(
+              'flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[12px] transition-colors',
+              wrap
+                ? 'bg-[var(--t-bg-active)] text-text'
+                : 'text-muted hover:bg-[var(--t-bg-hover)] hover:text-text-soft',
+            )}
+          >
+            <WrapText size={12} />
+            自动换行
+          </button>
+        ) : null}
       </div>
       <div className="x-scroll-wrap">
         <div

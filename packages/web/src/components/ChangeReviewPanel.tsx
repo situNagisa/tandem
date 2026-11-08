@@ -28,6 +28,7 @@ import { ConfirmAction } from './ui/ConfirmAction'
 import { Button, IconButton } from './ui/Button'
 import { Menu } from './ui/Menu'
 import { Popover } from './ui/Popover'
+import { PanelBar, PanelBody } from './ui/Panel'
 
 interface LineComment extends DiffCommentDraft {
   id: number
@@ -538,9 +539,38 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
         />
       )}
 
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 px-3">
-        <FileDiff size={15} className="shrink-0 text-text-soft" />
-        <h2 className="text-[13px] font-semibold">改动审阅</h2>
+      <PanelBar
+        icon={<FileDiff size={15} />}
+        title="改动审阅"
+        actions={
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void runAiReview()}
+              disabled={!host || !sessionId || reviewEntry?.starting || review?.status === 'running'}
+              icon={
+                reviewEntry?.starting || review?.status === 'running' ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Bot size={13} />
+                )
+              }
+              aria-label="AI 评审"
+              tooltip="用评审模型检查当前改动"
+              className="shrink-0 px-1.5 text-[12px]"
+            >
+              <span className="max-sm:hidden">AI 评审</span>
+            </Button>
+            <IconButton onClick={reload} label="刷新改动" tooltip="刷新" className="max-md:size-11">
+              <RefreshCw size={13} className={cn(loading && 'animate-spin')} />
+            </IconButton>
+            <IconButton onClick={onClose} label="关闭改动审阅" className="-mr-1 max-md:size-11">
+              <X size={15} />
+            </IconButton>
+          </>
+        }
+      >
         {changes?.branch && (
           <span className="min-w-0 truncate font-mono text-[12px] text-muted">
             {changes.branch}
@@ -552,32 +582,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
             <span className="text-[var(--t-git-minus)]">−{totalDel}</span>
           </span>
         )}
-        <span className="flex-1" />
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => void runAiReview()}
-          disabled={!host || !sessionId || reviewEntry?.starting || review?.status === 'running'}
-          icon={
-            reviewEntry?.starting || review?.status === 'running' ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <Bot size={13} />
-            )
-          }
-          aria-label="AI 评审"
-          tooltip="用评审模型检查当前改动"
-          className="shrink-0 px-1.5 text-[12px]"
-        >
-          <span className="max-sm:hidden">AI 评审</span>
-        </Button>
-        <IconButton onClick={reload} label="刷新改动" tooltip="刷新" className="max-md:size-11">
-          <RefreshCw size={13} className={cn(loading && 'animate-spin')} />
-        </IconButton>
-        <IconButton onClick={onClose} label="关闭改动审阅" className="-mr-1 max-md:size-11">
-          <X size={15} />
-        </IconButton>
-      </div>
+      </PanelBar>
 
       {(reviewEntry?.starting || reviewEntry?.error || review) && (
         <div className="shrink-0 border-b border-border/70 bg-[var(--t-bg-hover)]/40 px-3 py-2 text-[12px]">
@@ -649,6 +654,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
+      <PanelBody>
       {changes && !changes.isRepo ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
           <FolderGit2 size={28} className="text-muted/60" />
@@ -678,8 +684,9 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
         <>
         <div ref={splitBodyRef} className="flex min-h-0 flex-1 flex-col">
           <div
+            data-testid="changes-file-list"
             className="min-h-[64px] shrink-0 overflow-y-auto"
-            style={{ flex: `0 0 ${(dragSplit ?? splitRatio) * 100}%` }}
+            style={{ maxHeight: `${(dragSplit ?? splitRatio) * 100}%` }}
           >
             {files.map((file) => {
               const meta = STATUS_META[file.status] ?? STATUS_META.modified
@@ -748,7 +755,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
             />
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <div data-testid="changes-diff" className="min-h-0 flex-1 overflow-y-auto p-3">
             {selectedFile && (
               <div className="mb-2 flex items-center gap-2">
                 <span className="min-w-0 truncate font-mono text-[12px] text-text-soft">
@@ -785,6 +792,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 unified={diff}
                 fileName={selected ?? undefined}
                 maxHeight={100000}
+                wrapToggle
                 emptyLabel={emptyReasonLabel(diffNote)}
                 comments={fileComments}
                 onAddComment={addComment}
@@ -962,6 +970,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
           </div>
         </>
       )}
+      </PanelBody>
 
       <ConfirmAction
         open={!!revertTarget}

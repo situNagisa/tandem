@@ -188,6 +188,7 @@ export function PermissionCard({
   const [ruleDraft, setRuleDraft] = useState<PermissionRule | null>(null)
   const [learning, setLearning] = useState(false)
   const [denyOpen, setDenyOpen] = useState(false)
+  const [descOpen, setDescOpen] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
   const [denyReason, setDenyReason] = useState('')
   const denyRef = useRef<HTMLTextAreaElement>(null)
@@ -392,9 +393,18 @@ export function PermissionCard({
               {request.assignedTo ? ` · 待 ${request.assignedTo.name} 处理` : ''}
             </div>
           )}
-          <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-[1.55] text-text-soft">
+          <button
+            type="button"
+            onClick={() => setDescOpen((value) => !value)}
+            aria-expanded={descOpen}
+            title={`${request.description}${descOpen ? '' : '（点击展开全文）'}`}
+            className={cn(
+              'mt-1 block w-full whitespace-pre-wrap break-words text-left text-[13px] leading-[1.55] text-text-soft',
+              !descOpen && 'line-clamp-2 sm:line-clamp-none',
+            )}
+          >
             {request.description}
-          </p>
+          </button>
           {request.sandbox && (
             <p
               data-permission-sandbox=""

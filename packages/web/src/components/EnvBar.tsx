@@ -620,8 +620,9 @@ export function EnvBar({
     <div
       className={cn(
         'flex min-w-0 flex-wrap items-center gap-0.5 pb-1.5 sm:flex-nowrap sm:gap-1',
+        'max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:overscroll-x-contain max-sm:pb-1 max-sm:[scrollbar-width:thin]',
         compact &&
-          'flex-nowrap gap-0.5 pb-1 [&_button>span]:hidden [&_button>svg.lucide-chevron-down]:hidden',
+          'flex-nowrap gap-0.5 pb-1 sm:[&_button>span]:hidden sm:[&_button>svg.lucide-chevron-down]:hidden',
       )}
     >
       <Menu
@@ -738,7 +739,9 @@ export function EnvBar({
             open={open}
             disabled={locked || !isSession || !sessionId || !env?.repoRoot}
             title={
-              isSession ? '切换分支' : '创建会话后可切换分支'
+              isSession
+                ? `切换分支${branch ? `（当前 ${branch}）` : ''}`
+                : '创建会话后可切换分支'
             }
           />
         )}
@@ -819,7 +822,7 @@ export function EnvBar({
           )}
         >
           <GitFork size={12} className={isWorktree ? 'text-text-soft' : 'text-muted'} />
-          <span className="hidden sm:inline">Worktree</span>
+          <span>Worktree</span>
           <Switch
             checked={isWorktree}
             onChange={toggleWorktree}

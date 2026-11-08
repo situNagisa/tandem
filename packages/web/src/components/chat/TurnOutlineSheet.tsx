@@ -104,7 +104,9 @@ export function TurnOutlineSheet({
                 onClick={() => onPick(mark.turn)}
               >
                 <span className="turn-sheet-num">{mark.turn}</span>
-                <span className="turn-sheet-text">{mark.preview}</span>
+                <span className="turn-sheet-text" title={mark.full}>
+                  {mark.full}
+                </span>
               </button>
             ))}
           </div>

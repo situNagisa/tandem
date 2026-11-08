@@ -642,9 +642,23 @@
 .chat-diff-body {
   max-height: 460px;
   overflow: auto;
+  scrollbar-width: thin;
   font-family: var(--t-font-mono, ui-monospace, "SF Mono", Consolas, monospace);
   font-size: 12px;
   line-height: 1.65;
+}
+/* 长行走软换行：行号与 +/- 仍固定，文本列内换行，不依赖横向滚动 */
+.chat-diff[data-wrap="true"] .chat-diff-body {
+  overflow-x: hidden;
+}
+.chat-diff[data-wrap="true"] .chat-diff-row {
+  min-width: 0;
+  white-space: pre-wrap;
+}
+.chat-diff[data-wrap="true"] .chat-diff-row .text {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .chat-diff-row {
   position: relative;
@@ -1361,6 +1375,29 @@ mark.chat-match {
 }
 .turn-rail[data-feedback="true"] .turn-hit {
   cursor: default;
+}
+
+/* 悬停大纲行时在面板左侧显示首行全文（行本身受 pointer-events 限制，不能依赖原生 title） */
+.turn-tip {
+  position: absolute;
+  top: 0;
+  right: 292px;
+  z-index: 3;
+  max-width: 360px;
+  padding: 6px 9px;
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--t-surface) 96%, transparent);
+  box-shadow: var(--t-shadow-md);
+  color: var(--t-text);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 90ms var(--t-ease-out);
+  will-change: transform, opacity;
 }
 
 .turn-count {

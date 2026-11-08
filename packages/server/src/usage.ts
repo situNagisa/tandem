@@ -75,7 +75,10 @@ function normalizeModel(model: string): string {
  * 取模型单价：账号 price 精确匹配 → 账号 price 前缀匹配 → 内置参考价。
  * 返回 undefined 表示未知模型，仍统计 token，但 cost 记 0。
  */
-export function priceForModel(profile: StoredProfile | undefined, model: string): Price | undefined {
+export function resolvePriceForModel(
+  profile: StoredProfile | undefined,
+  model: string,
+): { price: Price; source: 'account' | 'builtin' } | undefined {
   const name = normalizeModel(model);
   if (!name) return undefined;
   const overrides = profile?.price ?? {};
@@ -85,7 +88,7 @@ export function priceForModel(profile: StoredProfile | undefined, model: string)
   });
   // 前缀越长越优先
   keys.sort((a, b) => b.length - a.length);
-  if (keys[0]) return { ...overrides[keys[0]]! };
+  if (keys[0]) return { price: { ...overrides[keys[0]]! }, source: 'account' };
 
   // 前缀匹配同时兼容供应商前缀与版本后缀：`us.anthropic.claude-sonnet-4-5-20250929-v1:0`
   // 也能命中 `claude-sonnet-4-5`；取最长的前缀，避免 `gpt-4` 抢走 `gpt-4o`。
@@ -96,7 +99,11 @@ export function priceForModel(profile: StoredProfile | undefined, model: string)
     if (index > 0 && /[a-z0-9]/.test(name[index - 1]!)) continue;
     if (!best || entry.prefix.length > best.prefix.length) best = entry;
   }
-  return best ? { ...best.price } : undefined;
+  return best ? { price: { ...best.price }, source: 'builtin' } : undefined;
+}
+
+export function priceForModel(profile: StoredProfile | undefined, model: string): Price | undefined {
+  return resolvePriceForModel(profile, model)?.price;
 }
 
 /** 缓存读取价相对输入价的倍率（展示与计费保持一致）。 */

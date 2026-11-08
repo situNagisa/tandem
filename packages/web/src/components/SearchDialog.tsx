@@ -16,6 +16,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { api } from '../lib/api'
 import { navigate } from '../lib/router'
+import { focusMessage } from '../lib/jump'
 import { basename, formatRelative } from '../lib/format'
 import { cn } from '../lib/cn'
 import { Modal } from './ui/Modal'
@@ -82,26 +83,6 @@ function HighlightedText({
   }
   if (cursor < text.length) parts.push(text.slice(cursor))
   return <>{parts}</>
-}
-
-/** 打开会话后轮询等待消息挂载，再滚动并高亮；外部会话的只读预览需要 REST 拉取。 */
-function focusSearchHit(messageId: string): void {
-  if (!messageId) return
-  const deadline = Date.now() + 12_000
-  const fire = () =>
-    window.dispatchEvent(new CustomEvent('tandem-jump-message', { detail: { messageId } }))
-  const tick = () => {
-    fire()
-    if (document.querySelector(`[data-message-id="${CSS.escape(messageId)}"]`)) {
-      // DOM 已挂载但 MessageList 的 effect 可能还没注册监听：补两次事件。
-      window.setTimeout(fire, 220)
-      window.setTimeout(fire, 650)
-      return
-    }
-    if (Date.now() > deadline) return
-    window.setTimeout(tick, 300)
-  }
-  tick()
 }
 
 interface PaletteGroup {
@@ -326,7 +307,7 @@ export function SearchDialog() {
                 id: hit.sessionId,
               })
             }
-            if (hit.messageId) focusSearchHit(hit.messageId)
+            if (hit.messageId) focusMessage(hit.messageId)
           },
         })
         if (items.length >= 40) break

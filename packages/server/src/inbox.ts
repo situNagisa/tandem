@@ -89,13 +89,16 @@ export class Inbox {
     sessionTitle: string,
     reason: 'done' | 'interrupted' | 'error',
     error?: string,
+    opts?: { messageId?: string; silent?: boolean },
   ): InboxEvent {
     return this.push({
       kind: 'turn_end',
       sessionId,
       sessionTitle,
       turnReason: reason,
+      ...(opts?.messageId ? { messageId: opts.messageId } : {}),
       ...(error ? { error } : {}),
+      ...(opts?.silent ? { silent: true } : {}),
     });
   }
 

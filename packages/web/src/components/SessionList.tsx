@@ -658,6 +658,7 @@ export function SessionList({
                 'min-w-0 flex-1 truncate text-[14px] leading-5',
                 s.unread && 'font-semibold',
               )}
+              title={s.title || '未命名会话'}
             >
               {s.scheduledBy && (
                 <span title={`定时任务：${s.scheduledBy.name}`} className="mr-1 inline-block align-[-1px] text-muted">
@@ -806,7 +807,7 @@ export function SessionList({
                   <span className="flex size-4 shrink-0 items-center justify-center text-text-tertiary">
                     <Eye size={12} />
                   </span>
-                  <span className="min-w-0 flex-1 truncate leading-5">
+                  <span className="min-w-0 flex-1 truncate leading-5" title={ext.title || '未命名会话'}>
                     {ext.title || '未命名会话'}
                   </span>
                   <span className="w-[64px] shrink-0 truncate text-right text-[12px] tabular-nums text-text-tertiary">

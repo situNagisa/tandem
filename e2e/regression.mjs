@@ -855,7 +855,10 @@ function seedRepo(repo) {
   git('add', '.')
   git('commit', '-qm', 'init')
 
-  writeFileSync(path.join(repo, 'src/hello.ts'), 'export const hello = 2\nexport const world = 3\n')
+  writeFileSync(
+    path.join(repo, 'src/hello.ts'),
+    'export const hello = 2\nexport const world = 3\nexport const longLine = "' + '长'.repeat(120) + '"\n',
+  )
   writeFileSync(path.join(repo, 'src/staged.ts'), 'export const staged = true\n')
   git('add', 'src/staged.ts')
   rmSync(path.join(repo, 'docs/old.md'))
@@ -1249,6 +1252,35 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
 
   const sessions = [
     mk('long', '回归长会话', longMessages),
+    mk('turns4', '四轮工具会话', [
+      message('t41', 'user', '第一轮：检查目录'),
+      {
+        id: 't42',
+        role: 'assistant',
+        createdAt,
+        model: 'mock-1',
+        content: [
+          { type: 'text', text: '我先读 README。' },
+          { type: 'tool_use', id: 'tu-turns4', name: 'Read', input: { file_path: 'README.md' } },
+        ],
+      },
+      {
+        id: 't43',
+        role: 'user',
+        createdAt: createdAt + 3000,
+        content: [{ type: 'tool_result', toolUseId: 'tu-turns4', content: '# regrepo' }],
+      },
+      message('t44', 'user', '第二轮：继续'),
+      message('t45', 'assistant', '第二轮完成。', { model: 'mock-1' }),
+      message('t46', 'user', '第三轮：再确认'),
+      message('t47', 'assistant', '第三轮完成。', { model: 'mock-1' }),
+      message('t48', 'user', '第四轮：收尾'),
+      message('t49', 'assistant', '收尾完成。', { model: 'mock-1' }),
+    ], { updatedAt: Date.now() - 950 }),
+    mk('priced', '参考价会话', [
+      message('pr1', 'user', '看看这个模型的价格'),
+      message('pr2', 'assistant', '按参考价估算。', { model: 'o3' }),
+    ], { groupId: 'g2', model: 'o3', updatedAt: Date.now() - 980 }),
     mk('huge', '超大会话 · 320 轮', hugeMessages, { updatedAt: Date.now() - 900 }),
     mk('links', '文件链接会话', linksMessages, { updatedAt: Date.now() - 1500 }),
     // 配额交接：主分组第一次请求成功后下一次 429，备用分组接住。
@@ -1363,7 +1395,7 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
   sessions.push({
     ...common,
     id: 'approve',
-    title: '等待审批的会话',
+    title: '等待审批：在 taskcli 项目里运行 npm test 并一句话汇报结果，不要改代码。请先阅读任务说明，然后运行测试，最后把输出贴到回复里。',
     messages: [
       {
         id: 'ap1',
@@ -2243,6 +2275,51 @@ async function main() {
       assert.ok(info.rows > 300, `按需加载后只渲染了 ${info.rows} 行`)
     })
 
+    desktop('轮次大纲全文可读且悬停有全文提示（R15）', async (page) => {
+      await openSession(page, 'long')
+      await page.locator('.turn-hit').hover()
+      await page.waitForFunction(
+        () => document.querySelector('.turn-rail')?.getAttribute('data-open') === 'true',
+        null,
+        { timeout: 5_000 },
+      )
+      await page.waitForTimeout(700)
+      const info = await page.evaluate(() => {
+        const items = [...document.querySelectorAll('.turn-item-t')]
+        const visible = items.find((el) => (el.textContent ?? '').trim().length > 0)
+        const row = visible?.parentElement
+        return {
+          text: (visible?.textContent ?? '').trim(),
+          title: visible?.getAttribute('title') ?? '',
+          rowTitle: row?.getAttribute('title') ?? '',
+          rowLabel: row?.getAttribute('aria-label') ?? '',
+          readout: document.querySelector('[data-testid="turn-readout"]')?.textContent ?? '',
+        }
+      })
+      assert.ok(info.text.length > 0, '大纲行没有真实文本节点')
+      assert.match(info.title, new RegExp(info.text.slice(0, 8).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '大纲行 title 不是全文')
+      assert.match(info.rowTitle, /^第 \d+ 轮：/, '大纲行悬停提示缺少轮号/全文')
+      assert.match(info.rowLabel, /^第 \d+ 轮：/, '大纲行缺少读屏 aria-label')
+      assert.match(info.readout, /第 1 轮：/, '读屏列表没有轮次全文')
+    })
+
+    desktop('压缩确认与上下文面板按真实用户轮次统计（R16）', async (page) => {
+      await openSession(page, 'turns4')
+      const meter = page
+        .locator('button[aria-label^="上下文"], button[aria-label="暂无上下文数据"]')
+        .first()
+      await meter.waitFor({ timeout: 15_000 })
+      await meter.click()
+      await page.getByText('4 轮对话', { exact: true }).first().waitFor({ timeout: 5_000 })
+      await page.getByRole('button', { name: '压缩上下文（/compact）' }).click()
+      const dialog = page.getByRole('dialog', { name: '压缩上下文' })
+      await dialog.waitFor()
+      const text = await dialog.innerText()
+      assert.match(text, /当前会话的 4 轮对话/, `压缩确认轮次不对：${text}`)
+      assert.equal(/当前会话的 [5-9] 轮对话|当前会话的 \d{2,} 轮对话/.test(text), false, '工具结果被算成了用户轮次')
+      await dialog.getByRole('button', { name: '取消' }).click()
+    })
+
     desktop('上下文面板显示最大占用项', async (page) => {
       await openSession(page, 'long')
       const ring = page.getByRole('button', { name: /^上下文 \d+%/ }).first()
@@ -2674,6 +2751,17 @@ async function main() {
       assert.ok(await dialog.getByText('自定义单价').first().isVisible(), '没有定位到单价覆盖区')
     })
 
+    desktop('模型菜单：内置价格表命中时显示「参考价」（R08）', async (page) => {
+      await openSession(page, 'priced')
+      await waitModelReady(page)
+      await page.locator('button[aria-label^="选择模型"]').first().click()
+      const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+      await menu.waitFor()
+      const price = menu.getByText(/参考价 · 输入 \$2 · 输出 \$8/, { exact: false }).first()
+      await price.waitFor({ timeout: 10_000 })
+      assert.match(await price.innerText(), /参考价/, '内置参考价没有标注来源')
+    })
+
     desktop('新会话页环境条显示当前分支名而不是「分支」占位词', async (page) => {
       await page.evaluate(() => (window.location.hash = '#/'))
       await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
@@ -2717,6 +2805,41 @@ async function main() {
       assert.equal(await panel.getByText('two.ts', { exact: true }).count(), 1, '未跟踪目录里的嵌套文件没有展开')
       await panel.getByText('one.ts', { exact: true }).click()
       await panel.getByText(/export const one/).waitFor({ timeout: 10_000 })
+    })
+
+    desktop('改动审阅：文件列表贴顶、diff 紧跟、自动换行无横向截断（R14）', async (page) => {
+      await openSession(page, 'long')
+      await page.getByRole('button', { name: '改动审阅' }).click()
+      const panel = page.getByRole('complementary').filter({ hasText: '改动审阅' }).first()
+      await panel.getByTestId('changes-file-list').waitFor({ timeout: 10_000 })
+      await panel.getByText('hello.ts', { exact: true }).click()
+      const diff = panel.getByTestId('changes-diff').locator('.chat-diff').first()
+      await diff.waitFor({ timeout: 10_000 })
+
+      const panelBox = await panel.boundingBox()
+      const diffBox = await diff.boundingBox()
+      assert.ok(panelBox && diffBox, '改动审阅面板或 diff 不可见')
+      assert.ok(
+        diffBox.y - panelBox.y < 320,
+        `diff 仍从面板中段开始：diff y=${Math.round(diffBox.y)} panel y=${Math.round(panelBox.y)}`,
+      )
+      assert.equal(await panel.locator('[data-panel-bar]').count(), 1, '改动审阅没有统一面板工具条')
+      assert.ok((await panel.locator('[data-panel-body]').count()) >= 1, '改动审阅没有统一内容区')
+
+      const body = diff.locator('.chat-diff-body')
+      const before = await body.evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth }))
+      assert.ok(before.sw > before.cw + 1, `长行没有产生横向溢出：${before.sw} / ${before.cw}`)
+      await diff.getByTestId('diff-wrap-toggle').click()
+      const after = await diff.evaluate((el) => {
+        const body = el.querySelector('.chat-diff-body')
+        return {
+          wrap: el.getAttribute('data-wrap'),
+          sw: body?.scrollWidth ?? 0,
+          cw: body?.clientWidth ?? 0,
+        }
+      })
+      assert.equal(after.wrap, 'true', '自动换行开关没有生效')
+      assert.ok(after.sw <= after.cw + 1, `自动换行后仍横向溢出：${after.sw} > ${after.cw}`)
     })
 
     desktop('改动审阅行内评论浮窗与行标记', async (page) => {
@@ -3223,6 +3346,39 @@ async function main() {
       await closeSettings(page)
     })
 
+    mobile('手机收件箱审批卡任务描述默认两行，点按展开全文（R15）', async (page) => {
+      await page.evaluate(() => (window.location.hash = '#/'))
+      await page.getByRole('button', { name: /收件箱/ }).first().click().catch(() => {})
+      const card = page
+        .getByTestId('inbox-pending')
+        .filter({ hasText: '在 taskcli 项目里运行' })
+        .first()
+      await card.waitFor({ state: 'visible', timeout: 10_000 })
+      const title = card.locator('button[aria-expanded]').first()
+      const before = await title.boundingBox()
+      const label = await title.getAttribute('title')
+      assert.ok(label?.includes('等待审批：'), '审批卡任务描述没有全文提示')
+      await title.click()
+      const after = await title.boundingBox()
+      assert.ok(before && after, '审批卡任务描述不可见')
+      assert.ok(after.height > before.height + 6, `任务描述没有展开：${before.height} → ${after.height}`)
+      assert.equal(await title.getAttribute('aria-expanded'), 'true')
+    })
+
+    mobile('手机反馈工具栏移入顶部，不遮住底部环境条', async (page) => {
+      await openSession(page, 'long')
+      await page.keyboard.press('Control+Shift+F')
+      const toolbar = page.getByRole('region', { name: '反馈模式工具栏' })
+      await toolbar.waitFor({ state: 'visible', timeout: 8_000 })
+      const bar = await toolbar.boundingBox()
+      const env = await page.locator(`button[title="${repo}"]`).first().boundingBox()
+      assert.ok(bar && env, '反馈工具栏或环境条不可见')
+      assert.ok(bar.y < 120, `反馈工具栏仍在底部：y=${Math.round(bar.y)}`)
+      assert.ok(bar.y + bar.height <= env.y, '反馈工具栏遮住了环境条')
+      await page.keyboard.press('Escape')
+      await page.waitForFunction(() => !document.documentElement.classList.contains('feedback-mode'))
+    })
+
     mobile('手机环境条不越界、容器透明、触控 44px', async (page) => {
       await openSession(page, 'long')
       const info = await page.evaluate((cwd) => {
@@ -3236,6 +3392,8 @@ async function main() {
         })
         return {
           bg: getComputedStyle(wrap).backgroundColor,
+          overflowX: getComputedStyle(wrap).overflowX,
+          text: wrap.innerText,
           scrollWidth: wrap.scrollWidth,
           clientWidth: wrap.clientWidth,
           left: rect.left,
@@ -3245,11 +3403,14 @@ async function main() {
       }, repo)
       assert.ok(info, '找不到手机环境条')
       assert.match(info.bg, /rgba?\(0, 0, 0, 0\)|transparent/, `手机环境条容器不透明：${info.bg}`)
-      assertNoOverflow('手机环境条', info)
+      assert.ok(['auto', 'scroll'].includes(info.overflowX), `手机环境条不可横向滚动：${info.overflowX}`)
+      assert.ok(info.scrollWidth >= info.clientWidth, '手机环境条滚动宽度异常')
       assert.ok(info.right <= MOBILE.width + 1, `环境条右缘 ${info.right} 越界`)
+      assert.ok(info.text.includes(path.basename(repo)), `手机环境条看不到文件夹名：${info.text}`)
+      assert.match(info.text, /main/, '手机环境条看不到分支名')
+      assert.match(info.text, /Worktree/, '手机环境条 Worktree 开关没有文字')
       for (const child of info.children) {
         assert.ok(child.width > 0, '环境条存在不可见子项')
-        assert.ok(child.right <= MOBILE.width + 1, `环境条子项右缘 ${child.right} 越界`)
         assert.ok(child.height >= 43, `环境条触控高度 ${child.height}px，低于 44px`)
       }
     })
@@ -3829,7 +3990,8 @@ async function main() {
       assert.match(groupText, /回合完成 · 运行了 2 条命令（已允许）/, `聚合标题不对：${groupText}`)
       assert.equal(/已允许 · Bash/.test(groupText), false, '未展开时不应逐条显示审批流水')
 
-      await group.first().locator('button').first().click()
+      // 右侧独立箭头只负责展开；行主体点击打开会话并定位到该回合。
+      await group.first().getByTestId('aggregate-toggle').click()
       const details = group.first().getByTestId('inbox-history-details')
       await details.waitFor({ state: 'visible', timeout: 5_000 })
       const detailText = await details.innerText()
@@ -3839,8 +4001,35 @@ async function main() {
         `明细条数不对：${detailText}`,
       )
       assert.match(detailText, /打开会话/, '展开明细后没有打开会话入口')
-      await page.keyboard.press('Escape')
-      await dialog.waitFor({ state: 'hidden', timeout: 5_000 })
+
+      // 明细里的命令也可点：跳到会话中对应的工具卡并高亮。
+      const firstDetail = details.getByTestId('aggregate-detail').first()
+      await firstDetail.click()
+      await page.waitForFunction(() => window.location.hash.includes('/s/inboxmulti'), null, {
+        timeout: 15_000,
+      })
+      await page.waitForFunction(() => !!document.querySelector('.msg-jump-hit'), null, {
+        timeout: 15_000,
+      })
+      assert.equal(
+        await page.locator('.tool-card, [data-tool-use-id]').first().isVisible(),
+        true,
+        '跳转后没有看到工具卡',
+      )
+
+      // 重新打开收件箱，点击行主体：打开会话（而不是展开明细）。
+      await page.getByRole('button', { name: /^收件箱/ }).first().click()
+      await dialog.waitFor({ state: 'visible', timeout: 10_000 })
+      const groupAgain = dialog
+        .getByTestId('inbox-history-group')
+        .filter({ hasText: '收件箱聚合用例' })
+        .filter({ hasText: '回合完成' })
+        .first()
+      await groupAgain.waitFor({ state: 'visible', timeout: 10_000 })
+      await groupAgain.getByTestId('aggregate-open').click()
+      await page.waitForFunction(() => window.location.hash.includes('/s/inboxmulti'), null, {
+        timeout: 15_000,
+      })
     })
 
     mobile('手机评测结果表可横向滚动并打开轨迹', async (page) => {
@@ -4863,6 +5052,30 @@ async function main() {
         return found?.status === 'done' && found.result?.branch ? found : undefined
       })
 
+      // R13：看板卡片的回合结束也要进入收件箱聚合组，不能长期停在「回合进行中」。
+      await page.getByRole('button', { name: /^收件箱/ }).first().click()
+      const inbox = page.getByRole('dialog', { name: '收件箱' })
+      await inbox.waitFor({ state: 'visible', timeout: 10_000 })
+      const cardGroup = inbox
+        .getByTestId('inbox-history-group')
+        .filter({ hasText: '确认卡 改文件' })
+        .filter({ hasText: '回合完成' })
+        .first()
+      await cardGroup.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.equal(
+        await inbox
+          .getByTestId('inbox-history-group')
+          .filter({ hasText: '确认卡 改文件' })
+          .filter({ hasText: '回合进行中' })
+          .count(),
+        0,
+        '看板完成卡仍显示回合进行中',
+      )
+      await cardGroup.getByTestId('aggregate-open').click()
+      await page.waitForFunction(() => window.location.hash.includes('/s/'), null, {
+        timeout: 15_000,
+      })
+
       await openBoardPage(page, board.id)
       const drawer = page.getByTestId('board-drawer')
       await page.locator(`[data-column="done"] [data-card-id="${card.id}"]`).click()
@@ -4879,6 +5092,7 @@ async function main() {
       const diffDialog = page.getByRole('dialog', { name: /^改动：/ })
       await diffDialog.waitFor()
       await diffDialog.getByTestId('card-diff-file').filter({ hasText: 'src/confirm.ts' }).waitFor()
+      await diffDialog.getByText(/hello-check/).first().waitFor({ timeout: 10_000 })
       assert.match(await diffDialog.innerText(), /hello-check/)
       await page.keyboard.press('Escape')
       await diffDialog.waitFor({ state: 'hidden' })
@@ -4902,6 +5116,7 @@ async function main() {
       const nestedDiff = page.getByRole('dialog', { name: /^改动：/ })
       await nestedDiff.waitFor()
       await nestedDiff.getByTestId('card-diff-file').filter({ hasText: 'src/confirm.ts' }).waitFor()
+      await nestedDiff.getByText(/hello-check/).first().waitFor({ timeout: 10_000 })
       await page.keyboard.press('Escape')
       await nestedDiff.waitFor({ state: 'hidden' })
       await mergeDialog.getByRole('button', { name: '取消' }).click()

@@ -20,6 +20,7 @@ import { cn } from '../lib/cn'
 import { useIsMobile } from '../lib/hooks'
 import { Button, IconButton } from './ui/Button'
 import { SegmentedControl } from './ui/Controls'
+import { PanelBar, PanelBody } from './ui/Panel'
 import { isLocalHostUrl } from '../lib/hostUrl'
 import { isRelayHost } from '../lib/relay'
 import {
@@ -251,8 +252,61 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
         />
       )}
 
-      <div className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border/70 px-3 py-1.5">
-        <FileText size={15} className="shrink-0 text-text-soft" />
+      <PanelBar
+        icon={<FileText size={15} />}
+        actions={
+          <>
+            {cwd && !isMobile && (
+              <SegmentedControl
+                aria-label="文件浏览器"
+                size="sm"
+                value={browserVisible ? 'tree' : 'preview'}
+                onChange={(value) => setBrowserVisible(value === 'tree')}
+                options={[
+                  { value: 'preview', label: '仅预览' },
+                  { value: 'tree', label: '树+预览' },
+                ]}
+              />
+            )}
+            {markdown && data && !data.isBinary && (
+              <SegmentedControl
+                aria-label="文件视图"
+                size="sm"
+                value={mode}
+                onChange={setMode}
+                options={[
+                  { value: 'preview', label: <><Eye size={11} /> 预览</> },
+                  { value: 'source', label: <><Code2 size={11} /> 源码</> },
+                ]}
+              />
+            )}
+            {host && isLocalHostUrl(host.url) && (
+              <IconButton
+                size="sm"
+                onClick={() => void reveal()}
+                disabled={revealing || !data}
+                label="在本机打开"
+                tooltip="在主机的文件管理器中显示"
+                className="max-md:size-11"
+              >
+                {revealing ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />}
+              </IconButton>
+            )}
+            <IconButton
+              size="sm"
+              onClick={() => void copyPath()}
+              label="复制文件路径"
+              tooltip={copied ? '已复制' : `复制路径：${absPath || path}`}
+              className="max-md:size-11"
+            >
+              {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
+            </IconButton>
+            <IconButton onClick={onClose} label="关闭文件预览" className="-mr-1 max-md:size-11">
+              <X size={15} />
+            </IconButton>
+          </>
+        }
+      >
         <span
           className="min-w-0 truncate font-mono text-[13px] text-text"
           title={absPath || path || '文件预览'}
@@ -264,58 +318,9 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
             :{label}
           </span>
         )}
-        <span className="flex-1" />
-        {cwd && !isMobile && (
-          <SegmentedControl
-            aria-label="文件浏览器"
-            size="sm"
-            value={browserVisible ? 'tree' : 'preview'}
-            onChange={(value) => setBrowserVisible(value === 'tree')}
-            options={[
-              { value: 'preview', label: '仅预览' },
-              { value: 'tree', label: '树+预览' },
-            ]}
-          />
-        )}
-        {markdown && data && !data.isBinary && (
-          <SegmentedControl
-            aria-label="文件视图"
-            size="sm"
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: 'preview', label: <><Eye size={11} /> 预览</> },
-              { value: 'source', label: <><Code2 size={11} /> 源码</> },
-            ]}
-          />
-        )}
-        {host && isLocalHostUrl(host.url) && (
-          <IconButton
-            size="sm"
-            onClick={() => void reveal()}
-            disabled={revealing || !data}
-            label="在本机打开"
-            tooltip="在主机的文件管理器中显示"
-            className="max-md:size-11"
-          >
-            {revealing ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />}
-          </IconButton>
-        )}
-        <IconButton
-          size="sm"
-          onClick={() => void copyPath()}
-          label="复制文件路径"
-          tooltip={copied ? '已复制' : `复制路径：${absPath || path}`}
-          className="max-md:size-11"
-        >
-          {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
-        </IconButton>
-        <IconButton onClick={onClose} label="关闭文件预览" className="-mr-1 max-md:size-11">
-          <X size={15} />
-        </IconButton>
-      </div>
+      </PanelBar>
 
-      <div className="flex min-h-0 flex-1">
+      <PanelBody row>
         {browserVisible && !isMobile && cwd && host && (
           <>
             <div
@@ -407,7 +412,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
         </div>
       ) : null}
         </div>
-      </div>
+      </PanelBody>
     </aside>
   )
 }

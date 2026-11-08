@@ -446,7 +446,7 @@ export function TopBar() {
               title="点击重命名"
               className="group flex min-w-0 max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-[var(--t-bg-hover)] max-md:min-h-11"
             >
-              <h1 className="truncate text-[14px] font-medium leading-5">{title}</h1>
+              <h1 className="truncate text-[14px] font-medium leading-5" title={title}>{title}</h1>
               {summary?.demo && (
                 <span
                   className="shrink-0 rounded bg-[#F97316]/12 px-1.5 py-0.5 text-[10px] font-medium text-[#F97316]"
@@ -463,7 +463,7 @@ export function TopBar() {
           )
         ) : route.kind === 'external' ? (
           <div className="flex min-w-0 items-center gap-1.5 px-1">
-            <h1 className="truncate text-[14px] font-medium leading-5">
+            <h1 className="truncate text-[14px] font-medium leading-5" title={externalTitle || '外部会话'}>
               {externalTitle || '外部会话'}
             </h1>
             <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[12px] leading-4 text-muted">

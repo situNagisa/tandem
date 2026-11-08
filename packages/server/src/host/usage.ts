@@ -18,7 +18,7 @@ import {
 import { listModels as fetchModelList } from '../providers/index.js';
 import type { ListModelsResult } from '../providers/index.js';
 import { applyModelCapabilities } from '../providers/capabilities.js';
-import { priceForModel, priceInfoFor } from '../usage.js';
+import { priceForModel, priceInfoFor, resolvePriceForModel } from '../usage.js';
 import type { SessionRecord } from '../types.js';
 import type { Host } from '../host.js';
 import { formatUsd } from './helpers.js';
@@ -255,8 +255,10 @@ export function modelPrices(host: Host, profileId: string,
   const models = profile.models.length ? profile.models : [profile.defaultModel].filter(Boolean);
   const out: Record<string, ModelPriceInfo> = {};
   for (const model of models) {
-    const price = priceForModel(profile, model);
-    if (price) out[model] = priceInfoFor(price, profile.kind);
+    const resolved = resolvePriceForModel(profile, model);
+    if (resolved) {
+      out[model] = { ...priceInfoFor(resolved.price, profile.kind), source: resolved.source };
+    }
   }
   return out;
 }

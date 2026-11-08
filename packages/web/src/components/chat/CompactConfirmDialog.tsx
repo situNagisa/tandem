@@ -1,3 +1,4 @@
+import { countTurns } from '@tandem/protocol'
 import { useSessionTarget, useSessionView } from '../session/SessionScope'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
@@ -14,9 +15,7 @@ export function CompactConfirmDialog() {
   const open = !!target && confirmTarget?.hostId === target.hostId && confirmTarget?.sessionId === target.sessionId
   const messages = useSessionView((s) => s?.messages)
   const running = useSessionView((s) => s?.running ?? false)
-  const turns = (messages ?? []).filter(
-    (message) => message.role === 'user' && !message.summary && !message.gap,
-  ).length
+  const turns = countTurns(messages ?? [])
 
   return (
     <ConfirmAction

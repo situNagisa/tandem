@@ -8,6 +8,8 @@ export interface feedbackCauseRule {
   components?: string[]
   /** 选择器包含的片段。 */
   selectors?: string[]
+  /** 只在该元素确实像浮层（弹层/下拉/菜单/对话框）时才命中，避免把正文截断误判为 R03。 */
+  overlayOnly?: boolean
   /** 权重加成；同类规则冲突时取分数高者。 */
   weight?: number
 }
@@ -29,8 +31,11 @@ export const FEEDBACK_CAUSE_RULES: feedbackCauseRule[] = [
   {
     id: 'R03',
     title: '弹层被裁切或越界',
-    keywords: ['裁切', '被遮', '遮住', '越界', '挡', '出界', '看不到', '截断', '溢出'],
+    // 不再用「截断/看不到」这类宽泛词：正文省略号属于 R15，面板空白属于 R14。
+    keywords: ['被遮', '遮挡', '越界', '出界', '裁切', '挡住', '溢出', 'tip 被截'],
     components: ['Tooltip', 'Popover', 'Menu', 'Modal'],
+    selectors: ['radix-', 'role="menu"', 'role="dialog"', 'popover-panel', 'modal-panel', 'data-portal-layer'], // ui-audit-ignore：根因匹配数据，不是 UI 实现
+    overlayOnly: true,
     weight: 3,
   },
   {
@@ -76,6 +81,32 @@ export const FEEDBACK_CAUSE_RULES: feedbackCauseRule[] = [
     keywords: ['tooltip', 'tip 不', '动画', '跳动', '晃眼', '过渡', '提示不', '闪'],
     weight: 3,
   },
+  {
+    id: 'R14',
+    title: '面板与对话区争抢空间/焦点',
+    keywords: [
+      '面板',
+      '空白',
+      '改动审阅',
+      '预览遮',
+      '遮住输入框',
+      '布局',
+      '空间',
+      '贴顶',
+      'diff 从',
+      '横向滚动',
+    ],
+    components: ['ChangeReviewPanel', 'PreviewPanel', 'FilePreviewPanel', 'RightPanel', 'BrowserPanel', 'WikiDialog'],
+    weight: 4,
+  },
+  {
+    id: 'R15',
+    title: '关键文本截断且无全文入口',
+    keywords: ['截断', 'tooltip', '全文', '省略号', '读屏', '大纲', '任务描述', '显示不全', '悬停看'],
+    components: ['TurnRail', 'TurnOutlineSheet', 'PermissionCard', 'InboxView', 'BoardCardItem'],
+    selectors: ['turn-item', 'turn-rail', 'line-clamp', 'truncate'],
+    weight: 5,
+  },
 ]
 
 export interface CauseMatchInput {
@@ -92,6 +123,17 @@ export function suggestCause(input: CauseMatchInput): feedbackCauseRule | undefi
   const selector = input.selector ?? ''
   let best: { rule: feedbackCauseRule; score: number } | undefined
   for (const rule of FEEDBACK_CAUSE_RULES) {
+    if (rule.overlayOnly) {
+      // 必须同时有「裁切/越界」文字证据，避免只因为元素在 Radix 菜单里就给 R03。
+      if (!rule.keywords.some((keyword) => text.includes(keyword.toLowerCase()))) continue
+      const overlayText = /(弹层|浮层|下拉|菜单|弹窗|对话框|提示框|tooltip|\btip\b)/i.test(text)
+      const overlaySelector = /radix-|role="(?:menu|dialog|listbox|tooltip)"|popover-panel|modal-panel|data-portal-layer/i.test(selector) // ui-audit-ignore：根因匹配规则
+      const overlayComponent = (rule.components ?? []).some(
+        (name) => component === name || component.startsWith(name),
+      )
+      // 只有元素/文字确实指向浮层时才建议 R03，正文截断与面板布局交给 R15/R14。
+      if (!overlayText && !overlaySelector && !overlayComponent) continue
+    }
     let score = 0
     for (const keyword of rule.keywords) {
       if (keyword && text.includes(keyword.toLowerCase())) score += 2

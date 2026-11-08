@@ -10,6 +10,7 @@ import { useBrowserShot } from '../lib/browserShot'
 import { formatRelative } from '../lib/format'
 import { Modal } from './ui/Modal'
 import { Button, IconButton } from './ui/Button'
+import { PanelBar, PanelBody } from './ui/Panel'
 
 const EMPTY_STATE: BrowserState = { sessionId: '', active: false, updatedAt: 0 }
 
@@ -85,31 +86,37 @@ export function BrowserPanel() {
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border px-3 py-2">
-          <Globe2 size={13} className="shrink-0 text-muted" />
+        <PanelBar
+          icon={<Globe2 size={13} />}
+          className="px-3 py-0"
+          actions={
+            <>
+              {state.url ? (
+                <IconButton onClick={() => void copyUrl()} label="复制页面地址" tooltip="复制地址">
+                  <Copy size={13} />
+                </IconButton>
+              ) : null}
+              <IconButton
+                onClick={() => void refresh()}
+                label="刷新浏览器状态"
+                tooltip="刷新"
+                disabled={refreshing}
+              >
+                <RefreshCw size={13} className={refreshing ? 'animate-spin' : undefined} />
+              </IconButton>
+              <span className="ml-1 shrink-0 text-[12px] text-muted">
+                {state.updatedAt ? formatRelative(state.updatedAt) : ''}
+              </span>
+            </>
+          }
+        >
           <span
             className="min-w-0 flex-1 truncate font-mono text-[12px] text-text-soft"
             title={state.url}
           >
             {state.url || (state.active ? '（尚未打开页面）' : '浏览器未打开')}
           </span>
-          {state.url ? (
-            <IconButton onClick={() => void copyUrl()} label="复制页面地址" tooltip="复制地址">
-              <Copy size={13} />
-            </IconButton>
-          ) : null}
-          <IconButton
-            onClick={() => void refresh()}
-            label="刷新浏览器状态"
-            tooltip="刷新"
-            disabled={refreshing}
-          >
-            <RefreshCw size={13} className={refreshing ? 'animate-spin' : undefined} />
-          </IconButton>
-          <span className="ml-1 shrink-0 text-[12px] text-muted">
-            {state.updatedAt ? formatRelative(state.updatedAt) : ''}
-          </span>
-        </div>
+        </PanelBar>
 
         {state.title ? (
           <div className="shrink-0 truncate px-3 pt-1.5 text-[12px] text-muted" title={state.title}>
@@ -117,7 +124,7 @@ export function BrowserPanel() {
           </div>
         ) : null}
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-[color-mix(in_srgb,var(--t-bg)_60%,transparent)] p-3">
+        <PanelBody scroll className="bg-[color-mix(in_srgb,var(--t-bg)_60%,transparent)] p-3">
           {shot.url ? (
             <img
               key={state.screenshotId}
@@ -156,7 +163,7 @@ export function BrowserPanel() {
           {state.error && shot.url ? (
             <p className="mt-2 text-[12px] text-danger">{state.error}</p>
           ) : null}
-        </div>
+        </PanelBody>
 
         <div className="flex shrink-0 items-center gap-1.5 border-t border-border px-3 py-2 text-[12px] text-muted">
           <ExternalLink size={11} />

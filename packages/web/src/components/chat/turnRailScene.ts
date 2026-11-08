@@ -15,6 +15,8 @@ export interface SceneTurn {
   id: string
   turn: number
   preview: string
+  /** 首行全文：悬停时显示，读屏也读这一份。 */
+  full?: string
   pinned?: boolean
 }
 
@@ -278,6 +280,11 @@ export class RailScene {
     it.n.textContent = String(turn)
     it.r.textContent = String(turn)
     it.t.textContent = mark?.preview ?? ''
+    const full = mark?.full || mark?.preview || ''
+    it.el.title = full ? `第 ${turn} 轮：${full}` : ''
+    it.t.title = full
+    it.el.setAttribute('aria-label', full ? `第 ${turn} 轮：${full}` : `第 ${turn} 轮`)
+    it.el.dataset.turnLabel = full
     it.p.dataset.turn = mark?.id ?? ''
     it.bound = turn
   }

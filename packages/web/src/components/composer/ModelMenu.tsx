@@ -15,7 +15,8 @@ function priceText(price: ModelPriceInfo): string {
     price.cacheRead !== undefined && price.cacheRead > 0
       ? ` · 缓存 $${fmt(price.cacheRead)}`
       : ''
-  return `输入 $${fmt(price.input)} · 输出 $${fmt(price.output)} / 百万 tok${cache}`
+  const prefix = price.source === 'builtin' ? '参考价 · ' : ''
+  return `${prefix}输入 $${fmt(price.input)} · 输出 $${fmt(price.output)} / 百万 tok${cache}`
 }
 
 function ModelPanel({
@@ -160,7 +161,10 @@ function ModelPanel({
               <span className="truncate text-[13px] leading-4">{friendly}</span>
               <span className="truncate font-mono text-[12px] leading-4 text-muted">{m}</span>
               {prices?.[m] ? (
-                <span className="truncate font-mono text-[12px] leading-4 text-muted/80">
+                <span
+                  className="truncate font-mono text-[12px] leading-4 text-muted/80"
+                  title={priceText(prices[m])}
+                >
                   {priceText(prices[m])}
                 </span>
               ) : pricesLoading ? (

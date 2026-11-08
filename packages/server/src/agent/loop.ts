@@ -12,6 +12,7 @@ import {
   autoCompactDue,
   cacheHitRateOf,
   estimateBreakdown,
+  isTurnStart,
   trimOldToolResults,
 } from '../context.js';
 import { isContextLengthError } from '../providers/http-error.js';
@@ -53,6 +54,8 @@ export interface TurnResult {
   error?: string;
   /** 本轮最后一条 assistant 文本（子代理用于回传结果）。 */
   lastText?: string;
+  /** 本轮对应的用户消息 id（收件箱跳转定位用）。 */
+  turnMessageId?: string;
 }
 
 export interface TurnOptions {
@@ -81,7 +84,7 @@ export async function runTurn(
   // 运行意图落盘：Host 崩溃/重启后据此续跑；trigger 为当前轮的用户消息
   const turnMessageId =
     options.turnMessageId ??
-    [...rec.messages].reverse().find((m) => m.role === 'user' && !m.notice)?.id;
+    [...rec.messages].reverse().find((m) => isTurnStart(m))?.id;
   startRun(host, rec, turnMessageId);
   rt.turnMessageId = turnMessageId;
 
@@ -755,6 +758,7 @@ export async function runTurn(
     reason,
     ...(errorText ? { error: errorText } : {}),
     ...(lastAssistantText(rec) ? { lastText: lastAssistantText(rec) } : {}),
+    ...(turnMessageId ? { turnMessageId } : {}),
   };
 }
 
