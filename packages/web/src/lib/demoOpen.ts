@@ -5,6 +5,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useDemoStore } from '../store/useDemoStore'
 import { useEvalStore } from '../store/useEvalStore'
+import { useFeedbackStore } from '../store/useFeedbackStore'
 import { api } from './api'
 import { navigateBoard } from './boardRoute'
 import { navigate } from './router'
@@ -72,13 +73,15 @@ export async function openDemoScenario(
   }
 }
 
-export async function openDemoById(scenarioId: string): Promise<void> {
+export async function openDemoById(scenarioId: string): Promise<boolean> {
   const host = hostOf()
-  if (!host) return
+  if (!host) return false
   let state = useDemoStore.getState().byHost[host.id]
   if (!state) state = await useDemoStore.getState().load(host)
   const scenario = state?.scenarios.find((item) => item.id === scenarioId)
-  if (scenario) await openDemoScenario(scenario, host)
+  if (!scenario) return false
+  await openDemoScenario(scenario, host)
+  return true
 }
 
 export async function openChecklistAction(
@@ -91,6 +94,7 @@ export async function openChecklistAction(
     if (action.action === 'split') ui.setSplitPickerOpen(true)
     else if (action.action === 'search' || action.action === 'command') ui.setSearchOpen(true)
     else if (action.action === 'clear-demo') ui.setDemoOpen(true)
+    else if (action.action === 'feedback') useFeedbackStore.getState().enter()
     return
   }
   if (action.settingsTab) {

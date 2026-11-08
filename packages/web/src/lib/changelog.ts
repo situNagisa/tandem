@@ -7,6 +7,11 @@ export type ChangelogTarget =
   | { kind: 'split' }
   | { kind: 'inbox' }
   | { kind: 'home' }
+  /** 打开演示工作区；带 scenario 时直接打开对应演示场景。 */
+  | { kind: 'demo'; scenario?: string }
+  | { kind: 'checklist' }
+  | { kind: 'about' }
+  | { kind: 'feedback' }
 
 export interface ChangelogEntry {
   id: string
@@ -29,10 +34,22 @@ export const CHANGELOG: ChangelogRelease[] = [
     date: '2026-11-08',
     items: [
       {
-        id: 'release-0.2.1-1',
-        title: '演示工作区、体验清单与反馈按功能/根因归类',
-        summary: 'demo 模块 · 提交 e67ea64，详见 CHANGELOG.md。',
-        target: { kind: 'home' },
+        id: 'demo-workspace',
+        title: '演示工作区',
+        summary: '一键创建带演示数据的会话、看板与设置页，随时清除，不影响真实数据。',
+        target: { kind: 'demo' },
+      },
+      {
+        id: 'checklist',
+        title: '体验清单',
+        summary: '按功能逐项体验并标记通过/有问题；进度与报告都保存在本机。',
+        target: { kind: 'checklist' },
+      },
+      {
+        id: 'feedback-grouping',
+        title: '反馈按功能与根因归类',
+        summary: '反馈自动归到功能并建议根因，导出后按功能、按根因分别整理。',
+        target: { kind: 'feedback' },
       },
     ],
   },
@@ -42,52 +59,52 @@ export const CHANGELOG: ChangelogRelease[] = [
     date: '2026-11-08',
     items: [
       {
-        id: 'release-0.2.0-1',
-        title: 'release 签名打包与 AAB',
-        summary: 'android 模块 · 提交 76fc497，详见 CHANGELOG.md。',
-        target: { kind: 'home' },
+        id: 'desktop-update',
+        title: '桌面端自动更新',
+        summary: '桌面端可从内网更新源发现并下载新版本，安装完成后提示重启。',
+        target: { kind: 'settings', tab: 'general', settingId: 'general.updates' },
       },
       {
-        id: 'release-0.2.0-2',
-        title: '应用预览画布：设备尺寸、元素点选与改完自动刷新',
-        summary: 'preview 模块 · 提交 8fdc951，详见 CHANGELOG.md。',
-        target: { kind: 'home' },
+        id: 'release-signing',
+        title: '安卓正式签名包',
+        summary: '安卓端提供签名 APK 与上架用 AAB，版本与桌面端保持一致。',
+        target: { kind: 'about' },
       },
       {
-        id: 'release-0.2.0-3',
-        title: '项目 Wiki 生成、增量更新、浏览与 agent 检索',
-        summary: 'wiki 模块 · 提交 2608065，详见 CHANGELOG.md。',
-        target: { kind: 'home' },
+        id: 'preview-canvas',
+        title: '应用预览画布',
+        summary: '在会话侧栏预览本机前端应用，可切换设备尺寸、点选元素并回填到对话。',
+        target: { kind: 'demo', scenario: 'preview' },
       },
       {
-        id: 'release-0.2.0-4',
-        title: '前端按需加载大会话、轮次大纲与超大工具输出',
-        summary: 'paging 模块 · 提交 2ec8e2a，详见 CHANGELOG.md。',
-        target: { kind: 'home' },
+        id: 'project-wiki',
+        title: '项目 Wiki',
+        summary: '为仓库生成模块页与术语页，agent 可检索；增量更新保留手写内容。',
+        target: { kind: 'demo', scenario: 'wiki' },
       },
       {
-        id: 'release-0.2.0-5',
-        title: 'SSH 一键部署远程主机与隧道接入',
-        summary: 'remote 模块 · 提交 646dc2a，详见 CHANGELOG.md。',
-        target: { kind: 'home' },
+        id: 'session-paging',
+        title: '大会话分页与轮次大纲',
+        summary: '超大会话首屏只加载最近内容，滚到顶部自动补更早内容，轮次大纲可直接跳转。',
+        target: { kind: 'demo', scenario: 'chat-tools' },
       },
       {
-        id: 'release-0.2.0-6',
-        title: '会话快照尾部下发与消息分页接口',
-        summary: 'paging 模块 · 提交 8b3e695，详见 CHANGELOG.md。',
-        target: { kind: 'home' },
+        id: 'ssh-remote',
+        title: '远程主机一键部署',
+        summary: '用 SSH 添加远程主机并部署 Host，手机可经隧道连接使用。',
+        target: { kind: 'settings', tab: 'hosts', settingId: 'hosts.ssh.add' },
       },
       {
-        id: 'release-0.2.0-7',
-        title: '设置分组与顶栏收敛，新增新功能导览',
-        summary: 'ia 模块 · 提交 2f9173c，详见 CHANGELOG.md。',
-        target: { kind: 'home' },
+        id: 'settings-tour',
+        title: '设置分组与新功能导览',
+        summary: '设置项按用途分组，顶栏入口更少；升级后首次打开会提示本版新增功能。',
+        target: { kind: 'about' },
       },
       {
-        id: 'release-0.2.0-8',
-        title: 'v2 运行时提议、卡片 AI 评审、PR 聚合、分屏与冲突解决',
-        summary: 'board 模块 · 提交 1931a54，详见 CHANGELOG.md。',
-        target: { kind: 'home' },
+        id: 'board-v2',
+        title: '看板与 AI 评审增强',
+        summary: '看板支持运行时提议、卡片 AI 评审与 PR 聚合，分屏里也能处理冲突。',
+        target: { kind: 'board' },
       },
     ],
   },

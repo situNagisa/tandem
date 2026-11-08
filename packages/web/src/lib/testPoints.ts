@@ -1,7 +1,7 @@
 import type { SettingsTab } from './types'
 
 /** 体验清单的测试要点：每条一句话说明做什么，以及在哪里能打开对应场景。 */
-export type ChecklistAction = 'split' | 'search' | 'command' | 'clear-demo'
+export type ChecklistAction = 'split' | 'search' | 'command' | 'clear-demo' | 'feedback'
 
 export interface TestPoint {
   id: string
@@ -109,6 +109,8 @@ export const TEST_POINTS: TestPoint[] = [
   { id: 'update-2', feature: 'update', text: '配置内网更新源，确认发现新版本并可下载；留空不发起请求。', settingsTab: 'general' },
   { id: 'sync-1', feature: 'sync', text: '导出加密配置，换一个临时 Host 导入，确认账号与会话恢复。', settingsTab: 'sync' },
   { id: 'sync-2', feature: 'sync', text: '确认导出文件需要口令、错误口令无法解密。', settingsTab: 'sync' },
+  { id: 'feedback-1', feature: 'feedback', text: '进入反馈模式圈选元素，确认自动带上功能标签与建议根因，并可手动修改。', action: 'feedback' },
+  { id: 'feedback-2', feature: 'feedback', text: '导出反馈包，确认解包后按功能与按根因分别生成文件。', action: 'feedback' },
   { id: 'demo-checklist-1', feature: 'demo-checklist', text: '创建演示工作区，逐个打开场景，确认都标注「演示数据」。', demo: 'chat-tools' },
   { id: 'demo-checklist-2', feature: 'demo-checklist', text: '在体验清单点「有问题」进入反馈模式，确认自动带上功能标签。', demo: 'board' },
   { id: 'demo-checklist-3', feature: 'demo-checklist', text: '清除演示数据，确认会话、记忆、用量、看板与索引都不留痕迹。', action: 'clear-demo' },

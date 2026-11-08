@@ -10,8 +10,10 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
+import { useFeedbackStore } from '../../store/useFeedbackStore'
 import { navigate } from '../../lib/router'
 import { navigateBoard } from '../../lib/boardRoute'
+import { openDemoById } from '../../lib/demoOpen'
 import {
   APP_VERSION,
   CHANGELOG_VERSION,
@@ -51,6 +53,28 @@ function runTarget(target: ChangelogTarget): void {
   }
   if (target.kind === 'home') {
     navigate({ kind: 'home' })
+    return
+  }
+  if (target.kind === 'demo') {
+    if (!target.scenario) {
+      ui.setDemoOpen(true)
+      return
+    }
+    void openDemoById(target.scenario).then((opened) => {
+      if (!opened) useUiStore.getState().setDemoOpen(true)
+    })
+    return
+  }
+  if (target.kind === 'checklist') {
+    ui.setChecklistOpen(true)
+    return
+  }
+  if (target.kind === 'about') {
+    ui.setAboutOpen(true)
+    return
+  }
+  if (target.kind === 'feedback') {
+    useFeedbackStore.getState().enter()
     return
   }
   if (target.kind === 'board') {
