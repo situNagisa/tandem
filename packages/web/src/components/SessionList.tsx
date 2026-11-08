@@ -663,7 +663,7 @@ export function SessionList({
             data-session-open="true"
             onClick={(e) => openSession(hostId, s.id, !!(e.metaKey || e.ctrlKey))}
             aria-current={isActive ? 'page' : undefined}
-            className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pl-2 pr-1 text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--t-accent-strong)]"
+            className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pl-2 pr-1 text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--t-focus-ring)]"
           >
             <span className="pointer-events-none flex size-4 shrink-0 items-center justify-center">
               {s.status !== 'idle' ? (
