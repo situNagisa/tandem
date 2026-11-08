@@ -134,38 +134,44 @@ export const CHANGELOG: ChangelogRelease[] = [
         summary: '选模型时直接看到每百万 token 的参考单价；未设置时显示「去设置」，点开就能填。',
         target: { kind: 'settings', tab: 'profiles', settingId: 'profiles.prices' },
       },
-      {
-        id: 'feedback-root-cause',
-        title: '反馈自动按功能与根因归类',
-        summary: '圈选的反馈自动带上功能标签与建议根因，导出后按功能、按根因分别整理；弹出菜单里也能圈选。',
-        target: { kind: 'feedback' },
-      },
+      ...(__TANDEM_DEBUG__
+        ? [
+            {
+              id: 'feedback-root-cause',
+              title: '反馈自动按功能与根因归类',
+              summary: '圈选的反馈自动带上功能标签与建议根因，导出后按功能、按根因分别整理；弹出菜单里也能圈选。',
+              target: { kind: 'feedback' as const },
+            },
+          ]
+        : []),
     ],
   },
 
   {
     version: '0.2.1',
     date: '2026-11-08',
-    items: [
-      {
-        id: 'demo-workspace',
-        title: '演示工作区',
-        summary: '一键创建带演示数据的会话、看板与设置页，随时清除，不影响真实数据。',
-        target: { kind: 'demo' },
-      },
-      {
-        id: 'checklist',
-        title: '体验清单',
-        summary: '按功能逐项体验并标记通过/有问题；进度与报告都保存在本机。',
-        target: { kind: 'checklist' },
-      },
-      {
-        id: 'feedback-grouping',
-        title: '反馈按功能与根因归类',
-        summary: '反馈自动归到功能并建议根因，导出后按功能、按根因分别整理。',
-        target: { kind: 'feedback' },
-      },
-    ],
+    items: __TANDEM_DEBUG__
+      ? [
+          {
+            id: 'demo-workspace',
+            title: '演示工作区',
+            summary: '一键创建带演示数据的会话、看板与设置页，随时清除，不影响真实数据。',
+            target: { kind: 'demo' as const },
+          },
+          {
+            id: 'checklist',
+            title: '体验清单',
+            summary: '按功能逐项体验并标记通过/有问题；进度与报告都保存在本机。',
+            target: { kind: 'checklist' as const },
+          },
+          {
+            id: 'feedback-grouping',
+            title: '反馈按功能与根因归类',
+            summary: '反馈自动归到功能并建议根因，导出后按功能、按根因分别整理。',
+            target: { kind: 'feedback' as const },
+          },
+        ]
+      : [],
   },
 
   {

@@ -8,7 +8,8 @@
   "scripts": {
     "start": "electron .",
     "prepare:resources": "node scripts/prepare-resources.mjs",
-    "dist:win": "node scripts/dist-win.mjs"
+    "dist:win": "node scripts/dist-win.mjs",
+    "dist:win:debug": "node scripts/dist-win.mjs --debug"
   },
   "devDependencies": {
     "electron": "45.2.3",

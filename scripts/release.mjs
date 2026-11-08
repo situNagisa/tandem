@@ -15,6 +15,12 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+// 正式发布只允许 release flavor；调试包用 apk / dist:win:debug 单独出。
+if (process.env.TANDEM_FLAVOR && process.env.TANDEM_FLAVOR !== 'release') {
+  console.error(`[release] 发布必须使用 release flavor（当前 TANDEM_FLAVOR=${process.env.TANDEM_FLAVOR}）`)
+  process.exit(1)
+}
+process.env.TANDEM_FLAVOR = 'release'
 const args = process.argv.slice(2)
 const version = args.find((arg) => !arg.startsWith('-'))
 const dryRun = args.includes('--dry-run')

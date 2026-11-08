@@ -1,6 +1,5 @@
 import type { DelegationStrategy, PermissionMode } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
-import { useFeedbackStore } from '../store/useFeedbackStore'
 import { useUiStore } from '../store/useUiStore'
 import { navigateBoard } from './boardRoute'
 import { navigate, parseHash } from './router'
@@ -41,7 +40,7 @@ function requireActive(): ReturnType<typeof useAppStore.getState>['active'] {
   return active
 }
 
-export const COMMANDS: AppCommand[] = [
+const BASE_COMMANDS: AppCommand[] = [
   {
     id: 'session.new',
     title: '新会话',
@@ -143,22 +142,6 @@ export const COMMANDS: AppCommand[] = [
     },
   },
   {
-    id: 'app.demo',
-    title: '打开演示工作区',
-    keywords: ['演示', '场景', 'demo', '造数', '体验'],
-    run: () => {
-      useUiStore.getState().setDemoOpen(true)
-    },
-  },
-  {
-    id: 'app.checklist',
-    title: '打开体验清单',
-    keywords: ['体验清单', '测试要点', 'checklist', '回归', '增量测试'],
-    run: () => {
-      useUiStore.getState().setChecklistOpen(true)
-    },
-  },
-  {
     id: 'app.onboarding',
     title: '重新看上手引导',
     keywords: ['上手', '引导', '新手', 'onboarding', '帮助'],
@@ -197,15 +180,6 @@ export const COMMANDS: AppCommand[] = [
       const ui = useUiStore.getState()
       if (window.matchMedia('(max-width: 767px)').matches) ui.setMobileSidebar(!ui.mobileSidebar)
       else ui.toggleSidebar()
-    },
-  },
-  {
-    id: 'app.feedback',
-    title: '进入反馈模式',
-    keywords: ['反馈', '标注', '问题', 'feedback'],
-    defaultShortcut: 'mod+shift+f',
-    run: () => {
-      useFeedbackStore.getState().enter()
     },
   },
   {
@@ -309,6 +283,40 @@ export const COMMANDS: AppCommand[] = [
     },
   },
 ]
+
+// 调试专用命令：发布版构建时整个数组被剔除，命令面板搜不到，快捷键也不会绑定。
+const DEBUG_COMMANDS: AppCommand[] = __TANDEM_DEBUG__
+  ? [
+      {
+        id: 'app.demo',
+        title: '打开演示工作区',
+        keywords: ['演示', '场景', 'demo', '造数', '体验'],
+        run: () => {
+          useUiStore.getState().setDemoOpen(true)
+        },
+      },
+      {
+        id: 'app.checklist',
+        title: '打开体验清单',
+        keywords: ['体验清单', '测试要点', 'checklist', '回归', '增量测试'],
+        run: () => {
+          useUiStore.getState().setChecklistOpen(true)
+        },
+      },
+      {
+        id: 'app.feedback',
+        title: '进入反馈模式',
+        keywords: ['反馈', '标注', '问题', 'feedback'],
+        defaultShortcut: 'mod+shift+f',
+        run: async () => {
+          const { useFeedbackStore } = await import('../store/useFeedbackStore')
+          useFeedbackStore.getState().enter()
+        },
+      },
+    ]
+  : []
+
+export const COMMANDS: AppCommand[] = [...BASE_COMMANDS, ...DEBUG_COMMANDS]
 
 export const COMMAND_MAP = new Map(COMMANDS.map((command) => [command.id, command]))
 

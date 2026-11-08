@@ -31,10 +31,18 @@ node scripts/ui-audit.mjs        # UI 原语防回退检查：ui/ 目录外的�
 
 npm test                         # 单元测试（server: node:test + tsx；web: vitest）
 npm run smoke                    # Playwright 端到端冒烟（临时 Host + 假 provider，需先 build）
-node scripts/check.mjs           # 提交前全量：build → ui-audit → test → smoke
+node scripts/check.mjs           # 提交前全量：build → docs/ui-audit/test/smoke/regression → release 构建与扫描
 ```
 
 ## 打包
+### 调试版与发布版
+`TANDEM_FLAVOR=debug|release` 是唯一的构建开关，默认 `debug`。调试版保留反馈模式、演示工作区、体验清单、组件画廊与轨迹采集，界面右下角有「调试版」角标；发布版在构建时把这些模块与入口整体剔除（路由回首页、快捷键无效、设置与命令面板没有入口），关于页显示「发布版」。两种产物的完整清单与互斥说明见 `docs/features/release.md`。
+
+```bash
+npm run build:debug     # 默认，等于 npm run build
+npm run build:release   # 构建后剔除调试模块
+```
+
 ### 安卓 APK
 需要 **JDK 21** 和 **Android SDK**（platform-tools、Capacitor 所需的 platforms 与 build-tools）。脚本会自动查找，找不到时提示缺什么。
 
@@ -42,7 +50,7 @@ node scripts/check.mjs           # 提交前全量：build → ui-audit → test
 npm install
 npm run apk -w @tandem/mobile
 ```
-构建 web → `cap sync android` → Gradle `assembleDebug`；产物 `dist-apk/tandem-debug.apk`，并复制到「下载」目录（Windows 本机或 WSL 下的 Windows 用户目录）。用 Android Studio 调试：`npm run open -w @tandem/mobile`。
+构建 web（debug flavor）→ `cap sync android` → Gradle `assembleDebug`；产物 `dist-apk/tandem-debug.apk`，并复制到「下载」目录（Windows 本机或 WSL 下的 Windows 用户目录）。调试版与 `apk:release` 的发布版包名相同，不能同时安装。用 Android Studio 调试：`npm run open -w @tandem/mobile`。
 
 **Linux / WSL**：`sudo pacman -S jdk21-openjdk`（或 apt 安装 openjdk-21-jdk）；SDK 默认找 `~/Android/Sdk`。
 
@@ -58,13 +66,14 @@ npm run apk -w @tandem/mobile
 ```bash
 npm run apk:release -w @tandem/mobile
 ```
-首次会通过 `keytool` 在 `~/.tandem-release/` 生成 `android.keystore` 与 600 权限的密码文件（也可用 `TANDEM_ANDROID_KEYSTORE_PASSWORD` 环境变量提供密码），产出已签名的 `dist-apk/tandem-release.apk` 与 `.aab`，并用 `apksigner verify` 自动校验。签名材料不进仓库；**请离线备份 `~/.tandem-release`**，丢失后无法覆盖升级。debug 流程 `npm run apk -w @tandem/mobile` 不变。
+首次会通过 `keytool` 在 `~/.tandem-release/` 生成 `android.keystore` 与 600 权限的密码文件（也可用 `TANDEM_ANDROID_KEYSTORE_PASSWORD` 环境变量提供密码），产出已签名的 `dist-apk/tandem-release.apk` 与 `.aab`，并用 `apksigner verify` 自动校验。发布版以 release flavor 构建（不含调试功能）。签名材料不进仓库；**请离线备份 `~/.tandem-release`**，丢失后无法覆盖升级。调试包仍用 `npm run apk -w @tandem/mobile`。
 
 ### Windows 安装包
 ```bash
-npm run dist:win -w @tandem/desktop
+npm run dist:win -w @tandem/desktop        # 发布版（release flavor）
+npm run dist:win:debug -w @tandem/desktop  # 调试版（debug flavor）
 ```
-产物：`packages/desktop/dist/Tandem-Setup-<版本>-x64.exe`，同时生成 `latest.yml` 与 `.blockmap`，可直接放到内网静态目录作为更新源。
+发布版产物：`packages/desktop/dist/Tandem-Setup-<版本>-x64.exe`，同时生成 `latest.yml` 与 `.blockmap`，可直接放到内网静态目录作为更新源。调试版产物：`Tandem-Setup-<版本>-debug-x64.exe`。两者同一个 `appId` 与安装目录，**不能同时安装**，安装另一个会覆盖。
 
 ### 版本发布
 ```bash
@@ -84,8 +93,8 @@ node scripts/release.mjs 0.2.0             # 统一版本号、写 CHANGELOG/导
 ## 数据
 Host 数据在 `~/.tandem`（可用 `TANDEM_HOME` 覆盖）：`config.json`（hostId、token）、`profiles.json`（Key，权限 600）、`sessions/`、`checkpoints/`、`mcp.json`、`hooks.json` 等。Claude Code / Codex 的会话只读，不会被修改。
 
-## 反馈
-在 Web 界面里按 `Ctrl/Cmd + Shift + F`，或打开「设置 → 外观 → 进入反馈模式」。浮条上可切换「点选 / 框选」：点选元素（`Alt + 点击`选父元素），或按住拖拽框出任意区域（跨多个元素）。写反馈时可设置优先级 P0/P1/P2、`Ctrl+V` 粘贴或拖入参考图；截图可点开 Canvas 标注（矩形/箭头/画笔/文字/马赛克，橙白红三色，撤销重做）。
+## 反馈（仅调试版）
+在调试版 Web 界面里按 `Ctrl/Cmd + Shift + F`，或打开「设置 → 外观 → 进入反馈模式」。发布版不包含反馈模式、演示工作区与体验清单。浮条上可切换「点选 / 框选」：点选元素（`Alt + 点击`选父元素），或按住拖拽框出任意区域（跨多个元素）。写反馈时可设置优先级 P0/P1/P2、`Ctrl+V` 粘贴或拖入参考图；截图可点开 Canvas 标注（矩形/箭头/画笔/文字/马赛克，橙白红三色，撤销重做）。
 
 每条反馈自动附带：标注后的图与原图、参考图、反馈前 60 秒操作轨迹（点击选择器与文本、功能键/快捷键、路由、WS 断连、toast；不记录输入的文字）、脱敏状态快照（路由、会话摘要、UI 偏好、视口、Host 版本；可勾选附带最近 5 条消息正文，可隐藏本地路径）。支持录屏复现时，浮条「录制」通过 `getDisplayMedia` 本地录制（≤60 秒、≤8MB），作为下一条反馈的附件。
 

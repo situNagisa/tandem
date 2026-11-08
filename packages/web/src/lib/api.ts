@@ -259,6 +259,28 @@ function qs(params: Record<string, string | undefined>): string {
   return s ? `?${s}` : ''
 }
 
+type DemoApi = {
+  demo: (h: HostConfig) => Promise<DemoState>
+  createDemo: (h: HostConfig) => Promise<DemoState>
+  clearDemo: (h: HostConfig) => Promise<{ ok: boolean }>
+  replayDemo: (h: HostConfig, id: string) => Promise<DemoState>
+  playDemo: (h: HostConfig, id: string) => Promise<{ ok: boolean }>
+}
+
+// 演示工作区 API 只编入调试版；发布版里为空对象，相关模块也不会被打包。
+const demoApi = (__TANDEM_DEBUG__
+  ? {
+      demo: (h: HostConfig) => request<DemoState>(h, '/api/demo'),
+      createDemo: (h: HostConfig) =>
+        request<DemoState>(h, '/api/demo', { method: 'POST', body: JSON.stringify({}) }),
+      clearDemo: (h: HostConfig) => request<{ ok: boolean }>(h, '/api/demo', { method: 'DELETE' }),
+      replayDemo: (h: HostConfig, id: string) =>
+        request<DemoState>(h, `/api/demo/scenarios/${encodeURIComponent(id)}/replay`, { method: 'POST' }),
+      playDemo: (h: HostConfig, id: string) =>
+        request<{ ok: boolean }>(h, `/api/demo/scenarios/${encodeURIComponent(id)}/play`, { method: 'POST' }),
+    }
+  : {}) as DemoApi
+
 export const api = {
   host: (h: HostConfig) => request<HostInfo>(h, '/api/host'),
 
@@ -530,14 +552,7 @@ export const api = {
   transcribe: (h: HostConfig, input: SttInput) =>
     request<SttResult>(h, '/api/stt', { method: 'POST', body: JSON.stringify(input) }),
 
-  demo: (h: HostConfig) => request<DemoState>(h, '/api/demo'),
-  createDemo: (h: HostConfig) =>
-    request<DemoState>(h, '/api/demo', { method: 'POST', body: JSON.stringify({}) }),
-  clearDemo: (h: HostConfig) => request<{ ok: boolean }>(h, '/api/demo', { method: 'DELETE' }),
-  replayDemo: (h: HostConfig, id: string) =>
-    request<DemoState>(h, `/api/demo/scenarios/${encodeURIComponent(id)}/replay`, { method: 'POST' }),
-  playDemo: (h: HostConfig, id: string) =>
-    request<{ ok: boolean }>(h, `/api/demo/scenarios/${encodeURIComponent(id)}/play`, { method: 'POST' }),
+  ...demoApi,
 
   profiles: (h: HostConfig) => request<Profile[]>(h, '/api/profiles'),
   createProfile: (h: HostConfig, input: ProfileInput) =>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useAppStore } from './store/useAppStore'
 import { applyTheme, useUiStore } from './store/useUiStore'
 import { navigate, useRoute } from './lib/router'
@@ -35,12 +35,22 @@ import { InboxDialog } from './components/inbox/InboxDialog'
 import { DispatchDialog } from './components/DispatchDialog'
 import { DoctorDialog } from './components/DoctorDialog'
 import { Toasts } from './components/ui/Toasts'
-import { FeedbackMode } from './components/feedback/FeedbackMode'
 import { FeatureTour } from './components/tour/FeatureTour'
-import { DemoDialog } from './components/demo/DemoDialog'
-import { ChecklistDialog } from './components/demo/ChecklistDialog'
 import { OverlayScrollbar } from './components/ui/OverlayScrollbar'
-import { UiGallery } from './components/ui/UiGallery'
+
+// 调试专用界面整体惰性加载；发布版构建里条件为常量 false，模块不会进入产物。
+const FeedbackMode = __TANDEM_DEBUG__
+  ? lazy(() => import('./components/feedback/FeedbackMode').then((mod) => ({ default: mod.FeedbackMode })))
+  : null
+const DemoDialog = __TANDEM_DEBUG__
+  ? lazy(() => import('./components/demo/DemoDialog').then((mod) => ({ default: mod.DemoDialog })))
+  : null
+const ChecklistDialog = __TANDEM_DEBUG__
+  ? lazy(() => import('./components/demo/ChecklistDialog').then((mod) => ({ default: mod.ChecklistDialog })))
+  : null
+const UiGallery = __TANDEM_DEBUG__
+  ? lazy(() => import('./components/ui/UiGallery').then((mod) => ({ default: mod.UiGallery })))
+  : null
 
 function DispatchDialogHost() {
   const open = useUiStore((s) => s.dispatchOpen)
@@ -89,7 +99,7 @@ export default function App() {
   const [drawerOffset, setDrawerOffset] = useState(0)
   const [onboarded, setOnboarded] = useState(() => {
     try {
-      if (localStorage.getItem('tandem.onboarding.force')) return false
+      if (__TANDEM_DEBUG__ && localStorage.getItem('tandem.onboarding.force')) return false
       return !!localStorage.getItem('tandem.onboarded.v1')
     } catch {
       return true
@@ -97,7 +107,7 @@ export default function App() {
   })
   const forceOnboarding = (() => {
     try {
-      return !!localStorage.getItem('tandem.onboarding.force')
+      return __TANDEM_DEBUG__ && !!localStorage.getItem('tandem.onboarding.force')
     } catch {
       return false
     }
@@ -427,8 +437,10 @@ export default function App() {
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
         <main className="flex min-h-0 flex-1">
-          {route.kind === 'dev-ui' ? (
-            <UiGallery />
+          {route.kind === 'dev-ui' && UiGallery ? (
+            <Suspense fallback={null}>
+              <UiGallery />
+            </Suspense>
           ) : boardRoute ? (
             <BoardView route={boardRoute} />
           ) : route.kind === 'external' ? (
@@ -537,11 +549,22 @@ export default function App() {
       <SearchDialog />
       <SplitOpenDialog />
       <FeatureTour />
-      <DemoDialog />
-      <ChecklistDialog />
+      <Suspense fallback={null}>
+        {DemoDialog && <DemoDialog />}
+        {ChecklistDialog && <ChecklistDialog />}
+        {FeedbackMode && <FeedbackMode />}
+      </Suspense>
       <Toasts />
-      <FeedbackMode />
       <OverlayScrollbar />
+      {__TANDEM_DEBUG__ && (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed bottom-1 right-1 z-[70] rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[10px] leading-4 text-text-tertiary"
+          title={`Tandem ${__APP_VERSION__} 调试版`}
+        >
+          调试版
+        </div>
+      )}
     </div>
   )
 }

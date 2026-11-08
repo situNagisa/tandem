@@ -4,22 +4,16 @@ import App from './App'
 import './index.css'
 import { applyTheme, useUiStore } from './store/useUiStore'
 import { useAppStore } from './store/useAppStore'
-import { installFeedbackErrorBuffer } from './lib/feedbackErrors'
-import { installFeedbackHotkey } from './lib/feedbackHotkey'
 import { installFocusRing } from './lib/focusRing'
-import { installFeedbackTrace } from './lib/feedbackTrace'
 import { PublicSharePage } from './components/share/PublicSharePage'
 
 // 分享页是独立只读页面：不加载 Host 列表、不连 WS、也不启用反馈工具。
 const isSharePage = /^\/s\/[^/?#]+/.test(window.location.pathname)
 
-if (!isSharePage) {
-  // 反馈模式依赖最早的错误缓冲，先于应用初始化安装。
-  installFeedbackErrorBuffer()
-  // 热键必须早于应用内所有 keydown 监听注册。
-  installFeedbackHotkey()
-  // 操作轨迹只采集不拦截，尽早安装以覆盖启动阶段。
-  installFeedbackTrace()
+if (!isSharePage && __TANDEM_DEBUG__) {
+  // 反馈模式与轨迹采集只在调试版加载；发布版构建会连同模块一起剔除。
+  const { installDebugTools } = await import('./lib/debugBootstrap')
+  installDebugTools()
 }
 // 焦点环只跟键盘导航走：鼠标打开弹层后自动聚焦的输入框不出现焦点环。
 // 分享页同样需要，保证键盘用户仍能看到焦点。

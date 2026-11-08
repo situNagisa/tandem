@@ -5,6 +5,7 @@
 ## 当前版本
 - 已发布 v0.3.1（本地标签，未 push）。产物在 Windows「下载」：`Tandem-Setup-0.3.1-x64.exe`、`tandem-release.apk/.aab`、`tandem-debug.apk`。
 - 发布流程：`node scripts/release.mjs <版本>`（先在 `packages/web/src/lib/changelog.ts` 手写导览条目，否则脚本会中止）→ `node scripts/check.mjs` 全过 → `npm run apk:release -w @tandem/mobile`、`npm run apk -w @tandem/mobile`、`npm run dist:win -w @tandem/desktop`。**check 不过不打包。**
+- **发给用户体验用调试版，正式发布用发布版**：调试版走 `npm run build:debug` + `npm run apk -w @tandem/mobile`（`tandem-debug.apk`）+ `npm run dist:win:debug -w @tandem/desktop`（`Tandem-Setup-<版本>-debug-x64.exe`），带反馈模式、演示工作区、体验清单与调试角标；正式包走 `apk:release` + `dist:win`，不含这些功能。桌面调试版与发布版同一 appId/安装目录，不能同时安装。构建开关与清单见 `docs/features/release.md` 第 0 节。
 - 安卓签名密钥：`~/.tandem-release/`（不在仓库；用户需离线备份）。
 
 ## 正在进行

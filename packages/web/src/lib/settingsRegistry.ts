@@ -154,8 +154,13 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'appearance.shortcuts', tab: 'appearance', title: '键盘快捷键', keywords: ['快捷键', '命令', '按键'] },
   { id: 'appearance.notifications', tab: 'appearance', title: '桌面通知', keywords: ['通知', '开关'] },
   { id: 'appearance.install', tab: 'appearance', title: '安装到手机主屏', keywords: ['手机', 'pwa', '主屏'] },
-  { id: 'appearance.gallery', tab: 'appearance', title: '组件画廊', keywords: ['ui', '组件', '画廊'] },
-  { id: 'appearance.feedback', tab: 'appearance', title: '反馈模式', keywords: ['反馈', '标注', '问题'] },
+  // 调试专用设置项：发布版不注册，设置搜索与命令面板都找不到。
+  ...(__TANDEM_DEBUG__
+    ? [
+        { id: 'appearance.gallery', tab: 'appearance' as const, title: '组件画廊', keywords: ['ui', '组件', '画廊'] },
+        { id: 'appearance.feedback', tab: 'appearance' as const, title: '反馈模式', keywords: ['反馈', '标注', '问题'] },
+      ]
+    : []),
 ]
 
 export const SETTING_MAP = new Map(SETTINGS_ITEMS.map((item) => [item.id, item]))

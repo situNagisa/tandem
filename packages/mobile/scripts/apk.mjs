@@ -92,7 +92,10 @@ function copyToWindowsDownloads() {
 
 run('npm', ['run', 'build', '-w', '@tandem/protocol'], { cwd: root })
 run('npm', ['run', 'build', '-w', '@tandem/relay'], { cwd: root })
-run('npm', ['run', 'build', '-w', '@tandem/web'], { cwd: root })
+run('npm', ['run', 'build', '-w', '@tandem/web'], {
+  cwd: root,
+  env: { ...env, TANDEM_FLAVOR: 'debug' },
+})
 const webDist = path.join(root, 'packages', 'web', 'dist')
 
 run('npx', ['cap', 'sync', 'android'], { cwd: pkgDir, env: { ...env, TANDEM_WEB_DIR: webDist } })

@@ -2,8 +2,8 @@
 import type { StreamRequest, StreamResult } from './types.js';
 import { streamAnthropic, testAnthropic } from './anthropic.js';
 import { streamOpenAI, testOpenAI } from './openai.js';
-import { streamDemo } from '../demo/provider.js';
 import type { StoredProfile } from '../types.js';
+import { IS_DEBUG_FLAVOR } from '../flavor.js';
 import { truncateEnd } from '../util/text.js';
 
 export type { StreamRequest, StreamResult } from './types.js';
@@ -20,8 +20,11 @@ export async function streamChat(req: StreamRequest): Promise<StreamResult> {
     case 'gemini':
     case 'tandem-gateway':
       return streamOpenAI(req);
-    case 'demo':
-      return streamDemo(req);
+    case 'demo': {
+      if (!IS_DEBUG_FLAVOR) throw new Error(`不支持的 provider 类型: demo`);
+      const { streamBuiltInModel } = await import('../debug/demoProvider.js');
+      return streamBuiltInModel(req);
+    }
     default:
       throw new Error(`不支持的 provider 类型: ${(req.profile as StoredProfile).kind}`);
   }
@@ -32,7 +35,7 @@ export async function testProfile(
   profile: StoredProfile,
   signal: AbortSignal,
 ): Promise<{ ok: boolean; error?: string }> {
-  if (profile.kind === 'demo') return { ok: true };
+  if (profile.kind === 'demo') return { ok: IS_DEBUG_FLAVOR };
   if (!profile.apiKey) return { ok: false, error: '未配置 API Key' };
   const model = profile.defaultModel || profile.models[0] || '';
   if (!model) return { ok: false, error: '未配置模型' };

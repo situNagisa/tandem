@@ -2,7 +2,47 @@
 
 > 更新：2026-11-09。
 
-本文覆盖版本号、安卓签名、桌面更新源与上架材料。所有签名材料只放在仓库之外，发布产物只进入本机 `dist-*` 目录或内网静态目录。
+本文覆盖版本号、调试版/发布版构建、安卓签名、桌面更新源与上架材料。所有签名材料只放在仓库之外，发布产物只进入本机 `dist-*` 目录或内网静态目录。
+
+## 0. 调试版与发布版
+
+一个构建开关控制全部产物：`TANDEM_FLAVOR=debug|release`，默认 `debug`（开发体验不变）。
+
+- `debug`：功能包，包含反馈模式、演示工作区等维护者工具，界面右下角显示「调试版」角标，关于页显示「调试版」。
+- `release`：给用户使用的正式包。调试专用模块在构建时被剔除，而不是只隐藏按钮；界面不显示调试角标，关于页显示「发布版」。
+
+### 0.1 只在调试版存在的功能
+
+以下功能在发布版里完全不存在：路由不可访问、快捷键无效、设置/关于没有入口、命令面板搜不到、对应模块不进入产物。
+
+| 功能 | 入口/说明 |
+|---|---|
+| 反馈模式 | `Ctrl/Cmd + Shift + F`、设置 → 外观 → 反馈、导出的反馈包与回执导入 |
+| 演示工作区 | 设置 → 关于、命令面板；含演示模型、演示会话、演示项目、演示看板/评测/Wiki 等预置场景 |
+| 演示设备 | 工作站里的演示安卓设备、演示串口板与演示画面 |
+| 体验清单 | 设置 → 关于、命令面板；测试要点、进度与 Markdown 报告 |
+| 组件画廊 | `#/dev/ui`、设置 → 外观 → 组件画廊 |
+| 调试日志/轨迹采集 | 反馈用的错误缓冲、操作轨迹、快照与录屏 |
+| 测试开关 | `localStorage['tandem.onboarding.force']` 强制重新上手引导 |
+
+正常功能两个版本都有：主机诊断、配置导出/导入、用量与预算、更新检查等。
+
+### 0.2 一键构建
+
+```bash
+npm run build:debug        # 默认；等于 npm run build
+npm run build:release      # 先构建，再剔除 server/web 里的调试模块
+
+npm run apk -w @tandem/mobile          # 调试版：debug 签名，dist-apk/tandem-debug.apk
+npm run apk:release -w @tandem/mobile  # 发布版：release 签名，tandem-release.apk/.aab
+
+npm run dist:win -w @tandem/desktop        # 发布版安装包
+npm run dist:win:debug -w @tandem/desktop  # 调试版：Tandem-Setup-<版本>-debug-x64.exe
+```
+
+桌面调试版与发布版使用同一个 `appId`、产品名与安装目录，**不能同时安装**：安装另一个会覆盖已有的 Tandem。需要并存时先卸载，或分别装在两台机器/两个 Windows 用户下。
+
+`node scripts/release.mjs` 固定使用 release flavor，环境变量为其他值时会直接中止。`node scripts/check.mjs` 会额外构建一次 release、扫描 `packages/web/dist` 与 `packages/server/dist`，确认没有调试专用标识，并跑一条发布版页面回归（快捷键无反应、`#/dev/ui` 回首页、设置/关于/命令面板无调试入口）；回归测试本身仍在 debug flavor 下运行。
 
 ## 1. 版本与发布流程
 
@@ -47,7 +87,7 @@ npm run apk:release -w @tandem/mobile
 - `dist-apk/tandem-release.aab`（Google Play / 部分商店用）
 - 同时复制到 Windows「下载」目录（与本机 debug 包流程相同）
 
-release 构建启用了 R8 代码压缩与资源压缩；脚本会检查 APK 内仍存在 `assets/public/index.html` 与前端 JS，防止 WebView 资源被误删。debug 包流程 `npm run apk -w @tandem/mobile` 不变。
+release 构建启用了 R8 代码压缩与资源压缩；脚本会检查 APK 内仍存在 `assets/public/index.html` 与前端 JS，防止 WebView 资源被误删。`apk:release` 以 release flavor 构建 web；`npm run apk -w @tandem/mobile` 产出 debug flavor 的调试包 `tandem-debug.apk`，两者安装后包名相同，不能同时安装。
 
 > **备份提醒**：`~/.tandem-release` 是整个安卓发布链路的根。请把 keystore 与密码离线备份到密码管理器或离线介质；丢失后无法给已安装用户发覆盖升级，只能换包名重新上架。
 
@@ -59,7 +99,7 @@ release 构建启用了 R8 代码压缩与资源压缩；脚本会检查 APK 内
 npm run dist:win -w @tandem/desktop
 ```
 
-`packages/desktop/dist/` 会同时产出：
+`dist:win` 固定产出发布版；发给用户试用时用 `npm run dist:win:debug -w @tandem/desktop`（文件名带 `-debug`）。`packages/desktop/dist/` 会同时产出：
 
 - `Tandem-Setup-<版本>-x64.exe`
 - `Tandem-Setup-<版本>-x64.exe.blockmap`

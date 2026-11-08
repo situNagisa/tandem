@@ -48,8 +48,8 @@ import { registerWsRoutes } from './routes/ws.js';
 import { registerSshHostRoutes } from './routes/ssh-hosts.js';
 import { registerDeviceRoutes } from './routes/devices.js';
 import { registerUpdateRoutes } from './routes/updates.js';
-import { registerDemoRoutes } from './routes/demo.js';
 import { SshRemoteManager } from './ssh/manager.js';
+import { IS_DEBUG_FLAVOR } from './flavor.js';
 
 export async function createApp(
   host: Host,
@@ -175,7 +175,10 @@ export async function createApp(
 
   registerHostRoutes(app, deps);
   registerUpdateRoutes(app, deps);
-  registerDemoRoutes(app, deps);
+  if (IS_DEBUG_FLAVOR) {
+    const { registerDebugDemoRoutes } = await import('./debug/demoRoutes.js');
+    await registerDebugDemoRoutes(app, deps);
+  }
   registerDoctorRoutes(app, deps);
   registerTeamRoutes(app, deps);
   registerAccountRoutes(app, deps);

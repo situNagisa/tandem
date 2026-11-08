@@ -212,7 +212,7 @@ function HostSection({
                     <div className="flex items-center gap-1.5 text-[13px] text-text">
                       <StateDot state={device.state} />
                       <span className="truncate">{device.name}</span>
-                      {device.demo && (
+                      {__TANDEM_DEBUG__ && device.demo && (
                         <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1 text-[11px] text-text-tertiary">
                           演示设备
                         </span>

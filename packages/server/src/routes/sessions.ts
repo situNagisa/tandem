@@ -280,7 +280,7 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
       const existing = host.store.get(id);
       if (!existing) return bad(reply, '会话不存在', 404);
       if (existing.demo && typeof patch.cwd === 'string' && !host.demo.isDemoPath(patch.cwd)) {
-        return bad(reply, '演示会话只能使用演示仓库目录');
+        return bad(reply, '该会话只能使用其所属的项目目录');
       }
       const rec = host.updateSession(id, patch);
       if (!rec) return bad(reply, '会话不存在', 404);

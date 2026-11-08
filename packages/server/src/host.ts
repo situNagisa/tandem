@@ -65,7 +65,14 @@ import { BackgroundTaskManager } from './tasks.js';
 import { ScheduleManager } from './schedules.js';
 import { EvalManager } from './evals.js';
 import { AiReviewManager } from './ai-review.js';
-import { DemoManager } from './demo/manager.js';
+import type { DemoApi } from './demo/api.js';
+import { DisabledDemoManager } from './demo/api.js';
+import { IS_DEBUG_FLAVOR } from './flavor.js';
+
+// 演示工作区模块只在调试版加载；发布构建会连同剧本、种子与内置模型一起剔除。
+const DemoManagerClass = IS_DEBUG_FLAVOR
+  ? (await import('./demo/manager.js')).DemoManager
+  : undefined;
 import { BoardManager } from './board/manager.js';
 import type { ListModelsResult } from './providers/index.js';
 import { SkillManager } from './skills.js';
@@ -233,8 +240,8 @@ export class Host {
   readonly preview: PreviewManager;
   /** 工作站设备：本机 ADB/串口、跨 Host 挂载代理、串口锁与审计。 */
   readonly devices: DeviceManager;
-  /** 演示工作区：独立 demo 仓库 + 内置演示模型 + 可重播/清除的场景。 */
-  readonly demo: DemoManager;
+  /** 演示工作区：独立 demo 仓库 + 内置演示模型 + 可重播/清除的场景（仅调试版）。 */
+  readonly demo: DemoApi;
   /** 跨会话收件箱（审批/回合结束/预算摘要），手机审批台的数据源。 */
   readonly inbox = new Inbox();
   readonly version: string;
@@ -359,7 +366,7 @@ export class Host {
     this.mcp.start();
     // 外部会话目录有变化时通知客户端刷新侧栏（30s 定时扫描）
     this.external.startWatching(() => this.notifyExternalSessionsChanged());
-    this.demo = new DemoManager(this);
+    this.demo = DemoManagerClass ? new DemoManagerClass(this) : new DisabledDemoManager();
     void this.demo.restore();
   }
 

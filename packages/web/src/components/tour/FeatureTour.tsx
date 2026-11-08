@@ -11,10 +11,8 @@ import {
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { useDevicesStore } from '../../store/useDevicesStore'
-import { useFeedbackStore } from '../../store/useFeedbackStore'
 import { navigate } from '../../lib/router'
 import { navigateBoard } from '../../lib/boardRoute'
-import { openDemoById } from '../../lib/demoOpen'
 import {
   APP_VERSION,
   CHANGELOG_VERSION,
@@ -33,7 +31,7 @@ import { Modal } from '../ui/Modal'
 const CARD_POSITION =
   'fixed bottom-[calc(88px+env(safe-area-inset-bottom))] right-3 z-[75] w-[min(340px,calc(100vw-1.5rem))] sm:right-4'
 
-function runTarget(target: ChangelogTarget): void {
+async function runTarget(target: ChangelogTarget): Promise<void> {
   const ui = useUiStore.getState()
   const app = useAppStore.getState()
   if (target.kind === 'settings') {
@@ -57,17 +55,18 @@ function runTarget(target: ChangelogTarget): void {
     return
   }
   if (target.kind === 'demo') {
+    if (!__TANDEM_DEBUG__) return
+    const { openDemoById } = await import('../../lib/demoOpen')
     if (!target.scenario) {
-      ui.setDemoOpen(true)
+      useUiStore.getState().setDemoOpen(true)
       return
     }
-    void openDemoById(target.scenario).then((opened) => {
-      if (!opened) useUiStore.getState().setDemoOpen(true)
-    })
+    const opened = await openDemoById(target.scenario)
+    if (!opened) useUiStore.getState().setDemoOpen(true)
     return
   }
   if (target.kind === 'checklist') {
-    ui.setChecklistOpen(true)
+    if (__TANDEM_DEBUG__) ui.setChecklistOpen(true)
     return
   }
   if (target.kind === 'about') {
@@ -75,6 +74,8 @@ function runTarget(target: ChangelogTarget): void {
     return
   }
   if (target.kind === 'feedback') {
+    if (!__TANDEM_DEBUG__) return
+    const { useFeedbackStore } = await import('../../store/useFeedbackStore')
     useFeedbackStore.getState().enter()
     return
   }
@@ -288,31 +289,40 @@ function AboutDialog() {
     >
       <div className="space-y-4 text-[13px] leading-5 text-text-soft">
         <div className="rounded-xl border border-border bg-surface p-3.5">
-          <p className="text-[15px] font-medium text-text">Tandem {APP_VERSION}</p>
+          <p className="text-[15px] font-medium text-text">
+            Tandem {APP_VERSION}
+            <span className="ml-1.5 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 align-middle text-[11px] font-normal text-text-tertiary">
+              {__TANDEM_FLAVOR__ === 'release' ? '发布版' : '调试版'}
+            </span>
+          </p>
           <p className="mt-1 text-[12px] text-muted">多端 agent 工作台 · Web / 桌面 / 安卓</p>
         </div>
         <p className="text-[12.5px] text-muted">
           导览只在应用版本更新后自动出现一次；也可以从这里随时重新打开，或重看三步上手引导。
         </p>
         <div className="flex flex-wrap justify-end gap-2">
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setAboutOpen(false)
-              setDemoOpen(true)
-            }}
-          >
-            演示工作区
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setAboutOpen(false)
-              setChecklistOpen(true)
-            }}
-          >
-            体验清单
-          </Button>
+          {__TANDEM_DEBUG__ && (
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setAboutOpen(false)
+                  setDemoOpen(true)
+                }}
+              >
+                演示工作区
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setAboutOpen(false)
+                  setChecklistOpen(true)
+                }}
+              >
+                体验清单
+              </Button>
+            </>
+          )}
           <Button
             variant="secondary"
             onClick={() => {
@@ -383,7 +393,7 @@ export function FeatureTour() {
 
   const jump = (entry: ChangelogEntry) => {
     setTourOpen(false)
-    runTarget(entry.target)
+    void runTarget(entry.target)
   }
 
   return (
