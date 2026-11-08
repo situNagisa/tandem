@@ -25,9 +25,9 @@
 
 ### 串口
 
-- A 用 Node `serialport`（可选依赖；未安装时设备列表为空并给出提示）打开串口，字节流进入 Tandem 的串口缓冲，经 WS `device_output` 推给客户端；提供 `SerialRead`（游标 + 时间窗 + 正则过滤）与 `SerialWrite`。
+- A 用 Node `serialport`（服务端依赖；加载失败时设备列表给出可读提示）打开串口，字节流进入 Tandem 的串口缓冲，经 WS `device_output` 推给客户端；提供 `SerialRead`（游标 + 时间窗 + 正则过滤）与 `SerialWrite`。
 - **虚拟串口给其他机器的本地程序用**：Linux 用 pty（`openpty`），Windows 用 com0com 一对虚拟串口，把远端字节流桥接到本地。v1 **不做**，只在传输层预留接口；原因：驱动安装、权限、跨机重连语义复杂，且先用 Tandem 工具/面板验证需求。
-- 传输层抽象 `SerialTransport`：`list/open/write/close`；v1 有 `MockSerialTransport`（`TANDEM_MOCK_SERIAL=1`，可自动化回归）与 `NodeSerialTransport`（真实 serialport；v1 只保证编译与列端口，打开失败给出可读错误）。
+- 传输层抽象 `SerialTransport`：`list/open/write/close`；v1 有 `MockSerialTransport`（`TANDEM_MOCK_SERIAL=1`，可自动化回归）与 `NodeSerialTransport`（真实 serialport；列端口与打开，失败给出可读错误）。
 
 ## 4. Agent 工具与权限
 
