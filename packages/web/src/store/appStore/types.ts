@@ -18,6 +18,7 @@ import type {
   HostConfig,
   HostRuntime,
   SessionTarget,
+  AccountSession,
 } from '../../lib/types'
 
 /** 单台 Host 的收件箱状态（跨会话事件流 + 未处理审批）。 */
@@ -33,6 +34,8 @@ export interface AppState {
   initialized: boolean
   hosts: HostConfig[]
   activeHostId: string | null
+  /** 工作区账号会话；未登录为 null（单机模式照旧）。 */
+  account: AccountSession | null
   runtimes: Record<string, HostRuntime>
   /** 各 Host 的全局收件箱；不持久化，重连时由服务端快照补齐。 */
   inbox: Record<string, HostInboxState>
@@ -90,6 +93,12 @@ export interface AppState {
   ) => Promise<SessionSummary | null>
   /** 应用配置迁移带回的客户端设置（Host 列表 / 主题 / 侧栏偏好）。 */
   applyClientSettings: (settings: ClientSettingsBundle, mode: 'merge' | 'replace') => void
+  /** 账号中心登录：保存会话并把可访问 Host 自动加入列表。 */
+  workspaceLogin: (input: { centerUrl: string; username: string; password: string; totp?: string }) => Promise<void>
+  /** 退出工作区账号：作废刷新令牌并移除账号添加的 Host。 */
+  workspaceLogout: () => Promise<void>
+  /** 刷新访问令牌并同步到所有账号 Host。 */
+  refreshWorkspace: () => Promise<boolean>
 
   openSession: (hostId: string, sessionId: string) => void
   /** 后台打开一个分屏会话视图，不切换焦点。 */

@@ -94,6 +94,22 @@ export default function App() {
     void initNativeBridge()
   }, [])
 
+  // 工作区账号：启动时与每 10 分钟检查访问令牌，过期前自动向账号中心刷新。
+  const accountSession = useAppStore((s) => s.account)
+  useEffect(() => {
+    if (!accountSession) return
+    const tick = () => {
+      const current = useAppStore.getState().account
+      if (!current) return
+      if (current.accessExpiresAt - Date.now() < 10 * 60 * 1000) {
+        void useAppStore.getState().refreshWorkspace()
+      }
+    }
+    tick()
+    const timer = window.setInterval(tick, 10 * 60 * 1000)
+    return () => window.clearInterval(timer)
+  }, [accountSession?.account.id, accountSession?.centerUrl])
+
   // 安卓前台服务：设置开关或 Host 数量变化时同步常驻通知
   useEffect(() => {
     if (!initialized) return

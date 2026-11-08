@@ -23,6 +23,7 @@ export const useAppStore = create<AppState>((set, get) => {
     initialized: false,
     hosts: [],
     activeHostId: null,
+    account: null,
     runtimes: {},
     externalSessions: {},
     inbox: {},

@@ -1,4 +1,4 @@
-import type { HostConfig, SplitState, Theme } from './types'
+import type { AccountSession, HostConfig, SplitState, Theme } from './types'
 import { isValidFingerprint, normalizeFingerprint } from './relay'
 import { sanitizeSplitState } from './split'
 
@@ -12,6 +12,7 @@ const KEYS = {
   sentHistory: 'tandem.sentHistory.v1',
   migrations: 'tandem.migrations.v1',
   split: 'tandem.split.v1',
+  account: 'tandem.account.v1',
 } as const
 
 function readJson<T>(key: string, fallback: T): T {
@@ -275,4 +276,14 @@ export function collectClientSettings(): ClientSettingsBundle {
     recentDirs: readRecentDirsMap(),
     lastHost: loadLastHost(),
   }
+}
+
+export function loadAccountSession(): AccountSession | null {
+  const raw = readJson<AccountSession | null>(KEYS.account, null)
+  if (!raw || typeof raw !== 'object' || !raw.accessToken || !raw.account || !raw.centerUrl) return null
+  return raw
+}
+
+export function saveAccountSession(session: AccountSession | null): void {
+  writeJson(KEYS.account, session)
 }

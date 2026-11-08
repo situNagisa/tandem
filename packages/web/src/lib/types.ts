@@ -15,6 +15,8 @@ import type {
   TeamIdentity,
   TeamPresence,
   Todo,
+  WorkspaceAccount,
+  WorkspaceInfo,
 } from '@tandem/protocol'
 
 /** 直连：url + token；中继：经 relay 的端到端加密通道（fingerprint 必须是配对时带过来的）。 */
@@ -41,6 +43,21 @@ export interface HostConfig {
   sshControllerId?: string
   /** 展示用 user@host:port。 */
   sshTarget?: string
+  /** 工作区账号登录添加的主机：账号 id（退出登录时移除这些主机）。 */
+  accountId?: string
+  /** 工作区账号展示名。 */
+  accountName?: string
+}
+
+/** 工作区账号会话（只在客户端 localStorage；令牌由账号中心签发）。 */
+export interface AccountSession {
+  centerUrl: string
+  accessToken: string
+  refreshToken: string
+  accessExpiresAt: number
+  refreshExpiresAt: number
+  account: WorkspaceAccount
+  workspace: WorkspaceInfo
 }
 
 export type ConnectionState = 'connecting' | 'online' | 'offline'
@@ -223,6 +240,7 @@ export interface Toast {
 
 export type Theme = 'light' | 'dark' | 'system'
 export type SettingsTab = 'general' | 'profiles' | 'hosts' | 'team' | 'gateway' | 'permissions' | 'hooks' | 'mcp' | 'skills' | 'schedules' | 'budgets' | 'usage' | 'appearance' | 'sync' | 'memory' | 'subagents' | 'prompts' | 'shares' | 'voice' | 'notifications' | 'browser' | 'evals' | 'secrets' | 'routing'
+  | 'accounts'
 
 export type AppRoute =
   | { kind: 'home' }

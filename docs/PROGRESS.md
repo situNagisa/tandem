@@ -438,3 +438,13 @@
 - [x] 验证：两台 Host（`/tmp/tandem-dev-a:8421`、`/tmp/tandem-dev-b:8422`，假 adb + `TANDEM_MOCK_SERIAL=1`）；B 会话挂载 A 的 ADB/串口，agent 依次调用 DeviceList/AdbShell/AdbInstall/AdbLogcat×2/SerialOpen/SerialRead/SerialWrite，8 次审批、跨机 shell 型号、install Success、logcat 后台流、串口读写；串口独占拒绝/共享只读、设备令牌越权 403；Playwright 截图 `/tmp/devices-shots/`（工作站桌面/手机、串口终端）
 - [x] 回归：`e2e/regression.mjs` 新增「工作站：跨主机 ADB/串口挂载、审批与终端」；全量 94/94 通过；新增 server 单测（adb 解析、虚拟串口启动/echo/reset）
 - 保守取舍：跨 Host 要求会话 Host 能直连设备 Host（SSH 隧道-only 主机暂不能做设备提供方）；跨机 APK 必须在设备 Host 上，v1 不做文件传输；不做虚拟串口/scrcpy/无线 ADB；串口为文本/UTF-8 容错；设备令牌明文只返回一次
+
+
+## 迭代 48（2026-11-08）账号制工作区 v1（多机一次登录、按账号授权）
+- [x] 设计：`docs/accounts.md`（工作区=互信 Host 组；账号中心由一台 Host 兼任；一次性加入码交换 Ed25519 公钥；访问 30 分钟/刷新 7 天，中心离线时已签发访问令牌仍有效；角色×范围；吊销签名快照推送+10s 轮询；现有 token 全部保留与迁移路径；v1 边界）
+- [x] 协议：`Workspace*` / `AccountLogin*` / `AccountTokens` / `AccountMe` / `WorkspaceAuditEntry`；`TeamIdentity` 增加账号信息；`/api/accounts*` 约定
+- [x] 服务端 `src/accounts/store.ts`：中心/加入方两种模式（`~/.tandem/accounts.json` 600）；scrypt 密码 + 可选 TOTP（内置 HMAC-SHA1）；Ed25519 紧凑令牌；刷新令牌一次性轮换；一次性加入码；账号角色×范围（全部机器/指定机器/指定项目）；吊销快照中心签名、主动推送 + 加入方 10s 轮询；`routes/accounts.ts`；`server.ts` 把 `acw_…` 接成第四种凭据；账号令牌可用于设备服务与网关（按账号记账）
+- [x] 前端：登录页（中心地址+用户名+密码/TOTP）、登录后自动写入全部可访问 Host 并选中、访问令牌到期前自动刷新；侧栏底部账号菜单（工作区管理/退出）；设置「成员与分享 → 工作区」创建/加入工作区、生成加入码、Host 列表、账号新建/改角色/吊销；复用 ui/ 原语，ui-audit 0
+- [x] 验证：A/B/C 三个 Host（`TANDEM_HOME=/tmp/tandem-acc-a/b/c`，端口 8441/8442/8443），A 为账号中心，B/C 用加入码加入；所有者全新客户端登录后看到三台机器；协作者只拿到 B 且只看到授权项目会话；观察者读 200、建会话/WS 发消息 403；吊销后 B/C 立即 401 并断 WS；中心停机时已签发令牌在 B/C 仍可用、刷新失败；单机主 token 不受影响；Playwright 截图 `/tmp/accounts-shots/`
+- [x] 回归：`e2e/regression.mjs` 新增「账号制工作区」API 用例（中心+第二台 Host 加入、范围、观察者 403、刷新轮换、吊销推送、单机 token）；`docs/accounts-test.md` 多机代测步骤
+- 保守取舍：v1 单账号中心（无备用/多中心同步）；无 LDAP/SSO/TLS；账号中心管理页只给工作区所有者，管理员可管理范围内 Host 设置但不能改账号；项目范围按 Host 绝对路径；跨 Host 设备挂载仍用 `dvt_`；网关仍以 `tgw_` 为主、账号令牌可直接调用并按账号记账

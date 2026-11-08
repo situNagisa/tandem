@@ -1834,6 +1834,114 @@ async function main() {
     })
     assert.ok(accepted.ok, `接受邀请失败：${accepted.status}`)
 
+    // 账号制工作区：中心 + 第二台 Host 加入；账号登录、范围限制、吊销立即生效、刷新轮换。
+    {
+      const accountsHome = path.join(home, 'accounts-host')
+      const accountsToken = randomUUID()
+      const accountsHostId = randomUUID()
+      const accountsHost = startHost({ home: accountsHome, token: accountsToken, hostId: accountsHostId })
+      try {
+        const accountsPort = await accountsHost.ready
+        const accountsBase = `http://127.0.0.1:${accountsPort}`
+        const setup = await api(base, token, '/api/accounts/setup', {
+          method: 'POST',
+          body: JSON.stringify({ name: '回归工作区', username: 'reg-owner', password: 'owner-pass-123' }),
+        })
+        assert.equal(setup.workspace.centerHostId, hostId, '工作区中心应为当前 Host')
+        const login = async (username, password) => {
+          const res = await fetch(`${base}/api/accounts/login`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+          })
+          assert.ok(res.ok, `账号登录失败：${username} ${res.status}`)
+          return res.json()
+        }
+        const ownerLogin = await login('reg-owner', 'owner-pass-123')
+        assert.equal(ownerLogin.account.role, 'owner')
+        const code = await api(base, token, '/api/accounts/workspace/join-code', { method: 'POST', body: '{}' })
+        const joined = await api(accountsBase, accountsToken, '/api/accounts/workspace/join', {
+          method: 'POST',
+          body: JSON.stringify({ centerUrl: base, code: code.code }),
+        })
+        assert.equal(joined.workspace.id, setup.workspace.id, '第二台 Host 加入的工作区应一致')
+        const collaborator = await api(base, token, '/api/accounts/accounts', {
+          method: 'POST',
+          body: JSON.stringify({
+            username: 'reg-collab',
+            password: 'collab-pass-123',
+            name: '回归协作者',
+            role: 'collaborator',
+            scope: 'hosts',
+            hostIds: [accountsHostId],
+          }),
+        })
+        const collabLogin = await login('reg-collab', 'collab-pass-123')
+        assert.deepEqual(collabLogin.hosts.map((h) => h.id), [accountsHostId], '协作者只应拿到被授权的 Host')
+        const okOnSecond = await fetch(`${accountsBase}/api/host`, {
+          headers: { authorization: `Bearer ${collabLogin.accessToken}` },
+        })
+        assert.ok(okOnSecond.ok, '账号令牌应在被授权的 Host 上可用')
+        const deniedOnCenter = await fetch(`${base}/api/host`, {
+          headers: { authorization: `Bearer ${collabLogin.accessToken}` },
+        })
+        assert.equal(deniedOnCenter.status, 401, '范围外 Host 应拒绝账号令牌')
+        // 观察者可以读，但不能新建会话/发消息。
+        const observer = await api(base, token, '/api/accounts/accounts', {
+          method: 'POST',
+          body: JSON.stringify({ username: 'reg-observer', password: 'observer-pass-123', role: 'observer', scope: 'all' }),
+        })
+        const observerLogin = await login('reg-observer', 'observer-pass-123')
+        const observerRead = await fetch(`${accountsBase}/api/host`, {
+          headers: { authorization: `Bearer ${observerLogin.accessToken}` },
+        })
+        assert.ok(observerRead.ok, '观察者应能读取')
+        const observerWrite = await fetch(`${accountsBase}/api/sessions`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${observerLogin.accessToken}`, 'content-type': 'application/json' },
+          body: '{}',
+        })
+        assert.equal(observerWrite.status, 403, '观察者新建会话应 403')
+        // 刷新令牌一次性轮换。
+        const refreshed = await fetch(`${base}/api/accounts/refresh`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ refreshToken: ownerLogin.refreshToken }),
+        })
+        assert.ok(refreshed.ok, '刷新令牌应可用')
+        const reused = await fetch(`${base}/api/accounts/refresh`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ refreshToken: ownerLogin.refreshToken }),
+        })
+        assert.equal(reused.status, 401, '旧刷新令牌重放应被拒绝')
+        // 吊销协作者后，第二台 Host 立即拒绝（中心签名快照推送 + 轮询兜底）。
+        const revokeRes = await fetch(`${base}/api/accounts/accounts/${collaborator.id}/revoke`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: '{}',
+        })
+        assert.ok(revokeRes.ok, `吊销账号失败：${revokeRes.status} ${await revokeRes.text()}`)
+        let revokedStatus = 0
+        for (let i = 0; i < 25; i += 1) {
+          const res = await fetch(`${accountsBase}/api/host`, {
+            headers: { authorization: `Bearer ${collabLogin.accessToken}` },
+          })
+          revokedStatus = res.status
+          if (revokedStatus === 401) break
+          await sleep(200)
+        }
+        assert.equal(revokedStatus, 401, '吊销后第二台 Host 应立即失效')
+        assert.ok(observer.id, '观察者账号创建成功')
+        // 单机模式：主 token 不受工作区影响。
+        const ownerStillWorks = await fetch(`${accountsBase}/api/host`, {
+          headers: { authorization: `Bearer ${accountsToken}` },
+        })
+        assert.ok(ownerStillWorks.ok, '单机主 token 应照旧可用')
+      } finally {
+        accountsHost.child.kill('SIGTERM')
+      }
+    }
 
     browser = await chromium.launch({ headless: true })
     const desktopContext = await browser.newContext({ viewport: DESKTOP, deviceScaleFactor: 1 })

@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { Inbox, Kanban, MonitorSmartphone, PanelLeftClose, Plus, Search, Send, Settings, SlidersHorizontal, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { ChevronUp, Inbox, Kanban, LogIn, LogOut, MonitorSmartphone, PanelLeftClose, Plus, Search, Send, Settings, SlidersHorizontal, UserRound, X } from 'lucide-react'
 import { useUiStore } from '../store/useUiStore'
 import { useAppStore } from '../store/useAppStore'
 import { basename, modLabel } from '../lib/format'
@@ -15,6 +15,8 @@ import { useInboxCount } from './inbox/InboxView'
 import { navigateBoard, useBoardRoute } from '../lib/boardRoute'
 import { useBoardBadge } from '../store/useBoardStore'
 import { useDevicesStore } from '../store/useDevicesStore'
+import { LoginDialog } from './accounts/LoginDialog'
+import { MenuItem } from './ui/Menu'
 
 const EXTERNAL_SOURCES = [
   { value: 'claude-code', label: 'Claude Code' },
@@ -43,6 +45,12 @@ export function Sidebar({
   const setDispatchOpen = useUiStore((s) => s.setDispatchOpen)
   const setWorkstationOpen = useDevicesStore((s) => s.setWorkstationOpen)
   const activeHostId = useAppStore((s) => s.activeHostId)
+  const account = useAppStore((s) => s.account)
+  const logoutWorkspace = useAppStore((s) => s.workspaceLogout)
+  const [loginOpen, setLoginOpen] = useState(false)
+  const activeHostUrl = useAppStore(
+    (s) => s.hosts.find((h) => h.id === s.activeHostId)?.url ?? '',
+  )
   const hosts = useAppStore((s) => s.hosts)
   const runtimes = useAppStore((s) => s.runtimes)
   const sessionFilter = useUiStore((s) => s.sessionFilter)
@@ -384,6 +392,48 @@ export function Sidebar({
           <MonitorSmartphone size={15} className="shrink-0" />
           <span className="min-w-0 flex-1 truncate">工作站</span>
         </Button>
+        {account ? (
+          <Menu
+            aria-label="工作区账号"
+            side="top"
+            trigger={
+              <Button
+                variant="ghost"
+                className={cn(row, 'text-[12.5px] text-text-tertiary')}
+                tooltip={`${account.workspace.name} · ${account.account.name}`}
+                tooltipSide="top"
+              >
+                <UserRound size={15} className="shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{account.account.name}</span>
+                <ChevronUp size={13} className="shrink-0 opacity-60" />
+              </Button>
+            }
+          >
+            <div className="px-2 py-1.5">
+              <div className="truncate text-[12.5px] font-medium text-text">{account.account.name}</div>
+              <div className="truncate text-[11.5px] text-muted">
+                {account.workspace.name} · {account.account.username}
+              </div>
+            </div>
+            <MenuItem icon={<Settings size={13} />} onSelect={() => openSettings('accounts')}>
+              工作区管理
+            </MenuItem>
+            <MenuItem icon={<LogOut size={13} />} danger onSelect={() => void logoutWorkspace()}>
+              退出登录
+            </MenuItem>
+          </Menu>
+        ) : (
+          <Button
+            variant="ghost"
+            onClick={() => setLoginOpen(true)}
+            className={cn(row, 'text-[12.5px] text-text-tertiary')}
+            tooltip="登录工作区账号，自动看到全部机器"
+            tooltipSide="top"
+          >
+            <LogIn size={15} className="shrink-0" />
+            <span className="min-w-0 flex-1 truncate">登录工作区</span>
+          </Button>
+        )}
         <Button
           variant="ghost"
           onClick={() => {
@@ -396,6 +446,7 @@ export function Sidebar({
           <span className="min-w-0 flex-1 truncate">设置</span>
         </Button>
       </div>
+      <LoginDialog open={loginOpen} onClose={() => setLoginOpen(false)} defaultCenterUrl={activeHostUrl} />
     </div>
   )
 }

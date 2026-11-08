@@ -1,14 +1,16 @@
 import type { SessionSummary } from '@tandem/protocol'
 import type { StoreApi } from 'zustand'
-import { api, ApiError } from '../../lib/api'
+import { accountApi, api, ApiError } from '../../lib/api'
 import { normalizeHostUrl } from '../../lib/hostUrl'
 import { inviteFromLocation } from '../../lib/inviteLink'
 import { isValidFingerprint, normalizeFingerprint, relayHostUrl } from '../../lib/relay'
 import {
+  loadAccountSession,
   loadHosts,
   loadLastHost,
   readRecentDirsMap,
   sanitizeHosts,
+  saveAccountSession,
   saveCollapsedProjects,
   saveHosts,
   saveLastHost,
@@ -16,7 +18,7 @@ import {
 } from '../../lib/storage'
 import { navigate } from '../../lib/router'
 import type { HostConnection } from '../../lib/ws'
-import type { ExternalSessionItem, HostConfig, HostRuntime } from '../../lib/types'
+import type { AccountSession, ExternalSessionItem, HostConfig, HostRuntime } from '../../lib/types'
 import { useUiStore } from '../useUiStore'
 import {
   commandsInFlight,
@@ -46,6 +48,9 @@ export type HostsSlice = Pick<
   | 'refreshExternalSessions'
   | 'importExternalSession'
   | 'applyClientSettings'
+  | 'workspaceLogin'
+  | 'workspaceLogout'
+  | 'refreshWorkspace'
 >
 
 interface HostsSliceDeps {
@@ -57,6 +62,34 @@ interface HostsSliceDeps {
   ensureConnection: (hostId: string) => HostConnection | null
   applySessionSummary: (hostId: string, summary: SessionSummary) => void
   syncChildren: (hostId: string, parentId: string) => void
+}
+
+/** 从工作区下发的地址里挑一个与账号中心同主机的；避免远程客户端拿到 127.0.0.1。 */
+function pickWorkspaceUrl(centerUrl: string, urls: string[]): string | undefined {
+  const valid = urls.filter((u) => /^https?:\/\//i.test(u))
+  if (!valid.length) return undefined
+  let centerHost = ''
+  try {
+    centerHost = new URL(centerUrl).hostname
+  } catch {
+    /* 忽略 */
+  }
+  const sameHost = valid.find((u) => {
+    try {
+      return new URL(u).hostname === centerHost
+    } catch {
+      return false
+    }
+  })
+  if (sameHost) return sameHost
+  return valid.find((u) => {
+    try {
+      const h = new URL(u).hostname
+      return h !== '127.0.0.1' && h !== 'localhost' && h !== '::1'
+    } catch {
+      return false
+    }
+  }) ?? valid[0]
 }
 
 export function createHostsSlice(
@@ -131,6 +164,7 @@ export function createHostsSlice(
         /* 忽略 */
       }
 
+      const account = loadAccountSession()
       const runtimes: Record<string, HostRuntime> = {}
       for (const h of hosts) runtimes[h.id] = freshRuntime()
       const lastHostId = loadLastHost()
@@ -140,7 +174,7 @@ export function createHostsSlice(
         hosts[0]?.id ??
         null
 
-      set({ initialized: true, hosts, runtimes, activeHostId })
+      set({ initialized: true, hosts, account, runtimes, activeHostId })
       saveHosts(hosts)
       if (activeHostId) saveLastHost(activeHostId)
 
@@ -578,6 +612,107 @@ export function createHostsSlice(
         deps.ensureConnection(h.id)
         void get().refreshProfiles(h.id)
         void get().refreshSessions(h.id)
+      }
+    },
+
+    workspaceLogin: async (input) => {
+      const result = await accountApi.login(input.centerUrl.trim(), {
+        username: input.username.trim(),
+        password: input.password,
+        ...(input.totp?.trim() ? { totp: input.totp.trim() } : {}),
+      })
+      const session: AccountSession = {
+        centerUrl: input.centerUrl.trim().replace(/\/+$/, ''),
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        accessExpiresAt: result.accessExpiresAt,
+        refreshExpiresAt: result.refreshExpiresAt,
+        account: result.account,
+        workspace: result.workspace,
+      }
+      saveAccountSession(session)
+      const next = [...get().hosts]
+      const added: HostConfig[] = []
+      for (const remote of result.hosts) {
+        const url = pickWorkspaceUrl(session.centerUrl, remote.urls)
+        if (!url) continue
+        const existing = next.find((h) => sameOrigin(h.url, url))
+        if (existing) {
+          existing.token = result.accessToken
+          existing.accountId = result.account.id
+          existing.accountName = result.account.name
+          existing.name = remote.name || existing.name
+          void get().refreshProfiles(existing.id)
+          void get().refreshSessions(existing.id)
+          continue
+        }
+        const host: HostConfig = {
+          id: newId(),
+          name: remote.name || new URL(url).host,
+          url,
+          token: result.accessToken,
+          addedAt: Date.now(),
+          accountId: result.account.id,
+          accountName: result.account.name,
+        }
+        next.push(host)
+        added.push(host)
+      }
+      const activeHostId = added[0]?.id ?? get().activeHostId ?? next[0]?.id ?? null
+      set((state) => ({
+        account: session,
+        hosts: next,
+        activeHostId,
+        runtimes: {
+          ...state.runtimes,
+          ...Object.fromEntries(added.map((h) => [h.id, freshRuntime()])),
+        },
+      }))
+      saveHosts(next)
+      if (activeHostId) saveLastHost(activeHostId)
+      for (const h of added) {
+        deps.ensureConnection(h.id)
+        void get().refreshProfiles(h.id)
+        void get().refreshSessions(h.id)
+      }
+      toast(`已登录 ${session.account.name}（${session.workspace.name}）`, 'success')
+    },
+
+    workspaceLogout: async () => {
+      const session = get().account
+      if (session) await accountApi.logout(session.centerUrl, session.refreshToken)
+      saveAccountSession(null)
+      const hosts = get().hosts.filter((h) => h.accountId !== session?.account.id)
+      const activeHostId = hosts.some((h) => h.id === get().activeHostId)
+        ? get().activeHostId
+        : hosts[0]?.id ?? null
+      set({ account: null, hosts, activeHostId })
+      saveHosts(hosts)
+      if (activeHostId) saveLastHost(activeHostId)
+      toast('已退出工作区账号', 'success')
+    },
+
+    refreshWorkspace: async () => {
+      const session = get().account
+      if (!session) return false
+      try {
+        const tokens = await accountApi.refresh(session.centerUrl, session.refreshToken)
+        const next: AccountSession = {
+          ...session,
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          accessExpiresAt: tokens.accessExpiresAt,
+          refreshExpiresAt: tokens.refreshExpiresAt,
+        }
+        saveAccountSession(next)
+        const hosts = get().hosts.map((h) =>
+          h.accountId === session.account.id ? { ...h, token: tokens.accessToken } : h,
+        )
+        set({ account: next, hosts })
+        saveHosts(hosts)
+        return true
+      } catch {
+        return false
       }
     },
   }

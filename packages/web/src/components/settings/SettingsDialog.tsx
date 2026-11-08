@@ -19,6 +19,7 @@ import { textMatches } from '../../lib/pinyin'
 import { ProfilesSection } from './ProfilesSection'
 import { HostsSection } from './HostsSection'
 import { TeamSection } from './TeamSection'
+import { AccountsSection } from './AccountsSection'
 import { GatewaySection } from './GatewaySection'
 import { AppearanceSection } from './AppearanceSection'
 import { SyncSection } from './SyncSection'
@@ -75,7 +76,7 @@ export function SettingsDialog() {
   const focus = useUiStore((s) => s.settingsFocus)
   const setAboutOpen = useUiStore((s) => s.setAboutOpen)
   // 成员连接只保留客户端自己的设置页；Host 级设置由服务端 403 兜底。
-  const memberTabs = new Set<SettingsTab>(['hosts', 'appearance', 'notifications'])
+  const memberTabs = new Set<SettingsTab>(['hosts', 'accounts', 'appearance', 'notifications'])
   const visiblePages = useMemo(
     () =>
       SETTINGS_PAGES.map((page) => ({
@@ -365,6 +366,7 @@ export function SettingsDialog() {
             {tab === 'routing' && <ModelRoutingSection />}
             {tab === 'hosts' && <HostsSection />}
             {tab === 'team' && <TeamSection />}
+            {tab === 'accounts' && <AccountsSection />}
             {tab === 'gateway' && <GatewaySection />}
             {tab === 'permissions' && <PermissionsSection />}
             {tab === 'hooks' && <HooksSection />}
