@@ -3299,6 +3299,8 @@ async function main() {
     desktop('菜单项只有单行标题，多模型分组下列表可滚动且底部操作可见（#15/#16/#17 R01/R15）', async (page) => {
       await openSession(page, 'many')
       await waitModelReady(page)
+      // 主菜单优先显示最近模型；清掉记录让当前分组的全部模型回退显示（滚动与长标签用例）。
+      await page.evaluate(() => localStorage.removeItem('tandem.recentModels.v1'))
       await page.locator('button[aria-label^="选择模型"]').first().click()
       const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
       await menu.waitFor()

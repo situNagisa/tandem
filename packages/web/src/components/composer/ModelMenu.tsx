@@ -104,7 +104,7 @@ function useModelPanel({
     const ranked = rankRecentModels(profiles, 6)
     if (ranked.length > 0) return ranked
     if (!currentProfile || !currentGroup) return []
-    return currentGroup.models.slice(0, 6).map((item) => ({
+    return currentGroup.models.map((item) => ({
       profileId: currentProfile.id,
       ...(currentGroup.groupId ? { groupId: currentGroup.groupId } : {}),
       model: item,
