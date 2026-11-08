@@ -1068,6 +1068,8 @@ export type ServerMsg =
   // 外部会话（Claude Code / Codex）文件有变动，客户端应重新拉取列表
   | { type: 'task_updated'; sessionId: string; task: BackgroundTask; content?: string; since?: number; truncated?: boolean }
   | { type: 'schedules_updated' }
+  | { type: 'wiki_updated'; project: string }                 // Wiki 页面/元数据变化，客户端刷新
+  | { type: 'wiki_job'; job: WikiJob }                        // 生成/更新进度
   | { type: 'board_updated'; boardId: string }
   | { type: 'eval_run_updated'; run: EvalRunSummary }
   | { type: 'external_sessions_changed' }
@@ -1466,6 +1468,9 @@ export type PromptTemplateKey =
   | 'evalReview'
   | 'aiReview'
   | 'memoryRule'
+  | 'wikiHint'
+  | 'wikiGenerate'
+  | 'wikiUpdate'
   | 'persona'
   | 'taskDescription'
   | 'toolGuidance'
@@ -1691,7 +1696,7 @@ export interface BackgroundTaskOutput {
 
 // ---------- 定时任务（Host 级，存 ~/.tandem/schedules.json） ----------
 // cron 为 5 段标准表达式；为便于本机测试也接受 6 段（首段为秒）。由 Host 进程内调度，不依赖公网。
-export type ScheduleTargetKind = 'new' | 'session';
+export type ScheduleTargetKind = 'new' | 'session' | 'wiki';
 export interface ScheduleTarget {
   kind: ScheduleTargetKind;
   /** kind=session 时追加到该会话。 */
@@ -1765,6 +1770,128 @@ export interface MemoryListItem {
 // DELETE /api/memory?scope=global|project&project=<path> -> { ok: boolean }
 // GET    /api/memory/list                                -> { global?: MemoryListItem; projects: MemoryListItem[] }
 // POST /api/memory/import { project, text, source?, mode? } -> { ok, merged }  跨 Host 迁移合并记忆
+
+// ---------- 项目 Wiki ----------
+// 每个项目（git 仓库根，否则 cwd）一份 ~/.tandem/wiki/<hash>/：
+// meta.json（commit/页面清单/模型）+ pages/<id>.md（自动段落用标记包裹，手写段落保留）。
+// 生成在后台进行：Host 建一个只读（Read/Glob/Grep）的隐藏子会话，按目录分批阅读代码。
+export type WikiPageKind = 'overview' | 'module' | 'glossary';
+export interface WikiPageMeta {
+  id: string;
+  title: string;
+  kind: WikiPageKind;
+  /** 模块路径（kind=module 时为仓库相对 posix 路径，如 packages/server/src/tools）。 */
+  module?: string;
+  /** 该页自动段落覆盖的文件（仓库相对路径）；增量更新据此判断哪些页要重做。 */
+  files: string[];
+  /** 生成该页时的 commit（短 hash）。 */
+  commit?: string;
+  updatedAt: number;
+  chars: number;
+}
+export interface WikiMeta {
+  project: string;
+  name: string;
+  /** ~/.tandem/wiki 下的目录名。 */
+  hash: string;
+  exists: boolean;
+  createdAt: number;
+  updatedAt: number;
+  /** 最近一次成功生成/更新时的 git commit（短 hash）。 */
+  commit?: string;
+  /** 生成时使用的模型（展示用）。 */
+  model?: string;
+  pages: WikiPageMeta[];
+  /** 基准 commit 之后仓库改动文件数。 */
+  changedFiles: number;
+  /** 其中落在已有 Wiki 页面文件清单里的数量。 */
+  changedInWiki: number;
+  running: boolean;
+}
+export interface WikiPage extends WikiPageMeta {
+  /** 完整 Markdown（含自动/手写标记）。 */
+  text: string;
+  /** 自动生成段落。 */
+  auto: string;
+  /** 用户在客户端手写的段落（增量更新时保留）。 */
+  manual: string;
+}
+export interface WikiSearchHit {
+  pageId: string;
+  title: string;
+  kind: WikiPageKind;
+  snippet: string;
+}
+export interface WikiSearchResult {
+  q: string;
+  total: number;
+  hits: WikiSearchHit[];
+}
+export type WikiJobStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled';
+export interface WikiJob {
+  id: string;
+  project: string;
+  mode: 'generate' | 'update';
+  status: WikiJobStatus;
+  startedAt: number;
+  endedAt?: number;
+  error?: string;
+  /** 本次计划生成的页面数 / 已完成数。 */
+  total: number;
+  done: number;
+  /** 当前正在阅读的模块或页面标题。 */
+  current?: string;
+  sessionId?: string;
+  model?: string;
+  profileId?: string;
+  groupId?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+  pageIds: string[];
+  /** 因预算/中断未完成的页面 id。 */
+  leftover?: string[];
+}
+export interface WikiEstimateInput {
+  project: string;
+  mode?: 'generate' | 'update';
+  profileId?: string;
+  groupId?: string;
+  /** 缺省或 'auto' 表示自动路由的快速档。 */
+  model?: string;
+}
+export interface WikiEstimate {
+  project: string;
+  mode: 'generate' | 'update';
+  commit?: string;
+  files: number;
+  modules: number;
+  pages: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd?: number;
+  priceKnown: boolean;
+  model: string;
+  profileId?: string;
+  groupId?: string;
+  autoRoute: boolean;
+  changedFiles: number;
+}
+export interface WikiGenerateInput extends WikiEstimateInput {
+  effort?: ReasoningEffort;
+  /** 预算上限（美元）；超出后停止并保留已完成页面。 */
+  maxCostUsd?: number;
+}
+// GET  /api/wiki?project=                     -> WikiMeta
+// GET  /api/wiki/page?project=&page=          -> WikiPage
+// PUT  /api/wiki/page { project, page, manual } -> WikiPage   手写段落保存（增量更新保留）
+// GET  /api/wiki/search?project=&q=           -> WikiSearchResult
+// GET  /api/wiki/estimate?project=&mode=&profileId=&groupId=&model= -> WikiEstimate
+// POST /api/wiki/generate WikiGenerateInput   -> WikiJob  后台生成/增量更新
+// GET  /api/wiki/jobs?project=                -> WikiJob[]
+// POST /api/wiki/jobs/:id/cancel              -> { ok: boolean }
+// POST /api/wiki/schedule { project, daily? } -> Schedule  每天更新（cron 0 4 * * *）
+// WS: wiki_updated { project } / wiki_job { job }
 
 // ---------- 评测（轨迹回放 / 回归用例） ----------
 // 用例存 ~/.tandem/evals/<suite>/<case>.json；运行时每个 用例×配置 在独立临时目录中
@@ -2257,4 +2384,4 @@ export interface SshDeployResult {
 // DELETE /api/ssh-hosts/:id?keepData=1           -> { ok: true }（停止服务并删除 ~/.tandem-host；默认保留 ~/.tandem）
 // POST   /api/ssh-hosts/:id/password {password}  -> { ok: true }（仅写入本进程内存并重连隧道）
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;

@@ -103,6 +103,13 @@ import type {
   UpdateSessionInput,
   UsageStatsRow,
   VcsState,
+  WikiEstimate,
+  WikiEstimateInput,
+  WikiGenerateInput,
+  WikiJob,
+  WikiMeta,
+  WikiPage,
+  WikiSearchResult,
   AcceptTeamInviteResult,
   CreateTeamInviteInput,
   CreateTeamInviteResult,
@@ -622,6 +629,34 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+
+  wiki: (h: HostConfig, project: string) =>
+    request<WikiMeta>(h, `/api/wiki${qs({ project })}`),
+  wikiPage: (h: HostConfig, project: string, page: string) =>
+    request<WikiPage>(h, `/api/wiki/page${qs({ project, page })}`),
+  wikiSavePage: (h: HostConfig, input: { project: string; page: string; manual: string }) =>
+    request<WikiPage>(h, '/api/wiki/page', { method: 'PUT', body: JSON.stringify(input) }),
+  wikiSearch: (h: HostConfig, project: string, q: string, limit = 8) =>
+    request<WikiSearchResult>(h, `/api/wiki/search${qs({ project, q, limit: String(limit) })}`),
+  wikiEstimate: (h: HostConfig, input: WikiEstimateInput) =>
+    request<WikiEstimate>(
+      h,
+      `/api/wiki/estimate${qs({
+        project: input.project,
+        mode: input.mode,
+        profileId: input.profileId,
+        groupId: input.groupId,
+        model: input.model,
+      })}`,
+    ),
+  wikiGenerate: (h: HostConfig, input: WikiGenerateInput) =>
+    request<WikiJob>(h, '/api/wiki/generate', { method: 'POST', body: JSON.stringify(input) }),
+  wikiJobs: (h: HostConfig, project: string) =>
+    request<WikiJob[]>(h, `/api/wiki/jobs${qs({ project })}`),
+  wikiCancelJob: (h: HostConfig, id: string) =>
+    request<{ ok: boolean }>(h, `/api/wiki/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+  wikiSchedule: (h: HostConfig, project: string) =>
+    request<Schedule>(h, '/api/wiki/schedule', { method: 'POST', body: JSON.stringify({ project }) }),
 
   permissions: (h: HostConfig) => request<PermissionRule[]>(h, '/api/permissions'),
   setPermissions: (h: HostConfig, rules: PermissionRule[]) =>

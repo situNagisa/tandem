@@ -396,3 +396,11 @@
 - [x] 远程主机一键接入（SSH，docs/remote-ssh.md）；超大会话分页加载（首屏 31.4MB→0.52MB）
 - 待用户实机：SSH 远程接入（最优先）、手机审批、PR/CI、Windows 路径与编码
 - 剩余候选（explore-v2）：项目 Wiki、应用预览画布、双向语音、OTel 导出、auto-merge
+
+## 迭代 43（2026-11-08）项目 Wiki
+- [x] 协议：`WikiMeta/WikiPage/WikiJob/WikiEstimate/WikiGenerateInput` 与 `/api/wiki*`；`PromptTemplateKey` 增加 `wikiHint/wikiGenerate/wikiUpdate`；`ScheduleTargetKind` 增加 `wiki`；WS `wiki_updated/wiki_job`
+- [x] 服务端 `src/wiki.ts`：`~/.tandem/wiki/<项目哈希>/`（meta.json + pages/*.md），记录生成 commit；按目录结构划分模块（monorepo 到 `packages/<包>/src/<子目录>`），首次生成概览/模块页/术语表；增量更新用 `git diff <commit>..HEAD` + 工作区/未跟踪文件，只重做有改动的模块页；自动段落与手写段落用 `tandem-wiki:auto/manual` 标记分隔，更新保留手写；生成在隐藏只读会话（工具白名单 Read/Glob/Grep）中后台运行，模型返回整页 Markdown 由 Host 落盘
+- [x] 服务端：`routes/wiki.ts`（元数据/页面/检索/预估/生成/任务/取消/每天更新）；`tools/wiki-search.ts`、`tools/wiki-read.ts` 注册并加入计划模式白名单；系统提示仅在已有 Wiki 时注入一句（页数 + 页面名），不注入全文；`prompts/registry.ts` 三个可编辑提示词；定时任务 `target.kind='wiki'` 复用同一项目任务
+- [x] 前端：右栏「Wiki」卡片（页数/commit/改动文件数/进度/生成入口）；`WikiDialog`（左树 + 全文搜索 + Markdown + 手写段落编辑 + 每天更新）；生成前选择账号/分组/模型与预算上限，显示预计页数/token/花费并确认；`useWikiStore` 接 WS 刷新；文件路径点击复用文件预览
+- 验证：`TANDEM_HOME=/tmp/tandem-wiki` 端口 8372 + 本地 mock SSE 对 `/tmp/wiki-sample`（2 模块）生成 4 页；增量只重做改动模块、手写段落保留、commit 更新；WikiSearch/WikiRead 工具与系统提示注入；Playwright 截图 `/tmp/wiki-shots/`；`e2e/regression.mjs` 新增「项目 Wiki」用例
+- 保守取舍：全文搜索复用现有索引的 tokenizer/分词，不把 Wiki 混入会话搜索；手写段落按整段保存（不解析块级合并）；概览/术语表在根文件或文档改动时也会更新；团队观察者/协作者只读，生成/编辑/定时归所有者

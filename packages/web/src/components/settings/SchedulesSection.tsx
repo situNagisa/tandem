@@ -52,7 +52,7 @@ interface Draft {
   name: string
   cron: string
   preset: string
-  targetKind: 'new' | 'session'
+  targetKind: 'new' | 'session' | 'wiki'
   sessionId: string
   cwd: string
   profileId: string
@@ -187,9 +187,11 @@ export function SchedulesSection() {
       target:
         d.targetKind === 'new'
           ? { kind: 'new' }
-          : { kind: 'session', sessionId: d.sessionId },
+          : d.targetKind === 'wiki'
+            ? { kind: 'wiki' }
+            : { kind: 'session', sessionId: d.sessionId },
       cwd: d.cwd.trim(),
-      ...(d.targetKind === 'new' ? { profileId: d.profileId } : {}),
+      ...(d.targetKind !== 'session' && d.profileId ? { profileId: d.profileId } : {}),
       ...(d.groupId ? { groupId: d.groupId } : {}),
       ...(d.model ? { model: d.model } : {}),
       ...(d.effort && d.effort !== 'off' ? { effort: d.effort } : {}),
@@ -351,7 +353,11 @@ export function SchedulesSection() {
                       下次 {formatNextRun(schedule.nextRunAt)}
                     </span>
                     <span className="truncate">
-                      {schedule.target.kind === 'new' ? '新建会话' : '追加到已有会话'}
+                      {schedule.target.kind === 'new'
+                        ? '新建会话'
+                        : schedule.target.kind === 'wiki'
+                          ? '更新项目 Wiki'
+                          : '追加到已有会话'}
                     </span>
                   </div>
                   <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[12px]">
@@ -498,6 +504,18 @@ export function SchedulesSection() {
                   onClick={() => changeDraft({ targetKind: 'session' })}
                 >
                   追加到已有会话
+                </Button>
+                <Button
+                  size="sm"
+                  variant={editing.draft.targetKind === 'wiki' ? 'secondary' : 'ghost'}
+                  onClick={() =>
+                    changeDraft({
+                      targetKind: 'wiki',
+                      prompt: editing.draft.prompt || '读取本项目代码，增量更新项目 Wiki。',
+                    })
+                  }
+                >
+                  更新项目 Wiki
                 </Button>
               </div>
             </Field>

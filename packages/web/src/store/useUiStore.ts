@@ -108,6 +108,8 @@ interface UiState {
   prComposeTitle: string
   /** 记忆 Markdown 编辑器；project 为项目根路径，global 时忽略。 */
   memoryEditor: { scope: MemoryScope; project?: string } | null
+  /** 项目 Wiki 视图；project 为仓库根路径，page 为初始页面。 */
+  wikiOpen: { project: string; page?: string; generate?: 'generate' | 'update' } | null
   /** 多会话分屏：打开的窗格、布局与分隔条权重。 */
   splitPanes: SplitPane[]
   splitLayout: SplitLayout
@@ -182,6 +184,8 @@ interface UiState {
   closePrPanel: () => void
   openMemoryEditor: (input: { scope: MemoryScope; project?: string }) => void
   closeMemoryEditor: () => void
+  openWiki: (input: { project: string; page?: string; generate?: 'generate' | 'update' }) => void
+  closeWiki: () => void
   /** 在分屏中打开：自动补位/替换聚焦窗格。 */
   openSplitPane: (current: SessionTarget | null, target: SessionTarget) => void
   /** 看板 + 卡片会话一起进分屏：看板作为左窗格，会话作为另一窗格。 */
@@ -301,6 +305,7 @@ export const useUiStore = create<UiState>((set, get) => {
   prOpen: false,
   prComposeTitle: '',
   memoryEditor: null,
+  wikiOpen: null,
   scheduleComposeNonce: 0,
   splitPanes: restoredSplit?.panes ?? [],
   splitLayout: restoredSplit?.layout ?? 'cols2',
@@ -421,6 +426,8 @@ export const useUiStore = create<UiState>((set, get) => {
   closePrPanel: () => set({ prOpen: false, prComposeTitle: '' }),
   openMemoryEditor: (input) => set({ memoryEditor: input }),
   closeMemoryEditor: () => set({ memoryEditor: null }),
+  openWiki: (input) => set({ wikiOpen: input, mobilePanel: false }),
+  closeWiki: () => set({ wikiOpen: null }),
   openScheduleComposer: () =>
     set((s) => ({
       settingsOpen: true,

@@ -11,6 +11,7 @@ import type { HookNotice, UiMessage } from '../../lib/types'
 import { useUiStore } from '../useUiStore'
 import { useTaskStore } from '../useTaskStore'
 import { useScheduleStore } from '../useScheduleStore'
+import { useWikiStore } from '../useWikiStore'
 import { useBoardStore } from '../useBoardStore'
 import { useBrowserStore } from '../useBrowserStore'
 import { useVcsStore } from '../../lib/useVcs'
@@ -312,6 +313,14 @@ export function createServerMessageHandler(
       case 'schedules_updated': {
         const host = getHost(hostId)
         if (host) void useScheduleStore.getState().refresh(host)
+        break
+      }
+      case 'wiki_job': {
+        useWikiStore.getState().applyJob(hostId, msg.job)
+        break
+      }
+      case 'wiki_updated': {
+        useWikiStore.getState().onUpdated(hostId)
         break
       }
       case 'vcs_updated': {

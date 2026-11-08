@@ -37,6 +37,16 @@ export function formatRelative(ts: number, now = Date.now()): string {
     : `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
 }
 
+/** 更适合「基于 commit · 3 天前」的短相对时间（天级用 N 天前）。 */
+export function formatAgo(ts: number, now = Date.now()): string {
+  const diff = Math.max(0, now - ts)
+  if (diff < 45_000) return '刚刚'
+  if (diff < 3_600_000) return `${Math.round(diff / 60_000)} 分钟前`
+  if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)} 小时前`
+  if (diff < 30 * 86_400_000) return `${Math.round(diff / 86_400_000)} 天前`
+  return formatRelative(ts, now)
+}
+
 export function formatTime(ts: number): string {
   const d = new Date(ts)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`

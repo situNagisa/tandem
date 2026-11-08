@@ -162,7 +162,7 @@ export function getSession(host: Host, id: string): SessionRecord | undefined {
 
 export function listSessions(host: Host): SessionRecord[] {
   // 评测运行使用的内部会话在侧栏隐藏，轨迹随评测结果单独保存。
-  const list = host.store.list().filter((rec) => !rec.evalRun);
+  const list = host.store.list().filter((rec) => !rec.evalRun && !rec.wikiRun);
   for (const rec of list) host.ensureSessionEnv(rec);
   return list;
 }
@@ -394,6 +394,8 @@ export function messageBlock(
 }
 
 export function broadcastSummary(host: Host, rec: SessionRecord): void {
+  // Wiki 生成使用隐藏只读会话，避免出现在侧栏/多端列表里。
+  if (rec.wikiRun) return;
   host.hub.broadcastAll({ type: 'session_updated', session: host.toSummary(rec) });
 }
 

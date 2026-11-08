@@ -212,7 +212,7 @@ export class ScheduleManager {
     const prompt = str(input.prompt);
     if (!prompt) throw new Error('提示词不能为空');
     const target = input.target ?? { kind: 'new' };
-    if (target.kind !== 'new' && target.kind !== 'session') throw new Error('目标类型无效');
+    if (target.kind !== 'new' && target.kind !== 'session' && target.kind !== 'wiki') throw new Error('目标类型无效');
     const cwd = str(input.cwd);
     if (!cwd) throw new Error('工作目录不能为空');
     const profileId = str(input.profileId);
@@ -231,7 +231,9 @@ export class ScheduleManager {
       target:
         target.kind === 'new'
           ? { kind: 'new' }
-          : { kind: 'session', sessionId: str(target.sessionId) },
+          : target.kind === 'wiki'
+            ? { kind: 'wiki' }
+            : { kind: 'session', sessionId: str(target.sessionId) },
       cwd,
       ...(profileId ? { profileId } : {}),
       ...(str(input.groupId) ? { groupId: str(input.groupId) } : {}),
@@ -321,6 +323,17 @@ export class ScheduleManager {
   }
 
   private async execute(schedule: Schedule): Promise<string> {
+    if (schedule.target.kind === 'wiki') {
+      const job = this.host.wiki.start({
+        project: schedule.cwd,
+        mode: 'update',
+        ...(schedule.profileId ? { profileId: schedule.profileId } : {}),
+        ...(schedule.groupId ? { groupId: schedule.groupId } : {}),
+        ...(schedule.model ? { model: schedule.model } : {}),
+        ...(schedule.effort ? { effort: schedule.effort } : {}),
+      });
+      return job.sessionId ?? '';
+    }
     if (schedule.target.kind === 'session') {
       const sessionId = str(schedule.target.sessionId);
       const rec = this.host.getSession(sessionId);

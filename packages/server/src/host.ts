@@ -69,6 +69,7 @@ import { SkillManager } from './skills.js';
 import { SubagentPresetStore } from './subagent-presets.js';
 import { PromptTemplateStore } from './prompt-templates.js';
 import { MemoryStore } from './memory.js';
+import { WikiManager } from './wiki.js';
 import { SecretsStore } from './secrets.js';
 import { TeamStore } from './team/store.js';
 import { memberCanSeeSession } from './team/access.js';
@@ -202,6 +203,8 @@ export class Host {
   readonly promptTemplates: PromptTemplateStore;
   /** 项目/全局长期记忆（Tandem 私有）。 */
   readonly memory: MemoryStore;
+  /** 项目 Wiki：自动生成的代码库说明文档（~/.tandem/wiki）。 */
+  readonly wiki: WikiManager;
   /** 项目/全局 Secrets：值加密落盘，只注入进程环境并按值打码输出。 */
   readonly secrets: SecretsStore;
   readonly usage: UsageStore;
@@ -268,6 +271,7 @@ export class Host {
     this.subagentPresets = new SubagentPresetStore(home);
     this.promptTemplates = new PromptTemplateStore(home);
     this.memory = new MemoryStore(home);
+    this.wiki = new WikiManager(home, this);
     this.secrets = new SecretsStore(home);
     this.usage = new UsageStore(home);
     this.gateway = new GatewayStore(home);
@@ -834,6 +838,7 @@ export class Host {
     for (const timer of this.handoffTimers.values()) clearTimeout(timer);
     this.handoffTimers.clear();
     this.tasks.dispose();
+    this.wiki.dispose();
     this.secrets.dispose();
     this.schedules.dispose();
     this.boards.dispose();

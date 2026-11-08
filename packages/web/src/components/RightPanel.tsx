@@ -84,6 +84,7 @@ import {
 } from './right-panel/shared'
 import { AgentsCard } from './right-panel/AgentsCard'
 import { ContextCard } from './right-panel/ContextCard'
+import { WikiCard } from './right-panel/WikiCard'
 
 export function RightPanel({ onClose }: { onClose: () => void }) {
   const hostId = useAppStore((s) => s.active?.hostId ?? null)
@@ -128,6 +129,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const deleteSession = useAppStore((s) => s.deleteSession)
   const toast = useUiStore((s) => s.toast)
   const setChangesOpen = useUiStore((s) => s.setChangesOpen)
+  const openWiki = useUiStore((s) => s.openWiki)
   const [copied, setCopied] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -248,6 +250,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       context: true,
       changes: fileChanges.length > 0,
       memory: true,
+      wiki: true,
       details: true,
     }),
     [plan, fileChanges.length, agentCount],
@@ -380,6 +383,18 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         </button>
       )
     }
+    if (id === 'wiki') {
+      return (
+        <button
+          type="button"
+          onClick={() => summary?.cwd && openWiki({ project: summary.env?.repoRoot || summary.cwd })}
+          disabled={!summary?.cwd}
+          className="rounded px-1 py-0.5 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
+        >
+          浏览
+        </button>
+      )
+    }
     if (id === 'changes') {
       return (
         <button
@@ -441,6 +456,9 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     }
     if (id === 'agents') {
       return <AgentsCard />
+    }
+    if (id === 'wiki') {
+      return <WikiCard />
     }
     if (id === 'context') {
       return <ContextCard />

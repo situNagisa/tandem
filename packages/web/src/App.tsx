@@ -23,6 +23,7 @@ import { FilePreviewPanel } from './components/FilePreviewPanel'
 import { SettingsDialog } from './components/settings/SettingsDialog'
 import { JoinTeamDialog } from './components/settings/JoinTeamDialog'
 import { MemoryEditorDialog } from './components/MemoryEditorDialog'
+import { WikiDialog } from './components/wiki/WikiDialog'
 import { SearchDialog } from './components/SearchDialog'
 import { BackgroundTasksPanel } from './components/BackgroundTasksPanel'
 import { BrowserPanel } from './components/BrowserPanel'
@@ -457,6 +458,7 @@ export default function App() {
       <SettingsDialog />
       <JoinTeamDialog />
       <MemoryEditorDialog />
+      <WikiDialog />
       <BackgroundTasksPanel />
       <BrowserPanel />
       <InboxDialog />

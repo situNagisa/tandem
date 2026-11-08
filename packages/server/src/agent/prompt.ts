@@ -52,6 +52,8 @@ export interface PromptOptions {
   skills?: string;
   /** 来自 MemoryStore.promptSection 的项目记忆段。 */
   memory?: string;
+  /** 本项目已有 Wiki 时的一句话提示（页数 + 页面名）。 */
+  wiki?: string;
   /** 本项目可用的 secrets：只列名称/描述/作用范围，不含值。 */
   secrets?: string;
   /** 子代理预设（名称 + 描述），列在 Task 工具说明里。 */
@@ -131,6 +133,7 @@ export function buildSystemPromptParts(
   push('toolGuidance', '工具使用要点', 'builtin', `# 工具使用要点\n${toolGuidance}`);
   if (options.skills?.trim()) push('skills', 'Skills 列表', 'skill', options.skills);
   if (options.memory?.trim()) push('memory', '项目记忆', 'memory', options.memory);
+  if (options.wiki?.trim()) push('wiki', '项目 Wiki', 'generated', options.wiki);
   if (options.secrets?.trim()) push('secrets', '项目环境变量', 'generated', options.secrets);
   if (options.delegationPrompt?.trim()) {
     const source = options.delegationKey

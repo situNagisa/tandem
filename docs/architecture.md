@@ -47,6 +47,7 @@
 | `src/subagent-presets.ts` | 子代理预设（Tandem 自定义 + agents/*.md 只读） |
 | `src/prompt-templates.ts` / `src/prompts/registry.ts` | 可配置提示词模板与默认值 |
 | `src/memory.ts` / `src/agent/...` | 项目/全局长期记忆（写入需审批） |
+| `src/wiki.ts` / `routes/wiki.ts` | 项目 Wiki：`~/.tandem/wiki/<hash>/` 分页 Markdown、模块划分、增量更新与只读生成会话；`tools/wiki-*.ts` 提供 WikiSearch/WikiRead；提示词见 registry 的 `wikiHint/wikiGenerate/wikiUpdate` |
 | `src/schedules.ts` | cron 解析与进程内定时任务 |
 | `src/tasks.ts` | Bash 后台任务、输出缓冲、Kill |
 | `src/budgets.ts` / `src/usage.ts` | 预算规则、周期累计、用量与价格计算 |
@@ -70,6 +71,7 @@
 | `src/store/useUiStore.ts` | 弹窗、侧栏、右栏、主题等纯 UI 状态 |
 | `src/store/useEvalStore.ts` | 评测用例/运行/轨迹缓存与轮询（独立于 useAppStore） |
 | `src/store/useFeedbackStore.ts` | 反馈模式条目与标注状态 |
+| `src/store/useWikiStore.ts` | 项目 Wiki 元数据/页面/任务缓存，接 `wiki_updated/wiki_job` |
 | `src/lib/api.ts` | 所有 REST 调用（带 Host token） |
 | `src/lib/ws.ts` | WS 连接、重连、seq 重放、收件箱订阅 |
 | `src/lib/types.ts` | 客户端内部类型（UiMessage、SettingsTab、路由） |
@@ -79,7 +81,8 @@
 | `src/components/Composer.tsx` | 输入框、附件、模型/权限/思考菜单；**巨石** |
 | `src/components/MessageList.tsx` | 消息列表、轮次分组、流式块；**巨石** |
 | `src/components/PermissionCard.tsx` | 工具审批卡与“添加为规则” |
-| `src/components/RightPanel.tsx` | 右栏：计划、待办、子代理、上下文、PR；**巨石** |
+| `src/components/RightPanel.tsx` | 右栏：计划、待办、子代理、上下文、Wiki、PR；**巨石** |
+| `src/components/wiki/*` | 项目 Wiki 视图（页面树/全文搜索/手写段落）与生成确认（账号/模型/预算/预计花费）；右栏卡片见 `right-panel/WikiCard.tsx` |
 | `src/components/ChangeReviewPanel.tsx` | 改动审阅、行评论、提交/丢弃 |
 | `src/components/settings/*` | 设置各页；`SettingsDialog.tsx` 是导航与挂载点；`TeamSection.tsx` 是成员/邀请/审计，`JoinTeamDialog.tsx` 处理邀请链接入职 |
 | `src/components/evals/*` | 评测轨迹/并排对比/提示词覆盖/存用例弹层；设置「评测」页见 `settings/EvalsSection.tsx` |
@@ -143,14 +146,15 @@ Web/Desktop/Android
 | 改权限规则 | `server/src/permissions.ts`（匹配）+ `host.ts` 的 `authorize` + `PermissionCard.tsx` |
 | 改 diff/改动审阅 | `server/src/changes.ts` + `web/src/lib/useChanges.ts` + `ChangeReviewPanel.tsx` |
 | 改外部会话导入 | `server/src/external.ts`（扫描/清洗/标题）+ `ExternalSessionView.tsx` |
-| 改定时任务 | `server/src/schedules.ts` + `settings/SchedulesSection.tsx` |
+| 改定时任务 | `server/src/schedules.ts` + `settings/SchedulesSection.tsx`（`target.kind='wiki'` 直接更新项目 Wiki） |
 | 改评测/轨迹回放 | `server/src/evals.ts` + `routes/evals.ts`；前端 `store/useEvalStore.ts` + `settings/EvalsSection.tsx` + `components/evals/*` |
 | 改任务看板 | 契约 `protocol` 的 Board* 类型；调度与状态机 `server/src/board/manager.ts`，纯规则 `graph.ts`；接口 `routes/board.ts`；前端 `components/board/*` + `lib/board.ts` + `store/useBoardStore.ts`；设计与取舍 `docs/taskboard.md`；回归 `e2e/board.mjs`（API 级）与 `e2e/regression.mjs` 的「任务看板」用例 |
 | 改预算/用量 | `server/src/budgets.ts`、`usage.ts` + 对应设置页 |
 | 改多 Key 调度 | `server/src/key-rotation.ts` + `host.ts` 的 `keyCandidates/markKeyFailure` |
 | 加斜杠命令 | `server/src/agent/commands.ts` + `host.ts` 的 `handleCommand` |
-| 改系统提示/注入 | `server/src/agent/prompt.ts`、`prompts/registry.ts`、`host.ts` 的 `buildSystemFor/recordInjections` |
+| 改系统提示/注入 | `server/src/agent/prompt.ts`、`prompts/registry.ts`、`host.ts` 的 `buildSystemFor/recordInjections`（项目 Wiki 提示由 `wiki.promptSection` 提供） |
 | 改手机/桌面壳 | `packages/mobile`（Capacitor 插件）、`packages/desktop`（Electron 主进程/preload） |
+| 项目 Wiki | 服务端 `src/wiki.ts` + `routes/wiki.ts` + `tools/wiki-*.ts`；前端 `components/wiki/*`、`right-panel/WikiCard.tsx`、`store/useWikiStore.ts`；数据 `~/.tandem/wiki/<hash>/`；回归 `e2e/regression.mjs` 的「项目 Wiki」用例 |
 | 加回归用例 | server：`packages/server/test/*.test.ts`；web：`packages/web/src/**/*.test.ts`；端到端：`e2e/smoke.mjs` |
 
 ## 7. 测试与检查

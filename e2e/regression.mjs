@@ -26,7 +26,7 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { chromium } from 'playwright'
 import { AxeBuilder } from '@axe-core/playwright'
 import WebSocket from 'ws'
@@ -674,6 +674,79 @@ function seedRepo(repo) {
   gitDirty('add', '.')
   gitDirty('commit', '-qm', 'init')
   writeFileSync(path.join(dirty, 'dirty.txt'), 'changed\n')
+}
+
+/** 预置一份 Wiki：页面/手写段落/commit 都可控，UI 用例无需真实模型。 */
+function seedWiki(configDir, repo) {
+  const hash = createHash('sha1').update(path.resolve(repo)).digest('hex').slice(0, 16)
+  const dir = path.join(configDir, 'wiki', hash)
+  mkdirSync(path.join(dir, 'pages'), { recursive: true })
+  const commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim()
+  const pages = [
+    {
+      id: 'overview',
+      title: '项目概览',
+      kind: 'overview',
+      files: ['README.md'],
+      auto: '# regrepo 项目概览\n\nMock 概览：回归仓库。\n\n## 如何运行\n\n`npm run build`\n\n## 目录地图\n\n- `src/`\n- `docs/`',
+    },
+    {
+      id: 'm-src',
+      title: 'src',
+      kind: 'module',
+      module: 'src',
+      files: ['src/hello.ts'],
+      auto: '# src\n\nMock 职责：示例源码。\n\n## 关键文件\n\n- `src/hello.ts`\n\n## 常见改动入口\n\n修改 `src/hello.ts`。',
+    },
+    {
+      id: 'glossary',
+      title: '术语表',
+      kind: 'glossary',
+      files: ['README.md'],
+      auto: '# 术语表\n\n- regrepo：回归仓库。',
+    },
+  ]
+  writeFileSync(
+    path.join(dir, 'meta.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        project: path.resolve(repo),
+        name: 'repo',
+        createdAt: Date.now() - 4 * 86_400_000,
+        updatedAt: Date.now() - 3 * 86_400_000,
+        commit,
+        model: 'mock-1',
+        pages: pages.map((page) => ({
+          id: page.id,
+          title: page.title,
+          kind: page.kind,
+          ...(page.module ? { module: page.module } : {}),
+          files: page.files,
+          commit,
+          updatedAt: Date.now() - 3 * 86_400_000,
+          chars: page.auto.length,
+        })),
+      },
+      null,
+      2,
+    ),
+  )
+  for (const page of pages) {
+    writeFileSync(
+      path.join(dir, 'pages', `${page.id}.md`),
+      [
+        '<!-- tandem-wiki:auto:start -->',
+        page.auto,
+        '<!-- tandem-wiki:auto:end -->',
+        '',
+        '<!-- tandem-wiki:manual:start -->',
+        page.id === 'm-src' ? '手写：保留这条说明。' : '',
+        '<!-- tandem-wiki:manual:end -->',
+        '',
+      ].join('\n'),
+    )
+  }
 }
 
 function seedData({ configDir, repo, hostId, mockPort, today, day }) {
@@ -1326,6 +1399,7 @@ async function main() {
 
   try {
     seedRepo(repo)
+    seedWiki(configDir, repo)
     seedData({ configDir, repo, hostId, mockPort, today: dayString(0), day: dayString })
 
     const hostPort = await host.ready
@@ -1356,6 +1430,17 @@ async function main() {
       enSearch.hits.some((hit) => hit.sessionId === 'search' && hit.messageId === 's2'),
       `英文全文搜索未命中：${JSON.stringify(enSearch.hits.slice(0, 2))}`,
     )
+
+    // 项目 Wiki：元数据、检索与手写段落。
+    const wikiMeta = await api(base, token, `/api/wiki?project=${encodeURIComponent(repo)}`)
+    assert.ok(wikiMeta.exists && wikiMeta.pages.length === 3, `Wiki 元数据异常：${JSON.stringify(wikiMeta)}`)
+    assert.equal(wikiMeta.commit.length, 7, 'Wiki 记录 7 位 commit')
+    const wikiSearch = await api(
+      base,
+      token,
+      `/api/wiki/search?project=${encodeURIComponent(repo)}&q=${encodeURIComponent('Mock 职责')}`,
+    )
+    assert.ok(wikiSearch.hits.some((hit) => hit.pageId === 'm-src'), `Wiki 检索未命中：${JSON.stringify(wikiSearch)}`)
 
     // 团队：一次真实邀请 + 接受，供成员页/审计断言。
     const invite = await api(base, token, '/api/team/invites', {
@@ -3905,6 +3990,36 @@ async function main() {
         await page.getByTestId('board-pr-status').waitFor({ timeout: 15_000 })
         assert.match(await page.getByTestId('board-pr-status').innerText(), /CI 通过/)
       })
+
+    desktop('项目 Wiki：浏览、全文搜索与手写段落', async (page) => {
+      await openSession(page, 'search')
+      // Wiki 卡片（右栏）显示页数与 commit，点「浏览」打开 Wiki 视图。
+      await page.getByText('共 3 页').first().waitFor({ timeout: 15_000 })
+      await page.getByRole('button', { name: '浏览', exact: true }).first().click()
+      const dialog = page.getByRole('dialog', { name: '项目 Wiki' })
+      await dialog.waitFor()
+      assert.match(await dialog.innerText(), /基于 commit [0-9a-f]{7}/)
+      assert.match(await dialog.innerText(), /Mock 概览/)
+      // 左树切换到模块页。
+      await dialog.getByRole('button', { name: 'src', exact: true }).first().click()
+      await dialog.getByText('Mock 职责：示例源码。').waitFor()
+      // 全文搜索：命中概览页并可跳转。
+      await dialog.getByLabel('搜索 Wiki', { exact: true }).fill('regrepo')
+      await dialog.getByRole('button', { name: /项目概览/ }).first().click()
+      await dialog.getByText('Mock 概览：回归仓库。').waitFor()
+      // 回到模块页编辑手写段落。
+      await dialog.getByRole('button', { name: 'src', exact: true }).first().click()
+      await dialog.getByText('Mock 职责：示例源码。').waitFor()
+      await dialog.getByRole('button', { name: '编辑手写段落' }).click()
+      const manual = dialog.getByLabel('手写段落')
+      await manual.fill('手写：回归新增的说明。')
+      await dialog.getByRole('button', { name: '保存', exact: true }).click()
+      await page.getByText('已保存手写段落').waitFor()
+      const saved = await api(base, token, `/api/wiki/page?project=${encodeURIComponent(repo)}&page=m-src`)
+      assert.equal(saved.manual, '手写：回归新增的说明。')
+      assert.match(saved.auto, /Mock 职责/)
+      await dialog.getByLabel('关闭').click()
+    })
 
     // ------------------------------------------------------------------ 执行
 

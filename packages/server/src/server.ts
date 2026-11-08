@@ -32,6 +32,7 @@ import { registerPairRoutes } from './routes/pair.js';
 import { registerExternalRoutes } from './routes/external.js';
 import { registerConfigRoutes } from './routes/config.js';
 import { registerMemoryRoutes } from './routes/memory.js';
+import { registerWikiRoutes } from './routes/wiki.js';
 import { registerFsRoutes } from './routes/fs.js';
 import { registerTaskRoutes } from './routes/tasks.js';
 import { registerScheduleRoutes } from './routes/schedules.js';
@@ -137,6 +138,7 @@ export async function createApp(
   registerExternalRoutes(app, deps);
   registerConfigRoutes(app, deps);
   registerMemoryRoutes(app, deps);
+  registerWikiRoutes(app, deps);
   registerFsRoutes(app, deps);
   registerTaskRoutes(app, deps);
   registerScheduleRoutes(app, deps);

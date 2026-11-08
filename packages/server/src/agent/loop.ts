@@ -895,6 +895,7 @@ async function executeToolUses(
         : {}),
       home: host.home,
       memory: host.memory,
+      wiki: host.wiki,
       backgroundTasks: host.tasks,
       browser: host.browser,
       secretEnv: host.secrets.envFor(rec.cwd, 'bash'),

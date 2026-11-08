@@ -28,6 +28,11 @@ export async function recoverAfterRestart(host: Host): Promise<void> {
 
   const mode = host.settings().resumeOnRestart;
   for (const rec of host.store.list()) {
+    // Wiki 生成的隐藏只读会话不跨重启恢复；清掉残留，避免后台继续调模型。
+    if (rec.wikiRun) {
+      host.store.delete(rec.id);
+      continue;
+    }
     if (!rec.runState) continue;
     if (mode === 'pause') {
       rec.resumePaused = true;
@@ -43,6 +48,10 @@ export async function recoverAfterRestart(host: Host): Promise<void> {
 
 /** 恢复一个中断的会话；也用于用户手动点击「继续运行」。 */
 export async function resumeSession(host: Host, rec: SessionRecord): Promise<void> {
+  if (rec.wikiRun) {
+    host.store.delete(rec.id);
+    return;
+  }
   const rt = host.ensureRuntime(rec.id);
   if (rt.running || rt.draining) return;
   const before = rec.runState;

@@ -176,6 +176,10 @@ export function guardMemberRequest(
   if (pathname.startsWith('/api/fs/') && upper === 'GET') return undefined;
 
   if (pathname === '/api/search' && upper === 'GET') return undefined;
+  // 项目 Wiki：读操作按项目授权在路由内校验；写入/生成/定时仍归所有者。
+  if ((pathname === '/api/wiki' || pathname.startsWith('/api/wiki/')) && upper === 'GET') {
+    return undefined;
+  }
   const readMatch = /^\/api\/sessions\/([^/]+)\/read$/.exec(pathname);
   if (readMatch && upper === 'POST') {
     const rec = host.getSession(decodeURIComponent(readMatch[1]!));

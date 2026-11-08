@@ -14,6 +14,8 @@ import { definition as bashOutput, run as runBashOutput } from './bash-output.js
 import { definition as killBash, run as runKillBash } from './kill-bash.js';
 import { definition as skill, run as runSkill } from './skill.js';
 import { definition as memory, run as runMemory } from './memory.js';
+import { definition as wikiSearch, run as runWikiSearch } from './wiki-search.js';
+import { definition as wikiRead, run as runWikiRead } from './wiki-read.js';
 import { definition as proposeCards, run as runProposeCards } from './propose-cards.js';
 import {
   clickDefinition as browserClick,
@@ -49,6 +51,8 @@ export const TOOLS: ToolDefinition[] = [
   exitPlan,
   skill,
   memory,
+  wikiSearch,
+  wikiRead,
   proposeCards,
   browserNavigate,
   browserSnapshot,
@@ -74,6 +78,8 @@ const RUNNERS: Record<string, ToolRunner> = {
   ExitPlanMode: runExitPlan,
   Skill: runSkill,
   Memory: runMemory,
+  WikiSearch: runWikiSearch,
+  WikiRead: runWikiRead,
   ProposeCards: runProposeCards,
   browser_navigate: runBrowserNavigate,
   browser_snapshot: runBrowserSnapshot,
@@ -87,7 +93,7 @@ const RUNNERS: Record<string, ToolRunner> = {
 export const TOOL_MAP = new Map(TOOLS.map((tool) => [tool.name, tool]));
 
 /** plan 模式允许的工具（纯只读）；ExitPlanMode 是提交计划的特殊工具。 */
-export const PLAN_ALLOWED = new Set(['Read', 'Glob', 'Grep', 'WebFetch', 'BashOutput', 'TodoWrite', 'ExitPlanMode', 'Skill', 'browser_snapshot', 'browser_screenshot', 'browser_console', 'browser_close']);
+export const PLAN_ALLOWED = new Set(['Read', 'Glob', 'Grep', 'WebFetch', 'BashOutput', 'TodoWrite', 'ExitPlanMode', 'Skill', 'WikiSearch', 'WikiRead', 'browser_snapshot', 'browser_screenshot', 'browser_console', 'browser_close']);
 
 export function isReadOnlyTool(name: string): boolean {
   return TOOL_MAP.get(name)?.readOnly === true;

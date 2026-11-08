@@ -226,6 +226,46 @@ verdict 只能是 pass 或 fail。不要输出其他内容。`,
     variables: [],
     text: '使用规则：遵守下列约定与偏好；与当前用户指令冲突时以用户当前指令为准。不要主动把它们的全文复述给用户。',
   },
+  wikiHint: {
+    key: 'wikiHint',
+    label: '项目 Wiki 提示',
+    description: '项目已有 Wiki 时追加到系统提示的一句话，提醒模型先检索而不是整份注入。',
+    category: 'system',
+    variables: ['{{count}}', '{{pages}}'],
+    text:
+      '本项目有 Wiki（{{count}} 页：{{pages}}）。遇到架构、模块职责、关键文件与改动入口等问题，' +
+      '先用 WikiSearch 检索、再用 WikiRead 阅读相关页面；不要把整个 Wiki 读入上下文。',
+  },
+  wikiGenerate: {
+    key: 'wikiGenerate',
+    label: 'Wiki 生成：页面提示',
+    description: '生成项目 Wiki 页面时发给只读子会话的指令（按目录分批阅读代码）。',
+    category: 'aux',
+    variables: ['{{project}}', '{{module}}', '{{files}}', '{{tree}}', '{{kind}}'],
+    text:
+      '你在为代码库编写一份给人和 agent 共用的中文 Wiki 页面。项目根：{{project}}。\n' +
+      '页面类型：{{kind}}；范围：{{module}}。\n' +
+      '先用 Glob/Grep/Read 阅读范围内最关键的代码，再输出**一页** Markdown；不要写解释性开场白或代码块围栏。\n' +
+      '范围内的文件（最多列出 120 个）：\n{{files}}\n\n目录概览：\n{{tree}}\n\n' +
+      '写作要求：\n' +
+      '- 第一行是 `# 页面标题`；用二级标题组织：概览/职责、关键文件、对外接口、依赖关系、常见改动入口。\n' +
+      '- 文件路径写成仓库相对路径（如 `packages/server/src/tools/read.ts`），便于点击打开。\n' +
+      '- 只写从代码里能确认的事实；不确定的地方明确写「未确认」。不要虚构命令或接口。',
+  },
+  wikiUpdate: {
+    key: 'wikiUpdate',
+    label: 'Wiki 增量更新：页面提示',
+    description: '模块有改动时重新生成该页的指令；已有页面仅作参考，手写段落不会提供。',
+    category: 'aux',
+    variables: ['{{project}}', '{{module}}', '{{files}}', '{{tree}}', '{{kind}}', '{{existing}}', '{{changed}}'],
+    text:
+      '你在增量更新代码库 Wiki 的一页。项目根：{{project}}；范围：{{module}}（{{kind}}）。\n' +
+      '自上次生成以来范围内有改动的文件：\n{{changed}}\n\n' +
+      '请重新阅读这些文件与相关调用方，输出**完整的一页** Markdown（不要代码块围栏，不要只写变更说明）。\n' +
+      '现有页面（仅自动段落，供保持结构一致；不要照抄过时内容）：\n{{existing}}\n\n' +
+      '范围内的文件：\n{{files}}\n\n目录概览：\n{{tree}}\n\n' +
+      '写作要求与首次生成一致：第一行 `# 标题`，二级标题覆盖概览/职责、关键文件、对外接口、依赖关系、常见改动入口；路径用仓库相对路径。',
+  },
 };
 
 export const READONLY_PROMPTS: ReadonlyPromptDef[] = [
@@ -268,7 +308,8 @@ export const READONLY_PROMPTS: ReadonlyPromptDef[] = [
 - WebFetch：获取网页内容；基于内容回答，必要时说明来源。
 {{taskLine}}
 - MCP 工具：名称形如 mcp__<服务器>__<工具>，参数 schema 由该服务器提供；默认需要用户审批，可按权限规则放行。调用失败时读取错误信息，必要时重试或改用其它工具。
-- Skill：按名称加载技能说明。只有当任务确实匹配某个技能描述时才调用，加载后严格按正文执行。`,
+- Skill：按名称加载技能说明。只有当任务确实匹配某个技能描述时才调用，加载后严格按正文执行。
+- WikiSearch / WikiRead：项目已有 Wiki 时，架构与模块职责问题先检索、再按页阅读，不要一次读入全部页面。`,
     reason: '工具使用要点与工具行为强绑定，改错会导致调用失败或产生危险操作。',
   },
   {

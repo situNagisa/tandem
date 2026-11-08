@@ -434,7 +434,7 @@ export class SearchIndex {
   private syncAllTandem(): void {
     const valid = new Set<string>();
     for (const rec of this.host.store.list()) {
-      if (rec.evalRun) continue;
+      if (rec.evalRun || rec.wikiRun) continue;
       valid.add(rec.id);
       this.syncSession(rec.id);
     }
@@ -447,7 +447,7 @@ export class SearchIndex {
 
   private syncSession(id: string): void {
     const rec = this.host.store.get(id);
-    if (!rec || rec.evalRun) {
+    if (!rec || rec.evalRun || rec.wikiRun) {
       this.removeSessionDocs('tandem', id);
       return;
     }

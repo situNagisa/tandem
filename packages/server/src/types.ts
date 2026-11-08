@@ -123,6 +123,8 @@ export interface SessionRecord extends Session {
   resumePaused?: boolean;
   /** 评测运行创建的内部会话：从会话列表隐藏，运行结束后删除。 */
   evalRun?: { runId: string; caseName: string; configId: string };
+  /** Wiki 生成使用的只读内部会话：从会话列表隐藏，任务结束后删除。 */
+  wikiRun?: { project: string; jobId: string };
   /** 评测配置临时覆盖的提示词（仅该会话生效，不写回 prompts.json）。 */
   promptOverrides?: Partial<Record<import('@tandem/protocol').PromptTemplateKey, string>>;
   /** 提交前 AI 评审累计用量（已计入 usage）。 */
@@ -240,6 +242,8 @@ export interface ToolContext {
   home?: string;
   /** 项目记忆存储；Memory 工具直接读写它。 */
   memory?: import('./memory.js').MemoryStore;
+  /** 项目 Wiki 存储/检索；WikiSearch / WikiRead 工具使用。 */
+  wiki?: import('./wiki.js').WikiManager;
   /** 后台 Bash 任务管理器；Bash / BashOutput / KillBash 使用。 */
   backgroundTasks?: import('./tasks.js').BackgroundTaskManager;
   /** 浏览器操作管理器；browser_* 工具使用。 */

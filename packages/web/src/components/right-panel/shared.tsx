@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import {
   BarChart3,
+  BookOpen,
   Bot,
   Brain,
   FileDiff,
@@ -12,7 +13,7 @@ import {
 } from 'lucide-react'
 import { cn } from '../../lib/cn'
 
-export type GroupId = 'plan' | 'todos' | 'agents' | 'usage' | 'context' | 'changes' | 'memory' | 'details'
+export type GroupId = 'plan' | 'todos' | 'agents' | 'usage' | 'context' | 'changes' | 'memory' | 'wiki' | 'details'
 
 export const GROUPS: Array<{ id: GroupId; label: string; Icon: typeof ListTodo }> = [
   { id: 'plan', label: '当前计划', Icon: ScrollText },
@@ -22,6 +23,7 @@ export const GROUPS: Array<{ id: GroupId; label: string; Icon: typeof ListTodo }
   { id: 'context', label: '上下文', Icon: Gauge },
   { id: 'changes', label: '改动摘要', Icon: FileDiff },
   { id: 'memory', label: '记忆', Icon: Brain },
+  { id: 'wiki', label: 'Wiki', Icon: BookOpen },
   { id: 'details', label: '详情', Icon: Info },
 ]
 

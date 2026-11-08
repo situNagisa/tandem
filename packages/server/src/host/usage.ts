@@ -46,6 +46,7 @@ export function promptOptions(host: Host, rec: SessionRecord,
       rec.cwd,
       host.promptTemplates.get('memoryRule', rec.cwd),
     ),
+    wiki: rec.wikiRun ? '' : host.wiki.promptSection(rec.cwd),
     delegationPrompt: host.delegationPrompt(rec),
     delegationKey: host.delegationKey(rec),
     ...(allowTask
