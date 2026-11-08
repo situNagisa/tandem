@@ -1026,47 +1026,50 @@ export function SessionList({
           return (
             <>
               {pinnedSection}
-              {hasRecent && (
-                <div data-recent-projects>
-                  <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[12px] font-medium text-text-tertiary">
-                    {recentLabel}
+              {normalGroups.map((host) => {
+                const hostKey = `host:${host.id}`
+                const hostCollapsed = !!collapsed[hostKey]
+                return (
+                  <div key={host.id} className="mb-1" data-host-group={host.id}>
+                    <div className="flex min-w-0 items-center gap-1.5 px-2.5 pb-1 pt-2">
+                      <button
+                        onClick={() => toggleProject(hostKey)}
+                        className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left text-[12px] font-medium text-text-tertiary transition-colors duration-[120ms] hover:text-text-secondary"
+                        aria-expanded={!hostCollapsed}
+                        title={host.online ? host.name : `${host.name} · 离线，显示缓存的会话列表`}
+                      >
+                        <ChevronRight
+                          size={11}
+                          className={cn(
+                            'shrink-0 opacity-70 transition-transform duration-150',
+                            !hostCollapsed && 'rotate-90',
+                          )}
+                        />
+                        <Server size={11} className="shrink-0 opacity-70" />
+                        <span className="min-w-0 truncate">{host.name}</span>
+                        {!host.online && (
+                          <span className="shrink-0 rounded border border-border px-1 text-[11px] font-normal text-muted">
+                            离线
+                          </span>
+                        )}
+                      </button>
+                      <span className="shrink-0 text-[12px] font-normal tabular-nums text-text-tertiary">
+                        {host.count}
+                      </span>
+                    </div>
+                    <div
+                      className="expand-grid mt-0.5"
+                      data-open={!hostCollapsed}
+                      aria-hidden={hostCollapsed}
+                      inert={hostCollapsed}
+                    >
+                      <div className="expand-inner space-y-1 pt-0.5">
+                        {host.projects.map((project) => renderProject(host.id, project, true))}
+                      </div>
+                    </div>
                   </div>
-                  {normalGroups.map((host) => {
-            const hostKey = `host:${host.id}`
-            const hostCollapsed = !!collapsed[hostKey]
-            return (
-              <div key={host.id} className="mt-2">
-                <button
-                  onClick={() => toggleProject(hostKey)}
-                  className={cn(
-                    'flex h-8 w-full min-w-0 items-center gap-1.5 rounded-lg px-2 text-left text-[12px] font-medium transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)]',
-                    host.online ? 'text-text-secondary hover:text-text' : 'text-text-tertiary',
-                  )}
-                  aria-expanded={!hostCollapsed}
-                >
-                  <ChevronRight
-                    size={11}
-                    className={cn('shrink-0 opacity-70 transition-transform duration-150', !hostCollapsed && 'rotate-90')}
-                  />
-                  <Server size={12} className="shrink-0 opacity-70" />
-                  <span className="min-w-0 flex-1 truncate">{host.name}</span>
-                  <span className="text-[12px] font-normal tabular-nums text-text-tertiary">{host.count}</span>
-                </button>
-                <div
-                  className="expand-grid mt-0.5"
-                  data-open={!hostCollapsed}
-                  aria-hidden={hostCollapsed}
-                  inert={hostCollapsed}
-                >
-                  <div className="expand-inner space-y-1 pt-0.5">
-                    {host.projects.map((project) => renderProject(host.id, project, true))}
-                  </div>
-                </div>
-              </div>
-            )
+                )
               })}
-                </div>
-              )}
             </>
           )
         })()}

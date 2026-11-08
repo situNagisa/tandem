@@ -7,7 +7,6 @@ import { navigate, parseHash } from '../lib/router'
 import { cn } from '../lib/cn'
 import { isSessionFilterActive, type SessionFilter } from '../lib/types'
 import { isDesktop, isMacDesktop } from '../lib/desktop'
-import { HostSwitcher } from './HostSwitcher'
 import { Button, IconButton } from './ui/Button'
 import { Menu } from './ui/Menu'
 import { SessionList, sessionProjectName } from './SessionList'
@@ -370,12 +369,7 @@ export function Sidebar({
       <SessionList
         query=""
         onNavigate={onNavigate}
-        headerActions={
-          <>
-            <HostSwitcher onNavigate={onNavigate} />
-            {filter}
-          </>
-        }
+        headerActions={filter}
       />
 
       <div className="border-t border-border px-2 py-1.5">
