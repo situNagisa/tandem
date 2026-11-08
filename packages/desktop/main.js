@@ -15,7 +15,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const net = require('node:net');
 const path = require('node:path');
-const { pathToFileURL } = require('node:url');
+const { fileURLToPath, pathToFileURL } = require('node:url');
 
 const isMac = process.platform === 'darwin';
 const isWin = process.platform === 'win32';
@@ -54,6 +54,8 @@ let serverModules = null;
 let saveStateTimer = null;
 let updateTimer = null;
 let updateStatus = { state: 'idle' };
+/** 共享目录更新源：在回环地址起一个只读静态服务，交给 electron-updater 的 generic provider。 */
+let localUpdate = null;
 
 function theme() {
   return THEMES[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'];
@@ -507,12 +509,101 @@ function writeUpdateConfig(config) {
   return { source };
 }
 
-/** http(s) 直接用；共享目录/本地路径转 file:// URL。 */
-function normalizeUpdateSource(source) {
+const UPDATE_TYPES = {
+  '.yml': 'text/yaml; charset=utf-8',
+  '.yaml': 'text/yaml; charset=utf-8',
+  '.exe': 'application/octet-stream',
+  '.msi': 'application/octet-stream',
+  '.zip': 'application/zip',
+  '.dmg': 'application/octet-stream',
+  '.appimage': 'application/octet-stream',
+  '.blockmap': 'application/octet-stream',
+};
+
+function stopLocalUpdateServer() {
+  if (!localUpdate) return;
+  try {
+    localUpdate.server.close();
+  } catch {
+    // ignore
+  }
+  localUpdate = null;
+}
+
+function serveLocalUpdate(root, req, res) {
+  let stat;
+  let file;
+  try {
+    const rel = decodeURIComponent(String(req.url ?? '/').split('?')[0]).replace(/^\/+/, '');
+    file = path.resolve(root, rel);
+    if (file !== root && !file.startsWith(root + path.sep)) {
+      res.writeHead(403);
+      res.end();
+      return;
+    }
+    stat = fs.statSync(file);
+  } catch {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
+  if (!stat.isFile()) {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
+  const headers = {
+    'Content-Type': UPDATE_TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'no-cache',
+  };
+  if (req.method === 'HEAD') {
+    res.writeHead(200, { ...headers, 'Content-Length': stat.size });
+    res.end();
+    return;
+  }
+  const match = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? '').trim());
+  if (match) {
+    const suffix = !match[1] && match[2] ? Number(match[2]) : 0;
+    const start = suffix ? Math.max(0, stat.size - suffix) : Number(match[1] || 0);
+    const end = match[2] && !suffix ? Math.min(Number(match[2]), stat.size - 1) : stat.size - 1;
+    if (Number.isFinite(start) && start <= end && start < stat.size) {
+      res.writeHead(206, {
+        ...headers,
+        'Content-Length': end - start + 1,
+        'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+      });
+      fs.createReadStream(file, { start, end }).pipe(res);
+      return;
+    }
+    res.writeHead(416, { 'Content-Range': `bytes */${stat.size}` });
+    res.end();
+    return;
+  }
+  res.writeHead(200, { ...headers, 'Content-Length': stat.size });
+  fs.createReadStream(file).pipe(res);
+}
+
+/** http(s) 直接用；共享目录/本地路径起一个 127.0.0.1 只读静态服务。 */
+async function feedUrlFor(source) {
   const value = String(source ?? '').trim();
-  if (!value) return '';
-  if (/^(https?|file):\/\//i.test(value)) return value;
-  return pathToFileURL(path.resolve(value)).href;
+  if (/^https?:\/\//i.test(value)) {
+    stopLocalUpdateServer();
+    return value;
+  }
+  const root = /^file:\/\//i.test(value) ? fileURLToPath(value) : path.resolve(value);
+  if (localUpdate?.root === root) return localUpdate.url;
+  stopLocalUpdateServer();
+  if (!fs.existsSync(root)) throw new Error(`更新源目录不存在：${root}`);
+  const server = http.createServer((req, res) => serveLocalUpdate(root, req, res));
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  localUpdate = { root, server, url: `http://127.0.0.1:${port}/` };
+  return localUpdate.url;
 }
 
 function sendUpdateStatus(next) {
@@ -551,7 +642,7 @@ function setupUpdater() {
   );
 }
 
-function checkForUpdates() {
+async function checkForUpdates() {
   if (!app.isPackaged) {
     sendUpdateStatus({ state: 'disabled', message: '开发模式不检查更新，请用安装版验证' });
     return updateStatus;
@@ -559,16 +650,16 @@ function checkForUpdates() {
   const { source } = readUpdateConfig();
   if (!source) {
     // 默认关闭：不配置更新源时绝不发起请求。
+    stopLocalUpdateServer();
     sendUpdateStatus({ state: 'idle' });
     return updateStatus;
   }
   try {
+    const url = await feedUrlFor(source);
     const updater = autoUpdater();
-    updater.setFeedURL({ provider: 'generic', url: normalizeUpdateSource(source) });
+    updater.setFeedURL({ provider: 'generic', url });
     sendUpdateStatus({ state: 'checking' });
-    updater.checkForUpdates().catch((err) => {
-      sendUpdateStatus({ state: 'error', message: (err && err.message) || String(err) });
-    });
+    await updater.checkForUpdates();
   } catch (err) {
     sendUpdateStatus({ state: 'error', message: (err && err.message) || String(err) });
   }
@@ -581,8 +672,8 @@ function scheduleUpdateCheck(delay = 15000) {
     updateTimer = null;
   }
   if (!app.isPackaged || !readUpdateConfig().source) return;
-  setTimeout(() => checkForUpdates(), delay).unref?.();
-  updateTimer = setInterval(() => checkForUpdates(), 6 * 60 * 60 * 1000);
+  setTimeout(() => void checkForUpdates(), delay).unref?.();
+  updateTimer = setInterval(() => void checkForUpdates(), 6 * 60 * 60 * 1000);
   updateTimer.unref?.();
 }
 
@@ -644,6 +735,8 @@ if (!gotLock) {
       void done();
     }
   });
+
+  app.on('will-quit', stopLocalUpdateServer);
 
   app.on('window-all-closed', () => {
     if (isMac) return;
