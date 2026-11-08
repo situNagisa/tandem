@@ -23,7 +23,7 @@
 | 体验清单 | 设置 → 关于、命令面板；测试要点、进度与 Markdown 报告 |
 | 组件画廊 | `#/dev/ui`、设置 → 外观 → 组件画廊 |
 | 调试日志/轨迹采集 | 反馈用的错误缓冲、操作轨迹、快照与录屏 |
-| 测试开关 | `localStorage['tandem.onboarding.force']` 强制重新上手引导 |
+| 测试开关 | `localStorage['tandem.onboarding.force']` 强制重新上手引导；`TANDEM_MOCK_SERIAL=1` / `devices.serialMock` 虚拟串口 |
 
 正常功能两个版本都有：主机诊断、配置导出/导入、用量与预算、更新检查等。
 

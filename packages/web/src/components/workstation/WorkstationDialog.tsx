@@ -20,6 +20,11 @@ import { Modal } from '../ui/Modal'
 const EMPTY_MOUNTS: DeviceMount[] = []
 import { Button, IconButton } from '../ui/Button'
 
+// 虚拟串口只是开发/回归开关，发布版不显示提示，server 也不会启用。
+const MOCK_SERIAL_HINT = __TANDEM_DEBUG__
+  ? '\n开发或回归时可用 TANDEM_MOCK_SERIAL=1 启用内置虚拟串口。'
+  : ''
+
 function StateDot({ state }: { state: DeviceInfo['state'] }) {
   return (
     <span
@@ -234,11 +239,11 @@ function HostSection({
                 platform={platform}
                 help={{
                   win32:
-                    '在 Host 的工作目录执行 npm install serialport 后重启 Host。\nUSB 串口驱动：CH340 / CP210x / FTDI 芯片需安装厂商驱动；设备管理器里应出现 COM 端口。\n开发或回归时可用 TANDEM_MOCK_SERIAL=1 启用内置虚拟串口。',
+                    '在 Host 的工作目录执行 npm install serialport 后重启 Host。\nUSB 串口驱动：CH340 / CP210x / FTDI 芯片需安装厂商驱动；设备管理器里应出现 COM 端口。' + MOCK_SERIAL_HINT,
                   darwin:
-                    '在 Host 的工作目录执行 npm install serialport 后重启 Host。\nCH340 / CP210x / FTDI 大多由 macOS 自带驱动（旧系统装厂商驱动）；设备出现在 /dev/tty.usbserial-* 或 /dev/tty.usbmodem*。\n开发或回归时可用 TANDEM_MOCK_SERIAL=1 启用内置虚拟串口。',
+                    '在 Host 的工作目录执行 npm install serialport 后重启 Host。\nCH340 / CP210x / FTDI 大多由 macOS 自带驱动（旧系统装厂商驱动）；设备出现在 /dev/tty.usbserial-* 或 /dev/tty.usbmodem*。' + MOCK_SERIAL_HINT,
                   linux:
-                    '在 Host 的工作目录执行 npm install serialport 后重启 Host。\n串口驱动通常已在内核（ch341 / cp210x / ftdi_sio）。没有权限时执行 sudo usermod -aG dialout $USER 后重新登录（Arch 用 uucp）；\n或添加 /etc/udev/rules.d/99-tandem-serial.rules：SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", MODE="0666", GROUP="dialout"，然后 sudo udevadm control --reload-rules && sudo udevadm trigger。\n开发或回归时可用 TANDEM_MOCK_SERIAL=1 启用内置虚拟串口。',
+                    '在 Host 的工作目录执行 npm install serialport 后重启 Host。\n串口驱动通常已在内核（ch341 / cp210x / ftdi_sio）。没有权限时执行 sudo usermod -aG dialout $USER 后重新登录（Arch 用 uucp）；\n或添加 /etc/udev/rules.d/99-tandem-serial.rules：SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", MODE="0666", GROUP="dialout"，然后 sudo udevadm control --reload-rules && sudo udevadm trigger。' + MOCK_SERIAL_HINT,
                 }}
               />
             )}

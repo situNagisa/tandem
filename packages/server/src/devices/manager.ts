@@ -22,6 +22,7 @@ import type {
 } from '@tandem/protocol';
 import type { Host } from '../host.js';
 import { readJson, writePrivateFile } from '../config.js';
+import { IS_DEBUG_FLAVOR } from '../flavor.js';
 import { AdbRunner } from './adb.js';
 import {
   createDemoBoardConnection,
@@ -145,6 +146,7 @@ export class DeviceManager {
   }
 
   private mockSerial(): boolean {
+    if (!IS_DEBUG_FLAVOR) return false;
     if (process.env.TANDEM_MOCK_SERIAL === '1') return true;
     return this.settings().serialMock === true;
   }
