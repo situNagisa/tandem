@@ -211,7 +211,7 @@ export function WikiDialog() {
                 />
               </div>
               {query ? (
-                <p className="text-[11px] text-muted">
+                <p className="text-[12px] text-muted">
                   {searching ? '搜索中…' : `${results.length} 个结果`}
                 </p>
               ) : null}
@@ -233,7 +233,7 @@ export function WikiDialog() {
                           className="w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--t-bg-hover)]"
                         >
                           <span className="block truncate text-[12.5px] text-text">{hit.title}</span>
-                          <span className="mt-0.5 line-clamp-2 block text-[11px] leading-4 text-muted">{hit.snippet}</span>
+                          <span className="mt-0.5 line-clamp-2 block text-[12px] leading-4 text-muted">{hit.snippet}</span>
                         </button>
                       </li>
                     ))}
@@ -244,7 +244,7 @@ export function WikiDialog() {
               ) : (
                 groups.map((group) => (
                   <div key={group.label} className="mb-2">
-                    <p className="px-2 pb-1 text-[10.5px] font-medium uppercase tracking-[0.12em] text-text-tertiary">
+                    <p className="px-2 pb-1 text-[12px] font-medium uppercase tracking-[0.12em] text-text-tertiary">
                       {group.label}
                     </p>
                     <ul className="space-y-0.5">
@@ -313,9 +313,9 @@ export function WikiDialog() {
               {query ? (
                 <div className="mt-1 max-h-40 overflow-y-auto">
                   {searching ? (
-                    <p className="px-1 py-1 text-[11px] text-muted">搜索中…</p>
+                    <p className="px-1 py-1 text-[12px] text-muted">搜索中…</p>
                   ) : results.length === 0 ? (
-                    <p className="px-1 py-1 text-[11px] text-muted">没有匹配页面</p>
+                    <p className="px-1 py-1 text-[12px] text-muted">没有匹配页面</p>
                   ) : (
                     results.map((hit) => (
                       <button
@@ -328,7 +328,7 @@ export function WikiDialog() {
                         className="block w-full rounded-md px-2 py-1.5 text-left text-[12px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
                       >
                         <span className="block truncate">{hit.title}</span>
-                        <span className="line-clamp-1 block text-[11px] text-muted">{hit.snippet}</span>
+                        <span className="line-clamp-1 block text-[12px] text-muted">{hit.snippet}</span>
                       </button>
                     ))
                   )}
@@ -341,13 +341,13 @@ export function WikiDialog() {
                   {page?.title ?? (meta?.exists ? '选择页面' : '项目还没有 Wiki')}
                 </p>
                 {meta?.exists ? (
-                  <p className="mt-0.5 truncate text-[11.5px] text-muted">
+                  <p className="mt-0.5 truncate text-[12px] text-muted">
                     基于 {page?.commit || meta.commit ? `commit ${page?.commit || meta.commit}` : '生成时的代码'}
                     {page?.updatedAt || meta.updatedAt ? ` · ${formatAgo(page?.updatedAt || meta.updatedAt || 0)}` : ''}
                     {meta.changedFiles > 0 ? ` · 之后有 ${meta.changedFiles} 个文件改动` : ' · 没有新改动'}
                   </p>
                 ) : (
-                  <p className="mt-0.5 text-[11.5px] text-muted">生成后可供人和 agent 检索项目架构。</p>
+                  <p className="mt-0.5 text-[12px] text-muted">生成后可供人和 agent 检索项目架构。</p>
                 )}
               </div>
               <div className="flex flex-wrap items-center justify-start gap-1.5 md:justify-end">
@@ -449,7 +449,7 @@ export function WikiDialog() {
                 <div className="wiki-markdown mx-auto max-w-[780px]">
                   <Markdown text={body} cwd={project} />
                   {!page.manual ? (
-                    <p className="mt-6 border-t border-border pt-3 text-[11.5px] text-muted">
+                    <p className="mt-6 border-t border-border pt-3 text-[12px] text-muted">
                       还没有手写段落。点上方「编辑手写段落」补充自动生成之外的信息。
                     </p>
                   ) : null}

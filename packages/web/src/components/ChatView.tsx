@@ -6,7 +6,7 @@ import { useUiStore } from '../store/useUiStore'
 import { api } from '../lib/api'
 import { navigate } from '../lib/router'
 import { isLocalHostUrl, isSameOrigin } from '../lib/hostUrl'
-import { useElementWidth } from '../lib/hooks'
+import { useElementWidth, useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
 import { MessageList } from './MessageList'
 import { HandoffCard } from './chat/HandoffCard'
@@ -29,6 +29,7 @@ const JUMP_THRESHOLD = 160
 export function ChatView() {
   const sessionTarget = useSessionTarget() ?? undefined
   const [rootRef, width] = useElementWidth<HTMLDivElement>()
+  const isMobile = useIsMobile()
   const compact = width > 0 && width < 440
   const hasSession = useSessionView((s) => !!s)
   const hostId = useSessionView((s) => s?.hostId ?? null)
@@ -364,7 +365,7 @@ export function ChatView() {
           </div>
         </div>
 
-        {!compact && (
+        {(!compact || isMobile) && (
           <TurnRail
             scrollRef={scrollRef}
             sessionId={sessionId}

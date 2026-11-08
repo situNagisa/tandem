@@ -131,7 +131,7 @@ function ModelPanel({
                 <Sparkles size={12} className="shrink-0 text-text-tertiary" />
                 自动
               </span>
-              <span className="truncate text-[11px] leading-4 text-muted">
+              <span className="truncate text-[12px] leading-4 text-muted">
                 {autoModel
                   ? `当前 ${prettyModel(autoModel)} · 每轮按难度选择`
                   : '每轮按难度在候选池中选择'}
@@ -155,7 +155,7 @@ function ModelPanel({
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="truncate text-[13px] leading-4">{friendly}</span>
               <span className="truncate font-mono text-[12px] leading-4 text-muted">{m}</span>
-              <span className="truncate font-mono text-[11px] leading-4 text-muted/80">
+              <span className="truncate font-mono text-[12px] leading-4 text-muted/80">
                 {priceText(prices?.[m])}
               </span>
             </span>

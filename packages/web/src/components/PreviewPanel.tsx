@@ -28,6 +28,7 @@ import { usePreviewStore } from '../store/usePreviewStore'
 import { useUiStore } from '../store/useUiStore'
 import { api } from '../lib/api'
 import { usePreviewShot } from '../lib/browserShot'
+import { useIsMobile } from '../lib/hooks'
 import { selectionLabel, selectionSource } from '../lib/previewElement'
 import type { HostConfig } from '../lib/types'
 import { Modal } from './ui/Modal'
@@ -73,7 +74,8 @@ export function PreviewPanel() {
   const [candidates, setCandidates] = useState<PreviewCandidate[]>([])
   const [snapshots, setSnapshots] = useState<PreviewSnapshot[]>([])
   const [mountInfo, setMountInfo] = useState<PreviewMount | null>(null)
-  const [device, setDevice] = useState<DeviceKey>('desktop')
+  const isMobile = useIsMobile()
+  const [device, setDevice] = useState<DeviceKey>(() => (isMobile ? 'phone' : 'desktop'))
   const [custom, setCustom] = useState({ width: 1024, height: 768 })
   const [selectMode, setSelectMode] = useState(false)
   const [embed, setEmbed] = useState(false)
@@ -331,7 +333,7 @@ export function PreviewPanel() {
           <PanelTop size={14} className="text-muted" />
           应用预览
           {state.active ? (
-            <span className="rounded-full bg-[var(--t-bg-active)] px-1.5 py-px text-[11px] font-normal text-text-soft">
+            <span className="rounded-full bg-[var(--t-bg-active)] px-1.5 py-px text-[12px] font-normal text-text-soft">
               运行中
             </span>
           ) : null}
@@ -385,14 +387,14 @@ export function PreviewPanel() {
 
         {candidates.length > 0 ? (
           <div className="flex shrink-0 flex-wrap items-center gap-1 px-3 py-1.5">
-            <span className="mr-0.5 text-[11px] text-muted">识别到：</span>
+            <span className="mr-0.5 text-[12px] text-muted">识别到：</span>
             {candidates.slice(0, 6).map((candidate) => (
               <button
                 key={candidate.url}
                 type="button"
                 onClick={() => void doOpen(candidate.url, viewport)}
                 title={`${candidate.label ?? ''}${candidate.reachable ? ' · 可访问' : ' · 未启动'}`}
-                className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-surface-2 px-2 py-0.5 font-mono text-[11px] text-text-soft transition-colors hover:border-border-strong hover:text-text"
+                className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-surface-2 px-2 py-0.5 font-mono text-[12px] text-text-soft transition-colors hover:border-border-strong hover:text-text"
               >
                 <span
                   className={`size-1.5 shrink-0 rounded-full ${
@@ -428,7 +430,7 @@ export function PreviewPanel() {
                 size="sm"
                 className="w-[72px] text-[12px]"
               />
-              <span className="text-[11px] text-muted">×</span>
+              <span className="text-[12px] text-muted">×</span>
               <Input
                 type="number"
                 aria-label="自定义高度"
@@ -442,7 +444,7 @@ export function PreviewPanel() {
               </Button>
             </span>
           ) : (
-            <span className="text-[11px] tabular-nums text-muted" data-testid="preview-viewport">
+            <span className="text-[12px] tabular-nums text-muted" data-testid="preview-viewport">
               {viewport.width}×{viewport.height}
             </span>
           )}
@@ -517,7 +519,7 @@ export function PreviewPanel() {
                 height={state.height ?? viewport.height}
                 refreshKey={`${mountInfo.url}:${state.autoRefresh?.at ?? 0}`}
               />
-              <p className="text-center text-[11px] text-muted">
+              <p className="text-center text-[12px] text-muted">
                 直接嵌入运行在本机的页面；元素点选请切回截图模式。
               </p>
             </div>
@@ -543,10 +545,10 @@ export function PreviewPanel() {
                     className="pointer-events-none absolute inset-y-0 w-0.5 bg-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.25)]"
                     style={{ left: `${splitPct}%` }}
                   />
-                  <span className="absolute left-2 top-2 rounded bg-black/55 px-1.5 py-0.5 text-[11px] text-white">
+                  <span className="absolute left-2 top-2 rounded bg-black/55 px-1.5 py-0.5 text-[12px] text-white">
                     改前
                   </span>
-                  <span className="absolute right-2 top-2 rounded bg-black/55 px-1.5 py-0.5 text-[11px] text-white">
+                  <span className="absolute right-2 top-2 rounded bg-black/55 px-1.5 py-0.5 text-[12px] text-white">
                     当前
                   </span>
                   <input
@@ -569,7 +571,7 @@ export function PreviewPanel() {
                         className="block size-full rounded border border-border object-contain"
                       />
                     </div>
-                    <figcaption className="mt-1 shrink-0 text-center text-[11px] text-muted">改前</figcaption>
+                    <figcaption className="mt-1 shrink-0 text-center text-[12px] text-muted">改前</figcaption>
                   </figure>
                   <figure className="flex min-w-0 flex-1 flex-col">
                     <div className="min-h-0 flex-1">
@@ -579,7 +581,7 @@ export function PreviewPanel() {
                         className="block size-full rounded border border-border object-contain"
                       />
                     </div>
-                    <figcaption className="mt-1 shrink-0 text-center text-[11px] text-muted">当前</figcaption>
+                    <figcaption className="mt-1 shrink-0 text-center text-[12px] text-muted">当前</figcaption>
                   </figure>
                 </div>
               )}
@@ -600,7 +602,7 @@ export function PreviewPanel() {
               {state.autoRefresh ? (
                 <span
                   data-testid="preview-auto-refresh"
-                  className="absolute right-2 top-2 rounded-full border border-border bg-[color-mix(in_srgb,var(--t-surface)_88%,transparent)] px-2 py-0.5 text-[11px] text-text-soft shadow-sm backdrop-blur"
+                  className="absolute right-2 top-2 rounded-full border border-border bg-[color-mix(in_srgb,var(--t-surface)_88%,transparent)] px-2 py-0.5 text-[12px] text-text-soft shadow-sm backdrop-blur"
                 >
                   已根据 {state.autoRefresh.count} 处改动刷新
                 </span>
@@ -624,7 +626,7 @@ export function PreviewPanel() {
           {state.autoRefresh && (showCompare || embed || !shot.url) ? (
             <span
               data-testid="preview-auto-refresh"
-              className="absolute right-4 top-4 rounded-full border border-border bg-[color-mix(in_srgb,var(--t-surface)_88%,transparent)] px-2 py-0.5 text-[11px] text-text-soft shadow-sm backdrop-blur"
+              className="absolute right-4 top-4 rounded-full border border-border bg-[color-mix(in_srgb,var(--t-surface)_88%,transparent)] px-2 py-0.5 text-[12px] text-text-soft shadow-sm backdrop-blur"
             >
               已根据 {state.autoRefresh.count} 处改动刷新
             </span>
@@ -652,7 +654,7 @@ export function PreviewPanel() {
 
         {snapshots.length > 0 ? (
           <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-t border-border px-3 py-2">
-            <span className="shrink-0 text-[11px] text-muted">改前快照</span>
+            <span className="shrink-0 text-[12px] text-muted">改前快照</span>
             {snapshots.map((snapshot) => (
               <SnapshotCard
                 key={snapshot.id}
@@ -675,7 +677,7 @@ export function PreviewPanel() {
             className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border px-3 py-2"
             data-testid="preview-selections"
           >
-            <span className="text-[11px] text-muted">已选元素</span>
+            <span className="text-[12px] text-muted">已选元素</span>
             {selections.map((selection) => (
               <span
                 key={selection.id}
@@ -684,7 +686,7 @@ export function PreviewPanel() {
                 <MousePointerClick size={12} className="shrink-0 text-muted" />
                 <span className="truncate">{selectionLabel(selection)}</span>
                 {selectionSource(selection) ? (
-                  <span className="shrink-0 font-mono text-[10px] text-muted">{selectionSource(selection)}</span>
+                  <span className="shrink-0 font-mono text-[12px] text-muted">{selectionSource(selection)}</span>
                 ) : null}
                 <IconButton
                   size="sm"
@@ -696,7 +698,7 @@ export function PreviewPanel() {
                 </IconButton>
               </span>
             ))}
-            <span className="text-[11px] text-muted">发送时作为上下文附带给 agent</span>
+            <span className="text-[12px] text-muted">发送时作为上下文附带给 agent</span>
           </div>
         ) : null}
 
@@ -776,11 +778,11 @@ function SnapshotCard({
         {shot.url ? (
           <img src={shot.url} alt="" className="h-8 w-12 rounded object-cover" />
         ) : (
-          <span className="flex h-8 w-12 items-center justify-center rounded bg-surface-2 text-[10px] text-muted">
+          <span className="flex h-8 w-12 items-center justify-center rounded bg-surface-2 text-[12px] text-muted">
             加载中
           </span>
         )}
-        <span className="max-w-[88px] truncate text-[11px] text-text-soft">{snapshot.label}</span>
+        <span className="max-w-[88px] truncate text-[12px] text-text-soft">{snapshot.label}</span>
       </button>
       <IconButton size="sm" onClick={onDelete} label={`删除快照 ${snapshot.label}`} className="size-6! [&_svg]:size-3">
         <Trash2 size={11} />
