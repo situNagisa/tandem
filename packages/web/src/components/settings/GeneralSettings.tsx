@@ -13,6 +13,7 @@ import { api } from '../../lib/api'
 import { EFFORT_LABEL } from '../../lib/effort'
 import { profileModelGroups } from '../../lib/profileModels'
 import { Input, SegmentedControl, Select, Switch } from '../ui/Controls'
+import { UpdateSection } from './UpdateSection'
 
 const OPTIONS = [
   {
@@ -560,6 +561,7 @@ export function GeneralSettings() {
           </div>
         </div>
       </section>
+      <UpdateSection />
       <p className="flex items-center gap-1.5 px-1 text-[12px] text-muted">
         <Server size={12} />
         {host ? `设置保存在 ${host.name} 的 config.json，同一主机的所有客户端共享。` : '请先选择一台主机。'}

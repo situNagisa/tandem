@@ -681,6 +681,8 @@ export interface HostSettings {
   modelRouting?: ModelRoutingSettings;
   /** 命令沙箱与网络白名单（~/.tandem/sandbox.json）。 */
   sandbox?: SandboxSettings;
+  /** 桌面端更新文件托管目录；空 = 关闭 /updates/ 静态分发。 */
+  updateShareDir?: string;
 }
 // GET  /api/settings -> HostSettings
 // PUT  /api/settings HostSettings -> HostSettings

@@ -5,6 +5,7 @@ const {
   BrowserWindow,
   Menu,
   Tray,
+  ipcMain,
   nativeImage,
   nativeTheme,
   shell,
@@ -51,6 +52,8 @@ let reusingExternalHost = false;
 let quitting = false;
 let serverModules = null;
 let saveStateTimer = null;
+let updateTimer = null;
+let updateStatus = { state: 'idle' };
 
 function theme() {
   return THEMES[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'];
@@ -482,6 +485,125 @@ function buildAppMenu() {
   ]);
 }
 
+// ---------- 自动更新（electron-updater generic） ----------
+
+function updateConfigFile() {
+  return path.join(app.getPath('userData'), 'update-config.json');
+}
+
+function readUpdateConfig() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(updateConfigFile(), 'utf8'));
+    return { source: typeof raw?.source === 'string' ? raw.source.trim() : '' };
+  } catch {
+    return { source: '' };
+  }
+}
+
+function writeUpdateConfig(config) {
+  const source = typeof config?.source === 'string' ? config.source.trim() : '';
+  fs.mkdirSync(path.dirname(updateConfigFile()), { recursive: true });
+  fs.writeFileSync(updateConfigFile(), JSON.stringify({ source }, null, 2));
+  return { source };
+}
+
+/** http(s) 直接用；共享目录/本地路径转 file:// URL。 */
+function normalizeUpdateSource(source) {
+  const value = String(source ?? '').trim();
+  if (!value) return '';
+  if (/^(https?|file):\/\//i.test(value)) return value;
+  return pathToFileURL(path.resolve(value)).href;
+}
+
+function sendUpdateStatus(next) {
+  updateStatus = next;
+  if (win && !win.isDestroyed()) win.webContents.send('updater:status', next);
+}
+
+function autoUpdater() {
+  // 延迟加载：未配置更新源时不初始化更新器，也不发起任何请求。
+  return require('electron-updater').autoUpdater;
+}
+
+function setupUpdater() {
+  const updater = autoUpdater();
+  updater.autoDownload = true;
+  updater.autoInstallOnAppQuit = true;
+  updater.on('checking-for-update', () => sendUpdateStatus({ state: 'checking' }));
+  updater.on('update-available', (info) =>
+    sendUpdateStatus({ state: 'available', version: info?.version }),
+  );
+  updater.on('update-not-available', () =>
+    sendUpdateStatus({ state: 'current', version: app.getVersion() }),
+  );
+  updater.on('download-progress', (progress) =>
+    sendUpdateStatus({
+      state: 'downloading',
+      version: updateStatus.version,
+      percent: Math.round(progress?.percent ?? 0),
+    }),
+  );
+  updater.on('update-downloaded', (info) =>
+    sendUpdateStatus({ state: 'downloaded', version: info?.version }),
+  );
+  updater.on('error', (err) =>
+    sendUpdateStatus({ state: 'error', message: (err && err.message) || String(err) }),
+  );
+}
+
+function checkForUpdates() {
+  if (!app.isPackaged) {
+    sendUpdateStatus({ state: 'disabled', message: '开发模式不检查更新，请用安装版验证' });
+    return updateStatus;
+  }
+  const { source } = readUpdateConfig();
+  if (!source) {
+    // 默认关闭：不配置更新源时绝不发起请求。
+    sendUpdateStatus({ state: 'idle' });
+    return updateStatus;
+  }
+  try {
+    const updater = autoUpdater();
+    updater.setFeedURL({ provider: 'generic', url: normalizeUpdateSource(source) });
+    sendUpdateStatus({ state: 'checking' });
+    updater.checkForUpdates().catch((err) => {
+      sendUpdateStatus({ state: 'error', message: (err && err.message) || String(err) });
+    });
+  } catch (err) {
+    sendUpdateStatus({ state: 'error', message: (err && err.message) || String(err) });
+  }
+  return updateStatus;
+}
+
+function scheduleUpdateCheck() {
+  if (updateTimer) {
+    clearInterval(updateTimer);
+    updateTimer = null;
+  }
+  if (!app.isPackaged || !readUpdateConfig().source) return;
+  setTimeout(() => checkForUpdates(), 15000).unref?.();
+  updateTimer = setInterval(() => checkForUpdates(), 6 * 60 * 60 * 1000);
+  updateTimer.unref?.();
+}
+
+function setupUpdaterIpc() {
+  ipcMain.handle('updater:get-config', () => readUpdateConfig());
+  ipcMain.handle('updater:set-config', (_event, config) => {
+    const saved = writeUpdateConfig(config);
+    scheduleUpdateCheck();
+    if (saved.source) setTimeout(() => checkForUpdates(), 500).unref?.();
+    else sendUpdateStatus({ state: 'idle' });
+    return saved;
+  });
+  ipcMain.handle('updater:check', () => checkForUpdates());
+  ipcMain.handle('updater:status', () => updateStatus);
+  ipcMain.handle('updater:install', () => {
+    if (updateStatus.state !== 'downloaded') return;
+    quitting = true;
+    autoUpdater().quitAndInstall(false, true);
+  });
+}
+
 // ---------- 生命周期 ----------
 
 const gotLock = app.requestSingleInstanceLock();
@@ -503,6 +625,9 @@ if (!gotLock) {
     }
     createWindow();
     createTray();
+    setupUpdaterIpc();
+    if (app.isPackaged) setupUpdater();
+    scheduleUpdateCheck();
 
     app.on('activate', () => {
       showWindow();

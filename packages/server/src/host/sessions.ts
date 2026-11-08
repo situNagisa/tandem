@@ -69,6 +69,7 @@ export function settings(host: Host): HostSettings {
       ? { modelRouting: normalizeRoutingSettings(host.config.modelRouting)! }
       : {}),
     sandbox: host.sandbox.get(),
+    ...(host.config.updateShareDir ? { updateShareDir: host.config.updateShareDir } : {}),
   };
 }
 
@@ -122,6 +123,11 @@ export function updateSettings(host: Host, input: Partial<HostSettings>): HostSe
     if (next) host.config.modelRouting = next;
     else delete host.config.modelRouting;
   }
+  if (input.updateShareDir !== undefined) {
+    const dir = typeof input.updateShareDir === 'string' ? input.updateShareDir.trim() : '';
+    if (dir) host.config.updateShareDir = dir;
+    else delete host.config.updateShareDir;
+  }
   saveHostSettings(host.home, {
     resumeOnRestart: host.settings().resumeOnRestart,
     ...(host.config.defaultDelegation ? { defaultDelegation: host.config.defaultDelegation } : {}),
@@ -130,6 +136,7 @@ export function updateSettings(host: Host, input: Partial<HostSettings>): HostSe
     ...(host.config.aiReview ? { aiReview: sanitizeAiReview(host.config.aiReview) } : {}),
     ...(host.config.handoff ? { handoff: normalizeHandoffSettings(host.config.handoff) } : {}),
     modelRouting: normalizeRoutingSettings(host.config.modelRouting) ?? null,
+    ...(host.config.updateShareDir ? { updateShareDir: host.config.updateShareDir } : {}),
   });
   return host.settings();
 }

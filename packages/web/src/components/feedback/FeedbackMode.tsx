@@ -42,6 +42,7 @@ import {
 import { getFeedbackErrors } from '../../lib/feedbackErrors'
 import { getFeedbackTrace } from '../../lib/feedbackTrace'
 import { captureFeedbackSnapshot } from '../../lib/feedbackSnapshot'
+import { APP_VERSION } from '../../lib/changelog'
 import { Button, IconButton } from '../ui/Button'
 import { Input, SegmentedControl } from '../ui/Controls'
 import { FeedbackAnnotator } from './FeedbackAnnotator'
@@ -64,7 +65,6 @@ const SELECT_MODE_OPTIONS: ReadonlyArray<{ value: FeedbackSelectMode; label: str
   { value: 'region', label: '框选' },
 ]
 
-const APP_VERSION = '0.1.0'
 const MAX_VIDEO_BYTES = 8 * 1024 * 1024
 const SNAPSHOT_PREFS_KEY = 'tandem.feedback.snapshotPrefs.v1'
 

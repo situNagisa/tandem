@@ -95,6 +95,8 @@ export interface HostConfig {
   handoff?: import('@tandem/protocol').HandoffSettings;
   /** 自动模型路由：候选池与偏好。 */
   modelRouting?: import('@tandem/protocol').ModelRoutingSettings;
+  /** 桌面端更新文件托管目录；空 = 关闭。 */
+  updateShareDir?: string;
   relay?: RelayConfig;
 }
 

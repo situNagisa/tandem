@@ -12,6 +12,13 @@ files:
 
 asar: true
 
+# 只用来让 electron-builder 产出 latest.yml；实际更新源在应用设置里填写，
+# 未配置时主进程不会发起任何请求。
+publish:
+  provider: generic
+  url: https://example.invalid/tandem-updates
+generateUpdatesFilesForAllChannels: true
+
 # 整目录拷贝（而非分别拷 server / web）：electron-builder 会过滤根层 node_modules，
 # 放在 resources/server/node_modules 属于嵌套目录，才能随包带上 Host 的生产依赖。
 extraResources:

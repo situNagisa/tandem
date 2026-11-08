@@ -7,7 +7,7 @@ import { clearAttention } from './lib/attention'
 import { commandForEvent } from './lib/commands'
 import { closeFocusedPane, focusSplitPane } from './lib/splitActions'
 import { initNativeBridge, syncBackgroundService } from './lib/nativeBridge'
-import { isDesktop } from './lib/desktop'
+import { desktop, isDesktop } from './lib/desktop'
 import { cn } from './lib/cn'
 import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
@@ -94,6 +94,22 @@ export default function App() {
     if (!initialized) return
     void syncBackgroundService(hosts.length)
   }, [initialized, hosts.length, backgroundService])
+
+  // 桌面端后台下载完新版本后只弹一条不打扰的提示，点击才重启安装。
+  useEffect(() => {
+    const updater = desktop?.updater
+    if (!updater) return
+    let disposed = false
+    const show = (status: { state: string; version?: string }) => {
+      if (disposed || status.state !== 'downloaded' || !status.version) return
+      useUiStore.getState().toast(`新版本 ${status.version} · 重启以更新`, 'info', {
+        actionLabel: '重启',
+        onClick: () => void updater.install(),
+      })
+    }
+    void updater.status().then(show)
+    return updater.onStatus(show)
+  }, [])
 
   useEffect(() => {
     if (!initialized) return

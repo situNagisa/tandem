@@ -100,6 +100,9 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
     ...(normalizeRoutingSettings(existing?.modelRouting)
       ? { modelRouting: normalizeRoutingSettings(existing?.modelRouting)! }
       : {}),
+    ...(typeof existing?.updateShareDir === 'string' && existing.updateShareDir.trim()
+      ? { updateShareDir: existing.updateShareDir.trim() }
+      : {}),
     ...(isRelayConfig(existing?.relay) ? { relay: existing.relay } : {}),
   };
   if (
@@ -126,12 +129,14 @@ export function saveHostSettings(
     aiReview?: import('@tandem/protocol').AiReviewSettings;
     handoff?: import('@tandem/protocol').HandoffSettings;
     modelRouting?: import('@tandem/protocol').ModelRoutingSettings | null;
+    updateShareDir?: string;
   },
 ): void {
   const file = path.join(home, 'config.json');
   const existing = readJson<Record<string, unknown>>(file) ?? {};
   const merged: Record<string, unknown> = { ...existing, ...settings };
   if (settings.modelRouting === null) delete merged.modelRouting;
+  if (!settings.updateShareDir) delete merged.updateShareDir;
   writePrivateFile(file, JSON.stringify(merged, null, 2));
 }
 

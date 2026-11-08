@@ -26,6 +26,7 @@ import type { RemoteSshHost, SshJob } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { api } from '../../lib/api'
 import { normalizeHostUrl, isLocalHostUrl, isSameOrigin } from '../../lib/hostUrl'
+import { APP_VERSION } from '../../lib/changelog'
 import { useUiStore } from '../../store/useUiStore'
 import { ConnectionDot } from '../StatusDot'
 import { PairDialog } from './PairDialog'
@@ -627,6 +628,8 @@ export function HostsSection() {
           const rt = runtimes[h.id]
           const editing = editId === h.id
           const ssh = h.mode === 'ssh' ? recordFor(h) : undefined
+          const hostVersion = rt?.info?.version
+          const versionMismatch = rt?.status === 'online' && !!hostVersion && hostVersion !== APP_VERSION
           return (
             <div
               key={h.id}
@@ -650,6 +653,14 @@ export function HostsSection() {
                     {h.id === activeHostId && (
                       <span className="rounded border border-border px-1.5 py-px text-[12px] text-text-secondary">
                         当前
+                      </span>
+                    )}
+                    {versionMismatch && (
+                      <span
+                        title={`主机 ${hostVersion} · 客户端 ${APP_VERSION}。请把两端升级到同一版本，避免协议不一致。`}
+                        className="inline-flex items-center gap-1 rounded border border-warning/40 px-1.5 py-px text-[12px] text-warning"
+                      >
+                        <TriangleAlert size={10} /> 版本不一致
                       </span>
                     )}
                     {h.mode === 'ssh' && (

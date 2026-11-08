@@ -44,6 +44,8 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'general.resume-on-restart', tab: 'general', title: '主机重启后的会话恢复', keywords: ['恢复', '重启', '续跑', 'resume'] },
   { id: 'general.ai-review', tab: 'general', title: '提交前 AI 评审', keywords: ['AI', '评审', 'review', '提交', 'PR', 'blocker', '模型'] },
   { id: 'general.handoff', tab: 'general', title: '额度交接', keywords: ['额度', '限流', '交接', '备用分组', 'quota', '429', '自动切换', '等待重置'] },
+  { id: 'general.updates', tab: 'general', title: '桌面更新源', keywords: ['更新', '升级', 'update', '最新版', 'latest.yml', '更新源'] },
+  { id: 'general.update-share', tab: 'general', title: 'Host 托管更新文件', keywords: ['更新', '托管', 'updates', '静态目录', '安装包'] },
 
   { id: 'voice.engine', tab: 'voice', title: '语音识别方式', keywords: ['语音', '识别', '引擎', 'engine'] },
   { id: 'voice.whisper', tab: 'voice', title: 'Host 本地 Whisper', keywords: ['whisper', '后端', '可执行文件', '模型', '语言'] },

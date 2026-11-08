@@ -104,9 +104,9 @@ export const CHANGELOG: ChangelogRelease[] = [
   },
 ]
 
-export const CHANGELOG_VERSION = CHANGELOG[0]?.version ?? '0.1.0'
+export const CHANGELOG_VERSION = CHANGELOG[0]?.version ?? '0.0.0'
 export const LATEST_CHANGELOG_ITEMS = CHANGELOG.flatMap((release) => release.items)
-export const APP_VERSION = CHANGELOG_VERSION
+export const APP_VERSION = __APP_VERSION__
 
 const SEEN_KEY = 'tandem.changelogSeen.v1'
 const ONBOARDING_KEY = 'tandem.onboarding.v1'

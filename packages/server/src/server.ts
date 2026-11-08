@@ -44,6 +44,7 @@ import { registerBrowserRoutes } from './routes/browser.js';
 import { registerPreviewRoutes } from './routes/preview.js';
 import { registerWsRoutes } from './routes/ws.js';
 import { registerSshHostRoutes } from './routes/ssh-hosts.js';
+import { registerUpdateRoutes } from './routes/updates.js';
 import { SshRemoteManager } from './ssh/manager.js';
 
 export async function createApp(
@@ -117,6 +118,7 @@ export async function createApp(
   const deps: RouteDeps = { host, sshHosts, ...(extras.relay ? { relay: extras.relay } : {}) };
 
   registerHostRoutes(app, deps);
+  registerUpdateRoutes(app, deps);
   registerDoctorRoutes(app, deps);
   registerTeamRoutes(app, deps);
 

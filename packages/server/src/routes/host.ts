@@ -23,6 +23,7 @@ export function registerHostRoutes(app: FastifyInstance, deps: RouteDeps): void 
       handoff?: unknown;
       modelRouting?: unknown;
       sandbox?: unknown;
+      updateShareDir?: unknown;
     };
     return host.updateSettings({
       ...(body.resumeOnRestart === 'auto' || body.resumeOnRestart === 'pause'
@@ -44,6 +45,7 @@ export function registerHostRoutes(app: FastifyInstance, deps: RouteDeps): void 
       ...(body.sandbox && typeof body.sandbox === 'object'
         ? { sandbox: body.sandbox as import('@tandem/protocol').SandboxSettings }
         : {}),
+      ...(typeof body.updateShareDir === 'string' ? { updateShareDir: body.updateShareDir } : {}),
     });
   });
 

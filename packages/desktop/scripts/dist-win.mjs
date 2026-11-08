@@ -76,7 +76,9 @@ function zipDir(dir, zipPath) {
 
 function collectArtifacts() {
   const files = fs.existsSync(outDir)
-    ? fs.readdirSync(outDir).filter((f) => /\.(exe|zip|dmg|AppImage)$/i.test(f))
+    ? fs
+        .readdirSync(outDir)
+        .filter((f) => /\.(exe|zip|dmg|AppImage|blockmap)$/i.test(f) || /^latest.*\.yml$/i.test(f))
     : [];
   return files.map((f) => path.join(outDir, f));
 }
@@ -98,18 +100,18 @@ try {
   run(process.execPath, [path.join(here, 'prepare-resources.mjs')], desktopDir);
 
   let ok = false;
-  let result = builder(['--win', 'nsis', '--x64']);
+  let result = builder(['--win', 'nsis', '--x64', '--publish', 'never']);
   if (result.status === 0) {
     ok = true;
   } else {
     console.warn('\n[dist:win] NSIS 打包失败，尝试 portable…');
-    result = builder(['--win', 'portable', '--x64']);
+    result = builder(['--win', 'portable', '--x64', '--publish', 'never']);
     if (result.status === 0) ok = true;
   }
 
   if (!ok) {
     console.warn('\n[dist:win] portable 失败，退回到 --dir + zip…');
-    result = builder(['--win', '--dir', '--x64']);
+    result = builder(['--win', '--dir', '--x64', '--publish', 'never']);
     if (result.status !== 0) throw new Error('electron-builder 打包失败');
     const unpacked = path.join(outDir, 'win-unpacked');
     if (!fs.existsSync(unpacked)) throw new Error('未找到 win-unpacked');
