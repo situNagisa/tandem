@@ -54,11 +54,29 @@ npm run apk -w @tandem/mobile
 
 **macOS**：安装 Android Studio 即可（SDK 默认 `~/Library/Android/sdk`）。
 
+#### release 包（签名）
+```bash
+npm run apk:release -w @tandem/mobile
+```
+首次会通过 `keytool` 在 `~/.tandem-release/` 生成 `android.keystore` 与 600 权限的密码文件（也可用 `TANDEM_ANDROID_KEYSTORE_PASSWORD` 环境变量提供密码），产出已签名的 `dist-apk/tandem-release.apk` 与 `.aab`，并用 `apksigner verify` 自动校验。签名材料不进仓库；**请离线备份 `~/.tandem-release`**，丢失后无法覆盖升级。debug 流程 `npm run apk -w @tandem/mobile` 不变。
+
 ### Windows 安装包
 ```bash
 npm run dist:win -w @tandem/desktop
 ```
-产物：`packages/desktop/dist/Tandem-Setup-<版本>-x64.exe`。
+产物：`packages/desktop/dist/Tandem-Setup-<版本>-x64.exe`，同时生成 `latest.yml` 与 `.blockmap`，可直接放到内网静态目录作为更新源。
+
+### 版本发布
+```bash
+node scripts/release.mjs 0.2.0 --dry-run   # 查看将要修改的文件与 CHANGELOG
+node scripts/release.mjs 0.2.0             # 统一版本号、写 CHANGELOG/导览、提交并打本地标签
+```
+只创建本地标签，不 push。详见 `docs/release.md`。
+
+### 桌面自动更新（内网）
+`npm run dist:win` 产出的 `latest.yml`、安装包与 `.blockmap` 放到任意内网静态目录；桌面端在「设置 → 通用 → 桌面更新」填更新源（HTTP 地址或共享目录路径），留空即关闭、不发起任何请求。发现新版本会后台下载，完成后提示「新版本 x · 重启以更新」。
+
+也可以让 Host 托管：在「设置 → 通用 → Host 托管更新文件」填一个本机目录，Host 会公开 `/updates/` 静态路径（仅启用时）。未签名的 SmartScreen 影响、签名选购与上架材料见 `docs/release.md`。
 
 ### 中继
 见 `docs/relay.md`（Docker + Caddy 一键部署：`deploy/relay/install.sh`）。
