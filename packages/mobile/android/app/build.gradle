@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+// 版本号只在 packages/mobile/package.json 维护；versionCode 用 semver 推导。
+def tandemPkg = new groovy.json.JsonSlurper().parseText(file('../../package.json').text)
+def tandemVersion = (tandemPkg.version ?: '0.0.0') as String
+def tandemParts = tandemVersion.tokenize('.').collect { it as int }
+def tandemVersionCode = tandemParts[0] * 10000 + (tandemParts[1] ?: 0) * 100 + (tandemParts[2] ?: 0)
+
 android {
     namespace = "com.tandem.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +13,8 @@ android {
         applicationId "com.tandem.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode tandemVersionCode
+        versionName tandemVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +22,26 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            // 签名材料只从环境变量读取（由 scripts/apk-release.mjs 注入），不写进仓库。
+            def storePath = System.getenv("TANDEM_ANDROID_KEYSTORE")
+            if (storePath) {
+                storeFile file(storePath)
+                storePassword System.getenv("TANDEM_ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("TANDEM_ANDROID_KEY_ALIAS") ?: "tandem"
+                keyPassword System.getenv("TANDEM_ANDROID_KEY_PASSWORD") ?: System.getenv("TANDEM_ANDROID_KEYSTORE_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (System.getenv("TANDEM_ANDROID_KEYSTORE")) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "apk": "node scripts/apk.mjs",
+    "apk:release": "node scripts/apk-release.mjs",
     "sync": "cap sync android",
     "open": "cap open android"
   },
