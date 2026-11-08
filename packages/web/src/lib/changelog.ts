@@ -4,6 +4,7 @@ export type ChangelogTarget =
   | { kind: 'settings'; tab: SettingsTab; settingId?: string }
   | { kind: 'search' }
   | { kind: 'board' }
+  | { kind: 'workstation' }
   | { kind: 'split' }
   | { kind: 'inbox' }
   | { kind: 'home' }
@@ -29,6 +30,73 @@ export interface ChangelogRelease {
 
 /** 版本升级后首次打开时展示；按版本从新到旧排列。 */
 export const CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '0.3.0',
+    date: '2026-11-08',
+    items: [
+      {
+        id: 'workstation-devices',
+        title: '工作站：设备共享',
+        summary: '在一处看到所有主机的 ADB / 串口设备，挂载后会话里的 agent 直接可用，串口还能开终端。',
+        target: { kind: 'workstation' },
+      },
+      {
+        id: 'workspace-accounts',
+        title: '工作区账号',
+        summary: '登录一次就能看到所有可访问的机器；所有者按账号分配角色、主机范围与项目目录。',
+        target: { kind: 'settings', tab: 'accounts', settingId: 'accounts.workspace' },
+      },
+      {
+        id: 'preview-side-panel',
+        title: '预览不再挡输入框',
+        summary: '应用预览在桌面是右侧面板、手机是底部抽屉，选完元素焦点回到输入框。',
+        target: { kind: 'demo', scenario: 'preview' },
+      },
+      {
+        id: 'inbox-turn-rollup',
+        title: '收件箱按回合聚合',
+        summary: '同一回合的审批收成一行，回合结束或出错置顶；点一行看明细或直接打开会话。',
+        target: { kind: 'inbox' },
+      },
+      {
+        id: 'confirm-danger-actions',
+        title: '危险操作统一确认',
+        summary: '看板合并先列出每张卡的文件与 diff；手动压缩可查看原文并撤销，删除账号等也走同一确认。',
+        target: { kind: 'board' },
+      },
+      {
+        id: 'board-done-actions',
+        title: '完成的卡片能接着处理',
+        summary: '完成态卡片可直接打开会话、查看改动与测试结果，或合并、重新运行；失败卡能看错误再重试。',
+        target: { kind: 'board' },
+      },
+      {
+        id: 'turn-outline-hover',
+        title: '轮次大纲悬停看全文',
+        summary: '鼠标停在轮次上就能看到该轮完整提问，读屏也能逐轮读出，不用点进去找。',
+        target: { kind: 'demo', scenario: 'chat-tools' },
+      },
+      {
+        id: 'mobile-env-bar',
+        title: '手机环境条更完整',
+        summary: '环境条改成横向滑动，文件夹、分支与 Worktree 在手机上都能看全。',
+        target: { kind: 'demo', scenario: 'chat-tools' },
+      },
+      {
+        id: 'model-price-hint',
+        title: '模型菜单显示参考价',
+        summary: '选模型时直接看到每百万 token 的参考单价；未设置时显示「去设置」，点开就能填。',
+        target: { kind: 'settings', tab: 'profiles', settingId: 'profiles.prices' },
+      },
+      {
+        id: 'feedback-root-cause',
+        title: '反馈自动按功能与根因归类',
+        summary: '圈选的反馈自动带上功能标签与建议根因，导出后按功能、按根因分别整理；弹出菜单里也能圈选。',
+        target: { kind: 'feedback' },
+      },
+    ],
+  },
+
   {
     version: '0.2.1',
     date: '2026-11-08',

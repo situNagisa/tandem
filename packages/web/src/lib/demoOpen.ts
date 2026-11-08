@@ -4,6 +4,7 @@ import type { HostConfig, SettingsTab } from './types'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useDemoStore } from '../store/useDemoStore'
+import { useDevicesStore } from '../store/useDevicesStore'
 import { useEvalStore } from '../store/useEvalStore'
 import { useFeedbackStore } from '../store/useFeedbackStore'
 import { api } from './api'
@@ -95,6 +96,7 @@ export async function openChecklistAction(
     else if (action.action === 'search' || action.action === 'command') ui.setSearchOpen(true)
     else if (action.action === 'clear-demo') ui.setDemoOpen(true)
     else if (action.action === 'feedback') useFeedbackStore.getState().enter()
+    else if (action.action === 'workstation') useDevicesStore.getState().setWorkstationOpen(true)
     return
   }
   if (action.settingsTab) {

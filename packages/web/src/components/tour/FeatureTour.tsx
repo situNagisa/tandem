@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
+import { useDevicesStore } from '../../store/useDevicesStore'
 import { useFeedbackStore } from '../../store/useFeedbackStore'
 import { navigate } from '../../lib/router'
 import { navigateBoard } from '../../lib/boardRoute'
@@ -85,6 +86,9 @@ function runTarget(target: ChangelogTarget): void {
     }
     navigateBoard(hostId)
     pulseTourTarget('[data-tour-target="board"]', 320)
+  }
+  if (target.kind === 'workstation') {
+    useDevicesStore.getState().setWorkstationOpen(true)
   }
 }
 

@@ -1,7 +1,7 @@
 import type { SettingsTab } from './types'
 
 /** 体验清单的测试要点：每条一句话说明做什么，以及在哪里能打开对应场景。 */
-export type ChecklistAction = 'split' | 'search' | 'command' | 'clear-demo' | 'feedback'
+export type ChecklistAction = 'split' | 'search' | 'command' | 'clear-demo' | 'feedback' | 'workstation'
 
 export interface TestPoint {
   id: string
@@ -76,6 +76,11 @@ export const TEST_POINTS: TestPoint[] = [
   { id: 'wiki-2', feature: 'wiki', text: '编辑手写段落，确认增量更新后手写内容保留。', demo: 'wiki' },
   { id: 'preview-1', feature: 'preview', text: '打开演示静态页，切换桌面/手机尺寸并刷新。', demo: 'preview' },
   { id: 'preview-2', feature: 'preview', text: '点选元素，确认选择器/可访问名回填到对话。', demo: 'preview' },
+  { id: 'envbar-1', feature: 'envbar', text: '在手机上打开会话，横向滑动环境条，确认文件夹、分支与 Worktree 都能看全。', demo: 'chat-tools' },
+  { id: 'envbar-2', feature: 'envbar', text: '切换文件夹或分支，确认环境条立即更新，只有探测时显示骨架。', demo: 'chat-tools' },
+  { id: 'workstation-1', feature: 'workstation', text: '打开工作站，确认所有主机的 ADB 与串口设备都在列表里并标出在线/占用状态。', action: 'workstation' },
+  { id: 'workstation-2', feature: 'workstation', text: '把另一台主机的设备挂到当前会话，确认会话里直接可用，卸载后从列表消失。', action: 'workstation' },
+  { id: 'workstation-3', feature: 'workstation', text: '挂载串口设备后打开终端，确认收发数据与波特率切换正常。', action: 'workstation' },
   { id: 'search-1', feature: 'search', text: '搜索中英文短语，确认命中会话、消息片段与高亮。', action: 'search' },
   { id: 'search-2', feature: 'search', text: '按状态/主机/项目筛选，确认结果与侧栏筛选一致。', action: 'search' },
   { id: 'command-palette-1', feature: 'command-palette', text: 'Ctrl/Cmd+K 搜索命令、会话与设置项，确认可直接跳转。', action: 'command' },
@@ -103,6 +108,9 @@ export const TEST_POINTS: TestPoint[] = [
   { id: 'memory-2', feature: 'memory', text: '编辑/删除记忆，确认只影响对应项目。', settingsTab: 'memory' },
   { id: 'team-1', feature: 'team', text: '邀请成员并接受，确认角色边界与项目可见性。', settingsTab: 'team' },
   { id: 'team-2', feature: 'team', text: '创建会话分享链接，确认只读访问与撤销。', settingsTab: 'team' },
+  { id: 'accounts-1', feature: 'accounts', text: '在「工作区与账号」登录账号中心，确认侧栏一次列出所有可访问的机器。', settingsTab: 'accounts' },
+  { id: 'accounts-2', feature: 'accounts', text: '所有者给账号分配角色、主机范围与项目目录，成员登录后只看到授权内容。', settingsTab: 'accounts' },
+  { id: 'accounts-3', feature: 'accounts', text: '生成一次性加入码让另一台主机加入，确认过期失效且可在本机退出工作区。', settingsTab: 'accounts' },
   { id: 'ssh-1', feature: 'ssh', text: '添加远程主机，确认指纹确认、探测与部署进度。', settingsTab: 'hosts' },
   { id: 'ssh-2', feature: 'ssh', text: '部署后经隧道打开会话，确认流式回复与卸载清理。', settingsTab: 'hosts' },
   { id: 'update-1', feature: 'update', text: '在关于页确认版本与更新状态文案（发现/下载完成/重启）。', settingsTab: 'general' },
