@@ -446,7 +446,7 @@ export function Sidebar({
           <span className="min-w-0 flex-1 truncate">设置</span>
         </Button>
       </div>
-      <LoginDialog open={loginOpen} onClose={() => setLoginOpen(false)} defaultCenterUrl={activeHostUrl} />
+      <LoginDialog open={loginOpen} onClose={() => setLoginOpen(false)} />
     </div>
   )
 }
