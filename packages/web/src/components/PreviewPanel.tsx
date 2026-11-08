@@ -230,7 +230,13 @@ export function PreviewPanel() {
         if (next) apply(next)
         setCandidates(cands)
         setMountInfo(mounts)
-        setSnapshots(snaps)
+        // 识别地址可能比截图慢：保留面板打开后刚截的快照，避免晚到的列表把它覆盖掉。
+        setSnapshots((prev) => {
+          const ids = new Set(snaps.map((item) => item.id))
+          return [...prev.filter((item) => !ids.has(item.id)), ...snaps].sort(
+            (a, b) => b.createdAt - a.createdAt,
+          )
+        })
         const saved = usePreviewStore.getState().prefs[panel.sessionId]
         const best = cands.find((item) => item.reachable)
         const fallback = saved?.address || best?.url
