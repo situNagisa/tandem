@@ -2408,7 +2408,7 @@ async function main() {
       assert.ok(info.rows > 300, `按需加载后只渲染了 ${info.rows} 行`)
     })
 
-    desktop('轮次大纲全文可读且悬停有全文提示（R15）', async (page) => {
+    desktop('轮次大纲全文可读且不再弹重复悬停提示（#01 R15）', async (page) => {
       await openSession(page, 'long')
       await page.locator('.turn-hit').hover()
       await page.waitForFunction(
@@ -2431,9 +2431,11 @@ async function main() {
       })
       assert.ok(info.text.length > 0, '大纲行没有真实文本节点')
       assert.match(info.title, new RegExp(info.text.slice(0, 8).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '大纲行 title 不是全文')
-      assert.match(info.rowTitle, /^第 \d+ 轮：/, '大纲行悬停提示缺少轮号/全文')
+      assert.match(info.rowTitle, /^第 \d+ 轮：/, '大纲行缺少全文 title')
       assert.match(info.rowLabel, /^第 \d+ 轮：/, '大纲行缺少读屏 aria-label')
       assert.match(info.readout, /第 1 轮：/, '读屏列表没有轮次全文')
+      // 反馈 #01：重复大纲文字的悬停浮层已删除，读屏全文保留在 sr-only 列表。
+      assert.equal(await page.locator('.turn-tip').count(), 0, '轮次大纲仍存在重复文字的悬停提示')
     })
 
     desktop('压缩确认与上下文面板按真实用户轮次统计（R16）', async (page) => {
@@ -2950,6 +2952,57 @@ async function main() {
       const reset = await api(base, token, '/api/settings')
       assert.equal(reset.modelRouting, undefined, '恢复均衡后设置应回到未配置')
       await closeSettings(page)
+    })
+
+    desktop('焦点环只在键盘导航时出现（自动聚焦的输入框没有橙色描边）', async (page) => {
+      await openSession(page, 'long')
+      const trigger = page.locator(`button[title="${repo}"]`).first()
+      await trigger.click()
+      const panel = page.locator('[role="menu"].popover-panel').first()
+      await panel.waitFor()
+      const input = panel.locator('input[aria-label="筛选文件夹或输入路径"]')
+      await input.waitFor()
+      assert.equal(
+        await input.evaluate((el) => el === document.activeElement),
+        true,
+        '文件夹路径输入框没有自动聚焦',
+      )
+      const pickerRing = await input.evaluate((el) => {
+        const cs = getComputedStyle(el)
+        return { style: cs.outlineStyle, color: cs.outlineColor }
+      })
+      assert.equal(
+        pickerRing.style,
+        'none',
+        `鼠标打开文件夹选择器后仍有焦点描边：${JSON.stringify(pickerRing)}`,
+      )
+      await page.keyboard.press('Escape')
+      await panel.waitFor({ state: 'hidden' }).catch(() => {})
+
+      // 命令面板同样由鼠标点开、程序化聚焦：不应出现橙色框。
+      await page.locator('aside').getByRole('button', { name: /^搜索/ }).first().click()
+      const paletteInput = page.locator('input[aria-label="搜索会话、命令与设置"]')
+      await paletteInput.waitFor()
+      const paletteRing = await paletteInput.evaluate((el) => getComputedStyle(el).outlineStyle)
+      assert.equal(paletteRing, 'none', '命令面板搜索框出现了焦点描边')
+      await page.keyboard.press('Escape')
+
+      // 键盘 Tab 导航时焦点环必须仍然可见，且是中性色而不是强调橙。
+      await page.locator('aside').getByRole('button', { name: '设置', exact: true }).focus()
+      await page.keyboard.press('Tab')
+      const keyboardRing = await page.evaluate(() => {
+        const el = document.activeElement
+        if (!el) return null
+        const cs = getComputedStyle(el)
+        return { style: cs.outlineStyle, width: cs.outlineWidth, color: cs.outlineColor, tag: el.tagName }
+      })
+      assert.ok(keyboardRing, '没有可聚焦元素')
+      assert.equal(keyboardRing.style, 'solid', `键盘焦点环未显示：${JSON.stringify(keyboardRing)}`)
+      assert.equal(keyboardRing.width, '2px', `键盘焦点环宽度异常：${JSON.stringify(keyboardRing)}`)
+      const rgb = keyboardRing.color.match(/(\d+),\s*(\d+),\s*(\d+)/)
+      assert.ok(rgb, `无法解析焦点环颜色：${keyboardRing.color}`)
+      const [r, g, b] = rgb.slice(1, 4).map(Number)
+      assert.ok(Math.max(r, g, b) - Math.min(r, g, b) < 30, `焦点环不是中性色：${keyboardRing.color}`)
     })
 
     desktop('粘贴一次同一张图片只生成一个附件', async (page) => {
@@ -6198,6 +6251,140 @@ async function main() {
           sleep(3000).then(() => hostA.child.kill('SIGKILL')),
         ])
       }
+    })
+
+    desktop('工作站：主机没装 adb 时显示说明而不报错', async (page) => {
+      const tokenA = randomUUID()
+      const hostIdA = randomUUID()
+      const hostA = startHost({
+        home: path.join(home, 'host-noadb'),
+        token: tokenA,
+        hostId: hostIdA,
+        extraEnv: { TANDEM_ADB_BIN: path.join(home, 'no-such-adb') },
+      })
+      try {
+        const portA = await hostA.ready
+        const baseA = `http://127.0.0.1:${portA}`
+        const devicesA = await api(baseA, tokenA, '/api/devices')
+        assert.equal(devicesA.adb.available, false, '不存在的 adb 不应被当作可用')
+        assert.equal(devicesA.adb.missing, true, '缺少 adb 时应返回结构化 missing 状态')
+        assert.ok(!/spawn adb ENOENT/.test(devicesA.adb.hint ?? ''), '给用户的说明里不应出现原始 ENOENT')
+        assert.equal(devicesA.serial.available, true, '串口不应受 adb 缺失影响')
+
+        await page.evaluate(
+          ({ url, token: hostToken }) => {
+            const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
+            if (!hosts.some((item) => item.url === url)) {
+              hosts.push({ id: 'reg-host-noadb', name: '无 adb 主机', url, token: hostToken, addedAt: Date.now(), mode: 'direct' })
+              localStorage.setItem('tandem.hosts.v1', JSON.stringify(hosts))
+            }
+          },
+          { url: baseA, token: tokenA },
+        )
+        await page.reload({ waitUntil: 'domcontentloaded' })
+        await openSession(page, 'long')
+        await page.getByRole('button', { name: '工作站' }).click()
+        const dialog = page.getByRole('dialog', { name: '工作站' })
+        await dialog.waitFor({ state: 'visible' })
+        const section = dialog.locator('section', { hasText: baseA }).first()
+        await section.waitFor({ timeout: 10_000 })
+        await section.getByText('未检测到 adb', { exact: true }).waitFor({ timeout: 10_000 })
+        assert.equal(await section.getByText('如何安装 / 设置路径').count(), 1, '缺少 adb 时应给安装说明入口')
+        assert.equal(await section.locator('.text-danger').count(), 0, '缺少 adb 不应显示为错误')
+        assert.equal(await section.getByText(/spawn adb ENOENT/).count(), 0, '界面上不应出现原始 adb 异常')
+        await section.getByText('如何安装 / 设置路径').click()
+        await section.getByText(/devices\.adbPath/).waitFor({ timeout: 5_000 })
+        await dialog.getByRole('button', { name: '完成' }).click()
+        await page.evaluate((url) => {
+          const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
+          localStorage.setItem('tandem.hosts.v1', JSON.stringify(hosts.filter((item) => item.url !== url)))
+        }, baseA)
+      } finally {
+        hostA.child.kill('SIGTERM')
+        await Promise.race([
+          new Promise((resolve) => hostA.child.once('exit', resolve)),
+          sleep(3000).then(() => hostA.child.kill('SIGKILL')),
+        ])
+      }
+    })
+
+    desktop('演示设备：演示工作区提供可挂载的安卓/串口设备', async (page) => {
+      const before = await api(base, token, '/api/demo')
+      const createdHere = !before.active
+      let sessionId
+      try {
+        const state = createdHere
+          ? await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+          : before
+        sessionId = state.scenarios.find((item) => item.id === 'chat-tools')?.sessionIds?.[0]
+        assert.ok(sessionId, '演示场景没有会话')
+
+        let list
+        for (let i = 0; i < 20; i += 1) {
+          list = await api(base, token, '/api/devices')
+          if (list.devices.some((device) => device.id === 'adb:demo-pixel-8')) break
+          await sleep(200)
+        }
+        const demoAdb = list.devices.find((device) => device.id === 'adb:demo-pixel-8')
+        const demoSerial = list.devices.find((device) => device.id === 'serial:demo-board')
+        assert.ok(demoAdb?.demo, '缺少演示安卓设备')
+        assert.ok(demoSerial?.demo, '缺少演示串口设备')
+
+        const serialMount = await api(base, token, `/api/sessions/${sessionId}/devices/mount`, {
+          method: 'POST',
+          body: JSON.stringify({ deviceId: 'serial:demo-board', name: demoSerial.name }),
+        })
+        await api(base, token, `/api/sessions/${sessionId}/devices/${serialMount.id}/serial/open`, {
+          method: 'POST',
+          body: JSON.stringify({ baud: 115200 }),
+        })
+        await sleep(700)
+        const boot = await api(base, token, `/api/sessions/${sessionId}/devices/${serialMount.id}/serial?since=0`)
+        assert.ok(boot.data.includes('[board] ESP32 demo board'), `演示串口没有启动日志：${boot.data}`)
+        await api(base, token, `/api/sessions/${sessionId}/devices/${serialMount.id}/serial/write`, {
+          method: 'POST',
+          body: JSON.stringify({ data: 'help\n' }),
+        })
+        await sleep(200)
+        const echoed = await api(
+          base,
+          token,
+          `/api/sessions/${sessionId}/devices/${serialMount.id}/serial?since=${boot.cursor}`,
+        )
+        assert.ok(echoed.data.includes('[board] commands: help'), `演示串口没有回显 help：${echoed.data}`)
+
+        const adbMount = await api(base, token, `/api/sessions/${sessionId}/devices/mount`, {
+          method: 'POST',
+          body: JSON.stringify({ deviceId: 'adb:demo-pixel-8', name: demoAdb.name }),
+        })
+        assert.equal(adbMount.deviceId, 'adb:demo-pixel-8', '演示安卓设备未挂载')
+        const shell = await api(base, token, `/api/devices/${encodeURIComponent('adb:demo-pixel-8')}/exec`, {
+          method: 'POST',
+          body: JSON.stringify({ kind: 'shell', command: 'getprop ro.product.model' }),
+        })
+        assert.equal(shell.ok, true, '演示 adb shell 失败')
+        assert.ok(shell.output.includes('Pixel 8'), `演示 adb 返回异常：${shell.output}`)
+
+        // 工作站界面标注「演示设备」。
+        await openSession(page, sessionId)
+        await page.getByRole('button', { name: '工作站' }).click()
+        const dialog = page.getByRole('dialog', { name: '工作站' })
+        await dialog.waitFor({ state: 'visible' })
+        await dialog.getByText('演示设备', { exact: true }).first().waitFor({ timeout: 10_000 })
+        assert.ok((await dialog.getByText('演示设备', { exact: true }).count()) >= 2, '演示设备没有全部标注')
+        await dialog.getByRole('button', { name: '完成' }).click()
+      } finally {
+        // 本用例是最后一条：无论演示工作区是否由本用例创建，都清干净，
+        // 避免残留设备影响后续轮次与真实数据。
+        const nowState = await api(base, token, '/api/demo').catch(() => null)
+        if (nowState?.active) await api(base, token, '/api/demo', { method: 'DELETE', body: '{}' }).catch(() => {})
+      }
+      const after = await api(base, token, '/api/devices')
+      assert.equal(
+        after.devices.some((device) => device.demo),
+        false,
+        '清除演示数据后仍残留演示设备',
+      )
     })
 
     // ------------------------------------------------------------------ 执行

@@ -15,12 +15,12 @@ export const CONTEXT_PART_META: Record<
   ContextBreakdown['parts'][number]['kind'],
   { label: string; color: string }
 > = {
-  system: { label: '系统提示', color: '#8d9db6' },
-  tools: { label: '工具定义', color: '#9b8bb4' },
-  mcp: { label: 'MCP 工具', color: '#7fa896' },
-  memory: { label: '记忆文件', color: '#c3a878' },
-  messages: { label: '对话', color: '#7c9fb3' },
-  tool_results: { label: '工具结果', color: '#b08a80' },
+  system: { label: '系统提示', color: 'var(--ctx-system)' },
+  tools: { label: '工具定义', color: 'var(--ctx-tools)' },
+  mcp: { label: 'MCP 工具', color: 'var(--ctx-mcp)' },
+  memory: { label: '记忆文件', color: 'var(--ctx-memory)' },
+  messages: { label: '对话', color: 'var(--ctx-messages)' },
+  tool_results: { label: '工具结果', color: 'var(--ctx-tool-results)' },
   free: { label: '剩余', color: 'transparent' },
 }
 

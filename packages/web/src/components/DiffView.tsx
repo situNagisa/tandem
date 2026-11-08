@@ -549,7 +549,7 @@ function Composer({
         placeholder={`对${label}写审阅意见…`}
         aria-label="行内评论"
         title="Enter 保存 · Shift+Enter 换行 · Esc 取消"
-        className="block max-h-24 min-h-7 min-w-0 flex-1 resize-none rounded-md border-0 bg-[var(--t-bg)] px-2 py-1.5 text-[12px] leading-5 text-text outline-none placeholder:text-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/50"
+        className="block max-h-24 min-h-7 min-w-0 flex-1 resize-none rounded-md border-0 bg-[var(--t-bg)] px-2 py-1.5 text-[12px] leading-5 text-text outline-none placeholder:text-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--t-focus-ring)]"
       />
       <Button size="sm" variant="primary" disabled={!text.trim()} onClick={save}>
         评论
@@ -781,7 +781,7 @@ export const DiffView = memo(function DiffView({
                   className={cn(
                     'chat-diff-row',
                     selectable &&
-                      'cursor-pointer outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--t-accent-strong)]',
+                      'cursor-pointer outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--t-focus-ring)]',
                   )}
                   role={selectable ? 'group' : undefined}
                   tabIndex={selectable ? 0 : undefined}

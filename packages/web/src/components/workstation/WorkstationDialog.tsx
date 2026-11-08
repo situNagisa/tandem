@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   AlertTriangle,
   HardDrive,
@@ -86,6 +86,38 @@ function MountRow({
   )
 }
 
+function BackendNote({
+  icon,
+  title,
+  help,
+}: {
+  icon: ReactNode
+  title: string
+  help: string
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="rounded-lg px-3 py-2 text-[12px] text-muted">
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 text-text-tertiary">{icon}</span>
+        <span className="min-w-0 flex-1">{title}</span>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="shrink-0 rounded px-1 text-[12px] text-text-soft underline-offset-2 hover:bg-[var(--t-bg-hover)] hover:underline"
+        >
+          如何安装 / 设置路径
+        </button>
+      </div>
+      {open && (
+        <div className="mt-1.5 whitespace-pre-line rounded-md bg-[var(--t-bg-subtle)] px-2.5 py-2 text-[12px] leading-5 text-text-soft">
+          {help}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function HostSection({
   host,
   activeHost,
@@ -142,82 +174,124 @@ function HostSection({
           </div>
         ) : !list ? (
           <div className="px-3 py-2 text-[12px] text-muted">{loading ? '正在枚举设备…' : '暂无设备'}</div>
-        ) : list.devices.length === 0 ? (
-          <div className="px-3 py-2 text-[12px] text-muted">
-            没有发现设备。
-            {list.adb.error ? ` ADB：${list.adb.error}` : ''}
-            {list.serial.error ? ` 串口：${list.serial.error}` : ''}
-          </div>
         ) : (
-          list.devices.map((device) => {
-            const mount = mounted(device.id)
-            const isRemote = !!activeHost && activeHost.id !== host.id
-            return (
-              <div
-                key={device.id}
-                className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--t-bg-hover)]"
-              >
-                <span className="text-text-tertiary">
-                  <KindIcon kind={device.kind} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 text-[13px] text-text">
-                    <StateDot state={device.state} />
-                    <span className="truncate">{device.name}</span>
-                    <span className="shrink-0 text-[11.5px] uppercase text-muted">{device.kind}</span>
+          <>
+            {!list.adb.available && (
+              <BackendNote
+                icon={<Smartphone size={13} />}
+                title={list.adb.missing ? '未检测到 adb' : 'ADB 不可用'}
+                help={
+                  'Windows：winget install --id Google.PlatformTools -e，或下载 platform-tools 后在 Host 配置里把 devices.adbPath 指向 adb.exe。\n也可以设置环境变量 TANDEM_ADB_BIN 后重启 Host。\n串口与其他设备不受影响。'
+                }
+              />
+            )}
+            {!list.serial.available && (
+              <BackendNote
+                icon={<Usb size={13} />}
+                title={list.serial.missing ? '串口组件未安装（serialport）' : '串口不可用'}
+                help={
+                  '在 Host 的工作目录执行 npm install serialport 后重启 Host；\n开发或回归时可用 TANDEM_MOCK_SERIAL=1 启用内置虚拟串口。'
+                }
+              />
+            )}
+            {list.devices.length === 0 && (
+              <div className="px-3 py-2 text-[12px] text-muted">没有发现设备。</div>
+            )}
+            {list.devices.map((device) => {
+              const mount = mounted(device.id)
+              const isRemote = !!activeHost && activeHost.id !== host.id
+              return (
+                <div
+                  key={device.id}
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--t-bg-hover)]"
+                >
+                  <span className="text-text-tertiary">
+                    <KindIcon kind={device.kind} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 text-[13px] text-text">
+                      <StateDot state={device.state} />
+                      <span className="truncate">{device.name}</span>
+                      {device.demo && (
+                        <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1 text-[11px] text-text-tertiary">
+                          演示设备
+                        </span>
+                      )}
+                      <span className="shrink-0 text-[11.5px] uppercase text-muted">{device.kind}</span>
+                    </div>
+                    <div className="truncate text-[12px] text-muted">
+                      {device.detail || device.id}
+                      {device.ownerSessionId && device.ownerSessionId === sessionId
+                        ? ' · 当前会话占用'
+                        : device.ownerLabel
+                          ? ` · 占用：${device.ownerLabel}`
+                          : ''}
+                      {isRemote ? ' · 将挂到另一台主机' : ''}
+                    </div>
                   </div>
-                  <div className="truncate text-[12px] text-muted">
-                    {device.detail || device.id}
-                    {device.ownerSessionId && device.ownerSessionId === sessionId
-                      ? ' · 当前会话占用'
-                      : device.ownerLabel
-                        ? ` · 占用：${device.ownerLabel}`
-                        : ''}
-                    {isRemote ? ' · 将挂到另一台主机' : ''}
-                  </div>
+                  {mount ? (
+                    <div className="flex items-center gap-1.5">
+                      {mount.kind === 'serial' && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          icon={<Terminal size={14} />}
+                          onClick={() => void openTerminal(activeHost!, sessionId!, mount)}
+                        >
+                          终端
+                        </Button>
+                      )}
+                      <span className="text-[12px] text-success">已挂载</span>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon={<Plug size={14} />}
+                      disabled={!activeHost || !sessionId || busy === device.id || device.state === 'offline'}
+                      onClick={() => {
+                        if (!activeHost || !sessionId) {
+                          toast('先打开一个会话，再把设备挂进去', 'info')
+                          return
+                        }
+                        setBusy(device.id)
+                        void mountDevice(activeHost, sessionId, device.id, host, device.name)
+                          .then(() => toast(`已把 ${device.name} 挂到当前会话`, 'success'))
+                          .catch((err) => toast((err as Error).message, 'error'))
+                          .finally(() => setBusy(null))
+                      }}
+                    >
+                      {busy === device.id ? '挂载中…' : '挂到当前会话'}
+                    </Button>
+                  )}
                 </div>
-                {mount ? (
-                  <div className="flex items-center gap-1.5">
-                    {mount.kind === 'serial' && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        icon={<Terminal size={14} />}
-                        onClick={() => void openTerminal(activeHost!, sessionId!, mount)}
-                      >
-                        终端
-                      </Button>
-                    )}
-                    <span className="text-[12px] text-success">已挂载</span>
-                  </div>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    icon={<Plug size={14} />}
-                    disabled={!activeHost || !sessionId || busy === device.id || device.state === 'offline'}
-                    onClick={() => {
-                      if (!activeHost || !sessionId) {
-                        toast('先打开一个会话，再把设备挂进去', 'info')
-                        return
-                      }
-                      setBusy(device.id)
-                      void mountDevice(activeHost, sessionId, device.id, host, device.name)
-                        .then(() => toast(`已把 ${device.name} 挂到当前会话`, 'success'))
-                        .catch((err) => toast((err as Error).message, 'error'))
-                        .finally(() => setBusy(null))
-                    }}
-                  >
-                    {busy === device.id ? '挂载中…' : '挂到当前会话'}
-                  </Button>
-                )}
-              </div>
-            )
-          })
+              )
+            })}
+          </>
         )}
         <div className="flex flex-wrap gap-x-3 gap-y-1 px-3 pb-1 pt-0.5 text-[11.5px] text-muted">
-          <span>ADB：{list?.adb.available ? list.adb.path : list?.adb.error || '未检测'}</span>
-          <span>串口：{list?.serial.available ? (list.serial.mock ? '虚拟串口' : 'serialport') : list?.serial.error || '未检测'}</span>
+          <span>
+            ADB：
+            {list?.adb.available
+              ? list.adb.path
+              : list?.adb.missing
+                ? '未检测到'
+                : list?.adb.error
+                  ? '不可用'
+                  : '未检测'}
+          </span>
+          <span>
+            串口：
+            {list?.serial.available
+              ? list.serial.mock
+                ? '虚拟串口'
+                : 'serialport'
+              : list?.serial.missing
+                ? '未安装 serialport'
+                : list?.serial.error
+                  ? '不可用'
+                  : '未检测'}
+          </span>
           {list?.host ? <span>Host：{list.host.name}</span> : null}
         </div>
       </div>

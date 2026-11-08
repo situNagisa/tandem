@@ -23,6 +23,13 @@ import type {
 import type { Host } from '../host.js';
 import { readJson, writePrivateFile } from '../config.js';
 import { AdbRunner } from './adb.js';
+import {
+  createDemoBoardConnection,
+  demoDeviceInfos,
+  demoLogcatLine,
+  isDemoDevice,
+  runDemoAdb,
+} from './demo.js';
 import { createSerialTransport, type SerialConnection, type SerialTransport } from './serial.js';
 
 interface StoredMount extends DeviceMount {
@@ -67,6 +74,8 @@ interface LogcatRuntime {
   streamId: string;
   deviceId: string;
   child?: ChildProcess;
+  /** 演示设备的模拟日志定时器。 */
+  timer?: ReturnType<typeof setInterval>;
   entries: SerialEntry[];
   chars: number;
   cursor: number;
@@ -140,6 +149,15 @@ export class DeviceManager {
     return this.settings().serialMock === true;
   }
 
+  /** 演示设备只在演示工作区存在时出现。 */
+  private demoActive(): boolean {
+    try {
+      return this.host.demo.get().active;
+    } catch {
+      return false;
+    }
+  }
+
   private transport(): SerialTransport {
     const kind = this.mockSerial() ? 'mock' : 'node';
     let transport = this.transports.get(kind);
@@ -203,7 +221,15 @@ export class DeviceManager {
         });
       }
     } catch (err) {
-      adb = { available: false, path: this.adbBin(), error: (err as Error).message };
+      const message = (err as Error).message;
+      // adb 没装是正常状态：客户端显示「未检测到 adb · 如何安装 / 设置路径」，不当作错误。
+      const missing = /ENOENT|command not found|不是内部或外部命令|系统找不到指定的文件/i.test(message);
+      adb = {
+        available: false,
+        path: this.adbBin(),
+        error: message,
+        ...(missing ? { missing: true, hint: '未检测到 adb' } : {}),
+      };
     }
 
     let serial: DeviceListResult['serial'] = { available: false, mock: this.mockSerial() };
@@ -234,8 +260,17 @@ export class DeviceManager {
         });
       }
     } catch (err) {
-      serial = { available: false, mock: this.mockSerial(), error: (err as Error).message };
+      const message = (err as Error).message;
+      const missing = /serialport|cannot find package|module not found/i.test(message);
+      serial = {
+        available: false,
+        mock: this.mockSerial(),
+        error: message,
+        ...(missing ? { missing: true, hint: '未安装 serialport' } : {}),
+      };
     }
+
+    if (this.demoActive()) devices.push(...demoDeviceInfos());
 
     const info = this.host.info();
     return {
@@ -249,6 +284,20 @@ export class DeviceManager {
   private async findLocalDevice(deviceId: string): Promise<DeviceInfo | undefined> {
     const list = await this.listLocal();
     return list.devices.find((d) => d.id === deviceId);
+  }
+
+  /** 清除演示工作区时一并摘掉演示设备挂载。 */
+  removeDemoMounts(): void {
+    const removed = this.mounts.filter((m) => isDemoDevice(m.deviceId));
+    if (!removed.length) return;
+    for (const mount of removed) {
+      for (const runtime of [...this.serials.values()]) {
+        if (runtime.mountId === mount.id) void this.closeRuntime(runtime);
+      }
+    }
+    this.mounts = this.mounts.filter((m) => !isDemoDevice(m.deviceId));
+    this.persistMounts();
+    this.host.hub.broadcastAll({ type: 'devices_updated' });
   }
 
   // ---------- 设备级令牌 ----------
@@ -405,8 +454,7 @@ export class DeviceManager {
   }
 
   /** 会话删除时释放设备。 */
-  releaseSession(sessionId: string): void {
-    for (const runtime of [...this.serials.values()]) {
+  releaseSession(sessionId: string): void {    for (const runtime of [...this.serials.values()]) {
       if (runtime.ownerKey === sessionId) void this.closeRuntime(runtime);
     }
     const removed = this.mounts.some((m) => m.sessionId === sessionId);
@@ -446,6 +494,7 @@ export class DeviceManager {
           (params.timeout ?? 120_000) + 30_000,
         );
       }
+      if (isDemoDevice(deviceId)) return runDemoAdb(kind, params);
       const serial = deviceId.slice('adb:'.length);
       const args =
         kind === 'install'
@@ -470,6 +519,7 @@ export class DeviceManager {
     this.audit(clientId, deviceId, `remote:${kind}`, params.command ?? params.apkPath);
     this.ops.set(deviceId, { sessionId: clientId, startedAt: now() });
     try {
+      if (isDemoDevice(deviceId)) return runDemoAdb(kind, params);
       const serial = deviceId.slice('adb:'.length);
       const args =
         kind === 'install'
@@ -599,6 +649,10 @@ export class DeviceManager {
     try {
       if (remote) {
         this.pollRemoteSerial(runtime);
+      } else if (isDemoDevice(deviceId)) {
+        const conn = createDemoBoardConnection(port, baud);
+        runtime.conn = conn;
+        runtime.unsubscribe = conn.onData((text) => this.appendRuntime(runtime, text));
       } else {
         const conn = await this.transport().open(port, baud);
         runtime.conn = conn;
@@ -843,6 +897,26 @@ export class DeviceManager {
       command: `adb -s ${serial} logcat${filter ? ` ${filter}` : ''}`,
       description: `设备 logcat · ${deviceId}`,
     });
+    if (isDemoDevice(deviceId)) {
+      let n = 0;
+      const timer = setInterval(() => {
+        n += 1;
+        handle.push(demoLogcatLine(n));
+      }, 500);
+      timer.unref?.();
+      handle.onKill(() => clearInterval(timer));
+      const runtime: LogcatRuntime = {
+        streamId: handle.task.id,
+        deviceId,
+        timer,
+        entries: [],
+        chars: 0,
+        cursor: 0,
+        alive: true,
+      };
+      this.logcats.set(runtime.streamId, runtime);
+      return { streamId: handle.task.id, taskId: handle.task.id, cursor: 0, initial: '' };
+    }
     const child = spawn(new AdbRunner(() => this.adbBin()).path(), args, {
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -947,6 +1021,29 @@ export class DeviceManager {
     const device = await this.findLocalDevice(deviceId);
     if (!device || device.kind !== 'adb') throw new Error(`本机没有 ADB 设备 ${deviceId}`);
     this.audit(clientId, deviceId, 'remote:logcat:start', filter);
+    if (isDemoDevice(deviceId)) {
+      const runtime: LogcatRuntime = {
+        streamId: `lc_${randomUUID().slice(0, 8)}`,
+        deviceId,
+        entries: [],
+        chars: 0,
+        cursor: 0,
+        alive: true,
+      };
+      let n = 0;
+      const timer = setInterval(() => {
+        if (!runtime.alive) return;
+        n += 1;
+        const text = demoLogcatLine(n);
+        runtime.entries.push({ at: now(), text });
+        runtime.chars += text.length;
+        runtime.cursor += text.length;
+      }, 500);
+      timer.unref?.();
+      runtime.timer = timer;
+      this.logcats.set(runtime.streamId, runtime);
+      return { streamId: runtime.streamId, cursor: 0, initial: '' };
+    }
     const serial = deviceId.slice('adb:'.length);
     const args = ['-s', serial, 'logcat', '-v', 'time'];
     if (filter?.trim()) args.push(filter.trim());
@@ -1004,6 +1101,7 @@ export class DeviceManager {
     const runtime = this.logcats.get(streamId);
     if (!runtime) return false;
     runtime.alive = false;
+    if (runtime.timer) clearInterval(runtime.timer);
     try {
       runtime.child?.kill('SIGKILL');
     } catch {
@@ -1028,6 +1126,7 @@ export class DeviceManager {
     if (!mount) throw new Error('设备未挂载到本会话');
     const runtime = this.logcats.get(streamId);
     if (runtime?.remote?.timer) clearTimeout(runtime.remote.timer);
+    if (runtime?.timer) clearInterval(runtime.timer);
     runtime && (runtime.alive = false);
     await this.host.tasks.kill(streamId);
     this.logcats.delete(streamId);
@@ -1090,6 +1189,7 @@ export class DeviceManager {
     for (const runtime of [...this.logcats.values()]) {
       runtime.alive = false;
       if (runtime.remote?.timer) clearTimeout(runtime.remote.timer);
+      if (runtime.timer) clearInterval(runtime.timer);
       try {
         runtime.child?.kill('SIGKILL');
       } catch {

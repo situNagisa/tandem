@@ -26,15 +26,21 @@
   --t-accent-strong-hover: #8f4227;
   --t-accent-soft: rgba(217, 119, 87, 0.12);
   --t-on-accent: #ffffff;
+  /* 键盘焦点环用中性灰，不用强调色（R04：橙色只留给品牌/发送/待审批）。 */
+  --t-focus-ring: #7b7266;
   --t-primary-bg: #1a1a1a;
   --t-primary-fg: #ffffff;
   --t-primary-hover: #2e2e2e;
   --t-danger: #b4533f;
   /* 错误只用文字；soft 保持透明，避免色块 */
   --t-danger-soft: transparent;
-  --t-warning: #737373;
+  /* 状态色：饱和度略高于灰阶，但仍克制（不做色块背景）。 */
+  --t-status-online: #3f7a4e;
+  --t-status-warn: #8a6420;
+  --t-status-error: #b4533f;
+  --t-warning: var(--t-status-warn);
   --t-warning-soft: transparent;
-  --t-success: #737373;
+  --t-success: var(--t-status-online);
   --t-success-soft: transparent;
 
   --t-add-bg: #e6ffec;
@@ -57,6 +63,14 @@
 
   --t-code-block-bg: #f1ede4;
 
+  /* 上下文占用分类色：饱和一些但仍克制，用于图例小方点与环形分段。 */
+  --ctx-system: #5b7fa8;
+  --ctx-tools: #7a5fa8;
+  --ctx-mcp: #3f7a63;
+  --ctx-memory: #91672a;
+  --ctx-messages: #4a7d96;
+  --ctx-tool-results: #9a5f52;
+
   --t-shadow-sm: 0 1px 2px rgba(60, 45, 25, 0.06);
   --t-shadow-md: 0 8px 28px rgba(60, 45, 25, 0.10), 0 1px 3px rgba(60, 45, 25, 0.06);
   --t-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.12);
@@ -74,14 +88,16 @@
     "Liberation Mono", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC",
     monospace;
 
-  --syn-comment: #6f6f6f;
-  --syn-keyword: #9c6b58;
-  --syn-string: #6f7d63;
-  --syn-number: #687f83;
-  --syn-title: #7d7184;
-  --syn-attr: #8a7654;
-  --syn-builtin: #8f7059;
-  --syn-meta: #7c7468;
+  /* 代码高亮：参考 GitHub Light / One Dark 的饱和度，关键字/字符串/数字/函数名/注释
+     拉开色相与明度差，不再是一组灰调暖色。 */
+  --syn-comment: #57606a;
+  --syn-keyword: #cf222e;
+  --syn-string: #0a3069;
+  --syn-number: #0550ae;
+  --syn-title: #6639ba;
+  --syn-attr: #0550ae;
+  --syn-builtin: #953800;
+  --syn-meta: #116329;
 
   --app-height: 100dvh;
 }
@@ -109,14 +125,19 @@ html.dark {
   --t-accent-strong-hover: #c6613f;
   --t-accent-soft: rgba(217, 119, 87, 0.14);
   --t-on-accent: #ffffff;
+  /* #191919 上 ≥6:1，深色下也清晰可见但仍为中性色。 */
+  --t-focus-ring: #9a9a9a;
   --t-primary-bg: #efefef;
   --t-primary-fg: #191919;
   --t-primary-hover: #dcdcdc;
-  --t-danger: #d08770;
+  --t-danger: #e0896f;
   --t-danger-soft: transparent;
-  --t-warning: #a3a3a3;
+  --t-status-online: #79b98a;
+  --t-status-warn: #d3a15f;
+  --t-status-error: #e0896f;
+  --t-warning: var(--t-status-warn);
   --t-warning-soft: transparent;
-  --t-success: #a3a3a3;
+  --t-success: var(--t-status-online);
   --t-success-soft: transparent;
 
   --t-add-bg: rgba(46, 160, 67, 0.15);
@@ -138,18 +159,26 @@ html.dark {
 
   --t-code-block-bg: #1e1e1e;
 
+  --ctx-system: #8fb4e0;
+  --ctx-tools: #b49ce6;
+  --ctx-mcp: #7ec9a4;
+  --ctx-memory: #e0bd7a;
+  --ctx-messages: #78c0d9;
+  --ctx-tool-results: #e0a08e;
+
   --t-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --t-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.36), 0 1px 3px rgba(0, 0, 0, 0.3);
   --t-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
 
-  --syn-comment: #a3a3a3;
-  --syn-keyword: #c99a85;
-  --syn-string: #a6b597;
-  --syn-number: #94b0b5;
-  --syn-title: #bdb0c4;
-  --syn-attr: #c4b18c;
-  --syn-builtin: #c5a48c;
-  --syn-meta: #9a948a;
+  /* 深色高亮对齐 GitHub Dark：比灰调暖色更清楚，但仍避免荧光色。 */
+  --syn-comment: #8b949e;
+  --syn-keyword: #ff7b72;
+  --syn-string: #a5d6ff;
+  --syn-number: #79c0ff;
+  --syn-title: #d2a8ff;
+  --syn-attr: #79c0ff;
+  --syn-builtin: #ffa657;
+  --syn-meta: #7ee787;
 }
 
 @theme inline {
@@ -273,8 +302,13 @@ html.dark {
   }
 
   :focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--t-accent) 55%, transparent);
+    outline: 2px solid var(--t-focus-ring);
     outline-offset: 2px;
+  }
+
+  /* 鼠标/程序化聚焦不画焦点环（文本输入框在鼠标聚焦后也会命中 :focus-visible）。 */
+  html:not([data-input-modality="keyboard"]) :focus-visible {
+    outline: none;
   }
 
   ::-webkit-scrollbar {
@@ -316,6 +350,7 @@ html.dark {
   position: fixed;
   z-index: 1000;
   width: max-content;
+  min-width: 72px;
   max-width: 280px;
   overflow-wrap: anywhere;
   padding: 4px 8px;
@@ -770,7 +805,7 @@ html.feedback-mode .ui-tip {
   border-radius: 10px;
 }
 
-/* ---------- 代码高亮（highlight.js token，暖色系） ---------- */
+/* ---------- 代码高亮（highlight.js token；深浅两套见 --syn-*） ---------- */
 .hljs-comment,
 .hljs-quote {
   color: var(--syn-comment);
@@ -1068,8 +1103,14 @@ html.feedback-mode [data-feedback-hover].settings-item {
    层内的 focus-visible:outline-2 只读这个变量，最终 outline-style 仍是 none；
    未分层规则的优先级高于 utilities，才能保证焦点环真的画出来。 */
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
-  outline: 2px solid var(--t-accent-strong);
+  outline: 2px solid var(--t-focus-ring);
   outline-offset: 2px;
+}
+/* 鼠标导航或程序化聚焦（如打开弹层后自动聚焦的输入框）不显示焦点环。
+   文本输入框在鼠标点击后同样命中 :focus-visible，必须靠输入方式判断。 */
+html:not([data-input-modality="keyboard"])
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: none;
 }
 /* 贴着容器边缘的元素向内收，避免被 overflow 裁掉。 */
 .chat-diff-row:focus-visible,

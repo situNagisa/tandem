@@ -453,6 +453,10 @@ export class DemoManager {
     this.host.inbox.removeDemo();
     this.host.hub.broadcastAll({ type: 'inbox_snapshot', snapshot: this.host.inbox.snapshot() });
 
+    // 演示设备与它们在工作站里的挂载。
+    this.host.devices.removeDemoMounts();
+    this.host.hub.broadcastAll({ type: 'devices_updated' });
+
     // Wiki / 记忆 / 检查点。
     try {
       this.host.wiki.store.writeMeta(this.project, {

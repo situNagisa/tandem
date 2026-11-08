@@ -32,6 +32,7 @@ export const DOCTOR_CHECK_IDS = [
   'gh',
   'glab',
   'rg',
+  'adb',
   'browser',
   'whisper',
   'mcp',
@@ -441,8 +442,28 @@ async function rgCheck(): Promise<DoctorCheck> {
   return check('rg', 'ripgrep', 'ok', firstLine(result.stdout) || 'rg 可用');
 }
 
-async function browserCheck(host: Host): Promise<DoctorCheck> {
-  const status = await host.browser.status();
+/** adb 是可选组件：没装只是 ADB 设备不可用，串口与其余功能不受影响。 */
+async function adbCheck(host: Host): Promise<DoctorCheck> {
+  const bin = process.env.TANDEM_ADB_BIN?.trim() || host.settings().devices?.adbPath?.trim() || 'adb';
+  const result = await run(bin, ['version'], 8_000);
+  if (result.notFound || result.code !== 0) {
+    const missing = result.notFound;
+    return check(
+      'adb',
+      'ADB',
+      'warn',
+      missing
+        ? `未检测到 adb（${bin}）：工作站里的 ADB 设备不可用；串口与其他设备不受影响。`
+        : `adb 无法运行（${bin}）：${firstLine(result.stderr || result.stdout) || '未知原因'}。`,
+      process.platform === 'win32'
+        ? 'winget install --id Google.PlatformTools -e；或在设置里把 devices.adbPath 指向 adb.exe'
+        : 'brew install --cask android-platform-tools；或设置 devices.adbPath / TANDEM_ADB_BIN',
+    );
+  }
+  return check('adb', 'ADB', 'ok', firstLine(result.stdout) || 'adb 可用');
+}
+
+async function browserCheck(host: Host): Promise<DoctorCheck> {  const status = await host.browser.status();
   if (status.available) {
     return check('browser', '浏览器组件', 'ok', `Playwright 可用：${status.browser ?? 'Chromium'}。`);
   }
@@ -670,6 +691,7 @@ export async function runDoctor(host: Host, options: DoctorOptions): Promise<Doc
   await push('gh', () => cliCheck('gh'));
   await push('glab', () => cliCheck('glab'));
   await push('rg', rgCheck);
+  await push('adb', () => adbCheck(host));
   await push('browser', () => browserCheck(host));
   await push('whisper', () => whisperCheck(host));
   if (selected.has('mcp')) {

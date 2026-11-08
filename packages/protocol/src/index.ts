@@ -2926,14 +2926,27 @@ export interface DeviceInfo {
   ownerLabel?: string;
   /** adb：serial/model/product/transport；串口：path/baud 等。 */
   meta?: Record<string, string>;
+  /** 演示工作区内置的假设备：不依赖真实 adb / 串口，标注「演示设备」。 */
+  demo?: boolean;
+}
+
+/** 设备后端（adb / serialport）的可用状态；缺失是正常状态，不是错误。 */
+export interface DeviceBackendStatus {
+  available: boolean;
+  /** false 表示没装上/找不到；界面给「如何安装 / 设置路径」而不是报错。 */
+  missing?: boolean;
+  /** 给用户看的简短说明（已去掉 ENOENT 之类的原始异常）。 */
+  hint?: string;
+  /** 原始错误，仅诊断与日志用。 */
+  error?: string;
 }
 
 export interface DeviceListResult {
   /** 设备所在 Host（工作站视图显示用）。 */
   host?: { id: string; name: string };
   devices: DeviceInfo[];
-  adb: { available: boolean; path?: string; error?: string };
-  serial: { available: boolean; mock: boolean; error?: string };
+  adb: DeviceBackendStatus & { path?: string };
+  serial: DeviceBackendStatus & { mock: boolean };
 }
 
 export interface DeviceSource {

@@ -48,7 +48,7 @@ export function AggregateRow({
           disabled={!onOpen}
           data-testid="aggregate-open"
           title={titleText}
-          className="flex min-w-0 flex-1 items-start gap-2.5 rounded-lg px-2 py-2 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--t-accent-strong)] disabled:cursor-default"
+          className="flex min-w-0 flex-1 items-start gap-2.5 rounded-lg px-2 py-2 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--t-focus-ring)] disabled:cursor-default"
         >
           <span
             className={cn(
@@ -78,7 +78,7 @@ export function AggregateRow({
             aria-expanded={expanded}
             aria-label={expanded ? '收起明细' : `展开明细${detailCount ? `（${detailCount} 条）` : ''}`}
             data-testid="aggregate-toggle"
-            className="mt-0.5 flex shrink-0 items-center gap-1 rounded-md px-2 py-2 text-[12px] text-muted outline-none transition-colors hover:bg-[var(--t-bg-active)] hover:text-text focus-visible:outline-2 focus-visible:outline-[var(--t-accent-strong)]"
+            className="mt-0.5 flex shrink-0 items-center gap-1 rounded-md px-2 py-2 text-[12px] text-muted outline-none transition-colors hover:bg-[var(--t-bg-active)] hover:text-text focus-visible:outline-2 focus-visible:outline-[var(--t-focus-ring)]"
           >
             {detailCount ? <span className="tabular-nums">{detailCount}</span> : null}
             <ChevronDown

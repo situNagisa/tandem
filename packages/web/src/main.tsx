@@ -6,6 +6,7 @@ import { applyTheme, useUiStore } from './store/useUiStore'
 import { useAppStore } from './store/useAppStore'
 import { installFeedbackErrorBuffer } from './lib/feedbackErrors'
 import { installFeedbackHotkey } from './lib/feedbackHotkey'
+import { installFocusRing } from './lib/focusRing'
 import { installFeedbackTrace } from './lib/feedbackTrace'
 import { PublicSharePage } from './components/share/PublicSharePage'
 
@@ -20,6 +21,9 @@ if (!isSharePage) {
   // 操作轨迹只采集不拦截，尽早安装以覆盖启动阶段。
   installFeedbackTrace()
 }
+// 焦点环只跟键盘导航走：鼠标打开弹层后自动聚焦的输入框不出现焦点环。
+// 分享页同样需要，保证键盘用户仍能看到焦点。
+installFocusRing()
 
 // 尽早应用主题、读取 Host 列表与 ?token=，避免首屏闪烁和路由被判为无效。
 applyTheme(useUiStore.getState().theme)
