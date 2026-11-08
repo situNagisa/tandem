@@ -41,6 +41,8 @@ import { registerCommandRoutes } from './routes/commands.js';
 import { registerSkillRoutes } from './routes/skills.js';
 import { registerBrowserRoutes } from './routes/browser.js';
 import { registerWsRoutes } from './routes/ws.js';
+import { registerSshHostRoutes } from './routes/ssh-hosts.js';
+import { SshRemoteManager } from './ssh/manager.js';
 
 export async function createApp(
   host: Host,
@@ -108,7 +110,9 @@ export async function createApp(
   // ---------- 会话只读分享（内网） ----------
   registerShareRoutes(app, host);
 
-  const deps: RouteDeps = { host, ...(extras.relay ? { relay: extras.relay } : {}) };
+  const sshHosts = new SshRemoteManager(host.home, host.version);
+  app.addHook('onClose', async () => sshHosts.stop());
+  const deps: RouteDeps = { host, sshHosts, ...(extras.relay ? { relay: extras.relay } : {}) };
 
   registerHostRoutes(app, deps);
   registerDoctorRoutes(app, deps);
@@ -142,6 +146,7 @@ export async function createApp(
   registerSkillRoutes(app, deps);
   registerBrowserRoutes(app, deps);
   registerWsRoutes(app, deps);
+  registerSshHostRoutes(app, deps);
 
   // PR/CI 轮询：只覆盖已被客户端打开且有 PR 的会话
   const stopPrPolling = startPrPolling(host);

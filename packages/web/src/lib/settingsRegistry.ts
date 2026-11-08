@@ -73,6 +73,10 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'hosts.mode', tab: 'hosts', title: '连接方式', keywords: ['直连', '中继', 'relay'] },
   { id: 'hosts.pair', tab: 'hosts', title: '连接手机', keywords: ['手机', '配对', '扫码'] },
   { id: 'hosts.doctor', tab: 'hosts', title: '主机诊断', keywords: ['诊断', 'doctor', '检查', '环境', '报告'] },
+  { id: 'hosts.ssh.add', tab: 'hosts', title: '远程主机（SSH）', keywords: ['ssh', '远程', '一键部署', '部署'] },
+  { id: 'hosts.ssh.target', tab: 'hosts', title: 'SSH 目标', keywords: ['ssh', 'user@host', '端口', '密码', '私钥'] },
+  { id: 'hosts.ssh.deploy', tab: 'hosts', title: '部署并添加', keywords: ['ssh', '部署', '安装'] },
+  { id: 'hosts.ssh.menu', tab: 'hosts', title: '远程主机操作', keywords: ['ssh', '重启', '升级', '日志', '卸载'] },
 
   { id: 'team.invite-role', tab: 'team', title: '邀请角色', keywords: ['成员', '邀请', '权限'] },
   { id: 'team.members', tab: 'team', title: '成员列表', keywords: ['成员', '角色'] },

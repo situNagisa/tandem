@@ -46,7 +46,11 @@ export function HostSwitcher({ onNavigate }: { onNavigate?: () => void }) {
         const detail = [
           h.url.replace(/^https?:\/\//, ''),
           rt?.info?.platform,
-          h.mode === 'relay' ? '中继 · 加密' : '直连',
+          h.mode === 'relay'
+            ? '中继 · 加密'
+            : h.mode === 'ssh'
+              ? `SSH${rt?.latencyMs !== undefined ? ` · ${rt.latencyMs}ms` : ''}`
+              : '直连',
         ]
           .filter(Boolean)
           .join(' · ')

@@ -12,6 +12,7 @@ import {
 interface Handlers {
   onStatus: (state: ConnectionState, error?: string) => void
   onMessage: (msg: ServerMsg) => void
+  onLatency?: (ms: number) => void
 }
 
 /** WebSocket 与 E2EWebSocket 的最小公共接口。 */
@@ -53,6 +54,7 @@ export class HostConnection {
   /** 等待前序 seq 的事件，保证按序应用。 */
   private pending = new Map<string, Map<number, ServerMsg>>()
   private lastActivity = 0
+  private pingSent = 0
 
   constructor(host: HostConfig, handlers: Handlers) {
     this.host = host
@@ -118,7 +120,13 @@ export class HostConnection {
         if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return
         this.retry = 0
         this.lastActivity = Date.now()
-        if (msg.type === 'pong') return
+        if (msg.type === 'pong') {
+          if (this.pingSent > 0) {
+            this.handlers.onLatency?.(Date.now() - this.pingSent)
+            this.pingSent = 0
+          }
+          return
+        }
         this.deliver(msg)
       }
 
@@ -357,6 +365,7 @@ export class HostConnection {
     this.stopPing()
     this.pingTimer = window.setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {
+        this.pingSent = Date.now()
         this.rawSend({ type: 'ping' })
       }
     }, 25_000)

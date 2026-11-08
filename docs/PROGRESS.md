@@ -371,3 +371,20 @@
 - [x] 命令面板补齐更多菜单全部入口（后台任务/子代理/浏览器/文件/PR/评测/分屏）与导览命令
 - [x] 回归新增 4 条（设置分组、顶栏图标 ≤5、更多入口命令可达、导览出现/跳转/已读）；全量 80/80 通过
 - 验证：TANDEM_HOME=/tmp/tandem-ia 端口 8351，截图 `docs/ia-shots/`；`node scripts/check.mjs` 全量通过
+
+## 迭代 41（2026-11-08）远程主机一键接入（SSH）
+- [x] 协议：`SshTarget/SshAuthInput/SshHostKeyInfo/SshProbeResult/SshHostInput/RemoteSshHost/SshJob/SshDeployResult` 与 `/api/ssh-hosts*` 接口约定；远程主机对客户端表现为普通 Host（`mode: 'ssh'` + `sshHostId/sshControllerId`）
+- [x] 服务端 `src/ssh/`：`exec.ts`（系统 ssh/scp/ssh-keyscan，参数数组、无本地 shell；密码走 SSH_ASKPASS 仅内存；独立 `~/.tandem/ssh_known_hosts`、首次指纹确认与变更拦截）、`package.ts`（dist + web dist + 生产依赖闭包打 tar，不联网；同平台可上传本机 Node）、`remote.ts`（探测/解压/配置/systemd --user 或 nohup+cron/日志/卸载脚本）、`manager.ts`（异步部署任务、隧道 `ssh -N -L` 自动重连、健康检查与延迟、重启/升级/日志/卸载、密码型主机重启后需重新输入）
+- [x] 客户端：设置-主机新增「远程主机」向导（user@host、agent/私钥/密码、指纹确认、系统/Node 探测、可选上传 Node、局域网监听开关、逐步进度）；SSH 主机带标签与 WS 延迟、可升级提示；⋯ 菜单重启/查看日志/升级/诊断/卸载（二次确认 + 保留 `~/.tandem`）；隧道换端口自动跟随
+- [x] 文档：新增 `docs/remote-ssh.md`（前置条件、安全模型、Windows OpenSSH、管理操作、排错）
+- [x] 回归：`e2e/regression.mjs` 新增「SSH 一键部署远程主机、流式回复与卸载」，用假 ssh/scp/ssh-keyscan 在临时 HOME 模拟远端（真实执行远端脚本与 Host，假隧道用 TCP 代理）；覆盖指纹确认、部署、会话流式回复、日志、重启、卸载
+- 验证：本机普通用户 sshd（127.0.0.1:2222、临时密钥、`SetEnv HOME=/tmp/...`）完整走通部署 → 隧道 → mock 流式回复 → 重启 → 升级（保留会话）→ 卸载；截图 `/tmp/ssh-shots/`（主机列表、指纹、探测、进度、菜单、日志、重启、会话流式、卸载确认）
+- 保守取舍：只支持 `user@host`（域名/IPv4）与密码/私钥/agent 三种认证；密码不落盘、Host 重启后需重输；不从公网下载 Node，上传本机 Node 仅限同为 Linux 且架构一致；远程默认仅监听 127.0.0.1，局域网监听为显式可选项；诊断复用现有 `/api/doctor`（经隧道）
+
+## 迭代 42（2026-11-08）会话分页加载
+- [x] 协议：`subscribe {tail}`（默认 200，旧客户端不传仍全量）；`session_snapshot` / `Session` 增加 `totalMessages/firstMessageId/hasEarlier/truncated`；`GET /api/sessions/:id/messages?before=&around=&limit=`、`GET /api/sessions/:id/turns`（轮号 + 消息 id + 前 80 字）、`GET /api/sessions/:id/message-block?toolUseId=`；`tool_result.truncated` 元信息
+- [x] 服务端：`host/message-paging.ts`（尾部 200 条 / 2MB、单工具输出 >64KB 只下发首尾 8KB、轮次摘要）；`SessionStore.readMessagePage` 从 JSONL 末尾按 256KB 块倒序读取，尾部/`before` 页不扫全文件，顺序与内存不一致时回退内存切片
+- [x] 前端：订阅 `tail=200`；消息列表顶部 240px 内自动加载更早一页，以视口首条消息为锚点多次校准滚动位置；轮次大纲改用 `/turns`，跳到未加载的轮按 `around` 取该段并显示缺口占位；搜索跳转同路径；超大工具输出「显示全部」按 `toolUseId` 拉完整块
+- [x] 回归：`e2e/regression.mjs` 新增 3 条（首屏只下发尾部且旧客户端仍全量；滚到顶加载更早且锚点位移 <4px；大纲跳到未加载的第 1 轮正确定位）
+- 验证：`TANDEM_HOME=/tmp/tandem-page` 端口 8362，3,000 轮 / 12,000 条 / 31.4MB 夹具；首屏下发 31.4MB → 0.52MB（−98.3%），WS 快照 435ms → 9.6ms，手机视口首条消息 1,529ms → 337ms、JS 堆 78.4MB → 18.8MB；详见 `docs/perf-v2.md`
+- 保守取舍：Host 仍将全部消息载入内存；`broadcastSnapshot`（压缩/回退/交接）仍全量；用户持续上翻时已加载消息与 DOM 会逐步增长（每页 200 条）

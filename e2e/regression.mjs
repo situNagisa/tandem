@@ -15,6 +15,7 @@ import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -388,8 +389,97 @@ function writeJson(file, data) {
   writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`)
 }
 
+/** 假 SSH：用同样的脚本在本地临时 HOME 里模拟远端，不依赖本机 sshd。 */
+function seedFakeSsh(home) {
+  const dir = path.join(home, 'fake-ssh')
+  const remoteHome = path.join(home, 'fake-remote')
+  mkdirSync(dir, { recursive: true })
+  mkdirSync(path.join(remoteHome, '.local/bin'), { recursive: true })
+  const write = (name, body) => {
+    const file = path.join(dir, name)
+    writeFileSync(file, body)
+    chmodSync(file, 0o755)
+  }
+  write(
+    'ssh',
+    `#!/usr/bin/env node
+const net = require('node:net')
+const { spawn } = require('node:child_process')
+const args = process.argv.slice(2)
+const remoteHome = ${JSON.stringify(remoteHome)}
+const targetIdx = args.findIndex((a) => /^[^@\\s]+@[^@\\s]+$/.test(a) && !a.startsWith('-'))
+if (args.includes('-N')) {
+  const i = args.indexOf('-L')
+  const parts = String(args[i + 1] || '').split(':')
+  const localPort = Number(parts[1])
+  const remotePort = Number(parts[3])
+  const server = net.createServer((sock) => {
+    const up = net.connect(remotePort, '127.0.0.1')
+    sock.pipe(up)
+    up.pipe(sock)
+    sock.on('error', () => up.destroy())
+    up.on('error', () => sock.destroy())
+  })
+  server.listen(localPort, '127.0.0.1')
+  const stop = () => server.close(() => process.exit(0))
+  process.on('SIGTERM', stop)
+  process.on('SIGINT', stop)
+  setInterval(() => {}, 1 << 30)
+} else {
+  if (targetIdx < 0) process.exit(2)
+  const env = { ...process.env, HOME: remoteHome }
+  delete env.TANDEM_HOME
+  delete env.TANDEM_SSH_BIN
+  const child = spawn('/bin/sh', ['-s'], { env, stdio: ['pipe', 'pipe', 'pipe'] })
+  process.stdin.pipe(child.stdin)
+  child.stdout.pipe(process.stdout)
+  child.stderr.pipe(process.stderr)
+  child.on('exit', (code) => process.exit(code ?? 1))
+}
+`,
+  )
+  write(
+    'scp',
+    `#!/usr/bin/env node
+const fs = require('node:fs')
+const path = require('node:path')
+const args = process.argv.slice(2)
+const remoteHome = ${JSON.stringify(remoteHome)}
+const last = args[args.length - 1] || ''
+const destRaw = last.slice(last.indexOf(':') + 1)
+const dest = destRaw.startsWith('~/')
+  ? path.join(remoteHome, destRaw.slice(2))
+  : destRaw.startsWith('/')
+    ? destRaw
+    : path.join(remoteHome, destRaw)
+fs.mkdirSync(path.dirname(dest), { recursive: true })
+fs.copyFileSync(args[args.length - 2], dest)
+`,
+  )
+  write(
+    'ssh-keyscan',
+    `#!/usr/bin/env node
+console.log('[127.0.0.1]:22 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeRegressionKey0000000000000000000000')
+`,
+  )
+  write(
+    'ssh-keygen',
+    `#!/usr/bin/env node
+const args = process.argv.slice(2)
+if (args.includes('-F')) process.exit(1)
+let data = ''
+process.stdin.on('data', (chunk) => { data += chunk })
+process.stdin.on('end', () => console.log('256 SHA256:cmVndGVzdA== fake (ED25519)'))
+`,
+  )
+  writeFileSync(path.join(remoteHome, '.local/bin/systemctl'), '#!/bin/sh\nexit 1\n')
+  chmodSync(path.join(remoteHome, '.local/bin/systemctl'), 0o755)
+  return dir
+}
+
 function startHost({ home, token, hostId }) {
   const configDir = path.join(home, 'tandem')
+  const fakeSshDir = seedFakeSsh(home)
   // 假 gh：PR 聚合用例只打本地 bare 仓库，不连公网。其它用例不会调用它。
   const fakeGh = path.join(home, 'fake-gh')
   writeFileSync(
@@ -459,6 +549,8 @@ process.exit(1)
       ...process.env,
       HOME: path.join(home, 'home'),
       TANDEM_HOME: configDir,
+      TANDEM_SSH_BIN: fakeSshDir,
+      TANDEM_FAKE_REMOTE_HOME: path.join(home, 'fake-remote'),
       TANDEM_GH_PATH: fakeGh,
       CODEX_HOME: path.join(home, 'home', '.codex'),
       NO_PROXY: '127.0.0.1,localhost',
@@ -1922,6 +2014,113 @@ async function main() {
       await confirm.getByRole('button', { name: '取消', exact: true }).click()
       await page.waitForTimeout(200)
       assert.ok(JSON.stringify(JSON.parse(readFileSync(path.join(configDir, 'mcp.json'), 'utf8'))).includes('reg-fs'), '取消后配置被删除')
+      await closeSettings(page)
+    })
+
+    desktop('SSH 一键部署远程主机、流式回复与卸载', async (page) => {
+      const remoteName = 'SSH 回归远程'
+      const portProbe = http.createServer()
+      const sshRemotePort = await listen(portProbe)
+      await new Promise((resolve) => portProbe.close(resolve))
+      await openSettings(page, '主机', 'desktop')
+      await page.locator('[data-setting-id="hosts.ssh.add"]').click()
+      const dialog = page.getByRole('dialog', { name: '通过 SSH 添加远程主机' })
+      await dialog.waitFor({ timeout: 10_000 })
+      await dialog.locator('[data-setting-id="hosts.ssh.target"]').fill('reg@127.0.0.1')
+      await dialog.locator('[data-setting-id="hosts.ssh.port"]').fill('22')
+      await dialog.getByRole('button', { name: '私钥文件', exact: true }).click()
+      await dialog.locator('[data-setting-id="hosts.ssh.key"]').fill(path.join(home, 'fake-key'))
+      await dialog.locator('[data-setting-id="hosts.ssh.name"]').fill(remoteName)
+      await dialog.locator('[data-setting-id="hosts.ssh.remotePort"]').fill(String(sshRemotePort))
+      await dialog.getByRole('button', { name: '检测主机' }).click()
+      await dialog.getByText('主机公钥指纹').waitFor({ timeout: 20_000 })
+      assert.match(await dialog.innerText(), /SHA256:/, '没有展示主机公钥指纹')
+      await dialog.getByRole('button', { name: '确认指纹并检测' }).click()
+      await dialog.getByText('将安装到').waitFor({ timeout: 20_000 })
+      assert.match(await dialog.innerText(), /Node v/, '探测结果没有 Node 版本')
+      await dialog.locator('[data-setting-id="hosts.ssh.deploy"]').click()
+      const item = page.locator('.settings-item').filter({ hasText: remoteName })
+      await item.waitFor({ timeout: 180_000 })
+      assert.match(await item.innerText(), /SSH/, '主机项没有 SSH 标签')
+      assert.match(await item.innerText(), /经 SSH 隧道连接/, '主机项没有隧道信息')
+      const hosts = await page.evaluate(() => JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]'))
+      const remote = hosts.find((h) => h.name === remoteName)
+      assert.ok(remote?.mode === 'ssh' && remote.sshHostId, '远程主机没有按 SSH 模式保存')
+      const headers = { Authorization: `Bearer ${remote.token}`, 'content-type': 'application/json' }
+      const profileRes = await fetch(`${remote.url}/api/profiles`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          name: 'Mock',
+          kind: 'openai-compatible',
+          baseUrl: `http://127.0.0.1:${mockPort}/v1`,
+          apiKey: 'test',
+          models: ['mock-1'],
+          defaultModel: 'mock-1',
+        }),
+      })
+      assert.ok(profileRes.ok, '无法在远程 Host 创建账号')
+      const profile = await profileRes.json()
+      const sessionRes = await fetch(`${remote.url}/api/sessions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          cwd: repo,
+          profileId: profile.id,
+          model: 'mock-1',
+          permissionMode: 'bypassPermissions',
+          title: 'SSH 回归会话',
+        }),
+      })
+      assert.ok(sessionRes.ok, '无法在远程 Host 创建会话')
+      const session = await sessionRes.json()
+      await page.evaluate(({ hostId, sessionId }) => {
+        window.location.hash = `#/h/${encodeURIComponent(hostId)}/s/${encodeURIComponent(sessionId)}`
+      }, { hostId: remote.id, sessionId: session.id })
+      const composer = page.locator('textarea[aria-label="消息输入框"]')
+      await composer.waitFor({ timeout: 20_000 })
+      await composer.fill('你好')
+      await composer.press('Enter')
+      await page.getByText('回归回复。', { exact: true }).first().waitFor({ timeout: 30_000 })
+
+      await openSettings(page, '主机', 'desktop')
+      await page.locator('[data-setting-id="hosts.ssh.menu"]').click()
+      await page.getByRole('menuitem', { name: '查看日志' }).click()
+      const logs = page.getByRole('dialog', { name: /远程日志/ })
+      await logs.waitFor({ timeout: 20_000 })
+      await page.waitForTimeout(800)
+      assert.match(await logs.innerText(), /Tandem Host 已启动/, '日志里没有远程 Host 启动记录')
+      await logs.getByRole('button', { name: '关闭', exact: true }).last().click()
+
+      await page.locator('[data-setting-id="hosts.ssh.menu"]').click()
+      await page.getByRole('menuitem', { name: '重启', exact: true }).click()
+      await page.locator('[data-setting-id="hosts.ssh.job"]').waitFor({ timeout: 20_000 })
+      await page.waitForFunction(() => {
+        const dialog = [...document.querySelectorAll('[role="dialog"]')].find((el) =>
+          el.querySelector('[data-setting-id="hosts.ssh.job"]'),
+        )
+        const close = [...(dialog?.querySelectorAll('button') ?? [])].find((b) => b.textContent?.trim() === '关闭')
+        return close && !close.disabled
+      }, null, { timeout: 60_000 })
+      await page.getByRole('button', { name: '关闭', exact: true }).last().click()
+
+      await page.locator('[data-setting-id="hosts.ssh.menu"]').click()
+      await page.getByRole('menuitem', { name: '卸载…' }).click()
+      const uninstall = page.getByRole('dialog', { name: '卸载远程主机' })
+      await uninstall.waitFor()
+      assert.match(await uninstall.innerText(), /保留远程数据/, '卸载确认没有保留数据选项')
+      await uninstall.getByRole('button', { name: '取消', exact: true }).click()
+      await page.locator('[data-setting-id="hosts.ssh.menu"]').click()
+      await page.getByRole('menuitem', { name: '卸载…' }).click()
+      await page.locator('[data-setting-id="hosts.ssh.uninstall.confirm"]').click()
+      await page.waitForFunction(
+        (name) =>
+          ![...document.querySelectorAll('.settings-item')].some((el) =>
+            (el.textContent ?? '').includes(name),
+          ),
+        remoteName,
+        { timeout: 60_000 },
+      )
       await closeSettings(page)
     })
 
@@ -3609,6 +3808,12 @@ async function main() {
     process.exitCode = 1
   } finally {
     await browser?.close().catch(() => {})
+    try {
+      const pidFile = path.join(home, 'fake-remote', '.tandem-host', 'pid')
+      if (existsSync(pidFile)) process.kill(Number(readFileSync(pidFile, 'utf8').trim()), 'SIGTERM')
+    } catch {
+      /* 远程 Host 可能已被卸载 */
+    }
     if (!host.child.killed) host.child.kill('SIGTERM')
     await Promise.race([
       new Promise((resolve) => host.child.once('exit', resolve)),

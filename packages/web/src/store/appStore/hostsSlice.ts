@@ -163,6 +163,7 @@ export function createHostsSlice(
           throw new Error('必须填写 Host 公钥指纹（64 位十六进制），否则无法校验端到端加密')
         }
       }
+      if (mode === 'ssh' && !input.sshHostId) throw new Error('缺少远程主机 ID')
       const rawUrl = mode === 'relay' && relayUrl && hostId ? relayHostUrl(relayUrl, hostId) : input.url
       const url = normalizeHostUrl(rawUrl)
       const name = input.name.trim() || new URL(url).host
@@ -174,7 +175,16 @@ export function createHostsSlice(
         const patch = {
           name: input.name.trim() || existing.name,
           token: input.token,
-          ...(mode === 'relay' ? { mode, relayUrl, hostId, fingerprint } : {}),
+          ...(mode === 'relay'
+            ? { mode, relayUrl, hostId, fingerprint }
+            : mode === 'ssh'
+              ? {
+                  mode,
+                  sshHostId: input.sshHostId,
+                  ...(input.sshControllerId ? { sshControllerId: input.sshControllerId } : {}),
+                  ...(input.sshTarget ? { sshTarget: input.sshTarget } : {}),
+                }
+              : {}),
         }
         get().updateHost(existing.id, patch)
         if (!get().activeHostId) {
@@ -189,7 +199,16 @@ export function createHostsSlice(
         url,
         token: input.token,
         addedAt: Date.now(),
-        ...(mode === 'relay' ? { mode, relayUrl, hostId, fingerprint } : {}),
+        ...(mode === 'relay'
+          ? { mode, relayUrl, hostId, fingerprint }
+          : mode === 'ssh'
+            ? {
+                mode,
+                sshHostId: input.sshHostId,
+                ...(input.sshControllerId ? { sshControllerId: input.sshControllerId } : {}),
+                ...(input.sshTarget ? { sshTarget: input.sshTarget } : {}),
+              }
+            : {}),
       }
       set((state) => ({
         hosts: [...state.hosts, host],
@@ -252,7 +271,17 @@ export function createHostsSlice(
         token,
         ...(mode === 'relay'
           ? { mode, relayUrl, hostId, fingerprint }
-          : { mode: 'direct' as const, relayUrl: undefined, hostId: undefined, fingerprint: undefined }),
+          : mode === 'ssh'
+            ? {
+                mode: 'ssh' as const,
+                sshHostId: prev.sshHostId,
+                sshControllerId: prev.sshControllerId,
+                sshTarget: prev.sshTarget,
+                relayUrl: undefined,
+                hostId: undefined,
+                fingerprint: undefined,
+              }
+            : { mode: 'direct' as const, relayUrl: undefined, hostId: undefined, fingerprint: undefined }),
       }
       set((state) => ({
         hosts: state.hosts.map((h) => (h.id === id ? next : h)),

@@ -2,12 +2,14 @@
 import type { FastifyReply } from 'fastify';
 import type { ProviderKind, RelayPairInfo } from '@tandem/protocol';
 import type { Host } from '../host.js';
+import type { SshRemoteManager } from '../ssh/manager.js';
 
 export type RelayPairInfoSource = { pairInfo(): RelayPairInfo | undefined };
 
 export interface RouteDeps {
   host: Host;
   relay?: RelayPairInfoSource;
+  sshHosts?: SshRemoteManager;
 }
 
 export const PROVIDER_KINDS: ProviderKind[] = ['anthropic', 'openai', 'openai-compatible', 'gemini', 'tandem-gateway'];

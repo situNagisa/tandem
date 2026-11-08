@@ -419,6 +419,7 @@ export function createSessionCore(
         })
       },
       onMessage: (msg) => onServerMessage(hostId, msg),
+      onLatency: (ms) => patchRuntime(hostId, { latencyMs: ms }),
     })
     connections.set(hostId, conn)
     conn.connect()

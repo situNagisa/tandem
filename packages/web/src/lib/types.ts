@@ -17,7 +17,7 @@ import type {
 } from '@tandem/protocol'
 
 /** 直连：url + token；中继：经 relay 的端到端加密通道（fingerprint 必须是配对时带过来的）。 */
-export type HostMode = 'direct' | 'relay'
+export type HostMode = 'direct' | 'relay' | 'ssh'
 
 /** 本地保存的一台 Host。id 由客户端生成，与 HostInfo.id 无关。 */
 export interface HostConfig {
@@ -34,6 +34,12 @@ export interface HostConfig {
   hostId?: string
   /** Host Ed25519 公钥的 SHA-256，64 位十六进制。 */
   fingerprint?: string
+  /** SSH 一键接入：本机 Host 上记录的远程主机 id。 */
+  sshHostId?: string
+  /** 管理这台 SSH 主机的本机 Host（客户端 HostConfig.id）。 */
+  sshControllerId?: string
+  /** 展示用 user@host:port。 */
+  sshTarget?: string
 }
 
 export type ConnectionState = 'connecting' | 'online' | 'offline'
@@ -46,6 +52,8 @@ export interface ExternalSessionItem extends ExternalSession {
 /** 每个 Host 在前端的运行时状态（不持久化）。 */
 export interface HostRuntime {
   status: ConnectionState
+  /** WS ping/pong 往返延迟（毫秒）。 */
+  latencyMs?: number
   info?: HostInfo
   profiles: Profile[]
   profilesLoaded: boolean

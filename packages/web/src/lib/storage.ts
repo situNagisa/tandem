@@ -57,7 +57,14 @@ export function sanitizeHosts(input: unknown): HostConfig[] {
             hostId: typeof h.hostId === 'string' ? h.hostId : '',
             fingerprint: typeof h.fingerprint === 'string' ? normalizeFingerprint(h.fingerprint) : '',
           }
-        : { mode: 'direct' as const }),
+        : h.mode === 'ssh' && typeof h.sshHostId === 'string'
+          ? {
+              mode: 'ssh' as const,
+              sshHostId: h.sshHostId,
+              ...(typeof h.sshControllerId === 'string' ? { sshControllerId: h.sshControllerId } : {}),
+              ...(typeof h.sshTarget === 'string' ? { sshTarget: h.sshTarget } : {}),
+            }
+          : { mode: 'direct' as const }),
     }))
     // 中继 Host 没有有效指纹就无法保证端到端加密，宁可不加载。
     .filter((h) => h.mode !== 'relay' || (!!h.relayUrl && !!h.hostId && isValidFingerprint(h.fingerprint)))
