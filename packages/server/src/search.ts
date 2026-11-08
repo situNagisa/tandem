@@ -447,7 +447,7 @@ export class SearchIndex {
 
   private syncSession(id: string): void {
     const rec = this.host.store.get(id);
-    if (!rec || rec.evalRun || rec.wikiRun) {
+    if (!rec || rec.evalRun || rec.wikiRun || rec.demo) {
       this.removeSessionDocs('tandem', id);
       return;
     }

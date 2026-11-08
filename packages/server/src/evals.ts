@@ -363,6 +363,40 @@ export class EvalManager {
     return run ? structuredClone(run) : undefined;
   }
 
+  /** 演示工作区：写入一份已完成的对比运行与用例，不触发模型调用。 */
+  seedDemoRun(run: EvalRun, cases: EvalCase[] = []): void {
+    this.runs.set(run.id, run);
+    this.persist(run);
+    for (const testCase of cases) {
+      const suiteDir = path.join(this.dir, safeSegment(testCase.suite, 'default'));
+      mkdirSync(suiteDir, { recursive: true });
+      writePrivateFile(
+        path.join(suiteDir, `${safeSegment(testCase.name, 'case')}.json`),
+        JSON.stringify(testCase, null, 2),
+      );
+    }
+    this.host.hub.broadcastAll({ type: 'eval_run_updated', run: this.summarize(run) });
+  }
+
+  /** 演示清理：删除演示运行与用例文件。 */
+  removeDemoRuns(ids: string[], suite?: string): void {
+    for (const id of ids) {
+      if (!this.runs.delete(id)) continue;
+      try {
+        rmSyncCompat(path.join(this.runsDir, `${id}.json`));
+      } catch {
+        // 忽略清理失败
+      }
+    }
+    if (!suite) return;
+    const dir = path.join(this.dir, safeSegment(suite, 'default'));
+    try {
+      rmSyncCompat(dir);
+    } catch {
+      // 忽略清理失败
+    }
+  }
+
   start(input: StartEvalRunInput): EvalRun {
     const suite = safeSegment(input.suite, 'default');
     const all = this.listCases(suite);

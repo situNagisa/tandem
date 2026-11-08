@@ -226,14 +226,16 @@ function recordCompactUsage(
   const price = priceForModel(profile, model);
   const cost = costOfUsage(price, { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens }, profile.kind);
   if (price) rec.usage.costUsd = Math.round(((rec.usage.costUsd ?? 0) + cost) * 1e8) / 1e8;
-  host.usage.record({
-    hostId: host.config.hostId,
-    profileId: rec.profileId,
-    model,
-    inputTokens: inputTokens + cacheReadTokens + cacheWriteTokens,
-    outputTokens,
-    costUsd: cost,
-    ...(keyId ? { keyId } : {}),
-    ...(rec.groupId ? { groupId: rec.groupId } : {}),
-  });
+  if (profile.kind !== 'demo') {
+    host.usage.record({
+      hostId: host.config.hostId,
+      profileId: rec.profileId,
+      model,
+      inputTokens: inputTokens + cacheReadTokens + cacheWriteTokens,
+      outputTokens,
+      costUsd: cost,
+      ...(keyId ? { keyId } : {}),
+      ...(rec.groupId ? { groupId: rec.groupId } : {}),
+    });
+  }
 }

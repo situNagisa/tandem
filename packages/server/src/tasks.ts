@@ -9,6 +9,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
@@ -354,6 +355,25 @@ export class BackgroundTaskManager {
     }
     this.finish(item);
     return { ...item.task };
+  }
+
+  /** 演示清理：结束并删除演示任务及其日志。 */
+  async removeDemo(ids: string[]): Promise<void> {
+    for (const id of ids) {
+      await this.kill(id).catch(() => undefined);
+      const item = this.tasks.get(id);
+      this.tasks.delete(id);
+      try {
+        rmSync(item?.logPath ?? this.logPath(id), { force: true });
+      } catch {
+        // 忽略
+      }
+      try {
+        rmSync(this.metaPath(id), { force: true });
+      } catch {
+        // 忽略
+      }
+    }
   }
 
   dispose(): void {

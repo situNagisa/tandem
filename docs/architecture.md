@@ -63,6 +63,7 @@
 | `src/checkpoints.ts` / `src/worktree.ts` | 文件检查点回退、git worktree 会话 |
 | `src/evals.ts` | 评测：用例落盘 `~/.tandem/evals`、git/目录快照、临时工作区、批量运行、检查命令、评审模型与结果持久化 |
 | `src/inbox.ts` | 跨会话收件箱（审批/回合结束/预算/CI） |
+| `src/demo/` + `routes/demo.ts` | 演示工作区：`manager.ts` 生命周期（创建/重播/清除/静态页回环服务）、`seed.ts` 17 个场景造数、`provider.ts` 内置演示模型（按剧本流式输出，无网络请求）；数据全部带 `demo` 标记，清除时一并移除会话/检查点/记忆/看板/评测/Wiki/任务/收件箱事件 |
 | `src/search.ts` | 会话全文索引：纯 JS 倒排（英文词、中文单字+bigram+Segmenter），覆盖 Tandem/外部会话正文与工具命令/路径，增量更新并落盘 `~/.tandem/index/search.json` |
 | `src/config.ts` | `~/.tandem` 路径、账号存储、Host 配置、密钥掩码 |
 | `src/migrate.ts` | 配置加密导出/导入 |
@@ -97,7 +98,8 @@
 | `src/components/evals/*` | 评测轨迹/并排对比/提示词覆盖/存用例弹层；设置「评测」页见 `settings/EvalsSection.tsx` |
 | `src/components/chat/*` | 轮次导航、上下文环、消息辅助组件；`TurnRail`/`TurnOutlineSheet` 是桌面轮次条与手机底部大纲，分页跳转经 `lib/turnWindow.ts` |
 | `src/components/PreviewPanel.tsx` + `src/lib/previewElement.ts` | 应用预览画布：地址与本地候选、设备尺寸（手机默认手机档）、截图/嵌入、元素点选、改前对比与自动刷新提示 |
-| `src/components/feedback/*` | 反馈模式浮条、区域截图、标注、抽屉 |
+| `src/components/feedback/*` | 反馈模式浮条、区域截图、标注、抽屉；`lib/feedbackFeatures.ts` 按组件/设置页/路由推断功能标签，`lib/feedbackCauses.ts` 按台账规则建议根因 |
+| `src/components/demo/*` | 演示工作区弹层（场景打开/重播/清除）与体验清单（进度、导出报告、有问题进反馈） |
 | `src/components/split/*` | 多会话分屏：桌面 2/3 列与 2×2、上下分屏、分隔条、拖拽分区、手机圆点滑动、分屏打开选择器 |
 | `src/components/board/*` | 任务看板视图：`BoardView`（七列拖动 / 手机分组列表 / 对话框编排）、`BoardCardItem`、`BoardDrawer`（详情与动作）、`BoardDialogs`（创建看板、卡片编辑、AI 拆分、打回意见、确认）；`lib/board.ts`（列与拖动规则等纯函数）、`lib/boardRoute.ts`、`store/useBoardStore.ts`（缓存 + 轮询，`board_updated` 加速刷新） |
 | `src/components/session/SessionScope.tsx` | 会话作用域：窗格内组件读取自己的 `ActiveSession`，快捷键/焦点与全局 `active` 对齐 |

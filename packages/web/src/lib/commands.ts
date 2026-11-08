@@ -143,6 +143,22 @@ export const COMMANDS: AppCommand[] = [
     },
   },
   {
+    id: 'app.demo',
+    title: '打开演示工作区',
+    keywords: ['演示', '场景', 'demo', '造数', '体验'],
+    run: () => {
+      useUiStore.getState().setDemoOpen(true)
+    },
+  },
+  {
+    id: 'app.checklist',
+    title: '打开体验清单',
+    keywords: ['体验清单', '测试要点', 'checklist', '回归', '增量测试'],
+    run: () => {
+      useUiStore.getState().setChecklistOpen(true)
+    },
+  },
+  {
     id: 'app.onboarding',
     title: '重新看上手引导',
     keywords: ['上手', '引导', '新手', 'onboarding', '帮助'],

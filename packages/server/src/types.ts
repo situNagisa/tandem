@@ -149,6 +149,10 @@ export interface SessionRecord extends Session {
   };
   /** 最近一次配额预估（运行态，随 summary/context 下发）。 */
   quota?: import('@tandem/protocol').QuotaEstimate;
+  /** 演示工作区会话：不进入真实搜索索引/用量统计，清除演示数据时一并删除。 */
+  demo?: boolean;
+  /** 所属演示场景 id。 */
+  demoScenario?: string;
 }
 
 /**

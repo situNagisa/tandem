@@ -43,6 +43,7 @@ import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { usePreviewStore } from '../store/usePreviewStore'
+import { useDemoStore } from '../store/useDemoStore'
 import { selectionContextText, selectionLabel, selectionSource } from '../lib/previewElement'
 import { isTargetFocused, useSessionTarget, useSessionView } from './session/SessionScope'
 import { useIsMobile } from '../lib/hooks'
@@ -218,6 +219,16 @@ export function Composer({
       ? (s.runtimes[hostIdProp ?? activeHostId!]?.profilesLoading ?? false)
       : false,
   )
+  // 演示账号只在下属演示会话里加入模型菜单，正常会话完全看不到。
+  const demoProfile = useDemoStore((s) =>
+    summary?.demo
+      ? (s.byHost[hostIdProp ?? activeHostId ?? '']?.profile ?? undefined)
+      : undefined,
+  )
+  const uiProfiles =
+    demoProfile && !profiles.some((profile) => profile.id === demoProfile.id)
+      ? [...profiles, demoProfile]
+      : profiles
   const send = useAppStore((s) => s.send)
   const hosts = useAppStore((s) => s.hosts)
   const ensureWorktree = useAppStore((s) => s.ensureWorktree)
@@ -248,7 +259,7 @@ export function Composer({
   const currentGroupId = sessionless ? groupIdProp : summary?.groupId
   const [localEffort, setLocalEffort] = useState<ReasoningEffort>(loadLastEffort)
   const [modelEfforts, setModelEfforts] = useState<ReasoningEffort[] | undefined>(undefined)
-  const currentProfile = profiles.find((p) => p.id === currentProfileId)
+  const currentProfile = uiProfiles.find((p) => p.id === currentProfileId)
   const currentGroup = currentProfile?.groups?.find((g) => g.id === currentGroupId)
   const currentKind = currentGroup?.kind ?? currentProfile?.kind
   const supportedEfforts = modelEfforts ?? defaultEffortsForKind(currentKind)
@@ -1055,7 +1066,7 @@ export function Composer({
           )}
           <ModelMenu
             compact={compact}
-            profiles={profiles}
+            profiles={uiProfiles}
             profileId={currentProfileId}
             groupId={currentGroupId}
             model={currentModel}
@@ -1074,7 +1085,7 @@ export function Composer({
             onEffortChange={changeEffort}
             onManage={() => openSettings('profiles')}
             onOpen={() => {
-              if (effectiveHostId && profiles.length === 0 && !profilesLoading) {
+              if (effectiveHostId && uiProfiles.length === 0 && !profilesLoading) {
                 void refreshProfiles(effectiveHostId)
               }
             }}

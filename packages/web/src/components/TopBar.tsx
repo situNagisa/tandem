@@ -447,6 +447,14 @@ export function TopBar() {
               className="group flex min-w-0 max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-[var(--t-bg-hover)] max-md:min-h-11"
             >
               <h1 className="truncate text-[14px] font-medium leading-5">{title}</h1>
+              {summary?.demo && (
+                <span
+                  className="shrink-0 rounded bg-[#F97316]/12 px-1.5 py-0.5 text-[10px] font-medium text-[#F97316]"
+                  title="演示数据：不计入真实用量，可在设置 → 关于 → 演示工作区清除"
+                >
+                  演示数据
+                </span>
+              )}
               <Pencil
                 size={11}
                 className="shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100"

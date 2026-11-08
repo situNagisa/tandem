@@ -6,6 +6,7 @@ import {
   type FeedbackPageShot,
   type FeedbackReceipt,
 } from '../lib/feedback'
+import type { FeedbackTag } from '../lib/feedbackFeatures'
 
 interface FeedbackState {
   active: boolean
@@ -13,6 +14,8 @@ interface FeedbackState {
   items: FeedbackItem[]
   pageShots: FeedbackPageShot[]
   receipt: FeedbackReceipt | null
+  /** 从体验清单「有问题」进入时预置的功能/根因标签，保存一条后清除。 */
+  pendingFeature: FeedbackTag | null
   enter: () => void
   exit: () => void
   hydrate: () => Promise<void>
@@ -23,6 +26,7 @@ interface FeedbackState {
   clearReceipt: () => void
   setVerification: (id: string, result: 'pass' | 'fail', note?: string) => void
   addPageShot: (shot: FeedbackPageShot) => void
+  setPendingFeature: (tag: FeedbackTag | null) => void
   clear: () => void
 }
 
@@ -40,6 +44,7 @@ export const useFeedbackStore = create<FeedbackState>()((set, get) => ({
   items: [],
   pageShots: [],
   receipt: null,
+  pendingFeature: null,
 
   enter: () => {
     set({ active: true })
@@ -114,6 +119,8 @@ export const useFeedbackStore = create<FeedbackState>()((set, get) => ({
     persist(get().items, get().pageShots, next)
   },
 
+  setPendingFeature: (tag) => set({ pendingFeature: tag }),
+
   addPageShot: (shot) => {
     const next = [...get().pageShots.filter((entry) => entry.route !== shot.route), shot].slice(-12)
     set({ pageShots: next })
@@ -121,7 +128,7 @@ export const useFeedbackStore = create<FeedbackState>()((set, get) => ({
   },
 
   clear: () => {
-    set({ items: [], pageShots: [], receipt: null })
+    set({ items: [], pageShots: [], receipt: null, pendingFeature: null })
     persist([], [], null)
   },
 }))

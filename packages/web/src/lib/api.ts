@@ -29,6 +29,7 @@ import type {
   MessagePage,
   CreatePrInput,
   DiffEmptyReason,
+  DemoState,
   DoctorReport,
   EvalCase,
   EvalRun,
@@ -414,6 +415,15 @@ export const api = {
   transcribe: (h: HostConfig, input: SttInput) =>
     request<SttResult>(h, '/api/stt', { method: 'POST', body: JSON.stringify(input) }),
 
+  demo: (h: HostConfig) => request<DemoState>(h, '/api/demo'),
+  createDemo: (h: HostConfig) =>
+    request<DemoState>(h, '/api/demo', { method: 'POST', body: JSON.stringify({}) }),
+  clearDemo: (h: HostConfig) => request<{ ok: boolean }>(h, '/api/demo', { method: 'DELETE' }),
+  replayDemo: (h: HostConfig, id: string) =>
+    request<DemoState>(h, `/api/demo/scenarios/${encodeURIComponent(id)}/replay`, { method: 'POST' }),
+  playDemo: (h: HostConfig, id: string) =>
+    request<{ ok: boolean }>(h, `/api/demo/scenarios/${encodeURIComponent(id)}/play`, { method: 'POST' }),
+
   profiles: (h: HostConfig) => request<Profile[]>(h, '/api/profiles'),
   createProfile: (h: HostConfig, input: ProfileInput) =>
     request<Profile>(h, '/api/profiles', { method: 'POST', body: JSON.stringify(input) }),
@@ -580,6 +590,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(paths?.length ? { paths } : {}),
     }),
+  aiReviewLatest: (h: HostConfig, id: string) =>
+    request<{ review?: AiReviewRun }>(h, `/api/sessions/${encodeURIComponent(id)}/ai-review`),
   aiReview: (h: HostConfig, id: string, reviewId: string) =>
     request<{ review: AiReviewRun }>(
       h,

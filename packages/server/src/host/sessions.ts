@@ -223,6 +223,8 @@ export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
     ...(context ? { context } : {}),
     ...(rec.handoff ? { handoff: { ...rec.handoff } } : {}),
     quota,
+    ...(rec.demo ? { demo: true } : {}),
+    ...(rec.demoScenario ? { demoScenario: rec.demoScenario } : {}),
     ...(secretsCount ? { secretsCount } : {}),
   };
 }

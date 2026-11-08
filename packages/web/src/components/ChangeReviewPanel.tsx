@@ -111,6 +111,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
     host && sessionId ? s.byKey[aiReviewKey(host.id, sessionId)] : undefined,
   )
   const startAiReview = useAiReviewStore((s) => s.start)
+  const loadLatestReview = useAiReviewStore((s) => s.loadLatest)
   const setReviewStatus = useAiReviewStore((s) => s.setStatus)
   const markFalsePositive = useAiReviewStore((s) => s.markFalsePositive)
   const clearReview = useAiReviewStore((s) => s.clear)
@@ -166,6 +167,11 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
       cancelled = true
     }
   }, [host?.id])
+
+  useEffect(() => {
+    if (!host || !sessionId) return
+    void loadLatestReview(host, sessionId)
+  }, [host?.id, sessionId, loadLatestReview])
 
   const review = reviewEntry?.review
   const reviewStatuses = reviewEntry?.statuses ?? {}

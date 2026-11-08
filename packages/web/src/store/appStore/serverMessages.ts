@@ -13,6 +13,7 @@ import { useTaskStore } from '../useTaskStore'
 import { useScheduleStore } from '../useScheduleStore'
 import { useWikiStore } from '../useWikiStore'
 import { useBoardStore } from '../useBoardStore'
+import { useDemoStore } from '../useDemoStore'
 import { useBrowserStore } from '../useBrowserStore'
 import { usePreviewStore } from '../usePreviewStore'
 import { useVcsStore } from '../../lib/useVcs'
@@ -313,6 +314,10 @@ export function createServerMessageHandler(
       case 'board_updated': {
         const host = getHost(hostId)
         if (host) useBoardStore.getState().onUpdated(host, msg.boardId)
+        break
+      }
+      case 'demo_updated': {
+        useDemoStore.getState().apply(hostId, msg.state)
         break
       }
       case 'schedules_updated': {

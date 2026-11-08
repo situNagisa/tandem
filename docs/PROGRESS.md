@@ -419,3 +419,13 @@
 - [x] 文档：新增 `docs/release.md`（签名费用/SmartScreen/后续接入、国内商店与 Google Play 材料清单、产品侧隐私政策等缺口）；README 打包一节补充 release 与更新源
 - 验证：全量 `node scripts/check.mjs`（86/86 回归）通过；release APK versionName 0.2.0 / versionCode 200、v2 签名校验通过；`dist:win` 产出 `latest.yml`；本机 127.0.0.1 静态更新源把版本改为 0.2.1，用 electron-updater `GenericProvider` 实测发现新版本；Host `/api/host` 返回 0.2.0，`/updates/` 可取 latest.yml、关闭后 404、目录穿越 404
 - 未做/待用户：Windows 代码签名证书采购；安卓商店资质（软著/APP 备案/隐私政策）；桌面/安卓上架材料与产品内隐私页；本机无法运行 Electron（缺 GTK），更新下载/安装需在 Windows 实机复验
+
+## 迭代 46（2026-11-08）演示工作区 + 体验清单 + 反馈按功能/根因归类
+- [x] 演示工作区：Host 在 `~/.tandem/demo/` 创建独立 git 仓库（初始提交 + 一处未提交改动 + 静态页面），内置隐藏演示账号与 `demo` provider（按固定剧本流式输出文字/思考/工具调用，**不发网络请求**、不写入真实用量）；设置-关于与命令面板可打开，支持创建/打开/重新播放/一键清除
+- [x] 17 个预置场景：基础对话与工具调用、权限审批、计划模式与计划卡、子代理与孙代理、后台任务、委派策略、上下文自动压缩、配额交接（模拟 429）、断点续跑、Hooks 出错、AI 评审挂 diff 行、改动审阅、任务看板（依赖/待审批/待评审/失败/AI 拆分草稿）、评测对比、Wiki、应用预览（本机回环静态页）、收件箱事件；全部标记演示数据，工具动作只作用于演示仓库
+- [x] 清除：会话、检查点、项目记忆、真实用量（演示 provider 不记 usage）、看板、评测、Wiki、后台任务、收件箱演示事件、搜索索引（演示会话永不入索引）、演示账号与目录一并移除；真实数据不受影响
+- [x] 体验清单：按功能分组 87 条测试要点（数据在 `web/src/lib/testPoints.ts`，功能表在 `features.ts`，标题/「新」标记复用 changelog）；未测排前；每条可在演示中打开/通过/有问题/跳过；「有问题」直接进入反馈模式并预置功能标签；进度存 localStorage，可导出 Markdown，反馈包自动附带
+- [x] 反馈归类：`lib/feedbackFeatures.ts` 按设置项/组件/路由/关键词推断功能（用户可改）；`lib/feedbackCauses.ts` 按 `docs/feedback-ledger.md` R01–R10 规则建议根因（匹配不到留空，可改）；导出 JSON 按功能分组并带 featureGroups/causeGroups/checklistReport；`feedback-unpack.mjs` 生成按功能 `by-feature/`、按根因 `by-cause/`，feedback.md 顶部列出命中根因次数（≥2 标「复发」）
+- [x] 回归：`e2e/regression.mjs` 新增 2 条（演示工作区创建/场景/重播/实时对话/清除不污染真实数据；体验清单→反馈→导出→解包按功能/根因）；全量 88/88 通过
+- 保守取舍：演示模型只出现在演示会话的模型菜单（`/api/profiles` 始终隐藏）；演示看板默认不自动调度，用户显式开始/重试后才恢复；应用预览静态服务只监听 127.0.0.1；体验清单功能表覆盖现有主要功能，后续新增功能只需补 `features.ts` + `testPoints.ts`
+- 验证：`TANDEM_HOME=/tmp/tandem-demo` 端口 8391；17 个场景 Playwright 截图 `/tmp/demo-shots/`；演示模型 baseUrl 设为不可达 `127.0.0.1:1` 仍能完成回合，证明无网络请求；`node scripts/check.mjs` 全量通过

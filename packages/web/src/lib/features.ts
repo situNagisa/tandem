@@ -1,0 +1,394 @@
+/** 产品功能清单：体验清单、反馈归类与演示场景按钮共用。 */
+export type FeatureGroupId = 'agent' | 'model' | 'review' | 'workspace' | 'system'
+
+export interface ProductFeature {
+  id: string
+  title: string
+  group: FeatureGroupId
+  /** 对应 changelog 条目 id；用于判断「新」版本功能。 */
+  changelogIds?: string[]
+  /** 设置页 id（settingsRegistry 的 page id）；反馈从这里推断。 */
+  settingsPage?: string
+  /** React 组件名（精确或前缀）；反馈从这里推断。 */
+  components?: string[]
+  /** 路由片段；反馈从这里推断。 */
+  route?: string
+  /** 文本关键词；作为兜底推断。 */
+  keywords?: string[]
+}
+
+export const FEATURE_GROUPS: Array<{ id: FeatureGroupId; title: string }> = [
+  { id: 'agent', title: '对话与自动化' },
+  { id: 'model', title: '模型与成本' },
+  { id: 'review', title: '审阅与并行' },
+  { id: 'workspace', title: '工作区与发现' },
+  { id: 'system', title: '安全与系统' },
+]
+
+export const PRODUCT_FEATURES: ProductFeature[] = [
+  {
+    id: 'chat',
+    title: '对话与工具调用',
+    group: 'agent',
+    components: ['MessageList', 'AssistantMessage', 'UserMessage', 'ToolCard', 'Composer', 'Markdown'],
+    keywords: ['消息', '工具', '思考', '附件', '复制'],
+  },
+  {
+    id: 'permissions',
+    title: '权限审批与规则',
+    group: 'agent',
+    changelogIds: ['approval-learning'],
+    settingsPage: 'permissions',
+    components: ['PermissionCard', 'PermissionModeMenu'],
+    keywords: ['审批', '允许', '拒绝', '权限', '规则'],
+  },
+  {
+    id: 'plan',
+    title: '计划模式与计划卡',
+    group: 'agent',
+    components: ['PlanCard', 'RightPanel'],
+    keywords: ['计划', 'plan', '批准计划', '继续完善'],
+  },
+  {
+    id: 'subagents',
+    title: '子代理与层级树',
+    group: 'agent',
+    components: ['AgentsCard', 'AgentCard'],
+    keywords: ['子代理', '孙代理', '代理', 'Task'],
+  },
+  {
+    id: 'background',
+    title: '后台任务',
+    group: 'agent',
+    components: ['BackgroundTasksPanel', 'BackgroundTaskPanel'],
+    keywords: ['后台', '任务', 'BashOutput', 'KillBash'],
+  },
+  {
+    id: 'delegation',
+    title: '委派策略',
+    group: 'agent',
+    settingsPage: 'agent',
+    keywords: ['委派', '编排', '少派', '多派'],
+  },
+  {
+    id: 'auto-compact',
+    title: '上下文自动压缩',
+    group: 'agent',
+    changelogIds: ['auto-compact'],
+    settingsPage: 'general',
+    keywords: ['压缩', '摘要', '上下文'],
+  },
+  {
+    id: 'handoff',
+    title: '配额交接',
+    group: 'agent',
+    changelogIds: ['handoff'],
+    settingsPage: 'general',
+    components: ['HandoffCard'],
+    keywords: ['交接', '429', '限流', '备用分组', '额度'],
+  },
+  {
+    id: 'resume',
+    title: '断点续跑',
+    group: 'agent',
+    components: ['ResumeBanner'],
+    keywords: ['恢复', '续跑', '暂停', '重启'],
+  },
+  {
+    id: 'hooks',
+    title: 'Hooks',
+    group: 'agent',
+    settingsPage: 'extensions',
+    keywords: ['hook', 'PreToolUse', 'PostToolUse', 'stderr'],
+  },
+  {
+    id: 'inbox',
+    title: '收件箱',
+    group: 'agent',
+    components: ['InboxView', 'InboxDialog'],
+    route: 'inbox',
+    keywords: ['收件箱', '待办', '通知'],
+  },
+  {
+    id: 'models',
+    title: '账号与模型选择',
+    group: 'model',
+    settingsPage: 'profiles',
+    components: ['ModelMenu', 'ModelPanel', 'ProfilesSection'],
+    keywords: ['账号', '模型', 'Key', '分组', '思考强度'],
+  },
+  {
+    id: 'auto-route',
+    title: '自动路由',
+    group: 'model',
+    changelogIds: ['auto-route'],
+    settingsPage: 'routing',
+    components: ['ModelRoutingSection'],
+    keywords: ['自动', '路由', '难度', '省'],
+  },
+  {
+    id: 'usage-budget',
+    title: '用量与预算',
+    group: 'model',
+    settingsPage: 'usage-budgets',
+    components: ['UsageSection', 'BudgetsSection', 'ContextMeter'],
+    keywords: ['用量', '预算', '花费', 'token', '成本'],
+  },
+  {
+    id: 'gateway',
+    title: 'Key 网关与模型转发',
+    group: 'model',
+    settingsPage: 'gateway',
+    components: ['GatewaySection'],
+    keywords: ['网关', '转发', '令牌'],
+  },
+  {
+    id: 'board',
+    title: '任务看板',
+    group: 'review',
+    changelogIds: ['board', 'release-0.2.0-8'],
+    components: ['BoardView', 'BoardDrawer', 'BoardDialogs', 'BoardCardItem'],
+    route: '/b/',
+    keywords: ['看板', '卡片', '依赖', '评审'],
+  },
+  {
+    id: 'changes',
+    title: '改动审阅与行评论',
+    group: 'review',
+    components: ['ChangeReviewPanel', 'DiffView'],
+    keywords: ['diff', '改动', '提交', '丢弃', '行评论'],
+  },
+  {
+    id: 'ai-review',
+    title: '提交前 AI 评审',
+    group: 'review',
+    components: ['PrPanel'],
+    keywords: ['AI 评审', 'blocker', '误报'],
+  },
+  {
+    id: 'split',
+    title: '多会话分屏',
+    group: 'review',
+    changelogIds: ['split'],
+    components: ['SplitWorkspace'],
+    keywords: ['分屏', '窗格', '并排'],
+  },
+  {
+    id: 'evals',
+    title: '评测与轨迹',
+    group: 'review',
+    settingsPage: 'evals',
+    components: ['EvalsSection', 'EvalTrajectory', 'EvalCompare'],
+    keywords: ['评测', '用例', '轨迹', '对比'],
+  },
+  {
+    id: 'paging',
+    title: '大会话分页与轮次大纲',
+    group: 'review',
+    changelogIds: ['release-0.2.0-4', 'release-0.2.0-6'],
+    components: ['TurnRail', 'TurnOutlineSheet'],
+    keywords: ['分页', '更早', '轮次', '大纲'],
+  },
+  {
+    id: 'wiki',
+    title: '项目 Wiki',
+    group: 'workspace',
+    changelogIds: ['release-0.2.0-3'],
+    components: ['WikiDialog', 'WikiCard'],
+    keywords: ['wiki', '术语', '模块页'],
+  },
+  {
+    id: 'preview',
+    title: '应用预览',
+    group: 'workspace',
+    changelogIds: ['release-0.2.0-2'],
+    components: ['PreviewPanel'],
+    keywords: ['预览', '设备', '元素点选', '截图'],
+  },
+  {
+    id: 'search',
+    title: '全文搜索与筛选',
+    group: 'workspace',
+    changelogIds: ['full-text-search'],
+    components: ['SearchDialog'],
+    keywords: ['搜索', '筛选', '项目', '状态'],
+  },
+  {
+    id: 'command-palette',
+    title: '命令面板',
+    group: 'workspace',
+    changelogIds: ['command-palette'],
+    components: ['CommandPalette'],
+    keywords: ['命令', 'ctrl+k', 'cmd+k'],
+  },
+  {
+    id: 'browser',
+    title: '浏览器工具与面板',
+    group: 'workspace',
+    settingsPage: 'browser',
+    components: ['BrowserPanel'],
+    keywords: ['浏览器', '网页', '截图'],
+  },
+  {
+    id: 'schedules',
+    title: '定时任务',
+    group: 'workspace',
+    settingsPage: 'schedules',
+    components: ['SchedulesSection'],
+    keywords: ['定时', 'cron', '每天'],
+  },
+  {
+    id: 'notifications',
+    title: '通知与提醒',
+    group: 'workspace',
+    settingsPage: 'notifications',
+    components: ['NotificationsSection'],
+    keywords: ['通知', '提醒', '声音'],
+  },
+  {
+    id: 'sandbox',
+    title: '命令沙箱与网络白名单',
+    group: 'system',
+    changelogIds: ['sandbox'],
+    settingsPage: 'permissions',
+    components: ['PermissionsSection'],
+    keywords: ['沙箱', '网络', '白名单', 'bwrap'],
+  },
+  {
+    id: 'secrets',
+    title: '项目 Secrets',
+    group: 'system',
+    changelogIds: ['secrets'],
+    settingsPage: 'secrets',
+    components: ['SecretsSection'],
+    keywords: ['secret', '密钥', '打码'],
+  },
+  {
+    id: 'doctor',
+    title: '主机诊断',
+    group: 'system',
+    changelogIds: ['doctor'],
+    settingsPage: 'hosts',
+    components: ['DoctorPanel'],
+    keywords: ['诊断', 'doctor', '检查'],
+  },
+  {
+    id: 'mcp',
+    title: 'MCP 服务器',
+    group: 'system',
+    settingsPage: 'extensions',
+    components: ['McpSection'],
+    keywords: ['mcp', '服务器', '工具'],
+  },
+  {
+    id: 'skills',
+    title: 'Skills 与子代理预设',
+    group: 'system',
+    settingsPage: 'agent',
+    components: ['SkillsSection', 'SubagentsSection'],
+    keywords: ['skill', '预设', 'agents'],
+  },
+  {
+    id: 'prompts',
+    title: '提示词模板',
+    group: 'system',
+    settingsPage: 'agent',
+    components: ['PromptsSection'],
+    keywords: ['提示词', 'prompt', '模板'],
+  },
+  {
+    id: 'memory',
+    title: '项目与全局记忆',
+    group: 'system',
+    settingsPage: 'memory',
+    components: ['MemorySection'],
+    keywords: ['记忆', '记住', 'memory'],
+  },
+  {
+    id: 'team',
+    title: '成员与分享',
+    group: 'system',
+    changelogIds: ['team'],
+    settingsPage: 'team-shares',
+    components: ['TeamSection', 'SharesSection', 'JoinTeamDialog'],
+    keywords: ['成员', '邀请', '审计', '分享'],
+  },
+  {
+    id: 'ssh',
+    title: '远程主机（SSH）',
+    group: 'system',
+    changelogIds: ['release-0.2.0-5'],
+    settingsPage: 'hosts',
+    components: ['RemoteSshDialog', 'HostsSection'],
+    keywords: ['ssh', '远程', '部署', '隧道'],
+  },
+  {
+    id: 'update',
+    title: '桌面更新与版本',
+    group: 'system',
+    changelogIds: ['release-0.2.0-1'],
+    settingsPage: 'general',
+    keywords: ['更新', '版本', '安装包'],
+  },
+  {
+    id: 'sync',
+    title: '同步与备份',
+    group: 'system',
+    settingsPage: 'sync',
+    components: ['SyncSection'],
+    keywords: ['同步', '备份', '迁移'],
+  },
+  {
+    id: 'demo-checklist',
+    title: '演示工作区与体验清单',
+    group: 'system',
+    keywords: ['演示', '场景', '清单', '测试报告'],
+  },
+]
+
+export const FEATURE_BY_ID = new Map(PRODUCT_FEATURES.map((feature) => [feature.id, feature]))
+
+export function featureTitle(id: string | undefined): string {
+  if (!id) return ''
+  return FEATURE_BY_ID.get(id)?.title ?? id
+}
+
+export const SETTINGS_PAGE_FEATURE: Record<string, string> = {
+  general: 'auto-compact',
+  hosts: 'doctor',
+  profiles: 'models',
+  routing: 'auto-route',
+  'usage-budgets': 'usage-budget',
+  permissions: 'permissions',
+  secrets: 'secrets',
+  agent: 'skills',
+  schedules: 'schedules',
+  memory: 'memory',
+  'team-shares': 'team',
+  appearance: 'chat',
+  notifications: 'notifications',
+  voice: 'chat',
+  browser: 'browser',
+  extensions: 'mcp',
+  evals: 'evals',
+  gateway: 'gateway',
+  sync: 'sync',
+}
+
+/** 设置项 id 前缀覆盖：比所在页面更精确。 */
+export const SETTING_ID_FEATURE: Array<[string, string]> = [
+  ['general.auto-compact', 'auto-compact'],
+  ['general.handoff', 'handoff'],
+  ['permissions.sandbox', 'sandbox'],
+  ['permissions.learning', 'permissions'],
+  ['hosts.doctor', 'doctor'],
+  ['secrets.', 'secrets'],
+  ['team.', 'team'],
+  ['routing.', 'auto-route'],
+  ['update.', 'update'],
+]
+
+export function sortFeatures(features: ProductFeature[]): ProductFeature[] {
+  const order = new Map(FEATURE_GROUPS.map((group, index) => [group.id, index]))
+  return [...features].sort((a, b) => (order.get(a.group) ?? 99) - (order.get(b.group) ?? 99))
+}

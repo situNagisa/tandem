@@ -4387,6 +4387,182 @@ async function main() {
       await dialog.getByLabel('关闭').click()
     })
 
+
+    desktop('演示工作区可创建、场景可打开、可清除且不污染真实数据', async (page) => {
+      const beforeSessions = await api(base, token, '/api/sessions')
+      const beforeUsage = await api(base, token, '/api/usage')
+      const beforeLong = beforeSessions.find((item) => item.id === 'long')
+      const beforeLongDetail = await api(base, token, '/api/sessions/long')
+      const state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      assert.equal(state.active, true, '演示工作区未创建')
+      assert.equal(state.scenarios.length, 17, `场景数不对：${state.scenarios.length}`)
+      assert.equal(state.networkRequests, 0, '演示模型不应发出网络请求')
+      assert.equal(state.profile?.kind, 'demo', '演示账号类型不对')
+      assert.equal(state.profile?.baseUrl, 'http://127.0.0.1:1', '演示账号应使用不可达地址证明不发网络请求')
+
+      const profiles = await api(base, token, '/api/profiles')
+      assert.ok(!profiles.some((profile) => profile.kind === 'demo'), '演示账号不应出现在正常账号列表')
+
+      const byId = new Map(state.scenarios.map((scenario) => [scenario.id, scenario]))
+      for (const required of [
+        'chat-tools', 'permission', 'plan', 'subagents', 'background', 'delegation',
+        'auto-compact', 'handoff', 'ai-review', 'changes', 'board', 'evals', 'wiki',
+        'preview', 'inbox', 'resume', 'hooks',
+      ]) {
+        assert.ok(byId.has(required), `缺少演示场景 ${required}`)
+      }
+      for (const scenario of state.scenarios) {
+        for (const sessionId of scenario.sessionIds ?? []) {
+          const session = await api(base, token, `/api/sessions/${encodeURIComponent(sessionId)}`)
+          assert.equal(session.demo, true, `场景 ${scenario.id} 的会话未标记演示数据`)
+        }
+        if (scenario.boardId) {
+          const board = await api(base, token, `/api/boards/${encodeURIComponent(scenario.boardId)}`)
+          assert.ok(board.cards.length >= 6, '演示看板卡片不足')
+          assert.equal(board.cards.filter((card) => card.deps.length > 0).length >= 3, true, '缺少依赖卡')
+          assert.ok(board.cards.some((card) => card.status === 'approval'), '缺少待审批卡')
+          assert.ok(board.cards.some((card) => card.status === 'review'), '缺少待评审卡')
+          assert.ok(board.cards.some((card) => card.status === 'failed'), '缺少失败卡')
+          assert.ok(board.cards.some((card) => card.proposedBy), '缺少 AI 拆分草稿')
+        }
+        if (scenario.evalRunId) {
+          const run = await api(base, token, `/api/evals/runs/${encodeURIComponent(scenario.evalRunId)}`)
+          assert.equal(run.results.length, 6, '演示评测对比结果不足')
+        }
+        if (scenario.kind === 'wiki') {
+          const wiki = await api(base, token, `/api/wiki?project=${encodeURIComponent(state.project)}`)
+          assert.equal(wiki.exists, true, '演示 Wiki 不存在')
+          assert.ok(wiki.pages.length >= 3, '演示 Wiki 页面不足')
+        }
+      }
+
+      // 重新播放：只替换该场景会话，旧会话被删除。
+      const chatBeforeReplay = byId.get('chat-tools').sessionIds[0]
+      const replayed = await api(base, token, '/api/demo/scenarios/chat-tools/replay', { method: 'POST', body: JSON.stringify({}) })
+      const chatAfterReplay = replayed.scenarios.find((item) => item.id === 'chat-tools').sessionIds[0]
+      assert.notEqual(chatAfterReplay, chatBeforeReplay, '重新播放没有创建新会话')
+      const oldChat = await fetch(`${base}/api/sessions/${encodeURIComponent(chatBeforeReplay)}`, {
+        headers: { authorization: `Bearer ${token}` },
+      })
+      assert.equal(oldChat.status, 404, '重新播放后旧会话仍然存在')
+      const replayState = await api(base, token, '/api/demo')
+      byId.set('chat-tools', replayState.scenarios.find((item) => item.id === 'chat-tools'))
+
+      // UI：看板场景可打开并显示预置卡片。
+      const clientHostId = await page.evaluate(() => {
+        const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
+        return hosts[0]?.id ?? null
+      })
+      await page.evaluate((hash) => { window.location.hash = hash }, `#/h/${clientHostId}/b/demo-board`)
+      await page.getByText('演示 · 任务看板', { exact: true }).first().waitFor({ timeout: 15_000 })
+      await page.getByText('AI 拆分草稿：补充测试与截图', { exact: true }).first().waitFor({ timeout: 10_000 })
+      await page.getByText('待审批：更新发布说明', { exact: true }).first().waitFor({ timeout: 10_000 })
+
+      // UI：演示会话可继续对话，演示模型不发网络请求（baseUrl 不可达也能完成）。
+      const chatId = byId.get('chat-tools').sessionIds[0]
+      await openSession(page, chatId)
+      const composer = page.locator('textarea[aria-label="消息输入框"]').first()
+      await composer.fill('再总结一下这个演示项目')
+      await composer.press('Enter')
+      await page.getByText(/工具结果已返回。演示模型只执行固定剧本/).first().waitFor({ timeout: 20_000 })
+      const usageAfterTurn = await api(base, token, '/api/usage')
+      assert.deepEqual(usageAfterTurn, beforeUsage, '演示模型不应写入真实用量统计')
+
+      // 清除：会话、看板、评测、Wiki、任务、账号与目录都不留痕迹；真实会话不受影响。
+      await api(base, token, '/api/demo', { method: 'DELETE', body: '{}' })
+      const afterDemo = await api(base, token, '/api/demo')
+      assert.equal(afterDemo.active, false, '清除后演示状态仍为 active')
+      const afterSessions = await api(base, token, '/api/sessions')
+      assert.equal(afterSessions.length, beforeSessions.length, `清除后会话数 ${afterSessions.length} != ${beforeSessions.length}`)
+      assert.ok(afterSessions.some((item) => item.id === 'long'), '清除演示数据误删了真实会话')
+      const afterLongDetail = await api(base, token, '/api/sessions/long')
+      assert.equal(afterLongDetail.messages.length, beforeLongDetail.messages.length, '真实会话消息被改动')
+      assert.ok(beforeLong, '真实会话 long 不存在')
+      assert.deepEqual(await api(base, token, '/api/usage'), beforeUsage, '清除后真实用量被改动')
+      assert.ok(!(await api(base, token, '/api/profiles')).some((profile) => profile.kind === 'demo'), '演示账号未清除')
+      assert.ok(!(await api(base, token, '/api/boards')).some((board) => board.id === 'demo-board'), '演示看板未清除')
+      assert.ok(!(await api(base, token, '/api/evals/runs')).some((run) => run.id === 'demo-eval-run'), '演示评测未清除')
+      assert.ok(!(await api(base, token, '/api/tasks')).some((task) => task.cwd?.startsWith(state.root)), '演示后台任务未清除')
+      assert.equal(existsSync(state.root), false, '演示目录未删除')
+      const search = await api(base, token, `/api/search?q=${encodeURIComponent('演示 · 基础对话')}`)
+      assert.equal(search.hits.length, 0, '演示会话仍留在搜索索引')
+      const wikiAfter = await api(base, token, `/api/wiki?project=${encodeURIComponent(state.project)}`)
+      assert.equal(wikiAfter.exists, false, '演示 Wiki 未清除')
+    })
+
+    desktop('体验清单「有问题」进入反馈并带功能标签，导出与解包按功能分组', async (page) => {
+      const state = await api(base, token, '/api/demo')
+      if (!state.active) await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const chatId = (await api(base, token, '/api/demo')).scenarios.find((item) => item.id === 'chat-tools').sessionIds[0]
+      await openSession(page, chatId)
+
+      const settings = await openSettings(page, '通用', 'desktop')
+      await settings.getByText('关于 Tandem', { exact: true }).click()
+      const about = page.getByRole('dialog', { name: '关于 Tandem' })
+      await about.waitFor({ state: 'visible' })
+      await about.getByRole('button', { name: '体验清单' }).click()
+      const checklist = page.getByRole('dialog', { name: '体验清单' })
+      await checklist.waitFor({ state: 'visible' })
+      assert.ok((await checklist.getByText('对话与工具调用', { exact: true }).count()) > 0, '体验清单缺少功能分组')
+      assert.ok((await checklist.getByText('新', { exact: true }).count()) > 0, '体验清单缺少「新」标记')
+
+      const pointText = '打开演示看板，确认七列、依赖卡与需我处理数字。'
+      const row = checklist.getByText(pointText, { exact: true }).locator('..')
+      await row.getByRole('button', { name: '有问题' }).click()
+      const bar = page.getByRole('region', { name: '反馈模式工具栏' })
+      await bar.waitFor({ state: 'visible' })
+      await bar.getByText('标记：任务看板', { exact: true }).waitFor({ timeout: 5_000 })
+
+      // 在消息区域点选一个元素，写下反馈并保存。
+      await page.mouse.click(900, 300)
+      const editor = page.getByRole('dialog', { name: '反馈输入' })
+      await editor.waitFor({ state: 'visible', timeout: 15_000 })
+      await editor.locator('textarea').fill('体验清单测试：看板说明看不清楚')
+      await editor.locator('textarea').press('Enter')
+      await page.getByText(/已记录第 \d+ 条反馈/).first().waitFor({ timeout: 15_000 })
+
+      await bar.getByRole('button', { name: /条目 \d+/ }).click()
+      const drawer = page.locator('aside[aria-label="反馈条目"]')
+      await drawer.getByText('任务看板', { exact: true }).first().waitFor({ timeout: 5_000 })
+      await drawer.getByRole('button', { name: '关闭条目列表' }).click()
+
+      const downloadPromise = page.waitForEvent('download')
+      page.once('dialog', (dialog) => dialog.accept())
+      await bar.getByRole('button', { name: '导出', exact: true }).click()
+      const download = await downloadPromise
+      const downloadFile = path.join(home, 'feedback-export.json')
+      await download.saveAs(downloadFile)
+      const exported = JSON.parse(readFileSync(downloadFile, 'utf8'))
+      assert.ok(Array.isArray(exported.featureGroups), '导出 JSON 缺少 featureGroups')
+      assert.ok(exported.featureGroups.some((group) => group.name === '任务看板'), '导出未按功能分组')
+      assert.equal(exported.items[0].featureName, '任务看板', '反馈条目没有功能标签')
+      assert.equal(typeof exported.checklistReport?.markdown, 'string', '导出未附带体验清单报告')
+
+      const unpacked = mkdtempSync(path.join(home, 'feedback-unpack-'))
+      execFileSync(process.execPath, [path.join(ROOT, 'scripts/feedback-unpack.mjs'), downloadFile, unpacked], { encoding: 'utf8' })
+      assert.ok(existsSync(path.join(unpacked, 'by-feature', '任务看板.md')), '缺少 by-feature 分组文件')
+      assert.ok(existsSync(path.join(unpacked, '体验清单.md')), '缺少体验清单报告')
+      const feedbackMd = readFileSync(path.join(unpacked, 'feedback.md'), 'utf8')
+      assert.ok(feedbackMd.includes('## 功能：任务看板'), 'feedback.md 未按功能分组')
+
+      // 根因：同一编号出现两次标「复发」，并输出 by-cause。
+      const causeFile = path.join(home, 'feedback-causes.json')
+      writeFileSync(causeFile, JSON.stringify({
+        version: 2,
+        kind: 'feedback',
+        exportedAt: new Date().toISOString(),
+        items: [
+          { id: 'c1', type: 'issue', text: '下拉被裁切', featureId: 'board', featureName: '任务看板', causeId: 'R03', causeTitle: '弹层被裁切或越界', selector: '', textSnippet: '', createdAt: 1, rect: { x: 0, y: 0, width: 1, height: 1, pageX: 0, pageY: 0 } },
+          { id: 'c2', type: 'issue', text: '弹层挡住输入框', featureId: 'chat', featureName: '对话与工具调用', causeId: 'R03', causeTitle: '弹层被裁切或越界', selector: '', textSnippet: '', createdAt: 2, rect: { x: 0, y: 0, width: 1, height: 1, pageX: 0, pageY: 0 } },
+        ],
+      }), 'utf8')
+      const causeOut = mkdtempSync(path.join(home, 'feedback-cause-out-'))
+      execFileSync(process.execPath, [path.join(ROOT, 'scripts/feedback-unpack.mjs'), causeFile, causeOut], { encoding: 'utf8' })
+      assert.ok(existsSync(path.join(causeOut, 'by-cause', 'R03.md')), '缺少 by-cause 分组文件')
+      const causeMd = readFileSync(path.join(causeOut, 'feedback.md'), 'utf8')
+      assert.ok(causeMd.includes('R03 弹层被裁切或越界 · 2 次 · **复发**'), 'feedback.md 未标出复发根因')
+    })
+
     // ------------------------------------------------------------------ 执行
 
     const selected = ONLY ? checks.filter((item) => item.name.includes(ONLY)) : checks

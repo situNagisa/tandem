@@ -34,6 +34,8 @@ import { DoctorDialog } from './components/DoctorDialog'
 import { Toasts } from './components/ui/Toasts'
 import { FeedbackMode } from './components/feedback/FeedbackMode'
 import { FeatureTour } from './components/tour/FeatureTour'
+import { DemoDialog } from './components/demo/DemoDialog'
+import { ChecklistDialog } from './components/demo/ChecklistDialog'
 import { OverlayScrollbar } from './components/ui/OverlayScrollbar'
 import { UiGallery } from './components/ui/UiGallery'
 
@@ -489,6 +491,8 @@ export default function App() {
       <SearchDialog />
       <SplitOpenDialog />
       <FeatureTour />
+      <DemoDialog />
+      <ChecklistDialog />
       <Toasts />
       <FeedbackMode />
       <OverlayScrollbar />

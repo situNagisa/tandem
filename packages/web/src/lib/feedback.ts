@@ -112,6 +112,12 @@ export interface FeedbackItem {
   snapshot?: FeedbackSnapshot
   /** 录屏附件（webm，仅本地）。 */
   video?: FeedbackVideo
+  /** 自动/手动功能标签（看板、子代理、设置-xx…）。 */
+  featureId?: string
+  featureName?: string
+  /** 根因台账建议编号（R01–R10）；不确定时缺省。 */
+  causeId?: string
+  causeTitle?: string
 }
 
 export interface FeedbackPageShot {
@@ -127,6 +133,12 @@ export interface FeedbackStoredState {
   items: FeedbackItem[]
   pageShots: FeedbackPageShot[]
   receipt?: FeedbackReceipt | null
+}
+
+export interface FeedbackExportGroup {
+  id: string
+  name: string
+  count: number
 }
 
 export const FEEDBACK_STORAGE_KEY = 'tandem.feedback.v1'
@@ -272,9 +284,15 @@ export function readFileAsDataURL(file: Blob): Promise<string | null> {
   })
 }
 
-function triggerDownload(data: string, filename: string): boolean {
+function mimeForFilename(filename: string): string {
+  if (/\.md$/i.test(filename)) return 'text/markdown;charset=utf-8'
+  if (/\.json$/i.test(filename)) return 'application/json;charset=utf-8'
+  return 'text/plain;charset=utf-8'
+}
+
+export function triggerDownload(data: string, filename: string): boolean {
   try {
-    const blob = new Blob([data], { type: 'application/json;charset=utf-8' })
+    const blob = new Blob([data], { type: mimeForFilename(filename) })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     if (typeof a.download !== 'string') {
@@ -306,7 +324,7 @@ export async function saveFeedbackFile(
   const isNative = capacitor?.isNativePlatform?.() === true
   if (!isNative && triggerDownload(data, filename)) return 'download'
   try {
-    const file = new File([data], filename, { type: 'application/json' })
+    const file = new File([data], filename, { type: mimeForFilename(filename) })
     const nav = navigator as Navigator & {
       canShare?: (input: { files?: File[] }) => boolean
       share?: (input: { files?: File[]; title?: string }) => Promise<void>

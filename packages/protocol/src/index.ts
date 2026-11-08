@@ -8,7 +8,8 @@ export type ProviderKind =
   | 'openai'             // OpenAI Chat Completions
   | 'openai-compatible'  // DeepSeek / Qwen / Moonshot / OpenRouter / Ollama 等兼容接口
   | 'gemini'             // Google Gemini (走 OpenAI 兼容端点)
-  | 'tandem-gateway';    // 团队自建 Tandem 网关（OpenAI 兼容入口；地址填网关 Host，Key 填网关令牌）
+  | 'tandem-gateway'     // 团队自建 Tandem 网关（OpenAI 兼容入口；地址填网关 Host，Key 填网关令牌）
+  | 'demo';              // 内置演示模型：只在演示工作区可用，按剧本流式输出，不发任何网络请求
 
 /** 单个模型的能力覆盖；缺省字段按 provider 能力或内置表推断。 */
 export interface ModelCapabilities {
@@ -209,6 +210,10 @@ export interface SessionSummary {
   quota?: QuotaEstimate;
   /** 本项目（仓库根或 cwd）+ 全局可用的 secret 数量；右栏「详情」显示，不含值。 */
   secretsCount?: number;
+  /** 演示工作区会话：界面显示「演示数据」，不计入真实用量与搜索索引。 */
+  demo?: boolean;
+  /** 所属演示场景 id（用于重新播放与清除）。 */
+  demoScenario?: string;
 }
 export interface SessionEnv {
   repoRoot?: string;       // cwd 所在 git 仓库根目录（非仓库则无）
@@ -528,6 +533,8 @@ export interface PermissionRequest {
   learned?: { pattern: string; allows: number; project: string };
   /** 命令沙箱/网络白名单触发审批时的说明（写工作目录之外、受保护路径、非白名单主机等）。 */
   sandbox?: PermissionSandboxNotice;
+  /** 演示工作区产生的审批，清除演示数据时一并移除。 */
+  demo?: boolean;
 }
 
 /** 沙箱/网络策略导致转审批的原因；客户端在审批卡上单独高亮显示。 */
@@ -1101,6 +1108,8 @@ export interface InboxEvent {
   };
   /** kind=handoff：额度将尽，等待用户选择切换/等待/暂停。 */
   handoff?: { state: HandoffState; text: string };
+  /** 演示工作区产生的事件；清除演示数据时一并移除。 */
+  demo?: boolean;
 }
 export interface InboxSnapshot {
   /** Host 当前收件箱 seq；客户端记录用于下次 sinceSeq。 */
@@ -1165,6 +1174,7 @@ export type ServerMsg =
   | { type: 'wiki_updated'; project: string }                 // Wiki 页面/元数据变化，客户端刷新
   | { type: 'wiki_job'; job: WikiJob }                        // 生成/更新进度
   | { type: 'board_updated'; boardId: string }
+  | { type: 'demo_updated'; state: DemoState }                // 演示工作区创建/重播/清除
   | { type: 'eval_run_updated'; run: EvalRunSummary }
   | { type: 'external_sessions_changed' }
   | { type: 'error'; message: string }
@@ -2479,3 +2489,50 @@ export interface SshDeployResult {
 // POST   /api/ssh-hosts/:id/password {password}  -> { ok: true }（仅写入本进程内存并重连隧道）
 
 export const PROTOCOL_VERSION = 5;
+
+
+// ---------- 演示工作区 ----------
+// 一键造场景：独立 git 仓库 + 内置演示模型；所有数据标记 demo，可一键清除。
+export type DemoScenarioKind =
+  | 'session'
+  | 'board'
+  | 'settings'
+  | 'inbox'
+  | 'eval'
+  | 'wiki'
+  | 'preview';
+
+export interface DemoScenarioInfo {
+  id: string;
+  title: string;
+  summary: string;
+  kind: DemoScenarioKind;
+  /** 分组：对话与自动化 / 审阅与看板 / 工作区。 */
+  group: 'conversation' | 'review' | 'workspace' | 'settings';
+  sessionIds?: string[];
+  boardId?: string;
+  /** 打开后是否自动展开的面板。 */
+  panel?: 'changes' | 'agents' | 'background' | 'preview' | 'wiki';
+  /** settings 场景打开哪个设置页。 */
+  settingsTab?: string;
+  /** eval 场景选中哪个运行。 */
+  evalRunId?: string;
+  /** 详情区显示的项目路径（Wiki/预览）。 */
+  project?: string;
+  /** 是否包含动态演示步骤（例如打开后广播 Hook 出错提示）。 */
+  playable?: boolean;
+}
+
+export interface DemoState {
+  active: boolean;
+  /** 演示根目录（~/.tandem/demo），用于展示与清除。 */
+  root?: string;
+  /** 演示 git 仓库。 */
+  project?: string;
+  createdAt?: number;
+  /** 隐藏的演示账号；只在演示会话的模型菜单中出现。 */
+  profile?: Profile;
+  scenarios: DemoScenarioInfo[];
+  /** 演示模型累计发出的网络请求数；恒为 0，供验收脚本断言。 */
+  networkRequests: number;
+}

@@ -535,17 +535,19 @@ export async function runTurn(
         rec.usage.reasoningTokens = (rec.usage.reasoningTokens ?? 0) + reasoningTokens;
         if (cost !== undefined) rec.usage.costUsd = roundCost((rec.usage.costUsd ?? 0) + cost);
         host.calibrateContext(rec, contextEstimate, inputTokens + cacheReadTokens + cacheWriteTokens);
-        host.usage.record({
-          hostId: host.config.hostId,
-          profileId: requestProfileId,
-          model,
-          // 日统计的输入包含缓存读写，保持总输入口径一致
-          inputTokens: inputTokens + cacheReadTokens + cacheWriteTokens,
-          outputTokens,
-          costUsd: cost ?? 0,
-          ...(usedKeyId ? { keyId: usedKeyId } : {}),
-          ...(requestGroupId ? { groupId: requestGroupId } : {}),
-        });
+        if (host.profiles.get(requestProfileId)?.kind !== 'demo') {
+          host.usage.record({
+            hostId: host.config.hostId,
+            profileId: requestProfileId,
+            model,
+            // 日统计的输入包含缓存读写，保持总输入口径一致
+            inputTokens: inputTokens + cacheReadTokens + cacheWriteTokens,
+            outputTokens,
+            costUsd: cost ?? 0,
+            ...(usedKeyId ? { keyId: usedKeyId } : {}),
+            ...(requestGroupId ? { groupId: requestGroupId } : {}),
+          });
+        }
         if (rec.autoRoute && routed) {
           recordRouteSavings(host, rec, assistant.usage!, cost);
         }

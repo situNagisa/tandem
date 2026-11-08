@@ -248,6 +248,8 @@ function AboutDialog() {
   const setAboutOpen = useUiStore((s) => s.setAboutOpen)
   const setTourOpen = useUiStore((s) => s.setTourOpen)
   const setOnboardingOpen = useUiStore((s) => s.setOnboardingOpen)
+  const setDemoOpen = useUiStore((s) => s.setDemoOpen)
+  const setChecklistOpen = useUiStore((s) => s.setChecklistOpen)
   return (
     <Modal
       open={open}
@@ -265,6 +267,24 @@ function AboutDialog() {
           导览只在应用版本更新后自动出现一次；也可以从这里随时重新打开，或重看三步上手引导。
         </p>
         <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setAboutOpen(false)
+              setDemoOpen(true)
+            }}
+          >
+            演示工作区
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setAboutOpen(false)
+              setChecklistOpen(true)
+            }}
+          >
+            体验清单
+          </Button>
           <Button
             variant="secondary"
             onClick={() => {

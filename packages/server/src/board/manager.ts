@@ -138,6 +138,8 @@ export class BoardManager {
   private readonly turnNotes = new Map<string, TurnNote>();
   /** 有过运行且尚未发出"整块跑完"通知的看板。 */
   private readonly active = new Set<string>();
+  /** 演示看板：只展示预置状态，不参与自动调度（用户手动动作仍可触发）。 */
+  private readonly demoBoards = new Set<string>();
   private mergeChain: Promise<unknown> = Promise.resolve();
   /** 聚合 PR 最近一次状态刷新时间（毫秒），避免每次 tick 都调 gh/glab。 */
   private readonly prRefreshedAt = new Map<string, number>();
@@ -180,6 +182,23 @@ export class BoardManager {
     const board = this.boards.get(id);
     if (board) this.refreshDerived(board);
     return board;
+  }
+
+  /** 演示工作区：写入一张预置看板，不启动调度。 */
+  seedDemo(board: Board): void {
+    this.boards.set(board.id, board);
+    this.demoBoards.add(board.id);
+    this.store.save(board);
+    this.host.hub.broadcastAll({ type: 'board_updated', boardId: board.id });
+  }
+
+  /** 演示清理：只移除内存与落盘，不触发卡片会话级联（由调用方统一删除）。 */
+  removeDemo(id: string): void {
+    this.boards.delete(id);
+    this.active.delete(id);
+    this.demoBoards.delete(id);
+    this.store.remove(id);
+    this.host.hub.broadcastAll({ type: 'board_updated', boardId: id });
   }
 
   private summaryOf(board: Board): BoardSummary {
@@ -379,6 +398,8 @@ export class BoardManager {
   async act(boardId: string, cardId: string, action: BoardCardAction, opts: { note?: string; strategy?: 'merge' | 'squash' } = {}): Promise<BoardCard> {
     const board = this.require(boardId);
     const card = this.requireCard(board, cardId);
+    // 演示看板默认不自动调度；用户显式开始/重试后恢复调度，方便体验真实卡片流程。
+    if (card && (action === 'start' || action === 'retry')) this.demoBoards.delete(boardId);
     const must = (...allowed: BoardCardStatus[]) => {
       if (!allowed.includes(card.status)) throw new Error(`当前状态（${card.status}）不能执行该操作`);
     };
@@ -735,6 +756,7 @@ export class BoardManager {
 
   private tick(): void {
     for (const board of this.boards.values()) {
+      if (this.demoBoards.has(board.id)) continue;
       try {
         this.reconcile(board);
         this.schedule(board);

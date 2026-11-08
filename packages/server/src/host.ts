@@ -64,6 +64,7 @@ import { BackgroundTaskManager } from './tasks.js';
 import { ScheduleManager } from './schedules.js';
 import { EvalManager } from './evals.js';
 import { AiReviewManager } from './ai-review.js';
+import { DemoManager } from './demo/manager.js';
 import { BoardManager } from './board/manager.js';
 import type { ListModelsResult } from './providers/index.js';
 import { SkillManager } from './skills.js';
@@ -227,6 +228,8 @@ export class Host {
   readonly browser: BrowserManager;
   /** 应用预览：Host 上本地 Web 应用的截图流、元素点选与改完自动刷新。 */
   readonly preview: PreviewManager;
+  /** 演示工作区：独立 demo 仓库 + 内置演示模型 + 可重播/清除的场景。 */
+  readonly demo: DemoManager;
   /** 跨会话收件箱（审批/回合结束/预算摘要），手机审批台的数据源。 */
   readonly inbox = new Inbox();
   readonly version: string;
@@ -328,6 +331,8 @@ export class Host {
     this.mcp.start();
     // 外部会话目录有变化时通知客户端刷新侧栏（30s 定时扫描）
     this.external.startWatching(() => this.notifyExternalSessionsChanged());
+    this.demo = new DemoManager(this);
+    void this.demo.restore();
   }
 
   notifyExternalSessionsChanged(): void {

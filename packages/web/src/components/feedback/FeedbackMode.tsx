@@ -43,6 +43,13 @@ import { getFeedbackErrors } from '../../lib/feedbackErrors'
 import { getFeedbackTrace } from '../../lib/feedbackTrace'
 import { captureFeedbackSnapshot } from '../../lib/feedbackSnapshot'
 import { APP_VERSION } from '../../lib/changelog'
+import { checklistMarkdown } from '../../lib/checklist'
+import { FEEDBACK_CAUSE_RULES } from '../../lib/feedbackCauses'
+import {
+  FEEDBACK_FEATURE_OPTIONS,
+  inferFeedbackTag,
+  type FeedbackTag,
+} from '../../lib/feedbackFeatures'
 import { Button, IconButton } from '../ui/Button'
 import { Input, SegmentedControl } from '../ui/Controls'
 import { FeedbackAnnotator } from './FeedbackAnnotator'
@@ -86,6 +93,12 @@ interface EditorState {
   references: FeedbackReference[]
   annotatedShot?: string | null
   textSnippet?: string
+  featureId?: string
+  featureName?: string
+  causeId?: string
+  causeTitle?: string
+  /** 用户手动改过根因：保存时不再用文字规则覆盖。 */
+  causeEdited?: boolean
 }
 
 interface VerifyState {
@@ -255,6 +268,7 @@ function FeedbackEditor({
   onDelete,
   onAnnotate,
   onReferencesChange,
+  onTagChange,
 }: {
   editor: EditorState
   saving: boolean
@@ -269,11 +283,13 @@ function FeedbackEditor({
   onDelete?: () => void
   onAnnotate: () => void
   onReferencesChange: (references: FeedbackReference[]) => void
+  onTagChange: (featureId?: string, causeId?: string) => void
 }) {
   const [text, setText] = useState(editor.text)
   const [type, setType] = useState<FeedbackType>(editor.type)
   const [priority, setPriority] = useState<FeedbackPriority>(editor.priority)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+  const [tagOpen, setTagOpen] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
   const textRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -388,6 +404,90 @@ function FeedbackEditor({
             {editor.mode === 'new' ? elementLabel(editor.element, editor.kind) : '编辑反馈'}
           </span>
         </div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setTagOpen((open) => !open)}
+            className={cn(
+              'inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[11.5px] transition-colors',
+              editor.featureId
+                ? 'border-border-strong bg-[var(--t-bg-subtle)] text-text'
+                : 'border-dashed border-border text-muted hover:text-text',
+            )}
+            aria-expanded={tagOpen}
+            aria-label="更改功能标签"
+          >
+            功能：{editor.featureName ?? '未归类'}
+          </button>
+          {editor.causeId ? (
+            <span className="inline-flex h-6 items-center gap-1 rounded-full bg-[#F97316]/12 px-2 text-[11.5px] text-[#F97316]">
+              根因建议 {editor.causeId}
+              <button
+                type="button"
+                aria-label="清除根因建议"
+                title={editor.causeTitle}
+                onClick={() => onTagChange(editor.featureId, undefined)}
+                className="rounded-full hover:bg-[#F97316]/20"
+              >
+                <X size={10} />
+              </button>
+            </span>
+          ) : null}
+          <span className="text-[10.5px] text-muted">按元素自动推断，可修改</span>
+        </div>
+        {tagOpen && (
+          <div className="mt-1.5 max-h-36 space-y-1.5 overflow-y-auto rounded-lg border border-border bg-[var(--t-bg-subtle)] p-1.5">
+            <div className="flex flex-wrap gap-1">
+              {FEEDBACK_FEATURE_OPTIONS.map((feature) => (
+                <button
+                  key={feature.id}
+                  type="button"
+                  onClick={() => onTagChange(feature.id, editor.causeId)}
+                  aria-pressed={editor.featureId === feature.id}
+                  className={cn(
+                    'rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                    editor.featureId === feature.id
+                      ? 'border-border-strong bg-[var(--t-bg-active)] text-text'
+                      : 'border-border bg-surface text-text-soft hover:text-text',
+                  )}
+                >
+                  {feature.title}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1 border-t border-border pt-1.5">
+              <button
+                type="button"
+                onClick={() => onTagChange(editor.featureId, undefined)}
+                className={cn(
+                  'rounded-full border px-2 py-0.5 text-[11px]',
+                  !editor.causeId
+                    ? 'border-border-strong bg-[var(--t-bg-active)] text-text'
+                    : 'border-border bg-surface text-text-soft',
+                )}
+              >
+                无根因
+              </button>
+              {FEEDBACK_CAUSE_RULES.map((rule) => (
+                <button
+                  key={rule.id}
+                  type="button"
+                  onClick={() => onTagChange(editor.featureId, rule.id)}
+                  title={rule.title}
+                  aria-pressed={editor.causeId === rule.id}
+                  className={cn(
+                    'rounded-full border px-2 py-0.5 text-[11px]',
+                    editor.causeId === rule.id
+                      ? 'border-border-strong bg-[var(--bg-active)] text-text'
+                      : 'border-border bg-surface text-text-soft hover:text-text',
+                  )}
+                >
+                  {rule.id}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <textarea
           ref={textRef}
           value={text}
@@ -523,6 +623,7 @@ export function FeedbackMode() {
   const active = useFeedbackStore((s) => s.active)
   const items = useFeedbackStore((s) => s.items)
   const receipt = useFeedbackStore((s) => s.receipt)
+  const pendingFeature = useFeedbackStore((s) => s.pendingFeature)
   const exit = useFeedbackStore((s) => s.exit)
   const [selectMode, setSelectMode] = useState<FeedbackSelectMode>('element')
   const [hover, setHover] = useState<{ rect: FeedbackRect; label: string } | null>(null)
@@ -723,6 +824,16 @@ export function FeedbackMode() {
         if (!useFeedbackStore.getState().active) return
         lastHoverRef.current = null
         setHover(null)
+        const pending = useFeedbackStore.getState().pendingFeature
+        const inferred = inferFeedbackTag({
+          element: picked,
+          component: reactComponentName(picked),
+          selector: cssSelectorFor(picked),
+          route,
+          textSnippet: visibleTextSnippet(picked),
+        })
+        const featureId = pending?.featureId ?? inferred?.featureId
+        const featureName = pending?.featureName ?? inferred?.featureName
         setEditor({
           mode: 'new',
           kind: 'element',
@@ -734,6 +845,10 @@ export function FeedbackMode() {
           references: [],
           elementShot,
           pageShot,
+          featureId,
+          featureName,
+          causeId: inferred?.causeId,
+          causeTitle: inferred?.causeTitle,
         })
       } finally {
         capturingRef.current = false
@@ -755,6 +870,15 @@ export function FeedbackMode() {
           rect.x + rect.width / 2,
           rect.y + rect.height / 2,
         ).find((element) => !isUiTarget(element) && element !== document.documentElement)
+        const pending = useFeedbackStore.getState().pendingFeature
+        const textSnippet = center ? visibleTextSnippet(center) : ''
+        const inferred = inferFeedbackTag({
+          element: center,
+          component: center ? reactComponentName(center) : undefined,
+          selector: center ? cssSelectorFor(center) : undefined,
+          route,
+          textSnippet,
+        })
         setEditor({
           mode: 'new',
           kind: 'region',
@@ -766,7 +890,11 @@ export function FeedbackMode() {
           references: [],
           elementShot: regionShot,
           pageShot,
-          textSnippet: center ? visibleTextSnippet(center) : '',
+          textSnippet,
+          featureId: pending?.featureId ?? inferred?.featureId,
+          featureName: pending?.featureName ?? inferred?.featureName,
+          causeId: inferred?.causeId,
+          causeTitle: inferred?.causeTitle,
         })
       } finally {
         capturingRef.current = false
@@ -992,6 +1120,10 @@ export function FeedbackMode() {
       elementShot: item.screenshot ?? null,
       references: item.references ? [...item.references] : [],
       annotatedShot: item.annotatedScreenshot ?? null,
+      featureId: item.featureId,
+      featureName: item.featureName,
+      causeId: item.causeId,
+      causeTitle: item.causeTitle,
     })
     setDrawerOpen(false)
   }
@@ -1039,6 +1171,24 @@ export function FeedbackMode() {
       const hostInfo = hostId ? app.runtimes[hostId]?.info : undefined
       const ua = navigator.userAgent
       const snapshotPrefs = prefsRef.current
+      const inferredAtSave = inferFeedbackTag({
+        element,
+        component: element ? reactComponentName(element) : undefined,
+        selector: element && current.kind !== 'region' ? cssSelectorFor(element) : undefined,
+        route,
+        text,
+        textSnippet: current.textSnippet,
+      })
+      const featureId = current.featureId ?? inferredAtSave?.featureId
+      const featureName =
+        current.featureName ??
+        (featureId
+          ? FEEDBACK_FEATURE_OPTIONS.find((feature) => feature.id === featureId)?.title ?? featureId
+          : undefined)
+      const causeId = current.causeEdited ? current.causeId : inferredAtSave?.causeId ?? current.causeId
+      const causeTitle = current.causeEdited
+        ? current.causeTitle
+        : inferredAtSave?.causeTitle ?? current.causeTitle
       const item: FeedbackItem = {
         id: newFeedbackId(),
         type,
@@ -1082,8 +1232,11 @@ export function FeedbackMode() {
         trace: getFeedbackTrace(60_000),
         snapshot: captureFeedbackSnapshot(snapshotPrefs.includeMessages, snapshotPrefs.hidePaths),
         video: pendingVideo ?? undefined,
+        ...(featureId ? { featureId, featureName: featureName ?? featureId } : {}),
+        ...(causeId ? { causeId, causeTitle } : {}),
       }
       store.upsertItem(item)
+      store.setPendingFeature(null)
       setPendingVideo(null)
       setEditor(null)
       useUiStore.getState().toast(`已记录第 ${useFeedbackStore.getState().items.length} 条反馈`, 'info')
@@ -1113,6 +1266,12 @@ export function FeedbackMode() {
       priority,
       references: references.length ? references : undefined,
       annotatedScreenshot: annotated ?? item.annotatedScreenshot,
+      ...(current.featureId
+        ? { featureId: current.featureId, featureName: current.featureName ?? current.featureId }
+        : { featureId: undefined, featureName: undefined }),
+      ...(current.causeId
+        ? { causeId: current.causeId, causeTitle: current.causeTitle }
+        : { causeId: undefined, causeTitle: undefined }),
     })
     setEditor(null)
   }
@@ -1163,6 +1322,25 @@ export function FeedbackMode() {
     const app = useAppStore.getState()
     const hostId = app.active?.hostId ?? app.activeHostId ?? undefined
     const hostInfo = hostId ? app.runtimes[hostId]?.info : undefined
+    // 按功能分组导出，便于维护者整组处理；items 顺序即分组顺序。
+    const grouped = [...store.items].sort((a, b) => {
+      const left = a.featureName ?? '未归类'
+      const right = b.featureName ?? '未归类'
+      return left === right ? a.createdAt - b.createdAt : left.localeCompare(right, 'zh-CN')
+    })
+    const groupBy = (field: 'feature' | 'cause') => {
+      const map = new Map<string, { id: string; name: string; count: number }>()
+      for (const item of grouped) {
+        const id = field === 'feature' ? item.featureId : item.causeId
+        if (!id) continue
+        const name =
+          field === 'feature' ? item.featureName ?? item.featureId ?? id : item.causeTitle ?? id
+        const current = map.get(id)
+        if (current) current.count += 1
+        else map.set(id, { id, name, count: 1 })
+      }
+      return [...map.values()].sort((a, b) => b.count - a.count || a.id.localeCompare(b.id))
+    }
     const payload = {
       version: 2,
       kind: 'feedback',
@@ -1187,7 +1365,13 @@ export function FeedbackMode() {
         sessionId: app.active?.sessionId,
       },
       snapshotPrefs: prefs,
-      items: store.items,
+      items: grouped,
+      featureGroups: groupBy('feature'),
+      causeGroups: groupBy('cause'),
+      checklistReport: {
+        markdown: checklistMarkdown(),
+        exportedAt: new Date().toISOString(),
+      },
       pageShots: store.pageShots,
       errors: getFeedbackErrors(),
     }
@@ -1539,6 +1723,19 @@ export function FeedbackMode() {
           <span className="whitespace-nowrap text-[12.5px] font-medium text-text">
             反馈模式 · 已记录 {items.length} 条
           </span>
+          {pendingFeature && (
+            <span className="flex items-center gap-1 rounded-full bg-[#F97316]/12 px-2 py-0.5 text-[11px] text-[#F97316]">
+              标记：{pendingFeature.featureName}
+              <button
+                type="button"
+                aria-label="取消功能标记"
+                onClick={() => useFeedbackStore.getState().setPendingFeature(null)}
+                className="rounded-full hover:bg-[#F97316]/20"
+              >
+                <X size={10} />
+              </button>
+            </span>
+          )}
           <span className="h-4 w-px bg-border" />
           <SegmentedControl
             size="sm"
@@ -1660,6 +1857,25 @@ export function FeedbackMode() {
           onAnnotate={annotateEditorShot}
           onReferencesChange={(references) =>
             setEditor((current) => (current ? { ...current, references } : current))
+          }
+          onTagChange={(featureId, causeId) =>
+            setEditor((current) =>
+              current
+                ? {
+                    ...current,
+                    featureId,
+                    featureName: featureId
+                      ? FEEDBACK_FEATURE_OPTIONS.find((feature) => feature.id === featureId)?.title ??
+                        featureId
+                      : undefined,
+                    causeId,
+                    causeTitle: causeId
+                      ? FEEDBACK_CAUSE_RULES.find((rule) => rule.id === causeId)?.title
+                      : undefined,
+                    causeEdited: true,
+                  }
+                : current,
+            )
           }
         />
       )}

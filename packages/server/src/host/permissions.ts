@@ -240,6 +240,7 @@ export function askPermission(host: Host, rec: SessionRecord,
     description: describeTool(toolName, input),
     ...(learned ? { learned } : {}),
     ...(sandboxNotice ? { sandbox: sandboxNotice } : {}),
+    ...(rec.demo ? { demo: true } : {}),
     ...(rec.parentId
       ? { depth: rec.depth ?? 1, sourceTitle: rec.title }
       : {}),

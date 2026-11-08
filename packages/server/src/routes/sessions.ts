@@ -234,6 +234,11 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
     const { id } = req.params as { id: string };
     try {
       const patch = (req.body ?? {}) as Partial<UpdateSessionInput>;
+      const existing = host.store.get(id);
+      if (!existing) return bad(reply, '会话不存在', 404);
+      if (existing.demo && typeof patch.cwd === 'string' && !host.demo.isDemoPath(patch.cwd)) {
+        return bad(reply, '演示会话只能使用演示仓库目录');
+      }
       const rec = host.updateSession(id, patch);
       if (!rec) return bad(reply, '会话不存在', 404);
       if (typeof patch.cwd === 'string') await host.refreshEnv(id);

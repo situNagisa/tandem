@@ -21,6 +21,16 @@ export class Inbox {
     return this.seq;
   }
 
+  /** 清除演示工作区产生的事件与未处理审批；返回移除条数。 */
+  removeDemo(): number {
+    const before = this.events.length + this.pending.size;
+    this.events = this.events.filter((event) => !event.demo);
+    for (const [id, event] of [...this.pending]) {
+      if (event.demo) this.pending.delete(id);
+    }
+    return before - (this.events.length + this.pending.size);
+  }
+
   private push(input: Omit<InboxEvent, 'seq' | 'at'> & { at?: number }): InboxEvent {
     this.seq += 1;
     const event: InboxEvent = { ...input, seq: this.seq, at: input.at ?? Date.now() };
@@ -39,6 +49,7 @@ export class Inbox {
       sessionTitle,
       ...(request.depth ? { depth: request.depth } : {}),
       ...(request.sourceTitle ? { sourceTitle: request.sourceTitle } : {}),
+      ...(request.demo ? { demo: true } : {}),
       permission: request,
       requestId: request.id,
       ...(isPlan ? { plan: true } : {}),

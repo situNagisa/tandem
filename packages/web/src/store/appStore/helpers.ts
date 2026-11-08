@@ -96,6 +96,8 @@ export function summaryOf(s: Session): SessionSummary {
     ...(s.handoff ? { handoff: s.handoff } : {}),
     ...(s.quota ? { quota: s.quota } : {}),
     ...(typeof s.secretsCount === 'number' ? { secretsCount: s.secretsCount } : {}),
+    ...(s.demo ? { demo: true as const } : {}),
+    ...(s.demoScenario ? { demoScenario: s.demoScenario } : {}),
   }
 }
 

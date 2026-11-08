@@ -239,6 +239,24 @@ export class AiReviewManager {
     return run && run.sessionId === sessionId ? snapshot(run) : undefined;
   }
 
+  /** 演示工作区：写入一份已完成的评审结果，不调用模型。 */
+  seedDemoRun(run: AiReviewRun): void {
+    this.runs.set(run.id, run);
+    this.latest.set(run.sessionId, run.id);
+    this.prune();
+  }
+
+  /** 演示清理：移除指定评审。 */
+  removeDemoRuns(ids: string[]): void {
+    for (const id of ids) {
+      const run = this.runs.get(id);
+      if (!run) continue;
+      this.runs.delete(id);
+      if (this.latest.get(run.sessionId) === id) this.latest.delete(run.sessionId);
+      if (this.active.get(run.sessionId) === id) this.active.delete(run.sessionId);
+    }
+  }
+
   /**
    * 立即返回 running 状态，评审在后台子会话里完成；同一会话同时只跑一个。
    * base 指定时评审 base..HEAD 的已提交 diff（看板卡片分支），否则评审工作区改动。

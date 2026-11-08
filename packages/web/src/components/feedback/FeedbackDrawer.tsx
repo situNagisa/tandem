@@ -312,6 +312,22 @@ export function FeedbackDrawer({
                     {item.mode === 'region' && (
                       <span className="rounded bg-surface-2 px-1 py-0.5 text-[9.5px] text-muted">框选</span>
                     )}
+                    {item.featureName && (
+                      <span
+                        className="rounded bg-[#F97316]/12 px-1 py-0.5 text-[9.5px] text-[#F97316]"
+                        title={`功能：${item.featureName}`}
+                      >
+                        {item.featureName}
+                      </span>
+                    )}
+                    {item.causeId && (
+                      <span
+                        className="rounded bg-surface-2 px-1 py-0.5 text-[9.5px] text-text-soft"
+                        title={item.causeTitle ?? '根因建议'}
+                      >
+                        {item.causeId}
+                      </span>
+                    )}
                     {item.trace?.length ? (
                       <span className="rounded bg-surface-2 px-1 py-0.5 text-[9.5px] text-muted">轨迹 {item.trace.length}</span>
                     ) : null}

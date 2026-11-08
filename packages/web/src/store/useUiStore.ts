@@ -71,6 +71,10 @@ interface UiState {
   tourOpen: boolean
   aboutOpen: boolean
   onboardingOpen: boolean
+  /** 演示工作区弹层（设置-关于/命令面板打开）。 */
+  demoOpen: boolean
+  /** 体验清单弹层。 */
+  checklistOpen: boolean
   newSessionOpen: boolean
   searchOpen: boolean
   notifications: boolean
@@ -151,6 +155,8 @@ interface UiState {
   setTourOpen: (open: boolean) => void
   setAboutOpen: (open: boolean) => void
   setOnboardingOpen: (open: boolean) => void
+  setDemoOpen: (open: boolean) => void
+  setChecklistOpen: (open: boolean) => void
   setNewSessionOpen: (open: boolean) => void
   setSearchOpen: (open: boolean) => void
   setNotifications: (enabled: boolean) => void
@@ -283,6 +289,8 @@ export const useUiStore = create<UiState>((set, get) => {
   tourOpen: false,
   aboutOpen: false,
   onboardingOpen: false,
+  demoOpen: false,
+  checklistOpen: false,
   newSessionOpen: false,
   searchOpen: false,
   notifications: prefs.notifications ?? true,
@@ -420,6 +428,8 @@ export const useUiStore = create<UiState>((set, get) => {
     set(open ? { aboutOpen: true, settingsOpen: false, mobileSidebar: false } : { aboutOpen: false }),
   setOnboardingOpen: (open) =>
     set(open ? { onboardingOpen: true, aboutOpen: false } : { onboardingOpen: false }),
+  setDemoOpen: (open) => set({ demoOpen: open, aboutOpen: false, mobileSidebar: false }),
+  setChecklistOpen: (open) => set({ checklistOpen: open, aboutOpen: false, mobileSidebar: false }),
   openBackgroundTasks: (hostId, sessionId, taskId) =>
     set({ backgroundPanel: { hostId, sessionId, ...(taskId ? { taskId } : {}) } }),
   closeBackgroundTasks: () => set({ backgroundPanel: null }),

@@ -81,7 +81,10 @@ export function registerProfileRoutes(app: FastifyInstance, deps: RouteDeps): vo
   const { host } = deps;
 
   app.get('/api/profiles', async (req) => {
-    const list = host.profiles.list().map((p) => host.profiles.toPublic(p));
+    const list = host.profiles
+      .list()
+      .filter((profile) => profile.kind !== 'demo')
+      .map((p) => host.profiles.toPublic(p));
     return principalOf(req).kind === 'owner' ? list : sanitizeProfilesForMember(list);
   });
 

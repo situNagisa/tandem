@@ -20,6 +20,7 @@ interface AiReviewEntry {
 interface AiReviewStore {
   byKey: Record<string, AiReviewEntry>
   start: (host: HostConfig, sessionId: string, paths?: string[]) => Promise<AiReviewRun | undefined>
+  loadLatest: (host: HostConfig, sessionId: string) => Promise<void>
   setStatus: (hostId: string, sessionId: string, findingId: string, action: AiReviewAction) => void
   markFalsePositive: (
     host: HostConfig,
@@ -71,6 +72,23 @@ export const useAiReviewStore = create<AiReviewStore>((set, get) => {
 
   return {
     byKey: {},
+    loadLatest: async (host, sessionId) => {
+      const key = aiReviewKey(host.id, sessionId)
+      const entry = get().byKey[key]
+      if (entry?.review || entry?.starting) return
+      patch(set, key, { starting: true })
+      try {
+        const { review } = await api.aiReviewLatest(host, sessionId)
+        patch(set, key, { review, starting: false })
+        if (review?.status === 'running') poll(host, sessionId, key, review)
+      } catch (err) {
+        patch(set, key, {
+          starting: false,
+          error: err instanceof Error ? err.message : '读取 AI 评审失败',
+        })
+      }
+    },
+
     start: async (host, sessionId, paths) => {
       const key = aiReviewKey(host.id, sessionId)
       stopPoll(key)

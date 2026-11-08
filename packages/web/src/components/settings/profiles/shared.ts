@@ -20,6 +20,7 @@ export const GROUP_KIND_LABELS: Record<ProviderKind, string> = {
   'openai-compatible': 'OpenAI 兼容',
   gemini: 'Gemini',
   'tandem-gateway': 'Tandem 网关',
+  demo: '演示模型',
 }
 
 export type Step = 1 | 2 | 3

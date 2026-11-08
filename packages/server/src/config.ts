@@ -147,6 +147,8 @@ export function maskApiKey(key: string): string {
 }
 
 const KINDS: ProviderKind[] = ['anthropic', 'openai', 'openai-compatible', 'gemini', 'tandem-gateway'];
+/** 持久化层允许 demo（内置演示账号），但设置页/API 不允许用户自建。 */
+const STORED_KINDS: ProviderKind[] = [...KINDS, 'demo'];
 
 export class ProfileStore {
   private file: string;
@@ -156,7 +158,7 @@ export class ProfileStore {
     this.file = path.join(home, 'profiles.json');
     const data = readJson<{ profiles?: StoredProfile[] }>(this.file);
     for (const p of data?.profiles ?? []) {
-      if (p && typeof p.id === 'string' && KINDS.includes(p.kind)) {
+      if (p && typeof p.id === 'string' && STORED_KINDS.includes(p.kind)) {
         const profile: StoredProfile = {
           ...p,
           apiKey: p.apiKey ?? '',
@@ -191,7 +193,7 @@ export class ProfileStore {
     const profile: StoredProfile = {
       id: randomUUID(),
       name: String(input.name ?? '').trim() || '未命名账号',
-      kind: KINDS.includes(input.kind) ? input.kind : 'openai-compatible',
+      kind: STORED_KINDS.includes(input.kind) ? input.kind : 'openai-compatible',
       baseUrl: normalizeBaseUrl(input.baseUrl),
       apiKey: String(input.apiKey ?? ''),
       models: normalizeModels(input.models),
@@ -216,7 +218,7 @@ export class ProfileStore {
     const next: StoredProfile = {
       ...current,
       name: input.name !== undefined ? String(input.name).trim() || current.name : current.name,
-      kind: input.kind && KINDS.includes(input.kind) ? input.kind : current.kind,
+      kind: input.kind && STORED_KINDS.includes(input.kind) ? input.kind : current.kind,
       baseUrl: input.baseUrl !== undefined ? normalizeBaseUrl(input.baseUrl) : current.baseUrl,
       models,
       defaultModel: input.defaultModel || current.defaultModel || models[0] || '',

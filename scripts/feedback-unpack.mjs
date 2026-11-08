@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// 解包 Tandem 反馈 JSON：截图/标注/参考图/录屏落地，轨迹与快照写成独立文件，并生成 feedback.md。
+// 解包 Tandem 反馈 JSON：截图/标注/参考图/录屏落地，轨迹与快照写成独立文件，
+// 生成按功能分组的 feedback.md、by-feature/<功能>.md 与 by-cause/<编号>.md。
 // 用法：node scripts/feedback-unpack.mjs <file.json> [outDir]
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
@@ -15,10 +16,11 @@ if (!existsSync(file)) {
   console.error(`文件不存在: ${file}`)
   process.exit(1)
 }
-const outDir = path.resolve(
-  process.argv[3] ?? `${file.replace(/\.json$/i, '')}-unpacked`,
-)
+const outDir = path.resolve(process.argv[3] ?? `${file.replace(/\.json$/i, '')}-unpacked`)
 mkdirSync(outDir, { recursive: true })
+// 重复解包到同一目录时清掉旧的按功能/根因分组，避免残留已删除的条目。
+rmSync(path.join(outDir, 'by-feature'), { recursive: true, force: true })
+rmSync(path.join(outDir, 'by-cause'), { recursive: true, force: true })
 
 let data
 try {
@@ -98,37 +100,67 @@ function traceClock(value) {
   return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`
 }
 
+function safeName(value, fallback) {
+  const name = String(value ?? '')
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60)
+  return name || fallback
+}
+
 const items = Array.isArray(data.items) ? data.items : []
 const pageShots = Array.isArray(data.pageShots) ? data.pageShots : []
 const errors = Array.isArray(data.errors) ? data.errors : []
 const receipt = data.receipt && Array.isArray(data.receipt.items) ? data.receipt : null
 const receiptMap = new Map(receipt ? receipt.items.map((entry) => [entry.id, entry]) : [])
 const isVerification = data.kind === 'verification'
-const lines = []
+const headerLines = []
+const itemSections = []
+const featureGroups = new Map()
+const causeGroups = new Map()
+const checklistReport =
+  data.checklistReport && typeof data.checklistReport.markdown === 'string'
+    ? data.checklistReport
+    : null
+let fileCount = 0
 
-lines.push(isVerification ? '# Tandem 复验结果' : '# Tandem 反馈包', '')
+function groupInto(map, id, name, section) {
+  if (!id) return
+  const key = `${id}\u0000${name ?? id}`
+  const entry = map.get(key) ?? { id, name: name ?? id, count: 0, sections: [] }
+  entry.count += 1
+  entry.sections.push(section)
+  map.set(key, entry)
+}
+
+function prefixLinks(text) {
+  return text.replace(/`(\d{2}-[^`]+)`/g, '`../$1`')
+}
+
+headerLines.push(isVerification ? '# Tandem 复验结果' : '# Tandem 反馈包', '')
 const env = data.env ?? {}
 const app = data.app ?? {}
-lines.push(`- 导出时间：${data.exportedAt ?? '未知'}`)
-lines.push(`- 应用：${app.name ?? 'Tandem'} ${app.version ?? ''}`.trim())
-lines.push(`- 文件版本：v${data.version ?? 1}${data.kind ? `（${data.kind}）` : ''}`)
+headerLines.push(`- 导出时间：${data.exportedAt ?? '未知'}`)
+headerLines.push(`- 应用：${app.name ?? 'Tandem'} ${app.version ?? ''}`.trim())
+headerLines.push(`- 文件版本：v${data.version ?? 1}${data.kind ? `（${data.kind}）` : ''}`)
 if (isVerification && data.sourceReceiptFile) {
-  lines.push(`- 来源回执：\`${data.sourceReceiptFile}\``)
+  headerLines.push(`- 来源回执：\`${data.sourceReceiptFile}\``)
 }
 if (!env.route && items[0]?.route) env.route = items[0].route
-if (env.route) lines.push(`- 路由：\`${env.route}\``)
+if (env.route) headerLines.push(`- 路由：\`${env.route}\``)
 if (env.viewport) {
-  lines.push(`- 视口：${env.viewport.width}×${env.viewport.height} @${env.dpr ?? 1}x`)
+  headerLines.push(`- 视口：${env.viewport.width}×${env.viewport.height} @${env.dpr ?? 1}x`)
 }
-if (env.theme) lines.push(`- 主题：${env.theme === 'dark' ? '深色' : '浅色'}`)
-if (env.platform) lines.push(`- 平台：${env.platform}`)
+if (env.theme) headerLines.push(`- 主题：${env.theme === 'dark' ? '深色' : '浅色'}`)
+if (env.platform) headerLines.push(`- 平台：${env.platform}`)
 if (env.hostName || env.hostPlatform || env.hostVersion) {
-  lines.push(
+  headerLines.push(
     `- Host：${env.hostName ?? ''} ${env.hostPlatform ?? ''} ${env.hostVersion ?? ''}`.trim(),
   )
 }
-if (env.sessionId) lines.push(`- 会话：${env.sessionId}`)
-lines.push(`- 条目：${items.length} 条`, '')
+if (env.sessionId) headerLines.push(`- 会话：${env.sessionId}`)
+headerLines.push(`- 条目：${items.length} 条`, '')
 
 const pageFileMap = new Map()
 pageShots.forEach((shot, index) => {
@@ -137,14 +169,17 @@ pageShots.forEach((shot, index) => {
   if (written) pageFileMap.set(shot, name)
 })
 
-let fileCount = 0
 items.forEach((item, index) => {
   const number = pad2(index + 1)
   const type = TYPE_LABELS[item.type] ?? item.type ?? '未分类'
-  lines.push(`## ${number}. ${type}${item.priority ? ` · ${item.priority}` : ''}`, '')
+  const featureName = item.featureName || (item.featureId ? item.featureId : '未分类')
+  const causeName = item.causeTitle || (item.causeId ? item.causeId : '')
+  const lines = [`### ${number}. ${type}${item.priority ? ` · ${item.priority}` : ''}`, '']
   lines.push(`- 文字：${quoteBlock(item.text)}`)
   lines.push(`- 类型：${type}`)
   if (item.priority) lines.push(`- 优先级：${item.priority}`)
+  lines.push(`- 功能：${featureName}`)
+  if (item.causeId) lines.push(`- 根因建议：${item.causeId}${causeName ? ` · ${causeName}` : ''}`)
   if (item.mode === 'region') lines.push('- 选择方式：框选区域')
   if (item.component) lines.push(`- 组件：\`${item.component}\``)
   if (item.selector) lines.push(`- 选择器：\`${String(item.selector).replace(/`/g, "'")}\``)
@@ -203,9 +238,7 @@ items.forEach((item, index) => {
       fileCount += 1
       const seconds = video.durationMs ? Math.round(video.durationMs / 1000) : null
       const size = video.sizeBytes ? `${(video.sizeBytes / 1024 / 1024).toFixed(1)}MB` : null
-      lines.push(
-        `- 录屏：\`${name}\`${seconds ? `（约 ${seconds} 秒）` : ''}${size ? ` ${size}` : ''}`,
-      )
+      lines.push(`- 录屏：\`${name}\`${seconds ? `（约 ${seconds} 秒）` : ''}${size ? ` ${size}` : ''}`)
     }
   }
 
@@ -253,9 +286,7 @@ items.forEach((item, index) => {
 
   const receiptItem = receiptMap.get(item.id)
   if (receiptItem) {
-    lines.push(
-      `- 回执状态：${STATUS_LABELS[receiptItem.status] ?? receiptItem.status ?? '未知'}`,
-    )
+    lines.push(`- 回执状态：${STATUS_LABELS[receiptItem.status] ?? receiptItem.status ?? '未知'}`)
     if (receiptItem.note) lines.push(`  - 说明：${quoteBlock(receiptItem.note)}`)
     if (receiptItem.verification) {
       lines.push(
@@ -277,53 +308,129 @@ items.forEach((item, index) => {
       }`,
     )
   }
-
   if (item.createdAt) lines.push(`- 记录时间：${formatTime(item.createdAt)}`)
   lines.push('')
+
+  const section = lines.join('\n')
+  itemSections.push({ featureName, section })
+  groupInto(featureGroups, item.featureId ?? featureName, featureName, section)
+  if (item.causeId) groupInto(causeGroups, item.causeId, item.causeTitle || item.causeId, section)
 })
 
+// 本包命中的根因：出现次数 ≥2 标「复发」。
+const causeSummary = [...causeGroups.values()].sort(
+  (a, b) => b.count - a.count || a.id.localeCompare(b.id),
+)
+const causeLines = []
+if (causeSummary.length > 0) {
+  causeLines.push('## 本包命中的已知根因', '')
+  for (const cause of causeSummary) {
+    causeLines.push(
+      `- ${cause.id}${cause.name && cause.name !== cause.id ? ` ${cause.name}` : ''} · ${cause.count} 次${cause.count >= 2 ? ' · **复发**' : ''}`,
+    )
+  }
+  causeLines.push('')
+}
+
+const featureSummary = [...featureGroups.values()].sort((a, b) =>
+  a.name.localeCompare(b.name, 'zh-CN'),
+)
+const bodyLines = []
+for (const group of featureSummary) {
+  bodyLines.push(`## 功能：${group.name}（${group.count} 条）`, '')
+  for (const section of group.sections) {
+    bodyLines.push(section.replace(/^### /, '### '), '')
+  }
+}
+
 if (pageShots.length) {
-  lines.push('## 整页截图', '')
+  bodyLines.push('## 整页截图', '')
   pageShots.forEach((shot, index) => {
     const name = pageFileMap.get(shot) ?? `page-${index + 1}.png`
     const size = shot.width && shot.height ? `（${shot.width}×${shot.height}）` : ''
-    lines.push(`- 第 ${index + 1} 页${shot.route ? ` ${shot.route}` : ''}：\`${name}\`${size}`)
+    bodyLines.push(`- 第 ${index + 1} 页${shot.route ? ` ${shot.route}` : ''}：\`${name}\`${size}`)
   })
-  lines.push('')
+  bodyLines.push('')
 }
 
 if (receipt && isVerification) {
-  lines.push('## 回执复验汇总', '')
+  bodyLines.push('## 回执复验汇总', '')
   const byStatus = {}
   receipt.items.forEach((entry) => {
     const status = STATUS_LABELS[entry.status] ?? entry.status ?? '未知'
     byStatus[status] = (byStatus[status] ?? 0) + 1
   })
-  lines.push(`- ${Object.entries(byStatus).map(([status, count]) => `${status} ${count}`).join(' · ')}`)
+  bodyLines.push(`- ${Object.entries(byStatus).map(([status, count]) => `${status} ${count}`).join(' · ')}`)
   const passed = receipt.items.filter((entry) => entry.verification?.result === 'pass').length
   const failed = receipt.items.filter((entry) => entry.verification?.result === 'fail').length
-  lines.push(`- 复验通过 ${passed} 条 · 仍有问题 ${failed} 条`, '')
+  bodyLines.push(`- 复验通过 ${passed} 条 · 仍有问题 ${failed} 条`, '')
 }
 
-lines.push(`## 最近错误（${errors.length}）`, '')
+bodyLines.push(`## 最近错误（${errors.length}）`, '')
 if (errors.length === 0) {
-  lines.push('无记录。', '')
+  bodyLines.push('无记录。', '')
 } else {
   errors.forEach((error, index) => {
     const time = error.time ? new Date(error.time).toISOString() : '未知时间'
-    lines.push(`### ${index + 1}. ${error.source ?? 'error'} · ${time}`, '')
-    lines.push('```')
-    lines.push(oneLine(error.message).slice(0, 4000))
-    if (error.stack) lines.push('', oneLine(error.stack).slice(0, 4000))
-    lines.push('```', '')
+    bodyLines.push(`### ${index + 1}. ${error.source ?? 'error'} · ${time}`, '')
+    bodyLines.push('```')
+    bodyLines.push(oneLine(error.message).slice(0, 4000))
+    if (error.stack) bodyLines.push('', oneLine(error.stack).slice(0, 4000))
+    bodyLines.push('```', '')
   })
 }
 
+const lines = [...headerLines, ...causeLines, ...bodyLines]
 const mdPath = path.join(outDir, 'feedback.md')
 writeFileSync(mdPath, `${lines.join('\n')}\n`, 'utf8')
+
+// by-feature/<功能>.md
+const featureDir = path.join(outDir, 'by-feature')
+mkdirSync(featureDir, { recursive: true })
+const featureFiles = []
+for (const group of featureSummary) {
+  const name = `${safeName(group.name, '未归类')}.md`
+  const content = [
+    `# 功能：${group.name}`,
+    '',
+    `- 条目：${group.count} 条`,
+    `- 汇总：\`../feedback.md\`；附件在上级目录。`,
+    '',
+    ...group.sections.map((section) => `${prefixLinks(section)}`),
+  ].join('\n')
+  writeFileSync(path.join(featureDir, name), `${content}\n`, 'utf8')
+  featureFiles.push({ name, count: group.count })
+}
+
+// by-cause/<编号>.md
+const causeDir = path.join(outDir, 'by-cause')
+mkdirSync(causeDir, { recursive: true })
+const causeFiles = []
+for (const cause of causeSummary) {
+  const name = `${safeName(cause.id, '未归类')}.md`
+  const content = [
+    `# 根因：${cause.id}${cause.name && cause.name !== cause.id ? ` ${cause.name}` : ''}`,
+    '',
+    `- 条目：${cause.count} 条${cause.count >= 2 ? ' · **复发**' : ''}`,
+    `- 汇总：\`../feedback.md\`；附件在上级目录。`,
+    '',
+    ...cause.sections.map((section) => `${prefixLinks(section)}`),
+  ].join('\n')
+  writeFileSync(path.join(causeDir, name), `${content}\n`, 'utf8')
+  causeFiles.push({ name, count: cause.count, id: cause.id })
+}
+
+if (checklistReport) {
+  writeFileSync(path.join(outDir, '体验清单.md'), checklistReport.markdown, 'utf8')
+}
 
 console.log(
   `已解包 ${items.length} 条反馈、${pageShots.length} 张整页截图、${fileCount} 个附件 → ${outDir}`,
 )
 console.log(`  索引 ${mdPath}`)
+for (const feature of featureFiles) console.log(`  功能 ${feature.name}（${feature.count} 条）`)
+for (const cause of causeFiles) {
+  console.log(`  根因 ${cause.id}（${cause.count} 条${cause.count >= 2 ? '，复发' : ''}）`)
+}
+if (checklistReport) console.log('  体验清单：体验清单.md')
 if (isVerification) console.log('  类型：复验结果')
