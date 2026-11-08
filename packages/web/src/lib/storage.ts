@@ -97,6 +97,8 @@ export interface UiPrefs {
   sidebarWidth?: number
   changesWidth?: number
   filePreviewWidth?: number
+  /** 应用预览侧面板宽度。 */
+  previewWidth?: number
   collapsedProjects?: string[]
   notifications?: boolean
   /** App 内本地通知（安卓本地通知，不经推送服务）。 */

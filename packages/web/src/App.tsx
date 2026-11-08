@@ -67,6 +67,7 @@ export default function App() {
   const changesOpen = useUiStore((s) => s.changesOpen)
   const setChangesOpen = useUiStore((s) => s.setChangesOpen)
   const filePreview = useUiStore((s) => s.filePreview)
+  const previewPanel = useUiStore((s) => s.previewPanel)
   const closeFilePreview = useUiStore((s) => s.closeFilePreview)
   const theme = useUiStore((s) => s.theme)
   const mobileSidebar = useUiStore((s) => s.mobileSidebar)
@@ -412,9 +413,14 @@ export default function App() {
               <ChangeReviewPanel onClose={() => setChangesOpen(false)} />
             </div>
           )}
-          {!isMobile && !filePreview && panelOpen && !changesOpen && hasSession && (
+          {!isMobile && !filePreview && panelOpen && !changesOpen && !previewPanel && hasSession && (
             <div className="anim-fade-in shrink-0">
               <RightPanel onClose={() => setPanelOpen(false)} />
+            </div>
+          )}
+          {!isMobile && previewPanel && hasSession && (
+            <div className="anim-fade-in flex min-h-0 shrink-0">
+              <PreviewPanel />
             </div>
           )}
         </main>
@@ -484,7 +490,7 @@ export default function App() {
       <WikiDialog />
       <BackgroundTasksPanel />
       <BrowserPanel />
-      <PreviewPanel />
+      {isMobile ? <PreviewPanel /> : null}
       <InboxDialog />
       <DispatchDialogHost />
       <DoctorDialog />

@@ -1,9 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ArrowRightLeft,
   BellRing,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   FlaskConical,
   GitPullRequest,
   Inbox,
@@ -126,6 +128,139 @@ function permissionPreview(event: InboxEvent): string | undefined {
   return undefined
 }
 
+interface HistoryGroup {
+  key: string
+  hostId: string
+  sessionId?: string
+  sessionTitle?: string
+  /** 同一回合内的审批流水（不含回合结束事件本身）。 */
+  children: InboxEvent[]
+  turnEnd?: InboxEvent
+  /** 预算、看板、CI 等独立事件。 */
+  single?: InboxEvent
+  at: number
+  kind: 'turn' | 'event'
+}
+
+/**
+ * 最近列表按回合聚合：同一会话两次「回合结束」之间的审批流水合并成一条，
+ * 回合结束本身作为标题；预算/看板/CI 等仍单列。
+ */
+function groupHistory(
+  hosts: Array<{ id: string }>,
+  inbox: Record<string, { events: InboxEvent[]; pending: InboxEvent[] } | undefined>,
+): HistoryGroup[] {
+  const groups: HistoryGroup[] = []
+  for (const host of hosts) {
+    const entry = inbox[host.id]
+    if (!entry) continue
+    const pendingIds = new Set(entry.pending.map((event) => event.requestId).filter(Boolean))
+    const events = entry.events
+      .filter((event) => !(event.kind === 'permission' && event.requestId && pendingIds.has(event.requestId)))
+      .slice()
+      .sort((a, b) => a.seq - b.seq)
+    const buffers = new Map<string, InboxEvent[]>()
+    for (const event of events) {
+      if (event.kind === 'permission' || event.kind === 'permission_resolved') {
+        const key = event.sessionId ?? ''
+        buffers.set(key, [...(buffers.get(key) ?? []), event])
+        continue
+      }
+      if (event.kind === 'turn_end') {
+        const key = event.sessionId ?? ''
+        const children = buffers.get(key) ?? []
+        buffers.delete(key)
+        groups.push({
+          key: `${host.id}:turn:${event.seq}`,
+          hostId: host.id,
+          sessionId: event.sessionId,
+          sessionTitle: event.sessionTitle,
+          children,
+          turnEnd: event,
+          at: event.at,
+          kind: 'turn',
+        })
+        continue
+      }
+      groups.push({
+        key: `${host.id}:event:${event.seq}`,
+        hostId: host.id,
+        sessionId: event.sessionId ?? event.budgetSessionId,
+        sessionTitle: event.sessionTitle ?? event.budgetSessionTitle,
+        children: [],
+        single: event,
+        at: event.at,
+        kind: 'event',
+      })
+    }
+    // 还没有回合结束的审批流水：仍聚成一条，避免逐条刷屏。
+    for (const [sessionId, children] of buffers) {
+      const last = children.at(-1)
+      if (!last) continue
+      groups.push({
+        key: `${host.id}:open:${sessionId}:${last.seq}`,
+        hostId: host.id,
+        ...(sessionId ? { sessionId } : {}),
+        sessionTitle: last.sessionTitle,
+        children,
+        at: last.at,
+        kind: 'turn',
+      })
+    }
+  }
+  // 回合结束/出错排最上面，其余按时间倒序；同组内审批流水默认折叠。
+  const rank = (group: HistoryGroup) => (group.turnEnd ? 0 : group.kind === 'turn' ? 1 : 2)
+  return groups.sort((a, b) => rank(a) - rank(b) || b.at - a.at)
+}
+
+function toolPhrase(toolName: string, count: number): string {
+  switch (toolName) {
+    case 'Bash':
+      return `运行了 ${count} 条命令`
+    case 'Edit':
+      return `编辑了 ${count} 个文件`
+    case 'Write':
+      return `新建了 ${count} 个文件`
+    case 'Read':
+      return `读取了 ${count} 个文件`
+    case 'WebFetch':
+    case 'WebSearch':
+      return `联网查询 ${count} 次`
+    default:
+      return `${toolName} ${count} 次`
+  }
+}
+
+function groupSummary(group: HistoryGroup): { title: string; body?: string } {
+  if (group.single) return eventSummary(group.single)
+  const end = group.turnEnd
+  const base = end
+    ? end.turnReason === 'error'
+      ? '回合出错'
+      : end.turnReason === 'interrupted'
+        ? '回合已停止'
+        : '回合完成'
+    : '回合进行中'
+  const counts = new Map<string, { allowed: number; denied: number }>()
+  for (const event of group.children) {
+    if (event.kind !== 'permission_resolved') continue
+    const tool = event.permission?.toolName ?? '审批'
+    const current = counts.get(tool) ?? { allowed: 0, denied: 0 }
+    if (event.decision === 'deny') current.denied += 1
+    else current.allowed += 1
+    counts.set(tool, current)
+  }
+  const parts: string[] = []
+  for (const [tool, { allowed, denied }] of counts) {
+    if (allowed) parts.push(`${toolPhrase(tool, allowed)}（已允许）`)
+    if (denied) parts.push(`${toolPhrase(tool, denied)}（已拒绝）`)
+  }
+  return {
+    title: parts.length ? `${base} · ${parts.join('、')}` : base,
+    body: end?.turnReason === 'error' ? end.error ?? '执行失败' : undefined,
+  }
+}
+
 function EventIcon({ event }: { event: InboxEvent }) {
   if (event.kind === 'permission') {
     return event.plan ? <ShieldAlert size={14} /> : <BellRing size={14} />
@@ -236,50 +371,133 @@ function PendingCard({ entry }: { entry: Entry }) {
   )
 }
 
-function HistoryRow({ entry }: { entry: Entry }) {
-  const { event, hostId } = entry
-  const { title, body } = eventSummary(event)
-  const open = () => {
-    if (event.board) {
-      useUiStore.getState().setInboxOpen(false)
-      navigateBoard(hostId, event.board.boardId)
-      return
-    }
-    const sessionId = event.sessionId ?? event.budgetSessionId
-    if (!sessionId) return
+function openGroupTarget(hostId: string, group: HistoryGroup) {
+  const event = group.single
+  if (event?.board) {
     useUiStore.getState().setInboxOpen(false)
-    navigate({ kind: 'session', hostId, sessionId })
+    navigateBoard(hostId, event.board.boardId)
+    return
+  }
+  const sessionId = group.sessionId ?? event?.sessionId ?? event?.budgetSessionId
+  if (!sessionId) return
+  useUiStore.getState().setInboxOpen(false)
+  navigate({ kind: 'session', hostId, sessionId })
+}
+
+function HistoryGroupRow({
+  group,
+  expanded,
+  onToggle,
+}: {
+  group: HistoryGroup
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const { title, body } = groupSummary(group)
+  const isTurn = group.kind === 'turn'
+  const hasDetails = group.children.length > 0
+  const error = group.turnEnd?.turnReason === 'error'
+  const onRowClick = () => {
+    if (isTurn && hasDetails) onToggle()
+    else openGroupTarget(group.hostId, group)
   }
   return (
-    <button
-      type="button"
-      onClick={open}
-      className="flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--t-bg-hover)]"
-    >
-      <span
-        className={cn(
-          'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md',
-          event.kind === 'turn_end' && event.turnReason === 'error'
-            ? 'text-danger'
-            : 'text-text-tertiary',
-        )}
+    <div data-testid="inbox-history-group">
+      <button
+        type="button"
+        onClick={onRowClick}
+        aria-expanded={isTurn && hasDetails ? expanded : undefined}
+        className="flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--t-bg-hover)]"
       >
-        <EventIcon event={event} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-baseline gap-2">
-          <span className="min-w-0 truncate text-[12.5px] text-text-soft">{title}</span>
-          <span className="ml-auto shrink-0 text-[12px] text-muted">{formatRelative(event.at)}</span>
+        <span
+          className={cn(
+            'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md',
+            error ? 'text-danger' : isTurn ? 'text-text-soft' : 'text-text-tertiary',
+          )}
+        >
+          {group.turnEnd ? <EventIcon event={group.turnEnd} /> : group.single ? <EventIcon event={group.single} /> : <Check size={14} />}
         </span>
-        <span className="mt-0.5 flex min-w-0 gap-1.5 text-[12px] text-muted">
-          <span className="shrink-0">{hostNameOf(hostId)}</span>
-          <span className="truncate">{event.sessionTitle ?? event.budgetSessionTitle ?? ''}</span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span
+              className={cn(
+                'min-w-0 flex-1 truncate',
+                isTurn ? 'text-[13px] font-medium text-text' : 'text-[12.5px] text-text-soft',
+              )}
+            >
+              {title}
+            </span>
+            <span className="shrink-0 text-[12px] text-muted">{formatRelative(group.at)}</span>
+            {isTurn && hasDetails ? (
+              <ChevronDown
+                size={13}
+                className={cn('shrink-0 text-muted transition-transform', expanded && 'rotate-180')}
+              />
+            ) : null}
+          </span>
+          <span className="mt-0.5 flex min-w-0 gap-1.5 text-[12px] text-muted">
+            <span className="shrink-0">{hostNameOf(group.hostId)}</span>
+            <span className="truncate">{group.sessionTitle ?? ''}</span>
+            {isTurn && hasDetails ? (
+              <span className="shrink-0 text-text-tertiary">{expanded ? '收起明细' : `${group.children.length} 条明细`}</span>
+            ) : null}
+          </span>
+          {body && !isTurn ? (
+            <span className="mt-0.5 block truncate text-[12px] text-muted">{body}</span>
+          ) : null}
         </span>
-        {body && event.kind !== 'permission' ? (
-          <span className="mt-0.5 block truncate text-[12px] text-muted">{body}</span>
-        ) : null}
-      </span>
-    </button>
+      </button>
+      {isTurn && expanded ? (
+        <div className="mb-1 ml-8 border-l border-border pl-2" data-testid="inbox-history-details">
+          {group.children.map((event) => {
+            const detail = eventSummary(event)
+            const preview = permissionPreview(event)
+            return (
+              <div key={event.seq} className="flex items-start gap-2 px-1 py-1 text-[12px]">
+                <span className="mt-px shrink-0 text-text-tertiary">
+                  <EventIcon event={event} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline gap-2">
+                    <span className="min-w-0 truncate text-text-soft">{detail.title}</span>
+                    <span className="ml-auto shrink-0 text-muted">{formatRelative(event.at)}</span>
+                  </span>
+                  {detail.body ? (
+                    <span className="mt-0.5 block truncate text-muted">{detail.body}</span>
+                  ) : preview ? (
+                    <span className="mt-0.5 block truncate font-mono text-muted">{preview}</span>
+                  ) : null}
+                </span>
+              </div>
+            )
+          })}
+          {group.turnEnd ? (
+            <div className="flex items-start gap-2 px-1 py-1 text-[12px]">
+              <span className={cn('mt-px shrink-0', error ? 'text-danger' : 'text-text-tertiary')}>
+                <EventIcon event={group.turnEnd} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline gap-2">
+                  <span className="min-w-0 truncate text-text-soft">{eventSummary(group.turnEnd).title}</span>
+                  <span className="ml-auto shrink-0 text-muted">{formatRelative(group.turnEnd.at)}</span>
+                </span>
+                {eventSummary(group.turnEnd).body ? (
+                  <span className="mt-0.5 block truncate text-muted">{eventSummary(group.turnEnd).body}</span>
+                ) : null}
+              </span>
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => openGroupTarget(group.hostId, group)}
+            className="mt-1 flex items-center gap-1 rounded-md px-1 py-1 text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+          >
+            打开会话
+            <ChevronRight size={12} />
+          </button>
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -287,6 +505,7 @@ export function InboxView({ embedded = false }: { embedded?: boolean }) {
   const inbox = useAppStore((s) => s.inbox)
   const markInboxSeen = useAppStore((s) => s.markInboxSeen)
   const hosts = useAppStore((s) => s.hosts)
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
 
   useEffect(() => {
     markInboxSeen()
@@ -300,24 +519,13 @@ export function InboxView({ embedded = false }: { embedded?: boolean }) {
   }, [embedded])
 
   const pending: Entry[] = []
-  const history: Entry[] = []
   for (const host of hosts) {
     const entry = inbox[host.id]
     if (!entry) continue
     for (const event of entry.pending) pending.push({ hostId: host.id, event })
-    for (const event of entry.events) {
-      if (event.kind === 'permission') {
-        // 未处理审批在上方单独显示
-        if (!entry.pending.some((p) => p.requestId === event.requestId)) {
-          history.push({ hostId: host.id, event })
-        }
-      } else {
-        history.push({ hostId: host.id, event })
-      }
-    }
   }
   pending.sort((a, b) => b.event.at - a.event.at)
-  history.sort((a, b) => b.event.at - a.event.at)
+  const history = groupHistory(hosts, inbox)
 
   return (
     <div className={cn('flex min-h-0 flex-col', embedded ? 'h-full' : '')}>
@@ -353,9 +561,21 @@ export function InboxView({ embedded = false }: { embedded?: boolean }) {
             {history.length > 0 && (
               <section>
                 <h3 className="mb-1 px-1 text-[12px] font-medium text-muted">最近</h3>
-                <div className="-mx-1">
-                  {history.slice(0, 40).map((entry) => (
-                    <HistoryRow key={`${entry.hostId}:${entry.event.seq}`} entry={entry} />
+                <div className="-mx-1" data-testid="inbox-history">
+                  {history.slice(0, 40).map((group) => (
+                    <HistoryGroupRow
+                      key={group.key}
+                      group={group}
+                      expanded={expanded.has(group.key)}
+                      onToggle={() =>
+                        setExpanded((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(group.key)) next.delete(group.key)
+                          else next.add(group.key)
+                          return next
+                        })
+                      }
+                    />
                   ))}
                 </div>
               </section>

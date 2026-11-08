@@ -382,6 +382,53 @@ function createMockProvider() {
         res.write('data: [DONE]\n\n')
         res.end()
       }
+      const respondToolCalls = (calls) => {
+        res.writeHead(200, {
+          'content-type': 'text/event-stream',
+          'cache-control': 'no-cache',
+          connection: 'keep-alive',
+        })
+        const send = (payload) => res.write(`data: ${JSON.stringify(payload)}\n\n`)
+        send({
+          id: 'chatcmpl-inbox-multi',
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                role: 'assistant',
+                tool_calls: calls.map((call, index) => ({
+                  index,
+                  id: `call_inbox_${Date.now()}_${index}`,
+                  type: 'function',
+                  function: { name: call.name, arguments: JSON.stringify(call.input) },
+                })),
+              },
+            },
+          ],
+        })
+        send({
+          id: 'chatcmpl-inbox-multi',
+          object: 'chat.completion.chunk',
+          choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+        })
+        send({
+          id: 'chatcmpl-inbox-multi',
+          object: 'chat.completion.chunk',
+          choices: [],
+          usage: { prompt_tokens: 30, completion_tokens: 10, total_tokens: 40 },
+        })
+        res.write('data: [DONE]\n\n')
+        res.end()
+      }
+      // 收件箱聚合：一轮里两次 Bash 审批，回合结束后应只占一条「最近」记录。
+      if (latest.includes('INBOX_MULTI')) {
+        respondToolCalls([
+          { name: 'Bash', input: { command: 'echo inbox-one', description: '收件箱用例一' } },
+          { name: 'Bash', input: { command: 'echo inbox-two', description: '收件箱用例二' } },
+        ])
+        return
+      }
       if (latest.includes('合并到 main 时发生冲突')) {
         respondTool('Bash', {
           command:
@@ -761,8 +808,15 @@ async function seedPreviewApp(root) {
     res.writeHead(403)
     res.end('blocked')
   })
-  await new Promise((resolve) => blocked.listen(0, '0.0.0.0', resolve))
-  const blockedPort = blocked.address().port
+  // 探测端口刚释放时可能被 blocked 服务复用，导致 Vite 起不来、预览打开 blocked 页面。
+  let blockedPort = 0
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await new Promise((resolve) => blocked.listen(0, '0.0.0.0', resolve))
+    blockedPort = blocked.address().port
+    if (blockedPort !== port) break
+    await new Promise((resolve) => blocked.close(resolve))
+  }
+  assert.notEqual(blockedPort, port, 'blocked 测试服务误占 Vite 端口')
 
   writeFileSync(
     path.join(root, 'package.json'),
@@ -856,7 +910,7 @@ createRoot(document.getElementById('root')!).render(<App />)
         })
         req.on('error', () => resolve(0))
       })
-      if (status) return
+      if (status === 200) return
       await sleep(200)
     }
     throw new Error(`Vite 预览页启动超时\n${logs}`)
@@ -1196,6 +1250,10 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       todos: [{ content: '分屏 A 的待办', status: 'pending' }],
       updatedAt: Date.now() - 1600,
     }),
+    mk('inboxmulti', '收件箱聚合用例', [
+      message('im1', 'user', '跑两条命令看看。'),
+      message('im2', 'assistant', '收到。', { model: 'mock-1' }),
+    ], { updatedAt: Date.now() - 100 }),
     mk('split-b', '分屏会话 B', [
       message('spb1', 'user', '分屏 B 的第一条消息'),
       message('spb2', 'assistant', '分屏 B 已有回复。', { model: 'mock-1' }),
@@ -3408,7 +3466,7 @@ async function main() {
       const menu = page.locator('[role="menu"]').last()
       await menu.waitFor({ state: 'visible', timeout: 5_000 })
       await menu.getByRole('menuitem', { name: '应用预览', exact: true }).click()
-      const panel = page.getByRole('dialog', { name: '应用预览' })
+      const panel = page.getByTestId('preview-panel')
       await panel.waitFor({ state: 'visible', timeout: 10_000 })
 
       // 不需要输入地址：面板自动识别并打开本机应用。
@@ -3443,21 +3501,58 @@ async function main() {
       mkdirSync('/tmp/preview-shots', { recursive: true })
       await panel.screenshot({ path: '/tmp/preview-shots/selection.png' }).catch(() => {})
 
-      // 改前快照。
-      await panel.getByRole('button', { name: '截取改前快照' }).click()
-      await panel.getByText('改前快照', { exact: true }).waitFor({ timeout: 10_000 }).catch(() => {})
-      await page.keyboard.press('Escape')
-      await panel.waitFor({ state: 'hidden', timeout: 5_000 })
-
-      // 已选元素生成输入框上方的附件胶囊。
+      // R14：面板与对话区并存，选完元素焦点回到输入框，附件胶囊立即可见。
+      assert.ok(await panel.isVisible(), '选中元素后面板被关闭')
+      const textarea = page.locator('textarea[aria-label="消息输入框"]')
+      await page.waitForFunction(
+        () => document.activeElement?.getAttribute('aria-label') === '消息输入框',
+        null,
+        { timeout: 3_000 },
+      )
+      assert.equal(await textarea.isEnabled(), true, '预览打开时输入框不可用')
       const chip = page.getByTestId('composer-preview-selections')
       await chip.waitFor({ state: 'visible', timeout: 10_000 })
       assert.match(await chip.innerText(), /登录/)
       assert.match(await chip.innerText(), /src\/App\.tsx/)
+      const composerBox = await textarea.boundingBox()
+      const panelBox = await panel.boundingBox()
+      assert.ok(composerBox && panelBox, '输入框或预览面板没有可见区域')
+      assert.ok(
+        composerBox.x + composerBox.width <= panelBox.x + 1,
+        '预览面板盖住了输入框',
+      )
 
-      // 发送：元素上下文 + PREVIEW_EDIT 指令，mock 会回复并发一次 Edit。
+      // R14：关闭再打开恢复地址、设备尺寸与已选元素。
+      const addressBefore = await address.inputValue()
+      await panel.getByRole('button', { name: '关闭应用预览' }).click()
+      await panel.waitFor({ state: 'detached', timeout: 5_000 })
+      await page.getByRole('button', { name: '更多', exact: true }).click()
+      const menu2 = page.locator('[role="menu"]').last()
+      await menu2.waitFor({ state: 'visible', timeout: 5_000 })
+      await menu2.getByRole('menuitem', { name: '应用预览', exact: true }).click()
+      const panel2 = page.getByTestId('preview-panel')
+      await panel2.waitFor({ state: 'visible', timeout: 10_000 })
+      const address2 = panel2.getByRole('textbox', { name: '应用地址' })
+      await page.waitForFunction(
+        (expected) =>
+          document.querySelector('[data-testid="preview-panel"] input[aria-label="应用地址"]')?.value ===
+          expected,
+        addressBefore,
+        { timeout: 10_000 },
+      )
+      assert.equal(await address2.inputValue(), addressBefore, '重开预览没有恢复地址')
+      await panel2.getByText('390×844', { exact: true }).waitFor({ timeout: 10_000 })
+      const selectionStrip2 = panel2.getByTestId('preview-selections')
+      await selectionStrip2.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.match(await selectionStrip2.innerText(), /登录/, '重开预览没有恢复已选元素')
+
+      // 改前快照。
+      await panel2.getByRole('button', { name: '截取改前快照' }).click()
+      await panel2.getByText('改前快照', { exact: true }).waitFor({ timeout: 10_000 }).catch(() => {})
+
+      // 面板保持打开时也能输入并发送：元素上下文 + PREVIEW_EDIT 指令，mock 会回复并发一次 Edit。
       const contentFile = path.join(previewApp.root, 'content.js')
-      await page.locator('textarea[aria-label="消息输入框"]').fill(`PREVIEW_EDIT ${contentFile}`)
+      await textarea.fill(`PREVIEW_EDIT ${contentFile}`)
       await page.getByRole('button', { name: '发送消息' }).click()
       await page.getByText('收到选中的元素，修改预览页面。').first().waitFor({ timeout: 20_000 })
       const fileDeadline = Date.now() + 20_000
@@ -3471,19 +3566,13 @@ async function main() {
       )
 
       // 改完自动刷新：面板角落显示「已根据 1 处改动刷新」。
-      await page.getByRole('button', { name: '更多', exact: true }).click()
-      const menu2 = page.locator('[role="menu"]').last()
-      await menu2.waitFor({ state: 'visible', timeout: 5_000 })
-      await menu2.getByRole('menuitem', { name: '应用预览', exact: true }).click()
-      const panel2 = page.getByRole('dialog', { name: '应用预览' })
-      await panel2.waitFor({ state: 'visible', timeout: 10_000 })
       const refreshed = await waitPreview((state) => state.autoRefresh?.count >= 1, '改完自动刷新')
       assert.notEqual(refreshed.screenshotId, beforeShotId, '自动刷新后截图应更新')
       await panel2.getByTestId('preview-auto-refresh').waitFor({ state: 'visible', timeout: 15_000 })
       assert.match(await panel2.getByTestId('preview-auto-refresh').innerText(), /已根据 1 处改动刷新/)
+      assert.ok(await panel2.isVisible(), '发送后面板被关闭')
 
-      // 改前 / 当前对比。
-      await panel2.getByTitle('与当前画面对比').first().click()
+      // 改前 / 当前对比：截取快照后自动进入对比，改完刷新后仍保留。
       const compare = panel2.getByTestId('preview-compare')
       await compare.waitFor({ state: 'visible', timeout: 15_000 })
       assert.ok((await compare.locator('img').count()) >= 2, '对比视图应有改前与当前两张图')
@@ -3495,12 +3584,59 @@ async function main() {
       await page.screenshot({ path: '/tmp/preview-shots/compare.png' }).catch(() => {})
 
       // 界面里再试一次非白名单地址：错误提示出现，预览状态不被破坏。
-      await address.fill(`http://${blockedHost}/`)
+      await address2.fill(`http://${blockedHost}/`)
       await panel2.getByRole('button', { name: '打开', exact: true }).click()
       await page.getByText(/不在浏览器允许列表/).first().waitFor({ timeout: 10_000 })
-      await page.keyboard.press('Escape')
-      await panel2.waitFor({ state: 'hidden', timeout: 5_000 })
+      await panel2.getByRole('button', { name: '关闭应用预览' }).click()
+      await panel2.waitFor({ state: 'detached', timeout: 5_000 })
       assert.equal(requestCount(blockedHost), blockedBefore, '界面输入非白名单地址也不应发出请求')
+    })
+
+    desktop('收件箱：同一回合多次审批聚合为一条，展开可见流水', async (page) => {
+      const sessionId = 'inboxmulti'
+      await openSession(page, sessionId)
+      const sessionOf = () => api(base, token, `/api/sessions/${sessionId}`)
+      const before = (await sessionOf()).messages.length
+      await page.locator('textarea[aria-label="消息输入框"]').fill('INBOX_MULTI')
+      await page.getByRole('button', { name: '发送消息' }).click()
+
+      // 逐个允许本轮的两个 Bash 审批。
+      for (let i = 0; i < 2; i += 1) {
+        const allow = page.locator('button[data-permission-allow]').last()
+        await allow.waitFor({ state: 'visible', timeout: 25_000 })
+        await allow.click()
+        await page.waitForTimeout(400)
+      }
+      await waitUntil('收件箱聚合用例回合完成', async () => {
+        const current = await sessionOf()
+        return current.status === 'idle' && current.messages.length > before
+      })
+
+      await page.getByRole('button', { name: /^收件箱/ }).first().click()
+      const dialog = page.getByRole('dialog', { name: '收件箱' })
+      await dialog.waitFor({ state: 'visible', timeout: 10_000 })
+      const group = dialog
+        .getByTestId('inbox-history-group')
+        .filter({ hasText: '收件箱聚合用例' })
+        .filter({ hasText: '回合完成' })
+      await group.first().waitFor({ state: 'visible', timeout: 10_000 })
+      assert.equal(await group.count(), 1, '同一回合的审批流水被拆成多条')
+      const groupText = await group.first().innerText()
+      assert.match(groupText, /回合完成 · 运行了 2 条命令（已允许）/, `聚合标题不对：${groupText}`)
+      assert.equal(/已允许 · Bash/.test(groupText), false, '未展开时不应逐条显示审批流水')
+
+      await group.first().locator('button').first().click()
+      const details = group.first().getByTestId('inbox-history-details')
+      await details.waitFor({ state: 'visible', timeout: 5_000 })
+      const detailText = await details.innerText()
+      assert.equal(
+        (detailText.match(/已允许 · Bash/g) ?? []).length,
+        2,
+        `明细条数不对：${detailText}`,
+      )
+      assert.match(detailText, /打开会话/, '展开明细后没有打开会话入口')
+      await page.keyboard.press('Escape')
+      await dialog.waitFor({ state: 'hidden', timeout: 5_000 })
     })
 
     mobile('手机评测结果表可横向滚动并打开轨迹', async (page) => {

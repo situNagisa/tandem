@@ -1,23 +1,56 @@
 import { create } from 'zustand'
 import type { PreviewSelection, PreviewState } from '@tandem/protocol'
 
+export interface PreviewPrefs {
+  /** 上次打开的地址。 */
+  address?: string
+  device?: 'desktop' | 'tablet' | 'phone' | 'custom'
+  width?: number
+  height?: number
+}
+
 interface PreviewStore {
   /** key = sessionId：最近一次 preview_state。 */
   states: Record<string, PreviewState>
   /** key = sessionId：面板里点选后待附加给 agent 的元素。 */
   selections: Record<string, PreviewSelection[]>
+  /** key = sessionId：关闭后重新打开时恢复的地址与设备尺寸。 */
+  prefs: Record<string, PreviewPrefs>
   apply: (state: PreviewState) => void
   addSelection: (sessionId: string, selection: PreviewSelection) => void
   removeSelection: (sessionId: string, selectionId: string) => void
   clearSelections: (sessionId: string) => void
+  setPrefs: (sessionId: string, patch: PreviewPrefs) => void
   forget: (sessionId: string) => void
 }
 
 const MAX_SELECTIONS = 8
+const PREFS_KEY = 'tandem.preview.prefs.v1'
+
+function loadPrefs(): Record<string, PreviewPrefs> {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object') return {}
+    return parsed as Record<string, PreviewPrefs>
+  } catch {
+    return {}
+  }
+}
+
+function savePrefs(prefs: Record<string, PreviewPrefs>): void {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs))
+  } catch {
+    /* localStorage 不可用时只保留内存状态 */
+  }
+}
 
 export const usePreviewStore = create<PreviewStore>((set) => ({
   states: {},
   selections: {},
+  prefs: loadPrefs(),
   apply: (state) =>
     set((prev) => {
       const existing = prev.states[state.sessionId]
@@ -47,6 +80,12 @@ export const usePreviewStore = create<PreviewStore>((set) => ({
       const next = { ...prev.selections }
       delete next[sessionId]
       return { selections: next }
+    }),
+  setPrefs: (sessionId, patch) =>
+    set((prev) => {
+      const next = { ...prev.prefs, [sessionId]: { ...prev.prefs[sessionId], ...patch } }
+      savePrefs(next)
+      return { prefs: next }
     }),
   forget: (sessionId) =>
     set((prev) => {
