@@ -1346,6 +1346,78 @@ mark.chat-match {
   background: var(--t-bg-hover);
 }
 
+/* 用量着色：单一中性色按档位加深（1 最浅 → 5 最深），不引入彩虹色。
+ * 行背景只在展开时出现；收起时由刻度条透明度体现（由 turnRailScene 写入）。 */
+.turn-rail[data-open="true"] .turn-item[data-heat="1"] {
+  background: color-mix(in srgb, var(--t-text) 4%, transparent);
+}
+.turn-rail[data-open="true"] .turn-item[data-heat="2"] {
+  background: color-mix(in srgb, var(--t-text) 7%, transparent);
+}
+.turn-rail[data-open="true"] .turn-item[data-heat="3"] {
+  background: color-mix(in srgb, var(--t-text) 10%, transparent);
+}
+.turn-rail[data-open="true"] .turn-item[data-heat="4"] {
+  background: color-mix(in srgb, var(--t-text) 14%, transparent);
+}
+.turn-rail[data-open="true"] .turn-item[data-heat="5"] {
+  background: color-mix(in srgb, var(--t-text) 18%, transparent);
+}
+.turn-item[data-summary="true"] .turn-item-n,
+.turn-item[data-summary="true"] .turn-item-t {
+  color: var(--t-text-secondary);
+}
+.turn-item[data-compressed="true"] .turn-item-t {
+  right: 104px;
+}
+.turn-item-c {
+  position: absolute;
+  top: 0;
+  right: 58px;
+  color: var(--t-text-tertiary);
+  font-size: 10px;
+  line-height: 28px;
+  white-space: nowrap;
+  opacity: 0;
+}
+
+/* 大纲顶部的着色依据切换（花费 / 上下文），浮在面板上沿。 */
+.turn-metric {
+  position: absolute;
+  top: calc(var(--turn-ph) / -2 - 22px);
+  left: -282px;
+  z-index: 4;
+  display: flex;
+  gap: 1px;
+  padding: 1px;
+  border: 1px solid var(--t-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--t-surface) 92%, transparent);
+  box-shadow: var(--t-shadow-sm);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms var(--t-ease-out);
+}
+.turn-rail[data-open="true"] .turn-metric {
+  opacity: 1;
+  pointer-events: auto;
+}
+.turn-metric button {
+  padding: 0 7px;
+  border-radius: 999px;
+  color: var(--t-text-tertiary);
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.turn-metric button:hover {
+  color: var(--t-text);
+}
+.turn-metric button[data-on="true"] {
+  background: var(--t-bg-active);
+  color: var(--t-text);
+}
+
 /* 已固定的轮：大纲里置顶成一组，行本身带强调色的浅底与左侧标记 */
 .turn-rail[data-open="true"] .turn-item[data-pinned="true"] {
   border-radius: 8px;
