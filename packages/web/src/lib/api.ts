@@ -14,6 +14,7 @@ import type {
   Checkpoint,
   ConfigBundle,
   ConfigExportInput,
+  ContentBlock,
   ContextBreakdown,
   ConfigImportInput,
   ConfigImportResult,
@@ -25,6 +26,7 @@ import type {
   MemoryFile,
   MemoryListItem,
   MemoryScope,
+  MessagePage,
   CreatePrInput,
   DiffEmptyReason,
   DoctorReport,
@@ -93,6 +95,7 @@ import type {
   Session,
   StartEvalRunInput,
   SessionSummary,
+  SessionTurns,
   SkillInfo,
   SlashCommand,
   SubagentPreset,
@@ -378,8 +381,43 @@ export const api = {
   sessions: (h: HostConfig) => request<SessionSummary[]>(h, '/api/sessions'),
   createSession: (h: HostConfig, input: CreateSessionInput) =>
     request<SessionSummary>(h, '/api/sessions', { method: 'POST', body: JSON.stringify(input) }),
-  session: (h: HostConfig, id: string) =>
-    request<Session>(h, `/api/sessions/${encodeURIComponent(id)}`),
+  session: (h: HostConfig, id: string, options: { tail?: number } = {}) =>
+    request<Session>(
+      h,
+      `/api/sessions/${encodeURIComponent(id)}${qs({
+        tail: options.tail ? String(options.tail) : undefined,
+      })}`,
+    ),
+  /** 向前翻页 / 按需取一段（around）消息。 */
+  sessionMessages: (
+    h: HostConfig,
+    id: string,
+    options: { before?: string; around?: string; limit?: number } = {},
+  ) =>
+    request<MessagePage>(
+      h,
+      `/api/sessions/${encodeURIComponent(id)}/messages${qs({
+        before: options.before,
+        around: options.around,
+        limit: options.limit ? String(options.limit) : undefined,
+      })}`,
+    ),
+  sessionTurns: (h: HostConfig, id: string) =>
+    request<SessionTurns>(h, `/api/sessions/${encodeURIComponent(id)}/turns`),
+  /** 完整内容块：超大工具输出“显示全部”（按消息 + 下标或 toolUseId 定位）。 */
+  messageBlock: (
+    h: HostConfig,
+    id: string,
+    lookup: { messageId?: string; index?: number; toolUseId?: string },
+  ) =>
+    request<{ block: ContentBlock }>(
+      h,
+      `/api/sessions/${encodeURIComponent(id)}/message-block${qs({
+        messageId: lookup.messageId,
+        index: lookup.index !== undefined ? String(lookup.index) : undefined,
+        toolUseId: lookup.toolUseId,
+      })}`,
+    ),
   resumeSession: (h: HostConfig, id: string) =>
     request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/resume`, {
       method: 'POST',

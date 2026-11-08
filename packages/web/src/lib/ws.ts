@@ -46,6 +46,8 @@ export class HostConnection {
   private retryTimer: number | undefined
   private pingTimer: number | undefined
   private subscriptions = new Set<string>()
+  /** 每个会话订阅时请求的快照尾部条数（仅新客户端使用；子代理订阅保持全量）。 */
+  private subscriptionTails = new Map<string, number>()
   private lastStatus: ConnectionState = 'offline'
   /** 收件箱已应用到的最后 seq；重连时传给服务端补齐。 */
   private inboxSeq: number | undefined
@@ -94,10 +96,12 @@ export class HostConnection {
         this.setStatus('online')
         for (const sessionId of this.subscriptions) {
           const sinceSeq = this.lastSeq.get(sessionId)
+          const tail = this.subscriptionTails.get(sessionId)
           this.rawSend({
             type: 'subscribe',
             sessionId,
             ...(sinceSeq !== undefined ? { sinceSeq } : {}),
+            ...(tail !== undefined ? { tail } : {}),
           })
         }
         // 全 Host 收件箱：审批/回合结束/预算，不依赖打开哪个会话
@@ -179,16 +183,23 @@ export class HostConnection {
     return false
   }
 
-  subscribe(sessionId: string): void {
+  subscribe(sessionId: string, options: { tail?: number } = {}): void {
     this.subscriptions.add(sessionId)
-    // 显式订阅（打开/重新加载会话）要全量快照，不能沿用上一轮的 seq。
+    if (options.tail !== undefined) this.subscriptionTails.set(sessionId, options.tail)
+    else this.subscriptionTails.delete(sessionId)
+    // 显式订阅（打开/重新加载会话）要新快照，不能沿用上一轮的 seq。
     this.lastSeq.delete(sessionId)
     this.pending.delete(sessionId)
-    this.send({ type: 'subscribe', sessionId })
+    this.send({
+      type: 'subscribe',
+      sessionId,
+      ...(options.tail !== undefined ? { tail: options.tail } : {}),
+    })
   }
 
   unsubscribe(sessionId: string): void {
     this.subscriptions.delete(sessionId)
+    this.subscriptionTails.delete(sessionId)
     this.pending.delete(sessionId)
     this.send({ type: 'unsubscribe', sessionId })
   }

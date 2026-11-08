@@ -25,7 +25,8 @@ import {
   Wrench,
 } from 'lucide-react'
 import { diffLines } from 'diff'
-import type { ContentBlock, Todo } from '@tandem/protocol'
+import type { ContentBlock, Todo, ToolOutputTruncation } from '@tandem/protocol'
+import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useSessionTarget, useSessionView } from './session/SessionScope'
@@ -189,31 +190,61 @@ function diffStats(oldText: string, newText: string): { added: number; removed: 
   }
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)}KB`
+  return `${bytes}B`
+}
+
 function OutputBlock({
   text,
   isError,
   running,
   maxHeight = 300,
+  truncated,
+  onLoadFull,
 }: {
   text: string
   isError?: boolean
   running?: boolean
   maxHeight?: number
+  /** 服务端分页只下发了首尾片段时，提供“显示全部”。 */
+  truncated?: ToolOutputTruncation
+  onLoadFull?: () => Promise<string | null>
 }) {
-  if (!text) {
+  const [full, setFull] = useState<string | null>(null)
+  const [loadingFull, setLoadingFull] = useState(false)
+  const [failed, setFailed] = useState(false)
+  if (!text && !full) {
     return (
       <div className="px-1 py-1 text-[12px] text-muted">
         {running ? <span className="shimmer-text">等待输出…</span> : '无输出'}
       </div>
     )
   }
+  const raw = full ?? text
   const shown =
-    text.length > 200_000 ? text.slice(0, 200_000) + '\n…（输出过长，已截断）' : text
+    raw.length > 2_000_000 ? raw.slice(0, 2_000_000) + '\n…（输出超过 2MB，已截断显示）' : raw
+  const loadFull = async () => {
+    if (!onLoadFull || loadingFull) return
+    setLoadingFull(true)
+    setFailed(false)
+    try {
+      const content = await onLoadFull()
+      if (content === null) setFailed(true)
+      else setFull(content)
+    } catch {
+      setFailed(true)
+    } finally {
+      setLoadingFull(false)
+    }
+  }
   return (
-    <div
-      className={cn('tool-output', isError && 'is-error')}
-      style={{ maxHeight }}
-    >
+    <>
+      <div
+        className={cn('tool-output', isError && 'is-error')}
+        style={{ maxHeight }}
+      >
       {shown.split(/(\[secret:[A-Za-z0-9_-]+\])/g).map((part, index) => {
         const match = /^\[secret:([A-Za-z0-9_-]+)\]$/.exec(part)
         if (!match) return part
@@ -229,7 +260,24 @@ function OutputBlock({
           </Tooltip>
         )
       })}
-    </div>
+      </div>
+      {truncated && !full && (
+        <div className="mt-1 flex flex-wrap items-center gap-2 px-1 text-[11.5px] text-muted">
+          <span>已省略 {formatBytes(truncated.omittedBytes)}</span>
+          {onLoadFull && (
+            <button
+              type="button"
+              disabled={loadingFull}
+              onClick={() => void loadFull()}
+              className="rounded-lg px-2 py-1 text-[12px] text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
+            >
+              {loadingFull ? '加载中…' : `显示全部（原 ${formatBytes(truncated.totalBytes)}）`}
+            </button>
+          )}
+          {failed && <span className="text-danger">加载失败，请重试</span>}
+        </div>
+      )}
+    </>
   )
 }
 
@@ -357,6 +405,21 @@ export const ToolCard = memo(function ToolCard({
   const result = toolResults ? toolResults[block.id] : storeResult
   const isError = !!result?.isError
   const running = streaming && !result
+  const activeHost = useAppStore((s) =>
+    activeHostId ? (s.hosts.find((host) => host.id === activeHostId) ?? null) : null,
+  )
+  const resultSessionId = subagentId ?? activeSessionId
+  const loadFullOutput = async (): Promise<string | null> => {
+    if (!activeHost || !resultSessionId) return null
+    try {
+      const { block: fullBlock } = await api.messageBlock(activeHost, resultSessionId, {
+        toolUseId: block.id,
+      })
+      return fullBlock.type === 'tool_result' ? fullBlock.content : null
+    } catch {
+      return null
+    }
+  }
   const mcp = useMemo(() => parseMcpName(block.name), [block.name])
   const meta = TOOL_META[block.name] ?? (mcp ? { icon: Wrench, verb: '调用' } : { icon: Wrench, verb: '使用' })
   const isTask = block.name === 'Task'
@@ -582,7 +645,14 @@ export const ToolCard = memo(function ToolCard({
             <span className="select-none text-muted">$ </span>
             {command || <span className="shimmer-text">生成命令…</span>}
           </div>
-          <OutputBlock text={output} isError={isError} running={running} maxHeight={320} />
+          <OutputBlock
+            text={output}
+            isError={isError}
+            running={running}
+            maxHeight={320}
+            truncated={result?.truncated}
+            onLoadFull={result?.truncated ? loadFullOutput : undefined}
+          />
         </div>
       )
     }
@@ -597,7 +667,12 @@ export const ToolCard = memo(function ToolCard({
             <div className="py-1 text-[12px] text-muted">没有可显示的改动内容</div>
           )}
           {isError ? (
-            <OutputBlock text={output} isError />
+            <OutputBlock
+              text={output}
+              isError
+              truncated={result?.truncated}
+              onLoadFull={result?.truncated ? loadFullOutput : undefined}
+            />
           ) : (
             result &&
             output && <div className="text-[12px] text-muted">{firstLine(output, 200)}</div>
@@ -615,7 +690,12 @@ export const ToolCard = memo(function ToolCard({
           ) : (
             <div className="py-1 text-[12px] text-muted">没有文件内容</div>
           )}
-          {isError && <OutputBlock text={output} isError />}
+          {isError && <OutputBlock
+              text={output}
+              isError
+              truncated={result?.truncated}
+              onLoadFull={result?.truncated ? loadFullOutput : undefined}
+            />}
         </div>
       )
     }
@@ -631,12 +711,24 @@ export const ToolCard = memo(function ToolCard({
               {result ? `${readLines} 行` : running ? '读取中…' : ''}
             </span>
           </div>
-          {isError && <OutputBlock text={output} isError />}
+          {isError && <OutputBlock
+              text={output}
+              isError
+              truncated={result?.truncated}
+              onLoadFull={result?.truncated ? loadFullOutput : undefined}
+            />}
         </div>
       )
     }
     if (block.name === 'Glob' || block.name === 'Grep') {
-      return <OutputBlock text={output} isError={isError} running={running} maxHeight={320} />
+      return <OutputBlock
+            text={output}
+            isError={isError}
+            running={running}
+            maxHeight={320}
+            truncated={result?.truncated}
+            onLoadFull={result?.truncated ? loadFullOutput : undefined}
+          />
     }
     if (block.name === 'TodoWrite') {
       const todos = Array.isArray(input.todos) ? (input.todos as Todo[]) : []
@@ -650,7 +742,14 @@ export const ToolCard = memo(function ToolCard({
       return (
         <div className="space-y-2">
           <div className="break-all font-mono text-[12px] text-text-soft">{pick('url')}</div>
-          <OutputBlock text={output} isError={isError} running={running} maxHeight={320} />
+          <OutputBlock
+            text={output}
+            isError={isError}
+            running={running}
+            maxHeight={320}
+            truncated={result?.truncated}
+            onLoadFull={result?.truncated ? loadFullOutput : undefined}
+          />
         </div>
       )
     }
@@ -678,7 +777,14 @@ export const ToolCard = memo(function ToolCard({
               maxHeight={220}
             />
           )}
-          <OutputBlock text={output} isError={isError} running={running} maxHeight={320} />
+          <OutputBlock
+            text={output}
+            isError={isError}
+            running={running}
+            maxHeight={320}
+            truncated={result?.truncated}
+            onLoadFull={result?.truncated ? loadFullOutput : undefined}
+          />
         </div>
       )
     }
@@ -692,7 +798,14 @@ export const ToolCard = memo(function ToolCard({
             maxHeight={220}
           />
         )}
-        <OutputBlock text={output} isError={isError} running={running} maxHeight={320} />
+        <OutputBlock
+            text={output}
+            isError={isError}
+            running={running}
+            maxHeight={320}
+            truncated={result?.truncated}
+            onLoadFull={result?.truncated ? loadFullOutput : undefined}
+          />
       </div>
     )
   })() : null

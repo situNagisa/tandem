@@ -6,6 +6,7 @@ import type {
 } from '@tandem/protocol'
 import type { StoreApi } from 'zustand'
 import { api } from '../../lib/api'
+import { SESSION_TAIL_MESSAGES } from '../../lib/messagePaging'
 import { HostConnection } from '../../lib/ws'
 import type {
   ActiveSession,
@@ -362,6 +363,8 @@ export function createSessionCore(
         ? { ...state.runtimes, [hostId]: { ...rt, sessions: appendSummary(rt.sessions, summary) } }
         : state.runtimes
       const last = session.messages[session.messages.length - 1]
+      const totalMessages = session.totalMessages ?? session.messages.length
+      const hasEarlier = session.hasEarlier === true || session.messages.length < totalMessages
       const next: ActiveSession = {
         ...base,
         summary,
@@ -378,6 +381,13 @@ export function createSessionCore(
         toolResults: collectToolResults(session.messages),
         plan: session.plan,
         hookEvents: [],
+        totalMessages,
+        firstMessageId: session.firstMessageId ?? session.messages[0]?.id,
+        hasEarlier,
+        loadingEarlier: false,
+        loadingSegment: false,
+        turns: undefined,
+        loadingTurns: false,
       }
       return {
         runtimes,
@@ -392,7 +402,7 @@ export function createSessionCore(
     if (!host) return
     const key = viewKeyOf(hostId, sessionId)
     try {
-      const session = await api.session(host, sessionId)
+      const session = await api.session(host, sessionId, { tail: SESSION_TAIL_MESSAGES })
       if (!get().sessionViews[key]) return
       applySnapshot(hostId, session, [])
     } catch (err) {

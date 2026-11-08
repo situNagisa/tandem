@@ -599,16 +599,22 @@ export class Host {
     return snapshot(this, id, tail);
   }
 
-  messagePage(rec: SessionRecord, beforeId: string | undefined, limit: number | undefined): MessagePage {
-    return messagePage(this, rec, beforeId, limit);
+  messagePage(
+    rec: SessionRecord,
+    options: { beforeId?: string; aroundId?: string; limit?: number },
+  ): MessagePage {
+    return messagePage(this, rec, options);
   }
 
   turnsFor(rec: SessionRecord): SessionTurns {
     return turnsFor(this, rec);
   }
 
-  messageBlock(rec: SessionRecord, messageId: string, index: number): ContentBlock | undefined {
-    return messageBlock(this, rec, messageId, index);
+  messageBlock(
+    rec: SessionRecord,
+    lookup: { messageId?: string; index?: number; toolUseId?: string },
+  ): ContentBlock | undefined {
+    return messageBlock(this, rec, lookup);
   }
 
   broadcastSummary(rec: SessionRecord): void {

@@ -1,6 +1,7 @@
 import type { SessionSummary } from '@tandem/protocol'
 import type { StoreApi } from 'zustand'
 import { api } from '../../lib/api'
+import { SESSION_TAIL_MESSAGES } from '../../lib/messagePaging'
 import { navigate } from '../../lib/router'
 import type { SessionTarget } from '../../lib/types'
 import { useUiStore } from '../useUiStore'
@@ -75,7 +76,7 @@ export function createSessionsSlice(
     if (!rt?.profilesLoaded && !rt?.profilesLoading) void get().refreshProfiles(hostId)
 
     const conn = ensureConnection(hostId)
-    conn?.subscribe(sessionId)
+    conn?.subscribe(sessionId, { tail: SESSION_TAIL_MESSAGES })
     // 系统提示注入段落：会话开头展开查看（与 WS 推送互为备份）
     void api
       .injections(host, sessionId)
@@ -157,7 +158,7 @@ export function createSessionsSlice(
       patchView(hostId, sessionId, (a) => ({ ...a, loading: true, error: undefined }))
       if (conn?.status === 'online') {
         conn.unsubscribe(sessionId)
-        conn.subscribe(sessionId)
+        conn.subscribe(sessionId, { tail: SESSION_TAIL_MESSAGES })
       } else {
         void core.loadSessionFallback(hostId, sessionId)
       }
@@ -263,7 +264,7 @@ export function createSessionsSlice(
       const view = get().sessionViews[key]!
       set({ active: view })
       navigate({ kind: 'session', hostId, sessionId: summary.id })
-      ensureConnection(hostId)?.subscribe(summary.id)
+      ensureConnection(hostId)?.subscribe(summary.id, { tail: SESSION_TAIL_MESSAGES })
       get().send(content, { hostId, sessionId: summary.id })
       return summary
     },

@@ -6,6 +6,7 @@ import { createServerMessageHandler } from './appStore/serverMessages'
 import { createHostsSlice } from './appStore/hostsSlice'
 import { createSessionsSlice } from './appStore/sessionsSlice'
 import { createMessagesSlice } from './appStore/messagesSlice'
+import { createPagingSlice } from './appStore/pagingSlice'
 import { createInboxSlice } from './appStore/inboxSlice'
 import { createWorktreeSlice } from './appStore/worktreeSlice'
 import { createUiSlice } from './appStore/uiSlice'
@@ -33,6 +34,7 @@ export const useAppStore = create<AppState>((set, get) => {
     ...createHostsSlice(set, get, core),
     ...createSessionsSlice(set, get, core),
     ...createMessagesSlice(set, get, core),
+    ...createPagingSlice(set, get, core),
     ...createInboxSlice(set, get, core),
     ...createWorktreeSlice(set, get, core),
     ...createUiSlice(set, get),

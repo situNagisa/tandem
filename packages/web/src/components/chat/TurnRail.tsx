@@ -64,7 +64,26 @@ function turnsFromMessages(messages: UiMessage[]): TurnMark[] {
 /** 当前窗格自己的轮次刻度（不读全局 active，分屏时各窗格互不串台）。 */
 export function useTurnMarks(): TurnMark[] {
   const messages = useSessionView((view) => view?.messages ?? EMPTY_MESSAGES)
-  return useMemo(() => turnsFromMessages(messages), [messages])
+  const serverTurns = useSessionView((view) => view?.turns)
+  return useMemo(() => {
+    const local = turnsFromMessages(messages)
+    if (!serverTurns?.length) return local
+    // 会话被截断时以服务端大纲为准，再补上本地新增（尚未进大纲）的轮次。
+    const known = new Set(serverTurns.map((turn) => turn.messageId))
+    const extra = local.filter((turn) => !known.has(turn.id))
+    return [
+      ...serverTurns.map((turn, index) => ({
+        id: turn.messageId,
+        turn: index + 1,
+        preview: turn.preview,
+      })),
+      ...extra.map((turn, index) => ({
+        id: turn.id,
+        turn: serverTurns.length + index + 1,
+        preview: turn.preview,
+      })),
+    ]
+  }, [messages, serverTurns])
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -88,8 +107,18 @@ export function TurnRail({
 }) {
   const turns = useTurnMarks()
   const scopeTarget = useSessionTarget()
+  const hostId = useSessionView((s) => s?.hostId ?? null)
+  const hasEarlier = useSessionView((s) => s?.hasEarlier ?? false)
+  const serverTurns = useSessionView((s) => s?.turns)
+  const loadingTurns = useSessionView((s) => s?.loadingTurns ?? false)
   const pinnedTurns = useSessionView((s) => s?.summary?.pinnedTurns)
   const feedbackActive = useFeedbackStore((s) => s.active)
+
+  // 大会话首屏只带尾部消息：轮次大纲单独拉轻量索引，不为了刻度拉全量历史。
+  useEffect(() => {
+    if (!hostId || !sessionId || !hasEarlier || serverTurns || loadingTurns) return
+    void useAppStore.getState().loadSessionTurns(hostId, sessionId)
+  }, [hostId, sessionId, hasEarlier, serverTurns, loadingTurns])
   const sceneTurns = useMemo(() => {
     if (!pinnedTurns || pinnedTurns.length === 0) return turns
     const pinned = new Set(pinnedTurns)
@@ -162,24 +191,65 @@ export function TurnRail({
       setActiveTurn(target)
       sticky.current = true
       beforeJumpRef.current?.()
+      const root = scrollRef.current
+      const mark = turnsRef.current[target - 1]
+      if (root && mark && hostId && sessionId) {
+        const state = useAppStore.getState()
+        const view = state.sessionViews[`${hostId}:${sessionId}`]
+        const loaded = view?.messages.some((message) => message.id === mark.id) ?? true
+        const rendered = root.querySelector<HTMLElement>(
+          `[data-turn-id="${CSS.escape(mark.id)}"]`,
+        )
+        if (!loaded) {
+          // 目标轮不在首屏尾部：按需取该段，挂载后再重新定位。
+          window.dispatchEvent(
+            new CustomEvent('tandem-jump-message', { detail: { messageId: mark.id } }),
+          )
+          void (async () => {
+            for (let attempt = 0; attempt < 40; attempt++) {
+              const ok = await state.ensureMessageLoaded(hostId, sessionId, mark.id)
+              if (ok) {
+                window.dispatchEvent(
+                  new CustomEvent('tandem-jump-message', { detail: { messageId: mark.id } }),
+                )
+                window.setTimeout(() => goRef.current(target, { recenter: false, instant: true }), 140)
+                return
+              }
+              await new Promise((resolve) => window.setTimeout(resolve, 220))
+            }
+          })()
+          return
+        }
+        if (!rendered && target !== 1 && target !== totalRef.current) {
+          // 已在消息数组里但被渲染窗口裁掉：让消息列表扩大窗口并滚过去。
+          window.dispatchEvent(
+            new CustomEvent('tandem-jump-message', { detail: { messageId: mark.id } }),
+          )
+          return
+        }
+      }
       followerRef.current?.to(() => {
-        const root = scrollRef.current
-        const mark = turnsRef.current[target - 1]
-        if (!root || !mark) return null
+        const rootEl = scrollRef.current
+        const turnMark = turnsRef.current[target - 1]
+        if (!rootEl || !turnMark) return null
         if (target === 1) return 0
-        if (target === totalRef.current) return Math.max(0, root.scrollHeight - root.clientHeight)
-        const el = root.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(mark.id)}"]`)
+        if (target === totalRef.current) {
+          return Math.max(0, rootEl.scrollHeight - rootEl.clientHeight)
+        }
+        const el = rootEl.querySelector<HTMLElement>(
+          `[data-turn-id="${CSS.escape(turnMark.id)}"]`,
+        )
         if (!el) return null
         return Math.max(
           0,
-          el.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop - 16,
+          el.getBoundingClientRect().top - rootEl.getBoundingClientRect().top + rootEl.scrollTop - 16,
         )
       }, opts?.instant)
       const scene = sceneRef.current
       scene?.setActive(target)
       if (opts?.recenter !== false) scene?.setCenter(target)
     },
-    [scrollRef],
+    [scrollRef, hostId, sessionId],
   )
   const goRef = useRef(go)
   goRef.current = go

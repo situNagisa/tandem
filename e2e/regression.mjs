@@ -29,6 +29,7 @@ import { pathToFileURL } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { chromium } from 'playwright'
 import { AxeBuilder } from '@axe-core/playwright'
+import WebSocket from 'ws'
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
 const HOST_ENTRY = path.join(ROOT, 'packages/server/dist/cli.js')
@@ -602,6 +603,37 @@ async function api(base, token, pathname, init = {}) {
   return res.json()
 }
 
+/** 订阅会话并取第一份快照（用于验证首屏下发字节/条数）。 */
+function wsSessionSnapshot(base, token, sessionId, tail) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`${base.replace(/^http/, 'ws')}/ws?token=${encodeURIComponent(token)}`)
+    const timer = setTimeout(() => {
+      ws.close()
+      reject(new Error('WS 快照超时'))
+    }, 20_000)
+    ws.on('open', () => {
+      ws.send(JSON.stringify({ type: 'subscribe', sessionId, ...(tail ? { tail } : {}) }))
+    })
+    ws.on('message', (raw) => {
+      let msg
+      try {
+        msg = JSON.parse(String(raw))
+      } catch {
+        return
+      }
+      if (msg.type === 'session_snapshot') {
+        clearTimeout(timer)
+        ws.close()
+        resolve({ msg, bytes: Buffer.byteLength(String(raw)) })
+      }
+    })
+    ws.on('error', (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
+  })
+}
+
 /** 造一份带 M/A/D/U、未跟踪目录、Windows 盘符路径的 git 仓库。 */
 function seedRepo(repo) {
   mkdirSync(repo, { recursive: true })
@@ -760,6 +792,15 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
     )
   }
 
+  // 分页回归：320 轮 / 640 条消息，首屏应只下发最近 200 条。
+  const hugeMessages = []
+  for (let n = 1; n <= 320; n++) {
+    hugeMessages.push(message(`hu${n}`, 'user', `大会话第 ${n} 轮：检查分页加载`))
+    hugeMessages.push(
+      message(`ha${n}`, 'assistant', `第 ${n} 轮结果：分页正常。`, { model: 'mock-1' }),
+    )
+  }
+
   const linksMessages = [
     message('l1', 'user', '帮我看这两个文件'),
     message(
@@ -782,6 +823,7 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
 
   const sessions = [
     mk('long', '回归长会话', longMessages),
+    mk('huge', '超大会话 · 320 轮', hugeMessages, { updatedAt: Date.now() - 900 }),
     mk('links', '文件链接会话', linksMessages, { updatedAt: Date.now() - 1500 }),
     // 配额交接：主分组第一次请求成功后下一次 429，备用分组接住。
     mk('quota', '配额交接会话', [
@@ -1518,6 +1560,114 @@ async function main() {
       })
       assert.ok(info.top + info.client >= info.scroll - 40, `距底部 ${Math.round(info.scroll - info.top - info.client)}px`)
       assert.ok(info.lastTop < info.client && info.lastBottom > 0, '最后一条用户消息不在视口内')
+    })
+
+    desktop('大会话首屏只下发尾部消息', async (page) => {
+      const tail = await wsSessionSnapshot(base, token, 'huge', 200)
+      assert.equal(tail.msg.session.messages.length, 200, '尾部快照条数不是 200')
+      assert.equal(tail.msg.session.totalMessages, 640, '尾部快照 totalMessages 不对')
+      assert.equal(tail.msg.session.firstMessageId, 'hu221', '尾部快照首条 id 不对')
+      assert.equal(tail.msg.truncated, true, '尾部快照未标记 truncated')
+      assert.equal(tail.msg.session.hasEarlier, true, '尾部快照未标记还有更早消息')
+      assert.ok(tail.bytes < 200 * 1024, `首屏下发 ${(tail.bytes / 1024).toFixed(0)}KB，超过 200KB`)
+
+      // 旧客户端不带 tail：保持全量兼容。
+      const full = await wsSessionSnapshot(base, token, 'huge')
+      assert.equal(full.msg.session.messages.length, 640, '旧客户端未拿到全量快照')
+
+      await openSession(page, 'huge')
+      const button = page.locator('[data-load-earlier] button')
+      await button.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.match(await button.innerText(), /已加载 200 \/ 640 条/, '首屏未只加载尾部 200 条')
+    })
+
+    desktop('大会话滚到顶加载更早消息且位置不跳', async (page) => {
+      await openSession(page, 'huge')
+      await page.locator('[data-load-earlier] button').waitFor({ state: 'visible', timeout: 10_000 })
+      const before = await page.evaluate(() => {
+        const box = document.querySelector('.chat-scroll')
+        const boxTop = box.getBoundingClientRect().top
+        box.scrollTop = 0
+        const row = [...document.querySelectorAll('.msg-row[data-message-id]')].find(
+          (el) => el.getBoundingClientRect().top >= boxTop - 2,
+        )
+        return {
+          height: box.scrollHeight,
+          top: box.scrollTop,
+          id: row?.dataset.messageId,
+          offset: row ? row.getBoundingClientRect().top - boxTop : null,
+        }
+      })
+      assert.equal(before.id, 'hu221', `滚动到顶后首条不是 hu221（${before.id}）`)
+      await page.waitForFunction(
+        (height) => (document.querySelector('.chat-scroll')?.scrollHeight ?? 0) > height + 500,
+        before.height,
+        { timeout: 20_000 },
+      )
+      // content-visibility 会在后续帧继续修正行高；等锚点回到原位（最多 5s）再断言。
+      await page
+        .waitForFunction(
+          ({ id, offset }) => {
+            const box = document.querySelector('.chat-scroll')
+            const row = document.querySelector(`[data-message-id="${CSS.escape(id)}"]`)?.closest('.msg-row')
+            if (!box || !row) return false
+            return Math.abs(row.getBoundingClientRect().top - box.getBoundingClientRect().top - offset) < 4
+          },
+          { id: before.id, offset: before.offset },
+          { timeout: 5_000 },
+        )
+        .catch(() => {})
+      await page.waitForTimeout(150)
+      const after = await page.evaluate((id) => {
+        const box = document.querySelector('.chat-scroll')
+        const boxTop = box.getBoundingClientRect().top
+        const row = document.querySelector(`[data-message-id="${CSS.escape(id)}"]`)?.closest('.msg-row')
+        return {
+          height: box.scrollHeight,
+          top: box.scrollTop,
+          offset: row ? row.getBoundingClientRect().top - boxTop : null,
+        }
+      }, before.id)
+      assert.ok(after.top > 500, `加载更早消息后滚动位置跳回顶部：${after.top}`)
+      assert.ok(
+        after.offset !== null && Math.abs(after.offset - before.offset) < 4,
+        `锚点消息位移 ${after.offset - before.offset}px`,
+      )
+      assert.match(
+        await page.locator('[data-load-earlier] button').innerText(),
+        /已加载 400 \/ 640 条/,
+        '滚到顶没有自动加载更早的一页',
+      )
+    })
+
+    desktop('轮次大纲跳到未加载的轮', async (page) => {
+      await openSession(page, 'huge')
+      await page.waitForFunction(
+        () => /第 \d+ \/ 320 轮/.test(document.querySelector('.turn-count')?.textContent ?? ''),
+        null,
+        { timeout: 15_000 },
+      )
+      await page.locator('[data-load-earlier] button').waitFor({ state: 'visible', timeout: 10_000 })
+      await page.locator('.turn-hit').focus()
+      await page.keyboard.press('Home')
+      await page.locator('[data-turn-id="hu1"]').waitFor({ state: 'attached', timeout: 20_000 })
+      await page.waitForTimeout(800)
+      const info = await page.evaluate(() => {
+        const box = document.querySelector('.chat-scroll')
+        const row = document.querySelector('[data-turn-id="hu1"]')
+        const gap = document.querySelector('[data-message-gap]')
+        return {
+          offset: row ? row.getBoundingClientRect().top - box.getBoundingClientRect().top : null,
+          client: box.clientHeight,
+          gap: !!gap,
+          count: document.querySelector('.turn-count')?.textContent ?? '',
+          rows: document.querySelectorAll('.msg-row').length,
+        }
+      })
+      assert.ok(info.offset !== null && info.offset >= -4 && info.offset < info.client, `第 1 轮位置 ${info.offset}`)
+      assert.ok(info.gap, '跳转到更早的轮后没有缺口占位')
+      assert.match(info.count, /第 1 \/ 320 轮/, '轮次大纲没有定位到第 1 轮')
+      assert.ok(info.rows > 300, `按需加载后只渲染了 ${info.rows} 行`)
     })
 
     desktop('上下文面板显示最大占用项', async (page) => {

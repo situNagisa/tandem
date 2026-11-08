@@ -476,17 +476,24 @@ export interface Todo { content: string; status: 'pending' | 'in_progress' | 'co
 // ---------- 会话分页 ----------
 // GET /api/sessions/:id/messages?before=<messageId>&limit=<N> -> MessagePage
 //   向前翻页：返回 before 之前（不含）最近 limit 条消息，按时间顺序；before 缺省时返回尾部一页。
+//   around=<messageId> 可改为取该消息附近的一页（大纲/全文搜索跳到未加载的轮时使用）。
 // GET /api/sessions/:id/turns -> SessionTurns
 //   轮次大纲用的轻量索引：每轮用户消息的 id 与前 80 字摘要，不读取 / 下发全文。
 // GET /api/sessions/:id/message-block?messageId=&index= -> { block: ContentBlock }
-//   取单条消息的完整内容块（超大工具输出“显示全部”用）。
+//   取单条消息的完整内容块（超大工具输出“显示全部”用）；也可用 toolUseId= 定位。
 export interface MessagePage {
   messages: Message[];
   totalMessages: number;
   /** 本页第一条消息 id；客户端作为下一次 before 翻页的锚点。 */
   firstMessageId?: string;
+  /** 本页最后一条消息 id（按需段拼接时判断相邻）。 */
+  lastMessageId?: string;
+  /** 完整消息顺序中紧接本页之后的消息 id；undefined 表示已到会话末尾。 */
+  nextMessageId?: string;
   /** 是否还有更早的消息。 */
   hasEarlier: boolean;
+  /** 是否还有更新的消息（around 页用）。 */
+  hasLater?: boolean;
 }
 
 export interface SessionTurnMark {

@@ -47,6 +47,7 @@ export function emptyActiveSession(
     hookEvents: [],
     subagents: {},
     viewers: [],
+    hasEarlier: false,
   }
 }
 

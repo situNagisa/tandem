@@ -280,21 +280,41 @@ export function snapshot(
   };
 }
 
-/** 向前翻页；优先按偏移倒序读日志，磁盘尚未追上时回退到内存切片。 */
+/** 向前翻页 / 按需取一段；向前翻页优先按偏移倒序读日志，磁盘尚未追上时回退到内存切片。 */
 export function messagePage(
   host: Host,
   rec: SessionRecord,
-  beforeId: string | undefined,
-  limitInput: number | undefined,
+  options: { beforeId?: string; aroundId?: string; limit?: number },
 ): MessagePage {
   const limit = Math.max(
     1,
-    Math.min(Number.isFinite(limitInput) ? Math.floor(limitInput as number) : PAGE_LIMIT_DEFAULT, PAGE_LIMIT_MAX),
+    Math.min(
+      Number.isFinite(options.limit) ? Math.floor(options.limit as number) : PAGE_LIMIT_DEFAULT,
+      PAGE_LIMIT_MAX,
+    ),
   );
   const totalMessages = rec.messages.length;
   let messages: SessionRecord['messages'] | undefined;
   let hasEarlier = false;
-  if (beforeId) {
+  let lastMessageId: string | undefined;
+  let nextMessageId: string | undefined;
+  let hasLater: boolean | undefined;
+  const beforeId = options.beforeId;
+  if (options.aroundId) {
+    const index = rec.messages.findIndex((message) => message.id === options.aroundId);
+    if (index < 0) {
+      return { messages: [], totalMessages, hasEarlier: false, hasLater: false };
+    }
+    const before = Math.floor((limit - 1) / 2);
+    let start = Math.max(0, index - before);
+    let end = Math.min(totalMessages, start + limit);
+    start = Math.max(0, end - limit);
+    messages = rec.messages.slice(start, end);
+    hasEarlier = start > 0;
+    hasLater = end < totalMessages;
+    lastMessageId = messages[messages.length - 1]?.id;
+    nextMessageId = rec.messages[end]?.id;
+  } else if (beforeId) {
     const beforeIndex = rec.messages.findIndex((message) => message.id === beforeId);
     const disk = host.store.readMessagePage(rec.id, {
       beforeId,
@@ -322,12 +342,27 @@ export function messagePage(
     messages = tailMessages(rec.messages, limit, PAGE_BYTES_MAX);
     hasEarlier = messages.length < totalMessages;
   }
+  if (!options.aroundId) {
+    lastMessageId = messages[messages.length - 1]?.id;
+    if (beforeId) {
+      const nextIndex = rec.messages.findIndex((message) => message.id === beforeId);
+      if (nextIndex >= 0) {
+        nextMessageId = beforeId;
+        hasLater = nextIndex < totalMessages;
+      }
+    } else {
+      hasLater = false;
+    }
+  }
   const paged = truncateLargeToolOutputs(messages);
   return {
     messages: paged,
     totalMessages,
     ...(paged[0] ? { firstMessageId: paged[0].id } : {}),
+    ...(lastMessageId ? { lastMessageId } : {}),
+    ...(nextMessageId ? { nextMessageId } : {}),
     hasEarlier,
+    ...(hasLater !== undefined ? { hasLater } : {}),
   };
 }
 
@@ -335,14 +370,23 @@ export function turnsFor(host: Host, rec: SessionRecord): SessionTurns {
   return { totalMessages: rec.messages.length, turns: sessionTurns(rec.messages) };
 }
 
-/** 单条消息的完整内容块（不截断），用于“显示全部”。 */
+/** 单条消息的完整内容块（不截断），用于“显示全部”。可按消息+下标或 toolUseId 定位。 */
 export function messageBlock(
   host: Host,
   rec: SessionRecord,
-  messageId: string,
-  index: number,
+  lookup: { messageId?: string; index?: number; toolUseId?: string },
 ): ContentBlock | undefined {
-  const message = rec.messages.find((item) => item.id === messageId);
+  if (lookup.toolUseId) {
+    for (let i = rec.messages.length - 1; i >= 0; i--) {
+      const found = rec.messages[i]!.content.find(
+        (block) => block.type === 'tool_result' && block.toolUseId === lookup.toolUseId,
+      );
+      if (found) return found;
+    }
+    return undefined;
+  }
+  const message = rec.messages.find((item) => item.id === lookup.messageId);
+  const index = lookup.index ?? -1;
   if (!message || !Number.isInteger(index) || index < 0 || index >= message.content.length) {
     return undefined;
   }

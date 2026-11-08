@@ -10,6 +10,7 @@ import type {
   Profile,
   SessionPlan,
   SessionSummary,
+  SessionTurnMark,
   SlashCommand,
   TeamIdentity,
   TeamPresence,
@@ -80,7 +81,22 @@ export interface HostRuntime {
 
 export type ToolResultBlock = Extract<ContentBlock, { type: 'tool_result' }>
 
+/** 分页产生的消息缺口：两侧消息已加载，中间还有未加载的历史。 */
+export interface MessageGap {
+  /** 缺口上方最后一条已加载消息 id；顶部分页时为 undefined。 */
+  afterId?: string
+  /** 缺口下方第一条已加载消息 id（向前加载的锚点）。 */
+  beforeId: string
+}
+
 /** 界面上的消息：多出本地乐观状态字段。 */
+export interface UiMessage extends Message {
+  local?: boolean
+  queued?: boolean
+  /** 分页缺口占位（不是真实消息，不参与工具结果与轮次统计）。 */
+  gap?: MessageGap
+}
+
 export type SessionFilterStatus =
   | 'all'
   | 'running'
@@ -112,10 +128,6 @@ export function isSessionFilterActive(filter: SessionFilter): boolean {
   )
 }
 
-export interface UiMessage extends Message {
-  local?: boolean
-  queued?: boolean
-}
 
 /** 指向一个已打开会话的定位符：分屏窗格、会话作用域与带目标的 store action 共用。 */
 export interface SessionTarget {
@@ -166,6 +178,19 @@ export interface ActiveSession {
   subagents: Record<string, SubagentSession>
   /** 正在查看该会话的连接（含所有者，界面排除自己）。 */
   viewers: TeamPresence[]
+  /** 服务端分页：会话消息总数。 */
+  totalMessages?: number
+  /** 已加载窗口的第一条真实消息 id（向前翻页锚点）。 */
+  firstMessageId?: string
+  /** 还有更早的消息未加载。 */
+  hasEarlier: boolean
+  /** 正在向前加载一页。 */
+  loadingEarlier?: boolean
+  /** 正在按需加载某段历史（大纲/搜索跳转）。 */
+  loadingSegment?: boolean
+  /** 服务端轮次大纲（会话被截断时拉取，避免本地缺前段）。 */
+  turns?: SessionTurnMark[]
+  loadingTurns?: boolean
 }
 
 /** 客户端补充锚点：错误提示内联在产生它的消息之后。 */

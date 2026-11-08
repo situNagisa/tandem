@@ -153,6 +153,14 @@ export interface AppState {
   ) => Promise<void>
   forkSession: (hostId: string, sessionId: string, messageId?: string) => Promise<SessionSummary | null>
   deleteSession: (hostId: string, sessionId: string, force?: boolean) => Promise<void>
+  /** 滚到顶时向前加载一页更早的消息（保持滚动位置由消息列表处理）。 */
+  loadEarlierMessages: (target?: SessionTarget) => Promise<boolean>
+  /** 会话被截断时拉取服务端轮次大纲（轮号/消息 id/前 80 字）。 */
+  loadSessionTurns: (hostId: string, sessionId: string) => Promise<void>
+  /** 大纲/搜索跳转：确保目标消息所在的一段已加载。 */
+  ensureMessageLoaded: (hostId: string, sessionId: string, messageId: string) => Promise<boolean>
+  /** 补齐分页缺口（继续加载缺口下方的一页）。 */
+  fillMessageGap: (hostId: string, sessionId: string, gapId: string) => Promise<boolean>
   /** 单独停止一个 Task 子代理会话。 */
   interruptSubagent: (childId: string, target?: SessionTarget) => void
   /** 把 worktree 分支合回基准分支。 */

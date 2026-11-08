@@ -148,9 +148,13 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
     const { id } = req.params as { id: string };
     const rec = host.getSession(id);
     if (!rec) return bad(reply, '会话不存在', 404);
-    const query = (req.query ?? {}) as { before?: string; limit?: string };
+    const query = (req.query ?? {}) as { before?: string; around?: string; limit?: string };
     const limit = Number(query.limit);
-    return host.messagePage(rec, str(query.before) || undefined, Number.isFinite(limit) ? limit : undefined);
+    return host.messagePage(rec, {
+      beforeId: str(query.before) || undefined,
+      aroundId: str(query.around) || undefined,
+      limit: Number.isFinite(limit) ? limit : undefined,
+    });
   });
 
   // 轮次大纲：只回轮号、消息 id、前 80 字，不拉全量消息。
@@ -166,13 +170,16 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
     const { id } = req.params as { id: string };
     const rec = host.getSession(id);
     if (!rec) return bad(reply, '会话不存在', 404);
-    const query = (req.query ?? {}) as { messageId?: string; index?: string };
-    const messageId = str(query.messageId);
+    const query = (req.query ?? {}) as { messageId?: string; index?: string; toolUseId?: string };
+    const messageId = str(query.messageId) || undefined;
+    const toolUseId = str(query.toolUseId) || undefined;
     const index = Number(query.index);
-    if (!messageId || !Number.isInteger(index) || index < 0) {
-      return bad(reply, 'messageId 与 index 不能为空');
+    if (!toolUseId && (!messageId || !Number.isInteger(index) || index < 0)) {
+      return bad(reply, 'messageId + index 或 toolUseId 不能为空');
     }
-    const block = host.messageBlock(rec, messageId, index);
+    const block = host.messageBlock(rec, {
+      ...(toolUseId ? { toolUseId } : { messageId, index: Number.isInteger(index) ? index : undefined }),
+    });
     if (!block) return bad(reply, '内容块不存在', 404);
     return { block };
   });
