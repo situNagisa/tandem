@@ -1,14 +1,14 @@
 # 交接页（任何新会话先读这一页，再读 AGENTS.md）
 
-更新：2026-11-08 22:00。目的：协调者的会话很长，随时可能换一个全新会话接手；这一页让接手者 5 分钟内知道"现在在哪、正在做什么、在等谁"。
+更新：2026-11-08 23:15。目的：协调者的会话很长，随时可能换一个全新会话接手；这一页让接手者 5 分钟内知道"现在在哪、正在做什么、在等谁"。
 
 ## 当前版本
-- 已发布 v0.3.0（本地标签，未 push）。产物在 Windows「下载」：`Tandem-Setup-0.3.0-x64.exe`、`tandem-release.apk/.aab`、`tandem-debug.apk`。
+- 已发布 v0.3.1（本地标签，未 push）。产物在 Windows「下载」：`Tandem-Setup-0.3.1-x64.exe`、`tandem-release.apk/.aab`、`tandem-debug.apk`。
 - 发布流程：`node scripts/release.mjs <版本>`（先在 `packages/web/src/lib/changelog.ts` 手写导览条目，否则脚本会中止）→ `node scripts/check.mjs` 全过 → `npm run apk:release -w @tandem/mobile`、`npm run apk -w @tandem/mobile`、`npm run dist:win -w @tandem/desktop`。**check 不过不打包。**
 - 安卓签名密钥：`~/.tandem-release/`（不在仓库；用户需离线备份）。
 
 ## 正在进行
-- **分工路由 v2**（docs/routing-v2.md）：子代理方案——主会话模型与缓存不变，Task 把自包含小任务派给便宜/专长模型；默认"直接做"，一眼机械走"便宜直做"，多步机械或专长匹配才"分工"；规则判断零额外请求；人工选择（发送前选执行方式、分工前确认卡、运行中换模型、覆盖偏好学习）。实现中。
+- 无。分工路由 v2 已完成并随 0.3.1 发布（docs/routing-v2.md）：主会话模型与缓存不变，Task 子代理执行；默认直接做、机械任务便宜直做、多步或专长匹配才分工；发送前选执行方式、分工前确认卡、子代理换模型重跑/交回主会话、偏好学习、按角色用量均已实现并有回归覆盖。保守取舍：达到每轮成本上限后停止派发，不自动换模型（交由用户决定）。
 
 ## 等用户实机验证（我这边只能模拟）
 按价值排序：
