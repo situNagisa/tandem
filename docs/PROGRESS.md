@@ -2,6 +2,16 @@
 
 > 更新：2026-11-09。只保留最近 5 轮；更早记录见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 52（2026-11-09）工作站改为客户端-服务模式
+- [x] 设计：`docs/workstation.md`（工作站服务/主机两个可独立角色；客户端只填工作站地址；登录 ≠ 添加主机；绑定码/主机侧登录/本机一键；出站隧道 + E2E；默认开放注册、首个管理员、只看自己主机、按主机授权；旧工作区迁移；本地模式保留；v1 边界与部署）
+- [x] 协议：`WorkspaceRole` 增 `member`、`WorkspaceHostGrant`、`WorkspaceHostInfo.ownerId/publicKey/fingerprint/online/grants`、`WorkspaceStatus.role/registration`、`Workstation*`（status/setup/register/bind-code/claim/register/grant/settings/invite）与 `/api/workstation/*` 约定
+- [x] 服务端：`src/accounts/store.ts` 扩展为工作站（初始化/开放或邀请注册/绑定码/主机登记/逐主机授权/可见主机/逐主机令牌声明）；旧 center/member 数据自动迁移（中心 Host 变工作站、已加入 Host 归管理员、旧 scope→grant）；`src/workstation/server.ts` 独立 Fastify（静态 UI、账号 API、`/_tunnel` 出站隧道、`/h/<id>/_e2e/*` 转发，拒绝明文路径）；`workstation/manager.ts` 桌面内嵌启动（独立数据目录、8481 起顺延）；`tandem-host workstation` 与 `tandem-host join <url> --code`；Host 侧复用 RelayAgent（requireE2E）并在加入后即时连出
+- [x] 前端：首次引导（填工作站地址/创建/登录/注册/本机一键启动）、登录后自动生成 `工作站/h/<hostId>` 的 E2E 主机、侧栏账号登录入口、设置「成员与分享 → 工作站」我的主机/绑定码/授权/退出；复用 ui/ 原语，ui-audit 0
+- [x] 验证：工作站 8481 + h1/h2（8482/8483，mock provider）；alice（首个管理员）添加两台、全新客户端登录看到两台并在 h1 收到经工作站转发的流式回复；bob 默认 0 台，授权 h2 后只看到 h2；撤销授权立即消失；只访问 8481；旧工作区数据迁移；本机内嵌工作站 + 添加本机；本地模式 smoke 不变；Playwright 截图 `/tmp/ws-shots/`（01–07）
+- [x] 回归：`e2e/workstation-check.mjs`（注册/绑定/授权/E2E 流式/撤销）接入 `e2e/regression.mjs`；工作站设备旧用例仍通过；全量回归 111/116（余 2 条为并行同事未完成的轮次置顶与模型参考价，与本功能无关）
+- 文档：设计 `docs/workstation.md`；个人/团队代测 `docs/test-guides/workstation.md`；Docker `deploy/workstation/Dockerfile`
+- 保守取舍：工作站只转发 E2E，明文 `/h/*` 一律 403；管理员不隐式获得他人主机会话；授权角色只开放 协作者/审批者/观察者（不通过界面授予 owner）；v1 不做多工作站联邦、TLS、LAN 自动直连、自动迁移主机
+
 ## 迭代 47（2026-11-08）工作站与设备共享 v1（ADB + 串口）
 - [x] 设计：`docs/features/devices.md`（场景、设备/工作站/挂载概念、ADB 代理执行 vs 5037 转发取舍、串口传输层、工具与权限、界面、安全、v1 边界）；`docs/test-guides/devices.md` 给产品所有者真实设备代测步骤
 - [x] 协议：`DeviceInfo/DeviceListResult/DeviceMount/DeviceSessionDevices/SerialOpenResult/SerialReadResult/DeviceLogcat*`、`DeviceSettings`、WS `device_output/devices_updated` 与 `/api/devices*`、`/api/sessions/:id/devices*` 约定
