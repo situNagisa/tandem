@@ -2615,15 +2615,17 @@ async function main() {
         '着色依据没有切到上下文',
       )
 
-      // 撤销压缩后：摘要与压缩行消失，恢复为真实轮次。
+      // 撤销压缩后：摘要与压缩行消失，恢复为真实轮次（走 WS 快照，不刷新页面）。
       await api(base, token, '/api/sessions/compact/compaction/cmp-notice/undo', {
         method: 'POST',
         body: '{}',
       })
-      await page.reload({ waitUntil: 'domcontentloaded' })
-      await page.locator('textarea[aria-label="消息输入框"]').first().waitFor({ timeout: 20_000 })
-      await openSession(page, 'compact')
-      await page.waitForTimeout(600)
+      await page.waitForFunction(
+        () => document.querySelectorAll('.turn-item[data-summary="true"]').length === 0,
+        null,
+        { timeout: 8_000 },
+      )
+      await page.waitForTimeout(400)
       const restored = await page.evaluate(() => ({
         summary: document.querySelectorAll('.turn-item[data-summary="true"]').length,
         compressed: document.querySelectorAll('.turn-item[data-compressed="true"]').length,
@@ -3437,7 +3439,7 @@ async function main() {
       await page.mouse.move(DESKTOP.width / 2, DESKTOP.height / 2)
     })
 
-    desktop('轮次固定：命中区 ≥24px、置顶到已固定分组、消息旁显示图钉（#12）', async (page) => {
+    desktop('轮次固定：命中区 ≥24px、已固定区独立、阅读区不重排（#12/反馈6追加）', async (page) => {
       await openSession(page, 'long')
       const hit = page.locator('.turn-hit')
       await hit.hover()
@@ -3447,6 +3449,18 @@ async function main() {
         { timeout: 5_000 },
       )
       await page.waitForTimeout(700)
+      const readOrder = () =>
+        page.evaluate(() =>
+          [...document.querySelectorAll('.turn-item')]
+            .filter((el) => {
+              const cs = getComputedStyle(el)
+              return cs.visibility !== 'hidden' && Number(cs.opacity) > 0.3
+            })
+            .sort((a, b) => a.getBoundingClientRect().y - b.getBoundingClientRect().y)
+            .map((el) => el.dataset.turnPos),
+        )
+      const beforeOrder = await readOrder()
+      const beforeScroll = await page.locator('.chat-scroll').evaluate((el) => el.scrollTop)
       const target = await page.evaluate(() => {
         const rows = [...document.querySelectorAll('.turn-item')].filter((el) => {
           const cs = getComputedStyle(el)
@@ -3469,29 +3483,41 @@ async function main() {
       await page.mouse.move(target.x, target.y)
       await page.waitForTimeout(250)
       await page.mouse.click(target.x, target.y)
-      await page.waitForTimeout(1200)
-      const after = await page.evaluate(() => {
-        const rows = [...document.querySelectorAll('.turn-item')]
-          .filter((el) => {
-            const cs = getComputedStyle(el)
-            return cs.visibility !== 'hidden' && Number(cs.opacity) > 0.3
-          })
-          .sort((a, b) => a.getBoundingClientRect().y - b.getBoundingClientRect().y)
-          .map((el) => ({
-            turn: (el.querySelector('.turn-item-n')?.textContent ?? '').trim(),
-            pinned: el.dataset.pinned === 'true',
-          }))
-        const head = document.querySelector('.turn-pin-head')
-        return {
-          rows,
-          headOpacity: head ? Number(getComputedStyle(head).opacity) : 0,
-          messagePins: document.querySelectorAll('[aria-label="已固定到轮次大纲"]').length,
-        }
+
+      const pinned = page.locator('.turn-pinned')
+      await pinned.waitFor({ state: 'visible', timeout: 5_000 })
+      await page.waitForTimeout(500)
+      const afterOrder = await readOrder()
+      assert.deepEqual(afterOrder, beforeOrder, `固定后阅读区顺序变了：${beforeOrder} → ${afterOrder}`)
+      assert.equal(
+        await page.locator('.chat-scroll').evaluate((el) => el.scrollTop),
+        beforeScroll,
+        '固定轮次后对话滚动位置变了',
+      )
+      assert.match(await pinned.innerText(), /已固定/, '已固定区没有标题')
+      assert.equal(await pinned.locator('.turn-pinned-row').count(), 1, '已固定区条目数不对')
+      assert.match(await pinned.locator('.turn-pinned-row').innerText(), new RegExp(target.turn), '已固定区没有该轮')
+      assert.ok(
+        (await page.locator('[data-turn-pos="' + target.turn + '"]').getAttribute('data-pinned')) === 'true',
+        '阅读区原位没有固定标记',
+      )
+      assert.ok(
+        (await page.locator('[aria-label="已固定到轮次大纲"]').count()) >= 1,
+        '消息流里没有图钉标记',
+      )
+      // 已固定区点击 = 跳到该轮。
+      await pinned.locator('.turn-pinned-jump').first().click()
+      await page.waitForTimeout(500)
+      assert.match(await page.locator('.turn-count').innerText(), new RegExp(`第 ${target.turn} /`), '点击已固定区没有跳到该轮')
+
+      // 取消固定：已固定区消失，阅读区顺序不变。
+      await pinned.locator('.turn-pinned-row').first().hover()
+      await pinned.locator('.turn-pinned-unpin').first().click()
+      await page.waitForFunction(() => document.querySelectorAll('.turn-pinned-row').length === 0, null, {
+        timeout: 5_000,
       })
-      assert.equal(after.rows[0]?.turn, target.turn, `被固定的第 ${target.turn} 轮没有置顶：${JSON.stringify(after.rows.slice(0, 3))}`)
-      assert.equal(after.rows[0]?.pinned, true, '置顶的轮次没有固定样式')
-      assert.ok(after.headOpacity > 0.5, '「已固定」分组标题不可见')
-      assert.ok(after.messagePins >= 1, '消息流里没有图钉标记')
+      assert.equal(await page.locator('.turn-pinned').count(), 0, '取消固定后已固定区仍在')
+      assert.deepEqual(await readOrder(), beforeOrder, '取消固定后阅读区顺序变了')
       assert.ok(await page.locator('.turn-tip').count() === 0, '轮次大纲仍存在重复文字的悬停提示')
     })
 
@@ -5996,7 +6022,8 @@ async function main() {
         'mock provider 没有收到三种档位的请求',
       )
 
-      // 菜单展示参考单价与「自动」项
+      // 菜单展示参考单价与「自动」项；清掉最近模型记录，让菜单回退列出当前分组全部模型。
+      await page.evaluate(() => localStorage.removeItem('tandem.recentModels.v1'))
       await page.getByRole('button', { name: /^选择模型：/ }).first().click()
       const menu = page.getByRole('menu')
       await menu.waitFor()
@@ -6420,6 +6447,7 @@ async function main() {
         await drawer.getByRole('button', { name: /合并到/ }).click()
         const mergeDialog = page.getByRole('dialog', { name: '合并这张卡' })
         await mergeDialog.waitFor()
+        await mergeDialog.getByText(/conflict\.txt/).first().waitFor({ timeout: 10_000 })
         assert.match(await mergeDialog.innerText(), /conflict\.txt/, '合并确认框没有列出改动的文件')
         await mergeDialog.getByRole('button', { name: /合并到/ }).click()
         await drawer.getByTestId('board-conflicts').waitFor({ timeout: 20_000 })

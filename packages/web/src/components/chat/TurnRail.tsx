@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from 'react'
+import { PinOff } from 'lucide-react'
 import { isUserTurnMessage } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { isTargetFocused, useSessionTarget, useSessionView } from '../session/SessionScope'
@@ -275,7 +276,6 @@ export function TurnRail({
   const hitRef = useRef<HTMLDivElement>(null)
   const hoverTipRef = useRef<number | null>(null)
   const hoverSyncRef = useRef<(turn: number | null) => void>(() => {})
-  const pinHeadRef = useRef<HTMLSpanElement>(null)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   const sceneRef = useRef<RailScene | null>(null)
   const followerRef = useRef<ScrollFollower | null>(null)
@@ -410,7 +410,6 @@ export function TurnRail({
       ind,
       cur,
       items,
-      pinHead: pinHeadRef.current,
     })
     sceneRef.current = scene
     scene.onDragRow = (turn) => goRef.current(turn, { recenter: false })
@@ -734,6 +733,13 @@ export function TurnRail({
     void state.updateSession(active.hostId, active.sessionId, { pinnedTurns: next })
   }
 
+  // 两个大纲：上方只放已固定的轮（按轮号排序），下方阅读区始终按时间顺序，固定不改变位置。
+  const pinnedMarks = useMemo(() => {
+    const pinned = new Set(pinnedTurns ?? [])
+    return turns
+      .filter((turn) => pinned.has(turn.id) && !turn.summary && !turn.compressed)
+      .sort((a, b) => (a.no ?? 0) - (b.no ?? 0))
+  }, [turns, pinnedTurns])
   const current = turns[activeTurn - 1]
   const currentHeat = sceneTurns[activeTurn - 1]?.heat ?? 1
   const metricLabel = metric === 'cost' ? '花费' : '上下文'
@@ -793,9 +799,6 @@ export function TurnRail({
               </div>
             ))}
           </div>
-          <span ref={pinHeadRef} className="turn-pin-head" aria-hidden>
-            已固定
-          </span>
           <div
             ref={hitRef}
             className="turn-hit"
@@ -837,6 +840,39 @@ export function TurnRail({
               )
             })}
           </ol>
+          {pinnedMarks.length > 0 && (
+            <div className="turn-pinned" role="group" aria-label="已固定轮次">
+              <div className="turn-pinned-head">
+                <span>已固定</span>
+                <span className="tabular-nums">{pinnedMarks.length}</span>
+              </div>
+              <div className="turn-pinned-list">
+                {pinnedMarks.map((mark) => (
+                  <div key={mark.id} className="turn-pinned-row">
+                    <button
+                      type="button"
+                      className="turn-pinned-jump"
+                      onClick={() => go(mark.turn)}
+                      title={mark.full}
+                      aria-label={`跳到第 ${mark.no ?? mark.turn} 轮`}
+                    >
+                      <span className="turn-pinned-n">{mark.no ?? mark.turn}</span>
+                      <span className="turn-pinned-t">{mark.full}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="turn-pinned-unpin"
+                      onClick={() => togglePinnedTurn(mark.id)}
+                      title="取消固定"
+                      aria-label={`取消固定第 ${mark.no ?? mark.turn} 轮`}
+                    >
+                      <PinOff size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="turn-metric" role="group" aria-label="大纲着色依据">
             <button
               type="button"

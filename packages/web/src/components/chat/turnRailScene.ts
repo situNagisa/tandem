@@ -37,8 +37,6 @@ export interface SceneEls {
   ind: HTMLElement
   cur: HTMLElement
   items: HTMLElement[]
-  /** 展开后的「已固定」分组标题（浮在面板上沿）。 */
-  pinHead: HTMLElement | null
 }
 
 interface ItemRef {
@@ -72,9 +70,6 @@ export class RailScene {
 
   private turns: SceneTurn[] = []
   private N = 0
-  /** 行位次 → 轮号：被固定的轮排在最前。 */
-  private order: number[] = []
-  private posByTurn = new Map<number, number>()
   private items: ItemRef[]
   private raf = 0
   private last = 0
@@ -122,29 +117,20 @@ export class RailScene {
   }
 
   setData(turns: SceneTurn[]): void {
-    // 固定/取消固定会改变行的位次；保留当前轮与视口中心对应的那一轮。
-    const activeTurn = this.turnAtPos(Math.round(this.C.t))
-    const centerTurn = this.turnAtPos(Math.round(this.L.t))
-    const oldPinned = this.turns.reduce((sum, turn) => sum + (turn.pinned ? 1 : 0), 0)
-    const nextPinned = turns.reduce((sum, turn) => sum + (turn.pinned ? 1 : 0), 0)
+    // 固定/取消固定不改变阅读区顺序；插入压缩行/摘要行时按消息 id 找回原来的当前轮与视口中心，
+    // 避免阅读区因为行数变化整体跳动。
+    const activeId = this.turns[Math.round(this.C.t) - 1]?.id
+    const centerId = this.turns[Math.round(this.L.t) - 1]?.id
     this.turns = turns
     this.N = turns.length
-    const pinned: number[] = []
-    const rest: number[] = []
-    for (let i = 0; i < turns.length; i++) {
-      if (turns[i].pinned) pinned.push(i + 1)
-      else rest.push(i + 1)
-    }
-    this.order = [...pinned, ...rest]
-    this.posByTurn.clear()
-    this.order.forEach((turn, index) => this.posByTurn.set(turn, index + 1))
     for (const it of this.items) it.bound = -1
-    const activePos = (activeTurn != null && this.posByTurn.get(activeTurn)) || Math.min(activeTurn ?? 1, Math.max(1, this.N))
-    // 新固定一轮时跳到大纲顶部，让「已固定」分组立刻可见；取消固定则保持当前视野。
-    const centerPos =
-      nextPinned > oldPinned
-        ? 1
-        : (centerTurn != null && this.posByTurn.get(centerTurn)) || Math.min(centerTurn ?? 1, Math.max(1, this.N))
+    const indexOf = (id: string | undefined) => {
+      if (!id) return null
+      const index = turns.findIndex((turn) => turn.id === id)
+      return index >= 0 ? index + 1 : null
+    }
+    const activePos = indexOf(activeId) ?? Math.min(Math.round(this.C.t) || 1, Math.max(1, this.N))
+    const centerPos = indexOf(centerId) ?? Math.min(Math.round(this.L.t) || 1, Math.max(1, this.N))
     this.C.t = activePos
     this.C.snap(activePos)
     this.L.t = centerPos
@@ -154,11 +140,11 @@ export class RailScene {
   }
 
   private turnAtPos(pos: number): number | null {
-    return this.order[pos - 1] ?? null
+    return this.turns[pos - 1] ? pos : null
   }
 
   private posOf(turn: number): number | null {
-    return this.posByTurn.get(turn) ?? null
+    return turn >= 1 && turn <= this.N ? turn : null
   }
 
   setAvail(height: number): void {
@@ -454,14 +440,6 @@ export class RailScene {
     cur.style.transform = `translate3d(0,${px(curY)}px,0)`
     const chrome = this.P.t > 0.5 ? smooth(0.5, 1, pc) : smooth(0.8, 0.98, pc)
     cur.style.opacity = f3(chrome)
-
-    // 「已固定」分组标题跟着第一行固定行移动，滚出面板时由 turn-clip 裁掉。
-    const pinnedCount = this.turns.reduce((sum, turn) => sum + (turn.pinned ? 1 : 0), 0)
-    const head = this.els.pinHead
-    if (head) {
-      const pinnedInView = Lp - 1 <= this.PH + 0.5
-      head.style.opacity = f3(pinnedCount > 0 && pinnedInView && pc > 0.5 ? chrome : 0)
-    }
 
     ind.style.transform = `translate3d(0,${px((hi - Lp) * ROW)}px,0)`
     ind.style.opacity = f3(hv * chrome)
