@@ -86,16 +86,34 @@ function MountRow({
   )
 }
 
+type HelpPlatform = 'win32' | 'darwin' | 'linux'
+const PLATFORM_ORDER: HelpPlatform[] = ['win32', 'darwin', 'linux']
+const PLATFORM_LABEL: Record<HelpPlatform, string> = {
+  win32: 'Windows',
+  darwin: 'macOS',
+  linux: 'Linux',
+}
+
+function helpPlatform(platform: string | undefined): HelpPlatform | undefined {
+  if (platform === 'win32' || platform === 'darwin' || platform === 'linux') return platform
+  return undefined
+}
+
 function BackendNote({
   icon,
   title,
   help,
+  platform,
 }: {
   icon: ReactNode
   title: string
-  help: string
+  help: Record<HelpPlatform, string>
+  /** Host 的平台；优先展开对应平台，其他平台折叠可展开。 */
+  platform?: string
 }) {
   const [open, setOpen] = useState(false)
+  const primary = helpPlatform(platform)
+  const others = PLATFORM_ORDER.filter((item) => item !== primary)
   return (
     <div className="rounded-lg px-3 py-2 text-[12px] text-muted">
       <div className="flex items-center gap-2">
@@ -110,8 +128,25 @@ function BackendNote({
         </button>
       </div>
       {open && (
-        <div className="mt-1.5 whitespace-pre-line rounded-md bg-[var(--t-bg-subtle)] px-2.5 py-2 text-[12px] leading-5 text-text-soft">
-          {help}
+        <div className="mt-1.5 rounded-md bg-[var(--t-bg-subtle)] px-2.5 py-2 text-[12px] leading-5 text-text-soft">
+          {primary ? (
+            <div>
+              <div className="mb-1 text-[11.5px] font-medium text-text-secondary">
+                {PLATFORM_LABEL[primary]}（当前 Host）
+              </div>
+              <div className="whitespace-pre-line">{help[primary]}</div>
+            </div>
+          ) : (
+            <div className="mb-1 text-[11.5px] text-muted">没有读到 Host 平台，请选择对应系统：</div>
+          )}
+          {others.map((item) => (
+            <details key={item} open={!primary && item === PLATFORM_ORDER[0]} className="mt-1.5 border-t border-border/60 pt-1.5">
+              <summary className="cursor-pointer list-none text-[11.5px] text-text-tertiary transition-colors hover:text-text-soft [&::-webkit-details-marker]:hidden">
+                {PLATFORM_LABEL[item]} 安装方法
+              </summary>
+              <div className="mt-1 whitespace-pre-line">{help[item]}</div>
+            </details>
+          ))}
         </div>
       )}
     </div>
@@ -137,6 +172,7 @@ function HostSection({
   const mountsKey = activeHost && sessionId ? `${activeHost.id}:${sessionId}` : ''
   const mounts = useDevicesStore((s) => (mountsKey ? s.sessionMounts[mountsKey] ?? EMPTY_MOUNTS : EMPTY_MOUNTS))
   const toast = useUiStore((s) => s.toast)
+  const platform = useAppStore((s) => s.runtimes[host.id]?.info?.platform)
   const [busy, setBusy] = useState<string | null>(null)
 
   useEffect(() => {
@@ -180,18 +216,30 @@ function HostSection({
               <BackendNote
                 icon={<Smartphone size={13} />}
                 title={list.adb.missing ? '未检测到 adb' : 'ADB 不可用'}
-                help={
-                  'Windows：winget install --id Google.PlatformTools -e，或下载 platform-tools 后在 Host 配置里把 devices.adbPath 指向 adb.exe。\n也可以设置环境变量 TANDEM_ADB_BIN 后重启 Host。\n串口与其他设备不受影响。'
-                }
+                platform={platform}
+                help={{
+                  win32:
+                    'winget install --id Google.PlatformTools -e，或下载 platform-tools 后在 Host 配置里把 devices.adbPath 指向 adb.exe。\n也可以设置环境变量 TANDEM_ADB_BIN 后重启 Host。\n串口与其他设备不受影响。',
+                  darwin:
+                    'brew install --cask android-platform-tools；adb 通常在 /opt/homebrew/bin/adb 或 /usr/local/bin/adb。\n已装 Android Studio 时可用 ~/Library/Android/sdk/platform-tools/adb。\n也可以在 Host 配置里把 devices.adbPath 指向 adb，或设置 TANDEM_ADB_BIN 后重启 Host。\n串口与其他设备不受影响。',
+                  linux:
+                    'Debian/Ubuntu：sudo apt install adb；Arch：sudo pacman -S android-tools；Fedora：sudo dnf install android-tools。\nUSB 权限：sudo usermod -aG plugdev $USER（Arch 用 uucp）后重新登录；Debian/Ubuntu 可安装 android-sdk-platform-tools-common 获得 udev 规则，或添加 /etc/udev/rules.d/51-android.rules 后执行 sudo udevadm control --reload-rules && sudo udevadm trigger。\n也可以在 Host 配置里把 devices.adbPath 指向 adb，或设置 TANDEM_ADB_BIN 后重启 Host。',
+                }}
               />
             )}
             {!list.serial.available && (
               <BackendNote
                 icon={<Usb size={13} />}
                 title={list.serial.missing ? '串口组件未安装（serialport）' : '串口不可用'}
-                help={
-                  '在 Host 的工作目录执行 npm install serialport 后重启 Host；\n开发或回归时可用 TANDEM_MOCK_SERIAL=1 启用内置虚拟串口。'
-                }
+                platform={platform}
+                help={{
+                  win32:
+                    '在 Host 的工作目录执行 npm install serialport 后重启 Host。\nUSB 串口驱动：CH340 / CP210x / FTDI 芯片需安装厂商驱动；设备管理器里应出现 COM 端口。\n开发或回归时可用 TANDEM_MOCK_SERIAL=1 启用内置虚拟串口。',
+                  darwin:
+                    '在 Host 的工作目录执行 npm install serialport 后重启 Host。\nCH340 / CP210x / FTDI 大多由 macOS 自带驱动（旧系统装厂商驱动）；设备出现在 /dev/tty.usbserial-* 或 /dev/tty.usbmodem*。\n开发或回归时可用 TANDEM_MOCK_SERIAL=1 启用内置虚拟串口。',
+                  linux:
+                    '在 Host 的工作目录执行 npm install serialport 后重启 Host。\n串口驱动通常已在内核（ch341 / cp210x / ftdi_sio）。没有权限时执行 sudo usermod -aG dialout $USER 后重新登录（Arch 用 uucp）；\n或添加 /etc/udev/rules.d/99-tandem-serial.rules：SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", MODE="0666", GROUP="dialout"，然后 sudo udevadm control --reload-rules && sudo udevadm trigger。\n开发或回归时可用 TANDEM_MOCK_SERIAL=1 启用内置虚拟串口。',
+                }}
               />
             )}
             {list.devices.length === 0 && (

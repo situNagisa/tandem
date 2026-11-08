@@ -15,7 +15,7 @@ import { cn } from '../../lib/cn'
 import { profileModelGroups } from '../../lib/profileModels'
 import { Button } from '../ui/Button'
 import { SegmentedControl, Select, Switch } from '../ui/Controls'
-import { Popover } from '../ui/Popover'
+import { Menu } from '../ui/Menu'
 import { ModelCascade, modelPickKey } from '../ui/ModelCascade'
 import { DivisionRoutingSection } from './DivisionRoutingSection'
 
@@ -322,35 +322,33 @@ export function ModelRoutingSection() {
         {!loading && rows.length > 0 && (
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <Popover
-                padded={false}
-                panelClassName="max-h-[min(380px,60vh)] w-max min-w-[300px] max-w-[min(420px,calc(100vw-1rem))] overflow-y-auto p-1"
-                trigger={({ open, toggle }) => (
+              <Menu
+                side="bottom"
+                align="start"
+                aria-label="添加候选模型"
+                className="w-[min(420px,calc(100vw-1rem))]"
+                trigger={({ open }) => (
                   <Button
                     size="sm"
                     variant="secondary"
                     aria-expanded={open}
                     aria-haspopup="menu"
-                    onClick={toggle}
                   >
                     添加候选模型…
                   </Button>
                 )}
               >
-                {() => (
-                  <ModelCascade
-                    kind="list"
-                    mode="check"
-                    profiles={profiles}
-                    selectedKeys={selectedKeys}
-                    emptyText="账号里还没有模型。"
-                    onToggle={(pick, checked) => {
-                      const row = rows.find((item) => item.key === modelPickKey(pick))
-                      if (row) toggle(row, checked)
-                    }}
-                  />
-                )}
-              </Popover>
+                <ModelCascade
+                  mode="check"
+                  profiles={profiles}
+                  selectedKeys={selectedKeys}
+                  emptyText="账号里还没有模型。"
+                  onToggle={(pick, checked) => {
+                    const row = rows.find((item) => item.key === modelPickKey(pick))
+                    if (row) toggle(row, checked)
+                  }}
+                />
+              </Menu>
               <span className="text-[12px] text-muted">按账号 › 分组 › 模型逐级选择；勾选后可调整档位。</span>
             </div>
             {routing.candidates.length === 0 ? (

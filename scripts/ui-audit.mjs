@@ -92,6 +92,28 @@ try {
   // index.css 不存在时忽略
 }
 
+// 模型级联必须是真正的飞出子菜单（用户 #7-04）：禁止在同一面板里显示「返回上一级」。
+try {
+  const cascade = await readFile(join(UI_DIR, 'ModelCascade.tsx'), 'utf8')
+  const backPatterns = [
+    { re: /ChevronLeft/, label: 'ModelCascade 仍有返回箭头（原地替换内容）' },
+    { re: /\bconst\s+back\s*=/, label: 'ModelCascade 仍有 back() 原地返回实现' },
+    { re: /返回上一级/, label: 'ModelCascade 仍有「返回上一级」文案' },
+  ]
+  for (const check of backPatterns) {
+    if (!check.re.test(cascade)) continue
+    issues.push({
+      file: 'packages/web/src/components/ui/ModelCascade.tsx',
+      line: 1,
+      check: 'model-cascade-back',
+      label: check.label,
+      text: '账号 › 分组 › 模型必须逐级飞出，不允许返回行或同面板替换',
+    })
+  }
+} catch {
+  // ModelCascade 不存在时忽略
+}
+
 for (const file of files) {
   const text = await readFile(file, 'utf8')
   const lines = text.split('\n')

@@ -144,6 +144,12 @@
   content-visibility: auto;
   contain-intrinsic-size: auto 96px;
 }
+/* 表格 / 代码块会突破阅读宽度铺满对话列；content-visibility:auto 的 paint containment
+   会把超出消息行宽的部分裁掉（连点击都命中不到），这类行必须正常绘制（#7-02）。 */
+.msg-row:has(.md-table-wrap),
+.msg-row:has(.chat-code) {
+  content-visibility: visible;
+}
 
 /* 全文搜索跳转：命中消息短暂高亮 */
 .msg-row.msg-jump-hit {
@@ -387,14 +393,58 @@
   padding: 12px 14px;
 }
 
-.md.chat-md table {
-  display: block;
-  width: 100%;
-  margin: 1em 0;
+/* 表格 / 代码块等宽内容铺满对话列（用户 #7-02：可以超出阅读宽度，不要挤在正文窄栏里） */
+.md.chat-md .md-table-wrap,
+.md.chat-md .chat-code {
+  width: var(--chat-wide, 100%);
+  max-width: var(--chat-wide, 100%);
+  margin-left: calc((100% - var(--chat-wide, 100%)) / 2);
+  margin-right: calc((100% - var(--chat-wide, 100%)) / 2);
+}
+.md.chat-md .md-table-wrap {
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+.md.chat-md .md-table-scroll {
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+.md.chat-md .md-table-wrap table {
+  display: table;
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
   border-collapse: collapse;
   font-size: 13px;
   line-height: 1.6;
+}
+/* 表格里保留不可断词（长路径/标识符）的宽度：超出就横向滚动，而不是挤成很多行。 */
+.md.chat-md .md-table-wrap th,
+.md.chat-md .md-table-wrap td {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.md.chat-md .x-scroll-more {
+  pointer-events: none;
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--t-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--t-bg-elevated) 88%, transparent);
+  padding: 2px 6px;
+  color: var(--t-muted);
+  font-family: var(--t-font-sans);
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+.md.chat-md .x-scroll-more[data-visible="true"] {
+  opacity: 1;
 }
 .md.chat-md th,
 .md.chat-md td {
@@ -465,6 +515,11 @@
   line-height: 1.65;
   color: var(--t-text);
   tab-size: 2;
+}
+.chat-code[data-wrap="true"] pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
 }
 
 /* ---------- 文件预览代码 ---------- */

@@ -79,7 +79,7 @@ function dedupe(models: ModelInfo[]): ModelInfo[] {
   return out;
 }
 
-const EFFORT_ORDER: ReasoningEffort[] = ['off', 'low', 'medium', 'high', 'max'];
+const EFFORT_ORDER: ReasoningEffort[] = ['off', 'minimal', 'low', 'medium', 'high', 'max'];
 
 function normalizeEfforts(value: unknown): ReasoningEffort[] | undefined {
   if (!Array.isArray(value)) return undefined;

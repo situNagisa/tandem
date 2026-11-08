@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeftRight, Check, Copy } from 'lucide-react'
+import { ArrowLeftRight, Check, Copy, WrapText } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { AUTO_LANGUAGES, languageLabel, loadHighlighter } from '../lib/highlight'
 import { copyText } from '../lib/clipboard'
@@ -7,6 +7,15 @@ import { useHorizontalOverflow } from '../lib/hooks'
 import { IconButton } from './ui/Button'
 
 const MAX_CHARS = 200_000
+const WRAP_KEY = 'tandem.codeWrap.v1'
+
+function loadWrap(): boolean {
+  try {
+    return localStorage.getItem(WRAP_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 const HIGHLIGHT_CACHE_MAX = 80
 const highlightCache = new Map<string, { code: string; html: string; language?: string }>()
 let highlightCacheChars = 0
@@ -114,6 +123,7 @@ export function CodeBlock({
   const [highlighted, setHighlighted] = useState<{ code: string; html: string; language?: string } | null>(null)
   const [autoLang, setAutoLang] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [wrap, setWrap] = useState(loadWrap)
   const copyTimer = useRef<number | null>(null)
   const shown = useMemo(
     () => (code.length > MAX_CHARS ? code.slice(0, MAX_CHARS) + '\n…（内容过长，已截断）' : code),
@@ -225,12 +235,39 @@ export function CodeBlock({
   const empty = !shown
 
   return (
-    <div className={cn('chat-code', fill && 'file-code-fill', className)}>
+    <div className={cn('chat-code', fill && 'file-code-fill', className)} data-wrap={wrap ? 'true' : undefined}>
       {showHeader && (
-        <div className="chat-code-tools" data-visible={copied || undefined}>
+        <div className="chat-code-tools" data-visible={copied || wrap || undefined}>
           <span className="truncate font-mono text-[12px] text-[var(--t-text-tertiary)]">
             {fileName || languageLabel(language)}
           </span>
+          <button
+            type="button"
+            aria-pressed={wrap}
+            aria-label="自动换行"
+            title={wrap ? '关闭自动换行（长行横向滚动）' : '自动换行（长行不横向滚动）'}
+            data-testid="code-wrap-toggle"
+            onClick={() => {
+              setWrap((value) => {
+                const next = !value
+                try {
+                  localStorage.setItem(WRAP_KEY, next ? '1' : '0')
+                } catch {
+                  /* localStorage 不可用时只影响本次 */
+                }
+                return next
+              })
+            }}
+            className={cn(
+              'flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[12px] transition-colors',
+              wrap
+                ? 'bg-[var(--t-bg-active)] text-text'
+                : 'text-[var(--t-text-tertiary)] hover:bg-[var(--t-bg-active)] hover:text-text',
+            )}
+          >
+            <WrapText size={12} />
+            自动换行
+          </button>
           <IconButton
             size="sm"
             onClick={copy}
@@ -289,8 +326,8 @@ export function CodeBlock({
             )}
           </pre>
         )}
-        <div className="x-scroll-fade" data-visible={canRight} aria-hidden />
-        {canLeft || canRight ? (
+        <div className="x-scroll-fade" data-visible={!wrap && canRight} aria-hidden />
+        {!wrap && (canLeft || canRight) ? (
           <div className="x-scroll-foot">
             <ArrowLeftRight size={10} /> 左右滑动查看
           </div>

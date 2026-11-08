@@ -1361,6 +1361,30 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
     ),
   ]
 
+  // 宽内容回归（#7-02）：长表格 + 长代码行。
+  const wideCode = `const LONG_LINE = "${'x'.repeat(260)}"`
+  const wideCell = `这是一段足够长的说明-${'wide-token-'.repeat(4)}`
+  const wideToken = 'X'.repeat(90)
+  const wideMarkdown = [
+    '宽内容回归：',
+    '',
+    '| 模块 | 说明 | 负责人 | 状态 | 备注 | 路径 | 数量 | 更新时间 | 关联 | 操作 |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    ...Array.from(
+      { length: 10 },
+      (_, i) =>
+        `| module-${i} | ${wideCell} | 张三 | 进行中 | ${wideToken}-${i} | ${wideToken}/src/features/module-${i}/index.ts | ${i * 17} | 2026-11-09 | 关联-${wideToken} | 查看 |`,
+    ),
+    '',
+    '```ts',
+    wideCode,
+    '```',
+  ].join('\n')
+  const wideMessages = [
+    message('w1', 'user', '看看这张宽表格和长代码行'),
+    message('w2', 'assistant', wideMarkdown, { model: 'mock-1' }),
+  ]
+
   const mk = (id, title, messages, extra = {}) => ({
     ...common,
     id,
@@ -1413,6 +1437,7 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
     ], { groupId: 'g2', model: 'o3', updatedAt: Date.now() - 980 }),
     mk('huge', '超大会话 · 320 轮', hugeMessages, { updatedAt: Date.now() - 900 }),
     mk('links', '文件链接会话', linksMessages, { updatedAt: Date.now() - 1500 }),
+    mk('wide', '宽内容会话', wideMessages, { updatedAt: Date.now() - 1520 }),
     // 配额交接：主分组第一次请求成功后下一次 429，备用分组接住。
     mk('quota', '配额交接会话', [
       message('q1', 'user', '第一轮：介绍一下项目'),
@@ -2715,35 +2740,120 @@ async function main() {
       assert.match(await tip.innerText(), /回归长会话/, 'tooltip 不是会话完整标题')
     })
 
-    desktop('模型菜单级联（账号 → 分组 → 模型）可用且不越界', async (page) => {
+    desktop('模型菜单级联（账号 → 分组 → 模型）逐级飞出且不越界（#7-04）', async (page) => {
       await openSession(page, 'long')
       await waitModelReady(page)
       await page.getByRole('button', { name: '选择模型' }).first().click()
       const rootMenu = page.locator('[role="menu"]').first()
       await rootMenu.waitFor()
       withinViewport(await rootMenu.boundingBox(), DESKTOP, '模型菜单')
-      const accountTrigger = page.getByRole('menuitem', { name: /切换账号/ }).first()
+      assert.match(await rootMenu.innerText(), /切换账号/, '主菜单缺少「切换账号」级联入口')
+      const accountTrigger = rootMenu.getByRole('menuitem', { name: /切换账号/ }).first()
       await accountTrigger.hover()
-      const accountMenu = page.locator('[aria-label="切换账号"]')
+      const accountMenu = page.locator('[role="menu"][aria-label="切换账号"]').first()
       await accountMenu.waitFor({ state: 'visible' })
       withinViewport(await accountMenu.boundingBox(), DESKTOP, '切换账号子菜单')
-      // 逐级展开：账号 → 分组 → 模型（反馈 #19 复用同一个级联组件）。
-      await accountMenu.getByRole('menuitem', { name: /主力账号/ }).click()
-      await page.waitForTimeout(200)
-      assert.ok((await accountMenu.getByText('生产', { exact: true }).count()) >= 1, '账号子菜单没有列出分组')
-      assert.ok((await accountMenu.getByText('备用', { exact: true }).count()) >= 1, '账号子菜单没有列出分组')
-      await accountMenu.getByText('备用', { exact: true }).click()
-      await page.waitForTimeout(250)
+      // 反馈 #7-04：悬停账号 → 右侧飞出分组，不允许在原地替换或出现返回行。
+      assert.equal(
+        await accountMenu.getByText(/返回|‹/).count(),
+        0,
+        '账号子菜单出现了「返回」式原地导航',
+      )
+      const mainAccount = accountMenu.getByRole('menuitem', { name: /主力账号/ }).first()
+      await mainAccount.hover()
+      const groupMenu = page.locator('[role="menu"][aria-label="主力账号"]').first()
+      await groupMenu.waitFor({ state: 'visible', timeout: 5_000 })
+      withinViewport(await groupMenu.boundingBox(), DESKTOP, '分组子菜单')
+      assert.equal(
+        await groupMenu.getByText(/返回|‹/).count(),
+        0,
+        '分组子菜单出现了「返回」式原地导航',
+      )
+      const backup = groupMenu.getByRole('menuitem', { name: /备用/ }).first()
+      await backup.hover()
+      const modelMenu = page.locator('[role="menu"][aria-label="主力账号 · 备用"]').first()
+      await modelMenu.waitFor({ state: 'visible', timeout: 5_000 })
+      withinViewport(await modelMenu.boundingBox(), DESKTOP, '模型子菜单')
+      assert.ok((await modelMenu.getByRole('menuitem', { name: /O3/i }).count()) >= 1, '模型子菜单没有列出模型')
       const response = page.waitForResponse(
         (res) => res.url().includes('/api/sessions/long') && res.request().method() === 'PATCH',
         { timeout: 10_000 },
       )
-      await accountMenu.getByRole('menuitem', { name: /O3/i }).click()
+      await modelMenu.getByRole('menuitem', { name: /O3/i }).click()
       await response
+      await rootMenu.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {})
       assert.match(await page.getByRole('button', { name: '选择模型' }).first().innerText(), /O3/, '选择后模型按钮未更新')
       const stored = await api(base, token, '/api/sessions/long')
       assert.equal(stored.model, 'o3', '会话模型未落库')
       assert.equal(stored.groupId, 'g2', '会话分组未落库')
+    })
+
+    desktop('思考强度档位来自模型能力，名称用厂商叫法（#7-05）', async (page) => {
+      await openSession(page, 'priced')
+      await waitModelReady(page)
+      await page.locator('button[aria-label^="选择模型"]').first().click()
+      const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+      await menu.waitFor()
+      const effortTrigger = menu.getByRole('menuitem', { name: /思考强度/ }).first()
+      await effortTrigger.hover()
+      const submenu = page.locator('[role="menu"][aria-label="思考强度"]').first()
+      await submenu.waitFor({ state: 'visible', timeout: 5_000 })
+      const text = await submenu.innerText()
+      assert.match(text, /低 · low/, `o3 档位没有使用 reasoning_effort 原名：${text}`)
+      assert.match(text, /中 · medium/, `o3 档位缺少 medium：${text}`)
+      assert.match(text, /高 · high/, `o3 档位缺少 high：${text}`)
+      assert.equal(await submenu.getByRole('menuitemradio', { name: '关', exact: true }).count(), 0, 'o3 不应出现「关」档位')
+      await page.keyboard.press('Escape')
+      await page.keyboard.press('Escape')
+
+      // 不支持思考的模型隐藏整个「思考强度」项。
+      await openSession(page, 'nockpt')
+      await waitModelReady(page)
+      await page.locator('button[aria-label^="选择模型"]').first().click()
+      const plainMenu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+      await plainMenu.waitFor()
+      assert.equal(
+        await plainMenu.getByRole('menuitem', { name: /思考强度/ }).count(),
+        0,
+        '未知/不支持思考的模型仍显示思考强度',
+      )
+      await page.keyboard.press('Escape')
+    })
+
+    desktop('模型菜单顶部显示最近使用模型（跨账号分组）并可直接选中（#7-04）', async (page) => {
+      await openSession(page, 'long')
+      await page.evaluate(() => {
+        localStorage.setItem(
+          'tandem.recentModels.v1',
+          JSON.stringify([
+            { profileId: 'p-main', groupId: 'g1', model: 'mock-2', count: 9, lastUsedAt: Date.now() },
+            { profileId: 'p-main', groupId: 'g2', model: 'o3', count: 5, lastUsedAt: Date.now() - 1000 },
+            { profileId: 'p-main', groupId: 'g1', model: 'mock-1', count: 2, lastUsedAt: Date.now() - 2000 },
+          ]),
+        )
+      })
+      await page.getByRole('button', { name: '选择模型' }).first().click()
+      const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+      await menu.waitFor()
+      const labels = await menu.getByRole('menuitem').allInnerTexts()
+      const topIndex = labels.findIndex((text) => /mock[\s-]?2/i.test(text))
+      const o3Index = labels.findIndex((text) => /O3/i.test(text))
+      const mockIndex = labels.findIndex((text) => /mock[\s-]?1/i.test(text))
+      assert.ok(topIndex >= 0, '最近使用列表缺少常用模型 mock-2')
+      assert.ok(o3Index >= 0, '最近使用列表缺少跨分组模型 O3')
+      assert.ok(mockIndex >= 0, '最近使用列表缺少 mock-1')
+      assert.ok(topIndex < o3Index && o3Index < mockIndex, `最近使用没有按次数排序：${labels.join(' | ')}`)
+      assert.match(labels[topIndex], /生产/, '最近使用模型没有标注分组')
+      assert.match(labels[o3Index], /备用/, '最近使用模型没有标注分组')
+      const response = page.waitForResponse(
+        (res) => res.url().includes('/api/sessions/long') && res.request().method() === 'PATCH',
+        { timeout: 10_000 },
+      )
+      await menu.getByRole('menuitem').filter({ hasText: /mock[\s-]?2/i }).first().click()
+      await response
+      const stored = await api(base, token, '/api/sessions/long')
+      assert.equal(stored.model, 'mock-2', '最近使用模型没有生效')
+      assert.equal(stored.groupId, 'g1', '最近使用模型没有切换分组')
     })
 
     desktop('环境条容器透明、触发器可见且不越界', async (page) => {
@@ -2892,7 +3002,47 @@ async function main() {
       await page.keyboard.press('Escape')
     })
 
-    desktop('消息用量带短标签，悬停显示本轮/本会话小表格（R15）', async (page) => {
+    desktop('宽表格与长代码行铺满对话列，表格可横向滚动（#7-02）', async (page) => {
+      await openSession(page, 'wide')
+      const table = page.locator('[data-message-id="w2"] .md-table-wrap').first()
+      await table.waitFor({ timeout: 10_000 })
+      const tableBox = await table.boundingBox()
+      assert.ok(tableBox, '找不到宽表格')
+      assert.ok(tableBox.width > 1400, `表格没有铺满对话列：${Math.round(tableBox.width)}px`)
+      const scroll = table.locator('.md-table-scroll')
+      const metrics = await scroll.evaluate((el) => ({
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+      }))
+      assert.ok(metrics.scrollWidth > metrics.clientWidth, '宽表格没有横向滚动')
+      await table.locator('.x-scroll-more[data-visible="true"]').waitFor({ timeout: 5_000 })
+
+      const code = page.locator('[data-message-id="w2"] .chat-code').first()
+      await code.waitFor({ timeout: 10_000 })
+      const codeBox = await code.boundingBox()
+      assert.ok(codeBox, '找不到代码块')
+      assert.ok(codeBox.width > 1400, `代码块没有铺满对话列：${Math.round(codeBox.width)}px`)
+      const pre = code.locator('pre')
+      const before = await pre.evaluate((el) => ({
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+        whiteSpace: getComputedStyle(el).whiteSpace,
+      }))
+      assert.notEqual(before.whiteSpace, 'pre-wrap', '代码块默认不应自动换行')
+      assert.ok(before.scrollWidth > before.clientWidth, '长代码行没有横向滚动')
+
+      await code.hover()
+      await code.getByTestId('code-wrap-toggle').click()
+      const after = await pre.evaluate((el) => ({
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+        whiteSpace: getComputedStyle(el).whiteSpace,
+      }))
+      assert.equal(after.whiteSpace, 'pre-wrap', '打开自动换行后仍不换行')
+      assert.ok(after.scrollWidth <= after.clientWidth + 1, '自动换行后仍横向溢出')
+    })
+
+    desktop('消息用量只保留一行小字，不再悬停弹出表格（#7-03）', async (page) => {
       await openSession(page, 'long')
       const summary = page.locator('[data-usage-summary]').last()
       await summary.scrollIntoViewIfNeeded()
@@ -2904,38 +3054,58 @@ async function main() {
       }
       assert.ok(!text.includes('→'), `用量仍在使用裸箭头：${text}`)
       await summary.hover()
-      const table = page.locator('[data-usage-table]')
-      await table.waitFor({ state: 'visible', timeout: 5_000 })
-      const tableText = await table.innerText()
-      for (const label of ['本轮', '本会话', '输入', '输出', '缓存读', '缓存写', '花费']) {
-        assert.ok(tableText.includes(label), `用量表格缺少「${label}」：${tableText}`)
-      }
-      assert.ok(!/模型 |未命中输入|推理/.test(tableText), `用量表格仍有冗余文字：${tableText}`)
+      await page.waitForTimeout(700)
+      assert.equal(
+        await page.locator('[data-usage-table]').count(),
+        0,
+        '悬停用量仍弹出明细表格（用户 #7-03 要求去掉）',
+      )
+      assert.equal(await summary.getAttribute('aria-label'), null, '用量行仍标注为可交互明细')
       await page.keyboard.press('Escape')
     })
 
-    desktop('文件夹选择器不再显示最近文件夹（命令面板最近目录保留）', async (page) => {
-      await openSession(page, 'long')
-      await page.evaluate(() => {
-        const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
-        const hostId = hosts[0]?.id ?? 'local'
-        localStorage.setItem(
-          'tandem.recentDirs.v1',
-          JSON.stringify({ [hostId]: ['/tmp/tandem-recent-marker'] }),
+    desktop('文件夹选择器不再显示最近文件夹；超长名称单行省略并悬停显示全名（R15）', async (page) => {
+      const longName = 'a-very-long-folder-name-for-truncation-check-0123456789'
+      const longDir = path.join(repo, longName)
+      mkdirSync(longDir, { recursive: true })
+      try {
+        await openSession(page, 'long')
+        await page.evaluate(() => {
+          const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
+          const hostId = hosts[0]?.id ?? 'local'
+          localStorage.setItem(
+            'tandem.recentDirs.v1',
+            JSON.stringify({ [hostId]: ['/tmp/tandem-recent-marker'] }),
+          )
+        })
+        const trigger = page.locator(`button[title="${repo}"]`).first()
+        await trigger.click()
+        const panel = page.locator('[role="menu"].popover-panel').first()
+        await panel.waitFor()
+        assert.equal(
+          await panel.getByText('tandem-recent-marker', { exact: false }).count(),
+          0,
+          '文件夹选择器仍显示最近文件夹',
         )
-      })
-      const trigger = page.locator(`button[title="${repo}"]`).first()
-      await trigger.click()
-      const panel = page.locator('[role="menu"].popover-panel').first()
-      await panel.waitFor()
-      assert.equal(
-        await panel.getByText('tandem-recent-marker', { exact: false }).count(),
-        0,
-        '文件夹选择器仍显示最近文件夹',
-      )
-      const firstItem = panel.getByRole('menuitem').first()
-      assert.equal((await firstItem.innerText()).trim(), '..', '文件夹选择器首项不是上一级目录')
-      await page.keyboard.press('Escape')
+        const firstItem = panel.getByRole('menuitem').first()
+        assert.equal((await firstItem.innerText()).trim(), '..', '文件夹选择器首项不是上一级目录')
+        // 反馈 #7-06：行保持单行省略，只有溢出时才挂全文 title。
+        const longRow = panel.getByRole('menuitem').filter({ hasText: longName.slice(0, 20) }).first()
+        await longRow.waitFor({ timeout: 10_000 })
+        const label = longRow.locator('span.truncate').first()
+        const info = await label.evaluate((el) => ({
+          scrollWidth: el.scrollWidth,
+          clientWidth: el.clientWidth,
+          title: el.getAttribute('title'),
+          whiteSpace: getComputedStyle(el).whiteSpace,
+        }))
+        assert.ok(info.scrollWidth > info.clientWidth, '超长文件夹名没有被单行截断')
+        assert.equal(info.title, longName, `超长文件夹名缺少全名入口：${info.title}`)
+        assert.notEqual(info.whiteSpace, 'normal', '文件夹行发生了换行')
+        await page.keyboard.press('Escape')
+      } finally {
+        rmSync(longDir, { recursive: true, force: true })
+      }
     })
 
     desktop('自动路由偏好点击即时切换且不闪回（R17）', async (page) => {
@@ -6551,7 +6721,14 @@ async function main() {
         assert.equal(await section.locator('.text-danger').count(), 0, '缺少 adb 不应显示为错误')
         assert.equal(await section.getByText(/spawn adb ENOENT/).count(), 0, '界面上不应出现原始 adb 异常')
         await section.getByText('如何安装 / 设置路径').click()
-        await section.getByText(/devices\.adbPath/).waitFor({ timeout: 5_000 })
+        await section.getByText(/devices\.adbPath/).first().waitFor({ timeout: 5_000 })
+        // 反馈 #7-01：按 Host 平台优先显示，其他平台可展开；不能只有 Windows。
+        await section.getByText('Linux（当前 Host）', { exact: true }).waitFor({ timeout: 5_000 })
+        await section.getByText(/apt install adb/).waitFor({ timeout: 5_000 })
+        assert.equal(await section.getByText('Windows 安装方法', { exact: true }).count(), 1, '缺少 Windows 折叠说明')
+        assert.equal(await section.getByText('macOS 安装方法', { exact: true }).count(), 1, '缺少 macOS 折叠说明')
+        await section.getByText('macOS 安装方法', { exact: true }).click()
+        await section.getByText(/brew install --cask android-platform-tools/).waitFor({ timeout: 5_000 })
         await dialog.getByRole('button', { name: '完成' }).click()
         await page.evaluate((url) => {
           const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
@@ -6623,8 +6800,21 @@ async function main() {
         assert.equal(shell.ok, true, '演示 adb shell 失败')
         assert.ok(shell.output.includes('Pixel 8'), `演示 adb 返回异常：${shell.output}`)
 
-        // 工作站界面标注「演示设备」。
+        // 反馈 #7-01：挂载后在会话里能看到演示画面（安卓模拟画面 + 串口滚动日志）。
         await openSession(page, sessionId)
+        const stage = page.locator('[data-demo-stage]')
+        await stage.waitFor({ state: 'visible', timeout: 15_000 })
+        assert.match(await stage.innerText(), /演示画面/, '会话里没有演示画面卡片')
+        assert.match(await stage.innerText(), /Pixel 8（演示）/, '演示画面缺少安卓设备')
+        await stage.locator('[data-demo-phone]').waitFor({ timeout: 5_000 })
+        const serialBox = stage.locator('[data-demo-serial]')
+        await serialBox.waitFor({ timeout: 5_000 })
+        const serialBefore = (await serialBox.innerText()).length
+        await page.waitForTimeout(1800)
+        const serialAfter = (await serialBox.innerText()).length
+        assert.ok(serialAfter > serialBefore, '演示串口日志没有自动滚动')
+
+        // 工作站界面标注「演示设备」。
         await page.getByRole('button', { name: '工作站' }).click()
         const dialog = page.getByRole('dialog', { name: '工作站' })
         await dialog.waitFor({ state: 'visible' })

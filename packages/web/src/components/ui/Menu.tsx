@@ -13,6 +13,7 @@ import {
 import * as RDropdown from '@radix-ui/react-dropdown-menu'
 import { Check, ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '../../lib/cn'
+import { useOverflowTitle } from '../../lib/hooks'
 import { nodeContains, portalLayer } from '../../lib/overlay'
 import { useFeedbackStore } from '../../store/useFeedbackStore'
 import type { ControlSize } from './Button'
@@ -62,6 +63,8 @@ function RowContent({
   /** 标签被截断时的全文入口（原生 title，由 ui/Tooltip 统一转成标准提示）。 */
   labelTitle?: string
 }) {
+  const text = plainText(children).trim()
+  const [labelRef, overflow] = useOverflowTitle<HTMLSpanElement>([text])
   return (
     <>
       {icon && (
@@ -69,7 +72,11 @@ function RowContent({
           {icon}
         </span>
       )}
-      <span className="min-w-0 flex-auto truncate" title={labelTitle}>
+      <span
+        ref={labelRef}
+        className="min-w-0 flex-auto truncate"
+        title={labelTitle ?? (overflow && text ? text : undefined)}
+      >
         {children}
       </span>
       {trailing && <span className="shrink-0 text-[12px] text-muted max-sm:text-[12px]">{trailing}</span>}

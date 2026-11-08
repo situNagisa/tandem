@@ -7,6 +7,7 @@ import { readSse, fetchSse } from './sse.js';
 import { createIdleTimeout, idleTimeoutError } from './idle-timeout.js';
 import { parseRateLimitHeaders, retryAfterMs } from './rate-limit.js';
 import type { StreamRequest, StreamResult } from './types.js';
+import { openaiReasoningEffort } from './capabilities.js';
 
 type AnyRecord = Record<string, any>;
 
@@ -113,9 +114,13 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
   } else {
     body.max_tokens = req.maxTokens;
   }
-  if (req.effort && req.effort !== 'off') {
-    body.reasoning_effort = req.effort === 'max' ? 'high' : req.effort;
-  }
+  const reasoningEffort = openaiReasoningEffort(
+    req.profile.kind,
+    req.model,
+    req.effort,
+    req.profile.modelCapabilities,
+  );
+  if (reasoningEffort) body.reasoning_effort = reasoningEffort;
   if (req.tools.length > 0) {
     body.tools = req.tools.map((tool) => ({
       type: 'function',

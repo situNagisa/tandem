@@ -14,6 +14,8 @@ export type ProviderKind =
 /** 单个模型的能力覆盖；缺省字段按 provider 能力或内置表推断。 */
 export interface ModelCapabilities {
   efforts?: ReasoningEffort[];
+  /** 各档位在该厂商的原名（如「低 · low」「中 · 8K」），UI 直接显示。 */
+  effortLabels?: Partial<Record<ReasoningEffort, string>>;
   contextWindow?: number;
 }
 
@@ -454,7 +456,7 @@ export interface CreateSessionInput {
   title?: string;
   worktree?: { branch?: string };
 }
-export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'max';
+export type ReasoningEffort = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'max';
 // cwd：会话中途切换工作目录（下一轮生效，重新检测 env）
 export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'autoRoute' | 'routeMode' | 'routePreference' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'cwd' | 'pinnedTurns'>>;
 
@@ -527,6 +529,7 @@ export interface ListModelsInput { kind: ProviderKind; baseUrl?: string; apiKey?
 export interface ModelInfo {
   id: string; displayName?: string; contextWindow?: number;
   efforts?: ReasoningEffort[]; // 该模型支持的思考强度档位；缺省表示未知（客户端按 provider 默认显示）；[] 表示不支持思考
+  effortLabels?: Partial<Record<ReasoningEffort, string>>; // 各档位的厂商叫法（中文 + 原名/预算）
 }
 /** 参考单价（每百万 token 美元）；缓存价按 provider 缓存放大的输入价折算。 */
 export interface ModelPriceInfo {

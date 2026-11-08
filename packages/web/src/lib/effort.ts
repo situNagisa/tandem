@@ -1,9 +1,10 @@
 import type { ProviderKind, ReasoningEffort } from '@tandem/protocol'
 
-export const EFFORTS: ReasoningEffort[] = ['off', 'low', 'medium', 'high', 'max']
+export const EFFORTS: ReasoningEffort[] = ['off', 'minimal', 'low', 'medium', 'high', 'max']
 
 export const EFFORT_LABEL: Record<ReasoningEffort, string> = {
   off: '关',
+  minimal: '极低',
   low: '低',
   medium: '中',
   high: '高',
@@ -18,7 +19,8 @@ export function effortSuffix(effort: ReasoningEffort | undefined): string {
 /** 能力未知时按 provider 默认展示的档位。 */
 export function defaultEffortsForKind(kind: ProviderKind | undefined): ReasoningEffort[] {
   if (kind === 'anthropic' || kind === undefined) return [...EFFORTS]
-  return EFFORTS.filter((effort) => effort !== 'max')
+  if (kind === 'demo') return ['off']
+  return EFFORTS.filter((effort) => effort !== 'max' && effort !== 'off')
 }
 
 /** 当前强度不在支持列表时，取档位距离最近的一项；列表为空表示不支持思考。 */
@@ -42,7 +44,7 @@ const EFFORT_KEY = 'tandem.effort.v1'
 export function loadLastEffort(): ReasoningEffort {
   try {
     const raw = localStorage.getItem(EFFORT_KEY)
-    if (raw === 'off' || raw === 'low' || raw === 'medium' || raw === 'high' || raw === 'max') {
+    if (raw === 'off' || raw === 'minimal' || raw === 'low' || raw === 'medium' || raw === 'high' || raw === 'max') {
       return raw
     }
   } catch {

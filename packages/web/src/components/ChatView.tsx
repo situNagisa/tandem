@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { ChevronDown, GitFork, ShieldAlert, TriangleAlert } from 'lucide-react'
 import type { PermissionRequest, TeamPresence } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
+import { useDevicesStore } from '../store/useDevicesStore'
 import { useUiStore } from '../store/useUiStore'
 import { api } from '../lib/api'
 import { navigate } from '../lib/router'
@@ -19,11 +20,13 @@ import { CompactConfirmDialog } from './chat/CompactConfirmDialog'
 import { EnvBar } from './EnvBar'
 import { TurnRail } from './chat/TurnRail'
 import { TurnErrorNotice } from './chat/TurnErrorNotice'
+import { DemoDeviceStage } from './workstation/DemoDeviceStage'
 import { isTargetFocused, useSessionTarget, useSessionView } from './session/SessionScope'
 import '../styles/chat.css'
 
 const EMPTY_PENDING: PermissionRequest[] = []
 const EMPTY_VIEWERS: TeamPresence[] = []
+const EMPTY_MOUNTS: import('@tandem/protocol').DeviceMount[] = []
 const PIN_THRESHOLD = 80
 const JUMP_THRESHOLD = 160
 
@@ -32,10 +35,15 @@ export function ChatView() {
   const [rootRef, width] = useElementWidth<HTMLDivElement>()
   const isMobile = useIsMobile()
   const compact = width > 0 && width < 440
+  // 表格 / 代码块等宽内容可以突破正文阅读宽度，铺满对话列（反馈 #7-02）。
+  const chatWide = width > 0 ? Math.max(0, width - (compact ? 20 : 48) - (width > 900 ? 12 : 0)) : 0
   const hasSession = useSessionView((s) => !!s)
   const hostId = useSessionView((s) => s?.hostId ?? null)
   const sessionId = useSessionView((s) => s?.sessionId ?? null)
   const loading = useSessionView((s) => s?.loading ?? false)
+  const sessionMounts = useDevicesStore((s) =>
+    hostId && sessionId ? s.sessionMounts[`${hostId}:${sessionId}`] ?? EMPTY_MOUNTS : EMPTY_MOUNTS,
+  )
   const error = useSessionView((s) => s?.error)
   const turnError = useSessionView((s) => s?.turnError)
   const summary = useSessionView((s) => s?.summary ?? null)
@@ -286,6 +294,7 @@ export function ChatView() {
         >
           <div
             ref={contentRef}
+            style={chatWide > 0 ? { ['--chat-wide' as string]: `${chatWide}px` } : undefined}
             className={cn(
               'mx-auto flex min-h-full w-full max-w-[808px] flex-col pb-8',
               compact ? 'px-2.5 pt-2' : 'px-4 pt-3 md:px-6 md:pt-5',
@@ -411,6 +420,7 @@ export function ChatView() {
               compact={compact}
             />
           )}
+          <DemoDeviceStage mounts={sessionMounts} />
           {pending.length > 0 &&
             (pending[0].toolName === 'ExitPlanMode' ? (
               <PlanCard

@@ -601,7 +601,7 @@ export function updateSession(host: Host, id: string,
   }
   if (typeof patch.effort === 'string') {
     const effort = patch.effort as SessionSummary['effort'];
-    if (!['off', 'low', 'medium', 'high', 'max'].includes(effort ?? '')) {
+    if (!['off', 'minimal', 'low', 'medium', 'high', 'max'].includes(effort ?? '')) {
       throw new Error(`无效的 effort: ${patch.effort}`);
     }
     rec.effort = effort;

@@ -125,3 +125,26 @@ export function useHorizontalOverflow<T extends HTMLElement>(deps: unknown[] = [
   return { ref, canLeft: edges.left, canRight: edges.right, update }
 }
 
+
+/**
+ * 文本被单行省略时给出全文入口（R15）：只有实际溢出才挂 title，
+ * 避免短标签满屏原生提示。`deps` 变化后重新测量（内容更新）。
+ */
+export function useOverflowTitle<T extends HTMLElement>(deps: unknown[] = []) {
+  const [el, setEl] = useState<T | null>(null)
+  const [overflow, setOverflow] = useState(false)
+  useLayoutEffect(() => {
+    if (!el) return
+    const update = () => setOverflow(el.scrollWidth > el.clientWidth + 1)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [el])
+  useEffect(() => {
+    if (!el) return
+    setOverflow(el.scrollWidth > el.clientWidth + 1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps)
+  return [setEl, overflow] as const
+}

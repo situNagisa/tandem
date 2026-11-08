@@ -11,7 +11,7 @@ import type {
 } from '@tandem/protocol';
 import { ensureDir, readJson, tandemHome } from './config.js';
 
-const EFFORTS = new Set<ReasoningEffort>(['off', 'low', 'medium', 'high', 'max']);
+const EFFORTS = new Set<ReasoningEffort>(['off', 'minimal', 'low', 'medium', 'high', 'max']);
 const MODES = new Set<PermissionMode>(['default', 'acceptEdits', 'plan', 'bypassPermissions']);
 const ALIASES = new Set(['sonnet', 'opus', 'haiku']);
 const DELEGATIONS = new Set(['orchestrate', 'more', 'less', 'none']);

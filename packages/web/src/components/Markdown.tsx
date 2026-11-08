@@ -1,10 +1,11 @@
 import { isValidElement, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { FileText } from 'lucide-react'
+import { ArrowLeftRight, FileText } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
+import { useHorizontalOverflow } from '../lib/hooks'
 import {
   isAnchorHref,
   isExternalHref,
@@ -83,6 +84,24 @@ function remarkFileLinks() {
   }
 }
 
+/** 表格：可横向滚动、带渐隐与滚动提示；宽度铺满对话列（反馈 #7-02）。 */
+function MarkdownTable({ children }: { children?: ReactNode }) {
+  const { ref, canLeft, canRight, update } = useHorizontalOverflow<HTMLDivElement>()
+  return (
+    <div className="md-table-wrap x-scroll-wrap">
+      <div ref={ref} onScroll={update} className="md-table-scroll">
+        <table>{children}</table>
+      </div>
+      <div className="x-scroll-fade" data-visible={canRight} aria-hidden />
+      {canLeft || canRight ? (
+        <div className="x-scroll-more" data-visible={canRight} aria-hidden>
+          <ArrowLeftRight size={10} /> 横向滚动
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function makeComponents(streaming: boolean, cwd?: string): Components {
   return {
     pre({ children }) {
@@ -96,6 +115,9 @@ function makeComponents(streaming: boolean, cwd?: string): Components {
           streaming={streaming}
         />
       )
+    },
+    table({ children }) {
+      return <MarkdownTable>{children}</MarkdownTable>
     },
     a({ href, children }) {
       const url = href ?? ''

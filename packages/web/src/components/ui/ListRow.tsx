@@ -1,5 +1,6 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { cn } from '../../lib/cn'
+import { useOverflowTitle } from '../../lib/hooks'
 import { Tip } from './Tooltip'
 
 export type ListRowSize = 'sm' | 'md'
@@ -27,6 +28,23 @@ export interface ListRowProps extends Omit<ButtonHTMLAttributes<HTMLButtonElemen
  * 侧栏 / 设置 / 任意列表的统一样式行：32px 高、圆角 8、选中用中性底色。
  * 菜单行用 Menu.Item；这里是可使用鼠标点击的普通列表行。
  */
+function ListRowTitle({ title, fallback }: { title: ReactNode; fallback?: boolean }) {
+  const [ref, overflow] = useOverflowTitle<HTMLSpanElement>([title])
+  return (
+    <span
+      ref={ref}
+      className="min-w-0 truncate"
+      title={
+        !fallback && overflow && (typeof title === 'string' || typeof title === 'number')
+          ? String(title)
+          : undefined
+      }
+    >
+      {title}
+    </span>
+  )
+}
+
 export const ListRow = forwardRef<HTMLButtonElement, ListRowProps>(function ListRow(
   {
     icon,
@@ -62,7 +80,7 @@ export const ListRow = forwardRef<HTMLButtonElement, ListRowProps>(function List
         </span>
       )}
       <span className={cn('min-w-0 flex-1', inline ? 'flex items-baseline gap-2' : 'flex flex-col')}>
-        <span className="min-w-0 truncate">{title}</span>
+        <ListRowTitle title={title} fallback={!!tooltip} />
         {detail && (
           <span
             className={cn(

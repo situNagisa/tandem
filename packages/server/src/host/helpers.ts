@@ -34,7 +34,7 @@ export const PERMISSION_MODES = new Set<PermissionMode>([
   'bypassPermissions',
 ]);
 
-export const EFFORTS = new Set<ReasoningEffort>(['off', 'low', 'medium', 'high', 'max']);
+export const EFFORTS = new Set<ReasoningEffort>(['off', 'minimal', 'low', 'medium', 'high', 'max']);
 export const DELEGATIONS = new Set<DelegationStrategy>(['orchestrate', 'more', 'less', 'none']);
 
 export interface PermissionEntry {

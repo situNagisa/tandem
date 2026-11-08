@@ -42,6 +42,7 @@ const PERMISSION_LABEL: Record<PermissionMode, string> = {
 
 const EFFORT_LABEL: Record<ReasoningEffort, string> = {
   off: '关',
+  minimal: '极低',
   low: '低',
   medium: '中',
   high: '高',

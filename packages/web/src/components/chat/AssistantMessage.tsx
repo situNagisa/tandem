@@ -15,7 +15,7 @@ import { Menu } from '../ui/Menu'
 import { IconButton } from '../ui/Button'
 import { ToolGroup, type ToolRunEntry } from './ToolGroup'
 import { TypingIndicator } from './MessageNotes'
-import { UsageTip } from './UsageTip'
+import { UsageLine } from './UsageLine'
 
 export const AssistantMessage = memo(function AssistantMessage({
   message,
@@ -44,7 +44,6 @@ export const AssistantMessage = memo(function AssistantMessage({
   const [regenerating, setRegenerating] = useState(false)
   const scopeTarget = useSessionTarget() ?? undefined
   const running = useSessionView((s) => s?.running ?? false)
-  const sessionUsage = useSessionView((s) => s?.summary?.usage)
   const copyTimer = useRef<number | null>(null)
   const rawText = message.content
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
@@ -213,12 +212,12 @@ export const AssistantMessage = memo(function AssistantMessage({
               </IconButton>
             )}
             {message.usage && (
-              <UsageTip usage={message.usage} sessionUsage={sessionUsage}>
+              <UsageLine>
                 输入 {formatTokens(message.usage.inputTokens)} · 输出{' '}
                 {formatTokens(message.usage.outputTokens)} · 缓存命中{' '}
                 {formatTokens(message.usage.cacheReadTokens ?? 0)} · 花费{' '}
                 {formatCost(message.usage.costUsd)}
-              </UsageTip>
+              </UsageLine>
             )}
           </div>
           <div className="msg-more mt-0.5 h-7 justify-start max-md:h-11">

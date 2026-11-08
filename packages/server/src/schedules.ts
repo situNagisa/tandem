@@ -19,7 +19,7 @@ const PERMISSION_MODES = new Set<PermissionMode>([
   'plan',
   'bypassPermissions',
 ]);
-const EFFORTS = new Set<ReasoningEffort>(['off', 'low', 'medium', 'high', 'max']);
+const EFFORTS = new Set<ReasoningEffort>(['off', 'minimal', 'low', 'medium', 'high', 'max']);
 const TICK_MS = 5_000;
 
 interface CronSpec {

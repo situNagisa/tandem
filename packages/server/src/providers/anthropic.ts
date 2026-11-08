@@ -6,7 +6,7 @@ import { isAbortError, truncateEnd } from '../util/text.js';
 import { readSse, fetchSse } from './sse.js';
 import { createIdleTimeout, idleTimeoutError } from './idle-timeout.js';
 import { parseRateLimitHeaders, retryAfterMs } from './rate-limit.js';
-import { builtinCapabilities, overrideFor } from './capabilities.js';
+import { ANTHROPIC_THINKING_BUDGETS, builtinCapabilities, overrideFor } from './capabilities.js';
 import type { StreamRequest, StreamResult } from './types.js';
 
 type AnyBlock = Record<string, any>;
@@ -20,12 +20,7 @@ function supportsThinking(model: string, profile: StreamRequest['profile'], effo
   return !!efforts && efforts.includes(effort);
 }
 
-const THINKING_BUDGETS: Partial<Record<NonNullable<StreamRequest['effort']>, number>> = {
-  low: 2048,
-  medium: 8192,
-  high: 16384,
-  max: 32000,
-};
+const THINKING_BUDGETS = ANTHROPIC_THINKING_BUDGETS;
 
 /** 内部 Message -> Anthropic messages；合并连续同角色，保证 user/assistant 交替。 */
 export function toAnthropicMessages(messages: Message[]): AnyBlock[] {

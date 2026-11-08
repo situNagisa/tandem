@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import type { ModelPriceInfo, Profile, ReasoningEffort } from '@tandem/protocol'
 import { ChevronDown, Loader2, Sparkles } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { EFFORT_LABEL, effortSuffix, nearestEffort } from '../../lib/effort'
 import { prettyModel, shortModelName } from '../../lib/modelName'
 import { groupName, profileModelGroups } from '../../lib/profileModels'
+import { rankRecentModels } from '../../lib/recentModels'
 import { Button } from '../ui/Button'
 import { Menu } from '../ui/Menu'
 import { ModelCascade } from '../ui/ModelCascade'
@@ -40,6 +41,8 @@ interface ModelPanelProps {
   pricesLoading?: boolean
   effort: ReasoningEffort
   efforts: ReasoningEffort[]
+  /** 各档位在该模型厂商的原始叫法（来自服务端能力表）。 */
+  effortLabels?: Partial<Record<ReasoningEffort, string>>
   loading: boolean
   onSelect: (profileId: string, groupId: string | undefined, model: string) => void
   onSelectAuto: (mode: 'auto' | 'division') => void
@@ -66,6 +69,7 @@ function useModelPanel({
   pricesLoading,
   effort,
   efforts,
+  effortLabels,
   loading,
   onSelect,
   onSelectAuto,
@@ -74,45 +78,54 @@ function useModelPanel({
   onManage,
   onSetupPrice,
 }: ModelPanelProps) {
-  const [accountId, setAccountId] = useState(profileId || profiles[0]?.id || '')
-  const account = profiles.find((p) => p.id === accountId) ?? profiles[0] ?? null
-  const groups = useMemo(() => (account ? profileModelGroups(account) : []), [account])
-  const [groupKey, setGroupKey] = useState<string | undefined>(groupId ?? groups[0]?.groupId)
-  const group = groups.find((g) => (g.groupId ?? undefined) === (groupKey ?? undefined)) ?? groups[0]
-  const models = group?.models ?? []
-  const selectedEffort = efforts.includes(effort) ? effort : nearestEffort(efforts, effort)
-  const showAccounts = profiles.length > 1 || groups.length > 1
+  const currentProfile = profiles.find((p) => p.id === profileId) ?? profiles[0] ?? null
+  const currentGroups = useMemo(
+    () => (currentProfile ? profileModelGroups(currentProfile) : []),
+    [currentProfile],
+  )
+  const currentGroup =
+    currentGroups.find((group) => (group.groupId ?? undefined) === (groupId ?? undefined)) ??
+    currentGroups[0]
+  const selectedEffort = efforts.length
+    ? efforts.includes(effort)
+      ? effort
+      : nearestEffort(efforts, effort)
+    : 'off'
 
   useEffect(() => {
-    if (profiles.length > 0 && (!accountId || !profiles.some((p) => p.id === accountId))) {
-      setAccountId(profileId || profiles[0]?.id || '')
-    }
-  }, [profiles, accountId, profileId])
-
-  useEffect(() => {
-    if (account) onLoadPrices?.(account.id, group?.groupId)
+    if (currentProfile) onLoadPrices?.(currentProfile.id, currentGroup?.groupId)
     // 只在账号/分组变化时加载，避免 prices 回调引用变化导致重复请求
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account?.id, group?.groupId])
+  }, [currentProfile?.id, currentGroup?.groupId])
 
-  useEffect(() => {
-    if (groups.some((g) => (g.groupId ?? undefined) === (groupKey ?? undefined))) return
-    setGroupKey(groups[0]?.groupId)
-  }, [groups, groupKey])
+  // 顶部只放最近使用 / 常用的模型（最多 6 个，可跨账号分组）；第一次使用时回退到当前分组。
+  // 每次渲染重新读取 localStorage：记录发生在发送消息时，菜单再次打开要立刻反映。
+  const recent = (() => {
+    const ranked = rankRecentModels(profiles, 6)
+    if (ranked.length > 0) return ranked
+    if (!currentProfile || !currentGroup) return []
+    return currentGroup.models.slice(0, 6).map((item) => ({
+      profileId: currentProfile.id,
+      ...(currentGroup.groupId ? { groupId: currentGroup.groupId } : {}),
+      model: item,
+      count: 1,
+      lastUsedAt: 0,
+    }))
+  })()
 
-  const choose = (nextModel: string) => {
-    if (!account || !group) return
-    if (
-      account.id !== profileId ||
-      (group.groupId ?? undefined) !== (groupId ?? undefined) ||
-      nextModel !== model
-    ) {
-      onSelect(account.id, group.groupId, nextModel)
-    }
-  }
+  const currentPick = currentProfile
+    ? {
+        profileId: currentProfile.id,
+        ...(currentGroup?.groupId ? { groupId: currentGroup.groupId } : {}),
+        model,
+      }
+    : undefined
 
-  const accountSelected = account?.id === profileId
-  const groupSelected = accountSelected && (group?.groupId ?? undefined) === (groupId ?? undefined)
+  const isCurrent = (pick: { profileId: string; groupId?: string; model: string }) =>
+    !!currentPick &&
+    pick.profileId === currentPick.profileId &&
+    (pick.groupId ?? '') === (currentPick.groupId ?? '') &&
+    pick.model === currentPick.model
 
   const body = (
     <>
@@ -124,10 +137,7 @@ function useModelPanel({
       {!loading && profiles.length === 0 && (
         <div className="px-2 py-2 text-[12px] leading-5 text-muted">这台主机还没有配置账号。</div>
       )}
-      {profiles.length > 0 && models.length === 0 && (
-        <div className="px-2 py-2 text-[12px] leading-5 text-muted">没有可用模型。</div>
-      )}
-      {models.length > 0 && (
+      {profiles.length > 0 && (
         <>
           <Menu.Item
             selected={autoRoute && routeMode !== 'division'}
@@ -154,34 +164,41 @@ function useModelPanel({
           <Menu.Separator />
         </>
       )}
-      {models.map((m) => {
-        const selected = !autoRoute && groupSelected && m === model
-        const friendly = prettyModel(m)
-        const price = prices?.[m]
+      {profiles.length > 0 && recent.length === 0 && (
+        <div className="px-2 py-2 text-[12px] leading-5 text-muted">没有可用模型。</div>
+      )}
+      {recent.map((pick) => {
+        const profile = profiles.find((p) => p.id === pick.profileId)
+        const groups = profile ? profileModelGroups(profile) : []
+        const group = groups.find((item) => (item.groupId ?? '') === (pick.groupId ?? ''))
+        const groupLabel = group?.name ?? profile?.name ?? ''
+        const friendly = prettyModel(pick.model)
+        const current = !autoRoute && isCurrent(pick)
+        const price = isCurrent(pick) ? prices?.[pick.model] : undefined
         const hint = price
-          ? `${m} · ${priceText(price)}`
-          : pricesLoading
-            ? `${m} · 单价读取中…`
-            : `${m} · 无参考价 · 去设置`
+          ? `${pick.model} · ${priceText(price)}`
+          : isCurrent(pick) && pricesLoading
+            ? `${pick.model} · 单价读取中…`
+            : `${pick.model} · ${profile?.name ?? ''}${groupLabel ? ` › ${groupLabel}` : ''}`
         return (
           <Menu.Item
-            key={m}
-            selected={selected}
-            textValue={friendly}
+            key={`${pick.profileId}:${pick.groupId ?? ''}:${pick.model}`}
+            selected={current}
+            textValue={`${friendly} ${groupLabel}`}
             hint={hint}
-            onSelect={() => choose(m)}
+            onSelect={() => onSelect(pick.profileId, pick.groupId, pick.model)}
             trailing={
-              !price && !pricesLoading ? (
+              isCurrent(pick) && !price && !pricesLoading ? (
                 <button
                   type="button"
                   tabIndex={-1}
-                  aria-label={`为 ${m} 设置单价`}
+                  aria-label={`为 ${pick.model} 设置单价`}
                   onPointerDown={(e) => e.stopPropagation()}
                   onPointerUp={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    onSetupPrice(m)
+                    onSetupPrice(pick.model)
                   }}
                   className="pointer-events-none rounded px-0.5 text-[12px] text-muted opacity-0 outline-none transition-opacity duration-[120ms] hover:text-text group-hover/row:pointer-events-auto group-hover/row:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
                 >
@@ -191,6 +208,7 @@ function useModelPanel({
             }
           >
             {friendly}
+            {groupLabel ? <span className="ml-1 text-muted">· {groupLabel}</span> : null}
           </Menu.Item>
         )
       })}
@@ -201,37 +219,41 @@ function useModelPanel({
     <>
       {!autoRoute && efforts.length > 0 && (
         <Menu.Sub>
-          <Menu.SubTrigger trailing={EFFORT_LABEL[selectedEffort]}>思考强度</Menu.SubTrigger>
-          <Menu.SubContent className="w-[190px]" aria-label="思考强度">
+          <Menu.SubTrigger trailing={effortLabels?.[selectedEffort] ?? EFFORT_LABEL[selectedEffort]}>
+            思考强度
+          </Menu.SubTrigger>
+          <Menu.SubContent className="w-[210px]" aria-label="思考强度">
             <Menu.RadioGroup
               value={selectedEffort}
               onValueChange={(next) => onEffortChange(next as ReasoningEffort)}
             >
               {efforts.map((value) => (
                 <Menu.RadioItem key={value} value={value} hint="投入越高，回复越详尽，耗时与用量越多">
-                  {EFFORT_LABEL[value]}
+                  {effortLabels?.[value] ?? EFFORT_LABEL[value]}
                 </Menu.RadioItem>
               ))}
             </Menu.RadioGroup>
           </Menu.SubContent>
         </Menu.Sub>
       )}
-      {showAccounts && (
+      {profiles.length > 0 && (
         <Menu.Sub>
           <Menu.SubTrigger
-            trailing={[account?.name, group?.groupId ? group.name : null]
+            trailing={[currentProfile?.name, currentGroup?.groupId ? currentGroup.name : null]
               .filter(Boolean)
               .join(' › ')}
           >
-            {profiles.length > 1 ? '切换账号' : '切换分组'}
+            {profiles.length > 1
+              ? '切换账号'
+              : currentGroups.length > 1
+                ? '切换分组'
+                : '全部模型'}
           </Menu.SubTrigger>
-          <Menu.SubContent className="w-[240px]" aria-label="切换账号">
+          <Menu.SubContent className="min-w-[220px]" aria-label="切换账号">
             <ModelCascade
-              kind="menu"
               mode="single"
               profiles={profiles}
-              initialAccountId={account?.id}
-              initialGroupId={group?.groupId}
+              current={currentPick}
               onPick={(pick) => onSelect(pick.profileId, pick.groupId, pick.model)}
             />
           </Menu.SubContent>
@@ -256,6 +278,7 @@ export function ModelMenu({
   pricesLoading,
   effort,
   efforts,
+  effortLabels,
   loading,
   disabled,
   onSelect,
@@ -299,6 +322,7 @@ export function ModelMenu({
     pricesLoading,
     effort,
     efforts,
+    effortLabels,
     loading,
     onSelect,
     onSelectAuto,

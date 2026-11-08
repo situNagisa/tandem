@@ -51,6 +51,7 @@ import { selectionContextText, selectionLabel, selectionSource } from '../lib/pr
 import { isTargetFocused, useSessionTarget, useSessionView } from './session/SessionScope'
 import { useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
+import { recordModelUse } from '../lib/recentModels'
 import { groupName, profileModelGroups } from '../lib/profileModels'
 import {
   EFFORTS,
@@ -293,6 +294,9 @@ export function Composer({
   const currentGroupId = sessionless ? groupIdProp : summary?.groupId
   const [localEffort, setLocalEffort] = useState<ReasoningEffort>(loadLastEffort)
   const [modelEfforts, setModelEfforts] = useState<ReasoningEffort[] | undefined>(undefined)
+  const [modelEffortLabels, setModelEffortLabels] = useState<
+    Partial<Record<ReasoningEffort, string>> | undefined
+  >(undefined)
   const currentProfile = uiProfiles.find((p) => p.id === currentProfileId)
   const currentGroup = currentProfile?.groups?.find((g) => g.id === currentGroupId)
   const currentKind = currentGroup?.kind ?? currentProfile?.kind
@@ -401,6 +405,7 @@ export function Composer({
   // 当前模型支持哪些思考强度；请求失败按 provider 默认处理
   useEffect(() => {
     setModelEfforts(undefined)
+    setModelEffortLabels(undefined)
     if (!effectiveHostId || !currentProfileId || !currentModel || autoRoute) return
     const host = useAppStore.getState().hosts.find((h) => h.id === effectiveHostId)
     if (!host) return
@@ -408,7 +413,9 @@ export function Composer({
     api
       .modelCapabilities(host, currentProfileId, currentGroupId, currentModel)
       .then((info) => {
-        if (!cancelled) setModelEfforts(info.efforts)
+        if (cancelled) return
+        setModelEfforts(info.efforts)
+        setModelEffortLabels(info.effortLabels)
       })
       .catch(() => {
         /* 能力未知时保留默认档位 */
@@ -643,6 +650,14 @@ export function Composer({
 
   const handleSend = async () => {
     if (!canSend) return
+    // 记录常用模型（跨账号分组排序；自动路由下实际模型由路由决定，不记这里）。
+    if (!autoRoute && currentProfileId && currentModel) {
+      recordModelUse({
+        profileId: currentProfileId,
+        ...(currentGroupId ? { groupId: currentGroupId } : {}),
+        model: currentModel,
+      })
+    }
     // /schedule 只打开创建界面，不作为消息发送
     if (!attachments.length && outgoingText.trim() === '/schedule') {
       openScheduleComposer()
@@ -1190,6 +1205,7 @@ export function Composer({
             pricesLoading={cachedPrices === 'loading'}
             effort={effort}
             efforts={supportedEfforts}
+            effortLabels={modelEffortLabels}
             loading={profilesLoading}
             disabled={disabled || (!sessionless && !summary)}
             open={modelMenuOpen}
