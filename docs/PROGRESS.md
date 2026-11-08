@@ -2,6 +2,14 @@
 
 > 更新：2026-11-09。只保留最近 5 轮；更早记录见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 53（2026-11-09）反馈包 #6：轮次用量 / 多主机侧栏 / 面板拖宽 / 价格倍率
+- [x] #01 R25：大纲悬停用标准 Tooltip 显示该轮 token/缓存命中/花费/占本会话比例，按用户轮次汇总 assistant usage 并含 Task 子代理/孙代理（标注「含子代理」）；顶部「花费/上下文」切换，单一中性色按分位 5 档着色（收起刻度条同深浅）；压缩轮最浅 + 「已压缩」标记，摘要独立行，撤销压缩恢复；全文保留在 `aria-label`/`sr-only` 并附用量档位；单测 `turnUsage.test.ts`
+- [x] #02 R23：侧栏去掉「本机 ⌄」主机切换器，会话一次按主机分组显示（主机标题与固定/最近项目同层级），主机下按项目分组；离线标题标「离线」并保留缓存列表；筛选菜单保留按主机筛选；回归覆盖两台主机
+- [x] #03 R01：新增共享 `ui/ResizeHandle`，会话信息面板左缘拖宽 280–600、localStorage 记忆、双击复位 300；侧栏、改动审阅、预览、文件预览/文件树一并迁移，删除各处手写拖动逻辑
+- [x] #04 R24：内置官方参考价补齐 Claude/GPT/o/DeepSeek/Gemini/Kimi/Qwen/GLM（前缀匹配，注明参考日期）；账号/分组倍率叠加、覆盖单价优先；菜单 tooltip 显示「官方价 × 账号 × 分组 = 最终价」，无参考价显示「无参考价 · 去设置」；用量页说明历史不重算；server 单测 + 回归
+- 验证：`node scripts/check.mjs`（build/docs/ui-audit/test/smoke/regression）；修复后截图 `/tmp/fb6-after/`
+- 根因：R25/R23/R24 新增，R01 复发走共享层；台账已记录
+
 ## 迭代 52（2026-11-09）工作站改为客户端-服务模式
 - [x] 设计：`docs/workstation.md`（工作站服务/主机两个可独立角色；客户端只填工作站地址；登录 ≠ 添加主机；绑定码/主机侧登录/本机一键；出站隧道 + E2E；默认开放注册、首个管理员、只看自己主机、按主机授权；旧工作区迁移；本地模式保留；v1 边界与部署）
 - [x] 协议：`WorkspaceRole` 增 `member`、`WorkspaceHostGrant`、`WorkspaceHostInfo.ownerId/publicKey/fingerprint/online/grants`、`WorkspaceStatus.role/registration`、`Workstation*`（status/setup/register/bind-code/claim/register/grant/settings/invite）与 `/api/workstation/*` 约定

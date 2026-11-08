@@ -141,6 +141,6 @@ curl http://gateway-host:8271/gateway/v1/messages \
 
 - 无 TLS / 请求签名 / 细粒度按小时限流。
 - 协议不跨转：OpenAI 入口只路由到 OpenAI 兼容分组，Anthropic 入口只路由到 Anthropic 分组。
-- 限额以美元计，依赖账号 `price` 覆盖或内置参考价；未知模型记 0 花费，只统计 token。
+- 限额以美元计，依赖账号 `price` 覆盖或内置官方参考价 × 账号/分组倍率（见 [routing.md](routing.md) §9）；未知模型记 0 花费，只统计 token。
 - 调试正文仅本机文件，不做 UI 查看/导出。
 - 网关令牌不区分「只读/只调用某模型」之外的权限；令牌即模型调用权限。
