@@ -4,10 +4,13 @@ import type { ModelRoutingSettings } from '@tandem/protocol';
 import type { Host } from '../src/host.js';
 import type { SessionRecord } from '../src/types.js';
 import {
+  chooseAutoRoute,
   inferRouteDomain,
   learnedKeyFor,
+  noteTurnEnd,
   planTurnRoute,
   recentToolInputs,
+  type RouteSignals,
 } from '../src/model-routing.js';
 import { normalizeRoutingSettings } from '../src/routing-settings.js';
 
@@ -196,4 +199,45 @@ test('用户覆盖优先，学到的偏好会让同类任务默认直接做', ()
   const learned = planTurnRoute(fakeHost(learnedRouting), rec(text), { text });
   assert.equal(learned?.mode, 'direct');
   assert.match(learned?.reason ?? '', /同类任务/);
+});
+
+test('自动路由：连续 3 轮简单成功后从升级档位回落一档', () => {
+  const host = fakeHost(routing);
+  const r = rec('简单总结一下');
+  r.routeState = {
+    tierBias: 1,
+    simpleSuccesses: 0,
+    toolFailStreak: 0,
+    lastFailed: false,
+    lastTier: 'balanced',
+    lastModel: 'mid',
+  };
+  const signals = (): RouteSignals => ({
+    messageText: '简单总结一下',
+    hasImage: false,
+    contextTokens: 0,
+    previousFailed: false,
+    uncertain: false,
+    toolDepth: 0,
+    delegation: 'more',
+    subagent: false,
+  });
+
+  const escalated = chooseAutoRoute(host, r, signals());
+  assert.equal(escalated?.tier, 'balanced', '回落前应保持升级后的档位');
+
+  noteTurnEnd(r, 'done', 'balanced', false);
+  noteTurnEnd(r, 'done', 'balanced', false);
+  assert.equal(
+    chooseAutoRoute(host, r, signals())?.tier,
+    'balanced',
+    '连续成功不足 3 轮时不应回落',
+  );
+
+  noteTurnEnd(r, 'done', 'balanced', false);
+  const downgraded = chooseAutoRoute(host, r, signals());
+  assert.equal(downgraded?.tier, 'fast', '连续 3 轮简单成功后应回落一档');
+  assert.equal(downgraded?.scores.downgraded, true);
+  assert.match(downgraded?.reason ?? '', /回落/);
+  assert.equal(r.routeState?.tierBias, 0);
 });

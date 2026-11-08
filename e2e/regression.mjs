@@ -131,10 +131,10 @@ function createMockProvider() {
         return
       }
       const messages = body.messages ?? []
-      const userText = messages
-        .filter((message) => message.role === 'user')
-        .map((message) => (typeof message.content === 'string' ? message.content : JSON.stringify(message.content)))
-        .join('\n')
+      // 只看本轮用户消息：历史里出现过的「触发失败」等关键词不能重放工具调用。
+      const lastUser = [...messages].reverse().find((message) => message.role === 'user')
+      const userText =
+        typeof lastUser?.content === 'string' ? lastUser.content : JSON.stringify(lastUser?.content ?? '')
       const systemText = messages
         .filter((message) => message.role === 'system')
         .map((message) => (typeof message.content === 'string' ? message.content : JSON.stringify(message.content)))
