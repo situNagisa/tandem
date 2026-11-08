@@ -404,3 +404,9 @@
 - [x] 前端：右栏「Wiki」卡片（页数/commit/改动文件数/进度/生成入口）；`WikiDialog`（左树 + 全文搜索 + Markdown + 手写段落编辑 + 每天更新）；生成前选择账号/分组/模型与预算上限，显示预计页数/token/花费并确认；`useWikiStore` 接 WS 刷新；文件路径点击复用文件预览
 - 验证：`TANDEM_HOME=/tmp/tandem-wiki` 端口 8372 + 本地 mock SSE 对 `/tmp/wiki-sample`（2 模块）生成 4 页；增量只重做改动模块、手写段落保留、commit 更新；WikiSearch/WikiRead 工具与系统提示注入；Playwright 截图 `/tmp/wiki-shots/`；`e2e/regression.mjs` 新增「项目 Wiki」用例
 - 保守取舍：全文搜索复用现有索引的 tokenizer/分词，不把 Wiki 混入会话搜索；手写段落按整段保存（不解析块级合并）；概览/术语表在根文件或文档改动时也会更新；团队观察者/协作者只读，生成/编辑/定时归所有者
+
+## 迭代 44（2026-11-08）体验走查 v9
+- [x] 接手并验证 4 处未提交小修：手机挂载 TurnRail 以启用轮次抽屉、手机预览默认手机尺寸、ModelMenu/WikiDialog 字号提到 12px；`node scripts/check.mjs` 全量通过（86/86）后提交 `c715432`
+- [x] 六个近期功能双视口（2552×1274 深色 / 390×844）真实点击走查：任务看板 v2、自动模型路由、SSH 物理机向导（假 ssh）、超大会话分页、应用预览、项目 Wiki；**P0/P1 = 0**，P2 4 条记录在 `docs/review-v9.md`，截图 `/tmp/rv9b/`
+- [x] `docs/architecture.md` 模块地图补充 route/paging/preview/quota/sandbox/secrets/doctor/search；board/remote/wiki 原已有
+- 说明：SSH 完整部署与预览元素点选由既有回归覆盖；本轮无 P0/P1 代码改动，未新增回归
