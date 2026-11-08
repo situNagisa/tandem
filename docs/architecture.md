@@ -52,6 +52,7 @@
 | `src/wiki.ts` / `routes/wiki.ts` | 项目 Wiki：`~/.tandem/wiki/<hash>/` 分页 Markdown、模块划分、增量更新与只读生成会话；`tools/wiki-*.ts` 提供 WikiSearch/WikiRead；提示词见 registry 的 `wikiHint/wikiGenerate/wikiUpdate` |
 | `src/host/message-paging.ts` + `store.ts` 的 `readMessagePage` | 会话分页：首屏尾部 200 条/2MB、`before`/`around` 向前翻页、超大工具输出只发首尾、轮次索引；JSONL 从文件末尾按块倒序读取 |
 | `src/preview.ts` + `routes/preview.ts` | 应用预览：Host 端 Playwright 打开本机开发地址，截图流、设备尺寸、元素点选（选择器/可访问名/React 位置），Write/Edit 后自动刷新与改前快照；域名受浏览器白名单约束 |
+| `src/devices/` + `routes/devices.ts` | 工作站设备：`adb.ts`（本机 adb devices/shell/install/logcat）、`serial.ts`（传输层：Mock 虚拟串口 + 可选 serialport）、`manager.ts`（设备级令牌、跨 Host 挂载/代理、串口锁与租约、WS 字节流、审计 `~/.tandem/devices/`）；`tools/device.ts` 暴露 DeviceList/Adb*/Serial* |
 | `src/schedules.ts` | cron 解析与进程内定时任务 |
 | `src/tasks.ts` | Bash 后台任务、输出缓冲、Kill |
 | `src/budgets.ts` / `src/usage.ts` | 预算规则、周期累计、用量与价格计算 |
@@ -98,6 +99,7 @@
 | `src/components/evals/*` | 评测轨迹/并排对比/提示词覆盖/存用例弹层；设置「评测」页见 `settings/EvalsSection.tsx` |
 | `src/components/chat/*` | 轮次导航、上下文环、消息辅助组件；`TurnRail`/`TurnOutlineSheet` 是桌面轮次条与手机底部大纲，分页跳转经 `lib/turnWindow.ts` |
 | `src/components/PreviewPanel.tsx` + `src/lib/previewElement.ts` | 应用预览画布：地址与本地候选、设备尺寸（手机默认手机档）、截图/嵌入、元素点选、改前对比与自动刷新提示 |
+| `src/components/workstation/*` + `src/store/useDevicesStore.ts` | 工作站：按 Host 分组列 ADB/串口、挂载/卸载、令牌代理；串口终端（实时输出、时间戳、搜索、保存日志、波特率重连）；环境条设备胶囊 |
 | `src/components/feedback/*` | 反馈模式浮条、区域截图、标注、抽屉；`lib/feedbackFeatures.ts` 按组件/设置页/路由推断功能标签，`lib/feedbackCauses.ts` 按台账规则建议根因 |
 | `src/components/demo/*` | 演示工作区弹层（场景打开/重播/清除）与体验清单（进度、导出报告、有问题进反馈） |
 | `src/components/split/*` | 多会话分屏：桌面 2/3 列与 2×2、上下分屏、分隔条、拖拽分区、手机圆点滑动、分屏打开选择器 |
@@ -166,6 +168,7 @@ Web/Desktop/Android
 | 加斜杠命令 | `server/src/agent/commands.ts` + `host.ts` 的 `handleCommand` |
 | 改系统提示/注入 | `server/src/agent/prompt.ts`、`prompts/registry.ts`、`host.ts` 的 `buildSystemFor/recordInjections`（项目 Wiki 提示由 `wiki.promptSection` 提供） |
 | 改手机/桌面壳 | `packages/mobile`（Capacitor 插件）、`packages/desktop`（Electron 主进程/preload） |
+| 改工作站/设备共享 | 协议 `Device*` 与 `/api/devices*`；服务端 `src/devices/manager.ts`（挂载/锁/代理/审计）、`routes/devices.ts`；前端 `components/workstation/*`、`store/useDevicesStore.ts`、`EnvBar` 设备胶囊；设计与取舍 `docs/devices.md`；真实设备代测 `docs/devices-test.md`；回归 `e2e/regression.mjs` 的「工作站」用例 |
 | 项目 Wiki | 服务端 `src/wiki.ts` + `routes/wiki.ts` + `tools/wiki-*.ts`；前端 `components/wiki/*`、`right-panel/WikiCard.tsx`、`store/useWikiStore.ts`；数据 `~/.tandem/wiki/<hash>/`；回归 `e2e/regression.mjs` 的「项目 Wiki」用例 |
 | 加回归用例 | server：`packages/server/test/*.test.ts`；web：`packages/web/src/**/*.test.ts`；端到端：`e2e/smoke.mjs` |
 

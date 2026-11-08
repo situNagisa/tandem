@@ -16,6 +16,7 @@ import { useBoardStore } from '../useBoardStore'
 import { useDemoStore } from '../useDemoStore'
 import { useBrowserStore } from '../useBrowserStore'
 import { usePreviewStore } from '../usePreviewStore'
+import { useDevicesStore } from '../useDevicesStore'
 import { useVcsStore } from '../../lib/useVcs'
 import { childSubscriptions, collectToolResults, connections, toast } from './helpers'
 import type { SessionCore } from './sessionCore'
@@ -299,6 +300,15 @@ export function createServerMessageHandler(
             })
           }
         }
+        break
+      }
+      case 'device_output': {
+        useDevicesStore.getState().applyOutput(hostId, msg)
+        break
+      }
+      case 'devices_updated': {
+        const host = getHost(hostId)
+        if (host) useDevicesStore.getState().onDevicesUpdated(host, msg.sessionId)
         break
       }
       case 'external_sessions_changed': {

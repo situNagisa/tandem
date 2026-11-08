@@ -34,6 +34,16 @@ import type {
   CreatePrInput,
   DiffEmptyReason,
   DemoState,
+  SerialOpenResult,
+  SerialReadResult,
+  SessionDevices,
+  DeviceListResult,
+  DeviceLogcatRead,
+  DeviceLogcatStart,
+  DeviceMount,
+  DeviceMountInput,
+  DevicePeerToken,
+  DevicePeerTokenIssued,
   DoctorReport,
   EvalCase,
   EvalRun,
@@ -228,6 +238,83 @@ function qs(params: Record<string, string | undefined>): string {
 
 export const api = {
   host: (h: HostConfig) => request<HostInfo>(h, '/api/host'),
+
+  devices: (h: HostConfig) => request<DeviceListResult>(h, '/api/devices'),
+  devicePeerTokens: (h: HostConfig) => request<DevicePeerToken[]>(h, '/api/devices/peer-tokens'),
+  issueDevicePeerToken: (h: HostConfig, label?: string) =>
+    request<DevicePeerTokenIssued>(h, '/api/devices/peer-tokens', {
+      method: 'POST',
+      body: JSON.stringify({ label }),
+    }),
+  revokeDevicePeerToken: (h: HostConfig, id: string) =>
+    request<{ ok: boolean }>(h, `/api/devices/peer-tokens/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  sessionDevices: (h: HostConfig, sessionId: string) =>
+    request<SessionDevices>(h, `/api/sessions/${encodeURIComponent(sessionId)}/devices`),
+  mountDevice: (h: HostConfig, sessionId: string, input: DeviceMountInput) =>
+    request<DeviceMount>(h, `/api/sessions/${encodeURIComponent(sessionId)}/devices/mount`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  unmountDevice: (h: HostConfig, sessionId: string, mountId: string) =>
+    request<{ ok: boolean }>(
+      h,
+      `/api/sessions/${encodeURIComponent(sessionId)}/devices/${encodeURIComponent(mountId)}`,
+      { method: 'DELETE' },
+    ),
+  serialOpen: (h: HostConfig, sessionId: string, mountId: string, baud: number, shared = false) =>
+    request<SerialOpenResult>(
+      h,
+      `/api/sessions/${encodeURIComponent(sessionId)}/devices/${encodeURIComponent(mountId)}/serial/open`,
+      { method: 'POST', body: JSON.stringify({ baud, shared }) },
+    ),
+  serialRead: (
+    h: HostConfig,
+    sessionId: string,
+    mountId: string,
+    opts: { since?: number; waitMs?: number; windowMs?: number; filter?: string; maxBytes?: number } = {},
+  ) =>
+    request<SerialReadResult>(
+      h,
+      `/api/sessions/${encodeURIComponent(sessionId)}/devices/${encodeURIComponent(mountId)}/serial${qs({
+        since: opts.since !== undefined ? String(opts.since) : undefined,
+        waitMs: opts.waitMs !== undefined ? String(opts.waitMs) : undefined,
+        windowMs: opts.windowMs !== undefined ? String(opts.windowMs) : undefined,
+        filter: opts.filter,
+        maxBytes: opts.maxBytes !== undefined ? String(opts.maxBytes) : undefined,
+      })}`,
+    ),
+  serialWrite: (h: HostConfig, sessionId: string, mountId: string, data: string) =>
+    request<{ ok: boolean }>(
+      h,
+      `/api/sessions/${encodeURIComponent(sessionId)}/devices/${encodeURIComponent(mountId)}/serial/write`,
+      { method: 'POST', body: JSON.stringify({ data }) },
+    ),
+  serialClose: (h: HostConfig, sessionId: string, mountId: string) =>
+    request<{ ok: boolean }>(
+      h,
+      `/api/sessions/${encodeURIComponent(sessionId)}/devices/${encodeURIComponent(mountId)}/serial/close`,
+      { method: 'POST' },
+    ),
+  logcatStart: (h: HostConfig, sessionId: string, mountId: string, filter?: string) =>
+    request<DeviceLogcatStart>(
+      h,
+      `/api/sessions/${encodeURIComponent(sessionId)}/devices/${encodeURIComponent(mountId)}/logcat/start`,
+      { method: 'POST', body: JSON.stringify({ filter }) },
+    ),
+  logcatRead: (h: HostConfig, sessionId: string, mountId: string, streamId: string, since = 0) =>
+    request<DeviceLogcatRead>(
+      h,
+      `/api/sessions/${encodeURIComponent(sessionId)}/devices/${encodeURIComponent(mountId)}/logcat${qs({
+        streamId,
+        since: String(since),
+      })}`,
+    ),
+  logcatStop: (h: HostConfig, sessionId: string, mountId: string, streamId: string) =>
+    request<{ ok: boolean }>(
+      h,
+      `/api/sessions/${encodeURIComponent(sessionId)}/devices/${encodeURIComponent(mountId)}/logcat/stop`,
+      { method: 'POST', body: JSON.stringify({ streamId }) },
+    ),
 
   sshHosts: (h: HostConfig) => request<RemoteSshHost[]>(h, '/api/ssh-hosts'),
   sshScanKey: (h: HostConfig, target: SshTarget) =>

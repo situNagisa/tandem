@@ -103,6 +103,7 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
     ...(typeof existing?.updateShareDir === 'string' && existing.updateShareDir.trim()
       ? { updateShareDir: existing.updateShareDir.trim() }
       : {}),
+    ...(existing?.devices && typeof existing.devices === 'object' ? { devices: existing.devices } : {}),
     ...(isRelayConfig(existing?.relay) ? { relay: existing.relay } : {}),
   };
   if (
@@ -130,6 +131,7 @@ export function saveHostSettings(
     handoff?: import('@tandem/protocol').HandoffSettings;
     modelRouting?: import('@tandem/protocol').ModelRoutingSettings | null;
     updateShareDir?: string;
+    devices?: import('@tandem/protocol').DeviceSettings;
   },
 ): void {
   const file = path.join(home, 'config.json');

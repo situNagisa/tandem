@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Inbox, Kanban, PanelLeftClose, Plus, Search, Send, Settings, SlidersHorizontal, X } from 'lucide-react'
+import { Inbox, Kanban, MonitorSmartphone, PanelLeftClose, Plus, Search, Send, Settings, SlidersHorizontal, X } from 'lucide-react'
 import { useUiStore } from '../store/useUiStore'
 import { useAppStore } from '../store/useAppStore'
 import { basename, modLabel } from '../lib/format'
@@ -14,6 +14,7 @@ import { SessionList, sessionProjectName } from './SessionList'
 import { useInboxCount } from './inbox/InboxView'
 import { navigateBoard, useBoardRoute } from '../lib/boardRoute'
 import { useBoardBadge } from '../store/useBoardStore'
+import { useDevicesStore } from '../store/useDevicesStore'
 
 const EXTERNAL_SOURCES = [
   { value: 'claude-code', label: 'Claude Code' },
@@ -40,6 +41,7 @@ export function Sidebar({
   const resetComposer = useUiStore((s) => s.resetComposer)
   const setInboxOpen = useUiStore((s) => s.setInboxOpen)
   const setDispatchOpen = useUiStore((s) => s.setDispatchOpen)
+  const setWorkstationOpen = useDevicesStore((s) => s.setWorkstationOpen)
   const activeHostId = useAppStore((s) => s.activeHostId)
   const hosts = useAppStore((s) => s.hosts)
   const runtimes = useAppStore((s) => s.runtimes)
@@ -369,6 +371,19 @@ export function Sidebar({
       />
 
       <div className="border-t border-border px-2 py-1.5">
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setWorkstationOpen(true)
+            onNavigate?.()
+          }}
+          className={cn(row, 'text-[12.5px] text-text-tertiary')}
+          tooltip="所有主机的 ADB / 串口设备"
+          tooltipSide="top"
+        >
+          <MonitorSmartphone size={15} className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate">工作站</span>
+        </Button>
         <Button
           variant="ghost"
           onClick={() => {

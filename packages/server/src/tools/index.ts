@@ -18,6 +18,22 @@ import { definition as wikiSearch, run as runWikiSearch } from './wiki-search.js
 import { definition as wikiRead, run as runWikiRead } from './wiki-read.js';
 import { definition as proposeCards, run as runProposeCards } from './propose-cards.js';
 import {
+  adbInstallDefinition,
+  adbLogcatDefinition,
+  adbShellDefinition,
+  listDefinition as deviceListDefinition,
+  runAdbInstall,
+  runAdbLogcat,
+  runAdbShell,
+  runList as runDeviceList,
+  runSerialOpen,
+  runSerialRead,
+  runSerialWrite,
+  serialOpenDefinition,
+  serialReadDefinition,
+  serialWriteDefinition,
+} from './device.js';
+import {
   clickDefinition as browserClick,
   closeDefinition as browserClose,
   consoleDefinition as browserConsole,
@@ -61,6 +77,13 @@ export const TOOLS: ToolDefinition[] = [
   browserScreenshot,
   browserConsole,
   browserClose,
+  deviceListDefinition,
+  adbShellDefinition,
+  adbInstallDefinition,
+  adbLogcatDefinition,
+  serialOpenDefinition,
+  serialReadDefinition,
+  serialWriteDefinition,
 ];
 
 const RUNNERS: Record<string, ToolRunner> = {
@@ -88,6 +111,13 @@ const RUNNERS: Record<string, ToolRunner> = {
   browser_screenshot: runBrowserScreenshot,
   browser_console: runBrowserConsole,
   browser_close: runBrowserClose,
+  DeviceList: runDeviceList,
+  AdbShell: runAdbShell,
+  AdbInstall: runAdbInstall,
+  AdbLogcat: runAdbLogcat,
+  SerialOpen: runSerialOpen,
+  SerialRead: runSerialRead,
+  SerialWrite: runSerialWrite,
 };
 
 export const TOOL_MAP = new Map(TOOLS.map((tool) => [tool.name, tool]));
@@ -160,6 +190,20 @@ export function describeTool(name: string, input: unknown): string {
   if (name === 'browser_snapshot') return '读取当前页面快照';
   if (name === 'browser_console') return '读取页面控制台输出';
   if (name === 'browser_close') return '关闭本会话的浏览器';
+  if (name === 'DeviceList') return '查看本会话可用的设备';
+  if (name === 'AdbShell') return `在设备 ${String(args.device ?? '')} 运行 shell: ${String(args.command ?? '').slice(0, 160)}`;
+  if (name === 'AdbInstall') return `安装 APK 到 ${String(args.device ?? '')}: ${String(args.apk_path ?? args.apkPath ?? '')}`;
+  if (name === 'AdbLogcat') {
+    return args.stream_id
+      ? `读取设备 ${String(args.device ?? '')} 的 logcat`
+      : `启动设备 ${String(args.device ?? '')} 的 logcat 后台流`;
+  }
+  if (name === 'SerialOpen') return `打开串口 ${String(args.device ?? '')} @ ${String(args.baud ?? '')}`;
+  if (name === 'SerialRead') return `读取串口 ${String(args.device ?? '')}`;
+  if (name === 'SerialWrite') {
+    const text = String(args.data ?? '').replace(/\s+/g, ' ').slice(0, 120);
+    return `写串口 ${String(args.device ?? '')}: ${text}`;
+  }
   if (name.startsWith('mcp__')) {
     const [, server, ...rest] = name.split('__');
     return `调用 MCP 工具: ${server ?? ''}/${rest.join('__')}`;

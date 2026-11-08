@@ -36,6 +36,7 @@ import type {
 import { ProfileStore, loadHostConfig, tandemHome } from './config.js';
 import { BrowserManager } from './browser.js';
 import { PreviewManager } from './preview.js';
+import { DeviceManager } from './devices/manager.js';
 import { CheckpointStore } from './checkpoints.js';
 import { ExternalSessionStore } from './external.js';
 import { Hub } from './events.js';
@@ -228,6 +229,8 @@ export class Host {
   readonly browser: BrowserManager;
   /** 应用预览：Host 上本地 Web 应用的截图流、元素点选与改完自动刷新。 */
   readonly preview: PreviewManager;
+  /** 工作站设备：本机 ADB/串口、跨 Host 挂载代理、串口锁与审计。 */
+  readonly devices: DeviceManager;
   /** 演示工作区：独立 demo 仓库 + 内置演示模型 + 可重播/清除的场景。 */
   readonly demo: DemoManager;
   /** 跨会话收件箱（审批/回合结束/预算摘要），手机审批台的数据源。 */
@@ -326,6 +329,7 @@ export class Host {
         });
       },
     });
+    this.devices = new DeviceManager(this, home);
     this.version = readVersion();
     // 启动时连接已启用的 MCP 服务器；失败只记录状态，不影响 Host 启动
     this.mcp.start();
@@ -863,6 +867,7 @@ export class Host {
     this.secrets.dispose();
     this.schedules.dispose();
     this.boards.dispose();
+    this.devices.dispose();
     this.external.stopWatching();
     this.store.flush();
     this.searchIndex.flush();

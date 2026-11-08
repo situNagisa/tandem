@@ -70,6 +70,7 @@ export function settings(host: Host): HostSettings {
       : {}),
     sandbox: host.sandbox.get(),
     ...(host.config.updateShareDir ? { updateShareDir: host.config.updateShareDir } : {}),
+    ...(host.config.devices ? { devices: host.config.devices } : {}),
   };
 }
 
@@ -128,6 +129,15 @@ export function updateSettings(host: Host, input: Partial<HostSettings>): HostSe
     if (dir) host.config.updateShareDir = dir;
     else delete host.config.updateShareDir;
   }
+  if (input.devices && typeof input.devices === 'object') {
+    const adbPath = typeof input.devices.adbPath === 'string' ? input.devices.adbPath.trim() : '';
+    const devices: NonNullable<HostSettings['devices']> = {};
+    if (adbPath) devices.adbPath = adbPath;
+    if (input.devices.serialMock === true) devices.serialMock = true;
+    if (input.devices.allowPeer === false) devices.allowPeer = false;
+    if (Object.keys(devices).length) host.config.devices = devices;
+    else delete host.config.devices;
+  }
   saveHostSettings(host.home, {
     resumeOnRestart: host.settings().resumeOnRestart,
     ...(host.config.defaultDelegation ? { defaultDelegation: host.config.defaultDelegation } : {}),
@@ -137,6 +147,7 @@ export function updateSettings(host: Host, input: Partial<HostSettings>): HostSe
     ...(host.config.handoff ? { handoff: normalizeHandoffSettings(host.config.handoff) } : {}),
     modelRouting: normalizeRoutingSettings(host.config.modelRouting) ?? null,
     ...(host.config.updateShareDir ? { updateShareDir: host.config.updateShareDir } : {}),
+    ...(host.config.devices ? { devices: host.config.devices } : {}),
   });
   return host.settings();
 }
@@ -729,6 +740,7 @@ export async function deleteSession(host: Host, id: string, force = false): Prom
   }
   host.store.delete(id);
   void host.browser.closeSession(id, false);
+  host.devices.releaseSession(id);
   host.hub.dropSession(id);
   host.hub.broadcastAll({ type: 'session_deleted', sessionId: id });
   // 删除导入的会话后，原外部会话应重新出现在侧栏

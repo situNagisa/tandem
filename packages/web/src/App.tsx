@@ -27,6 +27,8 @@ import { WikiDialog } from './components/wiki/WikiDialog'
 import { SearchDialog } from './components/SearchDialog'
 import { BackgroundTasksPanel } from './components/BackgroundTasksPanel'
 import { BrowserPanel } from './components/BrowserPanel'
+import { WorkstationDialog } from './components/workstation/WorkstationDialog'
+import { SerialTerminalDialog } from './components/workstation/SerialTerminalDialog'
 import { PreviewPanel } from './components/PreviewPanel'
 import { InboxDialog } from './components/inbox/InboxDialog'
 import { DispatchDialog } from './components/DispatchDialog'
@@ -490,6 +492,8 @@ export default function App() {
       <WikiDialog />
       <BackgroundTasksPanel />
       <BrowserPanel />
+      <WorkstationDialog />
+      <SerialTerminalDialog />
       {isMobile ? <PreviewPanel /> : null}
       <InboxDialog />
       <DispatchDialogHost />

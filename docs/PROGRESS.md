@@ -429,3 +429,12 @@
 - [x] 回归：`e2e/regression.mjs` 新增 2 条（演示工作区创建/场景/重播/实时对话/清除不污染真实数据；体验清单→反馈→导出→解包按功能/根因）；全量 88/88 通过
 - 保守取舍：演示模型只出现在演示会话的模型菜单（`/api/profiles` 始终隐藏）；演示看板默认不自动调度，用户显式开始/重试后才恢复；应用预览静态服务只监听 127.0.0.1；体验清单功能表覆盖现有主要功能，后续新增功能只需补 `features.ts` + `testPoints.ts`
 - 验证：`TANDEM_HOME=/tmp/tandem-demo` 端口 8391；17 个场景 Playwright 截图 `/tmp/demo-shots/`；演示模型 baseUrl 设为不可达 `127.0.0.1:1` 仍能完成回合，证明无网络请求；`node scripts/check.mjs` 全量通过
+
+## 迭代 47（2026-11-08）工作站与设备共享 v1（ADB + 串口）
+- [x] 设计：`docs/devices.md`（场景、设备/工作站/挂载概念、ADB 代理执行 vs 5037 转发取舍、串口传输层、工具与权限、界面、安全、v1 边界）；`docs/devices-test.md` 给产品所有者真实设备代测步骤
+- [x] 协议：`DeviceInfo/DeviceListResult/DeviceMount/DeviceSessionDevices/SerialOpenResult/SerialReadResult/DeviceLogcat*`、`DeviceSettings`、WS `device_output/devices_updated` 与 `/api/devices*`、`/api/sessions/:id/devices*` 约定
+- [x] 服务端 `src/devices/`：`adb.ts`（devices/shell/install/logcat，可配置 `TANDEM_ADB_BIN` 或 `devices.adbPath`）、`serial.ts`（`SerialTransport` 抽象、Mock 虚拟串口、可选 serialport 真实端口枚举/打开）、`manager.ts`（设备级令牌 `dvt_` 只对设备服务生效、跨 Host 挂载与代理、串口独占/只读共享锁 + 10 分钟租约、WS 字节流、后台 logcat 复用任务、`~/.tandem/devices/audit.jsonl` 审计）；`routes/devices.ts`；`tools/device.ts` 7 个工具全部默认审批（install/SerialWrite 独立写审批）
+- [x] 前端：侧栏「工作站」、按 Host 分组设备/状态/占用/一键挂载/卸载、跨主机自动签发设备令牌；串口终端（实时输出、时间戳、搜索、暂停滚动、波特率重连、保存日志、手机可用）；环境条已挂载设备胶囊；`useDevicesStore` 接 WS
+- [x] 验证：两台 Host（`/tmp/tandem-dev-a:8421`、`/tmp/tandem-dev-b:8422`，假 adb + `TANDEM_MOCK_SERIAL=1`）；B 会话挂载 A 的 ADB/串口，agent 依次调用 DeviceList/AdbShell/AdbInstall/AdbLogcat×2/SerialOpen/SerialRead/SerialWrite，8 次审批、跨机 shell 型号、install Success、logcat 后台流、串口读写；串口独占拒绝/共享只读、设备令牌越权 403；Playwright 截图 `/tmp/devices-shots/`（工作站桌面/手机、串口终端）
+- [x] 回归：`e2e/regression.mjs` 新增「工作站：跨主机 ADB/串口挂载、审批与终端」；全量 94/94 通过；新增 server 单测（adb 解析、虚拟串口启动/echo/reset）
+- 保守取舍：跨 Host 要求会话 Host 能直连设备 Host（SSH 隧道-only 主机暂不能做设备提供方）；跨机 APK 必须在设备 Host 上，v1 不做文件传输；不做虚拟串口/scrcpy/无线 ADB；串口为文本/UTF-8 容错；设备令牌明文只返回一次

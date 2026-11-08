@@ -97,6 +97,8 @@ export interface HostConfig {
   modelRouting?: import('@tandem/protocol').ModelRoutingSettings;
   /** 桌面端更新文件托管目录；空 = 关闭。 */
   updateShareDir?: string;
+  /** 工作站设备设置（adb 路径、虚拟串口、是否接受其他 Host 的设备访问）。 */
+  devices?: import('@tandem/protocol').DeviceSettings;
   relay?: RelayConfig;
 }
 
@@ -254,6 +256,8 @@ export interface ToolContext {
   backgroundTasks?: import('./tasks.js').BackgroundTaskManager;
   /** 浏览器操作管理器；browser_* 工具使用。 */
   browser?: import('./browser.js').BrowserManager;
+  /** 工作站设备管理器；DeviceList、AdbShell/AdbInstall/AdbLogcat、SerialOpen/Read/Write 使用。 */
+  devices?: import('./devices/manager.js').DeviceManager;
   /** 本项目/全局 secrets 注入的 bash 环境变量。 */
   secretEnv?: Record<string, string>;
   /** 工具输出进入会话前打码（匹配本机 secrets 值及常见 Key 形态）。 */

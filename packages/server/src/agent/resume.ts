@@ -295,6 +295,7 @@ async function runRecoveredTool(
     home: host.home,
     memory: host.memory,
     backgroundTasks: host.tasks,
+    devices: host.devices,
     secretEnv: host.secrets.envFor(rec.cwd, 'bash'),
     redact,
   };

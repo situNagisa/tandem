@@ -38,6 +38,8 @@ interface TaskInternal {
   killed: boolean;
   /** 输出进入缓冲/日志前先按项目 secrets 打码。 */
   redact?: (text: string) => string;
+  /** 外部流（设备 logcat/串口镜像）被 KillBash/UI 终止时的清理回调。 */
+  externalKill?: () => void;
 }
 
 export type TaskUpdateListener = (
@@ -277,6 +279,87 @@ export class BackgroundTaskManager {
     return { ...task };
   }
 
+  /**
+   * 外部流任务：由设备管理器把 logcat / 串口镜像等文本推入，
+   * 复用后台任务的环形缓冲、落盘日志、task_updated 推送与 KillBash。
+   */
+  startExternal(input: {
+    sessionId: string;
+    command: string;
+    description?: string;
+    cwd?: string;
+    redact?: (text: string) => string;
+  }): {
+    task: BackgroundTask;
+    push: (text: string) => void;
+    finish: (code?: number) => void;
+    onKill: (handler: () => void) => void;
+  } {
+    const id = `bash_${randomUUID().slice(0, 8)}`;
+    const task: BackgroundTask = {
+      id,
+      sessionId: input.sessionId,
+      command: input.command,
+      ...(input.description ? { description: input.description } : {}),
+      cwd: input.cwd ?? '',
+      startedAt: Date.now(),
+      status: 'running',
+      outputChars: 0,
+    };
+    const item: TaskInternal = {
+      task,
+      logPath: this.logPath(id),
+      output: '',
+      dropped: 0,
+      readCursor: 0,
+      pending: [],
+      flushScheduled: false,
+      lastEmit: 0,
+      sent: 0,
+      killed: false,
+      ...(input.redact ? { redact: input.redact } : {}),
+    };
+    this.tasks.set(id, item);
+    this.persist(task);
+    try {
+      writeFileSync(item.logPath, '');
+    } catch {
+      // 日志不可写时仍保留内存输出
+    }
+    this.emit({ ...task });
+    let finished = false;
+    return {
+      task: { ...task },
+      push: (text: string) => {
+        if (finished || item.task.status !== 'running' || !text) return;
+        this.append(item, text);
+        if (!item.flushScheduled) {
+          item.flushScheduled = true;
+          setImmediate(() => this.flush(item, true));
+        }
+      },
+      finish: (code?: number) => {
+        if (finished) return;
+        finished = true;
+        if (item.task.status === 'running') {
+          item.task.status = item.killed ? 'killed' : 'exited';
+          item.task.exitCode = code;
+        }
+        item.task.endedAt = item.task.endedAt ?? Date.now();
+        this.finish(item);
+      },
+      onKill: (handler: () => void) => {
+        item.externalKill = () => {
+          try {
+            handler();
+          } finally {
+            finished = true;
+          }
+        };
+      },
+    };
+  }
+
   private collect(item: TaskInternal, chunk: Buffer): void {
     if (item.task.status !== 'running') return;
     item.pending.push(chunk);
@@ -339,6 +422,11 @@ export class BackgroundTaskManager {
     item.task.status = 'killed';
     item.task.endedAt = Date.now();
     this.persist(item.task);
+    try {
+      item.externalKill?.();
+    } catch {
+      // 外部流清理失败不影响任务结束
+    }
     try {
       const child = item.child;
       if (child?.pid && process.platform !== 'win32') {

@@ -44,6 +44,7 @@ import { registerBrowserRoutes } from './routes/browser.js';
 import { registerPreviewRoutes } from './routes/preview.js';
 import { registerWsRoutes } from './routes/ws.js';
 import { registerSshHostRoutes } from './routes/ssh-hosts.js';
+import { registerDeviceRoutes } from './routes/devices.js';
 import { registerUpdateRoutes } from './routes/updates.js';
 import { registerDemoRoutes } from './routes/demo.js';
 import { SshRemoteManager } from './ssh/manager.js';
@@ -90,14 +91,23 @@ export async function createApp(
       principal = ownerPrincipal();
     } else {
       const member = host.team.authenticate(token);
-      if (!member) return reply.code(401).send({ error: '未授权：token 无效或已被吊销' });
-      principal = {
-        kind: 'member',
-        id: member.id,
-        name: member.name,
-        role: member.role,
-        projectDirs: member.projectDirs,
-      };
+      const devicePeer = member ? undefined : host.devices.authenticatePeer(token);
+      if (!member && !devicePeer) return reply.code(401).send({ error: '未授权：token 无效或已被吊销' });
+      principal = member
+        ? {
+            kind: 'member',
+            id: member.id,
+            name: member.name,
+            role: member.role,
+            projectDirs: member.projectDirs,
+          }
+        : {
+            kind: 'device',
+            role: 'observer',
+            id: `device:${devicePeer!.id}`,
+            name: devicePeer!.label,
+            projectDirs: [],
+          };
     }
     req.team = principal;
     const denied = guardMemberRequest(host, principal, req.method, urlPath);
@@ -155,6 +165,7 @@ export async function createApp(
   registerPreviewRoutes(app, deps);
   registerWsRoutes(app, deps);
   registerSshHostRoutes(app, deps);
+  registerDeviceRoutes(app, deps);
 
   // PR/CI 轮询：只覆盖已被客户端打开且有 PR 的会话
   const stopPrPolling = startPrPolling(host);

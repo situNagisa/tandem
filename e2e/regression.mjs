@@ -284,6 +284,59 @@ function createMockProvider() {
     const latest = userTexts.at(-1) ?? ''
     const allUser = userTexts.join('\n')
     seenUserTexts.push(latest)
+
+    // 工作站设备：一轮里依次调用 7 个设备工具，覆盖跨 Host 代理、审批与后台 logcat。
+    if (body.stream === true && allUser.includes('DEVICE_E2E')) {
+      const toolMessages = (body.messages ?? []).filter((m) => m.role === 'tool')
+      const n = toolMessages.length
+      const lastTool = JSON.stringify(toolMessages.at(-1) ?? {})
+      const logStream = (lastTool.match(/bash_[a-f0-9]{8}/) ?? [])[0]
+      res.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+      })
+      const send = (payload) => res.write(`data: ${JSON.stringify(payload)}\n\n`)
+      const chunk = (delta, finish = null) =>
+        send({
+          id: 'chatcmpl-device',
+          object: 'chat.completion.chunk',
+          choices: [{ index: 0, delta, finish_reason: finish }],
+        })
+      const tool = (name, input) => {
+        chunk({ role: 'assistant', content: `设备步骤 ${n}` })
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: `call_device_${n}`,
+              type: 'function',
+              function: { name, arguments: JSON.stringify(input) },
+            },
+          ],
+        })
+        chunk({}, 'tool_calls')
+      }
+      if (n === 0) tool('DeviceList', {})
+      else if (n === 1) tool('AdbShell', { device: 'adb:REG_A_01', command: 'getprop ro.product.model' })
+      else if (n === 2) tool('AdbLogcat', { device: 'adb:REG_A_01' })
+      else if (n === 3) tool('AdbLogcat', { device: 'adb:REG_A_01', stream_id: logStream })
+      else if (n === 4) tool('SerialOpen', { device: 'serial:mock://ttyUSB0', baud: 115200 })
+      else if (n === 5) tool('SerialRead', { device: 'serial:mock://ttyUSB0', window_ms: 60000 })
+      else if (n === 6) tool('SerialWrite', { device: 'serial:mock://ttyUSB0', data: 'reset\n' })
+      else chunk({ role: 'assistant', content: '设备回归完成。' })
+      if (n >= 7) chunk({}, 'stop')
+      send({
+        id: 'chatcmpl-device',
+        object: 'chat.completion.chunk',
+        choices: [],
+        usage: { prompt_tokens: 80, completion_tokens: 20, total_tokens: 100 },
+      })
+      res.write('data: [DONE]\n\n')
+      res.end()
+      return
+    }
+
     if (body.stream === true && lastRole !== 'tool') {
       const previewEdit = latest.match(/^PREVIEW_EDIT (.+)$/m)
       if (previewEdit) {
@@ -585,9 +638,49 @@ process.stdin.on('end', () => console.log('256 SHA256:cmVndGVzdA== fake (ED25519
   return dir
 }
 
-function startHost({ home, token, hostId }) {
+function startHost({ home, token, hostId, extraEnv = {} }) {
   const configDir = path.join(home, 'tandem')
   const fakeSshDir = seedFakeSsh(home)
+  // 假 adb：工作站用例模拟一台手机；序列号可由 FAKE_ADB_SERIAL 覆盖。
+  const fakeAdb = path.join(home, 'fake-adb.sh')
+  writeFileSync(
+    fakeAdb,
+    `#!/usr/bin/env bash
+set -u
+SERIAL="\${FAKE_ADB_SERIAL:-R58M1234}"
+MODEL="\${FAKE_ADB_DEVICE:-SM_G950F}"
+case "$1" in
+  devices)
+    echo "List of devices attached"
+    echo "\${SERIAL}           device product:reg model:\${MODEL} device:reg transport_id:1"
+    ;;
+  -s)
+    shift; serial="$1"; shift; cmd="\${1:-}"; shift || true
+    case "$cmd" in
+      shell)
+        remote="\${*:-}"
+        case "$remote" in
+          "getprop ro.product.model") echo "\${MODEL}" ;;
+          "getprop ro.build.version.release") echo "14" ;;
+          *) echo "[fake-adb \${serial}] shell: \${remote}" ;;
+        esac
+        ;;
+      logcat)
+        n=0
+        while true; do
+          n=$((n+1))
+          echo "11-08 12:00:00.000  1234  1234 I FakeApp: device log \${n}"
+          sleep 0.3
+        done
+        ;;
+      *) echo "[fake-adb \${serial}] \${cmd} \${*:-}" ;;
+    esac
+    ;;
+  *) echo "[fake-adb] $*" ;;
+esac
+`,
+  )
+  chmodSync(fakeAdb, 0o755)
   // 假 gh：PR 聚合用例只打本地 bare 仓库，不连公网。其它用例不会调用它。
   const fakeGh = path.join(home, 'fake-gh')
   writeFileSync(
@@ -659,6 +752,9 @@ process.exit(1)
       TANDEM_HOME: configDir,
       TANDEM_SSH_BIN: fakeSshDir,
       TANDEM_FAKE_REMOTE_HOME: path.join(home, 'fake-remote'),
+      TANDEM_ADB_BIN: fakeAdb,
+      TANDEM_MOCK_SERIAL: '1',
+      ...extraEnv,
       TANDEM_GH_PATH: fakeGh,
       CODEX_HOME: path.join(home, 'home', '.codex'),
       // HOME 被替换成临时目录，Playwright 需要显式指向本机已安装的浏览器缓存。
@@ -4970,6 +5066,197 @@ async function main() {
       assert.ok(existsSync(path.join(causeOut, 'by-cause', 'R03.md')), '缺少 by-cause 分组文件')
       const causeMd = readFileSync(path.join(causeOut, 'feedback.md'), 'utf8')
       assert.ok(causeMd.includes('R03 弹层被裁切或越界 · 2 次 · **复发**'), 'feedback.md 未标出复发根因')
+    })
+
+    desktop('工作站：跨主机 ADB/串口挂载、审批与终端', async (page) => {
+      const tokenA = randomUUID()
+      const hostIdA = randomUUID()
+      const hostA = startHost({
+        home: path.join(home, 'host-a'),
+        token: tokenA,
+        hostId: hostIdA,
+        extraEnv: { FAKE_ADB_SERIAL: 'REG_A_01', FAKE_ADB_DEVICE: 'RegBoard' },
+      })
+      let sessionId
+      let logTask
+      try {
+        const portA = await hostA.ready
+        const baseA = `http://127.0.0.1:${portA}`
+        let devicesA
+        for (let i = 0; i < 20; i += 1) {
+          devicesA = await api(baseA, tokenA, '/api/devices')
+          if (devicesA.devices.some((device) => device.id === 'adb:REG_A_01')) break
+          await sleep(200)
+        }
+        assert.ok(devicesA.devices.some((device) => device.id === 'adb:REG_A_01'), '设备 Host A 未发现假 ADB 设备')
+        assert.ok(devicesA.devices.some((device) => device.id === 'serial:mock://ttyUSB0'), '设备 Host A 未发现虚拟串口')
+        assert.equal(devicesA.serial.mock, true, '串口 mock 未启用')
+
+        const issued = await api(baseA, tokenA, '/api/devices/peer-tokens', {
+          method: 'POST',
+          body: JSON.stringify({ label: '回归设备代理' }),
+        })
+        assert.ok(issued.token.startsWith('dvt_'), '设备令牌格式错误')
+        // 设备令牌只能访问设备服务，不能读会话。
+        const denied = await fetch(`${baseA}/api/sessions`, {
+          headers: { authorization: `Bearer ${issued.token}` },
+        })
+        assert.equal(denied.status, 403, '设备令牌越权访问了会话列表')
+        // 明文只出现一次。
+        const tokenList = await api(baseA, tokenA, '/api/devices/peer-tokens')
+        assert.ok(tokenList.every((item) => !('token' in item)), '设备令牌列表泄露明文')
+
+        const cwd = path.join(home, 'device-workspace')
+        mkdirSync(cwd, { recursive: true })
+        const created = await api(base, token, '/api/sessions', {
+          method: 'POST',
+          body: JSON.stringify({ cwd, profileId: 'p-main', groupId: 'g1', model: 'mock-1' }),
+        })
+        sessionId = created.id
+        for (const deviceId of ['adb:REG_A_01', 'serial:mock://ttyUSB0']) {
+          const mount = await api(base, token, `/api/sessions/${sessionId}/devices/mount`, {
+            method: 'POST',
+            body: JSON.stringify({ deviceId, peerUrl: baseA, peerToken: issued.token }),
+          })
+          assert.equal(mount.source.kind, 'peer', `设备 ${deviceId} 未记录为跨主机来源`)
+          assert.equal(mount.source.hostId, hostIdA, `设备 ${deviceId} 的来源 Host 不正确`)
+        }
+        const mounted = await api(base, token, `/api/sessions/${sessionId}/devices`)
+        assert.equal(mounted.mounts.length, 2, '会话挂载数量不正确')
+        const serialMount = mounted.mounts.find((item) => item.kind === 'serial')
+        const opened = await api(base, token, `/api/sessions/${sessionId}/devices/${serialMount.id}/serial/open`, {
+          method: 'POST',
+          body: JSON.stringify({ baud: 115200 }),
+        })
+        assert.equal(opened.writable, true, '首个串口租约应可写')
+        const first = await api(
+          base,
+          token,
+          `/api/sessions/${sessionId}/devices/${serialMount.id}/serial?since=0`,
+        )
+        assert.ok(first.data.includes('Tandem virtual serial ready'), '跨主机串口未读到启动日志')
+        await api(base, token, `/api/sessions/${sessionId}/devices/${serialMount.id}/serial/write`, {
+          method: 'POST',
+          body: JSON.stringify({ data: 'hello from regression\n' }),
+        })
+        await sleep(900)
+        const echoed = await api(
+          base,
+          token,
+          `/api/sessions/${sessionId}/devices/${serialMount.id}/serial?since=0`,
+        )
+        assert.ok(echoed.data.includes('[echo] hello from regression'), '跨主机串口写入未回显')
+
+        // 另一个会话独占同一串口应被拒绝，共享只读租约不能写。
+        const second = await api(base, token, '/api/sessions', {
+          method: 'POST',
+          body: JSON.stringify({ cwd, profileId: 'p-main', groupId: 'g1', model: 'mock-1' }),
+        })
+        const secondMount = await api(base, token, `/api/sessions/${second.id}/devices/mount`, {
+          method: 'POST',
+          body: JSON.stringify({ deviceId: 'serial:mock://ttyUSB0', peerUrl: baseA, peerToken: issued.token }),
+        })
+        const exclusive = await fetch(`${base}/api/sessions/${second.id}/devices/${secondMount.id}/serial/open`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ baud: 115200 }),
+        })
+        assert.equal(exclusive.status, 400, '串口独占锁未生效')
+        const shared = await api(base, token, `/api/sessions/${second.id}/devices/${secondMount.id}/serial/open`, {
+          method: 'POST',
+          body: JSON.stringify({ baud: 115200, shared: true }),
+        })
+        assert.equal(shared.writable, false, '共享串口租约不应可写')
+        const sharedWrite = await fetch(`${base}/api/sessions/${second.id}/devices/${secondMount.id}/serial/write`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ data: 'blocked' }),
+        })
+        assert.equal(sharedWrite.status, 400, '只读共享租约写入了串口')
+        const deleted = await fetch(`${base}/api/sessions/${second.id}`, {
+          method: 'DELETE',
+          headers: { authorization: `Bearer ${token}` },
+        })
+        assert.ok(deleted.ok, `清理第二个会话失败：${deleted.status}`)
+
+        // 让 agent 走完 7 个设备工具；WS 自动允许审批并记录审批数。
+        const approvals = []
+        const ws = new WebSocket(`${base.replace(/^http/, 'ws')}/ws?token=${encodeURIComponent(token)}`)
+        await new Promise((resolve, reject) => {
+          ws.on('open', resolve)
+          ws.on('error', reject)
+        })
+        ws.send(JSON.stringify({ type: 'subscribe', sessionId }))
+        const turnDone = new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('设备 agent 回合超时')), 60_000)
+          ws.on('message', (raw) => {
+            let msg
+            try {
+              msg = JSON.parse(String(raw))
+            } catch {
+              return
+            }
+            if (msg.type === 'permission_request') {
+              approvals.push(msg.request.toolName)
+              ws.send(JSON.stringify({ type: 'permission', requestId: msg.request.id, decision: 'allow' }))
+            }
+            if (msg.type === 'turn_end') {
+              clearTimeout(timer)
+              resolve(msg)
+            }
+          })
+        })
+        ws.send(
+          JSON.stringify({
+            type: 'send',
+            sessionId,
+            content: [{ type: 'text', text: 'DEVICE_E2E 开始设备回归' }],
+          }),
+        )
+        const ended = await turnDone
+        ws.close()
+        assert.equal(ended.reason, 'done', `设备回合未正常结束：${ended.reason}`)
+        assert.ok(approvals.length >= 7, `设备工具审批不足：${approvals.join(',')}`)
+        const tasks = await api(base, token, `/api/tasks?sessionId=${sessionId}`)
+        logTask = tasks.find((task) => task.command.includes('logcat'))
+        assert.ok(logTask && logTask.status === 'running', 'logcat 未复用后台任务')
+        const full = await api(base, token, `/api/sessions/${sessionId}`)
+        const allText = JSON.stringify(full.messages)
+        assert.ok(allText.includes('RegBoard'), 'AdbShell 未通过设备 Host 返回型号')
+        assert.ok(allText.includes('FakeApp'), 'AdbLogcat 未返回日志')
+        assert.ok(allText.includes('Tandem virtual serial ready'), 'SerialRead 未读到串口启动日志')
+        assert.ok(allText.includes('已发送 6 字符'), 'SerialWrite 未写入串口')
+
+        // 工作站视图：把设备 Host 也加进客户端，确认两台主机的设备同屏可见。
+        await page.evaluate(
+          ({ url, token: hostToken }) => {
+            const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
+            if (!hosts.some((item) => item.url === url)) {
+              hosts.push({ id: 'reg-host-a', name: '设备主机 A', url, token: hostToken, addedAt: Date.now(), mode: 'direct' })
+              localStorage.setItem('tandem.hosts.v1', JSON.stringify(hosts))
+            }
+          },
+          { url: baseA, token: tokenA },
+        )
+        await page.reload({ waitUntil: 'domcontentloaded' })
+        await openSession(page, sessionId)
+        await page.getByRole('button', { name: '工作站' }).click()
+        const dialog = page.getByRole('dialog', { name: '工作站' })
+        await dialog.waitFor({ state: 'visible' })
+        await dialog.getByText('设备主机 A', { exact: true }).waitFor({ timeout: 10_000 })
+        await dialog.getByText(/REG_A_01/).first().waitFor({ timeout: 10_000 })
+        assert.ok((await dialog.getByText(/Tandem Mock/).count()) >= 2, '两台主机的串口未同时列出')
+        await dialog.getByRole('button', { name: '完成' }).click()
+      } finally {
+        if (logTask) {
+          await api(base, token, `/api/tasks/${logTask.id}/kill`, { method: 'POST' }).catch(() => {})
+        }
+        hostA.child.kill('SIGTERM')
+        await Promise.race([
+          new Promise((resolve) => hostA.child.once('exit', resolve)),
+          sleep(3000).then(() => hostA.child.kill('SIGKILL')),
+        ])
+      }
     })
 
     // ------------------------------------------------------------------ 执行

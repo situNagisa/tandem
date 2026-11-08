@@ -12,12 +12,15 @@ import {
   GitFork,
   Loader2,
   Server,
+  Smartphone,
   TriangleAlert,
+  Usb,
 } from 'lucide-react'
-import type { DelegationStrategy, FsEntry, SessionEnv } from '@tandem/protocol'
+import type { DelegationStrategy, DeviceMount, FsEntry, SessionEnv } from '@tandem/protocol'
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
+import { useDevicesStore } from '../store/useDevicesStore'
 import { basename, dirname } from '../lib/format'
 import { loadMigration, loadRecentDirs, rememberDir, rememberMigration } from '../lib/storage'
 import { navigate } from '../lib/router'
@@ -28,7 +31,10 @@ import { Button } from './ui/Button'
 import { Input, Switch } from './ui/Controls'
 import { Menu, MenuItem, MenuList } from './ui/Menu'
 import { Popover } from './ui/Popover'
+
 import { Tooltip } from './ui/Tooltip'
+
+const EMPTY_DEVICE_MOUNTS: DeviceMount[] = []
 
 /* 透明底：环境条直接坐在对话背景上，只在悬停/展开时给一点底色。 */
 const triggerClass =
@@ -531,12 +537,20 @@ export function EnvBar({
   const sessionId = useSessionView((s) => s?.sessionId ?? null)
   const running = useSessionView((s) => s?.running ?? false)
   const toast = useUiStore((s) => s.toast)
+  const sessionMounts = useDevicesStore((s) => (sessionId ? s.sessionMounts[`${hostId}:${sessionId}`] ?? EMPTY_DEVICE_MOUNTS : EMPTY_DEVICE_MOUNTS))
+  const openTerminal = useDevicesStore((s) => s.openTerminal)
+  const setWorkstationOpen = useDevicesStore((s) => s.setWorkstationOpen)
 
   const [savingDelegation, setSavingDelegation] = useState(false)
   const [migrating, setMigrating] = useState(false)
   const [targetHostId, setTargetHostId] = useState<string | null>(null)
 
   const isSession = variant === 'session'
+  useEffect(() => {
+    if (!isSession || !sessionId || !host) return
+    void useDevicesStore.getState().refreshSession(host, sessionId)
+  }, [host?.id, sessionId, isSession])
+
   const migration = isSession && sessionId ? loadMigration(hostId, sessionId) : undefined
   const locked = disabled || (isSession && running) || migrating
   const branch = worktree?.branch || env?.branch
@@ -815,6 +829,30 @@ export function EnvBar({
           />
         </div>
       </Tooltip>
+      {isSession && sessionId && sessionMounts.length > 0 && (
+        <div className="flex min-w-0 items-center gap-0.5">
+          {sessionMounts.map((mount) => (
+            <Button
+              key={mount.id}
+              size="sm"
+              variant="ghost"
+              className="max-w-[170px] px-1.5 text-[12px] text-text-secondary"
+              icon={mount.kind === 'adb' ? <Smartphone size={12} /> : <Usb size={12} />}
+              tooltip={`${mount.deviceId} · ${mount.source.hostName}${mount.kind === 'serial' ? ' · 打开串口终端' : ''}`}
+              tooltipSide="top"
+              onClick={() => {
+                if (mount.kind === 'serial') {
+                  if (host) void openTerminal(host, sessionId, mount)
+                } else {
+                  setWorkstationOpen(true)
+                }
+              }}
+            >
+              <span className="truncate">{mount.name}</span>
+            </Button>
+          ))}
+        </div>
+      )}
       {migration && (
         <span className="ml-2 shrink-0 truncate text-[12px] text-muted">
           已迁移到 {migration}

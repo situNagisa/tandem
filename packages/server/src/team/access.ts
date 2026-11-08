@@ -20,7 +20,15 @@ export interface MemberPrincipal {
   name: string;
   projectDirs: string[];
 }
-export type Principal = OwnerPrincipal | MemberPrincipal;
+/** 其他 Host 用设备级令牌（dvt_…）调用本机设备服务。 */
+export interface DevicePrincipal {
+  kind: 'device';
+  role: 'observer';
+  id: string;
+  name: string;
+  projectDirs: string[];
+}
+export type Principal = OwnerPrincipal | MemberPrincipal | DevicePrincipal;
 
 export const OWNER_NAME = '所有者';
 
@@ -44,6 +52,7 @@ export function isOwner(req: FastifyRequest): boolean {
 
 export function identityOf(principal: Principal, host: Host): TeamIdentity {
   if (principal.kind === 'owner') return { role: 'owner', ownerName: OWNER_NAME };
+  if (principal.kind === 'device') return { role: 'observer', ownerName: OWNER_NAME };
   const member = host.team.getMember(principal.id);
   return {
     role: principal.role,
@@ -150,6 +159,13 @@ export function guardMemberRequest(
   pathname: string,
 ): GuardResult | undefined {
   if (principal.kind === 'owner') return undefined;
+  if (principal.kind === 'device') {
+    if (pathname === '/api/devices' || pathname.startsWith('/api/devices/')) {
+      if (pathname.includes('/peer-tokens')) return { code: 403, message: '设备令牌不能管理其他设备令牌' };
+      return undefined;
+    }
+    return { code: 403, message: '设备令牌只能访问设备服务' };
+  }
   const upper = method.toUpperCase();
 
   if (TRANSFER_RE.test(pathname) && upper === 'POST') {
@@ -163,6 +179,12 @@ export function guardMemberRequest(
   }
   if (startsWithAny(pathname, TEAM_OWNER_PATHS)) {
     return { code: 403, message: '仅 Host 所有者可以管理成员' };
+  }
+  // 工作站设备：读列表/日志对成员开放，操作与挂载需要协作者（设备级令牌已在上方单独处理）。
+  if (pathname === '/api/devices' || pathname.startsWith('/api/devices/')) {
+    if (pathname.includes('/peer-tokens')) return { code: 403, message: '仅 Host 所有者可以管理设备令牌' };
+    if (upper === 'GET') return undefined;
+    return canSend(principal.role) ? undefined : { code: 403, message: '观察者/审批者不能操作设备' };
   }
   if (pathname === '/api/team/me' && upper === 'GET') return undefined;
   if (pathname === '/api/team/approvers' && upper === 'GET') {
@@ -189,6 +211,13 @@ export function guardMemberRequest(
     return undefined;
   }
 
+  const sessionDevicesMatch = /^\/api\/sessions\/([^/]+)\/devices(?:\/.*)?$/.exec(pathname);
+  if (sessionDevicesMatch) {
+    const rec = host.getSession(decodeURIComponent(sessionDevicesMatch[1]!));
+    if (!memberCanSeeSession(principal, rec)) return { code: 404, message: '会话不存在' };
+    if (upper === 'GET') return undefined;
+    return canSend(principal.role) ? undefined : { code: 403, message: '观察者/审批者不能操作设备' };
+  }
   if (pathname === '/api/sessions') {
     if (upper === 'GET') return undefined;
     if (upper === 'POST') {

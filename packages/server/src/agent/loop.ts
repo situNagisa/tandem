@@ -905,6 +905,7 @@ async function executeToolUses(
       wiki: host.wiki,
       backgroundTasks: host.tasks,
       browser: host.browser,
+      devices: host.devices,
       secretEnv: host.secrets.envFor(rec.cwd, 'bash'),
       sandbox: host.sandboxProfileFor(tool.id),
       redact,

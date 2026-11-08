@@ -696,6 +696,18 @@ export interface HostSettings {
   sandbox?: SandboxSettings;
   /** 桌面端更新文件托管目录；空 = 关闭 /updates/ 静态分发。 */
   updateShareDir?: string;
+  /** 工作站设备：ADB 路径、串口 mock、是否接受其他 Host 的设备访问。 */
+  devices?: DeviceSettings;
+}
+
+/** 设备服务设置（~/.tandem/config.json 的 devices 字段）。 */
+export interface DeviceSettings {
+  /** adb 可执行文件；缺省 PATH 中的 adb（也可用 TANDEM_ADB_BIN）。 */
+  adbPath?: string;
+  /** 启用内置虚拟串口（开发/回归用），缺省关闭。 */
+  serialMock?: boolean;
+  /** 允许其他 Host 用设备级令牌访问本机设备，缺省开启。 */
+  allowPeer?: boolean;
 }
 // GET  /api/settings -> HostSettings
 // PUT  /api/settings HostSettings -> HostSettings
@@ -1189,6 +1201,9 @@ export type ServerMsg =
   | { type: 'demo_updated'; state: DemoState }                // 演示工作区创建/重播/清除
   | { type: 'eval_run_updated'; run: EvalRunSummary }
   | { type: 'external_sessions_changed' }
+  // 设备：串口实时字节流（来自会话已挂载的设备）与设备/挂载列表变化
+  | { type: 'device_output'; sessionId: string; mountId: string; deviceId: string; chunk: string; cursor: number; at: number }
+  | { type: 'devices_updated'; sessionId?: string; hostId?: string }
   | { type: 'error'; message: string }
   | { type: 'pong' };
 
@@ -2546,6 +2561,141 @@ export interface SshDeployResult {
 // GET    /api/ssh-hosts/:id/logs?lines=200       -> { lines: string[] }
 // DELETE /api/ssh-hosts/:id?keepData=1           -> { ok: true }（停止服务并删除 ~/.tandem-host；默认保留 ~/.tandem）
 // POST   /api/ssh-hosts/:id/password {password}  -> { ok: true }（仅写入本进程内存并重连隧道）
+
+// ---------- 工作站与设备共享 ----------
+// 设备属于某台 Host；会话可挂载任意 Host 的设备。跨 Host 时由会话 Host 用
+// 设备级令牌（dvt_…，只对 /api/devices 生效）代理调用设备所在 Host 的 /api/devices。
+export type DeviceKind = 'adb' | 'serial';
+export type DeviceState = 'online' | 'offline' | 'busy' | 'error';
+
+export interface DeviceInfo {
+  /** adb:<serial> / serial:<端口路径>；全局唯一标识。 */
+  id: string;
+  kind: DeviceKind;
+  name: string;
+  detail?: string;
+  state: DeviceState;
+  /** 当前占用该设备的会话（本地会话 id；远程时是对方收到的调用方 id）。 */
+  ownerSessionId?: string;
+  ownerLabel?: string;
+  /** adb：serial/model/product/transport；串口：path/baud 等。 */
+  meta?: Record<string, string>;
+}
+
+export interface DeviceListResult {
+  /** 设备所在 Host（工作站视图显示用）。 */
+  host?: { id: string; name: string };
+  devices: DeviceInfo[];
+  adb: { available: boolean; path?: string; error?: string };
+  serial: { available: boolean; mock: boolean; error?: string };
+}
+
+export interface DeviceSource {
+  kind: 'local' | 'peer';
+  hostId: string;
+  hostName: string;
+  /** 仅 peer：设备所在 Host 的根地址。 */
+  url?: string;
+}
+
+export interface DeviceMount {
+  id: string;
+  sessionId: string;
+  deviceId: string;
+  kind: DeviceKind;
+  name: string;
+  source: DeviceSource;
+  mountedAt: number;
+  state: DeviceState;
+  /** 空闲/占用说明（如“串口被会话 x 占用”）。 */
+  busy?: string;
+}
+
+export interface DeviceMountInput {
+  deviceId: string;
+  name?: string;
+  /** 跨 Host：设备所在 Host 地址（如 http://192.168.1.20:8421）。 */
+  peerUrl?: string;
+  /** 跨 Host：设备所在 Host 签发的设备级令牌，只在本次挂载时传入。 */
+  peerToken?: string;
+}
+
+export interface SessionDevices {
+  mounts: DeviceMount[];
+  /** 本机未挂载设备（供工作站视图/提示）。 */
+  local: DeviceInfo[];
+}
+
+export interface DevicePeerToken {
+  id: string;
+  label: string;
+  createdAt: number;
+  lastUsedAt?: number;
+}
+export interface DevicePeerTokenIssued extends DevicePeerToken {
+  /** 只在签发响应里出现一次。 */
+  token: string;
+}
+
+export interface DeviceOperationResult {
+  ok: boolean;
+  output: string;
+  exitCode?: number;
+}
+
+export interface SerialOpenResult {
+  leaseId: string;
+  deviceId: string;
+  baud: number;
+  /** 已缓冲字节的绝对游标。 */
+  cursor: number;
+  /** 只读共享租约（设备已被其他会话独占写）。 */
+  writable: boolean;
+  note?: string;
+}
+
+export interface SerialReadResult {
+  data: string;
+  cursor: number;
+  alive: boolean;
+  truncated?: boolean;
+}
+
+export interface DeviceLogcatStart {
+  streamId: string;
+  taskId?: string;
+  cursor: number;
+  initial: string;
+}
+
+export interface DeviceLogcatRead {
+  data: string;
+  cursor: number;
+  alive: boolean;
+}
+
+// GET    /api/devices                              -> DeviceListResult（本机设备；所有者/成员/设备令牌）
+// POST   /api/devices/:id/exec {kind:'shell'|'install',command?,apkPath?,timeout?} -> DeviceOperationResult
+// POST   /api/devices/:id/logcat/start {filter?}   -> DeviceLogcatStart
+// GET    /api/devices/:id/logcat/:streamId?since=  -> DeviceLogcatRead
+// POST   /api/devices/:id/logcat/:streamId/stop
+// POST   /api/devices/:id/serial/open {baud,client,shared?} -> SerialOpenResult
+// GET    /api/devices/:id/serial/:leaseId?since=&waitMs= -> SerialReadResult
+// POST   /api/devices/:id/serial/:leaseId/write {data}
+// POST   /api/devices/:id/serial/:leaseId/close
+// POST   /api/devices/peer-tokens {label}          -> DevicePeerTokenIssued（仅所有者；明文只出现一次）
+// GET    /api/devices/peer-tokens                  -> DevicePeerToken[]
+// DELETE /api/devices/peer-tokens/:id
+// GET    /api/sessions/:id/devices                 -> SessionDevices
+// POST   /api/sessions/:id/devices/mount DeviceMountInput -> DeviceMount
+// DELETE /api/sessions/:id/devices/:mountId
+// POST   /api/sessions/:id/devices/:mountId/serial/open {baud} -> SerialOpenResult
+// GET    /api/sessions/:id/devices/:mountId/serial?since=&waitMs= -> SerialReadResult
+// POST   /api/sessions/:id/devices/:mountId/serial/write {data}
+// POST   /api/sessions/:id/devices/:mountId/serial/close
+// POST   /api/sessions/:id/devices/:mountId/logcat/start {filter?} -> DeviceLogcatStart
+// GET    /api/sessions/:id/devices/:mountId/logcat?since= -> DeviceLogcatRead
+// POST   /api/sessions/:id/devices/:mountId/logcat/stop
 
 export const PROTOCOL_VERSION = 5;
 
