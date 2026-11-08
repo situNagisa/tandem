@@ -1807,7 +1807,61 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       ),
     )
   }
+  // 压缩着色：当前消息只含摘要 + 压缩提示 + 保留轮；原文备份里有被压掉的两轮。
+  const compactOlder = [
+    message('cu1', 'user', '旧轮一：改造登录', { createdAt: createdAt + 100_000 }),
+    message('ca1', 'assistant', '旧轮一结果：登录已改造。', {
+      model: 'mock-1',
+      usage: { inputTokens: 500, outputTokens: 100, costUsd: 0.001 },
+    }),
+    message('cu2', 'user', '旧轮二：补测试', { createdAt: createdAt + 110_000 }),
+    message('ca2', 'assistant', '旧轮二结果：测试已补齐。', {
+      model: 'mock-1',
+      usage: { inputTokens: 300, outputTokens: 80, costUsd: 0.0008 },
+    }),
+  ]
+  sessions.push(
+    mk(
+      'compact',
+      '压缩着色会话',
+      [
+        {
+          id: 'cmp-summary',
+          role: 'user',
+          summary: true,
+          createdAt: createdAt + 120_000,
+          content: [{ type: 'text', text: '[此前对话摘要]\n\n旧轮一、旧轮二已完成。' }],
+        },
+        {
+          id: 'cmp-notice',
+          role: 'assistant',
+          notice: true,
+          createdAt: createdAt + 120_001,
+          content: [{ type: 'text', text: '已压缩上下文 · 节省 1.2k tokens' }],
+          compaction: {
+            summary: '旧轮一、旧轮二已完成。',
+            savedTokens: 1200,
+            keptTurns: 1,
+            auto: false,
+            canUndo: true,
+          },
+        },
+        message('ck1', 'user', '保留轮：继续收尾', { createdAt: createdAt + 130_000 }),
+        message('ck2', 'assistant', '保留轮结果：收尾完成。', {
+          model: 'mock-1',
+          usage: { inputTokens: 200, outputTokens: 50, costUsd: 0.0004 },
+        }),
+      ],
+      { updatedAt: Date.now() - 940 },
+    ),
+  )
   for (const session of sessions) writeJson(path.join(configDir, 'sessions', `${session.id}.json`), session)
+  writeJson(path.join(configDir, 'sessions', 'compact.compact.json'), {
+    noticeId: 'cmp-notice',
+    at: createdAt + 120_001,
+    summary: '旧轮一、旧轮二已完成。',
+    messages: compactOlder,
+  })
 
   writeJson(path.join(configDir, 'usage.json'), {
     rows: [
@@ -2470,7 +2524,7 @@ async function main() {
       assert.ok(info.rows > 300, `按需加载后只渲染了 ${info.rows} 行`)
     })
 
-    desktop('轮次大纲全文可读且不再弹重复悬停提示（#01 R15）', async (page) => {
+    desktop('轮次大纲悬停显示该轮用量、全文可读（#01 R15）', async (page) => {
       await openSession(page, 'long')
       await page.locator('.turn-hit').hover()
       await page.waitForFunction(
@@ -2485,19 +2539,97 @@ async function main() {
         const row = visible?.parentElement
         return {
           text: (visible?.textContent ?? '').trim(),
-          title: visible?.getAttribute('title') ?? '',
+          textTitle: visible?.getAttribute('title') ?? '',
           rowTitle: row?.getAttribute('title') ?? '',
           rowLabel: row?.getAttribute('aria-label') ?? '',
           readout: document.querySelector('[data-testid="turn-readout"]')?.textContent ?? '',
         }
       })
       assert.ok(info.text.length > 0, '大纲行没有真实文本节点')
-      assert.match(info.title, new RegExp(info.text.slice(0, 8).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '大纲行 title 不是全文')
-      assert.match(info.rowTitle, /^第 \d+ 轮：/, '大纲行缺少全文 title')
+      // 反馈6#01：悬停只显示该轮用量，不再重复大纲文字；全文保留在 aria-label 与 sr-only 列表。
+      assert.equal(info.textTitle, '', '大纲文字仍在重复弹出全文提示')
+      assert.match(info.rowTitle, /^输入 .+ · 输出 .+ · 缓存命中 \d+% · \$/, `大纲行没有用量 tooltip：${info.rowTitle}`)
       assert.match(info.rowLabel, /^第 \d+ 轮：/, '大纲行缺少读屏 aria-label')
       assert.match(info.readout, /第 1 轮：/, '读屏列表没有轮次全文')
-      // 反馈 #01：重复大纲文字的悬停浮层已删除，读屏全文保留在 sr-only 列表。
-      assert.equal(await page.locator('.turn-tip').count(), 0, '轮次大纲仍存在重复文字的悬停提示')
+      assert.equal(await page.locator('.turn-tip').count(), 0, '轮次大纲仍存在重复文字的悬停浮层')
+      // 标准 tooltip（ui/Tooltip 的 .ui-tip）在悬停行后显示用量。
+      const tip = page.locator('#tandem-tooltip[data-open]')
+      await tip.waitFor({ timeout: 5_000 })
+      assert.match(await tip.innerText(), /输入 .+ · 输出 .+ · 缓存命中 \d+% · \$/, '悬停大纲行没有显示用量')
+      assert.doesNotMatch(await tip.innerText(), /第 \d+ 轮：/, '用量 tooltip 重复了大纲文字')
+    })
+
+    desktop('轮次大纲按用量着色，上下文模式压缩轮最浅并标已压缩（#01 追加）', async (page) => {
+      await openSession(page, 'compact')
+      await page.locator('.turn-hit').hover()
+      await page.waitForFunction(
+        () => document.querySelector('.turn-rail')?.getAttribute('data-open') === 'true',
+        null,
+        { timeout: 5_000 },
+      )
+      await page.waitForTimeout(800)
+      const readRows = () =>
+        page.evaluate(() => {
+          const rows = [...document.querySelectorAll('.turn-item')].filter(
+            (el) => (el.querySelector('.turn-item-t')?.textContent ?? '').trim().length > 0,
+          )
+          return rows.map((el) => ({
+            heat: el.dataset.heat ?? '',
+            summary: el.dataset.summary === 'true',
+            compressed: el.dataset.compressed === 'true',
+            label: el.getAttribute('aria-label') ?? '',
+            title: el.getAttribute('title') ?? '',
+            badge: el.querySelector('.turn-item-c')?.textContent ?? '',
+            number: el.querySelector('.turn-item-n')?.textContent ?? '',
+            text: el.querySelector('.turn-item-t')?.textContent ?? '',
+          }))
+        })
+      const costRows = await readRows()
+      const compressed = costRows.filter((row) => row.compressed)
+      const summary = costRows.find((row) => row.summary)
+      assert.equal(compressed.length, 2, `没有显示被压缩的轮次：${JSON.stringify(costRows)}`)
+      assert.ok(summary, '没有显示摘要行')
+      assert.ok(
+        new Set(costRows.map((row) => row.heat)).size >= 2,
+        `用量着色没有分档：${JSON.stringify(costRows.map((row) => row.heat))}`,
+      )
+      assert.ok(compressed.every((row) => row.badge === '已压缩'), '压缩轮没有标记')
+      assert.ok(compressed.every((row) => /已压缩到摘要/.test(row.title)), '压缩轮 tooltip 没有说明已压缩')
+      assert.ok(costRows.every((row) => /用量(低|较低|中|较高|高)/.test(row.label)), 'aria-label 缺少用量档位')
+      assert.equal(summary?.number, '摘', '摘要行没有标记')
+      assert.equal(summary?.text, '摘要', '摘要行文案不对')
+
+      // 切换到「上下文占用」：被压缩的轮占用接近 0，显示为最浅档。
+      await page.locator('.turn-metric button', { hasText: '上下文' }).click()
+      await page.waitForTimeout(500)
+      const contextRows = await readRows()
+      const compressedContext = contextRows.filter((row) => row.compressed)
+      assert.ok(compressedContext.length === 2, '切换上下文模式后压缩轮消失')
+      assert.ok(
+        compressedContext.every((row) => row.heat === '1'),
+        `压缩轮在上下文模式不是最浅：${JSON.stringify(compressedContext.map((row) => row.heat))}`,
+      )
+      assert.equal(
+        await page.locator('.turn-metric button[data-on="true"]').innerText(),
+        '上下文',
+        '着色依据没有切到上下文',
+      )
+
+      // 撤销压缩后：摘要与压缩行消失，恢复为真实轮次。
+      await api(base, token, '/api/sessions/compact/compaction/cmp-notice/undo', {
+        method: 'POST',
+        body: '{}',
+      })
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.locator('textarea[aria-label="消息输入框"]').first().waitFor({ timeout: 20_000 })
+      await openSession(page, 'compact')
+      await page.waitForTimeout(600)
+      const restored = await page.evaluate(() => ({
+        summary: document.querySelectorAll('.turn-item[data-summary="true"]').length,
+        compressed: document.querySelectorAll('.turn-item[data-compressed="true"]').length,
+      }))
+      assert.equal(restored.summary, 0, '撤销压缩后仍显示摘要行')
+      assert.equal(restored.compressed, 0, '撤销压缩后仍显示已压缩轮次')
     })
 
     desktop('压缩确认与上下文面板按真实用户轮次统计（R16）', async (page) => {
@@ -3574,6 +3706,93 @@ async function main() {
       assert.match(await tip.innerText(), /参考价 · 输入 \$2 · 输出 \$8/, '内置参考价没有标注来源')
     })
 
+    desktop('账号/分组倍率叠加并在模型菜单显示计算方式（#04）', async (page) => {
+      const account = await api(base, token, '/api/profiles', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: '倍率回归账号',
+          kind: 'openai-compatible',
+          baseUrl: `http://127.0.0.1:${mockPort}/v1`,
+          apiKey: 'reg-key-multiplier',
+          models: ['gpt-4o-mini'],
+          defaultModel: 'gpt-4o-mini',
+          multiplier: 0.5,
+          groups: [
+            {
+              name: '低价渠道',
+              apiKey: 'reg-key-multiplier-group',
+              models: ['gpt-4o-mini'],
+              defaultModel: 'gpt-4o-mini',
+              multiplier: 0.8,
+            },
+          ],
+        }),
+      })
+      const groupId = account.groups?.[0]?.id
+      assert.ok(groupId, '倍率账号没有创建分组')
+      let session
+      try {
+        session = await api(base, token, '/api/sessions', {
+          method: 'POST',
+          body: JSON.stringify({
+            cwd: repo,
+            profileId: account.id,
+            groupId,
+            model: 'gpt-4o-mini',
+            permissionMode: 'bypassPermissions',
+            title: '倍率回归会话',
+          }),
+        })
+        // 账号是通过 API 新建的：刷新一次让客户端拉到最新账号列表。
+        await page.reload({ waitUntil: 'domcontentloaded' })
+        await page
+          .locator('textarea[aria-label="消息输入框"], button:has-text("新会话")')
+          .first()
+          .waitFor({ timeout: 20_000 })
+        const clientHostId = await page.evaluate(
+          () => JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')[0]?.id ?? null,
+        )
+        await page.evaluate(
+          (hash) => {
+            window.location.hash = hash
+          },
+          `#/h/${clientHostId}/s/${session.id}`,
+        )
+        await page.waitForFunction(
+          (id) => window.location.hash.includes(`/s/${id}`),
+          session.id,
+          { timeout: 10_000 },
+        )
+        await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+        await waitModelReady(page)
+        // 主菜单优先显示最近使用模型；清掉记录让当前分组的模型回退显示（价格 tooltip 用例）。
+        await page.evaluate(() => localStorage.removeItem('tandem.recentModels.v1'))
+        await page.locator('button[aria-label^="选择模型"]').first().click()
+        const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+        await menu.waitFor()
+        const row = menu.locator('[role="menuitem"]').filter({ hasText: /4o/i }).first()
+        await row.hover()
+        const tip = page.locator('#tandem-tooltip[data-open]')
+        await tip.waitFor({ timeout: 10_000 })
+        const text = await tip.innerText()
+        assert.match(
+          text,
+          /官方 \$0\.15\/M × 账号 0\.5 × 分组 0\.8 = \$0\.06\/M/,
+          `模型菜单没有显示倍率计算方式：${text}`,
+        )
+        assert.match(text, /输出 \$0\.6\/M → \$0\.24\/M/, `模型菜单没有显示输出最终价：${text}`)
+        assert.match(text, /缓存 \$0\.03/, `模型菜单没有显示最终缓存价：${text}`)
+        await page.keyboard.press('Escape')
+      } finally {
+        if (session?.id) {
+          await api(base, token, `/api/sessions/${session.id}?deleteWorktree=false`, {
+            method: 'DELETE',
+          }).catch(() => {})
+        }
+        await api(base, token, `/api/profiles/${account.id}`, { method: 'DELETE' }).catch(() => {})
+      }
+    })
+
     desktop('新会话页环境条显示当前分支名而不是「分支」占位词', async (page) => {
       await page.evaluate(() => (window.location.hash = '#/'))
       await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
@@ -4119,6 +4338,45 @@ async function main() {
         assert.ok(button.top >= 0 && button.bottom <= info.height + 1, '顶栏按钮垂直错位')
       }
     } })
+
+    desktop('会话信息面板左缘拖宽、记住宽度并可双击复位（#03 R01）', async (page) => {
+      await page.evaluate(() => localStorage.removeItem('tandem.rightPanelWidth.v1'))
+      await openSession(page, 'long')
+      const toggle = page.getByRole('button', { name: '切换信息面板' }).first()
+      const handle = page.getByRole('separator', { name: '调整会话信息面板宽度' })
+      if (!(await handle.isVisible().catch(() => false))) await toggle.click()
+      await handle.waitFor({ state: 'visible', timeout: 5_000 })
+      const panel = page
+        .locator('aside')
+        .filter({ has: page.getByText('会话信息', { exact: true }) })
+        .first()
+      const before = (await panel.boundingBox())?.width ?? 0
+      assert.ok(before >= 280 && before <= 600, `信息面板默认宽度异常：${before}`)
+      const box = await handle.boundingBox()
+      assert.ok(box, '找不到信息面板拖动手柄')
+      await page.mouse.move(box.x + box.width / 2, box.y + 200)
+      await page.mouse.down()
+      await page.mouse.move(box.x - 140, box.y + 200, { steps: 10 })
+      await page.mouse.up()
+      await page.waitForTimeout(200)
+      const widened = (await panel.boundingBox())?.width ?? 0
+      assert.ok(widened >= 400, `向左拖动后信息面板未变宽：${widened}`)
+      const stored = Number(await page.evaluate(() => localStorage.getItem('tandem.rightPanelWidth.v1')))
+      assert.ok(stored >= 400 && stored <= 600, `信息面板宽度没有记住：${stored}`)
+      // 关闭再打开仍使用记住的宽度。
+      await toggle.click()
+      await handle.waitFor({ state: 'hidden', timeout: 5_000 })
+      await toggle.click()
+      await handle.waitFor({ state: 'visible', timeout: 5_000 })
+      await page.waitForTimeout(200)
+      const reopened = (await panel.boundingBox())?.width ?? 0
+      assert.ok(Math.abs(reopened - stored) <= 2, `重开后面板宽度 ${reopened}，记住的是 ${stored}`)
+      // 双击复位默认 300。
+      await handle.dblclick()
+      await page.waitForTimeout(200)
+      const reset = (await panel.boundingBox())?.width ?? 0
+      assert.ok(Math.abs(reset - 300) <= 2, `双击后没有恢复默认宽度：${reset}`)
+    })
 
     desktop('断点续跑胶囊显示倒计时与操作', async (page) => {
       await openSession(page, 'retry')
@@ -5067,6 +5325,82 @@ async function main() {
       await tag.click()
       await row('long').waitFor({ state: 'visible', timeout: 5_000 })
       assert.equal(await page.getByRole('button', { name: /已筛选/ }).count(), 0, '清除后筛选标签仍在')
+    })
+
+    checks.push({
+      name: '侧栏按主机分组显示全部会话，无主机切换按钮；离线仍可浏览（#02）',
+      viewport: 'desktop',
+      // 独立 context：本用例会临时添加第二台主机，不影响其他用例。
+      context: 'win32',
+      fn: async (page) => {
+        await page.waitForFunction(
+          () => {
+            try {
+              return JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]').length > 0
+            } catch {
+              return false
+            }
+          },
+          null,
+          { timeout: 20_000 },
+        )
+        const firstName = await page.evaluate(
+          ({ base, token }) => {
+            const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
+            const first = hosts[0]
+            const second = {
+              ...first,
+              id: 'host-second',
+              name: '第二台主机',
+              addedAt: Date.now() + 1,
+            }
+            localStorage.setItem('tandem.hosts.v1', JSON.stringify([first, second]))
+            return first?.name ?? '本机'
+          },
+          { base, token },
+        )
+        await page.reload({ waitUntil: 'domcontentloaded' })
+        const hostGroups = page.locator('[data-host-group]')
+        await hostGroups.first().waitFor({ state: 'visible', timeout: 20_000 })
+        await page.waitForTimeout(600)
+
+        // 反馈6#02：去掉「本机 ⌄」主机切换按钮，会话列表一次显示所有主机。
+        assert.equal(
+          await page.getByRole('button', { name: '切换主机' }).count(),
+          0,
+          '侧栏仍存在主机切换按钮',
+        )
+        assert.equal(await hostGroups.count(), 2, '会话列表没有按两台主机分组')
+        const headings = await hostGroups.allInnerTexts()
+        assert.match(headings[0] ?? '', new RegExp(firstName), `第一台主机分组标题不对：${headings[0]}`)
+        assert.match(headings[1] ?? '', /第二台主机/, `第二台主机分组标题不对：${headings[1]}`)
+        assert.equal(
+          await page.locator('[data-host-group] [data-project-row]').count() > 0,
+          true,
+          '主机分组下没有项目分组',
+        )
+
+        // 离线：分组标题标出离线状态，缓存的会话仍可浏览。
+        await page.evaluate(() => window.dispatchEvent(new Event('offline')))
+        await page.getByText('离线', { exact: true }).first().waitFor({ timeout: 5_000 })
+        await page
+          .locator('[data-session-row][data-session-id="long"]')
+          .first()
+          .waitFor({ state: 'visible', timeout: 5_000 })
+        await page.evaluate(() => window.dispatchEvent(new Event('online')))
+        await page.waitForTimeout(300)
+
+        // 筛选菜单里保留「按主机筛选」。
+        await page.getByRole('button', { name: '筛选会话' }).click()
+        await page.getByRole('menuitem', { name: '主机' }).click()
+        const sub = page.locator('[aria-label="按主机筛选"]')
+        await sub.waitFor({ state: 'visible', timeout: 5_000 })
+        const subText = await sub.innerText()
+        assert.match(subText, /全部主机/, '筛选菜单缺少全部主机')
+        assert.match(subText, /第二台主机/, '筛选菜单缺少按主机筛选的选项')
+        await page.keyboard.press('Escape')
+        await page.keyboard.press('Escape')
+      },
     })
 
     desktop('全文搜索：命中片段、打开会话并高亮消息', async (page) => {
