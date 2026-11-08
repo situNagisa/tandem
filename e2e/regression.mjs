@@ -2299,7 +2299,7 @@ async function main() {
     })
 
     desktop('反馈模式圈选浮层：模型菜单（含子菜单）、命令面板、环境条、看板抽屉', async (page) => {
-      await openSession(page, 'long')
+      await openSession(page, 'nockpt')
       await waitModelReady(page)
       const editor = page.getByRole('dialog', { name: '反馈输入' })
 
@@ -2393,7 +2393,8 @@ async function main() {
     })
 
     desktop('模型菜单：单价未设置时可跳到该账号的单价覆盖', async (page) => {
-      await openSession(page, 'long')
+      // 用未被其它用例改过模型的会话，保证看到内置表里没有的 mock-1。
+      await openSession(page, 'nockpt')
       await waitModelReady(page)
       const modelButton = page.locator('button[aria-label^="选择模型"]').first()
       await modelButton.click()
