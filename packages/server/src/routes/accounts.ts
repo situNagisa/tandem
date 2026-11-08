@@ -124,6 +124,11 @@ export function registerAccountRoutes(app: FastifyInstance, deps: RouteDeps): vo
     }
     const member = accounts().memberOverview();
     if (!member) return bad(reply, '本机没有加入工作区', 404);
+    // 成员主机按账号范围过滤主机列表，避免协作者看到未授权机器。
+    const principal = principalOf(req);
+    if (principal.kind === 'account') {
+      return { ...member, hosts: accounts().hostsFor(tokenOf(req)) };
+    }
     return member;
   });
 
@@ -155,6 +160,11 @@ export function registerAccountRoutes(app: FastifyInstance, deps: RouteDeps): vo
 
   // 中心主动推送或加入方之间中转的签名快照（公开但必须中心私钥签名）。
   app.post('/api/accounts/workspace/sync', async (req, reply) => {
+    const token = req.headers['x-tandem-workspace-token'];
+    const expected = accounts().syncSecret();
+    if (expected && (typeof token !== 'string' || token !== expected)) {
+      return bad(reply, '工作区快照口令无效', 401);
+    }
     const ok = accounts().applySignedSnapshot(req.body);
     if (!ok) return bad(reply, '快照签名无效或本机不是加入方 Host', 400);
     return reply.code(204).send();
@@ -162,6 +172,11 @@ export function registerAccountRoutes(app: FastifyInstance, deps: RouteDeps): vo
 
   app.get('/api/accounts/workspace/snapshot', async (req, reply) => {
     if (accounts().mode() !== 'center') return bad(reply, '该 Host 不是账号中心', 404);
+    const token = req.headers['x-tandem-workspace-token'];
+    const expected = accounts().syncSecret();
+    if (expected && (typeof token !== 'string' || token !== expected)) {
+      return bad(reply, '需要加入方 Host 的工作区口令', 401);
+    }
     accounts().ensureSelfHost(localUrls(app));
     return accounts().signedSnapshot();
   });

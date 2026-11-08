@@ -965,6 +965,8 @@ export interface WorkspaceJoinResult {
   center: { hostId: string; publicKey: string };
   host: WorkspaceHostInfo;
   snapshotVersion: number;
+  /** 加入方 Host 拉取/接收快照的共享口令（只发给 Host，不发给客户端）。 */
+  syncToken: string;
 }
 /** 中心签名的工作区快照：Host 列表 + 吊销列表。 */
 export interface WorkspaceSnapshot {

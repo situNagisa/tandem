@@ -70,6 +70,7 @@ interface CenterFile {
   revoked: Record<string, number>;
   invalidBefore: Record<string, number>;
   usedRefresh: Record<string, number>;
+  syncToken: string;
   snapshotVersion: number;
   audit: { id: string; at: number; actor: string; action: string; detail?: string }[];
 }
@@ -79,6 +80,7 @@ interface MemberFile {
   workspace: WorkspaceInfo;
   centerUrl: string;
   centerPublicKey: string;
+  syncToken: string;
   hosts: WorkspaceHostInfo[];
   revoked: Record<string, number>;
   invalidBefore: Record<string, number>;
@@ -388,6 +390,7 @@ export class AccountsStore {
       revoked: {},
       invalidBefore: {},
       usedRefresh: {},
+      syncToken: randomBytes(24).toString('hex'),
       snapshotVersion: 1,
       audit: [],
     };
@@ -562,9 +565,18 @@ export class AccountsStore {
   /** 账号令牌可访问的 Host 列表。 */
   hostsFor(token: string): WorkspaceHostInfo[] {
     const claims = this.verifyToken(token);
-    if (!claims || this.state?.mode !== 'center') return [];
+    if (!claims || !this.state) return [];
+    if (this.state.mode === 'member') {
+      if (claims.role === 'owner' || claims.role === 'admin' || claims.scope === 'all') return [...this.state.hosts];
+      return this.state.hosts.filter((h) => claims.hostIds.includes(h.id));
+    }
     const account = this.state.accounts.find((a) => a.id === claims.sub);
     return account ? this.hostsForAccount(account) : [];
+  }
+
+  /** 工作区快照共享口令：只给加入方 Host，避免同网段任意客户端枚举全部机器。 */
+  syncSecret(): string | undefined {
+    return this.state?.mode === 'center' ? this.state.syncToken : this.state?.syncToken;
   }
 
   private hostsForAccount(account: StoredAccount): WorkspaceHostInfo[] {
@@ -748,6 +760,7 @@ export class AccountsStore {
       center: { hostId: this.opts.hostId, publicKey: state.publicKey },
       host: info,
       snapshotVersion: state.snapshotVersion,
+      syncToken: state.syncToken,
     };
   }
 
@@ -826,6 +839,7 @@ export class AccountsStore {
       workspace: data.workspace,
       centerUrl: base,
       centerPublicKey: data.center.publicKey,
+      syncToken: data.syncToken ?? '',
       hosts: [],
       revoked: {},
       invalidBefore: {},
@@ -852,6 +866,8 @@ export class AccountsStore {
     if (!b || !b.snapshot || typeof b.signature !== 'string') return false;
     const snapshot = b.snapshot;
     if (snapshot.workspace?.id !== this.state.workspace.id) return false;
+    // 快照版本只增不减：拒绝重放旧快照把已吊销账号“复活”。
+    if (typeof snapshot.version !== 'number' || snapshot.version < this.state.snapshotVersion) return false;
     if (!verifyPayload(JSON.stringify(snapshot), b.signature, this.state.centerPublicKey)) return false;
     this.applySnapshot(snapshot);
     return true;
@@ -873,11 +889,15 @@ export class AccountsStore {
     if (this.state?.mode !== 'member') return;
     const state = this.state;
     try {
-      const res = await fetch(`${state.centerUrl}/api/accounts/workspace/snapshot`, { signal: AbortSignal.timeout(5000) });
+      const res = await fetch(`${state.centerUrl}/api/accounts/workspace/snapshot`, {
+        headers: state.syncToken ? { 'x-tandem-workspace-token': state.syncToken } : {},
+        signal: AbortSignal.timeout(5000),
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as { snapshot?: WorkspaceSnapshot; signature?: string };
       if (!body.snapshot || !body.signature) throw new Error('快照格式无效');
       if (body.snapshot.workspace?.id !== state.workspace.id) throw new Error('工作区不匹配');
+      if (typeof body.snapshot.version !== 'number' || body.snapshot.version < state.snapshotVersion) throw new Error('快照版本过旧');
       if (!verifyPayload(JSON.stringify(body.snapshot), body.signature, state.centerPublicKey)) throw new Error('快照签名无效');
       this.applySnapshot(body.snapshot);
     } catch (err) {
@@ -907,7 +927,7 @@ export class AccountsStore {
           try {
             await fetch(`${url.replace(/\/+$/, '')}/api/accounts/workspace/sync`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', 'x-tandem-workspace-token': state.syncToken },
               body,
               signal: AbortSignal.timeout(3000),
             });
