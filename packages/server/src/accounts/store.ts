@@ -733,6 +733,9 @@ export class AccountsStore {
     const code = typeof input.code === 'string' ? input.code.trim() : '';
     const host = input.host;
     if (!host || typeof host.id !== 'string' || !host.id.trim()) throw Object.assign(new Error('Host 信息无效'), { statusCode: 400 });
+    if (host.id.trim() === state.workspace.centerHostId) {
+      throw Object.assign(new Error('Host 标识与账号中心冲突'), { statusCode: 400 });
+    }
     const entry = state.joinCodes.find((c) => c.codeHash === sha256(code));
     if (!entry || entry.usedAt || entry.expiresAt < Date.now()) {
       throw Object.assign(new Error('加入码无效、已使用或已过期'), { statusCode: 401 });
