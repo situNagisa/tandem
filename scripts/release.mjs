@@ -113,11 +113,10 @@ const GROUPS = [
 
 function previousTag() {
   try {
-    return (
-      git(['describe', '--tags', '--abbrev=0', '--match', 'v*'], {
-        stdio: ['ignore', 'pipe', 'ignore'],
-      }) || ''
-    )
+    const tags = git(['tag', '--list', 'v*', '--sort=-v:refname'])
+      .split('\n')
+      .filter((tag) => tag && tag !== tagName)
+    return tags[0] ?? ''
   } catch {
     return ''
   }
@@ -174,16 +173,15 @@ const changelogFile = path.join(ROOT, 'CHANGELOG.md')
 const section = buildChangelogSection()
 
 function updateChangelog() {
-  const header = '# 更新日志\n\n'
-  let text = fs.existsSync(changelogFile) ? fs.readFileSync(changelogFile, 'utf8') : header
-  if (!/^#\s/m.test(text)) text = `${header}${text}`
+  const fallback = '# 更新日志\n\n'
+  let text = fs.existsSync(changelogFile) ? fs.readFileSync(changelogFile, 'utf8') : fallback
+  if (!/^#\s/m.test(text)) text = `${fallback}${text}`
   const parts = text.split(/\n(?=## )/)
-  parts[0] = `${parts[0].trimEnd()}\n\n`
+  const header = parts.shift().trimEnd()
   const index = parts.findIndex((part) => part.startsWith(`## ${version}`))
   if (index >= 0) parts[index] = section.trimEnd()
-  else if (parts.length > 1) parts.splice(1, 0, section.trimEnd())
-  else parts.push(section.trimEnd())
-  text = `${parts.join('\n').trimEnd()}\n`
+  else parts.unshift(section.trimEnd())
+  text = `${header}\n\n${parts.join('\n\n')}\n`
   if (!dryRun) fs.writeFileSync(changelogFile, text)
   if (!changed.includes(changelogFile)) changed.push(changelogFile)
   return text
@@ -195,8 +193,12 @@ const changelogText = updateChangelog()
 
 const tourFile = path.join(ROOT, 'packages', 'web', 'src', 'lib', 'changelog.ts')
 
+const TOUR_SKIP_SCOPES = new Set(['release', 'docs', 'test'])
+
 function tourItems() {
-  const features = commits.filter((commit) => commit.type === 'feat').slice(0, 8)
+  const features = commits
+    .filter((commit) => commit.type === 'feat' && !TOUR_SKIP_SCOPES.has(commit.scope))
+    .slice(0, 8)
   if (!features.length) {
     return [
       {
@@ -216,7 +218,7 @@ function tourItems() {
 }
 
 function ts(value) {
-  return JSON.stringify(value)
+  return `'${String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')}'`
 }
 
 function releaseEntry() {
@@ -231,7 +233,7 @@ function releaseEntry() {
       `        id: ${ts(item.id)},`,
       `        title: ${ts(item.title)},`,
       `        summary: ${ts(item.summary)},`,
-      `        target: ${ts(item.target)},`,
+      `        target: { kind: ${ts(item.target.kind)} },`,
       '      },',
     ]),
     '    ],',
@@ -246,9 +248,13 @@ function updateTour() {
   const marker = 'export const CHANGELOG: ChangelogRelease[] = ['
   const at = text.indexOf(marker)
   if (at < 0) throw new Error(`无法识别 ${tourFile} 的 CHANGELOG 数组`)
-  if (new RegExp(`version:\\s*['"]${version.replace(/\./g, '\\.')}['"]`).test(text)) return text
-  const insertAt = at + marker.length
-  const next = `${text.slice(0, insertAt)}\n${releaseEntry()}${text.slice(insertAt)}`
+  const escaped = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const existing = new RegExp(
+    `  \\{\\n    version: ['"]${escaped}['"],\\n[\\s\\S]*?\\n  \\},\\n?`,
+  )
+  const cleaned = text.replace(existing, '')
+  const insertAt = cleaned.indexOf(marker) + marker.length
+  const next = `${cleaned.slice(0, insertAt)}\n${releaseEntry()}${cleaned.slice(insertAt)}`
   if (!dryRun) fs.writeFileSync(tourFile, next)
   if (!changed.includes(tourFile)) changed.push(tourFile)
   return next
@@ -291,7 +297,9 @@ console.log(`[release] 已提交 chore(release): ${version}`)
 
 if (!noTag) {
   try {
-    git(['rev-parse', '--verify', `refs/tags/${tagName}`])
+    git(['rev-parse', '--verify', `refs/tags/${tagName}`], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
     console.error(`[release] 标签 ${tagName} 已存在，未重复创建。`)
     process.exit(1)
   } catch {

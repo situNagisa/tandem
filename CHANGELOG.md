@@ -1,0 +1,100 @@
+# 更新日志
+
+## 0.2.0 — 2026-11-08
+
+### 新功能
+
+- **android**：release 签名打包与 AAB（76fc497）
+- **release**：发布脚本、版本一致性提示与内网自动更新（c15898e）
+- **preview**：应用预览画布：设备尺寸、元素点选与改完自动刷新（8fdc951）
+- **wiki**：项目 Wiki 生成、增量更新、浏览与 agent 检索（2608065）
+- **paging**：前端按需加载大会话、轮次大纲与超大工具输出（2ec8e2a）
+- **remote**：SSH 一键部署远程主机与隧道接入（646dc2a）
+- **paging**：会话快照尾部下发与消息分页接口（8b3e695）
+- **ia**：设置分组与顶栏收敛，新增新功能导览（2f9173c）
+- **route**：自动模型路由（b5d85da）
+- **board**：v2 运行时提议、卡片 AI 评审、PR 聚合、分屏与冲突解决（1931a54）
+- **quota**：空会话也显示交接卡；记录配额交接验收（095b6c0）
+- **quota**：配额预估、交接卡与备用分组自动续跑（60c9622）
+- **board**：看板列随宽度伸展、手机分组间距、排队卡不重复依赖行；补充文档（7dcf54d）
+- **board**：任务看板前端（七列拖动、详情抽屉、手机列表、创建/拆分/打回对话框，侧栏入口、收件箱与命令）（c551d72）
+- **quota**：协议定义限流额度、配额预估与会话交接（f0405c2）
+- **board**：任务看板服务端（协议、调度器、规划器、路由、回归脚本）（a6a12df）
+- **split**：多会话分屏视图与独立会话作用域（b36ab5f）
+- **sandbox**：写保护、网络白名单与 bwrap/sandbox-exec 沙箱（9b5283e）
+- **review**：提交前 AI 评审挂行、采纳与误报记忆（17b0875）
+- **sidebar**：固定项目单独置顶展示（7b2f78b）
+- **history**：会话状态筛选、项目级固定、未读同步与全文搜索（124b71c）
+- **doctor**：Host 诊断面板、CLI 与脱敏报告（c6bcdff）
+- **secrets**：项目 secrets 注入、输出脱敏与设置页（696eb3a）
+- **permissions**：文件工具审批历史同时记录相对目录（3313170）
+- **context**：上下文自动压缩、超长重试与占用明细（be67768）
+- **permissions**：权限页建议/统计/自然语言入口与审批卡回归用例（8137c4e）
+- **permissions**：审批策略学习——历史规则建议、自然语言草稿与效果统计（755d062）
+- **web**：命令面板补齐快捷键与设置导航滚动，补充回归（6135cf8）
+- **web**：统一命令面板 + 设置项搜索与可自定义快捷键（4d92494）
+- **gateway**：自建 Key 网关（默认关闭，内网）（549f9ef）
+- **a11y**：无障碍与键盘操作专项（axe 违规 718→0）（105c76d）
+- **team**：内网共享前端——成员设置/邀请二维码/入职、在线头像与审批转交（2738245）
+- **team**：内网共享后端——成员角色、一次性邀请、REST/WS 权限边界、审批转交与审计（952dc2c）
+- **browser**：Host 端浏览器操作工具与截图流——按域名分级授权、会话面板与设置页（e1b3d41）
+- **evals**：轨迹回放与评测集——会话存用例、临时 worktree 批量运行、结果对比（422c7fd）
+- 语音输入（Host 本机 Whisper + 设备识别 + 审批语音说明）（1b58c47）
+- 会话只读分享链接（内网）（7cde7be）
+- 后台任务与定时任务（Bash run_in_background / BashOutput / KillBash、任务面板、Host 内 cron 调度与设置页、/schedule）（d043aad）
+- add one-click relay deployment（4ac15ad）
+- 账号分组支持独立协议类型与基址推断（85b4fea）
+- 外部会话扫码即显侧栏，支持只读预览与导入后继续（ffdd702）
+
+### 修复
+
+- **web**：走查 v9 小修（c715432）
+- **compact**：自动压缩参考真实占用触发；真实模型 e2e 第四轮报告（4ead06d）
+- **sandbox**：worktree 与 checkpoints 不按受保护配置拦截（d7abe12）
+- **sandbox**：跨平台路径判定与权限页沙箱区布局（f52ec56）
+- **secrets**：worktree 会话归到主仓库的项目 secrets（a777848）
+- **secrets**：右栏数量与设置页默认项目，注入/打码判定更轻量（535c7de）
+- **web**：走查 v8：团队审计中文化、评测字号与时间、邀请警告分行；补 4 条回归（8978ee8）
+- **web**：长按消息等合成点击结束后再打开操作菜单，避免误触第一项（79847e8）
+- **server**：浏览器快照保留单字符文本与输入值，SSE 注释不再重置空闲超时（00aed77）
+- **web**：手机端专项——顶栏两行布局、44px 触控目标与 12px 小字（c53f209）
+- **browser**：headless shell 能力探测与浏览器工具卡不折叠（5575d9a）
+- **evals**：设置页内轨迹弹层层级、稳定 zustand 选择器、隐藏评测内部回合通知（d297f4c）
+- **web**：走查 v7b——记忆元数据泄漏、手机环境条裁切、提示词小屏跳转、字号统一（718a6da）
+- 断点续跑胶囊丢失与手机端设置/环境条布局；docs: 走查 v7c（19b136a）
+- 收件箱/预算/定时任务/后台任务走查修复（5e0e151）
+- 分享摘要先脱敏；撤销后清空已打开页面（6857d02）
+- **server**：外部会话标题与注入消息清理（2a4d9a2）
+
+### 性能
+
+- **web**：长会话渐进渲染与流式增量合并（02bd9bf）
+- **server**：会话追加写 + 大仓库遍历/扫描缓存（00a16ba）
+
+### 重构
+
+- useAppStore 拆出 worktreeSlice 与 uiSlice（纯搬移）（e10a705）
+- useAppStore 拆出 inboxSlice（纯搬移）（4613784）
+- useAppStore 拆出 messagesSlice（纯搬移）（c0058f6）
+- useAppStore 拆出 sessionsSlice（纯搬移）（a5b2870）
+- useAppStore 拆出会话核心与 WS 消息处理（纯搬移）（8112e70）
+- host.ts 收敛为状态与转调入口；docs: 模块地图补 routes/ 与 host/（010dd9c）
+- host.ts 拆出回合调度与排队（纯搬移）（cf4abdb）
+- host.ts 拆出斜杠命令与本地消息（纯搬移）（c33ee3a）
+- host.ts 拆出 hooks 执行（纯搬移）（97fd446）
+- host.ts 拆出检查点回退（纯搬移）（8bf85e6）
+- host.ts 拆出权限审批（纯搬移）（1f3ee1a）
+- host.ts 拆出子代理与工具可见性（纯搬移）（bb965aa）
+- host.ts 拆出上下文/预算/模型（纯搬移）（9b0f8ab）
+- host.ts 拆出账号与 Key 轮询（纯搬移）（a68fe9b）
+- host.ts 拆出 git/worktree（纯搬移）（75f8b58）
+- host.ts 拆出会话读写与 CRUD（纯搬移）（a6c30c6）
+- host.ts 拆出收件箱与外部会话（纯搬移）（c195f4d）
+- useAppStore 的 Host 连接与列表 action 抽为 hostsSlice（纯搬移）（b9e81ca）
+- host.ts 拆出顶层辅助函数（纯搬移）（8063e60）
+- useAppStore 抽出类型与辅助函数（纯搬移）（b1a8d3c）
+- 拆分 server.ts 路由（纯搬移）（a0f40c7）
+- 拆分 RightPanel（纯搬移）（57b938b）
+- 拆分 Composer（纯搬移）（483fa2c）
+- 拆分 ProfilesSection（纯搬移）（000dd58）
+- 拆分 MessageList（纯搬移）（e53f317）

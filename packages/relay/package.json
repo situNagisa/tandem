@@ -1,6 +1,6 @@
 {
   "name": "@tandem/relay",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tandem 中继服务：让不在同一局域网的客户端经出站隧道连到 Host",
   "type": "module",
   "main": "dist/cli.js",
@@ -8,8 +8,14 @@
     "tandem-relay": "dist/cli.js"
   },
   "exports": {
-    "./wire": { "types": "./dist/wire.d.ts", "default": "./dist/wire.js" },
-    "./client": { "types": "./dist/client.d.ts", "default": "./dist/client.js" }
+    "./wire": {
+      "types": "./dist/wire.d.ts",
+      "default": "./dist/wire.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    }
   },
   "scripts": {
     "build": "tsc -p .",

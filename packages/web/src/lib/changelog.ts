@@ -25,6 +25,62 @@ export interface ChangelogRelease {
 /** 版本升级后首次打开时展示；按版本从新到旧排列。 */
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: '0.2.0',
+    date: '2026-11-08',
+    items: [
+      {
+        id: 'release-0.2.0-1',
+        title: 'release 签名打包与 AAB',
+        summary: 'android 模块 · 提交 76fc497，详见 CHANGELOG.md。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'release-0.2.0-2',
+        title: '应用预览画布：设备尺寸、元素点选与改完自动刷新',
+        summary: 'preview 模块 · 提交 8fdc951，详见 CHANGELOG.md。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'release-0.2.0-3',
+        title: '项目 Wiki 生成、增量更新、浏览与 agent 检索',
+        summary: 'wiki 模块 · 提交 2608065，详见 CHANGELOG.md。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'release-0.2.0-4',
+        title: '前端按需加载大会话、轮次大纲与超大工具输出',
+        summary: 'paging 模块 · 提交 2ec8e2a，详见 CHANGELOG.md。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'release-0.2.0-5',
+        title: 'SSH 一键部署远程主机与隧道接入',
+        summary: 'remote 模块 · 提交 646dc2a，详见 CHANGELOG.md。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'release-0.2.0-6',
+        title: '会话快照尾部下发与消息分页接口',
+        summary: 'paging 模块 · 提交 8b3e695，详见 CHANGELOG.md。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'release-0.2.0-7',
+        title: '设置分组与顶栏收敛，新增新功能导览',
+        summary: 'ia 模块 · 提交 2f9173c，详见 CHANGELOG.md。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'release-0.2.0-8',
+        title: '自动模型路由',
+        summary: 'route 模块 · 提交 b5d85da，详见 CHANGELOG.md。',
+        target: { kind: 'home' },
+      },
+    ],
+  },
+
+
+  {
     version: '0.1.0',
     date: '2026-11-08',
     items: [
