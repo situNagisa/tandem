@@ -73,13 +73,17 @@ export function TurnOutlineSheet({
   if (!mounted) return null
 
   const rows = turns.slice(range.start, range.end)
+  const realTotal = turns.filter((turn) => !turn.summary).length
+  const activeMark = turns[active - 1]
   return createPortal(
     <div className="turn-sheet-root md:hidden" data-leaving={leaving ? 'true' : undefined}>
       <div className="turn-sheet-backdrop" onClick={onClose} />
       <div className="turn-sheet" role="dialog" aria-modal="true" aria-label="轮次大纲">
         <div className="turn-sheet-head">
           <span className="tabular-nums">
-            轮次大纲 · 第 {active} / {turns.length} 轮
+            {activeMark?.summary
+              ? '轮次大纲 · 摘要'
+              : `轮次大纲 · 第 ${activeMark?.no ?? active} / ${realTotal} 轮`}
           </span>
           <button type="button" className="turn-sheet-close" onClick={onClose} aria-label="关闭">
             <X size={18} />
@@ -100,12 +104,16 @@ export function TurnOutlineSheet({
                 type="button"
                 className="turn-sheet-row"
                 data-active={mark.turn === active ? 'true' : undefined}
+                data-heat={mark.heat ?? 1}
+                data-summary={mark.summary ? 'true' : undefined}
+                data-compressed={mark.compressed ? 'true' : undefined}
                 style={{ transform: `translateY(${(mark.turn - 1) * ROW_H}px)`, height: ROW_H }}
                 onClick={() => onPick(mark.turn)}
               >
-                <span className="turn-sheet-num">{mark.turn}</span>
+                <span className="turn-sheet-num">{mark.summary ? '摘' : (mark.no ?? mark.turn)}</span>
                 <span className="turn-sheet-text" title={mark.full}>
-                  {mark.full}
+                  {mark.summary ? '摘要' : mark.full}
+                  {mark.compressed ? ' · 已压缩' : ''}
                 </span>
               </button>
             ))}

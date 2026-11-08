@@ -2,6 +2,7 @@
 // 每帧只写 transform / opacity。刻度与大纲行是同一批元素：p=0 是紧凑刻度，p=1 是大纲行，
 // 展开/收回就是 p 的弹簧动画（FLIP：每个刻度"长"成对应的行）。
 import { Spring, prefersReducedMotion } from './turnRailMotion'
+import { heatLabel, turnUsageLabel, type TurnUsage } from '../../lib/turnUsage'
 
 export const ROW = 28
 export const PITCH = 7
@@ -17,6 +18,16 @@ export interface SceneTurn {
   preview: string
   /** 首行全文：悬停时显示，读屏也读这一份。 */
   full?: string
+  /** 该轮用量；悬停时显示标准 tooltip（只显示用量，不重复文字）。 */
+  usage?: TurnUsage
+  /** 真实轮次序号；摘要行没有。 */
+  no?: number
+  /** 用量档位 1–5（颜色深浅）。 */
+  heat?: number
+  /** 占本会话比例（tooltip）。 */
+  share?: number
+  summary?: boolean
+  compressed?: boolean
   pinned?: boolean
 }
 
@@ -38,6 +49,7 @@ interface ItemRef {
   r: HTMLElement
   p: HTMLElement
   d: HTMLElement
+  c: HTMLElement
   bound: number
   shown: boolean
 }
@@ -79,6 +91,9 @@ export class RailScene {
   private edgeDir = 0
   /** 拖动中指针所在行变化（含边缘滚动期间行从指针下滑过）。 */
   onDragRow: ((turn: number) => void) | null = null
+  /** 悬停行变化（含面板展开后指针已经停住的情况）。 */
+  onHoverTurn: ((turn: number | null) => void) | null = null
+  private lastHoverTurn: number | null = null
 
   constructor(private els: SceneEls) {
     this.items = els.items.map((el) => ({
@@ -89,6 +104,7 @@ export class RailScene {
       r: el.children[3] as HTMLElement,
       p: el.children[4] as HTMLElement,
       d: el.children[5] as HTMLElement,
+      c: el.children[6] as HTMLElement,
       bound: -1,
       shown: true,
     }))
@@ -237,6 +253,7 @@ export class RailScene {
     if (this.raf) cancelAnimationFrame(this.raf)
     this.raf = 0
     this.onDragRow = null
+    this.onHoverTurn = null
   }
 
   private frame = (now: number): void => {
@@ -291,6 +308,10 @@ export class RailScene {
     } else {
       this.H.t = 0
     }
+    if (row !== this.lastHoverTurn) {
+      this.lastHoverTurn = row
+      this.onHoverTurn?.(row)
+    }
     if (this.dragging && row != null && row !== this.lastDragRow) {
       this.lastDragRow = row
       this.onDragRow?.(row)
@@ -319,16 +340,34 @@ export class RailScene {
 
   private bind(it: ItemRef, turn: number): void {
     const mark = this.turns[turn - 1]
-    it.n.textContent = String(turn)
-    it.r.textContent = String(turn)
-    it.t.textContent = mark?.preview ?? ''
+    const summary = !!mark?.summary
+    const compressed = !!mark?.compressed
+    const no = mark?.no ?? turn
+    const heat = mark?.heat ?? 1
+    it.n.textContent = summary ? '摘' : String(no)
+    it.r.textContent = summary ? '摘' : String(no)
+    it.t.textContent = summary ? '摘要' : (mark?.preview ?? '')
     const full = mark?.full || mark?.preview || ''
-    it.el.title = full ? `第 ${turn} 轮：${full}` : ''
-    it.t.title = full
-    it.el.setAttribute('aria-label', full ? `第 ${turn} 轮：${full}` : `第 ${turn} 轮`)
-    it.el.dataset.turnLabel = full
-    it.p.dataset.turn = mark?.id ?? ''
-    it.p.title = mark?.pinned ? '取消固定' : '固定此轮'
+    // 反馈6#01：悬停只显示该轮用量，不再重复大纲文字；全文保留在 aria-label 与 sr-only 列表。
+    it.el.title = turnUsageLabel(mark?.usage, {
+      ...(mark?.share !== undefined ? { share: mark.share } : {}),
+      ...(compressed ? { compressed: true } : {}),
+      ...(summary ? { summary: true } : {}),
+    })
+    it.t.removeAttribute('title')
+    const aria = summary
+      ? `摘要 · ${heatLabel(heat)}`
+      : `第 ${no} 轮：${full} · ${heatLabel(heat)}${compressed ? ' · 已压缩' : ''}`
+    it.el.setAttribute('aria-label', aria)
+    it.el.dataset.turnLabel = summary ? '摘要' : full
+    it.el.dataset.turnPos = String(turn)
+    it.el.dataset.heat = String(heat)
+    it.el.dataset.summary = summary ? 'true' : 'false'
+    it.el.dataset.compressed = compressed ? 'true' : 'false'
+    it.c.textContent = compressed ? '已压缩' : ''
+    const canPin = !summary && !compressed
+    it.p.dataset.turn = canPin ? (mark?.id ?? '') : ''
+    it.p.title = canPin ? (mark?.pinned ? '取消固定' : '固定此轮') : ''
     it.bound = turn
   }
 
@@ -371,6 +410,8 @@ export class RailScene {
         it.shown = true
       }
       if (it.bound !== turn) this.bind(it, turn)
+      const mark = this.turns[turn - 1]
+      const heat = mark?.heat ?? 1
       const y = dr * PITCH + (dp * ROW - dr * PITCH) * p
       it.el.style.transform = `translate3d(0,${px(y)}px,0)`
       it.el.style.opacity = f3(o)
@@ -384,17 +425,23 @@ export class RailScene {
       it.n.style.opacity = f3(readable(textIn * (0.5 + 0.5 * lit), 0.72))
       it.r.style.opacity = f3(readable(act * (1 - smooth(0, 0.35, pc)), 0.9))
       // 图钉：悬停行或已固定时显示；静止态用右侧小圆点标出被固定的轮。
-      const pinned = !!this.turns[turn - 1]?.pinned
+      const canPin = !mark?.summary && !mark?.compressed
+      const pinned = canPin && !!mark?.pinned
       it.el.dataset.pinned = pinned ? 'true' : 'false'
-      it.p.style.opacity = f3(textIn * (pinned ? 0.62 + 0.38 * lit : hov > 0.5 ? 1 : 0))
-      it.p.dataset.on = (pinned && textIn > 0.4) || hov > 0.5 ? 'true' : 'false'
+      it.p.style.opacity = f3(canPin ? textIn * (pinned ? 0.62 + 0.38 * lit : hov > 0.5 ? 1 : 0) : 0)
+      it.p.dataset.on = canPin && ((pinned && textIn > 0.4) || hov > 0.5) ? 'true' : 'false'
       it.p.dataset.pinned = pinned ? 'true' : 'false'
       it.d.style.opacity = f3(pinned ? (1 - smooth(0.05, 0.45, pc)) * (0.55 + 0.45 * act) : 0)
+      it.c.style.opacity = f3(mark?.compressed ? textIn * (0.5 + 0.5 * lit) : 0)
       const restS = 0.42 + 0.4 * Math.exp(-Math.abs(dr) / 4)
       const sx = lerp(restS + 0.55 * act, 0.5 + 0.4 * lit, pc)
       const sy = 1 + 0.5 * act * (1 - pc)
       it.k.style.transform = `scale(${f3(sx)},${f3(sy)})`
-      it.k.style.opacity = f3(lerp(0.4 + 0.6 * act, 0.38 + 0.62 * lit, pc))
+      // 刻度条也按用量档位加深（8%→60% 的中性色透明度）。
+      const heatFactor = 0.18 + heat * 0.164
+      it.k.style.opacity = f3(
+        Math.min(1, lerp(0.4 + 0.6 * act, 0.38 + 0.62 * lit, pc) * (0.55 + 0.45 * heatFactor)),
+      )
     }
 
     const { bg, cur, ind } = this.els

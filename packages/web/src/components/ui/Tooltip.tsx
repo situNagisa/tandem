@@ -86,6 +86,18 @@ function showTip(host: HTMLElement, label: string): void {
   })
 }
 
+/**
+ * 程序化触发标准 tooltip：给动画池（轮次大纲等）这类无法挂 React 触发器的宿主使用。
+ * 与 title/Tip 共用同一个 .ui-tip 浮层、延迟与避让逻辑。
+ */
+export function scheduleTooltip(host: HTMLElement, label: string): void {
+  scheduleTip(host, label)
+}
+
+export function hideTooltip(): void {
+  hideTip()
+}
+
 function scheduleTip(host: HTMLElement, label: string): void {
   if (!canHover() || !label) return
   if (currentHost === host) return

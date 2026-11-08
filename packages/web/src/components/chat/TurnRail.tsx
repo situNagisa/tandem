@@ -9,7 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from 'react'
-import { userTurnMessages } from '@tandem/protocol'
+import { isUserTurnMessage } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { isTargetFocused, useSessionTarget, useSessionView } from '../session/SessionScope'
 import { useUiStore } from '../../store/useUiStore'
@@ -18,78 +18,190 @@ import { useFeedbackStore } from '../../store/useFeedbackStore'
 import { useIsMobile } from '../../lib/hooks'
 import { nodeContains } from '../../lib/overlay'
 import type { UiMessage } from '../../lib/types'
+import { api } from '../../lib/api'
+import {
+  heatLabel,
+  heatLevels,
+  summaryUsage,
+  turnUsageLabel,
+  turnWeight,
+  usageByTurn,
+  type TurnHeatMetric,
+  type TurnUsage,
+} from '../../lib/turnUsage'
+import { hideTooltip, scheduleTooltip } from '../ui/Tooltip'
 import { createScrollFollower, type ScrollFollower } from './turnRailMotion'
 import { POOL, RailScene } from './turnRailScene'
 import { TurnOutlineSheet } from './TurnOutlineSheet'
 
 export interface TurnMark {
   id: string
-  /** 1-based 轮次序号 */
+  /** 1-based 位置（含摘要行），用于大纲导航。 */
   turn: number
+  /** 真实轮次序号（摘要行没有）。 */
+  no?: number
   /** 行内显示的前 120 字 */
   preview: string
   /** 首行全文，悬停/读屏用。 */
   full: string
+  /** 该轮用量汇总；悬停时由标准 tooltip 显示。 */
+  usage?: TurnUsage
+  /** 压缩摘要行。 */
+  summary?: boolean
+  /** 已被压缩掉的轮次（占用按 0 计，仍显示花费）。 */
+  compressed?: boolean
+  /** 跳转目标：摘要/压缩行跳到压缩提示行。 */
+  jumpId?: string
+  /** 用量档位（由当前着色依据计算）。 */
+  heat?: number
 }
 
 const EMPTY_MESSAGES: UiMessage[] = []
 const turnCache = new WeakMap<UiMessage[], TurnMark[]>()
 
-function turnsFromMessages(messages: UiMessage[]): TurnMark[] {
-  const cached = turnCache.get(messages)
+function messageTitle(message: UiMessage): { preview: string; full: string } | null {
+  let hasImage = false
+  const texts: string[] = []
+  for (const b of message.content) {
+    if (b.type === 'text') texts.push(b.text)
+    else if (b.type === 'image') hasImage = true
+  }
+  const firstLine =
+    texts
+      .join('\n')
+      .split('\n')
+      .map((line) => line.replace(/\s+/g, ' ').trim())
+      .find(Boolean) ?? ''
+  const full = firstLine || (hasImage ? '图片' : '')
+  return full ? { preview: full.length > 120 ? `${full.slice(0, 120)}…` : full, full } : null
+}
+
+function marksFromMessages(
+  messages: UiMessage[],
+  opts?: { compressed?: boolean; jumpId?: string },
+): TurnMark[] {
+  const cached = !opts ? turnCache.get(messages) : undefined
   if (cached) return cached
   const next: TurnMark[] = []
-  for (const message of userTurnMessages(messages)) {
-    let hasImage = false
-    const texts: string[] = []
-    for (const b of message.content) {
-      if (b.type === 'text') texts.push(b.text)
-      else if (b.type === 'image') hasImage = true
-    }
-    const firstLine =
-      texts
-        .join('\n')
-        .split('\n')
-        .map((line) => line.replace(/\s+/g, ' ').trim())
-        .find(Boolean) ?? ''
-    const full = firstLine || (hasImage ? '图片' : '')
-    if (!full) continue
+  for (const message of messages) {
+    if (message.role !== 'user' || message.gap) continue
+    const summary = message.summary === true
+    if (!summary && !isUserTurnMessage(message)) continue
+    const title = messageTitle(message)
+    if (!title) continue
     next.push({
       id: message.id,
       turn: next.length + 1,
-      preview: full.length > 120 ? `${full.slice(0, 120)}…` : full,
-      full,
+      preview: summary ? '摘要' : title.preview,
+      full: summary ? '摘要' : title.full,
+      ...(summary ? { summary: true } : {}),
+      ...(opts?.compressed ? { compressed: true } : {}),
+      ...(opts?.jumpId ? { jumpId: opts.jumpId } : {}),
     })
   }
-  turnCache.set(messages, next)
+  if (!opts) turnCache.set(messages, next)
   return next
+}
+
+function withUsage(
+  marks: TurnMark[],
+  messages: UiMessage[],
+  usage: Map<string, TurnUsage>,
+  opts?: { compressed?: boolean; jumpId?: string },
+): TurnMark[] {
+  return marks.map((mark) => {
+    const summaryMessage = mark.summary ? messages.find((m) => m.id === mark.id) : undefined
+    const item = mark.summary
+      ? summaryMessage
+        ? summaryUsage(summaryMessage)
+        : undefined
+      : usage.get(mark.id)
+    const normalized = opts?.compressed && item ? { ...item, contextTokens: 0 } : item
+    return {
+      ...mark,
+      ...(normalized ? { usage: normalized } : {}),
+      ...(opts?.jumpId ? { jumpId: opts.jumpId } : {}),
+    }
+  })
 }
 
 /** 当前窗格自己的轮次刻度（不读全局 active，分屏时各窗格互不串台）。 */
 export function useTurnMarks(): TurnMark[] {
   const messages = useSessionView((view) => view?.messages ?? EMPTY_MESSAGES)
   const serverTurns = useSessionView((view) => view?.turns)
+  const subagents = useSessionView((view) => view?.subagents)
+  const sessionId = useSessionView((view) => view?.sessionId)
+  const hostId = useSessionView((view) => view?.hostId ?? null)
+  const notice = messages.find((message) => message.compaction?.canUndo)
+  const noticeId = notice?.id ?? null
+  const [backup, setBackup] = useState<{ noticeId: string; turns: TurnMark[] } | null>(null)
+
+  // 压缩原文里保留着被压掉的轮次：取回来作为最浅的「已压缩」刻度，摘要另起一行。
+  useEffect(() => {
+    if (!hostId || !sessionId || !noticeId) {
+      setBackup(null)
+      return
+    }
+    let cancelled = false
+    const host = useAppStore.getState().hosts.find((item) => item.id === hostId)
+    if (!host) return
+    api
+      .compactionOriginal(host, sessionId, noticeId)
+      .then((res) => {
+        if (cancelled) return
+        const raw = marksFromMessages(res.messages, { compressed: true, jumpId: noticeId })
+        const usage = usageByTurn(res.messages, undefined, sessionId)
+        setBackup({
+          noticeId,
+          turns: withUsage(raw, res.messages, usage, { compressed: true, jumpId: noticeId }),
+        })
+      })
+      .catch(() => {
+        if (!cancelled) setBackup(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [hostId, sessionId, noticeId])
+
   return useMemo(() => {
-    const local = turnsFromMessages(messages)
-    if (!serverTurns?.length) return local
-    // 会话被截断时以服务端大纲为准，再补上本地新增（尚未进大纲）的轮次。
-    const known = new Set(serverTurns.map((turn) => turn.messageId))
-    const extra = local.filter((turn) => !known.has(turn.id))
-    return [
-      ...serverTurns.map((turn, index) => ({
-        id: turn.messageId,
-        turn: index + 1,
-        preview: turn.preview,
-        full: turn.preview,
-      })),
-      ...extra.map((turn, index) => ({
-        id: turn.id,
-        turn: serverTurns.length + index + 1,
-        preview: turn.preview,
-        full: turn.full,
-      })),
-    ]
-  }, [messages, serverTurns])
+    const usage = usageByTurn(messages, subagents, sessionId ?? undefined)
+    const local = withUsage(marksFromMessages(messages), messages, usage, {
+      ...(noticeId ? { jumpId: noticeId } : {}),
+    })
+    const compressed = backup?.noticeId === noticeId ? backup.turns : []
+    let base: TurnMark[]
+    if (!serverTurns?.length) {
+      base = [...compressed, ...local]
+    } else {
+      // 会话被截断时以服务端大纲为准，再补上本地新增（尚未进大纲）的轮次。
+      const known = new Set(serverTurns.map((turn) => turn.messageId))
+      const extra = local.filter((turn) => !known.has(turn.id))
+      base = [
+        ...compressed,
+        ...serverTurns.map((turn) => {
+          const summary = turn.preview.startsWith('[此前对话摘要]')
+          const usageItem = summary ? undefined : usage.get(turn.messageId)
+          return {
+            id: turn.messageId,
+            turn: 0,
+            preview: summary ? '摘要' : turn.preview,
+            full: summary ? '摘要' : turn.preview,
+            ...(summary ? { summary: true } : {}),
+            ...(summary && noticeId ? { jumpId: noticeId } : {}),
+            ...(usageItem ? { usage: usageItem } : {}),
+          }
+        }),
+        ...extra,
+      ]
+    }
+    let no = 0
+    return base.map((mark, index) => ({
+      ...mark,
+      turn: index + 1,
+      ...(mark.summary ? { no: undefined } : { no: ++no }),
+    }))
+  }, [messages, serverTurns, subagents, sessionId, backup, noticeId])
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -112,6 +224,19 @@ export function TurnRail({
   onBeforeJump?: () => void
 }) {
   const turns = useTurnMarks()
+  const [metric, setMetric] = useState<TurnHeatMetric>(() => {
+    try {
+      return localStorage.getItem('tandem.turnHeatMetric.v1') === 'context' ? 'context' : 'cost'
+    } catch {
+      return 'cost'
+    }
+  })
+  const weights = useMemo(() => turns.map((turn) => turnWeight(turn.usage, metric)), [turns, metric])
+  const totalWeight = useMemo(() => weights.reduce((sum, value) => sum + value, 0), [weights])
+  const shareOf = (mark: TurnMark | undefined): number => {
+    if (!mark || totalWeight <= 0) return 0
+    return Math.round((turnWeight(mark.usage, metric) / totalWeight) * 100)
+  }
   const scopeTarget = useSessionTarget()
   const hostId = useSessionView((s) => s?.hostId ?? null)
   const hasEarlier = useSessionView((s) => s?.hasEarlier ?? false)
@@ -126,11 +251,17 @@ export function TurnRail({
     void useAppStore.getState().loadSessionTurns(hostId, sessionId)
   }, [hostId, sessionId, hasEarlier, serverTurns, loadingTurns])
   const sceneTurns = useMemo(() => {
-    if (!pinnedTurns || pinnedTurns.length === 0) return turns
-    const pinned = new Set(pinnedTurns)
-    return turns.map((turn) => (pinned.has(turn.id) ? { ...turn, pinned: true } : turn))
-  }, [turns, pinnedTurns])
+    const levels = heatLevels(weights)
+    const pinned = new Set(pinnedTurns ?? [])
+    return turns.map((turn, index) => ({
+      ...turn,
+      heat: levels[index] ?? 1,
+      share: totalWeight > 0 ? Math.round((turnWeight(turn.usage, metric) / totalWeight) * 100) : 0,
+      ...(pinned.has(turn.id) && !turn.summary && !turn.compressed ? { pinned: true } : {}),
+    }))
+  }, [turns, weights, pinnedTurns, totalWeight, metric])
   const total = turns.length
+  const realTotal = useMemo(() => turns.filter((turn) => !turn.summary).length, [turns])
   const isMobile = useIsMobile()
   const railOn = total >= 2 && !isMobile
   const [activeTurn, setActiveTurn] = useState(1)
@@ -142,6 +273,8 @@ export function TurnRail({
   const indRef = useRef<HTMLDivElement>(null)
   const curRef = useRef<HTMLDivElement>(null)
   const hitRef = useRef<HTMLDivElement>(null)
+  const hoverTipRef = useRef<number | null>(null)
+  const hoverSyncRef = useRef<(turn: number | null) => void>(() => {})
   const pinHeadRef = useRef<HTMLSpanElement>(null)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   const sceneRef = useRef<RailScene | null>(null)
@@ -200,24 +333,25 @@ export function TurnRail({
       beforeJumpRef.current?.()
       const root = scrollRef.current
       const mark = turnsRef.current[target - 1]
-      if (root && mark && hostId && sessionId) {
+      const targetId = mark?.jumpId ?? mark?.id
+      if (root && mark && targetId && hostId && sessionId) {
         const state = useAppStore.getState()
         const view = state.sessionViews[`${hostId}:${sessionId}`]
-        const loaded = view?.messages.some((message) => message.id === mark.id) ?? true
+        const loaded = view?.messages.some((message) => message.id === targetId) ?? true
         const rendered = root.querySelector<HTMLElement>(
-          `[data-turn-id="${CSS.escape(mark.id)}"]`,
+          `[data-turn-id="${CSS.escape(targetId)}"]`,
         )
         if (!loaded) {
           // 目标轮不在首屏尾部：按需取该段，挂载后再重新定位。
           window.dispatchEvent(
-            new CustomEvent('tandem-jump-message', { detail: { messageId: mark.id } }),
+            new CustomEvent('tandem-jump-message', { detail: { messageId: targetId } }),
           )
           void (async () => {
             for (let attempt = 0; attempt < 40; attempt++) {
-              const ok = await state.ensureMessageLoaded(hostId, sessionId, mark.id)
+              const ok = await state.ensureMessageLoaded(hostId, sessionId, targetId)
               if (ok) {
                 window.dispatchEvent(
-                  new CustomEvent('tandem-jump-message', { detail: { messageId: mark.id } }),
+                  new CustomEvent('tandem-jump-message', { detail: { messageId: targetId } }),
                 )
                 window.setTimeout(() => goRef.current(target, { recenter: false, instant: true }), 140)
                 return
@@ -230,7 +364,7 @@ export function TurnRail({
         if (!rendered && target !== 1 && target !== totalRef.current) {
           // 已在消息数组里但被渲染窗口裁掉：让消息列表扩大窗口并滚过去。
           window.dispatchEvent(
-            new CustomEvent('tandem-jump-message', { detail: { messageId: mark.id } }),
+            new CustomEvent('tandem-jump-message', { detail: { messageId: targetId } }),
           )
           return
         }
@@ -238,13 +372,14 @@ export function TurnRail({
       followerRef.current?.to(() => {
         const rootEl = scrollRef.current
         const turnMark = turnsRef.current[target - 1]
-        if (!rootEl || !turnMark) return null
+        const jumpId = turnMark?.jumpId ?? turnMark?.id
+        if (!rootEl || !jumpId) return null
         if (target === 1) return 0
         if (target === totalRef.current) {
           return Math.max(0, rootEl.scrollHeight - rootEl.clientHeight)
         }
         const el = rootEl.querySelector<HTMLElement>(
-          `[data-turn-id="${CSS.escape(turnMark.id)}"]`,
+          `[data-turn-id="${CSS.escape(jumpId)}"]`,
         )
         if (!el) return null
         return Math.max(
@@ -279,6 +414,7 @@ export function TurnRail({
     })
     sceneRef.current = scene
     scene.onDragRow = (turn) => goRef.current(turn, { recenter: false })
+    scene.onHoverTurn = (turn) => hoverSyncRef.current(turn)
     scene.setData(sceneTurnsRef.current)
     scene.setActive(activeRef.current, true)
     scene.setCenter(activeRef.current, true)
@@ -397,6 +533,8 @@ export function TurnRail({
     window.clearTimeout(closeTimer.current)
     openTimer.current = 0
     closeTimer.current = 0
+    hideTooltip()
+    hoverTipRef.current = null
     setOpen(false)
     sceneRef.current?.setOpen(false)
     sceneRef.current?.setCenter(activeRef.current)
@@ -455,6 +593,30 @@ export function TurnRail({
   const pointerY = (event: ReactPointerEvent<HTMLElement>): number =>
     event.clientY - (navRef.current?.getBoundingClientRect().top ?? 0)
 
+  /** 反馈6#01：悬停大纲行时用标准 tooltip 显示该轮用量，不再重复文字。 */
+  const syncHoverTip = (turn: number | null) => {
+    if (turn === hoverTipRef.current) return
+    hoverTipRef.current = turn
+    if (turn == null) {
+      hideTooltip()
+      return
+    }
+    const mark = turnsRef.current[turn - 1]
+    const label = turnUsageLabel(mark?.usage, {
+      share: shareOf(mark),
+      ...(mark?.compressed ? { compressed: true } : {}),
+      ...(mark?.summary ? { summary: true } : {}),
+    })
+    if (!label) {
+      hideTooltip()
+      return
+    }
+    const row = itemRefs.current.find((el) => el?.dataset.turnPos === String(turn))
+    if (row) scheduleTooltip(row, label)
+    else hideTooltip()
+  }
+  hoverSyncRef.current = syncHoverTip
+
   const onPointerEnter = (event: ReactPointerEvent<HTMLElement>) => {
     window.clearTimeout(closeTimer.current)
     closeTimer.current = 0
@@ -472,12 +634,15 @@ export function TurnRail({
     const y = pointerY(event)
     scene.setPointer(y)
     if (event.pointerType !== 'touch') scene.setHoverEnabled(true)
+    syncHoverTip(scene.hoverTurn)
   }
 
   const onPointerLeave = (event: ReactPointerEvent<HTMLElement>) => {
     window.clearTimeout(openTimer.current)
     openTimer.current = 0
     if (dragRef.current || useFeedbackStore.getState().active) return
+    hideTooltip()
+    hoverTipRef.current = null
     // 指针移到行尾图钉等面板内元素时，hit 也会收到 pointerleave，不应收起。
     // relatedTarget 可能是 Window（离开文档/浮层卸载），不能直接 contains。
     if (nodeContains(navRef.current, event.relatedTarget)) return
@@ -570,6 +735,16 @@ export function TurnRail({
   }
 
   const current = turns[activeTurn - 1]
+  const currentHeat = sceneTurns[activeTurn - 1]?.heat ?? 1
+  const metricLabel = metric === 'cost' ? '花费' : '上下文'
+  const chooseMetric = (next: TurnHeatMetric) => {
+    setMetric(next)
+    try {
+      localStorage.setItem('tandem.turnHeatMetric.v1', next)
+    } catch {
+      // localStorage 不可用时仅本次会话有效
+    }
+  }
 
   return (
     <>
@@ -614,6 +789,7 @@ export function TurnRail({
                   </svg>
                 </span>
                 <span className="turn-item-d" />
+                <span className="turn-item-c" />
               </div>
             ))}
           </div>
@@ -630,7 +806,11 @@ export function TurnRail({
             aria-valuemin={1}
             aria-valuemax={total}
             aria-valuenow={activeTurn}
-            aria-valuetext={`第 ${activeTurn} 轮${current ? ` · ${current.full}` : ''}`}
+            aria-valuetext={
+              current?.summary
+                ? `摘要 · ${heatLabel(currentHeat)}`
+                : `第 ${current?.no ?? activeTurn} / ${realTotal} 轮${current ? ` · ${current.full}` : ''} · ${heatLabel(currentHeat)}`
+            }
             onPointerEnter={onPointerEnter}
             onPointerMove={onPointerMove}
             onPointerLeave={onPointerLeave}
@@ -646,21 +826,46 @@ export function TurnRail({
             }}
           />
           <ol className="sr-only" data-testid="turn-readout" aria-label="轮次大纲全文">
-            {turns.map((mark) => (
-              <li key={mark.id}>
-                第 {mark.turn} 轮：{mark.full}
-              </li>
-            ))}
+            {turns.map((mark) => {
+              const heat = sceneTurns[mark.turn - 1]?.heat ?? 1
+              return (
+                <li key={`${mark.turn}:${mark.id}`}>
+                  {mark.summary
+                    ? `摘要（${heatLabel(heat)}）`
+                    : `第 ${mark.no ?? mark.turn} 轮：${mark.full}（${heatLabel(heat)}）`}
+                </li>
+              )
+            })}
           </ol>
+          <div className="turn-metric" role="group" aria-label="大纲着色依据">
+            <button
+              type="button"
+              aria-pressed={metric === 'cost'}
+              data-on={metric === 'cost' ? 'true' : undefined}
+              onClick={() => chooseMetric('cost')}
+            >
+              花费
+            </button>
+            <button
+              type="button"
+              aria-pressed={metric === 'context'}
+              data-on={metric === 'context' ? 'true' : undefined}
+              onClick={() => chooseMetric('context')}
+            >
+              上下文
+            </button>
+          </div>
           <span className="turn-count" aria-hidden>
-            第 {activeTurn} / {total} 轮
+            {current?.summary
+              ? `摘要 · ${metricLabel} ${heatLabel(currentHeat)}`
+              : `第 ${current?.no ?? activeTurn} / ${realTotal} 轮`}
           </span>
         </nav>
       )}
       {isMobile && (
         <TurnOutlineSheet
           open={sheetOpen && total >= 2}
-          turns={turns}
+          turns={sceneTurns}
           active={activeTurn}
           onClose={() => setSheetOpen(false)}
           onPick={(turn) => {
