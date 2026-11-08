@@ -25,6 +25,7 @@
 | `src/server.ts` | Fastify 服务：启动、token 鉴权、WS 升级、静态托管；路由按资源在 `routes/` 下注册 |
 | `src/routes/` | REST/WS 路由：`common.ts`（依赖与鉴权）、`ssh-hosts.ts`（SSH 远程主机）、`team.ts`（成员/邀请/审计/身份）、`sessions.ts`、`permissions.ts`、`host.ts`、`profiles.ts`、`models.ts`、`usage.ts`、`tasks.ts`、`mcp.ts`、`skills.ts`、`hooks.ts`、`memory.ts`、`schedules.ts`、`evals.ts`、`subagent-presets.ts`、`prompt-templates.ts`、`commands.ts`、`external.ts`、`fs.ts`、`pair.ts`、`budgets.ts`、`config.ts`、`ws.ts` |
 | `src/board/` + `routes/board.ts` | 任务看板：`manager.ts`（调度器：依赖/并发上限/重试/审批门/单卡预算/worktree 合入依赖与按序合并/重启续跑/AI 评审收尾/冲突解决/运行时提议，1s tick）、`graph.ts`（环检测、`decideSchedule`、规划草稿解析，纯函数）、`git.ts`（自动提交与统计、依赖分支合入）、`planner.ts`（AI 拆分，一次性 `completeText`，只返回草稿）、`pr.ts`（集成分支 + gh/glab 聚合 PR 与状态刷新）、`store.ts`（`~/.tandem/boards/<id>.json`）；卡片 = 带 `SessionRecord.board` 的顶层会话；`tools/propose-cards.ts` 是卡片会话的提议工具 |
+| `src/model-routing.ts` / `src/routing-settings.ts` | 自动模型路由：按消息长度/关键词/上下文/失败信号打难度分，在用户候选池按快速·均衡·强力与省钱·均衡·质量偏好选模型；连续失败升级、简单成功回落，统计相对强力档的节省；设置有会话入口 |
 | `src/host.ts` | Host 类：持有全部状态与构造，方法按职责转调到 `host/`（外部 API 不变） |
 | `src/team/` | 内网团队：`store.ts`（成员/邀请/审计持久化，只存 token 与邀请码哈希）、`access.ts`（角色边界、项目可见性、REST 白名单）、`audit.ts` |
 | `src/host/` | Host 实现按职责拆分（纯搬移）：`sessions.ts`（读取/转换/CRUD）、`turns.ts`（发送/回合/排队/中断/compact）、`commands.ts`（斜杠命令/本地消息）、`permissions.ts`（审批/plan/恢复）、`keys.ts`（账号/分组/Key 轮询）、`usage.ts`（上下文/预算/模型）、`subagents.ts`（子代理/委派/工具可见性）、`vcs.ts`（git 环境/worktree）、`rewind.ts`（检查点回退）、`hooks.ts`、`inbox.ts`、`external.ts`（外部会话通知/导入）、`helpers.ts`（无状态纯函数） |
@@ -48,13 +49,20 @@
 | `src/prompt-templates.ts` / `src/prompts/registry.ts` | 可配置提示词模板与默认值 |
 | `src/memory.ts` / `src/agent/...` | 项目/全局长期记忆（写入需审批） |
 | `src/wiki.ts` / `routes/wiki.ts` | 项目 Wiki：`~/.tandem/wiki/<hash>/` 分页 Markdown、模块划分、增量更新与只读生成会话；`tools/wiki-*.ts` 提供 WikiSearch/WikiRead；提示词见 registry 的 `wikiHint/wikiGenerate/wikiUpdate` |
+| `src/host/message-paging.ts` + `store.ts` 的 `readMessagePage` | 会话分页：首屏尾部 200 条/2MB、`before`/`around` 向前翻页、超大工具输出只发首尾、轮次索引；JSONL 从文件末尾按块倒序读取 |
+| `src/preview.ts` + `routes/preview.ts` | 应用预览：Host 端 Playwright 打开本机开发地址，截图流、设备尺寸、元素点选（选择器/可访问名/React 位置），Write/Edit 后自动刷新与改前快照；域名受浏览器白名单约束 |
 | `src/schedules.ts` | cron 解析与进程内定时任务 |
 | `src/tasks.ts` | Bash 后台任务、输出缓冲、Kill |
 | `src/budgets.ts` / `src/usage.ts` | 预算规则、周期累计、用量与价格计算 |
+| `src/quota.ts` + `src/host/handoff.ts` | 配额预估与会话交接：读 provider 限流头与 429 冷却，按最近几轮估算可跑轮数；Key 全冷却/预算阻止/额度将尽时先存检查点再切换到备用分组或等待 |
+| `src/sandbox.ts` | 命令沙箱：Write/Edit 写保护与 Bash 静态分析、网络白名单、Linux bwrap / macOS sandbox-exec 真隔离；设置页与 `docs/sandbox.md` |
+| `src/secrets.ts` + `routes/secrets.ts` | 项目 Secrets：`~/.tandem/secrets.json` 加密存储，按项目/全局注入进程环境，日志与工具输出脱敏 |
+| `src/doctor.ts` + `routes/doctor.ts` | Host 诊断：Node/数据目录/磁盘/监听/账号连通性/git/CLI/MCP/Hooks 等逐项检查，失败排序、Key 脱敏、纯文本报告；CLI `tandem-host doctor` 同款 |
 | `src/key-rotation.ts` | 同组多 Key：可用性、failover/round-robin、失败分类与冷却 |
 | `src/checkpoints.ts` / `src/worktree.ts` | 文件检查点回退、git worktree 会话 |
 | `src/evals.ts` | 评测：用例落盘 `~/.tandem/evals`、git/目录快照、临时工作区、批量运行、检查命令、评审模型与结果持久化 |
 | `src/inbox.ts` | 跨会话收件箱（审批/回合结束/预算/CI） |
+| `src/search.ts` | 会话全文索引：纯 JS 倒排（英文词、中文单字+bigram+Segmenter），覆盖 Tandem/外部会话正文与工具命令/路径，增量更新并落盘 `~/.tandem/index/search.json` |
 | `src/config.ts` | `~/.tandem` 路径、账号存储、Host 配置、密钥掩码 |
 | `src/migrate.ts` | 配置加密导出/导入 |
 | `src/relay/` | 中继客户端、E2E 通道、配对信息 |
@@ -86,7 +94,8 @@
 | `src/components/ChangeReviewPanel.tsx` | 改动审阅、行评论、提交/丢弃 |
 | `src/components/settings/*` | 设置各页；`SettingsDialog.tsx` 是导航与挂载点；`TeamSection.tsx` 是成员/邀请/审计，`JoinTeamDialog.tsx` 处理邀请链接入职 |
 | `src/components/evals/*` | 评测轨迹/并排对比/提示词覆盖/存用例弹层；设置「评测」页见 `settings/EvalsSection.tsx` |
-| `src/components/chat/*` | 轮次导航、上下文环、消息辅助组件 |
+| `src/components/chat/*` | 轮次导航、上下文环、消息辅助组件；`TurnRail`/`TurnOutlineSheet` 是桌面轮次条与手机底部大纲，分页跳转经 `lib/turnWindow.ts` |
+| `src/components/PreviewPanel.tsx` + `src/lib/previewElement.ts` | 应用预览画布：地址与本地候选、设备尺寸（手机默认手机档）、截图/嵌入、元素点选、改前对比与自动刷新提示 |
 | `src/components/feedback/*` | 反馈模式浮条、区域截图、标注、抽屉 |
 | `src/components/split/*` | 多会话分屏：桌面 2/3 列与 2×2、上下分屏、分隔条、拖拽分区、手机圆点滑动、分屏打开选择器 |
 | `src/components/board/*` | 任务看板视图：`BoardView`（七列拖动 / 手机分组列表 / 对话框编排）、`BoardCardItem`、`BoardDrawer`（详情与动作）、`BoardDialogs`（创建看板、卡片编辑、AI 拆分、打回意见、确认）；`lib/board.ts`（列与拖动规则等纯函数）、`lib/boardRoute.ts`、`store/useBoardStore.ts`（缓存 + 轮询，`board_updated` 加速刷新） |
