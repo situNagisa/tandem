@@ -14,6 +14,7 @@ import { useScheduleStore } from '../useScheduleStore'
 import { useWikiStore } from '../useWikiStore'
 import { useBoardStore } from '../useBoardStore'
 import { useBrowserStore } from '../useBrowserStore'
+import { usePreviewStore } from '../usePreviewStore'
 import { useVcsStore } from '../../lib/useVcs'
 import { childSubscriptions, collectToolResults, connections, toast } from './helpers'
 import type { SessionCore } from './sessionCore'
@@ -131,6 +132,10 @@ export function createServerMessageHandler(
       }
       case 'browser_state': {
         useBrowserStore.getState().apply(msg.state)
+        break
+      }
+      case 'preview_state': {
+        usePreviewStore.getState().apply(msg.state)
         break
       }
       case 'presence': {

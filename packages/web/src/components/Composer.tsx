@@ -29,6 +29,7 @@ import {
   Image as ImageIcon,
   Loader2,
   Map,
+  MousePointerClick,
   Paperclip,
   PencilLine,
   Shield,
@@ -41,6 +42,8 @@ import {
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
+import { usePreviewStore } from '../store/usePreviewStore'
+import { selectionContextText, selectionLabel, selectionSource } from '../lib/previewElement'
 import { isTargetFocused, useSessionTarget, useSessionView } from './session/SessionScope'
 import { useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
@@ -75,6 +78,7 @@ import '../styles/chat.css'
 
 const EMPTY_PROFILES: Profile[] = []
 const EMPTY_COMMANDS: SlashCommand[] = []
+const EMPTY_SELECTIONS: import('@tandem/protocol').PreviewSelection[] = []
 const SOURCE_LABEL: Record<SlashCommand['source'], string> = {
   builtin: '内置',
   project: '项目',
@@ -183,6 +187,10 @@ export function Composer({
   const isMobile = useIsMobile()
   const scopeTarget = useSessionTarget() ?? undefined
   const sessionId = useSessionView((s) => s?.sessionId ?? null)
+  const previewSelections = usePreviewStore((s) =>
+    sessionId ? s.selections[sessionId] ?? EMPTY_SELECTIONS : EMPTY_SELECTIONS,
+  )
+  const removePreviewSelection = usePreviewStore((s) => s.removeSelection)
   const summary = useSessionView((s) => s?.summary ?? null)
   const storeRunning = useSessionView((s) => s?.running ?? false)
   const storeStopping = useSessionView((s) => s?.stopping ?? false)
@@ -321,6 +329,7 @@ export function Composer({
     setPasted([])
     setAttachments([])
     setCompletion(null)
+    if (sessionId) usePreviewStore.getState().clearSelections(sessionId)
     saveDraft(draftKey, '')
     window.requestAnimationFrame(() => {
       const el = textareaRef.current
@@ -565,7 +574,8 @@ export function Composer({
 
   const pastedText = pasted.map((p) => p.text).join('\n\n')
   const outgoingText = [text.trim(), pastedText].filter(Boolean).join('\n\n')
-  const hasContent = outgoingText.length > 0 || attachments.length > 0
+  const hasContent =
+    outgoingText.length > 0 || attachments.length > 0 || previewSelections.length > 0
   const canSend = hasContent && !disabled && (onSubmit ? true : !!summary)
 
   const resetInput = () => {
@@ -573,6 +583,7 @@ export function Composer({
     setPasted([])
     setAttachments([])
     setCompletion(null)
+    if (sessionId) usePreviewStore.getState().clearSelections(sessionId)
     saveDraft(draftKey, '')
     window.requestAnimationFrame(() => {
       const el = textareaRef.current
@@ -603,7 +614,11 @@ export function Composer({
       return
     }
     const blocks: ContentBlock[] = []
-    if (outgoingText) blocks.push({ type: 'text', text: outgoingText })
+    const selectionContext = previewSelections.length
+      ? selectionContextText(previewSelections)
+      : ''
+    const messageText = [outgoingText, selectionContext].filter(Boolean).join('\n\n')
+    if (messageText) blocks.push({ type: 'text', text: messageText })
     for (const a of attachments) {
       blocks.push({ type: 'image', mediaType: a.mediaType, dataBase64: a.dataBase64 })
     }
@@ -904,6 +919,35 @@ export function Composer({
           </div>
         )}
         <div className="px-3.5 pb-0.5 pt-3">
+          {previewSelections.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5" data-testid="composer-preview-selections">
+              {previewSelections.map((selection) => (
+                <div
+                  key={selection.id}
+                  title={selectionContextText([selection])}
+                  className="flex max-w-full items-center gap-1.5 rounded-lg border border-border bg-surface-2 py-1 pl-2 pr-1 text-[12px] text-text-soft"
+                >
+                  <MousePointerClick size={13} className="shrink-0 text-muted" />
+                  <span className="truncate">{selectionLabel(selection)}</span>
+                  {selectionSource(selection) ? (
+                    <span className="shrink-0 font-mono text-[10px] text-muted">
+                      {selectionSource(selection)}
+                    </span>
+                  ) : null}
+                  <IconButton
+                    size="sm"
+                    onClick={() => {
+                      if (sessionId) removePreviewSelection(sessionId, selection.id)
+                    }}
+                    label={`移除已选元素 ${selection.name}`}
+                    className="size-6! [&_svg]:size-3"
+                  >
+                    <X size={12} />
+                  </IconButton>
+                </div>
+              ))}
+            </div>
+          )}
           {attachments.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
               {attachments.map((a) => (

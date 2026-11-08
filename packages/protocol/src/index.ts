@@ -853,6 +853,97 @@ export interface BrowserState {
 }
 // GET /api/sessions/:id/browser/screenshot?shot=shot_1 -> image/jpeg
 
+// ---------- 应用预览（Host 上的本地 Web 应用） ----------
+/**
+ * 预览只访问本机地址（localhost / 127.0.0.0/8 / [::1]）或设置 → 浏览器里的允许列表；
+ * 页面渲染在 Host 的 Playwright 里，截图通过 /preview/screenshot 下发。
+ */
+export type PreviewCandidateSource = 'task' | 'package' | 'port';
+/** GET /api/sessions/:id/preview/detect：自动识别的本地开发地址。 */
+export interface PreviewCandidate {
+  url: string;
+  source: PreviewCandidateSource;
+  /** 探测结果：当前是否能从 Host 访问（只探测本机回环地址）。 */
+  reachable: boolean;
+  label?: string;
+}
+export interface PreviewRect { x: number; y: number; width: number; height: number }
+/** React 开发模式（__reactFiber$ + _debugSource）可读到的组件与源码位置。 */
+export interface PreviewComponentSource {
+  name: string;
+  /** 相对会话 cwd 的源码位置。 */
+  file?: string;
+  line?: number;
+  column?: number;
+}
+/** POST /api/sessions/:id/preview/select：点击预览画面返回的元素信息。 */
+export interface PreviewSelection {
+  id: string;
+  url: string;
+  selector: string;
+  tag: string;
+  role: string;
+  /** 可访问名称或可见文本。 */
+  name: string;
+  text?: string;
+  component?: PreviewComponentSource;
+  rect: PreviewRect;
+  /** 元素裁剪截图 id；GET /api/sessions/:id/preview/screenshot?shot= 取图。 */
+  shotId?: string;
+  createdAt: number;
+}
+/** 改前快照（存 Host 内存，随预览空闲关闭失效）。 */
+export interface PreviewSnapshot {
+  id: string;
+  label: string;
+  url: string;
+  width: number;
+  height: number;
+  shotId: string;
+  createdAt: number;
+}
+export interface PreviewAutoRefresh {
+  /** 自上次刷新以来完成的 Write/Edit 次数。 */
+  count: number;
+  at: number;
+  reason: 'edit';
+}
+/** 每个会话的应用预览状态（WS preview_state 与 GET .../preview/state）。 */
+export interface PreviewState {
+  sessionId: string;
+  active: boolean;
+  url?: string;
+  title?: string;
+  width?: number;
+  height?: number;
+  screenshotId?: string;
+  canGoBack?: boolean;
+  canGoForward?: boolean;
+  snapshotCount?: number;
+  /** 最近一次自动刷新；面板角落据此显示「已根据 N 处改动刷新」。 */
+  autoRefresh?: PreviewAutoRefresh;
+  updatedAt: number;
+  error?: string;
+}
+// GET  /api/sessions/:id/preview/state
+// POST /api/sessions/:id/preview/open { url, width?, height? } -> PreviewState
+// POST /api/sessions/:id/preview/reload -> PreviewState
+// POST /api/sessions/:id/preview/back -> PreviewState
+// POST /api/sessions/:id/preview/forward -> PreviewState
+// POST /api/sessions/:id/preview/resize { width, height } -> PreviewState
+// GET  /api/sessions/:id/preview/detect -> PreviewCandidate[]
+// POST /api/sessions/:id/preview/select { x, y } -> PreviewSelection
+// GET  /api/sessions/:id/preview/screenshot?shot=<id> -> image/jpeg
+// GET  /api/sessions/:id/preview/snapshots -> PreviewSnapshot[]
+// POST /api/sessions/:id/preview/snapshots { label? } -> PreviewSnapshot
+// DELETE /api/sessions/:id/preview/snapshots/:snapshotId -> 204
+/** GET /api/sessions/:id/preview/mount：客户端与 Host 同机时可用 iframe 直接嵌入。 */
+export interface PreviewMount {
+  embeddable: boolean;
+  url?: string;
+  reason?: string;
+}
+
 /** GET /api/stt/capabilities：本机 Whisper 探测结果，用于设置页展示与客户端降级。 */
 export interface SttCapabilities {
   configured: boolean;
@@ -1063,6 +1154,7 @@ export type ServerMsg =
   | { type: 'vcs_updated'; sessionId: string; state: VcsState }            // 当前会话 PR/CI 状态变化（60s 轮询）
   | { type: 'injections'; sessionId: string; injections: InjectionSnapshot } // 本轮系统提示的注入段落清单/变化
   | { type: 'browser_state'; sessionId: string; state: BrowserState }      // 浏览器当前页面/最新截图（工具调用后刷新）
+  | { type: 'preview_state'; sessionId: string; state: PreviewState }      // 应用预览：打开/刷新/改完自动刷新后的状态
   | { type: 'presence'; sessionId: string; viewers: TeamPresence[] }       // 正在查看该会话的连接（含所有者）
   | { type: 'team_updated' }                                              // 成员/邀请/审计变化，所有者客户端刷新
   // 外部会话（Claude Code / Codex）文件有变动，客户端应重新拉取列表

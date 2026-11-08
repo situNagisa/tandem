@@ -41,6 +41,7 @@ import { registerEvalRoutes } from './routes/evals.js';
 import { registerCommandRoutes } from './routes/commands.js';
 import { registerSkillRoutes } from './routes/skills.js';
 import { registerBrowserRoutes } from './routes/browser.js';
+import { registerPreviewRoutes } from './routes/preview.js';
 import { registerWsRoutes } from './routes/ws.js';
 import { registerSshHostRoutes } from './routes/ssh-hosts.js';
 import { SshRemoteManager } from './ssh/manager.js';
@@ -147,6 +148,7 @@ export async function createApp(
   registerCommandRoutes(app, deps);
   registerSkillRoutes(app, deps);
   registerBrowserRoutes(app, deps);
+  registerPreviewRoutes(app, deps);
   registerWsRoutes(app, deps);
   registerSshHostRoutes(app, deps);
 

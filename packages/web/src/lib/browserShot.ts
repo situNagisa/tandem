@@ -7,8 +7,8 @@ const cache = new Map<string, string>()
 const pending = new Map<string, Promise<string>>()
 const order: string[] = []
 
-function keyOf(host: HostConfig, sessionId: string, shotId: string): string {
-  return `${host.id}:${sessionId}:${shotId}`
+function keyOf(prefix: string, host: HostConfig, sessionId: string, shotId: string): string {
+  return `${prefix}:${host.id}:${sessionId}:${shotId}`
 }
 
 function store(key: string, url: string): string {
@@ -24,23 +24,47 @@ function store(key: string, url: string): string {
   return url
 }
 
+interface ShotSource {
+  prefix: string
+  load: (host: HostConfig, sessionId: string, shotId: string) => Promise<Blob>
+}
+
+const BROWSER_SHOTS: ShotSource = {
+  prefix: 'browser',
+  load: (host, sessionId, shotId) => api.browserScreenshot(host, sessionId, shotId),
+}
+
+const PREVIEW_SHOTS: ShotSource = {
+  prefix: 'preview',
+  load: (host, sessionId, shotId) => api.previewScreenshot(host, sessionId, shotId),
+}
+
+async function loadShot(
+  source: ShotSource,
+  host: HostConfig,
+  sessionId: string,
+  shotId: string,
+): Promise<string> {
+  const key = keyOf(source.prefix, host, sessionId, shotId)
+  const cached = cache.get(key)
+  if (cached) return cached
+  const inflight = pending.get(key)
+  if (inflight) return inflight
+  const task = source
+    .load(host, sessionId, shotId)
+    .then((blob) => store(key, URL.createObjectURL(blob)))
+    .finally(() => pending.delete(key))
+  pending.set(key, task)
+  return task
+}
+
 /** 通过带鉴权的 Host 请求取截图并转成 object URL（中继 Host 也能显示）。 */
 export async function loadBrowserShot(
   host: HostConfig,
   sessionId: string,
   shotId: string,
 ): Promise<string> {
-  const key = keyOf(host, sessionId, shotId)
-  const cached = cache.get(key)
-  if (cached) return cached
-  const inflight = pending.get(key)
-  if (inflight) return inflight
-  const task = api
-    .browserScreenshot(host, sessionId, shotId)
-    .then((blob) => store(key, URL.createObjectURL(blob)))
-    .finally(() => pending.delete(key))
-  pending.set(key, task)
-  return task
+  return loadShot(BROWSER_SHOTS, host, sessionId, shotId)
 }
 
 /** 截图缩略图/面板共用：shotId 变化或 Host 切换时重新加载。 */
@@ -49,7 +73,25 @@ export function useBrowserShot(
   sessionId: string | null | undefined,
   shotId: string | null | undefined,
 ): { url: string | null; error: string | null } {
-  const key = host && sessionId && shotId ? keyOf(host, sessionId, shotId) : ''
+  return useShot(BROWSER_SHOTS, host, sessionId, shotId)
+}
+
+/** 应用预览截图（当前画面、元素裁剪、改前快照共用同一缓存）。 */
+export function usePreviewShot(
+  host: HostConfig | null | undefined,
+  sessionId: string | null | undefined,
+  shotId: string | null | undefined,
+): { url: string | null; error: string | null } {
+  return useShot(PREVIEW_SHOTS, host, sessionId, shotId)
+}
+
+function useShot(
+  source: ShotSource,
+  host: HostConfig | null | undefined,
+  sessionId: string | null | undefined,
+  shotId: string | null | undefined,
+): { url: string | null; error: string | null } {
+  const key = host && sessionId && shotId ? keyOf(source.prefix, host, sessionId, shotId) : ''
   const [state, setState] = useState<{ key: string; url: string | null; error: string | null }>(() => ({
     key: '',
     url: null,
@@ -70,7 +112,7 @@ export function useBrowserShot(
       pending.delete(key)
       if (!cancelled) setState({ key, url: null, error: '截图已失效（Host 可能已重启）' })
     }, 8000)
-    loadBrowserShot(host, sessionId, shotId)
+    loadShot(source, host, sessionId, shotId)
       .then((url) => {
         if (!cancelled) setState({ key, url, error: null })
       })
@@ -82,8 +124,12 @@ export function useBrowserShot(
       cancelled = true
       window.clearTimeout(timer)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, host?.id, sessionId, shotId])
 
   if (!key) return { url: null, error: null }
-  return { url: state.key === key ? state.url : null, error: state.key === key ? state.error : null }
+  return {
+    url: state.key === key ? state.url : null,
+    error: state.key === key ? state.error : null,
+  }
 }

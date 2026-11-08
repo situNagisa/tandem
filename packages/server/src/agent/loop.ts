@@ -871,6 +871,11 @@ async function executeToolUses(
       ];
     }
     // 写类工具执行前做检查点快照（Bash 改动无法追踪：命令任意，不纳入检查点）
+    // 写类工具执行前做检查点快照（Bash 改动无法追踪：命令任意，不纳入检查点）
+    const editedPath =
+      tool.input && typeof tool.input === 'object'
+        ? (tool.input as Record<string, unknown>).file_path
+        : undefined;
     if ((tool.name === 'Write' || tool.name === 'Edit') && tool.input && typeof tool.input === 'object') {
       const filePath = (tool.input as Record<string, unknown>).file_path;
       if (typeof filePath === 'string' && filePath) host.snapshotForCheckpoint(rec, filePath);
@@ -929,6 +934,14 @@ async function executeToolUses(
     if (res.images) blocks.push(...res.images);
     // 工具结果已拿到：立即 fsync（含 inFlightTools 清理），供重启恢复判断
     toolFinished(host, rec, tool.id);
+    if (
+      (tool.name === 'Write' || tool.name === 'Edit') &&
+      !res.isError &&
+      typeof editedPath === 'string' &&
+      editedPath
+    ) {
+      host.preview.noteFileChange(rec.id, editedPath);
+    }
     return blocks;
   };
 

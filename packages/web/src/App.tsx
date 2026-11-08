@@ -27,6 +27,7 @@ import { WikiDialog } from './components/wiki/WikiDialog'
 import { SearchDialog } from './components/SearchDialog'
 import { BackgroundTasksPanel } from './components/BackgroundTasksPanel'
 import { BrowserPanel } from './components/BrowserPanel'
+import { PreviewPanel } from './components/PreviewPanel'
 import { InboxDialog } from './components/inbox/InboxDialog'
 import { DispatchDialog } from './components/DispatchDialog'
 import { DoctorDialog } from './components/DoctorDialog'
@@ -461,6 +462,7 @@ export default function App() {
       <WikiDialog />
       <BackgroundTasksPanel />
       <BrowserPanel />
+      <PreviewPanel />
       <InboxDialog />
       <DispatchDialogHost />
       <DoctorDialog />

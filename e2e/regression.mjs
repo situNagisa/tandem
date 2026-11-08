@@ -20,6 +20,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import http from 'node:http'
@@ -52,6 +53,8 @@ function listen(server) {
 function createMockProvider() {
   // 配额交接用例：主分组第一次成功、之后 429；备用分组始终可用。
   let quotaHits = 0
+  // 应用预览用例：记录模型实际收到的用户文本，用于断言元素上下文已附带。
+  const seenUserTexts = []
   // 自动路由用例：记录每次请求实际使用的模型，便于断言升级/回落。
   const routeSeen = []
   const rateLimitHeaders = {
@@ -280,7 +283,64 @@ function createMockProvider() {
       )
     const latest = userTexts.at(-1) ?? ''
     const allUser = userTexts.join('\n')
+    seenUserTexts.push(latest)
     if (body.stream === true && lastRole !== 'tool') {
+      const previewEdit = latest.match(/^PREVIEW_EDIT (.+)$/m)
+      if (previewEdit) {
+        // 应用预览：先回复选中的元素，再发一次 Edit，驱动改完自动刷新。
+        res.writeHead(200, {
+          'content-type': 'text/event-stream',
+          'cache-control': 'no-cache',
+          connection: 'keep-alive',
+        })
+        const send = (payload) => res.write(`data: ${JSON.stringify(payload)}\n\n`)
+        send({
+          id: 'chatcmpl-preview',
+          object: 'chat.completion.chunk',
+          choices: [{ index: 0, delta: { role: 'assistant', content: '收到选中的元素，修改预览页面。' } }],
+        })
+        send({
+          id: 'chatcmpl-preview',
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              index: 0,
+              delta: {
+                role: 'assistant',
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: `call_preview_${Date.now()}`,
+                    type: 'function',
+                    function: {
+                      name: 'Edit',
+                      arguments: JSON.stringify({
+                        file_path: previewEdit[1].trim(),
+                        old_string: 'PREVIEW_MARKER',
+                        new_string: 'PREVIEW_MARKER_EDITED',
+                      }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        })
+        send({
+          id: 'chatcmpl-preview',
+          object: 'chat.completion.chunk',
+          choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+        })
+        send({
+          id: 'chatcmpl-preview',
+          object: 'chat.completion.chunk',
+          choices: [],
+          usage: { prompt_tokens: 60, completion_tokens: 20, total_tokens: 80 },
+        })
+        res.write('data: [DONE]\n\n')
+        res.end()
+        return
+      }
       const respondTool = (name, input) => {
         res.writeHead(200, {
           'content-type': 'text/event-stream',
@@ -382,7 +442,7 @@ function createMockProvider() {
     res.write('data: [DONE]\n\n')
     res.end()
   })
-  return Object.assign(server, { routeSeen })
+  return Object.assign(server, { routeSeen, seenUserTexts })
 }
 
 function writeJson(file, data) {
@@ -554,6 +614,9 @@ process.exit(1)
       TANDEM_FAKE_REMOTE_HOME: path.join(home, 'fake-remote'),
       TANDEM_GH_PATH: fakeGh,
       CODEX_HOME: path.join(home, 'home', '.codex'),
+      // HOME 被替换成临时目录，Playwright 需要显式指向本机已安装的浏览器缓存。
+      PLAYWRIGHT_BROWSERS_PATH:
+        process.env.PLAYWRIGHT_BROWSERS_PATH ?? path.join(os.homedir(), '.cache', 'ms-playwright'),
       NO_PROXY: '127.0.0.1,localhost',
       no_proxy: '127.0.0.1,localhost',
     },
@@ -676,6 +739,146 @@ function seedRepo(repo) {
   writeFileSync(path.join(dirty, 'dirty.txt'), 'changed\n')
 }
 
+/** 应用预览用例的本地 Vite 页面：真实 React 组件 + 可变内容，供自动刷新/对比断言。 */
+async function seedPreviewApp(root) {
+  mkdirSync(path.join(root, 'src'), { recursive: true })
+  try {
+    symlinkSync(path.join(ROOT, 'node_modules'), path.join(root, 'node_modules'), 'dir')
+  } catch {
+    /* 已存在（重复运行）时忽略 */
+  }
+  const port = await new Promise((resolve, reject) => {
+    const probe = http.createServer()
+    probe.once('error', reject)
+    probe.listen(0, '127.0.0.1', () => {
+      const value = probe.address().port
+      probe.close(() => resolve(value))
+    })
+  })
+  const requests = []
+  const blocked = http.createServer((req, res) => {
+    requests.push({ url: req.url, host: req.headers.host })
+    res.writeHead(403)
+    res.end('blocked')
+  })
+  await new Promise((resolve) => blocked.listen(0, '0.0.0.0', resolve))
+  const blockedPort = blocked.address().port
+
+  writeFileSync(
+    path.join(root, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'preview-reg-app',
+        private: true,
+        scripts: { dev: `vite --port ${port}` },
+        devDependencies: { vite: '^8.0.0' },
+      },
+      null,
+      2,
+    ),
+  )
+  writeFileSync(
+    path.join(root, 'index.html'),
+    `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8" /><title>预览回归页</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #f6f7fb; font-family: system-ui, sans-serif; }
+  main { padding: 24px; }
+  h1 { margin: 0 0 72px; font-size: 28px; color: #223; }
+  #login { position: fixed; left: 32px; top: 140px; width: 220px; height: 64px; border-radius: 12px; border: 1px solid #9aa; background: #fff; font-size: 20px; }
+</style></head>
+<body><div id="root"></div><script src="/content.js"></script><script type="module" src="/src/App.tsx"></script></body></html>
+`,
+  )
+  writeFileSync(path.join(root, 'content.js'), 'window.__PREVIEW_TEXT__ = "PREVIEW_MARKER";\n')
+  writeFileSync(
+    path.join(root, 'src/App.tsx'),
+    `import { useEffect, useState } from 'react'
+import { createRoot } from 'react-dom/client'
+
+function LoginButton({ label }: { label: string }) {
+  return (
+    <button id="login" aria-label="登录按钮">
+      {label}
+    </button>
+  )
+}
+
+function App() {
+  const [text] = useState(() => (window as unknown as { __PREVIEW_TEXT__?: string }).__PREVIEW_TEXT__ ?? 'PREVIEW_MARKER')
+  useEffect(() => {
+    document.title = \`预览回归页 \${text}\`
+  }, [text])
+  return (
+    <main>
+      <h1 id="title">{text}</h1>
+      <LoginButton label="登录" />
+    </main>
+  )
+}
+
+createRoot(document.getElementById('root')!).render(<App />)
+`,
+  )
+  const child = spawn(path.join(ROOT, 'node_modules/.bin/vite'), [
+    '--port',
+    String(port),
+    '--strictPort',
+    '--host',
+    '127.0.0.1',
+  ], {
+    cwd: root,
+    env: { ...process.env, NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  let logs = ''
+  child.stdout.setEncoding('utf8')
+  child.stderr.setEncoding('utf8')
+  child.stdout.on('data', (chunk) => {
+    logs += chunk
+  })
+  child.stderr.on('data', (chunk) => {
+    logs += chunk
+  })
+  const ready = async () => {
+    const deadline = Date.now() + 25_000
+    while (Date.now() < deadline) {
+      const status = await new Promise((resolve) => {
+        const req = http.get(
+          { hostname: '127.0.0.1', port, path: '/', timeout: 500 },
+          (res) => {
+            res.resume()
+            resolve(res.statusCode ?? 0)
+          },
+        )
+        req.on('timeout', () => {
+          req.destroy()
+          resolve(0)
+        })
+        req.on('error', () => resolve(0))
+      })
+      if (status) return
+      await sleep(200)
+    }
+    throw new Error(`Vite 预览页启动超时\n${logs}`)
+  }
+  await ready()
+  return {
+    root,
+    port,
+    blockedPort,
+    requests,
+    logs: () => logs,
+    close: async () => {
+      child.kill('SIGTERM')
+      await Promise.race([
+        new Promise((resolve) => child.once('exit', resolve)),
+        sleep(3000).then(() => child.kill('SIGKILL')),
+      ])
+      await new Promise((resolve) => blocked.close(resolve))
+    },
+  }
+}
+
 /** 预置一份 Wiki：页面/手写段落/commit 都可控，UI 用例无需真实模型。 */
 function seedWiki(configDir, repo) {
   const hash = createHash('sha1').update(path.resolve(repo)).digest('hex').slice(0, 16)
@@ -749,7 +952,7 @@ function seedWiki(configDir, repo) {
   }
 }
 
-function seedData({ configDir, repo, hostId, mockPort, today, day }) {
+function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day }) {
   const baseUrl = `http://127.0.0.1:${mockPort}/v1`
   const profiles = [
     {
@@ -1240,6 +1443,19 @@ function seedData({ configDir, repo, hostId, mockPort, today, day }) {
     createdAt: createdAt + 15_000,
     updatedAt: createdAt + 35_000,
   })
+  if (previewCwd) {
+    sessions.push(
+      mk(
+        'preview',
+        '应用预览回归会话',
+        [
+          message('pv1', 'user', '打开应用预览看看。'),
+          message('pv2', 'assistant', '已准备好预览。', { model: 'mock-1' }),
+        ],
+        { cwd: previewCwd, permissionMode: 'acceptEdits' },
+      ),
+    )
+  }
   for (const session of sessions) writeJson(path.join(configDir, 'sessions', `${session.id}.json`), session)
 
   writeJson(path.join(configDir, 'usage.json'), {
@@ -1383,6 +1599,8 @@ async function main() {
 
   const provider = createMockProvider()
   const mockPort = await listen(provider)
+  // 预览页先启动，避免 Host 在会话文件写入前完成加载；Host 仍只监听本机。
+  const previewApp = await seedPreviewApp(path.join(home, 'preview-app'))
   const host = startHost({ home, token, hostId })
   // 造数用的「今天」固定为脚本启动时刻；页面里也用 page.clock 固定到同一时刻，
   // 否则跨零点运行时界面已经进入新的一天，与造好的用量行错位。
@@ -1400,7 +1618,15 @@ async function main() {
   try {
     seedRepo(repo)
     seedWiki(configDir, repo)
-    seedData({ configDir, repo, hostId, mockPort, today: dayString(0), day: dayString })
+    seedData({
+      configDir,
+      repo,
+      hostId,
+      mockPort,
+      previewCwd: previewApp.root,
+      today: dayString(0),
+      day: dayString,
+    })
 
     const hostPort = await host.ready
     const base = `http://127.0.0.1:${hostPort}`
@@ -3004,6 +3230,143 @@ async function main() {
       await panel.waitFor({ state: 'hidden', timeout: 5_000 })
     })
 
+    desktop('应用预览：自动识别、设备切换、点选元素、Edit 自动刷新与改前对比', async (page) => {
+      const sessionId = 'preview'
+      const waitPreview = async (predicate, label, timeout = 40_000) => {
+        const started = Date.now()
+        while (Date.now() - started < timeout) {
+          try {
+            const state = await api(base, token, `/api/sessions/${sessionId}/preview/state`)
+            if (predicate(state)) return state
+          } catch {
+            /* Host 可能正在启动预览 */
+          }
+          await sleep(250)
+        }
+        throw new Error(`等待预览状态超时：${label}`)
+      }
+      const requestCount = (host) => previewApp.requests.filter((item) => item.host === host).length
+
+      // 非白名单地址：API 直接拒绝，且 Host 不应向目标发出任何请求。
+      const blockedHost = `0.0.0.0:${previewApp.blockedPort}`
+      const blockedBefore = requestCount(blockedHost)
+      const blocked = await fetch(`${base}/api/sessions/${sessionId}/preview/open`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ url: `http://${blockedHost}/` }),
+      })
+      assert.equal(blocked.status, 400, '非白名单地址应被拒绝')
+      assert.match(await blocked.text(), /不在浏览器允许列表/)
+      await sleep(600)
+      assert.equal(requestCount(blockedHost), blockedBefore, '非白名单地址不应发出真实网络请求')
+
+      // 自动识别：package.json dev 脚本端口 + 本机探测可达。
+      const candidates = await api(base, token, `/api/sessions/${sessionId}/preview/detect`)
+      const auto = candidates.find((item) => item.url === `http://localhost:${previewApp.port}/`)
+      assert.ok(auto, `没有识别到 package.json dev 端口：${JSON.stringify(candidates)}`)
+      assert.equal(auto.source, 'package')
+      assert.equal(auto.reachable, true, 'dev 端口应探测为可访问')
+
+      await openSession(page, sessionId)
+      await page.getByRole('button', { name: '更多', exact: true }).click()
+      const menu = page.locator('[role="menu"]').last()
+      await menu.waitFor({ state: 'visible', timeout: 5_000 })
+      await menu.getByRole('menuitem', { name: '应用预览', exact: true }).click()
+      const panel = page.getByRole('dialog', { name: '应用预览' })
+      await panel.waitFor({ state: 'visible', timeout: 10_000 })
+
+      // 不需要输入地址：面板自动识别并打开本机应用。
+      const shotImg = panel.getByTestId('preview-shot')
+      await shotImg.waitFor({ state: 'visible', timeout: 40_000 })
+      const address = panel.getByRole('textbox', { name: '应用地址' })
+      assert.match(await address.inputValue(), new RegExp(`localhost:${previewApp.port}`))
+      const opened = await waitPreview((state) => state.active && !!state.screenshotId, '自动打开')
+      const beforeShotId = opened.screenshotId
+
+      // 设备尺寸：手机 390×844，Host 同步改变 viewport。
+      await panel.getByTitle('手机 390×844').click()
+      await waitPreview((state) => state.width === 390 && state.height === 844, '手机尺寸')
+      await panel.getByText('390×844', { exact: true }).waitFor({ timeout: 5_000 })
+      const phoneShot = await waitPreview(
+        (state) => state.width === 390 && state.screenshotId !== beforeShotId,
+        '手机截图',
+      )
+
+      // 点选元素：选择模式下点击预览里的 React 按钮。
+      await panel.getByRole('button', { name: '选择元素' }).click()
+      const box = await shotImg.boundingBox()
+      assert.ok(box, '预览截图没有可见区域')
+      const clickX = box.x + (100 / phoneShot.width) * box.width
+      const clickY = box.y + (170 / phoneShot.height) * box.height
+      await page.mouse.click(clickX, clickY)
+      const selectionStrip = panel.getByTestId('preview-selections')
+      await selectionStrip.waitFor({ state: 'visible', timeout: 15_000 })
+      const selectionText = await selectionStrip.innerText()
+      assert.match(selectionText, /<button> 登录/, `元素胶囊内容不对：${selectionText}`)
+      assert.match(selectionText, /src\/App\.tsx/, `没有读到 React 源码位置：${selectionText}`)
+      mkdirSync('/tmp/preview-shots', { recursive: true })
+      await panel.screenshot({ path: '/tmp/preview-shots/selection.png' }).catch(() => {})
+
+      // 改前快照。
+      await panel.getByRole('button', { name: '截取改前快照' }).click()
+      await panel.getByText('改前快照', { exact: true }).waitFor({ timeout: 10_000 }).catch(() => {})
+      await page.keyboard.press('Escape')
+      await panel.waitFor({ state: 'hidden', timeout: 5_000 })
+
+      // 已选元素生成输入框上方的附件胶囊。
+      const chip = page.getByTestId('composer-preview-selections')
+      await chip.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.match(await chip.innerText(), /登录/)
+      assert.match(await chip.innerText(), /src\/App\.tsx/)
+
+      // 发送：元素上下文 + PREVIEW_EDIT 指令，mock 会回复并发一次 Edit。
+      const contentFile = path.join(previewApp.root, 'content.js')
+      await page.locator('textarea[aria-label="消息输入框"]').fill(`PREVIEW_EDIT ${contentFile}`)
+      await page.getByRole('button', { name: '发送消息' }).click()
+      await page.getByText('收到选中的元素，修改预览页面。').first().waitFor({ timeout: 20_000 })
+      const fileDeadline = Date.now() + 20_000
+      while (Date.now() < fileDeadline && !readFileSync(contentFile, 'utf8').includes('PREVIEW_MARKER_EDITED')) {
+        await sleep(200)
+      }
+      assert.match(readFileSync(contentFile, 'utf8'), /PREVIEW_MARKER_EDITED/, 'agent 的 Edit 没有落盘')
+      assert.ok(
+        provider.seenUserTexts.some((text) => text.includes('关于这个元素：<button> 登录按钮')),
+        `模型没有收到元素上下文：${provider.seenUserTexts.slice(-2).join(' | ')}`,
+      )
+
+      // 改完自动刷新：面板角落显示「已根据 1 处改动刷新」。
+      await page.getByRole('button', { name: '更多', exact: true }).click()
+      const menu2 = page.locator('[role="menu"]').last()
+      await menu2.waitFor({ state: 'visible', timeout: 5_000 })
+      await menu2.getByRole('menuitem', { name: '应用预览', exact: true }).click()
+      const panel2 = page.getByRole('dialog', { name: '应用预览' })
+      await panel2.waitFor({ state: 'visible', timeout: 10_000 })
+      const refreshed = await waitPreview((state) => state.autoRefresh?.count >= 1, '改完自动刷新')
+      assert.notEqual(refreshed.screenshotId, beforeShotId, '自动刷新后截图应更新')
+      await panel2.getByTestId('preview-auto-refresh').waitFor({ state: 'visible', timeout: 15_000 })
+      assert.match(await panel2.getByTestId('preview-auto-refresh').innerText(), /已根据 1 处改动刷新/)
+
+      // 改前 / 当前对比。
+      await panel2.getByTitle('与当前画面对比').first().click()
+      const compare = panel2.getByTestId('preview-compare')
+      await compare.waitFor({ state: 'visible', timeout: 15_000 })
+      assert.ok((await compare.locator('img').count()) >= 2, '对比视图应有改前与当前两张图')
+      for (const image of await compare.locator('img').all()) {
+        await image.evaluate((el) => (el.decode ? el.decode().catch(() => {}) : undefined))
+      }
+      await page.waitForTimeout(250)
+      await panel2.getByRole('button', { name: '左右' }).click().catch(() => {})
+      await page.screenshot({ path: '/tmp/preview-shots/compare.png' }).catch(() => {})
+
+      // 界面里再试一次非白名单地址：错误提示出现，预览状态不被破坏。
+      await address.fill(`http://${blockedHost}/`)
+      await panel2.getByRole('button', { name: '打开', exact: true }).click()
+      await page.getByText(/不在浏览器允许列表/).first().waitFor({ timeout: 10_000 })
+      await page.keyboard.press('Escape')
+      await panel2.waitFor({ state: 'hidden', timeout: 5_000 })
+      assert.equal(requestCount(blockedHost), blockedBefore, '界面输入非白名单地址也不应发出请求')
+    })
+
     mobile('手机评测结果表可横向滚动并打开轨迹', async (page) => {
       const dialog = await openSettings(page, '评测', 'mobile')
       await dialog.getByText('回归用例 A').first().waitFor({ timeout: 10_000 })
@@ -4085,6 +4448,7 @@ async function main() {
       sleep(3000).then(() => host.child.kill('SIGKILL')),
     ])
     await new Promise((resolve) => provider.close(resolve))
+    await previewApp?.close().catch(() => {})
     if (process.exitCode === 1) {
       console.error(`regression: 临时目录保留在 ${home}（截图在 ${shots}）`)
     } else {

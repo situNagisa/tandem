@@ -35,6 +35,7 @@ import type {
 } from '@tandem/protocol';
 import { ProfileStore, loadHostConfig, tandemHome } from './config.js';
 import { BrowserManager } from './browser.js';
+import { PreviewManager } from './preview.js';
 import { CheckpointStore } from './checkpoints.js';
 import { ExternalSessionStore } from './external.js';
 import { Hub } from './events.js';
@@ -224,6 +225,8 @@ export class Host {
   readonly team: TeamStore;
   /** 浏览器操作（Playwright）：每会话独立上下文，空闲 10 分钟关闭。 */
   readonly browser: BrowserManager;
+  /** 应用预览：Host 上本地 Web 应用的截图流、元素点选与改完自动刷新。 */
+  readonly preview: PreviewManager;
   /** 跨会话收件箱（审批/回合结束/预算摘要），手机审批台的数据源。 */
   readonly inbox = new Inbox();
   readonly version: string;
@@ -302,6 +305,19 @@ export class Host {
       onState: (state) => {
         this.hub.broadcastSession(state.sessionId, {
           type: 'browser_state',
+          sessionId: state.sessionId,
+          state,
+        });
+      },
+    });
+    this.preview = new PreviewManager({
+      getSettings: () => this.browser.settings,
+      getSessionCwd: (sessionId) => this.store.get(sessionId)?.cwd,
+      listTasks: (sessionId) => this.tasks.list(sessionId),
+      readTaskOutput: (taskId) => this.tasks.output(taskId, 0)?.content ?? '',
+      onState: (state) => {
+        this.hub.broadcastSession(state.sessionId, {
+          type: 'preview_state',
           sessionId: state.sessionId,
           state,
         });
@@ -847,6 +863,7 @@ export class Host {
     this.searchIndex.flush();
     this.usage.flush();
     await this.browser.dispose();
+    await this.preview.dispose();
     await this.mcp.close();
   }
 }

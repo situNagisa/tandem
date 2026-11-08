@@ -12,6 +12,7 @@ import {
   MoreHorizontal,
   PanelLeft,
   PanelRight,
+  PanelsTopLeft,
   Pencil,
   Search,
   SquareTerminal,
@@ -141,6 +142,7 @@ function MoreMenu() {
   const focusAgent = useUiStore((s) => s.focusAgent)
   const openBackgroundTasks = useUiStore((s) => s.openBackgroundTasks)
   const openBrowserPanel = useUiStore((s) => s.openBrowserPanel)
+  const openPreviewPanel = useUiStore((s) => s.openPreviewPanel)
   const openFileBrowser = useAppStore((s) => s.openFileBrowser)
   const openPrPanel = useUiStore((s) => s.openPrPanel)
   const openSettings = useUiStore((s) => s.openSettings)
@@ -207,6 +209,15 @@ function MoreMenu() {
           )}
         </UiMenu.SubContent>
       </UiMenu.Sub>
+      <UiMenu.Item
+        icon={<PanelsTopLeft size={14} />}
+        disabled={!active}
+        onSelect={() => {
+          if (active) openPreviewPanel(active.hostId, active.sessionId)
+        }}
+      >
+        应用预览
+      </UiMenu.Item>
       <UiMenu.Item
         icon={<Globe2 size={14} />}
         disabled={!active}

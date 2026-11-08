@@ -76,6 +76,11 @@ import type {
   BrowserSettings,
   BrowserState,
   BrowserStatus,
+  PreviewCandidate,
+  PreviewMount,
+  PreviewSelection,
+  PreviewSnapshot,
+  PreviewState,
   BudgetRule,
   BudgetStatus,
   RewindInput,
@@ -341,6 +346,68 @@ export const api = {
     }
     return res.blob()
   },
+
+  previewState: (h: HostConfig, sessionId: string) =>
+    request<PreviewState>(h, `/api/sessions/${encodeURIComponent(sessionId)}/preview/state`),
+  previewDetect: (h: HostConfig, sessionId: string) =>
+    request<PreviewCandidate[]>(h, `/api/sessions/${encodeURIComponent(sessionId)}/preview/detect`),
+  previewOpen: (
+    h: HostConfig,
+    sessionId: string,
+    input: { url: string; width?: number; height?: number },
+  ) =>
+    request<PreviewState>(h, `/api/sessions/${encodeURIComponent(sessionId)}/preview/open`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  previewReload: (h: HostConfig, sessionId: string) =>
+    request<PreviewState>(h, `/api/sessions/${encodeURIComponent(sessionId)}/preview/reload`, {
+      method: 'POST',
+    }),
+  previewBack: (h: HostConfig, sessionId: string) =>
+    request<PreviewState>(h, `/api/sessions/${encodeURIComponent(sessionId)}/preview/back`, {
+      method: 'POST',
+    }),
+  previewForward: (h: HostConfig, sessionId: string) =>
+    request<PreviewState>(h, `/api/sessions/${encodeURIComponent(sessionId)}/preview/forward`, {
+      method: 'POST',
+    }),
+  previewResize: (h: HostConfig, sessionId: string, width: number, height: number) =>
+    request<PreviewState>(h, `/api/sessions/${encodeURIComponent(sessionId)}/preview/resize`, {
+      method: 'POST',
+      body: JSON.stringify({ width, height }),
+    }),
+  previewSelect: (h: HostConfig, sessionId: string, x: number, y: number) =>
+    request<PreviewSelection>(h, `/api/sessions/${encodeURIComponent(sessionId)}/preview/select`, {
+      method: 'POST',
+      body: JSON.stringify({ x, y }),
+    }),
+  previewScreenshot: async (h: HostConfig, sessionId: string, shotId?: string) => {
+    const res = await send(
+      h,
+      `/api/sessions/${encodeURIComponent(sessionId)}/preview/screenshot${qs({ shot: shotId })}`,
+    )
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new ApiError(describe(res.status, text), res.status)
+    }
+    return res.blob()
+  },
+  previewSnapshots: (h: HostConfig, sessionId: string) =>
+    request<PreviewSnapshot[]>(h, `/api/sessions/${encodeURIComponent(sessionId)}/preview/snapshots`),
+  previewSnapshot: (h: HostConfig, sessionId: string, label?: string) =>
+    request<PreviewSnapshot>(h, `/api/sessions/${encodeURIComponent(sessionId)}/preview/snapshots`, {
+      method: 'POST',
+      body: JSON.stringify(label ? { label } : {}),
+    }),
+  previewDeleteSnapshot: (h: HostConfig, sessionId: string, snapshotId: string) =>
+    request<void>(
+      h,
+      `/api/sessions/${encodeURIComponent(sessionId)}/preview/snapshots/${encodeURIComponent(snapshotId)}`,
+      { method: 'DELETE' },
+    ),
+  previewMount: (h: HostConfig, sessionId: string) =>
+    request<PreviewMount>(h, `/api/sessions/${encodeURIComponent(sessionId)}/preview/mount`),
 
   sttCapabilities: (h: HostConfig) => request<SttCapabilities>(h, '/api/stt/capabilities'),
   testStt: (h: HostConfig) => request<SttTestResult>(h, '/api/stt/test', { method: 'POST' }),
