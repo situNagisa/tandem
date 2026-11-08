@@ -15,6 +15,7 @@ import { PermissionCard } from './PermissionCard'
 import { PlanCard } from './PlanCard'
 import { Button, IconButton } from './ui/Button'
 import { Composer } from './Composer'
+import { CompactConfirmDialog } from './chat/CompactConfirmDialog'
 import { EnvBar } from './EnvBar'
 import { TurnRail } from './chat/TurnRail'
 import { TurnErrorNotice } from './chat/TurnErrorNotice'
@@ -393,6 +394,7 @@ export function ChatView() {
       </div>
 
       <div
+        data-composer-anchor
         className={cn(
           'shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5 md:pb-5 md:pt-2',
           compact ? 'px-2' : 'px-4 md:px-6',
@@ -434,6 +436,7 @@ export function ChatView() {
           )}
         </div>
       </div>
+      <CompactConfirmDialog />
     </div>
   )
 }

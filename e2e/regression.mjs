@@ -4318,11 +4318,17 @@ async function main() {
         await act(x.id, 'merge')
         await page.locator(`[data-column="done"] [data-card-id="${y.id}"]`).click()
         await drawer.getByRole('button', { name: /合并到/ }).click()
+        const mergeDialog = page.getByRole('dialog', { name: '合并这张卡' })
+        await mergeDialog.waitFor()
+        assert.match(await mergeDialog.innerText(), /conflict\.txt/, '合并确认框没有列出改动的文件')
+        await mergeDialog.getByRole('button', { name: /合并到/ }).click()
         await drawer.getByTestId('board-conflicts').waitFor({ timeout: 20_000 })
         assert.match(await drawer.getByTestId('board-conflicts').innerText(), /conflict\.txt/)
         await drawer.getByRole('button', { name: '让 agent 解决冲突' }).click()
         await waitUntil('解决冲突后完成', async () => (await cards()).find((item) => item.id === y.id)?.status === 'done')
         await drawer.getByRole('button', { name: /合并到/ }).click()
+        await mergeDialog.waitFor()
+        await mergeDialog.getByRole('button', { name: /合并到/ }).click()
         await waitUntil('冲突卡再次合并成功', async () => (await cards()).find((item) => item.id === y.id)?.result?.mergedAt)
 
         // 分屏：看板作为窗格 + 卡片会话
@@ -4356,6 +4362,137 @@ async function main() {
         await page.getByTestId('board-pr-status').waitFor({ timeout: 15_000 })
         assert.match(await page.getByTestId('board-pr-status').innerText(), /CI 通过/)
       })
+
+    desktop('看板合并确认、完成态后续操作与手动压缩确认（R11/R12）', async (page) => {
+      const board = await boardCall('', {
+        method: 'POST',
+        body: {
+          cwd: repo,
+          name: '确认回归看板',
+          maxParallel: 1,
+          defaults: { profileId: 'p-main', permissionMode: 'bypassPermissions' },
+        },
+      })
+      const card = await boardCall(`/${board.id}/cards`, {
+        method: 'POST',
+        body: {
+          title: '确认卡 改文件',
+          prompt: 'BOARD_WRITE src/confirm.ts hello-check',
+          exec: { permissionMode: 'bypassPermissions' },
+          status: 'queued',
+        },
+      })
+      await waitUntil('确认卡完成', async () => {
+        const found = (await boardCall(`/${board.id}`)).cards.find((item) => item.id === card.id)
+        return found?.status === 'done' && found.result?.branch ? found : undefined
+      })
+
+      await openBoardPage(page, board.id)
+      const drawer = page.getByTestId('board-drawer')
+      await page.locator(`[data-column="done"] [data-card-id="${card.id}"]`).click()
+      await drawer.waitFor()
+
+      // R12：完成态按映射表给出后续操作，而不是只剩删除
+      await drawer.getByRole('button', { name: '打开会话', exact: true }).waitFor()
+      await drawer.getByRole('button', { name: '查看改动', exact: true }).waitFor()
+      await drawer.getByRole('button', { name: '查看测试/检查结果', exact: true }).waitFor()
+      await drawer.getByRole('button', { name: '重新运行', exact: true }).waitFor()
+
+      // 查看改动：列出卡片分支改过的文件与 diff
+      await drawer.getByRole('button', { name: '查看改动', exact: true }).click()
+      const diffDialog = page.getByRole('dialog', { name: /^改动：/ })
+      await diffDialog.waitFor()
+      await diffDialog.getByTestId('card-diff-file').filter({ hasText: 'src/confirm.ts' }).waitFor()
+      assert.match(await diffDialog.innerText(), /hello-check/)
+      await page.keyboard.press('Escape')
+      await diffDialog.waitFor({ state: 'hidden' })
+
+      // 单卡合并：先确认，列出目标分支与将改动的文件，默认焦点在取消
+      await drawer.getByRole('button', { name: /合并到/ }).click()
+      const mergeDialog = page.getByRole('dialog', { name: '合并这张卡' })
+      await mergeDialog.waitFor()
+      await mergeDialog.getByTestId('board-merge-cards').waitFor()
+      const mergeText = await mergeDialog.innerText()
+      assert.match(mergeText, /main/, '合并确认框没有写明目标分支')
+      assert.match(mergeText, /src\/confirm\.ts/, '合并确认框没有列出将改动的文件')
+      assert.match(mergeText, /\+\d/, '合并确认框没有列出 +/− 统计')
+      assert.equal(
+        await page.evaluate(() => document.activeElement?.textContent?.trim()),
+        '取消',
+        '合并确认默认焦点不在取消',
+      )
+      // 确认框里可点开完整 diff（复用 DiffView）
+      await mergeDialog.getByRole('button', { name: '查看 diff' }).click()
+      const nestedDiff = page.getByRole('dialog', { name: /^改动：/ })
+      await nestedDiff.waitFor()
+      await nestedDiff.getByTestId('card-diff-file').filter({ hasText: 'src/confirm.ts' }).waitFor()
+      await page.keyboard.press('Escape')
+      await nestedDiff.waitFor({ state: 'hidden' })
+      await mergeDialog.getByRole('button', { name: '取消' }).click()
+      await mergeDialog.waitFor({ state: 'hidden' })
+      assert.equal(
+        (await boardCall(`/${board.id}`)).cards.find((item) => item.id === card.id)?.result?.mergedAt,
+        undefined,
+        '取消后卡片不应被合并',
+      )
+
+      // 合并全部：同样先出现确认并列出文件
+      await page.getByTestId('board-merge-all').click()
+      const mergeAllDialog = page.getByRole('dialog', { name: '合并全部已完成卡' })
+      await mergeAllDialog.waitFor()
+      await mergeAllDialog.getByTestId('board-merge-cards').waitFor()
+      assert.match(await mergeAllDialog.innerText(), /src\/confirm\.ts/)
+      await mergeAllDialog.getByRole('button', { name: '取消' }).click()
+      await mergeAllDialog.waitFor({ state: 'hidden' })
+
+      // 手动压缩：先确认，说明原文可查看与撤销
+      await drawer.getByRole('button', { name: '打开会话', exact: true }).click()
+      await page.waitForFunction(() => window.location.hash.includes('/s/'), null, { timeout: 15_000 })
+      const meter = page
+        .locator('button[aria-label^="上下文"], button[aria-label="暂无上下文数据"]')
+        .first()
+      await meter.waitFor({ timeout: 15_000 })
+      await meter.click()
+      await page.getByRole('button', { name: '压缩上下文（/compact）' }).click()
+      const compactDialog = page.getByRole('dialog', { name: '压缩上下文' })
+      await compactDialog.waitFor()
+      const compactText = await compactDialog.innerText()
+      assert.match(compactText, /摘要/, '压缩确认没有说明会压成摘要')
+      assert.match(compactText, /原文/, '压缩确认没有说明原文可查看')
+      assert.match(compactText, /撤销/, '压缩确认没有说明可撤销')
+      await compactDialog.getByRole('button', { name: '取消' }).click()
+      await compactDialog.waitFor({ state: 'hidden' })
+      assert.equal(
+        await page.locator('[data-compaction-notice]').count(),
+        0,
+        '取消后不应真的压缩',
+      )
+
+      // 真正压缩后：提示默认显示摘要前两行，可查看原文并撤销
+      await meter.click()
+      await page.getByRole('button', { name: '压缩上下文（/compact）' }).click()
+      const compactDialog2 = page.getByRole('dialog', { name: '压缩上下文' })
+      await compactDialog2.waitFor()
+      await compactDialog2.getByRole('button', { name: '压缩上下文', exact: true }).click()
+      const notice = page.locator('[data-compaction-notice]').first()
+      await notice.waitFor({ timeout: 60_000 })
+      const noticeText = (await notice.textContent()) ?? ''
+      assert.ok(noticeText.includes('已压缩上下文'), `压缩后没有出现提示行：${JSON.stringify(noticeText)}`)
+      await notice.getByTestId('compaction-original').click()
+      const originalDialog = page.getByRole('dialog', { name: /压缩前的原文/ })
+      await originalDialog.waitFor({ timeout: 15_000 })
+      await originalDialog.getByTestId('compaction-original-list').waitFor()
+      await page.keyboard.press('Escape')
+      await originalDialog.waitFor({ state: 'hidden' })
+
+      // 撤销：确认后恢复压缩前上下文，提示行消失
+      await notice.getByTestId('compaction-undo').click()
+      const undoDialog = page.getByRole('dialog', { name: '撤销压缩' })
+      await undoDialog.waitFor()
+      await undoDialog.getByRole('button', { name: '撤销压缩', exact: true }).click()
+      await page.locator('[data-compaction-notice]').first().waitFor({ state: 'detached', timeout: 20_000 })
+      assert.equal(await page.locator('[data-compaction-notice]').count(), 0, '撤销后压缩提示应消失')
+    })
 
     desktop('项目 Wiki：浏览、全文搜索与手写段落', async (page) => {
       await openSession(page, 'search')

@@ -10,7 +10,11 @@ import type {
   BoardCardInput,
   BoardCardStatus,
   BoardExec,
+  BoardCardCheck,
+  BoardCardDiff,
   BoardInput,
+  BoardMergePreview,
+  BoardMergePreviewCard,
   BoardPlanDraft,
   BoardSummary,
   PermissionMode,
@@ -25,6 +29,7 @@ import type { SessionRecord, ToolResult } from '../types.js';
 import type { Host } from '../host.js';
 import { commitAndStat, currentHead, mergeBranchInto } from './git.js';
 import { decideSchedule, topoOrder, validateDrafts, wouldCycle } from './graph.js';
+import { cardDiff as cardDiffDiff, changedFiles, latestCheck } from './inspect.js';
 import { planCards } from './planner.js';
 import { openBoardPr, refreshBoardPr } from './pr.js';
 import { BoardStore } from './store.js';
@@ -182,6 +187,54 @@ export class BoardManager {
     const board = this.boards.get(id);
     if (board) this.refreshDerived(board);
     return board;
+  }
+
+  // ---------- 结果核对（合并确认 / 查看改动 / 测试结果） ----------
+
+  /** 合并前确认：目标分支 + 按依赖顺序的待合并卡与各自文件清单。 */
+  async mergePreview(boardId: string): Promise<BoardMergePreview> {
+    const board = this.require(boardId);
+    const cards: BoardMergePreviewCard[] = [];
+    for (const card of topoOrder(board.cards)) {
+      if (card.status !== 'done' || !card.result?.branch || card.result.mergedAt) continue;
+      const fileList = await changedFiles(
+        board.cwd,
+        card.baseCommit ?? board.baseBranch,
+        card.result.branch,
+      );
+      cards.push({
+        id: card.id,
+        title: card.title,
+        branch: card.result.branch,
+        files: fileList.length || card.result.files,
+        additions: fileList.length ? fileList.reduce((n, f) => n + f.additions, 0) : card.result.additions,
+        deletions: fileList.length ? fileList.reduce((n, f) => n + f.deletions, 0) : card.result.deletions,
+        fileList,
+      });
+    }
+    return { ...(board.baseBranch ? { baseBranch: board.baseBranch } : {}), cards };
+  }
+
+  /** 卡片分支相对起点的 diff，path 给出时只看该文件。 */
+  async cardDiff(boardId: string, cardId: string, filePath?: string): Promise<BoardCardDiff> {
+    const board = this.require(boardId);
+    const card = board.cards.find((item) => item.id === cardId);
+    if (!card) throw new Error('卡片不存在');
+    if (!card.result?.branch && !card.baseCommit) return { files: [], diff: '' };
+    return cardDiffDiff(board.cwd, {
+      ...(card.baseCommit || board.baseBranch ? { base: card.baseCommit ?? board.baseBranch } : {}),
+      ...(card.result?.branch ? { branch: card.result.branch } : {}),
+      ...(filePath ? { path: filePath } : {}),
+    });
+  }
+
+  /** 卡片会话里最近一次测试/检查命令的输出摘录。 */
+  cardChecks(boardId: string, cardId: string): BoardCardCheck | undefined {
+    const board = this.require(boardId);
+    const card = board.cards.find((item) => item.id === cardId);
+    if (!card) throw new Error('卡片不存在');
+    const rec = card.sessionId ? this.host.store.get(card.sessionId) : undefined;
+    return rec ? latestCheck(rec.messages) : undefined;
   }
 
   /** 演示工作区：写入一张预置看板，不启动调度。 */
@@ -421,7 +474,8 @@ export class BoardManager {
         this.setStatus(board, card, 'todo');
         break;
       case 'retry':
-        must('failed');
+        // 失败重试；已完成卡也允许「重新运行」（同一会话与 worktree 继续）
+        must('failed', 'done');
         card.attempts = 0;
         delete card.retryAt;
         this.setStatus(board, card, 'queued');

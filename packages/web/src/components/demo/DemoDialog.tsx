@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { FlaskConical, Play, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
 import type { DemoScenarioInfo } from '@tandem/protocol'
 import { useUiStore } from '../../store/useUiStore'
@@ -6,6 +6,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { useDemoStore } from '../../store/useDemoStore'
 import { openDemoScenario } from '../../lib/demoOpen'
 import { Button, IconButton } from '../ui/Button'
+import { ConfirmAction } from '../ui/ConfirmAction'
 import { Modal } from '../ui/Modal'
 import { cn } from '../../lib/cn'
 
@@ -25,6 +26,7 @@ export function DemoDialog() {
   const loading = useDemoStore((s) => (hostId ? s.loading[hostId] : false))
   const error = useDemoStore((s) => (hostId ? s.error[hostId] : undefined))
   const toast = useUiStore((s) => s.toast)
+  const [clearOpen, setClearOpen] = useState(false)
 
   useEffect(() => {
     if (!open || !host) return
@@ -39,7 +41,6 @@ export function DemoDialog() {
 
   const clear = async () => {
     if (!host) return
-    if (!window.confirm('清除全部演示数据？会话、记忆、用量、看板、Wiki、评测与索引都不会留下；真实数据不受影响。')) return
     const ok = await useDemoStore.getState().clear(host)
     if (ok) {
       toast('演示数据已清除', 'success')
@@ -121,7 +122,7 @@ export function DemoDialog() {
             <span className="ml-auto whitespace-nowrap">
               网络请求 {state.networkRequests} 次 · 可随时清除
             </span>
-            <Button size="sm" variant="danger-ghost" icon={<Trash2 size={12} />} onClick={() => void clear()} disabled={loading}>
+            <Button size="sm" variant="danger-ghost" icon={<Trash2 size={12} />} onClick={() => setClearOpen(true)} disabled={loading}>
               清除全部演示数据
             </Button>
           </div>
@@ -176,6 +177,16 @@ export function DemoDialog() {
           ))}
         </div>
       )}
+      <ConfirmAction
+        open={clearOpen}
+        title="清除全部演示数据"
+        description="会话、记忆、用量、看板、Wiki、评测与索引都不会留下；真实数据不受影响。"
+        confirmLabel="清除演示数据"
+        danger
+        onConfirm={() => void clear()}
+        onClose={() => setClearOpen(false)}
+        testId="demo-clear-confirm"
+      />
     </Modal>
   )
 }

@@ -1,6 +1,8 @@
 // 历史压缩：复用 /compact 提示词，把较早的对话压成摘要，并保留最近若干轮原文。
 // 供手动 /compact、请求前自动压缩、上下文超长报错后的兜底压缩共用。
 import { randomUUID } from 'node:crypto';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import type { ContentBlock, Message } from '@tandem/protocol';
 import type { Host } from '../host.js';
 import type { SessionRecord } from '../types.js';
@@ -24,6 +26,46 @@ export interface CompactHistoryOptions {
   /** 强制压缩：历史不足 keepTurns 时也至少压掉最老的一轮（上下文已超长时使用）。 */
   force?: boolean;
   signal?: AbortSignal;
+}
+
+/** 最近一次压缩被替换掉的原文：供「查看原文」与「撤销压缩」使用。 */
+export interface CompactionBackup {
+  /** 对应的压缩提示消息 id。 */
+  noticeId: string;
+  at: number;
+  summary: string;
+  messages: Message[];
+}
+
+function backupPath(home: string, sessionId: string): string {
+  const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_');
+  return path.join(home, 'sessions', `${safe}.compact.json`);
+}
+
+export function writeCompactionBackup(home: string, sessionId: string, backup: CompactionBackup): void {
+  const file = backupPath(home, sessionId);
+  mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, JSON.stringify(backup), { encoding: 'utf8', mode: 0o600 });
+  renameSync(tmp, file);
+}
+
+export function readCompactionBackup(home: string, sessionId: string): CompactionBackup | undefined {
+  try {
+    const raw = JSON.parse(readFileSync(backupPath(home, sessionId), 'utf8')) as CompactionBackup;
+    if (!raw || typeof raw.noticeId !== 'string' || !Array.isArray(raw.messages)) return undefined;
+    return raw;
+  } catch {
+    return undefined;
+  }
+}
+
+export function clearCompactionBackup(home: string, sessionId: string): void {
+  try {
+    rmSync(backupPath(home, sessionId), { force: true });
+  } catch {
+    // 留档清理失败不影响会话本身
+  }
 }
 
 export interface CompactHistoryResult {
@@ -154,6 +196,22 @@ export async function compactHistory(
     notice: true,
     compaction: { summary, savedTokens, keptTurns: keepTurns, auto: opts.auto },
   };
+
+  // 原文留档：界面可展开原文并提供撤销；只保留最近一次压缩。
+  for (const message of history) {
+    if (message.compaction) delete message.compaction.canUndo;
+  }
+  try {
+    writeCompactionBackup(host.home, rec.id, {
+      noticeId: notice.id,
+      at: notice.createdAt,
+      summary,
+      messages: older,
+    });
+    notice.compaction!.canUndo = true;
+  } catch (err) {
+    console.warn('[tandem] 保存压缩原文失败:', errorMessage(err));
+  }
 
   recordCompactUsage(host, rec, opts.model, profile, result.usage, compactKey?.keyId);
 

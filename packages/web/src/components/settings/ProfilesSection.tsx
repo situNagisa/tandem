@@ -41,6 +41,7 @@ import { PROVIDER_KIND_LABELS, type HostConfig } from '../../lib/types'
 import { formatElapsed } from '../../lib/format'
 import { useNow } from '../../lib/hooks'
 import { cn } from '../../lib/cn'
+import { ConfirmAction } from '../ui/ConfirmAction'
 import { Modal } from '../ui/Modal'
 import { Button, IconButton } from '../ui/Button'
 import { SegmentedControl } from '../ui/Controls'
@@ -971,29 +972,18 @@ export function ProfilesSection() {
         </div>
       )}
 
-      <Modal
+      <ConfirmAction
         open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
         title="删除账号"
-        className="max-w-md"
-        footer={
-          <>
-            <Button onClick={() => setDeleteTarget(null)}>
-              取消
-            </Button>
-            <Button
-              variant="danger-ghost"
-              onClick={() => deleteTarget && void remove(deleteTarget)}
-            >
-              删除
-            </Button>
-          </>
-        }
-      >
-        <p className="text-[13px] leading-6 text-text-soft">
-          删除账号「{deleteTarget?.name}」？使用它的会话需要重新选择账号。
-        </p>
-      </Modal>
+        description={`删除账号「${deleteTarget?.name ?? ''}」？使用它的会话需要重新选择账号。`}
+        confirmLabel="删除"
+        danger
+        onConfirm={() => {
+          if (deleteTarget) void remove(deleteTarget)
+        }}
+        onClose={() => setDeleteTarget(null)}
+        testId="profile-delete-confirm"
+      />
     </div>
   )
 }

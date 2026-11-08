@@ -10,6 +10,7 @@ import type {
   UpdateSessionInput,
 } from '@tandem/protocol';
 import { commitChanges, getChanges, getFileDiff, revertChanges } from '../changes.js';
+import { clearCompactionBackup, readCompactionBackup } from '../host/compaction.js';
 import { createPullRequest, failedCheckPrompt, getVcsState, mergePullRequest } from '../vcs.js';
 import { bad, statusOf, str, type RouteDeps } from './common.js';
 import { memberCanAccessPath, memberCanSeeSession, principalOf } from '../team/access.js';
@@ -182,6 +183,48 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
     });
     if (!block) return bad(reply, '内容块不存在', 404);
     return { block };
+  });
+
+  // 压缩提示「查看原文」：返回被压掉的原始消息（仅最近一次压缩有留档）。
+  app.get('/api/sessions/:id/compaction/:noticeId', async (req, reply) => {
+    const { id, noticeId } = req.params as { id: string; noticeId: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    const notice = rec.messages.find((message) => message.id === noticeId);
+    if (!notice?.compaction) return bad(reply, '压缩提示不存在', 404);
+    const backup = readCompactionBackup(host.home, id);
+    if (!backup || backup.noticeId !== noticeId) {
+      return bad(reply, '原文已不可用（只保留最近一次压缩的原文）', 409);
+    }
+    return { summary: notice.compaction.summary, messages: backup.messages };
+  });
+
+  // 撤销压缩：恢复压缩前的消息；只允许撤销最近一次压缩。
+  app.post('/api/sessions/:id/compaction/:noticeId/undo', async (req, reply) => {
+    const { id, noticeId } = req.params as { id: string; noticeId: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    if (host.isRunning(id)) return bad(reply, '会话正在运行，结束后才能撤销压缩', 409);
+    const index = rec.messages.findIndex((message) => message.id === noticeId);
+    if (index < 0 || !rec.messages[index]?.compaction) return bad(reply, '压缩提示不存在', 404);
+    const backup = readCompactionBackup(host.home, id);
+    if (!backup || backup.noticeId !== noticeId) {
+      return bad(reply, '原文已不可用（只保留最近一次压缩的原文）', 409);
+    }
+    rec.messages = [
+      ...backup.messages.filter((message) => message.id !== noticeId),
+      ...rec.messages.slice(index + 1),
+    ];
+    for (const message of rec.messages) {
+      if (message.compaction) {
+        if (message.compaction.canUndo) delete message.compaction.canUndo;
+      }
+    }
+    host.store.markDirty(id, true);
+    host.broadcastSnapshot(rec);
+    host.broadcastSummary(rec);
+    clearCompactionBackup(host.home, id);
+    return host.toSession(rec);
   });
 
   app.get('/api/sessions/:id/context', async (req, reply) => {

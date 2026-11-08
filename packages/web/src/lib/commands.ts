@@ -305,7 +305,7 @@ export const COMMANDS: AppCommand[] = [
         toast('会话正在运行，结束后才能压缩', 'info')
         return
       }
-      useAppStore.getState().send([{ type: 'text', text: '/compact' }])
+      useUiStore.getState().openCompactConfirm({ hostId: active.hostId, sessionId: active.sessionId })
     },
   },
 ]

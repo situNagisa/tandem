@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import type { ContextBreakdown, ContextTopItem } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
+import { useUiStore } from '../../store/useUiStore'
 import { useSessionTarget, useSessionView } from '../session/SessionScope'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
@@ -130,8 +131,10 @@ export function useContextBreakdown() {
 export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean }) {
   const { sessionId, context, usage, noData, window, used, rate, pct } =
     useContextBreakdown()
-  const send = useAppStore((s) => s.send)
-  const scopeTarget = useSessionTarget() ?? undefined
+  const openCompactConfirm = useUiStore((s) => s.openCompactConfirm)
+  const scopeTarget = useSessionTarget()
+  const activeHostId = useAppStore((s) => s.active?.hostId ?? null)
+  const activeSessionId = useAppStore((s) => s.active?.sessionId ?? null)
   const running = useSessionView((s) => s?.running ?? false)
 
   if (!sessionId) return null
@@ -141,7 +144,13 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
 
   const compact = (close: () => void) => {
     if (running || compactDisabled) return
-    if (send([{ type: 'text', text: '/compact' }], scopeTarget)) close()
+    close()
+    const target =
+      scopeTarget ??
+      (activeHostId && activeSessionId
+        ? { hostId: activeHostId, sessionId: activeSessionId }
+        : null)
+    if (target) openCompactConfirm(target)
   }
 
   return (

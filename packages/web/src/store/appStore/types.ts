@@ -124,6 +124,8 @@ export interface AppState {
   markInboxSeen: () => void
   setPermissionMode: (mode: PermissionMode, target?: SessionTarget) => Promise<void>
   rewind: (input: RewindInput, seedText?: string) => Promise<boolean>
+  /** 撤销最近一次手动压缩：恢复压缩前的上下文。 */
+  undoCompaction: (noticeId: string, target?: SessionTarget) => Promise<boolean>
   setModel: (
     profileId: string,
     groupId: string | undefined,

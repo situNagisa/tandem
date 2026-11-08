@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ContentBlock, InjectionChange, SessionSummary } from '@tandem/protocol'
-import { GitFork, ChevronRight } from 'lucide-react'
+import { GitFork } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useSessionView } from './session/SessionScope'
 import { cn } from '../lib/cn'
@@ -10,6 +10,7 @@ import { prettyModel } from '../lib/modelName'
 import type { HookNotice, ToolResultBlock, UiMessage } from '../lib/types'
 import { ToolGroup, entriesFromMessages } from './chat/ToolGroup'
 import { HookNoticeLine } from './chat/HookNoticeLine'
+import { CompactionNoticeLine } from './chat/CompactionNoticeLine'
 import { HandoffCard } from './chat/HandoffCard'
 import { UserMessage } from './chat/UserMessage'
 import { AssistantMessage } from './chat/AssistantMessage'
@@ -80,11 +81,14 @@ const GapRow = memo(function GapRow({
 const NoticeRow = memo(function NoticeRow({
   message,
   animate,
+  hostId,
+  sessionId,
 }: {
   message: UiMessage
   animate: boolean
+  hostId: string | null
+  sessionId: string | null
 }) {
-  const [open, setOpen] = useState(false)
   const route = message.route
   const rawText = message.content
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
@@ -95,28 +99,12 @@ const NoticeRow = memo(function NoticeRow({
     : rawText
   if (message.compaction) {
     return (
-      <div
-        className={cn('msg-row px-1 text-[12px] leading-4 text-muted', animate && 'chat-msg-enter')}
-        data-message-id={message.id}
-      >
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => setOpen((value) => !value)}
-          className="flex items-center gap-1 rounded px-0.5 text-left text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-        >
-          <ChevronRight
-            size={12}
-            className={cn('shrink-0 transition-transform', open && 'rotate-90')}
-          />
-          <span>{text}</span>
-        </button>
-        {open && (
-          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-surface-2/50 p-2 text-[12px] leading-4 text-text-soft">
-            {message.compaction.summary}
-          </pre>
-        )}
-      </div>
+      <CompactionNoticeLine
+        message={message}
+        hostId={hostId}
+        sessionId={sessionId}
+        animate={animate}
+      />
     )
   }
   return (
@@ -727,7 +715,15 @@ function MessageListInner({
           )
         }
         if (seg.kind === 'notice') {
-          return <NoticeRow key={seg.message.id} message={seg.message} animate={seg.animate} />
+          return (
+            <NoticeRow
+              key={seg.message.id}
+              message={seg.message}
+              animate={seg.animate}
+              hostId={activeHostId}
+              sessionId={storeSessionId}
+            />
+          )
         }
         if (seg.kind === 'gap') {
           return (

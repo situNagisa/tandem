@@ -1,9 +1,23 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, ExternalLink, GitBranch, PanelRightOpen, Pencil, Trash2, X } from 'lucide-react'
-import type { AiReviewFinding, Board, BoardCard } from '@tandem/protocol'
+import {
+  AlertTriangle,
+  ExternalLink,
+  FileDiff,
+  GitBranch,
+  GitMerge,
+  PanelRightOpen,
+  Pencil,
+  PlayCircle,
+  RotateCcw,
+  TerminalSquare,
+  Trash2,
+  X,
+} from 'lucide-react'
+import type { AiReviewFinding, Board, BoardCard, BoardCardStatus } from '@tandem/protocol'
 import { cn } from '../../lib/cn'
 import { STATUS_LABEL, depTitles, formatDuration, formatUsd } from '../../lib/board'
 import { Button, IconButton } from '../ui/Button'
+import { Modal } from '../ui/Modal'
 import { CardStatusIcon } from './BoardCardItem'
 
 export interface CardActions {
@@ -18,8 +32,93 @@ export interface CardActions {
   fixReview: (card: BoardCard, note: string) => void
   openSession: (card: BoardCard) => void
   openSplit: (card: BoardCard) => void
+  /** 卡片分支相对起点的改动审阅（完成后也能核对）。 */
+  viewDiff: (card: BoardCard) => void
+  /** 卡片会话里最近一次测试/检查结果。 */
+  viewChecks: (card: BoardCard) => void
   edit: (card: BoardCard) => void
   remove: (card: BoardCard) => void
+}
+
+export type CardActionKey =
+  | 'start'
+  | 'unqueue'
+  | 'stop'
+  | 'approval'
+  | 'approve'
+  | 'reject'
+  | 'retry'
+  | 'merge'
+  | 'openSession'
+  | 'viewDiff'
+  | 'viewChecks'
+  | 'viewError'
+  | 'openSplit'
+  | 'edit'
+  | 'remove'
+
+interface CardActionDef {
+  key: CardActionKey
+  label: (card: BoardCard, board: Board) => string
+  primary?: boolean
+  /** 缺省总是显示；返回 false 时隐藏（如没有分支可合并）。 */
+  when?: (card: BoardCard, board: Board) => boolean
+}
+
+function canMerge(card: BoardCard): boolean {
+  return card.status === 'done' && !!card.result?.branch && !card.result.mergedAt
+}
+
+/**
+ * 状态 → 操作清单：抽屉与列表的操作按钮都从这里取，避免完成态只剩「删除」。
+ * 每个状态显式列出可用操作；按钮的顺序即展示顺序。
+ */
+export const CARD_ACTIONS_BY_STATUS: Record<BoardCardStatus, CardActionDef[]> = {
+  todo: [
+    { key: 'start', label: (card) => (card.proposedBy ? '接受并排队' : '放行'), primary: true },
+    { key: 'edit', label: () => '编辑' },
+    { key: 'remove', label: () => '删除' },
+  ],
+  queued: [
+    { key: 'unqueue', label: () => '撤回到待办' },
+    { key: 'stop', label: () => '停止' },
+    { key: 'openSession', label: () => '打开会话', when: (card) => !!card.sessionId },
+    { key: 'openSplit', label: () => '在分屏中打开', when: (card) => !!card.sessionId },
+    { key: 'remove', label: () => '删除' },
+  ],
+  running: [
+    { key: 'stop', label: () => '停止' },
+    { key: 'openSession', label: () => '打开会话', when: (card) => !!card.sessionId },
+    { key: 'openSplit', label: () => '在分屏中打开', when: (card) => !!card.sessionId },
+  ],
+  approval: [
+    { key: 'approval', label: () => '去处理审批', primary: true },
+    { key: 'stop', label: () => '停止' },
+  ],
+  review: [
+    { key: 'approve', label: () => '通过', primary: true },
+    { key: 'reject', label: () => '打回…' },
+    { key: 'openSession', label: () => '打开会话', when: (card) => !!card.sessionId },
+    { key: 'openSplit', label: () => '在分屏中打开', when: (card) => !!card.sessionId },
+    { key: 'remove', label: () => '删除' },
+  ],
+  done: [
+    { key: 'openSession', label: () => '打开会话', when: (card) => !!card.sessionId },
+    { key: 'viewDiff', label: () => '查看改动', when: (card) => !!card.result?.branch },
+    { key: 'viewChecks', label: () => '查看测试/检查结果', when: (card) => !!card.sessionId },
+    { key: 'merge', label: (_card, board) => `合并到 ${board.baseBranch ?? '基准分支'}`, primary: true, when: canMerge },
+    { key: 'retry', label: () => '重新运行', when: (card) => !!card.sessionId },
+    { key: 'openSplit', label: () => '在分屏中打开', when: (card) => !!card.sessionId },
+    { key: 'remove', label: () => '删除' },
+  ],
+  failed: [
+    { key: 'viewError', label: () => '查看错误', when: (card) => !!card.error },
+    { key: 'retry', label: () => '重试', primary: true },
+    { key: 'openSession', label: () => '打开会话', when: (card) => !!card.sessionId },
+    { key: 'openSplit', label: () => '在分屏中打开', when: (card) => !!card.sessionId },
+    { key: 'edit', label: () => '编辑' },
+    { key: 'remove', label: () => '删除' },
+  ],
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -31,57 +130,102 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-/** 按卡片状态给出主/次动作；桌面抽屉与手机详情共用。 */
+const ACTION_ICON: Partial<Record<CardActionKey, React.ReactNode>> = {
+  openSession: <ExternalLink />,
+  openSplit: <PanelRightOpen size={13} />,
+  viewDiff: <FileDiff size={13} />,
+  viewChecks: <TerminalSquare size={13} />,
+  viewError: <AlertTriangle size={13} />,
+  merge: <GitMerge size={13} />,
+  retry: <RotateCcw size={13} />,
+  start: <PlayCircle size={13} />,
+  edit: <Pencil />,
+  remove: <Trash2 />,
+}
+
+/** 按状态映射表渲染动作；桌面抽屉、手机列表与详情共用。 */
 export function CardActionBar({ card, board, actions, className }: { card: BoardCard; board: Board; actions: CardActions; className?: string }) {
-  const [merging, setMerging] = useState(false)
-  const canMerge = card.status === 'done' && !!card.result?.branch && !card.result.mergedAt
+  const [errorOpen, setErrorOpen] = useState(false)
+  const defs = CARD_ACTIONS_BY_STATUS[card.status].filter((def) => !def.when || def.when(card, board))
   return (
     <div className={cn('flex flex-wrap items-center gap-2', className)}>
-      {card.status === 'todo' && (
-        <Button variant="primary" onClick={() => actions.start(card)}>
-          {card.proposedBy ? '接受并排队' : '放行'}
-        </Button>
-      )}
-      {card.status === 'queued' && <Button onClick={() => actions.unqueue(card)}>撤回到待办</Button>}
-      {(card.status === 'running' || card.status === 'approval') && <Button onClick={() => actions.stop(card)}>停止</Button>}
-      {card.status === 'approval' && (
-        <Button variant="primary" onClick={() => actions.openSession(card)}>去处理审批</Button>
-      )}
-      {card.status === 'review' && (
-        <>
-          <Button variant="primary" onClick={() => actions.approve(card)}>通过</Button>
-          <Button onClick={() => actions.reject(card)}>打回…</Button>
-        </>
-      )}
-      {card.status === 'failed' && <Button variant="primary" onClick={() => actions.retry(card)}>重试</Button>}
-      {canMerge && (
-        <Button
-          variant={card.status === 'done' ? 'primary' : 'secondary'}
-          disabled={merging}
-          onClick={async () => {
-            setMerging(true)
-            try {
-              await actions.merge(card)
-            } finally {
-              setMerging(false)
-            }
-          }}
-        >
-          合并到 {board.baseBranch ?? '基准分支'}
-        </Button>
-      )}
-      {card.sessionId && card.status !== 'approval' && (
-        <>
-          <Button icon={<ExternalLink />} onClick={() => actions.openSession(card)}>打开会话</Button>
-          <Button icon={<PanelRightOpen size={13} />} onClick={() => actions.openSplit(card)}>在分屏中打开</Button>
-        </>
-      )}
-      {['todo', 'queued', 'failed'].includes(card.status) && (
-        <Button icon={<Pencil />} onClick={() => actions.edit(card)}>编辑</Button>
-      )}
-      {card.status !== 'running' && card.status !== 'approval' && (
-        <Button variant="danger-ghost" icon={<Trash2 />} onClick={() => actions.remove(card)}>删除</Button>
-      )}
+      {defs.map((def) => {
+        const run = () => {
+          switch (def.key) {
+            case 'start':
+              actions.start(card)
+              break
+            case 'unqueue':
+              actions.unqueue(card)
+              break
+            case 'stop':
+              actions.stop(card)
+              break
+            case 'approval':
+              actions.openSession(card)
+              break
+            case 'approve':
+              actions.approve(card)
+              break
+            case 'reject':
+              actions.reject(card)
+              break
+            case 'retry':
+              actions.retry(card)
+              break
+            case 'merge':
+              void actions.merge(card)
+              break
+            case 'openSession':
+              actions.openSession(card)
+              break
+            case 'viewDiff':
+              actions.viewDiff(card)
+              break
+            case 'viewChecks':
+              actions.viewChecks(card)
+              break
+            case 'viewError':
+              setErrorOpen(true)
+              break
+            case 'openSplit':
+              actions.openSplit(card)
+              break
+            case 'edit':
+              actions.edit(card)
+              break
+            case 'remove':
+              actions.remove(card)
+              break
+          }
+        }
+        return (
+          <Button
+            key={def.key}
+            variant={def.key === 'remove' ? 'danger-ghost' : def.primary ? 'primary' : 'secondary'}
+            icon={ACTION_ICON[def.key]}
+            onClick={run}
+            data-card-action={def.key}
+          >
+            {def.label(card, board)}
+          </Button>
+        )
+      })}
+      <Modal
+        open={errorOpen}
+        onClose={() => setErrorOpen(false)}
+        title="卡片错误"
+        className="max-w-lg"
+        footer={
+          <Button size="lg" onClick={() => setErrorOpen(false)}>
+            关闭
+          </Button>
+        }
+      >
+        <pre className="max-h-[50dvh] overflow-auto whitespace-pre-wrap break-words text-[13px] leading-6 text-danger">
+          {card.error ?? '没有记录错误信息'}
+        </pre>
+      </Modal>
     </div>
   )
 }

@@ -26,6 +26,7 @@ export type SessionsSlice = Pick<
   | 'reloadActiveSession'
   | 'setPermissionMode'
   | 'rewind'
+  | 'undoCompaction'
   | 'setModel'
   | 'createSession'
   | 'startSession'
@@ -161,6 +162,25 @@ export function createSessionsSlice(
         conn.subscribe(sessionId, { tail: SESSION_TAIL_MESSAGES })
       } else {
         void core.loadSessionFallback(hostId, sessionId)
+      }
+    },
+
+    undoCompaction: async (noticeId, target) => {
+      const view = viewOf(target)
+      const host = view ? getHost(view.hostId) : undefined
+      if (!view || !host) return false
+      if (view.running) {
+        toast('会话正在运行，结束后才能撤销压缩', 'error')
+        return false
+      }
+      try {
+        const session = await api.undoCompaction(host, view.sessionId, noticeId)
+        applySnapshot(view.hostId, session, [])
+        toast('已恢复压缩前的上下文', 'success')
+        return true
+      } catch (err) {
+        toast(err instanceof Error ? err.message : '撤销压缩失败', 'error')
+        return false
       }
     },
 

@@ -24,6 +24,7 @@ import { useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
 import { DiffView, type DiffCommentDraft } from './DiffView'
 import { Modal } from './ui/Modal'
+import { ConfirmAction } from './ui/ConfirmAction'
 import { Button, IconButton } from './ui/Button'
 import { Menu } from './ui/Menu'
 import { Popover } from './ui/Popover'
@@ -962,71 +963,41 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
         </>
       )}
 
-      <Modal
+      <ConfirmAction
         open={!!revertTarget}
-        onClose={() => setRevertTarget(null)}
         title="丢弃改动"
-        className="max-w-md"
-        footer={
-          <>
-            <Button size="lg" onClick={() => setRevertTarget(null)} disabled={reverting}>
-              取消
-            </Button>
-            <Button
-              size="lg"
-              variant="danger-ghost"
-              onClick={() => void doRevert()}
-              disabled={reverting}
-            >
-              {reverting && <Loader2 size={14} className="animate-spin" />}
-              丢弃改动
-            </Button>
-          </>
-        }
+        description={`确定丢弃 ${revertTarget?.path ?? ''} 的改动？此操作不可撤销。`}
+        confirmLabel="丢弃改动"
+        successText="已丢弃改动"
+        danger
+        onConfirm={doRevert}
+        onClose={() => setRevertTarget(null)}
+        testId="revert-file-confirm"
       >
-        <p className="text-[13px] leading-6 text-text-soft">
-          确定丢弃 <span className="font-mono text-[12px] text-text">{revertTarget?.path}</span> 的改动？
-          此操作不可撤销。
-        </p>
         {revertTarget?.status === 'untracked' && (
           <p className="mt-2 rounded-lg border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[12px] leading-5 text-danger">
             这是未跟踪文件，丢弃会直接删除该文件（及其内容）。
           </p>
         )}
-      </Modal>
+      </ConfirmAction>
 
-      <Modal
+      <ConfirmAction
         open={discardAllOpen}
-        onClose={() => setDiscardAllOpen(false)}
         title="丢弃全部改动"
-        className="max-w-md"
-        footer={
-          <>
-            <Button size="lg" onClick={() => setDiscardAllOpen(false)} disabled={discardingAll}>
-              取消
-            </Button>
-            <Button
-              size="lg"
-              variant="danger-ghost"
-              onClick={() => void doRevertAll()}
-              disabled={discardingAll}
-            >
-              {discardingAll && <Loader2 size={14} className="animate-spin" />}
-              全部丢弃
-            </Button>
-          </>
-        }
+        description={`确定丢弃全部 ${files.length} 个文件的改动？此操作不可撤销。`}
+        confirmLabel="全部丢弃"
+        successText="已丢弃全部改动"
+        danger
+        onConfirm={doRevertAll}
+        onClose={() => setDiscardAllOpen(false)}
+        testId="discard-all-confirm"
       >
-        <p className="text-[13px] leading-6 text-text-soft">
-          确定丢弃全部 <span className="font-medium text-text">{files.length}</span>{' '}
-          个文件的改动？此操作不可撤销。
-        </p>
         {untrackedCount > 0 && (
           <p className="mt-2 rounded-lg border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[12px] leading-5 text-danger">
             其中 {untrackedCount} 个未跟踪文件会被直接删除（及其内容）。
           </p>
         )}
-      </Modal>
+      </ConfirmAction>
 
       <Modal
         open={commitConfirmOpen}

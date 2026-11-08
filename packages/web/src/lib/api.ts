@@ -3,8 +3,11 @@ import type {
   Board,
   BoardCard,
   BoardCardAction,
+  BoardCardCheck,
+  BoardCardDiff,
   BoardCardInput,
   BoardInput,
+  BoardMergePreview,
   BoardPlanDraft,
   BoardPrInput,
   BoardPrResult,
@@ -26,6 +29,7 @@ import type {
   MemoryFile,
   MemoryListItem,
   MemoryScope,
+  Message,
   MessagePage,
   CreatePrInput,
   DiffEmptyReason,
@@ -37,6 +41,7 @@ import type {
   ExternalSession,
   ExternalSource,
   FsEntry,
+  FsGitResult,
   GatewayOverview,
   GatewaySettings,
   GatewayToken,
@@ -573,6 +578,17 @@ export const api = {
       body: JSON.stringify(input),
     }),
 
+  compactionOriginal: (h: HostConfig, id: string, noticeId: string) =>
+    request<{ summary: string; messages: Message[] }>(
+      h,
+      `/api/sessions/${encodeURIComponent(id)}/compaction/${encodeURIComponent(noticeId)}`,
+    ),
+  undoCompaction: (h: HostConfig, id: string, noticeId: string) =>
+    request<Session>(
+      h,
+      `/api/sessions/${encodeURIComponent(id)}/compaction/${encodeURIComponent(noticeId)}/undo`,
+      { method: 'POST' },
+    ),
   changes: (h: HostConfig, id: string) =>
     request<ChangesResult>(h, `/api/sessions/${encodeURIComponent(id)}/changes`),
   changesDiff: (h: HostConfig, id: string, path: string) =>
@@ -818,6 +834,8 @@ export const api = {
   context: (h: HostConfig, sessionId: string) =>
     request<ContextBreakdown>(h, `/api/sessions/${encodeURIComponent(sessionId)}/context`),
 
+  fsGit: (h: HostConfig, path: string) =>
+    request<FsGitResult>(h, `/api/fs/git${qs({ path })}`),
   fsRead: (h: HostConfig, path: string, cwd?: string) =>
     request<FsReadResult>(h, `/api/fs/read${qs({ path, cwd })}`),
   fsReveal: (h: HostConfig, path: string) =>
@@ -939,6 +957,18 @@ export const api = {
       h,
       `/api/boards/${encodeURIComponent(boardId)}/merge-all`,
       { method: 'POST', body: JSON.stringify({}) },
+    ),
+  boardMergePreview: (h: HostConfig, boardId: string) =>
+    request<BoardMergePreview>(h, `/api/boards/${encodeURIComponent(boardId)}/merge-preview`),
+  boardCardDiff: (h: HostConfig, boardId: string, cardId: string, filePath?: string) =>
+    request<BoardCardDiff>(
+      h,
+      `/api/boards/${encodeURIComponent(boardId)}/cards/${encodeURIComponent(cardId)}/diff${qs({ path: filePath })}`,
+    ),
+  boardCardChecks: (h: HostConfig, boardId: string, cardId: string) =>
+    request<{ check?: BoardCardCheck }>(
+      h,
+      `/api/boards/${encodeURIComponent(boardId)}/cards/${encodeURIComponent(cardId)}/checks`,
     ),
   planBoard: (h: HostConfig, boardId: string, goal: string) =>
     request<{ drafts: BoardPlanDraft[] }>(h, `/api/boards/${encodeURIComponent(boardId)}/plan`, {

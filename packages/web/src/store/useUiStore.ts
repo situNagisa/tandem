@@ -58,6 +58,8 @@ interface UiState {
   changesWidth: number
   filePreview: FilePreviewTarget | null
   filePreviewWidth: number
+  /** 应用预览侧面板宽度（桌面）。 */
+  previewWidth: number
   /** 预览面板左侧的文件浏览器是否展开。 */
   fileBrowserVisible: boolean
   fileBrowserWidth: number
@@ -67,6 +69,8 @@ interface UiState {
   settingsTab: SettingsTab
   /** 从命令面板/设置搜索定位到某一项：滚动并短暂高亮。 */
   settingsFocus: { id: string; nonce: number } | null
+  /** 手动压缩上下文的确认框目标会话（上下文面板与命令面板共用）。 */
+  compactConfirm: { hostId: string; sessionId: string } | null
   /** 新功能导览 / 关于 / 重新看上手指引。 */
   tourOpen: boolean
   aboutOpen: boolean
@@ -144,6 +148,7 @@ interface UiState {
   openFilePreview: (target: FilePreviewTarget) => void
   closeFilePreview: () => void
   setFilePreviewWidth: (width: number) => void
+  setPreviewWidth: (width: number) => void
   setFileBrowserVisible: (visible: boolean) => void
   setFileBrowserWidth: (width: number) => void
   setMobileSidebar: (open: boolean) => void
@@ -152,6 +157,7 @@ interface UiState {
   closeSettings: () => void
   setSettingsTab: (tab: SettingsTab) => void
   focusSetting: (tab: SettingsTab, id: string) => void
+  openCompactConfirm: (target: { hostId: string; sessionId: string } | null) => void
   setTourOpen: (open: boolean) => void
   setAboutOpen: (open: boolean) => void
   setOnboardingOpen: (open: boolean) => void
@@ -174,7 +180,7 @@ interface UiState {
   toast: (
     text: string,
     kind?: Toast['kind'],
-    options?: { onClick?: () => void; actionLabel?: string },
+    options?: { onClick?: () => void; actionLabel?: string; durationMs?: number },
   ) => void
   dismissToast: (id: number) => void
   seedPrompt: (text: string) => void
@@ -279,6 +285,7 @@ export const useUiStore = create<UiState>((set, get) => {
   changesWidth: Math.min(760, Math.max(380, prefs.changesWidth ?? 520)),
   filePreview: null,
   filePreviewWidth: Math.min(900, Math.max(380, prefs.filePreviewWidth ?? 560)),
+  previewWidth: Math.min(1200, Math.max(360, prefs.previewWidth ?? 560)),
   fileBrowserVisible: prefs.fileBrowserVisible ?? false,
   fileBrowserWidth: Math.min(360, Math.max(160, prefs.fileBrowserWidth ?? 220)),
   mobileSidebar: false,
@@ -286,6 +293,7 @@ export const useUiStore = create<UiState>((set, get) => {
   settingsOpen: false,
   settingsTab: 'profiles',
   settingsFocus: null,
+  compactConfirm: null,
   tourOpen: false,
   aboutOpen: false,
   onboardingOpen: false,
@@ -394,6 +402,11 @@ export const useUiStore = create<UiState>((set, get) => {
     saveUiPrefs({ filePreviewWidth: next })
     set({ filePreviewWidth: next })
   },
+  setPreviewWidth: (width) => {
+    const next = Math.min(1200, Math.max(360, Math.round(width)))
+    saveUiPrefs({ previewWidth: next })
+    set({ previewWidth: next })
+  },
   setFileBrowserVisible: (visible) => {
     saveUiPrefs({ fileBrowserVisible: visible })
     set({ fileBrowserVisible: visible })
@@ -422,6 +435,7 @@ export const useUiStore = create<UiState>((set, get) => {
       mobileSidebar: false,
       mobilePanel: false,
     })),
+  openCompactConfirm: (target) => set({ compactConfirm: target }),
   setTourOpen: (open) =>
     set(open ? { tourOpen: true, aboutOpen: false, mobileSidebar: false } : { tourOpen: false }),
   setAboutOpen: (open) =>
@@ -505,7 +519,7 @@ export const useUiStore = create<UiState>((set, get) => {
     const timer = window.setTimeout(() => {
       toastTimers.delete(id)
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
-    }, 4500)
+    }, options?.durationMs ?? 4500)
     toastTimers.set(id, timer)
   },
   dismissToast: (id) => {

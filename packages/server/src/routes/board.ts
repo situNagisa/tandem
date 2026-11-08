@@ -103,6 +103,36 @@ export function registerBoardRoutes(app: FastifyInstance, deps: RouteDeps): void
     }
   });
 
+  // 合并前确认：目标分支、待合并卡与文件清单。
+  app.get('/api/boards/:id/merge-preview', async (req, reply) => {
+    try {
+      return await boards().mergePreview((req.params as { id: string }).id);
+    } catch (err) {
+      return bad(reply, errorMessage(err), statusOf(err));
+    }
+  });
+
+  // 卡片分支相对起点的 diff（合并确认里点开看 diff / 卡片「查看改动」）。
+  app.get('/api/boards/:id/cards/:cid/diff', async (req, reply) => {
+    const params = req.params as { id: string; cid: string };
+    const query = (req.query ?? {}) as { path?: string };
+    try {
+      return await boards().cardDiff(params.id, params.cid, query.path || undefined);
+    } catch (err) {
+      return bad(reply, errorMessage(err), statusOf(err));
+    }
+  });
+
+  // 卡片会话里最近一次测试/检查命令的结果（卡片「查看测试结果」）。
+  app.get('/api/boards/:id/cards/:cid/checks', async (req, reply) => {
+    const params = req.params as { id: string; cid: string };
+    try {
+      return { check: boards().cardChecks(params.id, params.cid) };
+    } catch (err) {
+      return bad(reply, errorMessage(err), statusOf(err));
+    }
+  });
+
   app.post('/api/boards/:id/plan', async (req, reply) => {
     const body = (req.body ?? {}) as { goal?: string };
     try {

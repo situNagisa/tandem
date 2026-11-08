@@ -5,6 +5,7 @@ import { api } from '../../lib/api'
 import { COLUMNS, MOBILE_GROUPS, boardCost, cardsOf, formatUsd, planDrop } from '../../lib/board'
 import { navigateBoard, type BoardRoute } from '../../lib/boardRoute'
 import { cn } from '../../lib/cn'
+import { nodeContains } from '../../lib/overlay'
 import { useIsMobile } from '../../lib/hooks'
 import { navigate } from '../../lib/router'
 import { boardKey, useBoardPolling, useBoardStore } from '../../store/useBoardStore'
@@ -16,6 +17,9 @@ import { Menu } from '../ui/Menu'
 import { Modal } from '../ui/Modal'
 import { BoardCardItem } from './BoardCardItem'
 import { CardActionBar, CardDetail, CardDrawerHeader, type CardActions } from './BoardDrawer'
+import { CardChecksDialog } from './CardChecksDialog'
+import { CardDiffDialog } from './CardDiffDialog'
+import { MergeConfirmDialog } from './MergeConfirmDialog'
 import { BoardPrDialog, BoardSettingsDialog, CardEditorDialog, ConfirmDialog, CreateBoardDialog, NoteDialog, PlanDialog } from './BoardDialogs'
 
 const NO_BOARDS: BoardSummary[] = []
@@ -60,6 +64,10 @@ export function BoardView({ route }: { route: BoardRoute }) {
   const [deletingBoard, setDeletingBoard] = useState(false)
   const [prOpen, setPrOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  /** 合并确认：cardId 给出时只合并这一张；缺省合并全部已完成卡。 */
+  const [mergeTarget, setMergeTarget] = useState<{ cardId?: string } | null>(null)
+  const [diffCard, setDiffCard] = useState<BoardCard | null>(null)
+  const [checksCard, setChecksCard] = useState<BoardCard | null>(null)
   const openBoardSplit = useUiStore((s) => s.openBoardSplit)
 
   const list = summaries ?? NO_BOARDS
@@ -105,16 +113,9 @@ export function BoardView({ route }: { route: BoardRoute }) {
       retry: (c) => void act(c, 'retry'),
       approve: (c) => void act(c, 'approve'),
       reject: (c) => setRejecting(c),
-      merge: async (c) => {
-        try {
-          const done = await api.boardCardAction(host, board.id, c.id, 'merge')
-          if (done.result?.mergeError) toast(`合并失败：${done.result.mergeError}`, 'error')
-          else toast(`已合并到 ${board.baseBranch ?? '基准分支'}`, 'success')
-        } catch (err) {
-          fail(err)
-        }
-        await reload()
-      },
+      merge: (c) => setMergeTarget({ cardId: c.id }),
+      viewDiff: (c) => setDiffCard(c),
+      viewChecks: (c) => setChecksCard(c),
       openSession: (c) => {
         if (c.sessionId) navigate({ kind: 'session', hostId: host.id, sessionId: c.sessionId })
       },
@@ -181,11 +182,18 @@ export function BoardView({ route }: { route: BoardRoute }) {
     }
   }
 
-  const mergeAll = async () => {
+  /** 确认后执行合并：单卡走卡片动作，多卡按依赖顺序批量合并。 */
+  const runMerge = async (ids: string[]) => {
     try {
-      const res = await api.mergeBoardAll(host, board.id)
-      if (res.failed.length > 0) toast(`已合并 ${res.merged.length} 张；失败：${res.failed[0]!.error}`, 'error')
-      else toast(res.merged.length > 0 ? `已按依赖顺序合并 ${res.merged.length} 张卡` : '没有待合并的已完成卡', 'success')
+      if (ids.length === 1) {
+        const done = await api.boardCardAction(host, board.id, ids[0]!, 'merge')
+        if (done.result?.mergeError) toast(`合并失败：${done.result.mergeError}`, 'error')
+        else toast(`已合并到 ${board.baseBranch ?? '基准分支'}`, 'success')
+      } else {
+        const res = await api.mergeBoardAll(host, board.id)
+        if (res.failed.length > 0) toast(`已合并 ${res.merged.length} 张；失败：${res.failed[0]!.error}`, 'error')
+        else toast(`已按依赖顺序合并 ${res.merged.length} 张卡`, 'success')
+      }
     } catch (err) {
       fail(err)
     }
@@ -217,7 +225,7 @@ export function BoardView({ route }: { route: BoardRoute }) {
       )}
       <Menu.Item onSelect={() => setCreating(true)}>新建看板…</Menu.Item>
       <Menu.Item onSelect={() => setSettingsOpen(true)}>看板设置…</Menu.Item>
-      <Menu.Item onSelect={() => void mergeAll()}>按依赖顺序合并全部已完成卡</Menu.Item>
+      <Menu.Item onSelect={() => setMergeTarget({})}>按依赖顺序合并全部已完成卡</Menu.Item>
       <Menu.Item onSelect={() => setPrOpen(true)}>开 PR…</Menu.Item>
       <Menu.Separator />
       <Menu.Item danger onSelect={() => setDeletingBoard(true)}>
@@ -264,7 +272,7 @@ export function BoardView({ route }: { route: BoardRoute }) {
           <div className="ml-auto flex items-center gap-1.5">
             {!isMobile && parallelSelect}
             {!isMobile && (
-              <Button icon={<GitMerge />} onClick={() => void mergeAll()}>
+              <Button icon={<GitMerge />} onClick={() => setMergeTarget({})} data-testid="board-merge-all">
                 合并
               </Button>
             )}
@@ -305,7 +313,7 @@ export function BoardView({ route }: { route: BoardRoute }) {
                   </Menu.Item>
                   <Menu.Item onSelect={() => setSettingsOpen(true)}>看板设置…</Menu.Item>
                   <Menu.Item onSelect={() => setPrOpen(true)}>开 PR…</Menu.Item>
-                  <Menu.Item onSelect={() => void mergeAll()}>按依赖顺序合并全部已完成卡</Menu.Item>
+                  <Menu.Item onSelect={() => setMergeTarget({})}>按依赖顺序合并全部已完成卡</Menu.Item>
                 </Menu>
               </>
             )}
@@ -440,6 +448,30 @@ export function BoardView({ route }: { route: BoardRoute }) {
           void reload()
         }}
       />
+      <MergeConfirmDialog
+        open={!!mergeTarget}
+        host={host}
+        board={board}
+        {...(mergeTarget?.cardId ? { cardId: mergeTarget.cardId } : {})}
+        onClose={() => setMergeTarget(null)}
+        onConfirm={runMerge}
+      />
+      <CardDiffDialog
+        open={!!diffCard}
+        host={host}
+        boardId={board.id}
+        cardId={diffCard?.id ?? ''}
+        title={diffCard?.title}
+        onClose={() => setDiffCard(null)}
+      />
+      <CardChecksDialog
+        open={!!checksCard}
+        host={host}
+        boardId={board.id}
+        cardId={checksCard?.id ?? ''}
+        title={checksCard?.title}
+        onClose={() => setChecksCard(null)}
+      />
       <ConfirmDialog
         open={!!deleting}
         title="删除卡片"
@@ -528,7 +560,7 @@ function BoardColumns({
               setOver((cur) => (cur?.status === column.status && cur.beforeId === beforeId ? cur : { status: column.status, beforeId }))
             }}
             onDragLeave={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver((cur) => (cur?.status === column.status ? null : cur))
+              if (!nodeContains(e.currentTarget, e.relatedTarget)) setOver((cur) => (cur?.status === column.status ? null : cur))
             }}
             onDrop={(e) => {
               if (!drag || !valid) return

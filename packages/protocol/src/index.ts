@@ -462,6 +462,8 @@ export interface CompactionNotice {
   savedTokens: number;       // 压缩节省的估算 token
   keptTurns: number;         // 保留原文的最近轮数
   auto: boolean;             // 自动触发 / 手动压缩
+  /** 被压掉的原文已留档（仅最近一次压缩），可查看与撤销。 */
+  canUndo?: boolean;
 }
 
 export interface Session extends SessionSummary {
@@ -486,6 +488,10 @@ export interface Todo { content: string; status: 'pending' | 'in_progress' | 'co
 //   轮次大纲用的轻量索引：每轮用户消息的 id 与前 80 字摘要，不读取 / 下发全文。
 // GET /api/sessions/:id/message-block?messageId=&index= -> { block: ContentBlock }
 //   取单条消息的完整内容块（超大工具输出“显示全部”用）；也可用 toolUseId= 定位。
+// GET /api/sessions/:id/compaction/:noticeId -> { summary: string; messages: Message[] }
+//   压缩提示展开「查看原文」：返回被压掉的原始消息（仅最近一次压缩留档）。
+// POST /api/sessions/:id/compaction/:noticeId/undo -> Session
+//   撤销压缩：恢复压缩前的消息（noticeId 必须是最近一次压缩；会话运行中返回 409）。
 export interface MessagePage {
   messages: Message[];
   totalMessages: number;
@@ -990,6 +996,12 @@ export interface SttTestResult {
 
 export interface FsEntry { name: string; path: string; isDir: boolean }
 
+/** 目录的 git 环境（新会话页在创建会话前显示当前分支）。 */
+export interface FsGitResult {
+  isRepo: boolean;
+  env?: SessionEnv;
+}
+
 export interface FsReadResult {
   path: string;            // 解析后的绝对路径
   content: string;
@@ -1213,6 +1225,7 @@ export type BlockDelta =
 // GET    /api/sessions/:id/export     -> Session（完整）   POST /api/sessions/import { session: Session; cwd?: string } -> SessionSummary
 //        跨 Host 迁移会话：客户端从 A 导出、向 B 导入（cwd 可改为 B 上的目录），实现"中途更换主机"
 // GET    /api/fs/list?path=           -> FsEntry[]   目录选择器
+// GET    /api/fs/git?path=            -> FsGitResult 目录所在仓库与当前分支
 // GET    /api/fs/complete?cwd=&q=     -> string[]    @文件 补全（相对 cwd 的路径）
 // GET    /api/external-sessions?source=   -> ExternalSession[]    扫描 ~/.claude/projects、~/.codex/sessions
 // GET    /api/external-sessions/:source/:id -> Session            只读预览（转换为 Tandem 消息格式）
@@ -2319,6 +2332,49 @@ export type BoardCardAction =
   /** done 且最近一次合并冲突：让卡片会话在自己的 worktree 里解决冲突并提交，仍需用户再点合并。 */
   | 'resolve';
 
+/** 卡片分支相对起点的单文件改动统计。 */
+export interface BoardCardFileChange {
+  path: string;
+  additions: number;
+  deletions: number;
+}
+
+/** 卡片分支相对起点（baseCommit / 基准分支）的完整 diff，供合并前预览与「查看改动」。 */
+export interface BoardCardDiff {
+  branch?: string;
+  base?: string;
+  files: BoardCardFileChange[];
+  diff: string;
+  /** diff 过大时只返回前 1MB / 2 万行。 */
+  truncated?: boolean;
+}
+
+/** 卡片会话里最近一次测试/检查命令的输出摘录。 */
+export interface BoardCardCheck {
+  command: string;
+  output: string;
+  isError: boolean;
+  at?: number;
+}
+
+/** 合并前预览：列出将要合并的卡、目标分支与每张卡改动的文件。 */
+export interface BoardMergePreviewCard {
+  id: string;
+  title: string;
+  branch: string;
+  files: number;
+  additions: number;
+  deletions: number;
+  fileList: BoardCardFileChange[];
+}
+
+export interface BoardMergePreview {
+  /** 合并目标分支（看板基准分支）。 */
+  baseBranch?: string;
+  /** 按依赖顺序排列的待合并卡；没有可合并卡时为空。 */
+  cards: BoardMergePreviewCard[];
+}
+
 export interface BoardPrInput {
   cardIds: string[];
   /** 目标分支；缺省看板基准分支。 */
@@ -2344,6 +2400,9 @@ export interface BoardPrResult {
 // POST   /api/boards/:id/cards/:cid/action {action, note?, strategy?: 'merge'|'squash'} -> BoardCard
 // POST   /api/boards/:id/cards/:cid/move {beforeId?: string|null}  -> Board（列内排序：放到 beforeId 之前，null=列尾）
 // POST   /api/boards/:id/merge-all {strategy?} -> {merged: string[]; failed: {cardId: string; error: string}[]}
+// GET    /api/boards/:id/merge-preview        -> BoardMergePreview（合并前确认：目标分支、卡与文件清单）
+// GET    /api/boards/:id/cards/:cid/diff      -> BoardCardDiff（卡片分支相对起点的 diff；?path= 只看一个文件）
+// GET    /api/boards/:id/cards/:cid/checks    -> {check?: BoardCardCheck}（卡片会话里最近一次测试/检查结果）
 // POST   /api/boards/:id/plan {goal}          -> {drafts: BoardPlanDraft[]}（只返回草稿，不创建）
 // POST   /api/boards/:id/plan/apply {drafts}  -> {cards: BoardCard[]}（确认后创建，状态 todo）
 // POST   /api/boards/:id/pr {cardIds, base?}  -> BoardPrResult（按依赖顺序合到集成分支并开 PR；未安装 gh/glab 时返回 error）

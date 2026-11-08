@@ -16,6 +16,7 @@ import { featureOfPoint } from '../../lib/checklist'
 import { openChecklistAction, openDemoById } from '../../lib/demoOpen'
 import { saveFeedbackFile } from '../../lib/feedback'
 import { Button } from '../ui/Button'
+import { ConfirmAction } from '../ui/ConfirmAction'
 import { Modal } from '../ui/Modal'
 import { cn } from '../../lib/cn'
 
@@ -79,10 +80,12 @@ export function ChecklistDialog() {
     else toast('体验清单报告已导出；导出反馈包时也会自动附带', 'success')
   }
 
+  const [resetOpen, setResetOpen] = useState(false)
   const reset = () => {
-    if (!window.confirm('重置体验清单进度？只清除本地测试状态，不影响演示数据与反馈条目。')) return
     setProgress({})
     saveChecklistProgress({})
+    setResetOpen(false)
+    toast('体验清单进度已重置', 'success')
   }
 
   return (
@@ -108,7 +111,7 @@ export function ChecklistDialog() {
             通过 {totals.pass} · 有问题 {totals.fail} · 跳过 {totals.skip} · 未测 {totals.untested} / 共 {totals.total}
           </span>
           <span className="flex-1" />
-          <Button size="sm" variant="ghost" icon={<RotateCcw size={12} />} onClick={reset}>
+          <Button size="sm" variant="ghost" icon={<RotateCcw size={12} />} onClick={() => setResetOpen(true)}>
             重置进度
           </Button>
           <Button size="sm" variant="secondary" icon={<Download size={13} />} onClick={() => void exportReport()}>
@@ -219,6 +222,15 @@ export function ChecklistDialog() {
           <p className="py-8 text-center text-[12.5px] text-muted">全部测完了。可以关闭「只看未测」回顾结果。</p>
         )}
       </div>
+      <ConfirmAction
+        open={resetOpen}
+        title="重置体验清单进度"
+        description="只清除本地的测试状态，不影响演示数据与反馈条目。"
+        confirmLabel="重置进度"
+        onConfirm={reset}
+        onClose={() => setResetOpen(false)}
+        testId="checklist-reset-confirm"
+      />
     </Modal>
   )
 }
