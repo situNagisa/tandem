@@ -21,6 +21,7 @@ import { useIsMobile } from '../lib/hooks'
 import { Button, IconButton } from './ui/Button'
 import { SegmentedControl } from './ui/Controls'
 import { PanelBar, PanelBody } from './ui/Panel'
+import { ResizeHandle } from './ui/ResizeHandle'
 import { isLocalHostUrl } from '../lib/hostUrl'
 import { isRelayHost } from '../lib/relay'
 import {
@@ -166,48 +167,6 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
 
   const width = dragWidth ?? widthPref
 
-  const startResize = (e: React.PointerEvent) => {
-    if (e.button !== 0 || isMobile) return
-    e.preventDefault()
-    const startX = e.clientX
-    const startWidth = widthPref
-    setDragWidth(startWidth)
-    const move = (ev: PointerEvent) => setDragWidth(startWidth - (ev.clientX - startX))
-    const up = (ev: PointerEvent) => {
-      setWidth(startWidth - (ev.clientX - startX))
-      setDragWidth(null)
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-    }
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-  }
-
-  const startTreeResize = (e: React.PointerEvent) => {
-    if (e.button !== 0 || isMobile) return
-    e.preventDefault()
-    const startX = e.clientX
-    const startWidth = browserWidthPref
-    setDragTreeWidth(startWidth)
-    const move = (ev: PointerEvent) => setDragTreeWidth(startWidth + (ev.clientX - startX))
-    const up = (ev: PointerEvent) => {
-      setBrowserWidth(startWidth + (ev.clientX - startX))
-      setDragTreeWidth(null)
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-    }
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-  }
-
   const copyPath = async () => {
     if (!absPath) return
     if (!(await copyText(absPath))) {
@@ -243,12 +202,18 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
       style={{ width: isMobile ? '100%' : width, transition: dragWidth !== null ? 'none' : undefined }}
     >
       {!isMobile && (
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="调整文件预览宽度"
-          onPointerDown={startResize}
-          className="absolute left-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none hover:bg-[var(--t-border-strong)]/30"
+        <ResizeHandle
+          value={widthPref}
+          min={380}
+          max={900}
+          edge="left"
+          onChange={setDragWidth}
+          onCommit={(next) => {
+            setWidth(next)
+            setDragWidth(null)
+          }}
+          resetValue={560}
+          label="调整文件预览宽度"
         />
       )}
 
@@ -334,12 +299,19 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
                 onPick={(picked) => useUiStore.getState().openFilePreview({ path: picked, cwd })}
               />
             </div>
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="调整文件树宽度"
-              onPointerDown={startTreeResize}
-              className="w-1 shrink-0 cursor-col-resize touch-none transition-colors hover:bg-[var(--t-border-strong)]/30"
+            <ResizeHandle
+              inline
+              value={browserWidthPref}
+              min={160}
+              max={360}
+              edge="right"
+              onChange={setDragTreeWidth}
+              onCommit={(next) => {
+                setBrowserWidth(next)
+                setDragTreeWidth(null)
+              }}
+              resetValue={220}
+              label="调整文件树宽度"
             />
           </>
         )}

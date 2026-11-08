@@ -36,6 +36,7 @@ import type { HostConfig } from '../lib/types'
 import { Button, IconButton } from './ui/Button'
 import { Input, SegmentedControl } from './ui/Controls'
 import { PanelBar, PanelBody } from './ui/Panel'
+import { ResizeHandle } from './ui/ResizeHandle'
 
 const EMPTY_STATE: PreviewState = { sessionId: '', active: false, updatedAt: 0 }
 const EMPTY_SELECTIONS: PreviewSelection[] = []
@@ -406,29 +407,6 @@ export function PreviewPanel() {
     } finally {
       setBusy(null)
     }
-  }
-
-  const startResize = (e: React.PointerEvent) => {
-    if (e.button !== 0 || isMobile) return
-    e.preventDefault()
-    const startX = e.clientX
-    const startWidth = useUiStore.getState().previewWidth
-    setDragWidth(startWidth)
-    const move = (ev: PointerEvent) => {
-      setDragWidth(Math.min(1200, Math.max(360, startWidth - (ev.clientX - startX))))
-    }
-    const up = (ev: PointerEvent) => {
-      setPreviewWidth(startWidth - (ev.clientX - startX))
-      setDragWidth(null)
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-    }
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
   }
 
   const canEmbed = mountInfo?.embeddable === true
@@ -862,14 +840,18 @@ export function PreviewPanel() {
       className="relative flex h-full min-h-0 shrink-0 flex-col border-l border-border bg-bg"
       style={{ width: dragWidth ?? previewWidth, transition: dragWidth !== null ? 'none' : undefined }}
     >
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="调整预览面板宽度"
-        onPointerDown={startResize}
-        onDoubleClick={() => setPreviewWidth(560)}
-        title="拖动调整宽度，双击复位"
-        className="absolute left-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none hover:bg-[var(--t-border-strong)]/30"
+      <ResizeHandle
+        value={previewWidth}
+        min={360}
+        max={1200}
+        edge="left"
+        onChange={setDragWidth}
+        onCommit={(next) => {
+          setPreviewWidth(next)
+          setDragWidth(null)
+        }}
+        resetValue={560}
+        label="调整预览面板宽度"
       />
       {header}
       <PanelBody>{content}</PanelBody>

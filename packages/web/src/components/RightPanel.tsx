@@ -33,7 +33,7 @@ import { useSessionChanges } from '../lib/useChanges'
 import { copyText } from '../lib/clipboard'
 import { cn } from '../lib/cn'
 import { ApiError, api } from '../lib/api'
-import { useNow } from '../lib/hooks'
+import { useIsMobile, useNow } from '../lib/hooks'
 import { prettyModel } from '../lib/modelName'
 import { runningSince } from '../lib/runClock'
 import {
@@ -53,6 +53,32 @@ import { Modal } from './ui/Modal'
 import { Menu } from './ui/Menu'
 import { Button, IconButton } from './ui/Button'
 import { PanelBar, PanelBody } from './ui/Panel'
+import { ResizeHandle } from './ui/ResizeHandle'
+
+/** 会话信息面板宽度：280–600，记住用户拖过的位置（#03）。 */
+const PANEL_WIDTH_KEY = 'tandem.rightPanelWidth.v1'
+const PANEL_WIDTH_DEFAULT = 300
+const PANEL_WIDTH_MIN = 280
+const PANEL_WIDTH_MAX = 600
+
+function loadPanelWidth(): number {
+  try {
+    const n = Number(localStorage.getItem(PANEL_WIDTH_KEY))
+    return Number.isFinite(n) && n >= PANEL_WIDTH_MIN && n <= PANEL_WIDTH_MAX
+      ? Math.round(n)
+      : PANEL_WIDTH_DEFAULT
+  } catch {
+    return PANEL_WIDTH_DEFAULT
+  }
+}
+
+function savePanelWidth(width: number): void {
+  try {
+    localStorage.setItem(PANEL_WIDTH_KEY, String(Math.round(width)))
+  } catch {
+    // localStorage 不可用时仅本次会话有效
+  }
+}
 
 const EMPTY_TODOS: Todo[] = []
 const EMPTY_MESSAGES: UiMessage[] = []
@@ -88,6 +114,9 @@ import { ContextCard } from './right-panel/ContextCard'
 import { WikiCard } from './right-panel/WikiCard'
 
 export function RightPanel({ onClose }: { onClose: () => void }) {
+  const isMobile = useIsMobile()
+  const [panelWidth, setPanelWidth] = useState(loadPanelWidth)
+  const [dragWidth, setDragWidth] = useState<number | null>(null)
   const hostId = useAppStore((s) => s.active?.hostId ?? null)
   const sessionId = useAppStore((s) => s.active?.sessionId ?? null)
   const summary = useAppStore((s) => s.active?.summary ?? null)
@@ -770,7 +799,29 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <aside className="flex h-full w-full flex-col border-l border-border bg-sidebar md:w-[300px]">
+    <aside
+      className="relative flex h-full min-h-0 flex-col border-l border-border bg-sidebar"
+      style={{
+        width: isMobile ? '100%' : (dragWidth ?? panelWidth),
+        transition: dragWidth !== null ? 'none' : undefined,
+      }}
+    >
+      {!isMobile && (
+        <ResizeHandle
+          value={panelWidth}
+          min={PANEL_WIDTH_MIN}
+          max={PANEL_WIDTH_MAX}
+          edge="left"
+          onChange={setDragWidth}
+          onCommit={(next) => {
+            setPanelWidth(next)
+            savePanelWidth(next)
+            setDragWidth(null)
+          }}
+          resetValue={PANEL_WIDTH_DEFAULT}
+          label="调整会话信息面板宽度"
+        />
+      )}
       <PanelBar title="会话信息">
         {summary && (
           <span className="flex items-center gap-1.5 text-[12px] text-muted">

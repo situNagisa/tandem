@@ -29,6 +29,7 @@ import { Button, IconButton } from './ui/Button'
 import { Menu } from './ui/Menu'
 import { Popover } from './ui/Popover'
 import { PanelBar, PanelBody } from './ui/Panel'
+import { ResizeHandle } from './ui/ResizeHandle'
 
 interface LineComment extends DiffCommentDraft {
   id: number
@@ -283,27 +284,6 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
 
   const width = dragWidth ?? changesWidth
 
-  const startResize = (e: React.PointerEvent) => {
-    if (e.button !== 0 || isMobile) return
-    e.preventDefault()
-    const startX = e.clientX
-    const startWidth = changesWidth
-    setDragWidth(startWidth)
-    const move = (ev: PointerEvent) => setDragWidth(startWidth - (ev.clientX - startX))
-    const up = (ev: PointerEvent) => {
-      setChangesWidth(startWidth - (ev.clientX - startX))
-      setDragWidth(null)
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-    }
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-  }
-
   const startSplit = (e: React.PointerEvent) => {
     if (e.button !== 0) return
     e.preventDefault()
@@ -530,12 +510,18 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
       style={{ width: isMobile ? '100%' : width, transition: dragWidth !== null ? 'none' : undefined }}
     >
       {!isMobile && (
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="调整面板宽度"
-          onPointerDown={startResize}
-          className="absolute left-0 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none hover:bg-[var(--t-border-strong)]/30"
+        <ResizeHandle
+          value={changesWidth}
+          min={380}
+          max={760}
+          edge="left"
+          onChange={setDragWidth}
+          onCommit={(next) => {
+            setChangesWidth(next)
+            setDragWidth(null)
+          }}
+          resetValue={520}
+          label="调整面板宽度"
         />
       )}
 
