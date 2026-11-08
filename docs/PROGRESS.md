@@ -458,3 +458,9 @@
 - [x] 反馈根因建议：收紧 R03（只在文字/元素确有浮层越界证据时建议），新增 R14/R15 规则
 - [x] 回归：`e2e/regression.mjs` 补收件箱导航/明细跳转、看板回合收敛、改动审阅布局与自动换行、大纲全文、手机审批展开、手机环境条、反馈工具栏、参考价、真实轮次；单测覆盖 R03 噪音、轮次口径与 silent turn_end
 - 验证：全量 `node scripts/check.mjs` 通过（100/100 回归）
+
+## 迭代 50（2026-11-08）发布 v0.3.0
+- [x] 新功能导览 0.3.0：10 条手写条目（工作站设备共享、工作区账号、预览侧面板、收件箱按回合聚合、危险操作统一确认、看板完成态后续操作、轮次大纲悬停全文、手机环境条、模型参考价、反馈按功能/根因归类）；新增 `workstation` 导览目标；`features.ts` 新增工作站/工作区账号/环境条三项并补 8 条测试要点
+- [x] `node scripts/release.mjs 0.3.0`：版本与 lockfile 同步、CHANGELOG 生成、本地标签 v0.3.0（未 push）
+- 验证：发布前后各跑一次全量 `node scripts/check.mjs`，均通过（100/100 回归）
+- 产物：`tandem-release.apk` / `.aab`、`tandem-debug.apk`、`Tandem-Setup-0.3.0-x64.exe` / `.blockmap` / `latest.yml`，均已复制到 Windows「下载」
