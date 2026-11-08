@@ -72,12 +72,13 @@ export const CHANGELOG: ChangelogRelease[] = [
       },
       {
         id: 'release-0.2.0-8',
-        title: '自动模型路由',
-        summary: 'route 模块 · 提交 b5d85da，详见 CHANGELOG.md。',
+        title: 'v2 运行时提议、卡片 AI 评审、PR 聚合、分屏与冲突解决',
+        summary: 'board 模块 · 提交 1931a54，详见 CHANGELOG.md。',
         target: { kind: 'home' },
       },
     ],
   },
+
 
 
   {

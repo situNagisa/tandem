@@ -195,9 +195,14 @@ const tourFile = path.join(ROOT, 'packages', 'web', 'src', 'lib', 'changelog.ts'
 
 const TOUR_SKIP_SCOPES = new Set(['release', 'docs', 'test'])
 
-function tourItems() {
+function tourItems(excludeTitles = new Set()) {
   const features = commits
-    .filter((commit) => commit.type === 'feat' && !TOUR_SKIP_SCOPES.has(commit.scope))
+    .filter(
+      (commit) =>
+        commit.type === 'feat' &&
+        !TOUR_SKIP_SCOPES.has(commit.scope) &&
+        !excludeTitles.has(commit.title),
+    )
     .slice(0, 8)
   if (!features.length) {
     return [
@@ -221,8 +226,7 @@ function ts(value) {
   return `'${String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')}'`
 }
 
-function releaseEntry() {
-  const items = tourItems()
+function releaseEntry(items = tourItems()) {
   const lines = [
     '  {',
     `    version: ${ts(version)},`,
@@ -242,6 +246,8 @@ function releaseEntry() {
   return `${lines.join('\n')}\n`
 }
 
+let generatedTourItems = []
+
 function updateTour() {
   if (!fs.existsSync(tourFile)) throw new Error(`找不到新功能导览数据文件：${tourFile}`)
   const text = fs.readFileSync(tourFile, 'utf8')
@@ -253,8 +259,12 @@ function updateTour() {
     `  \\{\\n    version: ['"]${escaped}['"],\\n[\\s\\S]*?\\n  \\},\\n?`,
   )
   const cleaned = text.replace(existing, '')
+  const existingTitles = new Set(
+    [...cleaned.matchAll(/^\s*title:\s*['"](.+?)['"],\s*$/gm)].map((match) => match[1]),
+  )
+  generatedTourItems = tourItems(existingTitles)
   const insertAt = cleaned.indexOf(marker) + marker.length
-  const next = `${cleaned.slice(0, insertAt)}\n${releaseEntry()}${cleaned.slice(insertAt)}`
+  const next = `${cleaned.slice(0, insertAt)}\n${releaseEntry(generatedTourItems)}${cleaned.slice(insertAt)}`
   if (!dryRun) fs.writeFileSync(tourFile, next)
   if (!changed.includes(tourFile)) changed.push(tourFile)
   return next
@@ -271,7 +281,7 @@ if (dryRun) {
   console.log('\n----- CHANGELOG 新一节 -----\n')
   console.log(section)
   console.log('----- 新功能导览 -----\n')
-  console.log(releaseEntry())
+  console.log(releaseEntry(generatedTourItems))
   process.exit(0)
 }
 
