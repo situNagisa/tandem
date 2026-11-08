@@ -575,13 +575,13 @@ function checkForUpdates() {
   return updateStatus;
 }
 
-function scheduleUpdateCheck() {
+function scheduleUpdateCheck(delay = 15000) {
   if (updateTimer) {
     clearInterval(updateTimer);
     updateTimer = null;
   }
   if (!app.isPackaged || !readUpdateConfig().source) return;
-  setTimeout(() => checkForUpdates(), 15000).unref?.();
+  setTimeout(() => checkForUpdates(), delay).unref?.();
   updateTimer = setInterval(() => checkForUpdates(), 6 * 60 * 60 * 1000);
   updateTimer.unref?.();
 }
@@ -590,9 +590,8 @@ function setupUpdaterIpc() {
   ipcMain.handle('updater:get-config', () => readUpdateConfig());
   ipcMain.handle('updater:set-config', (_event, config) => {
     const saved = writeUpdateConfig(config);
-    scheduleUpdateCheck();
-    if (saved.source) setTimeout(() => checkForUpdates(), 500).unref?.();
-    else sendUpdateStatus({ state: 'idle' });
+    scheduleUpdateCheck(500);
+    if (!saved.source) sendUpdateStatus({ state: 'idle' });
     return saved;
   });
   ipcMain.handle('updater:check', () => checkForUpdates());

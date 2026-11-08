@@ -107,8 +107,12 @@ export default function App() {
         onClick: () => void updater.install(),
       })
     }
+    const off = updater.onStatus(show)
     void updater.status().then(show)
-    return updater.onStatus(show)
+    return () => {
+      disposed = true
+      off()
+    }
   }, [])
 
   useEffect(() => {

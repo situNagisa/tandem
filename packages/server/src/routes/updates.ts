@@ -40,12 +40,26 @@ export function registerUpdateRoutes(app: FastifyInstance, deps: RouteDeps): voi
         return reply.code(404).send({ error: 'Not Found' });
       }
       if (!stat.isFile()) return reply.code(404).send({ error: 'Not Found' });
-      reply
-        .header('Content-Type', TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream')
-        .header('Content-Length', stat.size)
-        .header('Cache-Control', 'no-cache');
-      if (req.method === 'HEAD') return reply.send();
-      return reply.send(createReadStream(file));
+      const type = TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
+      reply.header('Content-Type', type).header('Accept-Ranges', 'bytes').header('Cache-Control', 'no-cache');
+      if (req.method === 'HEAD') {
+        return reply.header('Content-Length', stat.size).send();
+      }
+      const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? '').trim());
+      if (range) {
+        const suffix = !range[1] && range[2] ? Number(range[2]) : 0;
+        const start = suffix ? Math.max(0, stat.size - suffix) : Number(range[1] || 0);
+        const end = range[2] && !suffix ? Math.min(Number(range[2]), stat.size - 1) : stat.size - 1;
+        if (!Number.isFinite(start) || start > end || start >= stat.size) {
+          return reply.code(416).header('Content-Range', `bytes */${stat.size}`).send();
+        }
+        return reply
+          .code(206)
+          .header('Content-Length', end - start + 1)
+          .header('Content-Range', `bytes ${start}-${end}/${stat.size}`)
+          .send(createReadStream(file, { start, end }));
+      }
+      return reply.header('Content-Length', stat.size).send(createReadStream(file));
     },
   });
 }
