@@ -31,6 +31,91 @@ export interface ChangelogRelease {
 /** 版本升级后首次打开时展示；按版本从新到旧排列。 */
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: '0.4.0',
+    date: '2026-11-09',
+    items: [
+      {
+        id: 'workstation-service',
+        title: '工作站服务：一个地址管所有主机',
+        summary:
+          '工作站可单独运行，注册/登录后生成绑定码添加主机；主机所有者按账号授权，撤销即时失效。',
+        target: { kind: 'settings', tab: 'accounts', settingId: 'accounts.workspace' },
+      },
+      {
+        id: 'sidebar-host-groups',
+        title: '侧栏按主机分组，会话一眼找全',
+        summary:
+          '所有主机的会话分组显示，组内再分「已固定」与「最近」项目；不用先切主机再找会话。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'model-menu-cascade',
+        title: '模型菜单级联飞出，常用模型留在顶部',
+        summary:
+          '账号、分组、模型逐级弹出而不是整页替换，最近使用的模型排在最前，可跨账号分组。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'thinking-effort-levels',
+        title: '思考强度只列模型真实档位',
+        summary: '思考强度按当前模型实际支持的档位显示，不支持的一项不出现，选完即回显。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'price-multiplier',
+        title: '按账号与分组设置价格倍率',
+        summary:
+          '实际花费 = 官方参考价 × 账号倍率 × 分组倍率；中转常见 0.3×、1.5× 直接填，用量页按实记账。',
+        target: { kind: 'settings', tab: 'profiles', settingId: 'profiles.multiplier' },
+      },
+      {
+        id: 'turn-outline-usage',
+        title: '轮次大纲按用量着色',
+        summary:
+          '悬停任一查看该轮花费与上下文占用，大纲按用量深浅着色；「已固定」与「全部轮次」分两段，固定不重排。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'panel-resize',
+        title: '右侧栏可拖宽',
+        summary: '会话信息、计划与代理面板左侧边缘可拖动，宽度记住，窄屏仍自动收起。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'chat-reading-width',
+        title: '表格与代码块铺满对话列',
+        summary:
+          '表格与代码块用满对话列宽，横滚更少；焦点框改为中性色，运行/失败状态与代码着色更清晰。',
+        target: { kind: 'settings', tab: 'appearance', settingId: 'appearance.theme' },
+      },
+      {
+        id: 'background-hover-list',
+        title: '后台任务悬停即看',
+        summary: '顶栏后台任务按钮悬停列出本会话任务与状态，点一条直接打开输出。',
+        target: { kind: 'home' },
+      },
+      ...(__TANDEM_DEBUG__
+        ? [
+            {
+              id: 'demo-device-session',
+              title: '演示设备可挂到会话',
+              summary:
+                '演示安卓设备与串口板挂到会话后显示演示画面；工作站给出按 Host 平台的 adb/串口安装说明。',
+              target: { kind: 'workstation' as const },
+            },
+          ]
+        : []),
+      {
+        id: 'flavor-builds',
+        title: '体验包与正式包分开',
+        summary:
+          '体验包额外带维护者工具与角标，正式包只保留日常功能；关于页标注当前包类型，同一设备只能装一个。',
+        target: { kind: 'about' },
+      },
+    ],
+  },
+
+  {
     version: '0.3.1',
     date: '2026-11-08',
     items: [
