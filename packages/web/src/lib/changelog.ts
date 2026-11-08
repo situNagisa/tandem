@@ -25,6 +25,19 @@ export interface ChangelogRelease {
 /** 版本升级后首次打开时展示；按版本从新到旧排列。 */
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: '0.2.1',
+    date: '2026-11-08',
+    items: [
+      {
+        id: 'release-0.2.1-1',
+        title: '演示工作区、体验清单与反馈按功能/根因归类',
+        summary: 'demo 模块 · 提交 e67ea64，详见 CHANGELOG.md。',
+        target: { kind: 'home' },
+      },
+    ],
+  },
+
+  {
     version: '0.2.0',
     date: '2026-11-08',
     items: [
