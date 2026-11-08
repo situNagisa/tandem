@@ -31,8 +31,11 @@ function statusText(status: UpdateStatus): string {
   if (status.state === 'downloading' && status.percent !== undefined) {
     return `${base} ${status.percent}%`
   }
-  if (status.version && ['available', 'downloaded'].includes(status.state)) {
-    return `${base.replace('新版本', `新版本 ${status.version}`)}`
+  if (status.version && status.state === 'downloaded') {
+    return `新版本 ${status.version} 已下载，重启后完成更新`
+  }
+  if (status.version && status.state === 'available') {
+    return `发现新版本 ${status.version}，正在后台下载…`
   }
   return status.message && status.state === 'error' ? `${base}：${status.message}` : base
 }
