@@ -224,9 +224,15 @@ export async function runWorkstationCheck(home) {
     })
     assert.ok(reply.includes('工作站流式回复通过'), '应经工作站收到流式回复')
 
-    // 撤销授权后用户 2 立即看不到；主机端口未被客户端使用（只访问工作站端口）。
+    // 撤销授权：旧令牌立即失效（主机快照 invalidBefore），刷新后看到空列表。
     await json(WS, `/api/workstation/hosts/${target.id}/grants/${bob.account.id}`, { method: 'DELETE' }, alice.accessToken)
-    assert.deepEqual(await json(WS, '/api/workstation/hosts', {}, bob.accessToken), [], '撤销授权后应立即不可见')
+    const oldTokenRes = await fetch(`${WS}/api/workstation/hosts`, { headers: { authorization: `Bearer ${bob.accessToken}` } })
+    assert.equal(oldTokenRes.status, 401, '撤销授权后旧令牌应立即失效')
+    const bobTokens = await json(WS, '/api/workstation/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken: bob.refreshToken }),
+    })
+    assert.deepEqual(await json(WS, '/api/workstation/hosts', {}, bobTokens.accessToken), [], '刷新后不应再看到被撤销的主机')
   } finally {
     ws.child.kill('SIGTERM')
     h1.child.kill('SIGTERM')

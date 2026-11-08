@@ -18,7 +18,7 @@ import type {
   WorkspaceRole,
 } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
-import { workstationApi } from '../../lib/api'
+import { ApiError, workstationApi } from '../../lib/api'
 import { Button } from '../ui/Button'
 import { Input, Select } from '../ui/Controls'
 import { Modal } from '../ui/Modal'
@@ -55,7 +55,15 @@ export function WorkstationSection() {
     setBusy(true)
     setError(null)
     try {
-      setRemoteHosts(await workstationApi.hosts(base, token))
+      try {
+        setRemoteHosts(await workstationApi.hosts(base, token))
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.status !== 401) throw err
+        if (!(await useAppStore.getState().refreshWorkspace())) throw err
+        const fresh = useAppStore.getState().account
+        if (!fresh) throw err
+        setRemoteHosts(await workstationApi.hosts(fresh.centerUrl, fresh.accessToken))
+      }
       await syncHosts()
     } catch (err) {
       setError(err instanceof Error ? err.message : '无法读取工作站主机')

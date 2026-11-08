@@ -93,6 +93,7 @@ interface CenterFile {
   hosts: WorkspaceHostInfo[];
   revoked: Record<string, number>;
   invalidBefore: Record<string, number>;
+  accessInvalidBefore?: Record<string, number>;
   usedRefresh: Record<string, number>;
   syncToken: string;
   snapshotVersion: number;
@@ -110,6 +111,7 @@ interface MemberFile {
   hosts: WorkspaceHostInfo[];
   revoked: Record<string, number>;
   invalidBefore: Record<string, number>;
+  accessInvalidBefore?: Record<string, number>;
   snapshotVersion: number;
   joinedAt: number;
   lastSyncAt?: number;
@@ -293,6 +295,7 @@ export class AccountsStore {
         raw.hosts ??= [];
         raw.revoked ??= {};
         raw.invalidBefore ??= {};
+        raw.accessInvalidBefore ??= {};
         raw.usedRefresh ??= {};
         raw.audit ??= [];
         raw.snapshotVersion ??= 1;
@@ -303,6 +306,7 @@ export class AccountsStore {
         raw.hosts ??= [];
         raw.revoked ??= {};
         raw.invalidBefore ??= {};
+        raw.accessInvalidBefore ??= {};
         if (raw.modelVersion !== 2) {
           raw.modelVersion = 2;
           if (!raw.hostKey) this.ensureMemberHostKey(raw);
@@ -647,6 +651,8 @@ export class AccountsStore {
     if (revoked) return undefined;
     const invalid = state.invalidBefore[claims.sub];
     if (invalid && claims.iat < invalid) return undefined;
+    const accessInvalid = state.accessInvalidBefore?.[claims.sub];
+    if (claims.typ === 'access' && accessInvalid && claims.iat < accessInvalid) return undefined;
     return claims;
   }
 
@@ -1160,6 +1166,7 @@ export class AccountsStore {
       createdAt: Date.now(),
     };
     host.grants = [...(host.grants ?? []).filter((g) => g.accountId !== target.id), grant];
+    // 新授权不需要作废旧令牌：客户端拉到新主机后会主动刷新一次访问令牌。
     state.snapshotVersion += 1;
     this.audit(ownerAccountId, 'host.grant', `${host.name} → ${target.username} · ${role}${dirs.length ? ` · ${dirs.length} 个目录` : ''}`);
     this.save();
@@ -1173,6 +1180,8 @@ export class AccountsStore {
     if (!host) throw Object.assign(new Error('主机不存在'), { statusCode: 404 });
     if (host.ownerId !== ownerAccountId) throw Object.assign(new Error('只有主机主人可以撤销授权'), { statusCode: 403 });
     host.grants = (host.grants ?? []).filter((g) => g.accountId !== accountId);
+    // 只作废访问令牌；刷新令牌仍可用于换取不含该主机的新令牌。
+    (state.accessInvalidBefore ??= {})[accountId] = Date.now();
     state.snapshotVersion += 1;
     this.audit(ownerAccountId, 'host.grant.remove', host.name);
     this.save();
@@ -1320,6 +1329,7 @@ export class AccountsStore {
       hosts: state.hosts.map((h) => ({ id: h.id, name: '', urls: [], addedAt: h.addedAt, online: h.online })),
       revoked: { ...state.revoked },
       invalidBefore: { ...state.invalidBefore },
+      accessInvalidBefore: { ...(state.accessInvalidBefore ?? {}) },
       issuedAt: Date.now(),
     };
   }

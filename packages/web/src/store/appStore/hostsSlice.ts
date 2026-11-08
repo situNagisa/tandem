@@ -718,9 +718,19 @@ export function createHostsSlice(
     },
 
     syncWorkstationHosts: async () => {
-      const session = get().account
+      let session = get().account
       if (!session) return
-      const remoteHosts = await workstationApi.hosts(session.centerUrl, session.accessToken)
+      let remoteHosts: Awaited<ReturnType<typeof workstationApi.hosts>>
+      try {
+        remoteHosts = await workstationApi.hosts(session.centerUrl, session.accessToken)
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.status !== 401) throw err
+        // 授权变化可能作废旧令牌：刷新一次再重试，避免用户手动重登。
+        if (!(await get().refreshWorkspace())) throw err
+        session = get().account
+        if (!session) throw err
+        remoteHosts = await workstationApi.hosts(session.centerUrl, session.accessToken)
+      }
       const current = get().hosts
       const next = [...current]
       const added: HostConfig[] = []
@@ -776,6 +786,8 @@ export function createHostsSlice(
         void get().refreshProfiles(h.id)
         void get().refreshSessions(h.id)
       }
+      // 新获授权的主机需要新 perHost 声明，主动换一次访问令牌再连接。
+      if (added.length > 0) await get().refreshWorkspace()
     },
 
     workspaceLogout: async () => {

@@ -1120,6 +1120,8 @@ export interface WorkspaceSnapshot {
   revoked: Record<string, number>;
   /** 账号重新启用后，早于该时间签发的令牌一律失效。 */
   invalidBefore?: Record<string, number>;
+  /** 授权变更后，早于该时间签发的访问令牌失效（刷新令牌仍可换新）。 */
+  accessInvalidBefore?: Record<string, number>;
   issuedAt: number;
 }
 export interface WorkspaceStatus {

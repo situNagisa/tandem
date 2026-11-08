@@ -280,6 +280,13 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
   app.delete('/api/workstation/hosts/:id', async (req, reply) => {
     const id = decodeURIComponent((req.params as { id: string }).id);
     store.removeHostByOwner(id, accountOf(req).account.id);
+    // 移除后立即断开该主机的隧道；主机下次重连会因未登记被拒绝。
+    const tunnel = tunnels.get(id);
+    if (tunnel) {
+      tunnels.delete(id);
+      tunnel.closeAll('主机已被主人移除');
+      tunnel.socket.close(4404, '主机已被主人移除');
+    }
     return reply.code(204).send();
   });
 
