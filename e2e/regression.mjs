@@ -1280,6 +1280,32 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       },
       createdAt: Date.now() - 28_000,
     },
+    {
+      // 菜单反馈 #17：一个分组塞满模型，验证列表滚动、底部操作固定可见。
+      id: 'p-many',
+      name: '多模型账号',
+      kind: 'openai-compatible',
+      baseUrl,
+      apiKey: 'reg-key-many',
+      models: [
+        ...Array.from({ length: 20 }, (_, i) => `many-${String(i).padStart(2, '0')}`),
+        'many-extra-long-model-name-0123456789',
+      ],
+      defaultModel: 'many-00',
+      groups: [
+        {
+          id: 'g-many',
+          name: '大分组',
+          apiKey: 'reg-key-many-g',
+          models: [
+            ...Array.from({ length: 20 }, (_, i) => `many-${String(i).padStart(2, '0')}`),
+            'many-extra-long-model-name-0123456789',
+          ],
+          defaultModel: 'many-00',
+        },
+      ],
+      createdAt: Date.now() - 29_000,
+    },
   ]
   writeJson(path.join(configDir, 'profiles.json'), { profiles })
 
@@ -1405,6 +1431,16 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       message('n2', 'assistant', '目录结构如下。', { model: 'mock-1' }),
       message('n3', 'user', '再列一下文件'),
     ]),
+    // 菜单反馈 #17：模型很多的账号/分组。
+    mk('many', '多模型分组会话', [
+      message('ma1', 'user', '帮我选一个模型'),
+      message('ma2', 'assistant', '已就绪。', { model: 'many-00' }),
+    ], {
+      profileId: 'p-many',
+      groupId: 'g-many',
+      model: 'many-00',
+      updatedAt: Date.now() - 1560,
+    }),
     // 状态筛选用：专用未读会话（其他用例不打开它，避免提前清除未读）
     mk('unreadonly', '未读筛选专用会话', [
       message('uo1', 'user', '这个会话只用于未读筛选。'),
@@ -2691,6 +2727,9 @@ async function main() {
       const accountMenu = page.locator('[aria-label="切换账号"]')
       await accountMenu.waitFor({ state: 'visible' })
       withinViewport(await accountMenu.boundingBox(), DESKTOP, '切换账号子菜单')
+      // 逐级展开：账号 → 分组 → 模型（反馈 #19 复用同一个级联组件）。
+      await accountMenu.getByRole('menuitem', { name: /主力账号/ }).click()
+      await page.waitForTimeout(200)
       assert.ok((await accountMenu.getByText('生产', { exact: true }).count()) >= 1, '账号子菜单没有列出分组')
       assert.ok((await accountMenu.getByText('备用', { exact: true }).count()) >= 1, '账号子菜单没有列出分组')
       await accountMenu.getByText('备用', { exact: true }).click()
@@ -2699,7 +2738,7 @@ async function main() {
         (res) => res.url().includes('/api/sessions/long') && res.request().method() === 'PATCH',
         { timeout: 10_000 },
       )
-      await page.getByRole('menuitem', { name: /O3/i }).click()
+      await accountMenu.getByRole('menuitem', { name: /O3/i }).click()
       await response
       assert.match(await page.getByRole('button', { name: '选择模型' }).first().innerText(), /O3/, '选择后模型按钮未更新')
       const stored = await api(base, token, '/api/sessions/long')
@@ -2955,6 +2994,203 @@ async function main() {
       await closeSettings(page)
     })
 
+    desktop('菜单项只有单行标题，多模型分组下列表可滚动且底部操作可见（#15/#16/#17 R01/R15）', async (page) => {
+      await openSession(page, 'many')
+      await waitModelReady(page)
+      await page.locator('button[aria-label^="选择模型"]').first().click()
+      const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+      await menu.waitFor()
+      withinViewport(await menu.boundingBox(), DESKTOP, '多模型菜单')
+      const model = await menu.evaluate((el) => {
+        const footer = el.querySelector('[data-menu-footer]')
+        const body = el.querySelector(':scope > div')
+        const rows = [...el.querySelectorAll('[role="menuitem"]')]
+        const stacked = rows.some((row) =>
+          [...row.querySelectorAll('span')].some((span) => {
+            const cs = getComputedStyle(span)
+            return cs.display === 'flex' && cs.flexDirection === 'column' && cs.display !== 'none'
+          }),
+        )
+        return {
+          footerText: footer?.textContent ?? '',
+          footerBottom: footer?.getBoundingClientRect().bottom ?? 0,
+          bodyScroll: body?.scrollHeight ?? 0,
+          bodyClient: body?.clientHeight ?? 0,
+          heights: rows.map((row) => row.getBoundingClientRect().height),
+          stacked,
+        }
+      })
+      assert.ok(model.heights.every((height) => height <= 32), `菜单项高度 ${model.heights.join(',')}，出现第二行`)
+      assert.equal(model.stacked, false, '菜单项里仍有纵向堆叠的说明文字')
+      assert.match(model.footerText, /切换账号/, '底部操作缺少「切换账号」')
+      assert.match(model.footerText, /管理账号/, '底部操作缺少「管理账号」')
+      assert.ok(model.footerBottom <= DESKTOP.height, `底部操作被挤出视口：${model.footerBottom}`)
+      assert.ok(model.bodyScroll > model.bodyClient, `模型列表没有独立滚动：${model.bodyScroll}/${model.bodyClient}`)
+      // 超长模型名放进 tooltip：宽度按内容自适应、不会每行一个字。
+      const longRow = menu.locator('[role="menuitem"]').filter({ hasText: /Many Extra Long/ }).first()
+      await longRow.scrollIntoViewIfNeeded()
+      await longRow.hover()
+      const tip = page.locator('#tandem-tooltip[data-open]')
+      await tip.waitFor({ state: 'visible', timeout: 5_000 })
+      const tipInfo = await tip.evaluate((el) => {
+        const rect = el.getBoundingClientRect()
+        return { width: rect.width, text: el.textContent ?? '' }
+      })
+      assert.ok(tipInfo.width >= 72, `长标签 tooltip 宽度只有 ${tipInfo.width}px`)
+      assert.match(tipInfo.text, /many-extra-long-model-name/, 'tooltip 没有显示完整模型 ID')
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(200)
+
+      await page.locator('main button[aria-haspopup="menu"][aria-label^="执行方式"]').first().click()
+      const exec = page.locator('[role="menu"][aria-label="执行方式"]').first()
+      await exec.waitFor()
+      const execInfo = await exec.evaluate((el) => {
+        const rows = [...el.querySelectorAll('[role="menuitem"]')]
+        return {
+          heights: rows.map((row) => row.getBoundingClientRect().height),
+          stacked: rows.some((row) =>
+            [...row.querySelectorAll('span')].some((span) => {
+              const cs = getComputedStyle(span)
+              return cs.display === 'flex' && cs.flexDirection === 'column' && cs.display !== 'none'
+            }),
+          ),
+        }
+      })
+      assert.ok(execInfo.heights.every((height) => height <= 32), `执行方式菜单项高度 ${execInfo.heights.join(',')}`)
+      assert.equal(execInfo.stacked, false, '执行方式菜单仍有第二行说明')
+      await page.keyboard.press('Escape')
+    })
+
+    desktop('环境条下拉连续切换保持打开（#04 P0）', async (page) => {
+      await openSession(page, 'long')
+      const host = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-server') }).first()
+      const folder = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-folder-open') }).first()
+      const branch = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-git-branch') }).first()
+      const branchPanel = page.locator('[data-portal-layer="popover"]').filter({ hasText: '新建分支' }).first()
+      const folderPanel = page
+        .locator('[data-portal-layer="popover"]')
+        .filter({ has: page.locator('input[aria-label="筛选文件夹或输入路径"]') })
+        .first()
+
+      await branch.click()
+      await branchPanel.waitFor({ state: 'visible', timeout: 5_000 })
+      await folder.click()
+      await folderPanel.waitFor({ state: 'visible', timeout: 5_000 })
+      await page.waitForTimeout(500)
+      assert.equal(
+        await folderPanel.isVisible(),
+        true,
+        '从一个下拉直接切到另一个下拉后，新下拉被旧下拉的关闭事件收起',
+      )
+      assert.equal(await branchPanel.isVisible().catch(() => false), false, '旧的落点下拉没有关闭')
+
+      await host.click()
+      const hostMenu = page.locator('[role="menu"][aria-label="切换主机"]').first()
+      await hostMenu.waitFor({ state: 'visible', timeout: 5_000 })
+      await page.waitForTimeout(500)
+      assert.equal(await hostMenu.isVisible(), true, '切到主机下拉后弹层又被收起')
+      assert.equal(await folderPanel.isVisible().catch(() => false), false, '旧的文件夹下拉没有关闭')
+
+      await branch.click()
+      await branchPanel.waitFor({ state: 'visible', timeout: 5_000 })
+      await page.waitForTimeout(500)
+      assert.equal(await branchPanel.isVisible(), true, '连续切换三个下拉后分支列表没有保持打开')
+      await page.keyboard.press('Escape')
+    })
+
+    desktop('环境条「选择主机」可打开（#11 P0）', async (page) => {
+      await page.evaluate(() => (window.location.hash = '#/'))
+      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
+      const host = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-server') }).first()
+      await host.click()
+      const menu = page.locator('[role="menu"][aria-label="选择主机"]').first()
+      await menu.waitFor({ state: 'visible', timeout: 5_000 })
+      await page.waitForTimeout(300)
+      withinViewport(await menu.boundingBox(), DESKTOP, '选择主机菜单')
+      assert.match(await menu.innerText(), /本机/, '选择主机菜单内容异常')
+      await page.keyboard.press('Escape')
+    })
+
+    desktop('tooltip 按内容宽度换行，不会每行一个字（#01 R15）', async (page) => {
+      await openSession(page, 'long')
+      const folder = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-folder-open') }).first()
+      await folder.hover()
+      const tip = page.locator('#tandem-tooltip[data-open]')
+      await tip.waitFor({ state: 'visible', timeout: 5_000 })
+      const info = await tip.evaluate((el) => {
+        const rect = el.getBoundingClientRect()
+        const cs = getComputedStyle(el)
+        return {
+          width: rect.width,
+          height: rect.height,
+          text: (el.textContent ?? '').trim(),
+          lineHeight: parseFloat(cs.lineHeight),
+        }
+      })
+      assert.ok(info.text.length > 0, 'tooltip 没有内容')
+      assert.ok(info.width >= 72, `tooltip 宽度只有 ${info.width}px，可能退化成每行一个字`)
+      assert.ok(info.height <= info.lineHeight * 4 + 4, `tooltip 异常高（${info.height}px），文字可能逐字换行`)
+      await page.mouse.move(DESKTOP.width / 2, DESKTOP.height / 2)
+    })
+
+    desktop('轮次固定：命中区 ≥24px、置顶到已固定分组、消息旁显示图钉（#12）', async (page) => {
+      await openSession(page, 'long')
+      const hit = page.locator('.turn-hit')
+      await hit.hover()
+      await page.waitForFunction(
+        () => document.querySelector('.turn-rail')?.getAttribute('data-open') === 'true',
+        null,
+        { timeout: 5_000 },
+      )
+      await page.waitForTimeout(700)
+      const target = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('.turn-item')].filter((el) => {
+          const cs = getComputedStyle(el)
+          return cs.visibility !== 'hidden' && Number(cs.opacity) > 0.3
+        })
+        const row = rows.find((el) => (el.querySelector('.turn-item-n')?.textContent ?? '').trim() === '30') ?? rows[0]
+        const pin = row?.querySelector('.turn-item-p')
+        if (!pin) return null
+        const rect = pin.getBoundingClientRect()
+        return {
+          turn: row.querySelector('.turn-item-n')?.textContent ?? '',
+          x: rect.x + rect.width / 2,
+          y: rect.y + rect.height / 2,
+          width: rect.width,
+          height: rect.height,
+        }
+      })
+      assert.ok(target, '找不到可固定的轮次')
+      assert.ok(target.width >= 24 && target.height >= 24, `图钉命中区只有 ${target.width}×${target.height}`)
+      await page.mouse.move(target.x, target.y)
+      await page.waitForTimeout(250)
+      await page.mouse.click(target.x, target.y)
+      await page.waitForTimeout(1200)
+      const after = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('.turn-item')]
+          .filter((el) => {
+            const cs = getComputedStyle(el)
+            return cs.visibility !== 'hidden' && Number(cs.opacity) > 0.3
+          })
+          .sort((a, b) => a.getBoundingClientRect().y - b.getBoundingClientRect().y)
+          .map((el) => ({
+            turn: (el.querySelector('.turn-item-n')?.textContent ?? '').trim(),
+            pinned: el.dataset.pinned === 'true',
+          }))
+        const head = document.querySelector('.turn-pin-head')
+        return {
+          rows,
+          headOpacity: head ? Number(getComputedStyle(head).opacity) : 0,
+          messagePins: document.querySelectorAll('[aria-label="已固定到轮次大纲"]').length,
+        }
+      })
+      assert.equal(after.rows[0]?.turn, target.turn, `被固定的第 ${target.turn} 轮没有置顶：${JSON.stringify(after.rows.slice(0, 3))}`)
+      assert.equal(after.rows[0]?.pinned, true, '置顶的轮次没有固定样式')
+      assert.ok(after.headOpacity > 0.5, '「已固定」分组标题不可见')
+      assert.ok(after.messagePins >= 1, '消息流里没有图钉标记')
+      assert.ok(await page.locator('.turn-tip').count() === 0, '轮次大纲仍存在重复文字的悬停提示')
+    })
+
     desktop('焦点环只在键盘导航时出现（自动聚焦的输入框没有橙色描边）', async (page) => {
       await openSession(page, 'long')
       const trigger = page.locator(`button[title="${repo}"]`).first()
@@ -3139,7 +3375,10 @@ async function main() {
       await modelButton.click()
       const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
       await menu.waitFor()
-      const setup = menu.getByRole('button', { name: '单价未设置 · 去设置' }).first()
+      // 反馈 #15：设置单价只在行尾悬停时出现，模型行保持单行。
+      const row = menu.locator('[role="menuitem"]').filter({ hasText: 'mock-1' }).first()
+      await row.hover()
+      const setup = row.getByRole('button', { name: /设置单价/ }).first()
       await setup.waitFor({ timeout: 10_000 })
       assert.equal(await menu.getByText('单价未知', { exact: false }).count(), 0, '仍在显示「单价未知」')
       await setup.click()
@@ -3157,9 +3396,12 @@ async function main() {
       await page.locator('button[aria-label^="选择模型"]').first().click()
       const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
       await menu.waitFor()
-      const price = menu.getByText(/参考价 · 输入 \$2 · 输出 \$8/, { exact: false }).first()
-      await price.waitFor({ timeout: 10_000 })
-      assert.match(await price.innerText(), /参考价/, '内置参考价没有标注来源')
+      // 反馈 #15：单价放 tooltip；悬停模型行后读取标准 tooltip。
+      const row = menu.locator('[role="menuitem"]').filter({ hasText: 'O3' }).first()
+      await row.hover()
+      const tip = page.locator('#tandem-tooltip[data-open]')
+      await tip.waitFor({ timeout: 10_000 })
+      assert.match(await tip.innerText(), /参考价 · 输入 \$2 · 输出 \$8/, '内置参考价没有标注来源')
     })
 
     desktop('新会话页环境条显示当前分支名而不是「分支」占位词', async (page) => {

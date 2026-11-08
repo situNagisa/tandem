@@ -155,6 +155,16 @@ export const UserMessage = memo(function UserMessage({
           setMenuOpen(true)
         }}
       >
+        {pinned && (
+          <span
+            role="img"
+            aria-label="已固定到轮次大纲"
+            title="已固定到轮次大纲"
+            className="pointer-events-none absolute right-full top-2 mr-1.5 flex size-5 items-center justify-center text-accent-text"
+          >
+            <Pin size={12} fill="currentColor" />
+          </span>
+        )}
         {images.length > 0 && (
           <div className="mb-1.5 flex flex-wrap justify-end gap-1.5">
             {images.map((img, i) => (

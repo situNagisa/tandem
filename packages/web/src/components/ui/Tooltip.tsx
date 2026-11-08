@@ -10,6 +10,7 @@ const TIP_ID = 'tandem-tooltip'
 
 let showTimer: number | null = null
 let currentHost: HTMLElement | null = null
+let pendingHost: HTMLElement | null = null
 let lastHideAt = 0
 let tipEl: HTMLDivElement | null = null
 
@@ -39,14 +40,27 @@ function hideTip(): void {
     window.clearTimeout(showTimer)
     showTimer = null
   }
+  pendingHost = null
   if (!currentHost) return
   currentHost = null
   lastHideAt = performance.now()
   tipEl?.removeAttribute('data-open')
 }
 
+/**
+ * 焦点/滚动变化引起的收起：如果指针还停在该宿主上就不收起。
+ * Radix 菜单在悬停行时会移动焦点，旧实现会因此把刚排队的 tooltip 取消，
+ * 导致菜单项里的长文本看不到全文（反馈 #10/#15）。
+ */
+function hideTipUnlessHovered(): void {
+  const host = pendingHost ?? currentHost
+  if (host?.isConnected && host.matches(':hover')) return
+  hideTip()
+}
+
 function showTip(host: HTMLElement, label: string): void {
   if (!host.isConnected || !label) return
+  pendingHost = null
   const el = layer()
   currentHost = host
   el.textContent = label
@@ -79,6 +93,7 @@ function scheduleTip(host: HTMLElement, label: string): void {
     window.clearTimeout(showTimer)
     showTimer = null
   }
+  pendingHost = host
   // 相邻 tooltip 之间快速移动时跳过等待。
   if (currentHost !== null || performance.now() - lastHideAt < SKIP_DELAY) {
     showTip(host, label)
@@ -153,7 +168,7 @@ if (typeof document !== 'undefined') {
     },
     true,
   )
-  document.addEventListener('focusout', hideTip, true)
+  document.addEventListener('focusout', hideTipUnlessHovered, true)
 }
 
 const FOCUSABLE =

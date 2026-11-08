@@ -26,6 +26,8 @@ export interface SceneEls {
   ind: HTMLElement
   cur: HTMLElement
   items: HTMLElement[]
+  /** 展开后的「已固定」分组标题（浮在面板上沿）。 */
+  pinHead: HTMLElement | null
 }
 
 interface ItemRef {
@@ -58,6 +60,9 @@ export class RailScene {
 
   private turns: SceneTurn[] = []
   private N = 0
+  /** 行位次 → 轮号：被固定的轮排在最前。 */
+  private order: number[] = []
+  private posByTurn = new Map<number, number>()
   private items: ItemRef[]
   private raf = 0
   private last = 0
@@ -101,11 +106,43 @@ export class RailScene {
   }
 
   setData(turns: SceneTurn[]): void {
+    // 固定/取消固定会改变行的位次；保留当前轮与视口中心对应的那一轮。
+    const activeTurn = this.turnAtPos(Math.round(this.C.t))
+    const centerTurn = this.turnAtPos(Math.round(this.L.t))
+    const oldPinned = this.turns.reduce((sum, turn) => sum + (turn.pinned ? 1 : 0), 0)
+    const nextPinned = turns.reduce((sum, turn) => sum + (turn.pinned ? 1 : 0), 0)
     this.turns = turns
     this.N = turns.length
+    const pinned: number[] = []
+    const rest: number[] = []
+    for (let i = 0; i < turns.length; i++) {
+      if (turns[i].pinned) pinned.push(i + 1)
+      else rest.push(i + 1)
+    }
+    this.order = [...pinned, ...rest]
+    this.posByTurn.clear()
+    this.order.forEach((turn, index) => this.posByTurn.set(turn, index + 1))
     for (const it of this.items) it.bound = -1
+    const activePos = (activeTurn != null && this.posByTurn.get(activeTurn)) || Math.min(activeTurn ?? 1, Math.max(1, this.N))
+    // 新固定一轮时跳到大纲顶部，让「已固定」分组立刻可见；取消固定则保持当前视野。
+    const centerPos =
+      nextPinned > oldPinned
+        ? 1
+        : (centerTurn != null && this.posByTurn.get(centerTurn)) || Math.min(centerTurn ?? 1, Math.max(1, this.N))
+    this.C.t = activePos
+    this.C.snap(activePos)
+    this.L.t = centerPos
+    this.L.snap(centerPos)
     this.geometry()
     this.kick()
+  }
+
+  private turnAtPos(pos: number): number | null {
+    return this.order[pos - 1] ?? null
+  }
+
+  private posOf(turn: number): number | null {
+    return this.posByTurn.get(turn) ?? null
   }
 
   setAvail(height: number): void {
@@ -132,14 +169,16 @@ export class RailScene {
   }
 
   setActive(turn: number, snap = false): void {
-    this.C.t = turn
-    if (snap) this.C.snap(turn)
+    const pos = this.posOf(turn) ?? turn
+    this.C.t = pos
+    if (snap) this.C.snap(pos)
     this.kick()
   }
 
   setCenter(turn: number, snap = false): void {
-    this.L.t = turn
-    if (snap) this.L.snap(turn)
+    const pos = this.posOf(turn) ?? turn
+    this.L.t = pos
+    if (snap) this.L.snap(pos)
     this.kick()
   }
 
@@ -172,8 +211,11 @@ export class RailScene {
   /** 指针 Y（相对中心线）→ 轮号；展开前按刻度间距、展开后按行高。 */
   rowAt(y: number): number {
     const n = this.N
-    if (this.P.x < 0.5) return clamp(Math.round(this.restCenter() + y / PITCH), 1, n)
-    return clamp(Math.round(this.panelCenter() + y / ROW), 1, n)
+    const pos =
+      this.P.x < 0.5
+        ? clamp(Math.round(this.restCenter() + y / PITCH), 1, n)
+        : clamp(Math.round(this.panelCenter() + y / ROW), 1, n)
+    return this.turnAtPos(pos) ?? clamp(pos, 1, n)
   }
 
   private restCenter(): number {
@@ -286,6 +328,7 @@ export class RailScene {
     it.el.setAttribute('aria-label', full ? `第 ${turn} 轮：${full}` : `第 ${turn} 轮`)
     it.el.dataset.turnLabel = full
     it.p.dataset.turn = mark?.id ?? ''
+    it.p.title = mark?.pinned ? '取消固定' : '固定此轮'
     it.bound = turn
   }
 
@@ -310,12 +353,13 @@ export class RailScene {
       if (!it) continue
       let d = (((e - (base - 1)) % POOL) + POOL) % POOL
       if (d > POOL_K) d -= POOL
-      const t = base + d
-      const dr = t - Lc
-      const dp = t - Lp
+      const pos = base + d
+      const turn = this.turnAtPos(pos)
+      const dr = pos - Lc
+      const dp = pos - Lp
       const orest = clamp((RH + 1 - Math.abs(dr)) / 1.5, 0, 1)
       const o = orest * (1 - pc) + pc
-      if (t < 1 || t > n || o < 0.01) {
+      if (!turn || pos < 1 || pos > n || o < 0.01) {
         if (it.shown) {
           it.el.style.visibility = 'hidden'
           it.shown = false
@@ -326,12 +370,12 @@ export class RailScene {
         it.el.style.visibility = 'visible'
         it.shown = true
       }
-      if (it.bound !== t) this.bind(it, t)
+      if (it.bound !== turn) this.bind(it, turn)
       const y = dr * PITCH + (dp * ROW - dr * PITCH) * p
       it.el.style.transform = `translate3d(0,${px(y)}px,0)`
       it.el.style.opacity = f3(o)
-      const act = Math.max(0, 1 - Math.abs(t - cx))
-      const hov = hv * Math.max(0, 1 - Math.abs(t - hi))
+      const act = Math.max(0, 1 - Math.abs(pos - cx))
+      const hov = hv * Math.max(0, 1 - Math.abs(pos - hi))
       const lit = Math.max(act, hov)
       // 文字透明度叠加容器淡出后仍需保持可读对比度（axe color-contrast）。
       const readable = (value: number, floor: number) =>
@@ -340,7 +384,8 @@ export class RailScene {
       it.n.style.opacity = f3(readable(textIn * (0.5 + 0.5 * lit), 0.72))
       it.r.style.opacity = f3(readable(act * (1 - smooth(0, 0.35, pc)), 0.9))
       // 图钉：悬停行或已固定时显示；静止态用右侧小圆点标出被固定的轮。
-      const pinned = !!this.turns[t - 1]?.pinned
+      const pinned = !!this.turns[turn - 1]?.pinned
+      it.el.dataset.pinned = pinned ? 'true' : 'false'
       it.p.style.opacity = f3(textIn * (pinned ? 0.62 + 0.38 * lit : hov > 0.5 ? 1 : 0))
       it.p.dataset.on = (pinned && textIn > 0.4) || hov > 0.5 ? 'true' : 'false'
       it.p.dataset.pinned = pinned ? 'true' : 'false'
@@ -362,6 +407,14 @@ export class RailScene {
     cur.style.transform = `translate3d(0,${px(curY)}px,0)`
     const chrome = this.P.t > 0.5 ? smooth(0.5, 1, pc) : smooth(0.8, 0.98, pc)
     cur.style.opacity = f3(chrome)
+
+    // 「已固定」分组标题跟着第一行固定行移动，滚出面板时由 turn-clip 裁掉。
+    const pinnedCount = this.turns.reduce((sum, turn) => sum + (turn.pinned ? 1 : 0), 0)
+    const head = this.els.pinHead
+    if (head) {
+      const pinnedInView = Lp - 1 <= this.PH + 0.5
+      head.style.opacity = f3(pinnedCount > 0 && pinnedInView && pc > 0.5 ? chrome : 0)
+    }
 
     ind.style.transform = `translate3d(0,${px((hi - Lp) * ROW)}px,0)`
     ind.style.opacity = f3(hv * chrome)

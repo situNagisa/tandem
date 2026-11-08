@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  isValidElement,
   useCallback,
   useEffect,
   useRef,
@@ -25,10 +26,25 @@ const ROW_STATE =
   'hover:bg-[var(--t-bg-hover)] hover:text-text focus:bg-[var(--t-bg-hover)] focus:text-text focus-visible:outline-none data-[highlighted]:bg-[var(--t-bg-hover)] data-[highlighted]:text-text data-[state=open]:bg-[var(--t-bg-hover)] data-[state=open]:text-text data-[selected=true]:bg-[color-mix(in_srgb,var(--t-bg-active)_55%,transparent)] data-[selected=true]:text-text data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[disabled]:hover:bg-transparent'
 
 const PANEL_BASE =
-  'popover-panel z-[90] min-w-[180px] max-w-[min(360px,calc(100vw-1rem))] overflow-y-auto p-1 outline-none'
+  'popover-panel z-[90] flex min-w-[180px] max-w-[min(420px,calc(100vw-1rem))] flex-col overflow-hidden p-1 outline-none'
 
 const SUB_PANEL_BASE =
-  'popover-panel z-[95] min-w-[160px] max-w-[min(340px,calc(100vw-1rem))] overflow-y-auto p-1 outline-none'
+  'popover-panel z-[95] min-w-[160px] max-w-[min(380px,calc(100vw-1rem))] overflow-y-auto p-1 outline-none'
+
+/** 递归取出标签里的纯文本，用于长行截断后的全文入口。 */
+function plainText(node: ReactNode): string {
+  if (node == null || typeof node === 'boolean') return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(plainText).join('')
+  if (isValidElement<{ children?: ReactNode }>(node)) return plainText(node.props.children)
+  return ''
+}
+
+/** 长标签自动带全文入口；短标签不加，避免满屏原生提示。 */
+function autoLabelTitle(children: ReactNode): string | undefined {
+  const text = plainText(children).trim()
+  return text.length > 20 ? text : undefined
+}
 
 function RowContent({
   icon,
@@ -36,12 +52,15 @@ function RowContent({
   trailing,
   selected,
   checked,
+  labelTitle,
 }: {
   icon?: ReactNode
   children: ReactNode
   trailing?: ReactNode
   selected?: boolean
   checked?: boolean
+  /** 标签被截断时的全文入口（原生 title，由 ui/Tooltip 统一转成标准提示）。 */
+  labelTitle?: string
 }) {
   return (
     <>
@@ -50,7 +69,9 @@ function RowContent({
           {icon}
         </span>
       )}
-      <span className="min-w-0 flex-1 truncate">{children}</span>
+      <span className="min-w-0 flex-auto truncate" title={labelTitle}>
+        {children}
+      </span>
       {trailing && <span className="shrink-0 text-[12px] text-muted max-sm:text-[12px]">{trailing}</span>}
       {(selected || checked) && (
         <Check size={13} className="shrink-0 text-text-secondary" strokeWidth={2.2} />
@@ -71,6 +92,11 @@ export interface MenuProps {
   className?: string
   /** 内容区最大高度，默认跟随可用空间。 */
   maxHeight?: number
+  /**
+   * 固定在面板底部的操作区（管理账号、思考强度等）。
+   * 传入后主体列表独立滚动，窗口再小也不会把底部操作挤出屏幕。
+   */
+  footer?: ReactNode
   modal?: boolean
   'aria-label'?: string
 }
@@ -120,6 +146,7 @@ function MenuRoot({
   alignOffset,
   className,
   maxHeight,
+  footer,
   modal = true,
   'aria-label': ariaLabel,
 }: MenuProps) {
@@ -151,7 +178,7 @@ function MenuRoot({
           hideWhenDetached
           style={{
             maxHeight: maxHeight
-              ? undefined
+              ? `${maxHeight}px`
               : 'min(420px, var(--radix-dropdown-menu-content-available-height))',
           }}
           onKeyDown={handleMenuKeys}
@@ -170,7 +197,12 @@ function MenuRoot({
           }}
           className={cn(PANEL_BASE, className)}
         >
-          {children}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
+          {footer ? (
+            <div className="mt-0.5 shrink-0 border-t border-border/70 pt-1" data-menu-footer="">
+              {footer}
+            </div>
+          ) : null}
         </RDropdown.Content>
       </RDropdown.Portal>
     </RDropdown.Root>
@@ -234,7 +266,12 @@ const RadixMenuItem = forwardRef<HTMLDivElement, MenuItemProps>(function RadixMe
         className,
       )}
     >
-      <RowContent icon={icon} trailing={trailing} selected={selected}>
+      <RowContent
+        icon={icon}
+        trailing={trailing}
+        selected={selected}
+        labelTitle={tip ? undefined : autoLabelTitle(children)}
+      >
         {children}
       </RowContent>
       {tip ? <Tip label={tip} /> : null}
@@ -286,7 +323,12 @@ const MenuCheckItem = forwardRef<HTMLDivElement, MenuCheckItemProps>(function Me
         className,
       )}
     >
-      <RowContent icon={icon} trailing={trailing} checked={checked}>
+      <RowContent
+        icon={icon}
+        trailing={trailing}
+        checked={checked}
+        labelTitle={tip ? undefined : autoLabelTitle(children)}
+      >
         {children}
       </RowContent>
       {tip ? <Tip label={tip} /> : null}
@@ -349,7 +391,12 @@ const MenuRadioItem = forwardRef<HTMLDivElement, MenuRadioItemProps>(function Me
         className,
       )}
     >
-      <RowContent icon={icon} trailing={trailing} checked={false}>
+      <RowContent
+        icon={icon}
+        trailing={trailing}
+        checked={false}
+        labelTitle={tip ? undefined : autoLabelTitle(children)}
+      >
         {children}
       </RowContent>
       <RDropdown.ItemIndicator className="ml-auto flex shrink-0 items-center">
@@ -394,7 +441,7 @@ const MenuSubTrigger = forwardRef<HTMLDivElement, MenuSubTriggerProps>(function 
       disabled={disabled}
       className={cn(ROW_BASE, ROW_STATE, 'data-[state=open]:bg-[var(--t-bg-hover)]', className)}
     >
-      <RowContent icon={icon} trailing={trailing}>
+      <RowContent icon={icon} trailing={trailing} labelTitle={hint ? undefined : autoLabelTitle(children)}>
         {children}
       </RowContent>
       <ChevronRight size={13} className="ml-1 shrink-0 text-muted" />
@@ -674,7 +721,12 @@ export const MenuItem = forwardRef<HTMLButtonElement, LegacyMenuItemProps>(funct
         className,
       )}
     >
-      <RowContent icon={icon} trailing={trailing} selected={selected}>
+      <RowContent
+        icon={icon}
+        trailing={trailing}
+        selected={selected}
+        labelTitle={tip ? undefined : autoLabelTitle(children)}
+      >
         {children}
       </RowContent>
       {tip ? <Tip label={tip} /> : null}
@@ -737,7 +789,7 @@ export function MenuSelect<T extends string>({
     <Menu
       aria-label={ariaLabel}
       align="start"
-      className={cn('min-w-[200px]', panelClassName)}
+      className={cn('w-max min-w-[220px]', panelClassName)}
       trigger={({ open }) => (
         <button
           type="button"

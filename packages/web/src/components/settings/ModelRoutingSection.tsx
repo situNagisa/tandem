@@ -8,12 +8,15 @@ import type {
   RouteCandidate,
   RoutePreference,
 } from '@tandem/protocol'
-import { Check, GitFork, Loader2, Sparkles, TriangleAlert } from 'lucide-react'
+import { Check, GitFork, Loader2, Sparkles, TriangleAlert, X } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { cn } from '../../lib/cn'
 import { profileModelGroups } from '../../lib/profileModels'
+import { Button } from '../ui/Button'
 import { SegmentedControl, Select, Switch } from '../ui/Controls'
+import { Popover } from '../ui/Popover'
+import { ModelCascade, modelPickKey } from '../ui/ModelCascade'
 import { DivisionRoutingSection } from './DivisionRoutingSection'
 
 const TIER_LABEL: Record<ModelTier, string> = {
@@ -156,6 +159,19 @@ export function ModelRoutingSection() {
     }
     return map
   }, [routing.candidates])
+  const selectedKeys = useMemo(
+    () =>
+      new Set(
+        routing.candidates.map((item) =>
+          modelPickKey({
+            profileId: item.profileId,
+            ...(item.groupId ? { groupId: item.groupId } : {}),
+            model: item.model,
+          }),
+        ),
+      ),
+    [routing.candidates],
+  )
 
   const persist = (next: ModelRoutingSettings) => {
     if (!host || !settings) return
@@ -304,67 +320,104 @@ export function ModelRoutingSection() {
           <p className="py-2 text-[12px] text-muted">账号里还没有模型。</p>
         )}
         {!loading && rows.length > 0 && (
-          <div className="space-y-1">
-            {rows.map((row) => {
-              const tier = tierByKey.get(row.key)
-              const checked = tier !== undefined
-              return (
-                <div
-                  key={row.key}
-                  className={cn(
-                    'flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5 transition-colors',
-                    checked
-                      ? 'border-border-strong bg-[var(--t-bg-active)]/35'
-                      : 'border-transparent hover:bg-[var(--t-bg-hover)]',
-                  )}
-                >
-                  <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggle(row, !checked)}
-                      className="sr-only"
-                      aria-label={`选择 ${row.account} ${row.group} ${row.model}`}
-                    />
-                    <span
-                      className={cn(
-                        'flex size-3.5 shrink-0 items-center justify-center rounded border transition-colors',
-                        checked
-                          ? 'border-[var(--t-text)] bg-[var(--t-text)] text-[var(--t-bg)]'
-                          : 'border-border-strong bg-surface',
-                      )}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Popover
+                padded={false}
+                panelClassName="max-h-[min(380px,60vh)] w-max min-w-[300px] max-w-[min(420px,calc(100vw-1rem))] overflow-y-auto p-1"
+                trigger={({ open, toggle }) => (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    aria-expanded={open}
+                    aria-haspopup="menu"
+                    onClick={toggle}
+                  >
+                    添加候选模型…
+                  </Button>
+                )}
+              >
+                {() => (
+                  <ModelCascade
+                    kind="list"
+                    mode="check"
+                    profiles={profiles}
+                    selectedKeys={selectedKeys}
+                    emptyText="账号里还没有模型。"
+                    onToggle={(pick, checked) => {
+                      const row = rows.find((item) => item.key === modelPickKey(pick))
+                      if (row) toggle(row, checked)
+                    }}
+                  />
+                )}
+              </Popover>
+              <span className="text-[12px] text-muted">按账号 › 分组 › 模型逐级选择；勾选后可调整档位。</span>
+            </div>
+            {routing.candidates.length === 0 ? (
+              <p className="py-1 text-[12px] text-muted">
+                还没有候选模型；不配置时「自动」回退到会话当前模型。
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {routing.candidates.map((candidate) => {
+                  const row = rows.find(
+                    (item) =>
+                      item.key ===
+                      modelPickKey({
+                        profileId: candidate.profileId,
+                        ...(candidate.groupId ? { groupId: candidate.groupId } : {}),
+                        model: candidate.model,
+                      }),
+                  )
+                  if (!row) return null
+                  const tier = tierByKey.get(row.key) ?? candidate.tier
+                  return (
+                    <div
+                      key={row.key}
+                      className="flex flex-wrap items-center gap-2 rounded-md border border-border/70 px-2 py-1.5"
                     >
-                      {checked && <Check size={9} strokeWidth={3} />}
-                    </span>
-                    <span className="min-w-0 truncate text-[13px] text-text-soft">
-                      <span className="text-text">{row.account}</span>
-                      <span className="text-muted"> › {row.group} › </span>
-                      <span className="font-mono text-[12px]">{row.model}</span>
-                    </span>
-                    {row.defaultModel && (
-                      <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1 text-[11px] text-text-secondary">
-                        默认
+                      <Check size={12} className="shrink-0 text-text-secondary" />
+                      <span
+                        className="min-w-0 flex-1 truncate text-[13px] text-text-soft"
+                        title={`${row.account} › ${row.group} › ${row.model}`}
+                      >
+                        <span className="text-text">{row.account}</span>
+                        <span className="text-muted"> › {row.group} › </span>
+                        <span className="font-mono text-[12px]">{row.model}</span>
                       </span>
-                    )}
-                  </label>
-                  <div className="w-[132px] shrink-0">
-                    <Select
-                      size="sm"
-                      value={tier ?? 'balanced'}
-                      disabled={!checked || saving}
-                      onChange={(e) => setTier(row, e.target.value as ModelTier)}
-                      aria-label={`${row.model} 档位`}
-                    >
-                      {(Object.keys(TIER_LABEL) as ModelTier[]).map((value) => (
-                        <option key={value} value={value}>
-                          {TIER_LABEL[value]}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                </div>
-              )
-            })}
+                      {row.defaultModel && (
+                        <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1 text-[11px] text-text-secondary">
+                          默认
+                        </span>
+                      )}
+                      <div className="w-[132px] shrink-0">
+                        <Select
+                          size="sm"
+                          value={tier}
+                          disabled={saving}
+                          onChange={(e) => setTier(row, e.target.value as ModelTier)}
+                          aria-label={`${row.model} 档位`}
+                        >
+                          {(Object.keys(TIER_LABEL) as ModelTier[]).map((value) => (
+                            <option key={value} value={value}>
+                              {TIER_LABEL[value]}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`移除 ${row.model}`}
+                        onClick={() => toggle(row, false)}
+                      >
+                        <X size={12} />
+                      </Button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
       </section>

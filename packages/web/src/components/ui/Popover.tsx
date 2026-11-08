@@ -37,6 +37,9 @@ export function Popover({
   onOpenChange,
 }: PopoverProps) {
   const anchorRef = useRef<HTMLDivElement>(null)
+  // 从一个弹层直接点另一个触发器时，旧弹层关闭后不能把焦点抢回自己的触发器，
+  // 否则新弹层刚挂载就收到 focus-outside 又立刻收起（反馈 #04）。
+  const pointerDownOutside = useRef(false)
   const [internalOpen, setInternalOpen] = useState(false)
   const open = openProp ?? internalOpen
   const setOpen = useCallback(
@@ -49,7 +52,7 @@ export function Popover({
   const close = useCallback(() => setOpen(false), [setOpen])
 
   return (
-    <RPopover.Root open={open} onOpenChange={setOpen}>
+    <RPopover.Root open={open} onOpenChange={setOpen} modal={false}>
       <RPopover.Anchor asChild>
         <div ref={anchorRef} className={cn('relative', className)}>
           {trigger({ open, toggle: () => setOpen(!open), close })}
@@ -68,8 +71,18 @@ export function Popover({
           avoidCollisions
           sticky="always"
           hideWhenDetached
-          onOpenAutoFocus={(e) => e.preventDefault()}
+          onOpenAutoFocus={(e) => {
+            pointerDownOutside.current = false
+            e.preventDefault()
+          }}
           onCloseAutoFocus={(e) => {
+            // 点外部（通常是另一个弹层触发器）关闭时不要还原焦点，
+            // 焦点留在用户刚点的位置，新弹层才能保持打开（反馈 #04）。
+            if (pointerDownOutside.current) {
+              pointerDownOutside.current = false
+              e.preventDefault()
+              return
+            }
             // Anchor 是包裹 div，Radix 默认把焦点还给不可聚焦的 div，会掉到 body。
             const target = anchorRef.current?.querySelector<HTMLElement>(
               'button, a[href], [tabindex]:not([tabindex="-1"])',
@@ -80,13 +93,22 @@ export function Popover({
             }
           }}
           onPointerDownOutside={(e) => {
-            if (useFeedbackStore.getState().active) e.preventDefault()
+            if (useFeedbackStore.getState().active) {
+              e.preventDefault()
+              return
+            }
+            pointerDownOutside.current = true
           }}
           onFocusOutside={(e) => {
             if (useFeedbackStore.getState().active) e.preventDefault()
           }}
           onInteractOutside={(e) => {
-            if (useFeedbackStore.getState().active) e.preventDefault()
+            if (useFeedbackStore.getState().active) {
+              e.preventDefault()
+              return
+            }
+            // 不论是点外部还是焦点被另一个弹层拿走，关闭时都不要还原焦点。
+            pointerDownOutside.current = true
           }}
           className={cn(
             popoverSurfaceClass,

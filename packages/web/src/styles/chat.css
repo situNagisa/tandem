@@ -1261,21 +1261,22 @@ mark.chat-match {
 /* 行尾图钉：悬停行出现，点击固定/取消固定这一轮 */
 .turn-item-p {
   position: absolute;
-  top: 7px;
-  right: 35px;
+  top: 2px;
+  right: 27px;
   z-index: 1;
   display: flex;
-  width: 14px;
-  height: 14px;
+  width: 24px;
+  height: 24px;
   align-items: center;
   justify-content: center;
+  border-radius: 6px;
   color: var(--t-text);
   opacity: 0;
   pointer-events: none;
 }
 .turn-item-p svg {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   fill: currentColor;
 }
 .turn-item-p[data-on="true"] {
@@ -1287,6 +1288,36 @@ mark.chat-match {
 }
 .turn-item-p:hover {
   color: var(--t-accent);
+  background: var(--t-bg-hover);
+}
+
+/* 已固定的轮：大纲里置顶成一组，行本身带强调色的浅底与左侧标记 */
+.turn-rail[data-open="true"] .turn-item[data-pinned="true"] {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--t-accent) 9%, transparent);
+  box-shadow: inset 2px 0 var(--t-accent);
+}
+.turn-rail[data-open="true"] .turn-item[data-pinned="true"] .turn-item-n,
+.turn-rail[data-open="true"] .turn-item[data-pinned="true"] .turn-item-t {
+  color: var(--t-text);
+}
+.turn-pin-head {
+  position: absolute;
+  top: calc(var(--turn-ph) / -2 - 22px);
+  right: 8px;
+  z-index: 4;
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--t-accent) 32%, var(--t-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--t-surface) 92%, transparent);
+  color: var(--t-accent-text);
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms var(--t-ease-out);
 }
 
 /* 静止态：被固定轮次刻度左侧的小圆点 */
@@ -1375,29 +1406,6 @@ mark.chat-match {
 }
 .turn-rail[data-feedback="true"] .turn-hit {
   cursor: default;
-}
-
-/* 悬停大纲行时在面板左侧显示首行全文（行本身受 pointer-events 限制，不能依赖原生 title） */
-.turn-tip {
-  position: absolute;
-  top: 0;
-  right: 292px;
-  z-index: 3;
-  max-width: 360px;
-  padding: 6px 9px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--t-surface) 96%, transparent);
-  box-shadow: var(--t-shadow-md);
-  color: var(--t-text);
-  font-size: 12px;
-  line-height: 1.5;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 90ms var(--t-ease-out);
-  will-change: transform, opacity;
 }
 
 .turn-count {

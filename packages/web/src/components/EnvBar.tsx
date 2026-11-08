@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { forwardRef, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import {
   ArrowUp,
   Bot,
@@ -39,28 +39,29 @@ const EMPTY_DEVICE_MOUNTS: DeviceMount[] = []
 const triggerClass =
   'flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[13px] leading-4 text-text-secondary outline-none transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:pointer-events-none disabled:opacity-40 max-sm:h-11 max-sm:px-2'
 
-function EnvTrigger({
-  icon,
-  label,
-  onClick,
-  open,
-  disabled,
-  title,
-  pressed,
-  loading,
-}: {
+interface EnvTriggerProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick'> {
   icon: ReactNode
   label: ReactNode
   onClick?: () => void
   open?: boolean
-  disabled?: boolean
   title?: string
   pressed?: boolean
   /** 数据未就绪：显示骨架而不是“分支”这类占位词。 */
   loading?: boolean
-}) {
+}
+
+/**
+ * 环境条触发器。Radix 的 Menu.Trigger 会通过 asChild 注入 pointerdown/keydown/ref，
+ * 必须原样转发到真实 button，否则“选择主机”点了没反应（反馈 #11）。
+ */
+const EnvTrigger = forwardRef<HTMLButtonElement, EnvTriggerProps>(function EnvTrigger(
+  { icon, label, onClick, open, disabled, title, pressed, loading, className, ...rest },
+  ref,
+) {
   return (
     <button
+      {...rest}
+      ref={ref}
       type="button"
       onClick={onClick}
       disabled={disabled}
@@ -72,6 +73,7 @@ function EnvTrigger({
         triggerClass,
         (open || pressed) && 'bg-[var(--t-bg-active)] text-text',
         disabled && 'opacity-40',
+        className,
       )}
     >
       {icon}
@@ -87,7 +89,7 @@ function EnvTrigger({
       {!pressed && <ChevronDown size={11} className="shrink-0 text-muted max-sm:hidden" />}
     </button>
   )
-}
+})
 
 /** 末尾分隔符仅在盘符根上保留，其余去掉（Windows 下 "C:" 表示该盘当前目录）。 */
 function cleanDir(path: string): string {
@@ -620,6 +622,7 @@ export function EnvBar({
       <Menu
         side="top"
         align="left"
+        modal={false}
         className={targetHostId ? 'w-auto p-1' : 'w-auto min-w-[200px]'}
         aria-label={isSession ? '切换主机' : '选择主机'}
         trigger={({ open }) => (

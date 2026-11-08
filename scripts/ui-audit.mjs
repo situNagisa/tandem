@@ -41,6 +41,57 @@ const GLOBAL_CHECKS = [
 
 const files = (await walk(SRC)).filter((file) => !file.startsWith(UI_DIR + '/'))
 const issues = []
+// 菜单项必须是单行（用户第 5 轮反馈 #15/#16）：说明走 hint/Tooltip，
+// 额外操作放行尾。这里扫描 ui/ 以外的 JSX 菜单项块，禁止 flex-col / h-auto / 多行说明。
+const MENU_ITEM_TAGS = ['Menu.Item', 'Menu.RadioItem', 'Menu.CheckItem', 'MenuItem']
+for (const file of files) {
+  const text = await readFile(file, 'utf8')
+  for (const tagName of MENU_ITEM_TAGS) {
+    const openRe = new RegExp(`<${tagName.replace('.', '\\.')}\\b`, 'g')
+    let match
+    while ((match = openRe.exec(text))) {
+      const tagEnd = text.indexOf('>', match.index)
+      if (tagEnd < 0) continue
+      const tag = text.slice(match.index, tagEnd + 1)
+      if (tag.endsWith('/>')) continue
+      const close = text.indexOf(`</${tagName}>`, tagEnd)
+      if (close < 0) continue
+      const block = text.slice(tagEnd + 1, close)
+      const line = text.slice(0, match.index).split('\n').length
+      const multiline =
+        /\bflex-col\b/.test(block) ||
+        /\bh-auto\b|\bmin-h-\[/.test(tag) ||
+        /\bdescription=/.test(tag)
+      if (multiline) {
+        issues.push({
+          file: relative(ROOT, file),
+          line,
+          check: 'menu-multiline',
+          label: '菜单项写成了多行（说明放 hint/Tooltip，额外操作放行尾）',
+          text: tag.trim().slice(0, 160),
+        })
+      }
+    }
+  }
+}
+
+// tooltip 不能出现 0 宽度（否则每行一个字，反馈 #01）：全局样式必须有 min-width。
+try {
+  const css = await readFile(join(SRC, 'index.css'), 'utf8')
+  const tipBlock = css.match(/\.ui-tip\s*\{([\s\S]*?)\}/)
+  if (tipBlock && !/min-width\s*:/.test(tipBlock[1])) {
+    issues.push({
+      file: 'packages/web/src/index.css',
+      line: 1,
+      check: 'tooltip-min-width',
+      label: '.ui-tip 缺少 min-width，窄内容可能退化成每行一个字',
+      text: '.ui-tip',
+    })
+  }
+} catch {
+  // index.css 不存在时忽略
+}
+
 for (const file of files) {
   const text = await readFile(file, 'utf8')
   const lines = text.split('\n')

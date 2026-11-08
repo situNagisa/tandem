@@ -142,7 +142,7 @@ export function TurnRail({
   const indRef = useRef<HTMLDivElement>(null)
   const curRef = useRef<HTMLDivElement>(null)
   const hitRef = useRef<HTMLDivElement>(null)
-  const tipRef = useRef<HTMLDivElement>(null)
+  const pinHeadRef = useRef<HTMLSpanElement>(null)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   const sceneRef = useRef<RailScene | null>(null)
   const followerRef = useRef<ScrollFollower | null>(null)
@@ -269,7 +269,14 @@ export function TurnRail({
     const cur = curRef.current
     if (!railOn || !root || !bg || !ind || !cur) return
     const items = itemRefs.current.slice(0, POOL).filter((el): el is HTMLDivElement => !!el)
-    const scene = new RailScene({ root, bg, ind, cur, items })
+    const scene = new RailScene({
+      root,
+      bg,
+      ind,
+      cur,
+      items,
+      pinHead: pinHeadRef.current,
+    })
     sceneRef.current = scene
     scene.onDragRow = (turn) => goRef.current(turn, { recenter: false })
     scene.setData(sceneTurnsRef.current)
@@ -393,7 +400,6 @@ export function TurnRail({
     setOpen(false)
     sceneRef.current?.setOpen(false)
     sceneRef.current?.setCenter(activeRef.current)
-    if (tipRef.current) tipRef.current.style.opacity = '0'
   }, [])
 
   const openPanel = useCallback(() => {
@@ -449,24 +455,6 @@ export function TurnRail({
   const pointerY = (event: ReactPointerEvent<HTMLElement>): number =>
     event.clientY - (navRef.current?.getBoundingClientRect().top ?? 0)
 
-  /** 大纲行悬停提示：行本身在 aria-hidden 的动画池里，用独立浮层显示首行全文。 */
-  const updateTip = (turn: number | null, y: number) => {
-    const tip = tipRef.current
-    if (!tip) return
-    const mark = turn == null ? undefined : turnsRef.current[turn - 1]
-    if (!mark || !mark.full) {
-      tip.style.opacity = '0'
-      return
-    }
-    tip.textContent = mark.full
-    tip.style.transform = `translate3d(0,${y - 16}px,0)`
-    tip.style.opacity = '1'
-  }
-
-  const hideTip = () => {
-    if (tipRef.current) tipRef.current.style.opacity = '0'
-  }
-
   const onPointerEnter = (event: ReactPointerEvent<HTMLElement>) => {
     window.clearTimeout(closeTimer.current)
     closeTimer.current = 0
@@ -484,14 +472,12 @@ export function TurnRail({
     const y = pointerY(event)
     scene.setPointer(y)
     if (event.pointerType !== 'touch') scene.setHoverEnabled(true)
-    updateTip(scene.hoverTurn, y)
   }
 
   const onPointerLeave = (event: ReactPointerEvent<HTMLElement>) => {
     window.clearTimeout(openTimer.current)
     openTimer.current = 0
     if (dragRef.current || useFeedbackStore.getState().active) return
-    hideTip()
     // 指针移到行尾图钉等面板内元素时，hit 也会收到 pointerleave，不应收起。
     // relatedTarget 可能是 Window（离开文档/浮层卸载），不能直接 contains。
     if (nodeContains(navRef.current, event.relatedTarget)) return
@@ -631,6 +617,9 @@ export function TurnRail({
               </div>
             ))}
           </div>
+          <span ref={pinHeadRef} className="turn-pin-head" aria-hidden>
+            已固定
+          </span>
           <div
             ref={hitRef}
             className="turn-hit"
@@ -656,7 +645,6 @@ export function TurnRail({
               if (!dragRef.current) closePanel()
             }}
           />
-          <div ref={tipRef} className="turn-tip" aria-hidden />
           <ol className="sr-only" data-testid="turn-readout" aria-label="轮次大纲全文">
             {turns.map((mark) => (
               <li key={mark.id}>

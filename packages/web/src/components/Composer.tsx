@@ -1149,33 +1149,31 @@ export function Composer({
                 </Button>
               )}
             >
-              <p className="px-2 pb-1.5 pt-1 text-[12px] leading-4 text-muted">
-                只影响本条消息；主会话模型与缓存不变。自动只在多步机械任务或专长匹配时分工。
-              </p>
-              <Menu.Item selected={!effectiveRouteMode} onSelect={() => applyRouteMode(undefined)}>
-                <span className="flex flex-col gap-0.5 py-0.5">
-                  <span>自动</span>
-                  <span className="text-[12px] text-muted">按规则判断；简单任务直接做</span>
-                </span>
+              <Menu.Item
+                selected={!effectiveRouteMode}
+                hint="按规则判断；简单任务直接做，只影响本条消息"
+                onSelect={() => applyRouteMode(undefined)}
+              >
+                自动
               </Menu.Item>
               {ROUTE_MODE_OPTIONS.map((option) => (
                 <Menu.Item
                   key={option.value}
                   selected={effectiveRouteMode === option.value}
+                  hint={option.hint}
                   onSelect={() => applyRouteMode(option.value)}
                 >
-                  <span className="flex flex-col gap-0.5 py-0.5">
-                    <span>{option.label}</span>
-                    <span className="text-[12px] text-muted">{option.hint}</span>
-                  </span>
+                  {option.label}
                 </Menu.Item>
               ))}
               <Menu.Separator />
-              <Menu.Item keepOpen onSelect={toggleKeepRouteMode}>
-                <span className="flex w-full items-center justify-between">
-                  <span>本会话保持</span>
-                  <span className="text-muted">{keepRouteMode ? '✓' : ''}</span>
-                </span>
+              <Menu.Item
+                keepOpen
+                hint="记住选择，本会话后续消息都用这个执行方式"
+                trailing={keepRouteMode ? '✓' : undefined}
+                onSelect={toggleKeepRouteMode}
+              >
+                本会话保持
               </Menu.Item>
             </Menu>
           )}
