@@ -30,6 +30,7 @@
 - A 用 Node `serialport`（服务端依赖；加载失败时设备列表给出可读提示）打开串口，字节流进入 Tandem 的串口缓冲，经 WS `device_output` 推给客户端；提供 `SerialRead`（游标 + 时间窗 + 正则过滤）与 `SerialWrite`。
 - **虚拟串口给其他机器的本地程序用**：Linux 用 pty（`openpty`），Windows 用 com0com 一对虚拟串口，把远端字节流桥接到本地。v1 **不做**，只在传输层预留接口；原因：驱动安装、权限、跨机重连语义复杂，且先用 Tandem 工具/面板验证需求。
 - 传输层抽象 `SerialTransport`：`list/open/write/close`；v1 有 `MockSerialTransport`（`TANDEM_MOCK_SERIAL=1`，可自动化回归）与 `NodeSerialTransport`（真实 serialport；列端口与打开，失败给出可读错误）。
+- **演示设备**（`packages/server/src/devices/demo.ts`）：演示工作区存在时，设备列表多出「Pixel 8（演示）」与「演示串口板（ESP32）」，标注 `demo: true`、界面显示「演示设备」。演示 adb 由内置脚本响应 `devices/shell/install/logcat`（不调用真实 adb），演示串口周期性输出板子日志，`help` / `status` / `reboot` / `read <sensor>` 有回显。清除演示工作区时一并摘掉挂载与设备；不依赖 adb / serialport，用于产品所有者自测工作站与串口终端。
 
 ## 4. Agent 工具与权限
 
