@@ -4335,6 +4335,65 @@ async function main() {
       await openSession(page, 'long')
       const summary = page.locator('[data-usage-summary]').last()
       await summary.scrollIntoViewIfNeeded()
+    desktop('反馈12#02：自动换行时行号与代码逐行对齐、工具条不压内容', async (page) => {
+      // 打开文件预览前先开启自动换行，共享 CodeBlock 会直接走「行号 + 换行」grid。
+      await page.evaluate(() => localStorage.setItem('tandem.codeWrap.v1', '1'))
+      await openSession(page, 'links')
+      const ref = page.locator('code.file-ref-inline').filter({ hasText: 'src/hello.ts' }).first()
+      await ref.waitFor({ state: 'visible' })
+      await ref.click()
+      const grid = page.getByTestId('code-wrap-grid')
+      await grid.waitFor({ timeout: 10_000 })
+      const rows = grid.locator('.file-code-wrap-row')
+      assert.ok((await rows.count()) >= 3, '换行后没有按行拆成 grid 行')
+      const metrics = await grid.evaluate((el) =>
+        [...el.querySelectorAll('.file-code-wrap-row')].map((row) => {
+          const no = row.querySelector('.file-code-wrap-no')?.getBoundingClientRect()
+          const content = row.querySelector('.file-code-wrap-code')?.getBoundingClientRect()
+          return no && content
+            ? { noRight: no.right, contentLeft: content.left, noTop: no.top, contentTop: content.top }
+            : null
+        }),
+      )
+      for (const row of metrics) {
+        assert.ok(row, '行号或代码缺失')
+        assert.ok(row.noRight <= row.contentLeft + 1, `行号与代码横向重叠：${row.noRight} > ${row.contentLeft}`)
+        assert.ok(Math.abs(row.noTop - row.contentTop) <= 1, `行号与代码顶端未对齐：${row.noTop} vs ${row.contentTop}`)
+      }
+      await page.getByRole('button', { name: '关闭文件预览' }).click()
+      await page.evaluate(() => localStorage.setItem('tandem.codeWrap.v1', '0'))
+
+      // 会话内代码块：自动换行时顶部工具条常显，必须为它留出空间，长行不被遮住。
+      await openSession(page, 'wide')
+      const code = page.locator('[data-message-id="w2"] .chat-code').first()
+      await code.waitFor({ timeout: 10_000 })
+      await code.getByTestId('code-wrap-toggle').click()
+      await page.waitForTimeout(300)
+      await page.waitForFunction(
+        () => document.querySelector('[data-message-id="w2"] .chat-code')?.getAttribute('data-wrap') === 'true',
+        null,
+        { timeout: 5_000 },
+      )
+      const spacing = await code.evaluate((el) => {
+        const tools = el.querySelector('.chat-code-tools')?.getBoundingClientRect()
+        const pre = el.querySelector('pre')
+        const box = pre?.getBoundingClientRect()
+        const pad = pre ? Number.parseFloat(getComputedStyle(pre).paddingTop) : 0
+        return {
+          toolsBottom: tools?.bottom ?? 0,
+          contentTop: (box?.top ?? 0) + pad,
+          toolsAttr: el.getAttribute('data-tools'),
+          wrapAttr: el.getAttribute('data-wrap'),
+          pad,
+        }
+      })
+      assert.ok(
+        spacing.toolsBottom <= spacing.contentTop + 1,
+        `工具条压住代码内容：${spacing.toolsBottom} > ${spacing.contentTop}（tools=${spacing.toolsAttr} wrap=${spacing.wrapAttr} pad=${spacing.pad}）`,
+      )
+      await page.evaluate(() => localStorage.setItem('tandem.codeWrap.v1', '0'))
+    })
+
       // 操作条平时 pointer-events:none，先把鼠标移进消息组再悬停用量。
       await summary.locator('xpath=ancestor::div[contains(@class,"msg-group")]').hover()
       const text = await summary.innerText()
@@ -5493,7 +5552,10 @@ async function main() {
 
     desktop('会话信息面板不再提供删除会话（反馈11#02 R05）', async (page) => {
       await openSession(page, 'long')
-      const panel = page.locator('aside').filter({ hasText: '会话信息' }).first()
+      if (!(await page.locator('[data-group]').count())) {
+        await page.getByRole('button', { name: '切换信息面板' }).first().click()
+      }
+      const panel = page.locator('aside').filter({ has: page.locator('[data-group]') }).first()
       await panel.waitFor({ state: 'visible', timeout: 10_000 })
       assert.equal(await panel.getByText('删除会话', { exact: true }).count(), 0, '会话信息面板仍有删除会话')
       await page.screenshot({ path: '/tmp/fb11-after/02.png' })
@@ -5894,10 +5956,7 @@ async function main() {
       const handle = page.getByRole('separator', { name: '调整会话信息面板宽度' })
       if (!(await handle.isVisible().catch(() => false))) await toggle.click()
       await handle.waitFor({ state: 'visible', timeout: 5_000 })
-      const panel = page
-        .locator('aside')
-        .filter({ has: page.getByText('会话信息', { exact: true }) })
-        .first()
+      const panel = page.locator('aside').filter({ has: page.locator('[data-group]') }).first()
       const before = (await panel.boundingBox())?.width ?? 0
       assert.ok(before >= 280 && before <= 600, `信息面板默认宽度异常：${before}`)
       const box = await handle.boundingBox()
@@ -5939,10 +5998,7 @@ async function main() {
         }),
       })
       await gotoSession(page, empty.id)
-      const panel = page
-        .locator('aside')
-        .filter({ has: page.getByRole('heading', { name: '会话信息' }) })
-        .last()
+      const panel = page.locator('aside').filter({ has: page.locator('[data-group]') }).first()
       if (!(await panel.isVisible().catch(() => false))) {
         await page.getByRole('button', { name: '切换信息面板' }).first().click()
       }
@@ -5963,7 +6019,7 @@ async function main() {
       const groupMenu = page.locator('[role="menu"][aria-label="显示分组"]').first()
       const toggleEmptyGroup = async (name) => {
         if (!(await groupMenu.isVisible().catch(() => false))) {
-          await panel.getByRole('button', { name: '自定义信息面板' }).click()
+          await page.getByRole('button', { name: '自定义信息面板' }).click()
           await groupMenu.waitFor({ timeout: 5_000 })
         }
         await groupMenu.getByRole('menuitemcheckbox', { name, exact: true }).click()
@@ -6364,25 +6420,192 @@ async function main() {
       await page.keyboard.press('Escape')
     })
 
-    small('360 小屏：审批卡按钮 2×2 且触控 44px', async (page) => {
+    small('360 小屏：审批卡为编号询问列表且触控 44px', async (page) => {
       await openSession(page, 'approve')
       const card = page.locator('.permission-card').first()
       await card.waitFor()
-      const buttons = card.locator('.permission-actions button')
-      assert.equal(await buttons.count(), 4, '审批按钮不是 4 个')
+      const options = card.locator('[role="radiogroup"] [role="radio"]')
+      assert.equal(await options.count(), 3, '审批编号选项不是 3 个')
       const boxes = []
-      for (let i = 0; i < 4; i++) {
-        const box = await buttons.nth(i).boundingBox()
-        assert.ok(box, `第 ${i + 1} 个审批按钮不可见`)
-        assert.ok(box.height >= 43, `审批按钮高度 ${Math.round(box.height)}px`)
-        assert.ok(box.width >= 120, `审批按钮宽度 ${Math.round(box.width)}px`)
+      for (let i = 0; i < 3; i++) {
+        const box = await options.nth(i).boundingBox()
+        assert.ok(box, `第 ${i + 1} 个审批选项不可见`)
+        assert.ok(box.height >= 43, `审批选项高度 ${Math.round(box.height)}px`)
         boxes.push(box)
       }
-      assert.equal(new Set(boxes.map((b) => Math.round(b.y))).size, 2, '审批按钮没有排成两行')
-      assert.equal(new Set(boxes.map((b) => Math.round(b.x))).size, 2, '审批按钮没有排成两列')
       const cardBox = await card.boundingBox()
       for (const box of boxes) {
-        assert.ok(box.x >= cardBox.x - 1 && box.x + box.width <= cardBox.x + cardBox.width + 1, '审批按钮超出卡片')
+        assert.ok(box.x >= cardBox.x - 1 && box.x + box.width <= cardBox.x + cardBox.width + 1, '审批选项超出卡片')
+      }
+    })
+
+    desktop('反馈12#03/#05：子代理卡片定位子会话、层级不用子/孙、可跳转只读视图', async (page) => {
+      let demo = await api(base, token, '/api/demo')
+      if (!demo.active) demo = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const scenario = demo.scenarios.find((item) => item.id === 'subagents')
+      const [mainId, childId] = scenario.sessionIds
+      await openSession(page, mainId)
+
+      const taskRow = page.locator('.tool-row').filter({ hasText: '子代理' }).first()
+      await taskRow.waitFor({ timeout: 10_000 })
+      await taskRow.click()
+      await page.getByText('检查价格页前端', { exact: false }).first().waitFor({ timeout: 10_000 })
+      assert.equal(
+        await page.getByText(/没有找到子代理会话/).count(),
+        0,
+        'Task 卡片没有关联到子会话',
+      )
+      await page.locator('[data-tip="打开子代理会话（只读）"]').first().click()
+      await page.locator('[data-agent-breadcrumb] [aria-current="page"]').filter({ hasText: '价格页前端' }).waitFor({ timeout: 10_000 })
+      assert.ok((await page.locator('[data-turn-id]').count()) > 0, '子代理只读视图没有消息')
+      assert.ok((await page.locator('nav[aria-label="会话列表"]').count()) === 1, '只读视图破坏侧栏')
+      // 子会话里的 Task 卡片继续跳到下一层（面包屑三层）。
+      const nested = page.locator('.tool-row').filter({ hasText: '子代理' }).first()
+      await nested.click()
+      await page.locator('[data-tip="打开子代理会话（只读）"]').first().click()
+      await page.locator('[data-agent-breadcrumb] [aria-current="page"]').filter({ hasText: '竞品文案' }).waitFor({ timeout: 10_000 })
+      const crumbText = await page.locator('[data-agent-breadcrumb]').innerText()
+      assert.match(crumbText, /价格页前端/, `面包屑缺少上一级：${crumbText}`)
+      assert.match(crumbText, /竞品文案/, `面包屑缺少当前层：${crumbText}`)
+      await page.locator('button[data-tip^="返回主会话"]').first().click()
+      await page.locator('[data-turn-id]').first().waitFor()
+
+      // 右侧代理树：统一叫子代理，用缩进 + 竖引导线，不出现「孙」。
+      if (!(await page.locator('[data-group="agents"]').count())) {
+        await page.getByRole('button', { name: '切换信息面板' }).click()
+      }
+      const agents = page.locator('[data-group="agents"]')
+      await agents.waitFor({ timeout: 10_000 })
+      const treeText = await agents.innerText()
+      assert.equal(/孙代理|孙\b/.test(treeText), false, `代理树仍出现孙代理：${treeText}`)
+      assert.ok((await agents.locator('.agent-guide').count()) >= 1, '代理树没有层级引导线')
+      await agents.getByRole('button').filter({ hasText: '价格页前端' }).first().click()
+      await page.locator('[data-agent-breadcrumb] [aria-current="page"]').filter({ hasText: '价格页前端' }).waitFor({ timeout: 10_000 })
+      assert.ok(childId, '演示场景缺少子代理会话')
+    })
+
+    desktop('反馈12#06/#07：会话信息无顶栏、分组可收起并记住', async (page) => {
+      let demo = await api(base, token, '/api/demo')
+      if (!demo.active) demo = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const mainId = demo.scenarios.find((item) => item.id === 'subagents').sessionIds[0]
+      await openSession(page, mainId)
+      const panel = page.locator('aside').filter({ has: page.locator('[data-group]') }).first()
+      if (!(await panel.count())) {
+        await page.getByRole('button', { name: '切换信息面板' }).click()
+      }
+      await page.locator('[data-group]').first().waitFor({ timeout: 10_000 })
+      assert.equal(await panel.getByText('会话信息', { exact: true }).count(), 0, '面板仍有顶栏标题')
+      assert.equal(await panel.getByRole('button', { name: '关闭信息面板' }).count(), 0, '面板仍有 × 按钮')
+      assert.ok(
+        (await page.getByRole('button', { name: '自定义信息面板' }).count()) > 0,
+        '顶栏没有自定义信息面板按钮',
+      )
+
+      const details = page.locator('[data-group="details"]')
+      await details.waitFor()
+      const before = await details.boundingBox()
+      await details.locator('[data-card-toggle]').click()
+      await page.waitForTimeout(250)
+      assert.equal(await details.getAttribute('data-collapsed'), 'true', '分组没有收起')
+      const after = await details.boundingBox()
+      assert.ok(after.height < before.height - 10, `收起后高度未变化：${before.height} → ${after.height}`)
+      const stored = await page.evaluate(() => localStorage.getItem('tandem.rightPanelCollapsed.v1') ?? '')
+      assert.match(stored, /details/, '收起状态没有记住')
+      await page.reload()
+      await openSession(page, mainId)
+      if (!(await page.locator('[data-group]').count())) {
+        await page.getByRole('button', { name: '切换信息面板' }).click()
+      }
+      await page.locator('[data-group="details"]').waitFor({ timeout: 10_000 })
+      assert.equal(
+        await page.locator('[data-group="details"]').getAttribute('data-collapsed'),
+        'true',
+        '重开后收起状态丢失',
+      )
+    })
+
+    desktop('反馈12#08：侧栏项目与会话缩进收紧、标题左对齐', async (page) => {
+      await openSession(page, 'long')
+      const project = page.locator('[data-project-row]').first()
+      await project.waitFor({ timeout: 10_000 })
+      const projectPad = await project
+        .locator('button')
+        .first()
+        .evaluate((el) => Number.parseFloat(getComputedStyle(el).paddingLeft))
+      assert.ok(projectPad <= 8, `项目行缩进 ${projectPad}px，超过 8px`)
+      const metrics = await project.evaluate((el) => {
+        const projectTitle = [...el.querySelectorAll('button span')].find(
+          (span) => span.className.includes('truncate') && span.textContent?.trim(),
+        )
+        const row = el.querySelector('[data-session-row]')
+        const sessionTitle = row?.querySelector('[data-tip]')
+        const box = (node) => (node ? node.getBoundingClientRect().left : null)
+        return { project: box(projectTitle), session: box(sessionTitle) }
+      })
+      assert.ok(metrics.project != null && metrics.session != null, '找不到项目/会话标题')
+      assert.ok(
+        Math.abs(metrics.project - metrics.session) <= 2,
+        `会话标题与项目标题没有左对齐：${metrics.project} vs ${metrics.session}`,
+      )
+    })
+
+    desktop('反馈12#09：审批卡是会话内编号询问（↑↓ 选择）', async (page) => {
+      await openSession(page, 'approve')
+      const card = page.locator('.permission-card').first()
+      await card.waitFor({ timeout: 10_000 })
+      const text = await card.innerText()
+      assert.match(text, /需要你的许可/)
+      assert.match(text, /允许运行/)
+      assert.equal(await card.locator('.permission-actions').count(), 0, '仍有旧版按钮条')
+      const options = card.locator('[role="radiogroup"] [role="radio"]')
+      assert.equal(await options.count(), 3, '编号选项不是 3 个')
+      assert.equal(await options.nth(0).getAttribute('aria-checked'), 'true', '默认没有选中允许')
+      const before = await card.evaluate((el) => getComputedStyle(el, '::before').content)
+      assert.equal(before, 'none', '审批卡仍有左侧装饰条')
+      await page.keyboard.press('ArrowDown')
+      await page.waitForTimeout(120)
+      assert.equal(await options.nth(1).getAttribute('aria-checked'), 'true', '↓ 没有移动选择')
+      await page.keyboard.press('ArrowUp')
+      await page.waitForTimeout(120)
+      assert.equal(await options.nth(0).getAttribute('aria-checked'), 'true', '↑ 没有移回选择')
+      assert.ok(
+        (await card.getByRole('button', { name: '更多' }).count()) === 1,
+        '添加规则/转给没有收进更多菜单',
+      )
+    })
+
+    desktop('反馈12#10：下拉首次打开位置稳定（前 10 帧 ≤1px）', async (page) => {
+      await openSession(page, 'long')
+      const sample = async (selector) =>
+        page.evaluate(async (aria) => {
+          const trigger = document.querySelector(aria)
+          if (!trigger) return { error: `找不到触发器 ${aria}` }
+          trigger.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, pointerType: 'mouse' }),
+          )
+          const frames = []
+          for (let i = 0; i < 10; i += 1) {
+            await new Promise((resolve) => requestAnimationFrame(resolve))
+            const panel = document.querySelector('.popover-panel')
+            if (panel) {
+              const rect = panel.getBoundingClientRect()
+              frames.push({ x: rect.left, y: rect.top })
+            }
+          }
+          document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+          const dx = Math.max(...frames.map((f) => f.x)) - Math.min(...frames.map((f) => f.x))
+          const dy = Math.max(...frames.map((f) => f.y)) - Math.min(...frames.map((f) => f.y))
+          return { count: frames.length, dx, dy }
+        }, selector)
+      for (const aria of ['[aria-label="更多"]', '[aria-label^="选择模型"]']) {
+        const first = await sample(aria)
+        assert.equal(first.error, undefined, first.error)
+        assert.ok(first.count >= 5, `${aria} 打开后采样帧数不足：${first.count}`)
+        assert.ok(first.dx <= 1 && first.dy <= 1, `${aria} 首次打开位置抖动 ${first.dx}×${first.dy}px`)
+        await page.waitForTimeout(250)
+        const second = await sample(aria)
+        assert.ok(second.dx <= 1 && second.dy <= 1, `${aria} 再次打开位置抖动 ${second.dx}×${second.dy}px`)
+        await page.waitForTimeout(250)
       }
     })
 

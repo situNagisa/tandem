@@ -498,13 +498,13 @@ export function PermissionCard({
           </button>
         </div>
       )}
-      <div className="px-3.5 pb-2" role="listbox" aria-label="审批选项">
+      <div className="px-3.5 pb-2" role="radiogroup" aria-label="审批选项">
         {options.map((option, index) => (
           <button
             key={option.label}
             type="button"
-            role="option"
-            aria-selected={selected === index}
+            role="radio"
+            aria-checked={selected === index}
             {...(index === 0 ? { 'data-permission-allow': '' } : {})}
             onMouseEnter={() => setSelected(index)}
             onFocus={() => setSelected(index)}
