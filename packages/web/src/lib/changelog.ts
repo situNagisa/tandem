@@ -31,6 +31,68 @@ export interface ChangelogRelease {
 /** 版本升级后首次打开时展示；按版本从新到旧排列。 */
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: '0.4.1',
+    date: '2026-11-09',
+    items: [
+      {
+        id: 'outline-pinned-only',
+        title: '按住 Alt 只看已固定轮次',
+        summary:
+          '轮次大纲下方提示按住 Alt（Mac 为 Option）只看已固定的轮，松开恢复全部；点这行提示也能切换。',
+        target: { kind: 'demo', scenario: 'chat-tools' },
+      },
+      {
+        id: 'outline-context-shading',
+        title: '大纲深浅就是上下文占用',
+        summary:
+          '每轮深浅固定表示该轮上下文占用，不再切换口径；悬停看该轮的输入、输出、缓存命中与花费。',
+        target: { kind: 'demo', scenario: 'chat-tools' },
+      },
+      {
+        id: 'context-top-turns',
+        title: '最占空间按轮次列出',
+        summary:
+          '每个用户发言一行、按占用降序，点行跳到该轮，展开看轮内最大的几项；整个区块可折叠并记住。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'execution-mode-menu',
+        title: '执行方式收成一个菜单',
+        summary:
+          '自动 / 单代理 / 低成本 / 多代理协作与委派倾向合并到输入框底栏一个菜单；侧栏「派单」改名「跨主机派单」。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'composer-token-estimate',
+        title: '输入时就看见 token 与占用',
+        summary:
+          '输入框底栏显示本次输入约多少 token，以及发送后的上下文占比；附件、粘贴文本与已选元素都计入。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'model-cache-warning',
+        title: '切换模型前提示缓存将失效',
+        summary:
+          '会话已有上下文时，换模型、账号或分组前提示下一轮按完整上下文计费，并估算 token 与费用；可不再提示。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'composer-markdown',
+        title: '输入框支持 Markdown 排版',
+        summary:
+          '代码围栏自动成对、代码块内回车换行、列表自动续号，标题与分割线着色；发送的仍是原始 Markdown。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'device-compact-panel',
+        title: '设备面板更紧凑，串口问题直说',
+        summary:
+          '设备行压成单行，板载串口默认折叠；无权限或被占用时给出原因、修复命令与重新检测入口。',
+        target: { kind: 'workstation' },
+      },
+    ],
+  },
+  {
     version: '0.4.0',
     date: '2026-11-09',
     items: [
