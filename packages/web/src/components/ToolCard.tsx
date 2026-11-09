@@ -430,12 +430,13 @@ export const ToolCard = memo(function ToolCard({
   const sub = isTask && subagents
     ? (() => {
         const linkedId = result?.subagent?.id
-        const linked = linkedId ? subagents[linkedId] : undefined
-        if (linked) return linked
+        if (linkedId && subagents[linkedId]) return subagents[linkedId]
         const candidates = Object.values(subagents)
           .filter((item) => item.summary?.parentId === parentId)
           .sort((a, b) => (b.summary?.createdAt ?? 0) - (a.summary?.createdAt ?? 0))
         return (
+          // 服务端记录的 parentToolUseId 是最稳的关联；旧数据再按标题/唯一候选兜底。
+          candidates.find((item) => item.summary?.parentToolUseId === block.id) ??
           candidates.find((item) => item.summary?.title === taskDescription) ??
           (candidates.length === 1 ? candidates[0] : undefined)
         )
@@ -1127,14 +1128,6 @@ function TaskBody({
           <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[9.5px] text-muted">
             {type}
           </span>
-          {summary?.model && (
-            <span
-              className="max-w-[160px] shrink-0 truncate font-mono text-[10px] text-muted"
-              data-tip={`子代理模型：${summary.model}`}
-            >
-              {summary.model}
-            </span>
-          )}
           <span className="flex-1" />
           {statusText && (
             <span
