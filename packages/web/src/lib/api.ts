@@ -77,12 +77,6 @@ import type {
   PermissionRuleDraft,
   PermissionRequest,
   PrActionResult,
-  RemoteSshHost,
-  SshHostInput,
-  SshHostKeyInfo,
-  SshJob,
-  SshProbeResult,
-  SshTarget,
   PrMergeMethod,
   Profile,
   PromptTemplate,
@@ -358,45 +352,6 @@ export const api = {
       `/api/sessions/${encodeURIComponent(sessionId)}/devices/${encodeURIComponent(mountId)}/logcat/stop`,
       { method: 'POST', body: JSON.stringify({ streamId }) },
     ),
-
-  sshHosts: (h: HostConfig) => request<RemoteSshHost[]>(h, '/api/ssh-hosts'),
-  sshScanKey: (h: HostConfig, target: SshTarget) =>
-    request<SshHostKeyInfo>(h, '/api/ssh-hosts/scan-key', {
-      method: 'POST',
-      body: JSON.stringify({ target }),
-    }),
-  sshProbe: (
-    h: HostConfig,
-    input: { target: SshTarget; auth: SshHostInput['auth']; fingerprint: string },
-  ) =>
-    request<SshProbeResult>(h, '/api/ssh-hosts/probe', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
-  sshDeploy: (h: HostConfig, input: SshHostInput) =>
-    request<SshJob>(h, '/api/ssh-hosts', { method: 'POST', body: JSON.stringify(input) }),
-  sshJob: (h: HostConfig, id: string) =>
-    request<SshJob>(h, `/api/ssh-hosts/jobs/${encodeURIComponent(id)}`),
-  sshRestart: (h: HostConfig, id: string) =>
-    request<SshJob>(h, `/api/ssh-hosts/${encodeURIComponent(id)}/restart`, { method: 'POST' }),
-  sshUpgrade: (h: HostConfig, id: string) =>
-    request<SshJob>(h, `/api/ssh-hosts/${encodeURIComponent(id)}/upgrade`, { method: 'POST' }),
-  sshLogs: (h: HostConfig, id: string, lines = 200) =>
-    request<{ lines: string[] }>(
-      h,
-      `/api/ssh-hosts/${encodeURIComponent(id)}/logs${qs({ lines: String(lines) })}`,
-    ),
-  sshUninstall: (h: HostConfig, id: string, keepData: boolean) =>
-    request<SshJob>(
-      h,
-      `/api/ssh-hosts/${encodeURIComponent(id)}${qs({ keepData: keepData ? '1' : '0' })}`,
-      { method: 'DELETE' },
-    ),
-  sshSetPassword: (h: HostConfig, id: string, password: string) =>
-    request<{ ok: boolean }>(h, `/api/ssh-hosts/${encodeURIComponent(id)}/password`, {
-      method: 'POST',
-      body: JSON.stringify({ password }),
-    }),
 
   doctor: (h: HostConfig, options: { checks?: string[]; clientTime?: number } = {}) =>
     request<DoctorReport>(

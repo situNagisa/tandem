@@ -655,12 +655,6 @@ export const CHANGELOG: ChangelogRelease[] = [
         target: { kind: 'demo', scenario: 'chat-tools' },
       },
       {
-        id: 'ssh-remote',
-        title: '远程主机一键部署',
-        summary: '用 SSH 添加远程主机并部署 Host，手机可经隧道连接使用。',
-        target: { kind: 'settings', tab: 'hosts', settingId: 'hosts.ssh.add' },
-      },
-      {
         id: 'settings-tour',
         title: '设置分组与新功能导览',
         summary: '设置项按用途分组，顶栏入口更少；升级后首次打开会提示本版新增功能。',

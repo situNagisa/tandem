@@ -17,12 +17,13 @@
 ## 工作方式
 - 用户可随时反馈，不必等他；每轮自己定优先级。视觉方向性选择才发「打分卡」（编号 + 现状/方案对比图）。
 - **布置任务只按用户原话**：每条写「原话 → 现在 → 改成 → 不改什么」。理解超出原话、或与 design.md 原则/decisions-check 冲突时先问用户；自己的建议不进任务。
+- **删掉的东西不留防回退检查**：删除功能后，现行文档与检查只正面描述现状（"远程连接唯一路径是工作站"），不写"不许加回 X"；删除记录只留在提交信息与 `docs/archive/`。防回退检查只用于"仍存在、容易被改坏"的行为。
 - **文档写原则不写流水**：单点决定写成 decisions-check/ui-audit/回归检查，修复记录写提交信息；新增原则必须说明覆盖哪类情况。
 - **不依赖会话上下文判断**：判断依据写进文件（HANDOFF、design 原则、decisions-check、根因表），新会话只读这些文件就能接手。每轮结束在 `docs/HANDOFF.md` 的「本轮手工操作 / 出错环节」追加 ≤5 行，作为以后沉淀脚本/Skill 的依据（只留最近 5 轮）。
 - 用户的具体问题通过产品内「反馈模式」（Ctrl+Shift+F）导出 `tandem-feedback-*.tfb`（zip 容器，改扩展名可解压）发到飞书；桌面调试版同时把每条实时写进 `<下载>/Tandem 反馈/草稿-*/`（用户在本机时可直接读 `/mnt/c/Users/JDHC/Downloads/Tandem 反馈/`）。用 `lark-cli im +messages-mget --message-ids <id> --download-resources` 下载，`node scripts/feedback-unpack.mjs <tfb|json|草稿目录> <outDir>` 解包（旧 .json 仍兼容）后逐条处理，逐条回报并附修复后截图；包格式见 `docs/features/feedback.md`。
 - 处理每条反馈前先查 `docs/feedback-ledger.md` 归到某个根因（R01…）；同一根因第二次出现必须在共享层修并加自动检查（ui-audit/单测/回归），不能只修表面。
 - 交付前协调者亲自用 Playwright 点击验收用户反馈的每一条（只截静态图会漏掉"点了没反应、弹层被裁"类问题）。
-- **提交前运行 `node scripts/check.mjs`**（build → docs-check → ui-audit → 单测 → smoke）；子代理默认至少跑 `node scripts/check.mjs --skip-smoke`。
+- **提交前运行 `node scripts/check.mjs`**（docs → build → debug-artifacts → ui-audit → decisions → 单测 → smoke → regression → release）；子代理默认至少跑 `node scripts/check.mjs --skip-smoke`。
 - **文档规则**：新写的一次性记录直接放 `docs/archive/`；功能变更只更新对应 `docs/features/<功能>.md`，不另写新文档；同一事实只在一处记录，其他地方链接过去。`scripts/docs-check.mjs` 会检查断链、根目录越界与现行文档更新日期。
 - 每轮结束：`npm run build`，`npm run apk -w @tandem/mobile`，`npm run dist:win -w @tandem/desktop`（产物会复制到 Windows「下载」目录），更新 `docs/PROGRESS.md`。
 

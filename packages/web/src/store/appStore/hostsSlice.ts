@@ -236,7 +236,6 @@ export function createHostsSlice(
 
     addHost: (input) => {
       const mode = input.mode ?? 'direct'
-      if (mode === 'ssh' && !input.sshHostId) throw new Error('缺少远程主机 ID')
       const url = normalizeHostUrl(input.url)
       const name = input.name.trim() || new URL(url).host
       const existing = get().hosts.find((h) => h.url === url && (h.mode ?? 'direct') === mode)
@@ -247,14 +246,7 @@ export function createHostsSlice(
         const patch = {
           name: input.name.trim() || existing.name,
           token: input.token,
-          ...(mode === 'ssh'
-            ? {
-                mode,
-                sshHostId: input.sshHostId,
-                ...(input.sshControllerId ? { sshControllerId: input.sshControllerId } : {}),
-                ...(input.sshTarget ? { sshTarget: input.sshTarget } : {}),
-              }
-            : {}),
+
         }
         get().updateHost(existing.id, patch)
         if (!get().activeHostId) {
@@ -269,14 +261,7 @@ export function createHostsSlice(
         url,
         token: input.token,
         addedAt: Date.now(),
-        ...(mode === 'ssh'
-          ? {
-              mode,
-              sshHostId: input.sshHostId,
-              ...(input.sshControllerId ? { sshControllerId: input.sshControllerId } : {}),
-              ...(input.sshTarget ? { sshTarget: input.sshTarget } : {}),
-            }
-          : {}),
+
       }
       set((state) => ({
         hosts: [...state.hosts, host],
@@ -337,17 +322,9 @@ export function createHostsSlice(
         name,
         url,
         token,
-        ...(mode === 'ssh'
-          ? {
-                mode: 'ssh' as const,
-                sshHostId: prev.sshHostId,
-                sshControllerId: prev.sshControllerId,
-                sshTarget: prev.sshTarget,
-                relayUrl: undefined,
-                hostId: undefined,
-                fingerprint: undefined,
-              }
-            : { mode: 'direct' as const, relayUrl: undefined, hostId: undefined, fingerprint: undefined }),
+        ...(mode === 'relay'
+          ? { mode, relayUrl, hostId, fingerprint }
+          : { mode: 'direct' as const, relayUrl: undefined, hostId: undefined, fingerprint: undefined }),
       }
       set((state) => ({
         hosts: state.hosts.map((h) => (h.id === id ? next : h)),

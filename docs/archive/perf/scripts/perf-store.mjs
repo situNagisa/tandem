@@ -3,7 +3,7 @@
 import { statSync } from 'node:fs'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
-import { SessionStore } from '../packages/server/dist/store.js'
+import { SessionStore } from '../../../../packages/server/dist/store.js'
 
 const home = process.env.TANDEM_HOME ?? '/tmp/tandem-perf'
 let t0 = performance.now()

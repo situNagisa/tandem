@@ -2,11 +2,10 @@
 import type { FastifyReply } from 'fastify';
 import type { ProviderKind } from '@tandem/protocol';
 import type { Host } from '../host.js';
-import type { SshRemoteManager } from '../ssh/manager.js';
 
 export interface RouteDeps {
   host: Host;
-  sshHosts?: SshRemoteManager;
+
   /** 本机作为主机的出站工作站隧道（加入/退出后即时启停）。 */
   workstation?: { start(): void; stop(): void; status(): { connected: boolean; url?: string } };
 }

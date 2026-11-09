@@ -1,6 +1,6 @@
 # 文档地图（先读这一页）
 
-> 更新：2026-11-09。文档分三层；同一事实只在一处记录，其他地方链接过去。
+> 更新：2026-11-10。文档分三层；同一事实只在一处记录，其他地方链接过去。
 
 ## 1. 现行文档（living）——始终代表当前事实
 - [HANDOFF.md](HANDOFF.md)：入口。当前版本、进行中的工作、等用户的事。
@@ -15,12 +15,12 @@
 | [任务看板](features/taskboard.md) | 卡片=后台会话，依赖/审批门/并发/预算 |
 | [设备共享](features/devices.md) | 跨 Host 的 ADB/串口（UI 里的「工作站」视图）；代测见 [test-guides/devices.md](test-guides/devices.md) |
 | [Key 网关](features/gateway.md) | 团队模型请求统一转发、限流、记账 |
-| [远程主机（SSH）](features/remote-ssh.md) | 一键部署远端 Host 并建隧道 |
+
 | [命令沙箱](features/sandbox.md) | 写入保护、Bash 静态分析、网络白名单 |
 | [项目 Secrets](features/secrets.md) | 加密注入进程环境 + 输出脱敏 |
 | [会话分享](features/share.md) | 内网只读链接 |
 | [团队共享](features/team.md) | 成员/邀请/角色/审计 |
-| [模型路由](features/routing.md) | 自动路由 + 分工路由；同会话按轮切模型已废弃 |
+| [模型路由](features/routing.md) | 自动路由 + 分工路由；主会话模型恒定，执行交给子代理 |
 | [输入框](features/composer.md) | Markdown 编辑与着色、输入 token 估算、切换模型/账号时的缓存失效确认 |
 | [账号与模型](features/model-accounts.md) | 分组 Key 保护、拉取模型只选最新、下拉统一共享组件 |
 | [对话区](features/conversation.md) | 轮次大纲（用量着色、固定、Alt 只看已固定）与「最占空间」按轮次聚合；消息耗时与轮次耗时汇总；上下文卡分类与缓存命中 |

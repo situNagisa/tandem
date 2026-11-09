@@ -28,8 +28,7 @@
 8. 工作站服务模式：`docs/test-guides/workstation.md`（注册/登录、添加主机、绑定码、授权）
 9. 工作站与设备共享：`docs/test-guides/devices.md`（安卓手机 + USB 串口板，两台机器）
 10. 账号制：`docs/test-guides/workstation.md`
-11. SSH 远程接入：`docs/features/remote-ssh.md`
-12. 手机审批（局域网本地通知）、PR/CI（`docs/test-guides/pr-ci.md`）、Windows 路径与中文编码
+11. 手机审批（局域网本地通知）、PR/CI（`docs/test-guides/pr-ci.md`）、Windows 路径与中文编码
 用户可以先用「设置 → 关于 → 演示工作区 / 体验清单」体验，反馈用反馈模式导出 `.tfb` 发飞书（旧 `.json` 仍可解包）。
 
 ## 等用户决定
@@ -37,7 +36,7 @@
 - 桌面代码签名是否购买证书——见 docs/features/release.md
 
 ## 用户已定的方向（不要回退）
-`docs/design.md` 的 P01–P22 是原则；具体决定在 `scripts/decisions-check.mjs`、`ui-audit` 与回归「用户决定」检查里。最近的：暂不做 iOS；做任务看板；工作站与设备共享；账号制；分工路由（不在同会话切模型、简单任务不能变复杂、要能人工选择）；宽内容与正文同宽；消息时间/用量悬停显示。
+`docs/design.md` 的 P01–P22 是原则；具体决定在 `scripts/decisions-check.mjs`、`ui-audit` 与回归「用户决定」检查里。最近的：暂不做 iOS；做任务看板；工作站与设备共享；账号制；分工路由（不在同会话切模型、简单任务不能变复杂、要能人工选择）；宽内容与正文同宽；消息时间/用量悬停显示；添加远程主机统一通过工作站一行命令。
 
 ## 没有用户时怎么推进
 - 自用测试闭环：代理用户用真实账号副本走 5 个真实任务 → 用反馈模式记录 → 按 docs/feedback-ledger.md 根因修（复发必须共享层修 + 自动检查）→ 下一轮复验。记录在 `docs/archive/dogfood/`。

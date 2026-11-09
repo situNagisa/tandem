@@ -10,7 +10,7 @@
 - [x] `scripts/docs-check.mjs` 加行数上限：design ≤150、ledger ≤80、每份 features ≤80、PROGRESS ≤60、HANDOFF ≤60、AGENTS ≤50。
 - [x] 修两条测试脆弱：侧栏缩进用例改取标题文本元素；卡片标题控件用例先清 `tandem.rightPanelCollapsed.v1`。
 - [x] `AGENTS.md` 补三条：任务只按用户原话（原话→现在→改成→不改什么）、文档写原则不写流水、不依赖会话上下文（判断写进文件 + HANDOFF 每轮 ≤5 行）。
-- 验证：`node scripts/check.mjs` 全量通过（build/docs-check/ui-audit/单测/smoke/regression/release）。
+- 验证：`node scripts/check.mjs` 全量通过（docs/build/debug-artifacts/ui-audit/decisions/单测/smoke/regression/release）。
 
 ## 迭代 63（2026-11-09）模型账号/Key 归工作站账号（合并账号体系分支）
 - [x] R59：模型账号/分组/Key/倍率/模型勾选改为工作站账号级，加密存 `workstation/profiles.json`；设置页跨主机一致。

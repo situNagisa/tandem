@@ -1,28 +1,20 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
-  ArrowUpCircle,
   Check,
   ChevronDown,
-  FileText,
-  KeyRound,
   Laptop,
-  MoreHorizontal,
   Pencil,
   Plus,
-  PowerOff,
   RefreshCw,
-  RotateCcw,
   ScanLine,
   Server,
   Smartphone,
   Stethoscope,
-  Terminal,
   Trash2,
   TriangleAlert,
   X,
 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
-import type { RemoteSshHost, SshJob } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { api } from '../../lib/api'
 import { normalizeHostUrl, isLocalHostUrl, isSameOrigin } from '../../lib/hostUrl'
@@ -32,9 +24,7 @@ import { ConnectionDot } from '../StatusDot'
 import { PairDialog } from './PairDialog'
 import { Modal } from '../ui/Modal'
 import { Button, IconButton } from '../ui/Button'
-import { Input, Switch } from '../ui/Controls'
-import { Menu } from '../ui/Menu'
-import { RemoteSshDialog, SshJobProgress } from './RemoteSshDialog'
+import { Input } from '../ui/Controls'
 import { cn } from '../../lib/cn'
 import { loginGateEnabled } from '../../lib/loginGate'
 import { QrScanDialog, scannerSupported } from '../QrScanDialog'
@@ -74,184 +64,12 @@ export function HostsSection() {
   const [editToken, setEditToken] = useState('')
   const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null)
   const [pairHost, setPairHost] = useState<string | null>(null)
-  const [sshController, setSshController] = useState<HostConfig | null>(null)
-  const [sshRecords, setSshRecords] = useState<Record<string, RemoteSshHost[]>>({})
-  const [sshJobView, setSshJobView] = useState<{
-    controller: HostConfig
-    title: string
-    job: SshJob
-    removeClientId?: string
-  } | null>(null)
-  const [sshLogView, setSshLogView] = useState<{
-    controller: HostConfig
-    record: RemoteSshHost
-    lines: string[]
-    loading: boolean
-    error?: string
-  } | null>(null)
-  const [sshUninstall, setSshUninstall] = useState<{
-    controller: HostConfig
-    record: RemoteSshHost
-    clientHostId: string
-    keepData: boolean
-  } | null>(null)
-  const [sshPasswordView, setSshPasswordView] = useState<{
-    controller: HostConfig
-    record: RemoteSshHost
-    password: string
-    saving: boolean
-    error?: string
-  } | null>(null)
 
   const resetAdd = () => {
     setName('')
     setUrl('')
     setToken('')
     setLink('')
-  }
-
-  const sshControllers = hosts.filter((item) => (item.mode ?? 'direct') !== 'ssh')
-  const controllerFor = (host: HostConfig): HostConfig | undefined =>
-    hosts.find((item) => item.id === host.sshControllerId) ??
-    hosts.find(
-      (item) =>
-        (item.mode ?? 'direct') !== 'ssh' &&
-        (isLocalHostUrl(item.url) || isSameOrigin(item.url)),
-    ) ??
-    hosts.find((item) => item.id === activeHostId && (item.mode ?? 'direct') !== 'ssh')
-  const recordFor = (host: HostConfig): { controller: HostConfig; record: RemoteSshHost } | undefined => {
-    const controller = controllerFor(host)
-    if (!controller || !host.sshHostId) return undefined
-    const record = sshRecords[controller.id]?.find((item) => item.id === host.sshHostId)
-    return record ? { controller, record } : undefined
-  }
-
-  const refreshSshHosts = useCallback(async () => {
-    if (sshControllers.length === 0) return
-    const pairs = await Promise.all(
-      sshControllers.map(async (controller) => {
-        try {
-          return [controller.id, await api.sshHosts(controller)] as const
-        } catch {
-          return undefined
-        }
-      }),
-    )
-    const next: Record<string, RemoteSshHost[]> = {}
-    for (const pair of pairs) {
-      if (pair) next[pair[0]] = pair[1]
-    }
-    if (Object.keys(next).length > 0) {
-      setSshRecords((prev) => ({ ...prev, ...next }))
-    }
-  }, [sshControllers.map((item) => item.id).join(','), hosts])
-
-  useEffect(() => {
-    void refreshSshHosts()
-    const timer = window.setInterval(() => void refreshSshHosts(), 10_000)
-    return () => window.clearInterval(timer)
-  }, [refreshSshHosts])
-
-  // 隧道换端口后，客户端的旧地址会自动跟随（只改一次，避免重连循环）。
-  useEffect(() => {
-    for (const host of hosts) {
-      if (host.mode !== 'ssh') continue
-      const found = recordFor(host)
-      if (found && found.record.localUrl && host.url !== found.record.localUrl) {
-        updateHost(host.id, { url: found.record.localUrl })
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sshRecords, hosts])
-
-  useEffect(() => {
-    const view = sshJobView
-    if (!view || view.job.status !== 'running') return
-    let cancelled = false
-    const timer = window.setTimeout(async () => {
-      try {
-        const job = await api.sshJob(view.controller, view.job.id)
-        if (cancelled) return
-        setSshJobView((current) => (current ? { ...current, job } : current))
-        if (job.status === 'ok') {
-          if (view.removeClientId) removeHost(view.removeClientId)
-          toast(`${view.title}完成`, 'success')
-          void refreshSshHosts()
-        } else if (job.status === 'fail') {
-          toast(job.error ? `${view.title}失败：${job.error}` : `${view.title}失败`, 'error')
-          void refreshSshHosts()
-        }
-      } catch (err) {
-        if (!cancelled) toast(err instanceof Error ? err.message : '任务状态获取失败', 'error')
-      }
-    }, 700)
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [sshJobView, removeHost, toast, refreshSshHosts])
-
-  const pickController = (): HostConfig | null => {
-    const active = hosts.find((item) => item.id === activeHostId && (item.mode ?? 'direct') !== 'ssh')
-    const local = hosts.find(
-      (item) =>
-        (item.mode ?? 'direct') !== 'ssh' &&
-        (isLocalHostUrl(item.url) || isSameOrigin(item.url)),
-    )
-    return active ?? local ?? sshControllers[0] ?? null
-  }
-
-  const startSshJob = async (
-    controller: HostConfig,
-    title: string,
-    starter: () => Promise<SshJob>,
-    removeClientId?: string,
-  ) => {
-    try {
-      const job = await starter()
-      setSshJobView({ controller, title, job, ...(removeClientId ? { removeClientId } : {}) })
-    } catch (err) {
-      toast(err instanceof Error ? err.message : `${title}失败`, 'error')
-    }
-  }
-
-  const openSshLogs = async (controller: HostConfig, record: RemoteSshHost) => {
-    setSshLogView({ controller, record, lines: [], loading: true })
-    try {
-      const result = await api.sshLogs(controller, record.id, 200)
-      setSshLogView((current) =>
-        current && current.record.id === record.id
-          ? { ...current, lines: result.lines, loading: false }
-          : current,
-      )
-    } catch (err) {
-      setSshLogView((current) =>
-        current && current.record.id === record.id
-          ? { ...current, loading: false, error: err instanceof Error ? err.message : '读取日志失败' }
-          : current,
-      )
-    }
-  }
-
-  const submitSshPassword = async () => {
-    if (!sshPasswordView) return
-    setSshPasswordView({ ...sshPasswordView, saving: true, error: undefined })
-    try {
-      await api.sshSetPassword(
-        sshPasswordView.controller,
-        sshPasswordView.record.id,
-        sshPasswordView.password,
-      )
-      toast('已重新连接', 'success')
-      setSshPasswordView(null)
-      void refreshSshHosts()
-    } catch (err) {
-      setSshPasswordView({
-        ...sshPasswordView,
-        saving: false,
-        error: err instanceof Error ? err.message : '连接失败',
-      })
-    }
   }
 
   const handleAdd = () => {
@@ -364,23 +182,6 @@ export function HostsSection() {
         <h3 className="text-[14px] font-semibold">主机</h3>
         <span className="text-[13px] text-muted">每台主机对应一个 WS 长连接</span>
         <span className="flex-1" />
-        {!gateOn && (
-        <Button
-          data-setting-id="hosts.ssh.add"
-          onClick={() => {
-            const controller = pickController()
-            if (!controller) {
-              toast('请先连接一台 Host 作为部署控制端', 'error')
-              return
-            }
-            setSshController(controller)
-          }}
-          className="max-sm:min-h-11"
-        >
-          <Terminal size={13} />
-          远程主机
-        </Button>
-        )}
         <Button
           data-setting-id="hosts.add"
           variant="primary"
@@ -518,7 +319,6 @@ export function HostsSection() {
         {hosts.map((h) => {
           const rt = runtimes[h.id]
           const editing = editId === h.id
-          const ssh = h.mode === 'ssh' ? recordFor(h) : undefined
           const hostVersion = rt?.info?.version
           const versionMismatch = rt?.status === 'online' && !!hostVersion && hostVersion !== APP_VERSION
           return (
@@ -554,42 +354,13 @@ export function HostsSection() {
                         <TriangleAlert size={10} /> 版本不一致
                       </span>
                     )}
-                    {h.mode === 'ssh' && (
-                      <span
-                        data-setting-id="hosts.ssh.badge"
-                        className="rounded border border-border px-1.5 py-px text-[12px] text-text-secondary"
-                      >
-                        SSH
-                      </span>
-                    )}
-                    {ssh?.record.upgradeAvailable && (
-                      <span className="rounded border border-warning/40 px-1.5 py-px text-[12px] text-warning">
-                        可升级
-                      </span>
-                    )}
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 break-all font-mono text-[13px] text-muted">
                     <span>{h.url}</span>
                     <span className="font-sans">
-                      {h.mode === 'relay'
-                        ? '加密隧道'
-                        : h.mode === 'ssh'
-                          ? `SSH${ssh?.record.latencyMs !== undefined ? ` · ${ssh.record.latencyMs}ms` : ''}`
-                          : '直连'}
+                      {h.mode === 'relay' ? '加密隧道' : '直连'}
                     </span>
                   </div>
-                  {h.mode === 'ssh' && (
-                    <div className="mt-0.5 text-[12px] leading-4 text-muted">
-                      {ssh?.record.needsPassword
-                        ? '需要重新输入 SSH 密码（密码不会保存）'
-                        : ssh?.record.state === 'online'
-                          ? `经 SSH 隧道连接 ${ssh.record.target.user}@${ssh.record.target.host} · 延迟 ${ssh.record.latencyMs ?? '—'}ms`
-                          : ssh?.record.lastError
-                            ? `隧道：${ssh.record.lastError}`
-                            : 'SSH 隧道连接中…'}
-                      {ssh?.record.upgradeAvailable && ` · 远程 ${ssh.record.remoteVersion}，本机 ${ssh.record.localVersion}`}
-                    </div>
-                  )}
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-muted">
                     <span className="font-mono">{h.token ? '•••• 已保存' : '无 Token'}</span>
                     {rt?.info?.platform && (
@@ -630,86 +401,6 @@ export function HostsSection() {
                     )}
                 </div>
                 <div className="settings-actions hidden sm:flex" data-desktop-only="" data-open={editing || undefined}>
-                  {h.mode === 'ssh' && ssh && (
-                    <Menu
-                      side="bottom"
-                      align="end"
-                      aria-label="远程主机操作"
-                      trigger={
-                        <IconButton
-                          size="sm"
-                          data-setting-id="hosts.ssh.menu"
-                          label="远程主机操作"
-                          tooltip="更多操作"
-                          className="size-7 [&_svg]:size-3"
-                        >
-                          <MoreHorizontal size={12} />
-                        </IconButton>
-                      }
-                    >
-                      <Menu.Item
-                        icon={<RotateCcw size={13} />}
-                        onSelect={() =>
-                          void startSshJob(ssh.controller, '重启', () =>
-                            api.sshRestart(ssh.controller, ssh.record.id),
-                          )
-                        }
-                      >
-                        重启
-                      </Menu.Item>
-                      <Menu.Item
-                        icon={<FileText size={13} />}
-                        onSelect={() => void openSshLogs(ssh.controller, ssh.record)}
-                      >
-                        查看日志
-                      </Menu.Item>
-                      <Menu.Item
-                        icon={<ArrowUpCircle size={13} />}
-                        disabled={!ssh.record.upgradeAvailable}
-                        disabledReason="当前已是最新版本"
-                        onSelect={() =>
-                          void startSshJob(ssh.controller, '升级', () =>
-                            api.sshUpgrade(ssh.controller, ssh.record.id),
-                          )
-                        }
-                      >
-                        升级到本机版本
-                      </Menu.Item>
-                      {ssh.record.needsPassword && (
-                        <Menu.Item
-                          icon={<KeyRound size={13} />}
-                          onSelect={() =>
-                            setSshPasswordView({
-                              controller: ssh.controller,
-                              record: ssh.record,
-                              password: '',
-                              saving: false,
-                            })
-                          }
-                        >
-                          重新输入密码
-                        </Menu.Item>
-                      )}
-                      <Menu.Separator />
-                      <Menu.Item icon={<Stethoscope size={13} />} onSelect={() => openDoctor(h.id)}>
-                        诊断
-                      </Menu.Item>
-                      <Menu.Item
-                        danger
-                        icon={<PowerOff size={13} />}
-                        onSelect={() =>
-                          setSshUninstall({
-                            controller: ssh.controller,
-                            record: ssh.record,
-                            clientHostId: h.id,
-                            keepData: true,
-                          })
-                        }
-                      >
-                        卸载…
-                      </Menu.Item>
-                    </Menu>
-                  )}
                   <IconButton
                     size="sm"
                     data-setting-id="hosts.doctor"
@@ -761,80 +452,6 @@ export function HostsSection() {
                 </div>
               </div>
               <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5 border-t border-border/60 pt-2 sm:hidden">
-                {h.mode === 'ssh' && ssh && (
-                  <Menu
-                    side="top"
-                    align="end"
-                    aria-label="远程主机操作"
-                    trigger={
-                      <Button size="md" className="min-h-10 px-2.5 text-[13px]">
-                        <MoreHorizontal size={12} /> 管理
-                      </Button>
-                    }
-                  >
-                    <Menu.Item
-                      icon={<RotateCcw size={13} />}
-                      onSelect={() =>
-                        void startSshJob(ssh.controller, '重启', () =>
-                          api.sshRestart(ssh.controller, ssh.record.id),
-                        )
-                      }
-                    >
-                      重启
-                    </Menu.Item>
-                    <Menu.Item
-                      icon={<FileText size={13} />}
-                      onSelect={() => void openSshLogs(ssh.controller, ssh.record)}
-                    >
-                      查看日志
-                    </Menu.Item>
-                    <Menu.Item
-                      icon={<ArrowUpCircle size={13} />}
-                      disabled={!ssh.record.upgradeAvailable}
-                      disabledReason="当前已是最新版本"
-                      onSelect={() =>
-                        void startSshJob(ssh.controller, '升级', () =>
-                          api.sshUpgrade(ssh.controller, ssh.record.id),
-                        )
-                      }
-                    >
-                      升级
-                    </Menu.Item>
-                    {ssh.record.needsPassword && (
-                      <Menu.Item
-                        icon={<KeyRound size={13} />}
-                        onSelect={() =>
-                          setSshPasswordView({
-                            controller: ssh.controller,
-                            record: ssh.record,
-                            password: '',
-                            saving: false,
-                          })
-                        }
-                      >
-                        重新输入密码
-                      </Menu.Item>
-                    )}
-                    <Menu.Separator />
-                    <Menu.Item icon={<Stethoscope size={13} />} onSelect={() => openDoctor(h.id)}>
-                      诊断
-                    </Menu.Item>
-                    <Menu.Item
-                      danger
-                      icon={<PowerOff size={13} />}
-                      onSelect={() =>
-                        setSshUninstall({
-                          controller: ssh.controller,
-                          record: ssh.record,
-                          clientHostId: h.id,
-                          keepData: true,
-                        })
-                      }
-                    >
-                      卸载…
-                    </Menu.Item>
-                  </Menu>
-                )}
                 <Button
                   size="md"
                   onClick={() => openDoctor(h.id)}
@@ -948,11 +565,6 @@ export function HostsSection() {
         <p className="text-[13px] leading-6 text-text-soft">
           移除 Host「{removeTarget?.name}」？这不会影响 主机上的数据。
         </p>
-        {hosts.find((item) => item.id === removeTarget?.id)?.mode === 'ssh' && (
-          <p className="mt-2 text-[12px] leading-5 text-warning">
-            这是 SSH 远程主机：仅移除客户端条目不会停止远程服务与隧道。请先用 ⋯ → 卸载 停止远程 Host。
-          </p>
-        )}
       </Modal>
 
       {pairHost && (() => {
@@ -971,157 +583,6 @@ export function HostsSection() {
         />
       )}
 
-      {sshController && (
-        <RemoteSshDialog controller={sshController} onClose={() => setSshController(null)} />
-      )}
-
-      {sshJobView && (
-        <Modal
-          open
-          onClose={() => {
-            if (sshJobView.job.status !== 'running') setSshJobView(null)
-          }}
-          title={sshJobView.title}
-          description={`由「${sshJobView.controller.name}」通过 SSH 执行`}
-          className="max-w-lg"
-          footer={
-            <Button
-              onClick={() => setSshJobView(null)}
-              disabled={sshJobView.job.status === 'running'}
-            >
-              关闭
-            </Button>
-          }
-        >
-          <div data-setting-id="hosts.ssh.job">
-            <SshJobProgress job={sshJobView.job} />
-          </div>
-        </Modal>
-      )}
-
-      {sshLogView && (
-        <Modal
-          open
-          onClose={() => setSshLogView(null)}
-          title={`远程日志 · ${sshLogView.record.name}`}
-          description={`${sshLogView.record.target.user}@${sshLogView.record.target.host} · 最近 200 行`}
-          className="max-w-3xl"
-          footer={
-            <>
-              <Button
-                onClick={() => void openSshLogs(sshLogView.controller, sshLogView.record)}
-                disabled={sshLogView.loading}
-              >
-                {sshLogView.loading && <Spinner size={13} />}
-                刷新
-              </Button>
-              <Button onClick={() => setSshLogView(null)}>关闭</Button>
-            </>
-          }
-        >
-          <div data-setting-id="hosts.ssh.logs">
-            {sshLogView.error ? (
-              <div className="text-[13px] text-danger">{sshLogView.error}</div>
-            ) : (
-              <pre className="max-h-[50vh] overflow-auto rounded-lg border border-border bg-surface-2 p-2.5 font-mono text-[12px] leading-5 text-text-soft">
-                {sshLogView.loading
-                  ? '读取中…'
-                  : sshLogView.lines.length > 0
-                    ? sshLogView.lines.join('\n')
-                    : '（暂无日志）'}
-              </pre>
-            )}
-          </div>
-        </Modal>
-      )}
-
-      <Modal
-        open={!!sshUninstall}
-        onClose={() => setSshUninstall(null)}
-        title="卸载远程主机"
-        className="max-w-md"
-        footer={
-          <>
-            <Button onClick={() => setSshUninstall(null)}>取消</Button>
-            <Button
-              variant="danger-ghost"
-              data-setting-id="hosts.ssh.uninstall.confirm"
-              onClick={() => {
-                const view = sshUninstall
-                if (!view) return
-                setSshUninstall(null)
-                void startSshJob(
-                  view.controller,
-                  '卸载',
-                  () => api.sshUninstall(view.controller, view.record.id, view.keepData),
-                  view.clientHostId,
-                )
-              }}
-            >
-              停止并卸载
-            </Button>
-          </>
-        }
-      >
-        <p className="text-[13px] leading-6 text-text-soft">
-          将停止远程 Host 服务并删除 <span className="font-mono">~/.tandem-host</span>（程序文件）。
-          客户端里的这台主机也会被移除。
-        </p>
-        <label className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-2.5 py-2 text-[13px]">
-          <span>
-            保留远程数据 <span className="font-mono text-[12px] text-muted">~/.tandem</span>
-            <span className="block text-[12px] leading-4 text-muted">含会话、账号 Key、设置；关闭则一并删除。</span>
-          </span>
-          <Switch
-            checked={sshUninstall?.keepData ?? true}
-            onChange={(checked) =>
-              setSshUninstall((current) => (current ? { ...current, keepData: checked } : current))
-            }
-            label="保留远程数据"
-          />
-        </label>
-      </Modal>
-
-      <Modal
-        open={!!sshPasswordView}
-        onClose={() => setSshPasswordView(null)}
-        title="重新输入 SSH 密码"
-        className="max-w-md"
-        footer={
-          <>
-            <Button onClick={() => setSshPasswordView(null)} disabled={sshPasswordView?.saving}>
-              取消
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => void submitSshPassword()}
-              disabled={sshPasswordView?.saving || !sshPasswordView?.password}
-            >
-              {sshPasswordView?.saving && <Spinner size={13} />}
-              连接
-            </Button>
-          </>
-        }
-      >
-        <p className="text-[13px] leading-5 text-text-soft">
-          Host 重启后内存中的密码已清空。密码只用于这次连接，不会保存。
-        </p>
-        <Input
-          type="password"
-          value={sshPasswordView?.password ?? ''}
-          onChange={(e) =>
-            setSshPasswordView((current) =>
-              current ? { ...current, password: e.target.value, error: undefined } : current,
-            )
-          }
-          autoComplete="new-password"
-          className="mt-2 font-mono text-[13px]"
-          placeholder="SSH 登录密码"
-        />
-        {sshPasswordView?.error && (
-          <div className="mt-2 text-[12px] leading-4 text-danger">{sshPasswordView.error}</div>
-        )}
-      </Modal>
     </div>
   )
 }

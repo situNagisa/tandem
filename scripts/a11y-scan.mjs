@@ -26,10 +26,11 @@ const TOKEN = 'a11y-token-local'
 const PORT = Number(process.env.A11Y_PORT ?? 8262)
 const SEVERE = new Set(['serious', 'critical'])
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice']
-const SETTINGS_TABS = [
-  '通用', '语音', '浏览器', '账号与模型', 'Host 管理', '成员', '权限', 'Hooks', 'MCP',
-  'Skills', '记忆', '子代理', '提示词', '评测', '定时任务', '预算', '用量', '通知',
-  '分享', '同步与备份', '外观',
+// 与 packages/web/src/lib/settingsRegistry.ts 的 SETTINGS_PAGES 保持同步（设置导航是「分组 → 页面」）。
+const SETTINGS_PAGES = [
+  '通用', '主机', '账号与模型', '自动路由', '用量与预算', '权限', 'Secrets', 'Agent 能力',
+  '定时任务', '记忆', '成员与分享', '外观', '通知', '语音', '浏览器', '扩展', '评测', '网关',
+  '同步与备份',
 ]
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -418,14 +419,16 @@ export async function runA11yScan(options = {}) {
         await page.getByRole('button', { name: /^新会话/ }).waitFor()
         await settle(page, 400)
         await openSettings(page)
-        for (const tab of SETTINGS_TABS) {
-          await page
-            .getByRole('dialog', { name: '设置' })
-            .locator('nav')
-            .getByRole('button', { name: tab, exact: true })
-            .click()
+        const settingsNav = page.getByRole('dialog', { name: '设置' }).locator('nav')
+        // 「高级」等分组默认收起，先展开全部，否则页面按钮不在 DOM 里。
+        for (const group of await settingsNav.locator('[data-settings-group] > button[aria-expanded="false"]').all()) {
+          await group.click()
+          await settle(page, 150)
+        }
+        for (const name of SETTINGS_PAGES) {
+          await settingsNav.getByRole('button', { name, exact: true }).click()
           await settle(page, 350)
-          await scan(page, `settings:${tab}`, theme, results)
+          await scan(page, `settings:${name}`, theme, results)
         }
         await closeDialog(page)
       }

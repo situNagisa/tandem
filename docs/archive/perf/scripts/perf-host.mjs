@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // 性能测量专用 Host 包装：等价 cli 启动，并暴露 SIGUSR1 打印事件循环延迟直方图。
-import { Host } from '../packages/server/dist/host.js'
-import { createApp } from '../packages/server/dist/server.js'
-import { loadHostConfig } from '../packages/server/dist/config.js'
+import { Host } from '../../../../packages/server/dist/host.js'
+import { createApp } from '../../../../packages/server/dist/server.js'
+import { loadHostConfig } from '../../../../packages/server/dist/config.js'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
 
 const home = process.env.TANDEM_HOME ?? '/tmp/tandem-perf'

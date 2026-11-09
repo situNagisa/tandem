@@ -30,7 +30,7 @@ node scripts/ui-audit.mjs        # UI 原语防回退检查：ui/ 目录外的�
 
 npm test                         # 单元测试（server: node:test + tsx；web: vitest）
 npm run smoke                    # Playwright 端到端冒烟（临时 Host + 假 provider，需先 build）
-node scripts/check.mjs           # 提交前全量：build → docs/ui-audit/test/smoke/regression → release 构建与扫描
+node scripts/check.mjs           # 提交前全量：docs → build → debug-artifacts → ui-audit → decisions → test → smoke → regression → release
 ```
 
 ## 打包
@@ -93,34 +93,4 @@ node scripts/release.mjs 0.2.0             # 统一版本号、写 CHANGELOG/导
 Host 数据在 `~/.tandem`（可用 `TANDEM_HOME` 覆盖）：`config.json`（hostId、token）、`profiles.json`（Key，权限 600）、`sessions/`、`checkpoints/`、`mcp.json`、`hooks.json` 等。Claude Code / Codex 的会话只读，不会被修改。
 
 ## 反馈（仅调试版）
-在调试版 Web 界面里按 `Ctrl/Cmd + Shift + F`，或打开「设置 → 外观 → 进入反馈模式」。发布版不包含反馈模式、演示工作区与体验清单。浮条上可切换「点选 / 框选」：点选元素（`Alt + 点击`选父元素），或按住拖拽框出任意区域（跨多个元素）。写反馈时可设置优先级 P0/P1/P2、`Ctrl+V` 粘贴或拖入参考图；截图可点开 Canvas 标注（矩形/箭头/画笔/文字/马赛克，橙白红三色，撤销重做）。
-
-每条反馈自动附带：标注后的图与原图、参考图、反馈前 60 秒操作轨迹（点击选择器与文本、功能键/快捷键、路由、WS 断连、toast；不记录输入的文字）、脱敏状态快照（路由、会话摘要、UI 偏好、视口、Host 版本；可勾选附带最近 5 条消息正文，可隐藏本地路径）。支持录屏复现时，浮条「录制」通过 `getDisplayMedia` 本地录制（≤60 秒、≤8MB），作为下一条反馈的附件。
-
-浮条「条目」打开右侧抽屉：缩略图、类型、优先级、文字，可编辑/删除/拖拽排序，点条目会在页面上高亮定位。
-
-导出 `tandem-feedback-YYYYMMDD-HHmm.json` 发给维护者，条目保存在本机，刷新不丢。每条反馈会根据所在组件、路由与设置页自动推断功能标签（看板、子代理、模型菜单、设置-xx…），并按 `docs/feedback-ledger.md` 的台账建议一个根因编号（R01–R10，匹配不到留空）；两者都可以在反馈编辑器里手动改。导出 JSON 按功能分组，并自动附带体验清单报告。解包：
-
-```bash
-node scripts/feedback-unpack.mjs tandem-feedback-20260101-1200.json [outDir]
-```
-
-会得到每条的 `NN-元素截图.png` / `NN-区域截图.png` / `NN-标注截图.png`、`NN-参考-N.png`、`NN-录屏.webm`、`NN-轨迹.md`、`NN-快照.json`、`page-N.png`，汇总的 `feedback.md`（顶部列出本包命中的已知根因与次数，≥2 次标「复发」）、按功能拆分的 `by-feature/<功能>.md`、按根因拆分的 `by-cause/<编号>.md`，以及 `体验清单.md`。
-
-### 演示工作区（一键造场景）
-设置 → 关于 → 「演示工作区」，或命令面板搜索「演示工作区」。Host 会在 `~/.tandem/demo/` 下创建一个独立的小 git 仓库与隐藏的**演示模型**（内置脚本化 provider，按固定剧本流式输出文字、思考与安全工具调用，**不发任何网络请求**，也不消耗真实账号额度）。演示模型只在这些场景的模型菜单里出现，不会进入正常账号/模型列表。
-
-预置 17 个可直接打开、也可「重新播放」的场景：基础对话与工具调用、权限审批、计划模式与计划卡、子代理与孙代理、后台任务、委派策略、上下文自动压缩、配额交接卡（模拟 429）、断点续跑、Hooks 出错提示、AI 评审挂 diff 行、改动审阅与行评论、任务看板（依赖/待审批/待评审/失败/AI 拆分草稿）、评测集对比、Wiki、应用预览（仓库内静态页）、收件箱事件。每个场景都标注「演示数据」；所有工具动作只作用于演示仓库。点「清除全部演示数据」会一并移除演示会话、检查点、记忆、用量记录、看板、评测、Wiki、后台任务与搜索索引，真实数据不受影响。
-
-### 体验清单
-设置 → 关于 → 「体验清单」，或命令面板搜索「体验清单」。按功能分组列出测试要点；未测项排在前面，最新版本新增功能标「新」。每条可「在演示中打开」到对应场景，也可标记「通过 / 有问题 / 跳过」；「有问题」会直接进入反馈模式并自动带上该功能标签。进度保存在本机，可导出 Markdown 测试报告；导出反馈包时也会自动附带（解包为 `体验清单.md`）。
-
-维护者修复后写一份回执草稿（Markdown 或 JSON），生成回执：
-
-```bash
-node scripts/feedback-receipt.mjs tandem-feedback-20260101-1200.json receipt.md outDir
-```
-
-Markdown 草稿按条目写 `## fb-xxx`、`- status: fixed|wontfix|needs-info`、`- note: 说明`、可选 `- after: ./修复后.png`。生成的 `tandem-feedback-receipt-*.json` 发回给用户，在反馈抽屉「导入回执」后即可逐条查看状态与前后对比，并点「开始复验」按顺序跳转页面、高亮元素、标记「通过 / 仍有问题」，最后导出复验结果文件。
-
-所有数据只在本机采集与导出，不上传任何第三方服务。
+调试版按 `Ctrl/Cmd + Shift + F` 进入反馈模式；采集内容、`.tfb` 包结构、解包/回执命令、演示工作区与体验清单见 [docs/features/feedback.md](docs/features/feedback.md)。

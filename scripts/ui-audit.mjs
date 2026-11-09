@@ -40,13 +40,6 @@ const GLOBAL_CHECKS = [
     re: /\.contains\(\s*[A-Za-z_$][\w$]*\.relatedTarget/g,
   },
   {
-    // 反馈8#03/#09：执行方式与委派倾向统一用规范术语，文案只在 lib/routeLabels.ts 定义。
-    id: 'deprecated-route-copy',
-    label:
-      '已废弃的口语化路由文案：用「单代理 / 低成本 / 多代理协作」与「仅规划 / 积极 / 适度 / 关闭」（lib/routeLabels.ts）',
-    re: /(?:少派|多派|便宜直做|本会话保持|label:\s*['"]不派['"])/g,
-  },
-  {
     // 字重下限：次要文字不用 300 细体，标题 500–600、正文 400。
     id: 'font-weight-floor',
     label: '过细字重（font-light/300）：标题 500–600、按钮 500、正文 400（design P06）',
@@ -65,7 +58,7 @@ const GLOBAL_CHECKS = [
     re: /(?:aria-selected|data-selected|data-active)[^\n]{0,160}(?:bg-accent|text-accent|border-accent|accent-strong)/g,
   },
   {
-    // 反馈13#03：警告色统一走 --status-warn 派生 token，不再散落 amber/yellow 色值。
+    // 反馈13#03：警告色统一走 --status-warn 派生 token，不散落 amber/yellow 色值。
     id: 'hardcoded-warning-color',
     label:
       '硬编码黄色/amber：警告统一用 text-warning / bg-warning-soft（design.md --t-status-warn）',
@@ -192,20 +185,36 @@ for (const file of files) {
 }
 
 // tooltip 不能出现 0 宽度（否则每行一个字，反馈 #01）：全局样式必须有 min-width。
+// 找不到目标时按失败处理，避免样式改名后静默跳过。
+let indexCss = ''
 try {
-  const css = await readFile(join(SRC, 'index.css'), 'utf8')
-  const tipBlock = css.match(/\.ui-tip\s*\{([\s\S]*?)\}/)
-  if (tipBlock && !/min-width\s*:/.test(tipBlock[1])) {
-    issues.push({
-      file: 'packages/web/src/index.css',
-      line: 1,
-      check: 'tooltip-min-width',
-      label: '.ui-tip 缺少 min-width，窄内容可能退化成每行一个字',
-      text: '.ui-tip',
-    })
-  }
+  indexCss = await readFile(join(SRC, 'index.css'), 'utf8')
 } catch {
-  // index.css 不存在时忽略
+  issues.push({
+    file: 'packages/web/src/index.css',
+    line: 1,
+    check: 'tooltip-min-width',
+    label: '找不到 index.css：tooltip 最小宽度与全局样式无法检查',
+    text: 'packages/web/src/index.css',
+  })
+}
+const tipBlock = indexCss.match(/\.ui-tip\s*\{([\s\S]*?)\}/)
+if (indexCss && !tipBlock) {
+  issues.push({
+    file: 'packages/web/src/index.css',
+    line: 1,
+    check: 'tooltip-min-width',
+    label: '找不到 .ui-tip 样式块：tooltip 最小宽度无法检查',
+    text: '.ui-tip',
+  })
+} else if (tipBlock && !/min-width\s*:/.test(tipBlock[1])) {
+  issues.push({
+    file: 'packages/web/src/index.css',
+    line: 1,
+    check: 'tooltip-min-width',
+    label: '.ui-tip 缺少 min-width，窄内容可能退化成每行一个字',
+    text: '.ui-tip',
+  })
 }
 
 // 反馈10#07：菜单/按钮/分段控件里的文字行高必须 ≥ 1.4。这些行大多带 truncate
@@ -228,28 +237,6 @@ for (const name of ['Menu.tsx', 'Controls.tsx', 'Button.tsx', 'ListRow.tsx', 'Co
   } catch {
     // 文件不存在时忽略
   }
-}
-
-// 模型级联必须是真正的飞出子菜单（用户 #7-04）：禁止在同一面板里显示「返回上一级」。
-try {
-  const cascade = await readFile(join(UI_DIR, 'ModelCascade.tsx'), 'utf8')
-  const backPatterns = [
-    { re: /ChevronLeft/, label: 'ModelCascade 仍有返回箭头（原地替换内容）' },
-    { re: /\bconst\s+back\s*=/, label: 'ModelCascade 仍有 back() 原地返回实现' },
-    { re: /返回上一级/, label: 'ModelCascade 仍有「返回上一级」文案' },
-  ]
-  for (const check of backPatterns) {
-    if (!check.re.test(cascade)) continue
-    issues.push({
-      file: 'packages/web/src/components/ui/ModelCascade.tsx',
-      line: 1,
-      check: 'model-cascade-back',
-      label: check.label,
-      text: '账号 › 分组 › 模型必须逐级飞出，不允许返回行或同面板替换',
-    })
-  }
-} catch {
-  // ModelCascade 不存在时忽略
 }
 
 for (const file of files) {

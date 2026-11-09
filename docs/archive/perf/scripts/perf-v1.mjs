@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 性能专项测量：大仓库 / 长会话 / 多会话搜索 / 并发。结果写 /tmp/perf-<tag>.json。
-// 用法：node scripts/perf-v1.mjs before [--skip-ui] [--skip-concurrency]
+// 用法：node docs/archive/perf/scripts/perf-v1.mjs before [--skip-ui] [--skip-concurrency]
 import { spawn, execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
@@ -10,7 +10,8 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { chromium } from 'playwright'
 import WebSocket from 'ws'
 
-const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
+const HERE = path.resolve(new URL('.', import.meta.url).pathname)
+const ROOT = path.resolve(HERE, '../../../..')
 const HOME = '/tmp/tandem-perf/home'
 const TANDEM = '/tmp/tandem-perf'
 const REPO = path.join(TANDEM, 'repo')
@@ -76,7 +77,7 @@ function startMock() {
 
 function startHost() {
   const t0 = performance.now()
-  const child = spawn(process.execPath, [path.join(ROOT, 'scripts/perf-host.mjs')], {
+  const child = spawn(process.execPath, [path.join(HERE, 'perf-host.mjs')], {
     cwd: ROOT,
     env: { ...process.env, HOME, TANDEM_HOME: TANDEM, CODEX_HOME: path.join(HOME, '.codex'), NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -186,7 +187,7 @@ async function measureServer(pid) {
 }
 
 function measureStore() {
-  const output = execFileSync(process.execPath, [path.join(ROOT, 'scripts/perf-store.mjs')], { encoding: 'utf8' })
+  const output = execFileSync(process.execPath, [path.join(HERE, 'perf-store.mjs')], { encoding: 'utf8' })
   for (const line of output.trim().split('\n')) {
     const [name, ms, bytes] = line.split(' ')
     record('store', name, Number(ms), { bytes: Number(bytes) })

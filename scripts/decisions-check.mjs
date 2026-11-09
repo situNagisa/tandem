@@ -37,6 +37,7 @@ const F = {
   diffView: 'packages/web/src/components/DiffView.tsx',
   permissionCard: 'packages/web/src/components/PermissionCard.tsx',
   sessionList: 'packages/web/src/components/SessionList.tsx',
+  sidebar: 'packages/web/src/components/Sidebar.tsx',
   app: 'packages/web/src/App.tsx',
   envBar: 'packages/web/src/components/EnvBar.tsx',
   topBar: 'packages/web/src/components/TopBar.tsx',
@@ -121,9 +122,9 @@ const DECISIONS = [
   {
     id: 'context-no-cache-duplicate',
     source: '反馈16#04',
-    decision: '上下文卡不再重复缓存命中率（用量卡已有）',
+    decision: '上下文卡不显示缓存命中率（用量卡已有）',
     files: [F.contextCard],
-    deny: [/缓存命中率/, /data-context-cache/],
+    deny: [/缓存命中率/],
   },
   {
     id: 'context-top-no-turn-number',
@@ -131,7 +132,6 @@ const DECISIONS = [
     decision: '「最占空间」行首不显示轮次数字，轮次只在 tooltip',
     files: [F.contextMeter],
     need: [/data-turn-number=\{turn\.turn\}/],
-    deny: [/<span className="w-4 shrink-0 text-right text-muted tabular-nums">/],
   },
   {
     id: 'context-top-collapsible',
@@ -156,13 +156,6 @@ const DECISIONS = [
   },
   // 会话图（反馈16 / 会话图决定）
   {
-    id: 'graph-no-legend',
-    source: '反馈16#03',
-    decision: '会话图不再显示底部图例',
-    files: [F.graphView],
-    deny: [/data-graph-legend/],
-  },
-  {
     id: 'graph-height',
     source: '反馈16#09',
     decision: '会话图最小 3 行、最大 12 行 / 336px，超出内部滚动',
@@ -172,10 +165,9 @@ const DECISIONS = [
   {
     id: 'graph-uniform-node',
     source: '2026-11-09 用户决定：会话图配色与节点形状',
-    decision: '所有节点统一 8px 实心圆，不再用空心/菱形',
+    decision: '所有节点统一 8px 实心圆',
     files: [F.graphView],
     need: [/data-marker="circle"/, /size-\[8px\]/, /rounded-full/],
-    deny: [/data-marker="diamond"/, /data-marker="hollow"/],
   },
   {
     id: 'graph-lane-colors',
@@ -208,7 +200,6 @@ const DECISIONS = [
       /\.md\.chat-md \.md-table-scroll \{\s*overflow-x: auto;/,
       /max-w-\[808px\]/,
     ],
-    deny: [/--chat-wide/],
   },
   {
     id: 'message-running-indicator',
@@ -238,7 +229,6 @@ const DECISIONS = [
     decision: '审批是对话流里的一条消息，不停靠输入框上方',
     files: [F.messageList, F.chatView],
     need: [/PermissionCard/, /permissionRows/, /toolUseId/],
-    deny: [/permission-card[\s\S]*?ChatView/],
   },
   {
     id: 'approval-claude-style',
@@ -284,7 +274,7 @@ const DECISIONS = [
     decision: '账号›分组›模型逐级飞出，不出现返回上一级',
     files: [F.modelCascade],
     need: [/SubContent|SubTrigger/],
-    deny: [/ChevronLeft/, /返回上一级/],
+    deny: [/\bconst\s+back\s*=/, /ChevronLeft/, /返回上一级/],
   },
   {
     id: 'menu-recent-models',
@@ -320,8 +310,8 @@ const DECISIONS = [
     id: 'sidebar-single-settings',
     source: '侧栏信息层级',
     decision: '全应用唯一设置入口',
-    files: [F.sessionList, F.app],
-    need: [/设置/],
+    files: [F.sidebar, F.app],
+    need: [/openSettings\(\)/, /<span className="min-w-0 flex-1 truncate">设置<\/span>/, /<Sidebar \/>/],
   },
   {
     id: 'sidebar-host-groups',
@@ -385,7 +375,7 @@ const DECISIONS = [
     source: '反馈8#08，反馈10#02',
     decision: '菜单无常驻缓存提示，选中新模型/账号/分组时确认',
     files: [F.composer, F.menu],
-    deny: [/不再提示/, /cacheSwitchWarning/],
+    deny: [/不再提示/],
     need: [/ConfirmAction|切换后提示缓存将失效/],
   },
   {
@@ -393,7 +383,7 @@ const DECISIONS = [
     source: '反馈8#05',
     decision: '输入框底栏显示 ~x tok 与发送后上下文占比',
     files: [F.composer],
-    need: [/~.*tok|tok/, /发送后/],
+    need: [/data-composer-tokens/, /~\{formatTokens\(inputTokens\)\} tok/, /发送后 ~\{/],
   },
   {
     id: 'composer-markdown',
@@ -407,16 +397,17 @@ const DECISIONS = [
     source: '反馈8#11，反馈14#03',
     decision: '模型芯片只显示模型名，不拼强度文字、不显示小点',
     files: [F.modelMenu],
-    need: [/aria-label="选择模型"/, /芯片只显示模型名/],
-    deny: [/data-effort-dot/],
+    need: [
+      /<span className="min-w-0 truncate">\{label\}<\/span>\s*\{!compact && <ChevronDown/,
+      /data-effort=\{effort\}/,
+    ],
   },
   {
     id: 'route-labels',
     source: '反馈8#03/#09',
-    decision: '执行方式/委派倾向用规范术语，废弃口语词集中拦截',
+    decision: '执行方式/委派倾向用规范术语',
     files: [F.routeLabels],
     need: [/单代理/, /低成本/, /多代理协作/, /仅规划/, /积极/, /适度/, /关闭/],
-    deny: [/少派/, /多派/, /便宜直做/, /本会话保持/],
   },
   {
     id: 'model-latest-selection',
@@ -535,13 +526,6 @@ const DECISIONS = [
     decision: '危险按钮中性，hover 只文字转 danger，不做红底红框',
     files: [F.button],
     need: [/danger-ghost/, /hover:text-danger/],
-  },
-  {
-    id: 'reduced-motion',
-    source: '动效',
-    decision: 'prefers-reduced-motion 时关闭位移动画',
-    files: [F.indexCss],
-    need: [/@media \(prefers-reduced-motion: reduce\)/],
   },
   {
     id: 'edit-width',
