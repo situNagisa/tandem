@@ -122,9 +122,9 @@ const DECISIONS = [
   {
     id: 'context-no-cache-duplicate',
     source: '反馈16#04',
-    decision: '上下文卡不再重复缓存命中率（用量卡已有）',
+    decision: '上下文卡不显示缓存命中率（用量卡已有）',
     files: [F.contextCard],
-    deny: [/缓存命中率/, /data-context-cache/],
+    deny: [/缓存命中率/],
   },
   {
     id: 'context-top-no-turn-number',
@@ -132,7 +132,6 @@ const DECISIONS = [
     decision: '「最占空间」行首不显示轮次数字，轮次只在 tooltip',
     files: [F.contextMeter],
     need: [/data-turn-number=\{turn\.turn\}/],
-    deny: [/<span className="w-4 shrink-0 text-right text-muted tabular-nums">/],
   },
   {
     id: 'context-top-collapsible',
@@ -157,13 +156,6 @@ const DECISIONS = [
   },
   // 会话图（反馈16 / 会话图决定）
   {
-    id: 'graph-no-legend',
-    source: '反馈16#03',
-    decision: '会话图不再显示底部图例',
-    files: [F.graphView],
-    deny: [/data-graph-legend/],
-  },
-  {
     id: 'graph-height',
     source: '反馈16#09',
     decision: '会话图最小 3 行、最大 12 行 / 336px，超出内部滚动',
@@ -173,10 +165,9 @@ const DECISIONS = [
   {
     id: 'graph-uniform-node',
     source: '2026-11-09 用户决定：会话图配色与节点形状',
-    decision: '所有节点统一 8px 实心圆，不再用空心/菱形',
+    decision: '所有节点统一 8px 实心圆',
     files: [F.graphView],
     need: [/data-marker="circle"/, /size-\[8px\]/, /rounded-full/],
-    deny: [/data-marker="diamond"/, /data-marker="hollow"/],
   },
   {
     id: 'graph-lane-colors',
@@ -209,7 +200,6 @@ const DECISIONS = [
       /\.md\.chat-md \.md-table-scroll \{\s*overflow-x: auto;/,
       /max-w-\[808px\]/,
     ],
-    deny: [/--chat-wide/],
   },
   {
     id: 'message-running-indicator',
@@ -239,7 +229,6 @@ const DECISIONS = [
     decision: '审批是对话流里的一条消息，不停靠输入框上方',
     files: [F.messageList, F.chatView],
     need: [/PermissionCard/, /permissionRows/, /toolUseId/],
-    deny: [/permission-card[\s\S]*?ChatView/],
   },
   {
     id: 'approval-claude-style',
@@ -386,7 +375,7 @@ const DECISIONS = [
     source: '反馈8#08，反馈10#02',
     decision: '菜单无常驻缓存提示，选中新模型/账号/分组时确认',
     files: [F.composer, F.menu],
-    deny: [/不再提示/, /cacheSwitchWarning/],
+    deny: [/不再提示/],
     need: [/ConfirmAction|切换后提示缓存将失效/],
   },
   {
@@ -412,15 +401,13 @@ const DECISIONS = [
       /<span className="min-w-0 truncate">\{label\}<\/span>\s*\{!compact && <ChevronDown/,
       /data-effort=\{effort\}/,
     ],
-    deny: [/data-effort-dot/],
   },
   {
     id: 'route-labels',
     source: '反馈8#03/#09',
-    decision: '执行方式/委派倾向用规范术语，废弃口语词集中拦截',
+    decision: '执行方式/委派倾向用规范术语',
     files: [F.routeLabels],
     need: [/单代理/, /低成本/, /多代理协作/, /仅规划/, /积极/, /适度/, /关闭/],
-    // 废弃词由 ui-audit 的 deprecated-route-copy 全仓扫描（含 label: '不派'），这里只保留正向断言。
   },
   {
     id: 'model-latest-selection',

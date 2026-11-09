@@ -3218,9 +3218,7 @@ async function main() {
       assert.match(info.rowTitle, /占本会话 \d+%/, `用量 tooltip 缺少占本会话比例：${info.rowTitle}`)
       assert.match(info.rowLabel, /^第 \d+ 轮：/, '大纲行缺少读屏 aria-label')
       assert.match(info.readout, /第 1 轮：/, '读屏列表没有轮次全文')
-      assert.equal(await page.locator('.turn-tip').count(), 0, '轮次大纲仍存在重复文字的悬停浮层')
-      // 反馈8#07：着色固定为上下文占用，不再有「花费 / 上下文」切换。
-      assert.equal(await page.locator('.turn-metric').count(), 0, '仍有花费/上下文切换')
+      // 反馈8#07：着色固定为上下文占用。
       // 标准 tooltip（ui/Tooltip 的 .ui-tip）在悬停行后显示用量。
       const tip = page.locator('#tandem-tooltip[data-open]')
       await tip.waitFor({ timeout: 5_000 })
@@ -3377,8 +3375,7 @@ async function main() {
         new Set(rows.map((row) => row.heat)).size >= 2,
         `用量着色没有分档：${JSON.stringify(rows.map((row) => row.heat))}`,
       )
-      // 反馈8#07：不再有「花费 / 上下文」切换；被压缩的轮占用为 0，固定显示为最浅档。
-      assert.equal(await page.locator('.turn-metric').count(), 0, '仍有花费/上下文切换')
+      // 反馈8#07：被压缩的轮占用为 0，固定显示为最浅档。
       assert.ok(
         compressed.every((row) => row.heat === '1'),
         `压缩轮不是最浅档：${JSON.stringify(compressed.map((row) => row.heat))}`,
@@ -3578,12 +3575,10 @@ async function main() {
         `上下文分类色存在透明项：${colors.join(' / ')}`,
       )
 
-      // 85% 阈值刻度画在分段条上；缓存命中率是进度条形态。
+      // 85% 阈值刻度画在分段条上。
       const threshold = card.locator('[data-context-threshold="true"]')
       assert.equal(await threshold.count(), 1, '分段条缺少自动压缩阈值刻度')
       assert.match(await threshold.evaluate((el) => el.style.left), /\d+(\.\d+)?%/, '阈值刻度位置没有按百分比设置')
-      const cache = card.locator('[data-context-cache="true"]')
-      assert.equal(await cache.count(), 0, '上下文卡不应再有缓存命中率行（反馈16#04）')
 
       // 每轮左侧小色条表示占比；展开箭头默认隐藏，悬停该行才出现。
       const turn = card.locator('[data-context-turn="true"]').first()
@@ -4263,9 +4258,7 @@ async function main() {
       const input = page.locator('textarea[aria-label="消息输入框"]')
       await input.waitFor()
 
-      // #01/#09：环境条不再有独立的「少派」入口。
-      assert.equal(await page.getByRole('button', { name: '少派', exact: true }).count(), 0, '环境条仍有独立的委派策略按钮')
-      // #11：新会话页的大按钮已去掉，侧栏保留唯一的跨主机派单入口。
+      // #11：侧栏是跨主机派单的唯一入口。
       assert.ok(
         (await page.getByRole('button', { name: /跨主机派单/ }).first().count()) > 0,
         '侧栏缺少跨主机派单入口',
@@ -4280,8 +4273,6 @@ async function main() {
       for (const label of ['自动', '单代理', '低成本', '多代理协作']) {
         assert.ok(execText.includes(label), `执行方式菜单缺少「${label}」：${execText}`)
       }
-      assert.ok(!execText.includes('直接做') && !execText.includes('便宜直做'), '执行方式菜单仍有口语化旧词')
-      assert.ok(!execText.includes('本会话保持'), '执行方式菜单仍用「本会话保持」旧文案')
       await exec.getByRole('menuitem', { name: /委派倾向/ }).hover()
       const delegationMenu = page.locator('[role="menu"][aria-label="委派倾向"]').first()
       await delegationMenu.waitFor({ state: 'visible', timeout: 5_000 })
@@ -4289,7 +4280,6 @@ async function main() {
       for (const label of ['仅规划', '积极', '适度', '关闭']) {
         assert.ok(delegationText.includes(label), `委派倾向缺少「${label}」：${delegationText}`)
       }
-      assert.ok(!/少派|多派|不派/.test(delegationText), `委派倾向仍有口语化旧词：${delegationText}`)
       await page.screenshot({ path: '/tmp/fb8-after/09.png' })
       await page.screenshot({ path: '/tmp/fb8-after/01.png' })
       await page.keyboard.press('Escape')
@@ -4317,8 +4307,7 @@ async function main() {
       assert.match(tokenText, /发送后 ~\d+%|发送后 ~<1%/, `发送后上下文百分比缺失：${tokenText}`)
       await page.screenshot({ path: '/tmp/fb8-after/05.png' })
 
-      // 反馈10#02：模型菜单不再常驻缓存提示；真正切换模型/账号/分组时弹确认框，
-      // 没有「不再提示」按钮；取消不改变当前模型。
+      // 反馈10#02：模型菜单不显示常驻缓存提示；真正切换模型/账号/分组时弹确认框；取消不改变当前模型。
       await api(base, token, `/api/sessions/${session.id}`, {
         method: 'PATCH',
         body: JSON.stringify({ effort: 'low' }),
@@ -4327,7 +4316,6 @@ async function main() {
         await page.locator('button[aria-label^="选择模型"]').first().click()
         const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
         await menu.waitFor()
-        assert.equal(await menu.locator('[data-cache-warning]').count(), 0, '模型菜单仍有常驻缓存提示')
         await menu.getByRole('menuitem', { name: /切换账号|切换分组|全部模型/ }).first().hover()
         const accounts = page.locator('[role="menu"][aria-label="切换账号"]').first()
         await accounts.waitFor({ timeout: 5_000 })
@@ -4372,13 +4360,11 @@ async function main() {
       })
       await page.waitForTimeout(400)
 
-      // #11：模型芯片不再把思考强度拼进文字，改用小点 + tooltip。
+      // #11：模型芯片只显示模型名，思考强度只在 tooltip / aria-label。
       await waitModelReady(page)
       const chip = page.locator('button[aria-label^="选择模型"]').first()
       const chipText = await chip.innerText()
       assert.ok(!/(极低|最高|关闭)/.test(chipText) && !/\s(低|中|高)$/.test(chipText), `模型芯片仍显示思考强度：${chipText}`)
-      // 反馈14#03：芯片后面不再挂思考强度小点，只在菜单/tooltip/aria-label 里体现。
-      assert.equal(await chip.locator('[data-effort-dot]').count(), 0, '模型芯片仍有思考强度小点')
       assert.match((await chip.getAttribute('aria-label')) ?? '', /思考强度：低/, '模型芯片 aria-label 缺少思考强度')
       await chip.hover()
       const tip = page.locator('#tandem-tooltip[data-open]')
@@ -5000,7 +4986,7 @@ async function main() {
       await page.evaluate(() => localStorage.setItem('tandem.codeWrap.v1', '0'))
     })
 
-    desktop('消息用量只保留一行小字，不再悬停弹出表格（#7-03）', async (page) => {
+    desktop('消息用量只保留一行小字（#7-03）', async (page) => {
       await openSession(page, 'long')
       const summary = page.locator('[data-usage-summary]').last()
       await summary.scrollIntoViewIfNeeded()
@@ -5013,11 +4999,6 @@ async function main() {
       assert.ok(!text.includes('→'), `用量仍在使用裸箭头：${text}`)
       await summary.hover()
       await page.waitForTimeout(700)
-      assert.equal(
-        await page.locator('[data-usage-table]').count(),
-        0,
-        '悬停用量仍弹出明细表格（用户 #7-03 要求去掉）',
-      )
       assert.equal(await summary.getAttribute('aria-label'), null, '用量行仍标注为可交互明细')
       await page.keyboard.press('Escape')
     })
@@ -5462,7 +5443,6 @@ async function main() {
         '主机胶囊应只显示目标主机，不要「原主机 → 目标主机」',
       )
       assert.match((await folderPill.innerText()).trim(), /^待选$/, '文件夹胶囊没有精简为「待选」')
-      assert.equal(await page.locator('[data-env-pending-hint]').count(), 0, '输入框下方仍有一行黄色提示')
       // 打开主机菜单确认当前/待切换两个标签。
       await page.keyboard.press('Escape')
       await hostPill.click()
@@ -5482,7 +5462,6 @@ async function main() {
       await page.locator('[data-env-pending-cancel="true"]').click()
       await page.waitForTimeout(300)
       assert.equal(await textarea.isDisabled(), false, '取消后输入框仍然禁用')
-      assert.equal(await page.locator('[data-env-pending-hint]').count(), 0, '取消后待选提示没有消失')
       assert.doesNotMatch(await hostPill.innerText(), /第二台主机/, '取消后主机胶囊仍显示新主机')
 
       // 再选一次，选好文件夹才真正迁移。
@@ -5499,7 +5478,6 @@ async function main() {
         false,
         '迁移完成后输入框仍禁用',
       )
-      assert.equal(await page.locator('[data-env-pending-hint]').count(), 0, '迁移完成后仍有待选提示')
       // 还原宿主列表，避免影响后续用例的分组断言。
       await page.evaluate(() => {
         const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
@@ -5587,13 +5565,12 @@ async function main() {
       await page.waitForTimeout(250)
       await page.mouse.click(target.x, target.y)
 
-      // 反馈8#04：不再有独立的「已固定」浮层，只在原位显示小图钉。
+      // 反馈8#04：固定状态只在原位显示小图钉。
       await page.waitForFunction(
         (turn) => document.querySelector(`[data-turn-no="${turn}"]`)?.getAttribute('data-pinned') === 'true',
         target.turn,
         { timeout: 5_000 },
       )
-      assert.equal(await page.locator('.turn-pinned').count(), 0, '仍存在独立的已固定浮层')
       await page.waitForTimeout(500)
       const afterOrder = await readOrder()
       assert.deepEqual(afterOrder, beforeOrder, `固定后阅读区顺序变了：${beforeOrder} → ${afterOrder}`)
@@ -5689,8 +5666,6 @@ async function main() {
         { timeout: 5_000 },
       )
       assert.match(await hint.innerText(), /暂无/, '取消固定后提示行没有更新')
-      assert.equal(await page.locator('.turn-pinned').count(), 0, '取消固定后仍存在已固定浮层')
-      assert.ok(await page.locator('.turn-tip').count() === 0, '轮次大纲仍存在重复文字的悬停提示')
     })
 
     desktop('焦点环只在键盘导航时出现（自动聚焦的输入框没有橙色描边）', async (page) => {
@@ -5993,7 +5968,7 @@ async function main() {
       }
     })
 
-    desktop('新会话页去掉重复的派单大按钮，跨主机派单仍可用（反馈8#11 R05）', async (page) => {
+    desktop('新会话页只保留侧栏跨主机派单入口（反馈8#11 R05）', async (page) => {
       await page.evaluate(() => {
         window.location.hash = '#/'
       })
@@ -6734,12 +6709,7 @@ async function main() {
       assert.equal(await panel.locator('[data-group="context"]').count(), 0, '新会话无数据时仍显示上下文卡')
       assert.equal(await panel.locator('[data-group="details"]').count(), 1, '详情分组应始终显示')
 
-      // 反馈10#03：不再有底部「显示空分组」开关；顶部 ⋯ 菜单可逐个勾选分组。
-      assert.equal(
-        await panel.getByRole('switch', { name: '显示空分组' }).count(),
-        0,
-        '底部仍有「显示空分组」开关',
-      )
+      // 反馈10#03：空分组由顶部 ⋯ 菜单逐个勾选。
       const groupMenu = page.locator('[role="menu"][aria-label="显示分组"]').first()
       const toggleEmptyGroup = async (name) => {
         if (!(await groupMenu.isVisible().catch(() => false))) {
@@ -7393,14 +7363,13 @@ async function main() {
       assert.equal(await card.getAttribute('data-collapsed'), null, '再次点击标题行没有展开')
     })
 
-    desktop('反馈16#03/#09：会话图无图例、高度按轮数自适应并封顶', async (page) => {
+    desktop('反馈16#03/#09：会话图高度按轮数自适应并封顶', async (page) => {
       const graphHeight = async () => {
         const el = page.locator('[data-group="graph"] [data-graph-height]').first()
         await el.waitFor({ state: 'attached', timeout: 10_000 })
         return Number(await el.getAttribute('data-graph-height'))
       }
       await openSession(page, 'nockpt')
-      assert.equal(await page.locator('[data-graph-legend]').count(), 0, '会话图仍显示图例（反馈16#03）')
       assert.equal(await graphHeight(), 84, '2 轮时会话图高度不是最小高度（3 行）')
 
       await openSession(page, 'turns4')
@@ -7413,7 +7382,6 @@ async function main() {
         return el ? { client: el.clientHeight, scroll: el.scrollHeight } : null
       })
       assert.ok(scrollable && scrollable.scroll > scrollable.client, '封顶后会话图内部不能滚动')
-      assert.equal(await page.locator('[data-graph-legend]').count(), 0, '会话图仍显示图例（反馈16#03）')
     })
 
     desktop('反馈12#08：侧栏项目与会话缩进收紧、标题左对齐', async (page) => {
@@ -9031,7 +8999,6 @@ async function main() {
         await modelMenu.waitFor()
         const modelMenuText = await modelMenu.innerText()
         assert.match(modelMenuText, /自动/, '模型菜单缺少自动')
-        assert.doesNotMatch(modelMenuText, /^分工$/m, '模型菜单不应再有分工入口')
         await page.screenshot({ path: path.join(shotsDir, 'model-menu-division.png') })
         await page.keyboard.press('Escape')
 

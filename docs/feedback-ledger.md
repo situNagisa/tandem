@@ -29,10 +29,10 @@
 | R25 | 轮次关键数据缺少就地入口、指标口径不清 | 2 | 轮次 tooltip + 固定上下文着色；单测 turnUsage；regression 大纲用量/无切换 |
 | R26 | 思考强度档位硬编码 | 1 | `providers/capabilities.ts`；单测 capabilities；regression 厂商档位 |
 | R27 | 固定操作重排阅读列表导致乱飞 | 1 | 固定不重排、原位图钉；regression 阅读顺序/滚动位置 |
-| R28 | 辅助视图做成独立悬停浮层，跨空白即收起 | 1 | 同一大纲 Alt/点击两用；regression 无独立浮层/Alt 切换 |
+| R28 | 辅助视图做成独立悬停浮层，跨空白即收起 | 1 | 同一大纲 Alt/点击两用；regression Alt 切换 |
 | R29 | 设备权限/占用不可见，用户无处修复 | 1 | 只读探测 + 修复说明 + 深度检测；单测 serial-access；regression 设备行/修复 |
 | R30 | 占用清单按单条消息聚合，与轮次心智不符 | 2 | `topTurns` + `ContextSpaceSection`；单测 context；regression 按轮次/折叠 |
-| R31 | 选项文案口语化、术语不统一 | 2 | `lib/routeLabels.ts` + 术语表；ui-audit deprecated-route-copy；regression 文案 |
+| R31 | 选项文案口语化、术语不统一 | 2 | `lib/routeLabels.ts` + 术语表；regression 执行方式/委派倾向文案 |
 | R32 | 发送前看不到输入 token/上下文代价 | 1 | `lib/tokens.ts` + 底栏估算；单测；regression 输入 token/发送后占比 |
 | R33 | 缓存失效切换没有成本提示 | 1 | 已由 R41 的确认框取代；regression 切换确认 |
 | R34 | 输入框不支持常见 Markdown 编辑 | 1 | `markdownInput.ts` + 着色层；单测/regression |

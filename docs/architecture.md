@@ -187,7 +187,7 @@ sequenceDiagram
 | 改模型能力/思考强度 | `providers/capabilities.ts`、`providers/models.ts`、`agent/prompt.ts`、前端 `ui/` 的模型菜单 |
 | 改权限规则 | `server/src/permissions.ts`（匹配）+ `host.ts` 的 `authorize` + `PermissionCard.tsx` |
 | 改 diff/改动审阅 | `server/src/changes.ts` + `web/src/lib/useChanges.ts` + `ChangeReviewPanel.tsx` |
-| 改轮次大纲/用量着色 | `web/src/components/chat/TurnRail.tsx`、`turnRailScene.ts`、`lib/turnUsage.ts`（用量按「用户发言→下一条用户发言」聚合；着色固定上下文占用）；固定视图用 Alt/Option 或大纲下方提示行切换，不再单开浮层 |
+| 改轮次大纲/用量着色 | `web/src/components/chat/TurnRail.tsx`、`turnRailScene.ts`、`lib/turnUsage.ts`（用量按「用户发言→下一条用户发言」聚合；着色固定上下文占用）；固定视图用 Alt/Option 或大纲下方提示行切换 |
 | 改上下文占用/「最占空间」 | 契约 `protocol` 的 `ContextTopItem` / `ContextTurnItem` / `ContextBreakdown.topTurns`；服务端 `server/src/context.ts` 的 `estimateBreakdown` 按轮次聚合；前端共享 `components/chat/ContextMeter.tsx` 的 `ContextSpaceSection`（轮次行 + 二级明细 + 折叠记忆），右栏卡片与上下文弹层共用 |
 | 改外部会话导入 | `server/src/external.ts`（扫描/清洗/标题）+ `ExternalSessionView.tsx` |
 | 改定时任务 | `server/src/schedules.ts` + `settings/SchedulesSection.tsx`（`target.kind='wiki'` 直接更新项目 Wiki） |

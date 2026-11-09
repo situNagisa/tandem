@@ -21,7 +21,7 @@
 | [项目 Secrets](features/secrets.md) | 加密注入进程环境 + 输出脱敏 |
 | [会话分享](features/share.md) | 内网只读链接 |
 | [团队共享](features/team.md) | 成员/邀请/角色/审计 |
-| [模型路由](features/routing.md) | 自动路由 + 分工路由；同会话按轮切模型已废弃 |
+| [模型路由](features/routing.md) | 自动路由 + 分工路由；主会话模型恒定，执行交给子代理 |
 | [输入框](features/composer.md) | Markdown 编辑与着色、输入 token 估算、切换模型/账号时的缓存失效确认 |
 | [账号与模型](features/model-accounts.md) | 分组 Key 保护、拉取模型只选最新、下拉统一共享组件 |
 | [对话区](features/conversation.md) | 轮次大纲（用量着色、固定、Alt 只看已固定）与「最占空间」按轮次聚合；消息耗时与轮次耗时汇总；上下文卡分类与缓存命中 |

@@ -4,7 +4,7 @@
 
 ## 归属：工作站账号级（反馈12#01 · R59）
 
-- 模型账号（provider 账号、分组、Key、倍率、模型勾选）属于**登录的工作站账号**，不再跟具体主机绑定。设置 → 账号与模型在所有主机上显示同一份数据，不随「当前主机」变化。
+- 模型账号（provider 账号、分组、Key、倍率、模型勾选）属于**登录的工作站账号**，与具体主机无关。设置 → 账号与模型在所有主机上显示同一份数据，不随「当前主机」变化。
 - Key **只加密保存在工作站**：`workstation/profiles.json`（AES-256-GCM，0600），密钥单独放 `workstation/profiles.key`（0600）。主机只同步元数据与 `apiKeyMasked`，任何主机本地文件都没有 Key 明文。
 - 主机上的 agent 发起模型请求时，经签名请求（Ed25519，主机登记公钥验签）把 `profileId/分组/模型/消息/工具` 发给工作站；工作站校验「该账号有权使用这台主机」且 profile 属于该账号，再用真实 Key 调上游，NDJSON 流式回传 `block_start/text/tool_input/rate_limit/effort_dropped/done/error`。主机回放为原有 provider 回调，所以 UI、工具循环、用量显示都不变。
 - 同组多 Key 的故障切换、冷却、额度头解析都在工作站完成；`done` 事件带 `keyId/costUsd`，工作站按账号 + 主机记账到 `workstation/model-usage.json`。
@@ -27,7 +27,7 @@
 
 ## 编辑时保护 Key（反馈10#05 / R42）
 
-- 已有 Key 的分组只显示掩码占位「已保存 · ••••abcd」和「更换 Key」按钮，**不再渲染可编辑的密码输入框**；点「更换 Key」才出现输入框（可取消）。
+- 已有 Key 的分组只显示掩码占位「已保存 · ••••abcd」和「更换 Key」按钮；点「更换 Key」才出现输入框（可取消）。
 - 保存时 Key 未修改就不发送 `apiKey`；客户端也永远不会把掩码当明文回传。服务端 `ProfileStore.update` / `buildKeys` 对缺省、空字符串、看起来像掩码（含 `****` / `••••`）的 key 一律保留原值；删除 Key 必须走 Key 列表（展开账号 → Key 面板删除）。
 - Key 列表按 `id` 保留未重传的 `apiKey`，重排、停用、改标签不会丢 Key。Secrets 编辑的值默认为空、留空不改；MCP 的环境变量由 Host 原样返回，编辑不会丢。
 
@@ -39,7 +39,7 @@
 
 ## 下拉与候选列表（反馈10#06 / R37、R01）
 
-- 所有下拉都走 `ui/MenuSelect`（设置里的 `Controls.Select` 也是它的包装）；可输入 + 候选的模型 ID 输入走 `ui/Combobox`（单价覆盖、预算按模型），不再使用浏览器自带 `<datalist>` / `input list=`。
+- 所有下拉都走 `ui/MenuSelect`（设置里的 `Controls.Select` 也是它的包装）；可输入 + 候选的模型 ID 输入走 `ui/Combobox`（单价覆盖、预算按模型）。
 - `scripts/ui-audit.mjs` 新增 `native-datalist`、`native-input-list`，与既有的 `native-select` 一样在 `ui/` 以外直接失败，不设白名单例外。
 
 ## 验证
@@ -51,5 +51,5 @@
 ## 下拉/弹层首次打开不抖（反馈12#10 · R52）
 
 - 共享 `ui/Menu`、`ui/Popover` 等所有 `.popover-panel` 的入场动画只做透明度（`chat-pop-in/out`），**不再写 `transform`**：Radix 用内联 `transform: translate(...)` 做定位，CSS 动画里的 transform 优先级更高、会把它覆盖掉，导致首帧渲染在错误位置再跳回（首次打开、切换控件后再次打开都会复现）。
-- 定位从第一帧起保持稳定；不再需要额外的 `visibility` 占位。
+- 定位从第一帧起保持稳定，不需要额外的 `visibility` 占位。
 - 回归：「反馈12#10：下拉首次打开位置稳定（前 10 帧 ≤1px）」对「更多」菜单与模型下拉各测首次/再次打开，rAF 采样前 10 帧 `getBoundingClientRect` 变化 ≤1px。
