@@ -8251,6 +8251,99 @@ async function main() {
       )
       assert.match(await graph.locator('div[data-kind="fork"]').first().innerText(), /分叉/)
 
+      // 几何：所有连线端点必须落在节点圆心上；主线是一整条竖线贯穿所有主线节点。
+      const geometry = await graph.evaluate((root) => {
+        const rootBox = root.getBoundingClientRect()
+        const center = (el) => {
+          const box = el.getBoundingClientRect()
+          return {
+            x: box.left - rootBox.left + box.width / 2,
+            y: box.top - rootBox.top + box.height / 2,
+          }
+        }
+        const nodes = [...root.querySelectorAll('div[data-kind]')].map((el) => {
+          const marker = el.querySelector('[data-marker="circle"]')
+          return {
+            kind: el.getAttribute('data-kind'),
+            lane: Number(el.getAttribute('data-lane')),
+            row: Number(el.getAttribute('data-row')),
+            ...(marker ? center(marker) : { x: -999, y: -999 }),
+          }
+        })
+        const svg = root.querySelector('[data-session-graph-edges]')
+        const svgBox = svg.getBoundingClientRect()
+        const paths = [...svg.querySelectorAll('path')].map((path) => {
+          const start = path.getPointAtLength(0)
+          const end = path.getPointAtLength(path.getTotalLength())
+          return {
+            kind: path.getAttribute('data-kind'),
+            fromLane: Number(path.getAttribute('data-from-lane')),
+            toLane: Number(path.getAttribute('data-to-lane')),
+            start: { x: start.x + svgBox.left - rootBox.left, y: start.y + svgBox.top - rootBox.top },
+            end: { x: end.x + svgBox.left - rootBox.left, y: end.y + svgBox.top - rootBox.top },
+          }
+        })
+        return { nodes, paths }
+      })
+      const near = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) <= 1
+      const match = (point, kind) =>
+        geometry.nodes.some((node) => (!kind || node.kind === kind) && near(point, node))
+      const mainNodes = geometry.nodes.filter((node) => node.kind === 'turn')
+      assert.ok(mainNodes.length >= 6, `演示会话主线轮次太少：${mainNodes.length}`)
+      const mainX = mainNodes[0].x
+      assert.ok(
+        mainNodes.every((node) => Math.abs(node.x - mainX) <= 0.5),
+        '主线节点圆心 x 不一致',
+      )
+      const mainPath = geometry.paths.find((path) => path.kind === 'main')
+      assert.ok(mainPath, '缺少主线竖线')
+      assert.ok(
+        Math.abs(mainPath.start.x - mainX) <= 1 && Math.abs(mainPath.end.x - mainX) <= 1,
+        '主线竖线没有落在节点圆心上',
+      )
+      assert.ok(
+        near(mainPath.start, mainNodes[0]) && near(mainPath.end, mainNodes[mainNodes.length - 1]),
+        `主线竖线起止点不是首尾主线节点 ${JSON.stringify({
+          start: mainPath.start,
+          end: mainPath.end,
+          first: mainNodes[0],
+          last: mainNodes[mainNodes.length - 1],
+        })}`,
+      )
+      assert.ok(
+        mainNodes.every((node) => node.y >= mainPath.start.y - 1 && node.y <= mainPath.end.y + 1),
+        '主线节点不在竖线范围内',
+      )
+      for (const path of geometry.paths) {
+        assert.ok(match(path.start), `连线起点没有落在节点上：${JSON.stringify(path.start)}`)
+        assert.ok(match(path.end), `连线终点没有落在节点上：${JSON.stringify(path.end)}`)
+      }
+      const branchOut = geometry.paths.filter(
+        (path) => path.kind === 'subagent' && path.fromLane === 0 && path.toLane > 0,
+      )
+      const branchBack = geometry.paths.filter(
+        (path) => path.kind === 'subagent' && path.fromLane > 0 && path.toLane === 0,
+      )
+      assert.ok(branchOut.length >= 2, '演示会话应有多个子代理分出线')
+      assert.ok(branchBack.length >= 2, '子代理没有合并回主线')
+      for (const path of branchOut) {
+        assert.ok(match(path.start, 'turn'), '子代理分出线起点不是主线节点')
+        assert.ok(match(path.end), '子代理分出线终点不是分支节点')
+      }
+      for (const path of branchBack) {
+        assert.ok(match(path.start), '子代理合并线起点不是分支节点')
+        assert.ok(match(path.end, 'turn'), '子代理合并线终点不是主线节点')
+      }
+      const forkPath = geometry.paths.find((path) => path.kind === 'fork')
+      assert.ok(forkPath, '缺少分叉线')
+      assert.ok(match(forkPath.start, 'turn'), '分叉线起点不是主线节点')
+      assert.ok(match(forkPath.end, 'fork'), '分叉线终点不是分支节点')
+      assert.equal(
+        geometry.paths.some((path) => path.kind === 'fork' && path.toLane === 0),
+        false,
+        '分叉线不应合并回主线',
+      )
+
       // 点主线节点跳到对应轮并高亮。
       await page.locator('.msg-jump-hit').first().waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
       await graph.locator('div[data-kind="turn"]').first().click()
