@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
+import { Combobox } from '../../ui/Combobox'
 import type { PriceMap } from './shared'
 
 export function PriceOverrides({
@@ -72,25 +73,16 @@ export function PriceOverrides({
         </div>
       )}
       <div className="mt-1.5 flex items-center gap-1.5">
-        <input
+        <Combobox
           value={model}
-          onChange={(e) => setModel(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              add()
-            }
-          }}
-          list="tandem-price-models"
+          onChange={setModel}
+          options={candidates}
           placeholder={candidates[0] ?? '模型 ID'}
-          spellCheck={false}
-          className="h-6 min-w-0 flex-1 rounded border border-border bg-surface px-1.5 font-mono text-[13px] text-text outline-none focus:border-border-strong"
+          aria-label="自定义单价模型"
+          size="sm"
+          onSubmit={add}
+          className="h-6 flex-1 font-mono text-[13px]"
         />
-        <datalist id="tandem-price-models">
-          {candidates.map((id) => (
-            <option key={id} value={id} />
-          ))}
-        </datalist>
         <button
           onClick={add}
           disabled={!model.trim()}

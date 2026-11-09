@@ -14,6 +14,7 @@ import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
 import { formatCost } from '../../lib/format'
 import { Button, IconButton } from '../ui/Button'
+import { Combobox } from '../ui/Combobox'
 import { Input, SegmentedControl, Select, Switch } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 import { Modal } from '../ui/Modal'
@@ -563,22 +564,21 @@ export function BudgetsSection() {
             {draft.scope === 'model' && (
               <div>
                 <label className="settings-label">模型</label>
-                <Input
+                <Combobox
                   aria-label="模型"
                   value={draft.model}
-                  onChange={(e) => patchDraft({ model: e.target.value })}
+                  onChange={(model) => patchDraft({ model })}
+                  options={[
+                    ...new Set(
+                      profiles.flatMap((p) => [
+                        ...p.models,
+                        ...(p.groups ?? []).flatMap((g) => g.models),
+                      ]),
+                    ),
+                  ]}
                   placeholder="例如 claude-sonnet-4-5"
-                  list="tandem-budget-models"
-                  spellCheck={false}
                   className="font-mono"
                 />
-                <datalist id="tandem-budget-models">
-                  {[...new Set(profiles.flatMap((p) => [...p.models, ...(p.groups ?? []).flatMap((g) => g.models)]))].map(
-                    (id) => (
-                      <option key={id} value={id} />
-                    ),
-                  )}
-                </datalist>
               </div>
             )}
 

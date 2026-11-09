@@ -18,6 +18,8 @@ const CHECKS = [
   { id: 'popover-panel', label: '手写 popover-panel 弹层', re: /popover-panel/g },
   { id: 'menu-row-height', label: '硬编码菜单行高 h-[26..29px]', re: /(?<![\w-])h-\[2[6-9]px\]/g },
   { id: 'native-select', label: '原生 <select>，应改用 ui/MenuSelect', re: /<select\b/g },
+  { id: 'native-datalist', label: '原生 <datalist>，应改用 ui/Combobox', re: /<datalist\b/g },
+  { id: 'native-input-list', label: '输入框 list= 原生候选（浏览器自带下拉），应改用 ui/Combobox', re: /\blist=/g },
 ]
 
 async function walk(dir) {
@@ -97,6 +99,28 @@ try {
   }
 } catch {
   // index.css 不存在时忽略
+}
+
+// 反馈10#07：菜单/按钮/分段控件里的文字行高必须 ≥ 1.4。这些行大多带 truncate
+// （overflow:hidden），leading-none 会把中英文字形上下缘裁掉。共享组件里禁止出现。
+for (const name of ['Menu.tsx', 'Controls.tsx', 'Button.tsx', 'ListRow.tsx', 'Combobox.tsx']) {
+  try {
+    const text = await readFile(join(UI_DIR, name), 'utf8')
+    const lines = text.split('\n')
+    for (let i = 0; i < lines.length; i += 1) {
+      if (lines[i].includes('ui-audit-ignore')) continue
+      if (!/leading-none/.test(lines[i])) continue
+      issues.push({
+        file: relative(ROOT, join(UI_DIR, name)),
+        line: i + 1,
+        check: 'clipped-line-height',
+        label: '文本行使用 leading-none 会被截断：行高必须 ≥ 1.4（反馈10#07）',
+        text: lines[i].trim().slice(0, 160),
+      })
+    }
+  } catch {
+    // 文件不存在时忽略
+  }
 }
 
 // 模型级联必须是真正的飞出子菜单（用户 #7-04）：禁止在同一面板里显示「返回上一级」。
