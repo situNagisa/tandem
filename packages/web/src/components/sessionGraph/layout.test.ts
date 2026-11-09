@@ -51,7 +51,7 @@ describe('layoutSessionGraph', () => {
     expect(layout.edges.filter((e) => e.kind === 'subagent')).toHaveLength(0)
   })
 
-  it('单个子代理：分出虚线泳道并合并回主线下一行', () => {
+  it('单个子代理：分出新泳道并合并回主线下一行', () => {
     const layout = layoutSessionGraph({
       sessionId: 's',
       turns: turns(2),
@@ -95,7 +95,7 @@ describe('layoutSessionGraph', () => {
     expect(layout.counts.subagents).toBe(2)
   })
 
-  it('分叉是实线菱形节点，不合并回主线', () => {
+  it('分叉是独立泳道节点，不合并回主线', () => {
     const layout = layoutSessionGraph({
       sessionId: 's',
       turns: turns(2),
