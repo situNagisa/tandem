@@ -49,6 +49,16 @@ describe('layoutSessionGraph', () => {
     expect(layout.lanes).toBe(1)
     expect(layout.rows).toBe(3)
     expect(layout.edges.filter((e) => e.kind === 'subagent')).toHaveLength(0)
+    // 主线是一整条竖线：x 固定、贯穿首尾轮，每个主线节点圆心都在线上。
+    const main = layout.edges.find((e) => e.kind === 'main')!
+    expect(main).toMatchObject({ fromLane: 0, toLane: 0, fromRow: 0, toRow: 2 })
+    const turnRows = layout.nodes.filter((n) => n.kind === 'turn').map((n) => n.row)
+    for (const row of turnRows) {
+      expect(row).toBeGreaterThanOrEqual(main.fromRow)
+      expect(row).toBeLessThanOrEqual(main.toRow)
+    }
+    expect(laneX(0)).toBe(7)
+    expect(laneX(2) - laneX(1)).toBe(14)
   })
 
   it('单个子代理：分出新泳道并合并回主线下一行', () => {
@@ -64,6 +74,10 @@ describe('layoutSessionGraph', () => {
     expect(branch.collapsed).toBe(true)
     const nextTurn = layout.nodes.find((n) => n.kind === 'turn' && n.row > 0)!
     expect(nextTurn.row).toBe(2) // 子代理完成后主线才继续
+    const split = layout.edges.find(
+      (e) => e.kind === 'subagent' && e.fromLane === 0 && e.toLane === 1,
+    )!
+    expect(split).toMatchObject({ fromRow: 0, toRow: 1 })
     const out = layout.edges.find((e) => e.kind === 'subagent' && e.fromLane === 1)!
     expect(out.toLane).toBe(0)
     expect(out.toRow).toBe(2)
@@ -90,7 +104,13 @@ describe('layoutSessionGraph', () => {
     const grandchild = layout.nodes.find((n) => n.kind === 'subagent' && n.subagentId === 'b')!
     expect(grandchild.lane).toBe(2)
     expect(grandchild.row).toBeGreaterThan(parentTurns[1]!.row)
-    expect(layout.nodes.some((n) => n.kind === 'subagent-result' && n.subagentId === 'a')).toBe(true)
+    const result = layout.nodes.find((n) => n.kind === 'subagent-result' && n.subagentId === 'a')!
+    expect(result).toBeTruthy()
+    // 分支竖线从父节点一直贯穿到最后一个节点（结果行），再合并回主线。
+    const split = layout.edges.find(
+      (e) => e.kind === 'subagent' && e.fromLane === 0 && e.toLane === 1,
+    )!
+    expect(split.toRow).toBe(result.row)
     expect(layout.lanes).toBe(3)
     expect(layout.counts.subagents).toBe(2)
   })
@@ -108,7 +128,7 @@ describe('layoutSessionGraph', () => {
     expect(fork.forkSessionId).toBe('fork-1')
     const forkEdges = layout.edges.filter((e) => e.kind === 'fork')
     expect(forkEdges).toHaveLength(1)
-    expect(forkEdges[0]).toMatchObject({ fromLane: 0, fromRow: 0, toLane: 1, toRow: 1 })
+    expect(forkEdges[0]).toMatchObject({ fromLane: 0, fromRow: 0, toLane: 1, toRow: fork.row })
     expect(layout.edges.some((e) => e.kind === 'fork' && e.toLane === 0)).toBe(false)
   })
 

@@ -88,6 +88,7 @@ export function summaryOf(s: Session): SessionSummary {
     ...(s.archived ? { archived: true } : {}),
     ...(s.env ? { env: s.env } : {}),
     ...(s.parentId ? { parentId: s.parentId } : {}),
+    ...(s.parentToolUseId ? { parentToolUseId: s.parentToolUseId } : {}),
     ...(typeof s.depth === 'number' ? { depth: s.depth } : {}),
     ...(s.worktree ? { worktree: s.worktree } : {}),
     ...(s.scheduledBy ? { scheduledBy: { ...s.scheduledBy } } : {}),

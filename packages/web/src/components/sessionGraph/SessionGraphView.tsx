@@ -12,6 +12,7 @@ import { cn } from '../../lib/cn'
 import { formatDurationMs, formatTokens } from '../../lib/format'
 import {
   GRAPH_ROW_H,
+  graphTextX,
   laneX,
   type GraphEdge,
   type GraphLayout,
@@ -60,15 +61,25 @@ function nodeMeta(node: GraphNode): string {
   return bits.join(' · ')
 }
 
-/** 连线段：同泳道画竖线，跨泳道画 S 曲线（与 git graph 的分出/合并一致）。 */
+/**
+ * 连线段：泳道是固定 x 的竖线；分出/合并只在父节点旁走一小段 45° 折线，
+ * 之后竖直贯穿分支节点，终点落在节点圆心上（不做整条贝塞尔曲线）。
+ */
 function edgePath(edge: GraphEdge): string {
   const x1 = laneX(edge.fromLane) + 4
   const y1 = edge.fromRow * GRAPH_ROW_H + GRAPH_ROW_H / 2
   const x2 = laneX(edge.toLane) + 4
   const y2 = edge.toRow * GRAPH_ROW_H + GRAPH_ROW_H / 2
   if (x1 === x2) return `M ${x1} ${y1} L ${x2} ${y2}`
-  const mid = (y1 + y2) / 2
-  return `M ${x1} ${y1} C ${x1} ${mid}, ${x2} ${mid}, ${x2} ${y2}`
+  const dx = Math.abs(x2 - x1)
+  if (x2 > x1) {
+    // 分出：父节点旁一小段 45° 斜线到新泳道，再竖直向下到分支最后一个节点。
+    if (y1 + dx <= y2) return `M ${x1} ${y1} L ${x2} ${y1 + dx} L ${x2} ${y2}`
+    return `M ${x1} ${y1} L ${x2} ${y2}`
+  }
+  // 合并：分支竖直走到目标主线节点上方，再用 45° 斜线折回节点，不覆盖主线。
+  if (y2 - dx >= y1) return `M ${x1} ${y1} L ${x1} ${y2 - dx} L ${x2} ${y2}`
+  return `M ${x1} ${y1} L ${x2} ${y2}`
 }
 
 function edgeColor(edge: GraphEdge): string {
@@ -98,6 +109,11 @@ function EdgeLayer({ layout }: { layout: GraphLayout }) {
             strokeOpacity={edge.kind === 'subagent' ? 0.72 : 0.9}
             strokeLinecap="round"
             data-kind={edge.kind}
+            data-from-lane={edge.fromLane}
+            data-to-lane={edge.toLane}
+            data-from-row={edge.fromRow}
+            data-to-row={edge.toRow}
+            strokeLinejoin="round"
             {...(merge ? { 'data-merge': '1' } : {})}
           />
         )
@@ -149,6 +165,7 @@ export function SessionGraphView({
   }, [height])
 
   const overscan = 6
+  const textX = graphTextX(layout.lanes)
   const startRow = Math.max(0, Math.floor(viewport.top / GRAPH_ROW_H) - overscan)
   const endRow = Math.min(
     layout.rows - 1,
@@ -216,11 +233,11 @@ export function SessionGraphView({
               >
                 <div
                   className={cn(
-                    'group/node flex h-full min-w-0 items-center rounded-[5px] pr-1 transition-colors',
+                    'group/node relative flex h-full min-w-0 items-center rounded-[5px] pr-1 transition-colors',
                     !readOnly && 'cursor-pointer hover:bg-[var(--t-bg-hover)]',
                     isSelected && 'bg-[var(--t-bg-hover)]',
                   )}
-                  style={{ paddingLeft: laneX(node.lane) + 12 }}
+                  style={{ paddingLeft: textX }}
                   role="treeitem"
                   aria-selected={isSelected}
                   aria-label={nodeTooltip(node)}
@@ -240,8 +257,9 @@ export function SessionGraphView({
                   <span
                     aria-hidden="true"
                     data-marker="circle"
-                    className="mr-1.5 size-[7px] shrink-0 rounded-full"
+                    className="absolute top-1/2 size-[8px] -translate-y-1/2 rounded-full"
                     style={{
+                      left: laneX(node.lane),
                       backgroundColor: color,
                       boxShadow: isCurrent
                         ? '0 0 0 1.5px var(--t-surface), 0 0 0 3px var(--t-focus-ring)'

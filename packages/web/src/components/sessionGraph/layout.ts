@@ -108,13 +108,18 @@ export interface GraphLayout {
 
 /** 一行的高度（px）：渲染层与虚拟滚动共用。 */
 export const GRAPH_ROW_H = 28
-/** 相邻泳道的水平间距（px）。 */
-export const GRAPH_LANE_GAP = 11
+/** 相邻泳道的水平间距（px）：图区宽度 = 泳道数 × 14px。 */
+export const GRAPH_LANE_GAP = 14
 /** 主线泳道在左侧留白内的 x 偏移（px）。 */
 export const GRAPH_LANE_X0 = 7
 
 export function laneX(lane: number): number {
   return GRAPH_LANE_X0 + lane * GRAPH_LANE_GAP
+}
+
+/** 节点文字统一从这个 x 开始：图区宽度 = 泳道数 × 14px（在最后一个泳道右侧留 7px）。 */
+export function graphTextX(lanes: number): number {
+  return GRAPH_LANE_X0 + Math.max(1, lanes) * GRAPH_LANE_GAP + 7
 }
 
 function countSubagents(list: GraphSubagent[]): number {
@@ -207,9 +212,9 @@ export function layoutSessionGraph(input: GraphInput): GraphLayout {
           : turn === sub.turns[0]
         if (!attachHere) continue
         const childLane = takeLane('subagent')
-        edges.push({ fromLane: lane, fromRow: row, toLane: childLane, toRow: childCursor, kind: 'subagent' })
         const childEnd = laySubagent(child, childLane, childCursor)
-        // 嵌套分支不合并回父代理的同一行，父代理后续轮次排在它下面。
+        // 分出后一条竖线贯穿该分支的所有节点，再折回父泳道（合并）。
+        edges.push({ fromLane: lane, fromRow: row, toLane: childLane, toRow: childEnd, kind: 'subagent' })
         edges.push({ fromLane: childLane, fromRow: childEnd, toLane: lane, toRow: childEnd + 1, kind: 'subagent' })
         childCursor = Math.max(childCursor, childEnd + 1)
         if (childEnd > end) end = childEnd
@@ -244,9 +249,13 @@ export function layoutSessionGraph(input: GraphInput): GraphLayout {
     return row
   }
 
+  const mainRows: number[] = []
+  let mainEndRow = 0
   for (let index = 0; index < turns.length; index += 1) {
     const turn = turns[index]!
     const turnRow = cursor
+    mainRows.push(turnRow)
+    mainEndRow = turnRow
     nodes.push({
       key: `turn:${turn.id}`,
       kind: 'turn',
@@ -267,8 +276,8 @@ export function layoutSessionGraph(input: GraphInput): GraphLayout {
 
     for (const sub of subsByTurn.get(turn.id) ?? []) {
       const lane = takeLane('subagent')
-      edges.push({ fromLane: 0, fromRow: turnRow, toLane: lane, toRow: branchCursor, kind: 'subagent' })
       const end = laySubagent(sub, lane, branchCursor)
+      edges.push({ fromLane: 0, fromRow: turnRow, toLane: lane, toRow: end, kind: 'subagent' })
       mergeEdges.push({ lane, row: end })
       branchEnd = Math.max(branchEnd, end)
       // 同一轮派出的多个分支各占一段行，避免窄面板里文字互相压住。
@@ -299,8 +308,14 @@ export function layoutSessionGraph(input: GraphInput): GraphLayout {
         edges.push({ fromLane: merge.lane, fromRow: merge.row, toLane: 0, toRow: nextRow, kind: 'subagent' })
       }
     }
+    if (index === turns.length - 1 && mergeEdges.length) mainEndRow = Math.max(mainEndRow, nextRow)
     cursor = nextRow
     rows = Math.max(rows, nextRow)
+  }
+
+  // 主线：一条从上到下的竖线，贯穿所有主线节点（节点圆心都在线上）。
+  if (mainRows.length) {
+    edges.unshift({ fromLane: 0, fromRow: mainRows[0]!, toLane: 0, toRow: mainEndRow, kind: 'main' })
   }
 
   // 空会话也保留一行，便于显示空态说明。
