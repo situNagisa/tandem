@@ -80,15 +80,54 @@ export function mergeSegmentPage(
     const before = page.messages
       .slice(0, Math.max(0, startInPage))
       .filter((message) => !currentIds.has(message.id))
+    const middle = page.messages
+      .slice(Math.max(0, startInPage + 1), endInPage >= 0 ? endInPage : page.messages.length)
+      .filter((message) => !currentIds.has(message.id))
     const after = page.messages
       .slice(endInPage >= 0 ? endInPage + 1 : page.messages.length)
       .filter((message) => !currentIds.has(message.id))
+    // 当前窗口里可能已经有缺口（跳转到早期轮段后再向中间补页）：
+    // 新页必须插在重叠位置的紧邻处，不能接到整个窗口末尾。
+    const next = current.slice()
+    let beforeAt = firstOverlap
+    if (beforeAt > 0 && next[beforeAt - 1]!.gap) beforeAt--
+    if (before.length) next.splice(beforeAt, 0, ...before)
+    let firstAt = firstOverlap + (beforeAt <= firstOverlap ? before.length : 0)
+    if (middle.length) next.splice(firstAt + 1, 0, ...middle)
+    const lastAt =
+      lastOverlap + (beforeAt <= lastOverlap ? before.length : 0) + middle.length
+    if (after.length) next.splice(lastAt + 1, 0, ...after)
+    // 插入后的缺口重新对齐两侧真实消息；新页同时覆盖两侧时缺口已经接上，删掉占位。
+    const bridged: UiMessage[] = []
+    for (let i = 0; i < next.length; i++) {
+      const message = next[i]!
+      if (!message.gap) {
+        bridged.push(message)
+        continue
+      }
+      let prevId: string | undefined
+      for (let j = i - 1; j >= 0; j--) {
+        if (!next[j]!.gap) {
+          prevId = next[j]!.id
+          break
+        }
+      }
+      let nextId: string | undefined
+      for (let j = i + 1; j < next.length; j++) {
+        if (!next[j]!.gap) {
+          nextId = next[j]!.id
+          break
+        }
+      }
+      if (!nextId || (prevId && pageIds.has(prevId) && pageIds.has(nextId))) continue
+      bridged.push(gapMessage(prevId ? { afterId: prevId, beforeId: nextId } : { beforeId: nextId }))
+    }
     // 新段在更早处时，firstMessageId 取自 page；否则保留当前窗口的锚点。
     return {
       ...base,
       firstMessageId: before.length ? base.firstMessageId : (current[0]?.id ?? base.firstMessageId),
       hasEarlier: before.length ? page.hasEarlier : currentHasEarlier,
-      messages: [...before, ...current, ...after],
+      messages: bridged,
     }
   }
   // 与当前窗口不相交：跳转目标是更早的历史，插到顶部。

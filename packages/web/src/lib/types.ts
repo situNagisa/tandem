@@ -104,6 +104,11 @@ export interface MessageGap {
   afterId?: string
   /** 缺口下方第一条已加载消息 id（向前加载的锚点）。 */
   beforeId: string
+  /** 占位条展示的轮次范围（由服务端轮次大纲换算，含两端）。 */
+  fromTurn?: number
+  toTurn?: number
+  /** true：消息已在内存里、只是超出挂载窗口（点「显示」扩大/移动窗口）。 */
+  unmounted?: boolean
 }
 
 /** 界面上的消息：多出本地乐观状态字段。 */

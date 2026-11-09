@@ -4,7 +4,7 @@ import { GitFork } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useSessionView } from './session/SessionScope'
 import { cn } from '../lib/cn'
-import { MESSAGE_PAGE_SIZE } from '../lib/messagePaging'
+import { MESSAGE_PAGE_SIZE, gapMessage } from '../lib/messagePaging'
 import { navigate } from '../lib/router'
 import { prettyModel } from '../lib/modelName'
 import type { HookNotice, ToolResultBlock, UiMessage } from '../lib/types'
@@ -27,6 +27,7 @@ import '../styles/chat.css'
 
 const EMPTY: UiMessage[] = []
 const EMPTY_HOOKS: HookNotice[] = []
+const EMPTY_IDS: string[] = []
 
 function SkeletonMessages() {
   return (
@@ -48,31 +49,66 @@ function SkeletonMessages() {
   )
 }
 
-/** 分页缺口：两侧消息已加载，中间还有未加载的历史。 */
-const GapRow = memo(function GapRow({
-  message,
+/** 未加载 / 未挂载的连续轮次：固定高度占位条，加载后原位替换，滚动位置不跳。 */
+const GapBand = memo(function GapBand({
+  gap,
+  gapId,
+  fromTurn,
+  toTurn,
   loading,
   onLoad,
+  onShow,
 }: {
-  message: UiMessage
+  gap: NonNullable<UiMessage['gap']>
+  gapId: string
+  fromTurn?: number
+  toTurn?: number
   loading: boolean
-  onLoad: (gapId: string) => void
+  onLoad?: (count: 'first' | 'all') => void
+  onShow?: () => void
 }) {
-  if (!message.gap) return null
+  const count =
+    fromTurn !== undefined && toTurn !== undefined && toTurn >= fromTurn
+      ? toTurn - fromTurn + 1
+      : 0
+  const label = count
+    ? `第 ${fromTurn}${count > 1 ? `–${toTurn}` : ''} 轮${gap.unmounted ? '未显示' : '未加载'}（${count} 轮）`
+    : gap.unmounted
+      ? '这一段更早的对话未显示'
+      : '中间还有未加载的消息'
   return (
     <div
-      className="flex flex-wrap items-center justify-center gap-2 rounded-xl border border-dashed border-border px-3 py-2 text-center text-[12px] text-muted"
-      data-message-gap={message.id}
+      className="msg-gap-band"
+      data-message-gap={gapId}
+      data-unmounted={gap.unmounted ? 'true' : undefined}
     >
-      <span>中间还有未加载的消息</span>
-      <button
-        type="button"
-        disabled={loading}
-        onClick={() => onLoad(message.id)}
-        className="rounded-lg px-2 py-1 text-[12px] text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
-      >
-        {loading ? '加载中…' : '加载中间部分'}
-      </button>
+      <span className="msg-gap-label">
+        <span aria-hidden>⋯</span> {label}
+      </span>
+      {gap.unmounted ? (
+        <button type="button" className="msg-gap-btn" onClick={onShow}>
+          显示
+        </button>
+      ) : (
+        <>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => onLoad?.('first')}
+            className="msg-gap-btn"
+          >
+            {loading ? '加载中…' : '加载前 10 轮'}
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => onLoad?.('all')}
+            className="msg-gap-btn"
+          >
+            全部
+          </button>
+        </>
+      )}
     </div>
   )
 })
@@ -233,6 +269,12 @@ const AssistantRow = memo(function AssistantRow({
       className="msg-row"
       data-message-id={message.id}
       data-streaming={streaming ? 'true' : undefined}
+      data-tool-only={
+        !message.content.some((b) => b.type === 'text' && b.text.trim()) &&
+        message.content.some((b) => b.type === 'tool_use')
+          ? 'true'
+          : undefined
+      }
       data-actions={
         !streaming && message.content.some((b) => b.type === 'text' && b.text.trim())
           ? 'true'
@@ -269,7 +311,7 @@ const ToolRunRow = memo(function ToolRunRow({
   cwd?: string
 }) {
   return (
-    <div className="msg-row" data-message-id={messages[0]?.id}>
+    <div className="msg-row" data-message-id={messages[0]?.id} data-tool-only="true">
       {messages.slice(1).map((message) => (
         <span key={message.id} data-message-id={message.id} aria-hidden="true" />
       ))}
@@ -287,7 +329,6 @@ const INITIAL_WINDOW = 60
 const BACKFILL_STEP = 150
 // 常驻 DOM 上限：再往前的历史按需点按钮加载，保证 1000 轮会话也能流畅滚动。
 const MAX_WINDOW = 400
-const LOAD_MORE_STEP = 400
 
 /** 长会话渐进渲染：先显示最近 60 条，再分批补齐更早的历史。 */
 export function MessageList(props: {
@@ -340,13 +381,13 @@ function MessageListInner({
   const scopedHasEarlier = useSessionView((s) => s?.hasEarlier ?? false)
   const scopedLoadingEarlier = useSessionView((s) => s?.loadingEarlier ?? false)
   const scopedLoadingSegment = useSessionView((s) => s?.loadingSegment ?? false)
-  const scopedTotalMessages = useSessionView((s) => s?.totalMessages ?? 0)
   const scopedTurns = useSessionView((s) => s?.turns)
+  const scopedPinnedTurns = useSessionView((s) => (messagesProp ? undefined : s?.summary?.pinnedTurns))
   const hasEarlier = messagesProp ? false : scopedHasEarlier
   const loadingEarlier = messagesProp ? false : scopedLoadingEarlier
   const loadingSegment = messagesProp ? false : scopedLoadingSegment
-  const totalMessages = messagesProp ? 0 : scopedTotalMessages
   const serverTurns = messagesProp ? undefined : scopedTurns
+  const pinnedTurns = scopedPinnedTurns ?? EMPTY_IDS
   const rootRef = useRef<HTMLDivElement>(null)
 
   // 首屏加载的消息不播放进入动画；之后新增的消息才淡入上移。
@@ -375,24 +416,33 @@ function MessageListInner({
   // 只先挂载最近一段；挂载后按小批次向上补历史，避免一次 1s+ 的长任务。
   const [windowSize, setWindowSize] = useState(INITIAL_WINDOW)
   const [windowCap, setWindowCap] = useState(MAX_WINDOW)
+  const [bandBusy, setBandBusy] = useState<string | null>(null)
+  /**
+   * 挂载窗口的起点（消息 id）。null = 跟随尾部（流式/日常滚动）。
+   * 跳到早期轮次时把窗口移到目标附近，窗口外的消息不挂载，由占位条代替。
+   */
+  const [windowAnchorId, setWindowAnchorId] = useState<string | null>(null)
+  const anchorIndex = windowAnchorId
+    ? messages.findIndex((message) => message.id === windowAnchorId)
+    : -1
   // 未超过常驻上限的会话一次渲完，避免历史补进时滚动位置跳动；
   // 只有超长会话才启用渐进窗口。
   const effectiveWindow =
     messages.length <= MAX_WINDOW ? messages.length : Math.min(windowSize, messages.length)
-  const windowFrom = Math.max(0, messages.length - effectiveWindow)
+  const tailFrom = Math.max(0, messages.length - effectiveWindow)
+  const windowFrom =
+    anchorIndex >= 0 ? Math.min(anchorIndex, tailFrom) : tailFrom
+  const windowTo = Math.min(messages.length, windowFrom + effectiveWindow)
   const target = Math.min(messages.length, windowCap)
   useEffect(() => {
+    if (anchorIndex >= 0) return
     if (messages.length <= MAX_WINDOW) return
     if (windowSize >= target) return
     const timer = setTimeout(() => {
       setWindowSize((size) => Math.min(target, size + BACKFILL_STEP))
     }, 30)
     return () => clearTimeout(timer)
-  }, [windowSize, target, messages.length])
-  const loadEarlierLocal = () => {
-    setWindowCap((cap) => cap + LOAD_MORE_STEP)
-    setWindowSize((size) => size + LOAD_MORE_STEP)
-  }
+  }, [windowSize, target, messages.length, anchorIndex])
 
   // 服务端分页：滚到顶部附近时向前取一页，并按新增高度补回滚动位置。
   const scrollBox = useCallback((): HTMLElement | null => {
@@ -450,22 +500,50 @@ function MessageListInner({
   }, [messagesProp, sessionId, activeHostId, hasEarlier, scrollBox, captureAnchor])
 
   useEffect(() => {
-    if (messagesProp || !sessionId || !hasEarlier) return
+    if (messagesProp || !sessionId) return
     const box = scrollBox()
     if (!box) return
     const onScroll = () => {
+      const distance = box.scrollHeight - box.scrollTop - box.clientHeight
+      // 锚定窗口往下滚到头：先扩大挂载窗口；已经到会话末尾就恢复跟随尾部。
+      if (windowAnchorId && distance < 100) {
+        if (windowTo < messages.length && windowSize < MAX_WINDOW) {
+          setWindowSize((size) => Math.min(messages.length, MAX_WINDOW, size + BACKFILL_STEP))
+        } else {
+          setWindowAnchorId(null)
+        }
+      }
+      if (!hasEarlier) return
       if (box.scrollTop > 240) return
       if (box.scrollHeight <= box.clientHeight + 120) return
       requestOlder()
     }
     box.addEventListener('scroll', onScroll, { passive: true })
     return () => box.removeEventListener('scroll', onScroll)
-  }, [messagesProp, sessionId, hasEarlier, requestOlder, scrollBox])
+  }, [
+    messagesProp,
+    sessionId,
+    hasEarlier,
+    requestOlder,
+    scrollBox,
+    windowAnchorId,
+    windowTo,
+    windowSize,
+    messages.length,
+  ])
 
   useLayoutEffect(() => {
-    if (messages.length > prevLength.current && pendingAnchor.current) restoreAnchor()
+    if (messages.length > prevLength.current && pendingAnchor.current) {
+      restoreAnchor()
+      // 在顶部继续加载更早的历史时，把已加载的部分都挂上；否则新取回的一页会立刻被窗口裁掉。
+      const box = scrollBox()
+      if (box && box.scrollTop < 240) {
+        setWindowSize(messages.length)
+        setWindowCap(messages.length)
+      }
+    }
     prevLength.current = messages.length
-  }, [messages, restoreAnchor])
+  }, [messages, restoreAnchor, scrollBox])
 
   // 内容可见性/异步排版会让高度在后续帧继续变化：锚点期间持续观察，稳定后再放开。
   useEffect(() => {
@@ -490,7 +568,7 @@ function MessageListInner({
     }
   }, [messages.length, loadingEarlier, loadingSegment, restoreAnchor])
 
-  const loadGap = (gapId: string) => {
+  const fillGap = (gapId: string) => {
     if (!sessionId || !activeHostId) return
     pendingAnchor.current = captureAnchor()
     setWindowCap((cap) => cap + MESSAGE_PAGE_SIZE)
@@ -517,9 +595,12 @@ function MessageListInner({
         }
         return
       }
-      const needed = messages.length - index + 20
-      if (needed > windowSize) setWindowSize(Math.min(messages.length, needed))
-      if (needed > windowCap) setWindowCap(needed)
+      // 窗口跟着跳转目标走：起点放在目标前约 60 条，窗口大小保持在常驻上限内，
+      // 不再「从目标一直挂到末尾」（超大会话会一次挂上千条）。
+      const anchor = messages[Math.max(0, index - 60)]
+      if (anchor) setWindowAnchorId(anchor.id)
+      setWindowSize((size) => Math.max(size, Math.min(MAX_WINDOW, 320)))
+      setWindowCap((cap) => Math.max(cap, Math.min(MAX_WINDOW, 320)))
       const scroll = () => {
         const el = toolUseId
           ? document.querySelector<HTMLElement>(`[data-tool-use-id="${CSS.escape(toolUseId)}"]`)
@@ -543,7 +624,58 @@ function MessageListInner({
     return () => window.removeEventListener('tandem-jump-message', onJump)
   }, [messages, windowSize, windowCap, messagesProp, activeHostId, sessionId])
 
-  const visibleMessages = messages.slice(windowFrom)
+  // 固定轮次必须始终可用：即使不在挂载窗口里也要先取回并保持挂载（反馈11#05）。
+  const pinnedLoadRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (messagesProp || !activeHostId || !sessionId || pinnedTurns.length === 0) return
+    const loaded = new Set(messages.map((message) => message.id))
+    const missing = pinnedTurns.filter((id) => !loaded.has(id) && !pinnedLoadRef.current.has(id))
+    if (missing.length === 0) return
+    for (const id of missing) pinnedLoadRef.current.add(id)
+    void useAppStore
+      .getState()
+      .loadTurnRange(activeHostId, sessionId, missing)
+      .then((ok) => {
+        // 被其他取段占用而没成功时允许下次消息变化后重试。
+        if (!ok) for (const id of missing) pinnedLoadRef.current.delete(id)
+      })
+  }, [pinnedTurns, messages, messagesProp, activeHostId, sessionId])
+
+  // 挂载集合 = 窗口 [windowFrom, windowTo) + 固定轮（含该轮的 assistant 回复）。
+  // 两段之间不连续的部分用固定高度占位条代替，已加载但未挂载与尚未加载分开标注。
+  const pinnedSet = new Set(pinnedTurns)
+  const selectedIndexes: number[] = []
+  for (let i = windowFrom; i < windowTo; i++) selectedIndexes.push(i)
+  messages.forEach((message, index) => {
+    if (!pinnedSet.has(message.id)) return
+    selectedIndexes.push(index)
+    for (let i = index + 1; i < messages.length; i++) {
+      const next = messages[i]!
+      if (next.role === 'user' || next.gap) break
+      selectedIndexes.push(i)
+    }
+  })
+  const orderedIndexes = [...new Set(selectedIndexes)].sort((a, b) => a - b)
+  const visibleMessages: UiMessage[] = []
+  // 服务端还有更早的消息、而挂载窗口已经覆盖到第一条：顶部也放一条固定高度占位条。
+  if (!messagesProp && hasEarlier && messages.length > 0 && !messages[0]!.gap) {
+    visibleMessages.push(gapMessage({ beforeId: messages[0]!.id }))
+  }
+  let prevIndex = -1
+  for (const index of orderedIndexes) {
+    if (index > prevIndex + 1) {
+      const skipped = messages.slice(prevIndex + 1, index)
+      visibleMessages.push(
+        gapMessage({
+          ...(prevIndex >= 0 ? { afterId: messages[prevIndex]!.id } : {}),
+          beforeId: messages[index]!.id,
+          unmounted: skipped.every((message) => !message.gap),
+        }),
+      )
+    }
+    visibleMessages.push(messages[index]!)
+    prevIndex = index
+  }
 
   useEffect(() => {
     const state = seen.current
@@ -682,6 +814,85 @@ function MessageListInner({
     turnIndex.set(m.id, turn++)
   }
 
+  // 占位条的轮次范围：取占位条两侧最近的已知用户轮次，区间内的轮都算未加载/未显示。
+  const turnNoById = new Map<string, number>()
+  serverTurns?.forEach((mark) => turnNoById.set(mark.messageId, mark.turn))
+  const lastTurnNo = serverTurns?.length ?? 0
+  const gapRangeAt = (index: number): { fromTurn?: number; toTurn?: number } => {
+    if (!lastTurnNo) return {}
+    let prevNo = 0
+    for (let i = index - 1; i >= 0; i--) {
+      const no = turnNoById.get(visibleMessages[i]!.id)
+      if (no) {
+        prevNo = no
+        break
+      }
+    }
+    let nextNo = lastTurnNo + 1
+    for (let i = index + 1; i < visibleMessages.length; i++) {
+      const no = turnNoById.get(visibleMessages[i]!.id)
+      if (no) {
+        nextNo = no
+        break
+      }
+    }
+    const fromTurn = prevNo + 1
+    const toTurn = nextNo - 1
+    return toTurn >= fromTurn ? { fromTurn, toTurn } : {}
+  }
+  const gapRanges = new Map<string, { fromTurn?: number; toTurn?: number }>()
+  visibleMessages.forEach((message, index) => {
+    if (message.gap) gapRanges.set(message.id, gapRangeAt(index))
+  })
+
+  /** 占位条「加载前 10 轮 / 全部」：按大纲里的轮次 id 逐段取回。 */
+  const loadGapBand = (
+    gap: NonNullable<UiMessage['gap']>,
+    gapId: string,
+    range: { fromTurn?: number; toTurn?: number },
+    mode: 'first' | 'all',
+  ) => {
+    if (!sessionId || !activeHostId) return
+    if (!serverTurns?.length || range.fromTurn === undefined || range.toTurn === undefined) {
+      const real = messages.find(
+        (message) =>
+          message.gap?.beforeId === gap.beforeId &&
+          (message.gap?.afterId ?? '') === (gap.afterId ?? ''),
+      )
+      if (real) fillGap(real.id)
+      else void useAppStore.getState().loadEarlierMessages({ hostId: activeHostId, sessionId })
+      return
+    }
+    const total = range.toTurn - range.fromTurn + 1
+    const count = mode === 'first' ? Math.min(10, total) : total
+    const ids = serverTurns
+      .slice(range.fromTurn - 1, range.fromTurn - 1 + count)
+      .map((mark) => mark.messageId)
+    pendingAnchor.current = captureAnchor()
+    setBandBusy(gapId)
+    void useAppStore
+      .getState()
+      .loadTurnRange(activeHostId, sessionId, ids)
+      .finally(() => setBandBusy(null))
+  }
+
+  /** 已加载但不在挂载窗口里：把窗口移到这一段，并停在原占位条位置。 */
+  const showUnmounted = (gap: NonNullable<UiMessage['gap']>) => {
+    const afterIndex = gap.afterId
+      ? messages.findIndex((message) => message.id === gap.afterId)
+      : -1
+    const next = messages[afterIndex + 1] ?? messages[0]
+    if (!next) return
+    setWindowAnchorId(next.id)
+    setWindowSize((size) => Math.max(size, Math.min(MAX_WINDOW, 320)))
+    setWindowCap((cap) => Math.max(cap, Math.min(MAX_WINDOW, 320)))
+    window.setTimeout(() => {
+      scrollBox()
+        ?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(next.id)}"]`)
+        ?.scrollIntoView({ block: 'start' })
+    }, 60)
+  }
+
   // 助理消息的操作条以它前面最近一条可见用户消息作为本轮锚点。
   const turnUserByAssistant = new Map<string, UiMessage>()
   let lastUser: UiMessage | undefined
@@ -700,34 +911,9 @@ function MessageListInner({
   return (
     <div ref={rootRef} className="flex flex-col gap-6 pb-2">
       {!messagesProp && <InjectionsNote cwd={cwd} />}
-      {!messagesProp && hasEarlier && (
-        <div className="flex justify-center pb-1" data-load-earlier="true">
-          <button
-            type="button"
-            disabled={loadingEarlier}
-            onClick={requestOlder}
-            className="rounded-lg px-3 py-1.5 text-[12px] text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-60"
-          >
-            {loadingEarlier
-              ? '正在加载更早的消息…'
-              : `加载更早的消息（已加载 ${messages.length}${totalMessages ? ` / ${totalMessages}` : ''} 条）`}
-          </button>
-        </div>
-      )}
       {messages.length > MAX_WINDOW && windowSize < messages.length && windowSize < windowCap && (
         <div className="px-1 text-center text-[12px] text-muted" data-loading-history="true">
           正在载入更早的消息…
-        </div>
-      )}
-      {windowFrom > 0 && windowSize >= windowCap && !hasEarlier && (
-        <div className="flex justify-center pb-1" data-load-more="true">
-          <button
-            type="button"
-            onClick={loadEarlierLocal}
-            className="rounded-lg px-3 py-1.5 text-[12px] text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-          >
-            加载更早的 {Math.min(LOAD_MORE_STEP, windowFrom)} 条消息（共 {windowFrom} 条）
-          </button>
         </div>
       )}
       {segments.map((seg) => {
@@ -755,12 +941,18 @@ function MessageListInner({
           )
         }
         if (seg.kind === 'gap') {
+          const range = gapRanges.get(seg.message.id) ?? {}
+          const gap = seg.message.gap!
           return (
-            <GapRow
+            <GapBand
               key={seg.message.id}
-              message={seg.message}
-              loading={loadingSegment}
-              onLoad={loadGap}
+              gap={gap}
+              gapId={seg.message.id}
+              fromTurn={range.fromTurn}
+              toTurn={range.toTurn}
+              loading={bandBusy === seg.message.id || loadingSegment}
+              onLoad={(mode) => loadGapBand(gap, seg.message.id, range, mode)}
+              onShow={() => showUnmounted(gap)}
             />
           )
         }

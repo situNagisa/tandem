@@ -13,7 +13,11 @@ import type { AppState } from './types'
 
 export type PagingSlice = Pick<
   AppState,
-  'loadEarlierMessages' | 'loadSessionTurns' | 'ensureMessageLoaded' | 'fillMessageGap'
+  | 'loadEarlierMessages'
+  | 'loadSessionTurns'
+  | 'ensureMessageLoaded'
+  | 'fillMessageGap'
+  | 'loadTurnRange'
 >
 
 /** 大会话按需加载：向前翻页、轮次大纲、跳转到未加载的轮/搜索命中、补齐缺口。 */
@@ -158,5 +162,58 @@ export function createPagingSlice(
     }
   }
 
-  return { loadEarlierMessages, loadSessionTurns, ensureMessageLoaded, fillMessageGap }
+  /**
+   * 占位条「加载前 10 轮 / 全部」：按轮次 id 逐段取回。
+   * 每次 around 取一页（与已加载区间自动拼接，缺口由 mergeSegmentPage 收紧），
+   * 每一轮取到后重新判断是否还需要请求，长段也不会一次性拉全量。
+   */
+  const loadTurnRange = async (
+    hostId: string,
+    sessionId: string,
+    messageIds: string[],
+  ): Promise<boolean> => {
+    const key = viewKeyOf(hostId, sessionId)
+    const view = get().sessionViews[key]
+    if (!view || view.loadingSegment || messageIds.length === 0) return false
+    const host = getHost(hostId)
+    if (!host) return false
+    const isLoaded = (id: string) =>
+      get().sessionViews[key]?.messages.some((message) => message.id === id) ?? false
+    const pending = messageIds.filter((id) => !isLoaded(id))
+    if (pending.length === 0) return true
+    patchView(hostId, sessionId, (active) => ({ ...active, loadingSegment: true }))
+    try {
+      for (const id of pending) {
+        if (isLoaded(id)) continue
+        const page = await api.sessionMessages(host, sessionId, {
+          around: id,
+          limit: MESSAGE_PAGE_SIZE,
+        })
+        if (!page.messages.length) continue
+        patchView(hostId, sessionId, (active) => {
+          if (active.messages.some((message) => message.id === id)) return active
+          const merged = mergeSegmentPage(active.messages, page, active.hasEarlier)
+          return {
+            ...active,
+            ...merged,
+            toolResults: collectToolResults(page.messages, active.toolResults),
+          }
+        })
+      }
+      patchView(hostId, sessionId, (active) => ({ ...active, loadingSegment: false }))
+      return true
+    } catch (err) {
+      patchView(hostId, sessionId, (active) => ({ ...active, loadingSegment: false }))
+      toast(err instanceof Error ? err.message : '加载这一段的对话失败', 'error')
+      return false
+    }
+  }
+
+  return {
+    loadEarlierMessages,
+    loadSessionTurns,
+    ensureMessageLoaded,
+    fillMessageGap,
+    loadTurnRange,
+  }
 }

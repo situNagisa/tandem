@@ -29,6 +29,10 @@ export interface SceneTurn {
   summary?: boolean
   compressed?: boolean
   pinned?: boolean
+  /** 该轮消息尚未加载（长会话懒加载）：虚线刻度 + 行尾「未加载」。 */
+  unloaded?: boolean
+  /** 正在加载这一轮所在的段。 */
+  loading?: boolean
   /** 只读预览：不显示固定图钉，也不在 tooltip 里编造「花费未知」。 */
   readOnly?: boolean
   hideUnknownCost?: boolean
@@ -350,6 +354,8 @@ export class RailScene {
     const mark = this.turns[turn - 1]
     const summary = !!mark?.summary
     const compressed = !!mark?.compressed
+    const unloaded = !!mark?.unloaded
+    const loading = !!mark?.loading
     const no = mark?.no ?? turn
     const heat = mark?.heat ?? 1
     it.n.textContent = summary ? '摘' : String(no)
@@ -357,16 +363,21 @@ export class RailScene {
     it.t.textContent = summary ? '摘要' : (mark?.preview ?? '')
     const full = mark?.full || mark?.preview || ''
     // 反馈6#01：悬停只显示该轮用量，不再重复大纲文字；全文保留在 aria-label 与 sr-only 列表。
-    it.el.title = turnUsageLabel(mark?.usage, {
-      ...(mark?.share !== undefined ? { share: mark.share } : {}),
-      ...(compressed ? { compressed: true } : {}),
-      ...(summary ? { summary: true } : {}),
-      ...(mark?.hideUnknownCost ? { hideUnknownCost: true } : {}),
-    })
+    it.el.title = [
+      turnUsageLabel(mark?.usage, {
+        ...(mark?.share !== undefined ? { share: mark.share } : {}),
+        ...(compressed ? { compressed: true } : {}),
+        ...(summary ? { summary: true } : {}),
+        ...(mark?.hideUnknownCost ? { hideUnknownCost: true } : {}),
+      }),
+      loading ? '正在加载这一段…' : unloaded ? '未加载 · 点击加载并跳转' : '',
+    ]
+      .filter(Boolean)
+      .join(' · ')
     it.t.removeAttribute('title')
     const aria = summary
       ? `摘要 · ${heatLabel(heat)}`
-      : `第 ${no} 轮：${full} · ${heatLabel(heat)}${compressed ? ' · 已压缩' : ''}`
+      : `第 ${no} 轮：${full} · ${heatLabel(heat)}${compressed ? ' · 已压缩' : ''}${unloaded ? ' · 未加载' : ''}`
     it.el.setAttribute('aria-label', aria)
     it.el.dataset.turnLabel = summary ? '摘要' : full
     it.el.dataset.turnPos = String(turn)
@@ -374,7 +385,9 @@ export class RailScene {
     it.el.dataset.heat = String(heat)
     it.el.dataset.summary = summary ? 'true' : 'false'
     it.el.dataset.compressed = compressed ? 'true' : 'false'
-    it.c.textContent = compressed ? '已压缩' : ''
+    it.el.dataset.unloaded = unloaded ? 'true' : 'false'
+    it.el.dataset.loading = loading ? 'true' : 'false'
+    it.c.textContent = loading ? '加载中…' : compressed ? '已压缩' : unloaded ? '未加载' : ''
     const canPin = !mark?.readOnly && !summary && !compressed
     it.p.dataset.turn = canPin ? (mark?.id ?? '') : ''
     it.p.title = canPin ? (mark?.pinned ? '取消固定' : '固定此轮') : ''
@@ -442,7 +455,8 @@ export class RailScene {
       it.p.dataset.on = canPin && ((pinned && textIn > 0.4) || hov > 0.5) ? 'true' : 'false'
       it.p.dataset.pinned = pinned ? 'true' : 'false'
       it.d.style.opacity = f3(pinned ? (1 - smooth(0.05, 0.45, pc)) * (0.55 + 0.45 * act) : 0)
-      it.c.style.opacity = f3(mark?.compressed ? textIn * (0.5 + 0.5 * lit) : 0)
+      const tag = mark?.compressed || mark?.unloaded || mark?.loading
+      it.c.style.opacity = f3(tag ? textIn * (0.5 + 0.5 * lit) : 0)
       const restS = 0.42 + 0.4 * Math.exp(-Math.abs(dr) / 4)
       const sx = lerp(restS + 0.55 * act, 0.5 + 0.4 * lit, pc)
       const sy = 1 + 0.5 * act * (1 - pc)

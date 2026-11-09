@@ -51,6 +51,39 @@ describe('messagePaging', () => {
     expect(merged.firstMessageId).toBe('m10')
   })
 
+  it('窗口里有缺口时，新页接在重叠处而不是窗口末尾', () => {
+    const current = [
+      msg('m1'),
+      msg('m2'),
+      { id: 'gap:m2:m5', role: 'user', createdAt: 0, content: [], gap: { afterId: 'm2', beforeId: 'm5' } },
+      msg('m5'),
+      msg('m6'),
+    ] as UiMessage[]
+    const merged = mergeSegmentPage(current, page(['m2', 'm3', 'm4']), true)
+    expect(merged.messages.map((m) => m.id)).toEqual([
+      'm1',
+      'm2',
+      'm3',
+      'm4',
+      'gap:m4:m5',
+      'm5',
+      'm6',
+    ])
+    expect(merged.messages[4]?.gap).toEqual({ afterId: 'm4', beforeId: 'm5' })
+  })
+
+  it('新页覆盖缺口两侧：关闭缺口', () => {
+    const current = [
+      msg('m1'),
+      msg('m2'),
+      { id: 'gap:m2:m5', role: 'user', createdAt: 0, content: [], gap: { afterId: 'm2', beforeId: 'm5' } },
+      msg('m5'),
+      msg('m6'),
+    ] as UiMessage[]
+    const merged = mergeSegmentPage(current, page(['m2', 'm3', 'm4', 'm5']), true)
+    expect(merged.messages.map((m) => m.id)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5', 'm6'])
+  })
+
   it('补齐缺口：逐页推进，到顶后关闭', () => {
     const current = [
       msg('m10'),

@@ -254,6 +254,17 @@ export function TurnRail({
   const serverTurns = useSessionView((s) => s?.turns)
   const loadingTurns = useSessionView((s) => s?.loadingTurns ?? false)
   const pinnedTurns = useSessionView((s) => (readOnly ? undefined : s?.summary?.pinnedTurns))
+  const storeMessages = useSessionView((s) => (external ? undefined : s?.messages))
+  const [loadingTurnId, setLoadingTurnId] = useState<string | null>(null)
+  const loadedIds = useMemo(
+    () =>
+      new Set(
+        external
+          ? (messages ?? []).map((message) => message.id)
+          : (storeMessages ?? []).filter((message) => !message.gap).map((message) => message.id),
+      ),
+    [external, messages, storeMessages],
+  )
   const feedbackActive = useFeedbackStore((s) => s.active)
 
   // 大会话首屏只带尾部消息：轮次大纲单独拉轻量索引，不为了刻度拉全量历史。
@@ -271,14 +282,19 @@ export function TurnRail({
   const sceneTurns = useMemo(() => {
     const levels = heatLevels(weights)
     const pinned = new Set(pinnedTurns ?? [])
-    return turns.map((turn, index) => ({
-      ...turn,
-      heat: levels[index] ?? 1,
-      share: totalWeight > 0 ? Math.round((turnWeight(turn.usage) / totalWeight) * 100) : 0,
-      ...(pinned.has(turn.id) && !turn.summary && !turn.compressed ? { pinned: true } : {}),
-      ...(external || readOnly ? { readOnly: true, hideUnknownCost: true } : {}),
-    }))
-  }, [turns, weights, pinnedTurns, totalWeight, external, readOnly])
+    return turns.map((turn, index) => {
+      const unloaded = !external && !turn.summary && !turn.compressed && !loadedIds.has(turn.id)
+      return {
+        ...turn,
+        heat: levels[index] ?? 1,
+        share: totalWeight > 0 ? Math.round((turnWeight(turn.usage) / totalWeight) * 100) : 0,
+        ...(pinned.has(turn.id) && !turn.summary && !turn.compressed ? { pinned: true } : {}),
+        ...(external || readOnly ? { readOnly: true, hideUnknownCost: true } : {}),
+        ...(unloaded ? { unloaded: true } : {}),
+        ...(turn.id === loadingTurnId ? { loading: true } : {}),
+      }
+    })
+  }, [turns, weights, pinnedTurns, totalWeight, external, readOnly, loadedIds, loadingTurnId])
   const total = turns.length
   const realTotal = useMemo(() => turns.filter((turn) => !turn.summary).length, [turns])
   const isMobile = useIsMobile()
@@ -386,6 +402,7 @@ export function TurnRail({
       if (count < 1) return
       const target = clamp(Math.round(turn), 1, count)
       const seq = ++jumpSeq.current
+      setLoadingTurnId(null)
       activeRef.current = target
       setActiveTurn(target)
       sticky.current = true
@@ -408,6 +425,7 @@ export function TurnRail({
           )
           void (async () => {
             if (!loaded) {
+              setLoadingTurnId(targetId)
               for (let attempt = 0; attempt < 50; attempt++) {
                 if (seq !== jumpSeq.current) return
                 if (await state.ensureMessageLoaded(hostId, sessionId, targetId)) break
@@ -423,6 +441,7 @@ export function TurnRail({
               if (seq !== jumpSeq.current) return
               const rootEl = scrollRef.current
               if (rootEl && revealTurn(rootEl, targetId)) {
+                setLoadingTurnId(null)
                 const scene = sceneRef.current
                 const viewPos = viewPosOf(target)
                 if (viewPos > 0) {
@@ -435,6 +454,7 @@ export function TurnRail({
             }
             if (seq !== jumpSeq.current) return
             // 定位到首尾两轮之外仍失败时至少给出反馈，而不是静默。
+            setLoadingTurnId(null)
             useUiStore.getState().toast('这一轮的消息暂时加载失败，请稍后重试', 'error')
           })()
           const scene = sceneRef.current
@@ -847,6 +867,13 @@ export function TurnRail({
       ? current.filter((id) => id !== messageId)
       : [...current, messageId]
     void state.updateSession(active.hostId, active.sessionId, { pinnedTurns: next })
+    // 固定 = 一定加载：没在内存里的轮次立刻取回，之后点击固定轮总能直接跳转。
+    if (next.includes(messageId)) {
+      const loaded = state.sessionViews[`${active.hostId}:${active.sessionId}`]?.messages.some(
+        (message) => message.id === messageId,
+      )
+      if (!loaded) void state.loadTurnRange(active.hostId, active.sessionId, [messageId])
+    }
   }
 
   // 反馈8#04：按住 Alt / 点下方提示，同一个大纲切换为「只看已固定」，松开 / 再点恢复全部。

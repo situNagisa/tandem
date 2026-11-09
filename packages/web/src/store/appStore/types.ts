@@ -184,6 +184,8 @@ export interface AppState {
   ensureMessageLoaded: (hostId: string, sessionId: string, messageId: string) => Promise<boolean>
   /** 补齐分页缺口（继续加载缺口下方的一页）。 */
   fillMessageGap: (hostId: string, sessionId: string, gapId: string) => Promise<boolean>
+  /** 占位条按轮次范围加载（加载前 N 轮 / 全部）：逐轮取回缺失的段。 */
+  loadTurnRange: (hostId: string, sessionId: string, messageIds: string[]) => Promise<boolean>
   /** 单独停止一个 Task 子代理会话。 */
   interruptSubagent: (childId: string, target?: SessionTarget) => void
   /** 把 worktree 分支合回基准分支。 */
