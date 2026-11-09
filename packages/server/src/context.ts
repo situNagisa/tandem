@@ -13,6 +13,7 @@ import type {
 } from '@tandem/protocol';
 import type { ToolDefinition } from './types.js';
 import { builtinCapabilities, overrideFor } from './providers/capabilities.js';
+import { subagentListing } from './agent/prompt.js';
 
 type PartKind = ContextBreakdown['parts'][number]['kind'];
 
@@ -96,6 +97,8 @@ export interface EstimateInput {
   capabilityOverrides?: Record<string, ModelCapabilities>;
   /** 自动压缩触发配置；只用于面板提示，不参与估算。 */
   autoCompact?: { enabled: boolean; threshold: number };
+  /** 子代理预设（Task 工具说明里的列表）；从系统提示里拆出来单列「自定义 agents」。 */
+  agents?: Array<{ name: string; description?: string }>;
 }
 
 /** 用户消息里只要不是纯 tool_result，就算新的一轮开始；压缩摘要不计一轮。 */
@@ -213,7 +216,9 @@ export function autoCompactDue(
 /** 请求前的上下文占用估算。 */
 export function estimateBreakdown(input: EstimateInput): ContextBreakdown {
   const memory = estimateTokens(readMemory(input.cwd));
-  const system = Math.max(0, estimateTokens(input.system) - memory);
+  // 自定义 agents 的列表出现在 Task 工具说明里，算在 system 文本内：拆出来单列，避免重复计数。
+  const agents = estimateTokens(subagentListing(input.agents));
+  const system = Math.max(0, estimateTokens(input.system) - memory - agents);
   let tools = 0;
   let mcp = 0;
   for (const tool of input.tools) {
@@ -319,7 +324,7 @@ export function estimateBreakdown(input: EstimateInput): ContextBreakdown {
     .sort((a, b) => b.tokens - a.tokens || a.turn - b.turn)
     .slice(0, 10);
 
-  const parts = toParts({ system, tools, mcp, memory, messages, tool_results: toolResults });
+  const parts = toParts({ system, tools, mcp, agents, memory, messages, tool_results: toolResults });
   const usedTokens = sumParts(parts);
   const contextWindow = contextWindowForModel(
     input.model,
@@ -373,7 +378,7 @@ export function calibrateBreakdown(
 }
 
 function toParts(tokens: Record<string, number>): ContextBreakdown['parts'] {
-  const order: PartKind[] = ['system', 'tools', 'mcp', 'memory', 'messages', 'tool_results'];
+  const order: PartKind[] = ['system', 'tools', 'mcp', 'agents', 'memory', 'messages', 'tool_results'];
   return order.map((kind) => ({ kind, tokens: Math.max(0, Math.round(tokens[kind] ?? 0)) }));
 }
 

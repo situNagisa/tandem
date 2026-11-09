@@ -46,6 +46,13 @@ const GLOBAL_CHECKS = [
       '已废弃的口语化路由文案：用「单代理 / 低成本 / 多代理协作」与「仅规划 / 积极 / 适度 / 关闭」（lib/routeLabels.ts）',
     re: /(?:少派|多派|便宜直做|本会话保持|label:\s*['"]不派['"])/g,
   },
+  {
+    // 反馈13#03：警告色统一走 --status-warn 派生 token，不再散落 amber/yellow 色值。
+    id: 'hardcoded-warning-color',
+    label:
+      '硬编码黄色/amber：警告统一用 text-warning / bg-warning-soft（design.md --t-status-warn）',
+    re: /(?:^|[\s"'`])(?:bg|text|border|ring|from|via|to|fill|stroke|divide)-(?:amber|yellow)-\d{2,3}\b|#(?:f59e0b|fbbf24|fcd34d|d97706|b45309|a16207|92400e|78350f|fef3c7|fffbeb)\b/gi,
+  },
 ]
 
 function matchingBrace(text, start) {

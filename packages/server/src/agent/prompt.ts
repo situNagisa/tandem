@@ -45,6 +45,16 @@ function readonlyDef(key: string): ReadonlyPromptDef | undefined {
 
 export type ResolvedPrompt = { text: string; source: PromptSource };
 
+/** Task 工具说明里的子代理预设列表（上下文面板按「自定义 agents」单独统计）。 */
+export function subagentListing(
+  subagents?: Array<{ name: string; description?: string }>,
+): string {
+  if (!subagents?.length) return '';
+  return subagents
+    .map((agent) => `  - ${agent.name}${agent.description ? `：${agent.description}` : ''}`)
+    .join('\n');
+}
+
 export interface PromptOptions {
   allowTask?: boolean;
   planMode?: boolean;
@@ -89,9 +99,10 @@ export function buildSystemPromptParts(
     .replace(/\{\{date\}\}/g, date)
     .replace(/\{\{git\}\}/g, isGitRepo(cwd) ? '是' : '否');
 
+  const listing = subagentListing(options.subagents);
   const taskLine =
     options.allowTask !== false
-      ? `- Task：把独立、多步的子任务派给子代理。description 是简短标题，prompt 要自包含；subagent_type 可选 Explore/Plan（只读，可同批并行）、general-purpose（可改文件）${options.subagents?.length ? '，或以下子代理预设' : ''}。可用 model 参数临时指定子代理模型。子代理最后一条文本会作为工具结果返回，不要用它处理必须共享同一上下文的小事。${options.subagents?.length ? `\n${options.subagents.map((agent) => `  - ${agent.name}${agent.description ? `：${agent.description}` : ''}`).join('\n')}` : ''}`
+      ? `- Task：把独立、多步的子任务派给子代理。description 是简短标题，prompt 要自包含；subagent_type 可选 Explore/Plan（只读，可同批并行）、general-purpose（可改文件）${listing ? '，或以下子代理预设' : ''}。可用 model 参数临时指定子代理模型。子代理最后一条文本会作为工具结果返回，不要用它处理必须共享同一上下文的小事。${listing ? `\n${listing}` : ''}`
       : '';
   const toolGuidance = readonlyText('toolGuidance').replace(/\{\{taskLine\}\}/g, taskLine).replace(/\n\n- MCP/, '\n- MCP');
 

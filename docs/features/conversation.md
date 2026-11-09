@@ -52,6 +52,16 @@
 - 插入/删除分组时保持滚动锚点：面板滚动区关闭浏览器自带锚定（`overflow-anchor: none`），由 `RightPanel` 比较插入前后的卡片 `offsetTop` 补偿 `scrollTop`，用户滚动在下方时看到的内容不被上方新卡片推走。
 - 需要查看空分组时，用面板顶部 ⋯「显示分组」逐个勾选；显式勾选记在 `PanelPrefs.shown[]`（`localStorage['tandem.rightPanel.v1']`），没有数据也显示，之后有数据继续显示。取消勾选只对空分组生效时回到默认隐藏（有数据后仍会自动出现）；有数据的分组取消勾选记在 `hidden[]`。旧版整体开关 `showEmpty` 已删除。
 
+## 上下文卡（反馈13#05 / R22）
+
+- **分类与顺序**对齐 Claude Code `/context`：系统提示 → 工具定义 → MCP 工具 → 自定义 agents → 记忆文件 → 对话 → 工具结果 → 剩余。旧 Host 缺的分类补 0；有数据的分类为 0 时图例小方点淡化，分段条不画 0 宽段。
+- **数据来源**：服务端 `estimateBreakdown` 按系统提示各段估算。子代理预设列表从 Task 工具说明里拆出来单列「自定义 agents」（`agents` part），从 system 里扣除、不重复计数；记忆文件仍按 `AGENTS.md` / `CLAUDE.md` 估算。
+- **颜色**：`--ctx-system/tools/mcp/agents/memory/messages/tool-results/free`，深浅主题各一套；图例小方点与分段条直接使用，浅色在卡片底 ≥4.5:1、深色 ≥5:1。分段条带 1px 间隙，颜色不再叠加透明度。
+- **分段条上的阈值刻度**：自动压缩开启时按 `autoCompact.threshold`（默认 85%）画一条竖线，tooltip 写明「自动压缩阈值 85%」；底部一行说明「自动压缩：达到 85% 时触发 / 自动压缩已关闭」。
+- **缓存命中率**：一行文字 + 细进度条；没有缓存数据时显示 `—`，tooltip 说明「本轮请求还未返回缓存读取/写入统计」。
+- **「最占空间」**：仍是按轮次聚合的紧凑列表；每行左侧 3px 色条用深浅表示该轮占上下文的比例，右侧 token 数，展开箭头默认隐藏、悬停该行才出现（键盘聚焦/已展开时也可见）。
+- 输入框上下文环的弹层复用同一份 `ContextSpaceSection` 与分类色。
+
 ## 计量口径
 
 - 一轮 = 用户的一次发言 → 下一条用户发言之间的全部内容：用户消息 + 该轮所有 assistant 消息、工具调用与结果，以及该轮派出的 Task 子代理（含孙代理，tooltip 标「含子代理」）。纯 tool_result 的 user 消息不另起一轮（`isUserTurnMessage`）。
@@ -68,6 +78,8 @@
 
 - 单测：`packages/web/src/lib/turnUsage.test.ts`（轮次边界、子代理、上下文占用口径、分位分档）；`packages/server/test/context.test.ts`（`topTurns` 聚合、纯 tool_result 不另起轮、轮内明细排序）；`packages/server/test/external.test.ts`（外部 usage 字段换算）。
 - 回归：`e2e/regression.mjs` 的「轮次大纲」「上下文面板「最占空间」」「外部会话预览：轮次大纲、用量 tooltip 与信息面板」「会话信息面板：空分组默认隐藏、⋯ 菜单可显式显示」用例（Alt/点击只看已固定、无独立浮层、tooltip 用量、压缩轮最浅、按轮次列表、二级展开、折叠记忆；外部只读大纲/信息面板；⋯ 菜单勾选空分组与数据到达后出现）；「轮次大纲滚轮只预览、点击未加载轮能定位」。
+- 「上下文卡：鲜明分类色、自定义 agents、缓存条与阈值刻度（反馈13#05）」：分类顺序与 0 值项、8 种区分色、85% 阈值刻度、缓存命中条/`—`、每轮占比色条与悬停才出现的展开箭头。
+- 单测 `packages/server/test/context.test.ts`：自定义 agents 从系统提示拆出、单独成项且总占用不变。
 - 全量：`node scripts/check.mjs`。
 
 ## 会话信息面板：无顶栏、分组可收起（反馈12#06/#07 · R05/R14）

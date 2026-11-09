@@ -34,12 +34,13 @@
   --t-danger: #b4533f;
   /* 错误只用文字；soft 保持透明，避免色块 */
   --t-danger-soft: transparent;
-  /* 状态色：饱和度略高于灰阶，但仍克制（不做色块背景）。 */
-  --t-status-online: #3f7a4e;
-  --t-status-warn: #8a6420;
-  --t-status-error: #b4533f;
+  /* 状态色：反馈13#03 校准。警告改为更饱和的琥珀，浅色 ≥5:1、深色 ≥9:1；
+     在线/错误同步提饱和，保持同一档鲜度。 */
+  --t-status-online: #2f7a46;
+  --t-status-warn: #8f5e08;
+  --t-status-error: #b0402a;
   --t-warning: var(--t-status-warn);
-  --t-warning-soft: transparent;
+  --t-warning-soft: rgba(143, 94, 8, 0.10);
   --t-success: var(--t-status-online);
   --t-success-soft: transparent;
 
@@ -63,13 +64,16 @@
 
   --t-code-block-bg: #f1ede4;
 
-  /* 上下文占用分类色：饱和一些但仍克制，用于图例小方点与环形分段。 */
-  --ctx-system: #5b7fa8;
-  --ctx-tools: #7a5fa8;
-  --ctx-mcp: #3f7a63;
-  --ctx-memory: #91672a;
-  --ctx-messages: #4a7d96;
-  --ctx-tool-results: #9a5f52;
+  /* 上下文占用分类色：参考 Claude Code /context 的鲜明配色，深浅主题各一套；
+     图例小方点与分段条直接使用，前景与卡片底 ≥4.5:1（浅色）/ ≥5:1（深色）。 */
+  --ctx-system: #2a68c8;
+  --ctx-tools: #7b4fd6;
+  --ctx-mcp: #0f7a61;
+  --ctx-agents: #b23c8c;
+  --ctx-memory: #956206;
+  --ctx-messages: #0c7599;
+  --ctx-tool-results: #c0522f;
+  --ctx-free: #e2ddd3;
 
   --t-shadow-sm: 0 1px 2px rgba(60, 45, 25, 0.06);
   --t-shadow-md: 0 8px 28px rgba(60, 45, 25, 0.10), 0 1px 3px rgba(60, 45, 25, 0.06);
@@ -142,11 +146,11 @@ html.dark {
   --t-primary-hover: #dcdcdc;
   --t-danger: #e0896f;
   --t-danger-soft: transparent;
-  --t-status-online: #79b98a;
-  --t-status-warn: #d3a15f;
-  --t-status-error: #e0896f;
+  --t-status-online: #7fd49a;
+  --t-status-warn: #ebb552;
+  --t-status-error: #e98b72;
   --t-warning: var(--t-status-warn);
-  --t-warning-soft: transparent;
+  --t-warning-soft: rgba(235, 181, 82, 0.12);
   --t-success: var(--t-status-online);
   --t-success-soft: transparent;
 
@@ -169,12 +173,14 @@ html.dark {
 
   --t-code-block-bg: #1e1e1e;
 
-  --ctx-system: #8fb4e0;
-  --ctx-tools: #b49ce6;
-  --ctx-mcp: #7ec9a4;
-  --ctx-memory: #e0bd7a;
-  --ctx-messages: #78c0d9;
-  --ctx-tool-results: #e0a08e;
+  --ctx-system: #6fa8ff;
+  --ctx-tools: #b98cff;
+  --ctx-mcp: #45d3a0;
+  --ctx-agents: #f08ac4;
+  --ctx-memory: #f3c451;
+  --ctx-messages: #46c6ec;
+  --ctx-tool-results: #ff9673;
+  --ctx-free: #3e3e3e;
 
   --t-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --t-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.36), 0 1px 3px rgba(0, 0, 0, 0.3);

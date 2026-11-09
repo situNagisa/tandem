@@ -329,6 +329,13 @@ export async function runTurn(
           providerKind: profile.kind,
           capabilityOverrides: profile.modelCapabilities,
           autoCompact: autoCompactMeta,
+          ...(allowTask
+            ? {
+                agents: host.subagentPresets
+                  .list(rec.cwd)
+                  .map((preset) => ({ name: preset.name, description: preset.description })),
+              }
+            : {}),
         });
 
       let built = host.buildSystemFor(rec, { allowTask, hookContext: promptHookContext });

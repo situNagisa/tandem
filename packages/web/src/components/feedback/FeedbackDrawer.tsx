@@ -104,7 +104,7 @@ function ReceiptRow({
               ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
               : receiptItem.status === 'wontfix'
                 ? 'bg-zinc-500/15 text-muted'
-                : 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+                : 'bg-warning-soft text-warning',
           )}
         >
           {receiptStatusLabel(receiptItem.status)}
@@ -311,7 +311,7 @@ export function FeedbackDrawer({
                         (item.priority ?? 'P1') === 'P0'
                           ? 'bg-red-500/15 text-red-600 dark:text-red-400'
                           : (item.priority ?? 'P1') === 'P1'
-                            ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                            ? 'bg-warning-soft text-warning'
                             : 'bg-surface-2 text-muted',
                       )}
                     >

@@ -2,6 +2,39 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DEFAULT_CONTEXT_SETTINGS } from '@tandem/protocol';
 import { autoCompactDue, autoCompactTriggerTokens } from '../src/context.js';
+import { subagentListing } from '../src/agent/prompt.js';
+
+test('上下文分类：自定义 agents 从系统提示里拆出，单独成项且不重复计数（反馈13#05）', async () => {
+  const { estimateBreakdown, estimateTokens } = await import('../src/context.js');
+  const agents = [
+    { name: 'explore', description: '只读探索代码结构' },
+    { name: 'reviewer', description: '审阅改动并给出行级建议' },
+  ];
+  const listing = subagentListing(agents);
+  const system = `# 工作方式\n${'- Task：派发子代理。\n'}${listing}`;
+  const withAgents = estimateBreakdown({
+    model: 'gpt-4o',
+    system,
+    tools: [],
+    messages: [],
+    cwd: '/tmp',
+    agents,
+  });
+  const legacy = estimateBreakdown({
+    model: 'gpt-4o',
+    system,
+    tools: [],
+    messages: [],
+    cwd: '/tmp',
+  });
+  const agentPart = withAgents.parts.find((part) => part.kind === 'agents');
+  assert.equal(agentPart?.tokens, estimateTokens(listing));
+  const systemWith = withAgents.parts.find((part) => part.kind === 'system')!.tokens;
+  const systemLegacy = legacy.parts.find((part) => part.kind === 'system')!.tokens;
+  assert.equal(systemWith, Math.max(0, systemLegacy - estimateTokens(listing)));
+  assert.equal(withAgents.parts.find((part) => part.kind === 'agents')!.tokens > 0, true);
+  assert.equal(withAgents.usedTokens, legacy.usedTokens, '拆分 agents 不应改变总占用');
+});
 
 const settings = { ...DEFAULT_CONTEXT_SETTINGS, autoCompactThreshold: 0.5 };
 

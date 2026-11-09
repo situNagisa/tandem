@@ -437,7 +437,7 @@ export interface ContextBreakdown {
   model: string;
   contextWindow: number;     // 模型上下文上限
   usedTokens: number;        // 最近一次请求的输入总量（含缓存）
-  parts: { kind: 'system' | 'tools' | 'mcp' | 'memory' | 'messages' | 'tool_results' | 'free'; tokens: number }[];
+  parts: { kind: 'system' | 'tools' | 'mcp' | 'agents' | 'memory' | 'messages' | 'tool_results' | 'free'; tokens: number }[];
   cacheHitRate?: number;     // 本会话累计：cacheRead / (input + cacheRead + cacheWrite)
   /** 最占空间的 10 条消息/工具结果（按 token 降序；老客户端兼容用）。 */
   topItems?: ContextTopItem[];

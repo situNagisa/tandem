@@ -12,6 +12,17 @@ import { formatTokens } from '../../lib/format'
 import { Popover } from '../ui/Popover'
 import { Tip } from '../ui/Tooltip'
 
+export const CONTEXT_PART_ORDER = [
+  'system',
+  'tools',
+  'mcp',
+  'agents',
+  'memory',
+  'messages',
+  'tool_results',
+  'free',
+] as const
+
 export const CONTEXT_PART_META: Record<
   ContextBreakdown['parts'][number]['kind'],
   { label: string; color: string }
@@ -19,15 +30,16 @@ export const CONTEXT_PART_META: Record<
   system: { label: '系统提示', color: 'var(--ctx-system)' },
   tools: { label: '工具定义', color: 'var(--ctx-tools)' },
   mcp: { label: 'MCP 工具', color: 'var(--ctx-mcp)' },
+  agents: { label: '自定义 agents', color: 'var(--ctx-agents)' },
   memory: { label: '记忆文件', color: 'var(--ctx-memory)' },
   messages: { label: '对话', color: 'var(--ctx-messages)' },
   tool_results: { label: '工具结果', color: 'var(--ctx-tool-results)' },
-  free: { label: '剩余', color: 'transparent' },
+  free: { label: '剩余', color: 'var(--ctx-free)' },
 }
 
 function colorFor(rate: number): string {
   if (rate > 0.9) return 'var(--t-danger)'
-  if (rate >= 0.7) return '#d08a45'
+  if (rate >= 0.7) return 'var(--t-status-warn)'
   return 'var(--t-text-secondary)'
 }
 
@@ -77,12 +89,17 @@ export function ContextSpaceSection({
   turns,
   legacyItems,
   onJump,
+  totalTokens,
 }: {
   turns?: ContextTurnItem[]
   legacyItems?: ContextTopItem[]
   onJump?: (messageId: string) => void
+  /** 上下文已用 token，用来把每轮占比换算成小色条的深浅。 */
+  totalTokens?: number
 }) {
   const list = turns && turns.length > 0 ? turns : turnsFromItems(legacyItems)
+  const total = totalTokens && totalTokens > 0 ? totalTokens : undefined
+  const maxTurn = list.reduce((max, turn) => Math.max(max, turn.tokens), 0)
   const [collapsed, setCollapsed] = useState(loadTopCollapsed)
   const [expanded, setExpanded] = useState<string | null>(null)
   const jump = (messageId: string) => (onJump ? onJump(messageId) : jumpToMessage(messageId))
@@ -120,21 +137,30 @@ export function ContextSpaceSection({
           {list.map((turn) => {
             const open = expanded === turn.messageId
             const detail = turn.items.filter((item) => item.tokens > 0)
-            const title = `${turn.preview}（第 ${turn.turn} 轮，${formatTokens(turn.tokens)}）`
+            const share = total ? turn.tokens / total : 0
+            const strength = maxTurn > 0 ? turn.tokens / maxTurn : 0
+            const title = `${turn.preview}（第 ${turn.turn} 轮，${formatTokens(turn.tokens)}${share > 0 ? ` · 占 ${share < 0.01 ? '<1' : Math.round(share * 100)}%` : ''}）`
             return (
               <div
                 key={`${turn.turn}:${turn.messageId}`}
                 data-context-turn="true"
                 data-message-id={turn.messageId}
               >
-                <div className="flex min-h-6 items-center rounded-md transition-colors hover:bg-[var(--t-bg-hover)]">
+                <div className="group/row flex min-h-6 items-center rounded-md transition-colors hover:bg-[var(--t-bg-hover)]">
                   <button
                     type="button"
                     data-context-turn-open="true"
                     onClick={() => jump(turn.messageId)}
                     data-tip={title}
-                    className="flex min-h-6 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[12px] leading-4 text-text-soft"
+                    aria-label={`${title}，跳到第 ${turn.turn} 轮`}
+                    className="flex min-h-6 min-w-0 flex-1 items-center gap-1.5 rounded-md py-0.5 pl-0.5 pr-1 text-left text-[12px] leading-4 text-text-soft"
                   >
+                    <span
+                      data-context-turn-share="true"
+                      aria-hidden="true"
+                      className="h-3.5 w-[3px] shrink-0 rounded-full bg-[var(--ctx-messages)]"
+                      style={{ opacity: 0.3 + strength * 0.7 }}
+                    />
                     <span className="w-4 shrink-0 text-right text-muted tabular-nums">
                       {turn.turn}
                     </span>
@@ -150,7 +176,10 @@ export function ContextSpaceSection({
                       aria-expanded={open}
                       aria-label={`${open ? '收起' : '展开'}第 ${turn.turn} 轮占用明细`}
                       onClick={() => setExpanded(open ? null : turn.messageId)}
-                      className="mr-0.5 flex size-6 shrink-0 items-center justify-center rounded text-muted transition-colors hover:bg-[var(--t-bg-active)] hover:text-text"
+                      className={cn(
+                        'mr-0.5 flex size-5 shrink-0 items-center justify-center rounded text-muted transition-[opacity,background-color,color] hover:bg-[var(--t-bg-active)] hover:text-text group-focus-within/row:opacity-100 focus-visible:opacity-100',
+                        open ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100',
+                      )}
                     >
                       <ChevronDown
                         size={11}
@@ -357,9 +386,8 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
                     style={{
                       width: `${width}%`,
                       backgroundColor: meta.color,
-                      opacity: part.kind === 'free' ? 1 : 0.88,
                     }}
-                    className={cn(part.kind === 'free' && 'bg-[var(--t-surface-2)]')}
+                    className={cn(part.kind === 'free' && 'bg-[var(--ctx-free)]')}
                   />
                 )
               })}
@@ -391,6 +419,7 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
               <ContextSpaceSection
                 turns={context.topTurns}
                 legacyItems={context.topItems}
+                totalTokens={used}
                 onJump={(messageId) => {
                   close()
                   jumpToMessage(messageId)

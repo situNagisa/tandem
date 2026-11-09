@@ -163,6 +163,7 @@ export function contextFor(host: Host, rec: SessionRecord): ContextBreakdown {
   const model = rec.route?.model || rec.model || profile?.defaultModel || '';
   const system = host.buildSystemFor(rec).system;
   const tools = host.toolDefinitions(rec);
+  const allowTask = (rec.depth ?? 0) === 0;
   const messages = trimOldToolResults(
     rec.messages.filter((m) => !m.notice),
     settings,
@@ -178,6 +179,13 @@ export function contextFor(host: Host, rec: SessionRecord): ContextBreakdown {
       providerKind: profile?.kind,
       capabilityOverrides: profile?.modelCapabilities,
       autoCompact,
+      ...(allowTask
+        ? {
+            agents: host.subagentPresets
+              .list(rec.cwd)
+              .map((preset) => ({ name: preset.name, description: preset.description })),
+          }
+        : {}),
     }),
     quota,
   };

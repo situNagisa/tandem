@@ -3218,6 +3218,128 @@ async function main() {
       })
     })
 
+    desktop('上下文卡：鲜明分类色、自定义 agents、缓存条与阈值刻度（反馈13#05）', async (page) => {
+      await openSession(page, 'long')
+      if (!(await page.locator('[data-group]').count())) {
+        await page.getByRole('button', { name: '切换信息面板' }).first().click()
+      }
+      const group = page.locator('[data-group="context"]').first()
+      await group.waitFor({ state: 'visible', timeout: 15_000 })
+      const card = group.locator('[data-context-card]').first()
+      await card.waitFor({ state: 'visible', timeout: 15_000 })
+      const legend = card.locator('[data-context-legend="true"]')
+      const legendText = await legend.innerText()
+      const cardText = await card.innerText()
+      const order = ['系统提示', '工具定义', 'MCP 工具', '自定义 agents', '记忆文件', '对话', '工具结果', '剩余']
+      const positions = order.map((label) => legendText.indexOf(label))
+      assert.ok(
+        positions.every((position) => position >= 0),
+        `上下文卡缺少分类：${order.filter((_, index) => positions[index] < 0).join('、')}`,
+      )
+      assert.deepEqual(
+        [...positions].sort((a, b) => a - b),
+        positions,
+        `上下文分类顺序不对：${order.map((label, index) => `${label}@${positions[index]}`).join(' ')}`,
+      )
+      assert.match(cardText, /缓存命中率/, '上下文卡缺少缓存命中率')
+      assert.match(cardText, /自动压缩：达到 \d+% 时触发|自动压缩已关闭/, '上下文卡缺少自动压缩说明')
+
+      // 分类色必须鲜明且彼此区分（不能退回一组灰调）。
+      const colors = await card.evaluate((el) =>
+        [...el.querySelectorAll('.grid span[aria-hidden="true"]')].map(
+          (dot) => getComputedStyle(dot).backgroundColor,
+        ),
+      )
+      assert.ok(new Set(colors).size >= 7, `上下文分类色区分不足：${colors.join(' / ')}`)
+      assert.equal(
+        colors.some((color) => color === 'rgba(0, 0, 0, 0)' || color === 'transparent'),
+        false,
+        `上下文分类色存在透明项：${colors.join(' / ')}`,
+      )
+
+      // 85% 阈值刻度画在分段条上；缓存命中率是进度条形态。
+      const threshold = card.locator('[data-context-threshold="true"]')
+      assert.equal(await threshold.count(), 1, '分段条缺少自动压缩阈值刻度')
+      assert.match(await threshold.evaluate((el) => el.style.left), /\d+(\.\d+)?%/, '阈值刻度位置没有按百分比设置')
+      const cache = card.locator('[data-context-cache="true"]')
+      assert.equal(await cache.count(), 1, '缺少缓存命中率行')
+      assert.match(await cache.getAttribute('data-tip'), /缓存命中率/, '缓存命中率缺少说明 tooltip')
+      const cacheBar = card.locator('[data-context-cache-bar="true"]')
+      if ((await cacheBar.count()) > 0) {
+        assert.match(await cacheBar.evaluate((el) => el.style.width), /\d+(\.\d+)?%/, '缓存命中率进度条没有宽度')
+      } else {
+        assert.match(await cache.innerText(), /—/, '没有缓存数据时应显示 —')
+      }
+
+      // 每轮左侧小色条表示占比；展开箭头默认隐藏，悬停该行才出现。
+      const turn = card.locator('[data-context-turn="true"]').first()
+      await turn.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.equal(await turn.locator('[data-context-turn-share="true"]').count(), 1, '每轮缺少占比色条')
+      const turnToggle = turn.locator('[data-context-turn-toggle="true"]')
+      if ((await turnToggle.count()) > 0) {
+        assert.equal(await turnToggle.evaluate((el) => getComputedStyle(el).opacity), '0', '展开箭头没有默认隐藏')
+        await turn.hover()
+        await page.waitForTimeout(250)
+        assert.equal(await turnToggle.evaluate((el) => getComputedStyle(el).opacity), '1', '悬停后展开箭头没有出现')
+      }
+    })
+
+    desktop('警告与状态色饱和、对比度达标（反馈13#03）', async (page) => {
+      await openSession(page, 'long')
+      const result = await page.evaluate(() => {
+        const parse = (value) => {
+          const raw = value.trim()
+          const rgb = raw.match(/rgba?\(([^)]+)\)/)
+          if (rgb) return rgb[1].split(',').slice(0, 3).map((n) => Number(n.trim()) / 255)
+          const hex = raw.match(/^#([0-9a-f]{6})$/i)
+          if (hex) return [0, 2, 4].map((i) => parseInt(hex[1].slice(i, i + 2), 16) / 255)
+          return null
+        }
+        const lum = (rgb) => {
+          const c = rgb.map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+          return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+        }
+        const ratio = (a, b) => {
+          const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p)
+          return (x + 0.05) / (y + 0.05)
+        }
+        const root = document.documentElement
+        const read = (theme) => {
+          const dark = theme === 'dark'
+          root.classList.toggle('dark', dark)
+          const style = getComputedStyle(root)
+          const bg = parse(style.getPropertyValue('--t-surface'))
+          const data = ['--t-status-warn', '--t-status-online', '--t-status-error'].map((name) => {
+            const value = style.getPropertyValue(name)
+            return { name, value: value.trim(), contrast: Number(ratio(parse(value), bg).toFixed(2)) }
+          })
+          data.push({
+            name: '--t-warning-soft',
+            value: style.getPropertyValue('--t-warning-soft').trim(),
+            contrast: 0,
+          })
+          return data
+        }
+        const previous = root.classList.contains('dark') ? 'dark' : 'light'
+        const themes = { light: read('light'), dark: read('dark') }
+        root.classList.toggle('dark', previous === 'dark')
+        return themes
+      })
+      for (const [theme, tokens] of Object.entries(result)) {
+        for (const token of tokens) {
+          if (token.name === '--t-warning-soft') {
+            assert.match(
+              token.value,
+              /^(?:rgba?\(|#[0-9a-f]{8}$)/i,
+              `${theme} 主题的 --t-warning-soft 不是可见色底：${token.value}`,
+            )
+            continue
+          }
+          assert.ok(token.contrast >= 4.5, `${theme} 主题 ${token.name}=${token.value} 对比度只有 ${token.contrast}`)
+        }
+      }
+    })
+
     desktop('配额将尽时交接卡可切换备用分组', async (page) => {
       await openSession(page, 'quota')
       await waitOnline(page)
