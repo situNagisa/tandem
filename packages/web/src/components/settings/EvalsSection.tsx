@@ -27,6 +27,7 @@ import { Button, IconButton } from '../ui/Button'
 import { Input, Select, Switch } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 import { Modal } from '../ui/Modal'
+import { formatDateTime } from '../../lib/format'
 import { EvalConfigCard } from '../evals/EvalConfigCard'
 import { EvalCompareDialog } from '../evals/EvalCompareDialog'
 import { EvalPromptOverridesDialog } from '../evals/EvalPromptOverridesDialog'
@@ -51,15 +52,6 @@ function configFromProfile(profile: Profile, index: number): EvalConfig {
     ...(group ? { groupId: group.id } : {}),
     model: group?.defaultModel || profile.defaultModel || group?.models[0] || profile.models[0] || '',
   }
-}
-
-function formatRunTime(ts: number): string {
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(ts)
 }
 
 function StatusPill({ result }: { result?: EvalResult | Omit<EvalResult, 'messages'> }) {
@@ -504,7 +496,7 @@ export function EvalsSection() {
             onChange={(next) => selectRun(host.id, next)}
             options={runs.map((item) => ({
               value: item.id,
-              label: `${item.suite} · ${formatRunTime(item.startedAt)} · ${item.finished}/${item.total}${
+              label: `${item.suite} · ${formatDateTime(item.startedAt)} · ${item.finished}/${item.total}${
                 item.status === 'running' ? ' 运行中' : item.status === 'cancelled' ? ' 已取消' : ''
               }`,
             }))}

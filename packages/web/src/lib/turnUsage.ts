@@ -1,6 +1,6 @@
 import type { Usage } from '@tandem/protocol'
 import type { SubagentSession, UiMessage } from './types'
-import { formatDurationMs, formatTokens } from './format'
+import { formatCostCompact as formatCost, formatDurationMs, formatTokens } from './format'
 
 /** 一轮（用户消息 → 下一条用户消息）内所有模型调用的用量汇总。 */
 export interface TurnUsage {
@@ -196,12 +196,6 @@ export function usageByTurn(
 export function cacheHitRate(usage: TurnUsage): number {
   const total = usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
   return total > 0 ? Math.round((usage.cacheReadTokens / total) * 100) : 0
-}
-
-function formatCost(usd: number): string {
-  if (!Number.isFinite(usd) || usd <= 0) return '$0'
-  const digits = usd >= 1 ? 2 : usd >= 0.01 ? 3 : 4
-  return `$${usd.toFixed(digits).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')}`
 }
 
 /** 着色权重固定为本轮当前上下文占用（用户已决定不再提供花费/上下文切换）。 */

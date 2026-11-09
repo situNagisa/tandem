@@ -36,7 +36,7 @@ import { runningSince } from '../lib/runClock'
 import type { SubagentSession, ToolResultBlock } from '../lib/types'
 import { ReadOnlySessionGraph } from './sessionGraph/SessionGraphCard'
 import { cn } from '../lib/cn'
-import { firstLine, formatElapsed, formatTokens, truncate } from '../lib/format'
+import { firstLine, formatBytes, formatElapsed, formatTokens, truncate } from '../lib/format'
 import { useBrowserShot } from '../lib/browserShot'
 import { CodeBlock } from './CodeBlock'
 import { Button } from './ui/Button'
@@ -189,12 +189,6 @@ function diffStats(oldText: string, newText: string): { added: number; removed: 
   }
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)}KB`
-  return `${bytes}B`
-}
-
 function OutputBlock({
   text,
   isError,
@@ -262,7 +256,7 @@ function OutputBlock({
       </div>
       {truncated && !full && (
         <div className="mt-1 flex flex-wrap items-center gap-2 px-1 text-[11.5px] text-muted">
-          <span>已省略 {formatBytes(truncated.omittedBytes)}</span>
+          <span>已省略 {formatBytes(truncated.omittedBytes, { space: false, roundKb: true })}</span>
           {onLoadFull && (
             <button
               type="button"
@@ -270,7 +264,7 @@ function OutputBlock({
               onClick={() => void loadFull()}
               className="rounded-lg px-2 py-1 text-[12px] text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
             >
-              {loadingFull ? '加载中…' : `显示全部（原 ${formatBytes(truncated.totalBytes)}）`}
+              {loadingFull ? '加载中…' : `显示全部（原 ${formatBytes(truncated.totalBytes, { space: false, roundKb: true })}）`}
             </button>
           )}
           {failed && <span className="text-danger">加载失败，请重试</span>}

@@ -4,18 +4,8 @@ import type { ShareInfo } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
+import { formatDateTime } from '../../lib/format'
 import { Button, IconButton } from '../ui/Button'
-
-function formatTime(ts?: number): string {
-  if (!ts) return '—'
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(ts)
-}
 
 export function SharesSection() {
   const activeHostId = useAppStore((s) => s.activeHostId)
@@ -129,12 +119,14 @@ export function SharesSection() {
                   )}
                 </div>
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-muted">
-                  <span>创建 {formatTime(share.createdAt)}</span>
+                  <span>创建 {formatDateTime(share.createdAt, { year: true })}</span>
                   <span>
-                    {share.expiresAt ? `${formatTime(share.expiresAt)} 到期` : '永久有效'}
+                    {share.expiresAt ? `${formatDateTime(share.expiresAt, { year: true })} 到期` : '永久有效'}
                   </span>
                   <span>访问 {share.accessCount} 次</span>
-                  {share.lastAccessAt && <span>最近 {formatTime(share.lastAccessAt)}</span>}
+                  {share.lastAccessAt && (
+                    <span>最近 {formatDateTime(share.lastAccessAt, { year: true })}</span>
+                  )}
                 </div>
               </div>
               <div className={cn('flex shrink-0 items-center gap-1.5')}>

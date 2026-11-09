@@ -1,5 +1,6 @@
 // 任务看板的纯函数：列定义、拖动规则、分组与文案。不依赖 React，便于单测。
 import type { Board, BoardCard, BoardCardAction, BoardCardStatus } from '@tandem/protocol'
+import { formatDuration as formatDurationShared } from './format'
 
 export const COLUMNS: Array<{ status: BoardCardStatus; label: string; hint: string }> = [
   { status: 'todo', label: '待办', hint: '草稿，放行后才会运行' },
@@ -74,12 +75,7 @@ export function formatUsd(value: number | undefined): string {
 }
 
 export function formatDuration(ms: number | undefined): string {
-  if (!ms || ms < 1000) return '<1 秒'
-  const s = Math.round(ms / 1000)
-  if (s < 60) return `${s} 秒`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m} 分 ${s % 60} 秒`
-  return `${Math.floor(m / 60)} 时 ${m % 60} 分`
+  return formatDurationShared(ms, 'human')
 }
 
 export function boardCost(board: Pick<Board, 'cards'>): number {

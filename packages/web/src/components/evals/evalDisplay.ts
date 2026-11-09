@@ -1,5 +1,12 @@
 import type { EvalResult, EvalRun, EvalRunSummary, Message } from '@tandem/protocol'
+import { formatCost, formatDuration as formatDurationShared } from '../../lib/format'
 import type { ToolResultBlock } from '../../lib/types'
+
+export { formatCost }
+
+export function formatDuration(ms: number): string {
+  return formatDurationShared(ms, 'compact')
+}
 
 export function collectToolResults(messages: Message[] | undefined): Record<string, ToolResultBlock> {
   const map: Record<string, ToolResultBlock> = {}
@@ -17,22 +24,6 @@ export function findResult(
   configId: string,
 ): EvalResult | Omit<EvalResult, 'messages'> | undefined {
   return run?.results.find((item) => item.caseName === caseName && item.configId === configId)
-}
-
-export function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) return '—'
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
-  const minutes = Math.floor(ms / 60_000)
-  const seconds = Math.round((ms % 60_000) / 1000)
-  return `${minutes}m${seconds.toString().padStart(2, '0')}s`
-}
-
-export function formatCost(usd?: number): string {
-  if (usd === undefined || !Number.isFinite(usd)) return '—'
-  if (usd >= 1) return `$${usd.toFixed(2)}`
-  if (usd >= 0.01) return `$${usd.toFixed(3)}`
-  return `$${usd.toFixed(4)}`
 }
 
 export function resultLabel(result: Pick<EvalResult, 'status' | 'passed'> | undefined): string {

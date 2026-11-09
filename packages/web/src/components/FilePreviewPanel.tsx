@@ -16,6 +16,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
+import { formatBytes } from '../lib/format'
 import { useCopy } from '../lib/useCopy'
 import { useIsMobile } from '../lib/hooks'
 import { Button, IconButton } from './ui/Button'
@@ -34,12 +35,6 @@ import {
 import { CodeBlock } from './CodeBlock'
 import { Markdown } from './Markdown'
 import { FileBrowser } from './FileBrowser'
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
 
 /** 服务端 404 时拿不到解析结果，客户端按 主机平台规则拼出绝对路径供用户判断。 */
 function resolveAbsolute(path: string, cwd: string, platform?: string): string {
@@ -328,7 +323,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
         <div className="flex min-h-0 flex-1 flex-col">
           {data.truncated && (
             <div className="shrink-0 border-b border-border/70 bg-[var(--t-bg-subtle)] px-3 py-1.5 text-[12px] text-text-secondary">
-              文件较大（{formatSize(data.size)}），仅显示前 1 MB。
+              文件较大（{formatBytes(data.size)}），仅显示前 1 MB。
             </div>
           )}
           {image ? (
@@ -344,7 +339,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
               <ImageIcon size={26} className="text-muted/50" />
               <p className="text-[13px] font-medium text-text-soft">二进制文件</p>
               <p className="text-[13px] text-muted">
-                无法以文本预览（{formatSize(data.size)}）
+                无法以文本预览（{formatBytes(data.size)}）
               </p>
             </div>
           ) : markdown && mode === 'preview' ? (

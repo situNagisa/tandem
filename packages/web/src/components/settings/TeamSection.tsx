@@ -24,6 +24,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
+import { formatDateTime } from '../../lib/format'
 import { useCopy } from '../../lib/useCopy'
 import { Button, IconButton } from '../ui/Button'
 import { Input, SegmentedControl } from '../ui/Controls'
@@ -53,16 +54,6 @@ const AUDIT_LABEL: Record<TeamAuditEntry['action'], string> = {
   'message.send': '发送消息',
   'permission.decide': '处理审批',
   'permission.transfer': '转交审批',
-}
-
-function formatTime(ts?: number): string {
-  if (!ts) return '—'
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(ts)
 }
 
 /** 审计里可能带原始枚举（角色、审批决定），展示前换成中文。 */
@@ -449,7 +440,7 @@ export function TeamSection() {
                 {created.url}
               </div>
               <div className="text-[12px] text-muted">
-                {ROLE_LABEL[created.invite.role]} · {formatTime(created.invite.expiresAt)} 到期
+                {ROLE_LABEL[created.invite.role]} · {formatDateTime(created.invite.expiresAt)} 到期
               </div>
               {created.warning && (
                 <p className="flex items-start gap-1.5 text-[12px] leading-5 text-warning">
@@ -510,7 +501,7 @@ export function TeamSection() {
                   {member.revokedAt ? '已吊销' : member.online ? '在线' : '离线'}
                 </span>
                 {member.lastSeenAt && (
-                  <span className="text-[12px] text-muted">最近 {formatTime(member.lastSeenAt)}</span>
+                  <span className="text-[12px] text-muted">最近 {formatDateTime(member.lastSeenAt)}</span>
                 )}
               </div>
               <div className="mt-0.5 truncate font-mono text-[12px] text-muted" data-tip={member.projectDirs.join('\n')}>
@@ -569,7 +560,7 @@ export function TeamSection() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5 text-[12.5px]">
                     <span className="font-medium">{ROLE_LABEL[invite.role]}</span>
-                    <span className="text-muted">{formatTime(invite.createdAt)}</span>
+                    <span className="text-muted">{formatDateTime(invite.createdAt)}</span>
                     {invite.usedAt ? (
                       <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[11px] text-muted">
                         已由 {invite.usedByName ?? '成员'} 使用
@@ -580,7 +571,7 @@ export function TeamSection() {
                       </span>
                     ) : (
                       <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[11px] text-text-tertiary">
-                        {formatTime(invite.expiresAt)} 到期
+                        {formatDateTime(invite.expiresAt)} 到期
                       </span>
                     )}
                   </div>
@@ -617,7 +608,7 @@ export function TeamSection() {
                 className="flex items-start gap-2 border-b border-border px-3 py-2 last:border-b-0"
               >
                 <span className="mt-0.5 w-[74px] shrink-0 text-[12px] text-muted">
-                  {formatTime(entry.at)}
+                  {formatDateTime(entry.at)}
                 </span>
                 <span className="w-[86px] shrink-0 truncate text-[12px] font-medium" data-tip={entry.actorName}>
                   {entry.actorName}
@@ -671,7 +662,7 @@ export function TeamSection() {
       >
         {deletingInvite && (
           <p className="text-[13px] leading-6 text-text-soft">
-            删除 {ROLE_LABEL[deletingInvite.role]} · {formatTime(deletingInvite.createdAt)} 的邀请记录？
+            删除 {ROLE_LABEL[deletingInvite.role]} · {formatDateTime(deletingInvite.createdAt)} 的邀请记录？
             {deletingInvite.usedAt ? '记录已使用，删除后不影响已加入的成员。' : '未使用的邀请将立即失效。'}
           </p>
         )}

@@ -7,12 +7,7 @@ import { useUiStore } from '../../store/useUiStore'
 import { Button, IconButton } from '../ui/Button'
 import { MenuSelect } from '../ui/Menu'
 import { Modal } from '../ui/Modal'
-import { formatRelative } from '../../lib/format'
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  return `${(bytes / 1024).toFixed(1)} KB`
-}
+import { formatBytes, formatRelative } from '../../lib/format'
 
 export function MemorySection() {
   const hosts = useAppStore((s) => s.hosts)
@@ -160,7 +155,7 @@ export function MemorySection() {
                 </div>
               </div>
               <span className="text-right font-mono text-[12px] tabular-nums text-text-soft">
-                {formatSize(item.size)}
+                {formatBytes(item.size, { maxUnit: 'kb' })}
               </span>
               <span className="hidden text-right text-[12px] text-muted sm:block">
                 {item.updatedAt ? formatRelative(item.updatedAt) : '—'}

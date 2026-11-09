@@ -5,6 +5,7 @@ import type { CreateShareResult, SessionSummary, ShareExpiry } from '@tandem/pro
 import { useAppStore } from '../../store/useAppStore'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
+import { formatDateTime } from '../../lib/format'
 import { useCopy } from '../../lib/useCopy'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
@@ -16,15 +17,6 @@ const EXPIRY_OPTIONS: Array<{ value: ShareExpiry; label: string }> = [
   { value: '7d', label: '7 天（默认）' },
   { value: 'never', label: '不过期（手动撤销）' },
 ]
-
-function formatTime(ts: number): string {
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(ts)
-}
 
 export function ShareDialog({
   hostId,
@@ -223,7 +215,7 @@ export function ShareDialog({
             </div>
             <p className="text-[12px] leading-5 text-muted">
               {summary}
-              {created.expiresAt ? ` · ${formatTime(created.expiresAt)} 到期` : ' · 不过期'}
+              {created.expiresAt ? ` · ${formatDateTime(created.expiresAt)} 到期` : ' · 不过期'}
               。链接里的 token 只显示这一次；关闭后可在设置 → 分享查看访问次数或撤销。
             </p>
           </>

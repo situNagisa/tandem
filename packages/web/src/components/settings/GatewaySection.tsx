@@ -23,23 +23,12 @@ import type {
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
-import { formatCost, formatTokens } from '../../lib/format'
+import { formatCost, formatDateTime, formatTokens } from '../../lib/format'
 import { useCopy } from '../../lib/useCopy'
 import { Button, IconButton } from '../ui/Button'
 import { Input, Switch } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 import { Modal } from '../ui/Modal'
-
-function formatTime(ts?: number): string {
-  if (!ts) return '—'
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(ts)
-}
 
 function formatLimit(value?: number): string {
   return value ? formatCost(value) : '不限'
@@ -452,7 +441,8 @@ export function GatewaySection() {
                   </div>
                   <div className="mt-0.5 truncate text-[12px] text-muted">
                     白名单：{token.allowedModels.length ? token.allowedModels.join('、') : '全部路由模型'} · 最近使用{' '}
-                    {formatTime(token.lastUsedAt)} · 签发 {formatTime(token.createdAt)}
+                    {formatDateTime(token.lastUsedAt, { second: true })} · 签发{' '}
+                    {formatDateTime(token.createdAt, { second: true })}
                   </div>
                 </div>
               )
