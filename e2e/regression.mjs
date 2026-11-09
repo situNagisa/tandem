@@ -8080,6 +8080,35 @@ async function main() {
       await dialog.waitFor()
       assert.match(await dialog.innerText(), /基于 commit [0-9a-f]{7}/)
       assert.match(await dialog.innerText(), /Mock 概览/)
+      // 反馈13#01：阅读列固定宽度，切换页面时不得随内容收缩/抖动。
+      const readWidth = () =>
+        page.evaluate(() => {
+          const el = document.querySelector('[role="dialog"][aria-label="项目 Wiki"] .wiki-markdown')
+          return el ? el.getBoundingClientRect().width : 0
+        })
+      const readWidths = []
+      for (const name of ['项目概览', 'src', '术语表', '项目概览']) {
+        await dialog.getByRole('button', { name, exact: true }).first().click()
+        await page.waitForTimeout(220)
+        readWidths.push(await readWidth())
+      }
+      const minWidth = Math.min(...readWidths)
+      const maxWidth = Math.max(...readWidths)
+      assert.ok(
+        maxWidth - minWidth <= 1,
+        `Wiki 阅读列宽度随页面变化：${readWidths.map((width) => Math.round(width)).join(' / ')}`,
+      )
+      const samples = []
+      for (let i = 0; i < 12; i += 1) {
+        samples.push(await readWidth())
+        await page.waitForTimeout(80)
+      }
+      assert.ok(
+        Math.max(...samples) - Math.min(...samples) <= 1,
+        `Wiki 阅读列在 1 秒内仍在抖动：${samples.map((width) => Math.round(width)).join(' / ')}`,
+      )
+      await dialog.getByRole('button', { name: '项目概览', exact: true }).first().click()
+      await page.waitForTimeout(200)
       // 左树切换到模块页。
       await dialog.getByRole('button', { name: 'src', exact: true }).first().click()
       await dialog.getByText('Mock 职责：示例源码。').waitFor()

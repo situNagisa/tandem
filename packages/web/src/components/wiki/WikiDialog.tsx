@@ -419,7 +419,7 @@ export function WikiDialog() {
               </div>
             ) : null}
 
-            <PanelBody scroll className="px-6 py-5">
+            <PanelBody scroll className="px-6 py-5" style={{ scrollbarGutter: 'stable' }}>
               {entry?.error ? (
                 <p className="mb-3 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-[12px] text-danger">
                   {entry.error}
@@ -447,7 +447,7 @@ export function WikiDialog() {
                   </div>
                 </div>
               ) : page ? (
-                <div className="wiki-markdown mx-auto max-w-[780px]">
+                <div className="wiki-markdown mx-auto w-full min-w-0 max-w-[780px]">
                   <Markdown text={body} cwd={project} />
                   {!page.manual ? (
                     <p className="mt-6 border-t border-border pt-3 text-[12px] text-muted">
