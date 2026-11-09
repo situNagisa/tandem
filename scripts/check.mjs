@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 /**
- * 提交前检查：文档治理 → 构建 → UI 原语审计 → 单元测试 → 端到端冒烟 → 回归走查。
+ * 提交前检查：文档治理 → 构建 → 调试产物 → UI 原语审计 → 用户决定 → 单元测试
+ * → 端到端冒烟 → 回归走查 → 发布风味构建与扫描。
  *
  * 用法：
  *   node scripts/check.mjs                    全量
- *   node scripts/check.mjs --skip-smoke       子代理最低要求（build + ui-audit + test + regression）
+ *   node scripts/check.mjs --skip-smoke       跳过端到端冒烟（子代理最低要求）
  *   node scripts/check.mjs --skip-regression  跳过回归走查
  *   node scripts/check.mjs --skip-release     跳过发布风味构建与扫描
- *   node scripts/check.mjs --skip-build    已有构建产物时只跑测试
- *   node scripts/check.mjs --skip-docs      跳过文档治理检查
- *   node scripts/check.mjs --keep-going    某一步失败后仍继续后续步骤
+ *   node scripts/check.mjs --skip-build       已有构建产物：跳过 build 与 release 构建
+ *   node scripts/check.mjs --skip-docs        跳过文档治理检查
+ *   node scripts/check.mjs --keep-going       某一步失败后仍继续后续步骤
  */
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
@@ -72,7 +73,8 @@ const steps = [
     name: 'release',
     command: process.execPath,
     args: ['scripts/check-release.mjs'],
-    skip: skipRelease,
+    // --skip-build 已声明复用现有产物，而 release 步骤必然会重新构建（release + debug）。
+    skip: skipRelease || skipBuild,
   },
 ]
 

@@ -192,20 +192,36 @@ for (const file of files) {
 }
 
 // tooltip 不能出现 0 宽度（否则每行一个字，反馈 #01）：全局样式必须有 min-width。
+// 找不到目标时按失败处理，避免样式改名后静默跳过。
+let indexCss = ''
 try {
-  const css = await readFile(join(SRC, 'index.css'), 'utf8')
-  const tipBlock = css.match(/\.ui-tip\s*\{([\s\S]*?)\}/)
-  if (tipBlock && !/min-width\s*:/.test(tipBlock[1])) {
-    issues.push({
-      file: 'packages/web/src/index.css',
-      line: 1,
-      check: 'tooltip-min-width',
-      label: '.ui-tip 缺少 min-width，窄内容可能退化成每行一个字',
-      text: '.ui-tip',
-    })
-  }
+  indexCss = await readFile(join(SRC, 'index.css'), 'utf8')
 } catch {
-  // index.css 不存在时忽略
+  issues.push({
+    file: 'packages/web/src/index.css',
+    line: 1,
+    check: 'tooltip-min-width',
+    label: '找不到 index.css：tooltip 最小宽度与全局样式无法检查',
+    text: 'packages/web/src/index.css',
+  })
+}
+const tipBlock = indexCss.match(/\.ui-tip\s*\{([\s\S]*?)\}/)
+if (indexCss && !tipBlock) {
+  issues.push({
+    file: 'packages/web/src/index.css',
+    line: 1,
+    check: 'tooltip-min-width',
+    label: '找不到 .ui-tip 样式块：tooltip 最小宽度无法检查',
+    text: '.ui-tip',
+  })
+} else if (tipBlock && !/min-width\s*:/.test(tipBlock[1])) {
+  issues.push({
+    file: 'packages/web/src/index.css',
+    line: 1,
+    check: 'tooltip-min-width',
+    label: '.ui-tip 缺少 min-width，窄内容可能退化成每行一个字',
+    text: '.ui-tip',
+  })
 }
 
 // 反馈10#07：菜单/按钮/分段控件里的文字行高必须 ≥ 1.4。这些行大多带 truncate

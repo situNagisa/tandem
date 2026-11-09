@@ -37,6 +37,7 @@ const F = {
   diffView: 'packages/web/src/components/DiffView.tsx',
   permissionCard: 'packages/web/src/components/PermissionCard.tsx',
   sessionList: 'packages/web/src/components/SessionList.tsx',
+  sidebar: 'packages/web/src/components/Sidebar.tsx',
   app: 'packages/web/src/App.tsx',
   envBar: 'packages/web/src/components/EnvBar.tsx',
   topBar: 'packages/web/src/components/TopBar.tsx',
@@ -320,8 +321,8 @@ const DECISIONS = [
     id: 'sidebar-single-settings',
     source: '侧栏信息层级',
     decision: '全应用唯一设置入口',
-    files: [F.sessionList, F.app],
-    need: [/设置/],
+    files: [F.sidebar, F.app],
+    need: [/openSettings\(\)/, /<span className="min-w-0 flex-1 truncate">设置<\/span>/, /<Sidebar \/>/],
   },
   {
     id: 'sidebar-host-groups',
@@ -393,7 +394,7 @@ const DECISIONS = [
     source: '反馈8#05',
     decision: '输入框底栏显示 ~x tok 与发送后上下文占比',
     files: [F.composer],
-    need: [/~.*tok|tok/, /发送后/],
+    need: [/data-composer-tokens/, /~\{formatTokens\(inputTokens\)\} tok/, /发送后 ~\{/],
   },
   {
     id: 'composer-markdown',
@@ -407,7 +408,10 @@ const DECISIONS = [
     source: '反馈8#11，反馈14#03',
     decision: '模型芯片只显示模型名，不拼强度文字、不显示小点',
     files: [F.modelMenu],
-    need: [/aria-label="选择模型"/, /芯片只显示模型名/],
+    need: [
+      /<span className="min-w-0 truncate">\{label\}<\/span>\s*\{!compact && <ChevronDown/,
+      /data-effort=\{effort\}/,
+    ],
     deny: [/data-effort-dot/],
   },
   {
