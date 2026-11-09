@@ -135,7 +135,9 @@ export function ContextSpaceSection({
                     title={title}
                     className="flex min-h-6 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[12px] leading-4 text-text-soft"
                   >
-                    <span className="shrink-0 text-muted">第 {turn.turn} 轮</span>
+                    <span className="w-4 shrink-0 text-right text-muted tabular-nums">
+                      {turn.turn}
+                    </span>
                     <span className="min-w-0 flex-1 truncate">{turn.preview}</span>
                     <span className="w-9 shrink-0 text-right font-mono tabular-nums">
                       {formatTokens(turn.tokens)}

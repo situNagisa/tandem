@@ -2700,10 +2700,14 @@ async function main() {
         })),
       )
       assert.ok(
-        rows.every((row) => /第 \d+ 轮/.test(row.text)),
+        rows.every((row) => /第 \d+ 轮/.test(row.turn)),
         `最占空间没有按轮次列出：${JSON.stringify(rows.slice(0, 3))}`,
       )
-      assert.equal(new Set(rows.map((row) => row.text.match(/第 (\d+) 轮/)?.[1])).size, rows.length, '同一轮被拆成了多行')
+      assert.ok(
+        rows.every((row) => /^\d+\s/.test(row.text)),
+        `最占空间行首不是纯轮号：${JSON.stringify(rows.slice(0, 3))}`,
+      )
+      assert.equal(new Set(rows.map((row) => row.turn.match(/第 (\d+) 轮/)?.[1])).size, rows.length, '同一轮被拆成了多行')
 
       // 二级展开：该轮内最大的几项（工具输出/消息）。
       const first = turns.first()
@@ -3787,7 +3791,20 @@ async function main() {
             .sort((a, b) => a.getBoundingClientRect().y - b.getBoundingClientRect().y)
             .map((el) => el.dataset.turnNo),
         )
+      const readPinnedLayout = () =>
+        page.evaluate(() => {
+          const clip = document.querySelector('.turn-clip')?.getBoundingClientRect()
+          const first = [...document.querySelectorAll('.turn-item')]
+            .filter((el) => {
+              const cs = getComputedStyle(el)
+              return cs.visibility !== 'hidden' && Number(cs.opacity) > 0.3
+            })
+            .sort((a, b) => a.getBoundingClientRect().y - b.getBoundingClientRect().y)[0]
+          if (!clip || !first) return null
+          return { gap: first.getBoundingClientRect().y - clip.y, height: clip.height }
+        })
       const beforeOrder = await readOrder()
+      const beforeClipHeight = (await readPinnedLayout())?.height ?? 0
       const beforeScroll = await page.locator('.chat-scroll').evaluate((el) => el.scrollTop)
       const target = await page.evaluate(() => {
         const rows = [...document.querySelectorAll('.turn-item')].filter((el) => {
@@ -3854,6 +3871,16 @@ async function main() {
       await page.waitForTimeout(600)
       const filtered = await readOrder()
       assert.deepEqual(filtered, [target.turn], `Alt 只看已固定时显示了多余的轮次：${filtered}`)
+      const pinnedLayout = await readPinnedLayout()
+      assert.ok(pinnedLayout, '只看已固定时读不到大纲行')
+      assert.ok(
+        pinnedLayout.gap <= 24,
+        `只看已固定时第一项离列表顶部 ${Math.round(pinnedLayout.gap)}px，应从列表顶部排列`,
+      )
+      assert.ok(
+        pinnedLayout.height <= 70 && pinnedLayout.height < beforeClipHeight,
+        `只看已固定时列表没有收缩到内容高度：${pinnedLayout.height}（全部轮次时 ${beforeClipHeight}）`,
+      )
       await page.keyboard.up('Alt')
       await page.waitForFunction(
         () => document.querySelector('.turn-rail')?.getAttribute('data-pinned-only') !== 'true',
@@ -3873,6 +3900,12 @@ async function main() {
       )
       await page.waitForTimeout(500)
       assert.deepEqual(await readOrder(), [target.turn], '点击提示行没有切到只看已固定')
+      const clickedLayout = await readPinnedLayout()
+      assert.ok(clickedLayout, '点击提示行后读不到大纲行')
+      assert.ok(
+        clickedLayout.gap <= 24,
+        `点击切到只看已固定后第一项离列表顶部 ${Math.round(clickedLayout.gap)}px，应从列表顶部排列`,
+      )
       await hint.click()
       await page.waitForFunction(
         () => document.querySelector('.turn-rail')?.getAttribute('data-pinned-only') !== 'true',

@@ -306,6 +306,10 @@ export function TurnRail({
   const openTimer = useRef(0)
   const closeTimer = useRef(0)
   const wheelAcc = useRef({ sum: 0, at: 0 })
+  // 「只看已固定」切换会改变面板高度，指针没动也会收到 pointerleave；
+  // 用短暂守卫区分布局变化与真正移出，避免面板跟着收起。
+  const shiftGuard = useRef(0)
+  const shiftTimer = useRef(0)
 
   useEffect(() => {
     followerRef.current = createScrollFollower(
@@ -434,7 +438,7 @@ export function TurnRail({
     sceneRef.current = scene
     scene.onDragRow = (turn) => goRef.current(originalOf(turn), { recenter: false })
     scene.onHoverTurn = (turn) => hoverSyncRef.current(turn)
-    scene.setData(viewTurnsRef.current, totalRef.current)
+    scene.setData(viewTurnsRef.current, viewTurnsRef.current.length)
     const viewPos = viewTurnsRef.current.findIndex((turn) => turn.turn === activeRef.current) + 1
     scene.setActive(viewPos || 1, true)
     scene.setCenter(viewPos || 1, true)
@@ -453,8 +457,17 @@ export function TurnRail({
   }, [railOn])
 
   useLayoutEffect(() => {
-    sceneRef.current?.setData(viewTurns, total)
-  }, [viewTurns, total])
+    sceneRef.current?.setData(viewTurns, pinnedView ? viewTurns.length : total)
+  }, [viewTurns, total, pinnedView])
+
+  useLayoutEffect(() => {
+    shiftGuard.current = 1
+    window.clearTimeout(shiftTimer.current)
+    shiftTimer.current = window.setTimeout(() => {
+      shiftGuard.current = 0
+    }, 280)
+    return () => window.clearTimeout(shiftTimer.current)
+  }, [pinnedView])
 
   useEffect(() => {
     activeRef.current = activeTurn
@@ -572,6 +585,21 @@ export function TurnRail({
     sceneRef.current?.setOpen(true)
   }, [])
 
+  // 守卫期内指针真的移出大纲（有 pointermove 事件才算），立即收起。
+  useEffect(() => {
+    if (!open) return
+    const onMove = (event: PointerEvent) => {
+      if (!shiftGuard.current) return
+      const target = document.elementFromPoint(event.clientX, event.clientY)
+      const nav = navRef.current
+      if (nav && target && nav.contains(target)) return
+      shiftGuard.current = 0
+      closePanel()
+    }
+    document.addEventListener('pointermove', onMove, { passive: true })
+    return () => document.removeEventListener('pointermove', onMove)
+  }, [open, closePanel])
+
   // 退出反馈模式后，如果指针早已不在大纲上，补一次收起（反馈模式的捕获层不会触发 pointerleave）。
   useEffect(() => {
     if (feedbackActive || !open) return
@@ -671,6 +699,8 @@ export function TurnRail({
     if (dragRef.current || useFeedbackStore.getState().active) return
     hideTooltip()
     hoverTipRef.current = null
+    // 面板刚因「只看已固定」收缩/展开：这时的 pointerleave 是布局变化造成的，等真实的指针移动再判断。
+    if (shiftGuard.current) return
     // 指针移到行尾图钉等面板内元素时，hit 也会收到 pointerleave，不应收起。
     // relatedTarget 可能是 Window（离开文档/浮层卸载），不能直接 contains。
     if (nodeContains(navRef.current, event.relatedTarget)) return

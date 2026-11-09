@@ -118,8 +118,8 @@ export class RailScene {
   }
 
   /**
-   * `layoutN` 是面板高度按多少行计算：切到「只看已固定」时仍按全部轮次保持面板尺寸，
-   * 避免面板和下方提示行在指针底下突然缩短/上移（反馈8#04）。
+   * `layoutN` 决定面板高度：一般等于全部轮次数；「只看已固定」时传固定轮次数，
+   * 面板缩到内容高度，固定的轮从列表顶部开始排（反馈8 验收补丁）。
    */
   setData(turns: SceneTurn[], layoutN = turns.length): void {
     // 固定/取消固定不改变阅读区顺序；插入压缩行/摘要行时按消息 id 找回原来的当前轮与视口中心，
@@ -162,7 +162,7 @@ export class RailScene {
 
   private geometry(): void {
     const actual = Math.max(1, this.N)
-    // 面板高度按全部轮次算，切到「只看已固定」时不改变面板与提示行的位置。
+    // 只看已固定时 layoutN 就是固定轮次数，面板随内容收缩；其余情况按全部轮次。
     const n = Math.max(actual, this.layoutN || 0)
     // 面板 + 下方计数胶囊/提示行都要落在可用高度内
     let rows = Math.floor((this.avail - 112) / ROW)
