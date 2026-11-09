@@ -8,10 +8,10 @@ import { useAppStore } from '../../store/useAppStore'
 import { formatCost, formatTokens } from '../../lib/format'
 import { IconButton } from '../ui/Button'
 import { SegmentedControl } from '../ui/Controls'
+import { Card } from '../ui/Card'
 
 import { Card } from '../ui/Card'
 type RangeKey = '7d' | '30d' | 'month'
-import { Card } from '../ui/Card'
 
 const RANGES: Array<{ key: RangeKey; label: string }> = [
   { key: '7d', label: '7 天' },

@@ -13,6 +13,7 @@ import {
   Users,
 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { SettingNote, SettingRow } from '../ui/SettingRow'
 import type {
   GatewayMemberUsage,
   GatewayModelRoute,
@@ -29,9 +30,9 @@ import { Button, IconButton } from '../ui/Button'
 import { Input, Switch } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 import { Modal } from '../ui/Modal'
-
 import { Card } from '../ui/Card'
 import { EmptyState } from '../ui/EmptyState'
+
 function formatLimit(value?: number): string {
   return value ? formatCost(value) : '不限'
 }
@@ -508,21 +509,18 @@ export function GatewaySection() {
           <h4 className="text-[13px] font-medium">日志与调试</h4>
           <span className="text-[12px] text-muted">日志只记时间、成员、模型、token、耗时、状态码</span>
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-bg/40 px-2.5 py-2">
-          <span className="min-w-0 flex-1 text-[13px]">
-            调试正文
-            <span className="ml-2 text-[12px] text-muted">
-              临时记录请求/响应，自动脱敏，24 小时后删除；关闭时立即清空
-            </span>
-          </span>
-          <span className="text-[12px] text-muted">{overview?.debugCount ?? 0} 条</span>
+        <SettingRow
+          label="调试正文"
+          hint="临时记录请求/响应，自动脱敏，24 小时后删除；关闭时立即清空"
+          unit={`${overview?.debugCount ?? 0} 条`}
+        >
           <Switch
             checked={!!settings?.debugBodies}
             onChange={(debugBodies) => settings && void saveSettings({ ...settings, debugBodies })}
             disabled={!settings || saving}
             label="调试正文"
           />
-        </div>
+        </SettingRow>
         {overview?.logs.length ? (
           <div className="mt-2 overflow-x-auto">
             <div className="min-w-[640px]">
@@ -612,54 +610,49 @@ export function GatewaySection() {
                 成员：{tokenModal.memberName}
               </div>
             ) : (
-              <div>
-                <label className="settings-label">成员</label>
-                <MenuSelect
+              <SettingRow label="成员" stacked wide>
+<MenuSelect
                   value={tokenModal?.memberId ?? ''}
                   onChange={(memberId) => setTokenModal((current) => (current ? { ...current, memberId } : current))}
                   aria-label="选择成员"
                   placeholder="选择成员"
                   options={memberOptions}
                 />
-              </div>
+                </SettingRow>
             )}
             <div className="grid gap-2 sm:grid-cols-3">
-              <div>
-                <label className="settings-label">每日限额（美元）</label>
-                <Input
+              <SettingRow label="每日限额（美元）" stacked wide>
+<Input
                   value={tokenModal?.daily ?? ''}
                   onChange={(e) => setTokenModal((current) => (current ? { ...current, daily: e.target.value } : current))}
                   placeholder="不限"
                   inputMode="decimal"
                 />
-              </div>
-              <div>
-                <label className="settings-label">每月限额（美元）</label>
-                <Input
+                </SettingRow>
+              <SettingRow label="每月限额（美元）" stacked wide>
+<Input
                   value={tokenModal?.monthly ?? ''}
                   onChange={(e) => setTokenModal((current) => (current ? { ...current, monthly: e.target.value } : current))}
                   placeholder="不限"
                   inputMode="decimal"
                 />
-              </div>
-              <div>
-                <label className="settings-label">速率限制（RPM）</label>
-                <Input
+                </SettingRow>
+              <SettingRow label="速率限制（RPM）" stacked wide>
+<Input
                   value={tokenModal?.rpm ?? '60'}
                   onChange={(e) => setTokenModal((current) => (current ? { ...current, rpm: e.target.value } : current))}
                   placeholder="60"
                   inputMode="numeric"
                 />
-              </div>
+                </SettingRow>
             </div>
-            <div>
-              <label className="settings-label">可用模型白名单</label>
-              <Input
+            <SettingRow label="可用模型白名单" stacked wide>
+<Input
                 value={tokenModal?.models ?? ''}
                 onChange={(e) => setTokenModal((current) => (current ? { ...current, models: e.target.value } : current))}
                 placeholder="留空表示路由里的全部模型；多个用逗号分隔"
               />
-            </div>
+              </SettingRow>
             <p className="text-[12px] leading-5 text-muted">
               限额按网关记账的参考价累计（与「用量」页一致）。达到限额后请求返回 429 和可读提示；吊销令牌立即生效。
             </p>

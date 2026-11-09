@@ -690,11 +690,9 @@ function Field({
   children: ReactNode
 }) {
   return (
-    <Tag className={cn('block min-w-0 space-y-1', className)}>
-      <span className="block text-[12px] text-text-tertiary">{label}</span>
+    <SettingRow label={label} hint={hint} stacked wide className={className}>
       {children}
-      {hint && <span className="block text-[12px] leading-4 text-muted">{hint}</span>}
-    </Tag>
+    </SettingRow>
   )
 }
 

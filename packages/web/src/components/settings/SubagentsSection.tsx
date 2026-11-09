@@ -21,12 +21,12 @@ import { DELEGATION_META, DELEGATION_ORDER } from '../../lib/routeLabels'
 import { profileModelGroups } from '../../lib/profileModels'
 import { Button, IconButton } from '../ui/Button'
 import { Input, Select, Switch } from '../ui/Controls'
+import { Card } from '../ui/Card'
 
 const MODE_LABEL: Record<PermissionMode, string> = {
 import { Card } from '../ui/Card'
   default: '默认（按规则审批）',
   acceptEdits: '自动接受编辑',
-import { Card } from '../ui/Card'
   plan: '计划模式',
   bypassPermissions: '跳过审批',
 }
@@ -307,25 +307,20 @@ export function SubagentsSection() {
             </Button>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1 text-[12px] text-muted">
-              名称（作为 subagent_type）
-              <Input
+            <SettingRow label="名称（作为 subagent_type）" stacked wide>
+<Input
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                 placeholder="如 探索 / 测试 / 审查"
-              />
-            </label>
-            <label className="space-y-1 text-[12px] text-muted">
-              描述（给模型看）
-              <Input
+              /></SettingRow>
+            <SettingRow label="描述（给模型看）" stacked wide>
+<Input
                 value={draft.description}
                 onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                 placeholder="只读搜索代码与定位实现"
-              />
-            </label>
-            <label className="space-y-1 text-[12px] text-muted">
-              账号
-              <Select
+              /></SettingRow>
+            <SettingRow label="账号" stacked wide>
+<Select
                 value={draft.profileId}
                 onChange={(e) => {
                   const profileId = e.target.value
@@ -345,11 +340,9 @@ export function SubagentsSection() {
                     {profile.name}
                   </option>
                 ))}
-              </Select>
-            </label>
-            <label className="space-y-1 text-[12px] text-muted">
-              分组
-              <Select
+              </Select></SettingRow>
+            <SettingRow label="分组" stacked wide>
+<Select
                 value={draft.groupId}
                 onChange={(e) => {
                   const current = profiles.find((item) => item.id === draft.profileId)
@@ -371,11 +364,9 @@ export function SubagentsSection() {
                     </option>
                   ),
                 )}
-              </Select>
-            </label>
-            <label className="space-y-1 text-[12px] text-muted">
-              模型
-              <Select
+              </Select></SettingRow>
+            <SettingRow label="模型" stacked wide>
+<Select
                 value={draft.model}
                 onChange={(e) => setDraft({ ...draft, model: e.target.value })}
                 disabled={!draft.profileId}
@@ -387,11 +378,9 @@ export function SubagentsSection() {
                     {model}
                   </option>
                 ))}
-              </Select>
-            </label>
-            <label className="space-y-1 text-[12px] text-muted">
-              思考强度
-              <Select
+              </Select></SettingRow>
+            <SettingRow label="思考强度" stacked wide>
+<Select
                 value={draft.effort}
                 onChange={(e) => setDraft({ ...draft, effort: e.target.value as Draft['effort'] })}
               >
@@ -401,11 +390,9 @@ export function SubagentsSection() {
                     {EFFORT_LABEL[effort]}
                   </option>
                 ))}
-              </Select>
-            </label>
-            <label className="space-y-1 text-[12px] text-muted">
-              权限模式
-              <Select
+              </Select></SettingRow>
+            <SettingRow label="权限模式" stacked wide>
+<Select
                 value={draft.permissionMode}
                 onChange={(e) =>
                   setDraft({ ...draft, permissionMode: e.target.value as Draft['permissionMode'] })
@@ -417,11 +404,9 @@ export function SubagentsSection() {
                     {MODE_LABEL[mode]}
                   </option>
                 ))}
-              </Select>
-            </label>
-            <label className="space-y-1 text-[12px] text-muted">
-              子代理委派倾向
-              <Select
+              </Select></SettingRow>
+            <SettingRow label="子代理委派倾向" stacked wide>
+<Select
                 value={draft.delegation}
                 onChange={(e) =>
                   setDraft({ ...draft, delegation: e.target.value as Draft['delegation'] })
@@ -433,18 +418,15 @@ export function SubagentsSection() {
                     {DELEGATION_META[value].longLabel}
                   </option>
                 ))}
-              </Select>
-            </label>
-            <label className="sm:col-span-2 space-y-1 text-[12px] text-muted">
-              附加系统提示
-              <textarea
+              </Select></SettingRow>
+            <SettingRow label="附加系统提示" stacked wide className="sm:col-span-2">
+<textarea
                 value={draft.systemPrompt}
                 onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
                 placeholder="例如：只做只读调研，不修改文件；输出中文结论。"
                 rows={3}
                 className="w-full resize-y rounded-lg border border-border bg-surface px-2.5 py-2 text-[13px] text-text outline-none placeholder:text-muted focus:border-border-strong"
-              />
-            </label>
+              /></SettingRow>
           </div>
           <div className="mt-3">
             <div className="mb-1.5 text-[12px] text-muted">可用工具（不选则继承主会话全部工具）</div>

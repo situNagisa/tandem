@@ -13,6 +13,7 @@ import {
   Upload,
 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { SettingRow } from '../ui/SettingRow'
 import type { ConfigBundle, ConfigImportResult } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
@@ -24,9 +25,9 @@ import { Button, IconButton } from '../ui/Button'
 import { Input } from '../ui/Controls'
 import { Modal } from '../ui/Modal'
 import { MenuSelect } from '../ui/Menu'
-
 import { Card } from '../ui/Card'
 import { EmptyState } from '../ui/EmptyState'
+
 function bundleText(bundle: ConfigBundle): string {
   return JSON.stringify(bundle, null, 2)
 }
@@ -292,8 +293,8 @@ export function SyncSection() {
           </div>
 
           <div className="mt-3">
-            <label className="settings-label">加密口令</label>
-            <div className="relative">
+            <SettingRow label="加密口令" stacked wide>
+              <div className="relative w-full">
               <Input
                 value={exportPass}
                 onChange={(e) => {
@@ -315,7 +316,8 @@ export function SyncSection() {
                   {showExportPass ? <EyeOff size={13} /> : <Eye size={13} />}
                 </IconButton>
               </span>
-            </div>
+              </div>
+            </SettingRow>
           </div>
 
           {exportError && (
@@ -395,8 +397,8 @@ export function SyncSection() {
           </Button>
 
           <div className="mt-3">
-            <label className="settings-label">口令</label>
-            <div className="relative">
+            <SettingRow label="口令" stacked wide>
+              <div className="relative w-full">
               <Input
                 value={importPass}
                 onChange={(e) => {
@@ -418,11 +420,12 @@ export function SyncSection() {
                   {showImportPass ? <EyeOff size={13} /> : <Eye size={13} />}
                 </IconButton>
               </span>
-            </div>
+              </div>
+            </SettingRow>
           </div>
 
           <div className="mt-3">
-            <label className="settings-label">导入方式</label>
+            <SettingRow label="导入方式" stacked wide>
             <div className="grid gap-1.5 sm:grid-cols-2">
               {(
                 [
@@ -458,6 +461,7 @@ export function SyncSection() {
                 </button>
               ))}
             </div>
+            </SettingRow>
           </div>
 
           {importError && (

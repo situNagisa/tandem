@@ -12,6 +12,7 @@ import type {
 } from '@tandem/protocol'
 import { ChevronDown, GitFork, Wand2 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { SettingRow } from '../ui/SettingRow'
 import { profileModelGroups } from '../../lib/profileModels'
 import { ROUTE_MODE_META } from '../../lib/routeLabels'
 import { formatCost } from '../../lib/format'
@@ -249,30 +250,25 @@ export function DivisionRoutingSection({
         {preview && <span className="text-[12px] text-muted">{preview}</span>}
       </div>
 
-      <div className="grid gap-1.5">
+      <div>
         {ROLE_ROWS.map((item) => (
-          <div key={item.role} className="flex flex-wrap items-center gap-2 rounded-md border border-border/70 px-2 py-1.5">
-            <div className="min-w-0 flex-1">
-              <div className="text-[13px] text-text">{item.label}</div>
-              <div className="text-[12px] text-muted">{item.hint}</div>
-            </div>
-            <div className="w-[220px] max-w-full shrink-0">
-              <Select
-                size="sm"
-                value={assignmentKey(item.role === 'planner' ? division.planner : item.role === 'executor' ? division.executor : division.reviewer)}
-                disabled={saving || loading}
-                onChange={(event) => setRole(item.role, event.target.value)}
-                aria-label={`${item.label}模型`}
-              >
-                <option value="">自动（最便宜/最强）</option>
-                {rows.map((row) => (
-                  <option key={row.key} value={row.key}>
-                    {row.account} › {row.group} › {row.model} · {priceText(row.price)}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          </div>
+          <SettingRow key={item.role} label={item.label} hint={item.hint} wide>
+            <Select
+              size="sm"
+              value={assignmentKey(item.role === 'planner' ? division.planner : item.role === 'executor' ? division.executor : division.reviewer)}
+              disabled={saving || loading}
+              onChange={(event) => setRole(item.role, event.target.value)}
+              aria-label={`${item.label}模型`}
+              className="w-[220px] max-w-full"
+            >
+              <option value="">自动（最便宜/最强）</option>
+              {rows.map((row) => (
+                <option key={row.key} value={row.key}>
+                  {row.account} › {row.group} › {row.model} · {priceText(row.price)}
+                </option>
+              ))}
+            </Select>
+          </SettingRow>
         ))}
       </div>
 
@@ -341,9 +337,8 @@ export function DivisionRoutingSection({
         </div>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2">
-        <label className="flex items-center justify-between gap-2 text-[13px] text-text">
-          进入多代理协作的最低复杂度
+      <div>
+        <SettingRow label={<>进入多代理协作的最低复杂度</>}>
           <Input
             size="sm"
             type="number"
@@ -354,9 +349,8 @@ export function DivisionRoutingSection({
             onChange={(event) => update({ planThreshold: Number(event.target.value) })}
             className="w-20"
           />
-        </label>
-        <label className="flex items-center justify-between gap-2 text-[13px] text-text">
-          每轮成本上限（$，0=关）
+        </SettingRow>
+        <SettingRow label={<>每轮成本上限（$，0=关）</>}>
           <Input
             size="sm"
             type="number"
@@ -369,9 +363,8 @@ export function DivisionRoutingSection({
             }
             className="w-24"
           />
-        </label>
-        <label className="flex items-center justify-between gap-2 text-[13px] text-text">
-          多代理协作前确认
+        </SettingRow>
+        <SettingRow label={<>多代理协作前确认</>}>
           <Select
             size="sm"
             value={confirm}
@@ -383,9 +376,8 @@ export function DivisionRoutingSection({
             <option value="expensive">仅贵时</option>
             <option value="always">总是</option>
           </Select>
-        </label>
-        <label className="flex items-center justify-between gap-2 text-[13px] text-text">
-          贵时阈值（$）
+        </SettingRow>
+        <SettingRow label={<>贵时阈值（$）</>}>
           <Input
             size="sm"
             type="number"
@@ -396,7 +388,7 @@ export function DivisionRoutingSection({
             onChange={(event) => update({ confirmOverUsd: Number(event.target.value) })}
             className="w-24"
           />
-        </label>
+        </SettingRow>
       </div>
 
       {(division.learned?.length ?? 0) > 0 && (

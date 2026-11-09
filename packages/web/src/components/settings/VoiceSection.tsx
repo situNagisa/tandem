@@ -178,8 +178,7 @@ export function VoiceSection() {
               录音会通过局域网发到该 Host，转写后临时文件立即删除。可执行文件和模型都由你自行准备。
             </p>
             <div className="mt-3 grid gap-2.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="w-20 shrink-0 text-[12px] text-muted">识别后端</span>
+              <SettingRow label="识别后端">
                 <SegmentedControl
                   options={ENGINE_OPTIONS}
                   value={draft.engine ?? 'auto'}
@@ -187,27 +186,24 @@ export function VoiceSection() {
                   size="sm"
                   aria-label="本机 Whisper 后端"
                 />
-              </div>
-              <label className="flex flex-wrap items-center gap-2">
-                <span className="w-20 shrink-0 text-[12px] text-muted">可执行文件</span>
+              </SettingRow>
+              <SettingRow label="可执行文件" wide>
                 <Input
                   value={draft.binaryPath ?? ''}
                   onChange={(e) => patch({ binaryPath: e.target.value })}
                   placeholder="whisper-cli 的绝对路径；faster-whisper 模式填 python3"
                   className="font-mono text-[12px]"
                 />
-              </label>
-              <label className="flex flex-wrap items-center gap-2">
-                <span className="w-20 shrink-0 text-[12px] text-muted">模型</span>
+              </SettingRow>
+              <SettingRow label="模型" wide>
                 <Input
                   value={draft.modelPath ?? ''}
                   onChange={(e) => patch({ modelPath: e.target.value })}
                   placeholder="ggml-small.bin 的绝对路径；faster-whisper 填 small 或本地目录"
                   className="font-mono text-[12px]"
                 />
-              </label>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="w-20 shrink-0 text-[12px] text-muted">语言</span>
+              </SettingRow>
+              <SettingRow label="语言">
                 <Input
                   value={draft.language ?? 'zh'}
                   onChange={(e) => patch({ language: e.target.value })}
@@ -227,7 +223,7 @@ export function VoiceSection() {
                 >
                   {testing ? '测试中…' : '测试'}
                 </Button>
-              </div>
+              </SettingRow>
             </div>
             {test ? (
               <div
@@ -306,18 +302,17 @@ export function VoiceSection() {
               安卓 App 使用系统语音服务；请在系统设置中下载中文离线语音包，避免识别时联网。
               浏览器 Web Speech API 在 Chrome 中通常会把音频发到浏览器厂商的服务器，因此默认关闭。
             </p>
-            <div className="mt-3 flex items-center gap-2.5">
-              <Switch
-                checked={prefs.browserSpeechAllowed}
-                onChange={(browserSpeechAllowed) => updatePrefs({ browserSpeechAllowed })}
-                label="允许使用浏览器内置识别（可能联网）"
-                disabled={isNativeApp()}
-              />
-              <span className="text-[12px] text-text-soft">
-                允许使用浏览器内置识别（可能联网）
-              </span>
+            <div className="mt-1">
+              <SettingRow label="允许使用浏览器内置识别（可能联网）">
+                <Switch
+                  checked={prefs.browserSpeechAllowed}
+                  onChange={(browserSpeechAllowed) => updatePrefs({ browserSpeechAllowed })}
+                  label="允许使用浏览器内置识别（可能联网）"
+                  disabled={isNativeApp()}
+                />
+              </SettingRow>
               {!browserSpeechSupported() && !isNativeApp() ? (
-                <span className="text-[12px] text-muted">当前浏览器不支持</span>
+                <SettingNote>当前浏览器不支持</SettingNote>
               ) : null}
             </div>
           </div>

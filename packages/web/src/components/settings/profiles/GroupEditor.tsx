@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { Spinner } from '../../ui/Spinner'
+import { SettingRow } from '../../ui/SettingRow'
 import { api } from '../../../lib/api'
 import { cn } from '../../../lib/cn'
 import { mergeFetchedSelection } from '../../../lib/modelSelection'
@@ -196,17 +197,15 @@ export function GroupEditor({
         </span>
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
-        <div>
-          <label className={labelCls}>分组名称</label>
+        <SettingRow label="分组名称" stacked wide>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="例如：官方渠道 / 低价渠道"
             className={inputCls}
           />
-        </div>
-        <div>
-          <label className={labelCls}>协议类型</label>
+        </SettingRow>
+        <SettingRow label="协议类型" stacked wide>
           <MenuSelect
             value={kind}
             onChange={(next) => setKind(next as ProviderKind)}
@@ -216,9 +215,8 @@ export function GroupEditor({
               label,
             }))}
           />
-        </div>
-        <div>
-          <label className={labelCls}>分组 Key</label>
+        </SettingRow>
+        <SettingRow label="分组 Key" stacked wide>
           {existing && !editingKey ? (
             <div className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5">
               <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-text-soft">
@@ -273,10 +271,17 @@ export function GroupEditor({
               </span>
             </div>
           )}
-        </div>
+        </SettingRow>
       </div>
       <div className="mt-2">
-        <label className={labelCls}>Base URL（可选，缺省沿用账号）</label>
+        <SettingRow
+          label="Base URL（可选，缺省沿用账号）"
+          stacked
+          wide
+          hint={kind === 'anthropic'
+            ? 'Anthropic 协议会自动拼接 /v1/messages；填完整端点也可以。'
+            : 'OpenAI 系协议会自动拼接 /chat/completions。'}
+        >
         <input
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
@@ -284,20 +289,16 @@ export function GroupEditor({
           spellCheck={false}
           className={cn(inputCls, 'font-mono text-[13px]')}
         />
-        <p className="mt-1 text-[13px] leading-4 text-muted">
-          {kind === 'anthropic'
-            ? 'Anthropic 协议会自动拼接 /v1/messages；填完整端点也可以。'
-            : 'OpenAI 系协议会自动拼接 /chat/completions。'}
-          {kind !== profileKind &&
-            ' 分组协议与账号不同时，未填 URL 会按该协议从账号 URL 推断（去掉原协议端点并补版本路径）。'}
-        </p>
+        </SettingRow>
       </div>
 
       <div className="mt-2 grid gap-2 sm:grid-cols-3">
-        <div>
-          <label className={labelCls} htmlFor={`group-multiplier-${existing?.id ?? 'new'}`}>
-            价格倍率
-          </label>
+        <SettingRow
+          label="价格倍率"
+          stacked
+          wide
+          hint="默认 1.0；实际价 = 官方价 × 账号倍率 × 分组倍率，这里在账号倍率之上再叠加，如 0.8。"
+        >
           <input
             id={`group-multiplier-${existing?.id ?? 'new'}`}
             type="number"
@@ -307,14 +308,11 @@ export function GroupEditor({
             onChange={(e) => setMultiplier(e.target.value)}
             className={cn(inputCls, 'w-28 font-mono')}
           />
-          <p className="mt-1 text-[12px] leading-4 text-muted">
-            默认 1.0；实际价 = 官方价 × 账号倍率 × 分组倍率，这里在账号倍率之上再叠加，如 0.8。
-          </p>
-        </div>
+        </SettingRow>
       </div>
 
       <div className="mt-2">
-        <label className={labelCls}>备用分组（额度将尽时按顺序交接）</label>
+        <SettingRow label="备用分组（额度将尽时按顺序交接）" stacked wide>
         {fallbackIds.length > 0 ? (
           <div className="space-y-1">
             {fallbackIds.map((id, index) => {
@@ -392,6 +390,7 @@ export function GroupEditor({
             />
           </div>
         )}
+        </SettingRow>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">

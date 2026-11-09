@@ -10,6 +10,7 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { SettingRow } from '../ui/SettingRow'
 import type {
   EvalCase,
   EvalConfig,
@@ -411,15 +412,12 @@ export function EvalsSection() {
           )}
 
           <div data-setting-id="evals.reviewer" className="mt-3 rounded-lg border border-border bg-bg/40 p-2.5">
-            <div className="flex items-center gap-2">
+            <SettingRow label="评审模型" hint="按用例的「通过标准」给结论">
               <Switch checked={reviewer.enabled} onChange={toggleReviewer} label="评审模型" />
-              <span className="text-[12.5px] text-text-soft">评审模型</span>
-              <span className="text-[12px] text-muted">按用例的「通过标准」给结论</span>
-            </div>
+            </SettingRow>
             {reviewer.enabled && (
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
-                  评审账号
+              <div>
+                <SettingRow label="评审账号" wide>
                   <Select
                     value={reviewer.profileId}
                     onChange={(event) => changeReviewerProfile(event.target.value)}
@@ -432,9 +430,8 @@ export function EvalsSection() {
                       </option>
                     ))}
                   </Select>
-                </label>
-                <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
-                  评审模型
+                </SettingRow>
+                <SettingRow label="评审模型" wide>
                   <Select
                     value={reviewer.model}
                     onChange={(event) => setReviewer((current) => ({ ...current, model: event.target.value }))}
@@ -450,7 +447,7 @@ export function EvalsSection() {
                       </option>
                     ))}
                   </Select>
-                </label>
+                </SettingRow>
               </div>
             )}
           </div>

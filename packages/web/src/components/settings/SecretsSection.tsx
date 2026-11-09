@@ -384,37 +384,29 @@ export function SecretsSection() {
         }
       >
         <div className="space-y-3">
-          <label className="block">
-            <span className="mb-1 block text-[12px] text-muted">名称（环境变量名）</span>
-            <Input
+          <SettingRow label={<>名称（环境变量名）</>} stacked wide>            <Input
               value={form.name}
               onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
               placeholder="DB_PASSWORD"
               className="font-mono"
               autoFocus
             />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-[12px] text-muted">
-              值{editing !== 'new' ? '（留空表示不修改）' : ''}
-            </span>
-            <Input
+          </SettingRow>
+          <SettingRow label={<>值{editing !== 'new' ? '（留空表示不修改）' : ''}</>} stacked wide>            <Input
               type="password"
               value={form.value}
               onChange={(e) => setForm((prev) => ({ ...prev, value: e.target.value }))}
               placeholder={editing === 'new' ? '输入后保存，不再回显' : '••••••••'}
               autoComplete="new-password"
             />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-[12px] text-muted">描述（会显示给模型，不要写值）</span>
-            <Textarea
+          </SettingRow>
+          <SettingRow label={<>描述（会显示给模型，不要写值）</>} stacked wide>            <Textarea
               rows={2}
               value={form.description}
               onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
               placeholder="例如：本地测试数据库密码"
             />
-          </label>
+          </SettingRow>
           <div>
             <span className="mb-1 block text-[12px] text-muted">注入范围</span>
             <div className="space-y-2 rounded-lg border border-border px-3 py-2">
@@ -430,9 +422,7 @@ export function SecretsSection() {
               ))}
             </div>
           </div>
-          <label className="block">
-            <span className="mb-1 block text-[12px] text-muted">所属项目</span>
-            {editing !== 'new' ? (
+          <SettingRow label={<>所属项目</>} stacked wide>            {editing !== 'new' ? (
               <div className="rounded-md border border-border bg-bg/40 px-2.5 py-1.5 font-mono text-[12px] text-text-soft">
                 {form.project || '全局（所有项目）'}
               </div>
@@ -462,7 +452,7 @@ export function SecretsSection() {
                 </span>
               </>
             )}
-          </label>
+          </SettingRow>
         </div>
       </Modal>
 

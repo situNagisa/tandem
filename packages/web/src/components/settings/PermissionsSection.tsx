@@ -16,6 +16,7 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { SettingRow } from '../ui/SettingRow'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { api } from '../../lib/api'
@@ -23,8 +24,8 @@ import { Button, IconButton } from '../ui/Button'
 import { Input, SegmentedControl, Switch, Textarea } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 import { Modal } from '../ui/Modal'
-
 import { EmptyState } from '../ui/EmptyState'
+
 const TOOL_OPTIONS = ['Bash', 'Write', 'Edit', 'Read', 'Glob', 'Grep', 'WebFetch', 'browser_navigate', 'browser_*', '*']
 
 const ACTIONS: Array<{ value: PermissionRule['action']; label: string }> = [
@@ -554,22 +555,19 @@ export function PermissionsSection() {
             ~/.tandem、~/.claude、~/.codex、系统目录、项目 .git/hooks 与 .env* 的任何写入都会转审批，
             不受 bypassPermissions 影响。
           </p>
-          <label className="flex items-center justify-between gap-3 rounded-lg border border-border/70 px-2.5 py-2">
-            <span className="min-w-0">
-              <span className="block text-[13px]">严格模式</span>
-              <span className="block text-[12px] leading-5 text-muted">
-                无法静态判断写入范围的命令（脚本、构建、eval 等）也转审批；默认不拦截以避免误伤。
-              </span>
-            </span>
-            {sandbox && (
+          <SettingRow
+            label="严格模式"
+            hint="无法静态判断写入范围的命令（脚本、构建、eval 等）也转审批；默认不拦截以避免误伤。"
+          >
+            {sandbox ? (
               <Switch
                 checked={sandbox.strict}
                 disabled={sandboxSaving}
                 onChange={(strict) => void updateSandbox({ strict })}
                 label="严格模式"
               />
-            )}
-          </label>
+            ) : null}
+          </SettingRow>
         </div>
 
         <div data-setting-id="permissions.network" className="space-y-2 border-t border-border/60 pt-2">

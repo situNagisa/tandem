@@ -9,6 +9,7 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { SettingRow } from '../ui/SettingRow'
 import type { McpServerConfig, McpServerStatus } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
@@ -18,8 +19,8 @@ import { Modal } from '../ui/Modal'
 import { Button, IconButton } from '../ui/Button'
 import { Input, SegmentedControl, Switch } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
-
 import { EmptyState } from '../ui/EmptyState'
+
 const SOURCE_LABEL: Record<string, string> = {
   tandem: 'Tandem',
   claude: 'Claude',
@@ -158,9 +159,8 @@ function McpEditor({
       }
     >
       <div className="space-y-3">
-        <div>
-          <label className="settings-label">名称</label>
-          <Input
+        <SettingRow label="名称" stacked wide>
+<Input
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="例如 github、playwright"
@@ -168,7 +168,7 @@ function McpEditor({
             className="font-mono text-[13px]"
           />
           <p className="mt-1 text-[13px] text-muted">工具名前缀为 mcp__{form.name.trim() || 'server'}__…</p>
-        </div>
+          </SettingRow>
         <SegmentedControl
           aria-label="传输方式"
           className="flex w-full"
@@ -181,19 +181,17 @@ function McpEditor({
         />
         {form.transport === 'stdio' ? (
           <>
-            <div>
-              <label className="settings-label">命令</label>
-              <Input
+            <SettingRow label="命令" stacked wide>
+<Input
                 value={form.command}
                 onChange={(e) => setForm({ ...form, command: e.target.value })}
                 placeholder="npx"
                 spellCheck={false}
                 className="font-mono text-[13px]"
               />
-            </div>
-            <div>
-              <label className="settings-label">参数（每行一个）</label>
-              <textarea
+              </SettingRow>
+            <SettingRow label="参数（每行一个）" stacked wide>
+<textarea
                 value={form.args}
                 onChange={(e) => setForm({ ...form, args: e.target.value })}
                 placeholder={'-y\n@modelcontextprotocol/server-filesystem\n/home/me'}
@@ -201,10 +199,9 @@ function McpEditor({
                 rows={3}
                 className="settings-textarea"
               />
-            </div>
-            <div>
-              <label className="settings-label">环境变量（KEY=value，每行一个）</label>
-              <textarea
+              </SettingRow>
+            <SettingRow label="环境变量（KEY=value，每行一个）" stacked wide>
+<textarea
                 value={form.env}
                 onChange={(e) => setForm({ ...form, env: e.target.value })}
                 placeholder="GITHUB_TOKEN=ghp_…"
@@ -212,23 +209,21 @@ function McpEditor({
                 rows={2}
                 className="settings-textarea"
               />
-            </div>
+              </SettingRow>
           </>
         ) : (
           <>
-            <div>
-              <label className="settings-label">地址</label>
-              <Input
+            <SettingRow label="地址" stacked wide>
+<Input
                 value={form.url}
                 onChange={(e) => setForm({ ...form, url: e.target.value })}
                 placeholder="https://example.com/mcp"
                 spellCheck={false}
                 className="font-mono text-[13px]"
               />
-            </div>
-            <div>
-              <label className="settings-label">请求头（Name: value，每行一个）</label>
-              <textarea
+              </SettingRow>
+            <SettingRow label="请求头（Name: value，每行一个）" stacked wide>
+<textarea
                 value={form.headers}
                 onChange={(e) => setForm({ ...form, headers: e.target.value })}
                 placeholder="Authorization: Bearer …"
@@ -236,7 +231,7 @@ function McpEditor({
                 rows={3}
                 className="settings-textarea"
               />
-            </div>
+              </SettingRow>
           </>
         )}
         <div className="flex min-h-8 items-center gap-3">

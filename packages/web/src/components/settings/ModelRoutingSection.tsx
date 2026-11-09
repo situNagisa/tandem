@@ -10,6 +10,7 @@ import type {
 } from '@tandem/protocol'
 import { Check, GitFork, Sparkles, TriangleAlert, X } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { SettingRow } from '../ui/SettingRow'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { cn } from '../../lib/cn'
@@ -263,21 +264,18 @@ export function ModelRoutingSection() {
             onChange={(value) => persist({ ...routing, preference: value })}
             aria-label="路由偏好"
           />
-        </div>
-        <div className="flex items-center justify-between gap-3 border-t border-border pt-2.5">
-          <div>
-            <div className="text-[13px] text-text">用小模型判断难度</div>
-            <div className="mt-0.5 text-[12px] leading-4 text-muted">
-              每轮额外发一次很小的请求（默认关闭）；失败或超时按规则打分。
-            </div>
-          </div>
+        </SettingRow>
+        <SettingRow
+          label="用小模型判断难度"
+          hint="每轮额外发一次很小的请求（默认关闭）；失败或超时按规则打分。"
+        >
           <Switch
             checked={routing.judge === true}
             onChange={(on) => persist({ ...routing, judge: on })}
             label="用小模型判断难度"
             disabled={saving}
           />
-        </div>
+        </SettingRow>
       </section>
 
       <DivisionRoutingSection

@@ -8,11 +8,12 @@ import { cn } from '../../lib/cn'
 import { Button } from '../ui/Button'
 import { ShortcutsTable } from './ShortcutsTable'
 import { Switch } from '../ui/Controls'
+import { SettingNote, SettingRow } from '../ui/SettingRow'
 import { navigate } from '../../lib/router'
+import { Card } from '../ui/Card'
 
 import { Card } from '../ui/Card'
 const THEMES: Array<{ id: Theme; label: string; desc: string; icon: typeof Sun }> = [
-import { Card } from '../ui/Card'
   { id: 'light', label: '浅色', desc: '暖白纸面，白天更清爽', icon: Sun },
   { id: 'dark', label: '深色', desc: '低亮度暖黑，夜间更舒适', icon: Moon },
   { id: 'system', label: '跟随系统', desc: '随设备外观自动切换', icon: Monitor },
@@ -197,11 +198,11 @@ export function AppearanceSection() {
             disabled={permission === 'denied'}
             label="桌面通知"
           />
-        </div>
+        </SettingRow>
         {permission === 'denied' && (
-          <p className="mt-2 text-[13px] leading-5 text-warning">
+          <SettingNote tone="warning">
             浏览器已拒绝通知权限，可在地址栏的站点设置里重新允许。
-          </p>
+          </SettingNote>
         )}
       </Card>
 

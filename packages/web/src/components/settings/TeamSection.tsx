@@ -31,12 +31,12 @@ import { Button, IconButton } from '../ui/Button'
 import { Input, SegmentedControl } from '../ui/Controls'
 import { Modal } from '../ui/Modal'
 import { Menu } from '../ui/Menu'
+import { Card } from '../ui/Card'
+import { SettingRow } from '../ui/SettingRow'
 
 import { Card } from '../ui/Card'
 import { SettingRow } from '../ui/SettingRow'
 const ROLE_LABEL: Record<MemberRole, string> = {
-import { Card } from '../ui/Card'
-import { SettingRow } from '../ui/SettingRow'
   observer: '观察者',
   approver: '审批者',
   collaborator: '协作者',
@@ -408,14 +408,15 @@ export function TeamSection() {
           邀请成员
         </h3>
         <div className="mt-3 space-y-3">
-          <SegmentedControl
-            aria-label="邀请角色"
-            className="flex w-full"
-            options={ROLE_OPTIONS}
-            value={role}
-            onChange={setRole}
-          />
-          <p className="text-[12px] text-muted">{ROLE_DESC[role]}</p>
+          <SettingRow label="邀请角色" hint={ROLE_DESC[role]}>
+            <SegmentedControl
+              aria-label="邀请角色"
+              className="flex w-full"
+              options={ROLE_OPTIONS}
+              value={role}
+              onChange={setRole}
+            />
+          </SettingRow>
           <DirEditor dirs={dirs} onChange={setDirs} suggestions={suggestions} />
           <div className="flex items-center justify-between gap-2">
             <span className="text-[12px] text-muted">邀请码 24 小时有效，只能使用一次。</span>

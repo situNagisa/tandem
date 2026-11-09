@@ -20,6 +20,8 @@ export interface SettingRowProps {
   /** 控件占满右侧可用宽度（下拉、路径输入）。 */
   wide?: boolean
   className?: string
+  /** 设置项锚点，供命令面板定位到这一行。 */
+  settingId?: string
 }
 
 export function SettingRow({
@@ -32,9 +34,14 @@ export function SettingRow({
   stacked = false,
   wide = false,
   className,
+  settingId,
 }: SettingRowProps) {
   return (
-    <div className={cn('setting-row', className)} data-stacked={stacked || undefined}>
+    <div
+      className={cn('setting-row', className)}
+      data-stacked={stacked || undefined}
+      data-setting-id={settingId}
+    >
       <div className="setting-row-label" data-has-icon={icon ? true : undefined}>
         {icon ? <span className="setting-row-icon">{icon}</span> : null}
         {htmlFor ? <label htmlFor={htmlFor}>{label}</label> : <span>{label}</span>}

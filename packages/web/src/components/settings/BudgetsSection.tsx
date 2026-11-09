@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Pencil, Plus, RefreshCw, Trash2, TriangleAlert, Wallet } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { SettingRow } from '../ui/SettingRow'
 import type {
   BudgetAction,
   BudgetPeriod,
@@ -19,8 +20,8 @@ import { Combobox } from '../ui/Combobox'
 import { Input, SegmentedControl, Select, Switch } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 import { Modal } from '../ui/Modal'
-
 import { EmptyState } from '../ui/EmptyState'
+
 const SCOPE_LABEL: Record<BudgetScope, string> = {
   global: '全局',
   account: '账号',
@@ -501,9 +502,8 @@ export function BudgetsSection() {
       >
         {draft && (
           <div className="space-y-3">
-            <div>
-              <label className="settings-label">范围</label>
-              <SegmentedControl
+            <SettingRow label="范围" stacked wide>
+<SegmentedControl
                 aria-label="预算范围"
                 value={draft.scope}
                 onChange={(scope) => patchDraft({ scope, profileId: '', groupId: '', model: '' })}
@@ -512,12 +512,11 @@ export function BudgetsSection() {
                   label: SCOPE_LABEL[value],
                 }))}
               />
-            </div>
+              </SettingRow>
 
             {(draft.scope === 'account' || draft.scope === 'group') && (
-              <div>
-                <label className="settings-label">账号</label>
-                <Select
+              <SettingRow label="账号" stacked wide>
+<Select
                   aria-label="账号"
                   value={draft.profileId}
                   onChange={(e) => patchDraft({ profileId: e.target.value, groupId: '' })}
@@ -529,13 +528,12 @@ export function BudgetsSection() {
                     </option>
                   ))}
                 </Select>
-              </div>
+                </SettingRow>
             )}
 
             {draft.scope === 'group' && (
-              <div>
-                <label className="settings-label">分组</label>
-                <Select
+              <SettingRow label="分组" stacked wide>
+<Select
                   aria-label="分组"
                   value={draft.groupId}
                   onChange={(e) => patchDraft({ groupId: e.target.value })}
@@ -554,13 +552,12 @@ export function BudgetsSection() {
                     </option>
                   ))}
                 </Select>
-              </div>
+                </SettingRow>
             )}
 
             {draft.scope === 'model' && (
-              <div>
-                <label className="settings-label">模型</label>
-                <Combobox
+              <SettingRow label="模型" stacked wide>
+<Combobox
                   aria-label="模型"
                   value={draft.model}
                   onChange={(model) => patchDraft({ model })}
@@ -575,22 +572,20 @@ export function BudgetsSection() {
                   placeholder="例如 claude-sonnet-4-5"
                   className="font-mono"
                 />
-              </div>
+                </SettingRow>
             )}
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="settings-label">周期</label>
-                <SegmentedControl
+              <SettingRow label="周期" stacked wide>
+<SegmentedControl
                   aria-label="预算周期"
                   value={draft.period}
                   onChange={(period) => patchDraft({ period })}
                   options={PERIOD_OPTIONS}
                 />
-              </div>
-              <div>
-                <label className="settings-label">上限（USD）</label>
-                <Input
+                </SettingRow>
+              <SettingRow label="上限（USD）" stacked wide>
+<Input
                   aria-label="上限（USD）"
                   type="number"
                   min={0.01}
@@ -599,12 +594,11 @@ export function BudgetsSection() {
                   onChange={(e) => patchDraft({ limit: e.target.value })}
                   className="font-mono"
                 />
-              </div>
+                </SettingRow>
             </div>
 
-            <div>
-              <label className="settings-label">达到上限时</label>
-              <SegmentedControl
+            <SettingRow label="达到上限时" stacked wide>
+<SegmentedControl
                 aria-label="预算动作"
                 value={draft.action}
                 onChange={(action) => patchDraft({ action })}
@@ -616,17 +610,16 @@ export function BudgetsSection() {
               <p className="mt-1 text-[12px] leading-4 text-muted">
                 无论哪种动作，达到 80% 都会提醒；「阻止」会在达到 100% 时拒绝新请求，可在会话里临时放行一次。
               </p>
-            </div>
+              </SettingRow>
 
-            <div>
-              <label className="settings-label">备注名（可选）</label>
-              <Input
+            <SettingRow label="备注名（可选）" stacked wide>
+<Input
                 aria-label="备注名（可选）"
                 value={draft.label}
                 onChange={(e) => patchDraft({ label: e.target.value })}
                 placeholder="例如 本月 muze 预算"
               />
-            </div>
+              </SettingRow>
 
             <div className="flex items-center justify-between rounded-lg bg-bg/40 px-2.5 py-2">
               <span className="text-[13px] text-text-soft">启用这条规则</span>

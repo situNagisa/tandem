@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { SettingRow } from '../ui/SettingRow'
 import { useAppStore } from '../../store/useAppStore'
 import { api } from '../../lib/api'
 import { normalizeHostUrl, isLocalHostUrl, isSameOrigin } from '../../lib/hostUrl'
@@ -32,9 +33,9 @@ import { parsePairLink } from '../../lib/pairLink'
 import { parseInviteLink } from '../../lib/inviteLink'
 import { isValidFingerprint, normalizeFingerprint } from '../../lib/relay'
 import type { HostConfig } from '../../lib/types'
-
 import { Card } from '../ui/Card'
 import { EmptyState } from '../ui/EmptyState'
+
 const inputCls =
   'h-8 w-full rounded-lg border border-border bg-surface px-2.5 text-[13px] text-text outline-none transition-colors placeholder:text-muted focus:border-border-strong'
 
@@ -233,7 +234,7 @@ export function HostsSection() {
             <p className="mt-1.5 text-[13px] leading-4 text-muted">
               解析后自动创建主机；地址与 Token 可在下方修改。
             </p>
-          </div>
+            </SettingRow>
 
           <div className="my-3 flex items-center gap-2 text-[13px] text-muted">
             <span className="h-px flex-1 bg-[var(--t-border)]" />
@@ -242,17 +243,15 @@ export function HostsSection() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="settings-label">名称（必填）</label>
-              <Input
+            <SettingRow label="名称（必填）" stacked wide>
+<Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="唯一名称，例如：局域网工作站"
               />
-            </div>
-            <div>
-              <label className="settings-label">访问 Token</label>
-              <Input
+              </SettingRow>
+            <SettingRow label="访问 Token" stacked wide>
+<Input
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 placeholder="主机启动日志或配对链接中的 Token"
@@ -260,10 +259,9 @@ export function HostsSection() {
                 autoComplete="off"
                 className="font-mono text-[13px]"
               />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="settings-label">主机地址</label>
-              <div className="flex gap-1.5">
+              </SettingRow>
+            <SettingRow label="主机地址" stacked wide className="sm:col-span-2">
+<div className="flex gap-1.5">
                 <Input
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
@@ -282,7 +280,7 @@ export function HostsSection() {
               <p className="mt-1.5 text-[13px] leading-4 text-muted">
                 Token 只保存在本机浏览器里；远程主机请确保网络可达（局域网 / Tailscale / 端口转发）。
               </p>
-            </div>
+              </SettingRow>
           </div>
           {addError && (
             <div className="mt-2 flex items-center gap-1.5 text-[13px] text-danger">
@@ -312,9 +310,8 @@ export function HostsSection() {
             title={<>还没有 Host</>}
             hint={<>{gateOn
                 ? '点「添加主机」，复制一行命令到目标机器执行即可。'
-                : '在目标机器启动 Tandem Host，然后添加它的地址与 Token。'}
-            </p>
-          </div>
+                : '在目标机器启动 Tandem Host，然后添加它的地址与 Token。'}</>}
+          />
         )}
         {hosts.map((h) => {
           const rt = runtimes[h.id]
@@ -492,34 +489,31 @@ export function HostsSection() {
 
               {editing && (
                 <div className="mt-3 grid gap-2.5 border-t border-border/70 pt-3 sm:grid-cols-2">
-                  <div>
-                    <label className="settings-label">名称（必填）</label>
-                    <input
+                  <SettingRow label="名称（必填）" stacked wide>
+<input
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
                       className={inputCls}
                     />
-                  </div>
-                  <div>
-                    <label className="settings-label">Token</label>
-                    <input
+                    </SettingRow>
+                  <SettingRow label="Token" stacked wide>
+<input
                       value={editToken}
                       onChange={(e) => setEditToken(e.target.value)}
                       spellCheck={false}
                       autoComplete="off"
                       className={cn(inputCls, 'font-mono text-[13px]')}
                     />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="settings-label">地址</label>
-                    <input
+                    </SettingRow>
+                  <SettingRow label="地址" stacked wide className="sm:col-span-2">
+<input
                       value={editUrl}
                       onChange={(e) => setEditUrl(e.target.value)}
                       readOnly={h.mode === 'relay'}
                       spellCheck={false}
                       className={cn(inputCls, 'font-mono text-[13px]')}
                     />
-                  </div>
+                    </SettingRow>
                   <div className="flex items-center justify-end gap-2 sm:col-span-2">
                     <Button onClick={() => setEditId(null)}>
                       取消

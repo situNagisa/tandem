@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { SettingRow } from '../ui/SettingRow'
 import type {
   KeyStrategy,
   ModelInfo,
@@ -52,9 +53,9 @@ import { ProviderIcon } from '../ProviderIcon'
 import { PriceOverrides } from './profiles/PriceOverrides'
 import { GroupEditor } from './profiles/GroupEditor'
 import { KeysPanel } from './profiles/KeysPanel'
-import {
 import { Card } from '../ui/Card'
 import { EmptyState } from '../ui/EmptyState'
+import {
   GROUP_KIND_LABELS,
   type FormState,
   type GroupDraft,
@@ -678,17 +679,20 @@ export function ProfilesSection() {
 
               <div className="min-w-0">
                 <div className="space-y-3">
-                <div>
-                  <label className={labelCls}>账号名称</label>
+                <SettingRow label="账号名称" stacked wide>
                   <input
                     value={form.name}
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                     placeholder="例如：公司 Anthropic"
                     className={inputCls}
                   />
-                </div>
-                <div>
-                  <label className={labelCls}>Base URL</label>
+                </SettingRow>
+                <SettingRow
+                  label="Base URL"
+                  stacked
+                  wide
+                  hint="一个账号对应一个 URL。Key、协议和模型都在下面的分组里配置，同一 URL 下可混合不同协议。"
+                >
                   <input
                     value={form.baseUrl}
                     onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))}
@@ -696,10 +700,7 @@ export function ProfilesSection() {
                     spellCheck={false}
                     className={cn(inputCls, 'font-mono text-[13px]')}
                   />
-                  <p className="mt-1 text-[13px] leading-4 text-muted">
-                    一个账号对应一个 URL。Key、协议和模型都在下面的分组里配置，同一 URL 下可混合不同协议。
-                  </p>
-                </div>
+                </SettingRow>
 
                 <div data-setting-id="profiles.balance" className="mt-3 rounded-xl border border-border bg-bg/30 p-3">
                   <div className="flex flex-wrap items-center gap-2">
@@ -927,10 +928,7 @@ export function ProfilesSection() {
               </div>
 
               <div className="mb-3 rounded-lg border border-border bg-bg/40 p-3" data-setting-id="profiles.multiplier">
-                <label className={labelCls} htmlFor="profile-multiplier">
-                  价格倍率
-                </label>
-                <div className="flex items-center gap-2">
+                <SettingRow label="价格倍率" htmlFor="profile-multiplier">
                   <input
                     id="profile-multiplier"
                     type="number"
@@ -941,7 +939,7 @@ export function ProfilesSection() {
                     className={cn(inputCls, 'w-28 font-mono')}
                   />
                   <span className="text-[13px] text-muted">× 官方参考价</span>
-                </div>
+                </SettingRow>
                 <p className="mt-1.5 text-[12px] leading-4 text-muted">
                   中转常见如 0.3×、1.5×。实际价格 = 官方参考价 × 账号倍率 × 分组倍率；按模型覆盖单价时不乘倍率。
                 </p>
