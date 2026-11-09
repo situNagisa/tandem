@@ -7,6 +7,7 @@ import {
   type FeatureGroupId,
   type ProductFeature,
 } from './features'
+import { readJson, writeJson } from './storage'
 import { TEST_POINTS, type TestPoint } from './testPoints'
 
 export type ChecklistStatus = 'pass' | 'fail' | 'skip'
@@ -27,28 +28,19 @@ export const STATUS_LABELS: Record<ChecklistStatus, string> = {
 }
 
 export function loadChecklistProgress(): ChecklistProgress {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as ChecklistProgress
-    const out: ChecklistProgress = {}
-    for (const [id, entry] of Object.entries(parsed ?? {})) {
-      if (entry && (entry.status === 'pass' || entry.status === 'fail' || entry.status === 'skip')) {
-        out[id] = { status: entry.status, at: typeof entry.at === 'number' ? entry.at : 0 }
-      }
+  const parsed = readJson<ChecklistProgress | null>(STORAGE_KEY, null)
+  if (!parsed) return {}
+  const out: ChecklistProgress = {}
+  for (const [id, entry] of Object.entries(parsed)) {
+    if (entry && (entry.status === 'pass' || entry.status === 'fail' || entry.status === 'skip')) {
+      out[id] = { status: entry.status, at: typeof entry.at === 'number' ? entry.at : 0 }
     }
-    return out
-  } catch {
-    return {}
   }
+  return out
 }
 
 export function saveChecklistProgress(progress: ChecklistProgress): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(progress))
-  } catch {
-    /* 隐私模式等忽略 */
-  }
+  writeJson(STORAGE_KEY, progress)
 }
 
 export function setChecklistPoint(

@@ -15,21 +15,63 @@ const KEYS = {
   account: 'tandem.account.v1',
 } as const
 
-function readJson<T>(key: string, fallback: T): T {
+/** 原始字符串读写：localStorage 不可用（隐私模式等）时静默降级为无持久化。 */
+export function readRaw(key: string): string | null {
   try {
-    const raw = localStorage.getItem(key)
-    if (!raw) return fallback
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+export function writeRaw(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    /* 忽略 */
+  }
+}
+
+export function removeRaw(key: string): void {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    /* 忽略 */
+  }
+}
+
+export function readJson<T>(key: string, fallback: T): T {
+  const raw = readRaw(key)
+  if (!raw) return fallback
+  try {
     return JSON.parse(raw) as T
   } catch {
     return fallback
   }
 }
 
-function writeJson(key: string, value: unknown): void {
+export function writeJson(key: string, value: unknown): void {
   try {
     localStorage.setItem(key, JSON.stringify(value))
   } catch {
     // localStorage 不可用（隐私模式等）时静默降级为仅内存状态
+  }
+}
+
+/** 会话级存储（如本次会话的错误缓冲），关闭标签页即清空。 */
+export function readSessionRaw(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+export function writeSessionRaw(key: string, value: string): void {
+  try {
+    sessionStorage.setItem(key, value)
+  } catch {
+    /* 隐私模式或配额不足时只保留内存副本 */
   }
 }
 

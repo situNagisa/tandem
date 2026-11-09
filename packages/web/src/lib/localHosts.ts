@@ -1,25 +1,16 @@
 // 本机 Host 凭据（地址 + 主 token）。登录门开启时它们不进入工作台的主机列表，
 // 只用于本机管理：「添加这台电脑」、启动本机内嵌工作站、调试版自动登录。
 import type { HostConfig } from './types'
-import { sanitizeHosts } from './storage'
+import { readJson, sanitizeHosts, writeJson } from './storage'
 
 const KEY = 'tandem.localhosts.v1'
 
 export function loadLocalHosts(): HostConfig[] {
-  try {
-    const raw = localStorage.getItem(KEY)
-    return raw ? sanitizeHosts(JSON.parse(raw)) : []
-  } catch {
-    return []
-  }
+  return sanitizeHosts(readJson<unknown>(KEY, []))
 }
 
 export function saveLocalHosts(list: HostConfig[]): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(list))
-  } catch {
-    /* 隐私模式下忽略 */
-  }
+  writeJson(KEY, list)
 }
 
 function originOf(url: string): string {

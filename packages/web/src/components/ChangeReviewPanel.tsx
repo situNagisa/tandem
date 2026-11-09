@@ -22,6 +22,7 @@ import { aiReviewKey, useAiReviewStore } from '../lib/useAiReview'
 import { api } from '../lib/api'
 import { useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
+import { readRaw, writeRaw } from '../lib/storage'
 import { DiffView, type DiffCommentDraft } from './DiffView'
 import { Modal } from './ui/Modal'
 import { ConfirmAction } from './ui/ConfirmAction'
@@ -60,19 +61,11 @@ function commentLineLabel(comment: LineComment) {
 /** 文件列表 / diff 的分栏比例，记住用户拖动过的位置。 */
 const SPLIT_KEY = 'tandem.changesSplit.v1'
 function loadSplitRatio(): number {
-  try {
-    const n = Number(localStorage.getItem(SPLIT_KEY))
-    return Number.isFinite(n) && n >= 0.15 && n <= 0.85 ? n : 0.42
-  } catch {
-    return 0.42
-  }
+  const n = Number(readRaw(SPLIT_KEY))
+  return Number.isFinite(n) && n >= 0.15 && n <= 0.85 ? n : 0.42
 }
 function saveSplitRatio(ratio: number): void {
-  try {
-    localStorage.setItem(SPLIT_KEY, String(ratio))
-  } catch {
-    // localStorage 不可用时仅本次会话有效
-  }
+  writeRaw(SPLIT_KEY, String(ratio))
 }
 
 const SEVERITY_LABEL: Record<AiReviewSeverity, string> = {

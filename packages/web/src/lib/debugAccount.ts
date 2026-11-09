@@ -2,25 +2,18 @@
 // 只在 __TANDEM_DEBUG__ 分支里动态加载，发布构建不会包含这些标识。
 import type { AccountLoginResult } from '@tandem/protocol'
 import { workstationApi } from './api'
+import { readRaw, writeRaw } from './storage'
 import { useAppStore } from '../store/useAppStore'
 import { loadLocalHosts } from './localHosts'
 
 const AUTOLOGIN_KEY = 'tandem.debug.account.autologin'
 
 export function isDebugAutoLoginEnabled(): boolean {
-  try {
-    return localStorage.getItem(AUTOLOGIN_KEY) !== '0'
-  } catch {
-    return true
-  }
+  return readRaw(AUTOLOGIN_KEY) !== '0'
 }
 
 export function setDebugAutoLoginEnabled(on: boolean): void {
-  try {
-    localStorage.setItem(AUTOLOGIN_KEY, on ? '1' : '0')
-  } catch {
-    /* 隐私模式下忽略 */
-  }
+  writeRaw(AUTOLOGIN_KEY, on ? '1' : '0')
 }
 
 /** 退出调试账号后记住选择：之后打开不再自动登录。 */

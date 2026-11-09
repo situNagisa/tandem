@@ -3,6 +3,7 @@ import { ArrowLeftRight, Check, Copy, WrapText } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { AUTO_LANGUAGES, languageLabel, loadHighlighter } from '../lib/highlight'
 import { useHorizontalOverflow } from '../lib/hooks'
+import { readRaw, writeRaw } from '../lib/storage'
 import { useCopy } from '../lib/useCopy'
 import { IconButton } from './ui/Button'
 
@@ -10,11 +11,7 @@ const MAX_CHARS = 200_000
 const WRAP_KEY = 'tandem.codeWrap.v1'
 
 function loadWrap(): boolean {
-  try {
-    return localStorage.getItem(WRAP_KEY) === '1'
-  } catch {
-    return false
-  }
+  return readRaw(WRAP_KEY) === '1'
 }
 const HIGHLIGHT_CACHE_MAX = 80
 const highlightCache = new Map<string, { code: string; html: string; language?: string }>()
@@ -289,11 +286,7 @@ export function CodeBlock({
             onClick={() => {
               setWrap((value) => {
                 const next = !value
-                try {
-                  localStorage.setItem(WRAP_KEY, next ? '1' : '0')
-                } catch {
-                  /* localStorage 不可用时只影响本次 */
-                }
+                writeRaw(WRAP_KEY, next ? '1' : '0')
                 return next
               })
             }}

@@ -3,6 +3,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { navigateBoard } from './boardRoute'
 import { navigate, parseHash } from './router'
+import { readJson, writeJson } from './storage'
 import { PERMISSION_MODE_LABELS } from './types'
 import { DELEGATION_META } from './routeLabels'
 import { profileModelGroups } from './profileModels'
@@ -350,24 +351,6 @@ const DEBUG_COMMANDS: AppCommand[] = __TANDEM_DEBUG__
 export const COMMANDS: AppCommand[] = [...BASE_COMMANDS, ...DEBUG_COMMANDS]
 
 export const COMMAND_MAP = new Map(COMMANDS.map((command) => [command.id, command]))
-
-function readJson<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key)
-    if (!raw) return fallback
-    return JSON.parse(raw) as T
-  } catch {
-    return fallback
-  }
-}
-
-function writeJson(key: string, value: unknown): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value))
-  } catch {
-    /* localStorage 不可用时只影响自定义持久化 */
-  }
-}
 
 export function loadCommandShortcutOverrides(): Record<string, string> {
   const raw = readJson<Record<string, unknown>>(SHORTCUT_KEY, {})
