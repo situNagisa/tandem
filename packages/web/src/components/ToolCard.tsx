@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import {
+  ArrowUpRight,
   Bot,
   Brain,
   Camera,
@@ -32,9 +33,10 @@ import { useUiStore } from '../store/useUiStore'
 import { useSessionTarget, useSessionView } from './session/SessionScope'
 import { useNow } from '../lib/hooks'
 import { runningSince } from '../lib/runClock'
-import type { ToolResultBlock } from '../lib/types'
+import type { SubagentSession, ToolResultBlock } from '../lib/types'
+import { ReadOnlySessionGraph } from './sessionGraph/SessionGraphCard'
 import { cn } from '../lib/cn'
-import { firstLine, formatElapsed, truncate } from '../lib/format'
+import { firstLine, formatElapsed, formatTokens, truncate } from '../lib/format'
 import { useBrowserShot } from '../lib/browserShot'
 import { CodeBlock } from './CodeBlock'
 import { Button } from './ui/Button'
@@ -89,12 +91,9 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {}
 }
 
-function agentKind(depth: number): string {
-  return depth <= 1 ? '子代理' : depth === 2 ? '孙代理' : `第${depth}层代理`
-}
-
-function agentTag(depth: number): string {
-  return depth <= 1 ? '子' : depth === 2 ? '孙' : `${depth}`
+/** 反馈12#03：层级无限，界面统一叫「子代理」，不再用「子」「孙」文字标签。 */
+function agentKind(): string {
+  return '子代理'
 }
 
 /** target 是否为 ancestor 的后代（用于定位时逐层展开祖先 Task 卡片）。 */
@@ -391,6 +390,7 @@ export const ToolCard = memo(function ToolCard({
   const activeSessionId = useSessionView((s) => s?.sessionId)
   const agentFocus = useUiStore((s) => s.agentFocus)
   const openBackgroundTasks = useUiStore((s) => s.openBackgroundTasks)
+  const openAgentSession = useUiStore((s) => s.openAgentSession)
   const activeHostId = useSessionView((s) => s?.hostId)
   const raw = useSessionView((s) =>
     subagentId
@@ -425,21 +425,28 @@ export const ToolCard = memo(function ToolCard({
   const isTask = block.name === 'Task'
   const taskDescription = isTask ? str(asRecord(block.input).description) || partialString(raw, 'description') || '' : ''
   const parentId = subagentId ?? activeSessionId
+  // 反馈12#05：优先用 tool_result 里记录的 subagent.id；旧数据没有时按标题匹配，
+  // 只有一个候选子会话时直接用它（演示数据/旧会话的标题未必等于 Task description）。
   const sub = isTask && subagents
-    ? Object.values(subagents)
-        .filter(
-          (item) =>
-            item.summary?.parentId === parentId &&
-            item.summary?.title === taskDescription,
+    ? (() => {
+        const linkedId = result?.subagent?.id
+        const linked = linkedId ? subagents[linkedId] : undefined
+        if (linked) return linked
+        const candidates = Object.values(subagents)
+          .filter((item) => item.summary?.parentId === parentId)
+          .sort((a, b) => (b.summary?.createdAt ?? 0) - (a.summary?.createdAt ?? 0))
+        return (
+          candidates.find((item) => item.summary?.title === taskDescription) ??
+          (candidates.length === 1 ? candidates[0] : undefined)
         )
-        .sort((a, b) => (b.summary?.createdAt ?? 0) - (a.summary?.createdAt ?? 0))[0]
+      })()
     : undefined
   const parentDepth = subagentId
     ? (subagents?.[subagentId]?.summary?.depth ?? 1)
     : 0
   const agentDepth = sub?.summary?.depth ?? parentDepth + 1
   const displayMeta = isTask
-    ? { ...meta, verb: agentKind(agentDepth) }
+    ? { ...meta, verb: agentKind() }
     : meta
   const cardRef = useRef<HTMLDivElement>(null)
   const focusAncestor = useMemo(
@@ -763,6 +770,14 @@ export const ToolCard = memo(function ToolCard({
           isError={isError}
           running={running}
           depth={agentDepth}
+          linkedId={result?.subagent?.id}
+          parentSessionId={parentId}
+          hostId={activeHostId}
+          onOpen={
+            sub?.summary?.id && activeHostId
+              ? () => openAgentSession(activeHostId, sub.summary!.id)
+              : undefined
+          }
         />
       )
     }
@@ -825,11 +840,6 @@ export const ToolCard = memo(function ToolCard({
           <Loader2 size={14} className="shrink-0 animate-spin text-text-secondary" />
         ) : (
           <Icon size={14} className={cn('shrink-0', isError ? 'text-danger' : 'text-muted')} />
-        )}
-        {isTask && (
-          <span className="shrink-0 text-[9.5px] font-normal text-muted">
-            {agentTag(agentDepth)}
-          </span>
         )}
         <span className={cn('shrink-0', isError && 'text-danger')}>{displayMeta.verb}</span>
         {(isTask || block.name === 'Skill' || block.name === 'Memory') && target && (
@@ -922,7 +932,7 @@ function SubagentStream({ id, depth }: { id: string; depth: number }) {
     if (el) el.scrollTop = el.scrollHeight
   }, [sub?.running, sub?.messages.length])
   if (!sub) {
-    return <div className="py-2 text-[12px] text-muted">正在等待{agentKind(depth)}会话…</div>
+    return <div className="py-2 text-[12px] text-muted">正在等待{agentKind()}会话…</div>
   }
   const subFailed = sub.summary?.status === 'error' || !!sub.error
   return (
@@ -946,8 +956,7 @@ function SubagentStream({ id, depth }: { id: string; depth: number }) {
             className={subFailed ? 'text-danger' : 'text-muted'}
           />
         )}
-        <span className="text-[9.5px] text-muted">{agentTag(subDepth)}</span>
-        <span>{agentKind(subDepth)}会话</span>
+        <span>{agentKind()}会话</span>
         <span
           className={cn(
             sub.running ? 'text-text-secondary' : subFailed ? 'text-danger' : '',
@@ -978,10 +987,21 @@ function SubagentStream({ id, depth }: { id: string; depth: number }) {
             onClick={() => stopSubagent(id, scopeTarget)}
             className="h-6! gap-1 px-1.5 text-[10px] [&_svg]:size-[9px]"
           >
-            <Square size={9} /> 停止{agentKind(subDepth)}
+            <Square size={9} /> 停止{agentKind()}
           </Button>
         )}
       </div>
+      {sub.messages.length > 1 && (
+        <div className="border-b border-border/70 px-2.5 pb-1 pt-1.5">
+          <ReadOnlySessionGraph
+            messages={sub.messages}
+            height={104}
+            onOpen={() => {
+              // 子代理视图内部不需要再跳回主会话。
+            }}
+          />
+        </div>
+      )}
       <div ref={listRef} className="max-h-[380px] space-y-2.5 overflow-y-auto px-2.5 py-2">
         {sub.messages.length === 0 && (
           <div className="shimmer-text py-1 text-[12px] text-muted">
@@ -997,7 +1017,7 @@ function SubagentStream({ id, depth }: { id: string; depth: number }) {
             if (!text.trim()) return null
             return (
               <div key={m.id} className="rounded-lg bg-surface-2 px-2.5 py-1.5 text-[12px] leading-5 text-text-soft">
-                <div className="mb-0.5 text-[9.5px] text-muted">{agentKind(subDepth)}任务</div>
+                <div className="mb-0.5 text-[9.5px] text-muted">任务提示词</div>
                 <div className="whitespace-pre-wrap break-words">{text}</div>
               </div>
             )
@@ -1049,59 +1069,150 @@ function TaskBody({
   isError,
   running,
   depth,
+  linkedId,
+  parentSessionId,
+  hostId,
+  onOpen,
 }: {
   input: Record<string, unknown>
   raw: string
-  sub: { summary: { id: string; model?: string } | null } | undefined
+  sub: SubagentSession | undefined
   output: string
   isError: boolean
   running: boolean
   depth: number
+  linkedId?: string
+  parentSessionId?: string | null
+  hostId?: string | null
+  onOpen?: () => void
 }) {
   const description =
     str(input.description) || partialString(raw, 'description') || str(input.prompt).slice(0, 80)
   const prompt = str(input.prompt) || partialString(raw, 'prompt') || ''
   const type = str(input.subagent_type) || 'general-purpose'
+  const refreshSessions = useAppStore((s) => s.refreshSessions)
+  const summary = sub?.summary
+  const subRunning = !!sub?.running
+  const status = summary?.status
+  const failed = status === 'error'
+  const tokens = (summary?.usage?.inputTokens ?? 0) + (summary?.usage?.outputTokens ?? 0)
+  const statusText = failed
+    ? '出错'
+    : status === 'waiting_permission'
+      ? '待审批'
+      : status === 'retrying'
+        ? '等待网络'
+        : subRunning || status === 'running'
+          ? '运行中'
+          : summary
+            ? '已结束'
+            : running
+              ? '启动中…'
+              : ''
   return (
-    <div className="space-y-2">
-      <div className="rounded-lg border border-border/70 bg-[var(--t-bg)] px-2.5 py-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[12px] font-medium text-text">
-            {agentKind(depth)} · {description || '未命名任务'}
-          </span>
-          <span className="rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[9.5px] text-muted">
+    <div className="group/task space-y-2">
+      {/* 反馈12#04：一行标题（名称 + 类型 + 状态/耗时/token），提示词折叠成第二行；不再套两层边框。 */}
+      <div className="rounded-md bg-[color-mix(in_srgb,var(--t-bg)_55%,transparent)] px-2.5 py-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Bot size={12} className={cn('shrink-0', failed ? 'text-danger' : 'text-muted')} />
+          <button
+            type="button"
+            onClick={onOpen}
+            disabled={!onOpen}
+            data-tip={onOpen ? `打开${agentKind()}会话` : description}
+            className="min-w-0 truncate text-left text-[12.5px] font-medium text-text enabled:hover:underline enabled:hover:underline-offset-2 disabled:cursor-default"
+          >
+            {description || '未命名任务'}
+          </button>
+          <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[9.5px] text-muted">
             {type}
           </span>
-          {sub?.summary?.model && (
+          {summary?.model && (
             <span
-              className="max-w-[220px] truncate rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[9.5px] text-muted"
-              data-tip={`子代理模型：${sub.summary.model}`}
+              className="max-w-[160px] shrink-0 truncate font-mono text-[10px] text-muted"
+              data-tip={`子代理模型：${summary.model}`}
             >
-              {sub.summary.model}
+              {summary.model}
             </span>
+          )}
+          <span className="flex-1" />
+          {statusText && (
+            <span
+              className={cn(
+                'shrink-0 text-[11px] tabular-nums',
+                failed ? 'text-danger' : subRunning ? 'text-text-secondary' : 'text-muted',
+              )}
+            >
+              {statusText}
+              {subRunning && summary && (
+                <>
+                  {' '}
+                  <AgentElapsed
+                    id={summary.id}
+                    since={summary.createdAt ?? Date.now()}
+                    running
+                  />
+                </>
+              )}
+            </span>
+          )}
+          {summary && tokens > 0 && (
+            <span className="shrink-0 text-[11px] tabular-nums text-muted">{formatTokens(tokens)}</span>
+          )}
+          {onOpen && (
+            <button
+              type="button"
+              onClick={onOpen}
+              aria-label={`打开${agentKind()}会话`}
+              data-tip={`打开${agentKind()}会话（只读）`}
+              className="shrink-0 rounded p-0.5 text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+            >
+              <ArrowUpRight size={12} />
+            </button>
           )}
         </div>
         {prompt && (
-          <details className="mt-1">
-            <summary className="cursor-pointer text-[10.5px] text-muted hover:text-text-soft">
-              查看任务提示词
-            </summary>
-            <pre className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[10.5px] leading-5 text-text-soft">
-              {prompt}
-            </pre>
-          </details>
+          <button
+            type="button"
+            onClick={onOpen}
+            disabled={!onOpen}
+            data-tip={prompt}
+            className="mt-1 block w-full max-w-full overflow-hidden text-left text-[11px] leading-[17px] text-muted transition-colors enabled:hover:text-text-soft"
+          >
+            <span className="line-clamp-1 group-hover/task:line-clamp-4">{prompt}</span>
+          </button>
         )}
       </div>
-      {sub?.summary ? (
-        <div className={cn(depth > 1 && 'ml-2 border-l border-border/70 pl-2')}>
-          <SubagentStream id={sub.summary.id} depth={depth} />
+      {summary ? (
+        <div className={cn(depth > 1 && 'pl-2 border-l border-border/60')}>
+          <SubagentStream id={summary.id} depth={depth} />
         </div>
       ) : (
-        <div className="text-[12px] text-muted">
-          {running ? `正在创建${agentKind(depth)}会话…` : `没有找到${agentKind(depth)}会话`}
+        <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
+          {running ? (
+            <span className="shimmer-text">正在创建{agentKind()}会话…</span>
+          ) : (
+            <>
+              <span>没有找到{agentKind()}会话</span>
+              <span className="text-[11px] text-text-tertiary">
+                {linkedId
+                  ? '这次调用记录了子会话 id，但会话还没加载。'
+                  : '这次 Task 调用没有记录子会话 id（可能来自旧版本会话或子会话已被清理）。'}
+              </span>
+              {linkedId && parentSessionId && (
+                <button
+                  type="button"
+                  onClick={() => hostId && void refreshSessions(hostId)}
+                  className="rounded px-1 py-0.5 text-[11px] text-text-soft underline-offset-2 hover:text-text hover:underline"
+                >
+                  重新查找
+                </button>
+              )}
+            </>
+          )}
         </div>
       )}
-      {output && (isError || !sub?.summary) && (
+      {output && (isError || !summary) && (
         <OutputBlock text={output} isError={isError} maxHeight={220} />
       )}
     </div>

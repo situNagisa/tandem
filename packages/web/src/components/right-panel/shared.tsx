@@ -1,11 +1,13 @@
-import type { ReactNode } from 'react'
+import { useSyncExternalStore, type ReactNode } from 'react'
 import {
   BarChart3,
   BookOpen,
   Bot,
   Brain,
+  ChevronRight,
   FileDiff,
   Gauge,
+  GitFork,
   GripVertical,
   Info,
   ListTodo,
@@ -13,12 +15,13 @@ import {
 } from 'lucide-react'
 import { cn } from '../../lib/cn'
 
-export type GroupId = 'plan' | 'todos' | 'agents' | 'usage' | 'context' | 'changes' | 'memory' | 'wiki' | 'details'
+export type GroupId = 'plan' | 'todos' | 'agents' | 'graph' | 'usage' | 'context' | 'changes' | 'memory' | 'wiki' | 'details'
 
 export const GROUPS: Array<{ id: GroupId; label: string; Icon: typeof ListTodo }> = [
   { id: 'plan', label: '当前计划', Icon: ScrollText },
   { id: 'todos', label: '待办', Icon: ListTodo },
   { id: 'agents', label: '代理', Icon: Bot },
+  { id: 'graph', label: '会话图', Icon: GitFork },
   { id: 'usage', label: '用量', Icon: BarChart3 },
   { id: 'context', label: '上下文', Icon: Gauge },
   { id: 'changes', label: '改动摘要', Icon: FileDiff },
@@ -99,6 +102,94 @@ export function savePanelPrefs(prefs: PanelPrefs): void {
   }
 }
 
+/**
+ * 分组显隐的模块级小仓库：面板（RightPanel）发布「哪些分组有数据」，
+ * 顶栏的 ⋯ 菜单（反馈12#06 移到窗口顶栏）与面板共用同一份 prefs。
+ */
+interface PanelStoreState {
+  prefs: PanelPrefs
+  availability: Partial<Record<GroupId, boolean>>
+}
+
+let panelState: PanelStoreState = { prefs: loadPanelPrefs(), availability: {} }
+const panelListeners = new Set<() => void>()
+const emitPanel = () => {
+  for (const listener of panelListeners) listener()
+}
+
+function usePanelStore(): PanelStoreState {
+  return useSyncExternalStore(
+    (listener) => {
+      panelListeners.add(listener)
+      return () => panelListeners.delete(listener)
+    },
+    () => panelState,
+  )
+}
+
+export function setPanelPrefs(next: PanelPrefs): void {
+  panelState = { ...panelState, prefs: next }
+  savePanelPrefs(next)
+  emitPanel()
+}
+
+export function setPanelAvailability(next: Partial<Record<GroupId, boolean>>): void {
+  const prev = panelState.availability
+  const same =
+    Object.keys(next).length === Object.keys(prev).length &&
+    DEFAULT_ORDER.every((id) => !!next[id] === !!prev[id])
+  if (same) return
+  panelState = { ...panelState, availability: next }
+  emitPanel()
+}
+
+/** 勾选/取消一个分组：有数据的分组取消后记 hidden，空分组勾选后记 shown。 */
+export function togglePanelGroup(id: GroupId): void {
+  const { prefs, availability } = panelState
+  const avail = !!availability[id]
+  const visible = !prefs.hidden.includes(id) && (avail || prefs.shown.includes(id))
+  const next: PanelPrefs = visible
+    ? {
+        ...prefs,
+        hidden: avail ? [...prefs.hidden, id] : prefs.hidden.filter((x) => x !== id),
+        shown: prefs.shown.filter((x) => x !== id),
+      }
+    : {
+        ...prefs,
+        hidden: prefs.hidden.filter((x) => x !== id),
+        shown: avail || prefs.shown.includes(id) ? prefs.shown : [...prefs.shown, id],
+      }
+  setPanelPrefs(next)
+}
+
+/** 面板与顶栏菜单共用的分组显示状态。 */
+export function usePanelGroups(): PanelStoreState {
+  return usePanelStore()
+}
+
+const COLLAPSED_KEY = 'tandem.rightPanelCollapsed.v1'
+
+/** 反馈12#07：收起的会话信息分组，跨会话/重开记住。 */
+export function loadCollapsedGroups(): GroupId[] {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_KEY)
+    const parsed = raw ? (JSON.parse(raw) as unknown) : []
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is GroupId => typeof id === 'string' && GROUP_IDS.has(id as GroupId))
+      : []
+  } catch {
+    return []
+  }
+}
+
+export function saveCollapsedGroups(ids: GroupId[]): void {
+  try {
+    localStorage.setItem(COLLAPSED_KEY, JSON.stringify(ids))
+  } catch {
+    // localStorage 不可用时仅本次有效
+  }
+}
+
 export const CHANGE_MARK: Record<string, string> = {
   modified: 'M',
   added: 'A',
@@ -130,6 +221,10 @@ export function Card({
   onDragOver,
   right,
   cardRef,
+  collapsible = false,
+  collapsed = false,
+  onToggle,
+  summary,
   children,
 }: {
   id: GroupId
@@ -144,8 +239,21 @@ export function Card({
   onDragOver?: (e: React.DragEvent<HTMLElement>) => void
   right?: ReactNode
   cardRef?: (el: HTMLElement | null) => void
+  /** 反馈12#07：分组可收起，收起后标题行只留最关键的数字/结论。 */
+  collapsible?: boolean
+  collapsed?: boolean
+  onToggle?: () => void
+  summary?: ReactNode
   children: ReactNode
 }) {
+  const head = (
+    <>
+      <Icon size={11} className="shrink-0 text-text-tertiary" />
+      <h3 className="min-w-0 truncate text-[12px] font-medium uppercase tracking-[0.1em] text-text-tertiary">
+        {label}
+      </h3>
+    </>
+  )
   return (
     <section
       ref={cardRef}
@@ -154,13 +262,15 @@ export function Card({
       onDragEnd={onDragEnd}
       onDragOver={onDragOver}
       data-group={id}
+      data-collapsed={collapsible && collapsed ? 'true' : undefined}
       className={cn(
         'group/card rounded-[10px] border border-border px-3 py-2.5 shadow-[var(--t-shadow-sm)] transition-[opacity,box-shadow] duration-150',
+        collapsible && collapsed && 'py-2',
         dragging && 'opacity-55',
       )}
       style={{ backgroundColor: 'color-mix(in srgb, var(--t-surface) 38%, var(--t-sidebar))' }}
     >
-      <div className="mb-2 flex min-h-4 items-center gap-1.5">
+      <div className={cn('flex min-h-4 items-center gap-1.5', !collapsed && 'mb-2')}>
         {onDragStart && (
           <span
             role="button"
@@ -176,14 +286,38 @@ export function Card({
             <GripVertical size={11} />
           </span>
         )}
-        <Icon size={11} className="shrink-0 text-text-tertiary" />
-        <h3 className="min-w-0 truncate text-[12px] font-medium uppercase tracking-[0.1em] text-text-tertiary">
-          {label}
-        </h3>
-        <span className="flex-1" />
-        {right}
+        {collapsible ? (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={!collapsed}
+            data-card-toggle={id}
+            className="-ml-0.5 flex min-w-0 flex-1 items-center gap-1.5 rounded px-0.5 py-0.5 text-left transition-colors hover:bg-[var(--t-bg-hover)]"
+          >
+            <ChevronRight
+              size={11}
+              className={cn(
+                'shrink-0 text-text-tertiary transition-transform duration-150',
+                !collapsed && 'rotate-90',
+              )}
+            />
+            {head}
+            <span className="flex-1" />
+            {summary && collapsed ? (
+              <span className="min-w-0 shrink truncate text-[12px] font-normal normal-case tracking-normal text-muted tabular-nums">
+                {summary}
+              </span>
+            ) : null}
+          </button>
+        ) : (
+          <>
+            {head}
+            <span className="flex-1" />
+          </>
+        )}
+        {!collapsed && right ? <span className="flex shrink-0 items-center">{right}</span> : null}
       </div>
-      {children}
+      {!collapsed && children}
     </section>
   )
 }

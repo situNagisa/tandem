@@ -102,8 +102,15 @@ function assistant(
   });
 }
 
-function toolResult(toolUseId: string, text: string, isError = false): Message {
-  return message('user', [{ type: 'tool_result', toolUseId, content: text, isError }]);
+function toolResult(
+  toolUseId: string,
+  text: string,
+  isError = false,
+  subagent?: { id: string; model?: string },
+): Message {
+  return message('user', [
+    { type: 'tool_result', toolUseId, content: text, isError, ...(subagent ? { subagent } : {}) },
+  ]);
 }
 
 function addSession(host: Host, rec: SessionRecord): SessionRecord {
@@ -252,16 +259,20 @@ function seedPlan(ctx: DemoSeedContext): DemoRefs {
 }
 
 function seedSubagents(ctx: DemoSeedContext): DemoRefs {
+  const mainTaskId = `demo_task_main_${randomUUID().slice(0, 6)}`;
+  const childReadId = `demo_read_${randomUUID().slice(0, 6)}`;
+  const childTaskId = `demo_task_child_${randomUUID().slice(0, 6)}`;
   const main = baseSession(ctx, 'subagents', {
-    title: '演示 · 子代理与孙代理',
+    title: '演示 · 子代理层级',
     delegation: 'orchestrate',
     messages: [
       user('把「价格页」拆成两个子任务并行调查，最后汇总给我。'),
-      assistant('我会派一个子代理检查前端，再让它派一个孙代理对比竞品文案。', {
-        thinking: '使用 Task 派发；子代理可以再派孙代理，但不再暴露 Task 递归。',
+      assistant('我会派一个子代理检查前端，再让它派下一层子代理对比竞品文案。', {
+        thinking: '使用 Task 派发；子代理可以再派下一层子代理，但不再暴露 Task 递归。',
         tools: [
           {
             name: 'Task',
+            id: mainTaskId,
             input: {
               description: '检查价格页前端',
               prompt: '阅读 src/app.js 与 site/index.html，列出价格页可改进的三点前端问题。',
@@ -269,43 +280,74 @@ function seedSubagents(ctx: DemoSeedContext): DemoRefs {
           },
         ],
       }),
-      toolResult(
-        `demo_task_${randomUUID().slice(0, 6)}`,
-        '子代理完成：发现价格未做参数校验、空态文案缺失、移动端按钮间距偏小。',
-      ),
-      assistant('子代理与孙代理都完成了，结论汇总在右侧代理卡：先补参数校验，再补空态与移动端间距。'),
     ],
   });
-  addSession(ctx.host, main);
 
   const child = baseSession(ctx, 'subagents', {
     title: '演示 · 子代理 · 价格页前端',
     parentId: main.id,
+    parentToolUseId: mainTaskId,
     depth: 1,
     messages: [
       user('阅读 src/app.js 与 site/index.html，列出价格页可改进的三点前端问题。'),
-      assistant('我会先读两个文件，再派孙代理查竞品文案。', {
+      assistant('我会先读两个文件，再派子代理查竞品文案。', {
         tools: [
-          { name: 'Read', input: { file_path: 'src/app.js' } },
-          { name: 'Task', input: { description: '竞品价格页文案', prompt: '总结三个竞品价格页的文案结构。' } },
+          { name: 'Read', id: childReadId, input: { file_path: 'src/app.js' } },
+          {
+            name: 'Task',
+            id: childTaskId,
+            input: { description: '竞品价格页文案', prompt: '总结三个竞品价格页的文案结构。' },
+          },
         ],
       }),
-      assistant('结论：参数校验、空态文案、移动端按钮间距是三个最明显的问题。'),
     ],
   });
-  addSession(ctx.host, child);
 
   const grandchild = baseSession(ctx, 'subagents', {
-    title: '演示 · 孙代理 · 竞品文案',
+    title: '演示 · 子代理 · 竞品文案（第 2 层）',
     parentId: child.id,
+    parentToolUseId: childTaskId,
     depth: 2,
     messages: [
       user('总结三个竞品价格页的文案结构。'),
       assistant('竞品普遍采用「标题 → 一句话价值 → 价格 → 次要说明 → CTA」结构；价格旁边强调「随时取消」。'),
     ],
   });
+
+  // 工具结果与子会话 id 一起落盘：前端靠 tool_result.subagent.id 稳定定位子会话（反馈12#05），
+  // 不再用标题字符串匹配（演示数据的标题和 Task description 本来就不一样）。
+  child.messages.push(toolResult(childReadId, 'export function priceOf(item) { return item.price }'));
+  child.messages.push(
+    toolResult(childTaskId, '子代理完成：竞品价格页普遍把「随时取消」放在价格旁。', false, {
+      id: grandchild.id,
+      model: DEMO_MODEL,
+    }),
+  );
+  child.messages.push(assistant('结论：参数校验、空态文案、移动端按钮间距是三个最明显的问题。'));
+
+  main.messages.push(
+    toolResult(mainTaskId, '子代理完成：发现价格未做参数校验、空态文案缺失、移动端按钮间距偏小。', false, {
+      id: child.id,
+      model: DEMO_MODEL,
+    }),
+  );
+  main.messages.push(assistant('子代理都完成了，结论汇总在右侧代理卡：先补参数校验，再补空态与移动端间距。'));
+
+  // 演示分叉：从主会话第一轮分出另一个会话，会话图里画不合并的分支。
+  const fork = baseSession(ctx, 'subagents', {
+    title: '演示 · 分叉 · 先补参数校验',
+    forkedFrom: { sessionId: main.id, messageId: main.messages[0]!.id, title: main.title },
+    messages: [
+      user('先补参数校验，空态稍后再说。'),
+      assistant('明白，我会先给 totalPrice 补 discount 与单价校验，再补一条边界测试；这是从第一轮分出的另一条路。'),
+    ],
+  });
+
+  addSession(ctx.host, main);
+  addSession(ctx.host, child);
   addSession(ctx.host, grandchild);
-  return { sessionIds: [main.id, child.id, grandchild.id] };
+  addSession(ctx.host, fork);
+  return { sessionIds: [main.id, child.id, grandchild.id, fork.id] };
 }
 
 async function seedBackground(ctx: DemoSeedContext): Promise<DemoRefs> {

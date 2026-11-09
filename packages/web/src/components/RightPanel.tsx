@@ -20,11 +20,10 @@ import {
   ListTodo,
   Loader2,
   Maximize2,
-  MoreHorizontal,
   ScrollText,
-  X,
 } from 'lucide-react'
 import type { MemoryFile, Todo } from '@tandem/protocol'
+import { countTurns } from '@tandem/protocol'
 import type { SubagentSession, UiMessage } from '../lib/types'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -45,26 +44,18 @@ import {
 import { PERMISSION_MODE_LABELS } from '../lib/types'
 import { quotaLine } from '../lib/quota'
 import { stripMemoryMeta } from '../lib/memory'
-import { ConnectionDot, SessionStatusDot } from './StatusDot'
+import { ConnectionDot } from './StatusDot'
 import { Markdown } from './Markdown'
 import { useContextBreakdown } from './chat/ContextMeter'
 import { Modal } from './ui/Modal'
 import { Menu } from './ui/Menu'
 import { Button, IconButton } from './ui/Button'
-import { PanelBar, PanelBody } from './ui/Panel'
+import { PanelBody } from './ui/Panel'
 import { ResizeHandle } from './ui/ResizeHandle'
 import { rememberWikiHost, useWikiStore } from '../store/useWikiStore'
 
 const EMPTY_TODOS: Todo[] = []
 const EMPTY_MESSAGES: UiMessage[] = []
-
-const STATUS_TEXT: Record<string, string> = {
-  idle: '空闲',
-  running: '运行中',
-  waiting_permission: '等待审批',
-  retrying: '等待网络',
-  error: '出错',
-}
 
 const TODO_ICONS = {
   completed: CircleCheck,
@@ -76,22 +67,24 @@ import {
   Card,
   DetailRow,
   GROUP_META,
-  GROUPS,
   PANEL_WIDTH_DEFAULT,
   PANEL_WIDTH_MAX,
   PANEL_WIDTH_MIN,
+  loadCollapsedGroups,
   loadPanelWidth,
-  loadPanelPrefs,
-  savePanelPrefs,
+  saveCollapsedGroups,
   savePanelWidth,
+  setPanelAvailability,
+  setPanelPrefs,
+  usePanelGroups,
   type GroupId,
-  type PanelPrefs,
 } from './right-panel/shared'
 import { AgentsCard } from './right-panel/AgentsCard'
 import { ContextCard } from './right-panel/ContextCard'
 import { WikiCard } from './right-panel/WikiCard'
+import { SessionGraphCard } from './sessionGraph/SessionGraphCard'
 
-export function RightPanel({ onClose }: { onClose: () => void }) {
+export function RightPanel() {
   const isMobile = useIsMobile()
   const [panelWidth, setPanelWidth] = useState(loadPanelWidth)
   const [dragWidth, setDragWidth] = useState<number | null>(null)
@@ -104,6 +97,15 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const plan = useAppStore((s) => s.active?.plan ?? null)
   const subagents = useAppStore((s) => s.active?.subagents)
   const agentCount = subagents ? Object.keys(subagents).length : 0
+  const hostSessions = useAppStore((s) => (hostId ? s.runtimes[hostId]?.sessions : undefined))
+  const turnCount = useMemo(() => countTurns(messages), [messages])
+  const forkCount = useMemo(
+    () =>
+      sessionId && hostSessions
+        ? hostSessions.filter((item) => item.forkedFrom?.sessionId === sessionId).length
+        : 0,
+    [hostSessions, sessionId],
+  )
   const changesNonce = useAppStore((s) => s.changesNonce)
   const openSettings = useUiStore((s) => s.openSettings)
   const host = useAppStore((s) => s.hosts.find((h) => h.id === s.active?.hostId) ?? null)
@@ -139,7 +141,9 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const openWiki = useUiStore((s) => s.openWiki)
   const [copied, setCopied] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
-  const [prefs, setPrefs] = useState<PanelPrefs>(loadPanelPrefs)
+  const [graphExpanded, setGraphExpanded] = useState(false)
+  const { prefs } = usePanelGroups()
+  const [collapsedGroups, setCollapsedGroups] = useState<GroupId[]>(loadCollapsedGroups)
   const [dragging, setDragging] = useState<GroupId | null>(null)
   const [dragArmed, setDragArmed] = useState<GroupId | null>(null)
   const handleDownRef = useRef(false)
@@ -283,6 +287,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       plan: !!plan,
       todos: todos.length > 0,
       agents: agentCount > 0,
+      graph: turnCount > 0,
       usage: usageHasData,
       context: !contextData.noData,
       changes: fileChanges.length > 0,
@@ -294,6 +299,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       plan,
       todos.length,
       agentCount,
+      turnCount,
       usageHasData,
       contextData.noData,
       fileChanges.length,
@@ -308,7 +314,48 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const visibleKey = visibleGroups.join(',')
   const orderKey = prefs.order.join(',')
 
-  useEffect(() => savePanelPrefs(prefs), [prefs])
+  useEffect(() => saveCollapsedGroups(collapsedGroups), [collapsedGroups])
+  useEffect(() => setPanelAvailability(hasData), [hasData])
+  useEffect(() => setGraphExpanded(false), [sessionId])
+
+  const toggleCollapsed = (id: GroupId) =>
+    setCollapsedGroups((list) =>
+      list.includes(id) ? list.filter((item) => item !== id) : [...list, id],
+    )
+
+  // 收起后的标题行只显示最关键的一行结论（反馈12#07）。
+  const cardSummary = (id: GroupId): ReactNode => {
+    switch (id) {
+      case 'plan':
+        return planStatus
+      case 'todos':
+        return todos.length ? `${completed}/${todos.length}` : '—'
+      case 'agents':
+        return String(agentCount)
+      case 'graph':
+        return `${turnCount} 轮 · ${agentCount} 子代理 · ${forkCount} 分叉`
+      case 'usage': {
+        const total = (usage?.costUsd ?? 0) + subUsage.cost
+        return formatCost(total)
+      }
+      case 'context':
+        return contextData.noData
+          ? '—'
+          : `${formatTokens(contextData.used)} / ${formatTokens(contextData.window)} · ${contextData.pct}%`
+      case 'changes':
+        return fileChanges.length
+          ? `${fileChanges.length} 个文件 · +${additions} −${deletions}`
+          : '—'
+      case 'memory':
+        return `${memory?.entries ?? 0} 条`
+      case 'wiki':
+        return `${wikiEntry?.meta?.pages?.length ?? 0} 页`
+      case 'details':
+        return summary?.model ? prettyModel(summary.model) : '—'
+      default:
+        return null
+    }
+  }
 
   const capturePositions = () => {
     const map = new Map<GroupId, number>()
@@ -398,36 +445,15 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const moveGroup = (from: GroupId, to: GroupId) => {
     if (from === to) return
     capturePositions()
-    setPrefs((p) => {
-      const order = [...p.order]
-      const fromIndex = order.indexOf(from)
-      const toIndex = order.indexOf(to)
-      if (fromIndex < 0 || toIndex < 0) return p
-      order.splice(fromIndex, 1)
-      order.splice(toIndex, 0, from)
-      return { ...p, order }
-    })
+    const order = [...prefs.order]
+    const fromIndex = order.indexOf(from)
+    const toIndex = order.indexOf(to)
+    if (fromIndex < 0 || toIndex < 0) return
+    order.splice(fromIndex, 1)
+    order.splice(toIndex, 0, from)
+    setPanelPrefs({ ...prefs, order })
   }
 
-  const toggleGroup = (id: GroupId) => {
-    setPrefs((p) => {
-      const visible = !p.hidden.includes(id) && (hasData[id] || p.shown.includes(id))
-      if (visible) {
-        // 有数据的分组取消勾选 → 记进 hidden；只是被显式显示的空分组 → 回到默认隐藏，
-        // 这样之后有了数据仍会自动出现。
-        return {
-          ...p,
-          hidden: hasData[id] ? [...p.hidden, id] : p.hidden.filter((x) => x !== id),
-          shown: p.shown.filter((x) => x !== id),
-        }
-      }
-      return {
-        ...p,
-        hidden: p.hidden.filter((x) => x !== id),
-        shown: hasData[id] || p.shown.includes(id) ? p.shown : [...p.shown, id],
-      }
-    })
-  }
 
   const copyCwd = async () => {
     if (!summary?.cwd) return
@@ -469,6 +495,19 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     }
     if (id === 'agents') {
       return <span className="text-[12px] tabular-nums text-muted">{agentCount}</span>
+    }
+    if (id === 'graph') {
+      return (
+        <IconButton
+          size="sm"
+          onClick={() => setGraphExpanded(true)}
+          label="全高显示会话图"
+          tooltip="展开"
+          className="-mr-1 size-6! [&_svg]:size-3"
+        >
+          <Maximize2 size={12} />
+        </IconButton>
+      )
     }
     if (id === 'todos' && todos.length > 0) {
       return (
@@ -563,6 +602,9 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     }
     if (id === 'agents') {
       return <AgentsCard />
+    }
+    if (id === 'graph') {
+      return <SessionGraphCard />
     }
     if (id === 'wiki') {
       return <WikiCard />
@@ -894,52 +936,12 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
           label="调整会话信息面板宽度"
         />
       )}
-      <PanelBar title="会话信息">
-        {summary && (
-          <span className="flex items-center gap-1.5 text-[12px] text-muted">
-            <SessionStatusDot status={summary.status} />
-            {STATUS_TEXT[summary.status] ?? summary.status}
-          </span>
-        )}
-        <span className="flex-1" />
-        <Menu
-          side="bottom"
-          align="end"
-          aria-label="显示分组"
-          className="w-[200px]"
-          trigger={({ open }) => (
-            <IconButton
-              label="自定义信息面板"
-              tooltip={open ? '' : '自定义'}
-              aria-expanded={open}
-              aria-haspopup="menu"
-              className={cn('-mr-0.5 max-md:size-11', open && 'bg-[var(--t-bg-active)] text-text')}
-            >
-              <MoreHorizontal size={15} />
-            </IconButton>
-          )}
-        >
-          {GROUPS.map((g) => {
-            const avail = hasData[g.id]
-            const shown = !prefs.hidden.includes(g.id) && (avail || prefs.shown.includes(g.id))
-            return (
-              <Menu.CheckItem
-                key={g.id}
-                icon={<g.Icon />}
-                checked={shown}
-                hint={avail ? undefined : '暂无数据；勾选后也会显示这个分组'}
-                onCheckedChange={() => toggleGroup(g.id)}
-              >
-                {g.label}
-              </Menu.CheckItem>
-            )
-          })}
-        </Menu>
-        <IconButton onClick={onClose} label="关闭信息面板" className="-mr-1 max-md:size-11">
-          <X size={15} />
-        </IconButton>
-      </PanelBar>
 
+      {graphExpanded ? (
+        <div className="flex min-h-0 flex-1 flex-col px-3 pb-3 pt-2" data-graph-full>
+          <SessionGraphCard full onBack={() => setGraphExpanded(false)} />
+        </div>
+      ) : (
       <PanelBody scroll className="space-y-2 p-3"
         style={{ overflowAnchor: 'none' }}
         onDragOver={(e) => {
@@ -993,6 +995,10 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
                 moveGroup(dragging, id)
               }}
               right={renderRight(id)}
+              collapsible
+              collapsed={collapsedGroups.includes(id)}
+              onToggle={() => toggleCollapsed(id)}
+              summary={cardSummary(id)}
             >
               {renderBody(id)}
             </Card>
@@ -1006,6 +1012,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
           </div>
         )}
       </PanelBody>
+      )}
 
       <Modal
         open={planOpen && !!plan}
