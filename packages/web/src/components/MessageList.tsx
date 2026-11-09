@@ -14,6 +14,7 @@ import { CompactionNoticeLine } from './chat/CompactionNoticeLine'
 import { HandoffCard } from './chat/HandoffCard'
 import { RoutePlanLine } from './chat/RoutePlanLine'
 import { DivisionPlanCard } from './chat/DivisionPlanCard'
+import { DELEGATION_META } from '../lib/routeLabels'
 import { UserMessage } from './chat/UserMessage'
 import { AssistantMessage } from './chat/AssistantMessage'
 import {
@@ -143,9 +144,7 @@ const NoticeRow = memo(function NoticeRow({
 function routeDetailText(route: NonNullable<UiMessage['route']>): string {
   const scores = route.scores
   const tier = { fast: '快速', balanced: '均衡', power: '强力' }[route.tier]
-  const delegation = { orchestrate: '编排', more: '较多', less: '较少', none: '不用' }[
-    scores.delegation
-  ]
+  const delegation = DELEGATION_META[scores.delegation].label
   return [
     `复杂度 ${scores.complexity}/100`,
     `消息 ${scores.messageChars} 字`,

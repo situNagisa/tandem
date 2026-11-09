@@ -2,6 +2,7 @@ import { SlidersHorizontal, Trash2 } from 'lucide-react'
 import type { EvalConfig, Profile, ReasoningEffort } from '@tandem/protocol'
 import { Button, IconButton } from '../ui/Button'
 import { Input, Select } from '../ui/Controls'
+import { DELEGATION_META, DELEGATION_ORDER } from '../../lib/routeLabels'
 
 const EFFORTS: Array<{ value: string; label: string }> = [
   { value: '', label: '默认思考强度' },
@@ -10,14 +11,6 @@ const EFFORTS: Array<{ value: string; label: string }> = [
   { value: 'medium', label: '中' },
   { value: 'high', label: '高' },
   { value: 'max', label: '最大' },
-]
-
-const DELEGATIONS: Array<{ value: string; label: string }> = [
-  { value: '', label: '默认委派策略' },
-  { value: 'orchestrate', label: '编排' },
-  { value: 'more', label: '多派' },
-  { value: 'less', label: '少派' },
-  { value: 'none', label: '不派' },
 ]
 
 export function EvalConfigCard({
@@ -149,7 +142,7 @@ export function EvalConfigCard({
           </Select>
         </label>
         <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
-          委派策略
+          委派倾向
           <Select
             value={config.delegation ?? ''}
             onChange={(event) =>
@@ -158,12 +151,13 @@ export function EvalConfigCard({
                 delegation: (event.target.value || undefined) as EvalConfig['delegation'],
               })
             }
-            aria-label="委派策略"
+            aria-label="委派倾向"
             size="sm"
           >
-            {DELEGATIONS.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
+            <option value="">默认委派倾向</option>
+            {DELEGATION_ORDER.map((value) => (
+              <option key={value} value={value}>
+                {DELEGATION_META[value].longLabel}
               </option>
             ))}
           </Select>

@@ -9,7 +9,7 @@ export const PROMPT_CATEGORIES: Array<{
   description: string;
 }> = [
   { id: 'system', label: '系统提示', description: '每轮请求组成系统提示的基础段落。' },
-  { id: 'workflow', label: '工作流', description: '计划模式、委派策略与子代理行为。' },
+  { id: 'workflow', label: '工作流', description: '计划模式、委派倾向与子代理行为。' },
   { id: 'command', label: '命令', description: '斜杠命令与其他内置任务使用的提示词。' },
   { id: 'aux', label: '辅助任务', description: '标题、PR、CI、记忆等后台任务的提示词。' },
 ];
@@ -60,12 +60,12 @@ export const EDITABLE_PROMPTS: Record<string, EditablePromptDef> = {
   },
   delegationOrchestrate: {
     key: 'delegationOrchestrate',
-    label: '委派策略：编排',
-    description: '主会话只规划/汇总，读写与命令都交给子代理。',
+    label: '委派倾向：仅规划',
+    description: '主会话只规划与汇总，读写和命令都交给子代理。',
     category: 'workflow',
     variables: ['{{presets}}', '{{cwd}}', '{{delegation}}'],
     text:
-      '# 委派策略：编排（orchestrate）\n' +
+      '# 委派倾向：仅规划（orchestrate）\n' +
       '你只负责规划、拆分与汇总：所有读写文件、搜索、运行测试和命令都交给子代理执行。' +
       '每轮先用 Task 派发可独立并行的子任务，保持主会话上下文精简；' +
       '自己只读少量关键文件用于决策。收到子代理结果后汇总给用户，不要亲自实现。\n' +
@@ -73,32 +73,32 @@ export const EDITABLE_PROMPTS: Record<string, EditablePromptDef> = {
   },
   delegationMore: {
     key: 'delegationMore',
-    label: '委派策略：多派',
+    label: '委派倾向：积极',
     description: '鼓励并行派发可独立的子任务。',
     category: 'workflow',
     variables: ['{{presets}}', '{{cwd}}', '{{delegation}}'],
     text:
-      '# 委派策略：多派（more）\n' +
+      '# 委派倾向：积极（more）\n' +
       '尽量把可独立、可并行的子任务交给子代理（探索、测试、审查分别派发），主会话负责整合结论。' +
       '小改动或必须共享上下文的操作可以自己做。',
   },
   delegationLess: {
     key: 'delegationLess',
-    label: '委派策略：少派',
-    description: '默认行为：只有明显独立且多步的任务才派。',
+    label: '委派倾向：适度',
+    description: '默认：只有明显独立且多步的任务才派。',
     category: 'workflow',
     variables: ['{{presets}}', '{{cwd}}', '{{delegation}}'],
     text:
-      '# 委派策略：少派（less，默认）\n' +
+      '# 委派倾向：适度（less，默认）\n' +
       '只有明显独立且多步的任务才派子代理；大多数工作直接自己做，避免为小事付出额外上下文与延迟。',
   },
   delegationNone: {
     key: 'delegationNone',
-    label: '委派策略：不派',
+    label: '委派倾向：关闭',
     description: '不提供 Task 工具时注入的说明。',
     category: 'workflow',
     variables: ['{{cwd}}', '{{delegation}}'],
-    text: '# 委派策略：不派（none）\n不要派发子代理，所有工作自己完成。',
+    text: '# 委派倾向：关闭（none）\n不要派发子代理，所有工作自己完成。',
   },
   subagentDefault: {
     key: 'subagentDefault',
@@ -296,7 +296,7 @@ export const READONLY_PROMPTS: ReadonlyPromptDef[] = [
   {
     key: 'toolGuidance',
     label: '工具使用要点',
-    description: '系统提示里对各内置工具的使用说明（Task 行随委派策略与预设动态生成）。',
+    description: '系统提示里对各内置工具的使用说明（Task 行随委派倾向与预设动态生成）。',
     category: 'system',
     variables: ['{{taskLine}}'],
     text: `- Bash：在 cwd 内执行非交互命令；设置合理的 timeout；输出过长会被截断。不要用交互式命令（vim、top 等）。

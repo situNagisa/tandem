@@ -1,4 +1,4 @@
-// 子代理派发、委派策略与工具可见性。
+// 子代理派发、委派倾向与工具可见性。
 import { randomUUID } from 'node:crypto';
 import type {
   DelegationStrategy,

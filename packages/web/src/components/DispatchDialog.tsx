@@ -181,16 +181,19 @@ export function DispatchDialog({
     <Modal
       open={open}
       onClose={onClose}
-      ariaLabel="派单"
+      ariaLabel="跨主机派单"
       title={
         <span className="flex items-center gap-2">
-          <Send size={14} className="text-muted" /> 派单到其他主机
+          <Send size={14} className="text-muted" /> 跨主机派单
         </span>
       }
       className="max-h-[min(620px,88dvh)] w-[min(560px,94vw)] max-sm:fixed max-sm:inset-0 max-sm:my-0 max-sm:h-auto max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:pt-[env(safe-area-inset-top)]"
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]"
     >
       <div className="space-y-3">
+        <p className="text-[12px] leading-5 text-muted">
+          把整个任务交给目标主机执行；与输入框执行方式里的「多代理协作」（拆子任务）不同。
+        </p>
         <label className="block space-y-1 text-[12px] text-muted">
           目标主机
           <Select aria-label="目标主机" value={hostId} onChange={(e) => chooseHost(e.target.value)}>

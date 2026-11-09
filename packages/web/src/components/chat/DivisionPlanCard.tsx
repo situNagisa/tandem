@@ -9,6 +9,7 @@ import { formatCost } from '../../lib/format'
 import { Button, IconButton } from '../ui/Button'
 import { Select } from '../ui/Controls'
 import { cn } from '../../lib/cn'
+import { ROUTE_MODE_META } from '../../lib/routeLabels'
 
 /** 分工前确认卡：列出子任务、模型与预计花费；可改模型、删除子任务或整单改成直接做。 */
 export function DivisionPlanCard({
@@ -62,8 +63,14 @@ export function DivisionPlanCard({
         ...(task.deleted ? { deleted: true } : {}),
       }))
       await api.resolveDivisionPlan(host, sessionId, request.id, { action, tasks: edits })
-      setDone(action === 'direct' ? '已改为直接做' : action === 'cheap' ? '已改为便宜直做' : '已开始执行')
-      toast(action === 'approve' ? '分工计划已确认' : '已按你的选择继续', 'success')
+      setDone(
+        action === 'direct'
+          ? `已改为${ROUTE_MODE_META.direct.label}`
+          : action === 'cheap'
+            ? `已改为${ROUTE_MODE_META.cheap.label}`
+            : '已开始执行',
+      )
+      toast(action === 'approve' ? '多代理协作计划已确认' : '已按你的选择继续', 'success')
     } catch (err) {
       toast(err instanceof Error ? err.message : '提交分工计划失败', 'error')
     } finally {
@@ -83,7 +90,7 @@ export function DivisionPlanCard({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="text-[13px] font-medium text-text">分工计划待确认</span>
+            <span className="text-[13px] font-medium text-text">多代理协作计划待确认</span>
             <span className="text-[12px] text-muted">
               {visible.length} 个子任务 · 预计 {formatCost(request.estimatedCostUsd)}
             </span>
@@ -152,7 +159,7 @@ export function DivisionPlanCard({
           </div>
         ))}
         {visible.length === 0 && (
-          <p className="py-1 text-[12px] text-muted">所有子任务都已删除；可以改为直接做。</p>
+          <p className="py-1 text-[12px] text-muted">所有子任务都已删除；可以改为{ROUTE_MODE_META.direct.label}。</p>
         )}
       </div>
 
@@ -170,10 +177,10 @@ export function DivisionPlanCard({
               {busy === 'approve' ? '开始中…' : '开始'}
             </Button>
             <Button size="sm" variant="secondary" disabled={!!busy} onClick={() => void submit('direct')}>
-              改为直接做
+              改为{ROUTE_MODE_META.direct.label}
             </Button>
             <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void submit('cheap')}>
-              改为便宜直做
+              改为{ROUTE_MODE_META.cheap.label}
             </Button>
           </>
         )}

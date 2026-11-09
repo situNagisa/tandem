@@ -89,7 +89,7 @@ export interface HostConfig {
   idleTimeoutSec?: number;
   /** Host 重启后对未完成会话：自动继续（默认）/ 恢复为暂停等我确认。 */
   resumeOnRestart?: 'auto' | 'pause';
-  /** 新会话默认委派策略（缺省 less）。 */
+  /** 新会话默认委派倾向（缺省 less）。 */
   defaultDelegation?: import('@tandem/protocol').DelegationStrategy;
   /** 本机语音转写（Whisper）配置。 */
   voice?: import('@tandem/protocol').VoiceSettings;

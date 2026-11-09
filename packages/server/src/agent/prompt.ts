@@ -60,9 +60,9 @@ export interface PromptOptions {
   subagents?: Array<{ name: string; description?: string }>;
   /** 子代理预设的附加系统提示。 */
   extraSystemPrompt?: string;
-  /** 当前委派策略提示词（由 Host 按策略模板渲染）。 */
+  /** 当前委派倾向提示词（由 Host 按策略模板渲染）。 */
   delegationPrompt?: string;
-  /** 当前委派策略对应的模板 key，用于标注来源。 */
+  /** 当前委派倾向对应的模板 key，用于标注来源。 */
   delegationKey?: string;
   /** Host 解析后的可编辑提示词（项目覆盖 > 用户自定义 > 内置默认）。 */
   prompts?: Record<string, ResolvedPrompt | undefined>;
@@ -139,7 +139,7 @@ export function buildSystemPromptParts(
     const source = options.delegationKey
       ? sourceOf(options, options.delegationKey)
       : 'builtin';
-    push('delegation', '委派策略', source, options.delegationPrompt);
+    push('delegation', '委派倾向', source, options.delegationPrompt);
   }
   if (options.extraSystemPrompt?.trim()) {
     push('subagent', '子代理预设附加提示', 'session', `# 子代理预设\n${options.extraSystemPrompt}`);

@@ -68,10 +68,10 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
   },
   {
     id: 'delegation',
-    title: '委派策略',
+    title: '委派倾向',
     group: 'agent',
     settingsPage: 'agent',
-    keywords: ['委派', '编排', '少派', '多派'],
+    keywords: ['委派', '仅规划', '适度', '积极', '关闭'],
   },
   {
     id: 'auto-compact',
@@ -144,7 +144,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     ],
     settingsPage: 'routing',
     components: ['DivisionRoutingSection', 'DivisionPlanCard', 'RoutePlanLine'],
-    keywords: ['分工', '规划者', '执行者', '专长', '便宜直做', '执行方式', '确认卡'],
+    keywords: ['分工', '多代理协作', '规划者', '执行者', '专长', '低成本', '执行方式', '确认卡'],
   },
   {
     id: 'usage-budget',

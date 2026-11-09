@@ -123,27 +123,27 @@ export const CHANGELOG: ChangelogRelease[] = [
         id: 'division-routing',
         title: '分工路由：简单任务不变复杂',
         summary:
-          '默认直接做；一眼机械的任务整单交给便宜模型直做；多步机械或领域匹配才分工，由子代理执行，主会话模型与缓存不变。',
+          '默认单代理；一眼机械的任务整单交给低成本模型直做；多步机械或领域匹配才多代理协作，由子代理执行，主会话模型与缓存不变。',
         target: { kind: 'settings', tab: 'routing', settingId: 'routing.division' },
       },
       {
         id: 'route-mode-picker',
         title: '发送前先选执行方式',
         summary:
-          '输入框底栏可选自动 / 直接做 / 便宜直做 / 分工，只影响本条消息，也可勾选本会话保持。',
+          '输入框底栏可选自动 / 单代理 / 低成本 / 多代理协作，只影响本条消息，也可记住为会话偏好。',
         target: { kind: 'home' },
       },
       {
         id: 'division-confirm-plan',
         title: '分工先看计划再确认',
         summary:
-          '需要确认时先列出子任务、模型与预计花费；可逐个换模型、删子任务，或整单改为直接做；同一张卡进收件箱。',
+          '需要确认时先列出子任务、模型与预计花费；可逐个换模型、删子任务，或整单改为单代理；同一张卡进收件箱。',
         target: { kind: 'settings', tab: 'routing', settingId: 'routing.division' },
       },
       {
         id: 'subagent-reroute',
         title: '子代理可换模型或交回主会话',
-        summary: '右栏子代理卡片可换任意模型重跑，或把原始任务改由主会话直接做。',
+        summary: '右栏子代理卡片可换任意模型重跑，或把原始任务交回主会话（单代理）。',
         target: { kind: 'demo', scenario: 'subagents' },
       },
       {

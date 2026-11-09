@@ -16,7 +16,6 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Send,
   Server,
   TriangleAlert,
   Wrench,
@@ -90,7 +89,6 @@ export function NewSessionView() {
   const [worktreeBranch, setWorktreeBranch] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const setDispatchOpen = useUiStore((s) => s.setDispatchOpen)
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? '早上好' : hour < 18 ? '下午好' : '晚上好'
@@ -261,15 +259,6 @@ export function NewSessionView() {
           <p className="mt-2.5 text-[13px] text-muted">
             {host ? `在 ${host.name} 上开始一次新的协作` : '连接一台主机 后即可开始'}
           </p>
-          <Button
-            size="sm"
-            variant="secondary"
-            icon={<Send size={13} />}
-            onClick={() => setDispatchOpen(true, hostId)}
-            className="mt-3 max-sm:h-10"
-          >
-            派单到其他主机
-          </Button>
         </div>
 
         <div className="mb-1">
@@ -280,8 +269,6 @@ export function NewSessionView() {
             env={gitRepo === 'yes' ? { repoRoot: git.env?.repoRoot ?? cwd, branch: git.env?.branch } : undefined}
             envLoading={gitRepo === 'checking'}
             worktreeOn={worktree}
-            delegation={delegation}
-            onDelegationChange={setDelegation}
             onHostChange={chooseHost}
             onCwdChange={setCwd}
             onWorktreeChange={(on) => {
@@ -299,8 +286,10 @@ export function NewSessionView() {
           permissionMode={permissionMode}
           effort={effort}
           routeMode={routeMode}
+          delegation={delegation}
           onModelChange={chooseAccount}
           onRouteModeChange={setRouteMode}
+          onDelegationChange={setDelegation}
           onPermissionModeChange={setPermissionMode}
           onEffortChange={setEffort}
           hostId={hostId}

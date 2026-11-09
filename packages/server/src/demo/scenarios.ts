@@ -61,8 +61,8 @@ export const DEMO_SCENARIOS: Array<Omit<DemoScenarioInfo, 'sessionIds' | 'boardI
   },
   {
     id: 'delegation',
-    title: '委派策略编排',
-    summary: '主会话委派策略为「编排」，消息流展示 Task 派发与汇总；可在输入框菜单切换策略。',
+    title: '委派倾向仅规划',
+    summary: '主会话委派倾向为「仅规划」，消息流展示 Task 派发与汇总；可在输入框的执行方式菜单里切换。',
     kind: 'session',
     group: 'conversation',
   },

@@ -4,6 +4,7 @@ import { useUiStore } from '../store/useUiStore'
 import { navigateBoard } from './boardRoute'
 import { navigate, parseHash } from './router'
 import { PERMISSION_MODE_LABELS } from './types'
+import { DELEGATION_META } from './routeLabels'
 import { profileModelGroups } from './profileModels'
 import { matchShortcut } from './shortcut'
 
@@ -20,12 +21,7 @@ const RECENT_KEY = 'tandem.recentCommands.v1'
 const RECENT_LIMIT = 8
 
 const MODES: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions']
-const DELEGATIONS: Array<{ value: DelegationStrategy; label: string }> = [
-  { value: 'less', label: '少派' },
-  { value: 'more', label: '多派' },
-  { value: 'orchestrate', label: '编排' },
-  { value: 'none', label: '不派' },
-]
+const DELEGATIONS: DelegationStrategy[] = ['less', 'more', 'orchestrate', 'none']
 
 function toast(text: string, kind: 'info' | 'success' | 'error' = 'info'): void {
   useUiStore.getState().toast(text, kind)
@@ -151,8 +147,8 @@ const BASE_COMMANDS: AppCommand[] = [
   },
   {
     id: 'session.dispatch',
-    title: '派单到其他主机',
-    keywords: ['派单', '任务', 'dispatch'],
+    title: '跨主机派单（整个任务）',
+    keywords: ['派单', '任务', 'dispatch', '其他主机'],
     defaultShortcut: 'mod+alt+d',
     run: () => {
       const store = useAppStore.getState()
@@ -253,18 +249,18 @@ const BASE_COMMANDS: AppCommand[] = [
   },
   {
     id: 'session.delegation',
-    title: '切换委派策略',
-    keywords: ['委派', '子代理', 'delegation'],
+    title: '切换委派倾向',
+    keywords: ['委派', '子代理', 'delegation', '倾向'],
     defaultShortcut: 'mod+alt+l',
     run: () => {
       const active = requireActive()
       if (!active?.summary) return
       const store = useAppStore.getState()
       const current = active.summary.delegation ?? 'less'
-      const index = DELEGATIONS.findIndex((item) => item.value === current)
-      const next = DELEGATIONS[(index + 1) % DELEGATIONS.length]
-      void store.updateSession(active.hostId, active.sessionId, { delegation: next.value })
-      toast(`委派策略：${next.label}`)
+      const index = DELEGATIONS.indexOf(current)
+      const next = DELEGATIONS[(index + 1) % DELEGATIONS.length]!
+      void store.updateSession(active.hostId, active.sessionId, { delegation: next })
+      toast(`委派倾向：${DELEGATION_META[next].label}`)
     },
   },
   {

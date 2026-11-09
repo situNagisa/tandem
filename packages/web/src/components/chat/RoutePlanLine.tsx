@@ -2,18 +2,9 @@ import type { TurnRouteMode } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
+import { ROUTE_MODE_META, ROUTE_MODE_ORDER } from '../../lib/routeLabels'
 
-const MODES: Array<{ value: TurnRouteMode; label: string }> = [
-  { value: 'direct', label: '直接做' },
-  { value: 'cheap', label: '便宜直做' },
-  { value: 'division', label: '分工' },
-]
-
-const MODE_LABEL: Record<TurnRouteMode, string> = {
-  direct: '直接做',
-  cheap: '便宜直做',
-  division: '分工',
-}
+const MODES = ROUTE_MODE_ORDER.map((value) => ({ value, label: ROUTE_MODE_META[value].label }))
 
 /** 每个任务一行的执行方式提示：展示服务端规则结论，点按钮记住为会话偏好。 */
 export function RoutePlanLine({
@@ -32,7 +23,7 @@ export function RoutePlanLine({
   const choose = (next: TurnRouteMode) => {
     if (!hostId || !sessionId) return
     void updateSession(hostId, sessionId, { routePreference: next }).then((updated) => {
-      if (updated) toast(`已记住：以后同类任务默认${MODE_LABEL[next]}`, 'success')
+      if (updated) toast(`已记住：以后同类任务默认${ROUTE_MODE_META[next].label}`, 'success')
     })
   }
   return (

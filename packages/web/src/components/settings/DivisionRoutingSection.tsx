@@ -12,6 +12,7 @@ import type {
 } from '@tandem/protocol'
 import { ChevronDown, GitFork, Loader2, Wand2 } from 'lucide-react'
 import { profileModelGroups } from '../../lib/profileModels'
+import { ROUTE_MODE_META } from '../../lib/routeLabels'
 import { formatCost } from '../../lib/format'
 import { cn } from '../../lib/cn'
 import { Button } from '../ui/Button'
@@ -220,7 +221,7 @@ export function DivisionRoutingSection({
     <section data-setting-id="routing.division" className="settings-item space-y-3 px-3 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <GitFork size={14} className="shrink-0 text-text-tertiary" />
-        <span className="text-[13px] font-medium text-text">分工路由</span>
+        <span className="text-[13px] font-medium text-text">多代理协作</span>
         <span className="text-[12px] text-muted">主会话模型不变，Task 子代理执行</span>
         <span className="flex-1" />
         {saving && (
@@ -230,7 +231,7 @@ export function DivisionRoutingSection({
         )}
       </div>
       <p className="text-[12px] leading-4 text-muted">
-        默认直接做；只有多步机械子任务或命中领域专长时才分工。便宜的机械任务整单交给执行者，主会话只看摘要。
+        默认单代理；只有多步机械子任务或命中领域专长时才多代理协作。低成本的机械任务整单交给执行者，主会话只看摘要。
       </p>
 
       <div className="flex flex-wrap items-center gap-1.5">
@@ -341,7 +342,7 @@ export function DivisionRoutingSection({
 
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="flex items-center justify-between gap-2 text-[13px] text-text">
-          分工最低复杂度
+          进入多代理协作的最低复杂度
           <Input
             size="sm"
             type="number"
@@ -369,7 +370,7 @@ export function DivisionRoutingSection({
           />
         </label>
         <label className="flex items-center justify-between gap-2 text-[13px] text-text">
-          分工前确认
+          多代理协作前确认
           <Select
             size="sm"
             value={confirm}
@@ -416,7 +417,7 @@ export function DivisionRoutingSection({
                   item.mode === 'direct' && 'text-text',
                 )}
               >
-                {item.domain} · {item.mode === 'direct' ? '直接做' : item.mode === 'cheap' ? '便宜直做' : '分工'} × {item.count}
+                {item.domain} · {ROUTE_MODE_META[item.mode].label} × {item.count}
               </span>
             ))}
           </div>

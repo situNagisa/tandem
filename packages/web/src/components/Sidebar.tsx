@@ -321,11 +321,11 @@ export function Sidebar({
             onNavigate?.()
           }}
           className={row}
-          tooltip="向任意在线主机派单"
+          tooltip="跨主机派单：把整个任务交给另一台主机执行（不拆子任务）"
           tooltipSide="bottom"
         >
           <Send size={15} className="shrink-0 opacity-70" />
-          <span className="min-w-0 flex-1 truncate">派单</span>
+          <span className="min-w-0 flex-1 truncate">跨主机派单</span>
         </Button>
         )}
         {boardHost && !readOnly && (

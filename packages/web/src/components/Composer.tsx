@@ -1,3 +1,4 @@
+import { flushSync } from 'react-dom'
 import {
   useCallback,
   useEffect,
@@ -12,6 +13,7 @@ import {
 } from 'react'
 import type {
   ContentBlock,
+  DelegationStrategy,
   ModelPriceInfo,
   PermissionMode,
   Profile,
@@ -54,10 +56,7 @@ import { cn } from '../lib/cn'
 import { recordModelUse } from '../lib/recentModels'
 import { groupName, profileModelGroups } from '../lib/profileModels'
 import {
-  EFFORTS,
-  EFFORT_LABEL,
   defaultEffortsForKind,
-  effortSuffix,
   loadLastEffort,
   nearestEffort,
   rememberEffort,
@@ -93,12 +92,23 @@ const SOURCE_LABEL: Record<SlashCommand['source'], string> = {
 import { detectCompletion, type Completion, type CompletionEntry } from './composer/completion'
 import { CompletionMenu } from './composer/CompletionMenu'
 import { ModelMenu } from './composer/ModelMenu'
+import { MarkdownHighlight } from './composer/MarkdownHighlight'
+import { handleMarkdownEnter, handleMarkdownTab } from './composer/markdownInput'
 import {
   MODES,
   MobileMoreMenu,
   PermissionModeMenu,
   ThinkingModeMenu,
 } from './composer/ComposerMenus'
+import {
+  DELEGATION_META,
+  DELEGATION_ORDER,
+  ROUTE_MODE_OPTIONS,
+  delegationLabel,
+  routeModeLabel,
+} from '../lib/routeLabels'
+import { formatTokens } from '../lib/format'
+import { estimateInputTokens } from '../lib/tokens'
 
 interface Attachment {
   id: string
@@ -140,16 +150,7 @@ async function imageFingerprint(file: File): Promise<string> {
 const MAX_ATTACHMENTS = 6
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
-const ROUTE_MODE_OPTIONS: Array<{ value: TurnRouteMode; label: string; hint: string }> = [
-  { value: 'direct', label: '直接做', hint: '主模型自己完成，不派子代理' },
-  { value: 'cheap', label: '便宜直做', hint: '整条消息交给便宜执行者，主会话只看结果' },
-  { value: 'division', label: '分工', hint: '规划者拆解，Task 派给执行者/专长模型' },
-]
-const ROUTE_MODE_LABEL: Record<TurnRouteMode, string> = {
-  direct: '直接做',
-  cheap: '便宜直做',
-  division: '分工',
-}
+const CACHE_WARNING_KEY = 'tandem.cacheSwitchWarning.v1'
 
 export interface ComposerProps {
   /** 覆盖默认发送。返回 false（或 reject）时保留输入内容，其余返回视为成功并清空。 */
@@ -166,9 +167,12 @@ export interface ComposerProps {
     model: string,
     routeMode?: TurnRouteMode,
   ) => void
-  /** 无会话模式的执行方式（自动/直接/便宜/分工）。 */
+  /** 无会话模式的执行方式（自动/单代理/低成本/多代理协作）。 */
   routeMode?: TurnRouteMode
   onRouteModeChange?: (mode: TurnRouteMode | undefined) => void
+  /** 无会话模式的委派倾向；会话内直接从 summary 读取。 */
+  delegation?: DelegationStrategy
+  onDelegationChange?: (strategy: DelegationStrategy) => void
   onPermissionModeChange?: (mode: PermissionMode) => void
   /** 无会话模式的思考强度；缺省读上次使用值。 */
   effort?: ReasoningEffort
@@ -197,6 +201,8 @@ export function Composer({
   onModelChange,
   routeMode: routeModeProp,
   onRouteModeChange,
+  delegation: delegationProp,
+  onDelegationChange,
   onPermissionModeChange,
   effort: effortProp,
   onEffortChange,
@@ -290,13 +296,19 @@ export function Composer({
   const effectiveRouteMode = sessionless
     ? routeModeProp
     : routeOverride ?? sessionRoutePreference
+  const effectiveDelegation = sessionless
+    ? (delegationProp ?? 'less')
+    : (summary?.delegation ?? 'less')
   const currentProfileId = sessionless ? (profileIdProp ?? '') : (summary?.profileId ?? '')
   const currentGroupId = sessionless ? groupIdProp : summary?.groupId
+  const contextUsed = summary?.context?.usedTokens ?? 0
+  const contextWindow = summary?.context?.contextWindow
   const [localEffort, setLocalEffort] = useState<ReasoningEffort>(loadLastEffort)
   const [modelEfforts, setModelEfforts] = useState<ReasoningEffort[] | undefined>(undefined)
   const [modelEffortLabels, setModelEffortLabels] = useState<
     Partial<Record<ReasoningEffort, string>> | undefined
   >(undefined)
+  const [modelContextWindow, setModelContextWindow] = useState<number | undefined>(undefined)
   const currentProfile = uiProfiles.find((p) => p.id === currentProfileId)
   const currentGroup = currentProfile?.groups?.find((g) => g.id === currentGroupId)
   const currentKind = currentGroup?.kind ?? currentProfile?.kind
@@ -313,11 +325,20 @@ export function Composer({
   const [fileLoading, setFileLoading] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
+  const [composing, setComposing] = useState(false)
+  const [cacheWarningDismissed, setCacheWarningDismissed] = useState(() => {
+    try {
+      return localStorage.getItem(CACHE_WARNING_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
   const [priceCache, setPriceCache] = useState<
     Record<string, Record<string, ModelPriceInfo> | 'loading'>
   >({})
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const highlightRef = useRef<HTMLDivElement>(null)
   const voiceRef = useRef<VoiceButtonHandle>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -402,10 +423,11 @@ export function Composer({
     if (completion?.kind === 'slash' && effectiveHostId) void refreshCommands(effectiveHostId)
   }, [completion?.kind, effectiveHostId, refreshCommands])
 
-  // 当前模型支持哪些思考强度；请求失败按 provider 默认处理
+  // 当前模型支持哪些思考强度与上下文上限；请求失败按 provider 默认处理
   useEffect(() => {
     setModelEfforts(undefined)
     setModelEffortLabels(undefined)
+    setModelContextWindow(undefined)
     if (!effectiveHostId || !currentProfileId || !currentModel || autoRoute) return
     const host = useAppStore.getState().hosts.find((h) => h.id === effectiveHostId)
     if (!host) return
@@ -416,6 +438,7 @@ export function Composer({
         if (cancelled) return
         setModelEfforts(info.efforts)
         setModelEffortLabels(info.effortLabels)
+        setModelContextWindow(info.contextWindow)
       })
       .catch(() => {
         /* 能力未知时保留默认档位 */
@@ -623,7 +646,18 @@ export function Composer({
   }
 
   const pastedText = pasted.map((p) => p.text).join('\n\n')
+  const selectionContext = useMemo(
+    () => (previewSelections.length ? selectionContextText(previewSelections) : ''),
+    [previewSelections],
+  )
   const outgoingText = [text.trim(), pastedText].filter(Boolean).join('\n\n')
+  const estimatedText = [outgoingText, selectionContext].filter(Boolean).join('\n\n')
+  const inputTokens = estimateInputTokens({ text: estimatedText, attachments: attachments.length })
+  const contextLimit = contextWindow ?? modelContextWindow
+  const expectedContext = contextUsed + inputTokens
+  const expectedPct = contextLimit
+    ? Math.min(100, (expectedContext / contextLimit) * 100)
+    : undefined
   const hasContent =
     outgoingText.length > 0 || attachments.length > 0 || previewSelections.length > 0
   const canSend = hasContent && !disabled && (onSubmit ? true : !!summary)
@@ -672,9 +706,6 @@ export function Composer({
       return
     }
     const blocks: ContentBlock[] = []
-    const selectionContext = previewSelections.length
-      ? selectionContextText(previewSelections)
-      : ''
     const messageText = [outgoingText, selectionContext].filter(Boolean).join('\n\n')
     if (messageText) blocks.push({ type: 'text', text: messageText })
     for (const a of attachments) {
@@ -759,24 +790,27 @@ export function Composer({
   const cachedPrices = priceCache[priceKey]
   const modelPrices = cachedPrices === 'loading' ? undefined : cachedPrices
 
-  const changeAutoRoute = (mode: 'auto' | 'division' = 'auto') => {
+  const changeAutoRoute = () => {
     const profile = currentProfileId || profiles[0]?.id
     if (!profile) return
     const group = currentGroupId ?? profileModelGroups(profiles.find((p) => p.id === profile) ?? null)[0]?.groupId
     if (sessionless) {
       onModelChange?.(profile, group, 'auto', undefined)
-      onRouteModeChange?.(mode === 'division' ? 'division' : undefined)
+      onRouteModeChange?.(undefined)
       return
     }
-    void updateSession(activeHostId!, summary!.id, { model: 'auto', routeMode: mode === 'division' ? 'division' : 'auto' })
+    // 模型菜单只管模型；分工改由输入框的执行方式统一选择。
+    void updateSession(activeHostId!, summary!.id, { model: 'auto', routeMode: 'auto' })
   }
 
   const applyRouteMode = (mode: TurnRouteMode | undefined) => {
     setRouteOverride(mode)
     if (sessionless) onRouteModeChange?.(mode)
-    if (keepRouteMode && !sessionless && activeHostId && summary) {
-      void updateSession(activeHostId, summary.id, { routePreference: mode ?? 'auto' })
-    }
+    if (sessionless || !activeHostId || !summary) return
+    // 会话级 routeMode=division 是「开启按规则规划」的旧字段，保持不动；
+    // 这里只写入本条覆盖，或在「记住为会话偏好」时落库偏好。
+    if (!keepRouteMode) return
+    void updateSession(activeHostId, summary.id, { routePreference: mode ?? 'auto' })
   }
 
   const toggleKeepRouteMode = () => {
@@ -785,9 +819,38 @@ export function Composer({
     if (next && !sessionless && activeHostId && summary) {
       void updateSession(activeHostId, summary.id, {
         routePreference: effectiveRouteMode ?? 'auto',
+        ...(summary.routeMode === 'division' ? { routeMode: 'auto' as const } : {}),
       })
     }
   }
+
+  const changeDelegation = (strategy: DelegationStrategy) => {
+    if (sessionless) {
+      onDelegationChange?.(strategy)
+      return
+    }
+    if (activeHostId && summary) {
+      void updateSession(activeHostId, summary.id, { delegation: strategy })
+    }
+  }
+
+  const inputPrice = modelPrices?.[currentModel]?.input
+  const cacheWarning =
+    !sessionless && !cacheWarningDismissed && contextUsed > 0
+      ? {
+          tokens: contextUsed,
+          costUsd:
+            inputPrice !== undefined ? (contextUsed * inputPrice) / 1_000_000 : undefined,
+          onDismiss: () => {
+            setCacheWarningDismissed(true)
+            try {
+              localStorage.setItem(CACHE_WARNING_KEY, '1')
+            } catch {
+              /* localStorage 不可用时只在本次会话内不再提示 */
+            }
+          },
+        }
+      : null
 
   const changeEffort = (next: ReasoningEffort, remember = true) => {
     if (remember) rememberEffort(next)
@@ -813,6 +876,17 @@ export function Composer({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelEfforts, effort])
+
+  const applyTextEdit = (edit: { text: string; caret: number }) => {
+    textRef.current = edit.text
+    // 同步提交，避免下一次按键前 React 还没把受控值写回 DOM（光标会跳到末尾）。
+    flushSync(() => setText(edit.text))
+    setCompletion(null)
+    const el = textareaRef.current
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(edit.caret, edit.caret)
+  }
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     const composing = composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229
@@ -847,6 +921,18 @@ export function Composer({
           e.preventDefault()
           const item = items[index]
           if (item) selectItem(item)
+          return
+        }
+      }
+    }
+    // 代码块内 Tab 缩进；其他位置不拦截，保留 Shift+Tab 离开输入框。
+    if (e.key === 'Tab' && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !composing) {
+      const el = textareaRef.current
+      if (el && el.selectionStart === el.selectionEnd) {
+        const edit = handleMarkdownTab(textRef.current, el.selectionStart)
+        if (edit) {
+          e.preventDefault()
+          applyTextEdit(edit)
           return
         }
       }
@@ -892,6 +978,16 @@ export function Composer({
         void handleSend()
         return
       }
+      // Markdown：代码块内换行、列表续项；其余位置保持 Enter 发送。
+      const el = textareaRef.current
+      if (!e.shiftKey && el && el.selectionStart === el.selectionEnd) {
+        const edit = handleMarkdownEnter(textRef.current, el.selectionStart)
+        if (edit) {
+          e.preventDefault()
+          applyTextEdit(edit)
+          return
+        }
+      }
       if (isMobile || e.shiftKey) return
       e.preventDefault()
       void handleSend()
@@ -907,6 +1003,7 @@ export function Composer({
   }
 
   const onChange = (value: string, caret: number) => {
+    textRef.current = value
     setText(value)
     setCompletion(detectCompletion(value, caret))
   }
@@ -1078,31 +1175,49 @@ export function Composer({
               ))}
             </div>
           )}
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={(e) =>
-              onChange(e.target.value, e.target.selectionStart ?? e.target.value.length)
-            }
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-            onBlur={() => setCompletion(null)}
-            onCompositionStart={() => {
-              composingRef.current = true
-            }}
-            onCompositionEnd={() => {
-              composingRef.current = false
-            }}
-            rows={1}
-            spellCheck={false}
-            disabled={disabled}
-            aria-label="消息输入框"
-            placeholder={
-              placeholder ??
-              (running ? '运行中，可继续输入，消息会排队发送…' : '给 Tandem 发消息…')
-            }
-            className="composer-textarea max-sm:min-h-11"
-          />
+          <div className="composer-editor" data-composing={composing || undefined}>
+            <div
+              ref={highlightRef}
+              className="composer-highlight"
+              data-testid="composer-highlight"
+              aria-hidden="true"
+            >
+              <MarkdownHighlight text={text} />
+            </div>
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) =>
+                onChange(e.target.value, e.target.selectionStart ?? e.target.value.length)
+              }
+              onKeyDown={onKeyDown}
+              onPaste={onPaste}
+              onScroll={(e) => {
+                const layer = highlightRef.current
+                if (!layer) return
+                layer.scrollTop = e.currentTarget.scrollTop
+                layer.scrollLeft = e.currentTarget.scrollLeft
+              }}
+              onBlur={() => setCompletion(null)}
+              onCompositionStart={() => {
+                composingRef.current = true
+                setComposing(true)
+              }}
+              onCompositionEnd={() => {
+                composingRef.current = false
+                setComposing(false)
+              }}
+              rows={1}
+              spellCheck={false}
+              disabled={disabled}
+              aria-label="消息输入框"
+              placeholder={
+                placeholder ??
+                (running ? '运行中，可继续输入，消息会排队发送…' : '给 Tandem 发消息…')
+              }
+              className="composer-textarea max-sm:min-h-11"
+            />
+          </div>
         </div>
 
         <div className="flex min-w-0 flex-nowrap items-center gap-1 px-2 pb-2 pt-1">
@@ -1130,6 +1245,25 @@ export function Composer({
             </>
           )}
           <span className="min-w-0 flex-1" />
+          {!compact && inputTokens > 0 && (
+            <span
+              data-composer-tokens=""
+              title={
+                contextLimit
+                  ? `本次输入约 ~${formatTokens(inputTokens)} token（含附件与已选元素）；发送后上下文约 ~${formatTokens(expectedContext)} / ~${formatTokens(contextLimit)} token，占上限 ${expectedPct !== undefined && expectedPct > 0 && expectedPct < 1 ? '<1' : Math.round(expectedPct ?? 0)}%`
+                  : `本次输入约 ~${formatTokens(inputTokens)} token（含附件与已选元素）`
+              }
+              aria-label="本条消息的输入 token 估算"
+              className="shrink-0 whitespace-nowrap px-1 font-mono text-[11px] tabular-nums text-muted max-sm:text-[11px]"
+            >
+              ~{formatTokens(inputTokens)} tok
+              {expectedPct !== undefined && (
+                <span className="max-sm:hidden">
+                  {' · '}发送后 ~{expectedPct > 0 && expectedPct < 1 ? '<1' : Math.round(expectedPct)}%
+                </span>
+              )}
+            </span>
+          )}
           {!sessionless && summary && !compact && (
             <span className="contents max-sm:hidden">
               <ContextMeter compactDisabled={running} />
@@ -1139,7 +1273,7 @@ export function Composer({
             <Menu
               side="top"
               align="end"
-              className="w-[252px]"
+              className="w-[268px]"
               aria-label="执行方式"
               trigger={({ open }) => (
                 <Button
@@ -1147,26 +1281,24 @@ export function Composer({
                   size="sm"
                   aria-expanded={open}
                   aria-haspopup="menu"
-                  aria-label={`执行方式：${effectiveRouteMode ? ROUTE_MODE_LABEL[effectiveRouteMode] : '自动'}`}
-                  tooltip="本条消息的执行方式；默认自动按规则判断"
+                  aria-label={`执行方式：${routeModeLabel(effectiveRouteMode)}`}
+                  tooltip="本条消息的执行方式；委派倾向在同一菜单内设置"
                   tooltipSide="top"
                   className={cn(
-                    'max-w-[132px] justify-start gap-1 px-2 font-normal',
+                    'max-w-[148px] justify-start gap-1 px-2 font-normal',
                     open && 'bg-[var(--t-bg-hover)] text-text-soft',
                     effectiveRouteMode && 'text-text',
                   )}
                 >
                   <GitFork size={12} className="shrink-0 opacity-70" />
-                  <span className="truncate">
-                    {effectiveRouteMode ? ROUTE_MODE_LABEL[effectiveRouteMode] : '自动'}
-                  </span>
+                  <span className="truncate">{routeModeLabel(effectiveRouteMode)}</span>
                   {!effectiveRouteMode && <ChevronDown size={11} className="shrink-0 opacity-50" />}
                 </Button>
               )}
             >
               <Menu.Item
                 selected={!effectiveRouteMode}
-                hint="按规则判断；简单任务直接做，只影响本条消息"
+                hint="按规则判断；简单任务单代理，只影响本条消息"
                 onSelect={() => applyRouteMode(undefined)}
               >
                 自动
@@ -1176,19 +1308,42 @@ export function Composer({
                   key={option.value}
                   selected={effectiveRouteMode === option.value}
                   hint={option.hint}
+                  disabled={option.value === 'division' && effectiveDelegation === 'none'}
+                  disabledReason="委派倾向已关闭；先在下方「委派倾向」中开启"
                   onSelect={() => applyRouteMode(option.value)}
                 >
                   {option.label}
                 </Menu.Item>
               ))}
               <Menu.Separator />
+              <Menu.Sub>
+                <Menu.SubTrigger
+                  trailing={delegationLabel(effectiveDelegation)}
+                  hint="会话级：控制子代理可用程度；与「本条消息」的执行方式配合"
+                >
+                  委派倾向
+                </Menu.SubTrigger>
+                <Menu.SubContent className="w-[220px]" aria-label="委派倾向">
+                  <Menu.RadioGroup
+                    value={effectiveDelegation}
+                    onValueChange={(value) => changeDelegation(value as DelegationStrategy)}
+                  >
+                    {DELEGATION_ORDER.map((value) => (
+                      <Menu.RadioItem key={value} value={value} hint={DELEGATION_META[value].hint}>
+                        {DELEGATION_META[value].label}
+                      </Menu.RadioItem>
+                    ))}
+                  </Menu.RadioGroup>
+                </Menu.SubContent>
+              </Menu.Sub>
+              <Menu.Separator />
               <Menu.Item
                 keepOpen
-                hint="记住选择，本会话后续消息都用这个执行方式"
+                hint="记住当前选择，本会话后续消息都用这个执行方式"
                 trailing={keepRouteMode ? '✓' : undefined}
                 onSelect={toggleKeepRouteMode}
               >
-                本会话保持
+                记住为会话偏好
               </Menu.Item>
             </Menu>
           )}
@@ -1199,8 +1354,8 @@ export function Composer({
             groupId={currentGroupId}
             model={currentModel}
             autoRoute={autoRoute}
-            routeMode={summary?.routeMode === 'division' ? 'division' : 'auto'}
             autoModel={autoRoute ? routedModel : undefined}
+            cacheWarning={cacheWarning}
             prices={modelPrices}
             pricesLoading={cachedPrices === 'loading'}
             effort={effort}

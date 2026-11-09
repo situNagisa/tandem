@@ -37,6 +37,13 @@ const GLOBAL_CHECKS = [
     label: '直接 contains(…relatedTarget)：relatedTarget 可能是 Window，应改用 lib/overlay 的 nodeContains',
     re: /\.contains\(\s*[A-Za-z_$][\w$]*\.relatedTarget/g,
   },
+  {
+    // 反馈8#03/#09：执行方式与委派倾向统一用规范术语，文案只在 lib/routeLabels.ts 定义。
+    id: 'deprecated-route-copy',
+    label:
+      '已废弃的口语化路由文案：用「单代理 / 低成本 / 多代理协作」与「仅规划 / 积极 / 适度 / 关闭」（lib/routeLabels.ts）',
+    re: /(?:少派|多派|便宜直做|本会话保持|label:\s*['"]不派['"])/g,
+  },
 ]
 
 const files = (await walk(SRC)).filter((file) => !file.startsWith(UI_DIR + '/'))

@@ -14,16 +14,10 @@ import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
 import { EFFORT_LABEL } from '../../lib/effort'
+import { DELEGATION_META, DELEGATION_ORDER } from '../../lib/routeLabels'
 import { profileModelGroups } from '../../lib/profileModels'
 import { Button, IconButton } from '../ui/Button'
 import { Input, Select, Switch } from '../ui/Controls'
-
-const DELEGATION_LABEL: Record<DelegationStrategy, string> = {
-  orchestrate: '编排（只规划/汇总）',
-  more: '多派（鼓励并行）',
-  less: '少派（默认）',
-  none: '不派（不提供 Task）',
-}
 
 const MODE_LABEL: Record<PermissionMode, string> = {
   default: '默认（按规则审批）',
@@ -237,7 +231,7 @@ export function SubagentsSection() {
     try {
       const next = await api.updateSettings(host, { ...settings, defaultDelegation: value })
       setSettings(next)
-      toast('新会话默认委派策略已保存', 'success')
+      toast('新会话默认委派倾向已保存', 'success')
     } catch (err) {
       setSettings(previous)
       toast(err instanceof Error ? err.message : '保存失败', 'error')
@@ -280,20 +274,20 @@ export function SubagentsSection() {
       </div>
 
       <div data-setting-id="subagents.default-delegation" className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5">
-        <span className="text-[12.5px] text-text-soft">新会话默认委派策略</span>
+        <span className="text-[12.5px] text-text-soft">新会话默认委派倾向</span>
         <Select
-          aria-label="新会话默认委派策略"
+          aria-label="新会话默认委派倾向"
           value={settings?.defaultDelegation ?? 'less'}
           onChange={(e) => void saveDefaultDelegation(e.target.value as DelegationStrategy)}
           wrapperClassName="w-[240px] max-w-full"
         >
-          {(Object.keys(DELEGATION_LABEL) as DelegationStrategy[]).map((value) => (
+          {DELEGATION_ORDER.map((value) => (
             <option key={value} value={value}>
-              {DELEGATION_LABEL[value]}
+              {DELEGATION_META[value].longLabel}
             </option>
           ))}
         </Select>
-        <span className="text-[12px] text-muted">会话内可在输入框上方的环境条随时切换。</span>
+        <span className="text-[12px] text-muted">会话内可在输入框底栏的「执行方式 → 委派倾向」随时切换。</span>
       </div>
 
       {error && <div className="rounded-lg border border-danger/25 bg-danger-soft/50 px-3 py-2 text-[12px] text-danger">{error}</div>}
@@ -425,17 +419,17 @@ export function SubagentsSection() {
               </Select>
             </label>
             <label className="space-y-1 text-[12px] text-muted">
-              子代理委派策略
+              子代理委派倾向
               <Select
                 value={draft.delegation}
                 onChange={(e) =>
                   setDraft({ ...draft, delegation: e.target.value as Draft['delegation'] })
                 }
               >
-                <option value="">少派（默认）</option>
-                {(Object.keys(DELEGATION_LABEL) as DelegationStrategy[]).map((value) => (
+                <option value="">跟随主会话（默认）</option>
+                {DELEGATION_ORDER.map((value) => (
                   <option key={value} value={value}>
-                    {DELEGATION_LABEL[value]}
+                    {DELEGATION_META[value].longLabel}
                   </option>
                 ))}
               </Select>
@@ -507,7 +501,7 @@ export function SubagentsSection() {
                   )}
                   {preset.delegation && (
                     <span className="text-[12px] text-muted">
-                      委派 {DELEGATION_LABEL[preset.delegation].split('（')[0]}
+                      委派 {DELEGATION_META[preset.delegation].label}
                     </span>
                   )}
                 </div>

@@ -666,22 +666,22 @@ export function planTurnRoute(
     source,
   };
 
-  if (preferred === 'direct') return { ...base, mode: 'direct', reason: '用户指定直接做' };
+  if (preferred === 'direct') return { ...base, mode: 'direct', reason: '用户指定单代理' };
   if (preferred === 'cheap') {
     return executorMeta
-      ? { ...base, mode: 'cheap', reason: '用户指定便宜直做' }
+      ? { ...base, mode: 'cheap', reason: '用户指定低成本' }
       : { ...base, mode: 'direct', reason: '没有可用的执行模型' };
   }
   if (preferred === 'division') {
     return hasTask && executorMeta
-      ? { ...base, mode: 'division', reason: '用户指定分工' }
-      : { ...base, mode: 'direct', reason: hasTask ? '没有可用的执行模型' : '当前委派策略不允许子代理' };
+      ? { ...base, mode: 'division', reason: '用户指定多代理协作' }
+      : { ...base, mode: 'direct', reason: hasTask ? '没有可用的执行模型' : '委派倾向已关闭' };
   }
 
   if (DIRECT_RE.test(text)) return { ...base, mode: 'direct', reason: '用户要求自己处理' };
-  if (!hasTask) return { ...base, mode: 'direct', reason: '委派已关闭' };
+  if (!hasTask) return { ...base, mode: 'direct', reason: '委派倾向已关闭' };
   if (learned?.mode === 'direct') {
-    return { ...base, mode: 'direct', reason: `按你此前对同类任务的选择：直接做（${learned.count} 次）` };
+    return { ...base, mode: 'direct', reason: `按你此前对同类任务的选择：单代理（${learned.count} 次）` };
   }
   const question = QUESTION_RE.test(text);
   const contextHeavy = CONTEXT_HEAVY_RE.test(text);
@@ -692,7 +692,7 @@ export function planTurnRoute(
   const budgetTight = (signals.budgetPressure ?? 0) >= 0.5;
 
   if (question && !mechanical.length) {
-    return { ...base, mode: 'direct', reason: '问答/解释，不需要执行分工' };
+    return { ...base, mode: 'direct', reason: '问答/解释，不需要多代理协作' };
   }
   if (contextHeavy && !(mechanical.length >= 2 && multiStep)) {
     return { ...base, mode: 'direct', reason: '需要大量上下文判断，留在主会话' };
@@ -707,41 +707,41 @@ export function planTurnRoute(
     return {
       ...base,
       mode: executorMeta ? 'cheap' : 'direct',
-      reason: executorMeta ? `便宜直做：${mechanical.join('、')}` : '没有可用的执行模型',
+      reason: executorMeta ? `低成本：${mechanical.join('、')}` : '没有可用的执行模型',
     };
   }
   if (budgetTight) {
     return {
       ...base,
       mode: mechanical.length && executorMeta ? 'cheap' : 'direct',
-      reason: '预算偏紧，不做分工' + (mechanical.length ? '，机械步骤交给便宜模型' : ''),
+      reason: '预算偏紧，不做多代理协作' + (mechanical.length ? '，机械步骤交给低成本模型' : ''),
     };
   }
   if (mechanical.length >= 2 && multiStep && complexity >= Math.min(planThreshold, 45)) {
     return {
       ...base,
       mode: executorMeta ? 'division' : 'direct',
-      reason: executorMeta ? `分工：${mechanical.join('、')}，可拆成独立子任务` : '没有可用的执行模型',
+      reason: executorMeta ? `多代理协作：${mechanical.join('、')}，可拆成独立子任务` : '没有可用的执行模型',
     };
   }
   if (specialist && actionable && complexity >= specialistMin) {
     return {
       ...base,
       mode: 'division',
-      reason: `分工：${DOMAIN_LABELS[domain]}专长匹配，复杂度 ${complexity} ≥ ${specialistMin}`,
+      reason: `多代理协作：${DOMAIN_LABELS[domain]}专长匹配，复杂度 ${complexity} ≥ ${specialistMin}`,
     };
   }
   if (complexity >= 90 && multiStep && executorMeta) {
-    return { ...base, mode: 'division', reason: `分工：复杂度 ${complexity}，多步任务` };
+    return { ...base, mode: 'division', reason: `多代理协作：复杂度 ${complexity}，多步任务` };
   }
   return {
     ...base,
     mode: 'direct',
     reason: question
-      ? '问答/解释，直接做'
+      ? '问答/解释，单代理'
       : actionable
-        ? '小改动/单步任务，直接做'
-        : '直接做',
+        ? '小改动/单步任务，单代理'
+        : '单代理',
   };
 }
 
@@ -749,9 +749,9 @@ export function planTurnRoute(
 export function routePlanPrompt(plan: RoutePlan): string {
   if (plan.mode !== 'division') return '';
   const lines = [
-    '[分工路由 · 本轮分工]',
+    '[多代理协作 · 本轮]',
     `分类理由：${plan.reason}。`,
-    '你是规划者，主会话模型和上下文保持不变。先用只读工具定位，写出 2–5 步计划；只把可独立执行的机械子任务派发出去，不要为了分工而分工。',
+    '你是规划者，主会话模型和上下文保持不变。先用只读工具定位，写出 2–5 步计划；只把可独立执行的机械子任务派发出去，不要为了派发而派发。',
     '用 Task 派发时，prompt 必须自包含：目标、相关文件路径、明确步骤、验收命令、不要修改的范围；不要把整段对话粘贴进去。子代理只回传最后一段摘要。',
     plan.executorModel ? `- 执行者：role="executor"（${plan.executorModel}），跑命令、装依赖、批量机械修改、生成/运行测试。` : '',
     plan.specialistModel
@@ -777,7 +777,7 @@ export function estimateDivisionPlanCost(host: Host, plan: RoutePlan, prompts: s
 
 export function routePlanText(plan: RoutePlan): string {
   const mode =
-    plan.mode === 'direct' ? '直接做' : plan.mode === 'cheap' ? '便宜直做' : '分工';
+    plan.mode === 'direct' ? '单代理' : plan.mode === 'cheap' ? '低成本' : '多代理协作';
   const detail =
     plan.mode === 'cheap' && plan.executorModel
       ? ` · ${plan.executorModel}`

@@ -2,7 +2,8 @@ import { useEffect, useMemo } from 'react'
 import type { ModelPriceInfo, Profile, ReasoningEffort } from '@tandem/protocol'
 import { ChevronDown, Loader2, Sparkles } from 'lucide-react'
 import { cn } from '../../lib/cn'
-import { EFFORT_LABEL, effortSuffix, nearestEffort } from '../../lib/effort'
+import { EFFORT_LABEL, nearestEffort } from '../../lib/effort'
+import { formatCost, formatTokens } from '../../lib/format'
 import { prettyModel, shortModelName } from '../../lib/modelName'
 import { groupName, profileModelGroups } from '../../lib/profileModels'
 import { rankRecentModels } from '../../lib/recentModels'
@@ -29,14 +30,22 @@ function priceText(price: ModelPriceInfo): string {
   return `${prefix}输入 $${fmt(price.input)} · 输出 $${fmt(price.output)} / 百万 tok${cache}`
 }
 
+/** 极小的缓存重发成本不要显示成 $0.0000。 */
+function cacheCostText(cost: number): string {
+  if (cost >= 0.01) return formatCost(cost)
+  if (cost >= 0.0001) return `$${cost.toFixed(4)}`
+  return '< $0.0001'
+}
+
 interface ModelPanelProps {
   profiles: Profile[]
   profileId: string
   groupId?: string
   model: string
   autoRoute: boolean
-  routeMode?: 'auto' | 'division'
   autoModel?: string
+  /** 会话已有上下文时，切换模型/账号/分组前提示缓存会失效。 */
+  cacheWarning?: { tokens: number; costUsd?: number; onDismiss: () => void } | null
   prices?: Record<string, ModelPriceInfo>
   pricesLoading?: boolean
   effort: ReasoningEffort
@@ -45,7 +54,7 @@ interface ModelPanelProps {
   effortLabels?: Partial<Record<ReasoningEffort, string>>
   loading: boolean
   onSelect: (profileId: string, groupId: string | undefined, model: string) => void
-  onSelectAuto: (mode: 'auto' | 'division') => void
+  onSelectAuto: () => void
   onLoadPrices?: (profileId: string, groupId: string | undefined) => void
   onEffortChange: (effort: ReasoningEffort) => void
   onManage: () => void
@@ -63,8 +72,8 @@ function useModelPanel({
   groupId,
   model,
   autoRoute,
-  routeMode,
   autoModel,
+  cacheWarning,
   prices,
   pricesLoading,
   effort,
@@ -129,6 +138,34 @@ function useModelPanel({
 
   const body = (
     <>
+      {cacheWarning && (
+        <div
+          role="note"
+          data-cache-warning=""
+          className="mx-1 mb-1 rounded-lg border border-border/70 bg-surface-2 px-2 py-1.5 text-[12px] leading-4"
+        >
+          <div className="text-text-soft">
+            切换模型、账号或分组后，提示缓存将失效；下一轮按完整上下文计费。
+          </div>
+          <div className="mt-0.5 flex items-baseline gap-2 text-muted">
+            <span className="font-mono tabular-nums">
+              约 ~{formatTokens(cacheWarning.tokens)} tok
+              {cacheWarning.costUsd !== undefined ? ` / ${cacheCostText(cacheWarning.costUsd)}` : ''}
+            </span>
+            <button
+              type="button"
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={(event) => {
+                event.stopPropagation()
+                cacheWarning.onDismiss()
+              }}
+              className="ml-auto rounded px-1 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+            >
+              不再提示
+            </button>
+          </div>
+        </div>
+      )}
       {loading && profiles.length === 0 && (
         <div className="flex h-[32px] items-center gap-2 px-2 text-[12px] text-muted">
           <Loader2 size={13} className="animate-spin" /> 加载账号…
@@ -140,26 +177,17 @@ function useModelPanel({
       {profiles.length > 0 && (
         <>
           <Menu.Item
-            selected={autoRoute && routeMode !== 'division'}
+            selected={autoRoute}
             textValue="自动"
             icon={<Sparkles size={12} />}
-            onSelect={() => onSelectAuto('auto')}
+            onSelect={() => onSelectAuto()}
             hint={
-              autoModel && routeMode !== 'division'
+              autoModel
                 ? `当前 ${prettyModel(autoModel)} · 按本轮难度在「设置 → 自动路由」候选池中选择，失败自动升级`
                 : '每轮按难度在「设置 → 自动路由」候选池中选择，失败自动升级、简单任务回落'
             }
           >
             自动
-          </Menu.Item>
-          <Menu.Item
-            selected={autoRoute && routeMode === 'division'}
-            textValue="分工"
-            icon={<Sparkles size={12} />}
-            onSelect={() => onSelectAuto('division')}
-            hint="主会话模型保持规划者；机械子任务用 Task 派给便宜/专长执行者"
-          >
-            分工
           </Menu.Item>
           <Menu.Separator />
         </>
@@ -272,8 +300,8 @@ export function ModelMenu({
   groupId,
   model,
   autoRoute = false,
-  routeMode,
   autoModel,
+  cacheWarning,
   prices,
   pricesLoading,
   effort,
@@ -303,12 +331,12 @@ export function ModelMenu({
   const currentProfile = profiles.find((p) => p.id === profileId) ?? null
   const currentGroup = groupName(currentProfile ?? undefined, groupId)
   const showEffort = !autoRoute && efforts.length > 0 && efforts.includes(effort)
+  const effortName = effortLabels?.[effort] ?? EFFORT_LABEL[effort]
+  // 模型芯片只显示模型名；思考强度用一个小点表示，具体档位在 tooltip 里（反馈8#11）。
   const label = autoRoute
-    ? routeMode === 'division'
-      ? `分工${model ? ` · ${shortModelName(model)}` : ''}`
-      : `自动${autoModel ? ` · ${shortModelName(autoModel)}` : ''}`
+    ? `自动${autoModel ? ` · ${shortModelName(autoModel)}` : ''}`
     : model
-      ? `${shortModelName(model)}${showEffort ? effortSuffix(effort) : ''}`
+      ? shortModelName(model)
       : '选择模型'
   const panel = useModelPanel({
     profiles,
@@ -316,8 +344,8 @@ export function ModelMenu({
     groupId,
     model,
     autoRoute,
-    routeMode,
     autoModel,
+    cacheWarning,
     prices,
     pricesLoading,
     effort,
@@ -355,11 +383,12 @@ export function ModelMenu({
               : autoRoute
                 ? `自动路由 · 当前 ${autoModel ?? model}（候选池在设置 → 自动路由）`
                 : currentProfile
-                  ? `${currentProfile.name}${currentGroup ? ` › ${currentGroup}` : ''} · ${model}`
+                  ? `${currentProfile.name}${currentGroup ? ` › ${currentGroup}` : ''} · ${model}${showEffort && effort !== 'off' ? ` · 思考强度 ${effortName}` : ''}`
                   : '选择账号与模型'
           }
           tooltipSide="top"
-          aria-label={`选择模型：${label}`}
+          data-effort={effort}
+          aria-label={`选择模型：${label}${showEffort && effort !== 'off' ? `（思考强度：${effortName}）` : ''}`}
           className={cn(
             'min-w-0 max-w-[220px] justify-start gap-1 px-2 font-normal max-sm:min-h-11 max-sm:max-w-[36vw]',
             compact && 'max-w-[128px] px-1.5',
@@ -367,6 +396,13 @@ export function ModelMenu({
           )}
         >
           <span className="min-w-0 truncate">{label}</span>
+          {showEffort && effort !== 'off' && (
+            <span
+              data-effort-dot=""
+              aria-hidden="true"
+              className="size-1.5 shrink-0 rounded-full bg-[var(--t-text-tertiary)] opacity-70"
+            />
+          )}
           {!compact && <ChevronDown size={12} className="shrink-0 opacity-60" />}
         </Button>
       )}

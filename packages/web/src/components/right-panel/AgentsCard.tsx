@@ -64,7 +64,7 @@ function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number;
     if (!host || !id) return
     try {
       await api.promoteSubagent(host, id)
-      toast('已交给主会话直接做', 'success')
+      toast('已交回主会话（单代理）', 'success')
     } catch (err) {
       toast(err instanceof Error ? err.message : '转交失败', 'error')
     }
@@ -112,7 +112,7 @@ function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number;
           <IconButton
             size="sm"
             label="子代理操作"
-            tooltip="换模型重跑 / 改由主会话直接做"
+            tooltip="换模型重跑 / 交回主会话（单代理）"
             className={cn('size-6! shrink-0 opacity-0 group-hover:opacity-100', open && 'opacity-100')}
           >
             <Ellipsis size={13} />
@@ -130,7 +130,7 @@ function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number;
           </Menu.SubContent>
         </Menu.Sub>
         <Menu.Separator />
-        <Menu.Item onSelect={() => void promote()}>改由主会话直接做</Menu.Item>
+        <Menu.Item onSelect={() => void promote()}>交回主会话（单代理）</Menu.Item>
       </Menu>
     )}
     </div>

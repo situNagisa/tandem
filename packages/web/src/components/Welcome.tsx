@@ -165,7 +165,7 @@ export function HomeView() {
           className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] max-sm:min-h-11 font-medium text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
         >
           <Send size={14} />
-          派单
+          跨主机派单
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
