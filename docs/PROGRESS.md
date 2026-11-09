@@ -2,6 +2,15 @@
 
 > 更新：2026-11-09。只保留最近 5 轮；更早记录见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 58（2026-11-09）发布 v0.4.3：反馈实时落盘 / .tfb 包
+- [x] 反馈编辑即落盘：IndexedDB（元数据与图片 Blob 分开）为主、localStorage 镜像文字；刷新/崩溃/关页面重开提示「已恢复 N 条」并继续追加；桌面调试版经 IPC 实时写 `<下载>/Tandem 反馈/草稿-YYYYMMDD-HHmm/`（临时文件 + rename，删条目同步清掉旧编号文件），导出后写 `.exported.json`、草稿保留 7 天、未导出一直保留
+- [x] 导出 `.tfb`（零依赖 zip store，`zipStore.ts`；改扩展名可解压），桌面调试版导出后可「打开所在文件夹」；`feedback-unpack.mjs` / `feedback-receipt.mjs` 兼容 tfb、旧 json 与草稿目录；发布产物扫描补禁用词
+- [x] 0.4.3 导览 3 条（debug 专属：边写边存重开恢复 / 桌面实时写成文件 / .tfb 包可解压），id 挂到 `features.ts` 反馈模式
+- [x] `node scripts/release.mjs 0.4.3`：版本与 lockfile 同步、CHANGELOG 生成、本地标签 v0.4.3（未 push）
+- 验证：发布前后各跑一次全量 `node scripts/check.mjs` 均通过（回归 134 条）；顺带修「反馈9 滚动条」用例（改 scrollBy 并等到覆盖滚动条出现，消除偶发）
+- 产物：`Tandem-Setup-0.4.3-x64.exe`、`Tandem-Setup-0.4.3-debug-x64.exe`、`tandem-release.apk/.aab`、`tandem-debug.apk`、`latest.yml`（指向 0.4.3 发布版），均在 Windows「下载」
+- 保守取舍：桌面调试版落盘与关窗恢复需 Windows 实测（WSL 无法启动 Electron）；`.tfb` 不压缩、不加密
+
 ## 迭代 57（2026-11-09）发布 v0.4.2：手机预览工具栏 / 新功能导览
 - [x] 调试版手机预览顶栏改为独占 30px 区域：`.app-root` 高度扣减并在顶部留白，全屏浮层（侧栏抽屉、全屏面板、对话框遮罩）统一 `top: var(--preview-bar-height)`，抽屉标题不再被遮；回归断言抽屉标题与顶栏不相交且完整在抽屉内
 - [x] 0.4.2 导览 8 条手写条目（消息耗时、调试版手机预览、调试版免登录、屏蔽浏览器控件/覆盖滚动条/右键菜单、设置页紧凑、外部会话大纲与信息面板、安装说明按平台切换、信息面板隐藏空分组）；调试版专属两条走 `__TANDEM_DEBUG__` 常量分支，发布产物扫描通过；id 已挂到 `features.ts`
@@ -31,15 +40,6 @@
 - [x] 发布剔除：release 扫描新增 `手机预览`/`MobilePreview`/`mobile-preview`/触摸 CDP 标识；桌面按 `resources/flavor.txt` 只在 debug 注册 IPC/菜单；`release-flavor` 回归覆盖 `?mobilePreview=1` 不渲染顶栏
 - 验证：`node scripts/check.mjs`；截图 `/tmp/dbg-after/`（message-duration、mobile-preview、mobile-preview-keyboard、mobile-preview-drawer）
 - 保守取舍：Electron 运行时在本机 WSL 缺 GTK 无法启动，桌面触摸链路未做本机运行时验证（代码通过语法检查、浏览器版回归通过）；真机/桌面触摸请按测试指南代测
-
-## 迭代 53（2026-11-09）反馈包 #6：轮次用量 / 多主机侧栏 / 面板拖宽 / 价格倍率
-- [x] #01 R25：大纲悬停用标准 Tooltip 显示该轮 token/缓存命中/花费/占本会话比例，按用户轮次汇总 assistant usage 并含 Task 子代理/孙代理（标注「含子代理」）；顶部「花费/上下文」切换，单一中性色按分位 5 档着色（收起刻度条同深浅）；压缩轮最浅 + 「已压缩」标记，摘要独立行，撤销压缩恢复；全文保留在 `aria-label`/`sr-only` 并附用量档位；单测 `turnUsage.test.ts`
-- [x] #02 R23：侧栏去掉「本机 ⌄」主机切换器，会话一次按主机分组显示（主机标题与固定/最近项目同层级），主机下按项目分组；离线标题标「离线」并保留缓存列表；筛选菜单保留按主机筛选；回归覆盖两台主机
-- [x] #03 R01：新增共享 `ui/ResizeHandle`，会话信息面板左缘拖宽 280–600、localStorage 记忆、双击复位 300；侧栏、改动审阅、预览、文件预览/文件树一并迁移，删除各处手写拖动逻辑
-- [x] #04 R24：内置官方参考价补齐 Claude/GPT/o/DeepSeek/Gemini/Kimi/Qwen/GLM（前缀匹配，注明参考日期）；账号/分组倍率叠加、覆盖单价优先；菜单 tooltip 显示「官方价 × 账号 × 分组 = 最终价」，无参考价显示「无参考价 · 去设置」；用量页说明历史不重算；server 单测 + 回归
-- 验证：`node scripts/check.mjs`（build/docs/ui-audit/test/smoke/regression）；修复后截图 `/tmp/fb6-after/`
-- [x] #01 追加 R27：「已固定」与「全部轮次」两个大纲分开；固定/取消固定不重排、不跳滚动，已固定区独立向上增长（最多 5 行滚动），原位保留小图钉；回归覆盖
-- 根因：R25/R23/R24/R27 新增，R01 复发走共享层；台账已记录
 
 ## 迭代 52（2026-11-09）工作站改为客户端-服务模式
 - [x] 设计：`docs/workstation.md`（工作站服务/主机两个可独立角色；客户端只填工作站地址；登录 ≠ 添加主机；绑定码/主机侧登录/本机一键；出站隧道 + E2E；默认开放注册、首个管理员、只看自己主机、按主机授权；旧工作区迁移；本地模式保留；v1 边界与部署）
