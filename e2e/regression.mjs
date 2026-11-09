@@ -3545,6 +3545,144 @@ async function main() {
       await closeSettings(page)
     })
 
+    desktop('反馈15：设置内容区限宽留白、通知卡图标在卡片内且与标题对齐（R01）', async (page) => {
+      // 用户实际视口 1912×914；设置内容统一容器限宽 820px，剩余空间左右居中留白。
+      await page.setViewportSize({ width: 1912, height: 914 })
+      const measureContent = () =>
+        page.evaluate(() => {
+          const pane = document.querySelector('[data-settings-page-content]')
+          const content = document.querySelector('[data-settings-content]')
+          if (!pane || !content) return null
+          const p = pane.getBoundingClientRect()
+          const c = content.getBoundingClientRect()
+          return {
+            page: pane.getAttribute('data-settings-page-content'),
+            width: c.width,
+            leftGap: c.left - p.left,
+            rightGap: p.right - c.right,
+          }
+        })
+      const dialog = await openSettings(page, '记忆', 'desktop')
+      const memory = await measureContent()
+      assert.ok(memory, '设置内容区容器缺失')
+      assert.ok(memory.width <= 840, `设置内容区宽 ${Math.round(memory.width)}px，应 ≤840`)
+      assert.ok(
+        memory.leftGap >= 32 && memory.rightGap >= 32,
+        `设置内容区左右留白 ${Math.round(memory.leftGap)}/${Math.round(memory.rightGap)}px，应 ≥32`,
+      )
+      // 页头操作按钮（主机下拉、刷新）随内容区右缘对齐。
+      const header = await page.evaluate(() => {
+        const content = document.querySelector('[data-settings-content]')
+        const row = document.querySelector('[data-setting-id="memory.host"]')
+        const refresh = row
+          ? [...row.querySelectorAll('button')].find((b) => b.textContent.trim() === '刷新')
+          : null
+        if (!content || !row || !refresh) return null
+        const c = content.getBoundingClientRect()
+        const r = refresh.getBoundingClientRect()
+        const rowBox = row.getBoundingClientRect()
+        return { rightGap: c.right - r.right, leftGap: rowBox.left - c.left }
+      })
+      assert.ok(header, '记忆页头缺少主机选择或刷新按钮')
+      assert.ok(
+        header.rightGap >= -1 && header.rightGap <= 8,
+        `页头「刷新」未随内容区右缘对齐：差 ${Math.round(header.rightGap)}px`,
+      )
+
+      // 所有设置页共用同一容器：逐页确认宽度与左右留白。
+      await openSettings(page, '通知', 'desktop')
+      const pageIds = await page.evaluate(() =>
+        [...document.querySelectorAll('[data-settings-page]')].map((el) =>
+          el.getAttribute('data-settings-page'),
+        ),
+      )
+      assert.ok(pageIds.length > 10, `设置导航页数异常：${pageIds.length}`)
+      const wide = []
+      for (const id of pageIds) {
+        const pageButton = dialog.locator(`[data-settings-page="${id}"]`)
+        if (!(await pageButton.count())) continue
+        await pageButton.click()
+        await page.waitForTimeout(110)
+        const info = await measureContent()
+        if (!info) {
+          wide.push(`${id}: 无内容容器`)
+          continue
+        }
+        if (info.width > 840 || info.leftGap < 32 || info.rightGap < 32) {
+          wide.push(
+            `${id}: ${Math.round(info.width)}px / 留白 ${Math.round(info.leftGap)}/${Math.round(info.rightGap)}`,
+          )
+        }
+        // 同类图标溢出：设置行标题图标必须在所在卡片的 ≥8px 内边距里。
+        const iconOverflow = await page.evaluate(() =>
+          [...document.querySelectorAll('[data-settings-content] .setting-row-icon')]
+            .map((el) => {
+              const card = el.closest('section, .setting-card, .settings-item')
+              if (!card) return null
+              const c = card.getBoundingClientRect()
+              const i = el.getBoundingClientRect()
+              const inset = Math.min(i.left - c.left, c.right - i.right, i.top - c.top, c.bottom - i.bottom)
+              return inset >= 8 ? null : Math.round(inset)
+            })
+            .filter((value) => value !== null),
+        )
+        if (iconOverflow.length) wide.push(`${id}: 图标越出卡片 ${iconOverflow.join('/')}px`)
+      }
+      assert.deepEqual(wide, [], `设置内容区未统一限宽留白：${wide.join('；')}`)
+
+      // 通知页：桌面通知 / App 通知 / 后台保持连接三个卡片的图标须在卡片内边距里，
+      // 与标题文字垂直居中；下方提示行缩进与标题左对齐。
+      await openSettings(page, '通知', 'desktop')
+      const cards = await page.evaluate(() =>
+        ['notifications.desktop', 'notifications.app', 'notifications.background'].map((id) => {
+          const card = document.querySelector(`[data-setting-id="${id}"]`)
+          if (!card) return { id, missing: true }
+          const icon = card.querySelector('.setting-row-icon svg')
+          const label = card.querySelector('.setting-row-label')
+          const title = label?.querySelector(':scope > :not(.setting-row-icon):not(.setting-row-hint)')
+          const note = card.querySelector('.setting-note')
+          const noteText = note?.querySelector(':scope > span:last-child')
+          if (!icon || !title) return { id, missing: true }
+          const box = card.getBoundingClientRect()
+          const i = icon.getBoundingClientRect()
+          const t = title.getBoundingClientRect()
+          const n = noteText?.getBoundingClientRect()
+          return {
+            id,
+            insets: [i.left - box.left, box.right - i.right, i.top - box.top, box.bottom - i.bottom],
+            iconLeft: i.left,
+            centerDiff: Math.abs(i.top + i.height / 2 - (t.top + t.height / 2)),
+            note: n ? { leftDiff: n.left - t.left, rightOverflow: n.right - box.right } : null,
+          }
+        }),
+      )
+      for (const card of cards) {
+        assert.ok(!card.missing, `通知卡片缺失：${card.id}`)
+        assert.ok(
+          card.insets.every((value) => value >= 8),
+          `${card.id} 图标不在卡片内边距里（上/右/下/左 ${card.insets.map(Math.round).join('/')}）`,
+        )
+        assert.ok(
+          card.centerDiff <= 2,
+          `${card.id} 图标与标题中线差 ${card.centerDiff.toFixed(1)}px`,
+        )
+        if (card.note) {
+          assert.ok(
+            Math.abs(card.note.leftDiff) <= 2,
+            `${card.id} 提示行未与标题左对齐（差 ${Math.round(card.note.leftDiff)}px）`,
+          )
+          assert.ok(card.note.rightOverflow <= 0, `${card.id} 提示行溢出卡片`)
+        }
+        // 三个卡片同一列图标：左缘一致。
+      }
+      const iconLefts = cards.map((card) => card.iconLeft)
+      assert.ok(
+        Math.max(...iconLefts) - Math.min(...iconLefts) <= 1,
+        `通知卡图标左缘不一致：${iconLefts.map(Math.round).join('/')}`,
+      )
+      await closeSettings(page)
+    })
+
     desktop('反馈9：滚动条唯一且不占宽、设置行单行、高级展开不位移、右键菜单接管', async (page) => {
       const dialog = await openSettings(page, '通用', 'desktop')
       const nav = dialog.locator('[data-settings-nav-scroll]')

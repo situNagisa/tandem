@@ -971,8 +971,7 @@ html[data-mobile-preview] .fixed.inset-0 {
   --settings-card-pad-y: 12px;
   --settings-card-pad-x: 14px;
 }
-[data-settings-page-content] section.rounded-xl,
-[data-settings-page-content] .settings-item.rounded-xl {
+[data-settings-page-content] :is(section.rounded-xl, .settings-item.rounded-xl, .setting-card) {
   padding: var(--settings-card-pad-y) var(--settings-card-pad-x);
   border-radius: 10px;
 }
@@ -1020,6 +1019,19 @@ html[data-mobile-preview] .fixed.inset-0 {
   font-size: 13px;
   line-height: 1.4;
 }
+/* 反馈15#03：标题前图标固定 14px 槽位，不挤到卡片边框，也不让各行标题起点漂移。 */
+.setting-row-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--t-muted);
+}
+.setting-row-label[data-has-icon] {
+  gap: 4px 8px;
+}
 .setting-row-label > label {
   min-width: 0;
 }
@@ -1064,6 +1076,34 @@ html[data-mobile-preview] .fixed.inset-0 {
   color: var(--t-muted);
   font-size: 12px;
   white-space: nowrap;
+}
+/* 反馈15#03：行下方的提示/说明与标题文字左对齐（14px 图标槽 + 8px 间距），不再压在卡片边框上。 */
+.setting-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--t-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.setting-note[data-indent="true"] {
+  padding-left: 22px;
+}
+/* 带小图标的提示行：图标占与设置行相同的 14px 槽位，文字正好落在标题文字左缘。 */
+.setting-note[data-indent="true"]:has(> .setting-note-icon) {
+  padding-left: 0;
+}
+.setting-note[data-tone="warning"] {
+  color: var(--t-warning);
+}
+.setting-note-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 1.5em;
 }
 @media (max-width: 639px) {
   .setting-row {

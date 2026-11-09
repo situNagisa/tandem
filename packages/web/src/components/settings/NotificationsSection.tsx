@@ -5,7 +5,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { requestNotificationPermission } from '../../lib/attention'
 import { isAndroidApp, isNativeApp, prepareLocalNotifications, startBackgroundService, stopBackgroundService } from '../../lib/native'
 import { Switch } from '../ui/Controls'
-import { SettingRow } from '../ui/SettingRow'
+import { SettingNote, SettingRow } from '../ui/SettingRow'
 
 function Row({
   icon,
@@ -27,23 +27,14 @@ function Row({
   settingId?: string
 }) {
   return (
-    <div data-setting-id={settingId} className="rounded-xl border border-border bg-surface">
-      <SettingRow
-        label={
-          <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-text">
-            {icon ? <span className="shrink-0 text-muted">{icon}</span> : null}
-            <span className="truncate">{title}</span>
-          </span>
-        }
-        hint={desc}
-      >
+    <div data-setting-id={settingId} className="setting-card rounded-xl border border-border bg-surface">
+      <SettingRow icon={icon} label={<span className="truncate text-[13px] font-medium text-text">{title}</span>} hint={desc}>
         <Switch checked={checked} onChange={onChange} disabled={disabled} label={title} />
       </SettingRow>
       {warning ? (
-        <p className="mt-1 flex items-start gap-1.5 text-[12px] leading-4 text-warning">
-          <TriangleAlert size={13} className="mt-0.5 shrink-0" />
-          <span>{warning}</span>
-        </p>
+        <SettingNote indent tone="warning" icon={<TriangleAlert size={13} />}>
+          {warning}
+        </SettingNote>
       ) : null}
     </div>
   )

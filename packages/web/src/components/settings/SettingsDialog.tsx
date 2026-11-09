@@ -345,9 +345,9 @@ export function SettingsDialog() {
           key={tab}
           ref={contentRef}
           data-settings-page-content={currentPage?.id}
-          className="min-h-0 min-w-0 flex-1 animate-[tandem-fade-in_120ms_ease-out_both] overflow-y-auto overscroll-contain p-4 motion-reduce:animate-none sm:p-5 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:[&_button]:min-h-11 max-sm:[&_button]:min-w-11 max-sm:[&_input]:min-h-11 max-sm:[&_select]:min-h-11"
+          className="min-h-0 min-w-0 flex-1 animate-[tandem-fade-in_120ms_ease-out_both] overflow-y-auto overscroll-contain p-4 motion-reduce:animate-none sm:px-8 sm:py-5 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:[&_button]:min-h-11 max-sm:[&_button]:min-w-11 max-sm:[&_input]:min-h-11 max-sm:[&_select]:min-h-11"
         >
-          <div className="mx-auto w-full max-w-[1100px]">
+          <div data-settings-content className="mx-auto w-full max-w-[820px]">
             {currentPage && pageTabs.length > 1 && (
               <div
                 data-settings-subtabs={currentPage.id}

@@ -5,6 +5,8 @@ import { Tooltip } from './Tooltip'
 
 export interface SettingRowProps {
   label: ReactNode
+  /** 标题前的小图标：固定 14px 槽位，整页图标列左缘一致，与标题垂直居中。 */
+  icon?: ReactNode
   /** 长说明：标题旁的小 ⓘ，悬停用标准 tooltip，不占表单行高。 */
   hint?: string
   htmlFor?: string
@@ -21,6 +23,7 @@ export interface SettingRowProps {
 
 export function SettingRow({
   label,
+  icon,
   hint,
   htmlFor,
   children,
@@ -31,7 +34,8 @@ export function SettingRow({
 }: SettingRowProps) {
   return (
     <div className={cn('setting-row', className)} data-stacked={stacked || undefined}>
-      <div className="setting-row-label">
+      <div className="setting-row-label" data-has-icon={icon ? true : undefined}>
+        {icon ? <span className="setting-row-icon">{icon}</span> : null}
         {htmlFor ? <label htmlFor={htmlFor}>{label}</label> : <span>{label}</span>}
         {hint ? (
           <span className="setting-row-hint">
@@ -46,6 +50,35 @@ export function SettingRow({
         {unit ? <span className="setting-row-unit">{unit}</span> : null}
       </div>
     </div>
+  )
+}
+
+export interface SettingNoteProps {
+  children: ReactNode
+  icon?: ReactNode
+  /** 与同一行标题文字的左缘对齐（标题前有 14px 图标槽时用）。 */
+  indent?: boolean
+  tone?: 'muted' | 'warning'
+  className?: string
+}
+
+/** 设置行下方的次要说明：小图标 + 小字，缩进与标题对齐，不压卡片边框。 */
+export function SettingNote({
+  children,
+  icon,
+  indent = false,
+  tone = 'muted',
+  className,
+}: SettingNoteProps) {
+  return (
+    <p
+      className={cn('setting-note', className)}
+      data-indent={indent || undefined}
+      data-tone={tone}
+    >
+      {icon ? <span className="setting-note-icon">{icon}</span> : null}
+      <span className="min-w-0 flex-1">{children}</span>
+    </p>
   )
 }
 
