@@ -121,12 +121,14 @@ async function main() {
     }
 
     await assertNoDebugText('登录后的首页')
-    assert.equal(await page.locator('[data-feedback-ui]').count(), 0, '发布版不应挂载反馈界面')
+    // 提示条本身也带 data-feedback-ui；只认反馈抽屉/标注层。
+    const feedbackUi = '[aria-label="反馈条目"], [aria-label="标注截图"]'
+    assert.equal(await page.locator(feedbackUi).count(), 0, '发布版不应挂载反馈界面')
 
     // Ctrl+Shift+F 不再绑定任何命令
     await page.keyboard.press('Control+Shift+F')
     await sleep(500)
-    assert.equal(await page.locator('[data-feedback-ui]').count(), 0, 'Ctrl+Shift+F 在发布版不应生效')
+    assert.equal(await page.locator(feedbackUi).count(), 0, 'Ctrl+Shift+F 在发布版不应生效')
 
     // 组件画廊路由回首页
     await page.evaluate(() => {
