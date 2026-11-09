@@ -438,10 +438,18 @@ export function createServerMessageHandler(
             // 反馈16#11：只把内容一致的本地乐观消息（含排队中的消息）原位换成服务端消息。
             // 以前见到任何 user 角色消息（含 tool_result）就删掉第一条本地消息，
             // 排队中的气泡会在工具返回时凭空消失；排队多条时顺序也会乱。
-            const localIndex =
-              message.role === 'user' && isUserTurnMessage(message)
-                ? messages.findIndex((m) => m.local && sameLocalContent(m.content, message.content))
-                : -1
+            let localIndex = -1
+            if (message.role === 'user' && isUserTurnMessage(message)) {
+              localIndex = messages.findIndex(
+                (m) => m.local && sameLocalContent(m.content, message.content),
+              )
+              // 服务端可能丢弃空块或规范化内容；只有一条本地用户消息时按顺序替换它，
+              // 避免气泡重复或正式消息跑到末尾。
+              if (localIndex < 0) {
+                const locals = messages.filter((m) => m.local && isUserTurnMessage(m))
+                if (locals.length === 1) localIndex = messages.indexOf(locals[0]!)
+              }
+            }
             if (localIndex >= 0) {
               messages = messages.map((m, i) => (i === localIndex ? message : m))
             } else {
