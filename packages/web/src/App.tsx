@@ -28,7 +28,9 @@ import { SearchDialog } from './components/SearchDialog'
 import { BackgroundTasksPanel } from './components/BackgroundTasksPanel'
 import { BrowserPanel } from './components/BrowserPanel'
 import { WorkstationDialog } from './components/workstation/WorkstationDialog'
-import { WorkstationOnboarding } from './components/workstation/WorkstationOnboarding'
+import { AddHostDialog } from './components/workstation/AddHostDialog'
+import { LoginGate } from './components/auth/LoginGate'
+import { loginGateEnabled } from './lib/loginGate'
 import { SerialTerminalDialog } from './components/workstation/SerialTerminalDialog'
 import { PreviewPanel } from './components/PreviewPanel'
 import { InboxDialog } from './components/inbox/InboxDialog'
@@ -97,25 +99,12 @@ export default function App() {
 
   const [dragWidth, setDragWidth] = useState<number | null>(null)
   const [drawerOffset, setDrawerOffset] = useState(0)
-  const [onboarded, setOnboarded] = useState(() => {
-    try {
-      if (__TANDEM_DEBUG__ && localStorage.getItem('tandem.onboarding.force')) return false
-      return !!localStorage.getItem('tandem.onboarded.v1')
-    } catch {
-      return true
-    }
-  })
-  const forceOnboarding = (() => {
-    try {
-      return __TANDEM_DEBUG__ && !!localStorage.getItem('tandem.onboarding.force')
-    } catch {
-      return false
-    }
-  })()
   const drawerStart = useRef<number | null>(null)
   const effectiveWidth = dragWidth ?? sidebarWidth
-  // 调试版启动时先尝试登录本机工作站测试账号；检查完成前不闪首启引导。
-  const [debugReady, setDebugReady] = useState(!__TANDEM_DEBUG__)
+  // 登录门：未登录时任何路由都只显示登录页（路由 hash 保留，登录后回到原地址）。
+  const [gateOn] = useState(loginGateEnabled)
+  // 调试版：回环地址打开时先尝试登录调试账号；检查完成前不闪登录页。
+  const [debugReady, setDebugReady] = useState(!__TANDEM_DEBUG__ || !gateOn)
 
   useEffect(() => {
     useAppStore.getState().initialize()
@@ -123,20 +112,14 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!__TANDEM_DEBUG__) return
+    if (!__TANDEM_DEBUG__ || !gateOn) return
     let alive = true
     const run = async () => {
       try {
-        // 显式要求重新走引导时，不自动登录（用于测试真实注册流程）。
-        if (localStorage.getItem('tandem.onboarding.force')) return
         const mod = await import('./lib/debugAccount')
-        const ok = await mod.tryDebugLocalAutoLogin()
-        if (ok && alive) {
-          localStorage.setItem('tandem.onboarded.v1', '1')
-          setOnboarded(true)
-        }
+        await mod.tryDebugLocalAutoLogin()
       } catch {
-        /* 调试账号不可用时按正常流程引导 */
+        /* 调试账号不可用时显示登录页 */
       } finally {
         if (alive) setDebugReady(true)
       }
@@ -145,7 +128,7 @@ export default function App() {
     return () => {
       alive = false
     }
-  }, [])
+  }, [gateOn])
 
   // 工作区账号：启动时与每 10 分钟检查访问令牌，过期前自动向账号中心刷新。
   const accountSession = useAppStore((s) => s.account)
@@ -162,6 +145,18 @@ export default function App() {
     const timer = window.setInterval(tick, 10 * 60 * 1000)
     return () => window.clearInterval(timer)
   }, [accountSession?.account.id, accountSession?.centerUrl])
+
+  // 账号下的主机列表：登录后同步一次；没有主机时更勤地轮询（刚在目标机器上执行完添加命令），之后低频兜底。
+  const noHosts = hosts.length === 0
+  useEffect(() => {
+    if (!accountSession) return
+    const sync = () => {
+      void useAppStore.getState().syncWorkstationHosts().catch(() => undefined)
+    }
+    sync()
+    const timer = window.setInterval(sync, noHosts ? 3000 : 30_000)
+    return () => window.clearInterval(timer)
+  }, [accountSession?.account.id, accountSession?.centerUrl, noHosts])
 
   // 安卓前台服务：设置开关或 Host 数量变化时同步常驻通知
   useEffect(() => {
@@ -191,6 +186,8 @@ export default function App() {
 
   useEffect(() => {
     if (!initialized) return
+    // 未登录时先不处理路由：深链保留在地址栏，登录后再回到原地址。
+    if (gateOn && !accountSession) return
     const store = useAppStore.getState()
     if (route.kind === 'session') {
       if (!store.hosts.some((h) => h.id === route.hostId)) {
@@ -231,7 +228,7 @@ export default function App() {
       useUiStore.getState().clearSplit()
       store.closeSession()
     }
-  }, [route, initialized, hosts])
+  }, [route, initialized, hosts, gateOn, accountSession])
 
   // Host 被移除后，清掉指向它的窗格，避免残留空白视图。
   useEffect(() => {
@@ -387,8 +384,28 @@ export default function App() {
     }
   }, [])
 
-  if (initialized && !onboarded && !accountSession && (hosts.length === 0 || forceOnboarding) && debugReady) {
-    return <WorkstationOnboarding onDone={() => setOnboarded(true)} />
+  if (gateOn && !accountSession) {
+    return (
+      <>
+        {initialized && debugReady ? (
+          <LoginGate />
+        ) : (
+          <div data-testid="login-splash" className="app-root bg-bg" aria-busy />
+        )}
+        <Toasts />
+        <OverlayScrollbar />
+        <AppContextMenu />
+        {__TANDEM_DEBUG__ && (
+          <div
+            aria-hidden
+            className="pointer-events-none fixed bottom-1 right-1 z-[70] rounded border border-border bg-bg px-1.5 py-0.5 text-[11px] leading-4 text-text"
+            data-tip={`Tandem ${__APP_VERSION__} 调试版`}
+          >
+            调试版
+          </div>
+        )}
+      </>
+    )
   }
 
   return (
@@ -536,6 +553,7 @@ export default function App() {
       <BackgroundTasksPanel />
       <BrowserPanel />
       <WorkstationDialog />
+      <AddHostDialog />
       <SerialTerminalDialog />
       {isMobile ? <PreviewPanel /> : null}
       <InboxDialog />

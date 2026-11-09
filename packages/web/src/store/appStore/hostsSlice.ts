@@ -11,12 +11,15 @@ import {
   readRecentDirsMap,
   sanitizeHosts,
   saveAccountSession,
+  saveLastWorkstationUrl,
   saveCollapsedProjects,
   saveHosts,
   saveLastHost,
   saveRecentDirsMap,
 } from '../../lib/storage'
 import { navigate } from '../../lib/router'
+import { loginGateEnabled } from '../../lib/loginGate'
+import { stashLocalHosts } from '../../lib/localHosts'
 import type { HostConnection } from '../../lib/ws'
 import type { AccountSession, ExternalSessionItem, HostConfig, HostRuntime } from '../../lib/types'
 import { useUiStore } from '../useUiStore'
@@ -102,6 +105,33 @@ export function createHostsSlice(
 ): HostsSlice {
   const getHost = (id: string): HostConfig | undefined => get().hosts.find((h) => h.id === id)
 
+  /** 清掉账号会话与账号下的主机（断开连接、清掉活动会话）；之后登录门会显示登录页。 */
+  const clearAccountState = (accountId: string | undefined): void => {
+    saveAccountSession(null)
+    const removed = get().hosts.filter((h) => h.accountId === accountId)
+    for (const h of removed) {
+      connections.get(h.id)?.close()
+      connections.delete(h.id)
+    }
+    const hosts = get().hosts.filter((h) => h.accountId !== accountId)
+    const removedIds = new Set(removed.map((h) => h.id))
+    const activeHostId = hosts.some((h) => h.id === get().activeHostId)
+      ? get().activeHostId
+      : (hosts[0]?.id ?? null)
+    set((state) => ({
+      account: null,
+      hosts,
+      activeHostId,
+      runtimes: Object.fromEntries(Object.entries(state.runtimes).filter(([id]) => !removedIds.has(id))),
+      sessionViews: Object.fromEntries(
+        Object.entries(state.sessionViews).filter(([, view]) => !removedIds.has(view.hostId)),
+      ),
+      active: state.active && removedIds.has(state.active.hostId) ? null : state.active,
+    }))
+    saveHosts(hosts)
+    if (activeHostId) saveLastHost(activeHostId)
+  }
+
   return {
     checkConnections: () => {
       for (const [hostId, conn] of connections) {
@@ -115,15 +145,21 @@ export function createHostsSlice(
 
     initialize: () => {
       if (get().initialized) return
+      // 登录门开启时，工作台只显示账号下的主机：直连凭据（地址 + 主 token）转入本机凭据，
+      // 只用于「添加这台电脑」等本机管理。调试版测试开关（?gate=off）保留旧的直连行为。
+      const gate = loginGateEnabled()
       let hosts = loadHosts()
       let preferredHostId: string | null = null
+      const stashed: HostConfig[] = []
 
       // 首次通过 ?token= 打开：自动把当前 origin 注册为本机 Host，并清掉地址栏里的 token。
       try {
         const url = new URL(window.location.href)
         if (url.searchParams.has('token')) {
           const token = url.searchParams.get('token') ?? ''
-          if (token) {
+          if (token && gate) {
+            stashed.push({ id: newId(), name: '本机', url: url.origin, token, addedAt: Date.now() })
+          } else if (token) {
             const origin = url.origin
             const existing = hosts.find((h) => sameOrigin(h.url, origin))
             if (existing) {
@@ -167,7 +203,17 @@ export function createHostsSlice(
         /* 忽略 */
       }
 
-      const account = loadAccountSession()
+      let account = loadAccountSession()
+      if (gate) {
+        stashLocalHosts([...hosts.filter((h) => !h.accountId), ...stashed])
+        hosts = hosts.filter((h) => !!h.accountId)
+        // 登录已过期（刷新令牌也失效）按未登录处理：回到登录页，不再连接任何主机。
+        if (account && account.refreshExpiresAt <= Date.now()) {
+          saveLastWorkstationUrl(account.centerUrl)
+          account = null
+        }
+        if (!account) hosts = []
+      }
       const runtimes: Record<string, HostRuntime> = {}
       for (const h of hosts) runtimes[h.id] = freshRuntime()
       const lastHostId = loadLastHost()
@@ -630,6 +676,7 @@ export function createHostsSlice(
         workspace: result.workspace,
       }
       saveAccountSession(session)
+      saveLastWorkstationUrl(base)
       const next = [...get().hosts]
       const added: HostConfig[] = []
       const seen = new Set<string>()
@@ -732,19 +779,27 @@ export function createHostsSlice(
         remoteHosts = await workstationApi.hosts(session.centerUrl, session.accessToken)
       }
       const current = get().hosts
-      const next = [...current]
       const added: HostConfig[] = []
       const seen = new Set<string>()
+      let changed = false
+      const next = [...current]
       for (const remote of remoteHosts) {
         if (!remote.fingerprint) continue
         seen.add(remote.id)
-        const existing = next.find(
+        const index = next.findIndex(
           (h) => h.mode === 'relay' && h.relayUrl === session.centerUrl && h.hostId === remote.id,
         )
-        if (existing) {
-          existing.token = session.accessToken
-          existing.fingerprint = remote.fingerprint
-          existing.name = remote.name || existing.name
+        if (index >= 0) {
+          const existing = next[index]!
+          const name = remote.name || existing.name
+          if (
+            existing.token !== session.accessToken ||
+            existing.fingerprint !== remote.fingerprint ||
+            existing.name !== name
+          ) {
+            next[index] = { ...existing, token: session.accessToken, fingerprint: remote.fingerprint, name }
+            changed = true
+          }
           continue
         }
         const host: HostConfig = {
@@ -773,18 +828,31 @@ export function createHostsSlice(
             !seen.has(h.hostId)
           ),
       )
-      set((state) => ({
-        hosts: cleaned,
-        runtimes: {
-          ...state.runtimes,
-          ...Object.fromEntries(added.map((h) => [h.id, freshRuntime()])),
-        },
-      }))
-      saveHosts(cleaned)
-      for (const h of added) {
-        deps.ensureConnection(h.id)
-        void get().refreshProfiles(h.id)
-        void get().refreshSessions(h.id)
+      // 没有变化就不写状态：定时同步不能让依赖 hosts 的界面与路由逻辑反复重跑。
+      if (changed || added.length > 0 || cleaned.length !== next.length) {
+        set((state) => ({
+          hosts: cleaned,
+          runtimes: {
+            ...state.runtimes,
+            ...Object.fromEntries(added.map((h) => [h.id, freshRuntime()])),
+          },
+          activeHostId:
+            state.activeHostId && cleaned.some((h) => h.id === state.activeHostId)
+              ? state.activeHostId
+              : (cleaned[0]?.id ?? null),
+        }))
+        saveHosts(cleaned)
+        const activeId = get().activeHostId
+        if (activeId) saveLastHost(activeId)
+        for (const gone of next.filter((h) => !cleaned.includes(h))) {
+          connections.get(gone.id)?.close()
+          connections.delete(gone.id)
+        }
+        for (const h of added) {
+          deps.ensureConnection(h.id)
+          void get().refreshProfiles(h.id)
+          void get().refreshSessions(h.id)
+        }
       }
       // 新获授权的主机需要新 perHost 声明，主动换一次访问令牌再连接。
       if (added.length > 0) await get().refreshWorkspace()
@@ -796,15 +864,11 @@ export function createHostsSlice(
         // 退出调试账号后记住选择，避免下次启动又被自动登录。
         void import('../../lib/debugAccount').then((mod) => mod.disableDebugAutoLogin())
       }
-      if (session) await accountApi.logout(session.centerUrl, session.refreshToken)
-      saveAccountSession(null)
-      const hosts = get().hosts.filter((h) => h.accountId !== session?.account.id)
-      const activeHostId = hosts.some((h) => h.id === get().activeHostId)
-        ? get().activeHostId
-        : hosts[0]?.id ?? null
-      set({ account: null, hosts, activeHostId })
-      saveHosts(hosts)
-      if (activeHostId) saveLastHost(activeHostId)
+      if (session) {
+        saveLastWorkstationUrl(session.centerUrl)
+        await accountApi.logout(session.centerUrl, session.refreshToken).catch(() => undefined)
+      }
+      clearAccountState(session?.account.id)
       toast('已退出工作区账号', 'success')
     },
 
@@ -827,7 +891,12 @@ export function createHostsSlice(
         set({ account: next, hosts })
         saveHosts(hosts)
         return true
-      } catch {
+      } catch (err) {
+        // 刷新令牌被工作站拒绝（过期 / 账号被禁用）：会话已失效，回到登录页。
+        if (loginGateEnabled() && err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          saveLastWorkstationUrl(session.centerUrl)
+          clearAccountState(session.account.id)
+        }
         return false
       }
     },

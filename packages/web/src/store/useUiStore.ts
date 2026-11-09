@@ -67,6 +67,8 @@ interface UiState {
   mobilePanel: boolean
   settingsOpen: boolean
   settingsTab: SettingsTab
+  /** 「添加主机」弹层（工作站一行命令）。 */
+  addHostOpen: boolean
   /** 从命令面板/设置搜索定位到某一项：滚动并短暂高亮。 */
   settingsFocus: { id: string; nonce: number } | null
   /** 手动压缩上下文的确认框目标会话（上下文面板与命令面板共用）。 */
@@ -157,6 +159,7 @@ interface UiState {
   setMobilePanel: (open: boolean) => void
   openSettings: (tab?: SettingsTab) => void
   closeSettings: () => void
+  setAddHostOpen: (open: boolean) => void
   setSettingsTab: (tab: SettingsTab) => void
   focusSetting: (tab: SettingsTab, id: string) => void
   openCompactConfirm: (target: { hostId: string; sessionId: string } | null) => void
@@ -296,6 +299,7 @@ export const useUiStore = create<UiState>((set, get) => {
   mobilePanel: false,
   settingsOpen: false,
   settingsTab: 'profiles',
+  addHostOpen: false,
   settingsFocus: null,
   compactConfirm: null,
   tourOpen: false,
@@ -432,6 +436,7 @@ export const useUiStore = create<UiState>((set, get) => {
       mobilePanel: false,
     })),
   closeSettings: () => set({ settingsOpen: false, settingsFocus: null }),
+  setAddHostOpen: (open) => set({ addHostOpen: open }),
   focusSetting: (tab, id) =>
     set((s) => ({
       settingsOpen: true,

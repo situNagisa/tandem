@@ -3,6 +3,7 @@
 import type { AccountLoginResult } from '@tandem/protocol'
 import { workstationApi } from './api'
 import { useAppStore } from '../store/useAppStore'
+import { loadLocalHosts } from './localHosts'
 
 const AUTOLOGIN_KEY = 'tandem.debug.account.autologin'
 
@@ -71,34 +72,39 @@ export async function debugLoginAt(raw: string): Promise<boolean> {
   }
 }
 
-/** 调试版启动时：连接本机工作站且未登录则自动登录。 */
-export async function tryDebugLocalAutoLogin(): Promise<boolean> {
-  if (!isDebugAutoLoginEnabled()) return false
-  const store = useAppStore.getState()
-  if (store.account) return false
-
-  const host = store.hosts.find((h) => h.id === store.activeHostId) ?? store.hosts[0]
-  if (host) {
+/** 本机调试工作站的候选地址：本机 Host 内嵌的工作站优先；页面本身是工作站时用页面地址。 */
+export async function localDebugWorkstationUrls(): Promise<string[]> {
+  const origin = window.location.origin
+  const urls: string[] = []
+  const controls = loadLocalHosts().filter((h) => isLoopbackUrl(h.url))
+  for (const host of controls) {
     try {
       const local = await workstationApi.localStatus(host)
-      const embedded = local.embedded.urls.find(isLoopbackUrl)
-      if (local.embedded.running && embedded && (await debugLoginAt(embedded))) return true
-      if (local.join?.url && isLoopbackUrl(local.join.url) && (await debugLoginAt(local.join.url))) return true
+      if (local.embedded.running) urls.push(...local.embedded.urls.filter(isLoopbackUrl))
+      if (local.join?.url && isLoopbackUrl(local.join.url)) urls.push(local.join.url)
     } catch {
-      /* 不是 Host 页面或令牌不可用 */
+      /* 令牌失效或 Host 没起来 */
     }
   }
-  // 直接打开工作站页面（例如 http://127.0.0.1:8481）时，回环源本身也可能是调试工作站。
-  // 若当前源就是 Host 页面，则不要探测：Host 没有工作站状态接口，会留下 401 控制台错误。
-  const origin = window.location.origin
-  let hostIsOrigin = false
-  if (host) {
-    try {
-      hostIsOrigin = new URL(host.url).origin === origin
-    } catch {
-      hostIsOrigin = false
+  // 页面本身就是工作站（http://127.0.0.1:8481）；页面由 Host 托管时不探测，避免 401 控制台噪声。
+  if (isLoopbackUrl(origin) && !controls.some((h) => baseUrl(h.url) === origin)) urls.push(origin)
+  return [...new Set(urls.map(baseUrl))]
+}
+
+/**
+ * 调试版：页面在本机回环地址上打开时，自动登录本机工作站的调试账号。
+ * Host 刚启动时内嵌工作站可能还没就绪，短时间重试。
+ */
+export async function tryDebugLocalAutoLogin(): Promise<boolean> {
+  if (!isDebugAutoLoginEnabled()) return false
+  if (useAppStore.getState().account) return false
+  if (!isLoopbackUrl(window.location.origin)) return false
+  const deadline = Date.now() + 8000
+  for (;;) {
+    for (const url of await localDebugWorkstationUrls()) {
+      if (await debugLoginAt(url)) return true
     }
+    if (Date.now() >= deadline) return false
+    await new Promise((resolve) => setTimeout(resolve, 600))
   }
-  if (!hostIsOrigin && isLoopbackUrl(origin) && (await debugLoginAt(origin))) return true
-  return false
 }

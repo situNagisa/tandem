@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  Check,
-  ClipboardCopy,
   Loader2,
   LogIn,
   Plus,
@@ -14,10 +12,10 @@ import {
 import type {
   WorkspaceHostInfo,
   WorkstationAccountSummary,
-  WorkstationBindCode,
   WorkspaceRole,
 } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
+import { useUiStore } from '../../store/useUiStore'
 import { ApiError, workstationApi } from '../../lib/api'
 import { Button } from '../ui/Button'
 import { Input, Select } from '../ui/Controls'
@@ -43,8 +41,6 @@ export function WorkstationSection() {
   const [remoteHosts, setRemoteHosts] = useState<WorkspaceHostInfo[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [bind, setBind] = useState<WorkstationBindCode | null>(null)
-  const [bindOpen, setBindOpen] = useState(false)
   const [grantFor, setGrantFor] = useState<WorkspaceHostInfo | null>(null)
   const [registration, setRegistration] = useState<'open' | 'invite'>('open')
   const [invite, setInvite] = useState<string | null>(null)
@@ -88,20 +84,7 @@ export function WorkstationSection() {
           <p className="mt-2 text-[13px] leading-6 text-[var(--t-text-secondary)]">
             工作站负责账号与主机登记。登录后只看到自己添加的主机，以及别人授权给你的主机；即使本机也要显式添加。
           </p>
-          <Button
-            variant="primary"
-            className="mt-4"
-            onClick={() => {
-              localStorage.setItem('tandem.onboarding.force', '1')
-              window.location.reload()
-            }}
-          >
-            <LogIn size={14} /> 连接工作站
-          </Button>
         </div>
-        <p className="text-[12px] leading-5 text-[var(--t-text-tertiary)]">
-          单机模式（地址 + token）保持不变：不登录也能继续使用已添加的主机。
-        </p>
       </div>
     )
   }
@@ -109,43 +92,6 @@ export function WorkstationSection() {
   const own = remoteHosts.filter((h) => h.ownerId === account.account.id)
   const granted = remoteHosts.filter((h) => h.ownerId !== account.account.id)
   const localHosts = hosts.filter((h) => h.accountId === account.account.id)
-  const localHost =
-    hosts.find((h) => {
-      try {
-        return new URL(h.url).origin === window.location.origin
-      } catch {
-        return false
-      }
-    }) ?? hosts[0]
-  const [joiningLocal, setJoiningLocal] = useState(false)
-
-  const joinLocalHost = async () => {
-    if (!localHost || !bind) return
-    setJoiningLocal(true)
-    setError(null)
-    try {
-      await workstationApi.join(localHost, { workstationUrl: base, code: bind.code })
-      toast('这台电脑已添加为你的主机', 'success')
-      await refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '添加本机失败（需要在该主机上用主 token 打开）')
-    } finally {
-      setJoiningLocal(false)
-    }
-  }
-
-  const generateBind = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      setBind(await workstationApi.bindCode(base, token))
-      setBindOpen(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '生成绑定码失败')
-    } finally {
-      setBusy(false)
-    }
-  }
 
   const removeHost = async (host: WorkspaceHostInfo) => {
     setBusy(true)
@@ -248,7 +194,12 @@ export function WorkstationSection() {
               客户端只连工作站；主机主动连出。在线状态来自工作站的隧道。
             </div>
           </div>
-          <Button variant="primary" size="sm" onClick={() => void generateBind()} disabled={busy}>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => useUiStore.getState().setAddHostOpen(true)}
+            disabled={busy}
+          >
             <Plus size={14} /> 添加主机
           </Button>
         </div>
@@ -256,7 +207,7 @@ export function WorkstationSection() {
         <div className="mt-3 space-y-1.5">
           {remoteHosts.length === 0 && (
             <div className="rounded-lg border border-dashed border-[var(--t-border)] px-3 py-6 text-center text-[12.5px] text-[var(--t-text-tertiary)]">
-              还没有主机。点「添加主机」生成绑定码，在主机那台机器上输入；或在这台电脑上完成。
+              还没有主机。点「添加主机」，复制一行命令到目标机器执行即可。
             </div>
           )}
           {[...own, ...granted].map((host) => {
@@ -302,69 +253,6 @@ export function WorkstationSection() {
           })}
         </div>
       </div>
-
-      <div className="rounded-xl border border-[var(--t-border)] bg-[var(--t-bg-elevated)] p-4">
-        <div className="text-[14px] font-medium">添加主机的方式</div>
-        <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-[12.5px] leading-6 text-[var(--t-text-secondary)]">
-          <li>在工作站页面点「添加主机」，生成一次性绑定码（10 分钟）。</li>
-          <li>在主机那台机器打开 Tandem →「设置 → 工作站 → 加入工作站」，填工作站地址和绑定码；或命令行执行 <code className="rounded bg-[var(--t-bg-subtle)] px-1">tandem-host join &lt;工作站地址&gt; --code &lt;绑定码&gt;</code>。</li>
-          <li>主机自动生成密钥对并建立出站隧道，出现在「我的主机」里。</li>
-        </ol>
-      </div>
-
-      <Modal
-        open={bindOpen}
-        onClose={() => setBindOpen(false)}
-        title="添加主机"
-        description="绑定码只显示一次，10 分钟内有效。"
-        layer={70}
-        className="max-w-[520px]"
-        footer={
-          <div className="flex w-full items-center justify-between gap-2">
-            <span className="text-[11.5px] text-[var(--t-text-tertiary)]">绑定码只显示一次</span>
-            <div className="flex gap-2">
-              {localHost && (
-                <Button variant="primary" onClick={() => void joinLocalHost()} disabled={joiningLocal || !bind}>
-                  {joiningLocal ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                  在这台电脑上完成
-                </Button>
-              )}
-              <Button variant="secondary" onClick={() => setBindOpen(false)}>
-                关闭
-              </Button>
-            </div>
-          </div>
-        }
-      >
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 rounded-lg bg-[var(--t-bg-subtle)] px-3 py-2">
-            <code className="min-w-0 flex-1 break-all font-mono text-[13px]">{bind?.code ?? '—'}</code>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={!bind}
-              onClick={() => {
-                if (bind) void navigator.clipboard?.writeText(bind.code)
-                toast('绑定码已复制', 'success')
-              }}
-            >
-              <ClipboardCopy size={13} /> 复制
-            </Button>
-          </div>
-          <p className="text-[12.5px] leading-6 text-[var(--t-text-secondary)]">
-            在主机那台机器上打开 Tandem 桌面端，进入「设置 → 工作站 → 加入工作站」，填工作站地址
-            <code className="mx-1 rounded bg-[var(--t-bg-subtle)] px-1 font-mono text-[11.5px]">{base}</code>
-            和上面的绑定码。也可在主机上执行：
-          </p>
-          <pre className="overflow-x-auto rounded-lg bg-[var(--t-bg-subtle)] px-3 py-2 font-mono text-[11.5px] leading-5">
-{`tandem-host join ${base} --code ${bind?.code ?? '<绑定码>'}`}
-          </pre>
-          <div className="flex items-start gap-2 text-[12px] leading-5 text-[var(--t-text-tertiary)]">
-            <Check size={14} className="mt-0.5 shrink-0" />
-            登记后主机不会开放入站端口；客户端经工作站访问，内容端到端加密。
-          </div>
-        </div>
-      </Modal>
 
       <GrantDialog
         host={grantFor}

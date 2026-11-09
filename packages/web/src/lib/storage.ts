@@ -287,3 +287,20 @@ export function loadAccountSession(): AccountSession | null {
 export function saveAccountSession(session: AccountSession | null): void {
   writeJson(KEYS.account, session)
 }
+
+/** 上次登录的工作站地址：登录页预填，令牌过期或退出后重新登录不用再找地址。 */
+export function loadLastWorkstationUrl(): string {
+  try {
+    return localStorage.getItem('tandem.workstation.lastUrl.v1') ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export function saveLastWorkstationUrl(url: string): void {
+  try {
+    localStorage.setItem('tandem.workstation.lastUrl.v1', url)
+  } catch {
+    /* 忽略 */
+  }
+}

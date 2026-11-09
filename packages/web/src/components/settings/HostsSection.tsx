@@ -36,6 +36,7 @@ import { Input, SegmentedControl, Switch } from '../ui/Controls'
 import { Menu } from '../ui/Menu'
 import { RemoteSshDialog, SshJobProgress } from './RemoteSshDialog'
 import { cn } from '../../lib/cn'
+import { loginGateEnabled } from '../../lib/loginGate'
 import { QrScanDialog, scannerSupported } from '../QrScanDialog'
 import { parsePairLink } from '../../lib/pairLink'
 import { parseInviteLink } from '../../lib/inviteLink'
@@ -52,6 +53,7 @@ const inputCls =
   'h-8 w-full rounded-lg border border-border bg-surface px-2.5 text-[13px] text-text outline-none transition-colors placeholder:text-muted focus:border-border-strong'
 
 export function HostsSection() {
+  const gateOn = loginGateEnabled()
   const hosts = useAppStore((s) => s.hosts)
   const activeHostId = useAppStore((s) => s.activeHostId)
   const runtimes = useAppStore((s) => s.runtimes)
@@ -427,6 +429,7 @@ export function HostsSection() {
         <h3 className="text-[14px] font-semibold">主机</h3>
         <span className="text-[13px] text-muted">每台主机对应一个 WS 长连接</span>
         <span className="flex-1" />
+        {!gateOn && (
         <Button
           data-setting-id="hosts.ssh.add"
           onClick={() => {
@@ -442,18 +445,23 @@ export function HostsSection() {
           <Terminal size={13} />
           远程主机
         </Button>
+        )}
         <Button
           data-setting-id="hosts.add"
           variant="primary"
-          onClick={() => setAdding((v) => !v)}
+          onClick={() => {
+            // 登录门开启时主机只来自账号：添加主机 = 复制一行命令到目标机器执行。
+            if (gateOn) useUiStore.getState().setAddHostOpen(true)
+            else setAdding((v) => !v)
+          }}
           className="max-sm:min-h-11"
         >
-          {adding ? <X size={13} /> : <Plus size={13} />}
-          {adding ? '收起' : '添加主机'}
+          {adding && !gateOn ? <X size={13} /> : <Plus size={13} />}
+          {adding && !gateOn ? '收起' : '添加主机'}
         </Button>
       </div>
 
-      {adding && (
+      {adding && !gateOn && (
         <div data-setting-id="hosts.mode" className="mb-4 rounded-xl border border-border bg-surface p-3.5">
           <div>
             <label className="settings-label">配对链接（直连或中继）</label>
@@ -620,7 +628,9 @@ export function HostsSection() {
             <span className="settings-empty-icon"><Server size={17} /></span>
             <p className="settings-empty-title">还没有 Host</p>
             <p className="settings-empty-hint">
-              在目标机器启动 Tandem Host，然后添加它的地址与 Token。
+              {gateOn
+                ? '点「添加主机」，复制一行命令到目标机器执行即可。'
+                : '在目标机器启动 Tandem Host，然后添加它的地址与 Token。'}
             </p>
           </div>
         )}

@@ -7,6 +7,8 @@ import { basename } from '../lib/format'
 import { useIsMobile } from '../lib/hooks'
 import { SegmentedControl } from './ui/Controls'
 import { ConnectView, NewSessionView } from './NewSessionDialog'
+import { NoHostsView } from './workstation/NoHostsView'
+import { loginGateEnabled } from '../lib/loginGate'
 import { InboxView, useInboxCount, useInboxPendingCount } from './inbox/InboxView'
 
 const SUGGESTIONS = [
@@ -112,7 +114,7 @@ export function HomeView() {
     if (pendingCount > 0) setTab('inbox')
   }, [pendingCount, isMobile])
 
-  if (hosts.length === 0) return <ConnectView />
+  if (hosts.length === 0) return loginGateEnabled() ? <NoHostsView /> : <ConnectView />
   if (teamRole === 'observer' || teamRole === 'approver') {
     return (
       <div className="flex h-full items-center justify-center p-6">

@@ -44,6 +44,12 @@ const BASE_COMMANDS: AppCommand[] = [
     defaultShortcut: 'mod+n',
     run: () => {
       const ui = useUiStore.getState()
+      // 账号下没有主机就开不了会话：说明原因并直接打开「添加主机」。
+      if (useAppStore.getState().hosts.length === 0) {
+        toast('账号下还没有主机：先添加一台主机，才能开始会话', 'info')
+        if (useAppStore.getState().account) ui.setAddHostOpen(true)
+        return
+      }
       // 已经在新会话页时导航不会重新挂载，需要显式清空输入并聚焦。
       if (parseHash().kind === 'home') ui.resetComposer()
       ui.setShowArchived(false)
@@ -194,6 +200,20 @@ const BASE_COMMANDS: AppCommand[] = [
     defaultShortcut: 'mod+alt+s',
     run: () => {
       useUiStore.getState().openSettings()
+    },
+  },
+  {
+    id: 'app.add-host',
+    title: '添加主机',
+    keywords: ['添加主机', '主机', '机器', '工作站', 'add host', 'workstation'],
+    run: () => {
+      if (!useAppStore.getState().account) {
+        toast('请先登录工作站', 'info')
+        return
+      }
+      const ui = useUiStore.getState()
+      ui.setMobileSidebar(false)
+      ui.setAddHostOpen(true)
     },
   },
   {
