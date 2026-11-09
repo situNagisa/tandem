@@ -251,8 +251,8 @@ async function main() {
 
     await page.getByText('我先检查一下。').waitFor({ state: 'visible', timeout: 20_000 })
     await page.getByText('需要你的许可').waitFor({ state: 'visible', timeout: 20_000 })
-    const approve = page.getByRole('button', { name: /^允许/ }).first()
-    await approve.click()
+    // 审批卡是编号询问（反馈12#09）：默认选中「允许」，点第一个选项。
+    await page.locator('[data-permission-allow]').first().click()
 
     await page.getByText('工具执行完成，冒烟通过。').waitFor({ state: 'visible', timeout: 30_000 })
 
