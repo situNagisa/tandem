@@ -58,7 +58,7 @@ export const CHANGELOG: ChangelogRelease[] = [
         id: 'workstation-login',
         title: '先登录，再开始',
         summary:
-          '桌面、网页与手机打开后先登录或注册工作站，未登录时保留原链接；调试版在回环地址自动用调试账号登录。',
+          '桌面、网页与手机打开后先登录或注册工作站，未登录时保留原链接；内测构建在本机回环地址自动登录内置测试账号。',
         target: { kind: 'settings', tab: 'accounts', settingId: 'accounts.workspace' },
       },
       {
