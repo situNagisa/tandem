@@ -152,7 +152,6 @@ export function ContextSpaceSection({
                     data-context-turn-open="true"
                     onClick={() => jump(turn.messageId)}
                     data-tip={title}
-                    aria-label={`${title}，跳到第 ${turn.turn} 轮`}
                     className="flex min-h-6 min-w-0 flex-1 items-center gap-1.5 rounded-md py-0.5 pl-0.5 pr-1 text-left text-[12px] leading-4 text-text-soft"
                   >
                     <span

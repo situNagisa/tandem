@@ -938,7 +938,7 @@ export function RightPanel() {
       )}
 
       {graphExpanded ? (
-        <div className="flex min-h-0 flex-1 flex-col px-3 pb-3 pt-2" data-graph-full>
+        <div className="flex min-h-0 flex-1 flex-col px-3 pb-7 pt-2" data-graph-full>
           <SessionGraphCard full onBack={() => setGraphExpanded(false)} />
         </div>
       ) : (
