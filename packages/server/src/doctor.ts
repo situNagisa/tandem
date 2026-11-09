@@ -101,7 +101,6 @@ function collectSecrets(host: Host): string[] {
     if (value && value.length >= 6) secrets.add(value);
   };
   add(host.config.token);
-  add(host.config.relay?.hostKey);
   const addProfile = (profile: StoredProfile) => {
     add(profile.apiKey);
     for (const group of profile.groups ?? []) {

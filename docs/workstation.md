@@ -53,9 +53,9 @@ curl -fsSL http://192.168.1.10:8481/install.sh | sh -s -- --token ach_…
 
 ## 4. 连接与加密
 
-- 主机向工作站发起**出站 WebSocket 长连接**（复用 `packages/relay` 的隧道：`/_tunnel` 注册、挑战签名、`/h/<hostId>/...` 多路复用 HTTP/WS、ACK 流控、断线退避）。主机不需要开放入站端口。
+- 主机向工作站发起**出站 WebSocket 长连接**（`workstation/tunnel.ts`：`/_tunnel` 注册、挑战签名、`/h/<hostId>/...` 多路复用 HTTP/WS、ACK 流控、断线退避）。主机不需要开放入站端口。
 - 工作站登记时绑定 `hostId ↔ 主机公钥`；隧道的挑战签名必须匹配已登记公钥，防止他人冒用 hostId。
-- 客户端只连工作站：Host 地址 = `<工作站地址>/h/<hostId>`，指纹来自登记记录。客户端与主机之间走 **E2E**（X25519 + Ed25519 + HKDF + AES-256-GCM，沿用 relay v1），账号令牌在密文内，由主机验签。
+- 客户端只连工作站：Host 地址 = `<工作站地址>/h/<hostId>`，指纹来自登记记录。客户端与主机之间走 **E2E**（X25519 + Ed25519 + HKDF + AES-256-GCM，E2E v1），账号令牌在密文内，由主机验签。
 - 工作站**能看到**：账号、主机登记信息、谁在何时连了哪台主机、请求次数/大小/时长、在线状态；**看不到**：请求/响应正文、会话内容、文件、命令、账号令牌、模型 Key。
 - **模型代理**：模型账号与 Key 属于工作站账号（见 [features/model-accounts.md](features/model-accounts.md)）。主机 agent 发模型请求时用登记私钥签名 POST `/api/workstation/host/model-proxy`（时间戳 + hostId + accountId + 方法 + 路径 + body 哈希，5 分钟有效）；工作站校验签名、账号对主机的访问权与 profile 归属，再用该账号 Key 调上游，NDJSON 流式回传并记账。主机不持有 Key；个人模式（同进程）走进程内直连。
 - 工作站只能拒绝/延迟/断开转发（可用性），不能冒充主机（指纹不符会拒绝）或篡改内容（GCM 校验失败即断开）。
@@ -100,7 +100,7 @@ SSH 一键接入保留，作为“添加主机”的一种方式：部署完成�
 TANDEM_HOME=/var/lib/tandem-workstation tandem-host workstation --host 0.0.0.0 --port 8481
 ```
 
-Docker（复用 `deploy/relay` 思路，只发布到内网）：
+Docker（只发布到内网）：
 
 ```bash
 docker build -f deploy/workstation/Dockerfile -t tandem-workstation .

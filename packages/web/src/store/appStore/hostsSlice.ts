@@ -236,19 +236,8 @@ export function createHostsSlice(
 
     addHost: (input) => {
       const mode = input.mode ?? 'direct'
-      const relayUrl = input.relayUrl?.trim().replace(/\/+$/, '') || undefined
-      const hostId = input.hostId?.trim() || undefined
-      const fingerprint = input.fingerprint ? normalizeFingerprint(input.fingerprint) : undefined
-      if (mode === 'relay') {
-        if (!relayUrl || !/^https?:\/\//i.test(relayUrl)) throw new Error('请填写有效的中继地址')
-        if (!hostId) throw new Error('请填写 Host ID')
-        if (!fingerprint || !isValidFingerprint(fingerprint)) {
-          throw new Error('必须填写 Host 公钥指纹（64 位十六进制），否则无法校验端到端加密')
-        }
-      }
       if (mode === 'ssh' && !input.sshHostId) throw new Error('缺少远程主机 ID')
-      const rawUrl = mode === 'relay' && relayUrl && hostId ? relayHostUrl(relayUrl, hostId) : input.url
-      const url = normalizeHostUrl(rawUrl)
+      const url = normalizeHostUrl(input.url)
       const name = input.name.trim() || new URL(url).host
       const existing = get().hosts.find((h) => h.url === url && (h.mode ?? 'direct') === mode)
       if (!existing && get().hosts.some((h) => h.name.trim().toLowerCase() === name.toLowerCase())) {
@@ -258,16 +247,14 @@ export function createHostsSlice(
         const patch = {
           name: input.name.trim() || existing.name,
           token: input.token,
-          ...(mode === 'relay'
-            ? { mode, relayUrl, hostId, fingerprint }
-            : mode === 'ssh'
-              ? {
-                  mode,
-                  sshHostId: input.sshHostId,
-                  ...(input.sshControllerId ? { sshControllerId: input.sshControllerId } : {}),
-                  ...(input.sshTarget ? { sshTarget: input.sshTarget } : {}),
-                }
-              : {}),
+          ...(mode === 'ssh'
+            ? {
+                mode,
+                sshHostId: input.sshHostId,
+                ...(input.sshControllerId ? { sshControllerId: input.sshControllerId } : {}),
+                ...(input.sshTarget ? { sshTarget: input.sshTarget } : {}),
+              }
+            : {}),
         }
         get().updateHost(existing.id, patch)
         if (!get().activeHostId) {
@@ -282,16 +269,14 @@ export function createHostsSlice(
         url,
         token: input.token,
         addedAt: Date.now(),
-        ...(mode === 'relay'
-          ? { mode, relayUrl, hostId, fingerprint }
-          : mode === 'ssh'
-            ? {
-                mode,
-                sshHostId: input.sshHostId,
-                ...(input.sshControllerId ? { sshControllerId: input.sshControllerId } : {}),
-                ...(input.sshTarget ? { sshTarget: input.sshTarget } : {}),
-              }
-            : {}),
+        ...(mode === 'ssh'
+          ? {
+              mode,
+              sshHostId: input.sshHostId,
+              ...(input.sshControllerId ? { sshControllerId: input.sshControllerId } : {}),
+              ...(input.sshTarget ? { sshTarget: input.sshTarget } : {}),
+            }
+          : {}),
       }
       set((state) => ({
         hosts: [...state.hosts, host],
@@ -322,7 +307,7 @@ export function createHostsSlice(
         relayUrl = relayUrl?.trim().replace(/\/+$/, '')
         hostId = hostId?.trim()
         if (!relayUrl || !/^https?:\/\//i.test(relayUrl)) {
-          toast('请填写有效的中继地址', 'error')
+          toast('请填写有效的工作站地址', 'error')
           return
         }
         if (!hostId) {
@@ -352,10 +337,8 @@ export function createHostsSlice(
         name,
         url,
         token,
-        ...(mode === 'relay'
-          ? { mode, relayUrl, hostId, fingerprint }
-          : mode === 'ssh'
-            ? {
+        ...(mode === 'ssh'
+          ? {
                 mode: 'ssh' as const,
                 sshHostId: prev.sshHostId,
                 sshControllerId: prev.sshControllerId,

@@ -1,8 +1,7 @@
-// Host 侧中继隧道：主动向 relay 建立出站 WebSocket，把 relay 多路复用过来的 HTTP / WS 请求转给本机 Fastify。
-// 本机请求走回环地址，沿用现有的 token 鉴权；relay 不持有也不校验用户 token。
+// Host 侧出站隧道：主动向工作站建立 WebSocket，把工作站多路复用过来的 HTTP / WS 请求转给本机 Fastify。
+// 本机请求走回环地址，沿用现有的 token 鉴权；工作站不持有也不校验用户 token。
 import http from 'node:http';
 import WebSocket, { type RawData } from 'ws';
-import type { RelayPairInfo } from '@tandem/protocol';
 import {
   E2E_CHUNK,
   E2E_HELLO,
@@ -34,9 +33,10 @@ import {
   type Frame,
   type TunnelChallenge,
   type TunnelHello,
-} from '@tandem/relay/wire';
-import type { RelayConfig } from '../types.js';
+} from './wire.js';
 import { E2EServer, identityFromHostKey, openRecord, sealRecord, signWith, type E2ESession, type RelayIdentity } from './e2e.js';
+
+interface WorkstationTunnelConfig { url: string; hostKey: string; requireE2E?: boolean }
 
 const MAX_FRAME = 40 * 1024 * 1024;
 const HEARTBEAT_MS = 20_000;
@@ -46,11 +46,11 @@ type Headers = [string, string][];
 
 interface HostStream {
   onFrame(frame: Frame): void;
-  /** 隧道断开或 relay 要求取消。 */
+  /** 隧道断开或工作站要求取消。 */
   abort(): void;
 }
 
-/** 响应方向的发送端：RES_DATA 受 relay 的 ACK 流控，超出窗口时暂停本机响应。 */
+/** 响应方向的发送端：RES_DATA 受工作站的 ACK 流控，超出窗口时暂停本机响应。 */
 interface Sink {
   head(status: number, headers: Headers): void;
   /** 返回 false 表示应暂停来源，等 onResume。 */
@@ -64,7 +64,7 @@ function hasHeader(headers: Headers, name: string): string | undefined {
   return headers.find(([k]) => k.toLowerCase() === name)?.[1];
 }
 
-/** 明文响应发送端：RES_DATA 受 relay 的 ACK 流控，超出窗口时暂停本机响应。 */
+/** 明文响应发送端：RES_DATA 受工作站的 ACK 流控，超出窗口时暂停本机响应。 */
 class Out implements Sink {
   onResume: (() => void) | null = null;
   private inflight = 0;
@@ -151,17 +151,17 @@ class SealedOut implements Sink {
   }
 }
 
-export function relayHttpBase(url: string): string {
+export function workstationHttpBase(url: string): string {
   const u = new URL(url);
   if (u.protocol === 'ws:') u.protocol = 'http:';
   else if (u.protocol === 'wss:') u.protocol = 'https:';
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error(`relay URL 协议无效: ${u.protocol}`);
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error(`工作站地址协议无效: ${u.protocol}`);
   u.search = '';
   u.hash = '';
   return u.toString().replace(/\/+$/, '');
 }
 
-export class RelayAgent {
+export class WorkstationAgent {
   private readonly identity: RelayIdentity;
   private readonly e2e: E2EServer;
   private readonly httpBase: string;
@@ -174,25 +174,15 @@ export class RelayAgent {
   private lastLogged = '';
 
   constructor(
-    private readonly relay: RelayConfig & { hostKey: string },
+    private readonly relay: WorkstationTunnelConfig,
     private readonly hostId: string,
     private readonly localPort: number,
   ) {
     this.identity = identityFromHostKey(relay.hostKey);
     this.e2e = new E2EServer(this.identity, hostId);
-    this.httpBase = relayHttpBase(relay.url);
+    this.httpBase = workstationHttpBase(relay.url);
   }
 
-  pairInfo(): RelayPairInfo {
-    return {
-      url: `${this.httpBase}/h/${this.hostId}`,
-      hostId: this.hostId,
-      fingerprint: this.identity.fingerprint,
-      publicKey: b64u(this.identity.publicRaw),
-      requireE2E: this.relay.requireE2E === true,
-      connected: this.connected,
-    };
-  }
 
   start(): void {
     this.connect();
@@ -207,7 +197,7 @@ export class RelayAgent {
   private log(message: string): void {
     if (message === this.lastLogged) return;
     this.lastLogged = message;
-    console.log(`[tandem] relay: ${message}`);
+    console.log(`[tandem] workstation: ${message}`);
   }
 
   private connect(): void {
@@ -270,7 +260,7 @@ export class RelayAgent {
       if (this.socket === ws) this.socket = null;
       if (this.stopped) return;
       if (code === 4403) {
-        this.log('relay 拒绝：hostId 已绑定其他公钥（请核对 relay.hostKey，或换一个 relay）');
+        this.log('工作站拒绝：hostId 已绑定其他公钥（请核对工作站凭据，或重新加入）');
       } else if (wasReady) {
         this.log(`连接断开（${code}${reason.length ? ` ${reason.toString()}` : ''}），将重连`);
       }
@@ -391,7 +381,7 @@ export class RelayAgent {
   }
 
   private startE2EHttp(id: number, head: { method: string; url: string; headers: Headers }): void {
-    const url = new URL(head.url, 'http://relay');
+    const url = new URL(head.url, 'http://workstation');
     const cors = this.corsHeaders(head);
     if (head.method === 'OPTIONS') {
       this.respond(id, 204, cors);
@@ -481,7 +471,7 @@ export class RelayAgent {
     let session: E2ESession | undefined;
     let counter = 0;
     if (pathname.startsWith(E2E_PREFIX)) {
-      const url = new URL(head.url, 'http://relay');
+      const url = new URL(head.url, 'http://workstation');
       session = this.e2e.session(url.searchParams.get('sid'));
       counter = Number(url.searchParams.get('n'));
       const opened = (() => {

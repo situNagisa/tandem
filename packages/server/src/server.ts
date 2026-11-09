@@ -6,9 +6,8 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
-import type { RelayPairInfo } from '@tandem/protocol';
 import type { Host } from './host.js';
-import { RelayAgent } from './relay/agent.js';
+import { WorkstationAgent } from './workstation/agent.js';
 import { startPrPolling } from './vcs.js';
 import { registerSttRoutes } from './stt.js';
 import { isPublicSharePath, registerShareRoutes } from './share/routes.js';
@@ -59,7 +58,6 @@ interface WorkstationTunnelDeps {
 export async function createApp(
   host: Host,
   extras: {
-    relay?: { pairInfo(): RelayPairInfo | undefined };
     /** 调试版演示主机：不再安装调试工作站引导，避免递归创建演示主机。 */
     demoHost?: boolean;
     /** 调试版演示主机：登记后由调用方手动启动隧道。 */
@@ -154,14 +152,14 @@ export async function createApp(
   const sshHosts = new SshRemoteManager(host.home, host.version);
   app.addHook('onClose', async () => sshHosts.stop());
   // 本机作为主机加入工作站后：主动向工作站建立出站隧道（E2E 强制）。
-  let workstationAgent: RelayAgent | undefined;
+  let workstationAgent: WorkstationAgent | undefined;
   const startWorkstationTunnel = () => {
     if (workstationAgent) return;
     const join = host.accounts.workstationJoin();
     if (!join) return;
     const address = app.server.address();
     const port = address && typeof address === 'object' && address.port ? address.port : 7878;
-    workstationAgent = new RelayAgent(
+    workstationAgent = new WorkstationAgent(
       { url: join.url, hostKey: join.hostKey, requireE2E: true },
       host.config.hostId,
       port,
@@ -187,7 +185,7 @@ export async function createApp(
   });
   app.addHook('onClose', async () => stopWorkstationTunnel());
   extras.onWorkstationDeps?.(workstationDeps);
-  const deps: RouteDeps = { host, sshHosts, workstation: workstationDeps, ...(extras.relay ? { relay: extras.relay } : {}) };
+  const deps: RouteDeps = { host, sshHosts, workstation: workstationDeps };
 
   if (IS_DEBUG_FLAVOR && !extras.demoHost) {
     // 调试版 Host：首次启动自动登录本机工作站的测试账号；发布构建不加载此模块。

@@ -1,3 +1,0 @@
-{$TANDEM_RELAY_DOMAIN} {
-    reverse_proxy relay:7950
-}

@@ -39,7 +39,7 @@ import type {
   WorkspaceStatus,
 } from '@tandem/protocol';
 import { readJson, writePrivateFile } from '../config.js';
-import { generateHostKey, identityFromHostKey } from '../relay/e2e.js';
+import { generateHostKey, identityFromHostKey } from '../workstation/e2e.js';
 import { IS_DEBUG_FLAVOR } from '../flavor.js';
 
 export const ACCESS_TTL_MS = 30 * 60 * 1000;

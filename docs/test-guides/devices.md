@@ -53,7 +53,7 @@
 - 不做虚拟串口（pty/com0com）给本机其他程序；不做 scrcpy、无线 ADB 配对、USB 直通。
 - 串口为文本/UTF-8 容错；二进制协议（如某些 bootloader 的 hex 帧）建议先用串口助手验证，v2 再支持 hex 视图。
 - 两台 Host 之间的设备访问使用设备级令牌（`dvt_…`，只对 `/api/devices` 生效）；可在 A 的 `~/.tandem/devices/peers.json` 查看/删除，或调用 `DELETE /api/devices/peer-tokens/:id` 撤销。不要把这个令牌发到群里。
-- 真实设备测试不接入公网；不要把 Host 或中继暴露到公网。
+- 真实设备测试不接入公网；不要把 Host 或工作站暴露到公网。
 
 ## 5. 开发期自动验证（已跑）
 

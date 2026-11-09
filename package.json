@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @tandem/protocol && npm run build -w @tandem/relay && npm run build -w @tandem/web && npm run build -w @tandem/server",
+    "build": "npm run build -w @tandem/protocol && npm run build -w @tandem/web && npm run build -w @tandem/server",
     "build:debug": "node scripts/build-flavor.mjs debug",
     "build:release": "node scripts/build-flavor.mjs release",
     "dev:server": "npm run dev -w @tandem/server",

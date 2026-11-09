@@ -17,7 +17,6 @@ import type {
 } from '@tandem/protocol';
 import type {
   HostConfig,
-  RelayConfig,
   StoredProfile,
   StoredProfileGroup,
   StoredProfileKey,
@@ -58,17 +57,6 @@ export function readJson<T>(file: string): T | undefined {
   }
 }
 
-function isRelayConfig(value: unknown): value is RelayConfig {
-  return !!value && typeof value === 'object' && typeof (value as RelayConfig).url === 'string' && !!(value as RelayConfig).url;
-}
-
-/** 单独更新 config.json 里的 relay 字段（保留其余内容）。 */
-export function saveRelayConfig(home: string, relay: RelayConfig): void {
-  const file = path.join(home, 'config.json');
-  const existing = readJson<Record<string, unknown>>(file) ?? {};
-  writePrivateFile(file, JSON.stringify({ ...existing, relay }, null, 2));
-}
-
 /** 读取或初始化 host 配置（hostId + token）。 */
 export function loadHostConfig(home = tandemHome()): HostConfig {
   ensureDir(home);
@@ -104,7 +92,6 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
       ? { updateShareDir: existing.updateShareDir.trim() }
       : {}),
     ...(existing?.devices && typeof existing.devices === 'object' ? { devices: existing.devices } : {}),
-    ...(isRelayConfig(existing?.relay) ? { relay: existing.relay } : {}),
   };
   if (
     existing?.hostId !== config.hostId ||
@@ -119,7 +106,7 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
   return config;
 }
 
-/** 只更新 Host 行为设置，保留 token/relay 等其余字段。 */
+/** 只更新 Host 行为设置，保留 token 等其余字段。 */
 export function saveHostSettings(
   home: string,
   settings: {

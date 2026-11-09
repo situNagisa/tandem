@@ -109,7 +109,7 @@ export function sanitizeHosts(input: unknown): HostConfig[] {
             }
           : { mode: 'direct' as const }),
     }))
-    // 中继 Host 没有有效指纹就无法保证端到端加密，宁可不加载。
+    // 加密隧道 Host 没有有效指纹就无法保证端到端加密，宁可不加载。
     .filter((h) => h.mode !== 'relay' || (!!h.relayUrl && !!h.hostId && isValidFingerprint(h.fingerprint)))
 }
 

@@ -158,7 +158,6 @@ import type {
   TeamOverview,
   UpdateTeamMemberInput,
 } from '@tandem/protocol'
-import type { RelayPairInfo } from '@tandem/protocol'
 import type { HostConfig } from './types'
 import { requestBase } from './hostUrl'
 import {
@@ -191,7 +190,7 @@ function describe(status: number, text: string): string {
   return text.trim().slice(0, 300) || `请求失败（HTTP ${status}）`
 }
 
-/** 所有 REST 请求的出口：中继 Host 走 E2E channel，直连照旧 fetch。 */
+/** 所有 REST 请求的出口：加密隧道 Host 走 E2E channel，直连照旧 fetch。 */
 async function send(host: HostConfig, path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers)
   if (host.token) headers.set('Authorization', `Bearer ${host.token}`)
@@ -988,10 +987,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ path }),
     }),
-  /** 直连时可直接作为 <img src>；中继 Host 必须用 fsRawBlob。 */
+  /** 直连时可直接作为 <img src>；加密隧道 Host 必须用 fsRawBlob。 */
   fsRawUrl: (h: HostConfig, path: string, cwd?: string) =>
     `${requestBase(h.url)}/api/fs/raw${qs({ path, cwd, token: h.token })}`,
-  /** 中继 Host 无法直接拼 URL（token 要进密文），取回内容后转成 blob URL 使用。 */
+  /** 加密隧道 Host 无法直接拼 URL（token 要进密文），取回内容后转成 blob URL 使用。 */
   fsRawBlob: async (h: HostConfig, path: string, cwd?: string): Promise<Blob> => {
     if (!isRelayHost(h)) {
       const res = await fetch(api.fsRawUrl(h, path, cwd))
@@ -1162,7 +1161,6 @@ export const api = {
       token: string
       loopback?: boolean
       hint?: string
-      relay?: RelayPairInfo
     }>(h, '/api/pair'),
 }
 

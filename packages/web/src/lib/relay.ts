@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { E2EChannel } from '@tandem/relay/client'
+import { E2EChannel } from '@tandem/protocol/e2e'
 import type { HostConfig } from './types'
 
 export function isRelayHost(host: Pick<HostConfig, 'mode'>): boolean {
@@ -15,7 +15,7 @@ export function isValidFingerprint(text: string): boolean {
   return /^[0-9a-f]{64}$/.test(normalizeFingerprint(text))
 }
 
-/** 中继 Host 的隧道根地址：https://relay.example.com/h/<hostId> */
+/** E2E 主机的隧道根地址：<工作站地址>/h/<hostId> */
 export function relayHostUrl(relayUrl: string, hostId: string): string {
   return `${relayUrl.replace(/\/+$/, '')}/h/${hostId}`
 }

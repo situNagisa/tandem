@@ -1,7 +1,7 @@
 // 端到端加密客户端（浏览器 / Node 通用，基于 WebCrypto）。
-// 用法：const ch = new E2EChannel({ baseUrl: 'https://relay/h/<hostId>', fingerprint })；
+// 用法：const ch = new E2EChannel({ baseUrl: 'https://workstation/h/<hostId>', fingerprint })；
 // 之后用 ch.fetch('/api/host', { headers: { Authorization: `Bearer ${token}` } }) 代替 fetch，
-// 用 ch.openWebSocket(`/ws?token=${token}`) 代替 new WebSocket。relay 只能看到密文与长度。
+// 用 ch.openWebSocket(`/ws?token=${token}`) 代替 new WebSocket。工作站只能看到密文与长度。
 import {
   E2E_HELLO,
   E2E_HTTP,
@@ -26,7 +26,7 @@ import {
 export class E2EError extends Error {}
 
 export interface E2EOptions {
-  /** `https://relay.example.com/h/<hostId>` */
+  /** `https://workstation/h/<hostId>` */
   baseUrl: string;
   /** 配对时从 Host 拿到的公钥指纹（/api/pair 的 relay.fingerprint 或 CLI 展示）。 */
   fingerprint: string;
@@ -134,7 +134,7 @@ export class E2EChannel {
     const pub = unb64u(reply.pub);
     const fp = hex(new Uint8Array(await subtle().digest('SHA-256', bytes(pub))));
     if (fp !== this.fingerprint) {
-      throw new E2EError('Host 公钥指纹与配对时不一致，可能被中继或中间人冒充，已拒绝连接');
+      throw new E2EError('Host 公钥指纹与配对时不一致，可能被工作站或中间人冒充，已拒绝连接');
     }
     const hostEpk = unb64u(reply.epk);
     const transcript = e2eTranscript(this.hostId, clientEpk, hostEpk);

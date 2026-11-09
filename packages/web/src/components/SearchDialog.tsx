@@ -145,7 +145,7 @@ export function SearchDialog() {
   const { prefix, query: text } = parseQuery(query)
   const sessionSearchAllowed = prefix === 'all' || prefix === 'session'
 
-  // 会话分组走 Host 全文索引：多 Host（含中继）并行请求，归档默认排除。
+  // 会话分组走 Host 全文索引：多 Host（含加密隧道）并行请求，归档默认排除。
   useEffect(() => {
     if (!open || !sessionSearchAllowed || !text.trim()) {
       setRemoteHits([])

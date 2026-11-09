@@ -9,7 +9,7 @@ import type { AccountLoginResult, WorkspaceHostInfo } from '@tandem/protocol';
 import { createWorkstation } from '../src/workstation/server.js';
 import { IS_DEBUG_FLAVOR } from '../src/flavor.js';
 import { debugAutoLoginEnabled } from '../src/debug/workstationBootstrap.js';
-import { generateHostKey, identityFromHostKey } from '../src/relay/e2e.js';
+import { generateHostKey, identityFromHostKey } from '../src/workstation/e2e.js';
 
 function withDebugAccountEnv<T>(value: string | undefined, fn: () => T): T {
   const previous = process.env.TANDEM_DEBUG_ACCOUNT;

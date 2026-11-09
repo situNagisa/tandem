@@ -2,8 +2,8 @@
 // 签名覆盖时间戳、hostId、accountId、方法、路径与请求体哈希；5 分钟内有效，防重放。
 import { createHash, createPublicKey, verify } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
-import { b64u, unb64u } from '@tandem/relay/wire';
-import { identityFromHostKey, signWith } from '../relay/e2e.js';
+import { b64u, unb64u } from './wire.js';
+import { identityFromHostKey, signWith } from './e2e.js';
 import type { AccountsStore } from '../accounts/store.js';
 
 const MAX_SKEW_MS = 5 * 60 * 1000;

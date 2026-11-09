@@ -4,6 +4,20 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./wire": {
+      "types": "./dist/wire.d.ts",
+      "default": "./dist/wire.js"
+    },
+    "./e2e": {
+      "types": "./dist/e2eClient.d.ts",
+      "default": "./dist/e2eClient.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p ."
   },

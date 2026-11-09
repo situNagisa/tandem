@@ -1,5 +1,5 @@
 // Host 侧端到端加密：Ed25519 身份 + X25519 临时密钥协商 + HKDF-SHA256 + AES-256-GCM。
-// 客户端用 @tandem/relay/client（WebCrypto）实现对端；relay 只能看到密文。
+// 客户端用 @tandem/protocol/e2e（WebCrypto）实现对端；工作站只能看到密文。
 import {
   createCipheriv,
   createDecipheriv,
@@ -22,7 +22,7 @@ import {
   unb64u,
   type E2EHello,
   type E2EHelloReply,
-} from '@tandem/relay/wire';
+} from './wire.js';
 
 const PKCS8_ED25519_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
 
@@ -40,7 +40,7 @@ export function generateHostKey(): string {
 /** hostKey 是 32 字节 Ed25519 种子（base64url）。 */
 export function identityFromHostKey(hostKey: string): RelayIdentity {
   const seed = Buffer.from(unb64u(hostKey));
-  if (seed.length !== 32) throw new Error('relay.hostKey 必须是 32 字节的 base64url');
+  if (seed.length !== 32) throw new Error('工作站主机密钥必须是 32 字节的 base64url');
   const privateKey = createPrivateKey({ key: Buffer.concat([PKCS8_ED25519_PREFIX, seed]), format: 'der', type: 'pkcs8' });
   const jwk = createPublicKey(privateKey).export({ format: 'jwk' });
   const publicRaw = Buffer.from(unb64u(jwk.x as string));

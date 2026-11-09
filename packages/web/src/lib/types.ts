@@ -19,7 +19,7 @@ import type {
   WorkspaceInfo,
 } from '@tandem/protocol'
 
-/** 直连：url + token；中继：经 relay 的端到端加密通道（fingerprint 必须是配对时带过来的）。 */
+/** 直连：url + token；加密隧道：经工作站的端到端加密通道（fingerprint 必须是配对时带过来的）。 */
 export type HostMode = 'direct' | 'relay' | 'ssh'
 
 /** 本地保存的一台 Host。id 由客户端生成，与 HostInfo.id 无关。 */
@@ -31,9 +31,9 @@ export interface HostConfig {
   addedAt: number
   /** 缺省视为 direct，兼容旧数据。 */
   mode?: HostMode
-  /** 中继根地址，如 https://relay.example.com */
+  /** 工作站根地址，如 http://192.168.1.10:8481 */
   relayUrl?: string
-  /** 中继上的 Host ID。 */
+  /** 工作站上的 Host ID。 */
   hostId?: string
   /** Host Ed25519 公钥的 SHA-256，64 位十六进制。 */
   fingerprint?: string

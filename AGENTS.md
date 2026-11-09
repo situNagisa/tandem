@@ -31,10 +31,10 @@
 - `~/.claude`、`~/.codex` 只读。
 - 杀进程用 `ps -eo pid,args | awk '/<特征>/ && !/awk/ {print $1}' | xargs -r kill`，不要 `pkill -f`（会杀掉执行命令的 shell）。
 - 不读 git remote 的值；不 push（除非用户要求）。
-- **不部署任何服务到公网、不让 Host/中继对公网暴露、不接入第三方推送/云服务**（开发环境在公司内网，有安全风险）。中继、推送等只做代码与本机回环测试；需要对外开放端口或向第三方发送数据的动作先问用户。用户自己的 Windows 环境可以上公网：需要公网验证时，写好测试步骤（命令、预期现象、要回传什么）请他代测。
+- **不部署任何服务到公网、不让 Host/工作站对公网暴露、不接入第三方推送/云服务**（开发环境在公司内网，有安全风险）。工作站、推送等只做代码与本机回环测试；需要对外开放端口或向第三方发送数据的动作先问用户。用户自己的 Windows 环境可以上公网：需要公网验证时，写好测试步骤（命令、预期现象、要回传什么）请他代测。
 - 多个子代理并行时按文件划分所有权；改共享文件前 `git diff <file>`，不覆盖他人未提交改动；每批构建通过即提交。
 
 ## 架构速览
-- `packages/server`：Fastify REST + WS；agent 循环 `src/agent/loop.ts`；providers（anthropic / openai 兼容）；工具 `src/tools/`；权限、hooks、MCP、worktree、用量、外部会话 `src/external.ts`、中继客户端 `src/relay/`。
+- `packages/server`：Fastify REST + WS；agent 循环 `src/agent/loop.ts`；providers（anthropic / openai 兼容）；工具 `src/tools/`；权限、hooks、MCP、worktree、用量、外部会话 `src/external.ts`、工作站隧道 `src/workstation/`。
 - `packages/web`：React 19 + Tailwind v4 + zustand；`src/components/ui/*` 是统一组件（Button、Menu、Tooltip…），新 UI 必须复用。
-- `packages/desktop`（Electron）、`packages/mobile`（Capacitor）、`packages/relay`（自托管中继，E2E）。
+- `packages/desktop`（Electron）、`packages/mobile`（Capacitor）；远程连接统一走工作站。

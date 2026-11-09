@@ -5,20 +5,15 @@ import { Spinner } from '../ui/Spinner'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
 import { useCopy } from '../../lib/useCopy'
-import type { RelayPairInfo } from '@tandem/protocol'
 import type { HostConfig } from '../../lib/types'
-import { buildRelayPairLink } from '../../lib/pairLink'
 import { Modal } from '../ui/Modal'
 import { Button, IconButton } from '../ui/Button'
-import { SegmentedControl } from '../ui/Controls'
 
 export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () => void }) {
   const [urls, setUrls] = useState<string[]>([])
   const [token, setToken] = useState('')
   const [hint, setHint] = useState<string | undefined>()
   const [loopback, setLoopback] = useState(false)
-  const [relay, setRelay] = useState<RelayPairInfo | undefined>()
-  const [source, setSource] = useState<'direct' | 'relay'>('direct')
   const [nonce, setNonce] = useState(0)
   const [active, setActive] = useState(0)
   const [svg, setSvg] = useState('')
@@ -38,8 +33,6 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
         setToken(data.token)
         setHint(data.hint)
         setLoopback(!!data.loopback)
-        setRelay(data.relay)
-        setSource(data.relay && (data.relay.requireE2E || data.loopback) ? 'relay' : 'direct')
         setActive(0)
       })
       .catch((err) => {
@@ -54,16 +47,10 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
   }, [host, nonce])
 
   const url = urls[active] ?? ''
-  const directContent = useMemo(
-    () => (url && token ? `${url}/?token=${encodeURIComponent(token)}` : ''),
-    [url, token],
+  const content = useMemo(
+    () => (url && token && !loopback ? `${url}/?token=${encodeURIComponent(token)}` : ''),
+    [url, token, loopback],
   )
-  const relayContent = useMemo(
-    () => (relay && token ? buildRelayPairLink(relay, token) : ''),
-    [relay, token],
-  )
-  // 只监听回环时手机扫到的地址会指向手机自己：不生成二维码与可复制链接。
-  const content = !relay && loopback ? '' : source === 'relay' ? relayContent : directContent
 
   useEffect(() => {
     if (!content) {
@@ -99,11 +86,9 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
       onClose={onClose}
       title="连接手机"
       description={
-        relay
-          ? '经中继连接无需同一局域网；二维码携带主机公钥指纹，扫码后走端到端加密。'
-          : loopback
-            ? 'Host 目前只监听本机回环地址，手机无法扫码连接。'
-            : '手机与 Host 在同一局域网或 Tailscale 网络时，用 Tandem App 扫码即可连接。'
+        loopback
+          ? 'Host 目前只监听本机回环地址，手机无法扫码连接。'
+          : '手机与 Host 在同一局域网或 Tailscale 网络时，用 Tandem App 扫码即可连接。'
       }
       className="max-w-md"
     >
@@ -119,7 +104,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
           </div>
         )}
 
-        {!loading && loopback && !relay && (
+        {!loading && loopback && (
           <div className="rounded-xl border border-warning/30 bg-warning-soft/40 px-4 py-5 text-center">
             <Unplug size={26} className="mx-auto text-warning" />
             <p className="mt-2 text-[13px] font-medium text-text">手机暂时连不上这台主机</p>
@@ -139,26 +124,9 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
           </div>
         )}
 
-        {relay && token && (
-          <SegmentedControl
-            aria-label="配对方式"
-            className="flex w-full"
-            value={source}
-            onChange={setSource}
-            options={[
-              {
-                value: 'direct',
-                label: <><Wifi size={11} /> 直连</>,
-                disabled: urls.length === 0,
-              },
-              { value: 'relay', label: '中继 · 加密' },
-            ]}
-          />
-        )}
-
-        {(content || (!loopback && urls.length > 0)) && (
+        {content && (
           <>
-            {source === 'direct' && urls.length > 1 && (
+            {urls.length > 1 && (
               <div className="flex flex-wrap gap-1">
                 {urls.map((item, i) => (
                   <button
@@ -186,7 +154,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
                 />
               ) : (
                 <div className="flex size-[224px] items-center justify-center text-[13px] text-muted">
-                  {content ? '正在生成二维码…' : '没有可用的配对地址'}
+                  正在生成二维码…
                 </div>
               )}
               <div className="mt-2 flex w-full items-center gap-1.5 rounded-lg bg-[var(--t-bg)] px-2 py-1.5">
@@ -206,16 +174,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
           </>
         )}
 
-        {source === 'relay' && relay && (
-          <div className="rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[13px] leading-5 text-muted">
-            <div className="mb-1 text-text-soft">主机公钥指纹（SHA-256）</div>
-            <div className="break-all font-mono text-[13px] text-text-secondary">{relay.fingerprint}</div>
-            <p className="mt-1">链接里含 token 与指纹，请只发给可信设备；连接时指纹不符会拒绝连接。</p>
-            {!relay.connected && <p className="mt-1 text-warning">Host 当前未连上中继，扫码后可能暂时无法连接。</p>}
-          </div>
-        )}
-
-        {hint && !loopback && source === 'direct' && (
+        {hint && !loopback && (
           <div className="rounded-lg border border-warning/30 bg-warning-soft/50 px-2.5 py-2 text-[13px] leading-5 text-warning">
             <div className="flex items-start gap-2">
               <TriangleAlert size={12} className="mt-0.5 shrink-0" />
@@ -224,7 +183,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
           </div>
         )}
 
-        {!loopback && source === 'direct' && (
+        {!loopback && (
           <div className="rounded-lg border border-border bg-bg/40 px-2.5 py-2 text-[13px] leading-5 text-muted">
             <div className="mb-1 flex items-center gap-1.5 text-text-soft">
               <Smartphone size={12} /> 让局域网可访问

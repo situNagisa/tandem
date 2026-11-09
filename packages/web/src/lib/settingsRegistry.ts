@@ -74,7 +74,7 @@ export const SETTINGS_ITEMS: SettingItem[] = [
 
   { id: 'hosts.list', tab: 'hosts', title: '主机列表', keywords: ['主机', '服务器', '连接'] },
   { id: 'hosts.add', tab: 'hosts', title: '添加主机', keywords: ['新增', '服务器', '扫码'] },
-  { id: 'hosts.mode', tab: 'hosts', title: '连接方式', keywords: ['直连', '中继', 'relay'] },
+  { id: 'hosts.mode', tab: 'hosts', title: '连接方式', keywords: ['直连', 'relay'] },
   { id: 'hosts.pair', tab: 'hosts', title: '连接手机', keywords: ['手机', '配对', '扫码'] },
   { id: 'hosts.doctor', tab: 'hosts', title: '主机诊断', keywords: ['诊断', 'doctor', '检查', '环境', '报告'] },
   { id: 'hosts.ssh.add', tab: 'hosts', title: '远程主机（SSH）', keywords: ['ssh', '远程', '一键部署', '部署'] },

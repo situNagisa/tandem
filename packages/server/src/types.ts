@@ -86,14 +86,6 @@ export interface StoredProfile {
   proxied?: boolean;
 }
 
-/** 中继配置：Host 主动向 relay 建立出站隧道；hostKey 是 Ed25519 种子（base64url），首次启用时自动生成。 */
-export interface RelayConfig {
-  url: string;
-  hostKey?: string;
-  /** 仅接受端到端加密连接，拒绝 relay 透传的明文请求。 */
-  requireE2E?: boolean;
-}
-
 export interface HostConfig {
   hostId: string;
   token: string;
@@ -116,7 +108,6 @@ export interface HostConfig {
   updateShareDir?: string;
   /** 工作站设备设置（adb 路径、虚拟串口、是否接受其他 Host 的设备访问）。 */
   devices?: import('@tandem/protocol').DeviceSettings;
-  relay?: RelayConfig;
 }
 
 /** 会话记录：协议 Session + 仅服务端使用的字段。 */

@@ -32,7 +32,7 @@ import { ConnectionDot } from '../StatusDot'
 import { PairDialog } from './PairDialog'
 import { Modal } from '../ui/Modal'
 import { Button, IconButton } from '../ui/Button'
-import { Input, SegmentedControl, Switch } from '../ui/Controls'
+import { Input, Switch } from '../ui/Controls'
 import { Menu } from '../ui/Menu'
 import { RemoteSshDialog, SshJobProgress } from './RemoteSshDialog'
 import { cn } from '../../lib/cn'
@@ -40,13 +40,7 @@ import { loginGateEnabled } from '../../lib/loginGate'
 import { QrScanDialog, scannerSupported } from '../QrScanDialog'
 import { parsePairLink } from '../../lib/pairLink'
 import { parseInviteLink } from '../../lib/inviteLink'
-import {
-  RELAY_UNSUPPORTED_MESSAGE,
-  isValidFingerprint,
-  normalizeFingerprint,
-  relayHostUrl,
-  useRelayCryptoSupport,
-} from '../../lib/relay'
+import { isValidFingerprint, normalizeFingerprint } from '../../lib/relay'
 import type { HostConfig } from '../../lib/types'
 
 const inputCls =
@@ -65,27 +59,19 @@ export function HostsSection() {
   const openDoctor = useUiStore((s) => s.openDoctor)
 
   const [adding, setAdding] = useState(false)
-  const [mode, setMode] = useState<'direct' | 'relay'>('direct')
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
   const [token, setToken] = useState('')
-  const [relayUrl, setRelayUrl] = useState('')
-  const [hostId, setHostId] = useState('')
-  const [fingerprint, setFingerprint] = useState('')
   const [link, setLink] = useState('')
   const [scanOpen, setScanOpen] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const cryptoSupported = useRelayCryptoSupport()
   const canScan = scannerSupported()
 
   const [editId, setEditId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editUrl, setEditUrl] = useState('')
   const [editToken, setEditToken] = useState('')
-  const [editRelayUrl, setEditRelayUrl] = useState('')
-  const [editHostId, setEditHostId] = useState('')
-  const [editFingerprint, setEditFingerprint] = useState('')
   const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null)
   const [pairHost, setPairHost] = useState<string | null>(null)
   const [sshController, setSshController] = useState<HostConfig | null>(null)
@@ -121,9 +107,6 @@ export function HostsSection() {
     setName('')
     setUrl('')
     setToken('')
-    setRelayUrl('')
-    setHostId('')
-    setFingerprint('')
     setLink('')
   }
 
@@ -290,27 +273,8 @@ export function HostsSection() {
     }
     setSaving(true)
     try {
-      if (mode === 'relay') {
-        if (cryptoSupported === false) throw new Error(RELAY_UNSUPPORTED_MESSAGE)
-        if (!relayUrl.trim()) throw new Error('请填写中继地址')
-        if (!hostId.trim()) throw new Error('请填写主机 ID')
-        if (!isValidFingerprint(fingerprint)) {
-          throw new Error('必须填写主机公钥指纹（64 位十六进制）')
-        }
-        const base = normalizeHostUrl(relayUrl)
-        addHost({
-          name: name.trim(),
-          url: relayHostUrl(base, hostId.trim()),
-          token: token.trim(),
-          mode: 'relay',
-          relayUrl: base,
-          hostId: hostId.trim(),
-          fingerprint: normalizeFingerprint(fingerprint),
-        })
-      } else {
-        if (!url.trim()) throw new Error('请填写主机地址')
-        addHost({ name: name.trim(), url: url.trim(), token: token.trim() })
-      }
+      if (!url.trim()) throw new Error('请填写主机地址')
+      addHost({ name: name.trim(), url: url.trim(), token: token.trim() })
       toast('主机已添加', 'success')
       resetAdd()
       setAdding(false)
@@ -334,37 +298,18 @@ export function HostsSection() {
     try {
       const target = parsePairLink(raw)
       if (!target) throw new Error('不是有效的 Tandem 配对链接')
-      if (target.kind === 'relay' && cryptoSupported === false) {
-        throw new Error(RELAY_UNSUPPORTED_MESSAGE)
-      }
       const probe: HostConfig = {
         id: 'probe',
         name: 'probe',
         url: target.url,
         token: target.token,
         addedAt: Date.now(),
-        ...(target.kind === 'relay'
-          ? {
-              mode: 'relay' as const,
-              relayUrl: target.relayUrl,
-              hostId: target.hostId,
-              fingerprint: target.fingerprint,
-            }
-          : {}),
       }
       const info = await api.host(probe)
       const host = addHost({
         name: info.name || new URL(target.url).host,
         url: target.url,
         token: target.token,
-        ...(target.kind === 'relay'
-          ? {
-              mode: 'relay' as const,
-              relayUrl: target.relayUrl,
-              hostId: target.hostId,
-              fingerprint: target.fingerprint,
-            }
-          : {}),
       })
       toast(`已连接 ${host.name}`, 'success')
       resetAdd()
@@ -383,9 +328,6 @@ export function HostsSection() {
     setEditName(h.name)
     setEditUrl(h.url)
     setEditToken(h.token)
-    setEditRelayUrl(h.relayUrl ?? '')
-    setEditHostId(h.hostId ?? '')
-    setEditFingerprint(h.fingerprint ?? '')
   }
 
   const saveEdit = () => {
@@ -403,14 +345,7 @@ export function HostsSection() {
     }
     try {
       if (host.mode === 'relay') {
-        if (!isValidFingerprint(editFingerprint)) throw new Error('必须填写主机公钥指纹（64 位十六进制）')
-        updateHost(editId, {
-          name: editName,
-          token: editToken,
-          relayUrl: editRelayUrl,
-          hostId: editHostId,
-          fingerprint: normalizeFingerprint(editFingerprint),
-        })
+        updateHost(editId, { name: editName, token: editToken })
       } else {
         normalizeHostUrl(editUrl)
         updateHost(editId, { name: editName, url: editUrl, token: editToken })
@@ -464,12 +399,12 @@ export function HostsSection() {
       {adding && !gateOn && (
         <div data-setting-id="hosts.mode" className="mb-4 rounded-xl border border-border bg-surface p-3.5">
           <div>
-            <label className="settings-label">配对链接（直连或中继）</label>
+            <label className="settings-label">配对链接</label>
             <div className="flex gap-1.5">
               <Input
                 value={link}
                 onChange={(e) => setLink(e.target.value)}
-                placeholder="https://relay.example.com/h/…/#pair=… 或 http://…/?token=…"
+                placeholder="http://192.168.1.10:7878/?token=…"
                 spellCheck={false}
                 autoComplete="off"
                 className="min-w-0 flex-1 font-mono text-[13px]"
@@ -494,7 +429,7 @@ export function HostsSection() {
               )}
             </div>
             <p className="mt-1.5 text-[13px] leading-4 text-muted">
-              中继配对链接里的指纹会一并带入；解析后自动创建主机。
+              解析后自动创建主机；地址与 Token 可在下方修改。
             </p>
           </div>
 
@@ -503,17 +438,6 @@ export function HostsSection() {
             或手动填写
             <span className="h-px flex-1 bg-[var(--t-border)]" />
           </div>
-
-          <SegmentedControl
-            aria-label="连接方式"
-            className="mb-3 flex w-full"
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: 'direct', label: '直连' },
-              { value: 'relay', label: '中继 · 加密' },
-            ]}
-          />
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
@@ -535,72 +459,29 @@ export function HostsSection() {
                 className="font-mono text-[13px]"
               />
             </div>
-            {mode === 'direct' ? (
-              <div className="sm:col-span-2">
-                <label className="settings-label">主机地址</label>
-                <div className="flex gap-1.5">
-                  <Input
-                        value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    placeholder="http://192.168.1.10:7878"
-                    spellCheck={false}
-                    className="font-mono text-[13px]"
-                  />
-                  <Button
-                        onClick={() => setUrl(window.location.origin)}
-                    tooltip="使用当前地址"
-                    className="shrink-0 px-2 text-[13px]"
-                  >
-                    <Laptop size={12} /> 本机
-                  </Button>
-                </div>
-                <p className="mt-1.5 text-[13px] leading-4 text-muted">
-                  Token 只保存在本机浏览器里；远程主机请确保网络可达（局域网 / Tailscale / 端口转发）。
-                </p>
+            <div className="sm:col-span-2">
+              <label className="settings-label">主机地址</label>
+              <div className="flex gap-1.5">
+                <Input
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="http://192.168.1.10:7878"
+                  spellCheck={false}
+                  className="font-mono text-[13px]"
+                />
+                <Button
+                  onClick={() => setUrl(window.location.origin)}
+                  tooltip="使用当前地址"
+                  className="shrink-0 px-2 text-[13px]"
+                >
+                  <Laptop size={12} /> 本机
+                </Button>
               </div>
-            ) : (
-              <>
-                <div className="sm:col-span-2">
-                  <label className="settings-label">中继地址</label>
-                  <input
-                    value={relayUrl}
-                    onChange={(e) => setRelayUrl(e.target.value)}
-                    placeholder="https://relay.example.com"
-                    spellCheck={false}
-                    className={cn(inputCls, 'font-mono text-[13px]')}
-                  />
-                </div>
-                <div>
-                  <label className="settings-label">主机 ID</label>
-                  <input
-                    value={hostId}
-                    onChange={(e) => setHostId(e.target.value)}
-                    placeholder="中继上的主机 ID"
-                    spellCheck={false}
-                    className={cn(inputCls, 'font-mono text-[13px]')}
-                  />
-                </div>
-                <div>
-                  <label className="settings-label">公钥指纹（必填）</label>
-                  <input
-                    value={fingerprint}
-                    onChange={(e) => setFingerprint(e.target.value)}
-                    placeholder="SHA-256，64 位十六进制"
-                    spellCheck={false}
-                    className={cn(inputCls, 'font-mono text-[13px]')}
-                  />
-                </div>
-                <p className="text-[13px] leading-4 text-muted sm:col-span-2">
-                  指纹必须通过中继之外的渠道获得（主机启动日志 / 本机配对二维码）。连接时指纹不符会拒绝连接。
-                </p>
-              </>
-            )}
-          </div>
-          {mode === 'relay' && cryptoSupported === false && (
-            <div className="mt-2 flex items-center gap-1.5 text-[13px] text-warning">
-              <TriangleAlert size={12} /> {RELAY_UNSUPPORTED_MESSAGE}
+              <p className="mt-1.5 text-[13px] leading-4 text-muted">
+                Token 只保存在本机浏览器里；远程主机请确保网络可达（局域网 / Tailscale / 端口转发）。
+              </p>
             </div>
-          )}
+          </div>
           {addError && (
             <div className="mt-2 flex items-center gap-1.5 text-[13px] text-danger">
               <TriangleAlert size={12} /> {addError}
@@ -613,7 +494,7 @@ export function HostsSection() {
             <Button
               variant="primary"
               onClick={handleAdd}
-              disabled={saving || (mode === 'relay' && cryptoSupported === false)}
+              disabled={saving}
             >
               {saving && <Spinner size={14} />}
               添加
@@ -691,7 +572,7 @@ export function HostsSection() {
                     <span>{h.url}</span>
                     <span className="font-sans">
                       {h.mode === 'relay'
-                        ? '中继 · 加密'
+                        ? '加密隧道'
                         : h.mode === 'ssh'
                           ? `SSH${ssh?.record.latencyMs !== undefined ? ` · ${ssh.record.latencyMs}ms` : ''}`
                           : '直连'}
@@ -708,9 +589,6 @@ export function HostsSection() {
                             : 'SSH 隧道连接中…'}
                       {ssh?.record.upgradeAvailable && ` · 远程 ${ssh.record.remoteVersion}，本机 ${ssh.record.localVersion}`}
                     </div>
-                  )}
-                  {h.mode === 'relay' && cryptoSupported === false && (
-                    <div className="mt-0.5 text-[13px] leading-4 text-warning">{RELAY_UNSUPPORTED_MESSAGE}</div>
                   )}
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-muted">
                     <span className="font-mono">{h.token ? '•••• 已保存' : '无 Token'}</span>
@@ -736,7 +614,7 @@ export function HostsSection() {
                       <TriangleAlert size={11} /> {rt.authError}
                     </div>
                   )}
-                  {rt?.error && h.mode === 'relay' && (
+                  {rt?.error && (
                     <div className="mt-1 flex items-start gap-1 text-[13px] leading-4 text-danger">
                       <TriangleAlert size={11} className="mt-0.5 shrink-0" /> {rt.error}
                     </div>
@@ -1015,47 +893,16 @@ export function HostsSection() {
                       className={cn(inputCls, 'font-mono text-[13px]')}
                     />
                   </div>
-                  {h.mode === 'relay' ? (
-                    <>
-                      <div className="sm:col-span-2">
-                        <label className="settings-label">中继地址</label>
-                        <input
-                          value={editRelayUrl}
-                          onChange={(e) => setEditRelayUrl(e.target.value)}
-                          spellCheck={false}
-                          className={cn(inputCls, 'font-mono text-[13px]')}
-                        />
-                      </div>
-                      <div>
-                        <label className="settings-label">主机 ID</label>
-                        <input
-                          value={editHostId}
-                          onChange={(e) => setEditHostId(e.target.value)}
-                          spellCheck={false}
-                          className={cn(inputCls, 'font-mono text-[13px]')}
-                        />
-                      </div>
-                      <div>
-                        <label className="settings-label">公钥指纹</label>
-                        <input
-                          value={editFingerprint}
-                          onChange={(e) => setEditFingerprint(e.target.value)}
-                          spellCheck={false}
-                          className={cn(inputCls, 'font-mono text-[13px]')}
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="sm:col-span-2">
-                      <label className="settings-label">地址</label>
-                      <input
-                        value={editUrl}
-                        onChange={(e) => setEditUrl(e.target.value)}
-                        spellCheck={false}
-                        className={cn(inputCls, 'font-mono text-[13px]')}
-                      />
-                    </div>
-                  )}
+                  <div className="sm:col-span-2">
+                    <label className="settings-label">地址</label>
+                    <input
+                      value={editUrl}
+                      onChange={(e) => setEditUrl(e.target.value)}
+                      readOnly={h.mode === 'relay'}
+                      spellCheck={false}
+                      className={cn(inputCls, 'font-mono text-[13px]')}
+                    />
+                  </div>
                   <div className="flex items-center justify-end gap-2 sm:col-span-2">
                     <Button onClick={() => setEditId(null)}>
                       取消

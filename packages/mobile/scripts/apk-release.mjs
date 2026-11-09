@@ -183,7 +183,6 @@ const password = ensureKeystore()
 console.log(`JAVA_HOME=${JAVA_HOME}\nANDROID_HOME=${ANDROID_HOME}\nkeystore=${keystore}`)
 
 run('npm', ['run', 'build', '-w', '@tandem/protocol'], { cwd: root })
-run('npm', ['run', 'build', '-w', '@tandem/relay'], { cwd: root })
 run('npm', ['run', 'build', '-w', '@tandem/web'], {
   cwd: root,
   env: { ...env, TANDEM_FLAVOR: 'release' },

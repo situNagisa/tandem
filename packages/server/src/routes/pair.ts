@@ -6,13 +6,6 @@ import type { RouteDeps } from './common.js';
 export function registerPairRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const { host } = deps;
 
-  const withRelay = (base: { urls: string[]; token: string; loopback?: boolean; hint?: string }) => {
-    const relay = deps.relay?.pairInfo();
-    if (!relay) return base;
-    if (relay.requireE2E) return { ...base, relay };
-    const { loopback: _loopback, hint: _hint, ...rest } = base;
-    return { ...rest, urls: [...base.urls, relay.url], relay };
-  };
   const pairLocal = () => {
     const address = app.server.address();
     const port =
@@ -41,5 +34,5 @@ export function registerPairRoutes(app: FastifyInstance, deps: RouteDeps): void 
     if (urls.length === 0) urls.push(`http://127.0.0.1:${port}`);
     return { urls, token: host.config.token };
   };
-  app.get('/api/pair', async () => withRelay(pairLocal()));
+  app.get('/api/pair', async () => pairLocal());
 }

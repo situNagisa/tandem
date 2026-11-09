@@ -10,7 +10,6 @@
 | `packages/web` | React 客户端（也被桌面端和 App 复用） |
 | `packages/desktop` | Electron 桌面端（内置 Host） |
 | `packages/mobile` | Capacitor 安卓 App |
-| `packages/relay` | 可自托管中继（不在同一局域网时连接，端到端加密） |
 | `docs/` | 文档入口见 `docs/README.md`：现行文档（设计/架构/功能/进度）、一次性记录归档、代测步骤 |
 
 ## 环境
@@ -21,7 +20,7 @@
 ## 常用命令
 ```bash
 npm install                      # 首次
-npm run build                    # 构建 protocol → relay → web → server
+npm run build                    # 构建 protocol → web → server
 npm start                        # 启动 Host（默认 127.0.0.1:7878），终端打印带 token 的访问地址
 npm start -- --host 0.0.0.0      # 允许局域网访问（手机连接需要）
 
@@ -87,8 +86,8 @@ node scripts/release.mjs 0.2.0             # 统一版本号、写 CHANGELOG/导
 
 也可以让 Host 托管：在「设置 → 通用 → Host 托管更新文件」填一个本机目录，Host 会公开 `/updates/` 静态路径（仅启用时）。未签名的 SmartScreen 影响、签名选购与上架材料见 `docs/features/release.md`。
 
-### 中继
-见 `docs/features/relay.md`（Docker + Caddy 一键部署：`deploy/relay/install.sh`）。
+### 远程连接
+见 `docs/workstation.md`（工作站 + 主机出站隧道，端到端加密）。
 
 ## 数据
 Host 数据在 `~/.tandem`（可用 `TANDEM_HOME` 覆盖）：`config.json`（hostId、token）、`profiles.json`（Key，权限 600）、`sessions/`、`checkpoints/`、`mcp.json`、`hooks.json` 等。Claude Code / Codex 的会话只读，不会被修改。

@@ -36,7 +36,6 @@ import { EnvBar } from './EnvBar'
 import { useGitRepo } from '../lib/useGitRepo'
 import { QrScanDialog, scannerSupported } from './QrScanDialog'
 import { parsePairLink, type PairTarget } from '../lib/pairLink'
-import { RELAY_UNSUPPORTED_MESSAGE, useRelayCryptoSupport } from '../lib/relay'
 
 const HINTS = [
   {
@@ -355,7 +354,6 @@ export function ConnectView() {
   const [ok, setOk] = useState(false)
   const [scanOpen, setScanOpen] = useState(false)
   const canScan = useMemo(scannerSupported, [])
-  const cryptoSupported = useRelayCryptoSupport()
   const coarsePointer = useMemo(
     () => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches,
     [],
@@ -400,10 +398,6 @@ export function ConnectView() {
       setError('请填写主机 Token')
       return
     }
-    if (target.kind === 'relay' && cryptoSupported === false) {
-      setError(RELAY_UNSUPPORTED_MESSAGE)
-      return
-    }
     setBusy(true)
     try {
       const probe = {
@@ -412,32 +406,13 @@ export function ConnectView() {
         url: target.url,
         token: target.token,
         addedAt: Date.now(),
-        ...(target.kind === 'relay'
-          ? {
-              mode: 'relay' as const,
-              relayUrl: target.relayUrl,
-              hostId: target.hostId,
-              fingerprint: target.fingerprint,
-            }
-          : {}),
       }
       const info = await api.host(probe)
-      const fallbackName =
-        target.kind === 'relay'
-          ? `${new URL(target.relayUrl).host} · ${target.hostId.slice(0, 8)}`
-          : new URL(target.url.startsWith('http') ? target.url : 'http://' + target.url).host
+      const fallbackName = new URL(target.url.startsWith('http') ? target.url : 'http://' + target.url).host
       const host = addHost({
         name: info.name || fallbackName,
         url: target.url,
         token: target.token,
-        ...(target.kind === 'relay'
-          ? {
-              mode: 'relay' as const,
-              relayUrl: target.relayUrl,
-              hostId: target.hostId,
-              fingerprint: target.fingerprint,
-            }
-          : {}),
       })
       setOk(true)
       toast(`已连接 ${host.name}`, 'success')
@@ -449,10 +424,6 @@ export function ConnectView() {
   }
 
   const connect = () => {
-    if (parsed?.kind === 'relay') {
-      void connectTarget(parsed)
-      return
-    }
     void connectTarget({ kind: 'direct', url: url.trim(), token: token.trim() })
   }
 
@@ -503,7 +474,7 @@ export function ConnectView() {
                   parseLink()
                 }
               }}
-              placeholder="直连链接，或含 #pair=… 的中继配对链接"
+              placeholder="主机链接，例如 http://192.168.1.10:7878/?token=xxxx"
               spellCheck={false}
               autoComplete="off"
               className="min-w-0 flex-1 font-mono text-[12px]"
@@ -515,23 +486,9 @@ export function ConnectView() {
           {parsed && (
             <div className="mt-2 rounded-lg bg-[var(--t-bg)] px-2.5 py-1.5 text-[12px] leading-4 text-muted">
               <div className="truncate font-mono">{parsed.url}</div>
-              {parsed.kind === 'relay' ? (
-                <>
-                  <div className="truncate font-mono">中继 · 端到端加密</div>
-                  <div className="truncate font-mono">
-                    指纹 {parsed.fingerprint.slice(0, 16)}…
-                  </div>
-                </>
-              ) : (
-                <div className="truncate font-mono">
-                  Token {parsed.token ? `· ${parsed.token.slice(0, 10)}…` : '· 未找到'}
-                </div>
-              )}
-            </div>
-          )}
-          {parsed?.kind === 'relay' && cryptoSupported === false && (
-            <div className="mt-2 rounded-lg border border-warning/30 bg-warning-soft/40 px-2.5 py-2 text-[12px] leading-5 text-warning">
-              {RELAY_UNSUPPORTED_MESSAGE}
+              <div className="truncate font-mono">
+                Token {parsed.token ? `· ${parsed.token.slice(0, 10)}…` : '· 未找到'}
+              </div>
             </div>
           )}
 

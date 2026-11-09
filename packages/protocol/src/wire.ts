@@ -1,4 +1,4 @@
-// 隧道帧格式与端到端加密的线协议常量。Host、relay、客户端共用，只依赖 Uint8Array / DataView / TextEncoder，浏览器可用。
+// 隧道帧格式与端到端加密的线协议常量。Host、工作站与客户端共用，只依赖 Uint8Array / DataView / TextEncoder，浏览器可用。
 
 export const TUNNEL_PATH = '/_tunnel';
 export const TUNNEL_VERSION = 1;

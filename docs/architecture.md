@@ -14,24 +14,25 @@
 | `packages/web` | React 19 客户端；桌面端与安卓 App 复用同一份构建 |
 | `packages/desktop` | Electron 壳：内置 Host、窗口/托盘/通知、Windows 打包 |
 | `packages/mobile` | Capacitor 安卓壳：前台服务、本地通知、APK 打包 |
-| `packages/relay` | 自托管中继：出站隧道 + 端到端加密（本机回环测试，不对外部署） |
 | `e2e/smoke.mjs` | Playwright 端到端冒烟：临时 Host + 假 provider |
 | `scripts/ui-audit.mjs` | UI 原语防回退审计 |
 | `scripts/check.mjs` | 提交前总检查：build → ui-audit → test → smoke → regression |
 | `scripts/release.mjs` | 发布：统一版本、生成 CHANGELOG/新功能导览、提交并打本地标签 |
 
+主机与客户端之间唯一的远程连接路径是工作站。
+
 ## 2. Server 模块地图
 
 | 文件/目录 | 职责 |
 |---|---|
-| `src/cli.ts` | 入口：解析 `--port/--host/--relay`，创建 Host + Fastify，信号退出 |
+| `src/cli.ts` | 入口：解析 `--port/--host`，创建 Host + Fastify，信号退出 |
 | `src/server.ts` | Fastify 服务：启动、token 鉴权、WS 升级、静态托管；路由按资源在 `routes/` 下注册 |
 | `src/routes/` | REST/WS 路由：`common.ts`（依赖与鉴权）、`ssh-hosts.ts`（SSH 远程主机）、`team.ts`（成员/邀请/审计/身份）、`sessions.ts`、`permissions.ts`、`host.ts`、`updates.ts`（可选 `/updates/` 桌面更新文件托管）、`profiles.ts`、`models.ts`、`usage.ts`、`tasks.ts`、`mcp.ts`、`skills.ts`、`hooks.ts`、`memory.ts`、`schedules.ts`、`evals.ts`、`subagent-presets.ts`、`prompt-templates.ts`、`commands.ts`、`external.ts`、`fs.ts`、`pair.ts`、`budgets.ts`、`config.ts`、`ws.ts` |
 | `src/board/` + `routes/board.ts` | 任务看板：`manager.ts`（调度器：依赖/并发上限/重试/审批门/单卡预算/worktree 合入依赖与按序合并/重启续跑/AI 评审收尾/冲突解决/运行时提议，1s tick）、`graph.ts`（环检测、`decideSchedule`、规划草稿解析，纯函数）、`git.ts`（自动提交与统计、依赖分支合入）、`planner.ts`（AI 拆分，一次性 `completeText`，只返回草稿）、`pr.ts`（集成分支 + gh/glab 聚合 PR 与状态刷新）、`store.ts`（`~/.tandem/boards/<id>.json`）；卡片 = 带 `SessionRecord.board` 的顶层会话；`tools/propose-cards.ts` 是卡片会话的提议工具 |
 | `src/model-routing.ts` / `src/routing-settings.ts` | 自动模型路由：按消息长度/关键词/上下文/失败信号打难度分，在用户候选池按快速·均衡·强力与省钱·均衡·质量偏好选模型；连续失败升级、简单成功回落，统计相对强力档的节省；设置有会话入口 |
 | `src/host.ts` | Host 类：持有全部状态与构造，方法按职责转调到 `host/`（外部 API 不变） |
 | `src/team/` | 内网团队：`store.ts`（成员/邀请/审计持久化，只存 token 与邀请码哈希）、`access.ts`（角色边界、项目可见性、REST 白名单）、`audit.ts` |
-| `src/accounts/` + `src/workstation/` + `routes/accounts.ts` | 工作站客户端-服务：`accounts/store.ts`（工作站初始化/注册/绑定码/主机登记/逐主机授权/旧数据迁移、Ed25519 访问/刷新令牌与 `perHost` 声明、吊销快照）；`workstation/server.ts`（独立进程：账号 API + `/_tunnel` + `/h/<id>/_e2e/*` 转发）、`workstation/manager.ts`（桌面内嵌启动）；Host 侧复用 `relay/agent.ts` 出站隧道；设计 `docs/workstation.md`，代测 `docs/test-guides/workstation.md` |
+| `src/accounts/` + `src/workstation/` + `routes/accounts.ts` | 工作站客户端-服务：`accounts/store.ts`（工作站初始化/注册/绑定码/主机登记/逐主机授权/旧数据迁移、Ed25519 访问/刷新令牌与 `perHost` 声明、吊销快照）；`workstation/server.ts`（独立进程：账号 API + `/_tunnel` + `/h/<id>/_e2e/*` 转发）、`workstation/manager.ts`（桌面内嵌启动）；Host 侧 `workstation/agent.ts` 建立出站隧道；设计 `docs/workstation.md`，代测 `docs/test-guides/workstation.md` |
 | `src/host/` | Host 实现按职责拆分（纯搬移）：`sessions.ts`（读取/转换/CRUD）、`turns.ts`（发送/回合/排队/中断/compact）、`commands.ts`（斜杠命令/本地消息）、`permissions.ts`（审批/plan/恢复）、`keys.ts`（账号/分组/Key 轮询）、`usage.ts`（上下文/预算/模型）、`subagents.ts`（子代理/委派/工具可见性）、`vcs.ts`（git 环境/worktree）、`rewind.ts`（检查点回退）、`hooks.ts`、`inbox.ts`、`external.ts`（外部会话通知/导入）、`helpers.ts`（无状态纯函数） |
 | `src/agent/loop.ts` | 单轮 agent 循环：模型 → 工具 → tool_result → 再请求，直到结束 |
 | `src/agent/prompt.ts` | 系统提示组装（含注入段落清单） |
@@ -71,7 +72,7 @@
 | `src/search.ts` | 会话全文索引：纯 JS 倒排（英文词、中文单字+bigram+Segmenter），覆盖 Tandem/外部会话正文与工具命令/路径，增量更新并落盘 `~/.tandem/index/search.json` |
 | `src/config.ts` | `~/.tandem` 路径、账号存储、Host 配置、密钥掩码 |
 | `src/migrate.ts` | 配置加密导出/导入 |
-| `src/relay/` | 中继客户端、E2E 通道、配对信息 |
+| `src/workstation/agent.ts` + `tunnel.ts` + `wire.ts` + `e2e.ts` | 主机出站隧道、隧道多路复用、线协议与 E2E 通道 |
 | `src/ssh/` | 远程主机 SSH 一键接入：`exec.ts`（系统 ssh/scp、指纹、密码内存）、`package.ts`（Host 打包）、`remote.ts`（远端脚本）、`manager.ts`（部署任务、`ssh -N -L` 隧道保活、重启/升级/日志/卸载）；`routes/ssh-hosts.ts` 暴露 `/api/ssh-hosts` |
 | `src/util/` | 纯工具：路径、编码、glob、fs-walk、文本、HTML、文件预览 |
 
@@ -165,7 +166,7 @@ sequenceDiagram
 5. **Windows 路径**：客户端传来的路径统一走 `server/src/util/path.ts`（`normalizeIncomingPath` / `resolveHostPath`）；git 输出统一成仓库相对 posix 路径（`changes.ts` 的 `gitPath`）。前端展示用 `fileLinks.ts` / `format.ts`。
 6. **编码**：子进程输出必须用 `util/encoding.ts` 的 `decodeProcessOutput`（UTF-8 严格 → GBK 回退）；Windows cmd 用 `cmdUtf8Command` 先切 65001。
 7. **持久化**：写 `~/.tandem` 的文件用 `writePrivateFile`（600 + 原子替换）；新增数据文件先想清楚迁移与损坏回退。
-8. **安全边界**：Host/中继不暴露公网、不接第三方推送/云服务；中继与推送只做本机回环测试。`~/.claude`、`~/.codex` 只读。
+8. **安全边界**：Host/工作站不暴露公网、不接第三方推送/云服务；远程连接与推送只做本机回环测试。`~/.claude`、`~/.codex` 只读。
 9. **进程管理**：测试脚本自行管理子进程；手工清理用 `ps -eo pid,args | awk '/特征/ && !/awk/ {print $1}' | xargs -r kill`，不用 `pkill -f`。
 10. **重复实现警戒**：跨端/跨模块的格式化、路径、模型能力、Key 选择逻辑先找现有纯函数，再决定是否新增。
 

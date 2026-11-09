@@ -8,7 +8,7 @@ import net from 'node:net'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import WebSocket from 'ws'
-import { E2EChannel } from '@tandem/relay/client'
+import { E2EChannel } from '../packages/protocol/dist/e2eClient.js'
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
 const CLI = path.join(ROOT, 'packages/server/dist/cli.js')

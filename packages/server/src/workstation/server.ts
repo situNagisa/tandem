@@ -11,7 +11,7 @@ import fastifyStatic from '@fastify/static';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { HostTunnel } from '@tandem/relay/tunnel';
+import { HostTunnel } from './tunnel.js';
 import {
   TUNNEL_PATH,
   TUNNEL_VERSION,
@@ -22,7 +22,7 @@ import {
   unb64u,
   type TunnelChallenge,
   type TunnelHello,
-} from '@tandem/relay/wire';
+} from './wire.js';
 import type {
   ListModelsInput,
   Profile,

@@ -91,7 +91,6 @@ function copyToWindowsDownloads() {
 }
 
 run('npm', ['run', 'build', '-w', '@tandem/protocol'], { cwd: root })
-run('npm', ['run', 'build', '-w', '@tandem/relay'], { cwd: root })
 run('npm', ['run', 'build', '-w', '@tandem/web'], {
   cwd: root,
   env: { ...env, TANDEM_FLAVOR: 'debug' },

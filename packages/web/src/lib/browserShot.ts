@@ -58,7 +58,7 @@ async function loadShot(
   return task
 }
 
-/** 通过带鉴权的 Host 请求取截图并转成 object URL（中继 Host 也能显示）。 */
+/** 通过带鉴权的 Host 请求取截图并转成 object URL（加密隧道 Host 也能显示）。 */
 export async function loadBrowserShot(
   host: HostConfig,
   sessionId: string,

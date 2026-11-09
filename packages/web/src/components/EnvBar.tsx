@@ -158,7 +158,7 @@ function HostMenu({
         const detail = [
           h.url.replace(/^https?:\/\//, ''),
           rt?.info?.platform,
-          h.mode === 'relay' ? '中继 · 加密' : '直连',
+          h.mode === 'relay' ? '加密隧道' : '直连',
         ]
           .filter(Boolean)
           .join(' · ')

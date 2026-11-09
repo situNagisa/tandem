@@ -1,4 +1,4 @@
-// 一条 Host 隧道：把 HTTP 请求与 WebSocket 连接按 streamId 多路复用到 Host。
+// 一条主机隧道：把 HTTP 请求与 WebSocket 连接按 streamId 多路复用到本机 Host。
 import { STATUS_CODES, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
@@ -12,7 +12,28 @@ import {
   wsMsgPayload,
   type Frame,
 } from './wire.js';
-import { Bucket } from './limits.js';
+
+// 令牌桶：带宽限流。允许透支，返回需要等待的毫秒数，由调用方暂停数据源而不是丢数据。
+class Bucket {
+  private tokens: number;
+  private last = Date.now();
+
+  constructor(
+    private readonly rate: number,
+    private readonly burst: number,
+  ) {
+    this.tokens = burst;
+  }
+
+  take(bytes: number): number {
+    if (this.rate <= 0) return 0;
+    const now = Date.now();
+    this.tokens = Math.min(this.burst, this.tokens + ((now - this.last) / 1000) * this.rate);
+    this.last = now;
+    this.tokens -= bytes;
+    return this.tokens >= 0 ? 0 : Math.ceil((-this.tokens / this.rate) * 1000);
+  }
+}
 
 const HOP_BY_HOP = new Set([
   'connection',

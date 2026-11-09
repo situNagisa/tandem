@@ -79,7 +79,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
   const markdown = isMarkdownPath(absPath)
   const label = lineLabel(preview ?? {})
 
-  // 中继主机的 token 在密文里，不能直接把 URL 交给 <img>，先取回内容再转 blob URL。
+  // 加密隧道主机的 token 在密文里，不能直接把 URL 交给 <img>，先取回内容再转 blob URL。
   useEffect(() => {
     if (!host || !image || !absPath) {
       setImageUrl('')

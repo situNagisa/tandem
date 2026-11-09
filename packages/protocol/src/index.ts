@@ -2366,23 +2366,7 @@ export interface GatewayOverview {
 // GET    /api/gateway/logs?limit=100     -> GatewayLogEntry[]（仅所有者，只含元数据）
 
 // ---------- 配对 ----------
-// GET /api/pair -> { urls: string[]; token: string; loopback?: boolean; hint?: string; relay?: RelayPairInfo }   列出本机所有可达地址（局域网 IP、Tailscale IP），客户端据此生成二维码供手机扫码；loopback=true 表示只监听本机、扫码不可用。
-// 启用中继（config.relay）时多一个 relay 字段：url 形如 https://relay.example.com/h/<hostId>，可直接当 Host URL（token 不变，由 Host 校验）；
-// 未设置 requireE2E 时该 url 也会追加到 urls 末尾（此时不再返回 loopback），老客户端扫码即可走明文中继。
-// 端到端加密连接用 fingerprint 做 Host 公钥校验（配对时展示给用户核对 / 二维码携带），见 @tandem/relay/client 与 docs/features/relay.md。
-export interface RelayPairInfo {
-  url: string;
-  hostId: string;
-  /** Host 公钥（Ed25519）SHA-256，64 位小写十六进制。 */
-  fingerprint: string;
-  /** Host 公钥原始 32 字节，base64url。 */
-  publicKey: string;
-  /** true 时 Host 拒绝明文中继请求，只能走 /_e2e 加密通道。 */
-  requireE2E: boolean;
-  /** Host 当前是否已连上 relay。 */
-  connected: boolean;
-}
-
+// GET /api/pair -> { urls: string[]; token: string; loopback?: boolean; hint?: string }   列出本机所有可达地址（局域网 IP、Tailscale IP），客户端据此生成二维码供手机扫码；loopback=true 表示只监听本机、扫码不可用。
 // ---------- 后台任务（Bash run_in_background） ----------
 // Host 内 BackgroundTaskManager 管理；输出环形缓冲最多 1MB，完整输出落盘 ~/.tandem/tasks/<id>.log。
 // Host 重启后：已结束任务保留可查看，运行中任务标记为 lost。
