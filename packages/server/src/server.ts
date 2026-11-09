@@ -51,9 +51,20 @@ import { registerUpdateRoutes } from './routes/updates.js';
 import { SshRemoteManager } from './ssh/manager.js';
 import { IS_DEBUG_FLAVOR } from './flavor.js';
 
+interface WorkstationTunnelDeps {
+  start: () => void;
+  stop: () => void;
+}
+
 export async function createApp(
   host: Host,
-  extras: { relay?: { pairInfo(): RelayPairInfo | undefined } } = {},
+  extras: {
+    relay?: { pairInfo(): RelayPairInfo | undefined };
+    /** 调试版演示主机：不再安装调试工作站引导，避免递归创建演示主机。 */
+    demoHost?: boolean;
+    /** 调试版演示主机：登记后由调用方手动启动隧道。 */
+    onWorkstationDeps?: (deps: WorkstationTunnelDeps) => void;
+  } = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: false,
@@ -171,10 +182,11 @@ export async function createApp(
   };
   app.addHook('onListen', async () => startWorkstationTunnel());
   app.addHook('onClose', async () => stopWorkstationTunnel());
+  extras.onWorkstationDeps?.(workstationDeps);
   const deps: RouteDeps = { host, sshHosts, workstation: workstationDeps, ...(extras.relay ? { relay: extras.relay } : {}) };
 
-  if (IS_DEBUG_FLAVOR) {
-    // 调试版桌面：首次启动自动登录本机工作站的测试账号；发布构建不加载此模块。
+  if (IS_DEBUG_FLAVOR && !extras.demoHost) {
+    // 调试版 Host：首次启动自动登录本机工作站的测试账号；发布构建不加载此模块。
     const { installDebugWorkstationBootstrap } = await import('./debug/workstationBootstrap.js');
     installDebugWorkstationBootstrap(app, host, workstationDeps);
   }

@@ -1,5 +1,5 @@
-// 调试版桌面：Host 启动时自动拉起本机工作站、登录测试账号并登记本机主机。
-// 只在调试版、且在桌面进程（或显式设置 TANDEM_DEBUG_ACCOUNT=1 的联调）中启用。
+// 调试版 Host：启动时自动拉起本机工作站、登录测试账号、登记本机主机，并创建演示主机。
+// 调试 flavor 下默认开启，TANDEM_DEBUG_ACCOUNT=0 关闭（模拟发布语义）。
 import os from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -8,6 +8,7 @@ import type { Host } from '../host.js';
 import { readJson } from '../config.js';
 import { IS_DEBUG_FLAVOR } from '../flavor.js';
 import { embeddedDataDir, startEmbeddedWorkstation } from '../workstation/manager.js';
+import { startDebugDemoHost, type DemoHostHandle } from './demoHost.js';
 
 interface DebugWorkstationDeps {
   start: () => void;
@@ -20,12 +21,12 @@ interface CenterMeta {
 }
 
 /**
- * 只有 debug 构建的桌面进程（或显式联调开关）才自动拉起工作站并登录调试账号。
- * TANDEM_DEBUG_ACCOUNT=0 用于回归/联调模拟发布语义。
+ * 调试 flavor 的所有 Host（CLI、桌面 Electron 内置 Host、浏览器调试构建连接的 Host）默认启用；
+ * 只有 TANDEM_DEBUG_ACCOUNT=0 关闭（回归/联调模拟发布语义）。
  */
 export function debugAutoLoginEnabled(): boolean {
-  if (!IS_DEBUG_FLAVOR || process.env.TANDEM_DEBUG_ACCOUNT === '0') return false;
-  return !!process.versions.electron || process.env.TANDEM_DEBUG_ACCOUNT === '1';
+  if (!IS_DEBUG_FLAVOR) return false;
+  return process.env.TANDEM_DEBUG_ACCOUNT !== '0';
 }
 
 function isLoopbackUrl(raw: string): boolean {
@@ -54,6 +55,17 @@ function localHostUrls(app: FastifyInstance): string[] {
   return [...urls];
 }
 
+/** 登录调试账号（仅回环可用的免密接口）。 */
+async function debugLogin(base: string): Promise<AccountLoginResult> {
+  const res = await fetch(`${base}/api/debug/auto-login`, {
+    method: 'POST',
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as AccountLoginResult;
+}
+
 /** 在 createApp 阶段安装启动钩子；失败只告警，不影响正常使用。 */
 export function installDebugWorkstationBootstrap(
   app: FastifyInstance,
@@ -64,6 +76,28 @@ export function installDebugWorkstationBootstrap(
   const mode = host.accounts.mode();
   if (mode === 'center') return;
 
+  // 演示主机在后台启动，不阻塞 Host 监听；关闭 Host 时一并释放。
+  let demoHost: DemoHostHandle | undefined;
+  let closing = false;
+  app.addHook('onClose', async () => {
+    closing = true;
+    await demoHost?.close();
+    demoHost = undefined;
+  });
+  const launchDemoHost = (base: string, accessToken: string | undefined): void => {
+    void startDebugDemoHost(host.home, {
+      workstationUrl: base,
+      ...(accessToken ? { accessToken } : {}),
+    })
+      .then(async (handle) => {
+        if (closing) return handle.close();
+        demoHost = handle;
+        console.log('[debug] 演示主机已就绪，已登记到调试账号');
+        return undefined;
+      })
+      .catch((err: unknown) => console.warn('[debug] 演示主机启动失败:', (err as Error).message));
+  };
+
   if (mode === 'member') {
     // 已加入本机内嵌工作站：重启后把工作站重新拉起来，客户端才能自动登录。
     const join = host.accounts.workstationJoin();
@@ -73,8 +107,12 @@ export function installDebugWorkstationBootstrap(
     const preferredPort = Number(new URL(join.url).port || 8481);
     app.addHook('onListen', async () => {
       try {
-        await startEmbeddedWorkstation(host.home, '127.0.0.1', host.version, preferredPort);
+        const info = await startEmbeddedWorkstation(host.home, '127.0.0.1', host.version, preferredPort);
         workstation.start();
+        const base = `http://127.0.0.1:${info.port}`;
+        // 演示主机通常已登记，只需重建并恢复隧道；令牌只在它尚未登记时用到。
+        const login = await debugLogin(base).catch(() => undefined);
+        launchDemoHost(base, login?.accessToken);
       } catch (err) {
         console.warn('[debug] 本机工作站重新启动失败:', (err as Error).message);
       }
@@ -86,13 +124,7 @@ export function installDebugWorkstationBootstrap(
     try {
       const info = await startEmbeddedWorkstation(host.home, '127.0.0.1', host.version);
       const base = `http://127.0.0.1:${info.port}`;
-      const res = await fetch(`${base}/api/debug/auto-login`, {
-        method: 'POST',
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const login = (await res.json()) as AccountLoginResult;
+      const login = await debugLogin(base);
       await host.accounts.registerAsHost(
         base,
         {
@@ -105,6 +137,7 @@ export function installDebugWorkstationBootstrap(
         { accessToken: login.accessToken },
       );
       workstation.start();
+      launchDemoHost(base, login.accessToken);
       console.log('[debug] 已登录调试账号，本机主机已自动添加');
     } catch (err) {
       console.warn('[debug] 自动登录调试账号失败:', (err as Error).message);

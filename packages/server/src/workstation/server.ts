@@ -3,9 +3,9 @@
 import { createHash, createPublicKey, randomBytes, verify } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync } from 'node:fs';
+import { createReadStream, existsSync, statSync } from 'node:fs';
 import os from 'node:os';
-import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -35,6 +35,7 @@ import type {
 import { AccountsStore } from '../accounts/store.js';
 import { readJson } from '../config.js';
 import { IS_DEBUG_FLAVOR } from '../flavor.js';
+import { buildUnixInstallScript, buildWindowsInstallScript } from './installScripts.js';
 
 const MAX_FRAME = 40 * 1024 * 1024;
 const HELLO_TIMEOUT_MS = 10_000;
@@ -95,6 +96,55 @@ function ed25519Public(raw: Uint8Array) {
 
 function shortId(hostId: string): string {
   return `${hostId.slice(0, 8)}…`;
+}
+
+export interface HostPackageInfo {
+  file: string;
+  version: string;
+  size: number;
+}
+
+export type HostPackFormat = 'tgz' | 'zip';
+
+/**
+ * 工作站随附的主机安装包：环境变量 → 包根 host-pack/ → Electron resources。
+ * Unix 用 tgz；Windows 用 zip（自带 tar 在中文路径上会失败，安装脚本改走 Expand-Archive）。
+ */
+export function findHostPackage(format: HostPackFormat = 'tgz'): HostPackageInfo | undefined {
+  const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  const fileName = `tandem-host.${format}`;
+  const envPath = process.env.TANDEM_HOST_PACK ? path.resolve(process.env.TANDEM_HOST_PACK) : undefined;
+  const envCandidates: string[] = [];
+  if (envPath) {
+    let isFile = false;
+    try {
+      isFile = statSync(envPath).isFile();
+    } catch {
+      isFile = false;
+    }
+    if (isFile) {
+      if (envPath.endsWith(`.${format}`)) envCandidates.push(envPath);
+    } else {
+      envCandidates.push(path.join(envPath, fileName));
+    }
+  }
+  const candidates = [
+    ...envCandidates,
+    path.join(serverRoot, 'host-pack', fileName),
+    ...(resourcesPath ? [path.join(resourcesPath, 'host-pack', fileName)] : []),
+  ];
+  for (const file of candidates) {
+    if (!existsSync(file)) continue;
+    const pkg = readJson<{ version?: string }>(path.join(serverRoot, 'package.json'));
+    try {
+      const size = statSync(file).size;
+      if (size > 0) return { file, version: pkg?.version ?? '0.0.0', size };
+    } catch {
+      // 读不到就尝试下一个候选
+    }
+  }
+  return undefined;
 }
 
 export function createWorkstation(options: WorkstationOptions): WorkstationHandle {
@@ -197,10 +247,56 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
   app.get('/healthz', async () => ({ ok: true, hostsOnline: tunnels.size, initialized: store.mode() === 'center' }));
 
   // ---------- 公开接口 ----------
+  const requestOrigin = (req: FastifyRequest): string => {
+    const hostHeader = req.headers.host;
+    return hostHeader ? `http://${hostHeader}` : addressInfo().urls[0]!;
+  };
+
   app.get('/api/workstation/status', async () => {
     const { urls } = addressInfo();
-    return { ...store.workstationStatus(urls), ...(debugAccountEnabled ? { debug: true } : {}) };
+    const tgz = findHostPackage('tgz');
+    const zip = findHostPackage('zip');
+    const hostPackage = tgz
+      ? { version: tgz.version, size: tgz.size, ...(zip ? { zip: true } : {}) }
+      : zip
+        ? { version: zip.version, size: zip.size, zip: true }
+        : undefined;
+    return {
+      ...store.workstationStatus(urls),
+      ...(hostPackage ? { hostPackage } : {}),
+      ...(debugAccountEnabled ? { debug: true } : {}),
+    };
   });
+
+  // 一行命令添加主机：脚本默认使用下载它的地址；不嵌入令牌。
+  app.get('/install.sh', async (req, reply) => {
+    reply.header('content-type', 'text/x-shellscript; charset=utf-8');
+    reply.header('cache-control', 'no-store');
+    return buildUnixInstallScript({ server: requestOrigin(req) });
+  });
+
+  app.get('/install.ps1', async (req, reply) => {
+    reply.header('content-type', 'text/plain; charset=utf-8');
+    reply.header('cache-control', 'no-store');
+    return buildWindowsInstallScript({ server: requestOrigin(req) });
+  });
+
+  const downloadPackage = (format: HostPackFormat) => async (_req: FastifyRequest, reply: FastifyReply) => {
+    const hostPackage = findHostPackage(format);
+    if (!hostPackage) {
+      return reply.code(404).send({
+        error: `工作站没有随附主机安装包（${format}）；请手动安装 Node.js 22+ 后运行 tandem-host join <工作站地址> --token <绑定码>`,
+      });
+    }
+    reply.header('content-type', format === 'zip' ? 'application/zip' : 'application/gzip');
+    reply.header('content-length', String(hostPackage.size));
+    reply.header('content-disposition', `attachment; filename="tandem-host.${format}"`);
+    return reply.send(createReadStream(hostPackage.file));
+  };
+
+  app.get('/dl/tandem-host.tgz', downloadPackage('tgz'));
+  // Windows：ZIP + Expand-Archive，绕开自带 tar 对非 ASCII 路径的失败。
+  app.get('/dl/tandem-host.zip', downloadPackage('zip'));
 
   app.post('/api/workstation/setup', async (req, reply) => {
     if (store.mode() === 'center') return reply.code(409).send({ error: '工作站已初始化，请注册或登录' });

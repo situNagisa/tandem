@@ -1079,6 +1079,8 @@ export interface WorkspaceHostInfo {
   online?: boolean;
   /** 由工作站下发给客户端：客户端应通过 工作站/h/<id> 连接。 */
   viaWorkstation?: boolean;
+  /** 调试版演示主机（内置演示模型/会话/设备）；只有调试版会登记。 */
+  demo?: boolean;
   grants?: WorkspaceHostGrant[];
 }
 export interface WorkspaceAccount {
@@ -1237,6 +1239,8 @@ export interface WorkstationPublicStatus {
   hostId?: string;
   urls: string[];
   version?: string;
+  /** 工作站随附的主机安装包（Unix `GET /dl/tandem-host.tgz`）；没有则不下发，添加主机的一行命令会提示手动安装。 */
+  hostPackage?: { version: string; size: number; /** 同时提供 `GET /dl/tandem-host.zip`（Windows 安装脚本用 Expand-Archive）。 */ zip?: boolean };
 }
 export interface WorkstationRegisterInput {
   username: string;
@@ -1250,6 +1254,7 @@ export interface WorkstationSetupInput {
   username: string;
   password: string;
 }
+/** 主机注册令牌：一次性、15 分钟有效、只存 SHA-256；兑换后主机把长期凭据（Ed25519 私钥）存在本地 0600 文件。 */
 export interface WorkstationBindCode {
   code: string;
   expiresAt: number;
@@ -1264,6 +1269,7 @@ export interface WorkstationHostClaimInput {
     platform?: string;
     publicKey: string;
     fingerprint: string;
+    demo?: boolean;
   };
 }
 export interface WorkstationHostRegisterInput {
@@ -1318,7 +1324,9 @@ export interface WorkstationInvite {
 // POST   /api/workstation/invites                   -> WorkstationInvite（管理员；仅邀请模式注册）
 // GET    /api/workstation/audit?limit=200           -> WorkspaceAuditEntry[]（管理员）
 // POST   /api/workstation/local/enable              -> { url, urls, initialized, publicKey? }（Host 所有者：本机内嵌启动工作站）
-// POST   /api/workstation/join {workstationUrl,code?|username,password?} -> WorkspaceStatus（Host 所有者）
+// POST   /api/workstation/join {workstationUrl,code?|username,password?,name?} -> WorkspaceStatus（Host 所有者；本机已加入同一工作站时幂等返回）
+// GET    /install.sh | /install.ps1                  -> 主机安装脚本（公开；一行命令添加主机；地址取自请求 Host 头）
+// GET    /dl/tandem-host.tgz | /dl/tandem-host.zip   -> 主机安装包（公开；没有时 404，status.hostPackage 为空）
 // POST   /api/workstation/leave                     -> 204（Host 所有者：本机退出工作站）
 
 // GET    /api/accounts/status                      -> WorkspaceStatus（公开；客户端探测中心/成员）

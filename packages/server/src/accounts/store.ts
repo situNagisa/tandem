@@ -42,11 +42,12 @@ import type {
 } from '@tandem/protocol';
 import { readJson, writePrivateFile } from '../config.js';
 import { generateHostKey, identityFromHostKey } from '../relay/e2e.js';
+import { IS_DEBUG_FLAVOR } from '../flavor.js';
 
 export const ACCESS_TTL_MS = 30 * 60 * 1000;
 export const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const JOIN_CODE_TTL_MS = 24 * 60 * 60 * 1000;
-export const HOST_BIND_TTL_MS = 10 * 60 * 1000;
+export const HOST_BIND_TTL_MS = 15 * 60 * 1000;
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SYNC_INTERVAL_MS = 10_000;
 
@@ -1173,6 +1174,7 @@ export class AccountsStore {
       lastSeenAt: Date.now(),
       ...(host.version ? { version: host.version } : {}),
       ...(host.platform ? { platform: host.platform } : {}),
+      ...(IS_DEBUG_FLAVOR && host.demo ? { demo: true } : {}),
     };
     if (existing) Object.assign(existing, info);
     else state.hosts.push(info);
@@ -1456,7 +1458,7 @@ export class AccountsStore {
    */
   async registerAsHost(
     workstationUrl: string,
-    hostInfo: { id: string; name: string; urls: string[]; version?: string; platform?: string },
+    hostInfo: { id: string; name: string; urls: string[]; version?: string; platform?: string; demo?: boolean },
     auth: { code?: string; accessToken?: string },
   ): Promise<WorkspaceStatus> {
     if (this.state) throw Object.assign(new Error('本机已加入工作站'), { statusCode: 409 });
