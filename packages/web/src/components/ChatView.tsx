@@ -352,8 +352,9 @@ export function ChatView() {
                   {parentSession && hostId && (
                     <>
                       <span className="shrink-0 opacity-60">·</span>
-                      <button
-                        type="button"
+                      <Button
+                        size="inline"
+                        variant="ghost"
                         onClick={() =>
                           navigate({
                             kind: 'session',
@@ -361,10 +362,9 @@ export function ChatView() {
                             sessionId: parentSession.id,
                           })
                         }
-                        className="shrink-0 rounded px-0.5 text-text-tertiary underline-offset-2 transition-colors hover:text-text hover:underline"
                       >
                         查看
-                      </button>
+                      </Button>
                     </>
                   )}
                 </div>

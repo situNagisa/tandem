@@ -612,7 +612,7 @@ export function ProfilesSection() {
               <p className="mb-2.5 text-[13px] text-muted">选择服务商，预设会自动填好接口地址和推荐模型。</p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
                 {PROVIDER_PRESETS.map((p) => (
-                  <button
+                  <button data-raw-button
                     key={p.id}
                     onClick={() => choosePreset(p)}
                     className="group flex items-center gap-2.5 rounded-xl border border-border bg-bg/40 p-2.5 text-left transition-colors duration-[120ms] hover:border-border-strong hover:bg-[var(--t-bg-hover)]"
@@ -626,7 +626,7 @@ export function ProfilesSection() {
                     </span>
                   </button>
                 ))}
-                <button
+                <button data-raw-button
                   onClick={() => choosePreset(null)}
                   className="flex items-center gap-2.5 rounded-xl border border-dashed border-border bg-transparent p-2.5 text-left transition-colors duration-[120ms] hover:border-border-strong hover:bg-[var(--t-bg-hover)]"
                 >
@@ -660,7 +660,7 @@ export function ProfilesSection() {
                       {PROVIDER_KIND_LABELS[form.kind] ?? form.kind}
                     </span>
                   </span>
-                  <button
+                  <button data-raw-button
                     onClick={() => setStep(1)}
                     className="text-[13px] text-muted underline-offset-2 hover:text-text hover:underline"
                   >
@@ -911,7 +911,7 @@ export function ProfilesSection() {
                         {g.multiplier !== undefined && g.multiplier !== 1 ? ` · 倍率 ${g.multiplier}×` : ''}
                       </span>
                     </span>
-                    <button
+                    <button data-raw-button
                       onClick={() => {
                         setStep(2)
                         setGroupEditor({ index: i })
@@ -1000,16 +1000,14 @@ export function ProfilesSection() {
           )}
 
           {!loading && profiles.length === 0 && (
-            <div className="settings-empty">
-              <span className="settings-empty-icon"><KeyRound size={17} /></span>
-              <p className="settings-empty-title">还没有配置账号</p>
-              <p className="settings-empty-hint">
-                选择服务商、粘贴 Key，模型列表会自动获取。支持 Anthropic、OpenAI、DeepSeek、Ollama 等。
-              </p>
-              <Button variant="primary" onClick={startNew} className="mt-3">
+            <EmptyState
+              icon={<KeyRound size={17} />}
+              title={<>还没有配置账号</>}
+              hint={<>选择服务商、粘贴 Key，模型列表会自动获取。支持 Anthropic、OpenAI、DeepSeek、Ollama 等。</>}
+              action={<><Button variant="primary" onClick={startNew}>
                 <Plus size={13} /> 新建账号
-              </Button>
-            </div>
+              </Button></>}
+            />
           )}
 
           <div className="space-y-2">
@@ -1021,7 +1019,7 @@ export function ProfilesSection() {
               return (
                 <div key={p.id} data-setting-id="profiles.models" className="settings-item" data-open={isOpen || undefined}>
                   <div className="flex items-center">
-                    <button
+                    <button data-raw-button
                       type="button"
                       onClick={() => setExpandedProfile(isOpen ? null : p.id)}
                       aria-expanded={isOpen}

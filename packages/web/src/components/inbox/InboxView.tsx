@@ -325,7 +325,7 @@ function PendingCard({ entry }: { entry: Entry }) {
             <span className="rounded bg-[var(--t-bg-hover)] px-1.5 py-px text-[12px] text-text-tertiary">
               {hostNameOf(hostId)}
             </span>
-            <button
+            <button data-raw-button
               type="button"
               onClick={() => setDescOpen((value) => !value)}
               aria-expanded={descOpen}
@@ -495,7 +495,7 @@ function HistoryGroupRow({
               }
             />
           ) : null}
-          <button
+          <button data-raw-button
             type="button"
             onClick={() => openGroupTarget(group.hostId, group)}
             className="mt-1 flex items-center gap-1 rounded-md px-1 py-1 text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"

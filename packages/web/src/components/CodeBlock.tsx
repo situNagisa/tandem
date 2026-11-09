@@ -277,7 +277,7 @@ export function CodeBlock({
           <span className="truncate font-mono text-[12px] text-[var(--t-text-tertiary)]">
             {fileName || languageLabel(language)}
           </span>
-          <button
+          <button data-raw-button
             type="button"
             aria-pressed={wrap}
             aria-label="自动换行"

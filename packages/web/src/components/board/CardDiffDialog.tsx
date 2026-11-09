@@ -101,7 +101,7 @@ export function CardDiffDialog({
           ) : (
             <div className="py-1">
               {files.map((file) => (
-                <button
+                <button data-raw-button
                   key={file.path}
                   type="button"
                   onClick={() => setSelected(file.path)}

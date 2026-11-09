@@ -1036,7 +1036,7 @@ export function TurnRail({
                 : `第 ${current?.no ?? activeTurn} / ${realTotal} 轮`}
           </span>
           {open && (
-            <button
+            <button data-raw-button
               type="button"
               className="turn-hint"
               data-testid="turn-pinned-hint"

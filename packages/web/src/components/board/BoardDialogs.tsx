@@ -130,7 +130,7 @@ export function CreateBoardDialog({
           {recents.length > 0 && (
             <div className="no-scrollbar mt-1.5 flex items-center gap-1 overflow-x-auto pb-0.5">
               {recents.slice(0, 5).map((dir) => (
-                <button
+                <button data-raw-button
                   key={dir}
                   type="button"
                   onClick={() => setCwd(dir)}
@@ -307,7 +307,7 @@ export function CardEditorDialog({
               {candidates.map((item) => {
                 const on = deps.includes(item.id)
                 return (
-                  <button
+                  <button data-raw-button
                     key={item.id}
                     type="button"
                     aria-pressed={on}
@@ -587,7 +587,7 @@ export function BoardPrDialog({
               {candidates.map((card) => {
                 const on = selected.includes(card.id)
                 return (
-                  <button
+                  <button data-raw-button
                     key={card.id}
                     type="button"
                     aria-pressed={on}

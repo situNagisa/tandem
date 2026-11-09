@@ -460,7 +460,7 @@ export function PreviewPanel() {
         <div className="flex shrink-0 flex-wrap items-center gap-1 px-3 py-1.5">
           <span className="mr-0.5 text-[12px] text-muted">自动识别：</span>
           {candidates.slice(0, 6).map((candidate) => (
-            <button
+            <button data-raw-button
               key={candidate.url}
               type="button"
               onClick={() => void doOpen(candidate.url, viewport)}
@@ -921,7 +921,7 @@ function SnapshotCard({
         active ? 'border-[var(--t-accent-strong)] bg-[var(--t-bg-active)]' : 'border-border bg-surface'
       }`}
     >
-      <button
+      <button data-raw-button
         type="button"
         onClick={onCompare}
         className="flex items-center gap-1.5"

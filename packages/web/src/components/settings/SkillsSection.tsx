@@ -202,7 +202,7 @@ export function SkillsSection() {
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <button
+                    <button data-raw-button
                       type="button"
                       onClick={() => void openPreview(skill)}
                       className="min-w-0 text-left text-[13px] font-semibold text-text hover:underline"

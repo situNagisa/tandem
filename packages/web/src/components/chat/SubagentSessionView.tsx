@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { Bot, ChevronRight, Lock } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { Button } from '../ui/Button'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
@@ -59,14 +60,15 @@ export function SubagentSessionView({ hostId, id }: { hostId: string; id: string
         <Lock size={11} className="shrink-0" />
         <span className="shrink-0">只读</span>
         <span className="mx-0.5 shrink-0 opacity-60">·</span>
-        <button
-          type="button"
+        <Button
+          size="inline"
+          variant="ghost"
           onClick={closeAgentSession}
-          className="min-w-0 max-w-[180px] truncate rounded px-1 text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
           data-tip={`返回主会话：${mainTitle}`}
+          className="max-w-[180px] truncate px-0"
         >
           {mainTitle}
-        </button>
+        </Button>
         {chain.map((item, index) => {
           const current = index === chain.length - 1
           return (
@@ -82,14 +84,15 @@ export function SubagentSessionView({ hostId, id }: { hostId: string; id: string
                   <span className="min-w-0 truncate">{item.title}</span>
                 </span>
               ) : (
-                <button
-                  type="button"
+                <Button
+                  size="inline"
+                  variant="ghost"
                   onClick={() => openAgentSession(hostId, item.id)}
-                  className="min-w-0 max-w-[180px] truncate rounded px-1 text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
                   data-tip={item.title}
+                  className="max-w-[180px] truncate px-0"
                 >
                   {item.title}
-                </button>
+                </Button>
               )}
             </span>
           )

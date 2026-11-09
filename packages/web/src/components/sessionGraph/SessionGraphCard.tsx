@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { EmptyState } from '../ui/EmptyState'
+import { Button } from '../ui/Button'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { useTurnNavStore } from '../../store/useTurnNavStore'
@@ -104,13 +106,9 @@ export function SessionGraphCard({
     <div className={full ? 'flex min-h-0 flex-1 flex-col' : undefined}>
       {full && (
         <div className="mb-2 flex shrink-0 items-baseline gap-2">
-          <button
-            type="button"
-            onClick={onBack}
-            className="rounded px-1 py-0.5 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-          >
+          <Button size="inline" variant="ghost" onClick={onBack}>
             ← 返回
-          </button>
+          </Button>
           <span className="text-[12px] text-text-soft">会话图</span>
           <span className="text-[11px] text-muted">{graphSummaryLabel(layout)}</span>
         </div>
@@ -119,13 +117,9 @@ export function SessionGraphCard({
         <div className="mb-1.5 flex items-baseline justify-between gap-2">
           <span className="text-[11px] text-muted">{graphSummaryLabel(layout)}</span>
           {onExpand && (
-            <button
-              type="button"
-              onClick={onExpand}
-              className="rounded px-1 py-0.5 text-[11px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-            >
+            <Button size="inline" variant="ghost" onClick={onExpand}>
               展开
-            </button>
+            </Button>
           )}
         </div>
       )}

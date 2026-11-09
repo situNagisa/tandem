@@ -93,7 +93,7 @@ export function CompactionNoticeLine({
       data-compaction-notice="true"
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <button
+        <button data-raw-button
           type="button"
           aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
@@ -106,33 +106,29 @@ export function CompactionNoticeLine({
           <span>{text}</span>
         </button>
         <span className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setExpanded((value) => !value)}
-            className="rounded px-1 py-0.5 text-[12px] text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-          >
+          <Button size="inline" variant="ghost" onClick={() => setExpanded((value) => !value)}>
             {expanded ? '收起摘要' : '展开摘要'}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            size="inline"
+            variant="ghost"
             onClick={() => void showOriginal()}
             disabled={loading}
-            className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[12px] text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
             data-testid="compaction-original"
           >
             {loading ? <Spinner size={11} /> : <FileText size={11} />}
             查看原文
-          </button>
+          </Button>
           {notice.canUndo ? (
-            <button
-              type="button"
+            <Button
+              size="inline"
+              variant="ghost"
               onClick={() => setConfirmUndo(true)}
-              className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[12px] text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
               data-testid="compaction-undo"
             >
               <RotateCcw size={11} />
               撤销压缩
-            </button>
+            </Button>
           ) : null}
         </span>
       </div>

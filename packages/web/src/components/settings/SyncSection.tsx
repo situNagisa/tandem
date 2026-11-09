@@ -428,7 +428,7 @@ export function SyncSection() {
                   ['replace', '替换', '清空现有账号与 Host 后按文件恢复'],
                 ] as const
               ).map(([value, label, hint]) => (
-                <button
+                <button data-raw-button
                   key={value}
                   onClick={() => setMode(value)}
                   aria-pressed={mode === value}

@@ -267,7 +267,7 @@ export function Sidebar({
       >
         <span className="font-serif text-[17px] font-medium leading-none tracking-tight">Tandem</span>
         <span className="flex-1" />
-        <button
+        <button data-raw-button
           type="button"
           onClick={() => {
             setInboxOpen(true)

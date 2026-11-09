@@ -267,7 +267,7 @@ export function SessionGraphView({
                     }}
                   />
                   {node.kind === 'subagent' && (
-                    <button
+                    <button data-raw-button
                       type="button"
                       aria-label={expanded[node.subagentId ?? ''] ? '收起子代理' : '展开子代理'}
                       aria-expanded={!!expanded[node.subagentId ?? '']}

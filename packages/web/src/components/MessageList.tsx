@@ -92,12 +92,12 @@ const GapBand = memo(function GapBand({
         <span aria-hidden>⋯</span> {label}
       </span>
       {gap.unmounted ? (
-        <button type="button" className="msg-gap-btn" onClick={onShow}>
+        <button data-raw-button type="button" className="msg-gap-btn" onClick={onShow}>
           显示
         </button>
       ) : (
         <>
-          <button
+          <button data-raw-button
             type="button"
             disabled={loading}
             onClick={() => onLoad?.('first')}
@@ -105,7 +105,7 @@ const GapBand = memo(function GapBand({
           >
             {loading ? '加载中…' : '加载前 10 轮'}
           </button>
-          <button
+          <button data-raw-button
             type="button"
             disabled={loading}
             onClick={() => onLoad?.('all')}
@@ -855,7 +855,7 @@ function MessageListInner({
           已分叉
         </span>
         {list.map((child) => (
-          <button
+          <button data-raw-button
             key={child.id}
             type="button"
             onClick={() => navigate({ kind: 'session', hostId: activeHostId, sessionId: child.id })}

@@ -11,6 +11,7 @@ import {
 import { createPortal } from 'react-dom'
 import { Mic, X } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { Button } from '../ui/Button'
 import type { ControlSize } from '../ui/Button'
 import { IconButton } from '../ui/Button'
 import { cn } from '../../lib/cn'
@@ -397,7 +398,7 @@ export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(funct
           <div
             role="status"
             aria-live="polite"
-            className="fixed z-[70] w-[264px] rounded-xl border border-border bg-surface p-2.5 shadow-lg"
+            className="fixed z-[70] w-[264px] rounded-xl border border-border bg-[var(--t-bg-elevated)] p-2.5 shadow-lg"
             style={{ left: panelPos.left, top: panelPos.top }}
           >
             <div className="flex items-center gap-2">
@@ -461,16 +462,17 @@ export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(funct
               </span>
             </div>
             {!recording && phase === 'preparing' ? (
-              <button
-                type="button"
-                className="mt-1 text-[12px] text-accent-text hover:underline"
+              <Button
+                size="inline"
+                variant="ghost"
+                className="mt-1 text-accent-text"
                 onClick={() => {
                   cancel()
                   openSettings('voice')
                 }}
               >
                 打开语音设置
-              </button>
+              </Button>
             ) : null}
           </div>,
           document.body,

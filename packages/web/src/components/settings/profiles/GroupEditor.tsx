@@ -226,7 +226,7 @@ export function GroupEditor({
                   ? '沿用账号 Key'
                   : `已保存 · ••••${keyLast4 ?? '••••'}`}
               </span>
-              <button
+              <button data-raw-button
                 type="button"
                 onClick={() => {
                   setEditingKey(true)
@@ -250,7 +250,7 @@ export function GroupEditor({
               />
               <span className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
                 {existing && (
-                  <button
+                  <button data-raw-button
                     type="button"
                     onClick={() => {
                       setEditingKey(false)
@@ -472,7 +472,7 @@ export function GroupEditor({
           spellCheck={false}
           className={cn(inputCls, 'h-7 font-mono text-[13px]')}
         />
-        <button
+        <button data-raw-button
           onClick={addManual}
           disabled={!manualInput.trim()}
           className="h-7 shrink-0 rounded-md border border-border px-2 text-[13px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-50"

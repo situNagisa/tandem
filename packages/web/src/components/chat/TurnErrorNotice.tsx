@@ -60,7 +60,7 @@ export function TurnErrorNotice({
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-0.5">
           {budgetBlocked && (
-            <button
+            <button data-raw-button
               type="button"
               onClick={() => void allowOnce()}
               disabled={running || allowing}
@@ -70,7 +70,7 @@ export function TurnErrorNotice({
               本次放行
             </button>
           )}
-          <button
+          <button data-raw-button
             type="button"
             onClick={onRetry}
             disabled={running}
@@ -78,7 +78,7 @@ export function TurnErrorNotice({
           >
             重试
           </button>
-          <button
+          <button data-raw-button
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}

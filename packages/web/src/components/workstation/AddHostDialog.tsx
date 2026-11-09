@@ -386,7 +386,7 @@ export function AddHostDialog() {
 
               {hasPackage && (
                 <div>
-                  <button
+                  <button data-raw-button
                     type="button"
                     onClick={() => setShowInstalled((value) => !value)}
                     aria-expanded={showInstalled}

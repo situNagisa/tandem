@@ -574,13 +574,9 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
             <div className="flex items-center gap-1.5 text-danger">
               <AlertTriangle size={12} />
               <span className="min-w-0 flex-1">AI 评审失败：{reviewEntry.error}</span>
-              <button
-                type="button"
-                className="shrink-0 rounded px-2 py-0.5 text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
-                onClick={() => void runAiReview()}
-              >
+              <Button size="inline" variant="ghost" className="shrink-0" onClick={() => void runAiReview()}>
                 重试
-              </button>
+              </Button>
             </div>
           ) : review?.status === 'error' ? (
             <div className="flex items-center gap-1.5 text-danger">
@@ -602,13 +598,9 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 )}
                 {review.truncated && <span className="text-muted">· 改动过大，只评审了部分文件</span>}
                 <span className="flex-1" />
-                <button
-                  type="button"
-                  className="shrink-0 rounded px-1.5 py-0.5 text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
-                  onClick={() => void runAiReview()}
-                >
+                <Button size="inline" variant="ghost" className="shrink-0" onClick={() => void runAiReview()}>
                   重新评审
-                </button>
+                </Button>
                 <IconButton
                   size="sm"
                   label="关闭 AI 评审结果"
@@ -680,7 +672,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                       : 'border-transparent hover:bg-[var(--t-bg-hover)]',
                   )}
                 >
-                  <button
+                  <button data-raw-button
                     onClick={() => setSelected(file.path)}
                     className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-1.5 pr-1 text-left"
                     data-tip={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
@@ -796,7 +788,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                   padded={false}
                   panelClassName="w-[340px]"
                   trigger={({ open, toggle }) => (
-                    <button
+                    <button data-raw-button
                       type="button"
                       onClick={toggle}
                       className={cn(

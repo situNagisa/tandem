@@ -125,7 +125,7 @@ export function AppearanceSection() {
           const Icon = t.icon
           const selected = theme === t.id
           return (
-            <button
+            <button data-raw-button
               key={t.id}
               onClick={() => setTheme(t.id)}
               className={cn(

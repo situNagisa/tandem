@@ -138,16 +138,17 @@ export function BackgroundTasksPanel() {
               <div className="mb-1 flex items-center gap-1.5 text-[12px] font-medium text-text-tertiary">
                 <FlaskConical size={12} />
                 <span>评测运行</span>
-                <button
-                  type="button"
+                <Button
+                  size="inline"
+                  variant="ghost"
+                  className="ml-auto"
                   onClick={() => {
                     close()
                     openSettings('evals')
                   }}
-                  className="ml-auto rounded px-1 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
                 >
                   打开
-                </button>
+                </Button>
               </div>
               <div className="space-y-1">
                 {runningEvals.map((item) => (
@@ -157,14 +158,15 @@ export function BackgroundTasksPanel() {
                       <span className="shrink-0 text-[12px] tabular-nums text-muted">
                         {item.finished}/{item.total}
                       </span>
-                      <button
-                        type="button"
+                      <IconButton
+                        size="inline"
+                        variant="danger-ghost"
+                        className="shrink-0"
                         onClick={() => host && void cancelEvalRun(host, item.id)}
-                        aria-label="取消评测"
-                        className="shrink-0 rounded p-0.5 text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-danger"
+                        label="取消评测"
                       >
                         <Square size={11} />
-                      </button>
+                      </IconButton>
                     </div>
                     <div className="mt-1 h-1 overflow-hidden rounded-full bg-[var(--t-bg-hover)]">
                       <div
@@ -199,7 +201,7 @@ export function BackgroundTasksPanel() {
               visible.map((task) => {
                 const active = task.id === current?.id
                 return (
-                  <button
+                  <button data-raw-button
                     key={task.id}
                     type="button"
                     onClick={() => setSelected(task.id)}

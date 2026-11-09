@@ -174,7 +174,7 @@ export function RewindDialog({
                       : option.description
                   }
                 >
-                <button
+                <button data-raw-button
                   role="radio"
                   aria-checked={active}
                   disabled={optionDisabled}

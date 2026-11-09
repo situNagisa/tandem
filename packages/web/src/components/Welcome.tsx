@@ -68,7 +68,9 @@ export function SessionWelcome() {
             <button
               key={s.title}
               onClick={() => seedPrompt(s.prompt)}
-              className="group flex cursor-pointer items-start gap-2 rounded-xl border border-border bg-surface px-2.5 py-2.5 text-left transition-colors duration-[120ms] hover:border-border-strong hover:bg-[var(--t-bg-hover)] sm:gap-2.5 sm:px-3"
+              type="button"
+              data-raw-button
+              className="group flex cursor-pointer items-start gap-2 rounded-xl border border-border bg-[var(--t-surface)] px-2.5 py-2.5 text-left transition-colors duration-[120ms] hover:border-border-strong hover:bg-[var(--t-bg-hover)] sm:gap-2.5 sm:px-3"
             >
               <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-[var(--t-bg-active)] text-text-soft">
                 <Icon size={13} />
@@ -161,7 +163,7 @@ export function HomeView() {
           ]}
         />
         <span className="flex-1" />
-        <button
+        <button data-raw-button
           type="button"
           onClick={() => setDispatchOpen(true)}
           className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] max-sm:min-h-11 font-medium text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"

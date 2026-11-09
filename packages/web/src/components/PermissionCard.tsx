@@ -320,7 +320,7 @@ export function PermissionCard({
         )}
         {request.learned && (
           <div className="mt-1.5" data-permission-learned="">
-            <button
+            <button data-raw-button
               type="button"
               onClick={() => void applyLearned()}
               disabled={learning}

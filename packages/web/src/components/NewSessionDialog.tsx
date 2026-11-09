@@ -324,7 +324,7 @@ export function NewSessionView() {
 
         <div className="no-scrollbar mt-3 flex items-center gap-1.5 overflow-x-auto pb-0.5 max-md:-mx-4 max-md:px-4 md:justify-center">
           {HINTS.map(({ icon: Icon, label, prompt }) => (
-            <button
+            <button data-raw-button
               key={label}
               type="button"
               onClick={() => seedPrompt(prompt)}

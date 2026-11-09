@@ -511,37 +511,33 @@ export function RightPanel() {
     }
     if (id === 'memory') {
       return (
-        <button
-          type="button"
+        <Button
+          size="inline"
+          variant="ghost"
           onClick={() => summary?.cwd && openMemoryEditor({ scope: 'project', project: summary.cwd })}
           disabled={!summary?.cwd}
-          className="rounded px-1 py-0.5 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
         >
           编辑
-        </button>
+        </Button>
       )
     }
     if (id === 'wiki') {
       return (
-        <button
-          type="button"
+        <Button
+          size="inline"
+          variant="ghost"
           onClick={() => summary?.cwd && openWiki({ project: summary.env?.repoRoot || summary.cwd })}
           disabled={!summary?.cwd}
-          className="rounded px-1 py-0.5 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
         >
           浏览
-        </button>
+        </Button>
       )
     }
     if (id === 'changes') {
       return (
-        <button
-          type="button"
-          onClick={() => setChangesOpen(true)}
-          className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-        >
+        <Button size="inline" variant="ghost" onClick={() => setChangesOpen(true)}>
           审阅 <ArrowUpRight size={10} />
-        </button>
+        </Button>
       )
     }
     return null
@@ -574,13 +570,9 @@ export function RightPanel() {
           )}
           <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-border pt-1.5 text-[12px]">
             <span className="text-muted">共 {memory?.entries ?? 0} 条</span>
-            <button
-              type="button"
-              onClick={() => openMemoryEditor({ scope: 'global' })}
-              className="rounded px-1 py-0.5 text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-            >
+            <Button size="inline" variant="ghost" onClick={() => openMemoryEditor({ scope: 'global' })}>
               全局记忆
-            </button>
+            </Button>
           </div>
         </div>
       )
@@ -865,16 +857,16 @@ export function RightPanel() {
           </DetailRow>
         )}
         <DetailRow label="Secrets">
-          <button
-            type="button"
+          <Button
+            size="inline"
+            variant="ghost"
             onClick={() => openSettings('secrets')}
-            className="flex items-center gap-1 rounded px-1 py-0.5 text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-            data-tip="打开设置 → Secrets"
+            tooltip="打开设置 → Secrets"
           >
             <KeyRound size={10} className="text-muted" />
             {summary?.secretsCount ? `${summary.secretsCount} 个可用` : '未配置'}
             <ArrowUpRight size={10} className="text-muted" />
-          </button>
+          </Button>
         </DetailRow>
         <DetailRow label="主机">
           <span className="flex items-center gap-1.5">

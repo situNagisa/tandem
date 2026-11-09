@@ -374,7 +374,7 @@ function ReviewSection({ card, actions }: { card: BoardCard; actions: CardAction
             const on = picked.includes(finding.id)
             return (
               <li key={finding.id}>
-                <button
+                <button data-raw-button
                   type="button"
                   aria-pressed={on}
                   disabled={card.status !== 'review'}

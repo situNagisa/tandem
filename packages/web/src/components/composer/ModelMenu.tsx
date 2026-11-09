@@ -179,7 +179,7 @@ function useModelPanel({
             onSelect={() => onSelect(pick.profileId, pick.groupId, pick.model)}
             trailing={
               isCurrent(pick) && !price && !pricesLoading ? (
-                <button
+                <button data-raw-button
                   type="button"
                   tabIndex={-1}
                   aria-label={`为 ${pick.model} 设置单价`}

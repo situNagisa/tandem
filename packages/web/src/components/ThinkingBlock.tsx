@@ -87,7 +87,7 @@ export function ThinkingBlock({ text, streaming }: { text: string; streaming: bo
           </span>
         </div>
       ) : (
-        <button
+        <button data-raw-button
           onClick={() => {
             setMounted(true)
             setOpen((v) => !v)

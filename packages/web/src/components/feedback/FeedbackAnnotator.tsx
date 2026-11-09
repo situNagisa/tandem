@@ -336,7 +336,7 @@ export function FeedbackAnnotator({
         <span className="mr-1 text-[12.5px] font-medium text-white/90">标注截图</span>
         <div className="flex items-center gap-0.5 rounded-lg bg-white/10 p-0.5">
           {TOOLS.map((entry) => (
-            <button
+            <button data-raw-button
               key={entry.value}
               type="button"
               onClick={() => setTool(entry.value)}
@@ -354,7 +354,7 @@ export function FeedbackAnnotator({
         </div>
         <div className="flex items-center gap-1 rounded-lg bg-white/10 p-1">
           {COLORS.map((entry) => (
-            <button
+            <button data-raw-button
               key={entry.value}
               type="button"
               onClick={() => setColor(entry.value)}

@@ -179,7 +179,7 @@ export function SettingsDialog() {
     const expanded = !closedGroups.has(group.id)
     return (
       <div key={group.id} data-settings-group={group.id} className="col-span-3 sm:col-span-1">
-        <button
+        <button data-raw-button
           type="button"
           aria-expanded={expanded}
           onClick={(event) => {
@@ -298,7 +298,7 @@ export function SettingsDialog() {
                 <p className="px-2 py-3 text-[12px] text-muted">没有匹配的设置项</p>
               ) : (
                 searchMatches.map((item, i) => (
-                  <button
+                  <button data-raw-button
                     key={item.id}
                     type="button"
                     onMouseEnter={() => setSearchIndex(i)}
@@ -328,7 +328,7 @@ export function SettingsDialog() {
           )}
           {!query.trim() && (
             <div className="col-span-3 mt-auto pt-2 sm:col-span-1">
-              <button
+              <button data-raw-button
                 type="button"
                 onClick={() => {
                   close()

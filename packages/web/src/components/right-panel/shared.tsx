@@ -245,7 +245,7 @@ export function Card({
     >
       <div className={cn('flex min-h-4 items-center gap-1.5', !collapsed && 'mb-2')}>
         {collapsible ? (
-          <button
+          <button data-raw-button
             type="button"
             onClick={onToggle}
             aria-expanded={!collapsed}

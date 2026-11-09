@@ -233,7 +233,7 @@ function CommentMarker({
       }}
     >
       <RPopover.Anchor asChild>
-        <button
+        <button data-raw-button
           type="button"
           className="diff-comment-btn"
           data-open={pinned || undefined}
@@ -303,21 +303,12 @@ function CommentMarker({
                       className="w-full resize-none rounded-md border border-border bg-bg px-2 py-1.5 text-[12px] leading-5 text-text outline-none focus:border-[var(--t-border-strong)]"
                     />
                     <div className="mt-1.5 flex justify-end gap-1">
-                      <button
-                        type="button"
-                        className="rounded px-2 py-1 text-[12px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
-                        onClick={() => setEditingId(null)}
-                      >
+                      <Button size="inline" variant="ghost" onClick={() => setEditingId(null)}>
                         取消
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-md bg-[var(--t-primary-bg)] px-2.5 py-1 text-[12px] font-medium text-[var(--t-primary-fg)] transition-opacity disabled:opacity-40"
-                        disabled={!text.trim()}
-                        onClick={save}
-                      >
+                      </Button>
+                      <Button size="inline" variant="primary" disabled={!text.trim()} onClick={save}>
                         保存
-                      </button>
+                      </Button>
                     </div>
                   </>
                 ) : (
@@ -326,9 +317,9 @@ function CommentMarker({
                       {comment.text}
                     </p>
                     <div className="mt-1 flex justify-end gap-1">
-                      <button
-                        type="button"
-                        className="rounded px-2 py-1 text-[12px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
+                      <Button
+                        size="inline"
+                        variant="ghost"
                         onClick={() => {
                           setPinned(true)
                           setText(comment.text)
@@ -336,17 +327,17 @@ function CommentMarker({
                         }}
                       >
                         编辑
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded px-2 py-1 text-[12px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-danger"
+                      </Button>
+                      <Button
+                        size="inline"
+                        variant="danger-ghost"
                         onClick={() => {
                           onDelete(comment.id)
                           close()
                         }}
                       >
                         删除
-                      </button>
+                      </Button>
                     </div>
                   </>
                 )}
@@ -401,7 +392,7 @@ function AiMarker({
       }}
     >
       <RPopover.Anchor asChild>
-        <button
+        <button data-raw-button
           type="button"
           className="diff-comment-btn diff-ai-btn"
           data-ai="true"
@@ -465,36 +456,36 @@ function AiMarker({
             </p>
           )}
           <div className="mt-2 flex items-center justify-end gap-1">
-            <button
-              type="button"
-              className="rounded px-2 py-1 text-[12px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
+            <Button
+              size="inline"
+              variant="ghost"
               onClick={() => {
                 onAction(comment.id, 'false_positive')
                 close()
               }}
             >
               标记误报
-            </button>
-            <button
-              type="button"
-              className="rounded px-2 py-1 text-[12px] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text"
+            </Button>
+            <Button
+              size="inline"
+              variant="ghost"
               onClick={() => {
                 onAction(comment.id, 'ignore')
                 close()
               }}
             >
               忽略
-            </button>
-            <button
-              type="button"
-              className="rounded-md bg-[var(--t-primary-bg)] px-2.5 py-1 text-[12px] font-medium text-[var(--t-primary-fg)]"
+            </Button>
+            <Button
+              size="inline"
+              variant="primary"
               onClick={() => {
                 onAction(comment.id, 'accept')
                 close()
               }}
             >
               采纳
-            </button>
+            </Button>
           </div>
         </RPopover.Content>
       </RPopover.Portal>
@@ -729,7 +720,7 @@ export const DiffView = memo(function DiffView({
         <span className="shrink-0 font-mono text-[12px] text-[var(--t-git-plus)]">+{added}</span>
         <span className="shrink-0 font-mono text-[12px] text-[var(--t-git-minus)]">−{removed}</span>
         {wrapToggle ? (
-          <button
+          <button data-raw-button
             type="button"
             aria-pressed={wrap}
             onClick={() => setWrap((value) => !value)}
@@ -760,7 +751,7 @@ export const DiffView = memo(function DiffView({
           {display.map((row, i) => {
             if (row.type === 'gap') {
               return (
-                <button key={`gap-${row.key}`} onClick={() => expand(row.key)} className="chat-diff-more">
+                <button data-raw-button key={`gap-${row.key}`} onClick={() => expand(row.key)} className="chat-diff-more">
                   <ChevronsUpDown size={11} />
                   展开 {row.count} 行未改动内容
                 </button>

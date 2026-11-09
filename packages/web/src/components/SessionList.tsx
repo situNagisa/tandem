@@ -660,7 +660,7 @@ export function SessionList({
             />
           </>
         ) : (
-          <button
+          <button data-raw-button
             type="button"
             data-session-open="true"
             onClick={(e) => openSession(hostId, s.id, !!(e.metaKey || e.ctrlKey))}
@@ -840,7 +840,7 @@ export function SessionList({
                 side="top"
                 className="block w-full"
               >
-                <button
+                <button data-raw-button
                   onClick={() => openExternal(hostId, ext)}
                   className="anim-row-in flex h-11 w-full min-w-0 items-center gap-2 rounded-lg pl-[18px] pr-2 text-left text-[14px] text-text outline-none transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] md:h-[34px]"
                 >
@@ -888,7 +888,7 @@ export function SessionList({
                 data-host-indented={indented || undefined}
               >
                 <div className="group/proj flex h-8 min-w-0 items-center rounded-lg pr-0.5 transition-colors hover:bg-[var(--t-bg-hover)] max-sm:h-11">
-                  <button
+                  <button data-raw-button
                     onClick={() => toggleProject(project.key)}
                     className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg pl-1.5 text-left text-[13px] font-medium text-text-secondary transition-colors duration-[120ms] hover:text-text max-sm:h-11"
                     aria-expanded={!projCollapsed}
@@ -947,7 +947,7 @@ export function SessionList({
                   <div className="expand-inner space-y-0.5">
                     {entries}
                     {hiddenExternalCount > 0 && (
-                      <button
+                      <button data-raw-button
                         onClick={() =>
                           setExpandedExternal((s) => ({ ...s, [project.key]: true }))
                         }
@@ -958,7 +958,7 @@ export function SessionList({
                       </button>
                     )}
                     {!searching && externalExpanded && project.externals.length > 5 && (
-                      <button
+                      <button data-raw-button
                         onClick={() =>
                           setExpandedExternal((s) => {
                             const next = { ...s }
@@ -1036,7 +1036,7 @@ export function SessionList({
                 return (
                   <div key={host.id} className="mb-1" data-host-group={host.id}>
                     <div className="flex min-w-0 items-center gap-1.5 px-2.5 pb-1 pt-2">
-                      <button
+                      <button data-raw-button
                         onClick={() => toggleProject(hostKey)}
                         className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left text-[12px] font-medium text-text-tertiary transition-colors duration-[120ms] hover:text-text-secondary"
                         aria-expanded={!hostCollapsed}
@@ -1219,7 +1219,7 @@ export function SessionList({
           </p>
           <div className="flex gap-2">
             {(['merge', 'squash'] as const).map((strategy) => (
-              <button
+              <button data-raw-button
                 key={strategy}
                 onClick={() => merge && setMerge({ ...merge, strategy, error: undefined })}
                 className={cn(

@@ -164,7 +164,7 @@ export function SaveEvalCaseDialog({
                   <p className="px-2 py-3 text-[12px] text-muted">这个会话没有可用的用户消息。</p>
                 ) : (
                   messages.map((message, index) => (
-                    <button
+                    <button data-raw-button
                       key={message.id}
                       type="button"
                       onClick={() => setMessageId(message.id)}
@@ -206,7 +206,7 @@ export function SaveEvalCaseDialog({
                 {suites.filter((item) => item !== suite).length > 0 && (
                   <span className="flex flex-wrap gap-1 pt-0.5">
                     {suites.filter((item) => item !== suite).slice(0, 6).map((item) => (
-                      <button
+                      <button data-raw-button
                         key={item}
                         type="button"
                         onClick={() => setSuite(item)}

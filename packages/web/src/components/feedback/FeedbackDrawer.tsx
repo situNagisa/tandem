@@ -285,7 +285,7 @@ export function FeedbackDrawer({
                 <span className="mt-0.5 flex w-4 shrink-0 items-center justify-center text-[10px] font-semibold text-muted">
                   {index + 1}
                 </span>
-                <button
+                <button data-raw-button
                   type="button"
                   onClick={() => onAnnotate(item)}
                   data-tip="标注截图"
@@ -344,7 +344,7 @@ export function FeedbackDrawer({
                       <span className="rounded bg-surface-2 px-1 py-0.5 text-[9.5px] text-muted">参考 {item.references.length}</span>
                     ) : null}
                   </div>
-                  <button
+                  <button data-raw-button
                     type="button"
                     onClick={() => onHighlight(item)}
                     className="mt-0.5 line-clamp-2 w-full text-left text-[12px] leading-4 text-text hover:text-[#F97316]"
@@ -353,21 +353,21 @@ export function FeedbackDrawer({
                     {item.text}
                   </button>
                   <div className="mt-0.5 flex items-center gap-0.5">
-                    <button
+                    <button data-raw-button
                       type="button"
                       onClick={() => onHighlight(item)}
                       className="rounded px-1 py-0.5 text-[9.5px] text-muted hover:bg-surface-2 hover:text-text"
                     >
                       定位
                     </button>
-                    <button
+                    <button data-raw-button
                       type="button"
                       onClick={() => onEdit(item)}
                       className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[9.5px] text-muted hover:bg-surface-2 hover:text-text"
                     >
                       <Pencil size={9} /> 编辑
                     </button>
-                    <button
+                    <button data-raw-button
                       type="button"
                       onClick={() => onDelete(item.id)}
                       className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[9.5px] text-muted hover:bg-surface-2 hover:text-danger"

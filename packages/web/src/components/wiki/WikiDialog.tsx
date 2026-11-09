@@ -225,7 +225,7 @@ export function WikiDialog() {
                   <ul className="space-y-0.5">
                     {results.map((hit) => (
                       <li key={hit.pageId}>
-                        <button
+                        <button data-raw-button
                           type="button"
                           onClick={() => {
                             setSelected(hit.pageId)
@@ -251,7 +251,7 @@ export function WikiDialog() {
                     <ul className="space-y-0.5">
                       {group.items.map((item) => (
                         <li key={item.id}>
-                          <button
+                          <button data-raw-button
                             type="button"
                             onClick={() => setSelected(item.id)}
                             className={cn(
@@ -319,7 +319,7 @@ export function WikiDialog() {
                     <p className="px-1 py-1 text-[12px] text-muted">没有匹配页面</p>
                   ) : (
                     results.map((hit) => (
-                      <button
+                      <button data-raw-button
                         key={hit.pageId}
                         type="button"
                         onClick={() => {
@@ -402,13 +402,9 @@ export function WikiDialog() {
                   <span className="tabular-nums text-muted">
                     {running.done}/{running.total}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => void cancelJob()}
-                    className="rounded px-1.5 py-0.5 text-[12px] text-muted hover:bg-[var(--t-bg-hover)] hover:text-text"
-                  >
+                  <Button size="inline" variant="ghost" onClick={() => void cancelJob()}>
                     取消
-                  </button>
+                  </Button>
                 </div>
                 <div className="mt-1.5 h-0.5 overflow-hidden rounded-full bg-[var(--t-bg-active)]/60">
                   <div

@@ -33,7 +33,7 @@ export function ContextNote({ kind, text }: { kind: string; text: string }) {
   const [mounted, setMounted] = useState(false)
   return (
     <div className="my-0.5 min-w-0">
-      <button
+      <button data-raw-button
         type="button"
         aria-expanded={open}
         onClick={() => {
@@ -91,7 +91,7 @@ function InjectionSegments({
         const open = openId === seg.id
         return (
           <div key={seg.id} className="min-w-0">
-            <button
+            <button data-raw-button
               type="button"
               aria-expanded={open}
               onClick={() => setOpenId(open ? null : seg.id)}
@@ -149,7 +149,7 @@ export function InjectionsNote({ cwd }: { cwd?: string }) {
   if (!injections || injections.segments.length === 0) return null
   return (
     <div className="msg-row mb-1 min-w-0">
-      <button
+      <button data-raw-button
         type="button"
         aria-expanded={open}
         onClick={() => {

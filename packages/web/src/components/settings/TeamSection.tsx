@@ -93,7 +93,7 @@ function DirEditor({
             <span className="truncate" data-tip={dir}>
               {dir}
             </span>
-            <button
+            <button data-raw-button
               type="button"
               aria-label={`移除 ${dir}`}
               className="shrink-0 text-muted hover:text-danger"

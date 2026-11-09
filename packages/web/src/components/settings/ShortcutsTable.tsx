@@ -96,30 +96,30 @@ export function ShortcutsTable() {
                 >
                   {isRecording ? '按下快捷键…' : shortcut ? formatShortcut(shortcut) : '未绑定'}
                 </kbd>
-                <button
-                  type="button"
+                <Button
+                  size="inline"
+                  variant="ghost"
                   onClick={() => {
                     setWarning(null)
                     setRecording(isRecording ? null : command.id)
                   }}
                   aria-label={`修改 ${command.title} 快捷键`}
-                  className="rounded px-1 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
                 >
                   {isRecording ? '取消' : '修改'}
-                </button>
+                </Button>
                 {shortcut !== command.defaultShortcut && (
-                  <button
-                    type="button"
+                  <Button
+                    size="inline"
+                    variant="ghost"
                     onClick={() => {
                       setCommandShortcut(command.id, null)
                       setWarning(null)
                       setVersion((v) => v + 1)
                     }}
                     aria-label={`恢复 ${command.title} 默认快捷键`}
-                    className="rounded px-1 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
                   >
                     默认
-                  </button>
+                  </Button>
                 )}
               </dd>
             </div>

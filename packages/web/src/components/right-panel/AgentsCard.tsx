@@ -85,7 +85,7 @@ function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number;
           <span key={i} className="agent-guide" />
         ))}
       </span>
-      <button
+      <button data-raw-button
         type="button"
         onClick={() => {
           if (!id) return

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import { Combobox } from '../../ui/Combobox'
+import { Button, IconButton } from '../../ui/Button'
 import type { PriceMap } from './shared'
 
 export function PriceOverrides({
@@ -57,17 +58,19 @@ export function PriceOverrides({
                 className="h-6 w-14 rounded border border-border bg-surface px-1 text-right font-mono text-[13px] outline-none focus:border-border-strong"
               />
               <span className="text-[13px] text-muted">out</span>
-              <button
+              <IconButton
+                size="inline"
+                variant="danger-ghost"
+                label={`删除 ${id} 单价`}
+                className="size-5 [&_svg]:size-[10px]"
                 onClick={() => {
                   const next = { ...price }
                   delete next[id]
                   onChange(next)
                 }}
-                aria-label={`删除 ${id} 单价`}
-                className="flex size-5 items-center justify-center rounded text-muted hover:text-danger"
               >
                 <X size={10} />
-              </button>
+              </IconButton>
             </div>
           ))}
         </div>
@@ -83,13 +86,9 @@ export function PriceOverrides({
           onSubmit={add}
           className="h-6 flex-1 font-mono text-[13px]"
         />
-        <button
-          onClick={add}
-          disabled={!model.trim()}
-          className="h-6 shrink-0 rounded border border-border px-1.5 text-[13px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] disabled:opacity-40"
-        >
+        <Button size="inline" variant="secondary" onClick={add} disabled={!model.trim()}>
           添加
-        </button>
+        </Button>
       </div>
     </div>
   )

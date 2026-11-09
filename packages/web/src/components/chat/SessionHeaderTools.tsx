@@ -138,7 +138,7 @@ export function SubagentsButton() {
           ) : (
             <div className="max-h-[360px] overflow-y-auto pb-1">
               {rows.map((row) => (
-                <button
+                <button data-raw-button
                   key={row.id}
                   type="button"
                   onClick={() => {

@@ -324,7 +324,7 @@ export function LoginGate() {
               {stage === 'login' ? (
                 <>
                   还没有账号？
-                  <button
+                  <button data-raw-button
                     type="button"
                     data-testid="login-to-register"
                     className="ml-1 text-accent-text hover:underline"
@@ -339,7 +339,7 @@ export function LoginGate() {
               ) : (
                 <>
                   已有账号？
-                  <button
+                  <button data-raw-button
                     type="button"
                     className="ml-1 text-accent-text hover:underline"
                     onClick={() => {
@@ -361,7 +361,7 @@ export function LoginGate() {
             <span className="min-w-0 truncate" data-tip={workstationUrl}>
               {status?.name ? `「${status.name}」` : '工作站'} · {workstationUrl}
             </span>
-            <button
+            <button data-raw-button
               type="button"
               data-testid="login-url-change"
               className="shrink-0 text-accent-text hover:underline"

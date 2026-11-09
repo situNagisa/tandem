@@ -187,7 +187,7 @@ export function PromptsSection() {
                   {CATEGORY_LABEL[category]}
                 </div>
                 {list.map((item) => (
-                  <button
+                  <button data-raw-button
                     key={item.key}
                     type="button"
                     onClick={() => selectItem(item.key)}
@@ -219,7 +219,7 @@ export function PromptsSection() {
           })}
         </nav>
 
-        <div data-setting-id="prompts.editor" ref={editorRef} className="min-w-0 flex-1 scroll-mt-2">
+        <div data-setting-id="prompts.editor" ref={editorRef} className="min-w-0 flex-1 scroll-mt-1">
           {!selected ? (
             <div className="rounded-xl border border-border/70 px-3 py-6 text-center text-[12.5px] text-muted">
               {loading ? '正在加载提示词…' : '没有可展示的提示词'}
@@ -291,7 +291,7 @@ export function PromptsSection() {
                 rows={selected.key === 'toolGuidance' || selected.key === 'baseBehavior' ? 14 : 10}
                 spellCheck={false}
                 className={cn(
-                  'w-full resize-y rounded-xl border border-border bg-surface px-3 py-2.5 font-mono text-[13px] leading-5 text-text outline-none placeholder:text-muted focus:border-border-strong',
+                  'w-full resize-y rounded-lg border border-border bg-surface px-3 py-2.5 font-mono text-[13px] leading-5 text-text outline-none placeholder:text-muted focus:border-border-strong',
                   !selected.editable && 'cursor-default bg-[var(--t-bg-subtle)] text-text-soft',
                 )}
               />

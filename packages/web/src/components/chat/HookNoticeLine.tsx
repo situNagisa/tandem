@@ -50,7 +50,7 @@ export function HookNoticeLine({ notices }: { notices: HookNotice[] }) {
         const hint = group.messages[0]?.split('\n')[0] ?? ''
         return (
           <div key={group.key}>
-            <button
+            <button data-raw-button
               type="button"
               onClick={() => setOpen((v) => !v)}
               aria-expanded={open}

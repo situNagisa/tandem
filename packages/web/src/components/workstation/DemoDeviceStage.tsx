@@ -134,7 +134,7 @@ export function DemoDeviceStage({ mounts }: { mounts: DeviceMount[] }) {
           演示画面
           <span className="ml-1.5 text-muted">已挂到当前会话 · {demoMounts.length} 个演示设备</span>
         </span>
-        <button
+        <button data-raw-button
           type="button"
           aria-expanded={open}
           aria-label={open ? '收起演示画面' : '展开演示画面'}

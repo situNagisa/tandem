@@ -298,13 +298,9 @@ export function SubagentsSection() {
         <div className="rounded-xl border border-border bg-surface p-3">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-[13px] font-medium">{draft.id ? '编辑预设' : '新建预设'}</span>
-            <button
-              type="button"
-              onClick={() => setDraft(null)}
-              className="text-[12px] text-muted hover:text-text"
-            >
+            <Button size="inline" variant="ghost" onClick={() => setDraft(null)}>
               取消
-            </button>
+            </Button>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-1 text-[12px] text-muted">

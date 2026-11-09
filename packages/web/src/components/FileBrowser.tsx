@@ -92,7 +92,7 @@ function DirNode({
 
   return (
     <div>
-      <button
+      <button data-raw-button
         type="button"
         onClick={() => setOpen((v) => !v)}
         style={{ paddingLeft: 6 + depth * 12 }}
@@ -154,7 +154,7 @@ function FileRow({
 }) {
   const selected = selectedPath === normalizeFileRefPath(entry.path)
   return (
-    <button
+    <button data-raw-button
       type="button"
       onClick={() => onPick(normalizeFileRefPath(entry.path))}
       style={{ paddingLeft: 6 + depth * 12 }}
@@ -189,7 +189,7 @@ function RootNode({
 
   return (
     <div>
-      <button
+      <button data-raw-button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex h-6 w-full items-center gap-1 rounded pl-1.5 pr-2 text-left font-medium text-text transition-colors hover:bg-[var(--t-bg-hover)]"
@@ -308,7 +308,7 @@ export function FileBrowser({
             </div>
           ) : matches && matches.length > 0 ? (
             matches.map((rel) => (
-              <button
+              <button data-raw-button
                 key={rel}
                 type="button"
                 onClick={() => onPick(normalizeFileRefPath(joinPath(cwd, rel)))}

@@ -2,32 +2,40 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { cn } from '../../lib/cn'
 import { Tip } from './Tooltip'
 
-export type ControlSize = 'sm' | 'md' | 'lg'
+/**
+ * 控件 32 / 图标 32 / 行内 24（打分卡 U1-A）。
+ * sm / lg 保留为类型兼容，渲染高度与 md 相同；新代码只用 md 与 inline。
+ */
+export type ControlSize = 'inline' | 'sm' | 'md' | 'lg'
 export type ButtonVariant = 'primary' | 'accent' | 'secondary' | 'ghost' | 'danger-ghost'
 
+const CONTROL_CLASS = 'h-[32px] rounded-lg px-3 gap-1.5 max-md:min-h-11 [&_svg]:size-4'
 const SIZE_CLASS: Record<ControlSize, string> = {
-  sm: 'h-[28px] rounded-md px-2.5 gap-1.5 [&_svg]:size-3.5',
-  md: 'h-[32px] rounded-lg px-3 gap-1.5 [&_svg]:size-4',
-  lg: 'h-[36px] rounded-[10px] px-3.5 gap-2 [&_svg]:size-4',
+  inline: 'h-6 rounded-md px-1 gap-1 text-[12px] [&_svg]:size-3.5',
+  sm: CONTROL_CLASS,
+  md: CONTROL_CLASS,
+  lg: CONTROL_CLASS,
 }
 
+const ICON_CLASS = 'size-[32px] rounded-lg max-md:size-11 [&_svg]:size-4'
 const ICON_SIZE_CLASS: Record<ControlSize, string> = {
-  sm: 'size-[28px] rounded-md [&_svg]:size-3.5',
-  md: 'size-[32px] rounded-lg [&_svg]:size-4',
-  lg: 'size-[36px] rounded-[10px] [&_svg]:size-4',
+  inline: 'size-6 rounded-md [&_svg]:size-3.5',
+  sm: ICON_CLASS,
+  md: ICON_CLASS,
+  lg: ICON_CLASS,
 }
 
 const VARIANT_CLASS: Record<ButtonVariant, string> = {
   primary:
-    'border border-transparent bg-[var(--t-primary-bg)] text-[var(--t-primary-fg)] hover:bg-[var(--t-primary-hover)]',
+    'border border-transparent bg-[var(--t-primary-bg)] text-[var(--t-primary-fg)] hover:bg-[var(--t-primary-hover)] active:opacity-90',
   accent:
-    'border border-transparent bg-accent-strong text-on-accent hover:bg-accent-strong-hover',
+    'border border-transparent bg-accent-strong text-on-accent hover:bg-accent-strong-hover active:opacity-90',
   secondary:
-    'border border-border bg-[var(--t-surface-2)] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
+    'border border-border bg-[var(--t-surface-2)] text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text active:bg-[var(--t-bg-active)]',
   ghost:
-    'border border-transparent text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
+    'border border-transparent text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text active:bg-[var(--t-bg-active)]',
   'danger-ghost':
-    'border border-transparent text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-danger',
+    'border border-transparent text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-danger active:bg-[var(--t-bg-active)]',
 }
 
 const BASE =

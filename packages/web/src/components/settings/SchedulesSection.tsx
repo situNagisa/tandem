@@ -314,15 +314,16 @@ export function SchedulesSection() {
       {!host ? (
         <p className="py-8 text-center text-[13px] text-muted">还没有连接主机。</p>
       ) : schedules.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border px-4 py-12 text-center">
-          <CalendarClock size={22} className="text-muted" />
-          <p className="max-w-[420px] text-[12.5px] leading-5 text-muted">
-            还没有定时任务。可以设置「每个工作日 09:00 汇总昨天的合并记录」这类例行工作。
-          </p>
-          <Button size="sm" variant="secondary" onClick={openCreate} icon={<Plus size={13} />}>
-            新建第一个任务
-          </Button>
-        </div>
+        <EmptyState
+          icon={<CalendarClock size={18} />}
+          title={<>还没有定时任务</>}
+          hint={<>可以设置「每个工作日 09:00 汇总昨天的合并记录」这类例行工作。</>}
+          action={
+            <Button size="sm" variant="secondary" onClick={openCreate} icon={<Plus size={13} />}>
+              新建第一个任务
+            </Button>
+          }
+        />
       ) : (
         <div className="overflow-hidden rounded-xl border border-border">
           {schedules.map((schedule) => {
@@ -367,7 +368,7 @@ export function SchedulesSection() {
                       <span className={cn('truncate', last.ok ? 'text-muted' : 'text-danger')} data-tip={last.error}>
                         {formatRunAt(last.at)} · {last.ok ? '成功' : `失败：${last.error ?? '未知错误'}`}
                         {last.sessionId && (
-                          <button
+                          <button data-raw-button
                             type="button"
                             onClick={() => openSession(host.id, last.sessionId!)}
                             className="ml-1 text-text-soft underline-offset-2 hover:underline"
@@ -677,7 +678,7 @@ function Field({
   label,
   hint,
   className,
-  as: Tag = 'label',
+  as: _Tag = 'label',
   children,
 }: {
   label: string

@@ -492,7 +492,7 @@ function MobileSplitPager({
       <div className="relative flex h-8 shrink-0 items-center justify-center border-b border-border/60">
         <div role="tablist" aria-label="分屏会话切换" className="flex items-center gap-2">
           {panes.map((pane, index) => (
-            <button
+            <button data-raw-button
               key={paneKey(pane.hostId, pane.sessionId)}
               type="button"
               role="tab"

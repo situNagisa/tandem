@@ -605,7 +605,7 @@ export function EvalsSection() {
                         const result = findResult(run, testCase.name, config.id)
                         return (
                           <td key={config.id} className="px-2 py-2 align-top">
-                            <button
+                            <button data-raw-button
                               type="button"
                               onClick={() => setTrace({ caseName: testCase.name, configId: config.id })}
                               className="flex w-full flex-col items-start gap-0.5 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-[var(--t-bg-hover)]"

@@ -488,7 +488,7 @@ export function TopBar() {
               aria-label="重命名会话"
             />
           ) : (
-            <button
+            <button data-raw-button
               onClick={() => {
                 committingRef.current = false
                 cancelEditRef.current = false
@@ -620,7 +620,7 @@ export function TopBar() {
       {isMobile && hasSession && (
         <div className="flex w-full min-w-0 items-center gap-0.5 md:hidden">
           {turnTotal >= 2 && (
-            <button
+            <button data-raw-button
               type="button"
               onClick={() => setTurnSheetOpen(true)}
               aria-label="打开轮次大纲"
@@ -658,7 +658,7 @@ export function TopBar() {
         <div className="pointer-events-none absolute inset-x-0 top-full z-20 flex h-6 items-center justify-center gap-1.5 border-b border-border/60 bg-bg/95 text-[12px] text-muted backdrop-blur-sm">
           <span className="size-1.5 rounded-full bg-muted/60 running-dot" />
           <span>重新连接中…</span>
-          <button
+          <button data-raw-button
             onClick={() => activeHostId && retryHost(activeHostId)}
             className="pointer-events-auto ml-1 rounded px-1 text-[12px] text-text-soft underline-offset-2 transition-colors hover:text-text hover:underline"
           >

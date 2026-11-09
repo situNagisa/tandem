@@ -85,7 +85,7 @@ export function TurnOutlineSheet({
               ? '轮次大纲 · 摘要'
               : `轮次大纲 · 第 ${activeMark?.no ?? active} / ${realTotal} 轮`}
           </span>
-          <button type="button" className="turn-sheet-close" onClick={onClose} aria-label="关闭">
+          <button data-raw-button type="button" className="turn-sheet-close" onClick={onClose} aria-label="关闭">
             <X size={18} />
           </button>
         </div>
@@ -99,7 +99,7 @@ export function TurnOutlineSheet({
         >
           <div style={{ height: turns.length * ROW_H, position: 'relative' }}>
             {rows.map((mark) => (
-              <button
+              <button data-raw-button
                 key={mark.id}
                 type="button"
                 className="turn-sheet-row"

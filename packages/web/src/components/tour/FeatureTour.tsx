@@ -95,8 +95,8 @@ async function runTarget(target: ChangelogTarget): Promise<void> {
 
 function TourPill({ onOpen, onDismiss }: { onOpen: () => void; onDismiss: () => void }) {
   return (
-    <div className={`${CARD_POSITION} flex items-stretch overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-lg)]`}>
-      <button
+    <div className={`${CARD_POSITION} flex items-stretch overflow-hidden rounded-xl border border-border bg-[var(--t-bg-elevated)] shadow-[var(--shadow-lg)]`}>
+      <button data-raw-button
         type="button"
         onClick={onOpen}
         className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-[var(--t-bg-hover)]"
@@ -107,7 +107,7 @@ function TourPill({ onOpen, onDismiss }: { onOpen: () => void; onDismiss: () => 
         <span className="min-w-0 flex-1 text-[13px] font-medium">新功能 · {LATEST_CHANGELOG_ITEMS.length} 项</span>
         <ArrowRight size={13} className="shrink-0 text-muted" />
       </button>
-      <button
+      <button data-raw-button
         type="button"
         onClick={onDismiss}
         aria-label="暂时关闭新功能提示"
@@ -127,7 +127,7 @@ function TourPanel({ onClose, onJump }: { onClose: () => void; onJump: (entry: C
   return (
     <section
       aria-label="新功能导览"
-      className={`${CARD_POSITION} flex max-h-[min(70vh,560px)] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-lg)]`}
+      className={`${CARD_POSITION} flex max-h-[min(70vh,560px)] flex-col overflow-hidden rounded-xl border border-border bg-[var(--t-bg-elevated)] shadow-[var(--shadow-lg)]`}
     >
       <header className="flex shrink-0 items-start gap-2 border-b border-border px-3 py-2.5">
         <span className="mt-0.5 text-accent-text">
@@ -137,7 +137,7 @@ function TourPanel({ onClose, onJump }: { onClose: () => void; onJump: (entry: C
           <h2 className="text-[13px] font-semibold">新功能 · {LATEST_CHANGELOG_ITEMS.length} 项</h2>
           <p className="mt-0.5 text-[12px] text-muted">版本 {CHANGELOG_VERSION} · 最近两天</p>
         </div>
-        <button
+        <button data-raw-button
           type="button"
           onClick={onClose}
           aria-label="关闭新功能导览"
@@ -148,7 +148,7 @@ function TourPanel({ onClose, onJump }: { onClose: () => void; onJump: (entry: C
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
         {LATEST_CHANGELOG_ITEMS.map((entry) => (
-          <button
+          <button data-raw-button
             key={entry.id}
             type="button"
             onClick={() => onJump(entry)}
@@ -216,7 +216,7 @@ function OnboardingCard({
   return (
     <section
       aria-label="上手引导"
-      className={`${CARD_POSITION} rounded-xl border border-border bg-surface shadow-[var(--shadow-lg)]`}
+      className={`${CARD_POSITION} rounded-xl border border-border bg-[var(--t-bg-elevated)] shadow-[var(--shadow-lg)]`}
     >
       <header className="flex items-center gap-2 border-b border-border px-3 py-2.5">
         <span className="flex size-6 items-center justify-center rounded-full bg-[var(--t-bg-active)] text-text-secondary">
@@ -243,13 +243,9 @@ function OnboardingCard({
       </header>
       <p className="px-3 py-2.5 text-[12.5px] leading-5 text-text-soft">{current.body}</p>
       <footer className="flex items-center gap-2 px-3 pb-3">
-        <button
-          type="button"
-          onClick={onSkip}
-          className="text-[12px] text-muted underline-offset-2 transition-colors hover:text-text hover:underline"
-        >
+        <Button size="inline" variant="ghost" onClick={onSkip}>
           跳过
-        </button>
+        </Button>
         <span className="flex-1" />
         {current.tab && (
           <Button size="sm" variant="secondary" onClick={() => onOpenSettings(current.tab!)}>

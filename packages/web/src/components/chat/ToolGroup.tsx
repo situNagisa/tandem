@@ -69,7 +69,7 @@ export const ToolGroup = memo(
 
     return (
       <div className={cn('my-1', animate && 'chat-msg-enter')}>
-        <button
+        <button data-raw-button
           onClick={() => {
             setMounted(true)
             setOpen((v) => !v)

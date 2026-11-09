@@ -59,7 +59,7 @@ const EnvTrigger = forwardRef<HTMLButtonElement, EnvTriggerProps>(function EnvTr
   ref,
 ) {
   return (
-    <button
+    <button data-raw-button
       {...rest}
       ref={ref}
       type="button"
@@ -321,7 +321,7 @@ export function FolderBrowser({
           placeholder="筛选文件夹，或输入路径"
           className="h-full min-w-0 flex-1 bg-transparent font-mono text-[12px] text-text outline-none placeholder:font-sans placeholder:text-[12.5px] placeholder:text-muted"
         />
-        <button
+        <button data-raw-button
           type="button"
           onClick={useCurrent}
           aria-label={useLabel}

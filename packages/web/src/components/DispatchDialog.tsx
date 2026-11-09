@@ -251,7 +251,7 @@ export function DispatchDialog({
           {recents.length > 0 && (
             <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-0.5">
               {recents.slice(0, 5).map((dir) => (
-                <button
+                <button data-raw-button
                   key={dir}
                   type="button"
                   onClick={() => setCwd(dir)}

@@ -129,7 +129,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
             {urls.length > 1 && (
               <div className="flex flex-wrap gap-1">
                 {urls.map((item, i) => (
-                  <button
+                  <button data-raw-button
                     key={item}
                     onClick={() => setActive(i)}
                     className={cn(

@@ -372,7 +372,7 @@ function FeedbackEditor({
       />
       <div
         {...{ [UI_ATTR]: '' }}
-        className="pointer-events-auto fixed z-[140] w-[min(440px,calc(100vw-16px))] rounded-xl border border-border bg-surface p-2.5 shadow-lg"
+        className="pointer-events-auto fixed z-[140] w-[min(440px,calc(100vw-16px))] rounded-xl border border-border bg-[var(--t-bg-elevated)] p-2.5 shadow-lg"
         style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: -9999 }}
         ref={panelRef}
         role="dialog"
@@ -405,7 +405,7 @@ function FeedbackEditor({
           </span>
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-          <button
+          <button data-raw-button
             type="button"
             onClick={() => setTagOpen((open) => !open)}
             className={cn(
@@ -422,7 +422,7 @@ function FeedbackEditor({
           {editor.causeId ? (
             <span className="inline-flex h-6 items-center gap-1 rounded-full bg-[#F97316]/12 px-2 text-[11.5px] text-[#F97316]">
               根因建议 {editor.causeId}
-              <button
+              <button data-raw-button
                 type="button"
                 aria-label="清除根因建议"
                 data-tip={editor.causeTitle}
@@ -439,7 +439,7 @@ function FeedbackEditor({
           <div className="mt-1.5 max-h-36 space-y-1.5 overflow-y-auto rounded-lg border border-border bg-[var(--t-bg-subtle)] p-1.5">
             <div className="flex flex-wrap gap-1">
               {FEEDBACK_FEATURE_OPTIONS.map((feature) => (
-                <button
+                <button data-raw-button
                   key={feature.id}
                   type="button"
                   onClick={() => onTagChange(feature.id, editor.causeId)}
@@ -456,7 +456,7 @@ function FeedbackEditor({
               ))}
             </div>
             <div className="flex flex-wrap gap-1 border-t border-border pt-1.5">
-              <button
+              <button data-raw-button
                 type="button"
                 onClick={() => onTagChange(editor.featureId, undefined)}
                 className={cn(
@@ -469,7 +469,7 @@ function FeedbackEditor({
                 无根因
               </button>
               {FEEDBACK_CAUSE_RULES.map((rule) => (
-                <button
+                <button data-raw-button
                   key={rule.id}
                   type="button"
                   onClick={() => onTagChange(editor.featureId, rule.id)}
@@ -512,7 +512,7 @@ function FeedbackEditor({
         {(annotateSource || references.length > 0) && (
           <div className="mt-1.5 flex items-start gap-1.5 overflow-x-auto pb-0.5">
             {annotateSource && (
-              <button
+              <button data-raw-button
                 type="button"
                 onClick={onAnnotate}
                 data-tip="打开标注编辑器"
@@ -537,7 +537,7 @@ function FeedbackEditor({
               >
                 <img src={reference.dataURL} alt={reference.name} className="size-full object-cover" draggable={false} />
                 <span className="absolute left-0 top-0 rounded-br bg-black/60 px-1 text-[8.5px] text-white">参考</span>
-                <button
+                <button data-raw-button
                   type="button"
                   aria-label="移除参考图"
                   onClick={() => onReferencesChange(references.filter((entry) => entry.id !== reference.id))}
@@ -1768,7 +1768,7 @@ export function FeedbackMode() {
           </div>
         )}
         {!verify && badges.map(({ item, index, left, top }) => (
-          <button
+          <button data-raw-button
             key={item.id}
             {...{ [UI_ATTR]: '' }}
             type="button"
@@ -1801,7 +1801,7 @@ export function FeedbackMode() {
           {pendingFeature && (
             <span className="flex items-center gap-1 rounded-full bg-[#F97316]/12 px-2 py-0.5 text-[11px] text-[#F97316]">
               标记：{pendingFeature.featureName}
-              <button
+              <button data-raw-button
                 type="button"
                 aria-label="取消功能标记"
                 onClick={() => useFeedbackStore.getState().setPendingFeature(null)}
@@ -1841,7 +1841,7 @@ export function FeedbackMode() {
           {pendingVideo && (
             <span className="flex items-center gap-1 rounded-full bg-[#F97316]/12 px-2 py-0.5 text-[10.5px] text-[#F97316]">
               录屏待附加
-              <button
+              <button data-raw-button
                 type="button"
                 aria-label="丢弃录屏"
                 onClick={() => setPendingVideo(null)}
@@ -1876,7 +1876,7 @@ export function FeedbackMode() {
       {verify && verifyEntry && (
         <div
           {...{ [UI_ATTR]: '' }}
-          className="pointer-events-auto fixed bottom-4 left-1/2 z-[130] w-[min(560px,calc(100vw-16px))] -translate-x-1/2 rounded-xl border border-border bg-surface p-2.5 shadow-lg"
+          className="pointer-events-auto fixed bottom-4 left-1/2 z-[130] w-[min(560px,calc(100vw-16px))] -translate-x-1/2 rounded-xl border border-border bg-[var(--t-bg-elevated)] p-2.5 shadow-lg"
         >
           <div className="flex items-center gap-2">
             <span className="rounded bg-[#F97316]/15 px-1.5 py-0.5 text-[10.5px] font-semibold text-[#F97316]">

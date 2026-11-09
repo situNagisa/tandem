@@ -113,7 +113,7 @@ export function ContextSpaceSection({
   }
   return (
     <div>
-      <button
+      <button data-raw-button
         type="button"
         onClick={toggle}
         aria-expanded={!collapsed}
@@ -145,7 +145,7 @@ export function ContextSpaceSection({
                 data-message-id={turn.messageId}
               >
                 <div className="group/row flex min-h-6 items-center rounded-md transition-colors hover:bg-[var(--t-bg-hover)]">
-                  <button
+                  <button data-raw-button
                     type="button"
                     data-context-turn-open="true"
                     onClick={() => jump(turn.messageId)}
@@ -164,7 +164,7 @@ export function ContextSpaceSection({
                     </span>
                   </button>
                   {detail.length > 1 ? (
-                    <button
+                    <button data-raw-button
                       type="button"
                       data-context-turn-toggle="true"
                       aria-expanded={open}
@@ -185,7 +185,7 @@ export function ContextSpaceSection({
                 {open ? (
                   <div className="ml-1.5 border-l border-border pl-1">
                     {detail.map((item, index) => (
-                      <button
+                      <button data-raw-button
                         key={`${item.messageId}-${item.kind}-${index}`}
                         type="button"
                         data-context-nested="true"
@@ -311,7 +311,7 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
       panelWidth="min(92vw, 352px)"
       panelClassName="p-3"
       trigger={({ toggle, open }) => (
-        <button
+        <button data-raw-button
           type="button"
           onClick={toggle}
           aria-label={noData ? '暂无上下文数据' : `上下文 ${pct}%`}
@@ -443,7 +443,7 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
                   {formatTokens(usage?.cacheWriteTokens ?? 0)}
                 </span>
               </span>
-              <button
+              <button data-raw-button
                 type="button"
                 onClick={() => compact(close)}
                 disabled={running || compactDisabled}

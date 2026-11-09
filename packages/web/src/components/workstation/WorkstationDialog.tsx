@@ -20,13 +20,13 @@ import type { HostConfig } from '../../lib/types'
 import { copyText } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
+import { Button, IconButton } from '../ui/Button'
 import { ListRow } from '../ui/ListRow'
 import { SegmentedControl } from '../ui/Controls'
 import { Tip } from '../ui/Tooltip'
 import { CodeBlock } from '../CodeBlock'
 
 const EMPTY_MOUNTS: DeviceMount[] = []
-import { Button, IconButton } from '../ui/Button'
 
 // 虚拟串口只是开发/回归开关，发布版不显示提示，server 也不会启用。
 const MOCK_SERIAL_HINT = __TANDEM_DEBUG__
@@ -549,14 +549,9 @@ function BackendNote({
       <div className="flex items-center gap-2">
         <span className="shrink-0 text-text-tertiary">{icon}</span>
         <span className="min-w-0 flex-1">{title}</span>
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          className="shrink-0 rounded px-1 text-[12px] text-text-soft underline-offset-2 hover:bg-[var(--t-bg-hover)] hover:underline"
-        >
+        <Button size="inline" variant="ghost" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
           如何安装 / 设置路径
-        </button>
+        </Button>
       </div>
       {open && (
         <div className="mt-1.5 rounded-md bg-[var(--t-bg-subtle)] px-2.5 py-2.5">
@@ -724,7 +719,7 @@ function HostSection({
           trailing={
             <span className="flex items-center gap-1">
               {issue && (
-                <button
+                <button data-raw-button
                   type="button"
                   onClick={() => setFixOpen((open) => (open === device.id ? null : device.id))}
                   className={cn(
@@ -864,7 +859,7 @@ function HostSection({
             {realDevices.map(renderDevice)}
             {builtinDevices.length > 0 && (
               <>
-                <button
+                <button data-raw-button
                   type="button"
                   onClick={() => setShowBuiltin((open) => !open)}
                   aria-expanded={showBuiltin}

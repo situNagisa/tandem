@@ -527,7 +527,7 @@ export function SearchDialog() {
                 {group.items.map((item) => {
                   const i = flatIndex++
                   return (
-                    <button
+                    <button data-raw-button
                       key={item.key}
                       data-palette-index={i}
                       data-palette-kind={item.kind}
@@ -621,7 +621,7 @@ export function SearchDialog() {
               { prefix: '@', label: '会话' },
               { prefix: '#', label: '设置' },
             ].map((entry) => (
-              <button
+              <button data-raw-button
                 key={entry.prefix}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
@@ -634,7 +634,7 @@ export function SearchDialog() {
               </button>
             ))}
           </span>
-          <button
+          <button data-raw-button
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => setIncludeSubagents((v) => !v)}
             aria-pressed={includeSubagents}
@@ -647,7 +647,7 @@ export function SearchDialog() {
           >
             <Bot size={11} /> 含子代理
           </button>
-          <button
+          <button data-raw-button
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => setIncludeArchived((v) => !v)}
             aria-pressed={includeArchived}

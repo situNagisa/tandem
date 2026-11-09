@@ -34,7 +34,7 @@ export function RoutePlanLine({
       <span className="min-w-0 flex-1">{text}</span>
       <span className="flex shrink-0 items-center gap-0.5">
         {MODES.map((item) => (
-          <button
+          <button data-raw-button
             key={item.value}
             type="button"
             onClick={() => choose(item.value)}

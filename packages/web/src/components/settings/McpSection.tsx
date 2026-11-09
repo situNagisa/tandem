@@ -447,7 +447,7 @@ export function McpSection() {
                 <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', style.dot)} />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <button
+                    <button data-raw-button
                       onClick={() => setExpanded((prev) => ({ ...prev, [config.name]: !prev[config.name] }))}
                       className="flex min-w-0 items-center gap-1 text-left text-[13px] font-semibold text-text"
                     >

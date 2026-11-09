@@ -258,14 +258,14 @@ function OutputBlock({
         <div className="mt-1 flex flex-wrap items-center gap-2 px-1 text-[11.5px] text-muted">
           <span>已省略 {formatBytes(truncated.omittedBytes, { space: false, roundKb: true })}</span>
           {onLoadFull && (
-            <button
-              type="button"
+            <Button
+              size="inline"
+              variant="ghost"
               disabled={loadingFull}
               onClick={() => void loadFull()}
-              className="rounded-lg px-2 py-1 text-[12px] text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
             >
               {loadingFull ? '加载中…' : `显示全部（原 ${formatBytes(truncated.totalBytes, { space: false, roundKb: true })}）`}
-            </button>
+            </Button>
           )}
           {failed && <span className="text-danger">加载失败，请重试</span>}
         </div>
@@ -329,7 +329,7 @@ function BrowserShotThumb({
   if (!url) return <p className="mt-1 text-[12px] text-muted">截图加载中…</p>
   return (
     <>
-      <button
+      <button data-raw-button
         type="button"
         onClick={() => setOpen(true)}
         aria-label="查看浏览器截图大图"
@@ -831,7 +831,7 @@ export const ToolCard = memo(function ToolCard({
 
   return (
     <div className="my-1" ref={cardRef} data-tool-use-id={block.id}>
-      <button
+      <button data-raw-button
         onClick={() => {
           setMounted(true)
           setOpen((v) => !v)
@@ -900,7 +900,7 @@ export const ToolCard = memo(function ToolCard({
         <ChevronRight size={12} className="tool-chevron shrink-0 text-muted" />
       </button>
       {backgroundId && activeHostId && (subagentId ?? activeSessionId) && (
-        <button
+        <button data-raw-button
           type="button"
           onClick={() =>
             openBackgroundTasks(activeHostId, subagentId ?? activeSessionId!, backgroundId)
@@ -1124,7 +1124,7 @@ function TaskBody({
       <div className="rounded-md bg-[color-mix(in_srgb,var(--t-bg)_55%,transparent)] px-2.5 py-2">
         <div className="flex min-w-0 items-center gap-1.5">
           <Bot size={12} className={cn('shrink-0', failed ? 'text-danger' : 'text-muted')} />
-          <button
+          <button data-raw-button
             type="button"
             onClick={onOpen}
             disabled={!onOpen}
@@ -1161,7 +1161,7 @@ function TaskBody({
             <span className="shrink-0 text-[11px] tabular-nums text-muted">{formatTokens(tokens)}</span>
           )}
           {onOpen && (
-            <button
+            <button data-raw-button
               type="button"
               onClick={onOpen}
               aria-label={`打开${agentKind()}会话`}
@@ -1173,7 +1173,7 @@ function TaskBody({
           )}
         </div>
         {prompt && (
-          <button
+          <button data-raw-button
             type="button"
             onClick={onOpen}
             disabled={!onOpen}
@@ -1201,13 +1201,9 @@ function TaskBody({
                   : '这次 Task 调用没有记录子会话 id（可能来自旧版本会话或子会话已被清理）。'}
               </span>
               {linkedId && parentSessionId && (
-                <button
-                  type="button"
-                  onClick={() => hostId && void refreshSessions(hostId)}
-                  className="rounded px-1 py-0.5 text-[11px] text-text-soft underline-offset-2 hover:text-text hover:underline"
-                >
+                <Button size="inline" variant="ghost" onClick={() => hostId && void refreshSessions(hostId)}>
                   重新查找
-                </button>
+                </Button>
               )}
             </>
           )}
