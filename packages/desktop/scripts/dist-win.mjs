@@ -95,7 +95,10 @@ function collectArtifacts() {
 function builder(args) {
   const bin = path.join(repoRoot, 'node_modules', '.bin', 'electron-builder');
   fs.rmSync(outDir, { recursive: true, force: true });
-  const configArgs = artifactName ? [`--config.win.artifactName=${artifactName}`] : [];
+  const configArgs = [
+    ...(flavor === 'release' ? ['--config', 'electron-builder.release.yml'] : []),
+    ...(artifactName ? [`--config.win.artifactName=${artifactName}`] : []),
+  ];
   return spawnSync(bin, [...args, ...configArgs], {
     cwd: desktopDir,
     stdio: 'inherit',

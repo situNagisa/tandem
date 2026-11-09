@@ -6,9 +6,15 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const asar = require('@electron/asar')
 
+export const DEBUG_DESKTOP_FILES = [
+  '/feedback-drafts.js',
+  '/feedback-drafts-core.js',
+  '/mobile-preview.js',
+]
+
 export const DESKTOP_REQUIRED_FILES = {
   all: ['/main.js', '/preload.js', '/flavor.generated.js', '/package.json'],
-  debug: ['/feedback-drafts.js', '/feedback-drafts-core.js', '/mobile-preview.js'],
+  debug: DEBUG_DESKTOP_FILES,
 }
 
 /** web 产物是 debug 还是 release：debug 包带反馈模式/调试角标，release 包被扫描禁止。 */
@@ -76,6 +82,10 @@ export function verifyDesktopBundle(resourcesDir, expectedFlavor) {
     if (expectedFlavor === 'debug') {
       for (const file of DESKTOP_REQUIRED_FILES.debug) {
         if (!entries.has(file)) errors.push(`调试版 app.asar 缺少 ${file}`)
+      }
+    } else {
+      for (const file of DEBUG_DESKTOP_FILES) {
+        if (entries.has(file)) errors.push(`发布版 app.asar 不应包含 ${file}`)
       }
     }
     try {

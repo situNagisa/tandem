@@ -1,0 +1,8 @@
+extends: electron-builder.yml
+
+files:
+  - main.js
+  - preload.js
+  - flavor-core.js
+  - flavor.generated.js
+  - package.json

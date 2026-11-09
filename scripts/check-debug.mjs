@@ -8,7 +8,12 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readDesktopFlavor, readServerFlavor, readWebFlavor } from './lib/artifact-flavor.mjs'
+import {
+  DEBUG_DESKTOP_FILES,
+  readDesktopFlavor,
+  readServerFlavor,
+  readWebFlavor,
+} from './lib/artifact-flavor.mjs'
 import { writeDesktopFlavor, writeServerFlavor } from './write-flavor.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -65,14 +70,18 @@ for (const handler of [
   expectContains('packages/desktop/preload.js', handler, `preload ${handler}`)
   expectContains('packages/desktop/feedback-drafts.js', handler, `草稿 IPC ${handler}`)
 }
+for (const file of DEBUG_DESKTOP_FILES) {
+  if (!read(`packages/desktop/${file.slice(1)}`)) {
+    errors.push(`调试专用桌面文件缺失：${file}`)
+  }
+}
 for (const file of [
-  'feedback-drafts.js',
-  'feedback-drafts-core.js',
-  'flavor-core.js',
-  'flavor.generated.js',
+  ...DEBUG_DESKTOP_FILES,
+  '/flavor-core.js',
+  '/flavor.generated.js',
 ]) {
-  if (!read('packages/desktop/electron-builder.yml').includes(`- ${file}`)) {
-    errors.push(`electron-builder.yml files 白名单缺少 ${file}`)
+  if (!read('packages/desktop/electron-builder.yml').includes(`- ${file.slice(1)}`)) {
+    errors.push(`electron-builder.yml files 白名单缺少 ${file.slice(1)}`)
   }
 }
 
