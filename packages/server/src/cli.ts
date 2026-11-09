@@ -1,10 +1,5 @@
 #!/usr/bin/env node
 // Tandem Host 守护进程入口。
-import { closeSync, mkdirSync, openSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { Host } from './host.js';
 import { createApp } from './server.js';
 import { loadHostConfig, saveRelayConfig, tandemHome } from './config.js';
@@ -13,7 +8,6 @@ import { RelayAgent } from './relay/agent.js';
 import { generateHostKey } from './relay/e2e.js';
 import { createWorkstation } from './workstation/server.js';
 import { readVersion } from './host/helpers.js';
-import { buildServicePlan, executeServicePlan, redactToken } from './service/install.js';
 
 interface CliOptions {
   port: number;
@@ -59,14 +53,12 @@ function parseArgs(argv: string[]): CliOptions {
 function printHelp(): void {
   console.log(`用法: tandem-host [--port 7878] [--host 127.0.0.1] [--relay wss://relay.example.com]
       tandem-host workstation [--port 8481] [--host 0.0.0.0]
-      tandem-host join <工作站地址> --token <绑定码> [--service|--no-service] [--name 主机名] [--port 7878] [--dry-run]
+      tandem-host join <工作站地址> --code <绑定码>
       tandem-host doctor [--checks node,git,profiles] [--port 7878] [--host 127.0.0.1]
 
   workstation  只运行工作站服务（账号、主机登记、授权、连接转发；不跑 agent）
   join         把本机登记为某账号的主机，并建立到工作站的出站隧道
-               未运行时默认起后台进程；--service 安装为开机自启服务，--no-service 只起后台进程
-               也可用 --username/--password 代替 --token（会向工作站登录一次）
-               --code 是 --token 的别名；--dry-run 只打印计划，不做任何改动
+               也可用 --username/--password 代替 --code（会向工作站登录一次）
 
 选项:
   -p, --port <端口>   监听端口（Host 默认 7878；workstation 默认 8481）
@@ -182,30 +174,12 @@ async function workstationMain(argv: string[]): Promise<void> {
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
-type JoinStartMode = 'auto' | 'service' | 'background';
-
-interface JoinOptions {
-  workstationUrl?: string;
-  token: string;
-  username: string;
-  password: string;
-  name: string;
-  port: number;
-  mode: JoinStartMode;
-  dryRun: boolean;
-}
-
-function parseJoinArgs(argv: string[]): JoinOptions {
-  const options: JoinOptions = {
-    token: '',
-    username: '',
-    password: '',
-    name: '',
-    port: 7878,
-    mode: 'auto',
-    dryRun: false,
-  };
+async function joinMain(argv: string[]): Promise<void> {
   const positional: string[] = [];
+  let code = '';
+  let username = '';
+  let password = '';
+  let port = 7878;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
     const next = () => {
@@ -214,190 +188,40 @@ function parseJoinArgs(argv: string[]): JoinOptions {
       i += 1;
       return value;
     };
-    const inline = () => (arg.includes('=') ? arg.slice(arg.indexOf('=') + 1) : next());
     if (arg === '--help' || arg === '-h') {
       printHelp();
-      process.exit(0);
-    } else if (arg === '--token' || arg === '--code' || arg.startsWith('--token=') || arg.startsWith('--code=')) {
-      options.token = inline();
-    } else if (arg === '--username' || arg === '--user' || arg.startsWith('--username=') || arg.startsWith('--user=')) {
-      options.username = inline();
-    } else if (arg === '--password' || arg.startsWith('--password=')) {
-      options.password = inline();
-    } else if (arg === '--name' || arg.startsWith('--name=')) {
-      options.name = inline();
-    } else if (arg === '--port' || arg === '-p' || arg.startsWith('--port=')) {
-      options.port = Number(inline());
-    } else if (arg === '--service') {
-      options.mode = 'service';
-    } else if (arg === '--no-service') {
-      options.mode = 'background';
-    } else if (arg === '--dry-run') {
-      options.dryRun = true;
-    } else if (!arg.startsWith('-')) {
-      positional.push(arg);
-    } else {
-      throw new Error(`未知参数: ${arg}`);
+      return;
     }
+    if (arg === '--code' || arg.startsWith('--code=')) code = arg.includes('=') ? arg.slice('--code='.length) : next();
+    else if (arg === '--username' || arg === '--user' || arg.startsWith('--username=') || arg.startsWith('--user=')) {
+      username = arg.includes('=') ? arg.slice(arg.indexOf('=') + 1) : next();
+    } else if (arg === '--password' || arg.startsWith('--password=')) password = arg.includes('=') ? arg.slice('--password='.length) : next();
+    else if (arg === '--port' || arg === '-p' || arg.startsWith('--port=')) port = Number(arg.includes('=') ? arg.slice('--port='.length) : next());
+    else if (!arg.startsWith('-')) positional.push(arg);
+    else throw new Error(`未知参数: ${arg}`);
   }
-  options.workstationUrl = positional[0];
-  if (!Number.isInteger(options.port) || options.port < 0 || options.port > 65535) {
-    throw new Error(`端口无效: ${options.port}`);
-  }
-  return options;
-}
-
-/** 当前 CLI 入口（后台进程/系统服务复用同一个 dist/cli.js）。 */
-function resolveCliPath(): string {
-  const argvPath = process.argv[1];
-  if (argvPath && argvPath.endsWith('.js')) return path.resolve(argvPath);
-  return fileURLToPath(import.meta.url);
-}
-
-function maskedToken(token: string): string {
-  return token ? redactToken(token) : '(未提供)';
-}
-
-function servicePlanFor(options: JoinOptions, home: string) {
-  return buildServicePlan({
-    platform: process.platform,
-    nodePath: process.execPath,
-    cliPath: resolveCliPath(),
-    home,
-    port: options.port,
-    logFile: path.join(home, 'host.log'),
-    userHome: os.homedir(),
-    ...(typeof process.getuid === 'function' ? { uid: process.getuid() } : {}),
-  });
-}
-
-async function hostIsRunning(base: string): Promise<boolean> {
-  try {
-    const res = await fetch(`${base}/api/accounts/status`, { signal: AbortSignal.timeout(1500) });
-    if (!res.ok) return false;
-    const data = (await res.json()) as { mode?: unknown };
-    return typeof data.mode === 'string';
-  } catch {
-    return false;
-  }
-}
-
-async function waitForHost(base: string, home: string, timeoutMs = 30_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  let last = '';
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${base}/api/accounts/status`, { signal: AbortSignal.timeout(2000) });
-      if (res.ok) {
-        const data = (await res.json()) as { mode?: unknown };
-        if (typeof data.mode === 'string') return;
-        last = '响应不是 Tandem Host';
-      } else {
-        last = `HTTP ${res.status}`;
-      }
-    } catch (err) {
-      last = (err as Error).message;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 300));
-  }
-  throw new Error(`等待本机 Host（${base}）就绪超时：${last}；请查看日志 ${path.join(home, 'host.log')}`);
-}
-
-/** 未装系统服务时起一个脱离终端的 Host 进程，日志写 TANDEM_HOME/host.log。 */
-function startBackgroundHost(home: string, port: number): void {
-  mkdirSync(home, { recursive: true });
-  const logFile = path.join(home, 'host.log');
-  // 日志里有启动 URL（含本机 token），按私有文件创建。
-  const fd = openSync(logFile, 'a', 0o600);
-  try {
-    const child = spawn(process.execPath, [resolveCliPath(), '--port', String(port), '--host', '127.0.0.1'], {
-      detached: true,
-      stdio: ['ignore', fd, fd],
-      cwd: home,
-      env: { ...process.env, TANDEM_HOME: home },
-    });
-    child.unref();
-  } finally {
-    closeSync(fd);
-  }
-  console.log(`本机 Host 已在后台启动（日志 ${logFile}）。`);
-}
-
-function printJoinPlan(options: JoinOptions, home: string): void {
-  const url = options.workstationUrl!;
-  console.log('将执行以下步骤（--dry-run，不做任何网络请求、不启动进程、不写文件）：');
-  console.log(`  1. 检查本机 Host：http://127.0.0.1:${options.port}`);
-  if (options.mode === 'service') {
-    const plan = servicePlanFor(options, home);
-    console.log('     未运行时安装系统服务，写入文件：');
-    for (const file of plan.files) {
-      console.log(`\n     ${file.path}`);
-      for (const line of file.content.replace(/\n$/, '').split('\n')) console.log(`       ${line}`);
-    }
-    console.log('\n     执行命令：');
-    for (const step of plan.commands) {
-      console.log(`       ${redactToken([step.cmd, ...step.args].join(' '))}${step.optional ? '（失败可忽略）' : ''}`);
-    }
-    if (plan.note) console.log(`     说明：${plan.note}`);
-  } else if (options.mode === 'background') {
-    console.log(`     未运行时起后台进程：${process.execPath} ${resolveCliPath()} --port ${options.port} --host 127.0.0.1`);
-    console.log(`     日志：${path.join(home, 'host.log')}（不安装系统服务；重启后需重新运行）`);
-  } else {
-    console.log('     未运行时起后台进程（不安装系统服务），并提示「重启后需再运行」。');
-    console.log('     加 --service 则改为安装系统服务（开机自启、断线自动重连）。');
-  }
-  console.log(`  2. 等待 Host 就绪，然后向 ${url} 登记本机（令牌 ${maskedToken(options.token)}）。`);
-  if (options.name) console.log(`     主机名：${options.name}`);
-}
-
-async function joinMain(argv: string[]): Promise<void> {
-  const options = parseJoinArgs(argv);
-  if (!options.workstationUrl) throw new Error('用法: tandem-host join <工作站地址> --token <绑定码>');
+  const workstationUrl = positional[0];
+  if (!workstationUrl) throw new Error('用法: tandem-host join <工作站地址> --code <绑定码>');
   const home = tandemHome();
-  const base = `http://127.0.0.1:${options.port}`;
-  if (options.dryRun) {
-    printJoinPlan(options, home);
-    return;
-  }
-
   const config = loadHostConfig(home);
-  if (!(await hostIsRunning(base))) {
-    if (options.mode === 'service') {
-      const plan = servicePlanFor(options, home);
-      try {
-        executeServicePlan(plan);
-        console.log('已安装系统服务 tandem-host（开机自启、断线自动重连）。');
-      } catch (err) {
-        console.warn(`[tandem] 系统服务安装失败：${(err as Error).message}`);
-        console.warn('[tandem] 已改为后台进程；系统重启后需要重新运行 tandem-host join。');
-        startBackgroundHost(home, options.port);
-      }
-    } else {
-      startBackgroundHost(home, options.port);
-      console.log('未安装为后台服务，重启后需再运行 tandem-host join（加 --service 可安装开机自启服务）。');
-    }
-    await waitForHost(base, home);
-  }
-
   let res: Response;
   try {
-    res = await fetch(`${base}/api/workstation/join`, {
+    res = await fetch(`http://127.0.0.1:${port}/api/workstation/join`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.token}` },
       body: JSON.stringify({
-        workstationUrl: options.workstationUrl,
-        ...(options.token ? { code: options.token } : {}),
-        ...(!options.token && options.username ? { username: options.username, password: options.password } : {}),
-        ...(options.name ? { name: options.name } : {}),
+        workstationUrl,
+        ...(code ? { code } : {}),
+        ...(username ? { username, password } : {}),
       }),
       signal: AbortSignal.timeout(20_000),
     });
   } catch (err) {
-    throw new Error(`无法连接本机 Host（${base}）：${(err as Error).message}`);
+    throw new Error(`无法连接本机 Host（127.0.0.1:${port}）：${(err as Error).message}`);
   }
   const data = (await res.json().catch(() => ({}))) as { workspace?: { name?: string }; error?: string };
   if (!res.ok) throw new Error(data.error ?? `加入失败：HTTP ${res.status}`);
-  console.log(`已加入工作站「${data.workspace?.name ?? options.workstationUrl}」；本机将主动建立出站隧道。`);
+  console.log(`已加入工作站「${data.workspace?.name ?? workstationUrl}」；本机将主动建立出站隧道。`);
 }
 
 async function main(): Promise<void> {

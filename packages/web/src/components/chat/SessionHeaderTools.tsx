@@ -106,7 +106,8 @@ export function useSubagentRows(): SubagentRow[] {
 
 /** 顶栏「子代理」：复用右侧栏代理卡的数据，点行定位消息流里的 Task 卡片。 */
 export function SubagentsButton() {
-  const focusAgent = useUiStore((s) => s.focusAgent)
+  const openAgentSession = useUiStore((s) => s.openAgentSession)
+  const hostId = useAppStore((s) => s.active?.hostId ?? null)
   const rows = useSubagentRows()
 
   return (
@@ -142,12 +143,15 @@ export function SubagentsButton() {
                   type="button"
                   onClick={() => {
                     close()
-                    focusAgent(row.id)
+                    if (hostId) openAgentSession(hostId, row.id)
                   }}
                   className="flex min-h-8 w-full items-center gap-1.5 rounded-md px-2 text-left text-[12.5px] transition-colors hover:bg-[var(--t-bg-hover)]"
-                  style={{ paddingLeft: 8 + (row.depth - 1) * 14 }}
+                  style={{ paddingLeft: 8 + Math.min(Math.max(0, row.depth - 1), 6) * 12 }}
+                  data-tip={row.title}
                 >
-                  <span className="shrink-0 text-[12px] text-muted">{row.depth <= 1 ? '子' : '孙'}</span>
+                  {row.depth > 6 && (
+                    <span className="shrink-0 text-[9.5px] tabular-nums text-muted">L{row.depth}</span>
+                  )}
                   <span className="min-w-0 flex-1 truncate text-text">{row.title}</span>
                   <span
                     className={cn(

@@ -36,6 +36,7 @@ import { Menu as UiMenu } from './ui/Menu'
 import { Input } from './ui/Controls'
 import { useSubagentRows } from './chat/SessionHeaderTools'
 import { PrPanel } from './PrPanel'
+import { PanelGroupsMenu } from './right-panel/PanelMenu'
 
 function StatePill({
   running,
@@ -592,6 +593,8 @@ export function TopBar() {
       )}
 
       {hasSession && !isMobile && <MoreMenu />}
+
+      {hasSession && panelOpen && !isMobile && <PanelGroupsMenu />}
 
       {(hasSession || (!isMobile && externalRoute)) && (
         <IconButton

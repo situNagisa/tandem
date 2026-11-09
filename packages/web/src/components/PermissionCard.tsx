@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRightLeft, Bot, Loader2, MessageSquare, Plus, ShieldAlert, ShieldCheck, X } from 'lucide-react'
+import { ArrowRightLeft, Bot, Loader2, MoreHorizontal, Plus, ShieldAlert, ShieldCheck, X } from 'lucide-react'
 import type { PermissionDecision, PermissionRequest, PermissionRule, TeamMember } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -189,6 +189,8 @@ export function PermissionCard({
   const [learning, setLearning] = useState(false)
   const [denyOpen, setDenyOpen] = useState(false)
   const [descOpen, setDescOpen] = useState(false)
+  // 反馈12#09：像 Claude Code 一样在会话流里用编号选项询问，↑↓ 选择、Enter 确认。
+  const [selected, setSelected] = useState(0)
   const cardRef = useRef<HTMLDivElement>(null)
   const [denyReason, setDenyReason] = useState('')
   const denyRef = useRef<HTMLTextAreaElement>(null)
@@ -224,6 +226,15 @@ export function PermissionCard({
     window.requestAnimationFrame(() => denyRef.current?.focus())
   }
 
+  const alwaysLabel = request.learned ? '总是允许（本项目）' : '总是允许（本会话）'
+  const choose = (index: number) => {
+    if (index === 0) decide(request.id, 'allow', undefined, scopeTarget)
+    else if (index === 1) {
+      if (request.learned) void applyLearned()
+      else decide(request.id, 'allow_always', undefined, scopeTarget)
+    } else openDeny()
+  }
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const ui = useUiStore.getState()
@@ -249,18 +260,25 @@ export function PermissionCard({
       }
       if (e.key === '1') {
         e.preventDefault()
-        decide(request.id, 'allow', undefined, scopeTarget)
+        choose(0)
       } else if (e.key === '2') {
         e.preventDefault()
-        decide(request.id, 'allow_always', undefined, scopeTarget)
+        choose(1)
       } else if (e.key === '3') {
         e.preventDefault()
-        decide(request.id, 'deny', undefined, scopeTarget)
+        choose(2)
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelected((value) => (e.key === 'ArrowDown' ? (value + 1) % 3 : (value + 2) % 3))
+      } else if (e.key === 'Enter') {
+        if (target?.tagName === 'BUTTON' || target?.tagName === 'A') return
+        e.preventDefault()
+        choose(selected)
       }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [request.id, decide, scopeTarget])
+  }, [request.id, decide, scopeTarget, selected])
 
   // 新审批出现时，若焦点在空的输入框里，把焦点交给「允许」：
   // 键盘用户可以直接按 1/2/3，不必先 Tab 一圈；正在输入排队消息时不抢焦点。
@@ -365,163 +383,207 @@ export function PermissionCard({
     )
   }
 
+  const askTarget =
+    toolName === 'Bash'
+      ? command.split('\n')[0]?.trim() || ''
+      : filePath || str(input.path) || request.description || ''
+  const askVerb =
+    toolName === 'Bash'
+      ? '允许运行'
+      : toolName === 'Read'
+        ? '允许读取'
+        : toolName === 'Write'
+          ? '允许写入'
+          : toolName === 'Edit'
+            ? '允许编辑'
+            : toolName === 'Glob'
+              ? '允许列出文件'
+              : toolName === 'Grep'
+                ? '允许搜索'
+                : toolName === 'WebFetch'
+                  ? '允许访问'
+                  : '允许使用'
+  const options = [
+    { label: '允许', note: '' },
+    { label: alwaysLabel, note: '' },
+    { label: '拒绝，并说明…', note: '' },
+  ]
+
   return (
     <div ref={cardRef} className="permission-card mb-2.5">
-      <div className="flex items-start gap-2 px-3.5 pb-2 pt-2.5">
-        <ShieldAlert size={15} className="mt-0.5 shrink-0 text-[var(--t-text-tertiary)]" />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-[var(--t-text-tertiary)]">
-              需要你的许可
-            </span>
-            <span className="font-mono text-[12px] text-text-soft">{toolName}</span>
-            {more > 0 && (
-              <span className="text-[12px] text-muted">另有 {more} 个待审批</span>
+      <div className="px-3.5 pb-2 pt-2.5">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[13px] leading-6 text-text">
+          <span className="text-muted">需要你的许可</span>
+          <span className="text-muted">·</span>
+          <span className="min-w-0">
+            {askTarget ? (
+              <>
+                {askVerb}{' '}
+                <code className="break-all rounded bg-[color-mix(in_srgb,var(--t-bg-active)_70%,transparent)] px-1 py-0.5 font-mono text-[12px] text-text-soft">
+                  {askTarget.length > 140 ? `${askTarget.slice(0, 140)}…` : askTarget}
+                </code>
+                ？
+              </>
+            ) : (
+              <>允许这次 {toolName} 操作？</>
             )}
+          </span>
+          {more > 0 && <span className="ml-auto text-[12px] text-muted">另有 {more} 个待审批</span>}
+        </div>
+        {subagentTitle && (
+          <div className="mt-1 flex items-center gap-1 text-[12px] text-muted">
+            <Bot size={11} className="shrink-0" />
+            <span className="min-w-0 truncate">
+              来自子代理：{subagentTitle}
+            </span>
           </div>
-          {subagentTitle && (
-            <div className="mt-1 flex items-center gap-1 text-[12px] text-muted">
-              <Bot size={11} className="shrink-0 text-accent-text" />
-              <span className="min-w-0 truncate">
-                来自{sourceDepth === 1 ? '子代理' : sourceDepth === 2 ? '孙代理' : `第${sourceDepth}层代理`}：{subagentTitle}
-              </span>
-            </div>
-          )}
-          {request.transferredFrom && (
-            <div className="mt-1 text-[12px] text-accent-text">
-              由 {request.transferredFrom.name} 转交
-              {request.assignedTo ? ` · 待 ${request.assignedTo.name} 处理` : ''}
-            </div>
-          )}
+        )}
+        {request.transferredFrom && (
+          <div className="mt-1 text-[12px] text-text-soft">
+            由 {request.transferredFrom.name} 转交
+            {request.assignedTo ? ` · 待 ${request.assignedTo.name} 处理` : ''}
+          </div>
+        )}
+        {request.description &&
+          !(
+            toolName === 'Bash' &&
+            !!command &&
+            request.description.replace(/\s+/g, ' ').includes(command.replace(/\s+/g, ' '))
+          ) && (
           <button
             type="button"
             onClick={() => setDescOpen((value) => !value)}
             aria-expanded={descOpen}
             data-tip={`${request.description}${descOpen ? '' : '（点击展开全文）'}`}
             className={cn(
-              'mt-1 block w-full whitespace-pre-wrap break-words text-left text-[13px] leading-[1.55] text-text-soft',
-              !descOpen && 'line-clamp-2 sm:line-clamp-none',
+              'mt-1 block w-full whitespace-pre-wrap break-words text-left text-[12px] leading-[1.55] text-muted',
+              !descOpen && 'line-clamp-2',
             )}
           >
             {request.description}
           </button>
-          {request.sandbox && (
-            <p
-              data-permission-sandbox=""
-              className="mt-1 flex items-start gap-1 text-[12px] leading-[1.5] text-warning"
-            >
-              <ShieldAlert size={12} className="mt-0.5 shrink-0" />
-              <span className="min-w-0 break-words">{request.sandbox.reason}</span>
-            </p>
-          )}
-        </div>
+        )}
+        {request.sandbox && (
+          <p
+            data-permission-sandbox=""
+            className="mt-1 flex items-start gap-1 text-[12px] leading-[1.5] text-warning"
+          >
+            <ShieldAlert size={12} className="mt-0.5 shrink-0" />
+            <span className="min-w-0 break-words">{request.sandbox.reason}</span>
+          </p>
+        )}
       </div>
       {preview && (
-        <div className="max-h-[min(34dvh,320px)] overflow-y-auto px-3.5 pb-2.5">{preview}</div>
+        <div className="max-h-[min(30dvh,240px)] overflow-y-auto px-3.5 pb-2">
+          <div className="text-[12px]">{preview}</div>
+        </div>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 px-3 py-2">
-        {request.learned && (
-          <div className="w-full" data-permission-learned="">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => void applyLearned()}
-              disabled={learning}
-              className="h-auto min-h-7 whitespace-normal py-1 text-left text-[12px] text-accent-text max-sm:min-h-11"
-              tooltip={`已在本项目批准 ${request.learned.allows} 次。添加后同类命令不再询问；可随时在设置 → 权限中删除。`}
-              tooltipSide="top"
-            >
-              {learning ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <ShieldCheck size={12} />
-              )}
+      {request.learned && (
+        <div className="px-3.5 pb-1" data-permission-learned="">
+          <button
+            type="button"
+            onClick={() => void applyLearned()}
+            disabled={learning}
+            className="flex w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text max-sm:min-h-11"
+            data-tip={`已在本项目批准 ${request.learned.allows} 次；添加后同类命令不再询问，可随时在设置 → 权限中删除`}
+          >
+            {learning ? (
+              <Loader2 size={12} className="shrink-0 animate-spin" />
+            ) : (
+              <ShieldCheck size={12} className="shrink-0" />
+            )}
+            <span className="min-w-0 truncate">
               以后在本项目自动允许 <code className="font-mono">{request.learned.pattern}</code>
-            </Button>
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setRuleDraft(quickRule(toolName, input, cwd))}
-            tooltip="把这条件添加为主机级权限规则"
-            tooltipSide="top"
-            className="h-7 px-1.5 text-[12px] text-[var(--t-text-tertiary)] hover:text-text"
+            </span>
+          </button>
+        </div>
+      )}
+      <div className="px-3.5 pb-2" role="listbox" aria-label="审批选项">
+        {options.map((option, index) => (
+          <button
+            key={option.label}
+            type="button"
+            role="option"
+            aria-selected={selected === index}
+            {...(index === 0 ? { 'data-permission-allow': '' } : {})}
+            onMouseEnter={() => setSelected(index)}
+            onFocus={() => setSelected(index)}
+            onClick={() => choose(index)}
+            className={cn(
+              'flex min-h-8 w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors max-sm:min-h-11',
+              selected === index
+                ? 'bg-[var(--t-bg-active)] text-text'
+                : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
+            )}
           >
-            <Plus size={11} /> 添加为规则…
-          </Button>
-                    {canTransfer && (
-            <Menu
-              side="top"
-              align="start"
-              onOpenChange={(open) => {
-                if (open) loadApprovers()
-              }}
-              trigger={
-                <Button variant="ghost" className="max-sm:min-h-11" disabled={transferring}>
-                  <ArrowRightLeft size={13} /> 转给…
-                </Button>
-              }
+            <span className="w-4 shrink-0 text-right text-[12px] tabular-nums text-muted">
+              {index + 1}
+            </span>
+            <span className={cn('min-w-0', index === 0 && 'font-medium')}>{option.label}</span>
+            {index === 2 && <span className="ml-auto text-[11px] text-muted">可补充原因</span>}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 px-3.5 pb-2 text-[11px] text-muted">
+        <span className="min-w-0 flex-1">↑↓ 选择 · Enter 确认 · 数字键快速选择</span>
+        <Menu
+          side="top"
+          align="end"
+          aria-label="更多审批操作"
+          className="w-[260px]"
+          onOpenChange={(open) => {
+            if (open) loadApprovers()
+          }}
+          trigger={
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-1.5 text-[12px] text-muted hover:text-text max-sm:min-h-11"
             >
-              {approvers.length === 0 ? (
-                <div className="px-2 py-1.5 text-[12px] text-muted">
-                  {approversLoaded ? '暂无在线的审批者' : '正在读取成员…'}
-                </div>
-              ) : (
-                approvers.map((member) => (
-                  <Menu.Item
-                    key={member.id}
-                    icon={<span className="text-[11px]">{member.name.slice(0, 1).toUpperCase()}</span>}
-                    hint={member.role === 'approver' ? '审批者' : '协作者'}
-                    selected={request.assignedTo?.memberId === member.id}
-                    onSelect={() => void transfer(member.id)}
-                  >
-                    {member.name}
-                  </Menu.Item>
-                ))
-              )}
-            </Menu>
+              <MoreHorizontal size={12} /> 更多
+            </Button>
+          }
+        >
+          <Menu.Item
+            icon={<Plus size={12} />}
+            onSelect={() => setRuleDraft(quickRule(toolName, input, cwd))}
+          >
+            添加为规则…
+          </Menu.Item>
+          {canTransfer && (
+            <Menu.Sub>
+              <Menu.SubTrigger icon={<ArrowRightLeft size={12} />} disabled={transferring}>
+                转给…
+              </Menu.SubTrigger>
+              <Menu.SubContent className="w-[240px]" aria-label="转交审批">
+                {approvers.length === 0 ? (
+                  <div className="px-2 py-1.5 text-[12px] text-muted">
+                    {approversLoaded ? '暂无在线的审批者' : '正在读取成员…'}
+                  </div>
+                ) : (
+                  approvers.map((member) => (
+                    <Menu.Item
+                      key={member.id}
+                      icon={<span className="text-[11px]">{member.name.slice(0, 1).toUpperCase()}</span>}
+                      hint={member.role === 'approver' ? '审批者' : '协作者'}
+                      selected={request.assignedTo?.memberId === member.id}
+                      onSelect={() => void transfer(member.id)}
+                    >
+                      {member.name}
+                    </Menu.Item>
+                  ))
+                )}
+              </Menu.SubContent>
+            </Menu.Sub>
           )}
-        </div>
-        <div className="permission-actions flex flex-wrap items-center gap-1.5 max-sm:grid max-sm:w-full max-sm:grid-cols-2">
-          <Button
-            variant="ghost"
-            onClick={() => (denyOpen ? setDenyOpen(false) : openDeny())}
-            aria-expanded={denyOpen}
-            className="max-sm:order-4 max-sm:min-h-11 max-sm:w-full"
-          >
-            <MessageSquare size={13} /> 拒绝并说明
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => handle('deny')}
-            className="max-sm:order-3 max-sm:min-h-11 max-sm:w-full"
-          >
-            拒绝
-            <Kbd>3</Kbd>
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => handle('allow_always')}
-            className="max-sm:order-2 max-sm:min-h-11 max-sm:w-full"
-          >
-            总是允许
-            <Kbd>2</Kbd>
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => handle('allow')}
-            data-permission-allow=""
-            className="max-sm:order-1 max-sm:min-h-11 max-sm:w-full"
-          >
-            允许
-            <Kbd inverse>1</Kbd>
-          </Button>
-        </div>
+          <Menu.Separator />
+          <Menu.Item icon={<X size={12} />} onSelect={() => decide(request.id, 'deny', undefined, scopeTarget)}>
+            拒绝（不说明）
+          </Menu.Item>
+        </Menu>
       </div>
       {denyOpen && (
-        <div className="border-t border-border/70 px-3 py-2.5">
+        <div className="border-t border-border/60 px-3.5 py-2.5">
           <div className="flex items-center justify-between gap-2">
             <label htmlFor={`deny-reason-${request.id}`} className="text-[12px] text-muted">
               说明拒绝原因（可选，会作为工具结果返回给 agent）

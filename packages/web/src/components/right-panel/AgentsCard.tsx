@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Ellipsis } from 'lucide-react'
+import { Bot, Ellipsis } from 'lucide-react'
 import type { SubagentSession } from '../../lib/types'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
@@ -15,6 +15,7 @@ import { cn } from '../../lib/cn'
 
 function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number; hostId: string | null }) {
   const focusAgent = useUiStore((s) => s.focusAgent)
+  const openAgentSession = useUiStore((s) => s.openAgentSession)
   const toast = useUiStore((s) => s.toast)
   const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
   const profiles = useAppStore((s) => (hostId ? s.runtimes[hostId]?.profiles ?? [] : []))
@@ -69,38 +70,56 @@ function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number;
       toast(err instanceof Error ? err.message : '转交失败', 'error')
     }
   }
+  // 反馈12#03：层级无限，用固定 12px 缩进 + 细竖引导线表示；最多缩进 6 层，
+  // 再深不再增加缩进，改用「L8」这样的层号小字。统一叫「子代理」，不用子/孙文字。
+  const level = Math.max(0, depth - 1)
+  const visuals = Math.min(level, 6)
   return (
     <div className="group flex min-h-8 items-center gap-0.5">
-    <button
-      type="button"
-      onClick={() => id && focusAgent(id)}
-      className="flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md pr-1 text-left text-[13px] transition-colors hover:bg-[var(--t-bg-hover)]"
-      style={{ paddingLeft: 4 + Math.max(0, depth - 1) * 14 }}
-      data-tip={sub.summary ? `${sub.summary.title} · ${sub.summary.model}` : undefined}
-    >
-      <span className="shrink-0 text-[12px] text-muted">
-        {depth <= 1 ? '子' : depth === 2 ? '孙' : depth}
+      <span
+        aria-hidden
+        className="agent-guides flex shrink-0 self-stretch"
+        style={{ width: visuals * 12 }}
+      >
+        {Array.from({ length: visuals }).map((_, i) => (
+          <span key={i} className="agent-guide" />
+        ))}
       </span>
+      <button
+        type="button"
+        onClick={() => {
+          if (!id) return
+          if (hostId) openAgentSession(hostId, id)
+          else focusAgent(id)
+        }}
+        className="flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 text-left text-[13px] transition-colors hover:bg-[var(--t-bg-hover)]"
+        data-tip={sub.summary ? `${sub.summary.title} · ${sub.summary.model}` : undefined}
+      >
+      {depth > 6 && (
+        <span className="shrink-0 text-[9.5px] tabular-nums text-muted" data-tip={`第 ${depth} 层`}>
+          L{depth}
+        </span>
+      )}
+      <Bot size={11} className="shrink-0 text-muted" />
       <span className="min-w-0 flex-1 truncate text-text-soft">
         {sub.summary?.title || '未命名子代理'}
       </span>
-      {sub.summary?.model && (
-        <span className="max-w-[92px] shrink-0 truncate font-mono text-[10.5px] text-muted" data-tip={`模型：${sub.summary.model}`}>
-          {sub.summary.model}
+      {(failed || running || text === '待审批' || text === '等待网络') && (
+        <span
+          className={cn(
+            'shrink-0 text-[12px]',
+            failed ? 'text-danger' : running ? 'text-text-secondary' : 'text-muted',
+          )}
+        >
+          {text}
+          {running && ` ${formatElapsed(now - since)}`}
         </span>
       )}
-      <span
-        className={cn(
-          'shrink-0 text-[12px]',
-          failed ? 'text-danger' : running ? 'text-text-secondary' : 'text-muted',
-        )}
-      >
-        {text}
-        {running && ` ${formatElapsed(now - since)}`}
-      </span>
-      <span className="w-9 shrink-0 text-right text-[12px] tabular-nums text-muted">
-        {formatTokens(tokens)}
-      </span>
+      {tokens > 0 && (
+        <span className="w-9 shrink-0 text-right text-[12px] tabular-nums text-muted">
+          {formatTokens(tokens)}
+        </span>
+      )}
     </button>
     {!running && id && (
       <Menu

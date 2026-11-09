@@ -101,6 +101,8 @@ interface UiState {
   promptSeed: { text: string; nonce: number } | null
   /** 右侧代理列表点击后，定位并展开消息流中的对应 Task 卡片。 */
   agentFocus: { id: string; nonce: number } | null
+  /** 反馈12#05：打开某个 Task 子代理会话的只读视图（面包屑可逐层返回）。 */
+  agentSession: { hostId: string; id: string; nonce: number } | null
   /** 自增通知输入框清空并聚焦（已在新会话页时再点“新会话”）。 */
   composerResetNonce: number
   /** 每次 /schedule 自增，定时任务页监听到后打开新建表单。 */
@@ -186,6 +188,8 @@ interface UiState {
   seedPrompt: (text: string) => void
   clearPromptSeed: () => void
   focusAgent: (id: string) => void
+  openAgentSession: (hostId: string, id: string) => void
+  closeAgentSession: () => void
   resetComposer: () => void
   openBackgroundTasks: (hostId: string, sessionId: string, taskId?: string) => void
   openScheduleComposer: () => void
@@ -318,6 +322,7 @@ export const useUiStore = create<UiState>((set, get) => {
   toasts: [],
   promptSeed: null,
   agentFocus: null,
+  agentSession: null,
   composerResetNonce: 0,
   backgroundPanel: null,
   browserPanel: null,
@@ -534,6 +539,9 @@ export const useUiStore = create<UiState>((set, get) => {
   clearPromptSeed: () => set({ promptSeed: null }),
   focusAgent: (id) =>
     set((s) => ({ agentFocus: { id, nonce: (s.agentFocus?.nonce ?? 0) + 1 } })),
+  openAgentSession: (hostId, id) =>
+    set((s) => ({ agentSession: { hostId, id, nonce: (s.agentSession?.nonce ?? 0) + 1 } })),
+  closeAgentSession: () => set({ agentSession: null }),
   resetComposer: () => set((s) => ({ composerResetNonce: s.composerResetNonce + 1 })),
 
   openSplitPane: (current, target) => {

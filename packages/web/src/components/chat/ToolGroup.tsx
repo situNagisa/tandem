@@ -43,12 +43,14 @@ export const ToolGroup = memo(
     animate,
     toolResults,
     cwd,
+    subagentId,
   }: {
     entries: ToolRunEntry[]
     animate?: boolean
     /** 外部会话只读预览：显式传入工具结果，不读活动会话。 */
     toolResults?: Record<string, ToolResultBlock>
     cwd?: string
+    subagentId?: string
   }) {
     const [open, setOpen] = useState(false)
     const [mounted, setMounted] = useState(false)
@@ -101,6 +103,7 @@ export const ToolGroup = memo(
                     streaming={entry.streaming}
                     toolResults={toolResults}
                     cwd={cwd}
+                    subagentId={subagentId}
                   />
                 ),
               )}
@@ -115,6 +118,7 @@ export const ToolGroup = memo(
     prev.animate === next.animate &&
     prev.toolResults === next.toolResults &&
     prev.cwd === next.cwd &&
+    prev.subagentId === next.subagentId &&
     sameEntries(prev.entries, next.entries),
 )
 

@@ -460,7 +460,7 @@ export default function App() {
           )}
           {!isMobile && !filePreview && panelOpen && !changesOpen && !previewPanel && hasSession && (
             <div className="anim-fade-in shrink-0">
-              <RightPanel onClose={() => setPanelOpen(false)} />
+              <RightPanel />
             </div>
           )}
           {!isMobile && previewPanel && hasSession && (
@@ -524,7 +524,7 @@ export default function App() {
             onClick={() => setMobilePanel(false)}
           />
           <div className="anim-drawer-right absolute inset-y-0 right-0 w-[90%] max-w-[344px] bg-sidebar pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-lg">
-            <RightPanel onClose={() => setMobilePanel(false)} />
+            <RightPanel />
           </div>
         </div>
       )}

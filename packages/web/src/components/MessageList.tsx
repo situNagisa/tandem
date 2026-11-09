@@ -248,6 +248,7 @@ const AssistantRow = memo(function AssistantRow({
   toolResults,
   cwd,
   readOnly,
+  subagentId,
   turnUser,
   checkpointId,
   fork,
@@ -259,6 +260,7 @@ const AssistantRow = memo(function AssistantRow({
   toolResults?: Record<string, ToolResultBlock>
   cwd?: string
   readOnly: boolean
+  subagentId?: string
   turnUser?: UiMessage
   checkpointId?: string
   fork?: ReactNode
@@ -288,6 +290,7 @@ const AssistantRow = memo(function AssistantRow({
         toolResults={toolResults}
         cwd={cwd}
         readOnly={readOnly}
+        subagentId={subagentId}
         turnUser={turnUser}
         checkpointId={checkpointId}
       />
@@ -338,6 +341,8 @@ export function MessageList(props: {
   toolResults?: Record<string, ToolResultBlock>
   cwd?: string
   checkpoints?: Map<string, string>
+  /** 在子代理会话的只读视图中渲染时传入，让内部 Task 卡片能定位下一层子会话。 */
+  subagentId?: string
 }) {
   const scopedSessionId = useSessionView((s) => s?.sessionId ?? null)
   const sessionId = props.messages ? 'preview' : (scopedSessionId ?? 'none')
@@ -352,6 +357,7 @@ function MessageListInner({
   toolResults,
   cwd,
   checkpoints,
+  subagentId,
 }: {
   showSkeleton?: boolean
   /** 传入时渲染这份消息（如外部会话只读预览），不读当前活动会话。 */
@@ -361,6 +367,7 @@ function MessageListInner({
   cwd?: string
   /** 用户消息 id → 检查点 id，用于操作条判断能否回退/重新生成。 */
   checkpoints?: Map<string, string>
+  subagentId?: string
 }) {
   const storeMessages = useSessionView((s) => s?.messages ?? EMPTY)
   const storeSessionId = useSessionView((s) => s?.sessionId ?? null)
@@ -985,6 +992,7 @@ function MessageListInner({
             toolResults={toolResults}
             cwd={cwd}
             readOnly={readOnly}
+            subagentId={subagentId}
             turnUser={turnUser}
             checkpointId={turnUser ? checkpoints?.get(turnUser.id) : undefined}
             fork={forkLinks(m.id)}

@@ -1,10 +1,9 @@
 // 工作站客户端-服务模式回归：只跑工作站 + 两台主机，账号只填工作站地址，
 // 主机出站隧道 + E2E 转发，用户 2 默认不可见、授权后才可见。
 import assert from 'node:assert/strict'
-import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
-import net from 'node:net'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import WebSocket from 'ws'
@@ -55,21 +54,9 @@ function startProcess({ home, mode, port = 0, extraEnv = {} }) {
     writeFileSync(path.join(dataDir, 'config.json'), JSON.stringify({ hostId, token, idleTimeoutSec: 300 }))
   }
   const args = mode === 'host' ? [CLI, '--port', String(port)] : [CLI, 'workstation', '--port', String(port), '--host', '127.0.0.1']
-  // 默认关掉调试账号自动引导，避免每个用例 Host 都拉起内嵌工作站互相占端口；
-  // 调试引导用例用 extraEnv 传 undefined（不设置该变量）覆盖回“调试版默认开启”。
-  const env = {
-    ...process.env,
-    TANDEM_HOME: dataDir,
-    HOME: home,
-    NO_PROXY: '127.0.0.1,localhost',
-    no_proxy: '127.0.0.1,localhost',
-    TANDEM_DEBUG_ACCOUNT: '0',
-    ...extraEnv,
-  }
-  for (const key of Object.keys(env)) if (env[key] === undefined) delete env[key]
   const child = spawn(process.execPath, args, {
     cwd: ROOT,
-    env,
+    env: { ...process.env, TANDEM_HOME: dataDir, HOME: home, NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost', ...extraEnv },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let output = ''
@@ -126,8 +113,8 @@ async function waitFor(fn, label, timeout = 25_000) {
 /** 调试版工作站：自动测试账号、密码文件权限、首个真实注册者仍是管理员。 */
 async function runDebugAccountCheck(base) {
   const home = path.join(base, 'debug-ws')
-  // debug dist 自带调试账号；startProcess 默认 TANDEM_DEBUG_ACCOUNT=0，这里覆盖回调试版默认。
-  const proc = startProcess({ home, mode: 'workstation', extraEnv: { TANDEM_DEBUG_ACCOUNT: undefined } })
+  // debug dist 自带调试账号，不依赖任何运行环境变量。
+  const proc = startProcess({ home, mode: 'workstation' })
   try {
     const port = await proc.ready
     const WS = `http://127.0.0.1:${port}`
@@ -152,213 +139,6 @@ async function runDebugAccountCheck(base) {
     assert.ok(overview.accounts.some((a) => a.username === 'debug' && a.debug), '管理员应能看到带调试标记的测试账号')
   } finally {
     proc.child.kill('SIGTERM')
-  }
-
-  // 调试版 Host 默认自动引导：不传任何 env 开关，几秒内拉起内嵌工作站并登记本机 + 演示主机。
-  const hostProc = startProcess({
-    home: path.join(base, 'debug-host'),
-    mode: 'host',
-    extraEnv: { TANDEM_DEBUG_ACCOUNT: undefined },
-  })
-  try {
-    const hostBase = `http://127.0.0.1:${await hostProc.ready}`
-    const local = await waitFor(async () => {
-      const status = await json(hostBase, '/api/workstation/local/status', {}, hostProc.token)
-      return status.embedded?.running && status.embedded.urls?.length ? status : null
-    }, '调试版 Host 自动拉起内嵌工作站', 40_000)
-    const WS = local.embedded.urls[0]
-    assert.ok(WS, '内嵌工作站应下发地址')
-    const login = await json(WS, '/api/debug/auto-login', { method: 'POST' })
-    const hosts = await waitFor(async () => {
-      const list = await json(WS, '/api/workstation/hosts', {}, login.accessToken)
-      return list.length === 2 && list.every((h) => h.online) ? list : null
-    }, '本机与演示主机经隧道上线', 60_000)
-    const demo = hosts.find((h) => h.demo === true)
-    assert.ok(demo, '调试账号应看到 demo:true 的演示主机')
-    assert.equal(demo.name, '演示主机')
-    assert.ok(hosts.some((h) => !h.demo), '调试账号应看到本机主机')
-    // 客户端发现新增主机后会换一次访问令牌（新 perHost），再用新令牌访问演示主机。
-    const refreshed = await json(WS, '/api/workstation/refresh', {
-      method: 'POST',
-      body: JSON.stringify({ refreshToken: login.refreshToken }),
-    })
-    // 演示主机可经工作站 E2E 访问，且演示工作区已创建（演示模型/会话/设备）。
-    const demoChannel = new E2EChannel({ baseUrl: `${WS}/h/${demo.id}`, fingerprint: demo.fingerprint })
-    const demoRes = await demoChannel.fetch('/api/demo', { headers: { Authorization: `Bearer ${refreshed.accessToken}` } })
-    assert.equal(demoRes.status, 200, '应能经工作站访问演示主机')
-    const demoState = await demoRes.json()
-    assert.equal(demoState.active, true, '演示主机应有已创建的演示工作区')
-    assert.ok(demoState.profile?.kind === 'demo', '演示工作区应带演示模型')
-    assert.ok(demoState.scenarios.length > 0, '演示工作区应有预置场景')
-  } finally {
-    hostProc.child.kill('SIGTERM')
-  }
-
-  // TANDEM_DEBUG_ACCOUNT=0 模拟发布语义：Host 不拉起内嵌工作站。
-  const plain = startProcess({ home: path.join(base, 'plain-host'), mode: 'host' })
-  try {
-    const plainBase = `http://127.0.0.1:${await plain.ready}`
-    await sleep(3000)
-    const status = await json(plainBase, '/api/workstation/local/status', {}, plain.token)
-    assert.equal(status.mode, 'none', '关闭调试账号时 Host 不应加入工作站')
-    assert.equal(status.embedded.running, false, '关闭调试账号时不应拉起内嵌工作站')
-  } finally {
-    plain.child.kill('SIGTERM')
-  }
-}
-
-async function freePort() {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer()
-    srv.once('error', reject)
-    srv.listen(0, '127.0.0.1', () => {
-      const port = srv.address().port
-      srv.close(() => resolve(port))
-    })
-  })
-}
-
-/** 安装脚本拉起的后台 Host 不在本进程树里：按 TANDEM_HOME 前缀找到进程并结束（不碰其它进程）。 */
-function killHostsUnder(prefix) {
-  if (process.platform === 'win32') return
-  let entries = []
-  try {
-    entries = readdirSync('/proc')
-  } catch {
-    return
-  }
-  for (const name of entries) {
-    if (!/^\d+$/.test(name)) continue
-    const pid = Number(name)
-    if (!pid || pid === process.pid) continue
-    try {
-      const args = readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0')
-      if (!args.some((arg) => arg.endsWith('cli.js'))) continue
-      const env = readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0')
-      const home = env.find((item) => item.startsWith('TANDEM_HOME='))?.slice('TANDEM_HOME='.length)
-      if (home && home.startsWith(prefix)) process.kill(pid, 'SIGTERM')
-    } catch {
-      // 进程已退出或无权读取
-    }
-  }
-}
-
-/** 一行命令添加主机：真实 install.sh + 安装包 + 一次性令牌（起真实后台 Host 进程）。 */
-export async function runInstallCheck(home) {
-  const base = path.join(home, 'workstation-install')
-  killHostsUnder(base)
-  await sleep(500)
-  rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 })
-  mkdirSync(base, { recursive: true })
-  const hostPackDir = path.join(ROOT, 'packages', 'server', 'host-pack')
-  const packScript = path.join(ROOT, 'scripts', 'pack-host.mjs')
-  const ws = startProcess({ home: path.join(base, 'ws'), mode: 'workstation', extraEnv: { TANDEM_HOST_PACK: undefined } })
-  try {
-    const wsPort = await ws.ready
-    const WS = `http://127.0.0.1:${wsPort}`
-    const admin = await json(WS, '/api/workstation/setup', {
-      method: 'POST',
-      body: JSON.stringify({ name: '安装回归工作站', username: 'inst-admin', password: 'inst-pass-123' }),
-    })
-    const bind = await json(WS, '/api/workstation/hosts/bind-code', { method: 'POST' }, admin.accessToken)
-    assert.ok(bind.code.startsWith('ach_'), '绑定码应为 ach_ 前缀')
-
-    const runInstall = ({ port, hostDir, installDir, token = bind.code }) => {
-      const env = {
-        ...process.env,
-        HOME: path.join(base, 'home'),
-        TANDEM_HOME: hostDir,
-        TANDEM_INSTALL_DIR: installDir,
-        // 调试版 Host 默认会自动登录内嵌调试工作站（8481），与显式 join 冲突；这里模拟发布语义。
-        TANDEM_DEBUG_ACCOUNT: '0',
-        NO_PROXY: '127.0.0.1,localhost',
-        no_proxy: '127.0.0.1,localhost',
-      }
-      delete env.TANDEM_HOST_PACK
-      const command = `curl -fsSL ${WS}/install.sh | sh -s -- --token ${token} --no-service --port ${port}`
-      return spawnSync('sh', ['-c', command], { env, encoding: 'utf8', timeout: 120_000 })
-    }
-    const outputOf = (res) => `${res.stdout ?? ''}${res.stderr ?? ''}`
-
-    // 1) 工作站没有随附安装包：下载失败要给出非零退出与手动步骤（不能静默）。
-    rmSync(hostPackDir, { recursive: true, force: true })
-    const portNoPack = await freePort()
-    const noPack = runInstall({ port: portNoPack, hostDir: path.join(base, 'host-nopack'), installDir: path.join(base, 'inst-nopack') })
-    const noPackOut = outputOf(noPack)
-    assert.notEqual(noPack.status, 0, `没有安装包时 install.sh 应失败：${noPackOut}`)
-    assert.match(noPackOut, /手动安装步骤/, '失败时要给手动安装步骤')
-    assert.match(noPackOut, /tandem-host\.tgz/)
-    const noPackDl = await fetch(`${WS}/dl/tandem-host.tgz`)
-    assert.equal(noPackDl.status, 404, '没有安装包时 /dl/tandem-host.tgz 应 404')
-
-    // 2) 生成安装包：工作站 status 下发 hostPackage，/dl 可下载。
-    execFileSync(process.execPath, [packScript], { cwd: ROOT, stdio: 'pipe' })
-    assert.ok(existsSync(path.join(hostPackDir, 'tandem-host.tgz')), 'pack-host 应生成 host-pack/tandem-host.tgz')
-    const status = await waitFor(async () => {
-      const value = await json(WS, '/api/workstation/status')
-      return value.hostPackage?.size > 0 ? value : null
-    }, '工作站状态下发 hostPackage', 10_000)
-    assert.ok(status.hostPackage.version, 'hostPackage 应带版本号')
-    assert.equal(status.hostPackage.zip, true, '工作站应同时下发 Windows ZIP 安装包')
-    const dl = await fetch(`${WS}/dl/tandem-host.tgz`)
-    assert.equal(dl.status, 200, '应能下载主机安装包')
-    assert.equal(Number(dl.headers.get('content-length')), status.hostPackage.size)
-    const dlZip = await fetch(`${WS}/dl/tandem-host.zip`)
-    assert.equal(dlZip.status, 200, '应能下载 Windows ZIP 安装包')
-    const zipBody = Buffer.from(await dlZip.arrayBuffer())
-    assert.equal(zipBody.readUInt32LE(0), 0x04034b50, 'ZIP 文件头应为本地文件头')
-    assert.ok(zipBody.includes(Buffer.from('dist/cli.js')), 'ZIP 内应包含 dist/cli.js')
-    const zipEocd = zipBody.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]))
-    assert.ok(zipBody.readUInt16LE(zipEocd + 10) > 1000, 'ZIP 内文件数应合理')
-
-    // 3) 一行命令安装 + 登记：主机上线，令牌不回显，主机凭据 0600。
-    const port = await freePort()
-    const hostDir = path.join(base, 'host')
-    const installDir = path.join(base, 'inst')
-    const installed = runInstall({ port, hostDir, installDir })
-    const installedOut = outputOf(installed)
-    assert.equal(installed.status, 0, `install.sh 失败：${installedOut}`)
-    assert.ok(existsSync(path.join(installDir, 'app', 'dist', 'cli.js')), '安装目录应包含解压后的 CLI')
-    assert.ok(installedOut.includes('ach_****'), '安装输出应脱敏令牌')
-    assert.ok(!installedOut.includes(bind.code), '安装输出不能回显明文令牌')
-    assert.match(installedOut, /已加入工作站/)
-    const hosts = await waitFor(async () => {
-      const list = await json(WS, '/api/workstation/hosts', {}, admin.accessToken)
-      return list.length === 1 && list[0].online ? list : null
-    }, '安装脚本登记的主机上线', 60_000)
-    assert.ok(hosts[0].name, '主机应有显示名')
-    if (process.platform !== 'win32') {
-      assert.equal(statSync(path.join(hostDir, 'accounts.json')).mode & 0o777, 0o600, '主机账号文件应为 0600')
-    }
-
-    // 4) 已加入同一工作站：重复 join 幂等（不报 409，即使令牌已用）。
-    const again = spawnSync(
-      process.execPath,
-      [path.join(installDir, 'app', 'dist', 'cli.js'), 'join', WS, '--token', bind.code, '--port', String(port)],
-      {
-        env: { ...process.env, TANDEM_HOME: hostDir, TANDEM_DEBUG_ACCOUNT: '0', HOME: path.join(base, 'home'), NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' },
-        encoding: 'utf8',
-        timeout: 30_000,
-      },
-    )
-    assert.equal(again.status, 0, `重复 join 应幂等：${outputOf(again)}`)
-    assert.match(outputOf(again), /已加入工作站/)
-
-    // 5) 同一令牌再用于另一台主机：被工作站拒绝（非零退出、输出含「已使用」）。
-    const portReuse = await freePort()
-    const reused = runInstall({ port: portReuse, hostDir: path.join(base, 'host2'), installDir: path.join(base, 'inst2') })
-    const reusedOut = outputOf(reused)
-    assert.notEqual(reused.status, 0, `重复使用令牌应失败：${reusedOut}`)
-    assert.match(reusedOut, /已使用|已过期/)
-    assert.match(reusedOut, /登记失败/)
-  } finally {
-    killHostsUnder(base)
-    await sleep(500)
-    ws.child.kill('SIGTERM')
-    // 有主机隧道未断开时工作站关闭可能等待，兜底强杀，避免回归进程挂着不退。
-    await sleep(1500)
-    if (ws.child.exitCode === null) ws.child.kill('SIGKILL')
-    rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 })
   }
 }
 
@@ -512,7 +292,6 @@ export async function runWorkstationCheck(home) {
     assert.deepEqual(await json(WS, '/api/workstation/hosts', {}, bobTokens.accessToken), [], '刷新后不应再看到被撤销的主机')
 
     await runDebugAccountCheck(base)
-    await runInstallCheck(base)
   } finally {
     ws.child.kill('SIGTERM')
     h1.child.kill('SIGTERM')

@@ -88,6 +88,37 @@ function scheduleHighlight(job: () => void): void {
   schedulePump()
 }
 
+/**
+ * 把高亮后的整段 HTML 按行拆开，并在每行边界补全跨行的标签。
+ * 换行模式需要用「行号 + 代码」成对的 grid 行来保证对齐，不能把整段塞进一个 pre。
+ */
+export function splitHtmlLines(html: string): string[] {
+  const out: string[] = []
+  const stack: string[] = []
+  let current = ''
+  const tokens = html.match(/<\/?[^>]+>|\n|[^\n<]+/g) ?? []
+  const closeOpen = () => stack.map(() => '</span>').join('')
+  const reopenOpen = () => stack.join('')
+  for (const token of tokens) {
+    if (token === '\n') {
+      current += closeOpen()
+      out.push(current)
+      current = reopenOpen()
+      continue
+    }
+    if (token.startsWith('</')) {
+      stack.pop()
+    } else if (token.startsWith('<')) {
+      const tag = /^<\s*([a-zA-Z0-9-]+)/.exec(token)?.[1]?.toLowerCase()
+      if (tag && !token.endsWith('/>') && tag !== 'br') stack.push(token)
+    }
+    current += token
+  }
+  current += closeOpen()
+  out.push(current)
+  return out
+}
+
 interface CodeBlockProps {
   code: string
   language?: string
@@ -140,6 +171,13 @@ export function CodeBlock({
   ])
   const scrollBoxRef = useRef<HTMLDivElement>(null)
   const lineCount = useMemo(() => (shown ? shown.split('\n').length : 0), [shown])
+  // 反馈12#02：换行模式下行号与代码是两列，必须按源码行一一对齐（每行一个 grid 行）。
+  const gridWrap = lineNumbers && wrap
+  const gridLines = useMemo(() => {
+    if (!gridWrap) return null
+    if (!html) return shown.split('\n')
+    return splitHtmlLines(html)
+  }, [gridWrap, html, shown])
 
   useEffect(() => {
     setAutoLang(null)
@@ -197,6 +235,13 @@ export function CodeBlock({
         })
     }
 
+    // 换行 + 行号的 grid 模式没有 pre 可观察，直接解析（文件预览一次只有一块）。
+    if (gridWrap) {
+      scheduleHighlight(run)
+      return () => {
+        cancelled = true
+      }
+    }
     // 视口外的代码块不解析：长会话打开时只高亮看得见的几块。
     if (typeof IntersectionObserver !== 'undefined') {
       const el = preRef.current
@@ -219,7 +264,7 @@ export function CodeBlock({
       cancelled = true
       observer?.disconnect()
     }
-  }, [shown, language, key, streaming])
+  }, [shown, language, key, streaming, gridWrap])
 
   useEffect(
     () => () => {
@@ -238,7 +283,11 @@ export function CodeBlock({
   const empty = !shown
 
   return (
-    <div className={cn('chat-code', fill && 'file-code-fill', className)} data-wrap={wrap ? 'true' : undefined}>
+    <div
+      className={cn('chat-code', fill && 'file-code-fill', className)}
+      data-wrap={wrap ? 'true' : undefined}
+      data-tools={copied || wrap || toolsAlwaysVisible ? 'always' : undefined}
+    >
       {showHeader && (
         <div className="chat-code-tools" data-visible={copied || wrap || toolsAlwaysVisible || undefined}>
           <span className="truncate font-mono text-[12px] text-[var(--t-text-tertiary)]">
@@ -287,7 +336,42 @@ export function CodeBlock({
         </div>
       )}
       <div className={cn('x-scroll-wrap', fill && 'flex min-h-0 flex-1 flex-col')}>
-        {lineNumbers ? (
+        {lineNumbers && gridWrap ? (
+          <div
+            ref={scrollBoxRef}
+            className="file-code-scroll"
+            style={fill ? { height: '100%' } : maxHeight != null ? { maxHeight } : undefined}
+          >
+            <div className="file-code-wrap-grid" data-testid="code-wrap-grid">
+              {empty ? (
+                <div className="file-code-wrap-row">
+                  <span className="file-code-wrap-no" aria-hidden>
+                    1
+                  </span>
+                  <span className="file-code-wrap-code italic text-muted">{placeholder ?? '（空）'}</span>
+                </div>
+              ) : (
+                (gridLines ?? []).map((line, index) => {
+                  const inRange =
+                    highlightRange &&
+                    index + 1 >= highlightRange.start &&
+                    index + 1 <= highlightRange.end
+                  return (
+                    <div key={index} className="file-code-wrap-row" data-range={inRange || undefined}>
+                      <span className="file-code-wrap-no" aria-hidden>
+                        {index + 1}
+                      </span>
+                      <span
+                        className="file-code-wrap-code"
+                        dangerouslySetInnerHTML={{ __html: line || ' ' }}
+                      />
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        ) : lineNumbers ? (
           <div
             ref={scrollBoxRef}
             className="file-code-scroll"

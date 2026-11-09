@@ -25,6 +25,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   toolResults,
   cwd,
   readOnly = false,
+  subagentId,
   turnUser,
   checkpointId,
 }: {
@@ -34,6 +35,8 @@ export const AssistantMessage = memo(function AssistantMessage({
   toolResults?: Record<string, ToolResultBlock>
   cwd?: string
   readOnly?: boolean
+  /** 子代理只读视图中渲染时传入，让 Task 卡片定位下一层子会话。 */
+  subagentId?: string
   /** 本轮对应的用户消息；助理消息的操作条以它为回退/重新生成的锚点。 */
   turnUser?: UiMessage
   /** 本轮用户消息对应的检查点 id。 */
@@ -139,6 +142,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             entries={run}
             toolResults={toolResults}
             cwd={cwd}
+            subagentId={subagentId}
           />,
         )
       } else {
@@ -153,6 +157,7 @@ export const AssistantMessage = memo(function AssistantMessage({
               streaming={streaming}
               toolResults={toolResults}
               cwd={cwd}
+              subagentId={subagentId}
             />,
           )
         }

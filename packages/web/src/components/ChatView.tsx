@@ -20,6 +20,7 @@ import { CompactConfirmDialog } from './chat/CompactConfirmDialog'
 import { EnvBar } from './EnvBar'
 import { TurnRail } from './chat/TurnRail'
 import { TurnErrorNotice } from './chat/TurnErrorNotice'
+import { SubagentSessionView } from './chat/SubagentSessionView'
 import { DemoDeviceStage } from './workstation/DemoDeviceStage'
 import { isTargetFocused, useSessionTarget, useSessionView } from './session/SessionScope'
 import '../styles/chat.css'
@@ -61,6 +62,8 @@ export function ChatView() {
     hostId ? s.hosts.find((item) => item.id === hostId) : undefined,
   )
   const openDoctor = useUiStore((s) => s.openDoctor)
+  const agentSession = useUiStore((s) => s.agentSession)
+  const closeAgentSession = useUiStore((s) => s.closeAgentSession)
   const canDoctor =
     !!activeHost && (isLocalHostUrl(activeHost.url) || isSameOrigin(activeHost.url))
   const viewers = useSessionView((s) => s?.viewers ?? EMPTY_VIEWERS)
@@ -121,6 +124,15 @@ export function ChatView() {
       cancelled = true
     }
   }, [hostId, sessionId, running, messageCount])
+
+  // 切到另一个会话时退出子代理只读视图，避免回来时还停在子会话。
+  const prevSessionRef = useRef(sessionId)
+  useEffect(() => {
+    if (prevSessionRef.current !== sessionId) {
+      prevSessionRef.current = sessionId
+      if (agentSession) closeAgentSession()
+    }
+  }, [sessionId, agentSession, closeAgentSession])
 
   const retryTurn = () => {
     const state = useAppStore.getState()
@@ -260,6 +272,17 @@ export function ChatView() {
       <div ref={rootRef} className="min-h-0 flex-1 overflow-y-auto">
         <HomeView />
       </div>
+    )
+  }
+
+  // 反馈12#05：打开子代理会话的只读视图（面包屑可逐层返回主会话）。
+  if (agentSession && hostId && agentSession.hostId === hostId) {
+    return (
+      <SubagentSessionView
+        key={`${agentSession.id}:${agentSession.nonce}`}
+        hostId={hostId}
+        id={agentSession.id}
+      />
     )
   }
 

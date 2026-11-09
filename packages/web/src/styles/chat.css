@@ -31,25 +31,24 @@
   }
 }
 
+/* 反馈12#10：Radix 用内联 transform 做定位，动画里再写 transform 会覆盖它，
+   首帧渲染在错误位置再跳回来（首次打开/切换控件后复发）。弹层动画只做透明度，
+   定位从第一帧起就稳定。 */
 @keyframes chat-pop-in {
   from {
     opacity: 0;
-    transform: scale(0.97) translateY(2px);
   }
   to {
     opacity: 1;
-    transform: scale(1) translateY(0);
   }
 }
 
 @keyframes chat-pop-out {
   from {
     opacity: 1;
-    transform: scale(1) translateY(0);
   }
   to {
     opacity: 0;
-    transform: scale(0.97) translateY(2px);
   }
 }
 
@@ -622,6 +621,64 @@
   border-top: 1px solid color-mix(in srgb, var(--t-accent) 22%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--t-accent) 22%, transparent);
   background: color-mix(in srgb, var(--t-accent) 8%, transparent);
+}
+
+/* 反馈12#02：自动换行 + 行号：每行一个 grid 行，行号与代码顶端对齐。 */
+.file-code-wrap-grid {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.file-code-wrap-row {
+  display: grid;
+  grid-template-columns: minmax(30px, max-content) minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: start;
+}
+.file-code-wrap-row[data-range="true"] {
+  background: color-mix(in srgb, var(--t-accent) 8%, transparent);
+}
+.file-code-wrap-no {
+  padding: 0 6px;
+  border-right: 1px solid color-mix(in srgb, var(--t-border) 70%, transparent);
+  background: var(--t-surface-2);
+  color: var(--t-text-tertiary);
+  font-family: var(--t-font-mono, ui-monospace, "SF Mono", Consolas, monospace);
+  font-size: 11px;
+  line-height: 20px;
+  text-align: right;
+  user-select: none;
+}
+.file-code-wrap-code {
+  min-width: 0;
+  padding-right: 16px;
+  color: var(--t-text);
+  font-family: var(--t-font-mono, ui-monospace, "SF Mono", Consolas, monospace);
+  font-size: 12.5px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}
+.file-code-wrap-grid > .file-code-wrap-row:first-child > .file-code-wrap-no,
+.file-code-wrap-grid > .file-code-wrap-row:first-child > .file-code-wrap-code {
+  padding-top: 12px;
+}
+.file-code-wrap-grid > .file-code-wrap-row:last-child > .file-code-wrap-no,
+.file-code-wrap-grid > .file-code-wrap-row:last-child > .file-code-wrap-code {
+  padding-bottom: 12px;
+}
+/* 工具按钮常显（自动换行开启 / 安装说明）时为顶部工具条留出空间，长行不被按钮遮住。 */
+.chat-code[data-tools="always"] pre,
+.md.chat-md .chat-code[data-tools="always"] pre {
+  padding-top: 38px;
+}
+.chat-code[data-tools="always"] .file-code-gutter {
+  padding-top: 38px;
+}
+.chat-code[data-tools="always"] .file-code-wrap-grid > .file-code-wrap-row:first-child > .file-code-wrap-no,
+.chat-code[data-tools="always"] .file-code-wrap-grid > .file-code-wrap-row:first-child > .file-code-wrap-code {
+  padding-top: 38px;
 }
 
 /* ---------- 工具行 / 思考行 ---------- */
@@ -1198,20 +1255,14 @@ mark.chat-match {
 
 /* ---------- 审批卡 ---------- */
 
+/* 反馈12#09：审批改用会话内的中性询问样式，去掉橙色竖条与重框。 */
 .permission-card {
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--t-border);
-  border-radius: 12px;
-  background: var(--t-surface);
+  border: 1px solid color-mix(in srgb, var(--t-border) 55%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--t-surface) 52%, transparent);
   animation: chat-permission-in 220ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
-}
-.permission-card::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 2px;
-  background: var(--t-accent);
 }
 
 @media (max-width: 767px) {
@@ -1839,4 +1890,23 @@ html:not(.dark) .composer-card:focus-within {
 }
 .md-hl-em {
   color: var(--t-text-soft);
+}
+
+/* ---------- 子代理层级树（反馈12#03） ---------- */
+.agent-guides {
+  display: flex;
+}
+.agent-guide {
+  position: relative;
+  width: 12px;
+  flex: none;
+}
+.agent-guide::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  bottom: 2px;
+  width: 1px;
+  background: var(--t-border);
 }

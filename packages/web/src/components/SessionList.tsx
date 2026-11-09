@@ -571,6 +571,7 @@ export function SessionList({
     s: SessionSummary,
     depth = 0,
     section: 'recent' | 'pinned' = 'recent',
+    nested = false,
   ) => {
     const isActive = s.id === activeSessionId
     const renamingThis = renaming === s.id
@@ -596,6 +597,7 @@ export function SessionList({
         data-session-row="true"
         data-session-id={s.id}
         data-host-id={hostId}
+        data-nested={nested || undefined}
         data-session-pinned={pinState || undefined}
         onContextMenu={(e) => openMenu(e, hostId, s)}
         draggable={!renamingThis}
@@ -663,7 +665,11 @@ export function SessionList({
             data-session-open="true"
             onClick={(e) => openSession(hostId, s.id, !!(e.metaKey || e.ctrlKey))}
             aria-current={isActive ? 'page' : undefined}
-            className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pl-2 pr-1 text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--t-focus-ring)]"
+            className={cn(
+              'flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pr-1 text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--t-focus-ring)]',
+              // 反馈12#08：会话标题与项目标题左对齐（项目 6px + 图标/间距 36px；会话自身状态点 16px + 间距 8px）。
+              nested ? 'pl-[18px]' : 'pl-2',
+            )}
           >
             <span className="pointer-events-none flex size-4 shrink-0 items-center justify-center">
               {s.status !== 'idle' ? (
@@ -836,7 +842,7 @@ export function SessionList({
               >
                 <button
                   onClick={() => openExternal(hostId, ext)}
-                  className="anim-row-in flex h-11 w-full min-w-0 items-center gap-2 rounded-lg pl-2 pr-2 text-left text-[14px] text-text outline-none transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] md:h-[34px]"
+                  className="anim-row-in flex h-11 w-full min-w-0 items-center gap-2 rounded-lg pl-[18px] pr-2 text-left text-[14px] text-text outline-none transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] md:h-[34px]"
                 >
                   <span className="flex size-4 shrink-0 items-center justify-center text-text-tertiary">
                     <Eye size={12} />

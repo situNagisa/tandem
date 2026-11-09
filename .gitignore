@@ -1,8 +1,6 @@
 node_modules
 dist
 *.log
-# 主机安装包（scripts/pack-host.mjs 生成，工作站通过 /dl/tandem-host.tgz 下发）
-packages/server/host-pack
 .tandem-data
 dist-apk
 packages/mobile/android/.gradle

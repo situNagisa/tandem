@@ -26,3 +26,9 @@
 - 单测：`packages/server/test/profile-keys.test.ts`（空值/掩码不覆盖、Key 列表按 id 保留、老账号账号级 Key）、`packages/web/src/lib/modelSelection.test.ts`。
 - 回归：`e2e/regression.mjs`「账号编辑：Key 掩码不回传、拉取模型只选最新、无原生下拉」；「菜单行文字行高不被裁切」。
 - 全量：`node scripts/check.mjs`。
+
+## 下拉/弹层首次打开不抖（反馈12#10 · R52）
+
+- 共享 `ui/Menu`、`ui/Popover` 等所有 `.popover-panel` 的入场动画只做透明度（`chat-pop-in/out`），**不再写 `transform`**：Radix 用内联 `transform: translate(...)` 做定位，CSS 动画里的 transform 优先级更高、会把它覆盖掉，导致首帧渲染在错误位置再跳回（首次打开、切换控件后再次打开都会复现）。
+- 定位从第一帧起保持稳定；不再需要额外的 `visibility` 占位。
+- 回归：「反馈12#10：下拉首次打开位置稳定（前 10 帧 ≤1px）」对「更多」菜单与模型下拉各测首次/再次打开，rAF 采样前 10 帧 `getBoundingClientRect` 变化 ≤1px。
