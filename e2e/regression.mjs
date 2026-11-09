@@ -96,6 +96,26 @@ function createMockProvider() {
     res.end()
   }
   const server = http.createServer(async (req, res) => {
+    // 反馈10#04：多代/别名/快照混在一起的模型列表，用于验证「只勾选最新一代」。
+    if (req.method === 'GET' && req.url.includes('/versioned/') && req.url.endsWith('/models')) {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(
+        JSON.stringify({
+          data: [
+            'claude-fable-5',
+            'claude-fable-5-1',
+            'claude-haiku-4-5-20251001',
+            'claude-haiku-5-5',
+            'claude-opus-4-5-20251101',
+            'claude-opus-4-6',
+            'claude-opus-5-5',
+            'claude-sonnet-4-5',
+            'claude-sonnet-5-5',
+          ].map((id) => ({ id, object: 'model' })),
+        }),
+      )
+      return
+    }
     if (req.method === 'GET' && req.url.endsWith('/models')) {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ data: [{ id: 'mock-1', object: 'model' }] }))
@@ -1279,6 +1299,27 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
         'route-power': { input: 10, output: 20 },
       },
       createdAt: Date.now() - 28_000,
+    },
+    {
+      // 反馈10#04：多代/别名/日期快照混在一起的模型列表。
+      id: 'p-versioned',
+      name: '多代模型账号',
+      kind: 'openai-compatible',
+      baseUrl: baseUrl.replace(/\/v1$/, '/versioned/v1'),
+      apiKey: 'reg-key-versioned',
+      models: ['claude-sonnet-4-5'],
+      defaultModel: 'claude-sonnet-4-5',
+      groups: [
+        {
+          id: 'g-versioned',
+          name: 'aws',
+          kind: 'openai-compatible',
+          apiKey: 'sk-reg-abcdefghij',
+          models: ['claude-sonnet-4-5'],
+          defaultModel: 'claude-sonnet-4-5',
+        },
+      ],
+      createdAt: Date.now() - 30_000,
     },
     {
       // 菜单反馈 #17：一个分组塞满模型，验证列表滚动、底部操作固定可见。
@@ -2666,6 +2707,62 @@ async function main() {
       assert.ok(info.rows > 300, `按需加载后只渲染了 ${info.rows} 行`)
     })
 
+    desktop('轮次大纲滚轮只预览、点击未加载轮能定位（反馈10#01 R40）', async (page) => {
+      await openSession(page, 'huge')
+      await page.waitForFunction(
+        () => /第 \d+ \/ 320 轮/.test(document.querySelector('.turn-count')?.textContent ?? ''),
+        null,
+        { timeout: 15_000 },
+      )
+      await page.locator('.turn-hit').hover()
+      await page.waitForFunction(
+        () => document.querySelector('.turn-rail')?.getAttribute('data-open') === 'true',
+        null,
+        { timeout: 5_000 },
+      )
+      await page.waitForTimeout(700)
+      const read = () =>
+        page.evaluate(() => ({
+          top: document.querySelector('.chat-scroll')?.scrollTop ?? -1,
+          value: document.querySelector('.turn-hit')?.getAttribute('aria-valuenow') ?? '',
+          count: document.querySelector('.turn-count')?.textContent ?? '',
+        }))
+      const before = await read()
+      const box = await page.locator('.turn-hit').boundingBox()
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.mouse.wheel(0, -100)
+      await page.mouse.wheel(0, -100)
+      await page.waitForTimeout(600)
+      const afterWheel = await read()
+      assert.equal(afterWheel.top, before.top, '滚轮滚动大纲时对话区被滚动了')
+      assert.equal(afterWheel.value, before.value, '滚轮滚动大纲时当前轮被改变了')
+      assert.equal(afterWheel.count, before.count, '滚轮滚动大纲时轮次胶囊被改变了')
+
+      // 预览滚动到最早几轮后点其中一行：应先加载该段消息，再滚动并高亮。
+      for (let i = 0; i < 420; i++) await page.mouse.wheel(0, -100)
+      await page.waitForTimeout(800)
+      const row = await page.evaluate(() => {
+        const items = [...document.querySelectorAll('.turn-item')]
+          .filter((el) => Number(el.dataset.turnPos) > 0 && Number(el.dataset.turnPos) <= 8)
+          .sort((a, b) => a.getBoundingClientRect().y - b.getBoundingClientRect().y)
+        const el = items[0]
+        if (!el) return null
+        const r = el.getBoundingClientRect()
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2, pos: Number(el.dataset.turnPos) }
+      })
+      assert.ok(row, '滚轮后大纲里看不到最早几轮')
+      await page.mouse.click(row.x, row.y)
+      await page.locator(`[data-turn-id="hu${row.pos}"]`).waitFor({ state: 'attached', timeout: 20_000 })
+      await page.waitForFunction(
+        (id) => document.querySelector(`[data-turn-id="${id}"]`)?.closest('.msg-row')?.classList.contains('msg-jump-hit'),
+        `hu${row.pos}`,
+        { timeout: 5_000 },
+      )
+      const jumped = await read()
+      assert.match(jumped.count, new RegExp(`第 ${row.pos} / 320 轮`), '点击大纲后没有定位到目标轮')
+      await page.screenshot({ path: '/tmp/fb10-after/01.png' })
+    })
+
     desktop('轮次大纲悬停显示该轮用量、全文可读（#01 R15）', async (page) => {
       await openSession(page, 'long')
       await page.locator('.turn-hit').hover()
@@ -3348,7 +3445,7 @@ async function main() {
       await page.keyboard.press('Escape')
     })
 
-    desktop('输入框：token 估算、缓存提示与执行方式/委派倾向合并（反馈8#01 #03 #05 #08 #09 #11）', async (page) => {
+    desktop('输入框：token 估算、切换确认与执行方式/委派倾向合并（反馈8#01 #03 #05 #08 #09 #11 / 10#02）', async (page) => {
       mkdirSync('/tmp/fb8-after', { recursive: true })
       const session = await api(base, token, '/api/sessions', {
         method: 'POST',
@@ -3420,38 +3517,60 @@ async function main() {
       assert.match(tokenText, /发送后 ~\d+%|发送后 ~<1%/, `发送后上下文百分比缺失：${tokenText}`)
       await page.screenshot({ path: '/tmp/fb8-after/05.png' })
 
-      // #08：会话已有上下文时，模型菜单在切换前提示缓存失效，并可不再提示。
+      // 反馈10#02：模型菜单不再常驻缓存提示；真正切换模型/账号/分组时弹确认框，
+      // 没有「不再提示」按钮；取消不改变当前模型。
       await api(base, token, `/api/sessions/${session.id}`, {
         method: 'PATCH',
         body: JSON.stringify({ effort: 'low' }),
       })
-      await page.locator('button[aria-label^="选择模型"]').first().click()
-      const modelMenu = page.locator('[role="menu"][aria-label="选择模型"]').first()
-      await modelMenu.waitFor()
-      const warning = modelMenu.locator('[data-cache-warning]')
-      await warning.waitFor({ timeout: 5_000 })
-      await page.waitForFunction(
-        () => /\$\d/.test(document.querySelector('[data-cache-warning]')?.textContent ?? ''),
-        null,
-        { timeout: 10_000 },
+      const switchToMock2 = async () => {
+        await page.locator('button[aria-label^="选择模型"]').first().click()
+        const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+        await menu.waitFor()
+        assert.equal(await menu.locator('[data-cache-warning]').count(), 0, '模型菜单仍有常驻缓存提示')
+        await menu.getByRole('menuitem', { name: /切换账号|切换分组|全部模型/ }).first().hover()
+        const accounts = page.locator('[role="menu"][aria-label="切换账号"]').first()
+        await accounts.waitFor({ timeout: 5_000 })
+        await accounts.getByRole('menuitem', { name: /主力账号/ }).first().hover()
+        const groups = page.locator('[role="menu"][aria-label="主力账号"]').first()
+        await groups.waitFor({ timeout: 5_000 })
+        await groups.getByRole('menuitem', { name: /生产/ }).first().hover()
+        const models = page.locator('[role="menu"][aria-label*="生产"]').first()
+        await models.waitFor({ timeout: 5_000 })
+        await models.getByRole('menuitem', { name: 'mock-2' }).first().click()
+      }
+      await switchToMock2()
+      const switchDialog = page.getByRole('dialog').filter({ hasText: '切换后提示缓存将失效' })
+      await switchDialog.waitFor({ timeout: 5_000 })
+      const switchText = await switchDialog.innerText()
+      const beforeModel = (await api(base, token, `/api/sessions/${session.id}`)).model
+      assert.match(switchText, /下一轮按完整上下文计费/, `切换确认缺少计费说明：${switchText}`)
+      assert.match(switchText, /约 ~[\d.]+k? tok/, `切换确认缺少 token 估算：${switchText}`)
+      assert.doesNotMatch(switchText, /不再提示/, '切换确认仍有「不再提示」')
+      await page.screenshot({ path: '/tmp/fb10-after/02.png' })
+      await switchDialog.getByRole('button', { name: '取消' }).click()
+      await page.waitForTimeout(200)
+      await waitModelReady(page)
+      assert.equal(
+        (await api(base, token, `/api/sessions/${session.id}`)).model,
+        beforeModel,
+        '取消切换后模型被改掉',
       )
-      const warningText = await warning.innerText()
-      assert.match(warningText, /提示缓存将失效/, `缓存提示缺少结论：${warningText}`)
-      assert.match(warningText, /下一轮按完整上下文计费/, `缓存提示缺少计费说明：${warningText}`)
-      assert.match(warningText, /约 ~[\d.]+k? tok/, `缓存提示缺少 token 估算：${warningText}`)
-      assert.match(warningText, /\$\d/, `缓存提示缺少费用估算：${warningText}`)
-      await page.screenshot({ path: '/tmp/fb8-after/08.png' })
-      await warning.getByRole('button', { name: '不再提示' }).click()
-      await page.keyboard.press('Escape')
-      await page.locator('button[aria-label^="选择模型"]').first().click()
-      const reopened = page.locator('[role="menu"][aria-label="选择模型"]').first()
-      await reopened.waitFor()
-      await page.waitForTimeout(150)
-      assert.equal(await reopened.locator('[data-cache-warning]').count(), 0, '点「不再提示」后仍显示缓存提示')
-      // #01：模型菜单不再重复「分工」入口（分工统一到执行方式）。
-      assert.equal(await reopened.getByRole('menuitem', { name: '分工', exact: true }).count(), 0, '模型菜单仍有重复的「分工」入口')
-      await page.keyboard.press('Escape')
-      await page.evaluate(() => localStorage.removeItem('tandem.cacheSwitchWarning.v1'))
+      await switchToMock2()
+      await switchDialog.waitFor({ timeout: 5_000 })
+      await switchDialog.getByRole('button', { name: '切换' }).click()
+      await page.waitForTimeout(500)
+      assert.match(
+        await page.locator('button[aria-label^="选择模型"]').first().getAttribute('aria-label'),
+        /Mock 2|mock-2/i,
+        '确认后没有切换模型',
+      )
+      // 回到支持思考档位的 o3，继续验证芯片的小点与 tooltip。
+      await api(base, token, `/api/sessions/${session.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ model: 'o3', groupId: 'g2', effort: 'low' }),
+      })
+      await page.waitForTimeout(400)
 
       // #11：模型芯片不再把思考强度拼进文字，改用小点 + tooltip。
       await waitModelReady(page)
@@ -5204,7 +5323,7 @@ async function main() {
       assert.ok(Math.abs(reset - 300) <= 2, `双击后没有恢复默认宽度：${reset}`)
     })
 
-    desktop('会话信息面板：空分组默认隐藏、显示空分组开关与数据到达后出现（反馈9#06 R14）', async (page) => {
+    desktop('会话信息面板：空分组默认隐藏、⋯ 菜单可显式显示（反馈9#06 / 10#03 R14）', async (page) => {
       const empty = await api(base, token, '/api/sessions', {
         method: 'POST',
         body: JSON.stringify({
@@ -5232,15 +5351,36 @@ async function main() {
       assert.equal(await panel.locator('[data-group="context"]').count(), 0, '新会话无数据时仍显示上下文卡')
       assert.equal(await panel.locator('[data-group="details"]').count(), 1, '详情分组应始终显示')
 
-      // 底部开关：打开后空分组出现，记忆仍可从空状态进入编辑；选择被记住。
-      await panel.getByRole('switch', { name: '显示空分组' }).click()
+      // 反馈10#03：不再有底部「显示空分组」开关；顶部 ⋯ 菜单可逐个勾选分组。
+      assert.equal(
+        await panel.getByRole('switch', { name: '显示空分组' }).count(),
+        0,
+        '底部仍有「显示空分组」开关',
+      )
+      const groupMenu = page.locator('[role="menu"][aria-label="显示分组"]').first()
+      const toggleEmptyGroup = async (name) => {
+        if (!(await groupMenu.isVisible().catch(() => false))) {
+          await panel.getByRole('button', { name: '自定义信息面板' }).click()
+          await groupMenu.waitFor({ timeout: 5_000 })
+        }
+        await groupMenu.getByRole('menuitemcheckbox', { name, exact: true }).click()
+      }
+      await toggleEmptyGroup('待办')
+      await toggleEmptyGroup('用量')
+      await toggleEmptyGroup('记忆')
+      await page.keyboard.press('Escape')
       await panel.getByText('暂无待办', { exact: true }).waitFor({ timeout: 5_000 })
       await panel.getByText('暂无用量', { exact: true }).waitFor({ timeout: 5_000 })
       await panel.getByText('暂无记忆', { exact: false }).waitFor({ timeout: 5_000 })
       assert.equal(await panel.getByRole('button', { name: '编辑' }).count(), 1, '空记忆卡缺少编辑入口')
       const prefs = JSON.parse(await page.evaluate(() => localStorage.getItem('tandem.rightPanel.v1') ?? '{}'))
-      assert.equal(prefs.showEmpty, true, '「显示空分组」没有记住选择')
-      await panel.getByRole('switch', { name: '显示空分组' }).click()
+      for (const id of ['todos', 'usage', 'memory']) {
+        assert.ok(prefs.shown?.includes(id), `「${id}」没有记住显示空分组`)
+      }
+      await toggleEmptyGroup('待办')
+      await toggleEmptyGroup('用量')
+      await toggleEmptyGroup('记忆')
+      await page.keyboard.press('Escape')
 
       // 有数据后出现：刚创建的空会话没有用量；发送一条后用量分组淡入。
       assert.equal(await panel.locator('[data-group="usage"]').count(), 0, '无用量时仍显示用量卡')
@@ -5250,6 +5390,103 @@ async function main() {
       await panel.locator('[data-group="usage"]').waitFor({ state: 'visible', timeout: 20_000 })
       assert.equal(await panel.getByText('暂无用量', { exact: true }).count(), 0, '有数据后仍显示空状态')
       assert.match(await panel.locator('[data-group="usage"]').innerText(), /输入[\s\S]*输出/, '用量卡出现后没有数据')
+    })
+
+    desktop('账号编辑：Key 掩码不回传、拉取模型只选最新、无原生下拉（反馈10#04 #05 #06 R43/R42/R37）', async (page) => {
+      const created = { id: 'p-versioned' }
+      const dialog = await openSettings(page, '账号与模型')
+      await dialog.getByRole('button', { name: '刷新账号' }).click()
+      await page.waitForTimeout(600)
+      await dialog.getByRole('button', { name: /编辑 多代模型账号/ }).first().click()
+      await page.waitForTimeout(400)
+      await page.getByRole('button', { name: /编辑分组 aws/ }).first().click()
+      await page.waitForTimeout(300)
+      const keyBox = dialog.locator('label', { hasText: '分组 Key' }).locator('..')
+      const keyText = await keyBox.innerText()
+      assert.match(keyText, /已保存 · ••••ghij/, `Key 没有显示掩码占位：${keyText}`)
+      assert.match(keyText, /更换 Key/, '缺少「更换 Key」入口')
+      assert.equal(
+        await keyBox.locator('input[type="password"]').count(),
+        0,
+        '已有 Key 时仍渲染可编辑的密码输入框',
+      )
+      await page.screenshot({ path: '/tmp/fb10-after/05.png' })
+
+      // 拉取模型：默认只勾选每个系列的最新一代（反馈10#04）。
+      await page.getByRole('button', { name: /自动拉取模型/ }).click()
+      await page.waitForTimeout(1200)
+      const checked = await page.evaluate(() =>
+        [...document.querySelectorAll('label')]
+          .filter((label) => label.querySelector('input[type="checkbox"]')?.checked)
+          .map((label) => label.innerText.replace(/\s*默认.*/, '').trim())
+          .filter((text) => text.startsWith('claude-')),
+      )
+      assert.deepEqual(
+        checked,
+        ['claude-fable-5-1', 'claude-haiku-5-5', 'claude-opus-5-5', 'claude-sonnet-5-5'],
+        `拉取后默认勾选不对：${checked.join(', ')}`,
+      )
+      await page.screenshot({ path: '/tmp/fb10-after/04.png' })
+
+      // 改分组倍率后保存，Key 不能被清空。
+      await dialog.locator('[id^="group-multiplier-"]').fill('0.5')
+      await page.getByRole('button', { name: '保存分组' }).click()
+      await page.waitForTimeout(300)
+      await page.getByRole('button', { name: /下一步/ }).click()
+      await page.waitForTimeout(300)
+      await page.getByRole('button', { name: /保存账号/ }).click()
+      await page.waitForTimeout(1200)
+      const stored = (await api(base, token, '/api/profiles')).find((p) => p.id === created.id)
+      assert.equal(stored?.groups?.[0]?.apiKeyMasked, 'sk-r****ghij', '编辑后 Key 被清空或改写')
+      assert.equal(stored?.groups?.[0]?.multiplier, 0.5, '分组倍率没有保存')
+
+      // 原生下拉全部迁移：页面里不能出现 select / datalist / input[list]。
+      const native = await page.evaluate(() => ({
+        select: document.querySelectorAll('select').length,
+        datalist: document.querySelectorAll('datalist').length,
+        list: document.querySelectorAll('input[list]').length,
+      }))
+      assert.deepEqual(native, { select: 0, datalist: 0, list: 0 }, `仍有浏览器自带下拉：${JSON.stringify(native)}`)
+      // 单价模型输入是可输入的候选列表（ui/Combobox）。
+      await dialog.getByRole('button', { name: /编辑 多代模型账号/ }).first().click()
+      await page.waitForTimeout(300)
+      await page.getByRole('button', { name: /下一步/ }).click()
+      await page.waitForTimeout(400)
+      const priceInput = page.getByRole('combobox', { name: '自定义单价模型' })
+      await priceInput.focus()
+      await page.waitForTimeout(400)
+      assert.equal(await priceInput.getAttribute('aria-expanded'), 'true', '单价候选列表没有打开')
+      assert.ok((await page.getByRole('menuitem').count()) > 0, '单价候选列表为空')
+      await page.screenshot({ path: '/tmp/fb10-after/06.png' })
+      await page.keyboard.press('Escape')
+      await closeSettings(page)
+    })
+
+    desktop('菜单行文字行高不被裁切（反馈10#07 R44）', async (page) => {
+      await openSession(page, 'long')
+      await page.locator('button[aria-label^="选择模型"]').first().click()
+      const modelMenu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+      await modelMenu.waitFor()
+      await modelMenu.getByRole('menuitem', { name: /切换账号|切换分组|全部模型/ }).first().hover()
+      const submenu = page.locator('[role="menu"][aria-label="切换账号"]').first()
+      await submenu.waitFor({ timeout: 5_000 })
+      const clipped = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('[role="menu"] [role="menuitem"], [role="menuitemradio"]')]
+        return rows
+          .map((el) => {
+            const text = el.querySelector('span.truncate') ?? el
+            return {
+              label: (text.textContent ?? '').trim(),
+              scroll: text.scrollHeight,
+              client: text.clientHeight,
+              lineHeight: getComputedStyle(text).lineHeight,
+            }
+          })
+          .filter((row) => row.label && row.scroll > row.client + 1)
+      })
+      assert.deepEqual(clipped, [], `菜单/选项卡文字被裁切：${JSON.stringify(clipped)}`)
+      await page.screenshot({ path: '/tmp/fb10-after/07.png' })
+      await page.keyboard.press('Escape')
     })
 
     desktop('断点续跑胶囊显示倒计时与操作', async (page) => {
