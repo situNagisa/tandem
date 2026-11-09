@@ -85,7 +85,7 @@ export function Popover({
             }
             // Anchor 是包裹 div，Radix 默认把焦点还给不可聚焦的 div，会掉到 body。
             const target = anchorRef.current?.querySelector<HTMLElement>(
-              'button, a[href], [tabindex]:not([tabindex="-1"])',
+              'input, textarea, [contenteditable="true"], button, a[href], [tabindex]:not([tabindex="-1"])',
             )
             if (target) {
               e.preventDefault()

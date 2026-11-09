@@ -20,8 +20,10 @@ import type { ControlSize } from './Button'
 import { Tip } from './Tooltip'
 
 /* 菜单的尺寸、颜色、间距只在这里定义一次。26px 单行、13px 字，全应用一致。 */
+// 反馈10#07：行内文字用 1.45 倍行高。标签带 truncate（overflow:hidden），
+// 行高被压到字号本身时，中英文字形的上下缘会被行盒裁掉，必须留出余量。
 const ROW_BASE =
-  'group/row flex h-[26px] w-full min-w-0 shrink-0 select-none items-center gap-1.5 rounded-md px-1.5 text-left text-[13px] leading-none text-text-soft outline-none transition-colors duration-[120ms] max-sm:h-11'
+  'group/row flex h-[26px] w-full min-w-0 shrink-0 select-none items-center gap-1.5 rounded-md px-1.5 text-left text-[13px] leading-[1.45] text-text-soft outline-none transition-colors duration-[120ms] max-sm:h-11'
 
 const ROW_STATE =
   'hover:bg-[var(--t-bg-hover)] hover:text-text focus:bg-[var(--t-bg-hover)] focus:text-text focus-visible:outline-none data-[highlighted]:bg-[var(--t-bg-hover)] data-[highlighted]:text-text data-[state=open]:bg-[var(--t-bg-hover)] data-[state=open]:text-text data-[selected=true]:bg-[color-mix(in_srgb,var(--t-bg-active)_55%,transparent)] data-[selected=true]:text-text data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[disabled]:hover:bg-transparent'

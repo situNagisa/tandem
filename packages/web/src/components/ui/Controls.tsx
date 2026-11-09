@@ -166,7 +166,8 @@ export function SegmentedControl<T extends string>({
             disabled={disabled || option.disabled}
             onClick={() => onChange(option.value)}
             className={cn(
-              'inline-flex flex-1 items-center justify-center gap-1 whitespace-nowrap rounded-md font-medium leading-none transition-colors duration-[120ms] disabled:cursor-not-allowed disabled:opacity-40',
+              // 反馈10#07：行高 ≥ 1.4，避免中文上下缘被固定高度的行盒裁掉。
+              'inline-flex flex-1 items-center justify-center gap-1 whitespace-nowrap rounded-md font-medium leading-[1.4] transition-colors duration-[120ms] disabled:cursor-not-allowed disabled:opacity-40',
               item,
               itemClassName,
               selected
