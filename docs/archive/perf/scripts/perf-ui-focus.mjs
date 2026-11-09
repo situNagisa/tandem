@@ -1,5 +1,7 @@
 // 聚焦测：长会话滚动帧 + 流式长任务（过滤掉采样开始前的 longtask，避免污染）。
 import { spawn } from 'node:child_process'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import http from 'node:http'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { chromium } from 'playwright'
@@ -16,7 +18,9 @@ const mock = http.createServer(async (req, res) => {
   res.write('data: [DONE]\n\n'); res.end()
 })
 await new Promise(r=>mock.listen(8262,'127.0.0.1',r))
-const host=spawn(process.execPath,['scripts/perf-host.mjs'],{cwd:'/home/nagisa/agent',env:{...process.env,HOME:'/tmp/tandem-perf/home',TANDEM_HOME:'/tmp/tandem-perf',PORT:'8261'},stdio:['ignore','pipe','pipe']})
+const HERE=path.dirname(fileURLToPath(import.meta.url))
+const ROOT=path.resolve(HERE,'../../../..')
+const host=spawn(process.execPath,[path.join(HERE,'perf-host.mjs')],{cwd:ROOT,env:{...process.env,HOME:'/tmp/tandem-perf/home',TANDEM_HOME:'/tmp/tandem-perf',PORT:'8261'},stdio:['ignore','pipe','pipe']})
 let out='';host.stdout.on('data',d=>out+=d)
 while(!out.includes('PERF_HOST_PID')) await sleep(100)
 const browser=await chromium.launch({headless:true})
