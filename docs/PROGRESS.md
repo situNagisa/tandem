@@ -2,6 +2,16 @@
 
 > 更新：2026-11-09。只保留最近 5 轮；更早记录见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 60（2026-11-09）反馈12#01（P0）：模型账号归工作站账号、Key 不进主机
+- [x] R57（新）：模型账号/分组/Key/倍率/模型勾选改为工作站账号级，加密存 `workstation/profiles.json`（AES-256-GCM，密钥单独 0600）；设置页跨主机一致
+- [x] 主机签名模型代理：主机只发 profileId/模型/消息，工作站校验签名+账号对主机访问权+profile 归属，用账号 Key 调上游，NDJSON 流式回传；工作站按账号+主机记账；同组 Key failover/冷却在工作站
+- [x] 迁移按用户简化：主机连接时上传本地 profiles 后直接删本地文件，同名以工作站为准，不备份/标记/改名；旧按主机 API 删除（工作站模式 410）
+- [x] 共享主机用被授权人自己的模型账号；管理员只看掩码；调试账号自带 demo 模型账号；个人模式进程内直连
+- [x] 单测 `account-profiles.test.ts`（加密、鉴权、迁移后主机无 Key、流式/中断/记账）；e2e `workstation-check.mjs`（远端主机经代理、主机目录无 Key、bob 用自己的 Key、旧 API 410）
+- [x] 反馈14#08 R58：账号级余额查询（工作站用 Key，OpenRouter/DeepSeek/Moonshot/New API/OpenAI Billing + 自定义 URL/JSON 路径；5 分钟缓存、手动刷新；设置列表与模型菜单显示，失败「—」+ tooltip、低阈值警告）；单测 `balance.test.ts` + e2e mock 余额显示/缓存/刷新
+- 验证：`node scripts/check.mjs --skip-smoke` + `e2e/workstation-check.mjs` 全过（回归在 `check.mjs` 中一并跑）
+- 取舍：不做短期凭据下发；同名旧账号直接丢弃（用户明确单人测试期不需要兼容）
+
 ## 迭代 59（2026-11-09）反馈包 #10：大纲懒加载 / 切换确认 / Key / 原生下拉 / 行高
 - [x] #01 R40（新）：`TurnRail` 跳转先按需取段并扩大渲染窗口，等消息挂载后再滚动 + 高亮（失败给提示）；滚轮改为 `RailScene.scrollBy` 预览式滚动，不改选中轮、不滚动对话区
 - [x] #02 R41（新）：删除模型菜单常驻缓存提示与「不再提示」，选中新模型/账号/分组/自动路由时弹 `ui/ConfirmAction`（约 x tok / $x，切换/取消）
