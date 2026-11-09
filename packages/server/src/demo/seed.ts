@@ -349,11 +349,11 @@ function seedDelegation(ctx: DemoSeedContext): DemoRefs {
   const rec = addSession(
     ctx.host,
     baseSession(ctx, 'delegation', {
-      title: '演示 · 委派策略编排',
+      title: '演示 · 委派倾向仅规划',
       delegation: 'orchestrate',
       messages: [
         user('这个改动涉及前端、测试和文档，按「编排」策略分派。'),
-        assistant('当前委派策略是「编排」：我会拆成三个子任务，再按依赖顺序汇总。', {
+        assistant('当前委派倾向是「仅规划」：我会拆成三个子任务，再按依赖顺序汇总。', {
           thinking: '编排模式下允许主动派发多个子代理，主会话只做计划与汇总。',
           tools: [
             { name: 'Task', input: { description: '前端改动', prompt: '修改价格页参数校验。' } },
@@ -362,7 +362,7 @@ function seedDelegation(ctx: DemoSeedContext): DemoRefs {
           ],
         }),
         toolResult(`demo_task_${randomUUID().slice(0, 6)}`, '三个子代理都已完成：前端、测试、文档各一项。'),
-        assistant('三个子任务完成。输入框下方的「委派」菜单可以切换到「少派 / 多派 / 编排 / 不派」，观察系统提示与 Task 工具可见性变化。'),
+        assistant('三个子任务完成。输入框底栏的「执行方式 → 委派倾向」可以切换到「仅规划 / 积极 / 适度 / 关闭」，观察系统提示与 Task 工具可见性变化。'),
       ],
     }),
   );

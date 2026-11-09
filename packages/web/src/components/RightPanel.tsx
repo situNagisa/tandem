@@ -697,7 +697,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         <DetailRow label="模型">
           <span className="font-mono text-[12px]">
             {summary?.autoRoute
-              ? `${summary.routeMode === 'division' ? '多代理协作' : '自动'} · ${summary.route?.model ?? summary.model ?? '—'}`
+              ? `自动 · ${summary.route?.model ?? summary.model ?? '—'}`
               : (summary?.model ?? '—')}
           </span>
         </DetailRow>

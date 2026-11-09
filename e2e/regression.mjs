@@ -177,7 +177,7 @@ function createMockProvider() {
         chunk({}, 'tool_calls')
       } else if (
         body.model === 'route-power' &&
-        systemText.includes('分工路由 · 本轮分工') &&
+        systemText.includes('多代理协作 · 本轮') &&
         userText.includes('前端批量') &&
         !hasToolResult
       ) {
@@ -225,7 +225,7 @@ function createMockProvider() {
         chunk({ role: 'assistant', content: '测试执行完成：lint 与测试通过。' })
         chunk({}, 'stop')
       } else if (body.model === 'route-power' && hasToolResult && userText.includes('前端批量')) {
-        chunk({ role: 'assistant', content: '分工完成：已审查执行结果，样式与测试均通过。' })
+        chunk({ role: 'assistant', content: '多代理协作完成：已审查执行结果，样式与测试均通过。' })
         chunk({}, 'stop')
       } else {
         chunk({ role: 'assistant', content: `路由模型 ${body.model} 已回复。` })
@@ -2300,6 +2300,35 @@ async function main() {
       await page.waitForTimeout(350)
     }
 
+    /** 打开一个可能还没有任何轮次的新会话（openSession 依赖 [data-turn-id]）。 */
+    const gotoSession = async (page, id) => {
+      await page.waitForFunction(
+        () => {
+          try {
+            return JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]').length > 0
+          } catch {
+            return false
+          }
+        },
+        null,
+        { timeout: 20_000 },
+      )
+      const clientHostId = await page.evaluate(() => {
+        const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
+        return hosts[0]?.id ?? null
+      })
+      await page.evaluate((hash) => {
+        window.location.hash = hash
+      }, `#/h/${clientHostId}/s/${id}`)
+      await page.waitForFunction(
+        (sessionId) => window.location.hash.includes(`/s/${sessionId}`),
+        id,
+        { timeout: 10_000 },
+      )
+      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 15_000 })
+      await page.waitForTimeout(300)
+    }
+
     const waitOnline = async (page) => {
       await page.getByText('在线', { exact: true }).first().waitFor({ timeout: 10_000 }).catch(() => {})
     }
@@ -3023,6 +3052,229 @@ async function main() {
         '未知/不支持思考的模型仍显示思考强度',
       )
       await page.keyboard.press('Escape')
+    })
+
+    desktop('输入框：token 估算、缓存提示与执行方式/委派倾向合并（反馈8#01 #03 #05 #08 #09 #11）', async (page) => {
+      mkdirSync('/tmp/fb8-after', { recursive: true })
+      const session = await api(base, token, '/api/sessions', {
+        method: 'POST',
+        body: JSON.stringify({
+          cwd: repo,
+          profileId: 'p-main',
+          groupId: 'g2',
+          model: 'o3',
+          permissionMode: 'default',
+          title: '输入框回归',
+        }),
+      })
+      await gotoSession(page, session.id)
+      await waitModelReady(page)
+      const input = page.locator('textarea[aria-label="消息输入框"]')
+      await input.waitFor()
+
+      // #01/#09：环境条不再有独立的「少派」入口。
+      assert.equal(await page.getByRole('button', { name: '少派', exact: true }).count(), 0, '环境条仍有独立的委派策略按钮')
+      // #11：新会话页的大按钮已去掉，侧栏保留唯一的跨主机派单入口。
+      assert.ok(
+        (await page.getByRole('button', { name: /跨主机派单/ }).first().count()) > 0,
+        '侧栏缺少跨主机派单入口',
+      )
+
+      // #01/#03/#09：执行方式菜单统一为 自动 / 单代理 / 低成本 / 多代理协作，委派倾向收进子菜单。
+      await page.locator('button[aria-label^="执行方式："]').first().click()
+      const exec = page.locator('[role="menu"][aria-label="执行方式"]').first()
+      await exec.waitFor()
+      const execText = await exec.innerText()
+      await page.screenshot({ path: '/tmp/fb8-after/03.png' })
+      for (const label of ['自动', '单代理', '低成本', '多代理协作']) {
+        assert.ok(execText.includes(label), `执行方式菜单缺少「${label}」：${execText}`)
+      }
+      assert.ok(!execText.includes('直接做') && !execText.includes('便宜直做'), '执行方式菜单仍有口语化旧词')
+      assert.ok(!execText.includes('本会话保持'), '执行方式菜单仍用「本会话保持」旧文案')
+      await exec.getByRole('menuitem', { name: /委派倾向/ }).hover()
+      const delegationMenu = page.locator('[role="menu"][aria-label="委派倾向"]').first()
+      await delegationMenu.waitFor({ state: 'visible', timeout: 5_000 })
+      const delegationText = await delegationMenu.innerText()
+      for (const label of ['仅规划', '积极', '适度', '关闭']) {
+        assert.ok(delegationText.includes(label), `委派倾向缺少「${label}」：${delegationText}`)
+      }
+      assert.ok(!/少派|多派|不派/.test(delegationText), `委派倾向仍有口语化旧词：${delegationText}`)
+      await page.screenshot({ path: '/tmp/fb8-after/09.png' })
+      await page.screenshot({ path: '/tmp/fb8-after/01.png' })
+      await page.keyboard.press('Escape')
+      await page.keyboard.press('Escape')
+
+      // #05：输入时显示估算 token；发送后（已有上下文）显示预计占用百分比。
+      await input.fill('请检查一下输入框的 token 估算')
+      const tokenChip = page.locator('[data-composer-tokens]').first()
+      await tokenChip.waitFor()
+      assert.match(await tokenChip.innerText(), /~[\d.]+k? tok/, '输入框没有估算 token')
+      const before = (await api(base, token, `/api/sessions/${session.id}`)).messages.length
+      await page.getByRole('button', { name: '发送消息' }).click()
+      for (let i = 0; i < 80; i++) {
+        const current = await api(base, token, `/api/sessions/${session.id}`)
+        if (current.status === 'idle' && current.messages.length > before) break
+        await sleep(100)
+      }
+      await input.fill('继续')
+      await page.waitForFunction(
+        () => (document.querySelector('[data-composer-tokens]')?.textContent ?? '').includes('发送后'),
+        null,
+        { timeout: 10_000 },
+      )
+      const tokenText = await tokenChip.innerText()
+      assert.match(tokenText, /发送后 ~\d+%|发送后 ~<1%/, `发送后上下文百分比缺失：${tokenText}`)
+      await page.screenshot({ path: '/tmp/fb8-after/05.png' })
+
+      // #08：会话已有上下文时，模型菜单在切换前提示缓存失效，并可不再提示。
+      await api(base, token, `/api/sessions/${session.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ effort: 'low' }),
+      })
+      await page.locator('button[aria-label^="选择模型"]').first().click()
+      const modelMenu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+      await modelMenu.waitFor()
+      const warning = modelMenu.locator('[data-cache-warning]')
+      await warning.waitFor({ timeout: 5_000 })
+      await page.waitForFunction(
+        () => /\$\d/.test(document.querySelector('[data-cache-warning]')?.textContent ?? ''),
+        null,
+        { timeout: 10_000 },
+      )
+      const warningText = await warning.innerText()
+      assert.match(warningText, /提示缓存将失效/, `缓存提示缺少结论：${warningText}`)
+      assert.match(warningText, /下一轮按完整上下文计费/, `缓存提示缺少计费说明：${warningText}`)
+      assert.match(warningText, /约 ~[\d.]+k? tok/, `缓存提示缺少 token 估算：${warningText}`)
+      assert.match(warningText, /\$\d/, `缓存提示缺少费用估算：${warningText}`)
+      await page.screenshot({ path: '/tmp/fb8-after/08.png' })
+      await warning.getByRole('button', { name: '不再提示' }).click()
+      await page.keyboard.press('Escape')
+      await page.locator('button[aria-label^="选择模型"]').first().click()
+      const reopened = page.locator('[role="menu"][aria-label="选择模型"]').first()
+      await reopened.waitFor()
+      await page.waitForTimeout(150)
+      assert.equal(await reopened.locator('[data-cache-warning]').count(), 0, '点「不再提示」后仍显示缓存提示')
+      // #01：模型菜单不再重复「分工」入口（分工统一到执行方式）。
+      assert.equal(await reopened.getByRole('menuitem', { name: '分工', exact: true }).count(), 0, '模型菜单仍有重复的「分工」入口')
+      await page.keyboard.press('Escape')
+      await page.evaluate(() => localStorage.removeItem('tandem.cacheSwitchWarning.v1'))
+
+      // #11：模型芯片不再把思考强度拼进文字，改用小点 + tooltip。
+      await waitModelReady(page)
+      const chip = page.locator('button[aria-label^="选择模型"]').first()
+      const chipText = await chip.innerText()
+      assert.ok(!/(极低|最高|关闭)/.test(chipText) && !/\s(低|中|高)$/.test(chipText), `模型芯片仍显示思考强度：${chipText}`)
+      assert.equal(await chip.locator('[data-effort-dot]').count(), 1, '非默认思考强度没有小点提示')
+      assert.match((await chip.getAttribute('aria-label')) ?? '', /思考强度：低/, '模型芯片 aria-label 缺少思考强度')
+      await chip.hover()
+      const tip = page.locator('#tandem-tooltip[data-open]')
+      await tip.waitFor({ timeout: 5_000 })
+      assert.match(await tip.innerText(), /思考强度 低/, '模型芯片 tooltip 缺少思考强度档位')
+      await page.screenshot({ path: '/tmp/fb8-after/11-chip.png' })
+    })
+
+    desktop('输入框 Markdown：代码围栏、列表续号、Tab 缩进与原始内容发送（反馈8#02）', async (page) => {
+      mkdirSync('/tmp/fb8-after', { recursive: true })
+      const mdSession = await api(base, token, '/api/sessions', {
+        method: 'POST',
+        body: JSON.stringify({
+          cwd: repo,
+          profileId: 'p-main',
+          groupId: 'g1',
+          model: 'mock-1',
+          permissionMode: 'default',
+          title: 'Markdown 回归',
+        }),
+      })
+      await gotoSession(page, mdSession.id)
+      await waitModelReady(page)
+      const input = page.locator('textarea[aria-label="消息输入框"]')
+      await input.waitFor()
+      const sessionOf = () => api(base, token, `/api/sessions/${mdSession.id}`)
+      const messageCount = async () => (await sessionOf()).messages.length
+
+      // 代码围栏：开围栏行回车自动补闭合围栏，光标停在中间。
+      const beforeCode = await messageCount()
+      await input.fill('```ts')
+      await input.press('Enter')
+      assert.equal(await input.inputValue(), '```ts\n\n```\n', '代码围栏没有自动成对')
+      await input.type('const a = 1')
+      const caret = await input.evaluate((el) => el.selectionStart)
+      await input.press('Tab')
+      assert.match(await input.inputValue(), /const a = 1 {2}\n```/, '代码块内 Tab 没有缩进两格')
+      await input.press('Enter')
+      assert.equal(await messageCount(), beforeCode, '代码块内回车触发了发送')
+      assert.ok(caret > 0)
+      // 轻量着色层与原文同步，发送内容仍是原始 Markdown。
+      const highlight = page.getByTestId('composer-highlight')
+      assert.match(await highlight.innerText(), /const a = 1/, '着色层没有显示代码内容')
+      assert.ok((await highlight.locator('.md-hl-fence').count()) >= 2, '着色层没有标记代码围栏')
+      assert.ok((await highlight.locator('.md-hl-code').count()) >= 1, '着色层没有标记代码行')
+      await page.screenshot({ path: '/tmp/fb8-after/02.png' })
+      const seenBefore = provider.seenUserTexts.length
+      await page.getByRole('button', { name: '发送消息' }).click()
+      for (let i = 0; i < 80; i++) {
+        const session = await sessionOf()
+        if (session.status === 'idle' && session.messages.length > beforeCode) break
+        await sleep(100)
+      }
+      assert.ok(
+        provider.seenUserTexts.slice(seenBefore).some((text) => text.includes('```ts') && text.includes('const a = 1')),
+        '发送内容没有保留原始代码块',
+      )
+
+      // 有序列表自动续号；回车不发送。
+      const beforeList = await messageCount()
+      await input.fill('1. 第一项')
+      await input.press('Enter')
+      assert.equal(await input.inputValue(), '1. 第一项\n2. ', '有序列表没有续号')
+      await input.type('第二项')
+      await input.press('Enter')
+      assert.equal(await input.inputValue(), '1. 第一项\n2. 第二项\n3. ', '有序列表第二次没有续号')
+      assert.equal(await messageCount(), beforeList, '列表回车触发了发送')
+      const seenBeforeOrdered = provider.seenUserTexts.length
+      await page.getByRole('button', { name: '发送消息' }).click()
+      for (let i = 0; i < 80; i++) {
+        const current = await sessionOf()
+        if (current.status === 'idle' && current.messages.length > beforeList) break
+        await sleep(100)
+      }
+      assert.ok(
+        provider.seenUserTexts
+          .slice(seenBeforeOrdered)
+          .some((text) => text.includes('1. 第一项') && text.includes('2. 第二项')),
+        '有序列表没有按原文发送',
+      )
+
+      // 无序列表自动续项。
+      const beforeUnordered = await messageCount()
+      await input.fill('- 项目一')
+      await input.press('Enter')
+      assert.equal(await input.inputValue(), '- 项目一\n- ', '无序列表没有续项')
+      await input.type('项目二')
+      await input.press('Enter')
+      assert.equal(await input.inputValue(), '- 项目一\n- 项目二\n- ', '无序列表第二次没有续项')
+      const seenBeforeUnordered = provider.seenUserTexts.length
+      await page.getByRole('button', { name: '发送消息' }).click()
+      for (let i = 0; i < 80; i++) {
+        const current = await sessionOf()
+        if (current.status === 'idle' && current.messages.length > beforeUnordered) break
+        await sleep(100)
+      }
+      assert.ok(
+        provider.seenUserTexts
+          .slice(seenBeforeUnordered)
+          .some((text) => text.includes('- 项目一') && text.includes('- 项目二')),
+        '无序列表没有按原文发送',
+      )
+      await input.fill('# 标题\n\n---\n\n正文')
+      assert.match(
+        await page.getByTestId('composer-highlight').innerText(),
+        /# 标题/,
+        '标题没有进入着色层',
+      )
+      assert.ok((await page.getByTestId('composer-highlight').locator('.md-hl-heading').count()) >= 1, '标题没有着色')
+      await input.fill('')
     })
 
     desktop('模型菜单顶部显示最近使用模型（跨账号分组）并可直接选中（#7-04）', async (page) => {
@@ -3943,6 +4195,28 @@ async function main() {
         }
         await api(base, token, `/api/profiles/${account.id}`, { method: 'DELETE' }).catch(() => {})
       }
+    })
+
+    desktop('新会话页去掉重复的派单大按钮，跨主机派单仍可用（反馈8#11 R05）', async (page) => {
+      await page.evaluate(() => {
+        window.location.hash = '#/'
+      })
+      await page.getByText(/今天想做点什么/).first().waitFor({ timeout: 10_000 })
+      assert.equal(
+        await page.getByRole('button', { name: '派单到其他主机', exact: true }).count(),
+        0,
+        '新会话页仍显示重复的「派单到其他主机」按钮',
+      )
+      await page.screenshot({ path: '/tmp/fb8-after/11.png' })
+      await page.getByRole('button', { name: /跨主机派单/ }).first().click()
+      const dialog = page.getByRole('dialog', { name: '跨主机派单' })
+      await dialog.waitFor()
+      assert.match(
+        await dialog.innerText(),
+        /把整个任务交给目标主机执行/,
+        '跨主机派单没有说明与多代理协作的区别',
+      )
+      await page.keyboard.press('Escape')
     })
 
     desktop('新会话页环境条显示当前分支名而不是「分支」占位词', async (page) => {
@@ -6173,7 +6447,7 @@ async function main() {
       await page.keyboard.press('Escape')
     })
 
-      desktop('分工路由：直接做零派发、便宜直做、专长分工、确认卡与收件箱', async (page) => {
+      desktop('分工路由：单代理零派发、低成本、专长协作、确认卡与收件箱', async (page) => {
         const shotsDir = '/tmp/route2-shots'
         mkdirSync(shotsDir, { recursive: true })
         const divisionSettings = {
@@ -6207,10 +6481,10 @@ async function main() {
             autoRoute: true,
             routeMode: 'division',
             permissionMode: 'bypassPermissions',
-            title: '分工路由回归',
+            title: '多代理协作回归',
           }),
         })
-        assert.equal(session.routeMode, 'division', '创建会话时未启用分工模式')
+        assert.equal(session.routeMode, 'division', '创建会话时未启用多代理协作模式')
 
         await page.waitForFunction(
           () => {
@@ -6230,13 +6504,13 @@ async function main() {
           window.location.hash = hash
         }, `#/h/${clientHostId}/s/${session.id}`)
         await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 15_000 })
-        await page.getByRole('button', { name: /^选择模型：分工/ }).first().waitFor({ timeout: 15_000 })
-        await page.getByRole('button', { name: /^选择模型：分工/ }).first().click()
+        await page.getByRole('button', { name: /^选择模型：自动/ }).first().waitFor({ timeout: 15_000 })
+        await page.getByRole('button', { name: /^选择模型：自动/ }).first().click()
         const modelMenu = page.getByRole('menu')
         await modelMenu.waitFor()
         const modelMenuText = await modelMenu.innerText()
         assert.match(modelMenuText, /自动/, '模型菜单缺少自动')
-        assert.match(modelMenuText, /分工/, '模型菜单缺少分工')
+        assert.doesNotMatch(modelMenuText, /^分工$/m, '模型菜单不应再有分工入口')
         await page.screenshot({ path: path.join(shotsDir, 'model-menu-division.png') })
         await page.keyboard.press('Escape')
 
@@ -6260,54 +6534,54 @@ async function main() {
           return sessionOf()
         }
 
-        // 1. 简单任务直接做：只请求主模型，零 Task 子代理。
+        // 1. 简单任务单代理：只请求主模型，零 Task 子代理。
         const directStart = provider.routeSeen.length
         const direct = await sendTurn('解释一下这个函数的作用', '路由模型 route-power 已回复。')
         const directCalls = provider.routeSeen.slice(directStart)
         assert.equal(directCalls.length, 1, '简单问答不应产生额外模型请求')
-        assert.equal(directCalls[0].model, 'route-power', '直接做应由主会话模型处理')
+        assert.equal(directCalls[0].model, 'route-power', '单代理应由主会话模型处理')
         assert.equal((await childrenOf()).length, 0, '简单问答不应派发子代理')
         assert.match(
           direct.messages.filter((m) => m.routePlan).at(-1)?.routePlan?.mode ?? '',
           /^direct$/,
-          '简单任务提示行不是直接做',
+          '简单任务提示行不是单代理',
         )
 
-        // 2. 便宜直做：主模型不参与，整单交给执行者子代理。
+        // 2. 低成本：主模型不参与，整单交给执行者子代理。
         const cheapStart = provider.routeSeen.length
         const cheap = await sendTurn('安装依赖并跑通构建', '便宜执行完成：依赖已安装，构建通过。')
         const cheapCalls = provider.routeSeen.slice(cheapStart)
-        assert.deepEqual(cheapCalls.map((item) => item.model), ['route-mini'], '便宜直做应只调用执行模型')
+        assert.deepEqual(cheapCalls.map((item) => item.model), ['route-mini'], '低成本应只调用执行模型')
         const cheapChildren = await childrenOf()
-        assert.equal(cheapChildren.length, 1, '便宜直做应创建一个执行子代理')
+        assert.equal(cheapChildren.length, 1, '低成本应创建一个执行子代理')
         assert.equal(cheap.messages.filter((m) => m.routePlan).at(-1)?.routePlan?.mode, 'cheap')
 
-        // 3. 手动选「直接做」：长任务也不派发。
+        // 3. 手动选「单代理」：长任务也不派发。
         await page.getByRole('button', { name: /^执行方式：/ }).first().click()
-        await page.getByRole('menuitem', { name: /^直接做/ }).click()
+        await page.getByRole('menuitem', { name: /^单代理/ }).click()
         const manualStart = provider.routeSeen.length
         const manualText =
           '请帮我完成前端批量改造：批量修改所有组件的按钮间距与布局样式，然后跑一遍 lint 和测试，最后整理结果。请注意不要改动后端接口，保持现有样式变量不变，完成后说明改了哪些文件。'
         const childCountBefore = (await childrenOf()).length
         const manual = await sendTurn(manualText, '路由模型 route-power 已回复。')
-        assert.equal((await childrenOf()).length, childCountBefore, '手动直接做不应派发子代理')
+        assert.equal((await childrenOf()).length, childCountBefore, '手动单代理不应派发子代理')
         assert.ok(
           provider.routeSeen.slice(manualStart).every((item) => item.model === 'route-power'),
-          '手动直接做不应调用执行模型',
+          '手动单代理不应调用执行模型',
         )
         assert.equal(manual.messages.filter((m) => m.routePlan).at(-1)?.routePlan?.mode, 'direct')
         await page.screenshot({ path: path.join(shotsDir, 'division-direct.png') })
 
-        // 恢复自动，跑真正的分工：规划者 Task → Kimi 前端 + DeepSeek 测试 → 规划者收尾。
+        // 手动选「多代理协作」，跑真正的分工：规划者 Task → Kimi 前端 + DeepSeek 测试 → 规划者收尾。
         await page.getByRole('button', { name: /^执行方式：/ }).first().click()
-        await page.getByRole('menuitem', { name: /^自动/ }).click()
+        await page.getByRole('menuitem', { name: /^多代理协作/ }).click()
         const divisionStart = provider.routeSeen.length
         const division = await sendTurn(
           manualText,
-          '分工完成：已审查执行结果，样式与测试均通过。',
+          '多代理协作完成：已审查执行结果，样式与测试均通过。',
         )
         const divisionCalls = provider.routeSeen.slice(divisionStart)
-        assert.ok(divisionCalls.some((item) => item.model === 'route-power'), '分工应调用规划者')
+        assert.ok(divisionCalls.some((item) => item.model === 'route-power'), '多代理协作应调用规划者')
         assert.ok(divisionCalls.some((item) => item.model === 'route-kimi'), '前端子任务未调用专长模型')
         assert.ok(divisionCalls.some((item) => item.model === 'route-mini'), '测试子任务未调用执行模型')
         const divisionChildren = await childrenOf()
@@ -6326,11 +6600,11 @@ async function main() {
         )
         assert.match(
           division.messages.filter((m) => m.routePlan).at(-1)?.routePlan?.reason ?? '',
-          /前端|分工/,
+          /前端|多代理协作/,
         )
         await page.screenshot({ path: path.join(shotsDir, 'division-roles.png') })
 
-        // 4. 分工前确认：卡片改模型 + 删除子任务 + 收件箱事件。
+        // 4. 多代理协作前确认：卡片改模型 + 删除子任务 + 收件箱事件。
         await api(base, token, '/api/settings', {
           method: 'PUT',
           body: JSON.stringify({
@@ -6349,7 +6623,7 @@ async function main() {
         const inbox = await wsInboxSnapshot(base, token)
         assert.ok(
           inbox.events.some((event) => event.kind === 'division_plan'),
-          '分工计划没有进入收件箱',
+          '多代理协作计划没有进入收件箱',
         )
         await page.screenshot({ path: path.join(shotsDir, 'division-confirm-card.png') })
         const confirmStart = provider.routeSeen.length
@@ -6359,7 +6633,7 @@ async function main() {
         await card.getByRole('button', { name: '开始', exact: true }).click()
         await waitUntil('确认卡执行完成', async () => {
           const current = await sessionOf()
-          return current.status === 'idle' && JSON.stringify(current.messages).includes('分工完成')
+          return current.status === 'idle' && JSON.stringify(current.messages).includes('多代理协作完成')
         })
         const confirmCalls = provider.routeSeen.slice(confirmStart)
         assert.ok(confirmCalls.some((item) => item.model === 'route-mid'), '改模型后未按新模型执行')
@@ -6370,7 +6644,7 @@ async function main() {
 
         // 设置页与用量页按角色统计
         const routingDialog = await openSettings(page, '自动路由', 'desktop')
-        await routingDialog.getByText('分工路由').first().waitFor({ timeout: 10_000 })
+        await routingDialog.getByText('多代理协作').first().waitFor({ timeout: 10_000 })
         assert.match(await routingDialog.innerText(), /领域专长/, '设置页缺少领域映射')
         await page.screenshot({ path: path.join(shotsDir, 'settings-division.png') })
         await closeSettings(page)
@@ -6409,7 +6683,7 @@ async function main() {
           '成本上限触发后仍继续请求规划者',
         )
 
-        // 6. 学习偏好：同类任务连续两次手动直接做后，自动模式默认直接做。
+        // 6. 学习偏好：同类任务连续两次手动单代理后，自动模式默认单代理。
         await api(base, token, '/api/settings', {
           method: 'PUT',
           body: JSON.stringify({ resumeOnRestart: 'auto', modelRouting: divisionSettings }),
@@ -6417,19 +6691,19 @@ async function main() {
         const learnStart = provider.routeSeen.length
         for (let i = 0; i < 2; i++) {
           await page.getByRole('button', { name: /^执行方式：/ }).first().click()
-          await page.getByRole('menuitem', { name: /^直接做/ }).click()
+          await page.getByRole('menuitem', { name: /^单代理/ }).click()
           await sendTurn(manualText, '路由模型 route-power 已回复。')
         }
         await page.getByRole('button', { name: /^执行方式：/ }).first().click()
         await page.getByRole('menuitem', { name: /^自动/ }).click()
         const childCountBeforeLearned = (await childrenOf()).length
         const learned = await sendTurn(manualText, '路由模型 route-power 已回复。')
-        assert.equal((await childrenOf()).length, childCountBeforeLearned, '学到的直接做仍派发了子代理')
+        assert.equal((await childrenOf()).length, childCountBeforeLearned, '学到的单代理仍派发了子代理')
         assert.ok(
           provider.routeSeen
             .slice(learnStart)
             .every((item) => item.model === 'route-power'),
-          '学到的直接做仍调用了执行模型',
+          '学到的单代理仍调用了执行模型',
         )
         assert.match(
           learned.messages.filter((m) => m.routePlan).at(-1)?.routePlan?.reason ?? '',

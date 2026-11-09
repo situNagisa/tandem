@@ -1702,3 +1702,73 @@ html:not(.dark) .composer-card {
 html:not(.dark) .composer-card:focus-within {
   border-color: rgba(45, 35, 22, 0.36);
 }
+
+/* ---------- 输入框 Markdown 轻量着色（反馈8#02） ----------
+ * textarea 文字透明、背后的 pre 层着色；两层字号/行高/字体完全一致，光标与换行才对得上。
+ * 只改颜色，不改字重/字号/字距（否则宽度变化会让光标错位）。
+ */
+.composer-editor {
+  position: relative;
+}
+.composer-highlight {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.6;
+  letter-spacing: normal;
+  color: var(--t-text);
+}
+@media (min-width: 768px) {
+  .composer-highlight {
+    font-size: 15px;
+  }
+}
+.composer-editor > .composer-textarea {
+  position: relative;
+  z-index: 1;
+  color: transparent;
+  caret-color: var(--t-text);
+}
+.composer-editor > .composer-textarea::placeholder {
+  color: var(--t-muted);
+}
+.composer-editor > .composer-textarea::selection {
+  background: color-mix(in srgb, var(--t-accent) 26%, transparent);
+}
+.composer-editor[data-composing="true"] > .composer-textarea {
+  color: var(--t-text);
+}
+.composer-editor[data-composing="true"] > .composer-highlight {
+  display: none;
+}
+.md-hl-mark {
+  color: var(--t-text-tertiary);
+}
+.md-hl-heading {
+  color: var(--syn-title);
+}
+.md-hl-quote {
+  color: var(--t-text-soft);
+}
+.md-hl-code,
+.md-hl-inline-code {
+  color: var(--syn-string);
+}
+.md-hl-fence {
+  color: var(--syn-keyword);
+}
+.md-hl-link {
+  color: var(--syn-attr);
+}
+.md-hl-strong {
+  color: var(--syn-builtin);
+}
+.md-hl-em {
+  color: var(--t-text-soft);
+}
