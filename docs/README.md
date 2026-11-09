@@ -1,6 +1,6 @@
 # 文档地图（先读这一页）
 
-> 更新：2026-11-09。文档分三层；同一事实只在一处记录，其他地方链接过去。
+> 更新：2026-11-10。文档分三层；同一事实只在一处记录，其他地方链接过去。
 
 ## 1. 现行文档（living）——始终代表当前事实
 - [HANDOFF.md](HANDOFF.md)：入口。当前版本、进行中的工作、等用户的事。
@@ -16,7 +16,6 @@
 | [设备共享](features/devices.md) | 跨 Host 的 ADB/串口（UI 里的「工作站」视图）；代测见 [test-guides/devices.md](test-guides/devices.md) |
 | [Key 网关](features/gateway.md) | 团队模型请求统一转发、限流、记账 |
 | [中继](features/relay.md) | 出站隧道 + 端到端加密 |
-| [远程主机（SSH）](features/remote-ssh.md) | 一键部署远端 Host 并建隧道 |
 | [命令沙箱](features/sandbox.md) | 写入保护、Bash 静态分析、网络白名单 |
 | [项目 Secrets](features/secrets.md) | 加密注入进程环境 + 输出脱敏 |
 | [会话分享](features/share.md) | 内网只读链接 |

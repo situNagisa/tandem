@@ -1,6 +1,6 @@
 # Tandem 架构地图
 
-> 更新：2026-11-09。
+> 更新：2026-11-10。
 
 > 目标：新加入的人或 agent 只读这一页 + 目标目录的少量文件，就能安全修改；改完用 `node scripts/check.mjs` 自动发现回归。
 > 与 `AGENTS.md`、`docs/design.md`、`packages/protocol/src/index.ts` 冲突时，以它们为准。
@@ -26,7 +26,7 @@
 |---|---|
 | `src/cli.ts` | 入口：解析 `--port/--host/--relay`，创建 Host + Fastify，信号退出 |
 | `src/server.ts` | Fastify 服务：启动、token 鉴权、WS 升级、静态托管；路由按资源在 `routes/` 下注册 |
-| `src/routes/` | REST/WS 路由：`common.ts`（依赖与鉴权）、`ssh-hosts.ts`（SSH 远程主机）、`team.ts`（成员/邀请/审计/身份）、`sessions.ts`、`permissions.ts`、`host.ts`、`updates.ts`（可选 `/updates/` 桌面更新文件托管）、`profiles.ts`、`models.ts`、`usage.ts`、`tasks.ts`、`mcp.ts`、`skills.ts`、`hooks.ts`、`memory.ts`、`schedules.ts`、`evals.ts`、`subagent-presets.ts`、`prompt-templates.ts`、`commands.ts`、`external.ts`、`fs.ts`、`pair.ts`、`budgets.ts`、`config.ts`、`ws.ts` |
+| `src/routes/` | REST/WS 路由：`common.ts`（依赖与鉴权）、`team.ts`（成员/邀请/审计/身份）、`sessions.ts`、`permissions.ts`、`host.ts`、`updates.ts`（可选 `/updates/` 桌面更新文件托管）、`profiles.ts`、`models.ts`、`usage.ts`、`tasks.ts`、`mcp.ts`、`skills.ts`、`hooks.ts`、`memory.ts`、`schedules.ts`、`evals.ts`、`subagent-presets.ts`、`prompt-templates.ts`、`commands.ts`、`external.ts`、`fs.ts`、`pair.ts`、`budgets.ts`、`config.ts`、`ws.ts` |
 | `src/board/` + `routes/board.ts` | 任务看板：`manager.ts`（调度器：依赖/并发上限/重试/审批门/单卡预算/worktree 合入依赖与按序合并/重启续跑/AI 评审收尾/冲突解决/运行时提议，1s tick）、`graph.ts`（环检测、`decideSchedule`、规划草稿解析，纯函数）、`git.ts`（自动提交与统计、依赖分支合入）、`planner.ts`（AI 拆分，一次性 `completeText`，只返回草稿）、`pr.ts`（集成分支 + gh/glab 聚合 PR 与状态刷新）、`store.ts`（`~/.tandem/boards/<id>.json`）；卡片 = 带 `SessionRecord.board` 的顶层会话；`tools/propose-cards.ts` 是卡片会话的提议工具 |
 | `src/model-routing.ts` / `src/routing-settings.ts` | 自动模型路由：按消息长度/关键词/上下文/失败信号打难度分，在用户候选池按快速·均衡·强力与省钱·均衡·质量偏好选模型；连续失败升级、简单成功回落，统计相对强力档的节省；设置有会话入口 |
 | `src/host.ts` | Host 类：持有全部状态与构造，方法按职责转调到 `host/`（外部 API 不变） |
@@ -72,7 +72,6 @@
 | `src/config.ts` | `~/.tandem` 路径、账号存储、Host 配置、密钥掩码 |
 | `src/migrate.ts` | 配置加密导出/导入 |
 | `src/relay/` | 中继客户端、E2E 通道、配对信息 |
-| `src/ssh/` | 远程主机 SSH 一键接入：`exec.ts`（系统 ssh/scp、指纹、密码内存）、`package.ts`（Host 打包）、`remote.ts`（远端脚本）、`manager.ts`（部署任务、`ssh -N -L` 隧道保活、重启/升级/日志/卸载）；`routes/ssh-hosts.ts` 暴露 `/api/ssh-hosts` |
 | `src/util/` | 纯工具：路径、编码、glob、fs-walk、文本、HTML、文件预览 |
 
 ## 3. Web 模块地图
