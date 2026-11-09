@@ -2,6 +2,13 @@
 
 > 更新：2026-11-09。只保留最近 5 轮；更早记录见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 57（2026-11-09）发布 v0.4.2：手机预览工具栏 / 新功能导览
+- [x] 调试版手机预览顶栏改为独占 30px 区域：`.app-root` 高度扣减并在顶部留白，全屏浮层（侧栏抽屉、全屏面板、对话框遮罩）统一 `top: var(--preview-bar-height)`，抽屉标题不再被遮；回归断言抽屉标题与顶栏不相交且完整在抽屉内
+- [x] 0.4.2 导览 8 条手写条目（消息耗时、调试版手机预览、调试版免登录、屏蔽浏览器控件/覆盖滚动条/右键菜单、设置页紧凑、外部会话大纲与信息面板、安装说明按平台切换、信息面板隐藏空分组）；调试版专属两条走 `__TANDEM_DEBUG__` 常量分支，发布产物扫描通过；id 已挂到 `features.ts`
+- [x] `node scripts/release.mjs 0.4.2`：版本与 lockfile 同步、CHANGELOG 生成、本地标签 v0.4.2（未 push）
+- 验证：发布前后各跑一次全量 `node scripts/check.mjs`；产物 `Tandem-Setup-0.4.2-x64.exe`、`Tandem-Setup-0.4.2-debug-x64.exe`、`tandem-release.apk/.aab`、`tandem-debug.apk`、`latest.yml`（指向发布版）
+- 保守取舍：Electron 桌面触摸模拟仍无法在 WSL 实测，等用户 Windows 代测
+
 ## 迭代 56（2026-11-09）反馈包 #9：外部会话预览 / 安装说明分段 / 空分组
 - [x] #01 R38（新）：`TurnRail` 支持传入只读消息与虚拟会话 id，外部会话预览复用同一大纲（上下文着色、Alt 只看已固定、用量/耗时 tooltip；只读隐藏图钉、无价格不显示「花费未知」）；新增 `ExternalSessionPanel` 复用 `Card`/`DetailRow`/`ContextSpaceSection`/`PanelBar`/`ResizeHandle` 与同一宽度偏好；服务端外部解析补 `model` 与 `usage`（Claude / Codex）
 - [x] #02 R06（复发）：设备安装说明改为顶部 `ui/SegmentedControl` 系统分段（默认 Host 平台），Linux 再按 Debian/Ubuntu、Arch、Fedora 二级切换；步骤编号、命令走共享 `CodeBlock`（复制常显）、路径等宽；`CodeBlock` 增加 `toolsAlwaysVisible`
