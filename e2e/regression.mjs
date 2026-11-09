@@ -2428,8 +2428,20 @@ async function main() {
       // 登录门：除专门测登录门的用例外，其余用例用调试版测试开关跳过，沿用「地址 + token」直连。
       await page.addInitScript((gate) => {
         try {
-          if (gate) localStorage.removeItem('tandem.gate.skip')
-          else localStorage.setItem('tandem.gate.skip', '1')
+          if (gate) {
+            localStorage.removeItem('tandem.gate.skip')
+            // 前面的用例可能在同一 context 里登录过账号/存过主机：登录门用例要从干净状态开始。
+            for (const key of [
+              'tandem.account.v1',
+              'tandem.hosts.v1',
+              'tandem.localhosts.v1',
+              'tandem.workstation.lastUrl.v1',
+            ]) {
+              localStorage.removeItem(key)
+            }
+          } else {
+            localStorage.setItem('tandem.gate.skip', '1')
+          }
         } catch {
           /* 忽略 */
         }
