@@ -51,6 +51,58 @@ const DEBUG_TOUR_ITEMS: ChangelogEntry[] = [
 /** 版本升级后首次打开时展示；按版本从新到旧排列。 */
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: '0.4.4',
+    date: '2026-11-09',
+    items: [
+      {
+        id: 'account-key-kept',
+        title: '编辑账号不再丢 Key',
+        summary:
+          '已有 Key 只显示「已保存 · ••••末四位」，要换就点「更换 Key」；只改倍率等其他字段时，Key 原样保留。',
+        target: { kind: 'settings', tab: 'profiles', settingId: 'profiles.accounts' },
+      },
+      {
+        id: 'model-pull-latest-generation',
+        title: '拉取模型只勾每个系列最新一代',
+        summary:
+          '从账号拉取模型后，每个系列的最新一代（如 claude-fable-5-1、sonnet-5-5）默认勾选，前代默认不勾，仍可手动补选。',
+        target: { kind: 'settings', tab: 'profiles', settingId: 'profiles.models' },
+      },
+      {
+        id: 'cache-switch-confirm',
+        title: '切换模型/账号/分组才确认缓存失效',
+        summary:
+          '会话已有上下文时，选中新的模型、账号或分组才弹确认（附约多少 token 与费用），取消即不改；菜单里不再常驻提示。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'outline-lazy-jump',
+        title: '大纲能跳到还没加载的轮次',
+        summary:
+          '点大纲里的早期轮会先载入那一段再滚动并高亮；滚轮只在大纲里预览移动，不改变当前选中轮，也不滚动对话区。',
+        target: { kind: 'demo', scenario: 'chat-tools' },
+      },
+      {
+        id: 'combobox-unified',
+        title: '下拉换成统一组件，文字不再被裁',
+        summary:
+          '单价覆盖与预算规则里的原生下拉改为统一的可搜索列表；菜单、按钮与分段控件行高抬高，中英文上下缘不再被截断。',
+        target: { kind: 'settings', tab: 'budgets', settingId: 'budgets.edit' },
+      },
+      ...(__TANDEM_DEBUG__
+        ? [
+            {
+              id: 'debug-flavor-fixed',
+              title: '调试版自动登录与反馈草稿恢复正常',
+              summary:
+                '调试版把构建风味在打包时写死：首次启动直接进入调试账号，反馈草稿实时写进「下载/Tandem 反馈/」，不再因运行时判断落空。',
+              target: { kind: 'feedback' as const },
+            },
+          ]
+        : []),
+    ],
+  },
+  {
     version: '0.4.3',
     date: '2026-11-09',
     items: __TANDEM_DEBUG__
