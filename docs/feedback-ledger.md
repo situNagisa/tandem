@@ -56,6 +56,7 @@
 | R42 | 编辑表单回传空值/掩码覆盖已保存的密钥 | "编辑时会丢失key" | 1 | 已有 Key 只显示「已保存 · ••••abcd」+「更换 Key」，不回传明文；服务端 `looksMaskedKey` 对缺省/空串/掩码回传一律保留原值；Key 列表按 id 保留；Secrets/MCP 同查 | 单测 `packages/server/test/profile-keys.test.ts`（空值/掩码不覆盖、按 id 保留、老账号 Key）；回归编辑倍率后 `apiKeyMasked` 不变 |
 | R43 | 拉取模型后不区分代际，一次全选或只取前几个 | "这里拉取模型后自动选择最新的模型，前代模型默认不选择" | 1 | `lib/modelSelection.ts` 解析系列/版本/日期快照：每系列取最新，同版本别名优先、其次较新快照，无法判断不选；手动改过后再次拉取只对新增模型应用规则 | 单测 `modelSelection.test.ts`；回归「拉取后默认勾选 claude-fable-5-1/haiku-5-5/opus-5-5/sonnet-5-5」 |
 | R44 | 固定行高 + `leading-none` 让中英文字形上下缘被行盒裁掉 | "选项卡要让字的显示范围拉高一点，不然内部会把字的上边和下边截断" | 1 | 共享 `ui/Menu`（1.45）、`ui/Button`、`ui/SegmentedControl`（1.4）文本行高 ≥1.4，去掉 `leading-none`；新增 `ui/Combobox` 沿用同一行样式 | `scripts/ui-audit.mjs` `clipped-line-height`；回归测量菜单行文本 `scrollHeight ≤ clientHeight` |
+| R48 | 长会话里反馈截图在主线程克隆整页 DOM 并逐节点内联全部计算样式，点选/框选要等十几秒 | "反馈模式在主会话区域截图时很卡"（几百条消息、代码块、工具行） | 1 | `lib/feedbackCapture.ts` 统一截图管线：只内联视觉样式白名单（约 160 条，原每节点约 350 条）；克隆前跳过滚动容器视口外的子树（长会话 8k 元素 → 约 2k，整页快照只克隆约 2k）；区域截图只克隆包含区域的最深容器（优先滚动容器），不再对 `document.body` 做 html-to-image；整页缩略图改为输入浮窗出现后再空闲补拍，不挡点选路径；桌面调试版新增 `feedback:capture-page` IPC 走 `webContents.capturePage(rect)` 原生截图；点选/框选先画「截图中…」提示再做重活；截图耗时拆分记录在 `lib/feedbackPerf.ts`（`window.__feedbackPerfCapture` 供回归） | 回归（`e2e/regression.mjs`）「反馈截图：长会话点选/框选/整页不卡且内容非空（R48）」：整页 <2.5s、会话区元素/区域 <1.5s、点选到浮窗 <1.2s、截图非空且区域尺寸正确、克隆节点数 <800 |
 
 ## 记录格式（新增反馈时追加）
 `日期 · 反馈包 · 条目 · 根因编号 · 处理（就地修 / 共享层修 + 防线）`
@@ -129,3 +130,4 @@
 - 2026-11-09 · 反馈包#10 #06 · R37 + R01（复发，共享层 `ui/Combobox` + ui-audit 禁 datalist/list）
 - 2026-11-09 · 反馈包#10 #07 · R44（新，共享层行高 ≥1.4 + ui-audit/回归测量）
 - 2026-11-09 · 反馈包#10 #03 · R14（复发，删除底部「显示空分组」开关，改 ⋯ 菜单逐个勾选 + `PanelPrefs.shown`）
+- 2026-11-09 · 反馈#11 长会话反馈截图卡顿 · R48（新，样式白名单 + 视口外子树跳过 + 区域最深容器 + 整页空闲补拍 + 桌面原生截图；回归性能断言）

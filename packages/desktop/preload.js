@@ -39,6 +39,8 @@ if (debugFlavor) {
   };
   // 反馈草稿实时落盘与 .tfb 导出：同样只在调试版主进程注册。
   api.feedback = {
+    // 原生页面截图（CSS px 矩形），长会话里比页内 DOM 克隆快得多。
+    capturePage: (rect) => ipcRenderer.invoke('feedback:capture-page', rect),
     syncDraft: (draftId, files) => ipcRenderer.invoke('feedback:sync-draft', { draftId, files }),
     markExported: (draftId) => ipcRenderer.invoke('feedback:mark-exported', { draftId }),
     removeDraft: (draftId) => ipcRenderer.invoke('feedback:remove-draft', { draftId }),

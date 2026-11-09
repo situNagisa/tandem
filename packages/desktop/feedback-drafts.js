@@ -1,7 +1,7 @@
 'use strict';
 // 调试版「反馈草稿实时落盘」：把 web 端记录的条目写进 <下载>/Tandem 反馈/，
 // 导出 .tfb 默认也存这里。发布版主进程不 require 这个模块。
-const { app, ipcMain, shell } = require('electron');
+const { app, ipcMain, shell, BrowserWindow } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
@@ -36,6 +36,26 @@ function insideRoot(target) {
 }
 
 function register() {
+  // 反馈截图：桌面端直接用 Chromium 的原生页面捕获，长会话里不必克隆 DOM。
+  // rect 是 CSS px（= DIP），capturePage 会按窗口缩放返回原生像素。
+  ipcMain.handle('feedback:capture-page', async (event, payload) => {
+    try {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win || win.isDestroyed()) return { ok: false, error: 'no window' };
+      const bounds = win.getContentBounds();
+      const clamp = (value, max) => Math.max(0, Math.min(Number(value) || 0, max));
+      const x = clamp(payload?.x, bounds.width);
+      const y = clamp(payload?.y, bounds.height);
+      const width = Math.max(1, Math.min(Number(payload?.width) || bounds.width, bounds.width - x));
+      const height = Math.max(1, Math.min(Number(payload?.height) || bounds.height, bounds.height - y));
+      const image = await win.webContents.capturePage({ x, y, width, height });
+      if (image.isEmpty()) return { ok: false, error: 'empty image' };
+      return { ok: true, dataURL: image.toDataURL() };
+    } catch (err) {
+      return { ok: false, error: (err && err.message) || String(err) };
+    }
+  });
+
   ipcMain.handle('feedback:sync-draft', (_event, payload) =>
     enqueue(async () => {
       try {

@@ -633,6 +633,7 @@ export function FeedbackMode() {
   const [tick, setTick] = useState(0)
   const [regionBox, setRegionBox] = useState<FeedbackRect | null>(null)
   const [regionBusy, setRegionBusy] = useState(false)
+  const [captureBusy, setCaptureBusy] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [annotator, setAnnotator] = useState<{ image: string; itemId?: string } | null>(null)
   const [focusRect, setFocusRect] = useState<FeedbackRect | null>(null)
@@ -654,6 +655,8 @@ export function FeedbackMode() {
   const prefsRef = useRef(prefs)
   prefsRef.current = prefs
   const lastHoverRef = useRef<{ element: Element; alt: boolean } | null>(null)
+  /** 每个路由只补拍一次整页；编辑器先出现，整页在空闲时补上。 */
+  const pageShotTasksRef = useRef(new Map<string, Promise<FeedbackPageShot | null>>())
   const layerRef = useRef<HTMLDivElement>(null)
   const capturingRef = useRef(false)
   const focusTimerRef = useRef<number | null>(null)
@@ -842,34 +845,16 @@ export function FeedbackMode() {
       hoverAt(e.clientX, e.clientY, e.altKey)
     }
 
-    const capturePageForRoute = async (route: string) => {
-      const store = useFeedbackStore.getState()
-      let pageShot = store.pageShots.find((shot) => shot.route === route) ?? null
-      if (pageShot) return pageShot
-      const captured = await capturePageShot()
-      if (!captured) return null
-      const shot: FeedbackPageShot = {
-        id: newFeedbackId(),
-        route,
-        dataURL: captured.dataURL,
-        width: captured.width,
-        height: captured.height,
-        createdAt: Date.now(),
-      }
-      store.addPageShot(shot)
-      return shot
-    }
-
     // 点击后立刻截图，截图完成才弹输入浮窗：菜单或 hover 元素不会在截图前消失。
     const openEditorFor = async (picked: Element, rect: FeedbackRect) => {
       if (capturingRef.current) return
       capturingRef.current = true
+      setCaptureBusy(true)
       try {
         const route = window.location.hash || '#/'
-        const [elementShot, pageShot] = await Promise.all([
-          captureElementShot(picked),
-          capturePageForRoute(route),
-        ])
+        // 先让「截图中…」提示画出来，再开始克隆（长会话里这步很重）。
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        const elementShot = await captureElementShot(picked)
         if (!useFeedbackStore.getState().active) return
         lastHoverRef.current = null
         setHover(null)
@@ -893,18 +878,21 @@ export function FeedbackMode() {
           text: '',
           references: [],
           elementShot,
-          pageShot,
+          pageShot: null,
           featureId,
           featureName,
           causeId: inferred?.causeId,
           causeTitle: inferred?.causeTitle,
         })
+        // 整页缩略图只是归档参考图：编辑器已可用，空闲时后台补拍。
+        attachPageShot(route)
       } catch (err) {
         // 截图/推断失败不能让捕获层停在“采集中”，用户下次点击必须还能用。
         console.warn('[feedback] 圈选截图失败', err)
         useUiStore.getState().toast('圈选失败，请再试一次', 'error')
       } finally {
         capturingRef.current = false
+        setCaptureBusy(false)
       }
     }
 
@@ -914,10 +902,9 @@ export function FeedbackMode() {
       setRegionBusy(true)
       try {
         const route = window.location.hash || '#/'
-        const [regionShot, pageShot] = await Promise.all([
-          captureRegionShot(rect),
-          capturePageForRoute(route),
-        ])
+        // 让「截取区域」提示先画出来，避免长会话里像没反应。
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        const regionShot = await captureRegionShot(rect)
         if (!useFeedbackStore.getState().active) return
         const center = elementsAtPoint(
           rect.x + rect.width / 2,
@@ -942,13 +929,14 @@ export function FeedbackMode() {
           text: '',
           references: [],
           elementShot: regionShot,
-          pageShot,
+          pageShot: null,
           textSnippet,
           featureId: pending?.featureId ?? inferred?.featureId,
           featureName: pending?.featureName ?? inferred?.featureName,
           causeId: inferred?.causeId,
           causeTitle: inferred?.causeTitle,
         })
+        attachPageShot(route)
       } catch (err) {
         console.warn('[feedback] 区域截图失败', err)
         useUiStore.getState().toast('圈选失败，请再试一次', 'error')
@@ -1169,6 +1157,66 @@ export function FeedbackMode() {
     }
   }, [])
 
+  /** 公用的「空闲时」调度：先让元素/区域截图与输入浮窗渲染完，别抢同一帧的主线程。 */
+  const onIdle = (task: () => void, delayMs = 0) => {
+    const schedule = () => {
+      const idle = (window as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback
+      if (idle) idle(task, { timeout: 1200 })
+      else window.setTimeout(task, 300)
+    }
+    if (delayMs > 0) window.setTimeout(schedule, delayMs)
+    else schedule()
+  }
+
+  /**
+   * 整页缩略图：每个路由只拍一次。它只是随条目归档的参考图，
+   * 不该挡在「点选 → 能继续操作」的路径上，所以空闲时后台补拍。
+   */
+  const startPageShot = (route: string): Promise<FeedbackPageShot | null> => {
+    const store = useFeedbackStore.getState()
+    const cached = store.pageShots.find((shot) => shot.route === route)
+    if (cached) return Promise.resolve(cached)
+    const existing = pageShotTasksRef.current.get(route)
+    if (existing) return existing
+    const task = new Promise<FeedbackPageShot | null>((resolve) => {
+      onIdle(() => {
+        void (async () => {
+          try {
+            if (!useFeedbackStore.getState().active) return resolve(null)
+            const captured = await capturePageShot()
+            if (!captured) return resolve(null)
+            const shot: FeedbackPageShot = {
+              id: newFeedbackId(),
+              route,
+              dataURL: captured.dataURL,
+              width: captured.width,
+              height: captured.height,
+              createdAt: Date.now(),
+            }
+            useFeedbackStore.getState().addPageShot(shot)
+            resolve(shot)
+          } catch (err) {
+            console.warn('[feedback] 整页截图失败', err)
+            resolve(null)
+          } finally {
+            pageShotTasksRef.current.delete(route)
+          }
+        })()
+      }, 600)
+    })
+    pageShotTasksRef.current.set(route, task)
+    return task
+  }
+
+  const attachPageShot = (route: string) => {
+    void startPageShot(route).then((shot) => {
+      if (!shot) return
+      setEditor((current) =>
+        current && current.mode === 'new' && !current.pageShot ? { ...current, pageShot: shot } : current,
+      )
+    })
+  }
+
   const openEditorForItem = (item: FeedbackItem) => {
     const element = safeQuery(item.selector)
     setEditor({
@@ -1210,18 +1258,10 @@ export function FeedbackMode() {
       const pageShot = store.pageShots.find((shot) => shot.route === route)
       let pageShotData: string | null = current.pageShot?.dataURL ?? pageShot?.dataURL ?? null
       if (!pageShotData) {
-        const captured = await capturePageShot()
-        if (captured) {
-          pageShotData = captured.dataURL
-          store.addPageShot({
-            id: newFeedbackId(),
-            route,
-            dataURL: captured.dataURL,
-            width: captured.width,
-            height: captured.height,
-            createdAt: Date.now(),
-          })
-        }
+        // 后台补拍可能还在跑：保存时等它一次，没有再补拍。
+        const pendingShot = pageShotTasksRef.current.get(route) ?? startPageShot(route)
+        const shot = await pendingShot
+        pageShotData = shot?.dataURL ?? null
       }
       // 选中时已截图；这里只在缺失（如重试）时补拍，框选区域不补拍整页元素。
       const elementShot = current.kind === 'region'
@@ -1811,9 +1851,9 @@ export function FeedbackMode() {
               </button>
             </span>
           )}
-          {regionBusy && (
-            <span className="flex items-center gap-1 text-[10.5px] text-muted">
-              <Loader2 size={11} className="animate-spin" /> 截取区域
+          {(regionBusy || captureBusy) && (
+            <span className="flex items-center gap-1 text-[10.5px] text-muted" role="status" aria-live="polite">
+              <Loader2 size={11} className="animate-spin" /> {regionBusy ? '截取区域' : '截图'}
             </span>
           )}
           <span className="h-4 w-px bg-border" />

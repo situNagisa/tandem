@@ -8013,6 +8013,77 @@ async function main() {
       await page.waitForFunction(() => !document.documentElement.classList.contains('feedback-mode'))
     })
 
+    desktop('反馈截图：长会话点选/框选/整页不卡且内容非空（R48）', async (page) => {
+      await openSession(page, 'huge')
+      // 滚到底部：截图应截当前可见的最后几轮，而不是会话开头。
+      await page.evaluate(() => {
+        const el = document.querySelector('.chat-scroll')
+        if (el) el.scrollTop = el.scrollHeight
+      })
+      await page.waitForTimeout(400)
+      const perf = await page.evaluate(async () => {
+        const api = window.__feedbackPerfCapture
+        if (!api) return null
+        const time = async (fn) => {
+          const started = performance.now()
+          const value = await fn()
+          return { ms: Math.round(performance.now() - started), value }
+        }
+        const pageShot = await time(() => api.page())
+        const element = await time(() => api.element('.chat-scroll'))
+        const region = await time(() => api.region({ x: 700, y: 260, width: 700, height: 520, pageX: 700, pageY: 260 }))
+        const records = api.records().slice(-3)
+        const decode = (src) =>
+          new Promise((resolve) => {
+            const img = new Image()
+            img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight })
+            img.onerror = () => resolve(null)
+            img.src = src
+          })
+        return {
+          pageShot: { ...pageShot, size: await decode(pageShot.value?.dataURL ?? '') },
+          element: { ...element, size: await decode(element.value ?? '') },
+          region: { ...region, size: await decode(region.value ?? '') },
+          records,
+        }
+      })
+      assert.ok(perf, '缺少调试截图性能入口（__feedbackPerfCapture）')
+      // 宽松阈值：只为防「整页 DOM 克隆」级退化，正常机器远低于此。
+      assert.ok(perf.pageShot.ms < 2500, `整页截图过慢：${perf.pageShot.ms}ms`)
+      assert.ok(perf.element.ms < 1500, `会话区元素截图过慢：${perf.element.ms}ms`)
+      assert.ok(perf.region.ms < 1500, `区域截图过慢：${perf.region.ms}ms`)
+      assert.ok(perf.pageShot.value?.dataURL?.length > 2000, '整页截图为空')
+      assert.ok(perf.element.value?.length > 2000, '元素截图为空')
+      assert.ok(perf.region.value?.length > 2000, '区域截图为空')
+      assert.ok(perf.element.size?.width > 100 && perf.element.size?.height > 100, '元素截图尺寸异常')
+      assert.ok(
+        Math.abs((perf.region.size?.width ?? 0) - 700) <= 2 &&
+          Math.abs((perf.region.size?.height ?? 0) - 520) <= 2,
+        `区域截图尺寸不对：${perf.region.size?.width}×${perf.region.size?.height}`,
+      )
+      assert.ok(perf.pageShot.size?.width > 0 && perf.pageShot.size?.height > 0, '整页截图尺寸异常')
+      const [pageRecord, elementRecord, regionRecord] = perf.records
+      assert.equal(pageRecord?.kind, 'page', '整页截图缺少耗时记录')
+      assert.ok((pageRecord?.pruned ?? 0) > 0, '长会话整页截图没有跳过视口外的行')
+      assert.ok((elementRecord?.nodes ?? 9999) < 800, `会话区元素截图克隆了过多节点：${elementRecord?.nodes}`)
+      assert.ok((regionRecord?.nodes ?? 9999) < 800, `区域截图克隆了过多节点：${regionRecord?.nodes}`)
+
+      // 真实点击链路：点选会话区后输入浮窗要在可接受时间内可用。
+      await page.keyboard.press('Control+Shift+F')
+      await page.waitForSelector('html.feedback-mode', { timeout: 5_000 })
+      const started = Date.now()
+      await page.mouse.click(1276, 900)
+      const editor = page.getByRole('dialog', { name: '反馈输入' })
+      await editor.waitFor({ state: 'visible', timeout: 15_000 })
+      const clickMs = Date.now() - started
+      assert.ok(clickMs < 1200, `点选到输入浮窗过慢：${clickMs}ms`)
+      assert.ok((await editor.locator('img').count()) > 0, '输入浮窗缺少截图缩略图')
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(200)
+      if (await page.locator('html.feedback-mode').count()) await page.keyboard.press('Escape')
+      await page.waitForFunction(() => !document.documentElement.classList.contains('feedback-mode'))
+    })
+
     desktop('工作站：跨主机 ADB/串口挂载、审批与终端', async (page) => {
       const tokenA = randomUUID()
       const hostIdA = randomUUID()

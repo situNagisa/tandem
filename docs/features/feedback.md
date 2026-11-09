@@ -46,6 +46,16 @@ node scripts/feedback-receipt.mjs <file.tfb|file.json|草稿目录> <receipt.md|
 
 解包后生成 `feedback.md`、`by-feature/<功能>.md`、`by-cause/<编号>.md` 与所有附件。Windows 上直接读 `/mnt/c/Users/JDHC/Downloads/Tandem 反馈/` 即可。
 
+## 截图性能（长会话，R48）
+
+- 截图只内联视觉相关的计算样式（约 160 条，`feedbackCapture.ts` 的样式白名单）；不再把每个元素约 350 条样式全写进克隆。
+- 克隆前跳过滚动容器视口外的子树（`content-visibility` 本来也不绘制这些行）；长会话 8k 元素降到约 2k。滚到底部时截图内容和用户当前看到的一致，而不是会话开头。
+- 区域截图只克隆「包含该区域的最深容器」（优先最近的滚动容器），不再对 `document.body` 做整页渲染再裁切。
+- 整页缩略图（≤900px）在输入浮窗出现 **之后** 空闲补拍：点选/框选只等元素/区域截图；保存时若还没拍完会等它一次。
+- 桌面调试版走主进程原生截图（`feedback:capture-page` → `webContents.capturePage(rect)`），网页端仍用 DOM 克隆（`getDisplayMedia` 需要授权，不用）。
+- 点选/框选先出现「截图」/「截取区域」提示再做重活。每次截图的分阶段耗时记在 `lib/feedbackPerf.ts`，回归用例从 `window.__feedbackPerfCapture` 读取。
+- 已知限制：单个超大消息行（近 2000 个元素，如超长代码块）元素截图约 0.6s；网页端单次整页缩略图约 0.5–0.7s（原生桌面端 <100ms）。
+
 ## 限制
 
 - 加密、跨设备同步不做。

@@ -34,6 +34,13 @@ interface Window {
     }
     // 反馈草稿实时落盘与 .tfb 导出：仅调试版主进程注册。
     feedback?: {
+      /** 原生页面截图；rect 为 CSS px，返回 PNG data URL。 */
+      capturePage: (rect: {
+        x: number
+        y: number
+        width: number
+        height: number
+      }) => Promise<{ ok: boolean; dataURL?: string; error?: string }>
       syncDraft: (
         draftId: string,
         files: Array<{ path: string; text?: string; base64?: string }>,
