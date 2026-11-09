@@ -49,6 +49,8 @@ const flavor = readFlavor();
 const debugFlavor = flavor !== 'release';
 /** 手机预览只在调试版加载；发布版连入口与 IPC 都不注册。 */
 const mobilePreview = debugFlavor ? require('./mobile-preview.js') : null;
+/** 反馈草稿实时落盘与 .tfb 导出同样只在调试版注册。 */
+const feedbackDrafts = debugFlavor ? require('./feedback-drafts.js') : null;
 
 app.setName('Tandem');
 app.setAppUserModelId('com.tandem.desktop');
@@ -772,6 +774,7 @@ if (!gotLock) {
         isAppUrl,
       });
     }
+    if (feedbackDrafts) feedbackDrafts.register();
     createWindow();
     createTray();
     setupUpdaterIpc();

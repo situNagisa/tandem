@@ -16,7 +16,7 @@
 
 ## 工作方式
 - 用户可随时反馈，不必等他；每轮自己定优先级。视觉方向性选择才发「打分卡」（编号 + 现状/方案对比图）。
-- 用户的具体问题通过产品内「反馈模式」（Ctrl+Shift+F）导出 `tandem-feedback-*.json` 发到飞书；用 `lark-cli im +messages-mget --message-ids <id> --download-resources` 下载，`node scripts/feedback-unpack.mjs <json> <outDir>` 解包后逐条处理，逐条回报并附修复后截图。
+- 用户的具体问题通过产品内「反馈模式」（Ctrl+Shift+F）导出 `tandem-feedback-*.tfb`（zip 容器，改扩展名可解压）发到飞书；桌面调试版同时把每条实时写进 `<下载>/Tandem 反馈/草稿-*/`（用户在本机时可直接读 `/mnt/c/Users/JDHC/Downloads/Tandem 反馈/`）。用 `lark-cli im +messages-mget --message-ids <id> --download-resources` 下载，`node scripts/feedback-unpack.mjs <tfb|json|草稿目录> <outDir>` 解包（旧 .json 仍兼容）后逐条处理，逐条回报并附修复后截图；包格式见 `docs/features/feedback.md`。
 - 处理每条反馈前先查 `docs/feedback-ledger.md` 归到某个根因（R01…）；同一根因第二次出现必须在共享层修并加自动检查（ui-audit/单测/回归），不能只修表面。
 - 交付前协调者亲自用 Playwright 点击验收用户反馈的每一条（只截静态图会漏掉"点了没反应、弹层被裁"类问题）。
 - **提交前运行 `node scripts/check.mjs`**（build → docs-check → ui-audit → 单测 → smoke）；子代理默认至少跑 `node scripts/check.mjs --skip-smoke`。

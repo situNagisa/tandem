@@ -30,5 +30,21 @@ interface Window {
         orientation?: 'portrait' | 'landscape'
       }) => Promise<{ ok: boolean; error?: string }>
     }
+    // 反馈草稿实时落盘与 .tfb 导出：仅调试版主进程注册。
+    feedback?: {
+      syncDraft: (
+        draftId: string,
+        files: Array<{ path: string; text?: string; base64?: string }>,
+      ) => Promise<{ ok: boolean; dir?: string; error?: string }>
+      markExported: (draftId: string) => Promise<{ ok: boolean; error?: string }>
+      removeDraft: (draftId: string) => Promise<{ ok: boolean; error?: string }>
+      exportArchive: (
+        filename: string,
+        base64: string,
+      ) => Promise<{ ok: boolean; path?: string; error?: string }>
+      openFolder: (target?: string) => Promise<{ ok: boolean; error?: string }>
+      dir: () => Promise<{ dir?: string; error?: string }>
+      prune: () => Promise<{ removed: number }>
+    }
   }
 }

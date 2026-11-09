@@ -22,6 +22,9 @@ export function Toasts() {
   if (!toasts.length) return null
   return (
     <div
+      // 反馈模式下提示条升到捕获层之上，操作按钮（如「打开所在文件夹」）仍可点击。
+      data-feedback-ui=""
+      data-toast-layer=""
       className={cn(
         'pointer-events-none fixed inset-x-0 z-[60] flex flex-col items-center gap-2 px-4',
         // 设置弹窗打开时，提示条避开弹窗右上角的关闭按钮；手机端改为弹窗标题下方，

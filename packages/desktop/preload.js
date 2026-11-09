@@ -27,4 +27,15 @@ contextBridge.exposeInMainWorld('tandemDesktop', {
     open: (options) => ipcRenderer.invoke('mobile-preview:open', options),
     configure: (options) => ipcRenderer.invoke('mobile-preview:configure', options),
   },
+  // 反馈草稿实时落盘与 .tfb 导出：同样只在调试版主进程注册。
+  feedback: {
+    syncDraft: (draftId, files) => ipcRenderer.invoke('feedback:sync-draft', { draftId, files }),
+    markExported: (draftId) => ipcRenderer.invoke('feedback:mark-exported', { draftId }),
+    removeDraft: (draftId) => ipcRenderer.invoke('feedback:remove-draft', { draftId }),
+    exportArchive: (filename, base64) =>
+      ipcRenderer.invoke('feedback:export-archive', { filename, base64 }),
+    openFolder: (target) => ipcRenderer.invoke('feedback:open-folder', { target }),
+    dir: () => ipcRenderer.invoke('feedback:dir'),
+    prune: () => ipcRenderer.invoke('feedback:prune'),
+  },
 });

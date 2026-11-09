@@ -26,6 +26,7 @@
 | [对话区](features/conversation.md) | 轮次大纲（用量着色、固定、Alt 只看已固定）与「最占空间」按轮次聚合；消息耗时与轮次耗时汇总 |
 | [手机预览](features/mobile-preview.md) | 调试版在电脑上模拟手机尺寸/触摸；真机调试见 [test-guides/mobile-debugging.md](test-guides/mobile-debugging.md) |
 | [发布](features/release.md) | 版本、签名、更新源、上架材料 |
+| [反馈模式](features/feedback.md) | 调试版实时落盘草稿、.tfb 包结构与解包命令 |
 | 工作站（账号与主机） | [workstation.md](workstation.md)；[accounts.md](accounts.md) 是被替代的旧模型，仅作迁移参考。iOS：用户已决定暂不做，评估归档于 [archive/research/](archive/research/)。 |
 
 ## 2. 一次性记录（records）

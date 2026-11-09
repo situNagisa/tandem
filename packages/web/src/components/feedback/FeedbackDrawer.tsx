@@ -16,6 +16,7 @@ import { cn } from '../../lib/cn'
 import {
   parseFeedbackReceipt,
   receiptStatusLabel,
+  type FeedbackDraftInfo,
   type FeedbackItem,
   type FeedbackReceipt,
   type FeedbackReceiptItem,
@@ -147,6 +148,9 @@ export function FeedbackDrawer({
   onClearReceipt,
   onVerify,
   onExportVerification,
+  draft,
+  desktopDraft,
+  onDeleteDraft,
 }: {
   open: boolean
   items: FeedbackItem[]
@@ -163,6 +167,10 @@ export function FeedbackDrawer({
   onClearReceipt: () => void
   onVerify: () => void
   onExportVerification: () => void
+  draft: FeedbackDraftInfo | null
+  /** 桌面调试版：草稿实时写进下载目录下的草稿文件夹。 */
+  desktopDraft: boolean
+  onDeleteDraft: () => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
@@ -413,6 +421,24 @@ export function FeedbackDrawer({
         <p className="mt-1 text-[9.5px] leading-4 text-muted">
           快照只含路由、会话摘要、UI 偏好、视口与主机版本，绝不包含密钥、token 或配置文件内容。
         </p>
+        <div className="mt-2 flex items-center gap-2 border-t border-border pt-2">
+          <p className="min-w-0 flex-1 text-[9.5px] leading-4 text-muted">
+            {draft
+              ? desktopDraft
+                ? `草稿实时保存：下载/Tandem 反馈/${draft.id}${draft.exportedAt ? ' · 已导出，保留 7 天' : ''}`
+                : `草稿已保存到本机${draft.exportedAt ? ' · 已导出，保留 7 天' : '，刷新后可恢复'}`
+              : '还没有草稿'}
+          </p>
+          <Button
+            size="sm"
+            variant="danger-ghost"
+            icon={<Trash2 size={11} />}
+            onClick={onDeleteDraft}
+            disabled={!draft && items.length === 0}
+          >
+            删除草稿
+          </Button>
+        </div>
       </div>
     </aside>,
     document.body,

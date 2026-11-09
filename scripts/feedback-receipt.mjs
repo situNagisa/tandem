@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // 由维护者填写的 Markdown/JSON 草稿生成 Tandem 回执文件（tandem-feedback-receipt-*.json）。
-// 用法：node scripts/feedback-receipt.mjs <feedback.json> <receipt.md|receipt.json> [outDir]
+// 反馈包支持 .tfb（新）、旧 .json 与草稿目录。
+// 用法：node scripts/feedback-receipt.mjs <feedback.tfb|feedback.json|草稿目录> <receipt.md|receipt.json> [outDir]
 //
 // Markdown 草稿格式：
 //   # 回执
@@ -13,10 +14,13 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
+import { loadFeedbackSource } from './lib/tfb.mjs'
 
 const [, , feedbackArg, draftArg, outArg] = process.argv
 if (!feedbackArg || !draftArg) {
-  console.error('用法: node scripts/feedback-receipt.mjs <feedback.json> <receipt.md|receipt.json> [outDir]')
+  console.error(
+    '用法: node scripts/feedback-receipt.mjs <feedback.tfb|feedback.json|草稿目录> <receipt.md|receipt.json> [outDir]',
+  )
   process.exit(1)
 }
 const feedbackFile = path.resolve(feedbackArg)
@@ -33,16 +37,14 @@ const outDir = path.resolve(
 )
 mkdirSync(outDir, { recursive: true })
 
-let feedback
+let source
 try {
-  feedback = JSON.parse(readFileSync(feedbackFile, 'utf8'))
+  source = loadFeedbackSource(feedbackFile)
 } catch (err) {
-  console.error(`反馈 JSON 解析失败: ${err.message}`)
+  console.error(`反馈包解析失败: ${err.message}`)
   process.exit(1)
 }
-const sourceIds = new Set(
-  (Array.isArray(feedback.items) ? feedback.items : []).map((item) => item?.id).filter(Boolean),
-)
+const sourceIds = new Set((source.items ?? []).map((item) => item?.id).filter(Boolean))
 
 const EXT_BY_MIME = {
   png: 'image/png',

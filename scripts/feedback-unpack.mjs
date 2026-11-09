@@ -1,14 +1,16 @@
 #!/usr/bin/env node
-// 解包 Tandem 反馈 JSON：截图/标注/参考图/录屏落地，轨迹与快照写成独立文件，
-// 生成按功能分组的 feedback.md、by-feature/<功能>.md 与 by-cause/<编号>.md。
-// 用法：node scripts/feedback-unpack.mjs <file.json> [outDir]
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+// 解包 Tandem 反馈包：支持 .tfb（zip 容器，新）、旧 .json 包与桌面草稿目录。
+// 截图/标注/参考图/录屏落到正常文件，轨迹与快照保持独立文件，生成按功能分组的
+// feedback.md、by-feature/<功能>.md 与 by-cause/<编号>.md。
+// 用法：node scripts/feedback-unpack.mjs <file.tfb|file.json|草稿目录> [outDir]
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
+import { loadFeedbackSource } from './lib/tfb.mjs'
 
 const input = process.argv[2]
 if (!input) {
-  console.error('用法: node scripts/feedback-unpack.mjs <file.json> [outDir]')
+  console.error('用法: node scripts/feedback-unpack.mjs <file.tfb|file.json|草稿目录> [outDir]')
   process.exit(1)
 }
 const file = path.resolve(input)
@@ -16,19 +18,82 @@ if (!existsSync(file)) {
   console.error(`文件不存在: ${file}`)
   process.exit(1)
 }
-const outDir = path.resolve(process.argv[3] ?? `${file.replace(/\.json$/i, '')}-unpacked`)
+const isDir = statSync(file).isDirectory()
+const outDir = path.resolve(
+  process.argv[3] ?? `${file.replace(/\.(tfb|zip|json)$/i, '')}${isDir ? '' : ''}-unpacked`,
+)
 mkdirSync(outDir, { recursive: true })
 // 重复解包到同一目录时清掉旧的按功能/根因分组，避免残留已删除的条目。
 rmSync(path.join(outDir, 'by-feature'), { recursive: true, force: true })
 rmSync(path.join(outDir, 'by-cause'), { recursive: true, force: true })
 
-let data
+let source
 try {
-  data = JSON.parse(readFileSync(file, 'utf8'))
+  source = loadFeedbackSource(file)
 } catch (err) {
-  console.error(`JSON 解析失败: ${err.message}`)
+  console.error(err.message)
   process.exit(1)
 }
+
+/** .tfb / 草稿目录：文件已经是成品，直接落到输出目录。 */
+function extractSourceFiles() {
+  if (!source.files) return
+  for (const [name, data] of source.files) {
+    if (name === '.exported.json' || name.startsWith('.tmp-')) continue
+    const target = path.join(outDir, name)
+    if (path.resolve(target) === path.resolve(path.join(source.dir ?? '', name))) continue
+    mkdirSync(path.dirname(target), { recursive: true })
+    writeFileSync(target, data)
+  }
+}
+
+/** manifest → 与旧 JSON 包同构的 data，图片字段换成 { __file } 引用。 */
+function dataFromManifest(manifest) {
+  const items = (manifest.items ?? []).map((item) => {
+    const files = item.files ?? {}
+    return {
+      ...item,
+      screenshot: files.screenshot ? { __file: files.screenshot } : undefined,
+      annotatedScreenshot: files.annotated ? { __file: files.annotated } : undefined,
+      references: (files.references ?? []).map((reference) => ({
+        name: reference.name,
+        dataURL: { __file: reference.file },
+      })),
+      video: files.video ? { ...files.video, dataURL: { __file: files.video.file } } : undefined,
+      __afterFile: files.afterImage,
+      __traceFile: files.trace,
+      __snapshotFile: files.snapshot,
+      snapshot: files.snapshot ? { summary: item.snapshotSummary ?? [] } : undefined,
+    }
+  })
+  const byId = new Map(items.map((item) => [item.id, item]))
+  const receipt = manifest.receipt
+    ? {
+        ...manifest.receipt,
+        items: manifest.receipt.items.map((entry) => {
+          const after = byId.get(entry.id)?.__afterFile
+          return after ? { ...entry, afterImage: { __file: after } } : entry
+        }),
+      }
+    : null
+  return {
+    version: manifest.version,
+    kind: manifest.kind,
+    exportedAt: manifest.exportedAt,
+    app: manifest.app,
+    env: manifest.env ?? {},
+    items,
+    pageShots: (manifest.pageShots ?? []).map((shot) => ({
+      ...shot,
+      dataURL: { __file: shot.file },
+    })),
+    errors: manifest.errors ?? [],
+    receipt,
+  }
+}
+
+extractSourceFiles()
+const data = source.type === 'json' ? source.data : dataFromManifest(source.manifest)
 
 const TYPE_LABELS = { issue: '问题', suggestion: '建议', praise: '好评' }
 const STATUS_LABELS = { fixed: '已修复', wontfix: '不修复', 'needs-info': '需更多信息' }
@@ -68,7 +133,23 @@ function writeDataUrl(dataUrl, target) {
   return { mime, bytes: bytes.length }
 }
 
+/** 写图片：旧包是 dataURL；新包/草稿的文件已经解出，确认存在即可。 */
+function writeAsset(value, target) {
+  if (typeof value === 'string') return writeDataUrl(value, target)
+  if (value && typeof value === 'object' && typeof value.__file === 'string') {
+    return existsSync(target) ? { mime: '', bytes: 0, file: value.__file } : null
+  }
+  return null
+}
+
+function suggestedName(value, fallback) {
+  return value && typeof value === 'object' && typeof value.__file === 'string'
+    ? value.__file
+    : fallback
+}
+
 function extensionFor(dataUrl, fallback) {
+  if (dataUrl && typeof dataUrl === 'object') return fallback
   const match = /^data:([^;,]+)/.exec(typeof dataUrl === 'string' ? dataUrl : '')
   return EXT_BY_MIME[match?.[1]] ?? fallback
 }
@@ -141,7 +222,7 @@ function prefixLinks(text) {
 headerLines.push(isVerification ? '# Tandem 复验结果' : '# Tandem 反馈包', '')
 const env = data.env ?? {}
 const app = data.app ?? {}
-headerLines.push(`- 导出时间：${data.exportedAt ?? '未知'}`)
+headerLines.push(`- 导出时间：${data.exportedAt ?? '未导出（草稿）'}`)
 headerLines.push(`- 应用：${app.name ?? 'Tandem'} ${app.version ?? ''}`.trim())
 headerLines.push(`- 文件版本：v${data.version ?? 1}${data.kind ? `（${data.kind}）` : ''}`)
 if (isVerification && data.sourceReceiptFile) {
@@ -151,6 +232,13 @@ if (!env.route && items[0]?.route) env.route = items[0].route
 if (env.route) headerLines.push(`- 路由：\`${env.route}\``)
 if (env.viewport) {
   headerLines.push(`- 视口：${env.viewport.width}×${env.viewport.height} @${env.dpr ?? 1}x`)
+}
+if (env.window) {
+  headerLines.push(
+    `- 窗口：${env.window.outerWidth}×${env.window.outerHeight}${
+      env.window.screenWidth ? ` · 屏幕 ${env.window.screenWidth}×${env.window.screenHeight}` : ''
+    }`,
+  )
 }
 if (env.theme) headerLines.push(`- 主题：${env.theme === 'dark' ? '深色' : '浅色'}`)
 if (env.platform) headerLines.push(`- 平台：${env.platform}`)
@@ -164,15 +252,15 @@ headerLines.push(`- 条目：${items.length} 条`, '')
 
 const pageFileMap = new Map()
 pageShots.forEach((shot, index) => {
-  const name = `page-${index + 1}.png`
-  const written = writeDataUrl(shot.dataURL ?? shot.dataUrl, path.join(outDir, name))
+  const name = suggestedName(shot.dataURL ?? shot.dataUrl, `page-${index + 1}.png`)
+  const written = writeAsset(shot.dataURL ?? shot.dataUrl, path.join(outDir, name))
   if (written) pageFileMap.set(shot, name)
 })
 
 items.forEach((item, index) => {
   const number = pad2(index + 1)
   const type = TYPE_LABELS[item.type] ?? item.type ?? '未分类'
-  const featureName = item.featureName || (item.featureId ? item.featureId : '未分类')
+  const featureName = item.featureName || (item.featureId ? item.featureId : '未归类')
   const causeName = item.causeTitle || (item.causeId ? item.causeId : '')
   const lines = [`### ${number}. ${type}${item.priority ? ` · ${item.priority}` : ''}`, '']
   lines.push(`- 文字：${quoteBlock(item.text)}`)
@@ -194,10 +282,13 @@ items.forEach((item, index) => {
   }
 
   const isRegion = item.screenshotKind === 'region'
-  const originalName = `${number}-${isRegion ? '区域截图' : '元素截图'}.png`
-  const originalWritten = writeDataUrl(item.screenshot, path.join(outDir, originalName))
-  const annotatedName = `${number}-标注截图.png`
-  const annotatedWritten = writeDataUrl(item.annotatedScreenshot, path.join(outDir, annotatedName))
+  const originalName = suggestedName(
+    item.screenshot,
+    `${number}-${isRegion ? '区域截图' : '元素截图'}.png`,
+  )
+  const originalWritten = writeAsset(item.screenshot, path.join(outDir, originalName))
+  const annotatedName = suggestedName(item.annotatedScreenshot, `${number}-标注截图.png`)
+  const annotatedWritten = writeAsset(item.annotatedScreenshot, path.join(outDir, annotatedName))
   if (originalWritten) {
     fileCount += 1
     const note =
@@ -220,8 +311,8 @@ items.forEach((item, index) => {
     const names = []
     references.forEach((reference, refIndex) => {
       const ext = extensionFor(reference.dataURL, 'png')
-      const name = `${number}-参考-${refIndex + 1}.${ext}`
-      if (writeDataUrl(reference.dataURL, path.join(outDir, name))) {
+      const name = suggestedName(reference.dataURL, `${number}-参考-${refIndex + 1}.${ext}`)
+      if (writeAsset(reference.dataURL, path.join(outDir, name))) {
         fileCount += 1
         names.push(`\`${name}\`${reference.name ? `（${String(reference.name).slice(0, 60)}）` : ''}`)
       }
@@ -232,8 +323,8 @@ items.forEach((item, index) => {
   const video = item.video
   if (video) {
     const ext = extensionFor(video.dataURL, 'webm')
-    const name = `${number}-录屏.${ext}`
-    const written = writeDataUrl(video.dataURL, path.join(outDir, name))
+    const name = suggestedName(video.dataURL, `${number}-录屏.${ext}`)
+    const written = writeAsset(video.dataURL, path.join(outDir, name))
     if (written) {
       fileCount += 1
       const seconds = video.durationMs ? Math.round(video.durationMs / 1000) : null
@@ -243,7 +334,12 @@ items.forEach((item, index) => {
   }
 
   const trace = Array.isArray(item.trace) ? item.trace : []
-  if (trace.length) {
+  if (item.__traceFile) {
+    fileCount += 1
+    lines.push(
+      `- 操作轨迹：\`${item.__traceFile}\`（${item.traceCount ?? trace.length} 条，反馈前 60 秒）`,
+    )
+  } else if (trace.length) {
     const traceName = `${number}-轨迹.md`
     const traceLines = [
       `# 第 ${index + 1} 条反馈 · 反馈前操作轨迹`,
@@ -264,7 +360,13 @@ items.forEach((item, index) => {
   }
 
   const snapshot = item.snapshot
-  if (snapshot) {
+  if (item.__snapshotFile) {
+    fileCount += 1
+    const summary = Array.isArray(snapshot?.summary) ? snapshot.summary : []
+    lines.push(
+      `- 状态快照：\`${item.__snapshotFile}\`${summary.length ? `（${summary.join(' · ')}）` : ''}`,
+    )
+  } else if (snapshot) {
     const snapshotName = `${number}-快照.json`
     writeFileSync(path.join(outDir, snapshotName), `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8')
     fileCount += 1
@@ -295,8 +397,8 @@ items.forEach((item, index) => {
         }`,
       )
     }
-    const afterName = `${number}-修复后.png`
-    if (writeDataUrl(receiptItem.afterImage, path.join(outDir, afterName))) {
+    const afterName = suggestedName(receiptItem.afterImage, `${number}-修复后.png`)
+    if (writeAsset(receiptItem.afterImage, path.join(outDir, afterName))) {
       fileCount += 1
       lines.push(`  - 修复后截图：\`${afterName}\``)
     }
@@ -424,6 +526,7 @@ if (checklistReport) {
   writeFileSync(path.join(outDir, '体验清单.md'), checklistReport.markdown, 'utf8')
 }
 
+const importedChecklist = existsSync(path.join(outDir, '体验清单.md'))
 console.log(
   `已解包 ${items.length} 条反馈、${pageShots.length} 张整页截图、${fileCount} 个附件 → ${outDir}`,
 )
@@ -432,5 +535,5 @@ for (const feature of featureFiles) console.log(`  功能 ${feature.name}（${fe
 for (const cause of causeFiles) {
   console.log(`  根因 ${cause.id}（${cause.count} 条${cause.count >= 2 ? '，复发' : ''}）`)
 }
-if (checklistReport) console.log('  体验清单：体验清单.md')
+if (checklistReport || importedChecklist) console.log('  体验清单：体验清单.md')
 if (isVerification) console.log('  类型：复验结果')

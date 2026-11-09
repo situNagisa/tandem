@@ -7659,24 +7659,34 @@ async function main() {
       await drawer.getByText('任务看板', { exact: true }).first().waitFor({ timeout: 5_000 })
       await drawer.getByRole('button', { name: '关闭条目列表' }).click()
 
+      // 新包格式：.tfb（zip 容器），解包后是正常文件；导出不再弹清空确认。
       const downloadPromise = page.waitForEvent('download')
-      page.once('dialog', (dialog) => dialog.accept())
       await bar.getByRole('button', { name: '导出', exact: true }).click()
       const download = await downloadPromise
-      const downloadFile = path.join(home, 'feedback-export.json')
+      assert.match(
+        download.suggestedFilename(),
+        /^tandem-feedback-\d{8}-\d{4}\.tfb$/,
+        '导出文件名不是 .tfb',
+      )
+      const downloadFile = path.join(home, 'feedback-export.tfb')
       await download.saveAs(downloadFile)
-      const exported = JSON.parse(readFileSync(downloadFile, 'utf8'))
-      assert.ok(Array.isArray(exported.featureGroups), '导出 JSON 缺少 featureGroups')
-      assert.ok(exported.featureGroups.some((group) => group.name === '任务看板'), '导出未按功能分组')
-      assert.equal(exported.items[0].featureName, '任务看板', '反馈条目没有功能标签')
-      assert.equal(typeof exported.checklistReport?.markdown, 'string', '导出未附带体验清单报告')
-
       const unpacked = mkdtempSync(path.join(home, 'feedback-unpack-'))
       execFileSync(process.execPath, [path.join(ROOT, 'scripts/feedback-unpack.mjs'), downloadFile, unpacked], { encoding: 'utf8' })
+      const exported = JSON.parse(readFileSync(path.join(unpacked, 'manifest.json'), 'utf8'))
+      assert.equal(exported.format, 'tfb', 'manifest 缺少 tfb 版本标记')
+      assert.ok(Array.isArray(exported.featureGroups), '导出 manifest 缺少 featureGroups')
+      assert.ok(exported.featureGroups.some((group) => group.name === '任务看板'), '导出未按功能分组')
+      assert.equal(exported.items[0].featureName, '任务看板', '反馈条目没有功能标签')
+      assert.equal(exported.checklist, '体验清单.md', '导出未附带体验清单报告')
+      assert.ok(existsSync(path.join(unpacked, '01-元素截图.png')), '解包里没有条目截图文件')
       assert.ok(existsSync(path.join(unpacked, 'by-feature', '任务看板.md')), '缺少 by-feature 分组文件')
       assert.ok(existsSync(path.join(unpacked, '体验清单.md')), '缺少体验清单报告')
       const feedbackMd = readFileSync(path.join(unpacked, 'feedback.md'), 'utf8')
       assert.ok(feedbackMd.includes('## 功能：任务看板'), 'feedback.md 未按功能分组')
+      assert.ok(feedbackMd.includes('`01-元素截图.png`'), 'feedback.md 没有引用截图文件')
+      // 导出后条目清空、草稿标记为已导出（保留 7 天）。
+      await bar.waitFor({ state: 'visible' })
+      assert.equal(await bar.getByText('已记录 0 条', { exact: false }).count(), 1, '导出后条目没有清空')
 
       // 根因：同一编号出现两次标「复发」，并输出 by-cause。
       const causeFile = path.join(home, 'feedback-causes.json')
@@ -7694,6 +7704,67 @@ async function main() {
       assert.ok(existsSync(path.join(causeOut, 'by-cause', 'R03.md')), '缺少 by-cause 分组文件')
       const causeMd = readFileSync(path.join(causeOut, 'feedback.md'), 'utf8')
       assert.ok(causeMd.includes('R03 弹层被裁切或越界 · 2 次 · **复发**'), 'feedback.md 未标出复发根因')
+    })
+
+    desktop('反馈草稿实时保存：刷新后条目与截图恢复，可手动删除草稿', async (page) => {
+      await openSession(page, 'long')
+      await page.keyboard.press('Control+Shift+F')
+      await page.waitForSelector('html.feedback-mode', { timeout: 5_000 })
+      const bar = page.getByRole('region', { name: '反馈模式工具栏' })
+      await bar.waitFor({ state: 'visible' })
+      await page.mouse.click(900, 300)
+      const editor = page.getByRole('dialog', { name: '反馈输入' })
+      await editor.waitFor({ state: 'visible', timeout: 15_000 })
+      await editor.locator('textarea').fill('刷新恢复测试：这条不导出')
+      await editor.locator('textarea').press('Enter')
+      await page.getByText(/已记录第 \d+ 条反馈/).first().waitFor({ timeout: 15_000 })
+      const countBefore = (await bar.getByText(/已记录 \d+ 条/).first().textContent()) ?? ''
+      // 等 IndexedDB 写完再刷新，避免把「还没落盘」当成草稿丢失。
+      await page.waitForFunction(async () => {
+        const db = await new Promise((resolve, reject) => {
+          const req = indexedDB.open('tandem-feedback', 1)
+          req.onsuccess = () => resolve(req.result)
+          req.onerror = () => reject(req.error)
+        })
+        const record = await new Promise((resolve) => {
+          const tx = db.transaction('state', 'readonly')
+          const req = tx.objectStore('state').get('current')
+          req.onsuccess = () => resolve(req.result)
+        })
+        db.close()
+        return (record?.items?.length ?? 0) > 0 && !record?.draft?.exportedAt
+      }, { timeout: 10_000 })
+
+      // 不导出直接刷新：IndexedDB 里的条目与截图应恢复。
+      await page.reload()
+      await page.waitForSelector('html.feedback-mode', { state: 'detached', timeout: 10_000 }).catch(() => {})
+      await page.keyboard.press('Control+Shift+F')
+      await page.waitForSelector('html.feedback-mode', { timeout: 8_000 })
+      await page.getByText(/已恢复 \d+ 条未导出的反馈/).first().waitFor({ timeout: 10_000 })
+      const barAfter = page.getByRole('region', { name: '反馈模式工具栏' })
+      assert.equal(
+        (await barAfter.getByText(countBefore.trim(), { exact: true }).count()) > 0,
+        true,
+        '刷新后条目数没有恢复',
+      )
+      await barAfter.getByRole('button', { name: /条目 \d+/ }).click()
+      const drawer = page.locator('aside[aria-label="反馈条目"]')
+      await drawer.getByText('刷新恢复测试：这条不导出', { exact: false }).first().waitFor({ timeout: 8_000 })
+      assert.ok(
+        (await drawer.locator('img').count()) > 0,
+        '刷新后截图没有恢复（条目缩略图为空）',
+      )
+      await drawer.getByText(/草稿已保存到本机/).first().waitFor({ timeout: 5_000 })
+
+      // 手动删除草稿：确认后条目清空。
+      page.once('dialog', (dialog) => dialog.accept())
+      await drawer.getByRole('button', { name: '删除草稿' }).click()
+      await page.getByText('已删除草稿').first().waitFor({ timeout: 5_000 })
+      await drawer.waitFor({ state: 'hidden' }).catch(() => {})
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(250)
+      if (await page.locator('html.feedback-mode').count()) await page.keyboard.press('Escape')
+      await page.waitForFunction(() => !document.documentElement.classList.contains('feedback-mode'))
     })
 
     desktop('工作站：跨主机 ADB/串口挂载、审批与终端', async (page) => {

@@ -16,11 +16,12 @@ import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
 import { feedbackPlatform } from '../../lib/mobilePreview'
 import {
-  feedbackFilename,
   feedbackTypeLabel,
+  loadFeedbackSnapshotPrefs,
   newFeedbackId,
   readFileAsDataURL,
-  saveFeedbackFile,
+  saveFeedbackBlob,
+  saveFeedbackSnapshotPrefs,
   type FeedbackItem,
   type FeedbackPageShot,
   type FeedbackPriority,
@@ -32,6 +33,21 @@ import {
   type FeedbackVideo,
 } from '../../lib/feedback'
 import {
+  archiveFilePayloads,
+  type FeedbackArchive,
+} from '../../lib/feedbackArchive'
+import {
+  buildCurrentArchive,
+  desktopFeedback,
+  draftExpired,
+  exportArchiveToDisk,
+  flushDraftNow,
+  installFeedbackDraftSync,
+  markDraftExported,
+  openFeedbackFolder,
+  removeDesktopDraft,
+} from '../../lib/feedbackDrafts'
+import {
   captureElementShot,
   capturePageShot,
   captureRegionShot,
@@ -40,12 +56,9 @@ import {
   rectFor,
   visibleTextSnippet,
 } from '../../lib/feedbackCapture'
-import { getFeedbackErrors } from '../../lib/feedbackErrors'
 import { elementsAtPoint } from '../../lib/overlay'
 import { getFeedbackTrace } from '../../lib/feedbackTrace'
 import { captureFeedbackSnapshot } from '../../lib/feedbackSnapshot'
-import { APP_VERSION } from '../../lib/changelog'
-import { checklistMarkdown } from '../../lib/checklist'
 import { FEEDBACK_CAUSE_RULES } from '../../lib/feedbackCauses'
 import {
   FEEDBACK_FEATURE_OPTIONS,
@@ -75,7 +88,9 @@ const SELECT_MODE_OPTIONS: ReadonlyArray<{ value: FeedbackSelectMode; label: str
 ]
 
 const MAX_VIDEO_BYTES = 8 * 1024 * 1024
-const SNAPSHOT_PREFS_KEY = 'tandem.feedback.snapshotPrefs.v1'
+
+/** 提示只在本页生命周期内出现一次，切回反馈模式不重复。 */
+let restoreNoticeShown = false
 
 const UI_ATTR = 'data-feedback-ui'
 const HOVER_ATTR = 'data-feedback-hover'
@@ -107,27 +122,6 @@ interface VerifyState {
   queue: Array<{ item: FeedbackItem; receipt: FeedbackReceipt['items'][number] }>
   index: number
   note: string
-}
-
-function loadSnapshotPrefs(): SnapshotPrefs {
-  try {
-    const raw = localStorage.getItem(SNAPSHOT_PREFS_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<SnapshotPrefs>
-      return { includeMessages: !!parsed.includeMessages, hidePaths: !!parsed.hidePaths }
-    }
-  } catch {
-    /* 忽略损坏的偏好 */
-  }
-  return { includeMessages: false, hidePaths: false }
-}
-
-function saveSnapshotPrefs(prefs: SnapshotPrefs): void {
-  try {
-    localStorage.setItem(SNAPSHOT_PREFS_KEY, JSON.stringify(prefs))
-  } catch {
-    /* 忽略 */
-  }
 }
 
 function safeQuery(selector: string): Element | null {
@@ -630,6 +624,7 @@ export function FeedbackMode() {
   const items = useFeedbackStore((s) => s.items)
   const receipt = useFeedbackStore((s) => s.receipt)
   const pendingFeature = useFeedbackStore((s) => s.pendingFeature)
+  const draft = useFeedbackStore((s) => s.draft)
   const exit = useFeedbackStore((s) => s.exit)
   const [selectMode, setSelectMode] = useState<FeedbackSelectMode>('element')
   const [hover, setHover] = useState<{ rect: FeedbackRect; label: string } | null>(null)
@@ -641,7 +636,7 @@ export function FeedbackMode() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [annotator, setAnnotator] = useState<{ image: string; itemId?: string } | null>(null)
   const [focusRect, setFocusRect] = useState<FeedbackRect | null>(null)
-  const [prefs, setPrefs] = useState<SnapshotPrefs>(loadSnapshotPrefs)
+  const [prefs, setPrefs] = useState<SnapshotPrefs>(loadFeedbackSnapshotPrefs)
   const [verify, setVerify] = useState<VerifyState | null>(null)
   const [pendingVideo, setPendingVideo] = useState<FeedbackVideo | null>(null)
   const [recording, setRecording] = useState(false)
@@ -675,8 +670,42 @@ export function FeedbackMode() {
     typeof MediaRecorder !== 'undefined'
 
   useEffect(() => {
-    saveSnapshotPrefs(prefs)
+    saveFeedbackSnapshotPrefs(prefs)
   }, [prefs])
+
+  // 刷新/崩溃后重新打开：恢复未导出草稿，并提示条数；已导出超过 7 天则清理。
+  useEffect(() => {
+    if (!active) return
+    let cancelled = false
+    void useFeedbackStore.getState().hydrate().then((result) => {
+      if (cancelled) return
+      const store = useFeedbackStore.getState()
+      if (store.draft && draftExpired(store.draft)) {
+        store.clear()
+        return
+      }
+      if (!restoreNoticeShown && result.restored > 0 && result.unexported) {
+        restoreNoticeShown = true
+        useUiStore.getState().toast(`已恢复 ${result.restored} 条未导出的反馈`, 'info', {
+          durationMs: 6000,
+        })
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [active])
+
+  // 关页面前把最后一次变更写进桌面草稿目录（IndexedDB 已经同步落盘）。
+  useEffect(() => {
+    if (!active) return
+    const flush = () => void flushDraftNow()
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      void flushDraftNow()
+    }
+  }, [active])
 
   // 进入/退出反馈模式：冻结 hover、页面光标。热键在 main.tsx 中最早注册。
   useEffect(() => {
@@ -1343,80 +1372,69 @@ export function FeedbackMode() {
     setAnnotator({ image })
   }
 
+  /** 导出与草稿共用同一份包结构；桌面端直接落盘到「下载/Tandem 反馈」。 */
+  const finishExport = async (archive: FeedbackArchive): Promise<boolean> => {
+    const before = useFeedbackStore.getState()
+    const saved = await exportArchiveToDisk(archive)
+    if (saved) {
+      // 先把「已导出」写进草稿目录的 manifest，再清空条目（磁盘副本保留 7 天）。
+      if (before.draft && desktopFeedback()) {
+        const exportedAt = Date.now()
+        const draftArchive = buildCurrentArchive({
+          items: before.items,
+          draft: { ...before.draft, exportedAt },
+          exportedAt: new Date(exportedAt).toISOString(),
+        })
+        await desktopFeedback()
+          ?.syncDraft(before.draft.id, archiveFilePayloads(draftArchive))
+          .catch(() => undefined)
+      }
+      const exported = useFeedbackStore.getState().markExported()
+      await markDraftExported(exported)
+      useUiStore.getState().toast(`已导出 ${archive.filename}`, 'success', {
+        actionLabel: '打开所在文件夹',
+        onClick: () => void openFeedbackFolder(saved.path),
+        durationMs: 9000,
+      })
+      return true
+    }
+    const result = await saveFeedbackBlob(
+      new Blob([archive.bytes as BlobPart], { type: 'application/zip' }),
+      archive.filename,
+    )
+    if (result === 'failed') {
+      useUiStore.getState().toast('导出失败，请重试', 'error')
+      return false
+    }
+    useFeedbackStore.getState().markExported()
+    useUiStore.getState().toast(
+      result === 'share' ? '已通过系统分享导出反馈包' : `已导出 ${archive.filename}`,
+      'success',
+    )
+    return true
+  }
+
   const exportAll = async () => {
     const store = useFeedbackStore.getState()
     if (store.items.length === 0) {
       useUiStore.getState().toast('还没有记录反馈', 'info')
       return
     }
-    const app = useAppStore.getState()
-    const hostId = app.active?.hostId ?? app.activeHostId ?? undefined
-    const hostInfo = hostId ? app.runtimes[hostId]?.info : undefined
-    // 按功能分组导出，便于维护者整组处理；items 顺序即分组顺序。
-    const grouped = [...store.items].sort((a, b) => {
-      const left = a.featureName ?? '未归类'
-      const right = b.featureName ?? '未归类'
-      return left === right ? a.createdAt - b.createdAt : left.localeCompare(right, 'zh-CN')
-    })
-    const groupBy = (field: 'feature' | 'cause') => {
-      const map = new Map<string, { id: string; name: string; count: number }>()
-      for (const item of grouped) {
-        const id = field === 'feature' ? item.featureId : item.causeId
-        if (!id) continue
-        const name =
-          field === 'feature' ? item.featureName ?? item.featureId ?? id : item.causeTitle ?? id
-        const current = map.get(id)
-        if (current) current.count += 1
-        else map.set(id, { id, name, count: 1 })
-      }
-      return [...map.values()].sort((a, b) => b.count - a.count || a.id.localeCompare(b.id))
-    }
-    const payload = {
-      version: 2,
-      kind: 'feedback',
-      exportedAt: new Date().toISOString(),
-      app: { name: 'Tandem', version: APP_VERSION, client: 'web' },
-      env: {
-        route: window.location.hash || '#/',
-        viewport: { width: window.innerWidth, height: window.innerHeight },
-        dpr: window.devicePixelRatio || 1,
-        theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
-        platform: feedbackPlatform(),
-        ua: navigator.userAgent,
-        language: navigator.language,
-        hostId,
-        hostName: hostInfo?.name,
-        hostPlatform: hostInfo?.platform,
-        hostVersion: hostInfo?.version,
-        sessionId: app.active?.sessionId,
-      },
-      snapshotPrefs: prefs,
-      items: grouped,
-      featureGroups: groupBy('feature'),
-      causeGroups: groupBy('cause'),
-      checklistReport: {
-        markdown: checklistMarkdown(),
-        exportedAt: new Date().toISOString(),
-      },
-      pageShots: store.pageShots,
-      errors: getFeedbackErrors(),
-    }
-    const filename = feedbackFilename()
-    const result = await saveFeedbackFile(JSON.stringify(payload, null, 2), filename)
-    if (result === 'failed') {
-      useUiStore.getState().toast('导出失败，请重试', 'error')
+    await flushDraftNow()
+    const archive = buildCurrentArchive({ items: store.items, draft: store.draft })
+    await finishExport(archive)
+  }
+
+  /** 手动删除草稿：条目、IndexedDB 与桌面草稿目录一起清掉。 */
+  const clearDraft = () => {
+    const store = useFeedbackStore.getState()
+    const draft = store.draft
+    if (store.items.length > 0 && !window.confirm('删除当前草稿（含已记录条目与桌面草稿文件）？')) {
       return
     }
-    const message =
-      result === 'download'
-        ? `已导出 ${filename}`
-        : result === 'share'
-          ? '已通过系统分享导出'
-          : '已复制到剪贴板'
-    useUiStore.getState().toast(message, 'success')
-    if (window.confirm('已导出反馈。是否清空已记录的条目？')) {
-      useFeedbackStore.getState().clear()
-    }
+    store.clear()
+    void removeDesktopDraft(draft)
+    useUiStore.getState().toast('已删除草稿', 'info')
   }
 
   const importReceipt = (next: FeedbackReceipt) => {
@@ -1484,37 +1502,28 @@ export function FeedbackMode() {
       useUiStore.getState().toast('还没有复验结果', 'info')
       return
     }
-    const app = useAppStore.getState()
-    const hostId = app.active?.hostId ?? app.activeHostId ?? undefined
-    const hostInfo = hostId ? app.runtimes[hostId]?.info : undefined
-    const payload = {
-      version: 2,
-      kind: 'verification',
-      exportedAt: new Date().toISOString(),
-      app: { name: 'Tandem', version: APP_VERSION, client: 'web' },
-      sourceReceiptFile: currentReceipt.sourceFile,
-      env: {
-        route: window.location.hash || '#/',
-        viewport: { width: window.innerWidth, height: window.innerHeight },
-        dpr: window.devicePixelRatio || 1,
-        theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
-        hostId,
-        hostName: hostInfo?.name,
-        hostPlatform: hostInfo?.platform,
-        hostVersion: hostInfo?.version,
-      },
-      receipt: {
-        version: currentReceipt.version,
-        sourceFile: currentReceipt.sourceFile,
-        items: currentReceipt.items.map(({ afterImage: _afterImage, ...rest }) => rest),
-      },
+    const archive = buildCurrentArchive({
       items: verifiedItems,
-      errors: getFeedbackErrors(),
+      kind: 'verification',
+      receipt: currentReceipt,
+      sourceReceiptFile: currentReceipt.sourceFile,
+      draft: store.draft,
+    })
+    const saved = await exportArchiveToDisk(archive)
+    if (saved) {
+      useUiStore.getState().toast(`已导出复验结果 ${archive.filename}`, 'success', {
+        actionLabel: '打开所在文件夹',
+        onClick: () => void openFeedbackFolder(saved.path),
+        durationMs: 9000,
+      })
+      return
     }
-    const filename = feedbackFilename()
-    const result = await saveFeedbackFile(JSON.stringify(payload, null, 2), filename)
+    const result = await saveFeedbackBlob(
+      new Blob([archive.bytes as BlobPart], { type: 'application/zip' }),
+      archive.filename,
+    )
     useUiStore.getState().toast(
-      result === 'failed' ? '导出失败，请重试' : `已导出复验结果 ${filename}`,
+      result === 'failed' ? '导出失败，请重试' : `已导出复验结果 ${archive.filename}`,
       result === 'failed' ? 'error' : 'success',
     )
   }
@@ -1813,6 +1822,7 @@ export function FeedbackMode() {
             variant="secondary"
             icon={<Download size={13} />}
             onClick={() => void exportAll()}
+            tooltip="导出 .tfb 包（zip 容器，改扩展名即可解压查看）"
           >
             导出
           </Button>
@@ -1928,6 +1938,9 @@ export function FeedbackMode() {
         }}
         onVerify={startVerify}
         onExportVerification={() => void exportVerification()}
+        draft={draft}
+        desktopDraft={!!desktopFeedback()}
+        onDeleteDraft={clearDraft}
       />
 
       {annotator && (

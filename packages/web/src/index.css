@@ -1188,6 +1188,11 @@ html.feedback-mode [data-feedback-capture] {
   cursor: crosshair !important;
 }
 
+/* 反馈模式的捕获层在 z-105；带操作的提示条要能点到 */
+html.feedback-mode [data-toast-layer] {
+  z-index: 140;
+}
+
 /* 反馈模式冻结进入前的 hover 链：CSS 驱动的 hover 显示保持可见 */
 html.feedback-mode [data-feedback-hover] .settings-actions {
   opacity: 1;

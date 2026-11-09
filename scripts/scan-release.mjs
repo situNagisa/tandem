@@ -28,6 +28,12 @@ const WEB_FORBIDDEN = [
   'useFeedbackStore',
   'feedbackCapture',
   'feedbackTrace',
+  // 反馈草稿实时落盘与 .tfb 包（调试版专用）
+  'feedbackArchive',
+  'feedbackDrafts',
+  'createZip',
+  'feedback:sync-draft',
+  'tandem.feedback.snapshotPrefs',
   'DemoDialog',
   'ChecklistDialog',
   'UiGallery',
