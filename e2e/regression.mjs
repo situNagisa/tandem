@@ -2695,14 +2695,18 @@ async function main() {
       assert.equal(full.msg.session.messages.length, 640, '旧客户端未拿到全量快照')
 
       await openSession(page, 'huge')
-      const button = page.locator('[data-load-earlier] button')
-      await button.waitFor({ state: 'visible', timeout: 10_000 })
-      assert.match(await button.innerText(), /已加载 200 \/ 640 条/, '首屏未只加载尾部 200 条')
+      const band = page.locator('.msg-gap-band').first()
+      await band.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.match(await band.innerText(), /第 1–\d+ 轮未加载/, '首屏顶部没有未加载轮次的占位条')
+      const loaded = await page.evaluate(
+        () => document.querySelectorAll('.msg-row[data-message-id]').length,
+      )
+      assert.ok(loaded >= 150 && loaded <= 220, `首屏挂载了 ${loaded} 行，不是尾部 200 条消息`)
     })
 
     desktop('大会话滚到顶加载更早消息且位置不跳', async (page) => {
       await openSession(page, 'huge')
-      await page.locator('[data-load-earlier] button').waitFor({ state: 'visible', timeout: 10_000 })
+      await page.locator('.msg-gap-band').first().waitFor({ state: 'visible', timeout: 10_000 })
       const before = await page.evaluate(() => {
         const box = document.querySelector('.chat-scroll')
         const boxTop = box.getBoundingClientRect().top
@@ -4343,10 +4347,6 @@ async function main() {
       assert.ok(after.scrollWidth <= after.clientWidth + 1, '自动换行后仍横向溢出')
     })
 
-    desktop('消息用量只保留一行小字，不再悬停弹出表格（#7-03）', async (page) => {
-      await openSession(page, 'long')
-      const summary = page.locator('[data-usage-summary]').last()
-      await summary.scrollIntoViewIfNeeded()
     desktop('反馈12#02：自动换行时行号与代码逐行对齐、工具条不压内容', async (page) => {
       // 打开文件预览前先开启自动换行，共享 CodeBlock 会直接走「行号 + 换行」grid。
       await page.evaluate(() => localStorage.setItem('tandem.codeWrap.v1', '1'))
@@ -4406,6 +4406,10 @@ async function main() {
       await page.evaluate(() => localStorage.setItem('tandem.codeWrap.v1', '0'))
     })
 
+    desktop('消息用量只保留一行小字，不再悬停弹出表格（#7-03）', async (page) => {
+      await openSession(page, 'long')
+      const summary = page.locator('[data-usage-summary]').last()
+      await summary.scrollIntoViewIfNeeded()
       // 操作条平时 pointer-events:none，先把鼠标移进消息组再悬停用量。
       await summary.locator('xpath=ancestor::div[contains(@class,"msg-group")]').hover()
       const text = await summary.innerText()
