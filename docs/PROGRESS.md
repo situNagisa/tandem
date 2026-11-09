@@ -2,6 +2,17 @@
 
 > 更新：2026-11-09。只保留最近 5 轮；更早记录见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 60（2026-11-09）发布 v0.4.5：登录门 / 一行命令添加主机 / 会话图
+- [x] 登录门：桌面/网页/手机先登录或注册工作站，深链保留；调试版回环自动登录调试账号；无主机空状态并禁用新会话/跨主机派单；体验导览第一步改为「添加主机」
+- [x] 一行命令添加主机：一次性令牌 15 分钟（只存 SHA-256）、install.sh/install.ps1、Linux systemd --user / macOS launchd / Windows 计划任务持久连接；`pack-host` 断言安装包路径 ASCII 且含 `dist/cli.js`
+- [x] 会话图：彩色泳道 + 统一圆点，子代理线合并回主线、分叉不合并；全高展开图例紧随图下方（内容少不拉伸，底部给调试角标留位）；图例三项小样与画法一致
+- [x] 子代理会话可进入、Task 卡片按 `parentToolUseId` 关联；权限询问改为问答选项；信息面板卡片可收起；上下文卡分类配色；长会话顶部占位条与大纲未加载标识；换主机先选文件夹
+- [x] a11y：`ContextMeter` 轮次按钮去掉与可见文本不一致的 aria-label（label-content-name-mismatch）
+- [x] 0.4.5 导览 10 条（人工文案，id 挂到 features.ts，新增「会话图」功能项）；`node scripts/release.mjs 0.4.5`，本地标签 v0.4.5（未 push）
+- 验证：发布前后各跑一次全量 `node scripts/check.mjs`（回归含无障碍扫描全过）；干净 worktree `/tmp/tandem-045` 构建桌面/安卓产物并校验 asar 文件清单
+- 产物：`Tandem-Setup-0.4.5-x64.exe`、`Tandem-Setup-0.4.5-debug-x64.exe`、`tandem-release.apk/.aab`、`tandem-debug.apk`、`latest.yml`（指向 0.4.5 发布版），均在 Windows「下载」
+- 保守取舍：Windows 一行命令、调试账号自动登录、反馈草稿落盘与手机预览触摸需用户实机代测
+
 ## 迭代 59（2026-11-09）反馈包 #10：大纲懒加载 / 切换确认 / Key / 原生下拉 / 行高
 - [x] #01 R40（新）：`TurnRail` 跳转先按需取段并扩大渲染窗口，等消息挂载后再滚动 + 高亮（失败给提示）；滚轮改为 `RailScene.scrollBy` 预览式滚动，不改选中轮、不滚动对话区
 - [x] #02 R41（新）：删除模型菜单常驻缓存提示与「不再提示」，选中新模型/账号/分组/自动路由时弹 `ui/ConfirmAction`（约 x tok / $x，切换/取消）
@@ -35,14 +46,6 @@
 - [x] #06 R14（复发）：会话信息面板按数据可用性隐藏空分组（含新会话上下文）；新分组 180ms 淡入，插入/删除保持滚动锚点；底部「显示空分组」开关持久化到 `PanelPrefs`
 - 验证：单测 `external.test.ts`（Claude/Codex usage 换算）；回归新增「外部会话预览…」「会话信息面板：空分组…」并更新「工作站：主机没装 adb…」为分段 + 代码块断言；截图 `/tmp/fb9-after/01.png`、`02.png`、`06.png`
 - 根因：R38 新增，R06/R14 复发走共享层 + 回归防线
-
-## 迭代 55（2026-11-09）反馈包 #9：浏览器自带控件 / 滚动条 / 设置密度 / 高级分组
-- [x] 全局屏蔽（R37 新）：Electron `spellcheck:false`；`AppContextMenu` 用 `ui/Menu` 接管右键（复制/剪切/粘贴/全选/链接与图片地址），主进程 IPC 读写剪贴板；`writingsuggestions=false`、`-webkit-touch-callout:none`、format-detection、链接/图片无拖拽 ghost、输入框 autocomplete/autocorrect/spellcheck 默认关（密码框除外）、数字箭头隐藏；原生 title 批量迁移 `data-tip` 并由 `ui/Tooltip` 统一展示；Edge 划词迷你菜单只能由 Edge 设置/组策略 `QuickSearchShowMiniMenu` 关闭（已在 design.md 说明）
-- [x] #04 R36（新）：原生滚动条全局隐藏（含 Portal 弹窗），唯一 `ui/OverlayScrollbar` 覆盖式横竖双轴、不占布局宽度、无箭头、滚动/悬停淡入、停止 800ms 淡出；设置导航只保留内层一个滚动容器；ui-audit 新增 `custom-scrollbar`
-- [x] #05 R01（复发）：新增 `ui/SettingRow`/`ui/SettingSection`；设置卡片/行距统一收紧，标签在左控件在右，数值窄宽，`%`/`轮原文`/`tokens` 紧贴输入框不再换行，长说明进标题旁 ⓘ tooltip；通用设置与通知设置已迁移
-- [x] #03 R10（复发）：高级分组移入滚动列表，不再固定在底部；展开时补偿滚动位置，点击位置不动
-- 验证：`node scripts/check.mjs --skip-smoke`（build/docs/ui-audit/test 通过；新增回归「反馈9」通过；全量回归仅剩并行同事 #02 工作站安装说明改版导致的 1 条旧用例，与本批无关）；截图 `/tmp/fb9-after/`
-- 根因：R36/R37 新增，R01/R10 复发走共享层 + ui-audit/回归防线
 
 ## 迭代 54（2026-11-09）消息耗时 / 调试版手机预览
 - [x] 消息耗时：协议 `Message.durationMs / ttftMs / toolDurationMs`（可选）；服务端每次请求记开始到流式完成（含重试）与首 token，工具批次单独记耗时；assistant 用量行末尾 `· 12.3s`，流式实时计时，旧消息无字段不显示；轮次大纲 tooltip 追加「耗时 …，其中工具 …，首 token …」；单测 `timing.test.ts`/`turnUsage.test.ts`/`format.test.ts`，回归两条（种子数据展示 + 真实发送落库）
