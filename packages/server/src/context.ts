@@ -6,6 +6,7 @@ import type {
   ContextBreakdown,
   ContextSettings,
   ContextTopItem,
+  ContextTurnItem,
   Message,
   ModelCapabilities,
   ProviderKind,
@@ -226,9 +227,23 @@ export function estimateBreakdown(input: EstimateInput): ContextBreakdown {
   const toolNames = new Map<string, string>();
   const toolOwners = new Map<string, string>();
   const items: ContextTopItem[] = [];
+  const turnItems = new Map<number, ContextTopItem[]>();
+  const turnAccs: Array<{ turn: number; messageId: string; preview: string; tokens: number }> = [];
+  let currentTurn: (typeof turnAccs)[number] | null = null;
+  const addItem = (item: ContextTopItem) => {
+    items.push(item);
+    const list = turnItems.get(item.turn);
+    if (list) list.push(item);
+    else turnItems.set(item.turn, [item]);
+  };
   for (const message of input.messages) {
-    if (isTurnStart(message)) turn += 1;
+    if (isTurnStart(message)) {
+      turn += 1;
+      currentTurn = { turn, messageId: message.id, preview: '', tokens: 0 };
+      turnAccs.push(currentTurn);
+    }
     messages += 4;
+    if (currentTurn && !message.summary) currentTurn.tokens += 4;
     let messageTokens = 0;
     let messagePreview = '';
     for (const block of message.content) {
@@ -236,29 +251,34 @@ export function estimateBreakdown(input: EstimateInput): ContextBreakdown {
         const tokens = estimateTokens(block.text);
         messages += tokens;
         messageTokens += tokens;
+        if (currentTurn && !message.summary) currentTurn.tokens += tokens;
         if (!messagePreview) messagePreview = previewOf(block.text);
       } else if (block.type === 'thinking') {
         const tokens = estimateTokens(block.text);
         messages += tokens;
         messageTokens += tokens;
+        if (currentTurn && !message.summary) currentTurn.tokens += tokens;
         if (!messagePreview) messagePreview = previewOf(block.text);
       } else if (block.type === 'image') {
         messages += 1_200;
         messageTokens += 1_200;
+        if (currentTurn && !message.summary) currentTurn.tokens += 1_200;
         if (!messagePreview) messagePreview = '[图片]';
       } else if (block.type === 'tool_use') {
         const tokens = estimateTokens(JSON.stringify(block.input ?? {}));
         messages += tokens;
         messageTokens += tokens;
+        if (currentTurn && !message.summary) currentTurn.tokens += tokens;
         toolNames.set(block.id, block.name);
         toolOwners.set(block.id, message.id);
         if (!messagePreview) messagePreview = `工具调用 ${block.name}`;
       } else if (block.type === 'tool_result') {
         const tokens = estimateTokens(block.content);
         toolResults += tokens;
+        if (currentTurn && !message.summary) currentTurn.tokens += tokens;
         if (tokens > 0) {
           const tool = toolNames.get(block.toolUseId);
-          items.push({
+          addItem({
             // 指向对应 tool_use 所在消息，面板点一下能滚到工具卡
             messageId: toolOwners.get(block.toolUseId) ?? message.id,
             role: message.role,
@@ -271,8 +291,11 @@ export function estimateBreakdown(input: EstimateInput): ContextBreakdown {
         }
       }
     }
+    if (currentTurn && !message.summary && !currentTurn.preview && messagePreview) {
+      currentTurn.preview = messagePreview;
+    }
     if (messageTokens > 0 && !message.summary) {
-      items.push({
+      addItem({
         messageId: message.id,
         role: message.role,
         kind: 'message',
@@ -282,7 +305,19 @@ export function estimateBreakdown(input: EstimateInput): ContextBreakdown {
       });
     }
   }
-  const topItems = items.sort((a, b) => b.tokens - a.tokens).slice(0, 10);
+  const topItems = [...items].sort((a, b) => b.tokens - a.tokens).slice(0, 10);
+  // 「最占空间」以用户发言为基本单位：每轮总量 + 该轮内最大的几项，供二级展开。
+  const topTurns: ContextTurnItem[] = turnAccs
+    .filter((acc) => acc.turn > 0 && acc.tokens > 0)
+    .map((acc) => ({
+      turn: acc.turn,
+      messageId: acc.messageId,
+      tokens: acc.tokens,
+      preview: acc.preview || '（无文本）',
+      items: [...(turnItems.get(acc.turn) ?? [])].sort((a, b) => b.tokens - a.tokens).slice(0, 5),
+    }))
+    .sort((a, b) => b.tokens - a.tokens || a.turn - b.turn)
+    .slice(0, 10);
 
   const parts = toParts({ system, tools, mcp, memory, messages, tool_results: toolResults });
   const usedTokens = sumParts(parts);
@@ -299,6 +334,7 @@ export function estimateBreakdown(input: EstimateInput): ContextBreakdown {
     input.cacheHitRate,
     input.autoCompact,
     topItems,
+    topTurns,
   );
 }
 
@@ -328,6 +364,11 @@ export function calibrateBreakdown(
     cacheHitRate ?? estimate.cacheHitRate,
     estimate.autoCompact,
     estimate.topItems?.map((item) => ({ ...item, tokens: Math.round(item.tokens * scale) })),
+    estimate.topTurns?.map((turn) => ({
+      ...turn,
+      tokens: Math.round(turn.tokens * scale),
+      items: turn.items.map((item) => ({ ...item, tokens: Math.round(item.tokens * scale) })),
+    })),
   );
 }
 
@@ -348,6 +389,7 @@ function finish(
   cacheHitRate?: number,
   autoCompact?: { enabled: boolean; threshold: number },
   topItems?: ContextTopItem[],
+  topTurns?: ContextTurnItem[],
 ): ContextBreakdown {
   const free = Math.max(0, contextWindow - usedTokens);
   return {
@@ -360,6 +402,7 @@ function finish(
       : {}),
     ...(autoCompact ? { autoCompact: { ...autoCompact } } : {}),
     ...(topItems && topItems.length > 0 ? { topItems } : {}),
+    ...(topTurns && topTurns.length > 0 ? { topTurns } : {}),
     updatedAt: Date.now(),
   };
 }

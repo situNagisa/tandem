@@ -1381,134 +1381,36 @@ mark.chat-match {
   opacity: 0;
 }
 
-/* 大纲顶部的着色依据切换（花费 / 上下文），浮在面板上沿。 */
-.turn-metric {
+/* 大纲下方的小字提示：按住 Alt / Option 或点它，同一个大纲切到「只看已固定」。
+ * 不再使用独立的已固定浮层——避免指针从大纲移到浮层时经过空白导致收起（反馈8#04）。 */
+.turn-hint {
   position: absolute;
-  top: calc(var(--turn-ph) / -2 - 22px);
-  left: -282px;
-  z-index: 4;
-  display: flex;
-  gap: 1px;
-  padding: 1px;
-  border: 1px solid var(--t-border);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--t-surface) 92%, transparent);
-  box-shadow: var(--t-shadow-sm);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms var(--t-ease-out);
-}
-.turn-rail[data-open="true"] .turn-metric {
-  opacity: 1;
-  pointer-events: auto;
-}
-.turn-metric button {
-  padding: 0 7px;
-  border-radius: 999px;
-  color: var(--t-text-tertiary);
-  font-size: 11px;
-  line-height: 18px;
-  white-space: nowrap;
-}
-.turn-metric button:hover {
-  color: var(--t-text);
-}
-.turn-metric button[data-on="true"] {
-  background: var(--t-bg-active);
-  color: var(--t-text);
-}
-
-/* 两个大纲：上方「已固定」区只列固定轮，下方阅读区保持时间顺序；固定只在原位显示小图钉。 */
-.turn-pinned {
-  position: absolute;
+  top: calc(var(--turn-ph) / 2 + 32px);
   right: -10px;
-  bottom: calc(var(--turn-ph) / 2 + 28px);
   z-index: 4;
-  display: flex;
   width: 280px;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--t-border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--t-surface) 92%, transparent);
-  box-shadow: var(--t-shadow-md);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms var(--t-ease-out);
-}
-.turn-rail[data-open="true"] .turn-pinned {
-  opacity: 1;
-  pointer-events: auto;
-}
-.turn-pinned-head {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 10px;
-  border-bottom: 1px solid var(--t-border);
+  /* 文字保持小号，但可点区域 ≥24px（无障碍 target-size）。 */
+  padding: 4px 9px;
   color: var(--t-text-tertiary);
   font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-}
-.turn-pinned-list {
-  max-height: calc(5 * 26px + 4px);
-  overflow-y: auto;
-  padding: 2px;
-}
-.turn-pinned-row {
-  display: flex;
-  height: 26px;
-  align-items: center;
-  border-radius: 6px;
-}
-.turn-pinned-row:hover {
-  background: var(--t-bg-hover);
-}
-.turn-pinned-jump {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  align-items: center;
-  gap: 6px;
-  padding: 0 4px 0 6px;
-  color: var(--t-text);
-  font-size: 12px;
-  text-align: left;
-}
-.turn-pinned-n {
-  width: 20px;
-  flex-shrink: 0;
-  color: var(--t-text-tertiary);
-  font-variant-numeric: tabular-nums;
+  line-height: 16px;
   text-align: right;
-}
-.turn-pinned-t {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
-}
-.turn-pinned-unpin {
-  display: flex;
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  color: var(--t-text-tertiary);
   opacity: 0;
+  pointer-events: none;
   transition: opacity 120ms var(--t-ease-out), color 120ms;
 }
-.turn-pinned-row:hover .turn-pinned-unpin,
-.turn-pinned-unpin:focus-visible {
+.turn-rail[data-open="true"] .turn-hint {
   opacity: 1;
+  pointer-events: auto;
+  cursor: pointer;
+  transition-delay: 100ms;
 }
-.turn-pinned-unpin:hover {
+.turn-hint:hover {
+  color: var(--t-text);
+}
+.turn-hint[data-on="true"] {
   color: var(--t-accent-text);
-  background: var(--t-bg-active);
 }
 
 /* 静止态：被固定轮次刻度左侧的小圆点 */

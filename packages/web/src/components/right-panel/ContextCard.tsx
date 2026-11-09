@@ -1,7 +1,7 @@
 import { cn } from '../../lib/cn'
 import { formatTokens } from '../../lib/format'
 import { quotaLine } from '../../lib/quota'
-import { CONTEXT_PART_META, ContextTopItems, useContextBreakdown } from '../chat/ContextMeter'
+import { CONTEXT_PART_META, ContextSpaceSection, jumpToMessage, useContextBreakdown } from '../chat/ContextMeter'
 
 export function ContextCard() {
   const { context, noData, window, used, pct, turns } = useContextBreakdown()
@@ -86,11 +86,11 @@ export function ContextCard() {
         </div>
       )}
       <div className="mt-2 border-t border-border pt-1.5" data-context-top="card">
-        <div className="mb-1 flex items-baseline justify-between text-[12px] text-muted">
-          <span>最占空间</span>
-          <span>{context.topItems?.length ?? 0} 条</span>
-        </div>
-        <ContextTopItems items={context.topItems} />
+        <ContextSpaceSection
+          turns={context.topTurns}
+          legacyItems={context.topItems}
+          onJump={(messageId) => jumpToMessage(messageId)}
+        />
         {context.autoCompact ? (
           <div className="mt-2 text-[12px] text-muted">
             {context.autoCompact.enabled

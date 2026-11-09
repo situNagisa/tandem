@@ -1,7 +1,8 @@
 // 上下文环与 /context 面板：按请求实际发送的组成展示 token 占用。
 import { useEffect, useMemo, useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { countTurns } from '@tandem/protocol'
-import type { ContextBreakdown, ContextTopItem } from '@tandem/protocol'
+import type { ContextBreakdown, ContextTopItem, ContextTurnItem } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { useSessionTarget, useSessionView } from '../session/SessionScope'
@@ -35,38 +36,158 @@ export function jumpToMessage(messageId: string): void {
   window.dispatchEvent(new CustomEvent('tandem-jump-message', { detail: { messageId } }))
 }
 
-/** 上下文面板里的「最占空间」条目；点击跳到对应消息/工具卡。 */
-export function ContextTopItems({
-  items,
+const TOP_COLLAPSED_KEY = 'tandem.contextTopCollapsed.v1'
+
+function loadTopCollapsed(): boolean {
+  try {
+    return localStorage.getItem(TOP_COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** 老 Host 只给逐条 topItems：按轮次合并成近似列表（只有最大 10 条，量级供参考）。 */
+function turnsFromItems(items?: ContextTopItem[]): ContextTurnItem[] {
+  if (!items || items.length === 0) return []
+  const grouped = new Map<number, ContextTopItem[]>()
+  for (const item of items) {
+    const list = grouped.get(item.turn)
+    if (list) list.push(item)
+    else grouped.set(item.turn, [item])
+  }
+  return [...grouped.entries()]
+    .map(([turn, list]) => {
+      const sorted = [...list].sort((a, b) => b.tokens - a.tokens)
+      return {
+        turn,
+        messageId: sorted[0]!.messageId,
+        tokens: list.reduce((sum, item) => sum + item.tokens, 0),
+        preview: sorted[0]!.preview,
+        items: sorted.slice(0, 5),
+      }
+    })
+    .sort((a, b) => b.tokens - a.tokens)
+}
+
+/**
+ * 「最占空间」：以用户发言（轮次）为基本单位，按占用降序；点整行跳到该轮，
+ * 右侧箭头展开该轮内最大的几项。整个区块可折叠，状态记在 localStorage。
+ */
+export function ContextSpaceSection({
+  turns,
+  legacyItems,
   onJump,
 }: {
-  items?: ContextTopItem[]
+  turns?: ContextTurnItem[]
+  legacyItems?: ContextTopItem[]
   onJump?: (messageId: string) => void
 }) {
-  if (!items || items.length === 0) {
-    return <p className="px-1 py-0.5 text-[12px] text-muted">暂无占用明细（发送消息后显示）</p>
+  const list = turns && turns.length > 0 ? turns : turnsFromItems(legacyItems)
+  const [collapsed, setCollapsed] = useState(loadTopCollapsed)
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const jump = (messageId: string) => (onJump ? onJump(messageId) : jumpToMessage(messageId))
+  const toggle = () => {
+    setCollapsed((value) => {
+      const next = !value
+      try {
+        localStorage.setItem(TOP_COLLAPSED_KEY, next ? '1' : '0')
+      } catch {
+        // localStorage 不可用时只保留本次会话内状态
+      }
+      return next
+    })
   }
   return (
-    <div className="space-y-0.5">
-      {items.map((item, index) => (
-        <button
-          key={`${item.messageId}-${item.kind}-${index}`}
-          type="button"
-          data-context-item="true"
-          onClick={() => (onJump ? onJump(item.messageId) : jumpToMessage(item.messageId))}
-          title={`${item.preview}（第 ${item.turn} 轮）`}
-          className="flex min-h-6 w-full min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[12px] leading-4 text-text-soft transition-colors hover:bg-[var(--t-bg-hover)]"
-        >
-          <span className="shrink-0 text-muted">
-            {item.kind === 'tool_result' ? (item.tool ? `${item.tool} 输出` : '工具结果') : '消息'}
-          </span>
-          <span className="min-w-0 flex-1 truncate">{item.preview}</span>
-          <span className="shrink-0 text-muted">第 {item.turn} 轮</span>
-          <span className="w-9 shrink-0 text-right font-mono tabular-nums">
-            {formatTokens(item.tokens)}
-          </span>
-        </button>
-      ))}
+    <div>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={!collapsed}
+        data-context-top-toggle="true"
+        className="flex min-h-6 w-full min-w-0 items-center gap-1 rounded-md px-0.5 py-0.5 text-[12px] text-muted transition-colors hover:text-text"
+      >
+        <ChevronDown
+          size={12}
+          className={cn('shrink-0 transition-transform', collapsed && '-rotate-90')}
+        />
+        <span>最占空间</span>
+        <span className="ml-auto shrink-0 tabular-nums">{list.length} 轮</span>
+      </button>
+      {collapsed ? null : list.length === 0 ? (
+        <p className="px-1 py-0.5 text-[12px] text-muted">暂无占用明细（发送消息后显示）</p>
+      ) : (
+        <div className="mt-0.5 space-y-0.5">
+          {list.map((turn) => {
+            const open = expanded === turn.messageId
+            const detail = turn.items.filter((item) => item.tokens > 0)
+            const title = `${turn.preview}（第 ${turn.turn} 轮，${formatTokens(turn.tokens)}）`
+            return (
+              <div
+                key={`${turn.turn}:${turn.messageId}`}
+                data-context-turn="true"
+                data-message-id={turn.messageId}
+              >
+                <div className="flex min-h-6 items-center rounded-md transition-colors hover:bg-[var(--t-bg-hover)]">
+                  <button
+                    type="button"
+                    data-context-turn-open="true"
+                    onClick={() => jump(turn.messageId)}
+                    title={title}
+                    className="flex min-h-6 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[12px] leading-4 text-text-soft"
+                  >
+                    <span className="shrink-0 text-muted">第 {turn.turn} 轮</span>
+                    <span className="min-w-0 flex-1 truncate">{turn.preview}</span>
+                    <span className="w-9 shrink-0 text-right font-mono tabular-nums">
+                      {formatTokens(turn.tokens)}
+                    </span>
+                  </button>
+                  {detail.length > 1 ? (
+                    <button
+                      type="button"
+                      data-context-turn-toggle="true"
+                      aria-expanded={open}
+                      aria-label={`${open ? '收起' : '展开'}第 ${turn.turn} 轮占用明细`}
+                      onClick={() => setExpanded(open ? null : turn.messageId)}
+                      className="mr-0.5 flex size-6 shrink-0 items-center justify-center rounded text-muted transition-colors hover:bg-[var(--t-bg-active)] hover:text-text"
+                    >
+                      <ChevronDown
+                        size={11}
+                        className={cn('transition-transform', open && 'rotate-180')}
+                      />
+                    </button>
+                  ) : null}
+                </div>
+                {open ? (
+                  <div className="ml-1.5 border-l border-border pl-1">
+                    {detail.map((item, index) => (
+                      <button
+                        key={`${item.messageId}-${item.kind}-${index}`}
+                        type="button"
+                        data-context-nested="true"
+                        onClick={() => jump(item.messageId)}
+                        title={item.preview}
+                        className="flex min-h-6 w-full min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left text-[12px] leading-4 text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
+                      >
+                        <span className="shrink-0">
+                          {item.kind === 'tool_result'
+                            ? item.tool
+                              ? `${item.tool} 输出`
+                              : '工具结果'
+                            : '消息'}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{item.preview}</span>
+                        <span className="w-9 shrink-0 text-right font-mono tabular-nums">
+                          {formatTokens(item.tokens)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -265,12 +386,9 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
               })}
             </div>
             <div className="mt-2.5 border-t border-border pt-2" data-context-top="popover">
-              <div className="mb-1 flex items-baseline justify-between text-[12px] text-muted">
-                <span>最占空间</span>
-                <span>{context.topItems?.length ?? 0} 条</span>
-              </div>
-              <ContextTopItems
-                items={context.topItems}
+              <ContextSpaceSection
+                turns={context.topTurns}
+                legacyItems={context.topItems}
                 onJump={(messageId) => {
                   close()
                   jumpToMessage(messageId)

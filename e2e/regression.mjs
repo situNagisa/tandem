@@ -2549,17 +2549,21 @@ async function main() {
       // 反馈6#01：悬停只显示该轮用量，不再重复大纲文字；全文保留在 aria-label 与 sr-only 列表。
       assert.equal(info.textTitle, '', '大纲文字仍在重复弹出全文提示')
       assert.match(info.rowTitle, /^输入 .+ · 输出 .+ · 缓存命中 \d+% · \$/, `大纲行没有用量 tooltip：${info.rowTitle}`)
+      assert.match(info.rowTitle, /占本会话 \d+%/, `用量 tooltip 缺少占本会话比例：${info.rowTitle}`)
       assert.match(info.rowLabel, /^第 \d+ 轮：/, '大纲行缺少读屏 aria-label')
       assert.match(info.readout, /第 1 轮：/, '读屏列表没有轮次全文')
       assert.equal(await page.locator('.turn-tip').count(), 0, '轮次大纲仍存在重复文字的悬停浮层')
+      // 反馈8#07：着色固定为上下文占用，不再有「花费 / 上下文」切换。
+      assert.equal(await page.locator('.turn-metric').count(), 0, '仍有花费/上下文切换')
       // 标准 tooltip（ui/Tooltip 的 .ui-tip）在悬停行后显示用量。
       const tip = page.locator('#tandem-tooltip[data-open]')
       await tip.waitFor({ timeout: 5_000 })
       assert.match(await tip.innerText(), /输入 .+ · 输出 .+ · 缓存命中 \d+% · \$/, '悬停大纲行没有显示用量')
+      assert.match(await tip.innerText(), /占本会话 \d+%/, '悬停用量没有占本会话比例')
       assert.doesNotMatch(await tip.innerText(), /第 \d+ 轮：/, '用量 tooltip 重复了大纲文字')
     })
 
-    desktop('轮次大纲按用量着色，上下文模式压缩轮最浅并标已压缩（#01 追加）', async (page) => {
+    desktop('轮次大纲固定按上下文占用着色，压缩轮最浅并标已压缩（#01 追加 / 反馈8#07）', async (page) => {
       await openSession(page, 'compact')
       await page.locator('.turn-hit').hover()
       await page.waitForFunction(
@@ -2584,36 +2588,26 @@ async function main() {
             text: el.querySelector('.turn-item-t')?.textContent ?? '',
           }))
         })
-      const costRows = await readRows()
-      const compressed = costRows.filter((row) => row.compressed)
-      const summary = costRows.find((row) => row.summary)
-      assert.equal(compressed.length, 2, `没有显示被压缩的轮次：${JSON.stringify(costRows)}`)
+      const rows = await readRows()
+      const compressed = rows.filter((row) => row.compressed)
+      const summary = rows.find((row) => row.summary)
+      assert.equal(compressed.length, 2, `没有显示被压缩的轮次：${JSON.stringify(rows)}`)
       assert.ok(summary, '没有显示摘要行')
       assert.ok(
-        new Set(costRows.map((row) => row.heat)).size >= 2,
-        `用量着色没有分档：${JSON.stringify(costRows.map((row) => row.heat))}`,
+        new Set(rows.map((row) => row.heat)).size >= 2,
+        `用量着色没有分档：${JSON.stringify(rows.map((row) => row.heat))}`,
+      )
+      // 反馈8#07：不再有「花费 / 上下文」切换；被压缩的轮占用为 0，固定显示为最浅档。
+      assert.equal(await page.locator('.turn-metric').count(), 0, '仍有花费/上下文切换')
+      assert.ok(
+        compressed.every((row) => row.heat === '1'),
+        `压缩轮不是最浅档：${JSON.stringify(compressed.map((row) => row.heat))}`,
       )
       assert.ok(compressed.every((row) => row.badge === '已压缩'), '压缩轮没有标记')
       assert.ok(compressed.every((row) => /已压缩到摘要/.test(row.title)), '压缩轮 tooltip 没有说明已压缩')
-      assert.ok(costRows.every((row) => /用量(低|较低|中|较高|高)/.test(row.label)), 'aria-label 缺少用量档位')
+      assert.ok(rows.every((row) => /用量(低|较低|中|较高|高)/.test(row.label)), 'aria-label 缺少用量档位')
       assert.equal(summary?.number, '摘', '摘要行没有标记')
       assert.equal(summary?.text, '摘要', '摘要行文案不对')
-
-      // 切换到「上下文占用」：被压缩的轮占用接近 0，显示为最浅档。
-      await page.locator('.turn-metric button', { hasText: '上下文' }).click()
-      await page.waitForTimeout(500)
-      const contextRows = await readRows()
-      const compressedContext = contextRows.filter((row) => row.compressed)
-      assert.ok(compressedContext.length === 2, '切换上下文模式后压缩轮消失')
-      assert.ok(
-        compressedContext.every((row) => row.heat === '1'),
-        `压缩轮在上下文模式不是最浅：${JSON.stringify(compressedContext.map((row) => row.heat))}`,
-      )
-      assert.equal(
-        await page.locator('.turn-metric button[data-on="true"]').innerText(),
-        '上下文',
-        '着色依据没有切到上下文',
-      )
 
       // 撤销压缩后：摘要与压缩行消失，恢复为真实轮次（走 WS 快照，不刷新页面）。
       await api(base, token, '/api/sessions/compact/compaction/cmp-notice/undo', {
@@ -2651,29 +2645,106 @@ async function main() {
       await dialog.getByRole('button', { name: '取消' }).click()
     })
 
-    desktop('上下文面板显示最大占用项', async (page) => {
+    desktop('上下文面板「最占空间」按轮次聚合、二级明细可展开、区块可折叠（反馈8#10）', async (page) => {
       await openSession(page, 'long')
+      await page.evaluate(() => localStorage.removeItem('tandem.contextTopCollapsed.v1'))
       const ring = page.getByRole('button', { name: /^上下文 \d+%/ }).first()
-      await ring.click()
-      await page.getByText('最占空间').first().waitFor({ state: 'visible', timeout: 5_000 })
-      const items = page.locator('[data-context-top="popover"] [data-context-item="true"]')
-      const count = await items.count()
-      assert.ok(count > 0 && count <= 10, `最大占用项数量 ${count}`)
-      const first = await items.first().innerText()
-      assert.match(first, /第 \d+ 轮/, `最大占用项缺少轮次：${first}`)
-      await page.getByText(/下次自动压缩将在约 \d+% 时触发|自动压缩已关闭/).first().waitFor({
-        state: 'visible',
-        timeout: 3_000,
-      })
+      const openPopover = async (expectTurns = true) => {
+        await ring.click()
+        await page.getByText('最占空间').first().waitFor({ state: 'visible', timeout: 5_000 })
+        if (expectTurns) {
+          await page.waitForFunction(
+            () => document.querySelectorAll('[data-context-top="popover"] [data-context-turn="true"]').length > 0,
+            null,
+            { timeout: 8_000 },
+          )
+        }
+      }
+      await openPopover()
+      const turns = page.locator('[data-context-top="popover"] [data-context-turn="true"]')
+      const count = await turns.count()
+      assert.ok(count > 0 && count <= 10, `最占空间轮次数量 ${count}`)
+      const rows = await turns.evaluateAll((els) =>
+        els.map((el) => ({
+          text: (el.innerText ?? '').trim(),
+          turn: el.querySelector('[data-context-turn-open="true"]')?.getAttribute('title') ?? '',
+        })),
+      )
+      assert.ok(
+        rows.every((row) => /第 \d+ 轮/.test(row.text)),
+        `最占空间没有按轮次列出：${JSON.stringify(rows.slice(0, 3))}`,
+      )
+      assert.equal(new Set(rows.map((row) => row.text.match(/第 (\d+) 轮/)?.[1])).size, rows.length, '同一轮被拆成了多行')
+
+      // 二级展开：该轮内最大的几项（工具输出/消息）。
+      const first = turns.first()
+      await first.locator('[data-context-turn-toggle="true"]').click()
+      const nested = first.locator('[data-context-nested="true"]')
+      await nested.first().waitFor({ state: 'visible', timeout: 3_000 })
+      assert.ok((await nested.count()) > 0, '展开轮次后没有二级明细')
       const before = await page.evaluate(
         () => document.querySelector('.chat-scroll')?.scrollTop ?? 0,
       )
-      await items.first().click()
+      await nested.first().click()
       await page.waitForTimeout(700)
       const after = await page.evaluate(
         () => document.querySelector('.chat-scroll')?.scrollTop ?? 0,
       )
-      assert.notEqual(after, before, '点击最大占用项后没有跳转到对应消息')
+      assert.notEqual(after, before, '点击轮次内的明细项后没有跳转到对应消息')
+
+      // 点某一轮 = 跳到该轮（按该轮用户消息定位，而不是依赖大纲当前轮）。
+      await openPopover()
+      const turnRow = page.locator('[data-context-top="popover"] [data-context-turn-open="true"]').first()
+      const targetMessageId = await turnRow.evaluate(
+        (el) => el.closest('[data-context-turn]')?.getAttribute('data-message-id') ?? '',
+      )
+      assert.ok(targetMessageId, '轮次行没有携带目标消息 id')
+      await turnRow.click()
+      await page.waitForTimeout(900)
+      const shown = await page.evaluate((id) => {
+        const el = document.querySelector(`[data-turn-id="${CSS.escape(id)}"]`)
+        if (!el) return null
+        const rect = el.getBoundingClientRect()
+        return { top: rect.top, bottom: rect.bottom, height: window.innerHeight }
+      }, targetMessageId)
+      assert.ok(
+        shown && shown.bottom > 0 && shown.top < shown.height,
+        `点击轮次后目标消息不在视口内：${JSON.stringify(shown)}`,
+      )
+
+      // 整个「最占空间」区块可折叠，重开后记住折叠状态。
+      await openPopover()
+      let toggle = page.locator('[data-context-top="popover"] [data-context-top-toggle="true"]')
+      await toggle.click()
+      assert.equal(
+        await page.locator('[data-context-top="popover"] [data-context-turn="true"]').count(),
+        0,
+        '折叠后仍显示占用明细',
+      )
+      assert.equal(
+        await page.evaluate(() => localStorage.getItem('tandem.contextTopCollapsed.v1')),
+        '1',
+        '折叠状态没有记住',
+      )
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(300)
+      await openPopover(false)
+      toggle = page.locator('[data-context-top="popover"] [data-context-top-toggle="true"]')
+      assert.equal(
+        await page.locator('[data-context-top="popover"] [data-context-turn="true"]').count(),
+        0,
+        '重新打开面板后折叠状态丢失',
+      )
+      await toggle.click()
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-context-top="popover"] [data-context-turn="true"]').length > 0,
+        null,
+        { timeout: 5_000 },
+      )
+      await page.getByText(/下次自动压缩将在约 \d+% 时触发|自动压缩已关闭/).first().waitFor({
+        state: 'visible',
+        timeout: 3_000,
+      })
     })
 
     desktop('配额将尽时交接卡可切换备用分组', async (page) => {
@@ -3439,7 +3510,7 @@ async function main() {
       await page.mouse.move(DESKTOP.width / 2, DESKTOP.height / 2)
     })
 
-    desktop('轮次固定：命中区 ≥24px、已固定区独立、阅读区不重排（#12/反馈6追加）', async (page) => {
+    desktop('轮次固定：命中区 ≥24px、一个视图两用（Alt/点击只看已固定）、阅读区不重排（#12/反馈6追加/反馈8#04）', async (page) => {
       await openSession(page, 'long')
       const hit = page.locator('.turn-hit')
       await hit.hover()
@@ -3457,7 +3528,7 @@ async function main() {
               return cs.visibility !== 'hidden' && Number(cs.opacity) > 0.3
             })
             .sort((a, b) => a.getBoundingClientRect().y - b.getBoundingClientRect().y)
-            .map((el) => el.dataset.turnPos),
+            .map((el) => el.dataset.turnNo),
         )
       const beforeOrder = await readOrder()
       const beforeScroll = await page.locator('.chat-scroll').evaluate((el) => el.scrollTop)
@@ -3484,8 +3555,13 @@ async function main() {
       await page.waitForTimeout(250)
       await page.mouse.click(target.x, target.y)
 
-      const pinned = page.locator('.turn-pinned')
-      await pinned.waitFor({ state: 'visible', timeout: 5_000 })
+      // 反馈8#04：不再有独立的「已固定」浮层，只在原位显示小图钉。
+      await page.waitForFunction(
+        (turn) => document.querySelector(`[data-turn-no="${turn}"]`)?.getAttribute('data-pinned') === 'true',
+        target.turn,
+        { timeout: 5_000 },
+      )
+      assert.equal(await page.locator('.turn-pinned').count(), 0, '仍存在独立的已固定浮层')
       await page.waitForTimeout(500)
       const afterOrder = await readOrder()
       assert.deepEqual(afterOrder, beforeOrder, `固定后阅读区顺序变了：${beforeOrder} → ${afterOrder}`)
@@ -3494,30 +3570,78 @@ async function main() {
         beforeScroll,
         '固定轮次后对话滚动位置变了',
       )
-      assert.match(await pinned.innerText(), /已固定/, '已固定区没有标题')
-      assert.equal(await pinned.locator('.turn-pinned-row').count(), 1, '已固定区条目数不对')
-      assert.match(await pinned.locator('.turn-pinned-row').innerText(), new RegExp(target.turn), '已固定区没有该轮')
-      assert.ok(
-        (await page.locator('[data-turn-pos="' + target.turn + '"]').getAttribute('data-pinned')) === 'true',
-        '阅读区原位没有固定标记',
-      )
       assert.ok(
         (await page.locator('[aria-label="已固定到轮次大纲"]').count()) >= 1,
         '消息流里没有图钉标记',
       )
-      // 已固定区点击 = 跳到该轮。
-      await pinned.locator('.turn-pinned-jump').first().click()
-      await page.waitForTimeout(500)
-      assert.match(await page.locator('.turn-count').innerText(), new RegExp(`第 ${target.turn} /`), '点击已固定区没有跳到该轮')
 
-      // 取消固定：已固定区消失，阅读区顺序不变。
-      await pinned.locator('.turn-pinned-row').first().hover()
-      await pinned.locator('.turn-pinned-unpin').first().click()
-      await page.waitForFunction(() => document.querySelectorAll('.turn-pinned-row').length === 0, null, {
-        timeout: 5_000,
-      })
-      assert.equal(await page.locator('.turn-pinned').count(), 0, '取消固定后已固定区仍在')
-      assert.deepEqual(await readOrder(), beforeOrder, '取消固定后阅读区顺序变了')
+      // 大纲下方的小字提示：按住 Alt 只看已固定，松开恢复全部。
+      const hint = page.getByTestId('turn-pinned-hint')
+      await hint.waitFor({ state: 'visible', timeout: 5_000 })
+      assert.match(await hint.innerText(), /只看已固定/, '大纲下方没有 Alt 提示')
+      await hint.hover()
+      await page.waitForTimeout(250)
+      assert.equal(
+        await page.locator('.turn-rail').getAttribute('data-open'),
+        'true',
+        '指针移到大纲下方提示行时面板收起（反馈8#04 的空白间隙问题）',
+      )
+      // 输入框聚焦时单独按 Alt/Option 也要生效（用户常边打字边看大纲）。
+      await page.locator('textarea[aria-label="消息输入框"]').first().focus()
+      await page.keyboard.down('Alt')
+      await page.waitForFunction(
+        () => document.querySelector('.turn-rail')?.getAttribute('data-pinned-only') === 'true',
+        null,
+        { timeout: 5_000 },
+      )
+      await page.waitForTimeout(600)
+      const filtered = await readOrder()
+      assert.deepEqual(filtered, [target.turn], `Alt 只看已固定时显示了多余的轮次：${filtered}`)
+      await page.keyboard.up('Alt')
+      await page.waitForFunction(
+        () => document.querySelector('.turn-rail')?.getAttribute('data-pinned-only') !== 'true',
+        null,
+        { timeout: 5_000 },
+      )
+      await page.waitForTimeout(500)
+      assert.ok((await readOrder()).length > 1, '松开 Alt 后没有恢复全部轮次')
+      assert.ok((await readOrder()).includes(target.turn), '恢复全部后找不到刚固定的轮次')
+
+      // 点提示行 = 鼠标/触屏也能切换；再点恢复全部。
+      await hint.click()
+      await page.waitForFunction(
+        () => document.querySelector('.turn-rail')?.getAttribute('data-pinned-only') === 'true',
+        null,
+        { timeout: 5_000 },
+      )
+      await page.waitForTimeout(500)
+      assert.deepEqual(await readOrder(), [target.turn], '点击提示行没有切到只看已固定')
+      await hint.click()
+      await page.waitForFunction(
+        () => document.querySelector('.turn-rail')?.getAttribute('data-pinned-only') !== 'true',
+        null,
+        { timeout: 5_000 },
+      )
+      await page.waitForTimeout(500)
+      assert.ok((await readOrder()).length > 1, '再次点击提示行没有恢复全部轮次')
+
+      // 取消固定：原位图钉消失，提示行回到「暂无」。
+      const row = page.locator(`.turn-item[data-turn-no="${target.turn}"]`)
+      const rowBox = await row.boundingBox()
+      assert.ok(rowBox, '找不到刚固定的行')
+      await page.mouse.move(rowBox.x + rowBox.width / 2, rowBox.y + rowBox.height / 2)
+      await page.waitForTimeout(250)
+      const pin = row.locator('.turn-item-p')
+      const pinBox = await pin.boundingBox()
+      assert.ok(pinBox, '找不到行尾图钉')
+      await page.mouse.click(pinBox.x + pinBox.width / 2, pinBox.y + pinBox.height / 2)
+      await page.waitForFunction(
+        (turn) => document.querySelector(`[data-turn-no="${turn}"]`)?.getAttribute('data-pinned') !== 'true',
+        target.turn,
+        { timeout: 5_000 },
+      )
+      assert.match(await hint.innerText(), /暂无/, '取消固定后提示行没有更新')
+      assert.equal(await page.locator('.turn-pinned').count(), 0, '取消固定后仍存在已固定浮层')
       assert.ok(await page.locator('.turn-tip').count() === 0, '轮次大纲仍存在重复文字的悬停提示')
     })
 

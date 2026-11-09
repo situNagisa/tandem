@@ -70,6 +70,7 @@ export class RailScene {
 
   private turns: SceneTurn[] = []
   private N = 0
+  private layoutN = 0
   private items: ItemRef[]
   private raf = 0
   private last = 0
@@ -116,13 +117,18 @@ export class RailScene {
     return this.ptrY != null && this.expanded ? this.rowAt(this.ptrY) : null
   }
 
-  setData(turns: SceneTurn[]): void {
+  /**
+   * `layoutN` 是面板高度按多少行计算：切到「只看已固定」时仍按全部轮次保持面板尺寸，
+   * 避免面板和下方提示行在指针底下突然缩短/上移（反馈8#04）。
+   */
+  setData(turns: SceneTurn[], layoutN = turns.length): void {
     // 固定/取消固定不改变阅读区顺序；插入压缩行/摘要行时按消息 id 找回原来的当前轮与视口中心，
     // 避免阅读区因为行数变化整体跳动。
     const activeId = this.turns[Math.round(this.C.t) - 1]?.id
     const centerId = this.turns[Math.round(this.L.t) - 1]?.id
     this.turns = turns
     this.N = turns.length
+    this.layoutN = layoutN
     for (const it of this.items) it.bound = -1
     const indexOf = (id: string | undefined) => {
       if (!id) return null
@@ -155,16 +161,18 @@ export class RailScene {
   private avail = 600
 
   private geometry(): void {
-    const n = Math.max(1, this.N)
-    // 面板 + 下方计数胶囊都要落在可用高度内
-    let rows = Math.floor((this.avail - 84) / ROW)
+    const actual = Math.max(1, this.N)
+    // 面板高度按全部轮次算，切到「只看已固定」时不改变面板与提示行的位置。
+    const n = Math.max(actual, this.layoutN || 0)
+    // 面板 + 下方计数胶囊/提示行都要落在可用高度内
+    let rows = Math.floor((this.avail - 112) / ROW)
     rows = clamp(rows, 5, 15)
     if (rows % 2 === 0) rows -= 1
     this.PR = Math.min(n, rows)
     this.PH = (this.PR - 1) / 2
     this.RH = clamp(Math.floor((this.avail * 0.5) / PITCH / 2), 3, 10)
     this.panelH = this.PR * ROW + 2 * FADE
-    this.restH = Math.min(n, 2 * this.RH + 1) * PITCH + 10
+    this.restH = Math.min(actual, 2 * this.RH + 1) * PITCH + 10
     const root = this.els.root
     root.style.setProperty('--turn-ph', `${this.panelH}px`)
     root.style.setProperty('--turn-rest-h', `${this.restH}px`)
@@ -347,6 +355,7 @@ export class RailScene {
     it.el.setAttribute('aria-label', aria)
     it.el.dataset.turnLabel = summary ? '摘要' : full
     it.el.dataset.turnPos = String(turn)
+    it.el.dataset.turnNo = String(no)
     it.el.dataset.heat = String(heat)
     it.el.dataset.summary = summary ? 'true' : 'false'
     it.el.dataset.compressed = compressed ? 'true' : 'false'

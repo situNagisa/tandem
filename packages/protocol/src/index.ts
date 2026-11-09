@@ -423,6 +423,14 @@ export interface ContextTopItem {
   preview: string;           // 单行摘要
   tool?: string;             // tool_result 对应的工具名（能查到才给）
 }
+// 「最占空间」的一轮：以用户发言为基本单位，展开可看该轮内最大的几项。
+export interface ContextTurnItem {
+  turn: number;              // 1-based 轮次
+  messageId: string;         // 该轮用户消息 id（点整行跳到这一轮）
+  tokens: number;            // 该轮在上下文里的总占用（用户消息 + 回复 + 工具结果）
+  preview: string;           // 用户发言单行摘要
+  items: ContextTopItem[];   // 该轮内最大的几项（工具输出/消息，按 token 降序）
+}
 // 上下文占用（参考 Claude Code /context）：最近一次请求实际发送给模型的组成估算
 export interface ContextBreakdown {
   model: string;
@@ -430,8 +438,10 @@ export interface ContextBreakdown {
   usedTokens: number;        // 最近一次请求的输入总量（含缓存）
   parts: { kind: 'system' | 'tools' | 'mcp' | 'memory' | 'messages' | 'tool_results' | 'free'; tokens: number }[];
   cacheHitRate?: number;     // 本会话累计：cacheRead / (input + cacheRead + cacheWrite)
-  /** 最占空间的 10 条消息/工具结果（按 token 降序）。 */
+  /** 最占空间的 10 条消息/工具结果（按 token 降序；老客户端兼容用）。 */
   topItems?: ContextTopItem[];
+  /** 最占空间的 10 轮（按 token 降序，以用户发言为基本单位）。 */
+  topTurns?: ContextTurnItem[];
   /** 自动压缩触发配置；老 Host 缺失时不展示提示。 */
   autoCompact?: { enabled: boolean; threshold: number };
   /** 按当前速度的剩余轮数预估（用量卡/上下文面板共用）。 */

@@ -183,12 +183,9 @@ function formatCost(usd: number): string {
   return `$${usd.toFixed(digits).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')}`
 }
 
-export type TurnHeatMetric = 'cost' | 'context'
-
-/** 着色权重：花费=本轮实际消耗的输入+输出 token；上下文=本轮当前占用。 */
-export function turnWeight(usage: TurnUsage | undefined, metric: TurnHeatMetric): number {
-  if (!usage) return 0
-  return metric === 'cost' ? usage.inputTokens + usage.outputTokens : usage.contextTokens
+/** 着色权重固定为本轮当前上下文占用（用户已决定不再提供花费/上下文切换）。 */
+export function turnWeight(usage: TurnUsage | undefined): number {
+  return usage?.contextTokens ?? 0
 }
 
 const HEAT_LABELS = ['用量低', '用量较低', '用量中', '用量较高', '用量高']

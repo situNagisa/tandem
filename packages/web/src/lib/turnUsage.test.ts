@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'vitest'
 import type { SubagentSession, UiMessage } from './types'
-import { heatLabel, heatLevels, turnUsageLabel, turnWeight, usageByTurn } from './turnUsage'
+import {
+  estimateMessageTokens,
+  heatLabel,
+  heatLevels,
+  turnUsageLabel,
+  turnWeight,
+  usageByTurn,
+} from './turnUsage'
 
 let seq = 0
 function user(text: string, createdAt: number): UiMessage {
@@ -82,6 +89,39 @@ describe('turn usage', () => {
     expect(turnUsageLabel(usage)).toContain('含子代理')
   })
 
+  test('上下文占用按「本次用户发言到下一条用户发言」之间的全部内容计', () => {
+    const t = 30_000
+    const toolResult: UiMessage = {
+      id: `u${++seq}`,
+      role: 'user',
+      content: [{ type: 'tool_result', toolUseId: 'tu1', content: '输出'.repeat(400) }],
+      createdAt: t + 20,
+    }
+    const messages: UiMessage[] = [
+      user('第一轮', t),
+      assistant(t + 10, undefined, [
+        { type: 'text', text: '先读文件' },
+        { type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: 'src/long.ts' } },
+      ]),
+      toolResult,
+      assistant(t + 30, { inputTokens: 10, outputTokens: 5, costUsd: 0.001 }),
+      user('第二轮', t + 100),
+      assistant(t + 110, { inputTokens: 1, outputTokens: 1, costUsd: 0.0001 }),
+    ]
+    const map = usageByTurn(messages, undefined, 's1')
+    const first = map.get(messages[0]!.id)!
+    const second = map.get(messages[4]!.id)!
+    const expectedFirst = [messages[0]!, messages[1]!, toolResult, messages[3]!].reduce(
+      (sum, message) => sum + estimateMessageTokens(message),
+      0,
+    )
+    expect(first.contextTokens).toBe(expectedFirst)
+    expect(first.contextTokens).toBeGreaterThan(second.contextTokens * 5)
+    expect(second.contextTokens).toBe(
+      estimateMessageTokens(messages[4]!) + estimateMessageTokens(messages[5]!),
+    )
+  })
+
   test('未知单价显示花费未知；无 usage 的轮次没有提示文本', () => {
     const t = 20_000
     const messages = [user('没有回复', t), assistant(t + 10), user('有回复', t + 20), assistant(t + 30, { inputTokens: 1, outputTokens: 1 })]
@@ -101,7 +141,7 @@ describe('turn heat', () => {
     expect(heatLabel(1)).toBe('用量低')
   })
 
-  test('花费看输入+输出，上下文看当前占用', () => {
+  test('着色权重固定为上下文占用（反馈8#07 去掉花费/上下文切换）', () => {
     const usage = {
       inputTokens: 100,
       outputTokens: 50,
@@ -113,7 +153,7 @@ describe('turn heat', () => {
       contextTokens: 700,
       hasUsage: true,
     }
-    expect(turnWeight(usage, 'cost')).toBe(150)
-    expect(turnWeight(usage, 'context')).toBe(700)
+    expect(turnWeight(usage)).toBe(700)
+    expect(turnWeight(undefined)).toBe(0)
   })
 })

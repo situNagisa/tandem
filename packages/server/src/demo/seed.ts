@@ -416,8 +416,20 @@ function seedAutoCompact(ctx: DemoSeedContext): DemoRefs {
     const ids = rec.messages.map((item) => item.id);
     rec.context.topItems = [
       { messageId: ids[1] ?? ids[0]!, role: 'assistant', kind: 'message', turn: 1, tokens: 18_400, preview: '已自动压缩 · 节省 38.2k tokens' },
-      { messageId: ids[2] ?? ids[0]!, role: 'user', kind: 'message', turn: 2, tokens: 6_200, preview: '继续把边界条件补到测试里。' },
-      { messageId: ids[3] ?? ids[0]!, role: 'assistant', kind: 'message', turn: 2, tokens: 2_100, preview: '好的，我会只改演示仓库的测试文件…' },
+      { messageId: ids[2] ?? ids[0]!, role: 'user', kind: 'message', turn: 1, tokens: 6_200, preview: '继续把边界条件补到测试里。' },
+      { messageId: ids[3] ?? ids[0]!, role: 'assistant', kind: 'message', turn: 1, tokens: 2_100, preview: '好的，我会只改演示仓库的测试文件…' },
+    ];
+    rec.context.topTurns = [
+      {
+        turn: 1,
+        messageId: ids[2] ?? ids[0]!,
+        tokens: 24_800,
+        preview: '继续把边界条件补到测试里。',
+        items: [
+          { messageId: ids[2] ?? ids[0]!, role: 'user', kind: 'message', turn: 1, tokens: 18_400, preview: '继续把边界条件补到测试里。' },
+          { messageId: ids[3] ?? ids[0]!, role: 'assistant', kind: 'message', turn: 1, tokens: 6_200, preview: '好的，我会只改演示仓库的测试文件…' },
+        ],
+      },
     ];
     ctx.host.store.markDirty(rec.id, false);
     ctx.host.broadcastSummary(rec);

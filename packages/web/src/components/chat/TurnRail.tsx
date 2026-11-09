@@ -9,7 +9,6 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from 'react'
-import { PinOff } from 'lucide-react'
 import { isUserTurnMessage } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { isTargetFocused, useSessionTarget, useSessionView } from '../session/SessionScope'
@@ -20,6 +19,7 @@ import { useIsMobile } from '../../lib/hooks'
 import { nodeContains } from '../../lib/overlay'
 import type { UiMessage } from '../../lib/types'
 import { api } from '../../lib/api'
+import { isMacPlatform } from '../../lib/format'
 import {
   heatLabel,
   heatLevels,
@@ -27,7 +27,6 @@ import {
   turnUsageLabel,
   turnWeight,
   usageByTurn,
-  type TurnHeatMetric,
   type TurnUsage,
 } from '../../lib/turnUsage'
 import { hideTooltip, scheduleTooltip } from '../ui/Tooltip'
@@ -225,18 +224,12 @@ export function TurnRail({
   onBeforeJump?: () => void
 }) {
   const turns = useTurnMarks()
-  const [metric, setMetric] = useState<TurnHeatMetric>(() => {
-    try {
-      return localStorage.getItem('tandem.turnHeatMetric.v1') === 'context' ? 'context' : 'cost'
-    } catch {
-      return 'cost'
-    }
-  })
-  const weights = useMemo(() => turns.map((turn) => turnWeight(turn.usage, metric)), [turns, metric])
+  // 反馈8#07：着色固定表示上下文占用，不再提供「花费 / 上下文」切换。
+  const weights = useMemo(() => turns.map((turn) => turnWeight(turn.usage)), [turns])
   const totalWeight = useMemo(() => weights.reduce((sum, value) => sum + value, 0), [weights])
   const shareOf = (mark: TurnMark | undefined): number => {
     if (!mark || totalWeight <= 0) return 0
-    return Math.round((turnWeight(mark.usage, metric) / totalWeight) * 100)
+    return Math.round((turnWeight(mark.usage) / totalWeight) * 100)
   }
   const scopeTarget = useSessionTarget()
   const hostId = useSessionView((s) => s?.hostId ?? null)
@@ -251,16 +244,23 @@ export function TurnRail({
     if (!hostId || !sessionId || !hasEarlier || serverTurns || loadingTurns) return
     void useAppStore.getState().loadSessionTurns(hostId, sessionId)
   }, [hostId, sessionId, hasEarlier, serverTurns, loadingTurns])
+  // 反馈8#04：不再有独立的「已固定」浮层；固定的轮按轮号排序列出，供 Alt/点击切换的仅固定视图使用。
+  const pinnedMarks = useMemo(() => {
+    const pinned = new Set(pinnedTurns ?? [])
+    return turns
+      .filter((turn) => pinned.has(turn.id) && !turn.summary && !turn.compressed)
+      .sort((a, b) => (a.no ?? 0) - (b.no ?? 0))
+  }, [turns, pinnedTurns])
   const sceneTurns = useMemo(() => {
     const levels = heatLevels(weights)
     const pinned = new Set(pinnedTurns ?? [])
     return turns.map((turn, index) => ({
       ...turn,
       heat: levels[index] ?? 1,
-      share: totalWeight > 0 ? Math.round((turnWeight(turn.usage, metric) / totalWeight) * 100) : 0,
+      share: totalWeight > 0 ? Math.round((turnWeight(turn.usage) / totalWeight) * 100) : 0,
       ...(pinned.has(turn.id) && !turn.summary && !turn.compressed ? { pinned: true } : {}),
     }))
-  }, [turns, weights, pinnedTurns, totalWeight, metric])
+  }, [turns, weights, pinnedTurns, totalWeight])
   const total = turns.length
   const realTotal = useMemo(() => turns.filter((turn) => !turn.summary).length, [turns])
   const isMobile = useIsMobile()
@@ -268,6 +268,14 @@ export function TurnRail({
   const [activeTurn, setActiveTurn] = useState(1)
   const [open, setOpen] = useState(false)
   const [pressed, setPressed] = useState(false)
+  const [pinnedOnly, setPinnedOnly] = useState(false)
+  const [pinnedVia, setPinnedVia] = useState<'alt' | 'click'>('alt')
+  const pinnedView = pinnedOnly && pinnedMarks.length > 0
+  const viewTurns = useMemo(() => {
+    if (!pinnedView) return sceneTurns
+    const pinned = new Set(pinnedMarks.map((mark) => mark.id))
+    return sceneTurns.filter((turn) => pinned.has(turn.id))
+  }, [sceneTurns, pinnedView, pinnedMarks])
 
   const navRef = useRef<HTMLElement>(null)
   const bgRef = useRef<HTMLDivElement>(null)
@@ -282,8 +290,10 @@ export function TurnRail({
 
   const turnsRef = useRef(turns)
   turnsRef.current = turns
-  const sceneTurnsRef = useRef(sceneTurns)
-  sceneTurnsRef.current = sceneTurns
+  const viewTurnsRef = useRef(viewTurns)
+  viewTurnsRef.current = viewTurns
+  const sceneTurnsRef = useRef(viewTurns)
+  sceneTurnsRef.current = viewTurns
   const totalRef = useRef(total)
   totalRef.current = total
   const activeRef = useRef(activeTurn)
@@ -321,6 +331,13 @@ export function TurnRail({
   useEffect(() => {
     setActiveTurn(total || 1)
   }, [sessionId, total])
+
+  // 视图位置（仅固定视图时是 1..pinned.length）与真实轮次位置（1..total）互转。
+  const viewPosOf = (original: number): number => {
+    const index = viewTurnsRef.current.findIndex((turn) => turn.turn === original)
+    return index >= 0 ? index + 1 : 0
+  }
+  const originalOf = (pos: number): number => viewTurnsRef.current[pos - 1]?.turn ?? pos
 
   const go = useCallback(
     (turn: number, opts?: { recenter?: boolean; instant?: boolean }) => {
@@ -388,8 +405,11 @@ export function TurnRail({
         )
       }, opts?.instant)
       const scene = sceneRef.current
-      scene?.setActive(target)
-      if (opts?.recenter !== false) scene?.setCenter(target)
+      const viewPos = viewPosOf(target)
+      if (viewPos > 0) {
+        scene?.setActive(viewPos)
+        if (opts?.recenter !== false) scene?.setCenter(viewPos)
+      }
     },
     [scrollRef, hostId, sessionId],
   )
@@ -412,11 +432,12 @@ export function TurnRail({
       items,
     })
     sceneRef.current = scene
-    scene.onDragRow = (turn) => goRef.current(turn, { recenter: false })
+    scene.onDragRow = (turn) => goRef.current(originalOf(turn), { recenter: false })
     scene.onHoverTurn = (turn) => hoverSyncRef.current(turn)
-    scene.setData(sceneTurnsRef.current)
-    scene.setActive(activeRef.current, true)
-    scene.setCenter(activeRef.current, true)
+    scene.setData(viewTurnsRef.current, totalRef.current)
+    const viewPos = viewTurnsRef.current.findIndex((turn) => turn.turn === activeRef.current) + 1
+    scene.setActive(viewPos || 1, true)
+    scene.setCenter(viewPos || 1, true)
     const parent = root.parentElement
     let ro: ResizeObserver | null = null
     if (parent) {
@@ -432,21 +453,25 @@ export function TurnRail({
   }, [railOn])
 
   useLayoutEffect(() => {
-    sceneRef.current?.setData(sceneTurns)
-  }, [sceneTurns])
+    sceneRef.current?.setData(viewTurns, total)
+  }, [viewTurns, total])
 
   useEffect(() => {
     activeRef.current = activeTurn
     const scene = sceneRef.current
     if (scene) {
-      scene.setActive(activeTurn, snapNext.current)
-      if (!dragRef.current) scene.setCenter(activeTurn, snapNext.current)
+      const viewPos = viewTurnsRef.current.findIndex((turn) => turn.turn === activeTurn) + 1
+      // 当前轮不在「仅看已固定」里时不画当前轮指示，避免指到不存在的行。
+      if (viewPos > 0) {
+        scene.setActive(viewPos, snapNext.current)
+        if (!dragRef.current) scene.setCenter(viewPos, snapNext.current)
+      }
     }
     snapNext.current = false
     if (isTargetFocused(scopeTarget)) {
       useTurnNavStore.getState().setProgress(activeTurn, total)
     }
-  }, [activeTurn, total, railOn, sessionId, scopeTarget])
+  }, [activeTurn, total, railOn, sessionId, scopeTarget, pinnedView])
 
   useEffect(
     () => () => {
@@ -516,12 +541,13 @@ export function TurnRail({
       if (typing && !target?.closest('.composer-card')) return
       const ui = useUiStore.getState()
       if (ui.settingsOpen || ui.newSessionOpen || ui.searchOpen || ui.mobileSidebar) return
-      const count = totalRef.current
-      if (count === 0) return
+      const list = viewTurnsRef.current
+      if (list.length === 0) return
       event.preventDefault()
-      const current = clamp(activeRef.current, 1, count)
-      const next = clamp(current + (event.key === 'ArrowDown' ? 1 : -1), 1, count)
-      if (next !== current) go(next)
+      const down = event.key === 'ArrowDown'
+      const currentPos = viewPosOf(activeRef.current) || (down ? 0 : list.length + 1)
+      const nextPos = clamp(currentPos + (down ? 1 : -1), 1, list.length)
+      if (nextPos !== currentPos) go(originalOf(nextPos))
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
@@ -583,7 +609,10 @@ export function TurnRail({
       }
       if (!steps) return
       sceneRef.current?.setHoverEnabled(false)
-      go(activeRef.current + clamp(steps, -3, 3))
+      const list = viewTurnsRef.current
+      if (list.length === 0) return
+      const currentPos = viewPosOf(activeRef.current) || (steps > 0 ? 0 : list.length + 1)
+      go(originalOf(clamp(currentPos + clamp(steps, -3, 3), 1, list.length)))
     }
     hit.addEventListener('wheel', onWheel, { passive: false })
     return () => hit.removeEventListener('wheel', onWheel)
@@ -600,7 +629,7 @@ export function TurnRail({
       hideTooltip()
       return
     }
-    const mark = turnsRef.current[turn - 1]
+    const mark = viewTurnsRef.current[turn - 1]
     const label = turnUsageLabel(mark?.usage, {
       share: shareOf(mark),
       ...(mark?.compressed ? { compressed: true } : {}),
@@ -667,7 +696,7 @@ export function TurnRail({
     scene.setDragging(true)
     // 触摸时面板还没展开：这一下只负责展开，随后拖动再选行
     if (event.pointerType === 'touch' && !wasExpanded) return
-    go(scene.rowAt(y), { recenter: false })
+    go(originalOf(scene.rowAt(y)), { recenter: false })
   }
 
   const endDrag = (event: ReactPointerEvent<HTMLElement>, cancelled: boolean) => {
@@ -694,8 +723,8 @@ export function TurnRail({
   }
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    const count = totalRef.current
-    const current = activeRef.current
+    const count = viewTurnsRef.current.length
+    const current = viewPosOf(activeRef.current) || 1
     let next: number | null = null
     if (event.key === 'ArrowUp') next = current - 1
     else if (event.key === 'ArrowDown') next = current + 1
@@ -708,11 +737,11 @@ export function TurnRail({
       event.currentTarget.blur()
       return
     }
-    if (next == null || event.altKey) return
+    if (next == null || event.altKey || count === 0) return
     event.preventDefault()
     event.stopPropagation()
     sceneRef.current?.setHoverEnabled(false)
-    go(next)
+    go(originalOf(clamp(next, 1, count)))
   }
 
   const sheetOpen = useTurnNavStore((s) => s.sheetOpen)
@@ -733,24 +762,68 @@ export function TurnRail({
     void state.updateSession(active.hostId, active.sessionId, { pinnedTurns: next })
   }
 
-  // 两个大纲：上方只放已固定的轮（按轮号排序），下方阅读区始终按时间顺序，固定不改变位置。
-  const pinnedMarks = useMemo(() => {
-    const pinned = new Set(pinnedTurns ?? [])
-    return turns
-      .filter((turn) => pinned.has(turn.id) && !turn.summary && !turn.compressed)
-      .sort((a, b) => (a.no ?? 0) - (b.no ?? 0))
-  }, [turns, pinnedTurns])
-  const current = turns[activeTurn - 1]
-  const currentHeat = sceneTurns[activeTurn - 1]?.heat ?? 1
-  const metricLabel = metric === 'cost' ? '花费' : '上下文'
-  const chooseMetric = (next: TurnHeatMetric) => {
-    setMetric(next)
-    try {
-      localStorage.setItem('tandem.turnHeatMetric.v1', next)
-    } catch {
-      // localStorage 不可用时仅本次会话有效
+  // 反馈8#04：按住 Alt / 点下方提示，同一个大纲切换为「只看已固定」，松开 / 再点恢复全部。
+  const altHeldRef = useRef(false)
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key !== 'Alt' ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.repeat ||
+        event.isComposing
+      ) {
+        return
+      }
+      // 输入框聚焦时也响应：单独按 Alt/Option 不会输入字符（Option+字符的 key 不是 Alt）。
+      event.preventDefault()
+      altHeldRef.current = true
+      setPinnedVia('alt')
+      setPinnedOnly(true)
     }
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key !== 'Alt') return
+      altHeldRef.current = false
+      setPinnedOnly(false)
+    }
+    const onBlur = () => {
+      if (!altHeldRef.current) return
+      altHeldRef.current = false
+      setPinnedOnly(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
+
+  // 切换视图后旧行号可能失效，先收起用量 tooltip。
+  useEffect(() => {
+    hideTooltip()
+    hoverTipRef.current = null
+  }, [pinnedView])
+
+  const togglePinnedView = () => {
+    if (pinnedMarks.length === 0) return
+    altHeldRef.current = false
+    setPinnedVia('click')
+    setPinnedOnly((value) => !value)
   }
+
+  const currentPos = viewPosOf(activeTurn) || 1
+  const current = viewTurns[currentPos - 1] ?? turns[activeTurn - 1]
+  const currentHeat = current?.heat ?? 1
+  const altName = isMacPlatform ? 'Option' : 'Alt'
+  const pinnedHint = pinnedView
+    ? pinnedVia === 'alt'
+      ? `已固定 ${pinnedMarks.length} 轮 · 松开 ${altName} 恢复全部`
+      : `已固定 ${pinnedMarks.length} 轮 · 点此恢复全部`
+    : `按住 ${altName} 只看已固定${pinnedMarks.length > 0 ? `（${pinnedMarks.length}）` : '（暂无）'}`
 
   return (
     <>
@@ -761,6 +834,7 @@ export function TurnRail({
           aria-label="轮次导航"
           data-open={open ? 'true' : undefined}
           data-pressed={pressed ? 'true' : undefined}
+          data-pinned-only={pinnedView ? 'true' : undefined}
           data-feedback={feedbackActive ? 'true' : undefined}
         >
           <div ref={bgRef} className="turn-bg" aria-hidden />
@@ -807,8 +881,8 @@ export function TurnRail({
             aria-label="切换轮次"
             aria-orientation="vertical"
             aria-valuemin={1}
-            aria-valuemax={total}
-            aria-valuenow={activeTurn}
+            aria-valuemax={viewTurns.length}
+            aria-valuenow={currentPos}
             aria-valuetext={
               current?.summary
                 ? `摘要 · ${heatLabel(currentHeat)}`
@@ -840,62 +914,30 @@ export function TurnRail({
               )
             })}
           </ol>
-          {pinnedMarks.length > 0 && (
-            <div className="turn-pinned" role="group" aria-label="已固定轮次">
-              <div className="turn-pinned-head">
-                <span>已固定</span>
-                <span className="tabular-nums">{pinnedMarks.length}</span>
-              </div>
-              <div className="turn-pinned-list">
-                {pinnedMarks.map((mark) => (
-                  <div key={mark.id} className="turn-pinned-row">
-                    <button
-                      type="button"
-                      className="turn-pinned-jump"
-                      onClick={() => go(mark.turn)}
-                      title={mark.full}
-                      aria-label={`跳到第 ${mark.no ?? mark.turn} 轮`}
-                    >
-                      <span className="turn-pinned-n">{mark.no ?? mark.turn}</span>
-                      <span className="turn-pinned-t">{mark.full}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="turn-pinned-unpin"
-                      onClick={() => togglePinnedTurn(mark.id)}
-                      title="取消固定"
-                      aria-label={`取消固定第 ${mark.no ?? mark.turn} 轮`}
-                    >
-                      <PinOff size={11} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          <div className="turn-metric" role="group" aria-label="大纲着色依据">
-            <button
-              type="button"
-              aria-pressed={metric === 'cost'}
-              data-on={metric === 'cost' ? 'true' : undefined}
-              onClick={() => chooseMetric('cost')}
-            >
-              花费
-            </button>
-            <button
-              type="button"
-              aria-pressed={metric === 'context'}
-              data-on={metric === 'context' ? 'true' : undefined}
-              onClick={() => chooseMetric('context')}
-            >
-              上下文
-            </button>
-          </div>
           <span className="turn-count" aria-hidden>
-            {current?.summary
-              ? `摘要 · ${metricLabel} ${heatLabel(currentHeat)}`
-              : `第 ${current?.no ?? activeTurn} / ${realTotal} 轮`}
+            {pinnedView
+              ? `仅看已固定 · ${pinnedMarks.length} 轮`
+              : current?.summary
+                ? `摘要 · ${heatLabel(currentHeat)}`
+                : `第 ${current?.no ?? activeTurn} / ${realTotal} 轮`}
           </span>
+          {open && (
+            <button
+              type="button"
+              className="turn-hint"
+              data-testid="turn-pinned-hint"
+              data-on={pinnedView ? 'true' : undefined}
+              aria-pressed={pinnedView}
+              onClick={togglePinnedView}
+              onPointerEnter={() => {
+                window.clearTimeout(closeTimer.current)
+                closeTimer.current = 0
+              }}
+              onPointerLeave={onPointerLeave}
+            >
+              {pinnedHint}
+            </button>
+          )}
         </nav>
       )}
       {isMobile && (
