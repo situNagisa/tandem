@@ -6974,6 +6974,23 @@ async function main() {
       await closeSettings(page)
     })
 
+    desktop('无障碍扫描：主要页面 serious/critical 违规为 0', async (page) => {
+      await page.evaluate(() => (window.location.hash = '#/'))
+      await page.waitForTimeout(400)
+      await auditA11y(page, '新会话页')
+      await openSession(page, 'long')
+      await auditA11y(page, '会话页（工具卡）')
+      await openSession(page, 'approve')
+      await page.locator('.permission-card').first().waitFor()
+      await auditA11y(page, '审批卡')
+      await page.evaluate(() => (window.location.hash = '#/dev/ui'))
+      await page.getByRole('heading', { name: '组件画廊' }).waitFor()
+      await auditA11y(page, '组件画廊')
+      await openSettings(page, '通用', 'desktop')
+      await auditA11y(page, '设置 · 通用')
+      await closeSettings(page)
+    })
+
     desktop('反馈14#07：审批是对话流里的一条消息，样式参考 Claude Code Desktop', async (page) => {
       await openSession(page, 'approve')
       const card = page.locator('.permission-card').first()
@@ -7416,23 +7433,6 @@ async function main() {
       await trace.waitFor({ state: 'visible', timeout: 10_000 })
       await trace.getByRole('button', { name: '关闭' }).tap()
       await trace.waitFor({ state: 'hidden', timeout: 5_000 })
-    })
-
-    desktop('无障碍扫描：主要页面 serious/critical 违规为 0', async (page) => {
-      await page.evaluate(() => (window.location.hash = '#/'))
-      await page.waitForTimeout(400)
-      await auditA11y(page, '新会话页')
-      await openSession(page, 'long')
-      await auditA11y(page, '会话页（工具卡）')
-      await openSession(page, 'approve')
-      await page.locator('.permission-card').first().waitFor()
-      await auditA11y(page, '审批卡')
-      await page.evaluate(() => (window.location.hash = '#/dev/ui'))
-      await page.getByRole('heading', { name: '组件画廊' }).waitFor()
-      await auditA11y(page, '组件画廊')
-      await openSettings(page, '通用', 'desktop')
-      await auditA11y(page, '设置 · 通用')
-      await closeSettings(page)
     })
 
     desktop('命令面板：搜「桌面通知」定位到对应设置项', async (page) => {
