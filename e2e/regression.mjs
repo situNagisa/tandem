@@ -360,6 +360,60 @@ function createMockProvider() {
       res.end()
       return
     }
+    // ---------- 反馈16#10：慢速回合（等首个 token、长时间运行的工具） ----------
+    if (
+      body.stream === true &&
+      (body.messages ?? []).some(
+        (m) => m.role === 'user' && JSON.stringify(m.content ?? '').includes('SLOW_E2E'),
+      )
+    ) {
+      const lastRole = body.messages?.at(-1)?.role
+      res.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+      })
+      const send = (payload) => res.write(`data: ${JSON.stringify(payload)}\n\n`)
+      const chunk = (delta, finish = null) =>
+        send({
+          id: 'chatcmpl-slow',
+          object: 'chat.completion.chunk',
+          choices: [{ index: 0, delta, finish_reason: finish }],
+        })
+      if (lastRole === 'tool') {
+        chunk({ role: 'assistant', content: '慢速工具执行完成。' })
+        chunk({}, 'stop')
+      } else {
+        // 首个 token 之前停留 1.5s：客户端应显示「正在思考…」。
+        await sleep(1500)
+        chunk({ role: 'assistant', content: '慢速回复开始。' })
+        for (let i = 0; i < 4; i++) {
+          await sleep(300)
+          chunk({ content: ` 第${i + 2}段。` })
+        }
+        chunk({
+          tool_calls: [
+            {
+              index: 0,
+              id: `call_slow_${Date.now()}`,
+              type: 'function',
+              function: { name: 'Bash', arguments: JSON.stringify({ command: 'sleep 2', description: '慢速工具' }) },
+            },
+          ],
+        })
+        chunk({}, 'tool_calls')
+      }
+      send({
+        id: 'chatcmpl-slow',
+        object: 'chat.completion.chunk',
+        choices: [],
+        usage: { prompt_tokens: 40, completion_tokens: 12, total_tokens: 52 },
+      })
+      res.write('data: [DONE]\n\n')
+      res.end()
+      return
+    }
+
     // ---------- 看板 v2：卡片会话里的工具调用 ----------
     const lastRole = body.messages?.at(-1)?.role
     const userTexts = (body.messages ?? [])
@@ -1481,6 +1535,114 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
     message('w2', 'assistant', wideMarkdown, { model: 'mock-1' }),
   ]
 
+  // 反馈16：照着真实会话（截图 10）还原的夹具——多个 PowerShell/bash 代码块、
+  // 带行内代码的表格、长段落、工具调用、多轮；旧版宽内容改造把块推到正文列之外，
+  // 在消息列里看起来是空白块 / 表格缺列。
+  const richCode = (text) => `\`\`\`powershell\n${text}\n\`\`\``
+  const richMessages = [
+    message('r16u1', 'user', '帮我在我的windows上安装一下sdk环境'),
+    message('r16a1', 'assistant', '我首先检查手机端的构建脚本和 Android 配置，再看看本机已安装的 SDK、Java 等依赖，确认生成 APK 还缺哪些东西。', {
+      model: 'mock-1',
+      usage: { inputTokens: 16_100, outputTokens: 69, costUsd: 0.01 },
+      createdAt: createdAt + 600_000,
+      durationMs: 15_300,
+      content: [
+        { type: 'text', text: '我首先检查手机端的构建脚本和 Android 配置，再看看本机已安装的 SDK、Java 等依赖，确认生成 APK 还缺哪些东西。' },
+        { type: 'tool_use', id: 'tu-r16-1', name: 'Bash', input: { command: 'cd', description: '运行 cd' } },
+      ],
+    }),
+    {
+      id: 'r16r1',
+      role: 'user',
+      createdAt: createdAt + 601_000,
+      content: [{ type: 'tool_result', toolUseId: 'tu-r16-1', content: '/home/user/project' }],
+    },
+    message(
+      'r16a2',
+      'assistant',
+      [
+        '检查过了，目前打包脚本找不到 JDK 21 和 Android SDK。我实际运行了该命令调用的脚本，环境检查报错：',
+        '',
+        '```text',
+        '缺少打包环境：',
+        '- JDK 21（设置 JAVA_HOME，或安装 Temurin 21 / Android Studio 自带 JBR）',
+        '- Android SDK（设置 ANDROID_HOME 或 sdk.dir）',
+        '```',
+        '',
+        '你的 `Node.js` 是 24.0.2，满足项目要求。Java、SDK 的环境变量都没有设置，默认安装目录中也未找到它们；如果装在自定义目录，需要配置路径。',
+        '',
+        '需要准备这些：',
+        '',
+        '| 本项目的版本 / 用途 |',
+        '| --- |',
+        '| 21，编译 Android 代码 |',
+        '| Android 16 / API 36，项目明确制定 compileSdkVersion = 36 |',
+        '| 建议安装 35.0.0，供项目使用的 Android Gradle Plugin 8.13 使用 |',
+        '| 包含 adb，方便连接手机安装、调试 |',
+        '| 建议安装最新版，方便管理 SDK 和接受许可 |',
+        '',
+        'Windows 上最简单的方式是安装 Android Studio，再通过它的 SDK Manager 安装组件：',
+        '',
+        '1. 安装并启动 Android Studio，完成首次 SDK 安装向导。',
+        '2. 打开 More Actions → SDK Manager。',
+        '3. 在 SDK Platforms 勾选 Android 16 / API 36。',
+        '',
+        'Android Studio 自带 Java 运行环境，脚本会搜索默认路径 C:\\Program Files\\Android\\Android Studio\\jbr；确认其版本为 21，或者单独安装 Temurin JDK 21，SDK 默认路径是：',
+        '',
+        '```text',
+        'C:\\Users\\<用户名>\\AppData\\Local\\Android\\Sdk',
+        '```',
+        '',
+        '安装好后，在 PowerShell 中进入实际项目根目录运行：',
+        '',
+        richCode('npm ci --include=dev\nnpm run build\nnpx cap sync android\ncd packages/mobile/android\n.\\gradlew.bat assembleDebug'),
+        '',
+        '构建成功后会自动生成 `dist-apk\\tandem-debug.apk`，并自动复制到你的下载文件夹。',
+      ].join('\n'),
+      { model: 'mock-1', usage: { inputTokens: 15_100, outputTokens: 312, costUsd: 0.02 }, createdAt: createdAt + 602_000, durationMs: 41_100 },
+    ),
+    message('r16u2', 'user', 'android studio是否太大一个了，有没有更干净，更新的方式', {
+      createdAt: createdAt + 700_000,
+    }),
+    message(
+      'r16a3',
+      'assistant',
+      [
+        '是的，只为了生成 APK，没必要装整个 Android Studio，更精简的方案是：JDK 21 + Google 官方 Android SDK 命令行工具，直接用项目自带的 Gradle 构建。',
+        '',
+        '推荐这样配置：',
+        '',
+        '| 组件 | 安装方式 |',
+        '| --- | --- |',
+        '| JDK 21 | 通过 Windows 的 `winget` 安装 |',
+        '| Platform-Tools（adb） | 从 Google 官网下载独立压缩包 |',
+        '| Command-line Tools | 用 `sdkmanager` 安装 |',
+        '',
+        '安装 JDK 后重新打开 PowerShell，确认 `JAVA_HOME` 指向 JDK 安装目录，再执行：',
+        '',
+        richCode(`$env:JAVA_HOME = "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.8.9-hotspot"\n$env:ANDROID_HOME = "C:\\Android\\Sdk"\n& "$env:ANDROID_HOME\\${'cmdline-tools\\latest\\bin\\sdkmanager.bat'}" --licenses\n& "$env:ANDROID_HOME\\${'cmdline-tools\\latest\\bin\\sdkmanager.bat'}" "platform-tools" "platforms;android-36" "build-tools;35.0.0"`),
+        '',
+        '最后回到项目运行：',
+        '',
+        '```bash\nnpm ci --include=dev\nnpm run build\nnpm run apk -w @tandem/mobile\n```',
+      ].join('\n'),
+      { model: 'mock-1', usage: { inputTokens: 19_400, outputTokens: 1_040, costUsd: 0.03 }, createdAt: createdAt + 800_000, durationMs: 43_500 },
+    ),
+    // 时间格式：两天前的一条（`MM-DD HH:mm`）与一条十年前的（带年份）。
+    message('r16a4', 'assistant', '两天前的回复：分页正常。', {
+      model: 'mock-1',
+      createdAt: createdAt - 2 * 86_400_000,
+      content: [{ type: 'text', text: '两天前的回复：分页正常。' }, { type: 'tool_use', id: 'tu-r16-old', name: 'Read', input: { file_path: 'README.md' } }],
+    }),
+    {
+      id: 'r16rold',
+      role: 'user',
+      createdAt: createdAt - 2 * 86_400_000 + 1000,
+      content: [{ type: 'tool_result', toolUseId: 'tu-r16-old', content: '# demo' }],
+    },
+    message('r16a5', 'assistant', '去年的回复：归档。', { model: 'mock-1', createdAt: createdAt - 400 * 86_400_000 }),
+  ]
+
   const mk = (id, title, messages, extra = {}) => ({
     ...common,
     id,
@@ -1537,6 +1699,15 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
     mk('huge', '超大会话 · 320 轮', hugeMessages, { updatedAt: Date.now() - 900 }),
     mk('links', '文件链接会话', linksMessages, { updatedAt: Date.now() - 1500 }),
     mk('wide', '宽内容会话', wideMessages, { updatedAt: Date.now() - 1520 }),
+    mk('codeblock', '代码块与表格会话', richMessages, { updatedAt: Date.now() - 1530 }),
+    mk('slow2', '排队消息会话', [
+      message('sq1', 'user', '先看看项目'),
+      message('sq2', 'assistant', '项目看起来正常。', { model: 'mock-1' }),
+    ], { permissionMode: 'bypassPermissions', updatedAt: Date.now() - 1536 }),
+    mk('slow', '慢速运行会话', [
+      message('slow1', 'user', '先看看项目'),
+      message('slow2', 'assistant', '项目看起来正常。', { model: 'mock-1' }),
+    ], { permissionMode: 'bypassPermissions', updatedAt: Date.now() - 1535 }),
     // 配额交接：主分组第一次请求成功后下一次 429，备用分组接住。
     mk('quota', '配额交接会话', [
       message('q1', 'user', '第一轮：介绍一下项目'),
@@ -4611,26 +4782,36 @@ async function main() {
       await page.keyboard.press('Escape')
     })
 
-    desktop('宽表格与长代码行铺满对话列，表格可横向滚动（#7-02）', async (page) => {
+    desktop('反馈16#02：宽表格与长代码行限制在正文宽度内、块内部横向滚动', async (page) => {
       await openSession(page, 'wide')
+      const paraWidth = await page.evaluate(
+        () => document.querySelector('[data-message-id="w2"] .chat-md p')?.getBoundingClientRect().width ?? 0,
+      )
+      assert.ok(paraWidth > 200, `找不到正文段落宽度：${paraWidth}`)
       const table = page.locator('[data-message-id="w2"] .md-table-wrap').first()
       await table.waitFor({ timeout: 10_000 })
       const tableBox = await table.boundingBox()
       assert.ok(tableBox, '找不到宽表格')
-      assert.ok(tableBox.width > 1400, `表格没有铺满对话列：${Math.round(tableBox.width)}px`)
+      assert.ok(
+        tableBox.width <= paraWidth + 2,
+        `表格超出正文阅读宽度：${Math.round(tableBox.width)}px > ${Math.round(paraWidth)}px`,
+      )
       const scroll = table.locator('.md-table-scroll')
       const metrics = await scroll.evaluate((el) => ({
         scrollWidth: el.scrollWidth,
         clientWidth: el.clientWidth,
       }))
-      assert.ok(metrics.scrollWidth > metrics.clientWidth, '宽表格没有横向滚动')
+      assert.ok(metrics.scrollWidth > metrics.clientWidth, '宽表格没有在块内部横向滚动')
       await table.locator('.x-scroll-more[data-visible="true"]').waitFor({ timeout: 5_000 })
 
       const code = page.locator('[data-message-id="w2"] .chat-code').first()
       await code.waitFor({ timeout: 10_000 })
       const codeBox = await code.boundingBox()
       assert.ok(codeBox, '找不到代码块')
-      assert.ok(codeBox.width > 1400, `代码块没有铺满对话列：${Math.round(codeBox.width)}px`)
+      assert.ok(
+        codeBox.width <= paraWidth + 2,
+        `代码块超出正文阅读宽度：${Math.round(codeBox.width)}px > ${Math.round(paraWidth)}px`,
+      )
       const pre = code.locator('pre')
       const before = await pre.evaluate((el) => ({
         scrollWidth: el.scrollWidth,
@@ -4638,7 +4819,7 @@ async function main() {
         whiteSpace: getComputedStyle(el).whiteSpace,
       }))
       assert.notEqual(before.whiteSpace, 'pre-wrap', '代码块默认不应自动换行')
-      assert.ok(before.scrollWidth > before.clientWidth, '长代码行没有横向滚动')
+      assert.ok(before.scrollWidth > before.clientWidth, '长代码行没有在块内部横向滚动')
 
       await code.hover()
       await code.getByTestId('code-wrap-toggle').click()
@@ -4649,6 +4830,224 @@ async function main() {
       }))
       assert.equal(after.whiteSpace, 'pre-wrap', '打开自动换行后仍不换行')
       assert.ok(after.scrollWidth <= after.clientWidth + 1, '自动换行后仍横向溢出')
+      // 还原全局换行偏好，避免影响后续用例（代码块换行是跨会话记忆的）。
+      await code.getByTestId('code-wrap-toggle').click()
+    })
+
+    desktop('反馈16#02：代码块有文字且落在可见区域、表格不缺列（真实会话夹具）', async (page) => {
+      await page.evaluate(() => localStorage.setItem('tandem.codeWrap.v1', '0'))
+      await openSession(page, 'codeblock')
+      const row = page.locator('[data-message-id="r16a2"]')
+      await row.waitFor({ timeout: 15_000 })
+      const paraWidth = await row
+        .locator('.chat-md p')
+        .first()
+        .evaluate((el) => el.getBoundingClientRect().width)
+      assert.ok(paraWidth > 300, `正文段落宽度异常：${paraWidth}`)
+
+      const codes = row.locator('.chat-code')
+      const codeCount = await codes.count()
+      assert.ok(codeCount >= 3, `真实会话夹具里的代码块太少：${codeCount}`)
+      for (let i = 0; i < codeCount; i += 1) {
+        const info = await codes.nth(i).evaluate((el) => {
+          const box = el.getBoundingClientRect()
+          const pre = el.querySelector('pre')
+          const preBox = pre.getBoundingClientRect()
+          const range = document.createRange()
+          range.selectNodeContents(pre)
+          const rects = [...range.getClientRects()].filter((r) => r.width > 0)
+          return {
+            width: box.width,
+            left: box.left,
+            textLength: (pre.textContent ?? '').trim().length,
+            scrollHeight: pre.scrollHeight,
+            color: getComputedStyle(pre).color,
+            bg: getComputedStyle(el).backgroundColor,
+            firstTextLeft: rects.length ? Math.min(...rects.map((r) => r.left)) : null,
+            hasRectInBox: rects.some(
+              (r) => r.right > preBox.left + 2 && r.left < preBox.right - 2 && r.height > 0,
+            ),
+          }
+        })
+        assert.ok(info.textLength > 0, `代码块 ${i} 没有任何文字（空白块）`)
+        assert.ok(info.scrollHeight > 0, `代码块 ${i} 高度为 0`)
+        assert.ok(info.hasRectInBox, `代码块 ${i} 的文字不在可见区域里`)
+        assert.ok(
+          info.firstTextLeft !== null && info.firstTextLeft >= info.left + 4,
+          `代码块 ${i} 的文字从块外开始：${info.firstTextLeft} < ${info.left}`,
+        )
+        assert.ok(
+          info.width <= paraWidth + 2,
+          `代码块 ${i} 超出正文宽度：${Math.round(info.width)} > ${Math.round(paraWidth)}`,
+        )
+        assert.notEqual(info.color, info.bg, `代码块 ${i} 文字颜色与背景相同`)
+      }
+      // 长 PowerShell 行（真实会话里被裁成半截的那种）：在块内部横向滚动。
+      const longCode = page.locator('.chat-code').filter({ hasText: 'sdkmanager.bat' }).first()
+      const longMetrics = await longCode.locator('pre').evaluate((el) => ({
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+      }))
+      assert.ok(longMetrics.scrollWidth > longMetrics.clientWidth, '长 PowerShell 行没有块内横向滚动')
+
+      const tables = row.locator('.md-table-wrap')
+      const tableCount = await tables.count()
+      assert.ok(tableCount >= 1, '真实会话夹具缺少表格')
+      for (let i = 0; i < tableCount; i += 1) {
+        const info = await tables.nth(i).evaluate((el) => {
+          const box = el.getBoundingClientRect()
+          const cells = [...el.querySelectorAll('th,td')].map((cell) => {
+            const rect = cell.getBoundingClientRect()
+            return {
+              text: (cell.textContent ?? '').trim(),
+              left: rect.left,
+              width: rect.width,
+            }
+          })
+          return { width: box.width, left: box.left, cells }
+        })
+        assert.ok(info.width <= paraWidth + 2, `表格 ${i} 超出正文宽度：${Math.round(info.width)}`)
+        assert.ok(info.cells.length > 0, `表格 ${i} 没有单元格`)
+        for (const cell of info.cells) {
+          assert.ok(cell.text.length > 0, `表格 ${i} 有空单元格（缺列）`)
+          assert.ok(cell.width > 0, `表格 ${i} 有宽度为 0 的单元格`)
+          assert.ok(
+            cell.left >= Math.max(info.left, 0) - 1,
+            `表格 ${i} 的单元格被推到表格左侧之外：${cell.left} < ${info.left}`,
+          )
+        }
+      }
+
+      // 存档整页与消息列截图，便于对照反馈里的元素截图。
+      mkdirSync('/tmp/fb16-after', { recursive: true })
+      await page.screenshot({ path: '/tmp/fb16-after/regression-codeblock.png' })
+      await row.screenshot({ path: '/tmp/fb16-after/regression-codeblock-row.png' })
+    })
+
+    desktop('反馈16#10：等首个 token / 工具运行时显示 spinner 与已运行时长', async (page) => {
+      await openSession(page, 'slow')
+      const input = page.locator('textarea[aria-label="消息输入框"]')
+      await input.fill('SLOW_E2E 跑一个慢步骤')
+      await input.press('Enter')
+      // 首个 token 前：消息流末尾有「正在思考…」+ spinner。
+      const activity = page.locator('[data-turn-activity]')
+      await activity.waitFor({ state: 'visible', timeout: 5_000 })
+      const firstActivity = (await activity.innerText()).replace(/\s+/g, ' ')
+      assert.match(firstActivity, /正在思考…/, `等待首个 token 时没有「正在思考…」提示：${firstActivity}`)
+      // 首个 token 到达后：正文出现流式光标，活动行让位给流式输出。
+      await page.locator('.md.chat-md.is-streaming').first().waitFor({ timeout: 8_000 })
+      await activity.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
+      // 工具执行中：工具行转圈 + 已运行时长，消息流末尾显示「正在运行 Bash…」。
+      const elapsed = page.locator('[data-tool-elapsed]').first()
+      await elapsed.waitFor({ state: 'visible', timeout: 15_000 })
+      assert.match(await elapsed.innerText(), /已运行 \d+s/, '工具运行中没有显示已运行时长')
+      const toolRow = page.locator('.tool-row').filter({ hasText: '运行' }).first()
+      assert.ok(
+        await toolRow.locator('svg.lucide-loader-circle, svg.lucide-loader-2').count(),
+        '工具运行中没有转圈动画',
+      )
+      await activity.waitFor({ state: 'visible', timeout: 5_000 })
+      assert.match(await activity.innerText(), /正在运行 Bash…/, '工具运行时没有「正在运行 Bash…」提示')
+      // 回合结束后：活动行消失，工具行变成完成态（没有已运行时长）。
+      await activity.waitFor({ state: 'detached', timeout: 20_000 })
+      await page.locator('[data-tool-elapsed]').first().waitFor({ state: 'detached', timeout: 10_000 })
+      assert.equal(await page.locator('[data-turn-activity]').count(), 0, '回合结束后活动行仍在')
+      await page.screenshot({ path: '/tmp/fb16-after/regression-activity.png' }).catch(() => {})
+    })
+
+    desktop('反馈16#11：排队消息被读取后按原位置出现在对话流里', async (page) => {
+      await openSession(page, 'slow2')
+      const input = page.locator('textarea[aria-label="消息输入框"]')
+      await input.fill('SLOW_E2E 先跑一轮')
+      await input.press('Enter')
+      // 等工具开始运行（这时再排队，旧实现会被随后的 tool_result 消息误删）。
+      await page.locator('[data-tool-elapsed]').first().waitFor({ state: 'visible', timeout: 20_000 })
+      await input.fill('排队中的第二条')
+      await input.press('Enter')
+      const queued = page.locator('.msg-row').filter({ hasText: '排队中的第二条' })
+      await queued.first().waitFor({ state: 'visible', timeout: 5_000 })
+      assert.match(await queued.first().innerText(), /已排队/, '排队消息没有排队提示')
+      // 工具返回（user 角色的 tool_result 消息）后，排队气泡不能被删掉。
+      await page.waitForTimeout(1200)
+      assert.equal(await queued.count(), 1, '工具返回后排队消息从对话流里消失了')
+      // 队列被 agent 读取后：作为普通用户消息留在流里，位置在下一条 assistant 回复之前。
+      await page.waitForFunction(
+        () =>
+          [...document.querySelectorAll('.msg-row')].filter((row) =>
+            row.textContent?.includes('排队中的第二条'),
+          ).length === 1 &&
+          ![...document.querySelectorAll('.msg-row')].some((row) =>
+            row.textContent?.includes('已排队，当前回合结束后发送'),
+          ),
+        null,
+        { timeout: 40_000 },
+      )
+      // 等这一轮（被读取的排队消息）也拿到回复，再检查位置。
+      await page.waitForFunction(
+        () =>
+          [...document.querySelectorAll('.msg-row')].filter((row) =>
+            row.textContent?.includes('慢速回复开始'),
+          ).length >= 2,
+        null,
+        { timeout: 40_000 },
+      )
+      const rows = await page.locator('.msg-row').evaluateAll((els) =>
+        els.map((el) => (el.textContent ?? '').replace(/\s+/g, ' ').trim()),
+      )
+      const queuedIndex = rows.findIndex((text) => text.includes('排队中的第二条'))
+      assert.ok(queuedIndex >= 0, '排队消息被读取后没有出现在对话流里')
+      assert.equal(
+        rows.filter((text) => text.includes('排队中的第二条')).length,
+        1,
+        '排队消息被读取后出现了重复',
+      )
+      assert.ok(
+        rows.slice(queuedIndex + 1).some((text) => text.includes('慢速回复开始')),
+        '排队消息没有被放到本轮用户消息的正确位置',
+      )
+      const saved = await api(base, token, '/api/sessions/slow2')
+      assert.ok(
+        saved.messages.some((m) =>
+          m.content?.some((block) => block.type === 'text' && block.text.includes('排队中的第二条')),
+        ),
+        '排队消息没有被持久化到会话里',
+      )
+    })
+
+    desktop('反馈16#01：用量行默认隐藏、悬停显示、左缘一致、时间用相对格式', async (page) => {
+      await openSession(page, 'codeblock')
+      await page.locator('[data-message-id="r16a3"]').waitFor({ timeout: 15_000 })
+      const metas = await page.evaluate(() =>
+        [...document.querySelectorAll('.msg-row [data-usage-summary]')].map((el) => ({
+          left: Math.round(el.getBoundingClientRect().left),
+          opacity: getComputedStyle(el).opacity,
+          text: (el.textContent ?? '').trim(),
+        })),
+      )
+      assert.ok(metas.length >= 3, `assistant 用量行太少：${metas.length}`)
+      const lefts = [...new Set(metas.map((m) => m.left))]
+      assert.equal(lefts.length, 1, `用量行左缘不一致：${lefts.join(', ')}`)
+      assert.ok(metas.every((m) => m.opacity === '0'), '用量行默认应隐藏（悬停才显示）')
+
+      const target = page.locator('[data-message-id="r16a3"] .msg-group')
+      await target.hover()
+      await page.waitForTimeout(300)
+      const shown = await page
+        .locator('[data-message-id="r16a3"] [data-usage-summary]')
+        .evaluate((el) => getComputedStyle(el).opacity)
+      assert.equal(shown, '1', '悬停消息后用量行没有显示')
+
+      const texts = metas.map((m) => m.text).join(' | ')
+      assert.match(texts, /分钟前|小时前|刚刚/, `近期消息没有用相对时间：${texts}`)
+      assert.match(texts, /\d{2}-\d{2} \d{2}:\d{2}/, `两天前的消息应显示 MM-DD HH:mm：${texts}`)
+      assert.match(texts, /\d{4}-\d{2}-\d{2} \d{2}:\d{2}/, `去年的消息应带年份：${texts}`)
+
+      await page.locator('[data-message-id="r16a3"] [data-msg-time]').first().hover()
+      await page.waitForTimeout(900)
+      const tip = await page.locator('[role="tooltip"]').last().innerText().catch(() => '')
+      assert.match(tip, /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/, `时间 tooltip 没有完整日期时间：${tip}`)
+      mkdirSync('/tmp/fb16-after', { recursive: true })
+      await page.locator('[data-message-id="r16a3"]').screenshot({ path: '/tmp/fb16-after/regression-usage-hover.png' })
     })
 
     desktop('反馈12#02：自动换行时行号与代码逐行对齐、工具条不压内容', async (page) => {
@@ -4740,7 +5139,7 @@ async function main() {
       const usageText = await summary.innerText()
       assert.match(
         usageText,
-        /^(\d{2}-\d{2} )?\d{2}:\d{2} · 输入 .+ · 输出 .+ · 缓存命中 .+ · 花费 .+ · 12\.3s$/,
+        /^(刚刚|\d+ 分钟前|\d+ 小时前|(\d{4}-)?\d{2}-\d{2} \d{2}:\d{2}|\d{2}:\d{2}) · 输入 .+ · 输出 .+ · 缓存命中 .+ · 花费 .+ · 12\.3s$/,
         `消息用量行没有时间在最前或缺少耗时：${usageText}`,
       )
 
@@ -4809,7 +5208,7 @@ async function main() {
       assert.match(await usage.innerText(), /· \d+(\.\d+)?s$/, '消息下方没有显示本次耗时')
     })
 
-    desktop('用户消息：气泡紧贴内容、时间与输入估算常显（反馈14#05/#06）', async (page) => {
+    desktop('用户消息：气泡紧贴内容、时间与输入估算（反馈14#05/#06 · 反馈16#01 悬停显示）', async (page) => {
       await openSession(page, 'long')
       const row = page.locator('[data-turn-id="u40"]')
       const bubble = row.locator('[data-msg-bubble]').first()
@@ -4838,13 +5237,26 @@ async function main() {
       await userMeta.waitFor({ timeout: 5_000 })
       assert.match(
         await userMeta.innerText(),
-        /^(\d{2}-\d{2} )?\d{2}:\d{2} · ~\d+ tok$/,
+        /^(刚刚|\d+ 分钟前|\d+ 小时前|(\d{4}-)?\d{2}-\d{2} \d{2}:\d{2}|\d{2}:\d{2}) · ~\d+ tok$/,
         '用户消息下方没有「时间 · 输入估算」',
+      )
+      // 反馈16#01：用量行默认隐藏，悬停消息才显示。
+      assert.equal(
+        await userMeta.evaluate((el) => getComputedStyle(el).opacity),
+        '0',
+        '用户消息用量行默认应隐藏',
+      )
+      await row.locator('.msg-group').hover()
+      await page.waitForTimeout(250)
+      assert.equal(
+        await userMeta.evaluate((el) => getComputedStyle(el).opacity),
+        '1',
+        '悬停用户消息后用量行没有显示',
       )
       const assistantMeta = page.locator('[data-message-id="a40"] [data-usage-summary]').first()
       assert.match(
         await assistantMeta.innerText(),
-        /^(\d{2}-\d{2} )?\d{2}:\d{2} · 输入 /,
+        /^(刚刚|\d+ 分钟前|\d+ 小时前|(\d{4}-)?\d{2}-\d{2} \d{2}:\d{2}|\d{2}:\d{2}) · 输入 /,
         'assistant 用量行没有把时间放在最前',
       )
 
@@ -4872,7 +5284,7 @@ async function main() {
       await liveMeta.waitFor({ timeout: 10_000 })
       assert.match(
         await liveMeta.innerText(),
-        /^\d{2}:\d{2} · ~\d+ tok · \$\d/,
+        /^(刚刚|\d+ 分钟前|\d+ 小时前|\d{2}:\d{2}) · ~\d+ tok · \$\d/,
         '用户消息下方缺少 token 或金额',
       )
     })
