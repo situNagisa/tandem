@@ -4150,7 +4150,8 @@ async function main() {
       const chip = page.locator('button[aria-label^="选择模型"]').first()
       const chipText = await chip.innerText()
       assert.ok(!/(极低|最高|关闭)/.test(chipText) && !/\s(低|中|高)$/.test(chipText), `模型芯片仍显示思考强度：${chipText}`)
-      assert.equal(await chip.locator('[data-effort-dot]').count(), 1, '非默认思考强度没有小点提示')
+      // 反馈14#03：芯片后面不再挂思考强度小点，只在菜单/tooltip/aria-label 里体现。
+      assert.equal(await chip.locator('[data-effort-dot]').count(), 0, '模型芯片仍有思考强度小点')
       assert.match((await chip.getAttribute('aria-label')) ?? '', /思考强度：低/, '模型芯片 aria-label 缺少思考强度')
       await chip.hover()
       const tip = page.locator('#tandem-tooltip[data-open]')
@@ -4326,7 +4327,7 @@ async function main() {
       await openSession(page, 'long')
       const trigger = page.locator(`button[data-tip="${repo}"]`).first()
       await trigger.click()
-      const panel = page.locator('[role="menu"].popover-panel').first()
+      const panel = page.locator('[role="menu"]:has(> .popover-panel)').first()
       await panel.waitFor()
       assert.equal(await panel.getAttribute('data-side'), 'top', '文件夹弹层没有向上弹出')
       withinViewport(await panel.boundingBox(), DESKTOP, '文件夹弹层')
@@ -4727,7 +4728,7 @@ async function main() {
         })
         const trigger = page.locator(`button[data-tip="${repo}"]`).first()
         await trigger.click()
-        const panel = page.locator('[role="menu"].popover-panel').first()
+        const panel = page.locator('[role="menu"]:has(> .popover-panel)').first()
         await panel.waitFor()
         assert.equal(
           await panel.getByText('tandem-recent-marker', { exact: false }).count(),
@@ -4822,7 +4823,7 @@ async function main() {
       withinViewport(await menu.boundingBox(), DESKTOP, '多模型菜单')
       const model = await menu.evaluate((el) => {
         const footer = el.querySelector('[data-menu-footer]')
-        const body = el.querySelector(':scope > div')
+        const body = el.querySelector('[data-menu-body]')
         const rows = [...el.querySelectorAll('[role="menuitem"]')]
         const stacked = rows.some((row) =>
           [...row.querySelectorAll('span')].some((span) => {
@@ -5228,7 +5229,7 @@ async function main() {
       await openSession(page, 'long')
       const trigger = page.locator(`button[data-tip="${repo}"]`).first()
       await trigger.click()
-      const panel = page.locator('[role="menu"].popover-panel').first()
+      const panel = page.locator('[role="menu"]:has(> .popover-panel)').first()
       await panel.waitFor()
       const input = panel.locator('input[aria-label="筛选文件夹或输入路径"]')
       await input.waitFor()
@@ -5373,7 +5374,7 @@ async function main() {
       // 3) 环境条下拉（Popover Portal）
       const folderTrigger = page.locator(`button[data-tip="${repo}"]`).first()
       await folderTrigger.click()
-      const popover = page.locator('[role="menu"].popover-panel').first()
+      const popover = page.locator('[role="menu"]:has(> .popover-panel)').first()
       await popover.waitFor()
       await enterFeedback()
       await expectEditorAt(popover.getByRole('menuitem').first(), '环境条下拉项')
@@ -6607,7 +6608,7 @@ async function main() {
       await page.keyboard.press('Escape')
       await page.waitForTimeout(200)
       await page.locator(`button[data-tip="${repo}"]`).first().click()
-      const popover = page.locator('[role="menu"].popover-panel').first()
+      const popover = page.locator('[role="menu"]:has(> .popover-panel)').first()
       await popover.waitFor()
       withinViewport(await popover.boundingBox(), MOBILE, '手机文件夹弹层')
       await page.keyboard.press('Escape')
@@ -6675,22 +6676,20 @@ async function main() {
       await page.keyboard.press('Escape')
     })
 
-    small('360 小屏：审批卡为编号询问列表且触控 44px', async (page) => {
+    small('360 小屏：内联审批卡的拒绝/允许按钮触控 44px（反馈14#07）', async (page) => {
       await openSession(page, 'approve')
       const card = page.locator('.permission-card').first()
       await card.waitFor()
-      const options = card.locator('[role="radiogroup"] [role="radio"]')
-      assert.equal(await options.count(), 3, '审批编号选项不是 3 个')
-      const boxes = []
-      for (let i = 0; i < 3; i++) {
-        const box = await options.nth(i).boundingBox()
-        assert.ok(box, `第 ${i + 1} 个审批选项不可见`)
-        assert.ok(box.height >= 43, `审批选项高度 ${Math.round(box.height)}px`)
-        boxes.push(box)
-      }
-      const cardBox = await card.boundingBox()
-      for (const box of boxes) {
-        assert.ok(box.x >= cardBox.x - 1 && box.x + box.width <= cardBox.x + cardBox.width + 1, '审批选项超出卡片')
+      for (const selector of ['[data-permission-deny]', '[data-permission-allow]']) {
+        const button = card.locator(selector).first()
+        const box = await button.boundingBox()
+        assert.ok(box, `${selector} 不可见`)
+        assert.ok(box.height >= 43, `${selector} 高度 ${Math.round(box.height)}px`)
+        const cardBox = await card.boundingBox()
+        assert.ok(
+          box.x >= cardBox.x - 1 && box.x + box.width <= cardBox.x + cardBox.width + 1,
+          `${selector} 超出卡片`,
+        )
       }
     })
 
@@ -6804,64 +6803,98 @@ async function main() {
       )
     })
 
-    desktop('反馈12#09：审批卡是会话内编号询问（↑↓ 选择）', async (page) => {
-      await openSession(page, 'approve')
-      const card = page.locator('.permission-card').first()
-      await card.waitFor({ timeout: 10_000 })
-      const text = await card.innerText()
-      assert.match(text, /需要你的许可/)
-      assert.match(text, /允许运行/)
-      assert.equal(await card.locator('.permission-actions').count(), 0, '仍有旧版按钮条')
-      const options = card.locator('[role="radiogroup"] [role="radio"]')
-      assert.equal(await options.count(), 3, '编号选项不是 3 个')
-      assert.equal(await options.nth(0).getAttribute('aria-checked'), 'true', '默认没有选中允许')
-      const before = await card.evaluate((el) => getComputedStyle(el, '::before').content)
-      assert.equal(before, 'none', '审批卡仍有左侧装饰条')
-      await page.keyboard.press('ArrowDown')
-      await page.waitForTimeout(120)
-      assert.equal(await options.nth(1).getAttribute('aria-checked'), 'true', '↓ 没有移动选择')
-      await page.keyboard.press('ArrowUp')
-      await page.waitForTimeout(120)
-      assert.equal(await options.nth(0).getAttribute('aria-checked'), 'true', '↑ 没有移回选择')
-      assert.ok(
-        (await card.getByRole('button', { name: '更多' }).count()) === 1,
-        '添加规则/转给没有收进更多菜单',
-      )
-    })
-
-    desktop('反馈12#10：下拉首次打开位置稳定（前 10 帧 ≤1px）', async (page) => {
-      await openSession(page, 'long')
-      const sample = async (selector) =>
-        page.evaluate(async (aria) => {
-          const trigger = document.querySelector(aria)
-          if (!trigger) return { error: `找不到触发器 ${aria}` }
-          trigger.dispatchEvent(
-            new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, pointerType: 'mouse' }),
-          )
-          const frames = []
-          for (let i = 0; i < 10; i += 1) {
+    desktop('反馈14#01/#02：所有菜单首次与再次打开，位置与尺寸稳定（15 帧 ≤1px）', async (page) => {
+      // 真实按下/松开鼠标：触发器按下缩放会带着 Radix 定位的面板一起动（R52 复发根因）。
+      const sampleOnce = async (trigger) => {
+        const box = await trigger.boundingBox()
+        assert.ok(box, '菜单触发器不可见')
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+        await page.waitForTimeout(120)
+        await page.mouse.down()
+        const frames = await page.evaluate(async () => {
+          const out = []
+          for (let i = 0; i < 15; i += 1) {
             await new Promise((resolve) => requestAnimationFrame(resolve))
-            const panel = document.querySelector('.popover-panel')
-            if (panel) {
-              const rect = panel.getBoundingClientRect()
-              frames.push({ x: rect.left, y: rect.top })
-            }
+            const panels = [...document.querySelectorAll('.popover-panel')].filter(
+              (el) => el.getClientRects().length > 0,
+            )
+            const panel = panels[panels.length - 1]
+            if (!panel) continue
+            const rect = panel.getBoundingClientRect()
+            out.push([rect.x, rect.y, rect.width, rect.height])
           }
-          document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-          const dx = Math.max(...frames.map((f) => f.x)) - Math.min(...frames.map((f) => f.x))
-          const dy = Math.max(...frames.map((f) => f.y)) - Math.min(...frames.map((f) => f.y))
-          return { count: frames.length, dx, dy }
-        }, selector)
-      for (const aria of ['[aria-label="更多"]', '[aria-label^="选择模型"]']) {
-        const first = await sample(aria)
-        assert.equal(first.error, undefined, first.error)
-        assert.ok(first.count >= 5, `${aria} 打开后采样帧数不足：${first.count}`)
-        assert.ok(first.dx <= 1 && first.dy <= 1, `${aria} 首次打开位置抖动 ${first.dx}×${first.dy}px`)
-        await page.waitForTimeout(250)
-        const second = await sample(aria)
-        assert.ok(second.dx <= 1 && second.dy <= 1, `${aria} 再次打开位置抖动 ${second.dx}×${second.dy}px`)
-        await page.waitForTimeout(250)
+          return out
+        })
+        await page.mouse.up()
+        const after = await page.evaluate(async () => {
+          const out = []
+          for (let i = 0; i < 20; i += 1) {
+            await new Promise((resolve) => requestAnimationFrame(resolve))
+            const panels = [...document.querySelectorAll('.popover-panel')].filter(
+              (el) => el.getClientRects().length > 0,
+            )
+            const panel = panels[panels.length - 1]
+            if (!panel) continue
+            const rect = panel.getBoundingClientRect()
+            out.push([rect.x, rect.y, rect.width, rect.height])
+          }
+          return out
+        })
+        return [...frames, ...after]
       }
+      const assertStable = (frames, label) => {
+        assert.ok(frames.length >= 8, `${label} 打开后采样帧数不足：${frames.length}`)
+        const spread = (index) =>
+          Math.max(...frames.map((frame) => frame[index])) -
+          Math.min(...frames.map((frame) => frame[index]))
+        const [dx, dy, dw, dh] = [spread(0), spread(1), spread(2), spread(3)]
+        assert.ok(
+          dx <= 1 && dy <= 1 && dw <= 1 && dh <= 1,
+          `${label} 打开时抖动：位置 ${dx.toFixed(1)}×${dy.toFixed(1)}px，尺寸 ${dw.toFixed(1)}×${dh.toFixed(1)}px`,
+        )
+      }
+      const checkMenu = async (trigger, label) => {
+        assertStable(await sampleOnce(trigger), `${label}（首次）`)
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(280)
+        assertStable(await sampleOnce(trigger), `${label}（再次）`)
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(200)
+      }
+
+      // 新会话页输入框底栏。
+      await page.evaluate(() => (window.location.hash = '#/'))
+      await page.waitForTimeout(600)
+      const newComposer = page.locator('textarea[aria-label="消息输入框"]').first()
+      await newComposer.waitFor({ timeout: 10_000 })
+      await checkMenu(page.locator('button[aria-label^="执行方式"]').first(), '执行方式（新会话页）')
+      await checkMenu(page.locator('button[aria-label^="选择模型"]').first(), '模型芯片（新会话页）')
+
+      // 会话页：输入框菜单、环境条三个胶囊、窗口 ⋯ 菜单、权限模式。
+      await openSession(page, 'long')
+      await checkMenu(page.locator('button[aria-label^="执行方式"]').first(), '执行方式')
+      await checkMenu(page.locator('button[aria-label^="选择模型"]').first(), '模型芯片')
+      await checkMenu(page.locator('button[aria-label^="权限模式"]').first(), '权限模式')
+      const envTriggers = page.locator('[data-env-bar] button[aria-haspopup]')
+      const envCount = await envTriggers.count()
+      assert.ok(envCount >= 3, `环境条弹层触发器只有 ${envCount} 个`)
+      await checkMenu(envTriggers.nth(0), '主机胶囊')
+      await checkMenu(envTriggers.nth(1), '文件夹胶囊')
+      await checkMenu(envTriggers.nth(2), '分支胶囊')
+      await checkMenu(page.locator('button[aria-label="更多"]').first(), '窗口 ⋯ 菜单')
+
+      // 设置里的下拉（共享 MenuSelect）。
+      await page.getByRole('button', { name: '设置', exact: true }).last().click()
+      const settings = page.getByRole('dialog', { name: '设置' })
+      await settings.waitFor({ state: 'visible', timeout: 10_000 })
+      await settings.locator('[data-settings-page="permissions"]').click()
+      await page.waitForTimeout(300)
+      let select = settings.locator('button[aria-label="工具"]').first()
+      if ((await select.count()) === 0) select = settings.locator('button[aria-haspopup="menu"]').first()
+      assert.ok((await select.count()) > 0, '设置页没有下拉菜单')
+      await checkMenu(select, '设置下拉')
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(200)
     })
 
     desktop('审批策略：同类请求多次批准后审批卡出现项目快捷规则', async (page) => {
@@ -6939,6 +6972,79 @@ async function main() {
       assert.equal(/自动允许/.test(dangerText), false, '危险命令被建议自动允许')
       await dialog.getByLabel('用一句话生成权限规则').waitFor()
       await closeSettings(page)
+    })
+
+    desktop('反馈14#07：审批是对话流里的一条消息，样式参考 Claude Code Desktop', async (page) => {
+      await openSession(page, 'approve')
+      const card = page.locator('.permission-card').first()
+      await card.waitFor({ timeout: 10_000 })
+      // 卡片在对话流里（随消息滚动），不在输入框上方停靠。
+      assert.ok(await card.evaluate((el) => !!el.closest('.chat-scroll')), '审批卡没有渲染在对话流里')
+      assert.equal(
+        await page.locator('[data-composer-anchor] .permission-card').count(),
+        0,
+        '审批卡仍停靠在输入框上方',
+      )
+      const row = page.locator('[data-message-id="ap2"]').first()
+      const rowBox = await row.boundingBox()
+      const cardBox = await card.boundingBox()
+      assert.ok(rowBox && cardBox && cardBox.y >= rowBox.y, '审批卡不在触发它的工具调用之后')
+      const text = await card.innerText()
+      assert.match(text, /允许运行/)
+      assert.match(text, /npm test/)
+      assert.match(text, /批准后本条命令会立即执行/)
+      // 不再有编号列表与大代码块，只有两个动作按钮 + 更多。
+      assert.equal(await card.locator('[role="radiogroup"], [role="radio"]').count(), 0, '审批卡仍是编号列表')
+      assert.equal(await card.locator('pre, .code-block').count(), 0, '审批卡里还有大代码块')
+      assert.equal(await card.locator('[data-permission-deny]').count(), 1, '缺少拒绝按钮')
+      assert.equal(await card.locator('[data-permission-allow]').count(), 1, '缺少允许一次按钮')
+      assert.match(await card.locator('[data-permission-allow]').innerText(), /Ctrl/)
+      // 输入框保持可用。
+      const composer = page.locator('textarea[aria-label="消息输入框"]').first()
+      assert.ok(await composer.isEnabled(), '有待审批时输入框被禁用')
+      // 更多菜单：本会话总是允许 / 添加为规则 / 转给。
+      await card.getByRole('button', { name: '更多' }).click()
+      const menu = page.locator('[role="menu"]').last()
+      await menu.waitFor({ timeout: 5_000 })
+      const menuText = await menu.innerText()
+      for (const item of ['本会话总是允许', '添加为规则', '转给']) {
+        assert.ok(menuText.includes(item), `更多菜单缺少「${item}」：${menuText}`)
+      }
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(150)
+      // Ctrl+Enter（焦点在空输入框）允许一次，卡片收成一行结果留在流里。
+      await composer.click()
+      await page.keyboard.press('Control+Enter')
+      const result = page.locator('[data-permission-result]').first()
+      await result.waitFor({ timeout: 10_000 })
+      const resultText = await result.innerText()
+      assert.match(resultText, /已允许/)
+      assert.match(resultText, /npm test/)
+      assert.equal(await page.locator('.permission-card').count(), 0, '允许后审批卡没有收起')
+      assert.ok(await result.evaluate((el) => !!el.closest('.chat-scroll')), '审批结果不在对话流里')
+    })
+
+    desktop('反馈14#07：Esc 拒绝、发送消息视为拒绝并说明', async (page) => {
+      await openSession(page, 'danger')
+      const card = page.locator('.permission-card').first()
+      await card.waitFor({ timeout: 10_000 })
+      const composer = page.locator('textarea[aria-label="消息输入框"]').first()
+      await composer.click()
+      await page.keyboard.press('Escape')
+      const result = page.locator('[data-permission-result]').first()
+      await result.waitFor({ timeout: 10_000 })
+      assert.match(await result.innerText(), /已拒绝/)
+      assert.equal(await page.locator('.permission-card').count(), 0, 'Esc 后审批卡没有收起')
+
+      await openSession(page, 'learn')
+      const learnCard = page.locator('.permission-card').first()
+      await learnCard.waitFor({ timeout: 10_000 })
+      await composer.fill('先别跑，改成 dry-run')
+      await composer.press('Enter')
+      const learnResult = page.locator('[data-permission-result]').first()
+      await learnResult.waitFor({ timeout: 10_000 })
+      assert.match(await learnResult.innerText(), /已拒绝/)
+      await page.getByText('先别跑，改成 dry-run').first().waitFor({ timeout: 10_000 })
     })
 
     small('手机长按用户消息打开操作菜单', async (page) => {

@@ -94,7 +94,7 @@
 | `src/components/ui/*` | Button/Menu/Modal/Tooltip/Controls 等唯一 UI 原语来源 |
 | `src/components/Composer.tsx` | 输入框、附件、模型/权限/思考菜单；**巨石** |
 | `src/components/MessageList.tsx` | 消息列表、轮次分组、流式块；**巨石** |
-| `src/components/PermissionCard.tsx` | 工具审批卡与“添加为规则” |
+| `src/components/PermissionCard.tsx` | 工具审批卡（对话流内联的一条消息，按 `toolUseId` 落在触发工具之后）与“添加为规则” |
 | `src/components/RightPanel.tsx` | 右栏：计划、待办、子代理、上下文、Wiki、PR；**巨石** |
 | `src/components/wiki/*` | 项目 Wiki 视图（页面树/全文搜索/手写段落）与生成确认（账号/模型/预算/预计花费）；右栏卡片见 `right-panel/WikiCard.tsx` |
 | `src/components/ChangeReviewPanel.tsx` | 改动审阅、行评论、提交/丢弃 |
