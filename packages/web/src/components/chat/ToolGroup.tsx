@@ -62,7 +62,7 @@ export const ToolGroup = memo(
 
 
     return (
-      <div className={cn('my-0.5', animate && 'chat-msg-enter')}>
+      <div className={cn('my-1', animate && 'chat-msg-enter')}>
         <button
           onClick={() => {
             setMounted(true)

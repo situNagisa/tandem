@@ -144,6 +144,52 @@
   content-visibility: auto;
   contain-intrinsic-size: auto 96px;
 }
+/* 只有工具调用的消息行上下收紧：工具行更紧凑，但不和正文贴在一起（反馈11#04）。 */
+.msg-row[data-tool-only="true"] {
+  margin-top: -10px;
+  margin-bottom: -10px;
+}
+
+/* 未加载 / 未挂载的连续轮次：固定高度占位条，替换时不改变滚动位置（反馈11#05）。 */
+.msg-gap-band {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  padding: 0 12px;
+  overflow: hidden;
+  border: 1px dashed var(--t-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--t-surface-2) 32%, transparent);
+  color: var(--t-text-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.msg-gap-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.msg-gap-btn {
+  height: 28px;
+  flex-shrink: 0;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--t-text-soft);
+  font-size: 12px;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.msg-gap-btn:hover:not(:disabled) {
+  background: var(--t-bg-hover);
+  color: var(--t-text);
+}
+.msg-gap-btn:disabled {
+  opacity: 0.6;
+}
 /* 表格 / 代码块会突破阅读宽度铺满对话列；content-visibility:auto 的 paint containment
    会把超出消息行宽的部分裁掉（连点击都命中不到），这类行必须正常绘制（#7-02）。 */
 .msg-row:has(.md-table-wrap),
@@ -605,9 +651,9 @@
   gap: 7px;
   width: auto;
   max-width: 100%;
-  min-height: 27px;
-  padding: 1px 6px;
-  border-radius: 6px;
+  min-height: 32px;
+  padding: 3px 8px;
+  border-radius: 8px;
   color: var(--t-muted);
   font-size: 13px;
   line-height: 1.5;
@@ -620,8 +666,8 @@
 .tool-group-head {
   width: auto;
   max-width: 100%;
-  min-height: 26px;
-  padding: 0 6px 0 4px;
+  min-height: 30px;
+  padding: 0 8px 0 6px;
   border-radius: 6px;
   font-size: 11px;
   letter-spacing: 0.03em;
@@ -1377,6 +1423,30 @@ mark.chat-match {
   line-height: 28px;
   white-space: nowrap;
   opacity: 0;
+}
+/* 长会话里尚未加载的轮：刻度改成浅色虚线，行尾标「未加载」（反馈11#05）。 */
+.turn-item[data-unloaded="true"] .turn-item-k {
+  background: repeating-linear-gradient(90deg, var(--t-text) 0 4px, transparent 4px 8px);
+  opacity: 0.3;
+}
+.turn-item[data-unloaded="true"] .turn-item-t {
+  right: 100px;
+  color: var(--t-text-tertiary);
+}
+.turn-item[data-unloaded="true"] .turn-item-n {
+  color: var(--t-text-tertiary);
+}
+.turn-item[data-loading="true"] .turn-item-c {
+  color: var(--t-text-soft);
+  animation: turn-loading-pulse 900ms ease-in-out infinite alternate;
+}
+@keyframes turn-loading-pulse {
+  from {
+    opacity: 0.45;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* 大纲下方的小字提示：按住 Alt / Option 或点它，同一个大纲切到「只看已固定」。

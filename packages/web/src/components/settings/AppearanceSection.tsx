@@ -24,7 +24,7 @@ const PREVIEW = {
 function ThemePreview({ mode }: { mode: Theme }) {
   const modes = mode === 'system' ? (['light', 'dark'] as const) : ([mode] as const)
   return (
-    <div className="flex h-[62px] overflow-hidden rounded-lg border border-border">
+    <div className="flex h-[96px] overflow-hidden rounded-lg border border-border">
       {modes.map((m) => {
         const p = PREVIEW[m]
         return (

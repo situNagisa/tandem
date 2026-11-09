@@ -23,6 +23,7 @@ export const UserMessage = memo(function UserMessage({
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
+  const [editWidth, setEditWidth] = useState<number | null>(null)
   const [rewindOpen, setRewindOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const pressTimer = useRef<number | null>(null)
@@ -34,6 +35,7 @@ export const UserMessage = memo(function UserMessage({
   const pinned = !!pinnedTurns?.includes(message.id)
   const timer = useRef<number | null>(null)
   const editRef = useRef<HTMLTextAreaElement>(null)
+  const bubbleRef = useRef<HTMLDivElement>(null)
   const blocks = message.content.filter((b) => b.type !== 'tool_result')
   const images = blocks.filter(
     (b): b is Extract<ContentBlock, { type: 'image' }> => b.type === 'image',
@@ -58,6 +60,15 @@ export const UserMessage = memo(function UserMessage({
     el.focus()
     el.setSelectionRange(el.value.length, el.value.length)
   }, [editing])
+
+  // 编辑框高度随内容自适应，宽度沿用原气泡（不改尺寸，避免跳变）。 */
+  useEffect(() => {
+    if (!editing) return
+    const el = editRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [editing, draft])
 
   if (!text.trim() && images.length === 0) return null
 
@@ -123,6 +134,8 @@ export const UserMessage = memo(function UserMessage({
   }
 
   const startEdit = () => {
+    const width = bubbleRef.current?.getBoundingClientRect().width
+    if (width) setEditWidth(Math.round(width))
     setDraft(text)
     setEditing(true)
   }
@@ -178,7 +191,10 @@ export const UserMessage = memo(function UserMessage({
           </div>
         )}
         {editing ? (
-          <div className="rounded-[14px] bg-surface-2 px-3 py-2.5 text-left">
+          <div
+            className="min-w-0 max-w-full rounded-[14px] bg-surface-2 px-4 py-2.5 text-left"
+            style={editWidth ? { width: `${editWidth}px` } : undefined}
+          >
             <textarea
               ref={editRef}
               value={draft}
@@ -192,9 +208,9 @@ export const UserMessage = memo(function UserMessage({
                   submitEdit()
                 }
               }}
-              rows={3}
+              rows={1}
               aria-label="编辑并重发"
-              className="min-h-16 w-full resize-y bg-transparent text-[14.5px] leading-[1.68] text-text outline-none"
+              className="block w-full resize-none overflow-hidden bg-transparent text-[14.5px] leading-[1.68] text-text outline-none"
             />
             <div className="mt-1 flex items-center justify-end gap-1.5">
               <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
@@ -207,7 +223,10 @@ export const UserMessage = memo(function UserMessage({
           </div>
         ) : (
           text.trim() && (
-            <div className="whitespace-pre-wrap break-words rounded-[14px] bg-surface-2 px-4 py-2.5 text-[14.5px] leading-[1.68] text-text">
+            <div
+              ref={bubbleRef}
+              className="whitespace-pre-wrap break-words rounded-[14px] bg-surface-2 px-4 py-2.5 text-[14.5px] leading-[1.68] text-text"
+            >
               {text}
             </div>
           )

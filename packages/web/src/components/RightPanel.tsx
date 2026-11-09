@@ -22,7 +22,6 @@ import {
   Maximize2,
   MoreHorizontal,
   ScrollText,
-  Trash2,
   X,
 } from 'lucide-react'
 import type { MemoryFile, Todo } from '@tandem/protocol'
@@ -32,7 +31,7 @@ import { useUiStore } from '../store/useUiStore'
 import { useSessionChanges } from '../lib/useChanges'
 import { copyText } from '../lib/clipboard'
 import { cn } from '../lib/cn'
-import { ApiError, api } from '../lib/api'
+import { api } from '../lib/api'
 import { useIsMobile, useNow } from '../lib/hooks'
 import { prettyModel } from '../lib/modelName'
 import { runningSince } from '../lib/runClock'
@@ -135,14 +134,10 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     profileRetryRef.current = hostId
     void refreshProfiles(hostId)
   }, [hostId, profilesLoaded, profilesLoading, refreshProfiles])
-  const deleteSession = useAppStore((s) => s.deleteSession)
   const toast = useUiStore((s) => s.toast)
   const setChangesOpen = useUiStore((s) => s.setChangesOpen)
   const openWiki = useUiStore((s) => s.openWiki)
   const [copied, setCopied] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [dirtyWorktree, setDirtyWorktree] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
   const [prefs, setPrefs] = useState<PanelPrefs>(loadPanelPrefs)
   const [dragging, setDragging] = useState<GroupId | null>(null)
@@ -444,23 +439,6 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     }
   }
 
-  const onDelete = async () => {
-    if (!hostId || !sessionId || !summary || deleting) return
-    setDeleting(true)
-    try {
-      await deleteSession(hostId, sessionId, dirtyWorktree)
-      setConfirmDelete(false)
-      setDirtyWorktree(false)
-    } catch (err) {
-      if ((err instanceof ApiError && err.status === 409) || (err instanceof Error && /未提交改动/.test(err.message))) {
-        setDirtyWorktree(true)
-      } else {
-        toast(err instanceof Error ? err.message : '删除会话失败', 'error')
-      }
-    } finally {
-      setDeleting(false)
-    }
-  }
 
   const planStatus = plan
     ? plan.status === 'approved'
@@ -1029,23 +1007,6 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         )}
       </PanelBody>
 
-      <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-2.5">
-        <span className="flex-1" />
-        <Button
-          size="sm"
-          variant="danger-ghost"
-          onClick={() => {
-            setDirtyWorktree(false)
-            setConfirmDelete(true)
-          }}
-          disabled={deleting || !summary}
-          className="px-1 text-[12px] [&_svg]:size-3"
-        >
-          {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-          删除会话
-        </Button>
-      </div>
-
       <Modal
         open={planOpen && !!plan}
         onClose={() => setPlanOpen(false)}
@@ -1062,40 +1023,6 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         {plan && <Markdown text={plan.content} />}
       </Modal>
 
-      <Modal
-        open={confirmDelete}
-        onClose={() => setConfirmDelete(false)}
-        title={dirtyWorktree ? 'worktree 有未提交改动' : '删除会话'}
-        className="max-w-md"
-        footer={
-          <>
-            <Button size="lg" onClick={() => setConfirmDelete(false)} disabled={deleting}>
-              取消
-            </Button>
-            <Button
-              size="lg"
-              variant="danger-ghost"
-              onClick={() => void onDelete()}
-              disabled={deleting}
-            >
-              {deleting && <Loader2 size={14} className="animate-spin" />}
-              {dirtyWorktree ? '仍然删除' : '删除'}
-            </Button>
-          </>
-        }
-      >
-        {dirtyWorktree ? (
-          <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[12px] leading-5 text-danger">
-            <span className="min-w-0 flex-1">
-              有未提交改动，仍然删除？worktree 目录与分支会被一并清除，改动将无法恢复。
-            </span>
-          </div>
-        ) : (
-          <p className="text-[13px] leading-6 text-text-soft">
-            确定删除「{summary?.title || '未命名会话'}」？该操作不可撤销。
-          </p>
-        )}
-      </Modal>
     </aside>
   )
 }
