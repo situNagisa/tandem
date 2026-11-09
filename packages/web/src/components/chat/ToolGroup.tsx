@@ -13,6 +13,8 @@ export type ToolRunEntry =
       index: number
       messageId: string
       streaming: boolean
+      /** 本轮仍在执行（工具返回前保持转圈与已运行时长）。 */
+      live?: boolean
     }
   | { kind: 'thinking'; text: string; streaming: boolean }
 
@@ -26,7 +28,8 @@ function sameEntry(a: ToolRunEntry, b: ToolRunEntry): boolean {
       a.block === b.block &&
       a.index === b.index &&
       a.messageId === b.messageId &&
-      a.streaming === b.streaming
+      a.streaming === b.streaming &&
+      a.live === b.live
     )
   }
   return false
@@ -59,7 +62,7 @@ export const ToolGroup = memo(
     const tools = entries.filter(
       (e): e is Extract<ToolRunEntry, { kind: 'tool' }> => e.kind === 'tool',
     )
-    const anyRunning = tools.some((t) => t.streaming && !results?.[t.block.id])
+    const anyRunning = tools.some((t) => (t.streaming || t.live) && !results?.[t.block.id])
     const anyError = tools.some((t) => results?.[t.block.id]?.isError)
 
 
@@ -101,6 +104,7 @@ export const ToolGroup = memo(
                     messageId={entry.messageId}
                     index={entry.index}
                     streaming={entry.streaming}
+                    live={entry.live}
                     toolResults={toolResults}
                     cwd={cwd}
                     subagentId={subagentId}
@@ -123,14 +127,25 @@ export const ToolGroup = memo(
 )
 
 /** 把一组 assistant 消息里的思考与工具块按原顺序摊平。 */
-export function entriesFromMessages(messages: UiMessage[], streamingId?: string): ToolRunEntry[] {
+export function entriesFromMessages(
+  messages: UiMessage[],
+  streamingId?: string,
+  runningToolIds?: Set<string>,
+): ToolRunEntry[] {
   const entries: ToolRunEntry[] = []
   for (const m of messages) {
     const streaming = !!streamingId && m.id === streamingId
     const lastIndex = m.content.length - 1
     m.content.forEach((block, i) => {
       if (block.type === 'tool_use') {
-        entries.push({ kind: 'tool', block, index: i, messageId: m.id, streaming })
+        entries.push({
+          kind: 'tool',
+          block,
+          index: i,
+          messageId: m.id,
+          streaming,
+          live: runningToolIds?.has(block.id) ?? false,
+        })
       } else if (block.type === 'thinking' && block.text) {
         entries.push({
           kind: 'thinking',

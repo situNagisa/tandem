@@ -52,8 +52,17 @@ export function formatTime(ts: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-/** 消息时间：今天 HH:mm，非今天 MM-DD HH:mm，跨年带年份。 */
+/**
+ * 消息时间（反馈16#01）：6 小时内用相对时间（刚刚 / x 分钟前 / x 小时前），
+ * 今天更早 HH:mm，非今天 MM-DD HH:mm，跨年带年份。
+ */
 export function formatMessageTime(ts: number, now = Date.now()): string {
+  const diff = Math.max(0, now - ts)
+  if (diff < 45_000) return '刚刚'
+  if (diff < 6 * 3_600_000) {
+    const minutes = Math.round(diff / 60_000)
+    return minutes < 60 ? `${minutes} 分钟前` : `${Math.round(diff / 3_600_000)} 小时前`
+  }
   const d = new Date(ts)
   const n = new Date(now)
   const time = formatTime(ts)

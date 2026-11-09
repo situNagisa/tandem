@@ -368,6 +368,7 @@ export const ToolCard = memo(function ToolCard({
   messageId,
   index,
   streaming,
+  live = false,
   subagentId,
   toolResults,
   cwd: cwdProp,
@@ -376,6 +377,8 @@ export const ToolCard = memo(function ToolCard({
   messageId: string
   index: number
   streaming: boolean
+  /** 本轮仍在执行这个工具（消息已结束、等工具返回时也显示转圈与已运行时长）。 */
+  live?: boolean
   /** 在 Task 子代理消息流里渲染时传入，用于取子会话的工具状态。 */
   subagentId?: string
   /** 外部会话只读预览：显式传入工具结果，不读活动会话。 */
@@ -404,7 +407,13 @@ export const ToolCard = memo(function ToolCard({
   )
   const result = toolResults ? toolResults[block.id] : storeResult
   const isError = !!result?.isError
-  const running = streaming && !result
+  const running = (streaming || live) && !result
+  const runningStart = useRef(Date.now())
+  useEffect(() => {
+    if (running) runningStart.current = Date.now()
+  }, [running])
+  const runningNow = useNow(running)
+  const runningElapsed = running ? formatElapsed(runningNow - runningStart.current) : undefined
   const activeHost = useAppStore((s) =>
     activeHostId ? (s.hosts.find((host) => host.id === activeHostId) ?? null) : null,
   )
@@ -888,6 +897,11 @@ export const ToolCard = memo(function ToolCard({
         )}
         {suffix && (
           <span className={cn('shrink-0', isError ? 'text-danger' : 'text-muted')}>{suffix}</span>
+        )}
+        {runningElapsed && (
+          <span data-tool-elapsed="" className="shrink-0 tabular-nums text-[11.5px] text-muted">
+            已运行 {runningElapsed}
+          </span>
         )}
         <ChevronRight size={12} className="tool-chevron shrink-0 text-muted" />
       </button>

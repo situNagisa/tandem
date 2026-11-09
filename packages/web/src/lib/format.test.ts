@@ -47,9 +47,13 @@ describe('格式化', () => {
     expect(formatDurationMs(Number.NaN)).toBe('0.0s')
   })
 
-  test('消息时间：今天只显示时分，非今天带日期，跨年带年份', () => {
+  test('消息时间：6 小时内相对时间，今天只显示时分，非今天带日期，跨年带年份', () => {
     const now = new Date(2026, 10, 9, 10).getTime()
-    expect(formatMessageTime(new Date(2026, 10, 9, 8, 5).getTime(), now)).toBe('08:05')
+    expect(formatMessageTime(now - 20_000, now)).toBe('刚刚')
+    expect(formatMessageTime(now - 12 * 60_000, now)).toBe('12 分钟前')
+    expect(formatMessageTime(now - 5 * 3_600_000, now)).toBe('5 小时前')
+    // 超过 6 小时但仍是今天：显示时钟时间。
+    expect(formatMessageTime(new Date(2026, 10, 9, 0, 5).getTime(), now)).toBe('00:05')
     expect(formatMessageTime(new Date(2026, 10, 8, 21, 49).getTime(), now)).toBe('11-08 21:49')
     expect(formatMessageTime(new Date(2025, 11, 31, 23, 59).getTime(), now)).toBe('2025-12-31 23:59')
     expect(formatFullTime(new Date(2026, 10, 9, 8, 5, 7).getTime())).toBe('2026-11-09 08:05:07')

@@ -1,4 +1,4 @@
-import type { ServerMsg } from '@tandem/protocol'
+import { isUserTurnMessage, type ContentBlock, type ServerMsg } from '@tandem/protocol'
 import type { StoreApi } from 'zustand'
 import { navigate, parseHash } from '../../lib/router'
 import {
@@ -21,6 +21,18 @@ import { useVcsStore } from '../../lib/useVcs'
 import { childSubscriptions, collectToolResults, connections, toast } from './helpers'
 import type { SessionCore } from './sessionCore'
 import type { AppState } from './types'
+
+/** 本地乐观消息与服务端消息是否同一条用户输入（用于原地替换，而不是删掉后追加）。 */
+function sameLocalContent(a: ContentBlock[], b: ContentBlock[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((block, i) => {
+    const other = b[i]
+    if (!other || other.type !== block.type) return false
+    if (block.type === 'text' && other.type === 'text') return block.text === other.text
+    if (block.type === 'image' && other.type === 'image') return block.dataBase64 === other.dataBase64
+    return true
+  })
+}
 
 /** 处理 Host 推送的 WS 消息，写入 active / runtimes / inbox 等状态。 */
 export function createServerMessageHandler(
@@ -423,13 +435,18 @@ export function createServerMessageHandler(
           if (exists) {
             messages = messages.map((m) => (m.id === message.id ? message : m))
           } else {
-            if (message.role === 'user') {
-              const firstLocal = messages.findIndex((m) => m.local)
-              if (firstLocal >= 0) {
-                messages = messages.filter((_, i) => i !== firstLocal)
-              }
+            // 反馈16#11：只把内容一致的本地乐观消息（含排队中的消息）原位换成服务端消息。
+            // 以前见到任何 user 角色消息（含 tool_result）就删掉第一条本地消息，
+            // 排队中的气泡会在工具返回时凭空消失；排队多条时顺序也会乱。
+            const localIndex =
+              message.role === 'user' && isUserTurnMessage(message)
+                ? messages.findIndex((m) => m.local && sameLocalContent(m.content, message.content))
+                : -1
+            if (localIndex >= 0) {
+              messages = messages.map((m, i) => (i === localIndex ? message : m))
+            } else {
+              messages = [...messages, message]
             }
-            messages = [...messages, message]
           }
           const toolResults =
             message.role === 'user' ? collectToolResults([message], active.toolResults) : active.toolResults

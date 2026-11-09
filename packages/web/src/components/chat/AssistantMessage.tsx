@@ -15,7 +15,6 @@ import { RewindDialog } from '../RewindDialog'
 import { Menu } from '../ui/Menu'
 import { IconButton } from '../ui/Button'
 import { ToolGroup, type ToolRunEntry } from './ToolGroup'
-import { TypingIndicator } from './MessageNotes'
 import { MessageTime, UsageLine } from './UsageLine'
 
 export const AssistantMessage = memo(function AssistantMessage({
@@ -28,6 +27,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   subagentId,
   turnUser,
   checkpointId,
+  runningToolIds,
 }: {
   message: UiMessage
   streaming: boolean
@@ -41,6 +41,8 @@ export const AssistantMessage = memo(function AssistantMessage({
   turnUser?: UiMessage
   /** 本轮用户消息对应的检查点 id。 */
   checkpointId?: string
+  /** 本轮仍在执行的工具 id：消息已结束、等工具返回时也显示转圈与已运行时长。 */
+  runningToolIds?: Set<string>
 }) {
   const lastIndex = message.content.length - 1
   const [copied, setCopied] = useState(false)
@@ -134,6 +136,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         index: i + k,
         messageId: message.id,
         streaming,
+        live: runningToolIds?.has((b as ToolUseBlock).id) ?? false,
       }))
       if (run.length >= 3) {
         rendered.push(
@@ -155,6 +158,7 @@ export const AssistantMessage = memo(function AssistantMessage({
               messageId={message.id}
               index={item.index}
               streaming={streaming}
+              live={runningToolIds?.has(item.block.id) ?? false}
               toolResults={toolResults}
               cwd={cwd}
               subagentId={subagentId}
@@ -177,8 +181,31 @@ export const AssistantMessage = memo(function AssistantMessage({
   return (
     <div className={cn('msg-group relative flex flex-col', animate && 'chat-msg-enter')}>
       {rendered}
-      {message.content.length === 0 && streaming && <TypingIndicator />}
       <div className="mt-0.5 flex h-7 items-center justify-start gap-1" data-msg-meta>
+        <UsageLine>
+          <MessageTime createdAt={message.createdAt} durationMs={durationMs} />
+          {showUsage && (
+            <span>
+              {sepBefore(hasTime)}
+              输入 {formatTokens(message.usage!.inputTokens)} · 输出{' '}
+              {formatTokens(message.usage!.outputTokens)} · 缓存命中{' '}
+              {formatTokens(message.usage!.cacheReadTokens ?? 0)} · 花费{' '}
+              {formatCost(message.usage!.costUsd)}
+            </span>
+          )}
+          {streaming && (
+            <span data-live-duration>
+              {sepBefore(hasTime)}
+              {formatDurationMs(liveDuration)}
+            </span>
+          )}
+          {!streaming && typeof message.durationMs === 'number' && (
+            <span>
+              {sepBefore(hasTime || showUsage)}
+              {formatDurationMs(message.durationMs)}
+            </span>
+          )}
+        </UsageLine>
         {rawText.trim() && !streaming && (
           <div className="msg-actions flex items-center gap-0.5">
             <IconButton
@@ -231,30 +258,6 @@ export const AssistantMessage = memo(function AssistantMessage({
             )}
           </div>
         )}
-        <UsageLine>
-          <MessageTime createdAt={message.createdAt} durationMs={durationMs} />
-          {showUsage && (
-            <span>
-              {sepBefore(hasTime)}
-              输入 {formatTokens(message.usage!.inputTokens)} · 输出{' '}
-              {formatTokens(message.usage!.outputTokens)} · 缓存命中{' '}
-              {formatTokens(message.usage!.cacheReadTokens ?? 0)} · 花费{' '}
-              {formatCost(message.usage!.costUsd)}
-            </span>
-          )}
-          {streaming && (
-            <span data-live-duration>
-              {sepBefore(hasTime)}
-              {formatDurationMs(liveDuration)}
-            </span>
-          )}
-          {!streaming && typeof message.durationMs === 'number' && (
-            <span>
-              {sepBefore(hasTime || showUsage)}
-              {formatDurationMs(message.durationMs)}
-            </span>
-          )}
-        </UsageLine>
       </div>
       {rawText.trim() && !streaming && (
         <>

@@ -5,6 +5,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useSessionView } from './session/SessionScope'
 import { cn } from '../lib/cn'
 import { MESSAGE_PAGE_SIZE, gapMessage } from '../lib/messagePaging'
+import { activeToolUses } from '../lib/turnActivity'
 import { navigate } from '../lib/router'
 import { prettyModel } from '../lib/modelName'
 import type { HookNotice, PermissionTrailEntry, ToolResultBlock, UiMessage } from '../lib/types'
@@ -14,6 +15,7 @@ import { HookNoticeLine } from './chat/HookNoticeLine'
 import { CompactionNoticeLine } from './chat/CompactionNoticeLine'
 import { HandoffCard } from './chat/HandoffCard'
 import { RoutePlanLine } from './chat/RoutePlanLine'
+import { TurnActivity } from './chat/TurnActivity'
 import { DivisionPlanCard } from './chat/DivisionPlanCard'
 import { DELEGATION_META } from '../lib/routeLabels'
 import { UserMessage } from './chat/UserMessage'
@@ -31,6 +33,7 @@ const EMPTY_HOOKS: HookNotice[] = []
 const EMPTY_IDS: string[] = []
 const EMPTY_REQUESTS: PermissionRequest[] = []
 const EMPTY_TRAIL: PermissionTrailEntry[] = []
+const EMPTY_RUNNING_TOOLS: { ids: Set<string>; name?: string } = { ids: new Set() }
 
 function SkeletonMessages() {
   return (
@@ -254,6 +257,7 @@ const AssistantRow = memo(function AssistantRow({
   subagentId,
   turnUser,
   checkpointId,
+  runningToolIds,
   fork,
   hook,
 }: {
@@ -266,6 +270,7 @@ const AssistantRow = memo(function AssistantRow({
   subagentId?: string
   turnUser?: UiMessage
   checkpointId?: string
+  runningToolIds?: Set<string>
   fork?: ReactNode
   hook?: ReactNode
 }) {
@@ -296,6 +301,7 @@ const AssistantRow = memo(function AssistantRow({
         subagentId={subagentId}
         turnUser={turnUser}
         checkpointId={checkpointId}
+        runningToolIds={runningToolIds}
       />
       {fork}
       {hook}
@@ -309,12 +315,14 @@ const ToolRunRow = memo(function ToolRunRow({
   streamingId,
   toolResults,
   cwd,
+  runningToolIds,
 }: {
   messages: UiMessage[]
   animate: boolean
   streamingId?: string
   toolResults?: Record<string, ToolResultBlock>
   cwd?: string
+  runningToolIds?: Set<string>
 }) {
   return (
     <div className="msg-row" data-message-id={messages[0]?.id} data-tool-only="true">
@@ -322,7 +330,7 @@ const ToolRunRow = memo(function ToolRunRow({
         <span key={message.id} data-message-id={message.id} aria-hidden="true" />
       ))}
       <ToolGroup
-        entries={entriesFromMessages(messages, streamingId)}
+        entries={entriesFromMessages(messages, streamingId, runningToolIds)}
         animate={animate}
         toolResults={toolResults}
         cwd={cwd}
@@ -379,6 +387,8 @@ function MessageListInner({
   const storeMessages = useSessionView((s) => s?.messages ?? EMPTY)
   const storeSessionId = useSessionView((s) => s?.sessionId ?? null)
   const storeStreamingId = useSessionView((s) => s?.streamingMessageId)
+  const storeRunning = useSessionView((s) => (messagesProp ? false : (s?.running ?? false)))
+  const storeSummaryUpdatedAt = useSessionView((s) => s?.summary?.updatedAt ?? 0)
   const storeHooks = useSessionView((s) => s?.hookEvents ?? EMPTY_HOOKS)
   const messages = messagesProp ?? storeMessages
   const hooks = messagesProp ? EMPTY_HOOKS : storeHooks
@@ -394,6 +404,13 @@ function MessageListInner({
   )
   const sessionId = messagesProp ? null : storeSessionId
   const streamingId = messagesProp ? undefined : storeStreamingId
+  // 本轮仍在执行的工具：消息已结束、等工具返回时用它们显示转圈与已运行时长（反馈16#10）。
+  const runningTools = storeRunning ? activeToolUses(messages, toolResults) : EMPTY_RUNNING_TOOLS
+  // 流式消息还没有任何文字（等首个 token）时也算「在等待」，在流末尾显示活动行。
+  const streamingMessage = streamingId ? messages.find((m) => m.id === streamingId) : undefined
+  const streamingStarted = !!streamingMessage?.content.some(
+    (block) => (block.type === 'text' || block.type === 'thinking') && !!block.text.trim(),
+  )
   const scopedHasEarlier = useSessionView((s) => s?.hasEarlier ?? false)
   const scopedLoadingEarlier = useSessionView((s) => s?.loadingEarlier ?? false)
   const scopedLoadingSegment = useSessionView((s) => s?.loadingSegment ?? false)
@@ -999,6 +1016,7 @@ function MessageListInner({
             streamingId={streamingId}
             toolResults={toolResults}
             cwd={cwd}
+            runningToolIds={runningTools.ids}
           />
           {permissionRows(seg.messages.flatMap(toolUseIdsOf))}
         </Fragment>
@@ -1063,6 +1081,7 @@ function MessageListInner({
           subagentId={subagentId}
           turnUser={turnUser}
           checkpointId={turnUser ? checkpoints?.get(turnUser.id) : undefined}
+          runningToolIds={runningTools.ids}
           fork={forkLinks(m.id)}
           hook={hookLine(m.id)}
         />
@@ -1098,6 +1117,19 @@ function MessageListInner({
       )}
       {segmentRows}
       {leftoverRows}
+      {storeRunning &&
+        !readOnly &&
+        !messagesProp &&
+        permissions.length === 0 &&
+        activeHostId &&
+        sessionId &&
+        (runningTools.ids.size > 0 || !streamingId || !streamingStarted) && (
+          <TurnActivity
+            toolName={runningTools.name}
+            since={storeSummaryUpdatedAt || Date.now()}
+            runKey={`${activeHostId}:${sessionId}`}
+          />
+        )}
       {!messagesProp &&
         handoffStatus &&
         handoffStatus !== 'done' &&

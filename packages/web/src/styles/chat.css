@@ -189,8 +189,8 @@
 .msg-gap-btn:disabled {
   opacity: 0.6;
 }
-/* 表格 / 代码块会突破阅读宽度铺满对话列；content-visibility:auto 的 paint containment
-   会把超出消息行宽的部分裁掉（连点击都命中不到），这类行必须正常绘制（#7-02）。 */
+/* 带表格 / 代码块的消息行始终正常绘制：块内部要能横向滚动与点击，跳过 content-visibility
+   可以避免 paint containment 裁掉滚动区（反馈16#02 起宽内容回到正文宽度，仍保留这条）。 */
 .msg-row:has(.md-table-wrap),
 .msg-row:has(.chat-code) {
   content-visibility: visible;
@@ -213,6 +213,23 @@
   100% {
     background: transparent;
     box-shadow: none;
+  }
+}
+
+/* 消息下方的时间/用量行：反馈16#01 恢复「悬停才显示」，行高一直保留，不推挤内容。
+   触屏没有 hover，常显。 */
+.msg-meta {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.msg-group:hover .msg-meta,
+.msg-group:focus-within .msg-meta,
+.msg-meta:focus-within {
+  opacity: 1;
+}
+@media (hover: none) {
+  .msg-meta {
+    opacity: 1;
   }
 }
 
@@ -438,13 +455,13 @@
   padding: 12px 14px;
 }
 
-/* 表格 / 代码块等宽内容铺满对话列（用户 #7-02：可以超出阅读宽度，不要挤在正文窄栏里） */
+/* 反馈16#02（取代反馈7#02 的「铺满对话列」）：表格与代码块和正文同一个阅读宽度，
+   超出部分在块内部横向滚动。不能再向两侧扩大：内容会被对话滚动区裁掉，看着像空白。 */
 .md.chat-md .md-table-wrap,
 .md.chat-md .chat-code {
-  width: var(--chat-wide, 100%);
-  max-width: var(--chat-wide, 100%);
-  margin-left: calc((100% - var(--chat-wide, 100%)) / 2);
-  margin-right: calc((100% - var(--chat-wide, 100%)) / 2);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 .md.chat-md .md-table-wrap {
   margin-top: 1em;
