@@ -4456,6 +4456,81 @@ async function main() {
       await page.keyboard.press('Escape')
     })
 
+    desktop('环境条换主机先选文件夹：待定状态、输入禁用、可取消（反馈13#02）', async (page) => {
+      await openSession(page, 'long')
+      await page.evaluate(() => {
+        const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
+        if (hosts.some((item) => item.id === 'host-second')) return
+        const first = hosts[0]
+        localStorage.setItem(
+          'tandem.hosts.v1',
+          JSON.stringify([first, { ...first, id: 'host-second', name: '第二台主机', addedAt: Date.now() + 1 }]),
+        )
+      })
+      const hostsNow = await page.evaluate(() => JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]'))
+      if (hostsNow.length < 2) {
+        throw new Error('没有造出第二台主机')
+      }
+      // 注入 localStorage 后必须重载，应用启动时才会把第二台主机连进 runtime。
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForFunction(() => {
+        try {
+          return JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]').length >= 2
+        } catch {
+          return false
+        }
+      }, null, { timeout: 20_000 })
+      await openSession(page, 'long')
+      const hostPill = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-server') }).first()
+      const folderPill = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-folder-open') }).first()
+      const textarea = page.locator('textarea[aria-label="消息输入框"]').first()
+      const folderPanel = page
+        .locator('[data-portal-layer="popover"]')
+        .filter({ has: page.locator('input[aria-label="筛选文件夹或输入路径"]') })
+        .first()
+
+      await hostPill.click()
+      const menu = page.locator('[role="menu"][aria-label="切换主机"]').first()
+      await menu.waitFor({ state: 'visible', timeout: 5_000 })
+      await menu.getByRole('menuitem', { name: /第二台主机/ }).click()
+      // 不立即切换：文件夹选择自动打开，输入框禁用并提示。
+      await folderPanel.waitFor({ state: 'visible', timeout: 5_000 })
+      await page.waitForTimeout(300)
+      assert.equal(await textarea.isDisabled(), true, '待选文件夹期间输入框没有禁用')
+      assert.match(await hostPill.innerText(), /第二台主机/, '主机胶囊没有显示待切换的新主机')
+      assert.match((await folderPill.innerText()).trim(), /待选文件夹/, '文件夹胶囊没有待选标记')
+      const hint = page.locator('[data-env-pending-hint]')
+      await hint.waitFor({ state: 'visible', timeout: 3_000 })
+      assert.match(await hint.innerText(), /选择 第二台主机 上的文件夹后才能继续/, '待选提示文案不对')
+      // 取消回到原主机。
+      await page.locator('[data-env-pending-cancel="true"]').click()
+      await page.waitForTimeout(300)
+      assert.equal(await textarea.isDisabled(), false, '取消后输入框仍然禁用')
+      assert.equal(await page.locator('[data-env-pending-hint]').count(), 0, '取消后待选提示没有消失')
+      assert.doesNotMatch(await hostPill.innerText(), /第二台主机/, '取消后主机胶囊仍显示新主机')
+
+      // 再选一次，选好文件夹才真正迁移。
+      await hostPill.click()
+      await menu.waitFor({ state: 'visible', timeout: 5_000 })
+      await menu.getByRole('menuitem', { name: /第二台主机/ }).click()
+      await folderPanel.waitFor({ state: 'visible', timeout: 5_000 })
+      await folderPanel.getByRole('button', { name: '使用并迁移' }).click()
+      await page.getByText(/会话已迁移到 第二台主机/).first().waitFor({ timeout: 20_000 })
+      await page.waitForFunction(() => window.location.hash.includes('/h/host-second/'), null, { timeout: 20_000 })
+      await page.locator('textarea[aria-label="消息输入框"]').first().waitFor({ timeout: 20_000 })
+      assert.equal(
+        await page.locator('textarea[aria-label="消息输入框"]').first().isDisabled(),
+        false,
+        '迁移完成后输入框仍禁用',
+      )
+      assert.equal(await page.locator('[data-env-pending-hint]').count(), 0, '迁移完成后仍有待选提示')
+      // 还原宿主列表，避免影响后续用例的分组断言。
+      await page.evaluate(() => {
+        const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
+        localStorage.setItem('tandem.hosts.v1', JSON.stringify(hosts.filter((item) => item.id !== 'host-second')))
+      })
+    })
+
     desktop('tooltip 按内容宽度换行，不会每行一个字（#01 R15）', async (page) => {
       await openSession(page, 'long')
       const folder = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-folder-open') }).first()

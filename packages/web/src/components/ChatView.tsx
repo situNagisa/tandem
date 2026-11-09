@@ -17,7 +17,7 @@ import { PlanCard } from './PlanCard'
 import { Button, IconButton } from './ui/Button'
 import { Composer } from './Composer'
 import { CompactConfirmDialog } from './chat/CompactConfirmDialog'
-import { EnvBar } from './EnvBar'
+import { EnvBar, type PendingHostSwitch } from './EnvBar'
 import { TurnRail } from './chat/TurnRail'
 import { TurnErrorNotice } from './chat/TurnErrorNotice'
 import { SubagentSessionView } from './chat/SubagentSessionView'
@@ -86,6 +86,8 @@ export function ChatView() {
   // 打开会话后的贴底校准：content-visibility 的预估高度会让首次 scrollHeight 偏小。
   const initialScrollFor = useRef<string | null>(null)
   const [showJump, setShowJump] = useState(false)
+  // 反馈13#02：环境条选了另一台主机但在选文件夹之前，输入框禁用并提示。
+  const [pendingHostSwitch, setPendingHostSwitch] = useState<PendingHostSwitch | null>(null)
   // 消息操作条用：用户消息 id → 检查点 id。回合结束后刷新。
   const [checkpoints, setCheckpoints] = useState<Map<string, string>>(new Map())
   // 读屏播报：新审批出现、流式回复结束。
@@ -441,6 +443,7 @@ export function ChatView() {
               env={summary.env}
               worktree={summary.worktree}
               compact={compact}
+              onPendingChange={setPendingHostSwitch}
             />
           )}
           <DemoDeviceStage mounts={sessionMounts} />
@@ -465,7 +468,15 @@ export function ChatView() {
                 : '审批者：可以处理审批请求，不能发消息或新建会话。'}
             </div>
           ) : (
-            <Composer compact={compact} />
+            <Composer
+              compact={compact}
+              disabled={!!pendingHostSwitch}
+              placeholder={
+                pendingHostSwitch
+                  ? `选择 ${pendingHostSwitch.hostName} 上的文件夹后才能继续`
+                  : undefined
+              }
+            />
           )}
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import {
+  ArrowRight,
   ArrowUp,
   Check,
   ChevronDown,
@@ -20,7 +21,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useDevicesStore } from '../store/useDevicesStore'
 import { basename, dirname } from '../lib/format'
-import { loadMigration, rememberDir, rememberMigration } from '../lib/storage'
+import { loadMigration, loadRecentDirs, rememberDir, rememberMigration } from '../lib/storage'
 import { navigate } from '../lib/router'
 import { useSessionView } from './session/SessionScope'
 import { cn } from '../lib/cn'
@@ -476,6 +477,12 @@ function BranchMenu({
   )
 }
 
+export interface PendingHostSwitch {
+  hostId: string
+  hostName: string
+  currentHostName: string
+}
+
 export interface EnvBarProps {
   variant: 'session' | 'new'
   hostId: string
@@ -489,6 +496,8 @@ export interface EnvBarProps {
   onHostChange?: (hostId: string) => void
   onCwdChange?: (cwd: string) => void
   onWorktreeChange?: (on: boolean) => void
+  /** 会话内选了另一台主机、还没选文件夹时的待定状态；输入框据此禁用。 */
+  onPendingChange?: (pending: PendingHostSwitch | null) => void
   disabled?: boolean
   /** 分屏窄窗格：只保留图标，文字折叠。 */
   compact?: boolean
@@ -509,6 +518,7 @@ export function EnvBar({
   onHostChange,
   onCwdChange,
   onWorktreeChange,
+  onPendingChange,
   disabled,
   compact = false,
 }: EnvBarProps) {
@@ -523,7 +533,34 @@ export function EnvBar({
   const setWorkstationOpen = useDevicesStore((s) => s.setWorkstationOpen)
 
   const [migrating, setMigrating] = useState(false)
-  const [targetHostId, setTargetHostId] = useState<string | null>(null)
+  // 反馈13#02：选了另一台主机后先不切换，等用户在「文件夹」胶囊里选好目标目录。
+  const [pendingHostId, setPendingHostId] = useState<string | null>(null)
+  const [hostMenuOpen, setHostMenuOpen] = useState(false)
+  const [folderOpen, setFolderOpen] = useState(false)
+  const pendingHost = pendingHostId ? (hosts.find((h) => h.id === pendingHostId) ?? null) : null
+
+  // 换会话/换主机时清掉待定状态，避免提示残留在别的会话上。
+  useEffect(() => {
+    setPendingHostId(null)
+    setHostMenuOpen(false)
+    setFolderOpen(false)
+  }, [hostId, sessionId])
+
+  // 选中新主机后直接打开该主机的文件夹选择；等主机菜单收起、焦点回到环境条后再打开，
+  // 否则菜单关闭时的焦点恢复会把刚打开的文件选择弹层当成「焦点移出」收掉。
+  useEffect(() => {
+    if (!pendingHostId) return
+    const timer = window.setTimeout(() => setFolderOpen(true), 80)
+    return () => window.clearTimeout(timer)
+  }, [pendingHostId])
+
+  useEffect(() => {
+    onPendingChange?.(
+      pendingHost && host
+        ? { hostId: pendingHost.id, hostName: pendingHost.name, currentHostName: host.name }
+        : null,
+    )
+  }, [pendingHost?.id, pendingHost?.name, host?.name, onPendingChange])
 
   const isSession = variant === 'session'
   useEffect(() => {
@@ -572,6 +609,8 @@ export function EnvBar({
       }
       rememberMigration(hostId, sessionId, target.name)
       rememberDir(target.id, targetCwd)
+      setPendingHostId(null)
+      setFolderOpen(false)
       await useAppStore.getState().refreshSessions(target.id)
       toast(`会话已迁移到 ${target.name}`, 'success')
       navigate({ kind: 'session', hostId: target.id, sessionId: created.id })
@@ -579,7 +618,6 @@ export function EnvBar({
       toast(err instanceof Error ? err.message : '迁移会话失败', 'error')
     } finally {
       setMigrating(false)
-      setTargetHostId(null)
     }
   }
 
@@ -597,6 +635,7 @@ export function EnvBar({
   }
 
   return (
+    <div className="flex min-w-0 flex-col" data-env-bar="">
     <div
       className={cn(
         'flex min-w-0 flex-wrap items-center gap-0.5 pb-1.5 sm:flex-nowrap sm:gap-1',
@@ -606,10 +645,12 @@ export function EnvBar({
       )}
     >
       <Menu
+        open={hostMenuOpen}
+        onOpenChange={setHostMenuOpen}
         side="top"
         align="left"
         modal={false}
-        className={targetHostId ? 'w-auto p-1' : 'w-auto min-w-[200px]'}
+        className="w-auto min-w-[200px]"
         aria-label={isSession ? '切换主机' : '选择主机'}
         trigger={({ open }) => (
           <EnvTrigger
@@ -617,66 +658,95 @@ export function EnvBar({
               migrating ? (
                 <Loader2 size={12} className="animate-spin text-muted" />
               ) : (
-                <Server size={12} className="text-muted" />
+                <Server size={12} className={pendingHost ? 'text-[var(--t-status-warn)]' : 'text-muted'} />
               )
             }
-            label={migrating ? '迁移中…' : host?.name ?? '主机'}
-            onClick={() => setTargetHostId(null)}
+            label={
+              migrating ? (
+                '迁移中…'
+              ) : pendingHost && host ? (
+                <span className="inline-flex items-center gap-1">
+                  {host.name}
+                  <ArrowRight size={11} className="shrink-0 text-[var(--t-status-warn)]" />
+                  {pendingHost.name}
+                </span>
+              ) : (
+                host?.name ?? '主机'
+              )
+            }
             open={open}
             disabled={!!locked && !migrating}
-            title={isSession ? '切换主机（会话将迁移到目标主机）' : '选择主机'}
+            title={
+              pendingHost
+                ? `已选择 ${pendingHost.name}，在「文件夹」里选好目录后才会切换`
+                : isSession
+                  ? '切换主机（会话将迁移到目标主机）'
+                  : '选择主机'
+            }
           />
         )}
       >
-        {targetHostId ? (
-          <div>
-            <div className="px-1 pb-1.5 text-[12px] text-muted">
-              选择 {hosts.find((h) => h.id === targetHostId)?.name} 上的目录
-            </div>
-            <FolderBrowser
-              hostId={targetHostId}
-              onUse={(path) => {
-                void startMigration(targetHostId, path)
-                setTargetHostId(null)
-              }}
-              useLabel="迁移到此目录"
-            />
-          </div>
-        ) : (
-          <HostMenu
-            hostId={hostId}
-            keepOpen={isSession}
-            onPick={(id) => {
-              if (!isSession) {
-                onHostChange?.(id)
-                return
-              }
-              setTargetHostId(id)
-            }}
-          />
-        )}
+        <HostMenu
+          hostId={hostId}
+          onPick={(id) => {
+            if (!isSession) {
+              onHostChange?.(id)
+              setHostMenuOpen(false)
+              return
+            }
+            setHostMenuOpen(false)
+            setPendingHostId(id)
+          }}
+        />
       </Menu>
       <Popover
         side="top"
         padded={false}
+        open={folderOpen}
+        onOpenChange={setFolderOpen}
         panelClassName="w-auto rounded-[10px] p-[5px]"
         trigger={({ open, toggle }) => (
           <EnvTrigger
-            icon={<FolderOpen size={12} className="text-muted" />}
-            label={cwd ? basename(cwd) || cwd : '文件夹'}
+            icon={
+              <FolderOpen
+                size={12}
+                className={pendingHost ? 'text-[var(--t-status-warn)]' : 'text-muted'}
+              />
+            }
+            label={
+              pendingHost ? (
+                <span className="text-[var(--t-status-warn)]">待选文件夹</span>
+              ) : cwd ? (
+                basename(cwd) || cwd
+              ) : (
+                '文件夹'
+              )
+            }
             onClick={toggle}
             open={open}
-            disabled={locked || !hostId}
-            title={cwd}
+            pressed={!!pendingHost}
+            disabled={migrating || (!!locked && !pendingHost)}
+            title={
+              pendingHost
+                ? `选择 ${pendingHost.name} 上的文件夹`
+                : cwd
+            }
           />
         )}
       >
         {(close) =>
-          hostId ? (
+          hostId || pendingHost ? (
             <FolderBrowser
-              hostId={hostId}
-              initial={cwd}
+              hostId={pendingHost?.id ?? hostId}
+              initial={
+                pendingHost ? (loadRecentDirs(pendingHost.id)[0] ?? '') : cwd
+              }
               onUse={(path) => {
+                if (pendingHost) {
+                  close()
+                  if (!migrating) void startMigration(pendingHost.id, path)
+                  return
+                }
                 if (isSession) {
                   if (host && sessionId) {
                     void useAppStore
@@ -695,10 +765,24 @@ export function EnvBar({
                 }
                 close()
               }}
+              useLabel={pendingHost ? '使用并迁移' : '使用此目录'}
             />
           ) : null
         }
       </Popover>
+      {pendingHost ? (
+        <button
+          type="button"
+          data-env-pending-cancel="true"
+          onClick={() => {
+            setPendingHostId(null)
+            setFolderOpen(false)
+          }}
+          className="h-6 shrink-0 rounded-md px-1.5 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text max-sm:h-11"
+        >
+          取消
+        </button>
+      ) : null}
 
       <Popover
         side="top"
@@ -790,6 +874,17 @@ export function EnvBar({
           已迁移到 {migration}
         </span>
       )}
+    </div>
+      {pendingHost ? (
+        <p
+          data-env-pending-hint="true"
+          role="status"
+          className="flex items-center gap-1 text-[12px] leading-4 text-[var(--t-status-warn)]"
+        >
+          <TriangleAlert size={12} className="shrink-0" />
+          选择 {pendingHost.name} 上的文件夹后才能继续
+        </p>
+      ) : null}
     </div>
   )
 }
