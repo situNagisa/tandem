@@ -227,6 +227,7 @@ function startHost({ home }) {
       ...process.env,
       HOME: path.join(home, 'home'),
       TANDEM_HOME: configDir,
+      TANDEM_DEBUG_ACCOUNT: '0',
       CODEX_HOME: path.join(home, 'home', '.codex'),
       NO_PROXY: '127.0.0.1,localhost',
       no_proxy: '127.0.0.1,localhost',
@@ -359,6 +360,13 @@ export async function runA11yScan(options = {}) {
 
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+    await context.addInitScript(() => {
+      try {
+        localStorage.setItem('tandem.gate.skip', '1')
+      } catch {
+        /* 忽略 */
+      }
+    })
     const page = await context.newPage()
     page.on('pageerror', (err) => console.log('  pageerror:', err.message))
     await page.goto(base)

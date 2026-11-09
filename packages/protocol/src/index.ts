@@ -1081,6 +1081,8 @@ export interface WorkspaceHostInfo {
   online?: boolean;
   /** 由工作站下发给客户端：客户端应通过 工作站/h/<id> 连接。 */
   viaWorkstation?: boolean;
+  /** 调试版演示主机（内置演示模型/会话/设备）；只有调试版会登记。 */
+  demo?: boolean;
   grants?: WorkspaceHostGrant[];
 }
 export interface WorkspaceAccount {

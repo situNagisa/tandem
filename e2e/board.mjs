@@ -154,6 +154,7 @@ function startHost() {
       ...process.env,
       HOME: `${HOME}-home`,
       TANDEM_HOME: HOME,
+      TANDEM_DEBUG_ACCOUNT: '0',
       TANDEM_BOARD_RETRY_MS: '600',
       NO_PROXY: '127.0.0.1,localhost',
       no_proxy: '127.0.0.1,localhost',

@@ -12,18 +12,20 @@
  *   node e2e/regression.mjs --only "更多菜单"   只跑名称包含该片段的用例
  */
 import assert from 'node:assert/strict'
-import { execFileSync, spawn } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import {
   chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import http from 'node:http'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -830,12 +832,12 @@ process.exit(1)
     ),
   )
 
-  const child = spawn(process.execPath, [HOST_ENTRY, '--port', '0'], {
-    cwd: ROOT,
-    env: {
-      ...process.env,
+  const env = {
+    ...process.env,
       HOME: path.join(home, 'home'),
       TANDEM_HOME: configDir,
+      // 调试版 Host 默认自动拉起内嵌工作站 + 调试账号；回归的主 Host 走旧的「地址 + token」直连，需要关掉。
+      TANDEM_DEBUG_ACCOUNT: '0',
       TANDEM_SSH_BIN: fakeSshDir,
       TANDEM_FAKE_REMOTE_HOME: path.join(home, 'fake-remote'),
       TANDEM_ADB_BIN: fakeAdb,
@@ -846,9 +848,14 @@ process.exit(1)
       // HOME 被替换成临时目录，Playwright 需要显式指向本机已安装的浏览器缓存。
       PLAYWRIGHT_BROWSERS_PATH:
         process.env.PLAYWRIGHT_BROWSERS_PATH ?? path.join(os.homedir(), '.cache', 'ms-playwright'),
-      NO_PROXY: '127.0.0.1,localhost',
-      no_proxy: '127.0.0.1,localhost',
-    },
+    NO_PROXY: '127.0.0.1,localhost',
+    no_proxy: '127.0.0.1,localhost',
+  }
+  // extraEnv 里显式 undefined 表示“删掉这个变量”，用于让调试版默认值生效。
+  for (const key of Object.keys(env)) if (env[key] === undefined) delete env[key]
+  const child = spawn(process.execPath, [HOST_ENTRY, '--port', '0'], {
+    cwd: ROOT,
+    env,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 
@@ -880,6 +887,53 @@ process.exit(1)
   })
 
   return { child, ready, logs: () => `${stdout}\n${stderr}`, configDir }
+}
+
+/** 轮询直到 fn 返回真值；超时给出标签与最后一次结果。 */
+async function waitForValue(fn, timeout, label) {
+  const deadline = Date.now() + timeout
+  for (;;) {
+    const value = await fn()
+    if (value) return value
+    if (Date.now() > deadline) throw new Error(`等待超时：${label}`)
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+}
+
+function freeTcpPort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer()
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const port = server.address().port
+      server.close(() => resolve(port))
+    })
+  })
+}
+
+/** 安装脚本拉起的后台 Host 不在本进程树里：按 TANDEM_HOME 前缀找进程结束（不碰其它进程）。 */
+function killHostsUnder(prefix) {
+  if (!prefix || process.platform === 'win32') return
+  let entries = []
+  try {
+    entries = readdirSync('/proc')
+  } catch {
+    return
+  }
+  for (const name of entries) {
+    if (!/^\d+$/.test(name)) continue
+    const pid = Number(name)
+    if (!pid || pid === process.pid) continue
+    try {
+      const args = readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0')
+      if (!args.some((arg) => arg.endsWith('cli.js'))) continue
+      const env = readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0')
+      const hostHome = env.find((item) => item.startsWith('TANDEM_HOME='))?.slice('TANDEM_HOME='.length)
+      if (hostHome && hostHome.startsWith(prefix)) process.kill(pid, 'SIGTERM')
+    } catch {
+      /* 进程已退出或无权读取 */
+    }
+  }
 }
 
 async function api(base, token, pathname, init = {}) {
@@ -2368,14 +2422,31 @@ async function main() {
     const mobile = (name, fn) => checks.push({ name, viewport: 'mobile', fn })
     const small = (name, fn) => checks.push({ name, viewport: 'small', fn })
 
-    const newPage = async (ctx, viewport) => {
+    const newPage = async (ctx, viewport, opts = {}) => {
       const page = await ctx.newPage()
       page.setDefaultTimeout(15_000)
+      // 登录门：除专门测登录门的用例外，其余用例用调试版测试开关跳过，沿用「地址 + token」直连。
+      await page.addInitScript((gate) => {
+        try {
+          if (gate) localStorage.removeItem('tandem.gate.skip')
+          else localStorage.setItem('tandem.gate.skip', '1')
+        } catch {
+          /* 忽略 */
+        }
+      }, !!opts.gate)
       // 所有页面统一固定在造数时刻：日期、相对时间、倒计时都以同一「今天」计算。
-      await page.clock.setFixedTime(today)
+      // 登录门页面不固定时钟：调试版自动登录的重试以 Date.now() 计超时，冻结后永远不会结束。
+      if (!opts.gate) await page.clock.setFixedTime(today)
       const pageErrors = []
       page.on('pageerror', (error) => pageErrors.push(error.message))
       await page.goto(appUrl, { waitUntil: 'domcontentloaded' })
+      if (opts.gate) {
+        // 登录门用例只等登录页出现；主界面在登录/添加主机之后。
+        await page.locator('[data-testid="login-gate"]').waitFor({ state: 'visible', timeout: 60_000 })
+        page.__errors = pageErrors
+        page.__viewport = viewport
+        return page
+      }
       // 手机首页默认可能是收件箱页签（有待审批时没有输入框），用「新会话」按钮兜底。
       await page
         .locator('textarea[aria-label="消息输入框"], button:has-text("新会话")')
@@ -9337,6 +9408,163 @@ async function main() {
       await popup.close()
     })
 
+    // 登录门：未登录先登录；登录后没有主机不能开会话，添加主机后可以开始。
+    checks.push({
+      name: '登录门：未登录深链先登录、无主机空状态、添加这台电脑后可开会话',
+      viewport: 'desktop',
+      gate: true,
+      fn: async (page) => {
+        // 独立 Host：主 Host 在回归准备阶段已经是「工作区中心」，不能再 join 自己。
+        const gateToken = `gate-${randomUUID()}`
+        const gateHostId = randomUUID()
+        const plainHost = startHost({
+          home: path.join(home, 'gate-plain-host'),
+          token: gateToken,
+          hostId: gateHostId,
+          extraEnv: { TANDEM_DEBUG_ACCOUNT: '0' },
+        })
+        try {
+          const port = await plainHost.ready
+          const base = `http://127.0.0.1:${port}`
+          await page.goto(`${base}/?token=${gateToken}#/h/${gateHostId}`, { waitUntil: 'domcontentloaded' })
+          await page.locator('[data-testid="login-gate"]').waitFor({ state: 'visible', timeout: 60_000 })
+          // 深链保留在地址栏：登录前不处理路由，登录后回到原地址。
+          assert.match(page.url(), /#\/h\/[0-9a-f-]+/, '登录前不应清掉深链')
+          assert.equal(await page.locator('[data-testid="no-hosts"]').count(), 0, '未登录不应显示无主机空状态')
+          assert.equal(await page.locator('textarea[aria-label="消息输入框"]').count(), 0, '未登录不应进入会话界面')
+
+          // 回环地址：登录页会自动启动这台电脑的工作站，首次使用是「创建工作站」。
+          const name = page.locator('[data-testid="login-workspace-name"]')
+          await name.waitFor({ state: 'visible', timeout: 60_000 })
+          await name.fill('回归登录门工作站')
+          await page.locator('[data-testid="login-username"]').fill('gate-admin')
+          await page.locator('[data-testid="login-password"]').fill('gate-pass-123')
+          await page.locator('[data-testid="login-submit"]').click()
+
+          // 登录后账号下没有主机：空状态引导添加主机，新会话入口禁用。
+          await page.locator('[data-testid="no-hosts"]').waitFor({ state: 'visible', timeout: 30_000 })
+          assert.equal(await page.locator('[data-testid="login-gate"]').count(), 0, '登录后不应再显示登录页')
+          assert.equal(
+            await page.locator('[data-testid="sidebar-new-session"]').isDisabled(),
+            true,
+            '没有主机时新会话入口应禁用',
+          )
+          // 本机凭据还在：一键添加这台电脑，之后能进入会话界面。
+          await page.locator('[data-testid="no-hosts-add-local"]').click()
+          await page.locator('textarea[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
+          assert.equal(await page.locator('[data-testid="no-hosts"]').count(), 0, '添加主机后空状态应消失')
+          assert.equal(
+            await page.locator('[data-testid="sidebar-new-session"]').isDisabled(),
+            false,
+            '有主机后新会话入口应可用',
+          )
+        } finally {
+          plainHost.child.kill('SIGTERM')
+        }
+      },
+    })
+
+    // 调试版：回环地址自动登录调试账号（本机 + 演示主机），一行命令添加主机并实时显示已连接。
+    checks.push({
+      name: '登录门：调试版自动登录带演示主机，一行命令添加主机后显示已连接',
+      viewport: 'desktop',
+      gate: true,
+      fn: async (page) => {
+        const gateToken = `gate-${randomUUID()}`
+        const debugHome = path.join(home, 'gate-debug-host')
+        // 不传 TANDEM_DEBUG_ACCOUNT（显式 undefined 让调试版默认值生效）：自动拉起工作站、登记本机与演示主机。
+        const debugHost = startHost({
+          home: debugHome,
+          token: gateToken,
+          hostId: randomUUID(),
+          extraEnv: { TANDEM_DEBUG_ACCOUNT: undefined },
+        })
+        let installedPrefix = ''
+        try {
+          const port = await debugHost.ready
+          const debugBase = `http://127.0.0.1:${port}`
+          await page.goto(`${debugBase}/?token=${gateToken}`, { waitUntil: 'domcontentloaded' })
+          // 自动登录完成前不闪登录页；完成后直接进入主界面。
+          await page.locator('textarea[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
+          assert.equal(await page.locator('[data-testid="login-gate"]').count(), 0, '调试版回环地址应自动登录')
+          const names = await waitForValue(async () => {
+            const list = await page.evaluate(() => {
+              try {
+                return JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
+              } catch {
+                return []
+              }
+            })
+            return list.length >= 2 ? list : null
+          }, 60_000, '调试账号应看到本机与演示主机')
+          assert.ok(names.some((h) => h.name === '演示主机'), `主机列表缺少演示主机：${names.map((h) => h.name)}`)
+          assert.ok(names.some((h) => h.name !== '演示主机'), '主机列表缺少本机')
+          await page.getByText('演示主机', { exact: true }).first().waitFor({ timeout: 15_000 })
+
+          // 打开「添加主机」：命令里是一次性令牌；在 WSL 里执行真实 install.sh 模拟目标机器。
+          await page.keyboard.press('Control+K')
+          const input = page.getByPlaceholder(/命令|搜索/).first()
+          await input.waitFor({ state: 'visible' })
+          await input.fill('添加主机')
+          await page.waitForTimeout(500)
+          // 命令面板里点结果（Enter 在搜索防抖未完成时可能选中别的分组）。
+          await page.locator('[data-palette-kind]').filter({ hasText: '添加主机' }).first().click()
+          const commandBox = page.locator('[data-testid="addhost-command"]')
+          await commandBox.waitFor({ state: 'visible', timeout: 15_000 })
+          const commandText = await commandBox.innerText()
+          const token = commandText.match(/ach_[A-Za-z0-9_-]+/)?.[0]
+          assert.ok(token, `添加主机命令里没有注册令牌：${commandText}`)
+          // 命令里的地址就是登录的工作站地址（回环时其他机器不可访问，但本机 WSL 可以）。
+          const shareUrl = await page.evaluate(() => {
+            try {
+              return JSON.parse(localStorage.getItem('tandem.account.v1') ?? 'null')?.centerUrl ?? ''
+            } catch {
+              return ''
+            }
+          })
+          assert.match(shareUrl, /^https?:\/\/[^/]+/, `宿主地址不对：${shareUrl}`)
+          assert.ok(commandText.includes(shareUrl), `命令里的工作站地址与登录地址不一致：${commandText}`)
+
+          const packFile = path.join(ROOT, 'packages', 'server', 'host-pack', 'tandem-host.tgz')
+          if (!existsSync(packFile)) {
+            execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'pack-host.mjs')], { cwd: ROOT, stdio: 'pipe' })
+          }
+          const installRoot = path.join(home, 'gate-install')
+          installedPrefix = path.join(installRoot, 'host')
+          const installHome = path.join(installRoot, 'home')
+          const hostPort = await freeTcpPort()
+          const env = {
+            ...process.env,
+            HOME: installHome,
+            TANDEM_HOME: installedPrefix,
+            TANDEM_INSTALL_DIR: path.join(installRoot, 'app'),
+            TANDEM_DEBUG_ACCOUNT: '0',
+            NO_PROXY: '127.0.0.1,localhost',
+            no_proxy: '127.0.0.1,localhost',
+          }
+          const installed = spawnSync(
+            'sh',
+            ['-c', `curl -fsSL ${shareUrl}/install.sh | sh -s -- --token ${token} --no-service --port ${hostPort}`],
+            { env, encoding: 'utf8', timeout: 120_000 },
+          )
+          const out = `${installed.stdout ?? ''}${installed.stderr ?? ''}`
+          assert.equal(installed.status, 0, `install.sh 失败：${out}`)
+          assert.match(out, /已加入工作站/, '安装脚本应完成登记')
+
+          const status = page.locator('[data-testid="addhost-status"]')
+          await page.waitForFunction(
+            () => document.querySelector('[data-testid="addhost-status"]')?.textContent?.includes('已连接'),
+            null,
+            { timeout: 60_000 },
+          )
+          assert.match(await status.innerText(), /已连接/, '对话框应实时显示已连接')
+        } finally {
+          killHostsUnder(installedPrefix)
+          debugHost.child.kill('SIGTERM')
+        }
+      },
+    })
+
     // 工作站客户端-服务：只跑工作站 + 两台主机，注册/绑定/授权/E2E 流式（API 级，独立进程）。
     checks.push({
       name: '工作站客户端-服务（注册/添加主机/授权/E2E 流式）',
@@ -9369,7 +9597,7 @@ async function main() {
         })
         ownContext = true
       }
-      const page = await newPage(ctx, check.viewport)
+      const page = await newPage(ctx, check.viewport, { gate: !!check.gate })
       const started = Date.now()
       try {
         await check.fn(page)

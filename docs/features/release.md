@@ -26,12 +26,12 @@
 | 组件画廊 | `#/dev/ui`、设置 → 外观 → 组件画廊 |
 | 手机预览（模拟） | `Ctrl/Cmd + Shift + M`、命令面板「打开手机预览」、调试版桌面菜单/托盘；手机尺寸/旋转/触摸模拟/模拟键盘，详见 [mobile-preview.md](mobile-preview.md) |
 | 调试日志/轨迹采集 | 反馈用的错误缓冲、操作轨迹、快照与录屏 |
-| 调试工作站账号 | 桌面调试版启动时自动拉起本机工作站、创建 `debug`（调试账号）并登记本机主机；`POST /api/debug/auto-login` 只在此构建注册，且只接受 127.0.0.1/::1；账号菜单可「退出调试账号 / 用其他账号登录」，设置 → 外观 → 调试账号自动登录可重新开启 |
-| 测试开关 | `localStorage['tandem.onboarding.force']` 强制重新上手引导；`TANDEM_MOCK_SERIAL=1` / `devices.serialMock` 虚拟串口；`TANDEM_DEBUG_ACCOUNT=1` 在非桌面进程里启用调试账号自动登录（联调用） |
+| 调试工作站账号 | 调试版 Host（桌面、网页、CLI）在**回环地址**打开时自动拉起本机工作站、创建 `debug`（调试账号），登记本机与一台**演示主机**；`POST /api/debug/auto-login` 只在此构建注册，且只接受 127.0.0.1/::1；账号菜单可「退出调试账号 / 用其他账号登录」，设置 → 外观 → 调试账号自动登录可重新开启；`TANDEM_DEBUG_ACCOUNT=0` 关闭（模拟发布语义） |
+| 测试开关 | `localStorage['tandem.gate.skip']`（或调试版 `?gate=off`）让 e2e 跳过登录门；`TANDEM_MOCK_SERIAL=1` / `devices.serialMock` 虚拟串口；`TANDEM_DEBUG_ACCOUNT=0` 关闭调试账号自动拉起与登录 |
 
 正常功能两个版本都有：主机诊断、配置导出/导入、用量与预算、更新检查等。
 
-调试账号的随机密码写在 `<TANDEM_HOME>/workstation/debug-account.json`（独立运行 `tandem-host workstation` 时是 `<TANDEM_HOME>/debug-account.json`），权限 0600，不写死在代码里、不进日志。测试账号不算第一个用户、也不是管理员：工作站上第一个真实注册的用户仍是管理员，管理员在「成员与分享 → 账号」列表能看到带「调试」标记的账号。退出调试账号后本次运行不再自动登录，可在设置 → 外观 → 调试账号自动登录里重新开启。发布构建会扫描 `调试账号`、`/api/debug/auto-login`、`debug-account`、`tandem.debug.account.autologin` 等标识，命中即失败；桌面调试版之外（CLI/浏览器联调）需显式设置 `TANDEM_DEBUG_ACCOUNT=1` 才会自动拉起本机工作站。
+调试账号的随机密码写在 `<TANDEM_HOME>/workstation/debug-account.json`（独立运行 `tandem-host workstation` 时是 `<TANDEM_HOME>/debug-account.json`），权限 0600，不写死在代码里、不进日志。测试账号不算第一个用户、也不是管理员：工作站上第一个真实注册的用户仍是管理员，管理员在「成员与分享 → 账号」列表能看到带「调试」标记的账号。退出调试账号后本次运行不再自动登录，可在设置 → 外观 → 调试账号自动登录里重新开启。发布构建会扫描 `调试账号`、`演示主机`、`/api/debug/auto-login`、`debug-account`、`tandem.debug.account.autologin` 等标识，命中即失败；调试版 Host 默认自动拉起与登录，`TANDEM_DEBUG_ACCOUNT=0` 关闭。
 
 ### 0.2 一键构建
 

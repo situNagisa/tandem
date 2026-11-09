@@ -147,6 +147,7 @@ function startHost({ home, token, hostId }) {
       ...process.env,
       HOME: home,
       TANDEM_HOME: configDir,
+      TANDEM_DEBUG_ACCOUNT: '0',
       CODEX_HOME: path.join(home, '.codex'),
       NO_PROXY: '127.0.0.1,localhost',
       no_proxy: '127.0.0.1,localhost',
@@ -225,6 +226,13 @@ async function main() {
 
     browser = await chromium.launch({ headless: true })
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+    await context.addInitScript(() => {
+      try {
+        localStorage.setItem('tandem.gate.skip', '1')
+      } catch {
+        /* 忽略 */
+      }
+    })
     page = await context.newPage()
     const consoleErrors = []
     page.on('console', (message) => {

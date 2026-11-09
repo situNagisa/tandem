@@ -92,8 +92,25 @@ async function main() {
 
     browser = await chromium.launch({ headless: true })
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
-    await page.goto(`${base}/?token=${token}#/h/${hostId}`, { waitUntil: 'domcontentloaded' })
-    await page.locator('textarea').first().waitFor({ state: 'visible', timeout: 20_000 })
+    await page.goto(`${base}/?token=${token}`, { waitUntil: 'domcontentloaded' })
+
+    // 登录门：发布版打开先看到登录/注册页，没有任何调试登录入口，也不会自动登录。
+    await page.locator('[data-testid="login-gate"]').waitFor({ state: 'visible', timeout: 20_000 })
+    assert.equal(await page.locator('[data-testid="login-debug"]').count(), 0, '发布版登录页不应有调试登录入口')
+    assert.equal(await page.locator('[data-testid="login-debug-button"]').count(), 0, '发布版登录页不应有调试账号按钮')
+    // 本机回环地址：登录页会启动这台电脑的工作站，首次使用是「创建工作站」。
+    const setupName = page.locator('[data-testid="login-workspace-name"]')
+    await setupName.waitFor({ state: 'visible', timeout: 90_000 })
+    await setupName.fill('发布版回归工作站')
+    await page.locator('[data-testid="login-username"]').fill('release-admin')
+    await page.locator('[data-testid="login-password"]').fill('release-pass-1')
+    await page.locator('[data-testid="login-submit"]').click()
+
+    // 登录后账号下没有主机：空状态引导添加主机，新会话入口禁用并说明原因。
+    await page.locator('[data-testid="no-hosts"]').waitFor({ state: 'visible', timeout: 30_000 })
+    assert.equal(await page.locator('[data-testid="sidebar-new-session"]').isDisabled(), true, '没有主机时新会话入口应禁用')
+    await page.locator('[data-testid="no-hosts-add-local"]').click()
+    await page.locator('textarea').first().waitFor({ state: 'visible', timeout: 60_000 })
 
     const bodyText = () => page.locator('body').innerText()
     const assertNoDebugText = async (where) => {
@@ -103,7 +120,7 @@ async function main() {
       }
     }
 
-    await assertNoDebugText('首页')
+    await assertNoDebugText('登录后的首页')
     assert.equal(await page.locator('[data-feedback-ui]').count(), 0, '发布版不应挂载反馈界面')
 
     // Ctrl+Shift+F 不再绑定任何命令
@@ -169,7 +186,7 @@ async function main() {
     await sleep(200)
 
     // 手机预览查询参数在发布版不生效（不渲染模拟顶栏）。
-    await page.goto(`${base}/?token=${token}&mobilePreview=1#/h/${hostId}`, {
+    await page.goto(`${base}/?token=${token}&mobilePreview=1`, {
       waitUntil: 'domcontentloaded',
     })
     await page.locator('textarea').first().waitFor({ state: 'visible', timeout: 20_000 })
