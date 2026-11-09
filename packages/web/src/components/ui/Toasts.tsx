@@ -56,7 +56,7 @@ export function Toasts() {
             <Icon size={15} className={cn('mt-0.5 shrink-0', ICON_COLOR[t.kind])} />
             <span
               className="line-clamp-2 min-w-0 flex-1 break-words group-hover:line-clamp-none"
-              title={t.text}
+              data-tip={t.text}
             >
               {t.text}
             </span>

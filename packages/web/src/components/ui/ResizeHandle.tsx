@@ -73,7 +73,7 @@ export function ResizeHandle({
       role="separator"
       aria-orientation="vertical"
       aria-label={label}
-      title="拖动调整宽度，双击复位"
+      data-tip="拖动调整宽度，双击复位"
       data-dragging={dragging ? 'true' : undefined}
       onPointerDown={start}
       onDoubleClick={() => {

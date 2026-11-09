@@ -137,6 +137,78 @@ export function AppContextMenu() {
     return () => document.removeEventListener('contextmenu', onContextMenu)
   }, [])
 
+  // Edge 划词迷你菜单（反馈11#06）：网页无法改 Edge 设置，但迷你菜单是在 mouseup 时按
+  // 当前选区生成的。这里同步收起选区、下一帧恢复，菜单不再出现，选区与 Ctrl+C 保持可用。
+  useEffect(() => {
+    if (!/Edg\//.test(navigator.userAgent)) return
+    document.documentElement.dataset.edgeSelectionGuard = 'on'
+    let timer = 0
+    const onMouseUp = (event: MouseEvent) => {
+      if (event.button !== 0) return
+      const target = event.target instanceof Element ? event.target : null
+      if (!target) return
+      // 表单控件/自绘选区/预览 iframe 本来就不触发迷你菜单。
+      if (
+        target.closest(
+          'input, textarea, select, [contenteditable=""], [contenteditable="true"], iframe, [data-feedback-ui]',
+        )
+      )
+        return
+      const selection = window.getSelection()
+      if (!selection || selection.isCollapsed || !selection.toString().trim()) return
+      const ranges = Array.from({ length: selection.rangeCount }, (_, i) =>
+        selection.getRangeAt(i).cloneRange(),
+      )
+      selection.removeAllRanges()
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        timer = 0
+        const current = window.getSelection()
+        // 收起期间用户又点了别处：以新的交互为准，不恢复旧选区。
+        if (!current || !current.isCollapsed) return
+        current.removeAllRanges()
+        for (const range of ranges) current.addRange(range)
+        window.dispatchEvent(new CustomEvent('tandem:selection-guard'))
+      }, 80)
+    }
+    document.addEventListener('mouseup', onMouseUp, true)
+    return () => {
+      document.removeEventListener('mouseup', onMouseUp, true)
+      window.clearTimeout(timer)
+    }
+  }, [])
+
+  // 兜底关闭浏览器自动填充/拼写建议：覆盖所有路由与 Portal 里动态渲染的输入框
+  // （组件层大多已显式关闭，这里防止新增输入框漏配）。密码框保留浏览器语义。
+  useEffect(() => {
+    const apply = (el: Element) => {
+      if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLTextAreaElement)) return
+      if (el instanceof HTMLInputElement && el.type === 'password') return
+      if (!el.hasAttribute('autocomplete')) el.setAttribute('autocomplete', 'off')
+      if (!el.hasAttribute('spellcheck')) el.setAttribute('spellcheck', 'false')
+      el.setAttribute('writingsuggestions', 'false')
+    }
+    document.querySelectorAll('input, textarea').forEach(apply)
+    const onFocus = (event: FocusEvent) => {
+      if (event.target instanceof Element) apply(event.target)
+    }
+    document.addEventListener('focusin', onFocus, true)
+    // 弹层/设置页是后挂载的：新加入的输入框同样补齐属性。
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) apply(node)
+          else if (node instanceof Element) node.querySelectorAll('input, textarea').forEach(apply)
+        }
+      }
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => {
+      document.removeEventListener('focusin', onFocus, true)
+      observer.disconnect()
+    }
+  }, [])
+
   // 链接/图片默认拖拽不出 ghost（全局保留文本与元素的正常点击）。
   useEffect(() => {
     const onDragStart = (event: DragEvent) => {

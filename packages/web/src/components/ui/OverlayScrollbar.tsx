@@ -54,10 +54,48 @@ export function OverlayScrollbar() {
     let dragging: 'x' | 'y' | null = null
     let pointer: { x: number; y: number } | null = null
 
+    /**
+     * 指示条贴在容器右缘 3px 内。若滚动容器自身没有右侧留白，再往上看最多两层：
+     * 外层有 ≥12px 的 padding 时把指示条放回那条 gutter（如设置导航），不压住行背景与文字。
+     */
+    const gutterRight = (el: HTMLElement) => {
+      const rect = el.getBoundingClientRect()
+      const inset = 3
+      const pad = parseFloat(getComputedStyle(el).paddingRight) || 0
+      if (pad >= 10) return rect.right - inset
+      let node = el.parentElement
+      for (let i = 0; i < 2 && node && node !== document.body; i++) {
+        const nr = node.getBoundingClientRect()
+        const npad = parseFloat(getComputedStyle(node).paddingRight) || 0
+        if (npad >= 12 && nr.right - inset >= rect.right + 4 && nr.right - rect.right <= 48) {
+          return nr.right - inset
+        }
+        node = node.parentElement
+      }
+      return rect.right - inset
+    }
+
+    const gutterBottom = (el: HTMLElement) => {
+      const rect = el.getBoundingClientRect()
+      const inset = 3
+      const pad = parseFloat(getComputedStyle(el).paddingBottom) || 0
+      if (pad >= 10) return rect.bottom - inset
+      let node = el.parentElement
+      for (let i = 0; i < 2 && node && node !== document.body; i++) {
+        const nr = node.getBoundingClientRect()
+        const npad = parseFloat(getComputedStyle(node).paddingBottom) || 0
+        if (npad >= 12 && nr.bottom - inset >= rect.bottom + 4 && nr.bottom - rect.bottom <= 48) {
+          return nr.bottom - inset
+        }
+        node = node.parentElement
+      }
+      return rect.bottom - inset
+    }
+
     const trackY = (el: HTMLElement) => {
       const rect = el.getBoundingClientRect()
       return {
-        left: Math.max(2, rect.right - 9),
+        left: Math.max(2, gutterRight(el) - 6),
         top: rect.top + 4,
         height: Math.max(0, rect.height - 8),
         width: 6,
@@ -68,7 +106,7 @@ export function OverlayScrollbar() {
       const rect = el.getBoundingClientRect()
       return {
         left: rect.left + 4,
-        top: Math.max(2, rect.bottom - 9),
+        top: Math.max(2, gutterBottom(el) - 6),
         width: Math.max(0, rect.width - 8),
         height: 6,
       }
