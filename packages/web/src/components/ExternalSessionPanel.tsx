@@ -15,6 +15,7 @@ import { estimateMessageTokens } from '../lib/turnUsage'
 import { useUiStore } from '../store/useUiStore'
 import { ContextSpaceSection, jumpToMessage } from './chat/ContextMeter'
 import { IconButton } from './ui/Button'
+import { ReadOnlySessionGraph } from './sessionGraph/SessionGraphCard'
 import { PanelBar, PanelBody } from './ui/Panel'
 import { ResizeHandle } from './ui/ResizeHandle'
 import {
@@ -185,9 +186,10 @@ export function ExternalSessionPanel({
   const groups = [
     usage.hasUsage || usage.hasCost ? 'usage' : null,
     contextTokens > 0 && turnCount > 0 ? 'context' : null,
+    turnCount > 0 ? 'graph' : null,
     editedFiles.length > 0 ? 'changes' : null,
     'details',
-  ].filter((id): id is 'usage' | 'context' | 'changes' | 'details' => id !== null)
+  ].filter((id): id is 'usage' | 'context' | 'graph' | 'changes' | 'details' => id !== null)
 
   return (
     <aside
@@ -275,6 +277,8 @@ export function ExternalSessionPanel({
                     </span>
                   </DetailRow>
                 </div>
+              ) : id === 'graph' ? (
+                <ReadOnlySessionGraph messages={messages} title={session.title} />
               ) : id === 'usage' ? (
                 <div>
                   {usage.hasCost && (

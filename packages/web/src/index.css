@@ -99,6 +99,16 @@
   --syn-builtin: #953800;
   --syn-meta: #116329;
 
+  /* 会话图泳道（GitHub/VS Code 式 8 色循环）：相邻泳道色相拉开，节点与卡片底 ≥3:1。 */
+  --graph-lane-0: #6b6258;
+  --graph-lane-1: #3b6ea8;
+  --graph-lane-2: #4f7a45;
+  --graph-lane-3: #7a5a9e;
+  --graph-lane-4: #2f7d7a;
+  --graph-lane-5: #a8563a;
+  --graph-lane-6: #9e4a70;
+  --graph-lane-7: #6d7a2f;
+
   --app-height: 100dvh;
 }
 
@@ -179,6 +189,16 @@ html.dark {
   --syn-attr: #79c0ff;
   --syn-builtin: #ffa657;
   --syn-meta: #7ee787;
+
+  /* 会话图泳道：深色底上提亮，相邻色相与浅色一致。 */
+  --graph-lane-0: #b3a99c;
+  --graph-lane-1: #7fb0e0;
+  --graph-lane-2: #8fc47f;
+  --graph-lane-3: #b9a0dc;
+  --graph-lane-4: #6fc7c0;
+  --graph-lane-5: #e08a68;
+  --graph-lane-6: #d98fae;
+  --graph-lane-7: #c2c47a;
 }
 
 @theme inline {
