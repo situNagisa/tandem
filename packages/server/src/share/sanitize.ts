@@ -3,6 +3,15 @@
 import os from 'node:os';
 import path from 'node:path';
 import type { ContentBlock, Message, PublicShare } from '@tandem/protocol';
+import {
+  ASSIGN_SECRET,
+  AUTH_HEADER,
+  ENV_ASSIGN,
+  KNOWN_KEY,
+  PRIVATE_KEY,
+  QUERY_SECRET,
+  URL_CREDENTIAL,
+} from '../redactPatterns.js';
 
 const SECRET_ENV_NAME = /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|AUTH|CREDENTIAL|COOKIE|SESSION)/i;
 
@@ -13,14 +22,6 @@ function secretEnvValues(): string[] {
     .map(([, value]) => value as string)
     .sort((a, b) => b.length - a.length);
 }
-
-const PRIVATE_KEY = /(-----BEGIN [A-Z ]*PRIVATE KEY-----)[\s\S]*?(-----END [A-Z ]*PRIVATE KEY-----)/g;
-const KNOWN_KEY = /\b(?:sk|pk|rk)-[A-Za-z0-9_-]{8,}\b|\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b|\bxox[baprs]-[A-Za-z0-9-]{10,}\b|\bAIza[0-9A-Za-z_-]{20,}\b/g;
-const AUTH_HEADER = /\b(Authorization\s*[:=]\s*)(Bearer|Basic|Share)\s+[^\s"',;]+/gi;
-const QUERY_SECRET = /([?&](?:token|api[_-]?key|access_token|secret|password|key)=)[^&\s"'`]+/gi;
-const ASSIGN_SECRET = /(["']?(?:api[_-]?key|apiKey|token|secret|password|authorization|bearer|shareToken)["']?\s*[:=]\s*)(["']?)[^\s"',;}]{6,}\2/gi;
-const ENV_ASSIGN = /\b([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|AUTH|CREDENTIAL|COOKIE)[A-Z0-9_]*)\s*=\s*[^\s"'`]+/g;
-const URL_CREDENTIAL = /\/\/([^/\s:@]+):([^/\s@]+)@/g;
 
 /** 文本脱敏。 */
 export function redactText(input: string, envValues = secretEnvValues()): string {

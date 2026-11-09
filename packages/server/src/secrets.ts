@@ -18,6 +18,7 @@ import type {
   SecretsOverview,
   SecretsSettings,
 } from '@tandem/protocol';
+import { KNOWN_KEY, PRIVATE_KEY } from './redactPatterns.js';
 
 const FILE_VERSION = 1;
 const SCOPES: SecretScope[] = ['bash', 'mcp', 'hooks'];
@@ -174,14 +175,8 @@ function variantsOf(value: string): string[] {
 }
 
 const GENERIC_RULES: Array<{ re: RegExp; token: string }> = [
-  { re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----/g, token: '[secret:private-key]' },
-  { re: /\b(?:sk|rk|pk)-[A-Za-z0-9_-]{20,}\b/g, token: '[secret:generic]' },
-  { re: /\bghp_[A-Za-z0-9]{20,}\b/g, token: '[secret:generic]' },
-  { re: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, token: '[secret:generic]' },
-  { re: /\bglpat-[A-Za-z0-9_-]{20,}\b/g, token: '[secret:generic]' },
-  { re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, token: '[secret:generic]' },
-  { re: /\bAKIA[0-9A-Z]{16}\b/g, token: '[secret:generic]' },
-  { re: /\bASIA[0-9A-Z]{16}\b/g, token: '[secret:generic]' },
+  { re: PRIVATE_KEY, token: '[secret:private-key]' },
+  { re: KNOWN_KEY, token: '[secret:generic]' },
 ];
 
 export function redactSecretValues(text: string, values: Array<{ name: string; value: string }>, genericMask: boolean): string {
