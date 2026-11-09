@@ -9,7 +9,9 @@
 - [x] 共享主机用被授权人自己的模型账号；管理员只看掩码；调试账号自带 demo 模型账号；个人模式进程内直连
 - [x] 单测 `account-profiles.test.ts`（加密、鉴权、迁移后主机无 Key、流式/中断/记账）；e2e `workstation-check.mjs`（远端主机经代理、主机目录无 Key、bob 用自己的 Key、旧 API 410）
 - [x] 反馈14#08 R60：账号级余额查询（工作站用 Key，OpenRouter/DeepSeek/Moonshot/New API/OpenAI Billing + 自定义 URL/JSON 路径；5 分钟缓存、手动刷新；设置列表与模型菜单显示，失败「—」+ tooltip、低阈值警告）；单测 `balance.test.ts` + e2e mock 余额显示/缓存/刷新
-- 验证：`node scripts/check.mjs --skip-smoke` + `e2e/workstation-check.mjs` 全过（回归在 `check.mjs` 中一并跑）
+- [x] 合并账号体系分支（3 个提交，merge commit 保留双父）：保留 main 上 0.4.5 之后的登录门、一行命令添加主机与 Windows 安装修复、审批内联、弹层防抖、消息时间/用户用量、设置页限宽；账号级 API 取代旧按主机 API；用户消息计价与模型菜单价格继续从账号级 profiles 镜像取价；账号/余额根因编号改为 R59/R60
+- [x] 全量 `node scripts/check.mjs` 前后各跑一次全过（docs/build/debug-artifacts/ui-audit/test/smoke/regression/release），另跑 `e2e/workstation-check.mjs` 通过；`node scripts/release.mjs 0.4.6` 打本地标签（未 push），导览 10 条
+- 产物：`Tandem-Setup-0.4.6-x64.exe`（发布版）、`Tandem-Setup-0.4.6-debug-x64.exe`（调试版）、`tandem-release.apk/.aab`、`tandem-debug.apk`、`latest.yml`（指向 0.4.6 发布版），均在 Windows「下载」；干净 worktree `/tmp/tandem-046` 构建并解包校验：调试/发布 asar 风味分别为 debug/release，调试版含 feedback-drafts*/mobile-preview、发布版不含且 server/dist 无 debug 目录；主机 ZIP 仅 win32 原生模块、路径全 ASCII、含 dist/cli.js，install 路径含 install.log 与 HKCU Run 自启
 - 取舍：不做短期凭据下发；同名旧账号直接丢弃（用户明确单人测试期不需要兼容）
 
 ## 迭代 62（2026-11-09）工作站安装：Windows 一行命令登记崩溃（R56 复发，P0）
