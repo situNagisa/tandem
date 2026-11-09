@@ -24,6 +24,7 @@ import { Button, IconButton } from './ui/Button'
 import { Input } from './ui/Controls'
 import { Menu } from './ui/Menu'
 import { Modal } from './ui/Modal'
+import { Card } from './ui/Card'
 
 const STATE_META: Record<string, { label: string; className: string }> = {
   OPEN: { label: '开放', className: 'text-[var(--t-git-plus)]' },
@@ -486,7 +487,7 @@ export function PrPanel() {
 
             {pr ? (
               <div className="space-y-3">
-                <div className="rounded-xl border border-border bg-surface p-3">
+                <Card>
                   <div className="flex items-start gap-2">
                     <span className={cn('mt-0.5 size-2 shrink-0 rounded-full', stateDot(pr))} />
                     <div className="min-w-0 flex-1">
@@ -545,7 +546,7 @@ export function PrPanel() {
                       )}
                     </div>
                   </div>
-                </div>
+                </Card>
 
                 <section>
                   <div className="mb-1.5 flex items-center gap-2">

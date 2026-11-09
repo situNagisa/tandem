@@ -26,6 +26,7 @@ import { formatRelative } from '../../lib/format'
 import { cn } from '../../lib/cn'
 import { Button } from '../ui/Button'
 import { AggregateDetailRow, AggregateRow } from '../ui/AggregateRow'
+import { Card } from '../ui/Card'
 
 /** 所有主机的未处理数（待审批 + 未读提醒）。 */
 export function useInboxCount(): number {
@@ -302,7 +303,7 @@ function PendingCard({ entry }: { entry: Entry }) {
   const submit = (decision: PermissionDecision) => decide(hostId, event.requestId ?? permission.id, decision)
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-3" data-testid="inbox-pending">
+    <Card data-testid="inbox-pending">
       <div className="flex items-start gap-2.5">
         <span
           className={cn(
@@ -384,7 +385,7 @@ function PendingCard({ entry }: { entry: Entry }) {
           </div>
         </div>
       </div>
-    </div>
+    </Card>
   )
 }
 

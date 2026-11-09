@@ -19,6 +19,7 @@ import { Button } from '../ui/Button'
 import { ConfirmAction } from '../ui/ConfirmAction'
 import { Modal } from '../ui/Modal'
 import { cn } from '../../lib/cn'
+import { Card } from '../ui/Card'
 
 const STATUS_OPTIONS: Array<{ value: ChecklistStatus; label: string }> = [
   { value: 'pass', label: '通过' },
@@ -153,7 +154,7 @@ export function ChecklistDialog() {
               </div>
               <div className="space-y-2">
                 {features.map((feature) => (
-                  <div key={feature.feature.id} className="rounded-xl border border-border bg-surface">
+                  <Card key={feature.feature.id}>
                     <div className="flex flex-wrap items-center gap-2 border-b border-border px-2.5 py-1.5">
                       <span className="text-[13px] font-medium text-text">{feature.feature.title}</span>
                       {feature.isNew && (
@@ -212,7 +213,7 @@ export function ChecklistDialog() {
                         </div>
                       ))}
                     </div>
-                  </div>
+                  </Card>
                 ))}
               </div>
             </section>

@@ -8,6 +8,7 @@ import { useCopy } from '../../lib/useCopy'
 import type { HostConfig } from '../../lib/types'
 import { Modal } from '../ui/Modal'
 import { Button, IconButton } from '../ui/Button'
+import { Card } from '../ui/Card'
 
 export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () => void }) {
   const [urls, setUrls] = useState<string[]>([])
@@ -145,7 +146,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
                 ))}
               </div>
             )}
-            <div className="flex flex-col items-center rounded-xl border border-border bg-surface p-3">
+            <Card className="flex flex-col items-center">
               {svg ? (
                 <div
                   className="size-[224px] overflow-hidden rounded-lg bg-white [&_svg]:size-full"
@@ -170,7 +171,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
                   {copied ? <Check size={11} className="text-success" /> : <Copy size={11} />}
                 </IconButton>
               </div>
-            </div>
+            </Card>
           </>
         )}
 

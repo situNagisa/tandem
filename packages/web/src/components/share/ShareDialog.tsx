@@ -11,6 +11,7 @@ import { useCopy } from '../../lib/useCopy'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { Select, Switch } from '../ui/Controls'
+import { Card } from '../ui/Card'
 
 const EXPIRY_OPTIONS: Array<{ value: ShareExpiry; label: string }> = [
   { value: '1h', label: '1 小时' },
@@ -192,7 +193,7 @@ export function ShareDialog({
           </>
         ) : (
           <>
-            <div className="flex flex-col items-center rounded-xl border border-border bg-surface p-3">
+            <Card className="flex flex-col items-center">
               {svg ? (
                 <div
                   className="size-[208px] overflow-hidden rounded-lg bg-white [&_svg]:size-full"
@@ -213,7 +214,7 @@ export function ShareDialog({
                   {copied ? '已复制' : '复制'}
                 </Button>
               </div>
-            </div>
+            </Card>
             <p className="text-[12px] leading-5 text-muted">
               {summary}
               {created.expiresAt ? ` · ${formatDateTime(created.expiresAt)} 到期` : ' · 不过期'}

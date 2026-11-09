@@ -21,8 +21,10 @@ import { Button, IconButton } from '../ui/Button'
 import { Input, Select, Switch } from '../ui/Controls'
 
 const MODE_LABEL: Record<PermissionMode, string> = {
+import { Card } from '../ui/Card'
   default: '默认（按规则审批）',
   acceptEdits: '自动接受编辑',
+import { Card } from '../ui/Card'
   plan: '计划模式',
   bypassPermissions: '跳过审批',
 }
@@ -274,7 +276,7 @@ export function SubagentsSection() {
         </Button>
       </div>
 
-      <div data-setting-id="subagents.default-delegation" className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5">
+      <Card data-setting-id="subagents.default-delegation" className="flex flex-wrap items-center gap-2">
         <span className="text-[12.5px] text-text-soft">新会话默认委派倾向</span>
         <Select
           aria-label="新会话默认委派倾向"
@@ -289,13 +291,13 @@ export function SubagentsSection() {
           ))}
         </Select>
         <span className="text-[12px] text-muted">会话内可在输入框底栏的「执行方式 → 委派倾向」随时切换。</span>
-      </div>
+      </Card>
 
       {error && <div className="rounded-lg border border-danger/25 bg-danger-soft/50 px-3 py-2 text-[12px] text-danger">{error}</div>}
       {!hostReady && <div className="text-[12px] text-warning">主机离线，暂时无法保存预设。</div>}
 
       {draft && (
-        <div className="rounded-xl border border-border bg-surface p-3">
+        <Card>
           <div className="mb-3 flex items-center justify-between">
             <span className="text-[13px] font-medium">{draft.id ? '编辑预设' : '新建预设'}</span>
             <Button size="inline" variant="ghost" onClick={() => setDraft(null)}>
@@ -470,7 +472,7 @@ export function SubagentsSection() {
               加入列表
             </Button>
           </div>
-        </div>
+        </Card>
       )}
 
       <div className="space-y-2">
@@ -483,10 +485,7 @@ export function SubagentsSection() {
           const profile = profiles.find((item) => item.id === preset.profileId)
           const model = preset.model || profile?.defaultModel || '继承主会话模型'
           return (
-            <div
-              key={preset.id ?? preset.name}
-              className="flex items-start gap-2 rounded-xl border border-border bg-surface px-3 py-2.5"
-            >
+            <Card key={preset.id ?? preset.name} className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-[13px] font-medium text-text">{preset.name}</span>
@@ -514,7 +513,7 @@ export function SubagentsSection() {
               <IconButton label="删除" onClick={() => remove(preset.id)}>
                 <Trash2 size={13} />
               </IconButton>
-            </div>
+            </Card>
           )
         })}
       </div>

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Info } from 'lucide-react'
 import { cn } from '../../lib/cn'
+import { Card } from './Card'
 import { Tooltip } from './Tooltip'
 
 export interface SettingRowProps {
@@ -105,10 +106,7 @@ export function SettingSection({
   settingId,
 }: SettingSectionProps) {
   return (
-    <section
-      data-setting-id={settingId}
-      className={cn('rounded-xl border border-border bg-surface', className)}
-    >
+    <Card data-setting-id={settingId} className={className}>
       <div className={cn(icon ? 'flex items-start gap-2.5' : undefined)}>
         {icon ? <span className="mt-0.5 shrink-0 text-muted">{icon}</span> : null}
         <div className="min-w-0 flex-1">
@@ -128,6 +126,6 @@ export function SettingSection({
           <div className={description ? 'mt-2' : 'mt-1.5'}>{children}</div>
         </div>
       </div>
-    </section>
+    </Card>
   )
 }

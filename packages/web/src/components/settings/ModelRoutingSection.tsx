@@ -252,14 +252,11 @@ export function ModelRoutingSection() {
         </div>
       )}
 
-      <section data-setting-id="routing.preference" className="settings-item space-y-3 px-3 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-[13px] font-medium text-text">偏好</div>
-            <div className="mt-0.5 text-[12px] leading-4 text-muted">
-              影响档位阈值；预算将尽时会进一步向快速档倾斜。
-            </div>
-          </div>
+      <section data-setting-id="routing.preference" className="settings-item space-y-1 px-3 py-1">
+        <SettingRow
+          label="偏好"
+          hint="影响档位阈值；预算将尽时会进一步向快速档倾斜。"
+        >
           <SegmentedControl
             value={routing.preference}
             options={PREFERENCE_OPTIONS.map(({ value, label }) => ({ value, label }))}

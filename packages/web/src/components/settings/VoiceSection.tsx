@@ -6,6 +6,8 @@ import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { Button } from '../ui/Button'
 import { Input, SegmentedControl, Switch } from '../ui/Controls'
+import { Card } from '../ui/Card'
+import { SettingNote, SettingRow } from '../ui/SettingRow'
 import {
   browserSpeechSupported,
   invalidateVoiceCapabilities,
@@ -126,7 +128,7 @@ export function VoiceSection() {
 
   return (
     <div className="space-y-3">
-      <section data-setting-id="voice.engine" className="rounded-xl border border-border bg-surface p-4">
+      <Card data-setting-id="voice.engine">
         <div className="flex items-start gap-2.5">
           <span className="mt-0.5 text-muted">
             <Mic size={15} />
@@ -150,9 +152,9 @@ export function VoiceSection() {
             </div>
           </div>
         </div>
-      </section>
+      </Card>
 
-      <section data-setting-id="voice.whisper" className="rounded-xl border border-border bg-surface p-4">
+      <Card data-setting-id="voice.whisper">
         <div className="flex items-start gap-2.5">
           <span className="mt-0.5 text-muted">
             <ShieldCheck size={15} />
@@ -192,7 +194,7 @@ export function VoiceSection() {
                   value={draft.binaryPath ?? ''}
                   onChange={(e) => patch({ binaryPath: e.target.value })}
                   placeholder="whisper-cli 的绝对路径；faster-whisper 模式填 python3"
-                  className="min-w-[220px] flex-1 font-mono text-[12px]"
+                  className="font-mono text-[12px]"
                 />
               </label>
               <label className="flex flex-wrap items-center gap-2">
@@ -201,7 +203,7 @@ export function VoiceSection() {
                   value={draft.modelPath ?? ''}
                   onChange={(e) => patch({ modelPath: e.target.value })}
                   placeholder="ggml-small.bin 的绝对路径；faster-whisper 填 small 或本地目录"
-                  className="min-w-[220px] flex-1 font-mono text-[12px]"
+                  className="font-mono text-[12px]"
                 />
               </label>
               <div className="flex flex-wrap items-center gap-2">
@@ -291,9 +293,9 @@ export function VoiceSection() {
             </details>
           </div>
         </div>
-      </section>
+      </Card>
 
-      <section data-setting-id="voice.device" className="rounded-xl border border-border bg-surface p-4">
+      <Card data-setting-id="voice.device">
         <div className="flex items-start gap-2.5">
           <span className="mt-0.5 text-muted">
             <Info size={15} />
@@ -320,9 +322,9 @@ export function VoiceSection() {
             </div>
           </div>
         </div>
-      </section>
+      </Card>
 
-      <section data-setting-id="voice.privacy" className="rounded-xl border border-border bg-surface p-4">
+      <Card data-setting-id="voice.privacy">
         <h3 className="text-[13px] font-medium">数据流向</h3>
         <ul className="mt-2 space-y-1.5 text-[12px] leading-5 text-muted">
           <li>• Host 转写：麦克风 → 当前设备 → 你配置的 Host（局域网/本机）→ 本机 Whisper → 文本。临时音频在转写结束后立即删除。</li>
@@ -330,7 +332,7 @@ export function VoiceSection() {
           <li>• 浏览器内置识别：可能把音频发往浏览器厂商，默认禁用；只有你在这里明确打开才会使用。</li>
           <li>• Tandem 不会保存录音、不会上传到第三方，也不会自动下载模型。</li>
         </ul>
-      </section>
+      </Card>
 
       <p className="px-1 text-[12px] text-muted">
         {host ? `主机设置保存在 ${host.name} 的 config.json；设备识别开关只保存在当前设备。` : '请先选择一台主机。'}

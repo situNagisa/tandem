@@ -13,6 +13,7 @@ import { ExternalSessionPanel } from './ExternalSessionPanel'
 import { MessageList } from './MessageList'
 import { TurnRail } from './chat/TurnRail'
 import { Button } from './ui/Button'
+import { Card } from './ui/Card'
 
 const SOURCE_LABEL: Record<ExternalSource, string> = {
   'claude-code': 'Claude Code',
@@ -166,7 +167,7 @@ export function ExternalSessionView({
         </div>
 
         <div className="shrink-0 border-t border-border bg-bg px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2.5 md:px-6 md:pb-5">
-          <div className="mx-auto flex w-full max-w-[760px] flex-col gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+          <Card className="mx-auto flex w-full max-w-[760px] flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
             <p className="min-w-0 flex-1 text-[13px] leading-5 text-text-soft">
               {label} 原始会话，仅只读查看。导入后可在 Tandem 中继续对话，原文件不会被修改。
             </p>
@@ -180,7 +181,7 @@ export function ExternalSessionView({
               {importedSessionId ? '已在 Tandem 中继续 · 打开' : '在 Tandem 中继续'}
               {!importing && <ArrowUpRight size={14} />}
             </Button>
-          </div>
+          </Card>
         </div>
       </div>
 

@@ -10,6 +10,7 @@ import { ConnectView, NewSessionView } from './NewSessionDialog'
 import { NoHostsView } from './workstation/NoHostsView'
 import { loginGateEnabled } from '../lib/loginGate'
 import { InboxView, useInboxCount, useInboxPendingCount } from './inbox/InboxView'
+import { Card } from './ui/Card'
 
 const SUGGESTIONS = [
   {
@@ -67,9 +68,9 @@ export function SessionWelcome() {
           return (
             <button
               key={s.title}
-              onClick={() => seedPrompt(s.prompt)}
               type="button"
               data-raw-button
+              onClick={() => seedPrompt(s.prompt)}
               className="group flex cursor-pointer items-start gap-2 rounded-xl border border-border bg-[var(--t-surface)] px-2.5 py-2.5 text-left transition-colors duration-[120ms] hover:border-border-strong hover:bg-[var(--t-bg-hover)] sm:gap-2.5 sm:px-3"
             >
               <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-[var(--t-bg-active)] text-text-soft">

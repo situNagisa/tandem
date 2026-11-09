@@ -10,6 +10,7 @@ import { Button, IconButton } from '../ui/Button'
 import { Select } from '../ui/Controls'
 import { cn } from '../../lib/cn'
 import { ROUTE_MODE_META } from '../../lib/routeLabels'
+import { Card } from '../ui/Card'
 
 /** 分工前确认卡：列出子任务、模型与预计花费；可改模型、删除子任务或整单改成直接做。 */
 export function DivisionPlanCard({
@@ -80,10 +81,7 @@ export function DivisionPlanCard({
 
   const visible = tasks.filter((task) => !task.deleted)
   return (
-    <div
-      className="msg-row rounded-xl border border-border bg-surface p-3"
-      data-division-plan={request.id}
-    >
+    <Card className="msg-row" data-division-plan={request.id}>
       <div className="flex items-start gap-2">
         <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-[var(--t-bg-active)] text-text-soft">
           <Bot size={14} />
@@ -186,6 +184,6 @@ export function DivisionPlanCard({
         )}
         <span className={cn('ml-auto text-[12px] text-muted')}>改模型后按计划执行；删除的子任务不会派发</span>
       </div>
-    </div>
+    </Card>
   )
 }

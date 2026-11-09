@@ -589,7 +589,7 @@ export function ProfilesSection() {
       )}
 
       {editing ? (
-        <div className="rounded-xl border border-border bg-surface p-4">
+        <Card>
           <div className="mb-3 flex items-center gap-2">
             {step > 1 && (
               <IconButton
@@ -982,7 +982,7 @@ export function ProfilesSection() {
             </div>
           )}
           </div>
-        </div>
+        </Card>
       ) : (
         <div>
           {loading && profiles.length === 0 && (

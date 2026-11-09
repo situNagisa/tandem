@@ -978,17 +978,13 @@ html[data-mobile-preview] .fixed.inset-0 {
 /* ---------- 设置页共用 ---------- */
 
 /* 反馈9#05：设置整体更紧凑。卡片、行距、说明字号统一在这里收；
-   页面只负责内容，不再逐页手调间距。 */
+   页面只负责内容，不再逐页手调间距。卡片自身的内边距与圆角由 ui/Card 决定。 */
 [data-settings-page-content] {
-  --settings-card-pad-y: 12px;
-  --settings-card-pad-x: 14px;
-}
-[data-settings-page-content] :is(section.rounded-xl, .settings-item.rounded-xl, .setting-card) {
-  padding: var(--settings-card-pad-y) var(--settings-card-pad-x);
-  border-radius: 10px;
+  --settings-card-pad-y: 16px;
+  --settings-card-pad-x: 18px;
 }
 [data-settings-page-content] .space-y-3 > :not([hidden]) ~ :not([hidden]) {
-  margin-top: 8px;
+  margin-top: 12px;
 }
 [data-settings-page-content] .space-y-2\.5 > :not([hidden]) ~ :not([hidden]) {
   margin-top: 6px;
@@ -1163,7 +1159,7 @@ html[data-mobile-preview] .fixed.inset-0 {
 }
 .settings-item {
   border: 1px solid var(--t-border);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--t-surface);
   transition:
     border-color 120ms ease,

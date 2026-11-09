@@ -280,38 +280,28 @@ export function GatewaySection() {
         </div>
       )}
 
-      <section data-setting-id="gateway.mode" className="rounded-xl border border-border bg-surface p-4">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 text-muted"><Network size={16} /></span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h4 className="text-[13px] font-medium">网关模式</h4>
-              <Switch
-                checked={!!settings?.enabled}
-                onChange={(enabled) => settings && void saveSettings({ ...settings, enabled })}
-                disabled={!settings || saving || loading}
-                label="开启网关模式"
-              />
-              <span className="text-[12px] text-muted">{settings?.enabled ? '运行中' : '默认关闭'}</span>
-            </div>
-            <p className="mt-1 break-words text-[13px] leading-5 text-muted">
-              开启后，内网成员可用网关令牌调用 <code className="break-all font-mono text-[12px]">/gateway/v1/chat/completions</code>、
-              <code className="break-all font-mono text-[12px]">/gateway/v1/messages</code> 与 <code className="break-all font-mono text-[12px]">/gateway/v1/models</code>；
-              网关按模型转发到本机账号分组，统一限流、记账，调用者拿不到真实 Key。
-            </p>
-            {settings?.enabled && (
-              <div className="mt-2 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft/40 px-2.5 py-2 text-[13px] leading-5 text-text-soft">
-                <ShieldAlert size={13} className="mt-0.5 shrink-0 text-warning" />
-                <span>
-                  仅在可信内网开启：接口是 HTTP 明文，令牌等同于调用权限。不要做端口映射或公网暴露；成员离职或设备丢失时立即吊销令牌。
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
+      <Card data-setting-id="gateway.mode">
+        <SettingRow
+          label="网关模式"
+          icon={<Network size={16} />}
+          hint="开启后，内网成员可用网关令牌调用 /gateway/v1/chat/completions、/gateway/v1/messages 与 /gateway/v1/models；网关按模型转发到本机账号分组，统一限流、记账，调用者拿不到真实 Key。"
+          unit={settings?.enabled ? '运行中' : '默认关闭'}
+        >
+          <Switch
+            checked={!!settings?.enabled}
+            onChange={(enabled) => settings && void saveSettings({ ...settings, enabled })}
+            disabled={!settings || saving || loading}
+            label="开启网关模式"
+          />
+        </SettingRow>
+        {settings?.enabled && (
+          <SettingNote tone="warning">
+            仅在可信内网开启：接口是 HTTP 明文，令牌等同于调用权限。不要做端口映射或公网暴露；成员离职或设备丢失时立即吊销令牌。
+          </SettingNote>
+        )}
+      </Card>
 
-      <section data-setting-id="gateway.routing" className="rounded-xl border border-border bg-surface p-4">
+      <Card data-setting-id="gateway.routing">
         <div className="flex items-center gap-2">
           <Gauge size={15} className="text-muted" />
           <h4 className="text-[13px] font-medium">模型转发</h4>
@@ -388,9 +378,9 @@ export function GatewaySection() {
         {profiles.length === 0 && (
           <p className="mt-2 text-[12px] text-muted">先到「账号与模型」添加网关要使用的上游账号。</p>
         )}
-      </section>
+      </Card>
 
-      <section data-setting-id="gateway.tokens" className="rounded-xl border border-border bg-surface p-4">
+      <Card data-setting-id="gateway.tokens">
         <div className="flex flex-wrap items-center gap-2">
           <KeyRound size={15} className="text-muted" />
           <h4 className="text-[13px] font-medium">成员令牌</h4>
@@ -453,9 +443,9 @@ export function GatewaySection() {
             还没有令牌。先在「成员」页邀请同事，再回来签发。
           </p>
         )}
-      </section>
+      </Card>
 
-      <section data-setting-id="gateway.stats" className="rounded-xl border border-border bg-surface p-4">
+      <Card data-setting-id="gateway.stats">
         <div className="flex flex-wrap items-center gap-2">
           <Activity size={15} className="text-muted" />
           <h4 className="text-[13px] font-medium">今日统计</h4>
@@ -508,9 +498,9 @@ export function GatewaySection() {
             </div>
           </div>
         )}
-      </section>
+      </Card>
 
-      <section data-setting-id="gateway.logs" className="rounded-xl border border-border bg-surface p-4">
+      <Card data-setting-id="gateway.logs">
         <div className="flex flex-wrap items-center gap-2">
           <ShieldAlert size={15} className="text-muted" />
           <h4 className="text-[13px] font-medium">日志与调试</h4>
@@ -569,7 +559,7 @@ export function GatewaySection() {
         ) : (
           <p className="mt-2 text-[13px] text-muted">还没有网关请求。</p>
         )}
-      </section>
+      </Card>
 
       <p className="settings-note">
         网关仅转发到本机配置的模型账号；令牌与 Key 都不下发到成员设备。架构与威胁模型见 docs/features/gateway.md。

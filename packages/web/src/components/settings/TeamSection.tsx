@@ -31,7 +31,11 @@ import { Input, SegmentedControl } from '../ui/Controls'
 import { Modal } from '../ui/Modal'
 import { Menu } from '../ui/Menu'
 
+import { Card } from '../ui/Card'
+import { SettingRow } from '../ui/SettingRow'
 const ROLE_LABEL: Record<MemberRole, string> = {
+import { Card } from '../ui/Card'
+import { SettingRow } from '../ui/SettingRow'
   observer: '观察者',
   approver: '审批者',
   collaborator: '协作者',
@@ -397,7 +401,7 @@ export function TeamSection() {
         </div>
       )}
 
-      <section data-setting-id="team.invite-role" className="rounded-xl border border-border bg-surface p-3.5">
+      <Card data-setting-id="team.invite-role">
         <h3 className="flex items-center gap-1.5 text-[13px] font-medium">
           <UserPlus size={13} className="text-muted" />
           邀请成员
@@ -460,7 +464,7 @@ export function TeamSection() {
             </div>
           </div>
         )}
-      </section>
+      </Card>
 
       <section data-setting-id="team.members" className="overflow-hidden rounded-xl border border-border">
         <div className="flex items-center justify-between border-b border-border px-3 py-2.5">

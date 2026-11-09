@@ -7,6 +7,7 @@ import { desktop } from '../../lib/desktop'
 import { APP_VERSION } from '../../lib/changelog'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Controls'
+import { Card } from '../ui/Card'
 
 interface UpdateStatus {
   state: string
@@ -123,7 +124,7 @@ export function UpdateSection() {
   return (
     <div className="space-y-3">
       {updater && (
-        <section data-setting-id="general.updates" className="rounded-xl border border-border bg-surface p-4">
+        <Card data-setting-id="general.updates">
           <div className="flex items-start gap-2.5">
             <span className="mt-0.5 text-muted">
               <Download size={15} />
@@ -158,10 +159,10 @@ export function UpdateSection() {
               )}
             </div>
           </div>
-        </section>
+        </Card>
       )}
 
-      <section data-setting-id="general.update-share" className="rounded-xl border border-border bg-surface p-4">
+      <Card data-setting-id="general.update-share">
         <div className="flex items-start gap-2.5">
           <span className="mt-0.5 text-muted">
             <FolderOpen size={15} />
@@ -190,7 +191,7 @@ export function UpdateSection() {
             {shareError && <p className="mt-2 text-[12px] text-danger">{shareError}</p>}
           </div>
         </div>
-      </section>
+      </Card>
     </div>
   )
 }

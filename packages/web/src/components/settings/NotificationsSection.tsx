@@ -6,6 +6,7 @@ import { requestNotificationPermission } from '../../lib/attention'
 import { isAndroidApp, isNativeApp, prepareLocalNotifications, startBackgroundService, stopBackgroundService } from '../../lib/native'
 import { Switch } from '../ui/Controls'
 import { SettingNote, SettingRow } from '../ui/SettingRow'
+import { Card } from '../ui/Card'
 
 function Row({
   icon,
@@ -27,7 +28,7 @@ function Row({
   settingId?: string
 }) {
   return (
-    <div data-setting-id={settingId} className="setting-card rounded-xl border border-border bg-surface">
+    <Card data-setting-id={settingId} className="setting-card">
       <SettingRow icon={icon} label={<span className="truncate text-[13px] font-medium text-text">{title}</span>} hint={desc}>
         <Switch checked={checked} onChange={onChange} disabled={disabled} label={title} />
       </SettingRow>
@@ -36,7 +37,7 @@ function Row({
           {warning}
         </SettingNote>
       ) : null}
-    </div>
+    </Card>
   )
 }
 
@@ -177,7 +178,7 @@ export function NotificationsSection() {
         />
       </div>
 
-      <div data-setting-id="notifications.events" className="mt-5 rounded-xl border border-border bg-surface p-3.5">
+      <Card data-setting-id="notifications.events" className="mt-5">
         <div className="text-[13px] font-medium">提醒哪些事件</div>
         <p className="mt-0.5 text-[13px] leading-5 text-muted">
           只影响系统通知；收件箱始终记录全部事件。
@@ -200,7 +201,7 @@ export function NotificationsSection() {
             </div>
           ))}
         </div>
-      </div>
+      </Card>
 
       <p className="mt-3 rounded-xl border border-border bg-[var(--t-bg)] p-3.5 text-[12.5px] leading-5 text-muted">
         通知只在手机与 Host 处于同一局域网（或已加入同一 Tailscale 网络）且 App

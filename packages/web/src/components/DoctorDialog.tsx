@@ -18,6 +18,7 @@ import { cn } from '../lib/cn'
 import { Button, IconButton } from './ui/Button'
 import { Switch } from './ui/Controls'
 import { Modal } from './ui/Modal'
+import { Card } from './ui/Card'
 
 /** 与服务端 DOCTOR_CHECK_IDS 保持一致；勾选账号连通性时显式请求全部检查。 */
 const ALL_CHECKS = [
@@ -84,11 +85,7 @@ function CheckRow({ item }: { item: DoctorCheck }) {
     )
   }
   return (
-    <div
-      data-doctor-check={item.id}
-      data-doctor-status={item.status}
-      className="rounded-xl border border-border bg-surface px-3 py-2.5"
-    >
+    <Card data-doctor-check={item.id} data-doctor-status={item.status}>
       <div className="flex items-start gap-2.5">
         <Icon size={15} className={cn('mt-0.5 shrink-0', meta.className)} />
         <div className="min-w-0 flex-1">
@@ -124,7 +121,7 @@ function CheckRow({ item }: { item: DoctorCheck }) {
           )}
         </div>
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -226,7 +223,7 @@ export function DoctorDialog() {
         </>
       }
     >
-      <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
+      <Card>
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[13px] font-medium">检测账号连通性</p>
@@ -249,7 +246,7 @@ export function DoctorDialog() {
           </div>
           <Switch checked={hideHome} onChange={setHideHome} label="隐藏用户主目录" />
         </div>
-      </div>
+      </Card>
 
       {error && (
         <div className="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger-soft/50 px-3 py-2.5 text-[13px] leading-5 text-danger">

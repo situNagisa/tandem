@@ -198,10 +198,9 @@ export function HostsSection() {
       </div>
 
       {adding && !gateOn && (
-        <div data-setting-id="hosts.mode" className="mb-4 rounded-xl border border-border bg-surface p-3.5">
-          <div>
-            <label className="settings-label">配对链接</label>
-            <div className="flex gap-1.5">
+        <Card data-setting-id="hosts.mode" className="mb-4">
+          <SettingRow label="配对链接" stacked wide>
+<div className="flex gap-1.5">
               <Input
                 value={link}
                 onChange={(e) => setLink(e.target.value)}
@@ -301,7 +300,7 @@ export function HostsSection() {
               添加
             </Button>
           </div>
-        </div>
+        </Card>
       )}
 
       <div className="space-y-2">

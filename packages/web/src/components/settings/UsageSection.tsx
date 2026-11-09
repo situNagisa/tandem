@@ -8,7 +8,9 @@ import { formatCost, formatTokens } from '../../lib/format'
 import { IconButton } from '../ui/Button'
 import { SegmentedControl } from '../ui/Controls'
 
+import { Card } from '../ui/Card'
 type RangeKey = '7d' | '30d' | 'month'
+import { Card } from '../ui/Card'
 
 const RANGES: Array<{ key: RangeKey; label: string }> = [
   { key: '7d', label: '7 天' },
@@ -85,7 +87,7 @@ function rank(
 
 function RankTable({ title, rows }: { title: string; rows: RankRow[] }) {
   return (
-    <div className="min-w-0 rounded-xl border border-border bg-surface">
+    <Card className="min-w-0 p-0">
       <div className="border-b border-border/70 px-3 py-2 text-[13px] font-medium text-text-soft">
         {title}
       </div>
@@ -116,7 +118,7 @@ function RankTable({ title, rows }: { title: string; rows: RankRow[] }) {
           )}
         </>
       )}
-    </div>
+    </Card>
   )
 }
 
@@ -442,25 +444,25 @@ export function UsageSection() {
       )}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
+        <Card>
           <div className="text-[13px] text-muted">总花费</div>
           <div className="mt-0.5 font-mono text-[17px] tabular-nums text-text">{formatCost(totals.cost)}</div>
-        </div>
-        <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
+        </Card>
+        <Card>
           <div className="text-[13px] text-muted">输入 token</div>
           <div className="mt-0.5 font-mono text-[17px] tabular-nums text-text">{formatTokens(totals.input)}</div>
-        </div>
-        <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
+        </Card>
+        <Card>
           <div className="text-[13px] text-muted">输出 token</div>
           <div className="mt-0.5 font-mono text-[17px] tabular-nums text-text">{formatTokens(totals.output)}</div>
-        </div>
-        <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
+        </Card>
+        <Card>
           <div className="text-[13px] text-muted">回合</div>
           <div className="mt-0.5 font-mono text-[17px] tabular-nums text-text">{totals.turns}</div>
-        </div>
+        </Card>
       </div>
 
-      <div data-setting-id="usage.chart" className="mt-3 rounded-xl border border-border bg-surface p-3">
+      <Card data-setting-id="usage.chart" className="mt-3">
         <div className="mb-2 flex items-center gap-1.5 text-[13px] font-medium text-text-soft">
           <BarChart3 size={13} className="text-muted" /> 按天花费
           {loading && <Spinner size={11} className="text-muted" />}
@@ -470,7 +472,7 @@ export function UsageSection() {
           </span>
         </div>
         <DayChart days={days} values={daily} />
-      </div>
+      </Card>
 
       <div data-setting-id="usage.models" className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <RankTable title="按模型" rows={modelRanks} />
@@ -481,7 +483,7 @@ export function UsageSection() {
       </div>
 
       {roleStats.length > 0 && (
-        <div data-setting-id="usage.roles" className="mt-3 rounded-xl border border-border bg-surface">
+        <Card data-setting-id="usage.roles" className="mt-3 p-0">
           <div className="border-b border-border/70 px-3 py-2 text-[13px] font-medium text-text-soft">
             分工路由 · 按角色
           </div>
@@ -507,7 +509,7 @@ export function UsageSection() {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
       <p className="settings-note">

@@ -9,6 +9,7 @@ import { Button, IconButton } from '../ui/Button'
 import { ConfirmAction } from '../ui/ConfirmAction'
 import { Modal } from '../ui/Modal'
 import { cn } from '../../lib/cn'
+import { Card } from '../ui/Card'
 
 const GROUP_LABELS: Record<DemoScenarioInfo['group'], string> = {
   conversation: '对话与自动化',
@@ -134,10 +135,7 @@ export function DemoDialog() {
               </h3>
               <div className="grid gap-1.5 sm:grid-cols-2">
                 {items.map((scenario) => (
-                  <div
-                    key={scenario.id}
-                    className="flex min-h-[92px] flex-col rounded-xl border border-border bg-surface p-2.5"
-                  >
+                  <Card key={scenario.id} className="flex min-h-[92px] flex-col p-2.5">
                     <div className="flex items-start gap-1.5">
                       <span className="min-w-0 flex-1 text-[13px] font-medium text-text">
                         {scenario.title}
@@ -170,7 +168,7 @@ export function DemoDialog() {
                         <span className="text-[11px] text-muted">请先重新播放</span>
                       )}
                     </div>
-                  </div>
+                  </Card>
                 ))}
               </div>
             </section>

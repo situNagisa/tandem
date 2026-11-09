@@ -10,7 +10,9 @@ import { ShortcutsTable } from './ShortcutsTable'
 import { Switch } from '../ui/Controls'
 import { navigate } from '../../lib/router'
 
+import { Card } from '../ui/Card'
 const THEMES: Array<{ id: Theme; label: string; desc: string; icon: typeof Sun }> = [
+import { Card } from '../ui/Card'
   { id: 'light', label: '浅色', desc: '暖白纸面，白天更清爽', icon: Sun },
   { id: 'dark', label: '深色', desc: '低亮度暖黑，夜间更舒适', icon: Moon },
   { id: 'system', label: '跟随系统', desc: '随设备外观自动切换', icon: Monitor },
@@ -155,7 +157,7 @@ export function AppearanceSection() {
         })}
       </div>
 
-      <div className="mt-5 rounded-xl border border-border bg-surface p-3.5">
+      <Card className="mt-5">
         <ShortcutsTable />
         <div className="mt-3 border-t border-border pt-2.5">
           <div className="text-[12px] text-muted">输入框与浏览</div>
@@ -181,17 +183,14 @@ export function AppearanceSection() {
             ))}
           </dl>
         </div>
-      </div>
+      </Card>
 
-      <div data-setting-id="appearance.notifications" className="mt-3 rounded-xl border border-border bg-surface p-3.5">
-        <div className="flex items-center gap-2">
-          <Bell size={14} className="text-muted" />
-          <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-medium">桌面通知</div>
-            <p className="mt-0.5 text-[13px] leading-5 text-muted">
-              页面不可见时，回合结束与审批请求通过系统通知提醒；标题与 favicon 也会保留角标。
-            </p>
-          </div>
+      <Card data-setting-id="appearance.notifications" className="mt-3">
+        <SettingRow
+          label="桌面通知"
+          icon={<Bell size={14} />}
+          hint="页面不可见时，回合结束与审批请求通过系统通知提醒；标题与 favicon 也会保留角标。"
+        >
           <Switch
             checked={notifications}
             onChange={() => void toggleNotifications()}
@@ -204,9 +203,9 @@ export function AppearanceSection() {
             浏览器已拒绝通知权限，可在地址栏的站点设置里重新允许。
           </p>
         )}
-      </div>
+      </Card>
 
-      <div data-setting-id="appearance.install" className="mt-3 rounded-xl border border-border bg-surface p-3.5">
+      <Card data-setting-id="appearance.install" className="mt-3">
         <div className="flex items-center gap-2 text-[13px] font-medium">
           <Smartphone size={14} className="text-muted" /> 安装到手机主屏
         </div>
@@ -214,7 +213,7 @@ export function AppearanceSection() {
           用手机浏览器打开 Tandem，在分享菜单选择「添加到主屏幕」，即可像 App 一样使用。
           手机与电脑连接同一主机时，会话、审批与消息会实时同步。
         </p>
-      </div>
+      </Card>
 
       <div className="mt-3 rounded-xl border border-border bg-[var(--t-bg)] p-3.5 text-[13px] leading-5 text-muted">
         Tandem 使用暖色中性灰与克制的陶土橙强调色，衬线字体只用于标题。所有字体来自系统，不加载外部资源。
@@ -222,7 +221,7 @@ export function AppearanceSection() {
 
       {__TANDEM_DEBUG__ && (
         <>
-          <div data-setting-id="appearance.gallery" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5">
+          <Card data-setting-id="appearance.gallery" className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-[13px] font-medium">组件画廊</div>
               <p className="mt-0.5 text-[13px] leading-5 text-muted">
@@ -235,9 +234,9 @@ export function AppearanceSection() {
             }}>
               打开组件画廊
             </Button>
-          </div>
+          </Card>
 
-          <div data-setting-id="appearance.feedback" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5">
+          <Card data-setting-id="appearance.feedback" className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-[13px] font-medium">反馈</div>
               <p className="mt-0.5 text-[13px] leading-5 text-muted">
@@ -255,19 +254,17 @@ export function AppearanceSection() {
             >
               进入反馈模式
             </Button>
-          </div>
+          </Card>
 
           {debugAuto !== null && (
-            <div data-setting-id="appearance.debug-account" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5">
-              <div className="min-w-0">
-                <div className="text-[13px] font-medium">调试账号自动登录</div>
-                <p className="mt-0.5 text-[13px] leading-5 text-muted">
-                  调试版打开本机工作站时，未登录就以「调试账号」自动登录，并用它登记本机主机。
-                  退出调试账号后此开关会关闭；重新打开后下次启动恢复自动登录。
-                </p>
-              </div>
-              <Switch checked={debugAuto} onChange={(next) => void toggleDebugAuto(next)} label="调试账号自动登录" />
-            </div>
+            <Card data-setting-id="appearance.debug-account" className="mt-3">
+              <SettingRow
+                label="调试账号自动登录"
+                hint="调试版打开本机工作站时，未登录就以「调试账号」自动登录，并用它登记本机主机。退出调试账号后此开关会关闭；重新打开后下次启动恢复自动登录。"
+              >
+                <Switch checked={debugAuto} onChange={(next) => void toggleDebugAuto(next)} label="调试账号自动登录" />
+              </SettingRow>
+            </Card>
           )}
         </>
       )}

@@ -237,7 +237,7 @@ export function Card({
       data-group={id}
       data-collapsed={collapsible && collapsed ? 'true' : undefined}
       className={cn(
-        'group/card w-full min-w-0 rounded-[10px] border border-border px-3 py-2.5 shadow-[var(--t-shadow-sm)] transition-[opacity,box-shadow] duration-150',
+        'group/card w-full min-w-0 rounded-xl border border-border px-4 py-3.5 transition-[opacity,border-color] duration-150',
         collapsible && collapsed && 'py-2',
         dragging && 'opacity-55',
       )}

@@ -26,6 +26,7 @@ import {
   type ChangelogTarget,
 } from '../../lib/changelog'
 import { Button } from '../ui/Button'
+import { Card } from '../ui/Card'
 import { Modal } from '../ui/Modal'
 
 const CARD_POSITION =
@@ -284,7 +285,7 @@ function AboutDialog() {
       className="w-[min(92vw,440px)]"
     >
       <div className="space-y-4 text-[13px] leading-5 text-text-soft">
-        <div className="rounded-xl border border-border bg-surface p-3.5">
+        <Card>
           <p className="text-[15px] font-medium text-text">
             Tandem {APP_VERSION}
             <span className="ml-1.5 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 align-middle text-[11px] font-normal text-text-tertiary">
@@ -292,7 +293,7 @@ function AboutDialog() {
             </span>
           </p>
           <p className="mt-1 text-[12px] text-muted">多端 agent 工作台 · Web / 桌面 / 安卓</p>
-        </div>
+        </Card>
         <p className="text-[12.5px] text-muted">
           导览只在应用版本更新后自动出现一次；也可以从这里随时重新打开，或重看三步上手引导。
         </p>

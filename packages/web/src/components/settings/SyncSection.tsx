@@ -276,7 +276,7 @@ export function SyncSection() {
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
-        <div data-setting-id="sync.export" className="rounded-xl border border-border bg-surface p-4">
+        <Card data-setting-id="sync.export">
           <div className="flex items-center gap-2">
             <span className="flex size-7 items-center justify-center rounded-lg bg-[var(--t-bg-active)] text-text-soft">
               <Download size={14} />
@@ -355,9 +355,9 @@ export function SyncSection() {
           <p className="settings-help">
             手机或 App 里下载不便时，可用「分享」或「复制内容」把文件发到另一台设备。
           </p>
-        </div>
+        </Card>
 
-        <div data-setting-id="sync.import" className="rounded-xl border border-border bg-surface p-4">
+        <Card data-setting-id="sync.import">
           <div className="flex items-center gap-2">
             <span className="flex size-7 items-center justify-center rounded-lg bg-[var(--t-bg-active)] text-text-soft">
               <Upload size={14} />
@@ -485,7 +485,7 @@ export function SyncSection() {
               导入配置
             </Button>
           </div>
-        </div>
+        </Card>
       </div>
 
       <Modal

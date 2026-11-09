@@ -6,6 +6,8 @@ import { useUiStore } from '../../store/useUiStore'
 import { api } from '../../lib/api'
 import { Button } from '../ui/Button'
 import { SegmentedControl, Switch, Textarea } from '../ui/Controls'
+import { Card } from '../ui/Card'
+import { SettingNote, SettingRow } from '../ui/SettingRow'
 
 const DEFAULT_SETTINGS: BrowserSettings = { enabled: false, allowedHosts: [], headless: true }
 const HEADLESS_OPTIONS = [
@@ -108,42 +110,32 @@ export function BrowserSection() {
 
   return (
     <div className="space-y-3">
-      <section data-setting-id="browser.enabled" className="rounded-xl border border-border bg-surface p-4">
-        <div className="flex items-start gap-2.5">
-          <span className="mt-0.5 text-muted">
-            <MousePointerClick size={15} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h3 className="text-[13px] font-medium">浏览器操作</h3>
-              <Switch
-                checked={enabled}
-                onChange={toggleEnabled}
-                disabled={!settings || saving}
-                label="启用浏览器操作"
-              />
-            </div>
-            <p className="mt-1 text-[13px] leading-5 text-muted">
-              让 agent 在主机本机打开页面、复现 bug、截图回传。每个会话独立浏览器上下文，空闲 10 分钟自动关闭。
-            </p>
-            {!settings && !error ? <p className="mt-2 text-[12px] text-muted">读取中…</p> : null}
-            {!enabled && settings ? (
-              <p className="mt-2 text-[12px] text-muted">默认关闭。开启后工具才会出现在 agent 的工具列表里。</p>
-            ) : null}
-          </div>
-        </div>
-        {error ? <p className="mt-2 text-[12px] text-danger">{error}</p> : null}
-      </section>
+      <Card data-setting-id="browser.enabled">
+        <SettingRow
+          label="浏览器操作"
+          icon={<MousePointerClick size={15} />}
+          hint="让 agent 在主机本机打开页面、复现 bug、截图回传。每个会话独立浏览器上下文，空闲 10 分钟自动关闭。"
+        >
+          <Switch
+            checked={enabled}
+            onChange={toggleEnabled}
+            disabled={!settings || saving}
+            label="启用浏览器操作"
+          />
+        </SettingRow>
+        {!settings && !error ? <SettingNote>读取中…</SettingNote> : null}
+        {!enabled && settings ? (
+          <SettingNote>默认关闭。开启后工具才会出现在 agent 的工具列表里。</SettingNote>
+        ) : null}
+        {error ? <SettingNote tone="warning">{error}</SettingNote> : null}
+      </Card>
 
-      <section data-setting-id="browser.display" className="rounded-xl border border-border bg-surface p-4">
-        <div className="flex items-center gap-2">
-          <Globe2 size={14} className="text-muted" />
-          <h3 className="text-[13px] font-medium">显示模式</h3>
-        </div>
-        <p className="mt-1 text-[13px] leading-5 text-muted">
-          无头模式不弹窗口，适合远程主机；有头模式会在主机桌面打开可见窗口，方便本机观察。
-        </p>
-        <div className="mt-3">
+      <Card data-setting-id="browser.display">
+        <SettingRow
+          label="显示模式"
+          icon={<Globe2 size={14} />}
+          hint="无头模式不弹窗口，适合远程主机；有头模式会在主机桌面打开可见窗口，方便本机观察。"
+        >
           <SegmentedControl
             options={HEADLESS_OPTIONS}
             value={headless ? 'headless' : 'headed'}
@@ -154,10 +146,10 @@ export function BrowserSection() {
             disabled={!settings || saving}
             aria-label="浏览器显示模式"
           />
-        </div>
-      </section>
+        </SettingRow>
+      </Card>
 
-      <section data-setting-id="browser.allowlist" className="rounded-xl border border-border bg-surface p-4">
+      <Card data-setting-id="browser.allowlist">
         <div className="flex items-center gap-2">
           <ShieldCheck size={14} className="text-muted" />
           <h3 className="text-[13px] font-medium">域名允许列表</h3>
@@ -196,9 +188,9 @@ export function BrowserSection() {
             选「始终允许」只记住该域名（会话内）。
           </span>
         </p>
-      </section>
+      </Card>
 
-      <section data-setting-id="browser.tools" className="rounded-xl border border-border bg-surface p-4">
+      <Card data-setting-id="browser.tools">
         <div className="flex items-center gap-2">
           <RefreshCw size={14} className="text-muted" />
           <h3 className="text-[13px] font-medium">浏览器组件</h3>
@@ -220,7 +212,7 @@ export function BrowserSection() {
             </p>
           </div>
         )}
-      </section>
+      </Card>
     </div>
   )
 }
