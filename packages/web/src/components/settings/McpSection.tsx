@@ -19,6 +19,7 @@ import { Button, IconButton } from '../ui/Button'
 import { Input, SegmentedControl, Switch } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 
+import { EmptyState } from '../ui/EmptyState'
 const SOURCE_LABEL: Record<string, string> = {
   tandem: 'Tandem',
   claude: 'Claude',
@@ -406,11 +407,11 @@ export function McpSection() {
       </div>
 
       {!hosts.length && (
-        <div className="settings-empty">
-          <span className="settings-empty-icon"><Plug size={17} /></span>
-          <p className="settings-empty-title">还没有连接主机</p>
-          <p className="settings-empty-hint">先连接一台主机，再配置 MCP 服务器。</p>
-        </div>
+        <EmptyState
+          icon={<Plug size={17} />}
+          title={<>还没有连接主机</>}
+          hint={<>先连接一台主机，再配置 MCP 服务器。</>}
+        />
       )}
 
       {error && (
@@ -426,11 +427,11 @@ export function McpSection() {
       )}
 
       {!loading && host && servers.length === 0 && (
-        <div className="settings-empty">
-          <span className="settings-empty-icon"><Plug size={17} /></span>
-          <p className="settings-empty-title">还没有 MCP 服务器</p>
-          <p className="settings-empty-hint">添加后，模型可调用其工具，默认需要审批。</p>
-        </div>
+        <EmptyState
+          icon={<Plug size={17} />}
+          title={<>还没有 MCP 服务器</>}
+          hint={<>添加后，模型可调用其工具，默认需要审批。</>}
+        />
       )}
 
       <div className="space-y-2">

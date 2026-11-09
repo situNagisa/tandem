@@ -24,6 +24,7 @@ import { Input, SegmentedControl, Switch, Textarea } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 import { Modal } from '../ui/Modal'
 
+import { EmptyState } from '../ui/EmptyState'
 const TOOL_OPTIONS = ['Bash', 'Write', 'Edit', 'Read', 'Glob', 'Grep', 'WebFetch', 'browser_navigate', 'browser_*', '*']
 
 const ACTIONS: Array<{ value: PermissionRule['action']; label: string }> = [
@@ -273,11 +274,11 @@ export function PermissionsSection() {
 
   if (!host) {
     return (
-      <div className="settings-empty">
-        <span className="settings-empty-icon"><ShieldCheck size={17} /></span>
-        <p className="settings-empty-title">还没有连接主机</p>
-        <p className="settings-empty-hint">先添加一台主机，才能配置权限规则。</p>
-      </div>
+      <EmptyState
+        icon={<ShieldCheck size={17} />}
+        title={<>还没有连接主机</>}
+        hint={<>先添加一台主机，才能配置权限规则。</>}
+      />
     )
   }
 
@@ -424,15 +425,11 @@ export function PermissionsSection() {
       ) : (
         <div className="space-y-2">
           {rules.length === 0 && (
-            <div className="settings-empty">
-              <span className="settings-empty-icon">
-                <ShieldCheck size={17} />
-              </span>
-              <p className="settings-empty-title">暂无权限规则</p>
-              <p className="settings-empty-hint">
-                未命中的工具调用会按会话权限模式处理。添加规则可减少重复审批。
-              </p>
-            </div>
+            <EmptyState
+              icon={<ShieldCheck size={17} />}
+              title={<>暂无权限规则</>}
+              hint={<>未命中的工具调用会按会话权限模式处理。添加规则可减少重复审批。</>}
+            />
           )}
           {rules.map((rule, index) => (
             <div

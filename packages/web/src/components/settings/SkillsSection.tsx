@@ -11,6 +11,7 @@ import { Button, IconButton } from '../ui/Button'
 import { Switch } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 import { Markdown } from '../Markdown'
+import { EmptyState } from '../ui/EmptyState'
 
 const SOURCE_ORDER: SkillSource[] = ['project', 'tandem', 'user', 'plugin']
 const SOURCE_LABEL: Record<SkillSource, string> = {
@@ -124,11 +125,11 @@ export function SkillsSection() {
 
   if (!host) {
     return (
-      <div className="settings-empty">
-        <span className="settings-empty-icon"><Sparkles size={17} /></span>
-        <p className="settings-empty-title">还没有连接主机</p>
-        <p className="settings-empty-hint">先连接一台主机，才能查看本机的 Skills。</p>
-      </div>
+      <EmptyState
+        icon={<Sparkles size={17} />}
+        title={<>还没有连接主机</>}
+        hint={<>先连接一台主机，才能查看本机的 Skills。</>}
+      />
     )
   }
 
@@ -174,14 +175,12 @@ export function SkillsSection() {
       )}
 
       {!loading && skills.length === 0 && (
-        <div className="settings-empty">
-          <span className="settings-empty-icon"><Sparkles size={17} /></span>
-          <p className="settings-empty-title">还没有发现技能</p>
-          <p className="settings-empty-hint">
-            在 ~/.claude/skills、~/.tandem/skills 或 <span className="font-mono">&lt;cwd&gt;/.claude/skills</span>{' '}
-            下新建 <span className="font-mono">&lt;name&gt;/SKILL.md</span> 即可。
-          </p>
-        </div>
+        <EmptyState
+          icon={<Sparkles size={17} />}
+          title={<>还没有发现技能</>}
+          hint={<>在 ~/.claude/skills、~/.tandem/skills 或 <span className="font-mono">&lt;cwd&gt;/.claude/skills</span>{' '}
+            下新建 <span className="font-mono">&lt;name&gt;/SKILL.md</span> 即可。</>}
+        />
       )}
 
       {groups.map(({ source, items }) => (

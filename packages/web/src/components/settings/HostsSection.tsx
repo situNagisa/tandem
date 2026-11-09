@@ -33,6 +33,8 @@ import { parseInviteLink } from '../../lib/inviteLink'
 import { isValidFingerprint, normalizeFingerprint } from '../../lib/relay'
 import type { HostConfig } from '../../lib/types'
 
+import { Card } from '../ui/Card'
+import { EmptyState } from '../ui/EmptyState'
 const inputCls =
   'h-8 w-full rounded-lg border border-border bg-surface px-2.5 text-[13px] text-text outline-none transition-colors placeholder:text-muted focus:border-border-strong'
 
@@ -305,11 +307,10 @@ export function HostsSection() {
 
       <div className="space-y-2">
         {hosts.length === 0 && (
-          <div className="settings-empty">
-            <span className="settings-empty-icon"><Server size={17} /></span>
-            <p className="settings-empty-title">还没有 Host</p>
-            <p className="settings-empty-hint">
-              {gateOn
+          <EmptyState
+            icon={<Server size={17} />}
+            title={<>还没有 Host</>}
+            hint={<>{gateOn
                 ? '点「添加主机」，复制一行命令到目标机器执行即可。'
                 : '在目标机器启动 Tandem Host，然后添加它的地址与 Token。'}
             </p>

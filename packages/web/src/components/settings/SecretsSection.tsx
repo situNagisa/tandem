@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { EyeOff, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { SettingRow } from '../ui/SettingRow'
+import { EmptyState } from '../ui/EmptyState'
 import type { SecretMeta, SecretScope, SecretsOverview } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
@@ -265,10 +267,15 @@ export function SecretsSection() {
           <Spinner size={12} /> 读取中…
         </p>
       ) : secrets.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-[13px] leading-6 text-muted">
-          这里还没有 secret。新增后，模型会在系统提示里看到名称与描述，并可在命令中用{' '}
-          <span className="font-mono">$NAME</span> 引用；值不会出现在对话里。
-        </div>
+        <EmptyState
+          title={<>这里还没有 secret</>}
+          hint={
+            <>
+              新增后，模型会在系统提示里看到名称与描述，并可在命令中用{' '}
+              <span className="font-mono">$NAME</span> 引用；值不会出现在对话里。
+            </>
+          }
+        />
       ) : (
         <div className="overflow-hidden rounded-lg border border-border">
           <div className="grid grid-cols-[minmax(0,1fr)_130px_92px_72px] items-center gap-2 border-b border-border bg-bg/40 px-3 py-2 text-[12px] text-muted max-sm:grid-cols-[minmax(0,1fr)_84px_64px]">

@@ -53,6 +53,8 @@ import { PriceOverrides } from './profiles/PriceOverrides'
 import { GroupEditor } from './profiles/GroupEditor'
 import { KeysPanel } from './profiles/KeysPanel'
 import {
+import { Card } from '../ui/Card'
+import { EmptyState } from '../ui/EmptyState'
   GROUP_KIND_LABELS,
   type FormState,
   type GroupDraft,
@@ -518,11 +520,11 @@ export function ProfilesSection() {
 
   if (!host) {
     return (
-      <div className="settings-empty">
-        <span className="settings-empty-icon"><KeyRound size={17} /></span>
-        <p className="settings-empty-title">还没有连接主机</p>
-        <p className="settings-empty-hint">先添加一台主机，再配置账号与模型。</p>
-      </div>
+      <EmptyState
+        icon={<KeyRound size={17} />}
+        title={<>还没有连接主机</>}
+        hint={<>先添加一台主机，再配置账号与模型。</>}
+      />
     )
   }
 

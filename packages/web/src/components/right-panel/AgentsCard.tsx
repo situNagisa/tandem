@@ -6,6 +6,7 @@ import { useUiStore } from '../../store/useUiStore'
 import { useNow } from '../../lib/hooks'
 import { api } from '../../lib/api'
 import { Menu } from '../ui/Menu'
+import { EmptyState } from '../ui/EmptyState'
 import { IconButton } from '../ui/Button'
 import { profileModelGroups } from '../../lib/profileModels'
 import { useSessionView } from '../session/SessionScope'
@@ -184,7 +185,7 @@ export function AgentsCard() {
     return out
   }, [subagents, activeSessionId])
 
-  if (rows.length === 0) return <p className="text-[12px] text-muted">暂无子代理</p>
+  if (rows.length === 0) return <EmptyState variant="plain" title={<>暂无子代理</>} />
   return (
     <div className="space-y-0.5">
       {rows.map(({ sub, depth }) => (

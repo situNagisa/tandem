@@ -8,6 +8,7 @@ import { api } from '../../lib/api'
 import { Button, IconButton } from '../ui/Button'
 import { Input } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
+import { EmptyState } from '../ui/EmptyState'
 
 const EVENTS: HookEvent[] = ['PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Stop', 'SessionStart']
 
@@ -133,11 +134,11 @@ export function HooksSection() {
 
   if (!host) {
     return (
-      <div className="settings-empty">
-        <span className="settings-empty-icon"><Webhook size={17} /></span>
-        <p className="settings-empty-title">还没有连接主机</p>
-        <p className="settings-empty-hint">先添加一台主机，才能配置 Hooks。</p>
-      </div>
+      <EmptyState
+        icon={<Webhook size={17} />}
+        title={<>还没有连接主机</>}
+        hint={<>先添加一台主机，才能配置 Hooks。</>}
+      />
     )
   }
 
@@ -191,13 +192,11 @@ export function HooksSection() {
                       <SourceHeader label={SOURCE_LABEL[source]} path={info.path} readOnly={false} />
                       <div className="space-y-2">
                         {draft.length === 0 && (
-                          <div className="settings-empty">
-                            <span className="settings-empty-icon"><Webhook size={17} /></span>
-                            <p className="settings-empty-title">暂无 Tandem Hooks</p>
-                            <p className="settings-empty-hint">
-                              可添加命令在工具执行或消息提交前后运行。
-                            </p>
-                          </div>
+                          <EmptyState
+                            icon={<Webhook size={17} />}
+                            title={<>暂无 Tandem Hooks</>}
+                            hint={<>可添加命令在工具执行或消息提交前后运行。</>}
+                          />
                         )}
                         {draft.map((entry, index) => (
                           <div

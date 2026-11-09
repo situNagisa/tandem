@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { EmptyState } from './ui/EmptyState'
 import {
   ArrowUpRight,
   BarChart3,
@@ -564,9 +565,7 @@ export function RightPanel() {
               ))}
             </ul>
           ) : (
-            <p className="text-[12px] leading-4 text-muted">
-              暂无记忆。输入「#记住 …」或让 agent 记录长期事实。
-            </p>
+            <EmptyState variant="plain" title={<>暂无记忆。输入「#记住 …」或让 agent 记录长期事实。</>} />
           )}
           <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-border pt-1.5 text-[12px]">
             <span className="text-muted">共 {memory?.entries ?? 0} 条</span>
@@ -578,7 +577,7 @@ export function RightPanel() {
       )
     }
     if (id === 'plan') {
-      if (!plan) return <p className="text-[12px] text-muted">暂无计划</p>
+      if (!plan) return <EmptyState variant="plain" title={<>暂无计划</>} />
       return (
         <div className="max-h-[180px] overflow-y-auto rounded-md border border-border/70 bg-bg/25 px-2.5 py-2 text-[13px] leading-[18px]">
           <Markdown text={plan.content} />
@@ -598,7 +597,7 @@ export function RightPanel() {
       return <ContextCard data={contextData} />
     }
     if (id === 'todos') {
-      if (todos.length === 0) return <p className="text-[12px] text-muted">暂无待办</p>
+      if (todos.length === 0) return <EmptyState variant="plain" title={<>暂无待办</>} />
       return (
         <>
           <div className="mb-2 h-0.5 overflow-hidden rounded-full bg-[var(--t-bg-active)]/60">
@@ -640,7 +639,7 @@ export function RightPanel() {
     }
     if (id === 'usage') {
       if (!usageHasData) {
-        return <p className="text-[12px] leading-4 text-muted">暂无用量</p>
+        return <EmptyState variant="plain" title={<>暂无用量</>} />
       }
       const cacheRead = usage?.cacheReadTokens ?? 0
       const cacheWrite = usage?.cacheWriteTokens ?? 0
@@ -758,7 +757,7 @@ export function RightPanel() {
     }
     if (id === 'changes') {
       if (fileChanges.length === 0) {
-        return <p className="text-[12px] leading-4 text-muted">暂无改动</p>
+        return <EmptyState variant="plain" title={<>暂无改动</>} />
       }
       return (
         <>

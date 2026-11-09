@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Brain, Pencil, Trash2 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { EmptyState } from '../ui/EmptyState'
 import type { MemoryListItem } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
@@ -119,9 +120,10 @@ export function MemorySection() {
       )}
 
       {!loading && rows.length === 0 && (
-        <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-[13px] leading-6 text-muted">
-          还没有任何记忆。在会话里输入「#记住 内容」，或让 agent 用 Memory 工具记录长期事实。
-        </div>
+        <EmptyState
+          title={<>还没有任何记忆</>}
+          hint={<>在会话里输入「#记住 内容」，或让 agent 用 Memory 工具记录长期事实。</>}
+        />
       )}
 
       {rows.length > 0 && (

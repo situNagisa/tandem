@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { EmptyState } from '../ui/EmptyState'
 import type {
   CreateTeamInviteResult,
   MemberRole,
@@ -474,7 +475,7 @@ export function TeamSection() {
           </span>
         </div>
         {members.length === 0 && (
-          <p className="px-3 py-6 text-center text-[12px] text-muted">还没有成员，先生成邀请链接。</p>
+          <EmptyState variant="plain" title={<>还没有成员，先生成邀请链接。</>} />
         )}
         {members.map((member) => (
           <div
@@ -603,7 +604,7 @@ export function TeamSection() {
           <span className="text-[12px] text-muted">最近 {audit.length} 条</span>
         </div>
         {audit.length === 0 ? (
-          <p className="px-3 py-6 text-center text-[12px] text-muted">还没有记录。</p>
+          <EmptyState variant="plain" title={<>还没有记录。</>} />
         ) : (
           <div className="max-h-[360px] overflow-y-auto">
             {audit.map((entry) => (

@@ -124,7 +124,7 @@ export function SessionGraphCard({
         </div>
       )}
       {layout.counts.turns === 0 ? (
-        <p className="py-6 text-center text-[12px] text-muted">还没有用户轮次</p>
+        <EmptyState variant="plain" title={<>还没有用户轮次</>} />
       ) : (
         <SessionGraphView
           layout={layout}

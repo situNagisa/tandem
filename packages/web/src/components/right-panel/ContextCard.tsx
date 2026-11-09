@@ -1,4 +1,5 @@
 import { cn } from '../../lib/cn'
+import { EmptyState } from '../ui/EmptyState'
 import { formatTokens } from '../../lib/format'
 import { quotaLine } from '../../lib/quota'
 import {
@@ -24,7 +25,7 @@ function contextRows(context: NonNullable<ContextBreakdownData['context']>, free
 export function ContextCard({ data }: { data: ContextBreakdownData }) {
   const { context, noData, window, used, pct, turns } = data
   if (noData || !context) {
-    return <p className="text-[12px] leading-4 text-muted">暂无上下文数据</p>
+    return <EmptyState variant="plain" title={<>暂无上下文数据</>} />
   }
   const quota = quotaLine(context.quota)
   const free = Math.max(0, window - used)

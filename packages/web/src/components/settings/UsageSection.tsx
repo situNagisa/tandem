@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart3, RefreshCw, TriangleAlert } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { EmptyState } from '../ui/EmptyState'
 import type { RouteRole, UsageStatsRow } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
@@ -92,7 +93,7 @@ function RankTable({ title, rows }: { title: string; rows: RankRow[] }) {
         {title}
       </div>
       {rows.length === 0 ? (
-        <div className="px-3 py-4 text-[13px] text-muted">暂无数据</div>
+        <EmptyState variant="plain" title={<>暂无数据</>} />
       ) : (
         <>
           <div className="divide-y divide-[var(--t-border)]">

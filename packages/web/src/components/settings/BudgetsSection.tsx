@@ -20,6 +20,7 @@ import { Input, SegmentedControl, Select, Switch } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 import { Modal } from '../ui/Modal'
 
+import { EmptyState } from '../ui/EmptyState'
 const SCOPE_LABEL: Record<BudgetScope, string> = {
   global: '全局',
   account: '账号',
@@ -376,13 +377,11 @@ export function BudgetsSection() {
 
   if (!host) {
     return (
-      <div className="settings-empty">
-        <span className="settings-empty-icon">
-          <Wallet size={17} />
-        </span>
-        <p className="settings-empty-title">还没有连接主机</p>
-        <p className="settings-empty-hint">预算规则保存在主机端，先添加一台主机。</p>
-      </div>
+      <EmptyState
+        icon={<Wallet size={17} />}
+        title={<>还没有连接主机</>}
+        hint={<>预算规则保存在主机端，先添加一台主机。</>}
+      />
     )
   }
 
@@ -449,15 +448,11 @@ export function BudgetsSection() {
           ))}
         </div>
       ) : rules.length === 0 ? (
-        <div className="settings-empty">
-          <span className="settings-empty-icon">
-            <Wallet size={17} />
-          </span>
-          <p className="settings-empty-title">还没有预算规则</p>
-          <p className="settings-empty-hint">
-            给账号、分组或模型设置每月上限，花费接近上限时会收到提醒，也可以阻止新请求。
-          </p>
-        </div>
+        <EmptyState
+          icon={<Wallet size={17} />}
+          title={<>还没有预算规则</>}
+          hint={<>给账号、分组或模型设置每月上限，花费接近上限时会收到提醒，也可以阻止新请求。</>}
+        />
       ) : (
         <div className="space-y-2">
           {rules.map((rule) => (

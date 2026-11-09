@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Bot, FileCode2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { SettingRow } from '../ui/SettingRow'
+import { EmptyState } from '../ui/EmptyState'
 import type {
   DelegationStrategy,
   HostSettings,
@@ -477,9 +479,10 @@ export function SubagentsSection() {
 
       <div className="space-y-2">
         {custom.length === 0 && !draft && (
-          <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-[12.5px] text-muted">
-            还没有自定义子代理预设。新建一个「探索」或「测试」，让主会话把任务派给便宜模型。
-          </div>
+          <EmptyState
+            title={<>还没有自定义子代理预设</>}
+            hint={<>新建一个「探索」或「测试」，让主会话把任务派给便宜模型。</>}
+          />
         )}
         {custom.map((preset) => {
           const profile = profiles.find((item) => item.id === preset.profileId)

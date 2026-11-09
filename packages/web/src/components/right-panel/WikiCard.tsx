@@ -2,6 +2,7 @@
 import { useEffect } from 'react'
 import { BookOpen} from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { EmptyState } from '../ui/EmptyState'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { rememberWikiHost, useWikiStore } from '../../store/useWikiStore'
@@ -61,7 +62,7 @@ export function WikiCard() {
           {meta.updatedAt ? ` · ${formatAgo(meta.updatedAt)}` : ''}
         </p>
       ) : (
-        <p className="text-muted">还没有 Wiki。生成后可供人和 agent 检索项目架构。</p>
+        <EmptyState variant="plain" title={<>还没有 Wiki。生成后可供人和 agent 检索项目架构。</>} />
       )}
 
       {meta && meta.exists && meta.changedFiles > 0 && !runningJob ? (

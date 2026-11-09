@@ -9,6 +9,7 @@ import {
   UserPlus,
 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { EmptyState } from '../ui/EmptyState'
 import type {
   WorkspaceHostInfo,
   WorkstationAccountSummary,
@@ -206,9 +207,10 @@ export function WorkstationSection() {
 
         <div className="mt-3 space-y-1.5">
           {remoteHosts.length === 0 && (
-            <div className="rounded-lg border border-dashed border-[var(--t-border)] px-3 py-6 text-center text-[12.5px] text-[var(--t-text-tertiary)]">
-              还没有主机。点「添加主机」，复制一行命令到目标机器执行即可。
-            </div>
+            <EmptyState
+              title={<>还没有主机</>}
+              hint={<>点「添加主机」，复制一行命令到目标机器执行即可。</>}
+            />
           )}
           {[...own, ...granted].map((host) => {
             const isOwn = host.ownerId === account.account.id

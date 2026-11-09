@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link2, RefreshCw, Share2, Trash2, TriangleAlert } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { EmptyState } from '../ui/EmptyState'
 import type { ShareInfo } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { api } from '../../lib/api'
@@ -80,7 +81,7 @@ export function SharesSection() {
       {!loading && host && shares.length === 0 && (
         <div className="flex flex-col items-center rounded-xl border border-border bg-bg/40 px-4 py-12 text-center">
           <Link2 size={22} className="text-text-tertiary" />
-          <p className="mt-2 text-[13px] font-medium">还没有分享</p>
+          <EmptyState variant="plain" title={<>还没有分享</>} />
           <p className="mt-1 text-[12px] leading-5 text-muted">
             在会话列表的 ⋯ 菜单里点「分享…」生成只读链接。
           </p>

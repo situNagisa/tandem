@@ -1193,36 +1193,6 @@ html[data-mobile-preview] .fixed.inset-0 {
     display: none;
   }
 }
-.settings-empty {
-  border: 1px dashed var(--t-border);
-  border-radius: 12px;
-  padding: 28px 16px;
-  text-align: center;
-}
-.settings-empty-icon {
-  display: flex;
-  width: 36px;
-  height: 36px;
-  margin: 0 auto;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  background: var(--t-bg-active);
-  color: var(--t-text-soft);
-}
-.settings-empty-title {
-  margin-top: 10px;
-  color: var(--t-text-soft);
-  font-size: 13px;
-  font-weight: 500;
-}
-.settings-empty-hint {
-  max-width: 320px;
-  margin: 4px auto 0;
-  color: var(--t-muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
 .settings-textarea {
   width: 100%;
   min-height: 64px;

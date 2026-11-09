@@ -25,6 +25,8 @@ import { Input } from '../ui/Controls'
 import { Modal } from '../ui/Modal'
 import { MenuSelect } from '../ui/Menu'
 
+import { Card } from '../ui/Card'
+import { EmptyState } from '../ui/EmptyState'
 function bundleText(bundle: ConfigBundle): string {
   return JSON.stringify(bundle, null, 2)
 }
@@ -235,11 +237,11 @@ export function SyncSection() {
 
   if (!host) {
     return (
-      <div className="settings-empty">
-        <span className="settings-empty-icon"><ShieldCheck size={17} /></span>
-        <p className="settings-empty-title">还没有连接主机</p>
-        <p className="settings-empty-hint">先添加一台主机，再同步配置。</p>
-      </div>
+      <EmptyState
+        icon={<ShieldCheck size={17} />}
+        title={<>还没有连接主机</>}
+        hint={<>先添加一台主机，再同步配置。</>}
+      />
     )
   }
 

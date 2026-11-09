@@ -10,6 +10,8 @@ import {
   Trash2,
 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { SettingRow } from '../ui/SettingRow'
+import { EmptyState } from '../ui/EmptyState'
 import type {
   PermissionMode,
   ReasoningEffort,

@@ -30,6 +30,8 @@ import { Input, Switch } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 import { Modal } from '../ui/Modal'
 
+import { Card } from '../ui/Card'
+import { EmptyState } from '../ui/EmptyState'
 function formatLimit(value?: number): string {
   return value ? formatCost(value) : '不限'
 }
@@ -250,11 +252,11 @@ export function GatewaySection() {
 
   if (!host) {
     return (
-      <div className="settings-empty">
-        <span className="settings-empty-icon"><Network size={17} /></span>
-        <p className="settings-empty-title">还没有连接主机</p>
-        <p className="settings-empty-hint">先添加一台主机，再开启网关模式。</p>
-      </div>
+      <EmptyState
+        icon={<Network size={17} />}
+        title={<>还没有连接主机</>}
+        hint={<>先添加一台主机，再开启网关模式。</>}
+      />
     )
   }
 
