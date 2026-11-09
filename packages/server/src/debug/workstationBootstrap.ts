@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import type { AccountLoginResult } from '@tandem/protocol';
 import type { Host } from '../host.js';
 import { readJson } from '../config.js';
+import { IS_DEBUG_FLAVOR } from '../flavor.js';
 import { embeddedDataDir, startEmbeddedWorkstation } from '../workstation/manager.js';
 
 interface DebugWorkstationDeps {
@@ -18,7 +19,12 @@ interface CenterMeta {
   workspace?: { id?: string };
 }
 
-function enabled(): boolean {
+/**
+ * 只有 debug 构建的桌面进程（或显式联调开关）才自动拉起工作站并登录调试账号。
+ * TANDEM_DEBUG_ACCOUNT=0 用于回归/联调模拟发布语义。
+ */
+export function debugAutoLoginEnabled(): boolean {
+  if (!IS_DEBUG_FLAVOR || process.env.TANDEM_DEBUG_ACCOUNT === '0') return false;
   return !!process.versions.electron || process.env.TANDEM_DEBUG_ACCOUNT === '1';
 }
 
@@ -54,7 +60,7 @@ export function installDebugWorkstationBootstrap(
   host: Host,
   workstation: DebugWorkstationDeps,
 ): void {
-  if (!enabled()) return;
+  if (!debugAutoLoginEnabled()) return;
   const mode = host.accounts.mode();
   if (mode === 'center') return;
 

@@ -11,6 +11,8 @@
 - `debug`：功能包，包含反馈模式、演示工作区等维护者工具，界面右下角显示「调试版」角标，关于页显示「调试版」。
 - `release`：给用户使用的正式包。调试专用模块在构建时被剔除，而不是只隐藏按钮；界面不显示调试角标，关于页显示「发布版」。
 
+**flavor 在构建时写死进每个产物，运行时不读环境变量**：web 由 Vite `define` 注入；内置 Host 的 `dist/flavor.js` 与桌面主进程的 `flavor.generated.js` 由 `scripts/write-flavor.mjs` 写成 `'debug'` / `'release'` 常量；sandbox preload 通过主进程 `--tandem-flavor=` 启动参数拿到同一个值。`prepare-resources` 打包前会断言 web / server / desktop 三者风味一致，`dist-win` 打包后再检查 `win-unpacked/resources`（包括 `app.asar` 里必须有 `feedback-drafts*.js` 与草稿 IPC），不一致直接失败。`node scripts/check.mjs` 的 `debug-artifacts` 步骤做同样的 debug 产物扫描，`packages/desktop/test/flavor.test.js` 在没有任何风味环境变量时断言产物常量。
+
 ### 0.1 只在调试版存在的功能
 
 以下功能在发布版里完全不存在：路由不可访问、快捷键无效、设置/关于没有入口、命令面板搜不到、对应模块不进入产物。
@@ -46,7 +48,7 @@ npm run dist:win:debug -w @tandem/desktop  # 调试版：Tandem-Setup-<版本>-d
 
 桌面调试版与发布版使用同一个 `appId`、产品名与安装目录，**不能同时安装**：安装另一个会覆盖已有的 Tandem。需要并存时先卸载，或分别装在两台机器/两个 Windows 用户下。
 
-`node scripts/release.mjs` 固定使用 release flavor，环境变量为其他值时会直接中止。`node scripts/check.mjs` 会额外构建一次 release、扫描 `packages/web/dist` 与 `packages/server/dist`，确认没有调试专用标识（含「手机预览」与触摸模拟 CDP 标识），并跑一条发布版页面回归（快捷键无反应、`#/dev/ui` 回首页、设置/关于/命令面板无调试入口、`?mobilePreview=1` 不渲染预览顶栏）；回归测试本身仍在 debug flavor 下运行。
+`node scripts/release.mjs` 固定使用 release flavor，环境变量为其他值时会直接中止。`node scripts/check.mjs` 会额外构建一次 release，扫描 `packages/web/dist` 与 `packages/server/dist`，确认没有调试专用标识（含「手机预览」与触摸模拟 CDP 标识），用 `packages/desktop/test/flavor.test.js` 断言 desktop/server 产物的 flavor 常量为 release，并跑一条发布版页面回归（快捷键无反应、`#/dev/ui` 回首页、设置/关于/命令面板无调试入口、`?mobilePreview=1` 不渲染预览顶栏）；回归测试本身仍在 debug flavor 下运行。
 
 ## 1. 版本与发布流程
 

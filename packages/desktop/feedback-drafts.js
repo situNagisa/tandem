@@ -12,13 +12,14 @@ const {
   exportArchiveFile,
   removeDraftDir,
 } = require('./feedback-drafts-core.js');
+const { feedbackRootFor } = require('./flavor-core.js');
 
 let rootDir = null;
 /** 串行化同步，避免两个请求同时 rename 同一个目录。 */
 let queue = Promise.resolve();
 
 function root() {
-  if (!rootDir) rootDir = path.join(app.getPath('downloads'), 'Tandem 反馈');
+  if (!rootDir) rootDir = feedbackRootFor(app.getPath('downloads'));
   return rootDir;
 }
 

@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { writeDesktopFlavor } from '../../../scripts/write-flavor.mjs';
+import { readServerFlavor, readWebFlavor } from '../../../scripts/lib/artifact-flavor.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const desktopDir = path.resolve(here, '..');
@@ -90,6 +92,17 @@ fs.mkdirSync(outDir, { recursive: true });
 // server
 const serverDist = path.join(serverDir, 'dist');
 assertBuilt(serverDist, 'packages/server/dist');
+
+// 防止上一次 release/debug 构建的产物混进安装包：三者必须同一风味。
+const flavor = process.env.TANDEM_FLAVOR === 'release' ? 'release' : 'debug';
+const builtServer = readServerFlavor(serverDist);
+if (builtServer.flavor !== flavor) {
+  throw new Error(`server 产物 flavor=${builtServer.flavor || '缺失'}，期望 ${flavor}，请先重新构建`);
+}
+const builtWeb = readWebFlavor(path.join(webDir, 'dist'));
+if (builtWeb !== flavor) {
+  throw new Error(`web 产物 flavor=${builtWeb || '缺失'}，期望 ${flavor}，请先重新构建`);
+}
 copyDir(serverDist, path.join(outDir, 'server', 'dist'));
 fs.copyFileSync(path.join(serverDir, 'package.json'), path.join(outDir, 'server', 'package.json'));
 
@@ -111,9 +124,9 @@ fs.copyFileSync(iconSrc, path.join(outDir, 'icons', 'icon.png'));
 fs.mkdirSync(path.join(desktopDir, 'build'), { recursive: true });
 fs.copyFileSync(iconSrc, path.join(desktopDir, 'build', 'icon.png'));
 
-// 主进程据此决定是否注册调试版入口（手机预览等）。
-const flavor = process.env.TANDEM_FLAVOR === 'release' ? 'release' : 'debug';
-fs.writeFileSync(path.join(outDir, 'flavor.txt'), `${flavor}\n`);
+// 主进程据此决定是否注册调试版入口（手机预览、反馈草稿等）。
+// flavor.generated.js 在打包前写死常量，安装后不依赖环境变量。
+writeDesktopFlavor(flavor);
 
 const depCount = fs.existsSync(path.join(outDir, 'server', 'node_modules'))
   ? fs.readdirSync(path.join(outDir, 'server', 'node_modules')).length

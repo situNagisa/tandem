@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifyDesktopBundle } from '../../../scripts/lib/artifact-flavor.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const desktopDir = path.resolve(here, '..');
@@ -110,6 +111,12 @@ try {
   if (flavor === 'release') {
     run(process.execPath, [path.join(repoRoot, 'scripts', 'strip-debug-dist.mjs')], repoRoot);
   }
+  // 风味写死进主进程/Host 产物；prepare-resources 还会写 desktop 常量。
+  run(
+    process.execPath,
+    [path.join(repoRoot, 'scripts', 'write-flavor.mjs'), `--flavor=${flavor}`, '--scope=all'],
+    repoRoot,
+  );
   run(process.execPath, [path.join(here, 'prepare-resources.mjs')], desktopDir, {
     TANDEM_FLAVOR: flavor,
   });
@@ -131,6 +138,18 @@ try {
     const unpacked = path.join(outDir, 'win-unpacked');
     if (!fs.existsSync(unpacked)) throw new Error('未找到 win-unpacked');
     zipDir(unpacked, path.join(outDir, flavor === 'debug' ? 'Tandem-debug-win-x64.zip' : 'Tandem-win-x64.zip'));
+  }
+
+  // 打包完成后检查真正进安装包的 resources，防止并发/缓存把 release 产物混进调试版。
+  const packagedResources = path.join(outDir, 'win-unpacked', 'resources');
+  if (fs.existsSync(path.join(packagedResources, 'app.asar'))) {
+    const problems = verifyDesktopBundle(packagedResources, flavor);
+    if (problems.length) {
+      throw new Error(`安装包风味不一致：\n  - ${problems.join('\n  - ')}`);
+    }
+    console.log(`[dist:win] 产物风味一致：${flavor}`);
+  } else {
+    console.warn('[dist:win] 未找到 win-unpacked/resources，跳过产物风味检查');
   }
 
   const artifacts = collectArtifacts();

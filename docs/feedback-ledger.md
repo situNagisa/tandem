@@ -50,6 +50,7 @@
 | R36 | 滚动条两套并存且占布局宽度 | "这里的滑动条控件有两个""滑动条不占宽度、只在滑动时出现" | 1 | 原生滚动条全局隐藏（含 Portal 弹窗）；唯一 `ui/OverlayScrollbar` 覆盖式横竖双轴指示条，滚动/悬停淡入、停止 800ms 后淡出、无上下箭头；组件内禁止自定义滚动条；设置导航只保留内层一个滚动容器 | `scripts/ui-audit.mjs` `custom-scrollbar`；回归（`e2e/regression.mjs`）：设置导航与内容区无滚动条占宽、同时可见 overlay ≤1 根、展开高级标题不位移 |
 | R37 | 浏览器/系统自带控件与提示外露 | "选择文字会弹出搜索控件""原生右键菜单/拼写下划线/数字箭头" | 1 | Electron 关闭 spellcheck；右键菜单统一 `ui/Menu`（复制/剪切/粘贴/全选/链接图片地址）；`writingsuggestions=false`、`-webkit-touch-callout:none`、format-detection、拖拽 ghost、输入框 autocomplete/spellcheck 默认关（密码框除外）、原生 title 转 data-tip + `ui/Tooltip`；Edge 划词迷你菜单由 Edge 设置/组策略 `QuickSearchShowMiniMenu` 控制，网页无法关闭（已记录到 design.md） | `scripts/ui-audit.mjs` `native-title`；回归：右键出现自定义菜单且含四项、输入框 autocomplete/spellcheck/writingsuggestions 关闭、文本仍可选择 |
 | R38 | 只读预览另起一套页面，缺少正常会话的辅助视图 | "预览的外部会话也要跟正常会话一样，左侧要有轮次大纲，以及一些信息的显示" | 1 | `TurnRail`/`useTurnMarks` 支持传入只读消息与虚拟会话 id：同一组件含上下文着色、Alt 只看已固定、用量/耗时 tooltip（无价格时不显示「花费未知」），只读时隐藏图钉；外部会话信息面板复用 `Card`/`DetailRow`/`ContextSpaceSection`/`PanelBar`/`ResizeHandle` 与同一宽度偏好；服务端外部解析补 `model` 与 `usage`（Claude message.usage / Codex token_count） | 单测（`packages/server/test/external.test.ts`）：Claude/Codex 用量字段换算、全零不生成用量；回归（`e2e/regression.mjs`）：外部会话预览出现两轮大纲、用量 tooltip 无价格项、信息面板含模型/目录/轮数/用量/上下文/文件改动、只读无输入框与图钉（反馈9#01） |
+| R39 | 构建 flavor 只注入了 web，桌面主进程/Host 运行时才判、调试模块还漏打进 asar | "调试版启动后没有自动登录调试账号""草稿和导出没落到 `Downloads/Tandem 反馈`" | 1 | `electron-builder.yml` 白名单补 `feedback-drafts*.js` / `flavor-core.js` / `flavor.generated.js`；新增 `scripts/write-flavor.mjs` 在构建时把 debug/release 常量写死进 server dist 与 desktop 主进程（preload 由主进程 `--tandem-flavor=` 传入），Host 不再读 `TANDEM_FLAVOR` 环境变量；`prepare-resources` 在打包前断言 web/server/desktop 三者风味一致，`dist:win` 打包后再验 `win-unpacked/resources`；调试账号启动条件加 `IS_DEBUG_FLAVOR` | `scripts/check-debug.mjs`（debug 产物里必须是 debug 常量、含 `/api/debug/auto-login` 与草稿 IPC 名，接入 `check.mjs`）；`packages/desktop/test/flavor.test.js`（无环境变量下断言 debug，release 构建断言 release）；`scripts/check-release.mjs` 跑同一测试的 release 版本 |
 
 ## 记录格式（新增反馈时追加）
 `日期 · 反馈包 · 条目 · 根因编号 · 处理（就地修 / 共享层修 + 防线）`
@@ -115,3 +116,4 @@
 - 2026-11-09 · 反馈包#9 #01 · R38（新，TurnRail 传入只读消息 + 外部信息面板复用共享卡片；外部解析补 model/usage）
 - 2026-11-09 · 反馈包#9 #02 · R06（复发，共享层结构化 InstallGuide + `ui/SegmentedControl` + `CodeBlock` 常显复制）
 - 2026-11-09 · 反馈包#9 #06 · R14（复发，会话信息面板空分组自动隐藏 + 新分组淡入/滚动锚点 + 持久「显示空分组」）
+- 2026-11-09 · 反馈包#10 桌面调试版 · R39（新，flavor 构建期写死 + 调试模块进 asar + 产物一致性扫描）

@@ -9,6 +9,12 @@ files:
   - main.js
   - mobile-preview.js
   - preload.js
+  - flavor-core.js
+  # 构建前由 scripts/write-flavor.mjs 生成；主进程据此决定调试入口。
+  - flavor.generated.js
+  # 反馈草稿实时落盘 / .tfb 导出（调试版主进程 require，漏打会让应用起不来）。
+  - feedback-drafts.js
+  - feedback-drafts-core.js
   - package.json
 
 asar: true

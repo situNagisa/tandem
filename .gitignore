@@ -9,6 +9,7 @@ packages/mobile/android/build
 dist-desktop
 packages/desktop/dist
 packages/desktop/resources
+packages/desktop/flavor.generated.js
 packages/desktop/build
 .agent-runs/
 # Android 签名材料：真实文件放在 ~/.tandem-release，这里兜底防误提交。

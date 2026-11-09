@@ -109,7 +109,10 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
   });
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 * 1024 });
   // 调试版：自动创建本地测试账号并挂上仅回环可用的免密登录；发布构建不会加载这个模块。
-  const debugReady = IS_DEBUG_FLAVOR
+  // 回归/联调用 TANDEM_DEBUG_ACCOUNT=0 模拟发布语义（只影响 debug 构建）。
+  const debugAccountEnabled =
+    IS_DEBUG_FLAVOR && process.env.TANDEM_DEBUG_ACCOUNT !== '0';
+  const debugReady = debugAccountEnabled
     ? import('../debug/workstationService.js')
         .then((mod) => mod.ensureDebugWorkstation(store, options.home, app))
         .catch((err: unknown) => {
@@ -196,7 +199,7 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
   // ---------- 公开接口 ----------
   app.get('/api/workstation/status', async () => {
     const { urls } = addressInfo();
-    return { ...store.workstationStatus(urls), ...(IS_DEBUG_FLAVOR ? { debug: true } : {}) };
+    return { ...store.workstationStatus(urls), ...(debugAccountEnabled ? { debug: true } : {}) };
   });
 
   app.post('/api/workstation/setup', async (req, reply) => {

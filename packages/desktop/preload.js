@@ -2,9 +2,16 @@
 // 仅向 web 暴露最小标识，供页面识别桌面端（拖拽区、红绿灯留白等）。
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('tandemDesktop', {
+// sandbox 下 preload 不能 require 本地 flavor.generated.js；主进程用构建期常量
+// 通过 additionalArguments 传入，发布版默认按 release 处理。
+const flavorArg = process.argv.find((arg) => arg.startsWith('--tandem-flavor='));
+const flavor = flavorArg ? flavorArg.slice('--tandem-flavor='.length) : 'release';
+const debugFlavor = flavor === 'debug';
+
+const api = {
   platform: process.platform,
   isDesktop: true,
+  flavor,
   updater: {
     getConfig: () => ipcRenderer.invoke('updater:get-config'),
     setConfig: (config) => ipcRenderer.invoke('updater:set-config', config),
@@ -22,13 +29,16 @@ contextBridge.exposeInMainWorld('tandemDesktop', {
     readText: () => ipcRenderer.invoke('clipboard:read-text'),
     writeText: (text) => ipcRenderer.invoke('clipboard:write-text', text),
   },
-  // 手机预览：仅调试版主进程注册；发布版调用会返回不可用。
-  mobilePreview: {
+};
+
+if (debugFlavor) {
+  // 手机预览：仅调试版主进程注册；发布版不暴露入口。
+  api.mobilePreview = {
     open: (options) => ipcRenderer.invoke('mobile-preview:open', options),
     configure: (options) => ipcRenderer.invoke('mobile-preview:configure', options),
-  },
+  };
   // 反馈草稿实时落盘与 .tfb 导出：同样只在调试版主进程注册。
-  feedback: {
+  api.feedback = {
     syncDraft: (draftId, files) => ipcRenderer.invoke('feedback:sync-draft', { draftId, files }),
     markExported: (draftId) => ipcRenderer.invoke('feedback:mark-exported', { draftId }),
     removeDraft: (draftId) => ipcRenderer.invoke('feedback:remove-draft', { draftId }),
@@ -37,5 +47,7 @@ contextBridge.exposeInMainWorld('tandemDesktop', {
     openFolder: (target) => ipcRenderer.invoke('feedback:open-folder', { target }),
     dir: () => ipcRenderer.invoke('feedback:dir'),
     prune: () => ipcRenderer.invoke('feedback:prune'),
-  },
-});
+  };
+}
+
+contextBridge.exposeInMainWorld('tandemDesktop', api);

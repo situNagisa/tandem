@@ -31,6 +31,12 @@ try {
   if (flavor === 'release') {
     run('剔除调试模块', process.execPath, ['scripts/strip-debug-dist.mjs'])
   }
+  // flavor 写死进产物（web 已由 Vite define 注入），运行时不读环境变量。
+  run('写入风味', process.execPath, [
+    'scripts/write-flavor.mjs',
+    `--flavor=${flavor}`,
+    '--scope=all',
+  ])
   console.log(`\n[build:${flavor}] 完成`)
 } catch (err) {
   console.error(`\n[build:${flavor}] 失败：${err.message}`)

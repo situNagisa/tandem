@@ -34,23 +34,31 @@ const resourcesDir = app.isPackaged
 const serverDir = path.join(resourcesDir, 'server', 'dist');
 const iconFile = path.join(resourcesDir, 'icons', 'icon.png');
 
-/** 构建风味：打包时由 prepare-resources 写入 flavor.txt；开发模式默认 debug。 */
-function readFlavor() {
-  if (!app.isPackaged) return 'debug';
-  try {
-    const value = fs.readFileSync(path.join(resourcesDir, 'flavor.txt'), 'utf8').trim();
-    if (value === 'release' || value === 'debug') return value;
-  } catch {
-    // 未写入时按发布版处理，避免调试入口漏进正式包。
-  }
-  return 'release';
+/**
+ * 构建风味：scripts/write-flavor.mjs 在打包前把常量写进 flavor.generated.js，
+ * 运行时不读环境变量。开发模式首次未生成时按 debug 处理。
+ */
+const { resolveFlavor } = require('./flavor-core.js');
+let generatedFlavor = null;
+try {
+  generatedFlavor = require('./flavor.generated.js');
+} catch {
+  // 开发模式尚未生成；打包产物必须有这个文件（check-debug 会扫描）。
 }
-const flavor = readFlavor();
-const debugFlavor = flavor !== 'release';
+const flavor = resolveFlavor(generatedFlavor, { packaged: app.isPackaged });
+const debugFlavor = flavor === 'debug';
 /** 手机预览只在调试版加载；发布版连入口与 IPC 都不注册。 */
 const mobilePreview = debugFlavor ? require('./mobile-preview.js') : null;
 /** 反馈草稿实时落盘与 .tfb 导出同样只在调试版注册。 */
-const feedbackDrafts = debugFlavor ? require('./feedback-drafts.js') : null;
+let feedbackDrafts = null;
+if (debugFlavor) {
+  try {
+    feedbackDrafts = require('./feedback-drafts.js');
+  } catch (err) {
+    // 模块缺失时不要让整个应用起不来；check-debug 会阻止这种包发出去。
+    console.error('[debug] 反馈草稿模块加载失败，实时落盘不可用:', (err && err.message) || err);
+  }
+}
 
 app.setName('Tandem');
 app.setAppUserModelId('com.tandem.desktop');
@@ -331,6 +339,8 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // preload 在沙箱里只能 require('electron')，风味由主进程通过启动参数传入。
+      additionalArguments: [`--tandem-flavor=${flavor}`],
       // 反馈9：默认关闭拼写检查下划线与建议（输入框不再出现浏览器自带波浪线）。
       spellcheck: false,
     },

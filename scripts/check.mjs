@@ -37,6 +37,11 @@ const steps = [
     skip: skipBuild,
   },
   {
+    name: 'debug-artifacts',
+    command: process.execPath,
+    args: ['scripts/check-debug.mjs'],
+  },
+  {
     name: 'ui-audit',
     command: process.execPath,
     args: ['scripts/ui-audit.mjs'],

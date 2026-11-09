@@ -113,7 +113,8 @@ async function waitFor(fn, label, timeout = 25_000) {
 /** 调试版工作站：自动测试账号、密码文件权限、首个真实注册者仍是管理员。 */
 async function runDebugAccountCheck(base) {
   const home = path.join(base, 'debug-ws')
-  const proc = startProcess({ home, mode: 'workstation', extraEnv: { TANDEM_FLAVOR: 'debug' } })
+  // debug dist 自带调试账号，不依赖任何运行环境变量。
+  const proc = startProcess({ home, mode: 'workstation' })
   try {
     const port = await proc.ready
     const WS = `http://127.0.0.1:${port}`
@@ -148,11 +149,11 @@ export async function runWorkstationCheck(home) {
   const mock = mockProvider()
   await new Promise((resolve) => mock.listen(0, '127.0.0.1', resolve))
   const mockPort = mock.address().port
-  // 真实注册流程用发布 flavor 语义（同一份调试 dist 里关掉调试账号自动创建）。
+  // 真实注册流程用发布语义（同一份 debug dist 里用 TANDEM_DEBUG_ACCOUNT=0 关掉调试账号）。
   const ws = startProcess({
     home: path.join(base, 'ws'),
     mode: 'workstation',
-    extraEnv: { TANDEM_FLAVOR: 'release' },
+    extraEnv: { TANDEM_DEBUG_ACCOUNT: '0' },
   })
   const h1 = startProcess({ home: path.join(base, 'h1'), mode: 'host' })
   const h2 = startProcess({ home: path.join(base, 'h2'), mode: 'host' })

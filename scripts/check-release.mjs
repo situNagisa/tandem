@@ -9,12 +9,12 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-function run(label, command, args) {
+function run(label, command, args, extraEnv = {}) {
   console.log(`\n=== release: ${label} ===`)
   const result = spawnSync(command, args, {
     cwd: ROOT,
     stdio: 'inherit',
-    env: process.env,
+    env: { ...process.env, ...extraEnv },
     shell: process.platform === 'win32',
   })
   if (result.status !== 0) throw new Error(`${label} 失败（退出码 ${result.status}）`)
@@ -24,6 +24,10 @@ let failed = false
 try {
   run('构建', process.execPath, ['scripts/build-flavor.mjs', 'release'])
   run('扫描产物', process.execPath, ['scripts/scan-release.mjs'])
+  // 与 debug 扫描对称：release 产物里的 flavor 常量必须是 release。
+  run('产物风味测试', process.execPath, ['--test', 'packages/desktop/test/flavor.test.js'], {
+    TANDEM_EXPECT_FLAVOR: 'release',
+  })
   run('页面回归', process.execPath, ['e2e/release-flavor.mjs'])
 } catch (err) {
   failed = true

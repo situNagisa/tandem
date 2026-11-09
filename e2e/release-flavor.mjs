@@ -36,7 +36,6 @@ function startHost({ home, token, hostId }) {
       ...process.env,
       HOME: home,
       TANDEM_HOME: configDir,
-      TANDEM_FLAVOR: 'release',
       CODEX_HOME: path.join(home, '.codex'),
       NO_PROXY: '127.0.0.1,localhost',
       no_proxy: '127.0.0.1,localhost',

@@ -8,7 +8,7 @@
     "tandem-host": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -p .",
+    "build": "tsc -p . && node ../../scripts/write-flavor.mjs --scope=server",
     "dev": "tsx watch src/cli.ts",
     "test": "node --import tsx --test test/*.test.ts"
   },

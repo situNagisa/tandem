@@ -8,6 +8,8 @@ interface Window {
   tandemDesktop?: {
     isDesktop?: boolean
     platform?: string
+    /** 构建时写死的桌面风味；调试版才暴露 mobilePreview / feedback 桥。 */
+    flavor?: 'debug' | 'release'
     clipboard?: {
       readText: () => Promise<string>
       writeText: (text: string) => Promise<void>

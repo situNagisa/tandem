@@ -50,5 +50,5 @@ node scripts/feedback-receipt.mjs <file.tfb|file.json|草稿目录> <receipt.md|
 
 - 加密、跨设备同步不做。
 - 录屏受 8MB / 60 秒限制；超大附件会让草稿同步的 IPC 负载变大（已按 350ms 合并）。
-- 桌面草稿目录只在 Windows/macOS/Linux 桌面调试版存在；浏览器与安卓只有 IndexedDB 恢复。
+- 桌面草稿目录只在 Windows/macOS/Linux 桌面调试版存在；浏览器与安卓只有 IndexedDB 恢复。打包时 `packages/desktop/feedback-drafts*.js` 必须进 `app.asar`（`electron-builder.yml` 白名单已列出），`scripts/check-debug.mjs` 会检查草稿 IPC 名与 `<下载>/Tandem 反馈` 目录逻辑是否在产物里。
 - 自动检查：`e2e/regression.mjs` 的「体验清单…导出与解包」「反馈草稿实时保存」两条用例。
