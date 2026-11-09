@@ -107,8 +107,10 @@ import {
   delegationLabel,
   routeModeLabel,
 } from '../lib/routeLabels'
-import { formatTokens } from '../lib/format'
+import { formatCost, formatTokens } from '../lib/format'
+import { prettyModel } from '../lib/modelName'
 import { estimateInputTokens } from '../lib/tokens'
+import { ConfirmAction } from './ui/ConfirmAction'
 
 interface Attachment {
   id: string
@@ -149,8 +151,6 @@ async function imageFingerprint(file: File): Promise<string> {
 
 const MAX_ATTACHMENTS = 6
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
-
-const CACHE_WARNING_KEY = 'tandem.cacheSwitchWarning.v1'
 
 export interface ComposerProps {
   /** 覆盖默认发送。返回 false（或 reject）时保留输入内容，其余返回视为成功并清空。 */
@@ -326,13 +326,13 @@ export function Composer({
   const [dragging, setDragging] = useState(false)
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
   const [composing, setComposing] = useState(false)
-  const [cacheWarningDismissed, setCacheWarningDismissed] = useState(() => {
-    try {
-      return localStorage.getItem(CACHE_WARNING_KEY) === '1'
-    } catch {
-      return false
-    }
-  })
+  /** 切换模型/账号/分组会换掉缓存前缀：选中后先确认（反馈10#02）。 */
+  const [pendingSwitch, setPendingSwitch] = useState<{
+    profileId: string
+    groupId?: string
+    model: string
+    tokens: number
+  } | null>(null)
   const [priceCache, setPriceCache] = useState<
     Record<string, Record<string, ModelPriceInfo> | 'loading'>
   >({})
@@ -758,13 +758,37 @@ export function Composer({
     changeMode(MODES[(idx + 1) % MODES.length])
   }
 
-  const changeModel = (
+  const applyModelChange = (
     nextProfileId: string,
     nextGroupId: string | undefined,
     nextModel: string,
   ) => {
     if (sessionless) onModelChange?.(nextProfileId, nextGroupId, nextModel)
     else void setModel(nextProfileId, nextGroupId, nextModel, scopeTarget)
+  }
+
+  const changeModel = (
+    nextProfileId: string,
+    nextGroupId: string | undefined,
+    nextModel: string,
+  ) => {
+    const same =
+      nextProfileId === currentProfileId &&
+      (nextGroupId ?? '') === (currentGroupId ?? '') &&
+      nextModel === currentModel
+    if (same) return
+    // 已有上下文：换缓存前缀会让提示缓存失效，先确认再切（反馈10#02）。
+    if (!sessionless && contextUsed > 0) {
+      setModelMenuOpen(false)
+      setPendingSwitch({
+        profileId: nextProfileId,
+        ...(nextGroupId ? { groupId: nextGroupId } : {}),
+        model: nextModel,
+        tokens: contextUsed,
+      })
+      return
+    }
+    applyModelChange(nextProfileId, nextGroupId, nextModel)
   }
 
   const loadModelPrices = useCallback(
@@ -790,7 +814,7 @@ export function Composer({
   const cachedPrices = priceCache[priceKey]
   const modelPrices = cachedPrices === 'loading' ? undefined : cachedPrices
 
-  const changeAutoRoute = () => {
+  const applyAutoRoute = () => {
     const profile = currentProfileId || profiles[0]?.id
     if (!profile) return
     const group = currentGroupId ?? profileModelGroups(profiles.find((p) => p.id === profile) ?? null)[0]?.groupId
@@ -801,6 +825,19 @@ export function Composer({
     }
     // 模型菜单只管模型；分工改由输入框的执行方式统一选择。
     void updateSession(activeHostId!, summary!.id, { model: 'auto', routeMode: 'auto' })
+  }
+
+  const changeAutoRoute = () => {
+    const profile = currentProfileId || profiles[0]?.id
+    if (!profile) return
+    const alreadyAuto = sessionless ? currentModel === 'auto' : summary?.autoRoute === true
+    if (alreadyAuto) return
+    if (!sessionless && contextUsed > 0) {
+      setModelMenuOpen(false)
+      setPendingSwitch({ profileId: profile, model: 'auto', tokens: contextUsed })
+      return
+    }
+    applyAutoRoute()
   }
 
   const applyRouteMode = (mode: TurnRouteMode | undefined) => {
@@ -833,24 +870,6 @@ export function Composer({
       void updateSession(activeHostId, summary.id, { delegation: strategy })
     }
   }
-
-  const inputPrice = modelPrices?.[currentModel]?.input
-  const cacheWarning =
-    !sessionless && !cacheWarningDismissed && contextUsed > 0
-      ? {
-          tokens: contextUsed,
-          costUsd:
-            inputPrice !== undefined ? (contextUsed * inputPrice) / 1_000_000 : undefined,
-          onDismiss: () => {
-            setCacheWarningDismissed(true)
-            try {
-              localStorage.setItem(CACHE_WARNING_KEY, '1')
-            } catch {
-              /* localStorage 不可用时只在本次会话内不再提示 */
-            }
-          },
-        }
-      : null
 
   const changeEffort = (next: ReasoningEffort, remember = true) => {
     if (remember) rememberEffort(next)
@@ -1061,8 +1080,70 @@ export function Composer({
 
   const sendState = running ? 'running' : canSend ? 'ready' : 'idle'
 
+  /** 切换确认框里的目标模型/账号/分组名称。 */
+  const switchLabel = (pick: { profileId: string; groupId?: string; model: string }) => {
+    if (pick.model === 'auto') return '自动路由'
+    const profile = uiProfiles.find((p) => p.id === pick.profileId)
+    const group = profile?.groups?.find((g) => g.id === pick.groupId)
+    const parts = [profile?.name, group?.name].filter(Boolean)
+    return `${parts.length ? `${parts.join(' › ')} · ` : ''}${prettyModel(pick.model)}`
+  }
+
+  /** 估算切换后下一轮重新写入缓存的价格：用目标模型的实际输入单价，未知时只显示 token。 */
+  const switchCost = (pick: {
+    profileId: string
+    groupId?: string
+    model: string
+    tokens: number
+  }): number | undefined => {
+    if (pick.model === 'auto') return undefined
+    const key = `${pick.profileId}:${pick.groupId ?? ''}`
+    const cached = priceCache[key]
+    const price =
+      cached && cached !== 'loading'
+        ? cached[pick.model]?.input
+        : pick.profileId === currentProfileId
+          ? modelPrices?.[pick.model]?.input
+          : undefined
+    return price === undefined ? undefined : (pick.tokens * price) / 1_000_000
+  }
+
+  const switchCostText = (cost: number | undefined): string | null => {
+    if (cost === undefined) return null
+    if (cost >= 0.01) return formatCost(cost)
+    if (cost >= 0.0001) return `$${cost.toFixed(4)}`
+    return '< $0.0001'
+  }
+
   return (
     <div className={cn('relative', className)}>
+      <ConfirmAction
+        open={!!pendingSwitch}
+        title="切换后提示缓存将失效"
+        description="下一轮按完整上下文计费（缓存前缀已更换，需要重新写入）。"
+        confirmLabel="切换"
+        onConfirm={() => {
+          const pick = pendingSwitch
+          if (!pick) return
+          setPendingSwitch(null)
+          if (pick.model === 'auto') applyAutoRoute()
+          else applyModelChange(pick.profileId, pick.groupId, pick.model)
+        }}
+        onClose={() => setPendingSwitch(null)}
+        testId="model-switch-confirm"
+      >
+        {pendingSwitch && (
+          <div className="space-y-1">
+            <p className="font-mono text-[13px] tabular-nums text-text">
+              约 ~{formatTokens(pendingSwitch.tokens)} tok
+              {switchCost(pendingSwitch) !== undefined
+                ? ` / ${switchCostText(switchCost(pendingSwitch))}`
+                : ''}
+            </p>
+            <p className="text-[12px] leading-5 text-muted">切换为 {switchLabel(pendingSwitch)}</p>
+          </div>
+        )}
+      </ConfirmAction>
       {completion && (
         <div ref={menuRef}>
           <CompletionMenu
@@ -1358,7 +1439,6 @@ export function Composer({
             model={currentModel}
             autoRoute={autoRoute}
             autoModel={autoRoute ? routedModel : undefined}
-            cacheWarning={cacheWarning}
             prices={modelPrices}
             pricesLoading={cachedPrices === 'loading'}
             effort={effort}

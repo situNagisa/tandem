@@ -3,7 +3,6 @@ import type { ModelPriceInfo, Profile, ReasoningEffort } from '@tandem/protocol'
 import { ChevronDown, Loader2, Sparkles } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { EFFORT_LABEL, nearestEffort } from '../../lib/effort'
-import { formatCost, formatTokens } from '../../lib/format'
 import { prettyModel, shortModelName } from '../../lib/modelName'
 import { groupName, profileModelGroups } from '../../lib/profileModels'
 import { rankRecentModels } from '../../lib/recentModels'
@@ -30,13 +29,6 @@ function priceText(price: ModelPriceInfo): string {
   return `${prefix}输入 $${fmt(price.input)} · 输出 $${fmt(price.output)} / 百万 tok${cache}`
 }
 
-/** 极小的缓存重发成本不要显示成 $0.0000。 */
-function cacheCostText(cost: number): string {
-  if (cost >= 0.01) return formatCost(cost)
-  if (cost >= 0.0001) return `$${cost.toFixed(4)}`
-  return '< $0.0001'
-}
-
 interface ModelPanelProps {
   profiles: Profile[]
   profileId: string
@@ -44,8 +36,6 @@ interface ModelPanelProps {
   model: string
   autoRoute: boolean
   autoModel?: string
-  /** 会话已有上下文时，切换模型/账号/分组前提示缓存会失效。 */
-  cacheWarning?: { tokens: number; costUsd?: number; onDismiss: () => void } | null
   prices?: Record<string, ModelPriceInfo>
   pricesLoading?: boolean
   effort: ReasoningEffort
@@ -73,7 +63,6 @@ function useModelPanel({
   model,
   autoRoute,
   autoModel,
-  cacheWarning,
   prices,
   pricesLoading,
   effort,
@@ -138,34 +127,6 @@ function useModelPanel({
 
   const body = (
     <>
-      {cacheWarning && (
-        <div
-          role="note"
-          data-cache-warning=""
-          className="mx-1 mb-1 rounded-lg border border-border/70 bg-surface-2 px-2 py-1.5 text-[12px] leading-4"
-        >
-          <div className="text-text-soft">
-            切换模型、账号或分组后，提示缓存将失效；下一轮按完整上下文计费。
-          </div>
-          <div className="mt-0.5 flex items-baseline gap-2 text-muted">
-            <span className="font-mono tabular-nums">
-              约 ~{formatTokens(cacheWarning.tokens)} tok
-              {cacheWarning.costUsd !== undefined ? ` / ${cacheCostText(cacheWarning.costUsd)}` : ''}
-            </span>
-            <button
-              type="button"
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={(event) => {
-                event.stopPropagation()
-                cacheWarning.onDismiss()
-              }}
-              className="ml-auto rounded px-1 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-            >
-              不再提示
-            </button>
-          </div>
-        </div>
-      )}
       {loading && profiles.length === 0 && (
         <div className="flex h-[32px] items-center gap-2 px-2 text-[12px] text-muted">
           <Loader2 size={13} className="animate-spin" /> 加载账号…
@@ -301,7 +262,6 @@ export function ModelMenu({
   model,
   autoRoute = false,
   autoModel,
-  cacheWarning,
   prices,
   pricesLoading,
   effort,
@@ -345,7 +305,6 @@ export function ModelMenu({
     model,
     autoRoute,
     autoModel,
-    cacheWarning,
     prices,
     pricesLoading,
     effort,
