@@ -61,9 +61,9 @@ export function ExternalSessionPanel({
 }) {
   const [panelWidth, setPanelWidth] = useState(loadPanelWidth)
   const [dragWidth, setDragWidth] = useState<number | null>(null)
-  const { copied, copy } = useCopy({ onError: () => toast('复制失败', 'error') })
   const asideRef = useRef<HTMLElement>(null)
   const toast = useUiStore((s) => s.toast)
+  const { copied, copy } = useCopy({ onError: () => toast('复制失败', 'error') })
   const messages = session.messages
   const turnCount = useMemo(() => countTurns(messages), [messages])
 
