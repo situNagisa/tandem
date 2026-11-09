@@ -28,8 +28,75 @@ export interface ChangelogRelease {
   items: ChangelogEntry[]
 }
 
+/**
+ * 调试版专属条目：只在调试构建里合并；发布构建中 __TANDEM_DEBUG__ 为常量 false，
+ * 这一组连同其中的标识一起被剔除（scripts/scan-release.mjs 会验证）。
+ */
+const DEBUG_TOUR_ITEMS: ChangelogEntry[] = [
+  {
+    id: 'mobile-preview',
+    title: '手机预览：在电脑上看手机布局',
+    summary:
+      '调试版按 Ctrl/Cmd+Shift+M 打开手机尺寸窗口，预设 Pixel 7 / 小屏 / 平板，可旋转并模拟触摸。',
+    target: { kind: 'home' },
+  },
+  {
+    id: 'debug-account',
+    title: '调试版免登录',
+    summary: '调试版内置工作站测试账号，本机打开即可用，不用再手工注册；发布版不含。',
+    target: { kind: 'settings', tab: 'accounts', settingId: 'accounts.workspace' },
+  },
+]
+
 /** 版本升级后首次打开时展示；按版本从新到旧排列。 */
 export const CHANGELOG: ChangelogRelease[] = [
+  {
+    version: '0.4.2',
+    date: '2026-11-09',
+    items: [
+      {
+        id: 'message-duration',
+        title: '每条回复都标耗时',
+        summary:
+          'assistant 用量行末尾显示本轮用时（含工具）；轮次大纲悬停看耗时、其中工具与首 token。',
+        target: { kind: 'demo', scenario: 'chat-tools' },
+      },
+      ...(__TANDEM_DEBUG__ ? DEBUG_TOUR_ITEMS : []),
+      {
+        id: 'clean-native-ui',
+        title: '界面更干净：屏蔽浏览器自带控件',
+        summary:
+          '关闭拼写检查、自动填充与数字箭头，右键菜单改为应用自己的；滚动条改为覆盖式，不占宽度。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'settings-compact-rows',
+        title: '设置页更紧凑',
+        summary: '设置卡片与行距收紧，标签在左、控件在右，数值与单位不换行，一屏能看更多。',
+        target: { kind: 'settings', tab: 'general' },
+      },
+      {
+        id: 'external-session-panel',
+        title: '外部会话也能看大纲和详情',
+        summary:
+          '预览 Claude Code / Codex 历史会话时，右侧有大纲与信息面板，上下文、用量、耗时一目了然。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'install-guide-platforms',
+        title: '设备安装说明按平台切换',
+        summary:
+          '工作站里的 adb / 串口安装步骤按 Windows、macOS、Linux（再分发行版）分段，命令可一键复制。',
+        target: { kind: 'workstation' },
+      },
+      {
+        id: 'info-panel-empty-groups',
+        title: '会话信息面板隐藏空分组',
+        summary: '没有数据的分组自动收起，新出现时淡入；底部可切回「显示空分组」。',
+        target: { kind: 'home' },
+      },
+    ],
+  },
   {
     version: '0.4.1',
     date: '2026-11-09',
