@@ -113,6 +113,17 @@ export const GRAPH_LANE_GAP = 14
 /** 主线泳道在左侧留白内的 x 偏移（px）。 */
 export const GRAPH_LANE_X0 = 7
 
+/** 卡片内会话图高度：轮数少时不空大片，超过上限后固定高度、内部滚动（反馈16#09）。 */
+export const GRAPH_CARD_MIN_ROWS = 3
+export const GRAPH_CARD_MAX_ROWS = 12
+export const GRAPH_CARD_MAX_HEIGHT = 360
+
+export function graphCardHeight(rows: number): number {
+  const min = GRAPH_ROW_H * GRAPH_CARD_MIN_ROWS
+  const max = Math.min(GRAPH_ROW_H * GRAPH_CARD_MAX_ROWS, GRAPH_CARD_MAX_HEIGHT)
+  return Math.min(max, Math.max(min, Math.max(1, rows) * GRAPH_ROW_H))
+}
+
 export function laneX(lane: number): number {
   return GRAPH_LANE_X0 + lane * GRAPH_LANE_GAP
 }

@@ -145,7 +145,6 @@ export function RightPanel() {
   const { prefs } = usePanelGroups()
   const [collapsedGroups, setCollapsedGroups] = useState<GroupId[]>(loadCollapsedGroups)
   const [dragging, setDragging] = useState<GroupId | null>(null)
-  const [dragArmed, setDragArmed] = useState<GroupId | null>(null)
   const handleDownRef = useRef(false)
   const lastTargetRef = useRef<GroupId | null>(null)
   const cardRefs = useRef(new Map<GroupId, HTMLElement>())
@@ -943,7 +942,7 @@ export function RightPanel() {
         </div>
       ) : (
       <PanelBody scroll className="space-y-2 p-3"
-        style={{ overflowAnchor: 'none' }}
+        style={{ overflowAnchor: 'none', scrollbarGutter: 'stable' }}
         onDragOver={(e) => {
           if (dragging) e.preventDefault()
         }}
@@ -957,18 +956,15 @@ export function RightPanel() {
               label={meta.label}
               icon={meta.Icon}
               dragging={dragging === id}
-              activeHandle={dragArmed === id}
               cardRef={(el) => {
                 if (el) cardRefs.current.set(id, el)
                 else cardRefs.current.delete(id)
               }}
               onHandleDown={() => {
                 handleDownRef.current = true
-                setDragArmed(id)
               }}
               onHandleUp={() => {
                 handleDownRef.current = false
-                setDragArmed(null)
               }}
               onDragStart={(e) => {
                 if (!handleDownRef.current) {
@@ -982,7 +978,6 @@ export function RightPanel() {
               }}
               onDragEnd={() => {
                 handleDownRef.current = false
-                setDragArmed(null)
                 setDragging(null)
                 lastTargetRef.current = null
               }}

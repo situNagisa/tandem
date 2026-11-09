@@ -213,6 +213,7 @@ export function SessionGraphView({
         ref={scrollRef}
         className="min-h-0 overflow-y-auto overflow-x-hidden outline-none focus-visible:ring-1 focus-visible:ring-[var(--t-focus-ring)] focus-visible:ring-inset"
         style={height === 'full' ? { maxHeight: 'calc(100% - 26px)' } : { height }}
+        data-graph-height={height === 'full' ? 'full' : height}
         tabIndex={readOnly ? -1 : 0}
         role="tree"
         aria-label="会话图：按轮次与分支浏览"
@@ -317,41 +318,6 @@ export function SessionGraphView({
             )
           })}
         </div>
-      </div>
-      <div
-        className="mt-1 flex shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-border pt-1.5 text-[10.5px] text-muted"
-        data-graph-legend
-      >
-        <span className="flex items-center gap-1">
-          <svg width="10" height="14" aria-hidden="true">
-            <path d="M5 1 L5 13" stroke={laneColor(0)} strokeWidth="1.5" strokeOpacity="0.9" />
-            <circle cx="5" cy="7" r="2.5" fill={laneColor(0)} />
-          </svg>
-          主线
-        </span>
-        <span className="flex items-center gap-1">
-          <svg width="18" height="14" aria-hidden="true">
-            <path d="M3 1 L3 13" stroke={laneColor(0)} strokeWidth="1.2" strokeOpacity="0.5" />
-            <path
-              d="M3 3 L3 5 L13 7 L13 9 L3 11"
-              fill="none"
-              stroke={laneColor(1)}
-              strokeWidth="1.15"
-              strokeOpacity="0.72"
-              strokeLinejoin="round"
-            />
-            <circle cx="3" cy="11" r="2" fill={laneColor(1)} />
-          </svg>
-          子代理·合并
-        </span>
-        <span className="flex items-center gap-1">
-          <svg width="16" height="14" aria-hidden="true">
-            <path d="M3 1 L3 13" stroke={laneColor(0)} strokeWidth="1.2" strokeOpacity="0.5" />
-            <path d="M3 4 L12 11" stroke={laneColor(2)} strokeWidth="1.5" strokeOpacity="0.9" />
-            <circle cx="12" cy="11" r="2" fill={laneColor(2)} />
-          </svg>
-          分叉·不合并
-        </span>
       </div>
     </div>
   )

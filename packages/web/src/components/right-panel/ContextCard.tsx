@@ -20,7 +20,7 @@ function contextRows(context: NonNullable<ContextBreakdownData['context']>, free
   }))
 }
 
-/** 右侧栏上下文卡片：与输入框上下文环同源，紧凑展示占用、分类与缓存命中率。 */
+/** 右侧栏上下文卡片：与输入框上下文环同源，紧凑展示占用与分类（缓存指标只在用量卡）。 */
 export function ContextCard({ data }: { data: ContextBreakdownData }) {
   const { context, noData, window, used, pct, turns } = data
   if (noData || !context) {
@@ -32,7 +32,6 @@ export function ContextCard({ data }: { data: ContextBreakdownData }) {
   const thresholdPct = context.autoCompact?.enabled
     ? Math.max(0, Math.min(100, Math.round(context.autoCompact.threshold * 100)))
     : null
-  const cacheRate = context.cacheHitRate
   return (
     <div data-context-card>
       <div className="flex items-baseline justify-between gap-2">
@@ -106,34 +105,6 @@ export function ContextCard({ data }: { data: ContextBreakdownData }) {
             </div>
           )
         })}
-      </div>
-      <div
-        data-context-cache="true"
-        data-tip={
-          cacheRate !== undefined
-            ? '缓存命中率 = 缓存读取 token ÷（输入 + 缓存读取 + 缓存写入），本会话累计'
-            : '暂无缓存数据：本轮请求还未返回缓存读取/写入统计'
-        }
-        className="mt-2.5 border-t border-border pt-2 text-[12px] leading-4"
-      >
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-muted">缓存命中率</span>
-          <span className="font-mono tabular-nums text-text-soft">
-            {cacheRate !== undefined ? `${Math.round(cacheRate * 100)}%` : '—'}
-          </span>
-        </div>
-        <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-[var(--t-surface-2)]">
-          {cacheRate !== undefined ? (
-            <div
-              data-context-cache-bar="true"
-              className="h-full rounded-full"
-              style={{
-                width: `${Math.max(0, Math.min(1, cacheRate)) * 100}%`,
-                backgroundColor: 'var(--ctx-messages)',
-              }}
-            />
-          ) : null}
-        </div>
       </div>
       {quota && (
         <div

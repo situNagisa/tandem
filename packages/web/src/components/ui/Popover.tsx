@@ -15,6 +15,12 @@ interface PopoverProps {
   /** 面板是否带默认内边距；自定义菜单（如带搜索框）可设为 false。 */
   padded?: boolean
   panelClassName?: string
+  /**
+   * 面板固定宽度（CSS 值）。宽度必须落在 Radix 的外层 Content 上：
+   * 内层 `.popover-panel` 的 `w-full` 在 auto 宽的外层里会退化成内容宽，
+   * 展开/折叠明细时整个弹层跟着变宽变窄（反馈16#06 / R49）。
+   */
+  panelWidth?: string | number
   className?: string
   /** 受控打开状态；不传时组件自行管理。 */
   open?: boolean
@@ -32,6 +38,7 @@ export function Popover({
   side = 'bottom',
   padded = true,
   panelClassName,
+  panelWidth,
   className,
   open: openProp,
   onOpenChange,
@@ -111,6 +118,7 @@ export function Popover({
             pointerDownOutside.current = true
           }}
           className="z-[80] outline-none"
+          style={panelWidth !== undefined ? { width: panelWidth } : undefined}
         >
           {/* 反馈14#01/#02（R52 复发）：动画放到内层，外层保留 Radix 的定位 transform。 */}
           <div

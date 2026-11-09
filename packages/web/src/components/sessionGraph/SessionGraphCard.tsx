@@ -7,7 +7,13 @@ import { usageByTurn } from '../../lib/turnUsage'
 import { focusMessage } from '../../lib/jump'
 import type { UiMessage } from '../../lib/types'
 import { buildSessionGraph, turnsFromMessages } from './data'
-import { graphSummaryLabel, layoutSessionGraph, type GraphNode, type GraphUsage } from './layout'
+import {
+  graphCardHeight,
+  graphSummaryLabel,
+  layoutSessionGraph,
+  type GraphNode,
+  type GraphUsage,
+} from './layout'
 import { SessionGraphView } from './SessionGraphView'
 
 function usageMapOf(
@@ -132,7 +138,7 @@ export function SessionGraphCard({
           expanded={expanded}
           onToggleSubagent={toggleSubagent}
           onOpen={open}
-          height={full ? 'full' : 176}
+          height={full ? 'full' : graphCardHeight(layout.rows)}
           className={full ? 'flex-1' : undefined}
         />
       )}
@@ -145,7 +151,7 @@ export function ReadOnlySessionGraph({
   messages,
   title,
   onOpen: onOpenProp,
-  height = 140,
+  height,
 }: {
   messages: UiMessage[]
   title?: string
@@ -175,7 +181,7 @@ export function ReadOnlySessionGraph({
       expanded={expanded}
       onOpen={open}
       readOnly={!onOpenProp}
-      height={height}
+      height={height ?? graphCardHeight(layout.rows)}
     />
   )
 }

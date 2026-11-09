@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   GRAPH_ROW_H,
+  graphCardHeight,
   laneX,
   layoutSessionGraph,
   type GraphInput,
@@ -177,5 +178,16 @@ describe('layoutSessionGraph', () => {
     expect(layout.nodes.length).toBeGreaterThan(320)
     expect(layout.rows * GRAPH_ROW_H).toBeGreaterThan(320 * GRAPH_ROW_H)
     expect(elapsed).toBeLessThan(20)
+  })
+})
+
+describe('卡片内会话图高度（反馈16#09）', () => {
+  it('少于 3 行按最小高度，超过 12 行按最大高度，中间随行数增长', () => {
+    expect(graphCardHeight(0)).toBe(GRAPH_ROW_H * 3)
+    expect(graphCardHeight(2)).toBe(GRAPH_ROW_H * 3)
+    expect(graphCardHeight(3)).toBe(GRAPH_ROW_H * 3)
+    expect(graphCardHeight(8)).toBe(GRAPH_ROW_H * 8)
+    expect(graphCardHeight(12)).toBe(GRAPH_ROW_H * 12)
+    expect(graphCardHeight(30)).toBe(GRAPH_ROW_H * 12)
   })
 })

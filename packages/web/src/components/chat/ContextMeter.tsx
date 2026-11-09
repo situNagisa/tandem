@@ -1,7 +1,7 @@
 // 上下文环与 /context 面板：按请求实际发送的组成展示 token 占用。
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { countTurns } from '@tandem/protocol'
+import { countTurns, isSystemInjectionText } from '@tandem/protocol'
 import type { ContextBreakdown, ContextTopItem, ContextTurnItem } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
@@ -63,6 +63,10 @@ function turnsFromItems(items?: ContextTopItem[]): ContextTurnItem[] {
   if (!items || items.length === 0) return []
   const grouped = new Map<number, ContextTopItem[]>()
   for (const item of items) {
+    // 老 Host 的逐条清单里，外部会话注入的系统提示不当作一轮（反馈16#05）。
+    if (item.role === 'user' && item.kind === 'message' && isSystemInjectionText(item.preview)) {
+      continue
+    }
     const list = grouped.get(item.turn)
     if (list) list.push(item)
     else grouped.set(item.turn, [item])
@@ -144,6 +148,7 @@ export function ContextSpaceSection({
               <div
                 key={`${turn.turn}:${turn.messageId}`}
                 data-context-turn="true"
+                data-turn-number={turn.turn}
                 data-message-id={turn.messageId}
               >
                 <div className="group/row flex min-h-6 items-center rounded-md transition-colors hover:bg-[var(--t-bg-hover)]">
@@ -160,9 +165,6 @@ export function ContextSpaceSection({
                       className="h-3.5 w-[3px] shrink-0 rounded-full bg-[var(--ctx-messages)]"
                       style={{ opacity: 0.3 + strength * 0.7 }}
                     />
-                    <span className="w-4 shrink-0 text-right text-muted tabular-nums">
-                      {turn.turn}
-                    </span>
                     <span className="min-w-0 flex-1 truncate">{turn.preview}</span>
                     <span className="w-9 shrink-0 text-right font-mono tabular-nums">
                       {formatTokens(turn.tokens)}
@@ -313,7 +315,8 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
       align="right"
       side="top"
       padded={false}
-      panelClassName="w-[min(92vw,352px)] p-3"
+      panelWidth="min(92vw, 352px)"
+      panelClassName="p-3"
       trigger={({ toggle, open }) => (
         <button
           type="button"

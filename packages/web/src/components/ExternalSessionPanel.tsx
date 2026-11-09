@@ -222,7 +222,7 @@ export function ExternalSessionPanel({
         </IconButton>
       </PanelBar>
 
-      <PanelBody scroll className="space-y-2 p-3">
+      <PanelBody scroll className="space-y-2 p-3" style={{ scrollbarGutter: 'stable' }}>
         {groups.map((id) => {
           const meta = GROUP_META[id]
           return (

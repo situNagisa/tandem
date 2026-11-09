@@ -213,7 +213,6 @@ export function Card({
   label,
   icon: Icon,
   dragging = false,
-  activeHandle = false,
   onHandleDown,
   onHandleUp,
   onDragStart,
@@ -231,7 +230,6 @@ export function Card({
   label: string
   icon: typeof ListTodo
   dragging?: boolean
-  activeHandle?: boolean
   onHandleDown?: () => void
   onHandleUp?: () => void
   onDragStart?: (e: React.DragEvent<HTMLElement>) => void
@@ -264,28 +262,13 @@ export function Card({
       data-group={id}
       data-collapsed={collapsible && collapsed ? 'true' : undefined}
       className={cn(
-        'group/card rounded-[10px] border border-border px-3 py-2.5 shadow-[var(--t-shadow-sm)] transition-[opacity,box-shadow] duration-150',
+        'group/card w-full min-w-0 rounded-[10px] border border-border px-3 py-2.5 shadow-[var(--t-shadow-sm)] transition-[opacity,box-shadow] duration-150',
         collapsible && collapsed && 'py-2',
         dragging && 'opacity-55',
       )}
       style={{ backgroundColor: 'color-mix(in srgb, var(--t-surface) 38%, var(--t-sidebar))' }}
     >
       <div className={cn('flex min-h-4 items-center gap-1.5', !collapsed && 'mb-2')}>
-        {onDragStart && (
-          <span
-            role="button"
-            tabIndex={-1}
-            aria-label={`拖动排序：${label}`}
-            onPointerDown={onHandleDown}
-            onPointerUp={onHandleUp}
-            className={cn(
-              'hidden w-3 shrink-0 cursor-grab items-center justify-center self-stretch text-muted transition-opacity duration-120 active:cursor-grabbing md:flex',
-              activeHandle || dragging ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-100',
-            )}
-          >
-            <GripVertical size={11} />
-          </span>
-        )}
         {collapsible ? (
           <button
             type="button"
@@ -294,13 +277,6 @@ export function Card({
             data-card-toggle={id}
             className="-ml-0.5 flex min-w-0 flex-1 items-center gap-1.5 rounded px-0.5 py-0.5 text-left transition-colors hover:bg-[var(--t-bg-hover)]"
           >
-            <ChevronRight
-              size={11}
-              className={cn(
-                'shrink-0 text-text-tertiary transition-transform duration-150',
-                !collapsed && 'rotate-90',
-              )}
-            />
             {head}
             <span className="flex-1" />
             {summary && collapsed ? (
@@ -308,6 +284,14 @@ export function Card({
                 {summary}
               </span>
             ) : null}
+            {/* 反馈16#07：折叠箭头在标题文字右侧、常显。 */}
+            <ChevronRight
+              size={11}
+              className={cn(
+                'shrink-0 text-text-tertiary transition-transform duration-150',
+                !collapsed && 'rotate-90',
+              )}
+            />
           </button>
         ) : (
           <>
@@ -316,6 +300,18 @@ export function Card({
           </>
         )}
         {!collapsed && right ? <span className="flex shrink-0 items-center">{right}</span> : null}
+        {onDragStart && (
+          <span
+            role="button"
+            tabIndex={-1}
+            aria-label={`拖动排序：${label}`}
+            onPointerDown={onHandleDown}
+            onPointerUp={onHandleUp}
+            className="flex w-3 shrink-0 cursor-grab items-center justify-center self-stretch text-muted active:cursor-grabbing max-md:hidden"
+          >
+            <GripVertical size={11} />
+          </span>
+        )}
       </div>
       {!collapsed && children}
     </section>
