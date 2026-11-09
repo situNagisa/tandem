@@ -21,7 +21,9 @@ import { copyText } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
 import { ListRow } from '../ui/ListRow'
+import { SegmentedControl } from '../ui/Controls'
 import { Tip } from '../ui/Tooltip'
+import { CodeBlock } from '../CodeBlock'
 
 const EMPTY_MOUNTS: DeviceMount[] = []
 import { Button, IconButton } from '../ui/Button'
@@ -110,11 +112,18 @@ function MountRow({
 }
 
 type HelpPlatform = 'win32' | 'darwin' | 'linux'
+type LinuxDistro = 'debian' | 'arch' | 'fedora'
 const PLATFORM_ORDER: HelpPlatform[] = ['win32', 'darwin', 'linux']
 const PLATFORM_LABEL: Record<HelpPlatform, string> = {
   win32: 'Windows',
   darwin: 'macOS',
   linux: 'Linux',
+}
+const DISTRO_ORDER: LinuxDistro[] = ['debian', 'arch', 'fedora']
+const DISTRO_LABEL: Record<LinuxDistro, string> = {
+  debian: 'Debian / Ubuntu',
+  arch: 'Arch',
+  fedora: 'Fedora',
 }
 
 function helpPlatform(platform: string | undefined): HelpPlatform | undefined {
@@ -122,21 +131,419 @@ function helpPlatform(platform: string | undefined): HelpPlatform | undefined {
   return undefined
 }
 
+interface GuideStep {
+  title: string
+  body?: ReactNode
+  commands?: string[]
+  note?: ReactNode
+}
+
+type PlatformGuide = Record<HelpPlatform, GuideStep[]>
+
+/** Linux 三个发行版的安装与权限步骤不同，顶部用二级分段切换。 */
+type LinuxGuide = Record<LinuxDistro, GuideStep[]>
+
+const CODE = 'rounded bg-[var(--t-bg-hover)] px-1 py-px font-mono text-[11.5px]'
+
+const ADB_GUIDE: PlatformGuide & { linuxDistro: LinuxGuide } = {
+  win32: [
+    {
+      title: '安装 adb',
+      body: '用 winget 安装 Google 官方 platform-tools，或从 Android 开发者网站下载 zip 解压到固定目录。',
+      commands: ['winget install --id Google.PlatformTools -e'],
+    },
+    {
+      title: '连接与驱动',
+      body: 'Windows 10/11 通常自动装好驱动；设备管理器里出现未知 Android 设备时，安装手机厂商的 USB 驱动。',
+      note: '首次连接需在手机上允许 USB 调试。',
+    },
+    {
+      title: '设置路径',
+      body: (
+        <>
+          任选一种让 Host 找到 adb：加入 PATH；在 Host 配置{' '}
+          <code className={CODE}>devices.adbPath</code> 指向 <code className={CODE}>adb.exe</code>；
+          或设置环境变量 <code className={CODE}>TANDEM_ADB_BIN</code> 后重启 Host。
+        </>
+      ),
+      commands: ['setx TANDEM_ADB_BIN "C:\\Android\\platform-tools\\adb.exe"'],
+      note: '改完环境变量要重新打开终端并重启 Host。',
+    },
+  ],
+  darwin: [
+    {
+      title: '安装 adb',
+      body: '用 Homebrew 安装 Android 官方 platform-tools；已装 Android Studio 时也可以直接用 SDK 自带的 adb。',
+      commands: ['brew install --cask android-platform-tools'],
+    },
+    {
+      title: '连接与驱动',
+      body: 'macOS 通常无需额外驱动；首次连接时在手机上允许 USB 调试。',
+    },
+    {
+      title: '设置路径',
+      body: (
+        <>
+          brew 安装后 adb 已在 PATH；Android Studio 的默认路径是{' '}
+          <code className={CODE}>~/Library/Android/sdk/platform-tools/adb</code>。也可以在 Host 配置{' '}
+          <code className={CODE}>devices.adbPath</code> 指向它，或设置{' '}
+          <code className={CODE}>TANDEM_ADB_BIN</code>。
+        </>
+      ),
+      commands: ['export TANDEM_ADB_BIN="$HOME/Library/Android/sdk/platform-tools/adb"'],
+      note: 'export 只对当前终端生效；长期生效请写进 shell 配置或在 Host 配置里指定。',
+    },
+  ],
+  linux: [
+    {
+      title: '安装 adb 与 udev 规则',
+      body: 'Debian / Ubuntu 可直接安装 adb 与 common udev 规则包。',
+      commands: ['sudo apt install adb android-sdk-platform-tools-common'],
+    },
+    {
+      title: 'USB 权限',
+      body: (
+        <>
+          把当前用户加入 <code className={CODE}>plugdev</code> 组后重新登录，让 udev 规则的权限生效。
+        </>
+      ),
+      commands: ['sudo usermod -aG plugdev $USER'],
+      note: '重新登录后运行 adb devices 确认不再提示 no permissions。',
+    },
+    {
+      title: '设置路径',
+      body: (
+        <>
+          发行版包通常已把 adb 放进 PATH。也可以在 Host 配置{' '}
+          <code className={CODE}>devices.adbPath</code> 或环境变量{' '}
+          <code className={CODE}>TANDEM_ADB_BIN</code> 里显式指定。
+        </>
+      ),
+      commands: ['export TANDEM_ADB_BIN="$(command -v adb)"'],
+    },
+  ],
+  linuxDistro: {
+    debian: [
+      {
+        title: '安装 adb 与 udev 规则',
+        body: 'Debian / Ubuntu 可直接安装 adb 与 common udev 规则包。',
+        commands: ['sudo apt install adb android-sdk-platform-tools-common'],
+      },
+      {
+        title: 'USB 权限',
+        body: (
+          <>
+            把当前用户加入 <code className={CODE}>plugdev</code> 组后重新登录，让 udev 规则的权限生效。
+          </>
+        ),
+        commands: ['sudo usermod -aG plugdev $USER'],
+        note: '重新登录后运行 adb devices 确认不再提示 no permissions。',
+      },
+      {
+        title: '设置路径',
+        body: (
+          <>
+            发行版包通常已把 adb 放进 PATH。也可以在 Host 配置{' '}
+            <code className={CODE}>devices.adbPath</code> 或环境变量{' '}
+            <code className={CODE}>TANDEM_ADB_BIN</code> 里显式指定。
+          </>
+        ),
+        commands: ['export TANDEM_ADB_BIN="$(command -v adb)"'],
+      },
+    ],
+    arch: [
+      {
+        title: '安装 adb',
+        body: 'Arch 的 android-tools 包包含 adb、fastboot 与 udev 规则。',
+        commands: ['sudo pacman -S android-tools'],
+      },
+      {
+        title: 'USB 权限',
+        body: (
+          <>
+            Arch 使用 <code className={CODE}>uucp</code> 组管理 USB 设备权限；加入后重新登录。
+          </>
+        ),
+        commands: ['sudo usermod -aG uucp $USER'],
+      },
+      {
+        title: '设置路径',
+        body: (
+          <>
+            adb 在 <code className={CODE}>/usr/bin/adb</code>，通常已在 PATH。也可以在 Host 配置{' '}
+            <code className={CODE}>devices.adbPath</code> 或{' '}
+            <code className={CODE}>TANDEM_ADB_BIN</code> 里指定。
+          </>
+        ),
+        commands: ['export TANDEM_ADB_BIN="$(command -v adb)"'],
+      },
+    ],
+    fedora: [
+      {
+        title: '安装 adb',
+        body: 'Fedora 的 android-tools 包包含 adb 与 fastboot。',
+        commands: ['sudo dnf install android-tools'],
+      },
+      {
+        title: 'USB 权限',
+        body: (
+          <>
+            把当前用户加入 <code className={CODE}>plugdev</code> 组；若仍提示无权限，参照 Debian 的{' '}
+            <code className={CODE}>51-android.rules</code> 添加设备 vendor id 的 udev 规则。
+          </>
+        ),
+        commands: ['sudo usermod -aG plugdev $USER'],
+        note: '重新登录后生效。',
+      },
+      {
+        title: '设置路径',
+        body: (
+          <>
+            adb 通常已在 PATH。也可以在 Host 配置 <code className={CODE}>devices.adbPath</code>{' '}
+            或 <code className={CODE}>TANDEM_ADB_BIN</code> 里指定。
+          </>
+        ),
+        commands: ['export TANDEM_ADB_BIN="$(command -v adb)"'],
+      },
+    ],
+  },
+}
+
+const SERIAL_GUIDE: PlatformGuide & { linuxDistro: LinuxGuide } = {
+  win32: [
+    {
+      title: '安装串口组件',
+      body: '在 Host 的工作目录安装 serialport 后重启 Host；串口与其他设备不受影响。',
+      commands: ['npm install serialport'],
+    },
+    {
+      title: '串口驱动',
+      body: 'CH340 / CP210x / FTDI 芯片需安装厂商驱动；装好后设备管理器里应出现 COM 端口。',
+    },
+    {
+      title: '确认设备路径',
+      body: (
+        <>
+          在设备管理器的「端口 (COM 和 LPT)」查看编号（如 <code className={CODE}>COM3</code>）。
+          Host 会自动枚举串口，无需手动填路径。
+        </>
+      ),
+    },
+  ],
+  darwin: [
+    {
+      title: '安装串口组件',
+      body: '在 Host 的工作目录安装 serialport 后重启 Host；串口与其他设备不受影响。',
+      commands: ['npm install serialport'],
+    },
+    {
+      title: '串口驱动',
+      body: 'CH340 / CP210x / FTDI 大多由 macOS 自带驱动；旧系统或特殊芯片再安装厂商驱动。',
+    },
+    {
+      title: '确认设备路径',
+      body: (
+        <>
+          设备会出现在 <code className={CODE}>/dev/tty.usbserial-*</code> 或{' '}
+          <code className={CODE}>/dev/tty.usbmodem*</code>。
+        </>
+      ),
+      commands: ['ls /dev/tty.usb*'],
+    },
+  ],
+  linux: [
+    {
+      title: '安装串口组件',
+      body: '在 Host 的工作目录安装 serialport 后重启 Host；串口与其他设备不受影响。',
+      commands: ['npm install serialport'],
+    },
+    {
+      title: '串口权限',
+      body: (
+        <>
+          串口驱动通常已在内核（ch341 / cp210x / ftdi_sio）。没有权限时把用户加入{' '}
+          <code className={CODE}>dialout</code> 组后重新登录。
+        </>
+      ),
+      commands: ['sudo usermod -aG dialout $USER'],
+    },
+    {
+      title: '确认设备路径',
+      body: (
+        <>
+          设备一般是 <code className={CODE}>/dev/ttyUSB*</code> 或 <code className={CODE}>/dev/ttyACM*</code>。
+        </>
+      ),
+      commands: ['ls /dev/ttyUSB* /dev/ttyACM*'],
+    },
+  ],
+  linuxDistro: {
+    debian: [
+      {
+        title: '安装串口组件',
+        body: '在 Host 的工作目录安装 serialport 后重启 Host；串口与其他设备不受影响。',
+        commands: ['npm install serialport'],
+      },
+      {
+        title: '串口权限',
+        body: (
+          <>
+            串口驱动通常已在内核（ch341 / cp210x / ftdi_sio）。没有权限时把用户加入{' '}
+            <code className={CODE}>dialout</code> 组后重新登录。
+          </>
+        ),
+        commands: ['sudo usermod -aG dialout $USER'],
+      },
+      {
+        title: '确认设备路径',
+        body: (
+          <>
+            设备一般是 <code className={CODE}>/dev/ttyUSB*</code> 或 <code className={CODE}>/dev/ttyACM*</code>。
+          </>
+        ),
+        commands: ['ls /dev/ttyUSB* /dev/ttyACM*'],
+      },
+    ],
+    arch: [
+      {
+        title: '安装串口组件',
+        body: '在 Host 的工作目录安装 serialport 后重启 Host；串口与其他设备不受影响。',
+        commands: ['npm install serialport'],
+      },
+      {
+        title: '串口权限',
+        body: (
+          <>
+            Arch 用 <code className={CODE}>uucp</code> 组管理串口权限；加入后重新登录。
+          </>
+        ),
+        commands: ['sudo usermod -aG uucp $USER'],
+      },
+      {
+        title: '确认设备路径',
+        body: (
+          <>
+            设备一般是 <code className={CODE}>/dev/ttyUSB*</code> 或 <code className={CODE}>/dev/ttyACM*</code>。
+          </>
+        ),
+        commands: ['ls /dev/ttyUSB* /dev/ttyACM*'],
+      },
+    ],
+    fedora: [
+      {
+        title: '安装串口组件',
+        body: '在 Host 的工作目录安装 serialport 后重启 Host；串口与其他设备不受影响。',
+        commands: ['npm install serialport'],
+      },
+      {
+        title: '串口权限',
+        body: (
+          <>
+            串口驱动通常已在内核。没有权限时把用户加入 <code className={CODE}>dialout</code> 组后重新登录。
+          </>
+        ),
+        commands: ['sudo usermod -aG dialout $USER'],
+      },
+      {
+        title: '确认设备路径',
+        body: (
+          <>
+            设备一般是 <code className={CODE}>/dev/ttyUSB*</code> 或 <code className={CODE}>/dev/ttyACM*</code>。
+          </>
+        ),
+        commands: ['ls /dev/ttyUSB* /dev/ttyACM*'],
+      },
+    ],
+  },
+}
+
+function InstallGuide({
+  guide,
+  platform,
+  note,
+}: {
+  guide: PlatformGuide & { linuxDistro: LinuxGuide }
+  /** Host 的平台；默认选中，其他系统可切换查看。 */
+  platform?: string
+  note?: string
+}) {
+  const detected = helpPlatform(platform)
+  const [selected, setSelected] = useState<HelpPlatform>(detected ?? 'win32')
+  const [distro, setDistro] = useState<LinuxDistro>('debian')
+  const steps = selected === 'linux' ? guide.linuxDistro[distro] : guide[selected]
+  return (
+    <div className="space-y-2.5 text-[12px] leading-5">
+      <SegmentedControl
+        size="sm"
+        aria-label="选择系统"
+        className="w-full"
+        itemClassName="flex-1"
+        value={selected}
+        onChange={setSelected}
+        options={PLATFORM_ORDER.map((item) => ({
+          value: item,
+          label: PLATFORM_LABEL[item],
+        }))}
+      />
+      {selected === 'linux' && (
+        <SegmentedControl
+          size="sm"
+          aria-label="选择 Linux 发行版"
+          className="w-full"
+          itemClassName="flex-1"
+          value={distro}
+          onChange={setDistro}
+          options={DISTRO_ORDER.map((item) => ({ value: item, label: DISTRO_LABEL[item] }))}
+        />
+      )}
+      <ol className="space-y-3">
+        {steps.map((step, index) => (
+          <li key={`${selected}:${index}:${step.title}`} className="grid grid-cols-[18px_minmax(0,1fr)] gap-2">
+            <span className="mt-0.5 flex size-[18px] items-center justify-center rounded-full bg-[var(--t-bg-active)] font-mono text-[10.5px] tabular-nums text-text-secondary">
+              {index + 1}
+            </span>
+            <div className="min-w-0">
+              <div className="text-[12px] font-medium text-text-secondary">{step.title}</div>
+              {step.body && (
+                <div className="mt-0.5 break-words text-text-soft">{step.body}</div>
+              )}
+              {step.commands?.length ? (
+                <CodeBlock
+                  code={step.commands.join('\n')}
+                  language="bash"
+                  fileName="终端"
+                  toolsAlwaysVisible
+                  maxHeight={null}
+                  className="mt-1.5"
+                />
+              ) : null}
+              {step.note && (
+                <div className="mt-1 text-[11.5px] leading-4 text-muted">{step.note}</div>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
+      {note && <div className="border-t border-border/60 pt-2 text-[11.5px] leading-4 text-muted">{note}</div>}
+    </div>
+  )
+}
+
 function BackendNote({
   icon,
   title,
-  help,
+  guide,
   platform,
+  note,
 }: {
   icon: ReactNode
   title: string
-  help: Record<HelpPlatform, string>
-  /** Host 的平台；优先展开对应平台，其他平台折叠可展开。 */
+  guide: PlatformGuide & { linuxDistro: LinuxGuide }
+  /** Host 的平台；优先展开对应平台，其他平台可切换查看。 */
   platform?: string
+  note?: string
 }) {
   const [open, setOpen] = useState(false)
-  const primary = helpPlatform(platform)
-  const others = PLATFORM_ORDER.filter((item) => item !== primary)
   return (
     <div className="rounded-lg px-2 py-1 text-[12px] text-muted">
       <div className="flex items-center gap-2">
@@ -145,31 +552,15 @@ function BackendNote({
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
           className="shrink-0 rounded px-1 text-[12px] text-text-soft underline-offset-2 hover:bg-[var(--t-bg-hover)] hover:underline"
         >
           如何安装 / 设置路径
         </button>
       </div>
       {open && (
-        <div className="mt-1.5 rounded-md bg-[var(--t-bg-subtle)] px-2.5 py-2 text-[12px] leading-5 text-text-soft">
-          {primary ? (
-            <div>
-              <div className="mb-1 text-[11.5px] font-medium text-text-secondary">
-                {PLATFORM_LABEL[primary]}（当前 Host）
-              </div>
-              <div className="whitespace-pre-line">{help[primary]}</div>
-            </div>
-          ) : (
-            <div className="mb-1 text-[11.5px] text-muted">没有读到 Host 平台，请选择对应系统：</div>
-          )}
-          {others.map((item) => (
-            <details key={item} open={!primary && item === PLATFORM_ORDER[0]} className="mt-1.5 border-t border-border/60 pt-1.5">
-              <summary className="cursor-pointer list-none text-[11.5px] text-text-tertiary transition-colors hover:text-text-soft [&::-webkit-details-marker]:hidden">
-                {PLATFORM_LABEL[item]} 安装方法
-              </summary>
-              <div className="mt-1 whitespace-pre-line">{help[item]}</div>
-            </details>
-          ))}
+        <div className="mt-1.5 rounded-md bg-[var(--t-bg-subtle)] px-2.5 py-2.5">
+          <InstallGuide guide={guide} platform={platform} note={note} />
         </div>
       )}
     </div>
@@ -454,14 +845,8 @@ function HostSection({
                 icon={<Smartphone size={13} />}
                 title={list.adb.missing ? '未检测到 adb' : 'ADB 不可用'}
                 platform={platform}
-                help={{
-                  win32:
-                    'winget install --id Google.PlatformTools -e，或下载 platform-tools 后在 Host 配置里把 devices.adbPath 指向 adb.exe。\n也可以设置环境变量 TANDEM_ADB_BIN 后重启 Host。\n串口与其他设备不受影响。',
-                  darwin:
-                    'brew install --cask android-platform-tools；adb 通常在 /opt/homebrew/bin/adb 或 /usr/local/bin/adb。\n已装 Android Studio 时可用 ~/Library/Android/sdk/platform-tools/adb。\n也可以在 Host 配置里把 devices.adbPath 指向 adb，或设置 TANDEM_ADB_BIN 后重启 Host。\n串口与其他设备不受影响。',
-                  linux:
-                    'Debian/Ubuntu：sudo apt install adb；Arch：sudo pacman -S android-tools；Fedora：sudo dnf install android-tools。\nUSB 权限：sudo usermod -aG plugdev $USER（Arch 用 uucp）后重新登录；Debian/Ubuntu 可安装 android-sdk-platform-tools-common 获得 udev 规则，或添加 /etc/udev/rules.d/51-android.rules 后执行 sudo udevadm control --reload-rules && sudo udevadm trigger。\n也可以在 Host 配置里把 devices.adbPath 指向 adb，或设置 TANDEM_ADB_BIN 后重启 Host。',
-                }}
+                guide={ADB_GUIDE}
+                note="串口与其他设备不受影响。"
               />
             )}
             {!list.serial.available && (
@@ -469,14 +854,8 @@ function HostSection({
                 icon={<Usb size={13} />}
                 title={list.serial.missing ? '串口组件未安装（serialport）' : '串口不可用'}
                 platform={platform}
-                help={{
-                  win32:
-                    '在 Host 的工作目录执行 npm install serialport 后重启 Host。\nUSB 串口驱动：CH340 / CP210x / FTDI 芯片需安装厂商驱动；设备管理器里应出现 COM 端口。' + MOCK_SERIAL_HINT,
-                  darwin:
-                    '在 Host 的工作目录执行 npm install serialport 后重启 Host。\nCH340 / CP210x / FTDI 大多由 macOS 自带驱动（旧系统装厂商驱动）；设备出现在 /dev/tty.usbserial-* 或 /dev/tty.usbmodem*。' + MOCK_SERIAL_HINT,
-                  linux:
-                    '在 Host 的工作目录执行 npm install serialport 后重启 Host。\n串口驱动通常已在内核（ch341 / cp210x / ftdi_sio）。没有权限时执行 sudo usermod -aG dialout $USER 后重新登录（Arch 用 uucp）；\n或添加 /etc/udev/rules.d/99-tandem-serial.rules：SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", MODE="0666", GROUP="dialout"，然后 sudo udevadm control --reload-rules && sudo udevadm trigger。' + MOCK_SERIAL_HINT,
-                }}
+                guide={SERIAL_GUIDE}
+                note={`CH340 / CP210x / FTDI 的驱动或权限处理完成后，Host 会自动重新枚举设备。${MOCK_SERIAL_HINT}`}
               />
             )}
             {devices.length === 0 && (

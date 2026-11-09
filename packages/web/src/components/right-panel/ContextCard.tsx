@@ -3,8 +3,11 @@ import { formatTokens } from '../../lib/format'
 import { quotaLine } from '../../lib/quota'
 import { CONTEXT_PART_META, ContextSpaceSection, jumpToMessage, useContextBreakdown } from '../chat/ContextMeter'
 
-export function ContextCard() {
-  const { context, noData, window, used, pct, turns } = useContextBreakdown()
+export type ContextBreakdownData = ReturnType<typeof useContextBreakdown>
+
+/** 右侧栏上下文卡片：与输入框上下文环同源，紧凑展示占用、分类与缓存命中率。 */
+export function ContextCard({ data }: { data: ContextBreakdownData }) {
+  const { context, noData, window, used, pct, turns } = data
   if (noData || !context) {
     return <p className="text-[12px] leading-4 text-muted">暂无上下文数据</p>
   }

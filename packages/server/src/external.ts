@@ -366,6 +366,46 @@ function messageFrom(role: Message['role'], id: string, content: ContentBlock[],
   return { id, role, content, createdAt };
 }
 
+/** Claude Code 每行都带 message.usage；转成协议的用量字段（无价格，费用未知）。 */
+export function usageFromClaude(raw: unknown): Message['usage'] | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const usage = raw as Record<string, unknown>;
+  const num = (key: string): number => {
+    const value = usage[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  };
+  const inputTokens = num('input_tokens');
+  const outputTokens = num('output_tokens');
+  const cacheReadTokens = num('cache_read_input_tokens');
+  const cacheWriteTokens = num('cache_creation_input_tokens');
+  if (!inputTokens && !outputTokens && !cacheReadTokens && !cacheWriteTokens) return undefined;
+  return {
+    inputTokens,
+    outputTokens,
+    ...(cacheReadTokens ? { cacheReadTokens } : {}),
+    ...(cacheWriteTokens ? { cacheWriteTokens } : {}),
+  };
+}
+
+/** Codex token_count.last_token_usage：input_tokens 含缓存，协议里 inputTokens 只算未命中部分。 */
+export function usageFromCodex(raw: unknown): Message['usage'] | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const usage = raw as Record<string, unknown>;
+  const num = (key: string): number => {
+    const value = usage[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  };
+  const input = num('input_tokens');
+  const cacheRead = num('cached_input_tokens') || num('cache_read_input_tokens');
+  const output = num('output_tokens');
+  if (!input && !output && !cacheRead) return undefined;
+  return {
+    inputTokens: Math.max(0, input - cacheRead),
+    outputTokens: output,
+    ...(cacheRead ? { cacheReadTokens: cacheRead } : {}),
+  };
+}
+
 /**
  * 解析 Claude Code 会话 jsonl。collect=false 时只统计元信息（列表用），
  * collect=true 时产出完整消息（预览/导入用）。
@@ -388,8 +428,14 @@ function parseClaudeFile(file: string, collect: boolean, fallbackId: string): Pa
   let lastToolOnly = false;
   let lineNo = 0;
 
-  const start = (role: Message['role'], blockId: string, content: ContentBlock[], ts: number): void => {
-    const message = messageFrom(role, blockId, content, ts);
+  const start = (
+    role: Message['role'],
+    blockId: string,
+    content: ContentBlock[],
+    ts: number,
+    extra?: Pick<Message, 'model' | 'usage'>,
+  ): void => {
+    const message = { ...messageFrom(role, blockId, content, ts), ...extra };
     count++;
     if (collect) {
       messages.push(message);
@@ -446,6 +492,12 @@ function parseClaudeFile(file: string, collect: boolean, fallbackId: string): Pa
     let blocks = convertClaudeBlocks(msg.content);
     if (role === 'user') blocks = cleanUserBlocks(blocks);
     if (!blocks.length) continue;
+    const extra: Pick<Message, 'model' | 'usage'> = {};
+    if (role === 'assistant') {
+      if (typeof msg.model === 'string' && msg.model.trim()) extra.model = msg.model.trim();
+      const usage = usageFromClaude(msg.usage);
+      if (usage) extra.usage = usage;
+    }
 
     const toolOnly = blocks.every((b) => b.type === 'tool_result');
     // 首条真实用户文本作为兜底标题（跳过命令/系统注入内容）
@@ -482,10 +534,12 @@ function parseClaudeFile(file: string, collect: boolean, fallbackId: string): Pa
     if (role === 'assistant' && last && last.role === 'assistant' && last.id === messageId) {
       // Claude Code 按内容块逐行落盘，同一条 assistant 消息需要合并
       last.content.push(...blocks);
+      if (extra.model) last.model = extra.model;
+      if (extra.usage) last.usage = extra.usage;
       continue;
     }
 
-    start(role, messageId, blocks, ts);
+    start(role, messageId, blocks, ts, extra);
     lastToolOnly = false;
   }
 
@@ -576,13 +630,22 @@ function parseCodexFile(file: string, collect: boolean, fallbackId: string, know
   let updatedAt = 0;
   let count = 0;
   let messageSeq = 0;
+  let currentModel = '';
+  let lastAssistant: Message | undefined;
   const messages: Message[] = [];
 
-  const push = (role: Message['role'], content: ContentBlock[], ts: number): void => {
-    if (!content.length) return;
+  const push = (
+    role: Message['role'],
+    content: ContentBlock[],
+    ts: number,
+    extra?: Pick<Message, 'model' | 'usage'>,
+  ): Message | undefined => {
+    if (!content.length) return undefined;
     count++;
+    const message = { ...messageFrom(role, `${fallbackId}:m${messageSeq++}`, content, ts), ...extra };
     // 消息 id 稳定（按会话 + 序号），全文搜索跳转时重新解析仍能对上同一条。
-    if (collect) messages.push(messageFrom(role, `${fallbackId}:m${messageSeq++}`, content, ts));
+    if (collect) messages.push(message);
+    return message;
   };
 
   const handleText = (role: 'user' | 'assistant', content: unknown, ts: number): void => {
@@ -600,7 +663,8 @@ function parseCodexFile(file: string, collect: boolean, fallbackId: string, know
         firstUserTitle = cleanTitle(textOnly);
       }
     }
-    push(role, blocks, ts);
+    const message = push(role, blocks, ts, role === 'assistant' && currentModel ? { model: currentModel } : undefined);
+    if (role === 'assistant') lastAssistant = message;
   };
 
   const handleResponseItem = (payload: Record<string, unknown>, ts: number): void => {
@@ -677,6 +741,14 @@ function parseCodexFile(file: string, collect: boolean, fallbackId: string, know
       else if (item.type === 'AgentMessage') handleText('assistant', item.content, ts);
       return;
     }
+    if (kind === 'token_count') {
+      // 用量挂在最近一条 assistant 消息上；外部会话没有价格，只给 token。
+      const info = payload.info as Record<string, unknown> | undefined;
+      const detail = (info?.last_token_usage ?? info?.total_token_usage) as unknown;
+      const usage = usageFromCodex(detail);
+      if (usage && lastAssistant && !lastAssistant.usage) lastAssistant.usage = usage;
+      return;
+    }
     // 兼容旧版 event_msg：user_message / agent_message 直接带 message 字符串
     if (kind === 'user_message') handleText('user', payload.message, ts);
     else if (kind === 'agent_message') handleText('assistant', payload.message, ts);
@@ -702,6 +774,10 @@ function parseCodexFile(file: string, collect: boolean, fallbackId: string, know
     }
     if (o.type === 'turn_context') {
       if (typeof payload.cwd === 'string' && payload.cwd) cwd ||= payload.cwd;
+      if (typeof payload.model === 'string' && payload.model.trim()) currentModel = payload.model.trim();
+      else if (typeof payload.model_name === 'string' && payload.model_name.trim()) {
+        currentModel = payload.model_name.trim();
+      }
       continue;
     }
     if (o.type === 'event_msg') {
@@ -1058,17 +1134,28 @@ export class ExternalSessionStore {
   preview(source: ExternalSource, id: string): Session | undefined {
     const parsed = this.find(source, id, true);
     if (!parsed) return undefined;
+    const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    let model = '';
+    for (const message of parsed.messages) {
+      if (message.role !== 'assistant') continue;
+      if (message.model) model = message.model;
+      if (!message.usage) continue;
+      usage.inputTokens += message.usage.inputTokens || 0;
+      usage.outputTokens += message.usage.outputTokens || 0;
+      usage.cacheReadTokens += message.usage.cacheReadTokens || 0;
+      usage.cacheWriteTokens += message.usage.cacheWriteTokens || 0;
+    }
     return {
       id: parsed.id,
       title: parsed.title,
       cwd: parsed.cwd,
       profileId: '',
-      model: '',
+      model,
       permissionMode: 'default',
       status: 'idle',
       createdAt: parsed.createdAt,
       updatedAt: parsed.updatedAt,
-      usage: { inputTokens: 0, outputTokens: 0 },
+      usage,
       messages: parsed.messages,
       todos: [],
     };

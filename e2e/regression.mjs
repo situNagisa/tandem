@@ -2068,6 +2068,85 @@ async function main() {
       day: dayString,
     })
 
+    // 外部会话夹具（反馈9#01）：Claude Code jsonl 带 model / usage 与一次 Edit，
+    // 供只读预览的轮次大纲、用量 tooltip 与信息面板断言。
+    {
+      const externalDir = path.join(home, 'home', '.claude', 'projects', '-tmp-reg-demo')
+      mkdirSync(externalDir, { recursive: true })
+      const externalLines = [
+        {
+          type: 'user',
+          uuid: 'eu1',
+          cwd: '/tmp/reg-external-demo',
+          timestamp: '2026-11-09T01:00:00.000Z',
+          message: { role: 'user', content: '外部会话第一轮：检查构建脚本' },
+        },
+        {
+          type: 'assistant',
+          uuid: 'ea1',
+          cwd: '/tmp/reg-external-demo',
+          timestamp: '2026-11-09T01:00:05.000Z',
+          message: {
+            id: 'emsg1',
+            role: 'assistant',
+            model: 'claude-sonnet-4-5-20250929',
+            content: [
+              { type: 'text', text: '我先查看 package.json。' },
+              { type: 'tool_use', id: 'etool1', name: 'Read', input: { file_path: 'package.json' } },
+            ],
+            usage: { input_tokens: 1200, output_tokens: 80, cache_read_input_tokens: 3000, cache_creation_input_tokens: 200 },
+          },
+        },
+        {
+          type: 'user',
+          uuid: 'eu2',
+          cwd: '/tmp/reg-external-demo',
+          timestamp: '2026-11-09T01:00:06.000Z',
+          message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'etool1', content: '{"name":"demo"}' }] },
+        },
+        {
+          type: 'assistant',
+          uuid: 'ea2',
+          cwd: '/tmp/reg-external-demo',
+          timestamp: '2026-11-09T01:00:08.000Z',
+          message: {
+            id: 'emsg2',
+            role: 'assistant',
+            model: 'claude-sonnet-4-5-20250929',
+            content: [{ type: 'text', text: '构建脚本正常。' }],
+            usage: { input_tokens: 1500, output_tokens: 120, cache_read_input_tokens: 3200, cache_creation_input_tokens: 0 },
+          },
+        },
+        {
+          type: 'user',
+          uuid: 'eu3',
+          cwd: '/tmp/reg-external-demo',
+          timestamp: '2026-11-09T01:02:00.000Z',
+          message: { role: 'user', content: '外部会话第二轮：清理测试脚本' },
+        },
+        {
+          type: 'assistant',
+          uuid: 'ea3',
+          cwd: '/tmp/reg-external-demo',
+          timestamp: '2026-11-09T01:02:05.000Z',
+          message: {
+            id: 'emsg3',
+            role: 'assistant',
+            model: 'claude-sonnet-4-5-20250929',
+            content: [
+              { type: 'text', text: '已清理测试脚本。' },
+              { type: 'tool_use', id: 'etool2', name: 'Edit', input: { file_path: 'scripts/test.sh', old_string: 'a', new_string: 'b' } },
+            ],
+            usage: { input_tokens: 2000, output_tokens: 100, cache_read_input_tokens: 4000, cache_creation_input_tokens: 0 },
+          },
+        },
+      ]
+      writeFileSync(
+        path.join(externalDir, 'reg-external.jsonl'),
+        `${externalLines.map((line) => JSON.stringify(line)).join('\n')}\n`,
+      )
+    }
+
     const hostPort = await host.ready
     const base = `http://127.0.0.1:${hostPort}`
     const appUrl = `${base}/?token=${token}#/h/${hostId}`
@@ -2334,6 +2413,35 @@ async function main() {
       await page.waitForTimeout(300)
     }
 
+    /** 打开外部会话只读预览（Claude Code / Codex）。 */
+    const openExternal = async (page, source, id) => {
+      await page.waitForFunction(
+        () => {
+          try {
+            return JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]').length > 0
+          } catch {
+            return false
+          }
+        },
+        null,
+        { timeout: 20_000 },
+      )
+      const clientHostId = await page.evaluate(() => {
+        const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
+        return hosts[0]?.id ?? null
+      })
+      await page.evaluate((hash) => {
+        window.location.hash = hash
+      }, `#/h/${clientHostId}/x/${source}/${id}`)
+      await page.waitForFunction(
+        (externalId) => window.location.hash.includes(`/x/`) && window.location.hash.includes(`/${externalId}`),
+        id,
+        { timeout: 10_000 },
+      )
+      await page.locator('[data-turn-id]').first().waitFor({ timeout: 20_000 })
+      await page.waitForTimeout(350)
+    }
+
     const waitOnline = async (page) => {
       await page.getByText('在线', { exact: true }).first().waitFor({ timeout: 10_000 }).catch(() => {})
     }
@@ -2596,6 +2704,71 @@ async function main() {
       assert.match(await tip.innerText(), /占本会话 \d+%/, '悬停用量没有占本会话比例')
       assert.doesNotMatch(await tip.innerText(), /第 \d+ 轮：/, '用量 tooltip 重复了大纲文字')
     })
+
+    desktop('外部会话预览：轮次大纲、用量 tooltip 与信息面板（反馈9#01 R37）', async (page) => {
+      await openExternal(page, 'claude-code', 'reg-external')
+      await page.locator('.turn-rail').waitFor({ state: 'attached', timeout: 10_000 })
+      assert.equal(
+        await page.locator('[data-testid="turn-readout"] li').count(),
+        2,
+        '外部会话大纲没有列出两轮',
+      )
+      const panel = page
+        .locator('aside')
+        .filter({ has: page.getByRole('heading', { name: '会话信息' }) })
+        .last()
+      await panel.waitFor({ state: 'visible', timeout: 10_000 })
+      // 复用正常会话的卡片：详情、用量、上下文、文件改动都来自原日志。
+      const text = await panel.innerText()
+      assert.match(text, /claude-sonnet-4-5-20250929/, '信息面板缺少模型')
+      assert.match(text, /\/tmp\/reg-external-demo/, '信息面板缺少工作目录')
+      assert.match(text, /轮数[\s\S]*2/, '信息面板缺少轮数')
+      assert.equal(await panel.locator('[data-group="usage"]').count(), 1, '信息面板缺少用量卡')
+      assert.match(text, /输入[\s\S]*缓存命中率/, '用量卡没有 token 明细')
+      assert.equal(await panel.locator('[data-group="context"]').count(), 1, '信息面板缺少上下文卡')
+      assert.match(text, /最占空间/, '上下文卡缺少最占空间')
+      assert.equal(await panel.locator('[data-group="changes"]').count(), 1, '信息面板缺少文件改动卡')
+      assert.match(text, /scripts\/test\.sh/, '文件改动没有列出原会话编辑过的文件')
+      // 只读：没有输入框，保留「在 Tandem 中继续」。
+      assert.equal(await page.locator('textarea[aria-label="消息输入框"]').count(), 0, '外部会话不应可发送')
+      assert.ok(await page.getByRole('button', { name: /在 Tandem 中继续/ }).count(), '缺少导入继续入口')
+
+      // 大纲悬停：有 usage 就显示用量，没有价格时不编造「花费未知」。
+      await page.locator('.turn-hit').hover()
+      await page.waitForFunction(
+        () => document.querySelector('.turn-rail')?.getAttribute('data-open') === 'true',
+        null,
+        { timeout: 5_000 },
+      )
+      await page.waitForTimeout(800)
+      const info = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('.turn-item')].filter(
+          (el) => (el.querySelector('.turn-item-t')?.textContent ?? '').trim().length > 0,
+        )
+        const first = rows.sort((a, b) => a.getBoundingClientRect().y - b.getBoundingClientRect().y)[0]
+        return {
+          title: first?.getAttribute('title') ?? '',
+          label: first?.getAttribute('aria-label') ?? '',
+          pin: first?.querySelector('.turn-item-p')?.getAttribute('data-turn') ?? '',
+        }
+      })
+      assert.match(info.title, /^输入 .+ · 输出 .+ · 缓存命中 \d+% · 占本会话 \d+%/, `外部大纲用量异常：${info.title}`)
+      assert.doesNotMatch(info.title, /花费未知|\$/, '外部会话没有价格时不应显示花费')
+      assert.match(info.label, /^第 \d+ 轮：/, '外部大纲缺少读屏全文')
+      assert.equal(info.pin, '', '只读外部会话不应出现固定图钉')
+
+      // 信息面板可关闭并从顶栏重新打开（与正常会话共用 panelOpen）。
+      await panel.getByRole('button', { name: '关闭信息面板' }).click()
+      await panel.waitFor({ state: 'hidden', timeout: 5_000 })
+      await page.getByRole('button', { name: '切换信息面板' }).first().click()
+      await panel.waitFor({ state: 'visible', timeout: 5_000 })
+      // 拖宽手柄也复用同一实现。
+      assert.ok(
+        await page.getByRole('separator', { name: '调整会话信息面板宽度' }).count(),
+        '外部会话信息面板缺少拖宽手柄',
+      )
+    })
+
 
     desktop('轮次大纲固定按上下文占用着色，压缩轮最浅并标已压缩（#01 追加 / 反馈8#07）', async (page) => {
       await openSession(page, 'compact')
@@ -5020,6 +5193,54 @@ async function main() {
       await page.waitForTimeout(200)
       const reset = (await panel.boundingBox())?.width ?? 0
       assert.ok(Math.abs(reset - 300) <= 2, `双击后没有恢复默认宽度：${reset}`)
+    })
+
+    desktop('会话信息面板：空分组默认隐藏、显示空分组开关与数据到达后出现（反馈9#06 R14）', async (page) => {
+      const empty = await api(base, token, '/api/sessions', {
+        method: 'POST',
+        body: JSON.stringify({
+          cwd: repo,
+          profileId: 'p-main',
+          groupId: 'g1',
+          model: 'mock-1',
+          permissionMode: 'default',
+          title: '空分组回归',
+        }),
+      })
+      await gotoSession(page, empty.id)
+      const panel = page
+        .locator('aside')
+        .filter({ has: page.getByRole('heading', { name: '会话信息' }) })
+        .last()
+      if (!(await panel.isVisible().catch(() => false))) {
+        await page.getByRole('button', { name: '切换信息面板' }).first().click()
+      }
+      await panel.waitFor({ state: 'visible', timeout: 5_000 })
+      // 没有数据的分组与上下文卡片默认不渲染。
+      for (const text of ['暂无待办', '暂无用量', '暂无记忆', '暂无上下文数据']) {
+        assert.equal(await panel.getByText(text, { exact: true }).count(), 0, `空分组默认显示：${text}`)
+      }
+      assert.equal(await panel.locator('[data-group="context"]').count(), 0, '新会话无数据时仍显示上下文卡')
+      assert.equal(await panel.locator('[data-group="details"]').count(), 1, '详情分组应始终显示')
+
+      // 底部开关：打开后空分组出现，记忆仍可从空状态进入编辑；选择被记住。
+      await panel.getByRole('switch', { name: '显示空分组' }).click()
+      await panel.getByText('暂无待办', { exact: true }).waitFor({ timeout: 5_000 })
+      await panel.getByText('暂无用量', { exact: true }).waitFor({ timeout: 5_000 })
+      await panel.getByText('暂无记忆', { exact: false }).waitFor({ timeout: 5_000 })
+      assert.equal(await panel.getByRole('button', { name: '编辑' }).count(), 1, '空记忆卡缺少编辑入口')
+      const prefs = JSON.parse(await page.evaluate(() => localStorage.getItem('tandem.rightPanel.v1') ?? '{}'))
+      assert.equal(prefs.showEmpty, true, '「显示空分组」没有记住选择')
+      await panel.getByRole('switch', { name: '显示空分组' }).click()
+
+      // 有数据后出现：刚创建的空会话没有用量；发送一条后用量分组淡入。
+      assert.equal(await panel.locator('[data-group="usage"]').count(), 0, '无用量时仍显示用量卡')
+      const input = page.locator('textarea[aria-label="消息输入框"]')
+      await input.fill('让用量分组出现')
+      await input.press('Enter')
+      await panel.locator('[data-group="usage"]').waitFor({ state: 'visible', timeout: 20_000 })
+      assert.equal(await panel.getByText('暂无用量', { exact: true }).count(), 0, '有数据后仍显示空状态')
+      assert.match(await panel.locator('[data-group="usage"]').innerText(), /输入[\s\S]*输出/, '用量卡出现后没有数据')
     })
 
     desktop('断点续跑胶囊显示倒计时与操作', async (page) => {
@@ -7707,13 +7928,34 @@ async function main() {
         assert.equal(await section.getByText(/spawn adb ENOENT/).count(), 0, '界面上不应出现原始 adb 异常')
         await section.getByText('如何安装 / 设置路径').click()
         await section.getByText(/devices\.adbPath/).first().waitFor({ timeout: 5_000 })
-        // 反馈 #7-01：按 Host 平台优先显示，其他平台可展开；不能只有 Windows。
-        await section.getByText('Linux（当前 Host）', { exact: true }).waitFor({ timeout: 5_000 })
-        await section.getByText(/apt install adb/).waitFor({ timeout: 5_000 })
-        assert.equal(await section.getByText('Windows 安装方法', { exact: true }).count(), 1, '缺少 Windows 折叠说明')
-        assert.equal(await section.getByText('macOS 安装方法', { exact: true }).count(), 1, '缺少 macOS 折叠说明')
-        await section.getByText('macOS 安装方法', { exact: true }).click()
-        await section.getByText(/brew install --cask android-platform-tools/).waitFor({ timeout: 5_000 })
+        // 反馈9#02：顶部横向系统分段（默认 Host 平台）+ 编号步骤 + 可复制代码块。
+        for (const label of ['Windows', 'macOS', 'Linux']) {
+          assert.equal(
+            await section.getByRole('button', { name: label, exact: true }).count(),
+            1,
+            `安装说明缺少 ${label} 分段`,
+          )
+        }
+        await section.getByText('安装 adb 与 udev 规则', { exact: true }).waitFor({ timeout: 5_000 })
+        await section.getByText(/apt install adb android-sdk-platform-tools-common/).waitFor({ timeout: 5_000 })
+        assert.ok(
+          await section.getByRole('button', { name: '复制代码' }).count(),
+          '代码块缺少复制按钮',
+        )
+        // Linux 发行版二级分段：Arch / Fedora 命令随之切换。
+        await section.getByRole('button', { name: 'Arch', exact: true }).click()
+        await section.getByText('sudo pacman -S android-tools', { exact: true }).waitFor({ timeout: 5_000 })
+        await section.getByRole('button', { name: 'Fedora', exact: true }).click()
+        await section.getByText('sudo dnf install android-tools', { exact: true }).waitFor({ timeout: 5_000 })
+        // 顶部系统分段可切换；路径与命令都用等宽字体。
+        await section.getByRole('button', { name: 'Windows', exact: true }).click()
+        await section.getByText('winget install --id Google.PlatformTools -e', { exact: true }).waitFor({ timeout: 5_000 })
+        assert.ok(
+          await section.locator('code', { hasText: 'devices.adbPath' }).count(),
+          '设置路径没有用等宽字体',
+        )
+        await section.getByRole('button', { name: 'macOS', exact: true }).click()
+        await section.getByText('brew install --cask android-platform-tools', { exact: true }).waitFor({ timeout: 5_000 })
         await dialog.getByRole('button', { name: '完成' }).click()
         await page.evaluate((url) => {
           const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')

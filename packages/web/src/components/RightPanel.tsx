@@ -48,37 +48,14 @@ import { quotaLine } from '../lib/quota'
 import { stripMemoryMeta } from '../lib/memory'
 import { ConnectionDot, SessionStatusDot } from './StatusDot'
 import { Markdown } from './Markdown'
-import { CONTEXT_PART_META, useContextBreakdown } from './chat/ContextMeter'
+import { useContextBreakdown } from './chat/ContextMeter'
 import { Modal } from './ui/Modal'
 import { Menu } from './ui/Menu'
 import { Button, IconButton } from './ui/Button'
+import { Switch } from './ui/Controls'
 import { PanelBar, PanelBody } from './ui/Panel'
 import { ResizeHandle } from './ui/ResizeHandle'
-
-/** 会话信息面板宽度：280–600，记住用户拖过的位置（#03）。 */
-const PANEL_WIDTH_KEY = 'tandem.rightPanelWidth.v1'
-const PANEL_WIDTH_DEFAULT = 300
-const PANEL_WIDTH_MIN = 280
-const PANEL_WIDTH_MAX = 600
-
-function loadPanelWidth(): number {
-  try {
-    const n = Number(localStorage.getItem(PANEL_WIDTH_KEY))
-    return Number.isFinite(n) && n >= PANEL_WIDTH_MIN && n <= PANEL_WIDTH_MAX
-      ? Math.round(n)
-      : PANEL_WIDTH_DEFAULT
-  } catch {
-    return PANEL_WIDTH_DEFAULT
-  }
-}
-
-function savePanelWidth(width: number): void {
-  try {
-    localStorage.setItem(PANEL_WIDTH_KEY, String(Math.round(width)))
-  } catch {
-    // localStorage 不可用时仅本次会话有效
-  }
-}
+import { rememberWikiHost, useWikiStore } from '../store/useWikiStore'
 
 const EMPTY_TODOS: Todo[] = []
 const EMPTY_MESSAGES: UiMessage[] = []
@@ -99,13 +76,16 @@ const TODO_ICONS = {
 import {
   CHANGE_MARK,
   Card,
-  DEFAULT_ORDER,
   DetailRow,
-  GROUP_IDS,
   GROUP_META,
   GROUPS,
+  PANEL_WIDTH_DEFAULT,
+  PANEL_WIDTH_MAX,
+  PANEL_WIDTH_MIN,
+  loadPanelWidth,
   loadPanelPrefs,
   savePanelPrefs,
+  savePanelWidth,
   type GroupId,
   type PanelPrefs,
 } from './right-panel/shared'
@@ -172,6 +152,13 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const lastTargetRef = useRef<GroupId | null>(null)
   const cardRefs = useRef(new Map<GroupId, HTMLElement>())
   const positionsRef = useRef(new Map<GroupId, number>())
+  const asideRef = useRef<HTMLElement>(null)
+  // 分组随数据出现/消失时的滚动锚点：插入不推挤用户正在看的位置（反馈9#06）。
+  const visibilityLayoutRef = useRef(new Map<GroupId, number>())
+  const visibleIdsRef = useRef(new Set<GroupId>())
+  const orderKeyRef = useRef('')
+  const sessionKeyRef = useRef(sessionId)
+  const mountedRef = useRef(false)
   const { changes } = useSessionChanges(host, sessionId, changesNonce, !!sessionId)
   const memoryEditorOpen = useUiStore((s) => !!s.memoryEditor)
   const openMemoryEditor = useUiStore((s) => s.openMemoryEditor)
@@ -270,23 +257,62 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   const fileChanges = changes?.isRepo ? changes.files : []
   const additions = fileChanges.reduce((n, f) => n + f.additions, 0)
   const deletions = fileChanges.reduce((n, f) => n + f.deletions, 0)
+  const contextData = useContextBreakdown()
+  const usageHasData =
+    subUsage.count > 0 ||
+    (!!usage &&
+      ((usage.inputTokens ?? 0) > 0 ||
+        (usage.outputTokens ?? 0) > 0 ||
+        (usage.cacheReadTokens ?? 0) > 0 ||
+        (usage.cacheWriteTokens ?? 0) > 0 ||
+        (usage.costUsd ?? 0) > 0)) ||
+    !!reviewUsage
+  const memoryHasData =
+    !!memory?.exists && ((memory.entries ?? 0) > 0 || memoryPreview.length > 0)
+  // Wiki 数据由 WikiCard 自己拉；分组默认隐藏，需要面板层先取一次元数据才知道有没有内容。
+  const wikiProject = summary?.env?.repoRoot || summary?.cwd || ''
+  const wikiKey = host && wikiProject ? `${host.id}\u0000${wikiProject}` : ''
+  const wikiEntry = useWikiStore((s) => (wikiKey ? s.entries[wikiKey] : undefined))
+  const refreshWiki = useWikiStore((s) => s.refresh)
+  useEffect(() => {
+    if (!host || !wikiProject || wikiEntry) return
+    rememberWikiHost(host)
+    void refreshWiki(host, wikiProject)
+  }, [host, wikiProject, wikiEntry, refreshWiki])
+  const wikiHasData =
+    !!wikiEntry &&
+    ((wikiEntry.meta?.exists === true && (wikiEntry.meta.pages?.length ?? 0) > 0) ||
+      wikiEntry.jobs.some((job) => job.status === 'running'))
 
-  const available = useMemo<Record<GroupId, boolean>>(
+  const hasData = useMemo<Record<GroupId, boolean>>(
     () => ({
       plan: !!plan,
-      todos: true,
+      todos: todos.length > 0,
       agents: agentCount > 0,
-      usage: true,
-      context: true,
+      usage: usageHasData,
+      context: !contextData.noData,
       changes: fileChanges.length > 0,
-      memory: true,
-      wiki: true,
+      memory: memoryHasData,
+      wiki: wikiHasData,
       details: true,
     }),
-    [plan, fileChanges.length, agentCount],
+    [
+      plan,
+      todos.length,
+      agentCount,
+      usageHasData,
+      contextData.noData,
+      fileChanges.length,
+      memoryHasData,
+      wikiHasData,
+    ],
   )
 
-  const visibleGroups = prefs.order.filter((id) => !prefs.hidden.includes(id) && available[id])
+  const visibleGroups = prefs.order.filter(
+    (id) => !prefs.hidden.includes(id) && (prefs.showEmpty || hasData[id]),
+  )
+  const visibleKey = visibleGroups.join(',')
+  const orderKey = prefs.order.join(',')
 
   useEffect(() => savePanelPrefs(prefs), [prefs])
 
@@ -314,6 +340,66 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     }
     positionsRef.current = new Map()
   }, [prefs.order])
+
+  // 反馈9#06：有数据的分组出现时轻量淡入；若用户正滚动在下方，保持滚动锚点，
+  // 不因为上方插入卡片把正在看的内容推走。拖动排序交给上面的 FLIP。
+  useLayoutEffect(() => {
+    const box = asideRef.current?.querySelector<HTMLElement>('[data-panel-body]')
+    if (!box) return
+    const first = !mountedRef.current
+    const sessionChanged = sessionKeyRef.current !== sessionId
+    const orderChanged = orderKeyRef.current !== '' && orderKeyRef.current !== orderKey
+    const prev = visibilityLayoutRef.current
+    const seen = visibleIdsRef.current
+    const added: HTMLElement[] = []
+    let anchorDelta = 0
+    if (!first && !sessionChanged && !orderChanged) {
+      let inside: { before: number; el: HTMLElement } | null = null
+      for (const id of visibleGroups) {
+        const el = cardRefs.current.get(id)
+        if (!el) continue
+        const before = prev.get(id)
+        if (before === undefined) {
+          if (!seen.has(id)) added.push(el)
+          continue
+        }
+        if (before >= box.scrollTop - 1) {
+          anchorDelta = el.offsetTop - before
+          break
+        }
+        inside = { before, el }
+      }
+      if (anchorDelta === 0 && inside) anchorDelta = inside.el.offsetTop - inside.before
+      if (anchorDelta !== 0 && box.scrollTop > 0) {
+        box.scrollTop = Math.max(0, box.scrollTop + anchorDelta)
+      }
+      if (
+        added.length > 0 &&
+        !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ) {
+        for (const el of added) {
+          el.animate([{ opacity: 0 }, { opacity: 1 }], {
+            duration: 180,
+            easing: 'cubic-bezier(.16,1,.3,1)',
+          })
+        }
+      }
+    }
+    visibilityLayoutRef.current = new Map(
+      [...cardRefs.current].map(([id, el]) => [id, el.offsetTop]),
+    )
+    visibleIdsRef.current = new Set(visibleGroups)
+    orderKeyRef.current = orderKey
+    sessionKeyRef.current = sessionId
+    mountedRef.current = true
+  }, [visibleKey, orderKey, prefs.showEmpty, sessionId])
+
+  // 卡片内容高度变化（数据增长、展开明细）后刷新基线，下一次插入/删除才只按增量补偿。
+  useLayoutEffect(() => {
+    visibilityLayoutRef.current = new Map(
+      [...cardRefs.current].map(([id, el]) => [id, el.offsetTop]),
+    )
+  })
 
   const moveGroup = (from: GroupId, to: GroupId) => {
     if (from === to) return
@@ -477,7 +563,8 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         </div>
       )
     }
-    if (id === 'plan' && plan) {
+    if (id === 'plan') {
+      if (!plan) return <p className="text-[12px] text-muted">暂无计划</p>
       return (
         <div className="max-h-[180px] overflow-y-auto rounded-md border border-border/70 bg-bg/25 px-2.5 py-2 text-[13px] leading-[18px]">
           <Markdown text={plan.content} />
@@ -491,7 +578,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       return <WikiCard />
     }
     if (id === 'context') {
-      return <ContextCard />
+      return <ContextCard data={contextData} />
     }
     if (id === 'todos') {
       if (todos.length === 0) return <p className="text-[12px] text-muted">暂无待办</p>
@@ -535,16 +622,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       )
     }
     if (id === 'usage') {
-      const hasUsage =
-        subUsage.count > 0 ||
-        (!!usage &&
-          ((usage.inputTokens ?? 0) > 0 ||
-            (usage.outputTokens ?? 0) > 0 ||
-            (usage.cacheReadTokens ?? 0) > 0 ||
-            (usage.cacheWriteTokens ?? 0) > 0 ||
-            (usage.costUsd ?? 0) > 0)) ||
-        !!reviewUsage
-      if (!hasUsage) {
+      if (!usageHasData) {
         return <p className="text-[12px] leading-4 text-muted">暂无用量</p>
       }
       const cacheRead = usage?.cacheReadTokens ?? 0
@@ -662,6 +740,9 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       )
     }
     if (id === 'changes') {
+      if (fileChanges.length === 0) {
+        return <p className="text-[12px] leading-4 text-muted">暂无改动</p>
+      }
       return (
         <>
           <div className="mb-1.5 flex items-baseline gap-2 text-[12px] text-text-soft">
@@ -800,6 +881,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <aside
+      ref={asideRef}
       className="relative flex h-full min-h-0 flex-col border-l border-border bg-sidebar"
       style={{
         width: isMobile ? '100%' : (dragWidth ?? panelWidth),
@@ -849,7 +931,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         >
           {GROUPS.map((g) => {
             const shown = !prefs.hidden.includes(g.id)
-            const avail = available[g.id]
+            const avail = hasData[g.id]
             const reason = avail
               ? undefined
               : g.id === 'plan'
@@ -866,7 +948,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
                 key={g.id}
                 icon={<g.Icon />}
                 checked={shown}
-                disabled={!avail}
+                disabled={!avail && !prefs.showEmpty}
                 disabledReason={reason}
                 onCheckedChange={() => toggleGroup(g.id)}
               >
@@ -881,6 +963,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
       </PanelBar>
 
       <PanelBody scroll className="space-y-2 p-3"
+        style={{ overflowAnchor: 'none' }}
         onDragOver={(e) => {
           if (dragging) e.preventDefault()
         }}
@@ -941,12 +1024,23 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         {visibleGroups.length === 0 && (
           <div className="flex flex-col items-center gap-2 px-4 py-10 text-center text-[13px] leading-5 text-muted">
             <Info size={15} />
-            所有分组已隐藏，点击右上角 ⋯ 恢复显示。
+            {prefs.showEmpty
+              ? '所有分组已隐藏，点击右上角 ⋯ 恢复显示。'
+              : '当前没有可显示的分组；可在底部打开「显示空分组」查看。'}
           </div>
         )}
       </PanelBody>
 
-      <div className="shrink-0 border-t border-border px-4 py-2.5">
+      <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-2.5">
+        <div className="flex items-center gap-2 text-[12px] text-muted">
+          <Switch
+            checked={prefs.showEmpty}
+            onChange={(checked) => setPrefs((p) => ({ ...p, showEmpty: checked }))}
+            label="显示空分组"
+          />
+          显示空分组
+        </div>
+        <span className="flex-1" />
         <Button
           size="sm"
           variant="danger-ghost"

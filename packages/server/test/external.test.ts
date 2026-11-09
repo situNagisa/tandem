@@ -7,6 +7,8 @@ import {
   extractInjected,
   isInjectedTitle,
   titleFromMessages,
+  usageFromClaude,
+  usageFromCodex,
 } from '../src/external.js';
 
 function userMessage(text: string, id = 'm1'): Message {
@@ -92,4 +94,26 @@ test('cleanTitle 去 Markdown/ANSI，压空白并截断 60 字', () => {
   assert.equal(cleanTitle('\u001b[31m红色\u001b[0m 文本'), '红色 文本');
   assert.equal([...cleanTitle('字'.repeat(100))].length, 60);
   assert.equal(cleanTitle('\n\n  \n'), '');
+});
+
+test('外部会话解析保留 usage：Claude 缓存字段与 Codex 的含缓存输入', () => {
+  assert.deepEqual(
+    usageFromClaude({
+      input_tokens: 1200,
+      output_tokens: 80,
+      cache_read_input_tokens: 3000,
+      cache_creation_input_tokens: 200,
+    }),
+    { inputTokens: 1200, outputTokens: 80, cacheReadTokens: 3000, cacheWriteTokens: 200 },
+  );
+  // 全零/缺失时不生成用量，面板与大纲据此隐藏对应项。
+  assert.equal(usageFromClaude({ input_tokens: 0, output_tokens: 0 }), undefined);
+  assert.equal(usageFromClaude(null), undefined);
+
+  // Codex 的 input_tokens 含缓存，协议 inputTokens 只记未命中部分。
+  assert.deepEqual(
+    usageFromCodex({ input_tokens: 5000, cached_input_tokens: 4000, output_tokens: 120 }),
+    { inputTokens: 1000, outputTokens: 120, cacheReadTokens: 4000 },
+  );
+  assert.equal(usageFromCodex({ input_tokens: 0, output_tokens: 0 }), undefined);
 });

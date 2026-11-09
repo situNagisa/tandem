@@ -230,7 +230,7 @@ export function heatLabel(level: number): string {
 /** 轮次大纲 tooltip：只显示用量，不重复大纲文字；可附占本会话比例与压缩标记。 */
 export function turnUsageLabel(
   usage: TurnUsage | undefined,
-  extra?: { share?: number; compressed?: boolean; summary?: boolean },
+  extra?: { share?: number; compressed?: boolean; summary?: boolean; hideUnknownCost?: boolean },
 ): string {
   if (!usage) return ''
   const hasTiming = (usage.durationMs ?? 0) > 0 || (usage.toolDurationMs ?? 0) > 0
@@ -243,7 +243,7 @@ export function turnUsageLabel(
       `输入 ${formatTokens(usage.inputTokens)}`,
       `输出 ${formatTokens(usage.outputTokens)}`,
       `缓存命中 ${cacheHitRate(usage)}%`,
-      usage.hasCost ? formatCost(usage.costUsd) : '花费未知',
+      ...(usage.hasCost ? [formatCost(usage.costUsd)] : extra?.hideUnknownCost ? [] : ['花费未知']),
     )
     if (usage.subagents) parts.push('含子代理')
     const duration = usage.durationMs ?? 0

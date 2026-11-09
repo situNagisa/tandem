@@ -2,6 +2,13 @@
 
 > 更新：2026-11-09。只保留最近 5 轮；更早记录见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 56（2026-11-09）反馈包 #9：外部会话预览 / 安装说明分段 / 空分组
+- [x] #01 R38（新）：`TurnRail` 支持传入只读消息与虚拟会话 id，外部会话预览复用同一大纲（上下文着色、Alt 只看已固定、用量/耗时 tooltip；只读隐藏图钉、无价格不显示「花费未知」）；新增 `ExternalSessionPanel` 复用 `Card`/`DetailRow`/`ContextSpaceSection`/`PanelBar`/`ResizeHandle` 与同一宽度偏好；服务端外部解析补 `model` 与 `usage`（Claude / Codex）
+- [x] #02 R06（复发）：设备安装说明改为顶部 `ui/SegmentedControl` 系统分段（默认 Host 平台），Linux 再按 Debian/Ubuntu、Arch、Fedora 二级切换；步骤编号、命令走共享 `CodeBlock`（复制常显）、路径等宽；`CodeBlock` 增加 `toolsAlwaysVisible`
+- [x] #06 R14（复发）：会话信息面板按数据可用性隐藏空分组（含新会话上下文）；新分组 180ms 淡入，插入/删除保持滚动锚点；底部「显示空分组」开关持久化到 `PanelPrefs`
+- 验证：单测 `external.test.ts`（Claude/Codex usage 换算）；回归新增「外部会话预览…」「会话信息面板：空分组…」并更新「工作站：主机没装 adb…」为分段 + 代码块断言；截图 `/tmp/fb9-after/01.png`、`02.png`、`06.png`
+- 根因：R38 新增，R06/R14 复发走共享层 + 回归防线
+
 ## 迭代 55（2026-11-09）反馈包 #9：浏览器自带控件 / 滚动条 / 设置密度 / 高级分组
 - [x] 全局屏蔽（R37 新）：Electron `spellcheck:false`；`AppContextMenu` 用 `ui/Menu` 接管右键（复制/剪切/粘贴/全选/链接与图片地址），主进程 IPC 读写剪贴板；`writingsuggestions=false`、`-webkit-touch-callout:none`、format-detection、链接/图片无拖拽 ghost、输入框 autocomplete/autocorrect/spellcheck 默认关（密码框除外）、数字箭头隐藏；原生 title 批量迁移 `data-tip` 并由 `ui/Tooltip` 统一展示；Edge 划词迷你菜单只能由 Edge 设置/组策略 `QuickSearchShowMiniMenu` 关闭（已在 design.md 说明）
 - [x] #04 R36（新）：原生滚动条全局隐藏（含 Portal 弹窗），唯一 `ui/OverlayScrollbar` 覆盖式横竖双轴、不占布局宽度、无箭头、滚动/悬停淡入、停止 800ms 淡出；设置导航只保留内层一个滚动容器；ui-audit 新增 `custom-scrollbar`

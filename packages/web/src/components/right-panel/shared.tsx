@@ -35,16 +35,43 @@ export const DEFAULT_ORDER = GROUPS.map((g) => g.id)
 export const GROUP_IDS = new Set<GroupId>(DEFAULT_ORDER)
 const PREFS_KEY = 'tandem.rightPanel.v1'
 
+/** 会话信息面板宽度：280–600，记住用户拖过的位置（#03）。 */
+export const PANEL_WIDTH_KEY = 'tandem.rightPanelWidth.v1'
+export const PANEL_WIDTH_DEFAULT = 300
+export const PANEL_WIDTH_MIN = 280
+export const PANEL_WIDTH_MAX = 600
+
+export function loadPanelWidth(): number {
+  try {
+    const n = Number(localStorage.getItem(PANEL_WIDTH_KEY))
+    return Number.isFinite(n) && n >= PANEL_WIDTH_MIN && n <= PANEL_WIDTH_MAX
+      ? Math.round(n)
+      : PANEL_WIDTH_DEFAULT
+  } catch {
+    return PANEL_WIDTH_DEFAULT
+  }
+}
+
+export function savePanelWidth(width: number): void {
+  try {
+    localStorage.setItem(PANEL_WIDTH_KEY, String(Math.round(width)))
+  } catch {
+    // localStorage 不可用时仅本次会话有效
+  }
+}
+
 export interface PanelPrefs {
   order: GroupId[]
   hidden: GroupId[]
+  /** 显示暂无数据的分组（反馈9#06，默认关闭）；记住选择。 */
+  showEmpty: boolean
 }
 
 export function loadPanelPrefs(): PanelPrefs {
   try {
     const raw = localStorage.getItem(PREFS_KEY)
-    if (!raw) return { order: [...DEFAULT_ORDER], hidden: [] }
-    const parsed = JSON.parse(raw) as { order?: unknown; hidden?: unknown }
+    if (!raw) return { order: [...DEFAULT_ORDER], hidden: [], showEmpty: false }
+    const parsed = JSON.parse(raw) as { order?: unknown; hidden?: unknown; showEmpty?: unknown }
     const order = Array.isArray(parsed.order)
       ? parsed.order.filter((id): id is GroupId => typeof id === 'string' && GROUP_IDS.has(id as GroupId))
       : []
@@ -52,9 +79,9 @@ export function loadPanelPrefs(): PanelPrefs {
     const hidden = Array.isArray(parsed.hidden)
       ? parsed.hidden.filter((id): id is GroupId => typeof id === 'string' && GROUP_IDS.has(id as GroupId))
       : []
-    return { order, hidden: [...new Set(hidden)] }
+    return { order, hidden: [...new Set(hidden)], showEmpty: parsed.showEmpty === true }
   } catch {
-    return { order: [...DEFAULT_ORDER], hidden: [] }
+    return { order: [...DEFAULT_ORDER], hidden: [], showEmpty: false }
   }
 }
 
@@ -88,8 +115,8 @@ export function Card({
   id,
   label,
   icon: Icon,
-  dragging,
-  activeHandle,
+  dragging = false,
+  activeHandle = false,
   onHandleDown,
   onHandleUp,
   onDragStart,
@@ -102,21 +129,21 @@ export function Card({
   id: GroupId
   label: string
   icon: typeof ListTodo
-  dragging: boolean
-  activeHandle: boolean
-  onHandleDown: () => void
-  onHandleUp: () => void
-  onDragStart: (e: React.DragEvent<HTMLElement>) => void
-  onDragEnd: () => void
-  onDragOver: (e: React.DragEvent<HTMLElement>) => void
+  dragging?: boolean
+  activeHandle?: boolean
+  onHandleDown?: () => void
+  onHandleUp?: () => void
+  onDragStart?: (e: React.DragEvent<HTMLElement>) => void
+  onDragEnd?: () => void
+  onDragOver?: (e: React.DragEvent<HTMLElement>) => void
   right?: ReactNode
-  cardRef: (el: HTMLElement | null) => void
+  cardRef?: (el: HTMLElement | null) => void
   children: ReactNode
 }) {
   return (
     <section
       ref={cardRef}
-      draggable
+      draggable={!!onDragStart}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onDragOver={onDragOver}
@@ -128,19 +155,21 @@ export function Card({
       style={{ backgroundColor: 'color-mix(in srgb, var(--t-surface) 38%, var(--t-sidebar))' }}
     >
       <div className="mb-2 flex min-h-4 items-center gap-1.5">
-        <span
-          role="button"
-          tabIndex={-1}
-          aria-label={`拖动排序：${label}`}
-          onPointerDown={onHandleDown}
-          onPointerUp={onHandleUp}
-          className={cn(
-            'hidden w-3 shrink-0 cursor-grab items-center justify-center self-stretch text-muted transition-opacity duration-120 active:cursor-grabbing md:flex',
-            activeHandle || dragging ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-100',
-          )}
-        >
-          <GripVertical size={11} />
-        </span>
+        {onDragStart && (
+          <span
+            role="button"
+            tabIndex={-1}
+            aria-label={`拖动排序：${label}`}
+            onPointerDown={onHandleDown}
+            onPointerUp={onHandleUp}
+            className={cn(
+              'hidden w-3 shrink-0 cursor-grab items-center justify-center self-stretch text-muted transition-opacity duration-120 active:cursor-grabbing md:flex',
+              activeHandle || dragging ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-100',
+            )}
+          >
+            <GripVertical size={11} />
+          </span>
+        )}
         <Icon size={11} className="shrink-0 text-text-tertiary" />
         <h3 className="min-w-0 truncate text-[12px] font-medium uppercase tracking-[0.1em] text-text-tertiary">
           {label}

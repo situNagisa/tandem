@@ -104,6 +104,8 @@ interface CodeBlockProps {
   scrollToLine?: number
   /** 撑满父容器，由内部滚动（文件预览面板用）。 */
   fill?: boolean
+  /** 安装说明等场景：复制按钮与换行开关常显，不依赖 hover。 */
+  toolsAlwaysVisible?: boolean
 }
 
 export function CodeBlock({
@@ -119,6 +121,7 @@ export function CodeBlock({
   highlightRange,
   scrollToLine,
   fill = false,
+  toolsAlwaysVisible = false,
 }: CodeBlockProps) {
   const [highlighted, setHighlighted] = useState<{ code: string; html: string; language?: string } | null>(null)
   const [autoLang, setAutoLang] = useState<string | null>(null)
@@ -237,7 +240,7 @@ export function CodeBlock({
   return (
     <div className={cn('chat-code', fill && 'file-code-fill', className)} data-wrap={wrap ? 'true' : undefined}>
       {showHeader && (
-        <div className="chat-code-tools" data-visible={copied || wrap || undefined}>
+        <div className="chat-code-tools" data-visible={copied || wrap || toolsAlwaysVisible || undefined}>
           <span className="truncate font-mono text-[12px] text-[var(--t-text-tertiary)]">
             {fileName || languageLabel(language)}
           </span>

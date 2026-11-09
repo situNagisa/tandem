@@ -338,6 +338,7 @@ export function TopBar() {
   const runtime = useAppStore((s) => (activeHostId ? s.runtimes[activeHostId] : undefined))
   const hasSession = useAppStore((s) => !!s.active)
   const route = useRoute()
+  const externalRoute = route.kind === 'external'
   const externalTitle = useAppStore((s) => {
     if (route.kind !== 'external') return null
     return (
@@ -592,7 +593,7 @@ export function TopBar() {
 
       {hasSession && !isMobile && <MoreMenu />}
 
-      {hasSession && (
+      {(hasSession || (!isMobile && externalRoute)) && (
         <IconButton
           onClick={() => {
             setChangesOpen(false)

@@ -56,7 +56,7 @@
 - **串口终端**：从工作站或环境条打开。顶部设备名/波特率/连接状态；实时输出（等宽、时间戳、自动滚底、暂停滚动）；搜索过滤；发送框（可切 CR/LF）；保存日志（浏览器下载 `.log`）；手机可看。
 - **会话环境条**：主机/文件夹/分支之后显示已挂载设备小胶囊（`adb:…`、`serial:…`），点击打开串口终端或工作站。
 - **演示画面**（反馈 #7-01）：演示设备挂到当前会话后，输入框上方出现「演示画面」卡片——安卓设备显示模拟屏幕（状态栏、应用图标、logcat 节拍），串口板显示自动滚动的启动日志与心跳；可收起，不依赖真实设备。
-- **安装说明按 Host 平台**（反馈 #7-01）：工作站里 adb / serialport 缺失时，优先显示当前 Host 平台（Windows / macOS / Linux）的安装与设置路径；其他平台折叠可展开。Windows 用 winget / 设备管理器，macOS 用 Homebrew `android-platform-tools` 与系统串口驱动，Linux 用 apt/pacman/dnf、`plugdev`/`uucp`/`dialout` 组与 udev 规则。
+- **安装说明按系统分段**（反馈 #7-01 / #9-02）：工作站里 adb / serialport 缺失时给出「如何安装 / 设置路径」。展开后顶部是共享 `ui/SegmentedControl` 的 Windows / macOS / Linux 单选（默认 Host 平台），Linux 再按 Debian/Ubuntu、Arch、Fedora 二级切换；下方按编号步骤（安装组件 → 驱动/权限 → 设置路径）排列，命令放共享 `CodeBlock`（复制按钮常显、支持自动换行），路径用等宽字体。Windows 用 winget / 设备管理器，macOS 用 Homebrew `android-platform-tools` 与系统串口驱动，Linux 用 apt/pacman/dnf、`plugdev`/`uucp`/`dialout` 组与 udev 规则。
 - 复用 `components/ui/*`（Modal/Button/Menu/Tooltip/Controls）；不手写菜单或原生 select。
 
 ## 6. 安全

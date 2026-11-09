@@ -126,19 +126,25 @@ function withUsage(
 }
 
 /** 当前窗格自己的轮次刻度（不读全局 active，分屏时各窗格互不串台）。 */
-export function useTurnMarks(): TurnMark[] {
-  const messages = useSessionView((view) => view?.messages ?? EMPTY_MESSAGES)
+export function useTurnMarks(
+  messagesOverride?: UiMessage[],
+  sessionIdOverride?: string | null,
+): TurnMark[] {
+  const storeMessages = useSessionView((view) => view?.messages ?? EMPTY_MESSAGES)
+  const messages = messagesOverride ?? storeMessages
+  const external = messagesOverride !== undefined
   const serverTurns = useSessionView((view) => view?.turns)
   const subagents = useSessionView((view) => view?.subagents)
-  const sessionId = useSessionView((view) => view?.sessionId)
+  const storeSessionId = useSessionView((view) => view?.sessionId)
+  const sessionId = sessionIdOverride !== undefined ? sessionIdOverride : storeSessionId
   const hostId = useSessionView((view) => view?.hostId ?? null)
-  const notice = messages.find((message) => message.compaction?.canUndo)
+  const notice = external ? undefined : messages.find((message) => message.compaction?.canUndo)
   const noticeId = notice?.id ?? null
   const [backup, setBackup] = useState<{ noticeId: string; turns: TurnMark[] } | null>(null)
 
   // 压缩原文里保留着被压掉的轮次：取回来作为最浅的「已压缩」刻度，摘要另起一行。
   useEffect(() => {
-    if (!hostId || !sessionId || !noticeId) {
+    if (external || !hostId || !sessionId || !noticeId) {
       setBackup(null)
       return
     }
@@ -162,16 +168,16 @@ export function useTurnMarks(): TurnMark[] {
     return () => {
       cancelled = true
     }
-  }, [hostId, sessionId, noticeId])
+  }, [external, hostId, sessionId, noticeId])
 
   return useMemo(() => {
-    const usage = usageByTurn(messages, subagents, sessionId ?? undefined)
+    const usage = usageByTurn(messages, external ? undefined : subagents, sessionId ?? undefined)
     const local = withUsage(marksFromMessages(messages), messages, usage, {
       ...(noticeId ? { jumpId: noticeId } : {}),
     })
     const compressed = backup?.noticeId === noticeId ? backup.turns : []
     let base: TurnMark[]
-    if (!serverTurns?.length) {
+    if (external || !serverTurns?.length) {
       base = [...compressed, ...local]
     } else {
       // 会话被截断时以服务端大纲为准，再补上本地新增（尚未进大纲）的轮次。
@@ -201,7 +207,7 @@ export function useTurnMarks(): TurnMark[] {
       turn: index + 1,
       ...(mark.summary ? { no: undefined } : { no: ++no }),
     }))
-  }, [messages, serverTurns, subagents, sessionId, backup, noticeId])
+  }, [messages, external, serverTurns, subagents, sessionId, backup, noticeId])
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -218,12 +224,22 @@ export function TurnRail({
   scrollRef,
   sessionId,
   onBeforeJump,
+  messages,
+  readOnly = false,
+  alwaysActive = false,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>
   sessionId: string | null
   onBeforeJump?: () => void
+  /** 传入时用这份消息（外部会话只读预览），不读当前活动会话。 */
+  messages?: UiMessage[]
+  /** 只读：不提供固定/取消固定（外部会话原文件不能改）。 */
+  readOnly?: boolean
+  /** 当前页面不是活动会话（如外部会话页）时也让 Alt+↑/↓ 生效。 */
+  alwaysActive?: boolean
 }) {
-  const turns = useTurnMarks()
+  const external = messages !== undefined
+  const turns = useTurnMarks(external ? messages : undefined, external ? sessionId : undefined)
   // 反馈8#07：着色固定表示上下文占用，不再提供「花费 / 上下文」切换。
   const weights = useMemo(() => turns.map((turn) => turnWeight(turn.usage)), [turns])
   const totalWeight = useMemo(() => weights.reduce((sum, value) => sum + value, 0), [weights])
@@ -232,18 +248,19 @@ export function TurnRail({
     return Math.round((turnWeight(mark.usage) / totalWeight) * 100)
   }
   const scopeTarget = useSessionTarget()
-  const hostId = useSessionView((s) => s?.hostId ?? null)
+  const storeHostId = useSessionView((s) => s?.hostId ?? null)
+  const hostId = external ? null : storeHostId
   const hasEarlier = useSessionView((s) => s?.hasEarlier ?? false)
   const serverTurns = useSessionView((s) => s?.turns)
   const loadingTurns = useSessionView((s) => s?.loadingTurns ?? false)
-  const pinnedTurns = useSessionView((s) => s?.summary?.pinnedTurns)
+  const pinnedTurns = useSessionView((s) => (readOnly ? undefined : s?.summary?.pinnedTurns))
   const feedbackActive = useFeedbackStore((s) => s.active)
 
   // 大会话首屏只带尾部消息：轮次大纲单独拉轻量索引，不为了刻度拉全量历史。
   useEffect(() => {
-    if (!hostId || !sessionId || !hasEarlier || serverTurns || loadingTurns) return
+    if (external || !hostId || !sessionId || !hasEarlier || serverTurns || loadingTurns) return
     void useAppStore.getState().loadSessionTurns(hostId, sessionId)
-  }, [hostId, sessionId, hasEarlier, serverTurns, loadingTurns])
+  }, [external, hostId, sessionId, hasEarlier, serverTurns, loadingTurns])
   // 反馈8#04：不再有独立的「已固定」浮层；固定的轮按轮号排序列出，供 Alt/点击切换的仅固定视图使用。
   const pinnedMarks = useMemo(() => {
     const pinned = new Set(pinnedTurns ?? [])
@@ -259,8 +276,9 @@ export function TurnRail({
       heat: levels[index] ?? 1,
       share: totalWeight > 0 ? Math.round((turnWeight(turn.usage) / totalWeight) * 100) : 0,
       ...(pinned.has(turn.id) && !turn.summary && !turn.compressed ? { pinned: true } : {}),
+      ...(external || readOnly ? { readOnly: true, hideUnknownCost: true } : {}),
     }))
-  }, [turns, weights, pinnedTurns, totalWeight])
+  }, [turns, weights, pinnedTurns, totalWeight, external, readOnly])
   const total = turns.length
   const realTotal = useMemo(() => turns.filter((turn) => !turn.summary).length, [turns])
   const isMobile = useIsMobile()
@@ -355,7 +373,7 @@ export function TurnRail({
       const root = scrollRef.current
       const mark = turnsRef.current[target - 1]
       const targetId = mark?.jumpId ?? mark?.id
-      if (root && mark && targetId && hostId && sessionId) {
+      if (root && mark && targetId && !external && hostId && sessionId) {
         const state = useAppStore.getState()
         const view = state.sessionViews[`${hostId}:${sessionId}`]
         const loaded = view?.messages.some((message) => message.id === targetId) ?? true
@@ -415,7 +433,7 @@ export function TurnRail({
         if (opts?.recenter !== false) scene?.setCenter(viewPos)
       }
     },
-    [scrollRef, hostId, sessionId],
+    [scrollRef, external, hostId, sessionId],
   )
   const goRef = useRef(go)
   goRef.current = go
@@ -481,18 +499,19 @@ export function TurnRail({
       }
     }
     snapNext.current = false
+    if (external) return
     if (isTargetFocused(scopeTarget)) {
       useTurnNavStore.getState().setProgress(activeTurn, total)
     }
-  }, [activeTurn, total, railOn, sessionId, scopeTarget, pinnedView])
+  }, [activeTurn, total, railOn, sessionId, scopeTarget, pinnedView, external])
 
   useEffect(
     () => () => {
-      if (isTargetFocused(scopeTarget)) {
+      if (!external && isTargetFocused(scopeTarget)) {
         useTurnNavStore.setState({ total: 0, active: 1, sheetOpen: false })
       }
     },
-    [scopeTarget],
+    [scopeTarget, external],
   )
 
   // 当前轮：取视口顶部最早出现的那一轮；贴底时取最后一轮。
@@ -547,7 +566,7 @@ export function TurnRail({
         sticky.current = false
         return
       }
-      if (!isTargetFocused(scopeTarget)) return
+      if (!alwaysActive && !isTargetFocused(scopeTarget)) return
       if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
       if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
       // 输入框获得焦点时也允许用 Alt+↑/↓ 翻轮；只排除消息编辑等其他输入区域。
@@ -564,7 +583,7 @@ export function TurnRail({
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [go, scopeTarget])
+  }, [go, scopeTarget, alwaysActive])
 
   const closePanel = useCallback(() => {
     window.clearTimeout(openTimer.current)
@@ -662,6 +681,7 @@ export function TurnRail({
       share: shareOf(mark),
       ...(mark?.compressed ? { compressed: true } : {}),
       ...(mark?.summary ? { summary: true } : {}),
+      ...(external || readOnly ? { hideUnknownCost: true } : {}),
     })
     if (!label) {
       hideTooltip()
@@ -781,7 +801,7 @@ export function TurnRail({
   }, [isMobile, setSheetOpen])
 
   const togglePinnedTurn = (messageId: string) => {
-    if (!messageId) return
+    if (!messageId || external || readOnly) return
     const state = useAppStore.getState()
     const active = state.active
     if (!active?.summary) return
