@@ -1170,6 +1170,7 @@ export function Composer({
         }}
         onDrop={onDrop}
         data-dragging={dragging}
+        data-disabled={disabled || undefined}
         className="composer-card"
       >
         {dragging && (

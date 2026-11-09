@@ -4574,8 +4574,8 @@ async function main() {
       const usageText = await summary.innerText()
       assert.match(
         usageText,
-        /^输入 .+ · 输出 .+ · 缓存命中 .+ · 花费 .+ · 12\.3s$/,
-        `消息用量行末尾没有耗时：${usageText}`,
+        /^(\d{2}-\d{2} )?\d{2}:\d{2} · 输入 .+ · 输出 .+ · 缓存命中 .+ · 花费 .+ · 12\.3s$/,
+        `消息用量行没有时间在最前或缺少耗时：${usageText}`,
       )
 
       const hoverTurnOne = async () => {
@@ -4641,6 +4641,74 @@ async function main() {
       const usage = page.locator('[data-usage-summary]').last()
       await usage.waitFor({ timeout: 10_000 })
       assert.match(await usage.innerText(), /· \d+(\.\d+)?s$/, '消息下方没有显示本次耗时')
+    })
+
+    desktop('用户消息：气泡紧贴内容、时间与输入估算常显（反馈14#05/#06）', async (page) => {
+      await openSession(page, 'long')
+      const row = page.locator('[data-turn-id="u40"]')
+      const bubble = row.locator('[data-msg-bubble]').first()
+      await bubble.waitFor({ timeout: 10_000 })
+      const box = await bubble.evaluate((el) => {
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        const text = range.getBoundingClientRect()
+        const rect = el.getBoundingClientRect()
+        return {
+          width: rect.width,
+          textWidth: text.width,
+          right: rect.right,
+          rowRight: el.closest('.msg-row')?.getBoundingClientRect().right ?? 0,
+        }
+      })
+      assert.ok(
+        box.width <= box.textWidth + 40,
+        `短消息气泡被撑宽：气泡 ${box.width}px，文本 ${box.textWidth}px`,
+      )
+      assert.ok(
+        Math.abs(box.right - box.rowRight) <= 2,
+        `用户气泡没有右对齐：气泡右缘 ${box.right}，消息行右缘 ${box.rowRight}`,
+      )
+      const userMeta = row.locator('[data-user-usage]').first()
+      await userMeta.waitFor({ timeout: 5_000 })
+      assert.match(
+        await userMeta.innerText(),
+        /^(\d{2}-\d{2} )?\d{2}:\d{2} · ~\d+ tok$/,
+        '用户消息下方没有「时间 · 输入估算」',
+      )
+      const assistantMeta = page.locator('[data-message-id="a40"] [data-usage-summary]').first()
+      assert.match(
+        await assistantMeta.innerText(),
+        /^(\d{2}-\d{2} )?\d{2}:\d{2} · 输入 /,
+        'assistant 用量行没有把时间放在最前',
+      )
+
+      // 有单价的模型：用户消息要同时显示金额（服务端按发送时的输入估算写入）。
+      await openSession(page, 'priced')
+      const boxInput = page.locator('textarea[aria-label="消息输入框"]').first()
+      await boxInput.fill('这条输入的费用也显示一下')
+      await boxInput.press('Enter')
+      await page.getByText('回归回复。').last().waitFor({ timeout: 20_000 })
+      let stored
+      for (let attempt = 0; attempt < 60; attempt++) {
+        const session = await api(base, token, '/api/sessions/priced')
+        stored = [...(session.messages ?? [])].reverse().find((m) => m.role === 'user')
+        if (stored?.usage?.inputTokens > 0) break
+        await sleep(250)
+      }
+      assert.ok(stored?.usage?.inputTokens > 0, '服务端没有记录用户消息的输入估算')
+      assert.equal(typeof stored.usage.costUsd, 'number', '服务端没有按单价折算用户消息费用')
+      const liveBubble = page.locator('[data-msg-bubble]').last()
+      const liveMeta = liveBubble
+        .locator('xpath=ancestor::div[@data-turn-id]')
+        .first()
+        .locator('[data-user-usage]')
+        .first()
+      await liveMeta.waitFor({ timeout: 10_000 })
+      assert.match(
+        await liveMeta.innerText(),
+        /^\d{2}:\d{2} · ~\d+ tok · \$\d/,
+        '用户消息下方缺少 token 或金额',
+      )
     })
 
     desktop('文件夹选择器不再显示最近文件夹；超长名称单行省略并悬停显示全名（R15）', async (page) => {
@@ -4898,16 +4966,49 @@ async function main() {
       await hostPill.click()
       const menu = page.locator('[role="menu"][aria-label="切换主机"]').first()
       await menu.waitFor({ state: 'visible', timeout: 5_000 })
+      // 反馈14#04：当前主机行尾标「当前」，不要箭头。
+      assert.match(
+        await menu.locator('[data-host-tag="current"]').innerText(),
+        /当前/,
+        '当前主机没有「当前」标签',
+      )
       await menu.getByRole('menuitem', { name: /第二台主机/ }).click()
       // 不立即切换：文件夹选择自动打开，输入框禁用并提示。
       await folderPanel.waitFor({ state: 'visible', timeout: 5_000 })
       await page.waitForTimeout(300)
       assert.equal(await textarea.isDisabled(), true, '待选文件夹期间输入框没有禁用')
-      assert.match(await hostPill.innerText(), /第二台主机/, '主机胶囊没有显示待切换的新主机')
-      assert.match((await folderPill.innerText()).trim(), /待选文件夹/, '文件夹胶囊没有待选标记')
-      const hint = page.locator('[data-env-pending-hint]')
-      await hint.waitFor({ state: 'visible', timeout: 3_000 })
-      assert.match(await hint.innerText(), /选择 第二台主机 上的文件夹后才能继续/, '待选提示文案不对')
+      assert.equal(
+        await page.locator('.composer-card').first().getAttribute('data-disabled'),
+        'true',
+        '待选期间输入框外观没有变暗',
+      )
+      assert.equal(
+        await textarea.getAttribute('placeholder'),
+        '选择 第二台主机 上的文件夹后继续',
+        '输入框占位提示文案不对',
+      )
+      assert.equal(
+        (await hostPill.innerText()).trim(),
+        '第二台主机',
+        '主机胶囊应只显示目标主机，不要「原主机 → 目标主机」',
+      )
+      assert.match((await folderPill.innerText()).trim(), /^待选$/, '文件夹胶囊没有精简为「待选」')
+      assert.equal(await page.locator('[data-env-pending-hint]').count(), 0, '输入框下方仍有一行黄色提示')
+      // 打开主机菜单确认当前/待切换两个标签。
+      await page.keyboard.press('Escape')
+      await hostPill.click()
+      await menu.waitFor({ state: 'visible', timeout: 5_000 })
+      assert.match(
+        await menu.locator('[data-host-tag="current"]').innerText(),
+        /当前/,
+        '待切换时当前主机没有「当前」标签',
+      )
+      assert.match(
+        await menu.locator('[data-host-tag="pending"]').innerText(),
+        /待切换/,
+        '目标主机没有「待切换」标签',
+      )
+      await page.keyboard.press('Escape')
       // 取消回到原主机。
       await page.locator('[data-env-pending-cancel="true"]').click()
       await page.waitForTimeout(300)

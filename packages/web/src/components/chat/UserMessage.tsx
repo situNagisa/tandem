@@ -5,11 +5,14 @@ import { useAppStore } from '../../store/useAppStore'
 import { useSessionTarget, useSessionView } from '../session/SessionScope'
 import { cn } from '../../lib/cn'
 import { copyText } from '../../lib/clipboard'
+import { formatCost, formatTokens } from '../../lib/format'
+import { estimateInputTokens } from '../../lib/tokens'
 import type { UiMessage } from '../../lib/types'
 import { RewindDialog } from '../RewindDialog'
 import { Menu } from '../ui/Menu'
 import { Button, IconButton } from '../ui/Button'
 import { dataUrl } from './MessageNotes'
+import { MessageTime, UsageLine } from './UsageLine'
 
 export const UserMessage = memo(function UserMessage({
   message,
@@ -44,6 +47,13 @@ export const UserMessage = memo(function UserMessage({
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
     .map((b) => b.text)
     .join('\n\n')
+  // 新消息由 Host 在发送时记录本次输入的估算 token 与费用；旧消息按同一口径在本地估算，
+  // 没有单价信息时只显示 token（反馈14#05/#06）。
+  const estimatedTokens =
+    message.usage?.inputTokens ?? estimateInputTokens({ text, attachments: images.length })
+  const tokens = estimatedTokens > 0 ? estimatedTokens : 0
+  const cost = message.usage?.costUsd
+  const hasTime = typeof message.createdAt === 'number' && Number.isFinite(message.createdAt)
 
   useEffect(
     () => () => {
@@ -225,7 +235,8 @@ export const UserMessage = memo(function UserMessage({
           text.trim() && (
             <div
               ref={bubbleRef}
-              className="whitespace-pre-wrap break-words rounded-[14px] bg-surface-2 px-4 py-2.5 text-[14.5px] leading-[1.68] text-text"
+              data-msg-bubble=""
+              className="ml-auto w-fit max-w-full whitespace-pre-wrap break-words rounded-[14px] bg-surface-2 px-4 py-2.5 text-[14.5px] leading-[1.68] text-text"
             >
               {text}
             </div>
@@ -233,7 +244,8 @@ export const UserMessage = memo(function UserMessage({
         )}
         {text.trim() && !editing && (
           <>
-            <div className="msg-actions mt-0.5 flex h-7 justify-end gap-0.5">
+            <div className="mt-0.5 flex h-7 items-center justify-end gap-1">
+              <div className="msg-actions flex items-center gap-0.5">
               <IconButton
                 size="sm"
                 onClick={copy}
@@ -283,6 +295,22 @@ export const UserMessage = memo(function UserMessage({
                   </IconButton>
                 </>
               )}
+              </div>
+              <UsageLine kind="user">
+                <MessageTime createdAt={message.createdAt} />
+                {tokens > 0 && (
+                  <span>
+                    {hasTime ? ' · ' : ''}
+                    ~{formatTokens(tokens)} tok
+                  </span>
+                )}
+                {typeof cost === 'number' && (
+                  <span>
+                    {(hasTime || tokens > 0) ? ' · ' : ''}
+                    {formatCost(cost)}
+                  </span>
+                )}
+              </UsageLine>
             </div>
             <div className="msg-more mt-0.5 h-7 justify-end max-md:h-11">
               {readOnly ? (

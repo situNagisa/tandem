@@ -1,6 +1,5 @@
 import { forwardRef, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import {
-  ArrowRight,
   ArrowUp,
   Check,
   ChevronDown,
@@ -13,6 +12,7 @@ import {
   Server,
   Smartphone,
   TriangleAlert,
+  Undo2,
   Usb,
 } from 'lucide-react'
 import type { DeviceMount, FsEntry, SessionEnv } from '@tandem/protocol'
@@ -26,7 +26,7 @@ import { navigate } from '../lib/router'
 import { useSessionView } from './session/SessionScope'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
-import { Button } from './ui/Button'
+import { Button, IconButton } from './ui/Button'
 import { Input, Switch } from './ui/Controls'
 import { Menu, MenuItem, MenuList } from './ui/Menu'
 import { Popover } from './ui/Popover'
@@ -140,10 +140,12 @@ function parseDraft(draft: string, current: string): { dir: string; query: strin
 
 function HostMenu({
   hostId,
+  pendingHostId,
   onPick,
   keepOpen,
 }: {
   hostId: string
+  pendingHostId?: string | null
   onPick: (id: string) => void
   keepOpen?: boolean
 }) {
@@ -167,8 +169,19 @@ function HostMenu({
             selected={h.id === hostId}
             hint={detail}
             keepOpen={keepOpen}
+            trailing={
+              h.id === pendingHostId ? (
+                <span data-host-tag="pending" className="text-[11px] text-text-soft">
+                  待切换
+                </span>
+              ) : h.id === hostId ? (
+                <span data-host-tag="current" className="text-[11px] text-muted">
+                  当前
+                </span>
+              ) : undefined
+            }
             onSelect={() => {
-              if (h.id !== hostId) onPick(h.id)
+              if (h.id !== hostId && h.id !== pendingHostId) onPick(h.id)
             }}
           >
             {h.name}
@@ -319,7 +332,8 @@ export function FolderBrowser({
         </button>
       </div>
 
-      <div ref={listRef} className="max-h-[264px] overflow-y-auto">
+      {/* 固定高度：目录异步读回、切换目录时面板尺寸不变（R52 复发：点开先抖一下）。 */}
+      <div ref={listRef} className="h-[264px] overflow-y-auto">
         <MenuList aria-label="选择文件夹" className="p-0">
           <MenuItem
             icon={<ArrowUp size={13} />}
@@ -330,18 +344,18 @@ export function FolderBrowser({
             ..
           </MenuItem>
           {loading && entries.length === 0 && (
-            <div className="flex h-[120px] items-center justify-center gap-2 text-[12px] text-muted">
+            <div className="flex h-full items-center justify-center gap-2 text-[12px] text-muted">
               <Loader2 size={12} className="animate-spin" /> 读取目录…
             </div>
           )}
           {!loading && error && (
-            <div className="flex h-[120px] flex-col items-center justify-center gap-1 px-4 text-center text-[12px] text-danger">
+            <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center text-[12px] text-danger">
               <TriangleAlert size={14} />
               {error}
             </div>
           )}
           {!loading && !error && filtered.length === 0 && (
-            <div className="flex h-[120px] items-center justify-center text-[12px] text-muted">
+            <div className="flex h-full items-center justify-center text-[12px] text-muted">
               {query.trim() ? '没有匹配的文件夹' : '没有子文件夹'}
             </div>
           )}
@@ -420,7 +434,8 @@ function BranchMenu({
 
   return (
     <div className="w-[240px]">
-      <MenuList aria-label="切换分支" className="max-h-[260px] overflow-y-auto">
+      {/* 固定高度：分支异步读回时面板尺寸不变（R52 复发）。 */}
+      <MenuList aria-label="切换分支" className="h-[220px] overflow-y-auto">
         {loading && (
           <div className="flex items-center gap-2 px-2 py-2 text-[12px] text-muted">
             <Loader2 size={12} className="animate-spin" /> 读取分支…
@@ -658,27 +673,15 @@ export function EnvBar({
               migrating ? (
                 <Loader2 size={12} className="animate-spin text-muted" />
               ) : (
-                <Server size={12} className={pendingHost ? 'text-[var(--t-status-warn)]' : 'text-muted'} />
+                <Server size={12} className="text-muted" />
               )
             }
-            label={
-              migrating ? (
-                '迁移中…'
-              ) : pendingHost && host ? (
-                <span className="inline-flex items-center gap-1">
-                  {host.name}
-                  <ArrowRight size={11} className="shrink-0 text-[var(--t-status-warn)]" />
-                  {pendingHost.name}
-                </span>
-              ) : (
-                host?.name ?? '主机'
-              )
-            }
+            label={migrating ? '迁移中…' : (pendingHost?.name ?? host?.name ?? '主机')}
             open={open}
             disabled={!!locked && !migrating}
             title={
               pendingHost
-                ? `已选择 ${pendingHost.name}，在「文件夹」里选好目录后才会切换`
+                ? `切换到 ${pendingHost.name}，选择文件夹后迁移`
                 : isSession
                   ? '切换主机（会话将迁移到目标主机）'
                   : '选择主机'
@@ -688,6 +691,7 @@ export function EnvBar({
       >
         <HostMenu
           hostId={hostId}
+          pendingHostId={pendingHostId}
           onPick={(id) => {
             if (!isSession) {
               onHostChange?.(id)
@@ -707,15 +711,10 @@ export function EnvBar({
         panelClassName="w-auto rounded-[10px] p-[5px]"
         trigger={({ open, toggle }) => (
           <EnvTrigger
-            icon={
-              <FolderOpen
-                size={12}
-                className={pendingHost ? 'text-[var(--t-status-warn)]' : 'text-muted'}
-              />
-            }
+            icon={<FolderOpen size={12} className="text-muted" />}
             label={
               pendingHost ? (
-                <span className="text-[var(--t-status-warn)]">待选文件夹</span>
+                <span className="text-text">待选</span>
               ) : cwd ? (
                 basename(cwd) || cwd
               ) : (
@@ -771,17 +770,20 @@ export function EnvBar({
         }
       </Popover>
       {pendingHost ? (
-        <button
-          type="button"
+        <IconButton
           data-env-pending-cancel="true"
+          size="sm"
           onClick={() => {
             setPendingHostId(null)
             setFolderOpen(false)
           }}
-          className="h-6 shrink-0 rounded-md px-1.5 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text max-sm:h-11"
+          label="取消切换"
+          tooltip="取消切换"
+          tooltipSide="top"
+          className="max-sm:size-11"
         >
-          取消
-        </button>
+          <Undo2 size={13} />
+        </IconButton>
       ) : null}
 
       <Popover
@@ -875,16 +877,6 @@ export function EnvBar({
         </span>
       )}
     </div>
-      {pendingHost ? (
-        <p
-          data-env-pending-hint="true"
-          role="status"
-          className="flex items-center gap-1 text-[12px] leading-4 text-[var(--t-status-warn)]"
-        >
-          <TriangleAlert size={12} className="shrink-0" />
-          选择 {pendingHost.name} 上的文件夹后才能继续
-        </p>
-      ) : null}
     </div>
   )
 }

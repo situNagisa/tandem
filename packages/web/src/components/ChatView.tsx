@@ -473,7 +473,7 @@ export function ChatView() {
               disabled={!!pendingHostSwitch}
               placeholder={
                 pendingHostSwitch
-                  ? `选择 ${pendingHostSwitch.hostName} 上的文件夹后才能继续`
+                  ? `选择 ${pendingHostSwitch.hostName} 上的文件夹后继续`
                   : undefined
               }
             />

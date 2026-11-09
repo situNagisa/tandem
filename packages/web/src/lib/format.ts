@@ -52,6 +52,28 @@ export function formatTime(ts: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+/** 消息时间：今天 HH:mm，非今天 MM-DD HH:mm，跨年带年份。 */
+export function formatMessageTime(ts: number, now = Date.now()): string {
+  const d = new Date(ts)
+  const n = new Date(now)
+  const time = formatTime(ts)
+  const sameDay =
+    d.getFullYear() === n.getFullYear() &&
+    d.getMonth() === n.getMonth() &&
+    d.getDate() === n.getDate()
+  if (sameDay) return time
+  const date = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  if (d.getFullYear() !== n.getFullYear()) return `${d.getFullYear()}-${date} ${time}`
+  return `${date} ${time}`
+}
+
+/** 完整日期时间，用于消息时间悬停提示。 */
+export function formatFullTime(ts: number): string {
+  const d = new Date(ts)
+  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return `${date} ${formatTime(ts)}:${String(d.getSeconds()).padStart(2, '0')}`
+}
+
 /** 运行时长：32s / 1m 05s / 1h 02m。 */
 export function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000))

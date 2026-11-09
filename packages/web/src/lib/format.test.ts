@@ -7,6 +7,8 @@ import {
   formatCost,
   formatDurationMs,
   formatElapsed,
+  formatFullTime,
+  formatMessageTime,
   formatTokens,
   joinPath,
   truncate,
@@ -43,6 +45,14 @@ describe('格式化', () => {
     expect(formatDurationMs(40_000)).toBe('40s')
     expect(formatDurationMs(65_000)).toBe('1m 05s')
     expect(formatDurationMs(Number.NaN)).toBe('0.0s')
+  })
+
+  test('消息时间：今天只显示时分，非今天带日期，跨年带年份', () => {
+    const now = new Date(2026, 10, 9, 10).getTime()
+    expect(formatMessageTime(new Date(2026, 10, 9, 8, 5).getTime(), now)).toBe('08:05')
+    expect(formatMessageTime(new Date(2026, 10, 8, 21, 49).getTime(), now)).toBe('11-08 21:49')
+    expect(formatMessageTime(new Date(2025, 11, 31, 23, 59).getTime(), now)).toBe('2025-12-31 23:59')
+    expect(formatFullTime(new Date(2026, 10, 9, 8, 5, 7).getTime())).toBe('2026-11-09 08:05:07')
   })
 
   test('dayBucket 以本地午夜为界', () => {

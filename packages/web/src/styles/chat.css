@@ -216,9 +216,9 @@
   }
 }
 
-/* 操作条在行内占位，用负外边距抵掉列表间距；行高仍包含操作条，避免被 content-visibility 裁切 */
+/* 消息下方的时间/用量行是常显内容，不再用负外边距抵掉列表间距（反馈14#06）。 */
 .msg-row[data-actions="true"] {
-  margin-bottom: -24px;
+  margin-bottom: 0;
 }
 
 /* 横向滚动的代码 / diff：右侧渐隐 + 滑动提示，明确“还能往右看” */
@@ -1124,6 +1124,20 @@ mark.chat-match {
 }
 .composer-card:focus-within {
   border-color: var(--t-border-strong);
+}
+/* 等待用户先选目标文件夹：整块输入区变暗并锁定，提示写在占位符里（反馈14#04）。 */
+.composer-card[data-disabled="true"] {
+  background: var(--t-bg-subtle);
+  opacity: 0.6;
+}
+.composer-card[data-disabled="true"] .composer-editor > .composer-highlight {
+  color: var(--t-muted);
+}
+.composer-card[data-disabled="true"] .composer-textarea {
+  cursor: not-allowed;
+}
+.composer-card[data-disabled="true"] .composer-textarea::placeholder {
+  color: var(--t-text-soft);
 }
 
 .composer-icon-btn {

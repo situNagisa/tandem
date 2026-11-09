@@ -16,7 +16,7 @@ import { Menu } from '../ui/Menu'
 import { IconButton } from '../ui/Button'
 import { ToolGroup, type ToolRunEntry } from './ToolGroup'
 import { TypingIndicator } from './MessageNotes'
-import { UsageLine } from './UsageLine'
+import { MessageTime, UsageLine } from './UsageLine'
 
 export const AssistantMessage = memo(function AssistantMessage({
   message,
@@ -168,22 +168,19 @@ export const AssistantMessage = memo(function AssistantMessage({
     i++
   }
 
+  const liveDuration = Math.max(0, liveNow - liveStartedAt.current)
+  const durationMs = streaming ? liveDuration : message.durationMs
+  const hasTime = typeof message.createdAt === 'number' && Number.isFinite(message.createdAt)
+  const showUsage = !streaming && !!message.usage
+  const sepBefore = (previous: boolean) => (previous ? ' · ' : '')
+
   return (
     <div className={cn('msg-group relative flex flex-col', animate && 'chat-msg-enter')}>
       {rendered}
       {message.content.length === 0 && streaming && <TypingIndicator />}
-      {streaming && (
-        <div className="mt-0.5 flex h-7 items-center">
-          <UsageLine>
-            <span data-live-duration>
-              {formatDurationMs(Math.max(0, liveNow - liveStartedAt.current))}
-            </span>
-          </UsageLine>
-        </div>
-      )}
-      {rawText.trim() && !streaming && (
-        <>
-          <div className="msg-actions mt-0.5 flex h-7 justify-start gap-0.5">
+      <div className="mt-0.5 flex h-7 items-center justify-start gap-1" data-msg-meta>
+        {rawText.trim() && !streaming && (
+          <div className="msg-actions flex items-center gap-0.5">
             <IconButton
               size="sm"
               onClick={copyAll}
@@ -232,25 +229,35 @@ export const AssistantMessage = memo(function AssistantMessage({
                 )}
               </IconButton>
             )}
-            {(message.usage || typeof message.durationMs === 'number') && (
-              <UsageLine>
-                {message.usage && (
-                  <>
-                    输入 {formatTokens(message.usage.inputTokens)} · 输出{' '}
-                    {formatTokens(message.usage.outputTokens)} · 缓存命中{' '}
-                    {formatTokens(message.usage.cacheReadTokens ?? 0)} · 花费{' '}
-                    {formatCost(message.usage.costUsd)}
-                  </>
-                )}
-                {typeof message.durationMs === 'number' && (
-                  <>
-                    {message.usage ? ' · ' : ''}
-                    {formatDurationMs(message.durationMs)}
-                  </>
-                )}
-              </UsageLine>
-            )}
           </div>
+        )}
+        <UsageLine>
+          <MessageTime createdAt={message.createdAt} durationMs={durationMs} />
+          {showUsage && (
+            <span>
+              {sepBefore(hasTime)}
+              输入 {formatTokens(message.usage!.inputTokens)} · 输出{' '}
+              {formatTokens(message.usage!.outputTokens)} · 缓存命中{' '}
+              {formatTokens(message.usage!.cacheReadTokens ?? 0)} · 花费{' '}
+              {formatCost(message.usage!.costUsd)}
+            </span>
+          )}
+          {streaming && (
+            <span data-live-duration>
+              {sepBefore(hasTime)}
+              {formatDurationMs(liveDuration)}
+            </span>
+          )}
+          {!streaming && typeof message.durationMs === 'number' && (
+            <span>
+              {sepBefore(hasTime || showUsage)}
+              {formatDurationMs(message.durationMs)}
+            </span>
+          )}
+        </UsageLine>
+      </div>
+      {rawText.trim() && !streaming && (
+        <>
           <div className="msg-more mt-0.5 h-7 justify-start max-md:h-11">
             <Menu
               aria-label="回复操作"

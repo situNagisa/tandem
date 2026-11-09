@@ -1,11 +1,13 @@
 // 消息入口、回合调度、中断、排队与 /compact。
 import { randomUUID } from 'node:crypto';
-import type { ContentBlock, Message, RoutePlan, Todo, TurnRouteMode } from '@tandem/protocol';
+import type { ContentBlock, Message, RoutePlan, Todo, TurnRouteMode, Usage } from '@tandem/protocol';
 import { BUILTIN_NAMES, findCommandBody, parseSlashCommand } from '../agent/commands.js';
 import { runTurn } from '../agent/loop.js';
+import { estimateTokens } from '../context.js';
 import { noteLearnedPreference, planTurnRoute, routePlanText } from '../model-routing.js';
 import { completeText } from '../providers/index.js';
 import { persist as persistRunState } from '../run-state.js';
+import { costOf, priceForModel } from '../usage.js';
 import { errorMessage } from '../util/text.js';
 import type { SessionRecord, SessionRuntime } from '../types.js';
 import type { Host } from '../host.js';
@@ -86,6 +88,32 @@ export async function handleUserContent(
   await host.sendToModel(rec, content, routeMode);
 }
 
+/**
+ * 用户消息的输入估算：按本轮实际输入（文本 + 图片）计，金额按当前模型单价折算。
+ * 这是「这条输入大概花了多少」的展示值，不计入会话总用量（总用量以 assistant 请求为准）。
+ */
+export function estimateUserUsage(
+  host: Host,
+  rec: SessionRecord,
+  content: ContentBlock[],
+): Usage | undefined {
+  let text = '';
+  let images = 0;
+  for (const block of content) {
+    if (block.type === 'text') text += block.text;
+    else if (block.type === 'image') images += 1;
+  }
+  const inputTokens = estimateTokens(text) + images * 1_200;
+  if (inputTokens <= 0) return undefined;
+  const price = priceForModel(host.profileFor(rec.profileId, rec.groupId), rec.model);
+  const costUsd = price ? costOf(price, inputTokens, 0) : undefined;
+  return {
+    inputTokens,
+    outputTokens: 0,
+    ...(costUsd !== undefined ? { costUsd } : {}),
+  };
+}
+
 export async function sendToModel(
   host: Host,
   rec: SessionRecord,
@@ -123,11 +151,13 @@ export async function sendToModel(
   const isFirstUserMessage = !rec.messages.some((m) => m.role === 'user');
   const needsTitle = (!rec.title || rec.title === '新会话') && !!text;
   if (needsTitle) rec.title = text.slice(0, 30);
+  const userUsage = estimateUserUsage(host, rec, content);
   const message: Message = {
     id: randomUUID(),
     role: 'user',
     content,
     createdAt: Date.now(),
+    ...(userUsage ? { usage: userUsage } : {}),
   };
   rec.messages.push(message);
   // 每轮开始创建检查点：本轮 Write/Edit 执行前把原文件快照进去
