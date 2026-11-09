@@ -148,6 +148,7 @@ import type {
   WorkspaceJoinCode,
   WorkspaceJoinResult,
   WorkspaceOverview,
+  WorkspaceProfilesSnapshot,
   WorkspaceSetupResult,
   WorkspaceStatus,
   WorkspaceAuditEntry,
@@ -1216,6 +1217,25 @@ export const workstationApi = {
     wsFetch<void>(baseUrl, '/api/workstation/logout', { method: 'POST', body: { refreshToken } }).catch(() => undefined),
   hosts: (baseUrl: string, token: string) =>
     wsFetch<WorkspaceHostInfo[]>(baseUrl, '/api/workstation/hosts', { token }),
+  // 账号级模型账号：Key 加密保存在工作站，客户端只拿掩码。
+  profiles: (baseUrl: string, token: string, refreshBalances = false) =>
+    wsFetch<WorkspaceProfilesSnapshot>(
+      baseUrl,
+      `/api/workstation/profiles${refreshBalances ? '?refresh=1' : ''}`,
+      { token },
+    ),
+  createProfile: (baseUrl: string, token: string, input: ProfileInput) =>
+    wsFetch<Profile>(baseUrl, '/api/workstation/profiles', { method: 'POST', token, body: input }),
+  updateProfile: (baseUrl: string, token: string, id: string, input: ProfileInput) =>
+    wsFetch<Profile>(baseUrl, `/api/workstation/profiles/${encodeURIComponent(id)}`, { method: 'PUT', token, body: input }),
+  deleteProfile: (baseUrl: string, token: string, id: string) =>
+    wsFetch<void>(baseUrl, `/api/workstation/profiles/${encodeURIComponent(id)}`, { method: 'DELETE', token }),
+  testProfile: (baseUrl: string, token: string, id: string, groupId?: string, keyId?: string) =>
+    wsFetch<{ ok: boolean; error?: string }>(baseUrl, `/api/workstation/profiles/${encodeURIComponent(id)}/test`, {
+      method: 'POST',
+      token,
+      body: { ...(groupId ? { groupId } : {}), ...(keyId ? { keyId } : {}) },
+    }),
   bindCode: (baseUrl: string, token: string) =>
     wsFetch<WorkstationBindCode>(baseUrl, '/api/workstation/hosts/bind-code', { method: 'POST', token }),
   removeHost: (baseUrl: string, token: string, hostId: string) =>

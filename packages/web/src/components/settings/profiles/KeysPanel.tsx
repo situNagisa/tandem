@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { KeyStrategy, Profile, ProfileGroup, ProfileKey, ProfileKeyInput } from '@tandem/protocol'
+import type { KeyStrategy, Profile, ProfileGroup, ProfileInput, ProfileKey, ProfileKeyInput } from '@tandem/protocol'
 import {
   Check,
   Eye,
@@ -14,10 +14,7 @@ import {
   TriangleAlert,
   Wifi,
 } from 'lucide-react'
-import { api } from '../../../lib/api'
-import { useAppStore } from '../../../store/useAppStore'
 import { useUiStore } from '../../../store/useUiStore'
-import type { HostConfig } from '../../../lib/types'
 import { useNow } from '../../../lib/hooks'
 import { cn } from '../../../lib/cn'
 import { Button, IconButton } from '../../ui/Button'
@@ -26,15 +23,17 @@ import { Tooltip } from '../../ui/Tooltip'
 import { groupInputOf, keyInputOf, keyStatus, profileInputOf } from './shared'
 
 export function KeysPanel({
-  host,
   profile,
   group,
+  saveProfile,
+  testProfile,
 }: {
-  host: HostConfig
   profile: Profile
   group: ProfileGroup
+  /** 工作站模式走账号级 API，本地模式走主机 API（由设置页决定）。 */
+  saveProfile: (input: ProfileInput) => Promise<unknown>
+  testProfile: (groupId: string, keyId?: string) => Promise<{ ok: boolean; error?: string }>
 }) {
-  const refreshProfiles = useAppStore((s) => s.refreshProfiles)
   const toast = useUiStore((s) => s.toast)
   const now = useNow(true)
   const [busy, setBusy] = useState(false)
@@ -58,8 +57,7 @@ export function KeysPanel({
             }
           : groupInputOf(g),
       )
-      await api.updateProfile(host, profile.id, profileInputOf(profile, groups))
-      await refreshProfiles(host.id)
+      await saveProfile(profileInputOf(profile, groups))
     } catch (err) {
       toast(err instanceof Error ? err.message : '更新 Key 失败', 'error')
     } finally {
@@ -100,7 +98,7 @@ export function KeysPanel({
 
   const testKey = async (key: ProfileKey) => {
     try {
-      const res = await api.testProfile(host, profile.id, group.id, key.id)
+      const res = await testProfile(group.id, key.id)
       setTests((prev) => ({ ...prev, [key.id]: res }))
     } catch (err) {
       setTests((prev) => ({

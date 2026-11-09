@@ -1,4 +1,5 @@
 import type {
+  BalancePlatform,
   Profile,
   ProfileGroup,
   ProfileGroupInput,
@@ -32,10 +33,26 @@ export interface FormState {
   kind: ProviderKind
   baseUrl: string
   apiKey: string
+  /** 余额查询：auto 自动识别；none 关闭；custom 用自定义 URL + JSON 路径。 */
+  balancePlatform: BalancePlatform
+  balanceUrl: string
+  balancePath: string
+  balanceCurrency: string
+  balanceThreshold: string
 }
 
 export function emptyForm(): FormState {
-  return { name: '', kind: 'openai-compatible', baseUrl: '', apiKey: '' }
+  return {
+    name: '',
+    kind: 'openai-compatible',
+    baseUrl: '',
+    apiKey: '',
+    balancePlatform: 'auto',
+    balanceUrl: '',
+    balancePath: '',
+    balanceCurrency: '',
+    balanceThreshold: '',
+  }
 }
 
 export interface GroupDraft {

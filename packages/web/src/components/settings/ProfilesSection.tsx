@@ -33,12 +33,12 @@ import type {
   ProfileKeyInput,
   ProviderKind,
 } from '@tandem/protocol'
-import { api } from '../../lib/api'
+import { api, workstationApi } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { PROVIDER_PRESETS, presetForProfile, type ProviderPreset } from '../../lib/presets'
 import { PROVIDER_KIND_LABELS, type HostConfig } from '../../lib/types'
-import { formatElapsed } from '../../lib/format'
+import { formatCost, formatElapsed } from '../../lib/format'
 import { mergeFetchedSelection } from '../../lib/modelSelection'
 import { useNow } from '../../lib/hooks'
 import { cn } from '../../lib/cn'
@@ -96,6 +96,7 @@ function Steps({ step }: { step: Step }) {
 
 export function ProfilesSection() {
   const hosts = useAppStore((s) => s.hosts)
+  const account = useAppStore((s) => s.account)
   const activeHostId = useAppStore((s) => s.activeHostId)
   const runtimes = useAppStore((s) => s.runtimes)
   const refreshProfiles = useAppStore((s) => s.refreshProfiles)
@@ -194,6 +195,12 @@ export function ProfilesSection() {
       kind: p.kind,
       baseUrl: p.baseUrl ?? brand?.baseUrl ?? '',
       apiKey: '',
+      balancePlatform: p.balanceQuery?.platform ?? 'auto',
+      balanceUrl: p.balanceQuery?.url ?? '',
+      balancePath: p.balanceQuery?.path ?? '',
+      balanceCurrency: p.balanceQuery?.currency ?? '',
+      balanceThreshold:
+        p.balanceQuery?.threshold !== undefined ? String(p.balanceQuery.threshold) : '',
     })
     setAvailable(p.models.map((id) => ({ id })))
     setSelected(p.models)
@@ -268,6 +275,11 @@ export function ProfilesSection() {
       kind: p?.kind ?? 'openai-compatible',
       baseUrl: p?.baseUrl ?? '',
       apiKey: '',
+      balancePlatform: 'auto',
+      balanceUrl: '',
+      balancePath: '',
+      balanceCurrency: '',
+      balanceThreshold: '',
     })
     setAvailable((p?.models ?? []).map((id) => ({ id })))
     setSelected(p?.models ?? [])
@@ -431,16 +443,35 @@ export function ProfilesSection() {
         ? { multiplier: Number(multiplier) }
         : {}),
       ...(Object.keys(price).length ? { price } : {}),
+      ...(form.balancePlatform !== 'auto' ||
+      form.balanceUrl.trim() ||
+      form.balancePath.trim() ||
+      form.balanceCurrency.trim() ||
+      form.balanceThreshold.trim()
+        ? {
+            balanceQuery: {
+              platform: form.balancePlatform,
+              ...(form.balanceUrl.trim() ? { url: form.balanceUrl.trim() } : {}),
+              ...(form.balancePath.trim() ? { path: form.balancePath.trim() } : {}),
+              ...(form.balanceCurrency.trim() ? { currency: form.balanceCurrency.trim() } : {}),
+              ...(Number.isFinite(Number(form.balanceThreshold)) && form.balanceThreshold.trim()
+                ? { threshold: Number(form.balanceThreshold) }
+                : {}),
+            },
+          }
+        : {}),
       groups: groupInputs,
     }
     setSaving(true)
     setError(null)
     try {
       if (editing === 'new') {
-        await api.createProfile(host, input)
+        if (account) await workstationApi.createProfile(account.centerUrl, account.accessToken, input)
+        else await api.createProfile(host, input)
         toast('账号已创建', 'success')
       } else if (editing) {
-        await api.updateProfile(host, editing, input)
+        if (account) await workstationApi.updateProfile(account.centerUrl, account.accessToken, editing, input)
+        else await api.updateProfile(host, editing, input)
         toast('账号已更新', 'success')
       }
       await refreshProfiles(host.id)
@@ -455,7 +486,8 @@ export function ProfilesSection() {
   const remove = async (p: Profile) => {
     if (!host) return
     try {
-      await api.deleteProfile(host, p.id)
+      if (account) await workstationApi.deleteProfile(account.centerUrl, account.accessToken, p.id)
+      else await api.deleteProfile(host, p.id)
       await refreshProfiles(host.id)
       if (editing === p.id) reset()
       setDeleteTarget(null)
@@ -470,7 +502,9 @@ export function ProfilesSection() {
     setTestingId(p.id)
     try {
       // 有分组时用首个分组的协议/Key 测试；账号自身可能没有 Key
-      const res = await api.testProfile(host, p.id, p.groups?.[0]?.id)
+      const res = account
+        ? await workstationApi.testProfile(account.centerUrl, account.accessToken, p.id, p.groups?.[0]?.id)
+        : await api.testProfile(host, p.id, p.groups?.[0]?.id)
       setTestResults((prev) => ({ ...prev, [p.id]: res }))
     } catch (err) {
       setTestResults((prev) => ({
@@ -499,10 +533,12 @@ export function ProfilesSection() {
       <div data-setting-id="profiles.accounts" className="mb-4 flex flex-wrap items-center gap-2">
         <h3 className="text-[14px] font-semibold">账号与模型</h3>
         <span className="hidden text-[13px] text-muted sm:inline">
-          Key 保存在主机端，不会下发明文
+          {account
+            ? '账号级设置：所有主机共用，Key 加密保存在工作站'
+            : 'Key 保存在主机端，不会下发明文'}
         </span>
         <span className="flex-1" />
-        {hosts.length > 1 && (
+        {!account && hosts.length > 1 && (
           <MenuSelect
             value={hostId ?? ''}
             onChange={(id) => {
@@ -516,7 +552,18 @@ export function ProfilesSection() {
           />
         )}
         <IconButton
-          onClick={() => host && void refreshProfiles(host.id)}
+          onClick={() => {
+            if (!host) return
+            // 账号级：手动刷新时顺带强制查一次余额（平时 5 分钟缓存）。
+            if (account) {
+              void workstationApi
+                .profiles(account.centerUrl, account.accessToken, true)
+                .then(() => refreshProfiles(host.id))
+                .catch(() => refreshProfiles(host.id))
+            } else {
+              void refreshProfiles(host.id)
+            }
+          }}
           disabled={loading}
           label="刷新账号"
           tooltip="刷新"
@@ -621,7 +668,9 @@ export function ProfilesSection() {
                   </button>
                 </div>
                 <p className="text-[13px] leading-5 text-muted">
-                  Key 保存在主机端，不会下发到浏览器。每个分组可单独设置协议与模型，会话按所选分组运行。
+                  {account
+                    ? 'Key 加密保存在工作站，主机与浏览器都看不到明文。每个分组可单独设置协议与模型，会话按所选分组运行。'
+                    : 'Key 保存在主机端，不会下发到浏览器。每个分组可单独设置协议与模型，会话按所选分组运行。'}
                 </p>
               </aside>
 
@@ -647,6 +696,71 @@ export function ProfilesSection() {
                   />
                   <p className="mt-1 text-[13px] leading-4 text-muted">
                     一个账号对应一个 URL。Key、协议和模型都在下面的分组里配置，同一 URL 下可混合不同协议。
+                  </p>
+                </div>
+
+                <div data-setting-id="profiles.balance" className="mt-3 rounded-xl border border-border bg-bg/30 p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[13px] font-medium">余额查询</span>
+                    <span className="text-[13px] text-muted">工作站用 Key 查询，5 分钟缓存</span>
+                    <span className="flex-1" />
+                    <MenuSelect
+                      value={form.balancePlatform}
+                      onChange={(value) =>
+                        setForm((f) => ({ ...f, balancePlatform: value as FormState['balancePlatform'] }))
+                      }
+                      aria-label="余额查询平台"
+                      options={[
+                        { value: 'auto', label: '自动识别' },
+                        { value: 'none', label: '关闭' },
+                        { value: 'openrouter', label: 'OpenRouter' },
+                        { value: 'deepseek', label: 'DeepSeek' },
+                        { value: 'moonshot', label: 'Moonshot / Kimi' },
+                        { value: 'new-api', label: 'New API / One API' },
+                        { value: 'openai-billing', label: 'OpenAI Billing' },
+                        { value: 'openai-credit-grants', label: 'OpenAI Credit Grants' },
+                        { value: 'custom', label: '自定义' },
+                      ]}
+                      wrapperClassName="w-auto max-w-[200px]"
+                      className="text-[13px]"
+                    />
+                  </div>
+                  {form.balancePlatform === 'custom' && (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                      <input
+                        value={form.balanceUrl}
+                        onChange={(e) => setForm((f) => ({ ...f, balanceUrl: e.target.value }))}
+                        placeholder="查询 URL（GET）"
+                        spellCheck={false}
+                        className={cn(inputCls, 'font-mono text-[13px] sm:col-span-2')}
+                      />
+                      <input
+                        value={form.balancePath}
+                        onChange={(e) => setForm((f) => ({ ...f, balancePath: e.target.value }))}
+                        placeholder="金额 JSON 路径，如 data.balance"
+                        spellCheck={false}
+                        className={cn(inputCls, 'font-mono text-[13px]')}
+                      />
+                    </div>
+                  )}
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <input
+                      value={form.balanceCurrency}
+                      onChange={(e) => setForm((f) => ({ ...f, balanceCurrency: e.target.value }))}
+                      placeholder="币种（缺省 USD）"
+                      spellCheck={false}
+                      className={cn(inputCls, 'max-w-[140px]')}
+                    />
+                    <input
+                      value={form.balanceThreshold}
+                      onChange={(e) => setForm((f) => ({ ...f, balanceThreshold: e.target.value }))}
+                      placeholder="低余额提醒阈值"
+                      inputMode="decimal"
+                      className={cn(inputCls, 'max-w-[160px]')}
+                    />
+                  </div>
+                  <p className="mt-1 text-[13px] leading-4 text-muted">
+                    自动识别只认已知平台；其他中转可选择平台或自定义查询。查询失败显示「—」。
                   </p>
                 </div>
 
@@ -923,6 +1037,25 @@ export function ProfilesSection() {
                       <span className="shrink-0 text-[13px] text-muted">
                         {groupCount ? `${groupCount} 个分组` : `${p.models.length} 个模型`}
                       </span>
+                      {p.balance && (
+                        <span
+                          className={cn(
+                            'shrink-0 text-[12px] tabular-nums',
+                            p.balance.error ||
+                              (p.balanceQuery?.threshold !== undefined &&
+                                p.balance.amount !== undefined &&
+                                p.balance.amount < p.balanceQuery.threshold)
+                              ? 'text-warning'
+                              : 'text-muted',
+                          )}
+                        >
+                          余额{' '}
+                          {p.balance.amount !== undefined
+                            ? `${p.balance.currency === 'USD' ? '$' : ''}${formatCost(p.balance.amount)}`
+                            : '—'}
+                        </span>
+                      )}
+                      {p.balance?.error && <Tip label={p.balance.error} />}
                       {p.multiplier !== undefined && p.multiplier !== 1 && (
                         <span className="shrink-0 rounded border border-border px-1 text-[12px] text-muted">
                           × {p.multiplier}
@@ -978,7 +1111,23 @@ export function ProfilesSection() {
                                   {g.keys.length} Key · {g.models.length} 模型
                                 </span>
                               </div>
-                              <KeysPanel host={host} profile={p} group={g} />
+                              <KeysPanel
+                                profile={p}
+                                group={g}
+                                saveProfile={async (input) => {
+                                  if (account) {
+                                    await workstationApi.updateProfile(account.centerUrl, account.accessToken, p.id, input)
+                                  } else {
+                                    await api.updateProfile(host, p.id, input)
+                                  }
+                                  await refreshProfiles(host.id)
+                                }}
+                                testProfile={(groupId, keyId) =>
+                                  account
+                                    ? workstationApi.testProfile(account.centerUrl, account.accessToken, p.id, groupId, keyId)
+                                    : api.testProfile(host, p.id, groupId, keyId)
+                                }
+                              />
                             </div>
                           ))}
                         </div>
