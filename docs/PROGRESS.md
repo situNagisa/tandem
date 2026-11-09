@@ -2,6 +2,17 @@
 
 > 更新：2026-11-09。只保留最近 5 轮；更早记录见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 59（2026-11-09）反馈包 #10：大纲懒加载 / 切换确认 / Key / 原生下拉 / 行高
+- [x] #01 R40（新）：`TurnRail` 跳转先按需取段并扩大渲染窗口，等消息挂载后再滚动 + 高亮（失败给提示）；滚轮改为 `RailScene.scrollBy` 预览式滚动，不改选中轮、不滚动对话区
+- [x] #02 R41（新）：删除模型菜单常驻缓存提示与「不再提示」，选中新模型/账号/分组/自动路由时弹 `ui/ConfirmAction`（约 x tok / $x，切换/取消）
+- [x] #03 R14（复发）：删除会话信息面板底部「显示空分组」开关，改面板顶部 ⋯ 菜单逐个勾选；`PanelPrefs.shown[]` 记住显式显示的空分组
+- [x] #04 R43（新）：`lib/modelSelection.ts` 解析系列/版本/日期快照，拉取模型默认只勾选每系列最新；手动改过后再次拉取只对新模型应用规则；单测覆盖
+- [x] #05 R42（新，P0）：分组 Key 编辑改为掩码占位 + 「更换 Key」，不回传明文；服务端缺省/空串/掩码回传都不覆盖；单测 `profile-keys.test.ts`
+- [x] #06 R37/R01（复发）：新增 `ui/Combobox`，迁移单价覆盖与预算模型输入；ui-audit 禁止 `<datalist>` 与 `list=`
+- [x] #07 R44（新）：`ui/Menu`/`ui/Button`/`ui/SegmentedControl` 行高统一 ≥1.4，去掉 `leading-none`；ui-audit `clipped-line-height` + 回归测量
+- 验证：`node scripts/check.mjs` 全过；回归新增/更新 5 条（大纲滚轮与点击、账号编辑、菜单行高、缓存切换、空分组菜单）；截图 `/tmp/fb10-after/`
+- 根因：R40–R44 新增，R14/R37/R01 复发走共享层 + ui-audit/回归防线
+
 ## 迭代 58（2026-11-09）发布 v0.4.3：反馈实时落盘 / .tfb 包
 - [x] 反馈编辑即落盘：IndexedDB（元数据与图片 Blob 分开）为主、localStorage 镜像文字；刷新/崩溃/关页面重开提示「已恢复 N 条」并继续追加；桌面调试版经 IPC 实时写 `<下载>/Tandem 反馈/草稿-YYYYMMDD-HHmm/`（临时文件 + rename，删条目同步清掉旧编号文件），导出后写 `.exported.json`、草稿保留 7 天、未导出一直保留
 - [x] 导出 `.tfb`（零依赖 zip store，`zipStore.ts`；改扩展名可解压），桌面调试版导出后可「打开所在文件夹」；`feedback-unpack.mjs` / `feedback-receipt.mjs` 兼容 tfb、旧 json 与草稿目录；发布产物扫描补禁用词
