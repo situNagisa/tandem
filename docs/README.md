@@ -30,7 +30,7 @@
 | [手机预览](features/mobile-preview.md) | 调试版在电脑上模拟手机尺寸/触摸；真机调试见 [test-guides/mobile-debugging.md](test-guides/mobile-debugging.md) |
 | [发布](features/release.md) | 版本、签名、更新源、上架材料 |
 | [反馈模式](features/feedback.md) | 调试版实时落盘草稿、.tfb 包结构与解包命令 |
-| 工作站（账号与主机） | [workstation.md](workstation.md)；[accounts.md](accounts.md) 是被替代的旧模型，仅作迁移参考。iOS：用户已决定暂不做，评估归档于 [archive/research/](archive/research/)。 |
+| 工作站（账号与主机） | [workstation.md](workstation.md)；[archive/accounts.md](archive/accounts.md) 是被替代的旧模型，仅作迁移参考。iOS：用户已决定暂不做，评估归档于 [archive/research/](archive/research/)。 |
 
 ## 2. 一次性记录（records）
 评审、走查、自用测试、e2e、性能、打分卡、调研、探索：写完即冻结，放 `archive/<类别>/`，文件名带日期或版本。类别：`reviews/`（评审/走查/无障碍/IA）、`e2e/`、`perf/`、`dogfood/`、`research/`、`qa/`、`scorecards/`、`plan/`、`progress/`。

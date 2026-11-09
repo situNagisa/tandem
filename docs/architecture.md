@@ -98,7 +98,7 @@
 | `src/components/RightPanel.tsx` | 右栏：计划、待办、子代理、上下文、Wiki、PR；**巨石** |
 | `src/components/wiki/*` | 项目 Wiki 视图（页面树/全文搜索/手写段落）与生成确认（账号/模型/预算/预计花费）；右栏卡片见 `right-panel/WikiCard.tsx` |
 | `src/components/ChangeReviewPanel.tsx` | 改动审阅、行评论、提交/丢弃 |
-| `src/components/settings/*` | 设置各页；`SettingsDialog.tsx` 是导航与挂载点；`TeamSection.tsx` 是成员/邀请/审计，`JoinTeamDialog.tsx` 处理邀请链接入职；`AccountsSection.tsx` 是工作区（创建/加入/Host/账号授权） |
+| `src/components/settings/*` | 设置各页；`SettingsDialog.tsx` 是导航与挂载点；`TeamSection.tsx` 是成员/邀请/审计，`JoinTeamDialog.tsx` 处理邀请链接入职；`../workstation/WorkstationSection.tsx` 是工作站（主机/成员/授权/注册策略/审计） |
 | `src/components/accounts/*` + `store/appStore/hostsSlice.ts` | 工作区登录页（账号中心地址+用户名+密码/TOTP）；登录后把可访问 Host 自动写入主机列表、令牌到期前向中心刷新，账号菜单在侧栏底部 |
 | `src/components/evals/*` | 评测轨迹/并排对比/提示词覆盖/存用例弹层；设置「评测」页见 `settings/EvalsSection.tsx` |
 | `src/components/chat/*` | 轮次导航、上下文环、消息辅助组件；`TurnRail`/`TurnOutlineSheet` 是桌面轮次条与手机底部大纲，分页跳转经 `lib/turnWindow.ts` |

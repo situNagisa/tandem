@@ -423,7 +423,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     group: 'system',
     changelogIds: ['workspace-accounts', 'debug-account', 'debug-flavor-fixed', 'workstation-login'],
     settingsPage: 'accounts',
-    components: ['AccountsSection', 'LoginDialog'],
+    components: ['WorkstationSection', 'LoginGate'],
     keywords: ['工作区', '账号中心', '登录', '授权', '加入码'],
   },
   {

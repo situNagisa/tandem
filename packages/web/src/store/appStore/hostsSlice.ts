@@ -1,6 +1,6 @@
 import type { AccountLoginResult, SessionSummary } from '@tandem/protocol'
 import type { StoreApi } from 'zustand'
-import { accountApi, api, ApiError, workstationApi } from '../../lib/api'
+import { api, ApiError, workstationApi } from '../../lib/api'
 import { normalizeHostUrl } from '../../lib/hostUrl'
 import { inviteFromLocation } from '../../lib/inviteLink'
 import { isValidFingerprint, normalizeFingerprint, relayHostUrl } from '../../lib/relay'
@@ -876,7 +876,7 @@ export function createHostsSlice(
       }
       if (session) {
         saveLastWorkstationUrl(session.centerUrl)
-        await accountApi.logout(session.centerUrl, session.refreshToken).catch(() => undefined)
+        await workstationApi.logout(session.centerUrl, session.refreshToken)
       }
       clearAccountState(session?.account.id)
       toast('已退出工作区账号', 'success')
@@ -886,7 +886,7 @@ export function createHostsSlice(
       const session = get().account
       if (!session) return false
       try {
-        const tokens = await accountApi.refresh(session.centerUrl, session.refreshToken)
+        const tokens = await workstationApi.refresh(session.centerUrl, session.refreshToken)
         const next: AccountSession = {
           ...session,
           accessToken: tokens.accessToken,

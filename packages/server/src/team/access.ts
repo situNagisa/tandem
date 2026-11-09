@@ -186,11 +186,6 @@ export function guardMemberRequest(
 ): GuardResult | undefined {
   const upper = method.toUpperCase();
   if (isOwnerLike(principal)) {
-    if (principal.kind === 'account' && principal.accountRole !== 'owner') {
-      const manage = /^\/api\/accounts\/(accounts|workspace\/join-code|workspace\/hosts)(\/|$)/.test(pathname);
-      const listOnly = pathname === '/api/accounts/accounts' && upper === 'GET';
-      if (manage && !listOnly) return { code: 403, message: '仅工作区所有者可以管理账号与加入码' };
-    }
     return undefined;
   }
   if (principal.kind === 'device') {
@@ -219,9 +214,6 @@ export function guardMemberRequest(
     return canSend(principal.role) ? undefined : { code: 403, message: '观察者/审批者不能操作设备' };
   }
   if (pathname === '/api/team/me' && upper === 'GET') return undefined;
-  if (pathname === '/api/accounts/me' && upper === 'GET') return undefined;
-  if (pathname === '/api/accounts/hosts' && upper === 'GET') return undefined;
-  if (pathname === '/api/accounts/workspace' && upper === 'GET') return undefined;
   if (pathname === '/api/team/approvers' && upper === 'GET') {
     return canApprove(principal.role) ? undefined : { code: 403, message: '观察者不能转交审批' };
   }

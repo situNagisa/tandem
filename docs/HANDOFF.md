@@ -27,7 +27,7 @@
 7. 手机预览与真机调试触摸：`docs/features/mobile-preview.md`、`docs/test-guides/mobile-debugging.md`（Windows 调试版打开预览、触摸滑动、旋转；调试 APK 的 chrome://inspect）
 8. 工作站服务模式：`docs/test-guides/workstation.md`（注册/登录、添加主机、绑定码、授权）
 9. 工作站与设备共享：`docs/test-guides/devices.md`（安卓手机 + USB 串口板，两台机器）
-10. 账号制：`docs/accounts-test.md`
+10. 账号制：`docs/test-guides/workstation.md`
 11. SSH 远程接入：`docs/features/remote-ssh.md`
 12. 手机审批（局域网本地通知）、PR/CI（`docs/test-guides/pr-ci.md`）、Windows 路径与中文编码
 用户可以先用「设置 → 关于 → 演示工作区 / 体验清单」体验，反馈用反馈模式导出 `.tfb` 发飞书（旧 `.json` 仍可解包）。

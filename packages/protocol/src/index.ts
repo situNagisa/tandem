@@ -1194,26 +1194,6 @@ export interface AccountLoginResult extends AccountTokens {
   /** 该账号可访问的 Host（已按范围过滤）。 */
   hosts: WorkspaceHostInfo[];
 }
-export interface WorkspaceJoinHostInput {
-  id: string;
-  name: string;
-  urls: string[];
-  version?: string;
-  platform?: string;
-}
-export interface WorkspaceJoinInput {
-  /** 一次性加入码（`acj_…`）。 */
-  code: string;
-  host: WorkspaceJoinHostInput;
-}
-export interface WorkspaceJoinResult {
-  workspace: WorkspaceInfo;
-  center: { hostId: string; publicKey: string };
-  host: WorkspaceHostInfo;
-  snapshotVersion: number;
-  /** 加入方 Host 拉取/接收快照的共享口令（只发给 Host，不发给客户端）。 */
-  syncToken: string;
-}
 /** 中心签名的工作区快照：Host 列表 + 吊销列表。 */
 export interface WorkspaceSnapshot {
   version: number;
@@ -1242,21 +1222,6 @@ export interface WorkspaceStatus {
   hostId?: string;
   lastSyncAt?: number;
   lastSyncError?: string;
-}
-export interface WorkspaceSetupInput {
-  name: string;
-  /** 同时创建第一个所有者账号。 */
-  username: string;
-  password: string;
-}
-export interface WorkspaceSetupResult {
-  workspace: WorkspaceInfo;
-  host: WorkspaceHostInfo;
-  account: WorkspaceAccount;
-}
-export interface WorkspaceJoinCode {
-  code: string;
-  expiresAt: number;
 }
 export interface WorkspaceAccountInput {
   username: string;
@@ -1337,9 +1302,6 @@ export interface WorkstationHostClaimInput {
     fingerprint: string;
     demo?: boolean;
   };
-}
-export interface WorkstationHostRegisterInput {
-  host: WorkstationHostClaimInput['host'];
 }
 export interface WorkstationHostClaimResult {
   workspace: WorkspaceInfo;
@@ -1453,25 +1415,9 @@ export type WorkspaceModelProxyEvent =
 // GET    /dl/tandem-host.tgz | /dl/tandem-host.zip   -> 主机安装包（公开；没有时 404，status.hostPackage 为空）
 // POST   /api/workstation/leave                     -> 204（Host 所有者：本机退出工作站）
 
-// GET    /api/accounts/status                      -> WorkspaceStatus（公开；客户端探测中心/成员）
-// POST   /api/accounts/setup {name,username,password} -> WorkspaceSetupResult（仅 Host 所有者 token）
-// POST   /api/accounts/login {username,password?,totp?} -> AccountLoginResult（中心公开）
-// POST   /api/accounts/refresh {refreshToken}       -> AccountTokens（中心公开；刷新令牌轮换）
-// POST   /api/accounts/logout {refreshToken}        -> 204（公开；作废当前刷新令牌）
-// GET    /api/accounts/me                           -> AccountMe（账号令牌）
-// GET    /api/accounts/hosts                        -> WorkspaceHostInfo[]（账号令牌，按范围过滤）
-// GET    /api/accounts/workspace                    -> WorkspaceOverview（中心：账号所有者/管理员；成员 Host：本机视角）
-// POST   /api/accounts/workspace/join-code          -> WorkspaceJoinCode（中心账号所有者）
-// POST   /api/accounts/workspace/join {code,host}   -> WorkspaceJoinResult（公开；一次性加入码）
+// GET    /api/accounts/status                      -> WorkspaceStatus（主机侧探测工作站/本地模式）
 // POST   /api/accounts/workspace/sync {snapshot,signature} -> 204（公开但必须中心签名）
 // GET    /api/accounts/workspace/snapshot           -> {snapshot,signature}（中心公开；加入方 Host 轮询）
-// POST   /api/accounts/workspace/leave              -> 204（成员 Host 所有者：本机退出工作区）
-// DELETE /api/accounts/workspace/hosts/:id          -> 204（中心账号所有者：移出 Host）
-// GET    /api/accounts/accounts                     -> WorkspaceAccount[]（中心账号所有者/管理员）
-// POST   /api/accounts/accounts {…}                 -> WorkspaceAccount（中心账号所有者）
-// PATCH  /api/accounts/accounts/:id {…}             -> WorkspaceAccount（中心账号所有者）
-// POST   /api/accounts/accounts/:id/revoke          -> 204（中心账号所有者；立即吊销）
-// GET    /api/accounts/audit?limit=200              -> WorkspaceAuditEntry[]（中心账号所有者）
 
 export interface WorkspaceAuditEntry {
   id: string;
@@ -3369,8 +3315,6 @@ export interface DeviceLogcatRead {
 // POST   /api/sessions/:id/devices/:mountId/logcat/start {filter?} -> DeviceLogcatStart
 // GET    /api/sessions/:id/devices/:mountId/logcat?since= -> DeviceLogcatRead
 // POST   /api/sessions/:id/devices/:mountId/logcat/stop
-
-export const PROTOCOL_VERSION = 5;
 
 
 // ---------- 演示工作区 ----------

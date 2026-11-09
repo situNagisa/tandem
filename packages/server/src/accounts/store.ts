@@ -32,8 +32,6 @@ import type {
   WorkspaceHostGrant,
   WorkspaceHostInfo,
   WorkspaceInfo,
-  WorkspaceJoinInput,
-  WorkspaceJoinResult,
   WorkspaceOverview,
   WorkspaceRole,
   WorkspaceScope,
@@ -46,7 +44,6 @@ import { IS_DEBUG_FLAVOR } from '../flavor.js';
 
 export const ACCESS_TTL_MS = 30 * 60 * 1000;
 export const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-export const JOIN_CODE_TTL_MS = 24 * 60 * 60 * 1000;
 export const HOST_BIND_TTL_MS = 15 * 60 * 1000;
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SYNC_INTERVAL_MS = 10_000;
@@ -1316,78 +1313,6 @@ export class AccountsStore {
     };
   }
 
-  private firstAdminId(): string | undefined {
-    if (this.state?.mode !== 'center') return undefined;
-    return this.state.accounts
-      .slice()
-      .sort((a, b) => a.createdAt - b.createdAt)
-      .find((a) => a.role === 'owner' || a.role === 'admin')?.id;
-  }
-
-  createJoinCode(actor = 'owner'): { code: string; expiresAt: number } {
-    const state = this.requireCenter();
-    const now = Date.now();
-    state.joinCodes = state.joinCodes.filter((c) => !c.usedAt && c.expiresAt > now).slice(-20);
-    const code = `acj_${randomBytes(18).toString('base64url')}`;
-    const expiresAt = now + JOIN_CODE_TTL_MS;
-    state.joinCodes.push({ codeHash: sha256(code), createdAt: now, expiresAt });
-    this.audit(actor, 'join-code.create');
-    this.save();
-    return { code, expiresAt };
-  }
-
-  /** 中心侧：验证加入码，登记 Host，签名快照返回。 */
-  acceptJoin(input: WorkspaceJoinInput): WorkspaceJoinResult {
-    const state = this.requireCenter();
-    const code = typeof input.code === 'string' ? input.code.trim() : '';
-    const host = input.host;
-    if (!host || typeof host.id !== 'string' || !host.id.trim()) throw Object.assign(new Error('Host 信息无效'), { statusCode: 400 });
-    if (host.id.trim() === state.workspace.centerHostId) {
-      throw Object.assign(new Error('Host 标识与账号中心冲突'), { statusCode: 400 });
-    }
-    const entry = state.joinCodes.find((c) => c.codeHash === sha256(code));
-    if (!entry || entry.usedAt || entry.expiresAt < Date.now()) {
-      throw Object.assign(new Error('加入码无效、已使用或已过期'), { statusCode: 401 });
-    }
-    entry.usedAt = Date.now();
-    const urls = Array.isArray(host.urls) ? [...new Set(host.urls.filter((u) => typeof u === 'string' && /^https?:\/\//i.test(u)))] : [];
-    const info: WorkspaceHostInfo = {
-      id: host.id.trim(),
-      name: (host.name ?? '').trim() || host.id.trim(),
-      urls,
-      ownerId: this.firstAdminId(),
-      grants: [],
-      addedAt: Date.now(),
-      lastSeenAt: Date.now(),
-      ...(host.version ? { version: host.version } : {}),
-      ...(host.platform ? { platform: host.platform } : {}),
-    };
-    const existing = state.hosts.findIndex((h) => h.id === info.id);
-    if (existing >= 0) state.hosts[existing] = { ...state.hosts[existing]!, ...info, addedAt: state.hosts[existing]!.addedAt };
-    else state.hosts.push(info);
-    state.snapshotVersion += 1;
-    this.audit(host.name ?? host.id, 'host.join', urls[0]);
-    this.save();
-    void this.pushSnapshot();
-    return {
-      workspace: state.workspace,
-      center: { hostId: this.opts.hostId, publicKey: state.publicKey },
-      host: info,
-      snapshotVersion: state.snapshotVersion,
-      syncToken: state.syncToken,
-    };
-  }
-
-  removeHost(hostId: string, actor = 'owner'): void {
-    const state = this.requireCenter();
-    if (hostId === this.opts.hostId) throw Object.assign(new Error('不能移除账号中心本身'), { statusCode: 400 });
-    state.hosts = state.hosts.filter((h) => h.id !== hostId);
-    state.snapshotVersion += 1;
-    this.audit(actor, 'host.remove', hostId);
-    this.save();
-    void this.pushSnapshot();
-  }
-
   overview(): WorkspaceOverview {
     const state = this.requireCenter();
     return {
@@ -1395,17 +1320,6 @@ export class AccountsStore {
       hosts: [...state.hosts],
       accounts: this.listAccounts(),
       revoked: { ...state.revoked },
-    };
-  }
-
-  memberOverview(): WorkspaceOverview | undefined {
-    if (this.state?.mode !== 'member') return undefined;
-    return {
-      workspace: this.state.workspace,
-      hosts: [...this.state.hosts],
-      accounts: [],
-      revoked: { ...this.state.revoked },
-      centerUrl: this.state.centerUrl,
     };
   }
 
@@ -1427,47 +1341,6 @@ export class AccountsStore {
     const state = this.requireCenter();
     const snapshot = this.snapshot();
     return { snapshot, signature: signPayload(JSON.stringify(snapshot), state.privateKey) };
-  }
-
-  /** 加入方：本机加入中心。 */
-  async joinWorkspace(centerUrl: string, code: string, host: Omit<WorkspaceHostInfo, 'addedAt'>): Promise<WorkspaceJoinResult> {
-    if (this.state) throw Object.assign(new Error('本机已经加入或创建了工作区'), { statusCode: 409 });
-    const base = centerUrl.trim().replace(/\/+$/, '');
-    if (!/^https?:\/\//i.test(base)) throw Object.assign(new Error('请填写账号中心地址（http://…）'), { statusCode: 400 });
-    let res: Response;
-    try {
-      res = await fetch(`${base}/api/accounts/workspace/join`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, host }),
-        signal: AbortSignal.timeout(10_000),
-      });
-    } catch (err) {
-      throw Object.assign(new Error(`无法连接账号中心：${(err as Error).message}`), { statusCode: 502 });
-    }
-    const data = (await res.json().catch(() => ({}))) as Partial<WorkspaceJoinResult> & { error?: string };
-    if (!res.ok) throw Object.assign(new Error(data.error ?? `账号中心返回 ${res.status}`), { statusCode: 502 });
-    if (!data.workspace || !data.center?.publicKey) throw Object.assign(new Error('账号中心响应缺少工作区信息'), { statusCode: 502 });
-    this.state = {
-      mode: 'member',
-      version: 1,
-      modelVersion: 2,
-      workspace: data.workspace,
-      centerUrl: base,
-      centerPublicKey: data.center.publicKey,
-      syncToken: data.syncToken ?? '',
-      hosts: [],
-      revoked: {},
-      invalidBefore: {},
-      snapshotVersion: data.snapshotVersion ?? 1,
-      joinedAt: Date.now(),
-      hostName: host.name,
-    };
-    this.ensureMemberHostKey(this.state);
-    this.save();
-    this.start();
-    await this.syncFromCenter();
-    return data as WorkspaceJoinResult;
   }
 
   /**

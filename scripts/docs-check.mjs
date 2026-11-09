@@ -25,8 +25,6 @@ const ROOT_ALLOW = new Set([
   'feedback-ledger.md',
   'PROGRESS.md',
   'workstation.md',
-  'accounts.md', // 工作区旧模型，等 workstation.md 迁移完成后删除
-  'accounts-test.md', // 同上；迁移后移入 test-guides/
 ])
 const ROOT_ALLOW_DIRS = new Set(['features', 'archive', 'test-guides'])
 

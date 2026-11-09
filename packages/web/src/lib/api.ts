@@ -140,16 +140,9 @@ import type {
   AccountLoginInput,
   AccountLoginResult,
   AccountTokens,
-  AccountMe,
-  WorkspaceAccount,
-  WorkspaceAccountInput,
-  WorkspaceAccountUpdateInput,
   WorkspaceHostInfo,
-  WorkspaceJoinCode,
-  WorkspaceJoinResult,
   WorkspaceOverview,
   WorkspaceProfilesSnapshot,
-  WorkspaceSetupResult,
   WorkspaceStatus,
   WorkspaceAuditEntry,
   WorkstationAccountSummary,
@@ -1304,73 +1297,6 @@ export async function fetchPublicShare(
     throw new ApiError(describe(res.status, text), res.status)
   }
   return (await res.json()) as PublicShare
-}
-
-
-/** 工作区账号：登录/刷新走账号中心地址；管理接口走当前 Host。 */
-export const accountApi = {
-  status: async (baseUrl: string): Promise<WorkspaceStatus> => {
-    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/accounts/status`, {
-      headers: { Accept: 'application/json' },
-    })
-    if (!res.ok) throw new ApiError(describe(res.status, await res.text().catch(() => '')), res.status)
-    return (await res.json()) as WorkspaceStatus
-  },
-  login: async (centerUrl: string, input: AccountLoginInput): Promise<AccountLoginResult> => {
-    let res: Response
-    try {
-      res = await fetch(`${centerUrl.replace(/\/+$/, '')}/api/accounts/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(input),
-      })
-    } catch (err) {
-      throw new ApiError(err instanceof Error ? `无法连接账号中心：${err.message}` : '无法连接账号中心', 0)
-    }
-    const text = await res.text().catch(() => '')
-    if (!res.ok) throw new ApiError(describe(res.status, text), res.status)
-    return JSON.parse(text) as AccountLoginResult
-  },
-  refresh: async (centerUrl: string, refreshToken: string): Promise<AccountTokens> => {
-    const res = await fetch(`${centerUrl.replace(/\/+$/, '')}/api/accounts/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    })
-    const text = await res.text().catch(() => '')
-    if (!res.ok) throw new ApiError(describe(res.status, text), res.status)
-    return JSON.parse(text) as AccountTokens
-  },
-  logout: async (centerUrl: string, refreshToken: string): Promise<void> => {
-    await fetch(`${centerUrl.replace(/\/+$/, '')}/api/accounts/logout`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    }).catch(() => undefined)
-  },
-  me: (h: HostConfig) => request<AccountMe>(h, '/api/accounts/me'),
-  hosts: (h: HostConfig) => request<WorkspaceHostInfo[]>(h, '/api/accounts/hosts'),
-  workspace: (h: HostConfig) => request<WorkspaceOverview>(h, '/api/accounts/workspace'),
-  setup: (h: HostConfig, input: { name: string; username: string; password: string }) =>
-    request<WorkspaceSetupResult>(h, '/api/accounts/setup', { method: 'POST', body: JSON.stringify(input) }),
-  join: (h: HostConfig, input: { centerUrl: string; code: string }) =>
-    request<WorkspaceJoinResult>(h, '/api/accounts/workspace/join', { method: 'POST', body: JSON.stringify(input) }),
-  joinCode: (h: HostConfig) => request<WorkspaceJoinCode>(h, '/api/accounts/workspace/join-code', { method: 'POST' }),
-  leave: (h: HostConfig) => request<void>(h, '/api/accounts/workspace/leave', { method: 'POST' }),
-  removeHost: (h: HostConfig, id: string) =>
-    request<void>(h, `/api/accounts/workspace/hosts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  accounts: (h: HostConfig) => request<WorkspaceAccount[]>(h, '/api/accounts/accounts'),
-  createAccount: (h: HostConfig, input: WorkspaceAccountInput) =>
-    request<WorkspaceAccount>(h, '/api/accounts/accounts', { method: 'POST', body: JSON.stringify(input) }),
-  updateAccount: (h: HostConfig, id: string, input: WorkspaceAccountUpdateInput) =>
-    request<WorkspaceAccount>(h, `/api/accounts/accounts/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      body: JSON.stringify(input),
-    }),
-  revokeAccount: (h: HostConfig, id: string) =>
-    request<void>(h, `/api/accounts/accounts/${encodeURIComponent(id)}/revoke`, { method: 'POST' }),
-  audit: (h: HostConfig, limit = 100) =>
-    request<WorkspaceAuditEntry[]>(h, `/api/accounts/audit?limit=${limit}`),
 }
 
 /** 公开接口：凭一次性邀请码换取成员 token（无需 Host 主 token）。 */
