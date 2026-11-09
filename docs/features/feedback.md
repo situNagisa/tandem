@@ -1,6 +1,6 @@
 # 反馈模式
 
-> 更新：2026-11-09。
+> 更新：2026-11-10。
 
 调试版（`__TANDEM_DEBUG__`）内置的记录工具：Ctrl+Shift+F 进入，点选元素或框选区域，写下问题并附带截图、轨迹、快照与录屏。发布版构建会把本模块整体剔除（`scripts/scan-release.mjs` 有对应禁用词）。
 
@@ -55,6 +55,14 @@ node scripts/feedback-receipt.mjs <file.tfb|file.json|草稿目录> <receipt.md|
 - 桌面调试版走主进程原生截图（`feedback:capture-page` → `webContents.capturePage(rect)`），网页端仍用 DOM 克隆（`getDisplayMedia` 需要授权，不用）。
 - 点选/框选先出现「截图」/「截取区域」提示再做重活。每次截图的分阶段耗时记在 `lib/feedbackPerf.ts`，回归用例从 `window.__feedbackPerfCapture` 读取。
 - 已知限制：单个超大消息行（近 2000 个元素，如超长代码块）元素截图约 0.6s；网页端单次整页缩略图约 0.5–0.7s（原生桌面端 <100ms）。
+
+## 演示工作区与体验清单
+
+设置 → 关于 →「演示工作区」在 `~/.tandem/demo/` 建独立 git 仓库与脚本化演示模型（不发网络请求、不耗真实额度），预置 17 个场景（对话/审批/计划/子代理/后台任务/上下文压缩/429/断点续跑/看板/评测/Wiki/应用预览/收件箱等），可重放与一键清除。
+
+设置 → 关于 →「体验清单」按功能列测试要点：未测项在前、新增标「新」，可「在演示中打开」并标记通过/有问题/跳过（有问题直接带功能标签进入反馈模式）；进度存本机，可导出 Markdown 报告，导出反馈包时自动附带。
+
+维护者回执：按条目写 `## fb-xxx` 与 `- status: fixed|wontfix|needs-info`、`- note:`、可选 `- after: ./修复后.png`，用 `scripts/feedback-receipt.mjs` 生成回执；用户在反馈抽屉「导入回执」逐条查看前后对比并「开始复验」。
 
 ## 限制
 

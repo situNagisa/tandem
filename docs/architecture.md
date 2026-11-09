@@ -17,7 +17,7 @@
 | `packages/relay` | 自托管中继：出站隧道 + 端到端加密（本机回环测试，不对外部署） |
 | `e2e/smoke.mjs` | Playwright 端到端冒烟：临时 Host + 假 provider |
 | `scripts/ui-audit.mjs` | UI 原语防回退审计 |
-| `scripts/check.mjs` | 提交前总检查：build → ui-audit → test → smoke → regression |
+| `scripts/check.mjs` | 提交前总检查：docs → build → debug-artifacts → ui-audit → decisions → test → smoke → regression → release |
 | `scripts/release.mjs` | 发布：统一版本、生成 CHANGELOG/新功能导览、提交并打本地标签 |
 
 ## 2. Server 模块地图
