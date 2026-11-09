@@ -117,9 +117,20 @@ export function registerAccountRoutes(app: FastifyInstance, deps: RouteDeps): vo
       username?: unknown;
       password?: unknown;
       totp?: unknown;
+      name?: unknown;
     };
     const workstationUrl = str(body.workstationUrl);
     if (!workstationUrl) return bad(reply, '请填写工作站地址');
+    const target = workstationUrl.trim().replace(/\/+$/, '');
+    // 已加入同一工作站：幂等返回当前状态（重复执行同一条安装命令不报错）；已加入别的工作站才拒绝。
+    const existing = accounts().workstationJoin();
+    if (existing) {
+      if (existing.url.replace(/\/+$/, '').toLowerCase() === target.toLowerCase()) {
+        deps.workstation?.start();
+        return accounts().status();
+      }
+      return bad(reply, `本机已加入工作站 ${existing.url}，请先退出后再加入其他工作站`, 409);
+    }
     const code = str(body.code);
     let accessToken: string | undefined;
     const username = str(body.username);
@@ -129,7 +140,7 @@ export function registerAccountRoutes(app: FastifyInstance, deps: RouteDeps): vo
       }
       let res: Response;
       try {
-        res = await fetch(`${workstationUrl.replace(/\/+$/, '')}/api/workstation/login`, {
+        res = await fetch(`${target}/api/workstation/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -147,10 +158,10 @@ export function registerAccountRoutes(app: FastifyInstance, deps: RouteDeps): vo
       accessToken = data.accessToken;
     }
     const status = await accounts().registerAsHost(
-      workstationUrl,
+      target,
       {
         id: host.config.hostId,
-        name: selfName(app),
+        name: str(body.name) || selfName(app),
         urls: localUrls(app),
         ...(host.version ? { version: host.version } : {}),
         platform: process.platform,
