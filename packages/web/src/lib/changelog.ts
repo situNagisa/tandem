@@ -51,6 +51,80 @@ const DEBUG_TOUR_ITEMS: ChangelogEntry[] = [
 /** 版本升级后首次打开时展示；按版本从新到旧排列。 */
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: '0.4.6',
+    date: '2026-11-09',
+    items: [
+      {
+        id: 'account-model-key',
+        title: '模型账号归你的工作站账号',
+        summary:
+          '账号、分组与 Key 属于登录的工作站账号，所有主机共用一份；Key 加密保存在工作站，主机不再保存，换主机也不用重填。',
+        target: { kind: 'settings', tab: 'profiles', settingId: 'profiles.accounts' },
+      },
+      {
+        id: 'account-balance',
+        title: '账号余额一眼可见',
+        summary:
+          '账号设置与模型菜单显示剩余余额，工作站用该账号 Key 查询、缓存 5 分钟；支持 OpenRouter、DeepSeek、Moonshot、New API、OpenAI 与自定义查询。',
+        target: { kind: 'settings', tab: 'profiles', settingId: 'profiles.balance' },
+      },
+      {
+        id: 'permission-inline',
+        title: '审批就在对话里问',
+        summary:
+          '需要授权时，审批作为触发工具之后的一条消息出现，随对话滚动；回答后原位留一行结果，输入框保持可用。',
+        target: { kind: 'demo', scenario: 'permission' },
+      },
+      {
+        id: 'popover-stable',
+        title: '下拉不再抖',
+        summary:
+          '所有菜单、下拉与弹层从第一帧起就在正确位置，不再先跳一下；账号等数据没到齐时先等数据再展开。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'host-switch-pending',
+        title: '换主机先确认，不再误发',
+        summary:
+          '选中另一台主机后先标「待切换」，文件夹显示「待选」；选好目录前输入框锁定并变暗，随时可撤销。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'message-time-usage',
+        title: '每条消息都有时间与花费',
+        summary:
+          '用户与 assistant 消息都常显时间；用户消息还显示这条输入的估算 token 与金额，assistant 显示输入、输出、缓存与耗时。',
+        target: { kind: 'demo', scenario: 'chat-tools' },
+      },
+      {
+        id: 'user-bubble-tight',
+        title: '用户气泡紧贴文字',
+        summary: '短消息的气泡宽度跟着文字走，操作条不再把右侧撑出一大块空白。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'settings-width-padding',
+        title: '设置页留白更舒服',
+        summary:
+          '设置内容区统一限宽居中、左右留白；卡片图标与标题对齐，说明文字不再贴着边框。',
+        target: { kind: 'settings', tab: 'general' },
+      },
+      {
+        id: 'windows-add-host-fixed',
+        title: 'Windows 一行命令添加主机修好了',
+        summary:
+          '端口被占自动换空闲端口，失败时给准确原因并写 install.log；登录自启改用当前用户启动项，不再要求管理员。',
+        target: { kind: 'settings', tab: 'hosts' },
+      },
+      {
+        id: 'model-chip-clean',
+        title: '模型芯片更干净',
+        summary: '模型芯片只显示模型名与箭头，思考强度放在菜单和悬停提示里。',
+        target: { kind: 'home' },
+      },
+    ],
+  },
+  {
     version: '0.4.5',
     date: '2026-11-09',
     items: [
