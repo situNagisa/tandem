@@ -3098,11 +3098,20 @@ async function main() {
         `高级分组展开后标题位移 ${Math.round(after.y - before.y)}px`,
       )
       // 设置内容区一定会溢出：滚动它来触发 overlay 滚动条。
+      // 用 scrollBy 保证一定产生 scroll 事件（直接赋当前值不会触发）；可见性由 rAF 更新，等到出现为止。
       const content = dialog.locator('[data-settings-page-content]')
       await content.evaluate((el) => {
-        el.scrollTop = 120
+        const atBottom = el.scrollTop >= el.scrollHeight - el.clientHeight - 1
+        el.scrollBy(0, atBottom ? -40 : 40)
       })
-      await page.waitForTimeout(100)
+      await page.waitForFunction(
+        () =>
+          [...document.querySelectorAll('.overlay-scrollbar')].some(
+            (el) => el.dataset.visible === 'true',
+          ),
+        null,
+        { timeout: 3_000 },
+      )
       const scroll = await page.evaluate(() => {
         const list = document.querySelector('[data-settings-nav-scroll]')
         const pane = document.querySelector('[data-settings-page-content]')
