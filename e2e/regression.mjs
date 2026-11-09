@@ -8204,7 +8204,29 @@ async function main() {
         '预览窗口仍是桌面布局（渲染了固定侧栏）',
       )
       await popup.getByRole('button', { name: '打开侧栏' }).first().click()
-      await popup.locator('aside[aria-label="侧栏"]').waitFor({ state: 'visible', timeout: 5_000 })
+      const drawer = popup.locator('aside[aria-label="侧栏"]')
+      await drawer.waitFor({ state: 'visible', timeout: 5_000 })
+      // 模拟条独占顶部区域：抽屉标题「Tandem」必须完整露在它下方，不能与工具栏相交。
+      const barBox = await bar.boundingBox()
+      const title = drawer.getByText('Tandem', { exact: true }).first()
+      await title.waitFor({ state: 'visible', timeout: 5_000 })
+      const titleBox = await title.boundingBox()
+      assert.ok(barBox && titleBox, '取不到模拟条或抽屉标题的位置')
+      const overlap =
+        titleBox.y < barBox.y + barBox.height &&
+        titleBox.y + titleBox.height > barBox.y &&
+        titleBox.x < barBox.x + barBox.width &&
+        titleBox.x + titleBox.width > barBox.x
+      assert.equal(overlap, false, `抽屉标题被手机预览工具栏遮挡：标题 ${JSON.stringify(titleBox)}，工具栏 ${JSON.stringify(barBox)}`)
+      assert.ok(
+        titleBox.y >= barBox.y + barBox.height - 0.5,
+        `抽屉标题没有从工具栏下方开始：标题 ${JSON.stringify(titleBox)}，工具栏 ${JSON.stringify(barBox)}`,
+      )
+      const drawerBox = await drawer.boundingBox()
+      assert.ok(
+        drawerBox && titleBox.y + titleBox.height <= drawerBox.y + drawerBox.height + 0.5 && titleBox.y >= drawerBox.y - 0.5,
+        '抽屉标题超出抽屉范围（被裁掉）',
+      )
       await popup.close()
     })
 

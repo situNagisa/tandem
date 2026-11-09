@@ -402,9 +402,17 @@ html.feedback-mode .ui-tip {
   height: var(--app-height, 100dvh);
 }
 
-/* 调试版手机预览：顶部 30px 模拟条不占用应用内容高度（border-box）。 */
+/* 调试版手机预览：顶部 30px 模拟条自己占一段区域，页面从它下方开始，不压在内容上。 */
+html[data-mobile-preview] {
+  --preview-bar-height: 30px;
+}
 html[data-mobile-preview] .app-root {
-  padding-top: 30px;
+  height: calc(var(--app-height, 100dvh) - var(--preview-bar-height));
+  padding-top: var(--preview-bar-height);
+}
+/* 全屏浮层（侧栏抽屉、全屏面板、对话框遮罩）同样让出模拟条，标题不被裁掉。 */
+html[data-mobile-preview] .fixed.inset-0 {
+  top: var(--preview-bar-height);
 }
 
 .no-scrollbar {
