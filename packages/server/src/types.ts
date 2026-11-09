@@ -33,6 +33,8 @@ export interface StoredProfileKey {
   quota?: import('@tandem/protocol').KeyQuota;
   /** 累计 429 次数（成功请求不清零）。 */
   rateLimitHits?: number;
+  /** 主机镜像：工作站只回掩码，主机不保存明文（apiKey 为空）。 */
+  masked?: string;
 }
 
 /** 持久化的账号分组：明文 key 只在本机，接口只回掩码。 */
@@ -73,6 +75,15 @@ export interface StoredProfile {
   modelCapabilities?: Record<string, ModelCapabilities>;
   groups?: StoredProfileGroup[];
   createdAt: number;
+  /** 主机镜像：该账号属于哪个工作站账号（按账号隔离展示）。 */
+  accountId?: string;
+  /** 主机镜像：工作站回的账号级掩码（主机不保存明文）。 */
+  apiKeyMasked?: string;
+  /** 余额查询配置（工作站用 Key 查询，主机只看到配置与缓存结果）。 */
+  balanceQuery?: import('@tandem/protocol').BalanceQueryConfig;
+  balance?: import('@tandem/protocol').ProfileBalance;
+  /** 主机镜像：请求经工作站代理，Key 不在本机。 */
+  proxied?: boolean;
 }
 
 /** 中继配置：Host 主动向 relay 建立出站隧道；hostKey 是 Ed25519 种子（base64url），首次启用时自动生成。 */
@@ -111,6 +122,8 @@ export interface HostConfig {
 /** 会话记录：协议 Session + 仅服务端使用的字段。 */
 export interface SessionRecord extends Session {
   allowedTools: string[];
+  /** 发起/主导该会话的工作站账号：模型请求按该账号的账号级模型账号代理（共享主机时用被授权人自己的 Key）。 */
+  workspaceAccountId?: string;
   /** 子代理会话：指向派发它的会话。 */
   parentId?: string;
   /** 子代理会话：派发它的 Task 工具 tool_use id（会话图定位到具体轮次）。 */

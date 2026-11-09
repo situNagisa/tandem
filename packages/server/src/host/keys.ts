@@ -62,6 +62,8 @@ export function keyCandidates(host: Host, profileId: string,
   const profile = host.profiles.get(profileId);
   if (!profile) return { candidates: [] };
   const effective = effectiveProfile(profile, groupId);
+  // 账号级模型账号：主机没有 Key，Key 轮询/冷却在工作站完成，这里固定一个候选。
+  if (profile.proxied) return { effective, candidates: [{ profile: effective }] };
   const group = host.groupFor(profileId, groupId);
   const keys = group?.keys ?? [];
   if (!group || keys.length === 0) {

@@ -115,6 +115,10 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
     const principal = principalOf(req);
     try {
       const input = (req.body ?? {}) as Partial<CreateSessionInput>;
+      // 账号级模型账号：先同步发起人的账号（共享主机上用被授权人自己的账号）。
+      if (principal.kind === 'account') {
+        await host.syncWorkstationProfiles(principal.id).catch(() => undefined);
+      }
       if (!isOwnerLike(principal)) {
         const rawCwd = typeof input.cwd === 'string' ? input.cwd.trim() : '';
         const cwd = rawCwd ? path.resolve(expandHome(rawCwd)) : '';
@@ -123,6 +127,11 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
         }
       }
       const rec = await host.createSession(input);
+      // 会话绑定发起它的工作站账号：模型请求用该账号自己的账号级 Key（共享主机时也是被授权人的）。
+      if (principal.kind === 'account') {
+        rec.workspaceAccountId = principal.id;
+        host.store.saveNow(rec.id);
+      }
       // 创建时检测 cwd 的 git 仓库/分支，供侧栏归类
       await host.refreshEnv(rec.id);
       recordAudit(host, principal, 'session.create', { sessionId: rec.id, sessionTitle: rec.title });
@@ -279,6 +288,15 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
       const patch = (req.body ?? {}) as Partial<UpdateSessionInput>;
       const existing = host.store.get(id);
       if (!existing) return bad(reply, '会话不存在', 404);
+      // 账号级模型账号：只能切换到自己账号名下的模型账号。
+      const principal = principalOf(req);
+      if (principal.kind === 'account' && typeof patch.profileId === 'string') {
+        await host.syncWorkstationProfiles(principal.id).catch(() => undefined);
+        const target = host.profiles.get(patch.profileId);
+        if (target?.accountId && target.accountId !== principal.id) {
+          return bad(reply, '只能使用自己账号下的模型账号', 403);
+        }
+      }
       if (existing.demo && typeof patch.cwd === 'string' && !host.demo.isDemoPath(patch.cwd)) {
         return bad(reply, '该会话只能使用其所属的项目目录');
       }

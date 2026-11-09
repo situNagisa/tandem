@@ -1267,6 +1267,24 @@ export class AccountsStore {
     return host?.publicKey;
   }
 
+  /** 主机签名代理鉴权：账号必须是主机主人，或被显式授权使用该主机。 */
+  accountCanAccessHost(hostId: string, accountId: string): boolean {
+    if (this.state?.mode !== 'center') return false;
+    const account = this.state.accounts.find((a) => a.id === accountId && !a.disabled);
+    const host = this.state.hosts.find((h) => h.id === hostId);
+    if (!account || !host) return false;
+    if (host.ownerId === accountId) return true;
+    if ((host.grants ?? []).some((grant) => grant.accountId === accountId)) return true;
+    // 旧数据没有 ownerId：管理员代管（迁移期）
+    return !host.ownerId && isWorkspaceAdmin(account.role);
+  }
+
+  /** 主机所属账号（模型代理默认记账对象）。 */
+  hostOwnerAccountId(hostId: string): string | undefined {
+    if (this.state?.mode !== 'center') return undefined;
+    return this.state.hosts.find((h) => h.id === hostId)?.ownerId;
+  }
+
   listAccountSummaries(q = ''): WorkstationAccountSummary[] {
     const state = this.requireCenter();
     const needle = q.trim().toLowerCase();
@@ -1500,6 +1518,7 @@ export class AccountsStore {
     this.state = {
       ...temporary,
       workspace: data.workspace,
+      ...(data.ownerAccountId ? { ownerAccountId: data.ownerAccountId } : {}),
       centerPublicKey: data.workstation.publicKey,
       syncToken: data.syncToken ?? '',
       snapshotVersion: data.snapshotVersion ?? 1,
@@ -1541,6 +1560,11 @@ export class AccountsStore {
     this.state.revoked = { ...(snapshot.revoked ?? {}) };
     this.state.invalidBefore = { ...(snapshot.invalidBefore ?? {}) };
     this.state.hosts = [...(snapshot.hosts ?? [])];
+    // 旧成员文件没有 ownerAccountId：从签名快照里的本机登记记录补齐（账号级模型账号需要）。
+    if (!this.state.ownerAccountId) {
+      const self = this.state.hosts.find((host) => host.id === this.opts.hostId);
+      if (self?.ownerId) this.state.ownerAccountId = self.ownerId;
+    }
     this.state.snapshotVersion = snapshot.version;
     this.state.lastSyncAt = Date.now();
     this.state.lastSyncError = undefined;

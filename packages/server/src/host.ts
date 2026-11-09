@@ -86,6 +86,8 @@ import { AccountsStore } from './accounts/store.js';
 import { memberCanSeeSession } from './team/access.js';
 import type { ParsedCommand } from './agent/commands.js';
 import { readVersion, type PermissionEntry } from './host/helpers.js';
+import { WorkstationProfileClient } from './workstation/client.js';
+import type { ProxyRunner } from './providers/types.js';
 import os from 'node:os';
 import {
   autoTitle,
@@ -191,7 +193,11 @@ import type { ProviderRateLimit } from './providers/types.js';
 export class Host {
   readonly config: HostConfig;
   readonly home: string;
-  readonly profiles: ProfileStore;
+  profiles: ProfileStore;
+  /** 工作站模式：profiles 是账号级镜像（Key 不在本机）。 */
+  mirrorProfiles = false;
+  private profileClient?: WorkstationProfileClient;
+  private profileSyncAt = new Map<string, number>();
   readonly store: SessionStore;
   /** 会话全文索引（Tandem + 外部会话），落盘 ~/.tandem/index/search.json。 */
   readonly searchIndex: SearchIndex;
@@ -362,6 +368,11 @@ export class Host {
       for (const id of Object.keys(revoked)) this.hub.disconnectMember(id);
     };
     this.accounts.start();
+    // 已加入工作站：模型账号改为账号级（Key 在工作站），主机只保存同步下来的元数据与掩码。
+    if (this.accounts.mode() === 'member') {
+      this.mirrorProfiles = true;
+      this.profiles = new ProfileStore(home, { file: 'workstation-profiles.json', mirror: true });
+    }
     // 启动时连接已启用的 MCP 服务器；失败只记录状态，不影响 Host 启动
     this.mcp.start();
     // 外部会话目录有变化时通知客户端刷新侧栏（30s 定时扫描）
@@ -508,6 +519,76 @@ export class Host {
 
   keyCandidates(profileId: string, groupId?: string): { group?: StoredProfileGroup; effective?: StoredProfile; candidates: Array<{ keyId?: string; label?: string; profile: StoredProfile }>; } {
     return keyCandidates(this, profileId, groupId);
+  }
+
+  /** 刚加入工作站：立即把本机模型账号切到账号级镜像（无需重启），并迁移旧数据。 */
+  async enableWorkstationProfiles(): Promise<void> {
+    if (!this.mirrorProfiles) {
+      this.mirrorProfiles = true;
+      this.profileClient = undefined;
+      this.profiles = new ProfileStore(this.home, { file: 'workstation-profiles.json', mirror: true });
+    }
+    const accountId = this.accounts.ownerAccountId();
+    if (!accountId) return;
+    const { migrateHostProfiles } = await import('./workstation/migrate.js');
+    await migrateHostProfiles(this).catch((err: unknown) => {
+      console.warn('[tandem] 迁移本机模型账号到工作站失败，下次启动重试:', (err as Error).message);
+    });
+    await this.syncWorkstationProfiles(accountId, true).catch(() => undefined);
+  }
+
+  /** 工作站账号级模型账号客户端；本地模式或未加入工作站时为 undefined。 */
+  workstationProfiles(): WorkstationProfileClient | undefined {
+    if (!this.mirrorProfiles) return undefined;
+    if (this.profileClient) return this.profileClient;
+    const join = this.accounts.workstationJoin();
+    const identity = this.accounts.hostIdentity();
+    if (!join || !identity) return undefined;
+    this.profileClient = new WorkstationProfileClient({
+      home: this.home,
+      hostId: this.config.hostId,
+      hostName: os.hostname(),
+      baseUrl: join.url,
+      hostKey: identity.hostKey,
+    });
+    return this.profileClient;
+  }
+
+  /** 同步该账号的账号级模型账号元数据（Key 只在工作站）；15 秒内不重复拉取。 */
+  async syncWorkstationProfiles(accountId: string, force = false): Promise<void> {
+    const client = this.workstationProfiles();
+    if (!client || !accountId) return;
+    const last = this.profileSyncAt.get(accountId) ?? 0;
+    if (!force && Date.now() - last < 15_000) return;
+    this.profileSyncAt.set(accountId, Date.now());
+    try {
+      const snapshot = await client.snapshot(accountId);
+      this.profiles.applyPublicProfiles(accountId, snapshot.profiles);
+    } catch (err) {
+      this.profileSyncAt.delete(accountId);
+      throw err;
+    }
+  }
+
+  /** 会话模型请求归属的工作站账号；共享主机时用发起人的账号，缺省回落到主机主人。 */
+  accountIdForSession(rec: { workspaceAccountId?: string }): string | undefined {
+    return rec.workspaceAccountId ?? this.accounts.ownerAccountId();
+  }
+
+  /** 账号级模型账号的代理执行器；普通本机账号返回 undefined（直接调 provider）。 */
+  profileProxyFor(rec: { workspaceAccountId?: string }): ProxyRunner | undefined {
+    if (!this.mirrorProfiles) return undefined;
+    const client = this.workstationProfiles();
+    const accountId = this.accountIdForSession(rec);
+    if (!client || !accountId) {
+      console.warn(
+        `[tandem] 账号级模型账号缺少代理：client=${!!client} accountId=${accountId ?? ''} mirror=${this.mirrorProfiles}`,
+      );
+      return undefined;
+    }
+    return {
+      run: (body, emit, signal) => client.runProxy(accountId, body, emit, signal),
+    };
   }
 
   markKeySuccess(profileId: string, groupId: string | undefined, keyId?: string): void {

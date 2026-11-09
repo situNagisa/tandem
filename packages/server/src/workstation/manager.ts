@@ -22,6 +22,11 @@ export function embeddedStatus(home: string): { running: boolean; urls: string[]
   return found ? { running: true, urls: found.urls, port: found.port } : { running: false, urls: [] };
 }
 
+/** 个人模式：工作站与主机在同一进程时走进程内直连（模型请求不经网络）。 */
+export function embeddedWorkstation(home: string): WorkstationHandle | undefined {
+  return embedded.get(path.resolve(home))?.handle;
+}
+
 /** 启动内嵌工作站；端口从 8481 起，被占用则顺延。可重复调用。 */
 export async function startEmbeddedWorkstation(
   home: string,

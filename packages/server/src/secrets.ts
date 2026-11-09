@@ -99,7 +99,7 @@ function publicMeta(secret: StoredSecret): SecretMeta {
 }
 
 /** AES-GCM 密钥：Host 首次使用时生成，与密文分开存放（均 600）。 */
-function loadKey(file: string): Buffer {
+export function loadKey(file: string): Buffer {
   try {
     if (existsSync(file)) {
       const decoded = Buffer.from(readFileSync(file, 'utf8').trim(), 'base64');
@@ -111,6 +111,19 @@ function loadKey(file: string): Buffer {
   const key = randomBytes(32);
   writePrivateFile(file, key.toString('base64'));
   return key;
+}
+
+export function encryptWithKey(key: Buffer, plain: string): string {
+  return encrypt(key, plain);
+}
+
+export function decryptWithKey(key: Buffer, value: string): string {
+  return decrypt(key, value);
+}
+
+/** 与 secrets.json / secrets.key 相同的 0600 原子写入。 */
+export function writeSecretFile(file: string, data: string): void {
+  writePrivateFile(file, data);
 }
 
 function encrypt(key: Buffer, plain: string): string {

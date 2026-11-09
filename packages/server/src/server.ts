@@ -180,7 +180,11 @@ export async function createApp(
       return { connected: !!workstationAgent, ...(join ? { url: join.url } : {}) };
     },
   };
-  app.addHook('onListen', async () => startWorkstationTunnel());
+  app.addHook('onListen', async () => {
+    startWorkstationTunnel();
+    // 账号级模型账号：同步工作站元数据并迁移旧的本机 profiles（幂等）。
+    if (host.accounts.mode() === 'member') void host.enableWorkstationProfiles();
+  });
   app.addHook('onClose', async () => stopWorkstationTunnel());
   extras.onWorkstationDeps?.(workstationDeps);
   const deps: RouteDeps = { host, sshHosts, workstation: workstationDeps, ...(extras.relay ? { relay: extras.relay } : {}) };

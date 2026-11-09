@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { AccountsStore } from '../accounts/store.js';
+import type { AccountProfileStore } from '../workstation/profiles.js';
 import { readJson, writePrivateFile } from '../config.js';
 
 export const DEBUG_ACCOUNT_USERNAME = 'debug';
@@ -45,12 +46,30 @@ function ensureTestAccount(
 }
 
 /** 工作站启动时调用：确保测试账号存在，并注册仅调试版存在的免密登录路由。 */
-export function ensureDebugWorkstation(store: AccountsStore, home: string, app: FastifyInstance): void {
+export function ensureDebugWorkstation(
+  store: AccountsStore,
+  home: string,
+  app: FastifyInstance,
+  profiles?: AccountProfileStore,
+): void {
   const mode = store.mode();
   if (mode !== 'none' && mode !== 'center') return;
   store.ensureWorkstationState('调试工作站');
   const credentials = ensureTestAccount(store, home);
   if (!credentials) return;
+  // 调试账号自带演示模型账号（演示 provider，不需要 Key）；主机侧只拿到元数据。
+  const account = store.listAccountSummaries(credentials.username).find((item) => item.username === credentials.username);
+  if (account && profiles) {
+    const accountProfiles = profiles.forAccount(account.id);
+    if (!accountProfiles.list().some((profile) => profile.kind === 'demo')) {
+      accountProfiles.create({
+        name: '演示账号',
+        kind: 'demo',
+        models: ['demo-model', 'demo-backup'],
+        defaultModel: 'demo-model',
+      });
+    }
+  }
   app.post('/api/debug/auto-login', async (req, reply) => {
     // 非回环来源一律当作不存在：不暴露这个调试接口。
     if (!isLoopbackAddress(req.socket.remoteAddress)) return reply.code(404).send({ error: 'Not Found' });

@@ -32,7 +32,15 @@ export interface Profile {
   price?: Record<string, { input: number; output: number }>; // 每百万 token 美元，按模型覆盖内置单价（覆盖后不再乘倍率）
   modelCapabilities?: Record<string, ModelCapabilities>; // 手动覆盖模型能力（思考强度/上下文）
   groups?: ProfileGroup[]; // 分组：同一账号（同一服务商/中转站）下多组 key，各自可用模型不同，如 "官方渠道"/"低价渠道"
+  /** 余额查询配置；缺省 auto（只识别已知平台）。 */
+  balanceQuery?: BalanceQueryConfig;
+  /** 最近一次余额查询结果（5 分钟缓存，由工作站用账号 Key 查询）。 */
+  balance?: ProfileBalance;
   createdAt: number;
+  /** 工作站模式：账号级模型账号所属的工作站账号 id。仅用于主机侧按账号隔离展示，不下发 key。 */
+  accountId?: string;
+  /** 数据来源：account = 工作站账号级（Key 加密保存在工作站）；缺省 = 主机本地账号（旧版）。 */
+  source?: 'account' | 'host';
 }
 /** provider 响应头里带回的限流额度；没有该头时缺省，不参与预估。 */
 export interface KeyQuota {
@@ -82,10 +90,41 @@ export interface ProfileGroup {
   fallbackGroupIds?: string[];
 }
 export interface ProfileGroupInput { id?: string; name: string; kind?: ProviderKind; apiKey?: string; /** 旧的单 Key 字段，等价于 apiKeys=[{apiKey}] */ apiKeys?: ProfileKeyInput[]; keyStrategy?: KeyStrategy; baseUrl?: string; models: string[]; defaultModel: string; multiplier?: number; modelCapabilities?: Record<string, ModelCapabilities>; fallbackGroupIds?: string[] }
+/** 余额查询平台：auto 按 baseUrl 识别已知平台；none 关闭；custom 用 url/path。 */
+export type BalancePlatform =
+  | 'auto'
+  | 'none'
+  | 'openai-billing'
+  | 'openai-credit-grants'
+  | 'new-api'
+  | 'deepseek'
+  | 'openrouter'
+  | 'moonshot'
+  | 'custom';
+export interface BalanceQueryConfig {
+  platform?: BalancePlatform;
+  /** custom：完整查询 URL。 */
+  url?: string;
+  /** custom：金额在响应 JSON 里的点路径，如 `data.balance`。 */
+  path?: string;
+  /** custom：币种，缺省从响应 currency 字段读取，再缺省 USD。 */
+  currency?: string;
+  /** 低于该金额标警告色（与余额同币种）。 */
+  threshold?: number;
+}
+export interface ProfileBalance {
+  platform: string;
+  /** 查询失败或响应无法解析时没有金额，界面显示「—」并用 error 作 tooltip。 */
+  amount?: number;
+  currency: string;
+  checkedAt: number;
+  error?: string;
+}
 export interface ProfileInput {
   name: string;
   kind: ProviderKind;
   baseUrl?: string;
+  balanceQuery?: BalanceQueryConfig;
   apiKey?: string;         // 更新时不传表示不改
   models: string[];
   defaultModel: string;
@@ -1281,6 +1320,8 @@ export interface WorkstationHostClaimResult {
   workspace: WorkspaceInfo;
   workstation: { url: string; publicKey: string; hostId: string };
   hostId: string;
+  /** 登记该主机的工作站账号；主机据此同步账号级模型账号，不接触 Key。 */
+  ownerAccountId?: string;
   h1?: string;
   snapshotVersion: number;
   syncToken: string;
@@ -1306,6 +1347,52 @@ export interface WorkstationInvite {
   code: string;
   expiresAt: number;
 }
+/** 账号级模型账号：Key 加密保存在工作站，主机只拿到掩码与元数据。 */
+export interface WorkspaceProfilesSnapshot {
+  accountId: string;
+  profiles: Profile[];
+  /** 最近一次从主机导入的统计（主机首次以账号身份连接时迁移旧数据）。 */
+  migration?: { imported: number; renamed: number; at: number };
+}
+/** 主机迁移用：保留原 id 与创建时间，Key 放在 groups[].apiKeys / apiKey 里。 */
+export interface WorkspaceProfileImportItem extends ProfileInput {
+  id?: string;
+  createdAt?: number;
+}
+/** 主机侧把旧的本机 profiles（含 Key）交给工作站，归入该主机所属账号。 */
+export interface WorkspaceProfileImportInput {
+  accountId: string;
+  hostName: string;
+  profiles: WorkspaceProfileImportItem[];
+}
+export interface WorkspaceProfileImportResult {
+  imported: number;
+  renamed: number;
+  profiles: Profile[];
+}
+/** 主机经隧道代理一次模型请求：只带 profileId/分组/模型与消息，不带 Key。 */
+export interface WorkspaceModelProxyInput {
+  accountId: string;
+  profileId: string;
+  groupId?: string;
+  model: string;
+  system: string;
+  messages: Message[];
+  tools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
+  maxTokens: number;
+  effort?: ReasoningEffort;
+  idleTimeoutSec?: number;
+}
+/** 工作站回到主机的流式事件（NDJSON，一行一个）。 */
+export type WorkspaceModelProxyEvent =
+  | { type: 'block_start'; index: number; block: ContentBlock }
+  | { type: 'text'; index: number; text: string }
+  | { type: 'tool_input'; index: number; partialJson: string }
+  | { type: 'rate_limit'; info: Record<string, unknown> }
+  | { type: 'effort_dropped' }
+  | { type: 'done'; usage: Usage; stopReason?: string; keyId?: string; costUsd?: number }
+  | { type: 'error'; message: string };
+
 // GET    /api/workstation/status                    -> WorkstationPublicStatus（公开）
 // POST   /api/workstation/setup {name,username,password} -> AccountLoginResult（仅未初始化时）
 // POST   /api/workstation/register {username,password,inviteCode?} -> AccountLoginResult（公开；开放/邀请注册）
@@ -1313,6 +1400,16 @@ export interface WorkstationInvite {
 // POST   /api/workstation/refresh {refreshToken}    -> AccountTokens（公开）
 // POST   /api/workstation/logout {refreshToken}     -> 204（公开）
 // GET    /api/workstation/me                        -> AccountMe（账号令牌）
+// GET    /api/workstation/profiles[?refresh=1]      -> WorkspaceProfilesSnapshot（账号令牌；账号级模型账号，Key 只回掩码；含 5 分钟缓存的余额，refresh=1 强制重查）
+// POST   /api/workstation/profiles ProfileInput     -> Profile（账号令牌）
+// PUT    /api/workstation/profiles/:id              -> Profile（账号令牌）
+// DELETE /api/workstation/profiles/:id              -> 204（账号令牌）
+// POST   /api/workstation/profiles/:id/test {groupId?,keyId?} -> { ok, error? }（账号令牌；在工作站用真实 Key 测试）
+// POST   /api/workstation/host/profiles/snapshot {accountId} -> WorkspaceProfilesSnapshot（主机签名；主机镜像元数据）
+// POST   /api/workstation/host/profiles/import {accountId,hostName,profiles} -> WorkspaceProfileImportResult（主机签名；迁移旧数据）
+// POST   /api/workstation/host/model-proxy WorkspaceModelProxyInput -> WorkspaceModelProxyEvent 的 NDJSON 流（主机签名）
+// POST   /api/workstation/host/models ListModelsInput -> { ok, models, error? }（主机签名；主机镜像账号的模型列表）
+// POST   /api/workstation/host/profile-test {profileId,groupId?,keyId?} -> { ok, error? }（主机签名）
 // GET    /api/workstation/hosts                     -> WorkspaceHostInfo[]（账号令牌；自己 + 获授权）
 // POST   /api/workstation/hosts/bind-code           -> WorkstationBindCode（账号令牌）
 // POST   /api/workstation/hosts/claim {code,host}   -> WorkstationHostClaimResult（公开；一次性绑定码）
@@ -1734,6 +1831,8 @@ export type BlockDelta =
 
 // ---------- REST 端点约定 ----------
 // GET    /api/host                    -> HostInfo
+// 工作站模式下 /api/profiles 保留一个版本做兼容：服务端转发到账号级存储（/api/workstation/profiles），
+// 主机只返回掩码与元数据；本地模式仍是主机自己的 profiles.json。
 // GET    /api/profiles                -> Profile[]
 // POST   /api/profiles  ProfileInput  -> Profile
 // PUT    /api/profiles/:id            -> Profile

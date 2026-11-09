@@ -182,8 +182,17 @@ export function registerWsRoutes(app: FastifyInstance, deps: RouteDeps): void {
             return;
           }
           const rec = host.getSession(msg.sessionId);
-          void host
-            .send(msg.sessionId, msg.content, msg.routeMode)
+          if (rec && principal.kind === 'account' && rec.workspaceAccountId !== principal.id) {
+            rec.workspaceAccountId = principal.id;
+            host.store.saveNow(rec.id);
+          }
+          void (async () => {
+            // 账号级模型账号：发送前同步该账号的元数据（15s 内不重复请求）。
+            if (principal.kind === 'account') {
+              await host.syncWorkstationProfiles(principal.id).catch(() => undefined);
+            }
+            await host.send(msg.sessionId, msg.content, msg.routeMode);
+          })()
             .then(() => {
               recordAudit(host, principal, 'message.send', {
                 sessionId: msg.sessionId,

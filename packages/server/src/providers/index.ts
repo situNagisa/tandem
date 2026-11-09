@@ -2,6 +2,7 @@
 import type { StreamRequest, StreamResult } from './types.js';
 import { streamAnthropic, testAnthropic } from './anthropic.js';
 import { streamOpenAI, testOpenAI } from './openai.js';
+import { streamViaWorkstation } from './workstation.js';
 import type { StoredProfile } from '../types.js';
 import { IS_DEBUG_FLAVOR } from '../flavor.js';
 import { truncateEnd } from '../util/text.js';
@@ -12,6 +13,11 @@ export { listModels } from './models.js';
 export type { ListModelsResult } from './models.js';
 
 export async function streamChat(req: StreamRequest): Promise<StreamResult> {
+  // 账号级模型账号：主机没有 Key，一律交给工作站代理（个人模式走进程内直连）。
+  if (req.profile.proxied) {
+    if (!req.proxy) throw new Error('账号级模型账号需要通过工作站代理，但主机未连接工作站');
+    return streamViaWorkstation(req);
+  }
   switch (req.profile.kind) {
     case 'anthropic':
       return streamAnthropic(req);
