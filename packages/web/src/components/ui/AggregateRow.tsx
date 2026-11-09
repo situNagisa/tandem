@@ -47,7 +47,7 @@ export function AggregateRow({
           onClick={onOpen}
           disabled={!onOpen}
           data-testid="aggregate-open"
-          title={titleText}
+          data-tip={titleText}
           className="flex min-w-0 flex-1 items-start gap-2.5 rounded-lg px-2 py-2 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--t-focus-ring)] disabled:cursor-default"
         >
           <span
@@ -117,7 +117,7 @@ export function AggregateDetailRow({
       onClick={onOpen}
       disabled={!onOpen}
       data-testid={testId}
-      title={titleText}
+      data-tip={titleText}
       className="flex w-full items-start gap-2 rounded-md px-1 py-1 text-left text-[12px] transition-colors hover:bg-[var(--t-bg-hover)] focus-visible:bg-[var(--t-bg-hover)] focus-visible:outline-none disabled:cursor-default disabled:hover:bg-transparent"
     >
       <span className="mt-px shrink-0 text-text-tertiary">{icon}</span>

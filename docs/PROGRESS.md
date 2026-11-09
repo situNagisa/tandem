@@ -2,6 +2,14 @@
 
 > 更新：2026-11-10。只保留最近 3 轮；更早见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 65（2026-11-10）UI 第二批：按钮/卡片/空状态/设置行（打分卡 U1/U2/U4/U5-A）
+- [x] U1：`ui/Button` 收敛控件 32 / 图标 32 / 行内 24，补 pressed 与移动端 44px；手写按钮迁移 36 处，结构性 132 处显式标 `data-raw-button`。
+- [x] U2：新增 `ui/Card`（12px 圆角、16/18 内边距、无阴影），替换 57 处；删掉 `index.css` 设置页 10px/12-14 覆盖，右栏卡片同步 12px 无阴影。
+- [x] U4：新增 `ui/EmptyState`（虚线框、20px 内边距、30px 图标、13/12 两级文字），替换 30 处；删除 `.settings-empty` 系列 CSS，「先添加一台主机」原文保留。
+- [x] U5：19 个设置页改用 `SettingRow`/`SettingNote`，说明收进 ⓘ 或下方说明；文案、设置项、顺序不变。
+- [x] 检查：`font-size-floor` 覆盖 `ui/` 全部组件；`ui-audit` 不再跳过 `ui/`，新增 `card-class`/`native-button`；`Controls` 原生 title 改 `data-tip`。
+- 验证：`node scripts/check.mjs --skip-smoke` 通过（regression 168/168）。
+
 ## 迭代 64（2026-11-10）文档治理：原则与检查分离
 - [x] `design.md` 403→88 行：只留 P01–P22 原则（规则+为什么+覆盖范围）与色板/字号/术语表；单点 UI 决定移出，末尾只留 4 条无法自动检查的决定。
 - [x] `feedback-ledger.md` 194→65 行：59 个根因各一行（编号 | 根因 | 次数 | 防线位置），删除逐次修复流水。
@@ -20,8 +28,3 @@
 - [x] 反馈14#08 R60：账号级余额查询（工作站用 Key，5 分钟缓存，设置/模型菜单显示）。
 - 验证：单测 account-profiles/balance；e2e workstation-check；全量 `check.mjs`；产物 0.4.6。
 
-## 迭代 62（2026-11-09）工作站安装：Windows 一行命令登记崩溃（R56 复发）
-- [x] `join` 失败路径不再 `process.exit`，只设 `process.exitCode`，避免 Windows + Node 26 硬退出撞 libuv 断言。
-- [x] `join` 比对 `/api/host` 的 hostId，不同数据目录自动换空闲端口；失败归因分崩溃/绑定码/连不上，写 `install.log` 并 UTF-8。
-- [x] Windows 登录自启改 `HKCU\…\CurrentVersion\Run`；`pack-host` 按平台裁剪原生模块并断言无混平台。
-- 验证：用户 Windows 11 + Node v26.4.0 实机跑通一行命令；乱填令牌退出码 1 并提示正确；单测覆盖三类错误分支。

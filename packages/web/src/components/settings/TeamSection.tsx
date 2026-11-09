@@ -34,8 +34,6 @@ import { Menu } from '../ui/Menu'
 import { Card } from '../ui/Card'
 import { SettingRow } from '../ui/SettingRow'
 
-import { Card } from '../ui/Card'
-import { SettingRow } from '../ui/SettingRow'
 const ROLE_LABEL: Record<MemberRole, string> = {
   observer: '观察者',
   approver: '审批者',

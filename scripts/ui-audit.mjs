@@ -148,7 +148,8 @@ async function checkSelectionCollapseHandlers(file, text) {
   }
 }
 
-const files = (await walk(SRC)).filter((file) => !file.startsWith(UI_DIR + '/'))
+const allFiles = await walk(SRC)
+const files = allFiles.filter((file) => !file.startsWith(UI_DIR + '/'))
 const issues = []
 // 菜单项必须是单行（用户第 5 轮反馈 #15/#16）：说明走 hint/Tooltip，
 // 额外操作放行尾。这里扫描 ui/ 以外的 JSX 菜单项块，禁止 flex-col / h-auto / 多行说明。
@@ -239,7 +240,7 @@ for (const name of ['Menu.tsx', 'Controls.tsx', 'Button.tsx', 'ListRow.tsx', 'Co
   }
 }
 
-for (const file of files) {
+for (const file of allFiles) {
   const text = await readFile(file, 'utf8')
   const lines = text.split('\n')
   for (let i = 0; i < lines.length; i += 1) {
@@ -325,7 +326,7 @@ for (const file of await walk(SRC)) {
 // 反馈9：原生 title 提示统一走 ui/Tooltip（data-tip）。DOM 小写标签上禁止直接写 title；
 // 组件 props（大写开头，如 Modal title）不算；iframe/abbr 的 title 是必要的无障碍名称。
 const NATIVE_TITLE_SKIP = new Set(['iframe', 'abbr', 'object', 'embed'])
-for (const file of files) {
+for (const file of allFiles) {
   const text = await readFile(file, 'utf8')
   const tagRe = /<([a-z][a-zA-Z0-9]*)\b/g
   let match
@@ -505,6 +506,63 @@ try {
   }
 } catch {
   // index.css 不存在时忽略
+}
+
+// 打分卡 U2-A：卡片统一走 ui/Card；ui/ 外不再手写卡片 class 组合。
+for (const file of files) {
+  const text = await readFile(file, 'utf8')
+  const lines = text.split('\n')
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]
+    if (line.includes('ui-audit-ignore')) continue
+    if (!line.includes('rounded-xl border border-border bg-surface')) continue
+    issues.push({
+      file: relative(ROOT, file),
+      line: i + 1,
+      check: 'card-class',
+      label: '手写卡片 class：统一用 ui/Card（12px 圆角、16/18 内边距、无阴影）',
+      text: line.trim().slice(0, 160),
+    })
+  }
+}
+
+// 打分卡 U1-A：按钮统一走 ui/Button 或 ui/IconButton；结构性按钮（整行可点、折叠区、
+// 选项卡、浮层标记）保留原生，但必须显式标 data-raw-button 说明是有意为之。
+for (const file of files) {
+  // lib/previewElement 生成的是给 iframe/预览用的 HTML 字符串，不是应用 UI。
+  if (file.endsWith('/lib/previewElement.ts')) continue
+  const text = await readFile(file, 'utf8')
+  const tagRe = /<button\b/g
+  let match
+  while ((match = tagRe.exec(text))) {
+    let i = tagRe.lastIndex
+    let depth = 0
+    let quote = null
+    for (; i < text.length; i += 1) {
+      const ch = text[i]
+      if (quote) {
+        if (ch === quote && text[i - 1] !== '\\') quote = null
+      } else if (ch === '"' || ch === "'") {
+        quote = ch
+      } else if (ch === '{') {
+        depth += 1
+      } else if (ch === '}') {
+        depth = Math.max(0, depth - 1)
+      } else if (ch === '>' && depth === 0) {
+        break
+      }
+    }
+    const span = text.slice(match.index, i + 1)
+    const line = text.slice(0, match.index).split('\n').length
+    if (span.includes('ui-audit-ignore') || span.includes('data-raw-button')) continue
+    issues.push({
+      file: relative(ROOT, file),
+      line,
+      check: 'native-button',
+      label: '手写 <button>：改用 ui/Button 或 ui/IconButton；结构性按钮保留时标 data-raw-button',
+      text: span.replace(/\s+/g, ' ').slice(0, 160),
+    })
+  }
 }
 
 if (json) {

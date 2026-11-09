@@ -5,7 +5,7 @@ import { portalLayer } from '../../lib/overlay'
 import { useFeedbackStore } from '../../store/useFeedbackStore'
 
 /** 弹层表面样式（尺寸、圆角、阴影、动画）唯一来源；自定义定位的 Rich Popover 也复用它。 */
-export const popoverSurfaceClass = 'popover-panel'
+export const popoverSurfaceClass = 'popover-panel' // ui-audit-ignore 原语实现（ui/ 内部）
 
 interface PopoverProps {
   trigger: (state: { open: boolean; toggle: () => void; close: () => void }) => ReactNode
@@ -17,7 +17,7 @@ interface PopoverProps {
   panelClassName?: string
   /**
    * 面板固定宽度（CSS 值）。宽度必须落在 Radix 的外层 Content 上：
-   * 内层 `.popover-panel` 的 `w-full` 在 auto 宽的外层里会退化成内容宽，
+   * 内层 `.popover-panel` 的 `w-full` 在 auto 宽的外层里会退化成内容宽， // ui-audit-ignore 原语实现（ui/ 内部）
    * 展开/折叠明细时整个弹层跟着变宽变窄（反馈16#06 / R49）。
    */
   panelWidth?: string | number
@@ -68,7 +68,7 @@ export function Popover({
       <RPopover.Portal>
         <RPopover.Content
           {...portalLayer('popover')}
-          role="menu"
+          role="menu" // ui-audit-ignore 弹层原语
           data-side={side}
           data-align={align}
           side={side}

@@ -8,10 +8,14 @@
  *
  * 用法：node scripts/decisions-check.mjs
  */
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
+const UI_DIR = 'packages/web/src/components/ui'
+const UI_FILES = readdirSync(path.join(ROOT, UI_DIR))
+  .filter((name) => name.endsWith('.tsx'))
+  .map((name) => `${UI_DIR}/${name}`)
 const read = (file) => {
   try {
     return readFileSync(path.join(ROOT, file), 'utf8')
@@ -49,6 +53,8 @@ const F = {
   overlay: 'packages/web/src/components/ui/OverlayScrollbar.tsx',
   settingRow: 'packages/web/src/components/ui/SettingRow.tsx',
   button: 'packages/web/src/components/ui/Button.tsx',
+  card: 'packages/web/src/components/ui/Card.tsx',
+  emptyState: 'packages/web/src/components/ui/EmptyState.tsx',
   graphView: 'packages/web/src/components/sessionGraph/SessionGraphView.tsx',
   graphCard: 'packages/web/src/components/sessionGraph/SessionGraphCard.tsx',
   graphLayout: 'packages/web/src/components/sessionGraph/layout.ts',
@@ -460,6 +466,28 @@ const DECISIONS = [
     files: [F.menu, F.button, F.settingRow],
     need: [/text-\[13px\]|font-size: 13px/, /text-\[12px\]|font-size: 12px/],
     deny: [/text-\[(?:9|10)px\]/, /font-size:\s*(?:9|10)px/],
+  },
+  {
+    id: 'ui-button-sizes',
+    source: '打分卡 U1-A（2026-11-10 产品决定）',
+    decision: '按钮收敛为控件 32 / 图标 32 / 行内 24，移动端起 44px 触控目标',
+    files: [F.button],
+    need: [/h-\[32px\]/, /size-\[32px\]/, /inline: 'h-6/, /max-md:min-h-11|max-md:size-11/, /active:bg-\[var\(--t-bg-active\)\]/],
+  },
+  {
+    id: 'ui-card',
+    source: '打分卡 U2-A（2026-11-10 产品决定）',
+    decision: '卡片统一 12px 圆角、16/18 内边距、无阴影，宽度由容器决定',
+    files: [F.card, F.settingRow],
+    need: [/rounded-xl/, /px-\[18px\] py-4/, /w-full min-w-0/, /SettingSection/],
+    deny: [/shadow-/],
+  },
+  {
+    id: 'ui-empty-state',
+    source: '打分卡 U4-A（2026-11-10 产品决定）',
+    decision: '空状态虚线框、20px 内边距、30px 图标、13/12 两级文字',
+    files: [F.emptyState],
+    need: [/data-empty-state/, /rounded-\[10px\] border border-dashed/, /size-\[30px\]/, /text-\[13px\]/, /text-\[12px\]/],
   },
   {
     id: 'tool-row-height',

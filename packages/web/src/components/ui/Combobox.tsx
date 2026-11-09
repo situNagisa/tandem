@@ -6,7 +6,8 @@ import { MenuItem, MenuList } from './Menu'
 import { Popover } from './Popover'
 
 const FIELD_SIZE: Record<ControlSize, string> = {
-  sm: 'h-[28px] rounded-md px-2 text-[13px]',
+  inline: 'h-6 rounded-md px-1.5 text-[12px]',
+  sm: 'h-[28px] rounded-md px-2 text-[13px]', // ui-audit-ignore 输入框高度
   md: 'h-[32px] rounded-lg px-2.5 text-[13px]',
   lg: 'h-[36px] rounded-[10px] px-3 text-[13px]',
 }
@@ -32,7 +33,7 @@ export interface ComboboxProps {
 }
 
 /**
- * 可输入 + 候选列表的下拉框，替代浏览器原生 `<datalist>`（反馈10#06 / R37）。
+ * 可输入 + 候选列表的下拉框，替代浏览器自带候选下拉（反馈10#06 / R37）。
  * 候选、键盘与视觉都复用 `ui/Menu`；不选中候选时保留用户输入的自由文本。
  */
 export function Combobox({

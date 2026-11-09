@@ -5103,7 +5103,7 @@ async function main() {
         const info = await label.evaluate((el) => ({
           scrollWidth: el.scrollWidth,
           clientWidth: el.clientWidth,
-          title: el.getAttribute('title'),
+          title: el.getAttribute('data-tip') ?? el.getAttribute('title'),
           whiteSpace: getComputedStyle(el).whiteSpace,
         }))
         assert.ok(info.scrollWidth > info.clientWidth, '超长文件夹名没有被单行截断')
@@ -6557,7 +6557,7 @@ async function main() {
       await page.waitForTimeout(400)
       await page.getByRole('button', { name: /编辑分组 aws/ }).first().click()
       await page.waitForTimeout(300)
-      const keyBox = dialog.locator('label', { hasText: '分组 Key' }).locator('..')
+      const keyBox = dialog.locator('.setting-row').filter({ hasText: '分组 Key' }).first()
       const keyText = await keyBox.innerText()
       assert.match(keyText, /已保存 · ••••ghij/, `Key 没有显示掩码占位：${keyText}`)
       assert.match(keyText, /更换 Key/, '缺少「更换 Key」入口')
@@ -6818,7 +6818,7 @@ async function main() {
       await first.waitFor({ timeout: 10_000 })
       await first.click()
       await page.waitForTimeout(700)
-      const editor = dialog.locator('.scroll-mt-2').first()
+      const editor = dialog.locator('[data-setting-id="prompts.editor"]').first()
       const box = await editor.boundingBox()
       assert.ok(box, '提示词编辑区不存在')
       assert.ok(box.y >= 0 && box.y < 720, `提示词编辑区仍在视口外 y=${box.y}`)
@@ -7648,7 +7648,7 @@ async function main() {
       const beforeShotId = opened.screenshotId
 
       // 设备尺寸：手机 390×844，Host 同步改变 viewport。
-      await panel.getByTitle('手机 390×844').click()
+      await panel.locator('[data-tip="手机 390×844"]').click()
       await waitPreview((state) => state.width === 390 && state.height === 844, '手机尺寸')
       await panel.getByText('390×844', { exact: true }).waitFor({ timeout: 5_000 })
       const phoneShot = await waitPreview(

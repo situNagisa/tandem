@@ -13,7 +13,8 @@ import type { ControlSize } from './Button'
 import { MenuSelect } from './Menu'
 
 const FIELD_SIZE: Record<ControlSize, string> = {
-  sm: 'h-[28px] rounded-md px-2 text-[13px]',
+  inline: 'h-6 rounded-md px-1.5 text-[12px]',
+  sm: 'h-[28px] rounded-md px-2 text-[13px]', // ui-audit-ignore 输入框高度
   md: 'h-[32px] rounded-lg px-2.5 text-[13px]',
   lg: 'h-[36px] rounded-[10px] px-3 text-[13px]',
 }
@@ -144,7 +145,7 @@ export function SegmentedControl<T extends string>({
   disabled,
   'aria-label': ariaLabel,
 }: SegmentedControlProps<T>) {
-  const item = size === 'sm' ? 'h-[24px] px-2 text-[12px]' : 'h-[28px] px-2.5 text-[13px]'
+  const item = size === 'sm' ? 'h-[24px] px-2 text-[12px]' : 'h-[28px] px-2.5 text-[13px]' // ui-audit-ignore 分段控件高度
   return (
     <div
       role="group"
@@ -161,7 +162,7 @@ export function SegmentedControl<T extends string>({
           <button
             key={option.value}
             type="button"
-            title={option.title}
+            data-tip={option.title}
             aria-pressed={selected}
             disabled={disabled || option.disabled}
             onClick={() => onChange(option.value)}

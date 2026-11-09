@@ -6,7 +6,7 @@ import { Tip } from './Tooltip'
 export type ListRowSize = 'sm' | 'md'
 
 const SIZE: Record<ListRowSize, string> = {
-  sm: 'min-h-[28px] px-1.5 py-0.5 text-[13px]',
+  sm: 'min-h-[28px] px-1.5 py-0 text-[13px]', // ui-audit-ignore 紧凑列表行高度
   md: 'min-h-[32px] px-2 py-1 text-[13.5px]',
 }
 
@@ -39,7 +39,7 @@ function ListRowTitle({ title, fallback }: { title: ReactNode; fallback?: boolea
     <span
       ref={ref}
       className="min-w-0 truncate"
-      title={
+      data-tip={
         !fallback && overflow && (typeof title === 'string' || typeof title === 'number')
           ? String(title)
           : undefined

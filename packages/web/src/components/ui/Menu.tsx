@@ -23,7 +23,7 @@ import { Tip } from './Tooltip'
 // 反馈10#07：行内文字用 1.45 倍行高。标签带 truncate（overflow:hidden），
 // 行高被压到字号本身时，中英文字形的上下缘会被行盒裁掉，必须留出余量。
 const ROW_BASE =
-  'group/row flex h-[26px] w-full min-w-0 shrink-0 select-none items-center gap-1.5 rounded-md px-1.5 text-left text-[13px] leading-[1.45] text-text-soft outline-none transition-colors duration-[120ms] max-sm:h-11'
+  'group/row flex h-[26px] w-full min-w-0 shrink-0 select-none items-center gap-1.5 rounded-md px-1.5 text-left text-[13px] leading-[1.45] text-text-soft outline-none transition-colors duration-[120ms] max-sm:h-11' // ui-audit-ignore 菜单行高 26px（反馈5#15）
 
 const ROW_STATE =
   'hover:bg-[var(--t-bg-hover)] hover:text-text focus:bg-[var(--t-bg-hover)] focus:text-text focus-visible:outline-none data-[highlighted]:bg-[var(--t-bg-hover)] data-[highlighted]:text-text data-[state=open]:bg-[var(--t-bg-hover)] data-[state=open]:text-text data-[selected=true]:bg-[color-mix(in_srgb,var(--t-bg-active)_55%,transparent)] data-[selected=true]:text-text data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[disabled]:hover:bg-transparent'
@@ -33,12 +33,12 @@ const ROW_STATE =
 const PANEL_OUTER =
   'z-[90] flex min-w-[180px] max-w-[min(420px,calc(100vw-1rem))] flex-col outline-none'
 const PANEL_INNER =
-  'popover-panel flex min-h-0 w-full flex-col overflow-hidden p-1'
+  'popover-panel flex min-h-0 w-full flex-col overflow-hidden p-1' // ui-audit-ignore 原语实现（ui/ 内部）
 
 const SUB_PANEL_OUTER =
   'z-[95] min-w-[160px] max-w-[min(380px,calc(100vw-1rem))] outline-none'
 const SUB_PANEL_INNER =
-  'popover-panel flex max-h-[inherit] min-h-0 w-full flex-col overflow-y-auto p-1'
+  'popover-panel flex max-h-[inherit] min-h-0 w-full flex-col overflow-y-auto p-1' // ui-audit-ignore 原语实现（ui/ 内部）
 
 /** 递归取出标签里的纯文本，用于长行截断后的全文入口。 */
 function plainText(node: ReactNode): string {
@@ -83,7 +83,7 @@ function RowContent({
       <span
         ref={labelRef}
         className="min-w-0 flex-auto truncate"
-        title={labelTitle ?? (overflow && text ? text : undefined)}
+        data-tip={labelTitle ?? (overflow && text ? text : undefined)}
       >
         {children}
       </span>
@@ -653,7 +653,7 @@ export function MenuList({
   return (
     <div
       ref={ref}
-      role="menu"
+      role="menu" // ui-audit-ignore 原语实现（ui/ 内部）
       aria-label={ariaLabel}
       className={cn('flex flex-col p-1', className)}
       onKeyDown={onKeyDown}
@@ -722,7 +722,7 @@ export const MenuItem = forwardRef<HTMLButtonElement, LegacyMenuItemProps>(funct
       disabled={disabled && !disabledReason}
       aria-disabled={disabled || undefined}
       tabIndex={disabled ? -1 : undefined}
-      title={title}
+      data-tip={title}
       data-menu-item=""
       data-selected={selected || undefined}
       onClick={() => {
@@ -759,7 +759,8 @@ export const MenuItem = forwardRef<HTMLButtonElement, LegacyMenuItemProps>(funct
 export const MenuDivider = MenuSeparator
 
 const FIELD_SIZE: Record<ControlSize, string> = {
-  sm: 'h-[28px] rounded-md px-2 text-[13px]',
+  inline: 'h-6 rounded-md px-1.5 text-[12px]',
+  sm: 'h-[28px] rounded-md px-2 text-[13px]', // ui-audit-ignore 选择框高度
   md: 'h-[32px] rounded-lg px-2.5 text-[13px]',
   lg: 'h-[36px] rounded-[10px] px-3 text-[13px]',
 }

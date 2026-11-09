@@ -12,7 +12,6 @@ import { SettingNote, SettingRow } from '../ui/SettingRow'
 import { navigate } from '../../lib/router'
 import { Card } from '../ui/Card'
 
-import { Card } from '../ui/Card'
 const THEMES: Array<{ id: Theme; label: string; desc: string; icon: typeof Sun }> = [
   { id: 'light', label: '浅色', desc: '暖白纸面，白天更清爽', icon: Sun },
   { id: 'dark', label: '深色', desc: '低亮度暖黑，夜间更舒适', icon: Moon },

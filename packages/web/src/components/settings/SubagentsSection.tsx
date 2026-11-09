@@ -24,7 +24,6 @@ import { Input, Select, Switch } from '../ui/Controls'
 import { Card } from '../ui/Card'
 
 const MODE_LABEL: Record<PermissionMode, string> = {
-import { Card } from '../ui/Card'
   default: '默认（按规则审批）',
   acceptEdits: '自动接受编辑',
   plan: '计划模式',
