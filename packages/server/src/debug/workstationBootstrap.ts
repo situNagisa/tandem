@@ -109,6 +109,7 @@ export function installDebugWorkstationBootstrap(
       try {
         const info = await startEmbeddedWorkstation(host.home, '127.0.0.1', host.version, preferredPort);
         workstation.start();
+        void host.enableWorkstationProfiles();
         const base = `http://127.0.0.1:${info.port}`;
         // 演示主机通常已登记，只需重建并恢复隧道；令牌只在它尚未登记时用到。
         const login = await debugLogin(base).catch(() => undefined);
@@ -137,6 +138,7 @@ export function installDebugWorkstationBootstrap(
         { accessToken: login.accessToken },
       );
       workstation.start();
+      void host.enableWorkstationProfiles();
       launchDemoHost(base, login.accessToken);
       console.log('[debug] 已登录调试账号，本机主机已自动添加');
     } catch (err) {

@@ -1,6 +1,6 @@
 // 工作站服务：账号注册/登录、主机登记、授权，以及主机出站隧道的转发。
 // 只转发端到端加密流量（/_e2e）；会话内容对工作站不可见。只在内网使用。
-import { createHash, createPublicKey, randomBytes, verify } from 'node:crypto';
+import { createHash, createPublicKey, randomBytes, randomUUID, verify } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createReadStream, existsSync, statSync } from 'node:fs';
@@ -24,7 +24,15 @@ import {
   type TunnelHello,
 } from '@tandem/relay/wire';
 import type {
+  ListModelsInput,
+  Profile,
+  ProfileInput,
   WorkspaceHostInfo,
+  WorkspaceModelProxyEvent,
+  WorkspaceModelProxyInput,
+  WorkspaceProfileImportItem,
+  WorkspaceProfileImportResult,
+  WorkspaceProfilesSnapshot,
   WorkstationHostClaimInput,
   WorkstationHostClaimResult,
   WorkstationGrantInput,
@@ -33,9 +41,18 @@ import type {
   WorkspaceAccount,
 } from '@tandem/protocol';
 import { AccountsStore } from '../accounts/store.js';
-import { readJson } from '../config.js';
+import { effectiveProfile, readJson } from '../config.js';
 import { IS_DEBUG_FLAVOR } from '../flavor.js';
+import { groupUnavailableError, orderedAvailableKeys, profileWithKey } from '../key-rotation.js';
+import { listModels as fetchModelList, testProfile as testProviderProfile } from '../providers/index.js';
+import { truncateEnd } from '../util/text.js';
+import type { StoredProfile, StoredProfileGroup } from '../types.js';
 import { buildUnixInstallScript, buildWindowsInstallScript } from './installScripts.js';
+import { AccountProfileStore } from './profiles.js';
+import { streamAccountModel, WorkstationUsageStore } from './modelProxy.js';
+import { verifyHostRequest } from './hostAuth.js';
+import { BalanceService } from './balance.js';
+import { parseProfileInput } from '../routes/profiles.js';
 
 const MAX_FRAME = 40 * 1024 * 1024;
 const HELLO_TIMEOUT_MS = 10_000;
@@ -51,9 +68,23 @@ export interface WorkstationOptions {
   version?: string;
 }
 
+export interface WorkstationModelService {
+  stream: (input: WorkspaceModelProxyInput, emit: (event: WorkspaceModelProxyEvent) => void, signal: AbortSignal, hostId?: string) => Promise<void>;
+  listModels: (accountId: string, input: ListModelsInput) => Promise<Awaited<ReturnType<typeof fetchModelList>>>;
+  testProfile: (accountId: string, profileId: string, groupId?: string, keyId?: string) => Promise<{ ok: boolean; error?: string }>;
+}
+
 export interface WorkstationHandle {
   app: FastifyInstance;
   store: AccountsStore;
+  /** 账号级模型账号（加密存储）。 */
+  profiles: AccountProfileStore;
+  /** 按账号的模型用量记账。 */
+  usage: WorkstationUsageStore;
+  /** 账号余额查询（5 分钟缓存）。 */
+  balanceService: BalanceService;
+  /** 进程内直连入口（个人模式桌面端）。 */
+  modelService: WorkstationModelService;
   /** 启动监听并返回实际地址。 */
   listen: (port: number, host: string) => Promise<{ port: number; urls: string[] }>;
   close: () => Promise<void>;
@@ -77,6 +108,12 @@ const PUBLIC_PATHS = new Set([
   '/api/accounts/refresh',
   '/api/accounts/logout',
   '/api/accounts/workspace/snapshot',
+  // 主机签名接口：自己校验 Ed25519 签名，不使用账号令牌。
+  '/api/workstation/host/profiles/snapshot',
+  '/api/workstation/host/profiles/import',
+  '/api/workstation/host/model-proxy',
+  '/api/workstation/host/models',
+  '/api/workstation/host/profile-test',
 ]);
 
 function tokenOf(req: FastifyRequest): string {
@@ -157,6 +194,70 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
     ...(options.version ? { version: options.version } : {}),
     platform: process.platform,
   });
+  const profiles = new AccountProfileStore(options.home);
+  const usage = new WorkstationUsageStore(options.home);
+  const balances = new BalanceService();
+  const rotation = new Map<string, number>();
+
+  const profileKey = (
+    accountId: string,
+    profileId: string,
+    groupId?: string,
+    keyId?: string,
+  ): { profile: StoredProfile; group?: StoredProfileGroup; keyId?: string } | undefined => {
+    const stored = profiles.get(accountId, profileId);
+    if (!stored) return undefined;
+    const group = groupId ? stored.groups?.find((item) => item.id === groupId) : undefined;
+    if (groupId && !group) return undefined;
+    const effective = effectiveProfile(stored, groupId);
+    const candidates = group?.keys?.length ? orderedAvailableKeys(group.keys, group.keyStrategy) : [];
+    const key = keyId
+      ? group?.keys?.find((item) => item.id === keyId)
+      : candidates[0] ?? (keyId ? undefined : group?.keys?.[0]);
+    if (keyId && !key) return undefined;
+    if (group && (group.keys?.length ?? 0) > 0 && !key) return { profile: effective, group, keyId: '' };
+    return {
+      profile: key ? profileWithKey(effective, key) : effective,
+      ...(group ? { group } : {}),
+      ...(key ? { keyId: key.id } : {}),
+    };
+  };
+
+  const modelService: WorkstationModelService = {
+    stream: (input, emit, signal, hostId) =>
+      streamAccountModel(
+        { profiles, usage, accountId: input.accountId, hostId: hostId ?? 'embedded', rotation },
+        input,
+        emit,
+        signal,
+      ),
+    listModels: async (accountId, input) => {
+      const profile = input.profileId ? profiles.get(accountId, input.profileId) : undefined;
+      const group = input.groupId ? profile?.groups?.find((item) => item.id === input.groupId) : undefined;
+      const effective = profile ? effectiveProfile(profile, input.groupId) : undefined;
+      const key = group?.keys?.length ? orderedAvailableKeys(group.keys, group.keyStrategy)[0] : undefined;
+      const callProfile = effective && key ? profileWithKey(effective, key) : effective;
+      return fetchModelList(
+        { ...input, ...(callProfile?.apiKey ? { apiKey: callProfile.apiKey } : {}) },
+        callProfile,
+      );
+    },
+    testProfile: async (accountId, profileId, groupId, keyId) => {
+      const resolved = profileKey(accountId, profileId, groupId, keyId);
+      if (!resolved) return { ok: false, error: '账号或 Key 不存在' };
+      if (resolved.group && (resolved.group.keys?.length ?? 0) > 0 && !resolved.keyId) {
+        return { ok: false, error: groupUnavailableError(resolved.group, new Map()) || '分组没有可用 Key' };
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20_000);
+      try {
+        return await testProviderProfile(resolved.profile, controller.signal);
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  };
+
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 * 1024 });
   // 调试版：自动创建本地测试账号并挂上仅回环可用的免密登录；发布构建不会加载这个模块。
   // 回归/联调用 TANDEM_DEBUG_ACCOUNT=0 模拟发布语义（只影响 debug 构建）。
@@ -164,7 +265,7 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
     IS_DEBUG_FLAVOR && process.env.TANDEM_DEBUG_ACCOUNT !== '0';
   const debugReady = debugAccountEnabled
     ? import('../debug/workstationService.js')
-        .then((mod) => mod.ensureDebugWorkstation(store, options.home, app))
+        .then((mod) => mod.ensureDebugWorkstation(store, options.home, app, profiles))
         .catch((err: unknown) => {
           console.warn('[workstation] 调试初始化失败:', (err as Error).message);
         })
@@ -337,6 +438,7 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
       workspace: store.status().workspace!,
       workstation: { url, publicKey: store.workstationPublicKey()!, hostId },
       hostId: host.id,
+      ...(host.ownerId ? { ownerAccountId: host.ownerId } : {}),
       snapshotVersion: store.snapshotVersion(),
       syncToken: store.syncSecret() ?? '',
     };
@@ -466,6 +568,158 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
     return me;
   });
   app.get('/api/accounts/hosts', async (req) => store.hostsFor(tokenOf(req)));
+
+  // ---------- 账号级模型账号（Key 加密保存在工作站） ----------
+  const snapshotFor = async (accountId: string, refreshBalances = false): Promise<WorkspaceProfilesSnapshot> => {
+    const store = profiles.forAccount(accountId);
+    return {
+      accountId,
+      profiles: await balances.attach(accountId, store.list(), profiles.publicList(accountId), refreshBalances),
+    };
+  };
+
+  app.get('/api/workstation/profiles', async (req) => {
+    const query = req.query as Record<string, unknown>;
+    return snapshotFor(accountOf(req).account.id, query.refresh === '1' || query.refresh === 'true');
+  });
+
+  app.post('/api/workstation/profiles', async (req, reply) => {
+    try {
+      return profiles.create(accountOf(req).account.id, parseProfileInput(req.body));
+    } catch (err) {
+      return reply.code((err as { statusCode?: number }).statusCode ?? 400).send({ error: (err as Error).message });
+    }
+  });
+
+  app.put('/api/workstation/profiles/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const updated = profiles.update(accountOf(req).account.id, id, parseProfileInput(req.body));
+      return updated ?? reply.code(404).send({ error: '账号不存在' });
+    } catch (err) {
+      return reply.code((err as { statusCode?: number }).statusCode ?? 400).send({ error: (err as Error).message });
+    }
+  });
+
+  app.delete('/api/workstation/profiles/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!profiles.remove(accountOf(req).account.id, id)) return reply.code(404).send({ error: '账号不存在' });
+    return reply.code(204).send();
+  });
+
+  app.post('/api/workstation/profiles/:id/test', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { groupId?: unknown; keyId?: unknown };
+    const result = await modelService.testProfile(
+      accountOf(req).account.id,
+      id,
+      typeof body.groupId === 'string' ? body.groupId : undefined,
+      typeof body.keyId === 'string' ? body.keyId : undefined,
+    );
+    if (!result.ok && result.error === '账号或 Key 不存在') return reply.code(404).send({ error: result.error });
+    return result;
+  });
+
+  // 主机签名：同步账号元数据（不含 Key）、迁移旧数据、模型代理与模型列表/测试。
+  const signedBody = (body: unknown): Buffer => Buffer.from(JSON.stringify(body ?? {}));
+  const signed = (req: FastifyRequest, expectedAccountId?: string) => {
+    const body = req.body ?? {};
+    let verified: ReturnType<typeof verifyHostRequest>;
+    try {
+      verified = verifyHostRequest(store, req, signedBody(body));
+    } catch (err) {
+      console.warn('[workstation] 主机签名请求被拒:', (err as Error).message, req.raw.url);
+      throw err;
+    }
+    const declared = (body as { accountId?: unknown }).accountId;
+    if (typeof declared === 'string' && declared && declared !== verified.accountId) {
+      throw Object.assign(new Error('请求体的账号与签名不一致'), { statusCode: 403 });
+    }
+    if (expectedAccountId && verified.accountId !== expectedAccountId) {
+      throw Object.assign(new Error('账号不一致'), { statusCode: 403 });
+    }
+    return { ...verified, body };
+  };
+
+  app.post('/api/workstation/host/profiles/snapshot', async (req) => {
+    const { accountId } = signed(req);
+    return snapshotFor(accountId);
+  });
+
+  app.post('/api/workstation/host/profiles/import', async (req, reply) => {
+    const body = req.body as { accountId?: unknown; hostName?: unknown; profiles?: unknown };
+    const { accountId } = signed(req, typeof body.accountId === 'string' ? body.accountId : undefined);
+    const incoming = Array.isArray(body.profiles) ? (body.profiles as WorkspaceProfileImportItem[]) : [];
+    const stored: StoredProfile[] = [];
+    for (const item of incoming) {
+      if (!item || typeof item !== 'object' || !item.name || !item.kind) continue;
+      const profile = item as unknown as StoredProfile;
+      stored.push({
+        ...profile,
+        id: typeof profile.id === 'string' && profile.id ? profile.id : randomUUID(),
+        apiKey: typeof profile.apiKey === 'string' ? profile.apiKey : '',
+        models: Array.isArray(profile.models) ? profile.models : [],
+        defaultModel: profile.defaultModel || profile.models?.[0] || '',
+        createdAt: profile.createdAt || Date.now(),
+      });
+    }
+    const result = profiles.importStored(accountId, stored);
+    const out: WorkspaceProfileImportResult = { ...result, profiles: profiles.publicList(accountId) };
+    return out;
+  });
+
+  app.post('/api/workstation/host/models', async (req, reply) => {
+    const { accountId, body } = signed(req);
+    const input = body as Partial<ListModelsInput> & { profileId?: string; groupId?: string };
+    if (!input.profileId) return reply.code(400).send({ error: 'profileId 不能为空' });
+    const stored = profiles.get(accountId, input.profileId);
+    if (!stored) return reply.code(404).send({ error: '账号不存在' });
+    return modelService.listModels(accountId, input as ListModelsInput);
+  });
+
+  app.post('/api/workstation/host/profile-test', async (req, reply) => {
+    const { accountId, body } = signed(req);
+    const input = body as { profileId?: string; groupId?: string; keyId?: string };
+    if (!input.profileId) return reply.code(400).send({ error: 'profileId 不能为空' });
+    return modelService.testProfile(accountId, input.profileId, input.groupId, input.keyId);
+  });
+
+  app.post('/api/workstation/host/model-proxy', async (req, reply) => {
+    const { accountId, hostId: signedHostId, body } = signed(req);
+    const input = body as unknown as WorkspaceModelProxyInput;
+    if (!input.profileId || !input.model) {
+      return reply.code(400).send({ error: 'profileId 与 model 不能为空' });
+    }
+    const controller = new AbortController();
+    reply.hijack();
+    const res = reply.raw;
+    res.writeHead(200, {
+      'content-type': 'application/x-ndjson; charset=utf-8',
+      'cache-control': 'no-store',
+      connection: 'keep-alive',
+    });
+    const write = (event: WorkspaceModelProxyEvent) => {
+      if (!res.writableEnded) res.write(`${JSON.stringify(event)}\n`);
+    };
+    // 客户端（主机）断开或取消：中止上游请求并释放 Key 轮询占位。
+    // 注意不能用 req.raw 的 close：请求体读完就会触发，会把正常请求当成取消。
+    res.on('close', () => {
+      if (!res.writableEnded) controller.abort();
+    });
+    try {
+      await streamAccountModel(
+        { profiles, usage, accountId, hostId: signedHostId, rotation },
+        { ...input, accountId },
+        write,
+        controller.signal,
+      );
+    } catch (err) {
+      console.warn('[workstation] 模型代理失败:', (err as Error).message);
+      if (!controller.signal.aborted) write({ type: 'error', message: truncateEnd((err as Error).message, 800) });
+    } finally {
+      if (!res.writableEnded) res.end();
+    }
+  });
 
   // ---------- 隧道 ----------
   const parseClientUrl = (raw: string): { hostId: string; url: string } | null => {
@@ -608,6 +862,10 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
   return {
     app,
     store,
+    profiles,
+    usage,
+    modelService,
+    balanceService: balances,
     listen: async (port, host) => {
       await debugReady;
       await app.listen({ port, host });
@@ -616,6 +874,7 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
     },
     close: async () => {
       for (const tunnel of tunnels.values()) tunnel.socket.close(1001, '工作站关闭');
+      profiles.dispose();
       store.close();
       await app.close();
     },

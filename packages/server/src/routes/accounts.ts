@@ -169,6 +169,8 @@ export function registerAccountRoutes(app: FastifyInstance, deps: RouteDeps): vo
       code ? { code } : { accessToken: accessToken! },
     );
     deps.workstation?.start();
+    // 加入后立刻切到账号级模型账号，并把本机旧 profiles（含 Key）迁移到工作站。
+    void host.enableWorkstationProfiles();
     return status;
   });
 

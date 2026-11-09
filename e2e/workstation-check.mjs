@@ -14,8 +14,49 @@ const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
 const CLI = path.join(ROOT, 'packages/server/dist/cli.js')
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/** 递归读取目录下所有文本文件，用于断言主机本地没有 Key 明文。 */
+function assertNoTextInDir(dir, needles, label) {
+  const files = []
+  const walk = (current) => {
+    let entries = []
+    try {
+      entries = readdirSync(current, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const full = path.join(current, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else if (entry.isFile()) files.push(full)
+    }
+  }
+  walk(dir)
+  for (const file of files) {
+    let text = ''
+    try {
+      if (statSync(file).size > 5 * 1024 * 1024) continue
+      text = readFileSync(file, 'utf8')
+    } catch {
+      continue
+    }
+    for (const needle of needles) {
+      assert.equal(text.includes(needle), false, `${label}：${file} 不应包含 Key 明文`)
+    }
+  }
+}
+
 function mockProvider() {
+  const seenKeys = []
+  const balanceCalls = { count: 0 }
   const server = http.createServer(async (req, res) => {
+    const auth = String(req.headers.authorization ?? req.headers['x-api-key'] ?? '')
+    if (auth) seenKeys.push(auth.replace(/^Bearer\s+/i, ''))
+    if (req.url.endsWith('/balance')) {
+      balanceCalls.count += 1
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ balance: 3.5, currency: 'USD' }))
+      return
+    }
     if (req.url.endsWith('/models')) {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ data: [{ id: 'ws-model', object: 'model' }] }))
@@ -43,6 +84,8 @@ function mockProvider() {
     res.write('data: [DONE]\n\n')
     res.end()
   })
+  server.seenKeys = seenKeys
+  server.balanceCalls = balanceCalls
   return server
 }
 
@@ -414,18 +457,20 @@ export async function runWorkstationCheck(home) {
     })
     assert.equal(charlie.account.role, 'member', '邀请注册应为普通成员')
 
+    const aliceKey1 = `sk-ws-alice-${randomUUID()}`
+    const aliceKey2 = `sk-ws-alice2-${randomUUID()}`
     const hosts = [
-      { proc: h1, port: h1Port },
-      { proc: h2, port: h2Port },
+      { proc: h1, port: h1Port, key: aliceKey1 },
+      { proc: h2, port: h2Port, key: aliceKey2 },
     ]
-    for (const { proc } of hosts) {
+    for (const { proc, key } of hosts) {
       await json(`http://127.0.0.1:${proc === h1 ? h1Port : h2Port}`, '/api/profiles', {
         method: 'POST',
         body: JSON.stringify({
           name: 'Mock 账号',
           kind: 'openai-compatible',
           baseUrl: `http://127.0.0.1:${mockPort}/v1`,
-          apiKey: 'mock',
+          apiKey: key,
           models: ['ws-model'],
           defaultModel: 'ws-model',
         }),
@@ -442,14 +487,39 @@ export async function runWorkstationCheck(home) {
       return list.length === 2 && list.every((h) => h.online) ? list : null
     }, '两台主机经出站隧道上线')
 
+    // 账号级模型账号：主机连接时一次性把本地 profiles 搬到 alice 账号，然后删除本地文件；
+    // 同名同协议以工作站已有为准（h2 的重复账号被丢弃）。
+    const profiles = await waitFor(async () => {
+      const snapshot = await json(WS, '/api/workstation/profiles', {}, alice.accessToken)
+      return snapshot.profiles?.length === 1 ? snapshot : null
+    }, '旧 profiles 搬迁到账号级存储')
+    assert.equal(profiles.accountId, alice.account.id)
+    assert.equal(profiles.profiles[0].name, 'Mock 账号')
+    assert.ok(profiles.profiles.every((p) => p.apiKeyMasked.includes('****')), '账号设置只回掩码')
+    assert.equal(JSON.stringify(profiles).includes(aliceKey1), false, '账号设置不能回 Key 明文')
+    for (const { proc, key } of hosts) {
+      const home = path.join(proc === h1 ? path.join(base, 'h1') : path.join(base, 'h2'), '.tandem')
+      await waitFor(async () => !existsSync(path.join(home, 'profiles.json')), '主机本地 profiles 文件已删除')
+      assertNoTextInDir(home, [aliceKey1, aliceKey2, key], '主机本地文件')
+    }
+    // 旧的按主机账号 API 已删除：工作站模式下只认账号级 API。
+    const legacyProfiles = await fetch(`http://127.0.0.1:${h1Port}/api/profiles`, {
+      headers: { authorization: `Bearer ${alice.accessToken}` },
+    })
+    assert.equal(legacyProfiles.status, 410, '旧的按主机账号 API 应已删除')
+
     assert.deepEqual(await json(WS, '/api/workstation/hosts', {}, bob.accessToken), [], '新用户默认看不到别人的主机')
     const target = visible.find((h) => h.id === h2.hostId)
     await json(WS, `/api/workstation/hosts/${target.id}/grants`, {
       method: 'POST',
-      body: JSON.stringify({ accountId: bob.account.id, role: 'observer' }),
+      body: JSON.stringify({ accountId: bob.account.id, role: 'collaborator' }),
     }, alice.accessToken)
     const bobHosts = await json(WS, '/api/workstation/hosts', {}, bob.accessToken)
     assert.deepEqual(bobHosts.map((h) => h.id), [target.id], '授权后只应看到被授权的主机')
+    // 授权后刷新令牌：主机侧按新 perHost 声明放行。
+    const bobAccess = await json(WS, '/api/workstation/refresh', { method: 'POST', body: JSON.stringify({ refreshToken: bob.refreshToken }) })
+    bob.accessToken = bobAccess.accessToken
+    bob.refreshToken = bobAccess.refreshToken
 
     // 只连工作站端口：E2E 经工作站转发到 h1。
     const channel = new E2EChannel({
@@ -467,18 +537,109 @@ export async function runWorkstationCheck(home) {
       body: JSON.stringify({
         cwd: work,
         title: '工作站回归会话',
-        profileId: (await json(`http://127.0.0.1:${h1Port}`, '/api/profiles', {}, h1.token))[0].id,
+        profileId: profiles.profiles[0].id,
       }),
     })
     assert.equal(sessionRes.status, 201, '应能在 h1 新建会话')
     const session = await sessionRes.json()
+    const seen = []
     const reply = await new Promise((resolve, reject) => {
       const socket = channel.openWebSocket(`/ws?token=${encodeURIComponent(alice.accessToken)}`)
-      const timer = setTimeout(() => reject(new Error('未收到流式回复')), 30_000)
+      const timer = setTimeout(
+        () => reject(new Error(`未收到流式回复（收到 ${seen.join(',')}）\n--- h1 ---\n${h1.logs()}\n--- 工作站 ---\n${ws.logs()}`)),
+        30_000,
+      )
       socket.onopen = () => {
         socket.send(JSON.stringify({ type: 'subscribe', sessionId: session.id }))
         setTimeout(() => {
           socket.send(JSON.stringify({ type: 'send', sessionId: session.id, content: [{ type: 'text', text: '请回复' }] }))
+        }, 200)
+      }
+      socket.onmessage = (event) => {
+        if (typeof event.data !== 'string') return
+        const message = JSON.parse(event.data)
+        seen.push(message.type === 'turn_end' ? `turn_end(${JSON.stringify(message)})` : message.type)
+        if (message.type === 'message_end' && message.message?.role === 'assistant') {
+          const text = (message.message.content ?? []).filter((b) => b.type === 'text').map((b) => b.text).join('')
+          if (text.includes('工作站流式回复通过')) {
+            clearTimeout(timer)
+            socket.close()
+            resolve(text)
+          }
+        }
+        if (message.type === 'error') {
+          clearTimeout(timer)
+          reject(new Error(`发送失败：${message.message}`))
+        }
+        if (message.type === 'turn_end' && message.reason === 'error') {
+          clearTimeout(timer)
+          reject(new Error(`回合失败：${message.error}`))
+        }
+      }
+      socket.onerror = () => reject(new Error('加密 WebSocket 连接失败'))
+    })
+    assert.ok(reply.includes('工作站流式回复通过'), '应经工作站收到流式回复')
+    // 工作站按账号记账；主机本地任何文件都不含 Key 明文。
+    const usageFile = path.join(base, 'ws', 'model-usage.json')
+    const usageRows = JSON.parse(readFileSync(usageFile, 'utf8')).rows ?? []
+    assert.ok(
+      usageRows.some((row) => row.accountId === alice.account.id && row.hostId === h1.hostId && row.model === 'ws-model'),
+      '工作站应按账号和主机记账',
+    )
+    assert.ok(mock.seenKeys.includes(aliceKey1), '上游请求应使用工作站里的 alice Key')
+
+    // 共享主机：被授权人用自己的账号级模型账号（bob 的 Key），主机上仍没有明文 Key。
+    const bobKey = `sk-ws-bob-${randomUUID()}`
+    const bobProfile = await json(WS, '/api/workstation/profiles', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'Bob 账号',
+        kind: 'openai-compatible',
+        baseUrl: `http://127.0.0.1:${mockPort}/v1`,
+        apiKey: bobKey,
+        models: ['ws-model'],
+        defaultModel: 'ws-model',
+        balanceQuery: {
+          platform: 'custom',
+          url: `http://127.0.0.1:${mockPort}/balance`,
+          path: 'balance',
+          threshold: 5,
+        },
+      }),
+    }, bob.accessToken)
+    // 余额查询：工作站用 Key 查 mock 平台，5 分钟缓存；手动刷新强制重查。
+    const bobSnapshot = await json(WS, '/api/workstation/profiles', {}, bob.accessToken)
+    const bobBalance = bobSnapshot.profiles.find((p) => p.id === bobProfile.id)?.balance
+    assert.equal(bobBalance?.amount, 3.5, '应显示 mock 平台余额')
+    assert.equal(mock.balanceCalls.count, 1)
+    await json(WS, '/api/workstation/profiles', {}, bob.accessToken)
+    assert.equal(mock.balanceCalls.count, 1, '5 分钟内应复用缓存')
+    await json(WS, '/api/workstation/profiles?refresh=1', {}, bob.accessToken)
+    assert.equal(mock.balanceCalls.count, 2, '手动刷新应强制重查余额')
+    assert.deepEqual(
+      (await json(WS, '/api/workstation/profiles', {}, alice.accessToken)).profiles.some((p) => p.id === bobProfile.id),
+      false,
+      'alice 看不到 bob 的模型账号',
+    )
+    const h2Channel = new E2EChannel({
+      baseUrl: `${WS}/h/${h2.hostId}`,
+      fingerprint: visible.find((h) => h.id === h2.hostId).fingerprint,
+    })
+    const bobSessionRes = await h2Channel.fetch('/api/sessions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${bob.accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cwd: work, title: '共享主机会话', profileId: bobProfile.id }),
+    })
+    const bobSessionText = await bobSessionRes.text()
+    assert.equal(bobSessionRes.status, 201, `被授权人应能在共享主机建会话：${bobSessionText}`)
+    const bobSession = JSON.parse(bobSessionText)
+    const bobReply = await new Promise((resolve, reject) => {
+      const socket = h2Channel.openWebSocket(`/ws?token=${encodeURIComponent(bob.accessToken)}`)
+      const timer = setTimeout(() => reject(new Error(`bob 未收到流式回复\n${h2.logs()}`)), 30_000)
+      socket.onopen = () => {
+        socket.send(JSON.stringify({ type: 'subscribe', sessionId: bobSession.id }))
+        setTimeout(() => {
+          socket.send(JSON.stringify({ type: 'send', sessionId: bobSession.id, content: [{ type: 'text', text: '请回复' }] }))
         }, 200)
       }
       socket.onmessage = (event) => {
@@ -494,12 +655,14 @@ export async function runWorkstationCheck(home) {
         }
         if (message.type === 'turn_end' && message.reason === 'error') {
           clearTimeout(timer)
-          reject(new Error(`回合失败：${message.error}`))
+          reject(new Error(`bob 回合失败：${message.error}`))
         }
       }
-      socket.onerror = () => reject(new Error('加密 WebSocket 连接失败'))
+      socket.onerror = () => reject(new Error('bob 加密 WebSocket 连接失败'))
     })
-    assert.ok(reply.includes('工作站流式回复通过'), '应经工作站收到流式回复')
+    assert.ok(bobReply.includes('工作站流式回复通过'), '被授权人应经工作站代理拿到回复')
+    assert.ok(mock.seenKeys.includes(bobKey), '共享主机上的请求应使用 bob 自己的 Key')
+    assertNoTextInDir(path.join(base, 'h2', '.tandem'), [bobKey], '共享主机本地文件')
 
     // 撤销授权：旧令牌立即失效（主机快照 invalidBefore），刷新后看到空列表。
     await json(WS, `/api/workstation/hosts/${target.id}/grants/${bob.account.id}`, { method: 'DELETE' }, alice.accessToken)

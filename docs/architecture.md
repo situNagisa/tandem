@@ -128,6 +128,28 @@ Web/Desktop/Android
 客户端 store ── 按 session seq 应用事件；断线带 sinceSeq 重放，不足则用 snapshot
 ```
 
+工作站模式下模型账号是账号级，主机不持有 Key：
+
+```mermaid
+sequenceDiagram
+  participant C as 客户端（工作站账号令牌）
+  participant W as 工作站服务
+  participant H as 主机（agent / provider 代理）
+  participant U as 上游 provider
+
+  C->>W: 登录 / GET /api/workstation/profiles（只回掩码）
+  C->>H: 新建会话 + 发消息（经工作站 E2E 隧道）
+  H->>W: POST /api/workstation/host/model-proxy（登记私钥签名，带 accountId/profileId/消息）
+  W->>W: 校验签名、账号对主机的访问权、profile 归属；选 Key
+  W->>U: 用账号 Key 发起流式请求
+  U-->>W: SSE
+  W-->>H: NDJSON 事件（block_start/text/tool_input/done/usage/costUsd）
+  W->>W: 按账号 + 主机记账（model-usage.json）
+  H-->>C: WS 会话事件（与本地 provider 相同）
+```
+
+- 个人模式（工作站内嵌、与主机同进程）走进程内直连，不经网络；存储与归属不变。
+- 旧主机首次以账号身份连接时，本地 `profiles.json` 一次性上传后删除；之后只有账号级存储。
 - REST 负责“请求-响应”（列表、设置、diff、导入导出）；WS 负责会话内实时事件与跨端同步。
 - 所有会话事件带每会话单调 `seq`；`Hub` 保留最近 2000 条，重连用 `subscribe {sinceSeq}`。
 - 持久化：会话 `store.ts`（防抖写盘）、运行意图 `run-state.ts`（原子写）、上传/导出按需。
@@ -155,6 +177,7 @@ Web/Desktop/Android
 | 加一个 REST 接口 | 先在 `protocol` 注释/types 定义；`server/src/server.ts` 加路由（后续放 `routes/`）；`web/src/lib/api.ts` 加方法 |
 | 改团队共享/成员权限 | `server/src/team/*` + `routes/team.ts` + `routes/ws.ts`；前端 `settings/TeamSection.tsx`、`JoinTeamDialog.tsx`、`lib/inviteLink.ts`；安全说明 `docs/features/team.md` |
 | 改工作站/账号 | 协议 `Workspace*` / `Workstation*`；服务端 `src/accounts/store.ts`、`src/workstation/server.ts`、`routes/accounts.ts`、`server.ts` 的 token 解析；前端 `components/workstation/WorkstationOnboarding.tsx`、`WorkstationSection.tsx`、`components/accounts/LoginDialog.tsx`、`hostsSlice` 的 `workspaceLogin/applyWorkstationLogin/syncWorkstationHosts`；设计 `docs/workstation.md`，回归在 `e2e/regression.mjs`「工作站客户端-服务」 |
+| 改账号级模型账号 / 模型代理 | 协议 `Profile` / `WorkspaceProfilesSnapshot` / `WorkspaceModelProxy*`；工作站 `src/workstation/profiles.ts`（加密存储）、`modelProxy.ts`（流式代理+记账）、`hostAuth.ts`（主机签名）、`client.ts`（主机侧）、`migrate.ts`（一次性搬迁）；主机镜像 `host.ts` 的 `enableWorkstationProfiles/syncWorkstationProfiles/profileProxyFor`；provider 入口 `providers/workstation.ts`；前端 `ProfilesSection` + `KeysPanel` + `hostsSlice.refreshProfiles`；说明 `docs/features/model-accounts.md`；回归 `e2e/workstation-check.mjs` |
 | 加一个 WS 事件 | `protocol` 的 `ServerMsg/ClientMsg`；server 用 `Hub.broadcastSession/broadcastAll`；web `appStore/serverMessages.ts` 事件 switch + `ws.ts` 类型 |
 | 加一个设置页 | `web/src/lib/types.ts` 的 `SettingsTab`；`SettingsDialog.tsx` 的 `TABS` 与条件渲染；页面放 `components/settings/`；数据走 `api.ts`。设置项要进 `lib/settingsRegistry.ts` 并给容器加 `data-setting-id`，命令面板/设置搜索才能定位 |
 | 加一个命令/快捷键 | `web/src/lib/commands.ts` 的 `COMMANDS`（id、标题、关键词、默认快捷键、run）；外观页快捷键表与全局监听自动读取，自定义存 localStorage |

@@ -113,7 +113,7 @@ export async function compactHistory(
   const selection = host.keyCandidates(rec.profileId, rec.groupId);
   const compactKey = selection.candidates[0];
   const profile = compactKey?.profile ?? host.profileFor(rec.profileId, rec.groupId);
-  if (!profile?.apiKey) {
+  if (!profile?.apiKey && !profile?.proxied) {
     throw new Error(host.keysUnavailableMessage(rec.profileId, rec.groupId) ?? '当前账号未配置 API Key');
   }
   if (!opts.model) throw new Error('当前账号没有配置模型');
@@ -138,6 +138,8 @@ export async function compactHistory(
   try {
     result = await streamChat({
       profile,
+      ...(rec.groupId ? { groupId: rec.groupId } : {}),
+      proxy: host.profileProxyFor(rec),
       model: opts.model,
       system,
       messages: [...compactInput, instruction],

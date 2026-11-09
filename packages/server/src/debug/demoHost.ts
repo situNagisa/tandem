@@ -81,6 +81,7 @@ export async function startDebugDemoHost(home: string, options: DemoHostOptions)
       );
     }
     tunnel?.start();
+    void demoHost.enableWorkstationProfiles();
     return { close };
   } catch (err) {
     await close();

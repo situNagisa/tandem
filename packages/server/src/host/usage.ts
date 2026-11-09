@@ -252,6 +252,15 @@ export function listModels(host: Host, input: ListModelsInput): Promise<ListMode
   const profile = input.profileId
     ? host.profileFor(input.profileId, input.groupId)
     : undefined;
+  // 账号级模型账号：主机的 Key 为空，模型列表也在工作站用真实 Key 拉取。
+  if (profile?.proxied) {
+    const client = host.workstationProfiles();
+    const accountId = profile.accountId ?? host.accounts.ownerAccountId();
+    if (!client || !accountId) {
+      return Promise.resolve({ ok: false, models: [], error: '主机未连接工作站' });
+    }
+    return client.listModels(accountId, input);
+  }
   return fetchModelList(input, profile);
 }
 
@@ -296,16 +305,13 @@ export async function modelCapabilities(host: Host, profileId: string,
 
   let info: ModelInfo = { id: model };
   try {
-    const result = await fetchModelList(
-      {
-        kind: profile.kind,
-        baseUrl: profile.baseUrl,
-        apiKey: profile.apiKey,
-        profileId,
-        groupId,
-      },
-      profile,
-    );
+    const result = await listModels(host, {
+      kind: profile.kind,
+      baseUrl: profile.baseUrl,
+      ...(profile.apiKey ? { apiKey: profile.apiKey } : {}),
+      profileId,
+      groupId,
+    });
     const found = result.ok ? result.models.find((m) => m.id === model) : undefined;
     if (found) info = { ...found };
   } catch {

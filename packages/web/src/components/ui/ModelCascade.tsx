@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Profile } from '@tandem/protocol'
 import { profileModelGroups, type ProfileModelGroup } from '../../lib/profileModels'
+import { formatCost } from '../../lib/format'
 import { Menu } from './Menu'
 
 export interface ModelPick {
@@ -110,7 +111,18 @@ export function ModelCascade({
     const count = groups.reduce((sum, group) => sum + group.models.length, 0)
     return (
       <Menu.Sub key={`a:${profile.id}`}>
-        <Menu.SubTrigger trailing={`${count} 个模型`}>{profile.name}</Menu.SubTrigger>
+        <Menu.SubTrigger
+          trailing={
+            profile.balance?.amount !== undefined
+              ? `${count} 个模型 · 余额 ${profile.balance.currency === 'USD' ? '$' : ''}${formatCost(profile.balance.amount)}`
+              : profile.balance?.error
+                ? `${count} 个模型 · 余额 —`
+                : `${count} 个模型`
+          }
+          hint={profile.balance?.error ? `余额查询失败：${profile.balance.error}` : undefined}
+        >
+          {profile.name}
+        </Menu.SubTrigger>
         <Menu.SubContent className="min-w-[220px]" aria-label={profile.name}>
           {groups.length === 0
             ? empty(`a:${profile.id}:empty`)

@@ -4,9 +4,9 @@ import type { ProfileGroupInput, ProfileInput, ProviderKind } from '@tandem/prot
 import { testProfile } from '../providers/index.js';
 import { truncateEnd } from '../util/text.js';
 import { PROVIDER_KINDS, bad, str, type RouteDeps } from './common.js';
-import { isOwner, principalOf, sanitizeProfilesForMember } from '../team/access.js';
+import { isOwner, sanitizeProfilesForMember } from '../team/access.js';
 
-function parseProfileInput(body: unknown): ProfileInput {
+export function parseProfileInput(body: unknown): ProfileInput {
   const raw = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
   const kind = str(raw.kind) as ProviderKind;
   if (!PROVIDER_KINDS.includes(kind)) throw new Error('provider 类型无效');
@@ -21,6 +21,9 @@ function parseProfileInput(body: unknown): ProfileInput {
     name,
     kind,
     baseUrl: str(raw.baseUrl) || undefined,
+    ...(raw.balanceQuery && typeof raw.balanceQuery === 'object'
+      ? { balanceQuery: raw.balanceQuery as NonNullable<ProfileInput['balanceQuery']> }
+      : {}),
     apiKey: typeof raw.apiKey === 'string' ? raw.apiKey : undefined,
     models,
     defaultModel,
@@ -83,10 +86,18 @@ function parseGroupInputs(value: unknown): ProfileGroupInput[] | undefined {
     .filter((group) => !!group.name);
 }
 
+/** 工作站模式下模型账号是账号级：旧的按主机 API 已删除，客户端直接访问 /api/workstation/profiles。 */
+function accountModeReply(host: RouteDeps['host'], reply: import('fastify').FastifyReply): boolean {
+  if (!host.mirrorProfiles) return false;
+  void reply.code(410).send({ error: '模型账号已改为工作站账号级，请使用 /api/workstation/profiles' });
+  return true;
+}
+
 export function registerProfileRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const { host } = deps;
 
-  app.get('/api/profiles', async (req) => {
+  app.get('/api/profiles', async (req, reply) => {
+    if (accountModeReply(host, reply)) return;
     const list = host.profiles
       .list()
       .filter((profile) => profile.kind !== 'demo')
@@ -95,6 +106,7 @@ export function registerProfileRoutes(app: FastifyInstance, deps: RouteDeps): vo
   });
 
   app.post('/api/profiles', async (req, reply) => {
+    if (accountModeReply(host, reply)) return;
     try {
       const input = parseProfileInput(req.body);
       return host.profiles.toPublic(host.profiles.create(input));
@@ -104,6 +116,7 @@ export function registerProfileRoutes(app: FastifyInstance, deps: RouteDeps): vo
   });
 
   app.put('/api/profiles/:id', async (req, reply) => {
+    if (accountModeReply(host, reply)) return;
     const { id } = req.params as { id: string };
     if (!host.profiles.get(id)) return bad(reply, '账号不存在', 404);
     try {
@@ -116,12 +129,14 @@ export function registerProfileRoutes(app: FastifyInstance, deps: RouteDeps): vo
   });
 
   app.delete('/api/profiles/:id', async (req, reply) => {
+    if (accountModeReply(host, reply)) return;
     const { id } = req.params as { id: string };
     if (!host.profiles.delete(id)) return bad(reply, '账号不存在', 404);
     return reply.code(204).send();
   });
 
   app.post('/api/profiles/:id/test', async (req, reply) => {
+    if (accountModeReply(host, reply)) return;
     const { id } = req.params as { id: string };
     const body = (req.body ?? {}) as { groupId?: unknown; keyId?: unknown };
     const groupId = str(body.groupId) || undefined;

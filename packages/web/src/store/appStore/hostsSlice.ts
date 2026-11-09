@@ -474,7 +474,11 @@ export function createHostsSlice(
       if (!rt || rt.profilesLoading) return
       deps.patchRuntime(hostId, { profilesLoading: true })
       try {
-        const profiles = await api.profiles(host)
+        // 工作站模式：账号与模型是账号级数据，只从工作站读取；所有主机共用同一份。
+        const account = get().account
+        const profiles = account
+          ? (await workstationApi.profiles(account.centerUrl, account.accessToken)).profiles
+          : await api.profiles(host)
         if (!getHost(hostId)) return
         deps.patchRuntime(hostId, {
           profiles,
@@ -483,6 +487,12 @@ export function createHostsSlice(
           authError: undefined,
           error: undefined,
         })
+        if (account) {
+          for (const other of get().hosts) {
+            if (other.id === hostId || other.mode !== 'relay' || other.relayUrl !== account.centerUrl) continue
+            deps.patchRuntime(other.id, { profiles, profilesLoaded: true, profilesLoading: false })
+          }
+        }
       } catch (err) {
         if (!getHost(hostId)) return
         const auth = err instanceof ApiError && (err.status === 401 || err.status === 403)

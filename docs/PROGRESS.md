@@ -2,6 +2,16 @@
 
 > 更新：2026-11-09。只保留最近 5 轮；更早记录见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 63（2026-11-09）模型账号/Key 归工作站账号（合并账号体系分支）
+- [x] R59（新）：模型账号/分组/Key/倍率/模型勾选改为工作站账号级，加密存 `workstation/profiles.json`（AES-256-GCM，密钥单独 0600）；设置页跨主机一致
+- [x] 主机签名模型代理：主机只发 profileId/模型/消息，工作站校验签名+账号对主机访问权+profile 归属，用账号 Key 调上游，NDJSON 流式回传；工作站按账号+主机记账；同组 Key failover/冷却在工作站
+- [x] 迁移按用户简化：主机连接时上传本地 profiles 后直接删本地文件，同名以工作站为准，不备份/标记/改名；旧按主机 API 删除（工作站模式 410）
+- [x] 共享主机用被授权人自己的模型账号；管理员只看掩码；调试账号自带 demo 模型账号；个人模式进程内直连
+- [x] 单测 `account-profiles.test.ts`（加密、鉴权、迁移后主机无 Key、流式/中断/记账）；e2e `workstation-check.mjs`（远端主机经代理、主机目录无 Key、bob 用自己的 Key、旧 API 410）
+- [x] 反馈14#08 R60：账号级余额查询（工作站用 Key，OpenRouter/DeepSeek/Moonshot/New API/OpenAI Billing + 自定义 URL/JSON 路径；5 分钟缓存、手动刷新；设置列表与模型菜单显示，失败「—」+ tooltip、低阈值警告）；单测 `balance.test.ts` + e2e mock 余额显示/缓存/刷新
+- 验证：`node scripts/check.mjs --skip-smoke` + `e2e/workstation-check.mjs` 全过（回归在 `check.mjs` 中一并跑）
+- 取舍：不做短期凭据下发；同名旧账号直接丢弃（用户明确单人测试期不需要兼容）
+
 ## 迭代 62（2026-11-09）工作站安装：Windows 一行命令登记崩溃（R56 复发，P0）
 - [x] 根因（用户实机 Windows 11 + Node v26.4.0 复现）：`join` 失败路径 `process.exit(1)`，带着 fetch keep-alive 连接硬退出撞 libuv 断言 `src\win\async.c:94` → 0xC0000409（退出码 -1073740791），真正的错误被盖成「登记失败」，脚本再误导成绑定码过期；改为只设 `process.exitCode`
 - [x] `join` 不再盲信 `127.0.0.1:7878` 上的任何 Tandem Host（桌面端内嵌 Host 也占 7878）：比对 `/api/host` 的 hostId，数据目录不同就自动改用空闲端口（7879…）并在输出里说明

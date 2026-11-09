@@ -264,7 +264,7 @@ export async function runTurn(
       const model = routed?.model || rec.model || profile.defaultModel;
       if (!model) throw new Error('当前账号没有配置模型');
       // 分组 Key 全部冷却/停用：交给交接流程（切换备用分组或等待重置），而不是直接失败
-      if (!selection.candidates.some((candidate) => candidate.profile.apiKey)) {
+      if (!profile.proxied && !selection.candidates.some((candidate) => candidate.profile.apiKey)) {
         if (handoffs < 3) {
           const outcome = await host.triggerHandoff(rec, 'ratelimit', abort.signal);
           handoffs += 1;
@@ -434,6 +434,8 @@ export async function runTurn(
                   try {
                     const attempt = await streamChat({
                       profile: candidate.profile,
+                      ...(requestGroupId ? { groupId: requestGroupId } : {}),
+                      proxy: host.profileProxyFor(rec),
                       onRateLimit: (info) =>
                         host.recordKeyQuota(requestProfileId, requestGroupId, candidate.keyId, info),
                       model,

@@ -160,13 +160,37 @@ const KINDS: ProviderKind[] = ['anthropic', 'openai', 'openai-compatible', 'gemi
 /** 持久化层允许 demo（内置演示账号），但设置页/API 不允许用户自建。 */
 const STORED_KINDS: ProviderKind[] = [...KINDS, 'demo'];
 
+/** 账号级 profiles 的持久化入口（工作站把每个账号的 ProfileStore 落到加密文件里）。 */
+export interface ProfileStorePersistence {
+  load(): { profiles?: StoredProfile[] } | undefined;
+  save(profiles: StoredProfile[]): void;
+}
+
+export interface ProfileStoreOptions {
+  /** 自定义文件名（默认 profiles.json）。 */
+  file?: string;
+  /** 主机镜像：只读工作站下发的元数据与掩码，Key 永不在本机。 */
+  mirror?: boolean;
+}
+
 export class ProfileStore {
   private file: string;
+  private persistence?: ProfileStorePersistence;
+  private readonly mirror: boolean;
   private profiles = new Map<string, StoredProfile>();
 
-  constructor(home = tandemHome()) {
-    this.file = path.join(home, 'profiles.json');
-    const data = readJson<{ profiles?: StoredProfile[] }>(this.file);
+  constructor(home: string | ProfileStorePersistence = tandemHome(), options: ProfileStoreOptions = {}) {
+    this.mirror = options.mirror === true;
+    const source: ProfileStorePersistence =
+      typeof home === 'string'
+        ? {
+            load: () => readJson<{ profiles?: StoredProfile[] }>(path.join(home, options.file ?? 'profiles.json')),
+            save: (items) => writePrivateFile(path.join(home, options.file ?? 'profiles.json'), JSON.stringify({ profiles: items }, null, 2)),
+          }
+        : home;
+    this.persistence = source;
+    this.file = typeof home === 'string' ? path.join(home, options.file ?? 'profiles.json') : '';
+    const data = source.load();
     for (const p of data?.profiles ?? []) {
       if (p && typeof p.id === 'string' && STORED_KINDS.includes(p.kind)) {
         const profile: StoredProfile = {
@@ -174,6 +198,7 @@ export class ProfileStore {
           apiKey: p.apiKey ?? '',
           models: Array.isArray(p.models) ? p.models : [],
           defaultModel: p.defaultModel ?? p.models?.[0] ?? '',
+          ...(this.mirror ? { proxied: true } : {}),
         };
         // 老数据没有 groups，按无分组账号处理；分组里的单 apiKey 迁移为 keys[0]
         const groups = normalizeStoredGroups(p.groups);
@@ -205,6 +230,7 @@ export class ProfileStore {
       name: String(input.name ?? '').trim() || '未命名账号',
       kind: STORED_KINDS.includes(input.kind) ? input.kind : 'openai-compatible',
       baseUrl: normalizeBaseUrl(input.baseUrl),
+      ...(input.balanceQuery ? { balanceQuery: { ...input.balanceQuery } } : {}),
       apiKey: String(input.apiKey ?? ''),
       models: normalizeModels(input.models),
       defaultModel: input.defaultModel || normalizeModels(input.models)[0] || '',
@@ -238,6 +264,11 @@ export class ProfileStore {
       apiKey:
         input.apiKey && !looksMaskedKey(input.apiKey) ? String(input.apiKey) : current.apiKey,
     };
+    // 余额查询配置：传了就整体替换，platform=none 视为关闭（保留配置便于再打开）。
+    if (input.balanceQuery !== undefined) {
+      if (input.balanceQuery) next.balanceQuery = { ...input.balanceQuery };
+      else delete next.balanceQuery;
+    }
     // multiplier 是协议 Profile 的倍率字段：不传保持原值，null 表示恢复默认 1。
     if (input.multiplier !== undefined) {
       const multiplier = normalizeMultiplier(input.multiplier);
@@ -298,7 +329,7 @@ export class ProfileStore {
       name: profile.name,
       kind: profile.kind,
       baseUrl: profile.baseUrl,
-      apiKeyMasked: maskApiKey(profile.apiKey),
+      apiKeyMasked: profile.apiKeyMasked ?? maskApiKey(profile.apiKey),
       models: [...profile.models],
       defaultModel: profile.defaultModel,
       ...(profile.multiplier !== undefined ? { multiplier: profile.multiplier } : {}),
@@ -307,7 +338,11 @@ export class ProfileStore {
         ? { modelCapabilities: structuredClone(profile.modelCapabilities) }
         : {}),
       ...(profile.groups?.length ? { groups: profile.groups.map((g) => toPublicGroup(g)) } : {}),
+      ...(profile.balanceQuery ? { balanceQuery: { ...profile.balanceQuery } } : {}),
+      ...(profile.balance ? { balance: { ...profile.balance } } : {}),
       createdAt: profile.createdAt,
+      ...(profile.accountId ? { accountId: profile.accountId } : {}),
+      source: profile.proxied ? 'account' : 'host',
     };
   }
 
@@ -343,7 +378,114 @@ export class ProfileStore {
     return { added, updated };
   }
 
+  /** 主机镜像：用工作站下发的一个账号的公开账号覆盖该账号的旧镜像；其它账号的镜像保留。 */
+  applyPublicProfiles(accountId: string, list: Profile[]): void {
+    for (const [id, profile] of this.profiles) {
+      if (profile.accountId === accountId) this.profiles.delete(id);
+    }
+    for (const item of list) {
+      this.profiles.set(item.id, {
+        id: item.id,
+        name: item.name,
+        kind: item.kind,
+        ...(item.baseUrl ? { baseUrl: item.baseUrl } : {}),
+        apiKey: '',
+        apiKeyMasked: item.apiKeyMasked,
+        ...(item.balanceQuery ? { balanceQuery: { ...item.balanceQuery } } : {}),
+        ...(item.balance ? { balance: { ...item.balance } } : {}),
+        models: normalizeModels(item.models),
+        defaultModel: item.defaultModel || normalizeModels(item.models)[0] || '',
+        ...(item.multiplier !== undefined ? { multiplier: item.multiplier } : {}),
+        ...(item.price ? { price: normalizePrice(item.price)! } : {}),
+        ...(item.modelCapabilities ? { modelCapabilities: normalizeModelCapabilities(item.modelCapabilities)! } : {}),
+        ...(item.groups?.length
+          ? {
+              groups: item.groups.map((group) => ({
+                id: group.id,
+                name: group.name,
+                ...(group.kind ? { kind: group.kind } : {}),
+                apiKey: '',
+                keys: (group.keys ?? []).map((key) => ({
+                  id: key.id,
+                  ...(key.label ? { label: key.label } : {}),
+                  apiKey: '',
+                  masked: key.apiKeyMasked,
+                  ...(key.disabled ? { disabled: true } : {}),
+                  ...(key.cooldownUntil ? { cooldownUntil: key.cooldownUntil } : {}),
+                  ...(key.lastError ? { lastError: key.lastError } : {}),
+                  ...(key.quota ? { quota: { ...key.quota } } : {}),
+                  ...(key.rateLimitHits ? { rateLimitHits: key.rateLimitHits } : {}),
+                })),
+                ...(group.keyStrategy ? { keyStrategy: group.keyStrategy } : {}),
+                ...(group.baseUrl ? { baseUrl: group.baseUrl } : {}),
+                models: normalizeModels(group.models),
+                defaultModel: group.defaultModel || normalizeModels(group.models)[0] || '',
+                ...(group.multiplier !== undefined ? { multiplier: group.multiplier } : {}),
+                ...(group.fallbackGroupIds?.length ? { fallbackGroupIds: [...group.fallbackGroupIds] } : {}),
+                ...(group.modelCapabilities
+                  ? { modelCapabilities: normalizeModelCapabilities(group.modelCapabilities)! }
+                  : {}),
+              })),
+            }
+          : {}),
+        createdAt: item.createdAt,
+        accountId,
+        proxied: this.mirror,
+      });
+    }
+    this.save();
+  }
+
+  /** 旧主机迁移：导入前保留原 id / 创建时间 / 分组 Key 的账号（仅工作站使用）。 */
+  upsertStored(profile: StoredProfile): StoredProfile {
+    this.profiles.set(profile.id, { ...profile, proxied: false });
+    this.save();
+    return profile;
+  }
+
+  /** 迁移成功后清除本机 Key 明文，只留元数据与迁移标记。 */
+  clearKeys(): number {
+    let cleared = 0;
+    for (const profile of this.profiles.values()) {
+      if (profile.apiKey) {
+        profile.apiKey = '';
+        cleared++;
+      }
+      for (const group of profile.groups ?? []) {
+        if (group.apiKey) {
+          group.apiKey = '';
+          cleared++;
+        }
+        for (const key of group.keys ?? []) {
+          if (key.apiKey) {
+            key.apiKey = '';
+            cleared++;
+          }
+        }
+        group.keys = [];
+        group.apiKey = '';
+      }
+    }
+    if (cleared) this.save();
+    return cleared;
+  }
+
+  hasAnyKey(): boolean {
+    for (const profile of this.profiles.values()) {
+      if (profile.apiKey) return true;
+      for (const group of profile.groups ?? []) {
+        if (group.apiKey) return true;
+        if ((group.keys ?? []).some((key) => !!key.apiKey)) return true;
+      }
+    }
+    return false;
+  }
+
   private save(): void {
+    if (this.persistence) {
+      this.persistence.save(this.list());
+      return;
+    }
     writePrivateFile(this.file, JSON.stringify({ profiles: this.list() }, null, 2));
   }
 }
@@ -633,7 +775,7 @@ function toPublicKey(key: StoredProfileKey): ProfileKey {
   return {
     id: key.id,
     ...(key.label ? { label: key.label } : {}),
-    apiKeyMasked: maskApiKey(key.apiKey),
+    apiKeyMasked: key.masked ?? maskApiKey(key.apiKey),
     ...(key.disabled ? { disabled: true } : {}),
     ...(key.cooldownUntil ? { cooldownUntil: key.cooldownUntil } : {}),
     ...(key.lastError ? { lastError: key.lastError } : {}),
@@ -648,7 +790,7 @@ function toPublicGroup(group: StoredProfileGroup): ProfileGroup {
     id: group.id,
     name: group.name,
     ...(group.kind ? { kind: group.kind } : {}),
-    apiKeyMasked: maskApiKey(keys[0]?.apiKey ?? group.apiKey),
+    apiKeyMasked: keys[0]?.masked ?? maskApiKey(keys[0]?.apiKey ?? group.apiKey),
     keys: keys.map((key) => toPublicKey(key)),
     ...(group.keyStrategy ? { keyStrategy: group.keyStrategy } : {}),
     ...(group.baseUrl ? { baseUrl: group.baseUrl } : {}),

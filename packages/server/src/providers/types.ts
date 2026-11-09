@@ -1,9 +1,32 @@
 // 各 provider 共用的流式接口：统一产出协议 ContentBlock / BlockDelta。
-import type { ContentBlock, Message, ReasoningEffort, Usage } from '@tandem/protocol';
+import type { ContentBlock, Message, ReasoningEffort, Usage, WorkspaceModelProxyEvent } from '@tandem/protocol';
 import type { StoredProfile, ToolDefinition } from '../types.js';
+
+/** 工作站账号级模型账号：把一次请求交给工作站代理执行（Key 留在工作站）。 */
+export interface ProxyRunner {
+  run: (
+    body: {
+      profileId: string;
+      groupId?: string;
+      model: string;
+      system: string;
+      messages: Message[];
+      tools: ToolDefinition[];
+      maxTokens: number;
+      effort?: ReasoningEffort;
+      idleTimeoutSec: number;
+    },
+    emit: (event: WorkspaceModelProxyEvent) => void,
+    signal: AbortSignal,
+  ) => Promise<void>;
+}
 
 export interface StreamRequest {
   profile: StoredProfile;
+  /** 账号级镜像：原始分组 id（有效账号会合并分组字段）。 */
+  groupId?: string;
+  /** 账号级镜像：请求经工作站代理；Key 不在主机上。 */
+  proxy?: ProxyRunner;
   model: string;
   system: string;
   messages: Message[];
