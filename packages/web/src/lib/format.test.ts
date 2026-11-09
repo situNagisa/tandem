@@ -5,6 +5,7 @@ import {
   dirname,
   fileExt,
   formatCost,
+  formatDurationMs,
   formatElapsed,
   formatTokens,
   joinPath,
@@ -34,6 +35,14 @@ describe('格式化', () => {
     expect(formatElapsed(32_999)).toBe('32s')
     expect(formatElapsed(65_000)).toBe('1m 05s')
     expect(formatElapsed(3_725_000)).toBe('1h 02m')
+  })
+
+  test('消息耗时保留一位小数，满一分钟用分秒', () => {
+    expect(formatDurationMs(0)).toBe('0.0s')
+    expect(formatDurationMs(12_300)).toBe('12.3s')
+    expect(formatDurationMs(40_000)).toBe('40s')
+    expect(formatDurationMs(65_000)).toBe('1m 05s')
+    expect(formatDurationMs(Number.NaN)).toBe('0.0s')
   })
 
   test('dayBucket 以本地午夜为界', () => {

@@ -1338,6 +1338,8 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       message(`a${n}`, 'assistant', `第 ${n} 轮的结果：一切正常。`, {
         model: 'mock-1',
         usage: { inputTokens: 100 + n, outputTokens: 20 + n, costUsd: 0.001 * n },
+        durationMs: 12_300,
+        ttftMs: 800,
       }),
     )
   }
@@ -1417,12 +1419,15 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
           { type: 'text', text: '我先读 README。' },
           { type: 'tool_use', id: 'tu-turns4', name: 'Read', input: { file_path: 'README.md' } },
         ],
+        durationMs: 12_300,
+        ttftMs: 800,
       },
       {
         id: 't43',
         role: 'user',
         createdAt: createdAt + 3000,
         content: [{ type: 'tool_result', toolUseId: 'tu-turns4', content: '# regrepo' }],
+        toolDurationMs: 40_000,
       },
       message('t44', 'user', '第二轮：继续'),
       message('t45', 'assistant', '第二轮完成。', { model: 'mock-1' }),
@@ -3528,6 +3533,83 @@ async function main() {
       )
       assert.equal(await summary.getAttribute('aria-label'), null, '用量行仍标注为可交互明细')
       await page.keyboard.press('Escape')
+    })
+
+    desktop('消息耗时显示在用量行末尾，轮次大纲汇总模型与工具耗时（A）', async (page) => {
+      await openSession(page, 'long')
+      const summary = page.locator('[data-message-id="a40"] [data-usage-summary]')
+      await summary.scrollIntoViewIfNeeded()
+      await summary.locator('xpath=ancestor::div[contains(@class,"msg-group")]').hover()
+      const usageText = await summary.innerText()
+      assert.match(
+        usageText,
+        /^输入 .+ · 输出 .+ · 缓存命中 .+ · 花费 .+ · 12\.3s$/,
+        `消息用量行末尾没有耗时：${usageText}`,
+      )
+
+      const hoverTurnOne = async () => {
+        await page.locator('.turn-hit').hover()
+        await page.waitForFunction(
+          () => document.querySelector('.turn-rail')?.getAttribute('data-open') === 'true',
+          null,
+          { timeout: 5_000 },
+        )
+        await page.waitForTimeout(800)
+        const target = await page.evaluate(() => {
+          const clip = document.querySelector('.turn-clip')?.getBoundingClientRect()
+          for (const item of document.querySelectorAll('.turn-item')) {
+            if (!(item.getAttribute('title') ?? '').includes('耗时')) continue
+            const r = item.getBoundingClientRect()
+            if (!clip || r.top < clip.top - 1 || r.bottom > clip.bottom + 1) continue
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+          }
+          return null
+        })
+        assert.ok(target, '展开后的面板中找不到带耗时 tooltip 的轮次')
+        await page.mouse.move(target.x, target.y)
+        await page.waitForTimeout(150)
+      }
+      await hoverTurnOne()
+      const tip = page.locator('#tandem-tooltip[data-open]')
+      await tip.waitFor({ timeout: 5_000 })
+      const tipText = await tip.innerText()
+      assert.match(tipText, /耗时 12\.3s/, `轮次 tooltip 没有模型耗时：${tipText}`)
+      assert.match(tipText, /首 token 0\.8s/, `轮次 tooltip 没有首 token 延迟：${tipText}`)
+      assert.equal(await page.locator('[data-usage-summary][title]').count(), 0, '用量行不应新增悬停提示')
+
+      // 含工具执行时间的一轮：12.3s 模型 + 40s 工具 = 52.3s。
+      await openSession(page, 'turns4')
+      await hoverTurnOne()
+      const tipTool = page.locator('#tandem-tooltip[data-open]')
+      await tipTool.waitFor({ timeout: 5_000 })
+      assert.match(
+        await tipTool.innerText(),
+        /耗时 52\.3s，其中工具 40s/,
+        '轮次 tooltip 没有汇总工具耗时',
+      )
+    })
+
+    desktop('发送消息后服务端记录耗时、首 token 延迟并显示在消息下方（A）', async (page) => {
+      await openSession(page, 'nockpt')
+      const box = page.locator('textarea[aria-label="消息输入框"]').first()
+      await box.fill('测一下这一轮的耗时')
+      await box.press('Enter')
+      let assistant
+      for (let attempt = 0; attempt < 80; attempt++) {
+        const session = await api(base, token, '/api/sessions/nockpt')
+        assistant = [...(session.messages ?? [])].reverse().find((m) => m.role === 'assistant')
+        if (session.status === 'idle' && typeof assistant?.durationMs === 'number') break
+        await sleep(250)
+      }
+      assert.ok(assistant, '没有生成 assistant 消息')
+      assert.equal(typeof assistant.durationMs, 'number', '服务端没有记录消息耗时')
+      assert.ok(assistant.durationMs >= 0, `消息耗时异常：${assistant.durationMs}`)
+      assert.equal(typeof assistant.ttftMs, 'number', '服务端没有记录首 token 延迟')
+      assert.ok(assistant.ttftMs >= 0, `首 token 延迟异常：${assistant.ttftMs}`)
+      await page.getByText('回归回复。').last().waitFor({ timeout: 20_000 })
+      const usage = page.locator('[data-usage-summary]').last()
+      await usage.waitFor({ timeout: 10_000 })
+      assert.match(await usage.innerText(), /· \d+(\.\d+)?s$/, '消息下方没有显示本次耗时')
     })
 
     desktop('文件夹选择器不再显示最近文件夹；超长名称单行省略并悬停显示全名（R15）', async (page) => {

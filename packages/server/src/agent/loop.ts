@@ -29,6 +29,7 @@ import { redactMessages } from '../redact.js';
 import { withNetworkRetry } from './retry.js';
 import { KeysExhaustedError } from '../key-rotation.js';
 import { replayUnfinishedTools } from './resume.js';
+import { requestTiming, toolTiming } from './timing.js';
 import {
   chooseAutoRoute,
   judgeDifficulty,
@@ -162,6 +163,7 @@ export async function runTurn(
         `任务：${taskText}`,
         '完成后用简短中文报告：做了什么、改了哪些文件、验证命令与结果。',
       ].join('\n');
+      const cheapStartedAt = Date.now();
       const sub = await host.runSubagent(
         rec,
         {
@@ -182,6 +184,7 @@ export async function runTurn(
           role: 'assistant',
           content: [{ type: 'text', text: sub.content }],
           createdAt: Date.now(),
+          durationMs: Math.max(0, Date.now() - cheapStartedAt),
           ...(routePlan.executorModel ? { model: routePlan.executorModel } : {}),
         };
         rec.messages.push(assistant);
@@ -372,11 +375,13 @@ export async function runTurn(
         }
       }
 
+      const requestStartedAt = Date.now();
+      let firstTokenAt: number | undefined;
       const assistant: Message = {
         id: randomUUID(),
         role: 'assistant',
         content: [],
-        createdAt: Date.now(),
+        createdAt: requestStartedAt,
         model,
       };
       rec.messages.push(assistant);
@@ -438,6 +443,7 @@ export async function runTurn(
                       },
                       onBlockStart: (index, block) => {
                         started = true;
+                        firstTokenAt ??= Date.now();
                         host.hub.broadcastSession(rec.id, {
                           type: 'block_delta',
                           sessionId: rec.id,
@@ -448,6 +454,7 @@ export async function runTurn(
                       },
                       onText: (index, text) => {
                         started = true;
+                        firstTokenAt ??= Date.now();
                         host.hub.broadcastSession(rec.id, {
                           type: 'block_delta',
                           sessionId: rec.id,
@@ -457,6 +464,7 @@ export async function runTurn(
                         });
                       },
                       onToolInput: (index, partialJson) => {
+                        firstTokenAt ??= Date.now();
                         host.hub.broadcastSession(rec.id, {
                           type: 'block_delta',
                           sessionId: rec.id,
@@ -589,6 +597,8 @@ export async function runTurn(
         }
       }
 
+      // 耗时在 message_end 之前落盘：成功、失败与中断都能看到本次请求花了多久。
+      Object.assign(assistant, requestTiming(requestStartedAt, firstTokenAt));
       if (result) {
         const inputTokens = result.usage.inputTokens || 0;
         const outputTokens = result.usage.outputTokens || 0;
@@ -903,10 +913,13 @@ export async function runTurn(
           }
         }
       }
-      const executed =
-        reason === 'interrupted' || activeToolUses.length === 0
-          ? []
-          : await executeToolUses(host, rec, activeToolUses, abort.signal, hookEntries, redact);
+      let toolDurationMs: number | undefined;
+      let executed: ContentBlock[] = [];
+      if (reason !== 'interrupted' && activeToolUses.length > 0) {
+        const toolStartedAt = Date.now();
+        executed = await executeToolUses(host, rec, activeToolUses, abort.signal, hookEntries, redact);
+        toolDurationMs = toolTiming(toolStartedAt);
+      }
       const executedById = new Map(
         executed
           .filter((block): block is Extract<ContentBlock, { type: 'tool_result' }> => block.type === 'tool_result')
@@ -940,6 +953,7 @@ export async function runTurn(
         role: 'user',
         content: resultBlocks,
         createdAt: Date.now(),
+        ...(toolDurationMs !== undefined ? { toolDurationMs } : {}),
       };
       rec.messages.push(toolMessage);
       host.hub.broadcastSession(rec.id, {

@@ -63,6 +63,16 @@ export function formatElapsed(ms: number): string {
   return `${h}h ${String(m % 60).padStart(2, '0')}m`
 }
 
+/** 消息耗时：12.3s；满 1 分钟用 1m 05s。 */
+export function formatDurationMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '0.0s'
+  if (ms < 60_000) {
+    const seconds = ms / 1000
+    return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)}s`
+  }
+  return formatElapsed(ms)
+}
+
 /** 兼容 Windows 与 POSIX 路径。 */
 export function basename(path: string): string {
   if (!path) return ''

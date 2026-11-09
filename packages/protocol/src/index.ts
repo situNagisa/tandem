@@ -608,6 +608,12 @@ export interface Message {
   /** 自动/手动压缩后的单行提示，界面可展开查看摘要全文。 */
   compaction?: CompactionNotice;
   usage?: Usage;             // assistant 消息：生成该消息的那次请求的用量与花费（一轮内多次请求各自记在对应消息上）
+  /** assistant 消息：从发起该次请求到流式完成（毫秒，含重试等待）。旧消息没有该字段。 */
+  durationMs?: number;
+  /** assistant 消息：首 token 延迟（毫秒）。 */
+  ttftMs?: number;
+  /** 工具结果消息：执行该批工具的耗时（毫秒，含审批等待）。 */
+  toolDurationMs?: number;
 }
 
 export interface CompactionNotice {

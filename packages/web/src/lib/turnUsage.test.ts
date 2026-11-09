@@ -122,6 +122,36 @@ describe('turn usage', () => {
     )
   })
 
+  test('按轮汇总模型耗时与工具耗时，首 token 取第一次请求', () => {
+    const t = 40_000
+    const messages: UiMessage[] = [
+      user('跑个任务', t),
+      {
+        ...assistant(t + 10, { inputTokens: 10, outputTokens: 5, costUsd: 0.001 }),
+        durationMs: 12_300,
+        ttftMs: 800,
+      },
+      {
+        id: `u${++seq}`,
+        role: 'user',
+        content: [{ type: 'tool_result', toolUseId: 'tu1', content: '完成' }],
+        createdAt: t + 20,
+        toolDurationMs: 40_000,
+      },
+      {
+        ...assistant(t + 30, { inputTokens: 5, outputTokens: 2, costUsd: 0.0005 }),
+        durationMs: 5_000,
+        ttftMs: 300,
+      },
+      user('下一轮', t + 60_000),
+    ]
+    const usage = usageByTurn(messages, undefined, 's1').get(messages[0]!.id)!
+    expect(usage.durationMs).toBe(17_300)
+    expect(usage.toolDurationMs).toBe(40_000)
+    expect(usage.firstTokenMs).toBe(800)
+    expect(turnUsageLabel(usage)).toContain('耗时 57.3s，其中工具 40s，首 token 0.8s')
+  })
+
   test('未知单价显示花费未知；无 usage 的轮次没有提示文本', () => {
     const t = 20_000
     const messages = [user('没有回复', t), assistant(t + 10), user('有回复', t + 20), assistant(t + 30, { inputTokens: 1, outputTokens: 1 })]

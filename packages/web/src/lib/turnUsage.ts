@@ -1,6 +1,6 @@
 import type { Usage } from '@tandem/protocol'
 import type { SubagentSession, UiMessage } from './types'
-import { formatTokens } from './format'
+import { formatDurationMs, formatTokens } from './format'
 
 /** 一轮（用户消息 → 下一条用户消息）内所有模型调用的用量汇总。 */
 export interface TurnUsage {
@@ -17,6 +17,12 @@ export interface TurnUsage {
   contextTokens: number
   /** 是否至少有一条 assistant 消息带 usage（没有回复的轮次不显示 tooltip）。 */
   hasUsage: boolean
+  /** 该轮各次模型请求耗时之和（毫秒）。 */
+  durationMs?: number
+  /** 该轮工具执行耗时之和（毫秒）。 */
+  toolDurationMs?: number
+  /** 该轮首次请求的首 token 延迟（毫秒）。 */
+  firstTokenMs?: number
 }
 
 function emptyUsage(): TurnUsage {
@@ -141,7 +147,22 @@ export function usageByTurn(
     const turnMessages = messages.slice(start, end)
     const usage = emptyUsage()
     for (const message of turnMessages) {
-      if (message.role === 'assistant') addUsage(usage, message.usage)
+      if (message.role === 'assistant') {
+        addUsage(usage, message.usage)
+        if (typeof message.durationMs === 'number' && message.durationMs > 0) {
+          usage.durationMs = (usage.durationMs ?? 0) + message.durationMs
+        }
+        if (
+          usage.firstTokenMs === undefined &&
+          typeof message.ttftMs === 'number' &&
+          message.ttftMs >= 0
+        ) {
+          usage.firstTokenMs = message.ttftMs
+        }
+      }
+      if (typeof message.toolDurationMs === 'number' && message.toolDurationMs > 0) {
+        usage.toolDurationMs = (usage.toolDurationMs ?? 0) + message.toolDurationMs
+      }
     }
     // 子代理按「父会话 + Task 描述 + 创建时间落在这轮内」匹配。
     for (const message of turnMessages) usage.contextTokens += estimateMessageTokens(message)
@@ -212,7 +233,8 @@ export function turnUsageLabel(
   extra?: { share?: number; compressed?: boolean; summary?: boolean },
 ): string {
   if (!usage) return ''
-  if (!usage.hasUsage && !usage.hasCost && !extra?.summary) return ''
+  const hasTiming = (usage.durationMs ?? 0) > 0 || (usage.toolDurationMs ?? 0) > 0
+  if (!usage.hasUsage && !usage.hasCost && !extra?.summary && !hasTiming) return ''
   const parts: string[] = []
   if (extra?.summary) {
     parts.push('摘要', `占用 ${formatTokens(usage.contextTokens)}`)
@@ -224,6 +246,16 @@ export function turnUsageLabel(
       usage.hasCost ? formatCost(usage.costUsd) : '花费未知',
     )
     if (usage.subagents) parts.push('含子代理')
+    const duration = usage.durationMs ?? 0
+    const tool = usage.toolDurationMs ?? 0
+    if (duration > 0 || tool > 0) {
+      let timing = `耗时 ${formatDurationMs(duration + tool)}`
+      if (tool > 0) timing += `，其中工具 ${formatDurationMs(tool)}`
+      if ((usage.firstTokenMs ?? 0) > 0) {
+        timing += `，首 token ${formatDurationMs(usage.firstTokenMs!)}`
+      }
+      parts.push(timing)
+    }
   }
   if (extra?.share !== undefined) parts.push(`占本会话 ${extra.share}%`)
   if (extra?.compressed) parts.push('已压缩到摘要')

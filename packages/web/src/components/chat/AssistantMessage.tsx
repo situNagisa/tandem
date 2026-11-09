@@ -5,7 +5,8 @@ import { useAppStore } from '../../store/useAppStore'
 import { useSessionTarget, useSessionView } from '../session/SessionScope'
 import { cn } from '../../lib/cn'
 import { copyText } from '../../lib/clipboard'
-import { formatCost, formatTokens } from '../../lib/format'
+import { formatCost, formatDurationMs, formatTokens } from '../../lib/format'
+import { useNow } from '../../lib/hooks'
 import type { ToolResultBlock, UiMessage } from '../../lib/types'
 import { Markdown } from '../Markdown'
 import { ThinkingBlock } from '../ThinkingBlock'
@@ -42,6 +43,12 @@ export const AssistantMessage = memo(function AssistantMessage({
   const [copied, setCopied] = useState(false)
   const [rewindOpen, setRewindOpen] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
+  // 流式进行中从本条消息开始出现时计时；结束后改用服务端记录的准确耗时。
+  const liveStartedAt = useRef(Date.now())
+  const liveNow = useNow(streaming, 100)
+  useEffect(() => {
+    if (streaming) liveStartedAt.current = Date.now()
+  }, [streaming])
   const scopeTarget = useSessionTarget() ?? undefined
   const running = useSessionView((s) => s?.running ?? false)
   const copyTimer = useRef<number | null>(null)
@@ -160,6 +167,15 @@ export const AssistantMessage = memo(function AssistantMessage({
     <div className={cn('msg-group relative flex flex-col', animate && 'chat-msg-enter')}>
       {rendered}
       {message.content.length === 0 && streaming && <TypingIndicator />}
+      {streaming && (
+        <div className="mt-0.5 flex h-7 items-center">
+          <UsageLine>
+            <span data-live-duration>
+              {formatDurationMs(Math.max(0, liveNow - liveStartedAt.current))}
+            </span>
+          </UsageLine>
+        </div>
+      )}
       {rawText.trim() && !streaming && (
         <>
           <div className="msg-actions mt-0.5 flex h-7 justify-start gap-0.5">
@@ -211,12 +227,22 @@ export const AssistantMessage = memo(function AssistantMessage({
                 )}
               </IconButton>
             )}
-            {message.usage && (
+            {(message.usage || typeof message.durationMs === 'number') && (
               <UsageLine>
-                输入 {formatTokens(message.usage.inputTokens)} · 输出{' '}
-                {formatTokens(message.usage.outputTokens)} · 缓存命中{' '}
-                {formatTokens(message.usage.cacheReadTokens ?? 0)} · 花费{' '}
-                {formatCost(message.usage.costUsd)}
+                {message.usage && (
+                  <>
+                    输入 {formatTokens(message.usage.inputTokens)} · 输出{' '}
+                    {formatTokens(message.usage.outputTokens)} · 缓存命中{' '}
+                    {formatTokens(message.usage.cacheReadTokens ?? 0)} · 花费{' '}
+                    {formatCost(message.usage.costUsd)}
+                  </>
+                )}
+                {typeof message.durationMs === 'number' && (
+                  <>
+                    {message.usage ? ' · ' : ''}
+                    {formatDurationMs(message.durationMs)}
+                  </>
+                )}
               </UsageLine>
             )}
           </div>
