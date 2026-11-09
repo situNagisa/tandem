@@ -577,7 +577,7 @@ function BoardColumns({
               active && 'ring-1 ring-border-strong',
             )}
           >
-            <h2 className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-[13px] font-medium text-text-secondary" title={column.hint}>
+            <h2 className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-[13px] font-medium text-text-secondary" data-tip={column.hint}>
               {column.status === 'approval' && cards.length > 0 ? <span aria-hidden className="size-1.5 rounded-full bg-accent" /> : null}
               {column.label}
               <span className="text-[12px] font-normal tabular-nums text-text-tertiary">{cards.length}</span>

@@ -260,7 +260,7 @@ export function BackgroundTasksPanel() {
               <div className="border-b border-border px-3 py-2">
                 <div className="break-all font-mono text-[12px] leading-5 text-text">{current.command}</div>
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-muted">
-                  <span title={new Date(current.startedAt).toLocaleString()}>
+                  <span data-tip={new Date(current.startedAt).toLocaleString()}>
                     开始 {new Date(current.startedAt).toLocaleTimeString()}
                   </span>
                   <span>{current.cwd}</span>

@@ -377,7 +377,7 @@ export function ModelRoutingSection() {
                       <Check size={12} className="shrink-0 text-text-secondary" />
                       <span
                         className="min-w-0 flex-1 truncate text-[13px] text-text-soft"
-                        title={`${row.account} › ${row.group} › ${row.model}`}
+                        data-tip={`${row.account} › ${row.group} › ${row.model}`}
                       >
                         <span className="text-text">{row.account}</span>
                         <span className="text-muted"> › {row.group} › </span>

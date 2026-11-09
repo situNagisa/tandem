@@ -37,6 +37,7 @@ import { DoctorDialog } from './components/DoctorDialog'
 import { Toasts } from './components/ui/Toasts'
 import { FeatureTour } from './components/tour/FeatureTour'
 import { OverlayScrollbar } from './components/ui/OverlayScrollbar'
+import { AppContextMenu } from './components/AppContextMenu'
 import { ResizeHandle } from './components/ui/ResizeHandle'
 
 // 调试专用界面整体惰性加载；发布版构建里条件为常量 false，模块不会进入产物。
@@ -550,11 +551,12 @@ export default function App() {
       </Suspense>
       <Toasts />
       <OverlayScrollbar />
+      <AppContextMenu />
       {__TANDEM_DEBUG__ && (
         <div
           aria-hidden
           className="pointer-events-none fixed bottom-1 right-1 z-[70] rounded border border-border bg-bg px-1.5 py-0.5 text-[11px] leading-4 text-text"
-          title={`Tandem ${__APP_VERSION__} 调试版`}
+          data-tip={`Tandem ${__APP_VERSION__} 调试版`}
         >
           调试版
         </div>

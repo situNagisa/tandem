@@ -96,7 +96,7 @@ function RankTable({ title, rows }: { title: string; rows: RankRow[] }) {
             {rows.slice(0, 6).map((row) => (
               <div key={row.key} className="flex items-center gap-2 px-3 py-1.5">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-mono text-[13px] text-text" title={row.label}>
+                  <div className="truncate font-mono text-[13px] text-text" data-tip={row.label}>
                     {row.label}
                   </div>
                   {row.sub && <div className="truncate text-[13px] text-muted">{row.sub}</div>}
@@ -500,7 +500,7 @@ export function UsageSection() {
                 <span className="w-20 shrink-0 text-right font-mono tabular-nums text-text">
                   {formatCost(item.cost)}
                 </span>
-                <span className="w-24 shrink-0 text-right font-mono text-[12px] tabular-nums text-muted" title="对比全程使用最强档的估算节省">
+                <span className="w-24 shrink-0 text-right font-mono text-[12px] tabular-nums text-muted" data-tip="对比全程使用最强档的估算节省">
                   {item.saved > 0 ? `省 ${formatCost(item.saved)}` : '—'}
                 </span>
               </div>

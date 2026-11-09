@@ -116,7 +116,7 @@ export function DemoDialog() {
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-[var(--t-bg-subtle)] px-3 py-2 text-[12px] text-muted">
             <span className="font-medium text-text">演示数据</span>
-            <span className="truncate font-mono" title={state.root}>
+            <span className="truncate font-mono" data-tip={state.root}>
               {state.root}
             </span>
             <span className="ml-auto whitespace-nowrap">

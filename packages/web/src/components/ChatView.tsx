@@ -308,7 +308,7 @@ export function ChatView() {
                     {otherViewers.slice(0, 4).map((viewer) => (
                       <span
                         key={viewer.id}
-                        title={`${viewer.name} · ${viewer.role === 'owner' ? '所有者' : viewer.role === 'observer' ? '观察者' : viewer.role === 'approver' ? '审批者' : '协作者'}`}
+                        data-tip={`${viewer.name} · ${viewer.role === 'owner' ? '所有者' : viewer.role === 'observer' ? '观察者' : viewer.role === 'approver' ? '审批者' : '协作者'}`}
                         className="flex size-5 items-center justify-center rounded-full border border-bg bg-[var(--t-bg-active)] text-[11px] font-medium text-text-soft"
                       >
                         {viewer.name.slice(0, 1).toUpperCase()}
@@ -321,7 +321,7 @@ export function ChatView() {
               {forkedFrom && !loading && (
                 <div className="mb-3 flex min-w-0 items-center gap-1.5 px-1 text-[12px] leading-4 text-muted">
                   <GitFork size={12} className="shrink-0 opacity-70" />
-                  <span className="min-w-0 truncate" title={parentTitle}>
+                  <span className="min-w-0 truncate" data-tip={parentTitle}>
                     分叉自 {parentTitle || '父会话'}
                   </span>
                   {parentSession && hostId && (

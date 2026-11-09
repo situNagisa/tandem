@@ -290,7 +290,7 @@ export function SecretsSection() {
                     </span>
                   )}
                 </div>
-                <div className="truncate text-[12px] text-muted" title={secret.description ?? ''}>
+                <div className="truncate text-[12px] text-muted" data-tip={secret.description ?? ''}>
                   {secret.description || '—'}
                 </div>
               </div>

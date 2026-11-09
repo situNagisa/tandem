@@ -42,7 +42,7 @@ export function RoutePlanLine({
               'rounded px-1.5 py-0.5 transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text',
               mode === item.value && 'text-text-secondary',
             )}
-            title={`以后同类任务默认${item.label}`}
+            data-tip={`以后同类任务默认${item.label}`}
           >
             {item.label}
           </button>

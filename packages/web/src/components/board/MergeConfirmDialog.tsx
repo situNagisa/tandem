@@ -116,7 +116,7 @@ export function MergeConfirmDialog({
                   <ul className="mt-1.5 space-y-0.5" data-testid="board-merge-files">
                     {card.fileList.map((file) => (
                       <li key={file.path} className="flex items-center gap-1.5 font-mono text-[12px] text-text-secondary">
-                        <span className="min-w-0 flex-1 truncate" title={file.path}>
+                        <span className="min-w-0 flex-1 truncate" data-tip={file.path}>
                           {file.path}
                         </span>
                         <span className="shrink-0 text-[var(--t-git-plus)]">+{file.additions}</span>

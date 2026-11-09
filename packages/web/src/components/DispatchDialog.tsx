@@ -258,7 +258,7 @@ export function DispatchDialog({
                     'h-7 shrink-0 rounded-md bg-[var(--t-bg-subtle)] px-2 text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text',
                     cwd === dir && 'bg-[var(--t-bg-active)] text-text',
                   )}
-                  title={dir}
+                  data-tip={dir}
                 >
                   {dir.split(/[\\/]/).filter(Boolean).pop() ?? dir}
                 </button>

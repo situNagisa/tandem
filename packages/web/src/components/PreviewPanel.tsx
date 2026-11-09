@@ -464,7 +464,7 @@ export function PreviewPanel() {
               key={candidate.url}
               type="button"
               onClick={() => void doOpen(candidate.url, viewport)}
-              title={`${candidate.label ?? ''}${candidate.reachable ? ' · 可访问' : ' · 未启动'}`}
+              data-tip={`${candidate.label ?? ''}${candidate.reachable ? ' · 可访问' : ' · 未启动'}`}
               className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-surface-2 px-2 py-0.5 font-mono text-[12px] text-text-soft transition-colors hover:border-border-strong hover:text-text"
             >
               <span
@@ -925,7 +925,7 @@ function SnapshotCard({
         type="button"
         onClick={onCompare}
         className="flex items-center gap-1.5"
-        title="与当前画面对比"
+        data-tip="与当前画面对比"
         data-testid="preview-snapshot-compare"
       >
         {shot.url ? (

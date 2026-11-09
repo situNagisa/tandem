@@ -493,14 +493,14 @@ export function TopBar() {
                 setDraft(summary?.title ?? '')
                 setEditing(true)
               }}
-              title="点击重命名"
+              data-tip="点击重命名"
               className="group flex min-w-0 max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-[var(--t-bg-hover)] max-md:min-h-11"
             >
-              <h1 className="truncate text-[14px] font-medium leading-5" title={title}>{title}</h1>
+              <h1 className="truncate text-[14px] font-medium leading-5" data-tip={title}>{title}</h1>
               {__TANDEM_DEBUG__ && summary?.demo && (
                 <span
                   className="shrink-0 rounded bg-[#F97316]/12 px-1.5 py-0.5 text-[10px] font-medium text-[#F97316]"
-                  title="演示数据：不计入真实用量，可在设置 → 关于 → 演示工作区清除"
+                  data-tip="演示数据：不计入真实用量，可在设置 → 关于 → 演示工作区清除"
                 >
                   演示数据
                 </span>
@@ -513,7 +513,7 @@ export function TopBar() {
           )
         ) : route.kind === 'external' ? (
           <div className="flex min-w-0 items-center gap-1.5 px-1">
-            <h1 className="truncate text-[14px] font-medium leading-5" title={externalTitle || '外部会话'}>
+            <h1 className="truncate text-[14px] font-medium leading-5" data-tip={externalTitle || '外部会话'}>
               {externalTitle || '外部会话'}
             </h1>
             <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1.5 py-0.5 text-[12px] leading-4 text-muted">

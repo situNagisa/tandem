@@ -704,7 +704,7 @@ export const ToolCard = memo(function ToolCard({
         <div className="space-y-2">
           <div className="flex items-center gap-2 rounded-md bg-[color-mix(in_srgb,var(--t-bg)_45%,transparent)] px-2.5 py-1.5 font-mono text-[12px] text-text-soft">
             <FileText size={13} className="shrink-0 text-muted" />
-            <span className="min-w-0 flex-1 truncate" title={filePath}>
+            <span className="min-w-0 flex-1 truncate" data-tip={filePath}>
               {displayPath || '…'}
             </span>
             <span className="shrink-0 text-[12px] text-muted">
@@ -818,7 +818,7 @@ export const ToolCard = memo(function ToolCard({
           setOpen((v) => !v)
         }}
         aria-expanded={open}
-        title={fullTarget || undefined}
+        data-tip={fullTarget || undefined}
         className="tool-row"
       >
         {running || (isTask && sub?.running) ? (
@@ -839,7 +839,7 @@ export const ToolCard = memo(function ToolCard({
           <span
             role="link"
             tabIndex={0}
-            title={`打开 ${filePath}`}
+            data-tip={`打开 ${filePath}`}
             onClick={(e) => {
               e.stopPropagation()
               openFileRef({ path: filePath }, cwd)
@@ -870,7 +870,7 @@ export const ToolCard = memo(function ToolCard({
         {isTask && sub?.summary?.model && (
           <span
             className="max-w-[130px] shrink-0 truncate rounded bg-[var(--t-bg-active)] px-1 py-px font-mono text-[9.5px] font-normal text-muted"
-            title={`子代理模型：${sub.summary.model}`}
+            data-tip={`子代理模型：${sub.summary.model}`}
           >
             {sub.summary.model}
           </span>
@@ -934,7 +934,7 @@ function SubagentStream({ id, depth }: { id: string; depth: number }) {
     >
       <div className="flex items-center gap-2 border-b border-border/70 px-2.5 py-1.5 text-[10.5px] text-muted">
         {sub.summary?.model && (
-          <span className="max-w-[150px] shrink-0 truncate font-mono" title={`模型：${sub.summary.model}`}>
+          <span className="max-w-[150px] shrink-0 truncate font-mono" data-tip={`模型：${sub.summary.model}`}>
             {sub.summary.model}
           </span>
         )}
@@ -1075,7 +1075,7 @@ function TaskBody({
           {sub?.summary?.model && (
             <span
               className="max-w-[220px] truncate rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[9.5px] text-muted"
-              title={`子代理模型：${sub.summary.model}`}
+              data-tip={`子代理模型：${sub.summary.model}`}
             >
               {sub.summary.model}
             </span>

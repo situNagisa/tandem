@@ -561,7 +561,7 @@ export function GatewaySection() {
                 >
                   <span className="font-mono text-muted">{new Date(log.at).toLocaleTimeString('zh-CN', { hour12: false })}</span>
                   <span className="truncate">{log.memberName ?? '—'}</span>
-                  <span className="truncate font-mono" title={log.model}>{log.model}</span>
+                  <span className="truncate font-mono" data-tip={log.model}>{log.model}</span>
                   <span className="text-right tabular-nums">{formatTokens(log.inputTokens + log.outputTokens)}</span>
                   <span className="text-right tabular-nums">{Math.max(0, Math.round(log.durationMs))}ms</span>
                   <span
@@ -570,7 +570,7 @@ export function GatewaySection() {
                         ? 'text-right tabular-nums text-success'
                         : 'text-right tabular-nums text-danger'
                     }
-                    title={log.error}
+                    data-tip={log.error}
                   >
                     {log.status}
                   </span>

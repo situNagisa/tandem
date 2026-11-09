@@ -198,7 +198,7 @@ function AccessFix({
       {access.fix && <div className="mt-0.5 leading-5 text-muted">{access.fix}</div>}
       {access.commands?.map((command) => (
         <div key={command} className="mt-1.5 flex items-center gap-1.5 rounded bg-[var(--t-surface-2)] py-0.5 pl-2 pr-0.5">
-          <code className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-text-soft" title={command}>
+          <code className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-text-soft" data-tip={command}>
             {command}
           </code>
           <IconButton label="复制命令" size="sm" onClick={() => void copy(command)}>
@@ -417,15 +417,15 @@ function HostSection({
     <section className="rounded-xl border border-border bg-bg/40" data-host-section={host.id}>
       <header className="flex min-h-[32px] items-center gap-2 border-b border-border px-2.5 py-0.5">
         <HardDrive size={15} className="shrink-0 text-text-tertiary" />
-        <span className="min-w-0 shrink truncate text-[13px] font-medium text-text" title={host.name}>
+        <span className="min-w-0 shrink truncate text-[13px] font-medium text-text" data-tip={host.name}>
           {host.name}
         </span>
-        <span className="min-w-0 truncate text-[11.5px] text-muted" title={host.url}>
+        <span className="min-w-0 truncate text-[11.5px] text-muted" data-tip={host.url}>
           {host.url}
         </span>
         <span
           className="ml-auto shrink-0 truncate text-[11.5px] text-muted"
-          title={status.full || undefined}
+          data-tip={status.full || undefined}
           data-host-status
         >
           {status.short}

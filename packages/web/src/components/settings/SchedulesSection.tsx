@@ -364,7 +364,7 @@ export function SchedulesSection() {
                   <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[12px]">
                     <History size={10} className="shrink-0 text-muted" />
                     {last ? (
-                      <span className={cn('truncate', last.ok ? 'text-muted' : 'text-danger')} title={last.error}>
+                      <span className={cn('truncate', last.ok ? 'text-muted' : 'text-danger')} data-tip={last.error}>
                         {formatRunAt(last.at)} · {last.ok ? '成功' : `失败：${last.error ?? '未知错误'}`}
                         {last.sessionId && (
                           <button

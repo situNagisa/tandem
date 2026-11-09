@@ -165,7 +165,7 @@ export function KeysPanel({
               </span>
               {test && (
                 <span
-                  title={test.ok ? '测试通过' : test.error || '测试失败'}
+                  data-tip={test.ok ? '测试通过' : test.error || '测试失败'}
                   className={cn('shrink-0', test.ok ? 'text-text-tertiary' : 'text-danger')}
                 >
                   {test.ok ? <Check size={11} /> : <TriangleAlert size={11} />}

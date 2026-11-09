@@ -154,7 +154,7 @@ function PaneFrame({ pane, focused }: { pane: SessionTarget; focused: boolean })
       >
         <div className="flex h-7 shrink-0 items-center gap-1.5 border-b border-border/70 bg-surface/60 px-2 text-[11.5px] text-text-secondary">
           <span className="size-1.5 shrink-0 rounded-full bg-border-strong" aria-hidden />
-          <span className="min-w-0 flex-1 truncate" title={boardName ?? '任务看板'}>
+          <span className="min-w-0 flex-1 truncate" data-tip={boardName ?? '任务看板'}>
             任务看板{boardName ? ` · ${boardName}` : ''}
           </span>
           <IconButton
@@ -191,7 +191,7 @@ function PaneFrame({ pane, focused }: { pane: SessionTarget; focused: boolean })
     >
       <div className="flex h-7 shrink-0 items-center gap-1.5 border-b border-border/70 bg-surface/60 px-2 text-[11.5px] text-text-secondary">
         <span className={cn('size-1.5 shrink-0 rounded-full', dot)} aria-hidden />
-        <span className="min-w-0 flex-1 truncate" title={title}>
+        <span className="min-w-0 flex-1 truncate" data-tip={title}>
           {title}
         </span>
         <IconButton

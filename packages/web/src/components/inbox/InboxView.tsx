@@ -314,7 +314,7 @@ function PendingCard({ entry }: { entry: Entry }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
-            <span className="min-w-0 truncate text-[13px] font-medium" title={title}>
+            <span className="min-w-0 truncate text-[13px] font-medium" data-tip={title}>
               {title}
             </span>
             <span className="ml-auto shrink-0 text-[12px] text-muted">
@@ -329,7 +329,7 @@ function PendingCard({ entry }: { entry: Entry }) {
               type="button"
               onClick={() => setDescOpen((value) => !value)}
               aria-expanded={descOpen}
-              title={`${event.sessionTitle || '未命名会话'}${descOpen ? '' : '（点击展开全文）'}`}
+              data-tip={`${event.sessionTitle || '未命名会话'}${descOpen ? '' : '（点击展开全文）'}`}
               className={cn(
                 'min-w-0 max-w-full text-left text-text-soft underline-offset-2 hover:text-text hover:underline',
                 !descOpen && 'line-clamp-1 max-sm:line-clamp-2',
@@ -440,7 +440,7 @@ function HistoryGroupRow({
       meta={
         <>
           <span className="shrink-0">{hostNameOf(group.hostId)}</span>
-          <span className="min-w-0 truncate" title={sessionTitle}>
+          <span className="min-w-0 truncate" data-tip={sessionTitle}>
             {sessionTitle}
           </span>
           {isTurn && hasDetails ? (

@@ -359,7 +359,7 @@ export function EvalsSection() {
                   className="group flex items-start gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--t-bg-hover)]"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12.5px] leading-5 text-text" title={item.title}>
+                    <div className="truncate text-[12.5px] leading-5 text-text" data-tip={item.title}>
                       {item.title}
                     </div>
                     <div className="mt-0.5 flex flex-wrap gap-x-2 text-[12px] text-muted">
@@ -604,7 +604,7 @@ export function EvalsSection() {
                   {runCasesForTable.map((testCase) => (
                     <tr key={testCase.name} className="border-b border-border last:border-0">
                       <td className="max-w-[280px] px-3 py-2 align-top">
-                        <div className="truncate text-text" title={testCase.title}>
+                        <div className="truncate text-text" data-tip={testCase.title}>
                           {testCase.title}
                         </div>
                         <div className="text-[12px] text-muted">{testCase.name}</div>

@@ -137,7 +137,7 @@ function makeComponents(streaming: boolean, cwd?: string): Components {
       return (
         <a
           href={url}
-          title={`打开 ${label}`}
+          data-tip={`打开 ${label}`}
           onClick={(e) => {
             e.preventDefault()
             openFileRef(ref, cwd)
@@ -162,7 +162,7 @@ function makeComponents(streaming: boolean, cwd?: string): Components {
           className={cn(className, 'file-ref-inline')}
           role="link"
           tabIndex={0}
-          title={`打开 ${text}`}
+          data-tip={`打开 ${text}`}
           onClick={open}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {

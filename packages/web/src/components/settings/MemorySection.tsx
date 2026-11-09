@@ -154,7 +154,7 @@ export function MemorySection() {
                 </div>
                 <div
                   className="truncate font-mono text-[12px] text-muted"
-                  title={item.project ?? '~/.tandem/memory/_global.md'}
+                  data-tip={item.project ?? '~/.tandem/memory/_global.md'}
                 >
                   {item.project ?? '所有项目共享'}
                 </div>

@@ -111,7 +111,7 @@ export function TurnOutlineSheet({
                 onClick={() => onPick(mark.turn)}
               >
                 <span className="turn-sheet-num">{mark.summary ? '摘' : (mark.no ?? mark.turn)}</span>
-                <span className="turn-sheet-text" title={mark.full}>
+                <span className="turn-sheet-text" data-tip={mark.full}>
                   {mark.summary ? '摘要' : mark.full}
                   {mark.compressed ? ' · 已压缩' : ''}
                 </span>

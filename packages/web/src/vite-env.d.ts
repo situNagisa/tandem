@@ -8,6 +8,10 @@ interface Window {
   tandemDesktop?: {
     isDesktop?: boolean
     platform?: string
+    clipboard?: {
+      readText: () => Promise<string>
+      writeText: (text: string) => Promise<void>
+    }
     updater?: {
       getConfig: () => Promise<{ source: string }>
       setConfig: (config: { source: string }) => Promise<{ source: string }>

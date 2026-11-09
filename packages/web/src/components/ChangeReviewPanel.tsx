@@ -690,7 +690,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                   <button
                     onClick={() => setSelected(file.path)}
                     className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-1.5 pr-1 text-left"
-                    title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
+                    data-tip={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
                   >
                     <span className={cn('w-3 shrink-0 text-center font-mono text-[12px] font-semibold', meta.className)}>
                       {meta.letter}
@@ -827,7 +827,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                           <div className="min-w-0 flex-1">
                             <p
                               className="truncate font-mono text-[12px] text-muted"
-                              title={comment.path}
+                              data-tip={comment.path}
                             >
                               {comment.path}:{comment.startLine}
                               {comment.endLine !== comment.startLine ? `-${comment.endLine}` : ''}
@@ -890,7 +890,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
               {blockerCount > 0 && (
                 <span
                   className="flex shrink-0 items-center gap-1 text-[12px] text-warning"
-                  title={
+                  data-tip={
                     blockOnBlocker
                       ? '设置已开启「有 blocker 时阻止提交」'
                       : '建议先处理阻塞问题；可在设置中改为阻止提交'

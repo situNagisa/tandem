@@ -111,7 +111,7 @@ export function CardDiffDialog({
                       ? 'bg-[var(--t-bg-active)] text-text'
                       : 'text-text-soft hover:bg-[var(--t-bg-hover)]',
                   )}
-                  title={file.path}
+                  data-tip={file.path}
                 >
                   <span className="min-w-0 flex-1 truncate">{file.path}</span>
                   <span className="shrink-0 text-[var(--t-git-plus)]">+{file.additions}</span>

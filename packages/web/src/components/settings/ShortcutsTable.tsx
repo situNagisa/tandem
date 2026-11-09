@@ -82,7 +82,7 @@ export function ShortcutsTable() {
               data-command-shortcut={command.id}
               className="flex min-h-8 min-w-0 items-center gap-2 text-[13px]"
             >
-              <dt title={command.title} className="min-w-0 flex-1 truncate text-text-soft">{command.title}</dt>
+              <dt data-tip={command.title} className="min-w-0 flex-1 truncate text-text-soft">{command.title}</dt>
               <dd className="flex shrink-0 items-center gap-1">
                 <kbd
                   className={cn(

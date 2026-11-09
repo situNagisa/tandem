@@ -64,7 +64,7 @@ const EnvTrigger = forwardRef<HTMLButtonElement, EnvTriggerProps>(function EnvTr
       type="button"
       onClick={onClick}
       disabled={disabled}
-      title={title}
+      data-tip={title}
       aria-haspopup="menu"
       aria-expanded={open}
       aria-pressed={pressed}
@@ -311,7 +311,7 @@ export function FolderBrowser({
           type="button"
           onClick={useCurrent}
           aria-label={useLabel}
-          title={`${useLabel} (Enter)`}
+          data-tip={`${useLabel} (Enter)`}
           className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-[var(--t-bg-active)] hover:text-text"
         >
           <CornerDownLeft size={13} />
@@ -600,7 +600,7 @@ export function EnvBar({
     <div
       className={cn(
         'flex min-w-0 flex-wrap items-center gap-0.5 pb-1.5 sm:flex-nowrap sm:gap-1',
-        'max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:overscroll-x-contain max-sm:pb-1 max-sm:[scrollbar-width:thin]',
+        'max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:overscroll-x-contain max-sm:pb-1',
         compact &&
           'flex-nowrap gap-0.5 pb-1 sm:[&_button>span]:hidden sm:[&_button>svg.lucide-chevron-down]:hidden',
       )}

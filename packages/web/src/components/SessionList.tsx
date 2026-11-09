@@ -606,7 +606,7 @@ export function SessionList({
           )
           e.dataTransfer.effectAllowed = 'copy'
         }}
-        title={
+        data-tip={
           s.forkedFrom
             ? `分叉自 ${s.forkedFrom.title || '父会话'}${s.title ? ` · ${s.title}` : ''}`
             : s.worktree
@@ -677,10 +677,10 @@ export function SessionList({
                 'min-w-0 flex-1 truncate text-[14px] leading-5',
                 s.unread && 'font-semibold',
               )}
-              title={s.title || '未命名会话'}
+              data-tip={s.title || '未命名会话'}
             >
               {s.scheduledBy && (
-                <span title={`定时任务：${s.scheduledBy.name}`} className="mr-1 inline-block align-[-1px] text-muted">
+                <span data-tip={`定时任务：${s.scheduledBy.name}`} className="mr-1 inline-block align-[-1px] text-muted">
                   <Clock size={12} />
                 </span>
               )}
@@ -689,7 +689,7 @@ export function SessionList({
             {s.unread && (
               <span
                 className="size-1.5 shrink-0 rounded-full bg-accent-strong"
-                title="未读"
+                data-tip="未读"
                 aria-label="未读"
                 data-unread-dot="true"
               />
@@ -702,7 +702,7 @@ export function SessionList({
                   s.status === 'waiting_permission' ? 'text-accent-text' : 'text-text-tertiary',
                   isActive ? 'opacity-0' : 'group-hover:opacity-0',
                 )}
-                title={elapsed ? `${runningLabel} · ${elapsed}` : undefined}
+                data-tip={elapsed ? `${runningLabel} · ${elapsed}` : undefined}
               >
                 {elapsed ? `${runningLabel} · ${elapsed}` : formatRelative(s.updatedAt)}
               </span>
@@ -841,7 +841,7 @@ export function SessionList({
                   <span className="flex size-4 shrink-0 items-center justify-center text-text-tertiary">
                     <Eye size={12} />
                   </span>
-                  <span className="min-w-0 flex-1 truncate leading-5" title={ext.title || '未命名会话'}>
+                  <span className="min-w-0 flex-1 truncate leading-5" data-tip={ext.title || '未命名会话'}>
                     {ext.title || '未命名会话'}
                   </span>
                   <span className="w-[64px] shrink-0 truncate text-right text-[12px] tabular-nums text-text-tertiary">
@@ -888,7 +888,7 @@ export function SessionList({
                       indented ? 'pl-5' : 'pl-1.5',
                     )}
                     aria-expanded={!projCollapsed}
-                    title={projectTip || project.name}
+                    data-tip={projectTip || project.name}
                   >
                     <ChevronRight
                       size={11}
@@ -1036,7 +1036,7 @@ export function SessionList({
                         onClick={() => toggleProject(hostKey)}
                         className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left text-[12px] font-medium text-text-tertiary transition-colors duration-[120ms] hover:text-text-secondary"
                         aria-expanded={!hostCollapsed}
-                        title={host.online ? host.name : `${host.name} · 离线，显示缓存的会话列表`}
+                        data-tip={host.online ? host.name : `${host.name} · 离线，显示缓存的会话列表`}
                       >
                         <ChevronRight
                           size={11}

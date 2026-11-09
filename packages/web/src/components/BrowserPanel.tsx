@@ -112,14 +112,14 @@ export function BrowserPanel() {
         >
           <span
             className="min-w-0 flex-1 truncate font-mono text-[12px] text-text-soft"
-            title={state.url}
+            data-tip={state.url}
           >
             {state.url || (state.active ? '（尚未打开页面）' : '浏览器未打开')}
           </span>
         </PanelBar>
 
         {state.title ? (
-          <div className="shrink-0 truncate px-3 pt-1.5 text-[12px] text-muted" title={state.title}>
+          <div className="shrink-0 truncate px-3 pt-1.5 text-[12px] text-muted" data-tip={state.title}>
             {state.title}
           </div>
         ) : null}

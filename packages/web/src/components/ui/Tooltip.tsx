@@ -145,24 +145,30 @@ if (typeof document !== 'undefined') {
     (e) => {
       if (!canHover()) return
       const target = e.target instanceof Element ? e.target : null
-      const host = target?.closest<HTMLElement>('[title]') ?? null
+      const host = target?.closest<HTMLElement>('[title], [data-tip]') ?? null
       if (host === titleHost) return
       if (titleHost && (!host || !nodeContains(titleHost, host))) restoreTitle()
       if (!host || tipHosts.has(host)) return
-      const title = host.getAttribute('title')?.trim()
-      if (!title) return
-      titleHost = host
-      titleCache.set(host, title)
-      host.removeAttribute('title')
-      scheduleTip(host, title)
+      // 反馈9：DOM 上的原生 title 统一转成 data-tip（由 ui/Tooltip 展示）；
+      // 仍兼容第三方/动态内容直接写 title 的情况，悬停时先摘掉再展示。
+      const native = host.getAttribute('title')?.trim()
+      const label = native || host.getAttribute('data-tip')?.trim()
+      if (!label) return
+      if (native) {
+        titleHost = host
+        titleCache.set(host, native)
+        host.removeAttribute('title')
+      }
+      scheduleTip(host, label)
     },
     true,
   )
   document.addEventListener(
     'pointerout',
     (e) => {
-      if (!titleHost) return
-      if (nodeContains(titleHost, e.relatedTarget)) return
+      if (!titleHost && !currentHost) return
+      if (titleHost && nodeContains(titleHost, e.relatedTarget)) return
+      if (currentHost && nodeContains(currentHost, e.relatedTarget)) return
       restoreTitle()
       hideTip()
     },
@@ -173,10 +179,11 @@ if (typeof document !== 'undefined') {
     (e) => {
       const target = e.target instanceof Element ? e.target : null
       if (!target?.matches(':focus-visible')) return
-      const host = target.closest<HTMLElement>('[title]')
+      const host = target.closest<HTMLElement>('[title], [data-tip]')
       if (!host || tipHosts.has(host)) return
-      const title = host.getAttribute('title')?.trim()
-      if (title) scheduleTip(host, title)
+      const label =
+        host.getAttribute('title')?.trim() || host.getAttribute('data-tip')?.trim()
+      if (label) scheduleTip(host, label)
     },
     true,
   )

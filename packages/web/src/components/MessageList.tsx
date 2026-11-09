@@ -661,7 +661,7 @@ function MessageListInner({
             type="button"
             onClick={() => navigate({ kind: 'session', hostId: activeHostId, sessionId: child.id })}
             className="inline-flex min-w-0 max-w-[280px] items-center gap-0.5 rounded px-1 py-0.5 text-left text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-            title={`打开分叉会话：${child.title}`}
+            data-tip={`打开分叉会话：${child.title}`}
           >
             → <span className="truncate">{child.title || '未命名会话'}</span>
           </button>

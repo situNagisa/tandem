@@ -205,7 +205,7 @@ export function SkillsSection() {
                       type="button"
                       onClick={() => void openPreview(skill)}
                       className="min-w-0 text-left text-[13px] font-semibold text-text hover:underline"
-                      title="预览 SKILL.md"
+                      data-tip="预览 SKILL.md"
                     >
                       <span className="truncate font-mono">{skill.name}</span>
                     </button>
@@ -221,7 +221,7 @@ export function SkillsSection() {
                   <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-text-soft">
                     {skill.description || '（无描述）'}
                   </p>
-                  <p className="mt-0.5 truncate font-mono text-[12px] text-muted" title={skill.path}>
+                  <p className="mt-0.5 truncate font-mono text-[12px] text-muted" data-tip={skill.path}>
                     {skill.path}
                   </p>
                 </div>
@@ -267,7 +267,7 @@ export function SkillsSection() {
           preview ? (
             <span className="block min-w-0">
               <span className="block text-[12.5px] leading-5 text-text-soft">{preview.description}</span>
-              <span className="block truncate font-mono text-[12px] text-muted" title={preview.path}>
+              <span className="block truncate font-mono text-[12px] text-muted" data-tip={preview.path}>
                 {preview.path}
               </span>
             </span>

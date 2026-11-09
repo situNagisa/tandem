@@ -2,6 +2,14 @@
 
 > 更新：2026-11-09。只保留最近 5 轮；更早记录见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 55（2026-11-09）反馈包 #9：浏览器自带控件 / 滚动条 / 设置密度 / 高级分组
+- [x] 全局屏蔽（R37 新）：Electron `spellcheck:false`；`AppContextMenu` 用 `ui/Menu` 接管右键（复制/剪切/粘贴/全选/链接与图片地址），主进程 IPC 读写剪贴板；`writingsuggestions=false`、`-webkit-touch-callout:none`、format-detection、链接/图片无拖拽 ghost、输入框 autocomplete/autocorrect/spellcheck 默认关（密码框除外）、数字箭头隐藏；原生 title 批量迁移 `data-tip` 并由 `ui/Tooltip` 统一展示；Edge 划词迷你菜单只能由 Edge 设置/组策略 `QuickSearchShowMiniMenu` 关闭（已在 design.md 说明）
+- [x] #04 R36（新）：原生滚动条全局隐藏（含 Portal 弹窗），唯一 `ui/OverlayScrollbar` 覆盖式横竖双轴、不占布局宽度、无箭头、滚动/悬停淡入、停止 800ms 淡出；设置导航只保留内层一个滚动容器；ui-audit 新增 `custom-scrollbar`
+- [x] #05 R01（复发）：新增 `ui/SettingRow`/`ui/SettingSection`；设置卡片/行距统一收紧，标签在左控件在右，数值窄宽，`%`/`轮原文`/`tokens` 紧贴输入框不再换行，长说明进标题旁 ⓘ tooltip；通用设置与通知设置已迁移
+- [x] #03 R10（复发）：高级分组移入滚动列表，不再固定在底部；展开时补偿滚动位置，点击位置不动
+- 验证：`node scripts/check.mjs --skip-smoke`（build/docs/ui-audit/test 通过；新增回归「反馈9」通过；全量回归仅剩并行同事 #02 工作站安装说明改版导致的 1 条旧用例，与本批无关）；截图 `/tmp/fb9-after/`
+- 根因：R36/R37 新增，R01/R10 复发走共享层 + ui-audit/回归防线
+
 ## 迭代 54（2026-11-09）消息耗时 / 调试版手机预览
 - [x] 消息耗时：协议 `Message.durationMs / ttftMs / toolDurationMs`（可选）；服务端每次请求记开始到流式完成（含重试）与首 token，工具批次单独记耗时；assistant 用量行末尾 `· 12.3s`，流式实时计时，旧消息无字段不显示；轮次大纲 tooltip 追加「耗时 …，其中工具 …，首 token …」；单测 `timing.test.ts`/`turnUsage.test.ts`/`format.test.ts`，回归两条（种子数据展示 + 真实发送落库）
 - [x] 手机预览（调试版）：桌面独立窗口按预设加载同一 Host，CDP 触摸模拟/移动 UA/DPR、强制移动布局、旋转、模拟键盘；命令面板 + `Ctrl/Cmd+Shift+M` + 菜单/托盘；浏览器版弹窗并提示无触摸模拟；Capacitor 原生能力走桩；反馈 `platform=mobile-preview`；`MobilePreviewBar` 模块按 `__TANDEM_DEBUG__` 剔除

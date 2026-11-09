@@ -132,7 +132,7 @@ export function ContextSpaceSection({
                     type="button"
                     data-context-turn-open="true"
                     onClick={() => jump(turn.messageId)}
-                    title={title}
+                    data-tip={title}
                     className="flex min-h-6 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[12px] leading-4 text-text-soft"
                   >
                     <span className="w-4 shrink-0 text-right text-muted tabular-nums">
@@ -167,7 +167,7 @@ export function ContextSpaceSection({
                         type="button"
                         data-context-nested="true"
                         onClick={() => jump(item.messageId)}
-                        title={item.preview}
+                        data-tip={item.preview}
                         className="flex min-h-6 w-full min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left text-[12px] leading-4 text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text-soft"
                       >
                         <span className="shrink-0">
@@ -353,7 +353,7 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
                 return (
                   <div
                     key={part.kind}
-                    title={`${meta.label} ${formatTokens(part.tokens)}`}
+                    data-tip={`${meta.label} ${formatTokens(part.tokens)}`}
                     style={{
                       width: `${width}%`,
                       backgroundColor: meta.color,

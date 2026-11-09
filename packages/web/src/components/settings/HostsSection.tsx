@@ -657,7 +657,7 @@ export function HostsSection() {
                     )}
                     {versionMismatch && (
                       <span
-                        title={`主机 ${hostVersion} · 客户端 ${APP_VERSION}。请把两端升级到同一版本，避免协议不一致。`}
+                        data-tip={`主机 ${hostVersion} · 客户端 ${APP_VERSION}。请把两端升级到同一版本，避免协议不一致。`}
                         className="inline-flex items-center gap-1 rounded border border-warning/40 px-1.5 py-px text-[12px] text-warning"
                       >
                         <TriangleAlert size={10} /> 版本不一致

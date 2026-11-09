@@ -76,7 +76,7 @@ function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number;
       onClick={() => id && focusAgent(id)}
       className="flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md pr-1 text-left text-[13px] transition-colors hover:bg-[var(--t-bg-hover)]"
       style={{ paddingLeft: 4 + Math.max(0, depth - 1) * 14 }}
-      title={sub.summary ? `${sub.summary.title} · ${sub.summary.model}` : undefined}
+      data-tip={sub.summary ? `${sub.summary.title} · ${sub.summary.model}` : undefined}
     >
       <span className="shrink-0 text-[12px] text-muted">
         {depth <= 1 ? '子' : depth === 2 ? '孙' : depth}
@@ -85,7 +85,7 @@ function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number;
         {sub.summary?.title || '未命名子代理'}
       </span>
       {sub.summary?.model && (
-        <span className="max-w-[92px] shrink-0 truncate font-mono text-[10.5px] text-muted" title={`模型：${sub.summary.model}`}>
+        <span className="max-w-[92px] shrink-0 truncate font-mono text-[10.5px] text-muted" data-tip={`模型：${sub.summary.model}`}>
           {sub.summary.model}
         </span>
       )}

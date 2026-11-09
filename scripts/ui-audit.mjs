@@ -178,6 +178,68 @@ for (const file of await walk(SRC)) {
   }
 }
 
+// 反馈9：原生 title 提示统一走 ui/Tooltip（data-tip）。DOM 小写标签上禁止直接写 title；
+// 组件 props（大写开头，如 Modal title）不算；iframe/abbr 的 title 是必要的无障碍名称。
+const NATIVE_TITLE_SKIP = new Set(['iframe', 'abbr', 'object', 'embed'])
+for (const file of files) {
+  const text = await readFile(file, 'utf8')
+  const tagRe = /<([a-z][a-zA-Z0-9]*)\b/g
+  let match
+  while ((match = tagRe.exec(text))) {
+    const tag = match[1]
+    if (NATIVE_TITLE_SKIP.has(tag)) continue
+    let i = tagRe.lastIndex
+    let depth = 0
+    let quote = null
+    for (; i < text.length; i += 1) {
+      const ch = text[i]
+      if (quote) {
+        if (ch === quote && text[i - 1] !== '\\') quote = null
+      } else if (ch === '"' || ch === "'") {
+        quote = ch
+      } else if (ch === '{') {
+        depth += 1
+      } else if (ch === '}') {
+        depth = Math.max(0, depth - 1)
+      } else if (ch === '>' && depth === 0) {
+        break
+      }
+    }
+    const span = text.slice(match.index, i + 1)
+    if (!/\stitle=/.test(span)) continue
+    const line = text.slice(0, match.index).split('\n').length
+    issues.push({
+      file: relative(ROOT, file),
+      line,
+      check: 'native-title',
+      label: 'DOM 上的原生 title：改用 data-tip（ui/Tooltip 统一提示）',
+      text: span.replace(/\s+/g, ' ').slice(0, 160),
+    })
+  }
+}
+
+// 反馈9：滚动条只能由全局 overlay（index.css 的 .overlay-scrollbar）实现；
+// 组件里再写 scrollbar-width / ::-webkit-scrollbar 会出现第二条滚动条。
+const SCROLLBAR_FILES = (await walk(SRC)).filter(
+  (file) => !file.endsWith('/index.css') && !file.endsWith('index.css'),
+)
+for (const file of SCROLLBAR_FILES) {
+  const text = await readFile(file, 'utf8')
+  const lines = text.split('\n')
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]
+    if (line.includes('ui-audit-ignore')) continue
+    if (!/scrollbar-width\s*:|scrollbar-color\s*:|::-webkit-scrollbar/.test(line)) continue
+    issues.push({
+      file: relative(ROOT, file),
+      line: i + 1,
+      check: 'custom-scrollbar',
+      label: '自定义滚动条：原生条已全局隐藏，统一用 overlay 滚动条，组件内不要再画',
+      text: line.trim().slice(0, 160),
+    })
+  }
+}
+
 if (json) {
   console.log(JSON.stringify({ count: issues.length, issues }, null, 2))
 } else if (issues.length === 0) {

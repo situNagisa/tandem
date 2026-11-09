@@ -472,7 +472,7 @@ export function PermissionsSection() {
               {rule.project && (
                 <span
                   className="max-w-[180px] truncate rounded-[4px] bg-[var(--t-surface-2)] px-1.5 py-0.5 text-[12px] text-muted max-sm:order-last max-sm:basis-full"
-                  title={`仅在该项目生效：${rule.project}`}
+                  data-tip={`仅在该项目生效：${rule.project}`}
                 >
                   项目：{lastSegment(rule.project)}
                 </span>

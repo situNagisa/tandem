@@ -245,7 +245,7 @@ export function CodeBlock({
             type="button"
             aria-pressed={wrap}
             aria-label="自动换行"
-            title={wrap ? '关闭自动换行（长行横向滚动）' : '自动换行（长行不横向滚动）'}
+            data-tip={wrap ? '关闭自动换行（长行横向滚动）' : '自动换行（长行不横向滚动）'}
             data-testid="code-wrap-toggle"
             onClick={() => {
               setWrap((value) => {

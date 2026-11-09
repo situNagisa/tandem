@@ -53,7 +53,7 @@ export function MobilePreviewBar() {
     <>
       <div
         data-mobile-preview-bar
-        title={`手机预览（模拟） · ${size.width}×${size.height}`}
+        data-tip={`手机预览（模拟） · ${size.width}×${size.height}`}
         className="fixed inset-x-0 top-0 z-[95] flex h-[30px] items-center gap-1 overflow-hidden border-b border-border bg-[var(--t-surface-2)] px-2 text-[11px] leading-none text-text-soft"
       >
         <span className="shrink-0 font-medium text-text">手机预览 · 模拟</span>
@@ -93,7 +93,7 @@ export function MobilePreviewBar() {
           键盘
         </Button>
         <span
-          title={nativeTouch ? '触摸模拟已开启' : '浏览器弹窗无法模拟触摸'}
+          data-tip={nativeTouch ? '触摸模拟已开启' : '浏览器弹窗无法模拟触摸'}
           className={cn('ml-auto shrink-0', nativeTouch ? 'text-muted' : 'text-warning')}
           data-preview-touch={nativeTouch ? 'emulated' : 'browser'}
         >

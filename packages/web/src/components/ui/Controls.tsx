@@ -29,7 +29,18 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   { size = 'md', className, ...rest },
   ref,
 ) {
-  return <input ref={ref} className={cn(FIELD_BASE, FIELD_SIZE[size], className)} {...rest} />
+  return (
+    <input
+      ref={ref}
+      // 反馈9：关闭浏览器原生自动填充下拉与拼写建议；密码框保留密码管理器语义。
+      autoComplete={rest.type === 'password' ? undefined : 'off'}
+      autoCorrect="off"
+      autoCapitalize="off"
+      spellCheck={false}
+      className={cn(FIELD_BASE, FIELD_SIZE[size], className)}
+      {...rest}
+    />
+  )
 })
 
 export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
@@ -43,6 +54,10 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
   return (
     <textarea
       ref={ref}
+      autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="off"
+      spellCheck={false}
       className={cn(
         FIELD_BASE,
         'min-h-[64px] resize-y py-1.5 leading-5',

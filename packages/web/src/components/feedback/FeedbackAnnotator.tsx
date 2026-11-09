@@ -342,7 +342,7 @@ export function FeedbackAnnotator({
               onClick={() => setTool(entry.value)}
               aria-label={entry.label}
               aria-pressed={tool === entry.value}
-              title={entry.label}
+              data-tip={entry.label}
               className={cn(
                 'flex size-7 items-center justify-center rounded-md text-white/70 transition-colors',
                 tool === entry.value ? 'bg-white text-black' : 'hover:bg-white/15 hover:text-white',

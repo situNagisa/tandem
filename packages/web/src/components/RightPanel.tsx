@@ -619,7 +619,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
               </div>
               {subUsage.byModel.map(([model, item]) => (
                 <div key={model} className="flex min-w-0 items-baseline justify-between gap-2 pl-2">
-                  <span className="min-w-0 truncate font-mono text-[12px] text-muted" title={model}>
+                  <span className="min-w-0 truncate font-mono text-[12px] text-muted" data-tip={model}>
                     {model}
                   </span>
                   <span className="shrink-0 font-mono text-[12px] tabular-nums text-muted">
@@ -677,7 +677,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
                 <span className="w-2.5 shrink-0 font-mono text-[12px] text-muted">
                   {CHANGE_MARK[f.status] ?? 'M'}
                 </span>
-                <span className="min-w-0 flex-1 truncate font-mono text-text-soft" title={f.path}>
+                <span className="min-w-0 flex-1 truncate font-mono text-text-soft" data-tip={f.path}>
                   {f.path}
                 </span>
                 <span className="shrink-0 font-mono text-[12px] tabular-nums text-muted">
@@ -763,7 +763,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
             type="button"
             onClick={() => openSettings('secrets')}
             className="flex items-center gap-1 rounded px-1 py-0.5 text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-            title="打开设置 → Secrets"
+            data-tip="打开设置 → Secrets"
           >
             <KeyRound size={10} className="text-muted" />
             {summary?.secretsCount ? `${summary.secretsCount} 个可用` : '未配置'}
@@ -778,7 +778,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         </DetailRow>
         <DetailRow label="更新">
           {summary ? (
-            <span className="tabular-nums" title={formatTime(summary.updatedAt)}>
+            <span className="tabular-nums" data-tip={formatTime(summary.updatedAt)}>
               {formatRelative(summary.updatedAt)}
             </span>
           ) : (
@@ -787,7 +787,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         </DetailRow>
         <DetailRow label="创建">
           {summary ? (
-            <span className="tabular-nums" title={formatTime(summary.createdAt)}>
+            <span className="tabular-nums" data-tip={formatTime(summary.createdAt)}>
               {formatRelative(summary.createdAt)}
             </span>
           ) : (

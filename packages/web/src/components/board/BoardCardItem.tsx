@@ -16,14 +16,14 @@ export function CardStatusIcon({ status }: { status: BoardCard['status'] }) {
 export function CardStatusLine({ card, board }: { card: BoardCard; board: Board }) {
   if (card.status === 'running') {
     return card.activity ? (
-      <p className="truncate text-[12px] text-text-secondary" title={card.activity}>
+      <p className="truncate text-[12px] text-text-secondary" data-tip={card.activity}>
         {card.activity}
       </p>
     ) : null
   }
   if (card.status === 'approval') {
     return (
-      <p className="truncate text-[12px] text-[var(--t-accent-text)]" title={card.activity ?? '等待审批'}>
+      <p className="truncate text-[12px] text-[var(--t-accent-text)]" data-tip={card.activity ?? '等待审批'}>
         {card.activity ?? '等待审批'}
       </p>
     )
@@ -33,7 +33,7 @@ export function CardStatusLine({ card, board }: { card: BoardCard; board: Board 
     return text ? (
       <p
         className={cn('truncate text-[12px]', card.blocked === 'upstream_failed' ? 'text-danger' : 'text-text-tertiary')}
-        title={text}
+        data-tip={text}
       >
         {text}
       </p>
@@ -54,7 +54,7 @@ export function CardStatusLine({ card, board }: { card: BoardCard; board: Board 
         {result?.summary ? (
           <p
             className={cn('text-[12px] text-text-secondary', card.status === 'review' ? 'line-clamp-2' : 'truncate')}
-            title={result.summary}
+            data-tip={result.summary}
           >
             {result.summary}
           </p>
@@ -120,7 +120,7 @@ export function BoardCardItem({
         <CardStatusIcon status={card.status} />
         <span
           className="line-clamp-2 min-w-0 flex-1 text-[14px] font-medium leading-snug text-text"
-          title={card.title}
+          data-tip={card.title}
         >
           {card.title}
         </span>
@@ -145,7 +145,7 @@ export function BoardCardItem({
               </span>
             ) : null}
             {meta.length > 0 ? (
-              <span className="truncate" title={meta.join(' · ')}>
+              <span className="truncate" data-tip={meta.join(' · ')}>
                 {meta.join(' · ')}
               </span>
             ) : null}

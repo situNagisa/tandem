@@ -408,7 +408,6 @@
 .md.chat-md .md-table-scroll {
   overflow-x: auto;
   overscroll-behavior-x: contain;
-  scrollbar-width: thin;
 }
 .md.chat-md .md-table-wrap table {
   display: table;
@@ -697,7 +696,6 @@
 .chat-diff-body {
   max-height: 460px;
   overflow: auto;
-  scrollbar-width: thin;
   font-family: var(--t-font-mono, ui-monospace, "SF Mono", Consolas, monospace);
   font-size: 12px;
   line-height: 1.65;

@@ -31,7 +31,7 @@ export function ContextCard() {
           return (
             <div
               key={part.kind}
-              title={`${meta.label} ${formatTokens(part.tokens)}`}
+              data-tip={`${meta.label} ${formatTokens(part.tokens)}`}
               style={{
                 width: `${width}%`,
                 backgroundColor: meta.color,

@@ -431,7 +431,7 @@ function FeedbackEditor({
               <button
                 type="button"
                 aria-label="清除根因建议"
-                title={editor.causeTitle}
+                data-tip={editor.causeTitle}
                 onClick={() => onTagChange(editor.featureId, undefined)}
                 className="rounded-full hover:bg-[#F97316]/20"
               >
@@ -479,7 +479,7 @@ function FeedbackEditor({
                   key={rule.id}
                   type="button"
                   onClick={() => onTagChange(editor.featureId, rule.id)}
-                  title={rule.title}
+                  data-tip={rule.title}
                   aria-pressed={editor.causeId === rule.id}
                   className={cn(
                     'rounded-full border px-2 py-0.5 text-[11px]',
@@ -521,7 +521,7 @@ function FeedbackEditor({
               <button
                 type="button"
                 onClick={onAnnotate}
-                title="打开标注编辑器"
+                data-tip="打开标注编辑器"
                 className="relative h-14 w-20 shrink-0 overflow-hidden rounded border border-border bg-black/10"
               >
                 <img src={annotateSource} alt="" className="size-full object-cover" draggable={false} />
@@ -539,7 +539,7 @@ function FeedbackEditor({
               <div
                 key={reference.id}
                 className="group relative h-14 w-20 shrink-0 overflow-hidden rounded border border-border bg-black/10"
-                title={reference.name}
+                data-tip={reference.name}
               >
                 <img src={reference.dataURL} alt={reference.name} className="size-full object-cover" draggable={false} />
                 <span className="absolute left-0 top-0 rounded-br bg-black/60 px-1 text-[8.5px] text-white">参考</span>
@@ -1729,7 +1729,7 @@ export function FeedbackMode() {
               'transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#F97316]',
             )}
             style={{ left, top }}
-            title={`${index + 1}. ${feedbackTypeLabel(item.type)}：${item.text}`}
+            data-tip={`${index + 1}. ${feedbackTypeLabel(item.type)}：${item.text}`}
             aria-label={`编辑第 ${index + 1} 条反馈`}
           >
             {index + 1}
@@ -1832,7 +1832,7 @@ export function FeedbackMode() {
             <span className="rounded bg-[#F97316]/15 px-1.5 py-0.5 text-[10.5px] font-semibold text-[#F97316]">
               复验 {verify.index + 1}/{verify.queue.length}
             </span>
-            <span className="min-w-0 flex-1 truncate text-[12px] text-text" title={verifyEntry.item.text}>
+            <span className="min-w-0 flex-1 truncate text-[12px] text-text" data-tip={verifyEntry.item.text}>
               {verifyEntry.item.text}
             </span>
             <IconButton label="退出复验" size="sm" onClick={() => setVerify(null)}>

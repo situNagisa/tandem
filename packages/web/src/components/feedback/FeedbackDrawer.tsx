@@ -213,7 +213,7 @@ export function FeedbackDrawer({
         <div className="border-b border-border bg-surface-2/50 px-3 py-2">
           <div className="flex items-center gap-1.5 text-[12px] text-text-soft">
             <FileCheck2 size={12} className="text-[#F97316]" />
-            <span className="min-w-0 flex-1 truncate" title={receipt.sourceFile}>
+            <span className="min-w-0 flex-1 truncate" data-tip={receipt.sourceFile}>
               回执：{receipt.sourceFile || '未命名'}
             </span>
             <span className="text-muted">
@@ -280,7 +280,7 @@ export function FeedbackDrawer({
                 <button
                   type="button"
                   onClick={() => onAnnotate(item)}
-                  title="标注截图"
+                  data-tip="标注截图"
                   className="relative size-14 shrink-0 overflow-hidden rounded border border-border bg-black/10"
                 >
                   {thumb ? (
@@ -315,7 +315,7 @@ export function FeedbackDrawer({
                     {item.featureName && (
                       <span
                         className="rounded bg-[#F97316]/12 px-1 py-0.5 text-[9.5px] text-[#F97316]"
-                        title={`功能：${item.featureName}`}
+                        data-tip={`功能：${item.featureName}`}
                       >
                         {item.featureName}
                       </span>
@@ -323,7 +323,7 @@ export function FeedbackDrawer({
                     {item.causeId && (
                       <span
                         className="rounded bg-surface-2 px-1 py-0.5 text-[9.5px] text-text-soft"
-                        title={item.causeTitle ?? '根因建议'}
+                        data-tip={item.causeTitle ?? '根因建议'}
                       >
                         {item.causeId}
                       </span>
@@ -340,7 +340,7 @@ export function FeedbackDrawer({
                     type="button"
                     onClick={() => onHighlight(item)}
                     className="mt-0.5 line-clamp-2 w-full text-left text-[12px] leading-4 text-text hover:text-[#F97316]"
-                    title="在页面上定位"
+                    data-tip="在页面上定位"
                   >
                     {item.text}
                   </button>
@@ -366,7 +366,7 @@ export function FeedbackDrawer({
                     >
                       <Trash2 size={9} /> 删除
                     </button>
-                    <span className="ml-auto cursor-grab text-muted" title="拖拽排序">
+                    <span className="ml-auto cursor-grab text-muted" data-tip="拖拽排序">
                       <GripVertical size={12} />
                     </span>
                   </div>
@@ -380,7 +380,7 @@ export function FeedbackDrawer({
                       key={reference.id}
                       src={reference.dataURL}
                       alt={reference.name}
-                      title={`参考图：${reference.name}`}
+                      data-tip={`参考图：${reference.name}`}
                       className="h-10 w-14 shrink-0 rounded border border-border object-cover"
                       draggable={false}
                     />

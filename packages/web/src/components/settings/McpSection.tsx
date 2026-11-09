@@ -465,7 +465,7 @@ export function McpSection() {
                   </div>
                   <div
                     className="mt-0.5 truncate font-mono text-[13px] text-muted"
-                    title={
+                    data-tip={
                       config.transport === 'http'
                         ? config.url
                         : [config.command, ...(config.args ?? [])].join(' ')
@@ -478,7 +478,7 @@ export function McpSection() {
                   {state === 'error' && status?.error && (
                     <p
                       className="mt-0.5 line-clamp-1 break-all text-[13px] leading-4 text-danger"
-                      title={status.error}
+                      data-tip={status.error}
                     >
                       {status.error}
                     </p>
@@ -537,7 +537,7 @@ export function McpSection() {
                           {status.tools.map((tool) => (
                             <span
                               key={tool}
-                              title={`mcp__${config.name}__${tool}`}
+                              data-tip={`mcp__${config.name}__${tool}`}
                               className="rounded-md bg-[var(--t-bg-active)] px-1.5 py-0.5 font-mono text-[13px] text-text-soft"
                             >
                               {tool}

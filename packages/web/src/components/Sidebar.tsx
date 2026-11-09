@@ -270,7 +270,7 @@ export function Sidebar({
             onNavigate?.()
           }}
           aria-label={inboxCount > 0 ? `收件箱，${inboxCount} 条待处理` : '收件箱'}
-          title={inboxCount > 0 ? `收件箱（${inboxCount} 条待处理）` : '收件箱'}
+          data-tip={inboxCount > 0 ? `收件箱（${inboxCount} 条待处理）` : '收件箱'}
           className={cn(
             'relative inline-flex size-8 items-center justify-center rounded-md text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text max-sm:size-11',
             inboxCount > 0 && 'text-text',

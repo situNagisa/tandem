@@ -182,14 +182,25 @@ export function SettingsDialog() {
         <button
           type="button"
           aria-expanded={expanded}
-          onClick={() =>
+          onClick={(event) => {
+            const button = event.currentTarget
+            const scroller = button.closest<HTMLElement>('[data-settings-nav-scroll]')
+            const before = button.getBoundingClientRect().top
             setClosedGroups((prev) => {
               const next = new Set(prev)
               if (next.has(group.id)) next.delete(group.id)
               else next.add(group.id)
               return next
             })
-          }
+            // 反馈9#03：分组在列表底部展开时，保持点击的分组标题在视口里的位置不动。
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                if (!scroller) return
+                const delta = button.getBoundingClientRect().top - before
+                if (Math.abs(delta) > 0.5) scroller.scrollTop += delta
+              })
+            })
+          }}
           className="flex h-11 w-full items-center gap-1 rounded-md px-2 text-left text-[12px] font-medium text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text-soft sm:h-7"
         >
           <span className="min-w-0 flex-1 truncate">{group.label}</span>
@@ -246,7 +257,7 @@ export function SettingsDialog() {
       bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
     >
       <div className="flex h-full min-h-0 flex-col sm:flex-row">
-        <nav aria-label="设置页签" className="grid shrink-0 grid-cols-3 gap-1 overflow-y-auto border-b border-border bg-bg/40 p-2 max-sm:max-h-[340px] sm:flex sm:min-h-0 sm:w-52 sm:flex-col sm:border-b-0 sm:border-r sm:p-3">
+        <nav aria-label="设置页签" className="grid shrink-0 grid-cols-3 gap-1 border-b border-border bg-bg/40 p-2 max-sm:max-h-[340px] max-sm:overflow-y-auto sm:flex sm:min-h-0 sm:w-52 sm:flex-col sm:overflow-hidden sm:border-b-0 sm:border-r sm:p-3">
           <div className="col-span-3 shrink-0 sm:col-span-1">
             <div className="relative">
               <Search
@@ -308,13 +319,11 @@ export function SettingsDialog() {
               )}
             </div>
           ) : (
-            <div className="col-span-3 min-h-0 space-y-1 overflow-y-auto sm:col-span-1 sm:flex-1">
-              {visibleGroups.filter((group) => group.id !== 'advanced').map(renderSettingsGroup)}
-            </div>
-          )}
-          {!query.trim() && visibleGroups.some((group) => group.id === 'advanced') && (
-            <div className="col-span-3 shrink-0 border-t border-border/60 pt-1 sm:col-span-1">
-              {visibleGroups.filter((group) => group.id === 'advanced').map(renderSettingsGroup)}
+            <div
+              data-settings-nav-scroll
+              className="col-span-3 min-h-0 space-y-1 overflow-y-auto sm:col-span-1 sm:flex-1"
+            >
+              {visibleGroups.map(renderSettingsGroup)}
             </div>
           )}
           {!query.trim() && (

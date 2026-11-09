@@ -104,10 +104,10 @@ export function DivisionPlanCard({
           <div key={task.id} className="rounded-lg border border-border/70 px-2 py-1.5">
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] text-text" title={task.description}>
+                <div className="truncate text-[13px] text-text" data-tip={task.description}>
                   {task.description}
                 </div>
-                <div className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-muted" title={task.prompt}>
+                <div className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-muted" data-tip={task.prompt}>
                   {task.prompt}
                 </div>
               </div>

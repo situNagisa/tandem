@@ -17,6 +17,11 @@ contextBridge.exposeInMainWorld('tandemDesktop', {
       return () => ipcRenderer.removeListener('updater:status', listener);
     },
   },
+  // 反馈9：页面右键菜单使用系统剪贴板（不触发浏览器剪贴板权限弹窗）。
+  clipboard: {
+    readText: () => ipcRenderer.invoke('clipboard:read-text'),
+    writeText: (text) => ipcRenderer.invoke('clipboard:write-text', text),
+  },
   // 手机预览：仅调试版主进程注册；发布版调用会返回不可用。
   mobilePreview: {
     open: (options) => ipcRenderer.invoke('mobile-preview:open', options),

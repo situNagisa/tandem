@@ -383,7 +383,7 @@ function SourceHeader({
           <Lock size={9} /> 只读
         </span>
       )}
-      <span className="min-w-0 truncate font-mono text-[13px] text-muted" title={path}>
+      <span className="min-w-0 truncate font-mono text-[13px] text-muted" data-tip={path}>
         {path}
       </span>
     </div>

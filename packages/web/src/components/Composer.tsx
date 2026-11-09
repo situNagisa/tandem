@@ -1103,7 +1103,7 @@ export function Composer({
               {previewSelections.map((selection) => (
                 <div
                   key={selection.id}
-                  title={selectionContextText([selection])}
+                  data-tip={selectionContextText([selection])}
                   className="flex max-w-full items-center gap-1.5 rounded-lg border border-border bg-surface-2 py-1 pl-2 pr-1 text-[12px] text-text-soft"
                 >
                   <MousePointerClick size={13} className="shrink-0 text-muted" />
@@ -1155,7 +1155,7 @@ export function Composer({
               {pasted.map((p) => (
                 <div
                   key={p.id}
-                  title={`${p.lines} 行 · ${p.text.length} 字`}
+                  data-tip={`${p.lines} 行 · ${p.text.length} 字`}
                   className="flex max-w-full items-center gap-1.5 rounded-lg border border-border bg-surface-2 py-1 pl-2 pr-1 text-[12px] text-text-soft"
                 >
                   <FileText size={13} className="shrink-0 text-muted" />
@@ -1209,6 +1209,9 @@ export function Composer({
               }}
               rows={1}
               spellCheck={false}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
               disabled={disabled}
               aria-label="消息输入框"
               placeholder={
@@ -1248,7 +1251,7 @@ export function Composer({
           {!compact && inputTokens > 0 && (
             <span
               data-composer-tokens=""
-              title={
+              data-tip={
                 contextLimit
                   ? `本次输入约 ~${formatTokens(inputTokens)} token（含附件与已选元素）；发送后上下文约 ~${formatTokens(expectedContext)} / ~${formatTokens(contextLimit)} token，占上限 ${expectedPct !== undefined && expectedPct > 0 && expectedPct < 1 ? '<1' : Math.round(expectedPct ?? 0)}%`
                   : `本次输入约 ~${formatTokens(inputTokens)} token（含附件与已选元素）`

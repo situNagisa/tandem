@@ -29,6 +29,9 @@ export interface SceneTurn {
   summary?: boolean
   compressed?: boolean
   pinned?: boolean
+  /** 只读预览：不显示固定图钉，也不在 tooltip 里编造「花费未知」。 */
+  readOnly?: boolean
+  hideUnknownCost?: boolean
 }
 
 export interface SceneEls {
@@ -347,6 +350,7 @@ export class RailScene {
       ...(mark?.share !== undefined ? { share: mark.share } : {}),
       ...(compressed ? { compressed: true } : {}),
       ...(summary ? { summary: true } : {}),
+      ...(mark?.hideUnknownCost ? { hideUnknownCost: true } : {}),
     })
     it.t.removeAttribute('title')
     const aria = summary
@@ -360,7 +364,7 @@ export class RailScene {
     it.el.dataset.summary = summary ? 'true' : 'false'
     it.el.dataset.compressed = compressed ? 'true' : 'false'
     it.c.textContent = compressed ? '已压缩' : ''
-    const canPin = !summary && !compressed
+    const canPin = !mark?.readOnly && !summary && !compressed
     it.p.dataset.turn = canPin ? (mark?.id ?? '') : ''
     it.p.title = canPin ? (mark?.pinned ? '取消固定' : '固定此轮') : ''
     it.bound = turn

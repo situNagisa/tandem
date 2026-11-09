@@ -5,6 +5,7 @@ const {
   BrowserWindow,
   Menu,
   Tray,
+  clipboard,
   ipcMain,
   nativeImage,
   nativeTheme,
@@ -328,7 +329,8 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      spellcheck: true,
+      // 反馈9：默认关闭拼写检查下划线与建议（输入框不再出现浏览器自带波浪线）。
+      spellcheck: false,
     },
   });
 
@@ -721,6 +723,11 @@ function scheduleUpdateCheck(delay = 15000) {
 }
 
 function setupUpdaterIpc() {
+  // 反馈9：右键菜单的复制/粘贴走主进程剪贴板，避免浏览器异步剪贴板权限弹窗。
+  ipcMain.handle('clipboard:read-text', () => clipboard.readText());
+  ipcMain.handle('clipboard:write-text', (_event, text) =>
+    clipboard.writeText(typeof text === 'string' ? text : ''),
+  );
   ipcMain.handle('updater:get-config', () => readUpdateConfig());
   ipcMain.handle('updater:set-config', (_event, config) => {
     const saved = writeUpdateConfig(config);

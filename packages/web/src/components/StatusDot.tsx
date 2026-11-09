@@ -22,7 +22,7 @@ export function ConnectionDot({
         CONNECTION_STYLE[state],
         className,
       )}
-      title={state === 'online' ? '在线' : state === 'connecting' ? '连接中' : '离线'}
+      data-tip={state === 'online' ? '在线' : state === 'connecting' ? '连接中' : '离线'}
     />
   )
 }
@@ -30,30 +30,30 @@ export function ConnectionDot({
 export function SessionStatusDot({ status }: { status: SessionStatus }) {
   if (status === 'running') {
     return (
-      <span className="relative inline-flex size-2 shrink-0" title="运行中">
+      <span className="relative inline-flex size-2 shrink-0" data-tip="运行中">
         <span className="absolute inset-0 rounded-full bg-text-secondary/25 running-dot" />
         <span className="relative m-auto size-1.5 rounded-full bg-text-secondary" />
       </span>
     )
   }
   if (status === 'waiting_permission') {
-    return <span className="inline-block size-2 shrink-0 rounded-full bg-accent" title="等待审批" />
+    return <span className="inline-block size-2 shrink-0 rounded-full bg-accent" data-tip="等待审批" />
   }
   if (status === 'retrying') {
     return (
       <span
         className="inline-block size-2 shrink-0 rounded-full bg-warning running-dot"
-        title="网络中断，等待重试"
+        data-tip="网络中断，等待重试"
       />
     )
   }
   if (status === 'error') {
-    return <span className="inline-block size-2 shrink-0 rounded-full bg-text-tertiary/70" title="出错" />
+    return <span className="inline-block size-2 shrink-0 rounded-full bg-text-tertiary/70" data-tip="出错" />
   }
   return (
     <span
       className="inline-block size-1.5 shrink-0 rounded-full border border-[var(--t-border-strong)]"
-      title="空闲"
+      data-tip="空闲"
     />
   )
 }

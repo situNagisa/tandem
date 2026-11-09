@@ -33,7 +33,7 @@ export function PriceOverrides({
         <div className="mt-1.5 space-y-1">
           {Object.entries(price).map(([id, value]) => (
             <div key={id} className="flex items-center gap-1.5">
-              <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-text-soft" title={id}>
+              <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-text-soft" data-tip={id}>
                 {id}
               </span>
               <input

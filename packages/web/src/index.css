@@ -244,8 +244,9 @@ html.dark {
 
   html {
     -webkit-text-size-adjust: 100%;
-    scrollbar-color: var(--t-border-strong) transparent;
-    scrollbar-width: thin;
+    /* 浏览器自带的选择浮层（长按菜单/触屏标注）全局关闭；文字仍可正常选中复制。 */
+    -webkit-touch-callout: none;
+    writing-suggestions: none;
   }
 
   body {
@@ -276,6 +277,23 @@ html.dark {
   select {
     font: inherit;
     color: inherit;
+  }
+
+  /* 图片、链接不产生浏览器拖拽 ghost；需要拖拽排序的元素自行设置 draggable。 */
+  a,
+  img {
+    -webkit-user-drag: none;
+  }
+
+  /* 数字输入不显示上下箭头（加减用键盘或旁边的单位/滑块表达）。 */
+  input[type='number'] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
   }
 
   /* Portal 浮层（tooltip / 菜单 / 弹窗）不在 body 的字体继承链里时也强制无衬线。 */
@@ -311,22 +329,15 @@ html.dark {
     outline: none;
   }
 
-  ::-webkit-scrollbar {
-    width: 7px;
-    height: 7px;
+  /* 原生滚动条全局隐藏：统一由 OverlayScrollbar 画一根覆盖式指示条。
+     关闭原生条同时去掉 Windows 上的上下箭头，且不占布局宽度。 */
+  * {
+    scrollbar-width: none;
   }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--t-border-strong) 55%, transparent);
-    border-radius: 999px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, var(--t-border-strong) 90%, transparent);
-  }
-  ::-webkit-scrollbar-corner {
-    background: transparent;
+  *::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
   }
 }
 
@@ -920,6 +931,117 @@ html[data-mobile-preview] .app-root {
 
 /* ---------- 设置页共用 ---------- */
 
+/* 反馈9#05：设置整体更紧凑。卡片、行距、说明字号统一在这里收；
+   页面只负责内容，不再逐页手调间距。 */
+[data-settings-page-content] {
+  --settings-card-pad-y: 12px;
+  --settings-card-pad-x: 14px;
+}
+[data-settings-page-content] section.rounded-xl,
+[data-settings-page-content] .settings-item.rounded-xl {
+  padding: var(--settings-card-pad-y) var(--settings-card-pad-x);
+  border-radius: 10px;
+}
+[data-settings-page-content] .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 8px;
+}
+[data-settings-page-content] .space-y-2\.5 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 6px;
+}
+[data-settings-page-content] h3 {
+  font-size: 13px;
+  line-height: 1.4;
+}
+[data-settings-page-content] p {
+  line-height: 1.5;
+}
+[data-settings-page-content] .settings-help,
+[data-settings-page-content] .settings-note {
+  margin-top: 3px;
+  line-height: 1.45;
+}
+
+/* 单行设置行：标签在左、控件在右，单位紧贴控件（反馈9#05）。 */
+.setting-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto;
+  align-items: center;
+  gap: 6px 16px;
+  min-height: 32px;
+  padding: 3px 0;
+}
+.setting-row + .setting-row {
+  border-top: 1px solid color-mix(in srgb, var(--t-border) 55%, transparent);
+}
+.setting-row[data-stacked="true"] {
+  grid-template-columns: minmax(140px, 1fr);
+  align-items: start;
+}
+.setting-row-label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--t-text-soft);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.setting-row-label > label {
+  min-width: 0;
+}
+.setting-row-hint {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  color: var(--t-muted);
+  cursor: help;
+}
+.setting-row-hint:hover {
+  color: var(--t-text-soft);
+}
+.setting-row-control {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  color: var(--t-muted);
+  font-size: 12px;
+}
+.setting-row[data-stacked="true"] .setting-row-control {
+  justify-content: flex-start;
+}
+.setting-row-control > input[type="number"],
+.setting-row-control > span > input[type="number"] {
+  flex: 0 0 76px;
+  width: 76px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.setting-row-control > :is(input, textarea) {
+  flex: 0 1 240px;
+}
+.setting-row-control[data-wide="true"] > :is(input, textarea, .relative) {
+  flex: 1 1 320px;
+}
+.setting-row-unit {
+  flex-shrink: 0;
+  margin-left: -2px;
+  color: var(--t-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+@media (max-width: 639px) {
+  .setting-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 4px;
+  }
+  .setting-row-control {
+    justify-content: flex-start;
+  }
+}
+
 .settings-label {
   display: block;
   margin-bottom: 6px;
@@ -1066,17 +1188,8 @@ html.feedback-mode [data-feedback-hover].settings-item {
   border-color: var(--t-border-strong);
 }
 
-/* ---------- overlay 滚动条：隐藏原生条，由 OverlayScrollbar 自绘 ---------- */
-#root,
-#root * {
-  scrollbar-width: none;
-  scrollbar-gutter: auto;
-}
-#root *::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-}
-
+/* ---------- overlay 滚动条：原生条在 base 层全局隐藏，由 OverlayScrollbar 自绘 ---------- */
+/* 只有一个实例（App 根部），固定定位、不占布局宽度；滚动/靠近右缘时淡入，停止 800ms 后淡出。 */
 .overlay-scrollbar {
   position: fixed;
   top: 0;

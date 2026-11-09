@@ -2701,7 +2701,7 @@ async function main() {
       const rows = await turns.evaluateAll((els) =>
         els.map((el) => ({
           text: (el.innerText ?? '').trim(),
-          turn: el.querySelector('[data-context-turn-open="true"]')?.getAttribute('title') ?? '',
+          turn: el.querySelector('[data-context-turn-open="true"]')?.getAttribute('data-tip') ?? '',
         })),
       )
       assert.ok(
@@ -2901,6 +2901,104 @@ async function main() {
         withinViewport(next, DESKTOP, `设置窗口（${tab}）`)
       }
       await closeSettings(page)
+    })
+
+    desktop('反馈9：滚动条唯一且不占宽、设置行单行、高级展开不位移、右键菜单接管', async (page) => {
+      const dialog = await openSettings(page, '通用', 'desktop')
+      const nav = dialog.locator('[data-settings-nav-scroll]')
+      const adv = dialog.locator('[data-settings-group="advanced"] > button').first()
+      if ((await adv.getAttribute('aria-expanded')) === 'true') {
+        await adv.click()
+        await page.waitForTimeout(150)
+      }
+      await nav.evaluate((el) => {
+        el.scrollTop = el.scrollHeight
+      })
+      await page.waitForTimeout(200)
+      const before = await adv.boundingBox()
+      await adv.click()
+      await page.waitForTimeout(350)
+      const after = await adv.boundingBox()
+      assert.ok(before && after, '高级分组不可见')
+      assert.ok(
+        Math.abs(after.y - before.y) <= 1,
+        `高级分组展开后标题位移 ${Math.round(after.y - before.y)}px`,
+      )
+      // 设置内容区一定会溢出：滚动它来触发 overlay 滚动条。
+      const content = dialog.locator('[data-settings-page-content]')
+      await content.evaluate((el) => {
+        el.scrollTop = 120
+      })
+      await page.waitForTimeout(100)
+      const scroll = await page.evaluate(() => {
+        const list = document.querySelector('[data-settings-nav-scroll]')
+        const pane = document.querySelector('[data-settings-page-content]')
+        const visible = [...document.querySelectorAll('.overlay-scrollbar')].filter(
+          (el) => el.dataset.visible === 'true',
+        )
+        return {
+          listGutter: list ? list.offsetWidth - list.clientWidth : null,
+          paneGutter: pane ? pane.offsetWidth - pane.clientWidth : null,
+          paneOverflow: pane ? pane.scrollHeight > pane.clientHeight : false,
+          visibleBars: visible.length,
+        }
+      })
+      assert.equal(scroll.listGutter, 0, '设置导航的滚动条占用了布局宽度')
+      assert.equal(scroll.paneGutter, 0, '设置内容区的滚动条占用了布局宽度')
+      assert.ok(scroll.paneOverflow, '用例前置：设置内容区应可滚动')
+      assert.equal(scroll.visibleBars, 1, `同时可见 ${scroll.visibleBars} 根滚动条`)
+      // 裸 title 由 scripts/ui-audit.mjs 的 native-title 规则做源码级检查。
+
+      // 数值单位必须与输入框同一行、紧贴右侧；行高保持单行。
+      const row = dialog.locator('.setting-row', { hasText: '触发阈值' }).first()
+      await row.waitFor({ state: 'visible', timeout: 5_000 })
+      const layout = await row.evaluate((el) => {
+        const input = el.querySelector('input')
+        const unit = el.querySelector('.setting-row-unit')
+        const label = el.querySelector('.setting-row-label')
+        const a = input?.getBoundingClientRect()
+        const b = unit?.getBoundingClientRect()
+        const c = label?.getBoundingClientRect()
+        return a && b && c
+          ? {
+              height: el.getBoundingClientRect().height,
+              inputWidth: a.width,
+              unitGap: b.left - a.right,
+              sameLine: Math.abs(a.top + a.height / 2 - (c.top + c.height / 2)) < 4,
+            }
+          : null
+      })
+      assert.ok(layout, '触发阈值行缺少输入框或单位')
+      assert.ok(layout.height <= 36, `设置行高 ${layout.height}px，未收成单行`)
+      assert.ok(layout.inputWidth <= 90, `数值输入宽 ${layout.inputWidth}px，应为窄宽度`)
+      assert.ok(layout.unitGap >= 0 && layout.unitGap <= 10, `单位与输入框间距 ${layout.unitGap}px`)
+      assert.ok(layout.sameLine, '单位或输入框换到了下一行')
+
+      // 右键菜单由 ui/Menu 接管，原生菜单不再出现（能检测到的是我们的 role=menu）。
+      await page.mouse.click(900, 420, { button: 'right' })
+      await page.waitForTimeout(250)
+      const menu = page.getByRole('menu')
+      assert.equal(await menu.count(), 1, '没有出现自定义右键菜单')
+      for (const name of ['复制', '剪切', '粘贴', '全选']) {
+        assert.ok(await menu.getByRole('menuitem', { name }).count(), `右键菜单缺少「${name}」`)
+      }
+      await page.keyboard.press('Escape')
+      await closeSettings(page)
+
+      // 输入框关闭签名控件；文本仍可选择复制。
+      const attrs = await page.evaluate(() => {
+        const input = document.querySelector('textarea, input[type="text"]')
+        return {
+          suggestions: document.documentElement.getAttribute('writingsuggestions'),
+          spellcheck: input?.getAttribute('spellcheck'),
+          autocomplete: input?.getAttribute('autocomplete'),
+          selectable: getComputedStyle(document.body).userSelect,
+        }
+      })
+      assert.equal(attrs.suggestions, 'false', 'writingsuggestions 未关闭')
+      assert.equal(attrs.spellcheck, 'false', '输入框拼写检查未关闭')
+      assert.equal(attrs.autocomplete, 'off', '输入框自动填充未关闭')
+      assert.notEqual(attrs.selectable, 'none', '不应禁用文本选择')
     })
 
     desktop('Host 诊断：面板打开、失败项排在最前、报告不含 Key', async (page) => {
@@ -3330,7 +3428,7 @@ async function main() {
     desktop('环境条容器透明、触发器可见且不越界', async (page) => {
       await openSession(page, 'long')
       const info = await page.evaluate((cwd) => {
-        const trigger = [...document.querySelectorAll('button[title]')].find((b) => b.getAttribute('title') === cwd)
+        const trigger = [...document.querySelectorAll('button[data-tip]')].find((b) => b.getAttribute('data-tip') === cwd)
         const wrap = trigger?.closest('.flex-wrap')
         if (!wrap) return null
         const bg = getComputedStyle(wrap).backgroundColor
@@ -3352,7 +3450,7 @@ async function main() {
 
     desktop('环境条文件夹弹层向上弹出且完整可见', async (page) => {
       await openSession(page, 'long')
-      const trigger = page.locator(`button[title="${repo}"]`).first()
+      const trigger = page.locator(`button[data-tip="${repo}"]`).first()
       await trigger.click()
       const panel = page.locator('[role="menu"].popover-panel').first()
       await panel.waitFor()
@@ -3575,7 +3673,7 @@ async function main() {
       const tipText = await tip.innerText()
       assert.match(tipText, /耗时 12\.3s/, `轮次 tooltip 没有模型耗时：${tipText}`)
       assert.match(tipText, /首 token 0\.8s/, `轮次 tooltip 没有首 token 延迟：${tipText}`)
-      assert.equal(await page.locator('[data-usage-summary][title]').count(), 0, '用量行不应新增悬停提示')
+      assert.equal(await page.locator('[data-usage-summary][title], [data-usage-summary][data-tip]').count(), 0, '用量行不应新增悬停提示')
 
       // 含工具执行时间的一轮：12.3s 模型 + 40s 工具 = 52.3s。
       await openSession(page, 'turns4')
@@ -3626,7 +3724,7 @@ async function main() {
             JSON.stringify({ [hostId]: ['/tmp/tandem-recent-marker'] }),
           )
         })
-        const trigger = page.locator(`button[title="${repo}"]`).first()
+        const trigger = page.locator(`button[data-tip="${repo}"]`).first()
         await trigger.click()
         const panel = page.locator('[role="menu"].popover-panel').first()
         await panel.waitFor()
@@ -4019,7 +4117,7 @@ async function main() {
 
     desktop('焦点环只在键盘导航时出现（自动聚焦的输入框没有橙色描边）', async (page) => {
       await openSession(page, 'long')
-      const trigger = page.locator(`button[title="${repo}"]`).first()
+      const trigger = page.locator(`button[data-tip="${repo}"]`).first()
       await trigger.click()
       const panel = page.locator('[role="menu"].popover-panel').first()
       await panel.waitFor()
@@ -4164,7 +4262,7 @@ async function main() {
       await palette.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {})
 
       // 3) 环境条下拉（Popover Portal）
-      const folderTrigger = page.locator(`button[title="${repo}"]`).first()
+      const folderTrigger = page.locator(`button[data-tip="${repo}"]`).first()
       await folderTrigger.click()
       const popover = page.locator('[role="menu"].popover-panel').first()
       await popover.waitFor()
@@ -4347,11 +4445,11 @@ async function main() {
       await input.waitFor()
       await input.fill(repo)
       await input.press('Enter')
-      const branchButton = page.locator('button[title="创建会话后可切换分支"]').first()
+      const branchButton = page.locator('button[data-tip="创建会话后可切换分支"]').first()
       await branchButton.waitFor()
       await page.waitForFunction(
         () =>
-          [...document.querySelectorAll('button[title="创建会话后可切换分支"]')].some(
+          [...document.querySelectorAll('button[data-tip="创建会话后可切换分支"]')].some(
             (b) => (b.textContent ?? '').trim() === 'main',
           ),
         null,
@@ -4363,10 +4461,10 @@ async function main() {
 
     desktop('Windows 盘符路径文件链接可打开预览', async (page) => {
       await openSession(page, 'links')
-      const link = page.locator('a[title^="打开 D:/"]').first()
+      const link = page.locator('a[data-tip^="打开 D:/"]').first()
       await link.click()
       await page.getByText('windows drive file').waitFor({ state: 'visible', timeout: 10_000 })
-      assert.equal(await page.locator('[title*="D:/repo/demo.ts"]').count() > 0, true, '预览路径未归一化为 D:/repo/demo.ts')
+      assert.equal(await page.locator('[data-tip*="D:/repo/demo.ts"]').count() > 0, true, '预览路径未归一化为 D:/repo/demo.ts')
       await page.getByRole('button', { name: '关闭文件预览' }).click()
       const inline = page.locator('code.file-ref-inline').first()
       await inline.click()
@@ -4764,15 +4862,15 @@ async function main() {
       await waitModelReady(page)
       await page.waitForFunction(
         () => {
-          const trigger = [...document.querySelectorAll('button[title]')].find((b) => /^\//.test(b.getAttribute('title') ?? ''))
+          const trigger = [...document.querySelectorAll('button[data-tip]')].find((b) => /^\//.test(b.getAttribute('data-tip') ?? ''))
           return !!trigger
         },
         null,
         { timeout: 10_000 },
       )
       const folderTitle = await page.evaluate(() => {
-        const trigger = [...document.querySelectorAll('button[title]')].find((b) => /^\//.test(b.getAttribute('title') ?? ''))
-        return trigger?.getAttribute('title') ?? ''
+        const trigger = [...document.querySelectorAll('button[data-tip]')].find((b) => /^\//.test(b.getAttribute('data-tip') ?? ''))
+        return trigger?.getAttribute('data-tip') ?? ''
       })
       assert.ok(folderTitle.includes(path.sep), `默认工作目录为空：${folderTitle}`)
 
@@ -4972,8 +5070,11 @@ async function main() {
       await card.waitFor({ state: 'visible', timeout: 10_000 })
       const title = card.locator('button[aria-expanded]').first()
       const before = await title.boundingBox()
-      const label = await title.getAttribute('title')
-      assert.ok(label?.includes('等待审批：'), '审批卡任务描述没有全文提示')
+      const label = await title.getAttribute('data-tip')
+      assert.ok(
+        label?.includes('点击展开全文') || label?.includes('等待审批'),
+        '审批卡任务描述没有全文提示',
+      )
       await title.click()
       const after = await title.boundingBox()
       assert.ok(before && after, '审批卡任务描述不可见')
@@ -4987,7 +5088,7 @@ async function main() {
       const toolbar = page.getByRole('region', { name: '反馈模式工具栏' })
       await toolbar.waitFor({ state: 'visible', timeout: 8_000 })
       const bar = await toolbar.boundingBox()
-      const envTrigger = page.locator(`button[title="${repo}"]`).first()
+      const envTrigger = page.locator(`button[data-tip="${repo}"]`).first()
       await envTrigger.waitFor({ state: 'visible', timeout: 5_000 })
       const env = await envTrigger.boundingBox()
       assert.ok(bar && env, '反馈工具栏或环境条不可见')
@@ -5000,7 +5101,7 @@ async function main() {
     mobile('手机环境条不越界、容器透明、触控 44px', async (page) => {
       await openSession(page, 'long')
       const info = await page.evaluate((cwd) => {
-        const trigger = [...document.querySelectorAll('button[title]')].find((b) => b.getAttribute('title') === cwd)
+        const trigger = [...document.querySelectorAll('button[data-tip]')].find((b) => b.getAttribute('data-tip') === cwd)
         const wrap = trigger?.closest('.flex-wrap')
         if (!wrap) return null
         const rect = wrap.getBoundingClientRect()
@@ -5124,7 +5225,7 @@ async function main() {
       withinViewport(await menu.boundingBox(), MOBILE, '手机模型菜单')
       await page.keyboard.press('Escape')
       await page.waitForTimeout(200)
-      await page.locator(`button[title="${repo}"]`).first().click()
+      await page.locator(`button[data-tip="${repo}"]`).first().click()
       const popover = page.locator('[role="menu"].popover-panel').first()
       await popover.waitFor()
       withinViewport(await popover.boundingBox(), MOBILE, '手机文件夹弹层')

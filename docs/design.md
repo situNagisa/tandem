@@ -273,3 +273,14 @@
 
 - **每条消息显示耗时**：assistant 消息用量小字（输入 · 输出 · 缓存命中 · 花费）末尾加 `· 12.3s`；流式进行中显示实时计时。服务端记录每次请求的 `durationMs`（从发起请求到流式完成）、首 token 延迟 `ttftMs`、工具执行耗时 `toolDurationMs`（可单独记），均为可选字段，旧消息没有就不显示。轮次大纲悬停用标准 tooltip 追加「耗时 1m 05s，其中工具 40s」（有首 token 时再附「首 token 1.2s」）。不要给用量小字新增悬停 tooltip（#7-03 已明确）。
 - **调试版手机预览**：仅调试版。桌面端独立窗口加载同一 Host，预设 Pixel 7 412×915 / 小屏 360×740 / 平板 800×1280，可旋转；用 Electron CDP 模拟触摸、移动 UA 与 deviceScaleFactor，强制移动端布局；模拟键盘为占位开关；Capacitor 原生能力用桩，预览顶栏标「模拟」。入口：菜单/托盘、命令面板、`Ctrl/Cmd+Shift+M`。浏览器调试构建新开手机尺寸弹窗并提示无触摸模拟。反馈模式在预览里可用，导出 `platform=mobile-preview`。发布版剔除入口并把 `手机预览` 等标识加入 release 扫描。
+
+## 2026-11-09 反馈包 #9 用户结论：浏览器自带控件 / 滚动条 / 设置密度 / 高级分组
+
+- **全局屏蔽浏览器自带提示与控件**（用户原话："选择某段文字时浏览器会弹出一个搜索的控件，这些要全局屏蔽"）：保留文字选中与复制，其余原生浮层不要。
+  - 桌面端：`spellcheck: false`（默认不加拼写下划线与建议）；右键菜单由 `AppContextMenu` 接管，统一 `ui/Menu` 提供复制 / 剪切 / 粘贴 / 全选，链接与图片额外提供地址操作；Electron 主进程通过 IPC 读写系统剪贴板，不触发浏览器权限弹窗。
+  - 网页端：`<html writingsuggestions="false">`、`-webkit-touch-callout: none`、`<meta name="format-detection" content="telephone=no,email=no,address=no,date=no,url=no">`、图片与链接不产生拖拽 ghost；输入框默认 `autocomplete="off"`、`autocorrect/autocapitalize=off`、`spellcheck=false`（密码框保留密码管理器语义）；原生数字上下箭头隐藏；原生 `<select>` 仍统一走 `ui/MenuSelect`。
+  - **原生 `title` 一律换成 `data-tip`**，由 `ui/Tooltip` 的单例浮层展示；设置页长说明改为标题旁 ⓘ tooltip。`scripts/ui-audit.mjs` 新增 `native-title` 规则，DOM 小写标签再写 `title=` 直接失败（`iframe`/`abbr` 等无障碍名称除外）。
+  - **Edge 划词迷你菜单无法由网页关闭**：它由 Edge 自己的设置 / 组策略 `QuickSearchShowMiniMenu` 控制，网页没有对应 meta 或属性。Electron 内不加载 Edge 这套 UI；用 Edge 浏览器打开 Tandem 时，需要在 Edge 设置 → 外观关闭「选择文本时显示迷你菜单」或由管理员下发该策略。
+- **全应用一种覆盖式滚动条**（#04）：原生滚动条全局隐藏（含 Portal 弹窗），只保留 `ui/OverlayScrollbar` 一根 6px 指示条，固定定位、不占布局宽度、无上下箭头；滚动或指针靠近右缘/下缘时淡入，停止约 800ms 后淡出；横向溢出（代码块、表格、diff）同样有覆盖条。组件内禁止再写 `scrollbar-width` / `::-webkit-scrollbar`，由 ui-audit `custom-scrollbar` 拦截。
+- **设置页信息密度**（#05）：统一收紧卡片内边距与行距；表单项改为「标签在左、控件在右」单行（共享 `ui/SettingRow`），数值输入固定窄宽，`%`、`轮原文`、`tokens` 等单位紧贴输入框右侧，不再换行；长说明收进标题旁 ⓘ tooltip。设置导航只保留一个滚动容器（内侧列表），不再出现双滚动条。
+- **「高级」分组回到滚动列表**（#03）：不再固定在导航底部；展开时向下展开，并补偿滚动位置，点击的分组标题在视口里保持不动，不再整块上飘/晃动。

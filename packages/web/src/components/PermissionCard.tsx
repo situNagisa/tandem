@@ -397,7 +397,7 @@ export function PermissionCard({
             type="button"
             onClick={() => setDescOpen((value) => !value)}
             aria-expanded={descOpen}
-            title={`${request.description}${descOpen ? '' : '（点击展开全文）'}`}
+            data-tip={`${request.description}${descOpen ? '' : '（点击展开全文）'}`}
             className={cn(
               'mt-1 block w-full whitespace-pre-wrap break-words text-left text-[13px] leading-[1.55] text-text-soft',
               !descOpen && 'line-clamp-2 sm:line-clamp-none',

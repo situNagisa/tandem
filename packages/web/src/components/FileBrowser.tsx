@@ -97,7 +97,7 @@ function DirNode({
         onClick={() => setOpen((v) => !v)}
         style={{ paddingLeft: 6 + depth * 12 }}
         className="flex h-6 w-full items-center gap-1 rounded pr-2 text-left text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-        title={entry.path}
+        data-tip={entry.path}
       >
         {open ? (
           <ChevronDown size={11} className="shrink-0 text-muted" aria-hidden />
@@ -164,7 +164,7 @@ function FileRow({
           ? 'bg-[var(--t-bg-active)] text-text'
           : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
       )}
-      title={entry.path}
+      data-tip={entry.path}
     >
       <span className="w-[11px] shrink-0" aria-hidden />
       <RowIcon entry={entry} open={false} />
@@ -193,7 +193,7 @@ function RootNode({
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex h-6 w-full items-center gap-1 rounded pl-1.5 pr-2 text-left font-medium text-text transition-colors hover:bg-[var(--t-bg-hover)]"
-        title={cwd}
+        data-tip={cwd}
       >
         {open ? (
           <ChevronDown size={11} className="shrink-0 text-muted" aria-hidden />
@@ -318,7 +318,7 @@ export function FileBrowser({
                     ? 'bg-[var(--t-bg-active)] text-text'
                     : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
                 )}
-                title={joinPath(cwd, rel)}
+                data-tip={joinPath(cwd, rel)}
               >
                 <FileText size={12} className="shrink-0 text-muted" aria-hidden />
                 <span className="min-w-0 flex-1 truncate">{rel}</span>

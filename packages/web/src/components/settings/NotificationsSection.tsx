@@ -5,6 +5,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { requestNotificationPermission } from '../../lib/attention'
 import { isAndroidApp, isNativeApp, prepareLocalNotifications, startBackgroundService, stopBackgroundService } from '../../lib/native'
 import { Switch } from '../ui/Controls'
+import { SettingRow } from '../ui/SettingRow'
 
 function Row({
   icon,
@@ -26,17 +27,20 @@ function Row({
   settingId?: string
 }) {
   return (
-    <div data-setting-id={settingId} className="rounded-xl border border-border bg-surface p-3.5">
-      <div className="flex items-start gap-2.5">
-        {icon ? <span className="mt-0.5 text-muted">{icon}</span> : null}
-        <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium">{title}</div>
-          <p className="mt-0.5 text-[13px] leading-5 text-muted">{desc}</p>
-        </div>
+    <div data-setting-id={settingId} className="rounded-xl border border-border bg-surface">
+      <SettingRow
+        label={
+          <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-text">
+            {icon ? <span className="shrink-0 text-muted">{icon}</span> : null}
+            <span className="truncate">{title}</span>
+          </span>
+        }
+        hint={desc}
+      >
         <Switch checked={checked} onChange={onChange} disabled={disabled} label={title} />
-      </div>
+      </SettingRow>
       {warning ? (
-        <p className="mt-2 flex items-start gap-1.5 text-[12.5px] leading-5 text-warning">
+        <p className="mt-1 flex items-start gap-1.5 text-[12px] leading-4 text-warning">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" />
           <span>{warning}</span>
         </p>
@@ -187,13 +191,15 @@ export function NotificationsSection() {
         <p className="mt-0.5 text-[13px] leading-5 text-muted">
           只影响系统通知；收件箱始终记录全部事件。
         </p>
-        <div className="mt-2 divide-y divide-border">
+        <div className="mt-1">
           {EVENT_ROWS.map(({ key, label, desc, icon: Icon }) => (
-            <div key={key} className="flex items-center gap-2.5 py-2">
+            <div
+              key={key}
+              className="flex min-h-8 items-center gap-2.5 border-t border-border/50 py-1 first:border-t-0"
+            >
               <Icon size={13} className="shrink-0 text-muted" />
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px] text-text-soft">{label}</div>
-                <div className="text-[12px] leading-5 text-muted">{desc}</div>
+              <div className="min-w-0 flex-1 truncate text-[13px] text-text-soft" data-tip={desc}>
+                {label}
               </div>
               <Switch
                 checked={notifyEvents[key]}

@@ -54,7 +54,7 @@ export function TurnErrorNotice({
     <div className="mt-3 flex max-w-full flex-col items-start gap-1.5" role="status">
       <div className="flex h-7 max-w-full items-center gap-2 rounded-full border border-border bg-surface/80 pl-2.5 pr-1">
         <TriangleAlert size={13} className="shrink-0 text-danger" aria-hidden />
-        <span className="min-w-0 truncate text-[12px] text-text-soft" title="回合出错">
+        <span className="min-w-0 truncate text-[12px] text-text-soft" data-tip="回合出错">
           {readableReason(error)}
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-0.5">

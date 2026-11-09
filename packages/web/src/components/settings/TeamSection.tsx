@@ -99,7 +99,7 @@ function DirEditor({
             key={dir}
             className="flex max-w-full items-center gap-1 rounded-md bg-[var(--t-bg-active)] px-1.5 py-0.5 font-mono text-[12px] text-text-soft"
           >
-            <span className="truncate" title={dir}>
+            <span className="truncate" data-tip={dir}>
               {dir}
             </span>
             <button
@@ -513,7 +513,7 @@ export function TeamSection() {
                   <span className="text-[12px] text-muted">最近 {formatTime(member.lastSeenAt)}</span>
                 )}
               </div>
-              <div className="mt-0.5 truncate font-mono text-[12px] text-muted" title={member.projectDirs.join('\n')}>
+              <div className="mt-0.5 truncate font-mono text-[12px] text-muted" data-tip={member.projectDirs.join('\n')}>
                 {member.projectDirs.join(' · ')}
               </div>
             </div>
@@ -619,7 +619,7 @@ export function TeamSection() {
                 <span className="mt-0.5 w-[74px] shrink-0 text-[12px] text-muted">
                   {formatTime(entry.at)}
                 </span>
-                <span className="w-[86px] shrink-0 truncate text-[12px] font-medium" title={entry.actorName}>
+                <span className="w-[86px] shrink-0 truncate text-[12px] font-medium" data-tip={entry.actorName}>
                   {entry.actorName}
                 </span>
                 <span className="w-[76px] shrink-0 text-[12px] text-text-soft">
@@ -627,7 +627,7 @@ export function TeamSection() {
                 </span>
                 <span
                   className="min-w-0 flex-1 truncate text-[12px] text-muted"
-                  title={[entry.sessionTitle, auditDetailText(entry)].filter(Boolean).join(' · ')}
+                  data-tip={[entry.sessionTitle, auditDetailText(entry)].filter(Boolean).join(' · ')}
                 >
                   {entry.sessionTitle ?? ''}
                   {entry.sessionTitle && entry.detail ? ' · ' : ''}

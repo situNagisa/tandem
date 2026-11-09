@@ -209,7 +209,7 @@ export function PromptsSection() {
                       </span>
                     )}
                     {item.editable && drafts[item.key] !== undefined && drafts[item.key] !== item.text && (
-                      <span className="size-1.5 shrink-0 rounded-full bg-accent" title="未保存" />
+                      <span className="size-1.5 shrink-0 rounded-full bg-accent" data-tip="未保存" />
                     )}
                   </button>
                 ))}

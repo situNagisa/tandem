@@ -274,7 +274,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
       >
         <span
           className="min-w-0 truncate font-mono text-[13px] text-text"
-          title={absPath || path || '文件预览'}
+          data-tip={absPath || path || '文件预览'}
         >
           {fileBaseName(path || absPath) || '文件'}
         </span>

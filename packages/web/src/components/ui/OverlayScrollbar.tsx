@@ -4,17 +4,20 @@ const MIN_THUMB = 26
 const EDGE_ZONE = 22
 const IDLE_MS = 800
 
-function verticalOverflow(el: HTMLElement): boolean {
+function overflow(el: HTMLElement, axis: 'x' | 'y'): boolean {
   if (el === document.body || el === document.documentElement) return false
   const style = getComputedStyle(el)
-  if (!/(auto|scroll|overlay)/.test(style.overflowY)) return false
-  return el.scrollHeight > el.clientHeight + 1
+  const value = axis === 'y' ? style.overflowY : style.overflowX
+  if (!/(auto|scroll|overlay)/.test(value)) return false
+  return axis === 'y'
+    ? el.scrollHeight > el.clientHeight + 1
+    : el.scrollWidth > el.clientWidth + 1
 }
 
 function scrollableAncestor(node: Element | null): HTMLElement | null {
   let el: Element | null = node
   while (el && el !== document.body && el !== document.documentElement) {
-    if (el instanceof HTMLElement && verticalOverflow(el)) return el
+    if (el instanceof HTMLElement && (overflow(el, 'y') || overflow(el, 'x'))) return el
     el = el.parentElement
   }
   return null
@@ -31,24 +34,27 @@ function scrollableAt(x: number, y: number, target: EventTarget | null): HTMLEle
 }
 
 /**
- * 全局 overlay 滚动条：原生滚动条由 index.css 隐藏，这里只画一根 6px 的圆角指示条。
- * 平时不可见，滚动、鼠标靠近容器右缘时淡入，停止 800ms 后淡出；可拖动。
- * 只存在一个实例（App 根部），自动跟随鼠标/滚动所在的滚动容器。
+ * 全局 overlay 滚动条：原生滚动条由 index.css 全局隐藏，这里只画 6px 圆角指示条。
+ * 平时不可见，滚动、鼠标靠近容器右缘/下缘时淡入，停止 800ms 后淡出；可拖动。
+ * 只有 App 根部一个实例，自动跟随鼠标/滚动所在的滚动容器，同时支持横竖两个方向。
  */
 export function OverlayScrollbar() {
-  const barRef = useRef<HTMLDivElement>(null)
+  const barYRef = useRef<HTMLDivElement>(null)
+  const barXRef = useRef<HTMLDivElement>(null)
 
   useLayoutEffect(() => {
-    const bar = barRef.current
-    if (!bar) return
+    const barY = barYRef.current
+    const barX = barXRef.current
+    if (!barY || !barX) return
     let target: HTMLElement | null = null
-    let visible = false
+    let visibleY = false
+    let visibleX = false
     let hideTimer = 0
     let raf = 0
-    let dragging = false
+    let dragging: 'x' | 'y' | null = null
     let pointer: { x: number; y: number } | null = null
 
-    const trackOf = (el: HTMLElement) => {
+    const trackY = (el: HTMLElement) => {
       const rect = el.getBoundingClientRect()
       return {
         left: Math.max(2, rect.right - 9),
@@ -58,28 +64,59 @@ export function OverlayScrollbar() {
       }
     }
 
+    const trackX = (el: HTMLElement) => {
+      const rect = el.getBoundingClientRect()
+      return {
+        left: rect.left + 4,
+        top: Math.max(2, rect.bottom - 9),
+        width: Math.max(0, rect.width - 8),
+        height: 6,
+      }
+    }
+
     const update = () => {
       if (!target) return
-      if (!target.isConnected || !verticalOverflow(target)) {
+      if (!target.isConnected) {
         hide()
         return
       }
-      const track = trackOf(target)
-      const max = target.scrollHeight - target.clientHeight
-      if (max <= 0 || track.height <= 0) return
-      const thumb = Math.max(
-        MIN_THUMB,
-        Math.round(track.height * (target.clientHeight / target.scrollHeight)),
-      )
-      const top = track.top + (target.scrollTop / max) * (track.height - thumb)
-      bar.style.width = `${track.width}px`
-      bar.style.height = `${thumb}px`
-      bar.style.transform = `translate3d(${Math.round(track.left)}px, ${Math.round(top)}px, 0)`
+      const canY = overflow(target, 'y')
+      const canX = overflow(target, 'x')
+      if (!canY && !canX) {
+        hide()
+        return
+      }
+      if (canY) {
+        const track = trackY(target)
+        const max = target.scrollHeight - target.clientHeight
+        const thumb = Math.max(
+          MIN_THUMB,
+          Math.round(track.height * (target.clientHeight / target.scrollHeight)),
+        )
+        const top = track.top + (target.scrollTop / Math.max(1, max)) * (track.height - thumb)
+        barY.style.width = `${track.width}px`
+        barY.style.height = `${thumb}px`
+        barY.style.transform = `translate3d(${Math.round(track.left)}px, ${Math.round(top)}px, 0)`
+      }
+      if (canX) {
+        const track = trackX(target)
+        const max = target.scrollWidth - target.clientWidth
+        const thumb = Math.max(
+          MIN_THUMB,
+          Math.round(track.width * (target.clientWidth / target.scrollWidth)),
+        )
+        const left = track.left + (target.scrollLeft / Math.max(1, max)) * (track.width - thumb)
+        barX.style.height = `${track.height}px`
+        barX.style.width = `${thumb}px`
+        barX.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(track.top)}px, 0)`
+      }
+      barY.dataset.visible = String(visibleY && canY)
+      barX.dataset.visible = String(visibleX && canX)
     }
 
     const tick = () => {
       raf = 0
-      if (!visible) return
+      if (!visibleY && !visibleX) return
       update()
       raf = requestAnimationFrame(tick)
     }
@@ -88,11 +125,9 @@ export function OverlayScrollbar() {
       target = el
       window.clearTimeout(hideTimer)
       hideTimer = 0
+      visibleY = overflow(el, 'y')
+      visibleX = overflow(el, 'x')
       update()
-      if (!visible) {
-        visible = true
-        bar.dataset.visible = 'true'
-      }
       if (!raf) raf = requestAnimationFrame(tick)
     }
 
@@ -100,10 +135,19 @@ export function OverlayScrollbar() {
       if (dragging) return
       window.clearTimeout(hideTimer)
       hideTimer = 0
-      visible = false
-      bar.dataset.visible = 'false'
+      visibleY = false
+      visibleX = false
+      barY.dataset.visible = 'false'
+      barX.dataset.visible = 'false'
       if (raf) cancelAnimationFrame(raf)
       raf = 0
+    }
+
+    const near = (el: HTMLElement, x: number, y: number) => {
+      const rect = el.getBoundingClientRect()
+      const right = x >= rect.right - EDGE_ZONE && x <= rect.right
+      const bottom = y >= rect.bottom - EDGE_ZONE && y <= rect.bottom
+      return (right && overflow(el, 'y')) || (bottom && overflow(el, 'x'))
     }
 
     const scheduleHide = () => {
@@ -115,20 +159,15 @@ export function OverlayScrollbar() {
           hide()
           return
         }
-        // 指针还停在右缘附近时保持可见，移开后再由 pointermove 安排淡出。
-        const rect = target.getBoundingClientRect()
-        const near =
-          pointer.x >= rect.right - EDGE_ZONE &&
-          pointer.x <= rect.right &&
-          pointer.y >= rect.top &&
-          pointer.y <= rect.bottom
-        if (!near) hide()
+        // 指针还停在右缘/下缘附近时保持可见，移开后再由 pointermove 安排淡出。
+        if (!near(target, pointer.x, pointer.y)) hide()
       }, IDLE_MS)
     }
 
     const onScroll = (event: Event) => {
       const el = event.target
-      if (!(el instanceof HTMLElement) || !verticalOverflow(el)) return
+      if (!(el instanceof HTMLElement)) return
+      if (!overflow(el, 'y') && !overflow(el, 'x')) return
       show(el)
       scheduleHide()
     }
@@ -142,13 +181,7 @@ export function OverlayScrollbar() {
         scheduleHide()
         return
       }
-      const rect = el.getBoundingClientRect()
-      if (
-        event.clientX >= rect.right - EDGE_ZONE &&
-        event.x >= rect.left &&
-        event.clientY >= rect.top &&
-        event.clientY <= rect.bottom
-      ) {
+      if (near(el, event.clientX, event.clientY)) {
         show(el)
         return
       }
@@ -160,29 +193,37 @@ export function OverlayScrollbar() {
       scheduleHide()
     }
 
-    const onBarDown = (event: PointerEvent) => {
+    const startDrag = (axis: 'x' | 'y', event: PointerEvent) => {
       if (!target || event.button !== 0) return
       event.preventDefault()
       event.stopPropagation()
-      const track = trackOf(target)
-      const thumb = bar.getBoundingClientRect().height
-      const max = target.scrollHeight - target.clientHeight
-      const startY = event.clientY
-      const startScroll = target.scrollTop
+      update()
       const scroller = target
-      dragging = true
-      bar.dataset.dragging = 'true'
+      const isY = axis === 'y'
+      const track = isY ? trackY(scroller) : trackX(scroller)
+      const thumb = isY ? barY.getBoundingClientRect().height : barX.getBoundingClientRect().width
+      const max = isY
+        ? scroller.scrollHeight - scroller.clientHeight
+        : scroller.scrollWidth - scroller.clientWidth
+      const start = isY ? event.clientY : event.clientX
+      const startScroll = isY ? scroller.scrollTop : scroller.scrollLeft
+      dragging = axis
+      if (isY) barY.dataset.dragging = 'true'
+      else barX.dataset.dragging = 'true'
       window.clearTimeout(hideTimer)
       hideTimer = 0
       document.body.style.userSelect = 'none'
       const onMove = (ev: PointerEvent) => {
-        const ratio = max / Math.max(1, track.height - thumb)
-        scroller.scrollTop = startScroll + (ev.clientY - startY) * ratio
+        const ratio = max / Math.max(1, (isY ? track.height : track.width) - thumb)
+        const value = startScroll + ((isY ? ev.clientY : ev.clientX) - start) * ratio
+        if (isY) scroller.scrollTop = value
+        else scroller.scrollLeft = value
         update()
       }
       const onUp = () => {
-        dragging = false
-        bar.dataset.dragging = 'false'
+        dragging = null
+        barY.dataset.dragging = 'false'
+        barX.dataset.dragging = 'false'
         document.body.style.userSelect = ''
         window.removeEventListener('pointermove', onMove)
         window.removeEventListener('pointerup', onUp)
@@ -193,6 +234,9 @@ export function OverlayScrollbar() {
       window.addEventListener('pointerup', onUp)
       window.addEventListener('pointercancel', onUp)
     }
+
+    const onBarYDown = (event: PointerEvent) => startDrag('y', event)
+    const onBarXDown = (event: PointerEvent) => startDrag('x', event)
 
     const onBarEnter = () => {
       if (!target) return
@@ -208,17 +252,23 @@ export function OverlayScrollbar() {
     document.addEventListener('scroll', onScroll, true)
     document.addEventListener('pointermove', onPointerMove, { passive: true })
     document.addEventListener('pointerleave', onPointerLeave)
-    bar.addEventListener('pointerdown', onBarDown)
-    bar.addEventListener('pointerenter', onBarEnter)
-    bar.addEventListener('pointerleave', onBarLeave)
+    barY.addEventListener('pointerdown', onBarYDown)
+    barX.addEventListener('pointerdown', onBarXDown)
+    barY.addEventListener('pointerenter', onBarEnter)
+    barX.addEventListener('pointerenter', onBarEnter)
+    barY.addEventListener('pointerleave', onBarLeave)
+    barX.addEventListener('pointerleave', onBarLeave)
 
     return () => {
       document.removeEventListener('scroll', onScroll, true)
       document.removeEventListener('pointermove', onPointerMove)
       document.removeEventListener('pointerleave', onPointerLeave)
-      bar.removeEventListener('pointerdown', onBarDown)
-      bar.removeEventListener('pointerenter', onBarEnter)
-      bar.removeEventListener('pointerleave', onBarLeave)
+      barY.removeEventListener('pointerdown', onBarYDown)
+      barX.removeEventListener('pointerdown', onBarXDown)
+      barY.removeEventListener('pointerenter', onBarEnter)
+      barX.removeEventListener('pointerenter', onBarEnter)
+      barY.removeEventListener('pointerleave', onBarLeave)
+      barX.removeEventListener('pointerleave', onBarLeave)
       window.clearTimeout(hideTimer)
       if (raf) cancelAnimationFrame(raf)
       document.body.style.userSelect = ''
@@ -226,11 +276,18 @@ export function OverlayScrollbar() {
   }, [])
 
   useEffect(() => {
-    const bar = barRef.current
+    const barY = barYRef.current
+    const barX = barXRef.current
     return () => {
-      if (bar) bar.dataset.visible = 'false'
+      if (barY) barY.dataset.visible = 'false'
+      if (barX) barX.dataset.visible = 'false'
     }
   }, [])
 
-  return <div ref={barRef} className="overlay-scrollbar" aria-hidden />
+  return (
+    <>
+      <div ref={barYRef} className="overlay-scrollbar" data-axis="y" aria-hidden />
+      <div ref={barXRef} className="overlay-scrollbar" data-axis="x" aria-hidden />
+    </>
+  )
 }

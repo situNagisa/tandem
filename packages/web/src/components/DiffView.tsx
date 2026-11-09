@@ -448,7 +448,7 @@ function AiMarker({
           <div className="flex items-center gap-1.5">
             <Bot size={12} className="shrink-0 text-muted" />
             <span className={cn('shrink-0 text-[11px] font-medium', meta.className)}>{meta.label}</span>
-            <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-text" title={comment.title}>
+            <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-text" data-tip={comment.title}>
               {comment.title}
             </span>
             <span className="shrink-0 font-mono text-[10px] text-muted">
@@ -548,7 +548,7 @@ function Composer({
         onKeyDown={onKeyDown}
         placeholder={`对${label}写审阅意见…`}
         aria-label="行内评论"
-        title="Enter 保存 · Shift+Enter 换行 · Esc 取消"
+        data-tip="Enter 保存 · Shift+Enter 换行 · Esc 取消"
         className="block max-h-24 min-h-7 min-w-0 flex-1 resize-none rounded-md border-0 bg-[var(--t-bg)] px-2 py-1.5 text-[12px] leading-5 text-text outline-none placeholder:text-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--t-focus-ring)]"
       />
       <Button size="sm" variant="primary" disabled={!text.trim()} onClick={save}>
@@ -723,7 +723,7 @@ export const DiffView = memo(function DiffView({
   return (
     <div className="chat-diff" data-wrap={wrap ? 'true' : undefined}>
       <div className="chat-diff-head">
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-text-soft" title={fileName}>
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-text-soft" data-tip={fileName}>
           {fileName || '改动'}
         </span>
         <span className="shrink-0 font-mono text-[12px] text-[var(--t-git-plus)]">+{added}</span>
@@ -733,7 +733,7 @@ export const DiffView = memo(function DiffView({
             type="button"
             aria-pressed={wrap}
             onClick={() => setWrap((value) => !value)}
-            title={wrap ? '关闭自动换行' : '自动换行（长行不横向滚动）'}
+            data-tip={wrap ? '关闭自动换行' : '自动换行（长行不横向滚动）'}
             data-testid="diff-wrap-toggle"
             className={cn(
               'flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[12px] transition-colors',
@@ -830,7 +830,7 @@ export const DiffView = memo(function DiffView({
                         }
                       : undefined
                   }
-                  title={selectable ? '点击或拖选行添加评论' : undefined}
+                  data-tip={selectable ? '点击或拖选行添加评论' : undefined}
                 >
                   <span className="ln" style={{ width: `${maxLineDigits + 0.75}ch` }}>
                     {row.type === 'del' ? row.oldNo : row.newNo}

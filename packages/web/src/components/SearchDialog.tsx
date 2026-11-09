@@ -562,7 +562,7 @@ export function SearchDialog() {
                           </span>
                           <span
                             className="mt-0.5 block truncate text-[12px] font-normal text-text-tertiary"
-                            title={item.snippet}
+                            data-tip={item.snippet}
                           >
                             <HighlightedText text={item.snippet} ranges={item.highlights} />
                           </span>
@@ -587,7 +587,7 @@ export function SearchDialog() {
                             ? 'max-w-[220px]'
                             : 'max-w-[180px]',
                         )}
-                        title={item.meta}
+                        data-tip={item.meta}
                       >
                         {item.meta}
                       </span>

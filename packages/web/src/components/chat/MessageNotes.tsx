@@ -109,7 +109,7 @@ function InjectionSegments({
                 <span
                   role="link"
                   tabIndex={0}
-                  title={`打开 ${seg.sourcePath}`}
+                  data-tip={`打开 ${seg.sourcePath}`}
                   onClick={(e) => {
                     e.stopPropagation()
                     if (seg.sourcePath) openFileRef({ path: seg.sourcePath }, cwd)

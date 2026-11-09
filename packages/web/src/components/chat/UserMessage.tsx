@@ -159,7 +159,7 @@ export const UserMessage = memo(function UserMessage({
           <span
             role="img"
             aria-label="已固定到轮次大纲"
-            title="已固定到轮次大纲"
+            data-tip="已固定到轮次大纲"
             className="pointer-events-none absolute right-full top-2 mr-1.5 flex size-5 items-center justify-center text-accent-text"
           >
             <Pin size={12} fill="currentColor" />
