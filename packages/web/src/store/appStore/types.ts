@@ -65,17 +65,13 @@ export interface AppState {
     relayUrl?: string
     hostId?: string
     fingerprint?: string
-    sshHostId?: string
-    sshControllerId?: string
-    sshTarget?: string
   }) => HostConfig
   updateHost: (
     id: string,
     patch: Partial<
       Pick<
         HostConfig,
-        'name' | 'url' | 'token' | 'mode' | 'relayUrl' | 'hostId' | 'fingerprint' |
-        'sshHostId' | 'sshControllerId' | 'sshTarget'
+        'name' | 'url' | 'token' | 'mode' | 'relayUrl' | 'hostId' | 'fingerprint'
       >
     >,
   ) => void

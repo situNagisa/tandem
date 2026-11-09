@@ -79,6 +79,8 @@ export function writeSessionRaw(key: string, value: string): void {
 export function sanitizeHosts(input: unknown): HostConfig[] {
   if (!Array.isArray(input)) return []
   return input
+    // 旧版 SSH 远程接入（2026-11-10 删除）留下的条目直接忽略，不迁移。
+    .filter((h) => !(h && typeof h === 'object' && (h as { mode?: unknown }).mode === 'ssh'))
     .filter(
       (h): h is HostConfig =>
         !!h &&
@@ -100,14 +102,7 @@ export function sanitizeHosts(input: unknown): HostConfig[] {
             hostId: typeof h.hostId === 'string' ? h.hostId : '',
             fingerprint: typeof h.fingerprint === 'string' ? normalizeFingerprint(h.fingerprint) : '',
           }
-        : h.mode === 'ssh' && typeof h.sshHostId === 'string'
-          ? {
-              mode: 'ssh' as const,
-              sshHostId: h.sshHostId,
-              ...(typeof h.sshControllerId === 'string' ? { sshControllerId: h.sshControllerId } : {}),
-              ...(typeof h.sshTarget === 'string' ? { sshTarget: h.sshTarget } : {}),
-            }
-          : { mode: 'direct' as const }),
+        : { mode: 'direct' as const }),
     }))
     // 中继 Host 没有有效指纹就无法保证端到端加密，宁可不加载。
     .filter((h) => h.mode !== 'relay' || (!!h.relayUrl && !!h.hostId && isValidFingerprint(h.fingerprint)))

@@ -45,10 +45,8 @@ import { registerSkillRoutes } from './routes/skills.js';
 import { registerBrowserRoutes } from './routes/browser.js';
 import { registerPreviewRoutes } from './routes/preview.js';
 import { registerWsRoutes } from './routes/ws.js';
-import { registerSshHostRoutes } from './routes/ssh-hosts.js';
 import { registerDeviceRoutes } from './routes/devices.js';
 import { registerUpdateRoutes } from './routes/updates.js';
-import { SshRemoteManager } from './ssh/manager.js';
 import { IS_DEBUG_FLAVOR } from './flavor.js';
 
 interface WorkstationTunnelDeps {
@@ -151,8 +149,6 @@ export async function createApp(
   // ---------- 会话只读分享（内网） ----------
   registerShareRoutes(app, host);
 
-  const sshHosts = new SshRemoteManager(host.home, host.version);
-  app.addHook('onClose', async () => sshHosts.stop());
   // 本机作为主机加入工作站后：主动向工作站建立出站隧道（E2E 强制）。
   let workstationAgent: RelayAgent | undefined;
   const startWorkstationTunnel = () => {
@@ -187,7 +183,7 @@ export async function createApp(
   });
   app.addHook('onClose', async () => stopWorkstationTunnel());
   extras.onWorkstationDeps?.(workstationDeps);
-  const deps: RouteDeps = { host, sshHosts, workstation: workstationDeps, ...(extras.relay ? { relay: extras.relay } : {}) };
+  const deps: RouteDeps = { host, workstation: workstationDeps, ...(extras.relay ? { relay: extras.relay } : {}) };
 
   if (IS_DEBUG_FLAVOR && !extras.demoHost) {
     // 调试版 Host：首次启动自动登录本机工作站的测试账号；发布构建不加载此模块。
@@ -235,7 +231,6 @@ export async function createApp(
   registerBrowserRoutes(app, deps);
   registerPreviewRoutes(app, deps);
   registerWsRoutes(app, deps);
-  registerSshHostRoutes(app, deps);
   registerDeviceRoutes(app, deps);
 
   // PR/CI 轮询：只覆盖已被客户端打开且有 PR 的会话

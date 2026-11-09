@@ -118,8 +118,6 @@ export const TEST_POINTS: TestPoint[] = [
   { id: 'accounts-1', feature: 'accounts', text: '在「工作区与账号」登录账号中心，确认侧栏一次列出所有可访问的机器。', settingsTab: 'accounts' },
   { id: 'accounts-2', feature: 'accounts', text: '所有者给账号分配角色、主机范围与项目目录，成员登录后只看到授权内容。', settingsTab: 'accounts' },
   { id: 'accounts-3', feature: 'accounts', text: '生成一次性加入码让另一台主机加入，确认过期失效且可在本机退出工作区。', settingsTab: 'accounts' },
-  { id: 'ssh-1', feature: 'ssh', text: '添加远程主机，确认指纹确认、探测与部署进度。', settingsTab: 'hosts' },
-  { id: 'ssh-2', feature: 'ssh', text: '部署后经隧道打开会话，确认流式回复与卸载清理。', settingsTab: 'hosts' },
   { id: 'update-1', feature: 'update', text: '在关于页确认版本与更新状态文案（发现/下载完成/重启）。', settingsTab: 'general' },
   { id: 'update-2', feature: 'update', text: '配置内网更新源，确认发现新版本并可下载；留空不发起请求。', settingsTab: 'general' },
   { id: 'sync-1', feature: 'sync', text: '导出加密配置，换一个临时 Host 导入，确认账号与会话恢复。', settingsTab: 'sync' },
