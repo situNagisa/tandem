@@ -113,10 +113,37 @@ export default function App() {
   })()
   const drawerStart = useRef<number | null>(null)
   const effectiveWidth = dragWidth ?? sidebarWidth
+  // 调试版启动时先尝试登录本机工作站测试账号；检查完成前不闪首启引导。
+  const [debugReady, setDebugReady] = useState(!__TANDEM_DEBUG__)
 
   useEffect(() => {
     useAppStore.getState().initialize()
     void initNativeBridge()
+  }, [])
+
+  useEffect(() => {
+    if (!__TANDEM_DEBUG__) return
+    let alive = true
+    const run = async () => {
+      try {
+        // 显式要求重新走引导时，不自动登录（用于测试真实注册流程）。
+        if (localStorage.getItem('tandem.onboarding.force')) return
+        const mod = await import('./lib/debugAccount')
+        const ok = await mod.tryDebugLocalAutoLogin()
+        if (ok && alive) {
+          localStorage.setItem('tandem.onboarded.v1', '1')
+          setOnboarded(true)
+        }
+      } catch {
+        /* 调试账号不可用时按正常流程引导 */
+      } finally {
+        if (alive) setDebugReady(true)
+      }
+    }
+    void run()
+    return () => {
+      alive = false
+    }
   }, [])
 
   // 工作区账号：启动时与每 10 分钟检查访问令牌，过期前自动向账号中心刷新。
@@ -359,7 +386,7 @@ export default function App() {
     }
   }, [])
 
-  if (initialized && !onboarded && !accountSession && (hosts.length === 0 || forceOnboarding)) {
+  if (initialized && !onboarded && !accountSession && (hosts.length === 0 || forceOnboarding) && debugReady) {
     return <WorkstationOnboarding onDone={() => setOnboarded(true)} />
   }
 

@@ -159,6 +159,7 @@ export const SETTINGS_ITEMS: SettingItem[] = [
     ? [
         { id: 'appearance.gallery', tab: 'appearance' as const, title: '组件画廊', keywords: ['ui', '组件', '画廊'] },
         { id: 'appearance.feedback', tab: 'appearance' as const, title: '反馈模式', keywords: ['反馈', '标注', '问题'] },
+        { id: 'appearance.debug-account', tab: 'appearance' as const, title: '调试账号自动登录', keywords: ['调试', '账号', '自动登录'] },
       ]
     : []),
 ]

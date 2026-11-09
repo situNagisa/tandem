@@ -2,7 +2,7 @@
 // 主机出站隧道 + E2E 转发，用户 2 默认不可见、授权后才可见。
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -110,6 +110,37 @@ async function waitFor(fn, label, timeout = 25_000) {
   throw new Error(`超时：${label}`)
 }
 
+/** 调试版工作站：自动测试账号、密码文件权限、首个真实注册者仍是管理员。 */
+async function runDebugAccountCheck(base) {
+  const home = path.join(base, 'debug-ws')
+  const proc = startProcess({ home, mode: 'workstation', extraEnv: { TANDEM_FLAVOR: 'debug' } })
+  try {
+    const port = await proc.ready
+    const WS = `http://127.0.0.1:${port}`
+    const status = await json(WS, '/api/workstation/status')
+    assert.equal(status.initialized, true, '调试版工作站应已自动初始化')
+    assert.equal(status.debug, true, '调试版工作站状态应带 debug 标记')
+    const file = path.join(home, 'debug-account.json')
+    assert.ok(existsSync(file), '调试版应生成测试账号密码文件')
+    if (process.platform !== 'win32') {
+      assert.equal(statSync(file).mode & 0o777, 0o600, '测试账号密码文件应为 0600')
+    }
+    const login = await json(WS, '/api/debug/auto-login', { method: 'POST' })
+    assert.equal(login.account.username, 'debug', '免密登录应返回 debug 账号')
+    assert.equal(login.account.debug, true, '账号应带调试标记')
+    assert.notEqual(login.account.role, 'admin', '测试账号不是管理员')
+    const owner = await json(WS, '/api/workstation/register', {
+      method: 'POST',
+      body: JSON.stringify({ username: 'dbg-owner', password: 'dbg-owner-pass' }),
+    })
+    assert.equal(owner.account.role, 'admin', '测试账号不算第一个用户，首个真实注册者应为管理员')
+    const overview = await json(WS, '/api/workstation/overview', {}, owner.accessToken)
+    assert.ok(overview.accounts.some((a) => a.username === 'debug' && a.debug), '管理员应能看到带调试标记的测试账号')
+  } finally {
+    proc.child.kill('SIGTERM')
+  }
+}
+
 export async function runWorkstationCheck(home) {
   if (!globalThis.WebSocket) globalThis.WebSocket = WebSocket
   const base = path.join(home, 'workstation-reg')
@@ -117,7 +148,12 @@ export async function runWorkstationCheck(home) {
   const mock = mockProvider()
   await new Promise((resolve) => mock.listen(0, '127.0.0.1', resolve))
   const mockPort = mock.address().port
-  const ws = startProcess({ home: path.join(base, 'ws'), mode: 'workstation' })
+  // 真实注册流程用发布 flavor 语义（同一份调试 dist 里关掉调试账号自动创建）。
+  const ws = startProcess({
+    home: path.join(base, 'ws'),
+    mode: 'workstation',
+    extraEnv: { TANDEM_FLAVOR: 'release' },
+  })
   const h1 = startProcess({ home: path.join(base, 'h1'), mode: 'host' })
   const h2 = startProcess({ home: path.join(base, 'h2'), mode: 'host' })
   try {
@@ -125,6 +161,8 @@ export async function runWorkstationCheck(home) {
     const h1Port = await h1.ready
     const h2Port = await h2.ready
     const WS = `http://127.0.0.1:${wsPort}`
+    const autoLogin = await fetch(`${WS}/api/debug/auto-login`, { method: 'POST' })
+    assert.equal(autoLogin.status, 404, '关闭调试账号时不应注册 auto-login 路由')
     const alice = await json(WS, '/api/workstation/setup', {
       method: 'POST',
       body: JSON.stringify({ name: '回归工作站', username: 'ws-alice', password: 'alice-pass-123' }),
@@ -251,6 +289,8 @@ export async function runWorkstationCheck(home) {
       body: JSON.stringify({ refreshToken: bob.refreshToken }),
     })
     assert.deepEqual(await json(WS, '/api/workstation/hosts', {}, bobTokens.accessToken), [], '刷新后不应再看到被撤销的主机')
+
+    await runDebugAccountCheck(base)
   } finally {
     ws.child.kill('SIGTERM')
     h1.child.kill('SIGTERM')

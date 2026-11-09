@@ -173,6 +173,12 @@ export async function createApp(
   app.addHook('onClose', async () => stopWorkstationTunnel());
   const deps: RouteDeps = { host, sshHosts, workstation: workstationDeps, ...(extras.relay ? { relay: extras.relay } : {}) };
 
+  if (IS_DEBUG_FLAVOR) {
+    // 调试版桌面：首次启动自动登录本机工作站的测试账号；发布构建不加载此模块。
+    const { installDebugWorkstationBootstrap } = await import('./debug/workstationBootstrap.js');
+    installDebugWorkstationBootstrap(app, host, workstationDeps);
+  }
+
   registerHostRoutes(app, deps);
   registerUpdateRoutes(app, deps);
   if (IS_DEBUG_FLAVOR) {

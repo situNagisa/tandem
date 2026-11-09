@@ -1085,6 +1085,8 @@ export interface WorkspaceAccount {
   /** scope=projects：按 Host id 指定项目目录（绝对路径）。 */
   projectDirsByHost: Record<string, string[]>;
   disabled?: boolean;
+  /** 调试版内置的本地测试账号；管理员可在账号列表看到「调试」标记。 */
+  debug?: boolean;
   totpEnabled?: boolean;
   /** 只在创建账号时返回一次，用于扫码/手输到验证器。 */
   totpSecret?: string;
@@ -1221,6 +1223,8 @@ export interface WorkstationPublicStatus {
   initialized: boolean;
   name?: string;
   registration: 'open' | 'invite';
+  /** 调试版工作站：登录弹层只在这种情况下提供调试账号入口。 */
+  debug?: boolean;
   /** 工作站 Ed25519 公钥（base64 DER）；主机登记时用它验签。 */
   publicKey?: string;
   hostId?: string;
@@ -1277,6 +1281,7 @@ export interface WorkstationAccountSummary {
   name: string;
   role: WorkspaceRole;
   disabled?: boolean;
+  debug?: boolean;
 }
 export interface WorkstationSettingsInput {
   registration?: 'open' | 'invite';

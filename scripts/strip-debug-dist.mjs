@@ -40,7 +40,12 @@ for (const file of ['demo/manager.js', 'demo/provider.js', 'demo/scenarios.js', 
   remove(file)
 }
 // 启动期按 flavor 动态加载的调试入口。
-for (const file of ['debug/demoRoutes.js', 'debug/demoProvider.js']) {
+for (const file of [
+  'debug/demoRoutes.js',
+  'debug/demoProvider.js',
+  'debug/workstationService.js',
+  'debug/workstationBootstrap.js',
+]) {
   remove(file)
 }
 if (fs.existsSync(path.join(serverDist, 'debug')) && fs.readdirSync(path.join(serverDist, 'debug')).length === 0) {

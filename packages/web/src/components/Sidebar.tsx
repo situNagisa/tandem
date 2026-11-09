@@ -45,6 +45,7 @@ export function Sidebar({
   const setWorkstationOpen = useDevicesStore((s) => s.setWorkstationOpen)
   const activeHostId = useAppStore((s) => s.activeHostId)
   const account = useAppStore((s) => s.account)
+  const isDebugAccount = !!account?.account.debug
   const logoutWorkspace = useAppStore((s) => s.workspaceLogout)
   const [loginOpen, setLoginOpen] = useState(false)
   const activeHostUrl = useAppStore(
@@ -399,12 +400,24 @@ export function Sidebar({
               >
                 <UserRound size={15} className="shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{account.account.name}</span>
+                {__TANDEM_DEBUG__ && isDebugAccount && (
+                  <span className="shrink-0 rounded border border-border bg-[var(--t-bg-subtle)] px-1 text-[10px] leading-4 text-text-tertiary">
+                    调试
+                  </span>
+                )}
                 <ChevronUp size={13} className="shrink-0 opacity-60" />
               </Button>
             }
           >
             <div className="px-2 py-1.5">
-              <div className="truncate text-[12.5px] font-medium text-text">{account.account.name}</div>
+              <div className="flex items-center gap-1.5 truncate text-[12.5px] font-medium text-text">
+                {account.account.name}
+                {__TANDEM_DEBUG__ && isDebugAccount && (
+                  <span className="rounded border border-border bg-[var(--t-bg-subtle)] px-1 text-[10px] leading-4 text-text-tertiary">
+                    调试
+                  </span>
+                )}
+              </div>
               <div className="truncate text-[11.5px] text-muted">
                 {account.workspace.name} · {account.account.username}
               </div>
@@ -413,8 +426,21 @@ export function Sidebar({
               工作站管理
             </MenuItem>
             <MenuItem icon={<LogOut size={13} />} danger onSelect={() => void logoutWorkspace()}>
-              退出登录
+              {__TANDEM_DEBUG__ && isDebugAccount ? '退出调试账号' : '退出登录'}
             </MenuItem>
+            {__TANDEM_DEBUG__ && isDebugAccount && (
+              <MenuItem
+                icon={<LogIn size={13} />}
+                onSelect={() => {
+                  void (async () => {
+                    await logoutWorkspace()
+                    setLoginOpen(true)
+                  })()
+                }}
+              >
+                用其他账号登录
+              </MenuItem>
+            )}
           </Menu>
         ) : (
           <Button

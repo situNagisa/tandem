@@ -24,10 +24,46 @@ export function LoginDialog({ open, onClose, defaultCenterUrl = '' }: LoginDialo
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [debugAvailable, setDebugAvailable] = useState(false)
 
   useEffect(() => {
     if (open && !centerUrl && defaultCenterUrl) setCenterUrl(defaultCenterUrl)
   }, [open, defaultCenterUrl, centerUrl])
+
+  // 调试版：仅当对方也是调试版工作站、且地址在本机回环时提供调试账号入口。
+  useEffect(() => {
+    if (!__TANDEM_DEBUG__) return
+    setDebugAvailable(false)
+    if (!open || !centerUrl.trim()) return
+    let alive = true
+    const timer = window.setTimeout(() => {
+      void import('../../lib/debugAccount')
+        .then((mod) => mod.probeDebugWorkstation(centerUrl))
+        .then((ok) => {
+          if (alive) setDebugAvailable(ok)
+        })
+        .catch(() => undefined)
+    }, 350)
+    return () => {
+      alive = false
+      window.clearTimeout(timer)
+    }
+  }, [open, centerUrl])
+
+  const submitDebug = async () => {
+    if (!__TANDEM_DEBUG__) return
+    setBusy(true)
+    setError(null)
+    try {
+      const mod = await import('../../lib/debugAccount')
+      if (!(await mod.debugLoginAt(centerUrl))) throw new Error('调试账号不可用')
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '调试账号登录失败')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const submit = async () => {
     if (!centerUrl.trim() || !username.trim() || !password) {
@@ -122,6 +158,11 @@ export function LoginDialog({ open, onClose, defaultCenterUrl = '' }: LoginDialo
             <span className="text-[12px] text-muted">邀请码（工作站设为仅邀请时填写）</span>
             <Input value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="可留空" />
           </label>
+        )}
+        {__TANDEM_DEBUG__ && debugAvailable && mode === 'login' && (
+          <Button variant="secondary" className="w-full justify-center" onClick={() => void submitDebug()} disabled={busy}>
+            <KeyRound size={14} /> 用调试账号登录
+          </Button>
         )}
         {error && <p className="text-[12.5px] text-[var(--t-danger)]">{error}</p>}
         <p className="text-[12px] leading-5 text-muted">

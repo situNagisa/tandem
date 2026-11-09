@@ -958,6 +958,67 @@ export class AccountsStore {
   }
 
   // ---------- 工作站服务：注册、主机登记、授权 ----------
+  /**
+   * 只初始化工作站本身（私钥 + 空账号列表），不创建管理员。
+   * 供调试版内置测试账号使用；首个真实注册用户仍会成为管理员。
+   */
+  ensureWorkstationState(name: string): void {
+    if (this.state?.mode === 'center') return;
+    if (this.state) throw Object.assign(new Error('本机已作为主机加入工作站'), { statusCode: 409 });
+    const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+    const workspace: WorkspaceInfo = {
+      id: randomUUID(),
+      name: name.trim() || '工作站',
+      createdAt: Date.now(),
+      centerHostId: this.opts.hostId,
+    };
+    this.state = {
+      mode: 'center',
+      version: 1,
+      modelVersion: 2,
+      registration: 'open',
+      workspace,
+      privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+      publicKey: publicKey.export({ type: 'spki', format: 'der' }).toString('base64'),
+      accounts: [],
+      joinCodes: [],
+      invites: [],
+      hosts: [],
+      revoked: {},
+      invalidBefore: {},
+      usedRefresh: {},
+      syncToken: randomBytes(24).toString('hex'),
+      snapshotVersion: 1,
+      audit: [],
+    };
+    this.audit('system', 'workstation.create', workspace.name);
+    this.save();
+  }
+
+  /** 确保一个普通成员账号存在；同名真实账号不会被覆盖。 */
+  ensureLocalAccount(input: { username: string; name: string; password: string; debug?: boolean }): WorkspaceAccount | undefined {
+    const state = this.requireCenter();
+    const existing = this.accountForLogin(input.username);
+    if (existing) return existing.debug ? this.publicAccount(existing) : undefined;
+    const account: StoredAccount = {
+      id: randomUUID(),
+      username: input.username.trim(),
+      name: input.name.trim() || input.username.trim(),
+      role: 'member',
+      scope: 'all',
+      hostIds: [],
+      projectDirsByHost: {},
+      password: hashPassword(input.password),
+      ...(input.debug ? { debug: true } : {}),
+      deviceKeys: [],
+      createdAt: Date.now(),
+    };
+    state.accounts.push(account);
+    this.audit(input.username, 'account.local');
+    this.save();
+    return this.publicAccount(account);
+  }
+
   /** 首次初始化工作站：创建管理员账号与空的 Host 列表（本机也需显式添加）。 */
   initializeWorkstation(name: string, username: string, password: string): AccountLoginResult {
     if (this.state) throw Object.assign(new Error('工作站已初始化'), { statusCode: 409 });
@@ -1018,7 +1079,8 @@ export class AccountsStore {
     if (state.accounts.some((a) => a.username.toLowerCase() === username.toLowerCase())) {
       throw Object.assign(new Error('用户名已存在'), { statusCode: 409 });
     }
-    const first = state.accounts.length === 0;
+    // 调试版内置测试账号不算第一个用户：首个真实注册者仍是管理员。
+    const first = state.accounts.filter((a) => !a.debug).length === 0;
     if (!first && (state.registration ?? 'open') === 'invite') {
       const code = (input.inviteCode ?? '').trim();
       const invite = state.invites?.find((i) => i.codeHash === sha256(code) && !i.usedAt && i.expiresAt > Date.now());
@@ -1209,7 +1271,14 @@ export class AccountsStore {
     return state.accounts
       .filter((a) => !needle || a.username.toLowerCase().includes(needle) || a.name.toLowerCase().includes(needle))
       .slice(0, 100)
-      .map((a) => ({ id: a.id, username: a.username, name: a.name, role: a.role, ...(a.disabled ? { disabled: true } : {}) }));
+      .map((a) => ({
+        id: a.id,
+        username: a.username,
+        name: a.name,
+        role: a.role,
+        ...(a.disabled ? { disabled: true } : {}),
+        ...(a.debug ? { debug: true } : {}),
+      }));
   }
 
   workstationStatus(urls: string[]): WorkstationPublicStatus {

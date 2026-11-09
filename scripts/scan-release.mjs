@@ -29,6 +29,11 @@ const WEB_FORBIDDEN = [
   'useDemoStore',
   'DemoDeviceStage',
   'demo-model',
+  // 调试版内置工作站账号
+  '调试账号',
+  '/api/debug/auto-login',
+  'debug-account',
+  'tandem.debug.account.autologin',
 ]
 
 const SERVER_FORBIDDEN = [
@@ -40,6 +45,10 @@ const SERVER_FORBIDDEN = [
   'demo-model',
   'DEMO_SCENARIOS',
   'streamDemo',
+  // 调试版内置工作站账号
+  '调试账号',
+  '/api/debug/auto-login',
+  'debug-account',
 ]
 
 function listFiles(dir, exts) {

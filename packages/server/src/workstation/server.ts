@@ -34,6 +34,7 @@ import type {
 } from '@tandem/protocol';
 import { AccountsStore } from '../accounts/store.js';
 import { readJson } from '../config.js';
+import { IS_DEBUG_FLAVOR } from '../flavor.js';
 
 const MAX_FRAME = 40 * 1024 * 1024;
 const HELLO_TIMEOUT_MS = 10_000;
@@ -107,6 +108,14 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
     platform: process.platform,
   });
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 * 1024 });
+  // 调试版：自动创建本地测试账号并挂上仅回环可用的免密登录；发布构建不会加载这个模块。
+  const debugReady = IS_DEBUG_FLAVOR
+    ? import('../debug/workstationService.js')
+        .then((mod) => mod.ensureDebugWorkstation(store, options.home, app))
+        .catch((err: unknown) => {
+          console.warn('[workstation] 调试初始化失败:', (err as Error).message);
+        })
+    : Promise.resolve();
   const tunnels = new Map<string, HostTunnel>();
   const clientWss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME });
   const tunnelWss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME });
@@ -187,7 +196,7 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
   // ---------- 公开接口 ----------
   app.get('/api/workstation/status', async () => {
     const { urls } = addressInfo();
-    return store.workstationStatus(urls);
+    return { ...store.workstationStatus(urls), ...(IS_DEBUG_FLAVOR ? { debug: true } : {}) };
   });
 
   app.post('/api/workstation/setup', async (req, reply) => {
@@ -501,6 +510,7 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
     app,
     store,
     listen: async (port, host) => {
+      await debugReady;
       await app.listen({ port, host });
       const info = addressInfo();
       return info;

@@ -792,6 +792,10 @@ export function createHostsSlice(
 
     workspaceLogout: async () => {
       const session = get().account
+      if (__TANDEM_DEBUG__ && session?.account.debug) {
+        // 退出调试账号后记住选择，避免下次启动又被自动登录。
+        void import('../../lib/debugAccount').then((mod) => mod.disableDebugAutoLogin())
+      }
       if (session) await accountApi.logout(session.centerUrl, session.refreshToken)
       saveAccountSession(null)
       const hosts = get().hosts.filter((h) => h.accountId !== session?.account.id)

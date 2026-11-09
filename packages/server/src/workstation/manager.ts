@@ -27,6 +27,7 @@ export async function startEmbeddedWorkstation(
   home: string,
   bindHost: string,
   version?: string,
+  preferredPort = 8481,
 ): Promise<{ urls: string[]; port: number }> {
   const key = path.resolve(home);
   const existing = embedded.get(key);
@@ -42,7 +43,7 @@ export async function startEmbeddedWorkstation(
       ...(version ? { version } : {}),
     });
     let lastError: unknown;
-    for (let port = 8481; port < 8491; port += 1) {
+    for (let port = preferredPort; port < preferredPort + 10; port += 1) {
       try {
         const info = await handle.listen(port, bindHost);
         const entry: Embedded = { handle, urls: info.urls, port: info.port };

@@ -59,6 +59,30 @@ export function AppearanceSection() {
   const [permission, setPermission] = useState<NotificationPermission>(() =>
     typeof Notification === 'undefined' ? 'denied' : Notification.permission,
   )
+  const [debugAuto, setDebugAuto] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    if (!__TANDEM_DEBUG__) return
+    let alive = true
+    void import('../../lib/debugAccount')
+      .then((mod) => {
+        if (alive) setDebugAuto(mod.isDebugAutoLoginEnabled())
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const toggleDebugAuto = async (next: boolean) => {
+    if (!__TANDEM_DEBUG__) return
+    const mod = await import('../../lib/debugAccount')
+    mod.setDebugAutoLoginEnabled(next)
+    setDebugAuto(next)
+    if (!next) return
+    const ok = await mod.tryDebugLocalAutoLogin()
+    toast(ok ? '已登录调试账号' : '没有找到可自动登录的本机工作站', ok ? 'success' : 'info')
+  }
 
   useEffect(() => {
     if (typeof Notification === 'undefined') return
@@ -232,6 +256,19 @@ export function AppearanceSection() {
               进入反馈模式
             </Button>
           </div>
+
+          {debugAuto !== null && (
+            <div data-setting-id="appearance.debug-account" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3.5">
+              <div className="min-w-0">
+                <div className="text-[13px] font-medium">调试账号自动登录</div>
+                <p className="mt-0.5 text-[13px] leading-5 text-muted">
+                  调试版打开本机工作站时，未登录就以「调试账号」自动登录，并用它登记本机主机。
+                  退出调试账号后此开关会关闭；重新打开后下次启动恢复自动登录。
+                </p>
+              </div>
+              <Switch checked={debugAuto} onChange={(next) => void toggleDebugAuto(next)} label="调试账号自动登录" />
+            </div>
+          )}
         </>
       )}
     </div>

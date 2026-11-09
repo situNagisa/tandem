@@ -522,6 +522,11 @@ function AccountRow({
         <div className="flex items-center gap-1.5 truncate text-[13px]">
           {account.name}
           <span className="text-[11.5px] text-muted">@{account.username}</span>
+          {__TANDEM_DEBUG__ && account.debug && (
+            <span className="rounded border border-border bg-[var(--t-bg-subtle)] px-1 text-[10px] leading-4 text-text-tertiary">
+              调试
+            </span>
+          )}
           {account.disabled && <span className="text-[11px] text-[var(--t-danger)]">已吊销</span>}
         </div>
         <div className="truncate text-[11.5px] text-muted">
