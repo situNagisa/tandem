@@ -4,8 +4,8 @@ import { Check, Copy, Link2, Loader2, ShieldCheck, TriangleAlert } from 'lucide-
 import type { CreateShareResult, SessionSummary, ShareExpiry } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { api } from '../../lib/api'
-import { copyText } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
+import { useCopy } from '../../lib/useCopy'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { Select, Switch } from '../ui/Controls'
@@ -43,7 +43,7 @@ export function ShareDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [created, setCreated] = useState<CreateShareResult | null>(null)
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy()
   const [svg, setSvg] = useState('')
 
   useEffect(() => {
@@ -99,12 +99,8 @@ export function ShareDialog({
     }
   }
 
-  const copy = async () => {
-    if (!created?.url) return
-    if (await copyText(created.url)) {
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    }
+  const copyLink = () => {
+    if (created?.url) void copy(created.url)
   }
 
   return (
@@ -219,7 +215,7 @@ export function ShareDialog({
                 <span className="min-w-0 flex-1 break-all font-mono text-[12px] leading-5 text-text-soft">
                   {created.url}
                 </span>
-                <Button size="sm" variant="ghost" onClick={() => void copy()}>
+                <Button size="sm" variant="ghost" onClick={copyLink}>
                   {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
                   {copied ? '已复制' : '复制'}
                 </Button>

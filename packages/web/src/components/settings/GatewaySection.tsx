@@ -23,8 +23,8 @@ import type {
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
-import { copyText } from '../../lib/clipboard'
 import { formatCost, formatTokens } from '../../lib/format'
+import { useCopy } from '../../lib/useCopy'
 import { Button, IconButton } from '../ui/Button'
 import { Input, Switch } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
@@ -71,7 +71,7 @@ export function GatewaySection() {
   const [issuedToken, setIssuedToken] = useState<string | null>(null)
   const [revokeTarget, setRevokeTarget] = useState<GatewayToken | null>(null)
   const [routeDraft, setRouteDraft] = useState({ profileId: '', groupId: '', model: '' })
-  const [copied, setCopied] = useState(false)
+  const { copied, copy, reset: resetCopied } = useCopy({ resetAfter: 0 })
 
   const profiles = runtime?.profiles ?? []
   const settings = overview?.settings ?? null
@@ -172,13 +172,13 @@ export function GatewaySection() {
 
   const openIssue = () => {
     setIssuedToken(null)
-    setCopied(false)
+    resetCopied()
     setTokenModal({ ...EMPTY_DRAFT, memberId: members[0]?.memberId ?? '' })
   }
 
   const openEdit = (token: GatewayToken) => {
     setIssuedToken(null)
-    setCopied(false)
+    resetCopied()
     setTokenModal({
       id: token.id,
       memberId: token.memberId,
@@ -241,10 +241,8 @@ export function GatewaySection() {
     }
   }
 
-  const copyToken = async () => {
-    if (!issuedToken) return
-    await copyText(issuedToken)
-    setCopied(true)
+  const copyToken = () => {
+    if (issuedToken) void copy(issuedToken)
   }
 
   const routeName = (route: GatewayModelRoute) => {

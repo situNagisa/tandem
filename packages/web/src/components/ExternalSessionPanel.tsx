@@ -9,8 +9,8 @@ import type {
 } from '@tandem/protocol'
 import { countTurns, isUserTurnMessage } from '@tandem/protocol'
 import { cn } from '../lib/cn'
-import { copyText } from '../lib/clipboard'
 import { formatCost, formatRelative, formatTime, formatTokens } from '../lib/format'
+import { useCopy } from '../lib/useCopy'
 import { estimateMessageTokens } from '../lib/turnUsage'
 import { useUiStore } from '../store/useUiStore'
 import { ContextSpaceSection, jumpToMessage } from './chat/ContextMeter'
@@ -61,7 +61,7 @@ export function ExternalSessionPanel({
 }) {
   const [panelWidth, setPanelWidth] = useState(loadPanelWidth)
   const [dragWidth, setDragWidth] = useState<number | null>(null)
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy({ onError: () => toast('复制失败', 'error') })
   const asideRef = useRef<HTMLElement>(null)
   const toast = useUiStore((s) => s.toast)
   const messages = session.messages
@@ -173,14 +173,8 @@ export function ExternalSessionPanel({
     return [...files.entries()].sort((a, b) => b[1] - a[1])
   }, [messages])
 
-  const copyCwd = async () => {
-    if (!session.cwd) return
-    if (await copyText(session.cwd)) {
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } else {
-      toast('复制失败', 'error')
-    }
+  const copyCwd = () => {
+    if (session.cwd) void copy(session.cwd)
   }
 
   const groups = [
@@ -250,7 +244,7 @@ export function ExternalSessionPanel({
                       {session.cwd && (
                         <IconButton
                           size="sm"
-                          onClick={() => void copyCwd()}
+                          onClick={copyCwd}
                           label="复制工作目录"
                           tooltip="复制"
                           className="mt-px size-5! shrink-0 opacity-40 hover:opacity-100 [&_svg]:size-3"

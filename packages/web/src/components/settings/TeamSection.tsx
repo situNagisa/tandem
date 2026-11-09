@@ -23,8 +23,8 @@ import type {
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { api } from '../../lib/api'
-import { copyText } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
+import { useCopy } from '../../lib/useCopy'
 import { Button, IconButton } from '../ui/Button'
 import { Input, SegmentedControl } from '../ui/Controls'
 import { Modal } from '../ui/Modal'
@@ -252,7 +252,10 @@ export function TeamSection() {
   const [creating, setCreating] = useState(false)
   const [created, setCreated] = useState<CreateTeamInviteResult | null>(null)
   const [qr, setQr] = useState('')
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy({
+    resetAfter: 0,
+    onSuccess: () => toast('邀请链接已复制', 'success'),
+  })
   const [revokeId, setRevokeId] = useState<string | null>(null)
   const [deletingInvite, setDeletingInvite] = useState<TeamInvite | null>(null)
   const [editMember, setEditMember] = useState<TeamMember | null>(null)
@@ -340,11 +343,8 @@ export function TeamSection() {
     }
   }
 
-  const copy = async () => {
-    if (!created) return
-    const ok = await copyText(created.url)
-    setCopied(ok)
-    if (ok) toast('邀请链接已复制', 'success')
+  const copyLink = () => {
+    if (created) void copy(created.url)
   }
 
   const revoke = async (member: TeamMember) => {
@@ -458,7 +458,7 @@ export function TeamSection() {
                 </p>
               )}
               <div className="flex gap-1.5">
-                <Button size="sm" variant="secondary" onClick={() => void copy()}>
+                <Button size="sm" variant="secondary" onClick={copyLink}>
                   {copied ? <Check size={12} /> : <Copy size={12} />}
                   {copied ? '已复制' : '复制链接'}
                 </Button>

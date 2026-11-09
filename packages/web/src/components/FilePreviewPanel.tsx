@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FsReadResult } from '@tandem/protocol'
 import {
   Check,
@@ -15,8 +15,8 @@ import {
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { api } from '../lib/api'
-import { copyText } from '../lib/clipboard'
 import { cn } from '../lib/cn'
+import { useCopy } from '../lib/useCopy'
 import { useIsMobile } from '../lib/hooks'
 import { Button, IconButton } from './ui/Button'
 import { SegmentedControl } from './ui/Controls'
@@ -71,12 +71,11 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [retryNonce, setRetryNonce] = useState(0)
   const [mode, setMode] = useState<'preview' | 'source'>('preview')
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy({ onError: () => toast('复制失败', 'error') })
   const [imageUrl, setImageUrl] = useState('')
   const [revealing, setRevealing] = useState(false)
   const [dragWidth, setDragWidth] = useState<number | null>(null)
   const [dragTreeWidth, setDragTreeWidth] = useState<number | null>(null)
-  const copyTimer = useRef<number | null>(null)
 
   const path = preview?.path ?? ''
   const cwd = preview?.cwd ?? ''
@@ -145,13 +144,6 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
     setMode('preview')
   }, [path])
 
-  useEffect(
-    () => () => {
-      if (copyTimer.current) window.clearTimeout(copyTimer.current)
-    },
-    [],
-  )
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return
@@ -167,15 +159,8 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
 
   const width = dragWidth ?? widthPref
 
-  const copyPath = async () => {
-    if (!absPath) return
-    if (!(await copyText(absPath))) {
-      toast('复制失败', 'error')
-      return
-    }
-    setCopied(true)
-    if (copyTimer.current) window.clearTimeout(copyTimer.current)
-    copyTimer.current = window.setTimeout(() => setCopied(false), 1500)
+  const copyPath = () => {
+    if (absPath) void copy(absPath)
   }
 
   const reveal = async () => {
@@ -259,7 +244,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
             )}
             <IconButton
               size="sm"
-              onClick={() => void copyPath()}
+              onClick={copyPath}
               label="复制文件路径"
               tooltip={copied ? '已复制' : `复制路径：${absPath || path}`}
               className="max-md:size-11"

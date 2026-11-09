@@ -4,8 +4,8 @@ import { Check, Copy, GitFork, MoreHorizontal, PencilLine, Pin, Undo2 } from 'lu
 import { useAppStore } from '../../store/useAppStore'
 import { useSessionTarget, useSessionView } from '../session/SessionScope'
 import { cn } from '../../lib/cn'
-import { copyText } from '../../lib/clipboard'
 import { formatCost, formatTokens } from '../../lib/format'
+import { useCopy } from '../../lib/useCopy'
 import { estimateInputTokens } from '../../lib/tokens'
 import type { UiMessage } from '../../lib/types'
 import { RewindDialog } from '../RewindDialog'
@@ -23,7 +23,7 @@ export const UserMessage = memo(function UserMessage({
   animate: boolean
   readOnly?: boolean
 }) {
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [editWidth, setEditWidth] = useState<number | null>(null)
@@ -36,7 +36,6 @@ export const UserMessage = memo(function UserMessage({
   const running = useSessionView((s) => s?.running ?? false)
   const pinnedTurns = useSessionView((s) => s?.summary?.pinnedTurns)
   const pinned = !!pinnedTurns?.includes(message.id)
-  const timer = useRef<number | null>(null)
   const editRef = useRef<HTMLTextAreaElement>(null)
   const bubbleRef = useRef<HTMLDivElement>(null)
   const blocks = message.content.filter((b) => b.type !== 'tool_result')
@@ -57,7 +56,6 @@ export const UserMessage = memo(function UserMessage({
 
   useEffect(
     () => () => {
-      if (timer.current) window.clearTimeout(timer.current)
       if (pressTimer.current) window.clearTimeout(pressTimer.current)
     },
     [],
@@ -114,12 +112,7 @@ export const UserMessage = memo(function UserMessage({
     if (Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > 10) cancelPress()
   }
 
-  const copy = async () => {
-    if (!(await copyText(text))) return
-    setCopied(true)
-    if (timer.current) window.clearTimeout(timer.current)
-    timer.current = window.setTimeout(() => setCopied(false), 1500)
-  }
+  const copyTextAll = () => void copy(text)
 
   const togglePin = () => {
     const state = useAppStore.getState()
@@ -248,7 +241,7 @@ export const UserMessage = memo(function UserMessage({
               <div className="msg-actions flex items-center gap-0.5">
               <IconButton
                 size="sm"
-                onClick={copy}
+                onClick={copyTextAll}
                 label={copied ? '已复制' : '复制消息'}
                 tooltip={copied ? '已复制' : '复制'}
                 className="[&_svg]:size-[12.5px]"
@@ -315,7 +308,7 @@ export const UserMessage = memo(function UserMessage({
             <div className="msg-more mt-0.5 h-7 justify-end max-md:h-11">
               {readOnly ? (
                 <IconButton
-                  onClick={() => void copy()}
+                  onClick={copyTextAll}
                   label={copied ? '已复制' : '复制消息'}
                   className="[&_svg]:size-[13px] max-md:size-11 max-md:border max-md:border-border max-md:bg-[var(--t-bg-subtle)] [&_svg]:max-md:size-[17px]"
                 >
@@ -337,9 +330,7 @@ export const UserMessage = memo(function UserMessage({
                 <>
                     <Menu.Item
                       icon={<Copy />}
-                      onSelect={() => {
-                        void copy()
-                      }}
+                      onSelect={copyTextAll}
                     >
                       {copied ? '已复制' : '复制消息'}
                     </Menu.Item>

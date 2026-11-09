@@ -24,6 +24,7 @@ import type {
 } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
+import { useCopy } from '../../lib/useCopy'
 import { accountApi, ApiError } from '../../lib/api'
 import { LoginDialog } from '../accounts/LoginDialog'
 import { Button, IconButton } from '../ui/Button'
@@ -78,7 +79,7 @@ export function AccountsSection() {
   const [error, setError] = useState<string | null>(null)
   const [loginOpen, setLoginOpen] = useState(false)
   const [joinCode, setJoinCode] = useState<{ code: string; expiresAt: number } | null>(null)
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy()
   const [createOpen, setCreateOpen] = useState(false)
   const [editing, setEditing] = useState<WorkspaceAccount | null>(null)
 
@@ -269,11 +270,7 @@ export function AccountsSection() {
                 <code className="min-w-0 flex-1 truncate font-mono text-[12.5px]">{joinCode.code}</code>
                 <IconButton
                   label="复制加入码"
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(joinCode.code).catch(() => undefined)
-                    setCopied(true)
-                    window.setTimeout(() => setCopied(false), 1500)
-                  }}
+                  onClick={() => void copy(joinCode.code)}
                 >
                   {copied ? <Check size={14} /> : <Copy size={14} />}
                 </IconButton>
