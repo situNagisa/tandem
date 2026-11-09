@@ -39,6 +39,7 @@ import { useUiStore } from '../../store/useUiStore'
 import { PROVIDER_PRESETS, presetForProfile, type ProviderPreset } from '../../lib/presets'
 import { PROVIDER_KIND_LABELS, type HostConfig } from '../../lib/types'
 import { formatElapsed } from '../../lib/format'
+import { mergeFetchedSelection } from '../../lib/modelSelection'
 import { useNow } from '../../lib/hooks'
 import { cn } from '../../lib/cn'
 import { ConfirmAction } from '../ui/ConfirmAction'
@@ -293,14 +294,13 @@ export function ProfilesSection() {
       setManualMode(true)
       return
     }
-    const ids = new Set(sorted.map((m) => m.id))
-    const existing = keepProfileModels ? selected.filter((id) => ids.has(id)) : []
-    const recommended = (preset?.models ?? []).filter((id) => ids.has(id))
-    const initial = existing.length
-      ? existing
-      : recommended.length
-        ? recommended
-        : list.slice(0, 3).map((m) => m.id)
+    // 默认只勾选每个系列的最新一代；编辑已有账号时保留原有选择，只对新增模型应用规则。
+    const initial = mergeFetchedSelection({
+      selected: keepProfileModels ? selected : [],
+      previousAvailable: keepProfileModels ? available.map((m) => m.id) : [],
+      fetched: sorted.map((m) => m.id),
+      touched: keepProfileModels,
+    })
     setAvailable(sorted)
     setSelected(initial)
     setDefaultModel((prev) =>
