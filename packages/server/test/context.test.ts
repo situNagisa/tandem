@@ -125,3 +125,55 @@ test('最占空间按用户轮次聚合：该轮总量 + 轮内最大项（反�
   assert.equal(result.topTurns!.every((turn) => turn.messageId.startsWith('u')), true);
   assert.equal(result.topTurns!.filter((turn) => turn.turn === 1).length, 1);
 });
+
+test('「最占空间」不把外部会话注入当成用户轮（反馈16#05 / R07）', async () => {
+  const { estimateBreakdown } = await import('../src/context.js');
+  const messages = [
+    {
+      id: 'i1',
+      role: 'user' as const,
+      createdAt: 1,
+      content: [{ type: 'text' as const, text: 'You are Codex, an agent based on GPT-6. You and the user share one workspace.' }],
+    },
+    {
+      id: 'i2',
+      role: 'user' as const,
+      createdAt: 2,
+      content: [{ type: 'text' as const, text: '<multi_agent_role>You are `/root`, the primary agent.' }],
+    },
+    {
+      id: 'u1',
+      role: 'user' as const,
+      createdAt: 3,
+      content: [{ type: 'text' as const, text: '真实第一轮：检查构建' }],
+    },
+    {
+      id: 'a1',
+      role: 'assistant' as const,
+      createdAt: 4,
+      content: [{ type: 'text' as const, text: '构建正常。' }],
+    },
+    {
+      id: 'i3',
+      role: 'user' as const,
+      createdAt: 5,
+      content: [{ type: 'text' as const, text: '# AGENTS.md instructions for /repo\n<INSTRUCTIONS>使用 pnpm。</INSTRUCTIONS>' }],
+    },
+    {
+      id: 'u2',
+      role: 'user' as const,
+      createdAt: 6,
+      content: [{ type: 'text' as const, text: '真实第二轮：继续' }],
+    },
+  ];
+  const result = estimateBreakdown({
+    model: 'gpt-4o',
+    system: '',
+    tools: [],
+    messages,
+    cwd: '/tmp',
+  });
+  assert.equal(result.topTurns?.length, 2);
+  assert.deepEqual(result.topTurns?.map((turn) => turn.messageId), ['u1', 'u2']);
+  assert.equal(result.topTurns?.some((turn) => /You are Codex|multi_agent_role|AGENTS\.md/.test(turn.preview)), false);
+});

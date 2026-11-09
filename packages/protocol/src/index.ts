@@ -677,13 +677,38 @@ export interface TurnMessageLike {
 }
 
 /**
- * 是否是真实用户轮次的开始：纯 tool_result 的 user 消息、压缩摘要、分页缺口都不算一轮。
+ * 外部工具（Claude Code / Codex）注入到 user 消息里的系统提示与开发者指令：
+ * 以 `<tag>` 开头的注入块、AGENTS.md / skills 指令、Codex 的 "You are Codex…" 基础提示等。
+ * 这些内容不是用户发言，按轮聚合（大纲、会话图、最占空间）时不作为一轮（反馈16#05 / R07）。
+ */
+export function isSystemInjectionText(text: string): boolean {
+  const value = text.trim();
+  if (!value) return false;
+  if (/^<[a-zA-Z][\w:.-]*(?:\s[^>]*)?>/.test(value)) return true;
+  if (/^#*\s*AGENTS\.md instructions\b/i.test(value)) return true;
+  if (/^You are Codex\b/i.test(value)) return true;
+  if (/^<!--\s*CODEGRAPH_START/i.test(value)) return true;
+  if (
+    /^(?:The following is the Codex agent history|This session is being continued from a previous conversation|Caveat: The messages below were generated)\b/im.test(
+      value,
+    )
+  ) {
+    return true;
+  }
+  return /^\[Request interrupted\b/.test(value);
+}
+
+/**
+ * 是否是真实用户轮次的开始：纯 tool_result 的 user 消息、压缩摘要、分页缺口、
+ * 外部会话注入的系统提示都不算一轮。
  * 轮次大纲、压缩确认、评测与上下文面板共用这一个口径。
  */
 export function isUserTurnMessage(message: TurnMessageLike): boolean {
   if (message.role !== 'user' || message.summary || message.gap) return false;
   return message.content.some(
-    (block) => block.type === 'image' || (block.type === 'text' && !!block.text?.trim()),
+    (block) =>
+      block.type === 'image' ||
+      (block.type === 'text' && !!block.text?.trim() && !isSystemInjectionText(block.text)),
   );
 }
 

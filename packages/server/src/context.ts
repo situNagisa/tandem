@@ -11,6 +11,7 @@ import type {
   ModelCapabilities,
   ProviderKind,
 } from '@tandem/protocol';
+import { isSystemInjectionText } from '@tandem/protocol';
 import type { ToolDefinition } from './types.js';
 import { builtinCapabilities, overrideFor } from './providers/capabilities.js';
 import { subagentListing } from './agent/prompt.js';
@@ -101,12 +102,16 @@ export interface EstimateInput {
   agents?: Array<{ name: string; description?: string }>;
 }
 
-/** 用户消息里只要不是纯 tool_result，就算新的一轮开始；压缩摘要不计一轮。 */
+/** 用户消息里只要不是纯 tool_result、也不是外部会话注入的系统提示，就算新的一轮开始；压缩摘要不计一轮。 */
 export function isTurnStart(message: Message): boolean {
   return (
     message.role === 'user' &&
     !message.summary &&
-    message.content.some((block) => block.type !== 'tool_result')
+    message.content.some(
+      (block) =>
+        block.type === 'image' ||
+        (block.type === 'text' && !!block.text.trim() && !isSystemInjectionText(block.text)),
+    )
   );
 }
 
@@ -255,6 +260,8 @@ export function estimateBreakdown(input: EstimateInput): ContextBreakdown {
       if (block.type === 'text') {
         const tokens = estimateTokens(block.text);
         messages += tokens;
+        // 外部会话注入的系统提示/开发者指令：计入总占用，但不归到用户轮次，也不做轮次预览。
+        if (isSystemInjectionText(block.text)) continue;
         messageTokens += tokens;
         if (currentTurn && !message.summary) currentTurn.tokens += tokens;
         if (!messagePreview) messagePreview = previewOf(block.text);

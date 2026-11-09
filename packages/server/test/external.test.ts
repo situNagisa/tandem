@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Message } from '@tandem/protocol';
+import { isSystemInjectionText } from '@tandem/protocol';
 import {
   cleanTitle,
   cleanUserBlocks,
@@ -116,4 +117,39 @@ test('外部会话解析保留 usage：Claude 缓存字段与 Codex 的含缓存
     { inputTokens: 1000, outputTokens: 120, cacheReadTokens: 4000 },
   );
   assert.equal(usageFromCodex({ input_tokens: 0, output_tokens: 0 }), undefined);
+});
+
+test('Codex 开发者/系统提示归为注入，不冒充用户消息（反馈16#05 / R07）', () => {
+  assert.equal(
+    isSystemInjectionText('You are Codex, an agent based on GPT-6. You and the user share one workspace.'),
+    true,
+  );
+  assert.equal(isSystemInjectionText('<multi_agent_role>You are `/root`.'), true);
+  assert.equal(isSystemInjectionText('<multi_agent_mode>Any earlier instruction'), true);
+  assert.equal(isSystemInjectionText('# AGENTS.md instructions for /repo'), true);
+  assert.equal(isSystemInjectionText('请根据以下审阅意见修改：package-lock.json'), false);
+
+  const blocks = cleanUserBlocks([
+    { type: 'text', text: 'You are Codex, an agent based on GPT-6. You and the user share one workspace.' },
+    { type: 'text', text: '<multi_agent_role>You are `/root`, the primary agent.' },
+    { type: 'text', text: '真实用户发言' },
+  ]);
+  assert.deepEqual(
+    blocks.map((block) => block.type),
+    ['context', 'context', 'text'],
+  );
+  assert.equal(blocks[2]?.type === 'text' ? blocks[2].text : '', '真实用户发言');
+});
+
+test('坏标题是 Codex 基础提示时退回项目名 + 日期（反馈16#05）', () => {
+  assert.equal(
+    isInjectedTitle('You are Codex, an agent based on GPT-6. You and the user sha'),
+    true,
+  );
+  const title = titleFromMessages(
+    [userMessage('You are Codex, an agent based on GPT-6. You and the user share one workspace.', 'u1')],
+    '/tmp/reg-repo',
+    new Date(2026, 10, 10, 12).getTime(),
+  );
+  assert.match(title, /reg-repo/);
 });

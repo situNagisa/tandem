@@ -12,6 +12,7 @@ import type {
   Message,
   Session,
 } from '@tandem/protocol';
+import { isSystemInjectionText } from '@tandem/protocol';
 import type { Host } from './host.js';
 import type { SessionRecord } from './types.js';
 import { truncateMiddle } from './util/text.js';
@@ -194,7 +195,9 @@ export function extractInjected(text: string): { text: string; contexts: Injecte
 function isInjectedText(text: string): boolean {
   const value = text.trim();
   if (!value) return true;
-  if (value.startsWith('<')) return true;
+  // Codex 的开发者/系统提示（"You are Codex…"、<skills_instructions>、<multi_agent_role> 等）
+  // 与外部会话共用的注入判定保持一致（反馈16#05 / R07）。
+  if (isSystemInjectionText(value)) return true;
   if (/^caveat:/i.test(value)) return true;
   if (value.startsWith('[Request interrupted')) return true;
   if (value.startsWith('This session is being continued')) return true;
@@ -225,6 +228,7 @@ export function cleanTitle(text: string): string {
 export function isInjectedTitle(title: string): boolean {
   const value = title.replace(/\s+/g, ' ').trim();
   if (!value) return false;
+  if (isSystemInjectionText(value)) return true;
   // 只判定“标题本身就是注入内容”，避免误伤正文里提到 AGENTS.md 的正常标题。
   if (/^(?:#+\s*)?AGENTS\.md instructions\b/i.test(value)) return true;
   if (/CODEGRAPH_(?:START|END)/i.test(value)) return true;
@@ -261,7 +265,14 @@ export function cleanUserBlocks(blocks: ContentBlock[]): ContentBlock[] {
     for (const context of contexts) {
       out.push({ type: 'context', kind: context.kind, text: context.text });
     }
-    if (text) out.push({ ...block, text });
+    if (!text) continue;
+    // 未被标签表覆盖的开发者/系统提示（如 Codex 的 "You are Codex…" 基础提示）：
+    // 整块收进上下文，不冒充用户发言（反馈16#05 / R07）。
+    if (isSystemInjectionText(text)) {
+      out.push({ type: 'context', kind: '系统提示', text });
+      continue;
+    }
+    out.push({ ...block, text });
   }
   return out;
 }
