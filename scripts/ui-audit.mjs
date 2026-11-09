@@ -47,6 +47,24 @@ const GLOBAL_CHECKS = [
     re: /(?:少派|多派|便宜直做|本会话保持|label:\s*['"]不派['"])/g,
   },
   {
+    // 字重下限：次要文字不用 300 细体，标题 500–600、正文 400。
+    id: 'font-weight-floor',
+    label: '过细字重（font-light/300）：标题 500–600、按钮 500、正文 400（design P06）',
+    re: /\bfont-light\b|font-weight:\s*300\b/g,
+  },
+  {
+    // 反馈14#01/#02：带 aria-haspopup 的触发器不能按压缩放，否则弹层跟着抖。
+    id: 'trigger-active-scale',
+    label: '弹层触发器按下缩放：带 aria-haspopup 的元素禁用 active:scale（R52）',
+    re: /(?:aria-haspopup[^\n]{0,200}active:scale|active:scale[^\n]{0,200}aria-haspopup)/g,
+  },
+  {
+    // 色板 v3：选中态一律中性，不用 accent/橙边框、橙 ring、橙点。
+    id: 'selected-accent',
+    label: '选中态用了强调色：选中一律中性灰（--border-strong/--bg-active）',
+    re: /(?:aria-selected|data-selected|data-active)[^\n]{0,160}(?:bg-accent|text-accent|border-accent|accent-strong)/g,
+  },
+  {
     // 反馈13#03：警告色统一走 --status-warn 派生 token，不再散落 amber/yellow 色值。
     id: 'hardcoded-warning-color',
     label:
@@ -449,6 +467,32 @@ for (const file of ['components/RightPanel.tsx', 'components/ExternalSessionPane
   } catch {
     // 文件不存在时忽略
   }
+}
+
+// 全局动效与图表 token：reduced-motion 必须有；会话图泳道 8 色在深浅两套都定义。
+try {
+  const css = await readFile(join(SRC, 'index.css'), 'utf8')
+  if (!/@media \(prefers-reduced-motion: reduce\)/.test(css)) {
+    issues.push({
+      file: 'packages/web/src/index.css',
+      line: 1,
+      check: 'reduced-motion',
+      label: '缺少 prefers-reduced-motion 块：系统要求减少动效时必须关闭位移动画（design P07）',
+      text: '@media (prefers-reduced-motion: reduce)',
+    })
+  }
+  const lanes = css.match(/--graph-lane-[0-7]:/g) ?? []
+  if (lanes.length < 16) {
+    issues.push({
+      file: 'packages/web/src/index.css',
+      line: 1,
+      check: 'graph-lane-tokens',
+      label: `会话图泳道 token 不足：深浅两套各 8 色，当前 ${lanes.length} 个（2026-11-09 用户决定）`,
+      text: '--graph-lane-0..7',
+    })
+  }
+} catch {
+  // index.css 不存在时忽略
 }
 
 if (json) {

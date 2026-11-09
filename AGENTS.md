@@ -6,7 +6,7 @@
 类 Claude Code Desktop 的 agent 工作台；多端（PC/浏览器/安卓）互联；每会话可选账号/分组/模型/思考强度；可管理远程机器上的任务。产品所有者：徐奥（通过飞书话题沟通）。
 
 ## 事实来源（按优先级）
-1. `docs/design.md` —— 设计规范 + 末尾各轮「用户打分结论 / 反馈结论」。**用户明确提过的要求以这里为准**，不要回退。
+1. `docs/design.md` —— **设计原则**（P01–P22）；单点用户决定在 `scripts/decisions-check.mjs`、`scripts/ui-audit.mjs` 与 `e2e/regression.mjs` 的检查里。用户明确提过的要求不要回退。
 2. `docs/PROGRESS.md` —— 每轮做了什么、遗留什么。
 3. `packages/protocol/src/index.ts` —— 客户端与 Host 的唯一契约；改接口先改这里。
 4. `docs/architecture.md` —— 模块地图、数据流、关键约定、“改 X 去哪里”。
@@ -16,6 +16,9 @@
 
 ## 工作方式
 - 用户可随时反馈，不必等他；每轮自己定优先级。视觉方向性选择才发「打分卡」（编号 + 现状/方案对比图）。
+- **布置任务只按用户原话**：每条写「原话 → 现在 → 改成 → 不改什么」。理解超出原话、或与 design.md 原则/decisions-check 冲突时先问用户；自己的建议不进任务。
+- **文档写原则不写流水**：单点决定写成 decisions-check/ui-audit/回归检查，修复记录写提交信息；新增原则必须说明覆盖哪类情况。
+- **不依赖会话上下文判断**：判断依据写进文件（HANDOFF、design 原则、decisions-check、根因表），新会话只读这些文件就能接手。每轮结束在 `docs/HANDOFF.md` 的「本轮手工操作 / 出错环节」追加 ≤5 行，作为以后沉淀脚本/Skill 的依据（只留最近 5 轮）。
 - 用户的具体问题通过产品内「反馈模式」（Ctrl+Shift+F）导出 `tandem-feedback-*.tfb`（zip 容器，改扩展名可解压）发到飞书；桌面调试版同时把每条实时写进 `<下载>/Tandem 反馈/草稿-*/`（用户在本机时可直接读 `/mnt/c/Users/JDHC/Downloads/Tandem 反馈/`）。用 `lark-cli im +messages-mget --message-ids <id> --download-resources` 下载，`node scripts/feedback-unpack.mjs <tfb|json|草稿目录> <outDir>` 解包（旧 .json 仍兼容）后逐条处理，逐条回报并附修复后截图；包格式见 `docs/features/feedback.md`。
 - 处理每条反馈前先查 `docs/feedback-ledger.md` 归到某个根因（R01…）；同一根因第二次出现必须在共享层修并加自动检查（ui-audit/单测/回归），不能只修表面。
 - 交付前协调者亲自用 Playwright 点击验收用户反馈的每一条（只截静态图会漏掉"点了没反应、弹层被裁"类问题）。

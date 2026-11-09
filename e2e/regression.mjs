@@ -7453,12 +7453,18 @@ async function main() {
     })
 
     desktop('反馈16#07/#08：卡片折叠箭头与拖动手柄在标题右侧且常显', async (page) => {
+      // 前序用例可能把 details 卡折叠状态写进偏好；本用例要求展开态，先清掉再打开。
+      await page.evaluate(() => localStorage.removeItem('tandem.rightPanelCollapsed.v1'))
       await openSession(page, 'long')
       if (!(await page.locator('[data-group]').count())) {
         await page.getByRole('button', { name: '切换信息面板' }).first().click()
       }
       const card = page.locator('[data-group="details"]').first()
       await card.waitFor({ state: 'visible', timeout: 10_000 })
+      if ((await card.getAttribute('data-collapsed')) === 'true') {
+        await card.locator('[data-card-toggle]').first().click()
+        await page.waitForTimeout(220)
+      }
       const title = card.locator('[data-card-toggle] h3').first()
       const toggle = card.locator('[data-card-toggle]').first()
       const chevron = toggle.locator('svg').last()
@@ -7521,7 +7527,10 @@ async function main() {
 
     desktop('反馈12#08：侧栏项目与会话缩进收紧、标题左对齐', async (page) => {
       await openSession(page, 'long')
-      const project = page.locator('[data-project-row]').first()
+      const project = page
+        .locator('[data-project-row]')
+        .filter({ has: page.locator('[data-session-row]') })
+        .first()
       await project.waitFor({ timeout: 10_000 })
       const projectPad = await project
         .locator('button')
@@ -7533,7 +7542,10 @@ async function main() {
           (span) => span.className.includes('truncate') && span.textContent?.trim(),
         )
         const row = el.querySelector('[data-session-row]')
-        const sessionTitle = row?.querySelector('[data-tip]')
+        // 标题只在溢出时才挂 data-tip，取标题文本节点（truncate span）更稳。
+        const sessionTitle = [...(row?.querySelectorAll('span') ?? [])].find(
+          (span) => span.className.includes('truncate') && span.textContent?.trim(),
+        )
         const box = (node) => (node ? node.getBoundingClientRect().left : null)
         return { project: box(projectTitle), session: box(sessionTitle) }
       })

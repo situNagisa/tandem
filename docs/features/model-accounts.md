@@ -1,6 +1,6 @@
 # 账号与模型（设置）
 
-> 更新：2026-11-09。用户决定见 [design.md](../design.md)「反馈12#01」与反馈包 #10；根因见 [feedback-ledger.md](../feedback-ledger.md) 的 R59/R42/R43/R37。协议字段见 `packages/protocol/src/index.ts`。
+> 更新：2026-11-10。设计原则见 [design.md](../design.md) 的 P21；根因见 [feedback-ledger.md](../feedback-ledger.md) 的 R59/R60/R42/R43/R37。协议字段见 `packages/protocol/src/index.ts`。
 
 ## 归属：工作站账号级（反馈12#01 · R59）
 

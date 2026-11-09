@@ -4,10 +4,10 @@
 
 ## 1. 现行文档（living）——始终代表当前事实
 - [HANDOFF.md](HANDOFF.md)：入口。当前版本、进行中的工作、等用户的事。
-- [design.md](design.md)：设计规范 + 各轮用户决定（明确提过的要求以这里为准，不要回退）。
+- [design.md](design.md)：**设计原则**（P01–P22，规则+为什么+覆盖范围）；单点决定见 `scripts/decisions-check.mjs`、`scripts/ui-audit.mjs` 与回归检查。
 - [architecture.md](architecture.md)：模块地图、数据流、关键约定、“改 X 去哪里”。
-- [feedback-ledger.md](feedback-ledger.md)：反馈根因台账（R01…）；复发必须共享层修 + 自动检查。
-- [PROGRESS.md](PROGRESS.md)：只保留最近 5 轮；更早见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。
+- [feedback-ledger.md](feedback-ledger.md)：反馈根因表（R01…）；复发必须共享层修 + 自动检查。
+- [PROGRESS.md](PROGRESS.md)：只保留最近 3 轮；更早见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。
 - `features/<功能>.md`：每个功能一份——是什么、怎么用、关键设计取舍、限制、代测步骤链接。**功能变更只改这里，不另写新文档。**
 
 | 功能 | 说明 |
@@ -41,4 +41,4 @@
 ## 4. 防膨胀规则
 - 新写的一次性记录直接放 `archive/`；功能变更只更新对应 `features/<功能>.md`，不另写新文档；同一事实只在一处记录，其他地方链接过去。
 - `docs/` 根目录只放本页与现行文件；新文件必须放进 `features/`、`archive/`、`test-guides/` 之一。
-- `node scripts/docs-check.mjs`（`check.mjs` 的快速步骤）检查相对链接、根目录白名单，并对超过 30 天未更新的现行文档给出警告。
+- `node scripts/docs-check.mjs`（`check.mjs` 的快速步骤）检查相对链接、根目录白名单、现行文档更新日期，并强制行数上限（design ≤150、ledger ≤80、每份 features ≤80、PROGRESS ≤60、HANDOFF ≤60、AGENTS ≤50）。

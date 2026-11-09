@@ -1,6 +1,6 @@
 # 会话图（右侧会话信息面板）
 
-> 更新：2026-11-09。用户决定见 [design.md](../design.md) 末尾「会话图配色与节点形状」。
+> 更新：2026-11-10。设计原则见 [design.md](../design.md) 的 P04；根因见 [feedback-ledger.md](../feedback-ledger.md) 的 R14/R05。
 
 ## 是什么
 

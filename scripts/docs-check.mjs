@@ -3,7 +3,8 @@
  * 文档治理检查（快速步骤，接入 scripts/check.mjs）：
  * 1. Markdown 里的相对链接/图片必须存在；
  * 2. docs/ 根目录只允许 README 与现行文档，其余必须放进 features/、archive/、test-guides/；
- * 3. 现行文档的「更新：YYYY-MM-DD」不得早于 30 天（缺日期或过期只警告）。
+ * 3. 现行文档的「更新：YYYY-MM-DD」不得早于 30 天（缺日期或过期只警告）；
+ * 4. 行数上限：design ≤150、ledger ≤80、每份 features ≤80、PROGRESS ≤60、HANDOFF ≤60、AGENTS ≤50。
  *
  * 用法：node scripts/docs-check.mjs
  */
@@ -98,6 +99,29 @@ for (const file of [...new Set(living)]) {
   const date = new Date(`${match[1]}-${match[2]}-${match[3]}T00:00:00`)
   const age = Math.floor((now - date.getTime()) / DAY)
   if (age > MAX_AGE_DAYS) warnings.push(`${rel}：更新于 ${match[1]}-${match[2]}-${match[3]}，已 ${age} 天未更新`)
+}
+
+// 4. 现行文档行数上限：防止按反馈批次无限堆积；新事实写原则/检查，不写流水。
+const MAX_LINES = {
+  'docs/design.md': 150,
+  'docs/feedback-ledger.md': 80,
+  'docs/PROGRESS.md': 60,
+  'docs/HANDOFF.md': 60,
+  'AGENTS.md': 50,
+}
+const FEATURE_MAX_LINES = 80
+const lineCount = (file) => readFileSync(file, 'utf8').split('\n').length
+for (const [rel, max] of Object.entries(MAX_LINES)) {
+  const full = path.join(ROOT, rel)
+  if (!existsSync(full)) continue
+  const count = lineCount(full)
+  if (count > max) errors.push(`${rel}：${count} 行，超过上限 ${max} 行（写原则/检查，不写流水）`)
+}
+for (const file of walk(path.join(DOCS, 'features'))) {
+  const count = lineCount(file)
+  if (count > FEATURE_MAX_LINES) {
+    errors.push(`${path.relative(ROOT, file)}：${count} 行，超过上限 ${FEATURE_MAX_LINES} 行`)
+  }
 }
 
 for (const warning of warnings) console.log(`警告 ${warning}`)

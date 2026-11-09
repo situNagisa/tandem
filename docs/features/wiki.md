@@ -1,6 +1,6 @@
 # 项目 Wiki
 
-> 更新：2026-11-09。用户决定见 [design.md 反馈包 #13](../design.md)；根因见 [feedback-ledger.md](../feedback-ledger.md) 的 R49。
+> 更新：2026-11-10。设计原则见 [design.md](../design.md) 的 P13；根因见 [feedback-ledger.md](../feedback-ledger.md) 的 R49。
 
 ## 是什么
 

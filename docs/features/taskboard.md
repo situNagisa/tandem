@@ -1,84 +1,45 @@
-# 任务看板设计（v1 + v2）
+# 任务看板（v1 + v2）
 
-> 更新：2026-11-09。
+> 更新：2026-11-10。一句话：**一个项目一块看板，每张卡 = 一个后台运行的会话；卡与卡有依赖、审批门、并发上限与预算；人只在「需要我」的列出手。**
 
-> 来源：explore-v2 第 4 条；产品所有者 2026-11-08 确认要做（"我感觉这个很有用"）。遵守 design.md：紧凑、去冗余、白色主按钮、中性色（橙只用于待审批提示）、不连公网。
-> 一句话：**一个项目一块看板，每张卡 = 一个后台运行的会话；卡与卡有依赖、审批门、并发上限与预算；人只在"需要我"的列出手。**
+## 是什么
 
-## 1. 用户场景
-1. **拆功能并行做**：用户写"给设置页加导出功能"，协调者拆成「后端接口」「前端按钮」「测试」三张草稿；用户改一句提示词后确认。前两张各在独立 worktree 并行跑，「测试」依赖前两张，等它们都完成后才排上；测试卡的 worktree 已合入前两张的改动。
-2. **晚上丢 5 个 bug**：下班前把 5 条 bug 描述各建一张卡，选「sonnet 预设 + acceptEdits + worktree」，并发 2，全部放行后离开。第二天早上手机收件箱里是「2 张待评审、1 张失败、2 张完成」；失败的点开看原因，一键重试；待评审的看摘要和改动，通过后合并。
-3. **审批门**：数据库迁移卡设置"完成后需确认"。它跑完停在「待评审」，下游「改调用方」卡不会启动；人看过 diff 点"通过"才放行，点"打回"写一句意见则回到同一会话继续改。
-4. **手机上盯进度**：路上用手机打开看板列表，只看"需要我"分组：有一张卡在等 Bash 审批（橙点）、一张等评审；直接在列表里允许/通过，不必进入会话。
+- **看板 Board**：属于一个项目目录（`cwd`），可有多块；持久化 `~/.tandem/boards/<id>.json`（原子写）。字段 `name / cwd / baseBranch / maxParallel / mergePolicy / defaults / cards[]`。
+- **卡片 Card**：一张卡运行时 = 一个顶层会话（depth 0，不设 parentId），带 `board:{boardId,cardId}` 标记；不设常驻协调者。字段 `title / prompt / deps[] / status / order / exec / sessionId / attempts / result / error`。
+- **状态列**：待办 `todo`（草稿）→ 排队 `queued`（等依赖与并发槽）→ 运行中 `running` → 待审批 `approval`（工具审批，橙点）→ 待评审 `review`（审批门）→ 完成 `done` / 失败 `failed`。
+- **依赖**：`deps` 为卡片 id；全部 `done` 才运行；创建/修改做环检测；上游失败时下游保持 `queued` 并标「上游失败」，不自动连坐。
+- **执行配置 exec**（卡 > 看板 defaults > 全局）：预设或 `profileId/groupId/model/effort`；`permissionMode` 默认 `acceptEdits`；`worktree` 默认开；`budgetUsd`；`maxRetries` 默认 1；`gate` 默认关；`aiReview` 可选。
 
-## 2. 核心概念
-**看板 Board**：属于一个项目目录（`cwd`，通常是仓库根），可有多块（默认一块）。持久化 `~/.tandem/boards/<id>.json`（原子写，每次状态迁移都落盘）。字段：`name / cwd / baseBranch / maxParallel / mergePolicy / defaults（默认执行配置）/ cards[]`。
+## 怎么用
 
-**卡片 Card**：`title / prompt / deps[] / status / order / exec / sessionId / attempts / result / error`。
+- 入口：侧栏「任务看板」、命令面板；路由 `#/h/<hostId>/b[/<boardId>]`。桌面 7 列可拖动（待办⇄排队、列内排序、失败→排队、待评审→通过/打回、运行中→撤回），所有拖动都有等价按钮。手机无拖动，按「需要我 / 运行中 / 全部」分组，触控 ≥44px。
+- 点击卡片打开右侧抽屉（480px）：编辑提示词/依赖/执行配置，查看摘要、改动 `+N −M`、花费、合并状态与动作按钮。
+- 看板头部「AI 拆分」：一次性调用看板默认模型生成草稿（`POST /api/boards/:id/plan`），只返回草稿，用户确认后才创建；创建后仍需放行。
+- v2：卡片会话可用 `ProposeCards` 追加待办提案；「开 PR」按依赖顺序合成集成分支并调 gh/glab；分屏打开看板与卡片会话；合并冲突可让 agent 在 worktree 解决，仍需用户再点合并。
 
-| 列 | status | 含义 | 谁驱动 |
-|---|---|---|---|
-| 待办 | `todo` | 草稿，未放行，不会自动运行 | 用户 |
-| 排队 | `queued` | 已放行；等依赖全部 `done` 与并发槽。卡上显示"等待 A、B"或"上游失败" | 调度器 |
-| 运行中 | `running` | 卡片会话正在跑回合 | 调度器 |
-| 待审批 | `approval` | 运行中的卡在等**工具审批**（橙点）；批完自动回到运行中 | 会话状态派生 |
-| 待评审 | `review` | 回合结束且开了**审批门**，等人"通过/打回"；下游不会启动 | 用户 |
-| 完成 | `done` | 完成（无门的卡直接到这里；有门的卡通过后到这里） | — |
-| 失败 | `failed` | 重试耗尽 / 预算超限 / 依赖分支冲突 / 被中断；可重试 | — |
+## 调度与资源
 
-**依赖**：`deps` 是卡片 id 列表；B 仅在所有依赖 `done` 时可运行；创建/修改时做环检测，拒绝成环。依赖 `failed` 时下游保持 `queued` 并标"上游失败"，不自动连坐失败，用户可重试上游或去掉依赖。
+- `BoardManager` 进程内 1s tick + 事件唤醒；`maxParallel` 默认 2（上限 8），Host 全局上限 6；`approval` 不占槽。
+- 失败重试：回合 `error` 退避 30s，在同一会话追加「上次出错…请检查现状并继续」，最多 `maxRetries`；手动中断/预算超限/依赖冲突不重试。
+- 预算：`exec.budgetUsd` 走 `assertBudget`，超限卡 `failed`；Host 预算规则照常。
+- 断点续跑：Host 重启从 JSON 恢复；`running/approval` 交给 `recoverAfterRestart`，会话不存在则回 `queued`。
+- Worktree：卡开始前建 `tandem/board-<看板短id>-<卡短id>`，合入依赖分支；回合结束自动 commit；默认手动合并（单卡/按序全部），冲突即失败并记录文件列表。
 
-**执行配置 exec**（卡 > 看板 defaults > 全局默认）：`preset`（子代理预设名，带来模型/权限/工具白名单/附加提示，复用 `subagentConfig`）或显式 `profileId/groupId/model/effort`；`permissionMode`（默认 `acceptEdits`）；`worktree`（git 仓库内默认开）；`budgetUsd`（单卡花费上限，缺省不限）；`maxRetries`（默认 1）；`gate`（审批门，默认关）。
+## 与现有概念的关系
 
-**结果 result**：`summary`（最后一条 assistant 文本）、`files / additions / deletions`（卡分支相对基准）、`commit`、`costUsd`、`durationMs`、`mergedAt / mergeError`。PR 链接沿用会话自身的 PR 面板（卡片详情"打开会话"进入），v1 不在卡上重复。
+- `parentId/Task` 是同步子任务（父回合 await、中断级联、审批冒泡）；看板卡要跨小时/重启存活、可独立排队，所以用顶层会话。
+- 卡片会话复用审批进收件箱、回合结束、Host 重启续跑、检查点、用量、手机通知。
+- 卡片会话不进侧栏，避免淹没列表；入口统一在「任务看板」。
+- 收件箱新增 `InboxEventKind='board'`：待评审、失败、整块看板跑完；卡片会话不再产生 `turn_end` 收件箱项。
 
-## 3. 与现有概念的关系
-**一张卡运行时 = 一个顶层会话（depth 0，不设 parentId），带 `board:{boardId,cardId}` 标记；不设常驻协调者会话。** 理由：
-- `parentId/Task` 是**同步子任务**：父回合 await 子代理、中断级联、深度≤3、审批冒泡给父会话。看板卡要跨数小时/重启存活、可独立排队，语义不同。
-- 顶层会话天然复用审批进收件箱、回合结束、Host 重启续跑（`run-state`/`resume`）、检查点、用量、手机通知，几乎零改动。
-- 常驻协调者要占一个会话上下文、重启后还得恢复，且是单点；看板记录本身（落盘 JSON）就是"协调者状态"。协调者只作为**无状态的一次性调用**（§4）。
-- 卡片会话的上游结果以文字注入：下游提示词末尾附"上游卡片结果：A：<summary>"（每条≤2000 字），非 git 目录也能传递信息。
+## 数据与代码位置
 
-**Worktree 与合并**：
-- `worktree=true` 且在 git 仓库：卡开始前建独立 worktree（分支 `tandem/board-<看板短id>-<卡短id>`，从当前 HEAD 起），**再把各依赖卡的分支 `git merge` 进来**；冲突则中止、卡 `failed`（"依赖分支冲突"）。卡回合结束时自动 `git add -A && commit`，使分支带着成果。
-- 合并回基准分支：默认 `manual`——不动用户工作区，卡详情里"合并到 <base>"（squash/merge，复用 `mergeSessionWorktree`），看板头部"按依赖顺序合并全部完成卡"。`auto`：卡 `done` 后立即 squash 合并。冲突沿用 `mergeWorktree`（abort + 报错），卡上显示"合并冲突"，在会话里解决。
-- 非 git 目录或 `worktree=false`：直接在 `cwd` 运行，**同一目录同时只跑一张卡**（避免互相踩文件）。
+- 服务端：`packages/server/src/boards/`（`manager.ts` 调度、`store.ts` 落盘、`plan.ts` 拆分、`review.ts` AI 评审、`pr.ts` 聚合）。
+- 协议：`packages/protocol/src/index.ts` 的 `Board*` / `BoardCard*` / `BoardExec` / `BoardEvent`。
+- 前端：`packages/web/src/components/board/*`、`lib/boardRoute.ts`、`useBoardStore`。
 
-**收件箱 / 通知**：新增 `InboxEventKind='board'`：卡片待评审、失败、整块看板跑完（无排队/运行中）。卡片会话内的工具审批沿用现有 `permission` 事件（标题=卡片标题）；卡片会话不再产生 `turn_end` 收件箱项，避免与 board 事件重复。手机本地通知沿用收件箱通道。
-**AI 评审（v2）**：卡片执行配置 `aiReview` 打开后，完成时复用提交前 AI 评审的只读子会话，评审 `baseCommit..HEAD` 的卡片分支 diff；有 blocker 停在待评审，抽屉里显示意见与「让这张卡修复 / 仍然通过」。**PR/CI（v2）**：看板顶部「开 PR」把若干已完成卡按依赖顺序合到集成分支，复用 gh/glab 开一个 PR，状态与 CI 回显在顶部。**分屏（v2）**：卡详情「在分屏中打开」把卡片会话与看板窗格并排（看板窗格的合成 sessionId 为 `board:<boardId>`，不订阅真实会话）。**冲突（v2）**：合并冲突记录文件列表，抽屉可让 agent 在自己的 worktree 解决，仍需用户再点合并。**侧栏**：卡片会话不进侧栏会话列表（避免 5 张卡淹没列表），入口统一在"任务看板"。
+## 限制与取舍
 
-## 4. 协调者（规划器）
-- 看板头部"AI 拆分…"：用户写一句目标 → `POST /api/boards/:id/plan` 一次性调用看板默认账号/模型（`completeText`），输入=目标 + 项目轻量上下文（目录首两层、README/AGENTS.md 前 4KB，只读），输出 JSON：`[{ref,title,prompt,deps:[ref],preset?,gate?}]`。
-- **只返回草稿，不创建**：弹窗里逐条可改标题/提示词/依赖/门，点"创建 N 张卡到待办"才落库；创建后仍需用户放行。解析失败或成环时给出可读错误，可重试。
-- **运行时追加（v2）**：卡片会话获得 `BoardAddCards` 工具，其产物以"提案"进入待办，须人工批准才成为真卡，并发收件箱事件。v1 数据模型预留 `proposedBy` 字段，但不开放工具。
-
-## 5. 界面
-**入口**：侧栏顶部文字行"任务看板"（图标 + 文字，同"搜索"风格；右侧数字 = 待评审 + 待审批 + 失败），命令面板"打开任务看板"。路由 `#/h/<hostId>/b[/<boardId>]`（沿用 `#/h/<hostId>` 的 Host 激活逻辑，看板视图单独读取 `lib/boardRoute.ts`）。没有看板时是空态：一句话 + 白色主按钮"创建看板"（选项目目录）。
-**桌面**：主区替换为看板视图。顶栏一行：看板名（可切换）· 进度"3/7 完成 · $1.24" · 并发（下拉 1–4）· `AI 拆分` · `新建卡片`（白色主按钮）· ⋯（合并全部、设置、删除）。下面 7 列（待办/排队/运行中/待审批/待评审/完成/失败），列头=名称+数量，各列独立纵向滚动，空的完成/失败列收窄。
-- 卡片（紧凑）：标题 14px；一行元信息（`← A、B` 依赖 · 预设/模型 · worktree 分支图标）；状态行：运行中=最近一条工具活动 + 用时，待审批=橙点 + "等待允许 Bash"，待评审=摘要 2 行，失败=`--danger` 错误文字；底部花费。
-- **拖动**只表达人的意图：待办⇄排队（放行/撤回）、列内排序、失败→排队（重试）、待评审→完成（通过）/→排队（弹小输入框写打回意见）、运行中→待办（停止并撤回）。运行中/待审批两列由系统驱动，不可作为投放目标（光标 not-allowed）。所有拖动都有等价按钮/菜单，键盘可达。
-- **点击卡片**：右侧抽屉（480px，不遮列头）：标题/提示词（可编辑，仅待办/失败可改）、依赖（多选）、执行配置、结果（摘要、改动文件 +N −M、花费、合并状态）、动作按钮（放行/停止/重试/通过/打回/合并/打开会话）。**v1 的"看会话"=抽屉内显示最近活动流 + "打开会话"跳转**；内嵌完整会话留到分屏之后。
-**手机（<768px）**：无拖动、无列。顶部一行状态筛选（需要我 / 运行中 / 全部），列表按状态分组，"需要我"（待审批、待评审、失败）置顶；点卡弹出底部抽屉详情，按钮 ≥44px（通过/打回/重试/允许）。顶栏有看板切换与 `+`。
-
-## 6. 调度、并发与资源
-- **调度器**（`BoardManager`，进程内，1s tick + 事件即时唤醒）：挑 `queued` 且依赖全 `done` 的卡，按列内 `order` 起跑，直到 `running` 数 = `maxParallel`（默认 2，上限 8）；另有 Host 全局上限 6（所有看板合计）。`approval` 状态的卡**不占槽**——等人批准时不应拖住其余卡（并发为软上限，批完后可能短暂超 1–2）。
-- **失败重试**：回合以 `error` 结束（网络类瞬时错误 `agent/retry.ts` 已在回合内处理）→ 退避 30s，在**同一会话**里追加"上次出错：…，请检查现状并继续"，最多 `maxRetries` 次，复用已有 worktree 与上下文；用户手动中断、预算超限、依赖冲突**不重试**。耗尽后 `failed` 并发收件箱事件；"重试"清零计数。
-- **预算**：`exec.budgetUsd` 在现有 `assertBudget` 里按该会话累计花费检查，超限时回合以明确错误结束（卡 `failed`，原因"超出单卡预算"）；Host 级预算规则照常生效。头部汇总全卡花费。
-- **断点续跑**：Host 重启后看板从 JSON 恢复；`running/approval` 卡若会话仍在，交给 `recoverAfterRestart` 按"自动继续/暂停"设置续跑，调度器按会话状态收养；会话已不存在则退回 `queued`（worktree 若在则复用）。`queued/todo/review/done/failed` 纯数据，无需处理。
-- **无人值守**：卡内工具审批会停在 `approval`（不会静默放行）；夜间任务建议选 `acceptEdits` 或预设里限制工具；命令沙箱（另一位同事）就绪后可在 `exec` 增加"拒绝而非询问"。
-
-## 7. v1 范围与以后
-**v1 做**：看板/卡片增删改与落盘；依赖 + 环检测；调度、并发上限、重试、预算上限、断点续跑；每卡 worktree + 依赖分支合入 + 自动提交 + 手动合并（单卡/按序全部）；审批门（通过/打回）；AI 拆分草稿（确认后创建）；收件箱 board 事件；桌面看板（拖动 + 抽屉）与手机列表；回归用例（`e2e/regression.mjs`）与 server 单测。
-**v2 已做**：运行时提议（`ProposeCards` + 待办草稿 + 自动接受上限）；卡片 AI 评审与「让这张卡修复」；PR 聚合与 CI 回显；看板作为分屏窗格；合并冲突列表与「让 agent 解决冲突」。**以后做**：`auto` 合并之外的"CI 绿才合并"；看板定时触发（对接 schedules）与卡片模板；评测集联动（把看板当评测运行）；依赖连线可视化；看板级总预算；跨 Host 看板；多人协作/认领；卡片拆分/子卡；导入导出。
-**风险与取舍**：同一仓库多卡并行 + 多依赖合入可能冲突，v1 选择"冲突即失败、人处理"而非自动解决；`maxParallel` 受限于账号速率限制，默认保守为 2；卡会话不进侧栏会降低"顺手继续聊"的可发现性，靠卡详情"打开会话"补偿。
-
-
-## 8. v2 范围（已实现）
-
-> 回归：`e2e/regression.mjs` 的「任务看板 v2：运行时提议、AI 评审修复、冲突解决、PR 聚合与分屏」；独立验证：`TANDEM_HOME=/tmp/tandem-board2`、端口 8341、mock provider + `/tmp` git 仓库/bare origin + 假 gh，截图在 `/tmp/board2-shots/`（2552×1274 与 390×844）。
-
-1. **运行时追加卡片**：卡片会话可调用 `ProposeCards { cards: [{ title, prompt, dependsOn? }] }`（只对 `SessionRecord.board` 的顶层卡会话暴露）。提议落成 `status='todo'` 的卡，`proposedBy` 记录来源卡标题、`proposedByCardId` 记录来源 id，排在待办列顶部并出现在收件箱；`dependsOn` 支持同批提议的标题/1-based 序号或看板已有卡的标题/id，未解析或成环整批拒绝，不产生半成品。用户点「接受并排队」进入 queued；看板设置 `autoAcceptProposals = N`（0=关，默认关）时，一次提议 **不超过 N 张才全部自动 queued**，超过则全部留在待办等确认。重复（同来源卡 + 同标题 + 未执行）自动跳过。
-2. **AI 评审**：`BoardExec.aiReview`；完成时把卡片分支 `baseCommit..HEAD` 的已提交 diff 交给 `AiReviewManager.start(rec, paths, { base })`，复用只读子会话与「审查」预设。评审结果快照落盘在 `card.review`（含 findings/file/line/verdict/ignored）；`verdict='blocker'` 时卡片停在「待评审」，否则按审批门决定 done/review。抽屉列出按严重度标注的意见（默认全选），「让这张卡修复」把选中意见拼成 reviewNote 发回同一会话，「仍然通过」直接放行。评审用量计入卡片会话。
-3. **PR 聚合**：`POST /api/boards/:id/pr { cardIds, base? }` / `GET .../pr` / `GET .../vcs`。服务端在临时 worktree 从基准分支建集成分支 `tandem/board-<看板短id>-pr-<ts>`，按 `topoOrder` 依次 `git merge --no-ff` 选中的已完成卡分支；冲突则 abort、返回 `conflictFiles`，不碰主工作区。成功后用 `createPullRequest` push 集成分支并调 gh/glab 开 PR，描述自动汇总各卡标题、摘要、文件数、花费与合计。`Board.pr` 落盘并每 60s 用 gh/glab 刷新状态/CI，顶部显示 `PR #n · 开状态 · CI`。未安装/未登录 gh 时弹窗复用 PR 面板的 `CliGuide` 指引；无 origin 也给出说明。
-4. **分屏打开会话**：卡片抽屉「在分屏中打开」调用 `useUiStore.openBoardSplit`，看板作为左窗格（合成 sessionId `board:<boardId>`，不订阅 WS）+ 卡片会话作为另一窗格，复用现有 SplitWorkspace/分隔条/持久化；看板窗格不参与 active 会话焦点，关闭时也不发会话订阅。手机抽屉该按钮退化为普通「打开会话」。
-5. **冲突处理**：`MergeResult` 增加 `conflicts[]`（abort 前采集 `git diff --name-only --diff-filter=U`），`BoardCard.result.conflictFiles` 落盘。合并失败后抽屉显示冲突文件列表与「让 agent 解决冲突」：`action='resolve'` 把冲突文件与 `git merge <base>` 指引写进 reviewNote，卡片回到排队并复用同一 worktree 会话；agent 解决后自动提交，卡片回 done，**仍需用户再点「合并」**（不自动合并）。
+- 同仓库多卡并行可能冲突，v1 选择「冲突即失败、人处理」；`maxParallel` 受账号速率限制，默认保守为 2。
+- 不做跨 Host 看板、多人认领、看板级总预算、定时触发（以后）。
+- 卡片会话不进侧栏，靠卡详情「打开会话」补偿可发现性。
