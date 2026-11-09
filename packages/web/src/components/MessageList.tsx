@@ -1,4 +1,4 @@
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ContentBlock, InjectionChange, PermissionRequest, SessionSummary } from '@tandem/protocol'
 import { GitFork } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
@@ -405,7 +405,19 @@ function MessageListInner({
   const sessionId = messagesProp ? null : storeSessionId
   const streamingId = messagesProp ? undefined : storeStreamingId
   // 本轮仍在执行的工具：消息已结束、等工具返回时用它们显示转圈与已运行时长（反馈16#10）。
-  const runningTools = storeRunning ? activeToolUses(messages, toolResults) : EMPTY_RUNNING_TOOLS
+  // 只在消息条数/末条 id/工具结果变化时重算，流式 delta 期间保持同一个 Set 引用，
+  // 让 memo 的行不必跟着每个 token 重新渲染。
+  const tailMessage = messages[messages.length - 1]
+  // 流式消息先创建空壳、再用 block_delta 补内容，所以签名里要带末条消息的块数与工具结果数，
+  // 这样工具调用/工具返回到达时重算，而普通文本 delta 保持同一个 Set 引用。
+  const activitySignature = `${messages.length}:${tailMessage?.id ?? ''}:${tailMessage?.content.length ?? 0}:${
+    toolResults ? Object.keys(toolResults).length : 0
+  }`
+  const runningTools = useMemo(
+    () => (storeRunning ? activeToolUses(messages, toolResults) : EMPTY_RUNNING_TOOLS),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [storeRunning, activitySignature],
+  )
   // 流式消息还没有任何文字（等首个 token）时也算「在等待」，在流末尾显示活动行。
   const streamingMessage = streamingId ? messages.find((m) => m.id === streamingId) : undefined
   const streamingStarted = !!streamingMessage?.content.some(

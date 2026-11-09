@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react'
+import { useEffect, useReducer, type ReactNode } from 'react'
 import { formatDurationMs, formatFullTime, formatMessageTime } from '../../lib/format'
-import { useNow } from '../../lib/hooks'
+import { subscribeMinute } from '../../lib/minuteClock'
 import { Tooltip } from '../ui/Tooltip'
 
 /**
@@ -35,8 +35,9 @@ export function MessageTime({
   createdAt?: number
   durationMs?: number
 }) {
-  // 6 小时内的相对时间会随分钟变化，每分钟重算一次。
-  const now = useNow(true, 60_000)
+  // 6 小时内的相对时间会随分钟变化；共享一个每分钟的时钟，避免每条消息各开 interval。
+  const [, tick] = useReducer((value: number) => value + 1, 0)
+  useEffect(() => subscribeMinute(tick), [])
   if (typeof createdAt !== 'number' || !Number.isFinite(createdAt)) return null
   const tip = [
     formatFullTime(createdAt),
@@ -46,7 +47,7 @@ export function MessageTime({
     .join(' · ')
   return (
     <Tooltip label={tip} className="shrink-0">
-      <span data-msg-time="">{formatMessageTime(createdAt, now)}</span>
+      <span data-msg-time="">{formatMessageTime(createdAt, Date.now())}</span>
     </Tooltip>
   )
 }
