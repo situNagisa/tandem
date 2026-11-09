@@ -1,5 +1,6 @@
 import type { StoreApi } from 'zustand'
 import { api } from '../../lib/api'
+import { permissionTarget } from '../../lib/permissionLabel'
 import type { SessionTarget, UiMessage } from '../../lib/types'
 import { connections, newId, toast, viewKeyOf } from './helpers'
 import type { SessionCore } from './sessionCore'
@@ -147,11 +148,26 @@ export function createMessagesSlice(
         toast('Host 未连接，无法提交审批', 'error')
         return
       }
+      const decided = view.pending.find((item) => item.id === requestId)
       patchView(view.hostId, view.sessionId, (a) => {
         const pending = a.pending.filter((p) => p.id !== requestId)
+        // 反馈14#07：审批完成后在对话流原位留一行结果（已允许 · 命令 / 已拒绝）。
+        const trail = decided
+          ? [
+              ...(a.permissionTrail ?? []).slice(-49),
+              {
+                id: decided.id,
+                toolUseId: decided.toolUseId,
+                label: permissionTarget(decided).target,
+                decision,
+                at: Date.now(),
+              },
+            ]
+          : a.permissionTrail
         return {
           ...a,
           pending,
+          permissionTrail: trail,
           summary: a.summary
             ? { ...a.summary, status: pending.length ? 'waiting_permission' : 'running' }
             : null,

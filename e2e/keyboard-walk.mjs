@@ -348,15 +348,12 @@ async function main() {
     await page.locator('.permission-card').first().waitFor({ timeout: 20000 })
     note('  ✓ 已发送，出现审批卡')
 
-    note('\n[5] 1/2/3 处理三次审批')
-    const keys = ['1', '2', '3']
-    for (let i = 0; i < keys.length; i++) {
+    note('\n[5] Ctrl+Enter 允许一次，处理三次审批（焦点在空输入框）')
+    for (let i = 0; i < 3; i++) {
       await page.locator('.permission-card').first().waitFor({ timeout: 20000 })
       await page.waitForTimeout(250)
-      const before = await active(page)
-      assert.ok(!['input', 'textarea'].includes(before.tag), `审批快捷键前焦点在输入框：${JSON.stringify(before)}`)
-      await page.keyboard.press(keys[i])
-      note(`  ✓ 第 ${i + 1} 次审批按了 ${keys[i]}`)
+      await page.keyboard.press('Control+Enter')
+      note(`  ✓ 第 ${i + 1} 次审批按了 Ctrl+Enter`)
       await sleep(600)
     }
     await page.getByText('键盘走查完成。').waitFor({ timeout: 30000 })

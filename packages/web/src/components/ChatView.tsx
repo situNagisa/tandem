@@ -12,7 +12,6 @@ import { cn } from '../lib/cn'
 import { MessageList } from './MessageList'
 import { HandoffCard } from './chat/HandoffCard'
 import { SessionWelcome, HomeView } from './Welcome'
-import { PermissionCard } from './PermissionCard'
 import { PlanCard } from './PlanCard'
 import { Button, IconButton } from './ui/Button'
 import { Composer } from './Composer'
@@ -49,6 +48,10 @@ export function ChatView() {
   const turnError = useSessionView((s) => s?.turnError)
   const summary = useSessionView((s) => s?.summary ?? null)
   const pending = useSessionView((s) => s?.pending ?? EMPTY_PENDING)
+  // 反馈14#07：审批请求作为对话流里的一条消息内联（不停靠输入框上方）；
+  // 计划提交（ExitPlanMode）仍是计划卡，语义不同。
+  const inlinePending = pending.filter((request) => request.toolName !== 'ExitPlanMode')
+  const planRequest = pending.find((request) => request.toolName === 'ExitPlanMode') ?? null
   const messageCount = useSessionView((s) => s?.messages.length ?? 0)
   const lastIsLocal = useSessionView(
     (s) => s?.messages[s.messages.length - 1]?.local ?? false,
@@ -375,9 +378,10 @@ export function ChatView() {
                 <>
                   <SessionWelcome />
                   <HandoffCard />
+                  <MessageList permissions={inlinePending} />
                 </>
               ) : (
-                <MessageList checkpoints={checkpoints} />
+                <MessageList checkpoints={checkpoints} permissions={inlinePending} />
               )}
               {turnError && (
                 <TurnErrorNotice error={turnError} running={running} onRetry={retryTurn} />
@@ -447,20 +451,7 @@ export function ChatView() {
             />
           )}
           <DemoDeviceStage mounts={sessionMounts} />
-          {pending.length > 0 &&
-            (pending[0].toolName === 'ExitPlanMode' ? (
-              <PlanCard
-                key={pending[0].id}
-                request={pending[0]}
-                more={pending.length - 1}
-              />
-            ) : (
-              <PermissionCard
-                key={pending[0].id}
-                request={pending[0]}
-                more={pending.length - 1}
-              />
-            ))}
+          {planRequest && <PlanCard key={planRequest.id} request={planRequest} more={0} />}
           {readOnly ? (
             <div className="mb-2 rounded-xl border border-border bg-bg/50 px-3 py-2.5 text-center text-[12px] leading-5 text-muted">
               {team?.role === 'observer'

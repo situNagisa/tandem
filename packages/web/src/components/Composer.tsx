@@ -16,6 +16,7 @@ import type {
   DelegationStrategy,
   ModelPriceInfo,
   PermissionMode,
+  PermissionRequest,
   Profile,
   ReasoningEffort,
   SlashCommand,
@@ -81,6 +82,7 @@ import {
 import '../styles/chat.css'
 
 const EMPTY_PROFILES: Profile[] = []
+const EMPTY_PENDING: PermissionRequest[] = []
 const EMPTY_COMMANDS: SlashCommand[] = []
 const EMPTY_SELECTIONS: import('@tandem/protocol').PreviewSelection[] = []
 const SOURCE_LABEL: Record<SlashCommand['source'], string> = {
@@ -225,6 +227,7 @@ export function Composer({
   const removePreviewSelection = usePreviewStore((s) => s.removeSelection)
   const summary = useSessionView((s) => s?.summary ?? null)
   const storeRunning = useSessionView((s) => s?.running ?? false)
+  const pendingRequests = useSessionView((s) => s?.pending ?? EMPTY_PENDING)
   const storeStopping = useSessionView((s) => s?.stopping ?? false)
   const activeHostId = useSessionView((s) => s?.hostId ?? null)
   const hostStatus = useAppStore((s) =>
@@ -735,6 +738,13 @@ export function Composer({
       const ready = await ensureWorktree(activeHostId, summary.id)
       worktreeBusyRef.current = false
       if (!ready) return
+    }
+    // 反馈14#07：有待审批时发送消息 = 拒绝并附说明（输入框保持可用，不打断写作）。
+    if (pendingRequests.length > 0) {
+      const decide = useAppStore.getState().decidePermission
+      for (const request of pendingRequests) {
+        decide(request.id, 'deny', outgoingText || undefined, scopeTarget)
+      }
     }
     if (!send(blocks, scopeTarget, routeOverride)) return
     setRouteOverride(undefined)

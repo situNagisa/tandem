@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import type { ContentBlock, InjectionChange, SessionSummary } from '@tandem/protocol'
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import type { ContentBlock, InjectionChange, PermissionRequest, SessionSummary } from '@tandem/protocol'
 import { GitFork } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useSessionView } from './session/SessionScope'
@@ -7,7 +7,8 @@ import { cn } from '../lib/cn'
 import { MESSAGE_PAGE_SIZE, gapMessage } from '../lib/messagePaging'
 import { navigate } from '../lib/router'
 import { prettyModel } from '../lib/modelName'
-import type { HookNotice, ToolResultBlock, UiMessage } from '../lib/types'
+import type { HookNotice, PermissionTrailEntry, ToolResultBlock, UiMessage } from '../lib/types'
+import { PermissionCard, PermissionResultLine } from './PermissionCard'
 import { ToolGroup, entriesFromMessages } from './chat/ToolGroup'
 import { HookNoticeLine } from './chat/HookNoticeLine'
 import { CompactionNoticeLine } from './chat/CompactionNoticeLine'
@@ -28,6 +29,8 @@ import '../styles/chat.css'
 const EMPTY: UiMessage[] = []
 const EMPTY_HOOKS: HookNotice[] = []
 const EMPTY_IDS: string[] = []
+const EMPTY_REQUESTS: PermissionRequest[] = []
+const EMPTY_TRAIL: PermissionTrailEntry[] = []
 
 function SkeletonMessages() {
   return (
@@ -343,6 +346,8 @@ export function MessageList(props: {
   checkpoints?: Map<string, string>
   /** 在子代理会话的只读视图中渲染时传入，让内部 Task 卡片能定位下一层子会话。 */
   subagentId?: string
+  /** 待审批请求：按 toolUseId 作为对话流里的一条消息渲染在触发它的工具调用之后。 */
+  permissions?: PermissionRequest[]
 }) {
   const scopedSessionId = useSessionView((s) => s?.sessionId ?? null)
   const sessionId = props.messages ? 'preview' : (scopedSessionId ?? 'none')
@@ -358,6 +363,7 @@ function MessageListInner({
   cwd,
   checkpoints,
   subagentId,
+  permissions = EMPTY_REQUESTS,
 }: {
   showSkeleton?: boolean
   /** 传入时渲染这份消息（如外部会话只读预览），不读当前活动会话。 */
@@ -368,6 +374,7 @@ function MessageListInner({
   /** 用户消息 id → 检查点 id，用于操作条判断能否回退/重新生成。 */
   checkpoints?: Map<string, string>
   subagentId?: string
+  permissions?: PermissionRequest[]
 }) {
   const storeMessages = useSessionView((s) => s?.messages ?? EMPTY)
   const storeSessionId = useSessionView((s) => s?.sessionId ?? null)
@@ -375,6 +382,8 @@ function MessageListInner({
   const storeHooks = useSessionView((s) => s?.hookEvents ?? EMPTY_HOOKS)
   const messages = messagesProp ?? storeMessages
   const hooks = messagesProp ? EMPTY_HOOKS : storeHooks
+  const storeTrail = useSessionView((s) => (messagesProp ? undefined : s?.permissionTrail))
+  const permissionResults = storeTrail ?? EMPTY_TRAIL
   const activeHostId = useSessionView((s) => s?.hostId ?? null)
   const storeInjections = useSessionView((s) => (messagesProp ? undefined : s?.injections))
   const handoffStatus = useSessionView((s) =>
@@ -693,6 +702,28 @@ function MessageListInner({
     for (const m of messages) state.ids.add(m.id)
   }, [messages, sessionId])
 
+  // 当前待处理的审批若在视野之外（用户上翻过），自动滚进来。
+  // 必须放在 showSkeleton 的提前 return 之前：否则骨架屏与本体会调用不同数量的 Hook（R310）。
+  const firstPendingId = permissions[0]?.id
+  useEffect(() => {
+    if (!firstPendingId) return
+    const timer = window.setTimeout(() => {
+      const card = rootRef.current?.querySelector<HTMLElement>(
+        `[data-permission-id="${CSS.escape(firstPendingId)}"]`,
+      )
+      const box = scrollBox()
+      if (!card || !box) return
+      const c = card.getBoundingClientRect()
+      const b = box.getBoundingClientRect()
+      if (c.top < b.top + 12) {
+        box.scrollTo({ top: box.scrollTop + c.top - b.top - 12, behavior: 'smooth' })
+      } else if (c.bottom > b.bottom - 12) {
+        box.scrollTo({ top: box.scrollTop + c.bottom - b.bottom + 12, behavior: 'smooth' })
+      }
+    }, 120)
+    return () => window.clearTimeout(timer)
+  }, [firstPendingId, scrollBox])
+
   if (showSkeleton) return <SkeletonMessages />
 
   // 工具调用常常跨多条 assistant 消息（中间夹着隐藏的 tool_result）。
@@ -915,6 +946,148 @@ function MessageListInner({
   for (const change of storeInjections?.changes ?? []) {
     if (change.beforeMessageId) changesByMessage.set(change.beforeMessageId, change)
   }
+
+  // 反馈14#07：审批请求是对话流里的一条消息，渲染在触发它的工具调用之后；
+  // 处理完的结果也按 toolUseId 留在原处，随消息一起滚动，不再停靠输入框上方。
+  const pendingByTool = new Map<string, PermissionRequest[]>()
+  for (const request of permissions) {
+    const list = pendingByTool.get(request.toolUseId)
+    if (list) list.push(request)
+    else pendingByTool.set(request.toolUseId, [request])
+  }
+  const resultsByTool = new Map<string, PermissionTrailEntry[]>()
+  for (const entry of permissionResults) {
+    const list = resultsByTool.get(entry.toolUseId)
+    if (list) list.push(entry)
+    else resultsByTool.set(entry.toolUseId, [entry])
+  }
+  const placedPending = new Set<string>()
+  const placedResults = new Set<string>()
+  const activePermissionId = permissions[0]?.id
+  const toolUseIdsOf = (message: UiMessage): string[] =>
+    message.content.flatMap((block) => (block.type === 'tool_use' ? [block.id] : []))
+  const permissionRows = (toolUseIds: string[]) => {
+    const nodes: ReactNode[] = []
+    for (const toolUseId of toolUseIds) {
+      for (const entry of resultsByTool.get(toolUseId) ?? []) {
+        if (placedResults.has(entry.id)) continue
+        placedResults.add(entry.id)
+        nodes.push(<PermissionResultLine key={`pr-${entry.id}`} entry={entry} />)
+      }
+      for (const request of pendingByTool.get(toolUseId) ?? []) {
+        if (placedPending.has(request.id)) continue
+        placedPending.add(request.id)
+        nodes.push(
+          <PermissionCard
+            key={`pp-${request.id}`}
+            request={request}
+            active={request.id === activePermissionId}
+          />,
+        )
+      }
+    }
+    return nodes
+  }
+
+  const segmentRows = segments.map((seg) => {
+    if (seg.kind === 'run') {
+      return (
+        <Fragment key={seg.key}>
+          <ToolRunRow
+            messages={seg.messages}
+            animate={seg.animate}
+            streamingId={streamingId}
+            toolResults={toolResults}
+            cwd={cwd}
+          />
+          {permissionRows(seg.messages.flatMap(toolUseIdsOf))}
+        </Fragment>
+      )
+    }
+    if (seg.kind === 'notice') {
+      return (
+        <NoticeRow
+          key={seg.message.id}
+          message={seg.message}
+          animate={seg.animate}
+          hostId={activeHostId}
+          sessionId={storeSessionId}
+        />
+      )
+    }
+    if (seg.kind === 'gap') {
+      const range = gapRanges.get(seg.message.id) ?? {}
+      const gap = seg.message.gap!
+      return (
+        <GapBand
+          key={seg.message.id}
+          gap={gap}
+          gapId={seg.message.id}
+          fromTurn={range.fromTurn}
+          toTurn={range.toTurn}
+          loading={bandBusy === seg.message.id || loadingSegment}
+          onLoad={(mode) => loadGapBand(gap, seg.message.id, range, mode)}
+          onShow={() => showUnmounted(gap)}
+        />
+      )
+    }
+    const m = seg.message
+    if (m.role === 'user') {
+      return (
+        <UserRow
+          key={m.id}
+          message={m}
+          animate={seg.animate}
+          readOnly={readOnly}
+          turnIndex={turnIndex.get(m.id)}
+          change={
+            changesByMessage.has(m.id) ? (
+              <InjectionChangeNote change={changesByMessage.get(m.id)!} />
+            ) : undefined
+          }
+          fork={forkLinks(m.id)}
+          hook={hookLine(m.id)}
+        />
+      )
+    }
+    const turnUser = turnUserByAssistant.get(m.id)
+    return (
+      <Fragment key={m.id}>
+        <AssistantRow
+          message={m}
+          streaming={!!streamingId && m.id === streamingId}
+          animate={seg.animate}
+          toolResults={toolResults}
+          cwd={cwd}
+          readOnly={readOnly}
+          subagentId={subagentId}
+          turnUser={turnUser}
+          checkpointId={turnUser ? checkpoints?.get(turnUser.id) : undefined}
+          fork={forkLinks(m.id)}
+          hook={hookLine(m.id)}
+        />
+        {permissionRows(toolUseIdsOf(m))}
+      </Fragment>
+    )
+  })
+
+  // 触发它们的工具调用不在当前挂载/加载范围内（子代理冒泡、历史未加载）：放到流末尾，
+  // 保证审批准能处理。已渲染过的不会重复。
+  const leftoverRows = [
+    ...permissionResults
+      .filter((entry) => !placedResults.has(entry.id))
+      .map((entry) => <PermissionResultLine key={`pr-${entry.id}`} entry={entry} />),
+    ...permissions
+      .filter((request) => !placedPending.has(request.id))
+      .map((request) => (
+        <PermissionCard
+          key={`pp-${request.id}`}
+          request={request}
+          active={request.id === activePermissionId}
+        />
+      )),
+  ]
+
   return (
     <div ref={rootRef} className="flex flex-col gap-6 pb-2">
       {!messagesProp && <InjectionsNote cwd={cwd} />}
@@ -923,83 +1096,8 @@ function MessageListInner({
           正在载入更早的消息…
         </div>
       )}
-      {segments.map((seg) => {
-        if (seg.kind === 'run') {
-          return (
-            <ToolRunRow
-              key={seg.key}
-              messages={seg.messages}
-              animate={seg.animate}
-              streamingId={streamingId}
-              toolResults={toolResults}
-              cwd={cwd}
-            />
-          )
-        }
-        if (seg.kind === 'notice') {
-          return (
-            <NoticeRow
-              key={seg.message.id}
-              message={seg.message}
-              animate={seg.animate}
-              hostId={activeHostId}
-              sessionId={storeSessionId}
-            />
-          )
-        }
-        if (seg.kind === 'gap') {
-          const range = gapRanges.get(seg.message.id) ?? {}
-          const gap = seg.message.gap!
-          return (
-            <GapBand
-              key={seg.message.id}
-              gap={gap}
-              gapId={seg.message.id}
-              fromTurn={range.fromTurn}
-              toTurn={range.toTurn}
-              loading={bandBusy === seg.message.id || loadingSegment}
-              onLoad={(mode) => loadGapBand(gap, seg.message.id, range, mode)}
-              onShow={() => showUnmounted(gap)}
-            />
-          )
-        }
-        const m = seg.message
-        if (m.role === 'user') {
-          return (
-            <UserRow
-              key={m.id}
-              message={m}
-              animate={seg.animate}
-              readOnly={readOnly}
-              turnIndex={turnIndex.get(m.id)}
-              change={
-                changesByMessage.has(m.id) ? (
-                  <InjectionChangeNote change={changesByMessage.get(m.id)!} />
-                ) : undefined
-              }
-              fork={forkLinks(m.id)}
-              hook={hookLine(m.id)}
-            />
-          )
-        }
-        const turnUser = turnUserByAssistant.get(m.id)
-        return (
-          <AssistantRow
-            key={m.id}
-            message={m}
-            streaming={!!streamingId && m.id === streamingId}
-            animate={seg.animate}
-            toolResults={toolResults}
-            cwd={cwd}
-            readOnly={readOnly}
-            subagentId={subagentId}
-            turnUser={turnUser}
-            checkpointId={turnUser ? checkpoints?.get(turnUser.id) : undefined}
-            fork={forkLinks(m.id)}
-            hook={hookLine(m.id)}
-          />
-        )
-      })}
+      {segmentRows}
+      {leftoverRows}
       {!messagesProp &&
         handoffStatus &&
         handoffStatus !== 'done' &&

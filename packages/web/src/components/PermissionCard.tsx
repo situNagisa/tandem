@@ -1,17 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRightLeft, Bot, Loader2, MoreHorizontal, Plus, ShieldAlert, ShieldCheck, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowRightLeft, Bot, Loader2, MoreHorizontal, Plus, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react'
 import type { PermissionDecision, PermissionRequest, PermissionRule, TeamMember } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { isTargetFocused, useSessionTarget, useSessionView } from './session/SessionScope'
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
-import { CodeBlock } from './CodeBlock'
-import { DiffView } from './DiffView'
+import { permissionExplain, permissionTarget } from '../lib/permissionLabel'
+import type { PermissionTrailEntry } from '../lib/types'
 import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
-import { Input, SegmentedControl, Select, Textarea } from './ui/Controls'
-import { VoiceButton } from './voice/VoiceButton'
+import { Input, SegmentedControl, Select } from './ui/Controls'
 import { Menu } from './ui/Menu'
 
 const FILE_TOOLS = new Set(['Read', 'Write', 'Edit', 'Glob', 'Grep'])
@@ -147,27 +146,26 @@ function str(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
-function Kbd({ children, inverse }: { children: React.ReactNode; inverse?: boolean }) {
+function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd
-      className={cn(
-        'ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-[4px] px-1 text-[12px] font-normal leading-none',
-        inverse
-          ? 'bg-[color-mix(in_srgb,var(--t-primary-fg)_12%,transparent)] text-[color-mix(in_srgb,var(--t-primary-fg)_55%,transparent)]'
-          : 'text-[var(--t-text-tertiary)]',
-      )}
-    >
+    <kbd className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-[4px] px-1 text-[12px] font-normal leading-none text-[var(--t-text-tertiary)]">
       {children}
     </kbd>
   )
 }
 
+/**
+ * 审批请求作为对话流里的一条消息（反馈14#07，参考 Claude Code Desktop）：
+ * 标题一句问句 + 一行灰色说明 + 右下角「拒绝 / 允许一次」，更多操作收进菜单；
+ * 不再停靠在输入框上方，也不遮挡输入框。
+ */
 export function PermissionCard({
   request,
-  more,
+  active = false,
 }: {
   request: PermissionRequest
-  more: number
+  /** 当前待处理的是这一张：只有它响应 Ctrl+Enter / Esc。 */
+  active?: boolean
 }) {
   const decide = useAppStore((s) => s.decidePermission)
   const scopeTarget = useSessionTarget() ?? undefined
@@ -176,7 +174,6 @@ export function PermissionCard({
     (s) => s?.subagents[request.sessionId]?.summary ?? null,
   )
   const subagentTitle = subagentSummary?.title ?? request.sourceTitle ?? null
-  const sourceDepth = request.depth ?? subagentSummary?.depth ?? 1
   const cwd = useSessionView((s) => s?.summary?.cwd ?? '')
   const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
   const teamRole = useAppStore((s) =>
@@ -187,119 +184,16 @@ export function PermissionCard({
   const [transferring, setTransferring] = useState(false)
   const [ruleDraft, setRuleDraft] = useState<PermissionRule | null>(null)
   const [learning, setLearning] = useState(false)
-  const [denyOpen, setDenyOpen] = useState(false)
-  const [descOpen, setDescOpen] = useState(false)
-  // 反馈12#09：像 Claude Code 一样在会话流里用编号选项询问，↑↓ 选择、Enter 确认。
-  const [selected, setSelected] = useState(0)
   const cardRef = useRef<HTMLDivElement>(null)
-  const [denyReason, setDenyReason] = useState('')
-  const denyRef = useRef<HTMLTextAreaElement>(null)
-  const input = useMemo(() => asRecord(request.input), [request.input])
+  const input = asRecord(request.input)
   const toolName = request.toolName
-  const command = str(input.command)
-  const filePath = str(input.file_path)
-  const oldString = str(input.old_string)
-  const newString = str(input.new_string)
-  const content = str(input.content)
+  const { verb, target } = permissionTarget(request)
+  const explain = permissionExplain(request)
+  const alwaysLabel = '本会话总是允许'
 
-  const handle = (decision: PermissionDecision) => decide(request.id, decision, undefined, scopeTarget)
-
-  const insertDenyText = (spoken: string) => {
-    const node = denyRef.current
-    const start = node?.selectionStart ?? denyReason.length
-    const end = node?.selectionEnd ?? denyReason.length
-    const before = denyReason.slice(0, start)
-    const after = denyReason.slice(end)
-    const prefix = before && !/\s$/.test(before) ? ' ' : ''
-    const suffix = after && !/^\s/.test(after) ? ' ' : ''
-    const insert = `${prefix}${spoken}${suffix}`
-    const next = before + insert + after
-    setDenyReason(next)
-    window.requestAnimationFrame(() => {
-      denyRef.current?.focus()
-      denyRef.current?.setSelectionRange(start + insert.length, start + insert.length)
-    })
-  }
-
-  const openDeny = () => {
-    setDenyOpen(true)
-    window.requestAnimationFrame(() => denyRef.current?.focus())
-  }
-
-  const alwaysLabel = request.learned ? '总是允许（本项目）' : '总是允许（本会话）'
-  const choose = (index: number) => {
-    if (index === 0) decide(request.id, 'allow', undefined, scopeTarget)
-    else if (index === 1) {
-      if (request.learned) void applyLearned()
-      else decide(request.id, 'allow_always', undefined, scopeTarget)
-    } else openDeny()
-  }
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const ui = useUiStore.getState()
-      if (
-        ui.settingsOpen ||
-        ui.newSessionOpen ||
-        ui.searchOpen ||
-        ui.mobileSidebar ||
-        ui.mobilePanel
-      ) {
-        return
-      }
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
-      const target = e.target as HTMLElement | null
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return
-      }
-      if (e.key === '1') {
-        e.preventDefault()
-        choose(0)
-      } else if (e.key === '2') {
-        e.preventDefault()
-        choose(1)
-      } else if (e.key === '3') {
-        e.preventDefault()
-        choose(2)
-      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault()
-        setSelected((value) => (e.key === 'ArrowDown' ? (value + 1) % 3 : (value + 2) % 3))
-      } else if (e.key === 'Enter') {
-        if (target?.tagName === 'BUTTON' || target?.tagName === 'A') return
-        e.preventDefault()
-        choose(selected)
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [request.id, decide, scopeTarget, selected])
-
-  // 新审批出现时，若焦点在空的输入框里，把焦点交给「允许」：
-  // 键盘用户可以直接按 1/2/3，不必先 Tab 一圈；正在输入排队消息时不抢焦点。
-  useEffect(() => {
-    if (!isTargetFocused(scopeTarget ?? null)) return
-    const focusable = () => {
-      const now = document.activeElement as HTMLElement | null
-      const composer = now?.closest('.composer-card')
-      const idleComposer =
-        !!composer && !(composer.querySelector('textarea') as HTMLTextAreaElement | null)?.value.trim()
-      const neutral = !now || now === document.body
-      return idleComposer || neutral
-    }
-    if (!focusable()) return
-    // 新会话建立后 Composer 会在 60ms 后自动聚焦，稍等一拍再接管。
-    const timer = window.setTimeout(() => {
-      if (!focusable()) return
-      cardRef.current?.querySelector<HTMLElement>('[data-permission-allow]')?.focus()
-    }, 120)
-    return () => window.clearTimeout(timer)
-  }, [request.id, scopeTarget])
+  const decideWith = (decision: PermissionDecision) => decide(request.id, decision, undefined, scopeTarget)
+  const deny = () => decideWith('deny')
+  const allow = () => decideWith('allow')
 
   const canTransfer = teamRole === 'owner' || teamRole === 'approver' || teamRole === 'collaborator'
   const loadApprovers = () => {
@@ -347,121 +241,72 @@ export function PermissionCard({
     }
   }
 
-  let preview: React.ReactNode = null
-  if (toolName === 'Bash' && command) {
-    preview = (
-      <div className="max-h-[150px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-[color-mix(in_srgb,var(--t-bg)_55%,transparent)] px-3 py-2 font-mono text-[12px] leading-[1.6] text-text">
-        <span className="select-none text-muted">$ </span>
-        {command}
-      </div>
-    )
-  } else if (toolName === 'Edit' && (oldString || newString)) {
-    preview = (
-      <DiffView
-        oldText={oldString}
-        newText={newString}
-        fileName={filePath || 'Edit'}
-        maxHeight={240}
-      />
-    )
-  } else if (toolName === 'Write' && content) {
-    preview = <CodeBlock code={content} fileName={filePath} maxHeight={180} />
-  } else if (filePath) {
-    preview = (
-      <div className="truncate rounded-lg bg-[color-mix(in_srgb,var(--t-surface-2)_60%,transparent)] px-3 py-2 font-mono text-[12px] text-text-soft">
-        {filePath}
-      </div>
-    )
-  } else if (Object.keys(input).length > 0) {
-    preview = (
-      <CodeBlock
-        code={JSON.stringify(input, null, 2)}
-        language="json"
-        showHeader={false}
-        maxHeight={150}
-      />
-    )
-  }
-
-  const askTarget =
-    toolName === 'Bash'
-      ? command.split('\n')[0]?.trim() || ''
-      : filePath || str(input.path) || request.description || ''
-  const askVerb =
-    toolName === 'Bash'
-      ? '允许运行'
-      : toolName === 'Read'
-        ? '允许读取'
-        : toolName === 'Write'
-          ? '允许写入'
-          : toolName === 'Edit'
-            ? '允许编辑'
-            : toolName === 'Glob'
-              ? '允许列出文件'
-              : toolName === 'Grep'
-                ? '允许搜索'
-                : toolName === 'WebFetch'
-                  ? '允许访问'
-                  : '允许使用'
-  const options = [
-    { label: '允许', note: '' },
-    { label: alwaysLabel, note: '' },
-    { label: '拒绝，并说明…', note: '' },
-  ]
+  // Ctrl/Cmd+Enter 允许一次、Esc 拒绝：焦点在卡片里，或输入框为空（不打断正在写的说明）。
+  useEffect(() => {
+    if (!active) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey || e.shiftKey) return
+      const ui = useUiStore.getState()
+      if (
+        ui.settingsOpen ||
+        ui.newSessionOpen ||
+        ui.searchOpen ||
+        ui.mobileSidebar ||
+        ui.mobilePanel
+      ) {
+        return
+      }
+      const focusInCard = cardRef.current?.contains(document.activeElement as Node | null) ?? false
+      const inTarget = isTargetFocused(scopeTarget ?? null)
+      const targetEl = e.target as HTMLElement | null
+      const composer = targetEl?.closest('.composer-card') ?? null
+      const textarea = composer?.querySelector('textarea') as HTMLTextAreaElement | null
+      const idleComposer = inTarget && !!composer && !textarea?.value.trim()
+      if (!focusInCard && !idleComposer) return
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault()
+        e.stopPropagation()
+        allow()
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        deny()
+      }
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [active, request.id, decide, scopeTarget])
 
   return (
-    <div ref={cardRef} className="permission-card mb-2.5">
-      <div className="px-3.5 pb-2 pt-2.5">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[13px] leading-6 text-text">
-          <span className="text-muted">需要你的许可</span>
-          <span className="text-muted">·</span>
-          <span className="min-w-0">
-            {askTarget ? (
-              <>
-                {askVerb}{' '}
-                <code className="break-all rounded bg-[color-mix(in_srgb,var(--t-bg-active)_70%,transparent)] px-1 py-0.5 font-mono text-[12px] text-text-soft">
-                  {askTarget.length > 140 ? `${askTarget.slice(0, 140)}…` : askTarget}
-                </code>
-                ？
-              </>
-            ) : (
-              <>允许这次 {toolName} 操作？</>
-            )}
-          </span>
-          {more > 0 && <span className="ml-auto text-[12px] text-muted">另有 {more} 个待审批</span>}
+    <div
+      ref={cardRef}
+      className="permission-card msg-row mb-1"
+      data-permission-id={request.id}
+      data-permission-active={active ? 'true' : undefined}
+    >
+      <div className="rounded-xl border border-border bg-[color-mix(in_srgb,var(--t-surface)_94%,transparent)] px-3.5 py-3">
+        <div className="flex min-w-0 items-baseline gap-1 text-[13px] leading-[1.5] text-text">
+          <span className="shrink-0">{verb}</span>
+          <code
+            data-tip={target}
+            className="min-w-0 truncate font-mono text-[12.5px] text-text"
+          >
+            {target}
+          </code>
+          <span className="shrink-0">？</span>
         </div>
+        <p className="mt-1 text-[12px] leading-[1.5] text-muted">{explain}</p>
         {subagentTitle && (
-          <div className="mt-1 flex items-center gap-1 text-[12px] text-muted">
+          <div className="mt-1 flex items-center gap-1 text-[12px] leading-[1.5] text-muted">
             <Bot size={11} className="shrink-0" />
-            <span className="min-w-0 truncate">
-              来自子代理：{subagentTitle}
-            </span>
+            <span className="min-w-0 truncate">来自子代理：{subagentTitle}</span>
           </div>
         )}
         {request.transferredFrom && (
-          <div className="mt-1 text-[12px] text-text-soft">
+          <div className="mt-1 text-[12px] leading-[1.5] text-text-soft">
             由 {request.transferredFrom.name} 转交
             {request.assignedTo ? ` · 待 ${request.assignedTo.name} 处理` : ''}
           </div>
-        )}
-        {request.description &&
-          !(
-            toolName === 'Bash' &&
-            !!command &&
-            request.description.replace(/\s+/g, ' ').includes(command.replace(/\s+/g, ' '))
-          ) && (
-          <button
-            type="button"
-            onClick={() => setDescOpen((value) => !value)}
-            aria-expanded={descOpen}
-            data-tip={`${request.description}${descOpen ? '' : '（点击展开全文）'}`}
-            className={cn(
-              'mt-1 block w-full whitespace-pre-wrap break-words text-left text-[12px] leading-[1.55] text-muted',
-              !descOpen && 'line-clamp-2',
-            )}
-          >
-            {request.description}
-          </button>
         )}
         {request.sandbox && (
           <p
@@ -472,160 +317,135 @@ export function PermissionCard({
             <span className="min-w-0 break-words">{request.sandbox.reason}</span>
           </p>
         )}
-      </div>
-      {preview && (
-        <div className="max-h-[min(30dvh,240px)] overflow-y-auto px-3.5 pb-2">
-          <div className="text-[12px]">{preview}</div>
-        </div>
-      )}
-      {request.learned && (
-        <div className="px-3.5 pb-1" data-permission-learned="">
-          <button
-            type="button"
-            onClick={() => void applyLearned()}
-            disabled={learning}
-            className="flex w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[12px] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text max-sm:min-h-11"
-            data-tip={`已在本项目批准 ${request.learned.allows} 次；添加后同类命令不再询问，可随时在设置 → 权限中删除`}
-          >
-            {learning ? (
-              <Loader2 size={12} className="shrink-0 animate-spin" />
-            ) : (
-              <ShieldCheck size={12} className="shrink-0" />
-            )}
-            <span className="min-w-0 truncate">
-              以后在本项目自动允许 <code className="font-mono">{request.learned.pattern}</code>
-            </span>
-          </button>
-        </div>
-      )}
-      <div className="px-3.5 pb-2" role="radiogroup" aria-label="审批选项">
-        {options.map((option, index) => (
-          <button
-            key={option.label}
-            type="button"
-            role="radio"
-            aria-checked={selected === index}
-            {...(index === 0 ? { 'data-permission-allow': '' } : {})}
-            onMouseEnter={() => setSelected(index)}
-            onFocus={() => setSelected(index)}
-            onClick={() => choose(index)}
-            className={cn(
-              'flex min-h-8 w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors max-sm:min-h-11',
-              selected === index
-                ? 'bg-[var(--t-bg-active)] text-text'
-                : 'text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text',
-            )}
-          >
-            <span className="w-4 shrink-0 text-right text-[12px] tabular-nums text-muted">
-              {index + 1}
-            </span>
-            <span className={cn('min-w-0', index === 0 && 'font-medium')}>{option.label}</span>
-            {index === 2 && <span className="ml-auto text-[11px] text-muted">可补充原因</span>}
-          </button>
-        ))}
-      </div>
-      <div className="flex items-center gap-2 px-3.5 pb-2 text-[11px] text-muted">
-        <span className="min-w-0 flex-1">↑↓ 选择 · Enter 确认 · 数字键快速选择</span>
-        <Menu
-          side="top"
-          align="end"
-          aria-label="更多审批操作"
-          className="w-[260px]"
-          onOpenChange={(open) => {
-            if (open) loadApprovers()
-          }}
-          trigger={
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-1.5 text-[12px] text-muted hover:text-text max-sm:min-h-11"
-            >
-              <MoreHorizontal size={12} /> 更多
-            </Button>
-          }
-        >
-          <Menu.Item
-            icon={<Plus size={12} />}
-            onSelect={() => setRuleDraft(quickRule(toolName, input, cwd))}
-          >
-            添加为规则…
-          </Menu.Item>
-          {canTransfer && (
-            <Menu.Sub>
-              <Menu.SubTrigger icon={<ArrowRightLeft size={12} />} disabled={transferring}>
-                转给…
-              </Menu.SubTrigger>
-              <Menu.SubContent className="w-[240px]" aria-label="转交审批">
-                {approvers.length === 0 ? (
-                  <div className="px-2 py-1.5 text-[12px] text-muted">
-                    {approversLoaded ? '暂无在线的审批者' : '正在读取成员…'}
-                  </div>
-                ) : (
-                  approvers.map((member) => (
-                    <Menu.Item
-                      key={member.id}
-                      icon={<span className="text-[11px]">{member.name.slice(0, 1).toUpperCase()}</span>}
-                      hint={member.role === 'approver' ? '审批者' : '协作者'}
-                      selected={request.assignedTo?.memberId === member.id}
-                      onSelect={() => void transfer(member.id)}
-                    >
-                      {member.name}
-                    </Menu.Item>
-                  ))
-                )}
-              </Menu.SubContent>
-            </Menu.Sub>
-          )}
-          <Menu.Separator />
-          <Menu.Item icon={<X size={12} />} onSelect={() => decide(request.id, 'deny', undefined, scopeTarget)}>
-            拒绝（不说明）
-          </Menu.Item>
-        </Menu>
-      </div>
-      {denyOpen && (
-        <div className="border-t border-border/60 px-3.5 py-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <label htmlFor={`deny-reason-${request.id}`} className="text-[12px] text-muted">
-              说明拒绝原因（可选，会作为工具结果返回给 agent）
-            </label>
+        {request.learned && (
+          <div className="mt-1.5" data-permission-learned="">
             <button
               type="button"
-              onClick={() => setDenyOpen(false)}
-              className="rounded p-0.5 text-muted hover:text-text"
-              aria-label="收起拒绝说明"
+              onClick={() => void applyLearned()}
+              disabled={learning}
+              className="flex w-full min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-[12px] leading-[1.5] text-text-soft transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text max-sm:min-h-11"
+              data-tip={`已在本项目批准 ${request.learned.allows} 次；添加后同类命令不再询问，可随时在设置 → 权限中删除`}
             >
-              <X size={13} />
+              {learning ? (
+                <Loader2 size={12} className="shrink-0 animate-spin" />
+              ) : (
+                <ShieldCheck size={12} className="shrink-0" />
+              )}
+              <span className="min-w-0 truncate">
+                以后在本项目自动允许 <code className="font-mono">{request.learned.pattern}</code>
+              </span>
             </button>
           </div>
-          <div className="mt-1.5 flex items-end gap-1.5">
-            <Textarea
-              id={`deny-reason-${request.id}`}
-              ref={denyRef}
-              value={denyReason}
-              onChange={(e) => setDenyReason(e.target.value)}
-              rows={2}
-              placeholder="例如：先不要删这个文件，改成增量修改；或说出你的顾虑…"
-              size="sm"
-              className="min-h-[52px] flex-1"
-            />
-            <VoiceButton onText={insertDenyText} size="md" tooltipSide="top" />
-          </div>
-          <div className="mt-2 flex items-center justify-end gap-1.5">
-            <Button size="sm" variant="ghost" onClick={() => setDenyOpen(false)}>
-              取消
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => decide(request.id, 'deny', denyReason.trim() || undefined, scopeTarget)}
+        )}
+        <div className="mt-2.5 flex items-center gap-1.5 max-sm:flex-wrap">
+          <Menu
+            side="top"
+            align="start"
+            aria-label="更多审批操作"
+            className="w-[240px]"
+            onOpenChange={(open) => {
+              if (open) loadApprovers()
+            }}
+            trigger={
+              <Button
+                variant="ghost"
+                size="sm"
+                className="px-1.5 text-[12px] text-muted hover:text-text max-sm:min-h-11"
+              >
+                <MoreHorizontal size={13} /> 更多
+              </Button>
+            }
+          >
+            <Menu.Item
+              icon={<ShieldCheck size={12} />}
+              hint="本会话内同类请求不再询问"
+              onSelect={() => decideWith('allow_always')}
             >
-              拒绝并提交
-            </Button>
-          </div>
+              {alwaysLabel}
+            </Menu.Item>
+            <Menu.Item
+              icon={<Plus size={12} />}
+              onSelect={() => setRuleDraft(quickRule(toolName, input, cwd))}
+            >
+              添加为规则…
+            </Menu.Item>
+            {canTransfer && (
+              <Menu.Sub>
+                <Menu.SubTrigger icon={<ArrowRightLeft size={12} />} disabled={transferring}>
+                  转给…
+                </Menu.SubTrigger>
+                <Menu.SubContent className="w-[240px]" aria-label="转交审批">
+                  {approvers.length === 0 ? (
+                    <div className="px-2 py-1.5 text-[12px] text-muted">
+                      {approversLoaded ? '暂无在线的审批者' : '正在读取成员…'}
+                    </div>
+                  ) : (
+                    approvers.map((member) => (
+                      <Menu.Item
+                        key={member.id}
+                        icon={<span className="text-[11px]">{member.name.slice(0, 1).toUpperCase()}</span>}
+                        hint={member.role === 'approver' ? '审批者' : '协作者'}
+                        selected={request.assignedTo?.memberId === member.id}
+                        onSelect={() => void transfer(member.id)}
+                      >
+                        {member.name}
+                      </Menu.Item>
+                    ))
+                  )}
+                </Menu.SubContent>
+              </Menu.Sub>
+            )}
+          </Menu>
+          <span className="min-w-0 flex-1" />
+          <Button
+            size="sm"
+            variant="secondary"
+            data-permission-deny=""
+            onClick={deny}
+            className="max-sm:min-h-11"
+          >
+            拒绝
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            data-permission-allow=""
+            onClick={allow}
+            className="border-border-strong bg-[var(--t-bg-active)] text-text hover:bg-[var(--t-bg-hover)] max-sm:min-h-11"
+          >
+            允许一次
+            <span className="flex items-center gap-0.5 text-[11px] text-muted">
+              <Kbd>Ctrl</Kbd>
+              <Kbd>⏎</Kbd>
+            </span>
+          </Button>
         </div>
-      )}
+      </div>
       {ruleDraft && (
         <AddRuleDialog draft={ruleDraft} hostId={hostId} onClose={() => setRuleDraft(null)} />
+      )}
+    </div>
+  )
+}
+
+/** 审批完成后留在对话流里的一行结果：「已允许 · git status --short」/「已拒绝」。 */
+export function PermissionResultLine({ entry }: { entry: PermissionTrailEntry }) {
+  const denied = entry.decision === 'deny'
+  return (
+    <div
+      className="permission-result mb-1 flex min-w-0 items-center gap-1.5 px-0.5 text-[12px] leading-5 text-muted"
+      data-permission-result={entry.id}
+    >
+      {denied ? (
+        <ShieldX size={12} className="shrink-0" />
+      ) : (
+        <ShieldCheck size={12} className="shrink-0" />
+      )}
+      <span className="shrink-0">{denied ? '已拒绝' : '已允许'}</span>
+      {!denied && entry.label && (
+        <span className="min-w-0 truncate text-text-soft" data-tip={entry.label}>
+          · {entry.label}
+        </span>
       )}
     </div>
   )

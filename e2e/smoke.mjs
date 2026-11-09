@@ -250,8 +250,8 @@ async function main() {
     await page.getByRole('button', { name: '发送消息' }).click()
 
     await page.getByText('我先检查一下。').waitFor({ state: 'visible', timeout: 20_000 })
-    await page.getByText('需要你的许可').waitFor({ state: 'visible', timeout: 20_000 })
-    // 审批卡是编号询问（反馈12#09）：默认选中「允许」，点第一个选项。
+    // 审批是对话流里的一条消息（反馈14#07）：等「允许一次」按钮出现后点它。
+    await page.locator('[data-permission-allow]').first().waitFor({ state: 'visible', timeout: 20_000 })
     await page.locator('[data-permission-allow]').first().click()
 
     await page.getByText('工具执行完成，冒烟通过。').waitFor({ state: 'visible', timeout: 30_000 })

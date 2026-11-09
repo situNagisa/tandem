@@ -179,6 +179,8 @@ export interface ActiveSession {
   summary: SessionSummary | null
   messages: UiMessage[]
   pending: PermissionRequest[]
+  /** 已处理的审批（客户端本地记录）：在对话流里留一行结果。 */
+  permissionTrail?: PermissionTrailEntry[]
   todos: Todo[]
   loading: boolean
   error?: string
@@ -218,6 +220,16 @@ export interface ActiveSession {
 /** 客户端补充锚点：错误提示内联在产生它的消息之后。 */
 export interface HookNotice extends HookEventNotice {
   messageId?: string
+}
+
+/** 审批处理结果：会话内联留痕，按 toolUseId 放回触发它的工具调用之后。 */
+export interface PermissionTrailEntry {
+  id: string
+  toolUseId: string
+  /** 标题里的目标（命令首行或路径），用于「已允许 · xxx」。 */
+  label: string
+  decision: 'allow' | 'allow_always' | 'deny'
+  at: number
 }
 
 /** 主会话内嵌查看的 Task 子代理状态。 */
