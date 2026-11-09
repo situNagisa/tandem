@@ -127,7 +127,7 @@ export function DispatchDialog({
   const submit = async () => {
     if (!host || sending) return
     if (!online) {
-      setError('主机离线，连上后才能派单')
+      setError('主机离线，连接后可派单')
       return
     }
     if (!cwd.trim()) {

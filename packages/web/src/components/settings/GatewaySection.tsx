@@ -702,7 +702,7 @@ export function GatewaySection() {
         }
       >
         <p className="text-[13px] leading-6 text-text-soft">
-          吊销「{revokeTarget?.memberName}」的网关令牌？之后用该令牌的请求会立即返回 401，需要重新签发才能继续使用。
+          吊销「{revokeTarget?.memberName}」的网关令牌？之后用该令牌的请求会立即返回 401，需要重新签发后使用。
         </p>
       </Modal>
     </div>

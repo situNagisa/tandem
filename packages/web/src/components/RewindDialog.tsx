@@ -205,7 +205,7 @@ export function RewindDialog({
             <span className="min-w-0">{warning}</span>
           </p>
 
-          {running && <p className="text-[12px] text-danger">会话正在运行，结束后才能回退。</p>}
+          {running && <p className="text-[12px] text-danger">运行中，结束后可回退。</p>}
         </div>
       )}
     </Modal>

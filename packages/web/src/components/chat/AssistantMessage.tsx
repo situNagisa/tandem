@@ -207,7 +207,7 @@ export const AssistantMessage = memo(function AssistantMessage({
                 onClick={() => setRewindOpen(true)}
                 disabled={running}
                 label="回退到此处"
-                tooltip={running ? '会话运行中，结束后才能回退' : '回退到此处'}
+                tooltip={running ? '运行中，结束后可回退' : '回退到此处'}
                 className="[&_svg]:size-[12.5px]"
               >
                 <Undo2 size={12.5} />
@@ -219,7 +219,7 @@ export const AssistantMessage = memo(function AssistantMessage({
                 onClick={() => void regenerate()}
                 disabled={running || regenerating}
                 label="重新生成"
-                tooltip={running ? '会话运行中，结束后才能重新生成' : '重新生成'}
+                tooltip={running ? '运行中，结束后可重新生成' : '重新生成'}
                 className="[&_svg]:size-[12.5px]"
               >
                 {regenerating ? (
@@ -292,7 +292,7 @@ export const AssistantMessage = memo(function AssistantMessage({
                     <Menu.Item
                       icon={<Undo2 />}
                       disabled={running}
-                      disabledReason={running ? '会话运行中，结束后才能回退' : undefined}
+                      disabledReason={running ? '运行中，结束后可回退' : undefined}
                       onSelect={() => {
                         setRewindOpen(true)
                       }}
@@ -304,7 +304,7 @@ export const AssistantMessage = memo(function AssistantMessage({
                     <Menu.Item
                       icon={<RefreshCw />}
                       disabled={running || regenerating}
-                      disabledReason={running ? '会话运行中，结束后才能重新生成' : undefined}
+                      disabledReason={running ? '运行中，结束后可重新生成' : undefined}
                       onSelect={() => {
                         void regenerate()
                       }}

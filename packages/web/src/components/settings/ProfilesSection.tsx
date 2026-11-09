@@ -314,7 +314,7 @@ export function ProfilesSection() {
     const canUseProfile = useProfileId && !!editingProfile
     if (!canUseProfile && !apiKey) {
       setStep(3)
-      setFetchError('需要先填写 API Key 才能获取模型列表。')
+      setFetchError('填写 API Key 后获取模型列表。')
       setManualMode(true)
       return
     }

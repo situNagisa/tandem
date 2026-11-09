@@ -179,7 +179,7 @@ export function LoginGate() {
   const hint = {
     probing: '检查工作站状态。',
     connect: '填写团队服务器或这台电脑上的工作站地址，连接后登录或注册。',
-    login: '登录后才能看到你的主机和会话。',
+    login: '登录后查看主机和会话。',
     register:
       status?.registration === 'invite'
         ? '当前为仅邀请注册，请填写管理员给你的邀请码。'

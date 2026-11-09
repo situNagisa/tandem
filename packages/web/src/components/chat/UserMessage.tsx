@@ -288,7 +288,7 @@ export const UserMessage = memo(function UserMessage({
                     onClick={() => setRewindOpen(true)}
                     disabled={running}
                     label="回退到此处"
-                    tooltip={running ? '会话运行中，结束后才能回退' : '回退到此处'}
+                    tooltip={running ? '运行中，结束后可回退' : '回退到此处'}
                     className="[&_svg]:size-[12.5px]"
                   >
                     <Undo2 size={12.5} />
@@ -370,7 +370,7 @@ export const UserMessage = memo(function UserMessage({
                     <Menu.Item
                       icon={<Undo2 />}
                       disabled={running}
-                      disabledReason={running ? '会话运行中，结束后才能回退' : undefined}
+                      disabledReason={running ? '运行中，结束后可回退' : undefined}
                       onSelect={() => {
                         setRewindOpen(true)
                       }}
