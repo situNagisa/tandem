@@ -2241,6 +2241,121 @@ async function main() {
       )
     }
 
+    // 反馈16#05：Codex 回归夹具。developer/system 注入、AGENTS.md / skills / multi_agent_role
+    // 与 "You are Codex…" 基础提示混在 user 消息里，真实用户只有两轮。
+    {
+      const codexDir = path.join(home, 'home', '.codex', 'sessions', '2026', '11', '10')
+      mkdirSync(codexDir, { recursive: true })
+      const codexId = '11111111-2222-3333-4444-555555555555'
+      const codexLines = [
+        {
+          timestamp: '2026-11-10T01:00:00.000Z',
+          type: 'session_meta',
+          payload: { id: codexId, cwd: '/tmp/reg-codex', originator: 'codex_cli_rs', source: 'cli' },
+        },
+        {
+          timestamp: '2026-11-10T01:00:01.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'developer',
+            content: [{ type: 'input_text', text: 'You are Codex, an agent based on GPT-6. You and the user share one workspace.' }],
+          },
+        },
+        {
+          timestamp: '2026-11-10T01:00:02.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'You are Codex, an agent based on GPT-6. You and the user share one workspace.' }],
+          },
+        },
+        {
+          timestamp: '2026-11-10T01:00:03.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: '<skills_instructions>\n## Skills\nA skill is a set of local instructions to follow.' }],
+          },
+        },
+        {
+          timestamp: '2026-11-10T01:00:04.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: '<multi_agent_role>You are `/root`, the primary agent in a team of agents collaborating.' }],
+          },
+        },
+        {
+          timestamp: '2026-11-10T01:00:05.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: '# AGENTS.md instructions for /tmp/reg-codex\n<INSTRUCTIONS>使用 pnpm。</INSTRUCTIONS>' }],
+          },
+        },
+        {
+          timestamp: '2026-11-10T01:00:06.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: '<multi_agent_mode>Any earlier instruction enabling proactive multi-agent delegation' }],
+          },
+        },
+        {
+          timestamp: '2026-11-10T01:00:07.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: '真实第一轮：检查 npm 构建' }],
+          },
+        },
+        {
+          timestamp: '2026-11-10T01:00:08.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: '构建正常。' }],
+          },
+        },
+        {
+          timestamp: '2026-11-10T01:02:00.000Z',
+          type: 'turn_context',
+          payload: { cwd: '/tmp/reg-codex', model: 'gpt-6.1-sol' },
+        },
+        {
+          timestamp: '2026-11-10T01:02:01.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: '真实第二轮：继续处理' }],
+          },
+        },
+        {
+          timestamp: '2026-11-10T01:02:02.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: '继续处理完成。' }],
+          },
+        },
+      ]
+      writeFileSync(
+        path.join(codexDir, `rollout-2026-11-10T01-00-00-${codexId}.jsonl`),
+        `${codexLines.map((line) => JSON.stringify(line)).join('\n')}\n`,
+      )
+      globalThis.__regCodexId = codexId
+    }
+
     const hostPort = await host.ready
     const base = `http://127.0.0.1:${hostPort}`
     const appUrl = `${base}/?token=${token}#/h/${hostId}`
@@ -3117,6 +3232,55 @@ async function main() {
     })
 
 
+    desktop('反馈16#05：Codex 注入内容不作为用户轮（大纲/会话图/最占空间）', async (page) => {
+      const codexId = globalThis.__regCodexId
+      assert.ok(codexId, '缺少 Codex 外部会话夹具')
+      await openExternal(page, 'codex', codexId)
+
+      // 大纲只列两轮真实用户发言；注入内容不算轮。
+      assert.equal(
+        await page.locator('[data-testid="turn-readout"] li').count(),
+        2,
+        'Codex 注入内容被当成用户轮次',
+      )
+
+      const panel = page
+        .locator('aside')
+        .filter({ has: page.getByRole('heading', { name: '会话信息' }) })
+        .last()
+      await panel.waitFor({ state: 'visible', timeout: 10_000 })
+
+      // 最占空间：两行、行首无轮次数字、摘要不是注入内容。
+      const context = panel.locator('[data-group="context"]')
+      await context.waitFor({ state: 'visible', timeout: 10_000 })
+      const rows = context.locator('[data-context-turn="true"]')
+      await rows.first().waitFor({ state: 'visible', timeout: 10_000 })
+      const texts = await rows.allInnerTexts()
+      assert.equal(texts.length, 2, `最占空间轮次数量 ${texts.length}`)
+      for (const text of texts) {
+        assert.doesNotMatch(
+          text,
+          /You are Codex|skills_instructions|multi_agent_role|multi_agent_mode|AGENTS\.md instructions/,
+          `最占空间仍显示注入内容：${text}`,
+        )
+        assert.doesNotMatch(text, /^\d+\s/, `最占空间行首仍显示轮次数字：${text}`)
+      }
+      assert.equal(
+        await context.locator('[data-context-turn-open="true"] > [data-context-turn-share="true"]').count(),
+        2,
+        '最占空间行首不是占比色条',
+      )
+
+      // 会话图也只画两轮主线。
+      const graph = panel.locator('[data-group="graph"] [data-session-graph]')
+      await graph.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.equal(
+        await graph.locator('[data-graph-turn-id]').count(),
+        2,
+        '会话图把注入内容画成了用户轮',
+      )
+    })
+
     desktop('轮次大纲固定按上下文占用着色，压缩轮最浅并标已压缩（#01 追加 / 反馈8#07）', async (page) => {
       await openSession(page, 'compact')
       await page.locator('.turn-hit').hover()
@@ -3229,8 +3393,16 @@ async function main() {
         `最占空间没有按轮次列出：${JSON.stringify(rows.slice(0, 3))}`,
       )
       assert.ok(
-        rows.every((row) => /^\d+\s/.test(row.text)),
-        `最占空间行首不是纯轮号：${JSON.stringify(rows.slice(0, 3))}`,
+        rows.every((row) => !/^\d+\s/.test(row.text)),
+        `最占空间行首仍显示轮次数字：${JSON.stringify(rows.slice(0, 3))}`,
+      )
+      assert.equal(
+        await turns
+          .first()
+          .locator('[data-context-turn-open="true"] > [data-context-turn-share="true"]')
+          .count(),
+        1,
+        '最占空间行首不是占比色条',
       )
       assert.equal(new Set(rows.map((row) => row.turn.match(/第 (\d+) 轮/)?.[1])).size, rows.length, '同一轮被拆成了多行')
 
@@ -3328,7 +3500,7 @@ async function main() {
         positions,
         `上下文分类顺序不对：${order.map((label, index) => `${label}@${positions[index]}`).join(' ')}`,
       )
-      assert.match(cardText, /缓存命中率/, '上下文卡缺少缓存命中率')
+      assert.doesNotMatch(cardText, /缓存命中率/, '上下文卡重复显示了缓存命中率（反馈16#04）')
       assert.match(cardText, /自动压缩：达到 \d+% 时触发|自动压缩已关闭/, '上下文卡缺少自动压缩说明')
 
       // 分类色必须鲜明且彼此区分（不能退回一组灰调）。
@@ -3349,14 +3521,7 @@ async function main() {
       assert.equal(await threshold.count(), 1, '分段条缺少自动压缩阈值刻度')
       assert.match(await threshold.evaluate((el) => el.style.left), /\d+(\.\d+)?%/, '阈值刻度位置没有按百分比设置')
       const cache = card.locator('[data-context-cache="true"]')
-      assert.equal(await cache.count(), 1, '缺少缓存命中率行')
-      assert.match(await cache.getAttribute('data-tip'), /缓存命中率/, '缓存命中率缺少说明 tooltip')
-      const cacheBar = card.locator('[data-context-cache-bar="true"]')
-      if ((await cacheBar.count()) > 0) {
-        assert.match(await cacheBar.evaluate((el) => el.style.width), /\d+(\.\d+)?%/, '缓存命中率进度条没有宽度')
-      } else {
-        assert.match(await cache.innerText(), /—/, '没有缓存数据时应显示 —')
-      }
+      assert.equal(await cache.count(), 0, '上下文卡不应再有缓存命中率行（反馈16#04）')
 
       // 每轮左侧小色条表示占比；展开箭头默认隐藏，悬停该行才出现。
       const turn = card.locator('[data-context-turn="true"]').first()
@@ -6776,6 +6941,170 @@ async function main() {
         'true',
         '重开后收起状态丢失',
       )
+    })
+
+    desktop('反馈16#06：会话信息面板与卡片宽度不随展开/折叠变化', async (page) => {
+      await openSession(page, 'long')
+      if (!(await page.locator('[data-group]').count())) {
+        await page.getByRole('button', { name: '切换信息面板' }).first().click()
+      }
+      await page.locator('[data-group]').first().waitFor({ timeout: 10_000 })
+      const measure = () =>
+        page.evaluate(() => {
+          const aside = [...document.querySelectorAll('aside')].find((el) =>
+            el.querySelector('[data-group]'),
+          )
+          return {
+            aside: aside ? aside.getBoundingClientRect().width : 0,
+            cards: [...document.querySelectorAll('[data-group]')].map((el) => ({
+              id: el.getAttribute('data-group'),
+              width: el.getBoundingClientRect().width,
+            })),
+          }
+        })
+      const sameWidth = (a, b, label) => {
+        assert.ok(Math.abs(a.aside - b.aside) <= 0.5, `${label}：面板宽度变化 ${a.aside} → ${b.aside}`)
+        assert.equal(a.cards.length, b.cards.length, `${label}：卡片数量变化`)
+        for (let i = 0; i < a.cards.length; i += 1) {
+          assert.equal(a.cards[i].id, b.cards[i].id, `${label}：卡片顺序变化`)
+          assert.ok(
+            Math.abs(a.cards[i].width - b.cards[i].width) <= 0.5,
+            `${label}：卡片 ${a.cards[i].id} 宽度变化 ${a.cards[i].width} → ${b.cards[i].width}`,
+          )
+        }
+      }
+
+      const before = await measure()
+      const toggles = page.locator('[data-group] [data-card-toggle]')
+      const count = await toggles.count()
+      assert.ok(count > 0, '会话信息面板没有可收起的分组')
+      for (let i = 0; i < count; i += 1) {
+        await toggles.nth(i).click()
+        await page.waitForTimeout(220)
+        sameWidth(before, await measure(), `第 ${i + 1} 张卡片收起`)
+        await toggles.nth(i).click()
+        await page.waitForTimeout(220)
+        sameWidth(before, await measure(), `第 ${i + 1} 张卡片展开`)
+      }
+
+      // 上下文卡内部二级展开/折叠也不改变卡片宽度。
+      const context = page.locator('[data-group="context"]')
+      if (await context.count()) {
+        const topToggle = context.locator('[data-context-top-toggle="true"]')
+        if (await topToggle.count()) {
+          await topToggle.click()
+          await page.waitForTimeout(220)
+          sameWidth(before, await measure(), '上下文卡折叠最占空间')
+          await topToggle.click()
+          await page.waitForTimeout(220)
+          sameWidth(before, await measure(), '上下文卡展开最占空间')
+        }
+        const turnToggle = context.locator('[data-context-turn-toggle="true"]').first()
+        if (await turnToggle.count()) {
+          await context.locator('[data-context-turn="true"]').first().hover()
+          await turnToggle.click()
+          await page.waitForTimeout(220)
+          sameWidth(before, await measure(), '上下文卡展开轮次明细')
+          await turnToggle.click()
+          await page.waitForTimeout(220)
+          sameWidth(before, await measure(), '上下文卡收起轮次明细')
+        }
+      }
+
+      // 输入框上下文环的弹层：折叠/展开「最占空间」时弹层宽度不变。
+      const ring = page.getByRole('button', { name: /^上下文 \d+%/ }).first()
+      await ring.click()
+      await page.locator('[data-context-top="popover"]').waitFor({ state: 'visible', timeout: 8_000 })
+      const popoverWidth = () =>
+        page.evaluate(() => {
+          const panel = [...document.querySelectorAll('.popover-panel')].find(
+            (el) => el.querySelector('[data-context-top="popover"]') || el.querySelector('[data-context-turn]'),
+          )
+          return panel ? panel.getBoundingClientRect().width : 0
+        })
+      const openWidth = await popoverWidth()
+      assert.ok(openWidth > 0, '上下文弹层没有宽度')
+      const popoverToggle = page.locator('[data-context-top="popover"] [data-context-top-toggle="true"]')
+      await popoverToggle.click()
+      await page.waitForTimeout(220)
+      assert.ok(
+        Math.abs((await popoverWidth()) - openWidth) <= 0.5,
+        `折叠最占空间后弹层宽度变化：${openWidth} → ${await popoverWidth()}`,
+      )
+      await popoverToggle.click()
+      await page.waitForTimeout(220)
+      assert.ok(
+        Math.abs((await popoverWidth()) - openWidth) <= 0.5,
+        `展开最占空间后弹层宽度变化：${openWidth} → ${await popoverWidth()}`,
+      )
+      await page.keyboard.press('Escape')
+    })
+
+    desktop('反馈16#07/#08：卡片折叠箭头与拖动手柄在标题右侧且常显', async (page) => {
+      await openSession(page, 'long')
+      if (!(await page.locator('[data-group]').count())) {
+        await page.getByRole('button', { name: '切换信息面板' }).first().click()
+      }
+      const card = page.locator('[data-group="details"]').first()
+      await card.waitFor({ state: 'visible', timeout: 10_000 })
+      const title = card.locator('[data-card-toggle] h3').first()
+      const toggle = card.locator('[data-card-toggle]').first()
+      const chevron = toggle.locator('svg').last()
+      const handle = card.locator('[aria-label^="拖动排序"]').first()
+      const [titleBox, chevronBox, handleBox] = await Promise.all([
+        title.boundingBox(),
+        chevron.boundingBox(),
+        handle.boundingBox(),
+      ])
+      assert.ok(titleBox && chevronBox && handleBox, '标题/折叠箭头/拖动手柄缺少布局')
+      assert.ok(
+        chevronBox.x >= titleBox.x + titleBox.width - 1,
+        `折叠箭头不在标题文字右侧：title ${titleBox.x}+${titleBox.width}, chevron ${chevronBox.x}`,
+      )
+      assert.ok(
+        handleBox.x > chevronBox.x,
+        `拖动手柄不在标题行右侧：chevron ${chevronBox.x}, handle ${handleBox.x}`,
+      )
+      assert.equal(
+        await chevron.evaluate((el) => getComputedStyle(el).opacity),
+        '1',
+        '折叠箭头不是常显',
+      )
+      assert.equal(
+        await handle.evaluate((el) => getComputedStyle(el).opacity),
+        '1',
+        '拖动手柄只有 hover 才显示',
+      )
+      // 点击标题行（非箭头/手柄）仍可折叠。
+      await title.click()
+      await page.waitForTimeout(220)
+      assert.equal(await card.getAttribute('data-collapsed'), 'true', '点击标题行没有折叠')
+      await title.click()
+      await page.waitForTimeout(220)
+      assert.equal(await card.getAttribute('data-collapsed'), null, '再次点击标题行没有展开')
+    })
+
+    desktop('反馈16#03/#09：会话图无图例、高度按轮数自适应并封顶', async (page) => {
+      const graphHeight = async () => {
+        const el = page.locator('[data-group="graph"] [data-graph-height]').first()
+        await el.waitFor({ state: 'attached', timeout: 10_000 })
+        return Number(await el.getAttribute('data-graph-height'))
+      }
+      await openSession(page, 'nockpt')
+      assert.equal(await page.locator('[data-graph-legend]').count(), 0, '会话图仍显示图例（反馈16#03）')
+      assert.equal(await graphHeight(), 84, '2 轮时会话图高度不是最小高度（3 行）')
+
+      await openSession(page, 'turns4')
+      assert.equal(await graphHeight(), 112, '4 轮时会话图高度没有随轮数增长')
+
+      await openSession(page, 'huge')
+      assert.equal(await graphHeight(), 336, '30 轮以上会话图高度没有封顶到 12 行 / 336px')
+      const scrollable = await page.evaluate(() => {
+        const el = document.querySelector('[data-group="graph"] [data-graph-height]')
+        return el ? { client: el.clientHeight, scroll: el.scrollHeight } : null
+      })
+      assert.ok(scrollable && scrollable.scroll > scrollable.client, '封顶后会话图内部不能滚动')
+      assert.equal(await page.locator('[data-graph-legend]').count(), 0, '会话图仍显示图例（反馈16#03）')
     })
 
     desktop('反馈12#08：侧栏项目与会话缩进收紧、标题左对齐', async (page) => {

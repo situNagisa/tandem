@@ -60,13 +60,14 @@
 - **数据来源**：服务端 `estimateBreakdown` 按系统提示各段估算。子代理预设列表从 Task 工具说明里拆出来单列「自定义 agents」（`agents` part），从 system 里扣除、不重复计数；记忆文件仍按 `AGENTS.md` / `CLAUDE.md` 估算。
 - **颜色**：`--ctx-system/tools/mcp/agents/memory/messages/tool-results/free`，深浅主题各一套；图例小方点与分段条直接使用，浅色在卡片底 ≥4.5:1、深色 ≥5:1。分段条带 1px 间隙，颜色不再叠加透明度。
 - **分段条上的阈值刻度**：自动压缩开启时按 `autoCompact.threshold`（默认 85%）画一条竖线，tooltip 写明「自动压缩阈值 85%」；底部一行说明「自动压缩：达到 85% 时触发 / 自动压缩已关闭」。
-- **缓存命中率**：一行文字 + 细进度条；没有缓存数据时显示 `—`，tooltip 说明「本轮请求还未返回缓存读取/写入统计」。
-- **「最占空间」**：仍是按轮次聚合的紧凑列表；每行左侧 3px 色条用深浅表示该轮占上下文的比例，右侧 token 数，展开箭头默认隐藏、悬停该行才出现（键盘聚焦/已展开时也可见）。
+- **缓存命中率**：只在右侧「用量」卡显示；上下文卡 2026-11-10 起不再重复这一行（反馈16#04）。
+- **「最占空间」**：仍是按轮次聚合的紧凑列表；每行只显示左侧 3px 占比色条、发言摘要与右侧 token 数，行首不再显示轮次数字（反馈16#05），轮次号只留在悬停 tooltip；展开箭头默认隐藏、悬停该行才出现（键盘聚焦/已展开时也可见）。
 - 输入框上下文环的弹层复用同一份 `ContextSpaceSection` 与分类色。
 
 ## 计量口径
 
 - 一轮 = 用户的一次发言 → 下一条用户发言之间的全部内容：用户消息 + 该轮所有 assistant 消息、工具调用与结果，以及该轮派出的 Task 子代理（含孙代理，tooltip 标「含子代理」）。纯 tool_result 的 user 消息不另起一轮（`isUserTurnMessage`）。
+- 外部会话（Codex / Claude Code）注入到 user 消息里的系统提示与开发者指令（`<tag>` 开头、`You are Codex…`、AGENTS.md / skills / multi_agent_role 等）不算用户轮：协议 `isSystemInjectionText` 与 `isUserTurnMessage` 统一口径，大纲、会话图、「最占空间」、轮数统计一致（反馈16#05 / R07）。
 - 轮次用量汇总：`packages/web/src/lib/turnUsage.ts` 的 `usageByTurn`。上下文占用按已加载消息估算；分页只算已加载部分。
 - 「最占空间」：服务端 `packages/server/src/context.ts` 的 `estimateBreakdown` 生成 `ContextBreakdown.topTurns`（该轮总量 + 轮内 top 5 项），收到真实 usage 后按比例校准。老 Host 没有 `topTurns` 时，前端按 `topItems` 的轮次归并回退。
 

@@ -393,6 +393,64 @@ for (const file of await walk(SRC)) {
   }
 }
 
+
+// 反馈16#06（R14 复发）：右侧会话信息面板的宽度只由拖拽决定；卡片自己不能按内容收缩，
+// 否则展开/折叠明细时面板和卡片会一起变宽变窄（用户：经常有卡片点开后宽度发生改变）。
+const RIGHT_PANEL_DIRS = [
+  join(SRC, 'components/right-panel'),
+  join(SRC, 'components/sessionGraph'),
+]
+const rightPanelFiles = (await walk(SRC)).filter((file) =>
+  RIGHT_PANEL_DIRS.some((dir) => file.startsWith(dir + '/')) || file.endsWith('/components/RightPanel.tsx'),
+)
+for (const file of rightPanelFiles) {
+  const text = await readFile(file, 'utf8')
+  const lines = text.split('\n')
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]
+    if (line.includes('ui-audit-ignore')) continue
+    const m = /\bw-(?:fit|max)\b|\b(?:max|min)-content\b|\binline-flex\b/.exec(line)
+    if (!m) continue
+    issues.push({
+      file: relative(ROOT, file),
+      line: i + 1,
+      check: 'right-panel-content-width',
+      label: '右侧面板卡片不能按内容定宽（禁 w-fit / w-max / max-content / inline-flex）：宽度只由面板拖拽宽度决定，展开/折叠只改变高度',
+      text: line.trim().slice(0, 160),
+    })
+  }
+}
+try {
+  const card = await readFile(join(SRC, 'components/right-panel/shared.tsx'), 'utf8')
+  if (!/group\/card w-full min-w-0/.test(card)) {
+    issues.push({
+      file: 'packages/web/src/components/right-panel/shared.tsx',
+      line: 1,
+      check: 'right-panel-card-width',
+      label: '共享 Card 外层缺少 w-full min-w-0：卡片会按内容收缩，展开/折叠时宽度抖动',
+      text: 'Card section className',
+    })
+  }
+} catch {
+  // shared.tsx 不存在时忽略
+}
+for (const file of ['components/RightPanel.tsx', 'components/ExternalSessionPanel.tsx']) {
+  try {
+    const text = await readFile(join(SRC, file), 'utf8')
+    if (!/scrollbarGutter: 'stable'/.test(text)) {
+      issues.push({
+        file: `packages/web/src/${file}`,
+        line: 1,
+        check: 'right-panel-scrollbar-gutter',
+        label: '会话信息面板滚动容器缺少 scrollbar-gutter: stable：滚动条出现/消失会改变卡片宽度',
+        text: 'PanelBody style',
+      })
+    }
+  } catch {
+    // 文件不存在时忽略
+  }
+}
+
 if (json) {
   console.log(JSON.stringify({ count: issues.length, issues }, null, 2))
 } else if (issues.length === 0) {

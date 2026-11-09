@@ -47,6 +47,11 @@ const steps = [
     args: ['scripts/ui-audit.mjs'],
   },
   {
+    name: 'decisions',
+    command: process.execPath,
+    args: ['scripts/decisions-check.mjs'],
+  },
+  {
     name: 'test',
     command: 'npm',
     args: ['test'],
