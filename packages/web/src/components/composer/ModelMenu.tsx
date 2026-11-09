@@ -371,14 +371,8 @@ export function ModelMenu({
             isOpen && 'bg-[var(--t-bg-hover)] text-text-soft',
           )}
         >
+          {/* 反馈14#03：芯片只显示模型名，思考强度只在菜单与 tooltip/aria-label 里体现。 */}
           <span className="min-w-0 truncate">{label}</span>
-          {showEffort && effort !== 'off' && (
-            <span
-              data-effort-dot=""
-              aria-hidden="true"
-              className="size-1.5 shrink-0 rounded-full bg-[var(--t-text-tertiary)] opacity-70"
-            />
-          )}
           {!compact && <ChevronDown size={12} className="shrink-0 opacity-60" />}
         </Button>
       )}
