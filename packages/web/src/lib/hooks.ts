@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { nodeContains } from './overlay'
 
 export function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() =>
@@ -45,20 +46,26 @@ export function useElementWidth<T extends HTMLElement>(): [
   return [setEl, width]
 }
 
-export function useClickOutside<T extends HTMLElement>(
-  ref: RefObject<T | null>,
+/** 点击任一 ref 之外时触发；单个 ref 与 ref 数组都支持（输入框与补全菜单等）。 */
+export function useClickOutside(
+  refs: RefObject<HTMLElement | null> | ReadonlyArray<RefObject<HTMLElement | null>>,
   onOutside: () => void,
   active = true,
 ): void {
+  const listRef = useLatestRef(Array.isArray(refs) ? refs : [refs])
+  const outsideRef = useLatestRef(onOutside)
   useEffect(() => {
     if (!active) return
     const handler = (ev: PointerEvent) => {
-      const el = ref.current
-      if (el && ev.target instanceof Node && !el.contains(ev.target)) onOutside()
+      const nodes = listRef.current
+      // 与旧实现一致：ref 尚未挂载时不做判断，避免误关。
+      if (!nodes.some((ref) => ref.current)) return
+      if (nodes.some((ref) => nodeContains(ref.current, ev.target))) return
+      outsideRef.current()
     }
     document.addEventListener('pointerdown', handler)
     return () => document.removeEventListener('pointerdown', handler)
-  }, [ref, onOutside, active])
+  }, [active, listRef, outsideRef])
 }
 
 /** 用 visualViewport 修正移动端软键盘弹出时的可视高度。 */
