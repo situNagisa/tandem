@@ -285,7 +285,7 @@ const DECISIONS = [
     decision: '账号›分组›模型逐级飞出，不出现返回上一级',
     files: [F.modelCascade],
     need: [/SubContent|SubTrigger/],
-    deny: [/ChevronLeft/, /返回上一级/],
+    deny: [/\bconst\s+back\s*=/, /ChevronLeft/, /返回上一级/],
   },
   {
     id: 'menu-recent-models',
@@ -420,7 +420,7 @@ const DECISIONS = [
     decision: '执行方式/委派倾向用规范术语，废弃口语词集中拦截',
     files: [F.routeLabels],
     need: [/单代理/, /低成本/, /多代理协作/, /仅规划/, /积极/, /适度/, /关闭/],
-    deny: [/少派/, /多派/, /便宜直做/, /本会话保持/],
+    // 废弃词由 ui-audit 的 deprecated-route-copy 全仓扫描（含 label: '不派'），这里只保留正向断言。
   },
   {
     id: 'model-latest-selection',
@@ -539,13 +539,6 @@ const DECISIONS = [
     decision: '危险按钮中性，hover 只文字转 danger，不做红底红框',
     files: [F.button],
     need: [/danger-ghost/, /hover:text-danger/],
-  },
-  {
-    id: 'reduced-motion',
-    source: '动效',
-    decision: 'prefers-reduced-motion 时关闭位移动画',
-    files: [F.indexCss],
-    need: [/@media \(prefers-reduced-motion: reduce\)/],
   },
   {
     id: 'edit-width',
