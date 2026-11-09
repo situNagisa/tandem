@@ -9,15 +9,17 @@
 - 安卓签名密钥：`~/.tandem-release/`（不在仓库；用户需离线备份）。
 
 ## 正在进行
-- 无。0.4.1 已发布（反馈8 修复：大纲按住 Alt 只看已固定、深浅固定为上下文占用、「最占空间」按轮次且可折叠；执行方式收成一个菜单并统一术语；输入框 token 估算、切换模型前缓存提示、轻量 Markdown；设备面板单行紧凑、板载串口折叠、串口权限修复入口），等待用户实机验证。工作站客户端-服务模式 v1（2026-11-09，`docs/workstation.md`、`docs/test-guides/workstation.md`）：工作站服务独立进程/桌面内嵌、开放或邀请注册、首个管理员、绑定码添加主机、出站隧道 + E2E 转发、按主机授权、旧工作区数据迁移；本地模式不变。分工路由 v2 随 0.3.1 发布（docs/features/routing.md）：主会话模型与缓存不变，Task 子代理执行；默认直接做、机械任务便宜直做、多步或专长匹配才分工；发送前选执行方式、分工前确认卡、子代理换模型重跑/交回主会话、偏好学习、按角色用量均已实现并有回归覆盖。保守取舍：达到每轮成本上限后停止派发，不自动换模型（交由用户决定）。
+- 消息耗时（每条 assistant 用量行末尾 + 轮次 tooltip）与调试版「手机预览」（独立窗口/触摸模拟/模拟键盘）已实现，未发版；说明见 `docs/features/mobile-preview.md`、`docs/features/conversation.md`。桌面运行时在协调者 WSL 缺 GTK 未验证，等用户在 Windows 调试版代测。
+- 0.4.1 已发布（反馈8 修复：大纲按住 Alt 只看已固定、深浅固定为上下文占用、「最占空间」按轮次且可折叠；执行方式收成一个菜单并统一术语；输入框 token 估算、切换模型前缓存提示、轻量 Markdown；设备面板单行紧凑、板载串口折叠、串口权限修复入口），等待用户实机验证。工作站客户端-服务模式 v1（2026-11-09，`docs/workstation.md`、`docs/test-guides/workstation.md`）：工作站服务独立进程/桌面内嵌、开放或邀请注册、首个管理员、绑定码添加主机、出站隧道 + E2E 转发、按主机授权、旧工作区数据迁移；本地模式不变。分工路由 v2 随 0.3.1 发布（docs/features/routing.md）：主会话模型与缓存不变，Task 子代理执行；默认直接做、机械任务便宜直做、多步或专长匹配才分工；发送前选执行方式、分工前确认卡、子代理换模型重跑/交回主会话、偏好学习、按角色用量均已实现并有回归覆盖。保守取舍：达到每轮成本上限后停止派发，不自动换模型（交由用户决定）。
 
 ## 等用户实机验证（我这边只能模拟）
 按价值排序：
-1. 工作站服务模式：`docs/test-guides/workstation.md`（注册/登录、添加主机、绑定码、授权）
-2. 工作站与设备共享：`docs/test-guides/devices.md`（安卓手机 + USB 串口板，两台机器）
-3. 账号制：`docs/accounts-test.md`
-4. SSH 远程接入：`docs/features/remote-ssh.md`
-5. 手机审批（局域网本地通知）、PR/CI（`docs/test-guides/pr-ci.md`）、Windows 路径与中文编码
+1. 手机预览与真机调试：`docs/features/mobile-preview.md`、`docs/test-guides/mobile-debugging.md`（Windows 调试版打开预览、触摸滑动、旋转；调试 APK 的 chrome://inspect）
+2. 工作站服务模式：`docs/test-guides/workstation.md`（注册/登录、添加主机、绑定码、授权）
+3. 工作站与设备共享：`docs/test-guides/devices.md`（安卓手机 + USB 串口板，两台机器）
+4. 账号制：`docs/accounts-test.md`
+5. SSH 远程接入：`docs/features/remote-ssh.md`
+6. 手机审批（局域网本地通知）、PR/CI（`docs/test-guides/pr-ci.md`）、Windows 路径与中文编码
 用户可以先用「设置 → 关于 → 演示工作区 / 体验清单」体验，反馈用反馈模式导出 json 发飞书。
 
 ## 等用户决定

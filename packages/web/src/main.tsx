@@ -1,4 +1,4 @@
-import { StrictMode } from 'react'
+import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import './index.css'
@@ -9,6 +9,31 @@ import { PublicSharePage } from './components/share/PublicSharePage'
 
 // 分享页是独立只读页面：不加载 Host 列表、不连 WS、也不启用反馈工具。
 const isSharePage = /^\/s\/[^/?#]+/.test(window.location.pathname)
+
+// 调试版手机预览：在 App 渲染前打标，保证移动端布局与原生能力桩从首屏生效。
+const mobilePreview =
+  __TANDEM_DEBUG__ &&
+  !isSharePage &&
+  (() => {
+    try {
+      return new URLSearchParams(window.location.search).get('mobilePreview') === '1'
+    } catch {
+      return false
+    }
+  })()
+if (mobilePreview) {
+  try {
+    document.documentElement.dataset.mobilePreview = '1'
+  } catch {
+    /* 忽略 */
+  }
+}
+
+const MobilePreviewBar = __TANDEM_DEBUG__
+  ? lazy(() =>
+      import('./components/dev/MobilePreviewBar').then((mod) => ({ default: mod.MobilePreviewBar })),
+    )
+  : null
 
 if (!isSharePage && __TANDEM_DEBUG__) {
   // 反馈模式与轨迹采集只在调试版加载；发布版构建会连同模块一起剔除。
@@ -33,6 +58,17 @@ if (!isSharePage && 'serviceWorker' in navigator && import.meta.env.PROD) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {isSharePage ? <PublicSharePage /> : <App />}
+    {isSharePage ? (
+      <PublicSharePage />
+    ) : (
+      <>
+        <App />
+        {mobilePreview && MobilePreviewBar && (
+          <Suspense fallback={null}>
+            <MobilePreviewBar />
+          </Suspense>
+        )}
+      </>
+    )}
   </StrictMode>,
 )

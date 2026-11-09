@@ -16,5 +16,15 @@ interface Window {
       status: () => Promise<{ state: string; version?: string; message?: string }>
       onStatus: (callback: (status: { state: string; version?: string; message?: string }) => void) => () => void
     }
+    mobilePreview?: {
+      open: (options?: {
+        preset?: 'pixel7' | 'small' | 'tablet'
+        orientation?: 'portrait' | 'landscape'
+      }) => Promise<{ ok: boolean; error?: string }>
+      configure: (options?: {
+        preset?: 'pixel7' | 'small' | 'tablet'
+        orientation?: 'portrait' | 'landscape'
+      }) => Promise<{ ok: boolean; error?: string }>
+    }
   }
 }

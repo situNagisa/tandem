@@ -33,6 +33,22 @@ const resourcesDir = app.isPackaged
 const serverDir = path.join(resourcesDir, 'server', 'dist');
 const iconFile = path.join(resourcesDir, 'icons', 'icon.png');
 
+/** 构建风味：打包时由 prepare-resources 写入 flavor.txt；开发模式默认 debug。 */
+function readFlavor() {
+  if (!app.isPackaged) return 'debug';
+  try {
+    const value = fs.readFileSync(path.join(resourcesDir, 'flavor.txt'), 'utf8').trim();
+    if (value === 'release' || value === 'debug') return value;
+  } catch {
+    // 未写入时按发布版处理，避免调试入口漏进正式包。
+  }
+  return 'release';
+}
+const flavor = readFlavor();
+const debugFlavor = flavor !== 'release';
+/** 手机预览只在调试版加载；发布版连入口与 IPC 都不注册。 */
+const mobilePreview = debugFlavor ? require('./mobile-preview.js') : null;
+
 app.setName('Tandem');
 app.setAppUserModelId('com.tandem.desktop');
 
@@ -382,6 +398,19 @@ function buildTrayMenu() {
   const visible = !!win && !win.isDestroyed() && win.isVisible();
   const menu = Menu.buildFromTemplate([
     { label: visible ? '隐藏窗口' : '显示窗口', click: () => toggleWindow() },
+    ...(mobilePreview
+      ? [
+          { type: 'separator' },
+          {
+            label: '手机预览（模拟）',
+            click: () => {
+              void mobilePreview.open().catch((err) => {
+                dialog.showErrorBox('打开手机预览失败', (err && err.message) || String(err));
+              });
+            },
+          },
+        ]
+      : []),
     { type: 'separator' },
     {
       label: '在局域网开放',
@@ -463,6 +492,20 @@ function buildAppMenu() {
     {
       label: '视图',
       submenu: [
+        ...(mobilePreview
+          ? [
+              {
+                label: '手机预览（模拟）',
+                accelerator: 'CmdOrCtrl+Shift+M',
+                click: () => {
+                  void mobilePreview.open().catch((err) => {
+                    dialog.showErrorBox('打开手机预览失败', (err && err.message) || String(err));
+                  });
+                },
+              },
+              { type: 'separator' },
+            ]
+          : []),
         { role: 'reload', label: '重新加载' },
         { role: 'toggleDevTools', label: '开发者工具' },
         { type: 'separator' },
@@ -712,6 +755,15 @@ if (!gotLock) {
       dialog.showErrorBox('Tandem Host 启动失败', (err && err.stack) || String(err));
       app.quit();
       return;
+    }
+    if (mobilePreview) {
+      mobilePreview.register({
+        getHostUrl: () => hostUrl,
+        getTheme: theme,
+        iconFile,
+        preloadPath: path.join(__dirname, 'preload.js'),
+        isAppUrl,
+      });
     }
     createWindow();
     createTray();

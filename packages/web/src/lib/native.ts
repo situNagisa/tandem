@@ -3,7 +3,17 @@
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core'
 import type { ActionPerformed, LocalNotificationSchema } from '@capacitor/local-notifications'
 
+/** 手机预览窗口：Capacitor 插件不真正加载，原生能力走下面的桩。 */
+function mobilePreview(): boolean {
+  try {
+    return document.documentElement.dataset.mobilePreview === '1'
+  } catch {
+    return false
+  }
+}
+
 export function isNativeApp(): boolean {
+  if (mobilePreview()) return true
   try {
     return Capacitor.isNativePlatform()
   } catch {
@@ -12,6 +22,7 @@ export function isNativeApp(): boolean {
 }
 
 export function isAndroidApp(): boolean {
+  if (mobilePreview()) return true
   try {
     return Capacitor.getPlatform() === 'android'
   } catch {
@@ -38,6 +49,7 @@ async function plugin() {
 
 /** 注册「允许 / 拒绝」通知操作并请求系统通知权限（Android 13+）。 */
 export async function prepareLocalNotifications(): Promise<boolean> {
+  if (mobilePreview()) return true
   if (!isNativeApp()) return false
   try {
     const LocalNotifications = await plugin()
@@ -82,6 +94,10 @@ export interface NativeNotificationInput {
 }
 
 export async function postNativeNotification(input: NativeNotificationInput): Promise<void> {
+  if (mobilePreview()) {
+    console.info('[tandem] 预览环境：本地通知（模拟）', input.title)
+    return
+  }
   if (!isNativeApp()) return
   try {
     const LocalNotifications = await plugin()
@@ -100,6 +116,7 @@ export async function postNativeNotification(input: NativeNotificationInput): Pr
 }
 
 export async function cancelNativeNotification(id: number): Promise<void> {
+  if (mobilePreview()) return
   if (!isNativeApp()) return
   try {
     const LocalNotifications = await plugin()
@@ -113,6 +130,7 @@ export async function cancelNativeNotification(id: number): Promise<void> {
 export async function onNativeNotificationAction(
   handler: (actionId: string, extra: NativeNotificationInput['extra']) => void,
 ): Promise<(() => void) | undefined> {
+  if (mobilePreview()) return undefined
   if (!isNativeApp()) return undefined
   try {
     const LocalNotifications = await plugin()
@@ -137,6 +155,10 @@ async function foregroundPlugin() {
 
 /** 常驻通知「Tandem 正在连接 X 台主机」：让 WS 在 App 退到后台后继续保留。 */
 export async function startBackgroundService(hostCount: number): Promise<boolean> {
+  if (mobilePreview()) {
+    console.info('[tandem] 预览环境：前台服务（模拟）', hostCount)
+    return true
+  }
   if (!isAndroidApp()) return false
   try {
     const ForegroundService = await foregroundPlugin()
@@ -162,6 +184,7 @@ export async function startBackgroundService(hostCount: number): Promise<boolean
 }
 
 export async function updateBackgroundService(hostCount: number): Promise<void> {
+  if (mobilePreview()) return
   if (!isAndroidApp()) return
   try {
     const ForegroundService = await foregroundPlugin()
@@ -181,6 +204,7 @@ export async function updateBackgroundService(hostCount: number): Promise<void> 
 }
 
 export async function stopBackgroundService(): Promise<void> {
+  if (mobilePreview()) return
   if (!isAndroidApp()) return
   try {
     const ForegroundService = await foregroundPlugin()

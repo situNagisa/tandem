@@ -110,7 +110,9 @@ try {
   if (flavor === 'release') {
     run(process.execPath, [path.join(repoRoot, 'scripts', 'strip-debug-dist.mjs')], repoRoot);
   }
-  run(process.execPath, [path.join(here, 'prepare-resources.mjs')], desktopDir);
+  run(process.execPath, [path.join(here, 'prepare-resources.mjs')], desktopDir, {
+    TANDEM_FLAVOR: flavor,
+  });
 
   let ok = false;
   let result = builder(['--win', 'nsis', '--x64', '--publish', 'never']);

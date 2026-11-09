@@ -7833,6 +7833,38 @@ async function main() {
       )
     })
 
+    desktop('调试版手机预览：弹窗按移动布局渲染并可打开侧栏抽屉（B）', async (page) => {
+      await page.keyboard.press('Control+k')
+      const palette = page.getByRole('dialog', { name: '命令面板' })
+      await palette.waitFor({ timeout: 10_000 })
+      await palette.getByPlaceholder(/命令|搜索/).first().fill('手机预览')
+      const row = palette.getByText('打开手机预览', { exact: true }).first()
+      await row.waitFor({ timeout: 10_000 })
+      const popupPromise = page.waitForEvent('popup', { timeout: 10_000 })
+      await row.click()
+      const popup = await popupPromise
+      await popup.waitForLoadState('domcontentloaded')
+      const bar = popup.locator('[data-mobile-preview-bar]')
+      await bar.waitFor({ state: 'visible', timeout: 20_000 })
+      const barText = await bar.innerText()
+      assert.ok(barText.includes('手机预览 · 模拟'), `预览窗口没有模拟顶栏：${barText}`)
+      assert.ok(barText.includes('无触摸模拟'), `浏览器版没有提示无法触摸模拟：${barText}`)
+      assert.equal(
+        await popup.evaluate(() => document.documentElement.dataset.mobilePreview),
+        '1',
+        '预览页面没有标记为手机预览',
+      )
+      // 平板预设也强制移动端布局；这里至少确认没有桌面侧栏、存在移动端「打开侧栏」。
+      assert.equal(
+        await popup.locator('aside[aria-label="侧栏"]').count(),
+        0,
+        '预览窗口仍是桌面布局（渲染了固定侧栏）',
+      )
+      await popup.getByRole('button', { name: '打开侧栏' }).first().click()
+      await popup.locator('aside[aria-label="侧栏"]').waitFor({ state: 'visible', timeout: 5_000 })
+      await popup.close()
+    })
+
     // 工作站客户端-服务：只跑工作站 + 两台主机，注册/绑定/授权/E2E 流式（API 级，独立进程）。
     checks.push({
       name: '工作站客户端-服务（注册/添加主机/授权/E2E 流式）',

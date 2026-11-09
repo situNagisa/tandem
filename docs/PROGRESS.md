@@ -2,6 +2,14 @@
 
 > 更新：2026-11-09。只保留最近 5 轮；更早记录见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 54（2026-11-09）消息耗时 / 调试版手机预览
+- [x] 消息耗时：协议 `Message.durationMs / ttftMs / toolDurationMs`（可选）；服务端每次请求记开始到流式完成（含重试）与首 token，工具批次单独记耗时；assistant 用量行末尾 `· 12.3s`，流式实时计时，旧消息无字段不显示；轮次大纲 tooltip 追加「耗时 …，其中工具 …，首 token …」；单测 `timing.test.ts`/`turnUsage.test.ts`/`format.test.ts`，回归两条（种子数据展示 + 真实发送落库）
+- [x] 手机预览（调试版）：桌面独立窗口按预设加载同一 Host，CDP 触摸模拟/移动 UA/DPR、强制移动布局、旋转、模拟键盘；命令面板 + `Ctrl/Cmd+Shift+M` + 菜单/托盘；浏览器版弹窗并提示无触摸模拟；Capacitor 原生能力走桩；反馈 `platform=mobile-preview`；`MobilePreviewBar` 模块按 `__TANDEM_DEBUG__` 剔除
+- [x] 真机调试：调试 APK 用 `BuildConfig.DEBUG` 开启 `WebView.setWebContentsDebuggingEnabled`；新增 `docs/test-guides/mobile-debugging.md`（chrome://inspect、scrcpy 使用说明，不打包第三方工具）
+- [x] 发布剔除：release 扫描新增 `手机预览`/`MobilePreview`/`mobile-preview`/触摸 CDP 标识；桌面按 `resources/flavor.txt` 只在 debug 注册 IPC/菜单；`release-flavor` 回归覆盖 `?mobilePreview=1` 不渲染顶栏
+- 验证：`node scripts/check.mjs`；截图 `/tmp/dbg-after/`（message-duration、mobile-preview、mobile-preview-keyboard、mobile-preview-drawer）
+- 保守取舍：Electron 运行时在本机 WSL 缺 GTK 无法启动，桌面触摸链路未做本机运行时验证（代码通过语法检查、浏览器版回归通过）；真机/桌面触摸请按测试指南代测
+
 ## 迭代 53（2026-11-09）反馈包 #6：轮次用量 / 多主机侧栏 / 面板拖宽 / 价格倍率
 - [x] #01 R25：大纲悬停用标准 Tooltip 显示该轮 token/缓存命中/花费/占本会话比例，按用户轮次汇总 assistant usage 并含 Task 子代理/孙代理（标注「含子代理」）；顶部「花费/上下文」切换，单一中性色按分位 5 档着色（收起刻度条同深浅）；压缩轮最浅 + 「已压缩」标记，摘要独立行，撤销压缩恢复；全文保留在 `aria-label`/`sr-only` 并附用量档位；单测 `turnUsage.test.ts`
 - [x] #02 R23：侧栏去掉「本机 ⌄」主机切换器，会话一次按主机分组显示（主机标题与固定/最近项目同层级），主机下按项目分组；离线标题标「离线」并保留缓存列表；筛选菜单保留按主机筛选；回归覆盖两台主机

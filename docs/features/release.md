@@ -22,6 +22,7 @@
 | 演示设备 | 工作站里的演示安卓设备、演示串口板与演示画面 |
 | 体验清单 | 设置 → 关于、命令面板；测试要点、进度与 Markdown 报告 |
 | 组件画廊 | `#/dev/ui`、设置 → 外观 → 组件画廊 |
+| 手机预览（模拟） | `Ctrl/Cmd + Shift + M`、命令面板「打开手机预览」、调试版桌面菜单/托盘；手机尺寸/旋转/触摸模拟/模拟键盘，详见 [mobile-preview.md](mobile-preview.md) |
 | 调试日志/轨迹采集 | 反馈用的错误缓冲、操作轨迹、快照与录屏 |
 | 调试工作站账号 | 桌面调试版启动时自动拉起本机工作站、创建 `debug`（调试账号）并登记本机主机；`POST /api/debug/auto-login` 只在此构建注册，且只接受 127.0.0.1/::1；账号菜单可「退出调试账号 / 用其他账号登录」，设置 → 外观 → 调试账号自动登录可重新开启 |
 | 测试开关 | `localStorage['tandem.onboarding.force']` 强制重新上手引导；`TANDEM_MOCK_SERIAL=1` / `devices.serialMock` 虚拟串口；`TANDEM_DEBUG_ACCOUNT=1` 在非桌面进程里启用调试账号自动登录（联调用） |
@@ -45,7 +46,7 @@ npm run dist:win:debug -w @tandem/desktop  # 调试版：Tandem-Setup-<版本>-d
 
 桌面调试版与发布版使用同一个 `appId`、产品名与安装目录，**不能同时安装**：安装另一个会覆盖已有的 Tandem。需要并存时先卸载，或分别装在两台机器/两个 Windows 用户下。
 
-`node scripts/release.mjs` 固定使用 release flavor，环境变量为其他值时会直接中止。`node scripts/check.mjs` 会额外构建一次 release、扫描 `packages/web/dist` 与 `packages/server/dist`，确认没有调试专用标识，并跑一条发布版页面回归（快捷键无反应、`#/dev/ui` 回首页、设置/关于/命令面板无调试入口）；回归测试本身仍在 debug flavor 下运行。
+`node scripts/release.mjs` 固定使用 release flavor，环境变量为其他值时会直接中止。`node scripts/check.mjs` 会额外构建一次 release、扫描 `packages/web/dist` 与 `packages/server/dist`，确认没有调试专用标识（含「手机预览」与触摸模拟 CDP 标识），并跑一条发布版页面回归（快捷键无反应、`#/dev/ui` 回首页、设置/关于/命令面板无调试入口、`?mobilePreview=1` 不渲染预览顶栏）；回归测试本身仍在 debug flavor 下运行。
 
 ## 1. 版本与发布流程
 

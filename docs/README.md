@@ -23,7 +23,8 @@
 | [团队共享](features/team.md) | 成员/邀请/角色/审计 |
 | [模型路由](features/routing.md) | 自动路由 + 分工路由；同会话按轮切模型已废弃 |
 | [输入框](features/composer.md) | Markdown 编辑与着色、输入 token 估算、切换模型/账号的缓存失效提示 |
-| [对话区](features/conversation.md) | 轮次大纲（用量着色、固定、Alt 只看已固定）与「最占空间」按轮次聚合 |
+| [对话区](features/conversation.md) | 轮次大纲（用量着色、固定、Alt 只看已固定）与「最占空间」按轮次聚合；消息耗时与轮次耗时汇总 |
+| [手机预览](features/mobile-preview.md) | 调试版在电脑上模拟手机尺寸/触摸；真机调试见 [test-guides/mobile-debugging.md](test-guides/mobile-debugging.md) |
 | [发布](features/release.md) | 版本、签名、更新源、上架材料 |
 | 工作站（账号与主机） | [workstation.md](workstation.md)；[accounts.md](accounts.md) 是被替代的旧模型，仅作迁移参考。iOS：用户已决定暂不做，评估归档于 [archive/research/](archive/research/)。 |
 

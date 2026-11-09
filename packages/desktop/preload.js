@@ -17,4 +17,9 @@ contextBridge.exposeInMainWorld('tandemDesktop', {
       return () => ipcRenderer.removeListener('updater:status', listener);
     },
   },
+  // 手机预览：仅调试版主进程注册；发布版调用会返回不可用。
+  mobilePreview: {
+    open: (options) => ipcRenderer.invoke('mobile-preview:open', options),
+    configure: (options) => ipcRenderer.invoke('mobile-preview:configure', options),
+  },
 });

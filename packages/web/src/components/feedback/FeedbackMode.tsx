@@ -14,6 +14,7 @@ import { useFeedbackStore } from '../../store/useFeedbackStore'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
+import { feedbackPlatform } from '../../lib/mobilePreview'
 import {
   feedbackFilename,
   feedbackTypeLabel,
@@ -1238,11 +1239,7 @@ export function FeedbackMode() {
         viewport: { width: window.innerWidth, height: window.innerHeight },
         dpr: window.devicePixelRatio || 1,
         theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
-        platform:
-          (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData
-            ?.platform ||
-          navigator.platform ||
-          '',
+        platform: feedbackPlatform(),
         ua,
         hostId,
         hostName: hostInfo?.name,
@@ -1384,11 +1381,7 @@ export function FeedbackMode() {
         viewport: { width: window.innerWidth, height: window.innerHeight },
         dpr: window.devicePixelRatio || 1,
         theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
-        platform:
-          (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData
-            ?.platform ||
-          navigator.platform ||
-          '',
+        platform: feedbackPlatform(),
         ua: navigator.userAgent,
         language: navigator.language,
         hostId,

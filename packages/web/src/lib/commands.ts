@@ -309,6 +309,21 @@ const DEBUG_COMMANDS: AppCommand[] = __TANDEM_DEBUG__
           useFeedbackStore.getState().enter()
         },
       },
+      {
+        id: 'app.mobilePreview',
+        title: '打开手机预览',
+        keywords: ['手机', '预览', '移动端', '触摸', 'mobile', 'preview'],
+        defaultShortcut: 'mod+shift+m',
+        run: async () => {
+          const { openMobilePreview } = await import('../lib/mobilePreview')
+          const result = await openMobilePreview()
+          if (result === 'blocked') {
+            toast('浏览器阻止了弹窗，请允许弹窗后重试')
+          } else if (result === 'window') {
+            toast('已打开手机预览 · 浏览器版无法模拟触摸', 'info')
+          }
+        },
+      },
     ]
   : []
 

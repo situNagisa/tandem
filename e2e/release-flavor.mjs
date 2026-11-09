@@ -99,7 +99,7 @@ async function main() {
     const bodyText = () => page.locator('body').innerText()
     const assertNoDebugText = async (where) => {
       const text = await bodyText()
-      for (const word of ['演示工作区', '体验清单', '反馈模式', '组件画廊', '调试版']) {
+      for (const word of ['演示工作区', '体验清单', '反馈模式', '组件画廊', '调试版', '手机预览']) {
         assert.ok(!text.includes(word), `${where} 不应出现「${word}」`)
       }
     }
@@ -156,17 +156,31 @@ async function main() {
     await sleep(300)
     const commandInput = page.getByPlaceholder(/命令|搜索/).first()
     if (await commandInput.count()) {
-      for (const word of ['演示', '体验清单', '反馈', '组件画廊']) {
+      for (const word of ['演示', '体验清单', '反馈', '组件画廊', '手机预览']) {
         await commandInput.fill(word)
         await sleep(250)
         const text = await bodyText()
-        for (const label of ['打开演示工作区', '打开体验清单', '进入反馈模式', '组件画廊']) {
+        for (const label of ['打开演示工作区', '打开体验清单', '进入反馈模式', '组件画廊', '打开手机预览']) {
           assert.ok(!text.includes(label), `命令面板「${word}」不应出现「${label}」`)
         }
       }
+      await commandInput.fill('')
     }
+    await page.keyboard.press('Escape')
+    await sleep(200)
 
-    console.log('[release-flavor] 通过：发布版没有反馈、演示、体验清单与组件画廊入口')
+    // 手机预览查询参数在发布版不生效（不渲染模拟顶栏）。
+    await page.goto(`${base}/?token=${token}&mobilePreview=1#/h/${hostId}`, {
+      waitUntil: 'domcontentloaded',
+    })
+    await page.locator('textarea').first().waitFor({ state: 'visible', timeout: 20_000 })
+    assert.equal(
+      await page.locator('[data-mobile-preview-bar]').count(),
+      0,
+      '发布版不应渲染手机预览顶栏',
+    )
+
+    console.log('[release-flavor] 通过：发布版没有反馈、演示、体验清单、组件画廊与手机预览入口')
   } finally {
     if (browser) await browser.close().catch(() => {})
     host.child.kill()

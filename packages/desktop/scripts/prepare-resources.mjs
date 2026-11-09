@@ -111,7 +111,11 @@ fs.copyFileSync(iconSrc, path.join(outDir, 'icons', 'icon.png'));
 fs.mkdirSync(path.join(desktopDir, 'build'), { recursive: true });
 fs.copyFileSync(iconSrc, path.join(desktopDir, 'build', 'icon.png'));
 
+// 主进程据此决定是否注册调试版入口（手机预览等）。
+const flavor = process.env.TANDEM_FLAVOR === 'release' ? 'release' : 'debug';
+fs.writeFileSync(path.join(outDir, 'flavor.txt'), `${flavor}\n`);
+
 const depCount = fs.existsSync(path.join(outDir, 'server', 'node_modules'))
   ? fs.readdirSync(path.join(outDir, 'server', 'node_modules')).length
   : 0;
-console.log(`[resources] 完成：${outDir}（node_modules 顶层 ${depCount} 项）`);
+console.log(`[resources] 完成：${outDir}（node_modules 顶层 ${depCount} 项，flavor=${flavor}）`);

@@ -15,7 +15,14 @@ export function useMediaQuery(query: string): boolean {
 }
 
 export function useIsMobile(): boolean {
-  return useMediaQuery('(max-width: 767px)')
+  const narrow = useMediaQuery('(max-width: 767px)')
+  if (narrow) return true
+  // 手机预览（含平板预设 800×1280）始终使用移动端布局，与安卓 App 保持一致。
+  try {
+    return document.documentElement.dataset.mobilePreview === '1'
+  } catch {
+    return false
+  }
 }
 
 /** 元素宽度（分屏窗格紧凑排版用）；用回调 ref，元素切换后重新观察。 */

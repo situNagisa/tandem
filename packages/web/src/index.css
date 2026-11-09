@@ -391,6 +391,11 @@ html.feedback-mode .ui-tip {
   height: var(--app-height, 100dvh);
 }
 
+/* 调试版手机预览：顶部 30px 模拟条不占用应用内容高度（border-box）。 */
+html[data-mobile-preview] .app-root {
+  padding-top: 30px;
+}
+
 .no-scrollbar {
   scrollbar-width: none;
 }
