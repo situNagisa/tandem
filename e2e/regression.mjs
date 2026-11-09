@@ -8204,6 +8204,71 @@ async function main() {
       assert.equal(wikiAfter.exists, false, '演示 Wiki 未清除')
     })
 
+    desktop('会话图：轮次节点、彩色泳道、子代理合并线与分叉标签可区分', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const scenario = state.scenarios.find((item) => item.id === 'subagents')
+      assert.ok(scenario?.sessionIds?.length >= 4, '演示子代理场景缺少子代理/孙代理/分叉会话')
+      const [mainId, , , forkId] = scenario.sessionIds
+      await openSession(page, mainId)
+
+      const graph = page.locator('[data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+      // 收起时标题行给出轮/子代理/分叉数量。
+      const group = page.locator('[data-group="graph"]').first()
+      assert.match(await group.innerText(), /轮.*子代理.*分叉/, '会话图卡片标题未显示汇总')
+      // 所有节点均为同一种实心圆（不再用空心圆/菱形区分）。
+      assert.ok((await graph.locator('[data-marker="circle"]').count()) >= 3, '会话图节点不足')
+      assert.equal(
+        await graph.locator('[data-marker]:not([data-marker="circle"])').count(),
+        0,
+        '存在非圆形节点',
+      )
+      const colors = await graph.evaluate((root) => {
+        const color = (kind) => {
+          const el = root.querySelector(`div[data-kind="${kind}"] [data-marker="circle"]`)
+          return el ? getComputedStyle(el).backgroundColor : ''
+        }
+        return {
+          main: color('turn'),
+          sub: color('subagent'),
+          fork: color('fork'),
+        }
+      })
+      assert.ok(colors.main && colors.sub && colors.fork, '缺少主线/子代理/分叉节点')
+      assert.notEqual(colors.main, colors.sub, '子代理泳道与主线同色')
+      assert.notEqual(colors.sub, colors.fork, '子代理与分叉泳道同色')
+      // 子代理有合并回主线的曲线；分叉线不合并，节点行尾有「分叉」标签。
+      assert.ok(
+        (await graph.locator('path[data-kind="subagent"][data-merge="1"]').count()) > 0,
+        '子代理分支没有合并线',
+      )
+      assert.ok((await graph.locator('path[data-kind="fork"]').count()) > 0, '分叉没有连线')
+      assert.equal(
+        await graph.locator('path[data-kind="fork"][data-merge]').count(),
+        0,
+        '分叉不应合并回主线',
+      )
+      assert.match(await graph.locator('div[data-kind="fork"]').first().innerText(), /分叉/)
+
+      // 点主线节点跳到对应轮并高亮。
+      await page.locator('.msg-jump-hit').first().waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
+      await graph.locator('div[data-kind="turn"]').first().click()
+      await page.locator('.msg-jump-hit').first().waitFor({ state: 'visible', timeout: 5_000 })
+
+      // 卡片右上角可全高展开，顶部返回恢复面板。
+      await group.locator('[aria-label="全高显示会话图"]').click()
+      const full = page.locator('[data-graph-full]')
+      await full.waitFor({ state: 'visible', timeout: 10_000 })
+      await full.getByRole('button', { name: /返回/ }).click()
+      await full.waitFor({ state: 'detached', timeout: 5_000 })
+
+      // 点分叉节点打开那个分叉会话。
+      const forkTitle = (await api(base, token, `/api/sessions/${encodeURIComponent(forkId)}`)).title
+      await page.locator('[data-session-graph] div[data-kind="fork"]').first().click()
+      await page.getByText(forkTitle, { exact: true }).first().waitFor({ timeout: 10_000 })
+    })
+
     desktop('体验清单「有问题」进入反馈并带功能标签，导出与解包按功能分组', async (page) => {
       const state = await api(base, token, '/api/demo')
       if (!state.active) await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
