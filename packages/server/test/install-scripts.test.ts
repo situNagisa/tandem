@@ -44,6 +44,7 @@ test('install.ps1：param 块、默认地址、下载/解压方式', () => {
   assert.ok(script.includes('/dl/tandem-host.zip'), 'Windows 下载 ZIP 安装包');
   assert.ok(script.includes('Expand-Archive'), 'Windows 用 Expand-Archive 解压（不依赖 tar）');
   assert.ok(!/tar -[a-z]*x/.test(script), 'Windows 脚本不能再调用 tar（中文路径会失败）');
+  assert.ok(!/\bexit\s+\d/.test(script), '一行命令在用户 PowerShell 会话里执行，不能用 exit 关掉窗口');
   assert.match(script, /手动安装步骤：/);
   assert.match(script, /dist\\cli\.js/);
   assert.ok(script.includes('--no-service'));

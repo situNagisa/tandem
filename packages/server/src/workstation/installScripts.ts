@@ -254,7 +254,8 @@ function Exit-WithHelp {
   Write-Host '  3. 登记本机（把 <绑定码> 换成工作站生成的一次性令牌，15 分钟有效）：'
   Write-Host "       node '$AppDir\\dist\\cli.js' join $Server --token <绑定码> --name $([Environment]::MachineName)"
   Write-Host '     默认安装为登录自启的系统服务；只想起后台进程时加 --no-service。'
-  exit 1
+  # 一行命令用 scriptblock 在当前 PowerShell 会话里执行：exit 会直接关掉用户的窗口，改用 throw。
+  throw $Message
 }
 
 if (-not $Server) { Exit-WithHelp '请用 -Server 指定工作站地址' }
@@ -275,7 +276,7 @@ if ($DryRun) {
   Write-Host "    2. 下载 $Server/dl/tandem-host.zip 并用 Expand-Archive 解压到 $AppDir"
   Write-Host "    3. 写启动脚本 $BinDir\\tandem-host.cmd"
   Write-Host "    4. 运行: node $AppDir\\dist\\cli.js join $Server --token $(Mask-Token $Token) --name $Name $(if ($Port -gt 0) { "--port $Port" } else { '' }) $(if ($NoService) { '--no-service' } else { '--service' })"
-  exit 0
+  return
 }
 
 $NodeCmd = Get-Command node -ErrorAction SilentlyContinue
@@ -332,8 +333,8 @@ try {
   if ($code -ne 0) {
     Write-Host "[x] 登记失败（退出码 $code）。" -ForegroundColor Red
     Write-Host '    绑定码一次性且 15 分钟内有效；可在工作站「添加主机」重新生成后再执行本命令。'
+    throw "登记失败（退出码 $code）"
   }
-  exit $code
 } finally {
   Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
 }
