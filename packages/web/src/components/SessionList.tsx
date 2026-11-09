@@ -813,7 +813,7 @@ export function SessionList({
                   : showArchived
                     ? '没有已归档的会话'
                     : noHosts
-                      ? '还没有连接主机，在左下角设置中添加。'
+                      ? '还没有主机，先在右侧添加一台主机，才能开始会话。'
                       : '还没有会话，从上方「新会话」开始。'}
             </p>
           </div>

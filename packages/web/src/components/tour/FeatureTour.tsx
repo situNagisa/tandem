@@ -178,9 +178,9 @@ function TourPanel({ onClose, onJump }: { onClose: () => void; onJump: (entry: C
 
 const STEPS = [
   {
-    title: '连接一台主机',
-    body: '桌面端会自动连接本机；浏览器端输入主机地址，或让已连接的设备扫码。',
-    action: '打开主机设置',
+    title: '添加一台主机',
+    body: '登录后在「添加主机」里复制一行命令，到目标机器上执行一次；桌面端也可以直接「添加这台电脑」。',
+    action: '添加主机',
     tab: 'hosts' as const,
     icon: Server,
   },
@@ -403,7 +403,10 @@ export function FeatureTour() {
         <OnboardingCard
           onFinish={finishOnboarding}
           onSkip={skipOnboarding}
-          onOpenSettings={(tab) => useUiStore.getState().openSettings(tab)}
+          onOpenSettings={(tab) => {
+            if (tab === 'hosts') useUiStore.getState().setAddHostOpen(true)
+            else useUiStore.getState().openSettings(tab)
+          }}
         />
       )}
       {!aboutOpen && !onboardingOpen && autoMode !== 'onboarding' && (

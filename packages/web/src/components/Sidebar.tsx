@@ -9,6 +9,7 @@ import { isSessionFilterActive, type SessionFilter } from '../lib/types'
 import { isDesktop, isMacDesktop } from '../lib/desktop'
 import { Button, IconButton } from './ui/Button'
 import { Menu } from './ui/Menu'
+import { Tooltip } from './ui/Tooltip'
 import { SessionList, sessionProjectName } from './SessionList'
 import { useInboxCount } from './inbox/InboxView'
 import { navigateBoard, useBoardRoute } from '../lib/boardRoute'
@@ -21,6 +22,8 @@ const EXTERNAL_SOURCES = [
   { value: 'claude-code', label: 'Claude Code' },
   { value: 'codex', label: 'Codex' },
 ] as const
+
+const NO_HOST_REASON = '账号下还没有主机：先添加一台主机，才能开始会话'
 
 export function Sidebar({
   inDrawer = false,
@@ -52,6 +55,7 @@ export function Sidebar({
     (s) => s.hosts.find((h) => h.id === s.activeHostId)?.url ?? '',
   )
   const hosts = useAppStore((s) => s.hosts)
+  const noHosts = hosts.length === 0
   const runtimes = useAppStore((s) => s.runtimes)
   const sessionFilter = useUiStore((s) => s.sessionFilter)
   const setSessionFilter = useUiStore((s) => s.setSessionFilter)
@@ -306,28 +310,40 @@ export function Sidebar({
 
       <div className="px-2 pb-1">
         {!readOnly && (
-        <Button variant="ghost" onClick={startNewSession} className={row}>
-          <Plus size={15} className="shrink-0 opacity-70" />
-          <span className="min-w-0 flex-1 truncate">新会话</span>
-          <kbd className="hidden shrink-0 text-[10px] font-normal text-muted md:inline">
-            {modLabel} N
-          </kbd>
-        </Button>
+          <Tooltip label={noHosts ? NO_HOST_REASON : ''} className="block w-full">
+            <Button
+              variant="ghost"
+              onClick={startNewSession}
+              disabled={noHosts}
+              data-testid="sidebar-new-session"
+              className={row}
+            >
+              <Plus size={15} className="shrink-0 opacity-70" />
+              <span className="min-w-0 flex-1 truncate">新会话</span>
+              <kbd className="hidden shrink-0 text-[10px] font-normal text-muted md:inline">
+                {modLabel} N
+              </kbd>
+            </Button>
+          </Tooltip>
         )}
         {!readOnly && (
-        <Button
-          variant="ghost"
-          onClick={() => {
-            setDispatchOpen(true, activeHostId ?? undefined)
-            onNavigate?.()
-          }}
-          className={row}
-          tooltip="跨主机派单：把整个任务交给另一台主机执行（不拆子任务）"
-          tooltipSide="bottom"
-        >
-          <Send size={15} className="shrink-0 opacity-70" />
-          <span className="min-w-0 flex-1 truncate">跨主机派单</span>
-        </Button>
+          <Tooltip
+            label={noHosts ? NO_HOST_REASON : '跨主机派单：把整个任务交给另一台主机执行（不拆子任务）'}
+            className="block w-full"
+          >
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setDispatchOpen(true, activeHostId ?? undefined)
+                onNavigate?.()
+              }}
+              disabled={noHosts}
+              className={row}
+            >
+              <Send size={15} className="shrink-0 opacity-70" />
+              <span className="min-w-0 flex-1 truncate">跨主机派单</span>
+            </Button>
+          </Tooltip>
         )}
         {boardHost && !readOnly && (
         <Button
