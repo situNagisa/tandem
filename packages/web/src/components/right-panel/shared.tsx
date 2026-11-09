@@ -63,15 +63,18 @@ export function savePanelWidth(width: number): void {
 export interface PanelPrefs {
   order: GroupId[]
   hidden: GroupId[]
-  /** 显示暂无数据的分组（反馈9#06，默认关闭）；记住选择。 */
-  showEmpty: boolean
+  /**
+   * 用户显式要求显示的空分组（反馈10#03）。没有数据的分组默认隐藏；
+   * 在面板顶部 ⋯ 菜单勾选后才出现在这里。旧版本的整体开关 `showEmpty` 不再使用。
+   */
+  shown: GroupId[]
 }
 
 export function loadPanelPrefs(): PanelPrefs {
   try {
     const raw = localStorage.getItem(PREFS_KEY)
-    if (!raw) return { order: [...DEFAULT_ORDER], hidden: [], showEmpty: false }
-    const parsed = JSON.parse(raw) as { order?: unknown; hidden?: unknown; showEmpty?: unknown }
+    if (!raw) return { order: [...DEFAULT_ORDER], hidden: [], shown: [] }
+    const parsed = JSON.parse(raw) as { order?: unknown; hidden?: unknown; shown?: unknown }
     const order = Array.isArray(parsed.order)
       ? parsed.order.filter((id): id is GroupId => typeof id === 'string' && GROUP_IDS.has(id as GroupId))
       : []
@@ -79,9 +82,12 @@ export function loadPanelPrefs(): PanelPrefs {
     const hidden = Array.isArray(parsed.hidden)
       ? parsed.hidden.filter((id): id is GroupId => typeof id === 'string' && GROUP_IDS.has(id as GroupId))
       : []
-    return { order, hidden: [...new Set(hidden)], showEmpty: parsed.showEmpty === true }
+    const shown = Array.isArray(parsed.shown)
+      ? parsed.shown.filter((id): id is GroupId => typeof id === 'string' && GROUP_IDS.has(id as GroupId))
+      : []
+    return { order, hidden: [...new Set(hidden)], shown: [...new Set(shown)] }
   } catch {
-    return { order: [...DEFAULT_ORDER], hidden: [], showEmpty: false }
+    return { order: [...DEFAULT_ORDER], hidden: [], shown: [] }
   }
 }
 

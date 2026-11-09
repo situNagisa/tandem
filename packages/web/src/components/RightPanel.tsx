@@ -52,7 +52,6 @@ import { useContextBreakdown } from './chat/ContextMeter'
 import { Modal } from './ui/Modal'
 import { Menu } from './ui/Menu'
 import { Button, IconButton } from './ui/Button'
-import { Switch } from './ui/Controls'
 import { PanelBar, PanelBody } from './ui/Panel'
 import { ResizeHandle } from './ui/ResizeHandle'
 import { rememberWikiHost, useWikiStore } from '../store/useWikiStore'
@@ -309,7 +308,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   )
 
   const visibleGroups = prefs.order.filter(
-    (id) => !prefs.hidden.includes(id) && (prefs.showEmpty || hasData[id]),
+    (id) => !prefs.hidden.includes(id) && (hasData[id] || prefs.shown.includes(id)),
   )
   const visibleKey = visibleGroups.join(',')
   const orderKey = prefs.order.join(',')
@@ -392,7 +391,7 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
     orderKeyRef.current = orderKey
     sessionKeyRef.current = sessionId
     mountedRef.current = true
-  }, [visibleKey, orderKey, prefs.showEmpty, sessionId])
+  }, [visibleKey, orderKey, sessionId])
 
   // 卡片内容高度变化（数据增长、展开明细）后刷新基线，下一次插入/删除才只按增量补偿。
   useLayoutEffect(() => {
@@ -416,10 +415,23 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
   }
 
   const toggleGroup = (id: GroupId) => {
-    setPrefs((p) => ({
-      ...p,
-      hidden: p.hidden.includes(id) ? p.hidden.filter((x) => x !== id) : [...p.hidden, id],
-    }))
+    setPrefs((p) => {
+      const visible = !p.hidden.includes(id) && (hasData[id] || p.shown.includes(id))
+      if (visible) {
+        // 有数据的分组取消勾选 → 记进 hidden；只是被显式显示的空分组 → 回到默认隐藏，
+        // 这样之后有了数据仍会自动出现。
+        return {
+          ...p,
+          hidden: hasData[id] ? [...p.hidden, id] : p.hidden.filter((x) => x !== id),
+          shown: p.shown.filter((x) => x !== id),
+        }
+      }
+      return {
+        ...p,
+        hidden: p.hidden.filter((x) => x !== id),
+        shown: hasData[id] || p.shown.includes(id) ? p.shown : [...p.shown, id],
+      }
+    })
   }
 
   const copyCwd = async () => {
@@ -930,26 +942,14 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
           )}
         >
           {GROUPS.map((g) => {
-            const shown = !prefs.hidden.includes(g.id)
             const avail = hasData[g.id]
-            const reason = avail
-              ? undefined
-              : g.id === 'plan'
-                ? '当前会话没有计划'
-                : g.id === 'agents'
-                  ? '当前会话没有子代理'
-                  : g.id === 'changes'
-                    ? changes && !changes.isRepo
-                      ? '非 git 仓库，无改动摘要'
-                      : '当前没有改动'
-                    : '暂无数据'
+            const shown = !prefs.hidden.includes(g.id) && (avail || prefs.shown.includes(g.id))
             return (
               <Menu.CheckItem
                 key={g.id}
                 icon={<g.Icon />}
                 checked={shown}
-                disabled={!avail && !prefs.showEmpty}
-                disabledReason={reason}
+                hint={avail ? undefined : '暂无数据；勾选后也会显示这个分组'}
                 onCheckedChange={() => toggleGroup(g.id)}
               >
                 {g.label}
@@ -1024,22 +1024,12 @@ export function RightPanel({ onClose }: { onClose: () => void }) {
         {visibleGroups.length === 0 && (
           <div className="flex flex-col items-center gap-2 px-4 py-10 text-center text-[13px] leading-5 text-muted">
             <Info size={15} />
-            {prefs.showEmpty
-              ? '所有分组已隐藏，点击右上角 ⋯ 恢复显示。'
-              : '当前没有可显示的分组；可在底部打开「显示空分组」查看。'}
+            当前没有可显示的分组；点右上角 ⋯ 勾选要显示的分组（没有数据的分组默认隐藏）。
           </div>
         )}
       </PanelBody>
 
       <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-2.5">
-        <div className="flex items-center gap-2 text-[12px] text-muted">
-          <Switch
-            checked={prefs.showEmpty}
-            onChange={(checked) => setPrefs((p) => ({ ...p, showEmpty: checked }))}
-            label="显示空分组"
-          />
-          显示空分组
-        </div>
         <span className="flex-1" />
         <Button
           size="sm"

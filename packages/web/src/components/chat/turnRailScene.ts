@@ -195,6 +195,17 @@ export class RailScene {
     this.kick()
   }
 
+  /**
+   * 滚轮预览：只上下移动大纲列表本身，不改变当前选中轮（C），
+   * 调用方也不滚动对话区。指针停在原处时，悬停行随列表移动。
+   */
+  scrollBy(rows: number): void {
+    if (!this.N || !rows) return
+    this.L.t = clamp(this.L.t + rows, 1, this.N)
+    this.held = 0
+    this.kick()
+  }
+
   setOpen(open: boolean): void {
     this.P.t = open ? 1 : 0
     if (!open) {

@@ -361,11 +361,31 @@ export function TurnRail({
   }
   const originalOf = (pos: number): number => viewTurnsRef.current[pos - 1]?.turn ?? pos
 
+  const jumpSeq = useRef(0)
+
+  /** 目标轮已经在 DOM 里：滚动到它并高亮 2.8s。 */
+  const revealTurn = (rootEl: HTMLElement, id: string): boolean => {
+    const el = rootEl.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(id)}"]`)
+    if (!el) return false
+    const top = Math.max(
+      0,
+      el.getBoundingClientRect().top - rootEl.getBoundingClientRect().top + rootEl.scrollTop - 16,
+    )
+    rootEl.scrollTop = top
+    const row = el.closest<HTMLElement>('.msg-row') ?? el
+    row.classList.remove('msg-jump-hit')
+    void row.offsetWidth
+    row.classList.add('msg-jump-hit')
+    window.setTimeout(() => row.classList.remove('msg-jump-hit'), 2800)
+    return true
+  }
+
   const go = useCallback(
     (turn: number, opts?: { recenter?: boolean; instant?: boolean }) => {
       const count = totalRef.current
       if (count < 1) return
       const target = clamp(Math.round(turn), 1, count)
+      const seq = ++jumpSeq.current
       activeRef.current = target
       setActiveTurn(target)
       sticky.current = true
@@ -380,31 +400,46 @@ export function TurnRail({
         const rendered = root.querySelector<HTMLElement>(
           `[data-turn-id="${CSS.escape(targetId)}"]`,
         )
-        if (!loaded) {
-          // 目标轮不在首屏尾部：按需取该段，挂载后再重新定位。
+        if (!loaded || (!rendered && target !== totalRef.current)) {
+          // 目标轮还没加载（长会话懒加载）或被渲染窗口裁掉：先让消息列表取该段并扩大窗口，
+          // 等节点真正挂载后再滚动 + 高亮，不能出现「点了没反应」（反馈10#01）。
           window.dispatchEvent(
             new CustomEvent('tandem-jump-message', { detail: { messageId: targetId } }),
           )
           void (async () => {
-            for (let attempt = 0; attempt < 40; attempt++) {
-              const ok = await state.ensureMessageLoaded(hostId, sessionId, targetId)
-              if (ok) {
-                window.dispatchEvent(
-                  new CustomEvent('tandem-jump-message', { detail: { messageId: targetId } }),
-                )
-                window.setTimeout(() => goRef.current(target, { recenter: false, instant: true }), 140)
+            if (!loaded) {
+              for (let attempt = 0; attempt < 50; attempt++) {
+                if (seq !== jumpSeq.current) return
+                if (await state.ensureMessageLoaded(hostId, sessionId, targetId)) break
+                await new Promise((resolve) => window.setTimeout(resolve, 200))
+              }
+              if (seq !== jumpSeq.current) return
+              // 消息到达后让 MessageList 再扩一次渲染窗口。
+              window.dispatchEvent(
+                new CustomEvent('tandem-jump-message', { detail: { messageId: targetId } }),
+              )
+            }
+            for (let attempt = 0; attempt < 100; attempt++) {
+              if (seq !== jumpSeq.current) return
+              const rootEl = scrollRef.current
+              if (rootEl && revealTurn(rootEl, targetId)) {
+                const scene = sceneRef.current
+                const viewPos = viewPosOf(target)
+                if (viewPos > 0) {
+                  scene?.setActive(viewPos)
+                  scene?.setCenter(viewPos)
+                }
                 return
               }
-              await new Promise((resolve) => window.setTimeout(resolve, 220))
+              await new Promise((resolve) => window.setTimeout(resolve, 80))
             }
+            if (seq !== jumpSeq.current) return
+            // 定位到首尾两轮之外仍失败时至少给出反馈，而不是静默。
+            useUiStore.getState().toast('这一轮的消息暂时加载失败，请稍后重试', 'error')
           })()
-          return
-        }
-        if (!rendered && target !== 1 && target !== totalRef.current) {
-          // 已在消息数组里但被渲染窗口裁掉：让消息列表扩大窗口并滚过去。
-          window.dispatchEvent(
-            new CustomEvent('tandem-jump-message', { detail: { messageId: targetId } }),
-          )
+          const scene = sceneRef.current
+          const earlyPos = viewPosOf(target)
+          if (earlyPos > 0) scene?.setActive(earlyPos)
           return
         }
       }
@@ -628,7 +663,8 @@ export function TurnRail({
     return () => window.clearTimeout(timer)
   }, [feedbackActive, open, closePanel])
 
-  // 滚轮 = 逐轮移动：鼠标滚轮每格一轮，触控板累积到阈值再走一轮。
+  // 滚轮 = 预览式滚动大纲列表：不改变当前选中轮、不滚动对话区（反馈10#01）。
+  // 点某一行才跳转；滚轮看完早期轮次不会被自动带离当前阅读位置。
   useEffect(() => {
     const hit = hitRef.current
     if (!railOn || !hit) return
@@ -655,15 +691,16 @@ export function TurnRail({
         }
       }
       if (!steps) return
-      sceneRef.current?.setHoverEnabled(false)
-      const list = viewTurnsRef.current
-      if (list.length === 0) return
-      const currentPos = viewPosOf(activeRef.current) || (steps > 0 ? 0 : list.length + 1)
-      go(originalOf(clamp(currentPos + clamp(steps, -3, 3), 1, list.length)))
+      const scene = sceneRef.current
+      if (!scene) return
+      if (!scene.open) openPanel()
+      scene.scrollBy(clamp(steps, -4, 4))
+      // 列表移动后指针下的行变了：让悬停用量 tooltip 跟上（不触发跳转）。
+      hoverSyncRef.current(scene.hoverTurn)
     }
     hit.addEventListener('wheel', onWheel, { passive: false })
     return () => hit.removeEventListener('wheel', onWheel)
-  }, [railOn, go])
+  }, [railOn, go, openPanel])
 
   const pointerY = (event: ReactPointerEvent<HTMLElement>): number =>
     event.clientY - (navRef.current?.getBoundingClientRect().top ?? 0)
