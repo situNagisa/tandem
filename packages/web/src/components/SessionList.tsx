@@ -874,7 +874,7 @@ export function SessionList({
               : 'Codex'
             const entries = [
               ...project.items.map((s) => (
-                <Fragment key={`${hostId}:${s.id}`}>{renderRow(hostId, s)}</Fragment>
+                <Fragment key={`${hostId}:${s.id}`}>{renderRow(hostId, s, 0, 'recent', true)}</Fragment>
               )),
               ...shownExternals.map((ext) => renderExternal(hostId, ext)),
             ]
@@ -885,14 +885,12 @@ export function SessionList({
                 data-project-row
                 data-project-key={project.key}
                 data-project-pinned={projectPinned || undefined}
+                data-host-indented={indented || undefined}
               >
                 <div className="group/proj flex h-8 min-w-0 items-center rounded-lg pr-0.5 transition-colors hover:bg-[var(--t-bg-hover)] max-sm:h-11">
                   <button
                     onClick={() => toggleProject(project.key)}
-                    className={cn(
-                      'flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left text-[13px] font-medium text-text-secondary transition-colors duration-[120ms] hover:text-text max-sm:h-11',
-                      indented ? 'pl-5' : 'pl-1.5',
-                    )}
+                    className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg pl-1.5 text-left text-[13px] font-medium text-text-secondary transition-colors duration-[120ms] hover:text-text max-sm:h-11"
                     aria-expanded={!projCollapsed}
                     data-tip={projectTip || project.name}
                   >
@@ -946,7 +944,7 @@ export function SessionList({
                   aria-hidden={projCollapsed}
                   inert={projCollapsed}
                 >
-                  <div className={cn('expand-inner space-y-0.5', indented ? 'pl-6' : 'pl-4')}>
+                  <div className="expand-inner space-y-0.5">
                     {entries}
                     {hiddenExternalCount > 0 && (
                       <button
