@@ -7,12 +7,12 @@ import {
   Eye,
   EyeOff,
   FileJson,
-  Loader2,
   Share2,
   ShieldCheck,
   TriangleAlert,
   Upload,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { ConfigBundle, ConfigImportResult } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
@@ -329,7 +329,7 @@ export function SyncSection() {
               onClick={() => void exportConfig()}
               disabled={exporting || !exportPass.trim()}
             >
-              {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+              {exporting ? <Spinner size={14} /> : <Download size={14} />}
               导出并下载
             </Button>
             {bundle && (
@@ -481,7 +481,7 @@ export function SyncSection() {
               onClick={requestImport}
               disabled={importing || !importBundle}
             >
-              {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              {importing ? <Spinner size={14} /> : <Upload size={14} />}
               导入配置
             </Button>
           </div>

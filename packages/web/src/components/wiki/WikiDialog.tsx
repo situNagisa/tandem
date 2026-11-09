@@ -4,12 +4,12 @@ import {
   BookOpen,
   CalendarClock,
   FileText,
-  Loader2,
   Pencil,
   RefreshCw,
   Search,
   Sparkles,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { WikiPage, WikiSearchHit } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
@@ -395,7 +395,7 @@ export function WikiDialog() {
             {running ? (
               <div className="border-b border-border bg-[var(--t-surface-2)]/50 px-4 py-2">
                 <div className="flex items-center gap-2 text-[12px] text-text-soft">
-                  <Loader2 size={12} className="animate-spin" />
+                  <Spinner size={12} />
                   <span className="min-w-0 flex-1 truncate">
                     {running.current ? `正在生成：${running.current}` : '准备生成…'}
                   </span>
@@ -457,7 +457,7 @@ export function WikiDialog() {
                 </div>
               ) : meta?.exists ? (
                 <div className="flex h-full items-center justify-center text-[12px] text-muted">
-                  <Loader2 size={14} className="mr-2 animate-spin" /> 正在读取页面…
+                  <Spinner size={14} className="mr-2" /> 正在读取页面…
                 </div>
               ) : (
                 <div className="mx-auto flex h-full max-w-[440px] flex-col items-center justify-center gap-3 text-center">

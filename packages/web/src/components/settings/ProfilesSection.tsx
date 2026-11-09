@@ -9,7 +9,6 @@ import {
   GripVertical,
   KeyRound,
   Layers,
-  Loader2,
   Pencil,
   Plus,
   Power,
@@ -22,6 +21,7 @@ import {
   Wifi,
   X,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type {
   KeyStrategy,
   ModelInfo,
@@ -974,7 +974,7 @@ export function ProfilesSection() {
                   </Button>
                 )}
                 <Button variant="primary" onClick={() => void save()} disabled={saving}>
-                  {saving && <Loader2 size={14} className="animate-spin" />}
+                  {saving && <Spinner size={14} />}
                   保存账号
                 </Button>
               </div>
@@ -1149,7 +1149,7 @@ export function ProfilesSection() {
                           disabled={testingId === p.id}
                         >
                           {testingId === p.id ? (
-                            <Loader2 size={12} className="animate-spin" />
+                            <Spinner size={12} />
                           ) : (
                             <Wifi size={12} />
                           )}

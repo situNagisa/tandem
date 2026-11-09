@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import QRCode from 'qrcode'
-import { Check, Copy, Link2, Loader2, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { Check, Copy, Link2, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { CreateShareResult, SessionSummary, ShareExpiry } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { api } from '../../lib/api'
@@ -123,7 +124,7 @@ export function ShareDialog({
               onClick={() => void create()}
               disabled={busy || !host}
             >
-              {busy && <Loader2 size={14} className="animate-spin" />}
+              {busy && <Spinner size={14} />}
               生成链接
             </Button>
           </>

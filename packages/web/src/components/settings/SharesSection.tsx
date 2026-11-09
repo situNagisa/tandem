@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link2, Loader2, RefreshCw, Share2, Trash2, TriangleAlert } from 'lucide-react'
+import { Link2, RefreshCw, Share2, Trash2, TriangleAlert } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { ShareInfo } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { api } from '../../lib/api'
@@ -64,7 +65,7 @@ export function SharesSection() {
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading || !host}>
-          {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+          {loading ? <Spinner size={13} /> : <RefreshCw size={13} />}
           刷新
         </Button>
       </div>
@@ -139,7 +140,7 @@ export function SharesSection() {
                       onClick={() => void revoke(share)}
                       disabled={revoking === share.id}
                     >
-                      {revoking === share.id && <Loader2 size={12} className="animate-spin" />}
+                      {revoking === share.id && <Spinner size={12} />}
                       确认撤销
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setConfirmId(null)}>

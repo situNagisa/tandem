@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUpRight, Loader2, TriangleAlert } from 'lucide-react'
+import { ArrowUpRight, TriangleAlert } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import type { ExternalSource, Message, Session } from '@tandem/protocol'
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
@@ -175,7 +176,7 @@ export function ExternalSessionView({
               disabled={importing}
               className="min-h-10 shrink-0 px-3.5 sm:min-h-[32px]"
             >
-              {importing && <Loader2 size={14} className="animate-spin" />}
+              {importing && <Spinner size={14} />}
               {importedSessionId ? '已在 Tandem 中继续 · 打开' : '在 Tandem 中继续'}
               {!importing && <ArrowUpRight size={14} />}
             </Button>

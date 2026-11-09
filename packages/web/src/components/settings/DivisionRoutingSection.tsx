@@ -10,7 +10,8 @@ import type {
   RouteDomain,
   RouteRole,
 } from '@tandem/protocol'
-import { ChevronDown, GitFork, Loader2, Wand2 } from 'lucide-react'
+import { ChevronDown, GitFork, Wand2 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { profileModelGroups } from '../../lib/profileModels'
 import { ROUTE_MODE_META } from '../../lib/routeLabels'
 import { formatCost } from '../../lib/format'
@@ -226,7 +227,7 @@ export function DivisionRoutingSection({
         <span className="flex-1" />
         {saving && (
           <span className="flex items-center gap-1 text-[12px] text-muted">
-            <Loader2 size={12} className="animate-spin" /> 保存中…
+            <Spinner size={12} /> 保存中…
           </span>
         )}
       </div>

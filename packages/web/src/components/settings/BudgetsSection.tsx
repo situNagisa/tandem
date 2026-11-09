@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, Pencil, Plus, RefreshCw, Trash2, TriangleAlert, Wallet } from 'lucide-react'
+import { Pencil, Plus, RefreshCw, Trash2, TriangleAlert, Wallet } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type {
   BudgetAction,
   BudgetPeriod,
@@ -498,7 +499,7 @@ export function BudgetsSection() {
               disabled={saving}
               className="max-sm:h-11"
             >
-              {saving && <Loader2 size={12} className="animate-spin" />} 保存
+              {saving && <Spinner size={12} />} 保存
             </Button>
           </>
         }

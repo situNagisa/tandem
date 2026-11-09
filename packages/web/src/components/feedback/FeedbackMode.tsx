@@ -4,12 +4,12 @@ import {
   Download,
   ImagePlus,
   ListChecks,
-  Loader2,
   Pencil,
   Trash2,
   Video,
   X,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { useFeedbackStore } from '../../store/useFeedbackStore'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
@@ -599,7 +599,7 @@ function FeedbackEditor({
           <div className="flex shrink-0 items-center gap-1">
             {saving && (
               <span className="flex items-center gap-1 text-[10.5px] text-muted">
-                <Loader2 size={11} className="animate-spin" /> 采集中
+                <Spinner size={11} /> 采集中
               </span>
             )}
             <Button size="sm" variant="ghost" onClick={onCancel} disabled={saving}>
@@ -1853,7 +1853,7 @@ export function FeedbackMode() {
           )}
           {(regionBusy || captureBusy) && (
             <span className="flex items-center gap-1 text-[10.5px] text-muted" role="status" aria-live="polite">
-              <Loader2 size={11} className="animate-spin" /> {regionBusy ? '截取区域' : '截图'}
+              <Spinner size={11} /> {regionBusy ? '截取区域' : '截图'}
             </span>
           )}
           <span className="h-4 w-px bg-border" />

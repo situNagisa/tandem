@@ -18,10 +18,10 @@ import {
   Info,
   KeyRound,
   ListTodo,
-  Loader2,
   Maximize2,
   ScrollText,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import type { MemoryFile, Todo } from '@tandem/protocol'
 import { countTurns } from '@tandem/protocol'
 import type { SubagentSession, UiMessage } from '../lib/types'
@@ -552,7 +552,7 @@ export function RightPanel() {
       if (memoryLoading && !memory) {
         return (
           <p className="flex items-center gap-1.5 text-[12px] text-muted">
-            <Loader2 size={11} className="animate-spin" /> 读取中…
+            <Spinner size={11} /> 读取中…
           </p>
         )
       }

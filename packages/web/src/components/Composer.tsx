@@ -32,7 +32,6 @@ import {
   FileText,
   GitFork,
   Image as ImageIcon,
-  Loader2,
   Map,
   MousePointerClick,
   Paperclip,
@@ -44,6 +43,7 @@ import {
   Terminal,
   X,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -1480,7 +1480,7 @@ export function Composer({
             <span key={sendState} className="send-icon flex items-center justify-center">
               {running ? (
                 stopping ? (
-                  <Loader2 size={15} className="animate-spin" />
+                  <Spinner size={15} />
                 ) : (
                   <Square size={11} className="fill-current" />
                 )

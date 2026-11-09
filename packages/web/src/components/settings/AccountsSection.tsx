@@ -4,7 +4,6 @@ import {
   Copy,
   Globe2,
   KeyRound,
-  Loader2,
   LogIn,
   LogOut,
   Pencil,
@@ -15,6 +14,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type {
   WorkspaceAccount,
   WorkspaceOverview,
@@ -186,7 +186,7 @@ export function AccountsSection() {
       {error && <p className="text-[12.5px] text-[var(--t-danger)]">{error}</p>}
       {loading && (
         <p className="flex items-center gap-2 text-[12.5px] text-muted">
-          <Loader2 size={14} className="animate-spin" /> 正在读取工作区…
+          <Spinner size={14} /> 正在读取工作区…
         </p>
       )}
 
@@ -431,7 +431,7 @@ function CreateWorkspaceForm({
       />
       {error && <p className="text-[12px] text-[var(--t-danger)]">{error}</p>}
       <Button variant="primary" onClick={() => void submit()} disabled={busy}>
-        {busy ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />} 创建工作区并登录
+        {busy ? <Spinner size={14} /> : <Shield size={14} />} 创建工作区并登录
       </Button>
     </div>
   )
@@ -473,7 +473,7 @@ function JoinWorkspaceForm({
       <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="加入码 acj_…" aria-label="加入码" />
       {error && <p className="text-[12px] text-[var(--t-danger)]">{error}</p>}
       <Button variant="primary" onClick={() => void submit()} disabled={busy}>
-        {busy ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />} 加入工作区
+        {busy ? <Spinner size={14} /> : <KeyRound size={14} />} 加入工作区
       </Button>
     </div>
   )
@@ -680,7 +680,7 @@ function CreateAccountDialog({
         <div className="flex w-full justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>取消</Button>
           <Button variant="primary" onClick={() => void submit()} disabled={busy}>
-            {busy ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} {editing ? '保存' : '创建'}
+            {busy ? <Spinner size={14} /> : <UserPlus size={14} />} {editing ? '保存' : '创建'}
           </Button>
         </div>
       }

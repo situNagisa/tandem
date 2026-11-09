@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Loader2, ScanLine, TriangleAlert, X } from 'lucide-react'
+import { ScanLine, TriangleAlert, X } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
 
@@ -101,7 +102,7 @@ export function QrScanDialog({
           <video ref={videoRef} playsInline muted className="aspect-square w-full object-cover" />
           {!ready && !error && (
             <div className="absolute inset-0 flex items-center justify-center text-white/80">
-              <Loader2 size={22} className="animate-spin" />
+              <Spinner size={22} />
             </div>
           )}
           <div className="pointer-events-none absolute inset-10 rounded-xl border-2 border-white/70" />

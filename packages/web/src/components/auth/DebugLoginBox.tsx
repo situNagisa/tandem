@@ -1,6 +1,7 @@
 // 调试版登录页的「使用调试账号登录」入口（只在 __TANDEM_DEBUG__ 分支里惰性加载）。
 import { useEffect, useState } from 'react'
-import { Bug, Loader2 } from 'lucide-react'
+import { Bug} from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { Button } from '../ui/Button'
 import {
   debugLoginAt,
@@ -62,7 +63,7 @@ export function DebugLoginBox({ workstationUrl }: { workstationUrl: string }) {
         disabled={busy}
         onClick={() => void login()}
       >
-        {busy && <Loader2 size={15} className="animate-spin" />}
+        {busy && <Spinner size={15} />}
         使用调试账号登录
       </Button>
       {error && <p className="mt-2 text-[12px] text-[var(--t-danger)]">{error}</p>}

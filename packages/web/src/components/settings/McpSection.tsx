@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ChevronRight,
-  Loader2,
   Pencil,
   Plug,
   Plus,
@@ -9,6 +8,7 @@ import {
   Trash2,
   TriangleAlert,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { McpServerConfig, McpServerStatus } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
@@ -150,7 +150,7 @@ function McpEditor({
             取消
           </Button>
           <Button variant="primary" onClick={save} disabled={busy || !valid}>
-            {busy && <Loader2 size={14} className="animate-spin" />}
+            {busy && <Spinner size={14} />}
             保存
           </Button>
         </>
@@ -421,7 +421,7 @@ export function McpSection() {
 
       {loading && servers.length === 0 && (
         <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-muted">
-          <Loader2 size={14} className="animate-spin" /> 正在读取 MCP 配置…
+          <Spinner size={14} /> 正在读取 MCP 配置…
         </div>
       )}
 
@@ -597,7 +597,7 @@ export function McpSection() {
               onClick={() => void confirmRemove()}
               disabled={saving}
             >
-              {saving && <Loader2 size={14} className="animate-spin" />}
+              {saving && <Spinner size={14} />}
               移除
             </Button>
           </>

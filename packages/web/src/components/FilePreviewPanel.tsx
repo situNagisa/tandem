@@ -8,10 +8,10 @@ import {
   Eye,
   FileText,
   Image as ImageIcon,
-  Loader2,
   RotateCcw,
   X,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { api } from '../lib/api'
@@ -234,7 +234,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
                 tooltip="在主机的文件管理器中显示"
                 className="max-md:size-11"
               >
-                {revealing ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />}
+                {revealing ? <Spinner size={13} /> : <ExternalLink size={13} />}
               </IconButton>
             )}
             <IconButton
@@ -305,7 +305,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
           )}
           {loading ? (
         <div className="flex flex-1 items-center justify-center text-muted">
-          <Loader2 size={16} className="animate-spin" />
+          <Spinner size={16} />
         </div>
       ) : error ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">

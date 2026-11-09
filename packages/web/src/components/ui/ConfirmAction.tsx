@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { AlertTriangle, Loader2, Undo2 } from 'lucide-react'
+import { AlertTriangle, Undo2 } from 'lucide-react'
+import { Spinner } from './Spinner'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
 import { Button } from './Button'
@@ -103,7 +104,7 @@ export function ConfirmAction({
             disabled={pending}
             data-testid={testId ? `${testId}-confirm` : undefined}
           >
-            {pending && <Loader2 size={14} className="animate-spin" />}
+            {pending && <Spinner size={14} />}
             {confirmLabel}
           </Button>
         </div>

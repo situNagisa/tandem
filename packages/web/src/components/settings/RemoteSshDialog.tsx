@@ -3,13 +3,13 @@ import {
   Check,
   ChevronRight,
   CircleAlert,
-  Loader2,
   Lock,
   ServerCog,
   ShieldCheck,
   Terminal,
   TriangleAlert,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type {
   SshAuthKind,
   SshHostInput,
@@ -48,7 +48,7 @@ export function SshJobProgress({ job }: { job: SshJob }) {
             ) : step.status === 'fail' ? (
               <TriangleAlert size={11} />
             ) : step.status === 'running' ? (
-              <Loader2 size={10} className="animate-spin" />
+              <Spinner size={10} />
             ) : (
               <span className="size-1 rounded-full bg-current" />
             )}
@@ -252,7 +252,7 @@ export function RemoteSshDialog({ controller, onClose }: Props) {
           </Button>
           {!keyInfo && (
             <Button variant="primary" onClick={() => void scan()} disabled={busy || !target.trim()}>
-              {scanning && <Loader2 size={13} className="animate-spin" />}
+              {scanning && <Spinner size={13} />}
               检测主机
             </Button>
           )}
@@ -262,7 +262,7 @@ export function RemoteSshDialog({ controller, onClose }: Props) {
               onClick={() => void confirmAndProbe()}
               disabled={busy || keyInfo.changed || (authKind === 'key' && !keyPath.trim()) || (authKind === 'password' && !password)}
             >
-              {probing && <Loader2 size={13} className="animate-spin" />}
+              {probing && <Spinner size={13} />}
               确认指纹并检测
             </Button>
           )}
@@ -273,7 +273,7 @@ export function RemoteSshDialog({ controller, onClose }: Props) {
               onClick={() => void deploy()}
               disabled={busy || !probe.node?.ok && !uploadNode}
             >
-              {deploying && <Loader2 size={13} className="animate-spin" />}
+              {deploying && <Spinner size={13} />}
               部署并添加
             </Button>
           )}

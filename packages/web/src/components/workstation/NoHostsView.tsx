@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Loader2, MonitorSmartphone, Plus, Server } from 'lucide-react'
+import { MonitorSmartphone, Plus, Server } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { useUiStore } from '../../store/useUiStore'
 import { addThisComputer, canAddThisComputer } from '../../lib/addLocalHost'
 import { pageIsLoopback } from '../../lib/localHosts'
@@ -57,7 +58,7 @@ export function NoHostsView() {
               disabled={busy}
               onClick={() => void addLocal()}
             >
-              {busy ? <Loader2 size={15} className="animate-spin" /> : <MonitorSmartphone size={15} />}
+              {busy ? <Spinner size={15} /> : <MonitorSmartphone size={15} />}
               {pageIsLoopback() ? '添加这台电脑' : '添加此页面所在的主机'}
             </Button>
           )}

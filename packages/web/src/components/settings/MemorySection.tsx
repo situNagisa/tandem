@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Brain, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { Brain, Pencil, Trash2 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { MemoryListItem } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
@@ -107,7 +108,7 @@ export function MemorySection() {
           disabled={loading}
           className="max-sm:min-h-11"
         >
-          {loading ? <Loader2 size={13} className="animate-spin" /> : null} 刷新
+          {loading ? <Spinner size={13} /> : null} 刷新
         </Button>
       </div>
 
@@ -203,7 +204,7 @@ export function MemorySection() {
               取消
             </Button>
             <Button size="lg" variant="danger-ghost" onClick={() => void confirmDelete()} disabled={removing}>
-              {removing && <Loader2 size={14} className="animate-spin" />}
+              {removing && <Spinner size={14} />}
               删除
             </Button>
           </>

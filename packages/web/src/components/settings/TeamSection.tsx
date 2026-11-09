@@ -3,7 +3,6 @@ import QRCode from 'qrcode'
 import {
   Check,
   Copy,
-  Loader2,
   RefreshCw,
   ShieldCheck,
   Trash2,
@@ -12,6 +11,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type {
   CreateTeamInviteResult,
   MemberRole,
@@ -199,7 +199,7 @@ function MemberEditDialog({
             取消
           </Button>
           <Button variant="primary" onClick={() => void save()} disabled={saving || !name.trim()}>
-            {saving && <Loader2 size={13} className="animate-spin" />}
+            {saving && <Spinner size={13} />}
             保存
           </Button>
         </>
@@ -385,7 +385,7 @@ export function TeamSection() {
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
-          {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+          {loading ? <Spinner size={13} /> : <RefreshCw size={13} />}
           刷新
         </Button>
       </div>
@@ -419,7 +419,7 @@ export function TeamSection() {
               onClick={() => void createInvite()}
               disabled={creating || !dirs.length}
             >
-              {creating && <Loader2 size={13} className="animate-spin" />}
+              {creating && <Spinner size={13} />}
               生成邀请链接
             </Button>
           </div>
@@ -522,7 +522,7 @@ export function TeamSection() {
                       onClick={() => void revoke(member)}
                       disabled={revoking}
                     >
-                      {revoking && <Loader2 size={12} className="animate-spin" />}
+                      {revoking && <Spinner size={12} />}
                       确认吊销
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setRevokeId(null)}>

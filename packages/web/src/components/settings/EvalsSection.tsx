@@ -3,13 +3,13 @@ import {
   Columns2,
   Download,
   FlaskConical,
-  Loader2,
   Plus,
   RefreshCw,
   Square,
   Trash2,
   TriangleAlert,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type {
   EvalCase,
   EvalConfig,
@@ -68,7 +68,7 @@ function StatusPill({ result }: { result?: EvalResult | Omit<EvalResult, 'messag
       )}
     >
       {(result?.status === 'running' || result?.status === 'queued') && (
-        <Loader2 size={10} className="animate-spin" />
+        <Spinner size={10} />
       )}
       {resultLabel(result)}
     </span>
@@ -560,7 +560,7 @@ export function EvalsSection() {
           </p>
         ) : !run ? (
           <div className="flex items-center justify-center gap-2 px-3 py-12 text-[12.5px] text-muted">
-            <Loader2 size={14} className="animate-spin" /> 加载评测结果…
+            <Spinner size={14} /> 加载评测结果…
           </div>
         ) : (
           <>
@@ -683,7 +683,7 @@ export function EvalsSection() {
               取消
             </Button>
             <Button size="lg" variant="primary" onClick={() => void doStart()} disabled={starting}>
-              {starting && <Loader2 size={14} className="animate-spin" />}
+              {starting && <Spinner size={14} />}
               确认并运行
             </Button>
           </>

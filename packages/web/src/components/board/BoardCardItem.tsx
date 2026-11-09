@@ -1,10 +1,11 @@
-import { Check, CornerUpLeft, GitBranch, Loader2, TriangleAlert } from 'lucide-react'
+import { Check, CornerUpLeft, GitBranch, TriangleAlert } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { Board, BoardCard } from '@tandem/protocol'
 import { cn } from '../../lib/cn'
 import { depTitles, formatUsd, queuedText } from '../../lib/board'
 
 export function CardStatusIcon({ status }: { status: BoardCard['status'] }) {
-  if (status === 'running') return <Loader2 size={14} aria-hidden className="mt-[3px] shrink-0 animate-spin text-text-secondary" />
+  if (status === 'running') return <Spinner size={14} aria-hidden className="mt-[3px] shrink-0 text-text-secondary" />
   if (status === 'approval') return <span aria-hidden className="mt-[7px] inline-block size-2 shrink-0 rounded-full bg-accent" />
   if (status === 'done') return <Check size={14} aria-hidden className="mt-[3px] shrink-0 text-text-tertiary" />
   if (status === 'failed') return <TriangleAlert size={14} aria-hidden className="mt-[3px] shrink-0 text-danger" />

@@ -15,7 +15,6 @@ import {
   Keyboard,
   ListChecks,
   ListTree,
-  Loader2,
   MousePointerClick,
   ScrollText,
   Search,
@@ -25,6 +24,7 @@ import {
   Terminal,
   Wrench,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import { diffLines } from 'diff'
 import type { ContentBlock, Todo, ToolOutputTruncation } from '@tandem/protocol'
 import { api } from '../lib/api'
@@ -841,7 +841,7 @@ export const ToolCard = memo(function ToolCard({
         className="tool-row"
       >
         {running || (isTask && sub?.running) ? (
-          <Loader2 size={14} className="shrink-0 animate-spin text-text-secondary" />
+          <Spinner size={14} className="shrink-0 text-text-secondary" />
         ) : (
           <Icon size={14} className={cn('shrink-0', isError ? 'text-danger' : 'text-muted')} />
         )}
@@ -958,7 +958,7 @@ function SubagentStream({ id, depth }: { id: string; depth: number }) {
           </span>
         )}
         {sub.running ? (
-          <Loader2 size={12} className="shrink-0 animate-spin text-text-secondary" />
+          <Spinner size={12} className="shrink-0 text-text-secondary" />
         ) : (
           <Bot
             size={12}

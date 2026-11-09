@@ -6,9 +6,9 @@ import {
   FileText,
   Folder,
   FolderOpen,
-  Loader2,
   Search,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import { api } from '../lib/api'
 import type { HostConfig } from '../lib/types'
 import { cn } from '../lib/cn'
@@ -106,7 +106,7 @@ function DirNode({
         )}
         <RowIcon entry={entry} open={open} />
         <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-        {loading && <Loader2 size={11} className="shrink-0 animate-spin text-muted" />}
+        {loading && <Spinner size={11} className="shrink-0 text-muted" />}
       </button>
       {open &&
         children?.map((child) =>
@@ -202,7 +202,7 @@ function RootNode({
         )}
         <Folder size={13} className="shrink-0 text-muted" aria-hidden />
         <span className="min-w-0 flex-1 truncate">{baseName(cwd)}</span>
-        {loading && <Loader2 size={11} className="shrink-0 animate-spin text-muted" />}
+        {loading && <Spinner size={11} className="shrink-0 text-muted" />}
       </button>
       {open && failed && <p className="py-1 pl-6 text-[12px] text-danger">无法读取目录</p>}
       {open &&
@@ -304,7 +304,7 @@ export function FileBrowser({
         {trimmed ? (
           searching && !matches ? (
             <div className="flex items-center justify-center py-6 text-muted">
-              <Loader2 size={13} className="animate-spin" />
+              <Spinner size={13} />
             </div>
           ) : matches && matches.length > 0 ? (
             matches.map((rel) => (

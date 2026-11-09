@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { EyeOff, KeyRound, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { EyeOff, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { SecretMeta, SecretScope, SecretsOverview } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
@@ -224,7 +225,7 @@ export function SecretsSection() {
           />
         )}
         <Button variant="ghost" onClick={() => void load()} disabled={loading} className="max-sm:min-h-11">
-          {loading ? <Loader2 size={13} className="animate-spin" /> : null} 刷新
+          {loading ? <Spinner size={13} /> : null} 刷新
         </Button>
         <Button onClick={openCreate} disabled={!host} className="max-sm:min-h-11">
           <Plus size={14} /> 新增 secret
@@ -261,7 +262,7 @@ export function SecretsSection() {
 
       {loading && !overview ? (
         <p className="flex items-center gap-1.5 text-[12px] text-muted">
-          <Loader2 size={12} className="animate-spin" /> 读取中…
+          <Spinner size={12} /> 读取中…
         </p>
       ) : secrets.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-[13px] leading-6 text-muted">
@@ -369,7 +370,7 @@ export function SecretsSection() {
               取消
             </Button>
             <Button size="lg" variant="primary" onClick={() => void save()} disabled={saving}>
-              {saving && <Loader2 size={14} className="animate-spin" />}
+              {saving && <Spinner size={14} />}
               保存
             </Button>
           </>
@@ -469,7 +470,7 @@ export function SecretsSection() {
               取消
             </Button>
             <Button size="lg" variant="danger-ghost" onClick={() => void confirmDelete()} disabled={removing}>
-              {removing && <Loader2 size={14} className="animate-spin" />}
+              {removing && <Spinner size={14} />}
               删除
             </Button>
           </>

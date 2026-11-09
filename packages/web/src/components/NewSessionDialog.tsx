@@ -12,7 +12,6 @@ import {
   GitBranch,
   GitFork,
   ScanLine,
-  Loader2,
   Plus,
   RefreshCw,
   Search,
@@ -20,6 +19,7 @@ import {
   TriangleAlert,
   Wrench,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import type { ContentBlock, DelegationStrategy, FsEntry, PermissionMode, ReasoningEffort, TurnRouteMode } from '@tandem/protocol'
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
@@ -615,7 +615,7 @@ export function ConnectView() {
             disabled={busy}
             className="mt-4 w-full"
           >
-            {busy ? <Loader2 size={14} className="animate-spin" /> : null}
+            {busy ? <Spinner size={14} /> : null}
             测试并连接
           </Button>
         </div>

@@ -258,6 +258,17 @@ for (const file of files) {
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i]
     if (line.includes('ui-audit-ignore')) continue
+    // 加载转圈统一走 ui/Spinner：ui/ 外直接引用 Loader2 会绕过统一的 animate-spin，
+    // 尺寸也容易散落。新增加载态请用 <Spinner size={原尺寸} className={等价 class} />。
+    if (/\bLoader2\b/.test(line)) {
+      issues.push({
+        file: relative(ROOT, file),
+        line: i + 1,
+        check: 'direct-loader-icon',
+        label: '直接使用 Loader2：加载态统一用 ui/Spinner（按原尺寸传 size）',
+        text: line.trim().slice(0, 160),
+      })
+    }
     // 选择器查询（querySelector/closest）里的 role 字符串不是手写弹层，跳过。
     if (/\b(?:querySelector|querySelectorAll|closest|matches)\(/.test(line)) continue
     for (const check of CHECKS) {

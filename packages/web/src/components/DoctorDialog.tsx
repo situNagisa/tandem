@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   CheckCircle2,
   Copy,
-  Loader2,
   MinusCircle,
   RefreshCw,
   Stethoscope,
   TriangleAlert,
   XCircle,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import type { DoctorCheck, DoctorReport, DoctorStatus } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -220,7 +220,7 @@ export function DoctorDialog() {
             onClick={() => void run(testProfiles)}
             disabled={loading}
           >
-            {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+            {loading ? <Spinner size={12} /> : <RefreshCw size={12} />}
             重新检查
           </Button>
         </>
@@ -260,7 +260,7 @@ export function DoctorDialog() {
 
       {!report && loading && (
         <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-muted">
-          <Loader2 size={14} className="animate-spin" /> 正在检查本机环境…
+          <Spinner size={14} /> 正在检查本机环境…
         </div>
       )}
 

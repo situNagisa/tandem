@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  Loader2,
   LogIn,
   Plus,
   RefreshCw,
@@ -9,6 +8,7 @@ import {
   Trash2,
   UserPlus,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type {
   WorkspaceHostInfo,
   WorkstationAccountSummary,
@@ -123,7 +123,7 @@ export function WorkstationSection() {
           </div>
           <div className="flex gap-2">
             <Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={busy}>
-              {busy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} 刷新
+              {busy ? <Spinner size={13} /> : <RefreshCw size={13} />} 刷新
             </Button>
             <Button variant="ghost" size="sm" onClick={() => void logout()}>
               退出登录
@@ -360,7 +360,7 @@ function GrantDialog({
             取消
           </Button>
           <Button variant="primary" onClick={() => void submit()} disabled={busy}>
-            {busy && <Loader2 size={14} className="animate-spin" />} 保存授权
+            {busy && <Spinner size={14} />} 保存授权
           </Button>
         </div>
       }
@@ -400,7 +400,7 @@ function GrantDialog({
                   disabled={removing === grant.accountId}
                   onClick={() => void removeGrant(grant.accountId)}
                 >
-                  {removing === grant.accountId ? <Loader2 size={12} className="animate-spin" /> : '撤销'}
+                  {removing === grant.accountId ? <Spinner size={12} /> : '撤销'}
                 </Button>
               </div>
             ))}

@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ContentBlock } from '@tandem/protocol'
-import { Check, Copy, GitFork, Loader2, MoreHorizontal, RefreshCw, Undo2 } from 'lucide-react'
+import { Check, Copy, GitFork, MoreHorizontal, RefreshCw, Undo2 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { useAppStore } from '../../store/useAppStore'
 import { useSessionTarget, useSessionView } from '../session/SessionScope'
 import { cn } from '../../lib/cn'
@@ -237,7 +238,7 @@ export const AssistantMessage = memo(function AssistantMessage({
                 className="[&_svg]:size-[12.5px]"
               >
                 {regenerating ? (
-                  <Loader2 size={12.5} className="animate-spin" />
+                  <Spinner size={12.5} />
                 ) : (
                   <RefreshCw size={12.5} />
                 )}

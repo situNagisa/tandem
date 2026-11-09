@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { stripMemoryMeta } from '../lib/memory'
-import { Brain, Loader2, Save } from 'lucide-react'
+import { Brain, Save } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import type { MemoryFile } from '@tandem/protocol'
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
@@ -107,7 +108,7 @@ export function MemoryEditorDialog() {
             取消
           </Button>
           <Button size="lg" onClick={() => void save()} disabled={saving || loading || !dirty}>
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {saving ? <Spinner size={14} /> : <Save size={14} />}
             保存
           </Button>
         </>
@@ -150,7 +151,7 @@ export function MemoryEditorDialog() {
       )}
       {loading && (
         <div className="flex items-center gap-2 px-3 py-2 text-[12px] text-muted">
-          <Loader2 size={12} className="animate-spin" /> 读取中…
+          <Spinner size={12} /> 读取中…
         </div>
       )}
     </Modal>

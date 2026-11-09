@@ -9,13 +9,13 @@ import type {
 import {
   ArrowDown,
   ArrowUp,
-  Loader2,
   Plus,
   ShieldCheck,
   Sparkles,
   Trash2,
   TriangleAlert,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { api } from '../../lib/api'
@@ -336,7 +336,7 @@ export function PermissionsSection() {
                     onClick={() => void adopt(item.id)}
                     disabled={busySuggestion !== null}
                   >
-                    {busySuggestion === item.id && <Loader2 size={11} className="animate-spin" />}
+                    {busySuggestion === item.id && <Spinner size={11} />}
                     采纳
                   </Button>
                 </div>
@@ -371,7 +371,7 @@ export function PermissionsSection() {
             disabled={drafting || !nlText.trim()}
             className="max-sm:min-h-11"
           >
-            {drafting && <Loader2 size={12} className="animate-spin" />}
+            {drafting && <Spinner size={12} />}
             生成规则
           </Button>
         </div>
@@ -415,7 +415,7 @@ export function PermissionsSection() {
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-muted">
-          <Loader2 size={14} className="animate-spin" /> 正在读取权限规则…
+          <Spinner size={14} /> 正在读取权限规则…
         </div>
       ) : error ? (
         <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[13px] leading-5 text-danger">
@@ -520,7 +520,7 @@ export function PermissionsSection() {
           <Button onClick={() => setRules(saved)}>撤销</Button>
         )}
         <Button variant="primary" onClick={() => void save()} disabled={!dirty || saving}>
-          {saving && <Loader2 size={12} className="animate-spin" />}
+          {saving && <Spinner size={12} />}
           保存
         </Button>
       </div>
@@ -618,7 +618,7 @@ export function PermissionsSection() {
                   onClick={() => void updateSandbox({}, sandboxHostText)}
                   disabled={sandboxSaving}
                 >
-                  {sandboxSaving && <Loader2 size={11} className="animate-spin" />}
+                  {sandboxSaving && <Spinner size={11} />}
                   保存白名单
                 </Button>
                 {sandboxStatus?.packageSources.map((source) => (
@@ -660,7 +660,7 @@ export function PermissionsSection() {
                 onClick={() => void saveDraft()}
                 disabled={draftSaving}
               >
-                {draftSaving && <Loader2 size={14} className="animate-spin" />}
+                {draftSaving && <Spinner size={14} />}
                 保存规则
               </Button>
             </>

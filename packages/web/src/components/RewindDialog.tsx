@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Checkpoint, ContentBlock } from '@tandem/protocol'
-import { Code2, Loader2, MessageSquare, RotateCcw, TriangleAlert } from 'lucide-react'
+import { Code2, MessageSquare, RotateCcw, TriangleAlert } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import { useAppStore } from '../store/useAppStore'
 import { api } from '../lib/api'
 import { cn } from '../lib/cn'
@@ -134,7 +135,7 @@ export function RewindDialog({
             取消
           </Button>
           <Button size="lg" variant="primary" onClick={() => void submit()} disabled={disabled}>
-            {submitting && <Loader2 size={14} className="animate-spin" />}
+            {submitting && <Spinner size={14} />}
             回退
           </Button>
         </>
@@ -142,7 +143,7 @@ export function RewindDialog({
     >
       {loading ? (
         <div className="flex items-center justify-center py-6 text-muted">
-          <Loader2 size={16} className="animate-spin" />
+          <Spinner size={16} />
         </div>
       ) : error ? (
         <p className="rounded-lg border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[13px] text-danger">

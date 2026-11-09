@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ArrowRightLeft, Clock, Loader2, Pause } from 'lucide-react'
+import { ArrowRightLeft, Clock, Pause } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { HandoffReason } from '@tandem/protocol'
 import { formatTime } from '../../lib/format'
 import { handoffWaitLabel } from '../../lib/quota'
@@ -83,7 +84,7 @@ export function HandoffCard() {
             variant="ghost"
             disabled={!!busy}
             onClick={() => void choose('pause')}
-            icon={busy === 'pause' ? <Loader2 size={12} className="animate-spin" /> : <Pause size={12} />}
+            icon={busy === 'pause' ? <Spinner size={12} /> : <Pause size={12} />}
           >
             暂停
           </Button>
@@ -95,7 +96,7 @@ export function HandoffCard() {
             variant="primary"
             disabled={!target || !!busy}
             onClick={() => void choose('switch')}
-            icon={switching ? <Loader2 size={12} className="animate-spin" /> : <ArrowRightLeft size={12} />}
+            icon={switching ? <Spinner size={12} /> : <ArrowRightLeft size={12} />}
           >
             {targetText ? `切换到 ${target?.label ?? '备用分组'}` : '没有备用分组'}
           </Button>

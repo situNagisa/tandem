@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { FileText, Loader2, Terminal } from 'lucide-react'
+import { FileText, Terminal } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { cn } from '../../lib/cn'
 import { MenuItem, MenuList } from '../ui/Menu'
 import { popoverSurfaceClass } from '../ui/Popover'
@@ -57,7 +58,7 @@ export function CompletionMenu({
         >
           {loading && items.length === 0 && (
             <div className="flex items-center gap-2 px-2 py-2 text-[12px] text-muted">
-              <Loader2 size={13} className="animate-spin" /> {emptyText}
+              <Spinner size={13} /> {emptyText}
             </div>
           )}
           {!loading && items.length === 0 && (

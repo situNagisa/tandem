@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BarChart3, Loader2, RefreshCw, TriangleAlert } from 'lucide-react'
+import { BarChart3, RefreshCw, TriangleAlert } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { RouteRole, UsageStatsRow } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
@@ -462,7 +463,7 @@ export function UsageSection() {
       <div data-setting-id="usage.chart" className="mt-3 rounded-xl border border-border bg-surface p-3">
         <div className="mb-2 flex items-center gap-1.5 text-[13px] font-medium text-text-soft">
           <BarChart3 size={13} className="text-muted" /> 按天花费
-          {loading && <Loader2 size={11} className="animate-spin text-muted" />}
+          {loading && <Spinner size={11} className="text-muted" />}
           <span className="flex-1" />
           <span className="text-[13px] font-normal text-muted">
             {from} — {to}

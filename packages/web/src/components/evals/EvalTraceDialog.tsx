@@ -1,4 +1,5 @@
-import { CheckCircle2, CircleSlash, Loader2, XCircle } from 'lucide-react'
+import { CheckCircle2, CircleSlash, XCircle } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { EvalCase, EvalResult, EvalRun } from '@tandem/protocol'
 import { cn } from '../../lib/cn'
 import { MessageList } from '../MessageList'
@@ -8,7 +9,7 @@ import { collectToolResults, formatCost, formatDuration, resultLabel } from './e
 function VerdictIcon({ result }: { result?: EvalResult }) {
   if (!result) return null
   if (result.status === 'running' || result.status === 'queued') {
-    return <Loader2 size={14} className="animate-spin text-muted" />
+    return <Spinner size={14} className="text-muted" />
   }
   if (result.status === 'cancelled' || result.status === 'failed' || !result.passed) {
     return <XCircle size={14} className="text-danger" />

@@ -1,5 +1,6 @@
 import { memo, useState } from 'react'
-import { ChevronRight, Layers, Loader2 } from 'lucide-react'
+import { ChevronRight, Layers} from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { ToolResultBlock, UiMessage } from '../../lib/types'
 import { useSessionView } from '../session/SessionScope'
 import { cn } from '../../lib/cn'
@@ -77,7 +78,7 @@ export const ToolGroup = memo(
           className="tool-row tool-group-head"
         >
           {anyRunning ? (
-            <Loader2 size={14} className="shrink-0 animate-spin text-text-secondary" />
+            <Spinner size={14} className="shrink-0 text-text-secondary" />
           ) : (
             <Layers
               size={14}

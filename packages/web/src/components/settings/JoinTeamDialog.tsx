@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Loader2, Users } from 'lucide-react'
+import { Users } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { acceptTeamInvite } from '../../lib/api'
@@ -71,7 +72,7 @@ export function JoinTeamDialog() {
             稍后再说
           </Button>
           <Button variant="primary" onClick={() => void join()} disabled={joining || !name.trim()}>
-            {joining && <Loader2 size={13} className="animate-spin" />}
+            {joining && <Spinner size={13} />}
             接受邀请
           </Button>
         </>

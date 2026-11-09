@@ -8,13 +8,13 @@ import {
   FolderOpen,
   GitBranch,
   GitFork,
-  Loader2,
   Server,
   Smartphone,
   TriangleAlert,
   Undo2,
   Usb,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import type { DeviceMount, FsEntry, SessionEnv } from '@tandem/protocol'
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
@@ -345,7 +345,7 @@ export function FolderBrowser({
           </MenuItem>
           {loading && entries.length === 0 && (
             <div className="flex h-full items-center justify-center gap-2 text-[12px] text-muted">
-              <Loader2 size={12} className="animate-spin" /> 读取目录…
+              <Spinner size={12} /> 读取目录…
             </div>
           )}
           {!loading && error && (
@@ -438,7 +438,7 @@ function BranchMenu({
       <MenuList aria-label="切换分支" className="h-[220px] overflow-y-auto">
         {loading && (
           <div className="flex items-center gap-2 px-2 py-2 text-[12px] text-muted">
-            <Loader2 size={12} className="animate-spin" /> 读取分支…
+            <Spinner size={12} /> 读取分支…
           </div>
         )}
         {!loading &&
@@ -671,7 +671,7 @@ export function EnvBar({
           <EnvTrigger
             icon={
               migrating ? (
-                <Loader2 size={12} className="animate-spin text-muted" />
+                <Spinner size={12} className="text-muted" />
               ) : (
                 <Server size={12} className="text-muted" />
               )

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { FileDiff, GitBranch, Loader2 } from 'lucide-react'
+import { FileDiff, GitBranch} from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { Board, BoardMergePreview } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import type { HostConfig } from '../../lib/types'
@@ -96,7 +97,7 @@ export function MergeConfirmDialog({
       >
         {loading ? (
           <div className="flex items-center justify-center py-6 text-muted">
-            <Loader2 size={16} className="animate-spin" />
+            <Spinner size={16} />
           </div>
         ) : (
           <div className="space-y-2" data-testid="board-merge-cards">

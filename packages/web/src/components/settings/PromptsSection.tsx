@@ -1,7 +1,8 @@
 // 设置-提示词：统一注册表入口。左侧按类别列出全部提示词，右侧查看/编辑（只读项标注原因）。
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PromptCategory, PromptTemplate, PromptTemplateKey } from '@tandem/protocol'
-import { AlertTriangle, FileCode2, Loader2, Lock, RotateCcw, Save, ScrollText, Sparkles } from 'lucide-react'
+import { AlertTriangle, FileCode2, Lock, RotateCcw, Save, ScrollText, Sparkles } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
@@ -155,7 +156,7 @@ export function PromptsSection() {
             项目根 <code>.tandem/prompts.json</code> 可覆盖（只读，优先级更高）。
           </p>
         </div>
-        <Button size="sm" variant="secondary" onClick={load} disabled={loading || !hostReady} icon={loading ? <Loader2 size={13} className="animate-spin" /> : undefined}>
+        <Button size="sm" variant="secondary" onClick={load} disabled={loading || !hostReady} icon={loading ? <Spinner size={13} /> : undefined}>
           刷新
         </Button>
         <Button
@@ -163,7 +164,7 @@ export function PromptsSection() {
           variant="primary"
           onClick={save}
           disabled={!changedKeys.length || saving || !hostReady}
-          icon={saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+          icon={saving ? <Spinner size={13} /> : <Save size={13} />}
         >
           保存{changedKeys.length ? `（${changedKeys.length}）` : ''}
         </Button>

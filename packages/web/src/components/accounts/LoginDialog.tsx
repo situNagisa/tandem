@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { KeyRound, Loader2, ShieldCheck } from 'lucide-react'
+import { KeyRound, ShieldCheck } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { useAppStore } from '../../store/useAppStore'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Controls'
@@ -100,7 +101,7 @@ export function LoginDialog({ open, onClose, defaultCenterUrl = '' }: LoginDialo
               {mode === 'login' ? '注册账号' : '去登录'}
             </Button>
             <Button variant="primary" onClick={() => void submit()} disabled={busy}>
-              {busy ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+              {busy ? <Spinner size={14} /> : <KeyRound size={14} />}
               {mode === 'login' ? '登录' : '注册并登录'}
             </Button>
           </div>

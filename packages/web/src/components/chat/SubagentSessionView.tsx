@@ -1,5 +1,6 @@
 import { useMemo, useRef } from 'react'
-import { Bot, ChevronRight, Loader2, Lock } from 'lucide-react'
+import { Bot, ChevronRight, Lock } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
@@ -96,7 +97,7 @@ export function SubagentSessionView({ hostId, id }: { hostId: string; id: string
         <span className="flex-1" />
         <span className={cn('shrink-0', sub?.running && 'text-text-secondary')}>
           {statusText}
-          {sub?.loading && <Loader2 size={11} className="ml-1 inline animate-spin" />}
+          {sub?.loading && <Spinner size={11} className="ml-1 inline" />}
         </span>
       </div>
 

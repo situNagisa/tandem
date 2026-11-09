@@ -4,13 +4,13 @@ import {
   Bot,
   Command,
   FolderOpen,
-  Loader2,
   MessageSquare,
   Pin,
   Search,
   Server,
   SlidersHorizontal,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import type { SearchHit, SessionStatus } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -666,7 +666,7 @@ export function SearchDialog() {
             <span>Tab 切换分组</span>
           </span>
           <span className="ml-auto flex items-center gap-1.5 sm:ml-0">
-            {searching && <Loader2 size={11} className="animate-spin" />}
+            {searching && <Spinner size={11} />}
             {searching ? '搜索中…' : `${flat.length} 个结果`}
           </span>
         </div>

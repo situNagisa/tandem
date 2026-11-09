@@ -5,7 +5,6 @@ import {
   Copy,
   Gauge,
   KeyRound,
-  Loader2,
   Network,
   RefreshCw,
   ShieldAlert,
@@ -13,6 +12,7 @@ import {
   TriangleAlert,
   Users,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type {
   GatewayMemberUsage,
   GatewayModelRoute,
@@ -461,7 +461,7 @@ export function GatewaySection() {
           <h4 className="text-[13px] font-medium">今日统计</h4>
           <span className="text-[12px] text-muted">每 5 秒自动刷新 · 按成员</span>
           <span className="flex-1" />
-          {loading && <Loader2 size={12} className="animate-spin text-muted" />}
+          {loading && <Spinner size={12} className="text-muted" />}
         </div>
         {members.length === 0 ? (
           <p className="mt-2 text-[13px] text-muted">还没有团队成员。</p>
