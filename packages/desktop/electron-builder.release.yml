@@ -6,3 +6,7 @@ files:
   - flavor-core.js
   - flavor.generated.js
   - package.json
+  # extends 合并父配置的 files 数组，这里必须显式排除调试版专用主进程模块。
+  - '!feedback-drafts.js'
+  - '!feedback-drafts-core.js'
+  - '!mobile-preview.js'
