@@ -1,11 +1,18 @@
 // 串口传输层：v1 提供内置虚拟串口（回归）与真实 serialport（可选依赖）。
 // serialport 未安装时不阻塞 Host 启动：列端口返回空并给出可读错误。
+import type { DeviceAccess } from '@tandem/protocol';
+import { serialAccessFix } from './serialAccess.js';
+
 export interface SerialPortInfo {
   path: string;
   manufacturer?: string;
   serialNumber?: string;
   vendorId?: string;
   productId?: string;
+  /** 板载/虚拟串口（/dev/ttyS*）：界面默认折叠。 */
+  builtin?: boolean;
+  /** 传输层已知的访问状态（虚拟/测试端口）；真实端口由 Host 探测。 */
+  access?: DeviceAccess;
 }
 
 export interface SerialConnection {
@@ -84,7 +91,29 @@ class MockConnection implements SerialConnection {
 export class MockSerialTransport implements SerialTransport {
   readonly kind = 'mock' as const;
   async list(): Promise<SerialPortInfo[]> {
-    return [{ path: 'mock://ttyUSB0', manufacturer: 'Tandem Mock', serialNumber: 'MOCK-USB0' }];
+    const ports: SerialPortInfo[] = [
+      { path: 'mock://ttyUSB0', manufacturer: 'Tandem Mock', serialNumber: 'MOCK-USB0' },
+    ];
+    // 调试/回归：模拟 Linux 主机上的一堆板载串口（/dev/ttyS0…），界面应折叠。
+    if (process.env.TANDEM_MOCK_SERIAL_BUILTIN === '1') {
+      for (let i = 0; i < 4; i += 1) ports.push({ path: `mock://ttyS${i}`, builtin: true });
+    }
+    // 调试/回归：模拟没有串口权限的机器（TANDEM_MOCK_SERIAL_DENIED=mock://ttyUSB0 或 *）。
+    const denied = (process.env.TANDEM_MOCK_SERIAL_DENIED ?? '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (denied.length > 0) {
+      for (const port of ports) {
+        if (!denied.includes(port.path) && !denied.includes('*')) continue;
+        port.access = {
+          state: 'denied',
+          reason: '当前用户不在 dialout 组',
+          ...serialAccessFix('linux', port.path, 'dialout'),
+        };
+      }
+    }
+    return ports;
   }
   async open(port: string, baud: number): Promise<SerialConnection> {
     if (!port.startsWith('mock://')) throw new Error('不是虚拟串口');

@@ -59,6 +59,16 @@ export function registerDeviceRoutes(app: FastifyInstance, deps: RouteDeps): voi
     return { ok: true };
   });
 
+  // 串口权限/占用检测：会短暂打开端口，只用于工作站里的「修复权限 / 重新检测」。
+  app.post('/api/devices/:id/access-check', async (req, reply) => {
+    if (!canOperate(req)) return bad(reply, '当前角色不能检测设备', 403);
+    try {
+      return await devices.checkLocalSerialAccess(decodeId((req.params as { id: string }).id));
+    } catch (err) {
+      return bad(reply, (err as Error).message);
+    }
+  });
+
   app.post('/api/devices/:id/exec', async (req, reply) => {
     if (!canOperate(req)) return bad(reply, '当前角色不能操作设备', 403);
     const body = readBody(req);

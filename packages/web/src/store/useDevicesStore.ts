@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { DeviceListResult, DeviceMount, SessionDevices } from '@tandem/protocol'
+import type { DeviceAccess, DeviceListResult, DeviceMount, SessionDevices } from '@tandem/protocol'
 import type { ServerMsg } from '@tandem/protocol'
 import { api } from '../lib/api'
 import type { HostConfig } from '../lib/types'
@@ -34,6 +34,7 @@ interface DevicesState {
 
   setWorkstationOpen: (open: boolean) => void
   refreshHost: (host: HostConfig) => Promise<void>
+  checkAccess: (host: HostConfig, deviceId: string) => Promise<DeviceAccess>
   refreshAll: (hosts: HostConfig[]) => Promise<void>
   refreshSession: (host: HostConfig, sessionId: string) => Promise<void>
   mountDevice: (
@@ -83,6 +84,27 @@ export const useDevicesStore = create<DevicesState>((set, get) => ({
 
   refreshAll: async (hosts) => {
     await Promise.all(hosts.map((host) => get().refreshHost(host)))
+  },
+
+  // 串口权限深度检测：Host 会短暂打开端口，结果写回设备列表。
+  checkAccess: async (host, deviceId) => {
+    const access = await api.deviceAccessCheck(host, deviceId)
+    set((s) => {
+      const list = s.byHost[host.id]
+      if (!list) return s
+      return {
+        byHost: {
+          ...s.byHost,
+          [host.id]: {
+            ...list,
+            devices: list.devices.map((device) =>
+              device.id === deviceId ? { ...device, access } : device,
+            ),
+          },
+        },
+      }
+    })
+    return access
   },
 
   refreshSession: async (host, sessionId) => {

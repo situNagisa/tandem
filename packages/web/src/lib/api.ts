@@ -38,6 +38,7 @@ import type {
   SerialReadResult,
   SessionDevices,
   DeviceListResult,
+  DeviceAccess,
   DeviceLogcatRead,
   DeviceLogcatStart,
   DeviceMount,
@@ -285,6 +286,10 @@ export const api = {
   host: (h: HostConfig) => request<HostInfo>(h, '/api/host'),
 
   devices: (h: HostConfig) => request<DeviceListResult>(h, '/api/devices'),
+  deviceAccessCheck: (h: HostConfig, deviceId: string) =>
+    request<DeviceAccess>(h, `/api/devices/${encodeURIComponent(deviceId)}/access-check`, {
+      method: 'POST',
+    }),
   devicePeerTokens: (h: HostConfig) => request<DevicePeerToken[]>(h, '/api/devices/peer-tokens'),
   issueDevicePeerToken: (h: HostConfig, label?: string) =>
     request<DevicePeerTokenIssued>(h, '/api/devices/peer-tokens', {

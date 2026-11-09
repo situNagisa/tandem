@@ -1,4 +1,4 @@
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, type Ref } from 'react'
 import { cn } from '../../lib/cn'
 import { useOverflowTitle } from '../../lib/hooks'
 import { Tip } from './Tooltip'
@@ -22,6 +22,11 @@ export interface ListRowProps extends Omit<ButtonHTMLAttributes<HTMLButtonElemen
   tooltip?: string
   /** 紧凑单行；false 时标题与详情上下排列。 */
   inline?: boolean
+  /**
+   * 行内还要放按钮（如行尾的挂载/修复图标）时渲染成 div；
+   * 此时点击、禁用与 type 不生效，只保留列表行的视觉与 hover。
+   */
+  as?: 'button' | 'div'
 }
 
 /**
@@ -45,7 +50,7 @@ function ListRowTitle({ title, fallback }: { title: ReactNode; fallback?: boolea
   )
 }
 
-export const ListRow = forwardRef<HTMLButtonElement, ListRowProps>(function ListRow(
+export const ListRow = forwardRef<HTMLButtonElement | HTMLDivElement, ListRowProps>(function ListRow(
   {
     icon,
     title,
@@ -55,25 +60,23 @@ export const ListRow = forwardRef<HTMLButtonElement, ListRowProps>(function List
     size = 'md',
     tooltip,
     inline = true,
+    as = 'button',
     className,
     type = 'button',
     ...rest
   },
   ref,
 ) {
-  return (
-    <button
-      ref={ref}
-      type={type}
-      aria-current={selected ? 'true' : undefined}
-      className={cn(
-        'group/row flex w-full min-w-0 select-none items-center gap-2 rounded-lg text-left text-text-soft outline-none transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text focus-visible:bg-[var(--t-bg-hover)] focus-visible:text-text disabled:pointer-events-none disabled:opacity-40',
-        SIZE[size],
-        selected && 'bg-[var(--t-bg-active)] text-text',
-        className,
-      )}
-      {...rest}
-    >
+  const classes = cn(
+    'group/row flex w-full min-w-0 select-none items-center gap-2 rounded-lg text-left text-text-soft outline-none transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text',
+    as === 'button' &&
+      'focus-visible:bg-[var(--t-bg-hover)] focus-visible:text-text disabled:pointer-events-none disabled:opacity-40',
+    SIZE[size],
+    selected && 'bg-[var(--t-bg-active)] text-text',
+    className,
+  )
+  const body = (
+    <>
       {icon && (
         <span className="flex size-4 shrink-0 items-center justify-center text-muted [&_svg]:size-4">
           {icon}
@@ -94,6 +97,30 @@ export const ListRow = forwardRef<HTMLButtonElement, ListRowProps>(function List
       </span>
       {trailing && <span className="shrink-0 text-[12px] text-muted">{trailing}</span>}
       {tooltip ? <Tip label={tooltip} /> : null}
+    </>
+  )
+
+  if (as === 'div') {
+    return (
+      <div
+        ref={ref as Ref<HTMLDivElement>}
+        aria-current={selected ? 'true' : undefined}
+        className={classes}
+        {...(rest as HTMLAttributes<HTMLDivElement>)}
+      >
+        {body}
+      </div>
+    )
+  }
+  return (
+    <button
+      ref={ref as Ref<HTMLButtonElement>}
+      type={type}
+      aria-current={selected ? 'true' : undefined}
+      className={classes}
+      {...rest}
+    >
+      {body}
     </button>
   )
 })

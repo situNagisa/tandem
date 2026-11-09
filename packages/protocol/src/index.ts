@@ -3052,6 +3052,20 @@ export interface SshDeployResult {
 // 设备级令牌（dvt_…，只对 /api/devices 生效）代理调用设备所在 Host 的 /api/devices。
 export type DeviceKind = 'adb' | 'serial';
 export type DeviceState = 'online' | 'offline' | 'busy' | 'error';
+/** 串口能否打开：无权限（组/模式）、被其他程序占用、未知。 */
+export type DeviceAccessState = 'ok' | 'denied' | 'occupied' | 'unknown';
+
+export interface DeviceAccess {
+  state: DeviceAccessState;
+  /** 给用户看的原因，如「当前用户不在 dialout 组」。 */
+  reason?: string;
+  /** 修复说明（一段话，按 Host 平台）。 */
+  fix?: string;
+  /** 可一键复制的命令；界面逐条给出复制按钮。 */
+  commands?: string[];
+  /** 被占用时能查到的占用进程（`程序 (pid 123)`）。 */
+  holder?: string;
+}
 
 export interface DeviceInfo {
   /** adb:<serial> / serial:<端口路径>；全局唯一标识。 */
@@ -3065,6 +3079,10 @@ export interface DeviceInfo {
   ownerLabel?: string;
   /** adb：serial/model/product/transport；串口：path/baud 等。 */
   meta?: Record<string, string>;
+  /** 板载/虚拟串口（如 Linux 的 /dev/ttyS0）：界面默认折叠，不干扰真实设备。 */
+  builtin?: boolean;
+  /** 串口的访问状态（能否打开）；非串口与未知情况可以没有。 */
+  access?: DeviceAccess;
   /** 演示工作区内置的假设备：不依赖真实 adb / 串口，标注「演示设备」。 */
   demo?: boolean;
 }
@@ -3178,6 +3196,7 @@ export interface DeviceLogcatRead {
 // GET    /api/devices/:id/logcat/:streamId?since=  -> DeviceLogcatRead
 // POST   /api/devices/:id/logcat/:streamId/stop
 // POST   /api/devices/:id/serial/open {baud,client,shared?} -> SerialOpenResult
+// POST   /api/devices/:id/access-check              -> DeviceAccess（串口权限/占用；会短暂尝试打开端口）
 // GET    /api/devices/:id/serial/:leaseId?since=&waitMs= -> SerialReadResult
 // POST   /api/devices/:id/serial/:leaseId/write {data}
 // POST   /api/devices/:id/serial/:leaseId/close

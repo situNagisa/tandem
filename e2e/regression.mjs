@@ -7107,6 +7107,120 @@ async function main() {
       }
     })
 
+    // 反馈 8#06：设备列表单行紧凑、名称与路径相同不重复、板载串口折叠、无权限可修复。
+    desktop('工作站：设备单行密度、板载串口折叠、无权限修复说明', async (page) => {
+      const tokenB = randomUUID()
+      const hostIdB = randomUUID()
+      const hostB = startHost({
+        home: path.join(home, 'host-serial-access'),
+        token: tokenB,
+        hostId: hostIdB,
+        extraEnv: {
+          TANDEM_MOCK_SERIAL_BUILTIN: '1',
+          TANDEM_MOCK_SERIAL_DENIED: 'mock://ttyUSB0',
+        },
+      })
+      try {
+        const portB = await hostB.ready
+        const baseB = `http://127.0.0.1:${portB}`
+        let list
+        for (let i = 0; i < 20; i += 1) {
+          list = await api(baseB, tokenB, '/api/devices')
+          if ((list.devices ?? []).filter((device) => device.kind === 'serial').length >= 5) break
+          await sleep(200)
+        }
+        const usb = list.devices.find((device) => device.id === 'serial:mock://ttyUSB0')
+        assert.equal(usb?.access?.state, 'denied', '串口无权限状态没有返回给客户端')
+        assert.ok((usb?.access?.commands ?? []).includes('sudo usermod -aG dialout $USER'), '缺少修复命令')
+        assert.equal(list.devices.filter((device) => device.builtin).length, 4, '板载串口未标记 builtin')
+        const deep = await api(
+          baseB,
+          tokenB,
+          `/api/devices/${encodeURIComponent('serial:mock://ttyUSB0')}/access-check`,
+          { method: 'POST', body: JSON.stringify({}) },
+        )
+        assert.equal(deep.state, 'denied', '重新检测应保持无权限结论')
+
+        await page.evaluate(
+          ({ url, token: hostToken }) => {
+            const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
+            if (!hosts.some((item) => item.url === url)) {
+              hosts.push({ id: 'reg-host-serial', name: '串口权限主机', url, token: hostToken, addedAt: Date.now(), mode: 'direct' })
+              localStorage.setItem('tandem.hosts.v1', JSON.stringify(hosts))
+            }
+          },
+          { url: baseB, token: tokenB },
+        )
+        await page.reload({ waitUntil: 'domcontentloaded' })
+        await page.getByRole('button', { name: '工作站' }).click()
+        const dialog = page.getByRole('dialog', { name: '工作站' })
+        await dialog.waitFor({ state: 'visible' })
+        const section = dialog.locator('section[data-host-section]').filter({ hasText: baseB }).first()
+        await section.getByText('Tandem Mock').waitFor({ timeout: 10_000 })
+
+        // 单行：真实设备只占一行（与侧栏列表行同为 32px），不再两行。
+        const usbRow = section.locator('[data-device-row="serial:mock://ttyUSB0"]')
+        const box = await usbRow.boundingBox()
+        assert.ok(box && box.height <= 34, `设备行不够紧凑：${box?.height}px`)
+        assert.equal(await section.getByText(/^SERIAL$/).count(), 1, '类型应是行内小标签')
+
+        // 板载串口默认折叠；名称与路径相同时不重复显示路径。
+        assert.equal(await section.getByText('mock://ttyS0').count(), 0, '板载串口不应默认展开')
+        const builtinToggle = section.getByRole('button', { name: /另有 4 个板载串口/ })
+        await builtinToggle.waitFor({ timeout: 5_000 })
+        await builtinToggle.click()
+        const builtinRow = section.locator('[data-device-row="serial:mock://ttyS0"]')
+        await builtinRow.waitFor({ timeout: 5_000 })
+        const builtinText = await builtinRow.innerText()
+        assert.equal((builtinText.match(/mock:\/\/ttyS0/g) ?? []).length, 1, '名称与路径相同时重复显示了路径')
+
+        // 无权限：标签 + 修复说明（命令可复制、Host 不自动执行 sudo、可重新检测）。
+        assert.equal(await usbRow.getByText('无权限', { exact: true }).count(), 1, '缺少无权限标签')
+        await usbRow.getByRole('button', { name: '修复权限' }).click()
+        await section.getByText('sudo usermod -aG dialout $USER', { exact: true }).waitFor({ timeout: 5_000 })
+        assert.ok(await section.getByRole('button', { name: '复制命令' }).count(), '缺少一键复制命令')
+        assert.equal(
+          await section.getByText('Host 不会自动执行 sudo，请在终端里执行上面的命令。', { exact: true }).count(),
+          1,
+          '应说明 Host 不会自动执行 sudo',
+        )
+        assert.equal(await section.getByRole('button', { name: '我已处理，重新检测' }).count(), 1, '缺少重新检测入口')
+
+        // 没打开会话时挂载按钮禁用，并在 tooltip 说明原因。
+        const mountBtn = usbRow.getByRole('button', { name: '挂到当前会话' })
+        assert.equal(await mountBtn.isDisabled(), true, '未打开会话时挂载按钮应禁用')
+        assert.equal(
+          await usbRow.getByText('先打开一个会话，再挂载设备', { exact: true }).count(),
+          1,
+          '禁用时应说明原因',
+        )
+
+        await dialog.getByRole('button', { name: '完成' }).click()
+        await openSession(page, 'long')
+        await page.getByRole('button', { name: '工作站' }).click()
+        const dialog2 = page.getByRole('dialog', { name: '工作站' })
+        await dialog2.waitFor({ state: 'visible' })
+        const section2 = dialog2.locator('section[data-host-section]').filter({ hasText: baseB }).first()
+        await section2.getByText('Tandem Mock').waitFor({ timeout: 10_000 })
+        assert.equal(
+          await section2.locator('[data-device-row="serial:mock://ttyUSB0"]').getByRole('button', { name: '挂到当前会话' }).isDisabled(),
+          false,
+          '打开会话后应能挂载',
+        )
+        await dialog2.getByRole('button', { name: '完成' }).click()
+        await page.evaluate((url) => {
+          const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
+          localStorage.setItem('tandem.hosts.v1', JSON.stringify(hosts.filter((item) => item.url !== url)))
+        }, baseB)
+      } finally {
+        hostB.child.kill('SIGTERM')
+        await Promise.race([
+          new Promise((resolve) => hostB.child.once('exit', resolve)),
+          sleep(3000).then(() => hostB.child.kill('SIGKILL')),
+        ])
+      }
+    })
+
     desktop('演示设备：演示工作区提供可挂载的安卓/串口设备', async (page) => {
       const before = await api(base, token, '/api/demo')
       const createdHere = !before.active

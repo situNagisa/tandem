@@ -5,6 +5,7 @@ import { appendFileSync, chmodSync, mkdirSync } from 'node:fs';
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import type {
+  DeviceAccess,
   DeviceInfo,
   DeviceKind,
   DeviceListResult,
@@ -32,6 +33,12 @@ import {
   runDemoAdb,
 } from './demo.js';
 import { createSerialTransport, type SerialConnection, type SerialTransport } from './serial.js';
+import {
+  classifySerialAccessError,
+  findSerialHolder,
+  isBuiltinSerialPort,
+  probeSerialPath,
+} from './serialAccess.js';
 
 interface StoredMount extends DeviceMount {
   /** 仅 peer：设备所在 Host 的设备级令牌；不返回给客户端。 */
@@ -244,6 +251,10 @@ export class DeviceManager {
         const runtime = lock
           ? [...this.serials.values()].find((s) => s.leaseId === lock.leaseId)
           : undefined;
+        // 列表阶段只读探测权限，不打开端口（避免重置 DTR）；Windows 返回 unknown，
+        // 由用户在工作站点「重新检测」时做一次真正的打开尝试。
+        const builtin = port.builtin ?? isBuiltinSerialPort(port.path);
+        const access = port.access ?? probeSerialPath(port.path, process.platform);
         devices.push({
           id,
           kind: 'serial',
@@ -253,6 +264,8 @@ export class DeviceManager {
           ...(lock
             ? { ownerSessionId: lock.ownerKey, ownerLabel: `会话 ${lock.ownerKey.slice(0, 8)}` }
             : {}),
+          ...(builtin ? { builtin: true } : {}),
+          access,
           meta: {
             path: port.path,
             ...(port.manufacturer ? { manufacturer: port.manufacturer } : {}),
@@ -281,6 +294,31 @@ export class DeviceManager {
       adb,
       serial,
     };
+  }
+
+  /** 深度检测：用户点「重新检测」时短暂打开端口，确认权限与被占用情况（Windows 只有这一步能判断）。 */
+  async checkLocalSerialAccess(deviceId: string): Promise<DeviceAccess> {
+    const device = await this.findLocalDevice(deviceId);
+    if (!device || device.kind !== 'serial') throw new Error(`本机没有串口 ${deviceId}`);
+    if (device.demo) return { state: 'ok' };
+    const portPath = device.meta?.path ?? deviceId.slice('serial:'.length);
+    // 虚拟串口的状态来自测试数据，不重新探测；真实端口每次都重新看一遍权限。
+    if (portPath.startsWith('mock://')) return device.access ?? { state: 'ok' };
+    const cheap = probeSerialPath(portPath, process.platform);
+    if (cheap.state !== 'unknown') return cheap;
+    try {
+      const conn = await this.transport().open(portPath, 115200);
+      await conn.close();
+      return { state: 'ok' };
+    } catch (err) {
+      const holder = findSerialHolder(portPath);
+      return classifySerialAccessError(
+        err as NodeJS.ErrnoException,
+        process.platform,
+        portPath,
+        holder,
+      );
+    }
   }
 
   private async findLocalDevice(deviceId: string): Promise<DeviceInfo | undefined> {
@@ -663,6 +701,15 @@ export class DeviceManager {
     } catch (err) {
       runtime.alive = false;
       this.serials.delete(key);
+      const access = classifySerialAccessError(
+        err as NodeJS.ErrnoException,
+        process.platform,
+        port,
+        findSerialHolder(port),
+      );
+      if (access.state === 'denied' || access.state === 'occupied') {
+        throw new Error(`${(err as Error).message}（${access.reason}；在工作站里点「修复权限」后重新检测）`);
+      }
       throw err;
     }
     if (!lock) this.locks.set(deviceId, { leaseId: runtime.leaseId, ownerKey, shared: false });
