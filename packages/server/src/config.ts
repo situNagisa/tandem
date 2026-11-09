@@ -148,6 +148,14 @@ export function maskApiKey(key: string): string {
   return `${key.slice(0, 4)}****${key.slice(-4)}`;
 }
 
+/**
+ * 客户端把掩码（如 `sk-t****abcd`）当明文回传时不能覆盖真实 Key（反馈10#05）。
+ * 空字符串同样视为「未修改」；删除 Key 必须走显式的 Key 列表操作。
+ */
+export function looksMaskedKey(value: unknown): boolean {
+  return typeof value === 'string' && (value.includes('****') || value.includes('••••'));
+}
+
 const KINDS: ProviderKind[] = ['anthropic', 'openai', 'openai-compatible', 'gemini', 'tandem-gateway'];
 /** 持久化层允许 demo（内置演示账号），但设置页/API 不允许用户自建。 */
 const STORED_KINDS: ProviderKind[] = [...KINDS, 'demo'];
@@ -226,8 +234,9 @@ export class ProfileStore {
       baseUrl: input.baseUrl !== undefined ? normalizeBaseUrl(input.baseUrl) : current.baseUrl,
       models,
       defaultModel: input.defaultModel || current.defaultModel || models[0] || '',
-      // 不传或传空字符串表示保持原 key
-      apiKey: input.apiKey ? String(input.apiKey) : current.apiKey,
+      // 不传、空字符串或回传的掩码都表示保持原 key
+      apiKey:
+        input.apiKey && !looksMaskedKey(input.apiKey) ? String(input.apiKey) : current.apiKey,
     };
     // multiplier 是协议 Profile 的倍率字段：不传保持原值，null 表示恢复默认 1。
     if (input.multiplier !== undefined) {
@@ -517,17 +526,18 @@ function buildKeys(
       if (!item || typeof item !== 'object') continue;
       const itemId = typeof item.id === 'string' ? item.id.trim() : '';
       const prev = itemId ? oldById.get(itemId) : undefined;
-      const apiKey = typeof item.apiKey === 'string' && item.apiKey ? item.apiKey : prev?.apiKey;
+      const suppliedKey =
+        typeof item.apiKey === 'string' && item.apiKey && !looksMaskedKey(item.apiKey)
+          ? item.apiKey
+          : undefined;
+      const apiKey = suppliedKey ?? prev?.apiKey;
       if (!apiKey) continue;
       const id = prev?.id ?? (itemId && !seen.has(itemId) ? itemId : randomUUID());
       if (seen.has(id)) continue;
       seen.add(id);
       const label = typeof item.label === 'string' ? item.label.trim() : prev?.label;
       // 重新填写 key / 显式 disabled=false 视为用户修复并重新启用该 Key
-      const reset =
-        !prev ||
-        (typeof item.apiKey === 'string' && !!item.apiKey) ||
-        (item as { disabled?: unknown }).disabled === false;
+      const reset = !prev || !!suppliedKey || (item as { disabled?: unknown }).disabled === false;
       const manuallyDisabled = (item as { disabled?: unknown }).disabled === true;
       out.push({
         ...(prev ?? {}),
@@ -548,8 +558,8 @@ function buildKeys(
     }
     return out.map(cleanStoredKey);
   }
-  // 旧字段 apiKey：替换为单 Key
-  if (typeof raw.apiKey === 'string' && raw.apiKey) {
+  // 旧字段 apiKey：替换为单 Key（掩码回传视为未修改）
+  if (typeof raw.apiKey === 'string' && raw.apiKey && !looksMaskedKey(raw.apiKey)) {
     const id = old?.keys?.[0]?.id ?? randomUUID();
     return [{ id, apiKey: raw.apiKey }];
   }

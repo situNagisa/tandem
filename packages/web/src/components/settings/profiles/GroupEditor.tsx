@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { api } from '../../../lib/api'
 import { cn } from '../../../lib/cn'
+import { mergeFetchedSelection } from '../../../lib/modelSelection'
 import type { HostConfig } from '../../../lib/types'
 import { Button, IconButton } from '../../ui/Button'
 import { MenuSelect } from '../../ui/Menu'
@@ -53,10 +54,17 @@ export function GroupEditor({
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState(existing?.baseUrl ?? '')
   const [showKey, setShowKey] = useState(false)
+  // 已有 Key 时不渲染明文输入框，只显示掩码；点「更换 Key」才进入输入状态。
+  // 未修改 Key 时保存不会回传 apiKey，服务端保留原值（反馈10#05 / R39）。
+  const [editingKey, setEditingKey] = useState(!existing)
+  const maskedKey = existing?.apiKeyMasked?.trim()
+  const keyLast4 = maskedKey?.match(/([^*\s]{4})$/)?.[1]
   const [available, setAvailable] = useState<ModelInfo[]>(
     () => (existing?.models ?? []).map((id) => ({ id })),
   )
   const [selected, setSelected] = useState<string[]>(existing?.models ?? [])
+  /** 用户手动改过勾选：再次拉取时保留这些选择，只对新增模型应用「最新一代」规则。 */
+  const [selectionTouched, setSelectionTouched] = useState(false)
   const [defaultModel, setDefaultModel] = useState(
     existing?.defaultModel ?? existing?.models[0] ?? '',
   )
@@ -77,6 +85,7 @@ export function GroupEditor({
   }, [available, query])
 
   const toggleModel = (id: string) => {
+    setSelectionTouched(true)
     setSelected((prev) => {
       const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
       setDefaultModel((d) => (next.includes(d) ? d : next[0] ?? ''))
@@ -120,8 +129,12 @@ export function GroupEditor({
         return
       }
       const ids = new Set(sorted.map((m) => m.id))
-      const kept = selected.filter((id) => ids.has(id))
-      const initial = kept.length ? kept : sorted.slice(0, 3).map((m) => m.id)
+      const initial = mergeFetchedSelection({
+        selected,
+        previousAvailable: available.map((m) => m.id),
+        fetched: sorted.map((m) => m.id),
+        touched: selectionTouched,
+      }).filter((id) => ids.has(id))
       setAvailable(sorted)
       setSelected(initial)
       setDefaultModel((prev) => (initial.includes(prev) ? prev : initial[0] ?? ''))
@@ -137,6 +150,7 @@ export function GroupEditor({
   const addManual = () => {
     const id = manualInput.trim()
     if (!id) return
+    setSelectionTouched(true)
     if (!available.some((m) => m.id === id)) setAvailable((prev) => [...prev, { id }])
     setSelected((prev) => (prev.includes(id) ? prev : [...prev, id]))
     setDefaultModel((d) => d || id)
@@ -205,31 +219,60 @@ export function GroupEditor({
         </div>
         <div>
           <label className={labelCls}>分组 Key</label>
-          <div className="relative">
-            <input
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              type={showKey ? 'text' : 'password'}
-              placeholder={
-                existing
-                  ? `已保存：${existing.apiKeyMasked ?? '••••'}（留空不修改）`
-                  : 'sk-…'
-              }
-              spellCheck={false}
-              autoComplete="off"
-              className={cn(inputCls, 'pr-9 font-mono text-[13px]')}
-            />
-            <span className="absolute right-1 top-1/2 -translate-y-1/2">
-              <IconButton
-                size="sm"
-                onClick={() => setShowKey((v) => !v)}
-                label={showKey ? '隐藏 Key' : '显示 Key'}
-                className="size-7 [&_svg]:size-[13px]"
+          {existing && !editingKey ? (
+            <div className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5">
+              <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-text-soft">
+                {existing.inheritedKey && !maskedKey
+                  ? '沿用账号 Key'
+                  : `已保存 · ••••${keyLast4 ?? '••••'}`}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingKey(true)
+                  setApiKey('')
+                }}
+                className="shrink-0 rounded px-1 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
               >
-                {showKey ? <EyeOff size={13} /> : <Eye size={13} />}
-              </IconButton>
-            </span>
-          </div>
+                更换 Key
+              </button>
+            </div>
+          ) : (
+            <div className="relative">
+              <input
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                type={showKey ? 'text' : 'password'}
+                placeholder={existing ? '粘贴新的 Key' : 'sk-…'}
+                spellCheck={false}
+                autoComplete="off"
+                className={cn(inputCls, 'pr-9 font-mono text-[13px]')}
+              />
+              <span className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+                {existing && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingKey(false)
+                      setApiKey('')
+                      setShowKey(false)
+                    }}
+                    className="rounded px-1 text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
+                  >
+                    取消
+                  </button>
+                )}
+                <IconButton
+                  size="sm"
+                  onClick={() => setShowKey((v) => !v)}
+                  label={showKey ? '隐藏 Key' : '显示 Key'}
+                  className="size-7 [&_svg]:size-[13px]"
+                >
+                  {showKey ? <EyeOff size={13} /> : <Eye size={13} />}
+                </IconButton>
+              </span>
+            </div>
+          )}
         </div>
       </div>
       <div className="mt-2">
