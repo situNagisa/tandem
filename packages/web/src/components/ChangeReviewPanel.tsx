@@ -6,7 +6,6 @@ import {
   FileDiff,
   FolderGit2,
   GitPullRequest,
-  Loader2,
   MessageSquare,
   MessageSquarePlus,
   MoreHorizontal,
@@ -15,6 +14,7 @@ import {
   Wand2,
   X,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useSessionChanges } from '../lib/useChanges'
@@ -22,6 +22,7 @@ import { aiReviewKey, useAiReviewStore } from '../lib/useAiReview'
 import { api } from '../lib/api'
 import { useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
+import { readRaw, writeRaw } from '../lib/storage'
 import { DiffView, type DiffCommentDraft } from './DiffView'
 import { Modal } from './ui/Modal'
 import { ConfirmAction } from './ui/ConfirmAction'
@@ -60,19 +61,11 @@ function commentLineLabel(comment: LineComment) {
 /** 文件列表 / diff 的分栏比例，记住用户拖动过的位置。 */
 const SPLIT_KEY = 'tandem.changesSplit.v1'
 function loadSplitRatio(): number {
-  try {
-    const n = Number(localStorage.getItem(SPLIT_KEY))
-    return Number.isFinite(n) && n >= 0.15 && n <= 0.85 ? n : 0.42
-  } catch {
-    return 0.42
-  }
+  const n = Number(readRaw(SPLIT_KEY))
+  return Number.isFinite(n) && n >= 0.15 && n <= 0.85 ? n : 0.42
 }
 function saveSplitRatio(ratio: number): void {
-  try {
-    localStorage.setItem(SPLIT_KEY, String(ratio))
-  } catch {
-    // localStorage 不可用时仅本次会话有效
-  }
+  writeRaw(SPLIT_KEY, String(ratio))
 }
 
 const SEVERITY_LABEL: Record<AiReviewSeverity, string> = {
@@ -537,7 +530,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
               disabled={!host || !sessionId || reviewEntry?.starting || review?.status === 'running'}
               icon={
                 reviewEntry?.starting || review?.status === 'running' ? (
-                  <Loader2 size={12} className="animate-spin" />
+                  <Spinner size={12} />
                 ) : (
                   <Bot size={13} />
                 )
@@ -574,7 +567,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
         <div className="shrink-0 border-b border-border/70 bg-[var(--t-bg-hover)]/40 px-3 py-2 text-[12px]">
           {review?.status === 'running' || reviewEntry?.starting ? (
             <div className="flex items-center gap-1.5 text-text-soft">
-              <Loader2 size={12} className="animate-spin" />
+              <Spinner size={12} />
               正在用 {review?.model ?? '评审模型'} 检查改动…
             </div>
           ) : reviewEntry?.error ? (
@@ -658,7 +651,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
         </div>
       ) : loading && !changes ? (
         <div className="flex flex-1 items-center justify-center text-muted">
-          <Loader2 size={16} className="animate-spin" />
+          <Spinner size={16} />
         </div>
       ) : files.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
@@ -761,7 +754,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
             )}
             {diffLoading ? (
               <div className="flex items-center justify-center py-10 text-muted">
-                <Loader2 size={15} className="animate-spin" />
+                <Spinner size={15} />
               </div>
             ) : diffError ? (
               <p className="rounded-lg border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[13px] text-danger">
@@ -914,7 +907,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
                 }
                 className="max-sm:min-h-11"
               >
-                {committing && <Loader2 size={11} className="animate-spin" />}
+                {committing && <Spinner size={11} />}
                 提交 {files.length} 个文件
               </Button>
               <Menu
@@ -1010,7 +1003,7 @@ export function ChangeReviewPanel({ onClose }: { onClose: () => void }) {
               onClick={() => void doCommit()}
               disabled={committing}
             >
-              {committing && <Loader2 size={14} className="animate-spin" />}
+              {committing && <Spinner size={14} />}
               提交并关闭
             </Button>
           </>

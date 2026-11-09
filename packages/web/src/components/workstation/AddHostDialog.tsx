@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, ChevronRight, Clock, Loader2, Plus } from 'lucide-react'
+import { AlertTriangle, Check, ChevronRight, Clock, Plus } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { WorkspaceHostInfo, WorkstationBindCode, WorkstationPublicStatus } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
@@ -247,12 +248,12 @@ export function AddHostDialog() {
       </>
     ) : phase === 'registered' ? (
       <>
-        <Loader2 size={15} className="shrink-0 animate-spin text-[var(--t-text-tertiary)]" />
+        <Spinner size={15} className="shrink-0 text-[var(--t-text-tertiary)]" />
         <span>已注册 {newHost?.name ?? ''}，等待上线…</span>
       </>
     ) : (
       <>
-        <Loader2 size={15} className="shrink-0 animate-spin text-[var(--t-text-tertiary)]" />
+        <Spinner size={15} className="shrink-0 text-[var(--t-text-tertiary)]" />
         <span>等待主机连接…</span>
       </>
     )
@@ -333,12 +334,12 @@ export function AddHostDialog() {
 
           {phase === 'connected' ? null : !statusReady ? (
             <div className="flex items-center gap-2 rounded-lg bg-[var(--t-bg-subtle)] px-3 py-2 text-[12px] text-[var(--t-text-tertiary)]">
-              <Loader2 size={14} className="animate-spin" />
+              <Spinner size={14} />
               正在读取工作站状态…
             </div>
           ) : !bind ? (
             <div className="flex items-center gap-2 rounded-lg bg-[var(--t-bg-subtle)] px-3 py-2 text-[12px] text-[var(--t-text-tertiary)]">
-              <Loader2 size={14} className="animate-spin" />
+              <Spinner size={14} />
               正在生成注册令牌…
             </div>
           ) : tokenInvalid ? (
@@ -447,7 +448,7 @@ export function AddHostDialog() {
               disabled={!bind || tokenInvalid || joiningLocal}
               onClick={() => void joinLocal()}
             >
-              {joiningLocal ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+              {joiningLocal ? <Spinner size={13} /> : <Plus size={13} />}
               {localLabel}
             </Button>
           )}

@@ -25,6 +25,76 @@ export function formatCost(usd?: number): string {
   return `$${usd.toFixed(4)}`
 }
 
+/** 逐轮用量里的紧凑金额：0 显示 $0，去掉末尾多余的 0。 */
+export function formatCostCompact(usd: number): string {
+  if (!Number.isFinite(usd) || usd <= 0) return '$0'
+  const digits = usd >= 1 ? 2 : usd >= 0.01 ? 3 : 4
+  return `$${usd.toFixed(digits).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')}`
+}
+
+export interface ByteFormatOptions {
+  /** 单位前是否留空格。默认 true（文件预览/记忆）；工具卡片不留空格。 */
+  space?: boolean
+  /** KB 是否取整。默认 false（保留一位小数）；工具卡片取整。 */
+  roundKb?: boolean
+  /** 最大单位。'kb' 时超过 1 MB 仍按 KB 显示。默认 'mb'。 */
+  maxUnit?: 'kb' | 'mb'
+}
+
+/** 文件大小：B / KB / MB。各调用点用参数保留原有空格、小数位与最大单位。 */
+export function formatBytes(bytes: number, options: ByteFormatOptions = {}): string {
+  const { space = true, roundKb = false, maxUnit = 'mb' } = options
+  const sep = space ? ' ' : ''
+  if (maxUnit === 'mb' && bytes >= 1024 * 1024) {
+    return `${(bytes / 1024 / 1024).toFixed(1)}${sep}MB`
+  }
+  if (bytes >= 1024) {
+    const kb = roundKb ? Math.round(bytes / 1024) : (bytes / 1024).toFixed(1)
+    return `${kb}${sep}KB`
+  }
+  return `${bytes}${sep}B`
+}
+
+/** 时长：'human' 用中文单位（看板），'compact' 用 ms/s/m（评测）。 */
+export function formatDuration(ms: number | undefined, style: 'human' | 'compact' = 'human'): string {
+  if (style === 'compact') {
+    if (!ms || !Number.isFinite(ms) || ms <= 0) return '—'
+    if (ms < 1000) return `${Math.round(ms)}ms`
+    if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
+    const minutes = Math.floor(ms / 60_000)
+    const seconds = Math.round((ms % 60_000) / 1000)
+    return `${minutes}m${seconds.toString().padStart(2, '0')}s`
+  }
+  if (!ms || ms < 1000) return '<1 秒'
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `${s} 秒`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m} 分 ${s % 60} 秒`
+  return `${Math.floor(m / 60)} 时 ${m % 60} 分`
+}
+
+export interface DateTimeOptions {
+  /** 带年份（分享管理）。 */
+  year?: boolean
+  /** 带秒（网关令牌）。 */
+  second?: boolean
+  /** 无时间戳时的占位，默认 '—'。 */
+  empty?: string
+}
+
+/** 设置页日期时间：MM/DD HH:mm，可按调用点带年份或秒。 */
+export function formatDateTime(ts: number | undefined, options: DateTimeOptions = {}): string {
+  if (!ts) return options.empty ?? '—'
+  return new Intl.DateTimeFormat('zh-CN', {
+    ...(options.year ? { year: 'numeric' as const } : {}),
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    ...(options.second ? { second: '2-digit' as const } : {}),
+  }).format(ts)
+}
+
 export function formatRelative(ts: number, now = Date.now()): string {
   const diff = Math.max(0, now - ts)
   if (diff < 45_000) return '刚刚'

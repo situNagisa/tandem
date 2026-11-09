@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, Lock, Plus, ShieldCheck, Trash2, Webhook } from 'lucide-react'
+import { Lock, Plus, ShieldCheck, Trash2, Webhook } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { HookEntry, HookEvent, HookSettings, HookSource } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
@@ -143,7 +144,7 @@ export function HooksSection() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8 text-muted">
-        <Loader2 size={16} className="animate-spin" />
+        <Spinner size={16} />
       </div>
     )
   }
@@ -285,7 +286,7 @@ export function HooksSection() {
                             onClick={() => void save()}
                             disabled={!dirty || saving || draft.some((entry) => !entry.command.trim())}
                           >
-                            {saving && <Loader2 size={11} className="animate-spin" />}
+                            {saving && <Spinner size={11} />}
                             保存
                           </Button>
                         </div>
@@ -353,7 +354,7 @@ export function HooksSection() {
                     onClick={() => void setTrust(!data.projectTrusted)}
                     disabled={trusting}
                   >
-                    {trusting && <Loader2 size={11} className="animate-spin" />}
+                    {trusting && <Spinner size={11} />}
                     {data.projectTrusted ? '撤销信任' : '信任此项目的 Hooks'}
                   </Button>
                 )}

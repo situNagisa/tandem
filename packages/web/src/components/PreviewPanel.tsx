@@ -7,7 +7,6 @@ import {
   ChevronUp,
   Columns2,
   ImageOff,
-  Loader2,
   Monitor,
   MousePointerClick,
   PanelTop,
@@ -18,6 +17,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import type {
   PreviewCandidate,
   PreviewMount,
@@ -443,7 +443,7 @@ export function PreviewPanel() {
           className="min-w-[160px] flex-1 font-mono text-[12px]"
         />
         <Button type="submit" size="sm" variant="secondary" disabled={busy !== null || !address.trim()}>
-          {busy === 'open' ? <Loader2 size={13} className="animate-spin" /> : null}
+          {busy === 'open' ? <Spinner size={13} /> : null}
           打开
         </Button>
         <IconButton

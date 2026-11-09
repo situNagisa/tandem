@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ChevronRight, FileText, Loader2, RotateCcw } from 'lucide-react'
+import { ChevronRight, FileText, RotateCcw } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { Message } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
@@ -119,7 +120,7 @@ export function CompactionNoticeLine({
             className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[12px] text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text disabled:opacity-50"
             data-testid="compaction-original"
           >
-            {loading ? <Loader2 size={11} className="animate-spin" /> : <FileText size={11} />}
+            {loading ? <Spinner size={11} /> : <FileText size={11} />}
             查看原文
           </button>
           {notice.canUndo ? (

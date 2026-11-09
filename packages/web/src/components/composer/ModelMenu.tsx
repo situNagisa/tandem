@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { ModelPriceInfo, Profile, ReasoningEffort } from '@tandem/protocol'
-import { ChevronDown, Loader2, Sparkles } from 'lucide-react'
+import { ChevronDown, Sparkles } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { cn } from '../../lib/cn'
 import { EFFORT_LABEL, nearestEffort } from '../../lib/effort'
 import { prettyModel, shortModelName } from '../../lib/modelName'
@@ -129,7 +130,7 @@ function useModelPanel({
     <>
       {loading && profiles.length === 0 && (
         <div className="flex h-[32px] items-center gap-2 px-2 text-[12px] text-muted">
-          <Loader2 size={13} className="animate-spin" /> 加载账号…
+          <Spinner size={13} /> 加载账号…
         </div>
       )}
       {!loading && profiles.length === 0 && (

@@ -1,3 +1,4 @@
+import { readRaw, writeRaw } from './storage'
 import type { SettingsTab } from './types'
 
 export type ChangelogTarget =
@@ -763,36 +764,22 @@ export const APP_VERSION = __APP_VERSION__
 const SEEN_KEY = 'tandem.changelogSeen.v1'
 const ONBOARDING_KEY = 'tandem.onboarding.v1'
 
-function read(key: string): string | null {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
 
-function write(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value)
-  } catch {
-    /* 隐私模式等 localStorage 不可用时，导览只在本次会话有效 */
-  }
-}
 
 export function changelogSeenVersion(): string | null {
-  return read(SEEN_KEY)
+  return readRaw(SEEN_KEY)
 }
 
 export function markChangelogSeen(): void {
-  write(SEEN_KEY, CHANGELOG_VERSION)
+  writeRaw(SEEN_KEY, CHANGELOG_VERSION)
 }
 
 export function onboardingDone(): boolean {
-  return read(ONBOARDING_KEY) === 'done'
+  return readRaw(ONBOARDING_KEY) === 'done'
 }
 
 export function markOnboardingDone(): void {
-  write(ONBOARDING_KEY, 'done')
+  writeRaw(ONBOARDING_KEY, 'done')
 }
 
 /** 跳转后在目标元素上加一圈短暂高亮，不改变布局。 */

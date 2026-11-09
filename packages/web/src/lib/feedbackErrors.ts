@@ -1,5 +1,6 @@
 /** 反馈模式采集的全局错误（环形缓冲，最近 50 条）。在 main.tsx 最早安装。 */
 import { recordFeedbackTrace } from './feedbackTrace'
+import { readSessionRaw, writeSessionRaw } from './storage'
 
 export interface FeedbackErrorEntry {
   time: number
@@ -17,16 +18,12 @@ function push(entry: FeedbackErrorEntry): void {
   entries.push(entry)
   recordFeedbackTrace('error', `${entry.source}: ${entry.message}`)
   if (entries.length > MAX_ERRORS) entries.splice(0, entries.length - MAX_ERRORS)
-  try {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(entries))
-  } catch {
-    /* 隐私模式或配额不足时只保留内存副本 */
-  }
+  writeSessionRaw(SESSION_KEY, JSON.stringify(entries))
 }
 
 function loadFromSession(): void {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY)
+    const raw = readSessionRaw(SESSION_KEY)
     if (!raw) return
     const saved = JSON.parse(raw) as FeedbackErrorEntry[]
     if (!Array.isArray(saved)) return

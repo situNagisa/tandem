@@ -3,13 +3,13 @@ import {
   CalendarClock,
   Clock,
   History,
-  Loader2,
   Pencil,
   Play,
   Plus,
   RefreshCw,
   Trash2,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type {
   PermissionMode,
   ReasoningEffort,
@@ -387,7 +387,7 @@ export function SchedulesSection() {
                     variant="ghost"
                     disabled={runningId === schedule.id}
                     onClick={() => void run(schedule)}
-                    icon={runningId === schedule.id ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                    icon={runningId === schedule.id ? <Spinner size={12} /> : <Play size={12} />}
                     className="max-sm:h-11"
                   >
                     立即运行

@@ -1,6 +1,7 @@
 // 右栏 Wiki 卡片：项目 Wiki 摘要、生成/更新入口。
 import { useEffect } from 'react'
-import { BookOpen, Loader2 } from 'lucide-react'
+import { BookOpen} from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { rememberWikiHost, useWikiStore } from '../../store/useWikiStore'
@@ -41,7 +42,7 @@ export function WikiCard() {
       {runningJob ? (
         <div className="space-y-1">
           <p className="flex items-center gap-1.5 text-text-soft">
-            <Loader2 size={11} className="animate-spin" />
+            <Spinner size={11} />
             {runningJob.current ? `正在生成：${runningJob.current}` : '准备生成…'}
             <span className="tabular-nums text-muted">
               {runningJob.done}/{runningJob.total}

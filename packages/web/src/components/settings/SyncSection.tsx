@@ -7,19 +7,19 @@ import {
   Eye,
   EyeOff,
   FileJson,
-  Loader2,
   Share2,
   ShieldCheck,
   TriangleAlert,
   Upload,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { ConfigBundle, ConfigImportResult } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { collectClientSettings, type ClientSettingsBundle } from '../../lib/storage'
-import { copyText } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
+import { useCopy } from '../../lib/useCopy'
 import { Button, IconButton } from '../ui/Button'
 import { Input } from '../ui/Controls'
 import { Modal } from '../ui/Modal'
@@ -78,7 +78,11 @@ export function SyncSection() {
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
   const [bundle, setBundle] = useState<ConfigBundle | null>(null)
-  const [copied, setCopied] = useState(false)
+  const {
+    copied,
+    copy,
+    reset: resetCopied,
+  } = useCopy({ resetAfter: 1800 })
 
   const [fileName, setFileName] = useState('')
   const [importBundle, setImportBundle] = useState<ConfigBundle | null>(null)
@@ -100,7 +104,7 @@ export function SyncSection() {
     }
     setExporting(true)
     setExportError(null)
-    setCopied(false)
+    resetCopied()
     try {
       const result = await api.exportConfig(host, {
         passphrase: exportPass,
@@ -116,15 +120,12 @@ export function SyncSection() {
     }
   }
 
-  const copyBundle = async () => {
+  const copyBundle = () => {
     if (!bundle) return
-    if (await copyText(bundleText(bundle))) {
-      setCopied(true)
-      toast('配置内容已复制', 'success')
-      window.setTimeout(() => setCopied(false), 1800)
-    } else {
-      toast('复制失败，请改用下载', 'error')
-    }
+    void copy(bundleText(bundle), {
+      onSuccess: () => toast('配置内容已复制', 'success'),
+      onError: () => toast('复制失败，请改用下载', 'error'),
+    })
   }
 
   const shareBundle = async () => {
@@ -328,7 +329,7 @@ export function SyncSection() {
               onClick={() => void exportConfig()}
               disabled={exporting || !exportPass.trim()}
             >
-              {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+              {exporting ? <Spinner size={14} /> : <Download size={14} />}
               导出并下载
             </Button>
             {bundle && (
@@ -480,7 +481,7 @@ export function SyncSection() {
               onClick={requestImport}
               disabled={importing || !importBundle}
             >
-              {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              {importing ? <Spinner size={14} /> : <Upload size={14} />}
               导入配置
             </Button>
           </div>

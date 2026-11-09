@@ -1,4 +1,5 @@
 import type { ProviderKind, ReasoningEffort } from '@tandem/protocol'
+import { readRaw, writeRaw } from './storage'
 
 export const EFFORTS: ReasoningEffort[] = ['off', 'minimal', 'low', 'medium', 'high', 'max']
 
@@ -42,21 +43,13 @@ export function nearestEffort(
 const EFFORT_KEY = 'tandem.effort.v1'
 
 export function loadLastEffort(): ReasoningEffort {
-  try {
-    const raw = localStorage.getItem(EFFORT_KEY)
-    if (raw === 'off' || raw === 'minimal' || raw === 'low' || raw === 'medium' || raw === 'high' || raw === 'max') {
-      return raw
-    }
-  } catch {
-    /* localStorage 不可用时用默认值 */
+  const raw = readRaw(EFFORT_KEY)
+  if (raw === 'off' || raw === 'minimal' || raw === 'low' || raw === 'medium' || raw === 'high' || raw === 'max') {
+    return raw
   }
   return 'off'
 }
 
 export function rememberEffort(effort: ReasoningEffort): void {
-  try {
-    localStorage.setItem(EFFORT_KEY, effort)
-  } catch {
-    /* 忽略 */
-  }
+  writeRaw(EFFORT_KEY, effort)
 }

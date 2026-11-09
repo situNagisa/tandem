@@ -3,13 +3,13 @@ import {
   Columns2,
   Download,
   FlaskConical,
-  Loader2,
   Plus,
   RefreshCw,
   Square,
   Trash2,
   TriangleAlert,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type {
   EvalCase,
   EvalConfig,
@@ -27,6 +27,7 @@ import { Button, IconButton } from '../ui/Button'
 import { Input, Select, Switch } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 import { Modal } from '../ui/Modal'
+import { formatDateTime } from '../../lib/format'
 import { EvalConfigCard } from '../evals/EvalConfigCard'
 import { EvalCompareDialog } from '../evals/EvalCompareDialog'
 import { EvalPromptOverridesDialog } from '../evals/EvalPromptOverridesDialog'
@@ -53,15 +54,6 @@ function configFromProfile(profile: Profile, index: number): EvalConfig {
   }
 }
 
-function formatRunTime(ts: number): string {
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(ts)
-}
-
 function StatusPill({ result }: { result?: EvalResult | Omit<EvalResult, 'messages'> }) {
   const passed = cellPassed(result)
   return (
@@ -76,7 +68,7 @@ function StatusPill({ result }: { result?: EvalResult | Omit<EvalResult, 'messag
       )}
     >
       {(result?.status === 'running' || result?.status === 'queued') && (
-        <Loader2 size={10} className="animate-spin" />
+        <Spinner size={10} />
       )}
       {resultLabel(result)}
     </span>
@@ -504,7 +496,7 @@ export function EvalsSection() {
             onChange={(next) => selectRun(host.id, next)}
             options={runs.map((item) => ({
               value: item.id,
-              label: `${item.suite} · ${formatRunTime(item.startedAt)} · ${item.finished}/${item.total}${
+              label: `${item.suite} · ${formatDateTime(item.startedAt)} · ${item.finished}/${item.total}${
                 item.status === 'running' ? ' 运行中' : item.status === 'cancelled' ? ' 已取消' : ''
               }`,
             }))}
@@ -568,7 +560,7 @@ export function EvalsSection() {
           </p>
         ) : !run ? (
           <div className="flex items-center justify-center gap-2 px-3 py-12 text-[12.5px] text-muted">
-            <Loader2 size={14} className="animate-spin" /> 加载评测结果…
+            <Spinner size={14} /> 加载评测结果…
           </div>
         ) : (
           <>
@@ -691,7 +683,7 @@ export function EvalsSection() {
               取消
             </Button>
             <Button size="lg" variant="primary" onClick={() => void doStart()} disabled={starting}>
-              {starting && <Loader2 size={14} className="animate-spin" />}
+              {starting && <Spinner size={14} />}
               确认并运行
             </Button>
           </>

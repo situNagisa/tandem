@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
+import { CheckCircle2, XCircle } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { EvalCase, EvalResult, EvalRun } from '@tandem/protocol'
 import { cn } from '../../lib/cn'
 import { formatCost, formatDuration, resultLabel } from './evalDisplay'
@@ -33,7 +34,7 @@ function Pane({
           )}
         >
           {result?.status === 'running' || result?.status === 'queued' ? (
-            <Loader2 size={11} className="animate-spin" />
+            <Spinner size={11} />
           ) : result?.passed ? (
             <CheckCircle2 size={11} />
           ) : (

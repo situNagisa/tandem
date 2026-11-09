@@ -1,4 +1,5 @@
 /** 反馈模式的数据结构、持久化与导出。 */
+import { readJson, writeJson } from './storage'
 
 export type FeedbackType = 'issue' | 'suggestion' | 'praise'
 
@@ -146,24 +147,13 @@ export interface FeedbackSnapshotPrefs {
 const SNAPSHOT_PREFS_KEY = 'tandem.feedback.snapshotPrefs.v1'
 
 export function loadFeedbackSnapshotPrefs(): FeedbackSnapshotPrefs {
-  try {
-    const raw = localStorage.getItem(SNAPSHOT_PREFS_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<FeedbackSnapshotPrefs>
-      return { includeMessages: !!parsed.includeMessages, hidePaths: !!parsed.hidePaths }
-    }
-  } catch {
-    /* 忽略损坏的偏好 */
-  }
+  const parsed = readJson<Partial<FeedbackSnapshotPrefs> | null>(SNAPSHOT_PREFS_KEY, null)
+  if (parsed) return { includeMessages: !!parsed.includeMessages, hidePaths: !!parsed.hidePaths }
   return { includeMessages: false, hidePaths: false }
 }
 
 export function saveFeedbackSnapshotPrefs(prefs: FeedbackSnapshotPrefs): void {
-  try {
-    localStorage.setItem(SNAPSHOT_PREFS_KEY, JSON.stringify(prefs))
-  } catch {
-    /* 忽略 */
-  }
+  writeJson(SNAPSHOT_PREFS_KEY, prefs)
 }
 
 export interface FeedbackStoredState {
@@ -274,16 +264,11 @@ export async function loadFeedbackState(): Promise<FeedbackStoredState> {
     db.close()
     if (fromIdb?.items?.length) return hydrateStored(fromIdb)
   }
-  try {
-    const raw = localStorage.getItem(FEEDBACK_STORAGE_KEY)
-    if (!raw) return { items: [], pageShots: [], receipt: null, draft: null }
-    const parsed = JSON.parse(raw) as StoredIdbState
-    return {
-      ...sanitizeMeta(parsed),
-      pageShots: [],
-    }
-  } catch {
-    return { items: [], pageShots: [], receipt: null, draft: null }
+  const parsed = readJson<StoredIdbState | null>(FEEDBACK_STORAGE_KEY, null)
+  if (!parsed) return { items: [], pageShots: [], receipt: null, draft: null }
+  return {
+    ...sanitizeMeta(parsed),
+    pageShots: [],
   }
 }
 
@@ -494,7 +479,7 @@ export async function saveFeedbackState(state: FeedbackStoredState): Promise<voi
         : null,
       draft: state.draft ?? null,
     }
-    localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(meta))
+    writeJson(FEEDBACK_STORAGE_KEY, meta)
   } catch {
     /* 隐私模式等场景忽略 */
   }

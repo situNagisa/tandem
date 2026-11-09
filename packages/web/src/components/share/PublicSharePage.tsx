@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Eye, Loader2, TriangleAlert } from 'lucide-react'
+import { Eye, TriangleAlert } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { PublicShare } from '@tandem/protocol'
 import type { ToolResultBlock, UiMessage } from '../../lib/types'
 import { fetchPublicShare } from '../../lib/api'
@@ -149,7 +150,7 @@ export function PublicSharePage() {
       <footer className="border-t border-border px-4 py-3 text-center text-[12px] leading-4 text-muted">
         {data?.live ? (
           <span className="inline-flex items-center gap-1">
-            <Loader2 size={10} className="animate-spin" />
+            <Spinner size={10} />
             每 3 秒自动刷新
           </span>
         ) : (

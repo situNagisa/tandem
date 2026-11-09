@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Loader2, TriangleAlert } from 'lucide-react'
+import { TriangleAlert } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
@@ -65,7 +66,7 @@ export function TurnErrorNotice({
               disabled={running || allowing}
               className="flex h-6 items-center gap-1 rounded-full px-2 text-[13px] font-medium text-text transition-colors hover:bg-bg-hover disabled:pointer-events-none disabled:opacity-40"
             >
-              {allowing && <Loader2 size={11} className="animate-spin" />}
+              {allowing && <Spinner size={11} />}
               本次放行
             </button>
           )}

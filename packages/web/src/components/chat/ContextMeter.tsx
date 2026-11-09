@@ -9,6 +9,7 @@ import { useSessionTarget, useSessionView } from '../session/SessionScope'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
 import { formatTokens } from '../../lib/format'
+import { readRaw, writeRaw } from '../../lib/storage'
 import { Popover } from '../ui/Popover'
 import { Tip } from '../ui/Tooltip'
 
@@ -51,11 +52,7 @@ export function jumpToMessage(messageId: string): void {
 const TOP_COLLAPSED_KEY = 'tandem.contextTopCollapsed.v1'
 
 function loadTopCollapsed(): boolean {
-  try {
-    return localStorage.getItem(TOP_COLLAPSED_KEY) === '1'
-  } catch {
-    return false
-  }
+  return readRaw(TOP_COLLAPSED_KEY) === '1'
 }
 
 /** 老 Host 只给逐条 topItems：按轮次合并成近似列表（只有最大 10 条，量级供参考）。 */
@@ -110,11 +107,7 @@ export function ContextSpaceSection({
   const toggle = () => {
     setCollapsed((value) => {
       const next = !value
-      try {
-        localStorage.setItem(TOP_COLLAPSED_KEY, next ? '1' : '0')
-      } catch {
-        // localStorage 不可用时只保留本次会话内状态
-      }
+      writeRaw(TOP_COLLAPSED_KEY, next ? '1' : '0')
       return next
     })
   }

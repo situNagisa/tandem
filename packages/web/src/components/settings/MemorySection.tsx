@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Brain, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { Brain, Pencil, Trash2 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { MemoryListItem } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
@@ -7,12 +8,7 @@ import { useUiStore } from '../../store/useUiStore'
 import { Button, IconButton } from '../ui/Button'
 import { MenuSelect } from '../ui/Menu'
 import { Modal } from '../ui/Modal'
-import { formatRelative } from '../../lib/format'
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  return `${(bytes / 1024).toFixed(1)} KB`
-}
+import { formatBytes, formatRelative } from '../../lib/format'
 
 export function MemorySection() {
   const hosts = useAppStore((s) => s.hosts)
@@ -112,7 +108,7 @@ export function MemorySection() {
           disabled={loading}
           className="max-sm:min-h-11"
         >
-          {loading ? <Loader2 size={13} className="animate-spin" /> : null} 刷新
+          {loading ? <Spinner size={13} /> : null} 刷新
         </Button>
       </div>
 
@@ -160,7 +156,7 @@ export function MemorySection() {
                 </div>
               </div>
               <span className="text-right font-mono text-[12px] tabular-nums text-text-soft">
-                {formatSize(item.size)}
+                {formatBytes(item.size, { maxUnit: 'kb' })}
               </span>
               <span className="hidden text-right text-[12px] text-muted sm:block">
                 {item.updatedAt ? formatRelative(item.updatedAt) : '—'}
@@ -208,7 +204,7 @@ export function MemorySection() {
               取消
             </Button>
             <Button size="lg" variant="danger-ghost" onClick={() => void confirmDelete()} disabled={removing}>
-              {removing && <Loader2 size={14} className="animate-spin" />}
+              {removing && <Spinner size={14} />}
               删除
             </Button>
           </>

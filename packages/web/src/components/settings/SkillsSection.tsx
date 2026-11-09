@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, Loader2, Sparkles, TriangleAlert } from 'lucide-react'
+import { BookOpen, Sparkles, TriangleAlert } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { SkillInfo, SkillSource } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
@@ -151,7 +152,7 @@ export function SkillsSection() {
           />
         )}
         <Button variant="ghost" onClick={() => void load()} disabled={loading} className="max-sm:min-h-11">
-          {loading ? <Loader2 size={13} className="animate-spin" /> : null} 刷新
+          {loading ? <Spinner size={13} /> : null} 刷新
         </Button>
       </div>
 
@@ -168,7 +169,7 @@ export function SkillsSection() {
 
       {loading && skills.length === 0 && (
         <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-muted">
-          <Loader2 size={14} className="animate-spin" /> 正在扫描 Skills…
+          <Spinner size={14} /> 正在扫描 Skills…
         </div>
       )}
 
@@ -283,7 +284,7 @@ export function SkillsSection() {
         )}
         {previewLoading ? (
           <div className="flex items-center justify-center py-10 text-[13px] text-muted">
-            <Loader2 size={14} className="animate-spin" />
+            <Spinner size={14} />
           </div>
         ) : (
           <Markdown text={previewBody.trim() || '（空文件）'} cwd={cwd} />

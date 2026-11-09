@@ -1,12 +1,13 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ContentBlock } from '@tandem/protocol'
-import { Check, Copy, GitFork, Loader2, MoreHorizontal, RefreshCw, Undo2 } from 'lucide-react'
+import { Check, Copy, GitFork, MoreHorizontal, RefreshCw, Undo2 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { useAppStore } from '../../store/useAppStore'
 import { useSessionTarget, useSessionView } from '../session/SessionScope'
 import { cn } from '../../lib/cn'
-import { copyText } from '../../lib/clipboard'
 import { formatCost, formatDurationMs, formatTokens } from '../../lib/format'
 import { useNow } from '../../lib/hooks'
+import { useCopy } from '../../lib/useCopy'
 import type { ToolResultBlock, UiMessage } from '../../lib/types'
 import { Markdown } from '../Markdown'
 import { ThinkingBlock } from '../ThinkingBlock'
@@ -45,7 +46,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   runningToolIds?: Set<string>
 }) {
   const lastIndex = message.content.length - 1
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy()
   const [rewindOpen, setRewindOpen] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   // 流式进行中从本条消息开始出现时计时；结束后改用服务端记录的准确耗时。
@@ -56,25 +57,12 @@ export const AssistantMessage = memo(function AssistantMessage({
   }, [streaming])
   const scopeTarget = useSessionTarget() ?? undefined
   const running = useSessionView((s) => s?.running ?? false)
-  const copyTimer = useRef<number | null>(null)
   const rawText = message.content
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
     .map((b) => b.text)
     .join('\n\n')
 
-  useEffect(
-    () => () => {
-      if (copyTimer.current) window.clearTimeout(copyTimer.current)
-    },
-    [],
-  )
-
-  const copyAll = async () => {
-    if (!(await copyText(rawText))) return
-    setCopied(true)
-    if (copyTimer.current) window.clearTimeout(copyTimer.current)
-    copyTimer.current = window.setTimeout(() => setCopied(false), 1500)
-  }
+  const copyAll = () => void copy(rawText)
 
   const forkFromHere = () => {
     const state = useAppStore.getState()
@@ -250,7 +238,7 @@ export const AssistantMessage = memo(function AssistantMessage({
                 className="[&_svg]:size-[12.5px]"
               >
                 {regenerating ? (
-                  <Loader2 size={12.5} className="animate-spin" />
+                  <Spinner size={12.5} />
                 ) : (
                   <RefreshCw size={12.5} />
                 )}

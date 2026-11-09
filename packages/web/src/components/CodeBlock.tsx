@@ -2,19 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeftRight, Check, Copy, WrapText } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { AUTO_LANGUAGES, languageLabel, loadHighlighter } from '../lib/highlight'
-import { copyText } from '../lib/clipboard'
 import { useHorizontalOverflow } from '../lib/hooks'
+import { readRaw, writeRaw } from '../lib/storage'
+import { useCopy } from '../lib/useCopy'
 import { IconButton } from './ui/Button'
 
 const MAX_CHARS = 200_000
 const WRAP_KEY = 'tandem.codeWrap.v1'
 
 function loadWrap(): boolean {
-  try {
-    return localStorage.getItem(WRAP_KEY) === '1'
-  } catch {
-    return false
-  }
+  return readRaw(WRAP_KEY) === '1'
 }
 const HIGHLIGHT_CACHE_MAX = 80
 const highlightCache = new Map<string, { code: string; html: string; language?: string }>()
@@ -156,9 +153,8 @@ export function CodeBlock({
 }: CodeBlockProps) {
   const [highlighted, setHighlighted] = useState<{ code: string; html: string; language?: string } | null>(null)
   const [autoLang, setAutoLang] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy()
   const [wrap, setWrap] = useState(loadWrap)
-  const copyTimer = useRef<number | null>(null)
   const shown = useMemo(
     () => (code.length > MAX_CHARS ? code.slice(0, MAX_CHARS) + '\n…（内容过长，已截断）' : code),
     [code],
@@ -266,19 +262,7 @@ export function CodeBlock({
     }
   }, [shown, language, key, streaming, gridWrap])
 
-  useEffect(
-    () => () => {
-      if (copyTimer.current) window.clearTimeout(copyTimer.current)
-    },
-    [],
-  )
-
-  const copy = async () => {
-    if (!(await copyText(code))) return
-    setCopied(true)
-    if (copyTimer.current) window.clearTimeout(copyTimer.current)
-    copyTimer.current = window.setTimeout(() => setCopied(false), 1500)
-  }
+  const copyCode = () => void copy(code)
 
   const empty = !shown
 
@@ -302,11 +286,7 @@ export function CodeBlock({
             onClick={() => {
               setWrap((value) => {
                 const next = !value
-                try {
-                  localStorage.setItem(WRAP_KEY, next ? '1' : '0')
-                } catch {
-                  /* localStorage 不可用时只影响本次 */
-                }
+                writeRaw(WRAP_KEY, next ? '1' : '0')
                 return next
               })
             }}
@@ -322,7 +302,7 @@ export function CodeBlock({
           </button>
           <IconButton
             size="sm"
-            onClick={copy}
+            onClick={copyCode}
             label={copied ? '已复制' : '复制代码'}
             tooltip={copied ? '已复制' : '复制'}
             className="size-6 rounded-md bg-[color-mix(in_srgb,var(--t-bg)_72%,transparent)] text-[var(--t-text-tertiary)] backdrop-blur-sm hover:bg-[var(--t-bg-active)] hover:text-text max-sm:size-11! [&_svg]:size-3 max-sm:[&_svg]:size-4"

@@ -14,6 +14,7 @@ import {
   ScrollText,
 } from 'lucide-react'
 import { cn } from '../../lib/cn'
+import { readJson, readRaw, writeJson, writeRaw } from '../../lib/storage'
 
 export type GroupId = 'plan' | 'todos' | 'agents' | 'graph' | 'usage' | 'context' | 'changes' | 'memory' | 'wiki' | 'details'
 
@@ -45,22 +46,14 @@ export const PANEL_WIDTH_MIN = 280
 export const PANEL_WIDTH_MAX = 600
 
 export function loadPanelWidth(): number {
-  try {
-    const n = Number(localStorage.getItem(PANEL_WIDTH_KEY))
-    return Number.isFinite(n) && n >= PANEL_WIDTH_MIN && n <= PANEL_WIDTH_MAX
-      ? Math.round(n)
-      : PANEL_WIDTH_DEFAULT
-  } catch {
-    return PANEL_WIDTH_DEFAULT
-  }
+  const n = Number(readRaw(PANEL_WIDTH_KEY))
+  return Number.isFinite(n) && n >= PANEL_WIDTH_MIN && n <= PANEL_WIDTH_MAX
+    ? Math.round(n)
+    : PANEL_WIDTH_DEFAULT
 }
 
 export function savePanelWidth(width: number): void {
-  try {
-    localStorage.setItem(PANEL_WIDTH_KEY, String(Math.round(width)))
-  } catch {
-    // localStorage 不可用时仅本次会话有效
-  }
+  writeRaw(PANEL_WIDTH_KEY, String(Math.round(width)))
 }
 
 export interface PanelPrefs {
@@ -74,32 +67,23 @@ export interface PanelPrefs {
 }
 
 export function loadPanelPrefs(): PanelPrefs {
-  try {
-    const raw = localStorage.getItem(PREFS_KEY)
-    if (!raw) return { order: [...DEFAULT_ORDER], hidden: [], shown: [] }
-    const parsed = JSON.parse(raw) as { order?: unknown; hidden?: unknown; shown?: unknown }
-    const order = Array.isArray(parsed.order)
-      ? parsed.order.filter((id): id is GroupId => typeof id === 'string' && GROUP_IDS.has(id as GroupId))
-      : []
-    for (const id of DEFAULT_ORDER) if (!order.includes(id)) order.push(id)
-    const hidden = Array.isArray(parsed.hidden)
-      ? parsed.hidden.filter((id): id is GroupId => typeof id === 'string' && GROUP_IDS.has(id as GroupId))
-      : []
-    const shown = Array.isArray(parsed.shown)
-      ? parsed.shown.filter((id): id is GroupId => typeof id === 'string' && GROUP_IDS.has(id as GroupId))
-      : []
-    return { order, hidden: [...new Set(hidden)], shown: [...new Set(shown)] }
-  } catch {
-    return { order: [...DEFAULT_ORDER], hidden: [], shown: [] }
-  }
+  const parsed = readJson<{ order?: unknown; hidden?: unknown; shown?: unknown } | null>(PREFS_KEY, null)
+  if (!parsed) return { order: [...DEFAULT_ORDER], hidden: [], shown: [] }
+  const order = Array.isArray(parsed.order)
+    ? parsed.order.filter((id): id is GroupId => typeof id === 'string' && GROUP_IDS.has(id as GroupId))
+    : []
+  for (const id of DEFAULT_ORDER) if (!order.includes(id)) order.push(id)
+  const hidden = Array.isArray(parsed.hidden)
+    ? parsed.hidden.filter((id): id is GroupId => typeof id === 'string' && GROUP_IDS.has(id as GroupId))
+    : []
+  const shown = Array.isArray(parsed.shown)
+    ? parsed.shown.filter((id): id is GroupId => typeof id === 'string' && GROUP_IDS.has(id as GroupId))
+    : []
+  return { order, hidden: [...new Set(hidden)], shown: [...new Set(shown)] }
 }
 
 export function savePanelPrefs(prefs: PanelPrefs): void {
-  try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs))
-  } catch {
-    // localStorage 不可用时只保留本次会话内的顺序与显隐。
-  }
+  writeJson(PREFS_KEY, prefs)
 }
 
 /**
@@ -171,23 +155,14 @@ const COLLAPSED_KEY = 'tandem.rightPanelCollapsed.v1'
 
 /** 反馈12#07：收起的会话信息分组，跨会话/重开记住。 */
 export function loadCollapsedGroups(): GroupId[] {
-  try {
-    const raw = localStorage.getItem(COLLAPSED_KEY)
-    const parsed = raw ? (JSON.parse(raw) as unknown) : []
-    return Array.isArray(parsed)
-      ? parsed.filter((id): id is GroupId => typeof id === 'string' && GROUP_IDS.has(id as GroupId))
-      : []
-  } catch {
-    return []
-  }
+  const parsed = readJson<unknown>(COLLAPSED_KEY, [])
+  return Array.isArray(parsed)
+    ? parsed.filter((id): id is GroupId => typeof id === 'string' && GROUP_IDS.has(id as GroupId))
+    : []
 }
 
 export function saveCollapsedGroups(ids: GroupId[]): void {
-  try {
-    localStorage.setItem(COLLAPSED_KEY, JSON.stringify(ids))
-  } catch {
-    // localStorage 不可用时仅本次有效
-  }
+  writeJson(COLLAPSED_KEY, ids)
 }
 
 export const CHANGE_MARK: Record<string, string> = {

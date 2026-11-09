@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Loader2, Users } from 'lucide-react'
+import { Users } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { acceptTeamInvite } from '../../lib/api'
 import { navigate } from '../../lib/router'
+import { readRaw, writeRaw } from '../../lib/storage'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Controls'
 import { Modal } from '../ui/Modal'
@@ -22,7 +24,7 @@ export function JoinTeamDialog() {
     if (invite) {
       setError(null)
       setJoining(false)
-      setName((prev) => prev || localStorage.getItem('tandem.memberName') || '')
+      setName((prev) => prev || readRaw('tandem.memberName') || '')
     }
   }, [invite])
 
@@ -36,7 +38,7 @@ export function JoinTeamDialog() {
     setError(null)
     try {
       const result = await acceptTeamInvite(invite.baseUrl, invite.code, name.trim())
-      localStorage.setItem('tandem.memberName', name.trim())
+      writeRaw('tandem.memberName', name.trim())
       const host = addHost({
         name: result.host.name || '团队 Host',
         url: invite.baseUrl,
@@ -71,7 +73,7 @@ export function JoinTeamDialog() {
             稍后再说
           </Button>
           <Button variant="primary" onClick={() => void join()} disabled={joining || !name.trim()}>
-            {joining && <Loader2 size={13} className="animate-spin" />}
+            {joining && <Spinner size={13} />}
             接受邀请
           </Button>
         </>

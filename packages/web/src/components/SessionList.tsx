@@ -11,7 +11,6 @@ import {
   Folder,
   GitBranch,
   GitMerge,
-  Loader2,
   MessageSquarePlus,
   MoreHorizontal,
   Pencil,
@@ -23,6 +22,7 @@ import {
   Trash2,
   TriangleAlert,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import type { ExternalSession, SessionSummary } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { api, ApiError } from '../lib/api'
@@ -1148,7 +1148,7 @@ export function SessionList({
               }}
               disabled={confirm?.busy}
             >
-              {confirm?.busy && <Loader2 size={14} className="animate-spin" />}
+              {confirm?.busy && <Spinner size={14} />}
               {confirm?.dirty ? '仍然删除' : '删除'}
             </Button>
           </>
@@ -1206,7 +1206,7 @@ export function SessionList({
               }}
               disabled={merge?.busy}
             >
-              {merge?.busy && <Loader2 size={14} className="animate-spin" />}
+              {merge?.busy && <Spinner size={14} />}
               合并
             </Button>
           </>

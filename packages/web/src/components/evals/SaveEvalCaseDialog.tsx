@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FlaskConical, Loader2, TriangleAlert } from 'lucide-react'
+import { FlaskConical, TriangleAlert } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { ContentBlock, Message, SessionSummary } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
@@ -136,7 +137,7 @@ export function SaveEvalCaseDialog({
             onClick={() => void submit()}
             disabled={!host || !session || !selected || saving}
           >
-            {saving && <Loader2 size={14} className="animate-spin" />}
+            {saving && <Spinner size={14} />}
             保存用例
           </Button>
         </>
@@ -145,7 +146,7 @@ export function SaveEvalCaseDialog({
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
         {loading ? (
           <div className="flex items-center gap-2 py-8 text-[13px] text-muted">
-            <Loader2 size={14} className="animate-spin" /> 读取会话消息…
+            <Spinner size={14} /> 读取会话消息…
           </div>
         ) : error ? (
           <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[12.5px] leading-5 text-danger">

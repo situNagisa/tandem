@@ -6,7 +6,6 @@ import {
   FileText,
   KeyRound,
   Laptop,
-  Loader2,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -22,6 +21,7 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { RemoteSshHost, SshJob } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { api } from '../../lib/api'
@@ -479,7 +479,7 @@ export function HostsSection() {
                 disabled={saving || !link.trim()}
                 className="shrink-0"
               >
-                {saving && <Loader2 size={12} className="animate-spin" />}
+                {saving && <Spinner size={12} />}
                 解析并连接
               </Button>
               {canScan && (
@@ -615,7 +615,7 @@ export function HostsSection() {
               onClick={handleAdd}
               disabled={saving || (mode === 'relay' && cryptoSupported === false)}
             >
-              {saving && <Loader2 size={14} className="animate-spin" />}
+              {saving && <Spinner size={14} />}
               添加
             </Button>
           </div>
@@ -1165,7 +1165,7 @@ export function HostsSection() {
                 onClick={() => void openSshLogs(sshLogView.controller, sshLogView.record)}
                 disabled={sshLogView.loading}
               >
-                {sshLogView.loading && <Loader2 size={13} className="animate-spin" />}
+                {sshLogView.loading && <Spinner size={13} />}
                 刷新
               </Button>
               <Button onClick={() => setSshLogView(null)}>关闭</Button>
@@ -1250,7 +1250,7 @@ export function HostsSection() {
               onClick={() => void submitSshPassword()}
               disabled={sshPasswordView?.saving || !sshPasswordView?.password}
             >
-              {sshPasswordView?.saving && <Loader2 size={13} className="animate-spin" />}
+              {sshPasswordView?.saving && <Spinner size={13} />}
               连接
             </Button>
           </>

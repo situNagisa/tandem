@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FsReadResult } from '@tandem/protocol'
 import {
   Check,
@@ -8,15 +8,16 @@ import {
   Eye,
   FileText,
   Image as ImageIcon,
-  Loader2,
   RotateCcw,
   X,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { api } from '../lib/api'
-import { copyText } from '../lib/clipboard'
 import { cn } from '../lib/cn'
+import { formatBytes } from '../lib/format'
+import { useCopy } from '../lib/useCopy'
 import { useIsMobile } from '../lib/hooks'
 import { Button, IconButton } from './ui/Button'
 import { SegmentedControl } from './ui/Controls'
@@ -34,12 +35,6 @@ import {
 import { CodeBlock } from './CodeBlock'
 import { Markdown } from './Markdown'
 import { FileBrowser } from './FileBrowser'
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
 
 /** 服务端 404 时拿不到解析结果，客户端按 主机平台规则拼出绝对路径供用户判断。 */
 function resolveAbsolute(path: string, cwd: string, platform?: string): string {
@@ -71,12 +66,11 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [retryNonce, setRetryNonce] = useState(0)
   const [mode, setMode] = useState<'preview' | 'source'>('preview')
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy({ onError: () => toast('复制失败', 'error') })
   const [imageUrl, setImageUrl] = useState('')
   const [revealing, setRevealing] = useState(false)
   const [dragWidth, setDragWidth] = useState<number | null>(null)
   const [dragTreeWidth, setDragTreeWidth] = useState<number | null>(null)
-  const copyTimer = useRef<number | null>(null)
 
   const path = preview?.path ?? ''
   const cwd = preview?.cwd ?? ''
@@ -145,13 +139,6 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
     setMode('preview')
   }, [path])
 
-  useEffect(
-    () => () => {
-      if (copyTimer.current) window.clearTimeout(copyTimer.current)
-    },
-    [],
-  )
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return
@@ -167,15 +154,8 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
 
   const width = dragWidth ?? widthPref
 
-  const copyPath = async () => {
-    if (!absPath) return
-    if (!(await copyText(absPath))) {
-      toast('复制失败', 'error')
-      return
-    }
-    setCopied(true)
-    if (copyTimer.current) window.clearTimeout(copyTimer.current)
-    copyTimer.current = window.setTimeout(() => setCopied(false), 1500)
+  const copyPath = () => {
+    if (absPath) void copy(absPath)
   }
 
   const reveal = async () => {
@@ -254,12 +234,12 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
                 tooltip="在主机的文件管理器中显示"
                 className="max-md:size-11"
               >
-                {revealing ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />}
+                {revealing ? <Spinner size={13} /> : <ExternalLink size={13} />}
               </IconButton>
             )}
             <IconButton
               size="sm"
-              onClick={() => void copyPath()}
+              onClick={copyPath}
               label="复制文件路径"
               tooltip={copied ? '已复制' : `复制路径：${absPath || path}`}
               className="max-md:size-11"
@@ -325,7 +305,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
           )}
           {loading ? (
         <div className="flex flex-1 items-center justify-center text-muted">
-          <Loader2 size={16} className="animate-spin" />
+          <Spinner size={16} />
         </div>
       ) : error ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
@@ -343,7 +323,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
         <div className="flex min-h-0 flex-1 flex-col">
           {data.truncated && (
             <div className="shrink-0 border-b border-border/70 bg-[var(--t-bg-subtle)] px-3 py-1.5 text-[12px] text-text-secondary">
-              文件较大（{formatSize(data.size)}），仅显示前 1 MB。
+              文件较大（{formatBytes(data.size)}），仅显示前 1 MB。
             </div>
           )}
           {image ? (
@@ -359,7 +339,7 @@ export function FilePreviewPanel({ onClose }: { onClose: () => void }) {
               <ImageIcon size={26} className="text-muted/50" />
               <p className="text-[13px] font-medium text-text-soft">二进制文件</p>
               <p className="text-[13px] text-muted">
-                无法以文本预览（{formatSize(data.size)}）
+                无法以文本预览（{formatBytes(data.size)}）
               </p>
             </div>
           ) : markdown && mode === 'preview' ? (

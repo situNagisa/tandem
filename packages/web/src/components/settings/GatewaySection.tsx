@@ -5,7 +5,6 @@ import {
   Copy,
   Gauge,
   KeyRound,
-  Loader2,
   Network,
   RefreshCw,
   ShieldAlert,
@@ -13,6 +12,7 @@ import {
   TriangleAlert,
   Users,
 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type {
   GatewayMemberUsage,
   GatewayModelRoute,
@@ -23,23 +23,12 @@ import type {
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
-import { copyText } from '../../lib/clipboard'
-import { formatCost, formatTokens } from '../../lib/format'
+import { formatCost, formatDateTime, formatTokens } from '../../lib/format'
+import { useCopy } from '../../lib/useCopy'
 import { Button, IconButton } from '../ui/Button'
 import { Input, Switch } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 import { Modal } from '../ui/Modal'
-
-function formatTime(ts?: number): string {
-  if (!ts) return '—'
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(ts)
-}
 
 function formatLimit(value?: number): string {
   return value ? formatCost(value) : '不限'
@@ -71,7 +60,7 @@ export function GatewaySection() {
   const [issuedToken, setIssuedToken] = useState<string | null>(null)
   const [revokeTarget, setRevokeTarget] = useState<GatewayToken | null>(null)
   const [routeDraft, setRouteDraft] = useState({ profileId: '', groupId: '', model: '' })
-  const [copied, setCopied] = useState(false)
+  const { copied, copy, reset: resetCopied } = useCopy({ resetAfter: 0 })
 
   const profiles = runtime?.profiles ?? []
   const settings = overview?.settings ?? null
@@ -172,13 +161,13 @@ export function GatewaySection() {
 
   const openIssue = () => {
     setIssuedToken(null)
-    setCopied(false)
+    resetCopied()
     setTokenModal({ ...EMPTY_DRAFT, memberId: members[0]?.memberId ?? '' })
   }
 
   const openEdit = (token: GatewayToken) => {
     setIssuedToken(null)
-    setCopied(false)
+    resetCopied()
     setTokenModal({
       id: token.id,
       memberId: token.memberId,
@@ -241,10 +230,8 @@ export function GatewaySection() {
     }
   }
 
-  const copyToken = async () => {
-    if (!issuedToken) return
-    await copyText(issuedToken)
-    setCopied(true)
+  const copyToken = () => {
+    if (issuedToken) void copy(issuedToken)
   }
 
   const routeName = (route: GatewayModelRoute) => {
@@ -454,7 +441,8 @@ export function GatewaySection() {
                   </div>
                   <div className="mt-0.5 truncate text-[12px] text-muted">
                     白名单：{token.allowedModels.length ? token.allowedModels.join('、') : '全部路由模型'} · 最近使用{' '}
-                    {formatTime(token.lastUsedAt)} · 签发 {formatTime(token.createdAt)}
+                    {formatDateTime(token.lastUsedAt, { second: true })} · 签发{' '}
+                    {formatDateTime(token.createdAt, { second: true })}
                   </div>
                 </div>
               )
@@ -473,7 +461,7 @@ export function GatewaySection() {
           <h4 className="text-[13px] font-medium">今日统计</h4>
           <span className="text-[12px] text-muted">每 5 秒自动刷新 · 按成员</span>
           <span className="flex-1" />
-          {loading && <Loader2 size={12} className="animate-spin text-muted" />}
+          {loading && <Spinner size={12} className="text-muted" />}
         </div>
         {members.length === 0 ? (
           <p className="mt-2 text-[13px] text-muted">还没有团队成员。</p>

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import QRCode from 'qrcode'
-import { Check, Copy, Link2, Loader2, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { Check, Copy, Link2, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { CreateShareResult, SessionSummary, ShareExpiry } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { api } from '../../lib/api'
-import { copyText } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
+import { formatDateTime } from '../../lib/format'
+import { useCopy } from '../../lib/useCopy'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { Select, Switch } from '../ui/Controls'
@@ -16,15 +18,6 @@ const EXPIRY_OPTIONS: Array<{ value: ShareExpiry; label: string }> = [
   { value: '7d', label: '7 天（默认）' },
   { value: 'never', label: '不过期（手动撤销）' },
 ]
-
-function formatTime(ts: number): string {
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(ts)
-}
 
 export function ShareDialog({
   hostId,
@@ -43,7 +36,7 @@ export function ShareDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [created, setCreated] = useState<CreateShareResult | null>(null)
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy()
   const [svg, setSvg] = useState('')
 
   useEffect(() => {
@@ -99,12 +92,8 @@ export function ShareDialog({
     }
   }
 
-  const copy = async () => {
-    if (!created?.url) return
-    if (await copyText(created.url)) {
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    }
+  const copyLink = () => {
+    if (created?.url) void copy(created.url)
   }
 
   return (
@@ -135,7 +124,7 @@ export function ShareDialog({
               onClick={() => void create()}
               disabled={busy || !host}
             >
-              {busy && <Loader2 size={14} className="animate-spin" />}
+              {busy && <Spinner size={14} />}
               生成链接
             </Button>
           </>
@@ -219,7 +208,7 @@ export function ShareDialog({
                 <span className="min-w-0 flex-1 break-all font-mono text-[12px] leading-5 text-text-soft">
                   {created.url}
                 </span>
-                <Button size="sm" variant="ghost" onClick={() => void copy()}>
+                <Button size="sm" variant="ghost" onClick={copyLink}>
                   {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
                   {copied ? '已复制' : '复制'}
                 </Button>
@@ -227,7 +216,7 @@ export function ShareDialog({
             </div>
             <p className="text-[12px] leading-5 text-muted">
               {summary}
-              {created.expiresAt ? ` · ${formatTime(created.expiresAt)} 到期` : ' · 不过期'}
+              {created.expiresAt ? ` · ${formatDateTime(created.expiresAt)} 到期` : ' · 不过期'}
               。链接里的 token 只显示这一次；关闭后可在设置 → 分享查看访问次数或撤销。
             </p>
           </>

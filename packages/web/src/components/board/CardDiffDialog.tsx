@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { GitBranch, Loader2 } from 'lucide-react'
+import { GitBranch} from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { BoardCardDiff } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
@@ -126,7 +127,7 @@ export function CardDiffDialog({
             <p className="rounded-lg border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[13px] text-danger">{error}</p>
           ) : loading ? (
             <div className="flex h-full items-center justify-center text-muted">
-              <Loader2 size={16} className="animate-spin" />
+              <Spinner size={16} />
             </div>
           ) : diff ? (
             <>

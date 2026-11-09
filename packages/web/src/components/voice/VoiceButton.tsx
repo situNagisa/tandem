@@ -9,7 +9,8 @@ import {
   useState,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { Loader2, Mic, X } from 'lucide-react'
+import { Mic, X } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { ControlSize } from '../ui/Button'
 import { IconButton } from '../ui/Button'
 import { cn } from '../../lib/cn'
@@ -385,7 +386,7 @@ export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(funct
         )}
       >
         {busy ? (
-          <Loader2 size={16} className="animate-spin" />
+          <Spinner size={16} />
         ) : (
           <Mic size={16} className={recording ? 'animate-pulse' : undefined} />
         )}
@@ -438,7 +439,7 @@ export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(funct
               </div>
             ) : (
               <div className="mt-2 flex items-center gap-2 rounded-lg bg-surface-2 px-2.5 py-2 text-[12px] text-muted">
-                <Loader2 size={13} className="animate-spin" />
+                <Spinner size={13} />
                 {phase === 'transcribing' ? '正在把语音变成文字…' : '等待麦克风权限…'}
               </div>
             )}

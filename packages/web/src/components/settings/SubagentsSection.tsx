@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bot, FileCode2, Loader2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Bot, FileCode2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type {
   DelegationStrategy,
   HostSettings,
@@ -256,7 +257,7 @@ export function SubagentsSection() {
           </p>
         </div>
         <IconButton label="刷新" onClick={load} disabled={loading}>
-          {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+          {loading ? <Spinner size={14} /> : <RefreshCw size={14} />}
         </IconButton>
         <Button data-setting-id="subagents.create" size="sm" variant="secondary" onClick={startCreate} icon={<Plus size={13} />}>
           新建预设
@@ -267,7 +268,7 @@ export function SubagentsSection() {
           variant="primary"
           onClick={save}
           disabled={!dirty || saving || !hostReady}
-          icon={saving ? <Loader2 size={13} className="animate-spin" /> : undefined}
+          icon={saving ? <Spinner size={13} /> : undefined}
         >
           保存
         </Button>

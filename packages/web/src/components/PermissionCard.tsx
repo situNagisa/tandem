@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowRightLeft, Bot, Loader2, MoreHorizontal, Plus, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react'
+import { ArrowRightLeft, Bot, MoreHorizontal, Plus, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import type { PermissionDecision, PermissionRequest, PermissionRule, TeamMember } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -85,7 +86,7 @@ function AddRuleDialog({
             onClick={() => void save()}
             disabled={saving || !host}
           >
-            {saving && <Loader2 size={14} className="animate-spin" />}
+            {saving && <Spinner size={14} />}
             添加规则
           </Button>
         </>
@@ -327,7 +328,7 @@ export function PermissionCard({
               data-tip={`已在本项目批准 ${request.learned.allows} 次；添加后同类命令不再询问，可随时在设置 → 权限中删除`}
             >
               {learning ? (
-                <Loader2 size={12} className="shrink-0 animate-spin" />
+                <Spinner size={12} className="shrink-0" />
               ) : (
                 <ShieldCheck size={12} className="shrink-0" />
               )}

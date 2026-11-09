@@ -18,18 +18,18 @@ import {
   Info,
   KeyRound,
   ListTodo,
-  Loader2,
   Maximize2,
   ScrollText,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import type { MemoryFile, Todo } from '@tandem/protocol'
 import { countTurns } from '@tandem/protocol'
 import type { SubagentSession, UiMessage } from '../lib/types'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useSessionChanges } from '../lib/useChanges'
-import { copyText } from '../lib/clipboard'
 import { cn } from '../lib/cn'
+import { useCopy } from '../lib/useCopy'
 import { api } from '../lib/api'
 import { useIsMobile, useNow } from '../lib/hooks'
 import { prettyModel } from '../lib/modelName'
@@ -139,7 +139,7 @@ export function RightPanel() {
   const toast = useUiStore((s) => s.toast)
   const setChangesOpen = useUiStore((s) => s.setChangesOpen)
   const openWiki = useUiStore((s) => s.openWiki)
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy({ onError: () => toast('复制失败', 'error') })
   const [planOpen, setPlanOpen] = useState(false)
   const [graphExpanded, setGraphExpanded] = useState(false)
   const { prefs } = usePanelGroups()
@@ -454,14 +454,8 @@ export function RightPanel() {
   }
 
 
-  const copyCwd = async () => {
-    if (!summary?.cwd) return
-    if (await copyText(summary.cwd)) {
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } else {
-      toast('复制失败', 'error')
-    }
+  const copyCwd = () => {
+    if (summary?.cwd) void copy(summary.cwd)
   }
 
 
@@ -558,7 +552,7 @@ export function RightPanel() {
       if (memoryLoading && !memory) {
         return (
           <p className="flex items-center gap-1.5 text-[12px] text-muted">
-            <Loader2 size={11} className="animate-spin" /> 读取中…
+            <Spinner size={11} /> 读取中…
           </p>
         )
       }

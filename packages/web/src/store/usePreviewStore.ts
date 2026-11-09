@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { PreviewSelection, PreviewState } from '@tandem/protocol'
+import { readJson, writeJson } from '../lib/storage'
 
 export interface PreviewPrefs {
   /** 上次打开的地址。 */
@@ -28,23 +29,13 @@ const MAX_SELECTIONS = 8
 const PREFS_KEY = 'tandem.preview.prefs.v1'
 
 function loadPrefs(): Record<string, PreviewPrefs> {
-  try {
-    const raw = localStorage.getItem(PREFS_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== 'object') return {}
-    return parsed as Record<string, PreviewPrefs>
-  } catch {
-    return {}
-  }
+  const parsed = readJson<unknown>(PREFS_KEY, {})
+  if (!parsed || typeof parsed !== 'object') return {}
+  return parsed as Record<string, PreviewPrefs>
 }
 
 function savePrefs(prefs: Record<string, PreviewPrefs>): void {
-  try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs))
-  } catch {
-    /* localStorage 不可用时只保留内存状态 */
-  }
+  writeJson(PREFS_KEY, prefs)
 }
 
 export const usePreviewStore = create<PreviewStore>((set) => ({

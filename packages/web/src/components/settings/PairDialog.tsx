@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import QRCode from 'qrcode'
-import { Check, Copy, Loader2, RefreshCw, Smartphone, Unplug, TriangleAlert, Wifi } from 'lucide-react'
+import { Check, Copy, RefreshCw, Smartphone, Unplug, TriangleAlert, Wifi } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { api } from '../../lib/api'
-import { copyText } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
+import { useCopy } from '../../lib/useCopy'
 import type { RelayPairInfo } from '@tandem/protocol'
 import type { HostConfig } from '../../lib/types'
 import { buildRelayPairLink } from '../../lib/pairLink'
@@ -23,7 +24,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
   const [svg, setSvg] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopy()
 
   useEffect(() => {
     let cancelled = false
@@ -88,12 +89,8 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
     }
   }, [content])
 
-  const copy = async () => {
-    if (!content) return
-    if (await copyText(content)) {
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    }
+  const copyLink = () => {
+    if (content) void copy(content)
   }
 
   return (
@@ -113,7 +110,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
       <div className="space-y-3">
         {loading && (
           <div className="flex items-center gap-2 py-6 text-[13px] text-muted">
-            <Loader2 size={13} className="animate-spin" /> 正在获取本机地址…
+            <Spinner size={13} /> 正在获取本机地址…
           </div>
         )}
         {error && (
@@ -198,7 +195,7 @@ export function PairDialog({ host, onClose }: { host: HostConfig; onClose: () =>
                 </span>
                 <IconButton
                   size="sm"
-                  onClick={() => void copy()}
+                  onClick={copyLink}
                   label="复制配对链接"
                   className="size-8! sm:size-6! [&_svg]:size-[11px]"
                 >

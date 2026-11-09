@@ -32,7 +32,6 @@ import {
   FileText,
   GitFork,
   Image as ImageIcon,
-  Loader2,
   Map,
   MousePointerClick,
   Paperclip,
@@ -44,6 +43,7 @@ import {
   Terminal,
   X,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -52,7 +52,7 @@ import { usePreviewStore } from '../store/usePreviewStore'
 import { useDemoStore } from '../store/useDemoStore'
 import { selectionContextText, selectionLabel, selectionSource } from '../lib/previewElement'
 import { isTargetFocused, useSessionTarget, useSessionView } from './session/SessionScope'
-import { useIsMobile } from '../lib/hooks'
+import { useClickOutside, useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
 import { recordModelUse } from '../lib/recentModels'
 import { groupName, profileModelGroups } from '../lib/profileModels'
@@ -491,15 +491,7 @@ export function Composer({
     setIndex(0)
   }, [completion?.kind, completion?.query])
 
-  useEffect(() => {
-    if (!completion) return
-    const onDown = (e: PointerEvent) => {
-      if (nodeContains(menuRef.current, e.target) || nodeContains(textareaRef.current, e.target)) return
-      setCompletion(null)
-    }
-    document.addEventListener('pointerdown', onDown)
-    return () => document.removeEventListener('pointerdown', onDown)
-  }, [completion])
+  useClickOutside([menuRef, textareaRef], () => setCompletion(null), !!completion)
 
   const items = useMemo<CompletionEntry[]>(() => {
     if (!completion) return []
@@ -1488,7 +1480,7 @@ export function Composer({
             <span key={sendState} className="send-icon flex items-center justify-center">
               {running ? (
                 stopping ? (
-                  <Loader2 size={15} className="animate-spin" />
+                  <Spinner size={15} />
                 ) : (
                   <Square size={11} className="fill-current" />
                 )

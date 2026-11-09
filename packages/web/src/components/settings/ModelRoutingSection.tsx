@@ -8,7 +8,8 @@ import type {
   RouteCandidate,
   RoutePreference,
 } from '@tandem/protocol'
-import { Check, GitFork, Loader2, Sparkles, TriangleAlert, X } from 'lucide-react'
+import { Check, GitFork, Sparkles, TriangleAlert, X } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { cn } from '../../lib/cn'
@@ -301,7 +302,7 @@ export function ModelRoutingSection() {
           <span className="flex-1" />
           {saving && (
             <span className="flex items-center gap-1 text-[12px] text-muted">
-              <Loader2 size={12} className="animate-spin" /> 保存中…
+              <Spinner size={12} /> 保存中…
             </span>
           )}
         </div>
@@ -310,7 +311,7 @@ export function ModelRoutingSection() {
         </p>
         {loading && (
           <div className="flex items-center gap-2 py-3 text-[12px] text-muted">
-            <Loader2 size={13} className="animate-spin" /> 加载设置…
+            <Spinner size={13} /> 加载设置…
           </div>
         )}
         {!loading && profiles.length === 0 && (

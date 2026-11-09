@@ -3,6 +3,7 @@
 import { Capacitor } from '@capacitor/core'
 import type { SttCapabilities } from '@tandem/protocol'
 import { api } from './api'
+import { readJson, writeJson } from './storage'
 import type { HostConfig } from './types'
 
 const PREFS_KEY = 'tandem.voice.prefs'
@@ -16,28 +17,19 @@ export interface VoicePrefs {
 }
 
 export function loadVoicePrefs(): VoicePrefs {
-  try {
-    const raw = localStorage.getItem(PREFS_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<VoicePrefs>
-      return {
-        engine:
-          parsed.engine === 'host' || parsed.engine === 'system' ? parsed.engine : 'auto',
-        browserSpeechAllowed: parsed.browserSpeechAllowed === true,
-      }
+  const parsed = readJson<Partial<VoicePrefs> | null>(PREFS_KEY, null)
+  if (parsed) {
+    return {
+      engine:
+        parsed.engine === 'host' || parsed.engine === 'system' ? parsed.engine : 'auto',
+      browserSpeechAllowed: parsed.browserSpeechAllowed === true,
     }
-  } catch {
-    // 损坏时回默认值
   }
   return { engine: 'auto', browserSpeechAllowed: false }
 }
 
 export function saveVoicePrefs(next: VoicePrefs): void {
-  try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify(next))
-  } catch {
-    // 隐私模式下 localStorage 可能不可写
-  }
+  writeJson(PREFS_KEY, next)
   window.dispatchEvent(new CustomEvent(PREFS_EVENT, { detail: next }))
 }
 

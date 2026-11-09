@@ -7,12 +7,12 @@ import {
   Eye,
   EyeOff,
   Layers,
-  Loader2,
   RefreshCw,
   Search,
   TriangleAlert,
   X,
 } from 'lucide-react'
+import { Spinner } from '../../ui/Spinner'
 import { api } from '../../../lib/api'
 import { cn } from '../../../lib/cn'
 import { mergeFetchedSelection } from '../../../lib/modelSelection'
@@ -396,7 +396,7 @@ export function GroupEditor({
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <Button onClick={() => void fetchModels()} disabled={fetching}>
-          {fetching ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          {fetching ? <Spinner size={12} /> : <RefreshCw size={12} />}
           自动拉取模型
         </Button>
         {existing && (

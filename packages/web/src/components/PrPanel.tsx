@@ -9,11 +9,11 @@ import {
   ExternalLink,
   GitMerge,
   GitPullRequest,
-  Loader2,
   RefreshCw,
   Sparkles,
   XCircle,
 } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useVcsStore, vcsKey } from '../lib/useVcs'
@@ -197,7 +197,7 @@ function CheckRow({
       )}
       {check.status === 'failure' && onFix && (
         <Button size="sm" variant="secondary" onClick={onFix} disabled={fixing}>
-          {fixing && <Loader2 size={11} className="animate-spin" />}
+          {fixing && <Spinner size={11} />}
           让 agent 修复
         </Button>
       )}
@@ -465,7 +465,7 @@ export function PrPanel() {
       >
         {!sessionId ? null : loading ? (
           <div className="flex h-24 items-center justify-center gap-2 text-[13px] text-muted">
-            <Loader2 size={14} className="animate-spin" />
+            <Spinner size={14} />
             正在读取仓库与 PR 状态…
           </div>
         ) : entry?.error && !state ? (
@@ -596,7 +596,7 @@ export function PrPanel() {
                     disabled={reviewEntry?.starting || reviewEntry?.review?.status === 'running'}
                     icon={
                       reviewEntry?.starting || reviewEntry?.review?.status === 'running' ? (
-                        <Loader2 size={12} className="animate-spin" />
+                        <Spinner size={12} />
                       ) : (
                         <Bot size={12} />
                       )
@@ -611,7 +611,7 @@ export function PrPanel() {
                     variant="ghost"
                     onClick={startDraft}
                     disabled={drafting || running}
-                    icon={drafting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                    icon={drafting ? <Spinner size={12} /> : <Sparkles size={12} />}
                   >
                     {drafting ? '等待 agent…' : '让 agent 起草'}
                   </Button>
@@ -686,7 +686,7 @@ export function PrPanel() {
               取消
             </Button>
             <Button size="lg" variant="primary" onClick={() => void doCreate()} disabled={creating}>
-              {creating && <Loader2 size={14} className="animate-spin" />}
+              {creating && <Spinner size={14} />}
               推送并创建
             </Button>
           </>
@@ -719,7 +719,7 @@ export function PrPanel() {
               取消
             </Button>
             <Button size="lg" variant="primary" onClick={() => void doMerge()} disabled={merging}>
-              {merging && <Loader2 size={14} className="animate-spin" />}
+              {merging && <Spinner size={14} />}
               确认合并
             </Button>
           </>

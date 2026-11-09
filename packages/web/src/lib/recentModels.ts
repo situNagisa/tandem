@@ -1,5 +1,6 @@
 import type { Profile } from '@tandem/protocol'
 import { profileModelGroups } from './profileModels'
+import { readJson, writeJson } from './storage'
 import { modelPickKey, type ModelPick } from '../components/ui/ModelCascade'
 
 /** 最近/常用模型：记录选择与发送，按使用次数 + 最近时间排序（反馈 #7-04）。 */
@@ -12,33 +13,23 @@ const KEY = 'tandem.recentModels.v1'
 const MAX_ENTRIES = 60
 
 function read(): RecentModelUse[] {
-  try {
-    const raw = localStorage.getItem(KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter((item): item is RecentModelUse => {
-      if (!item || typeof item !== 'object') return false
-      const entry = item as Partial<RecentModelUse>
-      return (
-        typeof entry.profileId === 'string' &&
-        typeof entry.model === 'string' &&
-        typeof entry.count === 'number' &&
-        typeof entry.lastUsedAt === 'number' &&
-        (entry.groupId === undefined || typeof entry.groupId === 'string')
-      )
-    })
-  } catch {
-    return []
-  }
+  const parsed = readJson<unknown>(KEY, [])
+  if (!Array.isArray(parsed)) return []
+  return parsed.filter((item): item is RecentModelUse => {
+    if (!item || typeof item !== 'object') return false
+    const entry = item as Partial<RecentModelUse>
+    return (
+      typeof entry.profileId === 'string' &&
+      typeof entry.model === 'string' &&
+      typeof entry.count === 'number' &&
+      typeof entry.lastUsedAt === 'number' &&
+      (entry.groupId === undefined || typeof entry.groupId === 'string')
+    )
+  })
 }
 
 function write(entries: RecentModelUse[]): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(entries))
-  } catch {
-    /* localStorage 不可用时只影响菜单排序 */
-  }
+  writeJson(KEY, entries)
 }
 
 /** 记录一次使用；同一账号/分组/模型累加次数并刷新时间。 */

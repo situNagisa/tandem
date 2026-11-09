@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, FolderOpen, Loader2, Sparkles, Trash2 } from 'lucide-react'
+import { Check, FolderOpen, Sparkles, Trash2 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { Board, BoardCard, BoardCardInput, BoardExec, BoardPlanDraft, PermissionMode, PrState, Profile, SubagentPreset, VcsCapability } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
@@ -93,7 +94,7 @@ export function CreateBoardDialog({
       footer={
         <div className="flex items-center justify-end gap-2">
           <Button onClick={onClose}>取消</Button>
-          <Button variant="primary" disabled={busy} onClick={() => void submit()} icon={busy ? <Loader2 className="animate-spin" /> : undefined}>
+          <Button variant="primary" disabled={busy} onClick={() => void submit()} icon={busy ? <Spinner /> : undefined}>
             创建
           </Button>
         </div>
@@ -712,7 +713,7 @@ export function PlanDialog({
               创建 {drafts.length} 张卡到待办
             </Button>
           ) : (
-            <Button variant="primary" disabled={busy} onClick={() => void generate()} icon={busy ? <Loader2 className="animate-spin" /> : undefined}>
+            <Button variant="primary" disabled={busy} onClick={() => void generate()} icon={busy ? <Spinner /> : undefined}>
               生成草稿
             </Button>
           )}

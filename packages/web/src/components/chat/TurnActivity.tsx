@@ -1,4 +1,4 @@
-import { Loader2 } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import { formatElapsed } from '../../lib/format'
 import { useNow } from '../../lib/hooks'
 import { runningSince } from '../../lib/runClock'
@@ -22,7 +22,7 @@ export function TurnActivity({
   return (
     <div className="msg-row" data-turn-activity="">
       <div role="status" className="flex h-7 items-center gap-2 px-1 text-[12px] text-muted">
-        <Loader2 size={13} className="shrink-0 animate-spin text-text-secondary" aria-hidden />
+        <Spinner size={13} className="shrink-0 text-text-secondary" aria-hidden />
         <span className="truncate">{toolName ? `正在运行 ${toolName}…` : '正在思考…'}</span>
         <span className="shrink-0 tabular-nums text-[11.5px]">{formatElapsed(now - start)}</span>
       </div>

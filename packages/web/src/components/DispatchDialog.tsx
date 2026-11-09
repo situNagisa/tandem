@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FolderOpen, Loader2, Send, TriangleAlert } from 'lucide-react'
+import { FolderOpen, Send, TriangleAlert } from 'lucide-react'
+import { Spinner } from './ui/Spinner'
 import type { ContentBlock, PermissionMode, SessionSummary } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -359,7 +360,7 @@ export function DispatchDialog({
             variant="primary"
             onClick={submit}
             disabled={sending || !online || !host}
-            icon={sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            icon={sending ? <Spinner size={14} /> : <Send size={14} />}
             className="max-sm:h-10"
           >
             派单

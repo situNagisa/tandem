@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { ArrowRight, Loader2, LogIn, MonitorSmartphone, ShieldCheck } from 'lucide-react'
+import { ArrowRight, LogIn, MonitorSmartphone, ShieldCheck } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { WorkstationPublicStatus } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { workstationApi } from '../../lib/api'
@@ -214,7 +215,7 @@ export function LoginGate() {
 
           {stage === 'probing' && (
             <div className="mt-5 flex items-center gap-2 text-[13px] text-text-secondary">
-              <Loader2 size={15} className="animate-spin" /> 正在探测…
+              <Spinner size={15} /> 正在探测…
             </div>
           )}
 
@@ -313,7 +314,7 @@ export function LoginGate() {
               disabled={busy || (stage === 'connect' && !workstationUrl.trim())}
               onClick={submit}
             >
-              {busy ? <Loader2 size={15} className="animate-spin" /> : stage === 'connect' ? <ArrowRight size={15} /> : <LogIn size={15} />}
+              {busy ? <Spinner size={15} /> : stage === 'connect' ? <ArrowRight size={15} /> : <LogIn size={15} />}
               {stage === 'connect' ? '连接' : stage === 'setup' ? '创建并登录' : stage === 'register' ? '注册并登录' : '登录'}
             </Button>
           )}

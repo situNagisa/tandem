@@ -215,7 +215,7 @@ const DECISIONS = [
     source: '反馈16#10',
     decision: '等首个 token / 等工具返回时显示进度与计时，工具行显示 spinner/已运行时长',
     files: [F.turnActivity, F.messageList, F.chatCss],
-    need: [/data-turn-activity/, /正在思考/, /正在运行/, /runningSince/, /animate-spin/],
+    need: [/data-turn-activity/, /正在思考/, /正在运行/, /runningSince/, /<Spinner\b/],
   },
   {
     id: 'message-queued-replace',

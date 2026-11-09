@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Loader2, TerminalSquare } from 'lucide-react'
+import { TerminalSquare } from 'lucide-react'
+import { Spinner } from '../ui/Spinner'
 import type { BoardCardCheck } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
@@ -59,7 +60,7 @@ export function CardChecksDialog({
     >
       {loading ? (
         <div className="flex items-center justify-center py-10 text-muted">
-          <Loader2 size={16} className="animate-spin" />
+          <Spinner size={16} />
         </div>
       ) : error ? (
         <p className="text-[13px] text-danger">{error}</p>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Brain, ChevronRight } from 'lucide-react'
 import { cn } from '../lib/cn'
+import { readRaw, writeRaw } from '../lib/storage'
 
 export type ThinkingMode = 'show' | 'collapse' | 'hidden'
 
@@ -17,12 +18,8 @@ export const THINKING_MODE_META: Record<
 }
 
 function loadMode(): ThinkingMode {
-  try {
-    const raw = localStorage.getItem(THINKING_KEY)
-    return raw === 'show' || raw === 'hidden' || raw === 'collapse' ? raw : 'collapse'
-  } catch {
-    return 'collapse'
-  }
+  const raw = readRaw(THINKING_KEY)
+  return raw === 'show' || raw === 'hidden' || raw === 'collapse' ? raw : 'collapse'
 }
 
 let currentMode: ThinkingMode = loadMode()
@@ -31,11 +28,7 @@ const listeners = new Set<() => void>()
 export function setThinkingMode(mode: ThinkingMode): void {
   if (mode === currentMode) return
   currentMode = mode
-  try {
-    localStorage.setItem(THINKING_KEY, mode)
-  } catch {
-    /* localStorage 不可用时仅本次生效 */
-  }
+  writeRaw(THINKING_KEY, mode)
   listeners.forEach((listener) => listener())
 }
 
