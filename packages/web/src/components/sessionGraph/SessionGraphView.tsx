@@ -240,12 +240,11 @@ export function SessionGraphView({
                   style={{ paddingLeft: textX }}
                   role="treeitem"
                   aria-selected={isSelected}
-                  aria-label={nodeTooltip(node)}
                   data-tip={nodeTooltip(node)}
                   data-kind={node.kind}
                   data-lane={node.lane}
                   data-row={node.row}
-                  data-turn-id={node.kind === 'turn' ? node.id : undefined}
+                  data-graph-turn-id={node.kind === 'turn' ? node.id : undefined}
                   data-subagent-id={node.subagentId}
                   data-fork-id={node.forkSessionId}
                   data-active={isCurrent ? 'true' : undefined}

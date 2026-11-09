@@ -7728,7 +7728,7 @@ async function main() {
       const c = await mk({ title: '丙 独立任务', prompt: '回复“完成”即可' })
 
       // 侧栏入口进入；列表晚到时先是空态，随后自动跳到第一块看板
-      await page.locator('aside').getByRole('button', { name: '任务看板', exact: true }).click()
+      await page.locator('aside').getByRole('button', { name: /^任务看板/ }).first().click()
       await page.getByTestId('board-columns').waitFor({ timeout: 15_000 })
       assert.match(page.url(), /#\/h\/[^/]+\/b\/[0-9a-f-]+$/, '进入看板后地址没有带看板 id')
       for (const label of ['待办', '排队', '运行中', '待审批', '待评审', '完成', '失败']) {
@@ -8635,6 +8635,8 @@ async function main() {
 
 
     desktop('演示工作区可创建、场景可打开、可清除且不污染真实数据', async (page) => {
+      // 前面的设备/演示用例可能已经打开演示工作区；先清掉，基线才代表真实数据。
+      await api(base, token, '/api/demo', { method: 'DELETE', body: '{}' }).catch(() => undefined)
       const beforeSessions = await api(base, token, '/api/sessions')
       const beforeUsage = await api(base, token, '/api/usage')
       const beforeLong = beforeSessions.find((item) => item.id === 'long')
