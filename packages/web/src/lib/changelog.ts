@@ -51,6 +51,82 @@ const DEBUG_TOUR_ITEMS: ChangelogEntry[] = [
 /** 版本升级后首次打开时展示；按版本从新到旧排列。 */
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: '0.4.5',
+    date: '2026-11-09',
+    items: [
+      {
+        id: 'workstation-login',
+        title: '先登录，再开始',
+        summary:
+          '桌面、网页与手机打开后先登录或注册工作站，未登录时保留原链接；调试版在回环地址自动用调试账号登录。',
+        target: { kind: 'settings', tab: 'accounts', settingId: 'accounts.workspace' },
+      },
+      {
+        id: 'add-host-one-line',
+        title: '一行命令添加主机',
+        summary:
+          '在「添加主机」里复制一行命令，到目标机器执行一次即可接入并注册为常驻服务；没有主机时首页直接引导添加。',
+        target: { kind: 'settings', tab: 'hosts' },
+      },
+      {
+        id: 'session-graph',
+        title: '会话图：看清轮次与分支',
+        summary:
+          '会话信息面板新增会话图：灰色主线、彩色子代理泳道并合并回主线、分叉单独标注；点节点跳到对应轮或打开子代理/分叉。',
+        target: { kind: 'demo', scenario: 'subagents' },
+      },
+      {
+        id: 'subagent-session',
+        title: '子代理会话可以进入',
+        summary:
+          '点会话图里的子代理或 Task 卡片进入它的会话，顶部面包屑可以返回父会话，只读查看它做过什么。',
+        target: { kind: 'demo', scenario: 'subagents' },
+      },
+      {
+        id: 'permission-ask',
+        title: '权限询问按问答列出',
+        summary:
+          '需要授权时按 Claude Code 式一问一答列出选项（允许 / 拒绝 / 始终允许），数字键或点击选择，默认选项一眼可见。',
+        target: { kind: 'demo', scenario: 'permission' },
+      },
+      {
+        id: 'info-panel-collapse',
+        title: '会话信息卡片可收起',
+        summary:
+          '右侧信息面板每张卡都能收起、展开并记住状态，面板变窄时也能一屏看完。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'context-colors',
+        title: '上下文卡按用途分色',
+        summary:
+          '上下文占用按消息、工具输出、缓存等类别用不同颜色与刻度显示，一眼看出是谁占了空间。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'long-session-band',
+        title: '长会话先看占位条',
+        summary:
+          '超长会话只加载最近 200 条，顶部用占位条标出「第 1–N 轮未加载」；大纲里未加载轮次也有标识，滚到顶自动补齐。',
+        target: { kind: 'demo', scenario: 'chat-tools' },
+      },
+      {
+        id: 'host-folder-first',
+        title: '换主机先选文件夹',
+        summary:
+          '切换主机时先确认项目文件夹，输入框在选定前禁用，避免把消息发到错误目录。',
+        target: { kind: 'home' },
+      },
+      {
+        id: 'ui-polish-045',
+        title: '细节打磨',
+        summary:
+          '反馈截图更快；警告色与状态色校准；下拉不再抖动；代码块自动换行时行号与内容逐行对齐、工具条不压内容。',
+        target: { kind: 'feedback' },
+      },
+    ],
+  },
+  {
     version: '0.4.4',
     date: '2026-11-09',
     items: [
