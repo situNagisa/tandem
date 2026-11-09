@@ -789,6 +789,7 @@ export class Host {
       model?: string;
       role?: import('@tandem/protocol').RouteRole;
       domain?: import('@tandem/protocol').RouteDomain;
+      toolUseId?: string;
     },
     signal: AbortSignal,
   ): Promise<ToolResult> {
@@ -816,6 +817,7 @@ export class Host {
         prompt,
         ...(model ? { model } : {}),
         ...(child.routeRole ? { role: child.routeRole } : {}),
+        ...(child.parentToolUseId ? { toolUseId: child.parentToolUseId } : {}),
       },
       controller.signal,
     );

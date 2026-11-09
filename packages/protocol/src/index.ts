@@ -320,6 +320,7 @@ export interface SessionSummary {
   forkedFrom?: { sessionId: string; messageId?: string; title?: string }; // 分叉来源：会话页显示「分叉自」，父会话在分叉点显示子会话入口
   scheduledBy?: { id: string; name: string }; // 由定时任务创建；侧栏显示小时钟，tooltip 为任务名
   parentId?: string;       // Task 子代理会话指向主会话（孙代理指向子代理）
+  parentToolUseId?: string; // 派发该子代理的 Task 工具 tool_use id；会话图据此把子代理挂到具体轮次（旧数据没有，按标题兜底）
   depth?: number;          // 0 主会话 / 1 子代理 / 2 孙代理…；侧栏只显示主会话（parentId 为空）
   worktree?: { path: string; branch: string; baseBranch: string }; // 隔离分支会话
   board?: { boardId: string; cardId: string; boardName?: string }; // 任务看板卡片会话：不进侧栏会话列表，从看板进入

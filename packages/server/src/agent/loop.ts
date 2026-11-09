@@ -1167,7 +1167,8 @@ async function executeToolUses(
         model?: string;
         role?: import('@tandem/protocol').RouteRole;
         domain?: import('@tandem/protocol').RouteDomain;
-      }) => host.runSubagent(rec, input, signal),
+        toolUseId?: string;
+      }) => host.runSubagent(rec, { ...input, toolUseId: tool.id }, signal),
       getSkill: (name: string) => host.skills.resolve(name, rec.cwd),
       ...(rec.board
         ? { proposeCards: (input: unknown) => host.boards.proposeFromSession(rec, input) }
@@ -1204,6 +1205,7 @@ async function executeToolUses(
         toolUseId: tool.id,
         content,
         ...(res.isError ? { isError: true } : {}),
+        ...(res.subagent ? { subagent: res.subagent } : {}),
       },
     ];
     if (res.images) blocks.push(...res.images);

@@ -225,6 +225,7 @@ export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
     ...(rec.unread ? { unread: true } : {}),
     ...(rec.env ? { env: { ...rec.env } } : {}),
     ...(rec.parentId ? { parentId: rec.parentId } : {}),
+    ...(rec.parentToolUseId ? { parentToolUseId: rec.parentToolUseId } : {}),
     ...(typeof rec.depth === 'number' ? { depth: rec.depth } : {}),
     ...(rec.forkedFrom ? { forkedFrom: { ...rec.forkedFrom } } : {}),
     ...(rec.scheduledBy ? { scheduledBy: { ...rec.scheduledBy } } : {}),

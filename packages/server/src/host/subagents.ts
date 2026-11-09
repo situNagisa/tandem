@@ -90,6 +90,8 @@ export async function runSubagent(host: Host, parent: SessionRecord,
       model?: string;
       role?: RouteRole;
       domain?: RouteDomain;
+      /** 派发它的 Task 工具 tool_use id；会话图据此定位到具体轮次。 */
+      toolUseId?: string;
     },
     signal: AbortSignal): Promise<ToolResult> {
   if (signal.aborted) return { content: '用户中断', isError: true };
@@ -125,6 +127,7 @@ export async function runSubagent(host: Host, parent: SessionRecord,
     ...(config.toolWhitelist ? { toolWhitelist: config.toolWhitelist } : {}),
     ...(systemPromptExtra ? { systemPromptExtra } : {}),
     parentId: parent.id,
+    ...(input.toolUseId ? { parentToolUseId: input.toolUseId } : {}),
     depth,
   };
   host.store.add(sub);

@@ -113,6 +113,8 @@ export interface SessionRecord extends Session {
   allowedTools: string[];
   /** 子代理会话：指向派发它的会话。 */
   parentId?: string;
+  /** 子代理会话：派发它的 Task 工具 tool_use id（会话图定位到具体轮次）。 */
+  parentToolUseId?: string;
   /** 代理层级：0 主会话 / 1 子代理 / 2 孙代理… */
   depth?: number;
   /** worktree 会话：路径/分支/基准分支。 */
@@ -266,6 +268,8 @@ export interface ToolContext {
     model?: string;
     role?: import('@tandem/protocol').RouteRole;
     domain?: import('@tandem/protocol').RouteDomain;
+    /** 派发它的 Task 工具 tool_use id（会话图定位用）。 */
+    toolUseId?: string;
   }) => Promise<ToolResult>;
   /** MCP 工具：把调用转发给对应服务器。 */
   callMcp?: (server: string, tool: string, input: unknown) => Promise<ToolResult>;

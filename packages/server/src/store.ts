@@ -111,6 +111,11 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   }
   if (typeof raw.parentId === 'string' && raw.parentId) rec.parentId = raw.parentId;
   else delete rec.parentId;
+  if (typeof raw.parentToolUseId === 'string' && raw.parentToolUseId) {
+    rec.parentToolUseId = raw.parentToolUseId;
+  } else {
+    delete rec.parentToolUseId;
+  }
   if (typeof raw.depth === 'number' && Number.isInteger(raw.depth) && raw.depth >= 0) {
     rec.depth = raw.depth;
   } else {

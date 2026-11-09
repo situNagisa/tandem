@@ -296,7 +296,8 @@ async function runRecoveredTool(
       model?: string;
       role?: import('@tandem/protocol').RouteRole;
       domain?: import('@tandem/protocol').RouteDomain;
-    }) => host.runSubagent(rec, input, signal),
+      toolUseId?: string;
+    }) => host.runSubagent(rec, { ...input, toolUseId: input.toolUseId ?? tool.id }, signal),
     getSkill: (name: string) => host.skills.resolve(name, rec.cwd),
     home: host.home,
     memory: host.memory,
