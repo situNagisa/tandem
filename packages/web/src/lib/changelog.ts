@@ -51,6 +51,35 @@ const DEBUG_TOUR_ITEMS: ChangelogEntry[] = [
 /** 版本升级后首次打开时展示；按版本从新到旧排列。 */
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: '0.4.3',
+    date: '2026-11-09',
+    items: __TANDEM_DEBUG__
+      ? [
+          {
+            id: 'feedback-autosave',
+            title: '反馈边写边存，重开就恢复',
+            summary:
+              '每条反馈新增、编辑或删除都立即存到本机（刷新、崩溃、关页面都不丢），重新打开提示已恢复几条，继续写。',
+            target: { kind: 'feedback' as const },
+          },
+          {
+            id: 'feedback-draft-folder',
+            title: '调试版把反馈实时写成文件',
+            summary:
+              '桌面调试版每条反馈同步写进「下载/Tandem 反馈/草稿-…」：截图、快照、轨迹各自成文件，不留半截文件。',
+            target: { kind: 'feedback' as const },
+          },
+          {
+            id: 'feedback-tfb-package',
+            title: '导出 .tfb 包，改扩展名能解压',
+            summary:
+              '导出的反馈是一个 .tfb 包（本质是 zip），把它改成 .zip 就能直接解压查看；桌面调试版还能一键打开所在文件夹。',
+            target: { kind: 'feedback' as const },
+          },
+        ]
+      : [],
+  },
+  {
     version: '0.4.2',
     date: '2026-11-09',
     items: [
