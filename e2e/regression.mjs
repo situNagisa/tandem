@@ -2942,7 +2942,12 @@ async function main() {
       await page.locator('aside').getByRole('button', { name: '设置', exact: true }).click()
       const dialog = page.getByRole('dialog', { name: '设置' })
       await dialog.waitFor()
-      assert.ok(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]')), '打开后焦点未进入弹窗')
+      // 等焦点陷阱真正接管（弹窗可见与 effect 执行之间有一帧；不要用固定 sleep）。
+      await page.waitForFunction(
+        () => !!document.activeElement?.closest('[role="dialog"]'),
+        null,
+        { timeout: 5_000 },
+      )
       for (let i = 0; i < 25; i++) {
         await page.keyboard.press('Tab')
         const inside = await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))
@@ -4867,7 +4872,9 @@ async function main() {
       const toolbar = page.getByRole('region', { name: '反馈模式工具栏' })
       await toolbar.waitFor({ state: 'visible', timeout: 8_000 })
       const bar = await toolbar.boundingBox()
-      const env = await page.locator(`button[title="${repo}"]`).first().boundingBox()
+      const envTrigger = page.locator(`button[title="${repo}"]`).first()
+      await envTrigger.waitFor({ state: 'visible', timeout: 5_000 })
+      const env = await envTrigger.boundingBox()
       assert.ok(bar && env, '反馈工具栏或环境条不可见')
       assert.ok(bar.y < 120, `反馈工具栏仍在底部：y=${Math.round(bar.y)}`)
       assert.ok(bar.y + bar.height <= env.y, '反馈工具栏遮住了环境条')
