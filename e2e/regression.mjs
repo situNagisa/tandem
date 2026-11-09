@@ -2673,10 +2673,10 @@ async function main() {
         after.offset !== null && Math.abs(after.offset - before.offset) < 4,
         `锚点消息位移 ${after.offset - before.offset}px`,
       )
-      assert.match(
-        await page.locator('[data-load-earlier] button').innerText(),
-        /已加载 400 \/ 640 条/,
-        '滚到顶没有自动加载更早的一页',
+      await page.waitForFunction(
+        () => document.querySelectorAll('.msg-row[data-message-id]').length >= 300,
+        null,
+        { timeout: 20_000 },
       )
     })
 
@@ -2687,7 +2687,7 @@ async function main() {
         null,
         { timeout: 15_000 },
       )
-      await page.locator('[data-load-earlier] button').waitFor({ state: 'visible', timeout: 10_000 })
+      await page.locator('.msg-gap-band').first().waitFor({ state: 'visible', timeout: 10_000 })
       await page.locator('.turn-hit').focus()
       await page.keyboard.press('Home')
       await page.locator('[data-turn-id="hu1"]').waitFor({ state: 'attached', timeout: 20_000 })
@@ -2764,6 +2764,170 @@ async function main() {
       const jumped = await read()
       assert.match(jumped.count, new RegExp(`第 ${row.pos} / 320 轮`), '点击大纲后没有定位到目标轮')
       await page.screenshot({ path: '/tmp/fb10-after/01.png' })
+    })
+
+    desktop('占位条标注未加载轮次并可分段加载（反馈11#05 R40）', async (page) => {
+      await openSession(page, 'huge')
+      const band = page.locator('.msg-gap-band').first()
+      await band.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.match(await band.innerText(), /第 1–\d+ 轮未加载（\d+ 轮）/, '占位条没有轮次范围')
+      const height = await band.evaluate((el) => el.getBoundingClientRect().height)
+      assert.equal(Math.round(height), 40, `占位条高度 ${height}px，不是固定 40px`)
+      assert.equal(await band.getAttribute('data-unmounted'), null, '未加载占位条被标成未显示')
+      await band.getByRole('button', { name: '加载前 10 轮' }).click()
+      await page.waitForFunction(
+        () => !document.querySelector('[data-turn-id="hu1"]') === false,
+        null,
+        { timeout: 20_000 },
+      )
+      await page.waitForFunction(
+        () => (document.querySelector('.msg-gap-band')?.textContent ?? '').includes('第 1–') === false,
+        null,
+        { timeout: 20_000 },
+      )
+      const firstId = await page.evaluate(
+        () => document.querySelector('.msg-row[data-message-id]')?.dataset.messageId ?? '',
+      )
+      assert.equal(firstId, 'hu1', `加载前 10 轮后首条不是 hu1（${firstId}）`)
+      await page.screenshot({ path: '/tmp/fb11-after/05-band.png' })
+    })
+
+    desktop('固定轮次滚到底部仍挂载、中间占位条可加载（反馈11#05 R40）', async (page) => {
+      await openSession(page, 'huge')
+      await page.waitForFunction(
+        () => /第 \d+ \/ 320 轮/.test(document.querySelector('.turn-count')?.textContent ?? ''),
+        null,
+        { timeout: 15_000 },
+      )
+      await page.locator('.turn-hit').focus()
+      await page.keyboard.press('Home')
+      await page
+        .locator('[data-turn-id="hu1"]')
+        .waitFor({ state: 'attached', timeout: 8_000 })
+        .catch(() => page.keyboard.press('Home'))
+      await page.locator('[data-turn-id="hu1"]').waitFor({ state: 'attached', timeout: 20_000 })
+      await page.waitForTimeout(600)
+      const gap = page.locator('.msg-gap-band').first()
+      await gap.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.match(await gap.innerText(), /轮未加载/, '跳到早期轮后中间没有未加载占位条')
+      const before = await page.evaluate(
+        () => document.querySelectorAll('.msg-row[data-message-id]').length,
+      )
+      await gap.getByRole('button', { name: '全部' }).click()
+      await page.waitForFunction(
+        () => document.querySelectorAll('.msg-gap-band').length === 0,
+        null,
+        { timeout: 40_000 },
+      )
+      const after = await page.evaluate(
+        () => document.querySelectorAll('.msg-row[data-message-id]').length,
+      )
+      assert.ok(after >= before, `加载全部后挂载行数反而减少：${before} → ${after}`)
+
+      // 固定第 5 轮，再滚到底部：固定的轮必须仍在 DOM 里。
+      for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown')
+      await page.locator('[data-turn-id="hu5"]').waitFor({ state: 'attached', timeout: 10_000 })
+      await page
+        .locator('[data-turn-id="hu5"]')
+        .getByRole('button', { name: '固定此轮' })
+        .click()
+      await page.waitForFunction(
+        () => !!document.querySelector('[data-turn-id="hu5"] [aria-label="取消固定此轮"]'),
+        null,
+        { timeout: 10_000 },
+      )
+      for (let i = 0; i < 8; i++) {
+        await page.evaluate(() => {
+          const box = document.querySelector('.chat-scroll')
+          if (box) box.scrollTop = box.scrollHeight
+        })
+        await page.waitForTimeout(180)
+      }
+      assert.equal(
+        await page.locator('[data-turn-id="hu5"]').count(),
+        1,
+        '滚到底部后固定的第 5 轮被卸载了',
+      )
+      const mountedGap = page.locator('.msg-gap-band').first()
+      await mountedGap.waitFor({ state: 'visible', timeout: 5_000 })
+      assert.match(await mountedGap.innerText(), /轮未显示/, '固定轮与当前窗口之间没有占位条')
+      const height = await mountedGap.evaluate((el) => el.getBoundingClientRect().height)
+      assert.equal(Math.round(height), 40, `占位条高度 ${height}px，不是固定 40px`)
+      await mountedGap.getByRole('button', { name: '显示' }).click()
+      await page.locator('[data-turn-id="hu6"]').waitFor({ state: 'attached', timeout: 10_000 })
+      await page.screenshot({ path: '/tmp/fb11-after/05.png' })
+    })
+
+    desktop('大纲标识未加载轮次并可点击跳转（反馈11#05 R40）', async (page) => {
+      await openSession(page, 'huge')
+      await page.waitForFunction(
+        () => /第 \d+ \/ 320 轮/.test(document.querySelector('.turn-count')?.textContent ?? ''),
+        null,
+        { timeout: 15_000 },
+      )
+      await page.locator('.turn-hit').hover()
+      await page.waitForFunction(
+        () => document.querySelector('.turn-rail')?.getAttribute('data-open') === 'true',
+        null,
+        { timeout: 5_000 },
+      )
+      await page.waitForTimeout(600)
+      const readUnloaded = () =>
+        page.evaluate(() => {
+          const hitRect = document.querySelector('.turn-hit')?.getBoundingClientRect()
+          const items = [...document.querySelectorAll('.turn-item[data-unloaded="true"]')]
+            .filter((el) => {
+              if (Number(el.dataset.turnPos) <= 0 || !el.checkVisibility()) return false
+              const style = getComputedStyle(el)
+              if (Number(style.opacity) < 0.2 || style.visibility === 'hidden') return false
+              const r = el.getBoundingClientRect()
+              const y = r.y + r.height / 2
+              if (!hitRect || y < hitRect.top + 18 || y > hitRect.bottom - 18) return false
+              return r.width > 40
+            })
+            .sort((a, b) => a.getBoundingClientRect().y - b.getBoundingClientRect().y)
+          const el = items[0]
+          if (!el) return null
+          const r = el.getBoundingClientRect()
+          return {
+            x: r.x + r.width / 2,
+            y: r.y + r.height / 2,
+            pos: Number(el.dataset.turnPos),
+            tag: el.querySelector('.turn-item-c')?.textContent ?? '',
+            title: el.getAttribute('title') ?? '',
+            dashed: getComputedStyle(el.querySelector('.turn-item-k')).backgroundImage,
+          }
+        })
+      let row = null
+      for (let attempt = 0; attempt < 6 && !row; attempt++) {
+        for (let i = 0; i < 140; i++) await page.mouse.wheel(0, -100)
+        await page.waitForTimeout(600)
+        row = await readUnloaded()
+      }
+      assert.ok(row, '大纲里看不到未加载轮次')
+      assert.equal(row.tag.trim(), '未加载', `未加载轮的行尾标记是「${row.tag}」`)
+      assert.match(row.title, /未加载/, '未加载轮的 tooltip 没有说明')
+      assert.match(row.dashed, /repeating|gradient/, '未加载轮的刻度不是虚线')
+      await page.mouse.click(row.x, row.y)
+      await page.waitForTimeout(400)
+      const target = Number(
+        (await page.locator('.turn-count').innerText()).match(/第 (\d+) \/ 320 轮/)?.[1] ?? 0,
+      )
+      assert.ok(target > 0, '点击未加载轮后大纲没有更新当前轮')
+      await page
+        .locator(`[data-turn-id="hu${target}"]`)
+        .waitFor({ state: 'attached', timeout: 20_000 })
+      await page.waitForFunction(
+        (id) =>
+          document
+            .querySelector(`[data-turn-id="${id}"]`)
+            ?.closest('.msg-row')
+            ?.classList.contains('msg-jump-hit'),
+        `hu${target}`,
+        { timeout: 5_000 },
+      )
+      assert.ok(row, '点击未加载轮没有跳转到位')
+      await page.screenshot({ path: '/tmp/fb11-after/05-rail.png' })
     })
 
     desktop('轮次大纲悬停显示该轮用量、全文可读（#01 R15）', async (page) => {
@@ -5025,6 +5189,115 @@ async function main() {
       assert.match(text, new RegExp(path.basename(repo)), '侧栏没有显示原仓库名')
       const lines = text.split('\n').map((line) => line.trim())
       assert.equal(lines.includes('cache'), false, '侧栏把 worktree 目录当成项目名')
+    })
+
+    desktop('编辑消息保持气泡宽度并随内容自适应（反馈11#07 R45）', async (page) => {
+      await openSession(page, 'long')
+      const rows = page.locator('.msg-row[data-turn-id][data-actions="true"]')
+      const row = rows.nth(Math.min(3, (await rows.count()) - 1))
+      await row.scrollIntoViewIfNeeded()
+      await row.hover()
+      const before = await row.evaluate((el) => {
+        const bubble = el.querySelector('.msg-group .bg-surface-2')
+        return bubble ? Math.round(bubble.getBoundingClientRect().width) : 0
+      })
+      assert.ok(before > 0, '找不到用户气泡')
+      await row.getByRole('button', { name: '编辑并重发' }).click()
+      const editor = row.locator('textarea[aria-label="编辑并重发"]')
+      await editor.waitFor({ state: 'visible', timeout: 5_000 })
+      await page.waitForTimeout(120)
+      const after = await row.evaluate((el) => {
+        const box = el.querySelector('.bg-surface-2')
+        return box ? Math.round(box.getBoundingClientRect().width) : 0
+      })
+      assert.ok(Math.abs(after - before) <= 2, `编辑前后宽度 ${before} → ${after}px`)
+      const oneLine = await editor.evaluate((el) => el.getBoundingClientRect().height)
+      await editor.fill(`${await editor.inputValue()}\n第二行\n第三行`)
+      await page.waitForTimeout(150)
+      const height = await editor.evaluate((el) => el.getBoundingClientRect().height)
+      assert.ok(height > oneLine + 20, `编辑框高度没有随内容增长：${oneLine} → ${height}`)
+      await page.screenshot({ path: '/tmp/fb11-after/07.png' })
+      await page.keyboard.press('Escape')
+      await editor.waitFor({ state: 'hidden', timeout: 5_000 })
+      const restored = await row.evaluate((el) => {
+        const bubble = el.querySelector('.msg-group .bg-surface-2')
+        return bubble ? Math.round(bubble.getBoundingClientRect().width) : 0
+      })
+      assert.ok(Math.abs(restored - before) <= 2, `取消编辑后宽度 ${restored} ≠ ${before}`)
+    })
+
+    desktop('回退对话框精简为单行引用/单选/一行警告（反馈11#08 R46）', async (page) => {
+      await openSession(page, 'nockpt')
+      const row = page.locator('[data-turn-id="n3"]').first()
+      await row.hover()
+      await row.getByRole('button', { name: '回退到此处' }).click()
+      const dialog = page.getByRole('dialog', { name: '回退到此处' })
+      await dialog.waitFor({ state: 'visible' })
+      await page.waitForTimeout(300)
+      const box = await dialog.boundingBox()
+      assert.ok(box && box.height < 380, `回退对话框高度 ${box?.height}，没有精简`)
+      const text = await dialog.innerText()
+      assert.equal(
+        (text.match(/没有可回退的文件改动/g) ?? []).length,
+        1,
+        '回退对话框仍重复说明文件改动',
+      )
+      const radios = dialog.getByRole('radio')
+      assert.equal(await radios.count(), 3, '恢复范围不是三个单选项')
+      for (let i = 0; i < 3; i++) {
+        const r = await radios.nth(i).boundingBox()
+        assert.ok(r && r.height <= 34, `第 ${i + 1} 个恢复范围高度 ${r?.height}，不是单行`)
+      }
+      const warning = dialog.locator('.text-warning').last()
+      const w = await warning.boundingBox()
+      assert.ok(w && w.height <= 32, `警告占到 ${w?.height}px，不是一行`)
+      await page.screenshot({ path: '/tmp/fb11-after/08.png' })
+    })
+
+    desktop('工具行调高且工具-only 行收紧空白（反馈11#04 R47）', async (page) => {
+      await openSession(page, 'secrets')
+      const tool = page.locator('.tool-row').first()
+      await tool.waitFor({ state: 'visible', timeout: 10_000 })
+      const height = await tool.evaluate((el) => el.getBoundingClientRect().height)
+      assert.ok(height >= 32, `工具行高度 ${height}px，仍显扁平`)
+      const margin = await page.evaluate(() => {
+        const probe = document.createElement('div')
+        probe.className = 'msg-row'
+        probe.dataset.toolOnly = 'true'
+        document.body.appendChild(probe)
+        const value = parseFloat(getComputedStyle(probe).marginTop)
+        probe.remove()
+        return value
+      })
+      assert.ok(margin < 0, `工具-only 行没有收紧上下间距（${margin}px）`)
+      await page.screenshot({ path: '/tmp/fb11-after/04.png' })
+
+      const dialog = await openSettings(page, '外观', 'desktop')
+      const preview = dialog.locator('[data-setting-id="appearance.theme"] button').first()
+      const previewHeight = await preview
+        .locator('div')
+        .first()
+        .evaluate((el) => el.getBoundingClientRect().height)
+      assert.ok(previewHeight >= 90, `主题预览卡只有 ${previewHeight}px 高`)
+      await page.keyboard.press('Escape')
+    })
+
+    desktop('会话信息面板不再提供删除会话（反馈11#02 R05）', async (page) => {
+      await openSession(page, 'long')
+      const panel = page.locator('aside').filter({ hasText: '会话信息' }).first()
+      await panel.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.equal(await panel.getByText('删除会话', { exact: true }).count(), 0, '会话信息面板仍有删除会话')
+      await page.screenshot({ path: '/tmp/fb11-after/02.png' })
+      const row = page.locator('[data-session-id="long"]').first()
+      await row.hover()
+      await row.getByRole('button', { name: '会话操作' }).click()
+      const menu = page.locator('[role="menu"]').last()
+      await menu.waitFor()
+      assert.ok(
+        (await menu.getByRole('menuitem', { name: '删除', exact: true }).count()) === 1,
+        '侧栏删除会话入口不见了',
+      )
+      await page.keyboard.press('Escape')
     })
 
     desktop('无检查点的会话仍可只回退对话', async (page) => {
