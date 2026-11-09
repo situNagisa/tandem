@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import zlib from 'node:zlib';
 // @ts-expect-error 打包脚本是 .mjs，无类型声明；这里只测纯函数。
-import { assertPackable, collectFiles, createZip, isRuntimeFile, pruneRuntime } from '../../../scripts/lib/host-pack.mjs';
+import { assertPackable, collectFiles, createZip, filterNativeModules, isRuntimeFile, nativeModulePlatform, pruneRuntime } from '../../../scripts/lib/host-pack.mjs';
 
 test('运行所需文件过滤：测试夹具/文档/示例/源码映射不进包', () => {
   assert.equal(isRuntimeFile('dist/cli.js'), true);
@@ -47,6 +47,65 @@ test('assertPackable：非 ASCII 路径、缺失 dist/cli.js 直接失败', () =
   assert.throws(() => assertPackable(['dist/cli.js', 'package.json', 'node_modules/@fastify/send/test/fixtures/snow ☃/index.html']), /ASCII/);
   assert.throws(() => assertPackable(['dist/cli.js', 'package.json', 'dist\\cli.js']), /分隔符/);
   assert.throws(() => assertPackable(['package.json']), /dist\/cli\.js/);
+});
+
+const SERIAL = 'node_modules/@serialport/bindings-cpp/prebuilds';
+
+test('原生模块按平台识别', () => {
+  assert.equal(nativeModulePlatform(`${SERIAL}/win32-x64/@serialport+bindings-cpp.node`), 'win32-x64');
+  assert.equal(nativeModulePlatform(`${SERIAL}/linux-x64/@serialport+bindings-cpp.glibc.node`), 'linux-x64');
+  assert.equal(nativeModulePlatform('node_modules/pkg/build/Release/native.node'), 'unknown');
+  assert.equal(nativeModulePlatform('node_modules/pkg/index.js'), undefined);
+});
+
+test('filterNativeModules：Windows 包只留 win32，Unix 包留 linux/darwin', () => {
+  const entries = [
+    'dist/cli.js',
+    'package.json',
+    `${SERIAL}/win32-x64/@serialport+bindings-cpp.node`,
+    `${SERIAL}/win32-arm64/@serialport+bindings-cpp.armv8.node`,
+    `${SERIAL}/linux-x64/@serialport+bindings-cpp.glibc.node`,
+    `${SERIAL}/linux-arm64/@serialport+bindings-cpp.armv8.glibc.node`,
+    `${SERIAL}/darwin-x64+arm64/@serialport+bindings-cpp.node`,
+    `${SERIAL}/android-arm/@serialport+bindings-cpp.armv7.node`,
+    'node_modules/@serialport/bindings-cpp/dist/index.js',
+  ];
+  const win = filterNativeModules(entries, 'win32');
+  assert.deepEqual(
+    win.filter((rel: string) => rel.endsWith('.node')).sort(),
+    [`${SERIAL}/win32-arm64/@serialport+bindings-cpp.armv8.node`, `${SERIAL}/win32-x64/@serialport+bindings-cpp.node`],
+  );
+  assert.ok(win.includes('node_modules/@serialport/bindings-cpp/dist/index.js'), '普通 js 不受影响');
+  const unix = filterNativeModules(entries, 'unix');
+  assert.deepEqual(
+    unix.filter((rel: string) => rel.endsWith('.node')).sort(),
+    [
+      `${SERIAL}/darwin-x64+arm64/@serialport+bindings-cpp.node`,
+      `${SERIAL}/linux-arm64/@serialport+bindings-cpp.armv8.glibc.node`,
+      `${SERIAL}/linux-x64/@serialport+bindings-cpp.glibc.node`,
+    ],
+  );
+  assert.throws(() => filterNativeModules(entries, 'solaris'), /未知打包目标/);
+});
+
+test('assertPackable：Windows 包混入 Linux 原生模块必须失败（R56 复发防线）', () => {
+  const base = ['dist/cli.js', 'package.json', `${SERIAL}/win32-x64/@serialport+bindings-cpp.node`];
+  assert.doesNotThrow(() => assertPackable(base, { target: 'win32' }));
+  assert.throws(
+    () => assertPackable([...base, `${SERIAL}/linux-x64/@serialport+bindings-cpp.glibc.node`], { target: 'win32' }),
+    /linux-x64 平台的原生模块/,
+  );
+  assert.throws(
+    () => assertPackable(['dist/cli.js', 'package.json', 'node_modules/@serialport/bindings-cpp/dist/index.js'], { target: 'win32' }),
+    /缺少 @serialport\/bindings-cpp 的 win32-x64/,
+  );
+  assert.throws(
+    () => assertPackable(['dist/cli.js', 'package.json', 'node_modules/pkg/build/Release/native.node'], { target: 'win32' }),
+    /无法判断平台/,
+  );
+  const unix = ['dist/cli.js', 'package.json', `${SERIAL}/linux-x64/@serialport+bindings-cpp.glibc.node`];
+  assert.doesNotThrow(() => assertPackable(unix, { target: 'unix' }));
+  assert.throws(() => assertPackable([...unix, `${SERIAL}/win32-x64/@serialport+bindings-cpp.node`], { target: 'unix' }), /win32-x64/);
 });
 
 test('createZip：生成标准 ZIP，能用中央目录读出全部文件', () => {

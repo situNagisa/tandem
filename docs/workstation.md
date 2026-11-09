@@ -39,11 +39,12 @@ curl -fsSL http://192.168.1.10:8481/install.sh | sh -s -- --token ach_…
 ```
 
 - 命令里是**一次性注册令牌**：15 分钟有效、只能用一次、工作站只存 SHA-256；关闭/重新生成弹层即换新令牌。
-- 目标机器执行一次：下载本机主机安装包（由工作站随附，不接公网/第三方）、安装到 `~/.tandem-host/app`，以当前账号身份**持久**连接——Linux `systemd --user`、macOS launchd LaunchAgent、Windows 登录计划任务；进程退出自动重启、断线自动重连。只想起后台进程时加 `--no-service`。
+- 目标机器执行一次：下载本机主机安装包（由工作站随附，不接公网/第三方）、安装到 `~/.tandem-host/app`，以当前账号身份**持久**连接——Linux `systemd --user`、macOS launchd LaunchAgent、Windows 当前用户的启动项（`HKCU\…\Run`，无需管理员；schtasks 的 ONLOGON 在非管理员会话会「拒绝访问」）；进程退出自动重启、断线自动重连。只想起后台进程时加 `--no-service`。目标机需要 **Node.js ≥ 22**（系统 Node；不用 Electron 顶替，桌面版升级/卸载后主机仍可用）。
 - 兑换出的长期凭据（Ed25519 私钥）只存在主机本地 `accounts.json`（0600），不进客户端、不上报工作站。
 - 客户端对话框实时显示「等待主机连接… → 已注册 <主机名>，等待上线… → 已连接 <主机名>」，连接后自动同步到主机列表。
 - 已装 `tandem-host` 的机器可只执行 `tandem-host join <工作站地址> --token <令牌> --service`；同一台机器对同一工作站重复执行是幂等的。
-- 安装包：`scripts/pack-host.mjs` 生成 `packages/server/host-pack/tandem-host.tgz`（Unix）与 `tandem-host.zip`（Windows，安装脚本用 `Expand-Archive`，不依赖 Windows 自带 tar）。只收运行时文件，打包时断言所有路径为 ASCII 且包含 `dist/cli.js`，测试夹具/文档/示例/源码映射不会进包。
+- 安装包：`scripts/pack-host.mjs` 生成 `packages/server/host-pack/tandem-host.tgz`（Unix）与 `tandem-host.zip`（Windows，安装脚本用 `Expand-Archive`，不依赖 Windows 自带 tar）。只收运行时文件，打包时断言所有路径为 ASCII、包含 `dist/cli.js`，测试夹具/文档/示例/源码映射不会进包。**原生预编译模块按目标平台裁剪**：在 WSL 里打包时 node_modules 里同时躺着各平台的 `.node`，Windows 的 ZIP 只留 `prebuilds/win32-*`、Unix 的 tgz 只留 `linux-*`/`darwin-*`，并断言混入别平台直接失败（R56 复发根因）。
+- `tandem-host join` 先确认端口上的 Tandem Host 属于本数据目录（`/api/host` 的 `id` 与本地 `hostId` 一致）：端口被另一个数据目录的实例占着时自动改用下一个空闲端口（7879…），不再拿错令牌去登记得到 401。失败按「崩溃（负退出码）/绑定码/连不上工作站」三类给不同提示。
 - 工作站没有随附安装包时，脚本失败并打印**手动安装步骤**（下载、解压、`node dist/cli.js join …`），不会静默失败。
 
 **本机也要显式添加**：桌面端提供「添加这台电脑」一键操作（内部同样走登记 + 绑定），不允许因为「本机就是工作站」而隐式出现。工作站服务自身的 Host 不自动进入任何账号的主机列表。

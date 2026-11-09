@@ -17,7 +17,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createDependencyCopier } from './lib/dep-closure.mjs';
-import { assertPackable, collectFiles, pruneRuntime, zipDirectory } from './lib/host-pack.mjs';
+import { assertPackable, collectFiles, filterNativeModules, pruneRuntime, zipDirectory } from './lib/host-pack.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER_DIR = path.join(ROOT, 'packages', 'server');
@@ -49,20 +49,27 @@ try {
   }
   const removed = pruneRuntime(stage);
   const entries = collectFiles(stage);
-  assertPackable(entries);
+  // 原生预编译模块按目标平台裁剪：在 WSL 里打包时，node_modules 里同时躺着各平台的 .node；
+  // Windows 包只留 win32-*，Unix 包只留 linux-*/darwin-*。否则 Windows 上 dlopen Linux 模块会崩。
+  const unixEntries = filterNativeModules(entries, 'unix');
+  const winEntries = filterNativeModules(entries, 'win32');
+  assertPackable(unixEntries, { target: 'unix' });
+  assertPackable(winEntries, { target: 'win32' });
   fs.chmodSync(path.join(stage, 'dist', 'cli.js'), 0o755);
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.rmSync(TGZ_FILE, { force: true });
   fs.rmSync(ZIP_FILE, { force: true });
-  execFileSync('tar', ['-czf', TGZ_FILE, '-C', stage, ...entries], { stdio: 'inherit' });
-  fs.writeFileSync(ZIP_FILE, zipDirectory(stage, entries));
+  execFileSync('tar', ['-czf', TGZ_FILE, '-C', stage, ...unixEntries], { stdio: 'inherit' });
+  fs.writeFileSync(ZIP_FILE, zipDirectory(stage, winEntries));
 
   const size = (file) => fs.statSync(file).size;
   const deps = fs.existsSync(path.join(stage, 'node_modules')) ? fs.readdirSync(path.join(stage, 'node_modules')).length : 0;
+  const dropped = entries.length - winEntries.length;
   console.log(
     `[pack-host] 完成：tandem-host.tgz ${(size(TGZ_FILE) / 1024 / 1024).toFixed(1)} MB、` +
-      `tandem-host.zip ${(size(ZIP_FILE) / 1024 / 1024).toFixed(1)} MB（v${pkg.version}，${entries.length} 个文件，` +
+      `tandem-host.zip ${(size(ZIP_FILE) / 1024 / 1024).toFixed(1)} MB（v${pkg.version}，` +
+      `tgz ${unixEntries.length} / zip ${winEntries.length} 个文件（${dropped} 个别平台原生模块未进 zip），` +
       `node_modules 顶层 ${deps} 项，剔除 ${removed} 个非运行时文件）`,
   );
 } finally {

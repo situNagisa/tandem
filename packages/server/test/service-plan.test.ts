@@ -80,9 +80,11 @@ test('Windows：隐藏窗口 + 崩溃重启 + 登录自启，路径含空格/中
   // 0 = 隐藏窗口（wscript 启动时不出黑框）
   assert.match(vbsFile.content, /sh\.Run """C:\\Users\\张 三\\AppData\\Local\\Tandem\\tandem-host-run\.cmd""", 0, False/);
   const cmds = plan.commands.map((step) => [step.cmd, ...step.args].join(' '));
-  assert.ok(cmds.some((cmd) => cmd.startsWith('schtasks /Create /SC ONLOGON /TN TandemHost')));
+  assert.equal(plan.commands.length, 2);
+  // Windows 11 非管理员会话里 schtasks /SC ONLOGON 会「拒绝访问」，改用 HKCU 启动项（登录自启、无需管理员）。
+  assert.ok(cmds.some((cmd) => cmd.startsWith('reg add HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v TandemHost')));
   assert.ok(cmds.some((cmd) => cmd.includes('wscript.exe //B "C:\\Users\\张 三\\AppData\\Local\\Tandem\\tandem-host-run.vbs"')));
-  assert.ok(cmds.includes('schtasks /Run /TN TandemHost'));
+  assert.ok(!cmds.some((cmd) => cmd.startsWith('schtasks')), '不再依赖计划任务（需要管理员）');
 });
 
 test('XML 转义与令牌脱敏', () => {

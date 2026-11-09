@@ -187,10 +187,15 @@ function buildWindowsPlan(input: ServicePlanInput): ServicePlan {
       { path: vbsPath, content: vbsContent, encoding: 'utf16le' },
     ],
     commands: [
-      { cmd: 'schtasks', args: ['/Create', '/SC', 'ONLOGON', '/TN', 'TandemHost', '/TR', `wscript.exe //B ${cmdQuote(vbsPath)}`, '/F'] },
-      { cmd: 'schtasks', args: ['/Run', '/TN', 'TandemHost'] },
+      // 用当前用户的「启动」注册表项做登录自启：不需要管理员。schtasks /SC ONLOGON 在
+      // Windows 11 的非管理员会话里会「拒绝访问」（实测），装不成服务。
+      {
+        cmd: 'reg',
+        args: ['add', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', '/v', 'TandemHost', '/t', 'REG_SZ', '/d', `wscript.exe //B ${cmdQuote(vbsPath)}`, '/f'],
+      },
+      { cmd: 'wscript.exe', args: ['//B', vbsPath] },
     ],
-    note: 'Windows 无系统服务权限：登录时由计划任务以隐藏窗口启动，进程退出后 5 秒自动重启。',
+    note: 'Windows 用当前用户的启动项（HKCU\\…\\Run，无需管理员）：登录时隐藏窗口启动，进程退出后 5 秒自动重启。',
   };
 }
 

@@ -2,6 +2,21 @@
 
 > 更新：2026-11-09。只保留最近 5 轮；更早记录见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 62（2026-11-09）工作站安装：Windows 一行命令登记崩溃（R56 复发，P0）
+- [x] 根因（用户实机 Windows 11 + Node v26.4.0 复现）：`join` 失败路径 `process.exit(1)`，带着 fetch keep-alive 连接硬退出撞 libuv 断言 `src\win\async.c:94` → 0xC0000409（退出码 -1073740791），真正的错误被盖成「登记失败」，脚本再误导成绑定码过期；改为只设 `process.exitCode`
+- [x] `join` 不再盲信 `127.0.0.1:7878` 上的任何 Tandem Host（桌面端内嵌 Host 也占 7878）：比对 `/api/host` 的 hostId，数据目录不同就自动改用空闲端口（7879…）并在输出里说明
+- [x] 失败归因共享模块 `workstation/joinFailure.ts`：崩溃（负退出码）/绑定码/连不上工作站三类提示；`install.ps1` 逐行收输出、崩溃时打印最后 20 行、写 `%USERPROFILE%\.tandem-host\install.log`（令牌脱敏）、把 `[Console]::OutputEncoding` 切 UTF-8 消除中文乱码
+- [x] Windows 登录自启改 `HKCU\…\CurrentVersion\Run` 的 `TandemHost` 启动项（schtasks `/SC ONLOGON` 在 Windows 11 非管理员会话实测「拒绝访问」）
+- [x] `pack-host` 按目标平台裁剪原生预编译模块（ZIP 只留 `prebuilds/win32-*`、tgz 留 `linux-*`/`darwin-*`），`assertPackable({target})` 断言混平台失败；单测覆盖平台裁剪/断言、安装脚本三类错误分支、CLI 禁止硬退出、启动项
+- 验证：用户实机（真实 Windows + Node v26.4.0，新 ZIP）跑通一行命令——7878 被占自动转 7879 登记成功并上线；乱填令牌退出码 1、提示「绑定码无效、已使用或已过期」并写日志；`node scripts/check.mjs --skip-regression`
+
+## 迭代 61（2026-11-09）反馈包 #14：审批内联 / 下拉抖动 / 模型芯片
+- [x] #07 R54（复发）：审批改为对话流里的一条消息（按 `toolUseId` 落在触发工具之后，`ChatView` 不再停靠输入框上方），按 Claude Code Desktop 重做卡片（问句标题 + 灰色说明 + 拒绝/允许一次 Ctrl⏎ + 更多菜单），去掉编号列表与大代码块；输入框保持可用，发送 = 拒绝并说明；Ctrl+Enter 允许、Esc 拒绝；完成后原位留一行结果；多个待审批按序排列并自动滚入
+- [x] #01 #02 R52（复发）：共享层根治弹层抖动——动画/transform 只放内层包裹元素、触发器按下不缩放、异步内容固定尺寸/数据就绪再打开；ui-audit 新增 `content-transform`；回归对全部菜单入口真实按下采样 15 帧，位置与尺寸 ≤1px
+- [x] #03 R35（复发）：模型芯片去掉思考强度小点，只在菜单/tooltip/aria-label 里体现
+- 验证：`node scripts/check.mjs`；回归新增「反馈14#07」两条、菜单稳定性一条，更新小屏/芯片/冒烟/键盘走查
+- 保守取舍：审批处理结果只记在客户端会话视图（刷新后不留痕）；计划提交仍用计划卡
+
 ## 迭代 60（2026-11-09）发布 v0.4.5：登录门 / 一行命令添加主机 / 会话图
 - [x] 登录门：桌面/网页/手机先登录或注册工作站，深链保留；调试版回环自动登录调试账号；无主机空状态并禁用新会话/跨主机派单；体验导览第一步改为「添加主机」
 - [x] 一行命令添加主机：一次性令牌 15 分钟（只存 SHA-256）、install.sh/install.ps1、Linux systemd --user / macOS launchd / Windows 计划任务持久连接；`pack-host` 断言安装包路径 ASCII 且含 `dist/cli.js`

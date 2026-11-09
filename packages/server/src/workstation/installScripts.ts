@@ -204,7 +204,12 @@ status=$?
 set -e
 if [ "$status" -ne 0 ]; then
   echo "[x] 登记失败（退出码 $status）。" >&2
-  echo "    绑定码一次性且 15 分钟内有效；可在工作站「添加主机」重新生成后再执行本命令。" >&2
+  if [ "$status" -ge 128 ]; then
+    echo "    主机程序 tandem-host 被信号终止（崩溃），不是绑定码的问题；请把上面的输出连同 $LOG_FILE 发回。" >&2
+  else
+    echo "    看上面的输出：绑定码一次性且 15 分钟内有效；令牌问题可在工作站「添加主机」重新生成后再执行本命令。" >&2
+    echo "    连不上工作站时先确认地址/防火墙；日志：$LOG_FILE" >&2
+  fi
 fi
 exit "$status"
 `;
@@ -245,8 +250,9 @@ function Exit-WithHelp {
   Write-Host "[x] $Message" -ForegroundColor Red
   Write-Host ''
   Write-Host '手动安装步骤：'
-  Write-Host '  1. 安装 Node.js 22 或更高版本（https://nodejs.org/）'
-  Write-Host '     安装后在 PowerShell 里确认：node -v'
+  Write-Host '  1. 安装 Node.js 22 或更高版本（本机需要有 node 命令）'
+  Write-Host '       winget install --id OpenJS.NodeJS.LTS -e'
+  Write-Host '     装完重开一个 PowerShell，确认：node -v'
   Write-Host '  2. 下载并解压主机安装包（ZIP，不依赖 tar）：'
   Write-Host "       Invoke-WebRequest -UseBasicParsing -Uri $Server/dl/tandem-host.zip -OutFile \`$env:TEMP\\tandem-host.zip"
   Write-Host "       Expand-Archive -Path \`$env:TEMP\\tandem-host.zip -DestinationPath '$AppDir' -Force"
@@ -324,17 +330,69 @@ try {
   [IO.File]::WriteAllText($Wrapper, ($wrapperLines -join "\`r\`n") + "\`r\`n", [Text.UTF8Encoding]::new($false))
   Write-Host "启动脚本: $Wrapper"
 
+  Write-Host "使用 Node: $NodePath ($(& $NodePath -v))"
   Write-Host "正在登记本机到 $Server（令牌 $(Mask-Token $Token)）…"
   $joinArgs = @((Join-Path $AppDir 'dist\\cli.js'), 'join', $Server, '--token', $Token, '--name', $Name)
   if ($Port -gt 0) { $joinArgs += @('--port', [string]$Port) }
   if ($NoService) { $joinArgs += '--no-service' } else { $joinArgs += '--service' }
-  & $NodePath @joinArgs
-  $code = $LASTEXITCODE
+  # 把 tandem-host 的输出逐行收下来：崩溃/被信号终止时控制台缓冲会丢，日志里必须留一份。
+  $JoinLogFile = Join-Path $InstallDir 'install.log'
+  $joinLines = New-Object System.Collections.Generic.List[string]
+  $previousEap = $ErrorActionPreference
+  # node 输出 UTF-8；PowerShell 默认按控制台代码页解码，中文会变成乱码，这里临时切到 UTF-8。
+  $previousEncoding = [Console]::OutputEncoding
+  $ErrorActionPreference = 'Continue'
+  try {
+    try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { }
+    & $NodePath @joinArgs *>&1 | ForEach-Object {
+      $line = if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { [string]$_ }
+      foreach ($part in ($line -split '\\r?\\n')) {
+        if ($part.Trim()) { $joinLines.Add($part) }
+      }
+      Write-Host $line
+    }
+    $code = $LASTEXITCODE
+    if ($null -eq $code) { $code = 1 }
+  } finally {
+    $ErrorActionPreference = $previousEap
+    try { [Console]::OutputEncoding = $previousEncoding } catch { }
+  }
   if ($code -ne 0) {
-    Write-Host "[x] 登记失败（退出码 $code）。" -ForegroundColor Red
-    Write-Host '    绑定码一次性且 15 分钟内有效；可在工作站「添加主机」重新生成后再执行本命令。'
+    $hex = '0x{0:X8}' -f ($code -band 0xffffffff)
+    $report = @(
+      "=== $(Get-Date -Format s) 登记失败 ===",
+      "工作站: $Server",
+      "令牌:   $(Mask-Token $Token)",
+      "Node:   $NodePath",
+      "退出码: $code ($hex)",
+      '--- tandem-host 输出 ---'
+    ) + $joinLines
+    try { Add-Content -LiteralPath $JoinLogFile -Value $report -Encoding utf8 } catch { }
+    $tail = @($joinLines | Select-Object -Last 20)
+    Write-Host "[x] 登记失败（退出码 $code / $hex）。" -ForegroundColor Red
+    $joined = $joinLines -join ' '
+    if ($code -lt 0) {
+      # 负退出码 = Windows 的 STATUS_* 异常码（如 0xC0000409），进程本身崩了，与令牌无关。
+      Write-Host '    主机程序 tandem-host 异常崩溃，不是绑定码的问题。它最后的 20 行输出：' -ForegroundColor Red
+      foreach ($line in $tail) { Write-Host "      $line" -ForegroundColor DarkYellow }
+      Write-Host "    完整日志已写入 $JoinLogFile —— 请把这个文件发回，方便定位。"
+    } else {
+      if ($tail.Count -gt 0) {
+        Write-Host '    tandem-host 最后的输出：'
+        foreach ($line in $tail) { Write-Host "      $line" }
+      }
+      if ($joined -match '绑定码') {
+        Write-Host '    绑定码一次性、15 分钟内有效：在工作站「添加主机」重新生成一个，再执行本命令。'
+      } elseif ($joined -match '工作站') {
+        Write-Host "    本机 Host 连不上工作站 $Server：确认地址、端口、防火墙，以及工作站服务在运行。"
+      } else {
+        Write-Host "    详细输出见 $JoinLogFile；解决不了请把这个文件发回。"
+      }
+      Write-Host "    日志：$JoinLogFile"
+    }
     throw "登记失败（退出码 $code）"
   }
+  Write-Host '已登记完成，主机将保持到工作站的出站长连接。'
 } finally {
   Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
 }

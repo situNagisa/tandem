@@ -84,6 +84,16 @@ docker run -d --name tandem-workstation -p 8481:8481 -v tandem-workstation-data:
 
 ## 五之二、在 Windows 上代测登录与添加主机（用户实机）
 
+### 前置条件（Windows）
+
+- **Node.js ≥ 22**（`node -v` 能看到版本；Windows 上装的是系统 Node，不用 Electron 顶替——桌面版卸载/升级后主机还在）。没装就先让他自己执行（需要联网）：
+  ```powershell
+  winget install --id OpenJS.NodeJS.LTS -e
+  ```
+  装完**重开一个 PowerShell** 再执行一行命令。
+- 主机默认监听 `127.0.0.1:7878`。如果调试版桌面端正开着，它会占用 7878：新命令会检测到「另一个数据目录的 Tandem Host」并自动改用 7879（输出里会写），此时登记仍然会成功，不用先关桌面端。
+- PowerShell 7（`pwsh`）与 Windows PowerShell 5.1 都应通过；脚本全程 `throw`、不 `exit`，避免关掉用户的窗口。
+
 ### A. 浏览器（Chrome / Edge）
 
 1. 调试版桌面启动后，先退出调试账号（侧栏底部账号菜单 →「退出调试账号」），刷新页面：应先看到**登录页**（不再是主界面）；此时地址栏里的深链保留，登录后回到原位置。
@@ -93,13 +103,18 @@ docker run -d --name tandem-workstation -p 8481:8481 -v tandem-workstation-data:
 5. 点「添加主机」：弹层默认选 Windows，命令形如
    `& ([scriptblock]::Create((irm http://<工作站地址>/install.ps1))) -Token 'ach_…'`
    令牌旁有 15 分钟倒计时；点复制后在 PowerShell 粘贴执行。
-6. 执行过程应显示「正在下载主机安装包… 正在安装到 C:\Users\<你>\.tandem-host\app …」，最后显示「已加入工作站」。弹层应从「等待主机连接…」变成「已连接 <电脑名>」，主机列表出现该电脑，可新建会话。
-7. 失败时把完整输出（含「手动安装步骤」）回传；不应再出现 `tar.exe: Invalid empty pathname`。
+6. 执行过程应显示「正在下载主机安装包… → 正在安装到 C:\Users\<你>\.tandem-host\app → 使用 Node: … (v22+) → 已加入工作站「…」→ 已登记完成」，最后一行是成功、退出码 0。弹层应从「等待主机连接…」变成「已连接 <电脑名>」，主机列表出现该电脑，可新建会话。
+   登录自启用**当前用户的启动项** `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 的 `TandemHost`（无需管理员；schtasks 的 ONLOGON 在非管理员会话里会「拒绝访问」）。主机进程由 `…\AppData\Local\Tandem\tandem-host-run.cmd` 循环拉起，退出后 5 秒重启。
+7. 失败时看最后几行：
+   - 退出码是**负数**（如 `-1073740791` / `0xC0000409`）= tandem-host 进程崩溃，脚本会打印它最后 20 行输出，并写日志到 `%USERPROFILE%\.tandem-host\install.log` —— 把日志回传，别说成绑定码过期。
+   - 提示「绑定码无效、已使用或已过期」才是令牌问题：重新生成再执行。
+   - 提示「连不上工作站」是网络/地址问题。
+   不应再出现 `tar.exe: Invalid empty pathname`，也不应出现 `Assertion failed: … src\win\async.c, line 94`。
 
 ### B. 另一台机器执行一行命令
 
 1. 在客户端「添加主机」里选目标系统（Windows / macOS / Linux），复制命令；令牌一次性、15 分钟有效，关掉弹层即作废。
-2. Windows（PowerShell，无需管理员）：粘贴执行；安装到 `%USERPROFILE%\.tandem-host\app`，并注册为登录自启的计划任务（加 `-NoService` 只起后台进程）。
+2. Windows（PowerShell，**无需管理员**）：粘贴执行；安装到 `%USERPROFILE%\.tandem-host\app`，登录自启靠当前用户的启动项（加 `-NoService` 只起后台进程、不写启动项）。
 3. macOS / Linux（终端）：
    ```bash
    curl -fsSL http://<工作站地址>/install.sh | sh -s -- --token ach_…
@@ -107,6 +122,7 @@ docker run -d --name tandem-workstation -p 8481:8481 -v tandem-workstation-data:
    Linux 装为 `systemd --user`、macOS 装为 launchd LaunchAgent；加 `--no-service` 只起后台进程。
 4. 执行后回到客户端：弹层显示「已连接 <主机名>」，主机列表出现新主机；关掉弹层再打开，主机仍在。
 5. 想验证一次性：把同一命令再执行一次到另一台机器，应被拒绝并提示令牌已使用/已过期。
+6. 验证退出码不误导：故意用一个乱填的 `-Token ach_xxx` 再跑一次，应看到「绑定码无效、已使用或已过期」+ 重新生成的提示，**退出码 1**（不是 `-1073740791`），并且 `%USERPROFILE%\.tandem-host\install.log` 里有一份脱敏输出。
 
 ## 六、需要回传的信息
 

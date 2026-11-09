@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Tandem Host 守护进程入口。
 import { closeSync, mkdirSync, openSync } from 'node:fs';
+import { createServer } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -14,6 +15,7 @@ import { generateHostKey } from './relay/e2e.js';
 import { createWorkstation } from './workstation/server.js';
 import { readVersion } from './host/helpers.js';
 import { buildServicePlan, executeServicePlan, redactToken } from './service/install.js';
+import { explainJoinFailure } from './workstation/joinFailure.js';
 
 interface CliOptions {
   port: number;
@@ -271,15 +273,41 @@ function servicePlanFor(options: JoinOptions, home: string) {
   });
 }
 
-async function hostIsRunning(base: string): Promise<boolean> {
+/**
+ * 探测本机端口上的 Tandem Host 属于哪个数据目录。
+ * ready：hostId 与令牌都对得上，可直接复用；foreign：有 Tandem Host 但属于别的数据目录
+ * （用它登记只会得到 401，所以必须换端口）；none：没人监听。
+ */
+async function probeLocalHost(port: number, config: { hostId: string; token: string }): Promise<'ready' | 'foreign' | 'none'> {
   try {
-    const res = await fetch(`${base}/api/accounts/status`, { signal: AbortSignal.timeout(1500) });
-    if (!res.ok) return false;
-    const data = (await res.json()) as { mode?: unknown };
-    return typeof data.mode === 'string';
+    const res = await fetch(`http://127.0.0.1:${port}/api/host`, {
+      headers: { Authorization: `Bearer ${config.token}` },
+      signal: AbortSignal.timeout(1500),
+    });
+    if (res.status === 401 || res.status === 403) return 'foreign';
+    if (!res.ok) return 'none';
+    const data = (await res.json().catch(() => ({}))) as { id?: unknown };
+    if (typeof data.id !== 'string') return 'none';
+    return data.id === config.hostId ? 'ready' : 'foreign';
   } catch {
-    return false;
+    return 'none';
   }
+}
+
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const srv = createServer();
+    srv.once('error', () => resolve(false));
+    srv.once('listening', () => srv.close(() => resolve(true)));
+    srv.listen(port, '127.0.0.1');
+  });
+}
+
+async function findFreePort(startPort: number): Promise<number | undefined> {
+  for (let port = startPort; port <= 65535 && port < startPort + 20; port += 1) {
+    if (await isPortFree(port)) return port;
+  }
+  return undefined;
 }
 
 async function waitForHost(base: string, home: string, timeoutMs = 30_000): Promise<void> {
@@ -354,14 +382,30 @@ async function joinMain(argv: string[]): Promise<void> {
   const options = parseJoinArgs(argv);
   if (!options.workstationUrl) throw new Error('用法: tandem-host join <工作站地址> --token <绑定码>');
   const home = tandemHome();
-  const base = `http://127.0.0.1:${options.port}`;
   if (options.dryRun) {
     printJoinPlan(options, home);
     return;
   }
 
   const config = loadHostConfig(home);
-  if (!(await hostIsRunning(base))) {
+  // 端口上如果有 Tandem Host，必须先确认是本数据目录的那一个：否则登记请求只会拿到 401，
+  // 用户看到的是「令牌无效」，实际原因是另一个 Tandem 实例（桌面端/上一次测试）还占着端口。
+  let state = await probeLocalHost(options.port, config);
+  if (state === 'foreign') {
+    const free = await findFreePort(options.port + 1);
+    if (free === undefined) {
+      throw new Error(
+        `127.0.0.1:${options.port} 已被另一个 Tandem Host 占用（数据目录不同），也找不到空闲端口；` +
+          '关掉那个 Tandem 实例，或用 --port 指定端口后重试。',
+      );
+    }
+    console.warn(`[tandem] 127.0.0.1:${options.port} 上是另一个 Tandem Host（数据目录不同），本机 Host 改用 ${free}。`);
+    options.port = free;
+    state = 'none';
+  }
+  const base = `http://127.0.0.1:${options.port}`;
+
+  if (state !== 'ready') {
     if (options.mode === 'service') {
       const plan = servicePlanFor(options, home);
       try {
@@ -393,10 +437,21 @@ async function joinMain(argv: string[]): Promise<void> {
       signal: AbortSignal.timeout(20_000),
     });
   } catch (err) {
-    throw new Error(`无法连接本机 Host（${base}）：${(err as Error).message}`);
+    throw new Error(`无法连接本机 Host（${base}）：${(err as Error).message}；日志：${path.join(home, 'host.log')}`);
   }
   const data = (await res.json().catch(() => ({}))) as { workspace?: { name?: string }; error?: string };
-  if (!res.ok) throw new Error(data.error ?? `加入失败：HTTP ${res.status}`);
+  if (!res.ok) {
+    const raw = data.error ?? `HTTP ${res.status}`;
+    const explained = explainJoinFailure({
+      status: res.status,
+      message: raw,
+      hostPort: options.port,
+      workstationUrl: options.workstationUrl,
+    });
+    // 文案已经就是标题时不要重复（「绑定码无效、已使用或已过期：绑定码无效、已使用或已过期」）。
+    const head = raw.includes(explained.title) ? raw : `${explained.title}：${raw}`;
+    throw new Error([head, ...explained.hints.map((line) => `  ${line}`)].join('\n'));
+  }
   console.log(`已加入工作站「${data.workspace?.name ?? options.workstationUrl}」；本机将主动建立出站隧道。`);
 }
 
@@ -486,5 +541,8 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   console.error(`[tandem] ${(err as Error).message}`);
-  process.exit(1);
+  // 不用 process.exit：Windows + Node 22+（实测 v26.4.0）上，带着 fetch 留下的 keep-alive
+  // 连接硬退出会撞 libuv 断言（async.c:94 → 0xC0000409 / 退出码 -1073740791），
+  // 把真正的错误盖成「登记失败（退出码 -1073740791）」。让事件循环自然排空后按 exitCode 退出。
+  process.exitCode = 1;
 });

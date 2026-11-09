@@ -63,10 +63,36 @@ export function pruneRuntime(root) {
 }
 
 /**
+ * 打包目标 → 允许的原生预编译平台前缀。
+ * Windows 包只留 win32-*；Unix 包（.tgz，安装脚本给 macOS/Linux 用）留 linux- / darwin-*。
+ * pack-host 在 WSL 里打包，不按目标裁剪就会把 linux-x64 的 .node 塞进 Windows 包（R56 复发）。
+ */
+const NATIVE_PLATFORM_PREFIXES = { win32: ['win32'], unix: ['linux', 'darwin'] };
+
+/** 原生预编译模块（.node）的目标平台，如 `win32-x64`、`linux-x64`；不在 prebuilds/<平台>/ 下返回 'unknown'；非 .node 返回 undefined。 */
+export function nativeModulePlatform(relPath) {
+  if (!relPath.toLowerCase().endsWith('.node')) return undefined;
+  const match = relPath.match(/(?:^|\/)prebuilds\/([^/]+)\//);
+  return match ? match[1] : 'unknown';
+}
+
+/** 按目标平台剔除非本平台的预编译模块（返回新数组，保持原顺序）。 */
+export function filterNativeModules(entries, target) {
+  const allowed = NATIVE_PLATFORM_PREFIXES[target];
+  if (!allowed) throw new Error(`未知打包目标: ${target}`);
+  return entries.filter((rel) => {
+    const platform = nativeModulePlatform(rel);
+    if (!platform) return true;
+    return allowed.some((prefix) => platform.startsWith(prefix));
+  });
+}
+
+/**
  * 打包前断言：路径为 ASCII、无控制字符、不是绝对路径/上级目录；必需文件存在。
+ * 传了 target 时再断言原生模块平台与目标一致（Windows 包不混 Linux 的 .node，且要有 win32-x64 的 serialport）。
  * 任何一条不满足就抛错，避免把坏包发给工作站。
  */
-export function assertPackable(entries) {
+export function assertPackable(entries, options = {}) {
   const problems = [];
   for (const rel of entries) {
     if (!/^[\x20-\x7e]+$/.test(rel)) problems.push(`路径不是 ASCII: ${JSON.stringify(rel)}`);
@@ -75,6 +101,26 @@ export function assertPackable(entries) {
   }
   if (!entries.includes('dist/cli.js')) problems.push('缺少 dist/cli.js');
   if (!entries.includes('package.json')) problems.push('缺少 package.json');
+  const target = options.target;
+  if (target) {
+    const allowed = NATIVE_PLATFORM_PREFIXES[target];
+    if (!allowed) throw new Error(`未知打包目标: ${target}`);
+    for (const rel of entries) {
+      const platform = nativeModulePlatform(rel);
+      if (!platform) continue;
+      if (platform === 'unknown') problems.push(`原生模块不在 prebuilds/<平台>/ 下，无法判断平台: ${JSON.stringify(rel)}`);
+      else if (!allowed.some((prefix) => platform.startsWith(prefix))) {
+        problems.push(`${target} 安装包混入了 ${platform} 平台的原生模块: ${JSON.stringify(rel)}`);
+      }
+    }
+    const hasSerialport = entries.some((rel) => rel.includes('@serialport/bindings-cpp/'));
+    if (hasSerialport && target === 'win32' && !entries.some((rel) => /\/prebuilds\/win32-x64\/[^/]+\.node$/.test(rel))) {
+      problems.push('Windows 安装包缺少 @serialport/bindings-cpp 的 win32-x64 预编译模块（串口设备不可用）');
+    }
+    if (hasSerialport && target === 'unix' && !entries.some((rel) => /\/prebuilds\/(linux|darwin)[^/]*\/[^/]+\.node$/.test(rel))) {
+      problems.push('Unix 安装包缺少 @serialport/bindings-cpp 的 linux/darwin 预编译模块（串口设备不可用）');
+    }
+  }
   if (problems.length > 0) throw new Error(`主机安装包内容不合格：\n  ${problems.slice(0, 20).join('\n  ')}`);
 }
 
