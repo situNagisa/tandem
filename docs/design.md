@@ -311,6 +311,10 @@
 
 ## 2026-11-09 反馈包 #11 用户结论：Edge 划词迷你菜单 / 原生控件全局屏蔽 / 设置导航滚动条
 
-- **Edge 划词迷你菜单可以网页关闭**（#06，R37 复发；推翻反馈9「网页无法关闭」的结论）：在 Edge（UA 含 `Edg/`）里于 `mouseup` 捕获阶段同步收起选区、80ms 后恢复原 Range，Edge 不再生成迷你菜单，选区高亮、右键菜单复制、Ctrl+C 都保持可用。**实测**：普通窗口与 Edge 应用窗口 / PWA（`--app` 独立窗口）在修复前都会出现迷你菜单，安装为应用并不能规避；现在两种窗口都不再出现。Edge 侧仍有兜底开关：设置 → 外观 →「选择文本时显示迷你菜单」（`edge://settings/appearance`），管理员可用组策略 [`QuickSearchShowMiniMenu`](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-browser-policies/quicksearchshowminimenu) 关闭（策略是浏览器/管理员的，不是站点 API）。验证方式：DOM 截图拍不到原生浮层，用 Windows 全屏/窗口截图逐项确认。
-- **原生控件屏蔽挂在应用根**（#03，R37 复发）：右键菜单、拖拽 ghost、Edge 选区守卫都在 `document` 上监听，设置页、对话框 Portal、手机预览同样生效；`<html spellcheck="false">` 让整页（含后挂载的弹层）默认不拼写检查；新增输入框由 `focusin` + `MutationObserver` 补 `autocomplete="off"`、`spellcheck="false"`、`writingsuggestions="false"`（密码框保留浏览器语义）；剩余原生 `title`（ResizeHandle、Toast 全文）改 `data-tip`。浏览器原生 `<select>` 弹层已在前几轮统一为共享组件。
+- **Edge 划词迷你菜单网页端接受浏览器行为**（#06，R37 复发）：不使用收起并恢复选区的 hack，因为松开鼠标时选区消失会影响体验；网页端可由用户在 Edge 设置 → 外观关闭「选择文本时显示迷你菜单」（`edge://settings/appearance`），如果浏览器原生 UI 无法关闭就接受其显示。桌面版不受影响。
+- **原生控件屏蔽挂在应用根**（#03，R37 复发）：右键菜单、拖拽 ghost 都在 `document` 上监听，设置页、对话框 Portal、手机预览同样生效；`<html spellcheck="false">` 让整页（含后挂载的弹层）默认不拼写检查；新增输入框由 `focusin` + `MutationObserver` 补 `autocomplete="off"`、`spellcheck="false"`、`writingsuggestions="false"`（密码框保留浏览器语义）；剩余原生 `title`（ResizeHandle、Toast 全文）改 `data-tip`。浏览器原生 `<select>` 弹层已在前几轮统一为共享组件。
 - **覆盖滚动条不压内容**（#01，R36 复发）：`ui/OverlayScrollbar` 的 6px 指示条优先落在滚动容器外层的右侧 gutter（外层 `padding-right ≥ 12px` 时贴到外层右缘，如下设置导航的 nav 内边距）；容器自身有 `padding-right ≥ 10px` 时贴内缘；都没有时仍贴容器右缘 3px。设置导航滚动时指示条在行背景右侧 3px 的留白里，不再压住行或文字；手机端设置导航补 `pr-3`。回归测量指示条 left ≥ 导航内容右缘且与最近文字 rect 不相交。
+
+## 2026-11-09 用户决定：Edge 划词迷你菜单
+
+- 不用 hack 屏蔽 Edge 划词迷你菜单（收起/恢复选区会影响体验）；网页端接受该浏览器行为，用户可在 Edge 设置 → 外观关闭；桌面版不受影响。若浏览器自带 UI 实在关不掉，就接受关不掉。

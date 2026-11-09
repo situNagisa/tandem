@@ -48,6 +48,88 @@ const GLOBAL_CHECKS = [
   },
 ]
 
+function matchingBrace(text, start) {
+  let depth = 0
+  let quote = null
+  let lineComment = false
+  let blockComment = false
+  for (let i = start; i < text.length; i += 1) {
+    const char = text[i]
+    const next = text[i + 1]
+    if (lineComment) {
+      if (char === '\n') lineComment = false
+      continue
+    }
+    if (blockComment) {
+      if (char === '*' && next === '/') {
+        blockComment = false
+        i += 1
+      }
+      continue
+    }
+    if (quote) {
+      if (char === quote && text[i - 1] !== '\\') quote = null
+      continue
+    }
+    if (char === '/' && next === '/') {
+      lineComment = true
+      i += 1
+    } else if (char === '/' && next === '*') {
+      blockComment = true
+      i += 1
+    } else if (char === '"' || char === "'" || char === '`') {
+      quote = char
+    } else if (char === '{') {
+      depth += 1
+    } else if (char === '}') {
+      depth -= 1
+      if (depth === 0) return i + 1
+    }
+  }
+  return text.length
+}
+
+async function checkSelectionCollapseHandlers(file, text) {
+  const listenerRe = /\.addEventListener\(\s*(['"])(mouseup|selectionchange)\1\s*,/g
+  let listener
+  while ((listener = listenerRe.exec(text))) {
+    const argStart = listenerRe.lastIndex
+    const rest = text.slice(argStart)
+    const named = rest.match(/^\s*([A-Za-z_$][\w$]*)\s*[,)]/)
+    let bodyStart = -1
+    if (named) {
+      const name = named[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const declaration = new RegExp(
+        `(?:const|let|var)\\s+${name}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[A-Za-z_$][\\w$]*)\\s*=>\\s*\\{|function\\s+${name}\\s*\\([^)]*\\)\\s*\\{`,
+      ).exec(text)
+      if (declaration) bodyStart = text.indexOf('{', declaration.index + declaration[0].length - 1)
+    } else {
+      const arrow = rest.indexOf('=>')
+      const functionExpr = rest.indexOf('function')
+      if (arrow >= 0 && (functionExpr < 0 || arrow < functionExpr)) {
+        const brace = rest.indexOf('{', arrow + 2)
+        if (brace >= 0) bodyStart = argStart + brace
+      } else if (functionExpr >= 0) {
+        const brace = rest.indexOf('{', functionExpr)
+        if (brace >= 0) bodyStart = argStart + brace
+      }
+    }
+    if (bodyStart < 0) continue
+    const bodyEnd = matchingBrace(text, bodyStart)
+    const body = text.slice(bodyStart, bodyEnd)
+    if (body.includes('ui-audit-selection-input-whitelist')) continue
+    const forbidden = /\b(?:[A-Za-z_$][\w$]*\s*\.\s*)?(?:removeAllRanges|collapse)\s*\(/.exec(body)
+    if (!forbidden) continue
+    issues.push({
+      file: relative(ROOT, file),
+      line: text.slice(0, bodyStart + forbidden.index).split('\n').length,
+      check: 'selection-collapse-on-pointer-up',
+      label: 'mouseup/selectionchange 中禁止收起选区（输入框内部逻辑须显式白名单）',
+      text: body.slice(forbidden.index, forbidden.index + 100).replace(/\s+/g, ' '),
+    })
+  }
+}
+
 const files = (await walk(SRC)).filter((file) => !file.startsWith(UI_DIR + '/'))
 const issues = []
 // 菜单项必须是单行（用户第 5 轮反馈 #15/#16）：说明走 hint/Tooltip，
@@ -184,6 +266,7 @@ for (const file of await walk(UI_DIR)) {
 // 所有源码：relatedTarget 必须是 Node，直接 contains 会在离开窗口时抛 TypeError。
 for (const file of await walk(SRC)) {
   const text = await readFile(file, 'utf8')
+  await checkSelectionCollapseHandlers(file, text)
   if (file.endsWith('lib/overlay.ts')) continue
   const lines = text.split('\n')
   for (let i = 0; i < lines.length; i += 1) {

@@ -38,10 +38,6 @@ const HOST_ENTRY = path.join(ROOT, 'packages/server/dist/cli.js')
 const DESKTOP = { width: 2552, height: 1274 }
 const MOBILE = { width: 390, height: 844 }
 const SMALL = { width: 360, height: 780 }
-// 反馈11：Edge 的划词迷你菜单只在 Edg/ UA 下出现，选区守卫随之启用。
-const EDGE_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36 Edg/156.0.0.0'
-
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const onlyIndex = process.argv.indexOf('--only')
@@ -3447,7 +3443,7 @@ async function main() {
       assert.notEqual(attrs.selectable, 'none', '不应禁用文本选择')
     })
 
-    desktop('反馈11：Edge 选区守卫、设置导航滚动条进 gutter 不压文字（R37/R36 复发）', async (page) => {
+    desktop('反馈11：设置页输入框全局屏蔽、设置导航滚动条进 gutter 不压文字（R37/R36）', async (page) => {
       // 用户实际视口 1912×914：用相近尺寸让设置导航溢出（2552 宽高下导航无需滚动）。
       await page.setViewportSize({ width: 1366, height: 860 })
       // 设置导航：滚动时指示条应落在 nav 的右侧留白里，不与行文字/行背景相交。
@@ -3508,61 +3504,6 @@ async function main() {
       )
       await closeSettings(page)
 
-      // Edge 选区守卫（反馈11#06）：mouseup 同步收起选区，80ms 后恢复；迷你菜单不再生成。
-      const edgeCtx = await browser.newContext({
-        viewport: DESKTOP,
-        deviceScaleFactor: 1,
-        userAgent: EDGE_UA,
-      })
-      try {
-        const edgePage = await newPage(edgeCtx, 'desktop')
-        assert.equal(
-          await edgePage.evaluate(() => document.documentElement.dataset.edgeSelectionGuard),
-          'on',
-          'Edge UA 下没有启用选区守卫',
-        )
-        await openSettings(edgePage, '通用', 'desktop')
-        await edgePage.evaluate(() => {
-          window.__guardEvents = 0
-          window.addEventListener('tandem:selection-guard', () => {
-            window.__guardEvents += 1
-          })
-        })
-        const line = await edgePage.evaluate(() => {
-          const host = document.querySelector('[data-settings-page-content]')
-          const walk = document.createTreeWalker(host, NodeFilter.SHOW_TEXT)
-          while (walk.nextNode()) {
-            const node = walk.currentNode
-            if (node.textContent.trim().length < 8) continue
-            const range = document.createRange()
-            range.selectNodeContents(node)
-            const rect = range.getBoundingClientRect()
-            if (rect.width > 160) {
-              return { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
-            }
-          }
-          return null
-        })
-        assert.ok(line, '设置页没有可选中的说明文字')
-        const y = Math.round(line.y + line.height / 2)
-        await edgePage.mouse.move(Math.round(line.x + 4), y)
-        await edgePage.mouse.down()
-        await edgePage.mouse.move(Math.round(line.x + Math.min(line.width - 4, 300)), y, {
-          steps: 15,
-        })
-        await edgePage.mouse.up()
-        await edgePage.waitForTimeout(300)
-        const picked = await edgePage.evaluate(() => ({
-          text: window.getSelection()?.toString() ?? '',
-          events: window.__guardEvents,
-        }))
-        assert.ok(picked.events >= 1, 'Edge 选区守卫没有收起再恢复选区')
-        assert.ok(picked.text.length > 4, '选区恢复后文本丢失')
-        await edgePage.screenshot({ path: path.join(shots, 'edge-selection-guard.png') })
-        await closeSettings(edgePage)
-      } finally {
-        await edgeCtx.close()
-      }
     })
 
     desktop('Host 诊断：面板打开、失败项排在最前、报告不含 Key', async (page) => {
