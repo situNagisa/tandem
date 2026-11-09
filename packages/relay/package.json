@@ -1,6 +1,6 @@
 {
   "name": "@tandem/relay",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Tandem 中继服务：让不在同一局域网的客户端经出站隧道连到 Host",
   "type": "module",
   "main": "dist/cli.js",

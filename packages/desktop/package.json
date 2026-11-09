@@ -1,6 +1,6 @@
 {
   "name": "@tandem/desktop",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "description": "Tandem desktop app (Electron)",
   "author": "Tandem",
