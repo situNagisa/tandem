@@ -288,6 +288,18 @@ html.dark {
     text-rendering: optimizeLegibility;
   }
 
+  /* 反馈14#01/#02（R52 复发）：Radix 用触发器 rect 定位弹层，按下缩放会带着面板一起缩、
+     松手再弹回。所有弹层触发器都不做按压缩放。 */
+  [aria-haspopup]:active {
+    transform: none !important;
+  }
+
+  /* 定位元素（Radix popper wrapper 的直接子元素）由 Radix 写内联 transform，
+     任何入场动画/transform 都会覆盖它；动画只允许放在内层包裹元素上。 */
+  [data-radix-popper-content-wrapper] > * {
+    animation: none !important;
+  }
+
   button {
     cursor: pointer;
     font: inherit;

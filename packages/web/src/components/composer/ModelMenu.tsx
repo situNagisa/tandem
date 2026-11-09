@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { ModelPriceInfo, Profile, ReasoningEffort } from '@tandem/protocol'
 import { ChevronDown, Loader2, Sparkles } from 'lucide-react'
 import { cn } from '../../lib/cn'
@@ -290,6 +290,23 @@ export function ModelMenu({
 }) {
   const currentProfile = profiles.find((p) => p.id === profileId) ?? null
   const currentGroup = groupName(currentProfile ?? undefined, groupId)
+  // 反馈14#02（R52 复发）：账号数据还没到就打开菜单，内容随后从占位变成列表，
+  // 面板高度跳变、Radix 重新定位（向上生长）看起来就是抖一下；数据就绪后再打开。
+  const pendingOpen = useRef(false)
+  useEffect(() => {
+    if (!loading && pendingOpen.current) {
+      pendingOpen.current = false
+      onOpenChange(true)
+    }
+  }, [loading, onOpenChange])
+  const requestOpen = (next: boolean) => {
+    if (next && loading && profiles.length === 0) {
+      pendingOpen.current = true
+      onOpen?.()
+      return
+    }
+    onOpenChange(next)
+  }
   const showEffort = !autoRoute && efforts.length > 0 && efforts.includes(effort)
   const effortName = effortLabels?.[effort] ?? EFFORT_LABEL[effort]
   // 模型芯片只显示模型名；思考强度用一个小点表示，具体档位在 tooltip 里（反馈8#11）。

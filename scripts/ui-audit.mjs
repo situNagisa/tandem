@@ -354,6 +354,45 @@ for (const file of SCROLLBAR_FILES) {
   }
 }
 
+// 反馈14#01/#02（R52 复发）：Radix 把定位 transform 写在外层 Content 元素上；
+// 动画/transform 只能放到内层包裹元素，否则首帧位置错误、点开时抖动。
+// 这里扫描所有 *Content（Radix Popover/Menu/Select/ContextMenu/Tooltip）的起始标签。
+for (const file of await walk(SRC)) {
+  const text = await readFile(file, 'utf8')
+  const tagRe = /<(?:[A-Za-z_$][\w$]*\.)?Content\b/g
+  let match
+  while ((match = tagRe.exec(text))) {
+    let i = tagRe.lastIndex
+    let depth = 0
+    let quote = null
+    for (; i < text.length; i += 1) {
+      const ch = text[i]
+      if (quote) {
+        if (ch === quote && text[i - 1] !== '\\') quote = null
+      } else if (ch === '"' || ch === "'") {
+        quote = ch
+      } else if (ch === '{') {
+        depth += 1
+      } else if (ch === '}') {
+        depth = Math.max(0, depth - 1)
+      } else if (ch === '>' && depth === 0) {
+        break
+      }
+    }
+    const span = text.slice(match.index, i + 1)
+    if (!/className=/.test(span)) continue
+    const forbidden = /\banimate-|\btransition-transform\b|\btransform-|\b(?:scale|translate|rotate)-\d|\bpopover-panel\b/.exec(span)
+    if (!forbidden) continue
+    issues.push({
+      file: relative(ROOT, file),
+      line: text.slice(0, match.index).split('\n').length,
+      check: 'content-transform',
+      label: 'Radix Content 上出现动画/transform：会覆盖定位 transform，动画只能放在内层包裹元素（R52 复发）',
+      text: span.replace(/\s+/g, ' ').slice(0, 160),
+    })
+  }
+}
+
 if (json) {
   console.log(JSON.stringify({ count: issues.length, issues }, null, 2))
 } else if (issues.length === 0) {

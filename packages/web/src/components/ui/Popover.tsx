@@ -110,14 +110,19 @@ export function Popover({
             // 不论是点外部还是焦点被另一个弹层拿走，关闭时都不要还原焦点。
             pointerDownOutside.current = true
           }}
-          className={cn(
-            popoverSurfaceClass,
-            'z-[80] outline-none',
-            padded && 'p-1.5',
-            panelClassName,
-          )}
+          className="z-[80] outline-none"
         >
-          {children(close)}
+          {/* 反馈14#01/#02（R52 复发）：动画放到内层，外层保留 Radix 的定位 transform。 */}
+          <div
+            className={cn(
+              popoverSurfaceClass,
+              'flex min-h-0 w-full flex-col',
+              padded && 'p-1.5',
+              panelClassName,
+            )}
+          >
+            {children(close)}
+          </div>
         </RPopover.Content>
       </RPopover.Portal>
     </RPopover.Root>

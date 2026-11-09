@@ -32,7 +32,11 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
 
 const BASE =
   // 反馈10#07：按钮也承载选项卡/菜单项文字；行高 ≥ 1.4 才不会被固定高度裁掉字形上下缘。
-  'inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap text-left text-[13px] font-medium leading-[1.4] transition-[background-color,border-color,color,opacity,transform] duration-[80ms] active:scale-[.98] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--t-focus-ring)]'
+  'inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap text-left text-[13px] font-medium leading-[1.4] transition-[background-color,border-color,color,opacity,transform] duration-[80ms] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--t-focus-ring)]'
+
+// 反馈14#01/#02（R52 复发）：Radix 用触发器的 rect 定位弹层，按下时缩放会让面板
+// 跟着触发器一起缩、松手再弹回，点开瞬间就是一次抖动。弹层触发器不做按压缩放。
+const PRESS_SCALE = 'active:scale-[.98]'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
@@ -64,6 +68,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={type}
       className={cn(
         BASE,
+        !rest['aria-haspopup'] && PRESS_SCALE,
         SIZE_CLASS[size],
         VARIANT_CLASS[variant],
         className,
@@ -111,6 +116,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       aria-label={label}
       className={cn(
         BASE,
+        !rest['aria-haspopup'] && PRESS_SCALE,
         ICON_SIZE_CLASS[size],
         VARIANT_CLASS[variant],
         className,

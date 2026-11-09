@@ -28,11 +28,17 @@ const ROW_BASE =
 const ROW_STATE =
   'hover:bg-[var(--t-bg-hover)] hover:text-text focus:bg-[var(--t-bg-hover)] focus:text-text focus-visible:outline-none data-[highlighted]:bg-[var(--t-bg-hover)] data-[highlighted]:text-text data-[state=open]:bg-[var(--t-bg-hover)] data-[state=open]:text-text data-[selected=true]:bg-[color-mix(in_srgb,var(--t-bg-active)_55%,transparent)] data-[selected=true]:text-text data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[disabled]:hover:bg-transparent'
 
-const PANEL_BASE =
-  'popover-panel z-[90] flex min-w-[180px] max-w-[min(420px,calc(100vw-1rem))] flex-col overflow-hidden p-1 outline-none'
+/* 反馈14#01/#02（R52 复发）：Radix 把定位 transform 写在外层 Content 上，动画/transform
+   只能作用在内层包裹元素；外层只负责定位与尺寸，不做任何动画。 */
+const PANEL_OUTER =
+  'z-[90] flex min-w-[180px] max-w-[min(420px,calc(100vw-1rem))] flex-col outline-none'
+const PANEL_INNER =
+  'popover-panel flex min-h-0 w-full flex-col overflow-hidden p-1'
 
-const SUB_PANEL_BASE =
-  'popover-panel z-[95] min-w-[160px] max-w-[min(380px,calc(100vw-1rem))] overflow-y-auto p-1 outline-none'
+const SUB_PANEL_OUTER =
+  'z-[95] min-w-[160px] max-w-[min(380px,calc(100vw-1rem))] outline-none'
+const SUB_PANEL_INNER =
+  'popover-panel flex max-h-[inherit] min-h-0 w-full flex-col overflow-y-auto p-1'
 
 /** 递归取出标签里的纯文本，用于长行截断后的全文入口。 */
 function plainText(node: ReactNode): string {
@@ -186,9 +192,11 @@ function MenuRoot({
           sticky="always"
           hideWhenDetached
           style={{
+            // 带兜底值：首帧尺寸中间件还没写入变量时 max-height 不能退化成 none，
+            // 否则内容先按自然高度铺开、下一帧再被截断（首帧高度跳变）。
             maxHeight: maxHeight
               ? `${maxHeight}px`
-              : 'min(420px, var(--radix-dropdown-menu-content-available-height))',
+              : 'min(420px, var(--radix-dropdown-menu-content-available-height, 420px))',
           }}
           onKeyDown={handleMenuKeys}
           // 反馈模式下点反馈编辑器/徽标属于“反馈 UI”，不能被当作外部点击把菜单关掉。
@@ -204,14 +212,18 @@ function MenuRoot({
           onEscapeKeyDown={(e) => {
             if (useFeedbackStore.getState().active) e.preventDefault()
           }}
-          className={cn(PANEL_BASE, className)}
+          className={cn(PANEL_OUTER, className)}
         >
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
-          {footer ? (
-            <div className="mt-0.5 shrink-0 border-t border-border/70 pt-1" data-menu-footer="">
-              {footer}
+          <div className={PANEL_INNER}>
+            <div data-menu-body="" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              {children}
             </div>
-          ) : null}
+            {footer ? (
+              <div className="mt-0.5 shrink-0 border-t border-border/70 pt-1" data-menu-footer="">
+                {footer}
+              </div>
+            ) : null}
+          </div>
         </RDropdown.Content>
       </RDropdown.Portal>
     </RDropdown.Root>
@@ -490,9 +502,9 @@ function MenuSubContent({ children, className, 'aria-label': ariaLabel }: MenuSu
         collisionPadding={8}
         avoidCollisions
         onKeyDown={handleMenuKeys}
-        className={cn(SUB_PANEL_BASE, className)}
+        className={cn(SUB_PANEL_OUTER, className)}
       >
-        {children}
+        <div className={SUB_PANEL_INNER}>{children}</div>
       </RDropdown.SubContent>
     </RDropdown.Portal>
   )
