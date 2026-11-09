@@ -9822,7 +9822,11 @@ async function main() {
             ? smallContext
             : desktopContext
       let ownContext = false
-      if (check.context === 'offline') {
+      if (check.gate) {
+        // 登录门用例用独立 context：前面的用例可能通过 context 级 init script / 登录状态污染共享存储。
+        ctx = await browser.newContext({ viewport: DESKTOP, deviceScaleFactor: 1 })
+        ownContext = true
+      } else if (check.context === 'offline') {
         ctx = await browser.newContext({ viewport: DESKTOP, deviceScaleFactor: 1 })
         ownContext = true
       } else if (check.context === 'win32') {
