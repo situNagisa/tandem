@@ -427,15 +427,6 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     keywords: ['工作区', '账号中心', '登录', '授权', '加入码'],
   },
   {
-    id: 'ssh',
-    title: '远程主机（SSH）',
-    group: 'system',
-    changelogIds: ['ssh-remote'],
-    settingsPage: 'hosts',
-    components: ['RemoteSshDialog', 'HostsSection'],
-    keywords: ['ssh', '远程', '部署', '隧道'],
-  },
-  {
     id: 'update',
     title: '桌面更新与版本',
     group: 'system',
