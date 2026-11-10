@@ -8,7 +8,7 @@ import { postWithBodyFallbacks } from '../upstream/request.js';
 import { applyAnthropicUsage } from '../upstream/usage.js';
 import { createIdleTimeout, idleTimeoutError } from './idle-timeout.js';
 import { parseRateLimitHeaders, retryAfterMs } from './rate-limit.js';
-import { ANTHROPIC_THINKING_BUDGETS, builtinCapabilities, overrideFor } from './capabilities.js';
+import { ANTHROPIC_THINKING_BUDGETS, builtinCapabilities, claudeThinkingMode, overrideFor } from './capabilities.js';
 import type { StreamRequest, StreamResult } from './types.js';
 
 type AnyBlock = Record<string, any>;
@@ -89,9 +89,9 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
     ...(index === req.tools.length - 1 ? { cache_control: { type: 'ephemeral' } } : {}),
   }));
 
-  const budget = supportsThinking(req.model, req.profile, req.effort)
-    ? THINKING_BUDGETS[req.effort!]
-    : undefined;
+  const thinking = supportsThinking(req.model, req.profile, req.effort);
+  const budget = thinking ? THINKING_BUDGETS[req.effort!] : undefined;
+  const adaptive = thinking && claudeThinkingMode(req.model) === 'adaptive';
   const body: AnyBlock = {
     model: req.model,
     max_tokens: budget ? Math.max(req.maxTokens, budget + 4096) : req.maxTokens,
@@ -106,7 +106,10 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
     stream: true,
   };
   if (tools.length > 0) body.tools = tools;
-  if (budget) {
+  if (adaptive) {
+    body.thinking = { type: 'adaptive' };
+    body.output_config = { effort: req.effort };
+  } else if (budget) {
     body.thinking = { type: 'enabled', budget_tokens: budget };
   }
 
@@ -132,16 +135,29 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
           body: JSON.stringify(body),
           signal: idle.signal,
         }),
-      // 少数模型/代理不支持 thinking：去掉后重试一次。
       fallbacks: [
+        // 只接受 adaptive 的型号会明确报 "thinking.type.enabled" is not supported：改用 adaptive 重试，不算降级
+        {
+          applies: (res, body) =>
+            res.status === 400 &&
+            body.thinking?.type === 'enabled' &&
+            /thinking\.type\.enabled\\?"? is not supported/.test(res.text),
+          drop: (body) => ({
+            ...body,
+            thinking: { type: 'adaptive' },
+            output_config: { effort: req.effort },
+          }),
+        },
+        // 少数模型/代理不支持 thinking：去掉后重试一次。
         {
           applies: (res, body) =>
             res.status === 400 &&
             !!body.thinking &&
-            /thinking|budget_tokens|reasoning|unsupported|not support|max_tokens/i.test(res.text),
+            /thinking|budget_tokens|reasoning|unsupported|not support/i.test(res.text),
           drop: (body) => {
             const retryBody: AnyBlock = { ...body, max_tokens: req.maxTokens };
             delete retryBody.thinking;
+            delete retryBody.output_config;
             return retryBody;
           },
           onDropped: () => req.onEffortDropped?.(),

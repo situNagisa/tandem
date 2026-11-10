@@ -20,7 +20,7 @@ test('内置单价表：常见模型按前缀命中，版本后缀与供应商�
 });
 
 test('内置单价表：未知模型返回 undefined，不猜价格', () => {
-  assert.equal(priceForModel(undefined, 'gpt-7-luna'), undefined);
+  assert.equal(priceForModel(undefined, 'mystery-model-1'), undefined);
   assert.equal(priceForModel(undefined, ''), undefined);
 });
 
@@ -36,7 +36,7 @@ test('单价来源：账号覆盖标 account，内置表标 builtin', () => {
     price: { input: 2, output: 8 },
     source: 'builtin',
   });
-  assert.equal(resolvePriceForModel(profile, 'gpt-7-luna'), undefined);
+  assert.equal(resolvePriceForModel(profile, 'mystery-model-1'), undefined);
 });
 
 test('账号单价覆盖：精确匹配 → 前缀匹配 → 内置表', () => {

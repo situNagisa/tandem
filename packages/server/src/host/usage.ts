@@ -280,6 +280,7 @@ export function modelPrices(host: Host, profileId: string,
       out[model] = {
         ...priceInfoFor(resolved.price, profile.kind),
         source: resolved.source,
+        ...(resolved.estimatedFrom ? { estimatedFrom: resolved.estimatedFrom } : {}),
         ...(multiplied && resolved.official
           ? {
               officialInput: resolved.official.input,

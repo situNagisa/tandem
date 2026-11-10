@@ -585,6 +585,8 @@ export interface ModelPriceInfo {
   cacheWrite?: number;
   /** 价格来源：账号自定义单价，或内置参考价（菜单显示「参考价」）。 */
   source?: 'account' | 'builtin';
+  /** 新代际未收录时按同家族已知型号估算，如 `claude-opus-4.5`。 */
+  estimatedFrom?: string;
   /** 内置参考价（未乘倍率），仅在倍率不为 1 时下发，用于 tooltip 计算说明。 */
   officialInput?: number;
   officialOutput?: number;

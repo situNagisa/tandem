@@ -21,7 +21,7 @@ test('用户消息输入估算：文本按字符/3.5，图片按 1200 token', ()
   const usage = estimateUserUsage(fakeHost(), rec, content);
   assert.equal(usage?.inputTokens, 100 + 1_200);
   assert.equal(usage?.outputTokens, 0);
-  const unknown = { profileId: 'p', model: 'gpt-7-luna' } as unknown as SessionRecord;
+  const unknown = { profileId: 'p', model: 'mystery-model-1' } as unknown as SessionRecord;
   assert.equal(
     estimateUserUsage(fakeHost(), unknown, content)?.costUsd,
     undefined,

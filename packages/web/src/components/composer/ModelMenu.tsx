@@ -20,14 +20,15 @@ function priceText(price: ModelPriceInfo): string {
       : ''
   const account = price.accountMultiplier ?? 1
   const group = price.groupMultiplier ?? 1
+  const estimate = price.estimatedFrom ? `按 ${price.estimatedFrom} 估算 · ` : ''
   if (price.officialInput !== undefined && (account !== 1 || group !== 1)) {
     const factors = [`官方 $${fmt(price.officialInput)}/M`]
     if (account !== 1) factors.push(`账号 ${fmt(account)}`)
     if (group !== 1) factors.push(`分组 ${fmt(group)}`)
-    return `${factors.join(' × ')} = $${fmt(price.input)}/M · 输出 $${fmt(price.officialOutput ?? 0)}/M → $${fmt(price.output)}/M${cache}`
+    return `${estimate}${factors.join(' × ')} = $${fmt(price.input)}/M · 输出 $${fmt(price.officialOutput ?? 0)}/M → $${fmt(price.output)}/M${cache}`
   }
   const prefix = price.source === 'builtin' ? '参考价 · ' : ''
-  return `${prefix}输入 $${fmt(price.input)} · 输出 $${fmt(price.output)} / 百万 tok${cache}`
+  return `${prefix}${estimate}输入 $${fmt(price.input)} · 输出 $${fmt(price.output)} / 百万 tok${cache}`
 }
 
 interface ModelPanelProps {

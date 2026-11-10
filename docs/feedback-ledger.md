@@ -27,7 +27,7 @@
 | R23 | 按主机切换割裂会话列表、缩进过大 | 2 | design P15；regression 侧栏按主机分组/缩进 ≤8px |
 | R24 | 价格模型不符合中转倍率实际 | 1 | 官方价 × 账号 × 分组倍率；单测 pricing；regression 计算式 |
 | R25 | 轮次关键数据缺少就地入口、指标口径不清 | 2 | 轮次 tooltip + 固定上下文着色；单测 turnUsage；regression 大纲用量/无切换 |
-| R26 | 思考强度档位硬编码 | 1 | `providers/capabilities.ts`；单测 capabilities；regression 厂商档位 |
+| R26 | 思考强度档位硬编码；型号按旧名前缀判定思考协议，新代际被误判为不支持 | 2 | `providers/capabilities.ts` `claudeThinkingMode`/`parseClaudeModel` 按家族+版本；`anthropic.ts` 只接受 adaptive 的 400 改用 adaptive 重试、不计降级；单测 `model-families`、`anthropic-thinking`；regression 厂商档位 |
 | R27 | 固定操作重排阅读列表导致乱飞 | 1 | 固定不重排、原位图钉；regression 阅读顺序/滚动位置 |
 | R28 | 辅助视图做成独立悬停浮层，跨空白即收起 | 1 | 同一大纲 Alt/点击两用；regression Alt 切换 |
 | R29 | 设备权限/占用不可见，用户无处修复 | 1 | 只读探测 + 修复说明 + 深度检测；单测 serial-access；regression 设备行/修复 |
@@ -65,3 +65,4 @@
 | R62 | 本地乐观消息按内容匹配误删排队气泡 | 1 | 只替换内容一致的排队消息 + 唯一排队兜底；regression 排队消息 |
 | R63 | 内嵌工作站避让端口后，主机隧道仍连保存的旧地址（可能是别的进程），前端无限重连 | 1 | 实际端口回写加入地址 + 公钥校验 + 日志打印真实目标 + 调试目录随机端口；regression 端口占用重启 |
 | R64 | 设计 token 拼错/未定义，浏览器静默丢弃声明（弹层背景变透明、边框消失） | 1 | ui-audit `undefined-css-var`：源码里的 `var(--x)` 必须在 CSS 有定义，或属于运行时注入（`setProperty`/style 对象自动识别，`--radix-*` 显式白名单，`--graph-lane-` 等模板前缀按同前缀定义校验）；浮层/对话框截图核对（浅色+深色） |
+| R65 | 单价按型号名前缀硬编码，新代际查不到价格（花费显示 —）；未收录型号不按同家族估算 | 1 | `usage.ts` `builtinPriceFor`：前缀表 → Claude 家族+版本 → GPT 基础款最近一代，估算时标 `estimatedFrom`；单价优先级账号自定义 > 内置；单测 `model-families`、`pricing` |

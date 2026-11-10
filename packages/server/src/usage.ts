@@ -3,6 +3,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ProviderKind, Usage, UsageStatsRow } from '@tandem/protocol';
+import { parseClaudeModel } from './providers/capabilities.js';
 import type { StoredProfile } from './types.js';
 
 export interface Price {
@@ -15,20 +16,8 @@ export interface Price {
  * 按模型名前缀匹配，越具体的放在越前面；中转倍率由账号/分组倍率叠加。
  */
 const BUILTIN_PRICES: Array<{ prefix: string; price: Price }> = [
-  // Anthropic Claude
-  { prefix: 'claude-opus-4-5', price: { input: 5, output: 25 } },
-  { prefix: 'claude-opus-4-1', price: { input: 15, output: 75 } },
-  { prefix: 'claude-opus-4', price: { input: 15, output: 75 } },
-  { prefix: 'claude-3-opus', price: { input: 15, output: 75 } },
-  { prefix: 'claude-sonnet-4-5', price: { input: 3, output: 15 } },
-  { prefix: 'claude-sonnet-4', price: { input: 3, output: 15 } },
-  { prefix: 'claude-3-7-sonnet', price: { input: 3, output: 15 } },
-  { prefix: 'claude-3-5-sonnet', price: { input: 3, output: 15 } },
-  { prefix: 'claude-haiku-4-5', price: { input: 1, output: 5 } },
-  { prefix: 'claude-3-5-haiku', price: { input: 0.8, output: 4 } },
-  { prefix: 'claude-3-sonnet', price: { input: 3, output: 15 } },
+  // Anthropic Claude 2 之后的型号按家族 + 版本见 CLAUDE_PRICES
   { prefix: 'claude-2', price: { input: 8, output: 24 } },
-  { prefix: 'claude-3-haiku', price: { input: 0.25, output: 1.25 } },
   // OpenAI GPT-6 / GPT-5 / GPT-4.1 / GPT-4o / o 系列
   { prefix: 'gpt-6-mini', price: { input: 0.25, output: 2 } },
   { prefix: 'gpt-6-nano', price: { input: 0.05, output: 0.4 } },
@@ -90,6 +79,26 @@ const BUILTIN_PRICES: Array<{ prefix: string; price: Price }> = [
   { prefix: 'glm-4', price: { input: 0.6, output: 0.6 } },
 ];
 
+/** 已收录的 Claude 代际（版本升序）；新代际按同家族最近一代估算。fable / mythos 暂无参考价。 */
+const CLAUDE_PRICES: Array<{ family: string; major: number; minor: number; price: Price }> = [
+  { family: 'opus', major: 3, minor: 0, price: { input: 15, output: 75 } },
+  { family: 'opus', major: 4, minor: 0, price: { input: 15, output: 75 } },
+  { family: 'opus', major: 4, minor: 1, price: { input: 15, output: 75 } },
+  { family: 'opus', major: 4, minor: 5, price: { input: 5, output: 25 } },
+  { family: 'sonnet', major: 3, minor: 0, price: { input: 3, output: 15 } },
+  { family: 'sonnet', major: 3, minor: 5, price: { input: 3, output: 15 } },
+  { family: 'sonnet', major: 3, minor: 7, price: { input: 3, output: 15 } },
+  { family: 'sonnet', major: 4, minor: 0, price: { input: 3, output: 15 } },
+  { family: 'sonnet', major: 4, minor: 5, price: { input: 3, output: 15 } },
+  { family: 'haiku', major: 3, minor: 0, price: { input: 0.25, output: 1.25 } },
+  { family: 'haiku', major: 3, minor: 5, price: { input: 0.8, output: 4 } },
+  { family: 'haiku', major: 4, minor: 5, price: { input: 1, output: 5 } },
+];
+
+function versionAtMost(major: number, minor: number, limitMajor: number, limitMinor: number): boolean {
+  return major < limitMajor || (major === limitMajor && minor <= limitMinor);
+}
+
 /** 去掉供应商前缀后的小写模型名，兼容 openrouter 的 "vendor/model" 写法。 */
 function normalizeModel(model: string): string {
   const lower = model.trim().toLowerCase();
@@ -107,6 +116,8 @@ export interface ResolvedPrice {
   source: 'account' | 'builtin';
   /** 内置官方参考价（未乘倍率）。 */
   official?: Price;
+  /** 未收录的新代际按同家族最近已知型号估算时，给出被借用的型号，如 `claude-opus-4.5`。 */
+  estimatedFrom?: string;
   /** 实际生效的账号/分组倍率；为 1 时不返回。 */
   accountMultiplier?: number;
   groupMultiplier?: number;
@@ -135,6 +146,28 @@ export function resolvePriceForModel(
 
   // 前缀匹配同时兼容供应商前缀与版本后缀：`us.anthropic.claude-sonnet-4-5-20250929-v1:0`
   // 也能命中 `claude-sonnet-4-5`；取最长的前缀，避免 `gpt-4` 抢走 `gpt-4o`。
+  const builtin = builtinPriceFor(name);
+  if (!builtin) return undefined;
+  const accountMultiplier = multiplierOf(profile?.multiplier);
+  const groupMultiplier = multiplierOf(profile?.groupMultiplier);
+  const multiplied = accountMultiplier !== 1 || groupMultiplier !== 1;
+  return {
+    price: {
+      input: roundPrice(builtin.price.input * accountMultiplier * groupMultiplier),
+      output: roundPrice(builtin.price.output * accountMultiplier * groupMultiplier),
+    },
+    source: 'builtin',
+    ...(builtin.estimatedFrom ? { estimatedFrom: builtin.estimatedFrom } : {}),
+    ...(multiplied ? { official: { ...builtin.price } } : {}),
+    ...(accountMultiplier !== 1 ? { accountMultiplier } : {}),
+    ...(groupMultiplier !== 1 ? { groupMultiplier } : {}),
+  };
+}
+
+/**
+ * 内置参考价：先按前缀表精确命中；未命中时按家族 + 版本取不高于该版本的最近一代（Claude / GPT 基础款）。
+ */
+function builtinPriceFor(name: string): { price: Price; estimatedFrom?: string } | undefined {
   let best: { prefix: string; price: Price } | undefined;
   for (const entry of BUILTIN_PRICES) {
     const index = name.indexOf(entry.prefix);
@@ -142,20 +175,42 @@ export function resolvePriceForModel(
     if (index > 0 && /[a-z0-9]/.test(name[index - 1]!)) continue;
     if (!best || entry.prefix.length > best.prefix.length) best = entry;
   }
-  if (!best) return undefined;
-  const accountMultiplier = multiplierOf(profile?.multiplier);
-  const groupMultiplier = multiplierOf(profile?.groupMultiplier);
-  const multiplied = accountMultiplier !== 1 || groupMultiplier !== 1;
-  return {
-    price: {
-      input: roundPrice(best.price.input * accountMultiplier * groupMultiplier),
-      output: roundPrice(best.price.output * accountMultiplier * groupMultiplier),
-    },
-    source: 'builtin',
-    ...(multiplied ? { official: { ...best.price } } : {}),
-    ...(accountMultiplier !== 1 ? { accountMultiplier } : {}),
-    ...(groupMultiplier !== 1 ? { groupMultiplier } : {}),
-  };
+  if (best) return { price: best.price };
+
+  const claude = parseClaudeModel(name);
+  if (claude) {
+    let nearest: (typeof CLAUDE_PRICES)[number] | undefined;
+    for (const entry of CLAUDE_PRICES) {
+      if (entry.family !== claude.family) continue;
+      if (versionAtMost(entry.major, entry.minor, claude.major, claude.minor)) nearest = entry;
+    }
+    if (!nearest) return undefined;
+    const exact = nearest.major === claude.major && nearest.minor === claude.minor;
+    return {
+      price: nearest.price,
+      ...(exact ? {} : { estimatedFrom: `claude-${nearest.family}-${nearest.major}.${nearest.minor}` }),
+    };
+  }
+
+  const gpt = name.match(/(?:^|[^a-z0-9])gpt-(\d+)(?:\.(\d+))?(?=[-.]|$)/);
+  if (gpt) {
+    const major = Number(gpt[1]);
+    const minor = Number(gpt[2] ?? 0);
+    let nearest: (typeof BUILTIN_PRICES)[number] | undefined;
+    let nearestVersion: [number, number] = [-1, 0];
+    for (const entry of BUILTIN_PRICES) {
+      const base = entry.prefix.match(/^gpt-(\d+)(?:\.(\d+))?$/);
+      if (!base) continue;
+      const version: [number, number] = [Number(base[1]), Number(base[2] ?? 0)];
+      if (!versionAtMost(version[0], version[1], major, minor)) continue;
+      if (version[0] > nearestVersion[0] || (version[0] === nearestVersion[0] && version[1] > nearestVersion[1])) {
+        nearest = entry;
+        nearestVersion = version;
+      }
+    }
+    if (nearest) return { price: nearest.price, estimatedFrom: nearest.prefix };
+  }
+  return undefined;
 }
 
 function multiplierOf(value: number | undefined): number {

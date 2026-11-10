@@ -8,7 +8,7 @@ import type {
 } from '@tandem/protocol';
 
 const ANTHROPIC_EFFORTS: ReasoningEffort[] = ['off', 'low', 'medium', 'high', 'max'];
-/** o 系列：low/medium/high；gpt-5/6 另有 minimal。 */
+/** o 系列：low/medium/high；gpt-5 及以后另有 minimal。 */
 const OPENAI_REASONING: ReasoningEffort[] = ['low', 'medium', 'high'];
 const OPENAI_MINIMAL: ReasoningEffort[] = ['minimal', 'low', 'medium', 'high'];
 const GEMINI_EFFORTS: ReasoningEffort[] = ['low', 'medium', 'high'];
@@ -59,19 +59,56 @@ export function providerEffortsFor(kind: ProviderKind): ReasoningEffort[] {
 }
 
 /** 模型 id → 厂商档位与请求映射风格。只按模型 id 本身判断，与 provider 种类无关。 */
-type EffortStyle = 'anthropic' | 'openai-minimal' | 'openai-reasoning' | 'gemini' | 'grok-mini' | 'grok' | 'none';
+type EffortStyle =
+  | 'anthropic'
+  | 'anthropic-adaptive'
+  | 'openai-minimal'
+  | 'openai-reasoning'
+  | 'gemini'
+  | 'grok-mini'
+  | 'grok'
+  | 'none';
+
+const CLAUDE_MODEL =
+  /claude-(?:(opus|sonnet|haiku|fable|mythos)-(\d+)(?:[-.](\d{1,2}))?|(\d)(?:[-.](\d{1,2}))?-(opus|sonnet|haiku|fable|mythos))(?!\d)/;
+
+/**
+ * 解析 Claude 型号的家族与版本：`claude-opus-4-5-20251101`、`claude-3-5-sonnet-20241022`、
+ * `us.anthropic.claude-sonnet-5-5-v1:0` 都能识别；未来版本号不需要改表。
+ */
+export function parseClaudeModel(
+  model: string,
+): { family: string; major: number; minor: number } | undefined {
+  const match = model.toLowerCase().match(CLAUDE_MODEL);
+  if (!match) return undefined;
+  if (match[1]) return { family: match[1], major: Number(match[2]), minor: Number(match[3] ?? 0) };
+  return { family: match[6]!, major: Number(match[4]), minor: Number(match[5] ?? 0) };
+}
+
+/**
+ * Claude 的思考协议：4.7 及以后只接受 adaptive（档位走 output_config.effort，不接受 budget_tokens）；
+ * 4.6 及以前用 extended thinking 的 budget_tokens。非 Claude 或 3.7 之前的型号返回 undefined。
+ */
+export function claudeThinkingMode(model: string): 'adaptive' | 'manual' | undefined {
+  const claude = parseClaudeModel(model);
+  if (!claude) return undefined;
+  if (claude.major > 4 || (claude.major === 4 && claude.minor >= 7)) return 'adaptive';
+  if (claude.major >= 4 || (claude.major === 3 && claude.minor === 7)) return 'manual';
+  return undefined;
+}
 
 function styleFor(kind: ProviderKind, model: string): EffortStyle {
   const effectiveKind: ProviderKind = kind === 'tandem-gateway' ? 'openai-compatible' : kind;
   const id = model.toLowerCase();
-  const claudeThinking =
-    /claude-(?:3[-.]7|(?:sonnet|opus|haiku)-(?:4|5)(?:[-.]\d+)*)(?:-|$)/.test(id) ||
-    /claude-4(?:[-.]\d+)*(?:-|$).*(?:sonnet|opus|haiku)/.test(id);
-  if (effectiveKind === 'anthropic') return claudeThinking ? 'anthropic' : 'none';
-  if (claudeThinking) return 'openai-reasoning';
-  if (/^(?:o[1-9]|gpt-(?:5|6))(?:[-.]|$)/.test(id)) {
-    return /^gpt-(?:5|6)(?:[-.]|$)/.test(id) ? 'openai-minimal' : 'openai-reasoning';
+  const claudeMode = claudeThinkingMode(id);
+  if (effectiveKind === 'anthropic') {
+    if (claudeMode === 'adaptive') return 'anthropic-adaptive';
+    return claudeMode ? 'anthropic' : 'none';
   }
+  if (claudeMode) return 'openai-reasoning';
+  const gpt = id.match(/^gpt-(\d+)(?:[-.]|$)/);
+  if (gpt) return Number(gpt[1]) >= 5 ? 'openai-minimal' : 'none';
+  if (/^o[1-9](?:[-.]|$)/.test(id)) return 'openai-reasoning';
   if (/^grok-3-mini(?:[-.]|$)/.test(id)) return 'grok-mini';
   if (/^grok-(?:4|3)(?:[-.]|$)/.test(id)) return /^grok-4/.test(id) ? 'grok' : 'none';
   if (effectiveKind === 'gemini' && /^gemini-(?:2\.5|3)/.test(id)) return 'gemini';
@@ -81,6 +118,7 @@ function styleFor(kind: ProviderKind, model: string): EffortStyle {
 function labelFor(style: EffortStyle): Partial<Record<ReasoningEffort, string>> | undefined {
   switch (style) {
     case 'anthropic':
+    case 'anthropic-adaptive':
       return { ...LABELS.anthropic };
     case 'openai-minimal':
       return { ...LABELS.openai };
@@ -100,6 +138,7 @@ function labelFor(style: EffortStyle): Partial<Record<ReasoningEffort, string>> 
 function effortsFor(style: EffortStyle): ReasoningEffort[] {
   switch (style) {
     case 'anthropic':
+    case 'anthropic-adaptive':
       return [...ANTHROPIC_EFFORTS];
     case 'openai-minimal':
       return [...OPENAI_MINIMAL];
