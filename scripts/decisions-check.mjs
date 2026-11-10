@@ -50,6 +50,9 @@ const F = {
   app: 'packages/web/src/App.tsx',
   envBar: 'packages/web/src/components/EnvBar.tsx',
   topBar: 'packages/web/src/components/TopBar.tsx',
+  panelMenu: 'packages/web/src/components/right-panel/PanelMenu.tsx',
+  newSession: 'packages/web/src/components/NewSessionDialog.tsx',
+  newSessionPick: 'packages/web/src/lib/newSessionPick.ts',
   settingsDialog: 'packages/web/src/components/settings/SettingsDialog.tsx',
   settingsRegistry: 'packages/web/src/lib/settingsRegistry.ts',
   menu: 'packages/web/src/components/ui/Menu.tsx',
@@ -353,6 +356,14 @@ const DECISIONS = [
     need: [/更多/, /IconButton/],
   },
   {
+    id: 'topbar-panel-icon-distinct',
+    source: '反馈2102#04',
+    decision: '顶栏「更多操作」与信息面板分组菜单图标不同，不出现两个 ⋯',
+    files: [F.panelMenu],
+    need: [/SlidersHorizontal/],
+    deny: [/MoreHorizontal/],
+  },
+  {
     id: 'settings-groups',
     source: '信息架构收敛：入口规则',
     decision: '设置按固定 7 组导航，高级默认折叠',
@@ -379,6 +390,14 @@ const DECISIONS = [
     decision: '换主机先选文件夹：当前/待切换标签、输入框锁定、可取消',
     files: [F.envBar, F.composer],
     need: [/待切换/, /待选/, /取消切换|pendingHostId/],
+  },
+  {
+    id: 'envbar-host-icon',
+    source: '反馈2102#08',
+    decision: '环境条主机触发器用显示器图标，与文件夹图标形状不同',
+    files: [F.envBar],
+    need: [/<Monitor size=\{12\}/, /<FolderOpen size=\{12\}/],
+    deny: [/<Server size/],
   },
   // 输入框 / 账号 / 路由
   {
@@ -426,6 +445,13 @@ const DECISIONS = [
     decision: '拉取模型默认只勾选每系列最新一代，手动改过后保留选择',
     files: [F.modelSelection],
     need: [/selectLatestModels/, /mergeFetchedSelection/, /isNewerModel/],
+  },
+  {
+    id: 'new-session-pick-memory',
+    source: '反馈2102#05',
+    decision: '新会话页账号/分组/模型/思考强度按主机记住；记住项已删除时回落默认',
+    files: [F.newSession, F.newSessionPick],
+    need: [/rememberNewSessionPick\(hostId/, /loadNewSessionPick\(hostId\)/, /resolveNewSessionPick\(profiles/],
   },
   {
     id: 'key-mask-preserve',

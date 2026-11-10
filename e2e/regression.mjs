@@ -5567,7 +5567,7 @@ async function main() {
 
     desktop('环境条下拉连续切换保持打开（#04 P0）', async (page) => {
       await openSession(page, 'long')
-      const host = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-server') }).first()
+      const host = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-monitor') }).first()
       const folder = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-folder-open') }).first()
       const branch = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-git-branch') }).first()
       const branchPanel = page.locator('[data-portal-layer="popover"]').filter({ hasText: '新建分支' }).first()
@@ -5605,7 +5605,7 @@ async function main() {
     desktop('环境条「选择主机」可打开（#11 P0）', async (page) => {
       await page.evaluate(() => (window.location.hash = '#/'))
       await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
-      const host = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-server') }).first()
+      const host = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-monitor') }).first()
       await host.click()
       const menu = page.locator('[role="menu"][aria-label="选择主机"]').first()
       await menu.waitFor({ state: 'visible', timeout: 5_000 })
@@ -5640,7 +5640,7 @@ async function main() {
         }
       }, null, { timeout: 20_000 })
       await openSession(page, 'long')
-      const hostPill = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-server') }).first()
+      const hostPill = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-monitor') }).first()
       const folderPill = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-folder-open') }).first()
       const textarea = page.locator('textarea[aria-label="消息输入框"]').first()
       const folderPanel = page
@@ -6670,6 +6670,153 @@ async function main() {
       assert.ok(created?.cwd, '新会话没有工作目录')
       await page.getByText('先选择一个工作目录').waitFor({ state: 'hidden', timeout: 1000 }).catch(() => {})
       assert.equal(await page.getByText('先选择一个工作目录').count(), 0, '发送时仍提示先选择目录')
+    })
+
+    // 反馈2102：截图落到 /tmp/fix-2102b/，用于修复前后对比（深色 + 浅色，1912×914）。
+    const shotDir = '/tmp/fix-2102b'
+    const withViewport = async (page, fn) => {
+      await page.setViewportSize({ width: 1912, height: 914 })
+      try {
+        await fn()
+      } finally {
+        await page.setViewportSize(DESKTOP)
+      }
+    }
+    const setTheme = async (page, theme) => {
+      await page.evaluate((next) => localStorage.setItem('tandem.theme.v1', next), theme)
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+    }
+    const clientHostIdOf = (page) =>
+      page.evaluate(() => JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')[0]?.id ?? null)
+
+    desktop('反馈2102#05：新会话页选的账号/模型按主机记住，开会话后与刷新后仍保留，已不存在的模型回落默认', async (page) => {
+      const chipLabel = () =>
+        page.evaluate(() => document.querySelector('button[aria-label^="选择模型"]')?.getAttribute('aria-label') ?? '')
+      const expectChip = async (pattern, message) => {
+        const ok = await page
+          .waitForFunction(
+            (source) => new RegExp(source, 'i').test(document.querySelector('button[aria-label^="选择模型"]')?.getAttribute('aria-label') ?? ''),
+            pattern,
+            { timeout: 5_000 },
+          )
+          .then(() => true, () => false)
+        assert.ok(ok, `${message}（当前芯片：${await chipLabel()}）`)
+      }
+      const theme = await page.evaluate(() => localStorage.getItem('tandem.theme.v1'))
+      await page.evaluate(() => localStorage.removeItem('tandem.newSessionPick.v1'))
+      try {
+        await page.evaluate(() => (window.location.hash = '#/'))
+        await waitModelReady(page)
+        const defaultLabel = await chipLabel()
+        await page.locator('button[aria-label^="选择模型"]').first().click()
+        await page.getByRole('menuitem', { name: /^切换账号/ }).hover()
+        await page.getByRole('menuitem', { name: /^主力账号/ }).first().hover()
+        await page.getByRole('menuitem', { name: /^生产/ }).first().hover()
+        await page.getByRole('menuitem', { name: /^mock-2/ }).first().click()
+        await expectChip('mock[ -]2', '选择模型后芯片没有更新')
+        await page.locator('textarea[aria-label="消息输入框"]').fill('反馈2102#05 模型记忆回归')
+        await page.waitForFunction(() => {
+          const b = [...document.querySelectorAll('button')].find((x) => x.getAttribute('aria-label') === '发送消息')
+          return !!b && !b.disabled
+        })
+        await Promise.all([
+          page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/sessions'),
+          page.getByRole('button', { name: '发送消息' }).click(),
+        ])
+        await page.waitForFunction(() => window.location.hash.includes('/s/'), null, { timeout: 15_000 })
+        await page.evaluate(() => (window.location.hash = '#/'))
+        await waitModelReady(page)
+
+        await withViewport(page, async () => {
+          for (const next of ['dark', 'light']) {
+            await setTheme(page, next)
+            await waitModelReady(page)
+            await page.screenshot({ path: path.join(shotDir, `05-新会话芯片-${next}.png`) })
+          }
+        })
+        await expectChip('mock[ -]2', '开会话后回到新会话页，模型没有记住')
+
+        await page.reload({ waitUntil: 'domcontentloaded' })
+        await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+        await waitModelReady(page)
+        await expectChip('mock[ -]2', '刷新后新会话页的模型没有记住')
+
+        const hostId = await clientHostIdOf(page)
+        await page.evaluate(
+          (id) =>
+            localStorage.setItem(
+              'tandem.newSessionPick.v1',
+              JSON.stringify({ [id]: { profileId: 'p-main', groupId: 'g1', model: '已删除的模型' } }),
+            ),
+          hostId,
+        )
+        await page.reload({ waitUntil: 'domcontentloaded' })
+        await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+        await waitModelReady(page)
+        await page.waitForTimeout(300)
+        assert.equal(await chipLabel(), defaultLabel, '记住的模型已不存在时没有回落到默认模型')
+        assert.equal(await page.getByText('先选择账号与模型').count(), 0, '回落默认时不应报错')
+      } finally {
+        await page.evaluate((prev) => {
+          if (prev) localStorage.setItem('tandem.theme.v1', prev)
+          else localStorage.removeItem('tandem.theme.v1')
+          localStorage.removeItem('tandem.newSessionPick.v1')
+        }, theme)
+      }
+    })
+
+    desktop('反馈2102#04：顶栏右侧不出现两个同图标的按钮', async (page) => {
+      const panelToggle = page.locator('button[aria-label="切换信息面板"]')
+      const ensurePanelOpen = async () => {
+        if ((await panelToggle.getAttribute('aria-pressed')) !== 'true') await panelToggle.click()
+        await page.locator('button[aria-label="切换信息面板"][aria-pressed="true"]').waitFor({ timeout: 5_000 })
+      }
+      await openSession(page, 'links')
+      const wasOpen = (await panelToggle.getAttribute('aria-pressed')) === 'true'
+      try {
+        await ensurePanelOpen()
+        await withViewport(page, async () => {
+          for (const next of ['dark', 'light']) {
+            await setTheme(page, next)
+            await openSession(page, 'links')
+            await ensurePanelOpen()
+            await page.screenshot({ path: path.join(shotDir, `04-顶栏-${next}.png`) })
+          }
+        })
+        const dups = await page.evaluate(() => {
+          const header = document.querySelector('header.relative.z-20')
+          const seen = new Map()
+          for (const button of header ? header.querySelectorAll('button') : []) {
+            if (button.offsetParent === null) continue
+            const icon = [...(button.querySelector('svg')?.classList ?? [])].find((c) => c.startsWith('lucide-'))
+            if (!icon) continue
+            const label = button.getAttribute('aria-label') || button.textContent?.trim() || ''
+            seen.set(icon, [...(seen.get(icon) ?? []), label])
+          }
+          return [...seen].filter(([, labels]) => labels.length > 1)
+        })
+        assert.deepEqual(dups, [], `顶栏有同图标的按钮：${JSON.stringify(dups)}`)
+      } finally {
+        const pressed = (await panelToggle.getAttribute('aria-pressed')) === 'true'
+        if (pressed !== wasOpen) await panelToggle.click().catch(() => {})
+      }
+    })
+
+    desktop('反馈2102#08：环境条主机触发器用显示器图标，与文件夹触发器区分开', async (page) => {
+      await page.evaluate(() => (window.location.hash = '#/'))
+      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
+      await withViewport(page, async () => {
+        for (const next of ['dark', 'light']) {
+          await setTheme(page, next)
+          await page.locator('[data-env-bar] button').first().waitFor({ timeout: 10_000 })
+          await page.screenshot({ path: path.join(shotDir, `08-环境条-${next}.png`) })
+        }
+      })
+      const hostTrigger = page.locator('[data-env-bar] button').first()
+      assert.equal(await hostTrigger.locator('svg.lucide-monitor').count(), 1, '主机触发器不是显示器图标')
+      assert.equal(await hostTrigger.locator('svg.lucide-folder, svg.lucide-folder-open').count(), 0, '主机触发器仍是文件夹图标')
+      assert.equal(await page.locator('[data-env-bar] button:has(svg.lucide-folder-open)').count(), 1, '文件夹触发器缺少文件夹图标')
     })
 
     desktop('记忆编辑器不暴露内部元数据行', async (page) => {

@@ -28,7 +28,7 @@ interface Options {
   onModelChange?: (profileId: string, groupId: string | undefined, model: string) => void
   onRouteBiasChange?: (bias: RoutePreference) => void
   onDelegationChange?: (strategy: DelegationStrategy) => void
-  onEffortChange?: (effort: ReasoningEffort) => void
+  onEffortChange?: (effort: ReasoningEffort, remember?: boolean) => void
   summary: SessionSummary | null
   activeHostId: string | null
   scopeTarget: SessionTarget | undefined
@@ -264,7 +264,7 @@ export function useComposerModelControls({
     if (remember) rememberEffort(next)
     setLocalEffort(next)
     if (sessionless) {
-      onEffortChange?.(next)
+      onEffortChange?.(next, remember)
       return
     }
     if (activeHostId && summary) {
@@ -272,16 +272,13 @@ export function useComposerModelControls({
     }
   }
 
-  // 切换模型后当前强度不再受支持：降到最近的可用档；完全不支持思考则回到关
+  // 切换模型后当前强度不再受支持：降到最近的可用档；完全不支持思考则回到关。
+  // 无会话时每次都回报生效档位（不写入记忆），新会话页据此发送；换回支持更高档的模型时由调用方传入的原选择恢复。
   useEffect(() => {
     if (modelEfforts === undefined) return
-    if (modelEfforts.length === 0) {
-      if (effort !== 'off') changeEffort('off', false)
-      return
-    }
-    if (!modelEfforts.includes(effort)) {
-      changeEffort(nearestEffort(modelEfforts, effort), false)
-    }
+    const next = nearestEffort(modelEfforts, effort)
+    if (next !== effort) changeEffort(next, false)
+    else if (sessionless) onEffortChange?.(next, false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelEfforts, effort])
 

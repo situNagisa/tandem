@@ -25,7 +25,7 @@ export interface ComposerProps {
   onPermissionModeChange?: (mode: PermissionMode) => void
   /** 无会话模式的思考强度；缺省读上次使用值。 */
   effort?: ReasoningEffort
-  onEffortChange?: (effort: ReasoningEffort) => void
+  onEffortChange?: (effort: ReasoningEffort, remember?: boolean) => void
   /** 文件补全与斜杠命令使用的 Host / 工作目录；缺省用当前会话。 */
   hostId?: string
   cwd?: string

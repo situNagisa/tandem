@@ -8,7 +8,7 @@ import {
   FolderOpen,
   GitBranch,
   GitFork,
-  Server,
+  Monitor,
   Smartphone,
   TriangleAlert,
   Undo2,
@@ -673,7 +673,7 @@ export function EnvBar({
               migrating ? (
                 <Spinner size={12} className="text-muted" />
               ) : (
-                <Server size={12} className="text-muted" />
+                <Monitor size={12} className="text-muted" />
               )
             }
             label={migrating ? '迁移中…' : (pendingHost?.name ?? host?.name ?? '主机')}

@@ -35,6 +35,7 @@ import { basename, dirname } from '../lib/format'
 import { loadRecentDirs, rememberDir, saveDraft } from '../lib/storage'
 import { defaultChoiceFor } from '../lib/profileModels'
 import { loadLastEffort } from '../lib/effort'
+import { loadNewSessionPick, rememberNewSessionPick, resolveNewSessionPick } from '../lib/newSessionPick'
 import { cn } from '../lib/cn'
 import { Button, IconButton } from './ui/Button'
 import { Input } from './ui/Controls'
@@ -89,7 +90,9 @@ export function NewSessionView() {
   const [model, setModel] = useState('')
   const [routeBias, setRouteBias] = useState<RoutePreference | undefined>(undefined)
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
-  const [effort, setEffort] = useState<ReasoningEffort>(loadLastEffort)
+  // effort 是本次显示与发送的档位（模型不支持时已降档）；effortPick 是用户主动选的档位，只它写入记忆。
+  const [effortPick, setEffortPick] = useState<ReasoningEffort>(loadLastEffort)
+  const [effort, setEffort] = useState<ReasoningEffort>(effortPick)
   const [delegation, setDelegation] = useState<DelegationStrategy>('less')
   const [worktree, setWorktree] = useState(false)
   const [worktreeBranch, setWorktreeBranch] = useState('')
@@ -159,12 +162,29 @@ export function NewSessionView() {
     return () => window.removeEventListener('tandem:new-session', onSeed)
   }, [])
 
+  // 每台主机第一次拿到账号列表时恢复上次的选择；记住的项已不存在则回落默认。
+  const pickHostRef = useRef('')
   useEffect(() => {
     if (!profiles.length) {
       setProfileId('')
       setGroupId(undefined)
       setModel('')
       return
+    }
+    if (pickHostRef.current !== hostId) {
+      pickHostRef.current = hostId
+      const saved = loadNewSessionPick(hostId)
+      if (saved?.effort) {
+        setEffortPick(saved.effort)
+        setEffort(saved.effort)
+      }
+      const pick = resolveNewSessionPick(profiles, saved)
+      if (pick) {
+        setProfileId(pick.profileId)
+        setGroupId(pick.groupId)
+        setModel(pick.model)
+        return
+      }
     }
     const current = profiles.find((p) => p.id === profileId)
     if (!current) {
@@ -184,7 +204,7 @@ export function NewSessionView() {
     } else if (groupId) {
       setGroupId(undefined)
     }
-  }, [profiles, profileId, groupId])
+  }, [hostId, profiles, profileId, groupId])
 
   const git = useGitRepo(host, cwd)
   const gitRepo = git.state
@@ -253,6 +273,7 @@ export function NewSessionView() {
     setProfileId(pid)
     setGroupId(gid)
     setModel(m)
+    rememberNewSessionPick(hostId, { profileId: pid, groupId: gid, model: m })
   }
 
   return (
@@ -290,14 +311,19 @@ export function NewSessionView() {
           profileId={profileId}
           groupId={groupId}
           permissionMode={permissionMode}
-          effort={effort}
+          effort={effortPick}
           routeBias={routeBias}
           delegation={delegation}
           onModelChange={chooseAccount}
           onRouteBiasChange={setRouteBias}
           onDelegationChange={setDelegation}
           onPermissionModeChange={setPermissionMode}
-          onEffortChange={setEffort}
+          onEffortChange={(next, remember = true) => {
+            setEffort(next)
+            if (!remember) return
+            setEffortPick(next)
+            rememberNewSessionPick(hostId, { effort: next })
+          }}
           hostId={hostId}
           cwd={cwd}
           placeholder="描述一个任务，或粘贴一段代码…"
