@@ -43,291 +43,20 @@ import { Tooltip } from './ui/Tooltip'
 import { ShareDialog } from './share/ShareDialog'
 import { SaveEvalCaseDialog } from './evals/SaveEvalCaseDialog'
 
-const EMPTY: SessionSummary[] = []
+import {
+  buildGroups,
+  isRunningStatus,
+  projectName,
+  type ExternalItem,
+  type MenuState,
+  type ProjectGroup,
+} from './session/sessionListUtils'
+import { SessionRow } from './session/SessionRow'
+import { RowMenu } from './session/SessionRowMenu'
+import { DeleteSessionDialog, MergeWorktreeDialog } from './session/SessionDialogs'
+import { SessionGroups } from './session/SessionGroups'
 
-interface ExternalItem extends ExternalSession {
-  hostId: string
-}
-
-interface ProjectGroup {
-  key: string
-  name: string
-  cwd?: string
-  branch?: string
-  items: SessionSummary[]
-  externals: ExternalItem[]
-  children: Record<string, SessionSummary[]>
-}
-
-interface HostGroup {
-  id: string
-  name: string
-  online: boolean
-  projects: ProjectGroup[]
-  count: number
-}
-
-interface MenuState {
-  hostId: string
-  session: SessionSummary
-  x: number
-  y: number
-}
-
-/** 服务端把 worktree 放在 ~/.tandem/worktrees/<repo>/<branch>，从中还原项目名以便与主仓库归组。 */
-function worktreeRepoName(s: SessionSummary): string | undefined {
-  const p = s.worktree?.path
-  if (!p) return undefined
-  const m = p.replace(/\\/g, '/').match(/\/worktrees\/([^/]+)\//)
-  return m?.[1]
-}
-
-function projectName(s: SessionSummary): string {
-  return worktreeRepoName(s) || s.env?.repoName || basename(s.cwd) || '未命名项目'
-}
-
-/** 侧栏项目归组名；Sidebar 的筛选菜单复用同一口径。 */
-export function sessionProjectName(s: SessionSummary): string {
-  return projectName(s)
-}
-
-function isRunningStatus(status: SessionSummary['status']): boolean {
-  return status === 'running' || status === 'waiting_permission' || status === 'retrying'
-}
-
-function matchesStatus(s: SessionSummary, filter: SessionFilter['status']): boolean {
-  if (filter === 'all') return true;
-  if (filter === 'running') return s.status === 'running' || s.status === 'retrying';
-  if (filter === 'waiting_permission') return s.status === 'waiting_permission';
-  if (filter === 'error') return s.status === 'error';
-  return s.unread === true;
-}
-
-function buildGroups(
-  hosts: Array<{ id: string; name: string }>,
-  runtimes: ReturnType<typeof useAppStore.getState>['runtimes'],
-  externalSessions: ExternalItem[],
-  query: string,
-  showArchived: boolean,
-  filter: SessionFilter,
-  pinnedProjects: string[],
-): { pinned: Array<{ hostId: string; session: SessionSummary }>; hosts: HostGroup[] } {
-  const q = query.trim().toLowerCase()
-  const pinned: Array<{ hostId: string; session: SessionSummary }> = []
-  const groups: HostGroup[] = []
-  const allowTandem = filter.source === 'all' || filter.source === 'tandem'
-  const allowExternal =
-    filter.source === 'all' || filter.source === 'claude-code' || filter.source === 'codex'
-
-  for (const h of hosts) {
-    if (filter.hostId !== 'all' && h.id !== filter.hostId) continue
-    const rt = runtimes[h.id]
-    const all = allowTandem ? (rt?.sessions ?? EMPTY) : EMPTY
-    const matched = all.filter((s) => {
-      if (showArchived) {
-        if (!s.archived) return false
-      } else if (s.archived) {
-        return false
-      }
-      if (!matchesStatus(s, filter.status)) return false
-      if (filter.project !== 'all' && projectName(s) !== filter.project) return false
-      if (!q) return true
-      return (
-        s.title.toLowerCase().includes(q) ||
-        s.cwd.toLowerCase().includes(q) ||
-        s.model.toLowerCase().includes(q) ||
-        (s.env?.repoName ?? '').toLowerCase().includes(q) ||
-        (s.env?.branch ?? '').toLowerCase().includes(q) ||
-        h.name.toLowerCase().includes(q)
-      )
-    })
-
-    // 子代理/孙代理会话只出现在对应主会话的消息流里，侧栏与搜索结果一律隐藏；看板卡片会话从「任务看板」进入
-    const tops = matched.filter((s) => !s.parentId && !s.board)
-    const regular: SessionSummary[] = []
-    for (const s of tops) {
-      if (s.pinned && !showArchived) pinned.push({ hostId: h.id, session: s })
-      else regular.push(s)
-    }
-    const map = new Map<string, ProjectGroup>()
-    for (const s of regular) {
-      const name = projectName(s)
-      const key = `${h.id}:${name}`
-      let group = map.get(key)
-      if (!group) {
-        group = {
-          key,
-          name,
-          cwd: s.cwd,
-          branch: s.worktree ? undefined : s.env?.branch,
-          items: [],
-          externals: [],
-          children: {},
-        }
-        map.set(key, group)
-      }
-      if (!group.branch && s.env?.branch && !s.worktree) group.branch = s.env.branch
-      group.items.push(s)
-    }
-
-    // 外部会话（Claude Code / Codex）按 cwd 并入对应项目；字段缺失时自然为空。
-    if (!showArchived && allowExternal && filter.status === 'all') {
-      for (const ext of externalSessions) {
-        if (ext.hostId !== h.id) continue
-        if (filter.source !== 'all' && ext.source !== filter.source) continue
-        const base = basename(ext.cwd) || '未命名项目'
-        if (filter.project !== 'all' && base !== filter.project) continue
-        if (q) {
-          const hay = `${ext.title} ${ext.cwd} ${ext.source}`.toLowerCase()
-          if (!hay.includes(q)) continue
-        }
-        let group: ProjectGroup | null =
-          [...map.values()].find((g) => (g.cwd && g.cwd === ext.cwd) || g.name === base) ?? null
-        if (!group) {
-          group = {
-            key: `${h.id}:${base}`,
-            name: base,
-            cwd: ext.cwd,
-            items: [],
-            externals: [],
-            children: {},
-          }
-          map.set(group.key, group)
-        }
-        group.externals.push(ext)
-      }
-    }
-    if (regular.length === 0 && ![...map.values()].some((g) => g.externals.length > 0)) continue
-    const projects = [...map.values()]
-      .map((g) => ({
-        ...g,
-        items: g.items
-          .slice()
-          .sort(
-            (a, b) =>
-              Number(!!b.pinnedInProject) - Number(!!a.pinnedInProject) ||
-              b.updatedAt - a.updatedAt,
-          ),
-        externals: g.externals.slice().sort((a, b) => b.updatedAt - a.updatedAt),
-      }))
-      .sort((a, b) => {
-        // 项目级固定优先于普通项目；同类按最近活动排序
-        const ap = pinnedProjects.includes(a.key)
-        const bp = pinnedProjects.includes(b.key)
-        if (ap !== bp) return ap ? -1 : 1
-        const at = Math.max(a.items[0]?.updatedAt ?? 0, a.externals[0]?.updatedAt ?? 0)
-        const bt = Math.max(b.items[0]?.updatedAt ?? 0, b.externals[0]?.updatedAt ?? 0)
-        return bt - at
-      })
-    groups.push({
-      id: h.id,
-      name: h.name,
-      online: rt?.status === 'online',
-      projects,
-      count:
-        regular.length +
-        projects.reduce((n, p) => n + p.externals.length, 0) +
-        Object.values(projects).reduce(
-          (n, p) => n + Object.values(p.children).reduce((m, l) => m + l.length, 0),
-          0,
-        ),
-    })
-  }
-
-  pinned.sort((a, b) => b.session.updatedAt - a.session.updatedAt)
-  return { pinned, hosts: groups }
-}
-
-function RowMenu({
-  state,
-  onClose,
-  onRename,
-  onSplit,
-  onTogglePin,
-  onTogglePinProject,
-  onFork,
-  onShare,
-  onSaveEval,
-  onArchive,
-  onDelete,
-  onMerge,
-}: {
-  state: MenuState
-  onClose: () => void
-  onRename: () => void
-  onSplit: () => void
-  onTogglePin: () => void
-  onTogglePinProject: () => void
-  onFork: () => void
-  onShare: () => void
-  onSaveEval: () => void
-  onArchive: () => void
-  onDelete: () => void
-  onMerge: () => void
-}) {
-  return (
-    <Menu
-      open
-      onOpenChange={(next) => {
-        if (!next) onClose()
-      }}
-      side="bottom"
-      align="start"
-      sideOffset={2}
-      aria-label="会话操作"
-      className="w-[196px]"
-      trigger={
-        <span
-          aria-hidden
-          style={{ position: 'fixed', left: state.x, top: state.y, width: 1, height: 1 }}
-        />
-      }
-    >
-      <Menu.Item icon={<Pencil size={14} />} onSelect={onRename}>
-        重命名
-      </Menu.Item>
-      <Menu.Item icon={<Columns2 size={14} />} onSelect={onSplit}>
-        在分屏中打开
-      </Menu.Item>
-      <Menu.Item
-        icon={state.session.pinned ? <PinOff size={14} /> : <Pin size={14} />}
-        onSelect={onTogglePin}
-      >
-        {state.session.pinned ? '取消置顶' : '置顶'}
-      </Menu.Item>
-      <Menu.Item
-        icon={state.session.pinnedInProject ? <PinOff size={14} /> : <Pin size={14} />}
-        onSelect={onTogglePinProject}
-      >
-        {state.session.pinnedInProject ? '取消项目置顶' : '在项目中置顶'}
-      </Menu.Item>
-      <Menu.Item icon={<Copy size={14} />} onSelect={onFork}>
-        复制会话
-      </Menu.Item>
-      <Menu.Item icon={<Share2 size={14} />} onSelect={onShare}>
-        分享…
-      </Menu.Item>
-      <Menu.Item icon={<FlaskConical size={14} />} onSelect={onSaveEval}>
-        存为评测用例…
-      </Menu.Item>
-      {state.session.worktree && (
-        <Menu.Item icon={<GitMerge size={14} />} onSelect={onMerge}>
-          合并回 {state.session.worktree.baseBranch}
-        </Menu.Item>
-      )}
-      <Menu.Item
-        icon={state.session.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-        onSelect={onArchive}
-      >
-        {state.session.archived ? '取消归档' : '归档'}
-      </Menu.Item>
-      <Menu.Separator />
-      <Menu.Item danger icon={<Trash2 size={14} />} onSelect={onDelete}>
-        删除
-      </Menu.Item>
-    </Menu>
-  )
-}
+export { sessionProjectName } from './session/sessionListUtils'
 
 export function SessionList({
   query,
@@ -385,9 +114,6 @@ export function SessionList({
     busy: boolean
     error?: string
   } | null>(null)
-  const renameRef = useRef<HTMLInputElement>(null)
-  const renameDoneRef = useRef(false)
-  const renameCancelRef = useRef(false)
   const navRef = useRef<HTMLElement>(null)
 
   const onNavKeyDown = (e: React.KeyboardEvent) => {
@@ -484,30 +210,12 @@ export function SessionList({
     return formatElapsed(now - runningSince(key, s.updatedAt))
   }
 
-  useEffect(() => {
-    if (renaming) {
-      renameRef.current?.focus()
-      renameRef.current?.select()
-    }
-  }, [renaming])
-
   const total = groups.reduce((n, g) => n + g.count, 0) + (showArchived ? 0 : pinned.length)
   const noHosts = hosts.length === 0
 
   const startRename = (s: SessionSummary) => {
-    renameDoneRef.current = false
-    renameCancelRef.current = false
     setRenaming(s.id)
     setRenameDraft(s.title || '')
-  }
-
-  const commitRename = async (hostId: string, s: SessionSummary) => {
-    if (renameDoneRef.current) return
-    renameDoneRef.current = true
-    const title = renameDraft.trim()
-    setRenaming(null)
-    if (!title || title === s.title) return
-    await updateSession(hostId, s.id, { title })
   }
 
   const openSession = (hostId: string, sessionId: string, split = false) => {
@@ -572,193 +280,26 @@ export function SessionList({
     depth = 0,
     section: 'recent' | 'pinned' = 'recent',
     nested = false,
-  ) => {
-    const isActive = s.id === activeSessionId
-    const renamingThis = renaming === s.id
-    const pinState = section === 'pinned' ? !!s.pinned : !!s.pinnedInProject
-    const togglePin = () =>
-      void updateSession(hostId, s.id, {
-        ...(section === 'pinned' ? { pinned: !s.pinned } : { pinnedInProject: !s.pinnedInProject }),
-      })
-    const pinLabel =
-      section === 'pinned'
-        ? pinState
-          ? '取消置顶'
-          : '置顶'
-        : pinState
-          ? '取消项目置顶'
-          : '在项目中置顶'
-    const elapsed = runningElapsed(hostId, s)
-    const runningLabel =
-      s.status === 'waiting_permission' ? '待审批' : s.status === 'retrying' ? '等待网络' : '运行中'
-    return (
-      <div
-        key={`${hostId}:${s.id}`}
-        data-session-row="true"
-        data-session-id={s.id}
-        data-host-id={hostId}
-        data-nested={nested || undefined}
-        data-session-pinned={pinState || undefined}
-        onContextMenu={(e) => openMenu(e, hostId, s)}
-        draggable={!renamingThis}
-        onDragStart={(e) => {
-          e.dataTransfer.setData(
-            'application/x-tandem-split',
-            JSON.stringify({ hostId, sessionId: s.id }),
-          )
-          e.dataTransfer.effectAllowed = 'copy'
-        }}
-        data-tip={
-          s.forkedFrom
-            ? `分叉自 ${s.forkedFrom.title || '父会话'}${s.title ? ` · ${s.title}` : ''}`
-            : s.worktree
-              ? `${s.title || '未命名会话'} · worktree ${s.worktree.branch}（基于 ${s.worktree.baseBranch}）`
-              : s.title || '未命名会话'
-        }
-        className={cn(
-          'anim-row-in group relative flex h-11 items-center rounded-lg text-[14px] transition-colors duration-[120ms] md:h-[34px]',
-          depth > 0 && 'ml-5',
-          isActive
-            ? 'bg-[var(--t-bg-active)] text-text'
-            : 'text-text hover:bg-[var(--t-bg-hover)]',
-        )}
-      >
-        {renamingThis ? (
-          <>
-            <span className="pointer-events-none ml-2 flex size-4 shrink-0 items-center justify-center">
-              {s.status !== 'idle' ? (
-                <SessionStatusDot status={s.status} />
-              ) : (
-                <span className="size-1.5 rounded-full border border-current opacity-35" />
-              )}
-            </span>
-            <input
-              ref={renameRef}
-              value={renameDraft}
-              onChange={(e) => setRenameDraft(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              onBlur={() => {
-                if (renameCancelRef.current) {
-                  renameCancelRef.current = false
-                  return
-                }
-                void commitRename(hostId, s)
-              }}
-              onKeyDown={(e) => {
-                e.stopPropagation()
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  void commitRename(hostId, s)
-                } else if (e.key === 'Escape') {
-                  e.preventDefault()
-                  renameCancelRef.current = true
-                  setRenaming(null)
-                }
-              }}
-              className="mr-1 h-7 min-w-0 flex-1 rounded-md border border-border-strong bg-surface px-1.5 text-[13px] outline-none"
-              aria-label="重命名会话"
-            />
-          </>
-        ) : (
-          <button data-raw-button
-            type="button"
-            data-session-open="true"
-            onClick={(e) => openSession(hostId, s.id, !!(e.metaKey || e.ctrlKey))}
-            aria-current={isActive ? 'page' : undefined}
-            className={cn(
-              'flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pr-1 text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--t-focus-ring)]',
-              // 反馈12#08：会话标题与项目标题左对齐（项目 6px + 图标/间距 36px；会话自身状态点 16px + 间距 8px）。
-              nested ? 'pl-[18px]' : 'pl-2',
-            )}
-          >
-            <span className="pointer-events-none flex size-4 shrink-0 items-center justify-center">
-              {s.status !== 'idle' ? (
-                <SessionStatusDot status={s.status} />
-              ) : (
-                <span className="size-1.5 rounded-full border border-current opacity-35" />
-              )}
-            </span>
-            <span
-              className={cn(
-                'min-w-0 flex-1 truncate text-[14px] leading-5',
-                s.unread && 'font-semibold',
-              )}
-              data-tip={s.title || '未命名会话'}
-            >
-              {s.scheduledBy && (
-                <span data-tip={`定时任务：${s.scheduledBy.name}`} className="mr-1 inline-block align-[-1px] text-muted">
-                  <Clock size={12} />
-                </span>
-              )}
-              {s.title || '未命名会话'}
-            </span>
-            {s.unread && (
-              <span
-                className="size-1.5 shrink-0 rounded-full bg-accent-strong"
-                data-tip="未读"
-                aria-label="未读"
-                data-unread-dot="true"
-              />
-            )}
-            <span className="relative flex h-full w-11 shrink-0 items-center justify-end md:w-[62px]">
-              <span
-                className={cn(
-                  'hidden max-w-full truncate text-[12px] tabular-nums transition-opacity md:inline',
-                  elapsed && 'text-[12px]',
-                  s.status === 'waiting_permission' ? 'text-accent-text' : 'text-text-tertiary',
-                  isActive ? 'opacity-0' : 'group-hover:opacity-0',
-                )}
-                data-tip={elapsed ? `${runningLabel} · ${elapsed}` : undefined}
-              >
-                {elapsed ? `${runningLabel} · ${elapsed}` : formatRelative(s.updatedAt)}
-              </span>
-            </span>
-          </button>
-        )}
-        {!renamingThis && (
-          <IconButton
-            size="sm"
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              togglePin()
-            }}
-            label={pinLabel}
-            tooltip={pinLabel}
-            tooltipSide="top"
-            aria-pressed={pinState}
-            className={cn(
-              'absolute right-8 top-1/2 size-7! -translate-y-1/2 focus-visible:opacity-100 max-sm:right-12 max-sm:size-11! [&_svg]:size-[14px]',
-              'opacity-100 md:opacity-0 md:group-hover:opacity-100',
-            )}
-          >
-            {pinState ? <PinOff size={14} /> : <Pin size={14} />}
-          </IconButton>
-        )}
-        {!renamingThis && (
-          <IconButton
-            size="sm"
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              const rect = e.currentTarget.getBoundingClientRect()
-              setMenu({ hostId, session: s, x: rect.right - 4, y: rect.bottom + 4 })
-            }}
-            label="会话操作"
-            tooltip=""
-            className={cn(
-              'absolute right-1 top-1/2 size-7! -translate-y-1/2 focus-visible:opacity-100 max-sm:size-11! [&_svg]:size-[15px]',
-              isActive
-                ? 'opacity-100'
-                : 'opacity-100 md:opacity-0 md:group-hover:opacity-100',
-            )}
-          >
-            <MoreHorizontal size={15} />
-          </IconButton>
-        )}
-      </div>
-    )
-  }
+  ) => (
+    <SessionRow
+      key={`${hostId}:${s.id}`}
+      hostId={hostId}
+      s={s}
+      depth={depth}
+      section={section}
+      nested={nested}
+      activeSessionId={activeSessionId}
+      renaming={renaming === s.id}
+      renameDraft={renameDraft}
+      setRenameDraft={setRenameDraft}
+      setRenaming={(value) => setRenaming(value ? s.id : null)}
+      updateSession={updateSession}
+      openSession={openSession}
+      openMenu={openMenu}
+      setMenu={setMenu}
+      runningElapsed={runningElapsed}
+    />
+  )
 
   if (loading && total === 0) {
     return (
@@ -829,254 +370,21 @@ export function SessionList({
           </div>
         )}
 
-        {(() => {
-          const multiHost = hosts.length > 1
-          const renderExternal = (hostId: string, ext: ExternalItem) => {
-            const sourceLabel = ext.source === 'codex' ? 'Codex' : 'Claude Code'
-            return (
-              <Tooltip
-                key={`${hostId}:${ext.source}:${ext.id}`}
-                label={`${sourceLabel} 会话 · 只读`}
-                side="top"
-                className="block w-full"
-              >
-                <button data-raw-button
-                  onClick={() => openExternal(hostId, ext)}
-                  className="anim-row-in flex h-11 w-full min-w-0 items-center gap-2 rounded-lg pl-[18px] pr-2 text-left text-[14px] text-text outline-none transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] md:h-[34px]"
-                >
-                  <span className="flex size-4 shrink-0 items-center justify-center text-text-tertiary">
-                    <Eye size={12} />
-                  </span>
-                  <span className="min-w-0 flex-1 truncate leading-5" data-tip={ext.title || '未命名会话'}>
-                    {ext.title || '未命名会话'}
-                  </span>
-                  <span className="w-[64px] shrink-0 truncate text-right text-[12px] tabular-nums text-text-tertiary">
-                    {formatRelative(ext.updatedAt)}
-                  </span>
-                </button>
-              </Tooltip>
-            )
-          }
-
-          const renderProject = (hostId: string, project: ProjectGroup, indented: boolean) => {
-            const projCollapsed = !!collapsed[project.key]
-            const projectPinned = pinnedProjects.includes(project.key)
-            const hostName = hosts.find((h) => h.id === hostId)?.name ?? ''
-            const projectTip = [hostName, project.cwd].filter(Boolean).join(' · ')
-            // 搜索时展示全部；平时外部会话默认只露最近 5 条，避免淹没 Tandem 会话
-            const searching = !!query.trim()
-            const externalExpanded = !!expandedExternal[project.key]
-            const shownExternals =
-              searching || externalExpanded ? project.externals : project.externals.slice(0, 5)
-            const hiddenExternalCount = project.externals.length - shownExternals.length
-            const externalSourceLabel = project.externals.some((e) => e.source === 'claude-code')
-              ? 'Claude Code'
-              : 'Codex'
-            const entries = [
-              ...project.items.map((s) => (
-                <Fragment key={`${hostId}:${s.id}`}>{renderRow(hostId, s, 0, 'recent', true)}</Fragment>
-              )),
-              ...shownExternals.map((ext) => renderExternal(hostId, ext)),
-            ]
-            return (
-              <div
-                key={project.key}
-                className="min-w-0"
-                data-project-row
-                data-project-key={project.key}
-                data-project-pinned={projectPinned || undefined}
-                data-host-indented={indented || undefined}
-              >
-                <div className="group/proj flex h-8 min-w-0 items-center rounded-lg pr-0.5 transition-colors hover:bg-[var(--t-bg-hover)] max-sm:h-11">
-                  <button data-raw-button
-                    onClick={() => toggleProject(project.key)}
-                    className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg pl-1.5 text-left text-[13px] font-medium text-text-secondary transition-colors duration-[120ms] hover:text-text max-sm:h-11"
-                    aria-expanded={!projCollapsed}
-                    data-tip={projectTip || project.name}
-                  >
-                    <ChevronRight
-                      size={11}
-                      className={cn(
-                        'shrink-0 text-text-tertiary opacity-70 transition-transform duration-150',
-                        !projCollapsed && 'rotate-90',
-                      )}
-                    />
-                    <Folder size={13} className="shrink-0 text-text-tertiary" />
-                    <span className="min-w-0 flex-1 truncate">{project.name}</span>
-                    {project.branch && (
-                      <span className="flex min-w-0 max-w-[42%] items-center gap-0.5 text-[12px] font-normal text-text-tertiary">
-                        <GitBranch size={9} className="shrink-0" />
-                        <span className="truncate">{project.branch}</span>
-                      </span>
-                    )}
-                  </button>
-                  <IconButton
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      toggleProjectPinned(project.key)
-                    }}
-                    label={projectPinned ? `取消固定项目 ${project.name}` : `固定项目 ${project.name}`}
-                    tooltip={projectPinned ? '取消固定项目' : '固定项目'}
-                    tooltipSide="top"
-                    aria-pressed={projectPinned}
-                    className="size-7! opacity-100 focus-visible:opacity-100 max-sm:size-11! md:opacity-0 md:group-hover/proj:opacity-100 [&_svg]:size-[13px]"
-                  >
-                    {projectPinned ? <PinOff size={13} /> : <Pin size={13} />}
-                  </IconButton>
-                  <IconButton
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      newSessionIn(hostId, project.cwd || '')
-                    }}
-                    tooltip={`在 ${project.name} 新建会话`}
-                    label={`在 ${project.name} 新建会话`}
-                    tooltipSide="top"
-                    className="size-7! opacity-100 focus-visible:opacity-100 max-sm:size-11! md:opacity-0 md:group-hover/proj:opacity-100 [&_svg]:size-[13px]"
-                  >
-                    <Plus size={13} />
-                  </IconButton>
-                </div>
-                <div
-                  className="expand-grid mt-0.5"
-                  data-open={!projCollapsed}
-                  aria-hidden={projCollapsed}
-                  inert={projCollapsed}
-                >
-                  <div className="expand-inner space-y-0.5">
-                    {entries}
-                    {hiddenExternalCount > 0 && (
-                      <button data-raw-button
-                        onClick={() =>
-                          setExpandedExternal((s) => ({ ...s, [project.key]: true }))
-                        }
-                        className="flex h-8 w-full items-center gap-1.5 rounded-lg pl-2 pr-2 text-left text-[12px] text-text-tertiary transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-secondary"
-                      >
-                        <ChevronRight size={11} className="shrink-0 rotate-90" />
-                        更多 {externalSourceLabel} 会话（{hiddenExternalCount}）
-                      </button>
-                    )}
-                    {!searching && externalExpanded && project.externals.length > 5 && (
-                      <button data-raw-button
-                        onClick={() =>
-                          setExpandedExternal((s) => {
-                            const next = { ...s }
-                            delete next[project.key]
-                            return next
-                          })
-                        }
-                        className="flex h-8 w-full items-center gap-1.5 rounded-lg pl-2 pr-2 text-left text-[12px] text-text-tertiary transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-secondary"
-                      >
-                        <ChevronRight size={11} className="shrink-0" />
-                        收起 {externalSourceLabel} 会话
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )
-          }
-
-          // 固定项目单独提到列表最上方（跨 Host 也优先），其余项目仍按 Host 分组。
-          const pinnedEntries = showArchived
-            ? []
-            : groups.flatMap((host) =>
-                host.projects
-                  .filter((project) => pinnedProjects.includes(project.key))
-                  .map((project) => ({ host, project })),
-              )
-          const normalGroups = groups
-            .map((host) => ({
-              ...host,
-              projects: host.projects.filter((project) => !pinnedProjects.includes(project.key)),
-            }))
-            .filter((host) => host.projects.length > 0)
-
-          const pinnedSection = pinnedEntries.length > 0 && (
-            <div className="mb-1" data-pinned-projects>
-              <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[12px] font-medium text-text-tertiary">
-                <Pin size={11} />
-                固定项目
-              </div>
-              <div className="space-y-1">
-                {pinnedEntries.map(({ host, project }) => renderProject(host.id, project, false))}
-              </div>
-            </div>
-          )
-          const recentLabel = showArchived ? '已归档' : query.trim() ? '搜索结果' : '最近项目'
-          const hasRecent = normalGroups.some((host) => host.projects.length > 0)
-
-          if (!multiHost) {
-            return (
-              <div className="space-y-1 pt-1">
-                {pinnedSection}
-                {hasRecent && (
-                  <div data-recent-projects>
-                    <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[12px] font-medium text-text-tertiary">
-                      {recentLabel}
-                    </div>
-                    <div className="space-y-1">
-                      {normalGroups.flatMap((host) =>
-                        host.projects.map((project) => renderProject(host.id, project, false)),
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          }
-
-          return (
-            <>
-              {pinnedSection}
-              {normalGroups.map((host) => {
-                const hostKey = `host:${host.id}`
-                const hostCollapsed = !!collapsed[hostKey]
-                return (
-                  <div key={host.id} className="mb-1" data-host-group={host.id}>
-                    <div className="flex min-w-0 items-center gap-1.5 px-2.5 pb-1 pt-2">
-                      <button data-raw-button
-                        onClick={() => toggleProject(hostKey)}
-                        className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left text-[12px] font-medium text-text-tertiary transition-colors duration-[120ms] hover:text-text-secondary"
-                        aria-expanded={!hostCollapsed}
-                        data-tip={host.online ? host.name : `${host.name} · 离线，显示缓存的会话列表`}
-                      >
-                        <ChevronRight
-                          size={11}
-                          className={cn(
-                            'shrink-0 opacity-70 transition-transform duration-150',
-                            !hostCollapsed && 'rotate-90',
-                          )}
-                        />
-                        <Server size={11} className="shrink-0 opacity-70" />
-                        <span className="min-w-0 truncate">{host.name}</span>
-                        {!host.online && (
-                          <span className="shrink-0 rounded border border-border px-1 text-[11px] font-normal text-muted">
-                            离线
-                          </span>
-                        )}
-                      </button>
-                      <span className="shrink-0 text-[12px] font-normal tabular-nums text-text-tertiary">
-                        {host.count}
-                      </span>
-                    </div>
-                    <div
-                      className="expand-grid mt-0.5"
-                      data-open={!hostCollapsed}
-                      aria-hidden={hostCollapsed}
-                      inert={hostCollapsed}
-                    >
-                      <div className="expand-inner space-y-1 pt-0.5">
-                        {host.projects.map((project) => renderProject(host.id, project, true))}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </>
-          )
-        })()}
+        <SessionGroups
+          hosts={hosts}
+          groups={groups}
+          pinnedProjects={pinnedProjects}
+          collapsed={collapsed}
+          expandedExternal={expandedExternal}
+          setExpandedExternal={setExpandedExternal}
+          showArchived={showArchived}
+          query={query}
+          renderRow={renderRow}
+          openExternal={openExternal}
+          toggleProject={toggleProject}
+          toggleProjectPinned={toggleProjectPinned}
+          newSessionIn={newSessionIn}
+        />
 
       {menu && menuActions && (
         <RowMenu
@@ -1101,158 +409,13 @@ export function SessionList({
         session={evalSave?.session ?? null}
       />
 
-      <Modal
-        open={!!confirm}
-        onClose={() => {
-          if (!confirm?.busy) setConfirm(null)
-        }}
-        title={confirm?.dirty ? 'worktree 有未提交改动' : '删除会话'}
-        className="max-w-md"
-        footer={
-          <>
-            <Button size="lg" onClick={() => setConfirm(null)} disabled={confirm?.busy}>
-              取消
-            </Button>
-            <Button
-              size="lg"
-              variant="danger-ghost"
-              onClick={async () => {
-                if (!confirm) return
-                setConfirm({ ...confirm, busy: true })
-                try {
-                  await deleteSession(confirm.hostId, confirm.session.id, !!confirm.dirty)
-                  setConfirm(null)
-                } catch (err) {
-                  const dirty =
-                    (err instanceof ApiError && err.status === 409) ||
-                    (err instanceof Error && /未提交改动/.test(err.message))
-                  if (dirty)
-                    setConfirm((c) =>
-                      c
-                        ? {
-                            ...c,
-                            busy: false,
-                            dirty: true,
-                            detail: err instanceof Error ? err.message : undefined,
-                          }
-                        : c,
-                    )
-                  else {
-                    useUiStore.getState().toast(
-                      err instanceof Error ? err.message : '删除会话失败',
-                      'error',
-                    )
-                    setConfirm((c) => (c ? { ...c, busy: false } : c))
-                  }
-                }
-              }}
-              disabled={confirm?.busy}
-            >
-              {confirm?.busy && <Spinner size={14} />}
-              {confirm?.dirty ? '仍然删除' : '删除'}
-            </Button>
-          </>
-        }
-      >
-        {confirm?.dirty ? (
-          <div className="mb-2 flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[12px] leading-5 text-danger">
-            <TriangleAlert size={13} className="mt-0.5 shrink-0" />
-            <span>
-              {confirm.detail ? (
-                <span className="mb-1 block break-words">{confirm.detail}</span>
-              ) : null}
-              仍然删除？worktree 目录与分支会被一并清除，改动将无法恢复。
-            </span>
-          </div>
-        ) : (
-          <p className="text-[13px] leading-6 text-text-soft">
-            确定删除「{confirm?.session.title || '未命名会话'}」？会话记录将从主机上移除，且无法恢复。
-          </p>
-        )}
-        <p className="mt-1.5 break-all font-mono text-[12px] text-muted">{confirm?.session.cwd}</p>
-      </Modal>
+      <DeleteSessionDialog
+        confirm={confirm}
+        setConfirm={setConfirm}
+        deleteSession={deleteSession}
+      />
 
-      <Modal
-        open={!!merge}
-        onClose={() => {
-          if (!merge?.busy) setMerge(null)
-        }}
-        title="合并 worktree"
-        className="max-w-md"
-        footer={
-          <>
-            <Button size="lg" onClick={() => setMerge(null)} disabled={merge?.busy}>
-              取消
-            </Button>
-            <Button
-              size="lg"
-              variant="primary"
-              onClick={async () => {
-                if (!merge) return
-                const host = hosts.find((h) => h.id === merge.hostId)
-                if (!host) return
-                setMerge({ ...merge, busy: true, error: undefined })
-                try {
-                  const res = await api.mergeWorktree(host, merge.session.id, merge.strategy)
-                  if (!res.ok) throw new Error(res.error || '合并失败')
-                  useUiStore.getState().toast('已合并回基准分支', 'success')
-                  setMerge(null)
-                  void useAppStore.getState().refreshSessions(merge.hostId)
-                } catch (err) {
-                  setMerge((m) =>
-                    m ? { ...m, busy: false, error: err instanceof Error ? err.message : '合并失败' } : m,
-                  )
-                }
-              }}
-              disabled={merge?.busy}
-            >
-              {merge?.busy && <Spinner size={14} />}
-              合并
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3 text-[13px] leading-5 text-text-soft">
-          <p>
-            把 <span className="font-mono text-text">{merge?.session.worktree?.branch}</span> 合回{' '}
-            <span className="font-mono text-text">{merge?.session.worktree?.baseBranch}</span>。
-          </p>
-          <div className="flex gap-2">
-            {(['merge', 'squash'] as const).map((strategy) => (
-              <button data-raw-button
-                key={strategy}
-                onClick={() => merge && setMerge({ ...merge, strategy, error: undefined })}
-                className={cn(
-                  'flex-1 rounded-lg border px-2.5 py-2 text-left text-[13px] transition-colors',
-                  merge?.strategy === strategy
-                    ? 'border-[var(--t-border-strong)] bg-[var(--t-bg-active)] text-text'
-                    : 'border-border bg-surface text-muted hover:border-border-strong',
-                )}
-              >
-                <span className="block font-medium">
-                  {strategy === 'merge' ? 'Merge' : 'Squash'}
-                </span>
-                <span className="mt-0.5 block text-[12px] leading-4">
-                  {strategy === 'merge' ? '保留分支提交记录' : '压缩为一个提交'}
-                </span>
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-[12px] leading-5 text-muted">
-            只合并已提交的改动；worktree 里未提交或未跟踪的文件会留在原目录，不会带回基准分支。
-          </p>
-          {merge?.error && (
-            <div className="flex items-start gap-2 rounded-lg border border-danger/25 bg-danger-soft/50 px-2.5 py-2 text-[13px] text-danger">
-              <TriangleAlert size={13} className="mt-0.5 shrink-0" />
-              <span className="min-w-0 flex-1">
-                {merge.error}
-                {/冲突|conflict/i.test(merge.error) &&
-                  ' 请先在 worktree 中解决冲突（或在会话里让助手处理）后重试。'}
-              </span>
-            </div>
-          )}
-        </div>
-      </Modal>
+      <MergeWorktreeDialog merge={merge} setMerge={setMerge} hosts={hosts} />
     </nav>
   )
 }

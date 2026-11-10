@@ -1,0 +1,199 @@
+import type { ExternalSession, SessionSummary } from '@tandem/protocol'
+import type { AppState } from '../../store/appStore/types'
+import type { SessionFilter } from '../../lib/types'
+import { basename } from '../../lib/format'
+
+const EMPTY: SessionSummary[] = []
+
+export interface ExternalItem extends ExternalSession {
+  hostId: string
+}
+
+export interface ProjectGroup {
+  key: string
+  name: string
+  cwd?: string
+  branch?: string
+  items: SessionSummary[]
+  externals: ExternalItem[]
+  children: Record<string, SessionSummary[]>
+}
+
+export interface HostGroup {
+  id: string
+  name: string
+  online: boolean
+  projects: ProjectGroup[]
+  count: number
+}
+
+export interface MenuState {
+  hostId: string
+  session: SessionSummary
+  x: number
+  y: number
+}
+
+/** 服务端把 worktree 放在 ~/.tandem/worktrees/<repo>/<branch>，从中还原项目名以便与主仓库归组。 */
+export function worktreeRepoName(s: SessionSummary): string | undefined {
+  const p = s.worktree?.path
+  if (!p) return undefined
+  const m = p.replace(/\\/g, '/').match(/\/worktrees\/([^/]+)\//)
+  return m?.[1]
+}
+
+export function projectName(s: SessionSummary): string {
+  return worktreeRepoName(s) || s.env?.repoName || basename(s.cwd) || '未命名项目'
+}
+
+/** 侧栏项目归组名；Sidebar 的筛选菜单复用同一口径。 */
+export function sessionProjectName(s: SessionSummary): string {
+  return projectName(s)
+}
+
+export function isRunningStatus(status: SessionSummary['status']): boolean {
+  return status === 'running' || status === 'waiting_permission' || status === 'retrying'
+}
+
+export function matchesStatus(s: SessionSummary, filter: SessionFilter['status']): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'running') return s.status === 'running' || s.status === 'retrying';
+  if (filter === 'waiting_permission') return s.status === 'waiting_permission';
+  if (filter === 'error') return s.status === 'error';
+  return s.unread === true;
+}
+
+export function buildGroups(
+  hosts: Array<{ id: string; name: string }>,
+  runtimes: AppState['runtimes'],
+  externalSessions: ExternalItem[],
+  query: string,
+  showArchived: boolean,
+  filter: SessionFilter,
+  pinnedProjects: string[],
+): { pinned: Array<{ hostId: string; session: SessionSummary }>; hosts: HostGroup[] } {
+  const q = query.trim().toLowerCase()
+  const pinned: Array<{ hostId: string; session: SessionSummary }> = []
+  const groups: HostGroup[] = []
+  const allowTandem = filter.source === 'all' || filter.source === 'tandem'
+  const allowExternal =
+    filter.source === 'all' || filter.source === 'claude-code' || filter.source === 'codex'
+
+  for (const h of hosts) {
+    if (filter.hostId !== 'all' && h.id !== filter.hostId) continue
+    const rt = runtimes[h.id]
+    const all = allowTandem ? (rt?.sessions ?? EMPTY) : EMPTY
+    const matched = all.filter((s) => {
+      if (showArchived) {
+        if (!s.archived) return false
+      } else if (s.archived) {
+        return false
+      }
+      if (!matchesStatus(s, filter.status)) return false
+      if (filter.project !== 'all' && projectName(s) !== filter.project) return false
+      if (!q) return true
+      return (
+        s.title.toLowerCase().includes(q) ||
+        s.cwd.toLowerCase().includes(q) ||
+        s.model.toLowerCase().includes(q) ||
+        (s.env?.repoName ?? '').toLowerCase().includes(q) ||
+        (s.env?.branch ?? '').toLowerCase().includes(q) ||
+        h.name.toLowerCase().includes(q)
+      )
+    })
+
+    // 子代理/孙代理会话只出现在对应主会话的消息流里，侧栏与搜索结果一律隐藏；看板卡片会话从「任务看板」进入
+    const tops = matched.filter((s) => !s.parentId && !s.board)
+    const regular: SessionSummary[] = []
+    for (const s of tops) {
+      if (s.pinned && !showArchived) pinned.push({ hostId: h.id, session: s })
+      else regular.push(s)
+    }
+    const map = new Map<string, ProjectGroup>()
+    for (const s of regular) {
+      const name = projectName(s)
+      const key = `${h.id}:${name}`
+      let group = map.get(key)
+      if (!group) {
+        group = {
+          key,
+          name,
+          cwd: s.cwd,
+          branch: s.worktree ? undefined : s.env?.branch,
+          items: [],
+          externals: [],
+          children: {},
+        }
+        map.set(key, group)
+      }
+      if (!group.branch && s.env?.branch && !s.worktree) group.branch = s.env.branch
+      group.items.push(s)
+    }
+
+    // 外部会话（Claude Code / Codex）按 cwd 并入对应项目；字段缺失时自然为空。
+    if (!showArchived && allowExternal && filter.status === 'all') {
+      for (const ext of externalSessions) {
+        if (ext.hostId !== h.id) continue
+        if (filter.source !== 'all' && ext.source !== filter.source) continue
+        const base = basename(ext.cwd) || '未命名项目'
+        if (filter.project !== 'all' && base !== filter.project) continue
+        if (q) {
+          const hay = `${ext.title} ${ext.cwd} ${ext.source}`.toLowerCase()
+          if (!hay.includes(q)) continue
+        }
+        let group: ProjectGroup | null =
+          [...map.values()].find((g) => (g.cwd && g.cwd === ext.cwd) || g.name === base) ?? null
+        if (!group) {
+          group = {
+            key: `${h.id}:${base}`,
+            name: base,
+            cwd: ext.cwd,
+            items: [],
+            externals: [],
+            children: {},
+          }
+          map.set(group.key, group)
+        }
+        group.externals.push(ext)
+      }
+    }
+    if (regular.length === 0 && ![...map.values()].some((g) => g.externals.length > 0)) continue
+    const projects = [...map.values()]
+      .map((g) => ({
+        ...g,
+        items: g.items
+          .slice()
+          .sort(
+            (a, b) =>
+              Number(!!b.pinnedInProject) - Number(!!a.pinnedInProject) ||
+              b.updatedAt - a.updatedAt,
+          ),
+        externals: g.externals.slice().sort((a, b) => b.updatedAt - a.updatedAt),
+      }))
+      .sort((a, b) => {
+        // 项目级固定优先于普通项目；同类按最近活动排序
+        const ap = pinnedProjects.includes(a.key)
+        const bp = pinnedProjects.includes(b.key)
+        if (ap !== bp) return ap ? -1 : 1
+        const at = Math.max(a.items[0]?.updatedAt ?? 0, a.externals[0]?.updatedAt ?? 0)
+        const bt = Math.max(b.items[0]?.updatedAt ?? 0, b.externals[0]?.updatedAt ?? 0)
+        return bt - at
+      })
+    groups.push({
+      id: h.id,
+      name: h.name,
+      online: rt?.status === 'online',
+      projects,
+      count:
+        regular.length +
+        projects.reduce((n, p) => n + p.externals.length, 0) +
+        Object.values(projects).reduce(
+          (n, p) => n + Object.values(p.children).reduce((m, l) => m + l.length, 0),
+          0,
+        ),
+    })
+  }
+
+  pinned.sort((a, b) => b.session.updatedAt - a.session.updatedAt)
+  return { pinned, hosts: groups }
+}
