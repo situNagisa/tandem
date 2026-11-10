@@ -13,7 +13,7 @@
 | R07 | 外部会话注入内容外露、被当作用户轮 | 3 | `isSystemInjectionText` 统一口径；单测 turns/external；regression 注入口径用例 |
 | R08 | 点了没反应 / 数据未就绪被当异常 | 4 | 加载态与默认值兜底；regression 新会话环境条/模型价格/手机环境条 |
 | R09 | 反馈模式与浮层交互冲突 | 2 | `lib/overlay` + `data-portal-layer`；ui-audit contains/portal；regression 反馈圈选 |
-| R10 | 提示/动效不符合习惯、尺寸跳动 | 6 | 标准 Tooltip/固定尺寸/动效 token；regression 设置窗口/动画测量/高级分组/运行进度 |
+| R10 | 提示/动效不符合习惯、尺寸跳动 | 8 | 标准 Tooltip/固定尺寸/动效 token；regression 设置窗口/动画测量/高级分组/运行进度；切换会话保留旧画面（sessionsSlice `pendingFocus`）、新会话乐观占位（`startSession` 草稿）；regression 反馈2102#01/#06 |
 | R11 | 危险或不可逆操作没有确认/预览 | 2 | `ui/ConfirmAction`；regression 合并/压缩/删除确认 |
 | R12 | 完成态缺少后续操作 | 1 | 状态驱动操作清单；regression 看板完成卡 |
 | R13 | 事件流水未聚合、聚合行交互错误 | 2 | `ui/AggregateRow`；单测 inbox；regression 收件箱/看板回合 |
@@ -37,7 +37,7 @@
 | R33 | 缓存失效切换没有成本提示 | 1 | 已由 R41 的确认框取代；regression 切换确认 |
 | R34 | 输入框不支持常见 Markdown 编辑 | 1 | `markdownInput.ts` + 着色层；单测/regression |
 | R35 | 主标签塞入次要属性导致芯片冗长 | 2 | 芯片只显示模型名，无强度小点；regression 芯片/aria-label |
-| R36 | 滚动条两套并存、占宽或压内容 | 2 | `ui/OverlayScrollbar`；ui-audit custom-scrollbar；regression 唯一滚动条/gutter |
+| R36 | 滚动条两套并存、占宽或压内容 | 3 | `ui/OverlayScrollbar`（z-index 按所在浮层设置）；ui-audit custom-scrollbar；regression 唯一滚动条/gutter；regression 反馈2102#03 滚动条不压弹窗 |
 | R37 | 浏览器/系统自带控件与提示外露 | 4 | 根节点 spellcheck + 自定义右键菜单 + 原生控件迁移 + Edge 行为记录；ui-audit native-title/datalist/list/selection；regression 设置页/输入框 |
 | R38 | 只读预览另起一套页面，缺少辅助视图 | 1 | 只读复用 TurnRail/Card/ResizeHandle；单测 external；regression 外部预览 |
 | R39 | 构建 flavor 只注入 web，调试模块进 asar | 1 | 构建期常量 + 产物扫描；check-debug/flavor 单测 |
@@ -68,3 +68,4 @@
 | R65 | 单价按型号名前缀硬编码，新代际查不到价格（花费显示 —）；未收录型号不按同家族估算 | 1 | `usage.ts` `builtinPriceFor`：前缀表 → Claude 家族+版本 → GPT 基础款最近一代，估算时标 `estimatedFrom`；单价优先级账号自定义 > 内置；单测 `model-families`、`pricing` |
 | R66 | 底部跟随失效：ResizeObserver 只在首次挂载时绑定（从首页进入会话后不生效）；打开会话的贴底校准读 scrollHeight 时被 content-visibility 撑高，误判为离开底部 | 1 | `ChatView` 观察者依赖挂载视图（`hasSession`/`agentSession`）；校准写入走 `programmaticUntil` 窗口；regression「反馈1919#07 流式输出时在底部自动跟随」 |
 | R67 | 一个菜单混放两个维度（是否派子代理 / 执行者用什么模型）与一次性/记住两种语义，选项互相重叠或矛盾（单代理不屏蔽 Task，低成本仍派执行者，仅规划改变工具集） | 1 | 分工×取向两个维度（`routing.md` 矩阵，`planTurnRoute` 单测）；decisions-check `route-labels`；regression「分工路由」与输入框菜单用例 |
+| R68 | 跨视图定位的异步回调（轮询、滚动定时器）未随新一次跳转取消，旧目标把视口拉回 | 1 | `lib/jump.ts` `pollJump` 取消前一轮轮询；`MessageList` 的 `jumpTimers` 在新跳转时清理；regression 反馈2102#02 会话图快速连点 |

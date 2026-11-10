@@ -3,13 +3,15 @@ import type { StoreApi } from 'zustand'
 import { api } from '../../lib/api'
 import { SESSION_TAIL_MESSAGES } from '../../lib/messagePaging'
 import { navigate } from '../../lib/router'
-import type { SessionTarget } from '../../lib/types'
+import type { ActiveSession, SessionTarget, UiMessage } from '../../lib/types'
 import { useUiStore } from '../useUiStore'
+import { DRAFT_SESSION_PREFIX } from '../../lib/draftSession'
 import {
   connections,
   emptyActiveSession,
   isRunningStatus,
   matchesView,
+  newId,
   toast,
   viewKeyOf,
 } from './helpers'
@@ -20,6 +22,7 @@ export type SessionsSlice = Pick<
   AppState,
   | 'openSession'
   | 'openSessionView'
+  | 'commitPendingFocus'
   | 'closeSessionView'
   | 'focusSessionView'
   | 'closeSession'
@@ -36,6 +39,12 @@ export type SessionsSlice = Pick<
   | 'handoffSession'
   | 'deleteSession'
 >
+
+/** 目标首屏迟迟不就绪时的兜底切换时间，避免点了没反应。 */
+const PENDING_FOCUS_MS = 1500
+
+const isViewReady = (view: ActiveSession): boolean =>
+  !view.loading || view.messages.length > 0 || !!view.error
 
 export function createSessionsSlice(
   set: StoreApi<AppState>['setState'],
@@ -106,20 +115,58 @@ export function createSessionsSlice(
     if (view.summary?.unread) void get().markSessionRead(hostId, sessionId)
   }
 
+  /** 关闭不再显示、也不在分屏中的会话视图。 */
+  const dropView = (hostId: string, sessionId: string): void => {
+    const panes = useUiStore.getState().splitPanes
+    if (panes.some((pane) => pane.hostId === hostId && pane.sessionId === sessionId)) return
+    get().closeSessionView(hostId, sessionId)
+  }
+
+  const commitFocus = (hostId: string, sessionId: string): void => {
+    const current = get().active
+    if (current && !matchesView(current, hostId, sessionId)) dropView(current.hostId, current.sessionId)
+    focusView(hostId, sessionId)
+  }
+
+  // 切换会话时先保留当前画面，目标首屏就绪后再切走，避免「旧画面 → 骨架屏 → 新画面」的闪动。
+  let pendingFocus: { hostId: string; sessionId: string } | null = null
+
   return {
     openSession: (hostId, sessionId) => {
       get().activateHost(hostId)
-      const host = getHost(hostId)
-      if (!host) return
+      if (!getHost(hostId)) return
       const current = get().active
-      if (current && !matchesView(current, hostId, sessionId)) {
-        const panes = useUiStore.getState().splitPanes
-        const keep = panes.some(
-          (pane) => pane.hostId === current.hostId && pane.sessionId === current.sessionId,
-        )
-        if (!keep) get().closeSessionView(current.hostId, current.sessionId)
+      const stale = pendingFocus
+      pendingFocus = null
+      if (stale && !matchesView(stale, hostId, sessionId) && !matchesView(current, stale.hostId, stale.sessionId)) {
+        dropView(stale.hostId, stale.sessionId)
       }
-      focusView(hostId, sessionId)
+      openSessionView(hostId, sessionId)
+      const view = get().sessionViews[viewKeyOf(hostId, sessionId)]
+      // 没有可保留的当前画面（如刷新后直接打开）或目标已就绪时立即切换。
+      if (!current || !view || isViewReady(view) || matchesView(current, hostId, sessionId)) {
+        commitFocus(hostId, sessionId)
+        return
+      }
+      pendingFocus = { hostId, sessionId }
+      window.setTimeout(() => {
+        if (pendingFocus?.hostId === hostId && pendingFocus.sessionId === sessionId) {
+          get().commitPendingFocus(true)
+        }
+      }, PENDING_FOCUS_MS)
+    },
+
+    commitPendingFocus: (force = false) => {
+      const target = pendingFocus
+      if (!target) return
+      const view = get().sessionViews[viewKeyOf(target.hostId, target.sessionId)]
+      if (!view) {
+        pendingFocus = null
+        return
+      }
+      if (!force && !isViewReady(view)) return
+      pendingFocus = null
+      commitFocus(target.hostId, target.sessionId)
     },
 
     openSessionView,
@@ -271,17 +318,64 @@ export function createSessionsSlice(
     startSession: async (hostId, input, content) => {
       const host = getHost(hostId)
       if (!host) throw new Error('Host 不存在')
-      const summary = await api.createSession(host, input)
+      // 发送即进入会话：创建请求返回前先显示占位会话与用户消息，返回后换成真实会话。
+      const draftId = `${DRAFT_SESSION_PREFIX}${newId()}`
+      const draftKey = viewKeyOf(hostId, draftId)
+      const now = Date.now()
+      const draftSummary: SessionSummary = {
+        id: draftId,
+        title: input.title ?? '',
+        cwd: input.cwd,
+        profileId: input.profileId,
+        groupId: input.groupId,
+        model: input.model ?? '',
+        permissionMode: input.permissionMode ?? 'default',
+        effort: input.effort,
+        delegation: input.delegation,
+        status: 'running',
+        createdAt: now,
+        updatedAt: now,
+        usage: { inputTokens: 0, outputTokens: 0 },
+      }
+      const message: UiMessage = {
+        id: `local-${newId()}`,
+        role: 'user',
+        content,
+        createdAt: now,
+        local: true,
+      }
+      const draft: ActiveSession = {
+        ...emptyActiveSession(hostId, draftId, draftSummary),
+        loading: false,
+        messages: [message],
+      }
+      set((state) => ({
+        sessionViews: { ...state.sessionViews, [draftKey]: draft },
+        active: draft,
+      }))
+      let summary: SessionSummary
+      try {
+        summary = await api.createSession(host, input)
+      } catch (err) {
+        set((state) => {
+          const views = { ...state.sessionViews }
+          delete views[draftKey]
+          return {
+            sessionViews: views,
+            active: matchesView(state.active, hostId, draftId) ? null : state.active,
+          }
+        })
+        toast(err instanceof Error ? err.message : '创建会话失败', 'error')
+        throw err
+      }
       applySessionSummary(hostId, summary)
       const key = viewKeyOf(hostId, summary.id)
-      set((state) => ({
-        sessionViews: {
-          ...state.sessionViews,
-          [key]: emptyActiveSession(hostId, summary.id, summary),
-        },
-      }))
-      const view = get().sessionViews[key]!
-      set({ active: view })
+      set((state) => {
+        const views = { ...state.sessionViews }
+        delete views[draftKey]
+        views[key] = emptyActiveSession(hostId, summary.id, summary)
+        return { sessionViews: views, active: views[key] }
+      })
       navigate({ kind: 'session', hostId, sessionId: summary.id })
       ensureConnection(hostId)?.subscribe(summary.id, { tail: SESSION_TAIL_MESSAGES })
       get().send(content, { hostId, sessionId: summary.id })

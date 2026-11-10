@@ -617,12 +617,16 @@ function MessageListInner({
   }
 
   // 上下文面板/搜索/收件箱：必要时扩大渲染窗口，再把目标消息或工具卡滚到视口中部
+  const jumpTimers = useRef<number[]>([])
   useEffect(() => {
     const onJump = (event: Event) => {
       const detail = (event as CustomEvent<{ messageId?: string; toolUseId?: string }>).detail
       const messageId = detail?.messageId
       const toolUseId = detail?.toolUseId
       if (!messageId && !toolUseId) return
+      // 后一次跳转取消前一次还没执行的滚动，否则旧目标会在新目标之后再滚一次（反馈2102#02）。
+      for (const timer of jumpTimers.current) window.clearTimeout(timer)
+      jumpTimers.current = []
       const index = toolUseId
         ? messages.findIndex((message) =>
             message.content.some((block) => block.type === 'tool_use' && block.id === toolUseId),
@@ -657,12 +661,17 @@ function MessageListInner({
         row.classList.add('msg-jump-hit')
         window.setTimeout(() => row.classList.remove('msg-jump-hit'), 2800)
       }
-      window.setTimeout(scroll, 80)
-      window.setTimeout(scroll, 300)
+      jumpTimers.current = [window.setTimeout(scroll, 80), window.setTimeout(scroll, 300)]
     }
     window.addEventListener('tandem-jump-message', onJump)
     return () => window.removeEventListener('tandem-jump-message', onJump)
   }, [messages, windowSize, windowCap, messagesProp, activeHostId, sessionId])
+  useEffect(
+    () => () => {
+      for (const timer of jumpTimers.current) window.clearTimeout(timer)
+    },
+    [],
+  )
 
   // 固定轮次必须始终可用：即使不在挂载窗口里也要先取回并保持挂载（反馈11#05）。
   const pinnedLoadRef = useRef<Set<string>>(new Set())

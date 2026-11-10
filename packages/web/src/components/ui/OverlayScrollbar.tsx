@@ -3,6 +3,19 @@ import { useEffect, useLayoutEffect, useRef } from 'react'
 const MIN_THUMB = 26
 const EDGE_ZONE = 22
 const IDLE_MS = 800
+const BASE_Z = 30
+
+/** 滚动区域所在的浮层层级：祖先里 position: fixed 的最大 z-index；不在浮层里时为基础层。 */
+function layerOf(el: HTMLElement): number {
+  let layer = 0
+  for (let node: HTMLElement | null = el; node && node !== document.body; node = node.parentElement) {
+    const style = getComputedStyle(node)
+    if (style.position !== 'fixed') continue
+    const z = Number.parseInt(style.zIndex, 10)
+    if (Number.isFinite(z)) layer = Math.max(layer, z)
+  }
+  return Math.max(BASE_Z, layer + 1)
+}
 
 function overflow(el: HTMLElement, axis: 'x' | 'y'): boolean {
   if (el === document.body || el === document.documentElement) return false
@@ -163,6 +176,9 @@ export function OverlayScrollbar() {
       target = el
       window.clearTimeout(hideTimer)
       hideTimer = 0
+      const z = String(layerOf(el))
+      barY.style.zIndex = z
+      barX.style.zIndex = z
       visibleY = overflow(el, 'y')
       visibleX = overflow(el, 'x')
       update()

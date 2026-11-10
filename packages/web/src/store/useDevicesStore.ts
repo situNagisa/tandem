@@ -3,6 +3,7 @@ import type { DeviceAccess, DeviceListResult, DeviceMount, SessionDevices } from
 import type { ServerMsg } from '@tandem/protocol'
 import { api } from '../lib/api'
 import type { HostConfig } from '../lib/types'
+import { isDraftSession } from '../lib/draftSession'
 
 export interface SerialView {
   text: string
@@ -108,7 +109,7 @@ export const useDevicesStore = create<DevicesState>((set, get) => ({
   },
 
   refreshSession: async (host, sessionId) => {
-    if (!sessionId) return
+    if (!sessionId || isDraftSession(sessionId)) return
     try {
       const data: SessionDevices = await api.sessionDevices(host, sessionId)
       set((s) => ({ sessionMounts: { ...s.sessionMounts, [sessionKey(host.id, sessionId)]: data.mounts } }))

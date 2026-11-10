@@ -2551,6 +2551,8 @@ async function main() {
     const desktop = (name, fn) => checks.push({ name, viewport: 'desktop', fn })
     const mobile = (name, fn) => checks.push({ name, viewport: 'mobile', fn })
     const small = (name, fn) => checks.push({ name, viewport: 'small', fn })
+    // 反馈2102：与用户截图同尺寸、深色主题的桌面窗口。
+    const fb2102 = (name, fn) => checks.push({ name, viewport: 'desktop', context: 'fb2102', fn })
 
     const newPage = async (ctx, viewport, opts = {}) => {
       const page = await ctx.newPage()
@@ -4816,6 +4818,222 @@ async function main() {
       )
       await page.locator('.md.chat-md.is-streaming').first().waitFor({ state: 'detached', timeout: 20_000 })
       assert.ok((await distance()) < 80, '流式结束后没有停在底部')
+    })
+
+    fb2102('反馈2102#03：设置弹窗打开时，背景滚动条不压在弹窗之上；弹窗自己的滚动条在弹窗之上', async (page) => {
+      await openSession(page, 'scroll')
+      const dialog = await openSettings(page, '账号与模型', 'desktop')
+      const probe = (axis) =>
+        page.evaluate((axis) => {
+          const bar = document.querySelector(`.overlay-scrollbar[data-axis="${axis}"][data-visible="true"]`)
+          if (!bar) return null
+          const r = bar.getBoundingClientRect()
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+          return { own: hit === bar, tag: hit?.tagName ?? null, cls: String(hit?.className ?? '').slice(0, 60) }
+        }, axis)
+      // 背景聊天区在遮罩下方滚动，覆盖式滚动条会在它的右缘出现。
+      await page.evaluate(() => {
+        const el = document.querySelector('.chat-scroll')
+        if (el) el.scrollTop = 160
+      })
+      await page.waitForSelector('.overlay-scrollbar[data-visible="true"]', { timeout: 3_000 })
+      const background = await probe('y')
+      assert.ok(background, '背景滚动后没有出现覆盖式滚动条')
+      assert.ok(!background.own, `背景滚动条压在设置弹窗之上：命中 ${background.tag}.${background.cls}`)
+      // 弹窗自己的滚动区域：滚动条应显示在弹窗之上。
+      const scrolled = await page.evaluate(() => {
+        const root = document.querySelector('[role="dialog"][aria-label="设置"]')
+        const el = root
+          ? [...root.querySelectorAll('*')].find((node) => {
+              const style = getComputedStyle(node)
+              return /(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 40
+            })
+          : null
+        if (!el) return false
+        el.scrollTop = 60
+        return true
+      })
+      if (scrolled) {
+        // 背景滚动条还会淡出 800ms：等它改归属到弹窗区域（滚动事件异步派发）后再判定。
+        await page
+          .waitForFunction(
+            () => {
+              const bar = document.querySelector('.overlay-scrollbar[data-axis="y"][data-visible="true"]')
+              if (!bar) return false
+              const r = bar.getBoundingClientRect()
+              return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === bar
+            },
+            null,
+            { timeout: 3_000 },
+          )
+          .catch(() => {})
+        const own = await probe('y')
+        assert.ok(own?.own, `弹窗自己的滚动条被遮挡：命中 ${own?.tag}.${own?.cls}`)
+      }
+      await page.screenshot({ path: '/tmp/fix-2102a/after-03.png' })
+      await dialog.locator('button[aria-label="关闭"]').first().click().catch(() => page.keyboard.press('Escape'))
+    })
+
+    fb2102('反馈2102#06：新会话发送后直接进入会话并显示用户消息，发送请求未返回前不停留在空的新会话页', async (page) => {
+      // 放慢创建会话请求，使「请求未返回」的时间窗口足够长，便于逐帧观察。
+      await page.route('**/api/sessions', async (route) => {
+        if (route.request().method() === 'POST') await new Promise((resolve) => setTimeout(resolve, 900))
+        await route.continue()
+      })
+      const input = page.locator('textarea[aria-label="消息输入框"]')
+      await input.fill('FB2102_NEW 发送即进入会话')
+      await page.waitForFunction(() => {
+        const button = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === '发送消息')
+        return button && !button.disabled
+      })
+      await page.evaluate(() => {
+        window.__fb06 = { sent: false, frames: [], on: true }
+        const greeting = () => [...document.querySelectorAll('h1')].some((h) => h.textContent.includes('今天想做点什么'))
+        const message = () => (document.querySelector('.chat-scroll')?.textContent ?? '').includes('FB2102_NEW')
+        const sample = () => {
+          const state = window.__fb06
+          if (!state.on) return
+          if (state.sent) state.frames.push({ greeting: greeting(), message: message(), at: performance.now() })
+          requestAnimationFrame(sample)
+        }
+        requestAnimationFrame(sample)
+        // 只统计点击发送之后的帧（捕获阶段，早于 React 处理点击）。
+        window.addEventListener(
+          'click',
+          (event) => {
+            if (event.target instanceof Element && event.target.closest('button[aria-label="发送消息"]')) {
+              window.__fb06.sent = true
+            }
+          },
+          { capture: true },
+        )
+      })
+      await page.locator('button[aria-label="发送消息"]').click()
+      await page.waitForTimeout(300)
+      // 创建请求仍在途（已放慢）：此时应已显示占位会话与用户消息。
+      await page.screenshot({ path: '/tmp/fix-2102a/after-06.png' })
+      await page.waitForFunction(() => window.location.hash.includes('/s/'), null, { timeout: 10_000 })
+      await page.waitForTimeout(300)
+      const result = await page.evaluate(() => {
+        window.__fb06.on = false
+        return window.__fb06.frames
+      })
+      await page.unroute('**/api/sessions')
+      const stuck = result.filter((frame) => frame.greeting && !frame.message)
+      assert.ok(result.length > 0, '没有采样到发送后的帧')
+      assert.equal(
+        stuck.length,
+        0,
+        `发送后有 ${stuck.length} 帧仍停在空的新会话页，用户消息尚未显示`,
+      )
+      assert.ok(
+        result.some((frame) => frame.message),
+        '发送后用户消息始终没有显示在会话里',
+      )
+    })
+
+    fb2102('反馈2102#01：切换会话时主区不闪：旧会话画面保留到新会话就绪，不出现空白或骨架屏', async (page) => {
+      await openSession(page, 'scroll')
+      await page.locator('[data-turn-id]').first().waitFor({ timeout: 10_000 })
+      await page.evaluate(() => {
+        const state = (window.__fb01 = { on: true, gaps: 0, samples: 0, skeleton: 0, empty: 0 })
+        const scroller = () => document.querySelector('.chat-scroll')
+        const inspect = () => {
+          const el = scroller()
+          if (!el) return
+          state.samples += 1
+          const rows = el.querySelectorAll('.msg-row').length
+          const skeleton = !!el.querySelector('.skeleton')
+          if (skeleton) state.skeleton += 1
+          if (rows === 0 || skeleton) state.gaps += 1
+        }
+        state.observer = new MutationObserver(inspect)
+        state.observer.observe(document.querySelector('main'), { childList: true, subtree: true })
+        const sample = () => {
+          if (!state.on) return
+          inspect()
+          requestAnimationFrame(sample)
+        }
+        requestAnimationFrame(sample)
+      })
+      const slow = page.locator('[data-session-row]').filter({ hasText: '慢速运行会话' }).first()
+      await slow.waitFor({ timeout: 10_000 })
+      await slow.click()
+      await page.waitForFunction(() => window.location.hash.includes('/s/slow'), null, { timeout: 10_000 })
+      await page.locator('[data-turn-id]').first().waitFor({ timeout: 10_000 })
+      await page.waitForTimeout(500)
+      const state = await page.evaluate(() => {
+        window.__fb01.on = false
+        window.__fb01.observer.disconnect()
+        return { gaps: window.__fb01.gaps, samples: window.__fb01.samples, skeleton: window.__fb01.skeleton }
+      })
+      assert.ok(state.samples > 0, '切换期间没有采样到主区')
+      await page.screenshot({ path: '/tmp/fix-2102a/after-01.png' })
+      assert.equal(
+        state.gaps,
+        0,
+        `切换会话时主区出现 ${state.gaps} 次空白或骨架屏（骨架屏 ${state.skeleton} 次）`,
+      )
+    })
+
+    fb2102('反馈2102#02：会话图快速连点两个节点，最终停在第二个目标且滚动单调', async (page) => {
+      await openSession(page, 'long')
+      const nodes = page.locator('[data-group="graph"] [data-graph-turn-id]')
+      await nodes.first().waitFor({ timeout: 10_000 })
+      const count = await nodes.count()
+      const firstId = await nodes.nth(Math.floor(count * 0.3)).getAttribute('data-graph-turn-id')
+      const secondId = await nodes.nth(Math.floor(count * 0.6)).getAttribute('data-graph-turn-id')
+      const scrollTop = () => page.evaluate(() => document.querySelector('.chat-scroll').scrollTop)
+      // 跳转落点是目标轮居中（scrollIntoView block: center）：返回目标中心相对视口中心的偏移。
+      const centerOffset = (id) =>
+        page.evaluate((id) => {
+          const root = document.querySelector('.chat-scroll')
+          const el = root.querySelector(`[data-turn-id="${CSS.escape(id)}"]`)
+          if (!el) return null
+          const box = root.getBoundingClientRect()
+          const target = el.getBoundingClientRect()
+          return target.top + target.height / 2 - (box.top + box.height / 2)
+        }, id)
+      await page.evaluate(() => {
+        window.__fb02 = { on: true, samples: [] }
+        const sample = () => {
+          const state = window.__fb02
+          if (!state.on) return
+          state.samples.push(document.querySelector('.chat-scroll').scrollTop)
+          requestAnimationFrame(sample)
+        }
+        requestAnimationFrame(sample)
+      })
+      const beforeClicks = await scrollTop()
+      await page.evaluate(() => {
+        window.__fb02.clickedAt = window.__fb02.samples.length
+      })
+      await nodes.nth(Math.floor(count * 0.3)).click()
+      await page.waitForTimeout(60)
+      await nodes.nth(Math.floor(count * 0.6)).click()
+      await page.waitForTimeout(1800)
+      const { samples, clickedAt } = await page.evaluate(() => {
+        window.__fb02.on = false
+        return window.__fb02
+      })
+      const offset = await centerOffset(secondId)
+      const final = await scrollTop()
+      assert.ok(offset !== null, `找不到第二个目标 ${secondId}`)
+      assert.ok(
+        Math.abs(offset) < 60,
+        `快速连点后第二个目标没有居中，偏移 ${Math.round(offset)}px（起点 ${Math.round(beforeClicks)}，停在 ${Math.round(final)}）`,
+      )
+      // 第二次点击之后，滚动只能朝第二个目标单调前进：不能先冲到第一个目标再回弹。
+      const after = samples.slice(clickedAt ?? 0)
+      const lowest = Math.min(...after)
+      assert.ok(
+        lowest >= final - 40,
+        `滚动越过了第二个目标（最低 ${Math.round(lowest)}，最终 ${Math.round(final)}），快速连点时视口来回抖动`,
+      )
+      let rises = 0
+      for (let i = 1; i < after.length; i++) if (after[i] > after[i - 1] + 2) rises += 1
+      assert.ok(rises <= 2, `快速连点后滚动方向出现 ${rises} 次回弹`)
+      await page.screenshot({ path: '/tmp/fix-2102a/after-02.png' })
     })
 
     desktop('反馈16#10：等首个 token / 工具运行时显示 spinner 与已运行时长', async (page) => {
@@ -10861,6 +11079,12 @@ async function main() {
         ctx = await browser.newContext({ viewport: DESKTOP, deviceScaleFactor: 1 })
         await ctx.addInitScript(() => {
           window.tandemDesktop = { isDesktop: true, platform: 'win32' }
+        })
+        ownContext = true
+      } else if (check.context === 'fb2102') {
+        ctx = await browser.newContext({ viewport: { width: 1912, height: 914 }, deviceScaleFactor: 1 })
+        await ctx.addInitScript(() => {
+          localStorage.setItem('tandem.theme.v1', 'dark')
         })
         ownContext = true
       }

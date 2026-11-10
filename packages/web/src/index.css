@@ -1246,12 +1246,13 @@ html.feedback-mode [data-feedback-hover].settings-item {
 }
 
 /* ---------- overlay 滚动条：原生条在 base 层全局隐藏，由 OverlayScrollbar 自绘 ---------- */
-/* 只有一个实例（App 根部），固定定位、不占布局宽度；滚动/靠近右缘时淡入，停止 800ms 后淡出。 */
+/* 只有一个实例（App 根部），固定定位、不占布局宽度；滚动/靠近右缘时淡入，停止 800ms 后淡出。
+   z-index 由 OverlayScrollbar 按目标所在浮层设置：背景区域低于弹窗/抽屉/菜单，弹窗自己的滚动条高于弹窗。 */
 .overlay-scrollbar {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 70;
+  z-index: 30;
   width: 6px;
   height: 40px;
   border-radius: 999px;
