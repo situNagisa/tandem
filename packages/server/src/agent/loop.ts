@@ -12,6 +12,7 @@ import type { Host } from '../host.js';
 import type { SessionRecord } from '../types.js';
 import { streamChat } from '../providers/index.js';
 import { executeTool } from '../tools/index.js';
+import { localHostEnv } from '../host-env.js';
 import { isReadOnlySubagentInput } from '../tools/task.js';
 import { errorMessage, truncateMiddle } from '../util/text.js';
 import { costOfUsage, priceForModel } from '../usage.js';
@@ -1164,6 +1165,7 @@ async function executeToolUses(
     const toolCtx = {
       cwd: rec.cwd,
       session: rec,
+      env: localHostEnv,
       signal,
       updateTodos: (todos: SessionRecord['todos']) => host.updateTodos(rec, todos),
       setUsage: (usage: SessionRecord['usage']) => {

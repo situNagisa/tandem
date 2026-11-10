@@ -1,4 +1,5 @@
 // 服务端内部类型：在协议类型之上补充持久化/运行时字段。
+import type { HostEnv } from './host-env.js';
 import type {
   Checkpoint,
   ContentBlock,
@@ -265,6 +266,8 @@ export interface ToolContext {
   cwd: string;
   session: SessionRecord;
   signal: AbortSignal;
+  /** 项目所在机器的访问接口：工具读写文件、遍历目录、执行命令都经它。 */
+  env: HostEnv;
   updateTodos: (todos: Todo[]) => void;
   setUsage?: (usage: Usage) => void;
   /** Task 工具：在当前会话下创建子代理会话并执行完整 agent 循环。 */

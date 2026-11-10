@@ -1,12 +1,12 @@
 // Grep：优先调用 ripgrep，缺失时用 JS 实现（同样的参数子集）。
-import { spawn, spawnSync } from 'node:child_process';
-import { readFileSync, statSync } from 'node:fs';
-import path from 'node:path';
+import type { HostEnv } from '../host-env.js';
 import type { ToolContext, ToolDefinition, ToolResult } from '../types.js';
-import { walkFiles } from '../util/fs-walk.js';
 import { matchGlob } from '../util/glob.js';
 import { isSubPath, resolvePath, toPosix } from '../util/path.js';
 import { truncateEnd } from '../util/text.js';
+
+const MAX_FILE_BYTES = 2 * 1024 * 1024;
+const RG_OUTPUT_LIMIT = 10_000_000;
 
 type OutputMode = 'content' | 'files_with_matches' | 'count';
 
@@ -66,33 +66,19 @@ export const definition: ToolDefinition = {
   },
 };
 
-let rgChecked = false;
-let rgAvailable = false;
-
-function hasRipgrep(): boolean {
-  if (rgChecked) return rgAvailable;
-  rgChecked = true;
-  try {
-    const res = spawnSync('rg', ['--version'], { stdio: 'ignore', timeout: 3000 });
-    rgAvailable = res.status === 0;
-  } catch {
-    rgAvailable = false;
-  }
-  return rgAvailable;
-}
-
 function intOf(value: unknown, fallback = 0): number {
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
 }
 
 export async function run(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
+  const { env } = ctx;
   const pattern = typeof input.pattern === 'string' ? input.pattern : '';
   if (!pattern) return { content: '缺少 pattern 参数', isError: true };
 
-  const searchPath = input.path ? resolvePath(ctx.cwd, String(input.path)) : ctx.cwd;
+  const searchPath = input.path ? resolvePath(ctx.cwd, String(input.path), env) : ctx.cwd;
   try {
-    statSync(searchPath);
+    await env.fs.stat(searchPath);
   } catch {
     return { content: `搜索路径不存在: ${searchPath}`, isError: true };
   }
@@ -122,7 +108,9 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
   };
 
   try {
-    const output = hasRipgrep() ? await runRipgrep(options, ctx.signal) : runJs(options, ctx.signal);
+    const output = (await env.hasRipgrep())
+      ? await runRipgrep(env, options, ctx.signal)
+      : await runJs(env, options, ctx.signal);
     if (!output.trim()) return { content: `未找到匹配 "${pattern}" 的内容` };
     return { content: truncateEnd(output, 30_000) };
   } catch (err) {
@@ -136,62 +124,44 @@ function applyLimit(lines: string[], options: GrepOptions): string[] {
   return lines.slice(from, to);
 }
 
-function runRipgrep(options: GrepOptions, signal: AbortSignal): Promise<string> {
+async function runRipgrep(env: HostEnv, options: GrepOptions, signal: AbortSignal): Promise<string> {
   if (signal.aborted) throw new Error('用户中断');
-  return new Promise<string>((resolve, reject) => {
-    const args = ['--color', 'never', '--no-heading', '--no-messages'];
-    if (options.mode === 'content') {
-      if (options.lineNumbers) args.push('--line-number');
-      args.push('--with-filename');
-    } else if (options.mode === 'files_with_matches') {
-      args.push('--files-with-matches');
-    } else {
-      args.push('--count');
-    }
-    if (options.caseInsensitive) args.push('--ignore-case');
-    if (options.multiline) args.push('--multiline');
-    if (options.before > 0) args.push('-B', String(options.before));
-    if (options.after > 0) args.push('-A', String(options.after));
-    if (options.glob) args.push('--glob', options.glob);
-    if (options.fileType) args.push('--type', options.fileType);
-    args.push('--glob', '!node_modules', '--glob', '!.git');
-    args.push('--', options.pattern, options.searchPath);
+  const args = ['rg', '--color', 'never', '--no-heading', '--no-messages'];
+  if (options.mode === 'content') {
+    if (options.lineNumbers) args.push('--line-number');
+    args.push('--with-filename');
+  } else if (options.mode === 'files_with_matches') {
+    args.push('--files-with-matches');
+  } else {
+    args.push('--count');
+  }
+  if (options.caseInsensitive) args.push('--ignore-case');
+  if (options.multiline) args.push('--multiline');
+  if (options.before > 0) args.push('-B', String(options.before));
+  if (options.after > 0) args.push('-A', String(options.after));
+  if (options.glob) args.push('--glob', options.glob);
+  if (options.fileType) args.push('--type', options.fileType);
+  args.push('--glob', '!node_modules', '--glob', '!.git');
+  args.push('--', options.pattern, options.searchPath);
 
-    const child = spawn('rg', args, { cwd: options.cwd, signal });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (chunk: Buffer) => {
-      if (stdout.length < 10_000_000) stdout += chunk.toString('utf8');
-    });
-    child.stderr.on('data', (chunk: Buffer) => {
-      if (stderr.length < 10_000) stderr += chunk.toString('utf8');
-    });
-    child.on('error', (err) => reject(err));
-    child.on('close', (code) => {
-      if (code === 1) return resolve('');
-      if (code !== 0) return reject(new Error(stderr.trim() || `rg 退出码 ${code}`));
-      const lines = stdout.split('\n').filter(Boolean);
-      resolve(applyLimit(lines, options).join('\n'));
-    });
-  });
+  const res = await env.exec({ argv: args, cwd: options.cwd, signal, outputLimit: RG_OUTPUT_LIMIT });
+  if (res.exit === 1) return '';
+  if (res.exit !== 0) throw new Error(res.stderr.toString('utf8').trim() || `rg 退出码 ${res.exit}`);
+  const lines = res.stdout.toString('utf8').split('\n').filter(Boolean);
+  return applyLimit(lines, options).join('\n');
 }
 
-function displayPath(base: string, cwd: string): string {
-  if (isSubPath(cwd, base)) return toPosix(path.relative(cwd, base)) || '.';
+function displayPath(base: string, cwd: string, env: HostEnv): string {
+  if (isSubPath(cwd, base, env)) return toPosix(env.path.relative(cwd, base), env) || '.';
   return base;
 }
 
-function runJs(options: GrepOptions, signal: AbortSignal): string {
+async function runJs(env: HostEnv, options: GrepOptions, signal: AbortSignal): Promise<string> {
   const { searchPath } = options;
-  let isDir = false;
-  try {
-    isDir = statSync(searchPath).isDirectory();
-  } catch {
-    // handled by caller
-  }
-  const files = isDir
-    ? walkFiles(searchPath, { maxEntries: 20_000, signal })
-    : [searchPath];
+  const info = await env.fs.stat(searchPath).catch(() => undefined);
+  if (!info || info.type === 'other') return '';
+  const isDir = info.type === 'dir';
+  const files = isDir ? await env.fs.walk(searchPath, { maxEntries: 20_000, signal, linkedFiles: true }) : [searchPath];
 
   let regex: RegExp;
   try {
@@ -203,26 +173,20 @@ function runJs(options: GrepOptions, signal: AbortSignal): string {
   const entries: string[] = [];
   for (const file of files) {
     if (signal.aborted) break;
-    const rel = isDir ? toPosix(path.relative(searchPath, file)) : path.basename(file);
+    const rel = isDir ? toPosix(env.path.relative(searchPath, file), env) : env.path.basename(file);
     if (options.glob && !matchGlob(rel, options.glob)) continue;
 
-    let stat;
+    let host;
     try {
-      stat = statSync(file);
+      host = await env.fs.read(file, MAX_FILE_BYTES);
     } catch {
       continue;
     }
-    if (!stat.isFile() || stat.size > 2 * 1024 * 1024) continue;
-
-    let content: string;
-    try {
-      content = readFileSync(file, 'utf8');
-    } catch {
-      continue;
-    }
+    if (host.size > MAX_FILE_BYTES) continue;
+    const content = host.data.toString('utf8');
     if (content.includes('\0')) continue; // 跳过二进制文件
 
-    const shown = displayPath(file, options.cwd) || file;
+    const shown = displayPath(file, options.cwd, env) || file;
     if (options.mode === 'content') {
       if (options.multiline) {
         regex.lastIndex = 0;

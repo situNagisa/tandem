@@ -1,6 +1,4 @@
 // Read：按行读取文本文件（带行号）；图片以 image 块返回。
-import { readFileSync, statSync } from 'node:fs';
-import path from 'node:path';
 import type { ContentBlock } from '@tandem/protocol';
 import type { ToolContext, ToolDefinition, ToolResult } from '../types.js';
 import { resolvePath } from '../util/path.js';
@@ -38,24 +36,25 @@ export const definition: ToolDefinition = {
 };
 
 export async function run(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
+  const { env } = ctx;
   const rawPath = typeof input.file_path === 'string' ? input.file_path : '';
   if (!rawPath) return { content: '缺少 file_path 参数', isError: true };
-  const filePath = resolvePath(ctx.cwd, rawPath);
+  const filePath = resolvePath(ctx.cwd, rawPath, env);
 
   let stat;
   try {
-    stat = statSync(filePath);
+    stat = await env.fs.stat(filePath);
   } catch {
     return { content: `文件不存在: ${filePath}`, isError: true };
   }
-  if (stat.isDirectory()) return { content: `这是一个目录，不是文件: ${filePath}`, isError: true };
+  if (stat.type === 'dir') return { content: `这是一个目录，不是文件: ${filePath}`, isError: true };
 
-  const mediaType = IMAGE_TYPES[path.extname(filePath).toLowerCase()];
+  const mediaType = IMAGE_TYPES[env.path.extname(filePath).toLowerCase()];
   if (mediaType) {
     if (stat.size > MAX_IMAGE_BYTES) {
       return { content: `图片过大（${stat.size} 字节），无法读取`, isError: true };
     }
-    const dataBase64 = readFileSync(filePath).toString('base64');
+    const dataBase64 = (await env.fs.read(filePath)).data.toString('base64');
     const image: ContentBlock = { type: 'image', mediaType, dataBase64 };
     return {
       content: `已读取图片文件: ${filePath}（${mediaType}，${stat.size} 字节）`,
@@ -72,7 +71,7 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
 
   let text: string;
   try {
-    text = readFileSync(filePath, 'utf8');
+    text = (await env.fs.read(filePath)).data.toString('utf8');
   } catch (err) {
     return { content: `读取失败: ${(err as Error).message}`, isError: true };
   }

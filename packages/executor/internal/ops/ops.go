@@ -83,6 +83,7 @@ var handlers = map[string]Handler{
 	"fs.mkdir":   fsMkdir,
 	"fs.rename":  fsRename,
 	"fs.remove":  fsRemove,
+	"fs.walk":    fsWalk,
 	"sys.info":   sysInfo,
 }
 

@@ -7,6 +7,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
+	"sort"
 	"testing"
 )
 
@@ -177,5 +180,165 @@ func TestReadRangeAndDirectory(t *testing.T) {
 	}
 	if _, e := call(t, "fs.read", newStream(nil), map[string]any{"path": filepath.Dir(p)}); codeOf(e) != EISDIR {
 		t.Fatalf("read directory: code = %q, want EISDIR", codeOf(e))
+	}
+}
+
+func runWalk(t *testing.T, args map[string]any) ([]string, map[string]any) {
+	t.Helper()
+	s := newStream(nil)
+	res, e := call(t, "fs.walk", s, args)
+	if e != nil {
+		t.Fatalf("walk: %v", e)
+	}
+	var paths []string
+	if s.out.Len() > 0 {
+		for _, p := range bytes.Split(bytes.TrimSuffix(s.out.Bytes(), []byte{0}), []byte{0}) {
+			paths = append(paths, string(p))
+		}
+	}
+	sort.Strings(paths)
+	return paths, res.(map[string]any)
+}
+
+func writeFiles(t *testing.T, root string, names ...string) {
+	t.Helper()
+	for _, n := range names {
+		p := filepath.Join(root, filepath.FromSlash(n))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(n), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func sortedJoin(root string, names ...string) []string {
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		out = append(out, filepath.Join(root, filepath.FromSlash(n)))
+	}
+	sort.Strings(out)
+	return out
+}
+
+func TestWalkSkipsIgnoredDirsAndHonorsDepth(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root,
+		"a.txt",
+		"sub/b.txt",
+		"sub/deep/c.txt",
+		"sub/deep/deeper/d.txt",
+		"node_modules/x.js",
+		".git/config",
+		"sub/node_modules/y.js",
+	)
+	paths, res := runWalk(t, map[string]any{
+		"root":     root,
+		"ignore":   []string{"node_modules", ".git"},
+		"maxDepth": 2,
+	})
+	want := sortedJoin(root, "a.txt", "sub/b.txt", "sub/deep/c.txt")
+	if !reflect.DeepEqual(paths, want) {
+		t.Fatalf("paths = %v, want %v", paths, want)
+	}
+	if res["count"] != 3 || res["truncated"] != false {
+		t.Fatalf("result = %v", res)
+	}
+}
+
+func TestWalkMaxEntriesTruncates(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, "1", "2", "3", "4", "5")
+
+	paths, res := runWalk(t, map[string]any{"root": root, "maxEntries": 3})
+	if len(paths) != 3 || res["count"] != 3 || res["truncated"] != true {
+		t.Fatalf("maxEntries=3: paths=%d result=%v", len(paths), res)
+	}
+
+	paths, res = runWalk(t, map[string]any{"root": root, "maxEntries": 5})
+	if len(paths) != 5 || res["count"] != 5 || res["truncated"] != false {
+		t.Fatalf("maxEntries=5 (exact fit): paths=%d result=%v", len(paths), res)
+	}
+
+	paths, res = runWalk(t, map[string]any{"root": root, "maxEntries": 6})
+	if len(paths) != 5 || res["count"] != 5 || res["truncated"] != false {
+		t.Fatalf("maxEntries=6: paths=%d result=%v", len(paths), res)
+	}
+}
+
+func TestWalkMissingRootIsEmpty(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "missing")
+	paths, res := runWalk(t, map[string]any{"root": root})
+	if len(paths) != 0 || res["count"] != 0 || res["truncated"] != false {
+		t.Fatalf("missing root: paths=%v result=%v", paths, res)
+	}
+}
+
+func TestWalkLinkedFiles(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, "f.txt", "real/g.txt")
+	links := map[string]string{
+		"lf":       filepath.Join(root, "f.txt"),
+		"ld":       filepath.Join(root, "real"),
+		"dangling": filepath.Join(root, "missing"),
+	}
+	for name, target := range links {
+		if err := os.Symlink(target, filepath.Join(root, name)); err != nil {
+			if runtime.GOOS == "windows" {
+				t.Skipf("当前环境无法创建符号链接：%v", err)
+			}
+			t.Fatal(err)
+		}
+	}
+
+	paths, _ := runWalk(t, map[string]any{"root": root, "linkedFiles": false})
+	if want := sortedJoin(root, "f.txt", "real/g.txt"); !reflect.DeepEqual(paths, want) {
+		t.Fatalf("linkedFiles=false: paths = %v, want %v", paths, want)
+	}
+
+	paths, _ = runWalk(t, map[string]any{"root": root, "linkedFiles": true})
+	if want := sortedJoin(root, "f.txt", "lf", "real/g.txt"); !reflect.DeepEqual(paths, want) {
+		t.Fatalf("linkedFiles=true: paths = %v, want %v", paths, want)
+	}
+}
+
+func TestWalkNULOutputMatchesDirectTraversal(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, "a.txt", "dir with space/b c.txt", "x/y/z/deep.md", "x/other.go")
+
+	var direct []string
+	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.Type().IsRegular() {
+			direct = append(direct, p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(direct)
+
+	paths, res := runWalk(t, map[string]any{"root": root, "maxDepth": 16})
+	if !reflect.DeepEqual(paths, direct) {
+		t.Fatalf("walk = %v, direct = %v", paths, direct)
+	}
+	if res["count"] != len(direct) {
+		t.Fatalf("count = %v, want %d", res["count"], len(direct))
+	}
+}
+
+func TestStatDanglingSymlinkIsENOENT(t *testing.T) {
+	dir := t.TempDir()
+	link := filepath.Join(dir, "broken")
+	if err := os.Symlink(filepath.Join(dir, "nope"), link); err != nil {
+		t.Skipf("符号链接不可用：%v", err)
+	}
+	_, e := call(t, "fs.stat", newStream(nil), map[string]any{"path": link})
+	if codeOf(e) != ENOENT {
+		t.Fatalf("stat dangling link code = %q, want ENOENT", codeOf(e))
 	}
 }
