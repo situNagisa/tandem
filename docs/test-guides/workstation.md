@@ -1,6 +1,6 @@
 # 工作站：给产品所有者的代测步骤
 
-> 更新：2026-11-09。
+> 更新：2026-11-10。
 
 > 全程在公司内网 / VPN，**不要做端口映射或公网暴露**。Node ≥ 22，各端 Tandem 版本一致。真实模型 Key 不必配置；登录、主机登记与转发不依赖模型（发消息需要至少一个可用账号）。
 > 设计见 `docs/workstation.md`；有问题用反馈模式导出 `tandem-feedback-*.json` 发飞书。
@@ -53,11 +53,11 @@ docker run -d --name tandem-workstation -p 8481:8481 -v tandem-workstation-data:
 2. **其他成员**打开同一地址 → **注册账号**。默认开放注册；管理员可在「工作站」页改为「仅邀请」，之后用「生成邀请码」发给成员。
 3. **每台主机**（包括管理员自己的电脑）：
    - 桌面端：设置 → 成员与分享 → 工作站 → 连接工作站 → 用账号登录工作站；但**登录 ≠ 添加**。
-   - 管理员/成员在工作站页 **添加主机** → 复制对应平台的一行命令，在主机那台机器上执行一次。已装 `tandem-host` 的机器可只执行
+   - 管理员/成员在工作站页 **添加主机** → 复制对应平台的一行命令，在主机那台机器上执行一次（窗口停在「已连接工作站」即正常，主机在前台运行）。已装 `tandem-host` 的机器可只执行
      ```bash
-     tandem-host join http://<服务器IP>:8481 --token <注册令牌> --service
+     tandem-host join http://<服务器IP>:8481 --token <注册令牌>
      ```
-     本机也可以在弹层里点「添加这台电脑」。
+     加 `--service` 才设置开机自启（下次登录生效）。本机也可以在弹层里点「添加这台电脑」。
 4. **可见性**：成员 A 只看到自己添加的主机；成员 B 看不到 A 的主机。A 在「工作站 → 我的主机 → 授权」把某台主机（可限定项目目录）授权给 B，角色选 协作者/审批者/观察者；B 刷新后只看到被授权的主机。
 5. **手机/新电脑**：只填工作站地址登录，主机列表自动出现，不需要抄主机地址或主 token。
 6. **吊销/离职**：管理员在工作站页禁用账号；该账号的请求立即 401，已开的 WS 被断开；主机端 10 秒内轮询到吊销快照兜底。
@@ -86,12 +86,12 @@ docker run -d --name tandem-workstation -p 8481:8481 -v tandem-workstation-data:
 
 ### 前置条件（Windows）
 
-- **Node.js ≥ 22**（`node -v` 能看到版本；Windows 上装的是系统 Node，不用 Electron 顶替——桌面版卸载/升级后主机还在）。没装就先让他自己执行（需要联网）：
+- **Node.js ≥ 22**（`node -v` 能看到版本）。没装就先让他自己执行（需要联网）：
   ```powershell
   winget install --id OpenJS.NodeJS.LTS -e
   ```
   装完**重开一个 PowerShell** 再执行一行命令。
-- 主机默认监听 `127.0.0.1:7878`。如果调试版桌面端正开着，它会占用 7878：新命令会检测到「另一个数据目录的 Tandem Host」并自动改用 7879（输出里会写），此时登记仍然会成功，不用先关桌面端。
+- 主机不监听固定端口（只在回环地址上用随机端口），与桌面版/调试版占用的 7878 互不影响。数据目录是 `%USERPROFILE%\.tandem-host\data`，不会碰桌面版的 `%USERPROFILE%\.tandem`。
 - PowerShell 7（`pwsh`）与 Windows PowerShell 5.1 都应通过；脚本全程 `throw`、不 `exit`，避免关掉用户的窗口。
 
 ### A. 浏览器（Chrome / Edge）
@@ -102,27 +102,30 @@ docker run -d --name tandem-workstation -p 8481:8481 -v tandem-workstation-data:
 4. 注册一个真实账号（登录页「注册」→ 用户名/密码）→ 登录后应显示「先添加一台主机」空状态，新会话按钮灰掉并有说明。
 5. 点「添加主机」：弹层默认选 Windows，命令形如
    `& ([scriptblock]::Create((irm http://<工作站地址>/install.ps1))) -Token 'ach_…'`
-   令牌旁有 15 分钟倒计时；点复制后在 PowerShell 粘贴执行。
-6. 执行过程应显示「正在下载主机安装包… → 正在安装到 C:\Users\<你>\.tandem-host\app → 使用 Node: … (v22+) → 已加入工作站「…」→ 已登记完成」，最后一行是成功、退出码 0。弹层应从「等待主机连接…」变成「已连接 <电脑名>」，主机列表出现该电脑，可新建会话。
-   登录自启用**当前用户的启动项** `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 的 `TandemHost`（无需管理员；schtasks 的 ONLOGON 在非管理员会话里会「拒绝访问」）。主机进程由 `…\AppData\Local\Tandem\tandem-host-run.cmd` 循环拉起，退出后 5 秒重启。
-7. 失败时看最后几行：
-   - 退出码是**负数**（如 `-1073740791` / `0xC0000409`）= tandem-host 进程崩溃，脚本会打印它最后 20 行输出，并写日志到 `%USERPROFILE%\.tandem-host\install.log` —— 把日志回传，别说成绑定码过期。
-   - 提示「绑定码无效、已使用或已过期」才是令牌问题：重新生成再执行。
-   - 提示「连不上工作站」是网络/地址问题。
-   不应再出现 `tar.exe: Invalid empty pathname`，也不应出现 `Assertion failed: … src\win\async.c, line 94`。
+   令牌旁有 15 分钟倒计时；点复制后在 PowerShell 粘贴执行。「开机自启（需要相应权限）」默认关闭，本轮先不勾。
+6. 执行过程应依次显示「正在下载主机安装包… → 正在安装到 C:\Users\<你>\.tandem-host\app … → 正在登记本机到 … → 已加入工作站「…」，正在建立出站连接… → 已连接工作站「…」，主机名 <电脑名>；关闭此窗口即断开。」**窗口停在这一行不退出是正常的**：主机在前台运行。弹层应从「等待主机连接…」变成「已连接 <电脑名>」，主机列表出现该电脑，可新建会话。
+7. 验证「关闭即断开」：关掉该 PowerShell 窗口（或 Ctrl+C）→ 客户端主机列表里该主机应变为离线。再把同一行命令执行一次：本机已加入同一工作站，应直接「已连接」，不报错（令牌已用也没关系）。
+8. 验证开机自启（可选）：勾选「开机自启（需要相应权限）」后复制命令执行，窗口仍保持连接；`reg query HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v TandemHost` 应能查到启动项。注销并重新登录后，主机应自动上线（不需要再执行命令）。
+9. 失败时看最后几行（把窗口里的完整输出回传）：
+   - 「没有找到 Node.js 22 或更高版本」→ 先按提示装 Node，重开 PowerShell 再执行。
+   - 「无法从 …/dl/tandem-host.zip 下载主机安装包」→ 工作站没有随附安装包，或本机连不上工作站地址。
+   - 「绑定码无效、已使用或已过期」→ 令牌问题：在工作站重新生成后再执行。
+   - 「本机连不上工作站」→ 网络/地址问题（先用浏览器打开工作站地址确认）。
+   - 「开机自启设置失败，不影响本次连接」→ 只是警告，前台连接仍然有效；把这行回传即可。
+   - 不应再出现 `tar.exe: Invalid empty pathname`，也不应出现 `Assertion failed: … src\win\async.c`；若出现，连同窗口输出一起回传。
 
 ### B. 另一台机器执行一行命令
 
 1. 在客户端「添加主机」里选目标系统（Windows / macOS / Linux），复制命令；令牌一次性、15 分钟有效，关掉弹层即作废。
-2. Windows（PowerShell，**无需管理员**）：粘贴执行；安装到 `%USERPROFILE%\.tandem-host\app`，登录自启靠当前用户的启动项（加 `-NoService` 只起后台进程、不写启动项）。
+2. Windows（PowerShell，**无需管理员**）：粘贴执行；安装到 `%USERPROFILE%\.tandem-host\app`，数据目录 `%USERPROFILE%\.tandem-host\data`。窗口停在「已连接工作站…」即正常。
 3. macOS / Linux（终端）：
    ```bash
    curl -fsSL http://<工作站地址>/install.sh | sh -s -- --token ach_…
    ```
-   Linux 装为 `systemd --user`、macOS 装为 launchd LaunchAgent；加 `--no-service` 只起后台进程。
-4. 执行后回到客户端：弹层显示「已连接 <主机名>」，主机列表出现新主机；关掉弹层再打开，主机仍在。
-5. 想验证一次性：把同一命令再执行一次到另一台机器，应被拒绝并提示令牌已使用/已过期。
-6. 验证退出码不误导：故意用一个乱填的 `-Token ach_xxx` 再跑一次，应看到「绑定码无效、已使用或已过期」+ 重新生成的提示，**退出码 1**（不是 `-1073740791`），并且 `%USERPROFILE%\.tandem-host\install.log` 里有一份脱敏输出。
+   前台运行，关闭终端即断开。加 `--service` 设置开机自启：Linux 写 `systemd --user` 单元、macOS 写 LaunchAgent，下次登录生效；没有 systemd --user 时只提示警告，不影响连接。
+4. 执行后回到客户端：弹层显示「已连接 <主机名>」，主机列表出现新主机；关掉终端后主机离线，重新执行同一命令后恢复在线。
+5. 想验证一次性：把同一命令再用到另一台机器（新的数据目录），应被拒绝并提示令牌已使用/已过期，退出码非零。
+6. 验证退出码不误导：故意用一个乱填的 `-Token ach_xxx` 再跑一次，应看到「绑定码无效、已使用或已过期」+ 重新生成的提示，**退出码 1**（不是 `-1073740791`）。
 
 ## 六、需要回传的信息
 

@@ -23,13 +23,15 @@ export function resolveBuildFlavor(value) {
   return value === 'release' ? 'release' : 'debug'
 }
 
+export function serverFlavorSource(flavor) {
+  const resolved = resolveBuildFlavor(flavor)
+  return `// 由 scripts/write-flavor.mjs 在构建时写死，勿手改。\nexport const FLAVOR = '${resolved}';\nexport const IS_DEBUG_FLAVOR = ${resolved === 'debug'};\n`
+}
+
 export function writeServerFlavor(flavor) {
   const resolved = resolveBuildFlavor(flavor)
   fs.mkdirSync(path.dirname(SERVER_FLAVOR_FILE), { recursive: true })
-  fs.writeFileSync(
-    SERVER_FLAVOR_FILE,
-    `// 由 scripts/write-flavor.mjs 在构建时写死，勿手改。\nexport const FLAVOR = '${resolved}';\nexport const IS_DEBUG_FLAVOR = ${resolved === 'debug'};\n`,
-  )
+  fs.writeFileSync(SERVER_FLAVOR_FILE, serverFlavorSource(resolved))
   fs.rmSync(SERVER_FLAVOR_MAP, { force: true })
   return resolved
 }

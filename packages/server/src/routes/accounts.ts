@@ -6,6 +6,7 @@ import { bad, str } from './common.js';
 import { principalOf } from '../team/access.js';
 import { embeddedDataDir, embeddedStatus, startEmbeddedWorkstation } from '../workstation/manager.js';
 import { readWorkstationMeta } from '../workstation/server.js';
+import { joinWorkstation } from '../workstation/join.js';
 
 export function isPublicAccountPath(pathname: string): boolean {
   return (
@@ -94,59 +95,15 @@ export function registerAccountRoutes(app: FastifyInstance, deps: RouteDeps): vo
       totp?: unknown;
       name?: unknown;
     };
-    const workstationUrl = str(body.workstationUrl);
-    if (!workstationUrl) return bad(reply, '请填写工作站地址');
-    const target = workstationUrl.trim().replace(/\/+$/, '');
-    // 已加入同一工作站：幂等返回当前状态（重复执行同一条安装命令不报错）；已加入别的工作站才拒绝。
-    const existing = accounts().workstationJoin();
-    if (existing) {
-      if (existing.url.replace(/\/+$/, '').toLowerCase() === target.toLowerCase()) {
-        deps.workstation?.start();
-        return accounts().status();
-      }
-      return bad(reply, `本机已加入工作站 ${existing.url}，请先退出后再加入其他工作站`, 409);
-    }
-    const code = str(body.code);
-    let accessToken: string | undefined;
-    const username = str(body.username);
-    if (!code) {
-      if (!username || typeof body.password !== 'string' || !body.password) {
-        return bad(reply, '请填写绑定码，或用工作站账号登录');
-      }
-      let res: Response;
-      try {
-        res = await fetch(`${target}/api/workstation/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username,
-            password: body.password,
-            ...(typeof body.totp === 'string' && body.totp ? { totp: body.totp } : {}),
-          }),
-          signal: AbortSignal.timeout(15_000),
-        });
-      } catch (err) {
-        return bad(reply, `无法连接工作站：${(err as Error).message}`, 502);
-      }
-      const data = (await res.json().catch(() => ({}))) as { accessToken?: string; error?: string };
-      if (!res.ok || !data.accessToken) return bad(reply, data.error ?? `工作站返回 ${res.status}`, 502);
-      accessToken = data.accessToken;
-    }
-    const status = await accounts().registerAsHost(
-      target,
-      {
-        id: host.config.hostId,
-        name: str(body.name) || selfName(app),
-        urls: localUrls(app),
-        ...(host.version ? { version: host.version } : {}),
-        platform: process.platform,
-      },
-      code ? { code } : { accessToken: accessToken! },
-    );
-    deps.workstation?.start();
-    // 加入后立刻切到账号级模型账号，并把本机旧 profiles（含 Key）迁移到工作站。
-    void host.enableWorkstationProfiles();
-    return status;
+    return joinWorkstation(host, deps.workstation, {
+      workstationUrl: str(body.workstationUrl),
+      code: str(body.code),
+      username: str(body.username),
+      password: typeof body.password === 'string' ? body.password : '',
+      totp: typeof body.totp === 'string' ? body.totp : '',
+      name: str(body.name) || selfName(app),
+      urls: localUrls(app),
+    });
   });
 
   app.post('/api/workstation/leave', async (req, reply) => {

@@ -38,13 +38,29 @@ test('Windows PowerShell 一行命令使用 install.ps1 并带引号令牌', () 
 })
 
 test('已装 tandem-host 的 join 命令与平台无关', () => {
-  const expected = 'tandem-host join http://192.168.1.10:8481 --token ach_0123456789abcdef --service'
+  const expected = 'tandem-host join http://192.168.1.10:8481 --token ach_0123456789abcdef'
   for (const platform of ['linux', 'macos', 'windows'] as const) {
     expect(
       buildAddHostCommands({ workstationUrl: 'http://192.168.1.10:8481', token: TOKEN, platform })
         .installed,
     ).toBe(expected)
   }
+})
+
+test('默认命令不带开机自启；勾选后追加 --service / -Service', () => {
+  const input = { workstationUrl: 'http://192.168.1.10:8481', token: TOKEN }
+  expect(buildAddHostCommands({ ...input, platform: 'linux' }).oneLiner).toBe(
+    'curl -fsSL http://192.168.1.10:8481/install.sh | sh -s -- --token ach_0123456789abcdef',
+  )
+  expect(buildAddHostCommands({ ...input, platform: 'linux', service: true }).oneLiner).toBe(
+    'curl -fsSL http://192.168.1.10:8481/install.sh | sh -s -- --token ach_0123456789abcdef --service',
+  )
+  expect(buildAddHostCommands({ ...input, platform: 'windows', service: true }).oneLiner).toBe(
+    "& ([scriptblock]::Create((irm http://192.168.1.10:8481/install.ps1))) -Token 'ach_0123456789abcdef' -Service",
+  )
+  expect(buildAddHostCommands({ ...input, platform: 'macos', service: true }).installed).toBe(
+    'tandem-host join http://192.168.1.10:8481 --token ach_0123456789abcdef --service',
+  )
 })
 
 test('结尾斜杠与空白会被去掉', () => {

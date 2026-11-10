@@ -12,7 +12,7 @@
  *   node e2e/regression.mjs --only "更多菜单"   只跑名称包含该片段的用例
  */
 import assert from 'node:assert/strict'
-import { execFileSync, spawn, spawnSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import {
   chmodSync,
   existsSync,
@@ -10581,6 +10581,7 @@ async function main() {
           extraEnv: { TANDEM_DEBUG_ACCOUNT: undefined },
         })
         let installedPrefix = ''
+        let installer
         try {
           const port = await debugHost.ready
           const debugBase = `http://127.0.0.1:${port}`
@@ -10631,26 +10632,33 @@ async function main() {
             execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'pack-host.mjs')], { cwd: ROOT, stdio: 'pipe' })
           }
           const installRoot = path.join(home, 'gate-install')
-          installedPrefix = path.join(installRoot, 'host')
+          installedPrefix = installRoot
           const installHome = path.join(installRoot, 'home')
-          const hostPort = await freeTcpPort()
           const env = {
             ...process.env,
             HOME: installHome,
-            TANDEM_HOME: installedPrefix,
-            TANDEM_INSTALL_DIR: path.join(installRoot, 'app'),
+            TANDEM_INSTALL_DIR: installRoot,
             TANDEM_DEBUG_ACCOUNT: '0',
             NO_PROXY: '127.0.0.1,localhost',
             no_proxy: '127.0.0.1,localhost',
           }
-          const installed = spawnSync(
-            'sh',
-            ['-c', `curl -fsSL ${shareUrl}/install.sh | sh -s -- --token ${token} --no-service --port ${hostPort}`],
-            { env, encoding: 'utf8', timeout: 120_000 },
+          // 安装脚本前台连接工作站、不会自行退出：等输出出现「已连接工作站」后再看对话框。
+          installer = spawn('sh', ['-c', `curl -fsSL ${shareUrl}/install.sh | sh -s -- --token ${token}`], {
+            env,
+            stdio: ['ignore', 'pipe', 'pipe'],
+          })
+          let installOut = ''
+          installer.stdout.setEncoding('utf8')
+          installer.stdout.on('data', (chunk) => (installOut += chunk))
+          installer.stderr.setEncoding('utf8')
+          installer.stderr.on('data', (chunk) => (installOut += chunk))
+          await waitForValue(
+            () => (/已连接工作站/.test(installOut) || installer.exitCode !== null ? true : null),
+            120_000,
+            '安装脚本应前台连接工作站',
           )
-          const out = `${installed.stdout ?? ''}${installed.stderr ?? ''}`
-          assert.equal(installed.status, 0, `install.sh 失败：${out}`)
-          assert.match(out, /已加入工作站/, '安装脚本应完成登记')
+          assert.match(installOut, /已加入工作站/, `安装脚本应完成登记：${installOut}`)
+          assert.match(installOut, /已连接工作站/, `安装脚本应保持前台连接：${installOut}`)
 
           const status = page.locator('[data-testid="addhost-status"]')
           await page.waitForFunction(
@@ -10660,6 +10668,7 @@ async function main() {
           )
           assert.match(await status.innerText(), /已连接/, '对话框应实时显示已连接')
         } finally {
+          installer?.kill('SIGTERM')
           killHostsUnder(installedPrefix)
           debugHost.child.kill('SIGTERM')
         }

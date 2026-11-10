@@ -17,6 +17,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createDependencyCopier } from './lib/dep-closure.mjs';
+import { serverFlavorSource } from './write-flavor.mjs';
 import { assertPackable, collectFiles, filterNativeModules, pruneRuntime, zipDirectory } from './lib/host-pack.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -47,6 +48,8 @@ try {
   for (const extra of ['src', 'test', 'host-pack', 'tsconfig.json', 'package-lock.json']) {
     fs.rmSync(path.join(stage, extra), { recursive: true, force: true });
   }
+  // 主机安装包永远按发布版运行：不论 dist 是哪种风味构建的，这里写死 release（不跑调试账号、内嵌工作站、演示主机）。
+  fs.writeFileSync(path.join(stage, 'dist', 'flavor.js'), serverFlavorSource('release'));
   const removed = pruneRuntime(stage);
   const entries = collectFiles(stage);
   // 原生预编译模块按目标平台裁剪：在 WSL 里打包时，node_modules 里同时躺着各平台的 .node；

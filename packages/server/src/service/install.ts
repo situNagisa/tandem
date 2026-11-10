@@ -1,6 +1,5 @@
-// 把本机 Host 安装为系统服务（开机自启、崩溃自动重启）。
-// buildServicePlan 是纯函数，只产出「计划」；只有 --service 且非 dry-run 时才由 CLI 执行。
-// 不做签名校验/清单：计划内容可被打印给用户核对。
+// 开机自启计划：只写配置，下次登录（或开机）时生效；不立即启动，避免和当前前台连接抢同一个主机身份。
+// buildServicePlan 是纯函数，只产出「计划」；只有 join --service 且非 dry-run 时才由 CLI 执行。
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
@@ -10,10 +9,8 @@ export interface ServicePlanInput {
   nodePath: string;
   cliPath: string;
   home: string;
-  port: number;
   logFile: string;
   userHome: string;
-  uid?: number;
   /** Windows 专用；缺省按 userHome\AppData\Local。 */
   localAppData?: string;
 }
@@ -29,7 +26,7 @@ export interface ServicePlanFile {
 export interface ServicePlanCommand {
   cmd: string;
   args: string[];
-  /** 尽力而为：失败只提示，不中断（如 loginctl enable-linger、重复 launchctl bootout）。 */
+  /** 尽力而为：失败只提示，不中断（如 loginctl enable-linger）。 */
   optional?: boolean;
 }
 
@@ -38,6 +35,9 @@ export interface ServicePlan {
   commands: ServicePlanCommand[];
   note?: string;
 }
+
+/** 开机自启的主机进程：随机回环端口（工作站隧道不需要固定端口），连接由 TANDEM_HOME 里保存的加入记录决定。 */
+const SERVICE_ARGS = ['--port', '0', '--host', '127.0.0.1'];
 
 const TOKEN_PATTERN = /(?:ach|acw|tmm|dvt|tgw)_[A-Za-z0-9_-]{6,}/g;
 
@@ -83,7 +83,7 @@ function buildLinuxPlan(input: ServicePlanInput): ServicePlan {
     '[Service]',
     'Type=simple',
     `Environment="TANDEM_HOME=${input.home.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%')}"`,
-    `ExecStart=${systemdQuote(input.nodePath)} ${systemdQuote(input.cliPath)} --port ${input.port} --host 127.0.0.1`,
+    `ExecStart=${systemdQuote(input.nodePath)} ${systemdQuote(input.cliPath)} ${SERVICE_ARGS.join(' ')}`,
     'Restart=always',
     'RestartSec=5',
     `StandardOutput="append:${input.logFile.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%')}"`,
@@ -97,18 +97,17 @@ function buildLinuxPlan(input: ServicePlanInput): ServicePlan {
     files: [{ path: unitPath, content, mode: 0o644 }],
     commands: [
       { cmd: 'systemctl', args: ['--user', 'daemon-reload'] },
-      { cmd: 'systemctl', args: ['--user', 'enable', '--now', 'tandem-host'] },
+      { cmd: 'systemctl', args: ['--user', 'enable', 'tandem-host'] },
       // 不启 linger 时用户退出登录会停掉服务；无权限（容器/无 polkit）时只提示。
       { cmd: 'loginctl', args: ['enable-linger'], optional: true },
     ],
-    note: 'Linux 使用 systemd --user；systemctl --user 不可用时退回后台进程（不会开机自启）。',
+    note: 'Linux 使用 systemd --user：下次开机（linger 开启时）或登录后自动启动。没有 systemd --user 时这一步会失败，前台连接不受影响。',
   };
 }
 
 function buildMacPlan(input: ServicePlanInput): ServicePlan {
-  const uid = input.uid ?? (typeof process.getuid === 'function' ? process.getuid() : 0);
   const plistPath = path.join(input.userHome, 'Library', 'LaunchAgents', 'dev.tandem.host.plist');
-  const args = [input.nodePath, input.cliPath, '--port', String(input.port), '--host', '127.0.0.1']
+  const args = [input.nodePath, input.cliPath, ...SERVICE_ARGS]
     .map((value) => `    <string>${xmlEscape(value)}</string>`)
     .join('\n');
   const content = [
@@ -141,13 +140,8 @@ function buildMacPlan(input: ServicePlanInput): ServicePlan {
   ].join('\n');
   return {
     files: [{ path: plistPath, content, mode: 0o644 }],
-    commands: [
-      // 重复安装时先卸载旧 job（未加载会报错，忽略）。
-      { cmd: 'launchctl', args: ['bootout', `gui/${uid}/dev.tandem.host`], optional: true },
-      { cmd: 'launchctl', args: ['bootstrap', `gui/${uid}`, plistPath] },
-      { cmd: 'launchctl', args: ['kickstart', '-k', `gui/${uid}/dev.tandem.host`] },
-    ],
-    note: 'macOS 使用 launchd LaunchAgent（登录后启动、KeepAlive 自动重启）。',
+    commands: [],
+    note: 'macOS 使用 LaunchAgent：写入 ~/Library/LaunchAgents 后，下次登录时由 launchd 加载。',
   };
 }
 
@@ -168,7 +162,7 @@ function buildWindowsPlan(input: ServicePlanInput): ServicePlan {
     'setlocal',
     `set "TANDEM_HOME=${input.home}"`,
     ':run',
-    `${cmdQuote(input.nodePath)} ${cmdQuote(input.cliPath)} --port ${input.port} --host 127.0.0.1 >> ${cmdQuote(input.logFile)} 2>&1`,
+    `${cmdQuote(input.nodePath)} ${cmdQuote(input.cliPath)} ${SERVICE_ARGS.join(' ')} >> ${cmdQuote(input.logFile)} 2>&1`,
     // timeout 在隐藏窗口/输入重定向下会报错，ping 更稳。
     'ping -n 6 127.0.0.1 >nul',
     'goto run',
@@ -193,9 +187,8 @@ function buildWindowsPlan(input: ServicePlanInput): ServicePlan {
         cmd: 'reg',
         args: ['add', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', '/v', 'TandemHost', '/t', 'REG_SZ', '/d', `wscript.exe //B ${cmdQuote(vbsPath)}`, '/f'],
       },
-      { cmd: 'wscript.exe', args: ['//B', vbsPath] },
     ],
-    note: 'Windows 用当前用户的启动项（HKCU\\…\\Run，无需管理员）：登录时隐藏窗口启动，进程退出后 5 秒自动重启。',
+    note: 'Windows 用当前用户的启动项（HKCU\\…\\Run，无需管理员）：下次登录时隐藏窗口启动，进程退出后 5 秒自动重启。',
   };
 }
 
@@ -205,7 +198,7 @@ export function buildServicePlan(input: ServicePlanInput): ServicePlan {
   return buildLinuxPlan(input);
 }
 
-/** 执行计划：写文件 + 逐条执行命令；失败抛出含命令输出的错误，不吞错。 */
+/** 执行计划：写文件 + 逐条执行命令；必需命令失败抛出含输出的错误，可选命令失败只告警。 */
 export function executeServicePlan(plan: ServicePlan): void {
   for (const file of plan.files) {
     mkdirSync(path.dirname(file.path), { recursive: true });

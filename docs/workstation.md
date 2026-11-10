@@ -28,7 +28,7 @@
 
 ## 3. 添加主机
 
-客户端「添加主机」（空状态、设置 → 主机、设置 → 工作站、命令面板均可打开）给出**按平台切换的一行命令**（Windows PowerShell / macOS / Linux，分段控件 + 代码块复制）：
+客户端「添加主机」（空状态、设置 → 主机、设置 → 工作站、命令面板均可打开）给出**按平台切换的一行命令**（Windows PowerShell / macOS / Linux，分段控件 + 代码块复制）。旁边的「开机自启（需要相应权限）」开关默认关闭，打开后命令末尾追加 `-Service` / `--service`：
 
 ```powershell
 & ([scriptblock]::Create((irm http://192.168.1.10:8481/install.ps1))) -Token 'ach_…'
@@ -39,15 +39,17 @@ curl -fsSL http://192.168.1.10:8481/install.sh | sh -s -- --token ach_…
 ```
 
 - 命令里是**一次性注册令牌**：15 分钟有效、只能用一次、工作站只存 SHA-256；关闭/重新生成弹层即换新令牌。
-- 目标机器执行一次：下载本机主机安装包（由工作站随附，不接公网/第三方）、安装到 `~/.tandem-host/app`，以当前账号身份**持久**连接——Linux `systemd --user`、macOS launchd LaunchAgent、Windows 当前用户的启动项（`HKCU\…\Run`，无需管理员；schtasks 的 ONLOGON 在非管理员会话会「拒绝访问」）；进程退出自动重启、断线自动重连。只想起后台进程时加 `--no-service`。目标机需要 **Node.js ≥ 22**（系统 Node；不用 Electron 顶替，桌面版升级/卸载后主机仍可用）。
+- 目标机器执行一次，只做三件事：下载本机主机安装包（由工作站随附，不接公网/第三方）→ 解压到 `~/.tandem-host/app`（Windows：`%USERPROFILE%\.tandem-host\app`）→ **前台运行** `join`：主机进程自己用令牌向工作站登记，再建立出站长连接，打印「已连接工作站 X，主机名 Y；关闭此窗口即断开」。
+- 主机数据目录是独立的 `~/.tandem-host/data`（Windows：`%USERPROFILE%\.tandem-host\data`），不与桌面版/开发版的 `~/.tandem` 共用。主机不监听固定端口：只在回环地址上用随机端口提供本机 HTTP（隧道把工作站转发的请求交给它），局域网与其他电脑都访问不到。
+- 主机包永远按发布版运行：不跑调试版自动登录、内嵌工作站、演示主机；即使工作站是调试版，主机也只连令牌所属的工作站（打包时写死 release 风味，见 `scripts/pack-host.mjs`）。
+- **开机自启（可选）**：`--service` / `-Service` 只写入启动项——Linux `systemd --user` 单元、macOS LaunchAgent、Windows 当前用户的启动项（`HKCU\…\Run`，无需管理员）——**下次登录后**自动连接。当前窗口保持连接，不会再起第二个进程。写入失败（例如没有 systemd --user）只打印警告，不影响已连上的前台进程。
+- 目标机需要 **Node.js ≥ 22**（系统 Node；不用 Electron 顶替，桌面版升级/卸载后主机仍可用）。没有时安装脚本只提示一句并给出下载地址，不自动安装。
 - 兑换出的长期凭据（Ed25519 私钥）只存在主机本地 `accounts.json`（0600），不进客户端、不上报工作站。
 - 客户端对话框实时显示「等待主机连接… → 已注册 <主机名>，等待上线… → 已连接 <主机名>」，连接后自动同步到主机列表。
-- 已装 `tandem-host` 的机器可只执行 `tandem-host join <工作站地址> --token <令牌> --service`；同一台机器对同一工作站重复执行是幂等的。
+- 已装 `tandem-host` 的机器执行 `tandem-host join <工作站地址> --token <令牌>` 即可（前台运行，加 `--service` 设置开机自启）。安装脚本会在 `~/.local/bin/tandem-host` 放一个包装命令，它已把数据目录指向 `~/.tandem-host/data`；直接运行 `node dist/cli.js` 时不会，那样会落到 `~/.tandem`。同一台机器对同一工作站重复执行是幂等的。
 - 安装包：`scripts/pack-host.mjs` 生成 `packages/server/host-pack/tandem-host.tgz`（Unix）与 `tandem-host.zip`（Windows，安装脚本用 `Expand-Archive`，不依赖 Windows 自带 tar）。只收运行时文件，打包时断言所有路径为 ASCII、包含 `dist/cli.js`，测试夹具/文档/示例/源码映射不会进包。**原生预编译模块按目标平台裁剪**：在 WSL 里打包时 node_modules 里同时躺着各平台的 `.node`，Windows 的 ZIP 只留 `prebuilds/win32-*`、Unix 的 tgz 只留 `linux-*`/`darwin-*`，并断言混入别平台直接失败（R56 复发根因）。
-- `tandem-host join` 先确认端口上的 Tandem Host 属于本数据目录（`/api/host` 的 `id` 与本地 `hostId` 一致）：端口被另一个数据目录的实例占着时自动改用下一个空闲端口（7879…），不再拿错令牌去登记得到 401。失败按「崩溃（负退出码）/绑定码/连不上工作站」三类给不同提示。
-- 工作站没有随附安装包时，脚本失败并打印**手动安装步骤**（下载、解压、`node dist/cli.js join …`），不会静默失败。
-
-**本机也要显式添加**：桌面端提供「添加这台电脑」一键操作（内部同样走登记 + 绑定），不允许因为「本机就是工作站」而隐式出现。工作站服务自身的 Host 不自动进入任何账号的主机列表。
+- `join` 失败按「绑定码无效、已使用或已过期 / 连不上工作站 / 已加入别的工作站」三类给提示。
+- 工作站没有随附安装包时，脚本失败并说明是下载失败（工作站没有安装包，或本机连不上工作站），不会静默失败。
 
 > 调试版例外：调试版 Host 在回环地址打开时自动拉起本机工作站、登录「调试账号」，并把本机与一台**演示主机**（内置演示模型/会话/设备）登记到该账号；网页与桌面都一样，直接打开不带 `?token=` 的 Host 地址（默认 `http://127.0.0.1:7878/`）也会自动补上本机凭据进入，`TANDEM_DEBUG_ACCOUNT=0` 可显式关闭（回归用）。退出调试账号后记住不自动登录；登录页仍可用「使用调试账号登录」恢复。发布版没有调试登录与演示主机。见 `docs/features/release.md` 第 0 节。
 
@@ -127,7 +129,7 @@ docker run -d --name tandem-workstation -p 8481:8481 \
 - 两台主机：`TANDEM_HOME=/tmp/tandem-ws-h1/2 tandem-host --port 8482/8483`（mock provider），分别绑定到用户 1。
 - 两个账号：首个注册者为管理员；用户 2 默认看不到 h1/h2，授权 h2 后才看到。
 - 全新客户端只填 `http://127.0.0.1:8481`：先登录 → 主机列表（无主机时空状态）→ 添加主机 → 新建会话 → 流式回复（经工作站转发，E2E）。
-- 一行命令：工作站页面/客户端「添加主机」复制命令，在 `/tmp` 的另一个 `TANDEM_HOME` 执行（加 `--no-service`），主机上线、凭据文件 0600；同一令牌再用一次被拒。
+- 一行命令：工作站页面/客户端「添加主机」复制命令，在 `/tmp` 的假 `HOME` 下执行（安装目录 `TANDEM_INSTALL_DIR` 指向 `/tmp`），前台显示「已连接工作站」、主机在线、凭据文件 0600；同一令牌再用一次被拒。
 - 主机端口不对客户端开放（只访问 8481）仍可用；旧 `accounts.json` 启动后自动迁移；本地模式回归不变。
 - 账号与模型：在两台主机上分别配置旧 profiles → 加入工作站后工作站账号只有一份、主机本地 `profiles.json` 被删除且目录里搜不到 Key → 在远端主机会话里发消息，请求经工作站代理到 mock provider 成功 → 主机 `model-usage.json` 按账号记账。
 - 自动化：`e2e/regression.mjs`「工作站客户端-服务」用例；Playwright 截图 `/tmp/ws-shots/`；步骤见 `test-guides/workstation.md`。

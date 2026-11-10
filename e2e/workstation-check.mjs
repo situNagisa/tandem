@@ -286,7 +286,35 @@ function killHostsUnder(prefix) {
   }
 }
 
-/** 一行命令添加主机：真实 install.sh + 安装包 + 一次性令牌（起真实后台 Host 进程）。 */
+/** 一行命令添加主机：真实 install.sh + 安装包 + 一次性令牌。主机在前台连接工作站，不会自行退出。 */
+function startRun(command, args, env) {
+  const child = spawn(command, args, { env, stdio: ['ignore', 'pipe', 'pipe'] })
+  let output = ''
+  child.stdout.setEncoding('utf8')
+  child.stdout.on('data', (chunk) => (output += chunk))
+  child.stderr.setEncoding('utf8')
+  child.stderr.on('data', (chunk) => (output += chunk))
+  const exited = new Promise((resolve) => child.once('exit', (code) => resolve(code)))
+  return { child, exited, output: () => output }
+}
+
+/** 结束前台进程：先按 TANDEM_HOME 结束主机（管道里的 node 不在 sh 的直接子进程树里），再结束 sh。 */
+async function stopRun(run, dataDir) {
+  killHostsUnder(dataDir)
+  run.child.kill('SIGTERM')
+  const code = await Promise.race([run.exited, sleep(10_000).then(() => 'timeout')])
+  if (code === 'timeout') run.child.kill('SIGKILL')
+}
+
+async function waitConnected(run, label) {
+  const state = await waitFor(() => {
+    if (/已连接工作站/.test(run.output())) return 'connected'
+    if (run.child.exitCode !== null) return 'exited'
+    return null
+  }, label, 90_000)
+  assert.equal(state, 'connected', `${label}：进程提前退出：${run.output()}`)
+}
+
 export async function runInstallCheck(home) {
   const base = path.join(home, 'workstation-install')
   killHostsUnder(base)
@@ -296,6 +324,7 @@ export async function runInstallCheck(home) {
   const hostPackDir = path.join(ROOT, 'packages', 'server', 'host-pack')
   const packScript = path.join(ROOT, 'scripts', 'pack-host.mjs')
   const ws = startProcess({ home: path.join(base, 'ws'), mode: 'workstation', extraEnv: { TANDEM_HOST_PACK: undefined } })
+  const runs = []
   try {
     const wsPort = await ws.ready
     const WS = `http://127.0.0.1:${wsPort}`
@@ -306,30 +335,35 @@ export async function runInstallCheck(home) {
     const bind = await json(WS, '/api/workstation/hosts/bind-code', { method: 'POST' }, admin.accessToken)
     assert.ok(bind.code.startsWith('ach_'), '绑定码应为 ach_ 前缀')
 
-    const runInstall = ({ port, hostDir, installDir, token = bind.code }) => {
-      const env = {
-        ...process.env,
-        HOME: path.join(base, 'home'),
-        TANDEM_HOME: hostDir,
-        TANDEM_INSTALL_DIR: installDir,
-        // 调试版 Host 默认会自动登录内嵌调试工作站（8481），与显式 join 冲突；这里模拟发布语义。
-        TANDEM_DEBUG_ACCOUNT: '0',
-        NO_PROXY: '127.0.0.1,localhost',
-        no_proxy: '127.0.0.1,localhost',
-      }
-      delete env.TANDEM_HOST_PACK
-      const command = `curl -fsSL ${WS}/install.sh | sh -s -- --token ${token} --no-service --port ${port}`
-      return spawnSync('sh', ['-c', command], { env, encoding: 'utf8', timeout: 120_000 })
+    // 每次安装都用独立的 HOME 与安装目录（数据目录在安装目录下的 data）。
+    const installEnv = (installDir, extra = {}) => ({
+      ...process.env,
+      HOME: path.join(base, 'home'),
+      TANDEM_INSTALL_DIR: installDir,
+      // 调试版 Host 默认会自动登录内嵌调试工作站（8481）；主机包本身是发布版，这里再保险地关掉。
+      TANDEM_DEBUG_ACCOUNT: '0',
+      NO_PROXY: '127.0.0.1,localhost',
+      no_proxy: '127.0.0.1,localhost',
+      ...extra,
+    })
+    const installCommand = (token, service = false) =>
+      `curl -fsSL ${WS}/install.sh | sh -s -- --token ${token}${service ? ' --service' : ''}`
+    const startInstall = (installDir, { token = bind.code, service = false, env = {} } = {}) => {
+      const run = startRun('sh', ['-c', installCommand(token, service)], installEnv(installDir, env))
+      runs.push({ run, dataDir: path.join(installDir, 'data') })
+      return run
     }
-    const outputOf = (res) => `${res.stdout ?? ''}${res.stderr ?? ''}`
 
-    // 1) 工作站没有随附安装包：下载失败要给出非零退出与手动步骤（不能静默）。
+    // 1) 工作站没有随附安装包：下载失败要非零退出并说明原因（不能静默）。
     rmSync(hostPackDir, { recursive: true, force: true })
-    const portNoPack = await freePort()
-    const noPack = runInstall({ port: portNoPack, hostDir: path.join(base, 'host-nopack'), installDir: path.join(base, 'inst-nopack') })
-    const noPackOut = outputOf(noPack)
+    const noPack = spawnSync('sh', ['-c', installCommand(bind.code)], {
+      env: installEnv(path.join(base, 'inst-nopack')),
+      encoding: 'utf8',
+      timeout: 120_000,
+    })
+    const noPackOut = `${noPack.stdout ?? ''}${noPack.stderr ?? ''}`
     assert.notEqual(noPack.status, 0, `没有安装包时 install.sh 应失败：${noPackOut}`)
-    assert.match(noPackOut, /手动安装步骤/, '失败时要给手动安装步骤')
+    assert.match(noPackOut, /下载主机安装包/, '失败时要说明是下载主机安装包失败')
     assert.match(noPackOut, /tandem-host\.tgz/)
     const noPackDl = await fetch(`${WS}/dl/tandem-host.tgz`)
     assert.equal(noPackDl.status, 404, '没有安装包时 /dl/tandem-host.tgz 应 404')
@@ -337,6 +371,7 @@ export async function runInstallCheck(home) {
     // 2) 生成安装包：工作站 status 下发 hostPackage，/dl 可下载。
     execFileSync(process.execPath, [packScript], { cwd: ROOT, stdio: 'pipe' })
     assert.ok(existsSync(path.join(hostPackDir, 'tandem-host.tgz')), 'pack-host 应生成 host-pack/tandem-host.tgz')
+    assert.match(execFileSync('tar', ['-xzOf', path.join(hostPackDir, 'tandem-host.tgz'), 'dist/flavor.js'], { encoding: 'utf8' }), /FLAVOR = 'release'/, '主机安装包永远是发布版风味')
     const status = await waitFor(async () => {
       const value = await json(WS, '/api/workstation/status')
       return value.hostPackage?.size > 0 ? value : null
@@ -354,47 +389,67 @@ export async function runInstallCheck(home) {
     const zipEocd = zipBody.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]))
     assert.ok(zipBody.readUInt16LE(zipEocd + 10) > 1000, 'ZIP 内文件数应合理')
 
-    // 3) 一行命令安装 + 登记：主机上线，令牌不回显，主机凭据 0600。
-    const port = await freePort()
-    const hostDir = path.join(base, 'host')
+    // 3) 一行命令安装并前台连接：主机上线，令牌不回显，主机凭据 0600，数据目录与安装目录分开。
     const installDir = path.join(base, 'inst')
-    const installed = runInstall({ port, hostDir, installDir })
-    const installedOut = outputOf(installed)
-    assert.equal(installed.status, 0, `install.sh 失败：${installedOut}`)
+    const dataDir = path.join(installDir, 'data')
+    const first = startInstall(installDir)
+    await waitConnected(first, '安装脚本前台连接工作站')
+    const installedOut = first.output()
     assert.ok(existsSync(path.join(installDir, 'app', 'dist', 'cli.js')), '安装目录应包含解压后的 CLI')
     assert.ok(installedOut.includes('ach_****'), '安装输出应脱敏令牌')
     assert.ok(!installedOut.includes(bind.code), '安装输出不能回显明文令牌')
     assert.match(installedOut, /已加入工作站/)
+    assert.match(installedOut, /关闭此窗口即断开/)
     const hosts = await waitFor(async () => {
       const list = await json(WS, '/api/workstation/hosts', {}, admin.accessToken)
       return list.length === 1 && list[0].online ? list : null
     }, '安装脚本登记的主机上线', 60_000)
     assert.ok(hosts[0].name, '主机应有显示名')
+    assert.ok(existsSync(path.join(dataDir, 'accounts.json')), '主机数据目录应为安装目录下的 data')
     if (process.platform !== 'win32') {
-      assert.equal(statSync(path.join(hostDir, 'accounts.json')).mode & 0o777, 0o600, '主机账号文件应为 0600')
+      assert.equal(statSync(path.join(dataDir, 'accounts.json')).mode & 0o777, 0o600, '主机账号文件应为 0600')
     }
 
-    // 4) 已加入同一工作站：重复 join 幂等（不报 409，即使令牌已用）。
-    const again = spawnSync(
-      process.execPath,
-      [path.join(installDir, 'app', 'dist', 'cli.js'), 'join', WS, '--token', bind.code, '--port', String(port)],
-      {
-        env: { ...process.env, TANDEM_HOME: hostDir, TANDEM_DEBUG_ACCOUNT: '0', HOME: path.join(base, 'home'), NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' },
-        encoding: 'utf8',
-        timeout: 30_000,
-      },
-    )
-    assert.equal(again.status, 0, `重复 join 应幂等：${outputOf(again)}`)
-    assert.match(outputOf(again), /已加入工作站/)
+    // 4) 前台进程结束后再次执行 join：同一工作站幂等（不报 409，令牌已用也不影响）。
+    await stopRun(first, dataDir)
+    const cli = path.join(installDir, 'app', 'dist', 'cli.js')
+    const again = startRun(process.execPath, [cli, 'join', WS, '--token', bind.code], {
+      ...installEnv(installDir),
+      TANDEM_HOME: dataDir,
+    })
+    runs.push({ run: again, dataDir })
+    await waitConnected(again, '重复 join 应幂等并连接')
+    assert.ok(!/已加入过别的工作站/.test(again.output()), `重复 join 不应报错：${again.output()}`)
+    await stopRun(again, dataDir)
 
     // 5) 同一令牌再用于另一台主机：被工作站拒绝（非零退出、输出含「已使用」）。
-    const portReuse = await freePort()
-    const reused = runInstall({ port: portReuse, hostDir: path.join(base, 'host2'), installDir: path.join(base, 'inst2') })
-    const reusedOut = outputOf(reused)
-    assert.notEqual(reused.status, 0, `重复使用令牌应失败：${reusedOut}`)
-    assert.match(reusedOut, /已使用|已过期/)
-    assert.match(reusedOut, /登记失败/)
+    const reusedDir = path.join(base, 'inst2')
+    const reused = startInstall(reusedDir)
+    const reusedCode = await Promise.race([reused.exited, sleep(120_000).then(() => 'timeout')])
+    assert.notEqual(reusedCode, 'timeout', '重复使用令牌应很快失败')
+    assert.notEqual(reusedCode, 0, `重复使用令牌应失败：${reused.output()}`)
+    assert.match(reused.output(), /已使用|已过期/)
+    assert.match(reused.output(), /主机进程退出/)
+
+    // 6) --service：没有 systemd --user 时只告警，前台仍保持连接（用假的 systemctl/loginctl 模拟，不动真实系统）。
+    const fakeBin = path.join(base, 'fake-bin')
+    mkdirSync(fakeBin, { recursive: true })
+    for (const name of ['systemctl', 'loginctl']) {
+      writeFileSync(path.join(fakeBin, name), '#!/bin/sh\necho "Failed to connect to bus: No medium found" >&2\nexit 1\n')
+      execFileSync('chmod', ['755', path.join(fakeBin, name)])
+    }
+    const serviceBind = await json(WS, '/api/workstation/hosts/bind-code', { method: 'POST' }, admin.accessToken)
+    const serviceDir = path.join(base, 'inst-service')
+    const withService = startInstall(serviceDir, {
+      token: serviceBind.code,
+      service: true,
+      env: { PATH: `${fakeBin}:${process.env.PATH}` },
+    })
+    await waitConnected(withService, '--service 无 systemd 时仍应前台连接')
+    assert.match(withService.output(), /开机自启设置失败，不影响本次连接/, '无 systemd 时只告警')
+    await stopRun(withService, path.join(serviceDir, 'data'))
   } finally {
+    for (const { run, dataDir } of runs) await stopRun(run, dataDir).catch(() => undefined)
     killHostsUnder(base)
     await sleep(500)
     ws.child.kill('SIGTERM')
