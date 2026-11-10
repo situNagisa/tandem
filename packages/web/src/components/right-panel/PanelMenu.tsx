@@ -1,12 +1,12 @@
-import { MoreHorizontal } from 'lucide-react'
+import { SlidersHorizontal } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { IconButton } from '../ui/Button'
 import { Menu } from '../ui/Menu'
 import { GROUPS, togglePanelGroup, usePanelGroups } from './shared'
 
 /**
- * 会话信息面板的 ⋯ 菜单。反馈12#06 把它从面板顶栏移到窗口顶栏右侧，
- * 与「收起右栏」按钮相邻；面板本身不再有标题框。
+ * 会话信息面板的分组开关菜单。反馈12#06 把它从面板顶栏移到窗口顶栏右侧，
+ * 与「收起右栏」按钮相邻；面板本身不再有标题框。图标用滑杆而非 ⋯：与「更多操作」并排时不能看成两个同样的入口。
  */
 export function PanelGroupsMenu() {
   const { prefs, availability } = usePanelGroups()
@@ -25,7 +25,7 @@ export function PanelGroupsMenu() {
           data-tip={open ? undefined : '自定义信息面板的分组'}
           className={cn('max-sm:size-11', open && 'bg-[var(--t-bg-active)] text-text')}
         >
-          <MoreHorizontal size={16} />
+          <SlidersHorizontal size={16} />
         </IconButton>
       )}
     >

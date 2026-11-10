@@ -6672,6 +6672,61 @@ async function main() {
       assert.equal(await page.getByText('先选择一个工作目录').count(), 0, '发送时仍提示先选择目录')
     })
 
+    // 反馈2102：截图落到 /tmp/fix-2102b/，用于修复前后对比（深色 + 浅色，1912×914）。
+    const shotDir = '/tmp/fix-2102b'
+    const withViewport = async (page, fn) => {
+      await page.setViewportSize({ width: 1912, height: 914 })
+      try {
+        await fn()
+      } finally {
+        await page.setViewportSize(DESKTOP)
+      }
+    }
+    const setTheme = async (page, theme) => {
+      await page.evaluate((next) => localStorage.setItem('tandem.theme.v1', next), theme)
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+    }
+    const clientHostIdOf = (page) =>
+      page.evaluate(() => JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')[0]?.id ?? null)
+
+    desktop('反馈2102#04：顶栏右侧不出现两个同图标的按钮', async (page) => {
+      const panelToggle = page.locator('button[aria-label="切换信息面板"]')
+      const ensurePanelOpen = async () => {
+        if ((await panelToggle.getAttribute('aria-pressed')) !== 'true') await panelToggle.click()
+        await page.locator('button[aria-label="切换信息面板"][aria-pressed="true"]').waitFor({ timeout: 5_000 })
+      }
+      await openSession(page, 'links')
+      const wasOpen = (await panelToggle.getAttribute('aria-pressed')) === 'true'
+      try {
+        await ensurePanelOpen()
+        await withViewport(page, async () => {
+          for (const next of ['dark', 'light']) {
+            await setTheme(page, next)
+            await openSession(page, 'links')
+            await ensurePanelOpen()
+            await page.screenshot({ path: path.join(shotDir, `04-顶栏-${next}.png`) })
+          }
+        })
+        const dups = await page.evaluate(() => {
+          const header = document.querySelector('header.relative.z-20')
+          const seen = new Map()
+          for (const button of header ? header.querySelectorAll('button') : []) {
+            if (button.offsetParent === null) continue
+            const icon = [...(button.querySelector('svg')?.classList ?? [])].find((c) => c.startsWith('lucide-'))
+            if (!icon) continue
+            const label = button.getAttribute('aria-label') || button.textContent?.trim() || ''
+            seen.set(icon, [...(seen.get(icon) ?? []), label])
+          }
+          return [...seen].filter(([, labels]) => labels.length > 1)
+        })
+        assert.deepEqual(dups, [], `顶栏有同图标的按钮：${JSON.stringify(dups)}`)
+      } finally {
+        const pressed = (await panelToggle.getAttribute('aria-pressed')) === 'true'
+        if (pressed !== wasOpen) await panelToggle.click().catch(() => {})
+      }
+    })
+
     desktop('记忆编辑器不暴露内部元数据行', async (page) => {
       const dialog = await openSettings(page, '记忆', 'desktop')
       await dialog.getByRole('button', { name: '编辑 全局' }).click()

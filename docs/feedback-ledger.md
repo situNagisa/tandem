@@ -8,7 +8,7 @@
 | R02 | 文字偏灰、字号过小、对比度不足 | 5 | design P05 字号下限；ui-audit font-size-floor（9/10px）；regression 字号/a11y 扫描 |
 | R03 | 弹层被裁切或越界 | 5 | Portal + 碰撞避让；regression「tooltip/菜单不越界」多视口用例 |
 | R04 | 彩色过多、强调色越界、焦点橙环 | 5 | design P02；ui-audit accent/selection 检查；regression 焦点环只随键盘出现 |
-| R05 | 重复入口（新会话、设置、删除、派单、缓存率等） | 6 | design P15；decisions-check 唯一入口项；regression 顶栏 ≤5/入口唯一/无重复缓存率 |
+| R05 | 重复入口（新会话、设置、删除、派单、缓存率、同图标的两个 ⋯ 等） | 7 | design P15；decisions-check 唯一入口项、`topbar-panel-icon-distinct`；regression 顶栏 ≤5/入口唯一/无重复缓存率/顶栏无同图标按钮 |
 | R06 | Windows 路径与编码、安装说明平台化；句中斜杠被识别成文件路径 | 8 | 路径规范化单测；`fileLinks` 路径形状单测（句中斜杠反例）；regression 盘符路径/平台分段安装说明 |
 | R07 | 外部会话注入内容外露、被当作用户轮 | 3 | `isSystemInjectionText` 统一口径；单测 turns/external；regression 注入口径用例 |
 | R08 | 点了没反应 / 数据未就绪被当异常 | 4 | 加载态与默认值兜底；regression 新会话环境条/模型价格/手机环境条 |

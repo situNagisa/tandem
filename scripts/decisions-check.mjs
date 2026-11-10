@@ -50,6 +50,7 @@ const F = {
   app: 'packages/web/src/App.tsx',
   envBar: 'packages/web/src/components/EnvBar.tsx',
   topBar: 'packages/web/src/components/TopBar.tsx',
+  panelMenu: 'packages/web/src/components/right-panel/PanelMenu.tsx',
   settingsDialog: 'packages/web/src/components/settings/SettingsDialog.tsx',
   settingsRegistry: 'packages/web/src/lib/settingsRegistry.ts',
   menu: 'packages/web/src/components/ui/Menu.tsx',
@@ -351,6 +352,14 @@ const DECISIONS = [
     decision: '顶栏会话操作 ≤5 个图标，低频收进更多',
     files: [F.topBar],
     need: [/更多/, /IconButton/],
+  },
+  {
+    id: 'topbar-panel-icon-distinct',
+    source: '反馈2102#04',
+    decision: '顶栏「更多操作」与信息面板分组菜单图标不同，不出现两个 ⋯',
+    files: [F.panelMenu],
+    need: [/SlidersHorizontal/],
+    deny: [/MoreHorizontal/],
   },
   {
     id: 'settings-groups',
