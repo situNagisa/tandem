@@ -248,6 +248,11 @@ export function LoginGate() {
                   <MonitorSmartphone size={14} /> 使用这台电脑的工作站
                 </Button>
               )}
+              {!control && !workstationUrl.trim() && (
+                <p data-testid="login-token-hint" className="text-[12px] leading-5 text-muted">
+                  这个地址没有保存登录凭据。请用终端里打印的带 ?token= 的地址打开（Host 页面），或在上面填写工作站地址。
+                </p>
+              )}
             </div>
           )}
 

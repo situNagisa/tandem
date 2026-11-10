@@ -9,6 +9,7 @@ import { readJson } from '../config.js';
 import { IS_DEBUG_FLAVOR } from '../flavor.js';
 import { embeddedDataDir, startEmbeddedWorkstation } from '../workstation/manager.js';
 import { startDebugDemoHost, type DemoHostHandle } from './demoHost.js';
+import { isLoopbackAddress } from './workstationService.js';
 
 interface DebugWorkstationDeps {
   start: () => void;
@@ -75,6 +76,24 @@ export function installDebugWorkstationBootstrap(
   if (!debugAutoLoginEnabled()) return;
   const mode = host.accounts.mode();
   if (mode === 'center') return;
+
+  // 浏览器直接打开 Host 首页（终端里打印的地址去掉 ?token=）时自动补上调试凭据，
+  // 否则前端拿不到本机凭据，既连不上内嵌工作站又会反复请求 401。
+  // 只在「本机可达」时补：Host 只监听回环，或请求来自回环（桌面/本机浏览器）。
+  app.addHook('onRequest', async (req, reply) => {
+    if (req.method !== 'GET') return;
+    const rawUrl = req.raw.url ?? '';
+    const pathname = rawUrl.split('?')[0] ?? '';
+    if (pathname !== '/' && pathname !== '/index.html') return;
+    if (new URL(rawUrl, 'http://localhost').searchParams.has('token')) return;
+    const accept = req.headers.accept ?? '';
+    if (!accept.includes('text/html')) return;
+    const address = app.server.address();
+    const bound = address && typeof address === 'object' ? address.address : '';
+    const boundLoopback = bound === '127.0.0.1' || bound === '::1' || bound === '0:0:0:0:0:0:0:1';
+    if (!boundLoopback && !isLoopbackAddress(req.socket.remoteAddress)) return;
+    return reply.redirect(`/?token=${encodeURIComponent(host.config.token)}`);
+  });
 
   // 演示主机在后台启动，不阻塞 Host 监听；关闭 Host 时一并释放。
   let demoHost: DemoHostHandle | undefined;

@@ -10565,6 +10565,36 @@ async function main() {
       },
     })
 
+    // 调试版：直接打开不带 token 的 Host 地址也应自动登录；Host 没有工作站状态接口，不能反复请求 401。
+    checks.push({
+      name: '登录门：调试版不带 token 打开回环地址自动进入，且不循环请求 401',
+      viewport: 'desktop',
+      gate: true,
+      fn: async (page) => {
+        const debugHome = path.join(home, 'gate-debug-bare-host')
+        const debugHost = startHost({
+          home: debugHome,
+          token: `gate-${randomUUID()}`,
+          hostId: randomUUID(),
+          extraEnv: { TANDEM_DEBUG_ACCOUNT: undefined },
+        })
+        const statusCodes = []
+        page.on('response', (res) => {
+          if (res.url().includes('/api/workstation/status')) statusCodes.push(res.status())
+        })
+        try {
+          const port = await debugHost.ready
+          await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' })
+          await page.locator('textarea[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
+          assert.equal(await page.locator('[data-testid="login-gate"]').count(), 0, '不带 token 打开调试版回环地址应自动登录')
+          const unauthorized = statusCodes.filter((code) => code === 401).length
+          assert.equal(unauthorized, 0, `Host 页面不应反复请求工作站状态得到 401：${statusCodes.join(',')}`)
+        } finally {
+          debugHost.child.kill('SIGTERM')
+        }
+      },
+    })
+
     // 工作站客户端-服务：只跑工作站 + 两台主机，注册/绑定/授权/E2E 流式（API 级，独立进程）。
     checks.push({
       name: '工作站客户端-服务（注册/添加主机/授权/E2E 流式）',
