@@ -7,7 +7,6 @@ import type {
   AiReviewSettings,
   ContentBlock,
   ContextSettings,
-  DelegationStrategy,
   HostInfo,
   HostSettings,
   MessagePage,
@@ -27,11 +26,14 @@ import { errorMessage } from '../util/text.js';
 import { expandHome } from '../util/path.js';
 import type { SessionRecord } from '../types.js';
 import type { Host } from '../host.js';
-import { DELEGATIONS, EFFORTS, PERMISSION_MODES, httpError, sanitizeVoiceSettings } from './helpers.js';
+import { EFFORTS, PERMISSION_MODES, httpError, sanitizeVoiceSettings } from './helpers.js';
 import { notifyExternalSessionsChanged } from './external.js';
 import { normalizeHandoffSettings } from '../handoff.js';
-import { normalizeRoutingSettings } from '../routing-settings.js';
-import { noteLearnedPreference } from '../model-routing.js';
+import {
+  normalizeDelegation,
+  normalizeRouteBias,
+  normalizeRoutingSettings,
+} from '../routing-settings.js';
 import {
   PAGE_BYTES_MAX,
   PAGE_LIMIT_DEFAULT,
@@ -56,12 +58,7 @@ export function info(host: Host): HostInfo {
 export function settings(host: Host): HostSettings {
   return {
     resumeOnRestart: host.config.resumeOnRestart === 'pause' ? 'pause' : 'auto',
-    defaultDelegation:
-      host.config.defaultDelegation === 'orchestrate' ||
-      host.config.defaultDelegation === 'more' ||
-      host.config.defaultDelegation === 'none'
-        ? host.config.defaultDelegation
-        : 'less',
+    defaultDelegation: normalizeDelegation(host.config.defaultDelegation) ?? 'less',
     ...(host.config.voice ? { voice: host.config.voice } : {}),
     context: normalizeContextSettings(host.config.context),
     ...(host.config.aiReview ? { aiReview: sanitizeAiReview(host.config.aiReview) } : {}),
@@ -93,14 +90,8 @@ export function updateSettings(host: Host, input: Partial<HostSettings>): HostSe
   if (input.resumeOnRestart === 'auto' || input.resumeOnRestart === 'pause') {
     host.config.resumeOnRestart = input.resumeOnRestart;
   }
-  if (
-    input.defaultDelegation === 'orchestrate' ||
-    input.defaultDelegation === 'more' ||
-    input.defaultDelegation === 'less' ||
-    input.defaultDelegation === 'none'
-  ) {
-    host.config.defaultDelegation = input.defaultDelegation;
-  }
+  const defaultDelegation = normalizeDelegation(input.defaultDelegation);
+  if (defaultDelegation) host.config.defaultDelegation = defaultDelegation;
   if (input.voice !== undefined) {
     host.config.voice = sanitizeVoiceSettings(input.voice);
   }
@@ -207,7 +198,7 @@ export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
     ...(rec.groupId ? { groupId: rec.groupId } : {}),
     model: rec.model,
     ...(rec.autoRoute ? { autoRoute: true } : {}),
-    ...(rec.routePreference ? { routePreference: rec.routePreference } : {}),
+    ...(rec.routeBias ? { routeBias: rec.routeBias } : {}),
     ...(rec.route ? { route: { ...rec.route, scores: { ...rec.route.scores } } } : {}),
     ...(rec.routeSavings ? { routeSavings: { ...rec.routeSavings } } : {}),
     permissionMode: rec.permissionMode,
@@ -445,7 +436,7 @@ export async function createSession(host: Host, input: {
     groupId?: unknown;
     model?: unknown;
     autoRoute?: unknown;
-    routePreference?: unknown;
+    routeBias?: unknown;
     permissionMode?: unknown;
     effort?: unknown;
     delegation?: unknown;
@@ -472,13 +463,7 @@ export async function createSession(host: Host, input: {
   const effective = effectiveProfile(profile, groupId);
   const requestedModel = typeof input.model === 'string' ? input.model.trim() : '';
   const autoRoute = input.autoRoute === true || requestedModel === 'auto';
-  const routePreference =
-    input.routePreference === 'auto' ||
-    input.routePreference === 'direct' ||
-    input.routePreference === 'cheap' ||
-    input.routePreference === 'division'
-      ? input.routePreference
-      : undefined;
+  const routeBias = normalizeRouteBias(input.routeBias);
   // 自动/分工模式下，显式传入的模型保留为回退模型（分工时它就是规划者模型）。
   const model =
     ((autoRoute ? requestedModel !== 'auto' : true) && requestedModel) ||
@@ -494,11 +479,10 @@ export async function createSession(host: Host, input: {
     throw new Error(`无效的 effort: ${String(input.effort)}`);
   }
   const effort = input.effort as ReasoningEffort | undefined;
-  if (input.delegation !== undefined && !DELEGATIONS.has(input.delegation as DelegationStrategy)) {
+  if (input.delegation !== undefined && !normalizeDelegation(input.delegation)) {
     throw new Error(`无效的 delegation: ${String(input.delegation)}`);
   }
-  const delegation =
-    (input.delegation as DelegationStrategy | undefined) ?? host.settings().defaultDelegation ?? 'less';
+  const delegation = normalizeDelegation(input.delegation) ?? host.settings().defaultDelegation ?? 'less';
 
   // worktree 会话：先创建 worktree，会话 cwd 指向新目录
   const shortId = randomUUID().slice(0, 8);
@@ -527,7 +511,7 @@ export async function createSession(host: Host, input: {
     ...(groupId ? { groupId } : {}),
     model,
     ...(autoRoute ? { autoRoute: true } : {}),
-    ...(routePreference ? { routePreference } : {}),
+    ...(routeBias ? { routeBias } : {}),
     permissionMode,
     ...(effort ? { effort } : {}),
     delegation,
@@ -563,7 +547,7 @@ export function updateSession(host: Host, id: string,
       groupId?: unknown;
       model?: unknown;
       autoRoute?: unknown;
-      routePreference?: unknown;
+      routeBias?: unknown;
       permissionMode?: unknown;
       pinned?: unknown;
       pinnedInProject?: unknown;
@@ -604,10 +588,9 @@ export function updateSession(host: Host, id: string,
     rec.effort = effort;
   }
   if (typeof patch.delegation === 'string') {
-    if (!DELEGATIONS.has(patch.delegation as DelegationStrategy)) {
-      throw new Error(`无效的 delegation: ${patch.delegation}`);
-    }
-    rec.delegation = patch.delegation as DelegationStrategy;
+    const delegation = normalizeDelegation(patch.delegation);
+    if (!delegation) throw new Error(`无效的 delegation: ${patch.delegation}`);
+    rec.delegation = delegation;
   }
   if (typeof patch.permissionMode === 'string') {
     if (!PERMISSION_MODES.has(patch.permissionMode as PermissionMode)) {
@@ -647,32 +630,14 @@ export function updateSession(host: Host, id: string,
     } else {
       rec.model = nextModel;
       delete rec.autoRoute;
-      delete rec.routePreference;
     }
   }
   if (typeof patch.autoRoute === 'boolean') {
     if (patch.autoRoute) rec.autoRoute = true;
-    else {
-      delete rec.autoRoute;
-      delete rec.routePreference;
-    }
+    else delete rec.autoRoute;
   }
-  if (patch.routePreference === 'auto') delete rec.routePreference;
-  else if (
-    patch.routePreference === 'direct' ||
-    patch.routePreference === 'cheap' ||
-    patch.routePreference === 'division'
-  ) {
-    rec.routePreference = patch.routePreference;
-    if (rec.lastRoutePlan && rec.lastRoutePlan.plan.mode !== patch.routePreference) {
-      noteLearnedPreference(
-        host,
-        rec.lastRoutePlan.text,
-        rec.lastRoutePlan.plan,
-        patch.routePreference,
-      );
-    }
-  }
+  const routeBias = normalizeRouteBias(patch.routeBias);
+  if (routeBias) rec.routeBias = routeBias;
   if (typeof patch.pinned === 'boolean') {
     if (patch.pinned) rec.pinned = true;
     else delete rec.pinned;
@@ -724,6 +689,7 @@ export function forkSession(host: Host, id: string, messageId?: string): Session
     permissionMode: src.permissionMode,
     ...(src.effort ? { effort: src.effort } : {}),
     ...(src.delegation ? { delegation: src.delegation } : {}),
+    ...(src.routeBias ? { routeBias: src.routeBias } : {}),
     status: 'idle',
     createdAt: now,
     updatedAt: now,

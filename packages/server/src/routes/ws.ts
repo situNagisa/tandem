@@ -8,6 +8,7 @@ import type {
   TeamPresence,
 } from '@tandem/protocol';
 import type { WsClient } from '../events.js';
+import { normalizeRouteOverride } from '../routing-settings.js';
 import type { RouteDeps } from './common.js';
 import {
   canApprove,
@@ -191,7 +192,7 @@ export function registerWsRoutes(app: FastifyInstance, deps: RouteDeps): void {
             if (principal.kind === 'account') {
               await host.syncWorkstationProfiles(principal.id).catch(() => undefined);
             }
-            await host.send(msg.sessionId, msg.content, msg.routeMode);
+            await host.send(msg.sessionId, msg.content, normalizeRouteOverride(msg.route));
           })()
             .then(() => {
               recordAudit(host, principal, 'message.send', {

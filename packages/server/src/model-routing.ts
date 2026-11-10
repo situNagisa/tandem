@@ -179,7 +179,6 @@ export function scoreRoute(input: RouteSignals, preference: RoutePreference, sta
   if (input.uncertain) complexity += 15;
   complexity += Math.min(18, input.toolDepth * 5);
   if (input.subagent) complexity -= 20;
-  else if (input.delegation === 'orchestrate') complexity += 10;
   if (input.judge === 'hard') complexity += 30;
   else if (input.judge === 'easy') complexity -= 20;
   if (input.budgetPressure !== undefined && input.budgetPressure >= 0.5 && preference !== 'quality') {
@@ -245,7 +244,6 @@ function reasonFor(input: RouteSignals, scores: RouteScores, finalTier: ModelTie
   if (input.previousFailed) return '上一轮失败，就高';
   if (input.hasImage) return '本轮含图片';
   if (input.budgetPressure !== undefined && input.budgetPressure >= 0.5) return '预算偏紧，优先省钱';
-  if (input.delegation === 'orchestrate') return '编排模式偏强力';
   if (input.toolDepth >= 3) return '工具调用较深';
   if (input.messageText.length > 160) return '用户消息较长';
   if (tierIndexOf(finalTier) > tierIndexOf(baseTier)) return '提高到下一档可用模型';
@@ -525,12 +523,6 @@ function usableMeta(meta: RouteCandidateMeta | undefined, contextTokens: number)
   return meta;
 }
 
-function cheapestMeta(metas: RouteCandidateMeta[], contextTokens: number): RouteCandidateMeta | undefined {
-  return metas
-    .filter((meta) => usableMeta(meta, contextTokens))
-    .sort((a, b) => priceScoreOf(a.price) - priceScoreOf(b.price))[0];
-}
-
 function strongestMeta(metas: RouteCandidateMeta[], contextTokens: number): RouteCandidateMeta | undefined {
   const usable = metas.filter((meta) => usableMeta(meta, contextTokens));
   return (
@@ -541,12 +533,26 @@ function strongestMeta(metas: RouteCandidateMeta[], contextTokens: number): Rout
   );
 }
 
-/** 解析角色绑定的实际模型：绑定不可用时回落到最便宜/最强候选。 */
+/** 每个取向对应的子代理/执行者档位（未绑定时使用；绑定优先）。 */
+const BIAS_TIER: Record<RoutePreference, ModelTier> = {
+  cost: 'fast',
+  balanced: 'balanced',
+  quality: 'power',
+};
+
+/** 取向决定未绑定的执行者/专长用哪一档：省钱=快速档，均衡=均衡档，质量优先=强力档。 */
+function tierMeta(metas: RouteCandidateMeta[], bias: RoutePreference, contextTokens: number): RouteCandidateMeta | undefined {
+  const usable = metas.filter((meta) => usableMeta(meta, contextTokens));
+  return nearestTier(usable, tierIndexOf(BIAS_TIER[bias]), bias).meta;
+}
+
+/** 解析角色绑定的实际模型：绑定不可用时按取向选档（执行者/专长）或回落到最强候选（规划者/审查者）。 */
 export function resolveDivisionAssignment(
   host: Host,
   settings: ModelRoutingSettings,
   role: RouteRole,
   domain?: RouteDomain,
+  bias: RoutePreference = settings.preference,
 ): RouteCandidateMeta | undefined {
   const division = settings.division ?? {};
   const metas = candidateMetas(host, settings);
@@ -557,7 +563,7 @@ export function resolveDivisionAssignment(
       const meta = usableMeta(metaForAssignment(host, settings, route), contextTokens);
       if (meta) return meta;
     }
-    return cheapestMeta(metas, contextTokens);
+    return tierMeta(metas, bias, contextTokens);
   }
   const assignment =
     role === 'executor' ? division.executor : role === 'reviewer' ? division.reviewer : division.planner;
@@ -565,8 +571,9 @@ export function resolveDivisionAssignment(
     const meta = usableMeta(metaForAssignment(host, settings, assignment), contextTokens);
     if (meta) return meta;
   }
-  return role === 'executor' ? cheapestMeta(metas, contextTokens) : strongestMeta(metas, contextTokens);
+  return role === 'executor' ? tierMeta(metas, bias, contextTokens) : strongestMeta(metas, contextTokens);
 }
+
 
 export function departmentAssignmentOf(
   host: Host,
@@ -588,7 +595,6 @@ export function domainRouteOf(
 
 export interface TurnPlanContext {
   text: string;
-  override?: TurnRouteMode;
 }
 
 function mechanicalLabelsOf(text: string): string[] {
@@ -625,63 +631,54 @@ export function noteLearnedPreference(
   });
 }
 
-/** 规则分类：直接做 / 便宜直做 / 分工；不调用模型。 */
+/**
+ * 规则分类（零模型调用）：本轮是单代理、整单交执行者，还是多代理协作。
+ * 分工关闭时不规划（主会话不提供 Task，也不交给执行者）。
+ *
+ * | 分工 \ 取向 | 省钱 | 均衡 | 质量优先 |
+ * |---|---|---|---|
+ * | 关闭 | 单代理 | 单代理 | 单代理 |
+ * | 适度 | 机械任务整单交执行者；明显独立的多步任务多代理协作 | 明显独立的多步任务多代理协作 | 同均衡，子代理用强力档 |
+ * | 积极 | 同省钱；行动类任务尽量拆分，多代理协作 | 行动类任务尽量拆分 | 同均衡，子代理用强力档 |
+ */
 export function planTurnRoute(
   host: Host,
   rec: SessionRecord,
   input: TurnPlanContext,
 ): RoutePlan | undefined {
-  const settings = routingSettingsOf(host);
-  if (!settings) return undefined;
+  const settings: ModelRoutingSettings = routingSettingsOf(host) ?? { candidates: [], preference: 'balanced' };
+  const delegation = host.delegationFor(rec);
+  if (delegation === 'none') return undefined;
   const text = input.text.trim();
   if (!text) return undefined;
+  const bias = host.routeBiasFor(rec);
   const signals = routeSignalsOf(host, rec, { content: [{ type: 'text', text }] }, 0, rec.routeState?.lastFailed === true);
-  const scores = scoreRoute(signals, settings.preference, rec.routeState);
-  const complexity = scores.complexity;
+  const complexity = scoreRoute(signals, bias, rec.routeState).complexity;
   const division = settings.division;
   const domain = inferRouteDomain(text, recentToolInputs(rec));
-  const executorMeta = resolveDivisionAssignment(host, settings, 'executor', domain);
-  const specialistMeta = resolveDivisionAssignment(host, settings, 'specialist', domain);
+  const executorMeta = resolveDivisionAssignment(host, settings, 'executor', domain, bias);
+  const specialistMeta = resolveDivisionAssignment(host, settings, 'specialist', domain, bias);
   const domainRoute = division?.domains?.find((item) => item.domain === domain);
   const specialist =
     !!domainRoute &&
     !!specialistMeta &&
     specialistMeta.candidate.profileId === domainRoute.profileId &&
     specialistMeta.candidate.model === domainRoute.model;
-  const hasTask = host.delegationFor(rec) !== 'none' && (rec.depth ?? 0) < 3;
   const mechanical = mechanicalLabelsOf(text);
-  const preferred = input.override ?? rec.routePreference ?? 'auto';
-  const source: RoutePlan['source'] = preferred === 'auto' ? 'rule' : 'override';
-  const learned =
-    preferred === 'auto'
-      ? division?.learned?.find(
-          (item) => item.key === learnedKeyFor(text, domain) && item.count >= 2,
-        )
-      : undefined;
   const base: Omit<RoutePlan, 'mode' | 'reason'> = {
     domain,
     specialist,
     ...(executorMeta ? { executorModel: executorMeta.candidate.model } : {}),
     ...(specialist && specialistMeta ? { specialistModel: specialistMeta.candidate.model } : {}),
-    source,
   };
+  const direct = (reason: string): RoutePlan => ({ ...base, mode: 'direct', reason });
 
-  if (preferred === 'direct') return { ...base, mode: 'direct', reason: '用户指定单代理' };
-  if (preferred === 'cheap') {
-    return executorMeta
-      ? { ...base, mode: 'cheap', reason: '用户指定低成本' }
-      : { ...base, mode: 'direct', reason: '没有可用的执行模型' };
-  }
-  if (preferred === 'division') {
-    return hasTask && executorMeta
-      ? { ...base, mode: 'division', reason: '用户指定多代理协作' }
-      : { ...base, mode: 'direct', reason: hasTask ? '没有可用的执行模型' : '委派倾向已关闭' };
-  }
-
-  if (DIRECT_RE.test(text)) return { ...base, mode: 'direct', reason: '用户要求自己处理' };
-  if (!hasTask) return { ...base, mode: 'direct', reason: '委派倾向已关闭' };
+  if (DIRECT_RE.test(text)) return direct('用户要求自己处理');
+  const learned = division?.learned?.find(
+    (item) => item.key === learnedKeyFor(text, domain) && item.count >= 2,
+  );
   if (learned?.mode === 'direct') {
-    return { ...base, mode: 'direct', reason: `按你此前对同类任务的选择：单代理（${learned.count} 次）` };
+    return direct(`按你此前对同类任务的选择：单代理（${learned.count} 次）`);
   }
   const question = QUESTION_RE.test(text);
   const contextHeavy = CONTEXT_HEAVY_RE.test(text);
@@ -691,59 +688,43 @@ export function planTurnRoute(
   const specialistMin = domainRoute?.minComplexity ?? 55;
   const budgetTight = (signals.budgetPressure ?? 0) >= 0.5;
 
-  if (question && !mechanical.length) {
-    return { ...base, mode: 'direct', reason: '问答/解释，不需要多代理协作' };
-  }
+  if (question && !mechanical.length) return direct('问答/解释，单代理');
   if (contextHeavy && !(mechanical.length >= 2 && multiStep)) {
-    return { ...base, mode: 'direct', reason: '需要大量上下文判断，留在主会话' };
+    return direct('需要大量上下文判断，留在主会话');
   }
-  if (
+  const wholeMessage =
     mechanical.length > 0 &&
     !question &&
     complexity < 50 &&
     text.length <= 240 &&
-    !(mechanical.length >= 2 && multiStep)
-  ) {
-    return {
-      ...base,
-      mode: executorMeta ? 'cheap' : 'direct',
-      reason: executorMeta ? `低成本：${mechanical.join('、')}` : '没有可用的执行模型',
-    };
+    !(mechanical.length >= 2 && multiStep);
+  if (bias === 'cost' && wholeMessage) {
+    return executorMeta
+      ? { ...base, mode: 'cheap', reason: `省钱：${mechanical.join('、')}，整单交给执行者` }
+      : direct('没有可用的执行模型');
   }
-  if (budgetTight) {
-    return {
-      ...base,
-      mode: mechanical.length && executorMeta ? 'cheap' : 'direct',
-      reason: '预算偏紧，不做多代理协作' + (mechanical.length ? '，机械步骤交给低成本模型' : ''),
-    };
+  if (budgetTight) return direct('预算偏紧，单代理');
+
+  const wantsDivision =
+    delegation === 'more'
+      ? !question && (actionable || mechanical.length > 0 || multiStep) && complexity >= 35
+      : (mechanical.length >= 2 && multiStep && complexity >= Math.min(planThreshold, 45)) ||
+        (specialist && actionable && complexity >= specialistMin) ||
+        (complexity >= 90 && multiStep);
+  if (wantsDivision) {
+    const reason =
+      delegation === 'more'
+        ? `多代理协作：积极分工，复杂度 ${complexity}`
+        : mechanical.length >= 2 && multiStep && complexity >= Math.min(planThreshold, 45)
+          ? `多代理协作：${mechanical.join('、')}，可拆成独立子任务`
+          : specialist && actionable && complexity >= specialistMin
+            ? `多代理协作：${DOMAIN_LABELS[domain]}专长匹配，复杂度 ${complexity} ≥ ${specialistMin}`
+            : `多代理协作：复杂度 ${complexity}，多步任务`;
+    return { ...base, mode: 'division', reason };
   }
-  if (mechanical.length >= 2 && multiStep && complexity >= Math.min(planThreshold, 45)) {
-    return {
-      ...base,
-      mode: executorMeta ? 'division' : 'direct',
-      reason: executorMeta ? `多代理协作：${mechanical.join('、')}，可拆成独立子任务` : '没有可用的执行模型',
-    };
-  }
-  if (specialist && actionable && complexity >= specialistMin) {
-    return {
-      ...base,
-      mode: 'division',
-      reason: `多代理协作：${DOMAIN_LABELS[domain]}专长匹配，复杂度 ${complexity} ≥ ${specialistMin}`,
-    };
-  }
-  if (complexity >= 90 && multiStep && executorMeta) {
-    return { ...base, mode: 'division', reason: `多代理协作：复杂度 ${complexity}，多步任务` };
-  }
-  return {
-    ...base,
-    mode: 'direct',
-    reason: question
-      ? '问答/解释，单代理'
-      : actionable
-        ? '小改动/单步任务，单代理'
-        : '单代理',
-  };
+  return direct(question ? '问答/解释，单代理' : actionable ? '小改动/单步任务，单代理' : '单代理');
 }
+
 
 /** 分工时注入规划者系统提示：只在这一轮生效。 */
 export function routePlanPrompt(plan: RoutePlan): string {
@@ -763,11 +744,11 @@ export function routePlanPrompt(plan: RoutePlan): string {
 }
 
 /** 粗估分工计划花费：执行模型单价 × (prompt 估算 + 800 输出)。 */
-export function estimateDivisionPlanCost(host: Host, plan: RoutePlan, prompts: string[]): number {
+export function estimateDivisionPlanCost(host: Host, plan: RoutePlan, prompts: string[], bias: RoutePreference): number {
   const settings = routingSettingsOf(host);
   if (!settings) return 0;
   const role: RouteRole = plan.specialist ? 'specialist' : 'executor';
-  const meta = resolveDivisionAssignment(host, settings, role, plan.domain);
+  const meta = resolveDivisionAssignment(host, settings, role, plan.domain, bias);
   const price = meta?.price;
   if (!price) return 0;
   const inputTokens = prompts.reduce((sum, prompt) => sum + Math.ceil(prompt.length / 3), 0);
@@ -777,7 +758,7 @@ export function estimateDivisionPlanCost(host: Host, plan: RoutePlan, prompts: s
 
 export function routePlanText(plan: RoutePlan): string {
   const mode =
-    plan.mode === 'direct' ? '单代理' : plan.mode === 'cheap' ? '低成本' : '多代理协作';
+    plan.mode === 'direct' ? '单代理' : plan.mode === 'cheap' ? '整单交执行者' : '多代理协作';
   const detail =
     plan.mode === 'cheap' && plan.executorModel
       ? ` · ${plan.executorModel}`
@@ -805,7 +786,7 @@ export function chooseAutoRoute(host: Host, rec: SessionRecord, signals: RouteSi
   if (!settings) return undefined;
   const state = ensureRouteState(rec);
   const decision = pickRoute({
-    settings,
+    settings: { ...settings, preference: host.routeBiasFor(rec) },
     signals,
     metas: candidateMetas(host, settings),
     state,

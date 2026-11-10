@@ -10,7 +10,6 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import type {
   ContentBlock,
-  DelegationStrategy,
   EvalCase,
   EvalCheckResult,
   EvalConfig,
@@ -29,7 +28,8 @@ import { countTurns } from '@tandem/protocol';
 import { effectiveProfile, writePrivateFile } from './config.js';
 import { completeText } from './providers/index.js';
 import type { Host } from './host.js';
-import { DELEGATIONS, EFFORTS } from './host/helpers.js';
+import { EFFORTS } from './host/helpers.js';
+import { normalizeDelegation } from './routing-settings.js';
 import { EDITABLE_PROMPTS } from './prompts/registry.js';
 import type { SessionRecord } from './types.js';
 import { cmdUtf8Command, decodeProcessOutput } from './util/encoding.js';
@@ -530,10 +530,7 @@ export class EvalManager {
         typeof item.effort === 'string' && EFFORTS.has(item.effort as ReasoningEffort)
           ? (item.effort as ReasoningEffort)
           : undefined;
-      const delegation =
-        typeof item.delegation === 'string' && DELEGATIONS.has(item.delegation as DelegationStrategy)
-          ? (item.delegation as DelegationStrategy)
-          : undefined;
+      const delegation = normalizeDelegation(item.delegation);
       const promptOverrides: Partial<Record<string, string>> = {};
       if (item.promptOverrides && typeof item.promptOverrides === 'object') {
         for (const [key, text] of Object.entries(item.promptOverrides)) {
