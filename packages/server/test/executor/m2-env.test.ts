@@ -1,22 +1,18 @@
 // M2：同一组接口与工具用例分别跑 LocalHostEnv 与连接本机执行器的 RemoteHostEnv，结果必须一致。
 // Linux 远端用 linux-amd64 执行器；Windows 远端经 WSL 互操作运行 windows-amd64.exe，fixture 放在 Windows 临时目录下。
 import { execFileSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
-import { once } from 'node:events';
 import { lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import { WebSocketServer, type WebSocket } from 'ws';
 import { localHostEnv, type HostEnv } from '../../src/host-env.js';
-import { ExecutorConn, type ExecutorAuth } from '../../src/executor/conn.js';
+import { ExecutorConn } from '../../src/executor/conn.js';
 import { RemoteHostEnv } from '../../src/executor/remote-env.js';
-import * as P from '../../src/executor/wire.js';
 import type { ToolContext } from '../../src/types.js';
 import { run as runRead } from '../../src/tools/read.js';
 import { run as runGlob } from '../../src/tools/glob.js';
 import { run as runGrep } from '../../src/tools/grep.js';
+import { startAcceptor } from './acceptor.js';
 import { CMD_EXE, forEachTarget, runCleanups, startExecutor, WINDOWS_AVAILABLE, type Sandbox, type Target } from './harness.js';
 
 const WIN_TEMP = '/mnt/c/Users/JDHC/AppData/Local/Temp';
@@ -126,57 +122,6 @@ function fillFixture(target: Target, localTop: string): Fixture {
     localRepo,
     nativeRepo,
     remove: () => rmSync(localTop, { recursive: true, force: true }),
-  };
-}
-
-async function startAcceptor() {
-  const identity = P.genKeyPair('ed25519');
-  const hosts = new Map<string, Buffer>();
-  const tokens = new Set<string>();
-  const auth: ExecutorAuth = {
-    identity,
-    execPubOf: (hostId) => hosts.get(hostId),
-    enroll({ token, execPub }) {
-      if (!tokens.delete(token)) throw new Error('令牌无效');
-      const hostId = randomBytes(12).toString('base64url');
-      hosts.set(hostId, execPub);
-      return hostId;
-    },
-  };
-  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0, path: P.WS_PATH, perMessageDeflate: false });
-  await once(wss, 'listening');
-  const accepted: ExecutorConn[] = [];
-  const waiting: Array<(conn: ExecutorConn) => void> = [];
-  wss.on('connection', (sock: WebSocket) => {
-    ExecutorConn.accept(sock, auth).then(
-      (conn) => {
-        const next = waiting.shift();
-        if (next) next(conn);
-        else accepted.push(conn);
-      },
-      () => sock.close(),
-    );
-  });
-  const port = (wss.address() as AddressInfo).port;
-  return {
-    url: `http://127.0.0.1:${port}`,
-    issueToken() {
-      const token = `ach_${randomBytes(24).toString('hex')}.${P.fingerprint(identity.pub)}`;
-      tokens.add(token);
-      return token;
-    },
-    nextConn(timeoutMs = 20_000): Promise<ExecutorConn> {
-      const ready = accepted.shift();
-      if (ready) return Promise.resolve(ready);
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('等待执行器连接超时')), timeoutMs);
-        waiting.push((conn) => {
-          clearTimeout(timer);
-          resolve(conn);
-        });
-      });
-    },
-    close: () => new Promise<void>((resolve) => wss.close(() => resolve())),
   };
 }
 
