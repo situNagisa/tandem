@@ -9,7 +9,7 @@ import { httpError } from './helpers.js';
 
 export async function refreshEnv(host: Host, id: string): Promise<void> {
   const rec = host.store.get(id);
-  if (!rec) return;
+  if (!rec || host.remote) return;
   // worktree 内跑 git 会把 worktree 目录当成仓库根，项目名变成分支目录名。
   // 统一用原仓库根 + worktree 分支，保证侧栏/顶栏与主仓库一致。
   const env =

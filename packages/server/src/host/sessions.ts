@@ -49,9 +49,9 @@ export function info(host: Host): HostInfo {
   return {
     id: host.config.hostId,
     name: os.hostname(),
-    platform: process.platform,
+    platform: host.env.platform,
     version: host.version,
-    homeDir: os.homedir(),
+    homeDir: host.env.home,
   };
 }
 
@@ -445,14 +445,14 @@ export async function createSession(host: Host, input: {
   }): Promise<SessionRecord> {
   const rawCwd = typeof input.cwd === 'string' ? input.cwd.trim() : '';
   if (!rawCwd) throw new Error('cwd 不能为空');
-  const cwd = path.resolve(expandHome(rawCwd));
+  const cwd = host.env.path.resolve(expandHome(rawCwd, host.env));
   let stat;
   try {
-    stat = statSync(cwd);
+    stat = await host.env.fs.stat(cwd);
   } catch {
     throw new Error(`工作目录不存在: ${cwd}`);
   }
-  if (!stat.isDirectory()) throw new Error(`工作目录不是目录: ${cwd}`);
+  if (stat.type !== 'dir') throw new Error(`工作目录不是目录: ${cwd}`);
 
   const profileId = typeof input.profileId === 'string' ? input.profileId : '';
   const profile = host.profiles.get(profileId);
@@ -563,6 +563,7 @@ export function updateSession(host: Host, id: string,
   if (typeof patch.title === 'string' && patch.title.trim()) rec.title = patch.title.trim();
   if (typeof patch.cwd === 'string' && patch.cwd.trim()) {
     if (host.isRunning(id)) throw httpError('会话正在运行，无法切换目录', 409);
+    if (host.remote) throw httpError('远端主机暂不支持切换目录，请新建会话', 501);
     const cwd = path.resolve(expandHome(patch.cwd.trim()));
     let stat;
     try {

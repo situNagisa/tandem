@@ -3,7 +3,7 @@
 import { createHash, createPublicKey, randomBytes, randomUUID, verify } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import os from 'node:os';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
@@ -48,6 +48,8 @@ import { listModels as fetchModelList, testProfile as testProviderProfile } from
 import { truncateEnd } from '../util/text.js';
 import type { StoredProfile, StoredProfileGroup } from '../types.js';
 import { buildUnixInstallScript, buildWindowsInstallScript } from './installScripts.js';
+import { ExecutorHub } from '../executor/hub.js';
+import { WS_PATH as EXECUTOR_PATH } from '../executor/wire.js';
 import { AccountProfileStore } from './profiles.js';
 import { streamAccountModel, WorkstationUsageStore } from './modelProxy.js';
 import { verifyHostRequest } from './hostAuth.js';
@@ -184,6 +186,36 @@ export function findHostPackage(format: HostPackFormat = 'tgz'): HostPackageInfo
   return undefined;
 }
 
+const EXECUTOR_TARGET = /^(linux|darwin|windows)-(amd64|arm64)$/;
+
+/** 执行器构建产物目录（scripts/build-executor.mjs 的输出）。 */
+export function executorDistDir(): string {
+  const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+  return process.env.TANDEM_EXECUTOR_DIST
+    ? path.resolve(process.env.TANDEM_EXECUTOR_DIST)
+    : path.resolve(serverRoot, '../executor/dist');
+}
+
+function executorFileName(target: string): string {
+  return `tandem-exec-${target}${target.startsWith('windows-') ? '.exe' : ''}`;
+}
+
+/** 目标名 → 执行器 sha256（来自构建产物的 SHA256SUMS；安装脚本嵌入它做校验）。 */
+export function executorDigests(dir = executorDistDir()): Record<string, string> {
+  const digests: Record<string, string> = {};
+  let text = '';
+  try {
+    text = readFileSync(path.join(dir, 'SHA256SUMS'), 'utf8');
+  } catch {
+    return digests;
+  }
+  for (const line of text.split('\n')) {
+    const match = /^([0-9a-f]{64})\s+\*?tandem-exec-(\S+?)(?:\.exe)?$/.exec(line.trim());
+    if (match) digests[match[2]!] = match[1]!;
+  }
+  return digests;
+}
+
 export function createWorkstation(options: WorkstationOptions): WorkstationHandle {
   const hostId =
     options.hostId ?? `ws-${createHash('sha256').update(path.resolve(options.home)).digest('hex').slice(0, 24)}`;
@@ -273,6 +305,16 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
   const tunnels = new Map<string, HostTunnel>();
   const clientWss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME });
   const tunnelWss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME });
+  const executorWss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME });
+  const selfUrl = (): string => {
+    const address = app.server.address();
+    const port = address && typeof address === 'object' ? address.port : 8481;
+    const bound = address && typeof address === 'object' ? address.address : '127.0.0.1';
+    const wildcard = bound === '0.0.0.0' || bound === '::' || bound === '::0';
+    const host = wildcard ? '127.0.0.1' : bound.includes(':') ? `[${bound}]` : bound;
+    return `http://${host}:${port}`;
+  };
+  const executors = new ExecutorHub({ home: options.home, store, selfUrl });
 
   void app.register(cors, {
     origin: true,
@@ -347,6 +389,19 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
 
   app.get('/healthz', async () => ({ ok: true, hostsOnline: tunnels.size, initialized: store.mode() === 'center' }));
 
+  // 执行器二进制（无压缩）；安装脚本用嵌入的 sha256 校验。
+  app.get('/executor/:target', async (req, reply) => {
+    const { target } = req.params as { target: string };
+    const file = EXECUTOR_TARGET.test(target) ? path.join(executorDistDir(), executorFileName(target)) : '';
+    if (!file || !existsSync(file)) {
+      return reply.code(404).send({ error: `工作站没有 ${target} 平台的执行器` });
+    }
+    reply.header('content-type', 'application/octet-stream');
+    reply.header('content-length', String(statSync(file).size));
+    reply.header('content-disposition', `attachment; filename="${executorFileName(target)}"`);
+    return reply.send(createReadStream(file));
+  });
+
   // ---------- 公开接口 ----------
   const requestOrigin = (req: FastifyRequest): string => {
     const hostHeader = req.headers.host;
@@ -373,13 +428,13 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
   app.get('/install.sh', async (req, reply) => {
     reply.header('content-type', 'text/x-shellscript; charset=utf-8');
     reply.header('cache-control', 'no-store');
-    return buildUnixInstallScript({ server: requestOrigin(req) });
+    return buildUnixInstallScript({ server: requestOrigin(req), digests: executorDigests() });
   });
 
   app.get('/install.ps1', async (req, reply) => {
     reply.header('content-type', 'text/plain; charset=utf-8');
     reply.header('cache-control', 'no-store');
-    return buildWindowsInstallScript({ server: requestOrigin(req) });
+    return buildWindowsInstallScript({ server: requestOrigin(req), digests: executorDigests() });
   });
 
   const downloadPackage = (format: HostPackFormat) => async (_req: FastifyRequest, reply: FastifyReply) => {
@@ -793,7 +848,7 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
         previous.closeAll('主机已在别处重连');
         previous.socket.close(4409, '被同一公钥的新连接取代');
       }
-      store.markHostOnline(hostId, true);
+      store.markHostOnline(hostId, executors.isLive(hostId));
       ws.send(JSON.stringify({ type: 'ready' }));
       console.log(`[workstation] 主机上线 ${shortId(hostId)}（在线 ${tunnels.size}）`);
     });
@@ -837,6 +892,10 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
       tunnelWss.handleUpgrade(req, socket, head, (ws) => handleTunnel(ws));
       return;
     }
+    if (rawUrl.split('?')[0] === EXECUTOR_PATH) {
+      executorWss.handleUpgrade(req, socket, head, (ws) => executors.accept(ws));
+      return;
+    }
     const target = parseClientUrl(rawUrl);
     if (!target) return refuse(socket, '404 Not Found');
     if (!target.url.startsWith('/_e2e')) return refuse(socket, '403 Forbidden');
@@ -869,6 +928,7 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
     listen: async (port, host) => {
       await debugReady;
       await app.listen({ port, host });
+      await executors.restore();
       const info = addressInfo();
       return info;
     },
@@ -876,6 +936,7 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
       for (const tunnel of tunnels.values()) tunnel.socket.close(1001, '工作站关闭');
       profiles.dispose();
       store.close();
+      await executors.close();
       await app.close();
     },
   };

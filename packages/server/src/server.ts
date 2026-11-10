@@ -48,6 +48,13 @@ import { registerDeviceRoutes } from './routes/devices.js';
 import { registerUpdateRoutes } from './routes/updates.js';
 import { IS_DEBUG_FLAVOR } from './flavor.js';
 
+/** 远端主机上下文不提供的接口：读写或执行的是工作站本机的文件、git、设备、浏览器、钩子或外部会话。 */
+const REMOTE_UNSUPPORTED = [
+  /^\/api\/(fs|external-sessions|browser|devices|mcp|skills|wiki|evals|boards|hooks|demo|doctor|stt)(\/|$)/,
+  /^\/api\/sessions\/import(\/|$)/,
+  /^\/api\/sessions\/[^/]+\/(changes|branches|checkout|vcs|worktree|pr|browser|devices|preview|rewind|ai-review)(\/|$)/,
+];
+
 export interface WorkstationTunnelDeps {
   /** 可选 target：内嵌工作站的真实监听地址（避让端口后与保存的加入地址不同）。 */
   start: (target?: string) => void;
@@ -137,6 +144,9 @@ export async function createApp(
     req.team = principal;
     const denied = guardMemberRequest(host, principal, req.method, urlPath);
     if (denied) return reply.code(denied.code).send({ error: denied.message });
+    if (host.remote && REMOTE_UNSUPPORTED.some((re) => re.test(urlPath))) {
+      return reply.code(501).send({ error: '远端主机暂不支持该功能' });
+    }
   });
 
   app.setErrorHandler((rawErr: unknown, _req, reply) => {

@@ -1,6 +1,5 @@
 // 权限审批：规则判定、plan 模式、会话级 allow、待审批冒泡与重启恢复。
 import { randomUUID } from 'node:crypto';
-import os from 'node:os';
 import type {
   PermissionDecision,
   PermissionRequest,
@@ -168,7 +167,7 @@ function sandboxNoticesFor(
     settings,
     cwd: rec.cwd,
     worktreePath: rec.worktree?.path,
-    home: os.homedir(),
+    home: host.env.home,
     tandemHome: host.home,
   });
   const notices = [...evaluation.notices];

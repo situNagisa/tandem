@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, ChevronRight, Clock, Plus } from 'lucide-react'
+import { AlertTriangle, Check, Clock, Plus } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
 import type { WorkspaceHostInfo, WorkstationBindCode, WorkstationPublicStatus } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
@@ -76,7 +76,6 @@ export function AddHostDialog() {
   const [bind, setBind] = useState<WorkstationBindCode | null>(null)
   const [generation, setGeneration] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const [showInstalled, setShowInstalled] = useState(false)
   const [now, setNow] = useState(() => Date.now())
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null)
   const [phase, setPhase] = useState<HostPhase>('waiting')
@@ -91,7 +90,6 @@ export function AddHostDialog() {
   const localHost = useMemo(() => (open ? findLocalControl() : undefined), [open])
   const share = useMemo(() => pickShareUrl(base, status?.urls ?? []), [base, status])
   const url = selectedUrl ?? share.url
-  const hasPackage = !!status?.hostPackage && (platform !== 'windows' || status.hostPackage.zip === true)
   const statusReady = !!status || !!statusError
   const centerIsLoopback = isLoopbackUrl(base)
   const shareUrlReplaced = centerIsLoopback && !share.loopbackOnly && url !== normalizeWorkstationUrl(base)
@@ -103,7 +101,7 @@ export function AddHostDialog() {
     return () => window.clearInterval(timer)
   }, [open])
 
-  // 工作站状态：公开接口，用来判断有没有主机安装包、有哪些对外地址。
+  // 工作站状态：公开接口，用来读取对外地址与错误状态。
   useEffect(() => {
     if (!open || !base) {
       setStatus(null)
@@ -265,7 +263,13 @@ export function AddHostDialog() {
       open={open}
       onClose={close}
       title="添加主机"
-      description="在目标机器上执行一次命令，它就会以当前账号身份持续连接工作站。"
+      description={
+        <>
+          在目标机器上执行一次命令，它就会以当前账号身份持续连接工作站。
+          <br />
+          目标机器只需能访问工作站，不需要安装 Node.js。
+        </>
+      }
       layer={70}
       className="max-w-[560px]"
       footer={
@@ -363,62 +367,15 @@ export function AddHostDialog() {
               </Button>
             </div>
           ) : (
-            <>
-              {hasPackage ? (
-                <div data-testid="addhost-command">
-                  <CodeBlock
-                    code={commands.oneLiner}
-                    language={platform === 'windows' ? 'powershell' : 'bash'}
-                    fileName={platform === 'windows' ? 'PowerShell' : '终端'}
-                    toolsAlwaysVisible
-                    maxHeight={null}
-                  />
-                </div>
-              ) : (
-                <>
-                  <div className="rounded-lg border border-[var(--t-border)] bg-[var(--t-bg-subtle)] px-3 py-2 text-[12px] leading-5 text-[var(--t-text-secondary)]">
-                    这台工作站没有主机安装包：先在目标机器手动安装 tandem-host（需要 Node ≥ 22），再执行下面的命令。
-                  </div>
-                  <div data-testid="addhost-command">
-                    <CodeBlock
-                      code={commands.installed}
-                      language="bash"
-                      fileName="终端"
-                      toolsAlwaysVisible
-                      maxHeight={null}
-                    />
-                  </div>
-                </>
-              )}
-
-              {hasPackage && (
-                <div>
-                  <button data-raw-button
-                    type="button"
-                    onClick={() => setShowInstalled((value) => !value)}
-                    aria-expanded={showInstalled}
-                    className="flex w-full items-center gap-1 rounded-md px-1 py-0.5 text-left text-[12px] text-[var(--t-text-tertiary)] transition-colors hover:bg-[var(--t-bg-hover)] hover:text-[var(--t-text-secondary)]"
-                  >
-                    <ChevronRight
-                      size={13}
-                      className={cn('shrink-0 transition-transform', showInstalled && 'rotate-90')}
-                    />
-                    已安装 tandem-host？
-                  </button>
-                  {showInstalled && (
-                    <div className="mt-1.5" data-testid="addhost-command-installed">
-                      <CodeBlock
-                        code={commands.installed}
-                        language="bash"
-                        fileName="终端"
-                        toolsAlwaysVisible
-                        maxHeight={null}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
+            <div data-testid="addhost-command">
+              <CodeBlock
+                code={commands.oneLiner}
+                language={platform === 'windows' ? 'powershell' : 'bash'}
+                fileName={platform === 'windows' ? 'PowerShell' : '终端'}
+                toolsAlwaysVisible
+                maxHeight={null}
+              />
+            </div>
           )}
 
           <div

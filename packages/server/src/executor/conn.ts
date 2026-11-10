@@ -15,7 +15,7 @@ export interface ExecutorAuth {
   /** 已登记主机的执行器公钥；未登记返回 undefined。 */
   execPubOf(hostId: string): Buffer | undefined;
   /** 首次登记：令牌有效时登记执行器并返回 hostId；否则抛出原因。 */
-  enroll(req: { token: string; execPub: Buffer; name: string; platform: string }): string;
+  enroll(req: { token: string; execPub: Buffer; name: string; platform: string }): Promise<string>;
 }
 
 export interface StreamHandlers {
@@ -42,12 +42,16 @@ interface Stream {
   detach?: () => void;
 }
 
-type Phase = 'hello' | 'auth' | 'ready' | 'closed';
+type Phase = 'hello' | 'auth' | 'enrolling' | 'ready' | 'closed';
 
 function abortError(): Error {
   const err = new Error('The operation was aborted');
   err.name = 'AbortError';
   return err;
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function toBuffer(data: RawData): Buffer {
@@ -67,6 +71,7 @@ export class ExecutorConn {
   private lastSeen = Date.now();
   private timer?: NodeJS.Timeout;
   private readonly streams = new Map<number, Stream>();
+  private readonly closeHooks: Array<() => void> = [];
   private readonly established: Promise<ExecutorConn>;
   private settleOk!: (conn: ExecutorConn) => void;
   private settleErr!: (err: Error) => void;
@@ -161,15 +166,20 @@ export class ExecutorConn {
     this.shut('连接已关闭');
   }
 
+  /** 连接断开（握手失败或运行中断开）后调用一次。 */
+  onClose(fn: () => void): void {
+    this.closeHooks.push(fn);
+  }
+
   private onMessage(data: Buffer, isBinary: boolean): void {
-    if (this.phase === 'closed') return;
+    if (this.phase === 'closed' || this.phase === 'enrolling') return;
     try {
       if (!isBinary) throw new Error('期望二进制帧');
       if (this.phase === 'hello') this.onHello(data);
-      else if (this.phase === 'auth') this.onAuth(data);
+      else if (this.phase === 'auth') void this.onAuth(data).catch((err: unknown) => this.shut(errorText(err)));
       else this.onFrame(data);
     } catch (err) {
-      this.shut(err instanceof Error ? err.message : String(err));
+      this.shut(errorText(err));
     }
   }
 
@@ -207,7 +217,7 @@ export class ExecutorConn {
     this.phase = 'auth';
   }
 
-  private onAuth(data: Buffer): void {
+  private async onAuth(data: Buffer): Promise<void> {
     const f = P.parseFrame(this.recv!.open(data));
     if (f.type !== T.AUTH) throw new Error('期望 AUTH');
     const auth = JSON.parse(f.payload.toString('utf8')) as {
@@ -223,12 +233,14 @@ export class ExecutorConn {
       if (!auth.execPub) throw new Error('首次登记缺少 execPub');
       const execPub = P.unb64(auth.execPub);
       if (!P.verifyTranscript(execPub, this.transcript, auth.sig)) throw new Error('AUTH 签名无效');
-      hostId = this.auth.enroll({
+      this.phase = 'enrolling';
+      hostId = await this.auth.enroll({
         token: auth.token ?? '',
         execPub,
         name: auth.name ?? '',
         platform: auth.platform ?? '',
       });
+      if (this.phase !== 'enrolling') return;
     } else {
       const execPub = this.auth.execPubOf(this.helloHostId);
       if (!execPub || auth.hostId !== this.helloHostId) throw new Error('AUTH 的 hostId 不符');
@@ -320,9 +332,12 @@ export class ExecutorConn {
 
   private shut(reason: string): void {
     if (this.phase === 'closed') return;
+    const handshaking = this.phase !== 'ready';
     this.phase = 'closed';
     clearInterval(this.timer);
-    this.sock.terminate();
+    // 握手失败时把原因放进 close 帧，执行器的日志里能看到（如令牌无效、已过期）。
+    if (handshaking) this.sock.close(4400, reason.slice(0, 60));
+    else this.sock.terminate();
     const err = new Error(`执行器连接已断开：${reason}`);
     for (const s of this.streams.values()) {
       s.detach?.();
@@ -331,5 +346,6 @@ export class ExecutorConn {
     }
     this.streams.clear();
     this.settleErr(err);
+    for (const fn of this.closeHooks.splice(0)) fn();
   }
 }

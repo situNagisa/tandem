@@ -6,7 +6,6 @@ import type { Host } from '../host.js';
 import type { SessionRecord } from '../types.js';
 import { runTurn } from './loop.js';
 import { executeTool } from '../tools/index.js';
-import { localHostEnv } from '../host-env.js';
 import { errorMessage, truncateMiddle } from '../util/text.js';
 import { noteMessageCompleted, restoreQueue, setAssistantMessage } from '../run-state.js';
 
@@ -276,7 +275,7 @@ async function runRecoveredTool(
   const toolCtx = {
     cwd: rec.cwd,
     session: rec,
-    env: localHostEnv,
+    env: host.env,
     signal,
     updateTodos: (todos: SessionRecord['todos']) => host.updateTodos(rec, todos),
     setUsage: (usage: SessionRecord['usage']) => {

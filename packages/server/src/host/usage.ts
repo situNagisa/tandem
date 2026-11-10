@@ -77,7 +77,8 @@ function withPromptOverrides(
 
 export function buildSystemFor(host: Host, rec: SessionRecord,
     opts: { allowTask?: boolean; hookContext?: string } = {}): { system: string; parts: InjectionSegment[] } {
-  const parts = buildSystemPromptParts(rec.cwd, host.promptOptions(rec, opts));
+  const machine = host.remote ? { platform: host.env.platform, git: false } : undefined;
+  const parts = buildSystemPromptParts(rec.cwd, { ...host.promptOptions(rec, opts), ...(machine ? { machine } : {}) });
   return { system: parts.map((part) => part.content).join('\n\n'), parts };
 }
 

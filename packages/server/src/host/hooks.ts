@@ -9,6 +9,8 @@ export async function runHooks(host: Host, rec: SessionRecord,
     entries: HookEntry[],
     event: HookEvent,
     context: Omit<HookExecutionContext, 'sessionId' | 'cwd' | 'permissionMode'>): Promise<HookRunResult> {
+  // 远端主机上下文不执行工作站本机的钩子（钩子配置读的是工作站用户的 ~/.claude 与项目目录）。
+  if (host.remote) return { blocked: false, feedback: [], contexts: [], outcomes: [] };
   return runHookEntries(
     entries,
     event,

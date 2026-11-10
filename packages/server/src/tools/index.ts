@@ -122,6 +122,13 @@ const RUNNERS: Record<string, ToolRunner> = {
 
 export const TOOL_MAP = new Map(TOOLS.map((tool) => [tool.name, tool]));
 
+/** 远端主机上下文不提供的工具：依赖工作站本机的浏览器、设备、串口，或本机的技能与 Wiki 目录。 */
+const LOCAL_ONLY_TOOLS = new Set(['DeviceList', 'AdbShell', 'AdbInstall', 'AdbLogcat', 'SerialOpen', 'SerialRead', 'SerialWrite', 'Skill', 'WikiSearch', 'WikiRead']);
+
+export function remoteUnsupported(name: string): boolean {
+  return LOCAL_ONLY_TOOLS.has(name) || name.startsWith('browser_');
+}
+
 /** plan 模式允许的工具（纯只读）；ExitPlanMode 是提交计划的特殊工具。 */
 export const PLAN_ALLOWED = new Set(['Read', 'Glob', 'Grep', 'WebFetch', 'BashOutput', 'TodoWrite', 'ExitPlanMode', 'Skill', 'WikiSearch', 'WikiRead', 'browser_snapshot', 'browser_screenshot', 'browser_console', 'browser_close']);
 

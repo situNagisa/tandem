@@ -4,6 +4,7 @@ import {
   createHash,
   createHmac,
   createPrivateKey,
+  type KeyObject,
   createPublicKey,
   generateKeyPairSync,
   randomBytes,
@@ -407,6 +408,17 @@ export class AccountsStore {
   /** 工作站服务公钥（凭据验签用）。 */
   workstationPublicKey(): string | undefined {
     return this.state?.mode === 'center' ? this.state.publicKey : this.state?.centerPublicKey;
+  }
+
+  /** 工作站的 Ed25519 签名身份（执行器握手的 WELCOME 签名）；fingerprint 是执行器令牌里的 16 位指纹。 */
+  centerIdentity(): { priv: KeyObject; pub: Buffer; fingerprint: string } | undefined {
+    if (this.state?.mode !== 'center') return undefined;
+    const pub = Buffer.from(this.state.publicKey, 'base64').subarray(-32);
+    return {
+      priv: createPrivateKey(this.state.privateKey),
+      pub,
+      fingerprint: createHash('sha256').update(pub).digest('hex').slice(0, 16),
+    };
   }
 
   /** 主机身份：隧道注册 + E2E。 */
@@ -1135,7 +1147,9 @@ export class AccountsStore {
     const state = this.requireCenter();
     const now = Date.now();
     state.joinCodes = state.joinCodes.filter((c) => !c.usedAt && c.expiresAt > now).slice(-50);
-    const code = `ach_${randomBytes(18).toString('base64url')}`;
+    // 令牌末尾的 .指纹 让执行器在发送令牌前核对工作站身份（见 docs/features/executor.md）。
+    const fingerprint = this.centerIdentity()!.fingerprint;
+    const code = `ach_${randomBytes(18).toString('base64url')}.${fingerprint}`;
     const expiresAt = now + HOST_BIND_TTL_MS;
     state.joinCodes.push({ codeHash: sha256(code), createdAt: now, expiresAt, kind: 'host', accountId });
     this.audit(accountId, 'host.bind-code');

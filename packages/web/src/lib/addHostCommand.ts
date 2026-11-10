@@ -3,10 +3,8 @@
 export type AddHostPlatform = 'linux' | 'macos' | 'windows'
 
 export interface AddHostCommands {
-  /** 目标机器上执行一次即可：下载主机程序并前台连接工作站。 */
+  /** 目标机器上执行一次即可：下载执行器并前台连接工作站。 */
   oneLiner: string
-  /** 已装 tandem-host 的机器：只登记并连接。 */
-  installed: string
 }
 
 /** 去掉首尾空白与结尾斜杠（命令里统一自己拼 `/install.sh`）。 */
@@ -37,10 +35,7 @@ export function buildAddHostCommands(input: {
     input.platform === 'windows'
       ? `& ([scriptblock]::Create((irm ${base}/install.ps1))) -Token '${token}'${service ? ' -Service' : ''}`
       : `curl -fsSL ${base}/install.sh | sh -s -- --token ${token}${service ? ' --service' : ''}`
-  return {
-    oneLiner,
-    installed: `tandem-host join ${base} --token ${token}${service ? ' --service' : ''}`,
-  }
+  return { oneLiner }
 }
 
 export interface ShareUrlResult {
@@ -86,5 +81,5 @@ export function defaultAddHostPlatform(userAgent: string): AddHostPlatform {
 
 /** 日志与截图里不出现完整注册令牌。 */
 export function maskToken(text: string): string {
-  return text.replace(/ach_[A-Za-z0-9_-]+/g, 'ach_****')
+  return text.replace(/ach_[A-Za-z0-9_.-]+/g, 'ach_****')
 }

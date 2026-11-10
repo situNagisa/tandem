@@ -58,6 +58,8 @@ export function subagentListing(
 export interface PromptOptions {
   allowTask?: boolean;
   planMode?: boolean;
+  /** 项目所在机器的平台与是否 git 仓库；缺省为本机。远端主机上下文由 Host 注入。 */
+  machine?: { platform: string; arch?: string; git: boolean };
   hookContext?: string;
   skills?: string;
   /** 来自 MemoryStore.promptSection 的项目记忆段。 */
@@ -92,12 +94,13 @@ export function buildSystemPromptParts(
   options: PromptOptions = {},
 ): InjectionSegment[] {
   const date = new Date().toISOString().slice(0, 10);
+  const machine = options.machine ?? { platform: process.platform, arch: process.arch, git: isGitRepo(cwd) };
   const env = readonlyText('environment')
     .replace(/\{\{cwd\}\}/g, cwd)
-    .replace(/\{\{platform\}\}/g, process.platform)
-    .replace(/\{\{arch\}\}/g, process.arch)
+    .replace(/\{\{platform\}\}/g, machine.platform)
+    .replace(/\{\{arch\}\}/g, machine.arch ?? '未知')
     .replace(/\{\{date\}\}/g, date)
-    .replace(/\{\{git\}\}/g, isGitRepo(cwd) ? '是' : '否');
+    .replace(/\{\{git\}\}/g, machine.git ? '是' : '否');
 
   const listing = subagentListing(options.subagents);
   const taskLine =

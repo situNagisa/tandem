@@ -14,7 +14,7 @@ import { runTurn } from '../agent/loop.js';
 import { TASK_DESCRIPTION_DEFAULT } from '../prompts/registry.js';
 import { resolveDivisionAssignment, routingSettingsOf } from '../model-routing.js';
 import { modelAliasOf } from '../subagent-presets.js';
-import { TOOLS, TOOL_MAP } from '../tools/index.js';
+import { TOOLS, TOOL_MAP, remoteUnsupported } from '../tools/index.js';
 import type { SessionRecord, ToolDefinition, ToolResult } from '../types.js';
 import type { Host } from '../host.js';
 
@@ -252,7 +252,7 @@ export function delegationPrompt(host: Host, rec: SessionRecord): string {
 export function toolDefinitions(host: Host, rec: SessionRecord, allowTask = true): ToolDefinition[] {
   const strategy = host.delegationFor(rec);
   const canDelegate = allowTask && strategy !== 'none' && (rec.depth ?? 0) < 3;
-  const hasSkills = host.skills
+  const hasSkills = !host.remote && host.skills
     .list(rec.cwd)
     .some((skill) => skill.enabled && skill.modelInvocable);
   const whitelist = rec.toolWhitelist?.length
@@ -271,6 +271,7 @@ export function toolDefinitions(host: Host, rec: SessionRecord, allowTask = true
         (!tool.name.startsWith('browser_') || host.browser.settings.enabled) &&
         // 只有看板卡片会话能提议新卡
         (tool.name !== 'ProposeCards' || !!rec.board) &&
+        !(host.remote && remoteUnsupported(tool.name)) &&
         allowed(tool.name),
     )
     .map((tool) =>
@@ -278,11 +279,12 @@ export function toolDefinitions(host: Host, rec: SessionRecord, allowTask = true
         ? { ...tool, description: host.taskToolDescription(rec.cwd) }
         : tool,
     );
-  const mcp = host.mcp.toolDefinitions(rec.cwd).filter((tool) => allowed(tool.name));
+  const mcp = host.remote ? [] : host.mcp.toolDefinitions(rec.cwd).filter((tool) => allowed(tool.name));
   return [...base, ...mcp];
 }
 
 export function toolDefinition(host: Host, name: string, cwd: string): ToolDefinition | undefined {
+  if (host.remote) return remoteUnsupported(name) ? undefined : TOOL_MAP.get(name);
   return (
     TOOL_MAP.get(name) ??
     host.mcp.toolDefinitions(cwd).find((tool) => tool.name === name) ??

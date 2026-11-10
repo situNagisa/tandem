@@ -70,6 +70,7 @@ import { AiReviewManager } from './ai-review.js';
 import type { DemoApi } from './demo/api.js';
 import { DisabledDemoManager } from './demo/api.js';
 import { IS_DEBUG_FLAVOR } from './flavor.js';
+import { localHostEnv, type HostEnv } from './host-env.js';
 
 // 演示工作区模块只在调试版加载；发布构建会连同剧本、种子与内置模型一起剔除。
 const DemoManagerClass = IS_DEBUG_FLAVOR
@@ -253,6 +254,10 @@ export class Host {
   /** 跨会话收件箱（审批/回合结束/预算摘要），手机审批台的数据源。 */
   readonly inbox = new Inbox();
   readonly version: string;
+  /** 项目所在机器的访问接口：本机为 localHostEnv；远端主机上下文由执行器连接换入。 */
+  env: HostEnv = localHostEnv;
+  /** 远端主机上下文（工作站代管的执行器主机）：只经 env 访问远端，不启动本机的外部会话扫描、MCP、演示与本机钩子。 */
+  readonly remote: boolean;
   runtimes = new Map<string, SessionRuntime>();
   permissions = new Map<string, PermissionEntry>();
   /** 每轮系统提示的注入段落清单与变化历史（内存态，GET /injections 时按需重算）。 */
@@ -280,8 +285,9 @@ export class Host {
 
   accounts!: AccountsStore;
 
-  constructor(config?: HostConfig, home = tandemHome()) {
+  constructor(config?: HostConfig, home = tandemHome(), options: { remote?: boolean } = {}) {
     this.home = home;
+    this.remote = options.remote === true;
     this.config = config ?? loadHostConfig(home);
     this.team = new TeamStore(home);
     this.hub.setSessionVisibility((access, sessionId) => {
@@ -376,11 +382,11 @@ export class Host {
       this.profiles = new ProfileStore(home, { file: 'workstation-profiles.json', mirror: true });
     }
     // 启动时连接已启用的 MCP 服务器；失败只记录状态，不影响 Host 启动
-    this.mcp.start();
+    if (!this.remote) this.mcp.start();
     // 外部会话目录有变化时通知客户端刷新侧栏（30s 定时扫描）
-    this.external.startWatching(() => this.notifyExternalSessionsChanged());
+    if (!this.remote) this.external.startWatching(() => this.notifyExternalSessionsChanged());
     this.demo = DemoManagerClass ? new DemoManagerClass(this) : new DisabledDemoManager();
-    void this.demo.restore();
+    if (!this.remote) void this.demo.restore();
   }
 
   notifyExternalSessionsChanged(): void {
