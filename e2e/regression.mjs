@@ -7072,6 +7072,19 @@ async function main() {
       assert.match(await page.locator('[data-agent-breadcrumb]').innerText(), /只读/, '子代理节点没有打开只读子会话')
     })
 
+    desktop('反馈2108#04：分叉会话的「查看」回到来源会话', async (page) => {
+      let demo = await api(base, token, '/api/demo')
+      if (!demo.active) demo = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const [mainId, , , forkId] = demo.scenarios.find((item) => item.id === 'subagents').sessionIds
+      await openSession(page, mainId)
+      // 从会话图点分叉节点打开分叉会话（不经过地址栏的链接），再点横幅「查看」。
+      await page.locator('[data-session-graph] div[data-kind="fork"]').first().click()
+      await page.waitForFunction((id) => window.location.hash.includes(`/s/${id}`), forkId, { timeout: 10_000 })
+      await page.getByRole('button', { name: '查看', exact: true }).click()
+      await page.waitForFunction((id) => window.location.hash.includes(`/s/${id}`), mainId, { timeout: 10_000 })
+      await page.getByRole('button', { name: '查看', exact: true }).waitFor({ state: 'detached', timeout: 10_000 })
+    })
+
     desktop('反馈12#06/#07：会话信息无顶栏、分组可收起并记住', async (page) => {
       let demo = await api(base, token, '/api/demo')
       if (!demo.active) demo = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })

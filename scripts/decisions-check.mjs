@@ -624,6 +624,13 @@ const DECISIONS = [
     need: [/openAgentSession\(hostId, node\.subagentId\)/, /focusMessage\(node\.turnId\)/],
   },
   {
+    id: 'route-follows-session',
+    source: '反馈2108#04',
+    decision: '打开会话时地址栏同步，「查看」等按路由跳转的入口不会被同址短路吞掉',
+    files: ['packages/web/src/store/appStore/sessionsSlice.ts'],
+    need: [/openSession: \(hostId, sessionId\) => \{[\s\S]*?navigate\(\{ kind: 'session', hostId, sessionId \}\)/],
+  },
+  {
     id: 'no-native-window-prompt',
     source: '反馈9 全局屏蔽',
     decision: '右键菜单/拼写/自动填充由应用接管，不出现浏览器自带控件',
