@@ -1,24 +1,27 @@
 // 路径工具：~ 展开、相对路径解析、分隔符统一。
-import os from 'node:os';
+// 可选的 env 指定路径所在机器的 home 与路径语义，缺省为本机。
 import path from 'node:path';
+import { localHostEnv, type HostEnv } from '../host-env.js';
 
-export function expandHome(p: string): string {
-  if (p === '~') return os.homedir();
-  if (p.startsWith('~/') || p.startsWith('~\\')) return path.join(os.homedir(), p.slice(2));
+type PathEnv = Pick<HostEnv, 'home' | 'path'>;
+
+export function expandHome(p: string, env: PathEnv = localHostEnv): string {
+  if (p === '~') return env.home;
+  if (p.startsWith('~/') || p.startsWith('~\\')) return env.path.join(env.home, p.slice(2));
   return p;
 }
 
-export function resolvePath(cwd: string, p: string): string {
-  return path.resolve(cwd, expandHome(p));
+export function resolvePath(cwd: string, p: string, env: PathEnv = localHostEnv): string {
+  return env.path.resolve(cwd, expandHome(p, env));
 }
 
-export function toPosix(p: string): string {
-  return p.split(path.sep).join('/');
+export function toPosix(p: string, env: PathEnv = localHostEnv): string {
+  return p.split(env.path.sep).join('/');
 }
 
-export function isSubPath(parent: string, child: string): boolean {
-  const rel = path.relative(parent, child);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+export function isSubPath(parent: string, child: string, env: PathEnv = localHostEnv): boolean {
+  const rel = env.path.relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !env.path.isAbsolute(rel));
 }
 
 /** Host 平台的路径实现：Windows 用 win32，其余用 posix。 */
