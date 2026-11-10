@@ -84,9 +84,11 @@ func fsStat(_ Stream, raw json.RawMessage) (any, *Error) {
 	info := lst
 	symlink := lst.Mode()&fs.ModeSymlink != 0
 	if symlink {
-		if target, err := os.Stat(a.Path); err == nil {
-			info = target
+		target, err := os.Stat(a.Path)
+		if err != nil {
+			return nil, fromOS(err)
 		}
+		info = target
 	}
 	return statResult{
 		Type:    fileType(info.Mode()),
@@ -322,6 +324,93 @@ func fsRemove(_ Stream, raw json.RawMessage) (any, *Error) {
 		return nil, fromOS(err)
 	}
 	return map[string]any{}, nil
+}
+
+type walkArgs struct {
+	Root        string   `json:"root"`
+	Ignore      []string `json:"ignore"`
+	MaxEntries  int      `json:"maxEntries"`
+	MaxDepth    int      `json:"maxDepth"`
+	LinkedFiles bool     `json:"linkedFiles"`
+}
+
+const (
+	defaultWalkEntries = 20000
+	defaultWalkDepth   = 16
+)
+
+type walkDir struct {
+	dir   string
+	depth int
+}
+
+// fsWalk 与 TS 侧 walkFiles 语义一致：显式栈、不跟随目录链接、读目录失败即跳过。
+// 每个文件以 路径 + NUL 的形式写到 DataOut。
+func fsWalk(s Stream, raw json.RawMessage) (any, *Error) {
+	var a walkArgs
+	if e := decode(raw, &a); e != nil {
+		return nil, e
+	}
+	if a.MaxEntries <= 0 {
+		a.MaxEntries = defaultWalkEntries
+	}
+	if a.MaxDepth <= 0 {
+		a.MaxDepth = defaultWalkDepth
+	}
+	ignore := make(map[string]bool, len(a.Ignore))
+	for _, name := range a.Ignore {
+		ignore[name] = true
+	}
+	out := s.DataOut()
+	stack := []walkDir{{dir: a.Root}}
+	count := 0
+	truncated := false
+	var buf []byte
+	for len(stack) > 0 && !truncated {
+		if s.Context().Err() != nil {
+			return nil, errorf(ECANCELED, "遍历已取消")
+		}
+		cur := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		entries, err := os.ReadDir(cur.dir)
+		if err != nil {
+			continue
+		}
+		for _, de := range entries {
+			full := filepath.Join(cur.dir, de.Name())
+			switch {
+			case de.IsDir():
+				if !ignore[de.Name()] && cur.depth < a.MaxDepth {
+					stack = append(stack, walkDir{dir: full, depth: cur.depth + 1})
+				}
+				continue
+			case de.Type().IsRegular():
+			case de.Type()&fs.ModeSymlink != 0:
+				if !a.LinkedFiles {
+					continue
+				}
+				st, err := os.Stat(full)
+				if err != nil || !st.Mode().IsRegular() {
+					continue
+				}
+			default:
+				continue
+			}
+			if count == a.MaxEntries {
+				truncated = true
+				break
+			}
+			buf = append(append(buf[:0], full...), 0)
+			if _, err := out.Write(buf); err != nil {
+				if s.Context().Err() != nil {
+					return nil, errorf(ECANCELED, "遍历已取消")
+				}
+				return nil, errorf(EIO, "写入失败：%v", err)
+			}
+			count++
+		}
+	}
+	return map[string]any{"count": count, "truncated": truncated}, nil
 }
 
 func sysInfo(_ Stream, _ json.RawMessage) (any, *Error) {
