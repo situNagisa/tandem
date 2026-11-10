@@ -106,6 +106,18 @@ const PATH_BODY = `[^\\s<>()\\[\\]{}"'\`，。；：！？、]+`
 const PLAIN_PATH_SOURCE = `(?<![\\w./@-])(file:\\/\\/[^\\s<>()\\[\\]{}"'\`]+|[A-Za-z]:[\\\\/]${PATH_BODY}|(?:~|\\.{1,2})?\\/${PATH_BODY}|(?:[\\w.@+-]+\\/)+[\\w.@+-]+\\.${EXT}|[\\w.@+-]+\\.${EXT})(?::\\d+(?:-\\d+)?)?`
 const PLAIN_PATH = new RegExp(PLAIN_PATH_SOURCE)
 
+const EXPLICIT_ROOT = /^(?:~|\.{1,2}|[a-zA-Z]:)[\\/]/
+
+/**
+ * 路径形状：带扩展名、有显式根（~/ ./ ../ 盘符）、或至少两段（src/a、/a/b）才算路径。
+ * 句中的「通/断」「和/或」「/断时怎么判断」只是斜杠，单段的 `/断` 不是文件。
+ */
+function looksLikePath(raw: string): boolean {
+  if (new RegExp(`\\.${EXT}$`, 'i').test(raw)) return true
+  if (EXPLICIT_ROOT.test(raw)) return true
+  return /[\\/]/.test(raw.replace(/^[\\/]/, ''))
+}
+
 function trimTrailing(value: string): string {
   return value.replace(/[.,;:!?，。；：！？、]+$/, '')
 }
@@ -119,8 +131,7 @@ export function parseInlinePath(text: string): FileRef | null {
   const match = /^(.*?)(?::(\d+)(?:-(\d+))?)?$/.exec(value)
   if (!match) return null
   const raw = normalizeFileRefPath(match[1])
-  const hasExt = new RegExp(`\\.${EXT}$`, 'i').test(raw)
-  if (!raw.includes('/') && !hasExt) return null
+  if (!looksLikePath(raw)) return null
   const lineStart = match[2] ? Number(match[2]) : undefined
   const lineEnd = match[3] ? Number(match[3]) : undefined
   return {

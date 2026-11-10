@@ -9,7 +9,7 @@
 | R03 | 弹层被裁切或越界 | 5 | Portal + 碰撞避让；regression「tooltip/菜单不越界」多视口用例 |
 | R04 | 彩色过多、强调色越界、焦点橙环 | 5 | design P02；ui-audit accent/selection 检查；regression 焦点环只随键盘出现 |
 | R05 | 重复入口（新会话、设置、删除、派单、缓存率等） | 6 | design P15；decisions-check 唯一入口项；regression 顶栏 ≤5/入口唯一/无重复缓存率 |
-| R06 | Windows 路径与编码、安装说明平台化 | 6 | 路径规范化单测；regression 盘符路径/平台分段安装说明 |
+| R06 | Windows 路径与编码、安装说明平台化；句中斜杠被识别成文件路径 | 8 | 路径规范化单测；`fileLinks` 路径形状单测（句中斜杠反例）；regression 盘符路径/平台分段安装说明 |
 | R07 | 外部会话注入内容外露、被当作用户轮 | 3 | `isSystemInjectionText` 统一口径；单测 turns/external；regression 注入口径用例 |
 | R08 | 点了没反应 / 数据未就绪被当异常 | 4 | 加载态与默认值兜底；regression 新会话环境条/模型价格/手机环境条 |
 | R09 | 反馈模式与浮层交互冲突 | 2 | `lib/overlay` + `data-portal-layer`；ui-audit contains/portal；regression 反馈圈选 |
@@ -66,3 +66,4 @@
 | R63 | 内嵌工作站避让端口后，主机隧道仍连保存的旧地址（可能是别的进程），前端无限重连 | 1 | 实际端口回写加入地址 + 公钥校验 + 日志打印真实目标 + 调试目录随机端口；regression 端口占用重启 |
 | R64 | 设计 token 拼错/未定义，浏览器静默丢弃声明（弹层背景变透明、边框消失） | 1 | ui-audit `undefined-css-var`：源码里的 `var(--x)` 必须在 CSS 有定义，或属于运行时注入（`setProperty`/style 对象自动识别，`--radix-*` 显式白名单，`--graph-lane-` 等模板前缀按同前缀定义校验）；浮层/对话框截图核对（浅色+深色） |
 | R65 | 单价按型号名前缀硬编码，新代际查不到价格（花费显示 —）；未收录型号不按同家族估算 | 1 | `usage.ts` `builtinPriceFor`：前缀表 → Claude 家族+版本 → GPT 基础款最近一代，估算时标 `estimatedFrom`；单价优先级账号自定义 > 内置；单测 `model-families`、`pricing` |
+| R66 | 底部跟随失效：ResizeObserver 只在首次挂载时绑定（从首页进入会话后不生效）；打开会话的贴底校准读 scrollHeight 时被 content-visibility 撑高，误判为离开底部 | 1 | `ChatView` 观察者依赖挂载视图（`hasSession`/`agentSession`）；校准写入走 `programmaticUntil` 窗口；regression「反馈1919#07 流式输出时在底部自动跟随」 |
