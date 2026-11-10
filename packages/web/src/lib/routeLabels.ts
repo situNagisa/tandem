@@ -21,8 +21,6 @@ export const ROUTE_MODE_META: Record<TurnRouteMode, RouteModeMeta> = {
   },
 }
 
-export const ROUTE_MODE_ORDER: TurnRouteMode[] = ['direct', 'cheap', 'division']
-
 export interface DelegationMeta {
   label: string
   /** 设置页下拉用的带说明写法。 */
