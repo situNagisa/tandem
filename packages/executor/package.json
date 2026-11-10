@@ -1,0 +1,9 @@
+{
+  "name": "@tandem/executor",
+  "version": "0.4.6",
+  "private": true,
+  "description": "远端执行器 tandem-exec（Go，见 docs/features/executor.md）",
+  "scripts": {
+    "build": "node ../../scripts/build-executor.mjs"
+  }
+}

@@ -12,7 +12,7 @@
     "dev:server": "npm run dev -w @tandem/server",
     "dev:web": "npm run dev -w @tandem/web",
     "start": "node packages/server/dist/cli.js",
-    "test": "npm run test -w @tandem/server && npm run test -w @tandem/web",
+    "test": "npm run test -w @tandem/server && npm run test -w @tandem/web && node scripts/build-executor.mjs --test",
     "test:server": "npm run test -w @tandem/server",
     "test:web": "npm run test -w @tandem/web",
     "smoke": "node e2e/smoke.mjs",
