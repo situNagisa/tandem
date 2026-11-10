@@ -11,7 +11,7 @@
 | R05 | 重复入口（新会话、设置、删除、派单、缓存率等） | 6 | design P15；decisions-check 唯一入口项；regression 顶栏 ≤5/入口唯一/无重复缓存率 |
 | R06 | Windows 路径与编码、安装说明平台化；句中斜杠被识别成文件路径 | 8 | 路径规范化单测；`fileLinks` 路径形状单测（句中斜杠反例）；regression 盘符路径/平台分段安装说明 |
 | R07 | 外部会话注入内容外露、被当作用户轮 | 3 | `isSystemInjectionText` 统一口径；单测 turns/external；regression 注入口径用例 |
-| R08 | 点了没反应 / 数据未就绪被当异常 | 4 | 加载态与默认值兜底；regression 新会话环境条/模型价格/手机环境条 |
+| R08 | 点了没反应 / 数据未就绪被当异常 | 5 | 加载态与默认值兜底；store `openSession` 同步地址栏（`sessionsSlice`，否则 `navigate` 同址短路吞掉按路由的跳转）；decisions-check `route-follows-session`；regression 新会话环境条/模型价格/手机环境条/反馈2108#04 |
 | R09 | 反馈模式与浮层交互冲突 | 2 | `lib/overlay` + `data-portal-layer`；ui-audit contains/portal；regression 反馈圈选 |
 | R10 | 提示/动效不符合习惯、尺寸跳动 | 8 | 标准 Tooltip/固定尺寸/动效 token；regression 设置窗口/动画测量/高级分组/运行进度；切换会话保留旧画面（sessionsSlice `pendingFocus`）、新会话乐观占位（`startSession` 草稿）；regression 反馈2102#01/#06 |
 | R11 | 危险或不可逆操作没有确认/预览 | 2 | `ui/ConfirmAction`；regression 合并/压缩/删除确认 |
@@ -69,3 +69,4 @@
 | R66 | 底部跟随失效：ResizeObserver 只在首次挂载时绑定（从首页进入会话后不生效）；打开会话的贴底校准读 scrollHeight 时被 content-visibility 撑高，误判为离开底部 | 1 | `ChatView` 观察者依赖挂载视图（`hasSession`/`agentSession`）；校准写入走 `programmaticUntil` 窗口；regression「反馈1919#07 流式输出时在底部自动跟随」 |
 | R67 | 一个菜单混放两个维度（是否派子代理 / 执行者用什么模型）与一次性/记住两种语义，选项互相重叠或矛盾（单代理不屏蔽 Task，低成本仍派执行者，仅规划改变工具集） | 1 | 分工×取向两个维度（`routing.md` 矩阵，`planTurnRoute` 单测）；decisions-check `route-labels`；regression「分工路由」与输入框菜单用例 |
 | R68 | 跨视图定位的异步回调（轮询、滚动定时器）未随新一次跳转取消，旧目标把视口拉回 | 1 | `lib/jump.ts` `pollJump` 取消前一轮轮询；`MessageList` 的 `jumpTimers` 在新跳转时清理；regression 反馈2102#02 会话图快速连点 |
+| R70 | 点击语义不符：子代理入口展开卡片或内嵌定位，而不是进入目标视图 | 2 | 子代理入口统一 `openAgentSession`（`ToolCard` 的 `onOpenAgent`、`SessionGraphCard` 的 `open`）；decisions-check `subagent-row-opens-session`、`graph-subagent-opens-session`；regression 反馈2108#02/#03 |

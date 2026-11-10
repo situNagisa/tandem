@@ -27,7 +27,7 @@
 
 ## 外部会话 / 子代理只读
 
-外部会话复用同一个 `TurnRail`、`Card`、`DetailRow`、`ContextSpaceSection`、`PanelBar`、`ResizeHandle` 与宽度偏好；服务端从 Claude/Codex 日志解析 `model`/`usage`，缺项不渲染，未知价格不显示「花费未知」。只读隐藏固定图钉与输入框，保留「在 Tandem 中继续」。子代理会话复用 `MessageList` + `TurnRail`，面包屑逐层返回。
+外部会话复用同一个 `TurnRail`、`Card`、`DetailRow`、`ContextSpaceSection`、`PanelBar`、`ResizeHandle` 与宽度偏好；服务端从 Claude/Codex 日志解析 `model`/`usage`，缺项不渲染，未知价格不显示「花费未知」。只读隐藏固定图钉与输入框，保留「在 Tandem 中继续」。消息区的子代理工具行点击即进入该子代理的只读会话（不展开卡片），会话图的子代理节点同样进入；子代理会话复用 `MessageList` + `TurnRail`，面包屑逐层返回。
 
 ## 上下文卡与空分组
 

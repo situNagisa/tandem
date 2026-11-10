@@ -610,6 +610,27 @@ const DECISIONS = [
     need: [/depth > 6/, /L8|层号/, /子代理/],
   },
   {
+    id: 'subagent-row-opens-session',
+    source: '反馈2108#02（2026-11-10 用户原话：子代理直接跳转到子代理对应的会话即可，不需要展开一个卡片）',
+    decision: '消息区子代理工具行点击直接打开子代理会话，不展开卡片',
+    files: ['packages/web/src/components/ToolCard.tsx'],
+    need: [/if \(onOpenAgent\) \{/, /aria-expanded=\{onOpenAgent \? undefined : open\}/],
+  },
+  {
+    id: 'graph-subagent-opens-session',
+    source: '反馈2108#03',
+    decision: '会话图子代理节点点击进入子代理会话；主线节点在当前会话定位该轮',
+    files: [F.graphCard],
+    need: [/openAgentSession\(hostId, node\.subagentId\)/, /focusMessage\(node\.turnId\)/],
+  },
+  {
+    id: 'route-follows-session',
+    source: '反馈2108#04',
+    decision: '打开会话时地址栏同步，「查看」等按路由跳转的入口不会被同址短路吞掉',
+    files: ['packages/web/src/store/appStore/sessionsSlice.ts'],
+    need: [/openSession: \(hostId, sessionId\) => \{[\s\S]*?navigate\(\{ kind: 'session', hostId, sessionId \}\)/],
+  },
+  {
     id: 'no-native-window-prompt',
     source: '反馈9 全局屏蔽',
     decision: '右键菜单/拼写/自动填充由应用接管，不出现浏览器自带控件',

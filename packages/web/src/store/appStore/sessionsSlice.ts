@@ -135,6 +135,8 @@ export function createSessionsSlice(
     openSession: (hostId, sessionId) => {
       get().activateHost(hostId)
       if (!getHost(hostId)) return
+      // 反馈2108#04：地址栏与当前会话必须一致，否则「查看」等按路由跳转的入口会被 navigate 的同址短路吞掉。
+      navigate({ kind: 'session', hostId, sessionId })
       const current = get().active
       const stale = pendingFocus
       pendingFocus = null
