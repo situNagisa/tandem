@@ -18,7 +18,7 @@
 
 ## 等用户实机验证（我这边只能模拟）
 按价值排序：
-1. Windows 一行命令添加主机：`docs/test-guides/workstation.md` 五之二（重新生成令牌后复制命令到 PowerShell 执行；失败请把 `%USERPROFILE%\.tandem-host\install.log` 发回）
+1. Windows 一行命令添加主机：`docs/test-guides/workstation.md` 五之二（重新生成令牌后复制命令到 PowerShell 执行；窗口停在"已连接工作站"即成功；失败请把窗口输出发回）
 2. 账号级模型账号与旧主机 profiles 迁移：登录工作站后设置 → 账号与模型应显示账号级数据；加入工作站的主机本地 `profiles.json` 应在上传后删除，主机目录搜不到 Key 明文
 3. 余额查询：给账号选自动/平台/自定义查询，设置列表与模型菜单应显示余额；失败显示「—」，点刷新强制重查
 4. 审批内联：需要授权时审批应作为对话里的一条消息出现在工具之后，处理完原位留结果，输入框保持可用
