@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react'
 import { ChevronDown, GitFork, ShieldAlert, TriangleAlert } from 'lucide-react'
 import type { PermissionRequest, TeamPresence } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
@@ -29,6 +36,7 @@ const EMPTY_VIEWERS: TeamPresence[] = []
 const EMPTY_MOUNTS: import('@tandem/protocol').DeviceMount[] = []
 const PIN_THRESHOLD = 80
 const JUMP_THRESHOLD = 160
+const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' '])
 
 export function ChatView() {
   const sessionTarget = useSessionTarget() ?? undefined
@@ -84,6 +92,8 @@ export function ChatView() {
   const frameRef = useRef<number | null>(null)
   // 平滑滚动到顶前，避免 ResizeObserver 在同一帧插入瞬移
   const programmaticUntil = useRef(0)
+  // 用户自己滚动过（滚轮/触摸/滚动条/方向键）才允许按位置重新贴底；跳转后内容收缩导致的被动滚动不算。
+  const userScrolledRef = useRef(false)
   // 打开会话后的贴底校准：content-visibility 的预估高度会让首次 scrollHeight 偏小。
   const initialScrollFor = useRef<string | null>(null)
   const [showJump, setShowJump] = useState(false)
@@ -154,7 +164,11 @@ export function ChatView() {
       frameRef.current = null
       if (!pinnedRef.current) return
       const el = scrollRef.current
-      if (el) el.scrollTop = el.scrollHeight
+      if (el) {
+        // 读 scrollHeight 会触发布局，新露出的 content-visibility 行会把内容撑高，写入后的滚动事件不能据此判定离开底部。
+        programmaticUntil.current = Date.now() + 600
+        el.scrollTop = el.scrollHeight
+      }
     })
   }, [])
 
@@ -163,12 +177,9 @@ export function ChatView() {
     if (!el) return
     pinnedRef.current = true
     setShowJump(false)
-    if (smooth) {
-      programmaticUntil.current = Date.now() + 600
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-    } else {
-      el.scrollTop = el.scrollHeight
-    }
+    programmaticUntil.current = Date.now() + 600
+    if (smooth) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    else el.scrollTop = el.scrollHeight
   }, [])
 
   useLayoutEffect(() => {
@@ -176,7 +187,10 @@ export function ChatView() {
     setShowJump(false)
     initialScrollFor.current = sessionId
     const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (el) {
+      programmaticUntil.current = Date.now() + 600
+      el.scrollTop = el.scrollHeight
+    }
   }, [sessionId])
 
   // 消息挂载后高度仍会变化（代码高亮、content-visibility 回收），在最初几百毫秒内多次校准。
@@ -187,7 +201,6 @@ export function ChatView() {
         if (initialScrollFor.current !== sessionId || !pinnedRef.current) return
         const el = scrollRef.current
         if (el) {
-          // 读 scrollHeight 会触发布局，新露出的 content-visibility 行会把内容撑高，不能据此判定离开底部。
           programmaticUntil.current = Date.now() + 600
           el.scrollTop = el.scrollHeight
         }
@@ -262,13 +275,17 @@ export function ChatView() {
       return
     }
     programmaticUntil.current = 0
-    pinnedRef.current = distance < PIN_THRESHOLD
+    if (pinnedRef.current || userScrolledRef.current) pinnedRef.current = distance < PIN_THRESHOLD
     const next = distance > JUMP_THRESHOLD
     setShowJump((prev) => (prev === next ? prev : next))
   }
 
-  const cancelProgrammatic = () => {
+  const markUserScroll = () => {
+    userScrolledRef.current = true
     programmaticUntil.current = 0
+  }
+  const onScrollKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (SCROLL_KEYS.has(e.key)) markUserScroll()
   }
 
   const myId = team?.role === 'owner' ? 'owner' : team?.member?.id
@@ -319,8 +336,12 @@ export function ChatView() {
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          onWheel={cancelProgrammatic}
-          onTouchMove={cancelProgrammatic}
+          onWheel={markUserScroll}
+          onTouchMove={markUserScroll}
+          onPointerDown={(e) => {
+            if (e.target === e.currentTarget) markUserScroll()
+          }}
+          onKeyDown={onScrollKeyDown}
           className="chat-scroll h-full w-full overflow-y-auto overscroll-contain"
         >
           <div
@@ -413,6 +434,8 @@ export function ChatView() {
             onBeforeJump={() => {
               pinnedRef.current = false
               programmaticUntil.current = 0
+              userScrolledRef.current = false
+              initialScrollFor.current = null
               setShowJump(false)
             }}
           />
