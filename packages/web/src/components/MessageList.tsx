@@ -17,7 +17,7 @@ import { HandoffCard } from './chat/HandoffCard'
 import { RoutePlanLine } from './chat/RoutePlanLine'
 import { TurnActivity } from './chat/TurnActivity'
 import { DivisionPlanCard } from './chat/DivisionPlanCard'
-import { DELEGATION_META } from '../lib/routeLabels'
+import { delegationLabel, routeBiasLabel } from '../lib/routeLabels'
 import { UserMessage } from './chat/UserMessage'
 import { AssistantMessage } from './chat/AssistantMessage'
 import {
@@ -163,12 +163,7 @@ const NoticeRow = memo(function NoticeRow({
   }
   if (message.routePlan) {
     return (
-      <RoutePlanLine
-        text={rawText}
-        mode={message.routePlan.mode}
-        hostId={hostId}
-        sessionId={sessionId}
-      />
+      <RoutePlanLine text={rawText} mode={message.routePlan.mode} />
     )
   }
   return (
@@ -186,7 +181,6 @@ const NoticeRow = memo(function NoticeRow({
 function routeDetailText(route: NonNullable<UiMessage['route']>): string {
   const scores = route.scores
   const tier = { fast: '快速', balanced: '均衡', power: '强力' }[route.tier]
-  const delegation = DELEGATION_META[scores.delegation].label
   return [
     `复杂度 ${scores.complexity}/100`,
     `消息 ${scores.messageChars} 字`,
@@ -196,7 +190,8 @@ function routeDetailText(route: NonNullable<UiMessage['route']>): string {
     `上轮失败 ${scores.previousFailed ? '是' : '否'}`,
     `不确定 ${scores.uncertain ? '是' : '否'}`,
     `工具深度 ${scores.toolDepth}`,
-    `委派 ${delegation}`,
+    `分工 ${delegationLabel(scores.delegation)}`,
+    `取向 ${routeBiasLabel(scores.preference)}`,
     `预算压力 ${Math.round((scores.budgetPressure ?? 0) * 100)}%`,
     `档位 ${tier}${scores.escalated ? ' · 升级' : ''}${scores.downgraded ? ' · 回落' : ''}`,
   ].join('；')

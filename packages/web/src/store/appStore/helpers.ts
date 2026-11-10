@@ -72,7 +72,7 @@ export function summaryOf(s: Session): SessionSummary {
     ...(s.groupId ? { groupId: s.groupId } : {}),
     model: s.model,
     ...(s.autoRoute ? { autoRoute: true as const } : {}),
-    ...(s.routePreference ? { routePreference: s.routePreference } : {}),
+    ...(s.routeBias ? { routeBias: s.routeBias } : {}),
     ...(s.route ? { route: { ...s.route, scores: { ...s.route.scores } } } : {}),
     ...(s.routeSavings ? { routeSavings: { ...s.routeSavings } } : {}),
     permissionMode: s.permissionMode,

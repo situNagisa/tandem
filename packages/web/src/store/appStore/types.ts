@@ -118,7 +118,11 @@ export interface AppState {
   closeSession: () => void
   reloadActiveSession: (target?: SessionTarget) => void
   clearTurnError: (target?: SessionTarget) => void
-  send: (blocks: ContentBlock[], target?: SessionTarget, routeMode?: import('@tandem/protocol').TurnRouteMode) => boolean
+  send: (
+    blocks: ContentBlock[],
+    target?: SessionTarget,
+    route?: import('@tandem/protocol').TurnRouteOverride,
+  ) => boolean
   interrupt: (target?: SessionTarget) => void
   /** 网络中断等待重试期间立即重试。 */
   retryNow: (target?: SessionTarget) => void

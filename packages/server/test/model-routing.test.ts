@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { ModelRoutingSettings } from '@tandem/protocol';
+import type { DelegationStrategy, ModelRoutingSettings, RoutePreference } from '@tandem/protocol';
 import type { Host } from '../src/host.js';
 import type { SessionRecord } from '../src/types.js';
 import {
@@ -10,6 +10,7 @@ import {
   noteTurnEnd,
   planTurnRoute,
   recentToolInputs,
+  resolveDivisionAssignment,
   type RouteSignals,
 } from '../src/model-routing.js';
 import { normalizeRoutingSettings } from '../src/routing-settings.js';
@@ -21,7 +22,10 @@ const price = {
   mid: { input: 1, output: 3 },
 };
 
-function fakeHost(routing: ModelRoutingSettings): Host {
+function fakeHost(
+  routing: ModelRoutingSettings,
+  options: { bias?: RoutePreference; delegation?: DelegationStrategy } = {},
+): Host {
   const profile = {
     id: 'p1',
     name: '测试账号',
@@ -44,7 +48,8 @@ function fakeHost(routing: ModelRoutingSettings): Host {
       blockingRule: () => undefined,
     },
     estimateQuota: () => ({}),
-    delegationFor: () => 'more',
+    delegationFor: () => options.delegation ?? 'more',
+    routeBiasFor: () => options.bias ?? 'balanced',
   } as unknown as Host;
 }
 
@@ -171,29 +176,61 @@ test('简单任务零派发：问答/改名/解释都直接做', () => {
   assert.equal(plan('为什么这里会死锁？')?.mode, 'direct');
 });
 
-test('机械任务便宜直做；多步批量任务分工；专长领域命中', () => {
-  const host = fakeHost(routing);
-  const cheap = planTurnRoute(host, rec('安装依赖并跑通构建'), {
-    text: '安装依赖并跑通构建',
-  });
-  assert.equal(cheap?.mode, 'cheap');
-  assert.equal(cheap?.executorModel, 'cheap');
+const complexText =
+  '请帮我修复这个页面的前端样式问题，批量修改所有组件的布局与颜色，然后跑一遍 lint 和测试，最后把结果整理出来。';
 
-  const complexText =
-    '请帮我修复这个页面的前端样式问题，批量修改所有组件的布局与颜色，然后跑一遍 lint 和测试，最后把结果整理出来。';
-  const division = planTurnRoute(host, rec(complexText, 70_000), { text: complexText });
+test('省钱取向：机械任务整单交执行者；均衡取向不整单派发', () => {
+  const text = '安装依赖并跑通构建';
+  const cost = planTurnRoute(fakeHost(routing, { bias: 'cost' }), rec(text), { text });
+  assert.equal(cost?.mode, 'cheap');
+  assert.equal(cost?.executorModel, 'cheap');
+  const balanced = planTurnRoute(fakeHost(routing), rec(text), { text });
+  assert.notEqual(balanced?.mode, 'cheap');
+});
+
+test('分工关闭：不规划，任何取向都不派发', () => {
+  for (const bias of ['cost', 'balanced', 'quality'] as const) {
+    const host = fakeHost(routing, { bias, delegation: 'none' });
+    assert.equal(planTurnRoute(host, rec(complexText), { text: complexText }), undefined, bias);
+  }
+});
+
+test('多步批量任务分工；专长领域命中', () => {
+  const division = planTurnRoute(fakeHost(routing), rec(complexText, 70_000), { text: complexText });
   assert.equal(division?.mode, 'division');
   assert.equal(division?.specialist, true);
   assert.equal(division?.specialistModel, 'kimi');
+  const modest = planTurnRoute(fakeHost(routing, { delegation: 'less' }), rec(complexText, 70_000), {
+    text: complexText,
+  });
+  assert.equal(modest?.mode, 'division', '适度也会派明显独立的多步任务');
 });
 
-test('用户覆盖优先，学到的偏好会让同类任务默认直接做', () => {
-  const host = fakeHost(routing);
-  const text = '安装依赖并跑通构建';
-  const override = planTurnRoute(host, rec(text), { text, override: 'direct' });
-  assert.equal(override?.mode, 'direct');
-  assert.equal(override?.source, 'override');
+test('积极分工拆分行动类任务，适度只派明显独立的多步任务', () => {
+  const action =
+    '调整设置页所有卡片的内边距、圆角和阴影，让它在手机和桌面上的表现保持一致，改动尽量小，不要动数据逻辑。';
+  const more = planTurnRoute(fakeHost(routing, { delegation: 'more' }), rec(action), { text: action });
+  assert.equal(more?.mode, 'division');
+  assert.match(more?.reason ?? '', /积极分工/);
+  const less = planTurnRoute(fakeHost(routing, { delegation: 'less' }), rec(action), { text: action });
+  assert.equal(less?.mode, 'direct');
+});
 
+test('取向决定未绑定的执行者档位；绑定优先', () => {
+  const unbound: ModelRoutingSettings = {
+    ...routing,
+    division: { ...routing.division, executor: undefined },
+  };
+  const pick = (settings: ModelRoutingSettings, bias: RoutePreference) =>
+    resolveDivisionAssignment(fakeHost(settings), settings, 'executor', 'general', bias)?.candidate.model;
+  assert.equal(pick(unbound, 'cost'), 'cheap', '省钱取快速档');
+  assert.equal(pick(unbound, 'balanced'), 'mid', '均衡取均衡档中最便宜的');
+  assert.equal(pick(unbound, 'quality'), 'strong', '质量优先取强力档');
+  assert.equal(pick(routing, 'quality'), 'cheap', '已绑定执行者时不受取向影响');
+});
+
+test('学到的偏好：同类任务被改为单代理两次后，默认单代理（即使省钱）', () => {
+  const text = '安装依赖并跑通构建';
   const learnedRouting: ModelRoutingSettings = {
     ...routing,
     division: {
@@ -209,7 +246,7 @@ test('用户覆盖优先，学到的偏好会让同类任务默认直接做', ()
       ],
     },
   };
-  const learned = planTurnRoute(fakeHost(learnedRouting), rec(text), { text });
+  const learned = planTurnRoute(fakeHost(learnedRouting, { bias: 'cost' }), rec(text), { text });
   assert.equal(learned?.mode, 'direct');
   assert.match(learned?.reason ?? '', /同类任务/);
 });

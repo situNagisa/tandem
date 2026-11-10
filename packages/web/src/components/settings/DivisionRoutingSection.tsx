@@ -233,7 +233,7 @@ export function DivisionRoutingSection({
         )}
       </div>
       <p className="text-[12px] leading-4 text-muted">
-        默认单代理；只有多步机械子任务或命中领域专长时才多代理协作。低成本的机械任务整单交给执行者，主会话只看摘要。
+        默认单代理；只有多步机械子任务或命中领域专长时才多代理协作。省钱取向下，机械任务整单交给执行者，主会话只看摘要。
       </p>
 
       <div className="flex flex-wrap items-center gap-1.5">

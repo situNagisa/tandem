@@ -15,6 +15,7 @@ import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { cn } from '../../lib/cn'
 import { profileModelGroups } from '../../lib/profileModels'
+import { rememberRouteBias } from '../../lib/routeBias'
 import { Button } from '../ui/Button'
 import { SegmentedControl, Select, Switch } from '../ui/Controls'
 import { Menu } from '../ui/Menu'
@@ -190,7 +191,10 @@ export function ModelRoutingSection() {
       .updateSettings(host, payload)
       .then((saved) => {
         // 连续点击时只认最后一次保存的响应，避免旧响应把新选择覆盖回去。
-        if (seq === saveSeq.current) setSettings(saved)
+        if (seq === saveSeq.current) {
+          setSettings(saved)
+          if (saved.modelRouting) rememberRouteBias(host.id, saved.modelRouting.preference)
+        }
       })
       .catch((err: Error) => {
         if (seq === saveSeq.current) {
@@ -255,14 +259,14 @@ export function ModelRoutingSection() {
 
       <section data-setting-id="routing.preference" className="settings-item space-y-1 px-3 py-1">
         <SettingRow
-          label="偏好"
+          label="取向默认"
           hint="影响档位阈值；预算将尽时会进一步向快速档倾斜。"
         >
           <SegmentedControl
             value={routing.preference}
             options={PREFERENCE_OPTIONS.map(({ value, label }) => ({ value, label }))}
             onChange={(value) => persist({ ...routing, preference: value })}
-            aria-label="路由偏好"
+            aria-label="取向默认"
           />
         </SettingRow>
         <SettingRow

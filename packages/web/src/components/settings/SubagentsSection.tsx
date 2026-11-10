@@ -235,7 +235,7 @@ export function SubagentsSection() {
     try {
       const next = await api.updateSettings(host, { ...settings, defaultDelegation: value })
       setSettings(next)
-      toast('新会话默认委派倾向已保存', 'success')
+      toast('新会话默认分工已保存', 'success')
     } catch (err) {
       setSettings(previous)
       toast(err instanceof Error ? err.message : '保存失败', 'error')
@@ -278,9 +278,9 @@ export function SubagentsSection() {
       </div>
 
       <Card data-setting-id="subagents.default-delegation" className="flex flex-wrap items-center gap-2">
-        <span className="text-[12.5px] text-text-soft">新会话默认委派倾向</span>
+        <span className="text-[12.5px] text-text-soft">新会话默认分工</span>
         <Select
-          aria-label="新会话默认委派倾向"
+          aria-label="新会话默认分工"
           value={settings?.defaultDelegation ?? 'less'}
           onChange={(e) => void saveDefaultDelegation(e.target.value as DelegationStrategy)}
           wrapperClassName="w-[240px] max-w-full"
@@ -291,7 +291,7 @@ export function SubagentsSection() {
             </option>
           ))}
         </Select>
-        <span className="text-[12px] text-muted">会话内可在输入框底栏的「执行方式 → 委派倾向」随时切换。</span>
+        <span className="text-[12px] text-muted">会话内可在输入框底栏的「分工与取向」随时切换。</span>
       </Card>
 
       {error && <div className="rounded-lg border border-danger/25 bg-danger-soft/50 px-3 py-2 text-[12px] text-danger">{error}</div>}
@@ -404,7 +404,7 @@ export function SubagentsSection() {
                   </option>
                 ))}
               </Select></SettingRow>
-            <SettingRow label="子代理委派倾向" stacked wide>
+            <SettingRow label="子代理分工" stacked wide>
 <Select
                 value={draft.delegation}
                 onChange={(e) =>

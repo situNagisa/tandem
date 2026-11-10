@@ -31,7 +31,9 @@ import type {
   SessionTurns,
   SkillInfo,
   SlashCommand,
+  RoutePreference,
   Todo,
+  TurnRouteOverride,
 } from '@tandem/protocol';
 import { ProfileStore, loadHostConfig, tandemHome } from './config.js';
 import { BrowserManager } from './browser.js';
@@ -168,8 +170,8 @@ import {
   delegationFor,
   delegationKey,
   delegationPrompt,
-  orchestrateTools,
   presetSummary,
+  routeBiasFor,
   runSubagent,
   subagentConfig,
   taskToolDescription,
@@ -672,8 +674,8 @@ export class Host {
     return delegationFor(this, rec);
   }
 
-  orchestrateTools(rec: SessionRecord): ToolDefinition[] {
-    return orchestrateTools(this, rec);
+  routeBiasFor(rec: SessionRecord): RoutePreference {
+    return routeBiasFor(this, rec);
   }
 
   presetSummary(cwd: string): string {
@@ -780,8 +782,7 @@ export class Host {
     groupId?: unknown;
     model?: unknown;
     autoRoute?: unknown;
-    routeMode?: unknown;
-    routePreference?: unknown;
+    routeBias?: unknown;
     permissionMode?: unknown;
     effort?: unknown;
     delegation?: unknown;
@@ -799,8 +800,7 @@ export class Host {
       groupId?: unknown;
       model?: unknown;
       autoRoute?: unknown;
-      routeMode?: unknown;
-      routePreference?: unknown;
+      routeBias?: unknown;
       permissionMode?: unknown;
       pinned?: unknown;
       pinnedTurns?: unknown;
@@ -833,16 +833,16 @@ export class Host {
 
   // ---------- 消息入口 ----------
 
-  send(sessionId: string, content: ContentBlock[], routeMode?: import('@tandem/protocol').TurnRouteMode): Promise<void> {
-    return send(this, sessionId, content, routeMode);
+  send(sessionId: string, content: ContentBlock[], route?: TurnRouteOverride): Promise<void> {
+    return send(this, sessionId, content, route);
   }
 
-  handleUserContent(rec: SessionRecord, content: ContentBlock[], routeMode?: import('@tandem/protocol').TurnRouteMode): Promise<void> {
-    return handleUserContent(this, rec, content, routeMode);
+  handleUserContent(rec: SessionRecord, content: ContentBlock[], route?: TurnRouteOverride): Promise<void> {
+    return handleUserContent(this, rec, content, route);
   }
 
-  sendToModel(rec: SessionRecord, content: ContentBlock[], routeMode?: import('@tandem/protocol').TurnRouteMode): Promise<void> {
-    return sendToModel(this, rec, content, routeMode);
+  sendToModel(rec: SessionRecord, content: ContentBlock[], route?: TurnRouteOverride): Promise<void> {
+    return sendToModel(this, rec, content, route);
   }
 
   autoTitle(rec: SessionRecord, firstText: string, baseTitle: string): Promise<void> {
@@ -924,7 +924,7 @@ export class Host {
           text: `子代理「${child.title}」已停止。请由你直接完成这个任务：\n\n${prompt}`,
         },
       ],
-      'direct',
+      { delegation: 'none' },
     );
     return true;
   }

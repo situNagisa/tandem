@@ -1,5 +1,6 @@
 // 自动路由设置的归一化（纯函数；config 与路由共用，避免循环依赖）。
 import type {
+  DelegationStrategy,
   DivisionRoutingSettings,
   DomainRoute,
   ModelRoutingSettings,
@@ -8,10 +9,35 @@ import type {
   RouteCandidate,
   RouteDomain,
   RoutePreference,
+  TurnRouteOverride,
 } from '@tandem/protocol';
 
 export const MODEL_TIERS: ModelTier[] = ['fast', 'balanced', 'power'];
 export const ROUTE_PREFERENCES: RoutePreference[] = ['cost', 'balanced', 'quality'];
+export const DELEGATIONS: DelegationStrategy[] = ['more', 'less', 'none'];
+
+/** 分工取值；已移除的「仅规划」(orchestrate) 旧数据并入「积极」。 */
+export function normalizeDelegation(value: unknown): DelegationStrategy | undefined {
+  if (value === 'orchestrate') return 'more';
+  return DELEGATIONS.includes(value as DelegationStrategy) ? (value as DelegationStrategy) : undefined;
+}
+
+export function normalizeRouteBias(value: unknown): RoutePreference | undefined {
+  return ROUTE_PREFERENCES.includes(value as RoutePreference) ? (value as RoutePreference) : undefined;
+}
+
+/** 一次性覆盖（发送消息时附带）：只保留合法字段，全空返回 undefined。 */
+export function normalizeRouteOverride(value: unknown): TurnRouteOverride | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  const delegation = normalizeDelegation(raw.delegation);
+  const routeBias = normalizeRouteBias(raw.routeBias);
+  if (!delegation && !routeBias) return undefined;
+  return {
+    ...(delegation ? { delegation } : {}),
+    ...(routeBias ? { routeBias } : {}),
+  };
+}
 
 export const ROUTE_DOMAINS: RouteDomain[] = [
   'ui',

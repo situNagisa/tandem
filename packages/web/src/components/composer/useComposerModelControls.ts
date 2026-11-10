@@ -6,8 +6,9 @@ import type {
   Profile,
   ReasoningEffort,
   ProviderKind,
+  RoutePreference,
   SessionSummary,
-  TurnRouteMode,
+  TurnRouteOverride,
 } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
@@ -24,13 +25,8 @@ type StoreState = ReturnType<typeof useAppStore.getState>
 interface Options {
   sessionless: boolean
   onPermissionModeChange?: (mode: PermissionMode) => void
-  onModelChange?: (
-    profileId: string,
-    groupId: string | undefined,
-    model: string,
-    routeMode?: TurnRouteMode,
-  ) => void
-  onRouteModeChange?: (mode: TurnRouteMode | undefined) => void
+  onModelChange?: (profileId: string, groupId: string | undefined, model: string) => void
+  onRouteBiasChange?: (bias: RoutePreference) => void
   onDelegationChange?: (strategy: DelegationStrategy) => void
   onEffortChange?: (effort: ReasoningEffort) => void
   summary: SessionSummary | null
@@ -52,8 +48,10 @@ interface Options {
   effort: ReasoningEffort
   keepRouteMode: boolean
   setKeepRouteMode: (keep: boolean) => void
-  effectiveRouteMode: TurnRouteMode | undefined
-  setRouteOverride: (mode: TurnRouteMode | undefined) => void
+  effectiveDelegation: DelegationStrategy
+  effectiveRouteBias: RoutePreference | undefined
+  routeOverride: TurnRouteOverride | undefined
+  setRouteOverride: (route: TurnRouteOverride | undefined) => void
   setModelMenuOpen: (open: boolean) => void
   setPendingSwitch: (
     value: { profileId: string; groupId?: string; model: string; tokens: number } | null,
@@ -67,7 +65,7 @@ export function useComposerModelControls({
   sessionless,
   onPermissionModeChange,
   onModelChange,
-  onRouteModeChange,
+  onRouteBiasChange,
   onDelegationChange,
   onEffortChange,
   summary,
@@ -89,7 +87,9 @@ export function useComposerModelControls({
   effort,
   keepRouteMode,
   setKeepRouteMode,
-  effectiveRouteMode,
+  effectiveDelegation,
+  effectiveRouteBias,
+  routeOverride,
   setRouteOverride,
   setModelMenuOpen,
   setPendingSwitch,
@@ -204,11 +204,10 @@ export function useComposerModelControls({
     if (!profile) return
     const group = currentGroupId ?? profileModelGroups(profiles.find((p) => p.id === profile) ?? null)[0]?.groupId
     if (sessionless) {
-      onModelChange?.(profile, group, 'auto', undefined)
-      onRouteModeChange?.(undefined)
+      onModelChange?.(profile, group, 'auto')
       return
     }
-    // 模型菜单只管模型；分工改由输入框的执行方式统一选择。
+    // 模型菜单只管模型；分工与取向改由输入框的「分工与取向」菜单统一选择。
     void updateSession(activeHostId!, summary!.id, { model: 'auto' })
   }
 
@@ -225,13 +224,29 @@ export function useComposerModelControls({
     applyAutoRoute()
   }
 
-  const applyRouteMode = (mode: TurnRouteMode | undefined) => {
-    setRouteOverride(mode)
-    if (sessionless) onRouteModeChange?.(mode)
-    if (sessionless || !activeHostId || !summary) return
-    // 只写入本条覆盖，或在「记住为会话偏好」时落库偏好。
+  // 会话内只写本条消息的覆盖；「记住为会话偏好」打开时同时落库。
+  const applyDelegation = (strategy: DelegationStrategy) => {
+    if (sessionless) {
+      onDelegationChange?.(strategy)
+      return
+    }
+    setRouteOverride({ ...routeOverride, delegation: strategy })
     if (!keepRouteMode) return
-    void updateSession(activeHostId, summary.id, { routePreference: mode ?? 'auto' })
+    if (activeHostId && summary) {
+      void updateSession(activeHostId, summary.id, { delegation: strategy })
+    }
+  }
+
+  const applyRouteBias = (bias: RoutePreference) => {
+    if (sessionless) {
+      onRouteBiasChange?.(bias)
+      return
+    }
+    setRouteOverride({ ...routeOverride, routeBias: bias })
+    if (!keepRouteMode) return
+    if (activeHostId && summary) {
+      void updateSession(activeHostId, summary.id, { routeBias: bias })
+    }
   }
 
   const toggleKeepRouteMode = () => {
@@ -239,18 +254,9 @@ export function useComposerModelControls({
     setKeepRouteMode(next)
     if (next && !sessionless && activeHostId && summary) {
       void updateSession(activeHostId, summary.id, {
-        routePreference: effectiveRouteMode ?? 'auto',
+        delegation: effectiveDelegation,
+        ...(effectiveRouteBias ? { routeBias: effectiveRouteBias } : {}),
       })
-    }
-  }
-
-  const changeDelegation = (strategy: DelegationStrategy) => {
-    if (sessionless) {
-      onDelegationChange?.(strategy)
-      return
-    }
-    if (activeHostId && summary) {
-      void updateSession(activeHostId, summary.id, { delegation: strategy })
     }
   }
 
@@ -326,9 +332,9 @@ export function useComposerModelControls({
     changeModel,
     applyAutoRoute,
     changeAutoRoute,
-    applyRouteMode,
+    applyDelegation,
+    applyRouteBias,
     toggleKeepRouteMode,
-    changeDelegation,
     changeEffort,
     switchLabel,
     switchCost,

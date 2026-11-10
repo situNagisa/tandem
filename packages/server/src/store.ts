@@ -21,6 +21,7 @@ import path from 'node:path';
 import type { PermissionMode, SessionEnv } from '@tandem/protocol';
 import type { RunState, SessionRecord } from './types.js';
 import { isInjectedTitle, titleFromMessages } from './external.js';
+import { normalizeDelegation, normalizeRouteBias } from './routing-settings.js';
 
 const SAVE_DELAY_MS = 300;
 const PERMISSION_MODES = new Set<PermissionMode>([
@@ -99,22 +100,21 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   else delete rec.env;
   if (typeof raw.groupId === 'string' && raw.groupId) rec.groupId = raw.groupId;
   else delete rec.groupId;
-  // 旧字段 routeMode 已并入 routePreference：division（按规则规划）迁移为 'auto'。
-  const legacyRouteMode = (raw as SessionRecord & { routeMode?: unknown }).routeMode;
-  delete (rec as SessionRecord & { routeMode?: unknown }).routeMode;
-  if (legacyRouteMode === 'division' && rec.routePreference === undefined) {
-    rec.routePreference = 'auto';
-  }
-  if (
-    raw.delegation === 'orchestrate' ||
-    raw.delegation === 'more' ||
-    raw.delegation === 'less' ||
-    raw.delegation === 'none'
-  ) {
-    rec.delegation = raw.delegation;
-  } else {
-    delete rec.delegation;
-  }
+  // 旧 routePreference 拆成分工（delegation）与取向（routeBias）；routeMode 先并入 routePreference。
+  // direct → 分工关闭；division → 分工积极；cheap → 取向省钱且分工不为关闭；auto/未设 → 不变。
+  const legacy = raw as SessionRecord & { routeMode?: unknown; routePreference?: unknown };
+  const legacyPreference = legacy.routePreference ?? (legacy.routeMode === 'division' ? 'auto' : undefined);
+  delete (rec as SessionRecord & { routeMode?: unknown; routePreference?: unknown }).routeMode;
+  delete (rec as SessionRecord & { routeMode?: unknown; routePreference?: unknown }).routePreference;
+  let delegation = normalizeDelegation(raw.delegation);
+  if (legacyPreference === 'direct') delegation = 'none';
+  else if (legacyPreference === 'division') delegation = 'more';
+  else if (legacyPreference === 'cheap') delegation = delegation && delegation !== 'none' ? delegation : 'less';
+  if (delegation) rec.delegation = delegation;
+  else delete rec.delegation;
+  const routeBias = normalizeRouteBias(raw.routeBias) ?? (legacyPreference === 'cheap' ? 'cost' : undefined);
+  if (routeBias) rec.routeBias = routeBias;
+  else delete rec.routeBias;
   if (typeof raw.parentId === 'string' && raw.parentId) rec.parentId = raw.parentId;
   else delete rec.parentId;
   if (typeof raw.parentToolUseId === 'string' && raw.parentToolUseId) {
@@ -336,8 +336,9 @@ export class SessionStore {
         if (raw.messagesFormat === 'jsonl') {
           this.persistState.set(rec.id, this.stateOf(rec, true));
         }
-        // 旧 routeMode 只在首次读取时改写一次；之后文件里不再有该字段。
-        if ((raw as SessionRecord & { routeMode?: unknown }).routeMode !== undefined) {
+        // 旧路由字段与已移除的 orchestrate 只在首次读取时改写一次；之后文件里不再有这些取值。
+        const legacy = raw as SessionRecord & { routeMode?: unknown; routePreference?: unknown };
+        if (legacy.routeMode !== undefined || legacy.routePreference !== undefined || (raw.delegation as unknown) === 'orchestrate') {
           this.markDirty(rec.id, false);
         }
       } catch (err) {

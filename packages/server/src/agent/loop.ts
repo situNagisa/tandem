@@ -34,7 +34,8 @@ import {
   chooseAutoRoute,
   judgeDifficulty,
   looksLikeInvalidJson,
-  noteInvalidOutput,
+    noteInvalidOutput,
+    noteLearnedPreference,
   noteToolFailure,
   noteTurnEnd,
   estimateDivisionPlanCost,
@@ -220,7 +221,7 @@ export async function runTurn(
       }
       // 自动路由：每轮（含工具循环的每次请求）按当前信号重新选模型
       let routed: import('@tandem/protocol').ModelRouteDecision | undefined;
-      if (rec.autoRoute && routingSettings && !routePlan) {
+      if (rec.autoRoute && routingSettings && routePlan?.mode !== 'division') {
         const turnMessage = rec.messages.find((message) => message.id === turnMessageId);
         const toolDepth = countToolDepth(rec, turnMessageId);
         if (routingSettings.judge && !judgeAttempted) {
@@ -667,8 +668,8 @@ export async function runTurn(
             ...(saved && saved > 0 ? { routeSavedUsd: saved } : {}),
           });
         }
-        const costCap = (routingSettings ?? (routePlan ? routingSettingsOf(host) : undefined))?.division
-          ?.costCapUsdPerTurn;
+        const costCap =
+          host.delegationFor(rec) === 'more' ? routingSettingsOf(host)?.division?.costCapUsdPerTurn : undefined;
         if (
           routePlan?.mode === 'division' &&
           costCap !== undefined &&
@@ -815,7 +816,7 @@ export async function runTurn(
             const input = tool.input as Record<string, unknown> | undefined;
             return typeof input?.prompt === 'string' ? input.prompt : '';
           });
-          const estimated = estimateDivisionPlanCost(host, planForCard, prompts);
+          const estimated = estimateDivisionPlanCost(host, planForCard, prompts, host.routeBiasFor(rec));
           const need =
             confirm === 'always' ||
             (confirm === 'expensive' && (planForCard.specialist || estimated > threshold));
@@ -889,6 +890,7 @@ export async function runTurn(
               break;
             }
             if (decision.action === 'direct') {
+              if (rec.lastRoutePlan) noteLearnedPreference(host, rec.lastRoutePlan.text, planForCard, 'direct');
               routePlan = undefined;
               mainRole = undefined;
               for (const tool of taskUses) {
@@ -1005,7 +1007,7 @@ export async function runTurn(
     // 本轮结束：清除运行意图（若还有排队消息则保留 queue，等 drainQueue）
     finishRun(host, rec);
     if (rec.autoRoute && routingSettings) {
-      noteTurnEnd(rec, reason, routingSettings.preference, turnHadToolFailure);
+      noteTurnEnd(rec, reason, host.routeBiasFor(rec), turnHadToolFailure);
     }
     host.setStatus(rec, reason === 'error' ? 'error' : 'idle');
     // 回合完成即未读；用户正在看时客户端会立刻调用 read 接口清除（多端同步）。

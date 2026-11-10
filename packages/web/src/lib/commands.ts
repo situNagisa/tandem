@@ -22,7 +22,7 @@ const RECENT_KEY = 'tandem.recentCommands.v1'
 const RECENT_LIMIT = 8
 
 const MODES: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions']
-const DELEGATIONS: DelegationStrategy[] = ['less', 'more', 'orchestrate', 'none']
+const DELEGATIONS: DelegationStrategy[] = ['less', 'more', 'none']
 
 function toast(text: string, kind: 'info' | 'success' | 'error' = 'info'): void {
   useUiStore.getState().toast(text, kind)
@@ -260,8 +260,8 @@ const BASE_COMMANDS: AppCommand[] = [
   },
   {
     id: 'session.delegation',
-    title: '切换委派倾向',
-    keywords: ['委派', '子代理', 'delegation', '倾向'],
+    title: '切换分工',
+    keywords: ['分工', '委派', '子代理', 'delegation'],
     defaultShortcut: 'mod+alt+l',
     run: () => {
       const active = requireActive()
@@ -271,7 +271,7 @@ const BASE_COMMANDS: AppCommand[] = [
       const index = DELEGATIONS.indexOf(current)
       const next = DELEGATIONS[(index + 1) % DELEGATIONS.length]!
       void store.updateSession(active.hostId, active.sessionId, { delegation: next })
-      toast(`委派倾向：${DELEGATION_META[next].label}`)
+      toast(`分工：${DELEGATION_META[next].label}`)
     },
   },
   {

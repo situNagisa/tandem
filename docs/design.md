@@ -70,6 +70,8 @@
 | permission mode | 权限模式 | 默认/自动接受编辑/计划/跳过检查 |
 | member / share | 成员 / 分享 | 页面写「成员与分享」 |
 | board / evaluation / sandbox | 任务看板 / 评测 / 沙箱 | worktree、MCP、Hooks、Secrets、Skills 保留英文 |
+| delegation（是否派子代理）/ route bias（执行者用什么模型） | 分工 / 取向 | 委派倾向、执行方式、路由偏好、仅规划 |
+| 每轮模式 | 单代理 / 整单交执行者 / 多代理协作 | 低成本 |
 
 ## 3. 行为与状态
 

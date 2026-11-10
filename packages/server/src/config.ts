@@ -22,7 +22,7 @@ import type {
   StoredProfileKey,
 } from './types.js';
 import { normalizeContextSettings } from './context-settings.js';
-import { normalizeRoutingSettings } from './routing-settings.js';
+import { normalizeDelegation, normalizeRoutingSettings } from './routing-settings.js';
 
 export function tandemHome(): string {
   const fromEnv = process.env.TANDEM_HOME?.trim();
@@ -76,12 +76,7 @@ export function loadHostConfig(home = tandemHome()): HostConfig {
         ? existing.idleTimeoutSec
         : 180,
     resumeOnRestart: existing?.resumeOnRestart === 'pause' ? 'pause' : 'auto',
-    defaultDelegation:
-      existing?.defaultDelegation === 'orchestrate' ||
-      existing?.defaultDelegation === 'more' ||
-      existing?.defaultDelegation === 'none'
-        ? existing.defaultDelegation
-        : 'less',
+    defaultDelegation: normalizeDelegation(existing?.defaultDelegation) ?? 'less',
     ...(existing?.voice && typeof existing.voice === 'object' ? { voice: existing.voice } : {}),
     context: normalizeContextSettings(existing?.context),
     ...(existing?.aiReview && typeof existing.aiReview === 'object'

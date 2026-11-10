@@ -346,7 +346,7 @@ function seedSubagents(ctx: DemoSeedContext): DemoRefs {
   const main = baseSession(ctx, 'subagents', {
     id: mainId,
     title: MAIN_TITLE,
-    delegation: 'orchestrate',
+    delegation: 'more',
     messages: [
       turn1,
       assistant('好，我会先派一个子代理检查前端，再继续讨论参数校验与发布检查。'),
@@ -473,12 +473,12 @@ function seedDelegation(ctx: DemoSeedContext): DemoRefs {
   const rec = addSession(
     ctx.host,
     baseSession(ctx, 'delegation', {
-      title: '演示 · 委派倾向仅规划',
-      delegation: 'orchestrate',
+      title: '演示 · 分工积极',
+      delegation: 'more',
       messages: [
-        user('这个改动涉及前端、测试和文档，按「编排」策略分派。'),
-        assistant('当前委派倾向是「仅规划」：我会拆成三个子任务，再按依赖顺序汇总。', {
-          thinking: '编排模式下允许主动派发多个子代理，主会话只做计划与汇总。',
+        user('这个改动涉及前端、测试和文档，按「积极」分工拆开做。'),
+        assistant('当前分工是「积极」：我会拆成三个子任务，再按依赖顺序汇总。', {
+          thinking: '积极分工下尽量把独立子任务派给多个子代理，主会话负责汇总。',
           tools: [
             { name: 'Task', input: { description: '前端改动', prompt: '修改价格页参数校验。' } },
             { name: 'Task', input: { description: '补测试', prompt: '为 totalPrice 补三条边界测试。' } },
@@ -486,7 +486,7 @@ function seedDelegation(ctx: DemoSeedContext): DemoRefs {
           ],
         }),
         toolResult(`demo_task_${randomUUID().slice(0, 6)}`, '三个子代理都已完成：前端、测试、文档各一项。'),
-        assistant('三个子任务完成。输入框底栏的「执行方式 → 委派倾向」可以切换到「仅规划 / 积极 / 适度 / 关闭」，观察系统提示与 Task 工具可见性变化。'),
+        assistant('三个子任务完成。输入框底栏的「分工与取向」菜单可以切换分工（关闭 / 适度 / 积极）与取向（省钱 / 均衡 / 质量优先），观察 Task 工具可见性与每轮提示行的变化。'),
       ],
     }),
   );

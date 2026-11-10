@@ -10,6 +10,7 @@ import type {
   PermissionRequest,
   ProviderKind,
   RetryInfo,
+  TurnRouteOverride,
   Session,
   SessionStatus,
   Todo,
@@ -92,7 +93,7 @@ export interface HostConfig {
   idleTimeoutSec?: number;
   /** Host 重启后对未完成会话：自动继续（默认）/ 恢复为暂停等我确认。 */
   resumeOnRestart?: 'auto' | 'pause';
-  /** 新会话默认委派倾向（缺省 less）。 */
+  /** 新会话默认分工（缺省 less）。 */
   defaultDelegation?: import('@tandem/protocol').DelegationStrategy;
   /** 本机语音转写（Whisper）配置。 */
   voice?: import('@tandem/protocol').VoiceSettings;
@@ -235,6 +236,8 @@ export interface SessionRuntime {
   costCapHit?: boolean;
   /** 本轮分工计划已确认，不再重复弹卡。 */
   divisionConfirmed?: boolean;
+  /** 发送时附带的一次性分工/取向覆盖，只在本轮生效，结束后清空。 */
+  turnRoute?: TurnRouteOverride;
 }
 
 export interface ToolDefinition {

@@ -4193,7 +4193,7 @@ async function main() {
       await page.keyboard.press('Escape')
     })
 
-    desktop('输入框：token 估算、切换确认与执行方式/委派倾向合并（反馈8#01 #03 #05 #08 #09 #11 / 10#02）', async (page) => {
+    desktop('输入框：token 估算、切换确认与分工取向合并（反馈8#01 #03 #05 #08 #09 #11 / 10#02 / 2009#01）', async (page) => {
       mkdirSync('/tmp/fb8-after', { recursive: true })
       const session = await api(base, token, '/api/sessions', {
         method: 'POST',
@@ -4211,23 +4211,35 @@ async function main() {
       const input = page.locator('textarea[aria-label="消息输入框"]')
       await input.waitFor()
 
-      // #01/#03/#09：执行方式菜单统一为 自动 / 单代理 / 低成本 / 多代理协作，委派倾向收进子菜单。
-      await page.locator('button[aria-label^="执行方式："]').first().click()
-      const exec = page.locator('[role="menu"][aria-label="执行方式"]').first()
-      await exec.waitFor()
-      const execText = await exec.innerText()
+      // 2009#01：分工（关闭 / 适度 / 积极）与取向（省钱 / 均衡 / 质量优先）各一组单选，都在「分工与取向」菜单里。
+      await page.locator('button[aria-label^="分工与取向："]').first().click()
+      const route = page.locator('[role="menu"][aria-label="分工与取向"]').first()
+      await route.waitFor()
+      const routeText = await route.innerText()
       await page.screenshot({ path: '/tmp/fb8-after/03.png' })
-      for (const label of ['自动', '单代理', '低成本', '多代理协作']) {
-        assert.ok(execText.includes(label), `执行方式菜单缺少「${label}」：${execText}`)
+      for (const label of ['分工', '取向', '记住为会话偏好']) {
+        assert.ok(routeText.includes(label), `分工与取向菜单缺少「${label}」：${routeText}`)
       }
-      await exec.getByRole('menuitem', { name: /委派倾向/ }).hover()
-      const delegationMenu = page.locator('[role="menu"][aria-label="委派倾向"]').first()
+      await route.getByRole('menuitem', { name: /^分工/ }).hover()
+      const delegationMenu = page.locator('[role="menu"][aria-label="分工"]').first()
       await delegationMenu.waitFor({ state: 'visible', timeout: 5_000 })
       const delegationText = await delegationMenu.innerText()
-      for (const label of ['仅规划', '积极', '适度', '关闭']) {
-        assert.ok(delegationText.includes(label), `委派倾向缺少「${label}」：${delegationText}`)
+      for (const label of ['关闭', '适度', '积极']) {
+        assert.ok(delegationText.includes(label), `分工缺少「${label}」：${delegationText}`)
       }
       await page.screenshot({ path: '/tmp/fb8-after/09.png' })
+      await page.keyboard.press('Escape')
+      await page.keyboard.press('Escape')
+
+      await page.locator('button[aria-label^="分工与取向："]').first().click()
+      const biasRoute = page.locator('[role="menu"][aria-label="分工与取向"]').first()
+      await biasRoute.getByRole('menuitem', { name: /^取向/ }).hover()
+      const biasMenu = page.locator('[role="menu"][aria-label="取向"]').first()
+      await biasMenu.waitFor({ state: 'visible', timeout: 5_000 })
+      const biasText = await biasMenu.innerText()
+      for (const label of ['省钱', '均衡', '质量优先']) {
+        assert.ok(biasText.includes(label), `取向缺少「${label}」：${biasText}`)
+      }
       await page.screenshot({ path: '/tmp/fb8-after/01.png' })
       await page.keyboard.press('Escape')
       await page.keyboard.press('Escape')
@@ -5214,7 +5226,7 @@ async function main() {
       const before = await api(base, token, '/api/settings')
       assert.equal(before.modelRouting, undefined, '用例前置：路由设置应为空')
       const dialog = await openSettings(page, '自动路由', 'desktop')
-      const group = dialog.getByRole('group', { name: '路由偏好' })
+      const group = dialog.getByRole('group', { name: '取向默认' })
       await group.waitFor({ state: 'visible' })
       const clicked = async (label) => {
         const response = page.waitForResponse(
@@ -5315,8 +5327,8 @@ async function main() {
       await page.keyboard.press('Escape')
       await page.waitForTimeout(200)
 
-      await page.locator('main button[aria-haspopup="menu"][aria-label^="执行方式"]').first().click()
-      const exec = page.locator('[role="menu"][aria-label="执行方式"]').first()
+      await page.locator('main button[aria-haspopup="menu"][aria-label^="分工与取向"]').first().click()
+      const exec = page.locator('[role="menu"][aria-label="分工与取向"]').first()
       await exec.waitFor()
       const execInfo = await exec.evaluate((el) => {
         const rows = [...el.querySelectorAll('[role="menuitem"]')]
@@ -5330,8 +5342,8 @@ async function main() {
           ),
         }
       })
-      assert.ok(execInfo.heights.every((height) => height <= 32), `执行方式菜单项高度 ${execInfo.heights.join(',')}`)
-      assert.equal(execInfo.stacked, false, '执行方式菜单仍有第二行说明')
+      assert.ok(execInfo.heights.every((height) => height <= 32), `分工与取向菜单项高度 ${execInfo.heights.join(',')}`)
+      assert.equal(execInfo.stacked, false, '分工与取向菜单仍有第二行说明')
       await page.keyboard.press('Escape')
     })
 
@@ -7355,12 +7367,12 @@ async function main() {
       await page.waitForTimeout(600)
       const newComposer = page.locator('textarea[aria-label="消息输入框"]').first()
       await newComposer.waitFor({ timeout: 10_000 })
-      await checkMenu(page.locator('button[aria-label^="执行方式"]').first(), '执行方式（新会话页）')
+      await checkMenu(page.locator('button[aria-label^="分工与取向"]').first(), '分工与取向（新会话页）')
       await checkMenu(page.locator('button[aria-label^="选择模型"]').first(), '模型芯片（新会话页）')
 
       // 会话页：输入框菜单、环境条三个胶囊、窗口 ⋯ 菜单、权限模式。
       await openSession(page, 'long')
-      await checkMenu(page.locator('button[aria-label^="执行方式"]').first(), '执行方式')
+      await checkMenu(page.locator('button[aria-label^="分工与取向"]').first(), '分工与取向')
       await checkMenu(page.locator('button[aria-label^="选择模型"]').first(), '模型芯片')
       await checkMenu(page.locator('button[aria-label^="权限模式"]').first(), '权限模式')
       const envTriggers = page.locator('[data-env-bar] button[aria-haspopup]')
@@ -8812,7 +8824,7 @@ async function main() {
       await page.keyboard.press('Escape')
     })
 
-      desktop('分工路由：单代理零派发、低成本、专长协作、确认卡与收件箱', async (page) => {
+      desktop('分工路由：分工关闭零派发、取向省钱整单交执行者、分工积极协作、确认卡与学到的偏好', async (page) => {
         const shotsDir = '/tmp/route2-shots'
         mkdirSync(shotsDir, { recursive: true })
         const divisionSettings = {
@@ -8843,13 +8855,12 @@ async function main() {
             cwd: repo,
             profileId: 'p-route',
             model: 'route-power',
-            autoRoute: true,
-            routePreference: 'auto',
             permissionMode: 'bypassPermissions',
             title: '多代理协作回归',
           }),
         })
-        assert.equal(session.routePreference, 'auto', '创建会话时未启用按规则规划')
+        assert.equal(session.delegation, 'less', '新会话分工默认适度')
+        assert.equal(session.routeBias, undefined, '新会话取向未设置时跟随全局设置')
 
         await page.waitForFunction(
           () => {
@@ -8869,8 +8880,8 @@ async function main() {
           window.location.hash = hash
         }, `#/h/${clientHostId}/s/${session.id}`)
         await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 15_000 })
-        await page.getByRole('button', { name: /^选择模型：自动/ }).first().waitFor({ timeout: 15_000 })
-        await page.getByRole('button', { name: /^选择模型：自动/ }).first().click()
+        await page.getByRole('button', { name: /^选择模型：/ }).first().waitFor({ timeout: 15_000 })
+        await page.getByRole('button', { name: /^选择模型：/ }).first().click()
         const modelMenu = page.getByRole('menu')
         await modelMenu.waitFor()
         const modelMenuText = await modelMenu.innerText()
@@ -8897,48 +8908,54 @@ async function main() {
           })
           return sessionOf()
         }
+        const planCount = async () => (await sessionOf()).messages.filter((m) => m.routePlan).length
+        // 「分工与取向」菜单里选一项只作用于下一条消息（未勾选「记住为会话偏好」）。
+        const pickRoute = async (group, label) => {
+          await page.getByRole('button', { name: /^分工与取向：/ }).first().click()
+          await page.getByRole('menuitem', { name: new RegExp(`^${group}`) }).hover()
+          const sub = page.locator(`[role="menu"][aria-label="${group}"]`).first()
+          await sub.waitFor({ state: 'visible', timeout: 5_000 })
+          await sub.getByRole('menuitemradio', { name: label, exact: true }).click()
+          await page.waitForTimeout(200)
+        }
 
-        // 1. 简单任务单代理：只请求主模型，零 Task 子代理。
+        // 1. 分工关闭：主会话自己完成，零 Task 子代理，也不出提示行。
+        await pickRoute('分工', '关闭')
+        const plansBeforeOff = await planCount()
         const directStart = provider.routeSeen.length
-        const direct = await sendTurn('解释一下这个函数的作用', '路由模型 route-power 已回复。')
+        await sendTurn('解释一下这个函数的作用', '路由模型 route-power 已回复。')
         const directCalls = provider.routeSeen.slice(directStart)
         assert.equal(directCalls.length, 1, '简单问答不应产生额外模型请求')
-        assert.equal(directCalls[0].model, 'route-power', '单代理应由主会话模型处理')
-        assert.equal((await childrenOf()).length, 0, '简单问答不应派发子代理')
-        assert.match(
-          direct.messages.filter((m) => m.routePlan).at(-1)?.routePlan?.mode ?? '',
-          /^direct$/,
-          '简单任务提示行不是单代理',
-        )
+        assert.equal(directCalls[0].model, 'route-power', '分工关闭应由主会话模型处理')
+        assert.equal((await childrenOf()).length, 0, '分工关闭不应派发子代理')
+        assert.equal(await planCount(), plansBeforeOff, '分工关闭时不应出现提示行')
 
-        // 2. 低成本：主模型不参与，整单交给执行者子代理。
+        // 2. 取向省钱：机械任务整单交给执行者子代理，主会话模型不参与。
+        await pickRoute('取向', '省钱')
         const cheapStart = provider.routeSeen.length
         const cheap = await sendTurn('安装依赖并跑通构建', '便宜执行完成：依赖已安装，构建通过。')
         const cheapCalls = provider.routeSeen.slice(cheapStart)
-        assert.deepEqual(cheapCalls.map((item) => item.model), ['route-mini'], '低成本应只调用执行模型')
+        assert.deepEqual(cheapCalls.map((item) => item.model), ['route-mini'], '省钱应只调用执行模型')
         const cheapChildren = await childrenOf()
-        assert.equal(cheapChildren.length, 1, '低成本应创建一个执行子代理')
+        assert.equal(cheapChildren.length, 1, '省钱应创建一个执行子代理')
         assert.equal(cheap.messages.filter((m) => m.routePlan).at(-1)?.routePlan?.mode, 'cheap')
 
-        // 3. 手动选「单代理」：长任务也不派发。
-        await page.getByRole('button', { name: /^执行方式：/ }).first().click()
-        await page.getByRole('menuitem', { name: /^单代理/ }).click()
+        // 3. 分工关闭：长任务也不派发。
+        await pickRoute('分工', '关闭')
         const manualStart = provider.routeSeen.length
         const manualText =
           '请帮我完成前端批量改造：批量修改所有组件的按钮间距与布局样式，然后跑一遍 lint 和测试，最后整理结果。请注意不要改动后端接口，保持现有样式变量不变，完成后说明改了哪些文件。'
         const childCountBefore = (await childrenOf()).length
-        const manual = await sendTurn(manualText, '路由模型 route-power 已回复。')
-        assert.equal((await childrenOf()).length, childCountBefore, '手动单代理不应派发子代理')
+        await sendTurn(manualText, '路由模型 route-power 已回复。')
+        assert.equal((await childrenOf()).length, childCountBefore, '分工关闭不应派发子代理')
         assert.ok(
           provider.routeSeen.slice(manualStart).every((item) => item.model === 'route-power'),
-          '手动单代理不应调用执行模型',
+          '分工关闭不应调用执行模型',
         )
-        assert.equal(manual.messages.filter((m) => m.routePlan).at(-1)?.routePlan?.mode, 'direct')
         await page.screenshot({ path: path.join(shotsDir, 'division-direct.png') })
 
-        // 手动选「多代理协作」，跑真正的分工：规划者 Task → Kimi 前端 + DeepSeek 测试 → 规划者收尾。
-        await page.getByRole('button', { name: /^执行方式：/ }).first().click()
-        await page.getByRole('menuitem', { name: /^多代理协作/ }).click()
+        // 4. 分工积极：规划者 Task → Kimi 前端 + DeepSeek 测试 → 规划者收尾。
+        await pickRoute('分工', '积极')
         const divisionStart = provider.routeSeen.length
         const division = await sendTurn(
           manualText,
@@ -8968,7 +8985,7 @@ async function main() {
         )
         await page.screenshot({ path: path.join(shotsDir, 'division-roles.png') })
 
-        // 4. 多代理协作前确认：卡片改模型 + 删除子任务 + 收件箱事件。
+        // 4b. 多代理协作前确认：卡片改模型 + 删除子任务 + 收件箱事件（分工为默认适度）。
         await api(base, token, '/api/settings', {
           method: 'PUT',
           body: JSON.stringify({
@@ -9019,7 +9036,7 @@ async function main() {
         await page.screenshot({ path: path.join(shotsDir, 'usage-by-role.png') })
         await closeSettings(page)
 
-        // 5. 成本上限：首轮规划请求触顶后不再继续请求强模型。
+        // 5. 成本上限（只对积极生效）：首轮规划请求触顶后不再继续请求强模型。
         await api(base, token, '/api/settings', {
           method: 'PUT',
           body: JSON.stringify({
@@ -9034,6 +9051,7 @@ async function main() {
             },
           }),
         })
+        await pickRoute('分工', '积极')
         const capStart = provider.routeSeen.length
         const capped = await sendTurn(manualText, '本轮花费已达上限')
         assert.match(
@@ -9047,19 +9065,37 @@ async function main() {
           '成本上限触发后仍继续请求规划者',
         )
 
-        // 6. 学习偏好：同类任务连续两次手动单代理后，自动模式默认单代理。
+        // 6. 学习偏好：分工前确认卡里两次选「改为单代理」，同类任务默认单代理（即使开着确认）。
         await api(base, token, '/api/settings', {
           method: 'PUT',
-          body: JSON.stringify({ resumeOnRestart: 'auto', modelRouting: divisionSettings }),
+          body: JSON.stringify({
+            resumeOnRestart: 'auto',
+            modelRouting: {
+              ...divisionSettings,
+              division: { ...divisionSettings.division, confirm: 'always', costCapUsdPerTurn: undefined },
+            },
+          }),
         })
-        const learnStart = provider.routeSeen.length
         for (let i = 0; i < 2; i++) {
-          await page.getByRole('button', { name: /^执行方式：/ }).first().click()
-          await page.getByRole('menuitem', { name: /^单代理/ }).click()
-          await sendTurn(manualText, '路由模型 route-power 已回复。')
+          await page.locator('textarea[aria-label="消息输入框"]').fill(manualText)
+          await page.getByRole('button', { name: '发送消息' }).click()
+          const learnCard = page.locator('[data-division-plan]').last()
+          await learnCard.waitFor({ timeout: 15_000 })
+          await learnCard.getByRole('button', { name: '改为单代理', exact: true }).click()
+          await waitUntil(`确认卡改为单代理第 ${i + 1} 次`, async () => {
+            const current = await sessionOf()
+            const cardIndex = current.messages.map((m) => !!m.divisionPlan).lastIndexOf(true)
+            const last = current.messages.at(-1)
+            return (
+              current.status === 'idle' &&
+              cardIndex >= 0 &&
+              current.messages.length - 1 > cardIndex &&
+              last?.role === 'assistant' &&
+              !last.notice
+            )
+          })
         }
-        await page.getByRole('button', { name: /^执行方式：/ }).first().click()
-        await page.getByRole('menuitem', { name: /^自动/ }).click()
+        const learnStart = provider.routeSeen.length
         const childCountBeforeLearned = (await childrenOf()).length
         const learned = await sendTurn(manualText, '路由模型 route-power 已回复。')
         assert.equal((await childrenOf()).length, childCountBeforeLearned, '学到的单代理仍派发了子代理')

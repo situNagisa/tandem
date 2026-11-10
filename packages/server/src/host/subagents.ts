@@ -1,4 +1,4 @@
-// 子代理派发、委派倾向与工具可见性。
+// 子代理派发、分工与工具可见性。
 import { randomUUID } from 'node:crypto';
 import type {
   DelegationStrategy,
@@ -6,6 +6,7 @@ import type {
   PermissionMode,
   PromptTemplateKey,
   ReasoningEffort,
+  RoutePreference,
   RouteDomain,
   RouteRole,
 } from '@tandem/protocol';
@@ -25,7 +26,9 @@ export function subagentConfig(host: Host, parent: SessionRecord,
   // 分工路由：内置执行者/专长角色优先于子代理预设，直接解析到设置里的绑定模型。
   if (role) {
     const settings = routingSettingsOf(host);
-    const meta = settings ? resolveDivisionAssignment(host, settings, role, domain) : undefined;
+    const meta = settings
+      ? resolveDivisionAssignment(host, settings, role, domain, routeBiasFor(host, parent))
+      : undefined;
     if (meta) {
       return {
         profileId: meta.candidate.profileId,
@@ -195,22 +198,20 @@ export async function runSubagent(host: Host, parent: SessionRecord,
 }
 
 export function delegationFor(host: Host, rec: SessionRecord): DelegationStrategy {
-  return rec.delegation ?? ((rec.depth ?? 0) === 0 ? host.settings().defaultDelegation ?? 'less' : 'less');
+  return (
+    host.runtimes.get(rec.id)?.turnRoute?.delegation ??
+    rec.delegation ??
+    ((rec.depth ?? 0) === 0 ? host.settings().defaultDelegation ?? 'less' : 'less')
+  );
 }
 
-export function orchestrateTools(host: Host, rec: SessionRecord): ToolDefinition[] {
-  const allowed = new Set([
-    'Task',
-    'TodoWrite',
-    'Read',
-    'Glob',
-    'Grep',
-    'WebFetch',
-    'BashOutput',
-    ...(rec.permissionMode === 'plan' ? ['ExitPlanMode'] : []),
-    ...(rec.board ? ['ProposeCards'] : []),
-  ]);
-  return TOOLS.filter((tool) => allowed.has(tool.name));
+export function routeBiasFor(host: Host, rec: SessionRecord): RoutePreference {
+  return (
+    host.runtimes.get(rec.id)?.turnRoute?.routeBias ??
+    rec.routeBias ??
+    routingSettingsOf(host)?.preference ??
+    'balanced'
+  );
 }
 
 export function presetSummary(host: Host, cwd: string): string {
@@ -232,13 +233,7 @@ export function taskToolDescription(host: Host, cwd: string): string {
 
 export function delegationKey(host: Host, rec: SessionRecord): PromptTemplateKey {
   const strategy = host.delegationFor(rec);
-  return strategy === 'orchestrate'
-    ? 'delegationOrchestrate'
-    : strategy === 'more'
-      ? 'delegationMore'
-      : strategy === 'none'
-        ? 'delegationNone'
-        : 'delegationLess';
+  return strategy === 'more' ? 'delegationMore' : strategy === 'none' ? 'delegationNone' : 'delegationLess';
 }
 
 export function delegationPrompt(host: Host, rec: SessionRecord): string {
@@ -264,11 +259,7 @@ export function toolDefinitions(host: Host, rec: SessionRecord, allowTask = true
     ? new Set(rec.toolWhitelist.map((name) => name.toLowerCase()))
     : null;
   const allowed = (name: string) => !whitelist || whitelist.has(name.toLowerCase());
-  const orchestrating = strategy === 'orchestrate' && (rec.depth ?? 0) === 0;
-  const source = orchestrating
-    ? host.orchestrateTools(rec).filter((tool) => allowed(tool.name))
-    : TOOLS;
-  const base = source
+  const base = TOOLS
     .filter(
       (tool) =>
         (canDelegate || tool.name !== 'Task') &&
@@ -287,10 +278,7 @@ export function toolDefinitions(host: Host, rec: SessionRecord, allowTask = true
         ? { ...tool, description: host.taskToolDescription(rec.cwd) }
         : tool,
     );
-  // 编排模式主会话不接 MCP，避免绕过委派直接产生副作用
-  const mcp = orchestrating
-    ? []
-    : host.mcp.toolDefinitions(rec.cwd).filter((tool) => allowed(tool.name));
+  const mcp = host.mcp.toolDefinitions(rec.cwd).filter((tool) => allowed(tool.name));
   return [...base, ...mcp];
 }
 

@@ -20,7 +20,14 @@ import {
   Wrench,
 } from 'lucide-react'
 import { Spinner } from './ui/Spinner'
-import type { ContentBlock, DelegationStrategy, FsEntry, PermissionMode, ReasoningEffort, TurnRouteMode } from '@tandem/protocol'
+import type {
+  ContentBlock,
+  DelegationStrategy,
+  FsEntry,
+  PermissionMode,
+  ReasoningEffort,
+  RoutePreference,
+} from '@tandem/protocol'
 import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -80,7 +87,7 @@ export function NewSessionView() {
   const [profileId, setProfileId] = useState('')
   const [groupId, setGroupId] = useState<string | undefined>(undefined)
   const [model, setModel] = useState('')
-  const [routeMode, setRouteMode] = useState<TurnRouteMode | undefined>(undefined)
+  const [routeBias, setRouteBias] = useState<RoutePreference | undefined>(undefined)
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
   const [effort, setEffort] = useState<ReasoningEffort>(loadLastEffort)
   const [delegation, setDelegation] = useState<DelegationStrategy>('less')
@@ -214,7 +221,7 @@ export function NewSessionView() {
           profileId,
           ...(groupId ? { groupId } : {}),
           model,
-          ...(model === 'auto' && routeMode ? { routePreference: routeMode } : {}),
+          ...(routeBias ? { routeBias } : {}),
           permissionMode,
           effort,
           delegation,
@@ -240,12 +247,10 @@ export function NewSessionView() {
     setError(null)
   }
 
-  const chooseAccount = (pid: string, gid: string | undefined, m: string, mode?: TurnRouteMode) => {
+  const chooseAccount = (pid: string, gid: string | undefined, m: string) => {
     setProfileId(pid)
     setGroupId(gid)
     setModel(m)
-    if (m !== 'auto') setRouteMode(undefined)
-    else if (mode) setRouteMode(mode)
   }
 
   return (
@@ -284,10 +289,10 @@ export function NewSessionView() {
           groupId={groupId}
           permissionMode={permissionMode}
           effort={effort}
-          routeMode={routeMode}
+          routeBias={routeBias}
           delegation={delegation}
           onModelChange={chooseAccount}
-          onRouteModeChange={setRouteMode}
+          onRouteBiasChange={setRouteBias}
           onDelegationChange={setDelegation}
           onPermissionModeChange={setPermissionMode}
           onEffortChange={setEffort}

@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import type { ReasoningEffort, TurnRouteMode } from '@tandem/protocol'
+import { useEffect, useState, useSyncExternalStore } from 'react'
+import type { ReasoningEffort, RoutePreference, TurnRouteOverride } from '@tandem/protocol'
+import { cachedRouteBias, loadRouteBias, subscribeRouteBias } from '../../lib/routeBias'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { usePreviewStore } from '../../store/usePreviewStore'
@@ -14,13 +15,26 @@ import {
   EMPTY_SELECTIONS,
 } from './composerTypes'
 
+function useGlobalRouteBias(hostId: string | null | undefined): RoutePreference | undefined {
+  useEffect(() => {
+    if (!hostId) return
+    const host = useAppStore.getState().hosts.find((h) => h.id === hostId)
+    if (!host) return
+    /* 读取失败时按协议默认值展示 */
+    void loadRouteBias(host).catch(() => {})
+  }, [hostId])
+  return useSyncExternalStore(subscribeRouteBias, () =>
+    hostId ? cachedRouteBias(hostId) : undefined,
+  )
+}
+
 interface Options {
   sessionless: boolean
   modelProp: string | undefined
   profileIdProp: string | undefined
   groupIdProp: string | undefined
   permissionModeProp: import('@tandem/protocol').PermissionMode | undefined
-  routeModeProp: TurnRouteMode | undefined
+  routeBiasProp: RoutePreference | undefined
   delegationProp: import('@tandem/protocol').DelegationStrategy | undefined
   effortProp: ReasoningEffort | undefined
   hostIdProp: string | undefined
@@ -34,7 +48,7 @@ export function useComposerStore({
   profileIdProp,
   groupIdProp,
   permissionModeProp,
-  routeModeProp,
+  routeBiasProp,
   delegationProp,
   effortProp,
   hostIdProp,
@@ -113,18 +127,15 @@ export function useComposerStore({
   const currentModel = sessionless ? (modelProp ?? '') : (summary?.model ?? '')
   const autoRoute = sessionless ? currentModel === 'auto' : summary?.autoRoute === true
   const routedModel = summary?.route?.model
-  const [routeOverride, setRouteOverride] = useState<TurnRouteMode | undefined>(undefined)
+  const [routeOverride, setRouteOverride] = useState<TurnRouteOverride | undefined>(undefined)
   const [keepRouteMode, setKeepRouteMode] = useState(false)
-  const sessionRoutePreference =
-    summary?.routePreference && summary.routePreference !== 'auto'
-      ? summary.routePreference
-      : undefined
-  const effectiveRouteMode = sessionless
-    ? routeModeProp
-    : routeOverride ?? sessionRoutePreference
+  const globalRouteBias = useGlobalRouteBias(effectiveHostId)
   const effectiveDelegation = sessionless
     ? (delegationProp ?? 'less')
-    : (summary?.delegation ?? 'less')
+    : (routeOverride?.delegation ?? summary?.delegation ?? 'less')
+  const effectiveRouteBias = sessionless
+    ? (routeBiasProp ?? globalRouteBias)
+    : (routeOverride?.routeBias ?? summary?.routeBias ?? globalRouteBias)
   const currentProfileId = sessionless ? (profileIdProp ?? '') : (summary?.profileId ?? '')
   const currentGroupId = sessionless ? groupIdProp : summary?.groupId
   const contextUsed = summary?.context?.usedTokens ?? 0
@@ -179,8 +190,8 @@ export function useComposerStore({
     setRouteOverride,
     keepRouteMode,
     setKeepRouteMode,
-    effectiveRouteMode,
     effectiveDelegation,
+    effectiveRouteBias,
     currentProfileId,
     currentGroupId,
     contextUsed,

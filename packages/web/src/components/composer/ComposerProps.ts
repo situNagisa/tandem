@@ -3,7 +3,7 @@ import type {
   DelegationStrategy,
   PermissionMode,
   ReasoningEffort,
-  TurnRouteMode,
+  RoutePreference,
 } from '@tandem/protocol'
 
 export interface ComposerProps {
@@ -15,16 +15,11 @@ export interface ComposerProps {
   profileId?: string
   groupId?: string
   permissionMode?: PermissionMode
-  onModelChange?: (
-    profileId: string,
-    groupId: string | undefined,
-    model: string,
-    routeMode?: TurnRouteMode,
-  ) => void
-  /** 无会话模式的执行方式（自动/单代理/低成本/多代理协作）。 */
-  routeMode?: TurnRouteMode
-  onRouteModeChange?: (mode: TurnRouteMode | undefined) => void
-  /** 无会话模式的委派倾向；会话内直接从 summary 读取。 */
+  onModelChange?: (profileId: string, groupId: string | undefined, model: string) => void
+  /** 无会话模式的取向；缺省跟随全局设置。 */
+  routeBias?: RoutePreference
+  onRouteBiasChange?: (bias: RoutePreference) => void
+  /** 无会话模式的分工；会话内直接从 summary 读取。 */
   delegation?: DelegationStrategy
   onDelegationChange?: (strategy: DelegationStrategy) => void
   onPermissionModeChange?: (mode: PermissionMode) => void

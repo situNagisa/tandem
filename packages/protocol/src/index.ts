@@ -138,13 +138,13 @@ export interface ProfileInput {
 // ---------- 会话 ----------
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
 export type SessionStatus = 'idle' | 'running' | 'waiting_permission' | 'retrying' | 'error';
-/** 委派策略：会话级控制主会话如何/是否使用 Task 子代理。 */
-export type DelegationStrategy = 'orchestrate' | 'more' | 'less' | 'none';
+/** 分工：是否派子代理。关闭 = 不提供 Task；适度 = 只派明显独立的多步任务；积极 = 尽量拆分并行。 */
+export type DelegationStrategy = 'more' | 'less' | 'none';
 
 // ---------- 自动模型路由 ----------
 /** 候选模型的档位：快速（省钱）/ 均衡 / 强力（质量）。 */
 export type ModelTier = 'fast' | 'balanced' | 'power';
-/** 路由偏好：省钱优先 / 均衡 / 质量优先。 */
+/** 取向：选执行者/子代理用什么模型。省钱 / 均衡 / 质量优先；全局默认见 ModelRoutingSettings.preference，会话 routeBias 可覆盖。 */
 export type RoutePreference = 'cost' | 'balanced' | 'quality';
 /** 候选池的一项（账号 › 分组 › 模型），由用户在「设置 → 模型路由」勾选。 */
 export interface RouteCandidate {
@@ -267,10 +267,13 @@ export interface AutoRouteSavings {
   /** 分工路由：按角色拆分。 */
   byRole?: Partial<Record<RouteRole, RouteRoleUsage>>;
 }
-/** 单轮路由模式：直接做 / 便宜直做 / 分工。 */
+/** 单轮路由模式：单代理 / 整单交执行者 / 多代理协作（由分工×取向与规则得出）。 */
 export type TurnRouteMode = 'direct' | 'cheap' | 'division';
-/** 会话路由偏好：自动按规则，或固定为某种模式。 */
-export type RoutePreferenceMode = 'auto' | TurnRouteMode;
+/** 发送一条消息时的一次性分工/取向覆盖；未勾选「记住为会话偏好」时只作用于这一条。 */
+export interface TurnRouteOverride {
+  delegation?: DelegationStrategy;
+  routeBias?: RoutePreference;
+}
 /** 分工计划卡里的一个子任务（来自规划者的 Task 调用）。 */
 export interface DivisionTaskDraft {
   id: string;
@@ -311,8 +314,6 @@ export interface RoutePlan {
   /** 预计执行者/专长模型（用于提示行）。 */
   executorModel?: string;
   specialistModel?: string;
-  /** 分类来源：规则 / 用户覆盖。 */
-  source: 'rule' | 'override';
 }
 
 export interface RetryInfo {
@@ -332,15 +333,15 @@ export interface SessionSummary {
   model: string;
   /** 自动模型路由：每轮在「设置 → 模型路由」候选池中选择模型。 */
   autoRoute?: boolean;
-  /** 分工路由偏好：存在即按规则/固定模式规划，'auto' 表示按规则；缺省不启用规则规划。 */
-  routePreference?: RoutePreferenceMode;
+  /** 取向覆盖；缺省跟随全局 modelRouting.preference。 */
+  routeBias?: RoutePreference;
   /** 最近一次自动路由决策（当前生效模型与理由）。 */
   route?: ModelRouteDecision;
   /** 自动路由累计节省（对比全程使用强力档）。 */
   routeSavings?: AutoRouteSavings;
   permissionMode: PermissionMode;
   effort?: ReasoningEffort; // 思考强度：映射到 Anthropic thinking budget / OpenAI reasoning_effort；模型不支持时忽略
-  /** 委派策略；缺省按 Host 设置（默认 less）。 */
+  /** 分工；缺省按 Host 设置（默认 less）。 */
   delegation?: DelegationStrategy;
   status: SessionStatus;
   /** 模型请求因网络错误/超时连续失败后进入「等待网络」：下一次重试时间与原因。 */
@@ -494,8 +495,8 @@ export interface CreateSessionInput {
   /** 传 'auto' 表示启用自动模型路由（仍需 profileId 作为回退账号）。 */
   model?: string;
   autoRoute?: boolean;
-  /** 分工路由偏好：'auto' 按规则，或固定为直接/便宜直做/分工；缺省不启用规则规划。 */
-  routePreference?: RoutePreferenceMode;
+  /** 取向：省钱 / 均衡 / 质量优先；缺省跟随全局设置。 */
+  routeBias?: RoutePreference;
   permissionMode?: PermissionMode;
   effort?: ReasoningEffort;
   delegation?: DelegationStrategy;
@@ -504,7 +505,7 @@ export interface CreateSessionInput {
 }
 export type ReasoningEffort = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'max';
 // cwd：会话中途切换工作目录（下一轮生效，重新检测 env）
-export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'autoRoute' | 'routePreference' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'cwd' | 'pinnedTurns'>>;
+export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'autoRoute' | 'routeBias' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'cwd' | 'pinnedTurns'>>;
 
 // ---------- 外部会话（本机已有的 Claude Code / Codex 会话） ----------
 // 原则：只读原软件的文件，绝不写回；"导入"= 复制成 Tandem 会话后继续（可换任意模型）。
@@ -639,7 +640,7 @@ export interface Message {
   notice?: boolean;
   /** 自动路由切换提示：本轮实际使用的模型与打分明细（hover 展示）。 */
   route?: ModelRouteDecision;
-  /** 分工路由：本轮模式、理由与执行者（提示行展示，可一键覆盖偏好）。 */
+  /** 分工路由：本轮模式、理由与执行者（提示行展示）。 */
   routePlan?: RoutePlan;
   /** 分工前确认卡：待确认的子任务、模型与预计花费。 */
   divisionPlan?: DivisionPlanRequest;
@@ -936,7 +937,7 @@ export const DEFAULT_CONTEXT_SETTINGS: ContextSettings = {
 export interface HostSettings {
   /** Host 重启后对未完成会话的处理：自动继续 / 恢复为暂停等我确认。 */
   resumeOnRestart: 'auto' | 'pause';
-  /** 新会话默认委派策略。 */
+  /** 新会话默认分工。 */
   defaultDelegation?: DelegationStrategy;
   /** 本机语音转写配置；未配置时客户端隐藏 Host 转写方式。 */
   voice?: VoiceSettings;
@@ -1736,7 +1737,7 @@ export type ClientMsg =
   | { type: 'unsubscribe'; sessionId: string }
   | { type: 'subscribe_inbox'; sinceSeq?: number } // 订阅全 Host 收件箱；带 sinceSeq 时先补发
   | { type: 'unsubscribe_inbox' }
-  | { type: 'send'; sessionId: string; content: ContentBlock[]; routeMode?: TurnRouteMode }  // 发送用户消息；routeMode 为本次覆盖；运行中发送则排队
+  | { type: 'send'; sessionId: string; content: ContentBlock[]; route?: TurnRouteOverride }  // 发送用户消息；route 为本次覆盖；运行中发送则排队
   | { type: 'interrupt'; sessionId: string }        // 中断当前轮（Esc）
   | { type: 'retry_now'; sessionId: string }        // 等待网络重试期间立即重试
   | { type: 'permission'; requestId: string; decision: PermissionDecision; reason?: string } // reason 仅用于 ExitPlanMode 的“继续完善”反馈
@@ -2139,7 +2140,7 @@ export interface SubagentPreset {
   model?: string;
   effort?: ReasoningEffort;
   permissionMode?: PermissionMode;
-  /** 覆盖子代理自己的委派策略；缺省 less（子代理仍可再派，但默认克制）。 */
+  /** 覆盖子代理自己的分工；缺省 less（子代理仍可再派，但默认克制）。 */
   delegation?: DelegationStrategy;
   /** 非空即工具白名单；空/缺省继承主会话全部工具。 */
   allowedTools?: string[];
@@ -2172,7 +2173,6 @@ export interface SubagentPresetInput {
 export type PromptTemplateKey =
   | 'baseBehavior'
   | 'planMode'
-  | 'delegationOrchestrate'
   | 'delegationMore'
   | 'delegationLess'
   | 'delegationNone'

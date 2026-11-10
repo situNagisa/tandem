@@ -2,7 +2,6 @@
 import { readFileSync } from 'node:fs';
 import type {
   ContentBlock,
-  DelegationStrategy,
   PermissionDecision,
   PermissionMode,
   ReasoningEffort,
@@ -35,7 +34,6 @@ export const PERMISSION_MODES = new Set<PermissionMode>([
 ]);
 
 export const EFFORTS = new Set<ReasoningEffort>(['off', 'minimal', 'low', 'medium', 'high', 'max']);
-export const DELEGATIONS = new Set<DelegationStrategy>(['orchestrate', 'more', 'less', 'none']);
 
 export interface PermissionEntry {
   sessionId: string;

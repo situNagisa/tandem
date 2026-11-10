@@ -10,11 +10,11 @@ import type {
   SubagentPresetInput,
 } from '@tandem/protocol';
 import { ensureDir, readJson, tandemHome } from './config.js';
+import { normalizeDelegation } from './routing-settings.js';
 
 const EFFORTS = new Set<ReasoningEffort>(['off', 'minimal', 'low', 'medium', 'high', 'max']);
 const MODES = new Set<PermissionMode>(['default', 'acceptEdits', 'plan', 'bypassPermissions']);
 const ALIASES = new Set(['sonnet', 'opus', 'haiku']);
-const DELEGATIONS = new Set(['orchestrate', 'more', 'less', 'none']);
 const MAX_PROMPT = 20_000;
 
 interface PresetFile {
@@ -44,7 +44,7 @@ function normalizeInput(value: unknown, fallbackId?: string): SubagentPresetInpu
   if (!name) return undefined;
   const effort = asString(raw.effort) as ReasoningEffort | undefined;
   const permissionMode = asString(raw.permissionMode) as PermissionMode | undefined;
-  const delegation = asString(raw.delegation);
+  const delegation = normalizeDelegation(raw.delegation);
   return {
     ...(fallbackId || asString(raw.id) ? { id: fallbackId ?? asString(raw.id)! } : {}),
     name: name.slice(0, 60),
@@ -54,9 +54,7 @@ function normalizeInput(value: unknown, fallbackId?: string): SubagentPresetInpu
     ...(asString(raw.model) ? { model: asString(raw.model)! } : {}),
     ...(effort && EFFORTS.has(effort) ? { effort } : {}),
     ...(permissionMode && MODES.has(permissionMode) ? { permissionMode } : {}),
-    ...(delegation && DELEGATIONS.has(delegation)
-      ? { delegation: delegation as import('@tandem/protocol').DelegationStrategy }
-      : {}),
+    ...(delegation ? { delegation } : {}),
     ...(cleanList(raw.allowedTools) ? { allowedTools: cleanList(raw.allowedTools)! } : {}),
     ...(asString(raw.systemPrompt)
       ? { systemPrompt: asString(raw.systemPrompt)!.slice(0, MAX_PROMPT) }
