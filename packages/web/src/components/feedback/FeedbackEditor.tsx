@@ -136,7 +136,7 @@ export function FeedbackEditor({
       />
       <div
         {...{ [UI_ATTR]: '' }}
-        className="pointer-events-auto fixed z-[140] w-[min(440px,calc(100vw-16px))] rounded-xl border border-border bg-[var(--t-bg-elevated)] p-2.5 shadow-lg"
+        className="pointer-events-auto fixed z-[140] w-[min(440px,calc(100vw-16px))] rounded-xl border border-border bg-surface p-2.5 shadow-lg"
         style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: -9999 }}
         ref={panelRef}
         role="dialog"
@@ -242,7 +242,7 @@ export function FeedbackEditor({
                   className={cn(
                     'rounded-full border px-2 py-0.5 text-[11px]',
                     editor.causeId === rule.id
-                      ? 'border-border-strong bg-[var(--bg-active)] text-text'
+                      ? 'border-border-strong bg-[var(--t-bg-active)] text-text'
                       : 'border-border bg-surface text-text-soft hover:text-text',
                   )}
                 >

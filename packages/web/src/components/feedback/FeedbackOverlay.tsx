@@ -280,7 +280,7 @@ export function FeedbackOverlay({
           {verify && verifyEntry && (
             <div
               {...{ [UI_ATTR]: '' }}
-              className="pointer-events-auto fixed bottom-4 left-1/2 z-[130] w-[min(560px,calc(100vw-16px))] -translate-x-1/2 rounded-xl border border-border bg-[var(--t-bg-elevated)] p-2.5 shadow-lg"
+              className="pointer-events-auto fixed bottom-4 left-1/2 z-[130] w-[min(560px,calc(100vw-16px))] -translate-x-1/2 rounded-xl border border-border bg-surface p-2.5 shadow-lg"
             >
               <div className="flex items-center gap-2">
                 <span className="rounded bg-[#F97316]/15 px-1.5 py-0.5 text-[10.5px] font-semibold text-[#F97316]">

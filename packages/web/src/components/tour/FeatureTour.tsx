@@ -96,7 +96,7 @@ async function runTarget(target: ChangelogTarget): Promise<void> {
 
 function TourPill({ onOpen, onDismiss }: { onOpen: () => void; onDismiss: () => void }) {
   return (
-    <div className={`${CARD_POSITION} flex items-stretch overflow-hidden rounded-xl border border-border bg-[var(--t-bg-elevated)] shadow-[var(--shadow-lg)]`}>
+    <div className={`${CARD_POSITION} flex items-stretch overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-lg)]`}>
       <button data-raw-button
         type="button"
         onClick={onOpen}
@@ -128,7 +128,7 @@ function TourPanel({ onClose, onJump }: { onClose: () => void; onJump: (entry: C
   return (
     <section
       aria-label="新功能导览"
-      className={`${CARD_POSITION} flex max-h-[min(70vh,560px)] flex-col overflow-hidden rounded-xl border border-border bg-[var(--t-bg-elevated)] shadow-[var(--shadow-lg)]`}
+      className={`${CARD_POSITION} flex max-h-[min(70vh,560px)] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-lg)]`}
     >
       <header className="flex shrink-0 items-start gap-2 border-b border-border px-3 py-2.5">
         <span className="mt-0.5 text-accent-text">
@@ -217,7 +217,7 @@ function OnboardingCard({
   return (
     <section
       aria-label="上手引导"
-      className={`${CARD_POSITION} rounded-xl border border-border bg-[var(--t-bg-elevated)] shadow-[var(--shadow-lg)]`}
+      className={`${CARD_POSITION} rounded-xl border border-border bg-surface shadow-[var(--shadow-lg)]`}
     >
       <header className="flex items-center gap-2 border-b border-border px-3 py-2.5">
         <span className="flex size-6 items-center justify-center rounded-full bg-[var(--t-bg-active)] text-text-secondary">

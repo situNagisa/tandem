@@ -22,13 +22,13 @@ const CHECKS = [
   { id: 'native-input-list', label: '输入框 list= 原生候选（浏览器自带下拉），应改用 ui/Combobox', re: /\blist=/g },
 ]
 
-async function walk(dir) {
+async function walk(dir, filePattern = /\.(tsx?|jsx?)$/) {
   const out = []
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue
     const full = join(dir, entry.name)
-    if (entry.isDirectory()) out.push(...(await walk(full)))
-    else if (/\.(tsx?|jsx?)$/.test(entry.name)) out.push(full)
+    if (entry.isDirectory()) out.push(...(await walk(full, filePattern)))
+    else if (filePattern.test(entry.name)) out.push(full)
   }
   return out
 }
@@ -508,7 +508,54 @@ try {
   // index.css 不存在时忽略
 }
 
+// 引用了未定义的 CSS 变量：浏览器会静默丢弃整条声明，背景/边框直接消失
+// （反馈：一批弹窗背景变透明，因为用了从未定义的 --t-bg-elevated）。
+// 定义来源 = 所有 CSS 的 `--x:` + JS 运行时注入（setProperty / style 对象）
+// + 库注入的 --radix-*。模板拼接（--graph-lane-${n}）以 `-` 结尾时，
+// 只要存在同前缀定义即视为已定义。
+{
+  const webFiles = await walk(SRC, /\.(?:tsx?|jsx?|css)$/)
+  const defined = new Set()
+  for (const file of webFiles) {
+    const text = await readFile(file, 'utf8')
+    if (file.endsWith('.css')) {
+      for (const match of text.matchAll(/(--[\w-]+)\s*:/g)) defined.add(match[1])
+      continue
+    }
+    for (const match of text.matchAll(/setProperty\(\s*['"](--[\w-]+)['"]/g)) defined.add(match[1])
+    for (const match of text.matchAll(/['"](--[\w-]+)['"]\s*:/g)) defined.add(match[1])
+  }
+  const LIBRARY_PREFIXES = ['--radix-']
+  const isDefined = (name) =>
+    defined.has(name) ||
+    LIBRARY_PREFIXES.some((prefix) => name.startsWith(prefix)) ||
+    (name.endsWith('-') && [...defined].some((candidate) => candidate.startsWith(name)))
+  for (const file of webFiles) {
+    const text = await readFile(file, 'utf8')
+    const lines = text.split('\n')
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i]
+      if (line.includes('ui-audit-ignore')) continue
+      const reported = new Set()
+      for (const match of line.matchAll(/var\(\s*(--[\w-]+)/g)) {
+        const name = match[1]
+        if (reported.has(name) || isDefined(name)) continue
+        reported.add(name)
+        issues.push({
+          file: relative(ROOT, file),
+          line: i + 1,
+          check: 'undefined-css-var',
+          label: `引用了未定义的 CSS 变量 ${name}：浏览器会丢弃整条声明（背景透明/边框消失）`,
+          text: line.trim().slice(0, 160),
+        })
+      }
+    }
+  }
+}
+
 // 打分卡 U2-A：卡片统一走 ui/Card；ui/ 外不再手写卡片 class 组合。
+// fixed/absolute/sticky 的是浮层（Popover、对话框、导览），不是卡片：它们的
+// 背景/阴影由浮层自己决定，本规则不适用于它们。
 for (const file of files) {
   const text = await readFile(file, 'utf8')
   const lines = text.split('\n')
@@ -516,6 +563,7 @@ for (const file of files) {
     const line = lines[i]
     if (line.includes('ui-audit-ignore')) continue
     if (!line.includes('rounded-xl border border-border bg-surface')) continue
+    if (/\b(?:fixed|absolute|sticky)\b/.test(line) || isFloatingClassConstant(text, line)) continue
     issues.push({
       file: relative(ROOT, file),
       line: i + 1,
@@ -524,6 +572,16 @@ for (const file of files) {
       text: line.trim().slice(0, 160),
     })
   }
+}
+
+/** 行内 `${POSITION}` 常量若声明了 fixed/absolute/sticky，说明这行是浮层而不是卡片。 */
+function isFloatingClassConstant(text, line) {
+  for (const match of line.matchAll(/\$\{\s*([A-Za-z_$][\w$]*)/g)) {
+    const name = match[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const declaration = new RegExp(`const\\s+${name}\\s*=\\s*(['"\`])([\\s\\S]*?)\\1`).exec(text)
+    if (declaration && /\b(?:fixed|absolute|sticky)\b/.test(declaration[2])) return true
+  }
+  return false
 }
 
 // 打分卡 U1-A：按钮统一走 ui/Button 或 ui/IconButton；结构性按钮（整行可点、折叠区、

@@ -51,10 +51,6 @@
 - 不读 git remote 的值、不 push；不连公网；测试 Host 一律 TANDEM_HOME=/tmp/…；不用 pkill -f。
 
 ## 本轮手工操作 / 出错环节（只留最近 5 轮，每轮 ≤5 行）
-- 2026-11-10 文档治理：手工重写 design/ledger/9 份 features/PROGRESS/AGENTS/README；decisions-check 71 条、ui-audit 新增 5 条规则；`check.mjs` 全过。
-- 出错：侧栏缩进回归取 `[data-session-row] [data-tip]`，但标题只在溢出时挂 `data-tip`，改为取标题文本元素；不改产品。
-- 出错：卡片标题控件回归受前序用例 `tandem.rightPanelCollapsed.v1` 影响，用例开头清偏好；不改产品。
-- 2026-11-10 接手去冗余：子代理并行（worktree 隔离）+ 协调者合并；合并冲突只出现在一方删除、一方修改的文件，保留删除即可。
-- 出错：给删除任务写了"加防回退检查"，用户指出会把已删概念重新引入新人上下文；已定规则写进 AGENTS.md。
 - 2026-11-10 UI 第二批：按打分卡 A 方案；U1 迁移用 32px 后，工作站设备行/提示词滚动等回归按新控件高度调整（测试选择器改 data-tip、scroll-mt-1）。
 - 2026-11-10 用户报 Edge 连不上主机：两处根因（登录门把 Host 当工作站探测→401 循环；内嵌工作站换端口后隧道连旧端口）。教训：测试 Host 曾占用用户默认端口 8481，现非默认 TANDEM_HOME 用随机端口；调试时 curl 要 `--noproxy '*'`（环境有 HTTP 代理，回环会 502）。
+- 2026-11-10 弹层透明：`--t-bg-elevated` 从未定义（UI 第二批为绕 card-class 规则引入）；已恢复 `bg-surface`，ui-audit 加 `undefined-css-var`。截图脚本 `/tmp/fix-transparent/shots.mjs`（假 SpeechRecognition/麦克风驱动语音浮层）。

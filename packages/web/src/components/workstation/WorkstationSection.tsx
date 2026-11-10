@@ -78,7 +78,7 @@ export function WorkstationSection() {
   if (!account) {
     return (
       <div className="space-y-4">
-        <div className="rounded-xl border border-[var(--t-border)] bg-[var(--t-bg-elevated)] p-5">
+        <div className="rounded-xl border border-[var(--t-border)] bg-[var(--t-surface)] p-5">
           <div className="flex items-center gap-2 text-[15px] font-medium">
             <Server size={17} /> 工作站
           </div>
@@ -109,7 +109,7 @@ export function WorkstationSection() {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-xl border border-[var(--t-border)] bg-[var(--t-bg-elevated)] p-4">
+      <div className="rounded-xl border border-[var(--t-border)] bg-[var(--t-surface)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[14px] font-medium text-[var(--t-text)]">
@@ -135,7 +135,7 @@ export function WorkstationSection() {
       </div>
 
       {(account.account.role === 'admin' || account.account.role === 'owner') && (
-        <div className="rounded-xl border border-[var(--t-border)] bg-[var(--t-bg-elevated)] p-4">
+        <div className="rounded-xl border border-[var(--t-border)] bg-[var(--t-surface)] p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <div className="text-[14px] font-medium">注册与邀请</div>
@@ -187,7 +187,7 @@ export function WorkstationSection() {
         </div>
       )}
 
-      <div className="rounded-xl border border-[var(--t-border)] bg-[var(--t-bg-elevated)] p-4">
+      <div className="rounded-xl border border-[var(--t-border)] bg-[var(--t-surface)] p-4">
         <div className="flex items-center justify-between gap-2">
           <div>
             <div className="text-[14px] font-medium">我的主机</div>

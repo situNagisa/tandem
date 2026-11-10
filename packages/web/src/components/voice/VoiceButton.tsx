@@ -398,7 +398,7 @@ export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(funct
           <div
             role="status"
             aria-live="polite"
-            className="fixed z-[70] w-[264px] rounded-xl border border-border bg-[var(--t-bg-elevated)] p-2.5 shadow-lg"
+            className="fixed z-[70] w-[264px] rounded-xl border border-border bg-surface p-2.5 shadow-lg"
             style={{ left: panelPos.left, top: panelPos.top }}
           >
             <div className="flex items-center gap-2">
