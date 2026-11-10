@@ -34,8 +34,13 @@ export function relayChannel(host: HostConfig): E2EChannel {
   return channel
 }
 
+/** 工作站返回 502（主机隧道不在线）时的固定提示。 */
+export const HOST_NOT_ON_WORKSTATION = '主机未连上工作站'
+
 export function relayErrorMessage(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err || '未知错误')
+  // 工作站找不到主机隧道时返回 502「主机不在线」；这不是本机网络问题，重连也不会好。
+  if (/主机不在线|HTTP 502/.test(msg)) return HOST_NOT_ON_WORKSTATION
   if (/指纹/.test(msg)) return `安全警告：${msg}`
   if (/^安全警告/.test(msg)) return msg
   return `端到端加密连接失败：${msg}`

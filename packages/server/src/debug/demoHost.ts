@@ -10,7 +10,7 @@ export const DEMO_HOST_SUBDIR = 'demo-host';
 export const DEMO_HOST_NAME = '演示主机';
 
 interface TunnelDeps {
-  start: () => void;
+  start: (target?: string) => void;
   stop: () => void;
 }
 
@@ -54,6 +54,15 @@ export async function startDebugDemoHost(home: string, options: DemoHostOptions)
     await demoHost.shutdown().catch(() => undefined);
   };
 
+  // 内嵌工作站避让端口后，演示主机也要改连实际地址；在 listen 之前改好，隧道第一次启动就连对，
+  // 不会连到占用旧端口的其他进程。
+  if (demoHost.accounts.mode() === 'member') {
+    const join = demoHost.accounts.workstationJoin();
+    if (join && join.url.replace(/\/+$/, '') !== options.workstationUrl.replace(/\/+$/, '')) {
+      demoHost.accounts.retargetWorkstation(options.workstationUrl);
+    }
+  }
+
   try {
     await app.listen({ port: 0, host: '127.0.0.1' });
     const address = app.server.address();
@@ -79,6 +88,8 @@ export async function startDebugDemoHost(home: string, options: DemoHostOptions)
         },
         { accessToken: options.accessToken },
       );
+    } else {
+      tunnel?.start(options.workstationUrl);
     }
     tunnel?.start();
     void demoHost.enableWorkstationProfiles();

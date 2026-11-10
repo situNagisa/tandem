@@ -322,8 +322,9 @@ export class E2EWebSocket {
         this.onclose?.({ code: ev.code, reason: ev.reason, wasClean: ev.wasClean });
       };
       this.sessionRef = { session, n };
-    } catch {
-      this.fail(1006, '加密握手失败');
+    } catch (err) {
+      // 把真实原因（如「HTTP 502 主机不在线」）带到 onclose，界面据此提示，而不是无限重连。
+      this.fail(1006, err instanceof Error && err.message ? err.message : '加密握手失败');
     }
   }
 

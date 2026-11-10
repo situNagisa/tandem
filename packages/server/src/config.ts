@@ -29,6 +29,11 @@ export function tandemHome(): string {
   return fromEnv ? path.resolve(fromEnv) : path.join(os.homedir(), '.tandem');
 }
 
+/** 是否用户的默认数据目录；测试/多实例目录不应占用默认端口。 */
+export function isDefaultHome(home: string): boolean {
+  return path.resolve(home) === path.join(os.homedir(), '.tandem');
+}
+
 export function ensureDir(dir: string): void {
   mkdirSync(dir, { recursive: true });
 }

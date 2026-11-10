@@ -10565,6 +10565,121 @@ async function main() {
       },
     })
 
+    // 调试版：内嵌工作站的旧端口被别的进程占住后重启，主机必须连到实际启动的端口。
+    // 回归 R57：隧道曾按保存的旧地址连到占用端口的其他工作站，浏览器无限「重新连接中…」。
+    checks.push({
+      name: '登录门：内嵌工作站端口被占用后重启，主机连实际端口并能开会话',
+      viewport: 'desktop',
+      gate: true,
+      fn: async (page) => {
+        const gateToken = `gate-${randomUUID()}`
+        const hostId = randomUUID()
+        const debugHome = path.join(home, 'gate-port-conflict-host')
+        const accountsFile = path.join(debugHome, 'tandem', 'accounts.json')
+        const first = startHost({
+          home: debugHome,
+          token: gateToken,
+          hostId,
+          extraEnv: { TANDEM_DEBUG_ACCOUNT: undefined },
+        })
+        let second
+        let blocker
+        try {
+          await first.ready
+          const joined = await waitForValue(() => {
+            try {
+              const data = JSON.parse(readFileSync(accountsFile, 'utf8'))
+              return data?.mode === 'member' && data.centerUrl ? data : null
+            } catch {
+              return null
+            }
+          }, 60_000, '调试主机应加入内嵌工作站')
+          const oldPort = Number(new URL(joined.centerUrl).port)
+          assert.ok(oldPort > 0, `加入地址没有端口：${joined.centerUrl}`)
+
+          first.child.kill('SIGTERM')
+          await new Promise((resolve) => first.child.once('exit', resolve))
+
+          // 占住旧端口：模拟另一个工作站进程（旧代码会连到这里）。
+          blocker = net.createServer((socket) => socket.destroy())
+          await new Promise((resolve, reject) => {
+            blocker.once('error', reject)
+            blocker.listen(oldPort, '127.0.0.1', resolve)
+          })
+
+          second = startHost({
+            home: debugHome,
+            token: gateToken,
+            hostId,
+            extraEnv: { TANDEM_DEBUG_ACCOUNT: undefined, TANDEM_EMBEDDED_WORKSTATION_PORT: String(oldPort) },
+          })
+          const port = await second.ready
+          await page.goto(`http://127.0.0.1:${port}/?token=${gateToken}`, { waitUntil: 'domcontentloaded' })
+          await page.locator('textarea[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
+          assert.equal(await page.locator('[data-testid="login-gate"]').count(), 0, '调试版回环地址应自动登录')
+
+          // 保存的加入地址改到实际启动的端口，而不是仍指向被占用的旧端口。
+          const retargeted = await waitForValue(() => {
+            try {
+              const data = JSON.parse(readFileSync(accountsFile, 'utf8'))
+              return data?.mode === 'member' && data.centerUrl && Number(new URL(data.centerUrl).port) !== oldPort
+                ? data
+                : null
+            } catch {
+              return null
+            }
+          }, 30_000, '内嵌工作站换端口后应更新加入地址')
+          const center = retargeted.centerUrl
+          assert.ok(center.startsWith('http://127.0.0.1:'), `加入地址应指向实际工作站：${center}`)
+
+          // 工作站登记的这台主机在线（隧道连到了实际端口）。
+          const stationLogin = await (
+            await fetch(`${center}/api/debug/auto-login`, { method: 'POST', headers: { Accept: 'application/json' } })
+          ).json()
+          assert.ok(stationLogin?.accessToken, '应能用调试账号登录实际工作站')
+          const online = await waitForValue(async () => {
+            const res = await fetch(`${center}/api/workstation/hosts`, {
+              headers: { Authorization: `Bearer ${stationLogin.accessToken}` },
+            })
+            if (!res.ok) return null
+            const list = await res.json()
+            const self = list.find((item) => item.id === hostId)
+            const demo = list.find((item) => item.name === '演示主机')
+            return self?.online && demo?.online ? { self, demo } : null
+          }, 30_000, '主机与演示主机都应连上实际工作站')
+          assert.ok(online, '工作站上没有在线的主机记录')
+
+          // 界面：主机卡片显示在线，会话页没有无限「重新连接中…」。
+          const dialog = await openSettings(page, '主机', 'desktop')
+          await dialog.getByText('在线', { exact: true }).first().waitFor({ timeout: 30_000 })
+          await dialog.getByRole('button', { name: '关闭' }).click()
+          await dialog.waitFor({ state: 'hidden', timeout: 5_000 })
+          assert.equal(
+            await page.getByText('主机未连上工作站').filter({ visible: true }).count(),
+            0,
+            '主机被误报为未连上工作站',
+          )
+          assert.equal(
+            await page.getByText('重新连接中…').filter({ visible: true }).count(),
+            0,
+            '主机在线时仍显示重新连接中',
+          )
+
+          // 能开会话：侧栏「新会话」后输入框可用、可以发送。
+          await page.locator('[data-testid="sidebar-new-session"]').click()
+          const textarea = page.locator('textarea[aria-label="消息输入框"]')
+          await textarea.waitFor({ state: 'visible', timeout: 10_000 })
+          await textarea.fill('端口被占用后新建会话')
+          const send = page.getByRole('button', { name: '发送消息' })
+          await send.waitFor({ timeout: 10_000 })
+          assert.equal(await send.isDisabled(), false, '新会话不能发送')
+        } finally {
+          second?.child.kill('SIGTERM')
+          await new Promise((resolve) => (blocker ? blocker.close(resolve) : resolve()))
+        }
+      },
+    })
+
     // 调试版：直接打开不带 token 的 Host 地址也应自动登录；Host 没有工作站状态接口，不能反复请求 401。
     checks.push({
       name: '登录门：调试版不带 token 打开回环地址自动进入，且不循环请求 401',

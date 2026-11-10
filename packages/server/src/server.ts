@@ -49,7 +49,8 @@ import { registerUpdateRoutes } from './routes/updates.js';
 import { IS_DEBUG_FLAVOR } from './flavor.js';
 
 interface WorkstationTunnelDeps {
-  start: () => void;
+  /** 可选 target：内嵌工作站的真实监听地址（避让端口后与保存的加入地址不同）。 */
+  start: (target?: string) => void;
   stop: () => void;
 }
 
@@ -149,14 +150,18 @@ export async function createApp(
 
   // 本机作为主机加入工作站后：主动向工作站建立出站隧道（E2E 强制）。
   let workstationAgent: WorkstationAgent | undefined;
-  const startWorkstationTunnel = () => {
-    if (workstationAgent) return;
+  const startWorkstationTunnel = (target?: string) => {
     const join = host.accounts.workstationJoin();
     if (!join) return;
+    if (workstationAgent) {
+      // 内嵌工作站换了端口：只改目标并重连，不重建 agent。
+      if (target) workstationAgent.retarget(target);
+      return;
+    }
     const address = app.server.address();
     const port = address && typeof address === 'object' && address.port ? address.port : 7878;
     workstationAgent = new WorkstationAgent(
-      { url: join.url, hostKey: join.hostKey, requireE2E: true },
+      { url: target ?? join.url, hostKey: join.hostKey, requireE2E: true },
       host.config.hostId,
       port,
     );
@@ -174,20 +179,22 @@ export async function createApp(
       return { connected: !!workstationAgent, ...(join ? { url: join.url } : {}) };
     },
   };
+  extras.onWorkstationDeps?.(workstationDeps);
+  const deps: RouteDeps = { host, workstation: workstationDeps };
+
+  if (IS_DEBUG_FLAVOR && !extras.demoHost) {
+    // 调试版 Host：首次启动自动登录本机工作站的测试账号；发布构建不加载此模块。
+    // 必须先于下面的 onListen 安装：内嵌工作站换端口后，隧道第一次启动就连实际地址。
+    const { installDebugWorkstationBootstrap } = await import('./debug/workstationBootstrap.js');
+    installDebugWorkstationBootstrap(app, host, workstationDeps);
+  }
+
   app.addHook('onListen', async () => {
     startWorkstationTunnel();
     // 账号级模型账号：同步工作站元数据并迁移旧的本机 profiles（幂等）。
     if (host.accounts.mode() === 'member') void host.enableWorkstationProfiles();
   });
   app.addHook('onClose', async () => stopWorkstationTunnel());
-  extras.onWorkstationDeps?.(workstationDeps);
-  const deps: RouteDeps = { host, workstation: workstationDeps };
-
-  if (IS_DEBUG_FLAVOR && !extras.demoHost) {
-    // 调试版 Host：首次启动自动登录本机工作站的测试账号；发布构建不加载此模块。
-    const { installDebugWorkstationBootstrap } = await import('./debug/workstationBootstrap.js');
-    installDebugWorkstationBootstrap(app, host, workstationDeps);
-  }
 
   registerHostRoutes(app, deps);
   registerUpdateRoutes(app, deps);

@@ -1407,6 +1407,18 @@ export class AccountsStore {
     return this.state?.mode === 'member' ? this.state.centerUrl : undefined;
   }
 
+  /**
+   * 内嵌工作站避让端口后更新保存的加入地址。
+   * 工作区与公钥不变（同一份工作站数据），只改隧道/同步的目标端口。
+   */
+  retargetWorkstation(url: string): void {
+    if (this.state?.mode !== 'member') return;
+    const base = url.trim().replace(/\/+$/, '');
+    if (!/^https?:\/\//i.test(base) || base === this.state.centerUrl) return;
+    this.state.centerUrl = base;
+    this.save();
+  }
+
   leaveWorkspace(): void {
     if (this.state?.mode !== 'member') throw Object.assign(new Error('本机不是加入方 Host'), { statusCode: 400 });
     this.close();

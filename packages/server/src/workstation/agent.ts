@@ -164,7 +164,8 @@ export function workstationHttpBase(url: string): string {
 export class WorkstationAgent {
   private readonly identity: RelayIdentity;
   private readonly e2e: E2EServer;
-  private readonly httpBase: string;
+  /** 实际连接的工作站地址（内嵌工作站避让端口后由 retarget 更新）。 */
+  private httpBase: string;
   private readonly streams = new Map<number, HostStream>();
   private socket: WebSocket | null = null;
   private connected = false;
@@ -172,6 +173,8 @@ export class WorkstationAgent {
   private attempt = 0;
   private timer: NodeJS.Timeout | null = null;
   private lastLogged = '';
+  /** 每次 connect 递增；旧 socket 的 close 事件据此忽略，避免重复重连。 */
+  private generation = 0;
 
   constructor(
     private readonly relay: WorkstationTunnelConfig,
@@ -185,6 +188,29 @@ export class WorkstationAgent {
 
 
   start(): void {
+    this.connect();
+  }
+
+  /** 改成连接另一个实际地址（内嵌工作站换端口），断开旧连接并立即重连。 */
+  retarget(url: string): void {
+    if (this.stopped) return;
+    const base = workstationHttpBase(url);
+    if (base === this.httpBase) return;
+    this.httpBase = base;
+    this.lastLogged = '';
+    this.attempt = 0;
+    // 旧 socket 的 close 不再安排重连，由下面的 connect 接替。
+    this.generation += 1;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    const old = this.socket;
+    this.socket = null;
+    this.connected = false;
+    for (const stream of [...this.streams.values()]) stream.abort();
+    this.streams.clear();
+    old?.terminate();
     this.connect();
   }
 
@@ -202,7 +228,9 @@ export class WorkstationAgent {
 
   private connect(): void {
     if (this.stopped) return;
-    const tunnelUrl = new URL(this.httpBase);
+    const gen = ++this.generation;
+    const target = this.httpBase;
+    const tunnelUrl = new URL(target);
     tunnelUrl.protocol = tunnelUrl.protocol === 'https:' ? 'wss:' : 'ws:';
     tunnelUrl.pathname = `${tunnelUrl.pathname.replace(/\/+$/, '')}${TUNNEL_PATH}`;
     const ws = new WebSocket(tunnelUrl.toString(), { maxPayload: MAX_FRAME, handshakeTimeout: 15_000 });
@@ -221,6 +249,7 @@ export class WorkstationAgent {
     ws.on('pong', () => (alive = true));
 
     ws.on('message', (data: RawData, isBinary: boolean) => {
+      if (gen !== this.generation) return;
       alive = true;
       const buf = Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data);
       if (!isBinary) {
@@ -239,7 +268,8 @@ export class WorkstationAgent {
           ready = true;
           this.connected = true;
           this.attempt = 0;
-          this.log(`已连接 ${this.httpBase}`);
+          // 打印这一次 socket 的真实目标，而不是保存过的地址。
+          this.log(`已连接 ${target}`);
         }
         return;
       }
@@ -249,10 +279,12 @@ export class WorkstationAgent {
     });
 
     ws.on('error', (err) => {
-      if (!ready) this.log(`连接失败：${err.message}`);
+      if (gen !== this.generation) return;
+      if (!ready) this.log(`连接失败：${err.message}（${target}）`);
     });
     ws.on('close', (code, reason) => {
       clearInterval(heartbeat);
+      if (gen !== this.generation) return;
       const wasReady = ready;
       this.connected = false;
       for (const stream of [...this.streams.values()]) stream.abort();
@@ -260,9 +292,9 @@ export class WorkstationAgent {
       if (this.socket === ws) this.socket = null;
       if (this.stopped) return;
       if (code === 4403) {
-        this.log('工作站拒绝：hostId 已绑定其他公钥（请核对工作站凭据，或重新加入）');
+        this.log(`工作站拒绝：hostId 已绑定其他公钥（请核对工作站凭据，或重新加入）`);
       } else if (wasReady) {
-        this.log(`连接断开（${code}${reason.length ? ` ${reason.toString()}` : ''}），将重连`);
+        this.log(`连接断开（${code}${reason.length ? ` ${reason.toString()}` : ''}），将重连 ${target}`);
       }
       // 4409：同一密钥的另一实例已接管，避免两个实例互相顶替
       const base = Math.max(code === 4409 ? 15_000 : 0, Math.min(60_000, 1000 * 2 ** this.attempt++));

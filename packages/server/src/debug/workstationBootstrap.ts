@@ -5,14 +5,14 @@ import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { AccountLoginResult } from '@tandem/protocol';
 import type { Host } from '../host.js';
-import { readJson } from '../config.js';
+import { isDefaultHome, readJson } from '../config.js';
 import { IS_DEBUG_FLAVOR } from '../flavor.js';
 import { embeddedDataDir, startEmbeddedWorkstation } from '../workstation/manager.js';
 import { startDebugDemoHost, type DemoHostHandle } from './demoHost.js';
 import { isLoopbackAddress } from './workstationService.js';
 
 interface DebugWorkstationDeps {
-  start: () => void;
+  start: (target?: string) => void;
 }
 
 interface CenterMeta {
@@ -65,6 +65,33 @@ async function debugLogin(base: string): Promise<AccountLoginResult> {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return (await res.json()) as AccountLoginResult;
+}
+
+/** 确认这个地址上跑的就是加入记录里的工作站（公钥一致），避免连到同端口的其他实例。 */
+async function workstationKeyMatches(base: string, publicKey: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${base}/api/workstation/status`, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return false;
+    const body = (await res.json()) as { initialized?: boolean; publicKey?: string };
+    return body.initialized === true && body.publicKey === publicKey;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 内嵌工作站的首选端口。
+ * 只有用户的默认数据目录才用 8481：测试/多实例的临时目录改用随机端口（0），
+ * 不能再抢真实用户工作站的端口。测试需要复现端口冲突时用 TANDEM_EMBEDDED_WORKSTATION_PORT 指定。
+ */
+function preferredWorkstationPort(home: string, joined?: string): number {
+  const fromEnv = Number(process.env.TANDEM_EMBEDDED_WORKSTATION_PORT);
+  if (Number.isInteger(fromEnv) && fromEnv >= 0 && fromEnv < 65536) return fromEnv;
+  if (!isDefaultHome(home)) return 0;
+  return joined ? Number(new URL(joined).port || 8481) : 8481;
 }
 
 /** 在 createApp 阶段安装启动钩子；失败只告警，不影响正常使用。 */
@@ -123,13 +150,22 @@ export function installDebugWorkstationBootstrap(
     if (!join || !isLoopbackUrl(join.url)) return;
     const meta = readJson<CenterMeta>(path.join(embeddedDataDir(host.home), 'accounts.json'));
     if (meta?.mode !== 'center' || meta.workspace?.id !== join.workspace.id || meta.publicKey !== join.publicKey) return;
-    const preferredPort = Number(new URL(join.url).port || 8481);
+    const preferredPort = preferredWorkstationPort(host.home, join.url);
     app.addHook('onListen', async () => {
       try {
         const info = await startEmbeddedWorkstation(host.home, '127.0.0.1', host.version, preferredPort);
-        workstation.start();
-        void host.enableWorkstationProfiles();
         const base = `http://127.0.0.1:${info.port}`;
+        // 旧端口被占时内嵌工作站会避让；保存的加入地址指向的可能是别人的工作站，不能连过去。
+        if (!(await workstationKeyMatches(base, join.publicKey))) {
+          console.warn(`[debug] ${base} 上的工作站公钥与加入记录不一致，未建立隧道`);
+          return;
+        }
+        if (base !== join.url.replace(/\/+$/, '')) {
+          host.accounts.retargetWorkstation(base);
+          console.log(`[debug] 内嵌工作站已换端口：${join.url} → ${base}`);
+        }
+        workstation.start(base);
+        void host.enableWorkstationProfiles();
         // 演示主机通常已登记，只需重建并恢复隧道；令牌只在它尚未登记时用到。
         const login = await debugLogin(base).catch(() => undefined);
         launchDemoHost(base, login?.accessToken);
@@ -142,7 +178,7 @@ export function installDebugWorkstationBootstrap(
 
   app.addHook('onListen', async () => {
     try {
-      const info = await startEmbeddedWorkstation(host.home, '127.0.0.1', host.version);
+      const info = await startEmbeddedWorkstation(host.home, '127.0.0.1', host.version, preferredWorkstationPort(host.home));
       const base = `http://127.0.0.1:${info.port}`;
       const login = await debugLogin(base);
       await host.accounts.registerAsHost(

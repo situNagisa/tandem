@@ -30,6 +30,7 @@ import { navigate, useRoute } from '../lib/router'
 import { cn } from '../lib/cn'
 import { clearSplitWorkspace } from '../lib/splitActions'
 import { isDesktop, isMacDesktop, isWindowsDesktop } from '../lib/desktop'
+import { HOST_NOT_ON_WORKSTATION } from '../lib/relay'
 import { ConnectionDot } from './StatusDot'
 import { Button, IconButton } from './ui/Button'
 import { Menu as UiMenu } from './ui/Menu'
@@ -414,6 +415,7 @@ export function TopBar() {
 
   const offline = runtime?.status === 'offline'
   const connecting = runtime?.status === 'connecting'
+  const hostUnreachable = offline && runtime?.error === HOST_NOT_ON_WORKSTATION
   const title = summary?.title || '未命名会话'
 
   const commit = async () => {
@@ -656,8 +658,8 @@ export function TopBar() {
 
       {offline && (
         <div className="pointer-events-none absolute inset-x-0 top-full z-20 flex h-6 items-center justify-center gap-1.5 border-b border-border/60 bg-bg/95 text-[12px] text-muted backdrop-blur-sm">
-          <span className="size-1.5 rounded-full bg-muted/60 running-dot" />
-          <span>重新连接中…</span>
+          <span className={cn('size-1.5 rounded-full bg-muted/60', !hostUnreachable && 'running-dot')} />
+          <span>{hostUnreachable ? HOST_NOT_ON_WORKSTATION : '重新连接中…'}</span>
           <button data-raw-button
             onClick={() => activeHostId && retryHost(activeHostId)}
             className="pointer-events-auto ml-1 rounded px-1 text-[12px] text-text-soft underline-offset-2 transition-colors hover:text-text hover:underline"
