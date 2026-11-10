@@ -15,6 +15,7 @@ import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { cn } from '../../lib/cn'
 import { profileModelGroups } from '../../lib/profileModels'
+import { rememberRouteBias } from '../../lib/routeBias'
 import { Button } from '../ui/Button'
 import { SegmentedControl, Select, Switch } from '../ui/Controls'
 import { Menu } from '../ui/Menu'
@@ -190,7 +191,10 @@ export function ModelRoutingSection() {
       .updateSettings(host, payload)
       .then((saved) => {
         // 连续点击时只认最后一次保存的响应，避免旧响应把新选择覆盖回去。
-        if (seq === saveSeq.current) setSettings(saved)
+        if (seq === saveSeq.current) {
+          setSettings(saved)
+          if (saved.modelRouting) rememberRouteBias(host.id, saved.modelRouting.preference)
+        }
       })
       .catch((err: Error) => {
         if (seq === saveSeq.current) {

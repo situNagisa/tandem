@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { ReasoningEffort, RoutePreference, TurnRouteOverride } from '@tandem/protocol'
-import { api } from '../../lib/api'
+import { cachedRouteBias, loadRouteBias, subscribeRouteBias } from '../../lib/routeBias'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { usePreviewStore } from '../../store/usePreviewStore'
@@ -15,44 +15,17 @@ import {
   EMPTY_SELECTIONS,
 } from './composerTypes'
 
-/** 全局取向默认（设置 → 模型路由的 preference），按 Host 缓存读取结果。 */
-const globalRouteBiasCache = new Map<string, RoutePreference>()
-
 function useGlobalRouteBias(hostId: string | null | undefined): RoutePreference | undefined {
-  const [bias, setBias] = useState<RoutePreference | undefined>(() =>
-    hostId ? globalRouteBiasCache.get(hostId) : undefined,
-  )
   useEffect(() => {
-    if (!hostId) {
-      setBias(undefined)
-      return
-    }
-    const cached = globalRouteBiasCache.get(hostId)
-    if (cached) {
-      setBias(cached)
-      return
-    }
+    if (!hostId) return
     const host = useAppStore.getState().hosts.find((h) => h.id === hostId)
-    if (!host) {
-      setBias(undefined)
-      return
-    }
-    let cancelled = false
-    api
-      .settings(host)
-      .then((settings) => {
-        const preference = settings.modelRouting?.preference ?? 'balanced'
-        globalRouteBiasCache.set(hostId, preference)
-        if (!cancelled) setBias(preference)
-      })
-      .catch(() => {
-        /* 读取失败时按协议默认值展示 */
-      })
-    return () => {
-      cancelled = true
-    }
+    if (!host) return
+    /* 读取失败时按协议默认值展示 */
+    void loadRouteBias(host).catch(() => {})
   }, [hostId])
-  return bias
+  return useSyncExternalStore(subscribeRouteBias, () =>
+    hostId ? cachedRouteBias(hostId) : undefined,
+  )
 }
 
 interface Options {
