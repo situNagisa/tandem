@@ -6690,6 +6690,82 @@ async function main() {
     const clientHostIdOf = (page) =>
       page.evaluate(() => JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')[0]?.id ?? null)
 
+    desktop('反馈2102#05：新会话页选的账号/模型按主机记住，开会话后与刷新后仍保留，已不存在的模型回落默认', async (page) => {
+      const chipLabel = () =>
+        page.evaluate(() => document.querySelector('button[aria-label^="选择模型"]')?.getAttribute('aria-label') ?? '')
+      const expectChip = async (pattern, message) => {
+        const ok = await page
+          .waitForFunction(
+            (source) => new RegExp(source, 'i').test(document.querySelector('button[aria-label^="选择模型"]')?.getAttribute('aria-label') ?? ''),
+            pattern,
+            { timeout: 5_000 },
+          )
+          .then(() => true, () => false)
+        assert.ok(ok, `${message}（当前芯片：${await chipLabel()}）`)
+      }
+      const theme = await page.evaluate(() => localStorage.getItem('tandem.theme.v1'))
+      await page.evaluate(() => localStorage.removeItem('tandem.newSessionPick.v1'))
+      try {
+        await page.evaluate(() => (window.location.hash = '#/'))
+        await waitModelReady(page)
+        const defaultLabel = await chipLabel()
+        await page.locator('button[aria-label^="选择模型"]').first().click()
+        await page.getByRole('menuitem', { name: /^切换账号/ }).hover()
+        await page.getByRole('menuitem', { name: /^主力账号/ }).first().hover()
+        await page.getByRole('menuitem', { name: /^生产/ }).first().hover()
+        await page.getByRole('menuitem', { name: /^mock-2/ }).first().click()
+        await expectChip('mock[ -]2', '选择模型后芯片没有更新')
+        await page.locator('textarea[aria-label="消息输入框"]').fill('反馈2102#05 模型记忆回归')
+        await page.waitForFunction(() => {
+          const b = [...document.querySelectorAll('button')].find((x) => x.getAttribute('aria-label') === '发送消息')
+          return !!b && !b.disabled
+        })
+        await Promise.all([
+          page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/sessions'),
+          page.getByRole('button', { name: '发送消息' }).click(),
+        ])
+        await page.waitForFunction(() => window.location.hash.includes('/s/'), null, { timeout: 15_000 })
+        await page.evaluate(() => (window.location.hash = '#/'))
+        await waitModelReady(page)
+
+        await withViewport(page, async () => {
+          for (const next of ['dark', 'light']) {
+            await setTheme(page, next)
+            await waitModelReady(page)
+            await page.screenshot({ path: path.join(shotDir, `05-新会话芯片-${next}.png`) })
+          }
+        })
+        await expectChip('mock[ -]2', '开会话后回到新会话页，模型没有记住')
+
+        await page.reload({ waitUntil: 'domcontentloaded' })
+        await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+        await waitModelReady(page)
+        await expectChip('mock[ -]2', '刷新后新会话页的模型没有记住')
+
+        const hostId = await clientHostIdOf(page)
+        await page.evaluate(
+          (id) =>
+            localStorage.setItem(
+              'tandem.newSessionPick.v1',
+              JSON.stringify({ [id]: { profileId: 'p-main', groupId: 'g1', model: '已删除的模型' } }),
+            ),
+          hostId,
+        )
+        await page.reload({ waitUntil: 'domcontentloaded' })
+        await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+        await waitModelReady(page)
+        await page.waitForTimeout(300)
+        assert.equal(await chipLabel(), defaultLabel, '记住的模型已不存在时没有回落到默认模型')
+        assert.equal(await page.getByText('先选择账号与模型').count(), 0, '回落默认时不应报错')
+      } finally {
+        await page.evaluate((prev) => {
+          if (prev) localStorage.setItem('tandem.theme.v1', prev)
+          else localStorage.removeItem('tandem.theme.v1')
+          localStorage.removeItem('tandem.newSessionPick.v1')
+        }, theme)
+      }
+    })
+
     desktop('反馈2102#04：顶栏右侧不出现两个同图标的按钮', async (page) => {
       const panelToggle = page.locator('button[aria-label="切换信息面板"]')
       const ensurePanelOpen = async () => {
