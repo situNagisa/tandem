@@ -68,9 +68,9 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'profiles.prices', tab: 'profiles', title: '模型价格覆盖', keywords: ['价格', '计费', '费用'] },
 
   { id: 'routing.candidates', tab: 'routing', title: '自动路由候选池', keywords: ['自动', '路由', '候选', '模型', '档位', '快速', '强力'] },
-  { id: 'routing.preference', tab: 'routing', title: '路由偏好', keywords: ['省钱', '均衡', '质量', '偏好'] },
+  { id: 'routing.preference', tab: 'routing', title: '取向默认', keywords: ['取向', '分工', '省钱', '均衡', '质量优先', '偏好'] },
   { id: 'routing.judge', tab: 'routing', title: '用小模型判断难度', keywords: ['判断', '难度', '小模型', '自动路由'] },
-  { id: 'routing.division', tab: 'routing', title: '多代理协作', keywords: ['分工', '多代理协作', '规划', '执行', '专长', 'Task', '子代理', '低成本', '确认'] },
+  { id: 'routing.division', tab: 'routing', title: '多代理协作', keywords: ['分工', '多代理协作', '规划', '执行', '专长', 'Task', '子代理', '省钱', '整单交执行者', '确认'] },
 
   { id: 'hosts.list', tab: 'hosts', title: '主机列表', keywords: ['主机', '服务器', '连接'] },
   { id: 'hosts.add', tab: 'hosts', title: '添加主机', keywords: ['新增', '服务器', '扫码'] },
@@ -110,7 +110,7 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'memory.host', tab: 'memory', title: '记忆主机选择', keywords: ['记忆', '主机'] },
   { id: 'memory.content', tab: 'memory', title: '项目记忆', keywords: ['记忆', '内容', 'markdown'] },
 
-  { id: 'subagents.default-delegation', tab: 'subagents', title: '新会话默认委派倾向', keywords: ['委派', '子代理', '默认', '倾向'] },
+  { id: 'subagents.default-delegation', tab: 'subagents', title: '新会话默认分工', keywords: ['分工', '子代理', '默认'] },
   { id: 'subagents.presets', tab: 'subagents', title: '子代理预设', keywords: ['预设', '子代理', '模型'] },
   { id: 'subagents.create', tab: 'subagents', title: '新建子代理预设', keywords: ['新增', '子代理'] },
 

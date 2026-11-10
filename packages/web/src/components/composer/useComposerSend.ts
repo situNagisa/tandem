@@ -52,8 +52,8 @@ interface Options {
   scopeTarget: SessionTarget | undefined
   hostStatus: string
   pendingRequests: PermissionRequest[]
-  routeOverride: import('@tandem/protocol').TurnRouteMode | undefined
-  setRouteOverride: (mode: import('@tandem/protocol').TurnRouteMode | undefined) => void
+  routeOverride: import('@tandem/protocol').TurnRouteOverride | undefined
+  setRouteOverride: (route: import('@tandem/protocol').TurnRouteOverride | undefined) => void
   onSubmit?: (content: ContentBlock[]) => unknown | Promise<unknown>
   onStop?: () => void
   interrupt: StoreState['interrupt']

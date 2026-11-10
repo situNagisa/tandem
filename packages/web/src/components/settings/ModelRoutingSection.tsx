@@ -255,14 +255,14 @@ export function ModelRoutingSection() {
 
       <section data-setting-id="routing.preference" className="settings-item space-y-1 px-3 py-1">
         <SettingRow
-          label="偏好"
+          label="取向默认"
           hint="影响档位阈值；预算将尽时会进一步向快速档倾斜。"
         >
           <SegmentedControl
             value={routing.preference}
             options={PREFERENCE_OPTIONS.map(({ value, label }) => ({ value, label }))}
             onChange={(value) => persist({ ...routing, preference: value })}
-            aria-label="路由偏好"
+            aria-label="取向默认"
           />
         </SettingRow>
         <SettingRow

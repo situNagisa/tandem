@@ -22,7 +22,7 @@ const RECENT_KEY = 'tandem.recentCommands.v1'
 const RECENT_LIMIT = 8
 
 const MODES: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions']
-const DELEGATIONS: DelegationStrategy[] = ['less', 'more', 'orchestrate', 'none']
+const DELEGATIONS: DelegationStrategy[] = ['less', 'more', 'none']
 
 function toast(text: string, kind: 'info' | 'success' | 'error' = 'info'): void {
   useUiStore.getState().toast(text, kind)

@@ -7,7 +7,6 @@ import type {
   Profile,
   ReasoningEffort,
   SlashCommand,
-  TurnRouteMode,
 } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
@@ -59,8 +58,8 @@ export function Composer({
   groupId: groupIdProp,
   permissionMode: permissionModeProp,
   onModelChange,
-  routeMode: routeModeProp,
-  onRouteModeChange,
+  routeBias: routeBiasProp,
+  onRouteBiasChange,
   delegation: delegationProp,
   onDelegationChange,
   onPermissionModeChange,
@@ -120,8 +119,8 @@ export function Composer({
     setRouteOverride,
     keepRouteMode,
     setKeepRouteMode,
-    effectiveRouteMode,
     effectiveDelegation,
+    effectiveRouteBias,
     currentProfileId,
     currentGroupId,
     contextUsed,
@@ -137,7 +136,7 @@ export function Composer({
     profileIdProp,
     groupIdProp,
     permissionModeProp,
-    routeModeProp,
+    routeBiasProp,
     delegationProp,
     effortProp,
     hostIdProp,
@@ -234,9 +233,9 @@ export function Composer({
     changeModel,
     applyAutoRoute,
     changeAutoRoute,
-    applyRouteMode,
+    applyDelegation,
+    applyRouteBias,
     toggleKeepRouteMode,
-    changeDelegation,
     changeEffort,
     switchLabel,
     switchCost,
@@ -245,7 +244,7 @@ export function Composer({
     sessionless,
     onPermissionModeChange,
     onModelChange,
-    onRouteModeChange,
+    onRouteBiasChange,
     onDelegationChange,
     onEffortChange,
     summary,
@@ -267,7 +266,9 @@ export function Composer({
     effort,
     keepRouteMode,
     setKeepRouteMode,
-    effectiveRouteMode,
+    effectiveDelegation,
+    effectiveRouteBias,
+    routeOverride,
     setRouteOverride,
     setModelMenuOpen,
     setPendingSwitch,
@@ -443,10 +444,10 @@ export function Composer({
           contextLimit={contextLimit}
           expectedContext={expectedContext}
           expectedPct={expectedPct}
-          effectiveRouteMode={effectiveRouteMode}
           effectiveDelegation={effectiveDelegation}
-          onChangeRouteMode={applyRouteMode}
-          onChangeDelegation={changeDelegation}
+          effectiveRouteBias={effectiveRouteBias}
+          onChangeDelegation={applyDelegation}
+          onChangeRouteBias={applyRouteBias}
           keepRouteMode={keepRouteMode}
           onToggleKeepRouteMode={toggleKeepRouteMode}
           uiProfiles={uiProfiles}

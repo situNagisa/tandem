@@ -142,7 +142,7 @@ export function EvalConfigCard({
           </Select>
         </label>
         <label className="flex min-w-0 flex-col gap-1 text-[12px] text-muted">
-          委派倾向
+          分工
           <Select
             value={config.delegation ?? ''}
             onChange={(event) =>
@@ -151,10 +151,10 @@ export function EvalConfigCard({
                 delegation: (event.target.value || undefined) as EvalConfig['delegation'],
               })
             }
-            aria-label="委派倾向"
+            aria-label="分工"
             size="sm"
           >
-            <option value="">默认委派倾向</option>
+            <option value="">默认分工</option>
             {DELEGATION_ORDER.map((value) => (
               <option key={value} value={value}>
                 {DELEGATION_META[value].longLabel}
