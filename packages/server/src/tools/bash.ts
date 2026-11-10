@@ -1,10 +1,9 @@
 // Bash：在会话 cwd 内执行命令，超时终止，输出截断。
-import { spawn } from 'node:child_process';
 import type { ToolContext, ToolDefinition, ToolResult } from '../types.js';
-import { truncateMiddle } from '../util/text.js';
-import { cmdUtf8Command, decodeProcessOutput } from '../util/encoding.js';
+import { errorMessage, truncateMiddle } from '../util/text.js';
+import { decodeProcessOutput } from '../util/encoding.js';
 import type { BackgroundTaskManager } from '../tasks.js';
-import { sandboxCommand, type SandboxProfile } from '../sandbox.js';
+import { sandboxWrap, type SandboxProfile } from '../sandbox.js';
 
 const MAX_BUFFER = 2_000_000;
 
@@ -39,10 +38,25 @@ export const definition: ToolDefinition = {
   },
 };
 
+/** 沙箱前缀；该机器没有可用引擎时不包装，并返回一句提示。 */
+async function sandboxFor(ctx: ToolContext): Promise<{ wrap?: string[]; notice?: string }> {
+  const profile = (ctx as ToolContext & { sandbox?: SandboxProfile }).sandbox;
+  if (!profile) return {};
+  const wrap = await sandboxWrap(ctx.env, ctx.cwd, profile);
+  if (wrap) return { wrap };
+  const notice =
+    ctx.env.platform === 'linux'
+      ? '[未检测到 bwrap，本次命令未在沙箱中运行。可安装：sudo apt install bubblewrap]'
+      : ctx.env.platform === 'win32'
+        ? '[该机器不支持文件系统沙箱，本次命令仅做静态检查]'
+        : '[该机器没有可用的沙箱，本次命令未在沙箱中运行]';
+  return { notice };
+}
+
 export async function run(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   const command = typeof input.command === 'string' ? input.command.trim() : '';
   if (!command) return { content: '缺少 command 参数', isError: true };
-  const profile = (ctx as ToolContext & { sandbox?: SandboxProfile }).sandbox;
+  const { wrap, notice } = await sandboxFor(ctx);
   if (input.run_in_background === true) {
     const manager = (ctx as ToolContext & { backgroundTasks?: BackgroundTaskManager }).backgroundTasks;
     if (!manager) return { content: '后台任务管理器不可用', isError: true };
@@ -50,15 +64,16 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
       sessionId: ctx.session.id,
       command,
       cwd: ctx.cwd,
-      ...(profile ? { sandbox: sandboxCommand(command, ctx.cwd, profile) } : {}),
+      env: ctx.env,
+      ...(wrap ? { wrap } : {}),
       ...(typeof input.description === 'string' && input.description.trim()
         ? { description: input.description.trim() }
         : {}),
-      ...(ctx.secretEnv ? { env: ctx.secretEnv } : {}),
+      ...(ctx.secretEnv ? { secretEnv: ctx.secretEnv } : {}),
       ...(ctx.redact ? { redact: ctx.redact } : {}),
     });
     return {
-      content: `Command running in background with ID: ${task.id}\nOutput is being written to ~/.tandem/tasks/${task.id}.log. Use BashOutput with bash_id "${task.id}" to read new output.`,
+      content: `${notice ? `${notice}\n` : ''}Command running in background with ID: ${task.id}\nOutput is being written to ~/.tandem/tasks/${task.id}.log. Use BashOutput with bash_id "${task.id}" to read new output.`,
     };
   }
 
@@ -68,32 +83,11 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
 
   if (ctx.signal.aborted) return { content: '用户中断', isError: true };
 
-  const isWin = process.platform === 'win32';
-  const sandboxed = isWin ? undefined : sandboxCommand(command, ctx.cwd, profile);
-  const child = sandboxed
-    ? spawn(sandboxed.file, sandboxed.args, {
-        cwd: ctx.cwd,
-        detached: true,
-        env: { ...process.env, ...ctx.secretEnv },
-      })
-    : isWin
-      ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', cmdUtf8Command(command)], {
-          cwd: ctx.cwd,
-          windowsHide: true,
-          env: { ...process.env, ...ctx.secretEnv },
-        })
-      : spawn('/bin/bash', ['-c', command], {
-          cwd: ctx.cwd,
-          detached: true,
-          env: { ...process.env, ...ctx.secretEnv },
-        });
-
   const outChunks: Buffer[] = [];
   const errChunks: Buffer[] = [];
   let outBytes = 0;
   let errBytes = 0;
   let truncated = false;
-  let timedOut = false;
 
   const collect = (target: 'out' | 'err', chunk: Buffer) => {
     const used = target === 'out' ? outBytes : errBytes;
@@ -113,60 +107,51 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
     if (used + chunk.length > MAX_BUFFER * 2) truncated = true;
   };
 
-  child.stdout?.on('data', (chunk: Buffer) => collect('out', chunk));
-  child.stderr?.on('data', (chunk: Buffer) => collect('err', chunk));
+  const abort = new AbortController();
+  const onAbort = () => abort.abort();
+  ctx.signal.addEventListener('abort', onAbort, { once: true });
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    abort.abort();
+  }, timeout);
 
-  const result = await new Promise<ToolResult>((resolve) => {
-    let settled = false;
-    const finish = (res: ToolResult) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(res);
-    };
-    const kill = () => {
-      try {
-        if (!isWin && child.pid) process.kill(-child.pid, 'SIGKILL');
-        else child.kill('SIGKILL');
-      } catch {
-        try {
-          child.kill('SIGKILL');
-        } catch {
-          // ignore
-        }
-      }
-    };
-    const onAbort = () => {
-      kill();
-      finish({ content: '用户中断', isError: true });
-    };
-    const timer = setTimeout(() => {
-      timedOut = true;
-      kill();
-    }, timeout);
-    const cleanup = () => {
-      clearTimeout(timer);
-      ctx.signal.removeEventListener('abort', onAbort);
-    };
-    ctx.signal.addEventListener('abort', onAbort, { once: true });
-
-    child.on('error', (err) => {
-      finish({ content: `无法启动命令: ${err.message}`, isError: true });
+  let exit: number | undefined;
+  let failure: string | undefined;
+  try {
+    const res = await ctx.env.shell({
+      command,
+      cwd: ctx.cwd,
+      env: ctx.secretEnv,
+      wrap,
+      signal: abort.signal,
+      onStdout: (chunk) => collect('out', chunk),
+      onStderr: (chunk) => collect('err', chunk),
     });
-    child.on('close', (code) => {
-      const stdout = decodeProcessOutput(Buffer.concat(outChunks));
-      const stderr = decodeProcessOutput(Buffer.concat(errChunks));
-      const parts: string[] = [];
-      if (stdout) parts.push(stdout.replace(/\s+$/, '').slice(0, MAX_BUFFER));
-      if (stderr) parts.push(`[stderr]\n${stderr.replace(/\s+$/, '').slice(0, MAX_BUFFER)}`);
-      if (parts.length === 0) parts.push('(无输出)');
-      let text = parts.join('\n');
-      if (truncated) text += '\n[输出过长，已截断]';
-      if (timedOut) text += `\n[命令超时（${timeout}ms），已终止]`;
-      else if (code !== 0) text += `\n[退出码: ${code ?? '未知'}]`;
-      finish({ content: truncateMiddle(text), isError: timedOut || code !== 0 });
-    });
-  });
+    exit = res.exit;
+  } catch (err) {
+    failure = errorMessage(err);
+  } finally {
+    clearTimeout(timer);
+    ctx.signal.removeEventListener('abort', onAbort);
+  }
 
-  return result;
+  if (ctx.signal.aborted) return { content: '用户中断', isError: true };
+  if (failure !== undefined && !timedOut) return { content: `执行失败: ${failure}`, isError: true };
+
+  const stdout = decodeProcessOutput(Buffer.concat(outChunks));
+  const stderr = decodeProcessOutput(Buffer.concat(errChunks));
+  const parts: string[] = [];
+  if (stdout) parts.push(stdout.replace(/\s+$/, '').slice(0, MAX_BUFFER));
+  if (stderr) parts.push(`[stderr]\n${stderr.replace(/\s+$/, '').slice(0, MAX_BUFFER)}`);
+  if (parts.length === 0) parts.push('(无输出)');
+  let text = parts.join('\n');
+  if (truncated) text += '\n[输出过长，已截断]';
+  if (timedOut) text += `\n[命令超时（${timeout}ms），已终止]`;
+  else if (exit !== 0) text += `\n[退出码: ${exit === -1 || exit === undefined ? '未知' : exit}]`;
+  if (notice) text = `${notice}\n${text}`;
+  return {
+    content: truncateMiddle(text),
+    isError: timedOut || exit !== 0,
+  };
 }

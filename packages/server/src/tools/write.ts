@@ -1,6 +1,5 @@
 // Write：整文件写入（自动创建父目录）。
-import { mkdirSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
+import type { HostStat } from '../host-env.js';
 import type { ToolContext, ToolDefinition, ToolResult } from '../types.js';
 import { resolvePath } from '../util/path.js';
 
@@ -23,16 +22,28 @@ export const definition: ToolDefinition = {
 };
 
 export async function run(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
+  const { env } = ctx;
   const rawPath = typeof input.file_path === 'string' ? input.file_path : '';
   const content = typeof input.content === 'string' ? input.content : '';
   if (!rawPath) return { content: '缺少 file_path 参数', isError: true };
 
-  const filePath = resolvePath(ctx.cwd, rawPath);
+  const filePath = resolvePath(ctx.cwd, rawPath, env);
   try {
-    mkdirSync(path.dirname(filePath), { recursive: true });
-    writeFileSync(filePath, content, 'utf8');
-    return { content: `已写入 ${filePath}（${Buffer.byteLength(content, 'utf8')} 字节）` };
+    let st: HostStat | undefined;
+    try {
+      st = await env.fs.stat(filePath);
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'ENOENT') throw err;
+    }
+    if (st && st.type !== 'file') return { content: `写入失败: 不是普通文件: ${filePath}`, isError: true };
+    const before = st ? (await env.fs.read(filePath)).data : undefined;
+    ctx.snapshot?.(filePath, before);
+    const data = Buffer.from(content, 'utf8');
+    await env.fs.write(filePath, data, { mkdirp: true, expectMtime: st?.mtimeMs });
+    return { content: `已写入 ${filePath}（${data.length} 字节）` };
   } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === 'ECONFLICT') return { content: '写入失败: 文件已被修改，请先 Read 再写入', isError: true };
     return { content: `写入失败: ${(err as Error).message}`, isError: true };
   }
 }

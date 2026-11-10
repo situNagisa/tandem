@@ -1150,16 +1150,10 @@ async function executeToolUses(
         },
       ];
     }
-    // 写类工具执行前做检查点快照（Bash 改动无法追踪：命令任意，不纳入检查点）
-    // 写类工具执行前做检查点快照（Bash 改动无法追踪：命令任意，不纳入检查点）
     const editedPath =
       tool.input && typeof tool.input === 'object'
         ? (tool.input as Record<string, unknown>).file_path
         : undefined;
-    if ((tool.name === 'Write' || tool.name === 'Edit') && tool.input && typeof tool.input === 'object') {
-      const filePath = (tool.input as Record<string, unknown>).file_path;
-      if (typeof filePath === 'string' && filePath) host.snapshotForCheckpoint(rec, filePath);
-    }
     // 记录进行中的工具：Host 在同一时刻崩溃后，恢复时据此判断哪些不能自动重放
     toolStarted(host, rec, tool.id, tool.name);
     const toolCtx = {
@@ -1194,6 +1188,7 @@ async function executeToolUses(
       devices: host.devices,
       secretEnv: host.secrets.envFor(rec.cwd, 'bash'),
       sandbox: host.sandboxProfileFor(tool.id),
+      snapshot: (absPath: string, before: Buffer | undefined) => host.snapshotForCheckpoint(rec, absPath, before),
       redact,
     };
     const def = host.toolDefinition(tool.name, rec.cwd);

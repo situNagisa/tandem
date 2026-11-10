@@ -10,6 +10,7 @@ import type {
   SandboxSettings,
   SandboxStatus,
 } from '@tandem/protocol';
+import type { HostEnv } from './host-env.js';
 import { readJson, writePrivateFile } from './config.js';
 
 export const DEFAULT_ALLOWED_HOSTS = ['localhost', '127.0.0.1', '::1', '*.localhost'];
@@ -216,10 +217,14 @@ export function sandboxProfile(
   };
 }
 
+function systemTempDirs(platform: NodeJS.Platform): string[] {
+  if (platform === 'linux') return ['/tmp', '/var/tmp'];
+  if (platform === 'darwin') return ['/tmp', '/private/tmp', '/private/var/folders'];
+  return [];
+}
+
 function tempDirs(platform: NodeJS.Platform = process.platform): string[] {
-  const list = [os.tmpdir()];
-  if (platform === 'linux') list.push('/tmp', '/var/tmp');
-  if (platform === 'darwin') list.push('/tmp', '/private/tmp', '/private/var/folders');
+  const list = [os.tmpdir(), ...systemTempDirs(platform)];
   if (platform === 'win32') {
     for (const key of ['TEMP', 'TMP']) {
       const value = process.env[key];
@@ -1487,29 +1492,32 @@ function quoteSandboxPath(value: string): string {
 }
 
 /** 生成真沙箱下的启动命令；profile 未定义时返回 undefined。 */
-export function sandboxCommand(
-  command: string,
+/**
+ * 沙箱引擎的启动前缀（不含 shell 与命令）。引擎与可写目录按执行的机器取：本机用本机引擎，远端用远端的 bwrap。
+ * 该机器没有可用引擎时返回 undefined，由调用方提示。
+ */
+export async function sandboxWrap(
+  env: HostEnv,
   cwd: string,
-  profile: SandboxProfile | undefined,
-  platform: NodeJS.Platform = process.platform,
-): { file: string; args: string[] } | undefined {
-  if (!profile) return undefined;
-  const resolvedCwd = path.resolve(cwd);
-  if (profile.engine === 'bwrap') {
+  profile: SandboxProfile,
+): Promise<string[] | undefined> {
+  const engine = await env.sandboxEngine();
+  if (!engine) return undefined;
+  const resolvedCwd = env.path.resolve(cwd);
+  const dirs = await existingDirs(
+    env,
+    uniquePaths([resolvedCwd, env.tmp, ...systemTempDirs(env.platform)], env.path),
+  );
+  if (engine.engine === 'bwrap') {
     const args = ['--die-with-parent', '--ro-bind', '/', '/', '--dev', '/dev'];
-    const binds = uniquePaths([resolvedCwd, ...tempDirs(platform)]);
-    for (const dir of binds) {
-      if (dir === '/') continue;
-      if (!existsSync(dir)) continue;
-      args.push('--bind', dir, dir);
+    for (const dir of dirs) {
+      if (dir !== '/') args.push('--bind', dir, dir);
     }
     args.push('--chdir', resolvedCwd);
     if (profile.network === 'none') args.push('--unshare-net');
-    args.push('--', '/bin/bash', '-c', command);
-    return { file: profile.binary, args };
+    return [engine.binary, ...args, '--'];
   }
-  const writeDirs = uniquePaths([resolvedCwd, ...tempDirs(platform)]);
-  const allow = writeDirs
+  const allow = dirs
     .map((dir) => `(subpath "${quoteSandboxPath(dir)}")`)
     .concat(['(literal "/dev/null")', '(literal "/dev/stdout")', '(literal "/dev/stderr")']);
   const profileText = [
@@ -1518,10 +1526,18 @@ export function sandboxCommand(
     '(deny file-write*)',
     `(allow file-write* ${allow.join(' ')})`,
   ].join('\n');
-  return {
-    file: profile.binary,
-    args: ['-p', profileText, '/bin/bash', '-c', command],
-  };
+  return [engine.binary, '-p', profileText];
 }
 
-export { tempDirs as sandboxTempDirs };
+async function existingDirs(env: HostEnv, dirs: string[]): Promise<string[]> {
+  const out: string[] = [];
+  for (const dir of dirs) {
+    try {
+      await env.fs.stat(dir);
+      out.push(dir);
+    } catch {
+      // 不存在的目录不进入可写列表
+    }
+  }
+  return out;
+}

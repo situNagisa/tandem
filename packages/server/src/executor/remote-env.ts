@@ -1,4 +1,4 @@
-// 远端主机环境：把 HostEnv 的调用翻译成执行器操作（exec.argv、fs.*、sys.info）。路径语义取远端系统。
+// 远端主机环境：把 HostEnv 的调用翻译成执行器操作（exec.argv、exec.shell、fs.*、sys.info）。路径语义取远端系统。
 import path from 'node:path';
 import {
   outputCollector,
@@ -7,12 +7,15 @@ import {
   type ExecResult,
   type HostEnv,
   type HostStat,
+  type ShellRequest,
+  type ShellResult,
 } from '../host-env.js';
 import type { ExecutorConn } from './conn.js';
 
 interface SysInfo {
   os: string;
   home: string;
+  tmp: string;
   tools: Record<string, boolean>;
 }
 
@@ -24,7 +27,9 @@ export class RemoteHostEnv implements HostEnv {
   readonly platform: NodeJS.Platform;
   readonly path: path.PlatformPath;
   readonly home: string;
+  readonly tmp: string;
   private readonly ripgrep: boolean;
+  private readonly bwrap: boolean;
 
   readonly fs: HostEnv['fs'] = {
     stat: async (p) => {
@@ -36,6 +41,16 @@ export class RemoteHostEnv implements HostEnv {
       const args = Number.isFinite(maxBytes) ? { path: p, length: maxBytes } : { path: p };
       const end = await this.conn.request('fs.read', args, { onData: (c) => chunks.push(c) });
       return { size: end.size, data: Buffer.concat(chunks) };
+    },
+    write: async (p, data, opts = {}) => {
+      const end = await this.conn.request(
+        'fs.write',
+        { path: p, mkdirp: opts.mkdirp === true, expectMtime: opts.expectMtime },
+        {},
+        undefined,
+        data,
+      );
+      return { size: end.size, mtimeMs: end.mtimeMs };
     },
     walk: async (root, opts = {}) => {
       const chunks: Buffer[] = [];
@@ -69,7 +84,9 @@ export class RemoteHostEnv implements HostEnv {
     this.platform = (info.os === 'windows' ? 'win32' : info.os) as NodeJS.Platform;
     this.path = this.platform === 'win32' ? path.win32 : path.posix;
     this.home = info.home;
+    this.tmp = info.tmp;
     this.ripgrep = info.tools.rg === true;
+    this.bwrap = info.tools.bwrap === true;
   }
 
   static async open(conn: ExecutorConn): Promise<RemoteHostEnv> {
@@ -78,6 +95,10 @@ export class RemoteHostEnv implements HostEnv {
 
   async hasRipgrep(): Promise<boolean> {
     return this.ripgrep;
+  }
+
+  async sandboxEngine() {
+    return this.platform === 'linux' && this.bwrap ? { engine: 'bwrap' as const, binary: 'bwrap' } : undefined;
   }
 
   async exec(req: ExecRequest): Promise<ExecResult> {
@@ -97,5 +118,15 @@ export class RemoteHostEnv implements HostEnv {
       stdout: stdout.buffer(),
       stderr: stderr.buffer(),
     };
+  }
+
+  async shell(req: ShellRequest): Promise<ShellResult> {
+    const end = await this.conn.request(
+      'exec.shell',
+      { command: req.command, cwd: req.cwd, env: req.env ?? {}, wrap: req.wrap ?? [] },
+      { onStdout: req.onStdout, onStderr: req.onStderr },
+      req.signal,
+    );
+    return { exit: end.exit, signal: end.signal || undefined };
   }
 }

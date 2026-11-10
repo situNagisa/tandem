@@ -16,6 +16,7 @@ import type {
   SessionPlan,
   WikiPageMeta,
 } from '@tandem/protocol';
+import { localHostEnv } from '../host-env.js';
 import type { Host } from '../host.js';
 import type { SessionRecord } from '../types.js';
 import { composePage } from '../wiki.js';
@@ -444,6 +445,7 @@ async function seedBackground(ctx: DemoSeedContext): Promise<DemoRefs> {
   const task = await ctx.host.tasks.start({
     sessionId: rec.id,
     cwd: ctx.project,
+    env: localHostEnv,
     command: "node -e \"console.log('演示后台任务已启动'); let i=0; const t=setInterval(()=>{i++; console.log('演示后台 tick '+i); if(i>=8){console.log('演示后台任务完成'); clearInterval(t)}}, 2000)\"",
     description: '演示后台任务（本地心跳）',
   });

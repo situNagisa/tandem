@@ -1,6 +1,6 @@
 # 远端执行器（tandem-exec）
 
-> 更新：2026-11-10。设计依据与里程碑见 [archive/plan/thin-host-2026-11-10.md](../archive/plan/thin-host-2026-11-10.md)。当前是 M2：工作站侧接口与只读工具（Read、Glob、Grep）已能在远端 Linux 与 Windows 上运行，**尚未接入产品**（会话还不会路由到远端，远程连接仍走完整 Host；路由是 M4）。
+> 更新：2026-11-10。设计依据与里程碑见 [archive/plan/thin-host-2026-11-10.md](../archive/plan/thin-host-2026-11-10.md)。当前是 M3：工作站侧接口与读写、执行工具（Read、Glob、Grep、Write、Edit、Bash、BashOutput、KillBash）已能在远端 Linux 与 Windows 上运行，**尚未接入产品**（会话还不会路由到远端，远程连接仍走完整 Host；路由是 M4）。
 
 ## 是什么
 
@@ -24,24 +24,33 @@
 
 - 工作站到执行器的 TLS 证书不校验（`InsecureSkipVerify`）：认证靠上面的签名与指纹，TLS 只用来隐藏流量元数据，内网自签证书可用。
 - 断线时未结束的 exec 流杀掉进程树；后台任务、`fwd.*`、`pty.*`、自更新未实现（v2 或之后的里程碑）。
-- Windows `.cmd` 方案尚未覆盖 `%` 转义、用户名含空格的临时目录、超长路径（M3）。`wrap`（沙箱包装）只在 POSIX 生效。
+- Windows `.cmd` 的 `%`：成对的 `%NAME%` 原样保留，其余 `%` 双写，结果与 cmd 命令行一致；未定义的 `%NAME%` 在命令行保持原文、在 `.cmd` 里变成空，未处理。`wrap`（沙箱包装）只在 POSIX 生效。CreateProcess 的当前目录上限是 260 字符，超出时本机与远端都无法启动命令。
 - 执行器 `join` 之后，身份文件存在即优先使用，`--token` 被忽略。
 
-## 工作站侧接口（M2）
+## 工作站侧接口（M2–M3）
 
 工具只经 `ToolContext.env`（`packages/server/src/host-env.ts` 的 `HostEnv`）访问项目所在机器。两个实现：
 
-- `localHostEnv`：node:fs 与 child_process，本机行为与改动前一致。
-- `RemoteHostEnv`（`packages/server/src/executor/remote-env.ts`）：翻译成 `exec.argv`、`fs.stat`、`fs.read`、`fs.walk`；启动时用 `sys.info` 取远端系统、home 与 rg 是否可用。路径语义取远端系统，远端 Windows 的盘符与反斜杠按 win32 解析。
-- 连接对象 `ExecutorConn`（`packages/server/src/executor/conn.ts`）是握手的响应方：校验 AUTH、首次登记（令牌校验由调用方的 `ExecutorAuth.enroll` 实现）、流复用、接收窗口、心跳（工作站每 15 秒 PING，45 秒无帧即断开）。线原语在 `executor/wire.ts`。
+- `localHostEnv`：node:fs 与 child_process。`shell` 在 POSIX 下 `/bin/bash -c`、Windows 下 `cmd /d /s /c`，中断时杀进程树（POSIX 进程组，Windows `taskkill /T`）。`fs.write` 为同目录临时文件 + rename，符号链接指向的文件被改写。
+- `RemoteHostEnv`（`packages/server/src/executor/remote-env.ts`）：翻译成 `exec.argv`、`exec.shell`、`fs.stat / read / write / walk`；启动时用 `sys.info` 取远端系统、home、tmp，以及 rg、bwrap 是否可用。路径语义取远端系统，远端 Windows 的盘符与反斜杠按 win32 解析。
 
-接口现只含读侧：`exec`（argv 形式）、`hasRipgrep`、`fs.stat / read / walk`。`fs.write / mkdir / rename / remove` 与 `exec.shell` 随 M3 的 Write、Edit、Bash 加入。
+`HostEnv.shell` 以流式输出返回：远端中断时 reject（AbortError），本机中断时等进程结束后 resolve，调用方以自己的 signal 判断原因。`fs.write` 的 `expectMtime` 不一致返回 `ECONFLICT`，远端与本机一致。
 
-已迁移的工具：Read、Glob、Grep。`packages/server/test/host-env-static.test.ts` 禁止这三个文件直接 import `node:fs`、`node:child_process` 与 `util/fs-walk`；每迁移一个工具文件就把它加进清单。
+连接对象 `ExecutorConn`（`packages/server/src/executor/conn.ts`）是握手的响应方：校验 AUTH、首次登记（令牌校验由调用方的 `ExecutorAuth.enroll` 实现）、流复用、接收窗口、请求体上行（DATA 按执行器的 FLOW 限速，发完 END）、心跳（工作站每 15 秒 PING，45 秒无帧即断开）。线原语在 `executor/wire.ts`。
+
+沙箱：`sandboxWrap(env, cwd, profile)`（`sandbox.ts`）按执行的机器取引擎与可写目录。远端 Linux 有 bwrap 时包装；没有时命令不包装，输出开头给一行提示。远端 Windows 不支持沙箱。
+
+后台任务（`tasks.ts`）经 `env.shell` 启动，输出缓冲与日志在工作站。远端执行器断线时任务以 `exited`（退出码 -1）结束，输出里标注 `执行失败: 执行器连接已断开`。**不做断线续跑**：需要 `bg.*` 操作由执行器持有进程，是 M4 待办。
+
+检查点：Write、Edit 在改写前用 `fs.read` 取旧内容交给 `ToolContext.snapshot`，快照仍存在工作站。**回退（rewind）只能写本机**，远端文件的回退是 M4 待办。
+
+已迁移的工具：Read、Glob、Grep（M2），Write、Edit、Bash、BashOutput、KillBash（M3）。`packages/server/test/host-env-static.test.ts` 禁止这些文件直接 import `node:fs`、`node:child_process` 与 `util/fs-walk`；每迁移一个工具文件就把它加进清单。
+
+本机行为的两处调整（与远端一致）：Bash 的 stdin 改为 ignore（读标准输入的命令立即得到 EOF，不再挂到超时）；Windows 本机中断时 `taskkill /T` 杀整棵树（此前只杀 cmd.exe）。
 
 远端与本机的已知差异：`mtimeMs` 远端为整毫秒（`fs.write` 的 `expectMtime` 也按整毫秒比较），本机为小数毫秒；目录大小是平台值（Windows 为 0）；Grep 的 JS 路径输出顺序取决于各系统的目录读取顺序，比较时按行排序。
 
-测试：`packages/server/test/executor/m2-env.test.ts` 用同一组用例分别跑 `localHostEnv` 与 `RemoteHostEnv`。Linux 远端运行 linux-amd64 执行器；Windows 远端经 WSL 互操作运行 windows-amd64.exe，fixture 建在 `/mnt/c/Users/JDHC/AppData/Local/Temp/tandem-m2-<随机>/`，结束后删除。Windows 符号链接需要 mklink 权限，没有时相关用例跳过。
+测试：`packages/server/test/executor/m2-env.test.ts` 与 `m3-env.test.ts` 用同一组用例分别跑本机与远端。Linux 远端运行 linux-amd64 执行器；Windows 远端经 WSL 互操作运行 windows-amd64.exe，fixture 建在 `/mnt/c/Users/JDHC/AppData/Local/Temp/`，结束后删除。M3 的 Windows 用例对照 cmd 命令行直接执行的结果（非 ASCII 路径除外，参数经 WSL 互操作会被打乱，那一项直接断言结果），并覆盖临时目录含空格与中文、接近 MAX_PATH 的工作目录。Windows 符号链接需要 mklink 权限，没有时相关用例跳过。
 
 ## 构建
 

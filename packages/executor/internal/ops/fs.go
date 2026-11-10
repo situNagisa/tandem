@@ -199,6 +199,10 @@ func fsWrite(s Stream, raw json.RawMessage) (any, *Error) {
 	if a.Path == "" {
 		return nil, errorf(EINVAL, "缺少 path")
 	}
+	// 写入符号链接时改写链接指向的文件，与本机 Write 的行为一致（否则 rename 会把链接换成普通文件）。
+	if resolved, err := filepath.EvalSymlinks(a.Path); err == nil {
+		a.Path = resolved
+	}
 	dir := filepath.Dir(a.Path)
 	if a.Mkdirp {
 		if err := os.MkdirAll(dir, 0o755); err != nil {

@@ -34,6 +34,11 @@ interface Stream {
   acked: number;
   /** 已消费、尚未确认的字节。 */
   unconsumed: number;
+  /** 请求体（工作站到执行器）还能发送的字节数，由执行器的 FLOW 增加。 */
+  credit: number;
+  /** 等待 credit 或流结束的发送方。 */
+  wake: Array<() => void>;
+  done: boolean;
   detach?: () => void;
 }
 
@@ -91,6 +96,7 @@ export class ExecutorConn {
 
   /**
    * 发起一次请求。END 带 error 时 reject，错误对象的 code 为协议错误码（ENOENT 等）。
+   * body 作为请求体按执行器的 FLOW 分帧发送，发完发 END。
    * signal 中断时发送 CANCEL，并以 AbortError reject，之后该流的帧被忽略。
    */
   request(
@@ -98,16 +104,28 @@ export class ExecutorConn {
     args: Record<string, unknown> = {},
     handlers: StreamHandlers = {},
     signal?: AbortSignal,
+    body?: Buffer,
   ): Promise<Record<string, any>> {
     if (this.phase !== 'ready') return Promise.reject(new Error('执行器未就绪'));
     if (signal?.aborted) return Promise.reject(abortError());
     const id = this.nextStreamId++;
     return new Promise((resolve, reject) => {
-      const stream: Stream = { handlers, resolve, reject, received: 0, acked: 0, unconsumed: 0 };
+      const stream: Stream = {
+        handlers,
+        resolve,
+        reject,
+        received: 0,
+        acked: 0,
+        unconsumed: 0,
+        credit: P.WINDOW,
+        wake: [],
+        done: false,
+      };
       if (signal) {
         const onAbort = () => {
           this.streams.delete(id);
           stream.detach = undefined;
+          this.finishStream(stream);
           reject(abortError());
           if (this.phase === 'ready') this.sendEnc(T.CANCEL, id);
         };
@@ -116,7 +134,27 @@ export class ExecutorConn {
       }
       this.sendEnc(T.REQ, id, Buffer.from(JSON.stringify({ op, ...args }), 'utf8'));
       this.streams.set(id, stream);
+      if (body) this.sendBody(id, stream, body).catch((err) => this.shut(String(err)));
     });
+  }
+
+  private async sendBody(id: number, s: Stream, body: Buffer): Promise<void> {
+    for (let off = 0; off < body.length; off += P.FRAME_MAX) {
+      const part = body.subarray(off, Math.min(off + P.FRAME_MAX, body.length));
+      while (s.credit < part.length) {
+        if (s.done) return;
+        await new Promise<void>((resolve) => s.wake.push(resolve));
+      }
+      if (s.done) return;
+      s.credit -= part.length;
+      this.sendEnc(T.DATA, id, part);
+    }
+    if (!s.done) this.sendEnc(T.END, id);
+  }
+
+  private finishStream(s: Stream): void {
+    s.done = true;
+    for (const w of s.wake.splice(0)) w();
   }
 
   close(): void {
@@ -220,6 +258,14 @@ export class ExecutorConn {
       case T.DATA:
         this.onBody(f);
         return;
+      case T.FLOW: {
+        const s = this.streams.get(f.streamId);
+        if (!s) return;
+        if (f.payload.length !== 4) throw new Error('FLOW 长度错误');
+        s.credit += f.payload.readUInt32BE(0);
+        for (const w of s.wake.splice(0)) w();
+        return;
+      }
       case T.END:
         this.onEnd(f);
         return;
@@ -251,6 +297,7 @@ export class ExecutorConn {
     if (!s) return;
     this.streams.delete(f.streamId);
     s.detach?.();
+    this.finishStream(s);
     const end = f.payload.length > 0 ? (JSON.parse(f.payload.toString('utf8')) as Record<string, any>) : {};
     if (end.error) {
       s.reject(Object.assign(new Error(end.error.message), { code: end.error.code }));
@@ -279,6 +326,7 @@ export class ExecutorConn {
     const err = new Error(`执行器连接已断开：${reason}`);
     for (const s of this.streams.values()) {
       s.detach?.();
+      this.finishStream(s);
       s.reject(err);
     }
     this.streams.clear();

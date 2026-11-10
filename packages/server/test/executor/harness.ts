@@ -157,6 +157,8 @@ export interface ExecutorOptions {
   home: Home;
   server?: string;
   token?: string;
+  /** 额外环境变量；Windows 目标会同时加入 WSLENV，值原样传给 Windows 进程。 */
+  env?: Record<string, string>;
 }
 
 export function spawnExecutor(opts: ExecutorOptions, args: string[]): ExecutorProcess {
@@ -169,9 +171,10 @@ export function spawnExecutor(opts: ExecutorOptions, args: string[]): ExecutorPr
     bin = path.join(sandbox.local, image);
     copyFileSync(binaryFor('windows'), bin);
   }
-  const env: NodeJS.ProcessEnv = { ...process.env, TANDEM_EXEC_HOME: home.native };
+  const extra = opts.env ?? {};
+  const env: NodeJS.ProcessEnv = { ...process.env, TANDEM_EXEC_HOME: home.native, ...extra };
   if (target === 'windows') {
-    env.WSLENV = [process.env.WSLENV, 'TANDEM_EXEC_HOME'].filter(Boolean).join(':');
+    env.WSLENV = [process.env.WSLENV, 'TANDEM_EXEC_HOME', ...Object.keys(extra)].filter(Boolean).join(':');
   }
   const child: ChildProcess = spawn(bin, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
   let text = '';

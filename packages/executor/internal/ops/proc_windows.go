@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -40,6 +41,20 @@ func systemExe(name string) string {
 
 func shellName() string { return "cmd.exe" }
 
+// percentRef 匹配成对的 %NAME%，其余单独的 % 在批处理里有特殊含义。
+var percentRef = regexp.MustCompile(`%[A-Za-z_][A-Za-z0-9_]*%|%`)
+
+// batchPercent 让 .cmd 文件里的 % 与命令行一致：成对的 %NAME% 原样展开，其余 % 双写（批处理里 %% 才是 %）。
+// 未定义的 %NAME% 在命令行保持原文、在批处理里变成空，这一点不处理。
+func batchPercent(command string) string {
+	return percentRef.ReplaceAllStringFunc(command, func(m string) string {
+		if len(m) > 1 {
+			return m
+		}
+		return "%%"
+	})
+}
+
 // shellCommand 把命令写进 UTF-8（无 BOM、CRLF）的 .cmd 文件执行：chcp 65001 让输出是 UTF-8。
 // 直接把命令当参数交给 cmd 时输出是 GBK，见 docs/features/executor.md。
 // 命令行由 CmdLine 原样给出，避免 Go 的参数转义破坏 cmd 的引号规则（路径可以含空格）。
@@ -51,7 +66,7 @@ func shellCommand(ctx context.Context, command string, wrap []string) (*exec.Cmd
 	if err != nil {
 		return nil, nil, fromOS(err)
 	}
-	body := "@echo off\r\nchcp 65001>nul\r\n" + strings.ReplaceAll(command, "\n", "\r\n") + "\r\n"
+	body := "@echo off\r\nchcp 65001>nul\r\n" + strings.ReplaceAll(batchPercent(command), "\n", "\r\n") + "\r\n"
 	_, werr := f.WriteString(body)
 	if cerr := f.Close(); werr != nil || cerr != nil {
 		os.Remove(f.Name())

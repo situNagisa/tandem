@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const MIGRATED = ['read', 'glob', 'grep'];
+const MIGRATED = ['read', 'glob', 'grep', 'write', 'edit', 'bash', 'bash-output', 'kill-bash'];
 const FORBIDDEN = [
   /from ['"]node:fs(\/promises)?['"]/,
   /from ['"]node:child_process['"]/,

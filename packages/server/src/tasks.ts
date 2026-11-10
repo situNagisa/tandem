@@ -1,7 +1,6 @@
 // 后台任务：Bash run_in_background 启动的长期命令。
 // 每个任务有内存环形输出缓冲（最多 1MB）与落盘日志 ~/.tandem/tasks/<id>.log；
 // Host 重启后运行中的任务标记为 lost，已结束任务保留可查看。
-import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
   appendFileSync,
@@ -14,7 +13,8 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import type { BackgroundTask, BackgroundTaskOutput } from '@tandem/protocol';
-import { cmdUtf8Command, decodeProcessOutput } from './util/encoding.js';
+import type { HostEnv } from './host-env.js';
+import { decodeProcessOutput } from './util/encoding.js';
 import { errorMessage } from './util/text.js';
 
 const RING_LIMIT = 1_000_000;
@@ -23,7 +23,7 @@ const EMIT_INTERVAL_MS = 200;
 interface TaskInternal {
   task: BackgroundTask;
   logPath: string;
-  child?: ChildProcess;
+  abort?: AbortController;
   /** 环形缓冲（最近 RING_LIMIT 个字符）。 */
   output: string;
   /** 已丢弃的字符数 = 环形缓冲起点位移。 */
@@ -194,12 +194,14 @@ export class BackgroundTaskManager {
     command: string;
     cwd: string;
     description?: string;
+    /** 任务运行的机器（本机或远端执行器）。 */
+    env: HostEnv;
     /** 项目/全局 secrets 注入（bash 作用范围）。 */
-    env?: Record<string, string>;
+    secretEnv?: Record<string, string>;
     /** 输出在写入内存缓冲、日志与 WS 推送前打码。 */
     redact?: (text: string) => string;
-    /** 沙箱启动命令（bwrap / sandbox-exec）；缺省直接跑 bash。 */
-    sandbox?: { file: string; args: string[] };
+    /** 沙箱启动前缀（bwrap / sandbox-exec）；缺省直接跑 shell。 */
+    wrap?: string[];
   }): Promise<BackgroundTask> {
     const id = `bash_${randomUUID().slice(0, 8)}`;
     const task: BackgroundTask = {
@@ -233,47 +235,37 @@ export class BackgroundTaskManager {
       // 日志不可写时仍保留内存输出
     }
 
-    const isWin = process.platform === 'win32';
-    const child =
-      !isWin && input.sandbox
-        ? spawn(input.sandbox.file, input.sandbox.args, {
-            cwd: input.cwd,
-            detached: true,
-            env: { ...process.env, ...input.env },
-            stdio: ['ignore', 'pipe', 'pipe'],
-          })
-        : isWin
-          ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', cmdUtf8Command(input.command)], {
-              cwd: input.cwd,
-              windowsHide: true,
-              env: { ...process.env, ...input.env },
-              stdio: ['ignore', 'pipe', 'pipe'],
-            })
-          : spawn('/bin/bash', ['-c', input.command], {
-              cwd: input.cwd,
-              detached: true,
-              env: { ...process.env, ...input.env },
-              stdio: ['ignore', 'pipe', 'pipe'],
-            });
-    item.child = child;
-
-    child.stdout?.on('data', (chunk: Buffer) => this.collect(item, chunk));
-    child.stderr?.on('data', (chunk: Buffer) => this.collect(item, chunk));
-    child.on('error', (err) => {
-      this.collect(item, Buffer.from(`\n[无法启动命令: ${err.message}]\n`, 'utf8'));
-      item.task.status = 'exited';
-      item.task.exitCode = -1;
-      item.task.endedAt = Date.now();
-      this.finish(item);
-    });
-    child.on('close', (code) => {
-      if (item.task.status === 'running') {
-        item.task.status = item.killed ? 'killed' : 'exited';
-        item.task.exitCode = code ?? undefined;
-      }
-      item.task.endedAt = item.task.endedAt ?? Date.now();
-      this.finish(item);
-    });
+    const abort = new AbortController();
+    item.abort = abort;
+    input.env
+      .shell({
+        command: input.command,
+        cwd: input.cwd,
+        env: input.secretEnv,
+        wrap: input.wrap,
+        signal: abort.signal,
+        onStdout: (chunk) => this.collect(item, chunk),
+        onStderr: (chunk) => this.collect(item, chunk),
+      })
+      .then(
+        (res) => {
+          if (item.task.status === 'running') {
+            item.task.status = 'exited';
+            item.task.exitCode = res.exit;
+          }
+        },
+        (err) => {
+          this.collect(item, Buffer.from(`\n[执行失败: ${errorMessage(err)}]\n`, 'utf8'));
+          if (item.task.status === 'running') {
+            item.task.status = 'exited';
+            item.task.exitCode = -1;
+          }
+        },
+      )
+      .then(() => {
+        item.task.endedAt = item.task.endedAt ?? Date.now();
+        this.finish(item);
+      });
 
     this.emit({ ...task });
     return { ...task };
@@ -409,7 +401,6 @@ export class BackgroundTaskManager {
 
   private finish(item: TaskInternal): void {
     this.flush(item, false);
-    item.child = undefined;
     this.persist(item.task);
     this.emit({ ...item.task });
   }
@@ -427,20 +418,7 @@ export class BackgroundTaskManager {
     } catch {
       // 外部流清理失败不影响任务结束
     }
-    try {
-      const child = item.child;
-      if (child?.pid && process.platform !== 'win32') {
-        process.kill(-child.pid, 'SIGKILL');
-      } else {
-        child?.kill('SIGKILL');
-      }
-    } catch {
-      try {
-        item.child?.kill('SIGKILL');
-      } catch {
-        // 进程可能已退出
-      }
-    }
+    item.abort?.abort();
     this.finish(item);
     return { ...item.task };
   }

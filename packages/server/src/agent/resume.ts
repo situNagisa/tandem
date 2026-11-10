@@ -273,13 +273,6 @@ async function runRecoveredTool(
       },
     ];
   }
-  if (tool.name === 'Write' || tool.name === 'Edit') {
-    const filePath =
-      tool.input && typeof tool.input === 'object'
-        ? (tool.input as Record<string, unknown>).file_path
-        : undefined;
-    if (typeof filePath === 'string' && filePath) host.snapshotForCheckpoint(rec, filePath);
-  }
   const toolCtx = {
     cwd: rec.cwd,
     session: rec,
@@ -306,6 +299,7 @@ async function runRecoveredTool(
     backgroundTasks: host.tasks,
     devices: host.devices,
     secretEnv: host.secrets.envFor(rec.cwd, 'bash'),
+    snapshot: (absPath: string, before: Buffer | undefined) => host.snapshotForCheckpoint(rec, absPath, before),
     redact,
   };
   let content = '';

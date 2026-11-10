@@ -1,5 +1,5 @@
 // Edit：精确字符串替换，校验 old_string 唯一性。
-import { readFileSync, writeFileSync } from 'node:fs';
+import type { HostStat } from '../host-env.js';
 import type { ToolContext, ToolDefinition, ToolResult } from '../types.js';
 import { resolvePath } from '../util/path.js';
 
@@ -28,6 +28,7 @@ export const definition: ToolDefinition = {
 };
 
 export async function run(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
+  const { env } = ctx;
   const rawPath = typeof input.file_path === 'string' ? input.file_path : '';
   const oldString = typeof input.old_string === 'string' ? input.old_string : '';
   const newString = typeof input.new_string === 'string' ? input.new_string : '';
@@ -36,13 +37,17 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
   if (!oldString) return { content: 'old_string 不能为空', isError: true };
   if (oldString === newString) return { content: 'old_string 与 new_string 相同，无需修改', isError: true };
 
-  const filePath = resolvePath(ctx.cwd, rawPath);
-  let content: string;
+  const filePath = resolvePath(ctx.cwd, rawPath, env);
+  let st: HostStat;
+  let before: Buffer;
   try {
-    content = readFileSync(filePath, 'utf8');
+    st = await env.fs.stat(filePath);
+    before = (await env.fs.read(filePath)).data;
   } catch {
     return { content: `文件不存在或无法读取: ${filePath}`, isError: true };
   }
+  ctx.snapshot?.(filePath, before);
+  const content = before.toString('utf8');
 
   const count = content.split(oldString).length - 1;
   if (count === 0) {
@@ -66,8 +71,11 @@ export async function run(input: Record<string, unknown>, ctx: ToolContext): Pro
       })();
 
   try {
-    writeFileSync(filePath, next, 'utf8');
+    await env.fs.write(filePath, Buffer.from(next, 'utf8'), { expectMtime: st.mtimeMs });
   } catch (err) {
+    if ((err as { code?: string }).code === 'ECONFLICT') {
+      return { content: '写入失败: 文件已被修改，请先 Read 再编辑', isError: true };
+    }
     return { content: `写入失败: ${(err as Error).message}`, isError: true };
   }
   return { content: `已编辑 ${filePath}（替换 ${replaceAll ? count : 1} 处）` };
