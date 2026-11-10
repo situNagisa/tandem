@@ -360,6 +360,40 @@ function createMockProvider() {
       res.end()
       return
     }
+    // ---------- 反馈1919#07：长流式回复（持续撑高消息区，验证底部跟随） ----------
+    if (
+      body.stream === true &&
+      (body.messages ?? []).some(
+        (m) => m.role === 'user' && JSON.stringify(m.content ?? '').includes('SCROLL_E2E'),
+      )
+    ) {
+      res.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+      })
+      const send = (payload) => res.write(`data: ${JSON.stringify(payload)}\n\n`)
+      const chunk = (delta, finish = null) =>
+        send({
+          id: 'chatcmpl-scroll',
+          object: 'chat.completion.chunk',
+          choices: [{ index: 0, delta, finish_reason: finish }],
+        })
+      for (let i = 0; i < 240; i++) {
+        chunk({ content: `第 ${i + 1} 段：流式输出持续增高，对话区在底部时应当跟随到最新内容。\n\n` })
+        await sleep(40)
+      }
+      chunk({}, 'stop')
+      send({
+        id: 'chatcmpl-scroll',
+        object: 'chat.completion.chunk',
+        choices: [],
+        usage: { prompt_tokens: 40, completion_tokens: 240, total_tokens: 280 },
+      })
+      res.write('data: [DONE]\n\n')
+      res.end()
+      return
+    }
     // ---------- 反馈16#10：慢速回合（等首个 token、长时间运行的工具） ----------
     if (
       body.stream === true &&
@@ -1614,6 +1648,15 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       message('sq1', 'user', '先看看项目'),
       message('sq2', 'assistant', '项目看起来正常。', { model: 'mock-1' }),
     ], { permissionMode: 'bypassPermissions', updatedAt: Date.now() - 1536 }),
+    mk('scroll', '流式跟随会话', Array.from({ length: 8 }, (_, i) => [
+      message(`sc${i}u`, 'user', `第 ${i + 1} 个问题：请逐段介绍一下项目的结构与约定。`),
+      message(
+        `sc${i}a`,
+        'assistant',
+        Array.from({ length: 6 }, (_, j) => `第 ${i + 1} 节第 ${j + 1} 段：较长的说明文字，用来撑高对话区，便于观察滚动位置。`).join('\n\n'),
+        { model: 'mock-1' },
+      ),
+    ]).flat(), { permissionMode: 'bypassPermissions', updatedAt: Date.now() - 1534 }),
     mk('slow', '慢速运行会话', [
       message('slow1', 'user', '先看看项目'),
       message('slow2', 'assistant', '项目看起来正常。', { model: 'mock-1' }),
@@ -4709,6 +4752,64 @@ async function main() {
       mkdirSync('/tmp/fb16-after', { recursive: true })
       await page.screenshot({ path: '/tmp/fb16-after/regression-codeblock.png' })
       await row.screenshot({ path: '/tmp/fb16-after/regression-codeblock-row.png' })
+    })
+
+    desktop('反馈1919#07：流式输出时在底部自动跟随，上滚后停止，回到底部后恢复', async (page) => {
+      await openSession(page, 'scroll')
+      const scroller = page.locator('.chat-scroll').filter({ has: page.locator('.msg-row') }).first()
+      const distance = () =>
+        scroller.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)
+      const streaming = () => page.locator('.md.chat-md.is-streaming').count()
+      await page.waitForFunction(
+        () => {
+          const el = document.querySelector('.chat-scroll')
+          return !!el && el.scrollHeight - el.scrollTop - el.clientHeight < 4
+        },
+        null,
+        { timeout: 10_000 },
+      )
+      const input = page.locator('textarea[aria-label="消息输入框"]')
+      await input.fill('SCROLL_E2E 请长篇回答')
+      await input.press('Enter')
+      await page.locator('.md.chat-md.is-streaming').first().waitFor({ timeout: 8_000 })
+      // 在底部时：流式增长过程中始终贴底（距底部小于 PIN_THRESHOLD=80，即仍算贴底）。
+      const following = []
+      for (let i = 0; i < 5; i++) {
+        await page.waitForTimeout(400)
+        following.push(await distance())
+      }
+      assert.ok(
+        following.every((d) => d < 80),
+        `在底部时流式输出没有跟随，距底部像素：${following.join(', ')}`,
+      )
+      // 用户滚轮上滚：停止跟随，内容继续增长也不能把视口拉回底部。
+      const box = await scroller.boundingBox()
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.mouse.wheel(0, -700)
+      await page.waitForTimeout(300)
+      assert.ok((await streaming()) > 0, '上滚时流式输出已经结束，无法验证不跟随')
+      const scrolledUp = await distance()
+      assert.ok(scrolledUp > 120, `滚轮上滚后距底部只有 ${scrolledUp}px，视口被拉回底部`)
+      await page.waitForTimeout(800)
+      assert.ok(
+        (await distance()) > 120,
+        `上滚后流式输出仍在把视口拉回底部：${scrolledUp}px → ${await distance()}px`,
+      )
+      // 点「回到底部」：恢复跟随，之后的增长继续贴底。
+      await page.locator('.chat-jump').click()
+      await page.waitForTimeout(700)
+      assert.ok((await streaming()) > 0, '回到底部时流式输出已经结束，无法验证恢复跟随')
+      const resumed = []
+      for (let i = 0; i < 4; i++) {
+        await page.waitForTimeout(400)
+        resumed.push(await distance())
+      }
+      assert.ok(
+        resumed.every((d) => d < 80),
+        `回到底部后没有恢复跟随，距底部像素：${resumed.join(', ')}`,
+      )
+      await page.locator('.md.chat-md.is-streaming').first().waitFor({ state: 'detached', timeout: 20_000 })
+      assert.ok((await distance()) < 80, '流式结束后没有停在底部')
     })
 
     desktop('反馈16#10：等首个 token / 工具运行时显示 spinner 与已运行时长', async (page) => {

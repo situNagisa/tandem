@@ -186,7 +186,11 @@ export function ChatView() {
       window.setTimeout(() => {
         if (initialScrollFor.current !== sessionId || !pinnedRef.current) return
         const el = scrollRef.current
-        if (el) el.scrollTop = el.scrollHeight
+        if (el) {
+          // 读 scrollHeight 会触发布局，新露出的 content-visibility 行会把内容撑高，不能据此判定离开底部。
+          programmaticUntil.current = Date.now() + 600
+          el.scrollTop = el.scrollHeight
+        }
         if (delay === 600) initialScrollFor.current = null
       }, delay),
     )
@@ -203,6 +207,7 @@ export function ChatView() {
   }, [lastIsLocal, messageCount, scrollToBottom])
 
   // 文本流式增长、图片加载、代码高亮都会撑高内容，用 ResizeObserver 保持贴底。
+  // 从首页进入会话、或从子代理返回时滚动区节点会重新挂载，依赖变化才会重新观察。
   useEffect(() => {
     if (typeof ResizeObserver === 'undefined') return
     const content = contentRef.current
@@ -212,7 +217,7 @@ export function ChatView() {
     ro.observe(content)
     ro.observe(box)
     return () => ro.disconnect()
-  }, [stickToBottom])
+  }, [stickToBottom, hasSession, agentSession])
 
   useEffect(() => {
     if (!running) return
