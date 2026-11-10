@@ -176,7 +176,7 @@ export async function sendToModel(
   host.broadcastSummary(rec);
   // 分工路由：规则分类（零模型调用）；提示行先插入，再开始本轮。
   let routePlan: RoutePlan | undefined;
-  if (text && (rec.routeMode === 'division' || rec.routePreference || routeMode)) {
+  if (text && (rec.routePreference || routeMode)) {
     routePlan = planTurnRoute(host, rec, { text, ...(routeMode ? { override: routeMode } : {}) });
     if (routePlan) {
       rec.lastRoutePlan = { plan: routePlan, text };

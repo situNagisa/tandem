@@ -30,7 +30,7 @@
 
 ## 数据与协议
 
-- 会话：`routeMode?: 'auto' | 'division'`；`routePreference?: 'auto' | 'direct' | 'cheap' | 'division'`。
+- 会话：`routePreference?: 'auto' | 'direct' | 'cheap' | 'division'`；存在即按规则/固定模式规划，`auto` 表示按规则（旧会话的 `routeMode: 'division'` 读取时迁移为 `routePreference: 'auto'`）。
 - `ModelRoutingSettings.division`：规划/执行/审查绑定、`domains[]`、`planThreshold`（默认 55）、`costCapUsdPerTurn`（缺省关闭）。
 - `Message.routePlan`：模式、理由、领域、执行者/专长模型；`ModelRouteDecision.role/domain/specialist`；`UsageStatsRow.role/routeSavedUsd`。
 - Task 输入新增 `role/domain`，`ToolContext.runSubagent` 透传。

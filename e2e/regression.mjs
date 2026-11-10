@@ -8771,12 +8771,12 @@ async function main() {
             profileId: 'p-route',
             model: 'route-power',
             autoRoute: true,
-            routeMode: 'division',
+            routePreference: 'auto',
             permissionMode: 'bypassPermissions',
             title: '多代理协作回归',
           }),
         })
-        assert.equal(session.routeMode, 'division', '创建会话时未启用多代理协作模式')
+        assert.equal(session.routePreference, 'auto', '创建会话时未启用按规则规划')
 
         await page.waitForFunction(
           () => {

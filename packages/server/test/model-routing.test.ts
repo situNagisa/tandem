@@ -56,7 +56,6 @@ function rec(text: string, contextTokens = 0): SessionRecord {
     profileId: 'p1',
     model: 'strong',
     autoRoute: true,
-    routeMode: 'division',
     permissionMode: 'default',
     status: 'idle',
     createdAt: 0,
