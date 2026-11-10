@@ -15,6 +15,7 @@
 | [任务看板](features/taskboard.md) | 卡片=后台会话，依赖/审批门/并发/预算 |
 | [设备共享](features/devices.md) | 跨 Host 的 ADB/串口（UI 里的「工作站」视图）；代测见 [test-guides/devices.md](test-guides/devices.md) |
 | [Key 网关](features/gateway.md) | 团队模型请求统一转发、限流、记账 |
+| [远端执行器](features/executor.md) | 瘦执行器 tandem-exec（Go 单文件，出站连接工作站，v1 操作与加密握手）；M1 未接入产品 |
 
 | [命令沙箱](features/sandbox.md) | 写入保护、Bash 静态分析、网络白名单 |
 | [项目 Secrets](features/secrets.md) | 加密注入进程环境 + 输出脱敏 |

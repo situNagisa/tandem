@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 提交前检查：文档治理 → 构建 → 调试产物 → UI 原语审计 → 用户决定 → 单元测试
+ * 提交前检查：文档治理 → 构建（含远端执行器）→ 调试产物 → UI 原语审计 → 用户决定 → 单元测试
  * → 端到端冒烟 → 回归走查 → 发布风味构建与扫描。
  *
  * 用法：
@@ -36,6 +36,11 @@ const steps = [
     command: 'npm',
     args: ['run', 'build'],
     skip: skipBuild,
+  },
+  {
+    name: 'build-executor',
+    command: process.execPath,
+    args: ['scripts/build-executor.mjs', '--if-stale'],
   },
   {
     name: 'debug-artifacts',

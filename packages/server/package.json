@@ -11,7 +11,7 @@
     "build": "tsc -p . && node ../../scripts/write-flavor.mjs --scope=server",
     "dev": "tsx watch src/cli.ts",
     "pack:host": "node ../../scripts/pack-host.mjs",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts && vitest run test/executor"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.0",
@@ -27,6 +27,7 @@
     "@types/node": "^24.0.0",
     "@types/ws": "^8.18.2",
     "tsx": "^4.0.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.0"
   }
 }
