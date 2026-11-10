@@ -210,7 +210,7 @@ export async function streamAccountModel(
         maxTokens: input.maxTokens || 8192,
         ...(input.effort ? { effort: input.effort } : {}),
         onRateLimit: (info) => send({ type: 'rate_limit', info: rateLimitToJson(info) }),
-        onEffortDropped: () => send({ type: 'effort_dropped' }),
+        onEffortDropped: (detail) => send({ type: 'effort_dropped', detail }),
         onBlockStart: (index, block) => send({ type: 'block_start', index, block: structuredClone(block) }),
         onText: (index, text) => send({ type: 'text', index, text }),
         onToolInput: (index, partialJson) => send({ type: 'tool_input', index, partialJson }),

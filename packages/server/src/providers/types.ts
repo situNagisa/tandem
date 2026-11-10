@@ -38,8 +38,8 @@ export interface StreamRequest {
   maxTokens: number;
   /** 思考强度；缺省或 off 时不向 provider 发送思考参数。 */
   effort?: ReasoningEffort;
-  /** provider 因模型不支持而去掉思考参数并重试成功时调用（每轮只记一次）。 */
-  onEffortDropped?: () => void;
+  /** provider 因上游拒绝思考参数而去掉参数并重试成功时调用（每轮只记一次），detail 为脱敏后的上游错误摘要。 */
+  onEffortDropped?: (detail: string) => void;
   /** 响应头里的限流额度（provider 支持时）；用于按 Key 记录剩余额度。 */
   onRateLimit?: (info: ProviderRateLimit) => void;
   onBlockStart: (index: number, block: ContentBlock) => void;

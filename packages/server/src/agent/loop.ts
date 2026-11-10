@@ -109,7 +109,7 @@ export async function runTurn(
   let reason: 'done' | 'interrupted' | 'error' = 'done';
   let errorText: string | undefined;
   let loopCompleted = false;
-  let effortDropped = false;
+  let effortDropped: string | undefined;
   let effortNoticeShown = false;
   // 单轮内最多自动压缩两次，避免在极端历史下反复请求压缩模型
   let autoCompacts = 0;
@@ -447,8 +447,8 @@ export async function runTurn(
                       idleTimeoutSec: host.config.idleTimeoutSec ?? 180,
                       maxTokens: MAX_TOKENS,
                       effort: rec.effort,
-                      onEffortDropped: () => {
-                        effortDropped = true;
+                      onEffortDropped: (detail) => {
+                        effortDropped = detail || '上游未返回错误详情';
                       },
                       onBlockStart: (index, block) => {
                         started = true;
@@ -700,9 +700,9 @@ export async function runTurn(
           assistant.content.some((b) => b.type === 'tool_use') ? 'tools' : 'model',
         );
       }
-      if (result && effortDropped && !effortNoticeShown) {
+      if (result && effortDropped !== undefined && !effortNoticeShown) {
         effortNoticeShown = true;
-        host.appendNotice(rec, '当前模型不支持思考强度，本轮已自动忽略。');
+        host.appendNotice(rec, `上游拒绝了思考参数：${effortDropped}（本轮已去掉思考参数后重试）`);
       }
       // 用量落账后检查预算；notice 放在本轮回复之后，避免打断输出顺序
       if (result) {

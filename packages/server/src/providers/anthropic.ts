@@ -4,7 +4,7 @@ import type { ContentBlock, Message, Usage } from '@tandem/protocol';
 import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import { isAbortError, truncateEnd } from '../util/text.js';
 import { readSse, fetchSse } from '../upstream/sse.js';
-import { postWithBodyFallbacks } from '../upstream/request.js';
+import { postWithBodyFallbacks, summarizeUpstreamRejection } from '../upstream/request.js';
 import { applyAnthropicUsage } from '../upstream/usage.js';
 import { createIdleTimeout, idleTimeoutError } from './idle-timeout.js';
 import { parseRateLimitHeaders, retryAfterMs } from './rate-limit.js';
@@ -160,7 +160,8 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
             delete retryBody.output_config;
             return retryBody;
           },
-          onDropped: () => req.onEffortDropped?.(),
+          onDropped: (rejected) =>
+            req.onEffortDropped?.(summarizeUpstreamRejection(rejected, [req.profile.apiKey, req.profile.baseUrl])),
         },
       ],
     });

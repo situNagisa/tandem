@@ -4,7 +4,7 @@ import type { ContentBlock, Message, Usage } from '@tandem/protocol';
 import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import { isAbortError, truncateEnd } from '../util/text.js';
 import { readSse, fetchSse } from '../upstream/sse.js';
-import { postWithBodyFallbacks } from '../upstream/request.js';
+import { postWithBodyFallbacks, summarizeUpstreamRejection } from '../upstream/request.js';
 import { applyOpenAiUsage } from '../upstream/usage.js';
 import { createIdleTimeout, idleTimeoutError } from './idle-timeout.js';
 import { parseRateLimitHeaders, retryAfterMs } from './rate-limit.js';
@@ -147,13 +147,16 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
           applies: (res, body) =>
             res.status === 400 &&
             !!body.reasoning_effort &&
-            /reasoning|unsupported|unknown|invalid.*param|not support/i.test(res.text),
+            /reasoning|effort|thinking|思考|推理|unsupported|unknown|invalid.*param|not support|不支持|未知参数|不合法/i.test(
+              res.text,
+            ),
           drop: (body) => {
             const next = { ...body };
             delete next.reasoning_effort;
             return next;
           },
-          onDropped: () => req.onEffortDropped?.(),
+          onDropped: (rejected) =>
+            req.onEffortDropped?.(summarizeUpstreamRejection(rejected, [req.profile.apiKey, req.profile.baseUrl])),
         },
         // 部分兼容服务不支持 stream_options，去掉后重试
         {

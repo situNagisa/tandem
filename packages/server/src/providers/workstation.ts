@@ -51,7 +51,7 @@ export async function streamViaWorkstation(req: StreamRequest): Promise<StreamRe
           req.onRateLimit?.(event.info as never);
           break;
         case 'effort_dropped':
-          req.onEffortDropped?.();
+          req.onEffortDropped?.(event.detail ?? '');
           break;
         case 'done':
           usage.inputTokens = event.usage.inputTokens ?? 0;

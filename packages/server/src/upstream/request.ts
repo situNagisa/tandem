@@ -2,6 +2,7 @@
 // 网关与 provider 只在“发什么 body、错误怎么呈现”上不同，传输层逻辑集中在这里。
 import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import type { StoredProfile } from '../types.js';
+import { redactText } from '../share/sanitize.js';
 
 type AnyRecord = Record<string, any>;
 
@@ -35,6 +36,20 @@ export function extractUpstreamError(text: string, status: number): string {
   return compact ? compact.slice(0, 400) : `上游返回 HTTP ${status}`;
 }
 
+/** 上游拒绝请求时的错误摘要（给用户看的通知用）：去掉 Key、账号地址与 URL，最多 200 字。 */
+export function summarizeUpstreamRejection(
+  rejected: { status: number; text: string },
+  secrets: Array<string | undefined>,
+): string {
+  const message = extractUpstreamError(rejected.text, rejected.status);
+  return redactText(
+    message,
+    secrets.filter((value): value is string => !!value && value.length >= 4),
+  )
+    .replace(/https?:\/\/\S+/g, '[地址]')
+    .slice(0, 200);
+}
+
 export function retryableStatus(status: number): boolean {
   return status === 401 || status === 403 || status === 408 || status === 409 || status === 429 || status >= 500;
 }
@@ -43,8 +58,8 @@ export function retryableStatus(status: number): boolean {
 export interface BodyFallback<B> {
   applies(res: { status: number; text: string }, body: B): boolean;
   drop(body: B): B;
-  /** 降级后最终拿到成功响应时回调（如上报 effort_dropped）。 */
-  onDropped?(): void;
+  /** 降级后最终拿到成功响应时回调，参数为触发该降级的上游拒绝响应（如上报 effort_dropped）。 */
+  onDropped?(rejected: { status: number; text: string }): void;
 }
 
 /** 发送 JSON body；非 2xx 且命中降级条件时改 body 重试，每个降级只生效一次。 */
@@ -55,18 +70,19 @@ export async function postWithBodyFallbacks<B extends AnyRecord>(opts: {
 }): Promise<{ res: Response; body: B; text: string }> {
   let body = opts.body;
   const pending = [...(opts.fallbacks ?? [])];
-  const dropped: Array<BodyFallback<B>> = [];
+  const dropped: Array<{ fallback: BodyFallback<B>; rejected: { status: number; text: string } }> = [];
   while (true) {
     const res = await opts.send(body);
     if (res.ok) {
-      for (const fallback of dropped) fallback.onDropped?.();
+      for (const entry of dropped) entry.fallback.onDropped?.(entry.rejected);
       return { res, body, text: '' };
     }
     const text = await res.text().catch(() => '');
-    const index = pending.findIndex((fallback) => fallback.applies({ status: res.status, text }, body));
+    const rejected = { status: res.status, text };
+    const index = pending.findIndex((fallback) => fallback.applies(rejected, body));
     if (index < 0) return { res, body, text };
     const [fallback] = pending.splice(index, 1);
-    dropped.push(fallback!);
+    dropped.push({ fallback: fallback!, rejected });
     body = fallback!.drop(body);
   }
 }

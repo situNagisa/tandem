@@ -635,7 +635,7 @@ export interface Message {
   content: ContentBlock[];
   createdAt: number;
   model?: string;
-  /** 服务端记录的低调提示（如模型不支持思考强度），界面以单行灰字展示。 */
+  /** 服务端记录的低调提示（如上游拒绝思考参数），界面以单行灰字展示。 */
   notice?: boolean;
   /** 自动路由切换提示：本轮实际使用的模型与打分明细（hover 展示）。 */
   route?: ModelRouteDecision;
@@ -1374,7 +1374,7 @@ export type WorkspaceModelProxyEvent =
   | { type: 'text'; index: number; text: string }
   | { type: 'tool_input'; index: number; partialJson: string }
   | { type: 'rate_limit'; info: Record<string, unknown> }
-  | { type: 'effort_dropped' }
+  | { type: 'effort_dropped'; detail?: string }
   | { type: 'done'; usage: Usage; stopReason?: string; keyId?: string; costUsd?: number }
   | { type: 'error'; message: string };
 
