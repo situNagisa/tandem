@@ -332,9 +332,7 @@ export interface SessionSummary {
   model: string;
   /** 自动模型路由：每轮在「设置 → 模型路由」候选池中选择模型。 */
   autoRoute?: boolean;
-  /** 自动路由细分模式：auto = 整体选一个模型；division = 规划/执行/审查分工。缺省 auto。 */
-  routeMode?: 'auto' | 'division';
-  /** 分工路由偏好：自动分类，或固定为直接/便宜直做/分工。缺省 auto。 */
+  /** 分工路由偏好：存在即按规则/固定模式规划，'auto' 表示按规则；缺省不启用规则规划。 */
   routePreference?: RoutePreferenceMode;
   /** 最近一次自动路由决策（当前生效模型与理由）。 */
   route?: ModelRouteDecision;
@@ -496,9 +494,7 @@ export interface CreateSessionInput {
   /** 传 'auto' 表示启用自动模型路由（仍需 profileId 作为回退账号）。 */
   model?: string;
   autoRoute?: boolean;
-  /** 自动路由模式；model='auto' 时生效，缺省 auto。 */
-  routeMode?: 'auto' | 'division';
-  /** 分工路由偏好；缺省 auto（按规则）。 */
+  /** 分工路由偏好：'auto' 按规则，或固定为直接/便宜直做/分工；缺省不启用规则规划。 */
   routePreference?: RoutePreferenceMode;
   permissionMode?: PermissionMode;
   effort?: ReasoningEffort;
@@ -508,7 +504,7 @@ export interface CreateSessionInput {
 }
 export type ReasoningEffort = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'max';
 // cwd：会话中途切换工作目录（下一轮生效，重新检测 env）
-export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'autoRoute' | 'routeMode' | 'routePreference' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'cwd' | 'pinnedTurns'>>;
+export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'autoRoute' | 'routePreference' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'cwd' | 'pinnedTurns'>>;
 
 // ---------- 外部会话（本机已有的 Claude Code / Codex 会话） ----------
 // 原则：只读原软件的文件，绝不写回；"导入"= 复制成 Tandem 会话后继续（可换任意模型）。

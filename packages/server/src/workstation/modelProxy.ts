@@ -1,5 +1,6 @@
 // 账号级模型代理：工作站用该账号自己的 Key 调上游，流式事件经 NDJSON 回传主机。
 // 主机只发 profileId/模型/消息，从不接触 Key；用量按账号记账后随 done 事件回传。
+// 上游请求 / SSE / usage 解析走 ../providers 与 ../upstream；Key 换用规则与网关共用。
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ContentBlock, Usage, WorkspaceModelProxyEvent, WorkspaceModelProxyInput } from '@tandem/protocol';
@@ -10,12 +11,12 @@ import {
   classifyKeyFailure,
   cooldownMsFor,
   groupUnavailableError,
-  orderedAvailableKeys,
   profileWithKey,
+  rotateKeyCandidates,
 } from '../key-rotation.js';
 import { costOfUsage, resolvePriceForModel } from '../usage.js';
-import { errorMessage } from '../util/text.js';
-import type { StoredProfile, StoredProfileGroup, StoredProfileKey } from '../types.js';
+import { runKeyRotation, type UpstreamCandidate } from '../upstream/keys.js';
+import type { StoredProfileKey } from '../types.js';
 import type { AccountProfileStore } from './profiles.js';
 
 interface UsageRow {
@@ -128,22 +129,6 @@ function updateKeyFailure(
   store.forAccount(accountId).updateKeyState(profileId, groupId, key.id, patch);
 }
 
-function candidateKeys(
-  profile: StoredProfile,
-  group: StoredProfileGroup | undefined,
-  rotation: Map<string, number> | undefined,
-  key: string,
-): Array<StoredProfileKey | undefined> {
-  const keys = group?.keys ?? [];
-  if (!group || keys.length === 0) return [undefined];
-  const rotate = rotation?.get(key) ?? 0;
-  const available = orderedAvailableKeys(keys, group.keyStrategy, rotate);
-  if (group.keyStrategy === 'round_robin' && available.length > 0) {
-    rotation?.set(key, rotate + 1);
-  }
-  return available.map((item) => item);
-}
-
 /**
  * 执行一次账号级模型请求并流式回传。调用方已校验 accountId 属于该主机。
  * 同组多 Key：仅在还没有任何事件输出时换下一个 Key；一旦开始输出就只透传错误。
@@ -164,7 +149,18 @@ export async function streamAccountModel(
   if (!model) throw Object.assign(new Error('未配置模型'), { statusCode: 400 });
 
   const rotation = (ctx.rotation ??= new Map());
-  const candidates = candidateKeys(profile, group, rotation, `${ctx.accountId}:${input.profileId}:${input.groupId ?? ''}`);
+  const groupKeys = group?.keys ?? [];
+  const candidates: UpstreamCandidate[] =
+    !group || groupKeys.length === 0
+      ? [{ profile: effective }]
+      : rotateKeyCandidates(groupKeys, group.keyStrategy, rotation, `${ctx.accountId}:${input.profileId}:${input.groupId ?? ''}`).map(
+          (key) => ({
+            keyId: key.id,
+            ...(key.label ? { label: key.label } : {}),
+            key,
+            profile: profileWithKey(effective, key),
+          }),
+        );
   if (candidates.length === 0) {
     throw Object.assign(
       new Error(groupUnavailableError(group!, new Map()) || '当前账号没有可用的 API Key'),
@@ -173,19 +169,30 @@ export async function streamAccountModel(
   }
 
   const errors = new Map<string, string>();
-  for (const key of candidates) {
-    const callProfile = key ? profileWithKey(effective, key) : effective;
-    if (callProfile.kind !== 'demo' && !callProfile.apiKey) {
-      throw Object.assign(new Error('当前账号未配置 API Key'), { statusCode: 400 });
-    }
-    const blocks: ContentBlock[] = [];
-    let emitted = false;
-    const send = (event: WorkspaceModelProxyEvent) => {
-      emitted = true;
-      emit(event);
-    };
-    try {
-      const result = await streamChat({
+  let emitted = false;
+  const result = await runKeyRotation({
+    candidates,
+    signal,
+    // 任何错误都换下一个 Key（状态更新由 updateKeyFailure 按错误分类决定），
+    // 只有“Key 缺失”这类不可重试的配置错误直接抛出。
+    canRetry: (failure) => (failure.error as { retryable?: unknown } | undefined)?.retryable !== false,
+    shouldRethrow: () => emitted || signal.aborted,
+    onFailure: (failure) => {
+      updateKeyFailure(ctx.profiles, ctx.accountId, input.profileId, input.groupId, failure.candidate.key, failure.error);
+      errors.set(failure.keyId ?? '', failure.message);
+    },
+    attempt: async (candidate) => {
+      const key = candidate.key;
+      const callProfile = candidate.profile;
+      if (callProfile.kind !== 'demo' && !callProfile.apiKey) {
+        throw Object.assign(new Error('当前账号未配置 API Key'), { statusCode: 400, retryable: false });
+      }
+      const blocks: ContentBlock[] = [];
+      const send = (event: WorkspaceModelProxyEvent) => {
+        emitted = true;
+        emit(event);
+      };
+      const response = await streamChat({
         profile: callProfile,
         model,
         system: input.system ?? '',
@@ -211,7 +218,7 @@ export async function streamAccountModel(
       if (signal.aborted) return;
       if (key) updateKeySuccess(ctx.profiles, ctx.accountId, input.profileId, input.groupId, key.id);
       const price = resolvePriceForModel(effective, model);
-      const costUsd = costOfUsage(price?.price, result.usage, callProfile.kind);
+      const costUsd = costOfUsage(price?.price, response.usage, callProfile.kind);
       ctx.usage.record({
         at: Date.now(),
         accountId: ctx.accountId,
@@ -220,24 +227,23 @@ export async function streamAccountModel(
         ...(input.groupId ? { groupId: input.groupId } : {}),
         ...(key ? { keyId: key.id } : {}),
         model,
-        inputTokens: result.usage.inputTokens ?? 0,
-        outputTokens: result.usage.outputTokens ?? 0,
+        inputTokens: response.usage.inputTokens ?? 0,
+        outputTokens: response.usage.outputTokens ?? 0,
         costUsd,
       });
       emit({
         type: 'done',
-        usage: result.usage satisfies Usage,
-        ...(result.stopReason ? { stopReason: result.stopReason } : {}),
+        usage: response.usage satisfies Usage,
+        ...(response.stopReason ? { stopReason: response.stopReason } : {}),
         ...(key ? { keyId: key.id } : {}),
         costUsd,
       });
-      return;
-    } catch (err) {
-      updateKeyFailure(ctx.profiles, ctx.accountId, input.profileId, input.groupId, key, err);
-      if (emitted || signal.aborted) throw err;
-      errors.set(key?.id ?? '', errorMessage(err));
-    }
-  }
+    },
+  });
+
+  if (result.ok) return;
+  if (result.rethrown && result.last) throw result.last.error;
+  if (result.fatal) throw result.fatal.error;
   throw new Error(
     group
       ? groupUnavailableError(group, errors) || '所有 Key 都不可用'

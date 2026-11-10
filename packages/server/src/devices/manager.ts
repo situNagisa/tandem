@@ -1,6 +1,6 @@
 // 设备管理器：本机 ADB / 串口枚举、跨 Host 代理解析、串口锁与租约、logcat 流、审计。
 // 设备级令牌（dvt_…）只允许访问 /api/devices，吊销即失效。
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { appendFileSync, chmodSync, mkdirSync } from 'node:fs';
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
@@ -23,6 +23,7 @@ import type {
 } from '@tandem/protocol';
 import type { Host } from '../host.js';
 import { readJson, writePrivateFile } from '../config.js';
+import { findActiveToken, hashToken } from '../auth/token.js';
 import { IS_DEBUG_FLAVOR } from '../flavor.js';
 import { AdbRunner } from './adb.js';
 import {
@@ -102,10 +103,6 @@ function now(): number {
 
 function clampText(text: string, max = 20_000): string {
   return text.length > max ? `${text.slice(0, max)}\n…（截断，共 ${text.length} 字符）` : text;
-}
-
-function hashToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
 }
 
 function normalizeBaseUrl(raw: string): string {
@@ -370,8 +367,7 @@ export class DeviceManager {
   authenticatePeer(token: string): StoredPeerToken | undefined {
     if (!token.startsWith('dvt_')) return undefined;
     if (this.settings().allowPeer === false) return undefined;
-    const hash = hashToken(token);
-    const found = this.peers.find((t) => t.hash === hash);
+    const found = findActiveToken(this.peers, token, (item) => item.hash);
     if (!found) return undefined;
     if (!found.lastUsedAt || now() - found.lastUsedAt > 60_000) {
       found.lastUsedAt = now();

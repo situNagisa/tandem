@@ -5,6 +5,9 @@ import type { FastifyRequest } from 'fastify';
 import type { MemberRole, Profile, TeamIdentity, TeamRole } from '@tandem/protocol';
 import type { Host } from '../host.js';
 import type { SessionRecord } from '../types.js';
+import { canApprove, canSend } from '../auth/token.js';
+
+export { canApprove, canSend };
 
 export interface OwnerPrincipal {
   kind: 'owner';
@@ -87,13 +90,7 @@ export function identityOf(principal: Principal, host: Host): TeamIdentity {
   };
 }
 
-/** 角色是否具备审批权（所有者 / 审批者 / 协作者）。 */
-export function canApprove(role: TeamRole): boolean {
-  return role === 'owner' || role === 'approver' || role === 'collaborator';
-}
-export function canSend(role: TeamRole): boolean {
-  return role === 'owner' || role === 'collaborator';
-}
+/** 角色是否具备审批权（所有者 / 审批者 / 协作者）由 auth/token 统一判定。 */
 
 function normalized(p: string): string {
   const resolved = path.resolve(p);

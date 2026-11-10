@@ -1,32 +1,30 @@
 // 网关转发：鉴权 → 成员限额/速率 → 按模型找路由 → Key 轮换 → 透传 SSE/JSON → 记账。
 // 只在上游请求里替换为真实 Key；调用者的网关令牌不会到达上游。
+// 上游请求/SSE/usage 解析共用 ../upstream/；本文件只保留入口、鉴权、限流、路由与记账落点。
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { GatewayLogEntry, Usage } from '@tandem/protocol';
 import type { Host } from '../host.js';
 import type { StoredProfile } from '../types.js';
-import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import { costOfUsage, priceForModel } from '../usage.js';
 import { memberSpend } from './stats.js';
 import { redactGatewayText } from './redact.js';
 import type { StoredGatewayToken } from './store.js';
+import { createSseUsageTracker } from '../upstream/sse.js';
+import { applyAnthropicUsage, applyOpenAiUsage } from '../upstream/usage.js';
+import {
+  UpstreamAttemptError,
+  buildPassthroughRequest,
+  extractUpstreamError,
+  postWithBodyFallbacks,
+  retryableStatus,
+} from '../upstream/request.js';
+import { runKeyRotation } from '../upstream/keys.js';
 
 export type GatewayProtocol = 'openai' | 'anthropic';
 
 type AnyRecord = Record<string, any>;
 
 const MAX_UPSTREAM_MS = 10 * 60_000;
-
-interface AttemptSuccess {
-  ok: true;
-  res: Response;
-}
-interface AttemptFailure {
-  ok: false;
-  status: number;
-  message: string;
-  retryable: boolean;
-}
-type AttemptResult = AttemptSuccess | AttemptFailure;
 
 function errorBody(protocol: GatewayProtocol, status: number, message: string): AnyRecord {
   if (protocol === 'anthropic') {
@@ -160,156 +158,6 @@ function checkMemberLimits(host: Host, caller: GatewayCaller, reply: FastifyRepl
   return true;
 }
 
-function extractUpstreamError(text: string, status: number): string {
-  try {
-    const data = JSON.parse(text) as AnyRecord;
-    const message = data?.error?.message ?? data?.message ?? data?.error;
-    if (typeof message === 'string' && message.trim()) return message.trim().slice(0, 400);
-  } catch {
-    /* 非 JSON */
-  }
-  const compact = text.replace(/\s+/g, ' ').trim();
-  return compact ? compact.slice(0, 400) : `上游返回 HTTP ${status}`;
-}
-
-function retryableStatus(status: number): boolean {
-  return status === 401 || status === 403 || status === 408 || status === 409 || status === 429 || status >= 500;
-}
-
-function openAiUsage(json: AnyRecord, usage: Usage): void {
-  const raw = json?.usage;
-  if (!raw) return;
-  const prompt = Number(raw.prompt_tokens ?? raw.input_tokens ?? 0);
-  const cached = Number(
-    raw.prompt_tokens_details?.cached_tokens ?? raw.prompt_cache_hit_tokens ?? raw.cached_tokens ?? 0,
-  );
-  const completion = Number(raw.completion_tokens ?? raw.output_tokens ?? 0);
-  if (Number.isFinite(prompt)) usage.inputTokens = Math.max(usage.inputTokens, Math.max(0, prompt - (Number.isFinite(cached) ? cached : 0)));
-  if (Number.isFinite(cached) && cached > 0) usage.cacheReadTokens = Math.max(usage.cacheReadTokens ?? 0, cached);
-  if (Number.isFinite(completion)) usage.outputTokens = Math.max(usage.outputTokens, completion);
-  const reasoning = Number(raw.completion_tokens_details?.reasoning_tokens ?? raw.reasoning_tokens ?? 0);
-  if (Number.isFinite(reasoning) && reasoning > 0) usage.reasoningTokens = Math.max(usage.reasoningTokens ?? 0, reasoning);
-}
-
-function anthropicUsage(raw: AnyRecord | undefined, usage: Usage): void {
-  if (!raw) return;
-  if (typeof raw.input_tokens === 'number') usage.inputTokens = Math.max(usage.inputTokens, raw.input_tokens);
-  if (typeof raw.output_tokens === 'number') usage.outputTokens = Math.max(usage.outputTokens, raw.output_tokens);
-  if (typeof raw.cache_read_input_tokens === 'number') {
-    usage.cacheReadTokens = Math.max(usage.cacheReadTokens ?? 0, raw.cache_read_input_tokens);
-  }
-  if (typeof raw.cache_creation_input_tokens === 'number') {
-    usage.cacheWriteTokens = Math.max(usage.cacheWriteTokens ?? 0, raw.cache_creation_input_tokens);
-  }
-}
-
-function createSseUsageParser(protocol: GatewayProtocol, usage: Usage): { push(text: string): void; end(): void } {
-  let buffer = '';
-  const handleEvent = (raw: string) => {
-    const data = raw
-      .split('\n')
-      .filter((line) => line.startsWith('data:'))
-      .map((line) => line.slice(5).trimStart())
-      .join('\n');
-    if (!data || data === '[DONE]') return;
-    try {
-      const json = JSON.parse(data) as AnyRecord;
-      if (protocol === 'openai') {
-        openAiUsage(json, usage);
-      } else if (json.type === 'message_start') {
-        anthropicUsage(json.message?.usage, usage);
-      } else if (json.type === 'message_delta') {
-        anthropicUsage(json.usage, usage);
-      }
-    } catch {
-      /* 不完整/非 JSON 事件忽略 */
-    }
-  };
-  return {
-    push(text: string) {
-      buffer += text.replace(/\r\n/g, '\n');
-      let index = buffer.indexOf('\n\n');
-      while (index >= 0) {
-        handleEvent(buffer.slice(0, index));
-        buffer = buffer.slice(index + 2);
-        index = buffer.indexOf('\n\n');
-      }
-    },
-    end() {
-      if (buffer.trim()) handleEvent(buffer);
-      buffer = '';
-    },
-  };
-}
-
-function upstreamRequest(profile: StoredProfile, model: string, body: AnyRecord, protocol: GatewayProtocol, req: FastifyRequest, signal: AbortSignal): {
-  url: string;
-  init: RequestInit;
-  body: AnyRecord;
-  addedStreamOptions: boolean;
-} {
-  const bodyOut: AnyRecord = { ...body, model };
-  const headers: Record<string, string> = {
-    'content-type': 'application/json',
-    accept: body.stream === true ? 'text/event-stream' : 'application/json',
-  };
-  let url: string;
-  let addedStreamOptions = false;
-  if (protocol === 'anthropic') {
-    const base = profile.baseUrl || providerDefaultBaseUrl('anthropic');
-    url = joinEndpoint(base, '/v1/messages');
-    headers['x-api-key'] = profile.apiKey;
-    headers['anthropic-version'] =
-      typeof req.headers['anthropic-version'] === 'string' ? req.headers['anthropic-version'] : '2023-06-01';
-    const beta = req.headers['anthropic-beta'];
-    if (typeof beta === 'string' && beta.trim()) headers['anthropic-beta'] = beta;
-  } else {
-    const base = profile.baseUrl || providerDefaultBaseUrl(profile.kind);
-    if (!base) throw new Error(`账号「${profile.name}」未配置 baseUrl`);
-    url = joinEndpoint(base, '/chat/completions');
-    headers.authorization = `Bearer ${profile.apiKey}`;
-    // 要求上游在流末尾带 usage；部分兼容服务不支持，下面会在 400 时自动去掉重试。
-    if (bodyOut.stream === true && !bodyOut.stream_options) {
-      bodyOut.stream_options = { include_usage: true };
-      addedStreamOptions = true;
-    }
-  }
-  return { url, init: { method: 'POST', headers, signal }, body: bodyOut, addedStreamOptions };
-}
-
-async function attemptUpstream(
-  url: string,
-  init: RequestInit,
-  body: AnyRecord,
-  addedStreamOptions: boolean,
-): Promise<AttemptResult> {
-  try {
-    let res = await fetch(url, { ...init, body: JSON.stringify(body) });
-    if (res.ok) return { ok: true, res };
-    let text = await res.text().catch(() => '');
-    if (addedStreamOptions && res.status === 400 && /stream_options|include_usage/i.test(text)) {
-      const retryBody = { ...body };
-      delete retryBody.stream_options;
-      res = await fetch(url, { ...init, body: JSON.stringify(retryBody) });
-      if (res.ok) return { ok: true, res };
-      text = await res.text().catch(() => '');
-    }
-    const status = res.status;
-    return {
-      ok: false,
-      status,
-      message: extractUpstreamError(text, status),
-      retryable: retryableStatus(status),
-    };
-  } catch (err) {
-    if ((err as Error)?.name === 'AbortError') {
-      return { ok: false, status: 499, message: '请求已取消', retryable: false };
-    }
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, status: 0, message: `连接上游失败：${message}`, retryable: true };
-  }
-}
-
 interface CompletionMeta {
   host: Host;
   caller: GatewayCaller;
@@ -411,7 +259,7 @@ async function sendBody(
     reply.raw.setHeader('connection', 'keep-alive');
     reply.raw.setHeader('x-accel-buffering', 'no');
     reply.raw.setHeader('access-control-allow-origin', '*');
-    const parser = createSseUsageParser(meta.protocol, usage);
+    const parser = createSseUsageTracker(meta.protocol, usage);
     const decoder = new TextDecoder();
     const reader = res.body?.getReader();
     if (!reader) {
@@ -448,8 +296,8 @@ async function sendBody(
   collectDebug(text);
   try {
     const data = JSON.parse(text) as AnyRecord;
-    if (meta.protocol === 'openai') openAiUsage(data, usage);
-    else anthropicUsage(data.usage, usage);
+    if (meta.protocol === 'openai') applyOpenAiUsage(data.usage, usage, { merge: 'max', inputAliases: true, outputAliases: true, cachedAlias: true });
+    else applyAnthropicUsage(data.usage, usage);
   } catch {
     /* 非 JSON 原样透传 */
   }
@@ -527,93 +375,114 @@ export async function handleGatewayChat(
     if (!reply.raw.writableEnded) controller.abort();
   };
   reply.raw.on('close', onClose);
-  const errors = new Map<string, string>();
-  let lastMessage = '';
+
+  const debugRequest = host.gateway.settingsView().debugBodies
+    ? redactGatewayText(JSON.stringify(body))
+    : undefined;
+  const metaFor = (candidateProfile: StoredProfile, keyId?: string): CompletionMeta => ({
+    host,
+    caller,
+    profile: candidateProfile,
+    model,
+    protocol,
+    stream: body.stream === true,
+    startedAt,
+    routeLabel,
+    ...(keyId ? { keyId } : {}),
+    ...(route.groupId ? { groupId: route.groupId } : {}),
+    ...(debugRequest !== undefined ? { debugRequest } : {}),
+  });
+
   try {
-    for (const candidate of candidates) {
-      let request: ReturnType<typeof upstreamRequest>;
-      try {
-        request = upstreamRequest(candidate.profile, model, body, protocol, req, controller.signal);
-      } catch (err) {
-        sendGatewayError(reply, protocol, 503, err instanceof Error ? err.message : String(err));
-        return;
-      }
-      const result = await attemptUpstream(request.url, request.init, request.body, request.addedStreamOptions);
-      if (result.ok) {
-        host.markKeySuccess(route.profileId, route.groupId, candidate.keyId);
-        const meta: CompletionMeta = {
-          host,
-          caller,
-          profile: candidate.profile,
-          model,
-          protocol,
-          stream: body.stream === true,
-          startedAt,
-          routeLabel,
-          ...(candidate.keyId ? { keyId: candidate.keyId } : {}),
-          ...(route.groupId ? { groupId: route.groupId } : {}),
-          ...(host.gateway.settingsView().debugBodies
-            ? { debugRequest: redactGatewayText(JSON.stringify(body)) }
-            : {}),
-        };
-        await sendBody(host, reply, result.res, meta, controller);
-        return;
-      }
-      lastMessage = result.message;
-      if (result.retryable) {
-        if (candidate.keyId && result.status > 0) {
-          host.markKeyFailure(route.profileId, route.groupId, candidate.keyId, {
-            status: result.status,
-            message: result.message,
+    const result = await runKeyRotation({
+      candidates,
+      signal: controller.signal,
+      canRetry: (failure) => failure.retryable,
+      onFailure: (failure) => {
+        const setup = failure.error instanceof UpstreamAttemptError && failure.error.setup;
+        if (!setup && failure.retryable && failure.candidate.keyId && failure.status > 0) {
+          host.markKeyFailure(route.profileId, route.groupId, failure.candidate.keyId, {
+            status: failure.status,
+            message: failure.message,
           });
         }
-        if (candidate.keyId) errors.set(candidate.keyId, result.message);
-        continue;
+      },
+      attempt: async (candidate) => {
+        const request = buildPassthroughRequest({
+          profile: candidate.profile,
+          protocol,
+          body,
+          model,
+          signal: controller.signal,
+          clientHeaders: {
+            ...(typeof req.headers['anthropic-version'] === 'string'
+              ? { anthropicVersion: req.headers['anthropic-version'] }
+              : {}),
+            ...(typeof req.headers['anthropic-beta'] === 'string'
+              ? { anthropicBeta: req.headers['anthropic-beta'] }
+              : {}),
+          },
+        });
+        const sent = await postWithBodyFallbacks({
+          body: request.body,
+          send: async (payload) => {
+            try {
+              return await fetch(request.url, { ...request.init, body: JSON.stringify(payload) });
+            } catch (err) {
+              if ((err as Error)?.name === 'AbortError') {
+                throw new UpstreamAttemptError('请求已取消', { status: 499, retryable: false });
+              }
+              const message = err instanceof Error ? err.message : String(err);
+              throw new UpstreamAttemptError(`连接上游失败：${message}`, { status: 0, retryable: true });
+            }
+          },
+          fallbacks: request.addedStreamOptions
+            ? [
+                {
+                  applies: (res) => res.status === 400 && /stream_options|include_usage/i.test(res.text),
+                  drop: (payload) => {
+                    const next = { ...payload };
+                    delete next.stream_options;
+                    return next;
+                  },
+                },
+              ]
+            : [],
+        });
+        if (!sent.res.ok) {
+          throw new UpstreamAttemptError(extractUpstreamError(sent.text, sent.res.status), {
+            status: sent.res.status,
+            retryable: retryableStatus(sent.res.status),
+          });
+        }
+        host.markKeySuccess(route.profileId, route.groupId, candidate.keyId);
+        await sendBody(host, reply, sent.res, metaFor(candidate.profile, candidate.keyId), controller);
+        return candidate;
+      },
+    });
+
+    if (result.ok) return;
+    if (controller.signal.aborted) return;
+    if (result.fatal) {
+      const failure = result.fatal;
+      if (failure.error instanceof UpstreamAttemptError && failure.error.setup) {
+        sendGatewayError(reply, protocol, failure.status || 503, failure.message);
+        return;
       }
       // 客户端参数错误等：不换 Key，直接回传可读信息。
-      if (controller.signal.aborted) return;
-      sendGatewayError(reply, protocol, result.status >= 400 ? result.status : 502, `上游拒绝请求：${result.message}`);
-      recordCompletion(
-        {
-          host,
-          caller,
-          profile: candidate.profile,
-          model,
-          protocol,
-          stream: body.stream === true,
-          startedAt,
-          routeLabel,
-          ...(candidate.keyId ? { keyId: candidate.keyId } : {}),
-          ...(route.groupId ? { groupId: route.groupId } : {}),
-          ...(host.gateway.settingsView().debugBodies
-            ? { debugRequest: redactGatewayText(JSON.stringify(body)) }
-            : {}),
-        },
-        result.status >= 400 ? result.status : 502,
-        { inputTokens: 0, outputTokens: 0 },
-        result.message,
-      );
+      const status = failure.status >= 400 ? failure.status : 502;
+      sendGatewayError(reply, protocol, status, `上游拒绝请求：${failure.message}`);
+      recordCompletion(metaFor(failure.candidate.profile, failure.keyId), status, { inputTokens: 0, outputTokens: 0 }, failure.message);
       return;
     }
-    if (controller.signal.aborted) return;
+    const errors = new Map<string, string>();
+    for (const failure of result.failures) {
+      if (failure.keyId) errors.set(failure.keyId, failure.message);
+    }
+    const lastMessage = result.last?.message ?? '';
     const unavailable = host.keysUnavailableMessage(route.profileId, route.groupId, errors);
     sendGatewayError(reply, protocol, 502, unavailable ?? `网关上游不可用：${lastMessage || '所有 Key 均失败'}`);
-    recordCompletion(
-      {
-        host,
-        caller,
-        profile,
-        model,
-        protocol,
-        stream: body.stream === true,
-        startedAt,
-        routeLabel,
-        ...(route.groupId ? { groupId: route.groupId } : {}),
-      },
-      502,
-      { inputTokens: 0, outputTokens: 0 },
-      lastMessage || '所有 Key 均失败',
-    );
+    recordCompletion(metaFor(profile), 502, { inputTokens: 0, outputTokens: 0 }, lastMessage || '所有 Key 均失败');
   } finally {
     clearTimeout(timer);
     reply.raw.off('close', onClose);

@@ -99,6 +99,12 @@ function normalizeRecord(raw: SessionRecord): SessionRecord {
   else delete rec.env;
   if (typeof raw.groupId === 'string' && raw.groupId) rec.groupId = raw.groupId;
   else delete rec.groupId;
+  // 旧字段 routeMode 已并入 routePreference：division（按规则规划）迁移为 'auto'。
+  const legacyRouteMode = (raw as SessionRecord & { routeMode?: unknown }).routeMode;
+  delete (rec as SessionRecord & { routeMode?: unknown }).routeMode;
+  if (legacyRouteMode === 'division' && rec.routePreference === undefined) {
+    rec.routePreference = 'auto';
+  }
   if (
     raw.delegation === 'orchestrate' ||
     raw.delegation === 'more' ||
@@ -329,6 +335,10 @@ export class SessionStore {
         this.records.set(rec.id, rec);
         if (raw.messagesFormat === 'jsonl') {
           this.persistState.set(rec.id, this.stateOf(rec, true));
+        }
+        // 旧 routeMode 只在首次读取时改写一次；之后文件里不再有该字段。
+        if ((raw as SessionRecord & { routeMode?: unknown }).routeMode !== undefined) {
+          this.markDirty(rec.id, false);
         }
       } catch (err) {
         console.warn(`[tandem] 跳过损坏的会话文件 ${file}:`, (err as Error).message);

@@ -1,6 +1,6 @@
 // 自建 Key 网关的数据层：设置、成员令牌（只存哈希）、请求元数据日志、临时调试正文。
 // 用量不在这里重复存：网关请求直接写进 UsageStore（带 memberId），预算与用量页共用同一份数据。
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type {
   GatewayLogEntry,
@@ -11,6 +11,7 @@ import type {
   GatewayTokenUpdateInput,
 } from '@tandem/protocol';
 import { readJson, writePrivateFile } from '../config.js';
+import { findActiveToken, hashToken } from '../auth/token.js';
 
 /** 调试正文保留 24 小时；无论调试是否仍开启，过期都会在加载/写入时清理。 */
 export const GATEWAY_DEBUG_TTL_MS = 24 * 60 * 60 * 1000;
@@ -46,10 +47,6 @@ interface GatewayDebugFile {
 }
 
 const DEFAULT_SETTINGS: GatewaySettings = { enabled: false, routes: [], debugBodies: false };
-
-function hash(value: string): string {
-  return createHash('sha256').update(value).digest('hex');
-}
 
 function publicToken(token: StoredGatewayToken): GatewayToken {
   const { tokenHash: _tokenHash, ...rest } = token;
@@ -104,7 +101,6 @@ export class GatewayStore {
   private debugFile: string;
   private settings: GatewaySettings = { ...DEFAULT_SETTINGS };
   private tokens: StoredGatewayToken[] = [];
-  private tokenByHash = new Map<string, StoredGatewayToken>();
   private logs: GatewayLogEntry[] = [];
   private debugEntries: StoredDebugEntry[] = [];
   private saveTimer?: NodeJS.Timeout;
@@ -134,7 +130,6 @@ export class GatewayStore {
         tokenHash: raw.tokenHash,
       };
       this.tokens.push(token);
-      if (!token.revokedAt) this.tokenByHash.set(token.tokenHash, token);
     }
     this.logs = Array.isArray(data?.logs) ? data.logs.slice(-LOG_LIMIT) : [];
     this.loadDebug();
@@ -171,7 +166,6 @@ export class GatewayStore {
     for (const old of this.tokens) {
       if (old.memberId === input.memberId && !old.revokedAt) {
         old.revokedAt = Date.now();
-        this.tokenByHash.delete(old.tokenHash);
         this.rateBuckets.delete(old.id);
       }
     }
@@ -183,12 +177,11 @@ export class GatewayStore {
       createdAt: Date.now(),
       rpm: positiveInt(input.rpm, 60),
       allowedModels: normalizeModels(input.allowedModels),
-      tokenHash: hash(token),
+      tokenHash: hashToken(token),
       ...(finiteLimit(input.dailyLimitUsd) ? { dailyLimitUsd: finiteLimit(input.dailyLimitUsd) } : {}),
       ...(finiteLimit(input.monthlyLimitUsd) ? { monthlyLimitUsd: finiteLimit(input.monthlyLimitUsd) } : {}),
     };
     this.tokens.push(grant);
-    this.tokenByHash.set(grant.tokenHash, grant);
     this.save();
     return { token, grant: publicToken(grant) };
   }
@@ -216,7 +209,6 @@ export class GatewayStore {
     const token = this.tokens.find((item) => item.id === id);
     if (!token || token.revokedAt) return false;
     token.revokedAt = Date.now();
-    this.tokenByHash.delete(token.tokenHash);
     this.rateBuckets.delete(token.id);
     this.save();
     return true;
@@ -225,7 +217,7 @@ export class GatewayStore {
   /** 校验网关令牌；成功返回令牌记录与成员 id，并记录 lastUsedAt。 */
   authenticate(token: string): StoredGatewayToken | undefined {
     if (!token) return undefined;
-    const grant = this.tokenByHash.get(hash(token));
+    const grant = findActiveToken(this.tokens, token, (item) => item.tokenHash);
     if (!grant) return undefined;
     grant.lastUsedAt = Date.now();
     this.scheduleSave();

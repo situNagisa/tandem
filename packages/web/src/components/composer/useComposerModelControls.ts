@@ -209,7 +209,7 @@ export function useComposerModelControls({
       return
     }
     // 模型菜单只管模型；分工改由输入框的执行方式统一选择。
-    void updateSession(activeHostId!, summary!.id, { model: 'auto', routeMode: 'auto' })
+    void updateSession(activeHostId!, summary!.id, { model: 'auto' })
   }
 
   const changeAutoRoute = () => {
@@ -229,8 +229,7 @@ export function useComposerModelControls({
     setRouteOverride(mode)
     if (sessionless) onRouteModeChange?.(mode)
     if (sessionless || !activeHostId || !summary) return
-    // 会话级 routeMode=division 是「开启按规则规划」的旧字段，保持不动；
-    // 这里只写入本条覆盖，或在「记住为会话偏好」时落库偏好。
+    // 只写入本条覆盖，或在「记住为会话偏好」时落库偏好。
     if (!keepRouteMode) return
     void updateSession(activeHostId, summary.id, { routePreference: mode ?? 'auto' })
   }
@@ -241,7 +240,6 @@ export function useComposerModelControls({
     if (next && !sessionless && activeHostId && summary) {
       void updateSession(activeHostId, summary.id, {
         routePreference: effectiveRouteMode ?? 'auto',
-        ...(summary.routeMode === 'division' ? { routeMode: 'auto' as const } : {}),
       })
     }
   }

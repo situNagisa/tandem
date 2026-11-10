@@ -214,7 +214,7 @@ export function NewSessionView() {
           profileId,
           ...(groupId ? { groupId } : {}),
           model,
-          ...(model === 'auto' && routeMode ? { routeMode: 'division' as const, routePreference: routeMode } : {}),
+          ...(model === 'auto' && routeMode ? { routePreference: routeMode } : {}),
           permissionMode,
           effort,
           delegation,

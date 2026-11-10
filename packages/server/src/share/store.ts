@@ -1,10 +1,11 @@
 // 分享记录的持久化：元数据写 ~/.tandem/shares.json，快照单独放 shares/<id>.json。
 // token 只保存 SHA-256 哈希，明文仅在创建响应里出现一次；访问日志只留在内存。
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { rmSync } from 'node:fs';
 import path from 'node:path';
 import type { PublicShare, ShareExpiry, ShareInfo } from '@tandem/protocol';
 import { ensureDir, readJson, writePrivateFile } from '../config.js';
+import { hashToken, tokenMatchesHash } from '../auth/token.js';
 
 export interface ShareMeta {
   id: string;
@@ -40,10 +41,6 @@ export function expiryToTime(expiry: ShareExpiry | undefined, now = Date.now()):
   const mode = expiry ?? '7d';
   if (mode === 'never') return undefined;
   return now + EXPIRY_MS[mode];
-}
-
-function hashToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
 }
 
 function isShareMeta(value: unknown): value is ShareMeta {
@@ -131,9 +128,7 @@ export class ShareStore {
   verify(id: string, token: string, ip: string, countAccess = true): ShareMeta | undefined {
     const meta = this.metas.get(id);
     if (!meta || !token) return undefined;
-    const expected = Buffer.from(meta.tokenHash, 'hex');
-    const actual = Buffer.from(hashToken(token), 'hex');
-    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return undefined;
+    if (!tokenMatchesHash(token, meta.tokenHash)) return undefined;
     if (this.isExpired(meta)) return undefined;
     const now = Date.now();
     if (countAccess) {

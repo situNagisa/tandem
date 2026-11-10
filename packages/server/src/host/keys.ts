@@ -4,8 +4,8 @@ import {
   classifyKeyFailure,
   cooldownMsFor,
   groupUnavailableError,
-  orderedAvailableKeys,
   profileWithKey,
+  rotateKeyCandidates,
 } from '../key-rotation.js';
 import { truncateEnd } from '../util/text.js';
 import type { KeyQuota } from '@tandem/protocol';
@@ -70,11 +70,7 @@ export function keyCandidates(host: Host, profileId: string,
     return { effective, candidates: [{ profile: effective }] };
   }
   const rotationKey = `${profileId}:${groupId}`;
-  const rotate = host.keyRotation.get(rotationKey) ?? 0;
-  const available = orderedAvailableKeys(keys, group.keyStrategy, rotate);
-  if (group.keyStrategy === 'round_robin' && available.length > 0) {
-    host.keyRotation.set(rotationKey, rotate + 1);
-  }
+  const available = rotateKeyCandidates(keys, group.keyStrategy, host.keyRotation, rotationKey);
   return {
     group,
     effective,

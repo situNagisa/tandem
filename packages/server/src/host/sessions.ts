@@ -207,8 +207,7 @@ export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
     ...(rec.groupId ? { groupId: rec.groupId } : {}),
     model: rec.model,
     ...(rec.autoRoute ? { autoRoute: true } : {}),
-    ...(rec.routeMode ? { routeMode: rec.routeMode } : {}),
-    ...(rec.routePreference && rec.routePreference !== 'auto' ? { routePreference: rec.routePreference } : {}),
+    ...(rec.routePreference ? { routePreference: rec.routePreference } : {}),
     ...(rec.route ? { route: { ...rec.route, scores: { ...rec.route.scores } } } : {}),
     ...(rec.routeSavings ? { routeSavings: { ...rec.routeSavings } } : {}),
     permissionMode: rec.permissionMode,
@@ -446,7 +445,6 @@ export async function createSession(host: Host, input: {
     groupId?: unknown;
     model?: unknown;
     autoRoute?: unknown;
-    routeMode?: unknown;
     routePreference?: unknown;
     permissionMode?: unknown;
     effort?: unknown;
@@ -474,8 +472,8 @@ export async function createSession(host: Host, input: {
   const effective = effectiveProfile(profile, groupId);
   const requestedModel = typeof input.model === 'string' ? input.model.trim() : '';
   const autoRoute = input.autoRoute === true || requestedModel === 'auto';
-  const routeMode = autoRoute && input.routeMode === 'division' ? 'division' : undefined;
   const routePreference =
+    input.routePreference === 'auto' ||
     input.routePreference === 'direct' ||
     input.routePreference === 'cheap' ||
     input.routePreference === 'division'
@@ -529,7 +527,6 @@ export async function createSession(host: Host, input: {
     ...(groupId ? { groupId } : {}),
     model,
     ...(autoRoute ? { autoRoute: true } : {}),
-    ...(routeMode ? { routeMode } : {}),
     ...(routePreference ? { routePreference } : {}),
     permissionMode,
     ...(effort ? { effort } : {}),
@@ -566,7 +563,6 @@ export function updateSession(host: Host, id: string,
       groupId?: unknown;
       model?: unknown;
       autoRoute?: unknown;
-      routeMode?: unknown;
       routePreference?: unknown;
       permissionMode?: unknown;
       pinned?: unknown;
@@ -651,7 +647,6 @@ export function updateSession(host: Host, id: string,
     } else {
       rec.model = nextModel;
       delete rec.autoRoute;
-      delete rec.routeMode;
       delete rec.routePreference;
     }
   }
@@ -659,14 +654,8 @@ export function updateSession(host: Host, id: string,
     if (patch.autoRoute) rec.autoRoute = true;
     else {
       delete rec.autoRoute;
-      delete rec.routeMode;
       delete rec.routePreference;
     }
-  }
-  if (patch.routeMode === 'auto' || patch.routeMode === 'division') {
-    rec.autoRoute = true;
-    if (patch.routeMode === 'division') rec.routeMode = 'division';
-    else delete rec.routeMode;
   }
   if (patch.routePreference === 'auto') delete rec.routePreference;
   else if (
