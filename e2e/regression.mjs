@@ -5567,7 +5567,7 @@ async function main() {
 
     desktop('环境条下拉连续切换保持打开（#04 P0）', async (page) => {
       await openSession(page, 'long')
-      const host = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-server') }).first()
+      const host = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-monitor') }).first()
       const folder = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-folder-open') }).first()
       const branch = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-git-branch') }).first()
       const branchPanel = page.locator('[data-portal-layer="popover"]').filter({ hasText: '新建分支' }).first()
@@ -5605,7 +5605,7 @@ async function main() {
     desktop('环境条「选择主机」可打开（#11 P0）', async (page) => {
       await page.evaluate(() => (window.location.hash = '#/'))
       await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
-      const host = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-server') }).first()
+      const host = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-monitor') }).first()
       await host.click()
       const menu = page.locator('[role="menu"][aria-label="选择主机"]').first()
       await menu.waitFor({ state: 'visible', timeout: 5_000 })
@@ -5640,7 +5640,7 @@ async function main() {
         }
       }, null, { timeout: 20_000 })
       await openSession(page, 'long')
-      const hostPill = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-server') }).first()
+      const hostPill = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-monitor') }).first()
       const folderPill = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-folder-open') }).first()
       const textarea = page.locator('textarea[aria-label="消息输入框"]').first()
       const folderPanel = page
@@ -6725,6 +6725,22 @@ async function main() {
         const pressed = (await panelToggle.getAttribute('aria-pressed')) === 'true'
         if (pressed !== wasOpen) await panelToggle.click().catch(() => {})
       }
+    })
+
+    desktop('反馈2102#08：环境条主机触发器用显示器图标，与文件夹触发器区分开', async (page) => {
+      await page.evaluate(() => (window.location.hash = '#/'))
+      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
+      await withViewport(page, async () => {
+        for (const next of ['dark', 'light']) {
+          await setTheme(page, next)
+          await page.locator('[data-env-bar] button').first().waitFor({ timeout: 10_000 })
+          await page.screenshot({ path: path.join(shotDir, `08-环境条-${next}.png`) })
+        }
+      })
+      const hostTrigger = page.locator('[data-env-bar] button').first()
+      assert.equal(await hostTrigger.locator('svg.lucide-monitor').count(), 1, '主机触发器不是显示器图标')
+      assert.equal(await hostTrigger.locator('svg.lucide-folder, svg.lucide-folder-open').count(), 0, '主机触发器仍是文件夹图标')
+      assert.equal(await page.locator('[data-env-bar] button:has(svg.lucide-folder-open)').count(), 1, '文件夹触发器缺少文件夹图标')
     })
 
     desktop('记忆编辑器不暴露内部元数据行', async (page) => {

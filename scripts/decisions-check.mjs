@@ -389,6 +389,14 @@ const DECISIONS = [
     files: [F.envBar, F.composer],
     need: [/待切换/, /待选/, /取消切换|pendingHostId/],
   },
+  {
+    id: 'envbar-host-icon',
+    source: '反馈2102#08',
+    decision: '环境条主机触发器用显示器图标，与文件夹图标形状不同',
+    files: [F.envBar],
+    need: [/<Monitor size=\{12\}/, /<FolderOpen size=\{12\}/],
+    deny: [/<Server size/],
+  },
   // 输入框 / 账号 / 路由
   {
     id: 'composer-no-cache-banner',
