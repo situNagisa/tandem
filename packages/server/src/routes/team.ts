@@ -17,13 +17,12 @@ import { bad, str } from './common.js';
 import { principalOf } from '../team/access.js';
 import { identityOf } from '../team/access.js';
 import { recordAudit } from '../team/audit.js';
+import { canApprove, isMemberRole } from '../auth/token.js';
 import { publicBaseUrl } from '../util/address.js';
 
 export function isPublicTeamPath(urlPath: string): boolean {
   return urlPath === '/api/team/invites/accept';
 }
-
-const ROLES: MemberRole[] = ['observer', 'approver', 'collaborator'];
 
 function parseProjectDirs(value: unknown): string[] {
   if (!Array.isArray(value)) throw new Error('projectDirs 必须是目录数组');
@@ -63,16 +62,14 @@ export function registerTeamRoutes(app: FastifyInstance, deps: RouteDeps): void 
   // 审批转交用的轻量列表：只暴露有审批权的成员与在线状态。
   app.get('/api/team/approvers', async (): Promise<TeamMember[]> =>
     onlineMembers(deps)
-      .filter(
-        (member) => !member.revokedAt && (member.role === 'approver' || member.role === 'collaborator'),
-      )
+      .filter((member) => !member.revokedAt && canApprove(member.role))
       .map((member) => ({ ...member, projectDirs: [] })),
   );
 
   app.post('/api/team/invites', async (req, reply) => {
     const body = (req.body ?? {}) as Partial<CreateTeamInviteInput>;
     const role = str(body.role) as MemberRole;
-    if (!ROLES.includes(role)) return bad(reply, '角色无效');
+    if (!isMemberRole(role)) return bad(reply, '角色无效');
     let projectDirs: string[];
     try {
       projectDirs = parseProjectDirs(body.projectDirs);
@@ -107,7 +104,7 @@ export function registerTeamRoutes(app: FastifyInstance, deps: RouteDeps): void 
     const patch: UpdateTeamMemberInput = {};
     if (typeof body.name === 'string') patch.name = body.name;
     if (body.role !== undefined) {
-      if (!ROLES.includes(body.role)) return bad(reply, '角色无效');
+      if (!isMemberRole(body.role)) return bad(reply, '角色无效');
       patch.role = body.role;
     }
     if (body.projectDirs !== undefined) {

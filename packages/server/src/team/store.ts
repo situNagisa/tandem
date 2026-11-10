@@ -1,5 +1,5 @@
 // 内网团队：成员、一次性邀请与审计日志。明文 token / 邀请码只返回一次，持久化只存 SHA-256。
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type {
   MemberRole,
@@ -10,10 +10,10 @@ import type {
   TeamRole,
 } from '@tandem/protocol';
 import { readJson, writePrivateFile } from '../config.js';
+import { findActiveToken, hashToken, isMemberRole, tokenMatchesHash } from '../auth/token.js';
 
 export const INVITE_TTL_MS = 24 * 60 * 60 * 1000;
 export const AUDIT_LIMIT = 200;
-const MEMBER_ROLES: MemberRole[] = ['observer', 'approver', 'collaborator'];
 
 interface StoredMember extends TeamMember {
   tokenHash: string;
@@ -26,14 +26,6 @@ interface TeamFile {
   members: StoredMember[];
   invites: StoredInvite[];
   audit: TeamAuditEntry[];
-}
-
-function hash(value: string): string {
-  return createHash('sha256').update(value).digest('hex');
-}
-
-function isRole(value: unknown): value is MemberRole {
-  return MEMBER_ROLES.includes(value as MemberRole);
 }
 
 function normalizeDirs(value: unknown): string[] {
@@ -56,7 +48,6 @@ export class TeamStore {
   private members = new Map<string, StoredMember>();
   private invites = new Map<string, StoredInvite>();
   private auditEntries: TeamAuditEntry[] = [];
-  private memberByHash = new Map<string, StoredMember>();
   /** 只在内存里更新，定期落盘，避免每个请求都写文件。 */
   private lastSeenDirty = false;
 
@@ -65,7 +56,7 @@ export class TeamStore {
     const data = readJson<Partial<TeamFile>>(this.file);
     for (const raw of data?.members ?? []) {
       if (!raw || typeof raw.id !== 'string' || typeof raw.tokenHash !== 'string') continue;
-      if (!isRole(raw.role)) continue;
+      if (!isMemberRole(raw.role)) continue;
       const member: StoredMember = {
         ...raw,
         name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : '未命名成员',
@@ -73,10 +64,9 @@ export class TeamStore {
         createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
       };
       this.members.set(member.id, member);
-      this.memberByHash.set(member.tokenHash, member);
     }
     for (const raw of data?.invites ?? []) {
-      if (!raw || typeof raw.id !== 'string' || typeof raw.codeHash !== 'string' || !isRole(raw.role)) continue;
+      if (!raw || typeof raw.id !== 'string' || typeof raw.codeHash !== 'string' || !isMemberRole(raw.role)) continue;
       const invite: StoredInvite = {
         ...raw,
         projectDirs: normalizeDirs(raw.projectDirs),
@@ -122,8 +112,8 @@ export class TeamStore {
   /** token 无效 / 已吊销时返回 undefined。 */
   authenticate(token: string): TeamMember | undefined {
     if (!token) return undefined;
-    const member = this.memberByHash.get(hash(token));
-    if (!member || member.revokedAt) return undefined;
+    const member = findActiveToken(this.members.values(), token, (item) => item.tokenHash);
+    if (!member) return undefined;
     member.lastSeenAt = Date.now();
     this.lastSeenDirty = true;
     return publicMember(member);
@@ -140,7 +130,7 @@ export class TeamStore {
     invite: TeamInvite;
     code: string;
   } {
-    if (!isRole(input.role)) throw new Error('角色无效');
+    if (!isMemberRole(input.role)) throw new Error('角色无效');
     const code = randomBytes(18).toString('base64url');
     const invite: StoredInvite = {
       id: randomUUID(),
@@ -148,7 +138,7 @@ export class TeamStore {
       projectDirs: normalizeDirs(input.projectDirs),
       createdAt: now,
       expiresAt: now + INVITE_TTL_MS,
-      codeHash: hash(code),
+      codeHash: hashToken(code),
     };
     this.invites.set(invite.id, invite);
     this.save();
@@ -170,8 +160,7 @@ export class TeamStore {
   }
 
   acceptInvite(code: string, name: string, now = Date.now()): { token: string; member: TeamMember } {
-    const codeHash = hash(code.trim());
-    const invite = [...this.invites.values()].find((item) => item.codeHash === codeHash);
+    const invite = [...this.invites.values()].find((item) => tokenMatchesHash(code.trim(), item.codeHash));
     if (!invite) throw new Error('邀请码无效');
     if (invite.usedAt) throw new Error('邀请码已被使用');
     if (invite.expiresAt <= now) throw new Error('邀请码已过期');
@@ -184,12 +173,11 @@ export class TeamStore {
       projectDirs: [...invite.projectDirs],
       createdAt: now,
       lastSeenAt: now,
-      tokenHash: hash(token),
+      tokenHash: hashToken(token),
     };
     invite.usedAt = now;
     invite.usedByName = memberName;
     this.members.set(member.id, member);
-    this.memberByHash.set(member.tokenHash, member);
     this.save();
     return { token, member: publicMember(member) };
   }
@@ -201,7 +189,7 @@ export class TeamStore {
     const member = this.members.get(id);
     if (!member) return undefined;
     if (typeof patch.name === 'string' && patch.name.trim()) member.name = patch.name.trim().slice(0, 40);
-    if (isRole(patch.role)) member.role = patch.role;
+    if (isMemberRole(patch.role)) member.role = patch.role;
     if (patch.projectDirs !== undefined) member.projectDirs = normalizeDirs(patch.projectDirs);
     this.save();
     return publicMember(member);
