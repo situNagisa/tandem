@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   GRAPH_ROW_H,
   graphCardHeight,
-  laneX,
+  columnX,
   layoutSessionGraph,
   type GraphInput,
+  type GraphLayout,
   type GraphSubagent,
   type GraphTurn,
 } from './layout'
@@ -58,8 +59,8 @@ describe('layoutSessionGraph', () => {
       expect(row).toBeGreaterThanOrEqual(main.fromRow)
       expect(row).toBeLessThanOrEqual(main.toRow)
     }
-    expect(laneX(0)).toBe(7)
-    expect(laneX(2) - laneX(1)).toBe(14)
+    expect(columnX(0)).toBe(8)
+    expect(columnX(2) - columnX(1)).toBe(12)
   })
 
   it('单个子代理：分出新泳道并合并回主线下一行', () => {
@@ -145,7 +146,7 @@ describe('layoutSessionGraph', () => {
     expect(layout.laneKinds).toContain('fork')
     expect(layout.counts).toEqual({ turns: 3, subagents: 2, forks: 1 })
     // 泳道互不重叠，行的顺序严格自上而下。
-    expect(laneX(1)).toBeGreaterThan(laneX(0))
+    expect(columnX(layout.columnOf[1]!)).toBeGreaterThan(columnX(0))
     const turnRows = layout.nodes.filter((n) => n.kind === 'turn').map((n) => n.row)
     expect(turnRows).toEqual([...turnRows].sort((a, b) => a - b))
   })
@@ -179,7 +180,79 @@ describe('layoutSessionGraph', () => {
     expect(layout.rows * GRAPH_ROW_H).toBeGreaterThan(320 * GRAPH_ROW_H)
     expect(elapsed).toBeLessThan(20)
   })
+
+  it('行区间不相交的分支复用同一列', () => {
+    const layout = layoutSessionGraph({
+      sessionId: 's',
+      turns: turns(4),
+      subagents: [sub('a', 't1'), sub('b', 't3')],
+      forks: [],
+    })
+    expect(layout.columns).toBe(2)
+    expect(layout.columnOf[1]).toBe(layout.columnOf[2])
+  })
+
+  it('同一轮并行派出的分支各占一列，互不共用', () => {
+    const layout = layoutSessionGraph({
+      sessionId: 's',
+      turns: turns(2),
+      subagents: [sub('a', 't1'), sub('b', 't1')],
+      forks: [{ id: 'fork-1', title: '分叉', turnId: 't1', createdAt: 0 }],
+    })
+    const columns = [1, 2, 3].map((lane) => layout.columnOf[lane])
+    expect(new Set(columns).size).toBe(3)
+    expect(layout.columns).toBe(4)
+  })
+
+  it('同轮并行分支（含嵌套与分叉）的水平线不穿过别的竖线', () => {
+    const layout = layoutSessionGraph({
+      sessionId: 's',
+      turns: turns(4),
+      subagents: [
+        sub('a', 't1', {
+          turns: [
+            { id: 'a-u1', no: 1, preview: 'a1' },
+            { id: 'a-u2', no: 2, preview: 'a2' },
+          ],
+          children: [sub('c', 'a-u1'), sub('d', 'a-u2')],
+        }),
+        sub('b', 't1', {
+          turns: [
+            { id: 'b-u1', no: 1, preview: 'b1' },
+            { id: 'b-u2', no: 2, preview: 'b2' },
+            { id: 'b-u3', no: 3, preview: 'b3' },
+          ],
+          children: [sub('e', 'b-u3')],
+        }),
+      ],
+      forks: [{ id: 'fork-1', title: '分叉', turnId: 't1', createdAt: 0 }],
+      expanded: { a: true, b: true, c: true, e: true },
+    })
+    expect(crossings(layout)).toBe(0)
+  })
 })
+
+/** 水平段穿过另一条竖线内部的次数（端点处的转折不算）。 */
+function crossings(layout: GraphLayout): number {
+  const column = (lane: number) => layout.columnOf[lane]!
+  const horizontal: Array<{ edge: number; row: number; from: number; to: number }> = []
+  const vertical: Array<{ edge: number; column: number; from: number; to: number }> = []
+  layout.edges.forEach((e, edge) => {
+    const x1 = column(e.fromLane)
+    const x2 = column(e.toLane)
+    if (x2 > x1) horizontal.push({ edge, row: e.fromRow, from: x1, to: x2 })
+    if (x2 < x1) horizontal.push({ edge, row: e.toRow, from: x2, to: x1 })
+    vertical.push({ edge, column: Math.max(x1, x2), from: e.fromRow, to: e.toRow })
+  })
+  let n = 0
+  for (const h of horizontal) {
+    for (const v of vertical) {
+      if (h.edge === v.edge) continue
+      if (h.from < v.column && v.column < h.to && v.from < h.row && h.row < v.to) n += 1
+    }
+  }
+  return n
+}
 
 describe('卡片内会话图高度（反馈16#09）', () => {
   it('少于 3 行按最小高度，超过 12 行按最大高度，中间随行数增长', () => {

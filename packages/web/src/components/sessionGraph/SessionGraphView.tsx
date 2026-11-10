@@ -12,17 +12,26 @@ import { cn } from '../../lib/cn'
 import { formatDurationMs, formatTokens } from '../../lib/format'
 import {
   GRAPH_ROW_H,
+  columnX,
   graphTextX,
-  laneX,
   type GraphEdge,
   type GraphLayout,
   type GraphNode,
 } from './layout'
 
-const LANE_COLORS = 8
-
+/** 主线用 lane-0；分支在 lane-1..7 内循环，不与主线同色。 */
 function laneColor(lane: number): string {
-  return `var(--graph-lane-${lane % LANE_COLORS})`
+  return `var(--graph-lane-${lane === 0 ? 0 : 1 + ((lane - 1) % 7)})`
+}
+
+function laneColumnX(layout: GraphLayout, lane: number): number {
+  return columnX(layout.columnOf[lane]!)
+}
+
+const EDGE_RADIUS = 6
+
+function rowY(row: number): number {
+  return row * GRAPH_ROW_H + GRAPH_ROW_H / 2
 }
 
 function nodeTooltip(node: GraphNode): string {
@@ -62,24 +71,18 @@ function nodeMeta(node: GraphNode): string {
 }
 
 /**
- * 连线段：泳道是固定 x 的竖线；分出/合并只在父节点旁走一小段 45° 折线，
- * 之后竖直贯穿分支节点，终点落在节点圆心上（不做整条贝塞尔曲线）。
+ * 正交圆角折线。分出：从父轮行直接向右拐进子分支的列，再竖直到分支末节点；
+ * 合并：竖直到合并行上方，圆角折回主线（或父分支）节点。端点都落在节点圆心上。
  */
-function edgePath(edge: GraphEdge): string {
-  const x1 = laneX(edge.fromLane) + 4
-  const y1 = edge.fromRow * GRAPH_ROW_H + GRAPH_ROW_H / 2
-  const x2 = laneX(edge.toLane) + 4
-  const y2 = edge.toRow * GRAPH_ROW_H + GRAPH_ROW_H / 2
-  if (x1 === x2) return `M ${x1} ${y1} L ${x2} ${y2}`
-  const dx = Math.abs(x2 - x1)
-  if (x2 > x1) {
-    // 分出：父节点旁一小段 45° 斜线到新泳道，再竖直向下到分支最后一个节点。
-    if (y1 + dx <= y2) return `M ${x1} ${y1} L ${x2} ${y1 + dx} L ${x2} ${y2}`
-    return `M ${x1} ${y1} L ${x2} ${y2}`
-  }
-  // 合并：分支竖直走到目标主线节点上方，再用 45° 斜线折回节点，不覆盖主线。
-  if (y2 - dx >= y1) return `M ${x1} ${y1} L ${x1} ${y2 - dx} L ${x2} ${y2}`
-  return `M ${x1} ${y1} L ${x2} ${y2}`
+function edgePath(edge: GraphEdge, x: (lane: number) => number): string {
+  const x1 = x(edge.fromLane)
+  const y1 = rowY(edge.fromRow)
+  const x2 = x(edge.toLane)
+  const y2 = rowY(edge.toRow)
+  const r = EDGE_RADIUS
+  if (x2 > x1) return `M ${x1} ${y1} H ${x2 - r} Q ${x2} ${y1} ${x2} ${y1 + r} V ${y2}`
+  if (x2 < x1) return `M ${x1} ${y1} V ${y2 - r} Q ${x1} ${y2} ${x1 - r} ${y2} H ${x2}`
+  return `M ${x1} ${y1} V ${y2}`
 }
 
 function edgeColor(edge: GraphEdge): string {
@@ -89,6 +92,7 @@ function edgeColor(edge: GraphEdge): string {
 }
 
 function EdgeLayer({ layout }: { layout: GraphLayout }) {
+  const x = (lane: number) => laneColumnX(layout, lane)
   return (
     <svg
       className="pointer-events-none absolute inset-x-0 top-0 overflow-visible"
@@ -102,11 +106,10 @@ function EdgeLayer({ layout }: { layout: GraphLayout }) {
         return (
           <path
             key={index}
-            d={edgePath(edge)}
+            d={edgePath(edge, x)}
             fill="none"
             stroke={edgeColor(edge)}
-            strokeWidth={edge.kind === 'subagent' ? 1.15 : 1.5}
-            strokeOpacity={edge.kind === 'subagent' ? 0.72 : 0.9}
+            strokeWidth={2}
             strokeLinecap="round"
             data-kind={edge.kind}
             data-from-lane={edge.fromLane}
@@ -165,7 +168,7 @@ export function SessionGraphView({
   }, [height])
 
   const overscan = 6
-  const textX = graphTextX(layout.lanes)
+  const textX = graphTextX(layout.columns)
   const startRow = Math.max(0, Math.floor(viewport.top / GRAPH_ROW_H) - overscan)
   const endRow = Math.min(
     layout.rows - 1,
@@ -259,7 +262,7 @@ export function SessionGraphView({
                     data-marker="circle"
                     className="absolute top-1/2 size-[8px] -translate-y-1/2 rounded-full"
                     style={{
-                      left: laneX(node.lane),
+                      left: laneColumnX(layout, node.lane) - 4,
                       backgroundColor: color,
                       boxShadow: isCurrent
                         ? '0 0 0 1.5px var(--t-surface), 0 0 0 3px var(--t-focus-ring)'
@@ -272,7 +275,7 @@ export function SessionGraphView({
                       aria-label={expanded[node.subagentId ?? ''] ? '收起子代理' : '展开子代理'}
                       aria-expanded={!!expanded[node.subagentId ?? '']}
                       data-expand-subagent={node.subagentId}
-                      className="mr-1 flex size-3.5 shrink-0 items-center justify-center rounded text-[10px] text-muted transition-colors hover:bg-[var(--t-bg-active)] hover:text-text"
+                      className="mr-1 flex size-3.5 shrink-0 items-center justify-center rounded text-[12px] text-muted transition-colors hover:bg-[var(--t-bg-active)] hover:text-text"
                       onClick={(event) => {
                         event.stopPropagation()
                         if (node.subagentId) onToggleSubagent?.(node.subagentId)
@@ -282,7 +285,7 @@ export function SessionGraphView({
                     </button>
                   )}
                   {node.kind === 'subagent-turn' && (
-                    <span className="mr-1 shrink-0 text-[10px] text-muted">└</span>
+                    <span className="mr-1 shrink-0 text-[12px] text-muted">└</span>
                   )}
                   {node.pinned && (
                     <Pin
@@ -293,7 +296,7 @@ export function SessionGraphView({
                   )}
                   <span
                     className={cn(
-                      'min-w-0 flex-1 truncate text-[12px] leading-4',
+                      'min-w-0 flex-1 truncate text-[13px] leading-5',
                       node.kind === 'turn' ? 'text-text-soft' : 'text-muted',
                       isCurrent && 'text-text',
                     )}
@@ -304,14 +307,14 @@ export function SessionGraphView({
                     {node.label}
                   </span>
                   {nodeMeta(node) && (
-                    <span className="ml-1.5 shrink-0 font-mono text-[10.5px] tabular-nums text-muted">
+                    <span className="ml-1.5 shrink-0 font-mono text-[12px] tabular-nums text-muted">
                       {nodeMeta(node)}
                     </span>
                   )}
                   {node.kind === 'fork' ? (
-                    <span className="ml-1 shrink-0 text-[10.5px] text-muted">分叉</span>
+                    <span className="ml-1 shrink-0 text-[12px] text-muted">分叉</span>
                   ) : canExpand && node.childCount ? (
-                    <span className="ml-1 shrink-0 text-[10px] text-muted">+{node.childCount}</span>
+                    <span className="ml-1 shrink-0 text-[12px] text-muted">+{node.childCount}</span>
                   ) : null}
                 </div>
               </div>
