@@ -34,6 +34,7 @@ import { loginGateEnabled } from './lib/loginGate'
 import { SerialTerminalDialog } from './components/workstation/SerialTerminalDialog'
 import { PreviewPanel } from './components/PreviewPanel'
 import { InboxDialog } from './components/inbox/InboxDialog'
+import { Spinner } from './components/ui/Spinner'
 import { DispatchDialog } from './components/DispatchDialog'
 import { DoctorDialog } from './components/DoctorDialog'
 import { Toasts } from './components/ui/Toasts'
@@ -390,7 +391,15 @@ export default function App() {
         {initialized && debugReady ? (
           <LoginGate />
         ) : (
-          <div data-testid="login-splash" className="app-root bg-bg" aria-busy />
+          <div
+            data-testid="login-splash"
+            className="app-root flex items-center justify-center bg-bg text-[13px] text-text-secondary"
+            aria-busy
+          >
+            <span className="flex items-center gap-2">
+              <Spinner size={16} /> 正在连接…
+            </span>
+          </div>
         )}
         <Toasts />
         <OverlayScrollbar />
