@@ -34,6 +34,7 @@ import { chromium } from 'playwright'
 import { AxeBuilder } from '@axe-core/playwright'
 import WebSocket from 'ws'
 import { runWorkstationCheck } from './workstation-check.mjs'
+import { killExecutorsUnder, runExecutorCheck } from './executor-check.mjs'
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
 const HOST_ENTRY = path.join(ROOT, 'packages/server/dist/cli.js')
@@ -907,31 +908,6 @@ function freeTcpPort() {
       server.close(() => resolve(port))
     })
   })
-}
-
-/** 安装脚本拉起的后台 Host 不在本进程树里：按 TANDEM_HOME 前缀找进程结束（不碰其它进程）。 */
-function killHostsUnder(prefix) {
-  if (!prefix || process.platform === 'win32') return
-  let entries = []
-  try {
-    entries = readdirSync('/proc')
-  } catch {
-    return
-  }
-  for (const name of entries) {
-    if (!/^\d+$/.test(name)) continue
-    const pid = Number(name)
-    if (!pid || pid === process.pid) continue
-    try {
-      const args = readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0')
-      if (!args.some((arg) => arg.endsWith('cli.js'))) continue
-      const env = readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0')
-      const hostHome = env.find((item) => item.startsWith('TANDEM_HOME='))?.slice('TANDEM_HOME='.length)
-      if (hostHome && hostHome.startsWith(prefix)) process.kill(pid, 'SIGTERM')
-    } catch {
-      /* 进程已退出或无权读取 */
-    }
-  }
 }
 
 async function api(base, token, pathname, init = {}) {
@@ -10986,7 +10962,7 @@ async function main() {
           hostId: randomUUID(),
           extraEnv: { TANDEM_DEBUG_ACCOUNT: undefined },
         })
-        let installedPrefix = ''
+        let installHome = ''
         let installer
         try {
           const port = await debugHost.ready
@@ -11020,7 +10996,7 @@ async function main() {
           const commandBox = page.locator('[data-testid="addhost-command"]')
           await commandBox.waitFor({ state: 'visible', timeout: 15_000 })
           const commandText = await commandBox.innerText()
-          const token = commandText.match(/ach_[A-Za-z0-9_-]+/)?.[0]
+          const token = commandText.match(/ach_[A-Za-z0-9_.-]+/)?.[0]
           assert.ok(token, `添加主机命令里没有注册令牌：${commandText}`)
           // 命令里的地址就是登录的工作站地址（回环时其他机器不可访问，但本机 WSL 可以）。
           const shareUrl = await page.evaluate(() => {
@@ -11033,24 +11009,17 @@ async function main() {
           assert.match(shareUrl, /^https?:\/\/[^/]+/, `宿主地址不对：${shareUrl}`)
           assert.ok(commandText.includes(shareUrl), `命令里的工作站地址与登录地址不一致：${commandText}`)
 
-          const packFile = path.join(ROOT, 'packages', 'server', 'host-pack', 'tandem-host.tgz')
-          if (!existsSync(packFile)) {
-            execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'pack-host.mjs')], { cwd: ROOT, stdio: 'pipe' })
-          }
-          const installRoot = path.join(home, 'gate-install')
-          installedPrefix = installRoot
-          const installHome = path.join(installRoot, 'home')
+          installHome = path.join(home, 'gate-install', 'home')
           const env = {
             ...process.env,
             HOME: installHome,
-            TANDEM_INSTALL_DIR: installRoot,
-            TANDEM_DEBUG_ACCOUNT: '0',
             NO_PROXY: '127.0.0.1,localhost',
             no_proxy: '127.0.0.1,localhost',
           }
-          // 安装脚本前台连接工作站、不会自行退出：等输出出现「已连接工作站」后再看对话框。
+          // 安装脚本前台连接工作站、不会自行退出：等输出出现「已登记并连接工作站」后再看对话框。
           installer = spawn('sh', ['-c', `curl -fsSL ${shareUrl}/install.sh | sh -s -- --token ${token}`], {
             env,
+            detached: true,
             stdio: ['ignore', 'pipe', 'pipe'],
           })
           let installOut = ''
@@ -11059,12 +11028,11 @@ async function main() {
           installer.stderr.setEncoding('utf8')
           installer.stderr.on('data', (chunk) => (installOut += chunk))
           await waitForValue(
-            () => (/已连接工作站/.test(installOut) || installer.exitCode !== null ? true : null),
+            () => (/已登记并连接工作站/.test(installOut) || installer.exitCode !== null ? true : null),
             120_000,
             '安装脚本应前台连接工作站',
           )
-          assert.match(installOut, /已加入工作站/, `安装脚本应完成登记：${installOut}`)
-          assert.match(installOut, /已连接工作站/, `安装脚本应保持前台连接：${installOut}`)
+          assert.match(installOut, /已登记并连接工作站/, `安装脚本应完成登记并保持前台连接：${installOut}`)
 
           const status = page.locator('[data-testid="addhost-status"]')
           await page.waitForFunction(
@@ -11074,8 +11042,14 @@ async function main() {
           )
           assert.match(await status.innerText(), /已连接/, '对话框应实时显示已连接')
         } finally {
-          installer?.kill('SIGTERM')
-          killHostsUnder(installedPrefix)
+          if (installer?.pid) {
+            try {
+              process.kill(-installer.pid, 'SIGTERM')
+            } catch {
+              // 安装脚本已退出
+            }
+          }
+          killExecutorsUnder(installHome)
           debugHost.child.kill('SIGTERM')
         }
       },
@@ -11232,6 +11206,15 @@ async function main() {
       viewport: 'desktop',
       fn: async () => {
         await runWorkstationCheck(home)
+      },
+    })
+
+    // 远端执行器：一行命令安装（假 HOME）→ 浏览器登录 → 主机在线 → 远端会话 Write 写入、Bash 读回。
+    checks.push({
+      name: '远端执行器：一行命令安装、主机在线、远端会话写入并读回文件',
+      viewport: 'desktop',
+      fn: async () => {
+        await runExecutorCheck(home)
       },
     })
 

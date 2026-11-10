@@ -1,6 +1,6 @@
 # 远端执行器（tandem-exec）
 
-> 更新：2026-11-10。设计依据与里程碑见 [archive/plan/thin-host-2026-11-10.md](../archive/plan/thin-host-2026-11-10.md)。当前是 M3：工作站侧接口与读写、执行工具（Read、Glob、Grep、Write、Edit、Bash、BashOutput、KillBash）已能在远端 Linux 与 Windows 上运行，**尚未接入产品**（会话还不会路由到远端，远程连接仍走完整 Host；路由是 M4）。
+> 更新：2026-11-10。设计依据与里程碑见 [archive/plan/thin-host-2026-11-10.md](../archive/plan/thin-host-2026-11-10.md)。当前是 M4：执行器已接入产品，一行命令安装后机器出现在主机列表，会话的工具在远端运行（见下文「接入产品」）。设备、浏览器、MCP、串口与旧会话导入不在本版范围。
 
 ## 是什么
 
@@ -51,6 +51,16 @@
 远端与本机的已知差异：`mtimeMs` 远端为整毫秒（`fs.write` 的 `expectMtime` 也按整毫秒比较），本机为小数毫秒；目录大小是平台值（Windows 为 0）；Grep 的 JS 路径输出顺序取决于各系统的目录读取顺序，比较时按行排序。
 
 测试：`packages/server/test/executor/m2-env.test.ts` 与 `m3-env.test.ts` 用同一组用例分别跑本机与远端。Linux 远端运行 linux-amd64 执行器；Windows 远端经 WSL 互操作运行 windows-amd64.exe，fixture 建在 `/mnt/c/Users/JDHC/AppData/Local/Temp/`，结束后删除。M3 的 Windows 用例对照 cmd 命令行直接执行的结果（非 ASCII 路径除外，参数经 WSL 互操作会被打乱，那一项直接断言结果），并覆盖临时目录含空格与中文、接近 MAX_PATH 的工作目录。Windows 符号链接需要 mklink 权限，没有时相关用例跳过。
+
+## 接入产品（M4）
+
+- **安装**：`/install.sh`、`/install.ps1` 嵌入各平台 sha256（构建产物 `SHA256SUMS`），从 `<工作站>/executor/<平台>` 下载（无压缩），装到 `~/.tandem-executor/bin/tandem-exec`，前台 `join`。`--service` / `-Service` 只写启动项（systemd --user、LaunchAgent、HKCU Run），下次登录生效。
+- **登记**：绑定码 `ach_<密钥>.<指纹>`（`POST /api/workstation/hosts/bind-code`）。`ExecutorHub.enroll`（`executor/hub.ts`）用与本机加入相同的 `registerAsHost` 登记，执行器公钥记入 `remote-hosts/executors.json`（0600）。
+- **远端主机上下文**：每台执行器是工作站进程里的一个 `Host`（`remote: true`），数据在 `remote-hosts/<主机 ID>/`，经本机回环隧道接入（`createApp` + `WorkstationAgent`）。客户端照旧走 `/h/<主机 ID>` 与端到端加密，前端不改。
+- **工具环境**：连接时 `Host.env` 换成 `RemoteHostEnv`，Read、Glob、Grep、Write、Edit、Bash、BashOutput、KillBash、Task 经 `ctx.env` 在远端运行。断开后 `env` 保留，调用以「执行器未就绪」失败；主机在线 = 执行器已连接（`hub.isLive`）。
+- **远端不支持**（`host.remote`）：隐藏 browser_*、Device*、Adb*、Serial*、Skill、Wiki*、MCP；钩子不执行；不做 git 检测（无 worktree、分支、PR）；切换会话目录返回 501。`REMOTE_UNSUPPORTED`（`server.ts`）对文件浏览、外部会话、浏览器、设备、MCP、技能、Wiki、评测、看板、钩子、诊断、语音及会话的 git/worktree/PR/回退/导入返回 501。
+- **重启与授权**：`ExecutorHub.restore` 为每台已登记执行器重建上下文，不等执行器连接；工作站端口变化后需重新执行安装命令。授权沿用普通主机模型（`perHost`），被授权账号的操作未单独验证。
+- **未做**：`bg.*` 后台任务（断线续跑）、远端检查点回退、自更新、设备/浏览器/串口/MCP、旧会话导入。远端 Windows 的路径语义已接入，未在真实 Windows 会话上端到端验证。
 
 ## 构建
 
