@@ -14,10 +14,11 @@ import (
 	"tandem/executor/internal/client"
 	"tandem/executor/internal/identity"
 	"tandem/executor/internal/ops"
+	"tandem/executor/internal/service"
 )
 
 const usage = `用法：
-  tandem-exec join --server <工作站地址> --token <令牌>   首次登记，然后前台保持连接
+  tandem-exec join --server <工作站地址> --token <令牌> [--service]   首次登记，然后前台保持连接
   tandem-exec run                                         按已登记的身份前台保持连接
   tandem-exec --version`
 
@@ -38,8 +39,16 @@ func run(args []string) int {
 		fl := flag.NewFlagSet("join", flag.ContinueOnError)
 		server := fl.String("server", "", "工作站地址，如 http://192.168.1.10:8481")
 		token := fl.String("token", "", "工作站生成的一次性令牌（ach_…，15 分钟内有效）")
+		serviceFlag := fl.Bool("service", false, "设置开机自启（下次登录后自动连接）")
 		if err := fl.Parse(args[1:]); err != nil {
 			return 2
+		}
+		if *serviceFlag {
+			if msg, err := service.Install(); err != nil {
+				fmt.Fprintf(os.Stderr, "警告：设置开机自启失败：%v（本次仍会前台连接）\n", err)
+			} else {
+				fmt.Println(msg)
+			}
 		}
 		return serve(*server, *token)
 	case "run":
