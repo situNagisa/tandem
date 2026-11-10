@@ -935,8 +935,8 @@ export class Host {
 
   // ---------- 检查点 ----------
 
-  snapshotForCheckpoint(rec: SessionRecord, rawPath: string): void {
-    return snapshotForCheckpoint(this, rec, rawPath);
+  snapshotForCheckpoint(rec: SessionRecord, absPath: string, before: Buffer | undefined): void {
+    return snapshotForCheckpoint(this, rec, absPath, before);
   }
 
   listCheckpoints(sessionId: string): Checkpoint[] {

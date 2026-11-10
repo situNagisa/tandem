@@ -96,27 +96,23 @@ export class CheckpointStore {
     return checkpoint;
   }
 
-  /** 记录文件在当前检查点中的原始内容；同一检查点内同一文件只快照一次。 */
+  /** 记录文件在当前检查点中的原始内容（before 为 undefined 表示原本不存在）；同一检查点内同一文件只快照一次。 */
   snapshotFile(
     checkpoint: Checkpoint,
     cwd: string,
     absPath: string,
+    before: Buffer | undefined,
   ): boolean {
     const rel = path.relative(cwd, absPath);
     if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return false;
     const relPosix = toPosix(rel);
     if (checkpoint.files.some((file) => file.path === relPosix)) return false;
 
-    let existed = false;
-    try {
-      existed = statSync(absPath).isFile();
-    } catch {
-      existed = false;
-    }
-    if (existed) {
+    const existed = before !== undefined;
+    if (before !== undefined) {
       const target = path.join(this.filesDir(checkpoint.sessionId, checkpoint.id), relPosix);
       mkdirSync(path.dirname(target), { recursive: true });
-      copyFileSync(absPath, target);
+      writeFileSync(target, before);
     }
     checkpoint.files.push({ path: relPosix, existed });
     this.writeMeta(checkpoint);

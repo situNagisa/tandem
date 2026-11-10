@@ -5,14 +5,18 @@ import type { SessionRecord } from '../types.js';
 import type { Host } from '../host.js';
 import { httpError } from './helpers.js';
 
-export function snapshotForCheckpoint(host: Host, rec: SessionRecord, rawPath: string): void {
+export function snapshotForCheckpoint(
+  host: Host,
+  rec: SessionRecord,
+  absPath: string,
+  before: Buffer | undefined,
+): void {
   const rt = host.runtimes.get(rec.id);
   const checkpoint = rt?.checkpoint;
   if (!checkpoint) return;
-  const abs = resolvePath(rec.cwd, rawPath);
   // cwd 之外的文件不纳入检查点，避免回退时误改仓库外内容
-  if (!isSubPath(rec.cwd, abs)) return;
-  host.checkpoints.snapshotFile(checkpoint, rec.cwd, abs);
+  if (!isSubPath(rec.cwd, absPath)) return;
+  host.checkpoints.snapshotFile(checkpoint, rec.cwd, absPath, before);
 }
 
 export function listCheckpoints(host: Host, sessionId: string): Checkpoint[] {

@@ -301,6 +301,8 @@ export interface ToolContext {
   devices?: import('./devices/manager.js').DeviceManager;
   /** 本项目/全局 secrets 注入的 bash 环境变量。 */
   secretEnv?: Record<string, string>;
+  /** 写类工具改写文件前调用：把原内容（不存在时为 undefined）交给当前轮的检查点。 */
+  snapshot?: (absPath: string, before: Buffer | undefined) => void;
   /** 工具输出进入会话前打码（匹配本机 secrets 值及常见 Key 形态）。 */
   redact?: (text: string) => string;
 }
