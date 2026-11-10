@@ -3,7 +3,9 @@ import { providerHttpError } from './http-error.js';
 import type { ContentBlock, Message, Usage } from '@tandem/protocol';
 import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import { isAbortError, truncateEnd } from '../util/text.js';
-import { readSse, fetchSse } from './sse.js';
+import { readSse, fetchSse } from '../upstream/sse.js';
+import { postWithBodyFallbacks } from '../upstream/request.js';
+import { applyAnthropicUsage } from '../upstream/usage.js';
 import { createIdleTimeout, idleTimeoutError } from './idle-timeout.js';
 import { parseRateLimitHeaders, retryAfterMs } from './rate-limit.js';
 import { ANTHROPIC_THINKING_BUDGETS, builtinCapabilities, overrideFor } from './capabilities.js';
@@ -119,64 +121,46 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
 
   const usage: Usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   const inputBuf = new Map<number, string>();
-  const applyUsage = (u: AnyBlock) => {
-    if (!u) return;
-    // 流式 usage 是累计值：message_delta 可能只带部分字段（甚至为 0），不能覆盖 message_start 的结果
-    if (typeof u.input_tokens === 'number') usage.inputTokens = Math.max(usage.inputTokens, u.input_tokens);
-    if (typeof u.output_tokens === 'number') usage.outputTokens = Math.max(usage.outputTokens, u.output_tokens);
-    if (typeof u.cache_read_input_tokens === 'number') {
-      usage.cacheReadTokens = Math.max(usage.cacheReadTokens ?? 0, u.cache_read_input_tokens);
-    }
-    if (typeof u.cache_creation_input_tokens === 'number') {
-      usage.cacheWriteTokens = Math.max(usage.cacheWriteTokens ?? 0, u.cache_creation_input_tokens);
-    }
-  };
 
   const send = async (payload: AnyBlock) => {
-    let res = await fetchSse(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-      signal: idle.signal,
-    });
-    // 少数模型/代理不支持 thinking：去掉后重试一次
-    if (!res.ok && res.status === 400 && payload.thinking) {
-      const text = await res.text();
-      if (/thinking|budget_tokens|reasoning|unsupported|not support|max_tokens/i.test(text)) {
-        const retryBody = { ...payload, max_tokens: req.maxTokens } as AnyBlock;
-        delete retryBody.thinking;
-        res = await fetchSse(url, {
+    const sent = await postWithBodyFallbacks<AnyBlock>({
+      body: payload,
+      send: (body) =>
+        fetchSse(url, {
           method: 'POST',
           headers,
-          body: JSON.stringify(retryBody),
+          body: JSON.stringify(body),
           signal: idle.signal,
-        });
-        if (res.ok) req.onEffortDropped?.();
-      } else {
-        throw providerHttpError(
-          res.status,
-          text,
-          url,
-          res.statusText,
-          parseRateLimitHeaders('anthropic', res.headers),
-          retryAfterMs(res.headers),
-        );
-      }
-    }
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
+        }),
+      // 少数模型/代理不支持 thinking：去掉后重试一次。
+      fallbacks: [
+        {
+          applies: (res, body) =>
+            res.status === 400 &&
+            !!body.thinking &&
+            /thinking|budget_tokens|reasoning|unsupported|not support|max_tokens/i.test(res.text),
+          drop: (body) => {
+            const retryBody: AnyBlock = { ...body, max_tokens: req.maxTokens };
+            delete retryBody.thinking;
+            return retryBody;
+          },
+          onDropped: () => req.onEffortDropped?.(),
+        },
+      ],
+    });
+    if (!sent.res.ok) {
       throw providerHttpError(
-        res.status,
-        text,
+        sent.res.status,
+        sent.text,
         url,
-        res.statusText,
-        parseRateLimitHeaders('anthropic', res.headers),
-        retryAfterMs(res.headers),
+        sent.res.statusText,
+        parseRateLimitHeaders('anthropic', sent.res.headers),
+        retryAfterMs(sent.res.headers),
       );
     }
-    const limit = parseRateLimitHeaders('anthropic', res.headers);
+    const limit = parseRateLimitHeaders('anthropic', sent.res.headers);
     if (limit) req.onRateLimit?.(limit);
-    return res;
+    return sent.res;
   };
 
   const finishToolInputs = () => {
@@ -207,7 +191,7 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
       }
       switch (json.type) {
         case 'message_start': {
-          applyUsage(json.message?.usage);
+          applyAnthropicUsage(json.message?.usage, usage);
           break;
         }
         case 'content_block_start': {
@@ -267,7 +251,7 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
           break;
         }
         case 'message_delta': {
-          applyUsage(json.usage);
+          applyAnthropicUsage(json.usage, usage);
           break;
         }
         case 'error': {

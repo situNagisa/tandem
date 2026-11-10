@@ -3,17 +3,15 @@ import { providerHttpError } from './http-error.js';
 import type { ContentBlock, Message, Usage } from '@tandem/protocol';
 import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import { isAbortError, truncateEnd } from '../util/text.js';
-import { readSse, fetchSse } from './sse.js';
+import { readSse, fetchSse } from '../upstream/sse.js';
+import { postWithBodyFallbacks } from '../upstream/request.js';
+import { applyOpenAiUsage } from '../upstream/usage.js';
 import { createIdleTimeout, idleTimeoutError } from './idle-timeout.js';
 import { parseRateLimitHeaders, retryAfterMs } from './rate-limit.js';
 import type { StreamRequest, StreamResult } from './types.js';
 import { openaiReasoningEffort } from './capabilities.js';
 
 type AnyRecord = Record<string, any>;
-
-function numOr(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
 
 /** 内部消息 -> OpenAI messages（tool_use/tool_result 映射为 tool_calls / role:tool）。 */
 export function toOpenAIMessages(messages: Message[], system: string): AnyRecord[] {
@@ -134,54 +132,53 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
   }
 
   const send = async (payload: AnyRecord) => {
-    const current = { ...payload } as AnyRecord;
-    let droppedEffort = false;
-    let droppedStreamOptions = false;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const res = await fetchSse(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(current),
-        signal: idle.signal,
-      });
-      if (res.ok) {
-        if (droppedEffort) req.onEffortDropped?.();
-        const limit = parseRateLimitHeaders('openai', res.headers);
-        if (limit) req.onRateLimit?.(limit);
-        return res;
-      }
-      const text = await res.text();
-      // 模型/兼容服务不支持 reasoning_effort：去掉后重试一次
-      if (
-        !droppedEffort &&
-        current.reasoning_effort &&
-        res.status === 400 &&
-        /reasoning|unsupported|unknown|invalid.*param|not support/i.test(text)
-      ) {
-        droppedEffort = true;
-        delete current.reasoning_effort;
-        continue;
-      }
-      // 部分兼容服务不支持 stream_options，去掉后重试
-      if (
-        !droppedStreamOptions &&
-        current.stream_options &&
-        /stream_options|include_usage/i.test(text)
-      ) {
-        droppedStreamOptions = true;
-        delete current.stream_options;
-        continue;
-      }
+    const sent = await postWithBodyFallbacks<AnyRecord>({
+      body: payload,
+      send: (body) =>
+        fetchSse(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+          signal: idle.signal,
+        }),
+      fallbacks: [
+        // 模型/兼容服务不支持 reasoning_effort：去掉后重试一次
+        {
+          applies: (res, body) =>
+            res.status === 400 &&
+            !!body.reasoning_effort &&
+            /reasoning|unsupported|unknown|invalid.*param|not support/i.test(res.text),
+          drop: (body) => {
+            const next = { ...body };
+            delete next.reasoning_effort;
+            return next;
+          },
+          onDropped: () => req.onEffortDropped?.(),
+        },
+        // 部分兼容服务不支持 stream_options，去掉后重试
+        {
+          applies: (res, body) => !!body.stream_options && /stream_options|include_usage/i.test(res.text),
+          drop: (body) => {
+            const next = { ...body };
+            delete next.stream_options;
+            return next;
+          },
+        },
+      ],
+    });
+    if (!sent.res.ok) {
       throw providerHttpError(
-        res.status,
-        text,
+        sent.res.status,
+        sent.text,
         url,
-        res.statusText,
-        parseRateLimitHeaders('openai', res.headers),
-        retryAfterMs(res.headers),
+        sent.res.statusText,
+        parseRateLimitHeaders('openai', sent.res.headers),
+        retryAfterMs(sent.res.headers),
       );
     }
-    throw providerHttpError(400, '请求参数不被模型支持', url);
+    const limit = parseRateLimitHeaders('openai', sent.res.headers);
+    if (limit) req.onRateLimit?.(limit);
+    return sent.res;
   };
 
   const usage: Usage = { inputTokens: 0, outputTokens: 0 };
@@ -237,21 +234,7 @@ export async function streamOpenAI(req: StreamRequest): Promise<StreamResult> {
       if (json.error) {
         throw new Error(json.error.message ?? '模型接口返回错误');
       }
-      if (json.usage) {
-        const rawPrompt = numOr(json.usage.prompt_tokens, 0);
-        // OpenAI 的 prompt_tokens 已包含 cached_tokens；内部 Usage 记录未命中部分。
-        const cached = numOr(
-          json.usage.prompt_tokens_details?.cached_tokens,
-          numOr(json.usage.prompt_cache_hit_tokens, 0),
-        );
-        usage.inputTokens = Math.max(0, rawPrompt - cached);
-        usage.cacheReadTokens = cached;
-        usage.outputTokens = numOr(json.usage.completion_tokens, usage.outputTokens);
-        usage.reasoningTokens = numOr(
-          json.usage.completion_tokens_details?.reasoning_tokens,
-          numOr(json.usage.reasoning_tokens, 0),
-        );
-      }
+      if (json.usage) applyOpenAiUsage(json.usage, usage, { merge: 'replace', cachedAlias: false });
       const choice = json.choices?.[0];
       if (!choice) continue;
       const delta = choice.delta ?? {};

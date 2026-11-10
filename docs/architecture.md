@@ -38,7 +38,8 @@
 | `src/agent/prompt.ts` | 系统提示组装（含注入段落清单） |
 | `src/agent/commands.ts` | 斜杠命令解析与内置命令表 |
 | `src/agent/resume.ts` / `retry.ts` | Host 重启续跑、网络失败重试 |
-| `src/providers/` | `anthropic.ts` / `openai.ts` 适配、SSE、模型列表、能力、HTTP 错误、空闲超时 |
+| `src/providers/` | `anthropic.ts` / `openai.ts` 适配、模型列表、能力、HTTP 错误、空闲超时；SSE 与 usage 解析在 `src/upstream/` |
+| `src/upstream/` | 共享上游转发引擎：`request.ts`（请求构造、错误文本、参数降级重试）、`sse.ts`（SSE 读取与 usage 累计）、`usage.ts`（OpenAI/Anthropic usage 归并）、`keys.ts`（Key 换用循环）；网关 `gateway/proxy.ts` 与工作站 `workstation/modelProxy.ts` 共用，鉴权/限流/记账仍留在各自入口（`usage.json(memberId)` / `model-usage.json(accountId)`） |
 | `src/tools/` | 每个工具一个文件（Bash/Read/Write/Edit/Glob/Grep/Task/Todo/Memory/WebFetch…），`index.ts` 注册与执行 |
 | `src/store.ts` | 会话 JSON 持久化、防抖落盘、快照/恢复 |
 | `src/run-state.ts` | 运行意图落盘（断点续跑、悬空审批） |
@@ -183,7 +184,7 @@ sequenceDiagram
 | 加一个命令/快捷键 | `web/src/lib/commands.ts` 的 `COMMANDS`（id、标题、关键词、默认快捷键、run）；外观页快捷键表与全局监听自动读取，自定义存 localStorage |
 | 加一个菜单/弹层 | 只用 `components/ui/Menu.tsx`、`Modal.tsx`、`Controls.tsx`；不要手写 role 或原生 select |
 | 改会话发送/循环 | `server/src/host.ts` 的 `send/handleUserContent/sendToModel` → `agent/loop.ts` |
-| 改 provider | `server/src/providers/<kind>.ts` + `providers/index.ts`；协议类型在 `providers/types.ts` |
+| 改 provider | `server/src/providers/<kind>.ts` + `providers/index.ts`；上游转发/SSE/usage 共用部分在 `src/upstream/`；协议类型在 `providers/types.ts` |
 | 改模型能力/思考强度 | `providers/capabilities.ts`、`providers/models.ts`、`agent/prompt.ts`、前端 `ui/` 的模型菜单 |
 | 改权限规则 | `server/src/permissions.ts`（匹配）+ `host.ts` 的 `authorize` + `PermissionCard.tsx` |
 | 改 diff/改动审阅 | `server/src/changes.ts` + `web/src/lib/useChanges.ts` + `ChangeReviewPanel.tsx` |

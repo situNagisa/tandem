@@ -63,6 +63,23 @@ export function orderedAvailableKeys(
   return [...available.slice(start), ...available.slice(0, start)];
 }
 
+/**
+ * 取本次请求的可用 Key 顺序；round-robin 时把游标推进一格（游标由调用方持有）。
+ * 网关（host.keyRotation）与工作站代理共用同一轮换规则。
+ */
+export function rotateKeyCandidates(
+  keys: StoredProfileKey[],
+  strategy: KeyStrategy | undefined,
+  rotation: Map<string, number> | undefined,
+  rotationKey: string,
+  now = Date.now(),
+): StoredProfileKey[] {
+  const rotate = rotation?.get(rotationKey) ?? 0;
+  const available = orderedAvailableKeys(keys, strategy, rotate, now);
+  if (strategy === 'round_robin' && available.length > 0) rotation?.set(rotationKey, rotate + 1);
+  return available;
+}
+
 export function keyDisplayName(key: StoredProfileKey, index: number): string {
   return key.label?.trim() || `Key ${index + 1}`;
 }

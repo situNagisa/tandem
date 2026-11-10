@@ -9,6 +9,7 @@ import {
   isKeyAvailable,
   keyDisplayName,
   orderedAvailableKeys,
+  rotateKeyCandidates,
 } from '../src/key-rotation.js';
 import type { StoredProfileGroup, StoredProfileKey } from '../src/types.js';
 
@@ -94,4 +95,16 @@ test('Key 显示名与全部不可用文案包含原因', () => {
   assert.match(message, /分组「官方」的所有 Key 都不可用/);
   assert.match(message, /Key 1（已停用：invalid api key）/);
   assert.match(message, /Key 2（HTTP 429）/);
+});
+
+test('轮换游标：round-robin 每次推进一格，failover 不推进', () => {
+  const keys = [key('a'), key('b'), key('c')];
+  const rotation = new Map<string, number>();
+  assert.deepEqual(rotateKeyCandidates(keys, 'round_robin', rotation, 'p:g').map((item) => item.id), ['a', 'b', 'c']);
+  assert.equal(rotation.get('p:g'), 1);
+  assert.deepEqual(rotateKeyCandidates(keys, 'round_robin', rotation, 'p:g').map((item) => item.id), ['b', 'c', 'a']);
+  assert.equal(rotation.get('p:g'), 2);
+  const other = new Map<string, number>();
+  assert.deepEqual(rotateKeyCandidates(keys, 'failover', other, 'p:g').map((item) => item.id), ['a', 'b', 'c']);
+  assert.equal(other.get('p:g'), undefined);
 });

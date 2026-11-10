@@ -1,5 +1,7 @@
-// SSE 解析：按空行分隔事件，支持 data 多行。
+// SSE 解析：按空行分隔事件，支持 data 多行。provider 事件流与网关原始透传共用。
+import type { Usage } from '@tandem/protocol';
 import { isAbortError } from '../util/text.js';
+import { applyAnthropicUsage, applyOpenAiUsage } from './usage.js';
 
 export interface SseEvent {
   event?: string;
@@ -69,4 +71,45 @@ function parseEvent(raw: string): SseEvent | undefined {
   }
   if (dataLines.length === 0) return undefined;
   return { event, data: dataLines.join('\n') };
+}
+
+/** 网关原样转发时逐块喂入文本，累计 usage；不改变转发字节。 */
+export function createSseUsageTracker(
+  protocol: 'openai' | 'anthropic',
+  usage: Usage,
+): { push(text: string): void; end(): void } {
+  let buffer = '';
+  const handleEvent = (raw: string) => {
+    const ev = parseEvent(raw);
+    if (!ev) return;
+    const data = ev.data.trim();
+    if (!data || data === '[DONE]') return;
+    try {
+      const json = JSON.parse(data) as Record<string, any>;
+      if (protocol === 'openai') {
+        applyOpenAiUsage(json.usage, usage, { merge: 'max', inputAliases: true, outputAliases: true, cachedAlias: true });
+      } else if (json.type === 'message_start') {
+        applyAnthropicUsage(json.message?.usage, usage);
+      } else if (json.type === 'message_delta') {
+        applyAnthropicUsage(json.usage, usage);
+      }
+    } catch {
+      /* 不完整/非 JSON 事件忽略 */
+    }
+  };
+  return {
+    push(text: string) {
+      buffer += text.replace(/\r\n/g, '\n');
+      let index = buffer.indexOf('\n\n');
+      while (index >= 0) {
+        handleEvent(buffer.slice(0, index));
+        buffer = buffer.slice(index + 2);
+        index = buffer.indexOf('\n\n');
+      }
+    },
+    end() {
+      if (buffer.trim()) handleEvent(buffer);
+      buffer = '';
+    },
+  };
 }
