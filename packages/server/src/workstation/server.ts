@@ -386,7 +386,7 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
     const hostPackage = findHostPackage(format);
     if (!hostPackage) {
       return reply.code(404).send({
-        error: `工作站没有随附主机安装包（${format}）；请手动安装 Node.js 22+ 后运行 tandem-host join <工作站地址> --token <绑定码>`,
+        error: `工作站没有随附主机安装包（${format}）；在工作站上执行 npm run pack:host -w @tandem/server 生成后重试`,
       });
     }
     reply.header('content-type', format === 'zip' ? 'application/zip' : 'application/gzip');

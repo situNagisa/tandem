@@ -18,7 +18,7 @@ import { toast } from '../../store/appStore/helpers'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
-import { SegmentedControl } from '../ui/Controls'
+import { SegmentedControl, Switch } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
 import { CodeBlock } from '../CodeBlock'
 
@@ -70,6 +70,7 @@ export function AddHostDialog() {
   const [platform, setPlatform] = useState<AddHostPlatform>(() =>
     defaultAddHostPlatform(typeof navigator === 'undefined' ? '' : navigator.userAgent),
   )
+  const [autostart, setAutostart] = useState(false)
   const [status, setStatus] = useState<WorkstationPublicStatus | null>(null)
   const [statusError, setStatusError] = useState<string | null>(null)
   const [bind, setBind] = useState<WorkstationBindCode | null>(null)
@@ -222,6 +223,7 @@ export function AddHostDialog() {
     workstationUrl: url,
     token: bind?.code ?? '',
     platform,
+    service: autostart,
   })
   const localLabel = pageIsLoopback() ? '添加这台电脑' : '添加此主机（当前页面所在的电脑）'
 
@@ -296,6 +298,11 @@ export function AddHostDialog() {
             onChange={setPlatform}
             options={PLATFORM_OPTIONS}
           />
+
+          <div className="flex items-center gap-2 text-[12px] text-[var(--t-text-secondary)]">
+            <Switch checked={autostart} onChange={setAutostart} label="开机自启（需要相应权限）" />
+            <span>开机自启（需要相应权限）</span>
+          </div>
 
           {share.loopbackOnly && (
             <div className="flex items-start gap-2 rounded-lg border border-[var(--t-border)] bg-[var(--t-bg-subtle)] px-3 py-2 text-[12px] leading-5 text-[var(--t-warning)]">

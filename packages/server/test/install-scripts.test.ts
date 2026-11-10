@@ -1,4 +1,4 @@
-// 安装脚本模板：默认地址替换、不含令牌、sh 语法、PowerShell param 块。
+// 安装脚本模板：默认地址替换、不含令牌、sh 语法、前台 join、--service 可选、PowerShell param 块。
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -12,9 +12,7 @@ test('install.sh：默认地址取自工作站、不含令牌、sh -n 通过', (
   assert.ok(script.startsWith('#!/bin/sh'));
   assert.ok(script.includes("SERVER='http://10.1.2.3:8481'"), '地址应去掉尾部斜杠并写入脚本');
   assert.ok(script.includes('/dl/tandem-host.tgz'));
-  assert.ok(script.includes('--no-service'));
   assert.ok(script.includes('exec "$NODE_BIN" "$APP/dist/cli.js" "\\$@"'), '启动包装在写入时展开绝对路径、保留 "$@"');
-  assert.ok(script.includes('join "$SERVER" --token "$TOKEN"'), 'join 由工作站地址 + 运行时令牌组成');
   assert.ok(!script.includes('ach_abcdefgh'), '脚本不能嵌入具体令牌');
   assert.ok(!/[A-Za-z0-9_-]*ach_[A-Za-z0-9_-]{16,}/.test(script), '不应出现看起来像真实令牌的字符串');
   assert.match(script, /Node\.js 22/);
@@ -32,10 +30,43 @@ test('install.sh：默认地址取自工作站、不含令牌、sh -n 通过', (
   }
 });
 
-test('install.ps1：param 块、默认地址、下载/解压方式', () => {
+test('install.sh：前台运行 join，数据目录独立，--service 才设置开机自启', () => {
+  const script = buildUnixInstallScript({ server: 'http://10.1.2.3:8481' });
+  assert.ok(script.includes('TANDEM_HOME="$DATA" "$NODE_BIN" "$APP/dist/cli.js" "$@"'), '前台运行时数据目录固定为安装目录下的 data');
+  assert.ok(script.includes('DATA="$INSTALL_DIR/data"'));
+  assert.ok(script.includes('set -- join "$SERVER" --token "$TOKEN" --name "$NAME"'), 'join 由工作站地址 + 运行时令牌组成');
+  assert.ok(script.includes('set -- "$@" --service'));
+});
+
+test('install.sh --dry-run：只打印计划，不下载不改动', () => {
+  if (process.platform === 'win32') return;
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tandem-install-dry-'));
+  const file = path.join(home, 'install.sh');
+  try {
+    writeFileSync(file, buildUnixInstallScript({ server: 'http://10.1.2.3:8481' }));
+    const out = execFileSync('sh', [file, '--dry-run', '--token', 'ach_0123456789abcdef', '--name', 'box'], {
+      env: { ...process.env, HOME: home, TANDEM_INSTALL_DIR: path.join(home, 'inst') },
+      encoding: 'utf8',
+    });
+    assert.match(out, /--dry-run/);
+    assert.match(out, /数据目录: .*data/);
+    assert.match(out, /ach_\*\*\*\*/, '计划里令牌要脱敏');
+    assert.ok(!out.includes('0123456789abcdef'));
+    assert.ok(!out.includes('--service'), '默认不设置开机自启');
+    const withService = execFileSync('sh', [file, '--dry-run', '--token', 'ach_0123456789abcdef', '--service'], {
+      env: { ...process.env, HOME: home, TANDEM_INSTALL_DIR: path.join(home, 'inst') },
+      encoding: 'utf8',
+    });
+    assert.match(withService, /--service/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('install.ps1：param 块、默认地址、下载/解压方式、前台 join', () => {
   const script = buildWindowsInstallScript({ server: 'http://10.1.2.3:8481' });
   assert.match(script, /param\(/);
-  for (const fragment of ['[string]$Token', '[string]$Server', '[string]$Name', '[switch]$NoService', '[switch]$DryRun', '[int]$Port']) {
+  for (const fragment of ['[string]$Token', '[string]$Server', '[string]$Name', '[switch]$Service', '[switch]$DryRun']) {
     assert.ok(script.includes(fragment), `缺少参数 ${fragment}`);
   }
   assert.ok(script.includes("$DefaultServer = 'http://10.1.2.3:8481'"));
@@ -45,40 +76,18 @@ test('install.ps1：param 块、默认地址、下载/解压方式', () => {
   assert.ok(script.includes('Expand-Archive'), 'Windows 用 Expand-Archive 解压（不依赖 tar）');
   assert.ok(!/tar -[a-z]*x/.test(script), 'Windows 脚本不能再调用 tar（中文路径会失败）');
   assert.ok(!/\bexit\s+\d/.test(script), '一行命令在用户 PowerShell 会话里执行，不能用 exit 关掉窗口');
-  assert.match(script, /手动安装步骤：/);
-  assert.match(script, /dist\\cli\.js/);
-  assert.ok(script.includes('--no-service'));
-  assert.ok(script.includes('--service'));
+  assert.match(script, /\$CliPath = Join-Path \$AppDir 'dist\\cli\.js'/);
+  assert.match(script, /'join', \$Server, '--token', \$Token/);
+  assert.match(script, /if \(\$Service\) \{ \$joinArgs \+= '--service' \}/);
+  assert.match(script, /\$env:TANDEM_HOME = \$DataDir/, '数据目录只在前台进程期间设置，结束后还原');
+  assert.match(script, /\$env:TANDEM_HOME = \$previousHome/);
+  assert.match(script, /Node\.js 22/);
+  assert.match(script, /winget install --id OpenJS\.NodeJS\.LTS/);
   assert.ok(!script.includes('ach_abcdefgh'), '脚本不能嵌入具体令牌');
   assert.ok(!/[A-Za-z0-9_-]*ach_[A-Za-z0-9_-]{16,}/.test(script));
-  assert.match(script, /Node\.js 22/);
-  assert.match(script, /winget install --id OpenJS\.NodeJS\.LTS/, '没有合适 Node 时给出 winget 命令让用户自己装');
 });
 
-test('install.ps1：登记失败分三类（崩溃/令牌/网络），并写 install.log', () => {
+test('install.ps1：node 输出按 UTF-8 显示', () => {
   const script = buildWindowsInstallScript({ server: 'http://10.1.2.3:8481' });
-  // 崩溃：负退出码（STATUS_* / 0xC0000409）单独提示，不能说成绑定码过期
-  assert.match(script, /\$code -lt 0/, '负退出码按崩溃处理');
-  assert.match(script, /0x\{0:X8\}/, '打印十六进制退出码，便于对照 STATUS_STACK_BUFFER_OVERRUN');
-  assert.match(script, /异常崩溃，不是绑定码的问题/);
-  assert.match(script, /Select-Object -Last 20/, '崩溃时打印 tandem-host 最后 20 行输出');
-  // 令牌 / 网络各自提示
-  assert.match(script, /\$joined -match '绑定码'/);
-  assert.match(script, /连不上工作站/);
-  // 日志路径与内容
-  assert.match(script, /JoinLogFile = Join-Path \$InstallDir 'install\.log'/);
-  assert.match(script, /Add-Content -LiteralPath \$JoinLogFile/);
-  assert.match(script, /令牌:   \$\(Mask-Token \$Token\)/, '日志里令牌脱敏');
-  // 输出要逐行收下来：崩溃时控制台缓冲会丢
-  assert.match(script, /\$joinLines\.Add/);
-  assert.match(script, /& \$NodePath @joinArgs \*>&1/);
   assert.match(script, /\[Console\]::OutputEncoding = \[Text\.UTF8Encoding\]::new\(\$false\)/, 'node 输出是 UTF-8，PowerShell 默认代码页会乱码');
-  assert.match(script, /使用 Node: \$NodePath/, '打印实际使用的 node 路径与版本');
-});
-
-test('install.sh：崩溃（>=128）与普通失败分开提示', () => {
-  const script = buildUnixInstallScript({ server: 'http://10.1.2.3:8481' });
-  assert.match(script, /\[ "\$status" -ge 128 \]/);
-  assert.match(script, /被信号终止（崩溃）/);
-  assert.match(script, /日志：\$LOG_FILE/);
 });

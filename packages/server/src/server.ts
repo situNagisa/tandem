@@ -48,10 +48,11 @@ import { registerDeviceRoutes } from './routes/devices.js';
 import { registerUpdateRoutes } from './routes/updates.js';
 import { IS_DEBUG_FLAVOR } from './flavor.js';
 
-interface WorkstationTunnelDeps {
+export interface WorkstationTunnelDeps {
   /** 可选 target：内嵌工作站的真实监听地址（避让端口后与保存的加入地址不同）。 */
   start: (target?: string) => void;
   stop: () => void;
+  status: () => { connected: boolean; url?: string };
 }
 
 export async function createApp(
@@ -176,7 +177,7 @@ export async function createApp(
     stop: stopWorkstationTunnel,
     status: () => {
       const join = host.accounts.workstationJoin();
-      return { connected: !!workstationAgent, ...(join ? { url: join.url } : {}) };
+      return { connected: workstationAgent?.isConnected() ?? false, ...(join ? { url: join.url } : {}) };
     },
   };
   extras.onWorkstationDeps?.(workstationDeps);

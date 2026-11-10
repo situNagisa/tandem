@@ -191,6 +191,10 @@ export class WorkstationAgent {
     this.connect();
   }
 
+  isConnected(): boolean {
+    return this.connected;
+  }
+
   /** 改成连接另一个实际地址（内嵌工作站换端口），断开旧连接并立即重连。 */
   retarget(url: string): void {
     if (this.stopped) return;

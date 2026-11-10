@@ -3,9 +3,9 @@
 export type AddHostPlatform = 'linux' | 'macos' | 'windows'
 
 export interface AddHostCommands {
-  /** 目标机器上执行一次即可：下载并安装 tandem-host、登记为后台服务。 */
+  /** 目标机器上执行一次即可：下载主机程序并前台连接工作站。 */
   oneLiner: string
-  /** 已装 tandem-host 的机器：只登记并注册系统服务。 */
+  /** 已装 tandem-host 的机器：只登记并连接。 */
   installed: string
 }
 
@@ -27,16 +27,19 @@ export function buildAddHostCommands(input: {
   workstationUrl: string
   token: string
   platform: AddHostPlatform
+  /** 开机自启（需要相应权限）；默认关闭。 */
+  service?: boolean
 }): AddHostCommands {
   const base = normalizeWorkstationUrl(input.workstationUrl)
   const token = input.token.trim()
+  const service = input.service === true
   const oneLiner =
     input.platform === 'windows'
-      ? `& ([scriptblock]::Create((irm ${base}/install.ps1))) -Token '${token}'`
-      : `curl -fsSL ${base}/install.sh | sh -s -- --token ${token}`
+      ? `& ([scriptblock]::Create((irm ${base}/install.ps1))) -Token '${token}'${service ? ' -Service' : ''}`
+      : `curl -fsSL ${base}/install.sh | sh -s -- --token ${token}${service ? ' --service' : ''}`
   return {
     oneLiner,
-    installed: `tandem-host join ${base} --token ${token} --service`,
+    installed: `tandem-host join ${base} --token ${token}${service ? ' --service' : ''}`,
   }
 }
 
