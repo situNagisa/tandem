@@ -22,6 +22,7 @@ export type SessionsSlice = Pick<
   AppState,
   | 'openSession'
   | 'openSessionView'
+  | 'commitPendingFocus'
   | 'closeSessionView'
   | 'focusSessionView'
   | 'closeSession'
@@ -38,6 +39,12 @@ export type SessionsSlice = Pick<
   | 'handoffSession'
   | 'deleteSession'
 >
+
+/** 目标首屏迟迟不就绪时的兜底切换时间，避免点了没反应。 */
+const PENDING_FOCUS_MS = 1500
+
+const isViewReady = (view: ActiveSession): boolean =>
+  !view.loading || view.messages.length > 0 || !!view.error
 
 export function createSessionsSlice(
   set: StoreApi<AppState>['setState'],
@@ -108,20 +115,58 @@ export function createSessionsSlice(
     if (view.summary?.unread) void get().markSessionRead(hostId, sessionId)
   }
 
+  /** 关闭不再显示、也不在分屏中的会话视图。 */
+  const dropView = (hostId: string, sessionId: string): void => {
+    const panes = useUiStore.getState().splitPanes
+    if (panes.some((pane) => pane.hostId === hostId && pane.sessionId === sessionId)) return
+    get().closeSessionView(hostId, sessionId)
+  }
+
+  const commitFocus = (hostId: string, sessionId: string): void => {
+    const current = get().active
+    if (current && !matchesView(current, hostId, sessionId)) dropView(current.hostId, current.sessionId)
+    focusView(hostId, sessionId)
+  }
+
+  // 切换会话时先保留当前画面，目标首屏就绪后再切走，避免「旧画面 → 骨架屏 → 新画面」的闪动。
+  let pendingFocus: { hostId: string; sessionId: string } | null = null
+
   return {
     openSession: (hostId, sessionId) => {
       get().activateHost(hostId)
-      const host = getHost(hostId)
-      if (!host) return
+      if (!getHost(hostId)) return
       const current = get().active
-      if (current && !matchesView(current, hostId, sessionId)) {
-        const panes = useUiStore.getState().splitPanes
-        const keep = panes.some(
-          (pane) => pane.hostId === current.hostId && pane.sessionId === current.sessionId,
-        )
-        if (!keep) get().closeSessionView(current.hostId, current.sessionId)
+      const stale = pendingFocus
+      pendingFocus = null
+      if (stale && !matchesView(stale, hostId, sessionId) && !matchesView(current, stale.hostId, stale.sessionId)) {
+        dropView(stale.hostId, stale.sessionId)
       }
-      focusView(hostId, sessionId)
+      openSessionView(hostId, sessionId)
+      const view = get().sessionViews[viewKeyOf(hostId, sessionId)]
+      // 没有可保留的当前画面（如刷新后直接打开）或目标已就绪时立即切换。
+      if (!current || !view || isViewReady(view) || matchesView(current, hostId, sessionId)) {
+        commitFocus(hostId, sessionId)
+        return
+      }
+      pendingFocus = { hostId, sessionId }
+      window.setTimeout(() => {
+        if (pendingFocus?.hostId === hostId && pendingFocus.sessionId === sessionId) {
+          get().commitPendingFocus(true)
+        }
+      }, PENDING_FOCUS_MS)
+    },
+
+    commitPendingFocus: (force = false) => {
+      const target = pendingFocus
+      if (!target) return
+      const view = get().sessionViews[viewKeyOf(target.hostId, target.sessionId)]
+      if (!view) {
+        pendingFocus = null
+        return
+      }
+      if (!force && !isViewReady(view)) return
+      pendingFocus = null
+      commitFocus(target.hostId, target.sessionId)
     },
 
     openSessionView,

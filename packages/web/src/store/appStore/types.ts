@@ -111,6 +111,8 @@ export interface AppState {
   openSession: (hostId: string, sessionId: string) => void
   /** 后台打开一个分屏会话视图，不切换焦点。 */
   openSessionView: (hostId: string, sessionId: string) => void
+  /** 切换会话时目标首屏未就绪则暂留当前画面；目标就绪后由 store 订阅调用，force 为超时兜底。 */
+  commitPendingFocus: (force?: boolean) => void
   /** 关闭一个会话视图（不改变路由）。 */
   closeSessionView: (hostId: string, sessionId: string) => void
   /** 聚焦一个已打开的会话视图（若尚未打开则先打开）。 */

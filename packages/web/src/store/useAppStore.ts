@@ -19,7 +19,7 @@ export const useAppStore = create<AppState>((set, get) => {
   const core = createSessionCore(set, get, (hostId, msg) => handleServerMessage(hostId, msg))
   handleServerMessage = createServerMessageHandler(set, get, core)
 
-  return {
+  const store: AppState = {
     initialized: false,
     hosts: [],
     activeHostId: null,
@@ -40,4 +40,9 @@ export const useAppStore = create<AppState>((set, get) => {
     ...createWorktreeSlice(set, get, core),
     ...createUiSlice(set, get),
   }
+  return store
+})
+
+useAppStore.subscribe((state, prev) => {
+  if (state.sessionViews !== prev.sessionViews) state.commitPendingFocus()
 })
