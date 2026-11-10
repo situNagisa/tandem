@@ -197,8 +197,9 @@ forEachTarget('C M1 验收项', (target: Target) => {
 
   test('C21 [both] 长连接心跳：服务端每 15 秒发 PING，执行器回 PONG', async () => {
     const hbSb = createSandbox(target);
+    const since = ws.readyLog.length;
     startExecutor({ target, sandbox: hbSb, home: hbSb.home('home'), server: ws.url, token: ws.issueToken() });
-    const hb = await ws.waitReady({ timeoutMs: 20_000 });
+    const hb = await ws.waitReady({ since, timeoutMs: 20_000 });
     await waitUntil(() => hb.pongs > 0, HEARTBEAT_MS + 10_000, 'PONG');
     expect(hb.pingTimes.length).toBeGreaterThan(0);
     const firstPingAfter = hb.pingTimes[0] - hb.readyAt;
