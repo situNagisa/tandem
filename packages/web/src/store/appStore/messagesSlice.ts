@@ -2,6 +2,7 @@ import type { StoreApi } from 'zustand'
 import { api } from '../../lib/api'
 import { permissionTarget } from '../../lib/permissionLabel'
 import type { SessionTarget, UiMessage } from '../../lib/types'
+import { isDraftSession } from '../../lib/draftSession'
 import { connections, newId, toast, viewKeyOf } from './helpers'
 import type { SessionCore } from './sessionCore'
 import type { AppState } from './types'
@@ -39,6 +40,10 @@ export function createMessagesSlice(
     send: (blocks, target, routeMode) => {
       const view = viewOf(target)
       if (!view) return false
+      if (isDraftSession(view.sessionId)) {
+        toast('会话正在创建，请稍候', 'info')
+        return false
+      }
       const conn = ensureConnection(view.hostId)
       const ok =
         conn?.send({
@@ -80,7 +85,7 @@ export function createMessagesSlice(
 
     interrupt: (target) => {
       const view = viewOf(target)
-      if (!view || !view.running) return
+      if (!view || !view.running || isDraftSession(view.sessionId)) return
       const conn = connections.get(view.hostId) ?? ensureConnection(view.hostId)
       const ok = conn?.send({ type: 'interrupt', sessionId: view.sessionId }) ?? false
       if (!ok) {

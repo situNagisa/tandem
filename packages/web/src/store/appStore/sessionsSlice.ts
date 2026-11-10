@@ -3,13 +3,15 @@ import type { StoreApi } from 'zustand'
 import { api } from '../../lib/api'
 import { SESSION_TAIL_MESSAGES } from '../../lib/messagePaging'
 import { navigate } from '../../lib/router'
-import type { SessionTarget } from '../../lib/types'
+import type { ActiveSession, SessionTarget, UiMessage } from '../../lib/types'
 import { useUiStore } from '../useUiStore'
+import { DRAFT_SESSION_PREFIX } from '../../lib/draftSession'
 import {
   connections,
   emptyActiveSession,
   isRunningStatus,
   matchesView,
+  newId,
   toast,
   viewKeyOf,
 } from './helpers'
@@ -271,17 +273,64 @@ export function createSessionsSlice(
     startSession: async (hostId, input, content) => {
       const host = getHost(hostId)
       if (!host) throw new Error('Host 不存在')
-      const summary = await api.createSession(host, input)
+      // 发送即进入会话：创建请求返回前先显示占位会话与用户消息，返回后换成真实会话。
+      const draftId = `${DRAFT_SESSION_PREFIX}${newId()}`
+      const draftKey = viewKeyOf(hostId, draftId)
+      const now = Date.now()
+      const draftSummary: SessionSummary = {
+        id: draftId,
+        title: input.title ?? '',
+        cwd: input.cwd,
+        profileId: input.profileId,
+        groupId: input.groupId,
+        model: input.model ?? '',
+        permissionMode: input.permissionMode ?? 'default',
+        effort: input.effort,
+        delegation: input.delegation,
+        status: 'running',
+        createdAt: now,
+        updatedAt: now,
+        usage: { inputTokens: 0, outputTokens: 0 },
+      }
+      const message: UiMessage = {
+        id: `local-${newId()}`,
+        role: 'user',
+        content,
+        createdAt: now,
+        local: true,
+      }
+      const draft: ActiveSession = {
+        ...emptyActiveSession(hostId, draftId, draftSummary),
+        loading: false,
+        messages: [message],
+      }
+      set((state) => ({
+        sessionViews: { ...state.sessionViews, [draftKey]: draft },
+        active: draft,
+      }))
+      let summary: SessionSummary
+      try {
+        summary = await api.createSession(host, input)
+      } catch (err) {
+        set((state) => {
+          const views = { ...state.sessionViews }
+          delete views[draftKey]
+          return {
+            sessionViews: views,
+            active: matchesView(state.active, hostId, draftId) ? null : state.active,
+          }
+        })
+        toast(err instanceof Error ? err.message : '创建会话失败', 'error')
+        throw err
+      }
       applySessionSummary(hostId, summary)
       const key = viewKeyOf(hostId, summary.id)
-      set((state) => ({
-        sessionViews: {
-          ...state.sessionViews,
-          [key]: emptyActiveSession(hostId, summary.id, summary),
-        },
-      }))
-      const view = get().sessionViews[key]!
-      set({ active: view })
+      set((state) => {
+        const views = { ...state.sessionViews }
+        delete views[draftKey]
+        views[key] = emptyActiveSession(hostId, summary.id, summary)
+        return { sessionViews: views, active: views[key] }
+      })
       navigate({ kind: 'session', hostId, sessionId: summary.id })
       ensureConnection(hostId)?.subscribe(summary.id, { tail: SESSION_TAIL_MESSAGES })
       get().send(content, { hostId, sessionId: summary.id })

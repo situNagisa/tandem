@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ChangesResult } from '@tandem/protocol'
 import { api } from './api'
+import { isDraftSession } from './draftSession'
 import type { HostConfig } from './types'
 
 /** 拉取会话工作区的 git 改动；nonce 变化（回合结束等）时自动刷新。 */
@@ -18,7 +19,7 @@ export function useSessionChanges(
   const reload = useCallback(() => setTick((n) => n + 1), [])
 
   useEffect(() => {
-    if (!host || !sessionId || !enabled) return
+    if (!host || !sessionId || !enabled || isDraftSession(sessionId)) return
     let cancelled = false
     setLoading(true)
     api

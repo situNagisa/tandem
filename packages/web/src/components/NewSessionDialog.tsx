@@ -25,7 +25,7 @@ import { api } from '../lib/api'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { basename, dirname } from '../lib/format'
-import { loadRecentDirs, rememberDir } from '../lib/storage'
+import { loadRecentDirs, rememberDir, saveDraft } from '../lib/storage'
 import { defaultChoiceFor } from '../lib/profileModels'
 import { loadLastEffort } from '../lib/effort'
 import { cn } from '../lib/cn'
@@ -225,6 +225,8 @@ export function NewSessionView() {
         content,
       )
       rememberDir(host.id, cwd.trim())
+      // 输入框已随页面切换卸载，卸载时保存的草稿在这里清掉（与 Composer 的 draftKey 一致）。
+      saveDraft(`new:${host.id}`, '')
       return true
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建会话失败')

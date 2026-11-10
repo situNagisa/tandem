@@ -10,6 +10,7 @@ import { api } from '../../lib/api'
 import { cn } from '../../lib/cn'
 import { formatTokens } from '../../lib/format'
 import { readRaw, writeRaw } from '../../lib/storage'
+import { isDraftSession } from '../../lib/draftSession'
 import { Popover } from '../ui/Popover'
 import { Tip } from '../ui/Tooltip'
 
@@ -241,7 +242,7 @@ export function useContextBreakdown() {
 
   useEffect(() => {
     setFetched(null)
-    if (!hostId || !sessionId) return
+    if (!hostId || !sessionId || isDraftSession(sessionId)) return
     const host = useAppStore.getState().hosts.find((h) => h.id === hostId)
     if (!host) return
     let cancelled = false
