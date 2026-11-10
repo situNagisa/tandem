@@ -3,10 +3,10 @@
  * 纯函数、无 DOM：输入会话树，输出每个节点的 (lane, row) 与连线段。
  *
  * 约定：
- * - 主线固定在 lane 0，每个用户轮一行，自上而下。
- * - 子代理从发起它的轮分到新泳道，完成后合并回主线的下一行（虚线）。
- * - 分叉从分叉点分到新泳道，不合并；节点即分支末端标签（实线菱形）。
- * - 行高固定由渲染层决定（28px）；这里只给行号。
+ * - 主线固定在第 0 列，每个用户轮一行，自上而下。
+ * - 子代理从发起它的轮分到新泳道，完成后合并回主线的下一行。
+ * - 分叉从分叉点分到新泳道，不合并，末端节点即分支名。
+ * - 行高固定由渲染层决定（28px）；这里只给行号与列号。
  */
 
 export interface GraphUsage {
@@ -101,6 +101,9 @@ export interface GraphLayout {
   edges: GraphEdge[]
   rows: number
   lanes: number
+  /** 泳道号 → 横向列号（列复用后的位置；颜色仍按泳道号）。 */
+  columnOf: number[]
+  columns: number
   /** 每条泳道的类型，渲染层用它给相邻泳道分配中性灰度。 */
   laneKinds: Array<'main' | 'subagent' | 'fork'>
   counts: { turns: number; subagents: number; forks: number }
@@ -108,10 +111,10 @@ export interface GraphLayout {
 
 /** 一行的高度（px）：渲染层与虚拟滚动共用。 */
 export const GRAPH_ROW_H = 28
-/** 相邻泳道的水平间距（px）：图区宽度 = 泳道数 × 14px。 */
-export const GRAPH_LANE_GAP = 14
-/** 主线泳道在左侧留白内的 x 偏移（px）。 */
-export const GRAPH_LANE_X0 = 7
+/** 相邻列的水平间距（px）：列宽固定，节点与连线都落在列中心。 */
+export const GRAPH_COLUMN_GAP = 12
+/** 第 0 列（主线）中心的 x 偏移（px）。 */
+export const GRAPH_COLUMN_X0 = 8
 
 /** 卡片内会话图高度：轮数少时不空大片，超过上限后固定高度、内部滚动（反馈16#09）。 */
 export const GRAPH_CARD_MIN_ROWS = 3
@@ -124,13 +127,85 @@ export function graphCardHeight(rows: number): number {
   return Math.min(max, Math.max(min, Math.max(1, rows) * GRAPH_ROW_H))
 }
 
-export function laneX(lane: number): number {
-  return GRAPH_LANE_X0 + lane * GRAPH_LANE_GAP
+export function columnX(column: number): number {
+  return GRAPH_COLUMN_X0 + column * GRAPH_COLUMN_GAP
 }
 
-/** 节点文字统一从这个 x 开始：图区宽度 = 泳道数 × 14px（在最后一个泳道右侧留 7px）。 */
-export function graphTextX(lanes: number): number {
-  return GRAPH_LANE_X0 + Math.max(1, lanes) * GRAPH_LANE_GAP + 7
+/** 节点文字统一从这个 x 开始：列数 × 12px，最后一列中心右侧留 12px。 */
+export function graphTextX(columns: number): number {
+  return GRAPH_COLUMN_X0 + Math.max(1, columns) * GRAPH_COLUMN_GAP
+}
+
+interface PackedChildren {
+  offset: Map<number, number>
+  width: number
+}
+
+/**
+ * 泳道 → 列。每个分支占一段连续列（自身在最左，子分支依次向右），
+ * 与其它分支行区间相交的不共用列；行区间不相交的分支复用同一段列。
+ * 这样分出/合并的水平线只会穿过同一轮分出的分支在该行的转折点，不会横穿别的竖线。
+ */
+function assignColumns(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  lanes: number,
+): { columnOf: number[]; columns: number } {
+  const span = new Map<number, [number, number]>()
+  const touch = (lane: number, row: number) => {
+    const s = span.get(lane)
+    span.set(lane, s ? [Math.min(s[0], row), Math.max(s[1], row)] : [row, row])
+  }
+  for (const node of nodes) touch(node.lane, node.row)
+  const childrenOf = new Map<number, number[]>()
+  for (const edge of edges) {
+    if (edge.kind === 'main') continue
+    touch(edge.fromLane, edge.fromRow)
+    touch(edge.fromLane, edge.toRow)
+    touch(edge.toLane, edge.fromRow)
+    touch(edge.toLane, edge.toRow)
+    if (edge.toLane > edge.fromLane) {
+      childrenOf.set(edge.fromLane, [...(childrenOf.get(edge.fromLane) ?? []), edge.toLane])
+    }
+  }
+
+  const packs = new Map<number, PackedChildren>()
+  const blockWidth = (lane: number): number => 1 + packOf(lane).width
+  const packOf = (parent: number): PackedChildren => {
+    const cached = packs.get(parent)
+    if (cached) return cached
+    const sorted = [...(childrenOf.get(parent) ?? [])].sort((a, b) => {
+      const [alo, ahi] = span.get(a)!
+      const [blo, bhi] = span.get(b)!
+      return alo - blo || ahi - bhi || a - b
+    })
+    const offset = new Map<number, number>()
+    let width = 0
+    for (const lane of sorted) {
+      const [lo, hi] = span.get(lane)!
+      const w = blockWidth(lane)
+      let off = 0
+      for (const [other, oo] of offset) {
+        const [olo, ohi] = span.get(other)!
+        if (olo > hi || lo > ohi) continue
+        off = Math.max(off, oo + blockWidth(other))
+      }
+      offset.set(lane, off)
+      width = Math.max(width, off + w)
+    }
+    const packed = { offset, width }
+    packs.set(parent, packed)
+    return packed
+  }
+
+  const columnOf = Array.from({ length: lanes }, () => 0)
+  const place = (lane: number, column: number) => {
+    columnOf[lane] = column
+    const { offset } = packOf(lane)
+    for (const child of childrenOf.get(lane) ?? []) place(child, column + 1 + offset.get(child)!)
+  }
+  place(0, 0)
+  return { columnOf, columns: packOf(0).width + 1 }
 }
 
 function countSubagents(list: GraphSubagent[]): number {
@@ -332,11 +407,15 @@ export function layoutSessionGraph(input: GraphInput): GraphLayout {
   // 空会话也保留一行，便于显示空态说明。
   if (rows === 0) rows = 1
 
+  const lanes = Math.max(1, nextLane)
+  const { columnOf, columns } = assignColumns(nodes, edges, lanes)
   return {
     nodes,
     edges,
     rows,
-    lanes: Math.max(1, nextLane),
+    lanes,
+    columnOf,
+    columns,
     laneKinds,
     counts: {
       turns: turns.length,
