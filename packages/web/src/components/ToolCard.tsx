@@ -157,6 +157,10 @@ export const ToolCard = memo(function ToolCard({
   const displayMeta = isTask
     ? { ...meta, verb: agentKind() }
     : meta
+  const onOpenAgent =
+    sub?.summary?.id && activeHostId
+      ? () => openAgentSession(activeHostId, sub.summary!.id)
+      : undefined
   const cardRef = useRef<HTMLDivElement>(null)
   const focusAncestor = useMemo(
     () =>
@@ -359,10 +363,15 @@ export const ToolCard = memo(function ToolCard({
     <div className="my-1" ref={cardRef} data-tool-use-id={block.id}>
       <button data-raw-button
         onClick={() => {
+          // 反馈2108#02：子代理行点击直接进入子代理会话，不再展开卡片。
+          if (onOpenAgent) {
+            onOpenAgent()
+            return
+          }
           setMounted(true)
           setOpen((v) => !v)
         }}
-        aria-expanded={open}
+        aria-expanded={onOpenAgent ? undefined : open}
         data-tip={fullTarget || undefined}
         className="tool-row"
       >
@@ -472,11 +481,7 @@ export const ToolCard = memo(function ToolCard({
                 parentId={parentId}
                 activeHostId={activeHostId}
                 mcp={mcp}
-                onOpenAgent={
-                  sub?.summary?.id && activeHostId
-                    ? () => openAgentSession(activeHostId, sub.summary!.id)
-                    : undefined
-                }
+                onOpenAgent={onOpenAgent}
               />
             </div>
           </div>

@@ -7016,21 +7016,14 @@ async function main() {
 
       const taskRow = page.locator('.tool-row').filter({ hasText: '子代理' }).first()
       await taskRow.waitFor({ timeout: 10_000 })
+      // 反馈2108#02：点子代理行直接进入子代理会话；没有关联到子会话时不会跳转，等待即超时。
       await taskRow.click()
-      await page.getByText('检查价格页前端', { exact: false }).first().waitFor({ timeout: 10_000 })
-      assert.equal(
-        await page.getByText(/没有找到子代理会话/).count(),
-        0,
-        'Task 卡片没有关联到子会话',
-      )
-      await page.locator('[data-tip="打开子代理会话（只读）"]').first().click()
       await page.locator('[data-agent-breadcrumb] [aria-current="page"]').filter({ hasText: '价格页前端' }).waitFor({ timeout: 10_000 })
       assert.ok((await page.locator('[data-turn-id]').count()) > 0, '子代理只读视图没有消息')
       assert.ok((await page.locator('nav[aria-label="会话列表"]').count()) === 1, '只读视图破坏侧栏')
       // 子会话里的 Task 卡片继续跳到下一层（面包屑三层）。
       const nested = page.locator('.tool-row').filter({ hasText: '子代理' }).first()
       await nested.click()
-      await page.locator('[data-tip="打开子代理会话（只读）"]').first().click()
       await page.locator('[data-agent-breadcrumb] [aria-current="page"]').filter({ hasText: '竞品文案' }).waitFor({ timeout: 10_000 })
       const crumbText = await page.locator('[data-agent-breadcrumb]').innerText()
       assert.match(crumbText, /价格页前端/, `面包屑缺少上一级：${crumbText}`)
@@ -7050,6 +7043,21 @@ async function main() {
       await agents.getByRole('button').filter({ hasText: '价格页前端' }).first().click()
       await page.locator('[data-agent-breadcrumb] [aria-current="page"]').filter({ hasText: '价格页前端' }).waitFor({ timeout: 10_000 })
       assert.ok(childId, '演示场景缺少子代理会话')
+    })
+
+    desktop('反馈2108#02：子代理工具行点击直接进入子代理会话，不展开卡片', async (page) => {
+      let demo = await api(base, token, '/api/demo')
+      if (!demo.active) demo = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const mainId = demo.scenarios.find((item) => item.id === 'subagents').sessionIds[0]
+      await openSession(page, mainId)
+      const taskRow = page.locator('button.tool-row').filter({ hasText: '子代理' }).first()
+      await taskRow.waitFor({ timeout: 10_000 })
+      await taskRow.click()
+      await page.locator('[data-agent-breadcrumb] [aria-current="page"]').filter({ hasText: '价格页前端' }).waitFor({ timeout: 10_000 })
+      assert.equal(await page.locator('.tool-detail').count(), 0, '点击子代理行仍展开了卡片')
+      assert.equal(await taskRow.getAttribute('aria-expanded'), null, '子代理行仍是展开按钮')
+      await page.locator('button[data-tip^="返回主会话"]').first().click()
+      await page.locator('[data-turn-id]').first().waitFor()
     })
 
     desktop('反馈12#06/#07：会话信息无顶栏、分组可收起并记住', async (page) => {

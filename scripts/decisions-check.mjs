@@ -610,6 +610,13 @@ const DECISIONS = [
     need: [/depth > 6/, /L8|层号/, /子代理/],
   },
   {
+    id: 'subagent-row-opens-session',
+    source: '反馈2108#02（2026-11-10 用户原话：子代理直接跳转到子代理对应的会话即可，不需要展开一个卡片）',
+    decision: '消息区子代理工具行点击直接打开子代理会话，不展开卡片',
+    files: ['packages/web/src/components/ToolCard.tsx'],
+    need: [/if \(onOpenAgent\) \{/, /aria-expanded=\{onOpenAgent \? undefined : open\}/],
+  },
+  {
     id: 'no-native-window-prompt',
     source: '反馈9 全局屏蔽',
     decision: '右键菜单/拼写/自动填充由应用接管，不出现浏览器自带控件',
