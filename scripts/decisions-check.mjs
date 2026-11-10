@@ -617,6 +617,13 @@ const DECISIONS = [
     need: [/if \(onOpenAgent\) \{/, /aria-expanded=\{onOpenAgent \? undefined : open\}/],
   },
   {
+    id: 'graph-subagent-opens-session',
+    source: '反馈2108#03',
+    decision: '会话图子代理节点点击进入子代理会话；主线节点在当前会话定位该轮',
+    files: [F.graphCard],
+    need: [/openAgentSession\(hostId, node\.subagentId\)/, /focusMessage\(node\.turnId\)/],
+  },
+  {
     id: 'no-native-window-prompt',
     source: '反馈9 全局屏蔽',
     decision: '右键菜单/拼写/自动填充由应用接管，不出现浏览器自带控件',

@@ -55,7 +55,7 @@ export function SessionGraphCard({
   const subagents = useSessionView((s) => s?.subagents)
   const hostSessions = useAppStore((s) => (hostId ? s.runtimes[hostId]?.sessions : undefined))
   const openSession = useAppStore((s) => s.openSession)
-  const focusAgent = useUiStore((s) => s.focusAgent)
+  const openAgentSession = useUiStore((s) => s.openAgentSession)
   const activeTurn = useTurnNavStore((s) => s.active)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
@@ -89,13 +89,13 @@ export function SessionGraphCard({
         if (node.forkSessionId !== sessionId) openSession(hostId, node.forkSessionId)
         return
       }
-      if (node.turnId) focusMessage(node.turnId)
       if (node.subagentId) {
-        // 先跳到父轮（让 Task 卡片挂载），再打开内嵌子代理视图。
-        window.setTimeout(() => focusAgent(node.subagentId!), node.turnId ? 420 : 0)
+        openAgentSession(hostId, node.subagentId)
+        return
       }
+      if (node.turnId) focusMessage(node.turnId)
     },
-    [focusAgent, hostId, openSession, sessionId],
+    [openAgentSession, hostId, openSession, sessionId],
   )
 
   if (!layout) {

@@ -7060,6 +7060,18 @@ async function main() {
       await page.locator('[data-turn-id]').first().waitFor()
     })
 
+    desktop('反馈2108#03：点会话图子代理节点进入子代理会话', async (page) => {
+      let demo = await api(base, token, '/api/demo')
+      if (!demo.active) demo = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const mainId = demo.scenarios.find((item) => item.id === 'subagents').sessionIds[0]
+      await openSession(page, mainId)
+      const graph = page.locator('[data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+      await graph.locator('div[data-kind="subagent"]').first().click()
+      await page.locator('[data-agent-breadcrumb] [aria-current="page"]').filter({ hasText: '价格页前端' }).waitFor({ timeout: 10_000 })
+      assert.match(await page.locator('[data-agent-breadcrumb]').innerText(), /只读/, '子代理节点没有打开只读子会话')
+    })
+
     desktop('反馈12#06/#07：会话信息无顶栏、分组可收起并记住', async (page) => {
       let demo = await api(base, token, '/api/demo')
       if (!demo.active) demo = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
