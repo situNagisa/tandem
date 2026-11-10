@@ -97,6 +97,38 @@ describe('parseInlinePath / splitFileRefs', () => {
     expect(segments[4]).toBe('。')
   })
 
+  test('句中斜杠（通/断、和/或、A/B、1/2、km/h）不是文件路径', () => {
+    for (const text of [
+      '3. 状态不只是通 /断：设阈值并平滑',
+      '通/断时怎么判断可达',
+      '延迟和/或丢包都要看',
+      'A/B 测试',
+      '速度 80km/h',
+      '比例 1/2',
+      '中文/英文',
+    ]) {
+      expect(splitFileRefs(text).every((seg) => typeof seg === 'string')).toBe(true)
+    }
+    expect(parseInlinePath('/断时怎么判断可达')).toBeNull()
+    expect(parseInlinePath('/或')).toBeNull()
+  })
+
+  test('真实路径形状仍然识别（扩展名、多段、显式根、盘符）', () => {
+    expect(parseInlinePath('/home/x/y.md')).toEqual({ path: '/home/x/y.md' })
+    expect(parseInlinePath('/etc/hosts')).toEqual({ path: '/etc/hosts' })
+    expect(parseInlinePath('~/.tandem/config')).toEqual({ path: '~/.tandem/config' })
+    expect(parseInlinePath('./build')).toEqual({ path: './build' })
+    expect(parseInlinePath('C:\\a\\b.txt')).toEqual({ path: 'C:/a/b.txt' })
+    expect(parseInlinePath('C:\\a\\b.txt:12')).toEqual({ path: 'C:/a/b.txt', lineStart: 12 })
+    expect(splitFileRefs('见 /home/x/y.md 与 C:\\a\\b.txt。')).toEqual([
+      '见 ',
+      { ref: { path: '/home/x/y.md' }, text: '/home/x/y.md' },
+      ' 与 ',
+      { ref: { path: 'C:/a/b.txt' }, text: 'C:\\a\\b.txt' },
+      '。',
+    ])
+  })
+
   test('普通文本不产生文件引用', () => {
     expect(splitFileRefs('普通文本，没有路径。')).toEqual(['普通文本，没有路径。'])
     expect(parseInlinePath('https://example.com/a.ts')).toBeNull()
