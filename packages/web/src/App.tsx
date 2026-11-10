@@ -35,7 +35,6 @@ import { SerialTerminalDialog } from './components/workstation/SerialTerminalDia
 import { PreviewPanel } from './components/PreviewPanel'
 import { InboxDialog } from './components/inbox/InboxDialog'
 import { Spinner } from './components/ui/Spinner'
-import { DispatchDialog } from './components/DispatchDialog'
 import { DoctorDialog } from './components/DoctorDialog'
 import { Toasts } from './components/ui/Toasts'
 import { FeatureTour } from './components/tour/FeatureTour'
@@ -56,19 +55,6 @@ const ChecklistDialog = __TANDEM_DEBUG__
 const UiGallery = __TANDEM_DEBUG__
   ? lazy(() => import('./components/ui/UiGallery').then((mod) => ({ default: mod.UiGallery })))
   : null
-
-function DispatchDialogHost() {
-  const open = useUiStore((s) => s.dispatchOpen)
-  const hostId = useUiStore((s) => s.dispatchHostId)
-  const setOpen = useUiStore((s) => s.setDispatchOpen)
-  return (
-    <DispatchDialog
-      open={open}
-      initialHostId={hostId ?? undefined}
-      onClose={() => setOpen(false)}
-    />
-  )
-}
 
 export default function App() {
   useViewportHeight()
@@ -566,7 +552,6 @@ export default function App() {
       <SerialTerminalDialog />
       {isMobile ? <PreviewPanel /> : null}
       <InboxDialog />
-      <DispatchDialogHost />
       <DoctorDialog />
       <SearchDialog />
       <SplitOpenDialog />

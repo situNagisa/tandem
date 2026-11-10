@@ -44,9 +44,7 @@ export function Sidebar({
   const setExternalSourceVisible = useUiStore((s) => s.setExternalSourceVisible)
   const resetComposer = useUiStore((s) => s.resetComposer)
   const setInboxOpen = useUiStore((s) => s.setInboxOpen)
-  const setDispatchOpen = useUiStore((s) => s.setDispatchOpen)
   const setWorkstationOpen = useDevicesStore((s) => s.setWorkstationOpen)
-  const activeHostId = useAppStore((s) => s.activeHostId)
   const account = useAppStore((s) => s.account)
   const isDebugAccount = !!account?.account.debug
   const logoutWorkspace = useAppStore((s) => s.workspaceLogout)
@@ -323,25 +321,6 @@ export function Sidebar({
               <kbd className="hidden shrink-0 text-[10px] font-normal text-muted md:inline">
                 {modLabel} N
               </kbd>
-            </Button>
-          </Tooltip>
-        )}
-        {!readOnly && (
-          <Tooltip
-            label={noHosts ? NO_HOST_REASON : '跨主机派单：把整个任务交给另一台主机执行（不拆子任务）'}
-            className="block w-full"
-          >
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setDispatchOpen(true, activeHostId ?? undefined)
-                onNavigate?.()
-              }}
-              disabled={noHosts}
-              className={row}
-            >
-              <Send size={15} className="shrink-0 opacity-70" />
-              <span className="min-w-0 flex-1 truncate">跨主机派单</span>
             </Button>
           </Tooltip>
         )}

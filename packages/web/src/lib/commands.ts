@@ -153,16 +153,6 @@ const BASE_COMMANDS: AppCommand[] = [
     },
   },
   {
-    id: 'session.dispatch',
-    title: '跨主机派单（整个任务）',
-    keywords: ['派单', '任务', 'dispatch', '其他主机'],
-    defaultShortcut: 'mod+alt+d',
-    run: () => {
-      const store = useAppStore.getState()
-      useUiStore.getState().setDispatchOpen(true, store.active?.hostId ?? store.activeHostId ?? undefined)
-    },
-  },
-  {
     id: 'app.toggle-theme',
     title: '切换主题',
     keywords: ['外观', '深色', '浅色', '主题', 'theme'],

@@ -151,12 +151,6 @@ export interface AppState {
   ) => Promise<void>
   createSession: (hostId: string, input: CreateSessionInput) => Promise<SessionSummary>
   startSession: (hostId: string, input: CreateSessionInput, content: ContentBlock[]) => Promise<SessionSummary>
-  /** 向任意 Host 派单：创建会话并发送，不切换当前打开的会话。 */
-  dispatchSession: (
-    hostId: string,
-    input: CreateSessionInput,
-    content: ContentBlock[],
-  ) => Promise<{ summary: SessionSummary; sent: boolean }>
   updateSession: (
     hostId: string,
     sessionId: string,

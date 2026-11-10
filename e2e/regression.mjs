@@ -4211,12 +4211,6 @@ async function main() {
       const input = page.locator('textarea[aria-label="消息输入框"]')
       await input.waitFor()
 
-      // #11：侧栏是跨主机派单的唯一入口。
-      assert.ok(
-        (await page.getByRole('button', { name: /跨主机派单/ }).first().count()) > 0,
-        '侧栏缺少跨主机派单入口',
-      )
-
       // #01/#03/#09：执行方式菜单统一为 自动 / 单代理 / 低成本 / 多代理协作，委派倾向收进子菜单。
       await page.locator('button[aria-label^="执行方式："]').first().click()
       const exec = page.locator('[role="menu"][aria-label="执行方式"]').first()
@@ -5977,28 +5971,6 @@ async function main() {
         }
         await api(base, token, `/api/profiles/${account.id}`, { method: 'DELETE' }).catch(() => {})
       }
-    })
-
-    desktop('新会话页只保留侧栏跨主机派单入口（反馈8#11 R05）', async (page) => {
-      await page.evaluate(() => {
-        window.location.hash = '#/'
-      })
-      await page.getByText(/今天想做点什么/).first().waitFor({ timeout: 10_000 })
-      assert.equal(
-        await page.getByRole('button', { name: '派单到其他主机', exact: true }).count(),
-        0,
-        '新会话页仍显示重复的「派单到其他主机」按钮',
-      )
-      await page.screenshot({ path: '/tmp/fb8-after/11.png' })
-      await page.getByRole('button', { name: /跨主机派单/ }).first().click()
-      const dialog = page.getByRole('dialog', { name: '跨主机派单' })
-      await dialog.waitFor()
-      assert.match(
-        await dialog.innerText(),
-        /把整个任务交给目标主机执行/,
-        '跨主机派单没有说明与多代理协作的区别',
-      )
-      await page.keyboard.press('Escape')
     })
 
     desktop('新会话页环境条显示当前分支名而不是「分支」占位词', async (page) => {

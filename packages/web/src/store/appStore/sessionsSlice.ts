@@ -30,7 +30,6 @@ export type SessionsSlice = Pick<
   | 'setModel'
   | 'createSession'
   | 'startSession'
-  | 'dispatchSession'
   | 'updateSession'
   | 'markSessionRead'
   | 'forkSession'
@@ -287,17 +286,6 @@ export function createSessionsSlice(
       ensureConnection(hostId)?.subscribe(summary.id, { tail: SESSION_TAIL_MESSAGES })
       get().send(content, { hostId, sessionId: summary.id })
       return summary
-    },
-
-    dispatchSession: async (hostId, input, content) => {
-      const host = getHost(hostId)
-      if (!host) throw new Error('Host 不存在')
-      if (get().runtimes[hostId]?.status !== 'online') throw new Error('Host 离线，无法派单')
-      const summary = await api.createSession(host, input)
-      applySessionSummary(hostId, summary)
-      const conn = ensureConnection(hostId)
-      const sent = conn?.send({ type: 'send', sessionId: summary.id, content }) ?? false
-      return { summary, sent }
     },
 
     updateSession: async (hostId, sessionId, patch) => {

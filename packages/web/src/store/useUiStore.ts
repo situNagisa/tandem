@@ -96,9 +96,6 @@ interface UiState {
   inboxViewOpen: boolean
   /** 通过邀请链接加入 Host 的弹层。 */
   joinInvite: InviteTarget | null
-  /** 派单对话框；hostId 是预选目标。 */
-  dispatchOpen: boolean
-  dispatchHostId: string | null
   toasts: Toast[]
   promptSeed: { text: string; nonce: number } | null
   /** 右侧代理列表点击后，定位并展开消息流中的对应 Task 卡片。 */
@@ -181,7 +178,6 @@ interface UiState {
   closeJoinInvite: () => void
   setInboxOpen: (open: boolean) => void
   setInboxViewOpen: (open: boolean) => void
-  setDispatchOpen: (open: boolean, hostId?: string) => void
   toast: (
     text: string,
     kind?: Toast['kind'],
@@ -321,8 +317,6 @@ export const useUiStore = create<UiState>((set, get) => {
   inboxOpen: false,
   inboxViewOpen: false,
   joinInvite: null,
-  dispatchOpen: false,
-  dispatchHostId: null,
   toasts: [],
   promptSeed: null,
   agentFocus: null,
@@ -504,8 +498,6 @@ export const useUiStore = create<UiState>((set, get) => {
   openJoinInvite: (target) => set({ joinInvite: target }),
 
   closeJoinInvite: () => set({ joinInvite: null }),
-  setDispatchOpen: (open, hostId) =>
-    set((s) => ({ dispatchOpen: open, dispatchHostId: hostId ?? s.dispatchHostId })),
   toast: (text, kind = 'info', options) => {
     const now = Date.now()
     for (const [key, at] of recentToastAt) {

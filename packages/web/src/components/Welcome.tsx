@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUpRight, FileText, GitBranch, Inbox, Search, Send, Sparkles, Wrench } from 'lucide-react'
+import { ArrowUpRight, FileText, GitBranch, Inbox, Search, Sparkles, Wrench } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { useSessionView } from './session/SessionScope'
@@ -103,7 +103,6 @@ export function HomeView() {
   const isMobile = useIsMobile()
   const pendingCount = useInboxPendingCount()
   const unreadCount = useInboxCount()
-  const setDispatchOpen = useUiStore((s) => s.setDispatchOpen)
   const teamRole = useAppStore((s) =>
     s.activeHostId ? s.runtimes[s.activeHostId]?.team?.role : undefined,
   )
@@ -164,14 +163,6 @@ export function HomeView() {
           ]}
         />
         <span className="flex-1" />
-        <button data-raw-button
-          type="button"
-          onClick={() => setDispatchOpen(true)}
-          className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] max-sm:min-h-11 font-medium text-text-tertiary transition-colors hover:bg-[var(--t-bg-hover)] hover:text-text"
-        >
-          <Send size={14} />
-          跨主机派单
-        </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === 'inbox' ? <InboxView embedded /> : <NewSessionView />}
