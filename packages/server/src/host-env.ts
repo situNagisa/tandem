@@ -9,6 +9,7 @@ import path, { type PlatformPath } from 'node:path';
 export interface HostStat {
   type: 'file' | 'dir' | 'other';
   size: number;
+  /** 修改时间（毫秒）。远端执行器返回整毫秒。 */
   mtimeMs: number;
 }
 
@@ -61,11 +62,16 @@ export interface HostEnv {
   };
 }
 
-const DEFAULT_IGNORE = ['node_modules', '.git'];
+export const WALK_DEFAULTS = {
+  ignore: ['node_modules', '.git'],
+  maxEntries: 20_000,
+  maxDepth: 16,
+};
 
 let ripgrepAvailable: boolean | undefined;
 
-function collector(limit: number) {
+/** 按字节上限收集输出，超出部分丢弃。 */
+export function outputCollector(limit: number) {
   const chunks: Buffer[] = [];
   let size = 0;
   return {
@@ -90,8 +96,8 @@ export const localHostEnv: HostEnv = {
       const [file, ...args] = req.argv;
       const child = spawn(file, args, { cwd: req.cwd, signal: req.signal });
       const limit = req.outputLimit ?? Infinity;
-      const stdout = collector(limit);
-      const stderr = collector(limit);
+      const stdout = outputCollector(limit);
+      const stderr = outputCollector(limit);
       child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
       child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
       child.on('error', (err) => reject(err));
@@ -143,9 +149,9 @@ export const localHostEnv: HostEnv = {
       }
     },
     async walk(root, opts = {}) {
-      const ignore = new Set(opts.ignore ?? DEFAULT_IGNORE);
-      const maxEntries = opts.maxEntries ?? 20_000;
-      const maxDepth = opts.maxDepth ?? 16;
+      const ignore = new Set(opts.ignore ?? WALK_DEFAULTS.ignore);
+      const maxEntries = opts.maxEntries ?? WALK_DEFAULTS.maxEntries;
+      const maxDepth = opts.maxDepth ?? WALK_DEFAULTS.maxDepth;
       const result: string[] = [];
       const stack: Array<{ dir: string; depth: number }> = [{ dir: root, depth: 0 }];
       while (stack.length > 0 && result.length < maxEntries) {
