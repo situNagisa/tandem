@@ -727,21 +727,46 @@ function MessageListInner({
   ])
 
   // 固定轮次必须始终可用：即使不在挂载窗口里也要先取回并保持挂载（反馈11#05）。
+  // 被别的取段占用而失败、或快照重置了消息时允许重试；每轮最多试 3 次，避免死循环。
   const pinnedLoadRef = useRef<Set<string>>(new Set())
+  const pinnedAttemptsRef = useRef<Map<string, number>>(new Map())
+  const pinnedRetryTimer = useRef(0)
+  const pinnedMessagesRef = useRef(messages)
+  const [, bumpPinned] = useState(0)
   useEffect(() => {
     if (messagesProp || !activeHostId || !sessionId || pinnedTurns.length === 0) return
+    if (pinnedMessagesRef.current !== messages) {
+      // 消息集合变了（取段成功/快照重置）：重新给固定轮次尝试机会。
+      pinnedMessagesRef.current = messages
+      pinnedAttemptsRef.current.clear()
+    }
     const loaded = new Set(messages.map((message) => message.id))
-    const missing = pinnedTurns.filter((id) => !loaded.has(id) && !pinnedLoadRef.current.has(id))
+    for (const id of pinnedTurns) if (loaded.has(id)) pinnedAttemptsRef.current.delete(id)
+    const missing = pinnedTurns.filter(
+      (id) =>
+        !loaded.has(id) &&
+        !pinnedLoadRef.current.has(id) &&
+        (pinnedAttemptsRef.current.get(id) ?? 0) < 3,
+    )
     if (missing.length === 0) return
-    for (const id of missing) pinnedLoadRef.current.add(id)
+    for (const id of missing) {
+      pinnedLoadRef.current.add(id)
+      pinnedAttemptsRef.current.set(id, (pinnedAttemptsRef.current.get(id) ?? 0) + 1)
+    }
     void useAppStore
       .getState()
       .loadTurnRange(activeHostId, sessionId, missing)
+      .finally(() => {
+        for (const id of missing) pinnedLoadRef.current.delete(id)
+      })
       .then((ok) => {
-        // 被其他取段占用而没成功时允许下次消息变化后重试。
-        if (!ok) for (const id of missing) pinnedLoadRef.current.delete(id)
+        if (ok) return
+        // 被其他取段占用而没成功：允许稍后重试。
+        window.clearTimeout(pinnedRetryTimer.current)
+        pinnedRetryTimer.current = window.setTimeout(() => bumpPinned((n) => n + 1), 700)
       })
   }, [pinnedTurns, messages, messagesProp, activeHostId, sessionId])
+  useEffect(() => () => window.clearTimeout(pinnedRetryTimer.current), [])
 
   // 挂载集合 = 窗口 [windowFrom, windowTo) + 固定轮（含该轮的 assistant 回复）。
   // 两段之间不连续的部分用固定高度占位条代替，已加载但未挂载与尚未加载分开标注。

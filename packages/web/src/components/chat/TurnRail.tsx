@@ -268,10 +268,34 @@ export function TurnRail({
   const feedbackActive = useFeedbackStore((s) => s.active)
 
   // 大会话首屏只带尾部消息：轮次大纲单独拉轻量索引，不为了刻度拉全量历史。
+  // 请求失败时最多再试 2 次；成功一次后计数归零（快照会清空大纲，之后仍可重新拉）。
+  const [turnsRetry, setTurnsRetry] = useState(0)
+  const turnsTryRef = useRef<{ key: string; attempts: number }>({ key: '', attempts: 0 })
   useEffect(() => {
     if (external || !hostId || !sessionId || !hasEarlier || serverTurns || loadingTurns) return
-    void useAppStore.getState().loadSessionTurns(hostId, sessionId)
-  }, [external, hostId, sessionId, hasEarlier, serverTurns, loadingTurns])
+    const key = `${hostId}:${sessionId}`
+    if (turnsTryRef.current.key !== key) turnsTryRef.current = { key, attempts: 0 }
+    if (turnsTryRef.current.attempts >= 3) return
+    turnsTryRef.current.attempts += 1
+    let cancelled = false
+    void useAppStore
+      .getState()
+      .loadSessionTurns(hostId, sessionId)
+      .then(() => {
+        if (cancelled || turnsTryRef.current.key !== key) return
+        if (useAppStore.getState().sessionViews[key]?.turns) {
+          turnsTryRef.current.attempts = 0
+          return
+        }
+        if (turnsTryRef.current.attempts >= 3) return
+        window.setTimeout(() => {
+          if (turnsTryRef.current.key === key) setTurnsRetry((n) => n + 1)
+        }, 1000)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [external, hostId, sessionId, hasEarlier, serverTurns, loadingTurns, turnsRetry])
   // 反馈8#04：不再有独立的「已固定」浮层；固定的轮按轮号排序列出，供 Alt/点击切换的仅固定视图使用。
   const pinnedMarks = useMemo(() => {
     const pinned = new Set(pinnedTurns ?? [])
