@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronUp, Inbox, Kanban, LogIn, LogOut, MonitorSmartphone, PanelLeftClose, Plus, Search, Send, Settings, SlidersHorizontal, UserRound, X } from 'lucide-react'
+import { ChevronUp, Inbox, Kanban, LogIn, LogOut, PanelLeftClose, Plus, Search, Settings, SlidersHorizontal, UserRound, X } from 'lucide-react'
 import { useUiStore } from '../store/useUiStore'
 import { useAppStore } from '../store/useAppStore'
 import { basename, modLabel } from '../lib/format'
@@ -15,7 +15,6 @@ import { SessionList, sessionProjectName } from './SessionList'
 import { useInboxCount } from './inbox/InboxView'
 import { navigateBoard, useBoardRoute } from '../lib/boardRoute'
 import { useBoardBadge } from '../store/useBoardStore'
-import { useDevicesStore } from '../store/useDevicesStore'
 import { LoginDialog } from './accounts/LoginDialog'
 import { MenuItem } from './ui/Menu'
 
@@ -45,13 +44,14 @@ export function Sidebar({
   const setExternalSourceVisible = useUiStore((s) => s.setExternalSourceVisible)
   const resetComposer = useUiStore((s) => s.resetComposer)
   const setInboxOpen = useUiStore((s) => s.setInboxOpen)
-  const setWorkstationOpen = useDevicesStore((s) => s.setWorkstationOpen)
   const account = useAppStore((s) => s.account)
   const isDebugAccount = !!account?.account.debug
   const logoutWorkspace = useAppStore((s) => s.workspaceLogout)
   const [loginOpen, setLoginOpen] = useState(false)
-  // 底部账号菜单：选中项会打开模态（工作站 / 设置），必须先收起菜单，否则模态关闭后菜单还挂着。
+  // 底部账号菜单：选中项会打开模态（工作站设置 / 登录），必须先收起菜单，否则模态关闭后菜单还挂着。
   const [footerMenuOpen, setFooterMenuOpen] = useState(false)
+  const workspaceRole = useAppStore((s) => s.account?.account.role)
+  const workspaceAdmin = workspaceRole === 'admin' || workspaceRole === 'owner'
   const activeHostUrl = useAppStore(
     (s) => s.hosts.find((h) => h.id === s.activeHostId)?.url ?? '',
   )
@@ -169,7 +169,7 @@ export function Sidebar({
       </Menu.RadioGroup>
       <Menu.Separator />
       <Menu.Sub>
-        <Menu.SubTrigger trailing={hostLabel}>主机</Menu.SubTrigger>
+        <Menu.SubTrigger trailing={hostLabel}>按主机筛选</Menu.SubTrigger>
         <Menu.SubContent aria-label="按主机筛选">
           <Menu.RadioGroup
             value={sessionFilter.hostId}
@@ -383,7 +383,7 @@ export function Sidebar({
         <div className="flex min-w-0 items-center gap-1" data-sidebar-footer="">
           {account ? (
             <Menu
-              aria-label="账号与工作站"
+              aria-label="账号菜单"
               side="top"
               open={footerMenuOpen}
               onOpenChange={setFooterMenuOpen}
@@ -414,16 +414,14 @@ export function Sidebar({
                   {account.workspace.name} · {account.account.username}
                 </div>
               </div>
-              <MenuItem
-                icon={<MonitorSmartphone size={13} />}
-                hint="所有主机的 ADB / 串口设备"
-                onSelect={() => footerAction(() => setWorkstationOpen(true))}
-              >
-                工作站
+              <MenuItem icon={<UserRound size={13} />} onSelect={() => footerAction(() => openSettings('profiles'))}>
+                账号设置
               </MenuItem>
-              <MenuItem icon={<Settings size={13} />} onSelect={() => footerAction(() => openSettings('accounts'))}>
-                工作站管理
-              </MenuItem>
+              {workspaceAdmin && (
+                <MenuItem icon={<Settings size={13} />} onSelect={() => footerAction(() => openSettings('accounts'))}>
+                  工作站设置
+                </MenuItem>
+              )}
               <Menu.Separator />
               <MenuItem icon={<LogOut size={13} />} danger onSelect={() => footerAction(() => void logoutWorkspace())}>
                 {__TANDEM_DEBUG__ && isDebugAccount ? '退出调试账号' : '退出登录'}
@@ -445,7 +443,7 @@ export function Sidebar({
             </Menu>
           ) : (
             <Menu
-              aria-label="账号与工作站"
+              aria-label="账号菜单"
               side="top"
               open={footerMenuOpen}
               onOpenChange={setFooterMenuOpen}
@@ -464,13 +462,6 @@ export function Sidebar({
             >
               <MenuItem icon={<LogIn size={13} />} onSelect={() => footerAction(() => setLoginOpen(true))}>
                 账号登录
-              </MenuItem>
-              <MenuItem
-                icon={<MonitorSmartphone size={13} />}
-                hint="所有主机的 ADB / 串口设备"
-                onSelect={() => footerAction(() => setWorkstationOpen(true))}
-              >
-                工作站
               </MenuItem>
             </Menu>
           )}

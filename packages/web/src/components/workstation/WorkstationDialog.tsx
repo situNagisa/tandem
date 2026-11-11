@@ -906,9 +906,9 @@ export function WorkstationDialog() {
     <Modal
       open={open}
       onClose={() => setOpen(false)}
-      title="工作站"
+      title="设备"
       className="max-w-[900px]"
-      description="所有主机的 ADB / 串口设备。挂载后，会话里的 agent 与终端即可使用，即使会话跑在另一台主机上。"
+      description="所有主机的设备。挂载后，会话里的 agent 与终端即可使用，即使会话跑在另一台主机上。"
       footer={
         <div className="flex w-full items-center justify-between gap-3">
           <span className="text-[12px] text-muted">
