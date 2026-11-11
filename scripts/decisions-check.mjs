@@ -32,6 +32,7 @@ const F = {
   contextMeter: 'packages/web/src/components/chat/ContextMeter.tsx',
   usageLine: 'packages/web/src/components/chat/UsageLine.tsx',
   userMessage: 'packages/web/src/components/chat/UserMessage.tsx',
+  markdown: 'packages/web/src/components/Markdown.tsx',
   assistantMessage: 'packages/web/src/components/chat/AssistantMessage.tsx',
   turnActivity: 'packages/web/src/components/chat/TurnActivity.tsx',
   messageList: 'packages/web/src/components/MessageList.tsx',
@@ -40,6 +41,7 @@ const F = {
   composerSend: 'packages/web/src/components/composer/useComposerSend.ts',
   composerFooter: 'packages/web/src/components/composer/ComposerFooter.tsx',
   composerEditor: 'packages/web/src/components/composer/ComposerEditor.tsx',
+  composerLive: 'packages/web/src/components/composer/markdownLive.ts',
   modelMenu: 'packages/web/src/components/composer/ModelMenu.tsx',
   diffView: 'packages/web/src/components/DiffView.tsx',
   permissionCard: 'packages/web/src/components/PermissionCard.tsx',
@@ -464,10 +466,19 @@ const DECISIONS = [
   },
   {
     id: 'composer-markdown',
-    source: '反馈8#02',
-    decision: '输入框 Markdown：围栏、列表续号、就地渲染，发送原始 Markdown',
-    files: [F.composer, F.composerEditor],
-    need: [/markdownInput|richEditor/],
+    source:
+      '反馈8#02；2026-11-11 用户原话：「我想要的是类似 obisidian 或者说 VSCode 的 Markdown，它们平时正常显示，选中哪一行，哪一行就变为可编辑的」',
+    decision:
+      '输入框用 CodeMirror 承载的 Markdown 实时预览：光标行显示源码，其余行隐藏标记；代码块/表格整块切换；Enter 续号、围栏与 @ 路径行为不变，发送原始 Markdown',
+    files: [F.composer, F.composerEditor, F.composerLive, F.composerSend],
+    need: [/markdownLive/, /markdownInput/, /atomicRanges/, /md-code-widget/],
+  },
+  {
+    id: 'user-bubble-markdown',
+    source: '2026-11-11 用户原话：「然后用户的气泡也要完整渲染」',
+    decision: '用户气泡用与助手正文相同的 Markdown 组件渲染（标题降级、列表/代码块/表格/引用），编辑与复制仍是源码',
+    files: [F.userMessage, F.markdown],
+    need: [/<Markdown text=\{text\} variant="user" \/>/, /is-user/],
   },
   {
     id: 'chip-no-effort-dot',

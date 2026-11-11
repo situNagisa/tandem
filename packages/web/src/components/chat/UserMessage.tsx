@@ -11,6 +11,7 @@ import type { UiMessage } from '../../lib/types'
 import { RewindDialog } from '../RewindDialog'
 import { Menu } from '../ui/Menu'
 import { Button, IconButton } from '../ui/Button'
+import { Markdown } from '../Markdown'
 import { dataUrl } from './MessageNotes'
 import { MessageTime, UsageLine } from './UsageLine'
 
@@ -213,7 +214,7 @@ export const UserMessage = memo(function UserMessage({
               }}
               rows={1}
               aria-label="编辑并重发"
-              className="block w-full resize-none overflow-hidden bg-transparent text-[14.5px] leading-[1.68] text-text outline-none"
+              className="block w-full resize-none overflow-hidden bg-transparent text-[15px] leading-[1.65] text-text outline-none"
             />
             <div className="mt-1 flex items-center justify-end gap-1.5">
               <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
@@ -229,9 +230,9 @@ export const UserMessage = memo(function UserMessage({
             <div
               ref={bubbleRef}
               data-msg-bubble=""
-              className="ml-auto w-fit max-w-full whitespace-pre-wrap break-words rounded-[14px] bg-surface-2 px-4 py-2.5 text-[14.5px] leading-[1.68] text-text"
+              className="ml-auto w-fit max-w-full break-words rounded-[14px] bg-surface-2 px-4 py-2.5 text-[15px] leading-[1.65] text-text"
             >
-              {text}
+              <Markdown text={text} variant="user" />
             </div>
           )
         )}

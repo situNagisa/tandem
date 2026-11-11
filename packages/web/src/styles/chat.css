@@ -294,9 +294,52 @@
 /* ---------- Markdown 排版（覆盖 index.css 的 .md 基础样式） ---------- */
 
 .md.chat-md {
-  font-size: 14.5px;
-  line-height: 1.68;
+  font-size: 15px;
+  line-height: 1.65;
   letter-spacing: 0.002em;
+}
+
+/* 用户气泡：与助手正文同一套排版，只把标题降级到气泡合适字号、间距收紧。 */
+.md.chat-md.is-user p {
+  margin: 0.45em 0;
+}
+.md.chat-md.is-user h1,
+.md.chat-md.is-user h2,
+.md.chat-md.is-user h3,
+.md.chat-md.is-user h4,
+.md.chat-md.is-user h5,
+.md.chat-md.is-user h6 {
+  margin: 0.5em 0 0.3em;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.md.chat-md.is-user ul,
+.md.chat-md.is-user ol {
+  margin: 0.35em 0;
+  padding-left: 1.35em;
+}
+.md.chat-md.is-user li {
+  margin: 0.18em 0;
+}
+.md.chat-md.is-user blockquote {
+  margin: 0.5em 0;
+  padding-left: 0.8em;
+}
+.md.chat-md.is-user .chat-code {
+  margin: 0.5em 0;
+}
+.md.chat-md.is-user .chat-code pre {
+  font-size: 12px;
+  max-height: 320px;
+}
+.md.chat-md.is-user .md-table-wrap {
+  margin: 0.5em 0;
+}
+.md.chat-md.is-user > .md-chunk > :first-child {
+  margin-top: 0;
+}
+.md.chat-md.is-user > .md-chunk > :last-child {
+  margin-bottom: 0;
 }
 
 .md.chat-md > :first-child,
