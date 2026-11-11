@@ -47,6 +47,7 @@ import {
   type RouteSignals,
 } from '../model-routing.js';
 import { appendNotice } from '../host/commands.js';
+import { handoffSettings } from '../handoff.js';
 import {
   finishRun,
   noteMessageCompleted,
@@ -255,7 +256,13 @@ export async function runTurn(
       }
       const requestProfileId = routed?.profileId ?? rec.profileId;
       const requestGroupId = routed?.groupId ?? (routed ? undefined : rec.groupId);
-      const selection = host.keyCandidates(requestProfileId, requestGroupId);
+      // 用户选过「继续使用当前分组」或关闭了交接：冷却中的 Key 也直接试，
+      // 让回合打到上游，真正耗尽时再按上游错误结束（反馈0220#02）
+      const retryCoolingKeys =
+        rec.handoffBypass?.includes('ratelimit') === true ||
+        handoffSettings(host.config.handoff).policy === 'off';
+      const keyOptions = { includeCooling: retryCoolingKeys };
+      const selection = host.keyCandidates(requestProfileId, requestGroupId, keyOptions);
       const profile = selection.effective ?? host.profileFor(requestProfileId, requestGroupId);
       if (!profile) throw new Error('当前会话的账号不存在，请在界面上重新选择账号');
       const model = routed?.model || rec.model || profile.defaultModel;
@@ -273,8 +280,10 @@ export async function runTurn(
           host.keysUnavailableMessage(requestProfileId, requestGroupId) ?? '当前账号没有配置 API Key',
         );
       }
-      // 预算到达阻止阈值：先尝试交接（allow-once 时跳过，仍按原逻辑放行一次）
-      const blockedBudget = rt.budgetAllowOnce
+      // 预算到达阻止阈值：先尝试交接（allow-once / 用户已选继续当前分组时跳过，仍按原逻辑放行）
+      const budgetBypassed =
+        rt.budgetAllowOnce || rec.handoffBypass?.includes('budget') === true;
+      const blockedBudget = budgetBypassed
         ? undefined
         : host.budgets.blockingRule({
             profileId: requestProfileId,
@@ -417,7 +426,7 @@ export async function runTurn(
               abort.signal,
               async () => {
                 keyErrors.clear();
-                const attemptKeys = host.keyCandidates(requestProfileId, requestGroupId);
+                const attemptKeys = host.keyCandidates(requestProfileId, requestGroupId, keyOptions);
                 if (attemptKeys.candidates.length === 0) {
                   throw new KeysExhaustedError(
                     host.keysUnavailableMessage(requestProfileId, requestGroupId) ??
@@ -444,6 +453,7 @@ export async function runTurn(
                       idleTimeoutSec: host.config.idleTimeoutSec ?? 180,
                       maxTokens: MAX_TOKENS,
                       effort: rec.effort,
+                      ...(retryCoolingKeys ? { includeCoolingKeys: true } : {}),
                       onEffortDropped: (detail) => {
                         effortDropped = detail || '上游未返回错误详情';
                       },
@@ -588,10 +598,17 @@ export async function runTurn(
             handoffs += 1;
             continue;
           }
-          const outcome = await host.triggerHandoff(rec, 'ratelimit', abort.signal);
-          handoffs += 1;
-          if (outcome === 'continue') continue;
-          reason = 'interrupted';
+          // 交接次数用完（含用户选过「继续使用当前分组」后的重试）：按上游错误结束本轮，
+          // 不再无限重试同一个已耗尽的 Key
+          if (handoffs >= 3) {
+            reason = 'error';
+            errorText = errorMessage(err);
+          } else {
+            const outcome = await host.triggerHandoff(rec, 'ratelimit', abort.signal);
+            handoffs += 1;
+            if (outcome === 'continue') continue;
+            reason = 'interrupted';
+          }
         } else if (rt.interrupted || abort.signal.aborted) reason = 'interrupted';
         else {
           reason = 'error';

@@ -426,8 +426,8 @@ export function GeneralSettings() {
         settingId="general.handoff"
         icon={<Gauge size={15} />}
         title="额度交接"
-        description="额度将尽时暂停当前回合并交接到备用分组"
-        hint="长任务跑到一半额度/限流将尽时，不直接失败：会话会暂停并给出交接卡。自动切换会先保存检查点并压缩上下文，再在备用分组上继续当前回合。未指定备用账号时，按「账号与模型」里每个分组配置的备用分组链选择第一个可用分组；子代理与任务看板卡片遵循同一策略。"
+        description="额度将尽时暂停当前回合并交接到备用分组；也可以关闭，让回合一直跑到额度真正耗尽"
+        hint="长任务跑到一半额度/限流将尽时，不直接失败：会话会暂停并给出交接卡。交接卡默认先给「继续使用当前分组」（一直运行到上游报额度错误，本会话同类提醒不再拦截），再是切换备用分组、等待重置与暂停。自动切换会先保存检查点并压缩上下文，再在备用分组上继续当前回合。未指定备用账号时，按「账号与模型」里每个分组配置的备用分组链选择第一个可用分组；子代理与任务看板卡片遵循同一策略。选「关闭」后不再弹交接卡；预算规则里动作设为「阻止请求」的规则仍会在达到上限时按预算自己的设置拒绝。"
       >
         <SettingRow label="默认策略" wide>
           <Select
@@ -442,6 +442,7 @@ export function GeneralSettings() {
             <option value="ask">询问（推荐）</option>
             <option value="switch">自动切到备用分组</option>
             <option value="wait">自动等待重置</option>
+            <option value="off">关闭（不暂停、不交接）</option>
           </Select>
         </SettingRow>
         {handoff.policy === 'switch' ? (

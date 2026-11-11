@@ -15,7 +15,8 @@ const KEY_COOLDOWN_FALLBACK_MS = 60_000;
 export function normalizeHandoffSettings(value: unknown): HandoffSettings | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const raw = value as Partial<HandoffSettings>;
-  const policy: HandoffPolicy = raw.policy === 'switch' || raw.policy === 'wait' ? raw.policy : 'ask';
+  const policy: HandoffPolicy =
+    raw.policy === 'switch' || raw.policy === 'wait' || raw.policy === 'off' ? raw.policy : 'ask';
   const targetRaw = raw.target;
   const target =
     targetRaw && typeof targetRaw === 'object' && typeof targetRaw.profileId === 'string' && targetRaw.profileId.trim()

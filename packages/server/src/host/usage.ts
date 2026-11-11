@@ -198,6 +198,8 @@ export function contextFor(host: Host, rec: SessionRecord): ContextBreakdown {
 export function assertBudget(host: Host, rec: SessionRecord, model: string,
     scope?: { profileId?: string; groupId?: string }): void {
   host.boards.assertCardBudget(rec);
+  // 用户在本会话选过「继续使用当前分组」：预算阻止不再拦截，直到用户自己改掉预算规则
+  if (rec.handoffBypass?.includes('budget')) return;
   const status = host.budgets.blockingRule({
     profileId: scope?.profileId ?? rec.profileId,
     groupId: scope?.groupId ?? rec.groupId,

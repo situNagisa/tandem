@@ -118,6 +118,24 @@ test('block 规则按会话上下文匹配，limit 边界 100% 触发阻止', (t
   );
 });
 
+test('停用或删除 block 规则后不再阻止请求（反馈0220#02）', (t) => {
+  const env = setup();
+  t.after(env.cleanup);
+  env.spend(12);
+  const context = { profileId: 'p1', groupId: 'g1', model: 'gpt-5' };
+  env.budgets.replace([rule({ id: 'r1' })]);
+  assert.equal(env.budgets.blockingRule(context)?.ruleId, 'r1');
+
+  env.budgets.replace([rule({ id: 'r1', enabled: false })]);
+  assert.equal(env.budgets.blockingRule(context), undefined);
+  assert.equal(env.budgets.status()[0]?.blocked, false);
+
+  env.budgets.replace([rule({ id: 'r1' })]);
+  env.budgets.replace([]);
+  assert.equal(env.budgets.blockingRule(context), undefined);
+  assert.deepEqual(env.budgets.list(), []);
+});
+
 test('告警同一周期同档只报一次', (t) => {
   const env = setup();
   t.after(env.cleanup);

@@ -7,6 +7,7 @@ import type {
   DelegationStrategy,
   HookEntry,
   HookEvent,
+  HandoffAction,
   HandoffReason,
   HostInfo,
   HostSettings,
@@ -522,8 +523,9 @@ export class Host {
     return subagentConfig(this, parent, presetName, modelOverride, role, domain);
   }
 
-  keyCandidates(profileId: string, groupId?: string): { group?: StoredProfileGroup; effective?: StoredProfile; candidates: Array<{ keyId?: string; label?: string; profile: StoredProfile }>; } {
-    return keyCandidates(this, profileId, groupId);
+  keyCandidates(profileId: string, groupId?: string,
+      options: { includeCooling?: boolean } = {}): { group?: StoredProfileGroup; effective?: StoredProfile; candidates: Array<{ keyId?: string; label?: string; profile: StoredProfile }>; } {
+    return keyCandidates(this, profileId, groupId, options);
   }
 
   /** 刚加入工作站：立即把本机模型账号切到账号级镜像（无需重启），并迁移旧数据。 */
@@ -630,7 +632,7 @@ export class Host {
     return triggerHandoff(this, rec, reason, signal);
   }
 
-  chooseHandoff(rec: SessionRecord, action: 'switch' | 'wait' | 'pause'): Promise<SessionRecord> {
+  chooseHandoff(rec: SessionRecord, action: HandoffAction): Promise<SessionRecord> {
     return chooseHandoff(this, rec, action);
   }
 
@@ -649,7 +651,7 @@ export class Host {
     this.handoffTimers.set(sessionId, timer);
   }
 
-  resumeAfterHandoff(sessionId: string, kind: 'switch' | 'wait'): void {
+  resumeAfterHandoff(sessionId: string, kind: 'switch' | 'wait' | 'continue'): void {
     const rec = this.store.get(sessionId);
     if (!rec) return;
     void resumeAfterHandoff(this, rec, kind);

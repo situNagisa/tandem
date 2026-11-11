@@ -1,11 +1,12 @@
 // 会话交接：额度将尽时暂停/切换备用分组/等待重置，并在切换前保存检查点、压缩上下文。
 import { randomUUID } from 'node:crypto';
-import type { HandoffReason, HandoffState } from '@tandem/protocol';
+import type { HandoffAction, HandoffReason, HandoffState } from '@tandem/protocol';
 import { normalizeContextSettings } from '../context-settings.js';
 import { contextWindowForModel, estimateMessagesTokens, estimateTokens } from '../context.js';
 import {
   groupUsable,
   handoffMessage,
+  handoffReasonText,
   handoffResumeAt,
   handoffSettings,
   handoffNotice,
@@ -212,6 +213,15 @@ export async function triggerHandoff(
 ): Promise<'continue' | 'stop'> {
   if (handoffActive(rec)) return 'stop';
   const settings = handoffSettings(host.config.handoff);
+  // 用户在本会话选过「继续使用当前分组」：同类提醒不再拦截
+  if (rec.handoffBypass?.includes(reason)) return 'continue';
+  // 关闭交接：不建卡、不等待，直接让本回合跑完（额度/预算真正耗尽时按上游或预算规则报错）
+  if (settings.policy === 'off') return 'continue';
+  // 预测性提醒只提示不拦截：写一条提示行，交给回合继续
+  if (reason === 'forecast') {
+    host.appendNotice(rec, `${handoffReasonText(reason)}：本轮继续运行，不暂停。`);
+    return 'continue';
+  }
   const state = planHandoff(host, rec, reason);
   if (settings.policy === 'switch') {
     if (state.target) {
@@ -229,11 +239,22 @@ export async function triggerHandoff(
   return 'stop';
 }
 
-/** 用户从交接卡选择继续方式。返回更新后的会话（切换/等待的后续回合异步开始）。 */
+/** 用户从交接卡选择继续方式。返回更新后的会话（切换/等待/继续的后续回合异步开始）。 */
 export async function chooseHandoff(host: Host, rec: SessionRecord,
-    action: 'switch' | 'wait' | 'pause'): Promise<SessionRecord> {
+    action: HandoffAction): Promise<SessionRecord> {
   const state = rec.handoff;
   if (!state || state.status === 'done') throw new Error('当前没有待处理的交接');
+  if (action === 'continue') {
+    // 在当前分组继续本轮，直到真正耗尽；本会话同类提醒不再拦截
+    state.status = 'done';
+    state.resolvedAt = Date.now();
+    state.via = 'user';
+    persistHandoff(host, rec, state);
+    rec.handoffBypass = [...(rec.handoffBypass ?? []).filter((item) => item !== state.reason), state.reason];
+    host.store.markDirty(rec.id, true);
+    host.resumeAfterHandoff(rec.id, 'continue');
+    return rec;
+  }
   if (action === 'switch') {
     if (!state.target) throw new Error('没有可切换的备用分组，请先在账号设置里配置');
     const ok = await performSwitch(host, rec, state, 'user');

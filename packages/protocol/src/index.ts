@@ -410,10 +410,12 @@ export interface Usage {
 }
 
 // ---------- 配额预估与会话交接 ----------
-/** 会话交接策略：询问 / 自动切到备用分组 / 自动等待重置。 */
-export type HandoffPolicy = 'ask' | 'switch' | 'wait';
+/** 会话交接策略：询问 / 自动切到备用分组 / 自动等待重置 / 关闭（不暂停）。 */
+export type HandoffPolicy = 'ask' | 'switch' | 'wait' | 'off';
 export type HandoffReason = 'ratelimit' | 'budget' | 'forecast';
 export type HandoffStatus = 'pending' | 'switching' | 'waiting' | 'done' | 'paused' | 'failed';
+/** 交接卡上的选择：继续使用当前分组 / 切换 / 等待重置 / 暂停。 */
+export type HandoffAction = 'continue' | 'switch' | 'wait' | 'pause';
 /** 交接来源/目标（profileId + groupId + 模型 + 展示名）。 */
 export interface HandoffPeer {
   profileId: string;
@@ -616,8 +618,9 @@ export interface ModelPriceInfo {
 // 否则 Host 内置能力表按模型 id 前缀匹配（如 claude-*-4/4.5/5 支持 thinking；o1/o3/o4/gpt-5 系列支持 reasoning_effort；deepseek-reasoner 不可调）。
 // GET /api/models/capabilities?profileId=&groupId=&model= -> ModelInfo   单个模型的能力（含 efforts、contextWindow）
 // GET /api/sessions/:id/context -> ContextBreakdown
-// POST /api/sessions/:id/handoff { action: 'switch' | 'wait' | 'pause' } -> SessionSummary
-//        额度将尽时选择继续方式：切换备用分组 / 等待重置后自动继续 / 暂停。
+// POST /api/sessions/:id/handoff { action: 'continue' | 'switch' | 'wait' | 'pause' } -> SessionSummary
+//        额度将尽时选择继续方式：继续使用当前分组（到真正耗尽为止，本会话同类提醒不再拦截）/ 切换备用分组 /
+//        等待重置后自动继续 / 暂停。
 
 // ---------- 消息 ----------
 export type ContentBlock =
@@ -1293,6 +1296,8 @@ export interface WorkspaceModelProxyInput {
   maxTokens: number;
   effort?: ReasoningEffort;
   idleTimeoutSec?: number;
+  /** 用户选择「继续使用当前分组」/关闭交接：冷却中的 Key 也直接试一次。 */
+  includeCoolingKeys?: boolean;
 }
 /** 工作站回到主机的流式事件（NDJSON，一行一个）。 */
 export type WorkspaceModelProxyEvent =
@@ -1519,6 +1524,12 @@ export interface FsReadResult {
 
 export interface FsRevealResult { ok: boolean; error?: string }
 
+/** 批量查询文件引用是否存在（行内代码里的路径只有确实存在才生成链接）。 */
+export interface FsExistResult {
+  /** 请求里的原样路径 → 是否以 cwd 为基准存在且是文件。 */
+  exists: Record<string, boolean>;
+}
+
 // ---------- 预算（Host 级，存 ~/.tandem/budgets.json；基于 usage.json 实时累计） ----------
 export type BudgetScope = 'global' | 'account' | 'group' | 'model';
 export type BudgetPeriod = 'day' | 'week' | 'month';
@@ -1742,6 +1753,7 @@ export type BlockDelta =
 // GET    /api/fs/list?path=           -> FsEntry[]   目录选择器
 // GET    /api/fs/git?path=            -> FsGitResult 目录所在仓库与当前分支
 // GET    /api/fs/complete?cwd=&q=     -> string[]    @文件/文件夹 补全（相对 cwd 的路径；文件夹以 / 结尾）
+// POST   /api/fs/exist { cwd?, paths } -> FsExistResult  批量查询文件引用是否存在（只算文件）
 // GET    /api/external-sessions?source=   -> ExternalSession[]    扫描 ~/.claude/projects、~/.codex/sessions
 // GET    /api/external-sessions/:source/:id -> Session            只读预览（转换为 Tandem 消息格式）
 // POST   /api/external-sessions/:source/:id/import -> SessionSummary  复制为 Tandem 会话

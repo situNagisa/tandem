@@ -52,6 +52,7 @@ import type {
   ExternalSession,
   ExternalSource,
   FsEntry,
+  FsExistResult,
   FsGitResult,
   GatewayOverview,
   GatewaySettings,
@@ -61,6 +62,7 @@ import type {
   GatewayTokenUpdateInput,
   FsReadResult,
   FsRevealResult,
+  HandoffAction,
   HookEntry,
   HookSettings,
   HostInfo,
@@ -531,7 +533,7 @@ export const api = {
     request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/resume`, {
       method: 'POST',
     }),
-  handoffSession: (h: HostConfig, id: string, action: 'switch' | 'wait' | 'pause') =>
+  handoffSession: (h: HostConfig, id: string, action: HandoffAction) =>
     request<SessionSummary>(h, `/api/sessions/${encodeURIComponent(id)}/handoff`, {
       method: 'POST',
       body: JSON.stringify({ action }),
@@ -879,6 +881,12 @@ export const api = {
     request<FsGitResult>(h, `/api/fs/git${qs({ path })}`),
   fsRead: (h: HostConfig, path: string, cwd?: string) =>
     request<FsReadResult>(h, `/api/fs/read${qs({ path, cwd })}`),
+  /** 批量查询文件引用是否存在（行内代码里的路径只有确实存在才生成链接）。 */
+  fsExist: (h: HostConfig, cwd: string | undefined, paths: string[]) =>
+    request<FsExistResult>(h, '/api/fs/exist', {
+      method: 'POST',
+      body: JSON.stringify({ cwd, paths }),
+    }),
   fsReveal: (h: HostConfig, path: string) =>
     request<FsRevealResult>(h, '/api/fs/reveal', {
       method: 'POST',

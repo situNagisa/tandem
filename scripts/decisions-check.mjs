@@ -99,6 +99,14 @@ const F = {
   serverConfig: 'packages/server/src/config.ts',
   serverMessages: 'packages/web/src/store/appStore/serverMessages.ts',
   messagesSlice: 'packages/web/src/store/appStore/messagesSlice.ts',
+  handoffCard: 'packages/web/src/components/chat/HandoffCard.tsx',
+  generalSettings: 'packages/web/src/components/settings/GeneralSettings.tsx',
+  serverHandoff: 'packages/server/src/handoff.ts',
+  serverHandoffHost: 'packages/server/src/host/handoff.ts',
+  serverLoop: 'packages/server/src/agent/loop.ts',
+  fileLinks: 'packages/web/src/lib/fileLinks.ts',
+  fileRefExists: 'packages/web/src/lib/fileRefExists.ts',
+  fsRoutes: 'packages/server/src/routes/fs.ts',
 }
 
 /** 每条决定：source = 用户原话/反馈编号；files = 需要检查的文件；need/deny 是源码断言。 */
@@ -305,6 +313,40 @@ const DECISIONS = [
     decision: '消息操作条在消息下方，assistant 也有',
     files: [F.assistantMessage, F.chatCss],
     need: [/data-msg-meta/, /msg-actions/],
+  },
+  {
+    id: 'message-meta-last-only',
+    source:
+      '2026-11-11 用户原话（在一轮会话中，只有最后一段需要留空白…中间这些不需要留空白来显示）',
+    decision: '一轮内只有最后一条 assistant 回复渲染时间/用量/操作行，中间段落不留空白',
+    files: [F.messageList, F.assistantMessage],
+    need: [/lastAssistantOfTurn/, /showMeta/, /data-msg-meta/],
+  },
+  {
+    id: 'file-ref-explicit-only',
+    source:
+      '2026-11-11 用户原话（应该明确指明文件，才生成对应链接。不能靠字符串识别，只要长得像文件，就当成一个文件链接）',
+    decision:
+      '只有 Markdown 链接与「行内代码 + 文件确实存在」生成链接；纯文本不识别；工具卡路径保持可点',
+    files: [F.markdown, F.fileLinks, F.fileRefExists, F.fsRoutes],
+    need: [/extractInlineRefs/, /parseFileHref/, /\/api\/fs\/exist/, /exists\[ref\.path\]/],
+    deny: [/remarkFileLinks/, /splitFileRefs/],
+  },
+  {
+    id: 'handoff-continue-first',
+    source:
+      '2026-11-11 用户原话（额度预算它就没有继续功能…我没办法继续，现在就用不掉这个额度）',
+    decision:
+      '额度交接卡第一位是「继续使用当前分组」：服务端记住到会话，同类提醒不再拦截，直到上游报额度错误',
+    files: [F.handoffCard, F.serverHandoffHost, F.protocol],
+    need: [/继续使用当前分组/, /handoffBypass/, /'continue'/, /HandoffAction/],
+  },
+  {
+    id: 'handoff-can-disable',
+    source: '2026-11-11 用户原话（我也没办法把预算功能关掉）',
+    decision: '额度交接可整体关闭；关闭后服务端不建卡、不等待；预测性提醒只提示不拦截',
+    files: [F.generalSettings, F.serverHandoff, F.serverHandoffHost],
+    need: [/value="off"/, /'off'/, /settings\.policy === 'off'/, /reason === 'forecast'/],
   },
   // 审批（反馈14#07，取代 12#09）
   {

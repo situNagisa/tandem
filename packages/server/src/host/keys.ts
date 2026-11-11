@@ -58,7 +58,8 @@ export function findModelForAlias(host: Host, alias: string,
 }
 
 export function keyCandidates(host: Host, profileId: string,
-    groupId?: string): { group?: StoredProfileGroup; effective?: StoredProfile; candidates: Array<{ keyId?: string; label?: string; profile: StoredProfile }>; } {
+    groupId?: string,
+    options: { includeCooling?: boolean } = {}): { group?: StoredProfileGroup; effective?: StoredProfile; candidates: Array<{ keyId?: string; label?: string; profile: StoredProfile }>; } {
   const profile = host.profiles.get(profileId);
   if (!profile) return { candidates: [] };
   const effective = effectiveProfile(profile, groupId);
@@ -70,7 +71,11 @@ export function keyCandidates(host: Host, profileId: string,
     return { effective, candidates: [{ profile: effective }] };
   }
   const rotationKey = `${profileId}:${groupId}`;
-  const available = rotateKeyCandidates(keys, group.keyStrategy, host.keyRotation, rotationKey);
+  // 用户选过「继续使用当前分组」或关闭了交接：冷却中的 Key 也拿来试一次，
+  // 让回合真正打到上游，而不是在本机直接被冷却拦住。
+  const available = options.includeCooling
+    ? keys.filter((key) => !key.disabled)
+    : rotateKeyCandidates(keys, group.keyStrategy, host.keyRotation, rotationKey);
   return {
     group,
     effective,

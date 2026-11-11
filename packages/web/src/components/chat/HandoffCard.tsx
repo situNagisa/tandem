@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { ArrowRightLeft, Clock, Pause } from 'lucide-react'
+import { ArrowRightLeft, Clock, Pause, Play } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
-import type { HandoffReason } from '@tandem/protocol'
+import type { HandoffAction, HandoffReason } from '@tandem/protocol'
 import { formatTime } from '../../lib/format'
 import { handoffWaitLabel } from '../../lib/quota'
 import { cn } from '../../lib/cn'
@@ -15,21 +15,21 @@ const REASON_TEXT: Record<HandoffReason, string> = {
   forecast: '预计 2 轮内额度耗尽',
 }
 
-/** 额度将尽时插在消息流末尾的交接卡：切换备用分组 / 等待重置 / 暂停。 */
+/** 额度将尽时插在消息流末尾的交接卡：继续使用当前分组 / 切换备用分组 / 等待重置 / 暂停。 */
 export function HandoffCard() {
   const sessionId = useSessionView((s) => s?.sessionId ?? null)
   const hostId = useSessionView((s) => s?.hostId ?? null)
   const state = useSessionView((s) => s?.summary?.handoff ?? null)
   const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
   const handoffSession = useAppStore((s) => s.handoffSession)
-  const [busy, setBusy] = useState<'switch' | 'wait' | 'pause' | null>(null)
+  const [busy, setBusy] = useState<HandoffAction | null>(null)
 
   if (!state || state.status === 'done' || state.status === 'paused' || state.status === 'failed') {
     return null
   }
   if (!sessionId || !hostId || !host) return null
 
-  const choose = async (action: 'switch' | 'wait' | 'pause') => {
+  const choose = async (action: HandoffAction) => {
     if (busy) return
     setBusy(action)
     try {
@@ -39,6 +39,7 @@ export function HandoffCard() {
     }
   }
 
+  const continuing = busy === 'continue'
   const switching = state.status === 'switching' || busy === 'switch'
   const waiting = state.status === 'waiting' || busy === 'wait'
   const target = state.target
@@ -65,7 +66,9 @@ export function HandoffCard() {
       </div>
       <p className="mt-1.5 text-[12.5px] leading-5 text-text-soft">
         {state.message}
-        {targetText ? `切换到 ${targetText}，或等待额度重置。` : '等待额度重置，或暂停。'}
+        {targetText
+          ? `切换到 ${targetText}、等待额度重置，或继续使用当前分组。`
+          : '等待额度重置，或继续使用当前分组。'}
       </p>
       {targetText && (
         <p className="mt-0.5 text-[12px] text-muted">
@@ -81,6 +84,15 @@ export function HandoffCard() {
           <span className="flex-1" />
           <Button
             size="sm"
+            variant="secondary"
+            disabled={!!busy}
+            onClick={() => void choose('continue')}
+            icon={continuing ? <Spinner size={12} /> : <Play size={12} />}
+          >
+            继续使用当前分组
+          </Button>
+          <Button
+            size="sm"
             variant="ghost"
             disabled={!!busy}
             onClick={() => void choose('pause')}
@@ -91,6 +103,15 @@ export function HandoffCard() {
         </div>
       ) : (
         <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!!busy}
+            onClick={() => void choose('continue')}
+            icon={continuing ? <Spinner size={12} /> : <Play size={12} />}
+          >
+            继续使用当前分组
+          </Button>
           <Button
             size="sm"
             variant="primary"
@@ -120,6 +141,9 @@ export function HandoffCard() {
           </Button>
         </div>
       )}
+      <p className="mt-1.5 text-[12px] leading-4 text-muted">
+        继续使用当前分组会一直运行到额度真正耗尽，本会话同类提醒不再拦截。
+      </p>
     </div>
   )
 }

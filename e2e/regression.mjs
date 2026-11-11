@@ -56,6 +56,9 @@ function listen(server) {
 function createMockProvider() {
   // 配额交接用例：主分组第一次成功、之后 429；备用分组始终可用。
   let quotaHits = 0
+  // 反馈0220#02：继续使用当前分组（第 1、3 次 429，其余成功）与关闭交接（第 1 次 429）用例。
+  let quotaContinueHits = 0
+  let quotaOffHits = 0
   // 应用预览用例：记录模型实际收到的用户文本，用于断言元素上下文已附带。
   const seenUserTexts = []
   // 自动路由用例：记录每次请求实际使用的模型，便于断言升级/回落。
@@ -294,6 +297,43 @@ function createMockProvider() {
         return
       }
       quotaStream(res, '配额主分组回复：第二次请求完成。')
+      return
+    }
+    if (body.model === 'quota-continue-model') {
+      quotaContinueHits += 1
+      // 第 1 次：交接卡；第 3 次：验证继续后同类提醒不再拦截（直接重试成功）。
+      if (quotaContinueHits === 1 || quotaContinueHits === 3) {
+        res.writeHead(429, {
+          'content-type': 'application/json',
+          'retry-after': '3',
+          'x-ratelimit-limit-requests': '100',
+          'x-ratelimit-remaining-requests': '0',
+          'x-ratelimit-reset-requests': '3s',
+          'x-ratelimit-remaining-tokens': '0',
+          'x-ratelimit-reset-tokens': '3s',
+        })
+        res.end(JSON.stringify({ error: { message: 'rate limit exceeded' } }))
+        return
+      }
+      quotaStream(res, quotaContinueHits === 2 ? '继续使用当前分组后完成。' : '继续后第三轮完成。')
+      return
+    }
+    if (body.model === 'quota-off-model') {
+      quotaOffHits += 1
+      if (quotaOffHits === 1) {
+        res.writeHead(429, {
+          'content-type': 'application/json',
+          'retry-after': '3',
+          'x-ratelimit-limit-requests': '100',
+          'x-ratelimit-remaining-requests': '0',
+          'x-ratelimit-reset-requests': '3s',
+          'x-ratelimit-remaining-tokens': '0',
+          'x-ratelimit-reset-tokens': '3s',
+        })
+        res.end(JSON.stringify({ error: { message: 'rate limit exceeded' } }))
+        return
+      }
+      quotaStream(res, '关闭交接后本轮完成。')
       return
     }
     if (body.model === 'quota-backup-model') {
@@ -1414,6 +1454,32 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       ],
     },
     {
+      // 反馈0220#02：没有备用分组，验证「继续使用当前分组」与「关闭交接」。
+      id: 'p-quota2',
+      name: '额度继续账号',
+      kind: 'openai-compatible',
+      baseUrl,
+      models: ['quota-continue-model', 'quota-off-model'],
+      defaultModel: 'quota-continue-model',
+      createdAt: Date.now() - 31_000,
+      groups: [
+        {
+          id: 'g-continue',
+          name: '继续分组',
+          keys: [{ id: 'k-continue', label: '主', apiKey: 'reg-key-continue' }],
+          models: ['quota-continue-model'],
+          defaultModel: 'quota-continue-model',
+        },
+        {
+          id: 'g-off',
+          name: '关闭交接分组',
+          keys: [{ id: 'k-off', label: '主', apiKey: 'reg-key-off' }],
+          models: ['quota-off-model'],
+          defaultModel: 'quota-off-model',
+        },
+      ],
+    },
+    {
       id: 'p-route',
       name: '自动路由账号',
       kind: 'openai-compatible',
@@ -1650,6 +1716,7 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       { model: 'mock-1', usage: { inputTokens: 19_400, outputTokens: 1_040, costUsd: 0.03 }, createdAt: createdAt + 800_000, durationMs: 43_500 },
     ),
     // 时间格式：两天前的一条（`MM-DD HH:mm`）与一条十年前的（带年份）。
+    // 各自单起一轮，保证它们仍是本轮最后一条回复、保留下方时间行（反馈0220#05）。
     message('r16a4', 'assistant', '两天前的回复：分页正常。', {
       model: 'mock-1',
       createdAt: createdAt - 2 * 86_400_000,
@@ -1728,36 +1795,6 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
     mk('links', '文件链接会话', linksMessages, { updatedAt: Date.now() - 1500 }),
     mk('wide', '宽内容会话', wideMessages, { updatedAt: Date.now() - 1520 }),
     mk('codeblock', '代码块与表格会话', richMessages, { updatedAt: Date.now() - 1530 }),
-    mk('slow2', '排队消息会话', [
-      message('sq1', 'user', '先看看项目'),
-      message('sq2', 'assistant', '项目看起来正常。', { model: 'mock-1' }),
-    ], { permissionMode: 'bypassPermissions', updatedAt: Date.now() - 1536 }),
-    mk('scroll', '流式跟随会话', Array.from({ length: 8 }, (_, i) => [
-      message(`sc${i}u`, 'user', `第 ${i + 1} 个问题：请逐段介绍一下项目的结构与约定。`),
-      message(
-        `sc${i}a`,
-        'assistant',
-        Array.from({ length: 6 }, (_, j) => `第 ${i + 1} 节第 ${j + 1} 段：较长的说明文字，用来撑高对话区，便于观察滚动位置。`).join('\n\n'),
-        { model: 'mock-1' },
-      ),
-    ]).flat(), { permissionMode: 'bypassPermissions', updatedAt: Date.now() - 1534 }),
-    mk('slow', '慢速运行会话', [
-      message('slow1', 'user', '先看看项目'),
-      message('slow2', 'assistant', '项目看起来正常。', { model: 'mock-1' }),
-    ], { permissionMode: 'bypassPermissions', updatedAt: Date.now() - 1535 }),
-    // 配额交接：主分组第一次请求成功后下一次 429，备用分组接住。
-    mk('quota', '配额交接会话', [
-      message('q1', 'user', '第一轮：介绍一下项目'),
-      message('q2', 'assistant', '配额主分组回复：第一轮完成。', {
-        model: 'quota-model',
-        usage: { inputTokens: 120, outputTokens: 20, costUsd: 0.001 },
-      }),
-    ], {
-      profileId: 'p-quota',
-      groupId: 'g-quota-main',
-      model: 'quota-model',
-      updatedAt: Date.now() - 1550,
-    }),
     mk('nockpt', '无检查点会话', [
       message('n1', 'user', '先看看目录'),
       message('n2', 'assistant', '目录结构如下。', { model: 'mock-1' }),
@@ -3642,6 +3679,77 @@ async function main() {
       assert.match(await quotaAfter.innerText(), /按当前速度约可再跑 \d+ 轮/)
     })
 
+    // 反馈0220#02：额度将尽不再只有「换分组 / 等待 / 暂停」。
+    desktop('反馈0220#02：额度将尽时可继续使用当前分组跑完本轮', async (page) => {
+      const outDir = '/tmp/fix-0220c/regression'
+      mkdirSync(outDir, { recursive: true })
+      await openSession(page, 'quota-continue')
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await waitOnline(page)
+      await waitModelReady(page)
+      const box = page.locator('[aria-label="消息输入框"]').first()
+      await box.fill('第二轮：用当前分组继续')
+      await box.press('Enter')
+
+      const card = page.locator('[data-handoff-card="true"]')
+      await card.waitFor({ state: 'visible', timeout: 20_000 })
+      const cardText = await card.innerText()
+      assert.match(cardText, /额度将尽/, `交接卡缺少额度提示：${cardText}`)
+      assert.match(cardText, /没有备用分组/, `交接卡不应有备用分组：${cardText}`)
+      const firstButton = (await card.getByRole('button').first().innerText()).trim()
+      assert.equal(firstButton, '继续使用当前分组', `继续按钮不在第一位：${firstButton}`)
+      await page.screenshot({ path: path.join(outDir, 'handoff-continue-card.png') })
+
+      await card.getByRole('button', { name: '继续使用当前分组' }).click()
+      await page.getByText('继续使用当前分组后完成。').first().waitFor({ timeout: 20_000 })
+      await page.screenshot({ path: path.join(outDir, 'handoff-continue-done.png') })
+
+      const after = await api(base, token, '/api/sessions/quota-continue')
+      assert.equal(after.handoff?.status, 'done', '继续后交接状态应为 done')
+      assert.equal(after.groupId, 'g-continue', '继续使用当前分组不应切换分组')
+      assert.equal(after.model, 'quota-continue-model', '继续使用当前分组不应切换模型')
+      await page.waitForTimeout(300)
+      assert.equal(await page.locator('[data-handoff-card="true"]').count(), 0, '继续后交接卡应消失')
+
+      // 本会话后续同类提醒不再拦截：第 3 次请求仍 429，直接重试成功，不再弹卡。
+      await box.fill('第三轮：继续用当前分组')
+      await box.press('Enter')
+      await page.getByText('继续后第三轮完成。').first().waitFor({ timeout: 20_000 })
+      await page.waitForTimeout(300)
+      assert.equal(await page.locator('[data-handoff-card="true"]').count(), 0, '继续后同类提醒不应再弹交接卡')
+      await page.screenshot({ path: path.join(outDir, 'handoff-continue-next-turn.png') })
+    })
+
+    // 反馈0220#02：设置里关闭交接后，回合不再被交接卡拦住。
+    desktop('反馈0220#02：关闭额度交接后不再出现交接卡', async (page) => {
+      const outDir = '/tmp/fix-0220c/regression'
+      mkdirSync(outDir, { recursive: true })
+      const original = await api(base, token, '/api/settings')
+      try {
+        await api(base, token, '/api/settings', {
+          method: 'PUT',
+          body: JSON.stringify({ handoff: { policy: 'off' } }),
+        })
+        await openSession(page, 'quota-off')
+        await page.evaluate(() => document.documentElement.classList.add('dark'))
+        await waitOnline(page)
+        await waitModelReady(page)
+        const box = page.locator('[aria-label="消息输入框"]').first()
+        await box.fill('第二轮：关闭交接后继续')
+        await box.press('Enter')
+        await page.getByText('关闭交接后本轮完成。').first().waitFor({ timeout: 20_000 })
+        await page.waitForTimeout(300)
+        assert.equal(await page.locator('[data-handoff-card="true"]').count(), 0, '关闭交接后不应出现交接卡')
+        const after = await api(base, token, '/api/sessions/quota-off')
+        assert.notEqual(after.handoff?.status, 'pending', '关闭交接后不应产生待处理交接')
+        await page.screenshot({ path: path.join(outDir, 'handoff-off-done.png') })
+      } finally {
+        await api(base, token, '/api/settings', {
+          method: 'PUT',
+          body: JSON.stringify({ handoff: original.handoff ?? { policy: 'ask' } }),
+        })
+      }
+    })
 
     desktop('Secrets 工具输出显示打码标签', async (page) => {
       await openSession(page, 'secrets')

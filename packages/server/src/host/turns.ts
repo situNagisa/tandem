@@ -207,11 +207,11 @@ export async function sendToModel(
   if (needsTitle && isFirstUserMessage) void host.autoTitle(rec, text, rec.title);
 }
 
-/** 交接后继续当前回合（切换完成或等待重置到点）。 */
+/** 交接后继续当前回合（切换完成 / 等待重置到点 / 用户选择继续使用当前分组）。 */
 export async function resumeAfterHandoff(
   host: Host,
   rec: SessionRecord,
-  kind: 'switch' | 'wait',
+  kind: 'switch' | 'wait' | 'continue',
 ): Promise<void> {
   const rt = host.ensureRuntime(rec.id);
   if (rt.running || rt.draining || rt.deleted) return;

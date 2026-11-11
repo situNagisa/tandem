@@ -15,6 +15,8 @@ export interface ProxyRunner {
       maxTokens: number;
       effort?: ReasoningEffort;
       idleTimeoutSec: number;
+      /** 冷却中的 Key 也直接试一次（用户选择继续使用当前分组 / 关闭交接）。 */
+      includeCoolingKeys?: boolean;
     },
     emit: (event: WorkspaceModelProxyEvent) => void,
     signal: AbortSignal,
@@ -38,6 +40,8 @@ export interface StreamRequest {
   maxTokens: number;
   /** 思考强度；缺省或 off 时不向 provider 发送思考参数。 */
   effort?: ReasoningEffort;
+  /** 账号级镜像：冷却中的 Key 也直接试一次（用户选择继续使用当前分组 / 关闭交接）。 */
+  includeCoolingKeys?: boolean;
   /** provider 因上游拒绝思考参数而去掉参数并重试成功时调用（每轮只记一次），detail 为脱敏后的上游错误摘要。 */
   onEffortDropped?: (detail: string) => void;
   /** 响应头里的限流额度（provider 支持时）；用于按 Key 记录剩余额度。 */

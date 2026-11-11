@@ -1,6 +1,6 @@
 # 反馈根因台账
 
-> 更新：2026-11-11。每条反馈先归到一个根因（R 编号），再决定修法。同一根因第 2 次出现必须在共享层修，并在「防线位置」加自动检查；修复流水写在提交信息，不进本表。
+> 更新：2026-11-12。每条反馈先归到一个根因（R 编号），再决定修法。同一根因第 2 次出现必须在共享层修，并在「防线位置」加自动检查；修复流水写在提交信息，不进本表。
 
 | 编号 | 根因 | 次数 | 防线位置 |
 |---|---|---|---|
@@ -9,7 +9,7 @@
 | R03 | 弹层被裁切或越界 | 5 | Portal + 碰撞避让；细长目标（SVG 连线等）用 `data-tip-anchor="pointer"` 按指针锚定；regression「tooltip/菜单不越界」多视口用例、regression「会话图泳道线 tooltip 以指针定位并完整显示在视口内」 |
 | R04 | 彩色过多、强调色越界、焦点橙环 | 5 | design P02；ui-audit accent/selection 检查；regression 焦点环只随键盘出现 |
 | R05 | 重复入口（新会话、设置、删除、派单、缓存率、同图标的两个 ⋯ 等） | 7 | design P15；decisions-check 唯一入口项、`topbar-panel-icon-distinct`；regression 顶栏 ≤5/入口唯一/无重复缓存率/顶栏无同图标按钮 |
-| R06 | Windows 路径与编码、安装说明平台化；句中斜杠被识别成文件路径 | 8 | 路径规范化单测；`fileLinks` 路径形状单测（句中斜杠反例）；regression 盘符路径/平台分段安装说明 |
+| R06 | Windows 路径与编码、安装说明平台化；句中斜杠与「长得像文件」的文字被识别成文件链接 | 9 | 路径规范化单测；`extractInlineRefs` 只收行内代码（纯文本不识别），行内代码经 Host 批量存在性（`POST /api/fs/exist`，只算文件）才成链接，客户端 60s 缓存；regression 反馈0220#04、盘符路径、平台分段安装说明 |
 | R07 | 外部会话注入内容外露、被当作用户轮 | 3 | `isSystemInjectionText` 统一口径；单测 turns/external；regression 注入口径用例 |
 | R08 | 点了没反应 / 数据未就绪被当异常 | 5 | 加载态与默认值兜底；store `openSession` 同步地址栏（`sessionsSlice`，否则 `navigate` 同址短路吞掉按路由的跳转）；decisions-check `route-follows-session`；regression 新会话环境条/模型价格/手机环境条/反馈2108#04 |
 | R09 | 反馈模式与浮层交互冲突 | 2 | `lib/overlay` + `data-portal-layer`；ui-audit contains/portal；regression 反馈圈选 |
@@ -70,3 +70,5 @@
 | R69 | 新会话页的账号/分组/模型/思考强度只存在组件状态，每次挂载回到默认选择 | 1 | `lib/newSessionPick.ts` 按主机记住 + 失效回落；单测 `newSessionPick`；decisions-check `new-session-pick-memory`；regression 反馈2102#05 |
 | R70 | 点击语义不符：子代理入口展开卡片或内嵌定位，而不是进入目标视图 | 2 | 子代理入口统一 `openAgentSession`（`ToolCard` 的 `onOpenAgent`、`SessionGraphCard` 的 `open`）；decisions-check `subagent-row-opens-session`、`graph-subagent-opens-session`；regression 反馈2108#02/#03 |
 | R71 | 客户端按字段重建摘要时漏掉 `unread`，快照覆盖列表后本地已读与服务端分叉（点掉了、重启又出现） | 1 | `summaryOf` 保留 `unread`；聚焦时以列表摘要兜底调用已读接口；regression 反馈2156#02 |
+| R72 | 额度将尽时只能换分组/等待/暂停，不能继续用当前分组；交接策略不能关闭；预测性提醒也会拦停回合 | 1 | 交接卡首位「继续使用当前分组」→ `chooseHandoff('continue')` 写会话级 `handoffBypass`（同类提醒不再拦截、冷却 Key 直接重试）；`HandoffPolicy` 加 `off`，`triggerHandoff` 服务端不建卡；`forecast` 只写提示；单测 `handoff`/`budgets`；regression 反馈0220#02 |
+| R73 | 一轮内每段 assistant 回复都保留下方操作/用量行空白 | 1 | `MessageList` 按轮算 `lastAssistantOfTurn`，只给最后一条渲染 `data-msg-meta` 与 `msg-more`；regression 反馈0220#05 |

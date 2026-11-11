@@ -178,7 +178,11 @@ export async function streamAccountModel(
   const candidates: UpstreamCandidate[] =
     !group || groupKeys.length === 0
       ? [{ profile: effective }]
-      : rotateKeyCandidates(groupKeys, group.keyStrategy, rotation, `${ctx.accountId}:${input.profileId}:${input.groupId ?? ''}`).map(
+      : (input.includeCoolingKeys
+          ? // 用户选择「继续使用当前分组」/关闭交接：冷却中的 Key 也直接试一次
+            groupKeys.filter((key) => !key.disabled)
+          : rotateKeyCandidates(groupKeys, group.keyStrategy, rotation, `${ctx.accountId}:${input.profileId}:${input.groupId ?? ''}`)
+        ).map(
           (key) => ({
             keyId: key.id,
             ...(key.label ? { label: key.label } : {}),

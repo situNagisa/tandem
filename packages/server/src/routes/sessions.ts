@@ -262,8 +262,8 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
     const rec = host.store.get(id);
     if (!rec) return bad(reply, '会话不存在', 404);
     const action = (req.body as { action?: unknown } | null)?.action;
-    if (action !== 'switch' && action !== 'wait' && action !== 'pause') {
-      return bad(reply, 'action 必须是 switch / wait / pause', 400);
+    if (action !== 'continue' && action !== 'switch' && action !== 'wait' && action !== 'pause') {
+      return bad(reply, 'action 必须是 continue / switch / wait / pause', 400);
     }
     try {
       await host.chooseHandoff(rec, action);

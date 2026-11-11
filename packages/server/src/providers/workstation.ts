@@ -23,6 +23,7 @@ export async function streamViaWorkstation(req: StreamRequest): Promise<StreamRe
         tools: req.tools,
         maxTokens: req.maxTokens,
         ...(req.effort ? { effort: req.effort } : {}),
+        ...(req.includeCoolingKeys ? { includeCoolingKeys: true } : {}),
         idleTimeoutSec: req.idleTimeoutSec,
       },
       (event) => {

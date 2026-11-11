@@ -151,6 +151,8 @@ export interface SessionRecord extends Session {
   board?: { boardId: string; cardId: string };
   /** 额度将尽时的会话交接状态（持久化，随 SessionSummary 下发）。 */
   handoff?: import('@tandem/protocol').HandoffState;
+  /** 用户选过「继续使用当前分组」的原因：本会话同类提醒不再拦截（持久化，不下发）。 */
+  handoffBypass?: import('@tandem/protocol').HandoffReason[];
   /** 自动模型路由的运行态：升级偏移、连续简单成功与失败标记（持久化，不下发）。 */
   routeState?: {
     tierBias: number;

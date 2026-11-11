@@ -1,6 +1,6 @@
 # 账号与模型（设置）
 
-> 更新：2026-11-11。设计原则见 [design.md](../design.md) 的 P21；根因见 [feedback-ledger.md](../feedback-ledger.md) 的 R59/R60/R42/R43/R37。协议字段见 `packages/protocol/src/index.ts`。
+> 更新：2026-11-12。设计原则见 [design.md](../design.md) 的 P21；根因见 [feedback-ledger.md](../feedback-ledger.md) 的 R59/R60/R42/R43/R37/R72。协议字段见 `packages/protocol/src/index.ts`。
 
 ## 归属：工作站账号级（反馈12#01 · R59）
 
@@ -40,6 +40,13 @@
 
 - 所有下拉都走 `ui/MenuSelect`（设置里的 `Controls.Select` 也是它的包装）；可输入 + 候选的模型 ID 输入走 `ui/Combobox`（单价覆盖、预算按模型）。
 - `scripts/ui-audit.mjs` 新增 `native-datalist`、`native-input-list`，与既有的 `native-select` 一样在 `ui/` 以外直接失败，不设白名单例外。
+
+## 额度交接与预算阻止（反馈0220#02 / R72）
+
+- 交接卡（`components/chat/HandoffCard.tsx`）第一个动作是「继续使用当前分组」：服务端 `chooseHandoff('continue')` 把该原因记进会话级 `handoffBypass` 并继续当前回合；本会话同类提醒不再拦截，冷却中的 Key 也直接重试（`keyCandidates({ includeCooling })`），直到上游返回额度错误才结束（同一原因单轮最多重试 3 次）。
+- 设置 → 通用 → 额度交接的「默认策略」可选 `off`（关闭）：服务端 `triggerHandoff` 不建卡、不等待，回合直接跑完；关闭后冷却 Key 同样直接重试。预测性提醒 `forecast` 默认只写一条提示行，不停回合。
+- 预算规则（设置 → 预算）：每条规则可单独停用/删除，`blockingRule` 只看启用且达到 100% 的规则，所以停用/删除后新请求不再被阻止（单测 `budgets`）。预算阻止命中时同样先给交接卡；选「继续使用当前分组」后本会话预算阻止不再拦（`assertBudget` 读 `handoffBypass`）。
+- 验证：单测 `packages/server/test/handoff.test.ts`、`budgets.test.ts`；回归「反馈0220#02：额度将尽时可继续使用当前分组跑完本轮」「反馈0220#02：关闭额度交接后不再出现交接卡」。
 
 ## 验证
 
