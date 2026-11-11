@@ -4351,8 +4351,8 @@ async function main() {
       await page.screenshot({ path: '/tmp/fb8-after/11-chip.png' })
     })
 
-    desktop('输入框 Markdown 就地渲染：代码块等宽、列表缩进、Enter 续号与原始内容发送（反馈8#02 / 1323#05）', async (page) => {
-      mkdirSync('/tmp/fix-1323b', { recursive: true })
+    desktop('输入框 Markdown 实时预览：光标外隐藏标记、代码块整块渲染、Enter 续号与原始内容发送（反馈8#02 / 1323#05）', async (page) => {
+      mkdirSync('/tmp/md-cm', { recursive: true })
       const mdSession = await api(base, token, '/api/sessions', {
         method: 'POST',
         body: JSON.stringify({
@@ -4369,6 +4369,8 @@ async function main() {
       const input = page.locator('[aria-label="消息输入框"]')
       await input.waitFor()
       const value = () => input.getAttribute('data-value')
+      const lineTexts = () =>
+        input.evaluate((root) => [...root.querySelectorAll('.cm-line')].map((line) => line.textContent ?? ''))
       const sessionOf = () => api(base, token, `/api/sessions/${mdSession.id}`)
       const messageCount = async () => (await sessionOf()).messages.length
 
@@ -4382,9 +4384,9 @@ async function main() {
       assert.match(await value(), /const a = 1 {2}\n```/, '代码块内 Tab 没有缩进两格')
       await input.press('Enter')
       assert.equal(await messageCount(), beforeCode, '代码块内回车触发了发送')
-      // 代码块就地渲染：等宽字体与浅色底。
+      // 光标在块内：源码态代码块仍是等宽字体与浅色底。
       const codeStyle = await input.evaluate((root) => {
-        const line = root.querySelector('.ce-line-code')
+        const line = root.querySelector('.md-code-line')
         if (!line) return null
         const style = getComputedStyle(line)
         return {
@@ -4392,7 +4394,7 @@ async function main() {
           background: style.backgroundColor,
         }
       })
-      assert.ok(codeStyle, '代码块没有进入样式层')
+      assert.ok(codeStyle, '光标在块内时没有源码态代码块')
       assert.ok(codeStyle.mono, `代码块不是等宽字体：${codeStyle && codeStyle.background}`)
       assert.notEqual(codeStyle.background, 'rgba(0, 0, 0, 0)', '代码块没有浅色底')
       const seenBefore = provider.seenUserTexts.length
@@ -4407,28 +4409,28 @@ async function main() {
         '发送内容没有保留原始代码块',
       )
 
-      // 行内 Markdown：粗体、斜体、行内代码就地显示，源码不变。
+      // 行内 Markdown：粗体、斜体、行内代码同步呈现，源码不变。
       await input.fill('**粗体** *斜体* `code`')
       const inline = await input.evaluate((root) => ({
-        strong: root.querySelector('.ce-strong')?.textContent ?? '',
-        em: root.querySelector('.ce-em')?.textContent ?? '',
-        code: root.querySelector('.ce-inline-code')?.textContent ?? '',
+        strong: root.querySelector('.md-strong')?.textContent ?? '',
+        em: root.querySelector('.md-em')?.textContent ?? '',
+        code: root.querySelector('.md-inline-code')?.textContent ?? '',
         strongWeight: (() => {
-          const el = root.querySelector('.ce-strong')
+          const el = root.querySelector('.md-strong')
           return el ? getComputedStyle(el).fontWeight : ''
         })(),
         emStyle: (() => {
-          const el = root.querySelector('.ce-em')
+          const el = root.querySelector('.md-em')
           return el ? getComputedStyle(el).fontStyle : ''
         })(),
         codeMono: (() => {
-          const el = root.querySelector('.ce-inline-code')
+          const el = root.querySelector('.md-inline-code')
           return el ? getComputedStyle(el).fontFamily : ''
         })(),
       }))
       assert.equal(inline.strong, '粗体', '粗体没有就地渲染')
       assert.equal(inline.em, '斜体', '斜体没有就地渲染')
-      assert.equal(inline.code, '`code`', '行内代码没有就地渲染')
+      assert.equal(inline.code, 'code', '行内代码没有就地渲染')
       assert.ok(Number(inline.strongWeight) >= 600, '粗体字重没有生效')
       assert.equal(inline.emStyle, 'italic', '斜体没有生效')
       assert.match(inline.codeMono, /mono|Consolas/i, '行内代码不是等宽字体')
@@ -4444,11 +4446,11 @@ async function main() {
       assert.equal(await value(), '1. 第一项\n2. 第二项\n3. ', '有序列表第二次没有续号')
       assert.equal(await messageCount(), beforeList, '列表回车触发了发送')
       const listStyle = await input.evaluate((root) => {
-        const lines = [...root.querySelectorAll('.ce-line-list')]
+        const lines = [...root.querySelectorAll('.md-list-line')]
         return {
           count: lines.length,
           padding: lines[0] ? parseFloat(getComputedStyle(lines[0]).paddingLeft) : 0,
-          marks: root.querySelectorAll('.ce-list-mark').length,
+          marks: root.querySelectorAll('.md-bullet, .md-list-mark').length,
         }
       })
       assert.ok(listStyle.count >= 2, '列表项没有独立行样式')
@@ -4471,7 +4473,7 @@ async function main() {
         '有序列表没有按原文发送',
       )
 
-      // 无序列表自动续项。
+      // 无序列表自动续项；非光标行显示为圆点。
       const beforeUnordered = await messageCount()
       await input.fill('- 项目一')
       await input.press('Enter')
@@ -4479,6 +4481,7 @@ async function main() {
       await input.type('项目二')
       await input.press('Enter')
       assert.equal(await value(), '- 项目一\n- 项目二\n- ', '无序列表第二次没有续项')
+      assert.ok((await input.locator('.md-bullet').count()) >= 1, '非光标行的无序列表没有显示圆点')
       const seenBeforeUnordered = provider.seenUserTexts.length
       await page.getByRole('button', { name: '发送消息' }).click()
       for (let i = 0; i < 80; i++) {
@@ -4492,17 +4495,163 @@ async function main() {
           .some((text) => text.includes('- 项目一') && text.includes('- 项目二')),
         '无序列表没有按原文发送',
       )
+
+      // 标题 / 分割线：非光标行不显示源码标记。
       await input.fill('# 标题\n\n---\n\n正文')
-      assert.ok((await input.locator('.ce-line-heading').count()) >= 1, '标题没有进入样式层')
+      assert.ok((await input.locator('.md-heading').count()) >= 1, '标题没有进入样式层')
       assert.equal(await value(), '# 标题\n\n---\n\n正文', '标题行改变了原文')
 
-      // 深/浅主题截图：列表、代码块、路径标记。
-      await input.fill('- 列表项\n\n```ts\nconst a = 1\n```\n\n正文 `inline` **粗体**')
-      await page.screenshot({ path: '/tmp/fix-1323b/1323-light.png' })
+      // 实时预览：光标不在的行隐藏 ** 与 #，移入后显示源码。
+      await input.fill('# 标题\n\n正文 **粗体**')
+      let texts = await lineTexts()
+      assert.ok(!texts[0].includes('#'), `非光标行仍显示标题标记：${texts[0]}`)
+      assert.ok(texts[0].includes('标题'), `标题内容没有渲染：${texts[0]}`)
+      // 光标所在行显示源码（粗体标记可见）。
+      assert.ok(texts[texts.length - 1].includes('**'), '光标所在行没有显示源码')
+      await input.press('ArrowUp')
+      await input.press('ArrowUp')
+      await input.press('Home')
+      texts = await lineTexts()
+      assert.ok(texts[0].includes('#'), `光标移入标题行后没有显示源码：${texts[0]}`)
+      assert.ok(!texts[texts.length - 1].includes('**'), '移出后正文仍显示粗体标记')
+      assert.ok(texts[texts.length - 1].includes('粗体'), '移出后粗体内容没有渲染')
+      await input.press('Control+End')
+      texts = await lineTexts()
+      assert.ok(!texts[0].includes('#'), '光标移出后标题仍显示标记')
+
+      // 代码块整块渲染：光标在块外时为消息区样式的卡片，没有头部工具条；点击回到源码。
+      await input.fill('正文\n\n```ts\nconst a = 1\n```\n\n尾部')
+      assert.equal(await input.locator('.md-code-widget').count(), 1, '光标在块外时代码块没有整块渲染')
+      assert.equal(await page.locator('.composer-editor .chat-code-tools').count(), 0, '输入框代码块出现了头部工具条')
+      const widgetStyle = await input.evaluate((root) => {
+        const card = root.querySelector('.md-code-widget')
+        const pre = card?.querySelector('pre')
+        if (!card || !pre) return null
+        return {
+          text: pre.textContent ?? '',
+          mono: /mono/i.test(getComputedStyle(pre).fontFamily),
+          background: getComputedStyle(card).backgroundColor,
+        }
+      })
+      assert.ok(widgetStyle, '找不到代码块卡片')
+      assert.equal(widgetStyle.text, 'const a = 1', '代码块卡片内容不对')
+      assert.ok(widgetStyle.mono, '代码块卡片不是等宽字体')
+      assert.notEqual(widgetStyle.background, 'rgba(0, 0, 0, 0)', '代码块卡片没有底色')
+      await input.locator('.md-code-widget').click()
+      assert.equal(await input.locator('.md-code-widget').count(), 0, '点击代码块后没有回到源码')
+      assert.ok((await input.locator('.md-code-line').count()) >= 3, '光标进入代码块后没有显示源码')
+      await input.press('Control+End')
+
+      // 输入法组合期间 Enter 不发送。
+      const beforeIme = await messageCount()
+      await input.fill('你好')
+      await input.evaluate((el) => el.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true })))
+      await input.press('Enter')
+      await sleep(120)
+      assert.equal(await messageCount(), beforeIme, '输入法组合期间回车触发了发送')
+      await input.evaluate((el) =>
+        el.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '你好' })),
+      )
+      await sleep(120)
+      assert.equal(await messageCount(), beforeIme, '输入法结束后误发送了消息')
+
+      // 深/浅主题截图：标题/列表渲染、代码块卡片与光标行源码。
+      await input.fill('# 标题\n\n- 列表项\n\n```ts\nconst x = 1\n```\n\n正文 **粗体**')
+      await page.screenshot({ path: '/tmp/md-cm/composer-light.png' })
       await page.evaluate(() => document.documentElement.classList.add('dark'))
-      await page.screenshot({ path: '/tmp/fix-1323b/1323-dark.png' })
+      await page.screenshot({ path: '/tmp/md-cm/composer-dark.png' })
       await page.evaluate(() => document.documentElement.classList.remove('dark'))
       await input.fill('')
+    })
+
+    desktop('用户气泡完整渲染 Markdown：标题降级、列表、代码块与源码编辑（Markdown 实时预览）', async (page) => {
+      mkdirSync('/tmp/md-cm', { recursive: true })
+      const bubbleSession = await api(base, token, '/api/sessions', {
+        method: 'POST',
+        body: JSON.stringify({
+          cwd: repo,
+          profileId: 'p-main',
+          groupId: 'g1',
+          model: 'mock-1',
+          permissionMode: 'default',
+          title: '用户气泡 Markdown',
+        }),
+      })
+      await gotoSession(page, bubbleSession.id)
+      await waitModelReady(page)
+      const input = page.locator('[aria-label="消息输入框"]')
+      await input.waitFor()
+      // 会话切换后草稿恢复会覆盖输入，等输入框稳定再写入。
+      await page.waitForTimeout(400)
+      const source = '## 小标题\n\n- 列表项\n\n```ts\nconst a = 1\n```\n\n**粗体**'
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await input.fill(source)
+        try {
+          await page.waitForFunction(
+            (want) =>
+              document.querySelector('[data-testid="composer-input"]')?.getAttribute('data-value') === want,
+            source,
+            { timeout: 1200 },
+          )
+          break
+        } catch {
+          await page.waitForTimeout(300)
+        }
+      }
+      assert.equal(await input.getAttribute('data-value'), source, '输入框没有接受 Markdown 文本')
+      const sessionOf = () => api(base, token, `/api/sessions/${bubbleSession.id}`)
+      const before = (await sessionOf()).messages.length
+      const seenBefore = provider.seenUserTexts.length
+      await page.getByRole('button', { name: '发送消息' }).click()
+      for (let i = 0; i < 80; i++) {
+        const current = await sessionOf()
+        if (current.status === 'idle' && current.messages.length > before) break
+        await sleep(100)
+      }
+      assert.ok(
+        provider.seenUserTexts.slice(seenBefore).some((text) => text.includes('## 小标题') && text.includes('```ts')),
+        '用户消息没有按 Markdown 源码发送',
+      )
+      const bubble = page.locator('[data-msg-bubble]').last()
+      await bubble.locator('h2').waitFor({ timeout: 10_000 })
+      const rendered = await bubble.evaluate((el) => ({
+        text: el.innerText,
+        h2: el.querySelector('h2')?.textContent ?? '',
+        h2Weight: (() => {
+          const h2 = el.querySelector('h2')
+          return h2 ? getComputedStyle(h2).fontWeight : ''
+        })(),
+        li: el.querySelector('li')?.textContent ?? '',
+        code: el.querySelector('.chat-code pre')?.textContent ?? '',
+        strong: el.querySelector('strong')?.textContent ?? '',
+        inlineMarkers: el.innerText.includes('**') || el.innerText.includes('##') || el.innerText.includes('```'),
+      }))
+      assert.equal(rendered.h2, '小标题', '用户气泡标题没有渲染')
+      assert.ok(Number(rendered.h2Weight) >= 600, '用户气泡标题没有加粗')
+      assert.equal(rendered.li, '列表项', '用户气泡列表没有渲染')
+      assert.equal(rendered.code, 'const a = 1', '用户气泡代码块没有渲染')
+      assert.equal(rendered.strong, '粗体', '用户气泡粗体没有渲染')
+      assert.ok(!rendered.inlineMarkers, `用户气泡仍显示 Markdown 标记：${rendered.text}`)
+      // 复制消息仍复制源码；编辑时回到源码。
+      const row = page.locator('.msg-row[data-turn-id]').filter({ has: bubble }).first()
+      await row.hover()
+      await row.getByRole('button', { name: '编辑并重发' }).click()
+      const editor = page.locator('textarea[aria-label="编辑并重发"]')
+      await editor.waitFor({ timeout: 5_000 })
+      assert.equal(await editor.inputValue(), source, '编辑用户消息时没有回到 Markdown 源码')
+      await page.getByRole('button', { name: '取消', exact: true }).last().click()
+      await page.screenshot({ path: '/tmp/md-cm/user-bubble-light.png' })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.screenshot({ path: '/tmp/md-cm/user-bubble-dark.png' })
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
+
+      // 助手正文对照：同一套 Markdown 排版。
+      await openSession(page, 'codeblock')
+      await page.waitForTimeout(400)
+      await page.screenshot({ path: '/tmp/md-cm/assistant-light.png' })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.screenshot({ path: '/tmp/md-cm/assistant-dark.png' })
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
     })
 
     desktop('输入框 @ 选文件与文件夹：文件夹可进入、路径标记只显示名字、发送仍是完整路径（反馈2102#07）', async (page) => {
@@ -8263,7 +8412,7 @@ async function main() {
 
     small('手机长按用户消息打开操作菜单', async (page) => {
       await openSession(page, 'long')
-      const bubble = page.locator('.msg-group .whitespace-pre-wrap.break-words').last()
+      const bubble = page.locator('.msg-group [data-msg-bubble]').last()
       await bubble.evaluate((el) => el.scrollIntoView({ block: 'center' }))
       await page.waitForTimeout(250)
       const box = await bubble.boundingBox()
