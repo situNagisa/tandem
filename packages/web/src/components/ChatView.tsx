@@ -96,6 +96,8 @@ export function ChatView() {
   const userScrolledRef = useRef(false)
   // 跨视图跳转（大纲/最占空间/会话图/搜索）期间不能被贴底补偿拉回底部。
   const jumpUntil = useRef(0)
+  // 用户明确要停在底部（打开会话、点「回到底部」、发消息）：平滑滚动途中与流式增长时都继续贴底。
+  const bottomIntentRef = useRef(true)
   // 最近一次滚动事件时的 scrollTop / scrollHeight：判断内容增高前视口是否原本就贴底。
   const lastScrollRef = useRef({ top: 0, height: 0 })
   // 打开会话后的贴底校准：content-visibility 的预估高度会让首次 scrollHeight 偏小。
@@ -180,6 +182,7 @@ export function ChatView() {
     const el = scrollRef.current
     if (!el) return
     pinnedRef.current = true
+    bottomIntentRef.current = true
     setShowJump(false)
     programmaticUntil.current = Date.now() + 600
     if (smooth) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
@@ -188,6 +191,7 @@ export function ChatView() {
 
   useLayoutEffect(() => {
     pinnedRef.current = true
+    bottomIntentRef.current = true
     setShowJump(false)
     initialScrollFor.current = sessionId
     const el = scrollRef.current
@@ -220,6 +224,8 @@ export function ChatView() {
 
   useEffect(() => {
     const onJump = () => {
+      // 跳转到历史里的某轮/某张卡：不再保持底部跟随（否则补偿会把视口拉回底部）。
+      bottomIntentRef.current = false
       jumpUntil.current = Date.now() + 1200
     }
     window.addEventListener('tandem-jump-message', onJump)
@@ -248,8 +254,15 @@ export function ChatView() {
       if (!el) return
       // 用「这次增高之前」的滚动位置判断是否贴底：滚到顶加载更早消息、点「回到底部」
       // 的平滑滚动中间帧都不能被误判成贴底（反馈1601#02 回归保护）。
+      // 用户明确要贴底（打开会话/点「回到底部」）时，中间帧不算数，继续跟随。
       const prev = lastScrollRef.current
-      if (prev.height > 0 && prev.height - prev.top - el.clientHeight > 2) return
+      if (
+        !bottomIntentRef.current &&
+        prev.height > 0 &&
+        prev.height - prev.top - el.clientHeight > 2
+      ) {
+        return
+      }
       const height = el.scrollHeight
       if (height === lastHeight) return
       lastHeight = height
@@ -314,13 +327,18 @@ export function ChatView() {
       return
     }
     programmaticUntil.current = 0
-    if (pinnedRef.current || userScrolledRef.current) pinnedRef.current = distance < PIN_THRESHOLD
+    // 明确要贴底时（含平滑回到底部的中间帧）不按位置取消跟随；用户自己滚动才改写。
+    if (bottomIntentRef.current) pinnedRef.current = true
+    else if (pinnedRef.current || userScrolledRef.current) pinnedRef.current = distance < PIN_THRESHOLD
+    // 用户手动滚回底部后恢复跟随。
+    if (userScrolledRef.current) bottomIntentRef.current = distance < PIN_THRESHOLD
     const next = distance > JUMP_THRESHOLD
     setShowJump((prev) => (prev === next ? prev : next))
   }
 
   const markUserScroll = () => {
     userScrolledRef.current = true
+    bottomIntentRef.current = false
     programmaticUntil.current = 0
   }
   const onScrollKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -472,6 +490,7 @@ export function ChatView() {
             sessionId={sessionId}
             onBeforeJump={() => {
               pinnedRef.current = false
+              bottomIntentRef.current = false
               programmaticUntil.current = 0
               userScrolledRef.current = false
               initialScrollFor.current = null

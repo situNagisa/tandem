@@ -618,6 +618,7 @@ function MessageListInner({
 
   // 上下文面板/搜索/收件箱：必要时扩大渲染窗口，再把目标消息或工具卡滚到视口中部
   const jumpTimers = useRef<number[]>([])
+  const settleTimers = useRef<number[]>([])
   useEffect(() => {
     const onJump = (event: Event) => {
       const detail = (event as CustomEvent<{ messageId?: string; toolUseId?: string }>).detail
@@ -646,9 +647,11 @@ function MessageListInner({
       setWindowSize((size) => Math.max(size, Math.min(MAX_WINDOW, 320)))
       setWindowCap((cap) => Math.max(cap, Math.min(MAX_WINDOW, 320)))
       const scroll = () => {
-        const el = toolUseId
-          ? document.querySelector<HTMLElement>(`[data-tool-use-id="${CSS.escape(toolUseId)}"]`)
-          : document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId!)}"]`)
+        const find = () =>
+          toolUseId
+            ? document.querySelector<HTMLElement>(`[data-tool-use-id="${CSS.escape(toolUseId)}"]`)
+            : document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId!)}"]`)
+        const el = find()
         if (!el) return
         const row = el.closest<HTMLElement>('.msg-row') ?? el
         if (toolUseId) {
@@ -660,6 +663,24 @@ function MessageListInner({
         void row.offsetWidth
         row.classList.add('msg-jump-hit')
         window.setTimeout(() => row.classList.remove('msg-jump-hit'), 2800)
+        // 目标上下的 content-visibility 行会在滚动中才按实际高度展开，平滑滚动按开始时的
+        // 布局落点会偏一截（会话图连点后目标不居中）。布局稳定后按实际位置补正到居中。
+        for (const timer of settleTimers.current) window.clearTimeout(timer)
+        settleTimers.current = []
+        const settle = (attempt: number) => {
+          const target = find()
+          const box = target?.closest<HTMLElement>('.chat-scroll')
+          if (!target || !box) return
+          const view = box.getBoundingClientRect()
+          const rect = target.getBoundingClientRect()
+          const offset = rect.top + rect.height / 2 - (view.top + view.height / 2)
+          if (Math.abs(offset) <= 16) return
+          box.scrollTop += offset
+          if (attempt < 4) {
+            settleTimers.current.push(window.setTimeout(() => settle(attempt + 1), 180))
+          }
+        }
+        settleTimers.current.push(window.setTimeout(() => settle(0), 420))
       }
       jumpTimers.current = [window.setTimeout(scroll, 80), window.setTimeout(scroll, 300)]
     }
@@ -669,6 +690,7 @@ function MessageListInner({
   useEffect(
     () => () => {
       for (const timer of jumpTimers.current) window.clearTimeout(timer)
+      for (const timer of settleTimers.current) window.clearTimeout(timer)
     },
     [],
   )
