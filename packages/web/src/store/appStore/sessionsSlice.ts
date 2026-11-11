@@ -112,7 +112,9 @@ export function createSessionsSlice(
     set({ active: view })
     get().activateHost(hostId)
     core.syncChildren(hostId, sessionId)
-    if (view.summary?.unread) void get().markSessionRead(hostId, sessionId)
+    // 快照摘要与列表摘要可能短暂不同步：任一处仍有未读就写回已读（反馈2156#02）。
+    const listed = get().runtimes[hostId]?.sessions.find((item) => item.id === sessionId)
+    if (view.summary?.unread || listed?.unread) void get().markSessionRead(hostId, sessionId)
   }
 
   /** 关闭不再显示、也不在分屏中的会话视图。 */

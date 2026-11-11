@@ -1778,7 +1778,12 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       message('uo1', 'user', '这个会话只用于未读筛选。'),
       message('uo2', 'assistant', '完成后保持未读。', { model: 'mock-1' }),
     ], { unread: true, updatedAt: Date.now() - 1700 }),
-    // 全文搜索：中文短语只出现在 s2，用于断言命中片段与跳转高亮
+    // 未读持久化专用：打开一次后重新加载，未读点不能再出现（反馈2156#02）。
+    mk('unreadopen', '未读持久化会话', [
+      message('up1', 'user', '打开我以后未读应该被记住清除。'),
+      message('up2', 'assistant', '这轮结果已经完成。', { model: 'mock-1' }),
+    ], { unread: true, updatedAt: Date.now() - 1710 }),
+    // 全文搜索：中文短语只出现在 s2，用于断言命中片段与跳转定位
     mk('search', '全文检索会话', [
       message('s1', 'user', '帮我确认离线索引是否覆盖中文词句。'),
       message('s2', 'assistant', 'Elasticsearch 索引已重建，中文短语检索正常。', {
@@ -9321,6 +9326,45 @@ async function main() {
       await tag.click()
       await row('long').waitFor({ state: 'visible', timeout: 5_000 })
       assert.equal(await page.getByRole('button', { name: /已筛选/ }).count(), 0, '清除后筛选标签仍在')
+    })
+
+    desktop('反馈2156#02：打开会话后重新加载，未读点不再出现', async (page) => {
+      const row = (id) => page.locator(`[data-session-row][data-session-id="${id}"]`)
+      await page.waitForFunction(
+        () => {
+          try {
+            return JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]').length > 0
+          } catch {
+            return false
+          }
+        },
+        null,
+        { timeout: 20_000 },
+      )
+      await row('unreadopen').waitFor({ state: 'visible', timeout: 15_000 })
+      assert.equal(
+        await row('unreadopen').locator('[data-unread-dot="true"]').count(),
+        1,
+        '未读会话缺少未读点',
+      )
+      await row('unreadopen').locator('[data-session-open="true"]').click()
+      await page.waitForFunction(() => window.location.hash.includes('/s/unreadopen'), null, {
+        timeout: 10_000,
+      })
+      await row('unreadopen').locator('[data-unread-dot="true"]').waitFor({
+        state: 'detached',
+        timeout: 10_000,
+      })
+      // 切到别的会话再重新加载：路由不再自动打开 unreadopen，能验证服务端已读是否落库。
+      await openSession(page, 'long')
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await row('unreadopen').waitFor({ state: 'visible', timeout: 20_000 })
+      await page.waitForTimeout(800)
+      assert.equal(
+        await row('unreadopen').locator('[data-unread-dot="true"]').count(),
+        0,
+        '重新加载后未读点又出现了（已读没有写回服务端）',
+      )
     })
 
     checks.push({

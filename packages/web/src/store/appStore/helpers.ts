@@ -86,6 +86,7 @@ export function summaryOf(s: Session): SessionSummary {
     ...(s.pinnedTurns && s.pinnedTurns.length ? { pinnedTurns: [...s.pinnedTurns] } : {}),
     ...(s.forkedFrom ? { forkedFrom: { ...s.forkedFrom } } : {}),
     ...(s.archived ? { archived: true } : {}),
+    ...(s.unread ? { unread: true } : {}),
     ...(s.env ? { env: s.env } : {}),
     ...(s.parentId ? { parentId: s.parentId } : {}),
     ...(s.parentToolUseId ? { parentToolUseId: s.parentToolUseId } : {}),
