@@ -96,6 +96,8 @@ export function ChatView() {
   const userScrolledRef = useRef(false)
   // 跨视图跳转（大纲/最占空间/会话图/搜索）期间不能被贴底补偿拉回底部。
   const jumpUntil = useRef(0)
+  // 最近一次滚动事件时距底部的距离：只有原本就在底部，内容上方增高才该跟着补滚动。
+  const bottomGapRef = useRef(0)
   // 打开会话后的贴底校准：content-visibility 的预估高度会让首次 scrollHeight 偏小。
   const initialScrollFor = useRef<string | null>(null)
   const [showJump, setShowJump] = useState(false)
@@ -241,7 +243,7 @@ export function ChatView() {
     // 切换会话时看起来就是闪屏（反馈1601#02）。
     let lastHeight = -1
     const pinBeforePaint = () => {
-      if (!pinnedRef.current || Date.now() < jumpUntil.current) return
+      if (!pinnedRef.current || bottomGapRef.current > 2 || Date.now() < jumpUntil.current) return
       const el = scrollRef.current
       if (!el) return
       const height = el.scrollHeight
@@ -299,6 +301,7 @@ export function ChatView() {
     const el = scrollRef.current
     if (!el) return
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+    bottomGapRef.current = distance
     if (programmaticUntil.current > Date.now()) {
       pinnedRef.current = true
       setShowJump(false)

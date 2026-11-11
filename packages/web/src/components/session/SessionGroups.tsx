@@ -104,7 +104,11 @@ export function SessionGroups({
               >
                 <div className="group/proj flex h-8 min-w-0 items-center rounded-lg pr-0.5 transition-colors hover:bg-[var(--t-bg-hover)] max-sm:h-11">
                   <button data-raw-button
-                    onClick={() => setProjectCollapsed(project.collapseKey, !projCollapsed)}
+                    onClick={() => {
+                      setProjectCollapsed(project.collapseKey, !projCollapsed)
+                      // 旧键（按显示名）留在存储里会在下次重开时复活，切换时一并清掉。
+                      if (project.key !== project.collapseKey) setProjectCollapsed(project.key, false)
+                    }}
                     className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg pl-1.5 text-left text-[13px] font-medium text-text-secondary transition-colors duration-[120ms] hover:text-text max-sm:h-11"
                     aria-expanded={!projCollapsed}
                     data-tip={projectTip || project.name}
@@ -252,7 +256,11 @@ export function SessionGroups({
                   <div key={host.id} className="mb-1" data-host-group={host.id}>
                     <div className="flex min-w-0 items-center gap-1.5 px-2.5 pb-1 pt-2">
                       <button data-raw-button
-                        onClick={() => setProjectCollapsed(host.collapseKey, !hostCollapsed)}
+                        onClick={() => {
+                          setProjectCollapsed(host.collapseKey, !hostCollapsed)
+                          const legacyKey = `host:${host.id}`
+                          if (legacyKey !== host.collapseKey) setProjectCollapsed(legacyKey, false)
+                        }}
                         className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left text-[12px] font-medium text-text-tertiary transition-colors duration-[120ms] hover:text-text-secondary"
                         aria-expanded={!hostCollapsed}
                         data-tip={host.online ? host.name : `${host.name} · 离线，显示缓存的会话列表`}
