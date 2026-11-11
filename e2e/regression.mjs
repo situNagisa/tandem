@@ -4552,6 +4552,18 @@ async function main() {
       assert.equal(await gitBar.getByRole('switch', { name: 'Worktree' }).count(), 1, 'git 仓库缺少 Worktree 开关')
     })
 
+    desktop('非 Git 仓库时不显示分支触发器（反馈1323#08）', async (page) => {
+      await withNonGitSession(page, async () => {
+        const bar = page.locator('[data-env-bar]').first()
+        assert.equal(await bar.getByText('非 Git 仓库', { exact: true }).count(), 0, '非 Git 时仍显示「非 Git 仓库」')
+        assert.equal(await bar.locator('svg.lucide-git-branch').count(), 0, '非 Git 时仍有分支触发器')
+      })
+      // git 仓库保持原样：分支触发器在。
+      await openSession(page, 'long')
+      const gitBar = page.locator('[data-env-bar]').first()
+      assert.equal(await gitBar.getByText('main', { exact: true }).count() >= 1, true, 'git 仓库缺少分支名')
+    })
+
     desktop('侧栏项目分「固定 / 最近」两组，固定图标语义与悬停规则（R01）', async (page) => {
       const recent = page.locator('[data-recent-projects]')
       await recent.waitFor({ state: 'visible' })

@@ -790,6 +790,7 @@ export function EnvBar({
         </IconButton>
       ) : null}
 
+      {!knownNonGit && (
       <Popover
         side="top"
         padded={false}
@@ -804,7 +805,7 @@ export function EnvBar({
                 <GitBranch size={12} className="text-muted" />
               )
             }
-            label={branch ?? (env ? '分支' : '非 Git 仓库')}
+            label={branch ?? '分支'}
             loading={!branch && !!envLoading}
             onClick={toggle}
             open={open}
@@ -830,6 +831,7 @@ export function EnvBar({
           ) : null
         }
       </Popover>
+      )}
 
       {!knownNonGit && (
       <Tooltip label={worktreeTip} side="top" className="shrink-0">
