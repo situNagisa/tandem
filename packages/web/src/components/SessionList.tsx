@@ -78,7 +78,7 @@ export function SessionList({
   const forkSession = useAppStore((s) => s.forkSession)
   const deleteSession = useAppStore((s) => s.deleteSession)
   const collapsed = useUiStore((s) => s.collapsedProjects)
-  const toggleProject = useUiStore((s) => s.toggleProject)
+  const setProjectCollapsed = useUiStore((s) => s.setProjectCollapsed)
   const showArchived = useUiStore((s) => s.showArchived)
   const setShowArchived = useUiStore((s) => s.setShowArchived)
   const showExternalSessions = useUiStore((s) => s.showExternalSessions)
@@ -381,7 +381,7 @@ export function SessionList({
           query={query}
           renderRow={renderRow}
           openExternal={openExternal}
-          toggleProject={toggleProject}
+          setProjectCollapsed={setProjectCollapsed}
           toggleProjectPinned={toggleProjectPinned}
           newSessionIn={newSessionIn}
         />

@@ -94,6 +94,10 @@ export function ChatView() {
   const programmaticUntil = useRef(0)
   // 用户自己滚动过（滚轮/触摸/滚动条/方向键）才允许按位置重新贴底；跳转后内容收缩导致的被动滚动不算。
   const userScrolledRef = useRef(false)
+  // 跨视图跳转（大纲/最占空间/会话图/搜索）期间不能被贴底补偿拉回底部。
+  const jumpUntil = useRef(0)
+  // 最近一次滚动事件时的 scrollTop / scrollHeight：判断内容增高前视口是否原本就贴底。
+  const lastScrollRef = useRef({ top: 0, height: 0 })
   // 打开会话后的贴底校准：content-visibility 的预估高度会让首次 scrollHeight 偏小。
   const initialScrollFor = useRef<string | null>(null)
   const [showJump, setShowJump] = useState(false)
@@ -215,6 +219,14 @@ export function ChatView() {
   }, [messageCount, loading, pending.length, stickToBottom])
 
   useEffect(() => {
+    const onJump = () => {
+      jumpUntil.current = Date.now() + 1200
+    }
+    window.addEventListener('tandem-jump-message', onJump)
+    return () => window.removeEventListener('tandem-jump-message', onJump)
+  }, [])
+
+  useEffect(() => {
     if (!lastIsLocal) return
     scrollToBottom()
   }, [lastIsLocal, messageCount, scrollToBottom])
@@ -226,11 +238,37 @@ export function ChatView() {
     const content = contentRef.current
     const box = scrollRef.current
     if (!content || !box) return
-    const ro = new ResizeObserver(() => stickToBottom())
+    // 贴底时内容在视口上方增高（注入说明、代码高亮、content-visibility 行展开）：
+    // 必须在绘制前同步补齐 scrollTop。排到下一帧会先画出「内容整体下移一帧」再回弹，
+    // 切换会话时看起来就是闪屏（反馈1601#02）。
+    let lastHeight = -1
+    const pinBeforePaint = () => {
+      if (!pinnedRef.current || Date.now() < jumpUntil.current) return
+      const el = scrollRef.current
+      if (!el) return
+      // 用「这次增高之前」的滚动位置判断是否贴底：滚到顶加载更早消息、点「回到底部」
+      // 的平滑滚动中间帧都不能被误判成贴底（反馈1601#02 回归保护）。
+      const prev = lastScrollRef.current
+      if (prev.height > 0 && prev.height - prev.top - el.clientHeight > 2) return
+      const height = el.scrollHeight
+      if (height === lastHeight) return
+      lastHeight = height
+      programmaticUntil.current = Date.now() + 600
+      el.scrollTop = height
+      lastScrollRef.current = { top: height, height }
+    }
+    const ro = new ResizeObserver(pinBeforePaint)
     ro.observe(content)
     ro.observe(box)
-    return () => ro.disconnect()
-  }, [stickToBottom, hasSession, agentSession])
+    // 新增一行（注入说明、加载占位条）不会立刻反映到 ResizeObserver 的尺寸观察；
+    // MutationObserver 是微任务，能赶在这次绘制前补回底部。
+    const mo = new MutationObserver(pinBeforePaint)
+    mo.observe(content, { childList: true, subtree: true })
+    return () => {
+      ro.disconnect()
+      mo.disconnect()
+    }
+  }, [stickToBottom, hasSession, agentSession, sessionId])
 
   useEffect(() => {
     if (!running) return
@@ -268,6 +306,7 @@ export function ChatView() {
     const el = scrollRef.current
     if (!el) return
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+    lastScrollRef.current = { top: el.scrollTop, height: el.scrollHeight }
     if (programmaticUntil.current > Date.now()) {
       pinnedRef.current = true
       setShowJump(false)

@@ -83,7 +83,7 @@
 | `src/App.tsx` | 布局、hash 路由、全局快捷键、移动端抽屉 |
 | `src/store/useAppStore.ts` | 全局 store 入口：只做初始 state 与各 slice 的组合（见 §8） |
 | `src/store/appStore/` | `types.ts` 状态与 action 签名；`helpers.ts` 纯工具与连接表；`sessionCore.ts` 会话内部辅助（`patchActive`/`applySnapshot`/`ensureConnection` 等）；`serverMessages.ts` WS 消息 switch；`hostsSlice.ts`、`sessionsSlice.ts`、`messagesSlice.ts`、`inboxSlice.ts`、`worktreeSlice.ts`、`uiSlice.ts` 按职责拆分的 action |
-| `src/store/useUiStore.ts` | 弹窗、侧栏、右栏、主题等纯 UI 状态 |
+| `src/store/useUiStore.ts` | 弹窗、侧栏、右栏、主题等纯 UI 状态；侧栏分组折叠状态在 `collapsedProjects`（键由 `components/session/sessionListUtils.ts` 的 `hostCollapseKey` / `projectCollapseKey` 生成：主机 hostId + 项目仓库根路径） |
 | `src/store/useEvalStore.ts` | 评测用例/运行/轨迹缓存与轮询（独立于 useAppStore） |
 | `src/store/useFeedbackStore.ts` | 反馈模式条目与标注状态 |
 | `src/store/useWikiStore.ts` | 项目 Wiki 元数据/页面/任务缓存，接 `wiki_updated/wiki_job` |

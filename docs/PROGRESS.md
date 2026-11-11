@@ -2,6 +2,12 @@
 
 > 更新：2026-11-11。只保留最近 3 轮；更早见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 69（2026-11-11）反馈1601：切换闪屏 / 文件夹弹层 / 金额 / 折叠记忆
+- [x] #02 P0 切换会话闪屏（R10 复发）：帧采样定位到消息区在切换后 1 帧内下移 132px——注入说明行在首屏快照之后才挂载，ResizeObserver 的贴底补偿排到了下一帧。ChatView 改在 ResizeObserver/MutationObserver 回调里绘制前同步补 scrollTop；右栏上下文按会话缓存，切换时卡片不再消失一帧；regression 反馈1601#02 逐帧断言贴底、可见首行不动、右栏分组/会话图稳定。
+- [x] #01 文件夹弹层改 ui/Menu（R01 复发）：Menu.Label / Menu.Separator / Menu.Item，去掉手写标题与 border-t 分隔；ui-audit 新增 role-menuitem 与手写菜单标题/分隔线规则。
+- [x] #03 用户消息金额：`formatCost` 对 0<usd<0.00005 显示 `<$0.0001`，0 显示 `$0`；单测 + regression。
+- [x] #05 侧栏折叠记忆：折叠键改为 hostId + 仓库根路径（旧键兼容），重开恢复；regression 反馈1601#05。
+- 验证：`node scripts/check.mjs --skip-smoke --skip-regression` 全绿；本包新增/涉及的 regression 用例（1601#02/#05、文件夹弹层 4 条、用户消息金额、最占空间）单跑全过。全量 regression 剩余的「反馈2102#02 会话图快速连点」「反馈1919#07 回到底部恢复跟随」在干净基线 2bfbb1b 上同样失败（已逐一回退 ChatView 复测），属既有问题。截图（深/浅）在 `/tmp/fix-1601a/`。
 ## 迭代 68（2026-11-11）UI 第三批：芯片/徽标统一（打分卡 U3-B，用户原话「徽標用方案B」）
 - [x] 新增 `ui/Badge`：透明底 + 1px 边、4px 圆角、20px 高、11px 字；tone = neutral / success / warn / danger / annotation。
 - [x] 替换 34 处徽标（调试、反馈、体验清单、演示、评测、工作站、浏览器/预览、分享），状态/演示用中性描边（P02），反馈标注用新 token `--t-annotation`（沿用原 #F97316，深浅各一）。
@@ -21,11 +27,3 @@
 - [x] ui-audit 新增 `undefined-css-var`：`var(--x)` 必须在 CSS 有定义或运行时注入；`card-class` 不再误伤 fixed/absolute/sticky 浮层（含 `${POSITION}` 常量）。
 - [x] Playwright 截图核对浅色/深色：上手引导、导览胶囊/面板、反馈工具条/编辑浮层、语音浮层、工作站设置、设置对话框、模型菜单，背景均不透明（/tmp/fix-transparent/）。
 - 验证：`node scripts/check.mjs` 全量通过。
-
-## 迭代 65（2026-11-10）UI 第二批：按钮/卡片/空状态/设置行（打分卡 U1/U2/U4/U5-A）
-- [x] U1：`ui/Button` 收敛控件 32 / 图标 32 / 行内 24，补 pressed 与移动端 44px；手写按钮迁移 36 处，结构性 132 处显式标 `data-raw-button`。
-- [x] U2：新增 `ui/Card`（12px 圆角、16/18 内边距、无阴影），替换 57 处；删掉 `index.css` 设置页 10px/12-14 覆盖，右栏卡片同步 12px 无阴影。
-- [x] U4：新增 `ui/EmptyState`（虚线框、20px 内边距、30px 图标、13/12 两级文字），替换 30 处；删除 `.settings-empty` 系列 CSS，「先添加一台主机」原文保留。
-- [x] U5：19 个设置页改用 `SettingRow`/`SettingNote`，说明收进 ⓘ 或下方说明；文案、设置项、顺序不变。
-- [x] 检查：`font-size-floor` 覆盖 `ui/` 全部组件；`ui-audit` 不再跳过 `ui/`，新增 `card-class`/`native-button`；`Controls` 原生 title 改 `data-tip`。
-- 验证：`node scripts/check.mjs --skip-smoke` 通过（regression 168/168）。

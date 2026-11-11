@@ -54,6 +54,7 @@
 
 ## 本轮手工操作 / 出错环节（只留最近 5 轮，每轮 ≤5 行）
 - 2026-11-11 U3 徽标：worktree 无 node_modules 导致 vite 解析失败；按 AGENTS 只在 worktree 内建「根 node_modules → 主仓」+ 各包 `node_modules/@tandem/*` 软链，先 build protocol 再 build web。
+- 2026-11-11 反馈1601：用自建临时 Host + CDP screencast/绘制后逐帧采样定位切换闪屏（注入说明行晚到 + 贴底补偿下一帧）；反馈包里的整页截图为 DOM 克隆，content-visibility 行会是空白，不能当作“主区空白”的证据；每次 Playwright 复现都要 `npm run build -w @tandem/web` 后新起 Host。
 - 2026-11-11 输入框改 contenteditable：回归里 60+ 处 `textarea[aria-label=消息输入框]` 换成 `[aria-label=消息输入框]`，`inputValue`→`data-value`、`isDisabled`→`aria-disabled`；批量替换误改到「记忆 Markdown」用例（已回退）。Playwright 的 fill 会把文本直接挂根节点，光标映射需带兜底。
 - 2026-11-10 用户报 Edge 连不上主机：两处根因（登录门把 Host 当工作站探测→401 循环；内嵌工作站换端口后隧道连旧端口）。教训：测试 Host 曾占用用户默认端口 8481，现非默认 TANDEM_HOME 用随机端口；调试时 curl 要 `--noproxy '*'`（环境有 HTTP 代理，回环会 502）。
 - 2026-11-10 弹层透明：`--t-bg-elevated` 从未定义（UI 第二批为绕 card-class 规则引入）；已恢复 `bg-surface`，ui-audit 加 `undefined-css-var`。截图脚本 `/tmp/fix-transparent/shots.mjs`（假 SpeechRecognition/麦克风驱动语音浮层）。

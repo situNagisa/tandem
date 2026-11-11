@@ -15,6 +15,13 @@ const json = process.argv.includes('--json')
 
 const CHECKS = [
   { id: 'role-menu', label: '手写 role="menu"/"listbox"', re: /role="(?:menu|listbox)"/g },
+  {
+    // 反馈1601#01：弹层里的行必须由 ui/ 原语渲染，手写的 menuitem 会带自己的内边距/分隔。
+    id: 'role-menuitem',
+    label: '手写 role="menuitem"：改用 ui/Menu.Item / ui/ListRow',
+    // 选择器字符串里的 [role="menuitem"] 不是手写行，只匹配 JSX 属性。
+    re: /(?<!\[)role="menuitem(?:radio|checkbox)?"/g,
+  },
   { id: 'popover-panel', label: '手写 popover-panel 弹层', re: /popover-panel/g },
   { id: 'menu-row-height', label: '硬编码菜单行高 h-[26..29px]', re: /(?<![\w-])h-\[2[6-9]px\]/g },
   { id: 'native-select', label: '原生 <select>，应改用 ui/MenuSelect', re: /<select\b/g },
@@ -181,6 +188,38 @@ for (const file of files) {
           text: tag.trim().slice(0, 160),
         })
       }
+    }
+  }
+}
+
+// 弹层列表的分组标题与分隔线也必须用 ui/ 原语（反馈1601#01 / R01）：手写的 <p> 标题和
+// border-t 分隔会给同一个弹层多一圈内边距，看起来比其他下拉「边更厚」。
+const MENU_CHROME_CHECKS = [
+  {
+    id: 'menu-handwritten-divider',
+    label: '手写菜单分隔线：改用 ui/Menu.Separator',
+    re: /<div\b[^>]*\bborder-t\b[^>]*>\s*<(?:MenuList|Menu)\b/g,
+  },
+  {
+    id: 'menu-handwritten-label',
+    label: '手写菜单分组标题：改用 ui/Menu.Label',
+    re: /<p\b[^>]*\btext-\[1[12]px\][^>]*>[^<]{1,16}<\/p>\s*<(?:MenuList|Menu)\b/g,
+  },
+]
+for (const file of files) {
+  const text = await readFile(file, 'utf8')
+  for (const check of MENU_CHROME_CHECKS) {
+    check.re.lastIndex = 0
+    let match
+    while ((match = check.re.exec(text))) {
+      const line = text.slice(0, match.index).split('\n').length
+      issues.push({
+        file: relative(ROOT, file),
+        line,
+        check: check.id,
+        label: check.label,
+        text: match[0].split('\n')[0].trim().slice(0, 160),
+      })
     }
   }
 }

@@ -52,6 +52,9 @@ export function jumpToMessage(messageId: string): void {
 
 const TOP_COLLAPSED_KEY = 'tandem.contextTopCollapsed.v1'
 
+/** 按会话记住最近一次上下文占用：切换会话时不闪「卡片消失→出现」。 */
+const contextCache = new Map<string, ContextBreakdown>()
+
 function loadTopCollapsed(): boolean {
   return readRaw(TOP_COLLAPSED_KEY) === '1'
 }
@@ -238,17 +241,30 @@ export function useContextBreakdown() {
   const messages = useSessionView((s) => s?.messages)
   const messageCount = messages?.length ?? 0
   const turns = useMemo(() => countTurns(messages ?? []), [messages])
-  const [fetched, setFetched] = useState<ContextBreakdown | null>(null)
+  const cacheKey = hostId && sessionId ? `${hostId}:${sessionId}` : ''
+  const [fetched, setFetched] = useState<ContextBreakdown | null>(() =>
+    cacheKey ? (contextCache.get(cacheKey) ?? null) : null,
+  )
 
   useEffect(() => {
-    setFetched(null)
-    if (!hostId || !sessionId || isDraftSession(sessionId)) return
+    if (!cacheKey || !sessionId || isDraftSession(sessionId)) {
+      setFetched(null)
+      return
+    }
+    // 切回看过的会话时先用上次结果，避免右栏「上下文」卡片先消失一帧再出现（反馈1601#02）。
+    const cached = contextCache.get(cacheKey) ?? null
+    setFetched(cached)
     const host = useAppStore.getState().hosts.find((h) => h.id === hostId)
     if (!host) return
     let cancelled = false
     void api
       .context(host, sessionId)
       .then((value) => {
+        contextCache.set(cacheKey, value)
+        if (contextCache.size > 50) {
+          const oldest = contextCache.keys().next().value
+          if (oldest && oldest !== cacheKey) contextCache.delete(oldest)
+        }
         if (!cancelled) setFetched(value)
       })
       .catch(() => {

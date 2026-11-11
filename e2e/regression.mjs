@@ -1630,6 +1630,13 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       message('pr1', 'user', '看看这个模型的价格'),
       message('pr2', 'assistant', '按参考价估算。', { model: 'o3' }),
     ], { groupId: 'g2', model: 'o3', updatedAt: Date.now() - 980 }),
+    // 反馈1601#03：输入 6 tok、按参考价折算后不足 $0.0001，不能显示成 $0.0000。
+    mk('tinycost', '小额花费会话', [
+      message('tc1', 'user', '这条输入的金额不要显示成 0', {
+        usage: { inputTokens: 6, outputTokens: 0, costUsd: 0.00003 },
+      }),
+      message('tc2', 'assistant', '已记录。', { model: 'mock-1' }),
+    ], { updatedAt: Date.now() - 1565 }),
     mk('huge', '超大会话 · 320 轮', hugeMessages, { updatedAt: Date.now() - 900 }),
     mk('links', '文件链接会话', linksMessages, { updatedAt: Date.now() - 1500 }),
     mk('wide', '宽内容会话', wideMessages, { updatedAt: Date.now() - 1520 }),
@@ -4888,7 +4895,7 @@ async function main() {
       )
       await page.locator(`button[data-tip="${repo}"]`).first().click()
       const panel = page
-        .locator('[data-portal-layer="popover"]')
+        .locator('[data-portal-layer]')
         .filter({ has: page.locator('[data-folder-picker]') })
         .first()
       await panel.waitFor({ state: 'visible' })
@@ -4906,7 +4913,7 @@ async function main() {
       await page.keyboard.press('Escape')
       await page.locator(`button[data-tip="${repo}"]`).first().click()
       const emptyPanel = page
-        .locator('[data-portal-layer="popover"]')
+        .locator('[data-portal-layer]')
         .filter({ has: page.locator('[data-folder-picker]') })
         .first()
       await emptyPanel.waitFor({ state: 'visible' })
@@ -5411,6 +5418,214 @@ async function main() {
       )
     })
 
+    desktop('反馈1601#02：来回切换会话，消息区与右栏从新会话首帧起保持同一画面（R10 复发）', async (page) => {
+      // 先各打开一次，让右栏的上下文/用量分组数据在测量前就绪。
+      await openSession(page, 'huge')
+      await page.waitForTimeout(600)
+      await openSession(page, 'codeblock')
+      await page.waitForTimeout(600)
+      await page.evaluate(() => {
+        const state = (window.__fb1601 = { on: true, frames: [] })
+        const record = () => {
+          const s = window.__fb1601
+          if (!s.on) return
+          const scroll = document.querySelector('.chat-scroll')
+          const panelBody = document.querySelector('[data-panel-body]')
+          const box = scroll.getBoundingClientRect()
+          const rows = [...scroll.querySelectorAll('.msg-row')]
+          const first = rows.find(
+            (row) =>
+              row.getAttribute('data-message-id') &&
+              row.getBoundingClientRect().bottom > box.top + 1,
+          )
+          // 其他用例可能给会话追加过消息，按整个列表里任一已知夹具 id 归属会话。
+          const ids = rows.map((row) => row.getAttribute('data-message-id') ?? '')
+          const knows = (re) => ids.some((id) => re.test(id))
+          s.frames.push({
+            session: knows(/^h[ua]\d+/)
+              ? 'huge'
+              : knows(/^r16/)
+                ? 'codeblock'
+                : knows(/^sc\d/)
+                  ? 'scroll'
+                  : '',
+            top: scroll.scrollTop,
+            height: scroll.scrollHeight,
+            clientHeight: scroll.clientHeight,
+            rows: rows.length,
+            skeleton: scroll.querySelectorAll('.skeleton').length,
+            rowTop: first ? Math.round(first.getBoundingClientRect().top - box.top) : null,
+            groups: panelBody
+              ? [...panelBody.querySelectorAll('[data-group]')]
+                  .map((g) => g.getAttribute('data-group'))
+                  .join(',')
+              : '',
+            panelSkeleton: panelBody ? panelBody.querySelectorAll('.skeleton').length : 0,
+            graphNodes: panelBody ? panelBody.querySelectorAll('[data-graph-turn-id]').length : 0,
+            hasGraph: panelBody ? panelBody.textContent.includes('会话图') : false,
+          })
+          requestAnimationFrame(loop)
+        }
+        // 在绘制之后采样（rAF → 宏任务），看到的是这一帧真正画出来的画面。
+        const loop = () => requestAnimationFrame(() => setTimeout(record, 0))
+        loop()
+      })
+      const clickSession = async (title, sessionId, messagePrefix) => {
+        const row = page.locator('[data-session-row]').filter({ hasText: title }).first()
+        await row.waitFor({ timeout: 15_000 })
+        await row.locator('[data-session-open], button').first().click()
+        await page.waitForFunction(
+          (id) => window.location.hash.includes(`/s/${id}`),
+          sessionId,
+          { timeout: 10_000 },
+        )
+        // 等目标会话的内容真正挂载（首屏快照异步到达），再看它之后的帧。
+        await page
+          .locator(`.msg-row[data-message-id^="${messagePrefix}"]`)
+          .first()
+          .waitFor({ timeout: 15_000 })
+        await page.waitForTimeout(500)
+      }
+      await clickSession('超大会话 · 320 轮', 'huge', 'hu')
+      await clickSession('代码块与表格会话', 'codeblock', 'r16u')
+      // 首次打开的会话：目标视图还没有任何缓存，同样不能闪。
+      await clickSession('流式跟随会话', 'scroll', 'sc0')
+      const frames = await page.evaluate(() => {
+        window.__fb1601.on = false
+        return window.__fb1601.frames
+      })
+      if (process.env.FB1601_DEBUG) writeFileSync('/tmp/fix-1601a/frames-1601.json', JSON.stringify(frames, null, 1))
+      assert.ok(frames.length > 30, `切换期间采样帧太少：${frames.length}`)
+      // 任何一帧都不能把主区清空、显示骨架，或让右栏出现骨架。
+      const blank = frames.filter((f) => f.rows === 0 || f.skeleton > 0 || f.panelSkeleton > 0)
+      assert.equal(blank.length, 0, `切换会话时有 ${blank.length} 帧主区/右栏空白或骨架屏`)
+      // 贴底：每一帧都应停在底部（切换后重新校准也不能先停在别处）。
+      const notBottom = frames.filter(
+        (f) => f.rows > 0 && f.height - f.top - f.clientHeight > 2,
+      )
+      assert.equal(notBottom.length, 0, `切换会话时有 ${notBottom.length} 帧不在底部（画面会跳动）`)
+      // 同一会话显示期间，可见首行相对视口的位置必须保持不变：注入说明、代码块等
+      // 后到的内容不能让画面先下移再回弹。
+      const perSession = new Map()
+      for (const f of frames) {
+        if (!f.session || f.rowTop === null) continue
+        const entry =
+          perSession.get(f.session) ??
+          { tops: new Set(), groups: new Set(), graphs: new Set(), groupSequence: [] }
+        entry.tops.add(f.rowTop)
+        entry.groups.add(f.groups)
+        entry.graphs.add(f.graphNodes)
+        if (entry.groupSequence.at(-1) !== f.groups) entry.groupSequence.push(f.groups)
+        perSession.set(f.session, entry)
+      }
+      for (const session of ['huge', 'codeblock', 'scroll']) {
+        assert.ok(perSession.has(session), `没有采样到会话 ${session} 的画面（采样到 ${[...perSession.keys()].join('/') || '无'}，共 ${frames.length} 帧）`)
+        const entry = perSession.get(session)
+        const tops = [...entry.tops]
+        const spread = Math.max(...tops) - Math.min(...tops)
+        assert.ok(
+          spread <= 2,
+          `会话 ${session} 切换后画面上下跳动 ${spread}px（可见首行位置 ${tops.join('/')}）`,
+        )
+        assert.equal(
+          entry.graphs.size,
+          1,
+          `会话 ${session} 显示期间会话图节点数在变化：${[...entry.graphs].join('/')}`,
+        )
+        assert.ok([...entry.graphs][0] > 0, `会话 ${session} 的会话图卡片没有节点`)
+        if (session === 'scroll') {
+          // 首次打开的会话，上下文数据要多拉一次：只允许卡片晚出现一次，不能再消失。
+          const sequence = [...entry.groupSequence]
+          const last = new Set(sequence.at(-1)?.split(',') ?? [])
+          for (const groups of sequence) {
+            for (const id of groups.split(',')) {
+              assert.ok(last.has(id), `会话 ${session} 显示期间右栏卡片 ${id} 出现后又消失了`)
+            }
+          }
+        } else {
+          assert.equal(
+            entry.groups.size,
+            1,
+            `会话 ${session} 显示期间右栏卡片在跳动：${[...entry.groups].join(' | ')}`,
+          )
+        }
+      }
+      assert.ok(frames.every((f) => !f.session || f.hasGraph), '切换期间右栏缺少会话图卡片')
+    })
+
+    desktop('反馈1601#05：侧栏主机与项目文件夹的折叠状态会被记住，重开仍折叠（R10）', async (page) => {
+      await openSession(page, 'long')
+      // 主机分组只在多主机时出现：加一台空主机（同一地址），测完清理。
+      await page.evaluate(() => {
+        const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
+        if (hosts.length < 2) {
+          localStorage.setItem(
+            'tandem.hosts.v1',
+            JSON.stringify([...hosts, { ...hosts[0], id: 'reg-host-2', name: '演示主机' }]),
+          )
+        }
+      })
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page
+        .locator('[aria-label="消息输入框"], button:has-text("新会话")')
+        .first()
+        .waitFor({ timeout: 20_000 })
+      await page.waitForTimeout(900)
+      const project = page.locator('[data-project-row]').first()
+      await project.waitFor({ timeout: 10_000 })
+      const projectKey = await project.getAttribute('data-project-key')
+      const projectToggle = project.locator('button[aria-expanded]').first()
+      assert.equal(await projectToggle.getAttribute('aria-expanded'), 'true', '项目默认应展开')
+      await projectToggle.click()
+      assert.equal(await projectToggle.getAttribute('aria-expanded'), 'false', '点击后项目没有折叠')
+      const hostGroup = page.locator('[data-host-group]').first()
+      await hostGroup.waitFor({ timeout: 10_000 })
+      const hostToggle = hostGroup.locator('button[aria-expanded]').first()
+      assert.equal(await hostToggle.getAttribute('aria-expanded'), 'true', '主机默认应展开')
+      await hostToggle.click()
+      assert.equal(await hostToggle.getAttribute('aria-expanded'), 'false', '点击后主机没有折叠')
+      const stored = await page.evaluate(
+        () => JSON.parse(localStorage.getItem('tandem.ui.v1') ?? '{}').collapsedProjects ?? [],
+      )
+      // 主机按主机标识、项目按项目路径记（不再用显示名）。
+      assert.ok(stored.some((key) => key.startsWith('host:')), `没有记住主机折叠：${stored.join(',')}`)
+      assert.ok(
+        stored.some((key) => /:[/\\]/.test(key)),
+        `项目折叠没有按项目路径记住：${stored.join(',')}`,
+      )
+      // 重开（刷新）：两级都应保持折叠。
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page
+        .locator('[aria-label="消息输入框"], button:has-text("新会话")')
+        .first()
+        .waitFor({ timeout: 20_000 })
+      await page.waitForTimeout(900)
+      const hostAfter = page.locator('[data-host-group]').first()
+      await hostAfter.waitFor({ timeout: 10_000 })
+      assert.equal(
+        await hostAfter.locator('button[aria-expanded]').first().getAttribute('aria-expanded'),
+        'false',
+        '重开后主机分组又展开了',
+      )
+      const projectAfter = page.locator(`[data-project-row][data-project-key="${projectKey}"]`).first()
+      await projectAfter.waitFor({ timeout: 10_000 })
+      assert.equal(
+        await projectAfter.locator('button[aria-expanded]').first().getAttribute('aria-expanded'),
+        'false',
+        '重开后项目文件夹又展开了',
+      )
+      // 清理：移除测试主机与折叠状态，避免影响后续用例。
+      await page.evaluate(() => {
+        const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]').filter(
+          (h) => h.id !== 'reg-host-2',
+        )
+        localStorage.setItem('tandem.hosts.v1', JSON.stringify(hosts))
+        const prefs = JSON.parse(localStorage.getItem('tandem.ui.v1') ?? '{}')
+        delete prefs.collapsedProjects
+        localStorage.setItem('tandem.ui.v1', JSON.stringify(prefs))
+      })
+    })
+
     fb2102('反馈2102#02：会话图快速连点两个节点，最终停在第二个目标且滚动单调', async (page) => {
       await openSession(page, 'long')
       const nodes = page.locator('[data-group="graph"] [data-graph-turn-id]')
@@ -5824,10 +6039,23 @@ async function main() {
         .locator('[data-user-usage]')
         .first()
       await liveMeta.waitFor({ timeout: 10_000 })
+      const liveCostText = await liveMeta.innerText()
       assert.match(
-        await liveMeta.innerText(),
-        /^(刚刚|\d+ 分钟前|\d+ 小时前|\d{2}:\d{2}) · ~\d+ tok · \$\d/,
+        liveCostText,
+        /^(刚刚|\d+ 分钟前|\d+ 小时前|\d{2}:\d{2}) · ~\d+ tok · (?:<)?\$\d/,
         '用户消息下方缺少 token 或金额',
+      )
+      // 反馈1601#03：金额极小时显示「<$0.0001」，不能四舍五入成 $0.0000。
+      assert.ok(!liveCostText.includes('$0.0000'), `用户消息金额显示成了 $0.0000：${liveCostText}`)
+
+      // 预置的小额花费（Host 记录的输入估算）：直接检查行的格式。
+      await openSession(page, 'tinycost')
+      const tinyMeta = page.locator('[data-turn-id="tc1"] [data-user-usage]').first()
+      await tinyMeta.waitFor({ timeout: 5_000 })
+      assert.match(
+        await tinyMeta.innerText(),
+        /· <\$0\.0001$/,
+        '用户消息的极小金额没有显示成 <$0.0001',
       )
     })
 
@@ -5845,7 +6073,7 @@ async function main() {
         const trigger = page.locator(`button[data-tip="${repo}"]`).first()
         await trigger.click()
         const panel = page
-          .locator('[data-portal-layer="popover"]')
+          .locator('[data-portal-layer]')
           .filter({ has: page.locator('[data-folder-picker]') })
           .first()
         await panel.waitFor()
@@ -5853,6 +6081,29 @@ async function main() {
           await panel.getByText(longName, { exact: false }).count(),
           1,
           '文件夹弹层没有列出最近目录',
+        )
+        // 反馈1601#01：分组标题/分隔线/行都走 ui/Menu 原语，与其他下拉同一边距，
+        // 不再出现手写 border-t 分隔造成的「内部边更厚」。
+        assert.equal(await panel.getAttribute('data-portal-layer'), 'menu', '文件夹弹层没有改用 ui/Menu')
+        const chrome = await panel.evaluate((el) => {
+          const body = el.querySelector('[data-menu-body]')
+          const rows = [...el.querySelectorAll('[role="menuitem"]')]
+          const label = [...el.querySelectorAll('[role="menu"] div, [role="menu"] > div')].find((n) =>
+            (n.textContent ?? '').trim() === '最近',
+          )
+          return {
+            padding: body ? getComputedStyle(body.parentElement).paddingTop : '',
+            borderTop: el.querySelectorAll('.border-t').length,
+            rowHeights: rows.map((row) => Math.round(row.getBoundingClientRect().height)),
+            labelSize: label ? getComputedStyle(label).fontSize : '',
+          }
+        })
+        assert.equal(chrome.borderTop, 0, '文件夹弹层里仍有手写 border-t 分隔线')
+        assert.equal(chrome.padding, '4px', `文件夹弹层内边距不是菜单统一值：${chrome.padding}`)
+        assert.equal(chrome.labelSize, '12px', `分组标题字号不是菜单统一值：${chrome.labelSize}`)
+        assert.ok(
+          chrome.rowHeights.every((height) => height === 26),
+          `文件夹弹层的行高不是菜单统一值：${chrome.rowHeights.join('/')}`,
         )
         await panel.getByRole('menuitem', { name: '打开文件夹…' }).click()
         const dialog = page.getByRole('dialog', { name: '打开文件夹' })
@@ -6021,9 +6272,9 @@ async function main() {
       const host = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-monitor') }).first()
       const folder = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-folder-open') }).first()
       const branch = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-git-branch') }).first()
-      const branchPanel = page.locator('[data-portal-layer="popover"]').filter({ hasText: '新建分支' }).first()
+      const branchPanel = page.locator('[data-portal-layer]').filter({ hasText: '新建分支' }).first()
       const folderPanel = page
-        .locator('[data-portal-layer="popover"]')
+        .locator('[data-portal-layer]')
         .filter({ has: page.locator('[data-folder-picker]') })
         .first()
 
@@ -6095,7 +6346,7 @@ async function main() {
       const folderPill = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-folder-open') }).first()
       const textarea = page.locator('[aria-label="消息输入框"]').first()
       const folderPanel = page
-        .locator('[data-portal-layer="popover"]')
+        .locator('[data-portal-layer]')
         .filter({ has: page.locator('[data-folder-picker]') })
         .first()
 
@@ -6362,7 +6613,7 @@ async function main() {
       const trigger = page.locator(`button[data-tip="${repo}"]`).first()
       await trigger.click()
       const panel = page
-        .locator('[data-portal-layer="popover"]')
+        .locator('[data-portal-layer]')
         .filter({ has: page.locator('[data-folder-picker]') })
         .first()
       await panel.waitFor()
@@ -6668,7 +6919,7 @@ async function main() {
       await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
       await page.locator('button:has(svg.lucide-folder-open)').first().click()
       await page
-        .locator('[data-portal-layer="popover"]')
+        .locator('[data-portal-layer]')
         .filter({ has: page.locator('[data-folder-picker]') })
         .first()
         .getByRole('menuitem', { name: '打开文件夹…' })

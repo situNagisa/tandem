@@ -380,6 +380,7 @@ export function FolderBrowser({
 /**
  * 文件夹弹层：只列最近用过的目录，底部一项「打开文件夹…」。
  * 目录浏览器不再常驻，按需在系统对话框（本机）或应用内对话框（其他主机）里打开。
+ * 分组标题、分隔线与行都走 ui/Menu 原语，和其他下拉的边距/行高保持一致（反馈1601#01）。
  */
 function FolderPicker({
   hostId,
@@ -392,26 +393,21 @@ function FolderPicker({
 }) {
   const recent = useMemo(() => loadRecentDirs(hostId), [hostId])
   return (
-    <div className="w-[260px]" data-folder-picker="">
+    <div data-folder-picker="" className="min-w-0">
       {recent.length > 0 && (
         <>
-          <p className="px-2 pb-1 pt-0.5 text-[11px] leading-4 text-muted">最近</p>
-          <MenuList aria-label="最近文件夹" className="p-0">
-            {recent.map((dir) => (
-              <MenuItem key={dir} icon={<Folder size={13} />} title={dir} onSelect={() => onUse(dir)}>
-                {basename(dir) || dir}
-              </MenuItem>
-            ))}
-          </MenuList>
+          <Menu.Label>最近</Menu.Label>
+          {recent.map((dir) => (
+            <Menu.Item key={dir} icon={<Folder size={13} />} title={dir} onSelect={() => onUse(dir)}>
+              {basename(dir) || dir}
+            </Menu.Item>
+          ))}
+          <Menu.Separator />
         </>
       )}
-      <div className={recent.length > 0 ? 'mt-1 border-t border-border pt-1' : ''}>
-        <MenuList aria-label="选择文件夹" className="p-0">
-          <MenuItem icon={<FolderOpen size={13} />} onSelect={onBrowse}>
-            打开文件夹…
-          </MenuItem>
-        </MenuList>
-      </div>
+      <Menu.Item icon={<FolderOpen size={13} />} onSelect={onBrowse}>
+        打开文件夹…
+      </Menu.Item>
     </div>
   )
 }
@@ -823,13 +819,15 @@ export function EnvBar({
           }}
         />
       </Menu>
-      <Popover
+      <Menu
         side="top"
-        padded={false}
+        align="left"
+        modal={false}
         open={folderOpen}
         onOpenChange={setFolderOpen}
-        panelClassName="w-auto rounded-[10px] p-[5px]"
-        trigger={({ open, toggle }) => (
+        className="w-[260px]"
+        aria-label="选择工作目录"
+        trigger={({ open }) => (
           <EnvTrigger
             icon={<FolderOpen size={12} className="text-muted" />}
             label={
@@ -841,7 +839,6 @@ export function EnvBar({
                 '文件夹'
               )
             }
-            onClick={toggle}
             open={open}
             pressed={!!pendingHost}
             disabled={migrating || (!!locked && !pendingHost)}
@@ -853,19 +850,14 @@ export function EnvBar({
           />
         )}
       >
-        {(close) =>
-          hostId || pendingHost ? (
-            <FolderPicker
-              hostId={pendingHost?.id ?? hostId}
-              onUse={(path) => {
-                close()
-                applyFolder(path, pendingHost ? 'pending' : 'current')
-              }}
-              onBrowse={() => void openFolderPicker()}
-            />
-          ) : null
-        }
-      </Popover>
+        {hostId || pendingHost ? (
+          <FolderPicker
+            hostId={pendingHost?.id ?? hostId}
+            onUse={(path) => applyFolder(path, pendingHost ? 'pending' : 'current')}
+            onBrowse={() => void openFolderPicker()}
+          />
+        ) : null}
+      </Menu>
       {pendingHost ? (
         <IconButton
           data-env-pending-cancel="true"
