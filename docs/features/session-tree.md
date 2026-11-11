@@ -1,6 +1,6 @@
 # 会话树（侧栏会话行、悬停拓扑图、切分支）
 
-> 更新：2026-11-11。用户 2026-11-11 22:09 原话决定了三件事，单点断言在 `scripts/decisions-check.mjs` 的 `sidebar-fork-same-row`、`sidebar-hover-topology`、`graph-trunk-current`。绘制规范、颜色与高度见 [session-graph.md](session-graph.md)。
+> 更新：2026-11-12。用户 2026-11-11 22:09 原话决定了三件事，单点断言在 `scripts/decisions-check.mjs` 的 `sidebar-fork-same-row`、`sidebar-hover-topology`、`graph-trunk-current`。绘制规范、颜色与高度见 [session-graph.md](session-graph.md)。
 
 ## 一行一棵会话树
 
@@ -13,14 +13,16 @@
 ## 悬停拓扑图
 
 - 悬停任一会话行，在行右侧弹出浮层；悬停延迟与标准 tooltip 相同（500ms 弹出、300ms 收起，常量共用 `Tip` 的 `TIP_SHOW_DELAY`/`TIP_SKIP_DELAY`），移入浮层不消失，`Esc`、点击、移出后收起。
-- 浮层里是**拓扑图**：节点 = 会话（主会话、分叉、子代理、孙代理），不是轮次；不显示轮次文字、token、耗时。节点标签只有简短会话名（单行截断），节点 tooltip 显示全名。
-- 布局、正交圆角连线、泳道色、8px 同形圆节点、悬停整条轨道高亮 + 会话名 tooltip、当前会话外圈高亮，全部复用右栏会话图的 `layout.ts` / `SessionGraphView`（拓扑模式 `layoutSessionTopology`）。
-- 根会话在主线第 0 列第一行，分支从新到旧向下铺开；同一会话的多个分支各占一列，嵌套子代理继续向右。
-- 点节点切换：分叉 → 打开该会话；子代理 → 打开只读子会话；主线 → 打开根会话。行标题的标准 tooltip 保留（截断标题看全文），浮层内的节点/连线 tooltip 与它共用同一套样式。
+- **树里只有当前会话（没有分叉、没有子代理）时不弹**（用户 2026-11-12 原话：这个卡片没有什么用，反馈0220#06）。
+- 浮层与右栏会话图是**同一张图**（同一个 `layoutSessionGraph` 与 `SessionGraphView`），只是紧凑模式：不显示轮次标题，只在每个会话起点显示会话名；保留每个会话的起点/最新轮、分叉点/派出点轮次与子代理汇回点，其余普通轮次省略（同一会话相邻保留轮之间由泳道直线相连），因此能看出「从哪一轮分叉出去、子代理从哪一轮派出」（用户 2026-11-12 02:47 原话）。主线仍是当前正在查看的会话。
+- 悬停分叉点/派出点节点时，tooltip 显示该轮标题；悬停名称行或连线时，左侧该会话的线与节点一起高亮。
+- 命中区：连线透明描边两侧各 6px（列距 14px，相邻泳道不重叠），节点圆点命中区 20px，名称行整行可点（用户原话：拓扑图特别细，鼠标悬停很难选中 → 反馈0220#07）。
+- 点节点/连线：分叉 → 打开该会话；子代理 → 打开只读子会话；当前会话 → 不跳转。行标题的标准 tooltip 保留（截断标题看全文）。
+- **反馈模式（Ctrl+Shift+F）下浮层停住不消失**：`ui/HoverCard` 与菜单/Popover 同一套规则，指针离开触发器不收起（反馈0220#06，共享层修，不在 SessionRow 里特判）。
 
 ## 切分支（右栏会话图）
 
-- 右栏会话图的主线永远是**当前打开的会话**：在分叉里时，当前分叉的轮次在主线轨道，来源会话与其他分叉作为分支泳道，来源会话行尾写「原会话」，其余分叉写「分叉」；点击仍可切换。
+- 右栏会话图的主线永远是**当前打开的会话的祖先链**：打开分叉时，主线 = 来源会话分叉点之前的轮次 + 分叉自己的轮次，一条直线上去；来源会话在分叉点之后的轮次是完整分支泳道（不再画「原会话」单节点支线），主会话上的子代理同样可见。见 [session-graph.md](session-graph.md)。
 - 子代理只读视图不切换主线：右栏仍是其父会话的会话图，点主线节点先退出子代理视图再定位（沿用反馈1926#03）。
 - 用户原话说「最右边的主线要换成对应的会话」；现行画法主线固定在第 0 列（最左），按产品经理的要求保持轨道位置不变，只替换主线代表的会话。
 
@@ -31,9 +33,10 @@
 - `packages/web/src/components/session/SessionRow.tsx`：行内分叉名、整树置顶、悬停浮层入口。
 - `packages/web/src/components/session/SessionTopology.tsx`：悬停浮层的拓扑图内容与节点点击。
 - `packages/web/src/components/ui/HoverCard.tsx`：悬停浮层原语（Portal + 碰撞避让 + 延迟）。
-- `packages/web/src/components/sessionGraph/layout.ts` 的 `layoutSessionTopology`；`data.ts` 的 `buildSessionTopology` 与分叉视图的来源/兄弟分支。
+- `packages/web/src/components/sessionGraph/layout.ts` 的 `layoutSessionGraph`（trunk = 当前会话，`compact` = 悬停浮层）；`data.ts` 的 `graphFromTree`；`useGraphTree.ts` 按树缓存拓扑。
 
 ## 回归
 
-- `e2e/regression.mjs`「侧栏分叉并入原会话行、悬停拓扑图、右栏切分支」：分叉前后侧栏行数不变；悬停出现拓扑浮层且节点数 = 树内会话数、无轮次文字；点分叉节点跳转、行内出现分叉名；在分叉里右栏主线归属仍是该分叉（`data-edge-owner`）。
-- 单测：`layout.test.ts`（拓扑布局）、`sessionListUtils.test.ts`（归并与汇总）。
+- `e2e/regression.mjs`「侧栏分叉并入原会话行、悬停拓扑图、右栏切分支」：分叉前后侧栏行数不变；悬停出现拓扑浮层、树内每个会话都有节点、分叉点/派出点被画出、无轮次文字；点分叉节点跳转、行内出现分叉名；在分叉里右栏主线归属仍是该分叉（`data-edge-owner`），分叉轮次在 trunk 上、来源会话是分支泳道。
+- `e2e/regression.mjs` 反馈0220#06/#07：单会话树不弹卡片；反馈模式卡片停住；悬停名称行高亮对应线；点线/节点跳转；线外 5px 仍命中。
+- 单测：`layout.test.ts`（整棵树共拓扑 + 主线切换 + 紧凑模式）、`sessionListUtils.test.ts`（归并与汇总）。

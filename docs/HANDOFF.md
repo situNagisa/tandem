@@ -1,6 +1,6 @@
 # 交接页（任何新会话先读这一页，再读 AGENTS.md）
 
-更新：2026-11-10。目的：协调者的会话很长，随时可能换一个全新会话接手；这一页让接手者 5 分钟内知道"现在在哪、正在做什么、在等谁"。文档分层与索引见 `docs/README.md`。
+更新：2026-11-12。目的：协调者的会话很长，随时可能换一个全新会话接手；这一页让接手者 5 分钟内知道"现在在哪、正在做什么、在等谁"。文档分层与索引见 `docs/README.md`。
 
 ## 当前版本
 - 已发布 v0.4.6（本地标签，未 push）。产物在 Windows「下载」：`Tandem-Setup-0.4.6-x64.exe`（发布版）、`Tandem-Setup-0.4.6-debug-x64.exe`（调试版）、`tandem-release.apk/.aab`、`tandem-debug.apk`、`latest.yml`（指向 0.4.6 发布版）。
@@ -54,6 +54,6 @@
 - 不读 git remote 的值、不 push；不连公网；测试 Host 一律 TANDEM_HOME=/tmp/…；不用 pkill -f。
 
 ## 本轮手工操作 / 出错环节（只留最近 5 轮，每轮 ≤5 行）
+- 2026-11-12 会话图（反馈0220）：右栏与悬停浮层共用 `layoutSessionGraph`，拓扑来自 `GET /api/sessions/:id/graph`；改布局/组件后先 `npm run build -w @tandem/web` 再跑 regression（Host 服务的是 dist）；会话图虚拟滚动，Playwright 要逐段滚动收集节点；采样坐标取整，否则相邻泳道 tooltip 会串。
 - 2026-11-11 主机 IA：T1–T5/T7 全在 `packages/web`；删掉 Host 侧 join/enable 前端调用（`addLocalHost.ts`、LoginGate 启动本机工作站）；旧「连接手机」入口与 `PairDialog` 一并删除；调试版自动登录仍读 `<Host>/api/workstation/local/status`（只读探测，待 server 删除该路由时去掉）。
 - 2026-11-11 反馈1601：用自建临时 Host + CDP screencast/绘制后逐帧采样定位切换闪屏（注入说明行晚到 + 贴底补偿下一帧）；反馈包里的整页截图为 DOM 克隆，content-visibility 行会是空白，不能当作“主区空白”的证据；每次 Playwright 复现都要 `npm run build -w @tandem/web` 后新起 Host。
-- 2026-11-11 输入框改 contenteditable：回归里 60+ 处 `textarea[aria-label=消息输入框]` 换成 `[aria-label=消息输入框]`，`inputValue`→`data-value`、`isDisabled`→`aria-disabled`；批量替换误改到「记忆 Markdown」用例（已回退）。Playwright 的 fill 会把文本直接挂根节点，光标映射需带兜底。

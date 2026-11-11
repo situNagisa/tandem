@@ -1,6 +1,6 @@
 # 反馈根因台账
 
-> 更新：2026-11-11。每条反馈先归到一个根因（R 编号），再决定修法。同一根因第 2 次出现必须在共享层修，并在「防线位置」加自动检查；修复流水写在提交信息，不进本表。
+> 更新：2026-11-12。每条反馈先归到一个根因（R 编号），再决定修法。同一根因第 2 次出现必须在共享层修，并在「防线位置」加自动检查；修复流水写在提交信息，不进本表。
 
 | 编号 | 根因 | 次数 | 防线位置 |
 |---|---|---|---|
@@ -11,8 +11,8 @@
 | R05 | 重复入口（新会话、设置、删除、派单、缓存率、同图标的两个 ⋯ 等） | 7 | design P15；decisions-check 唯一入口项、`topbar-panel-icon-distinct`；regression 顶栏 ≤5/入口唯一/无重复缓存率/顶栏无同图标按钮 |
 | R06 | Windows 路径与编码、安装说明平台化；句中斜杠被识别成文件路径 | 8 | 路径规范化单测；`fileLinks` 路径形状单测（句中斜杠反例）；regression 盘符路径/平台分段安装说明 |
 | R07 | 外部会话注入内容外露、被当作用户轮 | 3 | `isSystemInjectionText` 统一口径；单测 turns/external；regression 注入口径用例 |
-| R08 | 点了没反应 / 数据未就绪被当异常 | 5 | 加载态与默认值兜底；store `openSession` 同步地址栏（`sessionsSlice`，否则 `navigate` 同址短路吞掉按路由的跳转）；decisions-check `route-follows-session`；regression 新会话环境条/模型价格/手机环境条/反馈2108#04 |
-| R09 | 反馈模式与浮层交互冲突 | 2 | `lib/overlay` + `data-portal-layer`；ui-audit contains/portal；regression 反馈圈选 |
+| R08 | 点了没反应 / 数据未就绪被当异常 | 6 | 加载态与默认值兜底；store `openSession` 同步地址栏（`sessionsSlice`，否则 `navigate` 同址短路吞掉按路由的跳转）；decisions-check `route-follows-session`；regression 新会话环境条/模型价格/手机环境条/反馈2108#04；外部会话图节点点击定位（0220#01） |
+| R09 | 反馈模式与浮层交互冲突 | 3 | `lib/overlay` + `data-portal-layer`；HoverCard 与菜单/Popover 同一规则（反馈模式下指针离开不收起）；ui-audit contains/portal；regression 反馈圈选/0220#06 悬停卡片停住 |
 | R10 | 提示/动效不符合习惯、尺寸跳动 | 11 | decisions-check `envbar-host-icon`；标准 Tooltip/固定尺寸/动效 token；regression 设置窗口/动画测量/高级分组/运行进度；切换会话保留旧画面（sessionsSlice `pendingFocus`）、新会话乐观占位（`startSession` 草稿）；贴底时后到内容绘制前补齐滚动（ChatView ResizeObserver/MutationObserver）；侧栏分组折叠按主机+项目路径记忆；regression 反馈2102#01/#06、反馈1601#02/#05、反馈2156#01（跳转只定位不加高亮）/#03（运行中节点呼吸动画） |
 | R11 | 危险或不可逆操作没有确认/预览 | 2 | `ui/ConfirmAction`；regression 合并/压缩/删除确认 |
 | R12 | 完成态缺少后续操作 | 1 | 状态驱动操作清单；regression 看板完成卡 |
@@ -70,3 +70,4 @@
 | R69 | 新会话页的账号/分组/模型/思考强度只存在组件状态，每次挂载回到默认选择 | 1 | `lib/newSessionPick.ts` 按主机记住 + 失效回落；单测 `newSessionPick`；decisions-check `new-session-pick-memory`；regression 反馈2102#05 |
 | R70 | 点击语义不符：子代理入口展开卡片或内嵌定位，而不是进入目标视图 | 2 | 子代理入口统一 `openAgentSession`（`ToolCard` 的 `onOpenAgent`、`SessionGraphCard` 的 `open`）；decisions-check `subagent-row-opens-session`、`graph-subagent-opens-session`；regression 反馈2108#02/#03 |
 | R71 | 客户端按字段重建摘要时漏掉 `unread`，快照覆盖列表后本地已读与服务端分叉（点掉了、重启又出现） | 1 | `summaryOf` 保留 `unread`；聚焦时以列表摘要兜底调用已读接口；regression 反馈2156#02 |
+| R72 | 会话图按视图各画一套拓扑：分叉视图把来源会话画成单节点支线、主会话上的子代理看不见；悬停拓扑只有会话点，看不出从哪一轮分叉/派出 | 2 | `GET /api/sessions/:id/graph` 下发整棵树的轮次与接入关系；`layoutSessionGraph` 唯一布局（trunk 参数 + compact 参数，紧凑模式保留分叉点/派出点/汇回点）；单测 `layout.test.ts`；decisions-check `graph-trunk-current`/`graph-one-topology-per-tree`/`sidebar-hover-topology`；regression 反馈0220#08/#07 |

@@ -5504,12 +5504,15 @@ async function main() {
           spread <= 2,
           `会话 ${session} 切换后画面上下跳动 ${spread}px（可见首行位置 ${tops.join('/')}）`,
         )
+        // 会话树拓扑是一次轻量请求（/api/sessions/:id/graph）：首帧可能还没到，
+        // 但到达后节点数必须稳定（不能一次显示一部分、再来一部分）。
+        const counts = [...entry.graphs].filter((count) => count > 0)
+        assert.ok(counts.length > 0, `会话 ${session} 的会话图卡片没有节点`)
         assert.equal(
-          entry.graphs.size,
+          new Set(counts).size,
           1,
           `会话 ${session} 显示期间会话图节点数在变化：${[...entry.graphs].join('/')}`,
         )
-        assert.ok([...entry.graphs][0] > 0, `会话 ${session} 的会话图卡片没有节点`)
         if (session === 'scroll') {
           // 首次打开的会话，上下文数据要多拉一次：只允许卡片晚出现一次，不能再消失。
           const sequence = [...entry.groupSequence]
@@ -10884,7 +10887,11 @@ async function main() {
         0,
         '分叉不应汇回主线',
       )
-      assert.match(await graph.locator('div[data-kind="fork"]').first().innerText(), /分叉/)
+      // 分叉会话的起点节点带着「分叉」标记（其余节点是它自己的轮次）。
+      assert.match(
+        await graph.locator('div[data-kind="fork"][data-session-label]').first().innerText(),
+        /分叉/,
+      )
 
       // 几何：连线落在泳道中心/行中心；汇回线从分支最后一行接回父泳道；主线贯穿首尾轮。
       const geometry = await graph.evaluate((root) => {
@@ -10965,8 +10972,11 @@ async function main() {
         assert.ok(onLane(path.end, path.toLane), '子代理分出线终点不在子泳道')
       }
       for (const path of branchBack) {
-        const out = branchOut.find((item) => item.owner === path.owner)
-        assert.ok(out && near(path.start, out.end), '汇回线起点没有接上分支最后一行')
+        // 汇回从子代理最后一行（泳道上的节点）出发，接回父会话的下一轮或轨道行。
+        const last = geometry.nodes.find(
+          (node) => node.lane === path.fromLane && near(path.start, node),
+        )
+        assert.ok(last, '汇回线起点没有接上子代理泳道上的节点')
         assert.ok(onLane(path.end, 0), '汇回线终点不在主线泳道')
         const target = nodeAt(0, path.toRow)
         if (!target) {
@@ -10993,16 +11003,19 @@ async function main() {
       const mainHover = await page.evaluate(() => {
         const scroller = document.querySelector('[data-session-graph] [data-graph-height]')
         const rect = scroller.getBoundingClientRect()
-        for (const hit of document.querySelectorAll('[data-session-graph-edges] [data-edge-hit]')) {
+        for (const hit of document.querySelectorAll(
+          '[data-session-graph-edges] [data-edge-hit][data-edge-kind="main"]',
+        )) {
           const total = hit.getTotalLength()
           const box = hit.ownerSVGElement.getBoundingClientRect()
           for (let i = 1; i <= 9; i += 1) {
             const point = hit.getPointAtLength((total * i) / 10)
-            const x = box.left + point.x
-            const y = box.top + point.y
+            const x = Math.round(box.left + point.x)
+            const y = Math.round(box.top + point.y)
             if (x > rect.left + 4 && x < rect.right - 4 && y > rect.top + 4 && y < rect.bottom - 4) {
               const top = document.elementFromPoint(x, y)
-              if (!top?.hasAttribute?.('data-edge-hit')) continue
+              // 必须是这一条线（交叉处上层可能是另一条线，归属会串）。
+              if (top !== hit) continue
               return {
                 x,
                 y,
@@ -11058,11 +11071,12 @@ async function main() {
           const box = hit.ownerSVGElement.getBoundingClientRect()
           for (let i = 1; i <= 9; i += 1) {
             const point = hit.getPointAtLength((total * i) / 10)
-            const x = box.left + point.x
-            const y = box.top + point.y
+            const x = Math.round(box.left + point.x)
+            const y = Math.round(box.top + point.y)
             if (x > rect.left + 4 && x < rect.right - 4 && y > rect.top + 4 && y < rect.bottom - 4) {
               const top = document.elementFromPoint(x, y)
-              if (!top?.hasAttribute?.('data-edge-hit')) continue
+              // 必须是这一条线（交叉处上层可能是另一条线，归属会串）。
+              if (top !== hit) continue
               return {
                 x,
                 y,
@@ -11144,6 +11158,395 @@ async function main() {
       await page.getByText(forkTitle, { exact: true }).first().waitFor({ timeout: 10_000 })
     })
 
+    desktop('反馈0220#08：一棵会话树共用一张拓扑，分叉以自己为主线（仿 git 切分支）', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const scenario = state.scenarios.find((item) => item.id === 'subagents')
+      assert.ok(scenario?.sessionIds?.length >= 4, '演示子代理场景缺少分叉/子代理会话')
+      const [mainId, , , forkId] = scenario.sessionIds
+      const turnsOf = async (id) =>
+        (await api(base, token, `/api/sessions/${encodeURIComponent(id)}/turns`)).turns.map(
+          (turn) => turn.messageId,
+        )
+      const mainTurns = await turnsOf(mainId)
+      const forkTurns = await turnsOf(forkId)
+      const forkDetail = await api(base, token, `/api/sessions/${encodeURIComponent(forkId)}`)
+      const mainDetail = await api(base, token, `/api/sessions/${encodeURIComponent(mainId)}`)
+      const forkOwn = forkTurns.filter((id) => !mainTurns.includes(id))
+      // 分叉点可能落在某一轮的助手消息上：取该消息所属的用户轮。
+      const pointIndex = mainDetail.messages.findIndex(
+        (message) => message.id === forkDetail.forkedFrom?.messageId,
+      )
+      let forkPoint = mainTurns[0]
+      for (let i = 0; i <= pointIndex; i += 1) {
+        const message = mainDetail.messages[i]
+        if (mainTurns.includes(message.id)) forkPoint = message.id
+      }
+      const rootPrefix = mainTurns.slice(0, mainTurns.indexOf(forkPoint) + 1)
+      assert.ok(forkOwn.length >= 2, '演示分叉缺少自有轮次')
+      assert.ok(rootPrefix.length >= 2, '演示分叉缺少分叉点之前的来源轮次')
+
+      const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
+      const scroller = page.locator('[data-group="graph"] [data-graph-height]').first()
+      const waitLoaded = async () => {
+        await graph.waitFor({ state: 'visible', timeout: 15_000 })
+        await page.waitForFunction(
+          () => {
+            const el = document.querySelector('[data-group="graph"] [data-graph-count]')
+            return Number(el?.getAttribute('data-graph-count') ?? 0) > 0
+          },
+          null,
+          { timeout: 15_000 },
+        )
+      }
+      // 虚拟滚动：逐段滚动收集所有节点（按 data-row 定位，不依赖当前视口）。
+      const collect = async () => {
+        const found = new Map()
+        const height = await scroller.evaluate((el) => el.clientHeight)
+        const total = await scroller.evaluate((el) => el.scrollHeight)
+        for (let top = 0; top <= total; top += Math.max(40, height - 40)) {
+          await scroller.evaluate((el, y) => {
+            el.scrollTop = y
+          }, top)
+          await page.waitForTimeout(40)
+          const batch = await graph.locator('[data-kind][data-row]').evaluateAll((els) =>
+            els.map((el) => ({
+              id: el.getAttribute('data-graph-turn-id'),
+              session: el.getAttribute('data-session-id'),
+              lane: Number(el.getAttribute('data-lane')),
+              row: Number(el.getAttribute('data-row')),
+              kind: el.getAttribute('data-kind'),
+              trunk: el.getAttribute('data-trunk') === 'true',
+              text: el.textContent ?? '',
+            })),
+          )
+          for (const item of batch) found.set(item.id, item)
+        }
+        await scroller.evaluate((el) => {
+          el.scrollTop = 0
+        })
+        return [...found.values()]
+      }
+
+      await openSession(page, mainId)
+      await waitLoaded()
+      const mainCount = Number(await scroller.getAttribute('data-graph-count'))
+      const mainNodes = await collect()
+      assert.equal(mainNodes.length, mainCount, `主会话视图节点没有全部收集到：${mainNodes.length}/${mainCount}`)
+      const mainTrunk = mainNodes
+        .filter((node) => node.trunk)
+        .sort((a, b) => a.row - b.row)
+        .map((node) => node.id)
+      assert.deepEqual(mainTrunk, [...mainTurns].reverse(), '主会话视图的主线不是本会话轮次（最新在上）')
+      assert.ok(
+        mainNodes.every((node) => (node.trunk ? node.lane === 0 : true)),
+        '主线节点不在第 0 列',
+      )
+
+      await openSession(page, forkId)
+      await waitLoaded()
+      const forkCount = Number(await scroller.getAttribute('data-graph-count'))
+      const forkNodes = await collect()
+      // 同一棵树：节点完全一样，只有主线不同。
+      assert.equal(forkCount, mainCount, `分叉视图节点数与主会话视图不一致：${forkCount} vs ${mainCount}`)
+      assert.deepEqual(
+        forkNodes.map((node) => node.id).sort(),
+        mainNodes.map((node) => node.id).sort(),
+        '分叉视图与主会话视图的节点集合不一致',
+      )
+      const forkTrunk = forkNodes
+        .filter((node) => node.trunk)
+        .sort((a, b) => a.row - b.row)
+        .map((node) => node.id)
+      assert.deepEqual(
+        forkTrunk,
+        [...forkOwn].reverse().concat([...rootPrefix].reverse()),
+        '分叉视图主线不是「分叉点前的来源轮次 + 分叉自己的轮次」',
+      )
+      assert.ok(
+        forkNodes.filter((node) => node.trunk).every((node) => node.lane === 0),
+        '分叉视图主线不在第 0 列（没有一条线上去）',
+      )
+      // 来源会话在分叉点之后的轮次是分支泳道（不是单节点「原会话」支线）。
+      assert.doesNotMatch(await graph.innerText(), /原会话/, '分叉视图仍在画「原会话」支线')
+      const sourceBranch = forkNodes.filter((node) => node.session === mainId && !node.trunk)
+      assert.deepEqual(
+        sourceBranch.sort((a, b) => b.row - a.row).map((node) => node.id),
+        mainTurns.slice(mainTurns.indexOf(forkPoint) + 1),
+        '分叉视图里来源会话分叉点之后的轮次没有画成分支泳道',
+      )
+      assert.equal(new Set(sourceBranch.map((node) => node.lane)).size, 1, '来源会话的分支泳道不连续')
+      const laneNodes = new Map()
+      for (const node of forkNodes) laneNodes.set(node.lane, (laneNodes.get(node.lane) ?? 0) + 1)
+      const forkEdges = await graph.locator('path[data-kind="fork"][data-from-lane][data-to-lane]').evaluateAll((els) =>
+        els.map((el) => ({
+          fromLane: Number(el.getAttribute('data-from-lane')),
+          toLane: Number(el.getAttribute('data-to-lane')),
+          fromRow: Number(el.getAttribute('data-from-row')),
+          owner: el.getAttribute('data-edge-owner'),
+          merge: el.getAttribute('data-merge') === '1',
+        })),
+      )
+      const connectors = forkEdges.filter((edge) => edge.fromLane !== edge.toLane)
+      assert.ok(connectors.length > 0, '分叉视图缺少分叉连线')
+      for (const edge of connectors) {
+        assert.ok(
+          (laneNodes.get(edge.toLane) ?? 0) > 1,
+          `分叉连线连到只有 1 个节点的支线（不是 git 图）：lane ${edge.toLane}`,
+        )
+      }
+      const point = forkNodes.find((node) => node.id === forkPoint)
+      assert.ok(point, '分叉视图缺少分叉点轮次节点')
+      assert.ok(
+        connectors.some((edge) => edge.owner === mainId && edge.fromRow === point.row),
+        '来源会话的分支不是从分叉点那一轮分出去的',
+      )
+      // 主会话上的子代理节点在分叉视图里可见。
+      const subagentIds = new Set(scenario.sessionIds.slice(1).filter((id) => id !== forkId))
+      const subNodes = forkNodes.filter((node) => subagentIds.has(node.session))
+      assert.ok(subNodes.length >= 3, `分叉视图看不到主会话上的子代理节点：${subNodes.length}`)
+      assert.ok(
+        subNodes.every((node) => node.kind === 'subagent-turn'),
+        '子代理节点类型不对',
+      )
+    })
+
+    desktop('反馈0220#07：悬停浮层名称行高亮左侧拓扑、点节点/线跳转会话；命中区加大', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const scenario = state.scenarios.find((item) => item.id === 'subagents')
+      const [mainId, , , forkId] = scenario.sessionIds
+      const forkTitle = (await api(base, token, `/api/sessions/${encodeURIComponent(forkId)}`)).title
+      await openSession(page, mainId)
+      const row = page.locator(`[data-session-row][data-session-id="${mainId}"]`).first()
+      await row.waitFor({ timeout: 15_000 })
+      const card = page.locator('[data-hover-card]').first()
+      const topology = card.locator('[data-session-topology]')
+      const cardScroller = card.locator('[data-graph-height]').first()
+      const openCard = async () => {
+        await page.mouse.move(4, 4)
+        await row.hover()
+        await card.waitFor({ state: 'visible', timeout: 10_000 })
+        await topology.waitFor({ state: 'visible', timeout: 10_000 })
+        // 卡片高度封顶后内部滚动：滚到底看分叉/子代理分支，并让目标进入命中区。
+        await cardScroller.evaluate((el) => {
+          el.scrollTop = el.scrollHeight
+        })
+        await page.waitForTimeout(150)
+      }
+      await openCard()
+
+      // 浮层里确实有分叉/派出点节点（不是根节点一个点伸出几条线）。
+      // 拓扑同样做了虚拟滚动：逐段滚动收集所有节点后再对连线起点。
+      const scan = async () => {
+        const combined = new Set()
+        const height = await cardScroller.evaluate((el) => el.clientHeight)
+        const total = await cardScroller.evaluate((el) => el.scrollHeight)
+        for (let top = 0; top <= total; top += Math.max(40, height - 40)) {
+          await cardScroller.evaluate((el, y) => {
+            el.scrollTop = y
+          }, top)
+          await page.waitForTimeout(40)
+          const batch = await topology.locator('[data-attach-point="true"]').evaluateAll((els) =>
+            els.map((el) => `${el.getAttribute('data-lane')}:${el.getAttribute('data-row')}`),
+          )
+          for (const key of batch) combined.add(key)
+        }
+        await cardScroller.evaluate((el) => {
+          el.scrollTop = el.scrollHeight
+        })
+        return combined
+      }
+      const attachPoints = await scan()
+      assert.ok(attachPoints.size >= 2, '悬停拓扑图没有画出分叉点/派出点轮次')
+      const attachEdges = await topology
+        .locator('path[data-edge-hit][data-edge-kind="subagent"], path[data-edge-hit][data-edge-kind="fork"]')
+        .evaluateAll((els) =>
+          els
+            .map((el) => ({
+              fromLane: Number(el.getAttribute('data-from-lane')),
+              toLane: Number(el.getAttribute('data-to-lane')),
+              fromRow: Number(el.getAttribute('data-from-row')),
+              merge: el.getAttribute('data-merge') === '1',
+            }))
+            .filter((edge) => edge.fromLane !== edge.toLane && !edge.merge),
+        )
+      assert.ok(attachEdges.length > 0, '悬停拓扑图缺少分叉/子代理连线')
+      for (const edge of attachEdges) {
+        assert.ok(
+          attachPoints.has(`${edge.fromLane}:${edge.fromRow}`),
+          `分叉/子代理泳道不是连在分叉点/派出点轮次上（${edge.fromLane}:${edge.fromRow}）`,
+        )
+      }
+
+      // 悬停分叉会话的名称行：左侧该会话的线与节点一起高亮。
+      const forkRow = topology.locator(`[data-session-id="${forkId}"][data-kind]`).first()
+      await forkRow.waitFor({ state: 'attached', timeout: 10_000 })
+      await forkRow.hover()
+      await page.waitForTimeout(150)
+      const hovered = await topology.evaluate((root, owner) => {
+        const mine = [...root.querySelectorAll('path[data-kind][data-edge-owner]')].filter(
+          (el) => el.getAttribute('data-edge-owner') === owner,
+        )
+        const rows = [...root.querySelectorAll('[data-session-id]')].filter(
+          (el) => el.getAttribute('data-session-id') === owner,
+        )
+        return {
+          mine: mine.length,
+          marked: mine.every((el) => el.getAttribute('data-hovered') === 'true'),
+          rows: rows.length,
+          rowHighlighted: rows.some((el) => {
+            const bg = getComputedStyle(el).backgroundColor
+            return bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent'
+          }),
+        }
+      }, forkId)
+      assert.ok(hovered.mine > 0, '悬停名称行后左侧没有该会话的线')
+      assert.ok(hovered.marked, '悬停名称行后左侧对应的线没有高亮')
+      assert.ok(hovered.rows > 0 && hovered.rowHighlighted, '悬停名称行后对应节点没有高亮')
+
+      // 点名称行跳转会话。
+      await forkRow.click()
+      await page.waitForFunction((id) => window.location.hash.includes(`/s/${id}`), forkId, { timeout: 10_000 })
+
+      // 点左侧的线也跳转。
+      await openSession(page, mainId)
+      await openCard()
+      // 取该会话自己泳道竖线上、没有被别的线盖住的一点再点。
+      const linePoint = await topology.evaluate((root, owner) => {
+        const scroller = root.querySelector('[data-graph-height]')
+        const rect = scroller.getBoundingClientRect()
+        for (const el of root.querySelectorAll('path[data-edge-hit]')) {
+          if (el.getAttribute('data-edge-owner') !== owner) continue
+          if (el.getAttribute('data-from-lane') !== el.getAttribute('data-to-lane')) continue
+          const total = el.getTotalLength()
+          const box = el.ownerSVGElement.getBoundingClientRect()
+          for (let i = 2; i <= 8; i += 1) {
+            const point = el.getPointAtLength((total * i) / 10)
+            const x = Math.round(box.left + point.x)
+            const y = Math.round(box.top + point.y)
+            if (y <= rect.top + 8 || y >= rect.bottom - 8) continue
+            if (x <= rect.left + 8 || x >= rect.right - 8) continue
+            if (document.elementFromPoint(x, y) !== el) continue
+            return { x, y }
+          }
+        }
+        return null
+      }, forkId)
+      assert.ok(linePoint, '找不到可点击的分支泳道线')
+      await page.mouse.click(linePoint.x, linePoint.y)
+      await page.waitForFunction((id) => window.location.hash.includes(`/s/${id}`), forkId, { timeout: 10_000 })
+
+      // 命中区：命中描边覆盖线中心两侧各 6px，偏 6px 悬停仍能命中并 tip 出会话名。
+      await openSession(page, mainId)
+      await openCard()
+      const hit = await topology.evaluate((root, owner) => {
+        const scroller = root.querySelector('[data-graph-height]')
+        const rect = scroller.getBoundingClientRect()
+        for (const el of root.querySelectorAll('path[data-edge-hit]')) {
+          if (el.getAttribute('data-edge-owner') !== owner) continue
+          const total = el.getTotalLength()
+          const box = el.ownerSVGElement.getBoundingClientRect()
+          for (let i = 2; i <= 8; i += 1) {
+            const point = el.getPointAtLength((total * i) / 10)
+            const x = Math.round(box.left + point.x)
+            const y = Math.round(box.top + point.y)
+            if (y <= rect.top + 8 || y >= rect.bottom - 8) continue
+            if (x <= rect.left + 8 || x >= rect.right - 8) continue
+            // 偏 6px 处命中的必须仍是这条线（不是相邻泳道的线）。
+            const offset = document.elementFromPoint(x + 6, y)
+            if (offset?.getAttribute?.('data-edge-owner') !== owner) continue
+            return { x, y }
+          }
+        }
+        return null
+      }, forkId)
+      assert.ok(hit, '找不到分叉会话的线')
+      await page.mouse.move(hit.x + 6, hit.y)
+      await page.waitForTimeout(700)
+      assert.equal(
+        (await page.locator('#tandem-tooltip[data-open]').innerText()).trim(),
+        forkTitle,
+        '线外 6px 悬停没有命中（命中区太窄）',
+      )
+      await page.mouse.move(4, 4)
+    })
+
+    desktop('反馈0220#06：没有分叉/子代理的会话不弹悬停拓扑卡片；树里有分支才弹', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const scenario = state.scenarios.find((item) => item.id === 'subagents')
+      const mainId = scenario.sessionIds[0]
+
+      await openSession(page, 'long')
+      const singleId = await page.evaluate(() => window.location.hash.match(/\/s\/([^/?#]+)/)?.[1])
+      assert.ok(singleId, '没有打开单会话')
+      const singleRow = page.locator(`[data-session-row][data-session-id="${singleId}"]`).first()
+      await singleRow.waitFor({ timeout: 15_000 })
+      await singleRow.hover()
+      await page.waitForTimeout(900)
+      assert.equal(
+        await page.locator('[data-hover-card]').count(),
+        0,
+        '没有分叉或子代理的会话仍弹出了悬停卡片',
+      )
+      await page.mouse.move(4, 4)
+
+      await openSession(page, mainId)
+      const treeRow = page.locator(`[data-session-row][data-session-id="${mainId}"]`).first()
+      await treeRow.hover()
+      await page.locator('[data-hover-card]').first().waitFor({ state: 'visible', timeout: 10_000 })
+    })
+
+    desktop('反馈0220#06：进入反馈模式后悬停拓扑卡片停住不消失（共享层）', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const mainId = state.scenarios.find((item) => item.id === 'subagents').sessionIds[0]
+      await openSession(page, mainId)
+      const row = page.locator(`[data-session-row][data-session-id="${mainId}"]`).first()
+      await row.waitFor({ timeout: 15_000 })
+      await row.hover()
+      const card = page.locator('[data-hover-card]').first()
+      await card.waitFor({ state: 'visible', timeout: 10_000 })
+      await page.keyboard.press('Control+Shift+F')
+      await page.waitForFunction(() => document.documentElement.classList.contains('feedback-mode'), null, {
+        timeout: 5_000,
+      })
+      // 指针移到捕获层上（离开会话行），卡片不能被指针离开事件收起。
+      await page.mouse.move(4, 4)
+      await page.waitForTimeout(1200)
+      assert.ok(await card.isVisible(), '进入反馈模式后悬停拓扑卡片消失了')
+      await page.keyboard.press('Escape')
+      await page.waitForFunction(
+        () => !document.documentElement.classList.contains('feedback-mode'),
+        null,
+        { timeout: 5_000 },
+      )
+    })
+
+    desktop('反馈0220#01：外部会话的会话图节点点击能定位该轮', async (page) => {
+      const codexId = globalThis.__regCodexId
+      assert.ok(codexId, '缺少 Codex 外部会话夹具')
+      await openExternal(page, 'codex', codexId)
+      const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+      const node = graph.locator('[data-kind="turn"]').nth(1)
+      await node.waitFor({ state: 'attached', timeout: 10_000 })
+      const messageId = await node.getAttribute('data-graph-turn-id')
+      assert.ok(messageId, '外部会话图节点没有携带消息 id')
+      await node.click()
+      await page.waitForFunction(
+        (id) => {
+          const el = document.querySelector(`[data-message-id="${CSS.escape(id)}"]`)
+          if (!el) return false
+          const rect = el.getBoundingClientRect()
+          return rect.bottom > 0 && rect.top < window.innerHeight
+        },
+        messageId,
+        { timeout: 12_000 },
+      )
+    })
+
     desktop('反馈2156#01：会话图跳转只定位，目标消息没有高亮背景', async (page) => {
       await openSession(page, 'long')
       if (!(await page.locator('[data-group]').count())) {
@@ -11152,6 +11555,7 @@ async function main() {
       const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
       await graph.waitFor({ state: 'visible', timeout: 15_000 })
       const node = graph.locator('div[data-kind="turn"]').nth(2)
+      await node.waitFor({ state: 'attached', timeout: 15_000 })
       const messageId = await node.getAttribute('data-graph-turn-id')
       assert.ok(messageId, '会话图节点没有携带目标消息 id')
       await node.click()
@@ -11232,12 +11636,24 @@ async function main() {
             const box = hit.ownerSVGElement.getBoundingClientRect()
             for (let i = 1; i <= 9; i += 1) {
               const point = hit.getPointAtLength((total * i) / 10)
-              const x = box.left + point.x
-              const y = box.top + point.y
+              // 取整到设备像素，避免浮点坐标与指针命中测试取到相邻的线。
+              const x = Math.round(box.left + point.x)
+              const y = Math.round(box.top + point.y)
               if (x > rect.left + 4 && x < rect.right - 4 && y > rect.top + 4 && y < rect.bottom - 4) {
                 const top = document.elementFromPoint(x, y)
-                if (!top?.hasAttribute?.('data-edge-hit')) continue
-                return { x, y, label: hit.getAttribute('data-tip') }
+                // 必须是这一条线（交叉处上层可能是另一条线，归属会串）。
+                if (top !== hit) continue
+                return {
+                  x,
+                  y,
+                  label: hit.getAttribute('data-tip'),
+                  owner: hit.getAttribute('data-edge-owner'),
+                  kind: hit.getAttribute('data-edge-kind'),
+                  fromLane: hit.getAttribute('data-from-lane'),
+                  toLane: hit.getAttribute('data-to-lane'),
+                  fromRow: hit.getAttribute('data-from-row'),
+                  toRow: hit.getAttribute('data-to-row'),
+                }
               }
             }
           }
@@ -11359,22 +11775,10 @@ async function main() {
       })
       await page.waitForTimeout(500)
 
-      // 悬停会话行：右侧弹出拓扑图，节点 = 会话（主 + 分叉 + 子代理），没有轮次文字。
+      // 悬停会话行：右侧弹出拓扑图（与右栏同一张图，紧凑模式不显示轮次文字）。
       await mainRow.hover()
       const topology = page.locator('[data-hover-card] [data-session-topology]').first()
       await topology.waitFor({ state: 'visible', timeout: 10_000 })
-      const nodes = topology.locator('div[data-session-id]')
-      const expectedNodes = 6 // 主会话 + 4 个子代理/孙代理 + 1 个分叉
-      await page.waitForFunction(
-        (count) => document.querySelectorAll('[data-hover-card] [data-session-topology] div[data-session-id]').length === count,
-        expectedNodes,
-        { timeout: 5_000 },
-      )
-      assert.equal(await nodes.count(), expectedNodes, '拓扑图节点数不等于树内会话数')
-      assert.equal(await topology.locator('div[data-kind="turn"]').count(), 0, '拓扑图出现了轮次节点')
-      assert.equal(await topology.locator('div[data-kind="session"]').count(), 1, '拓扑图缺少根会话节点')
-      assert.ok((await topology.locator('div[data-kind="fork"]').count()) >= 1, '拓扑图缺少分叉节点')
-      assert.ok((await topology.locator('div[data-kind="subagent"]').count()) >= 2, '拓扑图缺少子代理节点')
       const topologyText = await topology.innerText()
       assert.doesNotMatch(topologyText, /收到，先按这个做|我们先把价格页/, '拓扑图仍在显示轮次文字')
       assert.doesNotMatch(topologyText, /tok|token/i, '拓扑图显示了 token')
@@ -11382,9 +11786,50 @@ async function main() {
         (await topology.locator('[data-session-graph-edges] [data-edge-hit][data-tip]').count()) > 0,
         '拓扑图的连线没有会话名 tooltip',
       )
+      // 虚拟滚动：逐段滚动收集，确认树里每个会话都有节点、分叉点/派出点被画出来。
+      const cardScroller = topology.locator('[data-graph-height]').first()
+      const scanTopology = async () => {
+        const sessions = new Set()
+        const attach = new Set()
+        const labels = new Set()
+        const height = await cardScroller.evaluate((el) => el.clientHeight)
+        const total = await cardScroller.evaluate((el) => el.scrollHeight)
+        for (let top = 0; top <= total; top += Math.max(40, height - 40)) {
+          await cardScroller.evaluate((el, y) => {
+            el.scrollTop = y
+          }, top)
+          await page.waitForTimeout(40)
+          const batch = await topology.locator('div[data-session-id]').evaluateAll((els) =>
+            els.map((el) => ({
+              session: el.getAttribute('data-session-id'),
+              lane: el.getAttribute('data-lane'),
+              row: el.getAttribute('data-row'),
+              attach: el.getAttribute('data-attach-point') === 'true',
+              label: el.getAttribute('data-session-label') === 'true',
+            })),
+          )
+          for (const item of batch) {
+            sessions.add(item.session)
+            if (item.attach) attach.add(`${item.lane}:${item.row}`)
+            if (item.label) labels.add(item.session)
+          }
+        }
+        await cardScroller.evaluate((el) => {
+          el.scrollTop = el.scrollHeight
+        })
+        return { sessions, attach, labels }
+      }
+      const scanned = await scanTopology()
+      assert.equal(
+        scanned.sessions.size,
+        scenario.sessionIds.length,
+        `拓扑图节点数不等于树内会话数：${[...scanned.sessions].join(',')}`,
+      )
+      assert.ok(scanned.attach.size >= 2, '拓扑图没有画出分叉点/派出点轮次')
+      assert.equal(scanned.labels.size, scenario.sessionIds.length, '不是每个会话都显示了一次会话名')
 
       // 点分叉节点打开该分叉会话；侧栏同一行内小字标出所在分叉名。
-      await topology.locator(`div[data-kind="fork"][data-fork-id="${forkId}"]`).click()
+      await topology.locator(`div[data-session-id="${forkId}"]`).first().click()
       await page.waitForFunction(
         (id) => window.location.hash.includes(`/s/${id}`),
         forkId,
@@ -11395,7 +11840,7 @@ async function main() {
       const branchLabel = forkTitle.split('·').map((part) => part.trim()).filter(Boolean).pop()
       assert.equal((await branch.innerText()).trim(), branchLabel, '行内没有标出当前分叉名')
 
-      // 右栏会话图切分支：在分叉里，主线是当前分叉；来源会话作为分支泳道并写「原会话」。
+      // 右栏会话图切分支：在分叉里，主线是当前分叉（一条直线上去）；来源会话是分支泳道，没有「原会话」支线。
       const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
       await graph.waitFor({ state: 'visible', timeout: 15_000 })
       await page.waitForFunction(
@@ -11406,10 +11851,15 @@ async function main() {
         forkId,
         { timeout: 10_000 },
       )
-      const source = graph.locator(`div[data-kind="fork"][data-fork-id="${mainId}"]`).first()
-      await source.waitFor({ state: 'visible', timeout: 10_000 })
-      assert.match(await source.innerText(), /原会话/, '来源会话没有标成「原会话」')
-      assert.match(await source.innerText(), new RegExp(mainTitle.slice(0, 6)), '来源会话节点不是原会话标题')
+      assert.ok(
+        (await graph.locator('div[data-kind="fork"][data-trunk="true"]').count()) >= 2,
+        '分叉自己的轮次不在主线',
+      )
+      assert.doesNotMatch(await graph.innerText(), /原会话/, '分叉视图仍在画「原会话」支线')
+      assert.ok(
+        (await graph.locator(`path[data-kind="fork"][data-edge-owner="${mainId}"]`).count()) > 0,
+        '来源会话没有作为分支泳道',
+      )
 
       // 回到主会话：主线切回主会话本身。
       await openSession(page, mainId)
