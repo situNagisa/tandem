@@ -5,13 +5,14 @@ import { loadDraft, saveDraft } from '../../lib/storage'
 import { isTargetFocused } from '../session/SessionScope'
 import type { Completion } from './completion'
 import type { Attachment, PastedText } from './composerTypes'
+import type { ComposerEditorHandle } from './ComposerEditor'
 
 interface Options {
   draftKey: string
   text: string
   setText: (text: string) => void
   textRef: MutableRefObject<string>
-  textareaRef: MutableRefObject<HTMLTextAreaElement | null>
+  editorRef: MutableRefObject<ComposerEditorHandle | null>
   prevSessionRef: MutableRefObject<string | null>
   setPasted: Dispatch<SetStateAction<PastedText[]>>
   setAttachments: Dispatch<SetStateAction<Attachment[]>>
@@ -32,7 +33,7 @@ export function useComposerDraft({
   text,
   setText,
   textRef,
-  textareaRef,
+  editorRef,
   prevSessionRef,
   setPasted,
   setAttachments,
@@ -76,7 +77,7 @@ export function useComposerDraft({
     if (disabled) return
     // 会话模式沿用自动聚焦；无会话页只在 autoFocus 时聚焦。
     if (!autoFocus && (isMobile || sessionless)) return
-    const t = window.setTimeout(() => textareaRef.current?.focus(), 60)
+    const t = window.setTimeout(() => editorRef.current?.focus(), 60)
     return () => window.clearTimeout(t)
   }, [sessionId, isMobile, autoFocus, sessionless, disabled])
 
@@ -85,10 +86,10 @@ export function useComposerDraft({
     setText(seed.text)
     clearPromptSeed()
     window.requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (!el) return
-      el.focus()
-      el.setSelectionRange(seed.text.length, seed.text.length)
+      const editor = editorRef.current
+      if (!editor) return
+      editor.focus()
+      editor.setSelection(seed.text.length)
     })
   }, [seed, clearPromptSeed, scopeTarget])
 
@@ -101,20 +102,12 @@ export function useComposerDraft({
     if (sessionId) usePreviewStore.getState().clearSelections(sessionId)
     saveDraft(draftKey, '')
     window.requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (!el) return
-      el.style.height = '28px'
-      el.focus()
+      const editor = editorRef.current
+      if (!editor) return
+      editor.setSelection(0)
+      editor.focus()
     })
     // 只响应“新会话”按钮的显式重置，不随草稿 key 变化重跑。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerResetNonce])
-
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    const max = Math.max(120, Math.round(window.innerHeight * 0.4))
-    el.style.height = `${Math.min(Math.max(el.scrollHeight, 28), max)}px`
-  }, [text])
 }

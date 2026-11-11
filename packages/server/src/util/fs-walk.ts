@@ -53,6 +53,8 @@ export function walkFiles(root: string, options: WalkOptions = {}): string[] {
 export interface AsyncWalkOptions extends WalkOptions {
   /** >0 时缓存文件列表，单位毫秒；仅用于可容忍短暂陈旧的场景（如 @ 补全）。 */
   cacheMs?: number;
+  /** 同时返回目录（路径以 `/` 结尾），用于 @ 补全里选择文件夹。 */
+  includeDirs?: boolean;
 }
 
 interface WalkCacheEntry {
@@ -71,8 +73,9 @@ export async function walkFilesAsync(
   const maxEntries = options.maxEntries ?? 20_000;
   const maxDepth = options.maxDepth ?? 16;
   const cacheMs = options.cacheMs ?? 0;
+  const includeDirs = options.includeDirs === true;
   const key = cacheMs
-    ? `${root}\0${maxEntries}\0${maxDepth}\0${[...ignore].join(',')}`
+    ? `${root}\0${maxEntries}\0${maxDepth}\0${includeDirs ? 'd' : 'f'}\0${[...ignore].join(',')}`
     : '';
   if (cacheMs) {
     const hit = walkCache.get(key);
@@ -101,6 +104,7 @@ export async function walkFilesAsync(
         const full = path.join(item.dir, entry.name);
         if (entry.isDirectory()) {
           if (ignore.has(entry.name) || item.depth >= maxDepth) continue;
+          if (includeDirs) result.push(`${full}/`);
           stack.push({ dir: full, depth: item.depth + 1 });
         } else if (entry.isFile()) {
           result.push(full);

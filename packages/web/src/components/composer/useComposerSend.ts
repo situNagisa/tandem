@@ -12,6 +12,8 @@ import { usePreviewStore } from '../../store/usePreviewStore'
 import { recordModelUse } from '../../lib/recentModels'
 import { loadSentHistory, pushSentHistory, saveDraft } from '../../lib/storage'
 import { handleMarkdownEnter, handleMarkdownTab } from './markdownInput'
+import { tokenDeleteRange } from './richEditor'
+import type { ComposerEditorHandle } from './ComposerEditor'
 import { detectCompletion, type Completion, type CompletionEntry } from './completion'
 import type { Attachment, PastedText } from './composerTypes'
 
@@ -24,7 +26,7 @@ interface Options {
   setText: (text: string) => void
   textRef: MutableRefObject<string>
   composingRef: MutableRefObject<boolean>
-  textareaRef: MutableRefObject<HTMLTextAreaElement | null>
+  editorRef: MutableRefObject<ComposerEditorHandle | null>
   draftKey: string
   sessionId: string | null
   isMobile: boolean
@@ -39,7 +41,7 @@ interface Options {
   completion: Completion | null
   items: CompletionEntry[]
   index: number
-  selectItem: (item: CompletionEntry) => void
+  selectItem: (item: CompletionEntry, openFolder?: boolean) => void
   cycleMode: () => void
   running: boolean
   stopping: boolean
@@ -71,7 +73,7 @@ export function useComposerSend({
   setText,
   textRef,
   composingRef,
-  textareaRef,
+  editorRef,
   draftKey,
   sessionId,
   isMobile,
@@ -120,10 +122,10 @@ export function useComposerSend({
     if (sessionId) usePreviewStore.getState().clearSelections(sessionId)
     saveDraft(draftKey, '')
     window.requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (!el) return
-      el.style.height = '28px'
-      if (!isMobile) el.focus()
+      const editor = editorRef.current
+      if (!editor) return
+      editor.setSelection(0)
+      if (!isMobile) editor.focus()
     })
   }
 
@@ -210,18 +212,22 @@ export function useComposerSend({
     // 同步提交，避免下一次按键前 React 还没把受控值写回 DOM（光标会跳到末尾）。
     flushSync(() => setText(edit.text))
     setCompletion(null)
-    const el = textareaRef.current
-    if (!el) return
-    el.focus()
-    el.setSelectionRange(edit.caret, edit.caret)
+    const editor = editorRef.current
+    if (!editor) return
+    editor.focus()
+    editor.setSelection(edit.caret)
   }
 
-  const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const composing = composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229
+    const folderItem = completion?.kind === 'file' ? items[index] : undefined
     if (
       !composing &&
       completion &&
-      (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End')
+      (e.key === 'ArrowLeft' ||
+        (e.key === 'ArrowRight' && !folderItem?.isDir) ||
+        e.key === 'Home' ||
+        e.key === 'End')
     ) {
       setCompletion(null)
     }
@@ -251,13 +257,23 @@ export function useComposerSend({
           if (item) selectItem(item)
           return
         }
+        // 文件夹可以进入后继续浏览目录内容。
+        if (e.key === 'ArrowRight' && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
+          const item = items[index]
+          if (item?.isDir) {
+            e.preventDefault()
+            selectItem(item, true)
+            return
+          }
+        }
       }
     }
     // 代码块内 Tab 缩进；其他位置不拦截，保留 Shift+Tab 离开输入框。
     if (e.key === 'Tab' && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !composing) {
-      const el = textareaRef.current
-      if (el && el.selectionStart === el.selectionEnd) {
-        const edit = handleMarkdownTab(textRef.current, el.selectionStart)
+      const editor = editorRef.current
+      const selection = editor?.getSelection()
+      if (selection && selection.start === selection.end) {
+        const edit = handleMarkdownTab(textRef.current, selection.start)
         if (edit) {
           e.preventDefault()
           applyTextEdit(edit)
@@ -284,20 +300,40 @@ export function useComposerSend({
       !e.ctrlKey &&
       !e.altKey
     ) {
-      const el = textareaRef.current
-      if (el && el.selectionStart === 0 && el.selectionEnd === 0) {
+      const selection = editorRef.current?.getSelection()
+      if (selection && selection.start === 0 && selection.end === 0) {
         const last = loadSentHistory(draftKey)[0]
         if (last) {
           e.preventDefault()
           setText(last)
           window.requestAnimationFrame(() => {
-            const box = textareaRef.current
-            if (!box) return
-            box.setSelectionRange(last.length, last.length)
+            editorRef.current?.setSelection(last.length)
           })
         }
       }
       return
+    }
+    // @ 路径标记不可拆：退格/删除整块移除。
+    if (
+      !composing &&
+      (e.key === 'Backspace' || e.key === 'Delete') &&
+      !e.shiftKey &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey
+    ) {
+      const selection = editorRef.current?.getSelection()
+      if (selection && selection.start === selection.end) {
+        const range = tokenDeleteRange(textRef.current, selection.start, e.key)
+        if (range) {
+          e.preventDefault()
+          applyTextEdit({
+            text: textRef.current.slice(0, range.start) + textRef.current.slice(range.end),
+            caret: range.start,
+          })
+          return
+        }
+      }
     }
     if (e.key === 'Enter') {
       if (composing) return
@@ -307,9 +343,9 @@ export function useComposerSend({
         return
       }
       // Markdown：代码块内换行、列表续项；其余位置保持 Enter 发送。
-      const el = textareaRef.current
-      if (!e.shiftKey && el && el.selectionStart === el.selectionEnd) {
-        const edit = handleMarkdownEnter(textRef.current, el.selectionStart)
+      const selection = editorRef.current?.getSelection()
+      if (!e.shiftKey && selection && selection.start === selection.end) {
+        const edit = handleMarkdownEnter(textRef.current, selection.start)
         if (edit) {
           e.preventDefault()
           applyTextEdit(edit)
@@ -338,10 +374,10 @@ export function useComposerSend({
 
   // 语音转写结果插入光标处，不自动发送。
   const insertVoiceText = (spoken: string) => {
-    const node = textareaRef.current
     const value = textRef.current
-    const start = node?.selectionStart ?? value.length
-    const end = node?.selectionEnd ?? value.length
+    const selection = editorRef.current?.getSelection()
+    const start = selection?.start ?? value.length
+    const end = selection?.end ?? value.length
     const before = value.slice(0, start)
     const after = value.slice(end)
     const prefix = before && !/\s$/.test(before) ? ' ' : ''
@@ -350,10 +386,10 @@ export function useComposerSend({
     const caret = start + insert.length
     onChange(before + insert + after, caret)
     window.requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (!el) return
-      el.focus()
-      el.setSelectionRange(caret, caret)
+      const editor = editorRef.current
+      if (!editor) return
+      editor.focus()
+      editor.setSelection(caret)
     })
   }
 

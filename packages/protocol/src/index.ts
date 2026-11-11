@@ -1837,7 +1837,7 @@ export type BlockDelta =
 //        跨 Host 迁移会话：客户端从 A 导出、向 B 导入（cwd 可改为 B 上的目录），实现"中途更换主机"
 // GET    /api/fs/list?path=           -> FsEntry[]   目录选择器
 // GET    /api/fs/git?path=            -> FsGitResult 目录所在仓库与当前分支
-// GET    /api/fs/complete?cwd=&q=     -> string[]    @文件 补全（相对 cwd 的路径）
+// GET    /api/fs/complete?cwd=&q=     -> string[]    @文件/文件夹 补全（相对 cwd 的路径；文件夹以 / 结尾）
 // GET    /api/external-sessions?source=   -> ExternalSession[]    扫描 ~/.claude/projects、~/.codex/sessions
 // GET    /api/external-sessions/:source/:id -> Session            只读预览（转换为 Tandem 消息格式）
 // POST   /api/external-sessions/:source/:id/import -> SessionSummary  复制为 Tandem 会话

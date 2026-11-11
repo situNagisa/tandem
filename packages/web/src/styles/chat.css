@@ -1147,13 +1147,10 @@ mark.chat-match {
   background: var(--t-bg-subtle);
   opacity: 0.6;
 }
-.composer-card[data-disabled="true"] .composer-editor > .composer-highlight {
-  color: var(--t-muted);
-}
-.composer-card[data-disabled="true"] .composer-textarea {
+.composer-card[data-disabled="true"] .composer-rich {
   cursor: not-allowed;
 }
-.composer-card[data-disabled="true"] .composer-textarea::placeholder {
+.composer-card[data-disabled="true"] .composer-placeholder {
   color: var(--t-text-soft);
 }
 
@@ -1238,29 +1235,6 @@ mark.chat-match {
   .composer-send {
     width: 44px;
     height: 44px;
-  }
-}
-
-.composer-textarea {
-  display: block;
-  width: 100%;
-  min-height: 28px;
-  max-height: 40vh;
-  resize: none;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  font-size: 16px;
-  line-height: 1.6;
-  color: var(--t-text);
-}
-.composer-textarea:focus,
-.composer-textarea:focus-visible {
-  outline: none;
-}
-@media (min-width: 768px) {
-  .composer-textarea {
-    font-size: 15px;
   }
 }
 
@@ -1853,74 +1827,126 @@ html:not(.dark) .composer-card:focus-within {
   border-color: rgba(45, 35, 22, 0.36);
 }
 
-/* ---------- 输入框 Markdown 轻量着色（反馈8#02） ----------
- * textarea 文字透明、背后的 pre 层着色；两层字号/行高/字体完全一致，光标与换行才对得上。
- * 只改颜色，不改字重/字号/字距（否则宽度变化会让光标错位）。
+/* ---------- 输入框 Markdown 就地渲染（反馈8#02 / 1323#05） ----------
+ * 编辑面是 contenteditable：文本仍是可编辑的 Markdown 源码，
+ * 行/片段直接在 DOM 上带样式，因此可以使用等宽字体、字重与缩进而不影响光标。
  */
 .composer-editor {
   position: relative;
 }
-.composer-highlight {
+.composer-rich {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-height: 28px;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--t-text);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  caret-color: var(--t-accent-text);
+}
+@media (min-width: 768px) {
+  .composer-rich {
+    font-size: 15px;
+  }
+}
+.composer-rich:focus,
+.composer-rich:focus-visible {
+  outline: none;
+}
+.composer-rich[data-empty="true"] {
+  min-height: 28px;
+}
+.composer-placeholder {
   position: absolute;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
+  color: var(--t-muted);
+  white-space: pre-wrap;
+}
+.composer-rich ::selection {
+  background: color-mix(in srgb, var(--t-accent) 26%, transparent);
+}
+.ce-line {
+  min-height: 1.6em;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   word-break: break-word;
-  font-family: inherit;
-  font-size: 16px;
+}
+.ce-line-code {
+  margin-inline: -4px;
+  padding-inline: 4px;
+  border-radius: 4px;
+  background: var(--t-code-bg);
+  font-family: var(--t-font-mono);
+  font-size: 0.92em;
   line-height: 1.6;
-  letter-spacing: normal;
-  color: var(--t-text);
 }
-@media (min-width: 768px) {
-  .composer-highlight {
-    font-size: 15px;
-  }
-}
-.composer-editor > .composer-textarea {
-  position: relative;
-  z-index: 1;
-  color: transparent;
-  caret-color: var(--t-text);
-}
-.composer-editor > .composer-textarea::placeholder {
-  color: var(--t-muted);
-}
-.composer-editor > .composer-textarea::selection {
-  background: color-mix(in srgb, var(--t-accent) 26%, transparent);
-}
-.composer-editor[data-composing="true"] > .composer-textarea {
-  color: var(--t-text);
-}
-.composer-editor[data-composing="true"] > .composer-highlight {
-  display: none;
-}
-.md-hl-mark {
-  color: var(--t-text-tertiary);
-}
-.md-hl-heading {
-  color: var(--syn-title);
-}
-.md-hl-quote {
-  color: var(--t-text-soft);
-}
-.md-hl-code,
-.md-hl-inline-code {
-  color: var(--syn-string);
-}
-.md-hl-fence {
+.ce-line-fence {
   color: var(--syn-keyword);
 }
-.md-hl-link {
-  color: var(--syn-attr);
+.ce-line-list {
+  padding-left: calc(var(--ce-indent, 0em) + 1.35em);
+  text-indent: -1.35em;
 }
-.md-hl-strong {
-  color: var(--syn-builtin);
-}
-.md-hl-em {
+.ce-line-quote {
+  padding-left: 0.6em;
+  border-left: 2px solid var(--t-border-strong);
   color: var(--t-text-soft);
+}
+.ce-line-heading {
+  color: var(--syn-title);
+  font-weight: 600;
+}
+.ce-mark {
+  color: var(--t-text-tertiary);
+}
+.ce-list-mark {
+  color: var(--t-accent-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ce-strong {
+  font-weight: 650;
+}
+.ce-em {
+  font-style: italic;
+}
+.ce-link {
+  color: var(--syn-attr);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ce-inline-code {
+  border-radius: 4px;
+  background: var(--t-code-bg);
+  box-shadow: inset 0 0 0 1px var(--t-code-border);
+  color: var(--syn-string);
+  font-family: var(--t-font-mono);
+  font-size: 0.92em;
+}
+.ce-path {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--syn-attr) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--syn-attr) 30%, transparent);
+  color: var(--syn-attr);
+  padding: 0 3px;
+  white-space: nowrap;
+}
+.composer-editor[data-composing="true"] .ce-path {
+  background: none;
+  box-shadow: none;
+  padding: 0;
 }
 
 /* ---------- 子代理层级树（反馈12#03） ---------- */

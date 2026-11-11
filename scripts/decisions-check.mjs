@@ -465,9 +465,9 @@ const DECISIONS = [
   {
     id: 'composer-markdown',
     source: '反馈8#02',
-    decision: '输入框轻量 Markdown：围栏、列表续号、着色，发送原始 Markdown',
+    decision: '输入框 Markdown：围栏、列表续号、就地渲染，发送原始 Markdown',
     files: [F.composer, F.composerEditor],
-    need: [/markdownInput|MarkdownHighlight/],
+    need: [/markdownInput|richEditor/],
   },
   {
     id: 'chip-no-effort-dot',

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { FileText, Terminal } from 'lucide-react'
+import { FileText, Folder, Terminal } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
 import { cn } from '../../lib/cn'
 import { MenuItem, MenuList } from '../ui/Menu'
@@ -65,8 +65,8 @@ export function CompletionMenu({
             <div className="px-2 py-2 text-[12px] text-muted">{emptyText}</div>
           )}
           {items.map((item) => {
-            const isDir = item.kind === 'file' && item.label.endsWith('/')
-            const clean = isDir ? item.label.slice(0, -1) : item.label
+            const isDir = item.kind === 'file' && (item.isDir || item.label.endsWith('/'))
+            const clean = isDir ? item.label.replace(/\/+$/, '') : item.label
             const cut = item.kind === 'file' ? clean.lastIndexOf('/') : -1
             const name = cut < 0 ? item.label : clean.slice(cut + 1) + (isDir ? '/' : '')
             const dir = cut < 0 ? '' : clean.slice(0, cut + 1)
@@ -76,12 +76,20 @@ export function CompletionMenu({
                 icon={
                   item.kind === 'slash' ? (
                     <Terminal size={12} className="text-muted" />
+                  ) : isDir ? (
+                    <Folder size={12} className="text-muted" />
                   ) : (
                     <FileText size={12} className="text-muted" />
                   )
                 }
                 hint={item.kind === 'slash' ? item.description || '无说明' : item.label}
-                trailing={item.badge && item.badge !== '内置' ? item.badge : undefined}
+                trailing={
+                  item.kind === 'file' && isDir
+                    ? '→ 进入'
+                    : item.badge && item.badge !== '内置'
+                      ? item.badge
+                      : undefined
+                }
                 onMouseDown={(e) => e.preventDefault()}
                 onSelect={() => onSelect(item)}
               >

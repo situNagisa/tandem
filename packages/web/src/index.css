@@ -930,8 +930,8 @@ html[data-mobile-preview] .fixed.inset-0 {
   font-weight: 600;
 }
 
-/* 输入框自适应高度的过渡（只对高度做轻度动画） */
-.composer-textarea {
+/* 输入框高度变化的过渡（只对高度做轻度动画） */
+.composer-rich {
   transition: height 80ms ease;
 }
 
