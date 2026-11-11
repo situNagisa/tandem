@@ -4,7 +4,7 @@ import type { ContentBlock, Message, Todo, TurnRouteOverride, Usage } from '@tan
 import { BUILTIN_NAMES, findCommandBody, parseSlashCommand } from '../agent/commands.js';
 import { runTurn, type TurnResult } from '../agent/loop.js';
 import { estimateTokens } from '../context.js';
-import { planTurnRoute, routePlanText } from '../model-routing.js';
+import { planTurnRoute, routePlanInjection, routePlanText } from '../model-routing.js';
 import { completeText } from '../providers/index.js';
 import { persist as persistRunState } from '../run-state.js';
 import { costOf, priceForModel } from '../usage.js';
@@ -180,6 +180,9 @@ export async function sendToModel(
   try {
     const routePlan = text ? planTurnRoute(host, rec, { text }) : undefined;
     if (routePlan) {
+      // 提示行展开看到的就是本轮实际注入的文本（反馈1323#03）。
+      const injected = routePlanInjection(host, rec, routePlan, text);
+      if (injected.length) routePlan.injected = injected;
       rec.lastRoutePlan = { plan: routePlan, text };
       host.appendNotice(rec, routePlanText(routePlan), undefined, routePlan);
     }

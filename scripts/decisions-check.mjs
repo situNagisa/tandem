@@ -48,7 +48,9 @@ const F = {
   sessionGroups: 'packages/web/src/components/session/SessionGroups.tsx',
   sidebar: 'packages/web/src/components/Sidebar.tsx',
   featureTour: 'packages/web/src/components/tour/FeatureTour.tsx',
+  routePlanLine: 'packages/web/src/components/chat/RoutePlanLine.tsx',
   profileKeysPanel: 'packages/web/src/components/settings/profiles/KeysPanel.tsx',
+  modelRoutingServer: 'packages/server/src/model-routing.ts',
   app: 'packages/web/src/App.tsx',
   envBar: 'packages/web/src/components/EnvBar.tsx',
   topBar: 'packages/web/src/components/TopBar.tsx',
@@ -365,6 +367,13 @@ const DECISIONS = [
     files: [F.profileKeysPanel],
     need: [/group\.keys\.find\(\(key\) => !key\.disabled\)/, /data-key-replace/, /data-key-delete/, /keys\.filter\(\(key\) => key\.id !== shown\?\.id\)/],
     deny: [/拖动 Key/, /故障切换/, /轮询/, /添加 Key/, /GripVertical/, /keyStrategy/],
+  },
+  {
+    id: 'route-plan-injected-visible',
+    source: '反馈1323#03（2026-11-11 原话「这里是否有上下文注入？如果有的话，需要显示出来，我们的原则是透明，东西要让用户看到」）',
+    decision: '提示行展开显示本轮实际注入的文本；无注入时悬停说明未注入',
+    files: [F.routePlanLine, F.modelRoutingServer],
+    need: [/plan\.injected/, /未向模型注入内容/, /data-route-injection/, /routePlanInjection/, /多代理协作 · 本轮/],
   },
   {
     id: 'topbar-icon-limit',

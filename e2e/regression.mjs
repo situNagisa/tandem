@@ -11539,6 +11539,115 @@ async function main() {
       await closeSettings(page)
     })
 
+    fb2102('反馈1323#03：路由提示行可展开看本轮注入，未注入时说明', async (page) => {
+      mkdirSync(fix1323Shots, { recursive: true })
+      const divisionSettings = {
+        preference: 'balanced',
+        candidates: [
+          { profileId: 'p-route', model: 'route-mini', tier: 'fast' },
+          { profileId: 'p-route', model: 'route-mid', tier: 'balanced' },
+          { profileId: 'p-route', model: 'route-kimi', tier: 'balanced' },
+          { profileId: 'p-route', model: 'route-power', tier: 'power' },
+        ],
+        division: {
+          planner: { profileId: 'p-route', model: 'route-power', tier: 'power' },
+          executor: { profileId: 'p-route', model: 'route-mini', tier: 'fast' },
+          domains: [
+            { profileId: 'p-route', model: 'route-kimi', domain: 'ui', minComplexity: 35, note: '前端强项' },
+          ],
+          planThreshold: 35,
+          confirm: 'never',
+        },
+      }
+      await api(base, token, '/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ resumeOnRestart: 'auto', modelRouting: divisionSettings }),
+      })
+      const session = await api(base, token, '/api/sessions', {
+        method: 'POST',
+        body: JSON.stringify({
+          cwd: repo,
+          profileId: 'p-route',
+          model: 'route-power',
+          permissionMode: 'bypassPermissions',
+          delegation: 'more',
+          title: '提示行透明回归',
+        }),
+      })
+      await page.waitForFunction(
+        () => {
+          try {
+            return JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]').length > 0
+          } catch {
+            return false
+          }
+        },
+        null,
+        { timeout: 20_000 },
+      )
+      const clientHostId = await page.evaluate(
+        () => JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')[0]?.id ?? null,
+      )
+      await page.evaluate((hash) => {
+        window.location.hash = hash
+      }, `#/h/${clientHostId}/s/${session.id}`)
+      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 15_000 })
+      const sessionOf = () => api(base, token, `/api/sessions/${session.id}`)
+      const sendTurn = async (text, expected) => {
+        const before = (await sessionOf()).messages.length
+        await page.locator('textarea[aria-label="消息输入框"]').fill(text)
+        await page.getByRole('button', { name: '发送消息' }).click()
+        await waitUntil(`提示行回归：${text.slice(0, 8)}`, async () => {
+          const current = await sessionOf()
+          return (
+            current.status === 'idle' &&
+            current.messages.length > before &&
+            JSON.stringify(current.messages).includes(expected)
+          )
+        })
+        return sessionOf()
+      }
+
+      // 单代理直接问答：没有注入，悬停说明只用于选择分工与模型。
+      const direct = await sendTurn('解释一下这个函数的作用', '路由模型 route-power 已回复。')
+      const directPlan = direct.messages.filter((message) => message.routePlan).at(-1)?.routePlan
+      assert.equal(directPlan?.mode, 'direct', '问答回合应为单代理')
+      assert.equal(directPlan?.injected, undefined, '单代理回合不应记录注入文本')
+      const directLine = page.locator('[data-route-plan="direct"]').last()
+      await directLine.waitFor({ timeout: 10_000 })
+      assert.equal(await directLine.getAttribute('data-route-injected'), null, '无注入时不应出现展开按钮')
+      await directLine.hover()
+      const tip = page.locator('#tandem-tooltip[data-open]')
+      await tip.waitFor({ timeout: 5_000 })
+      assert.match(await tip.innerText(), /未向模型注入内容/, '无注入时没有说明')
+      await page.screenshot({ path: shot1323('03-route-line-no-injection-dark.png') })
+
+      // 多代理协作：提示行展开就是本轮实际注入的原文。
+      const divisionText =
+        '请帮我完成前端批量改造：批量修改所有组件的按钮间距与布局样式，然后跑一遍 lint 和测试，最后整理结果。请注意不要改动后端接口，保持现有样式变量不变，完成后说明改了哪些文件。'
+      const division = await sendTurn(divisionText, '多代理协作完成：已审查执行结果，样式与测试均通过。')
+      const plan = division.messages.filter((message) => message.routePlan).at(-1)?.routePlan
+      assert.equal(plan?.mode, 'division', '任务应为多代理协作')
+      assert.ok((plan?.injected?.length ?? 0) >= 2, '多代理协作应记录注入段落')
+      assert.match(plan.injected[0].content, /分工：积极/, '缺少分工系统提示段')
+      assert.match(plan.injected[1].content, /\[多代理协作 · 本轮\]/, '缺少本轮规划者说明')
+      const line = page.locator('[data-route-plan="division"]').last()
+      await line.waitFor({ timeout: 10_000 })
+      assert.equal(await line.getAttribute('data-route-injected'), 'true', '有注入时提示行应可展开')
+      assert.match(await line.innerText(), /本轮注入 2 段/, '提示行没有标明注入段数')
+      await page.screenshot({ path: shot1323('03-route-line-collapsed-dark.png') })
+      await line.getByRole('button').click()
+      const injection = line.locator('[data-route-injection]')
+      await injection.waitFor({ timeout: 5_000 })
+      const shown = await injection.innerText()
+      assert.match(shown, /分工：积极/, '展开后看不到分工注入原文')
+      assert.match(shown, /\[多代理协作 · 本轮\]/, '展开后看不到规划者注入原文')
+      assert.match(shown, /分类理由：/, '展开后看不到分类理由')
+      await page.screenshot({ path: shot1323('03-route-line-expanded-dark.png') })
+      await useLightTheme(page)
+      await page.screenshot({ path: shot1323('03-route-line-expanded-light.png') })
+    })
+
     // 工作站客户端-服务：只跑工作站 + 两台主机，注册/绑定/授权/E2E 流式（API 级，独立进程）。
     checks.push({
       name: '工作站客户端-服务（注册/添加主机/授权/E2E 流式）',

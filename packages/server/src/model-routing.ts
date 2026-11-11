@@ -688,7 +688,7 @@ export function planTurnRoute(
   const specialistMin = domainRoute?.minComplexity ?? 55;
   const budgetTight = (signals.budgetPressure ?? 0) >= 0.5;
 
-  if (question && !mechanical.length) return direct('问答/解释，单代理');
+  if (question && !mechanical.length) return direct('问答/解释');
   if (contextHeavy && !(mechanical.length >= 2 && multiStep)) {
     return direct('需要大量上下文判断，留在主会话');
   }
@@ -722,7 +722,7 @@ export function planTurnRoute(
             : `多代理协作：复杂度 ${complexity}，多步任务`;
     return { ...base, mode: 'division', reason };
   }
-  return direct(question ? '问答/解释，单代理' : actionable ? '小改动/单步任务，单代理' : '单代理');
+  return direct(question ? '问答/解释' : actionable ? '小改动/单步任务' : '不需要派子代理');
 }
 
 
@@ -741,6 +741,39 @@ export function routePlanPrompt(plan: RoutePlan): string {
     '收到摘要后由你判断：继续派发、自己只读补查、或收尾。执行失败两次就自己接管或换模型，不要反复重试同一子任务。',
   ];
   return lines.filter(Boolean).join('\n');
+}
+
+/** 整单交执行者时交给执行者的固定说明；提示行展开与真实请求共用这一份。 */
+export function executorTaskPrompt(cwd: string, taskText: string): string {
+  return [
+    '你是执行者，直接在当前工作目录完成任务；不要拆分给其他代理，不要询问，除非遇到无法继续的阻塞。',
+    `工作目录：${cwd}`,
+    `任务：${taskText}`,
+    '完成后用简短中文报告：做了什么、改了哪些文件、验证命令与结果。',
+  ].join('\n');
+}
+
+/**
+ * 本轮因路由而注入给模型的文本原文（反馈1323#03：透明，用户能点开核对）。
+ * 单代理直接回合不注入任何路由说明；分工注入「分工」系统提示段与规划者说明；
+ * 整单交执行者时主会话不请求模型，注入的是执行者收到的任务说明。
+ */
+export function routePlanInjection(
+  host: Host,
+  rec: SessionRecord,
+  plan: RoutePlan,
+  text: string,
+): Array<{ name: string; content: string }> {
+  if (plan.mode === 'division') {
+    return [
+      { name: '分工', content: host.delegationPrompt(rec) },
+      { name: '多代理协作 · 本轮', content: routePlanPrompt(plan) },
+    ].filter((item) => item.content.trim());
+  }
+  if (plan.mode === 'cheap') {
+    return [{ name: '执行者任务', content: executorTaskPrompt(rec.cwd, text.trim()) }];
+  }
+  return [];
 }
 
 /** 粗估分工计划花费：执行模型单价 × (prompt 估算 + 800 输出)。 */

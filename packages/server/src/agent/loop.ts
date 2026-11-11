@@ -39,6 +39,7 @@ import {
   noteToolFailure,
   noteTurnEnd,
   estimateDivisionPlanCost,
+  executorTaskPrompt,
   recordRouteSavings,
   routePlanPrompt,
   routeSignalsOf,
@@ -158,12 +159,7 @@ export async function runTurn(
         .join('\n')
         .trim();
       host.setStatus(rec, 'running');
-      const prompt = [
-        '你是执行者，直接在当前工作目录完成任务；不要拆分给其他代理，不要询问，除非遇到无法继续的阻塞。',
-        `工作目录：${rec.cwd}`,
-        `任务：${taskText}`,
-        '完成后用简短中文报告：做了什么、改了哪些文件、验证命令与结果。',
-      ].join('\n');
+      const prompt = executorTaskPrompt(rec.cwd, taskText);
       const cheapStartedAt = Date.now();
       const sub = await host.runSubagent(
         rec,

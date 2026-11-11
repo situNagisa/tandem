@@ -163,7 +163,7 @@ const NoticeRow = memo(function NoticeRow({
   }
   if (message.routePlan) {
     return (
-      <RoutePlanLine text={rawText} mode={message.routePlan.mode} />
+      <RoutePlanLine text={rawText} plan={message.routePlan} />
     )
   }
   return (

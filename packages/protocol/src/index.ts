@@ -305,6 +305,11 @@ export interface DivisionPlanDecision {
   tasks?: DivisionPlanTaskEdit[];
 }
 /** 本轮路由计划（服务端规则分类，零模型调用）。 */
+export interface RoutePlanInjection {
+  /** 段落名，与「系统提示 · N 段」里的叫法一致。 */
+  name: string;
+  content: string;
+}
 export interface RoutePlan {
   mode: TurnRouteMode;
   reason: string;
@@ -314,6 +319,11 @@ export interface RoutePlan {
   /** 预计执行者/专长模型（用于提示行）。 */
   executorModel?: string;
   specialistModel?: string;
+  /**
+   * 本轮因路由而注入给模型的文本原文；空/缺省表示没有注入
+   * （直接问答的单代理回合不向模型注入任何路由说明）。
+   */
+  injected?: RoutePlanInjection[];
 }
 
 export interface RetryInfo {
