@@ -650,10 +650,11 @@ export function EnvBar({
   }
 
   return (
-    <div className="flex min-w-0 flex-col" data-env-bar="">
+    <div className="flex min-w-0 flex-col bg-transparent" data-env-bar="">
     <div
+      data-env-bar-row=""
       className={cn(
-        'flex min-w-0 flex-wrap items-center gap-0.5 pb-1.5 sm:flex-nowrap sm:gap-1',
+        'flex min-w-0 flex-wrap items-center gap-0.5 bg-transparent pb-1.5 sm:flex-nowrap sm:gap-1',
         'max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:overscroll-x-contain max-sm:pb-1',
         compact &&
           'flex-nowrap gap-0.5 pb-1 sm:[&_button>span]:hidden sm:[&_button>svg.lucide-chevron-down]:hidden',

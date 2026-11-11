@@ -4455,16 +4455,39 @@ async function main() {
       const info = await page.evaluate((cwd) => {
         const trigger = [...document.querySelectorAll('button[data-tip]')].find((b) => b.getAttribute('data-tip') === cwd)
         const wrap = trigger?.closest('.flex-wrap')
-        if (!wrap) return null
+        const bar = document.querySelector('[data-env-bar]')
+        if (!wrap || !bar) return null
         const bg = getComputedStyle(wrap).backgroundColor
+        // 反馈1323#06：行内除触发器自身外不应有任何底色；直接子项的底色都必须透明。
+        const stray = [...wrap.children]
+          .map((child) => ({
+            tag: child.tagName,
+            text: (child.textContent ?? '').trim().slice(0, 12),
+            bg: getComputedStyle(child).backgroundColor,
+          }))
+          .filter((child) => !/rgba?\(0, 0, 0, 0\)|transparent/.test(child.bg))
         const buttons = [...wrap.querySelectorAll(':scope button')].map((b) => {
           const r = b.getBoundingClientRect()
           return { text: b.textContent.trim(), x: r.x, right: r.right, height: r.height, font: getComputedStyle(b).fontSize }
         })
-        return { bg, width: wrap.getBoundingClientRect().width, buttons }
+        return {
+          bg,
+          barBg: getComputedStyle(bar).backgroundColor,
+          parentBg: getComputedStyle(bar.parentElement).backgroundColor,
+          stray,
+          width: wrap.getBoundingClientRect().width,
+          buttons,
+        }
       }, repo)
       assert.ok(info, '找不到环境条容器')
       assert.match(info.bg, /rgba?\(0, 0, 0, 0\)|transparent/, `环境条容器不透明：${info.bg}`)
+      assert.match(info.barBg, /rgba?\(0, 0, 0, 0\)|transparent/, `环境条根节点不透明：${info.barBg}`)
+      assert.match(info.parentBg, /rgba?\(0, 0, 0, 0\)|transparent/, `环境条外层不透明：${info.parentBg}`)
+      assert.equal(
+        info.stray.length,
+        0,
+        `环境条行内仍有背景：${info.stray.map((item) => `${item.text || item.tag}=${item.bg}`).join(' | ')}`,
+      )
       assert.ok(info.buttons.length >= 3, `环境条只有 ${info.buttons.length} 个触发器`)
       for (const button of info.buttons) {
         assert.ok(button.right <= DESKTOP.width + 1, `环境条「${button.text}」右缘越界 ${button.right}`)
