@@ -1778,7 +1778,12 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       message('uo1', 'user', '这个会话只用于未读筛选。'),
       message('uo2', 'assistant', '完成后保持未读。', { model: 'mock-1' }),
     ], { unread: true, updatedAt: Date.now() - 1700 }),
-    // 全文搜索：中文短语只出现在 s2，用于断言命中片段与跳转高亮
+    // 未读持久化专用：打开一次后重新加载，未读点不能再出现（反馈2156#02）。
+    mk('unreadopen', '未读持久化会话', [
+      message('up1', 'user', '打开我以后未读应该被记住清除。'),
+      message('up2', 'assistant', '这轮结果已经完成。', { model: 'mock-1' }),
+    ], { unread: true, updatedAt: Date.now() - 1710 }),
+    // 全文搜索：中文短语只出现在 s2，用于断言命中片段与跳转定位
     mk('search', '全文检索会话', [
       message('s1', 'user', '帮我确认离线索引是否覆盖中文词句。'),
       message('s2', 'assistant', 'Elasticsearch 索引已重建，中文短语检索正常。', {
@@ -3082,7 +3087,7 @@ async function main() {
       assert.equal(afterWheel.value, before.value, '滚轮滚动大纲时当前轮被改变了')
       assert.equal(afterWheel.count, before.count, '滚轮滚动大纲时轮次胶囊被改变了')
 
-      // 预览滚动到最早几轮后点其中一行：应先加载该段消息，再滚动并高亮。
+      // 预览滚动到最早几轮后点其中一行：应先加载该段消息，再滚动定位（不加高亮）。
       for (let i = 0; i < 420; i++) await page.mouse.wheel(0, -100)
       await page.waitForTimeout(800)
       const row = await page.evaluate(() => {
@@ -3098,10 +3103,16 @@ async function main() {
       await page.mouse.click(row.x, row.y)
       await page.locator(`[data-turn-id="hu${row.pos}"]`).waitFor({ state: 'attached', timeout: 20_000 })
       await page.waitForFunction(
-        (id) => document.querySelector(`[data-turn-id="${id}"]`)?.closest('.msg-row')?.classList.contains('msg-jump-hit'),
+        (id) => {
+          const el = document.querySelector(`[data-turn-id="${id}"]`)
+          if (!el) return false
+          const rect = el.getBoundingClientRect()
+          return rect.bottom > 0 && rect.top < window.innerHeight
+        },
         `hu${row.pos}`,
         { timeout: 5_000 },
       )
+      assert.equal(await page.locator('.msg-jump-hit').count(), 0, '跳转后消息仍被高亮')
       const jumped = await read()
       assert.match(jumped.count, new RegExp(`第 ${row.pos} / 320 轮`), '点击大纲后没有定位到目标轮')
       await page.screenshot({ path: '/tmp/fb10-after/01.png' })
@@ -3259,14 +3270,16 @@ async function main() {
         .locator(`[data-turn-id="hu${target}"]`)
         .waitFor({ state: 'attached', timeout: 20_000 })
       await page.waitForFunction(
-        (id) =>
-          document
-            .querySelector(`[data-turn-id="${id}"]`)
-            ?.closest('.msg-row')
-            ?.classList.contains('msg-jump-hit'),
+        (id) => {
+          const el = document.querySelector(`[data-turn-id="${id}"]`)
+          if (!el) return false
+          const rect = el.getBoundingClientRect()
+          return rect.bottom > 0 && rect.top < window.innerHeight
+        },
         `hu${target}`,
         { timeout: 5_000 },
       )
+      assert.equal(await page.locator('.msg-jump-hit').count(), 0, '跳转到未加载轮后消息仍被高亮')
       assert.ok(row, '点击未加载轮没有跳转到位')
       await page.screenshot({ path: '/tmp/fb11-after/05-rail.png' })
     })
@@ -3329,7 +3342,6 @@ async function main() {
       assert.equal(await panel.locator('[data-group="usage"]').count(), 1, '信息面板缺少用量卡')
       assert.match(text, /输入[\s\S]*缓存命中率/, '用量卡没有 token 明细')
       assert.equal(await panel.locator('[data-group="context"]').count(), 1, '信息面板缺少上下文卡')
-      assert.match(text, /最占空间/, '上下文卡缺少最占空间')
       assert.equal(await panel.locator('[data-group="changes"]').count(), 1, '信息面板缺少文件改动卡')
       assert.match(text, /scripts\/test\.sh/, '文件改动没有列出原会话编辑过的文件')
       // 只读：没有输入框，保留「在 Tandem 中继续」。
@@ -3373,7 +3385,7 @@ async function main() {
     })
 
 
-    desktop('反馈16#05：Codex 注入内容不作为用户轮（大纲/会话图/最占空间）', async (page) => {
+    desktop('反馈16#05：Codex 注入内容不作为用户轮（大纲/会话图）', async (page) => {
       const codexId = globalThis.__regCodexId
       assert.ok(codexId, '缺少 Codex 外部会话夹具')
       await openExternal(page, 'codex', codexId)
@@ -3390,27 +3402,6 @@ async function main() {
         .filter({ has: page.getByRole('heading', { name: '会话信息' }) })
         .last()
       await panel.waitFor({ state: 'visible', timeout: 10_000 })
-
-      // 最占空间：两行、行首无轮次数字、摘要不是注入内容。
-      const context = panel.locator('[data-group="context"]')
-      await context.waitFor({ state: 'visible', timeout: 10_000 })
-      const rows = context.locator('[data-context-turn="true"]')
-      await rows.first().waitFor({ state: 'visible', timeout: 10_000 })
-      const texts = await rows.allInnerTexts()
-      assert.equal(texts.length, 2, `最占空间轮次数量 ${texts.length}`)
-      for (const text of texts) {
-        assert.doesNotMatch(
-          text,
-          /You are Codex|skills_instructions|multi_agent_role|multi_agent_mode|AGENTS\.md instructions/,
-          `最占空间仍显示注入内容：${text}`,
-        )
-        assert.doesNotMatch(text, /^\d+\s/, `最占空间行首仍显示轮次数字：${text}`)
-      }
-      assert.equal(
-        await context.locator('[data-context-turn-open="true"] > [data-context-turn-share="true"]').count(),
-        2,
-        '最占空间行首不是占比色条',
-      )
 
       // 会话图也只画两轮主线。
       const graph = panel.locator('[data-group="graph"] [data-session-graph]')
@@ -3503,120 +3494,6 @@ async function main() {
       await dialog.getByRole('button', { name: '取消' }).click()
     })
 
-    desktop('上下文面板「最占空间」按轮次聚合、二级明细可展开、区块可折叠（反馈8#10）', async (page) => {
-      await openSession(page, 'long')
-      await page.evaluate(() => localStorage.removeItem('tandem.contextTopCollapsed.v1'))
-      const ring = page.getByRole('button', { name: /^上下文 \d+%/ }).first()
-      const openPopover = async (expectTurns = true) => {
-        await ring.click()
-        await page.getByText('最占空间').first().waitFor({ state: 'visible', timeout: 5_000 })
-        if (expectTurns) {
-          await page.waitForFunction(
-            () => document.querySelectorAll('[data-context-top="popover"] [data-context-turn="true"]').length > 0,
-            null,
-            { timeout: 8_000 },
-          )
-        }
-      }
-      await openPopover()
-      const turns = page.locator('[data-context-top="popover"] [data-context-turn="true"]')
-      const count = await turns.count()
-      assert.ok(count > 0 && count <= 10, `最占空间轮次数量 ${count}`)
-      const rows = await turns.evaluateAll((els) =>
-        els.map((el) => ({
-          text: (el.innerText ?? '').trim(),
-          turn: el.querySelector('[data-context-turn-open="true"]')?.getAttribute('data-tip') ?? '',
-        })),
-      )
-      assert.ok(
-        rows.every((row) => /第 \d+ 轮/.test(row.turn)),
-        `最占空间没有按轮次列出：${JSON.stringify(rows.slice(0, 3))}`,
-      )
-      assert.ok(
-        rows.every((row) => !/^\d+\s/.test(row.text)),
-        `最占空间行首仍显示轮次数字：${JSON.stringify(rows.slice(0, 3))}`,
-      )
-      assert.equal(
-        await turns
-          .first()
-          .locator('[data-context-turn-open="true"] > [data-context-turn-share="true"]')
-          .count(),
-        1,
-        '最占空间行首不是占比色条',
-      )
-      assert.equal(new Set(rows.map((row) => row.turn.match(/第 (\d+) 轮/)?.[1])).size, rows.length, '同一轮被拆成了多行')
-
-      // 二级展开：该轮内最大的几项（工具输出/消息）。
-      const first = turns.first()
-      await first.locator('[data-context-turn-toggle="true"]').click()
-      const nested = first.locator('[data-context-nested="true"]')
-      await nested.first().waitFor({ state: 'visible', timeout: 3_000 })
-      assert.ok((await nested.count()) > 0, '展开轮次后没有二级明细')
-      const before = await page.evaluate(
-        () => document.querySelector('.chat-scroll')?.scrollTop ?? 0,
-      )
-      await nested.first().click()
-      await page.waitForTimeout(700)
-      const after = await page.evaluate(
-        () => document.querySelector('.chat-scroll')?.scrollTop ?? 0,
-      )
-      assert.notEqual(after, before, '点击轮次内的明细项后没有跳转到对应消息')
-
-      // 点某一轮 = 跳到该轮（按该轮用户消息定位，而不是依赖大纲当前轮）。
-      await openPopover()
-      const turnRow = page.locator('[data-context-top="popover"] [data-context-turn-open="true"]').first()
-      const targetMessageId = await turnRow.evaluate(
-        (el) => el.closest('[data-context-turn]')?.getAttribute('data-message-id') ?? '',
-      )
-      assert.ok(targetMessageId, '轮次行没有携带目标消息 id')
-      await turnRow.click()
-      await page.waitForTimeout(900)
-      const shown = await page.evaluate((id) => {
-        const el = document.querySelector(`[data-turn-id="${CSS.escape(id)}"]`)
-        if (!el) return null
-        const rect = el.getBoundingClientRect()
-        return { top: rect.top, bottom: rect.bottom, height: window.innerHeight }
-      }, targetMessageId)
-      assert.ok(
-        shown && shown.bottom > 0 && shown.top < shown.height,
-        `点击轮次后目标消息不在视口内：${JSON.stringify(shown)}`,
-      )
-
-      // 整个「最占空间」区块可折叠，重开后记住折叠状态。
-      await openPopover()
-      let toggle = page.locator('[data-context-top="popover"] [data-context-top-toggle="true"]')
-      await toggle.click()
-      assert.equal(
-        await page.locator('[data-context-top="popover"] [data-context-turn="true"]').count(),
-        0,
-        '折叠后仍显示占用明细',
-      )
-      assert.equal(
-        await page.evaluate(() => localStorage.getItem('tandem.contextTopCollapsed.v1')),
-        '1',
-        '折叠状态没有记住',
-      )
-      await page.keyboard.press('Escape')
-      await page.waitForTimeout(300)
-      await openPopover(false)
-      toggle = page.locator('[data-context-top="popover"] [data-context-top-toggle="true"]')
-      assert.equal(
-        await page.locator('[data-context-top="popover"] [data-context-turn="true"]').count(),
-        0,
-        '重新打开面板后折叠状态丢失',
-      )
-      await toggle.click()
-      await page.waitForFunction(
-        () => document.querySelectorAll('[data-context-top="popover"] [data-context-turn="true"]').length > 0,
-        null,
-        { timeout: 5_000 },
-      )
-      await page.getByText(/下次自动压缩将在约 \d+% 时触发|自动压缩已关闭/).first().waitFor({
-        state: 'visible',
-        timeout: 3_000,
-      })
-    })
-
     desktop('上下文卡：鲜明分类色、自定义 agents、缓存条与阈值刻度（反馈13#05）', async (page) => {
       await openSession(page, 'long')
       if (!(await page.locator('[data-group]').count())) {
@@ -3661,17 +3538,9 @@ async function main() {
       assert.equal(await threshold.count(), 1, '分段条缺少自动压缩阈值刻度')
       assert.match(await threshold.evaluate((el) => el.style.left), /\d+(\.\d+)?%/, '阈值刻度位置没有按百分比设置')
 
-      // 每轮左侧小色条表示占比；展开箭头默认隐藏，悬停该行才出现。
-      const turn = card.locator('[data-context-turn="true"]').first()
-      await turn.waitFor({ state: 'visible', timeout: 10_000 })
-      assert.equal(await turn.locator('[data-context-turn-share="true"]').count(), 1, '每轮缺少占比色条')
-      const turnToggle = turn.locator('[data-context-turn-toggle="true"]')
-      if ((await turnToggle.count()) > 0) {
-        assert.equal(await turnToggle.evaluate((el) => getComputedStyle(el).opacity), '0', '展开箭头没有默认隐藏')
-        await turn.hover()
-        await page.waitForTimeout(250)
-        assert.equal(await turnToggle.evaluate((el) => getComputedStyle(el).opacity), '1', '悬停后展开箭头没有出现')
-      }
+      // 反馈2156#04：上下文卡片不再有「最占空间」轮次列表。
+      assert.doesNotMatch(cardText, /最占空间/, '上下文卡仍在显示最占空间')
+      assert.equal(await card.locator('[data-context-turn="true"]').count(), 0, '上下文卡仍有最占空间轮次行')
     })
 
     desktop('警告与状态色饱和、对比度达标（反馈13#03）', async (page) => {
@@ -5802,8 +5671,11 @@ async function main() {
       // 首个 token 前：消息流末尾有「正在思考…」+ spinner。
       const activity = page.locator('[data-turn-activity]')
       await activity.waitFor({ state: 'visible', timeout: 5_000 })
-      const firstActivity = (await activity.innerText()).replace(/\s+/g, ' ')
-      assert.match(firstActivity, /正在思考…/, `等待首个 token 时没有「正在思考…」提示：${firstActivity}`)
+      await page.waitForFunction(
+        () => (document.querySelector('[data-turn-activity]')?.textContent ?? '').includes('正在思考…'),
+        null,
+        { timeout: 5_000 },
+      )
       // 首个 token 到达后：正文出现流式光标，活动行让位给流式输出。
       await page.locator('.md.chat-md.is-streaming').first().waitFor({ timeout: 8_000 })
       await activity.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
@@ -8350,57 +8222,6 @@ async function main() {
         sameWidth(before, await measure(), `第 ${i + 1} 张卡片展开`)
       }
 
-      // 上下文卡内部二级展开/折叠也不改变卡片宽度。
-      const context = page.locator('[data-group="context"]')
-      if (await context.count()) {
-        const topToggle = context.locator('[data-context-top-toggle="true"]')
-        if (await topToggle.count()) {
-          await topToggle.click()
-          await page.waitForTimeout(220)
-          sameWidth(before, await measure(), '上下文卡折叠最占空间')
-          await topToggle.click()
-          await page.waitForTimeout(220)
-          sameWidth(before, await measure(), '上下文卡展开最占空间')
-        }
-        const turnToggle = context.locator('[data-context-turn-toggle="true"]').first()
-        if (await turnToggle.count()) {
-          await context.locator('[data-context-turn="true"]').first().hover()
-          await turnToggle.click()
-          await page.waitForTimeout(220)
-          sameWidth(before, await measure(), '上下文卡展开轮次明细')
-          await turnToggle.click()
-          await page.waitForTimeout(220)
-          sameWidth(before, await measure(), '上下文卡收起轮次明细')
-        }
-      }
-
-      // 输入框上下文环的弹层：折叠/展开「最占空间」时弹层宽度不变。
-      const ring = page.getByRole('button', { name: /^上下文 \d+%/ }).first()
-      await ring.click()
-      await page.locator('[data-context-top="popover"]').waitFor({ state: 'visible', timeout: 8_000 })
-      const popoverWidth = () =>
-        page.evaluate(() => {
-          const panel = [...document.querySelectorAll('.popover-panel')].find(
-            (el) => el.querySelector('[data-context-top="popover"]') || el.querySelector('[data-context-turn]'),
-          )
-          return panel ? panel.getBoundingClientRect().width : 0
-        })
-      const openWidth = await popoverWidth()
-      assert.ok(openWidth > 0, '上下文弹层没有宽度')
-      const popoverToggle = page.locator('[data-context-top="popover"] [data-context-top-toggle="true"]')
-      await popoverToggle.click()
-      await page.waitForTimeout(220)
-      assert.ok(
-        Math.abs((await popoverWidth()) - openWidth) <= 0.5,
-        `折叠最占空间后弹层宽度变化：${openWidth} → ${await popoverWidth()}`,
-      )
-      await popoverToggle.click()
-      await page.waitForTimeout(220)
-      assert.ok(
-        Math.abs((await popoverWidth()) - openWidth) <= 0.5,
-        `展开最占空间后弹层宽度变化：${openWidth} → ${await popoverWidth()}`,
-      )
-      await page.keyboard.press('Escape')
     })
 
     desktop('反馈16#07/#08：卡片折叠箭头与拖动手柄在标题右侧且常显', async (page) => {
@@ -9078,15 +8899,14 @@ async function main() {
       )
       assert.match(detailText, /打开会话/, '展开明细后没有打开会话入口')
 
-      // 明细里的命令也可点：跳到会话中对应的工具卡并高亮。
+      // 明细里的命令也可点：跳到会话中对应的工具卡并定位。
       const firstDetail = details.getByTestId('aggregate-detail').first()
       await firstDetail.click()
       await page.waitForFunction(() => window.location.hash.includes('/s/inboxmulti'), null, {
         timeout: 15_000,
       })
-      await page.waitForFunction(() => !!document.querySelector('.msg-jump-hit'), null, {
-        timeout: 15_000,
-      })
+      await page.locator('[data-tool-use-id]').first().waitFor({ state: 'visible', timeout: 15_000 })
+      assert.equal(await page.locator('.msg-jump-hit').count(), 0, '跳转后工具卡仍被高亮')
       assert.equal(
         await page.locator('.tool-card, [data-tool-use-id]').first().isVisible(),
         true,
@@ -9316,6 +9136,45 @@ async function main() {
       assert.equal(await page.getByRole('button', { name: /已筛选/ }).count(), 0, '清除后筛选标签仍在')
     })
 
+    desktop('反馈2156#02：打开会话后重新加载，未读点不再出现', async (page) => {
+      const row = (id) => page.locator(`[data-session-row][data-session-id="${id}"]`)
+      await page.waitForFunction(
+        () => {
+          try {
+            return JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]').length > 0
+          } catch {
+            return false
+          }
+        },
+        null,
+        { timeout: 20_000 },
+      )
+      await row('unreadopen').waitFor({ state: 'visible', timeout: 15_000 })
+      assert.equal(
+        await row('unreadopen').locator('[data-unread-dot="true"]').count(),
+        1,
+        '未读会话缺少未读点',
+      )
+      await row('unreadopen').locator('[data-session-open="true"]').click()
+      await page.waitForFunction(() => window.location.hash.includes('/s/unreadopen'), null, {
+        timeout: 10_000,
+      })
+      await row('unreadopen').locator('[data-unread-dot="true"]').waitFor({
+        state: 'detached',
+        timeout: 10_000,
+      })
+      // 切到别的会话再重新加载：路由不再自动打开 unreadopen，能验证服务端已读是否落库。
+      await openSession(page, 'long')
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await row('unreadopen').waitFor({ state: 'visible', timeout: 20_000 })
+      await page.waitForTimeout(800)
+      assert.equal(
+        await row('unreadopen').locator('[data-unread-dot="true"]').count(),
+        0,
+        '重新加载后未读点又出现了（已读没有写回服务端）',
+      )
+    })
+
     checks.push({
       name: '侧栏按主机分组显示全部会话，无主机切换按钮；离线仍可浏览（#02）',
       viewport: 'desktop',
@@ -9392,7 +9251,7 @@ async function main() {
       },
     })
 
-    desktop('全文搜索：命中片段、打开会话并高亮消息', async (page) => {
+    desktop('全文搜索：命中片段、打开会话并定位消息', async (page) => {
       await page.keyboard.press('Control+k')
       const input = page.getByRole('textbox', { name: '搜索会话、命令与设置' })
       await input.waitFor({ state: 'visible', timeout: 5_000 })
@@ -9415,13 +9274,16 @@ async function main() {
         timeout: 10_000,
       })
       await page.waitForFunction(
-        () =>
-          document
-            .querySelector('[data-message-id="s2"]')
-            ?.classList.contains('msg-jump-hit') === true,
+        () => {
+          const el = document.querySelector('[data-message-id="s2"]')
+          if (!el) return false
+          const rect = el.getBoundingClientRect()
+          return rect.bottom > 0 && rect.top < window.innerHeight
+        },
         null,
         { timeout: 12_000 },
       )
+      assert.equal(await page.locator('.msg-jump-hit').count(), 0, '搜索跳转后消息仍被高亮')
     })
 
     desktop('快捷键：外观页由命令注册表生成、自定义生效、冲突提示', async (page) => {
@@ -11264,7 +11126,8 @@ async function main() {
       await showTop()
       await graph.locator('div[data-kind="turn"]').first().click()
       await breadcrumb.waitFor({ state: 'detached', timeout: 10_000 })
-      await page.locator('.msg-jump-hit').first().waitFor({ state: 'visible', timeout: 10_000 })
+      await page.locator('[data-turn-id]').first().waitFor({ state: 'visible', timeout: 10_000 })
+      assert.equal(await page.locator('.msg-jump-hit').count(), 0, '从子代理视图返回后消息仍被高亮')
 
       // 卡片右上角可全高展开，顶部返回恢复面板；全高页头不再有汇总。
       await group.locator('[aria-label="全高显示会话图"]').click()
@@ -11279,6 +11142,70 @@ async function main() {
       const forkTitle = (await api(base, token, `/api/sessions/${encodeURIComponent(forkId)}`)).title
       await graph.locator('div[data-kind="fork"]').first().click()
       await page.getByText(forkTitle, { exact: true }).first().waitFor({ timeout: 10_000 })
+    })
+
+    desktop('反馈2156#01：会话图跳转只定位，目标消息没有高亮背景', async (page) => {
+      await openSession(page, 'long')
+      if (!(await page.locator('[data-group]').count())) {
+        await page.getByRole('button', { name: '切换信息面板' }).first().click()
+      }
+      const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+      const node = graph.locator('div[data-kind="turn"]').nth(2)
+      const messageId = await node.getAttribute('data-graph-turn-id')
+      assert.ok(messageId, '会话图节点没有携带目标消息 id')
+      await node.click()
+      await page.waitForFunction(
+        (id) => {
+          const el = document.querySelector(`[data-message-id="${CSS.escape(id)}"]`)
+          if (!el) return false
+          const rect = el.getBoundingClientRect()
+          return rect.bottom > 0 && rect.top < window.innerHeight
+        },
+        messageId,
+        { timeout: 12_000 },
+      )
+      await page.waitForTimeout(500)
+      assert.equal(await page.locator('.msg-jump-hit').count(), 0, '跳转后消息仍被加上高亮类')
+      const style = await page.evaluate((id) => {
+        const row = document
+          .querySelector(`[data-message-id="${CSS.escape(id)}"]`)
+          ?.closest('.msg-row')
+        if (!row) return null
+        const computed = getComputedStyle(row)
+        return { background: computed.backgroundColor, shadow: computed.boxShadow }
+      }, messageId)
+      assert.ok(style, '跳转后找不到目标消息行')
+      assert.ok(
+        style.background === 'rgba(0, 0, 0, 0)' || style.background === 'transparent',
+        `目标消息仍有高亮背景：${style.background}`,
+      )
+      assert.equal(style.shadow, 'none', `目标消息仍有高亮描边：${style.shadow}`)
+    })
+
+    desktop('反馈2156#03：正在输出的轮次节点有与侧栏一致的呼吸动画', async (page) => {
+      await openSession(page, 'slow')
+      const input = page.locator('[aria-label="消息输入框"]')
+      await input.fill('SLOW_E2E 展示运行中节点动画')
+      await input.press('Enter')
+      const running = page.locator('[data-session-graph] [data-running="true"]').first()
+      await running.waitFor({ state: 'visible', timeout: 10_000 })
+      const ring = running.locator('[data-marker-ring="running"]')
+      await ring.waitFor({ state: 'visible', timeout: 5_000 })
+      const style = await ring.evaluate((el) => ({
+        className: el.className,
+        animation: getComputedStyle(el).animationName,
+      }))
+      assert.ok(style.className.includes('running-dot'), `运行中节点没有复用 running-dot：${style.className}`)
+      assert.equal(style.animation, 'tandem-breathe', `运行中节点动画不对：${style.animation}`)
+      const sidebarDot = page.locator('[data-session-row] .running-dot').first()
+      await sidebarDot.waitFor({ state: 'attached', timeout: 5_000 })
+      assert.equal(
+        await sidebarDot.evaluate((el) => getComputedStyle(el).animationName),
+        style.animation,
+        '会话图运行中动画与侧栏运行中不一致',
+      )
+      await running.waitFor({ state: 'detached', timeout: 60_000 }).catch(() => {})
     })
 
     desktop('会话图泳道线 tooltip 以指针定位并完整显示在视口内（反馈1926#10）', async (page) => {

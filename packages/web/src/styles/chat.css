@@ -196,26 +196,6 @@
   content-visibility: visible;
 }
 
-/* 全文搜索跳转：命中消息短暂高亮 */
-.msg-row.msg-jump-hit {
-  animation: msg-jump-highlight 2.8s ease-out;
-  border-radius: 8px;
-}
-@keyframes msg-jump-highlight {
-  0% {
-    background: color-mix(in srgb, var(--t-accent) 22%, transparent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-accent) 35%, transparent);
-  }
-  70% {
-    background: color-mix(in srgb, var(--t-accent) 12%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--t-accent) 18%, transparent);
-  }
-  100% {
-    background: transparent;
-    box-shadow: none;
-  }
-}
-
 /* 消息下方的时间/用量行：反馈16#01 恢复「悬停才显示」，行高一直保留，不推挤内容。
    触屏没有 hover，常显。 */
 .msg-meta {

@@ -34,12 +34,12 @@ function pollJump(detail: { messageId?: string; toolUseId?: string }, deadline =
   tick()
 }
 
-/** 跳到某条消息并高亮（轮次/搜索/收件箱回合行）。 */
+/** 跳到某条消息并定位（轮次/搜索/收件箱回合行）。 */
 export function focusMessage(messageId: string | undefined): void {
   if (messageId) pollJump({ messageId })
 }
 
-/** 跳到某张工具卡并高亮（收件箱明细里的命令/审批）。 */
+/** 跳到某张工具卡并定位（收件箱明细里的命令/审批）。 */
 export function focusTool(toolUseId: string | undefined): void {
   if (toolUseId) pollJump({ toolUseId })
 }

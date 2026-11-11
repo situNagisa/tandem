@@ -379,7 +379,7 @@ export function TurnRail({
 
   const jumpSeq = useRef(0)
 
-  /** 目标轮已经在 DOM 里：滚动到它并高亮 2.8s。 */
+  /** 目标轮已经在 DOM 里：滚动到它并定位。 */
   const revealTurn = (rootEl: HTMLElement, id: string): boolean => {
     const el = rootEl.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(id)}"]`)
     if (!el) return false
@@ -388,11 +388,6 @@ export function TurnRail({
       el.getBoundingClientRect().top - rootEl.getBoundingClientRect().top + rootEl.scrollTop - 16,
     )
     rootEl.scrollTop = top
-    const row = el.closest<HTMLElement>('.msg-row') ?? el
-    row.classList.remove('msg-jump-hit')
-    void row.offsetWidth
-    row.classList.add('msg-jump-hit')
-    window.setTimeout(() => row.classList.remove('msg-jump-hit'), 2800)
     return true
   }
 
@@ -419,7 +414,7 @@ export function TurnRail({
         )
         if (!loaded || (!rendered && target !== totalRef.current)) {
           // 目标轮还没加载（长会话懒加载）或被渲染窗口裁掉：先让消息列表取该段并扩大窗口，
-          // 等节点真正挂载后再滚动 + 高亮，不能出现「点了没反应」（反馈10#01）。
+          // 等节点真正挂载后再滚动定位，不能出现「点了没反应」（反馈10#01）。
           window.dispatchEvent(
             new CustomEvent('tandem-jump-message', { detail: { messageId: targetId } }),
           )

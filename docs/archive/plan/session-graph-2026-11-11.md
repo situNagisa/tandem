@@ -81,5 +81,5 @@
 ## 8. 验证
 
 - 单测（`layout.test.ts`）：倒序行号、主线只有一条、子代理始终展开、无结果节点、汇回端点落在父轮节点或父轨道、嵌套列复用不交叉、320 轮 < 20ms、卡片高度 3–12 行。
-- 回归（`e2e/regression.mjs`「会话图」）：无汇总行、无序号、无 token、无「结果已返回」、无展开按钮；节点顺序最新在上；悬停线高亮 + tooltip 为会话名；子代理视图点主线节点回主会话并高亮该轮；覆盖滚动条不遮挡卡片头部控件（`elementFromPoint`）；分叉点击与全高展开仍可用。
+- 回归（`e2e/regression.mjs`「会话图」）：无汇总行、无序号、无 token、无「结果已返回」、无展开按钮；节点顺序最新在上；悬停线高亮 + tooltip 为会话名；子代理视图点主线节点回主会话并定位该轮；覆盖滚动条不遮挡卡片头部控件（`elementFromPoint`）；分叉点击与全高展开仍可用。
 - 决定检查（`decisions-check.mjs`）：`graph-no-meta`（无汇总/序号/token/结果行/展开按钮）、`graph-reversed`、`graph-edge-hover`、`graph-main-click-from-subagent`。

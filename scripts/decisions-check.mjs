@@ -157,25 +157,11 @@ const DECISIONS = [
     deny: [/缓存命中率/],
   },
   {
-    id: 'context-top-no-turn-number',
-    source: '反馈16#05',
-    decision: '「最占空间」行首不显示轮次数字，轮次只在 tooltip',
-    files: [F.contextMeter],
-    need: [/data-turn-number=\{turn\.turn\}/],
-  },
-  {
-    id: 'context-top-collapsible',
-    source: '反馈8#10',
-    decision: '「最占空间」按轮次聚合、可折叠并记住状态',
-    files: [F.contextMeter],
-    need: [/data-context-top-toggle/, /tandem\.contextTopCollapsed\.v1/, /data-context-turn/],
-  },
-  {
     id: 'context-card-structure',
     source: '反馈13#05',
-    decision: '上下文卡分类顺序、阈值刻度与最占空间',
+    decision: '上下文卡分类顺序与阈值刻度',
     files: [F.contextCard],
-    need: [/CONTEXT_PART_ORDER/, /data-context-threshold/, /ContextSpaceSection/],
+    need: [/CONTEXT_PART_ORDER/, /data-context-threshold/],
   },
   {
     id: 'empty-groups-hidden',
@@ -786,6 +772,13 @@ const DECISIONS = [
     decision: '消息区子代理工具行点击直接打开子代理会话，不展开卡片',
     files: ['packages/web/src/components/ToolCard.tsx'],
     need: [/if \(onOpenAgent\) \{/, /aria-expanded=\{onOpenAgent \? undefined : open\}/],
+  },
+  {
+    id: 'graph-running-animation',
+    source: '反馈2156#03（2026-11-11 用户原话：正在输出的轮次加上一个动画，比如闪烁，或者转圈之类的动画）',
+    decision: '运行中会话的最新一轮节点外圈复用侧栏运行中的 running-dot 呼吸动画',
+    files: [F.graphView, F.graphCard],
+    need: [/running-dot/, /running=/],
   },
   {
     id: 'graph-subagent-opens-session',

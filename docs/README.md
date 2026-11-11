@@ -23,7 +23,7 @@
 | [模型路由](features/routing.md) | 自动路由 + 分工路由；主会话模型恒定，执行交给子代理 |
 | [输入框](features/composer.md) | Markdown 编辑与着色、输入 token 估算、切换模型/账号时的缓存失效确认 |
 | [账号与模型](features/model-accounts.md) | 分组 Key 保护、拉取模型只选最新、下拉统一共享组件 |
-| [对话区](features/conversation.md) | 轮次大纲（用量着色、固定、Alt 只看已固定）与「最占空间」按轮次聚合；消息耗时与轮次耗时汇总；上下文卡分类与缓存命中 |
+| [对话区](features/conversation.md) | 轮次大纲（用量着色、固定、Alt 只看已固定）；消息耗时与轮次耗时汇总；上下文卡分类与缓存命中 |
 | [项目 Wiki](features/wiki.md) | 概览/模块/术语表阅读区；固定阅读列宽度、宽内容内部滚动 |
 | [会话图](features/session-graph.md) | 右栏 git graph：轮次主线、子代理合并分支、分叉不合并分支；彩色泳道、同形节点 |
 | [手机预览](features/mobile-preview.md) | 调试版在电脑上模拟手机尺寸/触摸；真机调试见 [test-guides/mobile-debugging.md](test-guides/mobile-debugging.md) |

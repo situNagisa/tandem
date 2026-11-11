@@ -131,6 +131,8 @@ export interface SessionGraphViewProps {
   layout: GraphLayout
   /** 当前所在轮（1-based 主线轮号），节点外圈高亮。 */
   activeTurn?: number
+  /** 会话正在运行：最新主线的轮节点外圈呼吸，与侧栏「运行中」同一个动画。 */
+  running?: boolean
   onOpen: (node: GraphNode) => void
   /** 只读：不提供跳转的鼠标指针提示。 */
   readOnly?: boolean
@@ -147,6 +149,7 @@ export interface SessionGraphViewProps {
 export function SessionGraphView({
   layout,
   activeTurn,
+  running = false,
   onOpen,
   readOnly = false,
   height = 168,
@@ -167,6 +170,14 @@ export function SessionGraphView({
     return () => observer.disconnect()
   }, [height])
 
+  const latestTurnNo = useMemo(
+    () =>
+      layout.nodes.reduce(
+        (max, node) => (node.kind === 'turn' ? Math.max(max, node.turnNo ?? 0) : max),
+        0,
+      ),
+    [layout.nodes],
+  )
   const overscan = 6
   const textX = graphTextX(layout.columns)
   const startRow = Math.max(0, Math.floor(viewport.top / GRAPH_ROW_H) - overscan)
@@ -224,6 +235,8 @@ export function SessionGraphView({
             const color = laneColor(node.lane)
             const isSelected = selected === node.key
             const isCurrent = node.kind === 'turn' && !!activeTurn && node.turnNo === activeTurn
+            const isRunning =
+              running && node.kind === 'turn' && node.turnNo === latestTurnNo
             const canOpen = !readOnly
             return (
               <div
@@ -250,12 +263,24 @@ export function SessionGraphView({
                   data-subagent-id={node.subagentId}
                   data-fork-id={node.forkSessionId}
                   data-active={isCurrent ? 'true' : undefined}
+                  data-running={isRunning ? 'true' : undefined}
                   onClick={() => {
                     if (readOnly) return
                     setSelected(node.key)
                     onOpen(node)
                   }}
                 >
+                  {isRunning && (
+                    <span
+                      aria-hidden="true"
+                      data-marker-ring="running"
+                      className="running-dot absolute top-1/2 size-[14px] -translate-y-1/2 rounded-full border-[1.5px]"
+                      style={{
+                        left: laneColumnX(layout, node.lane) - 7 - (textX - 6),
+                        borderColor: color,
+                      }}
+                    />
+                  )}
                   <span
                     aria-hidden="true"
                     data-marker="circle"
