@@ -28,7 +28,7 @@ async function probe(url: string): Promise<WorkstationPublicStatus | null> {
 
 /**
  * 登录门：打开 Tandem 先登录工作站，登录后才进入工作台。
- * 工作站地址依次尝试：上次登录的地址 → 页面本身（程序即工作站，页面由工作站托管）。
+ * 工作站地址依次尝试：上次登录的地址 → 页面本身（页面由工作站托管）。
  */
 export function LoginGate() {
   const [stage, setStage] = useState<Stage>('probing')
@@ -57,7 +57,7 @@ export function LoginGate() {
         if (!alive) return
         if (info) return accept(last, info)
       }
-      // 程序即工作站：页面本身通常就是工作站，直接探测当前地址。
+      // 页面由工作站托管：直接探测当前地址。
       const origin = window.location.origin
       const info = await probe(origin)
       if (!alive) return
@@ -208,7 +208,7 @@ export function LoginGate() {
               </label>
               {!workstationUrl.trim() && (
                 <p data-testid="login-token-hint" className="text-[12px] leading-5 text-muted">
-                  请在上面填写工作站地址（通常是打开页面的地址）。
+                  请填写工作站地址，例如终端启动时打印的 http://127.0.0.1:8481。
                 </p>
               )}
             </div>

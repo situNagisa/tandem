@@ -1,18 +1,17 @@
 // 工作站上的执行器主机：每台已登记的执行器对应一个远端 Host 上下文。
-// 上下文就是普通的 Host（会话、agent 循环、模型代理照常），数据在 <工作站数据目录>/remote-hosts/<hostId>/，
-// 工具经 RemoteHostEnv 在执行器上运行。上下文经本机回环隧道接入工作站，客户端仍走 /h/<hostId>（端到端加密，与其他主机一致）。
+// 上下文就是普通的 Host（会话、agent 循环、模型调用照常），数据在 <工作站数据目录>/remote-hosts/<hostId>/，
+// 工具经 RemoteHostEnv 在执行器上运行。客户端仍走 /h/<hostId>，与其他主机一致。
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
 import type { AccountsStore } from '../accounts/store.js';
 import { readJson } from '../config.js';
-import type { Host } from '../host.js';
-import type { WorkstationTunnelDeps } from '../server.js';
 import { ExecutorConn, type ExecutorAuth } from './conn.js';
 import { RemoteHostEnv } from './remote-env.js';
 import { unb64, type KeyPair } from './wire.js';
+import { openHostContext, type HostContext } from '../workstation/context.js';
+import type { WorkstationModelBridge } from '../workstation/bridge.js';
 
 interface ExecutorRecord {
   hostId: string;
@@ -23,10 +22,7 @@ interface ExecutorRecord {
   enrolledAt: number;
 }
 
-interface RemoteContext {
-  host: Host;
-  app: FastifyInstance;
-  deps?: WorkstationTunnelDeps;
+interface RemoteContext extends HostContext {
   /** 当前已连接的执行器；断开后为 undefined，主机离线。 */
   conn?: ExecutorConn;
 }
@@ -35,8 +31,9 @@ export interface ExecutorHubOptions {
   /** 工作站数据目录。 */
   home: string;
   store: AccountsStore;
-  /** 工作站在本机回环上的地址；远端主机上下文经它接入工作站。 */
+  /** 工作站在本机回环上的地址；远端主机上下文向它登记/同步。 */
   selfUrl: () => string;
+  modelBridge: WorkstationModelBridge;
 }
 
 export class ExecutorHub {
@@ -66,7 +63,7 @@ export class ExecutorHub {
     const saved = readJson<ExecutorRecord[]>(path.join(this.root, 'executors.json')) ?? [];
     for (const record of saved) {
       try {
-        const ctx = await this.open(record.hostId, this.options.selfUrl());
+        const ctx = await this.open(record.hostId);
         this.records.set(record.hostId, record);
         this.contexts.set(record.hostId, ctx);
       } catch (err) {
@@ -76,8 +73,13 @@ export class ExecutorHub {
   }
 
   async close(): Promise<void> {
-    for (const ctx of this.contexts.values()) await ctx.app.close().catch(() => undefined);
+    for (const ctx of this.contexts.values()) await ctx.close().catch(() => undefined);
     this.contexts.clear();
+  }
+
+  /** /h/<hostId> 的转发目标。 */
+  context(hostId: string): RemoteContext | undefined {
+    return this.contexts.get(hostId);
   }
 
   /** 执行器握手完成前的 WebSocket（/executor/ws）。 */
@@ -87,10 +89,13 @@ export class ExecutorHub {
       .catch(() => undefined);
   }
 
-  /** 非远端主机恒为 true；远端主机只有执行器连着时为 true。 */
+  /** 执行器主机只有执行器连着时在线。 */
   isLive(hostId: string): boolean {
-    const ctx = this.contexts.get(hostId);
-    return !ctx || !!ctx.conn;
+    return !!this.contexts.get(hostId)?.conn;
+  }
+
+  onlineCount(): number {
+    return [...this.contexts.values()].filter((ctx) => !!ctx.conn).length;
   }
 
   private async attach(conn: ExecutorConn): Promise<void> {
@@ -120,7 +125,7 @@ export class ExecutorHub {
     const hostId = randomUUID();
     const home = path.join(this.root, hostId);
     const selfUrl = this.options.selfUrl();
-    const ctx = await this.open(hostId, selfUrl);
+    const ctx = await this.open(hostId);
     try {
       // 令牌即绑定码，由工作站校验并登记这台远端主机。
       await ctx.host.accounts.registerAsHost(
@@ -129,11 +134,10 @@ export class ExecutorHub {
         req.token,
       );
     } catch (err) {
-      await ctx.app.close().catch(() => undefined);
+      await ctx.close().catch(() => undefined);
       fs.rmSync(home, { recursive: true, force: true });
       throw err;
     }
-    ctx.deps?.start(selfUrl);
     void ctx.host.enableWorkstationProfiles();
     this.records.set(hostId, {
       hostId,
@@ -147,26 +151,21 @@ export class ExecutorHub {
     return hostId;
   }
 
-  private async open(hostId: string, selfUrl: string): Promise<RemoteContext> {
-    const { Host } = await import('../host.js');
-    const { createApp } = await import('../server.js');
+  private async open(hostId: string): Promise<RemoteContext> {
     const home = path.join(this.root, hostId);
     fs.mkdirSync(home, { recursive: true });
     // loadHostConfig 沿用目录里已有的 hostId，首次登记前先写入。
     if (!fs.existsSync(path.join(home, 'config.json'))) {
       fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ hostId }), { mode: 0o600 });
     }
-    const host = new Host(undefined, home, { remote: true });
-    host.accounts.retargetWorkstation(selfUrl);
-    let deps: WorkstationTunnelDeps | undefined;
-    const app = await createApp(host, {
-      demoHost: true,
-      onWorkstationDeps: (next) => {
-        deps = next;
-      },
+    const ctx = await openHostContext({
+      home,
+      hostId,
+      selfUrl: this.options.selfUrl(),
+      remote: true,
+      modelBridge: this.options.modelBridge,
     });
-    await app.listen({ host: '127.0.0.1', port: 0 });
-    return { host, app, deps };
+    return ctx;
   }
 
   private save(): void {

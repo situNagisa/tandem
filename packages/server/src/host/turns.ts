@@ -253,13 +253,15 @@ export async function autoTitle(host: Host, rec: SessionRecord, firstText: strin
   const titleKey = host.keyCandidates(rec.profileId, rec.groupId).candidates[0];
   const profile = titleKey?.profile ?? host.profileFor(rec.profileId, rec.groupId);
   const model = rec.model || profile?.defaultModel || '';
-  if (!profile?.apiKey || !model) return;
+  if ((!profile?.apiKey && !profile?.proxied) || !model) return;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45_000);
   try {
     const raw = await completeText({
       profile,
+      ...(rec.groupId ? { groupId: rec.groupId } : {}),
+      proxy: host.profileProxyFor(rec),
       model,
       system: '你是会话标题生成器。只输出标题本身，不要解释、不要引号、不要标点。',
       prompt: host.promptTemplates.render(
@@ -342,7 +344,7 @@ export async function compactSession(host: Host, rec: SessionRecord): Promise<vo
     host.setStatus(rec, 'running');
     const selection = host.keyCandidates(rec.profileId, rec.groupId);
     const profile = selection.candidates[0]?.profile ?? host.profileFor(rec.profileId, rec.groupId);
-    if (!profile?.apiKey) {
+    if (!profile?.apiKey && !profile?.proxied) {
       throw new Error(
         host.keysUnavailableMessage(rec.profileId, rec.groupId) ?? '当前账号未配置 API Key',
       );

@@ -1,5 +1,5 @@
 'use strict';
-// Tandem 桌面端主进程：内置本机 Host（packages/server），窗口加载 Host 托管的 web UI。
+// Tandem 桌面端主进程：内置工作站服务（packages/server），窗口加载工作站托管的 web UI。
 const {
   app,
   BrowserWindow,
@@ -16,11 +16,12 @@ const fs = require('node:fs');
 const http = require('node:http');
 const net = require('node:net');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { fileURLToPath, pathToFileURL } = require('node:url');
 
 const isMac = process.platform === 'darwin';
 const isWin = process.platform === 'win32';
-const DEFAULT_PORT = 7878;
+const DEFAULT_PORT = 8481;
 const MAX_PORT_TRIES = 20;
 
 const THEMES = {
@@ -75,8 +76,8 @@ let fastifyApp = null;
 let hostUrl = null;
 let listenPort = DEFAULT_PORT;
 let listenHost = '127.0.0.1';
-let reusingExternalHost = false;
-/** 内嵌（或同机复用）Host 的 hostId：判断所选主机是否与桌面客户端同一台机器。 */
+let reusingExternalWorkstation = false;
+/** 本机主机上下文 hostId：判断所选主机是否与桌面客户端同一台机器。 */
 let localHostId = null;
 let quitting = false;
 let serverModules = null;
@@ -106,17 +107,22 @@ function isAppUrl(url) {
 
 async function loadServerModules() {
   if (!serverModules) {
-    const [server, hostMod, configMod] = await Promise.all([
-      import(pathToFileURL(path.join(serverDir, 'server.js')).href),
-      import(pathToFileURL(path.join(serverDir, 'host.js')).href),
+    const [workstation, configMod] = await Promise.all([
+      import(pathToFileURL(path.join(serverDir, 'workstation', 'server.js')).href),
       import(pathToFileURL(path.join(serverDir, 'config.js')).href),
     ]);
-    serverModules = { createApp: server.createApp, Host: hostMod.Host, ...configMod };
+    serverModules = { createWorkstation: workstation.createWorkstation, ...configMod };
   }
   return serverModules;
 }
 
-// ---------- 端口与已有 Host 探测 ----------
+// ---------- 端口与已有工作站探测 ----------
+
+/** 工作站 hostId 由数据目录推导（与 workstation/server.ts 一致）。 */
+function workstationIdFor(home) {
+  const hash = crypto.createHash('sha256').update(path.resolve(home)).digest('hex').slice(0, 24);
+  return `ws-${hash}`;
+}
 
 function requestJson(url, token, timeoutMs = 1500) {
   return new Promise((resolve, reject) => {
@@ -143,13 +149,12 @@ function requestJson(url, token, timeoutMs = 1500) {
   });
 }
 
-/** 7878 上如果已有同一数据目录的 Tandem Host，直接复用。 */
-async function probeExistingHost(config) {
+/** 8481 上如果已有同一数据目录的工作站，直接复用。 */
+async function probeExistingWorkstation(home) {
   try {
-    const res = await requestJson(`http://127.0.0.1:${DEFAULT_PORT}/api/host`, config.token);
-    if (res.status === 200 && res.json && typeof res.json.id === 'string') {
-      if (!res.json.id || res.json.id !== config.hostId) return null;
-      return { port: DEFAULT_PORT, token: config.token };
+    const res = await requestJson(`http://127.0.0.1:${DEFAULT_PORT}/api/workstation/status`);
+    if (res.status === 200 && res.json && res.json.hostId === workstationIdFor(home)) {
+      return { port: DEFAULT_PORT };
     }
   } catch {
     // 没人监听
@@ -186,62 +191,59 @@ async function findFreePort(startPort) {
 async function listen(port, hostName) {
   const mods = await loadServerModules();
   const home = mods.tandemHome();
-  const config = mods.loadHostConfig(home);
-  const instance = new mods.Host(config, home);
-  const instanceApp = await mods.createApp(instance);
-  await instanceApp.listen({ port, host: hostName });
-  const address = instanceApp.server.address();
-  const actualPort = typeof address === 'object' && address ? address.port : port;
-  return { host: instance, app: instanceApp, config, port: actualPort };
+  const handle = mods.createWorkstation({ home, version: app.getVersion() });
+  const info = await handle.listen(port, hostName);
+  return { handle, port: info.port };
 }
 
-async function stopHost() {
-  if (fastifyApp) {
-    try {
-      await fastifyApp.close();
-    } catch {
-      // ignore
-    }
+/** 复用外部工作站时直接读本机主机上下文的数据目录。 */
+function readLocalHostId(home) {
+  try {
+    const config = JSON.parse(fs.readFileSync(path.join(home, 'local-host', 'config.json'), 'utf8'));
+    return typeof config.hostId === 'string' ? config.hostId : null;
+  } catch {
+    return null;
   }
+}
+
+async function stopWorkstation() {
   if (host) {
     try {
-      host.store.flush();
+      await host.close();
     } catch {
       // ignore
     }
   }
-  fastifyApp = null;
   host = null;
+  fastifyApp = null;
 }
 
-async function startHost() {
+async function startWorkstation() {
   const mods = await loadServerModules();
   const home = mods.tandemHome();
-  const config = mods.loadHostConfig(home);
-  localHostId = config.hostId;
-
-  const existing = await probeExistingHost(config);
+  const existing = await probeExistingWorkstation(home);
   if (existing) {
-    reusingExternalHost = true;
+    reusingExternalWorkstation = true;
     listenPort = existing.port;
     listenHost = '127.0.0.1';
-    hostUrl = `http://127.0.0.1:${existing.port}/?token=${encodeURIComponent(existing.token)}`;
+    localHostId = readLocalHostId(home);
+    hostUrl = `http://127.0.0.1:${existing.port}/`;
     return;
   }
 
-  reusingExternalHost = false;
+  reusingExternalWorkstation = false;
   listenHost = '127.0.0.1';
   listenPort = await findFreePort(DEFAULT_PORT);
   const started = await listen(listenPort, listenHost);
-  host = started.host;
-  fastifyApp = started.app;
+  host = started.handle;
   listenPort = started.port;
-  hostUrl = `http://127.0.0.1:${started.port}/?token=${encodeURIComponent(started.config.token)}`;
+  localHostId = host.localHostId;
+  hostUrl = `http://127.0.0.1:${started.port}/`;
 }
 
-async function restartHost(nextHost) {
+async function restartWorkstation(nextHost) {
   const port = listenPort;
-  await stopHost();
+  await stopWorkstation();
   let started;
   try {
     started = await listen(port, nextHost);
@@ -249,12 +251,11 @@ async function restartHost(nextHost) {
     // 端口在切换瞬间被占用：换一个空闲端口
     started = await listen(await findFreePort(DEFAULT_PORT), nextHost);
   }
-  host = started.host;
-  fastifyApp = started.app;
+  host = started.handle;
   listenPort = started.port;
   listenHost = nextHost;
-  const token = started.config.token;
-  hostUrl = `http://127.0.0.1:${started.port}/?token=${encodeURIComponent(token)}`;
+  localHostId = host.localHostId;
+  hostUrl = `http://127.0.0.1:${started.port}/`;
 }
 
 // ---------- 窗口状态 ----------
@@ -433,11 +434,11 @@ function buildTrayMenu() {
       label: '在局域网开放',
       type: 'checkbox',
       checked: lanEnabled,
-      enabled: !reusingExternalHost,
+      enabled: !reusingExternalWorkstation,
       click: async (item) => {
-        if (reusingExternalHost) return;
+        if (reusingExternalWorkstation) return;
         try {
-          await restartHost(item.checked ? '0.0.0.0' : '127.0.0.1');
+          await restartWorkstation(item.checked ? '0.0.0.0' : '127.0.0.1');
           if (win && !win.isDestroyed() && hostUrl) win.loadURL(hostUrl);
         } catch (err) {
           dialog.showErrorBox('切换局域网监听失败', (err && err.message) || String(err));
@@ -468,7 +469,7 @@ function buildTrayMenu() {
 function updateTrayMenu() {
   if (!tray || tray.isDestroyed()) return;
   tray.setContextMenu(buildTrayMenu());
-  tray.setToolTip(hostUrl ? 'Tandem — 已连接本机 Host' : 'Tandem');
+  tray.setToolTip(hostUrl ? 'Tandem — 本机工作站运行中' : 'Tandem');
 }
 
 function createTray() {
@@ -792,9 +793,9 @@ if (!gotLock) {
   app.whenReady().then(async () => {
     Menu.setApplicationMenu(buildAppMenu());
     try {
-      await startHost();
+      await startWorkstation();
     } catch (err) {
-      dialog.showErrorBox('Tandem Host 启动失败', (err && err.stack) || String(err));
+      dialog.showErrorBox('Tandem 工作站启动失败', (err && err.stack) || String(err));
       app.quit();
       return;
     }
@@ -821,10 +822,10 @@ if (!gotLock) {
 
   app.on('before-quit', (event) => {
     if (!quitting) return;
-    if (fastifyApp || host) {
+    if (host) {
       event.preventDefault();
       const done = async () => {
-        await stopHost();
+        await stopWorkstation();
         app.exit(0);
       };
       void done();

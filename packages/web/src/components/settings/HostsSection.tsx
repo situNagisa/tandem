@@ -121,7 +121,7 @@ export function HostsSection() {
                   </span>
                   {host.id === activeHostId && <Badge tone="neutral">当前</Badge>}
                   {account && <Badge tone="neutral">{mine ? '我的' : '获授权'}</Badge>}
-                  {host.mode !== 'relay' && (isLocalHostUrl(host.url) || isSameOrigin(host.url)) && (
+                  {(remote?.local || (host.mode !== 'relay' && (isLocalHostUrl(host.url) || isSameOrigin(host.url)))) && (
                     <Badge tone="neutral">本机</Badge>
                   )}
                   {versionMismatch && (

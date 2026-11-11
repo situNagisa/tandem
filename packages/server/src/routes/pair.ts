@@ -11,7 +11,7 @@ export function registerPairRoutes(app: FastifyInstance, deps: RouteDeps): void 
     const port =
       address && typeof address === 'object' && address.port
         ? address.port
-        : 7878;
+        : 8481;
     const bound = address && typeof address === 'object' ? address.address : '127.0.0.1';
     const lan = bound === '0.0.0.0' || bound === '::' || bound === '::0';
     if (!lan) {
@@ -19,7 +19,7 @@ export function registerPairRoutes(app: FastifyInstance, deps: RouteDeps): void 
         urls: [`http://127.0.0.1:${port}`],
         token: host.config.token,
         loopback: true,
-        hint: 'Host 仅监听本机地址；用 --host 0.0.0.0 启动后可生成局域网 / Tailscale 配对地址。',
+        hint: '工作站只监听本机地址；用 --host 0.0.0.0 启动后可生成局域网配对地址。',
       };
     }
     const urls: string[] = [];

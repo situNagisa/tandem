@@ -23,7 +23,7 @@ export function registerDoctorRoutes(app: FastifyInstance, deps: RouteDeps): voi
     const listen =
       address && typeof address === 'object'
         ? { host: address.address, port: address.port }
-        : { host: '127.0.0.1', port: 7878 };
+        : { host: '127.0.0.1', port: 8481 };
     return runDoctor(host, {
       ...(checks && checks.length > 0 ? { checks } : {}),
       listen,

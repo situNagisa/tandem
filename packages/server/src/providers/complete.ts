@@ -1,25 +1,59 @@
 // 非流式一次性小请求：用于自动生成会话标题等短任务。
+import { randomUUID } from 'node:crypto';
 import { joinEndpoint, providerDefaultBaseUrl } from '../config.js';
 import { tandemGatewayBase } from './openai.js';
-import type { StoredProfile } from '../types.js';
+import type { Message, StoredProfile } from '../types.js';
 import { providerHttpError } from './http-error.js';
+import type { ProxyRunner } from './types.js';
 import { truncateEnd } from '../util/text.js';
 
 type AnyRecord = Record<string, any>;
 
 export interface CompleteRequest {
   profile: StoredProfile;
+  /** 账号级模型账号的分组。 */
+  groupId?: string;
   model: string;
   prompt: string;
   /** 可选的 system 提示。 */
   system?: string;
   maxTokens?: number;
   signal?: AbortSignal;
+  /** 账号级模型账号（Key 在工作站）交给工作站代理。 */
+  proxy?: ProxyRunner;
 }
 
 /** 调一次非流式补全，返回纯文本；失败直接抛错由调用方兜底。 */
 export async function completeText(req: CompleteRequest): Promise<string> {
   const maxTokens = req.maxTokens ?? 64;
+  if (req.profile.proxied) {
+    if (!req.proxy) throw new Error('账号级模型账号需要通过工作站代理，但主机未连接工作站');
+    const message: Message = {
+      id: randomUUID(),
+      role: 'user',
+      content: [{ type: 'text', text: req.prompt }],
+      createdAt: Date.now(),
+    };
+    let text = '';
+    await req.proxy.run(
+      {
+        profileId: req.profile.id,
+        ...(req.groupId ? { groupId: req.groupId } : {}),
+        model: req.model,
+        system: req.system ?? '',
+        messages: [message],
+        tools: [],
+        maxTokens,
+        idleTimeoutSec: 180,
+      },
+      (event) => {
+        if (event.type === 'text') text += event.text;
+        if (event.type === 'error') throw new Error(event.message);
+      },
+      req.signal ?? new AbortController().signal,
+    );
+    return text.trim();
+  }
   if (req.profile.kind === 'anthropic') {
     const base = req.profile.baseUrl || providerDefaultBaseUrl('anthropic');
     const body: AnyRecord = {

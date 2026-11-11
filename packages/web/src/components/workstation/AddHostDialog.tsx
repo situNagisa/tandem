@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, Clock } from 'lucide-react'
+import { AlertTriangle, Check, Clock, Plus } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
 import type { WorkspaceHostInfo, WorkstationBindCode, WorkstationPublicStatus } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
@@ -14,6 +14,7 @@ import {
   pickShareUrl,
   type AddHostPlatform,
 } from '../../lib/addHostCommand'
+import { pageIsLoopback } from '../../lib/localHosts'
 import { toast } from '../../store/appStore/helpers'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
@@ -70,6 +71,9 @@ export function AddHostDialog() {
   const baselineRef = useRef<Set<string> | null>(null)
   const chosenIdRef = useRef<string | null>(null)
 
+  const localAvailable = open && pageIsLoopback()
+  const [joiningLocal, setJoiningLocal] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
   const share = useMemo(() => pickShareUrl(base, status?.urls ?? []), [base, status])
   const url = selectedUrl ?? share.url
   const statusReady = !!status || !!statusError
@@ -205,6 +209,19 @@ export function AddHostDialog() {
     platform,
     service: autostart,
   })
+  const joinLocal = async () => {
+    setJoiningLocal(true)
+    setLocalError(null)
+    try {
+      await withWorkstationSession((b, token) => workstationApi.addLocalHost(b, token))
+      // 登记后由上面的轮询把新主机识别为「已连接」。
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : '添加本机失败')
+    } finally {
+      setJoiningLocal(false)
+    }
+  }
+
   const statusNode =
     phase === 'connected' ? (
       <>
@@ -367,6 +384,20 @@ export function AddHostDialog() {
           )}
 
           {error && <p className="text-[12px] leading-5 text-[var(--t-danger)]">{error}</p>}
+          {localError && <p className="text-[12px] leading-5 text-[var(--t-danger)]">{localError}</p>}
+
+          {localAvailable && (
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="addhost-local"
+              disabled={joiningLocal}
+              onClick={() => void joinLocal()}
+            >
+              {joiningLocal ? <Spinner size={13} /> : <Plus size={13} />}
+              添加这台电脑
+            </Button>
+          )}
         </div>
       )}
     </Modal>

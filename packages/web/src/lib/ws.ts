@@ -1,13 +1,7 @@
 import type { ClientMsg, SeqServerMsg, ServerMsg } from '@tandem/protocol'
 import type { ConnectionState, HostConfig } from './types'
 import { websocketUrl } from './hostUrl'
-import {
-  RELAY_UNSUPPORTED_MESSAGE,
-  detectRelayCryptoSupport,
-  isRelayHost,
-  relayChannel,
-  relayErrorMessage,
-} from './relay'
+import { relayErrorMessage } from './relay'
 
 interface Handlers {
   onStatus: (state: ConnectionState, error?: string) => void
@@ -144,28 +138,9 @@ export class HostConnection {
         this.pending.clear()
         this.stopPing()
         if (this.closed) return
-        const reason = isRelayHost(this.host) && ev?.reason ? relayErrorMessage(ev.reason) : undefined
+        const reason = ev?.reason ? relayErrorMessage(ev.reason) : undefined
         this.scheduleReconnect(reason)
       }
-    }
-
-    if (isRelayHost(this.host)) {
-      void detectRelayCryptoSupport().then((ok) => {
-        if (gen !== this.generation || this.closed) return
-        if (!ok) {
-          this.scheduleReconnect(RELAY_UNSUPPORTED_MESSAGE)
-          return
-        }
-        try {
-          const socket = relayChannel(this.host).openWebSocket(
-            `/ws?token=${encodeURIComponent(this.host.token)}`,
-          )
-          attach(socket as unknown as HostSocket)
-        } catch (err) {
-          this.scheduleReconnect(relayErrorMessage(err))
-        }
-      })
-      return
     }
 
     try {

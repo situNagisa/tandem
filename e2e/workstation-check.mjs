@@ -1,19 +1,18 @@
-// 工作站客户端-服务模式回归：只跑工作站 + 两台主机，账号只填工作站地址，
-// 主机出站隧道 + E2E 转发，用户 2 默认不可见、授权后才可见。
+// 工作站回归：程序即工作站。账号注册/登录、本机主机上下文、授权、账号级模型账号、
+// /h/<hostId> 转发与浏览器登录；调试版自动添加本机与演示主机。
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import WebSocket from 'ws'
-import { E2EChannel } from '../packages/protocol/dist/e2eClient.js'
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
 const CLI = path.join(ROOT, 'packages/server/dist/cli.js')
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** 递归读取目录下所有文本文件，用于断言主机本地没有 Key 明文。 */
+/** 递归读取目录下所有文本文件，用于断言主机本机文件里没有 Key 明文。 */
 function assertNoTextInDir(dir, needles, label) {
   const files = []
   const walk = (current) => {
@@ -88,28 +87,18 @@ function mockProvider() {
   return server
 }
 
-function startProcess({ home, mode, port = 0, extraEnv = {} }) {
-  const dataDir = mode === 'host' ? path.join(home, '.tandem') : home
-  mkdirSync(path.join(dataDir, 'sessions'), { recursive: true })
-  const token = randomUUID()
-  const hostId = randomUUID()
-  if (mode === 'host') {
-    writeFileSync(path.join(dataDir, 'config.json'), JSON.stringify({ hostId, token, idleTimeoutSec: 300 }))
-  }
-  const args = mode === 'host' ? [CLI, '--port', String(port)] : [CLI, 'workstation', '--port', String(port), '--host', '127.0.0.1']
-  // 默认关掉调试账号自动引导，避免每个用例 Host 都拉起内嵌工作站互相占端口；
-  // 调试引导用例用 extraEnv 传 undefined（不设置该变量）覆盖回“调试版默认开启”。
+function startWorkstation({ home, debug = false }) {
+  mkdirSync(home, { recursive: true })
   const env = {
     ...process.env,
-    TANDEM_HOME: dataDir,
+    TANDEM_HOME: home,
     HOME: home,
     NO_PROXY: '127.0.0.1,localhost',
     no_proxy: '127.0.0.1,localhost',
-    TANDEM_DEBUG_ACCOUNT: '0',
-    ...extraEnv,
+    ...(debug ? {} : { TANDEM_DEBUG_ACCOUNT: '0' }),
   }
-  for (const key of Object.keys(env)) if (env[key] === undefined) delete env[key]
-  const child = spawn(process.execPath, args, {
+  if (debug) delete env.TANDEM_DEBUG_ACCOUNT
+  const child = spawn(process.execPath, [CLI, '--port', '0', '--host', '127.0.0.1'], {
     cwd: ROOT,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -120,7 +109,7 @@ function startProcess({ home, mode, port = 0, extraEnv = {} }) {
   child.stderr.setEncoding('utf8')
   child.stderr.on('data', (chunk) => (output += chunk))
   const ready = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`进程启动超时：${output}`)), 20_000)
+    const timer = setTimeout(() => reject(new Error(`工作站启动超时：${output}`)), 20_000)
     const check = () => {
       const match = output.match(/访问:\s+http:\/\/127\.0\.0\.1:(\d+)/)
       if (match) {
@@ -132,10 +121,10 @@ function startProcess({ home, mode, port = 0, extraEnv = {} }) {
     child.stderr.on('data', check)
     child.once('exit', (code) => {
       clearTimeout(timer)
-      reject(new Error(`进程提前退出（${code}）：${output}`))
+      reject(new Error(`工作站提前退出（${code}）：${output}`))
     })
   })
-  return { child, ready, token, hostId, logs: () => output }
+  return { child, ready, logs: () => output }
 }
 
 async function json(base, pathname, init = {}, token) {
@@ -151,101 +140,102 @@ async function json(base, pathname, init = {}, token) {
   return text ? JSON.parse(text) : undefined
 }
 
-async function waitFor(fn, label, timeout = 25_000) {
+async function waitFor(fn, label, timeout = 30_000) {
   const started = Date.now()
+  let lastError
   while (Date.now() - started < timeout) {
     try {
       const value = await fn()
       if (value) return value
-    } catch {
-      /* retry */
+    } catch (error) {
+      lastError = error
     }
     await sleep(200)
   }
-  throw new Error(`超时：${label}`)
+  throw new Error(`超时：${label}${lastError ? `（${lastError.message}）` : ''}`)
 }
 
-/** 调试版工作站：自动测试账号、密码文件权限、首个真实注册者仍是管理员。 */
-async function runDebugAccountCheck(base) {
-  const home = path.join(base, 'debug-ws')
-  // debug dist 自带调试账号；startProcess 默认 TANDEM_DEBUG_ACCOUNT=0，这里覆盖回调试版默认。
-  const proc = startProcess({ home, mode: 'workstation', extraEnv: { TANDEM_DEBUG_ACCOUNT: undefined } })
+function messageText(message) {
+  if (typeof message.content === 'string') return message.content
+  return (message.content ?? []).map((part) => part.text ?? '').join('')
+}
+
+/** 连接主机的明文 WS（工作站 /h/<hostId> 直接转发到进程内主机上下文）。 */
+function sendOverHostSocket(wsBase, hostId, token, sessionId, text, timeout = 30_000) {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(`${wsBase}/h/${hostId}/ws?token=${encodeURIComponent(token)}`)
+    const timer = setTimeout(() => reject(new Error('会话未完成')), timeout)
+    socket.on('open', () => {
+      socket.send(JSON.stringify({ type: 'subscribe', sessionId }))
+      setTimeout(() => {
+        socket.send(JSON.stringify({ type: 'send', sessionId, content: [{ type: 'text', text }] }))
+      }, 200)
+    })
+    socket.on('message', (data) => {
+      if (typeof data.toString() !== 'string') return
+      let message
+      try {
+        message = JSON.parse(data.toString())
+      } catch {
+        return
+      }
+      if (message.type === 'message_end' && message.message?.role === 'assistant') {
+        const reply = messageText(message.message)
+        if (reply.includes('工作站流式回复通过')) {
+          clearTimeout(timer)
+          socket.close()
+          resolve(reply)
+        }
+      }
+      if (message.type === 'error') {
+        clearTimeout(timer)
+        reject(new Error(message.message))
+      }
+      if (message.type === 'turn_end' && message.reason === 'error') {
+        clearTimeout(timer)
+        reject(new Error(message.error))
+      }
+    })
+    socket.on('error', () => reject(new Error('主机 WS 连接失败')))
+  })
+}
+
+/** 调试版工作站：自动测试账号、本机 + 演示主机、演示工作区。 */
+async function runDebugWorkstationCheck(base, home) {
+  const proc = startWorkstation({ home: path.join(home, 'debug-ws'), debug: true })
   try {
     const port = await proc.ready
     const WS = `http://127.0.0.1:${port}`
     const status = await json(WS, '/api/workstation/status')
     assert.equal(status.initialized, true, '调试版工作站应已自动初始化')
     assert.equal(status.debug, true, '调试版工作站状态应带 debug 标记')
-    const file = path.join(home, 'debug-account.json')
+    const file = path.join(home, 'debug-ws', 'debug-account.json')
     assert.ok(existsSync(file), '调试版应生成测试账号密码文件')
     if (process.platform !== 'win32') {
       assert.equal(statSync(file).mode & 0o777, 0o600, '测试账号密码文件应为 0600')
     }
     const login = await json(WS, '/api/debug/auto-login', { method: 'POST' })
     assert.equal(login.account.username, 'debug', '免密登录应返回 debug 账号')
-    assert.equal(login.account.debug, true, '账号应带调试标记')
     assert.notEqual(login.account.role, 'admin', '测试账号不是管理员')
+    const hosts = await waitFor(async () => {
+      const list = await json(WS, '/api/workstation/hosts', {}, login.accessToken)
+      return list.length === 2 && list.every((h) => h.online) ? list : null
+    }, '本机与演示主机自动上线')
+    const local = hosts.find((h) => h.local)
+    const demo = hosts.find((h) => h.demo)
+    assert.ok(local, '应自动添加本机主机')
+    assert.ok(demo, '应自动添加演示主机')
+    assert.equal(demo.name, '演示主机')
+    const demoState = await json(WS, `/h/${demo.id}/api/demo`, {}, login.accessToken)
+    assert.equal(demoState.active, true, '演示工作区已创建')
+    assert.ok(demoState.scenarios.length > 0)
     const owner = await json(WS, '/api/workstation/register', {
       method: 'POST',
       body: JSON.stringify({ username: 'dbg-owner', password: 'dbg-owner-pass' }),
     })
     assert.equal(owner.account.role, 'admin', '测试账号不算第一个用户，首个真实注册者应为管理员')
-    const overview = await json(WS, '/api/workstation/overview', {}, owner.accessToken)
-    assert.ok(overview.accounts.some((a) => a.username === 'debug' && a.debug), '管理员应能看到带调试标记的测试账号')
   } finally {
     proc.child.kill('SIGTERM')
-  }
-
-  // 调试版 Host 默认自动引导：不传任何 env 开关，几秒内拉起内嵌工作站并登记本机 + 演示主机。
-  const hostProc = startProcess({
-    home: path.join(base, 'debug-host'),
-    mode: 'host',
-    extraEnv: { TANDEM_DEBUG_ACCOUNT: undefined },
-  })
-  try {
-    const hostBase = `http://127.0.0.1:${await hostProc.ready}`
-    const local = await waitFor(async () => {
-      const status = await json(hostBase, '/api/workstation/local/status', {}, hostProc.token)
-      return status.embedded?.running && status.embedded.urls?.length ? status : null
-    }, '调试版 Host 自动拉起内嵌工作站', 40_000)
-    const WS = local.embedded.urls[0]
-    assert.ok(WS, '内嵌工作站应下发地址')
-    const login = await json(WS, '/api/debug/auto-login', { method: 'POST' })
-    const hosts = await waitFor(async () => {
-      const list = await json(WS, '/api/workstation/hosts', {}, login.accessToken)
-      return list.length === 2 && list.every((h) => h.online) ? list : null
-    }, '本机与演示主机经隧道上线', 60_000)
-    const demo = hosts.find((h) => h.demo === true)
-    assert.ok(demo, '调试账号应看到 demo:true 的演示主机')
-    assert.equal(demo.name, '演示主机')
-    assert.ok(hosts.some((h) => !h.demo), '调试账号应看到本机主机')
-    // 客户端发现新增主机后会换一次访问令牌（新 perHost），再用新令牌访问演示主机。
-    const refreshed = await json(WS, '/api/workstation/refresh', {
-      method: 'POST',
-      body: JSON.stringify({ refreshToken: login.refreshToken }),
-    })
-    // 演示主机可经工作站 E2E 访问，且演示工作区已创建（演示模型/会话/设备）。
-    const demoChannel = new E2EChannel({ baseUrl: `${WS}/h/${demo.id}`, fingerprint: demo.fingerprint })
-    const demoRes = await demoChannel.fetch('/api/demo', { headers: { Authorization: `Bearer ${refreshed.accessToken}` } })
-    assert.equal(demoRes.status, 200, '应能经工作站访问演示主机')
-    const demoState = await demoRes.json()
-    assert.equal(demoState.active, true, '演示主机应有已创建的演示工作区')
-    assert.ok(demoState.profile?.kind === 'demo', '演示工作区应带演示模型')
-    assert.ok(demoState.scenarios.length > 0, '演示工作区应有预置场景')
-  } finally {
-    hostProc.child.kill('SIGTERM')
-  }
-
-  // TANDEM_DEBUG_ACCOUNT=0 模拟发布语义：Host 不拉起内嵌工作站。
-  const plain = startProcess({ home: path.join(base, 'plain-host'), mode: 'host' })
-  try {
-    const plainBase = `http://127.0.0.1:${await plain.ready}`
-    await sleep(3000)
-    const status = await json(plainBase, '/api/workstation/local/status', {}, plain.token)
-    assert.equal(status.mode, 'none', '关闭调试账号时 Host 不应加入工作站')
-    assert.equal(status.embedded.running, false, '关闭调试账号时不应拉起内嵌工作站')
-  } finally {
-    plain.child.kill('SIGTERM')
   }
 }
 
@@ -256,18 +246,9 @@ export async function runWorkstationCheck(home) {
   const mock = mockProvider()
   await new Promise((resolve) => mock.listen(0, '127.0.0.1', resolve))
   const mockPort = mock.address().port
-  // 真实注册流程用发布语义（同一份 debug dist 里用 TANDEM_DEBUG_ACCOUNT=0 关掉调试账号）。
-  const ws = startProcess({
-    home: path.join(base, 'ws'),
-    mode: 'workstation',
-    extraEnv: { TANDEM_DEBUG_ACCOUNT: '0' },
-  })
-  const h1 = startProcess({ home: path.join(base, 'h1'), mode: 'host' })
-  const h2 = startProcess({ home: path.join(base, 'h2'), mode: 'host' })
+  const ws = startWorkstation({ home: path.join(base, 'ws') })
   try {
     const wsPort = await ws.ready
-    const h1Port = await h1.ready
-    const h2Port = await h2.ready
     const WS = `http://127.0.0.1:${wsPort}`
     const autoLogin = await fetch(`${WS}/api/debug/auto-login`, { method: 'POST' })
     assert.equal(autoLogin.status, 404, '关闭调试账号时不应注册 auto-login 路由')
@@ -301,138 +282,56 @@ export async function runWorkstationCheck(home) {
     })
     assert.equal(charlie.account.role, 'member', '邀请注册应为普通成员')
 
-    const aliceKey1 = `sk-ws-alice-${randomUUID()}`
-    const aliceKey2 = `sk-ws-alice2-${randomUUID()}`
-    const hosts = [
-      { proc: h1, port: h1Port, key: aliceKey1 },
-      { proc: h2, port: h2Port, key: aliceKey2 },
-    ]
-    for (const { proc, key } of hosts) {
-      await json(`http://127.0.0.1:${proc === h1 ? h1Port : h2Port}`, '/api/profiles', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: 'Mock 账号',
-          kind: 'openai-compatible',
-          baseUrl: `http://127.0.0.1:${mockPort}/v1`,
-          apiKey: key,
-          models: ['ws-model'],
-          defaultModel: 'ws-model',
-        }),
-      }, proc.token)
-      const bind = await json(WS, '/api/workstation/hosts/bind-code', { method: 'POST' }, alice.accessToken)
-      const port = proc === h1 ? h1Port : h2Port
-      await json(`http://127.0.0.1:${port}`, '/api/workstation/join', {
-        method: 'POST',
-        body: JSON.stringify({ workstationUrl: WS, code: bind.code }),
-      }, proc.token)
-    }
-    const visible = await waitFor(async () => {
+    // 「添加这台机器」：把运行工作站的这台机器登记为 alice 的主机。
+    const host = await json(WS, '/api/workstation/hosts/local', { method: 'POST' }, alice.accessToken)
+    assert.equal(host.local, true, '本机主机应带 local 标记')
+    assert.equal(host.online, true, '本机主机上下文应在线')
+    assert.ok(host.fingerprint, '本机主机应有指纹')
+    const listed = await waitFor(async () => {
       const list = await json(WS, '/api/workstation/hosts', {}, alice.accessToken)
-      return list.length === 2 && list.every((h) => h.online) ? list : null
-    }, '两台主机经出站隧道上线')
+      return list.length === 1 && list[0].online ? list : null
+    }, '本机主机出现在列表并在线')
+    assert.equal(listed[0].id, host.id)
 
-    // 账号级模型账号：主机连接时一次性把本地 profiles 搬到 alice 账号，然后删除本地文件；
-    // 同名同协议以工作站已有为准（h2 的重复账号被丢弃）。
-    const profiles = await waitFor(async () => {
-      const snapshot = await json(WS, '/api/workstation/profiles', {}, alice.accessToken)
-      return snapshot.profiles?.length === 1 ? snapshot : null
-    }, '旧 profiles 搬迁到账号级存储')
-    assert.equal(profiles.accountId, alice.account.id)
-    assert.equal(profiles.profiles[0].name, 'Mock 账号')
-    assert.ok(profiles.profiles.every((p) => p.apiKeyMasked.includes('****')), '账号设置只回掩码')
-    assert.equal(JSON.stringify(profiles).includes(aliceKey1), false, '账号设置不能回 Key 明文')
-    for (const { proc, key } of hosts) {
-      const home = path.join(proc === h1 ? path.join(base, 'h1') : path.join(base, 'h2'), '.tandem')
-      await waitFor(async () => !existsSync(path.join(home, 'profiles.json')), '主机本地 profiles 文件已删除')
-      assertNoTextInDir(home, [aliceKey1, aliceKey2, key], '主机本地文件')
-    }
-    // 旧的按主机账号 API 已删除：工作站模式下只认账号级 API。
-    const legacyProfiles = await fetch(`http://127.0.0.1:${h1Port}/api/profiles`, {
-      headers: { authorization: `Bearer ${alice.accessToken}` },
-    })
-    assert.equal(legacyProfiles.status, 410, '旧的按主机账号 API 应已删除')
-
-    assert.deepEqual(await json(WS, '/api/workstation/hosts', {}, bob.accessToken), [], '新用户默认看不到别人的主机')
-    const target = visible.find((h) => h.id === h2.hostId)
-    await json(WS, `/api/workstation/hosts/${target.id}/grants`, {
+    // 账号级模型账号：Key 只在工作站；本机主机上下文直接使用，不经签名代理。
+    const aliceKey1 = `sk-ws-alice-${randomUUID()}`
+    const profile = await json(WS, '/api/workstation/profiles', {
       method: 'POST',
-      body: JSON.stringify({ accountId: bob.account.id, role: 'collaborator' }),
+      body: JSON.stringify({
+        name: 'Mock 账号',
+        kind: 'openai-compatible',
+        baseUrl: `http://127.0.0.1:${mockPort}/v1`,
+        apiKey: aliceKey1,
+        models: ['ws-model'],
+        defaultModel: 'ws-model',
+      }),
     }, alice.accessToken)
-    const bobHosts = await json(WS, '/api/workstation/hosts', {}, bob.accessToken)
-    assert.deepEqual(bobHosts.map((h) => h.id), [target.id], '授权后只应看到被授权的主机')
-    // 授权后刷新令牌：主机侧按新 perHost 声明放行。
-    const bobAccess = await json(WS, '/api/workstation/refresh', { method: 'POST', body: JSON.stringify({ refreshToken: bob.refreshToken }) })
-    bob.accessToken = bobAccess.accessToken
-    bob.refreshToken = bobAccess.refreshToken
-
-    // 只连工作站端口：E2E 经工作站转发到 h1。
-    const channel = new E2EChannel({
-      baseUrl: `${WS}/h/${h1.hostId}`,
-      fingerprint: visible.find((h) => h.id === h1.hostId).fingerprint,
-    })
-    const info = await channel.fetch('/api/host', { headers: { Authorization: `Bearer ${alice.accessToken}` } })
-    assert.ok(info.ok, `经工作站 E2E 访问主机失败：${info.status}`)
+    const snapshot = await json(WS, '/api/workstation/profiles', {}, alice.accessToken)
+    assert.ok(snapshot.profiles.every((p) => p.apiKeyMasked.includes('****')), '账号设置只回掩码')
+    assert.equal(JSON.stringify(snapshot).includes(aliceKey1), false, '账号设置不能回 Key 明文')
 
     const work = path.join(base, 'work')
     mkdirSync(work, { recursive: true })
-    const sessionRes = await channel.fetch('/api/sessions', {
+    const sessionRes = await fetch(`${WS}/h/${host.id}/api/sessions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${alice.accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        cwd: work,
-        title: '工作站回归会话',
-        profileId: profiles.profiles[0].id,
-      }),
+      body: JSON.stringify({ cwd: work, title: '工作站回归会话', profileId: profile.id }),
     })
-    assert.equal(sessionRes.status, 201, '应能在 h1 新建会话')
-    const session = await sessionRes.json()
-    const seen = []
-    const reply = await new Promise((resolve, reject) => {
-      const socket = channel.openWebSocket(`/ws?token=${encodeURIComponent(alice.accessToken)}`)
-      const timer = setTimeout(
-        () => reject(new Error(`未收到流式回复（收到 ${seen.join(',')}）\n--- h1 ---\n${h1.logs()}\n--- 工作站 ---\n${ws.logs()}`)),
-        30_000,
-      )
-      socket.onopen = () => {
-        socket.send(JSON.stringify({ type: 'subscribe', sessionId: session.id }))
-        setTimeout(() => {
-          socket.send(JSON.stringify({ type: 'send', sessionId: session.id, content: [{ type: 'text', text: '请回复' }] }))
-        }, 200)
-      }
-      socket.onmessage = (event) => {
-        if (typeof event.data !== 'string') return
-        const message = JSON.parse(event.data)
-        seen.push(message.type === 'turn_end' ? `turn_end(${JSON.stringify(message)})` : message.type)
-        if (message.type === 'message_end' && message.message?.role === 'assistant') {
-          const text = (message.message.content ?? []).filter((b) => b.type === 'text').map((b) => b.text).join('')
-          if (text.includes('工作站流式回复通过')) {
-            clearTimeout(timer)
-            socket.close()
-            resolve(text)
-          }
-        }
-        if (message.type === 'error') {
-          clearTimeout(timer)
-          reject(new Error(`发送失败：${message.message}`))
-        }
-        if (message.type === 'turn_end' && message.reason === 'error') {
-          clearTimeout(timer)
-          reject(new Error(`回合失败：${message.error}`))
-        }
-      }
-      socket.onerror = () => reject(new Error('加密 WebSocket 连接失败'))
-    })
+    const sessionText = await sessionRes.text()
+    assert.equal(sessionRes.status, 201, `应能在本机主机新建会话：${sessionText}`)
+    const session = JSON.parse(sessionText)
+    const reply = await sendOverHostSocket(WS, host.id, alice.accessToken, session.id, '请回复')
     assert.ok(reply.includes('工作站流式回复通过'), '应经工作站收到流式回复')
-    // 工作站按账号记账；主机本地任何文件都不含 Key 明文。
-    const usageFile = path.join(base, 'ws', 'model-usage.json')
-    const usageRows = JSON.parse(readFileSync(usageFile, 'utf8')).rows ?? []
+    assert.ok(mock.seenKeys.includes(aliceKey1), '上游请求应使用工作站里的 alice Key')
+    const usageRows = JSON.parse(readFileSync(path.join(base, 'ws', 'model-usage.json'), 'utf8')).rows ?? []
     assert.ok(
-      usageRows.some((row) => row.accountId === alice.account.id && row.hostId === h1.hostId && row.model === 'ws-model'),
+      usageRows.some((row) => row.accountId === alice.account.id && row.hostId === host.id && row.model === 'ws-model'),
       '工作站应按账号和主机记账',
     )
-    assert.ok(mock.seenKeys.includes(aliceKey1), '上游请求应使用工作站里的 alice Key')
+    // 本机主机上下文的数据目录里没有 Key 明文。
+    assertNoTextInDir(path.join(base, 'ws', 'local-host'), [aliceKey1], '本机主机数据')
 
-    // 共享主机：被授权人用自己的账号级模型账号（bob 的 Key），主机上仍没有明文 Key。
+    // 共享主机：被授权人用自己的账号级模型账号（bob 的 Key）。
     const bobKey = `sk-ws-bob-${randomUUID()}`
     const bobProfile = await json(WS, '/api/workstation/profiles', {
       method: 'POST',
@@ -451,10 +350,8 @@ export async function runWorkstationCheck(home) {
         },
       }),
     }, bob.accessToken)
-    // 余额查询：工作站用 Key 查 mock 平台，5 分钟缓存；手动刷新强制重查。
     const bobSnapshot = await json(WS, '/api/workstation/profiles', {}, bob.accessToken)
-    const bobBalance = bobSnapshot.profiles.find((p) => p.id === bobProfile.id)?.balance
-    assert.equal(bobBalance?.amount, 3.5, '应显示 mock 平台余额')
+    assert.equal(bobSnapshot.profiles.find((p) => p.id === bobProfile.id)?.balance?.amount, 3.5, '应显示 mock 平台余额')
     assert.equal(mock.balanceCalls.count, 1)
     await json(WS, '/api/workstation/profiles', {}, bob.accessToken)
     assert.equal(mock.balanceCalls.count, 1, '5 分钟内应复用缓存')
@@ -465,11 +362,22 @@ export async function runWorkstationCheck(home) {
       false,
       'alice 看不到 bob 的模型账号',
     )
-    const h2Channel = new E2EChannel({
-      baseUrl: `${WS}/h/${h2.hostId}`,
-      fingerprint: visible.find((h) => h.id === h2.hostId).fingerprint,
+
+    assert.deepEqual(await json(WS, '/api/workstation/hosts', {}, bob.accessToken), [], '新用户默认看不到别人的主机')
+    await json(WS, `/api/workstation/hosts/${host.id}/grants`, {
+      method: 'POST',
+      body: JSON.stringify({ accountId: bob.account.id, role: 'collaborator' }),
+    }, alice.accessToken)
+    const bobHosts = await json(WS, '/api/workstation/hosts', {}, bob.accessToken)
+    assert.deepEqual(bobHosts.map((h) => h.id), [host.id], '授权后只应看到被授权的主机')
+    // 授权后刷新令牌：主机侧按新 perHost 声明放行。
+    const bobAccess = await json(WS, '/api/workstation/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken: bob.refreshToken }),
     })
-    const bobSessionRes = await h2Channel.fetch('/api/sessions', {
+    bob.accessToken = bobAccess.accessToken
+    bob.refreshToken = bobAccess.refreshToken
+    const bobSessionRes = await fetch(`${WS}/h/${host.id}/api/sessions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${bob.accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ cwd: work, title: '共享主机会话', profileId: bobProfile.id }),
@@ -477,40 +385,15 @@ export async function runWorkstationCheck(home) {
     const bobSessionText = await bobSessionRes.text()
     assert.equal(bobSessionRes.status, 201, `被授权人应能在共享主机建会话：${bobSessionText}`)
     const bobSession = JSON.parse(bobSessionText)
-    const bobReply = await new Promise((resolve, reject) => {
-      const socket = h2Channel.openWebSocket(`/ws?token=${encodeURIComponent(bob.accessToken)}`)
-      const timer = setTimeout(() => reject(new Error(`bob 未收到流式回复\n${h2.logs()}`)), 30_000)
-      socket.onopen = () => {
-        socket.send(JSON.stringify({ type: 'subscribe', sessionId: bobSession.id }))
-        setTimeout(() => {
-          socket.send(JSON.stringify({ type: 'send', sessionId: bobSession.id, content: [{ type: 'text', text: '请回复' }] }))
-        }, 200)
-      }
-      socket.onmessage = (event) => {
-        if (typeof event.data !== 'string') return
-        const message = JSON.parse(event.data)
-        if (message.type === 'message_end' && message.message?.role === 'assistant') {
-          const text = (message.message.content ?? []).filter((b) => b.type === 'text').map((b) => b.text).join('')
-          if (text.includes('工作站流式回复通过')) {
-            clearTimeout(timer)
-            socket.close()
-            resolve(text)
-          }
-        }
-        if (message.type === 'turn_end' && message.reason === 'error') {
-          clearTimeout(timer)
-          reject(new Error(`bob 回合失败：${message.error}`))
-        }
-      }
-      socket.onerror = () => reject(new Error('bob 加密 WebSocket 连接失败'))
-    })
-    assert.ok(bobReply.includes('工作站流式回复通过'), '被授权人应经工作站代理拿到回复')
+    const bobReply = await sendOverHostSocket(WS, host.id, bob.accessToken, bobSession.id, '请回复')
+    assert.ok(bobReply.includes('工作站流式回复通过'), '被授权人应拿到回复')
     assert.ok(mock.seenKeys.includes(bobKey), '共享主机上的请求应使用 bob 自己的 Key')
-    assertNoTextInDir(path.join(base, 'h2', '.tandem'), [bobKey], '共享主机本地文件')
 
     // 撤销授权：旧令牌立即失效（主机快照 invalidBefore），刷新后看到空列表。
-    await json(WS, `/api/workstation/hosts/${target.id}/grants/${bob.account.id}`, { method: 'DELETE' }, alice.accessToken)
-    const oldTokenRes = await fetch(`${WS}/api/workstation/hosts`, { headers: { authorization: `Bearer ${bob.accessToken}` } })
+    await json(WS, `/api/workstation/hosts/${host.id}/grants/${bob.account.id}`, { method: 'DELETE' }, alice.accessToken)
+    const oldTokenRes = await fetch(`${WS}/api/workstation/hosts`, {
+      headers: { authorization: `Bearer ${bob.accessToken}` },
+    })
     assert.equal(oldTokenRes.status, 401, '撤销授权后旧令牌应立即失效')
     const bobTokens = await json(WS, '/api/workstation/refresh', {
       method: 'POST',
@@ -518,11 +401,15 @@ export async function runWorkstationCheck(home) {
     })
     assert.deepEqual(await json(WS, '/api/workstation/hosts', {}, bobTokens.accessToken), [], '刷新后不应再看到被撤销的主机')
 
-    await runDebugAccountCheck(base)
+    // 移除主机后可以重新添加；同一个账号再次添加应幂等返回。
+    await json(WS, `/api/workstation/hosts/${host.id}`, { method: 'DELETE' }, alice.accessToken)
+    const readded = await json(WS, '/api/workstation/hosts/local', { method: 'POST' }, alice.accessToken)
+    assert.equal(readded.id, host.id)
+    assert.equal(readded.ownerId, alice.account.id)
+
+    await runDebugWorkstationCheck(base, home)
   } finally {
     ws.child.kill('SIGTERM')
-    h1.child.kill('SIGTERM')
-    h2.child.kill('SIGTERM')
     mock.close()
   }
 }

@@ -1,14 +1,14 @@
 # Tandem
 
-类 Claude Code Desktop 的 agent 工作台：Host 守护进程跑在每台机器上执行 agent；Web / 桌面 / 安卓客户端连接任意多台 Host，多端实时协同；每个会话可用不同账号、分组与模型（Anthropic / OpenAI / 兼容接口 / Gemini）。
+类 Claude Code Desktop 的 agent 工作台：程序本身是一个工作站服务；浏览器 / 桌面 / 手机客户端只连工作站，工作站与各主机建立连接并在主机上跑 agent。多端实时协同；每个会话可用不同账号、分组与模型（Anthropic / OpenAI / 兼容接口 / Gemini）。
 
 ## 目录
 | 包 | 作用 |
 |---|---|
-| `packages/protocol` | 客户端与 Host 共享的类型（唯一契约） |
-| `packages/server` | Host 守护进程（REST + WebSocket、agent 循环、工具、权限、MCP、hooks） |
+| `packages/protocol` | 客户端与工作站/主机共享的类型（唯一契约） |
+| `packages/server` | 工作站服务：账号、主机上下文、REST + WebSocket、agent 循环、工具、权限、MCP、hooks |
 | `packages/web` | React 客户端（也被桌面端和 App 复用） |
-| `packages/desktop` | Electron 桌面端（内置 Host） |
+| `packages/desktop` | Electron 桌面端（内置工作站服务） |
 | `packages/mobile` | Capacitor 安卓 App |
 | `docs/` | 文档入口见 `docs/README.md`：现行文档（设计/架构/功能/进度）、一次性记录归档、代测步骤 |
 
@@ -21,15 +21,15 @@
 ```bash
 npm install                      # 首次
 npm run build                    # 构建 protocol → web → server
-npm start                        # 启动 Host（默认 127.0.0.1:7878），终端打印带 token 的访问地址
-npm start -- --host 0.0.0.0      # 允许局域网访问（手机连接需要）
+npm start                        # 启动工作站（默认 127.0.0.1:8481），浏览器打开终端打印的地址
+npm start -- --host 0.0.0.0      # 允许局域网访问（手机/其他机器连接需要）
 
-npm run dev:server               # Host 开发模式（热重载）
-npm run dev:web                  # Web 开发服务器（代理到 127.0.0.1:7878）
+npm run dev:server               # 工作站开发模式（热重载）
+npm run dev:web                  # Web 开发服务器（代理到工作站地址）
 node scripts/ui-audit.mjs        # UI 原语防回退检查：ui/ 目录外的手写菜单/弹层/原生下拉（0 问题才通过）
 
 npm test                         # 单元测试（server: node:test + tsx；web: vitest）
-npm run smoke                    # Playwright 端到端冒烟（临时 Host + 假 provider，需先 build）
+npm run smoke                    # Playwright 端到端冒烟（临时工作站 + 假 provider，需先 build）
 node scripts/check.mjs           # 提交前全量：docs → build → debug-artifacts → ui-audit → decisions → test → smoke → regression → release
 ```
 
@@ -87,10 +87,10 @@ node scripts/release.mjs 0.2.0             # 统一版本号、写 CHANGELOG/导
 也可以让 Host 托管：在「设置 → 通用 → Host 托管更新文件」填一个本机目录，Host 会公开 `/updates/` 静态路径（仅启用时）。未签名的 SmartScreen 影响、签名选购与上架材料见 `docs/features/release.md`。
 
 ### 远程连接
-见 `docs/workstation.md`（工作站 + 主机出站隧道，端到端加密）。
+见 `docs/workstation.md`（工作站 + 进程内主机上下文；客户端只连工作站）。
 
 ## 数据
-Host 数据在 `~/.tandem`（可用 `TANDEM_HOME` 覆盖）：`config.json`（hostId、token）、`profiles.json`（Key，权限 600）、`sessions/`、`checkpoints/`、`mcp.json`、`hooks.json` 等。Claude Code / Codex 的会话只读，不会被修改。
+工作站数据在 `~/.tandem`（可用 `TANDEM_HOME` 覆盖）：`accounts.json`（账号/主机登记/私钥）、`profiles.json` + `profiles.key`（账号级模型账号，加密）、`model-usage.json`；本机主机上下文在 `local-host/`，执行器主机在 `remote-hosts/<hostId>/`。Claude Code / Codex 的会话只读，不会被修改。
 
 ## 反馈（仅调试版）
 调试版按 `Ctrl/Cmd + Shift + F` 进入反馈模式；采集内容、`.tfb` 包结构、解包/回执命令、演示工作区与体验清单见 [docs/features/feedback.md](docs/features/feedback.md)。

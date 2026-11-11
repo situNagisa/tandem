@@ -37,6 +37,6 @@
 - 多个子代理并行时按文件划分所有权；改共享文件前 `git diff <file>`，不覆盖他人未提交改动；每批构建通过即提交。
 
 ## 架构速览
-- `packages/server`：Fastify REST + WS；agent 循环 `src/agent/loop.ts`；providers（anthropic / openai 兼容）；工具 `src/tools/`；权限、hooks、MCP、worktree、用量、外部会话 `src/external.ts`、工作站隧道 `src/workstation/`。
+- `packages/server`：Fastify REST + WS；agent 循环 `src/agent/loop.ts`；providers（anthropic / openai 兼容）；工具 `src/tools/`；权限、hooks、MCP、worktree、用量、外部会话 `src/external.ts`、工作站与主机上下文 `src/workstation/`（本机 `local-host/`、执行器 `remote-hosts/`）。
 - `packages/web`：React 19 + Tailwind v4 + zustand；`src/components/ui/*` 是统一组件（Button、Menu、Tooltip…），新 UI 必须复用。
 - `packages/desktop`（Electron）、`packages/mobile`（Capacitor）；远程连接统一走工作站。

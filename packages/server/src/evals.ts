@@ -726,7 +726,7 @@ export class EvalManager {
     result: EvalResult,
   ): Promise<EvalReviewResult> {
     const profile = this.host.profileFor(reviewer.profileId, reviewer.groupId);
-    if (!profile?.apiKey) throw new Error('评审账号未配置 API Key');
+    if (!profile || (!profile.apiKey && !profile.proxied)) throw new Error('评审账号未配置 API Key');
     const checkText = result.check
       ? `命令 \`${result.check.command}\` 退出码 ${result.check.exitCode ?? 'null'}（${result.check.ok ? '通过' : '失败'}）`
       : '未配置自动检查';
@@ -741,6 +741,8 @@ export class EvalManager {
     try {
       const raw = await completeText({
         profile,
+        ...(reviewer.groupId ? { groupId: reviewer.groupId } : {}),
+        proxy: this.host.profileProxyFor({}),
         model: reviewer.model,
         prompt,
         maxTokens: 600,

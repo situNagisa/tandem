@@ -1,8 +1,6 @@
 #!/usr/bin/env node
-// Tandem Host 守护进程入口。
-import type { FastifyInstance } from 'fastify';
+// Tandem 工作站服务入口：账号、主机登记、会话、agent 与 Web UI 都在这个进程里。
 import { Host } from './host.js';
-import { createApp } from './server.js';
 import { loadHostConfig, tandemHome } from './config.js';
 import { runDoctor } from './doctor.js';
 import { createWorkstation } from './workstation/server.js';
@@ -14,7 +12,7 @@ interface CliOptions {
 }
 
 function parseArgs(argv: string[]): CliOptions {
-  const options: CliOptions = { port: 7878, host: '127.0.0.1' };
+  const options: CliOptions = { port: 8481, host: '127.0.0.1' };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     const next = () => {
@@ -45,14 +43,14 @@ function parseArgs(argv: string[]): CliOptions {
 }
 
 function printHelp(): void {
-  console.log(`用法: tandem-host [--port 7878] [--host 127.0.0.1]
-        tandem-host workstation [--port 8481] [--host 0.0.0.0]
-        tandem-host doctor [--checks node,git,profiles] [--port 7878] [--host 127.0.0.1]
+  console.log(`用法: tandem-host [--port 8481] [--host 127.0.0.1]
+        tandem-host doctor [--checks node,git,profiles] [--json]
 
-    workstation  只运行工作站服务（账号、主机登记、授权、连接转发；不跑 agent）
+  启动的是工作站服务（账号、主机登记、会话与 agent，以及 Web UI）。
+  客户端（浏览器 / 桌面窗口 / 手机）只连工作站；运行工作站的这台机器作为一台主机登记后即可使用。
 
 选项:
-  -p, --port <端口>   监听端口（Host 默认 7878；workstation 默认 8481）
+  -p, --port <端口>   监听端口（默认 8481）
       --host <地址>   监听地址（默认 127.0.0.1；局域网访问用 0.0.0.0）
   -h, --help          显示帮助
 
@@ -67,7 +65,7 @@ doctor 选项:
 
 async function doctorMain(argv: string[]): Promise<void> {
   let checks: string[] | undefined;
-  let port = 7878;
+  let port = 0;
   let host = '127.0.0.1';
   let json = false;
   for (let i = 0; i < argv.length; i++) {
@@ -117,41 +115,31 @@ async function doctorMain(argv: string[]): Promise<void> {
   }
 }
 
-async function workstationMain(argv: string[]): Promise<void> {
-  let port = 8481;
-  let host = '127.0.0.1';
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i]!;
-    const next = () => {
-      const value = argv[i + 1];
-      if (!value) throw new Error(`${arg} 缺少参数`);
-      i += 1;
-      return value;
-    };
-    if (arg === '--help' || arg === '-h') {
-      printHelp();
-      return;
-    }
-    if (arg === '--port' || arg === '-p' || arg.startsWith('--port=')) {
-      port = Number(arg.includes('=') ? arg.slice('--port='.length) : next());
-    } else if (arg === '--host' || arg.startsWith('--host=')) {
-      host = arg.includes('=') ? arg.slice('--host='.length) : next();
-    } else {
-      throw new Error(`未知参数: ${arg}`);
-    }
+async function main(): Promise<void> {
+  if (process.argv[2] === 'doctor') {
+    await doctorMain(process.argv.slice(3));
+    return;
   }
-  if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`端口无效: ${port}`);
+  const options = parseArgs(process.argv.slice(2));
   const home = tandemHome();
   const handle = createWorkstation({ home, version: readVersion() });
-  const info = await handle.listen(port, host);
+  let info: { port: number; urls: string[] };
+  try {
+    info = await handle.listen(options.port, options.host);
+  } catch (err) {
+    console.error(`[tandem] 工作站启动失败: ${(err as Error).message}`);
+    process.exit(1);
+  }
+
   console.log('');
   console.log('Tandem 工作站已启动');
-  console.log(`  访问:     ${info.urls[0]}`);
-  for (const url of info.urls.slice(1)) console.log(`  局域网:   ${url}`);
-  console.log(`  监听:     ${host}:${info.port}`);
+  console.log(`  访问:     http://127.0.0.1:${info.port}/`);
+  for (const url of info.urls.filter((u) => !u.includes('127.0.0.1'))) console.log(`  局域网:   ${url}`);
+  console.log(`  监听:     ${options.host}:${info.port}`);
   console.log(`  数据目录: ${home}`);
   console.log('  首次打开页面可创建管理员账号；内网用户可直接注册。');
   console.log('');
+
   let closing = false;
   const shutdown = async (signal: string) => {
     if (closing) return;
@@ -164,72 +152,9 @@ async function workstationMain(argv: string[]): Promise<void> {
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
-/** 本机 Host 常驻：续跑中断的会话，收到退出信号时收尾。 */
-function serveHost(app: FastifyInstance, host: Host): void {
-  // Host 重启恢复：续跑中断的会话（或按设置暂停），并提示丢失的后台任务
-  void host
-    .recoverAfterRestart()
-    .catch((err) => {
-      console.warn(`[tandem] 重启恢复失败:`, (err as Error).message);
-    })
-    .finally(() => host.boards.start());
-
-  let closing = false;
-  const shutdown = async (signal: string) => {
-    if (closing) return;
-    closing = true;
-    console.log(`\n[tandem] 收到 ${signal}，正在退出…`);
-    await app.close().catch(() => undefined);
-    host.store.flush();
-    await host.shutdown();
-    process.exit(0);
-  };
-  process.on('SIGINT', () => void shutdown('SIGINT'));
-  process.on('SIGTERM', () => void shutdown('SIGTERM'));
-}
-
-async function main(): Promise<void> {
-  if (process.argv[2] === 'doctor') {
-    await doctorMain(process.argv.slice(3));
-    return;
-  }
-  if (process.argv[2] === 'workstation') {
-    await workstationMain(process.argv.slice(3));
-    return;
-  }
-  const options = parseArgs(process.argv.slice(2));
-  const home = tandemHome();
-  const config = loadHostConfig(home);
-  const host = new Host(config, home);
-  const app = await createApp(host);
-
-  try {
-    await app.listen({ port: options.port, host: options.host });
-  } catch (err) {
-    console.error(`[tandem] 启动失败: ${(err as Error).message}`);
-    process.exit(1);
-  }
-
-  const address = app.server.address();
-  const actualPort = typeof address === 'object' && address ? address.port : options.port;
-  const displayHost =
-    options.host === '0.0.0.0' || options.host === '::' ? '127.0.0.1' : options.host;
-
-  console.log('');
-  console.log('Tandem Host 已启动');
-  console.log(`  访问:     http://${displayHost}:${actualPort}/?token=${config.token}`);
-  console.log(`  监听:     ${options.host}:${actualPort}`);
-  console.log(`  数据目录: ${home}`);
-  console.log(`  Host ID:  ${config.hostId}`);
-  console.log('');
-
-  serveHost(app, host);
-}
-
 main().catch((err) => {
   console.error(`[tandem] ${(err as Error).message}`);
-  // 不用 process.exit：Windows + Node 22+（实测 v26.4.0）上，带着 fetch 留下的 keep-alive
-  // 连接硬退出会撞 libuv 断言（async.c:94 → 0xC0000409 / 退出码 -1073740791），
-  // 把真正的错误盖成「登记失败（退出码 -1073740791）」。让事件循环自然排空后按 exitCode 退出。
+  // 不用 process.exit：Windows + Node 22+ 上带着 fetch 留下的 keep-alive
+  // 连接硬退出会撞 libuv 断言。让事件循环自然排空后按 exitCode 退出。
   process.exitCode = 1;
 });

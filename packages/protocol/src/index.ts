@@ -1032,8 +1032,8 @@ export interface TeamPresence {
   role: TeamRole;
 }
 
-// ---------- 工作站（自托管账号服务 + 主机登记/转发，完全内网） ----------
-// 工作站签发 Ed25519 令牌；主机用工作站公钥本地验签，经出站隧道把请求转给本机。
+// ---------- 工作站（程序本体：账号、主机登记、会话与 agent 都在这里，完全内网） ----------
+// 工作站签发 Ed25519 令牌；主机上下文（本机/执行器）在同一进程内用工作站公钥验签。
 export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'collaborator' | 'approver' | 'observer';
 /** 授权范围：全部机器 / 指定机器 / 指定机器上的项目目录。 */
 export type WorkspaceScope = 'all' | 'hosts' | 'projects';
@@ -1062,13 +1062,15 @@ export interface WorkspaceHostInfo {
   lastSeenAt?: number;
   /** 主机归属账号；新模型下只有主人与获授权账号可见。 */
   ownerId?: string;
-  /** 主机 Ed25519 公钥（base64 DER）与 SHA-256 指纹，工作站隧道与 E2E 绑定用。 */
+  /** 主机 Ed25519 公钥与 SHA-256 指纹；主机登记时绑定。 */
   publicKey?: string;
   fingerprint?: string;
-  /** 经工作站隧道在线。 */
+  /** 主机上下文在线（执行器主机 = 执行器已连接；本机上下文恒为在线）。 */
   online?: boolean;
   /** 由工作站下发给客户端：客户端应通过 工作站/h/<id> 连接。 */
   viaWorkstation?: boolean;
+  /** 运行工作站的这台机器（工作站进程内的本地主机上下文）。 */
+  local?: boolean;
   /** 调试版演示主机（内置演示模型/会话/设备）；只有调试版会登记。 */
   demo?: boolean;
   grants?: WorkspaceHostGrant[];
@@ -1297,7 +1299,7 @@ export type WorkspaceModelProxyEvent =
   | { type: 'block_start'; index: number; block: ContentBlock }
   | { type: 'text'; index: number; text: string }
   | { type: 'tool_input'; index: number; partialJson: string }
-  | { type: 'rate_limit'; info: Record<string, unknown> }
+  | { type: 'rate_limit'; info: Record<string, unknown>; keyId?: string }
   | { type: 'effort_dropped'; detail?: string }
   | { type: 'done'; usage: Usage; stopReason?: string; keyId?: string; costUsd?: number }
   | { type: 'error'; message: string };
@@ -1314,14 +1316,10 @@ export type WorkspaceModelProxyEvent =
 // PUT    /api/workstation/profiles/:id              -> Profile（账号令牌）
 // DELETE /api/workstation/profiles/:id              -> 204（账号令牌）
 // POST   /api/workstation/profiles/:id/test {groupId?,keyId?} -> { ok, error? }（账号令牌；在工作站用真实 Key 测试）
-// POST   /api/workstation/host/profiles/snapshot {accountId} -> WorkspaceProfilesSnapshot（主机签名；主机镜像元数据）
-// POST   /api/workstation/host/profiles/import {accountId,hostName,profiles} -> WorkspaceProfileImportResult（主机签名；迁移旧数据）
-// POST   /api/workstation/host/model-proxy WorkspaceModelProxyInput -> WorkspaceModelProxyEvent 的 NDJSON 流（主机签名）
-// POST   /api/workstation/host/models ListModelsInput -> { ok, models, error? }（主机签名；主机镜像账号的模型列表）
-// POST   /api/workstation/host/profile-test {profileId,groupId?,keyId?} -> { ok, error? }（主机签名）
 // GET    /api/workstation/hosts                     -> WorkspaceHostInfo[]（账号令牌；自己 + 获授权）
 // POST   /api/workstation/hosts/bind-code           -> WorkstationBindCode（账号令牌）
-// POST   /api/workstation/hosts/claim {code,host}   -> WorkstationHostClaimResult（公开；一次性绑定码）
+// POST   /api/workstation/hosts/claim {code,host}   -> WorkstationHostClaimResult（公开；执行器一次性绑定码）
+// POST   /api/workstation/hosts/local               -> WorkspaceHostInfo（账号令牌 + 回环来源；把运行工作站的这台机器登记为该账号的主机）
 // DELETE /api/workstation/hosts/:id                 -> 204（主机主人）
 // POST   /api/workstation/hosts/:id/grants {accountId,role,projectDirs?} -> WorkspaceHostInfo（主机主人）
 // DELETE /api/workstation/hosts/:id/grants/:accountId -> 204（主机主人）
@@ -1330,12 +1328,9 @@ export type WorkspaceModelProxyEvent =
 // PATCH  /api/workstation/settings {registration,name?} -> WorkstationPublicStatus（管理员）
 // POST   /api/workstation/invites                   -> WorkstationInvite（管理员；仅邀请模式注册）
 // GET    /api/workstation/audit?limit=200           -> WorkspaceAuditEntry[]（管理员）
-// POST   /api/workstation/local/enable              -> { url, urls, initialized, publicKey? }（Host 所有者：本机内嵌启动工作站）
-// POST   /api/workstation/join {workstationUrl,code,name?} -> WorkspaceStatus（Host 所有者；本机已加入同一工作站时幂等返回）
-// GET    /install.sh | /install.ps1                  -> 主机安装脚本（公开；一行命令添加主机；地址取自请求 Host 头）
-// POST   /api/workstation/leave                     -> 204（Host 所有者：本机退出工作站）
+// GET    /install.sh | /install.ps1                  -> 执行器安装脚本（公开；一行命令添加主机；地址取自请求 Host 头）
 
-// GET    /api/accounts/status                      -> WorkspaceStatus（主机侧探测工作站/本地模式）
+// GET    /api/accounts/status                      -> WorkspaceStatus（主机上下文的上报状态）
 // POST   /api/accounts/workspace/sync {snapshot,signature} -> 204（公开但必须中心签名）
 // GET    /api/accounts/workspace/snapshot           -> {snapshot,signature}（中心公开；加入方 Host 轮询）
 

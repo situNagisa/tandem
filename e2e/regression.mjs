@@ -737,9 +737,11 @@ function writeJson(file, data) {
   writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`)
 }
 
+/** 启动工作站进程；本机主机上下文的数据在 <工作站>/local-host/。 */
 function startHost({ home, token, hostId, extraEnv = {} }) {
   mkdirSync(home, { recursive: true })
-  const configDir = path.join(home, 'tandem')
+  const wsHome = path.join(home, 'tandem')
+  const configDir = path.join(wsHome, 'local-host')
   // 假 adb：工作站用例模拟一台手机；序列号可由 FAKE_ADB_SERIAL 覆盖。
   const fakeAdb = path.join(home, 'fake-adb.sh')
   writeFileSync(
@@ -846,9 +848,7 @@ process.exit(1)
   const env = {
     ...process.env,
       HOME: path.join(home, 'home'),
-      TANDEM_HOME: configDir,
-      // 调试版 Host 默认自动拉起内嵌工作站 + 调试账号；回归的主 Host 走旧的「地址 + token」直连，需要关掉。
-      TANDEM_DEBUG_ACCOUNT: '0',
+      TANDEM_HOME: wsHome,
       TANDEM_ADB_BIN: fakeAdb,
       TANDEM_MOCK_SERIAL: '1',
       ...extraEnv,
@@ -880,9 +880,9 @@ process.exit(1)
   })
 
   const ready = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Host 启动超时\n${stdout}\n${stderr}`)), 25_000)
+    const timer = setTimeout(() => reject(new Error(`工作站启动超时\n${stdout}\n${stderr}`)), 25_000)
     const check = () => {
-      const match = stdout.match(/访问:\s+http:\/\/127\.0\.0\.1:(\d+)\/\?token=/)
+      const match = stdout.match(/访问:\s+http:\/\/127\.0\.0\.1:(\d+)/)
       if (match) {
         clearTimeout(timer)
         resolve(Number(match[1]))
@@ -891,11 +891,36 @@ process.exit(1)
     child.stdout.on('data', check)
     child.once('exit', (code) => {
       clearTimeout(timer)
-      reject(new Error(`Host 提前退出（${code}）\n${stdout}\n${stderr}`))
+      reject(new Error(`工作站提前退出（${code}）\n${stdout}\n${stderr}`))
     })
   })
 
-  return { child, ready, logs: () => `${stdout}\n${stderr}`, configDir }
+  // 调试账号免密登录，并等本机主机上下文登记上线；返回访问本机主机的根地址与账号令牌。
+  const debugEnabled = (env.TANDEM_DEBUG_ACCOUNT ?? '') !== '0'
+  const session = !debugEnabled
+    ? undefined
+    : (async () => {
+    const port = await ready
+    const wsBase = `http://127.0.0.1:${port}`
+    const res = await fetch(`${wsBase}/api/debug/auto-login`, { method: 'POST' })
+    if (!res.ok) throw new Error(`调试账号登录失败（${res.status}）：${stdout}\n${stderr}`)
+    const login = await res.json()
+    const record = await waitForValue(async () => {
+      const list = await fetch(`${wsBase}/api/workstation/hosts`, {
+        headers: { authorization: `Bearer ${login.accessToken}` },
+      }).then((r) => r.json())
+      return list.find((item) => item.id === hostId && item.online)
+    }, 30_000, '本机主机上线')
+      return {
+        wsBase,
+        base: `${wsBase}/h/${hostId}`,
+        token: login.accessToken,
+        hostId,
+        fingerprint: record.fingerprint,
+      }
+    })()
+
+  return { child, ready, session, logs: () => `${stdout}\n${stderr}`, configDir, wsHome }
 }
 
 /** 独立工作站进程：登录门用例只验证客户端流程，不再借 Host 侧本机路由启动。 */
@@ -910,7 +935,7 @@ function startWorkstation({ home }) {
     no_proxy: '127.0.0.1,localhost',
   }
   for (const key of Object.keys(env)) if (env[key] === undefined) delete env[key]
-  const child = spawn(process.execPath, [HOST_ENTRY, 'workstation', '--port', '0', '--host', '127.0.0.1'], {
+  const child = spawn(process.execPath, [HOST_ENTRY, '--port', '0', '--host', '127.0.0.1'], {
     cwd: ROOT,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -954,6 +979,23 @@ async function waitForValue(fn, timeout, label) {
   }
 }
 
+/** 把造数用的模型账号写进工作站账号级加密存储（调试账号），并去掉调试用的演示账号。 */
+async function importSeededProfiles(wsHome, profiles) {
+  const file = path.join(wsHome, 'accounts.json')
+  const accounts = JSON.parse(readFileSync(file, 'utf8'))
+  const debug = (accounts.accounts ?? []).find((account) => account.username === 'debug')
+  if (!debug) throw new Error('工作站里没有调试账号，无法导入模型账号')
+  const { AccountProfileStore } = await import(
+    pathToFileURL(path.join(ROOT, 'packages/server/dist/workstation/profiles.js')).href
+  )
+  const store = new AccountProfileStore(wsHome)
+  for (const item of store.list(debug.id)) {
+    if (item.kind === 'demo') store.remove(debug.id, item.id)
+  }
+  store.importStored(debug.id, profiles)
+  store.dispose()
+}
+
 function freeTcpPort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer()
@@ -975,7 +1017,8 @@ async function api(base, token, pathname, init = {}) {
     },
   })
   if (!res.ok) throw new Error(`${init.method ?? 'GET'} ${pathname} -> ${res.status}: ${await res.text()}`)
-  return res.json()
+  const text = await res.text()
+  return text ? JSON.parse(text) : undefined
 }
 
 /** 订阅会话并取第一份快照（用于验证首屏下发字节/条数）。 */
@@ -1069,7 +1112,7 @@ function seedRepo(repo) {
   writeFileSync(path.join(repo, 'D:/repo/demo.ts'), 'const windows = true\n// windows drive file\n')
 
   // 有未提交改动的 worktree 目录：删除 409 时应能列出文件名与分支。
-  const dirty = path.join(path.dirname(repo), 'dirty-wt')
+  const dirty = path.join(path.dirname(repo), 'tandem', 'dirty-wt')
   mkdirSync(dirty, { recursive: true })
   const gitDirty = (...args) => execFileSync('git', args, { cwd: dirty, stdio: 'pipe' })
   gitDirty('init', '-q')
@@ -1434,7 +1477,6 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       createdAt: Date.now() - 29_000,
     },
   ]
-  writeJson(path.join(configDir, 'profiles.json'), { profiles })
 
   const common = {
     cwd: repo,
@@ -2152,6 +2194,7 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
   )
 
   seedEvals(configDir, repo)
+  return { profiles }
 }
 
 /** 评测页走查数据：两个用例 × 两个配置，带完整轨迹。 */
@@ -2260,12 +2303,15 @@ async function waitAnimations(locator) {
 
 async function main() {
   const home = mkdtempSync(path.join(os.tmpdir(), 'tandem-reg-'))
-  const configDir = path.join(home, 'tandem')
+  const wsHome = path.join(home, 'tandem')
+  const configDir = path.join(wsHome, 'local-host')
   const repo = path.join(home, 'repo')
   const shots = path.join(home, 'shots')
   mkdirSync(shots, { recursive: true })
-  const token = randomUUID()
+  const seedToken = randomUUID()
   const hostId = randomUUID()
+  let token = seedToken
+  let wsBase = ''
 
   const provider = createMockProvider()
   const mockPort = await listen(provider)
@@ -2301,7 +2347,6 @@ async function main() {
       }),
     )
   }
-  const host = startHost({ home, token, hostId })
   // 造数用的「今天」固定为脚本启动时刻；页面里也用 page.clock 固定到同一时刻，
   // 否则跨零点运行时界面已经进入新的一天，与造好的用量行错位。
   const today = new Date()
@@ -2312,13 +2357,15 @@ async function main() {
   }
 
   let browser
+  /** @type {ReturnType<typeof startHost> | undefined} */
+  let host
   const failures = []
   let passed = 0
 
   try {
     seedRepo(repo)
     seedWiki(configDir, repo)
-    seedData({
+    const seeded = seedData({
       configDir,
       repo,
       hostId,
@@ -2522,9 +2569,26 @@ async function main() {
       globalThis.__regCodexId = codexId
     }
 
+    // 先启动一次让调试账号与加密存储生成，再把造数用的模型账号导入，然后重启工作站。
+    const first = startHost({ home, token: seedToken, hostId })
+    await first.session
+    first.child.kill('SIGTERM')
+    await Promise.race([
+      new Promise((resolve) => first.child.once('exit', resolve)),
+      sleep(5000).then(() => first.child.kill('SIGKILL')),
+    ])
+    await importSeededProfiles(wsHome, seeded.profiles)
+    host = startHost({ home, token: seedToken, hostId })
+    const sessionInfo = await host.session
+    token = sessionInfo.token
+    wsBase = sessionInfo.wsBase
+    // 调试版会额外自动加一台演示主机；主回归只留本机。
+    for (const item of await api(wsBase, token, '/api/workstation/hosts')) {
+      if (item.demo) await api(wsBase, token, `/api/workstation/hosts/${item.id}`, { method: 'DELETE' })
+    }
     const hostPort = await host.ready
-    const base = `http://127.0.0.1:${hostPort}`
-    const appUrl = `${base}/?token=${token}#/h/${hostId}`
+    const base = `${wsBase}/h/${hostId}`
+    const appUrl = `${wsBase}/`
 
     // 全文搜索 API：中英文短语都能命中同一条消息，并返回片段/消息 id。
     const zhSearch = await api(
@@ -2587,12 +2651,11 @@ async function main() {
     const newPage = async (ctx, viewport, opts = {}) => {
       const page = await ctx.newPage()
       page.setDefaultTimeout(15_000)
-      // 登录门：除专门测登录门的用例外，其余用例用调试版测试开关跳过，沿用「地址 + token」直连。
-      await page.addInitScript((gate) => {
-        try {
-          if (gate) {
+      // 登录门用例要从干净状态开始；其余用例靠调试账号在回环地址自动登录。
+      if (opts.gate) {
+        await page.addInitScript(() => {
+          try {
             localStorage.removeItem('tandem.gate.skip')
-            // 前面的用例可能在同一 context 里登录过账号/存过主机：登录门用例要从干净状态开始。
             for (const key of [
               'tandem.account.v1',
               'tandem.hosts.v1',
@@ -2601,26 +2664,23 @@ async function main() {
             ]) {
               localStorage.removeItem(key)
             }
-          } else {
-            localStorage.setItem('tandem.gate.skip', '1')
+          } catch {
+            /* 忽略 */
           }
-        } catch {
-          /* 忽略 */
-        }
-      }, !!opts.gate)
+        })
+      }
       // 所有页面统一固定在造数时刻：日期、相对时间、倒计时都以同一「今天」计算。
       // 登录门页面不固定时钟：调试版自动登录的重试以 Date.now() 计超时，冻结后永远不会结束。
       if (!opts.gate) await page.clock.setFixedTime(today)
       const pageErrors = []
       page.on('pageerror', (error) => pageErrors.push(error.message))
-      await page.goto(appUrl, { waitUntil: 'domcontentloaded' })
       if (opts.gate) {
-        // 登录门用例只等登录页出现；主界面在登录/添加主机之后。
-        await page.locator('[data-testid="login-gate"]').waitFor({ state: 'visible', timeout: 60_000 })
+        // 登录门用例自己打开目标工作站地址，并等登录页出现。
         page.__errors = pageErrors
         page.__viewport = viewport
         return page
       }
+      await page.goto(appUrl, { waitUntil: 'domcontentloaded' })
       // 手机首页默认可能是收件箱页签（有待审批时没有输入框），用「新会话」按钮兜底。
       await page
         .locator('[aria-label="消息输入框"], button:has-text("新会话")')
@@ -6361,7 +6421,7 @@ async function main() {
       await menu.waitFor({ state: 'visible', timeout: 5_000 })
       await page.waitForTimeout(300)
       withinViewport(await menu.boundingBox(), DESKTOP, '选择主机菜单')
-      assert.match(await menu.innerText(), /本机/, '选择主机菜单内容异常')
+      assert.ok((await menu.locator('[role="menuitem"]').count()) >= 1, '选择主机菜单内容异常')
       await page.keyboard.press('Escape')
     })
 
@@ -6876,7 +6936,7 @@ async function main() {
     })
 
     desktop('账号/分组倍率叠加并在模型菜单显示计算方式（#04）', async (page) => {
-      const account = await api(base, token, '/api/profiles', {
+      const account = await api(wsBase, token, '/api/workstation/profiles', {
         method: 'POST',
         body: JSON.stringify({
           name: '倍率回归账号',
@@ -6958,7 +7018,7 @@ async function main() {
             method: 'DELETE',
           }).catch(() => {})
         }
-        await api(base, token, `/api/profiles/${account.id}`, { method: 'DELETE' }).catch(() => {})
+        await api(wsBase, token, `/api/workstation/profiles/${account.id}`, { method: 'DELETE' }).catch(() => {})
       }
     })
 
@@ -7391,7 +7451,7 @@ async function main() {
 
       let posts = 0
       page.on('request', (request) => {
-        if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/sessions') posts += 1
+        if (request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/api/sessions')) posts += 1
       })
       await page.locator('[aria-label="消息输入框"]').fill('新会话双击发送回归')
       const send = page.getByRole('button', { name: '发送消息' })
@@ -7465,7 +7525,7 @@ async function main() {
           return !!b && !b.disabled
         })
         await Promise.all([
-          page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/sessions'),
+          page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/api/sessions')),
           page.getByRole('button', { name: '发送消息' }).click(),
         ])
         await page.waitForFunction(() => window.location.hash.includes('/s/'), null, { timeout: 15_000 })
@@ -7786,7 +7846,7 @@ async function main() {
       await page.waitForTimeout(300)
       await page.getByRole('button', { name: /保存账号/ }).click()
       await page.waitForTimeout(1200)
-      const stored = (await api(base, token, '/api/profiles')).find((p) => p.id === created.id)
+      const stored = (await api(wsBase, token, '/api/workstation/profiles')).profiles.find((p) => p.id === created.id)
       assert.equal(stored?.groups?.[0]?.apiKeyMasked, 'sk-r****ghij', '编辑后 Key 被清空或改写')
       assert.equal(stored?.groups?.[0]?.multiplier, 0.5, '分组倍率没有保存')
 
@@ -10741,7 +10801,7 @@ async function main() {
       assert.equal(state.profile?.kind, 'demo', '演示账号类型不对')
       assert.equal(state.profile?.baseUrl, 'http://127.0.0.1:1', '演示账号应使用不可达地址证明不发网络请求')
 
-      const profiles = await api(base, token, '/api/profiles')
+      const profiles = (await api(wsBase, token, '/api/workstation/profiles')).profiles
       assert.ok(!profiles.some((profile) => profile.kind === 'demo'), '演示账号不应出现在正常账号列表')
 
       const byId = new Map(state.scenarios.map((scenario) => [scenario.id, scenario]))
@@ -10820,7 +10880,7 @@ async function main() {
       assert.equal(afterLongDetail.messages.length, beforeLongDetail.messages.length, '真实会话消息被改动')
       assert.ok(beforeLong, '真实会话 long 不存在')
       assert.deepEqual(await api(base, token, '/api/usage'), beforeUsage, '清除后真实用量被改动')
-      assert.ok(!(await api(base, token, '/api/profiles')).some((profile) => profile.kind === 'demo'), '演示账号未清除')
+      assert.ok(!(await api(wsBase, token, '/api/workstation/profiles')).profiles.some((profile) => profile.kind === 'demo'), '演示账号未清除')
       assert.ok(!(await api(base, token, '/api/boards')).some((board) => board.id === 'demo-board'), '演示看板未清除')
       assert.ok(!(await api(base, token, '/api/evals/runs')).some((run) => run.id === 'demo-eval-run'), '演示评测未清除')
       assert.ok(!(await api(base, token, '/api/tasks')).some((task) => task.cwd?.startsWith(state.root)), '演示后台任务未清除')
@@ -11541,19 +11601,19 @@ async function main() {
     })
 
     desktop('工作站：跨主机 ADB/串口挂载、审批与终端', async (page) => {
-      const tokenA = randomUUID()
       const hostIdA = randomUUID()
       const hostA = startHost({
         home: path.join(home, 'host-a'),
-        token: tokenA,
+        token: randomUUID(),
         hostId: hostIdA,
         extraEnv: { FAKE_ADB_SERIAL: 'REG_A_01', FAKE_ADB_DEVICE: 'RegBoard' },
       })
       let sessionId
       let logTask
       try {
-        const portA = await hostA.ready
-        const baseA = `http://127.0.0.1:${portA}`
+        const accountA = await hostA.session
+        const baseA = accountA.base
+        const tokenA = accountA.token
         let devicesA
         for (let i = 0; i < 20; i += 1) {
           devicesA = await api(baseA, tokenA, '/api/devices')
@@ -11701,14 +11761,14 @@ async function main() {
 
         // 工作站视图：把设备 Host 也加进客户端，确认两台主机的设备同屏可见。
         await page.evaluate(
-          ({ url, token: hostToken }) => {
+          ({ url, token: hostToken, accountUrl, hostId, hostFingerprint }) => {
             const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
             if (!hosts.some((item) => item.url === url)) {
-              hosts.push({ id: 'reg-host-a', name: '设备主机 A', url, token: hostToken, addedAt: Date.now(), mode: 'direct' })
+              hosts.push({ id: 'reg-host-a', accountId: 'reg-account', name: '设备主机 A', url, token: hostToken, addedAt: Date.now(), mode: 'relay', relayUrl: accountUrl, hostId: hostId, fingerprint: hostFingerprint })
               localStorage.setItem('tandem.hosts.v1', JSON.stringify(hosts))
             }
           },
-          { url: baseA, token: tokenA },
+          { url: baseA, token: tokenA, accountUrl: accountA.wsBase, hostId: accountA.hostId, hostFingerprint: accountA.fingerprint },
         )
         await page.reload({ waitUntil: 'domcontentloaded' })
         await openSession(page, sessionId)
@@ -11736,17 +11796,17 @@ async function main() {
     })
 
     desktop('工作站：主机没装 adb 时显示说明而不报错', async (page) => {
-      const tokenA = randomUUID()
       const hostIdA = randomUUID()
       const hostA = startHost({
         home: path.join(home, 'host-noadb'),
-        token: tokenA,
+        token: randomUUID(),
         hostId: hostIdA,
         extraEnv: { TANDEM_ADB_BIN: path.join(home, 'no-such-adb') },
       })
       try {
-        const portA = await hostA.ready
-        const baseA = `http://127.0.0.1:${portA}`
+        const accountA = await hostA.session
+        const baseA = accountA.base
+        const tokenA = accountA.token
         const devicesA = await api(baseA, tokenA, '/api/devices')
         assert.equal(devicesA.adb.available, false, '不存在的 adb 不应被当作可用')
         assert.equal(devicesA.adb.missing, true, '缺少 adb 时应返回结构化 missing 状态')
@@ -11754,14 +11814,14 @@ async function main() {
         assert.equal(devicesA.serial.available, true, '串口不应受 adb 缺失影响')
 
         await page.evaluate(
-          ({ url, token: hostToken }) => {
+          ({ url, token: hostToken, accountUrl, hostId, hostFingerprint }) => {
             const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
             if (!hosts.some((item) => item.url === url)) {
-              hosts.push({ id: 'reg-host-noadb', name: '无 adb 主机', url, token: hostToken, addedAt: Date.now(), mode: 'direct' })
+              hosts.push({ id: 'reg-host-noadb', accountId: 'reg-account', name: '无 adb 主机', url, token: hostToken, addedAt: Date.now(), mode: 'relay', relayUrl: accountUrl, hostId: hostId, fingerprint: hostFingerprint })
               localStorage.setItem('tandem.hosts.v1', JSON.stringify(hosts))
             }
           },
-          { url: baseA, token: tokenA },
+          { url: baseA, token: tokenA, accountUrl: accountA.wsBase, hostId: accountA.hostId, hostFingerprint: accountA.fingerprint },
         )
         await page.reload({ waitUntil: 'domcontentloaded' })
         await openSession(page, 'long')
@@ -11820,11 +11880,10 @@ async function main() {
 
     // 反馈 8#06：设备列表单行紧凑、名称与路径相同不重复、板载串口折叠、无权限可修复。
     desktop('工作站：设备单行密度、板载串口折叠、无权限修复说明', async (page) => {
-      const tokenB = randomUUID()
       const hostIdB = randomUUID()
       const hostB = startHost({
         home: path.join(home, 'host-serial-access'),
-        token: tokenB,
+        token: randomUUID(),
         hostId: hostIdB,
         extraEnv: {
           TANDEM_MOCK_SERIAL_BUILTIN: '1',
@@ -11832,8 +11891,9 @@ async function main() {
         },
       })
       try {
-        const portB = await hostB.ready
-        const baseB = `http://127.0.0.1:${portB}`
+        const accountB = await hostB.session
+        const baseB = accountB.base
+        const tokenB = accountB.token
         let list
         for (let i = 0; i < 20; i += 1) {
           list = await api(baseB, tokenB, '/api/devices')
@@ -11853,14 +11913,14 @@ async function main() {
         assert.equal(deep.state, 'denied', '重新检测应保持无权限结论')
 
         await page.evaluate(
-          ({ url, token: hostToken }) => {
+          ({ url, token: hostToken, accountUrl, hostId, hostFingerprint }) => {
             const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
             if (!hosts.some((item) => item.url === url)) {
-              hosts.push({ id: 'reg-host-serial', name: '串口权限主机', url, token: hostToken, addedAt: Date.now(), mode: 'direct' })
+              hosts.push({ id: 'reg-host-serial', accountId: 'reg-account', name: '串口权限主机', url, token: hostToken, addedAt: Date.now(), mode: 'relay', relayUrl: accountUrl, hostId: hostId, fingerprint: hostFingerprint })
               localStorage.setItem('tandem.hosts.v1', JSON.stringify(hosts))
             }
           },
-          { url: baseB, token: tokenB },
+          { url: baseB, token: tokenB, accountUrl: accountB.wsBase, hostId: accountB.hostId, hostFingerprint: accountB.fingerprint },
         )
         await page.reload({ waitUntil: 'domcontentloaded' })
         await openWorkstationPanel(page)
@@ -12078,39 +12138,26 @@ async function main() {
       await popup.close()
     })
 
-    // 登录门：未登录先登录；登录后没有主机不能开会话，「添加主机」只有一个对话框。
+    // 登录门：未登录先登录；登录后没有主机不能开会话，添加这台电脑后进入会话界面。
     checks.push({
-      name: '登录门：未登录深链先登录、无主机空状态、添加主机对话框唯一',
+      name: '登录门：未登录先登录、无主机空状态、添加这台电脑后可开会话',
       viewport: 'desktop',
       gate: true,
       fn: async (page) => {
-        // 独立 Host 只用来托管页面；客户端填独立工作站的地址登录。
-        const gateToken = `gate-${randomUUID()}`
-        const gateHostId = randomUUID()
-        const plainHost = startHost({
-          home: path.join(home, 'gate-plain-host'),
-          token: gateToken,
-          hostId: gateHostId,
-          extraEnv: { TANDEM_DEBUG_ACCOUNT: '0' },
-        })
+        // 程序即工作站：页面由工作站自己托管，登录门在页面上创建工作站。
         const station = startWorkstation({ home: path.join(home, 'gate-station') })
+        const gateHostId = randomUUID()
         try {
-          const port = await plainHost.ready
+          const port = await station.ready
           const base = `http://127.0.0.1:${port}`
-          const stationPort = await station.ready
-          const stationUrl = `http://127.0.0.1:${stationPort}`
-          await page.goto(`${base}/?token=${gateToken}#/h/${gateHostId}`, { waitUntil: 'domcontentloaded' })
+          await page.goto(`${base}/#/h/${gateHostId}`, { waitUntil: 'domcontentloaded' })
           await page.locator('[data-testid="login-gate"]').waitFor({ state: 'visible', timeout: 60_000 })
           // 深链保留在地址栏：登录前不处理路由，登录后回到原地址。
           assert.match(page.url(), /#\/h\/[0-9a-f-]+/, '登录前不应清掉深链')
           assert.equal(await page.locator('[data-testid="no-hosts"]').count(), 0, '未登录不应显示无主机空状态')
           assert.equal(await page.locator('[aria-label="消息输入框"]').count(), 0, '未登录不应进入会话界面')
 
-          // 页面由普通 Host 托管，登录门进「连接工作站」：填工作站地址后创建管理员账号。
-          const urlInput = page.locator('[data-testid="login-url"]')
-          await urlInput.waitFor({ state: 'visible', timeout: 60_000 })
-          await urlInput.fill(stationUrl)
-          await page.locator('[data-testid="login-submit"]').click()
+          // 页面本身就是工作站：首次使用是「创建工作站」。
           const name = page.locator('[data-testid="login-workspace-name"]')
           await name.waitFor({ state: 'visible', timeout: 60_000 })
           await name.fill('回归登录门工作站')
@@ -12126,17 +12173,27 @@ async function main() {
             true,
             '没有主机时新会话入口应禁用',
           )
-          // 空状态主按钮打开唯一的添加主机对话框；不再有「添加这台电脑」的副本。
-          assert.equal(await page.locator('[data-testid="no-hosts-add-local"]').count(), 0, '不应再有添加这台电脑按钮')
+
+          // 唯一的「添加主机」对话框里有「添加这台电脑」，直接在页面上登记本机。
           await page.locator('[data-testid="no-hosts-add"]').click()
           const addDialog = page.getByRole('dialog', { name: '添加主机' })
           await addDialog.waitFor({ state: 'visible', timeout: 15_000 })
-          await addDialog.locator('[data-testid="addhost-command"], [data-testid="addhost-expiry"]').first().waitFor({ timeout: 15_000 })
+          await addDialog.locator('[data-testid="addhost-local"]').click()
+          // 登记成功后对话框显示「已连接」；关掉后回到工作台，空状态消失。
+          await addDialog
+            .locator('[data-testid="addhost-status"]')
+            .filter({ hasText: '已连接' })
+            .waitFor({ state: 'visible', timeout: 60_000 })
           await addDialog.getByRole('button', { name: /关闭|完成/ }).first().click()
-          await addDialog.waitFor({ state: 'hidden', timeout: 5_000 })
-          assert.equal(await page.locator('[data-testid="no-hosts"]').count(), 1, '关闭对话框后仍应停在空状态')
+          await addDialog.waitFor({ state: 'hidden', timeout: 10_000 })
+          await page.locator('[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
+          assert.equal(await page.locator('[data-testid="no-hosts"]').count(), 0, '添加主机后空状态应消失')
+          assert.equal(
+            await page.locator('[data-testid="sidebar-new-session"]').isDisabled(),
+            false,
+            '有主机后新会话入口应可用',
+          )
         } finally {
-          plainHost.child.kill('SIGTERM')
           station.child.kill('SIGTERM')
         }
       },
@@ -12149,20 +12206,10 @@ async function main() {
       gate: true,
       fn: async (page) => {
         const station = startWorkstation({ home: path.join(home, 'host-ia-station') })
-        const hostToken = `gate-${randomUUID()}`
-        const hostId = randomUUID()
-        const plainHost = startHost({
-          home: path.join(home, 'host-ia-plain'),
-          token: hostToken,
-          hostId,
-          extraEnv: { TANDEM_DEBUG_ACCOUNT: '0' },
-        })
         let ownContext
         try {
           const stationPort = await station.ready
           const stationUrl = `http://127.0.0.1:${stationPort}`
-          const hostPort = await plainHost.ready
-          const hostBase = `http://127.0.0.1:${hostPort}`
           const setup = await (
             await fetch(`${stationUrl}/api/workstation/setup`, {
               method: 'POST',
@@ -12171,27 +12218,24 @@ async function main() {
             })
           ).json()
           assert.ok(setup.accessToken, '工作站管理员创建失败')
-          const bind = await api(stationUrl, setup.accessToken, '/api/workstation/hosts/bind-code', { method: 'POST' })
-          await api(hostBase, hostToken, '/api/workstation/join', {
-            method: 'POST',
-            body: JSON.stringify({ workstationUrl: stationUrl, code: bind.code, name: '管理测试主机' }),
-          })
+          // 程序即工作站：本机作为进程内主机上下文登记（「添加这台电脑」）。
+          const local = await api(stationUrl, setup.accessToken, '/api/workstation/hosts/local', { method: 'POST' })
+          assert.ok(local.id, '登记本机失败')
+          const hostName = local.name
           await waitForValue(async () => {
             const res = await fetch(`${stationUrl}/api/workstation/hosts`, {
               headers: { authorization: `Bearer ${setup.accessToken}` },
             })
             const list = await res.json()
-            return list.some((item) => item.name === '管理测试主机' && item.online) ? list : null
-          }, 60_000, '测试主机应连上工作站')
+            return list.some((item) => item.id === local.id && item.online) ? list : null
+          }, 60_000, '本机主机应登记上线')
 
-          // 独立上下文：登录门走真实登录，主机来自工作站登记。
+          // 独立上下文：页面由工作站托管，登录门直接登录。
           ownContext = await browser.newContext({ viewport: DESKTOP, deviceScaleFactor: 1 })
           const p = await ownContext.newPage()
           p.setDefaultTimeout(15_000)
-          await p.goto(`${hostBase}/?token=${hostToken}&gate=on#/h/${hostId}`, { waitUntil: 'domcontentloaded' })
+          await p.goto(`${stationUrl}/#/h/${local.id}`, { waitUntil: 'domcontentloaded' })
           await p.locator('[data-testid="login-gate"]').waitFor({ state: 'visible', timeout: 60_000 })
-          await p.locator('[data-testid="login-url"]').fill(stationUrl)
-          await p.locator('[data-testid="login-submit"]').click()
           await p.locator('[data-testid="login-username"]').waitFor({ state: 'visible', timeout: 30_000 })
           await p.locator('[data-testid="login-username"]').fill('ia-admin')
           await p.locator('[data-testid="login-password"]').fill('ia-pass-123')
@@ -12203,7 +12247,7 @@ async function main() {
           const rows = dialog.locator('[data-host-row]')
           await rows.first().waitFor({ timeout: 30_000 })
           assert.equal(await rows.count(), 1, '主机列表应只有登记的那一台')
-          assert.match(await rows.first().innerText(), /管理测试主机/, '主机列表缺少登记的主机')
+          assert.ok((await rows.first().innerText()).includes(hostName), '主机列表缺少登记的主机')
           assert.ok((await rows.first().getByText('我的', { exact: true }).count()) >= 1, '主机列表缺少归属徽标')
 
           // 设置页的添加按钮打开唯一对话框。
@@ -12224,10 +12268,10 @@ async function main() {
               `主机详情缺少「${action}」`,
             )
           }
-          await detail.locator('input').first().fill('管理测试主机-改名')
+          await detail.locator('input').first().fill(`${hostName}-改名`)
           await detail.getByRole('button', { name: '保存', exact: true }).click()
           await detail.getByRole('button', { name: '授权', exact: true }).click()
-          const grant = p.getByRole('dialog', { name: /^授权「管理测试主机/ })
+          const grant = p.getByRole('dialog', { name: new RegExp(`^授权「${hostName}`) })
           await grant.waitFor({ state: 'visible', timeout: 10_000 })
           assert.ok(await grant.getByText('账号', { exact: true }).count(), '授权弹层缺少账号选择')
           await grant.getByRole('button', { name: '取消', exact: true }).click()
@@ -12235,7 +12279,7 @@ async function main() {
           await detail.getByRole('button', { name: '完成', exact: true }).click()
           await detail.waitFor({ state: 'hidden', timeout: 5_000 })
           await rows.first().waitFor({ timeout: 5_000 })
-          assert.match(await rows.first().innerText(), /管理测试主机-改名/, '改名后列表没有立即更新')
+          assert.ok((await rows.first().innerText()).includes(`${hostName}-改名`), '改名后列表没有立即更新')
           await closeSettings(p)
 
           // 环境条主机菜单：固定两项「管理主机…」「添加主机…」，后者打开同一对话框。
@@ -12291,7 +12335,6 @@ async function main() {
           )
         } finally {
           await ownContext?.close().catch(() => undefined)
-          plainHost.child.kill('SIGTERM')
           station.child.kill('SIGTERM')
         }
       },
@@ -12317,7 +12360,7 @@ async function main() {
         try {
           const port = await debugHost.ready
           const debugBase = `http://127.0.0.1:${port}`
-          await page.goto(`${debugBase}/?token=${gateToken}`, { waitUntil: 'domcontentloaded' })
+          await page.goto(`${debugBase}/`, { waitUntil: 'domcontentloaded' })
           // 自动登录完成前不闪登录页；完成后直接进入主界面。
           await page.locator('[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
           assert.equal(await page.locator('[data-testid="login-gate"]').count(), 0, '调试版回环地址应自动登录')
@@ -12405,91 +12448,39 @@ async function main() {
       },
     })
 
-    // 调试版：内嵌工作站的旧端口被别的进程占住后重启，主机必须连到实际启动的端口。
-    // 回归 R57：隧道曾按保存的旧地址连到占用端口的其他工作站，浏览器无限「重新连接中…」。
+    // 调试版：工作站重启后本机与演示主机仍在线（数据在同一目录），界面不出现「重新连接中…」。
     checks.push({
-      name: '登录门：内嵌工作站端口被占用后重启，主机连实际端口并能开会话',
+      name: '登录门：工作站重启后本机与演示主机仍在线、能开会话',
       viewport: 'desktop',
       gate: true,
       fn: async (page) => {
-        const gateToken = `gate-${randomUUID()}`
-        const hostId = randomUUID()
-        const debugHome = path.join(home, 'gate-port-conflict-host')
-        const accountsFile = path.join(debugHome, 'tandem', 'accounts.json')
+        const debugHome = path.join(home, 'gate-restart-ws')
         const first = startHost({
           home: debugHome,
-          token: gateToken,
-          hostId,
-          extraEnv: { TANDEM_DEBUG_ACCOUNT: undefined },
+          token: `gate-${randomUUID()}`,
+          hostId: randomUUID(),
         })
-        let second
-        let blocker
+        const firstInfo = await first.session
+        first.child.kill('SIGTERM')
+        await new Promise((resolve) => first.child.once('exit', resolve))
+
+        const second = startHost({
+          home: debugHome,
+          token: `gate-${randomUUID()}`,
+          hostId: firstInfo.hostId,
+        })
         try {
-          await first.ready
-          const joined = await waitForValue(() => {
-            try {
-              const data = JSON.parse(readFileSync(accountsFile, 'utf8'))
-              return data?.mode === 'member' && data.centerUrl ? data : null
-            } catch {
-              return null
-            }
-          }, 60_000, '调试主机应加入内嵌工作站')
-          const oldPort = Number(new URL(joined.centerUrl).port)
-          assert.ok(oldPort > 0, `加入地址没有端口：${joined.centerUrl}`)
+          const info = await second.session
+          const hosts = await api(info.wsBase, info.token, '/api/workstation/hosts')
+          const local = hosts.find((item) => item.id === info.hostId)
+          const demo = hosts.find((item) => item.name === '演示主机')
+          assert.ok(local?.online, '重启后本机主机应在线')
+          assert.ok(demo?.online, '重启后演示主机应在线')
 
-          first.child.kill('SIGTERM')
-          await new Promise((resolve) => first.child.once('exit', resolve))
-
-          // 占住旧端口：模拟另一个工作站进程（旧代码会连到这里）。
-          blocker = net.createServer((socket) => socket.destroy())
-          await new Promise((resolve, reject) => {
-            blocker.once('error', reject)
-            blocker.listen(oldPort, '127.0.0.1', resolve)
-          })
-
-          second = startHost({
-            home: debugHome,
-            token: gateToken,
-            hostId,
-            extraEnv: { TANDEM_DEBUG_ACCOUNT: undefined, TANDEM_EMBEDDED_WORKSTATION_PORT: String(oldPort) },
-          })
-          const port = await second.ready
-          await page.goto(`http://127.0.0.1:${port}/?token=${gateToken}`, { waitUntil: 'domcontentloaded' })
+          await page.goto(`${info.wsBase}/`, { waitUntil: 'domcontentloaded' })
           await page.locator('[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
           assert.equal(await page.locator('[data-testid="login-gate"]').count(), 0, '调试版回环地址应自动登录')
 
-          // 保存的加入地址改到实际启动的端口，而不是仍指向被占用的旧端口。
-          const retargeted = await waitForValue(() => {
-            try {
-              const data = JSON.parse(readFileSync(accountsFile, 'utf8'))
-              return data?.mode === 'member' && data.centerUrl && Number(new URL(data.centerUrl).port) !== oldPort
-                ? data
-                : null
-            } catch {
-              return null
-            }
-          }, 30_000, '内嵌工作站换端口后应更新加入地址')
-          const center = retargeted.centerUrl
-          assert.ok(center.startsWith('http://127.0.0.1:'), `加入地址应指向实际工作站：${center}`)
-
-          // 工作站登记的这台主机在线（隧道连到了实际端口）。
-          const stationLogin = await (
-            await fetch(`${center}/api/debug/auto-login`, { method: 'POST', headers: { Accept: 'application/json' } })
-          ).json()
-          assert.ok(stationLogin?.accessToken, '应能用调试账号登录实际工作站')
-          const online = await waitForValue(async () => {
-            const res = await fetch(`${center}/api/workstation/hosts`, {
-              headers: { Authorization: `Bearer ${stationLogin.accessToken}` },
-            })
-            if (!res.ok) return null
-            const list = await res.json()
-            const self = list.find((item) => item.id === hostId)
-            const demo = list.find((item) => item.name === '演示主机')
-            return self?.online && demo?.online ? { self, demo } : null
-          }, 30_000, '主机与演示主机都应连上实际工作站')
-          assert.ok(online, '工作站上没有在线的主机记录')
-
-          // 界面：主机卡片显示在线，会话页没有无限「重新连接中…」。
           const dialog = await openSettings(page, '主机', 'desktop')
           await dialog.getByText('在线', { exact: true }).first().waitFor({ timeout: 30_000 })
           await dialog.getByRole('button', { name: '关闭' }).click()
@@ -12505,22 +12496,20 @@ async function main() {
             '主机在线时仍显示重新连接中',
           )
 
-          // 能开会话：侧栏「新会话」后输入框可用、可以发送。
           await page.locator('[data-testid="sidebar-new-session"]').click()
           const textarea = page.locator('[aria-label="消息输入框"]')
           await textarea.waitFor({ state: 'visible', timeout: 10_000 })
-          await textarea.fill('端口被占用后新建会话')
+          await textarea.fill('工作站重启后新建会话')
           const send = page.getByRole('button', { name: '发送消息' })
           await send.waitFor({ timeout: 10_000 })
           assert.equal(await send.isDisabled(), false, '新会话不能发送')
         } finally {
-          second?.child.kill('SIGTERM')
-          await new Promise((resolve) => (blocker ? blocker.close(resolve) : resolve()))
+          second.child.kill('SIGTERM')
         }
       },
     })
 
-    // 调试版：直接打开不带 token 的 Host 地址也应自动登录；Host 没有工作站状态接口，不能反复请求 401。
+    // 调试版：直接打开工作站地址自动登录，且不在状态接口上反复收到 401。
     checks.push({
       name: '登录门：调试版不带 token 打开回环地址自动进入，且不循环请求 401',
       viewport: 'desktop',
@@ -12541,7 +12530,7 @@ async function main() {
           const port = await debugHost.ready
           await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' })
           await page.locator('[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
-          assert.equal(await page.locator('[data-testid="login-gate"]').count(), 0, '不带 token 打开调试版回环地址应自动登录')
+          assert.equal(await page.locator('[data-testid="login-gate"]').count(), 0, '打开调试版工作站地址应自动登录')
           const unauthorized = statusCodes.filter((code) => code === 401).length
           assert.equal(unauthorized, 0, `Host 页面不应反复请求工作站状态得到 401：${statusCodes.join(',')}`)
         } finally {
@@ -12703,7 +12692,7 @@ async function main() {
       await page.screenshot({ path: shot1323('02-group-single-key-light.png') })
 
       const groupOf = async () => {
-        const profiles = await api(base, token, '/api/profiles')
+        const profiles = (await api(wsBase, token, '/api/workstation/profiles')).profiles
         return profiles.find((item) => item.id === 'p-main')?.groups?.find((item) => item.id === 'g1')
       }
       assert.equal((await groupOf())?.keys?.length, 2, '夹具应有两个旧 Key')
@@ -12926,15 +12915,17 @@ async function main() {
     if (failures.length) process.exitCode = 1
   } catch (error) {
     console.error(`regression: 运行失败\n${error instanceof Error ? error.stack : error}`)
-    console.error(host.logs())
+    console.error(host?.logs() ?? '')
     process.exitCode = 1
   } finally {
     await browser?.close().catch(() => {})
-    if (!host.child.killed) host.child.kill('SIGTERM')
-    await Promise.race([
-      new Promise((resolve) => host.child.once('exit', resolve)),
-      sleep(3000).then(() => host.child.kill('SIGKILL')),
-    ])
+    if (host && !host.child.killed) host.child.kill('SIGTERM')
+    if (host) {
+      await Promise.race([
+        new Promise((resolve) => host.child.once('exit', resolve)),
+        sleep(3000).then(() => host.child.kill('SIGKILL')),
+      ])
+    }
     await new Promise((resolve) => provider.close(resolve))
     await previewApp?.close().catch(() => {})
     if (process.exitCode === 1) {

@@ -1,7 +1,7 @@
 {
   "name": "@tandem/server",
   "version": "0.4.6",
-  "description": "Tandem Host 守护进程",
+  "description": "Tandem 工作站服务（账号、主机登记、会话与 agent）",
   "type": "module",
   "main": "dist/cli.js",
   "bin": {

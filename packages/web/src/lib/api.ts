@@ -146,13 +146,6 @@ import type {
 } from '@tandem/protocol'
 import type { HostConfig } from './types'
 import { requestBase } from './hostUrl'
-import {
-  RELAY_UNSUPPORTED_MESSAGE,
-  detectRelayCryptoSupport,
-  isRelayHost,
-  relayChannel,
-  relayErrorMessage,
-} from './relay'
 
 export class ApiError extends Error {
   status: number
@@ -176,7 +169,7 @@ function describe(status: number, text: string): string {
   return text.trim().slice(0, 300) || `请求失败（HTTP ${status}）`
 }
 
-/** 所有 REST 请求的出口：加密隧道 Host 走 E2E channel，直连照旧 fetch。 */
+/** 所有 REST 请求的出口：主机地址可能是工作站的 /h/<hostId>，直接 fetch。 */
 async function send(host: HostConfig, path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers)
   if (host.token) headers.set('Authorization', `Bearer ${host.token}`)
@@ -185,25 +178,6 @@ async function send(host: HostConfig, path: string, init: RequestInit = {}): Pro
   }
   headers.set('Accept', 'application/json')
 
-  if (isRelayHost(host)) {
-    if (!(await detectRelayCryptoSupport())) throw new ApiError(RELAY_UNSUPPORTED_MESSAGE, 0)
-    const body =
-      typeof init.body === 'string'
-        ? init.body
-        : init.body instanceof Uint8Array
-          ? init.body
-          : undefined
-    try {
-      return await relayChannel(host).fetch(path, {
-        method: init.method,
-        headers,
-        body,
-        signal: init.signal ?? undefined,
-      })
-    } catch (err) {
-      throw new ApiError(relayErrorMessage(err), 0)
-    }
-  }
   try {
     return await fetch(requestBase(host.url) + path, { ...init, headers })
   } catch (err) {
@@ -910,17 +884,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ path }),
     }),
-  /** 直连时可直接作为 <img src>；加密隧道 Host 必须用 fsRawBlob。 */
+  /** 可直接作为 <img src>（token 在 query；工作站的 /h/<hostId> 也接受）。 */
   fsRawUrl: (h: HostConfig, path: string, cwd?: string) =>
     `${requestBase(h.url)}/api/fs/raw${qs({ path, cwd, token: h.token })}`,
-  /** 加密隧道 Host 无法直接拼 URL（token 要进密文），取回内容后转成 blob URL 使用。 */
   fsRawBlob: async (h: HostConfig, path: string, cwd?: string): Promise<Blob> => {
-    if (!isRelayHost(h)) {
-      const res = await fetch(api.fsRawUrl(h, path, cwd))
-      if (!res.ok) throw new ApiError(describe(res.status, await res.text().catch(() => '')), res.status)
-      return res.blob()
-    }
-    const res = await send(h, `/api/fs/raw${qs({ path, cwd })}`)
+    const res = await fetch(api.fsRawUrl(h, path, cwd))
     if (!res.ok) {
       throw new ApiError(describe(res.status, await res.text().catch(() => '')), res.status)
     }
@@ -1152,6 +1120,8 @@ export const workstationApi = {
     }),
   bindCode: (baseUrl: string, token: string) =>
     wsFetch<WorkstationBindCode>(baseUrl, '/api/workstation/hosts/bind-code', { method: 'POST', token }),
+  addLocalHost: (baseUrl: string, token: string) =>
+    wsFetch<WorkspaceHostInfo>(baseUrl, '/api/workstation/hosts/local', { method: 'POST', token }),
   removeHost: (baseUrl: string, token: string, hostId: string) =>
     wsFetch<void>(baseUrl, `/api/workstation/hosts/${encodeURIComponent(hostId)}`, { method: 'DELETE', token }),
   setGrant: (baseUrl: string, token: string, hostId: string, input: WorkstationGrantInput) =>
@@ -1180,13 +1150,6 @@ export const workstationApi = {
     wsFetch<WorkstationInvite>(baseUrl, '/api/workstation/invites', { method: 'POST', token }),
   audit: (baseUrl: string, token: string, limit = 200) =>
     wsFetch<WorkspaceAuditEntry[]>(baseUrl, `/api/workstation/audit?limit=${limit}`, { token }),
-  localStatus: (h: HostConfig) =>
-    request<{
-      mode: WorkspaceStatus['mode']
-      role?: WorkspaceStatus['role']
-      embedded: { running: boolean; urls: string[]; port?: number }
-      join: null | { url: string; workspaceName: string; fingerprint: string; connected: boolean }
-    }>(h, '/api/workstation/local/status'),
 }
 
 /** 导入外部会话时可选的目标账号 / 分组 / 模型；不填则沿用原软件上下文。 */

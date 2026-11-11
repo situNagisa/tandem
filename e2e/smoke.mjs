@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * 端到端冒烟：临时 Host + 假 OpenAI 兼容端点 + Playwright。
- * 覆盖：新建会话 → 流式回复 → Bash 工具审批 → 设置全部页签无 console error。
+ * 端到端冒烟：临时工作站 + 假 OpenAI 兼容端点 + Playwright。
+ * 覆盖：调试账号自动登录 → 本机主机自动加入 → 新建会话 → 流式回复 → Bash 工具审批 → 设置全部页签无 console error。
  * 不读真实 Key、不碰 ~/.tandem：HOME 与 TANDEM_HOME 都指向 /tmp 临时目录。
  *
  * 前置：npm run build（check.mjs 会先构建）。
@@ -123,23 +123,9 @@ function createMockProvider() {
   return { server, seen }
 }
 
-function startHost({ home, token, hostId }) {
+function startWorkstation({ home }) {
   const configDir = path.join(home, '.tandem')
   mkdirSync(path.join(configDir, 'sessions'), { recursive: true })
-  writeFileSync(
-    path.join(configDir, 'config.json'),
-    JSON.stringify(
-      {
-        hostId,
-        token,
-        idleTimeoutSec: 180,
-        resumeOnRestart: 'auto',
-        defaultDelegation: 'less',
-      },
-      null,
-      2,
-    ),
-  )
 
   const child = spawn(process.execPath, [HOST_ENTRY, '--port', '0'], {
     cwd: ROOT,
@@ -147,7 +133,6 @@ function startHost({ home, token, hostId }) {
       ...process.env,
       HOME: home,
       TANDEM_HOME: configDir,
-      TANDEM_DEBUG_ACCOUNT: '0',
       CODEX_HOME: path.join(home, '.codex'),
       NO_PROXY: '127.0.0.1,localhost',
       no_proxy: '127.0.0.1,localhost',
@@ -167,9 +152,9 @@ function startHost({ home, token, hostId }) {
   })
 
   const ready = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Host 启动超时\n${stdout}\n${stderr}`)), 20_000)
+    const timer = setTimeout(() => reject(new Error(`工作站启动超时\n${stdout}\n${stderr}`)), 20_000)
     const check = () => {
-      const match = stdout.match(/访问:\s+http:\/\/127\.0\.0\.1:(\d+)\/\?token=/)
+      const match = stdout.match(/访问:\s+http:\/\/127\.0\.0\.1:(\d+)/)
       if (match) {
         clearTimeout(timer)
         resolve(Number(match[1]))
@@ -178,7 +163,7 @@ function startHost({ home, token, hostId }) {
     child.stdout.on('data', check)
     child.once('exit', (code) => {
       clearTimeout(timer)
-      reject(new Error(`Host 提前退出（${code}）\n${stdout}\n${stderr}`))
+      reject(new Error(`工作站提前退出（${code}）\n${stdout}\n${stderr}`))
     })
   })
 
@@ -195,24 +180,31 @@ async function api(base, token, pathname, init = {}) {
     },
   })
   if (!res.ok) throw new Error(`${init.method ?? 'GET'} ${pathname} -> ${res.status}: ${await res.text()}`)
-  return res.json()
+  const text = await res.text()
+  return text ? JSON.parse(text) : undefined
 }
 
 async function main() {
   const home = mkdtempSync(path.join(os.tmpdir(), 'tandem-smoke-'))
-  const token = randomUUID()
-  const hostId = randomUUID()
   const { server: mockServer, seen } = createMockProvider()
   const mockPort = await listen(mockServer)
-  const host = startHost({ home, token, hostId })
+  const host = startWorkstation({ home })
   let browser
   let page
 
   try {
     const hostPort = await host.ready
     const base = `http://127.0.0.1:${hostPort}`
+    // 调试版：免密登录调试账号，本机主机在启动时已自动加入。
+    const login = await fetch(`${base}/api/debug/auto-login`, { method: 'POST' }).then((res) => res.json())
+    // 调试账号自带的演示模型账号会让新会话默认选它；冒烟只用自己的假 provider。
+    for (const item of (await api(base, login.accessToken, '/api/workstation/profiles')).profiles) {
+      if (item.kind === 'demo') {
+        await api(base, login.accessToken, `/api/workstation/profiles/${item.id}`, { method: 'DELETE' })
+      }
+    }
 
-    const profile = await api(base, token, '/api/profiles', {
+    const profile = await api(base, login.accessToken, '/api/workstation/profiles', {
       method: 'POST',
       body: JSON.stringify({
         name: '冒烟账号',
@@ -226,28 +218,26 @@ async function main() {
 
     browser = await chromium.launch({ headless: true })
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
-    await context.addInitScript(() => {
-      try {
-        localStorage.setItem('tandem.gate.skip', '1')
-      } catch {
-        /* 忽略 */
-      }
-    })
     page = await context.newPage()
     const consoleErrors = []
     page.on('console', (message) => {
-      if (message.type() === 'error') consoleErrors.push(message.text())
+      if (message.type() === 'error') {
+        const loc = message.location()
+        consoleErrors.push(`${message.text()} @ ${loc.url}`)
+      }
     })
     page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`))
 
-    await page.goto(`${base}/?token=${token}#/h/${hostId}`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' })
     const composer = page.locator('[aria-label="消息输入框"]').first()
     await composer.waitFor({ state: 'visible', timeout: 20_000 })
     // 等 profiles 通过 WS 到达，新会话页自动选中第一个账号/模型（模型按钮出现内容）
     await page.getByRole('button', { name: /Smoke Model/ }).first().waitFor({ timeout: 15_000 }).catch(() => {})
 
     await composer.fill('冒烟测试：请执行一条命令')
-    await page.getByRole('button', { name: '发送消息' }).click()
+    const send = page.getByRole('button', { name: '发送消息' })
+    await send.waitFor({ state: 'visible', timeout: 10_000 })
+    await send.click()
 
     await page.getByText('我先检查一下。').waitFor({ state: 'visible', timeout: 20_000 })
     // 审批是对话流里的一条消息（反馈14#07）：等「允许一次」按钮出现后点它。

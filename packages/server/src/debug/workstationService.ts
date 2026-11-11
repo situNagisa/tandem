@@ -6,6 +6,9 @@ import type { FastifyInstance } from 'fastify';
 import type { AccountsStore } from '../accounts/store.js';
 import type { AccountProfileStore } from '../workstation/profiles.js';
 import { readJson, writePrivateFile } from '../config.js';
+import { isLoopbackAddress } from '../util/net.js';
+
+export { isLoopbackAddress };
 
 export const DEBUG_ACCOUNT_USERNAME = 'debug';
 export const DEBUG_ACCOUNT_PASSWORD_FILE = 'debug-account.json';
@@ -13,13 +16,6 @@ export const DEBUG_ACCOUNT_PASSWORD_FILE = 'debug-account.json';
 interface DebugAccountFile {
   username?: string;
   password?: string;
-}
-
-/** 严格判断来源地址是否为回环（含 IPv4-mapped IPv6）。 */
-export function isLoopbackAddress(address: string | undefined): boolean {
-  if (!address) return false;
-  const ip = address.startsWith('::ffff:') ? address.slice('::ffff:'.length) : address;
-  return ip === '127.0.0.1' || ip === '::1' || ip === '0:0:0:0:0:0:0:1';
 }
 
 /** 读取/生成密码文件，并确保测试账号存在；用户名被真实用户占用时返回 undefined。 */
@@ -61,7 +57,8 @@ export function ensureDebugWorkstation(
   const account = store.listAccountSummaries(credentials.username).find((item) => item.username === credentials.username);
   if (account && profiles) {
     const accountProfiles = profiles.forAccount(account.id);
-    if (!accountProfiles.list().some((profile) => profile.kind === 'demo')) {
+    // 账号已有真实模型账号时不再塞演示账号，避免出现在模型列表里。
+    if (accountProfiles.list().length === 0) {
       accountProfiles.create({
         name: '演示账号',
         kind: 'demo',

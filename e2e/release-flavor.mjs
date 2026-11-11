@@ -5,80 +5,30 @@
  * 命令面板搜不到、/api/demo 路由不存在、关于页显示发布版。
  *
  * 前置：node scripts/build-flavor.mjs release
- * 使用临时 Host（TANDEM_HOME=/tmp/...），不碰 ~/.tandem。
+ * 使用临时工作站（TANDEM_HOME=/tmp/...），不碰 ~/.tandem。
  */
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { randomUUID } from 'node:crypto'
 import { chromium } from 'playwright'
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
 const HOST_ENTRY = path.join(ROOT, 'packages/server/dist/cli.js')
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-function startHost({ home, token, hostId }) {
+function startWorkstation({ home }) {
   const configDir = path.join(home, '.tandem')
-  mkdirSync(path.join(configDir, 'sessions'), { recursive: true })
-  writeFileSync(
-    path.join(configDir, 'config.json'),
-    JSON.stringify(
-      { hostId, token, idleTimeoutSec: 180, resumeOnRestart: 'auto', defaultDelegation: 'less' },
-      null,
-      2,
-    ),
-  )
-  const child = spawn(process.execPath, [HOST_ENTRY, '--port', '0'], {
+  mkdirSync(configDir, { recursive: true })
+  const child = spawn(process.execPath, [HOST_ENTRY, '--port', '0', '--host', '127.0.0.1'], {
     cwd: ROOT,
     env: {
       ...process.env,
       HOME: home,
       TANDEM_HOME: configDir,
       CODEX_HOME: path.join(home, '.codex'),
-      NO_PROXY: '127.0.0.1,localhost',
-      no_proxy: '127.0.0.1,localhost',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  let stdout = ''
-  let stderr = ''
-  child.stdout.setEncoding('utf8')
-  child.stderr.setEncoding('utf8')
-  child.stdout.on('data', (chunk) => {
-    stdout += chunk
-  })
-  child.stderr.on('data', (chunk) => {
-    stderr += chunk
-  })
-  const ready = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Host 启动超时\n${stdout}\n${stderr}`)), 20_000)
-    const check = () => {
-      const match = stdout.match(/访问:\s+http:\/\/127\.0\.0\.1:(\d+)\/\?token=/)
-      if (match) {
-        clearTimeout(timer)
-        resolve(Number(match[1]))
-      }
-    }
-    child.stdout.on('data', check)
-    child.once('exit', (code) => {
-      clearTimeout(timer)
-      reject(new Error(`Host 提前退出（${code}）\n${stdout}\n${stderr}`))
-    })
-  })
-  return { child, ready, logs: () => `${stdout}\n${stderr}` }
-}
-
-/** 独立工作站：发布版页面先连工作站，再登录。 */
-function startWorkstation({ home }) {
-  mkdirSync(home, { recursive: true })
-  const child = spawn(process.execPath, [HOST_ENTRY, 'workstation', '--port', '0', '--host', '127.0.0.1'], {
-    cwd: ROOT,
-    env: {
-      ...process.env,
-      HOME: home,
-      TANDEM_HOME: home,
+      TANDEM_DEBUG_ACCOUNT: '0',
       NO_PROXY: '127.0.0.1,localhost',
       no_proxy: '127.0.0.1,localhost',
     },
@@ -114,59 +64,43 @@ function startWorkstation({ home }) {
 
 async function main() {
   const home = mkdtempSync(path.join(os.tmpdir(), 'tandem-release-'))
-  const token = randomUUID()
-  const hostId = randomUUID()
-  const host = startHost({ home, token, hostId })
+  const host = startWorkstation({ home })
   let browser
-  let station
   try {
     const port = await host.ready
     const base = `http://127.0.0.1:${port}`
 
-    // 本机：启动独立工作站并登记页面所在 Host，发布版只验证页面入口。
-    station = startWorkstation({ home: path.join(home, 'workstation') })
-    const stationPort = await station.ready
-    const stationUrl = `http://127.0.0.1:${stationPort}`
+    // 发布版没有调试账号：先创建管理员并登记本机主机（页面本身就是工作站）。
     const setup = await (
-      await fetch(`${stationUrl}/api/workstation/setup`, {
+      await fetch(`${base}/api/workstation/setup`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name: '发布版回归工作站', username: 'release-admin', password: 'release-pass-1' }),
       })
     ).json()
     assert.ok(setup.accessToken, '发布版工作站创建失败')
-    const bind = await (
-      await fetch(`${stationUrl}/api/workstation/hosts/bind-code`, {
+    const local = await (
+      await fetch(`${base}/api/workstation/hosts/local`, {
         method: 'POST',
         headers: { authorization: `Bearer ${setup.accessToken}` },
       })
     ).json()
-    await fetch(`${base}/api/workstation/join`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify({ workstationUrl: stationUrl, code: bind.code, name: '发布版回归主机' }),
-    })
-    const demoRes = await fetch(`${base}/api/demo`, {
-      headers: { authorization: `Bearer ${token}` },
-    })
+    assert.ok(local.id, '发布版登记本机失败')
+
+    const demoRes = await fetch(`${base}/api/demo`)
     assert.equal(demoRes.status, 404, '/api/demo 在发布版应返回 404')
-    const replayRes = await fetch(`${base}/api/demo/scenarios/subagents/replay`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}` },
-    })
+    const replayRes = await fetch(`${base}/api/demo/scenarios/subagents/replay`, { method: 'POST' })
     assert.equal(replayRes.status, 404, '/api/demo/scenarios/* 在发布版应返回 404')
 
     browser = await chromium.launch({ headless: true })
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
-    await page.goto(`${base}/?token=${token}`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' })
 
     // 登录门：发布版打开先看到登录/注册页，没有任何调试登录入口，也不会自动登录。
     await page.locator('[data-testid="login-gate"]').waitFor({ state: 'visible', timeout: 20_000 })
     assert.equal(await page.locator('[data-testid="login-debug"]').count(), 0, '发布版登录页不应有调试登录入口')
     assert.equal(await page.locator('[data-testid="login-debug-button"]').count(), 0, '发布版登录页不应有调试账号按钮')
-    // 页面由普通 Host 托管：填工作站地址，再用管理员账号登录。
-    await page.locator('[data-testid="login-url"]').fill(stationUrl)
-    await page.locator('[data-testid="login-submit"]').click()
+    // 页面本身就是工作站：直接填管理员账号登录。
     await page.locator('[data-testid="login-username"]').waitFor({ state: 'visible', timeout: 30_000 })
     await page.locator('[data-testid="login-username"]').fill('release-admin')
     await page.locator('[data-testid="login-password"]').fill('release-pass-1')
@@ -249,7 +183,7 @@ async function main() {
     await sleep(200)
 
     // 手机预览查询参数在发布版不生效（不渲染模拟顶栏）。
-    await page.goto(`${base}/?token=${token}&mobilePreview=1`, {
+    await page.goto(`${base}/?mobilePreview=1`, {
       waitUntil: 'domcontentloaded',
     })
     await page.locator('[aria-label="消息输入框"]').first().waitFor({ state: 'visible', timeout: 20_000 })

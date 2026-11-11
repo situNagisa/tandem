@@ -16,6 +16,7 @@ import {
 } from '../key-rotation.js';
 import { costOfUsage, resolvePriceForModel } from '../usage.js';
 import { runKeyRotation, type UpstreamCandidate } from '../upstream/keys.js';
+import type { KeyQuota } from '@tandem/protocol';
 import type { StoredProfileKey } from '../types.js';
 import type { AccountProfileStore } from './profiles.js';
 
@@ -90,6 +91,30 @@ export type ProxyEmitter = (event: WorkspaceModelProxyEvent) => void;
 
 function rateLimitToJson(info: ProviderRateLimit): Record<string, unknown> {
   return { ...info };
+}
+
+/** 响应头里的限流额度写回账号级 Key；主机侧同步快照后据此预估剩余轮数。 */
+function recordKeyQuota(
+  store: AccountProfileStore,
+  accountId: string,
+  profileId: string,
+  groupId: string | undefined,
+  key: StoredProfileKey | undefined,
+  info: ProviderRateLimit,
+): void {
+  if (!key || !groupId) return;
+  const previous = key.quota;
+  const quota: KeyQuota = {
+    ...(previous ?? {}),
+    ...(info.remainingRequests !== undefined ? { remainingRequests: info.remainingRequests } : {}),
+    ...(info.limitRequests !== undefined ? { limitRequests: info.limitRequests } : {}),
+    ...(info.remainingTokens !== undefined ? { remainingTokens: info.remainingTokens } : {}),
+    ...(info.limitTokens !== undefined ? { limitTokens: info.limitTokens } : {}),
+    ...(info.resetRequestsAt !== undefined ? { resetRequestsAt: info.resetRequestsAt } : {}),
+    ...(info.resetTokensAt !== undefined ? { resetTokensAt: info.resetTokensAt } : {}),
+    updatedAt: Date.now(),
+  };
+  store.forAccount(accountId).updateKeyState(profileId, groupId, key.id, { quota });
 }
 
 function updateKeySuccess(store: AccountProfileStore, accountId: string, profileId: string, groupId: string | undefined, keyId: string | undefined): void {
@@ -209,7 +234,10 @@ export async function streamAccountModel(
         idleTimeoutSec: input.idleTimeoutSec ?? 180,
         maxTokens: input.maxTokens || 8192,
         ...(input.effort ? { effort: input.effort } : {}),
-        onRateLimit: (info) => send({ type: 'rate_limit', info: rateLimitToJson(info) }),
+        onRateLimit: (info) => {
+          recordKeyQuota(ctx.profiles, ctx.accountId, input.profileId, input.groupId, key, info);
+          send({ type: 'rate_limit', info: rateLimitToJson(info), ...(key ? { keyId: key.id } : {}) });
+        },
         onEffortDropped: (detail) => send({ type: 'effort_dropped', detail }),
         onBlockStart: (index, block) => send({ type: 'block_start', index, block: structuredClone(block) }),
         onText: (index, text) => send({ type: 'text', index, text }),
@@ -244,9 +272,14 @@ export async function streamAccountModel(
   if (result.ok) return;
   if (result.rethrown && result.last) throw result.last.error;
   if (result.fatal) throw result.fatal.error;
-  throw new Error(
+  const final = new Error(
     group
       ? groupUnavailableError(group, errors) || '所有 Key 都不可用'
       : '当前账号没有可用的 API Key',
   );
+  // 把最后一次上游失败的限额/状态带到主机侧：主机据此记录 Key 限流并进入交接流程。
+  const source = result.last?.error as { status?: unknown; rateLimit?: unknown } | undefined;
+  if (source?.status !== undefined) Object.assign(final, { status: source.status });
+  if (source?.rateLimit !== undefined) Object.assign(final, { rateLimit: source.rateLimit });
+  throw final;
 }

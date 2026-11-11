@@ -42,10 +42,9 @@ for (const file of ['demo/manager.js', 'demo/provider.js', 'demo/scenarios.js', 
 // 启动期按 flavor 动态加载的调试入口。
 for (const file of [
   'debug/demoRoutes.js',
-  'debug/demoHost.js',
   'debug/demoProvider.js',
+  'debug/hosts.js',
   'debug/workstationService.js',
-  'debug/workstationBootstrap.js',
 ]) {
   remove(file)
 }
