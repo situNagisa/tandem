@@ -6,7 +6,7 @@
 |---|---|---|---|
 | R01 | 列表/菜单/下拉/设置行/可拖宽面板各处手写，样式不一致 | 16 | `ui/Menu`/`ListRow`/`SettingRow`/`ResizeHandle`；ui-audit `role-menu`/`role-menuitem`/`menu-multiline`/`menu-handwritten-label`/`menu-handwritten-divider`；decisions-check 共享组件项；regression 菜单/设置/侧栏/面板/文件夹弹层用例 |
 | R02 | 文字偏灰、字号过小、对比度不足 | 5 | design P05 字号下限；ui-audit font-size-floor（9/10px）；regression 字号/a11y 扫描 |
-| R03 | 弹层被裁切或越界 | 5 | Portal + 碰撞避让；regression「tooltip/菜单不越界」多视口用例 |
+| R03 | 弹层被裁切或越界 | 5 | Portal + 碰撞避让；细长目标（SVG 连线等）用 `data-tip-anchor="pointer"` 按指针锚定；regression「tooltip/菜单不越界」多视口用例、regression「会话图泳道线 tooltip 以指针定位并完整显示在视口内」 |
 | R04 | 彩色过多、强调色越界、焦点橙环 | 5 | design P02；ui-audit accent/selection 检查；regression 焦点环只随键盘出现 |
 | R05 | 重复入口（新会话、设置、删除、派单、缓存率、同图标的两个 ⋯ 等） | 7 | design P15；decisions-check 唯一入口项、`topbar-panel-icon-distinct`；regression 顶栏 ≤5/入口唯一/无重复缓存率/顶栏无同图标按钮 |
 | R06 | Windows 路径与编码、安装说明平台化；句中斜杠被识别成文件路径 | 8 | 路径规范化单测；`fileLinks` 路径形状单测（句中斜杠反例）；regression 盘符路径/平台分段安装说明 |

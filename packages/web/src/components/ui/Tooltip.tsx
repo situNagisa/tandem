@@ -5,7 +5,9 @@ import { PORTAL_ATTR, nodeContains } from '../../lib/overlay'
 const SHOW_DELAY = 500
 const SKIP_DELAY = 300
 const GAP = 6
+const POINTER_GAP = 14
 const EDGE = 8
+const TIP_MAX_WIDTH = 280
 const TIP_ID = 'tandem-tooltip'
 
 let showTimer: number | null = null
@@ -13,6 +15,12 @@ let currentHost: HTMLElement | null = null
 let pendingHost: HTMLElement | null = null
 let lastHideAt = 0
 let tipEl: HTMLDivElement | null = null
+let lastPointer: { x: number; y: number } | null = null
+
+/** 细长目标（SVG 连线等）的包围盒中心离指针很远，tooltip 用它定位会跑偏；这类宿主用指针位置锚定。 */
+function pointerAnchored(host: HTMLElement): boolean {
+  return host.closest('[data-tip-anchor="pointer"]') !== null
+}
 
 function canHover(): boolean {
   return typeof window !== 'undefined' && !window.matchMedia('(hover: none)').matches
@@ -69,14 +77,27 @@ function showTip(host: HTMLElement, label: string): void {
   el.style.top = '-9999px'
 
   const box = host.getBoundingClientRect()
+  // 视口很窄时 280px 的提示框自身会超出可视区，按当前视口收窄，保证左右边距都成立。
+  el.style.maxWidth = `${Math.max(72, Math.min(TIP_MAX_WIDTH, window.innerWidth - EDGE * 2))}px`
   const width = el.offsetWidth
   const height = el.offsetHeight
-  let top = box.bottom + GAP
-  if (top + height > window.innerHeight - EDGE && box.top - height - GAP >= EDGE) {
-    top = box.top - height - GAP
+  const point = pointerAnchored(host) && host.matches(':hover') ? lastPointer : null
+  let top: number
+  let left: number
+  if (point) {
+    top = point.y + POINTER_GAP
+    if (top + height > window.innerHeight - EDGE && point.y - height - POINTER_GAP >= EDGE) {
+      top = point.y - height - POINTER_GAP
+    }
+    left = point.x - width / 2
+  } else {
+    top = box.bottom + GAP
+    if (top + height > window.innerHeight - EDGE && box.top - height - GAP >= EDGE) {
+      top = box.top - height - GAP
+    }
+    left = box.left + box.width / 2 - width / 2
   }
   top = Math.min(Math.max(top, EDGE), Math.max(EDGE, window.innerHeight - height - EDGE))
-  let left = box.left + box.width / 2 - width / 2
   left = Math.min(Math.max(left, EDGE), Math.max(EDGE, window.innerWidth - width - EDGE))
   el.style.left = `${Math.round(left)}px`
   el.style.top = `${Math.round(top)}px`
@@ -119,6 +140,14 @@ function scheduleTip(host: HTMLElement, label: string): void {
 
 // 鼠标移开、点击、滚动、按键立即隐藏。
 if (typeof window !== 'undefined') {
+  document.addEventListener(
+    'pointermove',
+    (e) => {
+      if (e.pointerType === 'touch') return
+      lastPointer = { x: e.clientX, y: e.clientY }
+    },
+    { capture: true, passive: true },
+  )
   document.addEventListener('pointerdown', hideTip, true)
   document.addEventListener('keydown', hideTip, true)
   document.addEventListener('wheel', hideTip, true)
@@ -144,6 +173,7 @@ if (typeof document !== 'undefined') {
     'pointerover',
     (e) => {
       if (!canHover()) return
+      if (e.pointerType !== 'touch') lastPointer = { x: e.clientX, y: e.clientY }
       const target = e.target instanceof Element ? e.target : null
       const host = target?.closest<HTMLElement>('[title], [data-tip]') ?? null
       if (host === titleHost) return
@@ -215,6 +245,7 @@ function useTipAnchor(
 
     const onEnter = (e: PointerEvent) => {
       if (e.pointerType === 'touch') return
+      lastPointer = { x: e.clientX, y: e.clientY }
       scheduleTip(host, label)
     }
     const onLeave = () => hideTip()

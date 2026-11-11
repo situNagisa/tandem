@@ -118,6 +118,7 @@ function EdgeLayer({
           data-edge-owner={edge.ownerId}
           data-edge-kind={edge.kind}
           data-tip={edge.label}
+          data-tip-anchor="pointer"
           onPointerEnter={() => onHover(edge.ownerId)}
           onPointerLeave={() => onHover(null)}
         />

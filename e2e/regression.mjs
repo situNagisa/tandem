@@ -11221,6 +11221,110 @@ async function main() {
       await page.getByText(forkTitle, { exact: true }).first().waitFor({ timeout: 10_000 })
     })
 
+    desktop('会话图泳道线 tooltip 以指针定位并完整显示在视口内（反馈1926#10）', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const scenario = state.scenarios.find((item) => item.id === 'subagents')
+      assert.ok(scenario?.sessionIds?.length >= 4, '演示子代理场景缺少子代理/孙代理/分叉会话')
+      await openSession(page, scenario.sessionIds[0])
+      const graph = page.locator('[data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+
+      // 返回最左/最右一条可见泳道线的可悬停点（线是细长目标，包围盒不能代表指针位置）。
+      const edgeHoverPoint = (side, root = '[data-group="graph"]') =>
+        page.evaluate(({ edgeSide, rootSel }) => {
+          const scope = document.querySelector(rootSel)
+          const scroller = scope?.querySelector('[data-graph-height]')
+          if (!scope || !scroller) return null
+          const rect = scroller.getBoundingClientRect()
+          const hits = [...scope.querySelectorAll('[data-session-graph-edges] [data-edge-hit]')]
+            .map((hit) => ({ hit, box: hit.getBoundingClientRect() }))
+            .sort((a, b) => (edgeSide === 'left' ? a.box.left - b.box.left : b.box.right - a.box.right))
+          for (const { hit } of hits) {
+            const total = hit.getTotalLength()
+            const box = hit.ownerSVGElement.getBoundingClientRect()
+            for (let i = 1; i <= 9; i += 1) {
+              const point = hit.getPointAtLength((total * i) / 10)
+              const x = box.left + point.x
+              const y = box.top + point.y
+              if (x > rect.left + 4 && x < rect.right - 4 && y > rect.top + 4 && y < rect.bottom - 4) {
+                const top = document.elementFromPoint(x, y)
+                if (!top?.hasAttribute?.('data-edge-hit')) continue
+                return { x, y, label: hit.getAttribute('data-tip') }
+              }
+            }
+          }
+          return null
+        }, { edgeSide: side, rootSel: root })
+
+      const assertTipVisible = async (hover, where) => {
+        await page.mouse.move(hover.x, hover.y)
+        await page.waitForFunction(
+          () => document.getElementById('tandem-tooltip')?.hasAttribute('data-open'),
+          null,
+          { timeout: 5_000 },
+        )
+        const tip = await page.evaluate(() => {
+          const el = document.getElementById('tandem-tooltip')
+          const r = el.getBoundingClientRect()
+          return {
+            text: el.textContent,
+            inBody: el.parentElement === document.body,
+            inCard: !!el.closest('[data-group="graph"]'),
+            left: r.left,
+            top: r.top,
+            right: r.right,
+            bottom: r.bottom,
+            viewport: { w: window.innerWidth, h: window.innerHeight },
+          }
+        })
+        assert.equal(tip.text, hover.label, `${where} tooltip 不是该泳道线归属会话名`)
+        // 必须渲染在 body 直接子树，否则会被卡片的 overflow 裁切。
+        assert.ok(tip.inBody && !tip.inCard, `${where} tooltip 不在 document.body 直接子树`)
+        assert.ok(
+          tip.left >= 0 && tip.top >= 0 && tip.right <= tip.viewport.w && tip.bottom <= tip.viewport.h,
+          `${where} tooltip 超出视口：${JSON.stringify(tip)}`,
+        )
+        // 细长连线按指针锚定，而不是整条线包围盒的中心；贴边时按视口 8px 边距夹紧。
+        const half = (tip.right - tip.left) / 2
+        const edge = 8
+        const expectedX = Math.min(
+          Math.max(hover.x, edge + half),
+          Math.max(edge + half, tip.viewport.w - edge - half),
+        )
+        assert.ok(
+          Math.abs((tip.left + tip.right) / 2 - expectedX) <= 2,
+          `${where} tooltip 没有按指针锚定：${JSON.stringify(tip)} @${hover.x}`,
+        )
+        await page.mouse.move(4, 4)
+        await page.waitForTimeout(250)
+      }
+
+      // 右栏卡片（约 280px 宽）：最左、最右两条泳道线。
+      for (const side of ['left', 'right']) {
+        const hover = await edgeHoverPoint(side)
+        assert.ok(hover, `卡片内${side === 'left' ? '最左' : '最右'}侧泳道线没有可悬停的命中区`)
+        await assertTipVisible(hover, `卡片${side === 'left' ? '左' : '右'}缘`)
+      }
+
+      // 全屏尺寸：同样验证最左/最右泳道线。
+      const group = page.locator('[data-group="graph"]').first()
+      await group.locator('[aria-label="全高显示会话图"]').click()
+      const full = page.locator('[data-graph-full]')
+      await full.waitFor({ state: 'visible', timeout: 10_000 })
+      await full.locator('[data-graph-height]').first().evaluate((el) => {
+        el.scrollTop = 0
+      })
+      await page.waitForTimeout(300)
+      for (const side of ['left', 'right']) {
+        const hover = await edgeHoverPoint(side, '[data-graph-full]')
+        assert.ok(hover, `全屏${side === 'left' ? '最左' : '最右'}侧泳道线没有可悬停的命中区`)
+        await assertTipVisible(hover, `全屏${side === 'left' ? '左' : '右'}缘`)
+      }
+      await full.getByRole('button', { name: /返回/ }).click()
+      await full.waitFor({ state: 'detached', timeout: 5_000 })
+    })
+
     desktop('体验清单「有问题」进入反馈并带功能标签，导出与解包按功能分组', async (page) => {
       const state = await api(base, token, '/api/demo')
       if (!state.active) await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
