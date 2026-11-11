@@ -1,7 +1,15 @@
 import type { SessionSummary } from '@tandem/protocol'
 import { isUserTurnMessage } from '@tandem/protocol'
 import type { SubagentSession, UiMessage } from '../../lib/types'
-import type { GraphFork, GraphInput, GraphSubagent, GraphTurn } from './layout'
+import { sessionTreeRootId } from '../../lib/sessionTree'
+import type {
+  GraphFork,
+  GraphInput,
+  GraphSessionBranch,
+  GraphSubagent,
+  GraphTopologyInput,
+  GraphTurn,
+} from './layout'
 
 function firstLine(message: UiMessage): string {
   const texts: string[] = []
@@ -137,7 +145,8 @@ export function buildSessionGraph(input: {
   const parts = turnsFromMessages(input.messages)
   const all = Object.values(input.subagents ?? {})
   const subagents = buildSubagentTree(all, input.sessionId, parts.turns)
-  const forks: GraphFork[] = (input.hostSessions ?? [])
+  const sessions = input.hostSessions ?? []
+  const forks: GraphFork[] = sessions
     .filter((session) => session.forkedFrom?.sessionId === input.sessionId)
     .sort((a, b) => a.createdAt - b.createdAt)
     .map((session) => {
@@ -149,11 +158,86 @@ export function buildSessionGraph(input: {
         createdAt: session.createdAt,
       }
     })
+
+  // 当前会话是分叉时切分支（用户 2026-11-11 22:09 原话：跟 git 切分支一样）：
+  // 以当前分叉为主线，来源会话与其他分叉作为分支泳道，挂在当前分叉的分叉点。
+  const self = sessions.find((session) => session.id === input.sessionId)
+  if (self?.forkedFrom?.sessionId) {
+    const byId = new Map(sessions.map((session) => [session.id, session]))
+    const branchTurn = resolveForkTurn(self, parts.turns, parts.turnOfMessage)
+    const added = new Set(forks.map((fork) => fork.id))
+    let cursor: SessionSummary | undefined = self
+    for (let depth = 0; depth < 32 && cursor?.forkedFrom?.sessionId; depth += 1) {
+      const parent = byId.get(cursor.forkedFrom.sessionId)
+      if (!parent) break
+      if (!added.has(parent.id)) {
+        added.add(parent.id)
+        forks.push({
+          id: parent.id,
+          title: parent.title || '原会话',
+          ...(branchTurn ? { turnId: branchTurn } : {}),
+          createdAt: parent.createdAt,
+          relation: 'source',
+        })
+      }
+      for (const sibling of sessions
+        .filter((session) => session.forkedFrom?.sessionId === parent.id)
+        .sort((a, b) => a.createdAt - b.createdAt)) {
+        if (sibling.id === input.sessionId || added.has(sibling.id)) continue
+        added.add(sibling.id)
+        forks.push({
+          id: sibling.id,
+          title: sibling.title || '分叉',
+          ...(branchTurn ? { turnId: branchTurn } : {}),
+          createdAt: sibling.createdAt,
+          relation: 'fork',
+        })
+      }
+      cursor = parent
+    }
+  }
+
   return {
     sessionId: input.sessionId,
     ...(input.title ? { title: input.title } : {}),
     turns: parts.turns,
     subagents,
     forks,
+  }
+}
+
+/**
+ * 侧栏悬停拓扑图：把一棵会话树（根、分叉、子代理、孙代理）组装成布局输入。
+ * 只有会话，不含轮次；`current` 用于高亮当前正在查看的会话。
+ */
+export function buildSessionTopology(input: {
+  rootId: string
+  title?: string
+  sessions: SessionSummary[]
+  activeSessionId?: string | null
+}): GraphTopologyInput {
+  const byId = new Map(input.sessions.map((session) => [session.id, session]))
+  const root = byId.get(input.rootId)
+  const branches: GraphSessionBranch[] = []
+  for (const session of input.sessions) {
+    if (session.id === input.rootId) continue
+    const parentId = session.parentId ?? session.forkedFrom?.sessionId
+    if (!parentId || !byId.has(parentId)) continue
+    if (sessionTreeRootId(session, byId) !== input.rootId) continue
+    branches.push({
+      id: session.id,
+      title: session.title || (session.parentId ? '子代理' : '分叉'),
+      parentId,
+      relation: session.parentId ? 'subagent' : 'fork',
+      createdAt: session.createdAt,
+      ...(input.activeSessionId === session.id ? { current: true } : {}),
+    })
+  }
+  const title = root?.title || input.title
+  return {
+    sessionId: input.rootId,
+    ...(title ? { title } : {}),
+    ...(input.activeSessionId === input.rootId ? { current: true } : {}),
+    branches,
   }
 }

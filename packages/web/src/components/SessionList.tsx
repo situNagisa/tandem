@@ -50,6 +50,7 @@ import {
   type ExternalItem,
   type MenuState,
   type ProjectGroup,
+  type SessionTreeRow,
 } from './session/sessionListUtils'
 import { SessionRow } from './session/SessionRow'
 import { RowMenu } from './session/SessionRowMenu'
@@ -187,8 +188,9 @@ export function SessionList({
         showArchived,
         sessionFilter,
         pinnedProjects,
+        activeSessionId,
       ),
-    [hosts, runtimes, visibleExternals, query, showArchived, sessionFilter, pinnedProjects],
+    [hosts, runtimes, visibleExternals, query, showArchived, sessionFilter, pinnedProjects, activeSessionId],
   )
 
   const anyRunning = useMemo(
@@ -280,26 +282,32 @@ export function SessionList({
     depth = 0,
     section: 'recent' | 'pinned' = 'recent',
     nested = false,
-  ) => (
-    <SessionRow
-      key={`${hostId}:${s.id}`}
-      hostId={hostId}
-      s={s}
-      depth={depth}
-      section={section}
-      nested={nested}
-      activeSessionId={activeSessionId}
-      renaming={renaming === s.id}
-      renameDraft={renameDraft}
-      setRenameDraft={setRenameDraft}
-      setRenaming={(value) => setRenaming(value ? s.id : null)}
-      updateSession={updateSession}
-      openSession={openSession}
-      openMenu={openMenu}
-      setMenu={setMenu}
-      runningElapsed={runningElapsed}
-    />
-  )
+  ) => {
+    const row = s as SessionTreeRow
+    return (
+      <SessionRow
+        key={`${hostId}:${s.id}`}
+        hostId={hostId}
+        s={s}
+        depth={depth}
+        section={section}
+        nested={nested}
+        openId={row.openedId}
+        branchTitle={row.branchTitle}
+        treeIds={row.treeIds}
+        activeSessionId={activeSessionId}
+        renaming={renaming === s.id}
+        renameDraft={renameDraft}
+        setRenameDraft={setRenameDraft}
+        setRenaming={(value) => setRenaming(value ? s.id : null)}
+        updateSession={updateSession}
+        openSession={openSession}
+        openMenu={openMenu}
+        setMenu={setMenu}
+        runningElapsed={runningElapsed}
+      />
+    )
+  }
 
   if (loading && total === 0) {
     return (

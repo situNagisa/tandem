@@ -11312,6 +11312,118 @@ async function main() {
       await full.waitFor({ state: 'detached', timeout: 5_000 })
     })
 
+    desktop('侧栏分叉并入原会话行、悬停拓扑图、右栏切分支', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const scenario = state.scenarios.find((item) => item.id === 'subagents')
+      assert.ok(scenario?.sessionIds?.length >= 6, '演示子代理场景缺少子代理/孙代理/分叉会话')
+      const [mainId, , , forkId] = scenario.sessionIds
+      const mainTitle = (await api(base, token, `/api/sessions/${encodeURIComponent(mainId)}`)).title
+      const forkTitle = (await api(base, token, `/api/sessions/${encodeURIComponent(forkId)}`)).title
+
+      await openSession(page, mainId)
+      const mainRow = page.locator(`[data-session-row][data-session-id="${mainId}"]`).first()
+      await mainRow.waitFor({ state: 'visible', timeout: 15_000 })
+
+      // 分叉不占新行：演示分叉没有自己的侧栏行，树行数 = 1。
+      assert.equal(
+        await page.locator(`[data-session-row][data-session-id="${forkId}"]`).count(),
+        0,
+        '分叉仍单独占一行',
+      )
+      assert.equal(await page.locator(`[data-session-row][data-session-id="${mainId}"]`).count(), 1, '树行重复')
+
+      // 新建分叉后侧栏行数不增加。
+      const detail = await api(base, token, `/api/sessions/${encodeURIComponent(mainId)}`)
+      const messageId = [...detail.messages].reverse().find((message) => message.role === 'user')?.id
+      assert.ok(messageId, '主会话没有用户消息，无法分叉')
+      const rowsBefore = await page.locator('[data-session-row]').count()
+      const extra = await api(base, token, `/api/sessions/${encodeURIComponent(mainId)}/fork`, {
+        method: 'POST',
+        body: JSON.stringify({ messageId }),
+      })
+      await page.waitForTimeout(800)
+      assert.equal(
+        await page.locator('[data-session-row]').count(),
+        rowsBefore,
+        '分叉后侧栏行数增加了',
+      )
+      assert.equal(
+        await page.locator(`[data-session-row][data-session-id="${extra.id}"]`).count(),
+        0,
+        '新分叉占用了单独一行',
+      )
+      await api(base, token, `/api/sessions/${encodeURIComponent(extra.id)}`, {
+        method: 'DELETE',
+        body: '{}',
+      })
+      await page.waitForTimeout(500)
+
+      // 悬停会话行：右侧弹出拓扑图，节点 = 会话（主 + 分叉 + 子代理），没有轮次文字。
+      await mainRow.hover()
+      const topology = page.locator('[data-hover-card] [data-session-topology]').first()
+      await topology.waitFor({ state: 'visible', timeout: 10_000 })
+      const nodes = topology.locator('div[data-session-id]')
+      const expectedNodes = 6 // 主会话 + 4 个子代理/孙代理 + 1 个分叉
+      await page.waitForFunction(
+        (count) => document.querySelectorAll('[data-hover-card] [data-session-topology] div[data-session-id]').length === count,
+        expectedNodes,
+        { timeout: 5_000 },
+      )
+      assert.equal(await nodes.count(), expectedNodes, '拓扑图节点数不等于树内会话数')
+      assert.equal(await topology.locator('div[data-kind="turn"]').count(), 0, '拓扑图出现了轮次节点')
+      assert.equal(await topology.locator('div[data-kind="session"]').count(), 1, '拓扑图缺少根会话节点')
+      assert.ok((await topology.locator('div[data-kind="fork"]').count()) >= 1, '拓扑图缺少分叉节点')
+      assert.ok((await topology.locator('div[data-kind="subagent"]').count()) >= 2, '拓扑图缺少子代理节点')
+      const topologyText = await topology.innerText()
+      assert.doesNotMatch(topologyText, /收到，先按这个做|我们先把价格页/, '拓扑图仍在显示轮次文字')
+      assert.doesNotMatch(topologyText, /tok|token/i, '拓扑图显示了 token')
+      assert.ok(
+        (await topology.locator('[data-session-graph-edges] [data-edge-hit][data-tip]').count()) > 0,
+        '拓扑图的连线没有会话名 tooltip',
+      )
+
+      // 点分叉节点打开该分叉会话；侧栏同一行内小字标出所在分叉名。
+      await topology.locator(`div[data-kind="fork"][data-fork-id="${forkId}"]`).click()
+      await page.waitForFunction(
+        (id) => window.location.hash.includes(`/s/${id}`),
+        forkId,
+        { timeout: 10_000 },
+      )
+      const branch = mainRow.locator('[data-session-branch]').first()
+      await branch.waitFor({ state: 'visible', timeout: 10_000 })
+      const branchLabel = forkTitle.split('·').map((part) => part.trim()).filter(Boolean).pop()
+      assert.equal((await branch.innerText()).trim(), branchLabel, '行内没有标出当前分叉名')
+
+      // 右栏会话图切分支：在分叉里，主线是当前分叉；来源会话作为分支泳道并写「原会话」。
+      const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+      await page.waitForFunction(
+        (id) =>
+          document
+            .querySelector('[data-group="graph"] path[data-kind="main"]')
+            ?.getAttribute('data-edge-owner') === id,
+        forkId,
+        { timeout: 10_000 },
+      )
+      const source = graph.locator(`div[data-kind="fork"][data-fork-id="${mainId}"]`).first()
+      await source.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.match(await source.innerText(), /原会话/, '来源会话没有标成「原会话」')
+      assert.match(await source.innerText(), new RegExp(mainTitle.slice(0, 6)), '来源会话节点不是原会话标题')
+
+      // 回到主会话：主线切回主会话本身。
+      await openSession(page, mainId)
+      await page.waitForFunction(
+        (id) =>
+          document
+            .querySelector('[data-group="graph"] path[data-kind="main"]')
+            ?.getAttribute('data-edge-owner') === id,
+        mainId,
+        { timeout: 10_000 },
+      )
+      assert.equal(await mainRow.locator('[data-session-branch]').count(), 0, '主会话行仍显示分叉名')
+    })
+
     desktop('体验清单「有问题」进入反馈并带功能标签，导出与解包按功能分组', async (page) => {
       const state = await api(base, token, '/api/demo')
       if (!state.active) await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })

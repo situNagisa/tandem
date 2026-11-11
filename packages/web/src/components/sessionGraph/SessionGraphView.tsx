@@ -32,8 +32,12 @@ function rowY(row: number): number {
 }
 
 function nodeTooltip(node: GraphNode): string {
-  if (node.kind === 'fork') return `${node.label} · 分叉会话 · 点击打开`
-  if (node.kind === 'subagent-turn') return `${node.label} · 子代理会话 · 点击打开`
+  if (node.kind === 'fork') {
+    return `${node.label} · ${node.forkRelation === 'source' ? '原会话' : '分叉会话'} · 点击打开`
+  }
+  if (node.kind === 'subagent-turn' || node.kind === 'subagent') {
+    return `${node.label} · 子代理会话 · 点击打开`
+  }
   return node.label
 }
 
@@ -138,6 +142,8 @@ export interface SessionGraphViewProps {
   readOnly?: boolean
   /** 卡片内高度；'full' 占满父容器。 */
   height?: number | 'full'
+  /** 悬停浮层里不接管键盘焦点（打开浮层时不抢焦点）。 */
+  keyboard?: boolean
   className?: string
 }
 
@@ -153,6 +159,7 @@ export function SessionGraphView({
   onOpen,
   readOnly = false,
   height = 168,
+  keyboard = true,
   className,
 }: SessionGraphViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -224,17 +231,19 @@ export function SessionGraphView({
         className="min-h-0 overflow-y-auto overflow-x-hidden outline-none focus-visible:ring-1 focus-visible:ring-[var(--t-focus-ring)] focus-visible:ring-inset"
         style={height === 'full' ? { maxHeight: 'calc(100% - 26px)' } : { height }}
         data-graph-height={height === 'full' ? 'full' : height}
-        tabIndex={readOnly ? -1 : 0}
+        tabIndex={readOnly || !keyboard ? -1 : 0}
         role="tree"
         aria-label="会话图：按会话与分支浏览"
-        onKeyDown={readOnly ? undefined : onKeyDown}
+        onKeyDown={readOnly || !keyboard ? undefined : onKeyDown}
       >
         <div className="relative w-full" style={{ height: Math.max(1, layout.rows * GRAPH_ROW_H) }}>
           <EdgeLayer layout={layout} hoverOwner={hoverOwner} onHover={setHoverOwner} />
           {visibleNodes.map((node) => {
             const color = laneColor(node.lane)
             const isSelected = selected === node.key
-            const isCurrent = node.kind === 'turn' && !!activeTurn && node.turnNo === activeTurn
+            const isCurrent =
+              node.current === true ||
+              (node.kind === 'turn' && !!activeTurn && node.turnNo === activeTurn)
             const isRunning =
               running && node.kind === 'turn' && node.turnNo === latestTurnNo
             const canOpen = !readOnly
@@ -260,6 +269,7 @@ export function SessionGraphView({
                   data-lane={node.lane}
                   data-row={node.row}
                   data-graph-turn-id={node.kind === 'turn' ? node.id : undefined}
+                  data-session-id={node.sessionId}
                   data-subagent-id={node.subagentId}
                   data-fork-id={node.forkSessionId}
                   data-active={isCurrent ? 'true' : undefined}
@@ -299,14 +309,18 @@ export function SessionGraphView({
                   <span
                     className={cn(
                       'min-w-0 flex-1 truncate text-[13px] leading-5',
-                      node.kind === 'turn' ? 'text-text-soft' : 'text-muted',
+                      node.kind === 'turn' || node.kind === 'session'
+                        ? 'text-text-soft'
+                        : 'text-muted',
                       isCurrent && 'text-text',
                     )}
                   >
                     {node.label}
                   </span>
                   {node.kind === 'fork' && (
-                    <span className="ml-1 shrink-0 text-[12px] text-muted">分叉</span>
+                    <span className="ml-1 shrink-0 text-[12px] text-muted">
+                      {node.forkRelation === 'source' ? '原会话' : '分叉'}
+                    </span>
                   )}
                 </div>
               </div>

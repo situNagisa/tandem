@@ -2,8 +2,9 @@ import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react'
 import { cn } from '../../lib/cn'
 import { PORTAL_ATTR, nodeContains } from '../../lib/overlay'
 
-const SHOW_DELAY = 500
-const SKIP_DELAY = 300
+/** 标准 tooltip 的悬停延迟；悬停浮层（HoverCard）复用同一组延迟，保证手感一致。 */
+export const TIP_SHOW_DELAY = 500
+export const TIP_SKIP_DELAY = 300
 const GAP = 6
 const POINTER_GAP = 14
 const EDGE = 8
@@ -128,14 +129,14 @@ function scheduleTip(host: HTMLElement, label: string): void {
   }
   pendingHost = host
   // 相邻 tooltip 之间快速移动时跳过等待。
-  if (currentHost !== null || performance.now() - lastHideAt < SKIP_DELAY) {
+  if (currentHost !== null || performance.now() - lastHideAt < TIP_SKIP_DELAY) {
     showTip(host, label)
     return
   }
   showTimer = window.setTimeout(() => {
     showTimer = null
     showTip(host, label)
-  }, SHOW_DELAY)
+  }, TIP_SHOW_DELAY)
 }
 
 // 鼠标移开、点击、滚动、按键立即隐藏。
