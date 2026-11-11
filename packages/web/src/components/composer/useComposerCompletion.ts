@@ -4,6 +4,7 @@ import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { useClickOutside } from '../../lib/hooks'
 import { detectCompletion, type Completion, type CompletionEntry } from './completion'
+import type { ComposerEditorHandle } from './ComposerEditor'
 import { SOURCE_LABEL } from './composerTypes'
 
 interface Options {
@@ -19,7 +20,8 @@ interface Options {
   setText: (text: string) => void
   setModelMenuOpen: Dispatch<SetStateAction<boolean>>
   menuRef: MutableRefObject<HTMLDivElement | null>
-  textareaRef: MutableRefObject<HTMLTextAreaElement | null>
+  editorRef: MutableRefObject<ComposerEditorHandle | null>
+  elementRef: MutableRefObject<HTMLDivElement | null>
 }
 
 export function useComposerCompletion({
@@ -35,7 +37,8 @@ export function useComposerCompletion({
   setText,
   setModelMenuOpen,
   menuRef,
-  textareaRef,
+  editorRef,
+  elementRef,
 }: Options) {
   const [completion, setCompletion] = useState<Completion | null>(null)
   const [index, setIndex] = useState(0)
@@ -87,7 +90,7 @@ export function useComposerCompletion({
     setIndex(0)
   }, [completion?.kind, completion?.query])
 
-  useClickOutside([menuRef, textareaRef], () => setCompletion(null), !!completion)
+  useClickOutside([menuRef, elementRef], () => setCompletion(null), !!completion)
 
   const items = useMemo<CompletionEntry[]>(() => {
     if (!completion) return []
@@ -137,11 +140,10 @@ export function useComposerCompletion({
     setText(next)
     setCompletion(null)
     window.requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (!el) return
-      el.focus()
-      const pos = before.length + insertion.length
-      el.setSelectionRange(pos, pos)
+      const editor = editorRef.current
+      if (!editor) return
+      editor.focus()
+      editor.setSelection(before.length + insertion.length)
     })
   }
 

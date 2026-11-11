@@ -2569,7 +2569,7 @@ async function main() {
       }
       // 手机首页默认可能是收件箱页签（有待审批时没有输入框），用「新会话」按钮兜底。
       await page
-        .locator('textarea[aria-label="消息输入框"], button:has-text("新会话")')
+        .locator('[aria-label="消息输入框"], button:has-text("新会话")')
         .first()
         .waitFor({ timeout: 20_000 })
       // 升级导览卡固定在右下角；先关掉，避免遮挡后续用例的点击（专门的导览用例会重新触发）。
@@ -2640,7 +2640,7 @@ async function main() {
         id,
         { timeout: 10_000 },
       )
-      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 15_000 })
+      await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 15_000 })
       await page.waitForTimeout(300)
     }
 
@@ -3183,7 +3183,7 @@ async function main() {
       assert.equal(await panel.locator('[data-group="changes"]').count(), 1, '信息面板缺少文件改动卡')
       assert.match(text, /scripts\/test\.sh/, '文件改动没有列出原会话编辑过的文件')
       // 只读：没有输入框，保留「在 Tandem 中继续」。
-      assert.equal(await page.locator('textarea[aria-label="消息输入框"]').count(), 0, '外部会话不应可发送')
+      assert.equal(await page.locator('[aria-label="消息输入框"]').count(), 0, '外部会话不应可发送')
       assert.ok(await page.getByRole('button', { name: /在 Tandem 中继续/ }).count(), '缺少导入继续入口')
 
       // 大纲悬停：有 usage 就显示用量，没有价格时不编造「花费未知」。
@@ -3584,7 +3584,7 @@ async function main() {
       await openSession(page, 'quota')
       await waitOnline(page)
       await waitModelReady(page)
-      const box = page.locator('textarea[aria-label="消息输入框"]').first()
+      const box = page.locator('[aria-label="消息输入框"]').first()
       await box.fill('第二轮：继续实现')
       await box.press('Enter')
       await page.getByText('配额主分组回复：第二次请求完成。').first().waitFor({ timeout: 20_000 })
@@ -3929,7 +3929,7 @@ async function main() {
 
       // 输入框关闭签名控件；文本仍可选择复制。
       const attrs = await page.evaluate(() => {
-        const input = document.querySelector('textarea, input[type="text"]')
+        const input = document.querySelector('textarea, input[type="text"], [contenteditable="true"]')
         return {
           suggestions: document.documentElement.getAttribute('writingsuggestions'),
           spellcheck: input?.getAttribute('spellcheck'),
@@ -4186,7 +4186,7 @@ async function main() {
       })
       await gotoSession(page, session.id)
       await waitModelReady(page)
-      const input = page.locator('textarea[aria-label="消息输入框"]')
+      const input = page.locator('[aria-label="消息输入框"]')
       await input.waitFor()
 
       // 2009#01：分工（关闭 / 适度 / 积极）与取向（省钱 / 均衡 / 质量优先）各一组单选，都在「分工与取向」菜单里。
@@ -4310,8 +4310,8 @@ async function main() {
       await page.screenshot({ path: '/tmp/fb8-after/11-chip.png' })
     })
 
-    desktop('输入框 Markdown：代码围栏、列表续号、Tab 缩进与原始内容发送（反馈8#02）', async (page) => {
-      mkdirSync('/tmp/fb8-after', { recursive: true })
+    desktop('输入框 Markdown 就地渲染：代码块等宽、列表缩进、Enter 续号与原始内容发送（反馈8#02 / 1323#05）', async (page) => {
+      mkdirSync('/tmp/fix-1323b', { recursive: true })
       const mdSession = await api(base, token, '/api/sessions', {
         method: 'POST',
         body: JSON.stringify({
@@ -4325,8 +4325,9 @@ async function main() {
       })
       await gotoSession(page, mdSession.id)
       await waitModelReady(page)
-      const input = page.locator('textarea[aria-label="消息输入框"]')
+      const input = page.locator('[aria-label="消息输入框"]')
       await input.waitFor()
+      const value = () => input.getAttribute('data-value')
       const sessionOf = () => api(base, token, `/api/sessions/${mdSession.id}`)
       const messageCount = async () => (await sessionOf()).messages.length
 
@@ -4334,20 +4335,25 @@ async function main() {
       const beforeCode = await messageCount()
       await input.fill('```ts')
       await input.press('Enter')
-      assert.equal(await input.inputValue(), '```ts\n\n```\n', '代码围栏没有自动成对')
+      assert.equal(await value(), '```ts\n\n```\n', '代码围栏没有自动成对')
       await input.type('const a = 1')
-      const caret = await input.evaluate((el) => el.selectionStart)
       await input.press('Tab')
-      assert.match(await input.inputValue(), /const a = 1 {2}\n```/, '代码块内 Tab 没有缩进两格')
+      assert.match(await value(), /const a = 1 {2}\n```/, '代码块内 Tab 没有缩进两格')
       await input.press('Enter')
       assert.equal(await messageCount(), beforeCode, '代码块内回车触发了发送')
-      assert.ok(caret > 0)
-      // 轻量着色层与原文同步，发送内容仍是原始 Markdown。
-      const highlight = page.getByTestId('composer-highlight')
-      assert.match(await highlight.innerText(), /const a = 1/, '着色层没有显示代码内容')
-      assert.ok((await highlight.locator('.md-hl-fence').count()) >= 2, '着色层没有标记代码围栏')
-      assert.ok((await highlight.locator('.md-hl-code').count()) >= 1, '着色层没有标记代码行')
-      await page.screenshot({ path: '/tmp/fb8-after/02.png' })
+      // 代码块就地渲染：等宽字体与浅色底。
+      const codeStyle = await input.evaluate((root) => {
+        const line = root.querySelector('.ce-line-code')
+        if (!line) return null
+        const style = getComputedStyle(line)
+        return {
+          mono: /mono/i.test(style.fontFamily) || style.fontFamily.includes('Consolas'),
+          background: style.backgroundColor,
+        }
+      })
+      assert.ok(codeStyle, '代码块没有进入样式层')
+      assert.ok(codeStyle.mono, `代码块不是等宽字体：${codeStyle && codeStyle.background}`)
+      assert.notEqual(codeStyle.background, 'rgba(0, 0, 0, 0)', '代码块没有浅色底')
       const seenBefore = provider.seenUserTexts.length
       await page.getByRole('button', { name: '发送消息' }).click()
       for (let i = 0; i < 80; i++) {
@@ -4360,15 +4366,56 @@ async function main() {
         '发送内容没有保留原始代码块',
       )
 
-      // 有序列表自动续号；回车不发送。
+      // 行内 Markdown：粗体、斜体、行内代码就地显示，源码不变。
+      await input.fill('**粗体** *斜体* `code`')
+      const inline = await input.evaluate((root) => ({
+        strong: root.querySelector('.ce-strong')?.textContent ?? '',
+        em: root.querySelector('.ce-em')?.textContent ?? '',
+        code: root.querySelector('.ce-inline-code')?.textContent ?? '',
+        strongWeight: (() => {
+          const el = root.querySelector('.ce-strong')
+          return el ? getComputedStyle(el).fontWeight : ''
+        })(),
+        emStyle: (() => {
+          const el = root.querySelector('.ce-em')
+          return el ? getComputedStyle(el).fontStyle : ''
+        })(),
+        codeMono: (() => {
+          const el = root.querySelector('.ce-inline-code')
+          return el ? getComputedStyle(el).fontFamily : ''
+        })(),
+      }))
+      assert.equal(inline.strong, '粗体', '粗体没有就地渲染')
+      assert.equal(inline.em, '斜体', '斜体没有就地渲染')
+      assert.equal(inline.code, '`code`', '行内代码没有就地渲染')
+      assert.ok(Number(inline.strongWeight) >= 600, '粗体字重没有生效')
+      assert.equal(inline.emStyle, 'italic', '斜体没有生效')
+      assert.match(inline.codeMono, /mono|Consolas/i, '行内代码不是等宽字体')
+      assert.equal(await value(), '**粗体** *斜体* `code`', '渲染改变了原始 Markdown')
+
+      // 有序列表自动续号、空列表项回车结束列表；回车不发送。
       const beforeList = await messageCount()
       await input.fill('1. 第一项')
       await input.press('Enter')
-      assert.equal(await input.inputValue(), '1. 第一项\n2. ', '有序列表没有续号')
+      assert.equal(await value(), '1. 第一项\n2. ', '有序列表没有续号')
       await input.type('第二项')
       await input.press('Enter')
-      assert.equal(await input.inputValue(), '1. 第一项\n2. 第二项\n3. ', '有序列表第二次没有续号')
+      assert.equal(await value(), '1. 第一项\n2. 第二项\n3. ', '有序列表第二次没有续号')
       assert.equal(await messageCount(), beforeList, '列表回车触发了发送')
+      const listStyle = await input.evaluate((root) => {
+        const lines = [...root.querySelectorAll('.ce-line-list')]
+        return {
+          count: lines.length,
+          padding: lines[0] ? parseFloat(getComputedStyle(lines[0]).paddingLeft) : 0,
+          marks: root.querySelectorAll('.ce-list-mark').length,
+        }
+      })
+      assert.ok(listStyle.count >= 2, '列表项没有独立行样式')
+      assert.ok(listStyle.marks >= 2, '列表序号没有样式')
+      assert.ok(listStyle.padding > 0, '列表项没有缩进')
+      await input.press('Enter')
+      assert.equal(await value(), '1. 第一项\n2. 第二项\n', '空列表项回车没有结束列表')
+      assert.equal(await messageCount(), beforeList, '结束列表时触发了发送')
       const seenBeforeOrdered = provider.seenUserTexts.length
       await page.getByRole('button', { name: '发送消息' }).click()
       for (let i = 0; i < 80; i++) {
@@ -4387,10 +4434,10 @@ async function main() {
       const beforeUnordered = await messageCount()
       await input.fill('- 项目一')
       await input.press('Enter')
-      assert.equal(await input.inputValue(), '- 项目一\n- ', '无序列表没有续项')
+      assert.equal(await value(), '- 项目一\n- ', '无序列表没有续项')
       await input.type('项目二')
       await input.press('Enter')
-      assert.equal(await input.inputValue(), '- 项目一\n- 项目二\n- ', '无序列表第二次没有续项')
+      assert.equal(await value(), '- 项目一\n- 项目二\n- ', '无序列表第二次没有续项')
       const seenBeforeUnordered = provider.seenUserTexts.length
       await page.getByRole('button', { name: '发送消息' }).click()
       for (let i = 0; i < 80; i++) {
@@ -4405,12 +4452,15 @@ async function main() {
         '无序列表没有按原文发送',
       )
       await input.fill('# 标题\n\n---\n\n正文')
-      assert.match(
-        await page.getByTestId('composer-highlight').innerText(),
-        /# 标题/,
-        '标题没有进入着色层',
-      )
-      assert.ok((await page.getByTestId('composer-highlight').locator('.md-hl-heading').count()) >= 1, '标题没有着色')
+      assert.ok((await input.locator('.ce-line-heading').count()) >= 1, '标题没有进入样式层')
+      assert.equal(await value(), '# 标题\n\n---\n\n正文', '标题行改变了原文')
+
+      // 深/浅主题截图：列表、代码块、路径标记。
+      await input.fill('- 列表项\n\n```ts\nconst a = 1\n```\n\n正文 `inline` **粗体**')
+      await page.screenshot({ path: '/tmp/fix-1323b/1323-light.png' })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.screenshot({ path: '/tmp/fix-1323b/1323-dark.png' })
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
       await input.fill('')
     })
 
@@ -4752,7 +4802,7 @@ async function main() {
         null,
         { timeout: 10_000 },
       )
-      const input = page.locator('textarea[aria-label="消息输入框"]')
+      const input = page.locator('[aria-label="消息输入框"]')
       await input.fill('SCROLL_E2E 请长篇回答')
       await input.press('Enter')
       await page.locator('.md.chat-md.is-streaming').first().waitFor({ timeout: 8_000 })
@@ -4856,7 +4906,7 @@ async function main() {
         if (route.request().method() === 'POST') await new Promise((resolve) => setTimeout(resolve, 900))
         await route.continue()
       })
-      const input = page.locator('textarea[aria-label="消息输入框"]')
+      const input = page.locator('[aria-label="消息输入框"]')
       await input.fill('FB2102_NEW 发送即进入会话')
       await page.waitForFunction(() => {
         const button = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === '发送消息')
@@ -5014,7 +5064,7 @@ async function main() {
 
     desktop('反馈16#10：等首个 token / 工具运行时显示 spinner 与已运行时长', async (page) => {
       await openSession(page, 'slow')
-      const input = page.locator('textarea[aria-label="消息输入框"]')
+      const input = page.locator('[aria-label="消息输入框"]')
       await input.fill('SLOW_E2E 跑一个慢步骤')
       await input.press('Enter')
       // 首个 token 前：消息流末尾有「正在思考…」+ spinner。
@@ -5045,7 +5095,7 @@ async function main() {
 
     desktop('反馈16#11：排队消息被读取后按原位置出现在对话流里', async (page) => {
       await openSession(page, 'slow2')
-      const input = page.locator('textarea[aria-label="消息输入框"]')
+      const input = page.locator('[aria-label="消息输入框"]')
       await input.fill('SLOW_E2E 先跑一轮')
       await input.press('Enter')
       // 等工具开始运行（这时再排队，旧实现会被随后的 tool_result 消息误删）。
@@ -5270,7 +5320,7 @@ async function main() {
 
     desktop('发送消息后服务端记录耗时、首 token 延迟并显示在消息下方（A）', async (page) => {
       await openSession(page, 'nockpt')
-      const box = page.locator('textarea[aria-label="消息输入框"]').first()
+      const box = page.locator('[aria-label="消息输入框"]').first()
       await box.fill('测一下这一轮的耗时')
       await box.press('Enter')
       let assistant
@@ -5345,7 +5395,7 @@ async function main() {
 
       // 有单价的模型：用户消息要同时显示金额（服务端按发送时的输入估算写入）。
       await openSession(page, 'priced')
-      const boxInput = page.locator('textarea[aria-label="消息输入框"]').first()
+      const boxInput = page.locator('[aria-label="消息输入框"]').first()
       await boxInput.fill('这条输入的费用也显示一下')
       await boxInput.press('Enter')
       await page.getByText('回归回复。').last().waitFor({ timeout: 20_000 })
@@ -5580,7 +5630,7 @@ async function main() {
 
     desktop('环境条「选择主机」可打开（#11 P0）', async (page) => {
       await page.evaluate(() => (window.location.hash = '#/'))
-      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
+      await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
       const host = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-monitor') }).first()
       await host.click()
       const menu = page.locator('[role="menu"][aria-label="选择主机"]').first()
@@ -5618,7 +5668,7 @@ async function main() {
       await openSession(page, 'long')
       const hostPill = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-monitor') }).first()
       const folderPill = page.locator('main button[aria-haspopup="menu"]').filter({ has: page.locator('svg.lucide-folder-open') }).first()
-      const textarea = page.locator('textarea[aria-label="消息输入框"]').first()
+      const textarea = page.locator('[aria-label="消息输入框"]').first()
       const folderPanel = page
         .locator('[data-portal-layer="popover"]')
         .filter({ has: page.locator('input[aria-label="筛选文件夹或输入路径"]') })
@@ -5637,14 +5687,14 @@ async function main() {
       // 不立即切换：文件夹选择自动打开，输入框禁用并提示。
       await folderPanel.waitFor({ state: 'visible', timeout: 5_000 })
       await page.waitForTimeout(300)
-      assert.equal(await textarea.isDisabled(), true, '待选文件夹期间输入框没有禁用')
+      assert.equal(await textarea.getAttribute('aria-disabled'), 'true', '待选文件夹期间输入框没有禁用')
       assert.equal(
         await page.locator('.composer-card').first().getAttribute('data-disabled'),
         'true',
         '待选期间输入框外观没有变暗',
       )
       assert.equal(
-        await textarea.getAttribute('placeholder'),
+        await textarea.getAttribute('data-placeholder'),
         '选择 第二台主机 上的文件夹后继续',
         '输入框占位提示文案不对',
       )
@@ -5672,7 +5722,7 @@ async function main() {
       // 取消回到原主机。
       await page.locator('[data-env-pending-cancel="true"]').click()
       await page.waitForTimeout(300)
-      assert.equal(await textarea.isDisabled(), false, '取消后输入框仍然禁用')
+      assert.equal(await textarea.getAttribute('aria-disabled'), null, '取消后输入框仍然禁用')
       assert.doesNotMatch(await hostPill.innerText(), /第二台主机/, '取消后主机胶囊仍显示新主机')
 
       // 再选一次，选好文件夹才真正迁移。
@@ -5683,9 +5733,9 @@ async function main() {
       await folderPanel.getByRole('button', { name: '使用并迁移' }).click()
       await page.getByText(/会话已迁移到 第二台主机/).first().waitFor({ timeout: 20_000 })
       await page.waitForFunction(() => window.location.hash.includes('/h/host-second/'), null, { timeout: 20_000 })
-      await page.locator('textarea[aria-label="消息输入框"]').first().waitFor({ timeout: 20_000 })
+      await page.locator('[aria-label="消息输入框"]').first().waitFor({ timeout: 20_000 })
       assert.equal(
-        await page.locator('textarea[aria-label="消息输入框"]').first().isDisabled(),
+        (await page.locator('[aria-label="消息输入框"]').first().getAttribute('aria-disabled')) === 'true',
         false,
         '迁移完成后输入框仍禁用',
       )
@@ -5807,7 +5857,7 @@ async function main() {
         '指针移到大纲下方提示行时面板收起（反馈8#04 的空白间隙问题）',
       )
       // 输入框聚焦时单独按 Alt/Option 也要生效（用户常边打字边看大纲）。
-      await page.locator('textarea[aria-label="消息输入框"]').first().focus()
+      await page.locator('[aria-label="消息输入框"]').first().focus()
       await page.keyboard.down('Alt')
       await page.waitForFunction(
         () => document.querySelector('.turn-rail')?.getAttribute('data-pinned-only') === 'true',
@@ -5932,7 +5982,7 @@ async function main() {
 
     desktop('粘贴一次同一张图片只生成一个附件', async (page) => {
       await openSession(page, 'long')
-      const textarea = page.locator('textarea[aria-label="消息输入框"]')
+      const textarea = page.locator('[aria-label="消息输入框"]')
       await textarea.evaluate((el) => {
         const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1])
         const data = new DataTransfer()
@@ -6132,7 +6182,7 @@ async function main() {
         // 账号是通过 API 新建的：刷新一次让客户端拉到最新账号列表。
         await page.reload({ waitUntil: 'domcontentloaded' })
         await page
-          .locator('textarea[aria-label="消息输入框"], button:has-text("新会话")')
+          .locator('[aria-label="消息输入框"], button:has-text("新会话")')
           .first()
           .waitFor({ timeout: 20_000 })
         const clientHostId = await page.evaluate(
@@ -6149,7 +6199,7 @@ async function main() {
           session.id,
           { timeout: 10_000 },
         )
-        await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+        await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
         await waitModelReady(page)
         // 主菜单优先显示最近使用模型；清掉记录让当前分组的模型回退显示（价格 tooltip 用例）。
         await page.evaluate(() => localStorage.removeItem('tandem.recentModels.v1'))
@@ -6181,7 +6231,7 @@ async function main() {
 
     desktop('新会话页环境条显示当前分支名而不是「分支」占位词', async (page) => {
       await page.evaluate(() => (window.location.hash = '#/'))
-      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
+      await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
       await page.locator('button:has(svg.lucide-folder-open)').first().click()
       const input = page.getByRole('textbox', { name: '筛选文件夹或输入路径' })
       await input.waitFor()
@@ -6593,16 +6643,16 @@ async function main() {
 
     desktop('侧栏「新会话」清空草稿并聚焦输入框', async (page) => {
       await openSession(page, 'long')
-      const textarea = page.locator('textarea[aria-label="消息输入框"]')
+      const textarea = page.locator('[aria-label="消息输入框"]')
       await textarea.fill('第一段草稿')
       await page.locator('aside').getByRole('button', { name: /^新会话/ }).click()
       await page.waitForTimeout(500)
-      assert.equal(await textarea.inputValue(), '', '已在首页再点「新会话」没有清空草稿')
+      assert.equal(await textarea.getAttribute('data-value'), '', '已在首页再点「新会话」没有清空草稿')
       assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), '消息输入框', '清空后没有聚焦输入框')
       await textarea.fill('第二段草稿')
       await page.locator('aside').getByRole('button', { name: /^新会话/ }).click()
       await page.waitForTimeout(500)
-      assert.equal(await textarea.inputValue(), '', '第二次点击「新会话」没有清空草稿')
+      assert.equal(await textarea.getAttribute('data-value'), '', '第二次点击「新会话」没有清空草稿')
     })
 
     desktop('新会话默认带上工作目录且双击发送只创建一次', async (page) => {
@@ -6625,7 +6675,7 @@ async function main() {
       page.on('request', (request) => {
         if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/sessions') posts += 1
       })
-      await page.locator('textarea[aria-label="消息输入框"]').fill('新会话双击发送回归')
+      await page.locator('[aria-label="消息输入框"]').fill('新会话双击发送回归')
       const send = page.getByRole('button', { name: '发送消息' })
       await send.waitFor()
       await page.waitForFunction(() => {
@@ -6661,7 +6711,7 @@ async function main() {
     const setTheme = async (page, theme) => {
       await page.evaluate((next) => localStorage.setItem('tandem.theme.v1', next), theme)
       await page.reload({ waitUntil: 'domcontentloaded' })
-      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+      await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
     }
     const clientHostIdOf = (page) =>
       page.evaluate(() => JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')[0]?.id ?? null)
@@ -6691,7 +6741,7 @@ async function main() {
         await page.getByRole('menuitem', { name: /^生产/ }).first().hover()
         await page.getByRole('menuitem', { name: /^mock-2/ }).first().click()
         await expectChip('mock[ -]2', '选择模型后芯片没有更新')
-        await page.locator('textarea[aria-label="消息输入框"]').fill('反馈2102#05 模型记忆回归')
+        await page.locator('[aria-label="消息输入框"]').fill('反馈2102#05 模型记忆回归')
         await page.waitForFunction(() => {
           const b = [...document.querySelectorAll('button')].find((x) => x.getAttribute('aria-label') === '发送消息')
           return !!b && !b.disabled
@@ -6714,7 +6764,7 @@ async function main() {
         await expectChip('mock[ -]2', '开会话后回到新会话页，模型没有记住')
 
         await page.reload({ waitUntil: 'domcontentloaded' })
-        await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+        await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
         await waitModelReady(page)
         await expectChip('mock[ -]2', '刷新后新会话页的模型没有记住')
 
@@ -6728,7 +6778,7 @@ async function main() {
           hostId,
         )
         await page.reload({ waitUntil: 'domcontentloaded' })
-        await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+        await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
         await waitModelReady(page)
         await page.waitForTimeout(300)
         assert.equal(await chipLabel(), defaultLabel, '记住的模型已不存在时没有回落到默认模型')
@@ -6781,7 +6831,7 @@ async function main() {
 
     desktop('反馈2102#08：环境条主机触发器用显示器图标，与文件夹触发器区分开', async (page) => {
       await page.evaluate(() => (window.location.hash = '#/'))
-      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
+      await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
       await withViewport(page, async () => {
         for (const next of ['dark', 'light']) {
           await setTheme(page, next)
@@ -6966,7 +7016,7 @@ async function main() {
 
       // 有数据后出现：刚创建的空会话没有用量；发送一条后用量分组淡入。
       assert.equal(await panel.locator('[data-group="usage"]').count(), 0, '无用量时仍显示用量卡')
-      const input = page.locator('textarea[aria-label="消息输入框"]')
+      const input = page.locator('[aria-label="消息输入框"]')
       await input.fill('让用量分组出现')
       await input.press('Enter')
       await panel.locator('[data-group="usage"]').waitFor({ state: 'visible', timeout: 20_000 })
@@ -7739,7 +7789,7 @@ async function main() {
       // 新会话页输入框底栏。
       await page.evaluate(() => (window.location.hash = '#/'))
       await page.waitForTimeout(600)
-      const newComposer = page.locator('textarea[aria-label="消息输入框"]').first()
+      const newComposer = page.locator('[aria-label="消息输入框"]').first()
       await newComposer.waitFor({ timeout: 10_000 })
       await checkMenu(page.locator('button[aria-label^="分工与取向"]').first(), '分工与取向（新会话页）')
       await checkMenu(page.locator('button[aria-label^="选择模型"]').first(), '模型芯片（新会话页）')
@@ -7891,7 +7941,7 @@ async function main() {
       assert.equal(await card.locator('[data-permission-allow]').count(), 1, '缺少允许一次按钮')
       assert.match(await card.locator('[data-permission-allow]').innerText(), /Ctrl/)
       // 输入框保持可用。
-      const composer = page.locator('textarea[aria-label="消息输入框"]').first()
+      const composer = page.locator('[aria-label="消息输入框"]').first()
       assert.ok(await composer.isEnabled(), '有待审批时输入框被禁用')
       // 更多菜单：本会话总是允许 / 添加为规则 / 转给。
       await card.getByRole('button', { name: '更多' }).click()
@@ -7919,7 +7969,7 @@ async function main() {
       await openSession(page, 'danger')
       const card = page.locator('.permission-card').first()
       await card.waitFor({ timeout: 10_000 })
-      const composer = page.locator('textarea[aria-label="消息输入框"]').first()
+      const composer = page.locator('[aria-label="消息输入框"]').first()
       await composer.click()
       await page.keyboard.press('Escape')
       const result = page.locator('[data-permission-result]').first()
@@ -8132,7 +8182,7 @@ async function main() {
 
       // R14：面板与对话区并存，选完元素焦点回到输入框，附件胶囊立即可见。
       assert.ok(await panel.isVisible(), '选中元素后面板被关闭')
-      const textarea = page.locator('textarea[aria-label="消息输入框"]')
+      const textarea = page.locator('[aria-label="消息输入框"]')
       await page.waitForFunction(
         () => document.activeElement?.getAttribute('aria-label') === '消息输入框',
         null,
@@ -8226,7 +8276,7 @@ async function main() {
       await openSession(page, sessionId)
       const sessionOf = () => api(base, token, `/api/sessions/${sessionId}`)
       const before = (await sessionOf()).messages.length
-      await page.locator('textarea[aria-label="消息输入框"]').fill('INBOX_MULTI')
+      await page.locator('[aria-label="消息输入框"]').fill('INBOX_MULTI')
       await page.getByRole('button', { name: '发送消息' }).click()
 
       // 逐个允许本轮的两个 Bash 审批。
@@ -8451,7 +8501,7 @@ async function main() {
       await openSession(page, 'long')
       await page.evaluate(() => localStorage.removeItem('tandem.changelogSeen.v1'))
       await page.reload({ waitUntil: 'domcontentloaded' })
-      await page.locator('textarea[aria-label="消息输入框"]').first().waitFor({ timeout: 20_000 })
+      await page.locator('[aria-label="消息输入框"]').first().waitFor({ timeout: 20_000 })
       const pill = page.getByRole('button', { name: /新功能 · \d+ 项/ }).first()
       await pill.waitFor({ state: 'visible', timeout: 10_000 })
       const pillText = (await pill.textContent()) ?? ''
@@ -8675,8 +8725,8 @@ async function main() {
 
       // 窗格 B 独立发送并收到回复。
       const paneB = panes.nth(1)
-      await paneB.locator('textarea[aria-label="消息输入框"]').fill('分屏 B 测试')
-      await paneB.locator('textarea[aria-label="消息输入框"]').press('Enter')
+      await paneB.locator('[aria-label="消息输入框"]').fill('分屏 B 测试')
+      await paneB.locator('[aria-label="消息输入框"]').press('Enter')
       await paneB.locator('.msg-row', { hasText: '分屏 B 测试' }).waitFor({ timeout: 10_000 })
       await paneB.locator('.msg-row', { hasText: '回归回复。' }).waitFor({ timeout: 15_000 })
 
@@ -8694,8 +8744,8 @@ async function main() {
 
       // 窗格 A 独立发送，不与 B 串台。
       const paneA = panes.nth(0)
-      await paneA.locator('textarea[aria-label="消息输入框"]').fill('分屏 A 测试')
-      await paneA.locator('textarea[aria-label="消息输入框"]').press('Enter')
+      await paneA.locator('[aria-label="消息输入框"]').fill('分屏 A 测试')
+      await paneA.locator('[aria-label="消息输入框"]').press('Enter')
       await paneA.locator('.msg-row', { hasText: '分屏 A 测试' }).waitFor({ timeout: 10_000 })
       await paneA.locator('.msg-row', { hasText: '回归回复。' }).waitFor({ timeout: 15_000 })
       assert.equal(
@@ -9097,13 +9147,13 @@ async function main() {
       await page.evaluate((hash) => {
         window.location.hash = hash
       }, `#/h/${clientHostId}/s/${session.id}`)
-      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 15_000 })
+      await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 15_000 })
       await page.getByRole('button', { name: /^选择模型：自动/ }).first().waitFor({ timeout: 15_000 })
 
       const sessionOf = () => api(base, token, `/api/sessions/${session.id}`)
       const sendTurn = async (text, expected) => {
         const before = (await sessionOf()).messages.length
-        await page.locator('textarea[aria-label="消息输入框"]').fill(text)
+        await page.locator('[aria-label="消息输入框"]').fill(text)
         await page.getByRole('button', { name: '发送消息' }).click()
         await waitUntil(`自动路由回复：${text.slice(0, 10)}`, async () => {
           const current = await sessionOf()
@@ -9253,7 +9303,7 @@ async function main() {
         await page.evaluate((hash) => {
           window.location.hash = hash
         }, `#/h/${clientHostId}/s/${session.id}`)
-        await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 15_000 })
+        await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 15_000 })
         await page.getByRole('button', { name: /^选择模型：/ }).first().waitFor({ timeout: 15_000 })
         await page.getByRole('button', { name: /^选择模型：/ }).first().click()
         const modelMenu = page.getByRole('menu')
@@ -9270,7 +9320,7 @@ async function main() {
         }
         const sendTurn = async (text, expected) => {
           const before = (await sessionOf()).messages.length
-          await page.locator('textarea[aria-label="消息输入框"]').fill(text)
+          await page.locator('[aria-label="消息输入框"]').fill(text)
           await page.getByRole('button', { name: '发送消息' }).click()
           await waitUntil(`分工回复：${text.slice(0, 8)}`, async () => {
             const current = await sessionOf()
@@ -9371,7 +9421,7 @@ async function main() {
           }),
         })
         const childCountBeforeCard = (await childrenOf()).length
-        await page.locator('textarea[aria-label="消息输入框"]').fill(manualText)
+        await page.locator('[aria-label="消息输入框"]').fill(manualText)
         await page.getByRole('button', { name: '发送消息' }).click()
         const card = page.locator('[data-division-plan]').last()
         await card.waitFor({ timeout: 15_000 })
@@ -9451,7 +9501,7 @@ async function main() {
           }),
         })
         for (let i = 0; i < 2; i++) {
-          await page.locator('textarea[aria-label="消息输入框"]').fill(manualText)
+          await page.locator('[aria-label="消息输入框"]').fill(manualText)
           await page.getByRole('button', { name: '发送消息' }).click()
           const learnCard = page.locator('[data-division-plan]').last()
           await learnCard.waitFor({ timeout: 15_000 })
@@ -9955,7 +10005,7 @@ async function main() {
       // UI：演示会话可继续对话，演示模型不发网络请求（baseUrl 不可达也能完成）。
       const chatId = byId.get('chat-tools').sessionIds[0]
       await openSession(page, chatId)
-      const composer = page.locator('textarea[aria-label="消息输入框"]').first()
+      const composer = page.locator('[aria-label="消息输入框"]').first()
       await composer.fill('再总结一下这个演示项目')
       await composer.press('Enter')
       await page.getByText(/工具结果已返回。演示模型只执行固定剧本/).first().waitFor({ timeout: 20_000 })
@@ -10914,7 +10964,7 @@ async function main() {
           // 深链保留在地址栏：登录前不处理路由，登录后回到原地址。
           assert.match(page.url(), /#\/h\/[0-9a-f-]+/, '登录前不应清掉深链')
           assert.equal(await page.locator('[data-testid="no-hosts"]').count(), 0, '未登录不应显示无主机空状态')
-          assert.equal(await page.locator('textarea[aria-label="消息输入框"]').count(), 0, '未登录不应进入会话界面')
+          assert.equal(await page.locator('[aria-label="消息输入框"]').count(), 0, '未登录不应进入会话界面')
 
           // 回环地址：登录页会自动启动这台电脑的工作站，首次使用是「创建工作站」。
           const name = page.locator('[data-testid="login-workspace-name"]')
@@ -10934,7 +10984,7 @@ async function main() {
           )
           // 本机凭据还在：一键添加这台电脑，之后能进入会话界面。
           await page.locator('[data-testid="no-hosts-add-local"]').click()
-          await page.locator('textarea[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
+          await page.locator('[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
           assert.equal(await page.locator('[data-testid="no-hosts"]').count(), 0, '添加主机后空状态应消失')
           assert.equal(
             await page.locator('[data-testid="sidebar-new-session"]').isDisabled(),
@@ -10969,7 +11019,7 @@ async function main() {
           const debugBase = `http://127.0.0.1:${port}`
           await page.goto(`${debugBase}/?token=${gateToken}`, { waitUntil: 'domcontentloaded' })
           // 自动登录完成前不闪登录页；完成后直接进入主界面。
-          await page.locator('textarea[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
+          await page.locator('[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
           assert.equal(await page.locator('[data-testid="login-gate"]').count(), 0, '调试版回环地址应自动登录')
           const names = await waitForValue(async () => {
             const list = await page.evaluate(() => {
@@ -11105,7 +11155,7 @@ async function main() {
           })
           const port = await second.ready
           await page.goto(`http://127.0.0.1:${port}/?token=${gateToken}`, { waitUntil: 'domcontentloaded' })
-          await page.locator('textarea[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
+          await page.locator('[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
           assert.equal(await page.locator('[data-testid="login-gate"]').count(), 0, '调试版回环地址应自动登录')
 
           // 保存的加入地址改到实际启动的端口，而不是仍指向被占用的旧端口。
@@ -11157,7 +11207,7 @@ async function main() {
 
           // 能开会话：侧栏「新会话」后输入框可用、可以发送。
           await page.locator('[data-testid="sidebar-new-session"]').click()
-          const textarea = page.locator('textarea[aria-label="消息输入框"]')
+          const textarea = page.locator('[aria-label="消息输入框"]')
           await textarea.waitFor({ state: 'visible', timeout: 10_000 })
           await textarea.fill('端口被占用后新建会话')
           const send = page.getByRole('button', { name: '发送消息' })
@@ -11190,7 +11240,7 @@ async function main() {
         try {
           const port = await debugHost.ready
           await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' })
-          await page.locator('textarea[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
+          await page.locator('[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
           assert.equal(await page.locator('[data-testid="login-gate"]').count(), 0, '不带 token 打开调试版回环地址应自动登录')
           const unauthorized = statusCodes.filter((code) => code === 401).length
           assert.equal(unauthorized, 0, `Host 页面不应反复请求工作站状态得到 401：${statusCodes.join(',')}`)

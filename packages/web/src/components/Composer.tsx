@@ -28,6 +28,7 @@ import { ComposerCard } from './composer/ComposerCard'
 import { useComposerStore } from './composer/useComposerStore'
 import type { ComposerProps } from './composer/ComposerProps'
 import { ComposerInputArea } from './composer/ComposerInputArea'
+import type { ComposerEditorHandle } from './composer/ComposerEditor'
 import { ComposerFooter } from './composer/ComposerFooter'
 import { ModelSwitchConfirm } from './composer/ModelSwitchConfirm'
 import { useComposerAttachments } from './composer/useComposerAttachments'
@@ -159,8 +160,8 @@ export function Composer({
     tokens: number
   } | null>(null)
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const highlightRef = useRef<HTMLDivElement>(null)
+  const editorRef = useRef<ComposerEditorHandle | null>(null)
+  const editorElementRef = useRef<HTMLDivElement>(null)
   const voiceRef = useRef<VoiceButtonHandle>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -195,7 +196,8 @@ export function Composer({
     setText,
     setModelMenuOpen,
     menuRef,
-    textareaRef,
+    editorRef,
+    elementRef: editorElementRef,
   })
 
   useComposerDraft({
@@ -203,7 +205,7 @@ export function Composer({
     text,
     setText,
     textRef,
-    textareaRef,
+    editorRef,
     prevSessionRef,
     setPasted,
     setAttachments,
@@ -315,7 +317,7 @@ export function Composer({
     setText,
     textRef,
     composingRef,
-    textareaRef,
+    editorRef,
     draftKey,
     sessionId,
     isMobile,
@@ -359,7 +361,7 @@ export function Composer({
 
   const sendState = running ? 'running' : canSend ? 'ready' : 'idle'
 
-  useComposerVoiceShortcut({ disabled, scopeTarget, textareaRef, voiceRef })
+  useComposerVoiceShortcut({ disabled, scopeTarget, editorRef, voiceRef })
 
   return (
     <div className={cn('relative', className)}>
@@ -412,8 +414,8 @@ export function Composer({
           disabled={disabled}
           placeholder={placeholder}
           running={running}
-          textareaRef={textareaRef}
-          highlightRef={highlightRef}
+          editorRef={editorRef}
+          elementRef={editorElementRef}
           composingRef={composingRef}
           setComposing={setComposing}
           setCompletion={setCompletion}

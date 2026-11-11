@@ -3,18 +3,19 @@ import type { SessionTarget } from '../../lib/types'
 import { useUiStore } from '../../store/useUiStore'
 import { isTargetFocused } from '../session/SessionScope'
 import type { VoiceButtonHandle } from '../voice/VoiceButton'
+import type { ComposerEditorHandle } from './ComposerEditor'
 
 interface Options {
   disabled: boolean
   scopeTarget: SessionTarget | undefined
-  textareaRef: MutableRefObject<HTMLTextAreaElement | null>
+  editorRef: MutableRefObject<ComposerEditorHandle | null>
   voiceRef: MutableRefObject<VoiceButtonHandle | null>
 }
 
 export function useComposerVoiceShortcut({
   disabled,
   scopeTarget,
-  textareaRef,
+  editorRef,
   voiceRef,
 }: Options) {
   // 桌面快捷键：按住 Ctrl+Shift+Space 说话，松开转写。
@@ -29,7 +30,7 @@ export function useComposerVoiceShortcut({
           target.tagName === 'TEXTAREA' ||
           target.tagName === 'SELECT' ||
           target.isContentEditable)
-      if (editable && target !== textareaRef.current) return
+      if (editable && target !== editorRef.current?.element) return
       const ui = useUiStore.getState()
       if (ui.settingsOpen || ui.newSessionOpen || ui.searchOpen) return
       if (disabled) return

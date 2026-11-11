@@ -62,7 +62,7 @@ function deviceKeyFor(width?: number, height?: number): DeviceKey {
 /** 点选元素后把焦点交给输入框，面板本身不抢焦点也不遮挡它。 */
 function focusComposer() {
   const focus = () => {
-    const el = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="消息输入框"]')
+    const el = document.querySelector<HTMLElement>('[aria-label="消息输入框"]')
     if (!el) return false
     el.focus()
     return document.activeElement === el

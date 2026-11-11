@@ -74,7 +74,7 @@ export function useComposerAttachments({
     [attachments.length, toast],
   )
 
-  const onPaste = (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
+  const onPaste = (e: ReactClipboardEvent<HTMLElement>) => {
     const clipboard = e.clipboardData
     if (!clipboard) return
     // items 是剪贴板图片的规范来源；files 仅作兜底。两者同时遍历时，

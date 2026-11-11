@@ -7,7 +7,7 @@ import type {
 } from 'react'
 import type { PreviewSelection } from '@tandem/protocol'
 import { ComposerChips } from './ComposerChips'
-import { ComposerEditor } from './ComposerEditor'
+import { ComposerEditor, type ComposerEditorHandle } from './ComposerEditor'
 import type { Completion } from './completion'
 import type { Attachment, PastedText } from './composerTypes'
 
@@ -23,14 +23,14 @@ interface ComposerInputAreaProps {
   disabled: boolean
   placeholder: string | undefined
   running: boolean
-  textareaRef: MutableRefObject<HTMLTextAreaElement | null>
-  highlightRef: MutableRefObject<HTMLDivElement | null>
+  editorRef: MutableRefObject<ComposerEditorHandle | null>
+  elementRef: MutableRefObject<HTMLDivElement | null>
   composingRef: MutableRefObject<boolean>
   setComposing: Dispatch<SetStateAction<boolean>>
   setCompletion: Dispatch<SetStateAction<Completion | null>>
   onChange: (value: string, caret: number) => void
-  onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void
-  onPaste: (e: ReactClipboardEvent<HTMLTextAreaElement>) => void
+  onKeyDown: (e: ReactKeyboardEvent<HTMLDivElement>) => void
+  onPaste: (e: ReactClipboardEvent<HTMLDivElement>) => void
 }
 
 export function ComposerInputArea({
