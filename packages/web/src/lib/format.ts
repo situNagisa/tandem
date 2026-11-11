@@ -20,6 +20,9 @@ export function formatTokens(n: number): string {
 
 export function formatCost(usd?: number): string {
   if (usd === undefined || !Number.isFinite(usd)) return '—'
+  // 不足 0.0001 的金额按最小显示单位取整，四舍五入会变成 $0.0000，看起来像没算出来（反馈1601#03）。
+  if (usd > 0 && usd < 0.00005) return '<$0.0001'
+  if (usd <= 0) return '$0'
   if (usd >= 1) return `$${usd.toFixed(2)}`
   if (usd >= 0.01) return `$${usd.toFixed(3)}`
   return `$${usd.toFixed(4)}`

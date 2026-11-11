@@ -31,9 +31,13 @@ describe('格式化', () => {
   test('花费按量级保留精度', () => {
     expect(formatCost(undefined)).toBe('—')
     expect(formatCost(Number.NaN)).toBe('—')
+    expect(formatCost(0)).toBe('$0')
     expect(formatCost(1.234)).toBe('$1.23')
     expect(formatCost(0.1234)).toBe('$0.123')
     expect(formatCost(0.0012)).toBe('$0.0012')
+    // 极小的花费不能显示成 $0.0000（反馈1601#03）
+    expect(formatCost(0.00003)).toBe('<$0.0001')
+    expect(formatCost(0.00005)).toBe('$0.0001')
   })
 
   test('运行时长', () => {
