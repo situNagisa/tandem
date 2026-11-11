@@ -26,23 +26,31 @@ function laneColumnX(layout: GraphLayout, lane: number): number {
 }
 
 const EDGE_RADIUS = 6
+/**
+ * 连线透明命中描边的宽度：线中心两侧各 6.5px（线外 6px 内悬停都能命中）。
+ * 相邻泳道隔 14px，两边命中带之间留 1px 空隙，tip 不会串到隔壁会话。
+ */
+const EDGE_HIT_WIDTH = 13
+/** 节点圆点的命中半径（px）：圆点只有 8px，命中区放大到 20px。 */
+const NODE_HIT_SIZE = 20
 
 function rowY(row: number): number {
   return row * GRAPH_ROW_H + GRAPH_ROW_H / 2
 }
 
-function nodeTooltip(node: GraphNode): string {
-  if (node.kind === 'fork') {
-    return `${node.label} · ${node.forkRelation === 'source' ? '原会话' : '分叉会话'} · 点击打开`
+function nodeTooltip(node: GraphNode, compact: boolean): string {
+  const tag =
+    node.relation === 'subagent' ? '子代理会话' : node.relation === 'fork' ? '分叉会话' : '会话'
+  if (compact) {
+    if (node.attachPoint) return `${node.sessionTitle} · ${node.label}`
+    return node.sessionTitle
   }
-  if (node.kind === 'subagent-turn' || node.kind === 'subagent') {
-    return `${node.label} · 子代理会话 · 点击打开`
-  }
-  return node.label
+  if (node.relation !== 'root') return `${node.label} · ${node.sessionTitle}`
+  return `${node.label} · ${tag}`
 }
 
 /**
- * 正交圆角折线。分出：从父节点行直接向右拐进子分支的列，再竖直到分支末节点；
+ * 正交圆角折线。分出：从父节点行直接向右拐进子分支的列，再竖直到分支端点；
  * 汇回：竖直到目标行，圆角折回父泳道节点。圆角方向随上下行变化（时间倒序后分支向上）。
  */
 function edgePath(edge: GraphEdge, x: (lane: number) => number): string {
@@ -64,17 +72,20 @@ function edgeColor(edge: GraphEdge): string {
 }
 
 /**
- * 连线层：可见线按悬停归属降亮/保持；每条线另有一份 12px 透明命中描边，
- * 悬停命中描边时高亮整条轨道并用标准 tooltip 显示归属会话名（反馈1926#10）。
+ * 连线层：可见线按悬停归属降亮/保持；每条线另有一份 14px 透明命中描边，
+ * 悬停命中描边时高亮该会话的整条轨道并用标准 tooltip 显示会话名（反馈1926#10）；
+ * 点线打开该线归属的会话（反馈0220#07）。
  */
 function EdgeLayer({
   layout,
   hoverOwner,
   onHover,
+  onOpenSession,
 }: {
   layout: GraphLayout
   hoverOwner: string | null
   onHover: (owner: string | null) => void
+  onOpenSession: (sessionId: string) => void
 }) {
   const x = (lane: number) => laneColumnX(layout, lane)
   return (
@@ -115,16 +126,22 @@ function EdgeLayer({
           d={edgePath(edge, x)}
           fill="none"
           stroke="transparent"
-          strokeWidth={12}
+          strokeWidth={EDGE_HIT_WIDTH}
           strokeLinecap="round"
           pointerEvents="stroke"
           data-edge-hit
           data-edge-owner={edge.ownerId}
           data-edge-kind={edge.kind}
+          data-from-lane={edge.fromLane}
+          data-to-lane={edge.toLane}
+          data-from-row={edge.fromRow}
+          data-to-row={edge.toRow}
+          {...(edge.merge ? { 'data-merge': '1' } : {})}
           data-tip={edge.label}
           data-tip-anchor="pointer"
           onPointerEnter={() => onHover(edge.ownerId)}
           onPointerLeave={() => onHover(null)}
+          onClick={() => onOpenSession(edge.ownerId)}
         />
       ))}
     </svg>
@@ -138,8 +155,12 @@ export interface SessionGraphViewProps {
   /** 会话正在运行：最新主线的轮节点外圈呼吸，与侧栏「运行中」同一个动画。 */
   running?: boolean
   onOpen: (node: GraphNode) => void
+  /** 点连线：打开该线归属的会话。 */
+  onOpenSession?: (sessionId: string) => void
   /** 只读：不提供跳转的鼠标指针提示。 */
   readOnly?: boolean
+  /** 紧凑模式（侧栏悬停浮层）：不显示轮次标题，只显示会话名。 */
+  compact?: boolean
   /** 卡片内高度；'full' 占满父容器。 */
   height?: number | 'full'
   /** 悬停浮层里不接管键盘焦点（打开浮层时不抢焦点）。 */
@@ -149,15 +170,17 @@ export interface SessionGraphViewProps {
 
 /**
  * 会话图渲染：固定行高 + 虚拟滚动只挂可见行；连线用整张 SVG 绘制。
- * 所有节点同一形状（8px 实心圆），颜色 = 泳道色；子代理始终展开并从最后一行汇回，
- * 分叉不合并、行尾写「分叉」。不显示轮次序号、token 或结果行（反馈1926）。
+ * 所有节点同一形状（8px 实心圆），颜色 = 泳道色；主线是一条直线上去。
+ * 悬停名称行/连线高亮该会话的节点与轨道，点节点或线打开对应会话。
  */
 export function SessionGraphView({
   layout,
   activeTurn,
   running = false,
   onOpen,
+  onOpenSession,
   readOnly = false,
+  compact = false,
   height = 168,
   keyboard = true,
   className,
@@ -180,7 +203,7 @@ export function SessionGraphView({
   const latestTurnNo = useMemo(
     () =>
       layout.nodes.reduce(
-        (max, node) => (node.kind === 'turn' ? Math.max(max, node.turnNo ?? 0) : max),
+        (max, node) => (node.current && node.kind === 'turn' ? Math.max(max, node.turnNo) : max),
         0,
       ),
     [layout.nodes],
@@ -196,6 +219,11 @@ export function SessionGraphView({
     () => layout.nodes.filter((node) => node.row >= startRow && node.row <= endRow),
     [layout.nodes, startRow, endRow],
   )
+
+  const openSession = (sessionId: string) => {
+    if (readOnly) return
+    if (sessionId) onOpenSession?.(sessionId)
+  }
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (layout.nodes.length === 0) return
@@ -231,22 +259,35 @@ export function SessionGraphView({
         className="min-h-0 overflow-y-auto overflow-x-hidden outline-none focus-visible:ring-1 focus-visible:ring-[var(--t-focus-ring)] focus-visible:ring-inset"
         style={height === 'full' ? { maxHeight: 'calc(100% - 26px)' } : { height }}
         data-graph-height={height === 'full' ? 'full' : height}
+        data-graph-count={layout.nodes.length}
+        data-graph-rows={layout.rows}
         tabIndex={readOnly || !keyboard ? -1 : 0}
         role="tree"
         aria-label="会话图：按会话与分支浏览"
         onKeyDown={readOnly || !keyboard ? undefined : onKeyDown}
       >
         <div className="relative w-full" style={{ height: Math.max(1, layout.rows * GRAPH_ROW_H) }}>
-          <EdgeLayer layout={layout} hoverOwner={hoverOwner} onHover={setHoverOwner} />
+          <EdgeLayer
+            layout={layout}
+            hoverOwner={hoverOwner}
+            onHover={setHoverOwner}
+            onOpenSession={openSession}
+          />
           {visibleNodes.map((node) => {
             const color = laneColor(node.lane)
             const isSelected = selected === node.key
-            const isCurrent =
-              node.current === true ||
-              (node.kind === 'turn' && !!activeTurn && node.turnNo === activeTurn)
+            const isCurrentTurn =
+              node.current && node.kind === 'turn' && !!activeTurn && node.turnNo === activeTurn
             const isRunning =
-              running && node.kind === 'turn' && node.turnNo === latestTurnNo
+              running && node.current && node.kind === 'turn' && node.turnNo === latestTurnNo
             const canOpen = !readOnly
+            const isHovered = hoverOwner === node.sessionId
+            const showName = compact && node.sessionLabel
+            const label = compact
+              ? showName
+                ? node.sessionTitle
+                : ''
+              : node.label
             return (
               <div
                 key={node.key}
@@ -257,23 +298,27 @@ export function SessionGraphView({
                   className={cn(
                     'group/node pointer-events-auto absolute inset-y-0 right-0 flex min-w-0 items-center rounded-[5px] pr-1 transition-colors',
                     canOpen && 'cursor-pointer hover:bg-[var(--t-bg-hover)]',
-                    (isSelected || (node.subagentId && hoverOwner === node.subagentId)) &&
-                      'bg-[var(--t-bg-hover)]',
+                    (isSelected || isHovered) && 'bg-[var(--t-bg-hover)]',
                     !canOpen && 'pointer-events-none',
                   )}
                   style={{ left: textX - 6, paddingLeft: 6 }}
                   role="treeitem"
                   aria-selected={isSelected}
-                  data-tip={nodeTooltip(node)}
+                  data-tip={nodeTooltip(node, compact)}
                   data-kind={node.kind}
                   data-lane={node.lane}
                   data-row={node.row}
-                  data-graph-turn-id={node.kind === 'turn' ? node.id : undefined}
+                  data-graph-turn-id={node.id}
                   data-session-id={node.sessionId}
                   data-subagent-id={node.subagentId}
                   data-fork-id={node.forkSessionId}
-                  data-active={isCurrent ? 'true' : undefined}
+                  data-trunk={node.trunk ? 'true' : undefined}
+                  data-session-label={node.sessionLabel ? 'true' : undefined}
+                  data-attach-point={node.attachPoint ? 'true' : undefined}
+                  data-active={isCurrentTurn ? 'true' : undefined}
                   data-running={isRunning ? 'true' : undefined}
+                  onPointerEnter={() => setHoverOwner(node.sessionId)}
+                  onPointerLeave={() => setHoverOwner(null)}
                   onClick={() => {
                     if (readOnly) return
                     setSelected(node.key)
@@ -291,6 +336,17 @@ export function SessionGraphView({
                       }}
                     />
                   )}
+                  {/* 圆点命中区：8px 圆点放大到 20px，点圆点也能打开该会话。 */}
+                  <span
+                    aria-hidden="true"
+                    data-node-hit
+                    className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                    style={{
+                      left: laneColumnX(layout, node.lane) - (textX - 6),
+                      width: NODE_HIT_SIZE,
+                      height: NODE_HIT_SIZE,
+                    }}
+                  />
                   <span
                     aria-hidden="true"
                     data-marker="circle"
@@ -298,29 +354,26 @@ export function SessionGraphView({
                     style={{
                       left: laneColumnX(layout, node.lane) - 4 - (textX - 6),
                       backgroundColor: color,
-                      boxShadow: isCurrent
-                        ? '0 0 0 1.5px var(--t-surface), 0 0 0 3px var(--t-focus-ring)'
-                        : undefined,
+                      boxShadow:
+                        isCurrentTurn || (compact && node.current)
+                          ? '0 0 0 1.5px var(--t-surface), 0 0 0 3px var(--t-focus-ring)'
+                          : undefined,
                     }}
                   />
-                  {node.pinned && (
+                  {node.pinned && label ? (
                     <Pin size={8} className="mr-1 shrink-0 text-muted" aria-label="已固定" />
-                  )}
+                  ) : null}
                   <span
                     className={cn(
                       'min-w-0 flex-1 truncate text-[13px] leading-5',
-                      node.kind === 'turn' || node.kind === 'session'
-                        ? 'text-text-soft'
-                        : 'text-muted',
-                      isCurrent && 'text-text',
+                      node.relation === 'root' ? 'text-text-soft' : 'text-muted',
+                      node.current && 'text-text',
                     )}
                   >
-                    {node.label}
+                    {label}
                   </span>
-                  {node.kind === 'fork' && (
-                    <span className="ml-1 shrink-0 text-[12px] text-muted">
-                      {node.forkRelation === 'source' ? '原会话' : '分叉'}
-                    </span>
+                  {!compact && node.kind === 'fork' && node.sessionLabel && (
+                    <span className="ml-1 shrink-0 text-[12px] text-muted">分叉</span>
                   )}
                 </div>
               </div>

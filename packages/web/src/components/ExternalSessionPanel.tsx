@@ -8,6 +8,7 @@ import { useCopy } from '../lib/useCopy'
 import { estimateMessageTokens } from '../lib/turnUsage'
 import { useUiStore } from '../store/useUiStore'
 import { IconButton } from './ui/Button'
+import { focusMessage } from '../lib/jump'
 import { ReadOnlySessionGraph } from './sessionGraph/SessionGraphCard'
 import { PanelBar, PanelBody } from './ui/Panel'
 import { ResizeHandle } from './ui/ResizeHandle'
@@ -213,7 +214,12 @@ export function ExternalSessionPanel({
                   </DetailRow>
                 </div>
               ) : id === 'graph' ? (
-                <ReadOnlySessionGraph messages={messages} title={session.title} />
+                <ReadOnlySessionGraph
+                  messages={messages}
+                  title={session.title}
+                  sessionId={`external:${source}:${session.id}`}
+                  onOpen={(node) => focusMessage(node.turnId)}
+                />
               ) : id === 'usage' ? (
                 <div>
                   {usage.hasCost && (
