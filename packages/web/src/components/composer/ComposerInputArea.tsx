@@ -24,7 +24,7 @@ interface ComposerInputAreaProps {
   placeholder: string | undefined
   running: boolean
   editorRef: MutableRefObject<ComposerEditorHandle | null>
-  elementRef: MutableRefObject<HTMLDivElement | null>
+  elementRef: MutableRefObject<HTMLElement | null>
   composingRef: MutableRefObject<boolean>
   setComposing: Dispatch<SetStateAction<boolean>>
   setCompletion: Dispatch<SetStateAction<Completion | null>>

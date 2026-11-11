@@ -306,6 +306,7 @@ export const Markdown = memo(function Markdown({
   streaming = false,
   className,
   cwd,
+  variant,
 }: {
   text: string
   /** 流式输出时在最后一段尾部显示闪烁光标。 */
@@ -313,6 +314,8 @@ export const Markdown = memo(function Markdown({
   className?: string
   /** 文件链接的解析基准（外部会话传入该会话 cwd，默认活动会话 cwd）。 */
   cwd?: string
+  /** 用户气泡：标题降级、段落与列表更紧凑。 */
+  variant?: 'user'
 }) {
   const shown = useStreamingText(text, streaming)
   const chunks = useMemo(
@@ -320,7 +323,7 @@ export const Markdown = memo(function Markdown({
     [shown, streaming],
   )
   return (
-    <div className={cn('md chat-md', streaming && 'is-streaming', className)}>
+    <div className={cn('md chat-md', streaming && 'is-streaming', variant === 'user' && 'is-user', className)}>
       {chunks.map((chunk, i) =>
         chunk.text ? (
           <MarkdownChunk

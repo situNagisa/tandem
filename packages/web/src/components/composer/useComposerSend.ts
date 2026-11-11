@@ -364,6 +364,8 @@ export function useComposerSend({
   const onChange = (value: string, caret: number) => {
     textRef.current = value
     setText(value)
+    // 输入法组合期间不重算补全/装饰，组字结束再按最终文本判断（避免候选窗被重绘打断）。
+    if (composingRef.current) return
     setCompletion(detectCompletion(value, caret))
   }
 
