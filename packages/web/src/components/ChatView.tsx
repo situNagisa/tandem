@@ -226,10 +226,31 @@ export function ChatView() {
     const content = contentRef.current
     const box = scrollRef.current
     if (!content || !box) return
-    const ro = new ResizeObserver(() => stickToBottom())
+    // 贴底时内容在视口上方增高（注入说明、代码高亮、content-visibility 行展开）：
+    // 必须在绘制前同步补齐 scrollTop。排到下一帧会先画出「内容整体下移一帧」再回弹，
+    // 切换会话时看起来就是闪屏（反馈1601#02）。
+    let lastHeight = -1
+    const pinBeforePaint = () => {
+      if (!pinnedRef.current) return
+      const el = scrollRef.current
+      if (!el) return
+      const height = el.scrollHeight
+      if (height === lastHeight) return
+      lastHeight = height
+      programmaticUntil.current = Date.now() + 600
+      el.scrollTop = height
+    }
+    const ro = new ResizeObserver(pinBeforePaint)
     ro.observe(content)
     ro.observe(box)
-    return () => ro.disconnect()
+    // 新增一行（注入说明、加载占位条）不会立刻反映到 ResizeObserver 的尺寸观察；
+    // MutationObserver 是微任务，能赶在这次绘制前补回底部。
+    const mo = new MutationObserver(pinBeforePaint)
+    mo.observe(content, { childList: true, subtree: true })
+    return () => {
+      ro.disconnect()
+      mo.disconnect()
+    }
   }, [stickToBottom, hasSession, agentSession])
 
   useEffect(() => {

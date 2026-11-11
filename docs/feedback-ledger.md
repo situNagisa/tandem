@@ -1,10 +1,10 @@
 # 反馈根因台账
 
-> 更新：2026-11-10。每条反馈先归到一个根因（R 编号），再决定修法。同一根因第 2 次出现必须在共享层修，并在「防线位置」加自动检查；修复流水写在提交信息，不进本表。
+> 更新：2026-11-11。每条反馈先归到一个根因（R 编号），再决定修法。同一根因第 2 次出现必须在共享层修，并在「防线位置」加自动检查；修复流水写在提交信息，不进本表。
 
 | 编号 | 根因 | 次数 | 防线位置 |
 |---|---|---|---|
-| R01 | 列表/菜单/下拉/设置行/可拖宽面板各处手写，样式不一致 | 15 | `ui/Menu`/`ListRow`/`SettingRow`/`ResizeHandle`；ui-audit `role-menu`/`menu-multiline`；decisions-check 共享组件项；regression 菜单/设置/侧栏/面板用例 |
+| R01 | 列表/菜单/下拉/设置行/可拖宽面板各处手写，样式不一致 | 16 | `ui/Menu`/`ListRow`/`SettingRow`/`ResizeHandle`；ui-audit `role-menu`/`role-menuitem`/`menu-multiline`/`menu-handwritten-label`/`menu-handwritten-divider`；decisions-check 共享组件项；regression 菜单/设置/侧栏/面板/文件夹弹层用例 |
 | R02 | 文字偏灰、字号过小、对比度不足 | 5 | design P05 字号下限；ui-audit font-size-floor（9/10px）；regression 字号/a11y 扫描 |
 | R03 | 弹层被裁切或越界 | 5 | Portal + 碰撞避让；regression「tooltip/菜单不越界」多视口用例 |
 | R04 | 彩色过多、强调色越界、焦点橙环 | 5 | design P02；ui-audit accent/selection 检查；regression 焦点环只随键盘出现 |
@@ -13,7 +13,7 @@
 | R07 | 外部会话注入内容外露、被当作用户轮 | 3 | `isSystemInjectionText` 统一口径；单测 turns/external；regression 注入口径用例 |
 | R08 | 点了没反应 / 数据未就绪被当异常 | 5 | 加载态与默认值兜底；store `openSession` 同步地址栏（`sessionsSlice`，否则 `navigate` 同址短路吞掉按路由的跳转）；decisions-check `route-follows-session`；regression 新会话环境条/模型价格/手机环境条/反馈2108#04 |
 | R09 | 反馈模式与浮层交互冲突 | 2 | `lib/overlay` + `data-portal-layer`；ui-audit contains/portal；regression 反馈圈选 |
-| R10 | 提示/动效不符合习惯、尺寸跳动 | 9 | decisions-check `envbar-host-icon`；标准 Tooltip/固定尺寸/动效 token；regression 设置窗口/动画测量/高级分组/运行进度；切换会话保留旧画面（sessionsSlice `pendingFocus`）、新会话乐观占位（`startSession` 草稿）；regression 反馈2102#01/#06 |
+| R10 | 提示/动效不符合习惯、尺寸跳动 | 11 | decisions-check `envbar-host-icon`；标准 Tooltip/固定尺寸/动效 token；regression 设置窗口/动画测量/高级分组/运行进度；切换会话保留旧画面（sessionsSlice `pendingFocus`）、新会话乐观占位（`startSession` 草稿）；贴底时后到内容绘制前补齐滚动（ChatView ResizeObserver/MutationObserver）；侧栏分组折叠按主机+项目路径记忆；regression 反馈2102#01/#06、反馈1601#02/#05 |
 | R11 | 危险或不可逆操作没有确认/预览 | 2 | `ui/ConfirmAction`；regression 合并/压缩/删除确认 |
 | R12 | 完成态缺少后续操作 | 1 | 状态驱动操作清单；regression 看板完成卡 |
 | R13 | 事件流水未聚合、聚合行交互错误 | 2 | `ui/AggregateRow`；单测 inbox；regression 收件箱/看板回合 |
@@ -58,7 +58,7 @@
 | R55 | 登录与添加主机流程缺失 | 2 | LoginGate + 无主机空状态 + 一次性令牌 + 持久连接；调试版回环不带 token 自动补凭据、401 不重试；e2e 登录门/安装/免 token 进入 |
 | R56 | Windows 一行命令安装/登记失败被崩溃掩盖 | 3 | 平台裁剪 + 不硬退出 + hostId 校验 + 失败归因 + HKCU 自启；单测/用户实机 |
 | R57 | 隐藏操作条参与宽度计算，短气泡被撑宽 | 1 | 气泡 `w-fit max-w-full`；regression 气泡宽度 |
-| R58 | 消息缺少发送时间/时间基准；用量行常显占位 | 2 | `MessageTime` + 用量行悬停显示 + 相对时间；单测 format/user-usage；regression |
+| R58 | 消息缺少发送时间/时间基准；用量行常显占位/极小金额显示 $0.0000 | 3 | `MessageTime` + 用量行悬停显示 + 相对时间；`formatCost` 极小金额显示 `<$0.0001`；单测 format/user-usage；regression 反馈1601#03 |
 | R59 | 账号/Key 按主机各存一份 | 1 | 账号级 profiles + Key 只存工作站 + 主机签名代理；单测 account-profiles；e2e workstation |
 | R60 | 账号余额只能去各家网站看 | 1 | 工作站用 Key 查询 + 平台解析 + 5 分钟缓存；单测 balance；e2e mock |
 | R61 | 用户明确说过/决定过的要求没有落实 | 1 | design 原则 + `scripts/decisions-check.mjs` 逐条检查；接入 `check.mjs` |
