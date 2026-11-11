@@ -399,6 +399,26 @@ const DECISIONS = [
     need: [/<Monitor size=\{12\}/, /<FolderOpen size=\{12\}/],
     deny: [/<Server size/],
   },
+  {
+    id: 'envbar-git-only',
+    source: '反馈1323#07 #08（2026-11-11 原话：「这个在非git仓库的时候应该是不可选的？可以考虑非git仓库的时候直接不显示」「这个可以优化一下，非git仓库时直接不显示」）',
+    decision: '非 Git 仓库时环境条不显示分支触发器与 Worktree 开关，git 仓库保持原样',
+    files: [F.envBar],
+    need: [/knownNonGit = !envLoading && !env\?\.repoRoot/, /\{!knownNonGit && \(/],
+    deny: [/label=\{branch \?\? \(env \? '分支' : '非 Git 仓库'\)\}/],
+  },
+  {
+    id: 'envbar-folder-recent',
+    source: '反馈1323#09（2026-11-11 原话：「只保留最近，然后添加一个打开文件夹，直接用系统的查找文件夹的方式去选文件夹」）',
+    decision: '文件夹弹层只列最近目录 + 「打开文件夹…」；桌面版且主机就是本机用系统对话框，其余用应用内目录浏览对话框',
+    files: [
+      F.envBar,
+      'packages/web/src/lib/desktopFolder.ts',
+      'packages/desktop/preload.js',
+      'packages/desktop/main.js',
+    ],
+    need: [/loadRecentDirs\(hostId\)/, /打开文件夹…/, /isDesktopLocalHost/, /folder:pick/],
+  },
   // 输入框 / 账号 / 路由
   {
     id: 'composer-no-cache-banner',

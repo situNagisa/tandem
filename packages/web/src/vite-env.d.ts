@@ -14,6 +14,14 @@ interface Window {
       readText: () => Promise<string>
       writeText: (text: string) => Promise<void>
     }
+    /** 反馈1323#09：本机目录的系统文件夹对话框。 */
+    folder?: {
+      pick: (defaultPath?: string) => Promise<string | null>
+    }
+    host?: {
+      /** 桌面内嵌 Host 的 hostId；与所选主机的 HostInfo.id 相同才共用文件系统。 */
+      localId: () => Promise<string | null>
+    }
     updater?: {
       getConfig: () => Promise<{ source: string }>
       setConfig: (config: { source: string }) => Promise<{ source: string }>

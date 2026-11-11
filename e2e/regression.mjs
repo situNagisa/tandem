@@ -2616,8 +2616,7 @@ async function main() {
     }
 
     /** 打开一个可能还没有任何轮次的新会话（openSession 依赖 [data-turn-id]）。 */
-    const gotoSession = async (page, id) => {
-      await page.waitForFunction(
+    const gotoSession = async (page, id) => {      await page.waitForFunction(
         () => {
           try {
             return JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]').length > 0
@@ -4531,7 +4530,56 @@ async function main() {
       await panel.waitFor()
       assert.equal(await panel.getAttribute('data-side'), 'top', '文件夹弹层没有向上弹出')
       withinViewport(await panel.boundingBox(), DESKTOP, '文件夹弹层')
-      assert.equal(await panel.locator('[aria-label="使用此目录"]').count(), 1, '文件夹弹层内容未加载')
+      const openFolder = panel.getByRole('menuitem', { name: '打开文件夹…' })
+      assert.equal(await openFolder.count(), 1, '文件夹弹层缺少「打开文件夹…」')
+      await openFolder.click()
+      const dialog = page.getByRole('dialog', { name: '打开文件夹' })
+      await dialog.waitFor()
+      withinViewport(await dialog.boundingBox(), DESKTOP, '文件夹浏览对话框')
+      assert.equal(
+        await dialog.locator('[aria-label="使用此目录"]').count(),
+        1,
+        '文件夹浏览对话框内容未加载',
+      )
+      await page.keyboard.press('Escape')
+      await dialog.waitFor({ state: 'hidden' }).catch(() => {})
+    })
+
+    desktop('环境条文件夹弹层只列最近文件夹与「打开文件夹…」（反馈1323#09）', async (page) => {
+      await openSession(page, 'long')
+      const hostKey = await page.evaluate(
+        () => JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')[0]?.id ?? 'local',
+      )
+      await page.evaluate(
+        ({ hostKey, dirs }) => localStorage.setItem('tandem.recentDirs.v1', JSON.stringify({ [hostKey]: dirs })),
+        { hostKey, dirs: [repo, path.dirname(repo)] },
+      )
+      await page.locator(`button[data-tip="${repo}"]`).first().click()
+      const panel = page
+        .locator('[data-portal-layer="popover"]')
+        .filter({ has: page.locator('[data-folder-picker]') })
+        .first()
+      await panel.waitFor({ state: 'visible' })
+      const items = (await panel.getByRole('menuitem').allInnerTexts()).map((text) => text.trim())
+      assert.ok(items[0].includes(path.basename(repo)), `最近文件夹没有排在最前：${items.join(' | ')}`)
+      assert.ok(!items.includes('..'), `文件夹弹层不应再直接列目录：${items.join(' | ')}`)
+      assert.equal(items[items.length - 1], '打开文件夹…', `文件夹弹层底部不是「打开文件夹…」：${items.join(' | ')}`)
+      assert.equal(
+        await panel.locator('input[aria-label="筛选文件夹或输入路径"]').count(),
+        0,
+        '文件夹弹层里不应常驻目录浏览器',
+      )
+      // 无最近记录时只显示「打开文件夹…」。
+      await page.evaluate((key) => localStorage.setItem('tandem.recentDirs.v1', JSON.stringify({ [key]: [] })), hostKey)
+      await page.keyboard.press('Escape')
+      await page.locator(`button[data-tip="${repo}"]`).first().click()
+      const emptyPanel = page
+        .locator('[data-portal-layer="popover"]')
+        .filter({ has: page.locator('[data-folder-picker]') })
+        .first()
+      await emptyPanel.waitFor({ state: 'visible' })
+      const emptyItems = (await emptyPanel.getByRole('menuitem').allInnerTexts()).map((text) => text.trim())
+      assert.deepEqual(emptyItems, ['打开文件夹…'], `无最近记录时弹层应只有「打开文件夹…」：${emptyItems.join(' | ')}`)
       await page.keyboard.press('Escape')
     })
 
@@ -5451,33 +5499,36 @@ async function main() {
       )
     })
 
-    desktop('文件夹选择器不再显示最近文件夹；超长名称单行省略并悬停显示全名（R15）', async (page) => {
+    desktop('文件夹弹层列出最近目录；浏览对话框首项为上一级，超长名称单行省略（R15 / 反馈1323#09）', async (page) => {
       const longName = 'a-very-long-folder-name-for-truncation-check-0123456789'
       const longDir = path.join(repo, longName)
       mkdirSync(longDir, { recursive: true })
       try {
         await openSession(page, 'long')
-        await page.evaluate(() => {
+        await page.evaluate((dir) => {
           const hosts = JSON.parse(localStorage.getItem('tandem.hosts.v1') ?? '[]')
           const hostId = hosts[0]?.id ?? 'local'
-          localStorage.setItem(
-            'tandem.recentDirs.v1',
-            JSON.stringify({ [hostId]: ['/tmp/tandem-recent-marker'] }),
-          )
-        })
+          localStorage.setItem('tandem.recentDirs.v1', JSON.stringify({ [hostId]: [dir] }))
+        }, longDir)
         const trigger = page.locator(`button[data-tip="${repo}"]`).first()
         await trigger.click()
-        const panel = page.locator('[role="menu"]:has(> .popover-panel)').first()
+        const panel = page
+          .locator('[data-portal-layer="popover"]')
+          .filter({ has: page.locator('[data-folder-picker]') })
+          .first()
         await panel.waitFor()
         assert.equal(
-          await panel.getByText('tandem-recent-marker', { exact: false }).count(),
-          0,
-          '文件夹选择器仍显示最近文件夹',
+          await panel.getByText(longName, { exact: false }).count(),
+          1,
+          '文件夹弹层没有列出最近目录',
         )
-        const firstItem = panel.getByRole('menuitem').first()
-        assert.equal((await firstItem.innerText()).trim(), '..', '文件夹选择器首项不是上一级目录')
+        await panel.getByRole('menuitem', { name: '打开文件夹…' }).click()
+        const dialog = page.getByRole('dialog', { name: '打开文件夹' })
+        await dialog.waitFor()
+        const firstItem = dialog.getByRole('menuitem').first()
+        assert.equal((await firstItem.innerText()).trim(), '..', '浏览对话框首项不是上一级目录')
         // 反馈 #7-06：行保持单行省略，只有溢出时才挂全文 title。
-        const longRow = panel.getByRole('menuitem').filter({ hasText: longName.slice(0, 20) }).first()
+        const longRow = dialog.getByRole('menuitem').filter({ hasText: longName.slice(0, 20) }).first()
         await longRow.waitFor({ timeout: 10_000 })
         const label = longRow.locator('span.truncate').first()
         const info = await label.evaluate((el) => ({
@@ -5628,7 +5679,7 @@ async function main() {
       const branchPanel = page.locator('[data-portal-layer="popover"]').filter({ hasText: '新建分支' }).first()
       const folderPanel = page
         .locator('[data-portal-layer="popover"]')
-        .filter({ has: page.locator('input[aria-label="筛选文件夹或输入路径"]') })
+        .filter({ has: page.locator('[data-folder-picker]') })
         .first()
 
       await branch.click()
@@ -5700,7 +5751,7 @@ async function main() {
       const textarea = page.locator('textarea[aria-label="消息输入框"]').first()
       const folderPanel = page
         .locator('[data-portal-layer="popover"]')
-        .filter({ has: page.locator('input[aria-label="筛选文件夹或输入路径"]') })
+        .filter({ has: page.locator('[data-folder-picker]') })
         .first()
 
       await hostPill.click()
@@ -5759,7 +5810,10 @@ async function main() {
       await menu.waitFor({ state: 'visible', timeout: 5_000 })
       await menu.getByRole('menuitem', { name: /第二台主机/ }).click()
       await folderPanel.waitFor({ state: 'visible', timeout: 5_000 })
-      await folderPanel.getByRole('button', { name: '使用并迁移' }).click()
+      await folderPanel.getByRole('menuitem', { name: '打开文件夹…' }).click()
+      const folderDialog = page.getByRole('dialog', { name: '打开文件夹' })
+      await folderDialog.waitFor()
+      await folderDialog.getByRole('button', { name: '使用并迁移' }).click()
       await page.getByText(/会话已迁移到 第二台主机/).first().waitFor({ timeout: 20_000 })
       await page.waitForFunction(() => window.location.hash.includes('/h/host-second/'), null, { timeout: 20_000 })
       await page.locator('textarea[aria-label="消息输入框"]').first().waitFor({ timeout: 20_000 })
@@ -5962,9 +6016,15 @@ async function main() {
       await openSession(page, 'long')
       const trigger = page.locator(`button[data-tip="${repo}"]`).first()
       await trigger.click()
-      const panel = page.locator('[role="menu"]:has(> .popover-panel)').first()
+      const panel = page
+        .locator('[data-portal-layer="popover"]')
+        .filter({ has: page.locator('[data-folder-picker]') })
+        .first()
       await panel.waitFor()
-      const input = panel.locator('input[aria-label="筛选文件夹或输入路径"]')
+      await panel.getByRole('menuitem', { name: '打开文件夹…' }).click()
+      const dialog = page.getByRole('dialog', { name: '打开文件夹' })
+      await dialog.waitFor()
+      const input = dialog.locator('input[aria-label="筛选文件夹或输入路径"]')
       await input.waitFor()
       assert.equal(
         await input.evaluate((el) => el === document.activeElement),
@@ -5981,7 +6041,7 @@ async function main() {
         `鼠标打开文件夹选择器后仍有焦点描边：${JSON.stringify(pickerRing)}`,
       )
       await page.keyboard.press('Escape')
-      await panel.waitFor({ state: 'hidden' }).catch(() => {})
+      await dialog.waitFor({ state: 'hidden' }).catch(() => {})
 
       // 命令面板同样由鼠标点开、程序化聚焦：不应出现橙色框。
       await page.locator('aside').getByRole('button', { name: /^搜索/ }).first().click()
@@ -6262,7 +6322,15 @@ async function main() {
       await page.evaluate(() => (window.location.hash = '#/'))
       await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 10_000 })
       await page.locator('button:has(svg.lucide-folder-open)').first().click()
-      const input = page.getByRole('textbox', { name: '筛选文件夹或输入路径' })
+      await page
+        .locator('[data-portal-layer="popover"]')
+        .filter({ has: page.locator('[data-folder-picker]') })
+        .first()
+        .getByRole('menuitem', { name: '打开文件夹…' })
+        .click()
+      const dialog = page.getByRole('dialog', { name: '打开文件夹' })
+      await dialog.waitFor()
+      const input = dialog.getByRole('textbox', { name: '筛选文件夹或输入路径' })
       await input.waitFor()
       await input.fill(repo)
       await input.press('Enter')

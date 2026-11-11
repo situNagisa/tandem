@@ -14,6 +14,7 @@ import {
   Undo2,
   Usb,
 } from 'lucide-react'
+import { isDesktopLocalHost } from '../lib/desktopFolder'
 import { Spinner } from './ui/Spinner'
 import type { DeviceMount, FsEntry, SessionEnv } from '@tandem/protocol'
 import { api } from '../lib/api'
@@ -29,6 +30,7 @@ import { ConnectionDot } from './StatusDot'
 import { Button, IconButton } from './ui/Button'
 import { Input, Switch } from './ui/Controls'
 import { Menu, MenuItem, MenuList } from './ui/Menu'
+import { Modal } from './ui/Modal'
 import { Popover } from './ui/Popover'
 
 import { Tooltip } from './ui/Tooltip'
@@ -375,6 +377,68 @@ export function FolderBrowser({
   )
 }
 
+/**
+ * 文件夹弹层：只列最近用过的目录，底部一项「打开文件夹…」。
+ * 目录浏览器不再常驻，按需在系统对话框（本机）或应用内对话框（其他主机）里打开。
+ */
+function FolderPicker({
+  hostId,
+  onUse,
+  onBrowse,
+}: {
+  hostId: string
+  onUse: (path: string) => void
+  onBrowse: () => void
+}) {
+  const recent = useMemo(() => loadRecentDirs(hostId), [hostId])
+  return (
+    <div className="w-[260px]" data-folder-picker="">
+      {recent.length > 0 && (
+        <>
+          <p className="px-2 pb-1 pt-0.5 text-[11px] leading-4 text-muted">最近</p>
+          <MenuList aria-label="最近文件夹" className="p-0">
+            {recent.map((dir) => (
+              <MenuItem key={dir} icon={<Folder size={13} />} title={dir} onSelect={() => onUse(dir)}>
+                {basename(dir) || dir}
+              </MenuItem>
+            ))}
+          </MenuList>
+        </>
+      )}
+      <div className={recent.length > 0 ? 'mt-1 border-t border-border pt-1' : ''}>
+        <MenuList aria-label="选择文件夹" className="p-0">
+          <MenuItem icon={<FolderOpen size={13} />} onSelect={onBrowse}>
+            打开文件夹…
+          </MenuItem>
+        </MenuList>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 系统文件夹对话框只在桌面版、且所选主机就是这台电脑时可用。
+ * 判定：所选主机的 HostInfo.id（Host 配置里的 hostId）等于桌面内嵌 Host 的 hostId
+ * （主进程 `host:local-id` 返回）。网页 / 手机 / 远程主机 / WSL 里的 Host 与 Windows
+ * 客户端不是同一文件系统；任一信息缺失都按非本机处理，回退到应用内目录浏览器。
+ */
+async function canPickFolderNatively(hostId: string): Promise<boolean> {
+  const desktop = window.tandemDesktop
+  if (typeof desktop?.host?.localId !== 'function') return false
+  const selectedHostId = useAppStore.getState().runtimes[hostId]?.info?.id
+  let localHostId: string | null = null
+  try {
+    localHostId = await desktop.host.localId()
+  } catch {
+    return false
+  }
+  return isDesktopLocalHost({
+    isDesktop: desktop.isDesktop === true,
+    selectedHostId,
+    localHostId,
+  })
+}
+
 function BranchMenu({
   hostId,
   sessionId,
@@ -552,6 +616,8 @@ export function EnvBar({
   const [pendingHostId, setPendingHostId] = useState<string | null>(null)
   const [hostMenuOpen, setHostMenuOpen] = useState(false)
   const [folderOpen, setFolderOpen] = useState(false)
+  /** 应用内目录浏览对话框：本机之外的 Host（网页、手机、远程、WSL）没有系统对话框。 */
+  const [folderBrowserFor, setFolderBrowserFor] = useState<'current' | 'pending' | null>(null)
   const pendingHost = pendingHostId ? (hosts.find((h) => h.id === pendingHostId) ?? null) : null
 
   // 换会话/换主机时清掉待定状态，避免提示残留在别的会话上。
@@ -559,6 +625,7 @@ export function EnvBar({
     setPendingHostId(null)
     setHostMenuOpen(false)
     setFolderOpen(false)
+    setFolderBrowserFor(null)
   }, [hostId, sessionId])
 
   // 选中新主机后直接打开该主机的文件夹选择；等主机菜单收起、焦点回到环境条后再打开，
@@ -603,6 +670,55 @@ export function EnvBar({
   // 反馈1323#07 #08：目录探测完成且不是 git 仓库时，分支与 Worktree 都不渲染。
   // Host 只给 git 仓库的会话下发 env，缺少 env 即非仓库；新会话页探测期间 envLoading 为 true。
   const knownNonGit = !envLoading && !env?.repoRoot
+
+  const applyFolder = (path: string, target: 'current' | 'pending') => {
+    if (target === 'pending') {
+      if (pendingHost && !migrating) void startMigration(pendingHost.id, path)
+      return
+    }
+    if (isSession) {
+      if (host && sessionId) {
+        void useAppStore
+          .getState()
+          .updateSession(host.id, sessionId, { cwd: path })
+          .then((updated) => {
+            if (updated) {
+              rememberDir(host.id, path)
+              toast('已切换工作目录（下一轮生效）', 'success')
+            }
+          })
+      }
+    } else {
+      onCwdChange?.(path)
+      rememberDir(hostId, path)
+    }
+  }
+
+  /** 本机用系统文件夹对话框；其他主机打开应用内目录浏览对话框。 */
+  const openFolderPicker = async () => {
+    const target: 'current' | 'pending' = pendingHost ? 'pending' : 'current'
+    const targetHostId = pendingHost?.id ?? hostId
+    const initial = target === 'pending' ? (loadRecentDirs(targetHostId)[0] ?? '') : cwd
+    setFolderOpen(false)
+    if (!targetHostId) return
+    let native = false
+    try {
+      native = await canPickFolderNatively(targetHostId)
+    } catch {
+      native = false
+    }
+    if (!native) {
+      // 等弹层收起、焦点落回环境条后再开对话框，避免刚打开就被判为焦点移出。
+      window.setTimeout(() => setFolderBrowserFor(target), 80)
+      return
+    }
+    try {
+      const picked = await window.tandemDesktop?.folder?.pick(initial || undefined)
+      if (picked) applyFolder(cleanDir(picked), target)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '打开文件夹失败', 'error')
+    }
+  }
 
   const startMigration = async (nextHostId: string, targetCwd: string) => {
     if (!host || !sessionId || migrating) return
@@ -739,36 +855,13 @@ export function EnvBar({
       >
         {(close) =>
           hostId || pendingHost ? (
-            <FolderBrowser
+            <FolderPicker
               hostId={pendingHost?.id ?? hostId}
-              initial={
-                pendingHost ? (loadRecentDirs(pendingHost.id)[0] ?? '') : cwd
-              }
               onUse={(path) => {
-                if (pendingHost) {
-                  close()
-                  if (!migrating) void startMigration(pendingHost.id, path)
-                  return
-                }
-                if (isSession) {
-                  if (host && sessionId) {
-                    void useAppStore
-                      .getState()
-                      .updateSession(host.id, sessionId, { cwd: path })
-                      .then((updated) => {
-                        if (updated) {
-                          rememberDir(host.id, path)
-                          toast('已切换工作目录（下一轮生效）', 'success')
-                        }
-                      })
-                  }
-                } else {
-                  onCwdChange?.(path)
-                  rememberDir(hostId, path)
-                }
                 close()
+                applyFolder(path, pendingHost ? 'pending' : 'current')
               }}
-              useLabel={pendingHost ? '使用并迁移' : '使用此目录'}
+              onBrowse={() => void openFolderPicker()}
             />
           ) : null
         }
@@ -854,6 +947,33 @@ export function EnvBar({
         </div>
       </Tooltip>
       )}
+
+      <Modal
+        open={folderBrowserFor !== null}
+        onClose={() => setFolderBrowserFor(null)}
+        title="打开文件夹"
+        description={`在 ${folderBrowserFor === 'pending' ? (pendingHost?.name ?? '目标主机') : (host?.name ?? '主机')} 上选择目录`}
+        align="top"
+        className="w-[min(420px,calc(100vw-1.5rem))] max-w-none"
+        bodyClassName="p-3"
+      >
+        {folderBrowserFor !== null && (pendingHost?.id || hostId) && (
+          <FolderBrowser
+            hostId={folderBrowserFor === 'pending' ? (pendingHost?.id ?? hostId) : hostId}
+            initial={
+              folderBrowserFor === 'pending'
+                ? (loadRecentDirs(pendingHost?.id ?? hostId)[0] ?? '')
+                : cwd
+            }
+            onUse={(path) => {
+              const target = folderBrowserFor ?? 'current'
+              setFolderBrowserFor(null)
+              applyFolder(path, target)
+            }}
+            useLabel={folderBrowserFor === 'pending' ? '使用并迁移' : '使用此目录'}
+          />
+        )}
+      </Modal>
       {isSession && sessionId && sessionMounts.length > 0 && (
         <div className="flex min-w-0 items-center gap-0.5">
           {sessionMounts.map((mount) => (

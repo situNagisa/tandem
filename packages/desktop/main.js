@@ -76,6 +76,8 @@ let hostUrl = null;
 let listenPort = DEFAULT_PORT;
 let listenHost = '127.0.0.1';
 let reusingExternalHost = false;
+/** 内嵌（或同机复用）Host 的 hostId：判断所选主机是否与桌面客户端同一台机器。 */
+let localHostId = null;
 let quitting = false;
 let serverModules = null;
 let saveStateTimer = null;
@@ -216,6 +218,7 @@ async function startHost() {
   const mods = await loadServerModules();
   const home = mods.tandemHome();
   const config = mods.loadHostConfig(home);
+  localHostId = config.hostId;
 
   const existing = await probeExistingHost(config);
   if (existing) {
@@ -740,6 +743,26 @@ function setupUpdaterIpc() {
   ipcMain.handle('clipboard:write-text', (_event, text) =>
     clipboard.writeText(typeof text === 'string' ? text : ''),
   );
+  // 反馈1323#09：本机目录用系统文件夹对话框选择。渲染层只在
+  // 「桌面版 + 所选主机 hostId 等于 localHostId」时调用。
+  ipcMain.handle('host:local-id', () => localHostId);
+  ipcMain.handle('folder:pick', async (event, options) => {
+    const parent = BrowserWindow.fromWebContents(event.sender) ?? win;
+    const defaultPath =
+      options && typeof options.defaultPath === 'string' && options.defaultPath
+        ? options.defaultPath
+        : undefined;
+    const dialogOptions = {
+      title: '打开文件夹',
+      properties: ['openDirectory'],
+      ...(defaultPath ? { defaultPath } : {}),
+    };
+    const result = parent
+      ? await dialog.showOpenDialog(parent, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions);
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
   ipcMain.handle('updater:get-config', () => readUpdateConfig());
   ipcMain.handle('updater:set-config', (_event, config) => {
     const saved = writeUpdateConfig(config);

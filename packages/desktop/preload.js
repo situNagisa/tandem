@@ -29,6 +29,13 @@ const api = {
     readText: () => ipcRenderer.invoke('clipboard:read-text'),
     writeText: (text) => ipcRenderer.invoke('clipboard:write-text', text),
   },
+  // 反馈1323#09：本机目录用系统文件夹对话框；localId 用于确认所选主机就是这台电脑。
+  folder: {
+    pick: (defaultPath) => ipcRenderer.invoke('folder:pick', { defaultPath }),
+  },
+  host: {
+    localId: () => ipcRenderer.invoke('host:local-id'),
+  },
 };
 
 if (debugFlavor) {
