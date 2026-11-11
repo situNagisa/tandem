@@ -11,9 +11,9 @@ import {
   isExternalHref,
   parseFileHref,
   parseInlinePath,
-  splitFileRefs,
   type FileRef,
 } from '../lib/fileLinks'
+import { useFileRefExists } from '../lib/fileRefExists'
 import { CodeBlock } from './CodeBlock'
 
 function nodeText(node: ReactNode): string {
@@ -45,45 +45,6 @@ export function openFileRef(ref: FileRef, cwd?: string): void {
   })
 }
 
-/** 把消息里的纯文本路径也变成文件链接，不改动代码、既有链接与行内代码。 */
-function remarkFileLinks() {
-  return (tree: unknown) => {
-    const walk = (node: { type?: string; children?: unknown[] }) => {
-      if (!node || !Array.isArray(node.children)) return
-      if (
-        node.type === 'link' ||
-        node.type === 'linkReference' ||
-        node.type === 'code' ||
-        node.type === 'inlineCode' ||
-        node.type === 'html'
-      ) {
-        return
-      }
-      const next: unknown[] = []
-      for (const child of node.children as Array<{ type?: string; value?: string }>) {
-        if (child?.type === 'text' && typeof child.value === 'string') {
-          for (const segment of splitFileRefs(child.value)) {
-            if (typeof segment === 'string') {
-              if (segment) next.push({ type: 'text', value: segment })
-            } else {
-              next.push({
-                type: 'link',
-                url: segment.text,
-                children: [{ type: 'text', value: segment.text }],
-              })
-            }
-          }
-        } else {
-          walk(child as { type?: string; children?: unknown[] })
-          next.push(child)
-        }
-      }
-      node.children = next
-    }
-    walk(tree as { type?: string; children?: unknown[] })
-  }
-}
-
 /** 表格：可横向滚动、带渐隐与滚动提示；宽度铺满对话列（反馈 #7-02）。 */
 function MarkdownTable({ children }: { children?: ReactNode }) {
   const { ref, canLeft, canRight, update } = useHorizontalOverflow<HTMLDivElement>()
@@ -102,7 +63,11 @@ function MarkdownTable({ children }: { children?: ReactNode }) {
   )
 }
 
-function makeComponents(streaming: boolean, cwd?: string): Components {
+function makeComponents(
+  streaming: boolean,
+  cwd: string | undefined,
+  exists: Record<string, boolean>,
+): Components {
   return {
     pre({ children }) {
       const info = codeInfo(children)
@@ -155,7 +120,8 @@ function makeComponents(streaming: boolean, cwd?: string): Components {
       }
       const text = nodeText(children)
       const ref = parseInlinePath(text)
-      if (!ref) return <code className={className}>{children}</code>
+      // 行内代码只有在该会话工作目录下确实是文件才生成链接；否则保持普通代码
+      if (!ref || exists[ref.path] !== true) return <code className={className}>{children}</code>
       const open = () => openFileRef(ref, cwd)
       return (
         <code
@@ -178,7 +144,7 @@ function makeComponents(streaming: boolean, cwd?: string): Components {
   }
 }
 
-const REMARK_PLUGINS = [remarkGfm, remarkFileLinks]
+const REMARK_PLUGINS = [remarkGfm]
 
 /**
  * 流式时按动画帧合并 delta；文本越长渲染间隔越大，避免整段 Markdown
@@ -282,12 +248,14 @@ const MarkdownChunk = memo(function MarkdownChunk({
   text,
   streaming,
   cwd,
+  exists,
 }: {
   text: string
   streaming: boolean
   cwd?: string
+  exists: Record<string, boolean>
 }) {
-  const components = useMemo(() => makeComponents(streaming, cwd), [streaming, cwd])
+  const components = useMemo(() => makeComponents(streaming, cwd, exists), [streaming, cwd, exists])
   return (
     <div className={cn('md-chunk', streaming && 'is-streaming')}>
       <ReactMarkdown
@@ -318,6 +286,7 @@ export const Markdown = memo(function Markdown({
   variant?: 'user'
 }) {
   const shown = useStreamingText(text, streaming)
+  const exists = useFileRefExists(shown, cwd)
   const chunks = useMemo(
     () => (streaming ? splitChunks(shown) : [{ start: 0, text: shown }]),
     [shown, streaming],
@@ -331,6 +300,7 @@ export const Markdown = memo(function Markdown({
             text={chunk.text}
             streaming={streaming && i === chunks.length - 1}
             cwd={cwd}
+            exists={exists}
           />
         ) : null,
       )}

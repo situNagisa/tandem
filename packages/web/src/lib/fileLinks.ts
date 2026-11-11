@@ -1,4 +1,5 @@
-// 会话里的文件引用：识别 Markdown 链接、行内代码和纯文本路径，解析出路径与行号范围。
+// 会话里的文件引用：只解析显式的 Markdown 链接与行内代码路径，并解析出路径与行号范围。
+// 纯文本里「长得像文件」的字符串不参与识别（反馈0220#04 / R06）。
 export interface FileRef {
   path: string
   lineStart?: number
@@ -104,7 +105,6 @@ const EXTENSIONS = [
 const EXT = `(?:${EXTENSIONS.join('|')})`
 const PATH_BODY = `[^\\s<>()\\[\\]{}"'\`，。；：！？、]+`
 const PLAIN_PATH_SOURCE = `(?<![\\w./@-])(file:\\/\\/[^\\s<>()\\[\\]{}"'\`]+|[A-Za-z]:[\\\\/]${PATH_BODY}|(?:~|\\.{1,2})?\\/${PATH_BODY}|(?:[\\w.@+-]+\\/)+[\\w.@+-]+\\.${EXT}|[\\w.@+-]+\\.${EXT})(?::\\d+(?:-\\d+)?)?`
-const PLAIN_PATH = new RegExp(PLAIN_PATH_SOURCE)
 
 const EXPLICIT_ROOT = /^(?:~|\.{1,2}|[a-zA-Z]:)[\\/]/
 
@@ -116,10 +116,6 @@ function looksLikePath(raw: string): boolean {
   if (new RegExp(`\\.${EXT}$`, 'i').test(raw)) return true
   if (EXPLICIT_ROOT.test(raw)) return true
   return /[\\/]/.test(raw.replace(/^[\\/]/, ''))
-}
-
-function trimTrailing(value: string): string {
-  return value.replace(/[.,;:!?，。；：！？、]+$/, '')
 }
 
 /** 行内代码等短语：整段就是一个路径（可带行号）时返回文件引用。 */
@@ -141,27 +137,17 @@ export function parseInlinePath(text: string): FileRef | null {
   }
 }
 
-export type TextSegment = string | { ref: FileRef; text: string }
-
-/** 把一段纯文本切成普通文字和文件引用片段。 */
-export function splitFileRefs(text: string): TextSegment[] {
-  const segments: TextSegment[] = []
-  let last = 0
-  const re = new RegExp(PLAIN_PATH_SOURCE, 'g')
-  let match: RegExpExecArray | null
-  while ((match = re.exec(text))) {
-    const raw = trimTrailing(match[0])
-    const start = match.index
-    if (!raw) continue
-    if (start > last) segments.push(text.slice(last, start))
-    const ref = parseInlinePath(raw)
-    if (ref) segments.push({ ref, text: raw })
-    else segments.push(text.slice(start, start + raw.length))
-    last = start + raw.length
-    re.lastIndex = start + raw.length
+/** 正文里所有行内代码（`` `…` ``）中整段是路径的条目；纯文本不再参与识别。 */
+export function extractInlineRefs(text: string): FileRef[] {
+  const refs: FileRef[] = []
+  const seen = new Set<string>()
+  for (const match of text.matchAll(/`([^`\n]+)`/g)) {
+    const ref = parseInlinePath(match[1] ?? '')
+    if (!ref || seen.has(ref.path)) continue
+    seen.add(ref.path)
+    refs.push(ref)
   }
-  if (last < text.length) segments.push(text.slice(last))
-  return segments
+  return refs
 }
 
 export function isImagePath(path: string): boolean {

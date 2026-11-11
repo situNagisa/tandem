@@ -176,6 +176,30 @@ export function registerFsRoutes(app: FastifyInstance, deps: RouteDeps): void {
     }
   });
 
+  /** 批量查询文件引用是否存在：行内代码里的路径只有确实存在才生成链接。 */
+  app.post('/api/fs/exist', async (req) => {
+    const body = (req.body ?? {}) as { cwd?: unknown; paths?: unknown };
+    const cwd = str(body.cwd) || process.cwd();
+    const paths = Array.isArray(body.paths)
+      ? body.paths.filter((item): item is string => typeof item === 'string' && !!item.trim()).slice(0, 200)
+      : [];
+    const principal = principalOf(req);
+    const exists: Record<string, boolean> = {};
+    for (const raw of paths) {
+      const abs = resolvePreviewPath(raw, cwd);
+      if (!canAccessPath(principal, abs)) {
+        exists[raw] = false;
+        continue;
+      }
+      try {
+        exists[raw] = statSync(abs).isFile();
+      } catch {
+        exists[raw] = false;
+      }
+    }
+    return { exists };
+  });
+
   app.post('/api/fs/reveal', async (req, reply) => {
     const body = (req.body ?? {}) as { path?: unknown; cwd?: unknown };
     const raw = str(body.path);

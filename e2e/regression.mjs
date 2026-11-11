@@ -1598,6 +1598,23 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
     ),
   ]
 
+  // 反馈0220#04：纯文本里「长得像文件」的不再成为链接；行内代码只有文件确实存在才是链接。
+  const linkRuleMessages = [
+    message('lk1', 'user', '看看这些引用'),
+    message(
+      'lk2',
+      'assistant',
+      [
+        '纯文本不是链接：menu.cpp、.cpp、.cppm、unique_ptr、buffer_type.c。',
+        '',
+        '存在：`src/hello.ts`、`D:\\repo\\demo.ts`；不存在：`missing-demo.cpp`、`there/is/no/file.ts`。',
+        '',
+        '显式链接：[D 盘文件](/D:/repo/demo.ts:2)',
+      ].join('\n'),
+      { model: 'mock-1' },
+    ),
+  ]
+
   // 宽内容回归（#7-02）：长表格 + 长代码行。
   const wideCode = `const LONG_LINE = "${'x'.repeat(260)}"`
   const wideCell = `这是一段足够长的说明-${'wide-token-'.repeat(4)}`
@@ -1793,6 +1810,7 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
     ], { updatedAt: Date.now() - 1565 }),
     mk('huge', '超大会话 · 320 轮', hugeMessages, { updatedAt: Date.now() - 900 }),
     mk('links', '文件链接会话', linksMessages, { updatedAt: Date.now() - 1500 }),
+    mk('links2', '文件识别规则会话', linkRuleMessages, { updatedAt: Date.now() - 1501 }),
     mk('wide', '宽内容会话', wideMessages, { updatedAt: Date.now() - 1520 }),
     mk('codeblock', '代码块与表格会话', richMessages, { updatedAt: Date.now() - 1530 }),
     mk('nockpt', '无检查点会话', [
@@ -7030,6 +7048,58 @@ async function main() {
       )
       const label = ((await branchButton.textContent()) ?? '').trim()
       assert.equal(label, 'main', `环境条分支显示为「${label}」`)
+    })
+
+    desktop('反馈0220#04：只为明确的文件引用生成链接（R06）', async (page) => {
+      const outDir = '/tmp/fix-0220c/regression'
+      mkdirSync(outDir, { recursive: true })
+      await openSession(page, 'links2')
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      const row = page.locator('[data-message-id="lk2"]')
+      await row.waitFor({ timeout: 15_000 })
+      // 行内代码里存在的文件：等存在性查询回来后才变成链接
+      await row
+        .locator('code.file-ref-inline')
+        .filter({ hasText: 'src/hello.ts' })
+        .first()
+        .waitFor({ timeout: 10_000 })
+      await row
+        .locator('code.file-ref-inline')
+        .filter({ hasText: 'demo.ts' })
+        .first()
+        .waitFor({ timeout: 10_000 })
+
+      // 不存在的行内代码保持普通代码
+      for (const missing of ['missing-demo.cpp', 'there/is/no/file.ts']) {
+        assert.equal(
+          await row.locator('code.file-ref-inline').filter({ hasText: missing }).count(),
+          0,
+          `不存在的 ${missing} 仍被当成链接`,
+        )
+        assert.ok(
+          await row.locator('code').filter({ hasText: missing }).count() > 0,
+          `不存在的 ${missing} 没有按普通行内代码显示`,
+        )
+      }
+
+      // 纯文本里长得像文件名的一律不是链接
+      const linkedText = await row.evaluate((el) =>
+        [...el.querySelectorAll('a.file-ref, code.file-ref-inline')].map((node) => (node.textContent ?? '').trim()),
+      )
+      for (const plain of ['menu.cpp', '.cpp', '.cppm', 'unique_ptr', 'buffer_type.c']) {
+        assert.ok(!linkedText.includes(plain), `纯文本 ${plain} 被识别成了文件链接`)
+      }
+      // 显式 Markdown 链接不受影响，仍可点开预览
+      const link = row.locator('a.file-ref', { hasText: 'D 盘文件' }).first()
+      await link.waitFor({ timeout: 10_000 })
+      await link.click()
+      await page.getByText('windows drive file').waitFor({ state: 'visible', timeout: 10_000 })
+      await page.getByRole('button', { name: '关闭文件预览' }).click()
+      await row.locator('code.file-ref-inline').filter({ hasText: 'src/hello.ts' }).first().click()
+      await page.getByRole('button', { name: '关闭文件预览' }).waitFor({ state: 'visible', timeout: 10_000 })
+      assert.equal(await page.getByText(/读取失败|文件不存在/).count(), 0, '存在的文件应能打开预览')
+      await page.screenshot({ path: path.join(outDir, 'file-ref-rule.png') })
+      await page.getByRole('button', { name: '关闭文件预览' }).click()
     })
 
     desktop('Windows 盘符路径文件链接可打开预览', async (page) => {

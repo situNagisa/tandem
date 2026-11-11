@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import {
+  extractInlineRefs,
   fileBaseName,
   isAnchorHref,
   isExternalHref,
@@ -9,7 +10,6 @@ import {
   normalizeFileRefPath,
   parseFileHref,
   parseInlinePath,
-  splitFileRefs,
 } from './fileLinks'
 
 describe('normalizeFileRefPath', () => {
@@ -67,7 +67,7 @@ describe('parseFileHref', () => {
   })
 })
 
-describe('parseInlinePath / splitFileRefs', () => {
+describe('parseInlinePath / extractInlineRefs', () => {
   test('行内代码整段是路径时识别', () => {
     expect(parseInlinePath('src/a.ts')).toEqual({ path: 'src/a.ts' })
     expect(parseInlinePath('./docs/readme.md:2-4')).toEqual({
@@ -81,20 +81,19 @@ describe('parseInlinePath / splitFileRefs', () => {
     expect(parseInlinePath('a.ts b.ts')).toBeNull()
   })
 
-  test('纯文本中的路径切分，中文标点不进入路径', () => {
-    const segments = splitFileRefs('看 src/a.ts:3 和 docs/readme.md。')
-    expect(segments).toHaveLength(5)
-    expect(segments[0]).toBe('看 ')
-    expect(segments[1]).toEqual({
-      ref: { path: 'src/a.ts', lineStart: 3 },
-      text: 'src/a.ts:3',
-    })
-    expect(segments[2]).toBe(' 和 ')
-    expect(segments[3]).toEqual({
-      ref: { path: 'docs/readme.md' },
-      text: 'docs/readme.md',
-    })
-    expect(segments[4]).toBe('。')
+  test('只收行内代码里的路径，纯文本里的文件名不识别（反馈0220#04）', () => {
+    expect(
+      extractInlineRefs(
+        'menu.cpp中 去掉.cpp中的unique_ptr；`src/a.ts:3` 和 `D:\\repo\\b.txt` 与 `菜单.cpp`。',
+      ),
+    ).toEqual([
+      { path: 'src/a.ts', lineStart: 3 },
+      { path: 'D:/repo/b.txt' },
+    ])
+    expect(extractInlineRefs('menu.cpp、.cpp、.cppm、unique_ptr 都不是链接')).toEqual([])
+    expect(extractInlineRefs('见 `src/a.ts` 与 `src/a.ts`，只出现一次')).toEqual([
+      { path: 'src/a.ts' },
+    ])
   })
 
   test('句中斜杠（通/断、和/或、A/B、1/2、km/h）不是文件路径', () => {
@@ -107,7 +106,8 @@ describe('parseInlinePath / splitFileRefs', () => {
       '比例 1/2',
       '中文/英文',
     ]) {
-      expect(splitFileRefs(text).every((seg) => typeof seg === 'string')).toBe(true)
+      // 纯文本一律不扫描（反馈0220#04）；行内代码里的形状候选还要过「文件确实存在」这一关
+      expect(extractInlineRefs(`这些不是路径：${text}`)).toEqual([])
     }
     expect(parseInlinePath('/断时怎么判断可达')).toBeNull()
     expect(parseInlinePath('/或')).toBeNull()
@@ -120,17 +120,14 @@ describe('parseInlinePath / splitFileRefs', () => {
     expect(parseInlinePath('./build')).toEqual({ path: './build' })
     expect(parseInlinePath('C:\\a\\b.txt')).toEqual({ path: 'C:/a/b.txt' })
     expect(parseInlinePath('C:\\a\\b.txt:12')).toEqual({ path: 'C:/a/b.txt', lineStart: 12 })
-    expect(splitFileRefs('见 /home/x/y.md 与 C:\\a\\b.txt。')).toEqual([
-      '见 ',
-      { ref: { path: '/home/x/y.md' }, text: '/home/x/y.md' },
-      ' 与 ',
-      { ref: { path: 'C:/a/b.txt' }, text: 'C:\\a\\b.txt' },
-      '。',
+    expect(extractInlineRefs('见 `/home/x/y.md` 与 `C:\\a\\b.txt`。')).toEqual([
+      { path: '/home/x/y.md' },
+      { path: 'C:/a/b.txt' },
     ])
   })
 
   test('普通文本不产生文件引用', () => {
-    expect(splitFileRefs('普通文本，没有路径。')).toEqual(['普通文本，没有路径。'])
+    expect(extractInlineRefs('普通文本，没有路径。')).toEqual([])
     expect(parseInlinePath('https://example.com/a.ts')).toBeNull()
   })
 })
