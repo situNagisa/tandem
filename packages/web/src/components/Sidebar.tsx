@@ -7,6 +7,7 @@ import { navigate, parseHash } from '../lib/router'
 import { cn } from '../lib/cn'
 import { isSessionFilterActive, type SessionFilter } from '../lib/types'
 import { isDesktop, isMacDesktop } from '../lib/desktop'
+import { Badge } from './ui/Badge'
 import { Button, IconButton } from './ui/Button'
 import { Menu } from './ui/Menu'
 import { Tooltip } from './ui/Tooltip'
@@ -328,7 +329,7 @@ export function Sidebar({
             >
               <Plus size={15} className="shrink-0 opacity-70" />
               <span className="min-w-0 flex-1 truncate">新会话</span>
-              <kbd className="hidden shrink-0 text-[10px] font-normal text-muted md:inline">
+              <kbd className="hidden shrink-0 text-[11px] font-normal text-muted md:inline">
                 {modLabel} N
               </kbd>
             </Button>
@@ -366,7 +367,7 @@ export function Sidebar({
         >
           <Search size={15} className="shrink-0 opacity-70" />
           <span className="min-w-0 flex-1 truncate">搜索</span>
-          <kbd className="hidden shrink-0 text-[10px] font-normal text-muted md:inline">
+          <kbd className="hidden shrink-0 text-[11px] font-normal text-muted md:inline">
             {modLabel} K
           </kbd>
         </Button>
@@ -396,9 +397,7 @@ export function Sidebar({
                   <UserRound size={15} className="shrink-0" />
                   <span className="min-w-0 flex-1 truncate">{account.account.name}</span>
                   {__TANDEM_DEBUG__ && isDebugAccount && (
-                    <span className="shrink-0 rounded border border-border bg-[var(--t-bg-subtle)] px-1 text-[10px] leading-4 text-text-tertiary">
-                      调试
-                    </span>
+                    <Badge tone="neutral">调试</Badge>
                   )}
                   <ChevronUp size={13} className="shrink-0 opacity-60" />
                 </Button>
@@ -408,9 +407,7 @@ export function Sidebar({
                 <div className="flex items-center gap-1.5 truncate text-[12.5px] font-medium text-text">
                   {account.account.name}
                   {__TANDEM_DEBUG__ && isDebugAccount && (
-                    <span className="rounded border border-border bg-[var(--t-bg-subtle)] px-1 text-[10px] leading-4 text-text-tertiary">
-                      调试
-                    </span>
+                    <Badge tone="neutral">调试</Badge>
                   )}
                 </div>
                 <div className="truncate text-[11.5px] text-muted">

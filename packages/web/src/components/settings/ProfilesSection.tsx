@@ -82,7 +82,7 @@ function Steps({ step }: { step: Step }) {
         <span
           key={n}
           className={cn(
-            'flex size-[18px] items-center justify-center rounded-full text-[10px] tabular-nums',
+            'flex size-[18px] items-center justify-center rounded-full text-[11px] tabular-nums',
             n === step
               ? 'bg-[var(--t-text)] font-medium text-[var(--t-bg)]'
               : n < step

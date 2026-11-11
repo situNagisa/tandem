@@ -1,6 +1,6 @@
 # Tandem 设计原则
 
-> 更新：2026-11-10。只写原则；单点决定落实为 `scripts/decisions-check.mjs`、`scripts/ui-audit.mjs` 与 `e2e/regression.mjs` 的检查，修复记录在提交信息里。用户原话优先；原则或检查与用户新指示冲突时先问用户，不自行推断。
+> 更新：2026-11-11。只写原则；单点决定落实为 `scripts/decisions-check.mjs`、`scripts/ui-audit.mjs` 与 `e2e/regression.mjs` 的检查，修复记录在提交信息里。用户原话优先；原则或检查与用户新指示冲突时先问用户，不自行推断。
 
 ## 1. 气质与色彩
 
@@ -27,6 +27,7 @@
 | `--text-secondary` | #3F3F3F | #D2D2D2 | 次要、侧栏项 |
 | `--text-tertiary` | #5C5C5C | #A3A3A3 | 分组标题、时间、占位 |
 | `--accent` | #D97757 | #D97757 | 仅品牌、发送、待审批；焦点环另用中性灰 |
+| `--t-annotation` | #F97316 | #F97316 | 仅反馈/标注（高亮框、条目标记）；状态与演示徽标不用 |
 | `--danger` | #B4533F | #E0896F | 仅错误文字 |
 | `--status-online` / `--status-warn` / `--status-error` | #2F7A46 / #8F5E08 / #B0402A | #7FD49A / #EBB552 / #E98B72 | 状态点、状态文字、警告 |
 | `--focus-ring` | #7B7266 | #9A9A9A | 键盘焦点环（中性灰） |

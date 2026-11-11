@@ -1,6 +1,7 @@
 import type { RefObject } from 'react'
 import { Download, ListChecks, Video, X } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { Badge } from '../ui/Badge'
 import { Button, IconButton } from '../ui/Button'
 import { Input, SegmentedControl } from '../ui/Controls'
 import { cn } from '../../lib/cn'
@@ -97,17 +98,17 @@ export function FeedbackOverlay({
                   top: hover.rect.y,
                   width: hover.rect.width,
                   height: hover.rect.height,
-                  boxShadow: '0 0 0 2px #F97316',
+                  boxShadow: '0 0 0 2px var(--t-annotation)',
                 }}
               >
-                <span className="absolute -top-5 left-0 whitespace-nowrap rounded bg-[#F97316] px-1.5 py-0.5 text-[10px] font-medium leading-none text-white">
+                <span className="absolute -top-5 left-0 whitespace-nowrap rounded bg-annotation px-1.5 py-0.5 text-[11px] font-medium leading-none text-white">
                   {hover.label}
                 </span>
               </div>
             )}
             {regionBox && (regionBox.width > 0 || regionBox.height > 0) && (
               <div
-                className="absolute rounded-[2px] border-2 border-dashed border-[#F97316] bg-[#F97316]/10"
+                className="absolute rounded-[2px] border-2 border-dashed border-annotation bg-annotation/10"
                 style={{
                   left: regionBox.x,
                   top: regionBox.y,
@@ -115,7 +116,7 @@ export function FeedbackOverlay({
                   height: regionBox.height,
                 }}
               >
-                <span className="absolute -top-5 left-0 whitespace-nowrap rounded bg-[#F97316] px-1.5 py-0.5 text-[10px] font-medium leading-none text-white">
+                <span className="absolute -top-5 left-0 whitespace-nowrap rounded bg-annotation px-1.5 py-0.5 text-[11px] font-medium leading-none text-white">
                   框选 {Math.round(regionBox.width)}×{Math.round(regionBox.height)}
                 </span>
               </div>
@@ -128,39 +129,39 @@ export function FeedbackOverlay({
                   top: selected.y,
                   width: selected.width,
                   height: selected.height,
-                  boxShadow: '0 0 0 2px #F97316',
+                  boxShadow: '0 0 0 2px var(--t-annotation)',
                 }}
               />
             )}
             {focusRect && (
               <div
-                className="absolute animate-pulse rounded-[2px] bg-[#F97316]/10"
+                className="absolute animate-pulse rounded-[2px] bg-annotation/10"
                 style={{
                   left: focusRect.x,
                   top: focusRect.y,
                   width: focusRect.width,
                   height: focusRect.height,
-                  boxShadow: '0 0 0 3px #F97316, 0 0 0 8px rgba(249,115,22,.25)',
+                  boxShadow: '0 0 0 3px var(--t-annotation), 0 0 0 8px color-mix(in srgb, var(--t-annotation) 25%, transparent)',
                 }}
               />
             )}
             {verifyLive && (
               <div
-                className="absolute rounded-[2px] bg-[#F97316]/10"
+                className="absolute rounded-[2px] bg-annotation/10"
                 style={{
                   left: verifyLive.rect.x,
                   top: verifyLive.rect.y,
                   width: verifyLive.rect.width,
                   height: verifyLive.rect.height,
                   boxShadow: verifyLive.found || verifyLive.region
-                    ? '0 0 0 2px #F97316, 0 0 0 8px rgba(249,115,22,.22)'
+                    ? '0 0 0 2px var(--t-annotation), 0 0 0 8px color-mix(in srgb, var(--t-annotation) 22%, transparent)'
                     : '0 0 0 2px #EF4444, 0 0 0 8px rgba(239,68,68,.18)',
                 }}
               >
                 <span
                   className={cn(
-                    'absolute -top-5 left-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium leading-none text-white',
-                    verifyLive.found || verifyLive.region ? 'bg-[#F97316]' : 'bg-red-500',
+                    'absolute -top-5 left-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-medium leading-none text-white',
+                    verifyLive.found || verifyLive.region ? 'bg-annotation' : 'bg-red-500',
                   )}
                 >
                   {verifyLive.region
@@ -178,8 +179,8 @@ export function FeedbackOverlay({
                 type="button"
                 onClick={() => onOpenItem(item)}
                 className={cn(
-                  'pointer-events-auto absolute flex size-5 items-center justify-center rounded-full border border-white/70 bg-[#F97316] text-[10px] font-semibold leading-none text-white shadow-sm',
-                  'transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#F97316]',
+                  'pointer-events-auto absolute flex size-5 items-center justify-center rounded-full border border-white/70 bg-annotation text-[11px] font-semibold leading-none text-white shadow-sm',
+                  'transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-annotation',
                 )}
                 style={{ left, top }}
                 data-tip={`${index + 1}. ${feedbackTypeLabel(item.type)}：${item.text}`}
@@ -198,22 +199,22 @@ export function FeedbackOverlay({
             className="pointer-events-auto fixed left-1/2 top-3 z-[130] w-max max-w-[calc(100vw-16px)] -translate-x-1/2 max-sm:top-[max(0.75rem,env(safe-area-inset-top))]"
           >
             <div className="flex flex-wrap items-center justify-center gap-2 rounded-full border border-border bg-surface py-1 pl-3 pr-1.5 shadow-md">
-              <span className="size-1.5 rounded-full bg-[#F97316]" />
+              <span className="size-1.5 rounded-full bg-annotation" />
               <span className="whitespace-nowrap text-[12.5px] font-medium text-text">
                 反馈模式 · 已记录 {items.length} 条
               </span>
               {pendingFeature && (
-                <span className="flex items-center gap-1 rounded-full bg-[#F97316]/12 px-2 py-0.5 text-[11px] text-[#F97316]">
+                <Badge tone="annotation">
                   标记：{pendingFeature.featureName}
                   <button data-raw-button
                     type="button"
                     aria-label="取消功能标记"
                     onClick={onClearFeature}
-                    className="rounded-full hover:bg-[#F97316]/20"
+                    className="rounded-full hover:bg-annotation/20"
                   >
                     <X size={10} />
                   </button>
-                </span>
+                </Badge>
               )}
               <span className="h-4 w-px bg-border" />
               <SegmentedControl
@@ -243,20 +244,20 @@ export function FeedbackOverlay({
                 </Button>
               )}
               {pendingVideo && (
-                <span className="flex items-center gap-1 rounded-full bg-[#F97316]/12 px-2 py-0.5 text-[10.5px] text-[#F97316]">
+                <Badge tone="annotation">
                   录屏待附加
                   <button data-raw-button
                     type="button"
                     aria-label="丢弃录屏"
                     onClick={onDiscardVideo}
-                    className="rounded-full hover:bg-[#F97316]/20"
+                    className="rounded-full hover:bg-annotation/20"
                   >
                     <X size={10} />
                   </button>
-                </span>
+                </Badge>
               )}
               {(regionBusy || captureBusy) && (
-                <span className="flex items-center gap-1 text-[10.5px] text-muted" role="status" aria-live="polite">
+                <span className="flex items-center gap-1 text-[11px] text-muted" role="status" aria-live="polite">
                   <Spinner size={11} /> {regionBusy ? '截取区域' : '截图'}
                 </span>
               )}
@@ -283,9 +284,9 @@ export function FeedbackOverlay({
               className="pointer-events-auto fixed bottom-4 left-1/2 z-[130] w-[min(560px,calc(100vw-16px))] -translate-x-1/2 rounded-xl border border-border bg-surface p-2.5 shadow-lg"
             >
               <div className="flex items-center gap-2">
-                <span className="rounded bg-[#F97316]/15 px-1.5 py-0.5 text-[10.5px] font-semibold text-[#F97316]">
+                <Badge tone="annotation">
                   复验 {verify.index + 1}/{verify.queue.length}
-                </span>
+                </Badge>
                 <span className="min-w-0 flex-1 truncate text-[12px] text-text" data-tip={verifyEntry.item.text}>
                   {verifyEntry.item.text}
                 </span>
@@ -294,7 +295,7 @@ export function FeedbackOverlay({
                 </IconButton>
               </div>
               {verifyLive && !verifyLive.found && !verifyLive.region && (
-                <p className="mt-1 text-[10px] text-red-500">
+                <p className="mt-1 text-[11px] text-red-500">
                   当前页面没有找到对应元素，已按记录的位置高亮；可能已被修复或移走。
                 </p>
               )}

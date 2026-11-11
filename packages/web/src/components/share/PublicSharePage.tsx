@@ -5,6 +5,7 @@ import type { PublicShare } from '@tandem/protocol'
 import type { ToolResultBlock, UiMessage } from '../../lib/types'
 import { fetchPublicShare } from '../../lib/api'
 import { useViewportHeight } from '../../lib/hooks'
+import { Badge } from '../ui/Badge'
 import { BrandMark } from '../BrandMark'
 import { Button } from '../ui/Button'
 import { MessageList } from '../MessageList'
@@ -105,10 +106,9 @@ export function PublicSharePage() {
               {data && !data.live ? ' · 创建时快照' : data ? ' · 实时' : ''}
             </p>
           </div>
-          <span className="flex shrink-0 items-center gap-1 rounded-full border border-border px-2 py-1 text-[12px] leading-4 text-muted">
-            <Eye size={11} />
+          <Badge tone="neutral" icon={<Eye size={12} />}>
             只读
-          </span>
+          </Badge>
         </div>
       </header>
 

@@ -623,6 +623,68 @@ for (const file of files) {
   }
 }
 
+// 打分卡 U3-B（2026-11-11 用户决定「徽標用方案B」）：徽标一律描边标签，
+// 品牌橙不再散落在界面源码里——反馈/标注用 --t-annotation，状态/演示用中性 Badge。
+{
+  const webSourceFiles = (await walk(SRC, /\.(?:tsx?|jsx?|css)$/)).filter(
+    (file) => !file.startsWith(UI_DIR + '/'),
+  )
+  // 白名单：canvas 标注需要具体色值（不认 CSS 变量），对应行带 ui-audit-ignore 并注明原因。
+  const ORANGE_HEX = /#f97316\b/i
+  for (const file of webSourceFiles) {
+    const text = await readFile(file, 'utf8')
+    const lines = text.split('\n')
+    for (let i = 0; i < lines.length; i += 1) {
+      if (lines[i].includes('ui-audit-ignore')) continue
+      // token 自身的定义就是要写这个色值，只禁止界面里直接写橙色。
+      if (/--t-annotation\s*:/.test(lines[i])) continue
+      if (!ORANGE_HEX.test(lines[i])) continue
+      issues.push({
+        file: relative(ROOT, file),
+        line: i + 1,
+        check: 'hardcoded-annotation-orange',
+        label: '硬编码 #F97316：反馈/标注改用 --t-annotation，状态/演示用中性 Badge（U3-B）',
+        text: lines[i].trim().slice(0, 160),
+      })
+    }
+  }
+}
+
+// P05 字号下限：ui/ 外不允许出现 <11px 的字号（kbd 与极小徽标也以 11px 为下限）。
+// 白名单为空：确需例外时在该行写 ui-audit-ignore 并注明原因。
+{
+  const TINY_FONT_ALLOW = new Map([
+    // 演示用的手机画面按比例缩绘（模拟键盘/状态栏），不是真实界面文字。
+    ['packages/web/src/components/workstation/DemoDeviceStage.tsx', '演示设备缩略画面'],
+  ])
+  const TINY_FONT_RE = /text-\[(\d+(?:\.\d+)?)px\]|font-size:\s*(\d+(?:\.\d+)?)px/g
+  const webSourceFiles = (await walk(SRC, /\.(?:tsx?|jsx?|css)$/)).filter(
+    (file) => !file.startsWith(UI_DIR + '/'),
+  )
+  for (const file of webSourceFiles) {
+    const rel = relative(ROOT, file)
+    const text = await readFile(file, 'utf8')
+    const lines = text.split('\n')
+    for (let i = 0; i < lines.length; i += 1) {
+      if (lines[i].includes('ui-audit-ignore') || TINY_FONT_ALLOW.has(rel)) continue
+      TINY_FONT_RE.lastIndex = 0
+      let match
+      while ((match = TINY_FONT_RE.exec(lines[i]))) {
+        const size = Number(match[1] ?? match[2])
+        if (size >= 11) continue
+        issues.push({
+          file: rel,
+          line: i + 1,
+          check: 'tiny-font',
+          label: `字号 ${size}px 低于 P05 下限 11px：正文 13/辅助 12，kbd 与徽标最低 11`,
+          text: lines[i].trim().slice(0, 160),
+        })
+        break
+      }
+    }
+  }
+}
+
 if (json) {
   console.log(JSON.stringify({ count: issues.length, issues }, null, 2))
 } else if (issues.length === 0) {

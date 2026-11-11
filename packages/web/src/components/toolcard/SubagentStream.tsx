@@ -34,7 +34,7 @@ export function SubagentStream({ id, depth }: { id: string; depth: number }) {
         subDepth > 1 && 'border-l-2 border-l-border/80',
       )}
     >
-      <div className="flex items-center gap-2 border-b border-border/70 px-2.5 py-1.5 text-[10.5px] text-muted">
+      <div className="flex items-center gap-2 border-b border-border/70 px-2.5 py-1.5 text-[11px] text-muted">
         {sub.summary?.model && (
           <span className="max-w-[150px] shrink-0 truncate font-mono" data-tip={`模型：${sub.summary.model}`}>
             {sub.summary.model}
@@ -77,7 +77,7 @@ export function SubagentStream({ id, depth }: { id: string; depth: number }) {
             size="sm"
             variant="danger-ghost"
             onClick={() => stopSubagent(id, scopeTarget)}
-            className="h-6! gap-1 px-1.5 text-[10px] [&_svg]:size-[9px]"
+            className="h-6! gap-1 px-1.5 text-[11px] [&_svg]:size-[9px]"
           >
             <Square size={9} /> 停止{agentKind()}
           </Button>
@@ -109,7 +109,7 @@ export function SubagentStream({ id, depth }: { id: string; depth: number }) {
             if (!text.trim()) return null
             return (
               <div key={m.id} className="rounded-lg bg-surface-2 px-2.5 py-1.5 text-[12px] leading-5 text-text-soft">
-                <div className="mb-0.5 text-[9.5px] text-muted">任务提示词</div>
+                <div className="mb-0.5 text-[11px] text-muted">任务提示词</div>
                 <div className="whitespace-pre-wrap break-words">{text}</div>
               </div>
             )

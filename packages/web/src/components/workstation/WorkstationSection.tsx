@@ -19,6 +19,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { ApiError, workstationApi } from '../../lib/api'
 import { Button } from '../ui/Button'
+import { Badge } from '../ui/Badge'
 import { Input, Select } from '../ui/Controls'
 import { Modal } from '../ui/Modal'
 import { toast } from '../../store/appStore/helpers'
@@ -228,9 +229,7 @@ export function WorkstationSection() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 truncate text-[13px] text-[var(--t-text)]">
                     {host.name}
-                    <span className="rounded bg-[var(--t-bg-active)] px-1.5 py-0.5 text-[10.5px] text-[var(--t-text-secondary)]">
-                      {isOwn ? '我的' : '获授权'}
-                    </span>
+                    <Badge tone="neutral">{isOwn ? '我的' : '获授权'}</Badge>
                     {local && <span className="text-[11px] text-[var(--t-text-tertiary)]">本机</span>}
                   </div>
                   <div className="truncate text-[11.5px] text-[var(--t-text-tertiary)]">

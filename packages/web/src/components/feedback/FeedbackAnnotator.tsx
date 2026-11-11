@@ -16,7 +16,8 @@ import { Button, IconButton } from '../ui/Button'
 type Tool = 'rect' | 'arrow' | 'pen' | 'text' | 'mosaic'
 
 const COLORS = [
-  { value: '#F97316', label: '橙色' },
+  // canvas 标注需要具体色值（不认 CSS 变量），与 --t-annotation 同值。
+  { value: '#F97316', label: '橙色' }, // ui-audit-ignore
   { value: '#FFFFFF', label: '白色' },
   { value: '#EF4444', label: '红色' },
 ] as const
@@ -44,7 +45,7 @@ export function FeedbackAnnotator({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const [tool, setTool] = useState<Tool>('rect')
-  const [color, setColor] = useState<string>('#F97316')
+  const [color, setColor] = useState<string>(COLORS[0].value)
   const [display, setDisplay] = useState({ width: 0, height: 0 })
   const [history, setHistory] = useState<{ list: string[]; index: number }>({ list: [], index: -1 })
   const [textAt, setTextAt] = useState<{ x: number; y: number } | null>(null)

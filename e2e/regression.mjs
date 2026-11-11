@@ -8523,8 +8523,11 @@ async function main() {
       await page.waitForTimeout(500)
       const text = await dialog.innerText()
       assert.ok(!/\b(AM|PM)\b/.test(text), '运行时间仍是 12 小时制英文格式')
+      // 徽标是 P05 允许的 11px（U3-B 描边标签），表格正文/数据仍要求 ≥12px。
       const minFont = await dialog.evaluate((el) => {
-        const nodes = [...el.querySelectorAll('tbody td *')].filter((n) => (n.textContent ?? '').trim())
+        const nodes = [...el.querySelectorAll('tbody td *')]
+          .filter((n) => (n.textContent ?? '').trim())
+          .filter((n) => !n.closest('[data-badge]'))
         return Math.min(...nodes.map((n) => parseFloat(getComputedStyle(n).fontSize)))
       })
       assert.ok(minFont >= 12, `结果表最小字号 ${minFont}px`)

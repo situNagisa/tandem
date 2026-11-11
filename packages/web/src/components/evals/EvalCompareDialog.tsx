@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, XCircle } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { Badge } from '../ui/Badge'
 import type { EvalCase, EvalResult, EvalRun } from '@tandem/protocol'
 import { cn } from '../../lib/cn'
 import { formatCost, formatDuration, resultLabel } from './evalDisplay'
@@ -23,25 +24,26 @@ function Pane({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col border-border max-md:border-t md:border-l">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-3 py-2 text-[12px]">
         <span className="min-w-0 flex-1 truncate font-medium text-text">{config?.name ?? '—'}</span>
-        <span
-          className={cn(
-            'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5',
+        <Badge
+          tone={
             result?.passed
-              ? 'bg-success-soft text-success'
+              ? 'success'
               : result && (result.status === 'running' || result.status === 'queued')
-                ? 'bg-[var(--t-bg-hover)] text-muted'
-                : 'bg-danger-soft text-danger',
-          )}
+                ? 'neutral'
+                : 'danger'
+          }
+          icon={
+            result?.status === 'running' || result?.status === 'queued' ? (
+              <Spinner size={12} />
+            ) : result?.passed ? (
+              <CheckCircle2 size={12} />
+            ) : (
+              <XCircle size={12} />
+            )
+          }
         >
-          {result?.status === 'running' || result?.status === 'queued' ? (
-            <Spinner size={11} />
-          ) : result?.passed ? (
-            <CheckCircle2 size={11} />
-          ) : (
-            <XCircle size={11} />
-          )}
           {resultLabel(result)}
-        </span>
+        </Badge>
         <span className="text-muted">{formatCost(result?.costUsd)}</span>
         <span className="text-muted">{formatDuration(result?.durationMs ?? 0)}</span>
       </div>

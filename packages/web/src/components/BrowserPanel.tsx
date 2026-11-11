@@ -9,6 +9,7 @@ import { copyText } from '../lib/clipboard'
 import { useBrowserShot } from '../lib/browserShot'
 import { formatRelative } from '../lib/format'
 import { Modal } from './ui/Modal'
+import { Badge } from './ui/Badge'
 import { Button, IconButton } from './ui/Button'
 import { PanelBar, PanelBody } from './ui/Panel'
 
@@ -76,9 +77,7 @@ export function BrowserPanel() {
           <Globe2 size={14} className="text-muted" />
           浏览器
           {state.active ? (
-            <span className="rounded-full bg-[var(--t-bg-active)] px-1.5 py-px text-[11px] font-normal text-text-soft">
-              运行中
-            </span>
+            <Badge tone="neutral">运行中</Badge>
           ) : null}
         </span>
       }

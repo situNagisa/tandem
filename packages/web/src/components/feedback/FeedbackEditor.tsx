@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ImagePlus, Pencil, Trash2, X } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { SegmentedControl } from '../ui/Controls'
 import { cn } from '../../lib/cn'
@@ -164,7 +165,7 @@ export function FeedbackEditor({
             onChange={setPriority}
             aria-label="优先级"
           />
-          <span className="min-w-0 flex-1 truncate text-right text-[10.5px] text-muted">
+          <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted">
             {editor.mode === 'new' ? elementLabel(editor.element, editor.kind) : '编辑反馈'}
           </span>
         </div>
@@ -184,20 +185,20 @@ export function FeedbackEditor({
             功能：{editor.featureName ?? '未归类'}
           </button>
           {editor.causeId ? (
-            <span className="inline-flex h-6 items-center gap-1 rounded-full bg-[#F97316]/12 px-2 text-[11.5px] text-[#F97316]">
+            <Badge tone="annotation">
               根因建议 {editor.causeId}
               <button data-raw-button
                 type="button"
                 aria-label="清除根因建议"
                 data-tip={editor.causeTitle}
                 onClick={() => onTagChange(editor.featureId, undefined)}
-                className="rounded-full hover:bg-[#F97316]/20"
+                className="rounded-full hover:bg-annotation/20"
               >
                 <X size={10} />
               </button>
-            </span>
+            </Badge>
           ) : null}
-          <span className="text-[10.5px] text-muted">按元素自动推断，可修改</span>
+          <span className="text-[11px] text-muted">按元素自动推断，可修改</span>
         </div>
         {tagOpen && (
           <div className="mt-1.5 max-h-36 space-y-1.5 overflow-y-auto rounded-lg border border-border bg-[var(--t-bg-subtle)] p-1.5">
@@ -285,7 +286,7 @@ export function FeedbackEditor({
                 <img src={annotateSource} alt="" className="size-full object-cover" draggable={false} />
                 <span
                   className={cn(
-                    'absolute inset-x-0 bottom-0 py-0.5 text-center text-[9px] text-white',
+                    'absolute inset-x-0 bottom-0 py-0.5 text-center text-[11px] text-white',
                     hasAnnotated ? 'bg-emerald-600/80' : 'bg-black/55',
                   )}
                 >
@@ -300,7 +301,7 @@ export function FeedbackEditor({
                 data-tip={reference.name}
               >
                 <img src={reference.dataURL} alt={reference.name} className="size-full object-cover" draggable={false} />
-                <span className="absolute left-0 top-0 rounded-br bg-black/60 px-1 text-[8.5px] text-white">参考</span>
+                <span className="absolute left-0 top-0 rounded-br bg-black/60 px-1 text-[11px] text-white">参考</span>
                 <button data-raw-button
                   type="button"
                   aria-label="移除参考图"
@@ -327,7 +328,7 @@ export function FeedbackEditor({
                 删除
               </Button>
             ) : (
-              <span className="truncate text-[10px] text-muted">Alt + 点击可选父元素</span>
+              <span className="truncate text-[11px] text-muted">Alt + 点击可选父元素</span>
             )}
             <Button
               size="sm"
@@ -362,7 +363,7 @@ export function FeedbackEditor({
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {saving && (
-              <span className="flex items-center gap-1 text-[10.5px] text-muted">
+              <span className="flex items-center gap-1 text-[11px] text-muted">
                 <Spinner size={11} /> 采集中
               </span>
             )}
@@ -374,7 +375,7 @@ export function FeedbackEditor({
             </Button>
           </div>
         </div>
-        <p className="mt-1 px-1 text-[9.5px] leading-4 text-muted">
+        <p className="mt-1 px-1 text-[11px] leading-4 text-muted">
           Enter 保存 · Shift + Enter 换行 · Esc 取消 · 参考图可粘贴或拖入
         </p>
       </div>

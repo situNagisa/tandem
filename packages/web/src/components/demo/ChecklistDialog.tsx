@@ -15,6 +15,7 @@ import {
 import { featureOfPoint } from '../../lib/checklist'
 import { openChecklistAction, openDemoById } from '../../lib/demoOpen'
 import { saveFeedbackFile } from '../../lib/feedback'
+import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { ConfirmAction } from '../ui/ConfirmAction'
 import { Modal } from '../ui/Modal'
@@ -96,11 +97,9 @@ export function ChecklistDialog() {
       ariaLabel="体验清单"
       title={
         <span className="flex items-center gap-2">
-          <ListChecks size={16} className="text-[#F97316]" />
+          <ListChecks size={16} className="text-muted" />
           体验清单
-          <span className="rounded-full bg-[#F97316]/12 px-2 py-0.5 text-[11px] font-normal text-[#F97316]">
-            增量测试
-          </span>
+          <Badge tone="neutral">增量测试</Badge>
         </span>
       }
       description="按功能分组列出测试要点；未测项排在前面。点「有问题」会直接进入反馈模式并自动带上功能标签。"
@@ -158,9 +157,7 @@ export function ChecklistDialog() {
                     <div className="flex flex-wrap items-center gap-2 border-b border-border px-2.5 py-1.5">
                       <span className="text-[13px] font-medium text-text">{feature.feature.title}</span>
                       {feature.isNew && (
-                        <span className="rounded bg-[#F97316]/12 px-1.5 py-0.5 text-[10px] font-semibold text-[#F97316]">
-                          新
-                        </span>
+                        <Badge tone="neutral">新</Badge>
                       )}
                       <span className="ml-auto text-[11px] text-muted">
                         通过 {feature.counts.pass} · 有问题 {feature.counts.fail} · 未测 {feature.counts.untested}

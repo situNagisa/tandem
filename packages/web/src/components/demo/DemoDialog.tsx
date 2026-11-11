@@ -5,6 +5,7 @@ import { useUiStore } from '../../store/useUiStore'
 import { useAppStore } from '../../store/useAppStore'
 import { useDemoStore } from '../../store/useDemoStore'
 import { openDemoScenario } from '../../lib/demoOpen'
+import { Badge } from '../ui/Badge'
 import { Button, IconButton } from '../ui/Button'
 import { ConfirmAction } from '../ui/ConfirmAction'
 import { Modal } from '../ui/Modal'
@@ -81,11 +82,9 @@ export function DemoDialog() {
       ariaLabel="演示工作区"
       title={
         <span className="flex items-center gap-2">
-          <FlaskConical size={16} className="text-[#F97316]" />
+          <FlaskConical size={16} className="text-muted" />
           演示工作区
-          <span className="rounded-full bg-[#F97316]/12 px-2 py-0.5 text-[11px] font-normal text-[#F97316]">
-            演示数据
-          </span>
+          <Badge tone="neutral">演示数据</Badge>
         </span>
       }
       description="一键造场景：独立演示仓库 + 内置演示模型。演示模型按固定剧本流式输出，不发出任何网络请求，也不消耗真实账号额度。"
@@ -140,9 +139,7 @@ export function DemoDialog() {
                       <span className="min-w-0 flex-1 text-[13px] font-medium text-text">
                         {scenario.title}
                       </span>
-                      <span className="shrink-0 rounded bg-[#F97316]/12 px-1.5 py-0.5 text-[10px] text-[#F97316]">
-                        演示数据
-                      </span>
+                      <Badge tone="neutral">演示数据</Badge>
                     </div>
                     <p className="mt-1 line-clamp-3 text-[12px] leading-4 text-muted">{scenario.summary}</p>
                     <div className="mt-auto flex items-center gap-1 pt-2">
