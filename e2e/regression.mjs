@@ -5815,8 +5815,11 @@ async function main() {
       // 首个 token 前：消息流末尾有「正在思考…」+ spinner。
       const activity = page.locator('[data-turn-activity]')
       await activity.waitFor({ state: 'visible', timeout: 5_000 })
-      const firstActivity = (await activity.innerText()).replace(/\s+/g, ' ')
-      assert.match(firstActivity, /正在思考…/, `等待首个 token 时没有「正在思考…」提示：${firstActivity}`)
+      await page.waitForFunction(
+        () => (document.querySelector('[data-turn-activity]')?.textContent ?? '').includes('正在思考…'),
+        null,
+        { timeout: 5_000 },
+      )
       // 首个 token 到达后：正文出现流式光标，活动行让位给流式输出。
       await page.locator('.md.chat-md.is-streaming').first().waitFor({ timeout: 8_000 })
       await activity.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
@@ -11334,6 +11337,70 @@ async function main() {
       const forkTitle = (await api(base, token, `/api/sessions/${encodeURIComponent(forkId)}`)).title
       await graph.locator('div[data-kind="fork"]').first().click()
       await page.getByText(forkTitle, { exact: true }).first().waitFor({ timeout: 10_000 })
+    })
+
+    desktop('反馈2156#01：会话图跳转只定位，目标消息没有高亮背景', async (page) => {
+      await openSession(page, 'long')
+      if (!(await page.locator('[data-group]').count())) {
+        await page.getByRole('button', { name: '切换信息面板' }).first().click()
+      }
+      const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+      const node = graph.locator('div[data-kind="turn"]').nth(2)
+      const messageId = await node.getAttribute('data-graph-turn-id')
+      assert.ok(messageId, '会话图节点没有携带目标消息 id')
+      await node.click()
+      await page.waitForFunction(
+        (id) => {
+          const el = document.querySelector(`[data-message-id="${CSS.escape(id)}"]`)
+          if (!el) return false
+          const rect = el.getBoundingClientRect()
+          return rect.bottom > 0 && rect.top < window.innerHeight
+        },
+        messageId,
+        { timeout: 12_000 },
+      )
+      await page.waitForTimeout(500)
+      assert.equal(await page.locator('.msg-jump-hit').count(), 0, '跳转后消息仍被加上高亮类')
+      const style = await page.evaluate((id) => {
+        const row = document
+          .querySelector(`[data-message-id="${CSS.escape(id)}"]`)
+          ?.closest('.msg-row')
+        if (!row) return null
+        const computed = getComputedStyle(row)
+        return { background: computed.backgroundColor, shadow: computed.boxShadow }
+      }, messageId)
+      assert.ok(style, '跳转后找不到目标消息行')
+      assert.ok(
+        style.background === 'rgba(0, 0, 0, 0)' || style.background === 'transparent',
+        `目标消息仍有高亮背景：${style.background}`,
+      )
+      assert.equal(style.shadow, 'none', `目标消息仍有高亮描边：${style.shadow}`)
+    })
+
+    desktop('反馈2156#03：正在输出的轮次节点有与侧栏一致的呼吸动画', async (page) => {
+      await openSession(page, 'slow')
+      const input = page.locator('[aria-label="消息输入框"]')
+      await input.fill('SLOW_E2E 展示运行中节点动画')
+      await input.press('Enter')
+      const running = page.locator('[data-session-graph] [data-running="true"]').first()
+      await running.waitFor({ state: 'visible', timeout: 10_000 })
+      const ring = running.locator('[data-marker-ring="running"]')
+      await ring.waitFor({ state: 'visible', timeout: 5_000 })
+      const style = await ring.evaluate((el) => ({
+        className: el.className,
+        animation: getComputedStyle(el).animationName,
+      }))
+      assert.ok(style.className.includes('running-dot'), `运行中节点没有复用 running-dot：${style.className}`)
+      assert.equal(style.animation, 'tandem-breathe', `运行中节点动画不对：${style.animation}`)
+      const sidebarDot = page.locator('[data-session-row] .running-dot').first()
+      await sidebarDot.waitFor({ state: 'attached', timeout: 5_000 })
+      assert.equal(
+        await sidebarDot.evaluate((el) => getComputedStyle(el).animationName),
+        style.animation,
+        '会话图运行中动画与侧栏运行中不一致',
+      )
+      await running.waitFor({ state: 'detached', timeout: 60_000 }).catch(() => {})
     })
 
     desktop('会话图泳道线 tooltip 以指针定位并完整显示在视口内（反馈1926#10）', async (page) => {

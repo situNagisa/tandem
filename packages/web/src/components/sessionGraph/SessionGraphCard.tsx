@@ -34,6 +34,7 @@ export function SessionGraphCard({
   const closeAgentSession = useUiStore((s) => s.closeAgentSession)
   const agentSession = useUiStore((s) => s.agentSession)
   const activeTurn = useTurnNavStore((s) => s.active)
+  const running = summary?.status === 'running'
 
   const input = useMemo(() => {
     if (!sessionId) return null
@@ -88,6 +89,7 @@ export function SessionGraphCard({
         <SessionGraphView
           layout={layout}
           activeTurn={activeTurn}
+          running={running}
           onOpen={open}
           height={full ? 'full' : graphCardHeight(layout.rows)}
           className={full ? 'flex-1' : undefined}

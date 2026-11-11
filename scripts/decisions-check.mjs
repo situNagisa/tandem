@@ -788,6 +788,13 @@ const DECISIONS = [
     need: [/if \(onOpenAgent\) \{/, /aria-expanded=\{onOpenAgent \? undefined : open\}/],
   },
   {
+    id: 'graph-running-animation',
+    source: '反馈2156#03（2026-11-11 用户原话：正在输出的轮次加上一个动画，比如闪烁，或者转圈之类的动画）',
+    decision: '运行中会话的最新一轮节点外圈复用侧栏运行中的 running-dot 呼吸动画',
+    files: [F.graphView, F.graphCard],
+    need: [/running-dot/, /running=/],
+  },
+  {
     id: 'graph-subagent-opens-session',
     source: '反馈2108#03',
     decision: '会话图子代理节点点击进入子代理会话；主线节点在当前会话定位该轮',
