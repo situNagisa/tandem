@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import * as RPopover from '@radix-ui/react-popover'
 import { cn } from '../../lib/cn'
 import { portalLayer } from '../../lib/overlay'
+import { useFeedbackStore } from '../../store/useFeedbackStore'
 import { popoverSurfaceClass } from './Popover'
 import { TIP_SHOW_DELAY, TIP_SKIP_DELAY } from './Tooltip'
 
@@ -92,6 +93,9 @@ export function HoverCard({
   }
   const scheduleClose = (pointerType: string) => {
     if (pointerType === 'touch') return
+    // 反馈模式（Ctrl+Shift+F）里捕获层盖住浮层，指针会离开触发元素：
+    // 与菜单/Popover 的共享层规则一致，进入反馈模式后不因移开指针收起，浮层停住供圈选。
+    if (useFeedbackStore.getState().active) return
     clearOpenTimer()
     if (closeTimer.current !== null) return
     closeTimer.current = window.setTimeout(() => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Clock, MoreHorizontal, Pin, PinOff } from 'lucide-react'
 import type { SessionSummary } from '@tandem/protocol'
 import type { AppState } from '../../store/appStore/types'
@@ -6,6 +6,7 @@ import { formatRelative } from '../../lib/format'
 import { cn } from '../../lib/cn'
 import { SessionStatusDot } from '../StatusDot'
 import { IconButton } from '../ui/Button'
+import { useAppStore } from '../../store/useAppStore'
 import { HoverCard } from '../ui/HoverCard'
 import { SessionTopology } from './SessionTopology'
 
@@ -93,22 +94,25 @@ export function SessionRow({
         : pinState
           ? '取消项目置顶'
           : '在项目中置顶'
+    // 反馈0220#06：树里只有这一个会话（没有分叉、没有子代理）时不弹悬停卡片。
+    const hostSessions = useAppStore((state) => state.runtimes[hostId]?.sessions)
+    const hasTreeBranches = useMemo(() => {
+      const ids = new Set(treeIds ?? [s.id])
+      const all = hostSessions ?? []
+      for (let changed = true; changed; ) {
+        changed = false
+        for (const session of all) {
+          if (ids.has(session.id) || !session.parentId || !ids.has(session.parentId)) continue
+          ids.add(session.id)
+          changed = true
+        }
+      }
+      return ids.size > 1
+    }, [hostSessions, treeIds, s.id])
     const elapsed = runningElapsed(hostId, s)
     const runningLabel =
       s.status === 'waiting_permission' ? '待审批' : s.status === 'retrying' ? '等待网络' : '运行中'
-    return (
-      <HoverCard
-        label={s.title || '未命名会话'}
-        disabled={renamingThis}
-        content={(close) => (
-          <SessionTopology
-            hostId={hostId}
-            rootId={s.id}
-            {...(s.title ? { title: s.title } : {})}
-            onNavigate={close}
-          />
-        )}
-      >
+    const row = (
         <div
           data-session-row="true"
           data-session-id={s.id}
@@ -283,6 +287,23 @@ export function SessionRow({
           </IconButton>
         )}
         </div>
+    )
+    return hasTreeBranches ? (
+      <HoverCard
+        label={s.title || '未命名会话'}
+        disabled={renamingThis}
+        content={(close) => (
+          <SessionTopology
+            hostId={hostId}
+            rootId={s.id}
+            {...(s.title ? { title: s.title } : {})}
+            onNavigate={close}
+          />
+        )}
+      >
+        {row}
       </HoverCard>
+    ) : (
+      row
     )
 }
