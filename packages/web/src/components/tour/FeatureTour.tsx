@@ -183,7 +183,7 @@ function TourPanel({ onClose, onJump }: { onClose: () => void; onJump: (entry: C
 const STEPS = [
   {
     title: '添加一台主机',
-    body: '登录后在「添加主机」里复制一行命令，到目标机器上执行一次；桌面端也可以直接「添加这台电脑」。',
+    body: '登录后在「添加主机」里复制一行命令，到目标机器上执行一次。',
     action: '添加主机',
     tab: 'hosts' as const,
     icon: Server,

@@ -68,24 +68,27 @@ export function OverlayScrollbar() {
     let pointer: { x: number; y: number } | null = null
 
     /**
-     * 指示条贴在容器右缘 3px 内。若滚动容器自身没有右侧留白，再往上看最多两层：
-     * 外层有 ≥12px 的 padding 时把指示条放回那条 gutter（如设置导航），不压住行背景与文字。
+     * 指示条贴在容器右缘 3px 内。若滚动容器自身没有右侧留白，再往上看最多五层：
+     * 取最外层有 ≥12px 右侧 padding、且与本容器右缘相距 ≤48px 的祖先 gutter
+     * （如卡片外的面板留白、设置导航），不压住卡片头部的折叠/拖动/展开控件。
+     * 反馈1926#07：会话图这类嵌在卡片里的滚动容器也要让位到卡片外的留白。
      */
     const gutterRight = (el: HTMLElement) => {
       const rect = el.getBoundingClientRect()
       const inset = 3
       const pad = parseFloat(getComputedStyle(el).paddingRight) || 0
       if (pad >= 10) return rect.right - inset
+      let gutter: number | null = null
       let node = el.parentElement
-      for (let i = 0; i < 2 && node && node !== document.body; i++) {
+      for (let i = 0; i < 5 && node && node !== document.body; i++) {
         const nr = node.getBoundingClientRect()
         const npad = parseFloat(getComputedStyle(node).paddingRight) || 0
         if (npad >= 12 && nr.right - inset >= rect.right + 4 && nr.right - rect.right <= 48) {
-          return nr.right - inset
+          gutter = nr.right - inset
         }
         node = node.parentElement
       }
-      return rect.right - inset
+      return gutter ?? rect.right - inset
     }
 
     const gutterBottom = (el: HTMLElement) => {
@@ -93,16 +96,17 @@ export function OverlayScrollbar() {
       const inset = 3
       const pad = parseFloat(getComputedStyle(el).paddingBottom) || 0
       if (pad >= 10) return rect.bottom - inset
+      let gutter: number | null = null
       let node = el.parentElement
-      for (let i = 0; i < 2 && node && node !== document.body; i++) {
+      for (let i = 0; i < 5 && node && node !== document.body; i++) {
         const nr = node.getBoundingClientRect()
         const npad = parseFloat(getComputedStyle(node).paddingBottom) || 0
         if (npad >= 12 && nr.bottom - inset >= rect.bottom + 4 && nr.bottom - rect.bottom <= 48) {
-          return nr.bottom - inset
+          gutter = nr.bottom - inset
         }
         node = node.parentElement
       }
-      return rect.bottom - inset
+      return gutter ?? rect.bottom - inset
     }
 
     const trackY = (el: HTMLElement) => {

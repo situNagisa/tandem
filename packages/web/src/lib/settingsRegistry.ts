@@ -71,15 +71,14 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'routing.judge', tab: 'routing', title: '用小模型判断难度', keywords: ['判断', '难度', '小模型', '自动路由'] },
   { id: 'routing.division', tab: 'routing', title: '多代理协作', keywords: ['分工', '多代理协作', '规划', '执行', '专长', 'Task', '子代理', '省钱', '整单交执行者', '确认'] },
 
-  { id: 'hosts.list', tab: 'hosts', title: '主机列表', keywords: ['主机', '服务器', '连接'] },
-  { id: 'hosts.add', tab: 'hosts', title: '添加主机', keywords: ['新增', '服务器', '扫码'] },
-  { id: 'hosts.mode', tab: 'hosts', title: '连接方式', keywords: ['直连', 'relay'] },
-  { id: 'hosts.pair', tab: 'hosts', title: '连接手机', keywords: ['手机', '配对', '扫码'] },
+  { id: 'hosts.list', tab: 'hosts', title: '主机列表', keywords: ['主机', '服务器', '连接', '授权', '改名'] },
+  { id: 'hosts.detail', tab: 'hosts', title: '主机详情', keywords: ['主机', '改名', '设备', '诊断', '授权', '移除'] },
   { id: 'hosts.doctor', tab: 'hosts', title: '主机诊断', keywords: ['诊断', 'doctor', '检查', '环境', '报告'] },
 
   { id: 'accounts.workspace', tab: 'accounts', title: '工作站与账号', keywords: ['工作站', '账号', '登录', '注册', '绑定码', 'workstation'] },
-  { id: 'accounts.members', tab: 'accounts', title: '主机授权', keywords: ['账号', '角色', '范围', '授权', '撤销'] },
-  { id: 'accounts.hosts', tab: 'accounts', title: '我的主机', keywords: ['主机', '机器', '添加', '工作站'] },
+  { id: 'accounts.name', tab: 'accounts', title: '工作站名称', keywords: ['工作站', '名称', '改名'] },
+  { id: 'accounts.registration', tab: 'accounts', title: '注册方式', keywords: ['注册', '邀请', '邀请码', '开放'] },
+  { id: 'accounts.members', tab: 'accounts', title: '成员账号', keywords: ['账号', '成员', '角色', '禁用'] },
 
   { id: 'gateway.mode', tab: 'gateway', title: '网关模式', keywords: ['网关', 'gateway'] },
   { id: 'gateway.routing', tab: 'gateway', title: '模型转发', keywords: ['路由', '模型', '账号'] },
@@ -168,6 +167,8 @@ export function findSettingItem(id: string): SettingItem | undefined {
 export type SettingsPageId =
   | 'general'
   | 'hosts'
+  | 'workstation'
+  | 'shares'
   | 'profiles'
   | 'routing'
   | 'usage-budgets'
@@ -176,7 +177,6 @@ export type SettingsPageId =
   | 'agent'
   | 'schedules'
   | 'memory'
-  | 'team-shares'
   | 'appearance'
   | 'notifications'
   | 'voice'
@@ -212,7 +212,8 @@ export const SETTINGS_PAGES: SettingsPage[] = [
   { id: 'agent', label: 'Agent 能力', tabs: ['subagents', 'skills', 'prompts'] },
   { id: 'schedules', label: '定时任务', tabs: ['schedules'] },
   { id: 'memory', label: '记忆', tabs: ['memory'] },
-  { id: 'team-shares', label: '成员与分享', tabs: ['accounts', 'shares'] },
+  { id: 'workstation', label: '工作站', tabs: ['accounts'] },
+  { id: 'shares', label: '分享', tabs: ['shares'] },
   { id: 'appearance', label: '外观', tabs: ['appearance'] },
   { id: 'notifications', label: '通知', tabs: ['notifications'] },
   { id: 'voice', label: '语音', tabs: ['voice'] },
@@ -224,11 +225,10 @@ export const SETTINGS_PAGES: SettingsPage[] = [
 ]
 
 export const SETTINGS_GROUPS: SettingsGroup[] = [
-  { id: 'common', label: '基础', pages: ['general', 'hosts'] },
+  { id: 'common', label: '基础', pages: ['general', 'hosts', 'workstation', 'shares'] },
   { id: 'models', label: '模型与账号', pages: ['profiles', 'routing', 'usage-budgets'] },
   { id: 'safety', label: '权限与安全', pages: ['permissions', 'secrets'] },
   { id: 'automation', label: 'Agent 与自动化', pages: ['agent', 'schedules', 'memory'] },
-  { id: 'team', label: '团队与共享', pages: ['team-shares'] },
   { id: 'appearance', label: '外观与辅助', pages: ['appearance', 'notifications', 'voice', 'browser'] },
   { id: 'advanced', label: '高级', pages: ['extensions', 'evals', 'gateway', 'sync'], collapsed: true },
 ]

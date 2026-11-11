@@ -4,7 +4,8 @@ import { Spinner } from '../ui/Spinner'
 import type { WorkspaceHostInfo, WorkstationBindCode, WorkstationPublicStatus } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
-import { ApiError, workstationApi } from '../../lib/api'
+import { workstationApi } from '../../lib/api'
+import { withWorkstationSession } from '../../lib/workspaceSession'
 import {
   buildAddHostCommands,
   defaultAddHostPlatform,
@@ -46,21 +47,6 @@ function formatCountdown(ms: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
-/** 工作站写操作统一处理访问令牌过期：刷新一次再重试。 */
-async function withAuth<T>(run: (base: string, token: string) => Promise<T>): Promise<T> {
-  const session = useAppStore.getState().account
-  if (!session) throw new Error('请先登录工作站')
-  try {
-    return await run(session.centerUrl, session.accessToken)
-  } catch (err) {
-    if (!(err instanceof ApiError) || err.status !== 401) throw err
-    if (!(await useAppStore.getState().refreshWorkspace())) throw err
-    const fresh = useAppStore.getState().account
-    if (!fresh) throw err
-    return await run(fresh.centerUrl, fresh.accessToken)
-  }
-}
-
 export function AddHostDialog() {
   const open = useUiStore((s) => s.addHostOpen)
   const setOpen = useUiStore((s) => s.setAddHostOpen)
@@ -81,13 +67,13 @@ export function AddHostDialog() {
   const [phase, setPhase] = useState<HostPhase>('waiting')
   const [newHost, setNewHost] = useState<WorkspaceHostInfo | null>(null)
   const [tokenUsed, setTokenUsed] = useState(false)
-  const [joiningLocal, setJoiningLocal] = useState(false)
-  const [localError, setLocalError] = useState<string | null>(null)
   const connectedRef = useRef(false)
   const baselineRef = useRef<Set<string> | null>(null)
   const chosenIdRef = useRef<string | null>(null)
 
   const localAvailable = open && pageIsLoopback()
+  const [joiningLocal, setJoiningLocal] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
   const share = useMemo(() => pickShareUrl(base, status?.urls ?? []), [base, status])
   const url = selectedUrl ?? share.url
   const statusReady = !!status || !!statusError
@@ -137,7 +123,7 @@ export function AddHostDialog() {
     setBind(null)
     setError(null)
     setTokenUsed(false)
-    void withAuth((b, token) => workstationApi.bindCode(b, token))
+    void withWorkstationSession((b, token) => workstationApi.bindCode(b, token))
       .then((next) => {
         if (!cancelled) {
           setBind(next)
@@ -169,7 +155,7 @@ export function AddHostDialog() {
     const tick = async () => {
       if (cancelled || connectedRef.current) return
       try {
-        const list = await withAuth((b, token) => workstationApi.hosts(b, token))
+        const list = await withWorkstationSession((b, token) => workstationApi.hosts(b, token))
         if (cancelled) return
         if (!baselineRef.current) {
           baselineRef.current = new Set(list.map((host) => host.id))
@@ -223,17 +209,12 @@ export function AddHostDialog() {
     platform,
     service: autostart,
   })
-  const localLabel = pageIsLoopback() ? '添加这台电脑' : '添加此主机（当前页面所在的电脑）'
-
   const joinLocal = async () => {
-    const session = useAppStore.getState().account
-    if (!session) return
     setJoiningLocal(true)
     setLocalError(null)
     try {
-      await workstationApi.addLocalHost(session.centerUrl, session.accessToken)
-      setTokenUsed(true)
-      setPhase((current) => (current === 'connected' ? current : 'waiting'))
+      await withWorkstationSession((b, token) => workstationApi.addLocalHost(b, token))
+      // 登记后由上面的轮询把新主机识别为「已连接」。
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : '添加本机失败')
     } finally {
@@ -414,7 +395,7 @@ export function AddHostDialog() {
               onClick={() => void joinLocal()}
             >
               {joiningLocal ? <Spinner size={13} /> : <Plus size={13} />}
-              {localLabel}
+              添加这台电脑
             </Button>
           )}
         </div>

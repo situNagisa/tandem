@@ -145,7 +145,7 @@ export function createHostsSlice(
     initialize: () => {
       if (get().initialized) return
       // 登录门开启时，工作台只显示账号下的主机：直连凭据（地址 + 主 token）转入本机凭据，
-      // 只用于「添加这台电脑」等本机管理。调试版测试开关（?gate=off）保留旧的直连行为。
+      // 只用于调试版自动登录等本机管理。调试版测试开关（?gate=off）保留旧的直连行为。
       const gate = loginGateEnabled()
       let hosts = loadHosts()
       let preferredHostId: string | null = null

@@ -151,7 +151,7 @@ export function LoginGate() {
   }[stage]
   const hint = {
     probing: '检查工作站状态。',
-    connect: '填写团队服务器或这台电脑上的工作站地址，连接后登录或注册。',
+    connect: '填写运行 Tandem 程序的工作站地址，连接后登录或注册。',
     login: '登录后查看主机和会话。',
     register:
       status?.registration === 'invite'

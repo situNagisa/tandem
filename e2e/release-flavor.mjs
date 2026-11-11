@@ -20,8 +20,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function startWorkstation({ home }) {
   const configDir = path.join(home, '.tandem')
-  mkdirSync(path.join(configDir, 'sessions'), { recursive: true })
-  const child = spawn(process.execPath, [HOST_ENTRY, '--port', '0'], {
+  mkdirSync(configDir, { recursive: true })
+  const child = spawn(process.execPath, [HOST_ENTRY, '--port', '0', '--host', '127.0.0.1'], {
     cwd: ROOT,
     env: {
       ...process.env,
@@ -70,10 +70,27 @@ async function main() {
     const port = await host.ready
     const base = `http://127.0.0.1:${port}`
 
+    // 发布版没有调试账号：先创建管理员并登记本机主机（页面本身就是工作站）。
+    const setup = await (
+      await fetch(`${base}/api/workstation/setup`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: '发布版回归工作站', username: 'release-admin', password: 'release-pass-1' }),
+      })
+    ).json()
+    assert.ok(setup.accessToken, '发布版工作站创建失败')
+    const local = await (
+      await fetch(`${base}/api/workstation/hosts/local`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${setup.accessToken}` },
+      })
+    ).json()
+    assert.ok(local.id, '发布版登记本机失败')
+
     const demoRes = await fetch(`${base}/api/demo`)
-    assert.ok([404, 401].includes(demoRes.status), '/api/demo 在发布版应不可用')
+    assert.equal(demoRes.status, 404, '/api/demo 在发布版应返回 404')
     const replayRes = await fetch(`${base}/api/demo/scenarios/subagents/replay`, { method: 'POST' })
-    assert.ok([404, 401].includes(replayRes.status), '/api/demo/scenarios/* 在发布版应不可用')
+    assert.equal(replayRes.status, 404, '/api/demo/scenarios/* 在发布版应返回 404')
 
     browser = await chromium.launch({ headless: true })
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
@@ -83,18 +100,11 @@ async function main() {
     await page.locator('[data-testid="login-gate"]').waitFor({ state: 'visible', timeout: 20_000 })
     assert.equal(await page.locator('[data-testid="login-debug"]').count(), 0, '发布版登录页不应有调试登录入口')
     assert.equal(await page.locator('[data-testid="login-debug-button"]').count(), 0, '发布版登录页不应有调试账号按钮')
-    // 本机回环地址：登录页会启动这台电脑的工作站，首次使用是「创建工作站」。
-    const setupName = page.locator('[data-testid="login-workspace-name"]')
-    await setupName.waitFor({ state: 'visible', timeout: 90_000 })
-    await setupName.fill('发布版回归工作站')
+    // 页面本身就是工作站：直接填管理员账号登录。
+    await page.locator('[data-testid="login-username"]').waitFor({ state: 'visible', timeout: 30_000 })
     await page.locator('[data-testid="login-username"]').fill('release-admin')
     await page.locator('[data-testid="login-password"]').fill('release-pass-1')
     await page.locator('[data-testid="login-submit"]').click()
-
-    // 登录后账号下没有主机：空状态引导添加主机，新会话入口禁用并说明原因。
-    await page.locator('[data-testid="no-hosts"]').waitFor({ state: 'visible', timeout: 30_000 })
-    assert.equal(await page.locator('[data-testid="sidebar-new-session"]').isDisabled(), true, '没有主机时新会话入口应禁用')
-    await page.locator('[data-testid="no-hosts-add-local"]').click()
     await page.locator('[aria-label="消息输入框"]').first().waitFor({ state: 'visible', timeout: 60_000 })
 
     const bodyText = () => page.locator('body').innerText()
@@ -191,7 +201,10 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(`\n[release-flavor] 失败：${err.message}`)
-  process.exit(1)
-})
+main()
+  // 页面关闭后仍可能有 keep-alive 连接，显式退出避免挂住 check-release。
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error(`\n[release-flavor] 失败：${err.message}`)
+    process.exit(1)
+  })

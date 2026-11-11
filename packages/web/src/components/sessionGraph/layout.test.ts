@@ -28,25 +28,28 @@ function sub(
     title: `子代理 ${id}`,
     turnId,
     createdAt: 0,
-    steps: 3,
     turns: [{ id: `${id}-u1`, no: 1, preview: `${id} 的任务` }],
     children: [],
     ...extra,
   }
 }
 
+const turnOrder = (layout: GraphLayout) =>
+  layout.nodes.filter((node) => node.kind === 'turn').map((node) => node.id)
+
 describe('layoutSessionGraph', () => {
-  it('主线每轮一行，泳道数只有一条', () => {
+  it('主线每轮一行，时间倒序：最新一轮在最上', () => {
     const layout = layoutSessionGraph({
       sessionId: 's',
       turns: turns(3),
       subagents: [],
       forks: [],
     })
-    expect(layout.nodes.map((n) => [n.kind, n.lane, n.row])).toEqual([
-      ['turn', 0, 0],
-      ['turn', 0, 1],
-      ['turn', 0, 2],
+    // 最新一轮 t3 在最上，t1 在最下。
+    expect(layout.nodes.map((n) => [n.kind, n.row, n.label])).toEqual([
+      ['turn', 0, '用户第 3 轮'],
+      ['turn', 1, '用户第 2 轮'],
+      ['turn', 2, '用户第 1 轮'],
     ])
     expect(layout.lanes).toBe(1)
     expect(layout.rows).toBe(3)
@@ -63,30 +66,35 @@ describe('layoutSessionGraph', () => {
     expect(columnX(2) - columnX(1)).toBe(12)
   })
 
-  it('单个子代理：分出新泳道并合并回主线下一行', () => {
+  it('子代理始终展开：显示自己的轮次，无结果节点与收起节点', () => {
     const layout = layoutSessionGraph({
       sessionId: 's',
       turns: turns(2),
       subagents: [sub('a', 't1')],
       forks: [],
     })
-    const branch = layout.nodes.find((n) => n.kind === 'subagent')!
+    const branch = layout.nodes.find((n) => n.kind === 'subagent-turn')!
     expect(branch.lane).toBe(1)
+    expect(branch.subagentId).toBe('a')
+    const kindOf = (node: { kind: string }) => node.kind
+    expect(layout.nodes.some((n) => kindOf(n) === 'subagent')).toBe(false)
+    expect(layout.nodes.some((n) => kindOf(n) === 'subagent-result')).toBe(false)
+    expect(layout.nodes.every((n) => n.label !== '结果已返回')).toBe(true)
+    // 倒序：父轮 t1 在分支下方，分支向上一行；最新一轮 t2 在最上。
+    expect(turnOrder(layout)).toEqual(['t2', 't1'])
     expect(branch.row).toBe(1)
-    expect(branch.collapsed).toBe(true)
-    const nextTurn = layout.nodes.find((n) => n.kind === 'turn' && n.row > 0)!
-    expect(nextTurn.row).toBe(2) // 子代理完成后主线才继续
+    const parentRow = layout.nodes.find((n) => n.kind === 'turn' && n.id === 't1')!.row
     const split = layout.edges.find(
-      (e) => e.kind === 'subagent' && e.fromLane === 0 && e.toLane === 1,
+      (e) => e.kind === 'subagent' && !e.merge && e.fromLane === 0,
     )!
-    expect(split).toMatchObject({ fromRow: 0, toRow: 1 })
-    const out = layout.edges.find((e) => e.kind === 'subagent' && e.fromLane === 1)!
-    expect(out.toLane).toBe(0)
-    expect(out.toRow).toBe(2)
-    expect(layout.counts).toEqual({ turns: 2, subagents: 1, forks: 0 })
+    expect(split).toMatchObject({ fromRow: parentRow, toRow: branch.row })
+    const back = layout.edges.find((e) => e.kind === 'subagent' && e.merge)!
+    expect(back).toMatchObject({ fromRow: branch.row, toLane: 0, toRow: 0 })
+    expect(back.ownerId).toBe('a')
+    expect(back.label).toBe('子代理 a')
   })
 
-  it('嵌套子代理继续向右分泳道，展开后出现步与结果节点', () => {
+  it('嵌套子代理继续向右分泳道；汇回父泳道的下一轮节点', () => {
     const parent = sub('a', 't1', {
       turns: [
         { id: 'a-u1', no: 1, preview: '先读文件' },
@@ -99,22 +107,20 @@ describe('layoutSessionGraph', () => {
       turns: turns(2),
       subagents: [parent],
       forks: [],
-      expanded: { a: true },
     })
     const parentTurns = layout.nodes.filter((n) => n.kind === 'subagent-turn' && n.subagentId === 'a')
     expect(parentTurns.map((n) => n.lane)).toEqual([1, 1])
-    const grandchild = layout.nodes.find((n) => n.kind === 'subagent' && n.subagentId === 'b')!
+    const grandchild = layout.nodes.find((n) => n.kind === 'subagent-turn' && n.subagentId === 'b')!
     expect(grandchild.lane).toBe(2)
-    expect(grandchild.row).toBeGreaterThan(parentTurns[1]!.row)
-    const result = layout.nodes.find((n) => n.kind === 'subagent-result' && n.subagentId === 'a')!
-    expect(result).toBeTruthy()
-    // 分支竖线从父节点一直贯穿到最后一个节点（结果行），再合并回主线。
-    const split = layout.edges.find(
-      (e) => e.kind === 'subagent' && e.fromLane === 0 && e.toLane === 1,
-    )!
-    expect(split.toRow).toBe(result.row)
+    // 孙代理在父泳道第二轮的下一行（倒序后在其上方）。
+    expect(grandchild.row).toBeLessThan(parentTurns[0]!.row)
+    const childBack = layout.edges.find((e) => e.merge && e.ownerId === 'b')!
+    expect(childBack.toLane).toBe(1)
+    // 孙代理汇回父泳道的下一行；父泳道自己的汇回线也在这里拐回主线（端点重合，不悬空）。
+    const mainBack = layout.edges.find((e) => e.merge && e.ownerId === 'a')!
+    expect(childBack.toRow).toBe(mainBack.toRow)
+    expect(mainBack.toRow).toBe(0) // 汇回最新一轮 t2
     expect(layout.lanes).toBe(3)
-    expect(layout.counts.subagents).toBe(2)
   })
 
   it('分叉是独立泳道节点，不合并回主线', () => {
@@ -128,13 +134,19 @@ describe('layoutSessionGraph', () => {
     expect(fork.lane).toBe(1)
     expect(fork.row).toBe(1)
     expect(fork.forkSessionId).toBe('fork-1')
+    expect(fork.label).toBe('分叉 · 方案 B')
     const forkEdges = layout.edges.filter((e) => e.kind === 'fork')
     expect(forkEdges).toHaveLength(1)
-    expect(forkEdges[0]).toMatchObject({ fromLane: 0, fromRow: 0, toLane: 1, toRow: fork.row })
+    expect(forkEdges[0]).toMatchObject({ fromLane: 0, toLane: 1, toRow: fork.row })
+    expect(forkEdges[0]!.fromRow).toBe(
+      layout.nodes.find((n) => n.kind === 'turn' && n.id === 't1')!.row,
+    )
+    expect(forkEdges[0]!.ownerId).toBe('fork-1')
+    expect(forkEdges[0]!.label).toBe('分叉 · 方案 B')
     expect(layout.edges.some((e) => e.kind === 'fork' && e.toLane === 0)).toBe(false)
   })
 
-  it('子代理与分叉混合：泳道类型与颜色分档可区分', () => {
+  it('子代理与分叉混合：泳道类型可区分，轮次严格倒序', () => {
     const layout = layoutSessionGraph({
       sessionId: 's',
       turns: turns(3),
@@ -144,11 +156,41 @@ describe('layoutSessionGraph', () => {
     expect(layout.laneKinds[0]).toBe('main')
     expect(layout.laneKinds).toContain('subagent')
     expect(layout.laneKinds).toContain('fork')
-    expect(layout.counts).toEqual({ turns: 3, subagents: 2, forks: 1 })
-    // 泳道互不重叠，行的顺序严格自上而下。
+    expect(turnOrder(layout)).toEqual(['t3', 't2', 't1'])
     expect(columnX(layout.columnOf[1]!)).toBeGreaterThan(columnX(0))
     const turnRows = layout.nodes.filter((n) => n.kind === 'turn').map((n) => n.row)
     expect(turnRows).toEqual([...turnRows].sort((a, b) => a - b))
+  })
+
+  it('最后一轮派出的子代理：汇回主线轨道上的空行，不产生结果节点', () => {
+    const layout = layoutSessionGraph({
+      sessionId: 's',
+      turns: turns(2),
+      subagents: [sub('a', 't2')],
+      forks: [],
+    })
+    const back = layout.edges.find((e) => e.merge)!
+    const track = layout.edges.find((e) => e.kind === 'main')!
+    expect(back.toRow).toBe(track.fromRow) // 汇回端点落在主线轨道上端
+    expect(back.toRow).toBeLessThan(layout.nodes.find((n) => n.id === 't2')!.row)
+    const nodeRows = new Set(layout.nodes.map((n) => n.row))
+    expect(nodeRows.has(back.toRow)).toBe(false)
+    expect(layout.nodes.every((n) => n.label !== '结果已返回')).toBe(true)
+  })
+
+  it('每个连线的横坐标都落在泳道中心，汇回端点落在行中心', () => {
+    const layout = layoutSessionGraph({
+      sessionId: 's',
+      turns: turns(2),
+      subagents: [sub('a', 't1', { children: [sub('b', 'a-u1')] })],
+      forks: [{ id: 'fork-1', title: '分叉', turnId: 't1', createdAt: 0 }],
+    })
+    for (const edge of layout.edges) {
+      expect(edge.fromRow).toBeGreaterThanOrEqual(0)
+      expect(edge.toRow).toBeGreaterThanOrEqual(0)
+      expect(edge.toRow).toBeLessThan(layout.rows)
+      expect(edge.fromRow).toBeLessThan(layout.rows)
+    }
   })
 
   it('320 轮大会话布局 < 20ms', () => {
@@ -175,7 +217,7 @@ describe('layoutSessionGraph', () => {
     const started = performance.now()
     const layout = layoutSessionGraph(input)
     const elapsed = performance.now() - started
-    expect(layout.counts.turns).toBe(320)
+    expect(layout.nodes.filter((n) => n.kind === 'turn')).toHaveLength(320)
     expect(layout.nodes.length).toBeGreaterThan(320)
     expect(layout.rows * GRAPH_ROW_H).toBeGreaterThan(320 * GRAPH_ROW_H)
     expect(elapsed).toBeLessThan(20)
@@ -226,7 +268,6 @@ describe('layoutSessionGraph', () => {
         }),
       ],
       forks: [{ id: 'fork-1', title: '分叉', turnId: 't1', createdAt: 0 }],
-      expanded: { a: true, b: true, c: true, e: true },
     })
     expect(crossings(layout)).toBe(0)
   })
@@ -248,7 +289,9 @@ function crossings(layout: GraphLayout): number {
   for (const h of horizontal) {
     for (const v of vertical) {
       if (h.edge === v.edge) continue
-      if (h.from < v.column && v.column < h.to && v.from < h.row && h.row < v.to) n += 1
+      const lo = Math.min(v.from, v.to)
+      const hi = Math.max(v.from, v.to)
+      if (h.from < v.column && v.column < h.to && lo < h.row && h.row < hi) n += 1
     }
   }
   return n
