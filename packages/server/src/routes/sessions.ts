@@ -173,6 +173,15 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
     return host.turnsFor(rec);
   });
 
+  // 会话树拓扑：整棵树（根 + 递归分叉 + 所有子代理）的轮次节点与接入关系。
+  app.get('/api/sessions/:id/graph', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const principal = principalOf(req);
+    const tree = host.sessionGraph(id, (rec) => canSeeSession(principal, rec));
+    if (!tree) return bad(reply, '会话不存在', 404);
+    return tree;
+  });
+
   // 超大工具输出“显示全部”：按消息 id + block 下标取完整内容块。
   app.get('/api/sessions/:id/message-block', async (req, reply) => {
     const { id } = req.params as { id: string };

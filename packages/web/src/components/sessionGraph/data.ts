@@ -1,15 +1,7 @@
-import type { SessionSummary } from '@tandem/protocol'
+import type { SessionGraphTree } from '@tandem/protocol'
 import { isUserTurnMessage } from '@tandem/protocol'
-import type { SubagentSession, UiMessage } from '../../lib/types'
-import { sessionTreeRootId } from '../../lib/sessionTree'
-import type {
-  GraphFork,
-  GraphInput,
-  GraphSessionBranch,
-  GraphSubagent,
-  GraphTopologyInput,
-  GraphTurn,
-} from './layout'
+import type { UiMessage } from '../../lib/types'
+import type { GraphTreeInput, GraphTurn } from './layout'
 
 function firstLine(message: UiMessage): string {
   const texts: string[] = []
@@ -27,217 +19,63 @@ function firstLine(message: UiMessage): string {
   return line || (image ? '图片' : '')
 }
 
-interface TurnParts {
-  turns: GraphTurn[]
-  /** 消息 id → 所属用户轮 id（分叉点可能落在助手消息上）。 */
-  turnOfMessage: Map<string, string>
-}
-
-/** 从消息流里取用户轮：预览与 Task 工具 id/标题。 */
-export function turnsFromMessages(messages: UiMessage[]): TurnParts {
-  const starts: number[] = []
-  for (let i = 0; i < messages.length; i += 1) {
-    const message = messages[i]!
-    if (message.role === 'user' && !message.gap && isUserTurnMessage(message)) starts.push(i)
-  }
+/** 从消息流里取用户轮（注入内容、纯 tool_result、压缩摘要都不算一轮）。 */
+export function turnsFromMessages(messages: UiMessage[], pinned: string[] = []): GraphTurn[] {
+  const pinnedIds = new Set(pinned)
   const turns: GraphTurn[] = []
-  const turnOfMessage = new Map<string, string>()
-  for (let s = 0; s < starts.length; s += 1) {
-    const start = starts[s]!
-    const end = starts[s + 1] ?? messages.length
-    const startMessage = messages[start]!
-    const taskToolIds: string[] = []
-    const taskTitles: string[] = []
-    for (let i = start; i < end; i += 1) {
-      const message = messages[i]!
-      turnOfMessage.set(message.id, startMessage.id)
-      if (message.role !== 'assistant') continue
-      for (const block of message.content) {
-        if (block.type !== 'tool_use' || block.name !== 'Task') continue
-        taskToolIds.push(block.id)
-        const input = block.input as Record<string, unknown> | undefined
-        if (typeof input?.description === 'string' && input.description.trim()) {
-          taskTitles.push(input.description.trim())
-        }
-      }
-    }
+  for (const message of messages) {
+    if (message.role !== 'user' || message.gap || !isUserTurnMessage(message)) continue
     turns.push({
-      id: startMessage.id,
-      no: s + 1,
-      preview: firstLine(startMessage).slice(0, 160),
-      ...(taskToolIds.length ? { taskToolIds } : {}),
-      ...(taskTitles.length ? { taskTitles } : {}),
+      id: message.id,
+      no: turns.length + 1,
+      preview: firstLine(message).slice(0, 160),
+      ...(pinnedIds.has(message.id) ? { pinned: true } : {}),
     })
   }
-  return { turns, turnOfMessage }
-}
-
-function findTurnForTool(
-  turns: GraphTurn[],
-  toolUseId?: string,
-  title?: string,
-): string | undefined {
-  if (toolUseId) {
-    const hit = turns.find((turn) => turn.taskToolIds?.includes(toolUseId))
-    if (hit) return hit.id
-  }
-  if (title) {
-    const normalized = title.length > 120 ? title.slice(0, 120) : title
-    const hit = turns.find((turn) =>
-      turn.taskTitles?.some(
-        (item) => (item.length > 120 ? item.slice(0, 120) : item) === normalized,
-      ),
-    )
-    if (hit) return hit.id
-  }
-  return undefined
-}
-
-function buildSubagentTree(
-  all: SubagentSession[],
-  parentId: string,
-  parentTurns: GraphTurn[],
-): GraphSubagent[] {
-  return all
-      .filter((item) => item.summary?.parentId === parentId)
-      .sort((a, b) => (a.summary?.createdAt ?? 0) - (b.summary?.createdAt ?? 0))
-      .map((item) => {
-        const summary = item.summary!
-        const parts = turnsFromMessages(item.messages)
-        const turnId =
-          findTurnForTool(parentTurns, summary.parentToolUseId, summary.title) ??
-          parentTurns[parentTurns.length - 1]?.id
-        const children = buildSubagentTree(all, summary.id, parts.turns)
-        return {
-          id: summary.id,
-          title: summary.title,
-          ...(turnId ? { turnId } : {}),
-          createdAt: summary.createdAt,
-          ...(summary.status ? { status: summary.status } : {}),
-          turns: parts.turns,
-          children,
-        }
-      })
-}
-
-function resolveForkTurn(
-  fork: SessionSummary,
-  turns: GraphTurn[],
-  turnOfMessage: Map<string, string>,
-): string | undefined {
-  const from = fork.forkedFrom
-  if (!from?.messageId) return turns[turns.length - 1]?.id
-  if (turns.some((turn) => turn.id === from.messageId)) return from.messageId
-  return turnOfMessage.get(from.messageId) ?? turns[turns.length - 1]?.id
+  return turns
 }
 
 /**
- * 组装会话图输入：主线轮次 + 本会话派生的子代理树 + 以本会话为父的分叉会话。
- * 子代理优先用 summary.parentToolUseId 定位到轮；旧数据按 Task 标题兜底。
+ * 只读会话图（外部会话、子代理内嵌视图）：只有一条链，没有分叉与子代理。
+ * 外部会话的日志里没有 Tandem 的树关系，会话图只画主线轮次。
  */
-export function buildSessionGraph(input: {
-  sessionId: string
-  title?: string
-  messages: UiMessage[]
-  subagents?: Record<string, SubagentSession>
-  hostSessions?: SessionSummary[]
-}): GraphInput {
-  const parts = turnsFromMessages(input.messages)
-  const all = Object.values(input.subagents ?? {})
-  const subagents = buildSubagentTree(all, input.sessionId, parts.turns)
-  const sessions = input.hostSessions ?? []
-  const forks: GraphFork[] = sessions
-    .filter((session) => session.forkedFrom?.sessionId === input.sessionId)
-    .sort((a, b) => a.createdAt - b.createdAt)
-    .map((session) => {
-      const turnId = resolveForkTurn(session, parts.turns, parts.turnOfMessage)
-      return {
-        id: session.id,
-        title: session.title || '分叉',
-        ...(turnId ? { turnId } : {}),
-        createdAt: session.createdAt,
-      }
-    })
-
-  // 当前会话是分叉时切分支（用户 2026-11-11 22:09 原话：跟 git 切分支一样）：
-  // 以当前分叉为主线，来源会话与其他分叉作为分支泳道，挂在当前分叉的分叉点。
-  const self = sessions.find((session) => session.id === input.sessionId)
-  if (self?.forkedFrom?.sessionId) {
-    const byId = new Map(sessions.map((session) => [session.id, session]))
-    const branchTurn = resolveForkTurn(self, parts.turns, parts.turnOfMessage)
-    const added = new Set(forks.map((fork) => fork.id))
-    let cursor: SessionSummary | undefined = self
-    for (let depth = 0; depth < 32 && cursor?.forkedFrom?.sessionId; depth += 1) {
-      const parent = byId.get(cursor.forkedFrom.sessionId)
-      if (!parent) break
-      if (!added.has(parent.id)) {
-        added.add(parent.id)
-        forks.push({
-          id: parent.id,
-          title: parent.title || '原会话',
-          ...(branchTurn ? { turnId: branchTurn } : {}),
-          createdAt: parent.createdAt,
-          relation: 'source',
-        })
-      }
-      for (const sibling of sessions
-        .filter((session) => session.forkedFrom?.sessionId === parent.id)
-        .sort((a, b) => a.createdAt - b.createdAt)) {
-        if (sibling.id === input.sessionId || added.has(sibling.id)) continue
-        added.add(sibling.id)
-        forks.push({
-          id: sibling.id,
-          title: sibling.title || '分叉',
-          ...(branchTurn ? { turnId: branchTurn } : {}),
-          createdAt: sibling.createdAt,
-          relation: 'fork',
-        })
-      }
-      cursor = parent
-    }
-  }
-
+export function graphFromMessages(
+  messages: UiMessage[],
+  options: { sessionId?: string; title?: string; pinned?: string[] } = {},
+): GraphTreeInput {
   return {
-    sessionId: input.sessionId,
-    ...(input.title ? { title: input.title } : {}),
-    turns: parts.turns,
-    subagents,
-    forks,
+    sessionId: options.sessionId ?? 'external',
+    sessions: [
+      {
+        id: options.sessionId ?? 'external',
+        title: options.title?.trim() || '当前会话',
+        kind: 'root',
+        turns: turnsFromMessages(messages, options.pinned ?? []),
+      },
+    ],
   }
 }
 
 /**
- * 侧栏悬停拓扑图：把一棵会话树（根、分叉、子代理、孙代理）组装成布局输入。
- * 只有会话，不含轮次；`current` 用于高亮当前正在查看的会话。
+ * 服务端下发的会话树作为布局输入。
+ * `sessionId` 决定主线：右栏传当前打开的会话；悬停浮层传树内正在查看的会话。
  */
-export function buildSessionTopology(input: {
-  rootId: string
-  title?: string
-  sessions: SessionSummary[]
-  activeSessionId?: string | null
-}): GraphTopologyInput {
-  const byId = new Map(input.sessions.map((session) => [session.id, session]))
-  const root = byId.get(input.rootId)
-  const branches: GraphSessionBranch[] = []
-  for (const session of input.sessions) {
-    if (session.id === input.rootId) continue
-    const parentId = session.parentId ?? session.forkedFrom?.sessionId
-    if (!parentId || !byId.has(parentId)) continue
-    if (sessionTreeRootId(session, byId) !== input.rootId) continue
-    branches.push({
+export function graphFromTree(tree: SessionGraphTree, sessionId = tree.sessionId): GraphTreeInput {
+  return {
+    sessionId,
+    sessions: tree.sessions.map((session) => ({
       id: session.id,
-      title: session.title || (session.parentId ? '子代理' : '分叉'),
-      parentId,
-      relation: session.parentId ? 'subagent' : 'fork',
-      createdAt: session.createdAt,
-      ...(input.activeSessionId === session.id ? { current: true } : {}),
-    })
-  }
-  const title = root?.title || input.title
-  return {
-    sessionId: input.rootId,
-    ...(title ? { title } : {}),
-    ...(input.activeSessionId === input.rootId ? { current: true } : {}),
-    branches,
+      title: session.title,
+      kind: session.kind,
+      ...(session.parentId ? { parentId: session.parentId } : {}),
+      ...(session.attachSessionId ? { attachSessionId: session.attachSessionId } : {}),
+      ...(session.attachTurnId ? { attachTurnId: session.attachTurnId } : {}),
+      turns: session.turns.map((turn) => ({
+        id: turn.id,
+        no: turn.no,
+        preview: turn.preview,
+        ...(turn.pinned ? { pinned: true } : {}),
+      })),
+    })),
   }
 }

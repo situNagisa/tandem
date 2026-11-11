@@ -1,13 +1,15 @@
 /**
- * 会话图布局：把「主线轮次 + 子代理分支 + 分叉分支」排成纵向泳道。
- * 纯函数、无 DOM：输入会话树，输出每个节点的 (lane, row) 与连线段。
+ * 会话图布局：一棵会话树（根 + 递归分叉 + 所有子代理）只有一张拓扑，
+ * 节点是「轮次」，边是「下一轮 / 分叉自某轮 / 子代理派出与汇回」。
+ * 树内任何会话打开时节点与边完全相同，只有「主线」（trunk）随当前会话切换。
  *
- * 约定：
- * - 主线固定在第 0 列，每个用户轮一行；时间倒序：最新一轮在最上。
- * - 子代理始终展开，从发起它的轮分到新泳道，最后一行汇回父会话（不合并成结果行）。
- * - 分叉从分叉点分到新泳道，不合并，末端节点即分支名。
- * - 行号在布局末尾统一翻转（见 flipRow），因此分支视觉上向上延伸。
- * - 行高固定由渲染层决定（28px）；这里只给行号与列号。
+ * 约定（照 git log --graph 理解）：
+ * - 主线 = 当前会话的祖先链：当前会话的轮次 + 它来源会话在分叉点之前的轮次（递归到根），
+ *   全部落在第 0 列、一条直线上去。
+ * - 其余会话的独有轮次从它们与主线的分叉点分到分支泳道；分叉点的来源会话在分叉点之后的
+ *   轮次也是一条分支泳道。
+ * - 子代理泳道挂在各自父轮上（主线轮的也要显示），最后一行汇回父会话的下一轮或轨道下一行。
+ * - 行号在布局末尾统一翻转（flipRow），因此分支视觉上向上延伸、最新一轮在最上。
  */
 
 export interface GraphTurn {
@@ -16,84 +18,60 @@ export interface GraphTurn {
   no: number
   preview: string
   pinned?: boolean
-  /** 本轮里 Task 工具的 tool_use id，用来把子代理挂回准确的行。 */
-  taskToolIds?: string[]
-  /** 本轮 Task 的 description，用于旧数据没有 tool_use id 时按标题兜底匹配。 */
-  taskTitles?: string[]
 }
 
-export interface GraphSubagent {
+export interface GraphSession {
   id: string
   title: string
-  /** 发起该子代理的轮次 id（父会话或父代理的某一轮）。 */
-  turnId?: string
-  createdAt: number
-  status?: string
-  turns: GraphTurn[]
-  children: GraphSubagent[]
-}
-
-export interface GraphFork {
-  id: string
-  title: string
-  /** 分叉点所在的轮次 id（由调用方把消息 id 映射到用户轮）。 */
-  turnId?: string
-  createdAt: number
-  /** 'source' = 当前分叉的来源会话（原会话），行尾写「原会话」；缺省是普通分叉。 */
-  relation?: 'fork' | 'source'
-}
-
-export interface GraphInput {
-  sessionId: string
-  title?: string
-  turns: GraphTurn[]
-  subagents: GraphSubagent[]
-  forks: GraphFork[]
-}
-
-/** 侧栏悬停拓扑图的一个会话（除根以外的分叉 / 子代理 / 孙代理）。 */
-export interface GraphSessionBranch {
-  id: string
-  title: string
-  /** 父会话 id（分叉跟 forkedFrom、子代理跟 parentId）。 */
+  /** root = 树根会话；fork = 分叉；subagent = Task 子代理会话。 */
+  kind: 'root' | 'fork' | 'subagent'
+  /** 父会话 id（分叉 = forkedFrom；子代理 = parentId）。 */
   parentId?: string
-  relation: 'fork' | 'subagent'
-  createdAt: number
-  /** 当前正在查看的会话：节点外圈高亮。 */
-  current?: boolean
+  /** 接入点所属会话（可能是祖先会话）与接入轮次。 */
+  attachSessionId?: string
+  attachTurnId?: string
+  /** 本会话独有的轮次（分叉不含复制来的祖先轮次），对话顺序。 */
+  turns: GraphTurn[]
 }
 
-export interface GraphTopologyInput {
+export interface GraphTreeInput {
+  /** 当前打开的会话：决定哪条链是主线。 */
   sessionId: string
-  title?: string
-  /** 根会话当前正在被查看。 */
-  current?: boolean
-  branches: GraphSessionBranch[]
+  sessions: GraphSession[]
 }
 
-export type GraphNodeKind = 'turn' | 'subagent-turn' | 'fork' | 'session' | 'subagent'
+export interface GraphLayoutOptions {
+  /** 紧凑模式（侧栏悬停浮层）：不显示轮次标题，只在每个会话的一个节点上显示会话名。 */
+  compact?: boolean
+  /** 主线用哪个会话（缺省 = input.sessionId）；右栏传当前打开的会话，悬停浮层传正在查看的会话。 */
+  trunkId?: string
+}
+
+export type GraphNodeKind = 'turn' | 'subagent-turn' | 'fork'
 
 export interface GraphNode {
   key: string
   kind: GraphNodeKind
   lane: number
   row: number
-  /** 对应消息 id / 子代理 id / 分叉会话 id / 拓扑图会话 id。 */
+  /** 该轮用户消息 id（点击定位）。 */
   id: string
-  /** 主线轮次 id（子代理节点指向发起它的轮，便于先跳到父轮）。 */
-  turnId?: string
-  turnNo?: number
+  turnId: string
+  turnNo: number
   label: string
+  sessionId: string
+  sessionTitle: string
+  relation: 'root' | 'fork' | 'subagent'
+  /** 主线（当前会话祖先链）上的节点。 */
+  trunk?: boolean
+  /** 属于当前打开的会话。 */
+  current?: boolean
+  /** 该会话在图里的会话名节点（会话起点；紧凑模式只在这里显示会话名）。 */
+  sessionLabel?: boolean
+  /** 该轮派出了子代理或分出了分叉（紧凑模式必须保留的拓扑节点）。 */
+  attachPoint?: boolean
   subagentId?: string
   forkSessionId?: string
-  /** 会话 id：拓扑图里点节点切换会话。 */
-  sessionId?: string
-  /** 拓扑图：该会话的父会话 id（点只读子会话前先判断是否在当前会话下）。 */
-  parentSessionId?: string
-  /** 拓扑图：当前正在查看的会话，外圈高亮与会话图当前轮一致。 */
-  current?: boolean
-  /** 分叉节点是普通分叉还是当前分叉的来源会话（原会话）。 */
-  forkRelation?: 'fork' | 'source'
   pinned?: boolean
 }
 
@@ -105,7 +83,7 @@ export interface GraphEdge {
   toLane: number
   toRow: number
   kind: GraphEdgeKind
-  /** 归属会话：主线=当前会话，子代理=该子代理，分叉=分叉会话；悬停时整条轨道一起高亮。 */
+  /** 归属会话；悬停时该会话的节点与线一起高亮。 */
   ownerId: string
   /** 悬停 tooltip 显示的会话名。 */
   label: string
@@ -123,12 +101,17 @@ export interface GraphLayout {
   columns: number
   /** 每条泳道的类型。 */
   laneKinds: Array<'main' | 'subagent' | 'fork'>
+  /** 每条泳道归属的会话（点线跳转用；主线泳道是当前会话）。 */
+  sessionOfLane: string[]
 }
 
 /** 一行的高度（px）：渲染层与虚拟滚动共用。 */
 export const GRAPH_ROW_H = 28
-/** 相邻列的水平间距（px）：列宽固定，节点与连线都落在列中心。 */
-export const GRAPH_COLUMN_GAP = 12
+/**
+ * 相邻列的水平间距（px）：列宽固定，节点与连线都落在列中心。
+ * 14px 留出连线的透明命中带（两侧各 6px），相邻泳道的命中区不会互相盖住（反馈0220#07）。
+ */
+export const GRAPH_COLUMN_GAP = 14
 /** 第 0 列（主线）中心的 x 偏移（px）。 */
 export const GRAPH_COLUMN_X0 = 8
 
@@ -175,11 +158,11 @@ function assignColumns(
   for (const node of nodes) touch(node.lane, node.row)
   const childrenOf = new Map<number, number[]>()
   for (const edge of edges) {
-    if (edge.kind === 'main') continue
     touch(edge.fromLane, edge.fromRow)
     touch(edge.fromLane, edge.toRow)
     touch(edge.toLane, edge.fromRow)
     touch(edge.toLane, edge.toRow)
+    if (edge.fromLane === edge.toLane) continue
     if (edge.toLane > edge.fromLane) {
       childrenOf.set(edge.fromLane, [...(childrenOf.get(edge.fromLane) ?? []), edge.toLane])
     }
@@ -190,7 +173,7 @@ function assignColumns(
   const packOf = (parent: number): PackedChildren => {
     const cached = packs.get(parent)
     if (cached) return cached
-    const sorted = [...(childrenOf.get(parent) ?? [])].sort((a, b) => {
+    const sorted = [...new Set(childrenOf.get(parent) ?? [])].sort((a, b) => {
       const [alo, ahi] = span.get(a)!
       const [blo, bhi] = span.get(b)!
       return alo - blo || ahi - bhi || a - b
@@ -215,227 +198,339 @@ function assignColumns(
   }
 
   const columnOf = Array.from({ length: lanes }, () => 0)
-  const place = (lane: number, column: number) => {
+  const place = (lane: number, column: number, seen: Set<number>) => {
+    if (seen.has(lane)) return
+    seen.add(lane)
     columnOf[lane] = column
     const { offset } = packOf(lane)
-    for (const child of childrenOf.get(lane) ?? []) place(child, column + 1 + offset.get(child)!)
+    for (const child of new Set(childrenOf.get(lane) ?? [])) {
+      place(child, column + 1 + offset.get(child)!, seen)
+    }
   }
-  place(0, 0)
-  return { columnOf, columns: packOf(0).width + 1 }
+  place(0, 0, new Set())
+  // 没连到主线的异常泳道也放到第 0 列右侧，避免挤在同一列。
+  for (let lane = 0; lane < lanes; lane += 1) {
+    if (!span.has(lane)) continue
+    if (!columnOf[lane] && lane !== 0) columnOf[lane] = packOf(0).width
+  }
+  return { columnOf, columns: Math.max(1, packOf(0).width + 1) }
 }
 
-/** 一个分支占用的行：last 是分支泳道最后一个自有节点行，next 是分支块之后的第一行。 */
-interface BranchSpan {
+interface Span {
   last: number
   next: number
 }
 
-export function layoutSessionGraph(input: GraphInput): GraphLayout {
+export function layoutSessionGraph(
+  input: GraphTreeInput,
+  options: GraphLayoutOptions = {},
+): GraphLayout {
+  // 紧凑模式只保留能看出拓扑的轮次：每个会话的起点与最新轮、分叉/派出点、汇回点；
+  // 同一会话里相邻保留轮之间由该泳道的直线连起来，其余普通轮省略。
+  const attachTurns = new Set<string>()
+  const mergeAttachTurns = new Set<string>()
+  for (const session of input.sessions) {
+    if (!session.attachTurnId) continue
+    attachTurns.add(session.attachTurnId)
+    // 只有子代理会汇回父会话：保留它的汇回点；分叉不汇回，没有汇回点。
+    if (session.kind === 'subagent') mergeAttachTurns.add(session.attachTurnId)
+  }
+  const activeSessionId = options.trunkId ?? input.sessionId
+  const sessions: GraphSession[] = options.compact
+    ? input.sessions.map((session) => {
+        if (session.turns.length <= 2) return session
+        const keep = new Set<number>([0, session.turns.length - 1])
+        session.turns.forEach((turn, index) => {
+          if (!attachTurns.has(turn.id)) return
+          keep.add(index)
+          // 汇回点：子代理返回后父会话继续的那一轮。
+          if (mergeAttachTurns.has(turn.id) && index + 1 < session.turns.length) keep.add(index + 1)
+        })
+        const turns = session.turns.filter((_, index) => keep.has(index))
+        return turns.length === session.turns.length ? session : { ...session, turns }
+      })
+    : input.sessions
+  const byId = new Map<string, GraphSession>()
+  for (const session of sessions) byId.set(session.id, session)
+  const turnSession = new Map<string, GraphSession>()
+  const turnOrder = new Map<string, number>()
+  const turnData = new Map<string, GraphTurn>()
+  for (const session of sessions) {
+    session.turns.forEach((turn, index) => {
+      if (turnSession.has(turn.id)) return
+      turnSession.set(turn.id, session)
+      turnOrder.set(turn.id, index)
+      turnData.set(turn.id, turn)
+    })
+  }
+  const chainNext = (turnId: string): string | undefined => {
+    const session = turnSession.get(turnId)
+    if (!session) return undefined
+    return session.turns[turnOrder.get(turnId)! + 1]?.id
+  }
+  const ownersOfAttach = new Map<string, string[]>()
+  for (const session of sessions) {
+    if (!session.attachTurnId || session.turns.length === 0) continue
+    const list = ownersOfAttach.get(session.attachTurnId) ?? []
+    list.push(session.id)
+    ownersOfAttach.set(session.attachTurnId, list)
+  }
+  for (const list of ownersOfAttach.values()) {
+    list.sort((a, b) => {
+      const sa = byId.get(a)!
+      const sb = byId.get(b)!
+      const rank = (kind: GraphSession['kind']) => (kind === 'subagent' ? 0 : 1)
+      return rank(sa.kind) - rank(sb.kind) || sa.title.localeCompare(sb.title)
+    })
+  }
+
+  // 主线：当前会话的祖先链（对话顺序，旧 → 新）。
+  const chainPrefix = (sessionId: string, upto?: string): string[] => {
+    const session = byId.get(sessionId)
+    if (!session) return []
+    const index = upto ? session.turns.findIndex((turn) => turn.id === upto) : session.turns.length - 1
+    if (index < 0) return []
+    const own = session.turns.slice(0, index + 1).map((turn) => turn.id)
+    const above =
+      session.attachSessionId && session.attachTurnId
+        ? chainPrefix(session.attachSessionId, session.attachTurnId)
+        : []
+    return above.concat(own)
+  }
+  const trunk: string[] = []
+  const trunkSet = new Set<string>()
+  const addTrunk = (ids: string[]) => {
+    for (const id of ids) {
+      if (!turnSession.has(id) || trunkSet.has(id)) continue
+      trunkSet.add(id)
+      trunk.push(id)
+    }
+  }
+  const current = byId.get(activeSessionId)
+  if (current) {
+    if (current.attachSessionId && current.attachTurnId) {
+      addTrunk(chainPrefix(current.attachSessionId, current.attachTurnId))
+    }
+    addTrunk(current.turns.map((turn) => turn.id))
+  }
+  if (trunk.length === 0) {
+    // 当前会话没有轮次：退回树根会话的链，保证有一条主线可用。
+    const anchor =
+      sessions.find((session) => session.kind === 'root') ?? sessions[0]
+    if (anchor) {
+      addTrunk(
+        anchor.attachSessionId && anchor.attachTurnId
+          ? chainPrefix(anchor.attachSessionId, anchor.attachTurnId)
+          : anchor.turns.map((turn) => turn.id),
+      )
+    }
+  }
+
   const nodes: GraphNode[] = []
   const edges: GraphEdge[] = []
   const laneKinds: Array<'main' | 'subagent' | 'fork'> = ['main']
+  const sessionOfLane: string[] = [activeSessionId]
   let nextLane = 1
-  let rows = 0
-  let cursor = 0
+  const rowOf = new Map<string, number>()
+  const laneOf = new Map<string, number>()
+  /** 该轮所在泳道“继续”的行：父会话下一轮的行，或该轮子树的下一行（汇回端点）。 */
+  const blockEnd = new Map<string, number>()
+  const lastOfSession = new Map<string, string>()
 
-  const mainTitle = input.title?.trim() || '当前会话'
-  const turns = input.turns
-  const mainTurns = new Map(turns.map((turn) => [turn.id, turn]))
-  const forksByTurn = new Map<string, GraphFork[]>()
-  for (const fork of input.forks) {
-    const key = fork.turnId && mainTurns.has(fork.turnId) ? fork.turnId : turns[turns.length - 1]?.id
-    if (!key) continue
-    const list = forksByTurn.get(key) ?? []
-    list.push(fork)
-    forksByTurn.set(key, list)
-  }
-  const subsByTurn = new Map<string, GraphSubagent[]>()
-  for (const sub of input.subagents) {
-    const key = sub.turnId && mainTurns.has(sub.turnId) ? sub.turnId : turns[0]?.id
-    if (!key) continue
-    const list = subsByTurn.get(key) ?? []
-    list.push(sub)
-    subsByTurn.set(key, list)
-  }
-
-  const takeLane = (kind: 'subagent' | 'fork'): number => {
+  const takeLane = (kind: GraphSession['kind'], sessionId: string): number => {
     const lane = nextLane
     nextLane += 1
-    laneKinds[lane] = kind
+    laneKinds[lane] = kind === 'subagent' ? 'subagent' : 'fork'
+    sessionOfLane[lane] = sessionId
     return lane
   }
-
-  /**
-   * 铺一个子代理分支。子代理始终展开：逐轮放节点，孙代理再向右分层。
-   * 返回分支最后一行与块结束行；汇回线从最后一行接回父泳道。
-   */
-  const laySubagent = (sub: GraphSubagent, lane: number, startRow: number): BranchSpan => {
-    const label = sub.title || '子代理'
-    let row = startRow
-    let last = startRow
-    if (sub.turns.length === 0) {
-      nodes.push({
-        key: `subt:${sub.id}:prompt`,
-        kind: 'subagent-turn',
-        lane,
-        row,
-        id: sub.id,
-        ...(sub.turnId ? { turnId: sub.turnId } : {}),
-        label,
-        subagentId: sub.id,
-      })
-      return { last: row, next: row + 1 }
-    }
-
-    for (const turn of sub.turns) {
-      nodes.push({
-        key: `subt:${sub.id}:${turn.id}`,
-        kind: 'subagent-turn',
-        lane,
-        row,
-        id: turn.id,
-        ...(sub.turnId ? { turnId: sub.turnId } : {}),
-        label: turn.preview || '（无文字）',
-        subagentId: sub.id,
-        ...(turn.pinned ? { pinned: true } : {}),
-      })
-      last = row
-      let childCursor = row + 1
-      for (const child of sub.children) {
-        const attachHere = child.turnId
-          ? child.turnId === turn.id
-          : turn === sub.turns[0]
-        if (!attachHere) continue
-        const childLane = takeLane('subagent')
-        const childEnd = laySubagent(child, childLane, childCursor)
-        const childLabel = child.title || '子代理'
-        // 分出：父节点 → 子泳道最后一个自有节点；汇回：该节点 → 父泳道下一行（或下一轮节点）。
-        edges.push({
-          fromLane: lane,
-          fromRow: row,
-          toLane: childLane,
-          toRow: childEnd.last,
-          kind: 'subagent',
-          ownerId: child.id,
-          label: childLabel,
-        })
-        edges.push({
-          fromLane: childLane,
-          fromRow: childEnd.last,
-          toLane: lane,
-          toRow: childEnd.next,
-          kind: 'subagent',
-          ownerId: child.id,
-          label: childLabel,
-          merge: true,
-        })
-        childCursor = Math.max(childCursor, childEnd.next)
-      }
-      row = Math.max(row + 1, childCursor)
-    }
-    return { last, next: row }
-  }
-
-  const mainRows: number[] = []
-  let mainEndRow = 0
-  for (let index = 0; index < turns.length; index += 1) {
-    const turn = turns[index]!
-    const turnRow = cursor
-    mainRows.push(turnRow)
-    mainEndRow = turnRow
+  const place = (turnId: string, lane: number, row: number) => {
+    const session = turnSession.get(turnId)!
+    const turn = turnData.get(turnId)!
+    const relation = session.kind
+    const kind: GraphNodeKind =
+      relation === 'fork' ? 'fork' : relation === 'subagent' ? 'subagent-turn' : 'turn'
     nodes.push({
-      key: `turn:${turn.id}`,
-      kind: 'turn',
-      lane: 0,
-      row: turnRow,
-      id: turn.id,
-      turnId: turn.id,
+      key: `${session.id}:${turnId}`,
+      kind,
+      lane,
+      row,
+      id: turnId,
+      turnId,
       turnNo: turn.no,
       label: turn.preview || '（无文字）',
+      sessionId: session.id,
+      sessionTitle: session.title,
+      relation,
+      ...(turnOrder.get(turnId) === 0 ? { sessionLabel: true } : {}),
+      ...(ownersOfAttach.has(turnId) ? { attachPoint: true } : {}),
+      ...(trunkSet.has(turnId) ? { trunk: true } : {}),
+      ...(session.id === activeSessionId ? { current: true } : {}),
       ...(turn.pinned ? { pinned: true } : {}),
+      ...(relation === 'subagent' ? { subagentId: session.id } : {}),
+      ...(relation === 'fork' ? { forkSessionId: session.id } : {}),
     })
-    rows = Math.max(rows, turnRow + 1)
+    rowOf.set(turnId, row)
+    laneOf.set(turnId, lane)
+    lastOfSession.set(session.id, turnId)
+  }
 
-    let branchEnd = turnRow
-    let branchCursor = turnRow + 1
-    const mergeEdges: Array<{ lane: number; row: number; sub: GraphSubagent }> = []
+  /** 铺一条泳道上的会话链（含其派出的子代理与分叉）。 */
+  const layChain = (turnId: string, lane: number, startRow: number): Span => {
+    let row = startRow
+    place(turnId, lane, row)
+    let cursor = row + 1
+    for (const childId of ownersOfAttach.get(turnId) ?? []) {
+      const child = byId.get(childId)!
+      const first = child.turns[0]
+      if (!first || trunkSet.has(first.id)) continue
+      const childLane = takeLane(child.kind, child.id)
+      const span = layChain(first.id, childLane, cursor)
+      edges.push({
+        fromLane: lane,
+        fromRow: row,
+        toLane: childLane,
+        toRow: rowOf.get(first.id)!,
+        kind: child.kind === 'subagent' ? 'subagent' : 'fork',
+        ownerId: child.id,
+        label: child.title,
+      })
+      cursor = Math.max(cursor, span.next)
+    }
+    const next = chainNext(turnId)
+    if (next) {
+      const span = layChain(next, lane, cursor)
+      blockEnd.set(turnId, rowOf.get(next)!)
+      return { last: span.last, next: span.next }
+    }
+    blockEnd.set(turnId, cursor)
+    return { last: Math.max(row, cursor - 1), next: cursor }
+  }
 
-    for (const sub of subsByTurn.get(turn.id) ?? []) {
-      const lane = takeLane('subagent')
-      const end = laySubagent(sub, lane, branchCursor)
-      const label = sub.title || '子代理'
+  let row = 0
+  let laidAny = false
+  for (let index = 0; index < trunk.length; index += 1) {
+    const turnId = trunk[index]!
+    const nextTrunk = trunk[index + 1]
+    place(turnId, 0, row)
+    laidAny = true
+    let cursor = row + 1
+    // 该轮派出的分叉/子代理（主线上的也要画）。
+    for (const childId of ownersOfAttach.get(turnId) ?? []) {
+      const child = byId.get(childId)!
+      const first = child.turns[0]
+      if (!first || trunkSet.has(first.id)) continue
+      const childLane = takeLane(child.kind, child.id)
+      const span = layChain(first.id, childLane, cursor)
       edges.push({
         fromLane: 0,
-        fromRow: turnRow,
-        toLane: lane,
-        toRow: end.last,
-        kind: 'subagent',
-        ownerId: sub.id,
-        label,
+        fromRow: row,
+        toLane: childLane,
+        toRow: rowOf.get(first.id)!,
+        kind: child.kind === 'subagent' ? 'subagent' : 'fork',
+        ownerId: child.id,
+        label: child.title,
       })
-      mergeEdges.push({ lane, row: end.last, sub })
-      branchEnd = Math.max(branchEnd, end.last)
-      // 同一轮派出的多个分支各占一段行，避免窄面板里文字互相压住。
-      branchCursor = Math.max(branchCursor + 1, end.next)
+      cursor = Math.max(cursor, span.next)
     }
-
-    for (const fork of forksByTurn.get(turn.id) ?? []) {
-      const lane = takeLane('fork')
-      nodes.push({
-        key: `fork:${fork.id}`,
-        kind: 'fork',
-        lane,
-        row: branchCursor,
-        id: fork.id,
-        turnId: turn.id,
-        label: fork.title || '分叉',
-        forkSessionId: fork.id,
-        ...(fork.relation ? { forkRelation: fork.relation } : {}),
-      })
+    // 祖先会话在分叉点之后的轮次：分支泳道（当前查看的分叉在主线）。
+    const next = chainNext(turnId)
+    if (next && !trunkSet.has(next)) {
+      const owner = turnSession.get(next)!
+      const childLane = takeLane('fork', owner.id)
+      const span = layChain(next, childLane, cursor)
       edges.push({
         fromLane: 0,
-        fromRow: turnRow,
-        toLane: lane,
-        toRow: branchCursor,
+        fromRow: row,
+        toLane: childLane,
+        toRow: rowOf.get(next)!,
         kind: 'fork',
-        ownerId: fork.id,
-        label: fork.title || '分叉',
+        ownerId: owner.id,
+        label: owner.title,
       })
-      branchEnd = Math.max(branchEnd, branchCursor)
-      branchCursor += 1
+      cursor = Math.max(cursor, span.next)
     }
+    row = nextTrunk ? cursor : Math.max(row + 1, cursor)
+    blockEnd.set(turnId, row)
+  }
+  if (!laidAny) {
+    // 主线为空（当前会话不在树里或没有轮次）：把树根会话的链铺在第 0 列。
+    const anchor =
+      sessions.find((session) => session.kind === 'root') ?? sessions[0]
+    const first = anchor?.turns[0]
+    if (first) {
+      const span = layChain(first.id, 0, 0)
+      row = span.next
+    }
+  }
+  // 兜底：接入点落在已删除的祖先/轮次上时，把剩下的会话按独立泳道铺出来，不丢节点。
+  for (const session of sessions) {
+    const first = session.turns[0]
+    if (!first || rowOf.has(first.id)) continue
+    const lane = takeLane(session.kind, session.id)
+    const span = layChain(first.id, lane, row)
+    row = Math.max(row, span.next)
+  }
 
-    const nextRow = branchEnd > turnRow ? branchCursor : turnRow + 1
-    // 子代理最后一行汇回父会话：下一轮节点，或（父会话最后一轮）下一行轨道。
-    for (const merge of mergeEdges) {
-      if (nextRow > merge.row) {
-        edges.push({
-          fromLane: merge.lane,
-          fromRow: merge.row,
-          toLane: 0,
-          toRow: nextRow,
-          kind: 'subagent',
-          ownerId: merge.sub.id,
-          label: merge.sub.title || '子代理',
-          merge: true,
-        })
+  // 子代理汇回父会话：父会话的下一轮（或轨道下一行）。
+  for (const session of sessions) {
+    if (session.kind !== 'subagent') continue
+    const last = lastOfSession.get(session.id)
+    if (!last) continue
+    const attach = session.attachTurnId
+    let target: { lane: number; row: number } | undefined
+    if (attach) {
+      const next = chainNext(attach)
+      if (next && rowOf.has(next)) target = { lane: laneOf.get(next)!, row: rowOf.get(next)! }
+      else {
+        const lane = laneOf.get(attach)
+        const end = blockEnd.get(attach)
+        if (lane !== undefined && end !== undefined) target = { lane, row: end }
       }
     }
-    if (mergeEdges.length && nextRow > turnRow) mainEndRow = Math.max(mainEndRow, nextRow)
-    cursor = nextRow
+    if (!target) continue
+    const lane = laneOf.get(last)!
+    const fromRow = rowOf.get(last)!
+    if (lane === target.lane && target.row === fromRow) continue
+    edges.push({
+      fromLane: lane,
+      fromRow,
+      toLane: target.lane,
+      toRow: target.row,
+      kind: 'subagent',
+      ownerId: session.id,
+      label: session.title,
+      merge: true,
+    })
   }
 
-  // 主线：一条从上到下的竖线，贯穿所有主线节点（节点圆心都在线上）。
-  if (mainRows.length) {
-    mainEndRow = Math.max(mainEndRow, mainRows[mainRows.length - 1]!)
-    rows = Math.max(rows, mainEndRow + 1)
+  // 每条泳道一条连续竖线（闂盖所有节点与连线端点），主线即一条直线上去。
+  const laneSpan = new Map<number, [number, number]>()
+  const touchLane = (lane: number, atRow: number) => {
+    const span = laneSpan.get(lane)
+    laneSpan.set(lane, span ? [Math.min(span[0], atRow), Math.max(span[1], atRow)] : [atRow, atRow])
+  }
+  for (const node of nodes) touchLane(node.lane, node.row)
+  for (const edge of edges) {
+    touchLane(edge.fromLane, edge.fromRow)
+    touchLane(edge.toLane, edge.toRow)
+  }
+  for (let lane = 0; lane < nextLane; lane += 1) {
+    const span = laneSpan.get(lane)
+    if (!span) continue
+    const ownerId = sessionOfLane[lane] ?? input.sessionId
+    edges.push({
+      fromLane: lane,
+      fromRow: span[0],
+      toLane: lane,
+      toRow: span[1],
+      kind: laneKinds[lane]!,
+      ownerId,
+      label: byId.get(ownerId)?.title ?? current?.title ?? '',
+    })
   }
 
-  // 空会话也保留一行，便于显示空态说明。
-  if (rows === 0) rows = 1
-
-  // 分叉可能挂在本会话最后一轮之后：先让行数覆盖所有节点与连线端点，
-  // 否则倒序翻转后会得到负行号（节点画不出来）。
+  let rows = 1
   for (const node of nodes) rows = Math.max(rows, node.row + 1)
   for (const edge of edges) rows = Math.max(rows, edge.fromRow + 1, edge.toRow + 1)
 
@@ -443,112 +538,18 @@ export function layoutSessionGraph(input: GraphInput): GraphLayout {
    * 时间倒序（反馈1926#06）：布局仍按对话顺序计算，最后一次性翻转所有行号。
    * 翻转后分支从父节点向上延伸，最新的一轮出现在最上。
    */
-  const flipRow = (row: number) => rows - 1 - row
+  const flipRow = (value: number) => rows - 1 - value
   for (const node of nodes) node.row = flipRow(node.row)
   for (const edge of edges) {
     edge.fromRow = flipRow(edge.fromRow)
     edge.toRow = flipRow(edge.toRow)
-  }
-
-  // 主线竖线在翻转后重新取上下端点（覆盖汇回端点，避免线悬空）。
-  if (mainRows.length) {
-    const trackTop = Math.min(...mainRows.map((row) => flipRow(row)), flipRow(mainEndRow))
-    const trackBottom = Math.max(...mainRows.map((row) => flipRow(row)), flipRow(mainEndRow))
-    edges.unshift({
-      fromLane: 0,
-      fromRow: trackTop,
-      toLane: 0,
-      toRow: trackBottom,
-      kind: 'main',
-      ownerId: input.sessionId,
-      label: mainTitle,
-    })
-  }
-
-  // 键盘 ↑/↓ 按视觉顺序（上→下）移动。
-  nodes.sort((a, b) => a.row - b.row || a.lane - b.lane)
-
-  const lanes = Math.max(1, nextLane)
-  const { columnOf, columns } = assignColumns(nodes, edges, lanes)
-  return { nodes, edges, rows, lanes, columnOf, columns, laneKinds }
-}
-
-/**
- * 侧栏悬停拓扑图：节点 = 会话（主会话、分叉、子代理），不是轮次。
- * 根会话在主线轨道第 0 列、第一行；分支按创建时间从新到旧向下铺开，
- * 连线、泳道色与列复用完全沿用会话图（直接产出同一份 GraphLayout）。
- */
-export function layoutSessionTopology(input: GraphTopologyInput): GraphLayout {
-  const nodes: GraphNode[] = []
-  const edges: GraphEdge[] = []
-  const laneKinds: Array<'main' | 'subagent' | 'fork'> = ['main']
-  const rootId = input.sessionId
-  nodes.push({
-    key: `session:${rootId}`,
-    kind: 'session',
-    lane: 0,
-    row: 0,
-    id: rootId,
-    sessionId: rootId,
-    label: input.title?.trim() || '当前会话',
-    ...(input.current ? { current: true } : {}),
-  })
-
-  const byParent = new Map<string, GraphSessionBranch[]>()
-  const known = new Set<string>([rootId, ...input.branches.map((branch) => branch.id)])
-  for (const branch of input.branches) {
-    // 父会话不在树里（已删除/被过滤）时挂回根，不画悬空分支。
-    const parentId =
-      branch.parentId && branch.parentId !== branch.id && known.has(branch.parentId)
-        ? branch.parentId
-        : rootId
-    const list = byParent.get(parentId)
-    if (list) list.push(branch)
-    else byParent.set(parentId, [branch])
-  }
-  for (const list of byParent.values()) list.sort((a, b) => b.createdAt - a.createdAt)
-
-  const placed = new Set<string>([rootId])
-  let nextLane = 1
-  let nextRow = 1
-  const place = (parentId: string, parentLane: number, parentRow: number, depth: number) => {
-    if (depth > 32) return
-    for (const branch of byParent.get(parentId) ?? []) {
-      if (placed.has(branch.id)) continue
-      placed.add(branch.id)
-      const lane = nextLane
-      nextLane += 1
-      const row = nextRow
-      nextRow += 1
-      const label = branch.title || (branch.relation === 'fork' ? '分叉' : '子代理')
-      laneKinds[lane] = branch.relation === 'fork' ? 'fork' : 'subagent'
-      nodes.push({
-        key: `${branch.relation}:${branch.id}`,
-        kind: branch.relation === 'fork' ? 'fork' : 'subagent',
-        lane,
-        row,
-        id: branch.id,
-        sessionId: branch.id,
-        parentSessionId: parentId,
-        label,
-        ...(branch.relation === 'fork'
-          ? { forkSessionId: branch.id }
-          : { subagentId: branch.id }),
-        ...(branch.current ? { current: true } : {}),
-      })
-      edges.push({
-        fromLane: parentLane,
-        fromRow: parentRow,
-        toLane: lane,
-        toRow: row,
-        kind: branch.relation === 'fork' ? 'fork' : 'subagent',
-        ownerId: branch.id,
-        label,
-      })
-      place(branch.id, lane, row, depth + 1)
+    // 同泳道的竖线统一成从上往下（起点在上），几何断言与 tooltip 都不依赖方向。
+    if (edge.fromLane === edge.toLane && edge.fromRow > edge.toRow) {
+      const row = edge.fromRow
+      edge.fromRow = edge.toRow
+      edge.toRow = row
     }
   }
-  place(rootId, 0, 0, 0)
 
   // 键盘 ↑/↓ 按视觉顺序（上→下）移动。
   nodes.sort((a, b) => a.row - b.row || a.lane - b.lane)
@@ -558,10 +559,11 @@ export function layoutSessionTopology(input: GraphTopologyInput): GraphLayout {
   return {
     nodes,
     edges,
-    rows: Math.max(1, nextRow),
+    rows,
     lanes,
     columnOf,
     columns,
     laneKinds,
+    sessionOfLane,
   }
 }

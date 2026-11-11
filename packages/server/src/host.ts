@@ -27,6 +27,7 @@ import type {
   RewindInput,
   SandboxStatus,
   Session,
+  SessionGraphTree,
   SessionStatus,
   SessionSummary,
   SessionTurns,
@@ -119,6 +120,7 @@ import { addAllowed, ancestorsOf, askPermission, authorize, findPendingPermissio
 import { addRule, adoptSuggestion, draftRule, ignoreSuggestion, permissionInsights } from './host/approvals.js';
 import { isRunning, listCheckpoints, rewind, snapshotForCheckpoint } from './host/rewind.js';
 import { importSession, notifyExternalSessionsChanged } from './host/external.js';
+import { sessionGraph } from './host/graph.js';
 import { runHooks } from './host/hooks.js';
 import {
   checkoutSessionBranch,
@@ -760,6 +762,10 @@ export class Host {
 
   turnsFor(rec: SessionRecord): SessionTurns {
     return turnsFor(this, rec);
+  }
+
+  sessionGraph(id: string, canSee?: (rec: SessionRecord) => boolean): SessionGraphTree | undefined {
+    return sessionGraph(this, id, canSee);
   }
 
   messageBlock(

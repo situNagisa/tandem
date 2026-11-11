@@ -797,6 +797,45 @@ export interface SessionTurns {
   turns: SessionTurnMark[];
 }
 
+// ---------- 会话图（整棵树共用一张拓扑） ----------
+// 一棵会话树 = 根会话 + 它的所有分叉（递归）+ 这些会话派生的所有子代理。
+// 树内任何会话打开时看到的是同一组轮次节点与连线，只有「主线」（当前会话的祖先链）不同。
+// GET /api/sessions/:id/graph -> SessionGraphTree
+//   只回轮次 id 与首行摘要、会话父子/分叉关系与接入轮次，不下发消息体。
+export interface SessionGraphTurn {
+  /** 该轮用户消息 id（点击定位）。 */
+  id: string;
+  /** 会话内 1-based 轮号（只用于定位当前所在轮）。 */
+  no: number;
+  /** 用户消息首行摘要。 */
+  preview: string;
+  /** 被固定的轮。 */
+  pinned?: boolean;
+}
+
+export interface SessionGraphSession {
+  id: string;
+  title: string;
+  /** root = 树根会话；fork = 分叉；subagent = Task 子代理会话。 */
+  kind: 'root' | 'fork' | 'subagent';
+  /** 父会话 id（分叉 = forkedFrom.sessionId；子代理 = parentId）。 */
+  parentId?: string;
+  /** 接入点所属会话：分叉 = 分叉点轮次所在会话；子代理 = 派发它的轮次所在会话。 */
+  attachSessionId?: string;
+  /** 接入轮次 id：分叉点轮次 / 派发子代理的轮次。 */
+  attachTurnId?: string;
+  /** 本会话独有的轮次（分叉不含复制来的祖先轮次），按对话顺序。 */
+  turns: SessionGraphTurn[];
+}
+
+export interface SessionGraphTree {
+  /** 树根会话 id（最上面的祖先）。 */
+  rootId: string;
+  /** 当前请求的会话 id：客户端据此决定哪条链是主线。 */
+  sessionId: string;
+  sessions: SessionGraphSession[];
+}
+
 // ---------- 工具权限 ----------
 export interface PermissionRequest {
   id: string;

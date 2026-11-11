@@ -224,9 +224,10 @@ const DECISIONS = [
   {
     id: 'graph-edge-hover',
     source: '反馈1926#10（2026-11-11 用户原话：鼠标悬停在某条线上时，要高亮这条线，并tip出这是哪个会话）',
-    decision: '悬停任一泳道线按归属会话高亮整条轨道、其余线降亮，tooltip 显示会话名；线有 12px 透明命中描边',
+    decision:
+      '悬停任一泳道线（或名称行）按归属会话高亮整条轨道与节点、其余线降亮，tooltip 显示会话名；线有两侧各 6px 的透明命中描边，点线/点节点跳转会话',
     files: [F.graphView],
-    need: [/data-edge-hit/, /data-tip=\{edge\.label\}/, /strokeWidth=\{12\}/, /ownerId/],
+    need: [/data-edge-hit/, /data-tip=\{edge\.label\}/, /EDGE_HIT_WIDTH = 13/, /ownerId/],
   },
   {
     id: 'graph-main-click-from-subagent',
@@ -248,25 +249,37 @@ const DECISIONS = [
   {
     id: 'sidebar-hover-topology',
     source:
-      '2026-11-11 22:09 用户原话（每个会话的选项卡，悬停的时候在右侧弹出一个会话图，这个图只包含拓扑节点，不包含轮次信息…UI、交互方式都跟会话图保持一致）',
+      '2026-11-11 22:09 用户原话（悬停会话选项卡时右侧弹出会话图，UI、交互方式都跟会话图保持一致）+ 2026-11-12 02:47 用户原话（拓扑图应该包含分叉节点：从哪一轮分叉出去、派出子代理的那个节点必须包含，否则只是一个点伸出几条爪子，看不出拓扑关系）',
     decision:
-      '悬停侧栏会话行在右侧弹出会话拓扑图：节点 = 会话（主会话/分叉/子代理），不显示轮次与 token；布局、泳道色、连线、悬停线高亮 + 会话名 tip 与会话图共用同一套代码；点节点切换会话',
-    files: [F.hoverCard, F.topology, F.graphLayout, F.graphView],
+      '悬停浮层与右栏会话图共用 layoutSessionGraph 与同一套渲染组件：紧凑模式不显示轮次标题，只在每个会话起点显示会话名；保留每个会话的起点/最新轮、分叉点/派出点与子代理汇回点，其余轮次省略；悬停名称行高亮该会话的线与节点，点节点或线跳转会话',
+    files: [F.hoverCard, F.topology, F.graphLayout, F.graphView, F.graphData],
     need: [
       /HOVER_CARD_OPEN_DELAY = TIP_SHOW_DELAY/,
-      /layoutSessionTopology/,
+      /compact: true/,
       /data-session-topology/,
-      /node\.kind === 'session'/,
+      /data-attach-point/,
+      /EDGE_HIT_WIDTH/,
     ],
+    deny: [/layoutSessionTopology/],
   },
   {
     id: 'graph-trunk-current',
     source:
-      '2026-11-11 22:09 用户原话（右侧栏的会话图，如果在某个分叉或者主会话时，最右边的主线要换成对应的会话，跟git的切分支是一样的）',
+      '2026-11-12 用户原话（在一个分叉里面，要用主线，并且仿照 Git 的图……从一个绘画里面分叉出来的所有绘画，以及它所有的子代理，它们的绘画图的拓扑结构完全一样，只是主线不同，在不同的绘画中就用不同的主线）',
     decision:
-      '右栏会话图以当前会话为主线：在分叉里当前分叉占主线轨道（仍在最左第 0 列），来源会话与其他分叉作为分支泳道，来源会话行尾写「原会话」',
-    files: [F.graphData, F.graphLayout, F.graphView],
-    need: [/relation: 'source'/, /forkRelation === 'source' \? '原会话'/, /forkedFrom\?\.sessionId/],
+      '一棵会话树（根 + 递归分叉 + 所有子代理）只有一张拓扑：节点是轮次，边是下一轮/分叉自某轮/子代理派出与汇回；树内任何会话打开时节点与边完全相同，只有主线（当前会话的祖先链）不同。主线 = 当前会话轮次 + 来源会话在分叉点之前的轮次，一条直线在第 0 列；其余会话的独有轮次是从分叉点分出的分支泳道',
+    files: [F.protocol, F.graphData, F.graphLayout, F.graphCard],
+    need: [/SessionGraphTree/, /graphFromTree/, /attachTurnId/, /chainPrefix/, /trunkSet/],
+    deny: [/relation: 'source'/],
+  },
+  {
+    id: 'graph-one-topology-per-tree',
+    source:
+      '2026-11-12 用户原话（分叉的会话图没有做对……分叉作为主线，一条线上去，不应该再在这里引出一个蓝色的条，并且也可以看到主会话上分出的子代理节点。分叉的会话图里所有节点和主会话应该都是一样的，只是主线不同）',
+    decision:
+      '主会话视图与分叉视图的节点集合、连线关系相同（同一棵树的轮次各出现一次）；来源会话在分叉点之后的轮次画成完整分支泳道，不再画成单节点「原会话」支线；主会话上派出的子代理在分叉视图里照常可见',
+    files: [F.graphData, F.graphLayout, F.graphCard],
+    need: [/GraphTreeInput/, /trunkSet/, /ownersOfAttach/],
   },
   // 消息区（反馈16#01 / #02 / #10 / #11）
   {
@@ -861,11 +874,44 @@ const DECISIONS = [
     need: [/running-dot/, /running=/],
   },
   {
+    id: 'graph-external-nodes-clickable',
+    source: '反馈0220#01（2026-11-12 用户原话：外部绘画，绘画图没办法点击跳转）',
+    decision: '外部会话等只读会话图的节点点击也走同一个 focusMessage 定位该轮，不再整张图禁用点击',
+    files: [F.graphCard, F.externalPanel],
+    need: [/focusMessage\(node\.turnId\)/],
+  },
+  {
+    id: 'hover-card-single-session-hidden',
+    source:
+      '反馈0220#06（2026-11-12 用户原话：当一个会话没有分叉或者子代理时，右侧就不要弹出这个卡片，这个卡片没有什么用）',
+    decision: '树里只有当前会话（没有分叉、没有子代理）时不弹悬停拓扑卡片；有分支才弹',
+    files: [F.sessionRow, F.hoverCard],
+    need: [/hasTreeBranches/, /ids\.size > 1/],
+  },
+  {
+    id: 'hover-card-feedback-freeze',
+    source:
+      '反馈0220#06（2026-11-12 用户原话：进入反馈模式的时候，右侧卡片还是会消失，估计是绕过了原有代码）',
+    decision:
+      'HoverCard 与菜单/Popover 同一套反馈模式规则：反馈模式（Ctrl+Shift+F）下指针离开触发器不收起，浮层停住供圈选',
+    files: [F.hoverCard],
+    need: [/useFeedbackStore/, /getState\(\)\.active/],
+  },
+  {
+    id: 'hover-topology-hit-area',
+    source:
+      '反馈0220#07（2026-11-12 用户原话：鼠标悬浮在这些选项卡上时，左边的拓扑图也要进行高亮。并且点击左边的拓扑图的时候，也要进行会话的跳转）+ 原话（拓扑图特别细，鼠标悬停很难选中）',
+    decision:
+      '拓扑图命中区：连线透明描边两侧各 6px（列距 14px 保证相邻泳道命中带不重叠），节点圆点命中区 20px，名称行整行可点；悬停名称行/节点高亮该会话的线与节点',
+    files: [F.graphView, F.graphLayout],
+    need: [/EDGE_HIT_WIDTH = 13/, /NODE_HIT_SIZE = 20/, /GRAPH_COLUMN_GAP = 14/],
+  },
+  {
     id: 'graph-subagent-opens-session',
     source: '反馈2108#03',
     decision: '会话图子代理节点点击进入子代理会话；主线节点在当前会话定位该轮',
     files: [F.graphCard],
-    need: [/openAgentSession\(hostId, node\.subagentId\)/, /focusMessage\(node\.turnId\)/],
+    need: [/openAgentSession\(hostId, targetId\)/, /focusMessage\(node\.turnId\)/],
   },
   {
     id: 'route-follows-session',

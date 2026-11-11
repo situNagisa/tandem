@@ -112,6 +112,7 @@ import type {
   SecretsSettings,
   Session,
   StartEvalRunInput,
+  SessionGraphTree,
   SessionSummary,
   SessionTurns,
   SkillInfo,
@@ -515,6 +516,9 @@ export const api = {
     ),
   sessionTurns: (h: HostConfig, id: string) =>
     request<SessionTurns>(h, `/api/sessions/${encodeURIComponent(id)}/turns`),
+  /** 会话树拓扑：整棵树（根 + 递归分叉 + 所有子代理）的轮次节点与接入关系。 */
+  sessionGraph: (h: HostConfig, id: string) =>
+    request<SessionGraphTree>(h, `/api/sessions/${encodeURIComponent(id)}/graph`),
   /** 完整内容块：超大工具输出“显示全部”（按消息 + 下标或 toolUseId 定位）。 */
   messageBlock: (
     h: HostConfig,
