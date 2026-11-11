@@ -6,6 +6,8 @@ import { formatRelative } from '../../lib/format'
 import { cn } from '../../lib/cn'
 import { SessionStatusDot } from '../StatusDot'
 import { IconButton } from '../ui/Button'
+import { HoverCard } from '../ui/HoverCard'
+import { SessionTopology } from './SessionTopology'
 
 type UpdateSession = AppState['updateSession']
 
@@ -95,36 +97,47 @@ export function SessionRow({
     const runningLabel =
       s.status === 'waiting_permission' ? '待审批' : s.status === 'retrying' ? '等待网络' : '运行中'
     return (
-      <div
-        data-session-row="true"
-        data-session-id={s.id}
-        data-host-id={hostId}
-        data-nested={nested || undefined}
-        data-session-pinned={pinState || undefined}
-        onContextMenu={(e) => openMenu(e, hostId, s)}
-        draggable={!renamingThis}
-        onDragStart={(e) => {
-          e.dataTransfer.setData(
-            'application/x-tandem-split',
-            JSON.stringify({ hostId, sessionId: s.id }),
-          )
-          e.dataTransfer.effectAllowed = 'copy'
-        }}
-        data-tip={
-          s.forkedFrom
-            ? `分叉自 ${s.forkedFrom.title || '父会话'}${s.title ? ` · ${s.title}` : ''}`
-            : s.worktree
-              ? `${s.title || '未命名会话'} · worktree ${s.worktree.branch}（基于 ${s.worktree.baseBranch}）`
-              : s.title || '未命名会话'
-        }
-        className={cn(
-          'anim-row-in group relative flex h-11 items-center rounded-lg text-[14px] transition-colors duration-[120ms] md:h-[34px]',
-          depth > 0 && 'ml-5',
-          isActive
-            ? 'bg-[var(--t-bg-active)] text-text'
-            : 'text-text hover:bg-[var(--t-bg-hover)]',
+      <HoverCard
+        label={s.title || '未命名会话'}
+        disabled={renamingThis}
+        content={(close) => (
+          <SessionTopology
+            hostId={hostId}
+            rootId={s.id}
+            {...(s.title ? { title: s.title } : {})}
+            onNavigate={close}
+          />
         )}
       >
+        <div
+          data-session-row="true"
+          data-session-id={s.id}
+          data-session-open-id={openId}
+          data-host-id={hostId}
+          data-nested={nested || undefined}
+          data-session-pinned={pinState || undefined}
+          onContextMenu={(e) => openMenu(e, hostId, s)}
+          draggable={!renamingThis}
+          onDragStart={(e) => {
+            e.dataTransfer.setData(
+              'application/x-tandem-split',
+              JSON.stringify({ hostId, sessionId: openId ?? s.id }),
+            )
+            e.dataTransfer.effectAllowed = 'copy'
+          }}
+          data-tip={
+            s.worktree
+              ? `${s.title || '未命名会话'} · worktree ${s.worktree.branch}（基于 ${s.worktree.baseBranch}）`
+              : s.title || '未命名会话'
+          }
+          className={cn(
+            'anim-row-in group relative flex h-11 items-center rounded-lg text-[14px] transition-colors duration-[120ms] md:h-[34px]',
+            depth > 0 && 'ml-5',
+            isActive
+              ? 'bg-[var(--t-bg-active)] text-text'
+              : 'text-text hover:bg-[var(--t-bg-hover)]',
+          )}
+        >
         {renamingThis ? (
           <>
             <span className="pointer-events-none ml-2 flex size-4 shrink-0 items-center justify-center">
@@ -269,6 +282,7 @@ export function SessionRow({
             <MoreHorizontal size={15} />
           </IconButton>
         )}
-      </div>
+        </div>
+      </HoverCard>
     )
 }

@@ -1,7 +1,15 @@
 import type { SessionSummary } from '@tandem/protocol'
 import { isUserTurnMessage } from '@tandem/protocol'
 import type { SubagentSession, UiMessage } from '../../lib/types'
-import type { GraphFork, GraphInput, GraphSubagent, GraphTurn } from './layout'
+import { sessionTreeRootId } from '../../lib/sessionTree'
+import type {
+  GraphFork,
+  GraphInput,
+  GraphSessionBranch,
+  GraphSubagent,
+  GraphTopologyInput,
+  GraphTurn,
+} from './layout'
 
 function firstLine(message: UiMessage): string {
   const texts: string[] = []
@@ -155,5 +163,41 @@ export function buildSessionGraph(input: {
     turns: parts.turns,
     subagents,
     forks,
+  }
+}
+
+/**
+ * 侧栏悬停拓扑图：把一棵会话树（根、分叉、子代理、孙代理）组装成布局输入。
+ * 只有会话，不含轮次；`current` 用于高亮当前正在查看的会话。
+ */
+export function buildSessionTopology(input: {
+  rootId: string
+  title?: string
+  sessions: SessionSummary[]
+  activeSessionId?: string | null
+}): GraphTopologyInput {
+  const byId = new Map(input.sessions.map((session) => [session.id, session]))
+  const root = byId.get(input.rootId)
+  const branches: GraphSessionBranch[] = []
+  for (const session of input.sessions) {
+    if (session.id === input.rootId) continue
+    const parentId = session.parentId ?? session.forkedFrom?.sessionId
+    if (!parentId || !byId.has(parentId)) continue
+    if (sessionTreeRootId(session, byId) !== input.rootId) continue
+    branches.push({
+      id: session.id,
+      title: session.title || (session.parentId ? '子代理' : '分叉'),
+      parentId,
+      relation: session.parentId ? 'subagent' : 'fork',
+      createdAt: session.createdAt,
+      ...(input.activeSessionId === session.id ? { current: true } : {}),
+    })
+  }
+  const title = root?.title || input.title
+  return {
+    sessionId: input.rootId,
+    ...(title ? { title } : {}),
+    ...(input.activeSessionId === input.rootId ? { current: true } : {}),
+    branches,
   }
 }

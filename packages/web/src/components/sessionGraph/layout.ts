@@ -39,6 +39,8 @@ export interface GraphFork {
   /** 分叉点所在的轮次 id（由调用方把消息 id 映射到用户轮）。 */
   turnId?: string
   createdAt: number
+  /** 'source' = 当前分叉的来源会话（原会话），行尾写「原会话」；缺省是普通分叉。 */
+  relation?: 'fork' | 'source'
 }
 
 export interface GraphInput {
@@ -49,14 +51,34 @@ export interface GraphInput {
   forks: GraphFork[]
 }
 
-export type GraphNodeKind = 'turn' | 'subagent-turn' | 'fork'
+/** 侧栏悬停拓扑图的一个会话（除根以外的分叉 / 子代理 / 孙代理）。 */
+export interface GraphSessionBranch {
+  id: string
+  title: string
+  /** 父会话 id（分叉跟 forkedFrom、子代理跟 parentId）。 */
+  parentId?: string
+  relation: 'fork' | 'subagent'
+  createdAt: number
+  /** 当前正在查看的会话：节点外圈高亮。 */
+  current?: boolean
+}
+
+export interface GraphTopologyInput {
+  sessionId: string
+  title?: string
+  /** 根会话当前正在被查看。 */
+  current?: boolean
+  branches: GraphSessionBranch[]
+}
+
+export type GraphNodeKind = 'turn' | 'subagent-turn' | 'fork' | 'session' | 'subagent'
 
 export interface GraphNode {
   key: string
   kind: GraphNodeKind
   lane: number
   row: number
-  /** 对应消息 id / 子代理 id / 分叉会话 id。 */
+  /** 对应消息 id / 子代理 id / 分叉会话 id / 拓扑图会话 id。 */
   id: string
   /** 主线轮次 id（子代理节点指向发起它的轮，便于先跳到父轮）。 */
   turnId?: string
@@ -64,6 +86,14 @@ export interface GraphNode {
   label: string
   subagentId?: string
   forkSessionId?: string
+  /** 会话 id：拓扑图里点节点切换会话。 */
+  sessionId?: string
+  /** 拓扑图：该会话的父会话 id（点只读子会话前先判断是否在当前会话下）。 */
+  parentSessionId?: string
+  /** 拓扑图：当前正在查看的会话，外圈高亮与会话图当前轮一致。 */
+  current?: boolean
+  /** 分叉节点是普通分叉还是当前分叉的来源会话（原会话）。 */
+  forkRelation?: 'fork' | 'source'
   pinned?: boolean
 }
 
@@ -435,4 +465,97 @@ export function layoutSessionGraph(input: GraphInput): GraphLayout {
   const lanes = Math.max(1, nextLane)
   const { columnOf, columns } = assignColumns(nodes, edges, lanes)
   return { nodes, edges, rows, lanes, columnOf, columns, laneKinds }
+}
+
+/**
+ * 侧栏悬停拓扑图：节点 = 会话（主会话、分叉、子代理），不是轮次。
+ * 根会话在主线轨道第 0 列、第一行；分支按创建时间从新到旧向下铺开，
+ * 连线、泳道色与列复用完全沿用会话图（直接产出同一份 GraphLayout）。
+ */
+export function layoutSessionTopology(input: GraphTopologyInput): GraphLayout {
+  const nodes: GraphNode[] = []
+  const edges: GraphEdge[] = []
+  const laneKinds: Array<'main' | 'subagent' | 'fork'> = ['main']
+  const rootId = input.sessionId
+  nodes.push({
+    key: `session:${rootId}`,
+    kind: 'session',
+    lane: 0,
+    row: 0,
+    id: rootId,
+    sessionId: rootId,
+    label: input.title?.trim() || '当前会话',
+    ...(input.current ? { current: true } : {}),
+  })
+
+  const byParent = new Map<string, GraphSessionBranch[]>()
+  const known = new Set<string>([rootId, ...input.branches.map((branch) => branch.id)])
+  for (const branch of input.branches) {
+    // 父会话不在树里（已删除/被过滤）时挂回根，不画悬空分支。
+    const parentId =
+      branch.parentId && branch.parentId !== branch.id && known.has(branch.parentId)
+        ? branch.parentId
+        : rootId
+    const list = byParent.get(parentId)
+    if (list) list.push(branch)
+    else byParent.set(parentId, [branch])
+  }
+  for (const list of byParent.values()) list.sort((a, b) => b.createdAt - a.createdAt)
+
+  const placed = new Set<string>([rootId])
+  let nextLane = 1
+  let nextRow = 1
+  const place = (parentId: string, parentLane: number, parentRow: number, depth: number) => {
+    if (depth > 32) return
+    for (const branch of byParent.get(parentId) ?? []) {
+      if (placed.has(branch.id)) continue
+      placed.add(branch.id)
+      const lane = nextLane
+      nextLane += 1
+      const row = nextRow
+      nextRow += 1
+      const label = branch.title || (branch.relation === 'fork' ? '分叉' : '子代理')
+      laneKinds[lane] = branch.relation === 'fork' ? 'fork' : 'subagent'
+      nodes.push({
+        key: `${branch.relation}:${branch.id}`,
+        kind: branch.relation === 'fork' ? 'fork' : 'subagent',
+        lane,
+        row,
+        id: branch.id,
+        sessionId: branch.id,
+        parentSessionId: parentId,
+        label,
+        ...(branch.relation === 'fork'
+          ? { forkSessionId: branch.id }
+          : { subagentId: branch.id }),
+        ...(branch.current ? { current: true } : {}),
+      })
+      edges.push({
+        fromLane: parentLane,
+        fromRow: parentRow,
+        toLane: lane,
+        toRow: row,
+        kind: branch.relation === 'fork' ? 'fork' : 'subagent',
+        ownerId: branch.id,
+        label,
+      })
+      place(branch.id, lane, row, depth + 1)
+    }
+  }
+  place(rootId, 0, 0, 0)
+
+  // 键盘 ↑/↓ 按视觉顺序（上→下）移动。
+  nodes.sort((a, b) => a.row - b.row || a.lane - b.lane)
+
+  const lanes = Math.max(1, nextLane)
+  const { columnOf, columns } = assignColumns(nodes, edges, lanes)
+  return {
+    nodes,
+    edges,
+    rows: Math.max(1, nextRow),
+    lanes,
+    columnOf,
+    columns,
+    laneKinds,
+  }
 }

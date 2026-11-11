@@ -4,6 +4,7 @@ import {
   graphCardHeight,
   columnX,
   layoutSessionGraph,
+  layoutSessionTopology,
   type GraphInput,
   type GraphLayout,
   type GraphSubagent,
@@ -296,6 +297,70 @@ function crossings(layout: GraphLayout): number {
   }
   return n
 }
+
+describe('layoutSessionTopology（侧栏悬停拓扑图）', () => {
+  const branch = (
+    id: string,
+    parentId: string,
+    relation: 'fork' | 'subagent' = 'fork',
+    createdAt = 0,
+  ) => ({ id, parentId, relation, createdAt, title: `会话 ${id}` })
+
+  it('节点是会话而不是轮次：根在主线第一行，分支按创建时间从新到旧向下', () => {
+    const layout = layoutSessionTopology({
+      sessionId: 'root',
+      title: '主会话',
+      current: true,
+      branches: [
+        branch('fork-old', 'root', 'fork', 1),
+        branch('fork-new', 'root', 'fork', 3),
+        branch('sub', 'root', 'subagent', 2),
+      ],
+    })
+    expect(layout.nodes.map((n) => [n.kind, n.row, n.label])).toEqual([
+      ['session', 0, '主会话'],
+      ['fork', 1, '会话 fork-new'],
+      ['subagent', 2, '会话 sub'],
+      ['fork', 3, '会话 fork-old'],
+    ])
+    expect(layout.nodes.some((n) => n.kind === 'turn' || n.kind === 'subagent-turn')).toBe(false)
+    expect(layout.nodes.find((n) => n.id === 'root')?.current).toBe(true)
+    // 每个分支一条线，从父会话节点出发、落在分支节点上，不汇回。
+    expect(layout.edges).toHaveLength(3)
+    for (const edge of layout.edges) {
+      expect(edge.fromLane).toBe(0)
+      expect(edge.fromRow).toBe(0)
+      expect(edge.toLane).toBeGreaterThan(0)
+      expect(layout.edges.some((item) => item.merge)).toBe(false)
+    }
+  })
+
+  it('同一会话的多个分支各占一列，嵌套子代理继续向右', () => {
+    const layout = layoutSessionTopology({
+      sessionId: 'root',
+      branches: [
+        branch('a', 'root', 'fork', 2),
+        branch('b', 'root', 'subagent', 1),
+        branch('a1', 'a', 'subagent', 0),
+      ],
+    })
+    expect(layout.lanes).toBe(4)
+    expect(new Set([1, 2].map((lane) => layout.columnOf[lane])).size).toBe(2)
+    expect(layout.columnOf[3]).toBeGreaterThan(layout.columnOf[1]!)
+    expect(layout.rows).toBe(4)
+    expect(columnX(layout.columnOf[1]!)).toBeGreaterThan(columnX(0))
+  })
+
+  it('父会话不在树里或成环时不画悬空分支', () => {
+    const layout = layoutSessionTopology({
+      sessionId: 'root',
+      branches: [branch('a', 'missing'), branch('b', 'a'), branch('root', 'b')],
+    })
+    // a 的父找不到，挂回根；b 在 a 下；root 不会重复放置。
+    expect(layout.nodes.map((n) => n.id).sort()).toEqual(['a', 'b', 'root'])
+    expect(layout.nodes.filter((n) => n.id === 'root')).toHaveLength(1)
+  })
+})
 
 describe('卡片内会话图高度（反馈16#09）', () => {
   it('少于 3 行按最小高度，超过 12 行按最大高度，中间随行数增长', () => {
