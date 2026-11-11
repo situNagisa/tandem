@@ -26,6 +26,8 @@
   --t-accent-strong-hover: #8f4227;
   --t-accent-soft: rgba(217, 119, 87, 0.12);
   --t-on-accent: #ffffff;
+  /* 反馈/标注专用橙色（原硬编码橙色）：只在标注、反馈条目上出现，状态/演示徽标不用。 */
+  --t-annotation: #f97316;
   /* 键盘焦点环用中性灰，不用强调色（R04：橙色只留给品牌/发送/待审批）。 */
   --t-focus-ring: #7b7266;
   --t-primary-bg: #1a1a1a;
@@ -139,6 +141,7 @@ html.dark {
   --t-accent-strong-hover: #c6613f;
   --t-accent-soft: rgba(217, 119, 87, 0.14);
   --t-on-accent: #ffffff;
+  --t-annotation: #f97316;
   /* #191919 上 ≥6:1，深色下也清晰可见但仍为中性色。 */
   --t-focus-ring: #9a9a9a;
   --t-primary-bg: #efefef;
@@ -228,6 +231,7 @@ html.dark {
   --color-accent-strong-hover: var(--t-accent-strong-hover);
   --color-accent-soft: var(--t-accent-soft);
   --color-on-accent: var(--t-on-accent);
+  --color-annotation: var(--t-annotation);
   --color-danger: var(--t-danger);
   --color-danger-soft: var(--t-danger-soft);
   --color-warning: var(--t-warning);

@@ -20,6 +20,7 @@ import type { HostConfig } from '../../lib/types'
 import { copyText } from '../../lib/clipboard'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
+import { Badge } from '../ui/Badge'
 import { Button, IconButton } from '../ui/Button'
 import { ListRow } from '../ui/ListRow'
 import { SegmentedControl } from '../ui/Controls'
@@ -53,9 +54,9 @@ function KindIcon({ kind }: { kind: DeviceInfo['kind'] }) {
 
 function KindTag({ kind }: { kind: DeviceInfo['kind'] }) {
   return (
-    <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1 py-px text-[10px] font-medium uppercase tracking-wide text-text-tertiary">
+    <Badge tone="neutral" className="tracking-wide uppercase">
       {kind === 'adb' ? 'ADB' : 'SERIAL'}
-    </span>
+    </Badge>
   )
 }
 
@@ -499,7 +500,7 @@ function InstallGuide({
       <ol className="space-y-3">
         {steps.map((step, index) => (
           <li key={`${selected}:${index}:${step.title}`} className="grid grid-cols-[18px_minmax(0,1fr)] gap-2">
-            <span className="mt-0.5 flex size-[18px] items-center justify-center rounded-full bg-[var(--t-bg-active)] font-mono text-[10.5px] tabular-nums text-text-secondary">
+            <span className="mt-0.5 flex size-[18px] items-center justify-center rounded-full bg-[var(--t-bg-active)] font-mono text-[11px] tabular-nums text-text-secondary">
               {index + 1}
             </span>
             <div className="min-w-0">
@@ -708,9 +709,7 @@ function HostSection({
               <span className="min-w-0 truncate">{device.name}</span>
               <KindTag kind={device.kind} />
               {__TANDEM_DEBUG__ && device.demo && (
-                <span className="shrink-0 rounded bg-[var(--t-bg-hover)] px-1 text-[10px] text-text-tertiary">
-                  演示设备
-                </span>
+                <Badge tone="neutral">演示设备</Badge>
               )}
             </span>
           }

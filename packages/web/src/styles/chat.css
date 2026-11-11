@@ -270,7 +270,7 @@
   background: color-mix(in srgb, var(--t-bg) 35%, transparent);
   color: var(--t-muted);
   font-family: var(--t-font-sans);
-  font-size: 10px;
+  font-size: 11px;
 }
 @media (min-width: 768px) {
   .x-scroll-foot {
@@ -500,7 +500,7 @@
   padding: 2px 6px;
   color: var(--t-muted);
   font-family: var(--t-font-sans);
-  font-size: 10px;
+  font-size: 11px;
   opacity: 0;
   transition: opacity 160ms var(--t-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
@@ -1077,7 +1077,7 @@
 .menu-section {
   padding: 6px 8px 3px;
   color: var(--t-muted);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1090,7 +1090,7 @@
 .menu-hint {
   padding: 6px 10px;
   color: var(--t-muted);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.5;
 }
 .menu-search {
@@ -1117,7 +1117,7 @@
   border: 1px solid var(--t-border);
   border-radius: 4px;
   color: var(--t-muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 16px;
 }
 mark.chat-match {
@@ -1475,7 +1475,7 @@ mark.chat-match {
   top: 0;
   right: 58px;
   color: var(--t-text-tertiary);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 28px;
   white-space: nowrap;
   opacity: 0;

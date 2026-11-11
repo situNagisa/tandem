@@ -127,7 +127,7 @@ export function MobilePreviewBar() {
                 换行
               </span>
             </div>
-            <div className="pb-1 text-center text-[10px] text-muted">模拟键盘（占位，不接管输入）</div>
+            <div className="pb-1 text-center text-[11px] text-muted">模拟键盘（占位，不接管输入）</div>
           </div>
         </div>
       )}

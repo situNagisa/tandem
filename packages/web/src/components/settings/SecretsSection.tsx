@@ -7,6 +7,7 @@ import type { SecretMeta, SecretScope, SecretsOverview } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
+import { Badge } from '../ui/Badge'
 import { Button, IconButton } from '../ui/Button'
 import { Input, Switch, Textarea } from '../ui/Controls'
 import { MenuSelect } from '../ui/Menu'
@@ -293,9 +294,7 @@ export function SecretsSection() {
                 <div className="flex items-center gap-1.5">
                   <span className="truncate font-mono text-[13px] text-text">{secret.name}</span>
                   {!secret.project && (
-                    <span className="shrink-0 rounded border border-border px-1 text-[10.5px] text-muted">
-                      全局
-                    </span>
+                    <Badge tone="neutral">全局</Badge>
                   )}
                 </div>
                 <div className="truncate text-[12px] text-muted" data-tip={secret.description ?? ''}>

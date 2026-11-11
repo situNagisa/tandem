@@ -71,7 +71,7 @@ export function TaskBody({
           >
             {description || '未命名任务'}
           </button>
-          <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[9.5px] text-muted">
+          <span className="shrink-0 rounded bg-[var(--t-bg-active)] px-1.5 py-px font-mono text-[11px] text-muted">
             {type}
           </span>
           <span className="flex-1" />

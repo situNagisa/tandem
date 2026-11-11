@@ -44,7 +44,7 @@ export function BackgroundTasksButton() {
     >
       <SquareTerminal size={16} />
       {count > 0 && (
-        <span className="absolute -right-0.5 -top-0.5 flex size-[14px] items-center justify-center rounded-full bg-accent-strong text-[9px] font-medium tabular-nums text-on-accent">
+        <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-accent-strong text-[11px] font-medium tabular-nums text-on-accent">
           {count > 9 ? '9+' : count}
         </span>
       )}
@@ -150,7 +150,7 @@ export function SubagentsButton() {
                   data-tip={row.title}
                 >
                   {row.depth > 6 && (
-                    <span className="shrink-0 text-[9.5px] tabular-nums text-muted">L{row.depth}</span>
+                    <span className="shrink-0 text-[11px] tabular-nums text-muted">L{row.depth}</span>
                   )}
                   <span className="min-w-0 flex-1 truncate text-text">{row.title}</span>
                   <span

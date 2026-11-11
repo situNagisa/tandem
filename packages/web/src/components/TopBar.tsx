@@ -32,6 +32,7 @@ import { clearSplitWorkspace } from '../lib/splitActions'
 import { isDesktop, isMacDesktop, isWindowsDesktop } from '../lib/desktop'
 import { HOST_NOT_ON_WORKSTATION } from '../lib/relay'
 import { ConnectionDot } from './StatusDot'
+import { Badge } from './ui/Badge'
 import { Button, IconButton } from './ui/Button'
 import { Menu as UiMenu } from './ui/Menu'
 import { Input } from './ui/Controls'
@@ -502,12 +503,12 @@ export function TopBar() {
             >
               <h1 className="truncate text-[14px] font-medium leading-5" data-tip={title}>{title}</h1>
               {__TANDEM_DEBUG__ && summary?.demo && (
-                <span
-                  className="shrink-0 rounded bg-[#F97316]/12 px-1.5 py-0.5 text-[10px] font-medium text-[#F97316]"
+                <Badge
+                  tone="neutral"
                   data-tip="演示数据：不计入真实用量，可在设置 → 关于 → 演示工作区清除"
                 >
                   演示数据
-                </span>
+                </Badge>
               )}
               <Pencil
                 size={11}

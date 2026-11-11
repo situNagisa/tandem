@@ -5,6 +5,7 @@ import type { HostSettings, SttCapabilities, SttTestResult, VoiceSettings } from
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
 import { Button } from '../ui/Button'
+import { Badge } from '../ui/Badge'
 import { Input, SegmentedControl, Switch } from '../ui/Controls'
 import { Card } from '../ui/Card'
 import { SettingNote, SettingRow } from '../ui/SettingRow'
@@ -164,13 +165,13 @@ export function VoiceSection() {
               <h3 className="text-[13px] font-medium">Host 本地 Whisper</h3>
               {caps ? (
                 caps.available ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-[var(--t-success-soft)] px-2 py-0.5 text-[12px] text-success">
-                    <CheckCircle2 size={11} /> 可用
-                  </span>
+                  <Badge tone="success" icon={<CheckCircle2 size={12} />}>
+                    可用
+                  </Badge>
                 ) : (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-[var(--t-warning-soft)] px-2 py-0.5 text-[12px] text-[var(--t-warning)]">
-                    <XCircle size={11} /> 未配置
-                  </span>
+                  <Badge tone="warn" icon={<XCircle size={12} />}>
+                    未配置
+                  </Badge>
                 )
               ) : null}
             </div>

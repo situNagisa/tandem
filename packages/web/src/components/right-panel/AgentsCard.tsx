@@ -97,7 +97,7 @@ function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number;
         data-tip={sub.summary ? `${sub.summary.title} · ${sub.summary.model}` : undefined}
       >
       {depth > 6 && (
-        <span className="shrink-0 text-[9.5px] tabular-nums text-muted" data-tip={`第 ${depth} 层`}>
+        <span className="shrink-0 text-[11px] tabular-nums text-muted" data-tip={`第 ${depth} 层`}>
           L{depth}
         </span>
       )}

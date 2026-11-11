@@ -10,6 +10,7 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { Badge } from '../ui/Badge'
 import { SettingRow } from '../ui/SettingRow'
 import type {
   EvalCase,
@@ -58,21 +59,16 @@ function configFromProfile(profile: Profile, index: number): EvalConfig {
 function StatusPill({ result }: { result?: EvalResult | Omit<EvalResult, 'messages'> }) {
   const passed = cellPassed(result)
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[12px]',
-        passed === true
-          ? 'bg-success-soft text-success'
-          : passed === false
-            ? 'bg-danger-soft text-danger'
-            : 'bg-[var(--t-bg-hover)] text-muted',
-      )}
+    <Badge
+      tone={passed === true ? 'success' : passed === false ? 'danger' : 'neutral'}
+      icon={
+        result?.status === 'running' || result?.status === 'queued' ? (
+          <Spinner size={12} />
+        ) : undefined
+      }
     >
-      {(result?.status === 'running' || result?.status === 'queued') && (
-        <Spinner size={10} />
-      )}
       {resultLabel(result)}
-    </span>
+    </Badge>
   )
 }
 
@@ -503,18 +499,17 @@ export function EvalsSection() {
             aria-label="选择评测运行"
           />
           {summary && (
-            <span
-              className={cn(
-                'rounded-full px-1.5 py-0.5 text-[12px]',
+            <Badge
+              tone={
                 summary.status === 'running'
-                  ? 'bg-[var(--t-bg-hover)] text-muted'
+                  ? 'neutral'
                   : summary.status === 'cancelled'
-                    ? 'bg-warning-soft text-warning'
-                    : 'bg-success-soft text-success',
-              )}
+                    ? 'warn'
+                    : 'success'
+              }
             >
               {summary.status === 'running' ? '运行中' : summary.status === 'cancelled' ? '已取消' : '已完成'}
-            </span>
+            </Badge>
           )}
           {summary && (
             <span className="text-[12px] text-muted">

@@ -280,7 +280,7 @@ function CommentMarker({
           <div className="space-y-2">
             {comments.map((comment) => (
               <div key={comment.id}>
-                <p className="mb-1 font-mono text-[10px] text-muted">
+                <p className="mb-1 font-mono text-[11px] text-muted">
                   {lineLabel(comment.startLine, comment.endLine)}
                 </p>
                 {editingId === comment.id ? (
@@ -442,7 +442,7 @@ function AiMarker({
             <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-text" data-tip={comment.title}>
               {comment.title}
             </span>
-            <span className="shrink-0 font-mono text-[10px] text-muted">
+            <span className="shrink-0 font-mono text-[11px] text-muted">
               {lineLabel(comment.startLine, comment.endLine)}
             </span>
           </div>
@@ -917,7 +917,7 @@ export const DiffView = memo(function DiffView({
         ) : null}
       </div>
       {(oldLabel || newLabel) && (
-        <div className="flex gap-3 border-t border-border px-3 py-1 text-[10px] text-muted">
+        <div className="flex gap-3 border-t border-border px-3 py-1 text-[11px] text-muted">
           {oldLabel && <span>旧：{oldLabel}</span>}
           {newLabel && <span>新：{newLabel}</span>}
         </div>

@@ -34,7 +34,7 @@ export function ComposerChips({
                   <MousePointerClick size={13} className="shrink-0 text-muted" />
                   <span className="truncate">{selectionLabel(selection)}</span>
                   {selectionSource(selection) ? (
-                    <span className="shrink-0 font-mono text-[10px] text-muted">
+                    <span className="shrink-0 font-mono text-[11px] text-muted">
                       {selectionSource(selection)}
                     </span>
                   ) : null}
@@ -83,7 +83,7 @@ export function ComposerChips({
                 >
                   <FileText size={13} className="shrink-0 text-muted" />
                   <span className="truncate">粘贴的文本 · {p.lines} 行</span>
-                  <span className="shrink-0 text-[10px] tabular-nums text-muted">
+                  <span className="shrink-0 text-[11px] tabular-nums text-muted">
                     {p.text.length > 999 ? `${(p.text.length / 1000).toFixed(1)}k` : p.text.length} 字
                   </span>
                   <IconButton

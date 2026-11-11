@@ -323,7 +323,7 @@ export const ToolCard = memo(function ToolCard({
     const first = Object.entries(input).find(([, value]) => typeof value === 'string' || typeof value === 'number')
     if (first) {
       suffix = (
-        <span className="max-w-[180px] shrink-0 truncate font-mono text-[10.5px] text-muted">
+        <span className="max-w-[180px] shrink-0 truncate font-mono text-[11px] text-muted">
           {previewValue(first[1])}
         </span>
       )
@@ -334,7 +334,7 @@ export const ToolCard = memo(function ToolCard({
     suffix = (
       <span
         className={cn(
-          'shrink-0 text-[10.5px]',
+          'shrink-0 text-[11px]',
           sub?.running ? 'text-text-secondary' : subFailed ? 'text-danger' : 'text-muted',
         )}
       >
@@ -418,7 +418,7 @@ export const ToolCard = memo(function ToolCard({
         ) : null}
         {isTask && sub?.summary?.model && (
           <span
-            className="max-w-[130px] shrink-0 truncate rounded bg-[var(--t-bg-active)] px-1 py-px font-mono text-[9.5px] font-normal text-muted"
+            className="max-w-[130px] shrink-0 truncate rounded bg-[var(--t-bg-active)] px-1 py-px font-mono text-[11px] font-normal text-muted"
             data-tip={`子代理模型：${sub.summary.model}`}
           >
             {sub.summary.model}

@@ -1,5 +1,6 @@
 import { CheckCircle2, CircleSlash, XCircle } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
+import { Badge } from '../ui/Badge'
 import type { EvalCase, EvalResult, EvalRun } from '@tandem/protocol'
 import { cn } from '../../lib/cn'
 import { MessageList } from '../MessageList'
@@ -59,18 +60,17 @@ export function EvalTraceDialog({
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border px-4 py-2.5 text-[12px] text-text-soft">
-            <span
-              className={cn(
-                'inline-flex items-center gap-1 rounded-full px-2 py-0.5',
+            <Badge
+              tone={
                 result.passed
-                  ? 'bg-success-soft text-success'
+                  ? 'success'
                   : result.status === 'running' || result.status === 'queued'
-                    ? 'bg-[var(--t-bg-hover)] text-muted'
-                    : 'bg-danger-soft text-danger',
-              )}
+                    ? 'neutral'
+                    : 'danger'
+              }
             >
               {status}
-            </span>
+            </Badge>
             <span>花费 {formatCost(result.costUsd)}</span>
             <span>耗时 {formatDuration(result.durationMs)}</span>
             <span>

@@ -21,6 +21,7 @@ import {
   type FeedbackReceipt,
   type FeedbackReceiptItem,
 } from '../../lib/feedback'
+import { Badge } from '../ui/Badge'
 import { Button, IconButton } from '../ui/Button'
 import { Switch } from '../ui/Controls'
 
@@ -77,10 +78,10 @@ function BeforeAfter({ before, after }: { before: string; after: string }) {
           className="absolute inset-y-0 w-px bg-white shadow-[0_0_0_1px_rgba(0,0,0,.35)]"
           style={{ left: `${percent}%` }}
         >
-          <span className="absolute left-1/2 top-1/2 size-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#F97316]" />
+          <span className="absolute left-1/2 top-1/2 size-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-annotation" />
         </div>
-        <span className="absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">前</span>
-        <span className="absolute right-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">后</span>
+        <span className="absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[11px] text-white">前</span>
+        <span className="absolute right-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[11px] text-white">后</span>
       </div>
     </div>
   )
@@ -97,35 +98,35 @@ function ReceiptRow({
   return (
     <div className="mt-1.5 rounded-md border border-border bg-surface-2/60 px-2 py-1.5">
       <div className="flex items-center gap-1.5 text-[12px]">
-        <span
-          className={cn(
-            'rounded px-1.5 py-0.5 font-medium',
+        <Badge
+          tone={
             receiptItem.status === 'fixed'
-              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+              ? 'success'
               : receiptItem.status === 'wontfix'
-                ? 'bg-zinc-500/15 text-muted'
-                : 'bg-warning-soft text-warning',
-          )}
+                ? 'neutral'
+                : 'warn'
+          }
         >
           {receiptStatusLabel(receiptItem.status)}
-        </span>
+        </Badge>
         {receiptItem.verification && (
-          <span
-            className={cn(
-              'flex items-center gap-0.5 rounded px-1.5 py-0.5 font-medium',
-              receiptItem.verification.result === 'pass'
-                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                : 'bg-red-500/15 text-red-600 dark:text-red-400',
-            )}
+          <Badge
+            tone={receiptItem.verification.result === 'pass' ? 'success' : 'danger'}
+            icon={
+              receiptItem.verification.result === 'pass' ? (
+                <Check size={12} />
+              ) : (
+                <CircleAlert size={12} />
+              )
+            }
           >
-            {receiptItem.verification.result === 'pass' ? <Check size={10} /> : <CircleAlert size={10} />}
             {receiptItem.verification.result === 'pass' ? '复验通过' : '仍有问题'}
-          </span>
+          </Badge>
         )}
       </div>
       {receiptItem.note && <p className="mt-1 whitespace-pre-wrap text-[12px] leading-4 text-text-soft">{receiptItem.note}</p>}
       {receiptItem.verification?.note && (
-        <p className="mt-0.5 whitespace-pre-wrap text-[10.5px] leading-4 text-muted">复验备注：{receiptItem.verification.note}</p>
+        <p className="mt-0.5 whitespace-pre-wrap text-[11px] leading-4 text-muted">复验备注：{receiptItem.verification.note}</p>
       )}
       {before && receiptItem.afterImage && <BeforeAfter before={before} after={receiptItem.afterImage} />}
     </div>
@@ -188,7 +189,7 @@ export function FeedbackDrawer({
       aria-label="反馈条目"
     >
       <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
-        <ListChecks size={15} className="text-[#F97316]" />
+        <ListChecks size={15} className="text-annotation" />
         <span className="text-[13px] font-semibold text-text">反馈条目 · {items.length}</span>
         <span className="ml-auto" />
         <IconButton label="导入回执" size="sm" onClick={() => inputRef.current?.click()}>
@@ -220,7 +221,7 @@ export function FeedbackDrawer({
       {receipt && (
         <div className="border-b border-border bg-surface-2/50 px-3 py-2">
           <div className="flex items-center gap-1.5 text-[12px] text-text-soft">
-            <FileCheck2 size={12} className="text-[#F97316]" />
+            <FileCheck2 size={12} className="text-annotation" />
             <span className="min-w-0 flex-1 truncate" data-tip={receipt.sourceFile}>
               回执：{receipt.sourceFile || '未命名'}
             </span>
@@ -245,7 +246,7 @@ export function FeedbackDrawer({
               移除回执
             </Button>
           </div>
-          {importError && <p className="mt-1 text-[10.5px] text-danger">{importError}</p>}
+          {importError && <p className="mt-1 text-[11px] text-danger">{importError}</p>}
         </div>
       )}
 
@@ -282,7 +283,7 @@ export function FeedbackDrawer({
               )}
             >
               <div className="flex items-start gap-1.5">
-                <span className="mt-0.5 flex w-4 shrink-0 items-center justify-center text-[10px] font-semibold text-muted">
+                <span className="mt-0.5 flex w-4 shrink-0 items-center justify-center text-[11px] font-semibold text-muted">
                   {index + 1}
                 </span>
                 <button data-raw-button
@@ -296,58 +297,39 @@ export function FeedbackDrawer({
                   ) : (
                     <ImagePlus size={16} className="m-auto text-muted" />
                   )}
-                  <span className="absolute inset-x-0 bottom-0 bg-black/55 py-0.5 text-center text-[9px] text-white">
+                  <span className="absolute inset-x-0 bottom-0 bg-black/55 py-0.5 text-center text-[11px] text-white">
                     标注
                   </span>
                 </button>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1">
-                    <span className="rounded bg-surface-2 px-1 py-0.5 text-[9.5px] text-text-soft">
+                    <Badge tone="neutral">
                       {item.type === 'issue' ? '问题' : item.type === 'suggestion' ? '建议' : '好评'}
-                    </span>
-                    <span
-                      className={cn(
-                        'rounded px-1 py-0.5 text-[9.5px] font-semibold',
-                        (item.priority ?? 'P1') === 'P0'
-                          ? 'bg-red-500/15 text-red-600 dark:text-red-400'
-                          : (item.priority ?? 'P1') === 'P1'
-                            ? 'bg-warning-soft text-warning'
-                            : 'bg-surface-2 text-muted',
-                      )}
-                    >
+                    </Badge>
+                    <Badge tone={(item.priority ?? 'P1') === 'P0' ? 'danger' : (item.priority ?? 'P1') === 'P1' ? 'warn' : 'neutral'}>
                       {item.priority ?? 'P1'}
-                    </span>
-                    {item.mode === 'region' && (
-                      <span className="rounded bg-surface-2 px-1 py-0.5 text-[9.5px] text-muted">框选</span>
-                    )}
+                    </Badge>
+                    {item.mode === 'region' && <Badge tone="neutral">框选</Badge>}
                     {item.featureName && (
-                      <span
-                        className="rounded bg-[#F97316]/12 px-1 py-0.5 text-[9.5px] text-[#F97316]"
-                        data-tip={`功能：${item.featureName}`}
-                      >
+                      <Badge tone="annotation" data-tip={`功能：${item.featureName}`}>
                         {item.featureName}
-                      </span>
+                      </Badge>
                     )}
                     {item.causeId && (
-                      <span
-                        className="rounded bg-surface-2 px-1 py-0.5 text-[9.5px] text-text-soft"
-                        data-tip={item.causeTitle ?? '根因建议'}
-                      >
+                      <Badge tone="neutral" data-tip={item.causeTitle ?? '根因建议'}>
                         {item.causeId}
-                      </span>
+                      </Badge>
                     )}
-                    {item.trace?.length ? (
-                      <span className="rounded bg-surface-2 px-1 py-0.5 text-[9.5px] text-muted">轨迹 {item.trace.length}</span>
-                    ) : null}
-                    {item.video && <span className="rounded bg-surface-2 px-1 py-0.5 text-[9.5px] text-muted">录屏</span>}
+                    {item.trace?.length ? <Badge tone="neutral">轨迹 {item.trace.length}</Badge> : null}
+                    {item.video && <Badge tone="neutral">录屏</Badge>}
                     {item.references?.length ? (
-                      <span className="rounded bg-surface-2 px-1 py-0.5 text-[9.5px] text-muted">参考 {item.references.length}</span>
+                      <Badge tone="neutral">参考 {item.references.length}</Badge>
                     ) : null}
                   </div>
                   <button data-raw-button
                     type="button"
                     onClick={() => onHighlight(item)}
-                    className="mt-0.5 line-clamp-2 w-full text-left text-[12px] leading-4 text-text hover:text-[#F97316]"
+                    className="mt-0.5 line-clamp-2 w-full text-left text-[12px] leading-4 text-text hover:text-annotation"
                     data-tip="在页面上定位"
                   >
                     {item.text}
@@ -356,21 +338,21 @@ export function FeedbackDrawer({
                     <button data-raw-button
                       type="button"
                       onClick={() => onHighlight(item)}
-                      className="rounded px-1 py-0.5 text-[9.5px] text-muted hover:bg-surface-2 hover:text-text"
+                      className="rounded px-1 py-0.5 text-[11px] text-muted hover:bg-surface-2 hover:text-text"
                     >
                       定位
                     </button>
                     <button data-raw-button
                       type="button"
                       onClick={() => onEdit(item)}
-                      className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[9.5px] text-muted hover:bg-surface-2 hover:text-text"
+                      className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted hover:bg-surface-2 hover:text-text"
                     >
                       <Pencil size={9} /> 编辑
                     </button>
                     <button data-raw-button
                       type="button"
                       onClick={() => onDelete(item.id)}
-                      className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[9.5px] text-muted hover:bg-surface-2 hover:text-danger"
+                      className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted hover:bg-surface-2 hover:text-danger"
                     >
                       <Trash2 size={9} /> 删除
                     </button>
@@ -418,11 +400,11 @@ export function FeedbackDrawer({
             label="附带最近 5 条消息正文"
           />
         </label>
-        <p className="mt-1 text-[9.5px] leading-4 text-muted">
+        <p className="mt-1 text-[11px] leading-4 text-muted">
           快照只含路由、会话摘要、UI 偏好、视口与主机版本，绝不包含密钥、token 或配置文件内容。
         </p>
         <div className="mt-2 flex items-center gap-2 border-t border-border pt-2">
-          <p className="min-w-0 flex-1 text-[9.5px] leading-4 text-muted">
+          <p className="min-w-0 flex-1 text-[11px] leading-4 text-muted">
             {draft
               ? desktopDraft
                 ? `草稿实时保存：下载/Tandem 反馈/${draft.id}${draft.exportedAt ? ' · 已导出，保留 7 天' : ''}`

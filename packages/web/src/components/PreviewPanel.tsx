@@ -33,6 +33,7 @@ import { usePreviewShot } from '../lib/browserShot'
 import { useIsMobile } from '../lib/hooks'
 import { selectionLabel, selectionSource } from '../lib/previewElement'
 import type { HostConfig } from '../lib/types'
+import { Badge } from './ui/Badge'
 import { Button, IconButton } from './ui/Button'
 import { Input, SegmentedControl } from './ui/Controls'
 import { PanelBar, PanelBody } from './ui/Panel'
@@ -782,9 +783,7 @@ export function PreviewPanel() {
   )
 
   const runningBadge = state.active ? (
-    <span className="shrink-0 rounded-full bg-[var(--t-bg-active)] px-1.5 py-px text-[12px] font-normal text-text-soft">
-      运行中
-    </span>
+    <Badge tone="neutral">运行中</Badge>
   ) : null
 
   const header = (
