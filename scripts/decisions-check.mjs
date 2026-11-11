@@ -199,6 +199,36 @@ const DECISIONS = [
     files: [F.graphView, F.indexCss],
     need: [/--graph-lane-/, /data-merge/, /分叉/],
   },
+  {
+    id: 'graph-no-meta',
+    source:
+      '反馈1926#01#02#04#05#08#09（2026-11-11 用户原话：不需要这段描述文字 / 不需要这个按钮，子代理直接展开 / 不要这个按钮，直接展开 / 不需要显示轮次 / 不需要写一个结果已返回，直接合并到它的父会话节点上 / 一律不需要显示token消耗）',
+    decision: '会话图不显示汇总行、轮次序号、token/耗时等用量与「结果已返回」行，也没有展开/收起按钮；子代理始终展开',
+    files: [F.graphView, F.graphCard, F.graphLayout],
+    need: [/data-edge-hit/, /graphCardHeight\(layout\.rows\)/],
+    deny: [/graphSummaryLabel/, /结果已返回/, /data-expand-subagent/, /formatTokens/, /formatDurationMs/, /collapsed/],
+  },
+  {
+    id: 'graph-reversed',
+    source: '反馈1926#06（2026-11-11 用户原话：方向反一下，让最后的会话在上面，越早的会话在下面）',
+    decision: '会话图时间倒序：最新一轮在最上，行号在布局末尾统一翻转',
+    files: [F.graphLayout],
+    need: [/flipRow/, /flipRow\(/],
+  },
+  {
+    id: 'graph-edge-hover',
+    source: '反馈1926#10（2026-11-11 用户原话：鼠标悬停在某条线上时，要高亮这条线，并tip出这是哪个会话）',
+    decision: '悬停任一泳道线按归属会话高亮整条轨道、其余线降亮，tooltip 显示会话名；线有 12px 透明命中描边',
+    files: [F.graphView],
+    need: [/data-edge-hit/, /data-tip=\{edge\.label\}/, /strokeWidth=\{12\}/, /ownerId/],
+  },
+  {
+    id: 'graph-main-click-from-subagent',
+    source: '反馈1926#03（2026-11-11 用户原话：在子代理页面中，点击会话图的主会话，无法跳转）',
+    decision: '子代理只读视图里点会话图主线节点，先退出子代理视图再定位该轮',
+    files: [F.graphCard],
+    need: [/if \(agentSession\) closeAgentSession\(\)/],
+  },
   // 消息区（反馈16#01 / #02 / #10 / #11）
   {
     id: 'message-usage-hover',
@@ -553,10 +583,10 @@ const DECISIONS = [
   },
   {
     id: 'overlay-scrollbar',
-    source: '反馈9#04，反馈11#01',
-    decision: '全应用唯一覆盖式滚动条，不占布局、不压内容',
+    source: '反馈9#04，反馈11#01，反馈1926#07',
+    decision: '全应用唯一覆盖式滚动条，不占布局、不压内容；嵌套滚动容器让位到最近的祖先留白（卡片外/面板内边距）',
     files: [F.overlay, F.indexCss],
-    need: [/overlay-scrollbar/, /data-axis="y"/, /data-axis="x"/, /\*::-webkit-scrollbar/],
+    need: [/overlay-scrollbar/, /data-axis="y"/, /data-axis="x"/, /\*::-webkit-scrollbar/, /npad >= 12/],
   },
   {
     id: 'focus-ring-neutral',

@@ -8147,11 +8147,11 @@ async function main() {
     desktop('反馈2108#03：点会话图子代理节点进入子代理会话', async (page) => {
       let demo = await api(base, token, '/api/demo')
       if (!demo.active) demo = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
-      const mainId = demo.scenarios.find((item) => item.id === 'subagents').sessionIds[0]
+      const [mainId, childId] = demo.scenarios.find((item) => item.id === 'subagents').sessionIds
       await openSession(page, mainId)
       const graph = page.locator('[data-session-graph]').first()
       await graph.waitFor({ state: 'visible', timeout: 15_000 })
-      await graph.locator('div[data-kind="subagent"]').first().click()
+      await graph.locator(`div[data-kind="subagent-turn"][data-subagent-id="${childId}"]`).first().click()
       await page.locator('[data-agent-breadcrumb] [aria-current="page"]').filter({ hasText: '价格页前端' }).waitFor({ timeout: 10_000 })
       assert.match(await page.locator('[data-agent-breadcrumb]').innerText(), /只读/, '子代理节点没有打开只读子会话')
     })
@@ -10794,20 +10794,110 @@ async function main() {
       assert.equal(wikiAfter.exists, false, '演示 Wiki 未清除')
     })
 
-    desktop('会话图：轮次节点、彩色泳道、子代理合并线与分叉标签可区分', async (page) => {
+    desktop('会话图：时间倒序、子代理始终展开、悬停会话线高亮、子代理视图回主会话', async (page) => {
       let state = await api(base, token, '/api/demo')
       if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
       const scenario = state.scenarios.find((item) => item.id === 'subagents')
       assert.ok(scenario?.sessionIds?.length >= 4, '演示子代理场景缺少子代理/孙代理/分叉会话')
-      const [mainId, , , forkId] = scenario.sessionIds
+      const [mainId, childId, , forkId] = scenario.sessionIds
+      const mainTitle = (await api(base, token, `/api/sessions/${encodeURIComponent(mainId)}`)).title
+      const titles = new Map()
+      for (const id of scenario.sessionIds) {
+        titles.set(id, (await api(base, token, `/api/sessions/${encodeURIComponent(id)}`)).title)
+      }
       await openSession(page, mainId)
 
       const graph = page.locator('[data-session-graph]').first()
       await graph.waitFor({ state: 'visible', timeout: 15_000 })
-      // 收起时标题行给出轮/子代理/分叉数量。
       const group = page.locator('[data-group="graph"]').first()
-      assert.match(await group.innerText(), /轮.*子代理.*分叉/, '会话图卡片标题未显示汇总')
-      // 所有节点均为同一种实心圆（不再用空心圆/菱形区分）。
+      const scroller = graph.locator('[data-graph-height]').first()
+
+      // 反馈1926#01：卡片不再显示「N 轮 · N 子代理 · N 分叉」汇总行。
+      assert.doesNotMatch(
+        await group.innerText(),
+        /\d+\s*轮\s*·\s*\d+\s*子代理/,
+        '会话图仍显示汇总描述行',
+      )
+      // 反馈1926#08：不再有「结果已返回」行。
+      assert.equal(
+        await graph.getByText('结果已返回', { exact: true }).count(),
+        0,
+        '会话图仍有「结果已返回」行',
+      )
+      // 反馈1926#02/#04：没有展开/收起按钮与标记，子代理直接展开。
+      assert.equal(
+        await graph.locator('[data-expand-subagent]').count(),
+        0,
+        '会话图仍有子代理展开按钮',
+      )
+      assert.doesNotMatch(await graph.innerText(), /[▸└]/, '会话图仍有展开/收起标记')
+      assert.ok(
+        (await graph.locator('div[data-kind="subagent-turn"]').count()) >= 2,
+        '子代理没有直接展开成自己的轮次',
+      )
+      // 反馈1926#05：主线节点没有轮次序号（文字以用户发言开头）。
+      const turnTexts = await graph.locator('div[data-kind="turn"]').allInnerTexts()
+      assert.ok(turnTexts.length > 3, `会话图主线轮次太少：${turnTexts.length}`)
+      assert.ok(
+        turnTexts.every((text) => !/^\s*\d/.test(text)),
+        `主线节点仍带轮次序号：${turnTexts.find((text) => /^\s*\d/.test(text))}`,
+      )
+      // 反馈1926#09：行内与 tooltip 都不显示 token/耗时等用量。
+      const graphText = await graph.innerText()
+      assert.doesNotMatch(graphText, /tok|token/i, '会话图仍在显示 token')
+      assert.doesNotMatch(graphText, /\b\d+(?:\.\d+)?k\b/, '会话图仍在显示用量数字')
+      const tips = await graph
+        .locator('div[data-kind]')
+        .evaluateAll((els) => els.map((el) => el.getAttribute('data-tip') ?? ''))
+      assert.ok(
+        tips.every((tip) => !/tok|token|耗时|\$\d/i.test(tip)),
+        `节点 tooltip 仍带用量：${tips.find((tip) => /tok|token|耗时|\$\d/i.test(tip))}`,
+      )
+
+      // 反馈1926#06：时间倒序，最新一轮在最上，越早越下。
+      const showTop = async () => {
+        await scroller.evaluate((el) => {
+          el.scrollTop = 0
+        })
+        await page.waitForFunction(
+          () => {
+            const root = document.querySelector('[data-session-graph]')
+            return (
+              !!root?.querySelector('div[data-kind="fork"]') &&
+              [...root.querySelectorAll('div[data-kind="turn"]')].some((el) =>
+                el.textContent?.includes('收到，先按这个做'),
+              )
+            )
+          },
+          null,
+          { timeout: 5_000 },
+        )
+      }
+      await showTop()
+      assert.match(
+        (await graph.locator('div[data-kind="turn"]').first().innerText()).trim(),
+        /收到，先按这个做/,
+        '会话图最上面不是最新一轮',
+      )
+      await scroller.evaluate((el) => {
+        el.scrollTop = el.scrollHeight
+      })
+      await page.waitForFunction(
+        () =>
+          [...document.querySelectorAll('[data-session-graph] div[data-kind="turn"]')].some((el) =>
+            el.textContent?.includes('我们先把价格页'),
+          ),
+        null,
+        { timeout: 5_000 },
+      )
+      assert.match(
+        (await graph.locator('div[data-kind="turn"]').last().innerText()).trim(),
+        /我们先把价格页/,
+        '会话图最下面不是最早一轮',
+      )
+      await showTop()
+
+      // 泳道色与节点形状仍按 2026-11-09 决定：所有节点同一 8px 圆，主线/子代理/分叉颜色不同。
       assert.ok((await graph.locator('[data-marker="circle"]').count()) >= 3, '会话图节点不足')
       assert.equal(
         await graph.locator('[data-marker]:not([data-marker="circle"])').count(),
@@ -10819,29 +10909,25 @@ async function main() {
           const el = root.querySelector(`div[data-kind="${kind}"] [data-marker="circle"]`)
           return el ? getComputedStyle(el).backgroundColor : ''
         }
-        return {
-          main: color('turn'),
-          sub: color('subagent'),
-          fork: color('fork'),
-        }
+        return { main: color('turn'), sub: color('subagent-turn'), fork: color('fork') }
       })
-      assert.ok(colors.main && colors.sub && colors.fork, '缺少主线/子代理/分叉节点')
+      assert.ok(colors.main && colors.sub && colors.fork, `缺少主线/子代理/分叉节点 ${JSON.stringify(colors)} kinds=${await graph.locator('div[data-kind]').evaluateAll((els) => els.map((el) => el.getAttribute('data-kind')).join(','))}`)
       assert.notEqual(colors.main, colors.sub, '子代理泳道与主线同色')
       assert.notEqual(colors.sub, colors.fork, '子代理与分叉泳道同色')
-      // 子代理有合并回主线的曲线；分叉线不合并，节点行尾有「分叉」标签。
+      // 子代理有汇回父会话的线；分叉线不汇回，节点行尾有「分叉」标签。
       assert.ok(
         (await graph.locator('path[data-kind="subagent"][data-merge="1"]').count()) > 0,
-        '子代理分支没有合并线',
+        '子代理分支没有汇回线',
       )
       assert.ok((await graph.locator('path[data-kind="fork"]').count()) > 0, '分叉没有连线')
       assert.equal(
         await graph.locator('path[data-kind="fork"][data-merge]').count(),
         0,
-        '分叉不应合并回主线',
+        '分叉不应汇回主线',
       )
       assert.match(await graph.locator('div[data-kind="fork"]').first().innerText(), /分叉/)
 
-      // 几何：所有连线端点必须落在节点圆心上；主线是一整条竖线贯穿所有主线节点。
+      // 几何：连线落在泳道中心/行中心；汇回线从分支最后一行接回父泳道；主线贯穿首尾轮。
       const geometry = await graph.evaluate((root) => {
         const rootBox = root.getBoundingClientRect()
         const center = (el) => {
@@ -10860,54 +10946,52 @@ async function main() {
             ...(marker ? center(marker) : { x: -999, y: -999 }),
           }
         })
+        const laneX = new Map()
+        for (const node of nodes) laneX.set(node.lane, node.x)
         const svg = root.querySelector('[data-session-graph-edges]')
         const svgBox = svg.getBoundingClientRect()
-        const paths = [...svg.querySelectorAll('path')].map((path) => {
+        const paths = [...svg.querySelectorAll('path[data-kind]')].map((path) => {
           const start = path.getPointAtLength(0)
           const end = path.getPointAtLength(path.getTotalLength())
           return {
             kind: path.getAttribute('data-kind'),
+            owner: path.getAttribute('data-edge-owner'),
+            merge: path.getAttribute('data-merge') === '1',
             fromLane: Number(path.getAttribute('data-from-lane')),
             toLane: Number(path.getAttribute('data-to-lane')),
+            fromRow: Number(path.getAttribute('data-from-row')),
+            toRow: Number(path.getAttribute('data-to-row')),
             start: { x: start.x + svgBox.left - rootBox.left, y: start.y + svgBox.top - rootBox.top },
             end: { x: end.x + svgBox.left - rootBox.left, y: end.y + svgBox.top - rootBox.top },
           }
         })
-        return { nodes, paths }
+        return { nodes, paths, laneX: [...laneX] }
       })
       const near = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) <= 1
-      const match = (point, kind) =>
-        geometry.nodes.some((node) => (!kind || node.kind === kind) && near(point, node))
+      const laneXOf = (lane) => geometry.laneX.find(([id]) => id === lane)?.[1]
+      const onLane = (point, lane) => Math.abs(point.x - (laneXOf(lane) ?? -999)) <= 0.8
+      const onRowCenter = (y) => Math.abs(((y - 14) % 28 + 28) % 28) <= 0.8
+      const nodeAt = (lane, row) =>
+        geometry.nodes.find((node) => node.lane === lane && node.row === row)
       const mainNodes = geometry.nodes.filter((node) => node.kind === 'turn')
       assert.ok(mainNodes.length >= 6, `演示会话主线轮次太少：${mainNodes.length}`)
-      const mainX = mainNodes[0].x
-      assert.ok(
-        mainNodes.every((node) => Math.abs(node.x - mainX) <= 0.5),
-        '主线节点圆心 x 不一致',
-      )
+      for (const path of geometry.paths) {
+        assert.ok(path.owner, '连线缺少归属会话')
+        assert.ok(onLane(path.start, path.fromLane), `连线起点不在泳道中心：${JSON.stringify(path.start)}`)
+        assert.ok(onLane(path.end, path.toLane), `连线终点不在泳道中心：${JSON.stringify(path.end)}`)
+        assert.ok(onRowCenter(path.start.y), `连线起点不在行中心：${path.start.y}`)
+        assert.ok(onRowCenter(path.end.y), `连线终点不在行中心：${path.end.y}`)
+      }
       const mainPath = geometry.paths.find((path) => path.kind === 'main')
       assert.ok(mainPath, '缺少主线竖线')
       assert.ok(
-        Math.abs(mainPath.start.x - mainX) <= 1 && Math.abs(mainPath.end.x - mainX) <= 1,
-        '主线竖线没有落在节点圆心上',
-      )
-      assert.ok(
-        near(mainPath.start, mainNodes[0]) && near(mainPath.end, mainNodes[mainNodes.length - 1]),
-        `主线竖线起止点不是首尾主线节点 ${JSON.stringify({
-          start: mainPath.start,
-          end: mainPath.end,
-          first: mainNodes[0],
-          last: mainNodes[mainNodes.length - 1],
-        })}`,
+        mainNodes.every((node) => Math.abs(node.x - mainNodes[0].x) <= 0.5),
+        '主线节点圆心 x 不一致',
       )
       assert.ok(
         mainNodes.every((node) => node.y >= mainPath.start.y - 1 && node.y <= mainPath.end.y + 1),
         '主线节点不在竖线范围内',
       )
-      for (const path of geometry.paths) {
-        assert.ok(match(path.start), `连线起点没有落在节点上：${JSON.stringify(path.start)}`)
-        assert.ok(match(path.end), `连线终点没有落在节点上：${JSON.stringify(path.end)}`)
-      }
       const branchOut = geometry.paths.filter(
         (path) => path.kind === 'subagent' && path.fromLane === 0 && path.toLane > 0,
       )
@@ -10915,40 +10999,188 @@ async function main() {
         (path) => path.kind === 'subagent' && path.fromLane > 0 && path.toLane === 0,
       )
       assert.ok(branchOut.length >= 2, '演示会话应有多个子代理分出线')
-      assert.ok(branchBack.length >= 2, '子代理没有合并回主线')
+      assert.ok(branchBack.length >= 2, '子代理没有汇回父会话')
       for (const path of branchOut) {
-        assert.ok(match(path.start, 'turn'), '子代理分出线起点不是主线节点')
-        assert.ok(match(path.end), '子代理分出线终点不是分支节点')
+        const parent = nodeAt(path.fromLane, path.fromRow)
+        assert.ok(parent && near(path.start, parent), '子代理分出线起点不是父轮节点')
+        assert.ok(onLane(path.end, path.toLane), '子代理分出线终点不在子泳道')
       }
       for (const path of branchBack) {
-        assert.ok(match(path.start), '子代理合并线起点不是分支节点')
-        assert.ok(match(path.end, 'turn'), '子代理合并线终点不是主线节点')
+        const out = branchOut.find((item) => item.owner === path.owner)
+        assert.ok(out && near(path.start, out.end), '汇回线起点没有接上分支最后一行')
+        assert.ok(onLane(path.end, 0), '汇回线终点不在主线泳道')
+        const target = nodeAt(0, path.toRow)
+        if (!target) {
+          // 父会话最后一轮派出的子代理：汇回主线轨道上的空行（在主线竖线范围内）。
+          assert.ok(
+            path.end.y >= mainPath.start.y - 1 && path.end.y <= mainPath.end.y + 1,
+            '汇回线终点既不在父轮节点也不在主线轨道上',
+          )
+        }
       }
+      const matchNode = (point, kind) =>
+        geometry.nodes.some((node) => (!kind || node.kind === kind) && near(point, node))
       const forkPath = geometry.paths.find((path) => path.kind === 'fork')
       assert.ok(forkPath, '缺少分叉线')
-      assert.ok(match(forkPath.start, 'turn'), '分叉线起点不是主线节点')
-      assert.ok(match(forkPath.end, 'fork'), '分叉线终点不是分支节点')
+      assert.ok(matchNode(forkPath.start, 'turn'), '分叉线起点不是主线节点')
+      assert.ok(matchNode(forkPath.end, 'fork'), '分叉线终点不是分支节点')
       assert.equal(
         geometry.paths.some((path) => path.kind === 'fork' && path.toLane === 0),
         false,
-        '分叉线不应合并回主线',
+        '分叉线不应汇回主线',
       )
 
-      // 点主线节点跳到对应轮并高亮。
-      await page.locator('.msg-jump-hit').first().waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
-      await graph.locator('div[data-kind="turn"]').first().click()
-      await page.locator('.msg-jump-hit').first().waitFor({ state: 'visible', timeout: 5_000 })
+      // 反馈1926#10：悬停主线时整条线高亮、其余线降亮，tooltip 显示会话名。
+      const mainHover = await page.evaluate(() => {
+        const scroller = document.querySelector('[data-session-graph] [data-graph-height]')
+        const rect = scroller.getBoundingClientRect()
+        for (const hit of document.querySelectorAll('[data-session-graph-edges] [data-edge-hit]')) {
+          const total = hit.getTotalLength()
+          const box = hit.ownerSVGElement.getBoundingClientRect()
+          for (let i = 1; i <= 9; i += 1) {
+            const point = hit.getPointAtLength((total * i) / 10)
+            const x = box.left + point.x
+            const y = box.top + point.y
+            if (x > rect.left + 4 && x < rect.right - 4 && y > rect.top + 4 && y < rect.bottom - 4) {
+              const top = document.elementFromPoint(x, y)
+              if (!top?.hasAttribute?.('data-edge-hit')) continue
+              return {
+                x,
+                y,
+                owner: hit.getAttribute('data-edge-owner'),
+                label: hit.getAttribute('data-tip'),
+              }
+            }
+          }
+        }
+        return null
+      })
+      assert.ok(mainHover, '主线没有可悬停的命中区')
+      await page.mouse.move(mainHover.x, mainHover.y)
+      await page.waitForTimeout(700)
+      const hoverState = await graph.evaluate((root, owner) => {
+        const paths = [...root.querySelectorAll('path[data-kind]')]
+        const mine = paths.filter((path) => path.getAttribute('data-edge-owner') === owner)
+        const others = paths.filter((path) => path.getAttribute('data-edge-owner') !== owner)
+        return {
+          mine: mine.length,
+          marked: mine.every((path) => path.getAttribute('data-hovered') === 'true'),
+          mineOpacity: Math.min(...mine.map((path) => Number(getComputedStyle(path).opacity))),
+          otherOpacity: others.length
+            ? Math.max(...others.map((path) => Number(getComputedStyle(path).opacity)))
+            : 0,
+        }
+      }, mainHover.owner)
+      assert.ok(hoverState.mine > 0, '悬停线没有归属高亮')
+      assert.ok(hoverState.marked, '悬停的线没有被标记高亮')
+      assert.ok(hoverState.mineOpacity > 0.9, `悬停线没有保持全亮：${hoverState.mineOpacity}`)
+      assert.ok(hoverState.otherOpacity <= 0.3, `其他线没有降亮：${hoverState.otherOpacity}`)
+      assert.equal(mainHover.label, mainTitle, '主线 tooltip 不是当前会话名')
+      assert.equal(
+        (await page.locator('#tandem-tooltip[data-open]').innerText()).trim(),
+        mainTitle,
+        '悬停主线的 tooltip 没有显示会话名',
+      )
+      await page.mouse.move(4, 4)
+      await page.waitForTimeout(200)
 
-      // 卡片右上角可全高展开，顶部返回恢复面板。
+      // 悬停子代理线：tooltip 为该子代理会话名。
+      await scroller.evaluate((el) => {
+        el.scrollTop = el.scrollHeight
+      })
+      await page.waitForTimeout(300)
+      const subHover = await page.evaluate(() => {
+        const scroller = document.querySelector('[data-session-graph] [data-graph-height]')
+        const rect = scroller.getBoundingClientRect()
+        for (const hit of document.querySelectorAll(
+          '[data-session-graph-edges] [data-edge-hit][data-edge-kind="subagent"]',
+        )) {
+          const total = hit.getTotalLength()
+          const box = hit.ownerSVGElement.getBoundingClientRect()
+          for (let i = 1; i <= 9; i += 1) {
+            const point = hit.getPointAtLength((total * i) / 10)
+            const x = box.left + point.x
+            const y = box.top + point.y
+            if (x > rect.left + 4 && x < rect.right - 4 && y > rect.top + 4 && y < rect.bottom - 4) {
+              const top = document.elementFromPoint(x, y)
+              if (!top?.hasAttribute?.('data-edge-hit')) continue
+              return {
+                x,
+                y,
+                owner: hit.getAttribute('data-edge-owner'),
+                label: hit.getAttribute('data-tip'),
+              }
+            }
+          }
+        }
+        return null
+      })
+      assert.ok(subHover, '子代理线没有可悬停的命中区')
+      await page.mouse.move(subHover.x, subHover.y)
+      await page.waitForTimeout(700)
+      assert.equal(subHover.label, titles.get(subHover.owner), '子代理线 tooltip 不是该会话名')
+      assert.equal(
+        (await page.locator('#tandem-tooltip[data-open]').innerText()).trim(),
+        titles.get(subHover.owner),
+        '悬停子代理线没有 tip 出会话名',
+      )
+      assert.ok(
+        (await graph.locator(`path[data-edge-owner="${subHover.owner}"][data-hovered="true"]`).count()) > 0,
+        '悬停子代理线没有高亮该会话轨道',
+      )
+      await page.mouse.move(4, 4)
+
+      // 反馈1926#07：覆盖式滚动条让位到卡片外，不挡卡片头部的全高展开控件。
+      await scroller.evaluate((el) => {
+        el.scrollTop = Math.min(el.scrollHeight - el.clientHeight, 60)
+      })
+      await page.waitForSelector('.overlay-scrollbar[data-axis="y"][data-visible="true"]', { timeout: 3_000 })
+      const gutter = await page.evaluate(() => {
+        const bar = document.querySelector('.overlay-scrollbar[data-axis="y"][data-visible="true"]')
+        const card = document.querySelector('[data-group="graph"]')
+        const control = card?.querySelector('[aria-label="全高显示会话图"]')
+        const barBox = bar.getBoundingClientRect()
+        const cardBox = card.getBoundingClientRect()
+        const controlBox = control.getBoundingClientRect()
+        const hit = document.elementFromPoint(
+          controlBox.left + controlBox.width / 2,
+          controlBox.top + controlBox.height / 2,
+        )
+        return {
+          barLeft: barBox.left,
+          cardRight: cardBox.right,
+          hitControl: !!hit?.closest?.('[aria-label="全高显示会话图"]'),
+          hitBar: hit === bar,
+        }
+      })
+      assert.ok(
+        gutter.barLeft >= gutter.cardRight - 0.5,
+        `覆盖滚动条压住卡片：${gutter.barLeft} < ${gutter.cardRight}`,
+      )
+      assert.ok(gutter.hitControl && !gutter.hitBar, '覆盖滚动条挡住了卡片头部控件')
+
+      // 反馈1926#03：在子代理只读视图里点会话图主线节点，回到主会话并定位该轮。
+      await graph.locator('div[data-kind="subagent-turn"]').first().click()
+      const breadcrumb = page.locator('[data-agent-breadcrumb]')
+      await breadcrumb.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.match(await breadcrumb.innerText(), /只读/, '子代理节点没有打开只读子会话')
+      await showTop()
+      await graph.locator('div[data-kind="turn"]').first().click()
+      await breadcrumb.waitFor({ state: 'detached', timeout: 10_000 })
+      await page.locator('.msg-jump-hit').first().waitFor({ state: 'visible', timeout: 10_000 })
+
+      // 卡片右上角可全高展开，顶部返回恢复面板；全高页头不再有汇总。
       await group.locator('[aria-label="全高显示会话图"]').click()
       const full = page.locator('[data-graph-full]')
       await full.waitFor({ state: 'visible', timeout: 10_000 })
+      assert.doesNotMatch(await full.innerText(), /\d+\s*轮\s*·\s*\d+\s*子代理/, '全高会话图仍有汇总行')
       await full.getByRole('button', { name: /返回/ }).click()
       await full.waitFor({ state: 'detached', timeout: 5_000 })
 
       // 点分叉节点打开那个分叉会话。
+      await showTop()
       const forkTitle = (await api(base, token, `/api/sessions/${encodeURIComponent(forkId)}`)).title
-      await page.locator('[data-session-graph] div[data-kind="fork"]').first().click()
+      await graph.locator('div[data-kind="fork"]').first().click()
       await page.getByText(forkTitle, { exact: true }).first().waitFor({ timeout: 10_000 })
     })
 

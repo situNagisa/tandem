@@ -1,51 +1,26 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 import { EmptyState } from '../ui/EmptyState'
 import { Button } from '../ui/Button'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { useTurnNavStore } from '../../store/useTurnNavStore'
 import { useSessionView } from '../session/SessionScope'
-import { usageByTurn } from '../../lib/turnUsage'
 import { focusMessage } from '../../lib/jump'
 import type { UiMessage } from '../../lib/types'
 import { buildSessionGraph, turnsFromMessages } from './data'
 import {
   graphCardHeight,
-  graphSummaryLabel,
   layoutSessionGraph,
   type GraphNode,
-  type GraphUsage,
 } from './layout'
 import { SessionGraphView } from './SessionGraphView'
-
-function usageMapOf(
-  messages: UiMessage[],
-  subagents: Parameters<typeof usageByTurn>[1],
-  sessionId: string | undefined,
-): Map<string, GraphUsage | undefined> {
-  const result = new Map<string, GraphUsage | undefined>()
-  if (!sessionId) return result
-  for (const [id, usage] of usageByTurn(messages, subagents, sessionId)) {
-    result.set(id, {
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-      cacheReadTokens: usage.cacheReadTokens,
-      cacheWriteTokens: usage.cacheWriteTokens,
-      costUsd: usage.costUsd,
-      durationMs: (usage.durationMs ?? 0) + (usage.toolDurationMs ?? 0) || undefined,
-    })
-  }
-  return result
-}
 
 /** 会话信息面板里的「会话图」卡片：数据来自当前会话的轮次、子代理树与分叉会话。 */
 export function SessionGraphCard({
   full = false,
-  onExpand,
   onBack,
 }: {
   full?: boolean
-  onExpand?: () => void
   onBack?: () => void
 }) {
   const hostId = useAppStore((s) => s.active?.hostId ?? null)
@@ -56,10 +31,9 @@ export function SessionGraphCard({
   const hostSessions = useAppStore((s) => (hostId ? s.runtimes[hostId]?.sessions : undefined))
   const openSession = useAppStore((s) => s.openSession)
   const openAgentSession = useUiStore((s) => s.openAgentSession)
+  const closeAgentSession = useUiStore((s) => s.closeAgentSession)
+  const agentSession = useUiStore((s) => s.agentSession)
   const activeTurn = useTurnNavStore((s) => s.active)
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-
-  useEffect(() => setExpanded({}), [sessionId])
 
   const input = useMemo(() => {
     if (!sessionId) return null
@@ -69,18 +43,10 @@ export function SessionGraphCard({
       messages,
       ...(subagents ? { subagents } : {}),
       ...(hostSessions ? { hostSessions } : {}),
-      turnUsage: usageMapOf(messages, subagents, sessionId),
     })
   }, [sessionId, summary?.title, messages, subagents, hostSessions])
 
-  const layout = useMemo(
-    () => (input ? layoutSessionGraph({ ...input, expanded }) : null),
-    [input, expanded],
-  )
-
-  const toggleSubagent = useCallback((id: string) => {
-    setExpanded((current) => ({ ...current, [id]: !current[id] }))
-  }, [])
+  const layout = useMemo(() => (input ? layoutSessionGraph(input) : null), [input])
 
   const open = useCallback(
     (node: GraphNode) => {
@@ -93,9 +59,13 @@ export function SessionGraphCard({
         openAgentSession(hostId, node.subagentId)
         return
       }
-      if (node.turnId) focusMessage(node.turnId)
+      if (node.turnId) {
+        // 反馈1926#03：在子代理只读视图里点主线节点，先退回主会话再定位该轮。
+        if (agentSession) closeAgentSession()
+        focusMessage(node.turnId)
+      }
     },
-    [openAgentSession, hostId, openSession, sessionId],
+    [openAgentSession, closeAgentSession, agentSession, hostId, openSession, sessionId],
   )
 
   if (!layout) {
@@ -110,27 +80,14 @@ export function SessionGraphCard({
             ← 返回
           </Button>
           <span className="text-[12px] text-text-soft">会话图</span>
-          <span className="text-[11px] text-muted">{graphSummaryLabel(layout)}</span>
         </div>
       )}
-      {!full && (
-        <div className="mb-1.5 flex items-baseline justify-between gap-2">
-          <span className="text-[11px] text-muted">{graphSummaryLabel(layout)}</span>
-          {onExpand && (
-            <Button size="inline" variant="ghost" onClick={onExpand}>
-              展开
-            </Button>
-          )}
-        </div>
-      )}
-      {layout.counts.turns === 0 ? (
+      {layout.nodes.length === 0 ? (
         <EmptyState variant="plain" title={<>还没有用户轮次</>} />
       ) : (
         <SessionGraphView
           layout={layout}
           activeTurn={activeTurn}
-          expanded={expanded}
-          onToggleSubagent={toggleSubagent}
           onOpen={open}
           height={full ? 'full' : graphCardHeight(layout.rows)}
           className={full ? 'flex-1' : undefined}
@@ -152,7 +109,6 @@ export function ReadOnlySessionGraph({
   onOpen?: (node: GraphNode) => void
   height?: number
 }) {
-  const [expanded] = useState<Record<string, boolean>>({})
   const input = useMemo(() => {
     const parts = turnsFromMessages(messages)
     return {
@@ -163,16 +119,15 @@ export function ReadOnlySessionGraph({
       forks: [],
     }
   }, [messages, title])
-  const layout = useMemo(() => layoutSessionGraph({ ...input, expanded }), [input, expanded])
+  const layout = useMemo(() => layoutSessionGraph(input), [input])
   const open = useCallback(
     (node: GraphNode) => (onOpenProp ? onOpenProp(node) : focusMessage(node.id)),
     [onOpenProp],
   )
-  if (layout.counts.turns === 0) return null
+  if (layout.nodes.length === 0) return null
   return (
     <SessionGraphView
       layout={layout}
-      expanded={expanded}
       onOpen={open}
       readOnly={!onOpenProp}
       height={height ?? graphCardHeight(layout.rows)}
