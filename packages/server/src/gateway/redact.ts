@@ -1,12 +1,11 @@
 // 调试正文脱敏：令牌/Key/密码类字段整体替换，常见的 Key 字符串形态做文本替换。
-import { BEARER, GATEWAY_TOKEN, KNOWN_KEY, MEMBER_TOKEN } from '../redactPatterns.js';
+import { BEARER, GATEWAY_TOKEN, KNOWN_KEY } from '../redactPatterns.js';
 
 const SENSITIVE_KEY = /(authorization|api[-_]?key|access[-_]?token|refresh[-_]?token|gateway[-_]?token|secret|password|cookie)/i;
 const KEY_PATTERNS: Array<[RegExp, string]> = [
   [BEARER, 'Bearer [REDACTED]'],
-  // 先替换网关/成员令牌，保留各自的标记；其余常见 Key 形态统一标记。
+  // 先替换网关令牌，保留标记；其余常见 Key 形态统一标记。
   [GATEWAY_TOKEN, '[REDACTED_GATEWAY_TOKEN]'],
-  [MEMBER_TOKEN, '[REDACTED_MEMBER_TOKEN]'],
   [KNOWN_KEY, '[REDACTED_KEY]'],
 ];
 

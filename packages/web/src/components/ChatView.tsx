@@ -288,7 +288,7 @@ export function ChatView() {
     if (SCROLL_KEYS.has(e.key)) markUserScroll()
   }
 
-  const myId = team?.role === 'owner' ? 'owner' : team?.member?.id
+  const myId = team?.role === 'owner' ? 'owner' : team?.account?.id
   const otherViewers: TeamPresence[] = viewers.filter((viewer) => viewer.id !== myId)
   const readOnly = team?.role === 'observer' || team?.role === 'approver'
 

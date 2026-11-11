@@ -146,7 +146,7 @@ export interface AccountPrincipal {
   username: string;
   name: string;
   accountRole: WorkspaceRole;
-  /** 映射到现有 Host 角色，供 team/access 的白名单与 WS 复用。 */
+  /** 映射到 Host 角色，供 access 白名单与 WS 复用。 */
   role: TeamRole;
   projectDirs: string[];
   allProjects: boolean;
@@ -1358,13 +1358,13 @@ export class AccountsStore {
   }
 
   /**
-   * 主机登记到工作站：code 或账号令牌二选一；成功后本机转为 member（host）角色。
+   * 主机登记到工作站：用一次性绑定码；成功后本机转为 member（host）角色。
    * 主机私钥只在本机，工作站与客户端都只拿到公钥/指纹。
    */
   async registerAsHost(
     workstationUrl: string,
     hostInfo: { id: string; name: string; urls: string[]; version?: string; platform?: string; demo?: boolean },
-    auth: { code?: string; accessToken?: string },
+    code: string,
   ): Promise<WorkspaceStatus> {
     if (this.state) throw Object.assign(new Error('本机已加入工作站'), { statusCode: 409 });
     const base = workstationUrl.trim().replace(/\/+$/, '');
@@ -1386,16 +1386,15 @@ export class AccountsStore {
     };
     this.ensureMemberHostKey(temporary);
     const identity = { hostKey: temporary.hostKey!, publicKey: temporary.hostKeyPublic!, fingerprint: temporary.fingerprint! };
-    const body = {
-      host: { ...hostInfo, publicKey: identity.publicKey, fingerprint: identity.fingerprint },
-      ...(auth.code ? { code: auth.code } : {}),
-    };
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (auth.accessToken) headers.Authorization = `Bearer ${auth.accessToken}`;
-    const path = auth.code ? '/api/workstation/hosts/claim' : '/api/workstation/hosts/register';
+    const body = { host: { ...hostInfo, publicKey: identity.publicKey, fingerprint: identity.fingerprint }, code };
     let res: Response;
     try {
-      res = await fetch(`${base}${path}`, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) });
+      res = await fetch(`${base}/api/workstation/hosts/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(15_000),
+      });
     } catch (err) {
       throw Object.assign(new Error(`无法连接工作站：${(err as Error).message}`), { statusCode: 502 });
     }

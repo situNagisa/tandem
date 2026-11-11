@@ -339,11 +339,6 @@ function PendingCard({ entry }: { entry: Entry }) {
               {event.sessionTitle || '未命名会话'}
             </button>
             {event.depth ? <span className="shrink-0 text-[12px]">· 子代理</span> : null}
-            {permission.transferredFrom ? (
-              <span className="shrink-0 text-[12px] text-accent-text">
-                · 由 {permission.transferredFrom.name} 转交
-              </span>
-            ) : null}
           </div>
           {preview && !body ? (
             <div className="mt-1.5 max-h-24 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-[var(--t-bg-hover)] px-2 py-1.5 font-mono text-[12px] leading-5 text-text-soft">

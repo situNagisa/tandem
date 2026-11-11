@@ -156,65 +156,6 @@ export function createServerMessageHandler(
         patchActive(hostId, msg.sessionId, (view) => ({ ...view, viewers: msg.viewers }))
         break
       }
-      case 'team_updated': {
-        // 成员变化不影响当前身份；设置页会自行刷新列表
-        break
-      }
-      case 'permission_transferred': {
-        const me = get().runtimes[hostId]?.team
-        const targetId = msg.request.assignedTo?.memberId
-        const isTarget = me?.role === 'owner' || (!!me?.member && me.member.id === targetId)
-        set((state) => {
-          const inbox = state.inbox[hostId]
-          const next: Partial<typeof state> = {}
-          if (inbox) {
-            next.inbox = {
-              ...state.inbox,
-              [hostId]: {
-                ...inbox,
-                pending: inbox.pending.filter((item) => item.requestId !== msg.requestId),
-              },
-            }
-          }
-          let active = state.active
-          let changed = false
-          const views = { ...state.sessionViews }
-          for (const [key, view] of Object.entries(state.sessionViews)) {
-            if (view.hostId !== hostId) continue
-            const pending = view.pending.filter((item) => item.id !== msg.requestId)
-            const shouldAdd = isTarget && view.sessionId === msg.request.sessionId
-            const subagents = Object.fromEntries(
-              Object.entries(view.subagents).map(([id, sub]) => [
-                id,
-                { ...sub, pending: sub.pending.filter((p) => p.id !== msg.requestId) },
-              ]),
-            )
-            const subagentsChanged = Object.values(view.subagents).some((sub) =>
-              sub.pending.some((p) => p.id === msg.requestId),
-            )
-            if (pending.length === view.pending.length && !shouldAdd && !subagentsChanged) continue
-            const nextView = {
-              ...view,
-              pending:
-                shouldAdd && !pending.some((p) => p.id === msg.requestId)
-                  ? [...pending, msg.request]
-                  : pending,
-              subagents,
-            }
-            views[key] = nextView
-            if (active && active.hostId === view.hostId && active.sessionId === view.sessionId) {
-              active = nextView
-            }
-            changed = true
-          }
-          if (changed) {
-            next.sessionViews = views
-            if (active !== state.active) next.active = active
-          }
-          return next
-        })
-        break
-      }
       case 'inbox_snapshot': {
         const snapshot = msg.snapshot
         set((state) => ({

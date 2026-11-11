@@ -30,7 +30,6 @@ import { cn } from '../../lib/cn'
 import { loginGateEnabled } from '../../lib/loginGate'
 import { QrScanDialog, scannerSupported } from '../QrScanDialog'
 import { parsePairLink } from '../../lib/pairLink'
-import { parseInviteLink } from '../../lib/inviteLink'
 import { isValidFingerprint, normalizeFingerprint } from '../../lib/relay'
 import type { HostConfig } from '../../lib/types'
 import { Card } from '../ui/Card'
@@ -108,13 +107,6 @@ export function HostsSection() {
 
   const connectLink = async (raw: string) => {
     setAddError(null)
-    const invite = parseInviteLink(raw)
-    if (invite) {
-      useUiStore.getState().openJoinInvite(invite)
-      resetAdd()
-      setAdding(false)
-      return
-    }
     setSaving(true)
     try {
       const target = parsePairLink(raw)

@@ -743,9 +743,9 @@ export const CHANGELOG: ChangelogRelease[] = [
       },
       {
         id: 'team',
-        title: '内网团队与共享',
-        summary: '邀请成员、审批转交、审计日志，以及会话分享链接。',
-        target: { kind: 'settings', tab: 'team', settingId: 'team.members' },
+        title: '会话分享',
+        summary: '把会话以只读链接分享给同事，可随时撤销。',
+        target: { kind: 'settings', tab: 'shares', settingId: 'shares.list' },
       },
     ],
   },

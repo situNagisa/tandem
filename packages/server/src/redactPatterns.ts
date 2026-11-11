@@ -8,7 +8,7 @@ export const PRIVATE_KEY =
 
 /** 常见服务商 Key/Token 形态：OpenAI 系、GitHub、GitLab、Slack、AWS、Google、Tandem 网关/成员令牌。 */
 export const KNOWN_KEY =
-  /\b(?:sk|rk|pk)-[A-Za-z0-9_-]{6,}\b|\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b|\bgithub_pat_[A-Za-z0-9_]{20,}\b|\bglpat-[A-Za-z0-9_-]{20,}\b|\bxox[baprs]-[A-Za-z0-9-]{10,}\b|\b(?:AKIA|ASIA)[0-9A-Z]{16}\b|\bAIza[0-9A-Za-z_-]{20,}\b|\b(?:tgw|tmm)_[a-f0-9]{16,}\b/g;
+  /\b(?:sk|rk|pk)-[A-Za-z0-9_-]{6,}\b|\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b|\bgithub_pat_[A-Za-z0-9_]{20,}\b|\bglpat-[A-Za-z0-9_-]{20,}\b|\bxox[baprs]-[A-Za-z0-9-]{10,}\b|\b(?:AKIA|ASIA)[0-9A-Z]{16}\b|\bAIza[0-9A-Za-z_-]{20,}\b|\btgw_[a-f0-9]{16,}\b/g;
 
 /** 裸 Bearer 凭据（无 Authorization 上下文时也能识别）。 */
 export const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]{6,}/gi;
@@ -17,7 +17,6 @@ export const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]{6,}/gi;
 export const GATEWAY_TOKEN = /\btgw_[a-f0-9]{16,}/gi;
 
 /** Tandem 成员令牌（同上）。 */
-export const MEMBER_TOKEN = /\btmm_[a-f0-9]{16,}/gi;
 
 /** Authorization 头（保留前缀，值替换）。 */
 export const AUTH_HEADER = /\b(Authorization\s*[:=]\s*)(Bearer|Basic|Share)\s+[^\s"',;]+/gi;

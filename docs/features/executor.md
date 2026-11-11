@@ -1,6 +1,6 @@
 # 远端执行器（tandem-exec）
 
-> 更新：2026-11-10。设计依据与里程碑见 [archive/plan/thin-host-2026-11-10.md](../archive/plan/thin-host-2026-11-10.md)。当前是 M4：执行器已接入产品，一行命令安装后机器出现在主机列表，会话的工具在远端运行（见下文「接入产品」）。设备、浏览器、MCP、串口与旧会话导入不在本版范围。
+> 更新：2026-11-11。设计依据与里程碑见 [archive/plan/thin-host-2026-11-10.md](../archive/plan/thin-host-2026-11-10.md)。执行器已接入产品：远程机器只装执行器，一行命令安装后出现在主机列表，会话的工具在远端运行（见下文「接入产品」）。设备、浏览器、MCP、串口不在本版范围。
 
 ## 是什么
 
@@ -52,9 +52,9 @@
 
 测试：`packages/server/test/executor/m2-env.test.ts` 与 `m3-env.test.ts` 用同一组用例分别跑本机与远端。Linux 远端运行 linux-amd64 执行器；Windows 远端经 WSL 互操作运行 windows-amd64.exe，fixture 建在 `/mnt/c/Users/JDHC/AppData/Local/Temp/`，结束后删除。M3 的 Windows 用例对照 cmd 命令行直接执行的结果（非 ASCII 路径除外，参数经 WSL 互操作会被打乱，那一项直接断言结果），并覆盖临时目录含空格与中文、接近 MAX_PATH 的工作目录。Windows 符号链接需要 mklink 权限，没有时相关用例跳过。
 
-## 接入产品（M4）
+## 接入产品
 
-- **安装**：`/install.sh`、`/install.ps1` 嵌入各平台 sha256（构建产物 `SHA256SUMS`），从 `<工作站>/executor/<平台>` 下载（无压缩），装到 `~/.tandem-executor/bin/tandem-exec`，前台 `join`。`--service` / `-Service` 只写启动项（systemd --user、LaunchAgent、HKCU Run），下次登录生效。
+- **安装**：`/install.sh`、`/install.ps1` 嵌入各平台 sha256（构建产物 `SHA256SUMS`），从 `<工作站>/executor/<平台>` 下载（无压缩），装到 `~/.tandem-executor/bin/tandem-exec`，前台 `join`。`--service` / `-Service` 只写启动项（systemd --user、LaunchAgent、HKCU Run），下次登录生效。工作站不再下发完整 Host 安装包。
 - **登记**：绑定码 `ach_<密钥>.<指纹>`（`POST /api/workstation/hosts/bind-code`）。`ExecutorHub.enroll`（`executor/hub.ts`）用与本机加入相同的 `registerAsHost` 登记，执行器公钥记入 `remote-hosts/executors.json`（0600）。
 - **远端主机上下文**：每台执行器是工作站进程里的一个 `Host`（`remote: true`），数据在 `remote-hosts/<主机 ID>/`，经本机回环隧道接入（`createApp` + `WorkstationAgent`）。客户端照旧走 `/h/<主机 ID>` 与端到端加密，前端不改。
 - **工具环境**：连接时 `Host.env` 换成 `RemoteHostEnv`，Read、Glob、Grep、Write、Edit、Bash、BashOutput、KillBash、Task 经 `ctx.env` 在远端运行。断开后 `env` 保留，调用以「执行器未就绪」失败；主机在线 = 执行器已连接（`hub.isLive`）。

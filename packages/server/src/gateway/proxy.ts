@@ -67,7 +67,7 @@ interface GatewayCaller {
   memberName: string;
 }
 
-/** 校验网关令牌与成员状态；失败时已写响应，返回 undefined。 */
+/** 校验账号令牌或网关令牌；失败时已写响应，返回 undefined。 */
 function authenticate(host: Host, req: FastifyRequest, reply: FastifyReply, protocol: GatewayProtocol): GatewayCaller | undefined {
   const settings = host.gateway.settingsView();
   if (!settings.enabled) {
@@ -107,17 +107,12 @@ function authenticate(host: Host, req: FastifyRequest, reply: FastifyReply, prot
     sendGatewayError(reply, protocol, 401, '网关令牌无效或已被吊销');
     return undefined;
   }
-  const member = host.team.getMember(grant.memberId);
-  if (!member || member.revokedAt) {
-    sendGatewayError(reply, protocol, 401, '成员已被吊销，网关令牌同时失效');
-    return undefined;
-  }
   const retryAfter = host.gateway.checkRate(grant);
   if (retryAfter > 0) {
-    sendGatewayError(reply, protocol, 429, `请求过于频繁：${member.name} 的网关速率限制为 ${grant.rpm} RPM，请 ${retryAfter} 秒后重试`, retryAfter);
+    sendGatewayError(reply, protocol, 429, `请求过于频繁：${grant.memberName} 的网关速率限制为 ${grant.rpm} RPM，请 ${retryAfter} 秒后重试`, retryAfter);
     return undefined;
   }
-  return { grant, memberId: member.id, memberName: member.name };
+  return { grant, memberId: grant.memberId, memberName: grant.memberName };
 }
 
 function whiteListed(grant: StoredGatewayToken, model: string): boolean {

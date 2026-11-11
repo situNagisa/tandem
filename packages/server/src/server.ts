@@ -11,9 +11,8 @@ import { WorkstationAgent } from './workstation/agent.js';
 import { startPrPolling } from './vcs.js';
 import { registerSttRoutes } from './stt.js';
 import { isPublicSharePath, registerShareRoutes } from './share/routes.js';
-import { isPublicTeamPath, registerTeamRoutes } from './routes/team.js';
 import { isPublicAccountPath, registerAccountRoutes } from './routes/accounts.js';
-import { guardMemberRequest, ownerPrincipal, type Principal } from './team/access.js';
+import { guardRequest, ownerPrincipal, type Principal } from './access.js';
 import type { RouteDeps } from './routes/common.js';
 import { registerHostRoutes } from './routes/host.js';
 import { registerDoctorRoutes } from './routes/doctor.js';
@@ -95,8 +94,6 @@ export async function createApp(
     const urlPath = (req.raw.url ?? '').split('?')[0] ?? '';
     // 只读分享的公开接口自带 Share token，不能要求 Host 主 token。
     if (isPublicSharePath(urlPath)) return;
-    // 接受邀请用一次性邀请码鉴权。
-    if (isPublicTeamPath(urlPath)) return;
     // 登录 / 加入码 / 中心签名快照走各自凭证，不能要求 Host token。
     if (isPublicAccountPath(urlPath)) return;
     if (!urlPath.startsWith('/api') && urlPath !== '/ws') return;
@@ -110,10 +107,9 @@ export async function createApp(
     if (token === host.config.token) {
       principal = ownerPrincipal();
     } else {
-      const member = host.team.authenticate(token);
-      const account = member ? undefined : host.accounts.authenticate(token);
-      const devicePeer = member || account ? undefined : host.devices.authenticatePeer(token);
-      if (!member && !account && !devicePeer) return reply.code(401).send({ error: '未授权：token 无效或已被吊销' });
+      const account = host.accounts.authenticate(token);
+      const devicePeer = account ? undefined : host.devices.authenticatePeer(token);
+      if (!account && !devicePeer) return reply.code(401).send({ error: '未授权：token 无效或已被吊销' });
       principal = account
         ? {
             kind: 'account',
@@ -125,14 +121,6 @@ export async function createApp(
             projectDirs: account.projectDirs,
             allProjects: account.allProjects,
           }
-        : member
-        ? {
-            kind: 'member',
-            id: member.id,
-            name: member.name,
-            role: member.role,
-            projectDirs: member.projectDirs,
-          }
         : {
             kind: 'device',
             role: 'observer',
@@ -141,8 +129,8 @@ export async function createApp(
             projectDirs: [],
           };
     }
-    req.team = principal;
-    const denied = guardMemberRequest(host, principal, req.method, urlPath);
+    req.principal = principal;
+    const denied = guardRequest(host, principal, req.method, urlPath);
     if (denied) return reply.code(denied.code).send({ error: denied.message });
     if (host.remote && REMOTE_UNSUPPORTED.some((re) => re.test(urlPath))) {
       return reply.code(501).send({ error: '远端主机暂不支持该功能' });
@@ -214,7 +202,6 @@ export async function createApp(
     await registerDebugDemoRoutes(app, deps);
   }
   registerDoctorRoutes(app, deps);
-  registerTeamRoutes(app, deps);
   registerAccountRoutes(app, deps);
 
   // 本机语音转写（用户自己的 Whisper；不联网）
@@ -253,7 +240,6 @@ export async function createApp(
   const stopPrPolling = startPrPolling(host);
   app.addHook('onClose', async () => {
     stopPrPolling();
-    host.team.close();
     host.accounts.close();
     host.gateway.flush();
   });

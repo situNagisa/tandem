@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Activity,
   Check,
@@ -39,15 +39,14 @@ function formatLimit(value?: number): string {
 
 interface TokenDraft {
   id?: string
-  memberId: string
-  memberName?: string
+  name: string
   daily: string
   monthly: string
   rpm: string
   models: string
 }
 
-const EMPTY_DRAFT: TokenDraft = { memberId: '', daily: '', monthly: '', rpm: '60', models: '' }
+const EMPTY_DRAFT: TokenDraft = { name: '', daily: '', monthly: '', rpm: '60', models: '' }
 
 export function GatewaySection() {
   const host = useAppStore((s) => s.hosts.find((h) => h.id === s.activeHostId) ?? null)
@@ -165,7 +164,7 @@ export function GatewaySection() {
   const openIssue = () => {
     setIssuedToken(null)
     resetCopied()
-    setTokenModal({ ...EMPTY_DRAFT, memberId: members[0]?.memberId ?? '' })
+    setTokenModal({ ...EMPTY_DRAFT })
   }
 
   const openEdit = (token: GatewayToken) => {
@@ -173,8 +172,7 @@ export function GatewaySection() {
     resetCopied()
     setTokenModal({
       id: token.id,
-      memberId: token.memberId,
-      memberName: token.memberName,
+      name: token.memberName,
       daily: token.dailyLimitUsd ? String(token.dailyLimitUsd) : '',
       monthly: token.monthlyLimitUsd ? String(token.monthlyLimitUsd) : '',
       rpm: String(token.rpm),
@@ -201,12 +199,12 @@ export function GatewaySection() {
         toast('令牌限额已更新', 'success')
         setTokenModal(null)
       } else {
-        if (!tokenModal.memberId) {
-          toast('请选择成员', 'error')
+        if (!tokenModal.name.trim()) {
+          toast('请填写令牌名称', 'error')
           return
         }
         const result = await api.issueGatewayToken(host, {
-          memberId: tokenModal.memberId,
+          name: tokenModal.name.trim(),
           ...(daily !== undefined ? { dailyLimitUsd: daily } : {}),
           ...(monthly !== undefined ? { monthlyLimitUsd: monthly } : {}),
           rpm: tokenModal.rpm.trim() ? Number(tokenModal.rpm) : 60,
@@ -246,11 +244,6 @@ export function GatewaySection() {
     }
   }
 
-  const memberOptions = useMemo(
-    () => members.map((member) => ({ value: member.memberId, label: member.memberName })),
-    [members],
-  )
-
   if (!host) {
     return (
       <EmptyState
@@ -265,7 +258,7 @@ export function GatewaySection() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-[14px] font-semibold">网关</h3>
-        <span className="text-[13px] text-muted">成员共用一个入口，Key 不离开这台主机</span>
+        <span className="text-[13px] text-muted">一个令牌入口，Key 不离开这台主机</span>
         <span className="flex-1" />
         <IconButton
           onClick={() => void load(true)}
@@ -591,7 +584,7 @@ export function GatewaySection() {
         {issuedToken ? (
           <div className="space-y-3">
             <p className="text-[13px] leading-5 text-text-soft">
-              令牌只显示这一次。复制后交给对应的成员，主机只保存哈希。
+              令牌只显示这一次。复制后交给使用者，主机只保存哈希。
             </p>
             <div className="flex items-center gap-2 rounded-lg border border-border bg-bg/50 px-2.5 py-2">
               <code className="min-w-0 flex-1 break-all font-mono text-[12px]">{issuedToken}</code>
@@ -600,25 +593,24 @@ export function GatewaySection() {
               </IconButton>
             </div>
             <p className="text-[12px] text-muted">
-              成员的账号类型选「Tandem 网关」：地址填本机地址，Key 填这串令牌。
+              对方的账号类型选「Tandem 网关」：地址填本机地址，Key 填这串令牌。
             </p>
           </div>
         ) : (
           <div className="space-y-3">
             {tokenModal?.id ? (
               <div className="rounded-lg bg-bg/40 px-2.5 py-2 text-[13px]">
-                成员：{tokenModal.memberName}
+                令牌：{tokenModal.name}
               </div>
             ) : (
-              <SettingRow label="成员" stacked wide>
-<MenuSelect
-                  value={tokenModal?.memberId ?? ''}
-                  onChange={(memberId) => setTokenModal((current) => (current ? { ...current, memberId } : current))}
-                  aria-label="选择成员"
-                  placeholder="选择成员"
-                  options={memberOptions}
+              <SettingRow label="令牌名称" stacked wide>
+                <Input
+                  value={tokenModal?.name ?? ''}
+                  onChange={(e) => setTokenModal((current) => (current ? { ...current, name: e.target.value } : current))}
+                  placeholder="如 研发组笔记本"
+                  maxLength={40}
                 />
-                </SettingRow>
+              </SettingRow>
             )}
             <div className="grid gap-2 sm:grid-cols-3">
               <SettingRow label="每日限额（美元）" stacked wide>

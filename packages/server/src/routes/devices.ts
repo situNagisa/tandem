@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { DeviceMountInput } from '@tandem/protocol';
 import type { RouteDeps } from './common.js';
 import { bad, str } from './common.js';
-import { canSend, isOwner, principalOf } from '../team/access.js';
+import { canSend, isOwner, principalOf } from '../access.js';
 
 function decodeId(raw: string): string {
   try {
@@ -26,8 +26,7 @@ function clientId(req: FastifyRequest, body?: Record<string, unknown>): string {
 /** 设备服务写操作：所有者、协作者或设备级令牌。 */
 function canOperate(req: FastifyRequest): boolean {
   const principal = principalOf(req);
-  if (principal.kind === 'owner' || principal.kind === 'account' || principal.kind === 'device') return true;
-  return canSend(principal.role);
+  return principal.kind === 'device' || canSend(principal.role);
 }
 
 function readBody(req: FastifyRequest): Record<string, unknown> {

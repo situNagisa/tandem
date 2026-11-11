@@ -86,7 +86,7 @@ export interface HostRuntime {
   error?: string
   /** Token 被拒绝：需要用户去设置里修改 */
   authError?: string
-  /** 当前连接身份（hello 下发，缺省视为所有者以兼容旧 Host）。 */
+  /** 当前连接身份（hello 下发，缺省视为所有者）。 */
   team?: TeamIdentity
 }
 
@@ -250,7 +250,7 @@ export interface Toast {
 }
 
 export type Theme = 'light' | 'dark' | 'system'
-export type SettingsTab = 'general' | 'profiles' | 'hosts' | 'team' | 'gateway' | 'permissions' | 'hooks' | 'mcp' | 'skills' | 'schedules' | 'budgets' | 'usage' | 'appearance' | 'sync' | 'memory' | 'subagents' | 'prompts' | 'shares' | 'voice' | 'notifications' | 'browser' | 'evals' | 'secrets' | 'routing'
+export type SettingsTab = 'general' | 'profiles' | 'hosts' | 'gateway' | 'permissions' | 'hooks' | 'mcp' | 'skills' | 'schedules' | 'budgets' | 'usage' | 'appearance' | 'sync' | 'memory' | 'subagents' | 'prompts' | 'shares' | 'voice' | 'notifications' | 'browser' | 'evals' | 'secrets' | 'routing'
   | 'accounts'
 
 export type AppRoute =

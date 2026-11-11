@@ -11,7 +11,6 @@ import {
   type Theme,
   type Toast,
 } from '../lib/types'
-import type { InviteTarget } from '../lib/inviteLink'
 import { boardPaneSessionId, columnCount, equalWeights, MAX_SPLIT_PANES, rowCount } from '../lib/split'
 import {
   loadCollapsedProjects,
@@ -94,8 +93,6 @@ interface UiState {
   inboxOpen: boolean
   /** 手机首页内嵌的收件箱视图是否可见；只用于抑制未读角标，不控制弹层。 */
   inboxViewOpen: boolean
-  /** 通过邀请链接加入 Host 的弹层。 */
-  joinInvite: InviteTarget | null
   toasts: Toast[]
   promptSeed: { text: string; nonce: number } | null
   /** 右侧代理列表点击后，定位并展开消息流中的对应 Task 卡片。 */
@@ -174,8 +171,6 @@ interface UiState {
     key: 'permission' | 'turnEnd' | 'error' | 'budget',
     enabled: boolean,
   ) => void
-  openJoinInvite: (target: InviteTarget) => void
-  closeJoinInvite: () => void
   setInboxOpen: (open: boolean) => void
   setInboxViewOpen: (open: boolean) => void
   toast: (
@@ -316,7 +311,6 @@ export const useUiStore = create<UiState>((set, get) => {
   },
   inboxOpen: false,
   inboxViewOpen: false,
-  joinInvite: null,
   toasts: [],
   promptSeed: null,
   agentFocus: null,
@@ -495,9 +489,6 @@ export const useUiStore = create<UiState>((set, get) => {
   setInboxOpen: (open) => set({ inboxOpen: open }),
   setInboxViewOpen: (open) => set({ inboxViewOpen: open }),
 
-  openJoinInvite: (target) => set({ joinInvite: target }),
-
-  closeJoinInvite: () => set({ joinInvite: null }),
   toast: (text, kind = 'info', options) => {
     const now = Date.now()
     for (const [key, at] of recentToastAt) {

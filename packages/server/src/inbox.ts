@@ -59,16 +59,6 @@ export class Inbox {
   }
 
   /** 审批转交：更新未处理事件里的请求对象（保留原 seq，客户端按 requestId 去重）。 */
-  retargetPermission(request: PermissionRequest): InboxEvent | undefined {
-    const pending = this.pending.get(request.id);
-    if (!pending) return undefined;
-    const next: InboxEvent = { ...pending, permission: request };
-    this.pending.set(request.id, next);
-    const index = this.events.findIndex((event) => event.requestId === request.id && event.kind === 'permission');
-    if (index >= 0) this.events[index] = next;
-    return next;
-  }
-
   /** 审批被任意一端处理（或中断）后，从未处理表移除并记录结果。 */
   resolvePermission(requestId: string, decision: PermissionDecision): InboxEvent | undefined {
     const pending = this.pending.get(requestId);

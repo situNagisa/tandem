@@ -1,6 +1,6 @@
 # 文档地图（先读这一页）
 
-> 更新：2026-11-10。文档分三层；同一事实只在一处记录，其他地方链接过去。
+> 更新：2026-11-11。文档分三层；同一事实只在一处记录，其他地方链接过去。
 
 ## 1. 现行文档（living）——始终代表当前事实
 - [HANDOFF.md](HANDOFF.md)：入口。当前版本、进行中的工作、等用户的事。
@@ -14,13 +14,12 @@
 |---|---|
 | [任务看板](features/taskboard.md) | 卡片=后台会话，依赖/审批门/并发/预算 |
 | [设备共享](features/devices.md) | 跨 Host 的 ADB/串口（UI 里的「工作站」视图）；代测见 [test-guides/devices.md](test-guides/devices.md) |
-| [Key 网关](features/gateway.md) | 团队模型请求统一转发、限流、记账 |
+| [Key 网关](features/gateway.md) | 模型请求统一转发、限流、记账 |
 | [远端执行器](features/executor.md) | 瘦执行器 tandem-exec（Go 单文件，出站连接工作站，v1 操作与加密握手）；M1 未接入产品 |
 
 | [命令沙箱](features/sandbox.md) | 写入保护、Bash 静态分析、网络白名单 |
 | [项目 Secrets](features/secrets.md) | 加密注入进程环境 + 输出脱敏 |
 | [会话分享](features/share.md) | 内网只读链接 |
-| [团队共享](features/team.md) | 成员/邀请/角色/审计 |
 | [模型路由](features/routing.md) | 自动路由 + 分工路由；主会话模型恒定，执行交给子代理 |
 | [输入框](features/composer.md) | Markdown 编辑与着色、输入 token 估算、切换模型/账号时的缓存失效确认 |
 | [账号与模型](features/model-accounts.md) | 分组 Key 保护、拉取模型只选最新、下拉统一共享组件 |
@@ -36,7 +35,7 @@
 评审、走查、自用测试、e2e、性能、打分卡、调研、探索：写完即冻结，放 `archive/<类别>/`，文件名带日期或版本。类别：`reviews/`（评审/走查/无障碍/IA）、`e2e/`、`perf/`、`dogfood/`、`research/`、`qa/`、`scorecards/`、`plan/`、`progress/`。
 
 ## 3. 代测步骤（test guides）
-给产品所有者的真机测试步骤放 [test-guides/](test-guides/)：设备共享、PR/CI、[工作站](test-guides/workstation.md)（个人模式 + 团队模式）。
+给产品所有者的真机测试步骤放 [test-guides/](test-guides/)：设备共享、PR/CI、[工作站](test-guides/workstation.md)（服务器模式 + 本机主机）。
 
 ## 4. 防膨胀规则
 - 新写的一次性记录直接放 `archive/`；功能变更只更新对应 `features/<功能>.md`，不另写新文档；同一事实只在一处记录，其他地方链接过去。

@@ -56,7 +56,7 @@ test('主机绑定码：一次性、15 分钟、只存哈希、成员私钥 0600
     const status = await member.registerAsHost(
       base,
       { id: 'host-token-test', name: '测试主机', urls: ['http://127.0.0.1:7878'], version: 'test-version', platform: process.platform },
-      { code: bind.code },
+      bind.code,
     );
     assert.equal(status.mode, 'member');
     const memberFile = path.join(hostHome, 'accounts.json');

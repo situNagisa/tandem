@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowRightLeft, Bot, MoreHorizontal, Plus, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react'
+import { Bot, MoreHorizontal, Plus, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react'
 import { Spinner } from './ui/Spinner'
-import type { PermissionDecision, PermissionRequest, PermissionRule, TeamMember } from '@tandem/protocol'
+import type { PermissionDecision, PermissionRequest, PermissionRule } from '@tandem/protocol'
 import { useAppStore } from '../store/useAppStore'
 import { useUiStore } from '../store/useUiStore'
 import { isTargetFocused, useSessionTarget, useSessionView } from './session/SessionScope'
@@ -177,12 +177,6 @@ export function PermissionCard({
   const subagentTitle = subagentSummary?.title ?? request.sourceTitle ?? null
   const cwd = useSessionView((s) => s?.summary?.cwd ?? '')
   const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
-  const teamRole = useAppStore((s) =>
-    hostId ? s.runtimes[hostId]?.team?.role : undefined,
-  )
-  const [approvers, setApprovers] = useState<TeamMember[]>([])
-  const [approversLoaded, setApproversLoaded] = useState(false)
-  const [transferring, setTransferring] = useState(false)
   const [ruleDraft, setRuleDraft] = useState<PermissionRule | null>(null)
   const [learning, setLearning] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
@@ -195,18 +189,6 @@ export function PermissionCard({
   const decideWith = (decision: PermissionDecision) => decide(request.id, decision, undefined, scopeTarget)
   const deny = () => decideWith('deny')
   const allow = () => decideWith('allow')
-
-  const canTransfer = teamRole === 'owner' || teamRole === 'approver' || teamRole === 'collaborator'
-  const loadApprovers = () => {
-    if (!host || !canTransfer) return
-    api
-      .teamApprovers(host)
-      .then((list) => {
-        setApprovers(list.filter((member) => member.online && !member.revokedAt))
-        setApproversLoaded(true)
-      })
-      .catch(() => setApproversLoaded(true))
-  }
 
   // 同类请求已在本项目批准多次：一键添加项目规则，然后放行这一次。
   const applyLearned = async () => {
@@ -226,19 +208,6 @@ export function PermissionCard({
       useUiStore.getState().toast(err instanceof Error ? err.message : '添加规则失败', 'error')
     } finally {
       setLearning(false)
-    }
-  }
-
-  const transfer = async (toMemberId: string) => {
-    if (!host || transferring) return
-    setTransferring(true)
-    try {
-      await api.transferPermission(host, request.id, toMemberId)
-      useUiStore.getState().toast('已转交审批', 'success')
-    } catch (err) {
-      useUiStore.getState().toast(err instanceof Error ? err.message : '转交失败', 'error')
-    } finally {
-      setTransferring(false)
     }
   }
 
@@ -303,12 +272,6 @@ export function PermissionCard({
             <span className="min-w-0 truncate">来自子代理：{subagentTitle}</span>
           </div>
         )}
-        {request.transferredFrom && (
-          <div className="mt-1 text-[12px] leading-[1.5] text-text-soft">
-            由 {request.transferredFrom.name} 转交
-            {request.assignedTo ? ` · 待 ${request.assignedTo.name} 处理` : ''}
-          </div>
-        )}
         {request.sandbox && (
           <p
             data-permission-sandbox=""
@@ -344,9 +307,6 @@ export function PermissionCard({
             align="start"
             aria-label="更多审批操作"
             className="w-[240px]"
-            onOpenChange={(open) => {
-              if (open) loadApprovers()
-            }}
             trigger={
               <Button
                 variant="ghost"
@@ -370,32 +330,6 @@ export function PermissionCard({
             >
               添加为规则…
             </Menu.Item>
-            {canTransfer && (
-              <Menu.Sub>
-                <Menu.SubTrigger icon={<ArrowRightLeft size={12} />} disabled={transferring}>
-                  转给…
-                </Menu.SubTrigger>
-                <Menu.SubContent className="w-[240px]" aria-label="转交审批">
-                  {approvers.length === 0 ? (
-                    <div className="px-2 py-1.5 text-[12px] text-muted">
-                      {approversLoaded ? '暂无在线的审批者' : '正在读取成员…'}
-                    </div>
-                  ) : (
-                    approvers.map((member) => (
-                      <Menu.Item
-                        key={member.id}
-                        icon={<span className="text-[11px]">{member.name.slice(0, 1).toUpperCase()}</span>}
-                        hint={member.role === 'approver' ? '审批者' : '协作者'}
-                        selected={request.assignedTo?.memberId === member.id}
-                        onSelect={() => void transfer(member.id)}
-                      >
-                        {member.name}
-                      </Menu.Item>
-                    ))
-                  )}
-                </Menu.SubContent>
-              </Menu.Sub>
-            )}
           </Menu>
           <span className="min-w-0 flex-1" />
           <Button

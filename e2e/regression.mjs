@@ -2510,18 +2510,6 @@ async function main() {
     )
     assert.ok(wikiSearch.hits.some((hit) => hit.pageId === 'm-src'), `Wiki 检索未命中：${JSON.stringify(wikiSearch)}`)
 
-    // 团队：一次真实邀请 + 接受，供成员页/审计断言。
-    const invite = await api(base, token, '/api/team/invites', {
-      method: 'POST',
-      body: JSON.stringify({ role: 'approver', projectDirs: [repo] }),
-    })
-    const accepted = await fetch(`${base}/api/team/invites/accept`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ code: invite.code, name: '王敏' }),
-    })
-    assert.ok(accepted.ok, `接受邀请失败：${accepted.status}`)
-
     browser = await chromium.launch({ headless: true })
     const desktopContext = await browser.newContext({ viewport: DESKTOP, deviceScaleFactor: 1 })
     const mobileContext = await browser.newContext({
@@ -2744,7 +2732,6 @@ async function main() {
       '权限': 'permissions',
       '权限与安全': 'permissions',
       'Secrets': 'secrets',
-      '成员': 'team-shares',
       '团队与共享': 'team-shares',
       '成员与分享': 'team-shares',
       '分享': 'team-shares',
@@ -7006,18 +6993,6 @@ async function main() {
       await dialog.getByRole('button', { name: '取消', exact: true }).click()
     })
 
-    desktop('删除邀请记录需要二次确认', async (page) => {
-      await openSettings(page, '成员', 'desktop')
-      const remove = page.getByRole('button', { name: '删除邀请' }).first()
-      await remove.waitFor({ timeout: 10_000 })
-      await remove.click()
-      const dialog = page.getByRole('dialog', { name: '删除邀请记录' })
-      await dialog.waitFor({ state: 'visible' })
-      assert.match(await dialog.innerText(), /王敏|观察者|审批者/, '确认框没有说明要删除的邀请')
-      await dialog.getByRole('button', { name: '取消', exact: true }).click()
-      await closeSettings(page)
-    })
-
     desktop('移除 MCP 服务器需要二次确认', async (page) => {
       await openSettings(page, 'MCP', 'desktop')
       const remove = page.getByRole('button', { name: '删除 reg-fs' })
@@ -8396,12 +8371,12 @@ async function main() {
       // 输入框保持可用。
       const composer = page.locator('[aria-label="消息输入框"]').first()
       assert.ok(await composer.isEnabled(), '有待审批时输入框被禁用')
-      // 更多菜单：本会话总是允许 / 添加为规则 / 转给。
+      // 更多菜单：本会话总是允许 / 添加为规则。
       await card.getByRole('button', { name: '更多' }).click()
       const menu = page.locator('[role="menu"]').last()
       await menu.waitFor({ timeout: 5_000 })
       const menuText = await menu.innerText()
-      for (const item of ['本会话总是允许', '添加为规则', '转给']) {
+      for (const item of ['本会话总是允许', '添加为规则']) {
         assert.ok(menuText.includes(item), `更多菜单缺少「${item}」：${menuText}`)
       }
       await page.keyboard.press('Escape')
@@ -8498,23 +8473,6 @@ async function main() {
       assert.ok(box.height >= 43, `预览关闭按钮高度 ${Math.round(box.height)}px`)
       await close.tap()
       await close.waitFor({ state: 'hidden', timeout: 5_000 })
-    })
-
-    desktop('团队：成员页审计中文化、邀请二维码与警告分行', async (page) => {
-      const dialog = await openSettings(page, '成员', 'desktop')
-      await dialog.getByText('王敏').first().waitFor({ timeout: 10_000 })
-      const auditText = await dialog.locator('section').last().innerText()
-      assert.ok(auditText.includes('审批者'), `审计未显示中文角色：${auditText.slice(0, 120)}`)
-      assert.ok(!/\b(observer|approver|collaborator)\b/.test(auditText), `审计仍有英文枚举：${auditText.slice(0, 120)}`)
-      await dialog.getByPlaceholder('/home/you/project').first().fill(repo)
-      await dialog.getByRole('button', { name: '添加', exact: true }).last().click()
-      await dialog.getByRole('button', { name: '生成邀请链接' }).click()
-      await dialog.locator('svg[viewBox]').first().waitFor({ state: 'visible', timeout: 10_000 })
-      const warning = dialog.getByText(/只监听 127\.0\.0\.1/)
-      await warning.waitFor({ state: 'visible', timeout: 5_000 })
-      const box = await dialog.getByText(/仅展示一次/).boundingBox()
-      assert.ok(box, '邀请面板未展示')
-      await closeSettings(page)
     })
 
     desktop('评测：对比表字号 ≥12px、时间中文化、轨迹与并排可开', async (page) => {
@@ -12167,12 +12125,6 @@ async function main() {
     process.exitCode = 1
   } finally {
     await browser?.close().catch(() => {})
-    try {
-      const pidFile = path.join(home, 'fake-remote', '.tandem-host', 'pid')
-      if (existsSync(pidFile)) process.kill(Number(readFileSync(pidFile, 'utf8').trim()), 'SIGTERM')
-    } catch {
-      /* 远程 Host 可能已被卸载 */
-    }
     if (!host.child.killed) host.child.kill('SIGTERM')
     await Promise.race([
       new Promise((resolve) => host.child.once('exit', resolve)),

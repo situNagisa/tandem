@@ -1,18 +1,12 @@
 #!/usr/bin/env node
 // Tandem Host 守护进程入口。
-import os from 'node:os';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { Host } from './host.js';
-import { createApp, type WorkstationTunnelDeps } from './server.js';
+import { createApp } from './server.js';
 import { loadHostConfig, tandemHome } from './config.js';
 import { runDoctor } from './doctor.js';
 import { createWorkstation } from './workstation/server.js';
 import { readVersion } from './host/helpers.js';
-import { buildServicePlan, executeServicePlan, redactToken } from './service/install.js';
-import { explainJoinFailure } from './workstation/joinFailure.js';
-import { joinWorkstation } from './workstation/join.js';
 
 interface CliOptions {
   port: number;
@@ -53,14 +47,9 @@ function parseArgs(argv: string[]): CliOptions {
 function printHelp(): void {
   console.log(`用法: tandem-host [--port 7878] [--host 127.0.0.1]
         tandem-host workstation [--port 8481] [--host 0.0.0.0]
-        tandem-host join <工作站地址> --token <绑定码> [--name 主机名] [--service] [--dry-run]
         tandem-host doctor [--checks node,git,profiles] [--port 7878] [--host 127.0.0.1]
 
     workstation  只运行工作站服务（账号、主机登记、授权、连接转发；不跑 agent）
-    join         把本机登记为某账号的主机，前台保持到工作站的出站连接（关闭窗口即断开）
-                 数据目录取 TANDEM_HOME；--service 另外设置开机自启（下次登录生效，失败只提示）
-                 也可用 --username/--password 代替 --token（会向工作站登录一次）
-                 --code 是 --token 的别名；--dry-run 只打印计划，不做任何改动
 
 选项:
   -p, --port <端口>   监听端口（Host 默认 7878；workstation 默认 8481）
@@ -175,110 +164,6 @@ async function workstationMain(argv: string[]): Promise<void> {
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }
 
-interface JoinOptions {
-  workstationUrl?: string;
-  token: string;
-  username: string;
-  password: string;
-  name: string;
-  service: boolean;
-  dryRun: boolean;
-}
-
-function parseJoinArgs(argv: string[]): JoinOptions {
-  const options: JoinOptions = {
-    token: '',
-    username: '',
-    password: '',
-    name: '',
-    service: false,
-    dryRun: false,
-  };
-  const positional: string[] = [];
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i]!;
-    const next = () => {
-      const value = argv[i + 1];
-      if (!value) throw new Error(`${arg} 缺少参数`);
-      i += 1;
-      return value;
-    };
-    const inline = () => (arg.includes('=') ? arg.slice(arg.indexOf('=') + 1) : next());
-    if (arg === '--help' || arg === '-h') {
-      printHelp();
-      process.exit(0);
-    } else if (arg === '--token' || arg === '--code' || arg.startsWith('--token=') || arg.startsWith('--code=')) {
-      options.token = inline();
-    } else if (arg === '--username' || arg === '--user' || arg.startsWith('--username=') || arg.startsWith('--user=')) {
-      options.username = inline();
-    } else if (arg === '--password' || arg.startsWith('--password=')) {
-      options.password = inline();
-    } else if (arg === '--name' || arg.startsWith('--name=')) {
-      options.name = inline();
-    } else if (arg === '--service') {
-      options.service = true;
-    } else if (arg === '--dry-run') {
-      options.dryRun = true;
-    } else if (!arg.startsWith('-')) {
-      positional.push(arg);
-    } else {
-      throw new Error(`未知参数: ${arg}`);
-    }
-  }
-  options.workstationUrl = positional[0];
-  return options;
-}
-
-/** 当前 CLI 入口（开机自启复用同一个 dist/cli.js）。 */
-function resolveCliPath(): string {
-  const argvPath = process.argv[1];
-  if (argvPath && argvPath.endsWith('.js')) return path.resolve(argvPath);
-  return fileURLToPath(import.meta.url);
-}
-
-function maskedToken(token: string): string {
-  return token ? redactToken(token) : '(未提供)';
-}
-
-function servicePlanFor(home: string) {
-  return buildServicePlan({
-    platform: process.platform,
-    nodePath: process.execPath,
-    cliPath: resolveCliPath(),
-    home,
-    logFile: path.join(home, 'host.log'),
-    userHome: os.homedir(),
-  });
-}
-
-function printJoinPlan(options: JoinOptions, home: string): void {
-  console.log('将执行以下步骤（--dry-run，不做任何网络请求、不启动进程、不写文件）：');
-  console.log(`  1. 在数据目录 ${home} 启动本机主机（监听 127.0.0.1 的随机端口）`);
-  console.log(`  2. 向 ${options.workstationUrl} 登记本机（令牌 ${maskedToken(options.token)}）`);
-  if (options.name) console.log(`     主机名：${options.name}`);
-  console.log('     已加入同一工作站时跳过登记，直接连接');
-  console.log('  3. 前台保持到工作站的出站连接；关闭窗口或 Ctrl+C 即断开');
-  if (options.service) {
-    const plan = servicePlanFor(home);
-    console.log('  4. 设置开机自启，写入文件：');
-    for (const file of plan.files) {
-      console.log(`\n     ${file.path}`);
-      for (const line of file.content.replace(/\n$/, '').split('\n')) console.log(`       ${line}`);
-    }
-    console.log('\n     执行命令：');
-    for (const step of plan.commands) {
-      console.log(`       ${redactToken([step.cmd, ...step.args].join(' '))}${step.optional ? '（失败可忽略）' : ''}`);
-    }
-    if (plan.note) console.log(`     说明：${plan.note}`);
-  }
-}
-
-async function closeHost(app: FastifyInstance, host: Host): Promise<void> {
-  await app.close().catch(() => undefined);
-  host.store.flush();
-  await host.shutdown();
-}
-
 /** 本机 Host 常驻：续跑中断的会话，收到退出信号时收尾。 */
 function serveHost(app: FastifyInstance, host: Host): void {
   // Host 重启恢复：续跑中断的会话（或按设置暂停），并提示丢失的后台任务
@@ -294,82 +179,13 @@ function serveHost(app: FastifyInstance, host: Host): void {
     if (closing) return;
     closing = true;
     console.log(`\n[tandem] 收到 ${signal}，正在退出…`);
-    await closeHost(app, host);
+    await app.close().catch(() => undefined);
+    host.store.flush();
+    await host.shutdown();
     process.exit(0);
   };
   process.on('SIGINT', () => void shutdown('SIGINT'));
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
-}
-
-function joinError(err: unknown, workstationUrl: string): Error {
-  const raw = (err as Error).message;
-  const explained = explainJoinFailure({
-    status: (err as { statusCode?: number }).statusCode ?? 0,
-    message: raw,
-    workstationUrl,
-  });
-  // 文案已经就是标题时不要重复（「绑定码无效、已使用或已过期：绑定码无效、已使用或已过期」）。
-  const head = raw.includes(explained.title) ? raw : `${explained.title}：${raw}`;
-  return new Error([head, ...explained.hints.map((line) => `  ${line}`)].join('\n'));
-}
-
-async function waitForTunnel(tunnel: WorkstationTunnelDeps): Promise<void> {
-  while (!tunnel.status().connected) {
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-}
-
-function installAutostart(home: string): void {
-  try {
-    executeServicePlan(servicePlanFor(home));
-    console.log('已设置开机自启：下次登录后自动连接工作站；当前窗口保持连接。');
-  } catch (err) {
-    console.warn(`[tandem] 开机自启设置失败，不影响本次连接：${(err as Error).message}`);
-  }
-}
-
-/** 登记并前台连接：主机进程自己用令牌登记、自己建立出站隧道，不再通过本机 HTTP 登记。 */
-async function joinMain(argv: string[]): Promise<void> {
-  const options = parseJoinArgs(argv);
-  if (!options.workstationUrl) throw new Error('用法: tandem-host join <工作站地址> --token <绑定码>');
-  const workstationUrl = options.workstationUrl;
-  const home = tandemHome();
-  if (options.dryRun) {
-    printJoinPlan(options, home);
-    return;
-  }
-
-  const host = new Host(loadHostConfig(home), home);
-  const holder: { tunnel?: WorkstationTunnelDeps } = {};
-  const app = await createApp(host, {
-    onWorkstationDeps: (deps) => {
-      holder.tunnel = deps;
-    },
-  });
-  await app.listen({ port: 0, host: '127.0.0.1' });
-  const address = app.server.address();
-  const port = address && typeof address === 'object' ? address.port : 0;
-
-  let workspaceName: string;
-  try {
-    const status = await joinWorkstation(host, holder.tunnel!, {
-      workstationUrl,
-      ...(options.token ? { code: options.token } : {}),
-      ...(options.username ? { username: options.username, password: options.password } : {}),
-      name: options.name || os.hostname(),
-      urls: [`http://127.0.0.1:${port}`],
-    });
-    workspaceName = status.workspace?.name ?? workstationUrl;
-  } catch (err) {
-    await closeHost(app, host);
-    throw joinError(err, workstationUrl);
-  }
-
-  console.log(`已加入工作站「${workspaceName}」，正在建立出站连接…`);
-  await waitForTunnel(holder.tunnel!);
-  if (options.service) installAutostart(home);
-  console.log(`已连接工作站「${workspaceName}」，主机名 ${options.name || os.hostname()}；关闭此窗口即断开。`);
-  serveHost(app, host);
 }
 
 async function main(): Promise<void> {
@@ -379,10 +195,6 @@ async function main(): Promise<void> {
   }
   if (process.argv[2] === 'workstation') {
     await workstationMain(process.argv.slice(3));
-    return;
-  }
-  if (process.argv[2] === 'join') {
-    await joinMain(process.argv.slice(3));
     return;
   }
   const options = parseArgs(process.argv.slice(2));

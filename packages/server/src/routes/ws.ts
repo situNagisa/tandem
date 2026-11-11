@@ -1,4 +1,4 @@
-// WebSocket 客户端连接与消息分发：按成员角色限制订阅、发送与审批。
+// WebSocket 客户端连接与消息分发：按角色限制订阅、发送与审批。
 import type { FastifyInstance } from 'fastify';
 import type {
   ClientMsg,
@@ -15,18 +15,13 @@ import {
   canSend,
   identityOf,
   isOwnerLike,
-  memberCanSeeSession,
+  canSeeSession,
   principalOf,
   type Principal,
-} from '../team/access.js';
-import { recordAudit } from '../team/audit.js';
+} from '../access.js';
 
 function inboxVisible(principal: Principal, event: InboxEvent): boolean {
-  if (event.kind === 'permission') {
-    if (!canApprove(principal.role)) return false;
-    const target = event.permission?.assignedTo;
-    if (target && principal.kind === 'member' && target.memberId !== principal.id) return false;
-  }
+  if (event.kind === 'permission' && !canApprove(principal.role)) return false;
   if (event.kind === 'permission_resolved' && !canApprove(principal.role)) return false;
   if (event.kind === 'budget' || event.kind === 'eval') return isOwnerLike(principal);
   if (!event.sessionId) return isOwnerLike(principal);
@@ -41,20 +36,20 @@ export function registerWsRoutes(app: FastifyInstance, deps: RouteDeps): void {
     const principal = principalOf(req);
     host.hub.add(
       client,
-      principal.kind === 'member'
-        ? {
+      principal.kind === 'owner'
+        ? undefined
+        : {
             id: principal.id,
             name: principal.name,
             role: principal.role,
             projectDirs: principal.projectDirs,
-          }
-        : undefined,
+          },
     );
     const helloHost = host.info();
     host.hub.send(client, {
       type: 'hello',
-      host: principal.kind === 'member' ? { ...helloHost, homeDir: '' } : helloHost,
-      me: identityOf(principal, host),
+      host: helloHost,
+      me: identityOf(principal),
     });
 
     const sendError = (message: string) => host.hub.send(client, { type: 'error', message });
@@ -67,7 +62,7 @@ export function registerWsRoutes(app: FastifyInstance, deps: RouteDeps): void {
 
     const canSee = (sessionId: string): boolean => {
       if (isOwnerLike(principal)) return true;
-      return memberCanSeeSession(principal, host.getSession(sessionId));
+      return canSeeSession(principal, host.getSession(sessionId));
     };
 
     const filterInbox = (snapshot: InboxSnapshot): InboxSnapshot => {
@@ -75,7 +70,7 @@ export function registerWsRoutes(app: FastifyInstance, deps: RouteDeps): void {
       const keep = (event: InboxEvent) => {
         if (!inboxVisible(principal, event)) return false;
         if (!event.sessionId) return true;
-        return memberCanSeeSession(principal, host.getSession(event.sessionId));
+        return canSeeSession(principal, host.getSession(event.sessionId));
       };
       return {
         seq: snapshot.seq,
@@ -128,13 +123,7 @@ export function registerWsRoutes(app: FastifyInstance, deps: RouteDeps): void {
             }
             // 缓冲不覆盖（Host 重启 / 已回退）：退回全量快照
           }
-          const pendingPermissions = snapshot.pendingPermissions.filter((request) => {
-            if (!canApprove(principal.role)) return false;
-            if (principal.kind === 'member' && request.assignedTo) {
-              return request.assignedTo.memberId === principal.id;
-            }
-            return true;
-          });
+          const pendingPermissions = snapshot.pendingPermissions.filter(() => canApprove(principal.role));
           host.hub.send(client, {
             type: 'session_snapshot',
             session: snapshot.session,
@@ -194,12 +183,6 @@ export function registerWsRoutes(app: FastifyInstance, deps: RouteDeps): void {
             }
             await host.send(msg.sessionId, msg.content, normalizeRouteOverride(msg.route));
           })()
-            .then(() => {
-              recordAudit(host, principal, 'message.send', {
-                sessionId: msg.sessionId,
-                ...(rec ? { sessionTitle: rec.title } : {}),
-              });
-            })
             .catch((err: Error) => sendError(err.message));
           break;
         }
@@ -233,17 +216,7 @@ export function registerWsRoutes(app: FastifyInstance, deps: RouteDeps): void {
             sendError('会话不存在');
             return;
           }
-          const target = found.request.assignedTo;
-          if (target && principal.kind === 'member' && target.memberId !== principal.id) {
-            sendError('该审批已转交给其他成员');
-            return;
-          }
           const decision = msg.decision as PermissionDecision;
-          recordAudit(host, principal, 'permission.decide', {
-            sessionId: found.rec.id,
-            sessionTitle: found.rec.title,
-            detail: `${found.request.toolName} ${decision}`,
-          });
           host.resolvePermission(
             msg.requestId,
             decision,
