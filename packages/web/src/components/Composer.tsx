@@ -161,7 +161,7 @@ export function Composer({
   } | null>(null)
 
   const editorRef = useRef<ComposerEditorHandle | null>(null)
-  const editorElementRef = useRef<HTMLDivElement>(null)
+  const editorElementRef = useRef<HTMLElement>(null)
   const voiceRef = useRef<VoiceButtonHandle>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)

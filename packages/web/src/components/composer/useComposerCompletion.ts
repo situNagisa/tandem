@@ -22,7 +22,7 @@ interface Options {
   setModelMenuOpen: Dispatch<SetStateAction<boolean>>
   menuRef: MutableRefObject<HTMLDivElement | null>
   editorRef: MutableRefObject<ComposerEditorHandle | null>
-  elementRef: MutableRefObject<HTMLDivElement | null>
+  elementRef: MutableRefObject<HTMLElement | null>
 }
 
 export function useComposerCompletion({
