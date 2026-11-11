@@ -54,6 +54,7 @@
 - 不读 git remote 的值、不 push；不连公网；测试 Host 一律 TANDEM_HOME=/tmp/…；不用 pkill -f。
 
 ## 本轮手工操作 / 出错环节（只留最近 5 轮，每轮 ≤5 行）
+- 2026-11-12 用户批评"实现特别糟糕"：①我把"分叉用 git 图切主线"理解成每个会话各画一张图，子代理又"保守"成单节点分支；②跳转、悬停浮层又各写一套。教训：概念类需求先用一个具体例子（节点/边）写清再派；验收亲自点用户原场景（反馈模式、真实长会话、外部会话）；新交互必须复用已有实现（跳转=轮次大纲那套，浮层=反馈模式能停住的那套）。
 - 2026-11-11 主机 IA：T1–T5/T7 全在 `packages/web`；删掉 Host 侧 join/enable 前端调用（`addLocalHost.ts`、LoginGate 启动本机工作站）；旧「连接手机」入口与 `PairDialog` 一并删除；调试版自动登录仍读 `<Host>/api/workstation/local/status`（只读探测，待 server 删除该路由时去掉）。
 - 2026-11-11 反馈1601：用自建临时 Host + CDP screencast/绘制后逐帧采样定位切换闪屏（注入说明行晚到 + 贴底补偿下一帧）；反馈包里的整页截图为 DOM 克隆，content-visibility 行会是空白，不能当作“主区空白”的证据；每次 Playwright 复现都要 `npm run build -w @tandem/web` 后新起 Host。
 - 2026-11-11 输入框改 contenteditable：回归里 60+ 处 `textarea[aria-label=消息输入框]` 换成 `[aria-label=消息输入框]`，`inputValue`→`data-value`、`isDisabled`→`aria-disabled`；批量替换误改到「记忆 Markdown」用例（已回退）。Playwright 的 fill 会把文本直接挂根节点，光标映射需带兜底。
