@@ -110,7 +110,7 @@ async function main() {
     await page.locator('[data-testid="no-hosts"]').waitFor({ state: 'visible', timeout: 30_000 })
     assert.equal(await page.locator('[data-testid="sidebar-new-session"]').isDisabled(), true, '没有主机时新会话入口应禁用')
     await page.locator('[data-testid="no-hosts-add-local"]').click()
-    await page.locator('textarea').first().waitFor({ state: 'visible', timeout: 60_000 })
+    await page.locator('[aria-label="消息输入框"]').first().waitFor({ state: 'visible', timeout: 60_000 })
 
     const bodyText = () => page.locator('body').innerText()
     const assertNoDebugText = async (where) => {
@@ -136,7 +136,7 @@ async function main() {
     })
     await sleep(400)
     await assertNoDebugText('组件画廊路由')
-    assert.equal(await page.locator('textarea').first().isVisible(), true, '#/dev/ui 应回到首页')
+    assert.equal(await page.locator('[aria-label="消息输入框"]').first().isVisible(), true, '#/dev/ui 应回到首页')
 
     // 设置 → 外观：没有组件画廊与反馈入口
     await page.keyboard.press('Control+Alt+S')
@@ -191,7 +191,7 @@ async function main() {
     await page.goto(`${base}/?token=${token}&mobilePreview=1`, {
       waitUntil: 'domcontentloaded',
     })
-    await page.locator('textarea').first().waitFor({ state: 'visible', timeout: 20_000 })
+    await page.locator('[aria-label="消息输入框"]').first().waitFor({ state: 'visible', timeout: 20_000 })
     assert.equal(
       await page.locator('[data-mobile-preview-bar]').count(),
       0,

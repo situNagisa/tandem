@@ -241,7 +241,7 @@ async function main() {
     page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`))
 
     await page.goto(`${base}/?token=${token}#/h/${hostId}`, { waitUntil: 'domcontentloaded' })
-    const composer = page.locator('textarea').first()
+    const composer = page.locator('[aria-label="消息输入框"]').first()
     await composer.waitFor({ state: 'visible', timeout: 20_000 })
     // 等 profiles 通过 WS 到达，新会话页自动选中第一个账号/模型（模型按钮出现内容）
     await page.getByRole('button', { name: /Smoke Model/ }).first().waitFor({ timeout: 15_000 }).catch(() => {})
