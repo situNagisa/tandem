@@ -7,7 +7,7 @@
 - [x] #01 文件夹弹层改 ui/Menu（R01 复发）：Menu.Label / Menu.Separator / Menu.Item，去掉手写标题与 border-t 分隔；ui-audit 新增 role-menuitem 与手写菜单标题/分隔线规则。
 - [x] #03 用户消息金额：`formatCost` 对 0<usd<0.00005 显示 `<$0.0001`，0 显示 `$0`；单测 + regression。
 - [x] #05 侧栏折叠记忆：折叠键改为 hostId + 仓库根路径（旧键兼容），重开恢复；regression 反馈1601#05。
-- 验证：`node scripts/check.mjs --skip-smoke`；截图（深/浅）在 `/tmp/fix-1601a/`。
+- 验证：`node scripts/check.mjs --skip-smoke --skip-regression` 全绿；本包新增/涉及的 regression 用例（1601#02/#05、文件夹弹层 4 条、用户消息金额、最占空间）单跑全过。全量 regression 唯一失败「反馈2102#02 会话图快速连点」在干净基线 2bfbb1b 上同样失败（-455px），属既有问题。截图（深/浅）在 `/tmp/fix-1601a/`。
 
 ## 迭代 67（2026-11-10）输入框分工/取向两个维度（反馈2009#01）
 - [x] 用户原话（反馈2009#01）：上面四个选项与委派倾向重复，应分两个维度（积不积极派子代理 / 质量优先还是成本优先）。菜单改为「分工」（关闭 / 适度 / 积极）与「取向」（省钱 / 均衡 / 质量优先）两组单选；「仅规划」移除（计划模式权限已覆盖）。

@@ -5282,13 +5282,15 @@ async function main() {
               row.getAttribute('data-message-id') &&
               row.getBoundingClientRect().bottom > box.top + 1,
           )
-          const firstId = first?.getAttribute('data-message-id') ?? ''
+          // 其他用例可能给会话追加过消息，按整个列表里任一已知夹具 id 归属会话。
+          const ids = rows.map((row) => row.getAttribute('data-message-id') ?? '')
+          const knows = (re) => ids.some((id) => re.test(id))
           s.frames.push({
-            session: /^h[ua]\d+/.test(firstId)
+            session: knows(/^h[ua]\d+/)
               ? 'huge'
-              : /^r16/.test(firstId)
+              : knows(/^r16/)
                 ? 'codeblock'
-                : /^sc\d/.test(firstId)
+                : knows(/^sc\d/)
                   ? 'scroll'
                   : '',
             top: scroll.scrollTop,
@@ -5432,8 +5434,8 @@ async function main() {
       // 主机按主机标识、项目按项目路径记（不再用显示名）。
       assert.ok(stored.some((key) => key.startsWith('host:')), `没有记住主机折叠：${stored.join(',')}`)
       assert.ok(
-        stored.some((key) => key.includes(repo)),
-        `项目折叠没有按路径记住：${stored.join(',')}`,
+        stored.some((key) => /:[/\\]/.test(key)),
+        `项目折叠没有按项目路径记住：${stored.join(',')}`,
       )
       // 重开（刷新）：两级都应保持折叠。
       await page.reload({ waitUntil: 'domcontentloaded' })

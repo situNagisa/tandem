@@ -94,6 +94,8 @@ export function ChatView() {
   const programmaticUntil = useRef(0)
   // 用户自己滚动过（滚轮/触摸/滚动条/方向键）才允许按位置重新贴底；跳转后内容收缩导致的被动滚动不算。
   const userScrolledRef = useRef(false)
+  // 跨视图跳转（大纲/最占空间/会话图/搜索）期间不能被贴底补偿拉回底部。
+  const jumpUntil = useRef(0)
   // 打开会话后的贴底校准：content-visibility 的预估高度会让首次 scrollHeight 偏小。
   const initialScrollFor = useRef<string | null>(null)
   const [showJump, setShowJump] = useState(false)
@@ -215,6 +217,14 @@ export function ChatView() {
   }, [messageCount, loading, pending.length, stickToBottom])
 
   useEffect(() => {
+    const onJump = () => {
+      jumpUntil.current = Date.now() + 1200
+    }
+    window.addEventListener('tandem-jump-message', onJump)
+    return () => window.removeEventListener('tandem-jump-message', onJump)
+  }, [])
+
+  useEffect(() => {
     if (!lastIsLocal) return
     scrollToBottom()
   }, [lastIsLocal, messageCount, scrollToBottom])
@@ -231,7 +241,7 @@ export function ChatView() {
     // 切换会话时看起来就是闪屏（反馈1601#02）。
     let lastHeight = -1
     const pinBeforePaint = () => {
-      if (!pinnedRef.current) return
+      if (!pinnedRef.current || Date.now() < jumpUntil.current) return
       const el = scrollRef.current
       if (!el) return
       const height = el.scrollHeight
@@ -251,7 +261,7 @@ export function ChatView() {
       ro.disconnect()
       mo.disconnect()
     }
-  }, [stickToBottom, hasSession, agentSession])
+  }, [stickToBottom, hasSession, agentSession, sessionId])
 
   useEffect(() => {
     if (!running) return
