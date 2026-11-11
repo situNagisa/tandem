@@ -6,7 +6,6 @@ import { bad, str } from './common.js';
 import { principalOf } from '../access.js';
 import { embeddedDataDir, embeddedStatus, startEmbeddedWorkstation } from '../workstation/manager.js';
 import { readWorkstationMeta } from '../workstation/server.js';
-import { joinWorkstation } from '../workstation/join.js';
 
 export function isPublicAccountPath(pathname: string): boolean {
   return (
@@ -87,23 +86,34 @@ export function registerAccountRoutes(app: FastifyInstance, deps: RouteDeps): vo
 
   app.post('/api/workstation/join', async (req, reply) => {
     if (!isHostOwner(req)) return bad(reply, '仅 Host 所有者可以把本机加入工作站', 403);
-    const body = (req.body ?? {}) as {
-      workstationUrl?: unknown;
-      code?: unknown;
-      username?: unknown;
-      password?: unknown;
-      totp?: unknown;
-      name?: unknown;
-    };
-    return joinWorkstation(host, deps.workstation, {
-      workstationUrl: str(body.workstationUrl),
-      code: str(body.code),
-      username: str(body.username),
-      password: typeof body.password === 'string' ? body.password : '',
-      totp: typeof body.totp === 'string' ? body.totp : '',
-      name: str(body.name) || selfName(app),
-      urls: localUrls(app),
-    });
+    const body = (req.body ?? {}) as { workstationUrl?: unknown; code?: unknown; name?: unknown };
+    const target = str(body.workstationUrl).trim().replace(/\/+$/, '');
+    if (!target) return bad(reply, '请填写工作站地址');
+    const code = str(body.code).trim();
+    if (!code) return bad(reply, '缺少绑定码');
+    const existing = accounts().workstationJoin();
+    if (existing) {
+      if (existing.url.replace(/\/+$/, '').toLowerCase() === target.toLowerCase()) {
+        deps.workstation?.start();
+        return accounts().status();
+      }
+      return bad(reply, `本机已加入工作站 ${existing.url}，请先退出后再加入其他工作站`, 409);
+    }
+    const status = await accounts().registerAsHost(
+      target,
+      {
+        id: host.config.hostId,
+        name: str(body.name) || selfName(app),
+        urls: localUrls(app),
+        ...(host.version ? { version: host.version } : {}),
+        platform: process.platform,
+      },
+      code,
+    );
+    deps.workstation?.start();
+    // 加入后立刻切到账号级模型账号，并把本机旧 profiles（含 Key）迁移到工作站。
+    void host.enableWorkstationProfiles();
+    return status;
   });
 
   app.post('/api/workstation/leave', async (req, reply) => {

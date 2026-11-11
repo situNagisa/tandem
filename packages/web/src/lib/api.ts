@@ -1191,7 +1191,7 @@ export const workstationApi = {
     request<{ urls: string[]; port: number; initialized: boolean }>(h, '/api/workstation/local/enable', {
       method: 'POST',
     }),
-  join: (h: HostConfig, input: { workstationUrl: string; code?: string; username?: string; password?: string }) =>
+  join: (h: HostConfig, input: { workstationUrl: string; code: string }) =>
     request<WorkspaceStatus>(h, '/api/workstation/join', { method: 'POST', body: JSON.stringify(input) }),
   leave: (h: HostConfig) => request<void>(h, '/api/workstation/leave', { method: 'POST' }),
 }

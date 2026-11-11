@@ -1188,8 +1188,6 @@ export interface WorkstationPublicStatus {
   hostId?: string;
   urls: string[];
   version?: string;
-  /** 工作站随附的主机安装包（Unix `GET /dl/tandem-host.tgz`）；没有则不下发，添加主机的一行命令会提示手动安装。 */
-  hostPackage?: { version: string; size: number; /** 同时提供 `GET /dl/tandem-host.zip`（Windows 安装脚本用 Expand-Archive）。 */ zip?: boolean };
 }
 export interface WorkstationRegisterInput {
   username: string;
@@ -1318,7 +1316,6 @@ export type WorkspaceModelProxyEvent =
 // GET    /api/workstation/hosts                     -> WorkspaceHostInfo[]（账号令牌；自己 + 获授权）
 // POST   /api/workstation/hosts/bind-code           -> WorkstationBindCode（账号令牌）
 // POST   /api/workstation/hosts/claim {code,host}   -> WorkstationHostClaimResult（公开；一次性绑定码）
-// POST   /api/workstation/hosts/register {host}     -> WorkstationHostClaimResult（账号令牌；主机侧登录加入）
 // DELETE /api/workstation/hosts/:id                 -> 204（主机主人）
 // POST   /api/workstation/hosts/:id/grants {accountId,role,projectDirs?} -> WorkspaceHostInfo（主机主人）
 // DELETE /api/workstation/hosts/:id/grants/:accountId -> 204（主机主人）
@@ -1328,9 +1325,8 @@ export type WorkspaceModelProxyEvent =
 // POST   /api/workstation/invites                   -> WorkstationInvite（管理员；仅邀请模式注册）
 // GET    /api/workstation/audit?limit=200           -> WorkspaceAuditEntry[]（管理员）
 // POST   /api/workstation/local/enable              -> { url, urls, initialized, publicKey? }（Host 所有者：本机内嵌启动工作站）
-// POST   /api/workstation/join {workstationUrl,code?|username,password?,name?} -> WorkspaceStatus（Host 所有者；本机已加入同一工作站时幂等返回）
+// POST   /api/workstation/join {workstationUrl,code,name?} -> WorkspaceStatus（Host 所有者；本机已加入同一工作站时幂等返回）
 // GET    /install.sh | /install.ps1                  -> 主机安装脚本（公开；一行命令添加主机；地址取自请求 Host 头）
-// GET    /dl/tandem-host.tgz | /dl/tandem-host.zip   -> 主机安装包（公开；没有时 404，status.hostPackage 为空）
 // POST   /api/workstation/leave                     -> 204（Host 所有者：本机退出工作站）
 
 // GET    /api/accounts/status                      -> WorkspaceStatus（主机侧探测工作站/本地模式）

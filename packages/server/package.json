@@ -10,7 +10,6 @@
   "scripts": {
     "build": "tsc -p . && node ../../scripts/write-flavor.mjs --scope=server",
     "dev": "tsx watch src/cli.ts",
-    "pack:host": "node ../../scripts/pack-host.mjs",
     "test": "node --import tsx --test test/*.test.ts && vitest run test/executor"
   },
   "dependencies": {

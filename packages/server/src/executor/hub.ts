@@ -122,11 +122,11 @@ export class ExecutorHub {
     const selfUrl = this.options.selfUrl();
     const ctx = await this.open(hostId, selfUrl);
     try {
-      // 与主机加入同一条路径：令牌即绑定码，由工作站校验并登记这台远端主机。
+      // 令牌即绑定码，由工作站校验并登记这台远端主机。
       await ctx.host.accounts.registerAsHost(
         selfUrl,
         { id: hostId, name: req.name || hostId.slice(0, 8), urls: [], platform: req.platform },
-        { code: req.token },
+        req.token,
       );
     } catch (err) {
       await ctx.app.close().catch(() => undefined);

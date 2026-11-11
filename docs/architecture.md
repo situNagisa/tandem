@@ -32,7 +32,7 @@
 | `src/model-routing.ts` / `src/routing-settings.ts` | 自动模型路由：按消息长度/关键词/上下文/失败信号打难度分，在用户候选池按快速·均衡·强力与省钱·均衡·质量偏好选模型；连续失败升级、简单成功回落，统计相对强力档的节省；设置有会话入口 |
 | `src/host.ts` | Host 类：持有全部状态与构造，方法按职责转调到 `host/`（外部 API 不变） |
 | `src/access.ts` | 连接身份（所有者 / 工作站账号 / 设备令牌）、角色边界、项目可见性、REST 白名单 |
-| `src/accounts/` + `src/workstation/` + `routes/accounts.ts` | 工作站客户端-服务：`accounts/store.ts`（工作站初始化/注册/绑定码/主机登记/逐主机授权/旧数据迁移、Ed25519 访问/刷新令牌与 `perHost` 声明、吊销快照）；`workstation/server.ts`（独立进程：账号 API + `/_tunnel` + `/h/<id>/_e2e/*` 转发）、`workstation/manager.ts`（桌面内嵌启动）；Host 侧 `workstation/agent.ts` 建立出站隧道；设计 `docs/workstation.md`，代测 `docs/test-guides/workstation.md` |
+| `src/accounts/` + `src/workstation/` + `routes/accounts.ts` | 工作站客户端-服务：`accounts/store.ts`（工作站初始化/注册/绑定码/主机登记/逐主机授权/旧数据迁移、Ed25519 访问/刷新令牌与 `perHost` 声明、吊销快照）；`workstation/server.ts`（独立进程：账号 API + `/_tunnel` + `/h/<id>/_e2e/*` 转发）、`workstation/manager.ts`（桌面内嵌启动）；Host 侧 `workstation/agent.ts` 建立回环出站隧道；远端机器只跑 `packages/executor`，`executor/hub.ts` 在工作站进程内建远端 Host 上下文；设计 `docs/workstation.md`、`docs/features/executor.md`，代测 `docs/test-guides/workstation.md` |
 | `src/host/` | Host 实现按职责拆分（纯搬移）：`sessions.ts`（读取/转换/CRUD）、`turns.ts`（发送/回合/排队/中断/compact）、`commands.ts`（斜杠命令/本地消息）、`permissions.ts`（审批/plan/恢复）、`keys.ts`（账号/分组/Key 轮询）、`usage.ts`（上下文/预算/模型）、`subagents.ts`（子代理/委派/工具可见性）、`vcs.ts`（git 环境/worktree）、`rewind.ts`（检查点回退）、`hooks.ts`、`inbox.ts`、`external.ts`（外部会话通知/导入）、`helpers.ts`（无状态纯函数） |
 | `src/agent/loop.ts` | 单轮 agent 循环：模型 → 工具 → tool_result → 再请求，直到结束 |
 | `src/agent/prompt.ts` | 系统提示组装（含注入段落清单） |

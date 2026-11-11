@@ -15,12 +15,6 @@ const DIGESTS: Record<string, string> = {
   'windows-amd64': 'e5'.repeat(32),
 };
 
-function assertNoLegacy(text: string) {
-  for (const word of ['Node', 'tandem-host', 'tgz', '/dl/', 'Expand-Archive', 'zip']) {
-    assert.ok(!text.includes(word), `脚本里不应再出现 ${word}`);
-  }
-}
-
 test('install.sh：默认地址取自工作站、嵌入各平台 sha256、不含令牌、sh -n 通过', () => {
   const script = buildUnixInstallScript({ server: 'http://10.1.2.3:8481/', digests: DIGESTS });
   assert.ok(script.startsWith('#!/bin/sh'));
@@ -35,7 +29,6 @@ test('install.sh：默认地址取自工作站、嵌入各平台 sha256、不含
   assert.match(script, /--dry-run/);
   assert.match(script, /--service/);
   assert.match(script, /sha256sum[\s\S]*shasum[\s\S]*openssl/, '校验工具依次回落');
-  assertNoLegacy(script);
 
   if (process.platform !== 'win32') {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'tandem-install-sh-'));
@@ -95,7 +88,6 @@ test('install.ps1：param 块、默认地址、下载/校验方式、前台 join
   for (const fragment of ['[string]$Token', '[string]$Server', '[switch]$Service', '[switch]$DryRun']) {
     assert.ok(script.includes(fragment), `缺少参数 ${fragment}`);
   }
-  assert.ok(!script.includes('[string]$Name'), '不再有 --name');
   assert.ok(script.includes("$DefaultServer = 'http://10.1.2.3:8481'"));
   assert.ok(script.includes('$env:TANDEM_TOKEN'));
   assert.ok(script.includes('$env:TANDEM_SERVER'));
@@ -111,5 +103,4 @@ test('install.ps1：param 块、默认地址、下载/校验方式、前台 join
   assert.ok(!/\bexit\s+\d/.test(script), '一行命令在用户 PowerShell 会话里执行，不能用 exit 关掉窗口');
   assert.ok(!script.includes('ach_abcdefgh'), '脚本不能嵌入具体令牌');
   assert.ok(!/[A-Za-z0-9_-]*ach_[A-Za-z0-9_-]{16,}/.test(script));
-  assertNoLegacy(script);
 });

@@ -8,7 +8,7 @@ import type { Host } from '../host.js';
 import { isDefaultHome, readJson } from '../config.js';
 import { IS_DEBUG_FLAVOR } from '../flavor.js';
 import { embeddedDataDir, startEmbeddedWorkstation } from '../workstation/manager.js';
-import { startDebugDemoHost, type DemoHostHandle } from './demoHost.js';
+import { requestHostBindCode, startDebugDemoHost, type DemoHostHandle } from './demoHost.js';
 import { isLoopbackAddress } from './workstationService.js';
 
 interface DebugWorkstationDeps {
@@ -190,7 +190,7 @@ export function installDebugWorkstationBootstrap(
           ...(host.version ? { version: host.version } : {}),
           platform: process.platform,
         },
-        { accessToken: login.accessToken },
+        await requestHostBindCode(base, login.accessToken),
       );
       workstation.start();
       void host.enableWorkstationProfiles();

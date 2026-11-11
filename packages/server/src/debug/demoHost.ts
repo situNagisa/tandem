@@ -17,13 +17,25 @@ interface TunnelDeps {
 export interface DemoHostOptions {
   /** 本机内嵌工作站地址，演示主机向它登记并建立出站隧道。 */
   workstationUrl: string;
-  /** 调试账号访问令牌；演示主机已登记时不需要（不再重复登记）。 */
+  /** 调试账号访问令牌；演示主机未登记时用它签发绑定码。 */
   accessToken?: string;
 }
 
 export interface DemoHostHandle {
   /** 关闭演示主机：应用、隧道、演示静态服务与 Host 状态一起释放。 */
   close: () => Promise<void>;
+}
+
+/** 调试账号签发一次性主机绑定码（登记本机/演示主机用）。 */
+export async function requestHostBindCode(workstationUrl: string, accessToken: string): Promise<string> {
+  const res = await fetch(`${workstationUrl.replace(/\/+$/, '')}/api/workstation/hosts/bind-code`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(15_000),
+  });
+  const data = (await res.json().catch(() => ({}))) as { code?: string; error?: string };
+  if (!res.ok || !data.code) throw new Error(data.error ?? `工作站返回 ${res.status}`);
+  return data.code;
 }
 
 /**
@@ -86,7 +98,7 @@ export async function startDebugDemoHost(home: string, options: DemoHostOptions)
           platform: process.platform,
           demo: true,
         },
-        { accessToken: options.accessToken },
+        await requestHostBindCode(options.workstationUrl, options.accessToken),
       );
     } else {
       tunnel?.start(options.workstationUrl);

@@ -8191,12 +8191,12 @@ async function main() {
       // 输入框保持可用。
       const composer = page.locator('[aria-label="消息输入框"]').first()
       assert.ok(await composer.isEnabled(), '有待审批时输入框被禁用')
-      // 更多菜单：本会话总是允许 / 添加为规则 / 转给。
+      // 更多菜单：本会话总是允许 / 添加为规则。
       await card.getByRole('button', { name: '更多' }).click()
       const menu = page.locator('[role="menu"]').last()
       await menu.waitFor({ timeout: 5_000 })
       const menuText = await menu.innerText()
-      for (const item of ['本会话总是允许', '添加为规则', '转给']) {
+      for (const item of ['本会话总是允许', '添加为规则']) {
         assert.ok(menuText.includes(item), `更多菜单缺少「${item}」：${menuText}`)
       }
       await page.keyboard.press('Escape')
@@ -11847,12 +11847,6 @@ async function main() {
     process.exitCode = 1
   } finally {
     await browser?.close().catch(() => {})
-    try {
-      const pidFile = path.join(home, 'fake-remote', '.tandem-host', 'pid')
-      if (existsSync(pidFile)) process.kill(Number(readFileSync(pidFile, 'utf8').trim()), 'SIGTERM')
-    } catch {
-      /* 远程 Host 可能已被卸载 */
-    }
     if (!host.child.killed) host.child.kill('SIGTERM')
     await Promise.race([
       new Promise((resolve) => host.child.once('exit', resolve)),

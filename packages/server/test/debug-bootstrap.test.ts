@@ -52,11 +52,17 @@ test('演示主机：以 demo:true 登记，调试账号同时看到本机与演
       { id: 'demo-host-0000001', name: '演示主机', urls: ['http://127.0.0.1:1'], demo: true, ...hostIdentity() },
     ];
     for (const host of hosts) {
+      const bind = await workstation.app.inject({
+        method: 'POST',
+        url: '/api/workstation/hosts/bind-code',
+        headers: { authorization: `Bearer ${login.accessToken}` },
+      });
+      assert.equal(bind.statusCode, 200, bind.body);
       const res = await workstation.app.inject({
         method: 'POST',
-        url: '/api/workstation/hosts/register',
-        headers: { authorization: `Bearer ${login.accessToken}`, 'content-type': 'application/json' },
-        payload: JSON.stringify({ host }),
+        url: '/api/workstation/hosts/claim',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ host, code: (bind.json() as { code: string }).code }),
       });
       assert.equal(res.statusCode, 200, res.body);
     }
