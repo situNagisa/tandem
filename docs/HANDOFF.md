@@ -12,8 +12,7 @@
 - 2026-11-12 启动方式：`npm start` 即工作站（8481，数据 ~/.tandem，本机主机在 ~/.tandem/local-host）。用户真实目录已用 /tmp/tandem-migrate.sh 手工迁移，备份 ~/.tandem.bak-20261111-223921。产品不做启动时旧布局检测（用户明确要求）。
 - 2026-11-10 瘦主机（远程架构重做，用户定方向）：agent/会话/工具在工作站，远程机器只跑 Go 单文件执行器（packages/executor，~7MB，出站 WSS，双向认证）。设计与产品决定：`docs/archive/plan/thin-host-2026-11-10.md` 第 9 节。进度：M1 执行器 ✓、M2 只读工具 ✓、M3 写入与执行 ✓、M4 接入产品 ✓（一行命令装执行器、工作站 executor/hub.ts 为每台执行器建远端 Host 上下文）；待做：M6 立即删旧完整 Host 远程路径（内测不留兼容，不做旧会话导入）、设备/浏览器/MCP、断线续跑、远端检查点回退、自更新。等用户 Windows 代测（docs/test-guides/workstation.md）。原则：最小可用（用户问过"需要写这么复杂吗"）。
 - 2026-11-10 已合入：执行方式拆为「分工 / 取向」（反馈2009#01）；删除跨主机派单；会话图轨道式画法（保持泳道色，用户选 B）；反馈 1919/2102/2108 全部；一行命令添加主机已改为下载执行器（不需要 Node）。
-- 待做：反馈2102#07 @ 选择文件（可选文件夹、选中后蓝字只显示文件名）；「验证策略」维度；任务看板空状态加用途说明；轮次大纲跳转回归在高负载下仍偶发失败、regression 跑完偶尔不退出。
-- 2026-11-10 输入框「分工 × 取向」两个维度（反馈2009#01）：已实现，check 通过（见 PROGRESS 67）；等用户实机确认菜单与默认行为（见「等用户决定」）。
+- 待做：反馈2102#07 @ 选择文件（可选文件夹、选中后蓝字只显示文件名）；「验证策略」维度；任务看板空状态加用途说明；regression 跑完偶尔不退出。
 - 2026-11-10 新产品经理接手，去冗余：删除旧账号中心、SSH 接入、relay（远程连接只走工作站，工作站支持公网部署、只做本地测试）；UI 第一批收拢（useCopy/format/Spinner/storage）；修复失效检查、删除守护已删事物的检查。累计 −5600 行。UI 第二批已完成 U1/U2/U4/U5-A（按钮/卡片/空状态/设置行，五提交），U3 芯片/徽标等用户选。待做（内部合并，不改行为）：gateway 与工作站 modelProxy 底层合并、凭据/路由开关收敛、拆 >1000 行组件。
 - 0.4.6 已发布：模型账号/分组/Key/倍率归工作站账号（Key 只加密存工作站，主机经签名代理调用模型，旧主机 profiles 上传后删除本地文件，旧按主机 API 返回 410）；账号余额查询（已知平台/自定义 URL，5 分钟缓存，设置与模型菜单显示）；审批作为对话消息内联；所有下拉/弹层不再抖；换主机待定状态（当前/待切换、输入框锁定）；消息时间与用户输入 token 悬停显示；用户气泡紧贴内容；设置页限宽留白与图标对齐；Windows 一行命令添加主机修复（端口自动避让、准确报错与 install.log、HKCU 免管理员自启）；模型芯片去掉思考强度圆点。说明见 `docs/features/model-accounts.md`。
 - 0.4.5 已发布：工作站登录门（桌面/网页/手机先登录，调试版回环自动登录调试账号）、一行命令添加主机（15 分钟一次性令牌、install.sh/ps1、systemd/launchd/计划任务持久连接）、无主机空状态、会话图（灰色主线/彩色泳道/子代理合并/分叉）、子代理会话可进入与面包屑、Claude Code 式权限询问、会话信息面板卡片可收起、上下文卡新配色与分类、长会话占位条与大纲未加载标识、换主机先选文件夹；另含反馈截图提速、警告色校准、下拉抖动与代码块换行对齐修复。说明见 `docs/features/session-graph.md`、`docs/features/workstation.md`。
@@ -54,6 +53,7 @@
 - 不读 git remote 的值、不 push；不连公网；测试 Host 一律 TANDEM_HOME=/tmp/…；不用 pkill -f。
 
 ## 本轮手工操作 / 出错环节（只留最近 5 轮，每轮 ≤5 行）
+- 2026-11-12 用户批评"实现特别糟糕"：①我把"分叉用 git 图切主线"理解成每个会话各画一张图，子代理又"保守"成单节点分支；②跳转、悬停浮层又各写一套。教训：概念类需求先用一个具体例子（节点/边）写清再派；验收亲自点用户原场景（反馈模式、真实长会话、外部会话）；新交互必须复用已有实现（跳转=轮次大纲那套，浮层=反馈模式能停住的那套）。
+- 2026-11-12 反馈0220#03 跳转：复现要把 `~/.tandem` 复制到 `/tmp/tdm-long` 并把真实会话 jsonl 拼长（>200 条）才会命中懒加载；Playwright 采样要在真实 Host 上跑，`page.mouse.wheel` 前后记录 rAF 帧才能看出「被拉回」；行上的固定按钮会被悬停用量浮层挡住，回归里用 DOM `click()`。
+- 2026-11-12 反馈0220：交接「继续/关闭」要先改协议 `HandoffPolicy`；服务端判定在 `host/handoff.ts` 的 `triggerHandoff`/`chooseHandoff` 与会话级 `handoffBypass`，工作站模式下冷却 Key 还要经 `includeCoolingKeys` 传到 `workstation/modelProxy.ts` 才会真正打到上游；文件链接改成行内代码 + `POST /api/fs/exist`；回归夹具 `trail`/`links2`/`quota-continue`/`quota-off`。
 - 2026-11-11 反馈1601：用自建临时 Host + CDP screencast/绘制后逐帧采样定位切换闪屏（注入说明行晚到 + 贴底补偿下一帧）；反馈包里的整页截图为 DOM 克隆，content-visibility 行会是空白，不能当作“主区空白”的证据；每次 Playwright 复现都要 `npm run build -w @tandem/web` 后新起 Host。
-- 2026-11-11 输入框改 contenteditable：回归里 60+ 处 `textarea[aria-label=消息输入框]` 换成 `[aria-label=消息输入框]`，`inputValue`→`data-value`、`isDisabled`→`aria-disabled`；批量替换误改到「记忆 Markdown」用例（已回退）。Playwright 的 fill 会把文本直接挂根节点，光标映射需带兜底。
-- 2026-11-12 反馈0220：交接「继续/关闭」要先改协议 `HandoffPolicy`，服务端判定在 `host/handoff.ts` `triggerHandoff`/`chooseHandoff` 与会话级 `handoffBypass`（loop 里 `keyCandidates({includeCooling})`、`assertBudget`）；文件链接改成行内代码+`POST /api/fs/exist`；回归夹具 `trail`/`links2`/`quota-continue`/`quota-off`。

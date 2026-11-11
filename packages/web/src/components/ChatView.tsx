@@ -15,6 +15,7 @@ import { api } from '../lib/api'
 import { navigate } from '../lib/router'
 import { isLocalHostUrl, isSameOrigin } from '../lib/hostUrl'
 import { useElementWidth, useIsMobile } from '../lib/hooks'
+import { JUMP_EVENT } from '../lib/jump'
 import { cn } from '../lib/cn'
 import { MessageList } from './MessageList'
 import { HandoffCard } from './chat/HandoffCard'
@@ -225,11 +226,13 @@ export function ChatView() {
   useEffect(() => {
     const onJump = () => {
       // 跳转到历史里的某轮/某张卡：不再保持底部跟随（否则补偿会把视口拉回底部）。
+      pinnedRef.current = false
       bottomIntentRef.current = false
+      userScrolledRef.current = false
       jumpUntil.current = Date.now() + 1200
     }
-    window.addEventListener('tandem-jump-message', onJump)
-    return () => window.removeEventListener('tandem-jump-message', onJump)
+    window.addEventListener(JUMP_EVENT, onJump)
+    return () => window.removeEventListener(JUMP_EVENT, onJump)
   }, [])
 
   useEffect(() => {
