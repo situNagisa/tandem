@@ -600,6 +600,9 @@ export function EnvBar({
       : worktreeIntent
         ? '将在发送下一条消息时创建隔离分支（再次点击取消）'
         : '将在发送下一条消息时创建隔离分支'
+  // 反馈1323#07 #08：目录探测完成且不是 git 仓库时，分支与 Worktree 都不渲染。
+  // Host 只给 git 仓库的会话下发 env，缺少 env 即非仓库；新会话页探测期间 envLoading 为 true。
+  const knownNonGit = !envLoading && !env?.repoRoot
 
   const startMigration = async (nextHostId: string, targetCwd: string) => {
     if (!host || !sessionId || migrating) return
@@ -828,12 +831,12 @@ export function EnvBar({
         }
       </Popover>
 
+      {!knownNonGit && (
       <Tooltip label={worktreeTip} side="top" className="shrink-0">
         <div
           className={cn(
             triggerClass,
             'inline-flex cursor-default',
-            !env?.repoRoot && 'max-sm:hidden',
             isWorktree && 'bg-[var(--t-bg-active)] text-text',
           )}
         >
@@ -848,6 +851,7 @@ export function EnvBar({
           />
         </div>
       </Tooltip>
+      )}
       {isSession && sessionId && sessionMounts.length > 0 && (
         <div className="flex min-w-0 items-center gap-0.5">
           {sessionMounts.map((mount) => (

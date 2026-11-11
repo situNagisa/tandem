@@ -2644,6 +2644,33 @@ async function main() {
       await page.waitForTimeout(300)
     }
 
+    /** 造一个非 Git 目录的会话并打开，结束后删掉会话与临时目录。 */
+    const withNonGitSession = async (page, fn) => {
+      const nonGit = mkdtempSync(path.join(os.tmpdir(), 'tandem-reg-nogit-'))
+      let created
+      try {
+        created = await api(base, token, '/api/sessions', {
+          method: 'POST',
+          body: JSON.stringify({
+            cwd: nonGit,
+            profileId: 'p-main',
+            groupId: 'g1',
+            model: 'mock-1',
+            title: '非 Git 会话',
+          }),
+        })
+        await gotoSession(page, created.id)
+        await page.locator('[data-env-bar]').first().waitFor()
+        await page.waitForTimeout(400)
+        await fn()
+      } finally {
+        if (created) {
+          await api(base, token, `/api/sessions/${created.id}?deleteWorktree=false`, { method: 'DELETE' }).catch(() => {})
+        }
+        rmSync(nonGit, { recursive: true, force: true })
+      }
+    }
+
     /** 打开外部会话只读预览（Claude Code / Codex）。 */
     const openExternal = async (page, source, id) => {
       await page.waitForFunction(
@@ -4506,6 +4533,23 @@ async function main() {
       withinViewport(await panel.boundingBox(), DESKTOP, '文件夹弹层')
       assert.equal(await panel.locator('[aria-label="使用此目录"]').count(), 1, '文件夹弹层内容未加载')
       await page.keyboard.press('Escape')
+    })
+
+    desktop('非 Git 仓库时不显示 Worktree 开关（反馈1323#07）', async (page) => {
+      await withNonGitSession(page, async () => {
+        const bar = page.locator('[data-env-bar]').first()
+        assert.equal(await bar.getByText('Worktree', { exact: true }).count(), 0, '非 Git 时仍显示 Worktree')
+        assert.equal(await bar.getByRole('switch', { name: 'Worktree' }).count(), 0, '非 Git 时仍有 Worktree 开关')
+        assert.equal(
+          await bar.locator('button[aria-haspopup="menu"]').count(),
+          2,
+          '非 Git 时环境条应只剩主机与文件夹',
+        )
+      })
+      // git 仓库保持原样。
+      await openSession(page, 'long')
+      const gitBar = page.locator('[data-env-bar]').first()
+      assert.equal(await gitBar.getByRole('switch', { name: 'Worktree' }).count(), 1, 'git 仓库缺少 Worktree 开关')
     })
 
     desktop('侧栏项目分「固定 / 最近」两组，固定图标语义与悬停规则（R01）', async (page) => {
