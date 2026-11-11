@@ -253,6 +253,7 @@ const AssistantRow = memo(function AssistantRow({
   turnUser,
   checkpointId,
   runningToolIds,
+  showMeta,
   fork,
   hook,
 }: {
@@ -266,6 +267,7 @@ const AssistantRow = memo(function AssistantRow({
   turnUser?: UiMessage
   checkpointId?: string
   runningToolIds?: Set<string>
+  showMeta?: boolean
   fork?: ReactNode
   hook?: ReactNode
 }) {
@@ -297,6 +299,7 @@ const AssistantRow = memo(function AssistantRow({
         turnUser={turnUser}
         checkpointId={checkpointId}
         runningToolIds={runningToolIds}
+        showMeta={showMeta}
       />
       {fork}
       {hook}
@@ -991,6 +994,21 @@ function MessageListInner({
     }
   }
 
+  // 一轮内只有最后一条 assistant 消息保留下方的时间/用量/操作行；中间穿插工具调用的
+  // 段落不再各留一行空白（反馈0220#05）。
+  const lastAssistantOfTurn = new Set<string>()
+  let assistantAfter = false
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!
+    if (m.role === 'user' && !m.summary && !m.gap && hasUserContent(m)) {
+      assistantAfter = false
+      continue
+    }
+    if (m.role !== 'assistant' || m.notice || m.gap) continue
+    if (!assistantAfter) lastAssistantOfTurn.add(m.id)
+    assistantAfter = true
+  }
+
   const changesByMessage = new Map<string, InjectionChange>()
   for (const change of storeInjections?.changes ?? []) {
     if (change.beforeMessageId) changesByMessage.set(change.beforeMessageId, change)
@@ -1114,6 +1132,7 @@ function MessageListInner({
           turnUser={turnUser}
           checkpointId={turnUser ? checkpoints?.get(turnUser.id) : undefined}
           runningToolIds={runningTools.ids}
+          showMeta={lastAssistantOfTurn.has(m.id)}
           fork={forkLinks(m.id)}
           hook={hookLine(m.id)}
         />

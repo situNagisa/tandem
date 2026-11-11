@@ -1734,6 +1734,7 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
     ),
     // 时间格式：两天前的一条（`MM-DD HH:mm`）与一条十年前的（带年份）。
     // 各自单起一轮，保证它们仍是本轮最后一条回复、保留下方时间行（反馈0220#05）。
+    message('r16u3', 'user', '两天前那条呢', { createdAt: createdAt - 2 * 86_400_000 - 1000 }),
     message('r16a4', 'assistant', '两天前的回复：分页正常。', {
       model: 'mock-1',
       createdAt: createdAt - 2 * 86_400_000,
@@ -1745,6 +1746,7 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       createdAt: createdAt - 2 * 86_400_000 + 1000,
       content: [{ type: 'tool_result', toolUseId: 'tu-r16-old', content: '# demo' }],
     },
+    message('r16u4', 'user', '去年的呢', { createdAt: createdAt - 400 * 86_400_000 - 1000 }),
     message('r16a5', 'assistant', '去年的回复：归档。', { model: 'mock-1', createdAt: createdAt - 400 * 86_400_000 }),
   ]
 
@@ -1813,6 +1815,105 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
     mk('links2', '文件识别规则会话', linkRuleMessages, { updatedAt: Date.now() - 1501 }),
     mk('wide', '宽内容会话', wideMessages, { updatedAt: Date.now() - 1520 }),
     mk('codeblock', '代码块与表格会话', richMessages, { updatedAt: Date.now() - 1530 }),
+    // 反馈0220#05：一轮内三段 assistant 回复（中间穿插工具调用），只有最后一段保留操作行。
+    mk('trail', '一轮多段回复会话', [
+      message('tr1', 'user', '请分三段回答'),
+      {
+        id: 'tr2',
+        role: 'assistant',
+        createdAt: createdAt + 2000,
+        model: 'mock-1',
+        content: [
+          { type: 'text', text: '第一段：先看目录结构。' },
+          { type: 'tool_use', id: 'tu-trail-1', name: 'Read', input: { file_path: 'src/hello.ts' } },
+        ],
+        usage: { inputTokens: 120, outputTokens: 20, costUsd: 0.001 },
+      },
+      {
+        id: 'tr3',
+        role: 'user',
+        createdAt: createdAt + 3000,
+        content: [{ type: 'tool_result', toolUseId: 'tu-trail-1', content: 'export const hello = 1' }],
+      },
+      {
+        id: 'tr4',
+        role: 'assistant',
+        createdAt: createdAt + 4000,
+        model: 'mock-1',
+        content: [
+          { type: 'text', text: '第二段：再确认构建脚本。' },
+          { type: 'tool_use', id: 'tu-trail-2', name: 'Read', input: { file_path: 'README.md' } },
+        ],
+        usage: { inputTokens: 130, outputTokens: 24, costUsd: 0.0012 },
+      },
+      {
+        id: 'tr5',
+        role: 'user',
+        createdAt: createdAt + 5000,
+        content: [{ type: 'tool_result', toolUseId: 'tu-trail-2', content: '# regrepo' }],
+      },
+      message('tr6', 'assistant', '第三段：全部完成。', {
+        model: 'mock-1',
+        usage: { inputTokens: 140, outputTokens: 30, costUsd: 0.0015 },
+      }),
+    ], { updatedAt: Date.now() - 1532 }),
+    mk('slow2', '排队消息会话', [
+      message('sq1', 'user', '先看看项目'),
+      message('sq2', 'assistant', '项目看起来正常。', { model: 'mock-1' }),
+    ], { permissionMode: 'bypassPermissions', updatedAt: Date.now() - 1536 }),
+    mk('scroll', '流式跟随会话', Array.from({ length: 8 }, (_, i) => [
+      message(`sc${i}u`, 'user', `第 ${i + 1} 个问题：请逐段介绍一下项目的结构与约定。`),
+      message(
+        `sc${i}a`,
+        'assistant',
+        Array.from({ length: 6 }, (_, j) => `第 ${i + 1} 节第 ${j + 1} 段：较长的说明文字，用来撑高对话区，便于观察滚动位置。`).join('\n\n'),
+        { model: 'mock-1' },
+      ),
+    ]).flat(), { permissionMode: 'bypassPermissions', updatedAt: Date.now() - 1534 }),
+    mk('slow', '慢速运行会话', [
+      message('slow1', 'user', '先看看项目'),
+      message('slow2', 'assistant', '项目看起来正常。', { model: 'mock-1' }),
+    ], { permissionMode: 'bypassPermissions', updatedAt: Date.now() - 1535 }),
+    // 配额交接：主分组第一次请求成功后下一次 429，备用分组接住。
+    mk('quota', '配额交接会话', [
+      message('q1', 'user', '第一轮：介绍一下项目'),
+      message('q2', 'assistant', '配额主分组回复：第一轮完成。', {
+        model: 'quota-model',
+        usage: { inputTokens: 120, outputTokens: 20, costUsd: 0.001 },
+      }),
+    ], {
+      profileId: 'p-quota',
+      groupId: 'g-quota-main',
+      model: 'quota-model',
+      updatedAt: Date.now() - 1550,
+    }),
+    // 反馈0220#02：没有备用分组时继续使用当前分组 / 关闭交接。
+    mk('quota-continue', '额度继续会话', [
+      message('qc1', 'user', '第一轮：介绍一下项目'),
+      message('qc2', 'assistant', '额度主分组回复：第一轮完成。', {
+        model: 'quota-continue-model',
+        usage: { inputTokens: 120, outputTokens: 20, costUsd: 0.001 },
+      }),
+    ], {
+      profileId: 'p-quota2',
+      groupId: 'g-continue',
+      model: 'quota-continue-model',
+      permissionMode: 'bypassPermissions',
+      updatedAt: Date.now() - 1552,
+    }),
+    mk('quota-off', '关闭交接会话', [
+      message('qo1', 'user', '第一轮：介绍一下项目'),
+      message('qo2', 'assistant', '额度主分组回复：第一轮完成。', {
+        model: 'quota-off-model',
+        usage: { inputTokens: 120, outputTokens: 20, costUsd: 0.001 },
+      }),
+    ], {
+      profileId: 'p-quota2',
+      groupId: 'g-off',
+      model: 'quota-off-model',
+      permissionMode: 'bypassPermissions',
+      updatedAt: Date.now() - 1553,
+    }),
     mk('nockpt', '无检查点会话', [
       message('n1', 'user', '先看看目录'),
       message('n2', 'assistant', '目录结构如下。', { model: 'mock-1' }),
@@ -3768,6 +3869,45 @@ async function main() {
         })
       }
     })
+
+    // 反馈0220#05：一轮内只有最后一条回复保留下方时间/用量/操作行。
+    desktop('反馈0220#05：一轮内只有最后一条回复保留操作行', async (page) => {
+      const outDir = '/tmp/fix-0220c/regression'
+      mkdirSync(outDir, { recursive: true })
+      await openSession(page, 'trail')
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.locator('[data-message-id="tr6"]').waitFor({ timeout: 15_000 })
+      const info = await page.evaluate(() => {
+        const read = (id) => {
+          const row = document.querySelector(`[data-message-id="${id}"]`)
+          const group = row?.querySelector('.msg-group')
+          const content = group ? [...group.children].filter((el) => !el.matches('[data-msg-meta], .msg-more')) : []
+          const last = content.at(-1)
+          return {
+            meta: !!row?.querySelector('[data-msg-meta]'),
+            more: !!row?.querySelector('.msg-more'),
+            gap: group && last ? Math.round(group.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom) : -1,
+          }
+        }
+        return { tr2: read('tr2'), tr4: read('tr4'), tr6: read('tr6') }
+      })
+      assert.equal(info.tr2.meta, false, '第一段不应有操作行')
+      assert.equal(info.tr2.more, false, '第一段不应有操作行')
+      assert.ok(info.tr2.gap < 12, `第一段下方仍留了操作行空白：${JSON.stringify(info.tr2)}`)
+      assert.equal(info.tr4.meta, false, '第二段不应有操作行')
+      assert.equal(info.tr4.more, false, '第二段不应有操作行')
+      assert.ok(info.tr4.gap < 12, `第二段下方仍留了操作行空白：${JSON.stringify(info.tr4)}`)
+      assert.equal(info.tr6.meta, true, '最后一段缺少时间/用量行')
+      assert.ok(info.tr6.gap >= 24, `最后一段下方没有保留操作行空间：${info.tr6.gap}px`)
+      await page.locator('[data-message-id="tr6"] .msg-group').hover()
+      await page.waitForTimeout(300)
+      const actions = await page
+        .locator('[data-message-id="tr6"] [data-msg-meta]')
+        .evaluate((el) => getComputedStyle(el).opacity)
+      assert.equal(actions, '1', '最后一段悬停后没有显示操作行')
+      await page.screenshot({ path: path.join(outDir, 'turn-meta-only-last.png') })
+    })
+
 
     desktop('Secrets 工具输出显示打码标签', async (page) => {
       await openSession(page, 'secrets')

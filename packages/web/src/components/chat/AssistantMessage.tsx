@@ -29,6 +29,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   turnUser,
   checkpointId,
   runningToolIds,
+  showMeta = true,
 }: {
   message: UiMessage
   streaming: boolean
@@ -44,6 +45,8 @@ export const AssistantMessage = memo(function AssistantMessage({
   checkpointId?: string
   /** 本轮仍在执行的工具 id：消息已结束、等工具返回时也显示转圈与已运行时长。 */
   runningToolIds?: Set<string>
+  /** 一轮内只有最后一条回复保留下方的时间/用量/操作行；中间的消息不留空白（反馈0220#05）。 */
+  showMeta?: boolean
 }) {
   const lastIndex = message.content.length - 1
   const { copied, copy } = useCopy()
@@ -169,8 +172,9 @@ export const AssistantMessage = memo(function AssistantMessage({
   return (
     <div className={cn('msg-group relative flex flex-col', animate && 'chat-msg-enter')}>
       {rendered}
-      <div className="mt-0.5 flex h-7 items-center justify-start gap-1" data-msg-meta>
-        <UsageLine>
+      {showMeta && (
+        <div className="mt-0.5 flex h-7 items-center justify-start gap-1" data-msg-meta>
+          <UsageLine>
           <MessageTime createdAt={message.createdAt} durationMs={durationMs} />
           {showUsage && (
             <span>
@@ -247,7 +251,8 @@ export const AssistantMessage = memo(function AssistantMessage({
           </div>
         )}
       </div>
-      {rawText.trim() && !streaming && (
+      )}
+      {showMeta && rawText.trim() && !streaming && (
         <>
           <div className="msg-more mt-0.5 h-7 justify-start max-md:h-11">
             <Menu

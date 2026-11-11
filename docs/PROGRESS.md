@@ -1,7 +1,13 @@
 # 进度
 
-> 更新：2026-11-11。只保留最近 3 轮；更早见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
+> 更新：2026-11-12。只保留最近 3 轮；更早见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 74（2026-11-12）反馈0220：额度交接可继续/可关闭、文件链接只认明确引用、一轮只留一处操作行
+- [x] #02 原话「额度预算它就没有继续功能…我没办法继续，现在就用不掉这个额度」：交接卡首位加「继续使用当前分组」→ 服务端 `chooseHandoff('continue')` 写会话级 `handoffBypass`、继续本轮，同类提醒不再拦截、冷却 Key 直接重试到上游报错；设置「额度交接」新增 `off`（关闭）真正跳过建卡；`forecast` 只提示不拦截；预算规则停用/删除后 `blockingRule` 不再阻止并加单测（反馈0220#02 / R72）。
+- [x] #04 原话「不能靠字符串识别，只要长得像文件就当成文件」：删除纯文本启发式（`splitFileRefs`/remarkFileLinker），只保留 Markdown 链接与「行内代码 + Host 批量存在性 `POST /api/fs/exist`」；客户端 60s 缓存、同帧合并请求（反馈0220#04 / R06）。
+- [x] #05 原话「只有最后一段需要留空白…中间这些不需要」：`MessageList` 按轮算最后一条 assistant，只有它渲染时间/用量/操作行（反馈0220#05 / R73）。
+- [x] 检查：单测 `handoff`/`budgets`/`fileLinks`；regression 新增 0220#02 两条、#04、#05 共 4 条。
+- 验证：`node scripts/check.mjs --skip-smoke`；截图在 `/tmp/fix-0220c/`。
 ## 迭代 73（2026-11-11）侧栏会话树与悬停拓扑图
 - [x] 侧栏分叉与原会话共用一行（用户 22:09 原话）：`lib/sessionTree.ts` 归并、`buildGroups` 一行一棵树；标题取根、点击打开树内最近活动的会话、未读/运行/待审批汇总、置顶整树生效；打开分叉时行内小字标出分叉名。
 - [x] 悬停会话行在右侧弹出拓扑图（`ui/HoverCard` + `SessionTopology`）：节点 = 会话、无轮次与 token；布局、泳道色、连线、悬停线高亮 + 会话名 tip 复用 `sessionGraph`，点节点切换会话。
@@ -15,12 +21,3 @@
 - [x] #03 原话「正在输出的轮次加上一个动画」：运行中会话最新轮节点外圈复用侧栏 `running-dot` 呼吸动画，尊重 `prefers-reduced-motion`（反馈2156#03、decisions-check `graph-running-animation`）。
 - [x] #04 原话「删掉这个最占空间」：删除上下文卡/弹层/外部预览的「最占空间」区块、折叠记忆与按轮聚合计算，相关旧断言与 decisions 规则删除（反馈2156#04）。
 - 验证：`node scripts/check.mjs --skip-smoke`；截图（深/浅）在 `/tmp/fix-2156/`。
-
-## 迭代 71（2026-11-11）工作站 / 主机信息架构（T1–T5、T7）
-- [x] T1 术语：设备面板改「设备」（标题与描述不再写死 ADB/串口）；账号菜单去掉设备入口，改由环境条已挂载 chip 与主机详情「设备」进入；「工作站管理」→「工作站设置」且仅 admin/owner 显示，新增「账号设置」。
-- [x] T2/T3 主机唯一列表 + 详情：`HostsSection` 合并工作站归属（我的/获授权）、本机标、版本不一致；行只留状态，点行开 `HostDetailDrawer`（改名、设备、诊断、重连、授权、移除，移除确认写明影响）；授权弹层抽成 `HostGrantDialog`。设置→工作站不再列主机。
-- [x] T4 添加主机唯一化：`AddHostDialog` 删除本机 join 副本与手填表单；空状态、设置、环境条菜单、命令面板、导览卡全部打开同一对话框；命令面板同名项只剩一条。
-- [x] T5 设置→工作站：独立页，仅管理员；保留名称、注册方式、邀请码、成员列表（停用「待接入」服务端接口）；旧「成员与分享」页删除，分享独立成页。
-- [x] T7 环境条主机菜单只留名称+状态，底部「管理主机…」「添加主机…」；侧栏筛选改「按主机筛选」；命令面板新增「打开主机设置」。
-- [x] 检查：decisions-check 新增 hosts-single-entry 与 add-host-single-dialog；regression 新增「唯一主机列表/详情/添加入口/工作站仅管理员」，登录门与设备用例改到新入口。
-- 验证：`node scripts/check.mjs --skip-smoke`；截图（深/浅）在 `/tmp/ia-hosts-after/`，对比图 `compare.png`。
