@@ -53,7 +53,7 @@
 - 不读 git remote 的值、不 push；不连公网；测试 Host 一律 TANDEM_HOME=/tmp/…；不用 pkill -f。
 
 ## 本轮手工操作 / 出错环节（只留最近 5 轮，每轮 ≤5 行）
+- 2026-11-11 U3 徽标：worktree 无 node_modules 导致 vite 解析失败；按 AGENTS 只在 worktree 内建「根 node_modules → 主仓」+ 各包 `node_modules/@tandem/*` 软链，先 build protocol 再 build web。
 - 2026-11-11 输入框改 contenteditable：回归里 60+ 处 `textarea[aria-label=消息输入框]` 换成 `[aria-label=消息输入框]`，`inputValue`→`data-value`、`isDisabled`→`aria-disabled`；批量替换误改到「记忆 Markdown」用例（已回退）。Playwright 的 fill 会把文本直接挂根节点，光标映射需带兜底。
 - 2026-11-10 用户报 Edge 连不上主机：两处根因（登录门把 Host 当工作站探测→401 循环；内嵌工作站换端口后隧道连旧端口）。教训：测试 Host 曾占用用户默认端口 8481，现非默认 TANDEM_HOME 用随机端口；调试时 curl 要 `--noproxy '*'`（环境有 HTTP 代理，回环会 502）。
 - 2026-11-10 弹层透明：`--t-bg-elevated` 从未定义（UI 第二批为绕 card-class 规则引入）；已恢复 `bg-surface`，ui-audit 加 `undefined-css-var`。截图脚本 `/tmp/fix-transparent/shots.mjs`（假 SpeechRecognition/麦克风驱动语音浮层）。
-- 2026-11-10 晚：并行 5~7 个子代理各跑全量 check 时回归出现随机失败（负载），单跑均过；worktree 堆积会让新建 worktree 失败，合并后及时 `git worktree remove`。

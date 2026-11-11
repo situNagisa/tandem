@@ -1,6 +1,13 @@
 # 进度
 
-> 更新：2026-11-10。只保留最近 3 轮；更早见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
+> 更新：2026-11-11。只保留最近 3 轮；更早见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
+
+## 迭代 68（2026-11-11）UI 第三批：芯片/徽标统一（打分卡 U3-B，用户原话「徽標用方案B」）
+- [x] 新增 `ui/Badge`：透明底 + 1px 边、4px 圆角、20px 高、11px 字；tone = neutral / success / warn / danger / annotation。
+- [x] 替换 34 处徽标（调试、反馈、体验清单、演示、评测、工作站、浏览器/预览、分享），状态/演示用中性描边（P02），反馈标注用新 token `--t-annotation`（沿用原 #F97316，深浅各一）。
+- [x] 9.5–10.5px 文本全部提到 11px（tsx 59 处、CSS 6 处；侧栏 kbd、ToolCard、DiffView、Composer 一并）；ui-audit 新增 `hardcoded-annotation-orange` 与 `tiny-font`（白名单为空，演示设备缩略画面注明原因）。
+- [x] decisions-check 新增 `ui-badge`（2026-11-11 用户决定）；截图 `/tmp/u3b-after/compare.png`（现状 vs B 实装，浅/深）。
+- 验证：`node scripts/check.mjs --skip-smoke` 通过。
 
 ## 迭代 67（2026-11-10）输入框分工/取向两个维度（反馈2009#01）
 - [x] 用户原话（反馈2009#01）：上面四个选项与委派倾向重复，应分两个维度（积不积极派子代理 / 质量优先还是成本优先）。菜单改为「分工」（关闭 / 适度 / 积极）与「取向」（省钱 / 均衡 / 质量优先）两组单选；「仅规划」移除（计划模式权限已覆盖）。
