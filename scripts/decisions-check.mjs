@@ -47,6 +47,7 @@ const F = {
   sessionRow: 'packages/web/src/components/session/SessionRow.tsx',
   sessionGroups: 'packages/web/src/components/session/SessionGroups.tsx',
   sidebar: 'packages/web/src/components/Sidebar.tsx',
+  featureTour: 'packages/web/src/components/tour/FeatureTour.tsx',
   app: 'packages/web/src/App.tsx',
   envBar: 'packages/web/src/components/EnvBar.tsx',
   topBar: 'packages/web/src/components/TopBar.tsx',
@@ -348,6 +349,13 @@ const DECISIONS = [
     decision: '会话行 hover 显示 ⋯，时间不被遮挡',
     files: [F.sessionList, F.sessionRow, F.sessionGroups, F.chatCss],
     need: [/group-hover/, /会话操作|⋯/],
+  },
+  {
+    id: 'tour-pill-auto-hide',
+    source: '反馈1323#01（2026-11-11 原话「这个如果说没点开来看，过一段时间就自动退掉」）',
+    decision: '新功能提示条出现后 30 秒内没点开就自动收起并记为本版本已读；点开过按原有导览逻辑',
+    files: [F.featureTour],
+    need: [/TOUR_PILL_AUTO_HIDE_MS = 30_000/, /autoMode !== 'tour'/, /markChangelogSeen\(\)/],
   },
   {
     id: 'topbar-icon-limit',

@@ -11440,6 +11440,41 @@ async function main() {
       await page.evaluate(() => localStorage.removeItem('tandem.account.v1'))
     })
 
+    fb2102('反馈1323#01：新功能提示条 30 秒未点开自动收起，本版本不再弹', async (page) => {
+      mkdirSync(fix1323Shots, { recursive: true })
+      const closePill = page.getByRole('button', { name: '暂时关闭新功能提示' })
+      // 假时钟：页面里的 30 秒计时由 page.clock 控制，不真等 30 秒。
+      await page.clock.install({ time: new Date(today) })
+      await page.evaluate(() => localStorage.removeItem('tandem.changelogSeen.v1'))
+      await page.reload()
+      await closePill.waitFor({ timeout: 20_000 })
+      await page.screenshot({ path: shot1323('01-tour-pill-visible-dark.png') })
+      await useLightTheme(page)
+      await page.screenshot({ path: shot1323('01-tour-pill-visible-light.png') })
+
+      await page.clock.fastForward(29_000)
+      assert.equal(await closePill.count(), 1, '不到 30 秒提示条不应收起')
+      await page.clock.fastForward(2_000)
+      assert.equal(await closePill.count(), 0, '30 秒没点开，提示条应自动收起')
+      const seen = await page.evaluate(() => localStorage.getItem('tandem.changelogSeen.v1'))
+      assert.ok(seen, '收起后应记为本版本已读')
+
+      await page.reload()
+      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+      assert.equal(await closePill.count(), 0, '同一版本内不应再弹出')
+
+      // 点开过就按现有逻辑：导览面板不会因为 30 秒到点被自动收起。
+      await page.evaluate(() => localStorage.removeItem('tandem.changelogSeen.v1'))
+      await page.reload()
+      const openPill = page.getByRole('button', { name: /^新功能 · \d+ 项/ })
+      await openPill.waitFor({ timeout: 20_000 })
+      await openPill.click()
+      const panel = page.getByRole('region', { name: '新功能导览' })
+      await panel.waitFor({ timeout: 5_000 })
+      await page.clock.fastForward(31_000)
+      assert.equal(await panel.count(), 1, '点开后的导览不应被自动收起')
+    })
+
     // 工作站客户端-服务：只跑工作站 + 两台主机，注册/绑定/授权/E2E 流式（API 级，独立进程）。
     checks.push({
       name: '工作站客户端-服务（注册/添加主机/授权/E2E 流式）',

@@ -32,6 +32,9 @@ import { Modal } from '../ui/Modal'
 const CARD_POSITION =
   'fixed bottom-[calc(88px+env(safe-area-inset-bottom))] right-3 z-[75] w-[min(340px,calc(100vw-1.5rem))] sm:right-4'
 
+/** 提示条出现后，用户没点开就在这段时间后自动收起（反馈1323#01）。 */
+const TOUR_PILL_AUTO_HIDE_MS = 30_000
+
 async function runTarget(target: ChangelogTarget): Promise<void> {
   const ui = useUiStore.getState()
   const app = useAppStore.getState()
@@ -372,6 +375,18 @@ export function FeatureTour() {
   useEffect(() => {
     if (tourOpen) setAutoMode('none')
   }, [tourOpen])
+
+  // 反馈1323#01（原话「这个如果说没点开来看，过一段时间就自动退掉」）：
+  // 提示条出现后若用户没有点开，30 秒后自动收起，并记为本版本已读，不再弹出。
+  // 点开过由上面的 tourOpen 分支收起提示条，之后按原有导览逻辑走。
+  useEffect(() => {
+    if (autoMode !== 'tour') return
+    const timer = window.setTimeout(() => {
+      markChangelogSeen()
+      setAutoMode('none')
+    }, TOUR_PILL_AUTO_HIDE_MS)
+    return () => window.clearTimeout(timer)
+  }, [autoMode])
 
   const finishOnboarding = () => {
     markOnboardingDone()
