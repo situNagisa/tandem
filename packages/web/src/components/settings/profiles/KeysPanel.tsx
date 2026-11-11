@@ -1,27 +1,18 @@
 import { useState } from 'react'
-import type { KeyStrategy, Profile, ProfileGroup, ProfileInput, ProfileKey, ProfileKeyInput } from '@tandem/protocol'
-import {
-  Check,
-  Eye,
-  EyeOff,
-  GripVertical,
-  KeyRound,
-  Power,
-  PowerOff,
-  Plus,
-  RefreshCw,
-  Trash2,
-  TriangleAlert,
-  Wifi,
-} from 'lucide-react'
+import type { Profile, ProfileGroup, ProfileInput, ProfileKey, ProfileKeyInput } from '@tandem/protocol'
+import { Check, Eye, EyeOff, KeyRound, Trash2, TriangleAlert, Wifi } from 'lucide-react'
 import { useUiStore } from '../../../store/useUiStore'
 import { useNow } from '../../../lib/hooks'
 import { cn } from '../../../lib/cn'
 import { Button, IconButton } from '../../ui/Button'
-import { SegmentedControl } from '../../ui/Controls'
 import { Tooltip } from '../../ui/Tooltip'
 import { groupInputOf, keyInputOf, keyStatus, profileInputOf } from './shared'
 
+/**
+ * 分组 Key：每个分组只显示一个 Key（反馈1323#02）。
+ * 旧数据里一个分组有多个 Key 时只显示第一个可用的那个；保存只改这一个，
+ * 其余 Key 原样回传（服务端按 id 保留），不显示也不删除。
+ */
 export function KeysPanel({
   profile,
   group,
@@ -37,27 +28,29 @@ export function KeysPanel({
   const toast = useUiStore((s) => s.toast)
   const now = useNow(true)
   const [busy, setBusy] = useState(false)
-  const [tests, setTests] = useState<Record<string, { ok: boolean; error?: string }>>({})
-  const [adding, setAdding] = useState(false)
-  const [label, setLabel] = useState('')
+  const [editing, setEditing] = useState(false)
   const [value, setValue] = useState('')
   const [showValue, setShowValue] = useState(false)
-  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [test, setTest] = useState<{ ok: boolean; error?: string } | null>(null)
 
-  const save = async (keys: ProfileKeyInput[], strategy?: KeyStrategy) => {
+  const shown: ProfileKey | undefined = group.keys.find((key) => !key.disabled) ?? group.keys[0]
+  const status = shown ? keyStatus(shown, now) : null
+
+  /** 只替换/删除当前显示的 Key；其余（旧数据的隐藏 Key）原样保留。 */
+  const save = async (next: ProfileKeyInput | null) => {
     if (busy) return
     setBusy(true)
     try {
-      const groups = (profile.groups ?? []).map((g) =>
-        g.id === group.id
-          ? {
-              ...groupInputOf(g),
-              apiKeys: keys,
-              ...(strategy ? { keyStrategy: strategy } : {}),
-            }
-          : groupInputOf(g),
+      const rest = group.keys.filter((key) => key.id !== shown?.id).map(keyInputOf)
+      const apiKeys = next ? [next, ...rest] : rest
+      const groups = (profile.groups ?? []).map((item) =>
+        item.id === group.id ? { ...groupInputOf(item), apiKeys } : groupInputOf(item),
       )
       await saveProfile(profileInputOf(profile, groups))
+      setEditing(false)
+      setValue('')
+      setShowValue(false)
+      setTest(null)
     } catch (err) {
       toast(err instanceof Error ? err.message : '更新 Key 失败', 'error')
     } finally {
@@ -65,195 +58,156 @@ export function KeysPanel({
     }
   }
 
-  const addKey = async () => {
+  const replace = () => {
     const secret = value.trim()
     if (!secret) return
-    await save([
-      ...group.keys.map(keyInputOf),
-      { apiKey: secret, ...(label.trim() ? { label: label.trim() } : {}) },
-    ])
-    setLabel('')
-    setValue('')
-    setShowValue(false)
-    setAdding(false)
+    void save({
+      ...(shown?.id ? { id: shown.id } : {}),
+      ...(shown?.label ? { label: shown.label } : {}),
+      apiKey: secret,
+    })
   }
 
-  const toggleKey = (key: ProfileKey) =>
-    void save(
-      group.keys.map((k) =>
-        k.id === key.id ? { id: k.id, ...(k.label ? { label: k.label } : {}), disabled: !k.disabled } : keyInputOf(k),
-      ),
-    )
-
-  const removeKey = (key: ProfileKey) =>
-    void save(group.keys.filter((k) => k.id !== key.id).map(keyInputOf))
-
-  const reorder = (from: number, to: number) => {
-    if (from === to) return
-    const next = group.keys.slice()
-    const [moved] = next.splice(from, 1)
-    next.splice(to, 0, moved)
-    void save(next.map(keyInputOf))
-  }
-
-  const testKey = async (key: ProfileKey) => {
+  const runTest = async (key: ProfileKey) => {
     try {
-      const res = await testProfile(group.id, key.id)
-      setTests((prev) => ({ ...prev, [key.id]: res }))
+      setTest(await testProfile(group.id, key.id))
     } catch (err) {
-      setTests((prev) => ({
-        ...prev,
-        [key.id]: { ok: false, error: err instanceof Error ? err.message : '测试失败' },
-      }))
+      setTest({ ok: false, error: err instanceof Error ? err.message : '测试失败' })
     }
   }
 
-  return (
-    <div className="mt-1 rounded-lg border border-border/70 bg-bg/30 p-1.5">
-      <div className="flex flex-wrap items-center gap-1.5 px-0.5">
-        <KeyRound size={11} className="shrink-0 text-text-tertiary" />
-        <span className="shrink-0 text-[12px] text-muted">{group.keys.length} 个 Key</span>
-        <SegmentedControl
-          aria-label={`${group.name} 的 Key 调度策略`}
-          size="sm"
-          value={group.keyStrategy ?? 'failover'}
-          onChange={(strategy) => void save(group.keys.map(keyInputOf), strategy)}
-          options={[
-            { value: 'failover', label: '故障切换', title: '按顺序故障切换' },
-            { value: 'round_robin', label: '轮询' },
-          ]}
-        />
-        <span className="flex-1" />
-        <Button
-          size="sm"
-          onClick={() => setAdding((v) => !v)}
-          disabled={busy}
-          className="h-6 px-1.5 text-[12px]"
-        >
-          <Plus size={11} /> 添加 Key
-        </Button>
-      </div>
-
-      <div className="mt-1 space-y-0.5">
-        {group.keys.map((key, index) => {
-          const status = keyStatus(key, now)
-          const test = tests[key.id]
-          const statusTip = key.lastError?.trim() || status.text
-          return (
-            <div
-              key={key.id}
-              draggable={!busy}
-              onDragStart={() => setDragIndex(index)}
-              onDragEnd={() => setDragIndex(null)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => {
-                if (dragIndex !== null) reorder(dragIndex, index)
-                setDragIndex(null)
-              }}
-              className={cn(
-                'flex items-center gap-1.5 rounded-md bg-surface/70 px-1.5 py-1',
-                dragIndex === index && 'opacity-50',
-                busy && 'pointer-events-none opacity-60',
-              )}
-            >
-              <GripVertical size={11} className="shrink-0 cursor-grab text-muted" aria-hidden />
-              <span className="min-w-0 flex-1 truncate text-[13px] text-text">
-                {key.label?.trim() || 'Key'}
-                <span className="ml-1.5 font-mono text-[12px] text-muted">{key.apiKeyMasked}</span>
-              </span>
-              {test && (
-                <span
-                  data-tip={test.ok ? '测试通过' : test.error || '测试失败'}
-                  className={cn('shrink-0', test.ok ? 'text-text-tertiary' : 'text-danger')}
-                >
-                  {test.ok ? <Check size={11} /> : <TriangleAlert size={11} />}
-                </span>
-              )}
-              <Tooltip label={statusTip} className="shrink-0 text-[12px] leading-none">
-                <span className={cn(status.tone, 'cursor-default')}>{status.text}</span>
-              </Tooltip>
-              <span className="flex shrink-0 items-center gap-0.5">
-                <IconButton
-                  size="sm"
-                  onClick={() => void testKey(key)}
-                  label={`测试 Key ${key.label ?? key.apiKeyMasked}`}
-                  tooltip="测试"
-                  className="size-6 [&_svg]:size-3"
-                >
-                  <Wifi size={11} />
-                </IconButton>
-                <IconButton
-                  size="sm"
-                  onClick={() => void toggleKey(key)}
-                  label={key.disabled ? '启用这个 Key' : '停用这个 Key'}
-                  tooltip={key.disabled ? '启用' : '停用'}
-                  className="size-6 [&_svg]:size-3"
-                >
-                  {key.disabled ? <Power size={11} /> : <PowerOff size={11} />}
-                </IconButton>
-                <IconButton
-                  size="sm"
-                  variant="danger-ghost"
-                  onClick={() => void removeKey(key)}
-                  label={`删除 Key ${key.label ?? key.apiKeyMasked}`}
-                  tooltip="删除"
-                  className="size-6 [&_svg]:size-3"
-                >
-                  <Trash2 size={11} />
-                </IconButton>
-              </span>
-            </div>
-          )
-        })}
-        {group.keys.length === 0 && (
-          <p className="px-1 py-1 text-[12px] text-muted">还没有 Key，这个分组暂时不可用。</p>
-        )}
-      </div>
-
-      {adding && (
-        <div className="mt-1 flex flex-wrap items-center gap-1.5 rounded-md bg-surface/70 p-1.5">
+  if (editing) {
+    return (
+      <div className="flex min-w-0 items-center gap-1.5" data-group-key={group.id}>
+        <KeyRound size={12} className="shrink-0 text-text-tertiary" />
+        <div className="relative min-w-0 flex-1">
           <input
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="标签（如 主 / 备用）"
-            className="h-7 w-28 rounded-md border border-border bg-bg px-1.5 text-[13px] outline-none focus:border-border-strong"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                replace()
+              }
+              if (e.key === 'Escape') setEditing(false)
+            }}
+            type={showValue ? 'text' : 'password'}
+            placeholder={shown ? '粘贴新的 Key' : '粘贴 Key'}
+            spellCheck={false}
+            autoComplete="off"
+            autoFocus
+            data-key-input=""
+            className="h-7 w-full rounded-md border border-border bg-bg pl-1.5 pr-7 font-mono text-[13px] outline-none focus:border-border-strong"
           />
-          <div className="relative min-w-0 flex-1">
-            <input
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              type={showValue ? 'text' : 'password'}
-              placeholder="粘贴新 Key"
-              spellCheck={false}
-              autoComplete="off"
-              className="h-7 w-full rounded-md border border-border bg-bg pl-1.5 pr-7 font-mono text-[13px] outline-none focus:border-border-strong"
-            />
-            <span className="absolute right-0.5 top-1/2 -translate-y-1/2">
-              <IconButton
-                size="sm"
-                onClick={() => setShowValue((v) => !v)}
-                label={showValue ? '隐藏 Key' : '显示 Key'}
-                className="size-6 [&_svg]:size-3"
-              >
-                {showValue ? <EyeOff size={11} /> : <Eye size={11} />}
-              </IconButton>
-            </span>
-          </div>
-          <Button size="sm" variant="primary" onClick={() => void addKey()} disabled={!value.trim()}>
-            保存
-          </Button>
-          <Button size="sm" onClick={() => setAdding(false)}>
-            取消
-          </Button>
-          <span className="w-full px-0.5 text-[12px] text-muted">
-            新 Key 只保存到 Host，界面只显示掩码。
+          <span className="absolute right-0.5 top-1/2 -translate-y-1/2">
+            <IconButton
+              size="sm"
+              onClick={() => setShowValue((v) => !v)}
+              label={showValue ? '隐藏 Key' : '显示 Key'}
+              className="size-6 [&_svg]:size-3"
+            >
+              {showValue ? <EyeOff size={11} /> : <Eye size={11} />}
+            </IconButton>
           </span>
         </div>
-      )}
+        <Button size="inline" variant="primary" onClick={replace} disabled={!value.trim() || busy}>
+          保存
+        </Button>
+        <Button
+          size="inline"
+          onClick={() => {
+            setEditing(false)
+            setValue('')
+          }}
+        >
+          取消
+        </Button>
+      </div>
+    )
+  }
 
-      <p className="mt-1 px-0.5 text-[12px] text-muted">
-        拖动 Key 调整顺序；故障切换按顺序优先使用，轮询在可用 Key 间轮流。
-      </p>
+  return (
+    <div className="flex min-w-0 items-center gap-1.5" data-group-key={group.id}>
+      <KeyRound size={12} className="shrink-0 text-text-tertiary" />
+      {shown ? (
+        <>
+          <span
+            className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-text-soft"
+            data-key-masked={shown.apiKeyMasked}
+            data-tip={shown.label?.trim() || undefined}
+          >
+            {shown.apiKeyMasked || '已保存'}
+          </span>
+          {test && (
+            <span
+              data-tip={test.ok ? '测试通过' : test.error || '测试失败'}
+              className={cn('shrink-0', test.ok ? 'text-text-tertiary' : 'text-danger')}
+            >
+              {test.ok ? <Check size={11} /> : <TriangleAlert size={11} />}
+            </span>
+          )}
+          <Tooltip
+            label={shown.lastError?.trim() || status?.text || ''}
+            className={cn('shrink-0 text-[12px] leading-none', status?.tone)}
+          >
+            <span className="cursor-default" data-key-status="">
+              {status?.text}
+            </span>
+          </Tooltip>
+          <span className="flex shrink-0 items-center gap-0.5">
+            <IconButton
+              size="sm"
+              onClick={() => void runTest(shown)}
+              label="测试 Key"
+              tooltip="测试"
+              className="size-6 [&_svg]:size-3"
+            >
+              <Wifi size={11} />
+            </IconButton>
+            <Button
+              size="inline"
+              variant="ghost"
+              onClick={() => {
+                setEditing(true)
+                setValue('')
+                setShowValue(false)
+              }}
+              disabled={busy}
+              data-key-replace=""
+              className="h-6 px-1.5 text-[12px]"
+            >
+              更换
+            </Button>
+            <IconButton
+              size="sm"
+              variant="danger-ghost"
+              onClick={() => void save(null)}
+              label="删除 Key"
+              tooltip="删除"
+              disabled={busy}
+              data-key-delete=""
+              className="size-6 [&_svg]:size-3"
+            >
+              <Trash2 size={11} />
+            </IconButton>
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted">还没有 Key，分组不可用</span>
+          <Button
+            size="inline"
+            onClick={() => {
+              setEditing(true)
+              setValue('')
+            }}
+            data-key-replace=""
+            className="h-6 px-1.5 text-[12px]"
+          >
+            设置 Key
+          </Button>
+        </>
+      )}
     </div>
   )
 }

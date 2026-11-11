@@ -1097,35 +1097,37 @@ export function ProfilesSection() {
                       {groupCount ? (
                         <div className="space-y-1">
                           {p.groups?.map((g) => (
-                            <div key={g.id} data-setting-id="profiles.key-strategy" className="rounded-lg bg-bg/40 px-2 py-1.5">
-                              <div className="flex items-center gap-2">
-                                <span className="min-w-0 flex-1 truncate text-[13px] text-text">
-                                  {g.name}
-                                </span>
-                                <span className="shrink-0 rounded border border-border px-1 text-[12px] text-muted">
-                                  {GROUP_KIND_LABELS[g.kind ?? p.kind]}
-                                </span>
-                                <span className="shrink-0 text-[12px] text-muted">
-                                  {g.keys.length} Key · {g.models.length} 模型
-                                </span>
-                              </div>
-                              <KeysPanel
-                                profile={p}
-                                group={g}
-                                saveProfile={async (input) => {
-                                  if (account) {
-                                    await workstationApi.updateProfile(account.centerUrl, account.accessToken, p.id, input)
-                                  } else {
-                                    await api.updateProfile(host, p.id, input)
+                            <div
+                              key={g.id}
+                              data-setting-id="profiles.group-key"
+                              data-group-card={g.id}
+                              className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-bg/40 px-2 py-1"
+                            >
+                              <span className="max-w-[45%] min-w-0 shrink-0 truncate text-[13px] text-text">
+                                {g.name}
+                              </span>
+                              <span className="shrink-0 rounded border border-border px-1 text-[12px] text-muted">
+                                {GROUP_KIND_LABELS[g.kind ?? p.kind]}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <KeysPanel
+                                  profile={p}
+                                  group={g}
+                                  saveProfile={async (input) => {
+                                    if (account) {
+                                      await workstationApi.updateProfile(account.centerUrl, account.accessToken, p.id, input)
+                                    } else {
+                                      await api.updateProfile(host, p.id, input)
+                                    }
+                                    await refreshProfiles(host.id)
+                                  }}
+                                  testProfile={(groupId, keyId) =>
+                                    account
+                                      ? workstationApi.testProfile(account.centerUrl, account.accessToken, p.id, groupId, keyId)
+                                      : api.testProfile(host, p.id, groupId, keyId)
                                   }
-                                  await refreshProfiles(host.id)
-                                }}
-                                testProfile={(groupId, keyId) =>
-                                  account
-                                    ? workstationApi.testProfile(account.centerUrl, account.accessToken, p.id, groupId, keyId)
-                                    : api.testProfile(host, p.id, groupId, keyId)
-                                }
-                              />
+                                />
+                              </div>
                             </div>
                           ))}
                         </div>

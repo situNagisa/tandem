@@ -64,7 +64,7 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'profiles.accounts', tab: 'profiles', title: '账号列表', keywords: ['账号', '服务商', 'Key'] },
   { id: 'profiles.groups', tab: 'profiles', title: '账号分组', keywords: ['分组', '渠道', '协议'] },
   { id: 'profiles.models', tab: 'profiles', title: '模型列表', keywords: ['模型', '默认模型'] },
-  { id: 'profiles.key-strategy', tab: 'profiles', title: 'Key 调度策略', keywords: ['Key', '故障切换', '轮询', '冷却', '调度'] },
+  { id: 'profiles.group-key', tab: 'profiles', title: '分组 Key', keywords: ['Key', '分组', '替换', '删除', '冷却'] },
   { id: 'profiles.prices', tab: 'profiles', title: '模型价格覆盖', keywords: ['价格', '计费', '费用'] },
 
   { id: 'routing.candidates', tab: 'routing', title: '自动路由候选池', keywords: ['自动', '路由', '候选', '模型', '档位', '快速', '强力'] },

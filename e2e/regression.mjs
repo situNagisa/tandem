@@ -1262,7 +1262,11 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
         {
           id: 'g1',
           name: '生产',
-          apiKey: 'reg-key-g1',
+          // 反馈1323#02：旧数据里同一分组有两个 Key，界面只显示第一个可用的，保存不删其余。
+          keys: [
+            { id: 'k-g1-a', label: '主', apiKey: 'reg-key-g1' },
+            { id: 'k-g1-b', label: '备', apiKey: 'reg-key-g1-backup' },
+          ],
           models: ['mock-1', 'mock-2'],
           defaultModel: 'mock-1',
         },
@@ -11473,6 +11477,66 @@ async function main() {
       await panel.waitFor({ timeout: 5_000 })
       await page.clock.fastForward(31_000)
       assert.equal(await panel.count(), 1, '点开后的导览不应被自动收起')
+    })
+
+    fb2102('反馈1323#02：分组只显示一个 Key，无拖动/故障切换/轮询/添加 Key', async (page) => {
+      mkdirSync(fix1323Shots, { recursive: true })
+      const dialog = await openSettings(page, '账号与模型', 'desktop')
+      const accountRow = dialog.locator('button[aria-expanded]').filter({ hasText: '主力账号' }).first()
+      await accountRow.waitFor({ timeout: 10_000 })
+      if ((await accountRow.getAttribute('aria-expanded')) !== 'true') await accountRow.click()
+      const card = dialog.locator('[data-group-card="g1"]')
+      await card.waitFor({ timeout: 10_000 })
+      const cardText = await card.innerText()
+      assert.doesNotMatch(cardText, /拖动 Key|故障切换|轮询|添加 Key/, `分组卡仍有旧 Key 管理文案：${cardText}`)
+      assert.doesNotMatch(cardText, /\d+ 个? ?Key|\d+ 个模型/, `分组卡仍显示 Key/模型数量：${cardText}`)
+      const keys = card.locator('[data-key-masked]')
+      assert.equal(await keys.count(), 1, '每个分组只应显示一个 Key')
+      assert.match((await keys.first().innerText()).trim(), /^reg-\*{4}/, 'Key 掩码不对')
+      assert.match(cardText, /可用/, 'Key 状态没有显示')
+      const cardBox = await card.boundingBox()
+      assert.ok(cardBox && cardBox.height <= 40, `分组卡不是单行紧凑排版：${cardBox?.height}`)
+      await page.screenshot({ path: shot1323('02-group-single-key-dark.png') })
+      await useLightTheme(page)
+      await page.screenshot({ path: shot1323('02-group-single-key-light.png') })
+
+      const groupOf = async () => {
+        const profiles = await api(base, token, '/api/profiles')
+        return profiles.find((item) => item.id === 'p-main')?.groups?.find((item) => item.id === 'g1')
+      }
+      assert.equal((await groupOf())?.keys?.length, 2, '夹具应有两个旧 Key')
+
+      // 更换 Key：只改显示的那个，旧数据里另一个 Key 保留（不显示也不删除）。
+      await card.locator('[data-key-replace]').click()
+      await card.locator('[data-key-input]').fill('sk-new-reg-key-1234')
+      await card.getByRole('button', { name: '保存', exact: true }).click()
+      await waitUntil('分组 Key 更换生效', async () => {
+        const group = await groupOf()
+        return group?.keys?.[0]?.id === 'k-g1-a' && /^sk-n/.test(group?.keys?.[0]?.apiKeyMasked ?? '')
+      })
+      const replaced = await groupOf()
+      assert.equal(replaced.keys.length, 2, '更换 Key 不应删除旧数据里的其他 Key')
+      assert.equal(replaced.keys[1].id, 'k-g1-b', '隐藏的旧 Key 被改动')
+      await card.locator('[data-key-masked]').first().waitFor({ timeout: 5_000 })
+      assert.equal(await card.locator('[data-key-masked]').count(), 1, '更换后仍只显示一个 Key')
+
+      // 删除显示的 Key 后，下一个旧 Key 接着显示。
+      await card.locator('[data-key-delete]').click()
+      await waitUntil('删除 Key 后显示下一个', async () => {
+        const group = await groupOf()
+        return group?.keys?.length === 1 && group.keys[0].id === 'k-g1-b'
+      })
+      await page.waitForFunction(
+        () => {
+          const el = document.querySelector('[data-group-card="g1"] [data-key-masked]')
+          return !!el && (el.textContent ?? '').startsWith('reg-')
+        },
+        null,
+        { timeout: 5_000 },
+      )
+      assert.equal(await card.locator('[data-key-masked]').count(), 1, '删除后仍只显示一个 Key')
+      assert.match((await card.locator('[data-key-masked]').first().innerText()).trim(), /^reg-\*{4}/, '删除后没有显示剩下的旧 Key')
+      await closeSettings(page)
     })
 
     // 工作站客户端-服务：只跑工作站 + 两台主机，注册/绑定/授权/E2E 流式（API 级，独立进程）。

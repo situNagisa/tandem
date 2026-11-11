@@ -48,6 +48,7 @@ const F = {
   sessionGroups: 'packages/web/src/components/session/SessionGroups.tsx',
   sidebar: 'packages/web/src/components/Sidebar.tsx',
   featureTour: 'packages/web/src/components/tour/FeatureTour.tsx',
+  profileKeysPanel: 'packages/web/src/components/settings/profiles/KeysPanel.tsx',
   app: 'packages/web/src/App.tsx',
   envBar: 'packages/web/src/components/EnvBar.tsx',
   topBar: 'packages/web/src/components/TopBar.tsx',
@@ -356,6 +357,14 @@ const DECISIONS = [
     decision: '新功能提示条出现后 30 秒内没点开就自动收起并记为本版本已读；点开过按原有导览逻辑',
     files: [F.featureTour],
     need: [/TOUR_PILL_AUTO_HIDE_MS = 30_000/, /autoMode !== 'tour'/, /markChangelogSeen\(\)/],
+  },
+  {
+    id: 'profile-group-single-key',
+    source: '反馈1323#02（2026-11-11 原话「每个分组只会有一个key，不需要拖动」）',
+    decision: '分组只显示一个 Key（掩码 + 状态，可测试/更换/删除），无拖动、故障切换、轮询、添加 Key 与 Key/模型数量；旧多 Key 保留不显示',
+    files: [F.profileKeysPanel],
+    need: [/group\.keys\.find\(\(key\) => !key\.disabled\)/, /data-key-replace/, /data-key-delete/, /keys\.filter\(\(key\) => key\.id !== shown\?\.id\)/],
+    deny: [/拖动 Key/, /故障切换/, /轮询/, /添加 Key/, /GripVertical/, /keyStrategy/],
   },
   {
     id: 'topbar-icon-limit',
