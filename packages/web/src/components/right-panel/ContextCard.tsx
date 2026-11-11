@@ -5,8 +5,6 @@ import { quotaLine } from '../../lib/quota'
 import {
   CONTEXT_PART_META,
   CONTEXT_PART_ORDER,
-  ContextSpaceSection,
-  jumpToMessage,
   useContextBreakdown,
 } from '../chat/ContextMeter'
 
@@ -115,13 +113,7 @@ export function ContextCard({ data }: { data: ContextBreakdownData }) {
           {quota}
         </div>
       )}
-      <div className="mt-2 border-t border-border pt-1.5" data-context-top="card">
-        <ContextSpaceSection
-          turns={context.topTurns}
-          legacyItems={context.topItems}
-          totalTokens={used}
-          onJump={(messageId) => jumpToMessage(messageId)}
-        />
+      <div className="mt-2 border-t border-border pt-1.5">
         {context.autoCompact ? (
           <div
             data-context-autocompact="true"

@@ -3342,7 +3342,6 @@ async function main() {
       assert.equal(await panel.locator('[data-group="usage"]').count(), 1, '信息面板缺少用量卡')
       assert.match(text, /输入[\s\S]*缓存命中率/, '用量卡没有 token 明细')
       assert.equal(await panel.locator('[data-group="context"]').count(), 1, '信息面板缺少上下文卡')
-      assert.match(text, /最占空间/, '上下文卡缺少最占空间')
       assert.equal(await panel.locator('[data-group="changes"]').count(), 1, '信息面板缺少文件改动卡')
       assert.match(text, /scripts\/test\.sh/, '文件改动没有列出原会话编辑过的文件')
       // 只读：没有输入框，保留「在 Tandem 中继续」。
@@ -3386,7 +3385,7 @@ async function main() {
     })
 
 
-    desktop('反馈16#05：Codex 注入内容不作为用户轮（大纲/会话图/最占空间）', async (page) => {
+    desktop('反馈16#05：Codex 注入内容不作为用户轮（大纲/会话图）', async (page) => {
       const codexId = globalThis.__regCodexId
       assert.ok(codexId, '缺少 Codex 外部会话夹具')
       await openExternal(page, 'codex', codexId)
@@ -3403,27 +3402,6 @@ async function main() {
         .filter({ has: page.getByRole('heading', { name: '会话信息' }) })
         .last()
       await panel.waitFor({ state: 'visible', timeout: 10_000 })
-
-      // 最占空间：两行、行首无轮次数字、摘要不是注入内容。
-      const context = panel.locator('[data-group="context"]')
-      await context.waitFor({ state: 'visible', timeout: 10_000 })
-      const rows = context.locator('[data-context-turn="true"]')
-      await rows.first().waitFor({ state: 'visible', timeout: 10_000 })
-      const texts = await rows.allInnerTexts()
-      assert.equal(texts.length, 2, `最占空间轮次数量 ${texts.length}`)
-      for (const text of texts) {
-        assert.doesNotMatch(
-          text,
-          /You are Codex|skills_instructions|multi_agent_role|multi_agent_mode|AGENTS\.md instructions/,
-          `最占空间仍显示注入内容：${text}`,
-        )
-        assert.doesNotMatch(text, /^\d+\s/, `最占空间行首仍显示轮次数字：${text}`)
-      }
-      assert.equal(
-        await context.locator('[data-context-turn-open="true"] > [data-context-turn-share="true"]').count(),
-        2,
-        '最占空间行首不是占比色条',
-      )
 
       // 会话图也只画两轮主线。
       const graph = panel.locator('[data-group="graph"] [data-session-graph]')
@@ -3516,120 +3494,6 @@ async function main() {
       await dialog.getByRole('button', { name: '取消' }).click()
     })
 
-    desktop('上下文面板「最占空间」按轮次聚合、二级明细可展开、区块可折叠（反馈8#10）', async (page) => {
-      await openSession(page, 'long')
-      await page.evaluate(() => localStorage.removeItem('tandem.contextTopCollapsed.v1'))
-      const ring = page.getByRole('button', { name: /^上下文 \d+%/ }).first()
-      const openPopover = async (expectTurns = true) => {
-        await ring.click()
-        await page.getByText('最占空间').first().waitFor({ state: 'visible', timeout: 5_000 })
-        if (expectTurns) {
-          await page.waitForFunction(
-            () => document.querySelectorAll('[data-context-top="popover"] [data-context-turn="true"]').length > 0,
-            null,
-            { timeout: 8_000 },
-          )
-        }
-      }
-      await openPopover()
-      const turns = page.locator('[data-context-top="popover"] [data-context-turn="true"]')
-      const count = await turns.count()
-      assert.ok(count > 0 && count <= 10, `最占空间轮次数量 ${count}`)
-      const rows = await turns.evaluateAll((els) =>
-        els.map((el) => ({
-          text: (el.innerText ?? '').trim(),
-          turn: el.querySelector('[data-context-turn-open="true"]')?.getAttribute('data-tip') ?? '',
-        })),
-      )
-      assert.ok(
-        rows.every((row) => /第 \d+ 轮/.test(row.turn)),
-        `最占空间没有按轮次列出：${JSON.stringify(rows.slice(0, 3))}`,
-      )
-      assert.ok(
-        rows.every((row) => !/^\d+\s/.test(row.text)),
-        `最占空间行首仍显示轮次数字：${JSON.stringify(rows.slice(0, 3))}`,
-      )
-      assert.equal(
-        await turns
-          .first()
-          .locator('[data-context-turn-open="true"] > [data-context-turn-share="true"]')
-          .count(),
-        1,
-        '最占空间行首不是占比色条',
-      )
-      assert.equal(new Set(rows.map((row) => row.turn.match(/第 (\d+) 轮/)?.[1])).size, rows.length, '同一轮被拆成了多行')
-
-      // 二级展开：该轮内最大的几项（工具输出/消息）。
-      const first = turns.first()
-      await first.locator('[data-context-turn-toggle="true"]').click()
-      const nested = first.locator('[data-context-nested="true"]')
-      await nested.first().waitFor({ state: 'visible', timeout: 3_000 })
-      assert.ok((await nested.count()) > 0, '展开轮次后没有二级明细')
-      const before = await page.evaluate(
-        () => document.querySelector('.chat-scroll')?.scrollTop ?? 0,
-      )
-      await nested.first().click()
-      await page.waitForTimeout(700)
-      const after = await page.evaluate(
-        () => document.querySelector('.chat-scroll')?.scrollTop ?? 0,
-      )
-      assert.notEqual(after, before, '点击轮次内的明细项后没有跳转到对应消息')
-
-      // 点某一轮 = 跳到该轮（按该轮用户消息定位，而不是依赖大纲当前轮）。
-      await openPopover()
-      const turnRow = page.locator('[data-context-top="popover"] [data-context-turn-open="true"]').first()
-      const targetMessageId = await turnRow.evaluate(
-        (el) => el.closest('[data-context-turn]')?.getAttribute('data-message-id') ?? '',
-      )
-      assert.ok(targetMessageId, '轮次行没有携带目标消息 id')
-      await turnRow.click()
-      await page.waitForTimeout(900)
-      const shown = await page.evaluate((id) => {
-        const el = document.querySelector(`[data-turn-id="${CSS.escape(id)}"]`)
-        if (!el) return null
-        const rect = el.getBoundingClientRect()
-        return { top: rect.top, bottom: rect.bottom, height: window.innerHeight }
-      }, targetMessageId)
-      assert.ok(
-        shown && shown.bottom > 0 && shown.top < shown.height,
-        `点击轮次后目标消息不在视口内：${JSON.stringify(shown)}`,
-      )
-
-      // 整个「最占空间」区块可折叠，重开后记住折叠状态。
-      await openPopover()
-      let toggle = page.locator('[data-context-top="popover"] [data-context-top-toggle="true"]')
-      await toggle.click()
-      assert.equal(
-        await page.locator('[data-context-top="popover"] [data-context-turn="true"]').count(),
-        0,
-        '折叠后仍显示占用明细',
-      )
-      assert.equal(
-        await page.evaluate(() => localStorage.getItem('tandem.contextTopCollapsed.v1')),
-        '1',
-        '折叠状态没有记住',
-      )
-      await page.keyboard.press('Escape')
-      await page.waitForTimeout(300)
-      await openPopover(false)
-      toggle = page.locator('[data-context-top="popover"] [data-context-top-toggle="true"]')
-      assert.equal(
-        await page.locator('[data-context-top="popover"] [data-context-turn="true"]').count(),
-        0,
-        '重新打开面板后折叠状态丢失',
-      )
-      await toggle.click()
-      await page.waitForFunction(
-        () => document.querySelectorAll('[data-context-top="popover"] [data-context-turn="true"]').length > 0,
-        null,
-        { timeout: 5_000 },
-      )
-      await page.getByText(/下次自动压缩将在约 \d+% 时触发|自动压缩已关闭/).first().waitFor({
-        state: 'visible',
-        timeout: 3_000,
-      })
-    })
-
     desktop('上下文卡：鲜明分类色、自定义 agents、缓存条与阈值刻度（反馈13#05）', async (page) => {
       await openSession(page, 'long')
       if (!(await page.locator('[data-group]').count())) {
@@ -3674,17 +3538,9 @@ async function main() {
       assert.equal(await threshold.count(), 1, '分段条缺少自动压缩阈值刻度')
       assert.match(await threshold.evaluate((el) => el.style.left), /\d+(\.\d+)?%/, '阈值刻度位置没有按百分比设置')
 
-      // 每轮左侧小色条表示占比；展开箭头默认隐藏，悬停该行才出现。
-      const turn = card.locator('[data-context-turn="true"]').first()
-      await turn.waitFor({ state: 'visible', timeout: 10_000 })
-      assert.equal(await turn.locator('[data-context-turn-share="true"]').count(), 1, '每轮缺少占比色条')
-      const turnToggle = turn.locator('[data-context-turn-toggle="true"]')
-      if ((await turnToggle.count()) > 0) {
-        assert.equal(await turnToggle.evaluate((el) => getComputedStyle(el).opacity), '0', '展开箭头没有默认隐藏')
-        await turn.hover()
-        await page.waitForTimeout(250)
-        assert.equal(await turnToggle.evaluate((el) => getComputedStyle(el).opacity), '1', '悬停后展开箭头没有出现')
-      }
+      // 反馈2156#04：上下文卡片不再有「最占空间」轮次列表。
+      assert.doesNotMatch(cardText, /最占空间/, '上下文卡仍在显示最占空间')
+      assert.equal(await card.locator('[data-context-turn="true"]').count(), 0, '上下文卡仍有最占空间轮次行')
     })
 
     desktop('警告与状态色饱和、对比度达标（反馈13#03）', async (page) => {
@@ -8366,57 +8222,6 @@ async function main() {
         sameWidth(before, await measure(), `第 ${i + 1} 张卡片展开`)
       }
 
-      // 上下文卡内部二级展开/折叠也不改变卡片宽度。
-      const context = page.locator('[data-group="context"]')
-      if (await context.count()) {
-        const topToggle = context.locator('[data-context-top-toggle="true"]')
-        if (await topToggle.count()) {
-          await topToggle.click()
-          await page.waitForTimeout(220)
-          sameWidth(before, await measure(), '上下文卡折叠最占空间')
-          await topToggle.click()
-          await page.waitForTimeout(220)
-          sameWidth(before, await measure(), '上下文卡展开最占空间')
-        }
-        const turnToggle = context.locator('[data-context-turn-toggle="true"]').first()
-        if (await turnToggle.count()) {
-          await context.locator('[data-context-turn="true"]').first().hover()
-          await turnToggle.click()
-          await page.waitForTimeout(220)
-          sameWidth(before, await measure(), '上下文卡展开轮次明细')
-          await turnToggle.click()
-          await page.waitForTimeout(220)
-          sameWidth(before, await measure(), '上下文卡收起轮次明细')
-        }
-      }
-
-      // 输入框上下文环的弹层：折叠/展开「最占空间」时弹层宽度不变。
-      const ring = page.getByRole('button', { name: /^上下文 \d+%/ }).first()
-      await ring.click()
-      await page.locator('[data-context-top="popover"]').waitFor({ state: 'visible', timeout: 8_000 })
-      const popoverWidth = () =>
-        page.evaluate(() => {
-          const panel = [...document.querySelectorAll('.popover-panel')].find(
-            (el) => el.querySelector('[data-context-top="popover"]') || el.querySelector('[data-context-turn]'),
-          )
-          return panel ? panel.getBoundingClientRect().width : 0
-        })
-      const openWidth = await popoverWidth()
-      assert.ok(openWidth > 0, '上下文弹层没有宽度')
-      const popoverToggle = page.locator('[data-context-top="popover"] [data-context-top-toggle="true"]')
-      await popoverToggle.click()
-      await page.waitForTimeout(220)
-      assert.ok(
-        Math.abs((await popoverWidth()) - openWidth) <= 0.5,
-        `折叠最占空间后弹层宽度变化：${openWidth} → ${await popoverWidth()}`,
-      )
-      await popoverToggle.click()
-      await page.waitForTimeout(220)
-      assert.ok(
-        Math.abs((await popoverWidth()) - openWidth) <= 0.5,
-        `展开最占空间后弹层宽度变化：${openWidth} → ${await popoverWidth()}`,
-      )
-      await page.keyboard.press('Escape')
     })
 
     desktop('反馈16#07/#08：卡片折叠箭头与拖动手柄在标题右侧且常显', async (page) => {

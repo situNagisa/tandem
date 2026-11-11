@@ -157,25 +157,11 @@ const DECISIONS = [
     deny: [/缓存命中率/],
   },
   {
-    id: 'context-top-no-turn-number',
-    source: '反馈16#05',
-    decision: '「最占空间」行首不显示轮次数字，轮次只在 tooltip',
-    files: [F.contextMeter],
-    need: [/data-turn-number=\{turn\.turn\}/],
-  },
-  {
-    id: 'context-top-collapsible',
-    source: '反馈8#10',
-    decision: '「最占空间」按轮次聚合、可折叠并记住状态',
-    files: [F.contextMeter],
-    need: [/data-context-top-toggle/, /tandem\.contextTopCollapsed\.v1/, /data-context-turn/],
-  },
-  {
     id: 'context-card-structure',
     source: '反馈13#05',
-    decision: '上下文卡分类顺序、阈值刻度与最占空间',
+    decision: '上下文卡分类顺序与阈值刻度',
     files: [F.contextCard],
-    need: [/CONTEXT_PART_ORDER/, /data-context-threshold/, /ContextSpaceSection/],
+    need: [/CONTEXT_PART_ORDER/, /data-context-threshold/],
   },
   {
     id: 'empty-groups-hidden',

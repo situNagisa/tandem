@@ -1,19 +1,12 @@
 import { useMemo, useRef, useState } from 'react'
 import { Check, Copy, X } from 'lucide-react'
-import type {
-  ContextTopItem,
-  ContextTurnItem,
-  ExternalSource,
-  Message,
-  Session,
-} from '@tandem/protocol'
-import { countTurns, isUserTurnMessage } from '@tandem/protocol'
+import type { ExternalSource, Session } from '@tandem/protocol'
+import { countTurns } from '@tandem/protocol'
 import { cn } from '../lib/cn'
 import { formatCost, formatRelative, formatTime, formatTokens } from '../lib/format'
 import { useCopy } from '../lib/useCopy'
 import { estimateMessageTokens } from '../lib/turnUsage'
 import { useUiStore } from '../store/useUiStore'
-import { ContextSpaceSection, jumpToMessage } from './chat/ContextMeter'
 import { IconButton } from './ui/Button'
 import { ReadOnlySessionGraph } from './sessionGraph/SessionGraphCard'
 import { PanelBar, PanelBody } from './ui/Panel'
@@ -32,21 +25,6 @@ import {
 const SOURCE_LABEL: Record<ExternalSource, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex',
-}
-
-function firstLine(message: Message): string {
-  const text = message.content
-    .map((block) => {
-      if (block.type === 'text') return block.text
-      if (block.type === 'thinking') return block.text
-      return ''
-    })
-    .join('\n')
-  const line = text
-    .split('\n')
-    .map((item) => item.replace(/\s+/g, ' ').trim())
-    .find(Boolean)
-  return line ?? (message.content.some((block) => block.type === 'image') ? '图片' : '')
 }
 
 /** 外部会话只读预览的信息面板：只显示原日志里能拿到的数据，缺的项不渲染。 */
@@ -114,43 +92,6 @@ export function ExternalSessionPanel({
     () => messages.reduce((sum, message) => sum + estimateMessageTokens(message), 0),
     [messages],
   )
-
-  const topTurns = useMemo<ContextTurnItem[]>(() => {
-    const starts: number[] = []
-    messages.forEach((message, index) => {
-      if (isUserTurnMessage(message)) starts.push(index)
-    })
-    return starts
-      .map((start, index) => {
-        const end = starts[index + 1] ?? messages.length
-        const parts = messages.slice(start, end)
-        const user = messages[start]!
-        const items: ContextTopItem[] = parts
-          .map((message) => {
-            const tokens = estimateMessageTokens(message)
-            const toolResult = message.content.some((block) => block.type === 'tool_result')
-            return {
-              messageId: message.id,
-              role: message.role,
-              kind: toolResult ? ('tool_result' as const) : ('message' as const),
-              turn: index + 1,
-              tokens,
-              preview: firstLine(message) || (toolResult ? '工具结果' : '消息'),
-            }
-          })
-          .filter((item) => item.tokens > 0)
-          .sort((a, b) => b.tokens - a.tokens)
-          .slice(0, 4)
-        return {
-          turn: index + 1,
-          messageId: user.id,
-          tokens: parts.reduce((sum, message) => sum + estimateMessageTokens(message), 0),
-          preview: firstLine(user) || `第 ${index + 1} 轮`,
-          items,
-        }
-      })
-      .sort((a, b) => b.tokens - a.tokens)
-  }, [messages])
 
   const editedFiles = useMemo(() => {
     const files = new Map<string, number>()
@@ -316,12 +257,6 @@ export function ExternalSessionPanel({
                   <p className="mt-1 text-[12px] leading-4 text-muted">
                     按原会话消息估算，不含系统提示与工具定义。
                   </p>
-                  <div className="mt-2 border-t border-border pt-1.5">
-                    <ContextSpaceSection
-                      turns={topTurns}
-                      onJump={(messageId) => jumpToMessage(messageId)}
-                    />
-                  </div>
                 </div>
               ) : (
                 <div>

@@ -13,11 +13,11 @@
 | R07 | 外部会话注入内容外露、被当作用户轮 | 3 | `isSystemInjectionText` 统一口径；单测 turns/external；regression 注入口径用例 |
 | R08 | 点了没反应 / 数据未就绪被当异常 | 5 | 加载态与默认值兜底；store `openSession` 同步地址栏（`sessionsSlice`，否则 `navigate` 同址短路吞掉按路由的跳转）；decisions-check `route-follows-session`；regression 新会话环境条/模型价格/手机环境条/反馈2108#04 |
 | R09 | 反馈模式与浮层交互冲突 | 2 | `lib/overlay` + `data-portal-layer`；ui-audit contains/portal；regression 反馈圈选 |
-| R10 | 提示/动效不符合习惯、尺寸跳动 | 11 | decisions-check `envbar-host-icon`；标准 Tooltip/固定尺寸/动效 token；regression 设置窗口/动画测量/高级分组/运行进度；切换会话保留旧画面（sessionsSlice `pendingFocus`）、新会话乐观占位（`startSession` 草稿）；贴底时后到内容绘制前补齐滚动（ChatView ResizeObserver/MutationObserver）；侧栏分组折叠按主机+项目路径记忆；regression 反馈2102#01/#06、反馈1601#02/#05 |
+| R10 | 提示/动效不符合习惯、尺寸跳动 | 11 | decisions-check `envbar-host-icon`；标准 Tooltip/固定尺寸/动效 token；regression 设置窗口/动画测量/高级分组/运行进度；切换会话保留旧画面（sessionsSlice `pendingFocus`）、新会话乐观占位（`startSession` 草稿）；贴底时后到内容绘制前补齐滚动（ChatView ResizeObserver/MutationObserver）；侧栏分组折叠按主机+项目路径记忆；regression 反馈2102#01/#06、反馈1601#02/#05、反馈2156#01（跳转只定位不加高亮）/#03（运行中节点呼吸动画） |
 | R11 | 危险或不可逆操作没有确认/预览 | 2 | `ui/ConfirmAction`；regression 合并/压缩/删除确认 |
 | R12 | 完成态缺少后续操作 | 1 | 状态驱动操作清单；regression 看板完成卡 |
 | R13 | 事件流水未聚合、聚合行交互错误 | 2 | `ui/AggregateRow`；单测 inbox；regression 收件箱/看板回合 |
-| R14 | 面板与对话区争抢空间/焦点、宽度抖动 | 10 | design P12/P13；`ui/Panel`/`ui/Card`/`ResizeHandle`；ui-audit right-panel-*；decisions-check RP-06；regression 宽内容/换行/空分组/收起/宽度稳定 |
+| R14 | 面板与对话区争抢空间/焦点、宽度抖动 | 10 | design P12/P13；`ui/Panel`/`ui/Card`/`ResizeHandle`；ui-audit right-panel-*；decisions-check RP-06；regression 宽内容/换行/空分组/收起/宽度稳定；反馈2156#04 上下文卡删除「最占空间」 |
 | R15 | 关键文本截断且无全文入口 | 6 | 真实文本 + `aria-label`/`sr-only` + 实际溢出才挂 tooltip；regression 大纲/菜单/手机审批 |
 | R16 | 轮次统计把工具结果当用户轮次 | 1 | `countTurns`/`isUserTurnMessage`；单测 turns；regression 压缩确认 |
 | R17 | 设置保存被归一化丢弃/旧响应回写闪回 | 1 | 归一化保留偏好 + 序号只认最后响应；单测 model-routing；regression 路由偏好 |
@@ -31,7 +31,6 @@
 | R27 | 固定操作重排阅读列表导致乱飞 | 1 | 固定不重排、原位图钉；regression 阅读顺序/滚动位置 |
 | R28 | 辅助视图做成独立悬停浮层，跨空白即收起 | 1 | 同一大纲 Alt/点击两用；regression Alt 切换 |
 | R29 | 设备权限/占用不可见，用户无处修复 | 1 | 只读探测 + 修复说明 + 深度检测；单测 serial-access；regression 设备行/修复 |
-| R30 | 占用清单按单条消息聚合，与轮次心智不符 | 2 | `topTurns` + `ContextSpaceSection`；单测 context；regression 按轮次/折叠 |
 | R31 | 选项文案口语化、术语不统一 | 2 | `lib/routeLabels.ts` + 术语表；regression 执行方式/委派倾向文案 |
 | R32 | 发送前看不到输入 token/上下文代价 | 1 | `lib/tokens.ts` + 底栏估算；单测；regression 输入 token/发送后占比 |
 | R33 | 缓存失效切换没有成本提示 | 1 | 已由 R41 的确认框取代；regression 切换确认 |
@@ -70,3 +69,4 @@
 | R68 | 跨视图定位的异步回调（轮询、滚动定时器）未随新一次跳转取消，旧目标把视口拉回 | 1 | `lib/jump.ts` `pollJump` 取消前一轮轮询；`MessageList` 的 `jumpTimers` 在新跳转时清理；regression 反馈2102#02 会话图快速连点 |
 | R69 | 新会话页的账号/分组/模型/思考强度只存在组件状态，每次挂载回到默认选择 | 1 | `lib/newSessionPick.ts` 按主机记住 + 失效回落；单测 `newSessionPick`；decisions-check `new-session-pick-memory`；regression 反馈2102#05 |
 | R70 | 点击语义不符：子代理入口展开卡片或内嵌定位，而不是进入目标视图 | 2 | 子代理入口统一 `openAgentSession`（`ToolCard` 的 `onOpenAgent`、`SessionGraphCard` 的 `open`）；decisions-check `subagent-row-opens-session`、`graph-subagent-opens-session`；regression 反馈2108#02/#03 |
+| R71 | 客户端按字段重建摘要时漏掉 `unread`，快照覆盖列表后本地已读与服务端分叉（点掉了、重启又出现） | 1 | `summaryOf` 保留 `unread`；聚焦时以列表摘要兜底调用已读接口；regression 反馈2156#02 |
