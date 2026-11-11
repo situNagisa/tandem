@@ -30,7 +30,7 @@ import {
   type TurnUsage,
 } from '../../lib/turnUsage'
 import { hideTooltip, scheduleTooltip } from '../ui/Tooltip'
-import { createScrollFollower, type ScrollFollower } from './turnRailMotion'
+import { focusMessage } from '../../lib/jump'
 import { POOL, RailScene } from './turnRailScene'
 import { TurnOutlineSheet } from './TurnOutlineSheet'
 
@@ -320,7 +320,6 @@ export function TurnRail({
   const hoverSyncRef = useRef<(turn: number | null) => void>(() => {})
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   const sceneRef = useRef<RailScene | null>(null)
-  const followerRef = useRef<ScrollFollower | null>(null)
 
   const turnsRef = useRef(turns)
   turnsRef.current = turns
@@ -346,29 +345,50 @@ export function TurnRail({
   const shiftTimer = useRef(0)
 
   useEffect(() => {
-    followerRef.current = createScrollFollower(
-      () => scrollRef.current,
-      () => {
-        sticky.current = false
-      },
-    )
+    window.clearTimeout(openTimer.current)
+    window.clearTimeout(closeTimer.current)
     return () => {
-      followerRef.current?.destroy()
-      followerRef.current = null
       window.clearTimeout(openTimer.current)
       window.clearTimeout(closeTimer.current)
     }
-  }, [scrollRef])
+  }, [])
 
   useEffect(() => {
     snapNext.current = true
     sticky.current = false
-    followerRef.current?.cancel()
   }, [sessionId])
 
   useEffect(() => {
     setActiveTurn(total || 1)
   }, [sessionId, total])
+
+  // 跳转目标到达后收起「加载中」标记；长时间取不到就放弃（再点一次会重新取）。
+  useEffect(() => {
+    if (!loadingTurnId) return
+    if (loadedIds.has(loadingTurnId)) {
+      setLoadingTurnId(null)
+      return
+    }
+    const timer = window.setTimeout(() => setLoadingTurnId(null), 10_000)
+    return () => window.clearTimeout(timer)
+  }, [loadingTurnId, loadedIds])
+
+  // 用户自己滚动（滚轮/触摸/拖动滚动条/按键）后，当前轮重新跟随视口。
+  useEffect(() => {
+    const root = scrollRef.current
+    if (!root) return
+    const clear = () => {
+      sticky.current = false
+    }
+    root.addEventListener('wheel', clear, { passive: true })
+    root.addEventListener('touchstart', clear, { passive: true })
+    root.addEventListener('pointerdown', clear, { passive: true })
+    return () => {
+      root.removeEventListener('wheel', clear)
+      root.removeEventListener('touchstart', clear)
+      root.removeEventListener('pointerdown', clear)
+    }
+  }, [scrollRef])
 
   // 视图位置（仅固定视图时是 1..pinned.length）与真实轮次位置（1..total）互转。
   const viewPosOf = (original: number): number => {
@@ -377,114 +397,29 @@ export function TurnRail({
   }
   const originalOf = (pos: number): number => viewTurnsRef.current[pos - 1]?.turn ?? pos
 
-  const jumpSeq = useRef(0)
+  const go = useCallback((turn: number, opts?: { recenter?: boolean }) => {
+    const count = totalRef.current
+    if (count < 1) return
+    const target = clamp(Math.round(turn), 1, count)
+    activeRef.current = target
+    setActiveTurn(target)
+    sticky.current = true
+    beforeJumpRef.current?.()
+    const mark = turnsRef.current[target - 1]
+    const targetId = mark?.jumpId ?? mark?.id
+    const scene = sceneRef.current
+    const viewPos = viewPosOf(target)
+    if (viewPos > 0) {
+      scene?.setActive(viewPos)
+      if (opts?.recenter !== false) scene?.setCenter(viewPos)
+    }
+    if (!targetId) return
+    // 与会话图/搜索/收件箱同一个跳转实现：未加载时只取该轮所在片段，挂载后一次定位；
+    // 用户一旦滚动就取消剩下的定位（反馈0220#03）。
+    setLoadingTurnId(loadedIds.has(targetId) ? null : targetId)
+    focusMessage(targetId, 'start')
+  }, [loadedIds])
 
-  /** 目标轮已经在 DOM 里：滚动到它并定位。 */
-  const revealTurn = (rootEl: HTMLElement, id: string): boolean => {
-    const el = rootEl.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(id)}"]`)
-    if (!el) return false
-    const top = Math.max(
-      0,
-      el.getBoundingClientRect().top - rootEl.getBoundingClientRect().top + rootEl.scrollTop - 16,
-    )
-    rootEl.scrollTop = top
-    return true
-  }
-
-  const go = useCallback(
-    (turn: number, opts?: { recenter?: boolean; instant?: boolean }) => {
-      const count = totalRef.current
-      if (count < 1) return
-      const target = clamp(Math.round(turn), 1, count)
-      const seq = ++jumpSeq.current
-      setLoadingTurnId(null)
-      activeRef.current = target
-      setActiveTurn(target)
-      sticky.current = true
-      beforeJumpRef.current?.()
-      const root = scrollRef.current
-      const mark = turnsRef.current[target - 1]
-      const targetId = mark?.jumpId ?? mark?.id
-      if (root && mark && targetId && !external && hostId && sessionId) {
-        const state = useAppStore.getState()
-        const view = state.sessionViews[`${hostId}:${sessionId}`]
-        const loaded = view?.messages.some((message) => message.id === targetId) ?? true
-        const rendered = root.querySelector<HTMLElement>(
-          `[data-turn-id="${CSS.escape(targetId)}"]`,
-        )
-        if (!loaded || (!rendered && target !== totalRef.current)) {
-          // 目标轮还没加载（长会话懒加载）或被渲染窗口裁掉：先让消息列表取该段并扩大窗口，
-          // 等节点真正挂载后再滚动定位，不能出现「点了没反应」（反馈10#01）。
-          window.dispatchEvent(
-            new CustomEvent('tandem-jump-message', { detail: { messageId: targetId } }),
-          )
-          void (async () => {
-            if (!loaded) {
-              setLoadingTurnId(targetId)
-              for (let attempt = 0; attempt < 50; attempt++) {
-                if (seq !== jumpSeq.current) return
-                if (await state.ensureMessageLoaded(hostId, sessionId, targetId)) break
-                await new Promise((resolve) => window.setTimeout(resolve, 200))
-              }
-              if (seq !== jumpSeq.current) return
-              // 消息到达后让 MessageList 再扩一次渲染窗口。
-              window.dispatchEvent(
-                new CustomEvent('tandem-jump-message', { detail: { messageId: targetId } }),
-              )
-            }
-            for (let attempt = 0; attempt < 100; attempt++) {
-              if (seq !== jumpSeq.current) return
-              const rootEl = scrollRef.current
-              if (rootEl && revealTurn(rootEl, targetId)) {
-                setLoadingTurnId(null)
-                const scene = sceneRef.current
-                const viewPos = viewPosOf(target)
-                if (viewPos > 0) {
-                  scene?.setActive(viewPos)
-                  scene?.setCenter(viewPos)
-                }
-                return
-              }
-              await new Promise((resolve) => window.setTimeout(resolve, 80))
-            }
-            if (seq !== jumpSeq.current) return
-            // 定位到首尾两轮之外仍失败时至少给出反馈，而不是静默。
-            setLoadingTurnId(null)
-            useUiStore.getState().toast('这一轮的消息暂时加载失败，请稍后重试', 'error')
-          })()
-          const scene = sceneRef.current
-          const earlyPos = viewPosOf(target)
-          if (earlyPos > 0) scene?.setActive(earlyPos)
-          return
-        }
-      }
-      followerRef.current?.to(() => {
-        const rootEl = scrollRef.current
-        const turnMark = turnsRef.current[target - 1]
-        const jumpId = turnMark?.jumpId ?? turnMark?.id
-        if (!rootEl || !jumpId) return null
-        if (target === 1) return 0
-        if (target === totalRef.current) {
-          return Math.max(0, rootEl.scrollHeight - rootEl.clientHeight)
-        }
-        const el = rootEl.querySelector<HTMLElement>(
-          `[data-turn-id="${CSS.escape(jumpId)}"]`,
-        )
-        if (!el) return null
-        return Math.max(
-          0,
-          el.getBoundingClientRect().top - rootEl.getBoundingClientRect().top + rootEl.scrollTop - 16,
-        )
-      }, opts?.instant)
-      const scene = sceneRef.current
-      const viewPos = viewPosOf(target)
-      if (viewPos > 0) {
-        scene?.setActive(viewPos)
-        if (opts?.recenter !== false) scene?.setCenter(viewPos)
-      }
-    },
-    [scrollRef, external, hostId, sessionId],
-  )
   const goRef = useRef(go)
   goRef.current = go
 
@@ -810,7 +745,11 @@ export function TurnRail({
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
-    if (!cancelled) go(activeRef.current)
+    if (!cancelled) {
+      // 松手只把大纲居中到已选行；定位已经在按下/拖动时由跳转服务完成，不再发第二次跳转。
+      const viewPos = viewPosOf(activeRef.current)
+      if (viewPos > 0) sceneRef.current?.setCenter(viewPos)
+    }
     const rect = event.currentTarget.getBoundingClientRect()
     const inside =
       event.clientX >= rect.left &&
