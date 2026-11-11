@@ -161,8 +161,8 @@ export class GatewayStore {
       .map(publicToken);
   }
 
-  issueToken(input: GatewayTokenInput & { memberName: string }): { token: string; grant: GatewayToken } {
-    // 每个成员只保留一个有效网关令牌：重新签发等同轮换，旧令牌立即失效。
+  issueToken(input: Omit<GatewayTokenInput, 'name'> & { memberId: string; memberName: string }): { token: string; grant: GatewayToken } {
+    // 同一持有者重新签发等同轮换：旧令牌立即失效。
     for (const old of this.tokens) {
       if (old.memberId === input.memberId && !old.revokedAt) {
         old.revokedAt = Date.now();

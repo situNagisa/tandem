@@ -41,9 +41,8 @@ test('合并后的 Key 模式覆盖三处原先识别的每种形态', () => {
     'ASIAABCDEFGHIJKLMNOP',
     // sanitize：Google
     'AIzaabcdefghijklmnopqrstuvwx',
-    // gateway：Tandem 网关 / 成员令牌
+    // gateway：Tandem 网关令牌
     'tgw_0123456789abcdef',
-    'tmm_0123456789abcdef',
   ];
   for (const sample of samples) {
     assert.equal(masked(`前缀 ${sample} 后缀`), '前缀 [K] 后缀', sample);
@@ -72,14 +71,12 @@ test('分享脱敏仍识别私钥、Key、Authorization、查询参数、赋值�
   }
 });
 
-test('网关调试脱敏仍识别 Bearer、sk、tgw 与 tmm', () => {
+test('网关调试脱敏仍识别 Bearer、sk 与 tgw', () => {
   const cases: Array<[string, string]> = [
     ['Authorization: Bearer abcdef', 'Bearer [REDACTED]'],
     ['sk-123456', '[REDACTED_KEY]'],
     ['tgw_0123456789abcdef', '[REDACTED_GATEWAY_TOKEN]'],
     ['TGW_0123456789ABCDEF', '[REDACTED_GATEWAY_TOKEN]'],
-    ['tmm_0123456789abcdef', '[REDACTED_MEMBER_TOKEN]'],
-    ['TMM_0123456789ABCDEF', '[REDACTED_MEMBER_TOKEN]'],
   ];
   for (const [input, mark] of cases) {
     assert.ok(redactGatewayText(input).includes(mark), `${input} → ${redactGatewayText(input)}`);

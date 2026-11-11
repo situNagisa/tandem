@@ -3,7 +3,7 @@ import os from 'node:os';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { RouteDeps } from './common.js';
 import { bad, str } from './common.js';
-import { principalOf } from '../team/access.js';
+import { principalOf } from '../access.js';
 import { embeddedDataDir, embeddedStatus, startEmbeddedWorkstation } from '../workstation/manager.js';
 import { readWorkstationMeta } from '../workstation/server.js';
 import { joinWorkstation } from '../workstation/join.js';

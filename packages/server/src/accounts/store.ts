@@ -146,7 +146,7 @@ export interface AccountPrincipal {
   username: string;
   name: string;
   accountRole: WorkspaceRole;
-  /** 映射到现有 Host 角色，供 team/access 的白名单与 WS 复用。 */
+  /** 映射到 Host 角色，供 access 白名单与 WS 复用。 */
   role: TeamRole;
   projectDirs: string[];
   allProjects: boolean;

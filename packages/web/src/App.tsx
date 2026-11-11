@@ -21,7 +21,6 @@ import { RightPanel } from './components/RightPanel'
 import { ChangeReviewPanel } from './components/ChangeReviewPanel'
 import { FilePreviewPanel } from './components/FilePreviewPanel'
 import { SettingsDialog } from './components/settings/SettingsDialog'
-import { JoinTeamDialog } from './components/settings/JoinTeamDialog'
 import { MemoryEditorDialog } from './components/MemoryEditorDialog'
 import { WikiDialog } from './components/wiki/WikiDialog'
 import { SearchDialog } from './components/SearchDialog'
@@ -542,7 +541,6 @@ export default function App() {
       )}
 
       <SettingsDialog />
-      <JoinTeamDialog />
       <MemoryEditorDialog />
       <WikiDialog />
       <BackgroundTasksPanel />

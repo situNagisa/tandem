@@ -1,5 +1,5 @@
-// 网关统计：按成员聚合 UsageStore 里带 memberId 的行（每个请求只记一行，不会重复计数）。
-import type { GatewayMemberUsage, GatewayToken, TeamMember } from '@tandem/protocol';
+// 网关统计：按令牌使用者聚合 UsageStore 里带 memberId 的行（每个请求只记一行，不会重复计数）。
+import type { GatewayMemberUsage, GatewayToken } from '@tandem/protocol';
 import type { UsageStore } from '../usage.js';
 
 function dayString(date: Date): string {
@@ -13,10 +13,9 @@ function monthStart(date: Date): string {
   return dayString(new Date(date.getFullYear(), date.getMonth(), 1));
 }
 
-/** 每个团队成员今天的请求数/token/花费，以及本月花费；带当前令牌限额。 */
+/** 每个令牌使用者今天的请求数/token/花费，以及本月花费；带当前令牌限额。 */
 export function gatewayMemberUsage(
   usage: UsageStore,
-  members: TeamMember[],
   tokens: GatewayToken[],
   now = new Date(),
 ): GatewayMemberUsage[] {
@@ -38,24 +37,27 @@ export function gatewayMemberUsage(
   }
   const activeByMember = new Map<string, GatewayToken>();
   const anyByMember = new Map<string, GatewayToken>();
+  const names = new Map<string, string>();
   for (const token of [...tokens].sort((a, b) => b.createdAt - a.createdAt)) {
+    if (!names.has(token.memberId)) names.set(token.memberId, token.memberName);
     if (!anyByMember.has(token.memberId)) anyByMember.set(token.memberId, token);
     if (!token.revokedAt && !activeByMember.has(token.memberId)) activeByMember.set(token.memberId, token);
   }
-  return members
-    .map((member) => {
-      const entry = byMember.get(member.id);
-      const active = activeByMember.get(member.id);
-      const latest = active ?? anyByMember.get(member.id);
+  const ids = new Set<string>([...byMember.keys(), ...anyByMember.keys()]);
+  return [...ids]
+    .map((id) => {
+      const entry = byMember.get(id);
+      const active = activeByMember.get(id);
+      const latest = active ?? anyByMember.get(id);
       return {
-        memberId: member.id,
-        memberName: member.name,
+        memberId: id,
+        memberName: names.get(id) ?? `账号 ${id.slice(0, 8)}`,
         todayRequests: entry?.requests ?? 0,
         todayInputTokens: entry?.input ?? 0,
         todayOutputTokens: entry?.output ?? 0,
         todayCostUsd: round(entry?.todayCost ?? 0),
         monthCostUsd: round(entry?.monthCost ?? 0),
-        tokenCount: [...activeByMember.keys()].includes(member.id) ? 1 : 0,
+        tokenCount: active ? 1 : 0,
         ...(latest?.dailyLimitUsd ? { dailyLimitUsd: latest.dailyLimitUsd } : {}),
         ...(latest?.monthlyLimitUsd ? { monthlyLimitUsd: latest.monthlyLimitUsd } : {}),
         ...(latest ? { rpm: latest.rpm } : {}),

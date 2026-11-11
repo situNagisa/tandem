@@ -84,9 +84,8 @@ import { PromptTemplateStore } from './prompt-templates.js';
 import { MemoryStore } from './memory.js';
 import { WikiManager } from './wiki.js';
 import { SecretsStore } from './secrets.js';
-import { TeamStore } from './team/store.js';
 import { AccountsStore } from './accounts/store.js';
-import { memberCanSeeSession } from './team/access.js';
+import { canSeeSession } from './access.js';
 import type { ParsedCommand } from './agent/commands.js';
 import { readVersion, type PermissionEntry } from './host/helpers.js';
 import { WorkstationProfileClient } from './workstation/client.js';
@@ -241,8 +240,6 @@ export class Host {
   /** 任务看板：卡片 = 后台会话，依赖/并发/审批门/重试调度。 */
   readonly boards: BoardManager;
   readonly hub = new Hub();
-  /** 内网团队成员、邀请与审计（~/.tandem/team.json）。 */
-  readonly team: TeamStore;
   /** 浏览器操作（Playwright）：每会话独立上下文，空闲 10 分钟关闭。 */
   readonly browser: BrowserManager;
   /** 应用预览：Host 上本地 Web 应用的截图流、元素点选与改完自动刷新。 */
@@ -289,15 +286,7 @@ export class Host {
     this.home = home;
     this.remote = options.remote === true;
     this.config = config ?? loadHostConfig(home);
-    this.team = new TeamStore(home);
-    this.hub.setSessionVisibility((access, sessionId) => {
-      if (access.role === 'owner') return true;
-      const rec = this.store.get(sessionId);
-      return memberCanSeeSession(
-        { kind: 'member', id: access.id, name: access.name, role: access.role as 'observer' | 'approver' | 'collaborator', projectDirs: access.projectDirs },
-        rec,
-      );
-    });
+    this.hub.setSessionVisibility((access, sessionId) => canSeeSession(access, this.store.get(sessionId)));
     this.profiles = new ProfileStore(home);
     this.store = new SessionStore(home);
     this.searchIndex = new SearchIndex(this, home);

@@ -8,7 +8,6 @@ export const SETTINGS_TAB_LABELS: Record<SettingsTab, string> = {
   profiles: '账号与模型',
   routing: '自动路由',
   hosts: '主机',
-  team: '成员',
   accounts: '工作站',
   gateway: '网关',
   permissions: '权限',
@@ -82,14 +81,9 @@ export const SETTINGS_ITEMS: SettingItem[] = [
   { id: 'accounts.members', tab: 'accounts', title: '主机授权', keywords: ['账号', '角色', '范围', '授权', '撤销'] },
   { id: 'accounts.hosts', tab: 'accounts', title: '我的主机', keywords: ['主机', '机器', '添加', '工作站'] },
 
-  { id: 'team.invite-role', tab: 'team', title: '邀请角色', keywords: ['成员', '邀请', '权限'] },
-  { id: 'team.members', tab: 'team', title: '成员列表', keywords: ['成员', '角色'] },
-  { id: 'team.invites', tab: 'team', title: '邀请记录', keywords: ['邀请', '链接'] },
-  { id: 'team.audit', tab: 'team', title: '审计日志', keywords: ['审计', '日志'] },
-
   { id: 'gateway.mode', tab: 'gateway', title: '网关模式', keywords: ['网关', 'gateway'] },
   { id: 'gateway.routing', tab: 'gateway', title: '模型转发', keywords: ['路由', '模型', '账号'] },
-  { id: 'gateway.tokens', tab: 'gateway', title: '成员令牌', keywords: ['令牌', 'token', '成员'] },
+  { id: 'gateway.tokens', tab: 'gateway', title: '网关令牌', keywords: ['令牌', 'token', '网关'] },
   { id: 'gateway.stats', tab: 'gateway', title: '今日统计', keywords: ['统计', '用量'] },
   { id: 'gateway.logs', tab: 'gateway', title: '日志与调试', keywords: ['日志', '调试'] },
 
@@ -218,7 +212,7 @@ export const SETTINGS_PAGES: SettingsPage[] = [
   { id: 'agent', label: 'Agent 能力', tabs: ['subagents', 'skills', 'prompts'] },
   { id: 'schedules', label: '定时任务', tabs: ['schedules'] },
   { id: 'memory', label: '记忆', tabs: ['memory'] },
-  { id: 'team-shares', label: '成员与分享', tabs: ['team', 'accounts', 'shares'] },
+  { id: 'team-shares', label: '成员与分享', tabs: ['accounts', 'shares'] },
   { id: 'appearance', label: '外观', tabs: ['appearance'] },
   { id: 'notifications', label: '通知', tabs: ['notifications'] },
   { id: 'voice', label: '语音', tabs: ['voice'] },

@@ -47,13 +47,6 @@ export class Hub {
     this.canViewSession = fn;
   }
 
-  isMemberOnline(memberId: string): boolean {
-    for (const access of this.access.values()) {
-      if (access.id === memberId) return true;
-    }
-    return false;
-  }
-
   /** 吊销成员后断开其现有长连接。 */
   disconnectMember(memberId: string): void {
     for (const [client, access] of this.access) {
@@ -148,7 +141,7 @@ export class Hub {
     return this.seqs.get(sessionId) ?? 0;
   }
 
-  /** 成员连接只收到自己可见的会话与有权限的审批事件。 */
+  /** 非所有者连接只收到自己可见的会话与有权限的审批事件。 */
   private canDeliver(client: WsClient, msg: SeqServerMsg): boolean {
     const access = this.access.get(client);
     if (!access) return true;
@@ -158,21 +151,14 @@ export class Hub {
       case 'session_updated':
       case 'session_deleted':
         return msg.type === 'session_deleted' || visible(msg.session.id);
-      case 'permission_request': {
-        if (!canApprove(access.role)) return false;
-        if (msg.request.assignedTo && msg.request.assignedTo.memberId !== access.id) return false;
-        return visible(msg.request.sessionId);
-      }
+      case 'permission_request':
+        return canApprove(access.role) && visible(msg.request.sessionId);
       case 'permission_resolved':
         return canApprove(access.role) && visible(msg.sessionId);
-      case 'permission_transferred':
-        return canApprove(access.role) && visible(msg.request.sessionId);
       case 'inbox_event': {
         const event = msg.event;
         if (event.kind === 'permission') {
           if (!canApprove(access.role)) return false;
-          const request = event.permission;
-          if (request?.assignedTo && request.assignedTo.memberId !== access.id) return false;
           return !event.sessionId || visible(event.sessionId);
         }
         if (event.kind === 'permission_resolved') {

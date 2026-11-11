@@ -13,8 +13,7 @@ import { commitChanges, getChanges, getFileDiff, revertChanges } from '../change
 import { clearCompactionBackup, readCompactionBackup } from '../host/compaction.js';
 import { createPullRequest, failedCheckPrompt, getVcsState, mergePullRequest } from '../vcs.js';
 import { bad, statusOf, str, type RouteDeps } from './common.js';
-import { isOwnerLike, memberCanAccessPath, memberCanSeeSession, principalOf } from '../team/access.js';
-import { recordAudit } from '../team/audit.js';
+import { isOwnerLike, canAccessPath, canSeeSession, principalOf } from '../access.js';
 import { expandHome } from '../util/path.js';
 import type { SessionRecord } from '../types.js';
 import path from 'node:path';
@@ -86,7 +85,7 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
       if (hit.source === 'tandem') {
         const rec = host.store.get(hit.sessionId);
         if (!rec || rec.evalRun) continue;
-        if (!memberCanSeeSession(principal, rec)) continue;
+        if (!canSeeSession(principal, rec)) continue;
         if (rec.archived && !filters.includeArchived) continue;
         if (!statusMatches(rec, filters.status ?? 'all')) continue;
         if (filters.project && hit.project !== filters.project) continue;
@@ -107,7 +106,7 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
     const principal = principalOf(req);
     return host
       .listSessions()
-      .filter((rec) => memberCanSeeSession(principal, rec))
+      .filter((rec) => canSeeSession(principal, rec))
       .map((s) => host.toSummary(s));
   });
 
@@ -122,7 +121,7 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
       if (!isOwnerLike(principal)) {
         const rawCwd = typeof input.cwd === 'string' ? input.cwd.trim() : '';
         const cwd = rawCwd ? path.resolve(expandHome(rawCwd)) : '';
-        if (!cwd || !memberCanAccessPath(principal, cwd)) {
+        if (!cwd || !canAccessPath(principal, cwd)) {
           return bad(reply, '只能在自己被授权的项目目录里新建会话', 403);
         }
       }
@@ -134,7 +133,6 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
       }
       // 创建时检测 cwd 的 git 仓库/分支，供侧栏归类
       await host.refreshEnv(rec.id);
-      recordAudit(host, principal, 'session.create', { sessionId: rec.id, sessionTitle: rec.title });
       return reply.code(201).send(host.toSummary(rec));
     } catch (err) {
       return bad(reply, (err as Error).message);

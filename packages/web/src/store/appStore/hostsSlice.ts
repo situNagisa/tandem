@@ -2,7 +2,6 @@ import type { AccountLoginResult, SessionSummary } from '@tandem/protocol'
 import type { StoreApi } from 'zustand'
 import { api, ApiError, workstationApi } from '../../lib/api'
 import { normalizeHostUrl } from '../../lib/hostUrl'
-import { inviteFromLocation } from '../../lib/inviteLink'
 import { isValidFingerprint, normalizeFingerprint, relayHostUrl } from '../../lib/relay'
 import {
   loadAccountSession,
@@ -187,20 +186,6 @@ export function createHostsSlice(
         }
       } catch {
         /* 地址异常时忽略 */
-      }
-
-      // 同事直接打开邀请链接：弹出入职对话框，并清掉地址栏里的邀请码。
-      try {
-        const invite = inviteFromLocation()
-        if (invite) {
-          useUiStore.getState().openJoinInvite(invite)
-          const url = new URL(window.location.href)
-          url.hash = '#/'
-          url.searchParams.delete('invite')
-          window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
-        }
-      } catch {
-        /* 忽略 */
       }
 
       let account = loadAccountSession()

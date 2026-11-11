@@ -57,7 +57,7 @@ export function registerGatewayRoutes(app: FastifyInstance, deps: RouteDeps): vo
     return {
       settings: host.gateway.settingsView(),
       tokens,
-      usage: gatewayMemberUsage(host.usage, host.team.listMembers(), tokens),
+      usage: gatewayMemberUsage(host.usage, tokens),
       logs: host.gateway.logsView(50),
       debugCount: host.gateway.debugCount(),
     };
@@ -80,14 +80,12 @@ export function registerGatewayRoutes(app: FastifyInstance, deps: RouteDeps): vo
 
   app.post('/api/gateway/tokens', async (req, reply) => {
     const body = (req.body ?? {}) as Partial<GatewayTokenInput>;
-    const memberId = str(body.memberId);
-    const member = host.team.getMember(memberId);
-    if (!member) return bad(reply, '成员不存在', 404);
-    if (member.revokedAt) return bad(reply, '成员已被吊销，不能签发网关令牌');
+    const name = str(body.name).trim().slice(0, 40);
+    if (!name) return bad(reply, '请填写令牌名称');
     try {
       const issued = host.gateway.issueToken({
-        memberId: member.id,
-        memberName: member.name,
+        memberId: randomUUID(),
+        memberName: name,
         ...(body.dailyLimitUsd !== undefined ? { dailyLimitUsd: limitOf(body.dailyLimitUsd) } : {}),
         ...(body.monthlyLimitUsd !== undefined ? { monthlyLimitUsd: limitOf(body.monthlyLimitUsd) } : {}),
         ...(body.rpm !== undefined ? { rpm: Number(body.rpm) } : {}),

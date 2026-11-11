@@ -353,7 +353,6 @@ function gatewayHarness(baseUrl: string, opts: { profile: StoredProfile; group: 
     },
     keysUnavailableMessage: () => '分组「默认分组」的所有 Key 都不可用：一号（boom）；二号（boom）',
     budgets: { blockingRule: () => undefined },
-    team: { getMember: () => ({ id: 'member-1', name: '成员甲' }) },
     accounts: { authenticate: () => undefined },
     usage: opts.usage,
     gateway: {

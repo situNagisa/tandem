@@ -139,7 +139,7 @@ export function NewSessionView() {
   useEffect(() => {
     if (!hostId || !teamInfo) return
     const rt = useAppStore.getState().runtimes[hostId]
-    const allowedDirs = teamInfo.role === 'owner' ? undefined : teamInfo.member?.projectDirs ?? []
+    const allowedDirs = teamInfo.role === 'owner' ? undefined : teamInfo.account?.projectDirs ?? []
     const recent = loadRecentDirs(hostId).filter(
       (dir) => !allowedDirs || allowedDirs.some((root) => dir === root || dir.startsWith(root + '/')),
     )

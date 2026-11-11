@@ -18,7 +18,6 @@ import {
 import { textMatches } from '../../lib/pinyin'
 import { ProfilesSection } from './ProfilesSection'
 import { HostsSection } from './HostsSection'
-import { TeamSection } from './TeamSection'
 import { WorkstationSection } from '../workstation/WorkstationSection'
 import { GatewaySection } from './GatewaySection'
 import { AppearanceSection } from './AppearanceSection'
@@ -374,7 +373,6 @@ export function SettingsDialog() {
             {tab === 'profiles' && <ProfilesSection />}
             {tab === 'routing' && <ModelRoutingSection />}
             {tab === 'hosts' && <HostsSection />}
-            {tab === 'team' && <TeamSection />}
             {tab === 'accounts' && <WorkstationSection />}
             {tab === 'gateway' && <GatewaySection />}
             {tab === 'permissions' && <PermissionsSection />}

@@ -1,15 +1,9 @@
 // 长期令牌与角色白名单的唯一实现：持久化只存 SHA-256，比对用常量时间，吊销集中判断。
 import { createHash, timingSafeEqual } from 'node:crypto';
-import type { MemberRole, TeamRole } from '@tandem/protocol';
-
-export const MEMBER_ROLES: readonly MemberRole[] = ['observer', 'approver', 'collaborator'];
+import type { TeamRole } from '@tandem/protocol';
 
 const APPROVER_ROLES: readonly TeamRole[] = ['owner', 'approver', 'collaborator'];
 const SENDER_ROLES: readonly TeamRole[] = ['owner', 'collaborator'];
-
-export function isMemberRole(value: unknown): value is MemberRole {
-  return MEMBER_ROLES.includes(value as MemberRole);
-}
 
 export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');

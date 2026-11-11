@@ -1,4 +1,4 @@
-// 令牌公共校验：哈希、常量时间比对、吊销与角色白名单；覆盖 tmm_ / tgw_ / dvt_ 三类令牌。
+// 令牌公共校验：哈希、常量时间比对、吊销与角色白名单；覆盖 tgw_ / dvt_ 两类令牌。
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
@@ -6,14 +6,12 @@ import path from 'node:path';
 import test from 'node:test';
 import { DeviceManager } from '../src/devices/manager.js';
 import { GatewayStore } from '../src/gateway/store.js';
-import { TeamStore } from '../src/team/store.js';
 import type { Host } from '../src/host.js';
 import {
   canApprove,
   canSend,
   findActiveToken,
   hashToken,
-  isMemberRole,
   isTokenActive,
   tokenMatchesHash,
 } from '../src/auth/token.js';
@@ -64,11 +62,6 @@ test('吊销与到期检查集中判断', () => {
 });
 
 test('角色白名单：审批权与发送权', () => {
-  assert.equal(isMemberRole('observer'), true);
-  assert.equal(isMemberRole('approver'), true);
-  assert.equal(isMemberRole('collaborator'), true);
-  assert.equal(isMemberRole('owner'), false);
-  assert.equal(isMemberRole('admin'), false);
   assert.equal(canApprove('owner'), true);
   assert.equal(canApprove('approver'), true);
   assert.equal(canApprove('collaborator'), true);
@@ -77,26 +70,6 @@ test('角色白名单：审批权与发送权', () => {
   assert.equal(canSend('collaborator'), true);
   assert.equal(canSend('approver'), false);
   assert.equal(canSend('observer'), false);
-});
-
-test('成员令牌 tmm_：通过、吊销与越权', () => {
-  const home = temp('tandem-token-team-');
-  const store = new TeamStore(home);
-  try {
-    const { code } = store.createInvite({ role: 'observer', projectDirs: ['/tmp'] });
-    const { token, member } = store.acceptInvite(code, '观察者');
-    assert.match(token, /^tmm_[a-f0-9]{64}$/);
-    assert.equal(store.authenticate(token)?.id, member.id);
-    assert.equal(canApprove(store.authenticate(token)!.role), false);
-    assert.equal(canSend(store.authenticate(token)!.role), false);
-    assert.equal(store.authenticate('tmm_invalid'), undefined);
-
-    assert.equal(store.revokeMember(member.id), true);
-    assert.equal(store.authenticate(token), undefined);
-    store.close();
-  } finally {
-    rmSync(home, { recursive: true, force: true });
-  }
 });
 
 test('网关令牌 tgw_：通过、吊销与跨类型拒绝', () => {
@@ -111,7 +84,6 @@ test('网关令牌 tgw_：通过、吊销与跨类型拒绝', () => {
     assert.match(token, /^tgw_[a-f0-9]{64}$/);
     assert.equal(store.authenticate(token)?.id, grant.id);
     assert.equal(store.authenticate('tgw_invalid'), undefined);
-    assert.equal(store.authenticate('tmm_invalid'), undefined);
 
     assert.equal(store.revokeToken(grant.id), true);
     assert.equal(store.authenticate(token), undefined);
@@ -134,7 +106,7 @@ test('设备令牌 dvt_：通过、吊销与关闭对端访问', () => {
     assert.match(issued.token, /^dvt_[a-f0-9]{48}$/);
     assert.equal(manager.authenticatePeer(issued.token)?.id, issued.id);
     assert.equal(manager.authenticatePeer('dvt_invalid'), undefined);
-    assert.equal(manager.authenticatePeer(`tmm_${'a'.repeat(64)}`), undefined);
+    assert.equal(manager.authenticatePeer(`acw_${'a'.repeat(64)}`), undefined);
 
     allowPeer = false;
     assert.equal(manager.authenticatePeer(issued.token), undefined);

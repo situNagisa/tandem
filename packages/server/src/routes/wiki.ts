@@ -1,7 +1,7 @@
 // 项目 Wiki：元数据、页面读写、检索、预估与后台生成任务。
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { bad, str, type RouteDeps } from './common.js';
-import { isOwner, memberCanAccessPath, principalOf } from '../team/access.js';
+import { isOwner, canAccessPath, principalOf } from '../access.js';
 
 function projectOf(req: FastifyRequest, body?: Record<string, unknown>): string {
   const query = req.query as { project?: unknown };
@@ -11,7 +11,7 @@ function projectOf(req: FastifyRequest, body?: Record<string, unknown>): string 
 function assertProject(req: FastifyRequest, project: string): void {
   const principal = principalOf(req);
   if (!project) throw new Error('project 不能为空');
-  if (!memberCanAccessPath(principal, project)) throw new Error('没有该项目权限');
+  if (!canAccessPath(principal, project)) throw new Error('没有该项目权限');
 }
 
 export function registerWikiRoutes(app: FastifyInstance, deps: RouteDeps): void {

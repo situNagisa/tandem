@@ -798,10 +798,6 @@ export interface PermissionRequest {
   description: string;     // 人类可读描述，如 "运行命令: npm test"
   depth?: number;          // 冒泡来源层级：1 子代理 / 2 孙代理；主会话请求不填
   sourceTitle?: string;    // 冒泡来源会话标题，用于审批卡标注
-  /** 被转交给某个审批者；只有该成员与所有者会收到此审批。 */
-  assignedTo?: { memberId: string; name: string };
-  /** 转交来源（由 X 转交）；首次转交时记录。 */
-  transferredFrom?: { memberId: string; name: string; at: number };
   /** 从审批历史学到的建议：同类请求已多次批准时，客户端可在「总是允许」旁提供一键规则。 */
   learned?: { pattern: string; allows: number; project: string };
   /** 命令沙箱/网络白名单触发审批时的说明（写工作目录之外、受保护路径、非白名单主机等）。 */
@@ -1013,92 +1009,15 @@ export interface SandboxStatus {
 }
 // GET /api/sandbox/status -> SandboxStatus
 
-// ---------- 内网团队共享（成员 / 邀请 / 审计） ----------
-// 全部在 Host 本地完成：邀请码与成员 token 只存 SHA-256，无第三方账号体系。
+// ---------- 连接身份 ----------
 export type TeamRole = 'owner' | 'observer' | 'approver' | 'collaborator';
-/** 被邀请成员的角色（所有者不可通过邀请获得）。 */
-export type MemberRole = Exclude<TeamRole, 'owner'>;
-export interface TeamMember {
-  id: string;
-  name: string;
-  role: MemberRole;
-  /** 可见/可协作的项目目录（绝对路径）；观察者与审批者只读这些目录下的会话。 */
-  projectDirs: string[];
-  createdAt: number;
-  lastSeenAt?: number;
-  revokedAt?: number;
-  /** 当前是否有 WS 连接。 */
-  online?: boolean;
-}
-export interface TeamInvite {
-  id: string;
-  role: MemberRole;
-  projectDirs: string[];
-  createdAt: number;
-  expiresAt: number;
-  usedAt?: number;
-  usedByName?: string;
-}
-export interface CreateTeamInviteInput {
-  role: MemberRole;
-  projectDirs: string[];
-}
-export interface CreateTeamInviteResult {
-  invite: TeamInvite;
-  /** 一次性邀请码，只在创建时返回；链接/二维码内嵌该码。 */
-  code: string;
-  url: string;
-  /** Host 只监听回环时的提示。 */
-  warning?: string;
-}
-export interface AcceptTeamInviteInput {
-  code: string;
-  name: string;
-}
-export interface AcceptTeamInviteResult {
-  /** 成员 token，只在接受邀请时返回一次；Host 只存哈希。 */
-  token: string;
-  member: TeamMember;
-  host: HostInfo;
-}
-export interface UpdateTeamMemberInput {
-  name?: string;
-  role?: MemberRole;
-  projectDirs?: string[];
-}
-/** GET /api/team/me：当前连接的身份（所有者或成员）。 */
+/** WS hello.me：当前连接的身份（所有者或工作站账号）。 */
 export interface TeamIdentity {
   role: TeamRole;
-  member?: TeamMember;
   /** 账号令牌登录时的账号信息（角色为工作区角色，role 字段是映射后的 Host 角色）。 */
-  account?: { id: string; username: string; name: string; role: WorkspaceRole };
+  account?: { id: string; username: string; name: string; role: WorkspaceRole; projectDirs: string[] };
   /** Host 所有者展示名，固定「所有者」。 */
   ownerName: string;
-}
-/** GET /api/team/members：所有者视角的成员与有效邀请。 */
-export interface TeamOverview {
-  members: TeamMember[];
-  invites: TeamInvite[];
-}
-export type TeamAuditAction =
-  | 'invite.create'
-  | 'invite.accept'
-  | 'member.update'
-  | 'member.revoke'
-  | 'session.create'
-  | 'message.send'
-  | 'permission.decide'
-  | 'permission.transfer';
-export interface TeamAuditEntry {
-  id: string;
-  at: number;
-  actorId: string;
-  actorName: string;
-  role: TeamRole;
-  action: TeamAuditAction;
-  sessionId?: string;
-  sessionTitle?: string;
-  detail?: string;
 }
 /** 正在查看会话的连接（会话页顶部头像）。 */
 export interface TeamPresence {
@@ -1106,16 +1025,6 @@ export interface TeamPresence {
   name: string;
   role: TeamRole;
 }
-// GET    /api/team/me                 -> TeamIdentity
-// GET    /api/team/members            -> TeamOverview（仅所有者）
-// GET    /api/team/approvers          -> TeamMember[]（所有者/审批者/协作者：可用于转交的在线审批者）
-// POST   /api/team/invites {role,projectDirs} -> CreateTeamInviteResult（仅所有者）
-// DELETE /api/team/invites/:id        -> 204（仅所有者）
-// POST   /api/team/members/:id        -> TeamMember（仅所有者：改角色/目录/名称）
-// POST   /api/team/members/:id/revoke -> 204（仅所有者，立即吊销 token）
-// GET    /api/team/audit?limit=200    -> TeamAuditEntry[]（仅所有者，最近 200 条）
-// POST   /api/team/invites/accept {code,name} -> AcceptTeamInviteResult（公开接口，凭邀请码）
-// POST   /api/permissions/:requestId/transfer {toMemberId} -> PermissionRequest（所有者/审批者）
 
 // ---------- 工作站（自托管账号服务 + 主机登记/转发，完全内网） ----------
 // 工作站签发 Ed25519 令牌；主机用工作站公钥本地验签，经出站隧道把请求转给本机。
@@ -1772,7 +1681,6 @@ export type ServerMsg =
   | { type: 'message_end'; sessionId: string; message: Message }         // 最终完整消息，客户端以此为准覆盖
   | { type: 'permission_request'; request: PermissionRequest; sessionId?: string } // sessionId=广播所属会话（子代理冒泡时为主会话），供客户端按会话 seq 排序
   | { type: 'permission_resolved'; requestId: string; sessionId: string; decision: PermissionDecision }
-  | { type: 'permission_transferred'; requestId: string; sessionId: string; request: PermissionRequest; from: string; to: string } // 审批转交：非目标审批者从待办移除
   | { type: 'todos'; sessionId: string; todos: Todo[] }
   | { type: 'plan'; sessionId: string; plan?: SessionPlan }                 // 计划提交/批准/拒绝
   | ({ type: 'hook_event' } & HookEventNotice)                              // Hook 执行记录（成功默认不展示）
@@ -1785,7 +1693,6 @@ export type ServerMsg =
   | { type: 'browser_state'; sessionId: string; state: BrowserState }      // 浏览器当前页面/最新截图（工具调用后刷新）
   | { type: 'preview_state'; sessionId: string; state: PreviewState }      // 应用预览：打开/刷新/改完自动刷新后的状态
   | { type: 'presence'; sessionId: string; viewers: TeamPresence[] }       // 正在查看该会话的连接（含所有者）
-  | { type: 'team_updated' }                                              // 成员/邀请/审计变化，所有者客户端刷新
   // 外部会话（Claude Code / Codex）文件有变动，客户端应重新拉取列表
   | { type: 'task_updated'; sessionId: string; task: BackgroundTask; content?: string; since?: number; truncated?: boolean }
   | { type: 'schedules_updated' }
@@ -2307,7 +2214,8 @@ export interface GatewayToken {
   allowedModels: string[];
 }
 export interface GatewayTokenInput {
-  memberId: string;
+  /** 令牌名称：用来区分使用者/用途，展示在网关页与日志里。 */
+  name: string;
   dailyLimitUsd?: number;
   monthlyLimitUsd?: number;
   rpm?: number;
@@ -2368,7 +2276,7 @@ export interface GatewayOverview {
 // POST   /gateway/v1/messages            Anthropic 兼容转发
 // GET    /api/gateway                    -> GatewayOverview（仅所有者）
 // PUT    /api/gateway/settings {enabled,routes,debugBodies} -> GatewaySettings（仅所有者）
-// POST   /api/gateway/tokens {memberId,...} -> GatewayTokenIssued（仅所有者，明文令牌只返回一次）
+// POST   /api/gateway/tokens {name,...} -> GatewayTokenIssued（仅所有者，明文令牌只返回一次）
 // POST   /api/gateway/tokens/:id {dailyLimitUsd?,monthlyLimitUsd?,rpm?,allowedModels?} -> GatewayToken（仅所有者）
 // DELETE /api/gateway/tokens/:id         -> 204（仅所有者，立即吊销）
 // GET    /api/gateway/logs?limit=100     -> GatewayLogEntry[]（仅所有者，只含元数据）

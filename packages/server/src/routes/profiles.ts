@@ -4,7 +4,7 @@ import type { ProfileGroupInput, ProfileInput, ProviderKind } from '@tandem/prot
 import { testProfile } from '../providers/index.js';
 import { truncateEnd } from '../util/text.js';
 import { PROVIDER_KINDS, bad, str, type RouteDeps } from './common.js';
-import { isOwner, sanitizeProfilesForMember } from '../team/access.js';
+import { isOwner, sanitizeProfilesForViewer } from '../access.js';
 
 export function parseProfileInput(body: unknown): ProfileInput {
   const raw = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
@@ -102,7 +102,7 @@ export function registerProfileRoutes(app: FastifyInstance, deps: RouteDeps): vo
       .list()
       .filter((profile) => profile.kind !== 'demo')
       .map((p) => host.profiles.toPublic(p));
-    return isOwner(req) ? list : sanitizeProfilesForMember(list);
+    return isOwner(req) ? list : sanitizeProfilesForViewer(list);
   });
 
   app.post('/api/profiles', async (req, reply) => {

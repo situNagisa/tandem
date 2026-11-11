@@ -2,7 +2,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ContextSettings, VoiceSettings } from '@tandem/protocol';
 import type { RouteDeps } from './common.js';
-import { principalOf, isOwnerLike } from '../team/access.js';
+import { principalOf, isOwnerLike } from '../access.js';
 
 export function registerHostRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const { host } = deps;
