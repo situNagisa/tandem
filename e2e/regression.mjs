@@ -11625,7 +11625,7 @@ async function main() {
       assert.ok(seen, '收起后应记为本版本已读')
 
       await page.reload()
-      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+      await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
       assert.equal(await closePill.count(), 0, '同一版本内不应再弹出')
 
       // 点开过就按现有逻辑：导览面板不会因为 30 秒到点被自动收起。
@@ -11752,11 +11752,11 @@ async function main() {
       await page.evaluate((hash) => {
         window.location.hash = hash
       }, `#/h/${clientHostId}/s/${session.id}`)
-      await page.locator('textarea[aria-label="消息输入框"]').waitFor({ timeout: 15_000 })
+      await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 15_000 })
       const sessionOf = () => api(base, token, `/api/sessions/${session.id}`)
       const sendTurn = async (text, expected) => {
         const before = (await sessionOf()).messages.length
-        await page.locator('textarea[aria-label="消息输入框"]').fill(text)
+        await page.locator('[aria-label="消息输入框"]').fill(text)
         await page.getByRole('button', { name: '发送消息' }).click()
         await waitUntil(`提示行回归：${text.slice(0, 8)}`, async () => {
           const current = await sessionOf()
