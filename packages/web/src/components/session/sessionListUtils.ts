@@ -2,11 +2,25 @@ import type { ExternalSession, SessionSummary } from '@tandem/protocol'
 import type { AppState } from '../../store/appStore/types'
 import type { SessionFilter } from '../../lib/types'
 import { basename } from '../../lib/format'
+import { sessionTreeRootId } from '../../lib/sessionTree'
 
 const EMPTY: SessionSummary[] = []
 
 export interface ExternalItem extends ExternalSession {
   hostId: string
+}
+
+/**
+ * 侧栏一行 = 一棵会话树（主会话 + 分叉 + 分叉的分叉）。
+ * 行本身是根会话，`openedId` / `branchTitle` / `treeIds` 记录树内其他会话。
+ */
+export interface SessionTreeRow extends SessionSummary {
+  /** 树内最近活动的会话：点这一行打开它。 */
+  openedId?: string
+  /** 当前打开的是分叉时，行内小字显示的所在分叉名。 */
+  branchTitle?: string
+  /** 树内全部会话 id（用于置顶按整棵树生效）。 */
+  treeIds?: string[]
 }
 
 export interface ProjectGroup {
@@ -16,9 +30,9 @@ export interface ProjectGroup {
   name: string
   cwd?: string
   branch?: string
-  items: SessionSummary[]
+  items: SessionTreeRow[]
   externals: ExternalItem[]
-  children: Record<string, SessionSummary[]>
+  children: Record<string, SessionTreeRow[]>
 }
 
 export interface HostGroup {
@@ -85,6 +99,54 @@ export function matchesStatus(s: SessionSummary, filter: SessionFilter['status']
   return s.unread === true;
 }
 
+/** 状态汇总优先级：待审批最需要看见，其次运行中、等待网络、错误。 */
+const STATUS_RANK: Record<SessionSummary['status'], number> = {
+  idle: 0,
+  error: 1,
+  retrying: 2,
+  running: 3,
+  waiting_permission: 4,
+}
+
+/** 一棵会话树汇总成一行：标题用根会话，打开最近活动的会话，状态按树内任一会话汇总。 */
+function treeRow(
+  root: SessionSummary,
+  tree: SessionSummary[],
+  activeSessionId?: string | null,
+): SessionTreeRow {
+  let opened = root
+  let updatedAt = root.updatedAt
+  let status = root.status
+  let unread = !!root.unread
+  let pinned = !!root.pinned
+  let pinnedInProject = !!root.pinnedInProject
+  let branchTitle: string | undefined
+  const ids: string[] = []
+  for (const session of tree) {
+    ids.push(session.id)
+    if (session.updatedAt > updatedAt) updatedAt = session.updatedAt
+    if (session.updatedAt > opened.updatedAt) opened = session
+    if (STATUS_RANK[session.status] > STATUS_RANK[status]) status = session.status
+    if (session.unread) unread = true
+    if (session.pinned) pinned = true
+    if (session.pinnedInProject) pinnedInProject = true
+    if (activeSessionId && session.id === activeSessionId && session.id !== root.id) {
+      branchTitle = session.title || '未命名会话'
+    }
+  }
+  return {
+    ...root,
+    updatedAt,
+    status,
+    unread,
+    pinned,
+    pinnedInProject,
+    ...(opened.id !== root.id ? { openedId: opened.id } : {}),
+    ...(branchTitle ? { branchTitle } : {}),
+    ...(ids.length > 1 ? { treeIds: ids } : {}),
+  }
+}
+
 export function buildGroups(
   hosts: Array<{ id: string; name: string; hostId?: string }>,
   runtimes: AppState['runtimes'],
@@ -93,9 +155,10 @@ export function buildGroups(
   showArchived: boolean,
   filter: SessionFilter,
   pinnedProjects: string[],
-): { pinned: Array<{ hostId: string; session: SessionSummary }>; hosts: HostGroup[] } {
+  activeSessionId?: string | null,
+): { pinned: Array<{ hostId: string; session: SessionTreeRow }>; hosts: HostGroup[] } {
   const q = query.trim().toLowerCase()
-  const pinned: Array<{ hostId: string; session: SessionSummary }> = []
+  const pinned: Array<{ hostId: string; session: SessionTreeRow }> = []
   const groups: HostGroup[] = []
   const allowTandem = filter.source === 'all' || filter.source === 'tandem'
   const allowExternal =
@@ -105,31 +168,40 @@ export function buildGroups(
     if (filter.hostId !== 'all' && h.id !== filter.hostId) continue
     const rt = runtimes[h.id]
     const all = allowTandem ? (rt?.sessions ?? EMPTY) : EMPTY
-    const matched = all.filter((s) => {
-      if (showArchived) {
-        if (!s.archived) return false
-      } else if (s.archived) {
-        return false
-      }
-      if (!matchesStatus(s, filter.status)) return false
-      if (filter.project !== 'all' && projectName(s) !== filter.project) return false
-      if (!q) return true
-      return (
-        s.title.toLowerCase().includes(q) ||
-        s.cwd.toLowerCase().includes(q) ||
-        s.model.toLowerCase().includes(q) ||
-        (s.env?.repoName ?? '').toLowerCase().includes(q) ||
-        (s.env?.branch ?? '').toLowerCase().includes(q) ||
-        h.name.toLowerCase().includes(q)
-      )
-    })
+    const matchesQuery = (s: SessionSummary) =>
+      s.title.toLowerCase().includes(q) ||
+      s.cwd.toLowerCase().includes(q) ||
+      s.model.toLowerCase().includes(q) ||
+      (s.env?.repoName ?? '').toLowerCase().includes(q) ||
+      (s.env?.branch ?? '').toLowerCase().includes(q) ||
+      h.name.toLowerCase().includes(q)
 
-    // 子代理/孙代理会话只出现在对应主会话的消息流里，侧栏与搜索结果一律隐藏；看板卡片会话从「任务看板」进入
-    const tops = matched.filter((s) => !s.parentId && !s.board)
-    const regular: SessionSummary[] = []
-    for (const s of tops) {
-      if (s.pinned && !showArchived) pinned.push({ hostId: h.id, session: s })
-      else regular.push(s)
+    // 子代理/孙代理会话只出现在对应主会话的消息流里，侧栏与搜索结果一律隐藏；看板卡片会话从「任务看板」进入。
+    // 分叉不单独占一行：与根会话归并成一棵树（用户 2026-11-11 22:09 原话）。
+    const inView = all.filter(
+      (s) =>
+        !s.parentId &&
+        !s.board &&
+        (showArchived ? !!s.archived : !s.archived),
+    )
+    const inViewById = new Map(inView.map((s) => [s.id, s]))
+    const trees = new Map<string, SessionSummary[]>()
+    for (const s of inView) {
+      const rootId = sessionTreeRootId(s, inViewById)
+      const tree = trees.get(rootId)
+      if (tree) tree.push(s)
+      else trees.set(rootId, [s])
+    }
+
+    const regular: SessionTreeRow[] = []
+    for (const [rootId, tree] of trees) {
+      const root = inViewById.get(rootId)
+      if (!root) continue
+      if (filter.project !== 'all' && projectName(root) !== filter.project) continue
+      if (!tree.some((s) => matchesStatus(s, filter.status) && (!q || matchesQuery(s)))) continue
+      const row = treeRow(root, tree, activeSessionId)
+      if (row.pinned && !showArchived) pinned.push({ hostId: h.id, session: row })
+      else regular.push(row)
     }
     const map = new Map<string, ProjectGroup>()
     for (const s of regular) {

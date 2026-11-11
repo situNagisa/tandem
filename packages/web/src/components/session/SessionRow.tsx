@@ -15,6 +15,12 @@ interface SessionRowProps {
   depth?: number
   section?: 'recent' | 'pinned'
   nested?: boolean
+  /** 点击打开哪个会话：分叉与原会话共用一行时，打开树内最近活动的那个。 */
+  openId?: string
+  /** 当前打开的是分叉时，行内小字显示的所在分叉名。 */
+  branchTitle?: string
+  /** 树内全部会话 id：取消置顶时整棵树一起取消。 */
+  treeIds?: string[]
   activeSessionId: string | null
   renaming: boolean
   renameDraft: string
@@ -33,6 +39,9 @@ export function SessionRow({
   depth = 0,
   section = 'recent',
   nested = false,
+  openId,
+  branchTitle,
+  treeIds,
   activeSessionId,
   renaming,
   renameDraft,
@@ -44,7 +53,7 @@ export function SessionRow({
   setMenu,
   runningElapsed,
 }: SessionRowProps) {
-    const isActive = s.id === activeSessionId
+    const isActive = s.id === activeSessionId || !!branchTitle
     const renamingThis = renaming
     const renameRef = useRef<HTMLInputElement>(null)
     const renameDoneRef = useRef(false)
@@ -65,10 +74,15 @@ export function SessionRow({
       await updateSession(hostId, s.id, { title })
     }
     const pinState = section === 'pinned' ? !!s.pinned : !!s.pinnedInProject
-    const togglePin = () =>
-      void updateSession(hostId, s.id, {
-        ...(section === 'pinned' ? { pinned: !s.pinned } : { pinnedInProject: !s.pinnedInProject }),
-      })
+    const togglePin = () => {
+      // 一行代表整棵会话树：取消置顶时把树内所有会话一起取消，否则分叉仍留在置顶区。
+      const ids = pinState && treeIds?.length ? treeIds : [s.id]
+      for (const id of ids) {
+        void updateSession(hostId, id, {
+          ...(section === 'pinned' ? { pinned: !pinState } : { pinnedInProject: !pinState }),
+        })
+      }
+    }
     const pinLabel =
       section === 'pinned'
         ? pinState
@@ -151,7 +165,7 @@ export function SessionRow({
           <button data-raw-button
             type="button"
             data-session-open="true"
-            onClick={(e) => openSession(hostId, s.id, !!(e.metaKey || e.ctrlKey))}
+            onClick={(e) => openSession(hostId, openId ?? s.id, !!(e.metaKey || e.ctrlKey))}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
               'flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pr-1 text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--t-focus-ring)]',
@@ -180,6 +194,17 @@ export function SessionRow({
               )}
               {s.title || '未命名会话'}
             </span>
+            {branchTitle && (
+              <span
+                data-session-branch
+                className="min-w-0 max-w-[38%] shrink truncate text-[12px] leading-5 text-text-tertiary"
+                data-tip={`当前所在分叉：${branchTitle}`}
+              >
+                {/* 行内空间有限：只显示分叉名的最后一段，完整标题在 tooltip 与会话图里。 */}
+                {branchTitle.split('·').map((part) => part.trim()).filter(Boolean).pop() ??
+                  branchTitle}
+              </span>
+            )}
             {s.unread && (
               <span
                 className="size-1.5 shrink-0 rounded-full bg-accent-strong"
