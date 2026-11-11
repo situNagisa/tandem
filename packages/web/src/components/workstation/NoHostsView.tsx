@@ -1,31 +1,10 @@
-import { useState } from 'react'
-import { MonitorSmartphone, Plus, Server } from 'lucide-react'
-import { Spinner } from '../ui/Spinner'
+import { Plus, Server } from 'lucide-react'
 import { useUiStore } from '../../store/useUiStore'
-import { addThisComputer, canAddThisComputer } from '../../lib/addLocalHost'
-import { pageIsLoopback } from '../../lib/localHosts'
 import { Button } from '../ui/Button'
 
-/** 登录后账号下还没有主机：不能开会话，引导添加一台主机。 */
+/** 登录后账号下还没有主机：不能开会话，引导打开唯一的「添加主机」对话框。 */
 export function NoHostsView() {
   const setAddHostOpen = useUiStore((s) => s.setAddHostOpen)
-  const toast = useUiStore((s) => s.toast)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const local = canAddThisComputer()
-
-  const addLocal = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      const name = await addThisComputer()
-      toast(`已添加主机「${name}」`, 'success')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '添加失败')
-    } finally {
-      setBusy(false)
-    }
-  }
 
   return (
     <div data-testid="no-hosts" className="flex min-h-full items-center justify-center px-4 py-10">
@@ -49,25 +28,9 @@ export function NoHostsView() {
           >
             <Plus size={15} /> 添加主机
           </Button>
-          {local && (
-            <Button
-              variant="secondary"
-              size="lg"
-              data-testid="no-hosts-add-local"
-              className="w-full justify-center"
-              disabled={busy}
-              onClick={() => void addLocal()}
-            >
-              {busy ? <Spinner size={15} /> : <MonitorSmartphone size={15} />}
-              {pageIsLoopback() ? '添加这台电脑' : '添加此页面所在的主机'}
-            </Button>
-          )}
         </div>
-        {error && <p role="alert" className="mt-3 text-[12.5px] leading-5 text-[var(--t-danger)]">{error}</p>}
         <p className="mt-5 text-[12px] leading-5 text-muted">
-          {local
-            ? '在另一台机器上添加：点「添加主机」，复制一行命令到那台机器执行。'
-            : '点「添加主机」，复制一行命令到目标机器执行即可，不需要输入主机地址。'}
+          点「添加主机」，复制一行命令到目标机器执行即可，不需要输入主机地址。
         </p>
       </div>
     </div>

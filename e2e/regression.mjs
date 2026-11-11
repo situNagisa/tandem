@@ -898,6 +898,51 @@ process.exit(1)
   return { child, ready, logs: () => `${stdout}\n${stderr}`, configDir }
 }
 
+/** 独立工作站进程：登录门用例只验证客户端流程，不再借 Host 侧本机路由启动。 */
+function startWorkstation({ home }) {
+  mkdirSync(home, { recursive: true })
+  const env = {
+    ...process.env,
+    HOME: path.join(home, 'home'),
+    TANDEM_HOME: home,
+    TANDEM_DEBUG_ACCOUNT: '0',
+    NO_PROXY: '127.0.0.1,localhost',
+    no_proxy: '127.0.0.1,localhost',
+  }
+  for (const key of Object.keys(env)) if (env[key] === undefined) delete env[key]
+  const child = spawn(process.execPath, [HOST_ENTRY, 'workstation', '--port', '0', '--host', '127.0.0.1'], {
+    cwd: ROOT,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  let stdout = ''
+  let stderr = ''
+  child.stdout.setEncoding('utf8')
+  child.stderr.setEncoding('utf8')
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk
+  })
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk
+  })
+  const ready = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`工作站启动超时\n${stdout}\n${stderr}`)), 25_000)
+    const check = () => {
+      const match = stdout.match(/访问:\s+http:\/\/127\.0\.0\.1:(\d+)/)
+      if (match) {
+        clearTimeout(timer)
+        resolve(Number(match[1]))
+      }
+    }
+    child.stdout.on('data', check)
+    child.once('exit', (code) => {
+      clearTimeout(timer)
+      reject(new Error(`工作站提前退出（${code}）\n${stdout}\n${stderr}`))
+    })
+  })
+  return { child, ready, logs: () => `${stdout}\n${stderr}` }
+}
+
 /** 轮询直到 fn 返回真值；超时给出标签与最后一次结果。 */
 async function waitForValue(fn, timeout, label) {
   const deadline = Date.now() + timeout
@@ -2739,9 +2784,8 @@ async function main() {
       '权限': 'permissions',
       '权限与安全': 'permissions',
       'Secrets': 'secrets',
-      '团队与共享': 'team-shares',
-      '成员与分享': 'team-shares',
-      '分享': 'team-shares',
+      '工作站': 'workstation',
+      '分享': 'shares',
       '子代理': 'agent',
       'Skills': 'agent',
       '提示词': 'agent',
@@ -2801,15 +2845,16 @@ async function main() {
       }
     }
 
-    /** 工作站入口收在侧栏底部账号菜单里（反馈1323#04）：先打开一行账号菜单，再点「工作站」。 */
+    /** 设备面板的唯一入口：设置 → 主机 → 主机行 → 设备。 */
     const openWorkstationPanel = async (page) => {
-      const footer = page.locator('aside [data-sidebar-footer]')
-      await footer.locator('button[aria-haspopup="menu"]').first().click()
-      const menu = page.getByRole('menu')
-      await menu.waitFor({ timeout: 5_000 })
-      await page.waitForTimeout(220)
-      await menu.getByRole('menuitem', { name: '工作站', exact: true }).click()
-      await menu.waitFor({ state: 'hidden', timeout: 3_000 }).catch(() => {})
+      const settings = await openSettings(page, '主机', 'desktop')
+      await settings.locator('[data-host-row]').first().click()
+      const detail = page.getByRole('dialog', { name: '主机详情' })
+      await detail.waitFor({ state: 'visible', timeout: 10_000 })
+      await detail.getByRole('button', { name: '设备', exact: true }).click()
+      // 设备弹层在设置之上；直接把设置层关掉，后面只操作设备弹层。
+      await settings.locator('button[aria-label="关闭"]').first().evaluate((el) => el.click())
+      await page.getByRole('dialog', { name: '设备' }).waitFor({ state: 'visible', timeout: 10_000 })
     }
 
     // ---------------------------------------------------------------- desktop
@@ -4053,7 +4098,10 @@ async function main() {
 
     desktop('Host 诊断：面板打开、失败项排在最前、报告不含 Key', async (page) => {
       const dialog = await openSettings(page, 'Host 管理', 'desktop')
-      await dialog.getByRole('button', { name: '诊断', exact: true }).first().click()
+      await dialog.locator('[data-host-row]').first().click()
+      const detail = page.getByRole('dialog', { name: '主机详情' })
+      await detail.waitFor({ state: 'visible', timeout: 10_000 })
+      await detail.getByRole('button', { name: '诊断', exact: true }).click()
       const doctor = page.getByRole('dialog', { name: '主机诊断' })
       await doctor.waitFor({ state: 'visible', timeout: 10_000 })
       await doctor.locator('[data-doctor-check]').first().waitFor({ timeout: 60_000 })
@@ -7259,17 +7307,6 @@ async function main() {
       await closeSettings(page)
     })
 
-    desktop('只监听回环时「连接手机」不展示二维码', async (page) => {
-      await openSettings(page, 'Host 管理', 'desktop')
-      await page.getByRole('button', { name: '连接手机' }).first().click()
-      const dialog = page.getByRole('dialog', { name: '连接手机' })
-      await dialog.waitFor({ state: 'visible', timeout: 10_000 })
-      await dialog.getByText('手机暂时连不上这台主机').waitFor({ state: 'visible', timeout: 10_000 })
-      assert.equal(await dialog.locator('[aria-label="配对二维码"]').count(), 0, '回环状态仍渲染了二维码')
-      await page.keyboard.press('Escape')
-      await closeSettings(page)
-    })
-
     desktop('回退对话框引用目标消息并显示删除范围', async (page) => {
       await openSession(page, 'long')
       const row = page.locator('[data-turn-id="u2"]')
@@ -9093,17 +9130,17 @@ async function main() {
       await page.keyboard.press('Escape')
     })
 
-    desktop('设置分组：7 组、合并页与高级折叠', async (page) => {
+    desktop('设置分组：6 组、合并页与高级折叠', async (page) => {
       const dialog = await openSettings(page, '通用', 'desktop')
       const nav = dialog.locator('nav').first()
-      for (const group of ['基础', '模型与账号', '权限与安全', 'Agent 与自动化', '团队与共享', '外观与辅助', '高级']) {
+      for (const group of ['基础', '模型与账号', '权限与安全', 'Agent 与自动化', '外观与辅助', '高级']) {
         assert.equal(
           await nav.locator(`[data-settings-group] > button`).filter({ hasText: group }).count(),
           1,
           `设置导航缺少分组「${group}」`,
         )
       }
-      for (const pageName of ['用量与预算', 'Agent 能力', '成员与分享']) {
+      for (const pageName of ['用量与预算', 'Agent 能力', '分享']) {
         assert.equal(await nav.getByRole('button', { name: pageName, exact: true }).count(), 1, `缺少合并页「${pageName}」`)
       }
       const advanced = nav.locator('[data-settings-group="advanced"] > button').first()
@@ -11572,11 +11609,15 @@ async function main() {
         await page.reload({ waitUntil: 'domcontentloaded' })
         await openSession(page, sessionId)
         await openWorkstationPanel(page)
-        const dialog = page.getByRole('dialog', { name: '工作站' })
+        const dialog = page.getByRole('dialog', { name: '设备' })
         await dialog.waitFor({ state: 'visible' })
         await dialog.getByText('设备主机 A', { exact: true }).waitFor({ timeout: 10_000 })
         await dialog.getByText(/REG_A_01/).first().waitFor({ timeout: 10_000 })
-        assert.ok((await dialog.getByText(/Tandem Mock/).count()) >= 2, '两台主机的串口未同时列出')
+        await waitForValue(
+          async () => ((await dialog.getByText(/Tandem Mock/).count()) >= 2 ? true : null),
+          15_000,
+          '两台主机的串口未同时列出',
+        )
         await dialog.getByRole('button', { name: '完成' }).click()
       } finally {
         if (logTask) {
@@ -11621,7 +11662,7 @@ async function main() {
         await page.reload({ waitUntil: 'domcontentloaded' })
         await openSession(page, 'long')
         await openWorkstationPanel(page)
-        const dialog = page.getByRole('dialog', { name: '工作站' })
+        const dialog = page.getByRole('dialog', { name: '设备' })
         await dialog.waitFor({ state: 'visible' })
         const section = dialog.locator('section', { hasText: baseA }).first()
         await section.waitFor({ timeout: 10_000 })
@@ -11719,7 +11760,7 @@ async function main() {
         )
         await page.reload({ waitUntil: 'domcontentloaded' })
         await openWorkstationPanel(page)
-        const dialog = page.getByRole('dialog', { name: '工作站' })
+        const dialog = page.getByRole('dialog', { name: '设备' })
         await dialog.waitFor({ state: 'visible' })
         const section = dialog.locator('section[data-host-section]').filter({ hasText: baseB }).first()
         await section.getByText('Tandem Mock').waitFor({ timeout: 10_000 })
@@ -11764,7 +11805,7 @@ async function main() {
         await dialog.getByRole('button', { name: '完成' }).click()
         await openSession(page, 'long')
         await openWorkstationPanel(page)
-        const dialog2 = page.getByRole('dialog', { name: '工作站' })
+        const dialog2 = page.getByRole('dialog', { name: '设备' })
         await dialog2.waitFor({ state: 'visible' })
         const section2 = dialog2.locator('section[data-host-section]').filter({ hasText: baseB }).first()
         await section2.getByText('Tandem Mock').waitFor({ timeout: 10_000 })
@@ -11860,7 +11901,7 @@ async function main() {
 
         // 工作站界面标注「演示设备」。
         await openWorkstationPanel(page)
-        const dialog = page.getByRole('dialog', { name: '工作站' })
+        const dialog = page.getByRole('dialog', { name: '设备' })
         await dialog.waitFor({ state: 'visible' })
         await dialog.getByText('演示设备', { exact: true }).first().waitFor({ timeout: 10_000 })
         assert.ok((await dialog.getByText('演示设备', { exact: true }).count()) >= 2, '演示设备没有全部标注')
@@ -11933,13 +11974,13 @@ async function main() {
       await popup.close()
     })
 
-    // 登录门：未登录先登录；登录后没有主机不能开会话，添加主机后可以开始。
+    // 登录门：未登录先登录；登录后没有主机不能开会话，「添加主机」只有一个对话框。
     checks.push({
-      name: '登录门：未登录深链先登录、无主机空状态、添加这台电脑后可开会话',
+      name: '登录门：未登录深链先登录、无主机空状态、添加主机对话框唯一',
       viewport: 'desktop',
       gate: true,
       fn: async (page) => {
-        // 独立 Host：主 Host 在回归准备阶段已经是「工作区中心」，不能再 join 自己。
+        // 独立 Host 只用来托管页面；客户端填独立工作站的地址登录。
         const gateToken = `gate-${randomUUID()}`
         const gateHostId = randomUUID()
         const plainHost = startHost({
@@ -11948,9 +11989,12 @@ async function main() {
           hostId: gateHostId,
           extraEnv: { TANDEM_DEBUG_ACCOUNT: '0' },
         })
+        const station = startWorkstation({ home: path.join(home, 'gate-station') })
         try {
           const port = await plainHost.ready
           const base = `http://127.0.0.1:${port}`
+          const stationPort = await station.ready
+          const stationUrl = `http://127.0.0.1:${stationPort}`
           await page.goto(`${base}/?token=${gateToken}#/h/${gateHostId}`, { waitUntil: 'domcontentloaded' })
           await page.locator('[data-testid="login-gate"]').waitFor({ state: 'visible', timeout: 60_000 })
           // 深链保留在地址栏：登录前不处理路由，登录后回到原地址。
@@ -11958,7 +12002,11 @@ async function main() {
           assert.equal(await page.locator('[data-testid="no-hosts"]').count(), 0, '未登录不应显示无主机空状态')
           assert.equal(await page.locator('[aria-label="消息输入框"]').count(), 0, '未登录不应进入会话界面')
 
-          // 回环地址：登录页会自动启动这台电脑的工作站，首次使用是「创建工作站」。
+          // 页面由普通 Host 托管，登录门进「连接工作站」：填工作站地址后创建管理员账号。
+          const urlInput = page.locator('[data-testid="login-url"]')
+          await urlInput.waitFor({ state: 'visible', timeout: 60_000 })
+          await urlInput.fill(stationUrl)
+          await page.locator('[data-testid="login-submit"]').click()
           const name = page.locator('[data-testid="login-workspace-name"]')
           await name.waitFor({ state: 'visible', timeout: 60_000 })
           await name.fill('回归登录门工作站')
@@ -11974,17 +12022,173 @@ async function main() {
             true,
             '没有主机时新会话入口应禁用',
           )
-          // 本机凭据还在：一键添加这台电脑，之后能进入会话界面。
-          await page.locator('[data-testid="no-hosts-add-local"]').click()
-          await page.locator('[aria-label="消息输入框"]').waitFor({ state: 'visible', timeout: 60_000 })
-          assert.equal(await page.locator('[data-testid="no-hosts"]').count(), 0, '添加主机后空状态应消失')
-          assert.equal(
-            await page.locator('[data-testid="sidebar-new-session"]').isDisabled(),
-            false,
-            '有主机后新会话入口应可用',
-          )
+          // 空状态主按钮打开唯一的添加主机对话框；不再有「添加这台电脑」的副本。
+          assert.equal(await page.locator('[data-testid="no-hosts-add-local"]').count(), 0, '不应再有添加这台电脑按钮')
+          await page.locator('[data-testid="no-hosts-add"]').click()
+          const addDialog = page.getByRole('dialog', { name: '添加主机' })
+          await addDialog.waitFor({ state: 'visible', timeout: 15_000 })
+          await addDialog.locator('[data-testid="addhost-command"], [data-testid="addhost-expiry"]').first().waitFor({ timeout: 15_000 })
+          await addDialog.getByRole('button', { name: /关闭|完成/ }).first().click()
+          await addDialog.waitFor({ state: 'hidden', timeout: 5_000 })
+          assert.equal(await page.locator('[data-testid="no-hosts"]').count(), 1, '关闭对话框后仍应停在空状态')
         } finally {
           plainHost.child.kill('SIGTERM')
+          station.child.kill('SIGTERM')
+        }
+      },
+    })
+
+    // 2026-11-11 用户要求：工作站与主机管理重新整理，只留一个主机列表、一个添加对话框。
+    checks.push({
+      name: '主机管理：唯一主机列表与详情抽屉、唯一添加入口、工作站页仅管理员',
+      viewport: 'desktop',
+      gate: true,
+      fn: async (page) => {
+        const station = startWorkstation({ home: path.join(home, 'host-ia-station') })
+        const hostToken = `gate-${randomUUID()}`
+        const hostId = randomUUID()
+        const plainHost = startHost({
+          home: path.join(home, 'host-ia-plain'),
+          token: hostToken,
+          hostId,
+          extraEnv: { TANDEM_DEBUG_ACCOUNT: '0' },
+        })
+        let ownContext
+        try {
+          const stationPort = await station.ready
+          const stationUrl = `http://127.0.0.1:${stationPort}`
+          const hostPort = await plainHost.ready
+          const hostBase = `http://127.0.0.1:${hostPort}`
+          const setup = await (
+            await fetch(`${stationUrl}/api/workstation/setup`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ name: '回归工作站', username: 'ia-admin', password: 'ia-pass-123' }),
+            })
+          ).json()
+          assert.ok(setup.accessToken, '工作站管理员创建失败')
+          const bind = await api(stationUrl, setup.accessToken, '/api/workstation/hosts/bind-code', { method: 'POST' })
+          await api(hostBase, hostToken, '/api/workstation/join', {
+            method: 'POST',
+            body: JSON.stringify({ workstationUrl: stationUrl, code: bind.code, name: '管理测试主机' }),
+          })
+          await waitForValue(async () => {
+            const res = await fetch(`${stationUrl}/api/workstation/hosts`, {
+              headers: { authorization: `Bearer ${setup.accessToken}` },
+            })
+            const list = await res.json()
+            return list.some((item) => item.name === '管理测试主机' && item.online) ? list : null
+          }, 60_000, '测试主机应连上工作站')
+
+          // 独立上下文：登录门走真实登录，主机来自工作站登记。
+          ownContext = await browser.newContext({ viewport: DESKTOP, deviceScaleFactor: 1 })
+          const p = await ownContext.newPage()
+          p.setDefaultTimeout(15_000)
+          await p.goto(`${hostBase}/?token=${hostToken}&gate=on#/h/${hostId}`, { waitUntil: 'domcontentloaded' })
+          await p.locator('[data-testid="login-gate"]').waitFor({ state: 'visible', timeout: 60_000 })
+          await p.locator('[data-testid="login-url"]').fill(stationUrl)
+          await p.locator('[data-testid="login-submit"]').click()
+          await p.locator('[data-testid="login-username"]').waitFor({ state: 'visible', timeout: 30_000 })
+          await p.locator('[data-testid="login-username"]').fill('ia-admin')
+          await p.locator('[data-testid="login-password"]').fill('ia-pass-123')
+          await p.locator('[data-testid="login-submit"]').click()
+          await p.locator('[data-sidebar-footer]').waitFor({ timeout: 30_000 })
+
+          // 唯一主机列表：我的徽标、行点击打开详情。
+          const dialog = await openSettings(p, '主机', 'desktop')
+          const rows = dialog.locator('[data-host-row]')
+          await rows.first().waitFor({ timeout: 30_000 })
+          assert.equal(await rows.count(), 1, '主机列表应只有登记的那一台')
+          assert.match(await rows.first().innerText(), /管理测试主机/, '主机列表缺少登记的主机')
+          assert.ok((await rows.first().getByText('我的', { exact: true }).count()) >= 1, '主机列表缺少归属徽标')
+
+          // 设置页的添加按钮打开唯一对话框。
+          await dialog.getByRole('button', { name: '添加主机', exact: true }).click()
+          const addDialog = p.getByRole('dialog', { name: '添加主机' })
+          await addDialog.waitFor({ state: 'visible', timeout: 10_000 })
+          await addDialog.getByRole('button', { name: /关闭|完成/ }).first().click()
+          await addDialog.waitFor({ state: 'hidden', timeout: 5_000 })
+
+          // 点行打开详情：改名、设备、诊断、授权都在这里。
+          await rows.first().click()
+          const detail = p.getByRole('dialog', { name: '主机详情' })
+          await detail.waitFor({ state: 'visible', timeout: 10_000 })
+          for (const action of ['设备', '诊断', '重新连接', '授权']) {
+            assert.equal(
+              await detail.getByRole('button', { name: action, exact: true }).count(),
+              1,
+              `主机详情缺少「${action}」`,
+            )
+          }
+          await detail.locator('input').first().fill('管理测试主机-改名')
+          await detail.getByRole('button', { name: '保存', exact: true }).click()
+          await detail.getByRole('button', { name: '授权', exact: true }).click()
+          const grant = p.getByRole('dialog', { name: /^授权「管理测试主机/ })
+          await grant.waitFor({ state: 'visible', timeout: 10_000 })
+          assert.ok(await grant.getByText('账号', { exact: true }).count(), '授权弹层缺少账号选择')
+          await grant.getByRole('button', { name: '取消', exact: true }).click()
+          await grant.waitFor({ state: 'hidden', timeout: 5_000 })
+          await detail.getByRole('button', { name: '完成', exact: true }).click()
+          await detail.waitFor({ state: 'hidden', timeout: 5_000 })
+          await rows.first().waitFor({ timeout: 5_000 })
+          assert.match(await rows.first().innerText(), /管理测试主机-改名/, '改名后列表没有立即更新')
+          await closeSettings(p)
+
+          // 环境条主机菜单：固定两项「管理主机…」「添加主机…」，后者打开同一对话框。
+          await p.locator('[data-env-bar-row] button[aria-haspopup="menu"]').first().click()
+          const hostMenu = p.getByRole('menu').filter({ hasText: '管理主机' }).first()
+          await hostMenu.waitFor({ timeout: 5_000 })
+          assert.ok(await hostMenu.getByRole('menuitem', { name: '管理主机…', exact: true }).count(), '主机菜单缺少管理主机')
+          await hostMenu.getByRole('menuitem', { name: '添加主机…', exact: true }).click()
+          const addFromEnv = p.getByRole('dialog', { name: '添加主机' })
+          await addFromEnv.waitFor({ state: 'visible', timeout: 10_000 })
+          await addFromEnv.getByRole('button', { name: /关闭|完成/ }).first().click()
+          await addFromEnv.waitFor({ state: 'hidden', timeout: 5_000 })
+
+          // 命令面板只有一条「添加主机…」，打开的是同一个对话框。
+          await p.keyboard.press('Control+k')
+          const palette = p.getByRole('dialog', { name: '命令面板' })
+          await palette.waitFor({ state: 'visible', timeout: 10_000 })
+          await palette.getByPlaceholder(/命令|搜索/).first().fill('添加主机')
+          await p.waitForTimeout(500)
+          const addCommands = palette.getByText('添加主机…', { exact: true })
+          assert.equal(await addCommands.count(), 1, '命令面板里「添加主机」应只有一条')
+          await addCommands.first().click()
+          const addFromPalette = p.getByRole('dialog', { name: '添加主机' })
+          await addFromPalette.waitFor({ state: 'visible', timeout: 10_000 })
+          await addFromPalette.getByRole('button', { name: /关闭|完成/ }).first().click()
+
+          // 设置 → 工作站：管理员可见，只放工作站级设置，不再有主机列表。
+          const workstation = await openSettings(p, '工作站', 'desktop')
+          const wsText = await workstation.locator('[data-settings-page-content="workstation"]').innerText()
+          assert.match(wsText, /工作站名称/, '工作站页缺少名称设置')
+          assert.match(wsText, /注册与邀请/, '工作站页缺少注册与邀请')
+          assert.match(wsText, /成员/, '工作站页缺少成员列表')
+          assert.doesNotMatch(wsText, /我的主机|添加主机/, `工作站页仍出现主机管理：${wsText.slice(0, 120)}`)
+          await closeSettings(p)
+
+          // 非管理员：导航里没有「工作站」。
+          await p.evaluate(() => {
+            const raw = localStorage.getItem('tandem.account.v1')
+            if (!raw) return
+            const session = JSON.parse(raw)
+            session.account = { ...session.account, role: 'member' }
+            localStorage.setItem('tandem.account.v1', JSON.stringify(session))
+          })
+          await p.reload({ waitUntil: 'domcontentloaded' })
+          await p.locator('[data-sidebar-footer]').waitFor({ timeout: 30_000 })
+          await p.locator('aside').getByRole('button', { name: '设置', exact: true }).click()
+          const memberSettings = p.getByRole('dialog', { name: '设置' })
+          await memberSettings.waitFor({ state: 'visible', timeout: 10_000 })
+          assert.equal(
+            await memberSettings.locator('[data-settings-page="workstation"]').count(),
+            0,
+            '非管理员不应看到设置 → 工作站',
+          )
+        } finally {
+          await ownContext?.close().catch(() => undefined)
+          plainHost.child.kill('SIGTERM')
+          station.child.kill('SIGTERM')
         }
       },
     })
@@ -12256,7 +12460,7 @@ async function main() {
       await page.waitForTimeout(120)
     }
 
-    fb2102('反馈1323#04：侧栏底部一行账号 + 齿轮，账号菜单含工作站入口', async (page) => {
+    fb2102('反馈1323#04：侧栏底部一行账号 + 齿轮，账号菜单只放账号与工作站设置', async (page) => {
       mkdirSync(fix1323Shots, { recursive: true })
       // 工作区账号只存在 localStorage；主机仍用已连上的直连地址，不新增网络依赖。
       await page.evaluate(() => {
@@ -12269,7 +12473,7 @@ async function main() {
             refreshToken: 'reg-refresh',
             accessExpiresAt: now + 86_400_000,
             refreshExpiresAt: now + 30 * 86_400_000,
-            account: { id: 'acc-reg', name: '调试账号', username: 'debug', debug: true },
+            account: { id: 'acc-reg', name: '调试账号', username: 'debug', role: 'admin', debug: true },
             workspace: { id: 'ws-reg', name: '调试' },
           }),
         )
@@ -12306,20 +12510,34 @@ async function main() {
       const menu = page.getByRole('menu')
       await menu.waitFor({ timeout: 5_000 })
       const items = (await menu.getByRole('menuitem').allInnerTexts()).map((text) => text.trim())
-      assert.ok(items.includes('工作站'), `账号菜单缺少工作站入口：${items.join(' / ')}`)
-      assert.ok(items.some((text) => text.includes('工作站管理')), `账号菜单缺少工作站管理：${items.join(' / ')}`)
+      assert.ok(items.includes('账号设置'), `账号菜单缺少账号设置：${items.join(' / ')}`)
+      assert.ok(items.includes('工作站设置'), `账号菜单缺少工作站设置：${items.join(' / ')}`)
       assert.ok(items.some((text) => text.includes('退出')), `账号菜单缺少退出登录：${items.join(' / ')}`)
+      assert.ok(!items.includes('工作站'), `账号菜单不应再有设备入口：${items.join(' / ')}`)
+      assert.ok(!items.includes('设备'), `账号菜单不应再有设备入口：${items.join(' / ')}`)
+      assert.ok(!items.some((text) => text.includes('工作站管理')), `旧「工作站管理」应已改名：${items.join(' / ')}`)
       await page.waitForTimeout(200)
       await page.screenshot({ path: shot1323('04-sidebar-account-menu-dark.png') })
       await useLightTheme(page)
       await page.screenshot({ path: shot1323('04-sidebar-account-menu-light.png') })
 
-      // 工作站入口仍可用（只是从整行收进菜单）。
-      await menu.getByRole('menuitem', { name: '工作站', exact: true }).click()
-      const workstation = page.getByRole('dialog', { name: '工作站' })
-      await workstation.waitFor({ timeout: 5_000 })
+      // 账号设置与工作站设置都直达唯一设置入口。
+      await menu.getByRole('menuitem', { name: '账号设置', exact: true }).click()
+      const accountSettings = page.getByRole('dialog', { name: '设置' })
+      await accountSettings.waitFor({ timeout: 5_000 })
+      await accountSettings.locator('[data-settings-page-content="profiles"]').waitFor({ timeout: 5_000 })
+      await accountSettings.locator('button[aria-label="关闭"]').first().evaluate((el) => el.click())
+      await accountSettings.waitFor({ state: 'hidden', timeout: 5_000 })
+
+      await accountTrigger.click()
+      await menu.waitFor({ timeout: 5_000 })
+      await menu.getByRole('menuitem', { name: '工作站设置', exact: true }).click()
+      const workstationDialog = page.getByRole('dialog', { name: '设置' })
+      await workstationDialog.waitFor({ timeout: 5_000 })
+      await workstationDialog.locator('[data-settings-page-content="workstation"]').waitFor({ timeout: 5_000 })
+      await workstationDialog.locator('button[aria-label="关闭"]').first().evaluate((el) => el.click())
       await page.getByRole('menu').waitFor({ state: 'detached', timeout: 2_000 }).catch(() => {})
-      assert.equal(await page.getByRole('menu').count(), 0, '选中工作站后账号菜单应收起')
+      assert.equal(await page.getByRole('menu').count(), 0, '选中菜单项后账号菜单应收起')
 
       await page.evaluate(() => localStorage.removeItem('tandem.account.v1'))
     })

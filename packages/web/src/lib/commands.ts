@@ -195,7 +195,7 @@ const BASE_COMMANDS: AppCommand[] = [
   },
   {
     id: 'app.add-host',
-    title: '添加主机',
+    title: '添加主机…',
     keywords: ['添加主机', '主机', '机器', '工作站', 'add host', 'workstation'],
     run: () => {
       if (!useAppStore.getState().account) {
@@ -205,6 +205,14 @@ const BASE_COMMANDS: AppCommand[] = [
       const ui = useUiStore.getState()
       ui.setMobileSidebar(false)
       ui.setAddHostOpen(true)
+    },
+  },
+  {
+    id: 'app.host-settings',
+    title: '打开主机设置',
+    keywords: ['主机', '主机设置', '管理主机', '改名', '授权', '设备', 'host'],
+    run: () => {
+      useUiStore.getState().openSettings('hosts')
     },
   },
   {

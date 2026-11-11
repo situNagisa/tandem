@@ -61,6 +61,13 @@ const F = {
   newSessionPick: 'packages/web/src/lib/newSessionPick.ts',
   settingsDialog: 'packages/web/src/components/settings/SettingsDialog.tsx',
   settingsRegistry: 'packages/web/src/lib/settingsRegistry.ts',
+  hostsSection: 'packages/web/src/components/settings/HostsSection.tsx',
+  hostDetail: 'packages/web/src/components/settings/HostDetailDrawer.tsx',
+  addHostDialog: 'packages/web/src/components/workstation/AddHostDialog.tsx',
+  noHosts: 'packages/web/src/components/workstation/NoHostsView.tsx',
+  workstationSection: 'packages/web/src/components/workstation/WorkstationSection.tsx',
+  workstationDialog: 'packages/web/src/components/workstation/WorkstationDialog.tsx',
+  commands: 'packages/web/src/lib/commands.ts',
   menu: 'packages/web/src/components/ui/Menu.tsx',
   popover: 'packages/web/src/components/ui/Popover.tsx',
   modelCascade: 'packages/web/src/components/ui/ModelCascade.tsx',
@@ -362,10 +369,10 @@ const DECISIONS = [
   {
     id: 'sidebar-single-settings',
     source: '侧栏信息层级；反馈1323#04（2026-11-11 原话「这里的ui参考claude code，收成一个选项，显示账号，右边一个齿轮，表示设置，账号点开后可以看到一些其他的项」）',
-    decision: '全应用唯一设置入口：侧栏底部一行，左侧账号、右侧齿轮；工作站入口收进账号菜单',
+    decision: '全应用唯一设置入口：侧栏底部一行，左侧账号、右侧齿轮；账号菜单只放账号与工作站设置，设备入口不在这里',
     files: [F.sidebar, F.app],
-    need: [/openSettings\(\)/, /label="设置"/, /data-sidebar-footer/, /aria-label="账号与工作站"/, /<Sidebar \/>/],
-    deny: [/<span className="min-w-0 flex-1 truncate">设置<\/span>/],
+    need: [/openSettings\(\)/, /label="设置"/, /data-sidebar-footer/, /aria-label="账号菜单"/, /<Sidebar \/>/, /工作站设置/],
+    deny: [/<span className="min-w-0 flex-1 truncate">设置<\/span>/, /setWorkstationOpen/, /所有主机的 ADB \/ 串口设备/, /工作站管理/],
   },
   {
     id: 'sidebar-host-groups',
@@ -428,9 +435,9 @@ const DECISIONS = [
   {
     id: 'settings-groups',
     source: '信息架构收敛：入口规则',
-    decision: '设置按固定 7 组导航，高级默认折叠',
+    decision: '设置按固定分组导航（主机与工作站都在「基础」组），高级默认折叠',
     files: [F.settingsRegistry],
-    need: [/基础/, /模型与账号/, /权限与安全/, /Agent 与自动化/, /团队与共享/, /外观与辅助/, /高级/],
+    need: [/基础/, /模型与账号/, /权限与安全/, /Agent 与自动化/, /外观与辅助/, /高级/],
   },
   {
     id: 'settings-content-width',
@@ -679,6 +686,24 @@ const DECISIONS = [
     need: [/LoginGate|login-gate/],
   },
   {
+    id: 'hosts-single-entry',
+    source: '2026-11-11 用户原话：工作站主机就有三四个入口，功能都非常类似；没有任何必要出现一个仅本机使用；设备也不仅仅只有 ADB 和串口',
+    decision: '工作站=服务、主机=机器、设备=开放概念；主机只有设置→主机一个列表，点行进详情；设备面板叫「设备」',
+    files: [F.settingsRegistry, F.hostsSection, F.hostDetail, F.workstationDialog, F.workstationSection, F.envBar],
+    need: [
+      /id: 'workstation', label: '工作站'/,
+      /id: 'shares', label: '分享'/,
+      /data-host-row=/,
+      /HostDetailDrawer/,
+      /HostGrantDialog/,
+      /'我的' : '获授权'/,
+      /title="设备"/,
+      /管理主机…/,
+      /添加主机…/,
+    ],
+    deny: [/team-shares/, /accounts\.hosts/, /hosts\.pair/, /title="工作站"/, /所有主机的 ADB \/ 串口设备|加密隧道/],
+  },
+  {
     id: 'no-host-empty-state',
     source: '2026-11-09 用户要求：没有主机不能开会话',
     decision: '无主机空状态，新会话入口禁用并说明',
@@ -799,6 +824,38 @@ for (const item of DECISIONS) {
   if (problems.length > 0) {
     failed += 1
     console.log(`✗ ${item.id} ${item.decision}  [${item.source}]`)
+    for (const problem of problems) console.log(`    ${problem}`)
+  }
+}
+
+// 添加主机唯一化：只有一个 AddHostDialog 实现，所有「添加主机」入口都打开它。
+{
+  const problems = []
+  const imports = []
+  const walk = (dir) => {
+    for (const entry of readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`
+      if (entry.isDirectory()) walk(rel)
+      else if (/\.(ts|tsx)$/.test(entry.name)) {
+        const text = read(rel)
+        if (/import \{[^}]*\bAddHostDialog\b/.test(text)) imports.push(rel)
+      }
+    }
+  }
+  walk('packages/web/src')
+  if (imports.length !== 1 || imports[0] !== F.app) {
+    problems.push(`AddHostDialog 应只在 App 渲染一次，实际：${imports.join(', ') || '无'}`)
+  }
+  for (const file of [F.hostsSection, F.noHosts, F.envBar, F.featureTour, F.commands]) {
+    if (!/setAddHostOpen/.test(read(file))) problems.push(`${file} 的「添加主机」入口没有打开唯一对话框`)
+  }
+  if (!/title="添加主机"/.test(read(F.addHostDialog))) problems.push('AddHostDialog 标题不统一')
+  if (/workstationApi\.(join|enableLocal)|localStatus\(/.test(read(F.addHostDialog))) {
+    problems.push('AddHostDialog 仍依赖 Host 侧本机路由（join/enable/localStatus）')
+  }
+  if (problems.length > 0) {
+    failed += 1
+    console.log('✗ add-host-single-dialog 添加主机只有一个对话框，入口全部指向它')
     for (const problem of problems) console.log(`    ${problem}`)
   }
 }

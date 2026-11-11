@@ -56,7 +56,7 @@ function DemoPhone() {
         <div className="truncate font-mono text-[11.5px] text-text-tertiary">
           logcat: {log}
         </div>
-        <div className="text-[11.5px] text-text-tertiary">模拟画面，不依赖真实 adb；可在工作站里卸载。</div>
+        <div className="text-[11.5px] text-text-tertiary">模拟画面，不依赖真实 adb；可在「设备」里卸载。</div>
       </div>
     </div>
   )

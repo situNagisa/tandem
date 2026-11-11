@@ -528,8 +528,8 @@ export const CHANGELOG: ChangelogRelease[] = [
     items: [
       {
         id: 'workstation-devices',
-        title: '工作站：设备共享',
-        summary: '在一处看到所有主机的 ADB / 串口设备，挂载后会话里的 agent 直接可用，串口还能开终端。',
+        title: '设备：一处看所有主机',
+        summary: '在一处看到所有主机的设备（ADB、串口等），挂载后会话里的 agent 直接可用，串口还能开终端。',
         target: { kind: 'workstation' },
       },
       {

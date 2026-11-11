@@ -1,5 +1,5 @@
 // 本机 Host 凭据（地址 + 主 token）。登录门开启时它们不进入工作台的主机列表，
-// 只用于本机管理：「添加这台电脑」、启动本机内嵌工作站、调试版自动登录。
+// 只用于调试版自动登录与页面所在 Host 的凭据探测。
 import type { HostConfig } from './types'
 import { readJson, sanitizeHosts, writeJson } from './storage'
 

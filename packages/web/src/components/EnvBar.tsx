@@ -9,6 +9,8 @@ import {
   GitBranch,
   GitFork,
   Monitor,
+  Plus,
+  Settings,
   Smartphone,
   TriangleAlert,
   Undo2,
@@ -157,19 +159,11 @@ function HostMenu({
     <>
       {hosts.map((h) => {
         const rt = runtimes[h.id]
-        const detail = [
-          h.url.replace(/^https?:\/\//, ''),
-          rt?.info?.platform,
-          h.mode === 'relay' ? '加密隧道' : '直连',
-        ]
-          .filter(Boolean)
-          .join(' · ')
         return (
           <Menu.Item
             key={h.id}
             icon={<ConnectionDot state={rt?.status ?? 'connecting'} />}
             selected={h.id === hostId}
-            hint={detail}
             keepOpen={keepOpen}
             trailing={
               h.id === pendingHostId ? (
@@ -190,6 +184,19 @@ function HostMenu({
           </Menu.Item>
         )
       })}
+      <Menu.Separator />
+      <Menu.Item
+        icon={<Settings size={13} />}
+        onSelect={() => useUiStore.getState().openSettings('hosts')}
+      >
+        管理主机…
+      </Menu.Item>
+      <Menu.Item
+        icon={<Plus size={13} />}
+        onSelect={() => useUiStore.getState().setAddHostOpen(true)}
+      >
+        添加主机…
+      </Menu.Item>
     </>
   )
 }
