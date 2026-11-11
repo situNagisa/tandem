@@ -40,7 +40,7 @@
 | R37 | 浏览器/系统自带控件与提示外露 | 4 | 根节点 spellcheck + 自定义右键菜单 + 原生控件迁移 + Edge 行为记录；ui-audit native-title/datalist/list/selection；regression 设置页/输入框 |
 | R38 | 只读预览另起一套页面，缺少辅助视图 | 1 | 只读复用 TurnRail/Card/ResizeHandle；单测 external；regression 外部预览 |
 | R39 | 构建 flavor 只注入 web，调试模块进 asar | 1 | 构建期常量 + 产物扫描；check-debug/flavor 单测 |
-| R40 | 辅助视图与懒加载脱节，点了没反应/固定轮被卸载 | 2 | 先加载再定位 + 固定轮不卸载 + 占位条；regression 4 条懒加载用例 |
+| R40 | 辅助视图与懒加载脱节，点了没反应/固定轮被卸载 | 3 | 唯一跳转服务先取目标所在片段再定位 + 固定轮不卸载 + 占位条；regression 大纲未加载轮只取该片段 / 固定轮初次打开、滚动、跳转后仍挂载，及原 4 条懒加载用例 |
 | R41 | 破坏缓存的切换只在菜单常驻提示 | 1 | `ui/ConfirmAction` 在选中时确认；regression 确认/取消/落库 |
 | R42 | 编辑表单回传空值/掩码覆盖已保存 Key | 1 | 掩码占位 + 服务端保留原值；单测 profile-keys；regression 编辑后 Key |
 | R43 | 拉取模型不区分代际 | 1 | `lib/modelSelection.ts`；单测/regression 最新一代 |
@@ -66,7 +66,7 @@
 | R65 | 单价按型号名前缀硬编码，新代际查不到价格（花费显示 —）；未收录型号不按同家族估算 | 1 | `usage.ts` `builtinPriceFor`：前缀表 → Claude 家族+版本 → GPT 基础款最近一代，估算时标 `estimatedFrom`；单价优先级账号自定义 > 内置；单测 `model-families`、`pricing` |
 | R66 | 底部跟随失效：ResizeObserver 只在首次挂载时绑定（从首页进入会话后不生效）；打开会话的贴底校准读 scrollHeight 时被 content-visibility 撑高，误判为离开底部 | 1 | `ChatView` 观察者依赖挂载视图（`hasSession`/`agentSession`）；校准写入走 `programmaticUntil` 窗口；regression「反馈1919#07 流式输出时在底部自动跟随」 |
 | R67 | 一个菜单混放两个维度（是否派子代理 / 执行者用什么模型）与一次性/记住两种语义，选项互相重叠或矛盾（单代理不屏蔽 Task，低成本仍派执行者，仅规划改变工具集） | 1 | 分工×取向两个维度（`routing.md` 矩阵，`planTurnRoute` 单测）；decisions-check `route-labels`；regression「分工路由」与输入框菜单用例 |
-| R68 | 跨视图定位的异步回调（轮询、滚动定时器）未随新一次跳转取消，旧目标把视口拉回 | 1 | `lib/jump.ts` `pollJump` 取消前一轮轮询；`MessageList` 的 `jumpTimers` 在新跳转时清理；regression 反馈2102#02 会话图快速连点 |
+| R68 | 跨视图定位的异步回调（轮询、多次实现各自的滚动定时器）未随新一次跳转/用户滚动取消，旧目标把视口拉回 | 2 | `lib/jump.ts` 是唯一跳转实现：每次跳转一个 token、用户滚轮/触摸/拖动滚动条/按键滚动立即取消剩余定位；不再定时轮询派发；regression 跳转统一（同一函数、只派发一次）/ 滚轮不被拉回 / 反馈2102#02 会话图快速连点 |
 | R69 | 新会话页的账号/分组/模型/思考强度只存在组件状态，每次挂载回到默认选择 | 1 | `lib/newSessionPick.ts` 按主机记住 + 失效回落；单测 `newSessionPick`；decisions-check `new-session-pick-memory`；regression 反馈2102#05 |
 | R70 | 点击语义不符：子代理入口展开卡片或内嵌定位，而不是进入目标视图 | 2 | 子代理入口统一 `openAgentSession`（`ToolCard` 的 `onOpenAgent`、`SessionGraphCard` 的 `open`）；decisions-check `subagent-row-opens-session`、`graph-subagent-opens-session`；regression 反馈2108#02/#03 |
 | R71 | 客户端按字段重建摘要时漏掉 `unread`，快照覆盖列表后本地已读与服务端分叉（点掉了、重启又出现） | 1 | `summaryOf` 保留 `unread`；聚焦时以列表摘要兜底调用已读接口；regression 反馈2156#02 |

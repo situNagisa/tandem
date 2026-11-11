@@ -4,6 +4,7 @@ import { GitFork } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useSessionView } from './session/SessionScope'
 import { cn } from '../lib/cn'
+import { isJumpCurrent, placeElement, settleJump, subscribeJump, type JumpRequest } from '../lib/jump'
 import { MESSAGE_PAGE_SIZE, gapMessage } from '../lib/messagePaging'
 import { activeToolUses } from '../lib/turnActivity'
 import { navigate } from '../lib/router'
@@ -616,95 +617,156 @@ function MessageListInner({
     void useAppStore.getState().fillMessageGap(activeHostId, sessionId, gapId)
   }
 
-  // 上下文面板/搜索/收件箱：必要时扩大渲染窗口，再把目标消息或工具卡滚到视口中部
-  const jumpTimers = useRef<number[]>([])
-  const settleTimers = useRef<number[]>([])
-  useEffect(() => {
-    const onJump = (event: Event) => {
-      const detail = (event as CustomEvent<{ messageId?: string; toolUseId?: string }>).detail
-      const messageId = detail?.messageId
-      const toolUseId = detail?.toolUseId
-      if (!messageId && !toolUseId) return
-      // 后一次跳转取消前一次还没执行的滚动，否则旧目标会在新目标之后再滚一次（反馈2102#02）。
-      for (const timer of jumpTimers.current) window.clearTimeout(timer)
-      jumpTimers.current = []
-      const index = toolUseId
-        ? messages.findIndex((message) =>
-            message.content.some((block) => block.type === 'tool_use' && block.id === toolUseId),
-          )
-        : messages.findIndex((message) => message.id === messageId)
-      if (index < 0) {
-        // 大纲/全文搜索跳到尚未加载的历史：先按需取该段，事件会重复触发以完成定位。
-        if (messageId && !messagesProp && activeHostId && sessionId) {
-          void useAppStore.getState().ensureMessageLoaded(activeHostId, sessionId, messageId)
-        }
-        return
-      }
-      // 窗口跟着跳转目标走：起点放在目标前约 60 条，窗口大小保持在常驻上限内，
-      // 不再「从目标一直挂到末尾」（超大会话会一次挂上千条）。
-      const anchor = messages[Math.max(0, index - 60)]
-      if (anchor) setWindowAnchorId(anchor.id)
-      setWindowSize((size) => Math.max(size, Math.min(MAX_WINDOW, 320)))
-      setWindowCap((cap) => Math.max(cap, Math.min(MAX_WINDOW, 320)))
-      const scroll = () => {
-        const find = () =>
-          toolUseId
-            ? document.querySelector<HTMLElement>(`[data-tool-use-id="${CSS.escape(toolUseId)}"]`)
-            : document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId!)}"]`)
-        const el = find()
-        if (!el) return
-        if (toolUseId) {
-          el.querySelector<HTMLElement>('.tool-row[aria-expanded="false"]')?.click()
-        }
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-        // 目标上下的 content-visibility 行会在滚动中才按实际高度展开，平滑滚动按开始时的
-        // 布局落点会偏一截（会话图连点后目标不居中）。布局稳定后按实际位置补正到居中。
-        for (const timer of settleTimers.current) window.clearTimeout(timer)
-        settleTimers.current = []
-        const settle = (attempt: number) => {
-          const target = find()
-          const box = target?.closest<HTMLElement>('.chat-scroll')
-          if (!target || !box) return
-          const view = box.getBoundingClientRect()
-          const rect = target.getBoundingClientRect()
-          const offset = rect.top + rect.height / 2 - (view.top + view.height / 2)
-          if (Math.abs(offset) <= 16) return
-          box.scrollTop += offset
-          if (attempt < 4) {
-            settleTimers.current.push(window.setTimeout(() => settle(attempt + 1), 180))
-          }
-        }
-        settleTimers.current.push(window.setTimeout(() => settle(0), 420))
-      }
-      jumpTimers.current = [window.setTimeout(scroll, 80), window.setTimeout(scroll, 300)]
-    }
-    window.addEventListener('tandem-jump-message', onJump)
-    return () => window.removeEventListener('tandem-jump-message', onJump)
-  }, [messages, windowSize, windowCap, messagesProp, activeHostId, sessionId])
+  // 定位：轮次大纲/会话图/搜索/收件箱/上下文面板共用 lib/jump 这一个实现。
+  // 目标未加载时只取它所在片段；挂载后在窗口里一次定位、最多一次补正；用户滚动立即取消。
+  const [jumpTick, setJumpTick] = useState(0)
+  const jumpRef = useRef<JumpRequest | null>(null)
+  const jumpLoadRef = useRef<string | null>(null)
+  const jumpLoadTimer = useRef(0)
+  const jumpPlacementRef = useRef<(() => void) | null>(null)
+  const bumpJump = useCallback(() => setJumpTick((n) => n + 1), [])
+
+  useEffect(
+    () =>
+      subscribeJump((request) => {
+        jumpRef.current = request
+        bumpJump()
+      }),
+    [bumpJump],
+  )
+
   useEffect(
     () => () => {
-      for (const timer of jumpTimers.current) window.clearTimeout(timer)
-      for (const timer of settleTimers.current) window.clearTimeout(timer)
+      window.clearTimeout(jumpLoadTimer.current)
+      jumpPlacementRef.current?.()
     },
     [],
   )
 
+  useEffect(() => {
+    const request = jumpRef.current
+    if (!request) return
+    if (!isJumpCurrent(request.token)) {
+      // 用户已经接管滚动（或又有新的一次跳转）：不再定位。
+      jumpRef.current = null
+      return
+    }
+    const root = rootRef.current
+    if (!root) return
+    const messageId = request.messageId
+    const toolUseId = request.toolUseId
+    if (!messageId && !toolUseId) return
+    const selector = toolUseId
+      ? `[data-tool-use-id="${CSS.escape(toolUseId)}"]`
+      : `[data-message-id="${CSS.escape(messageId!)}"]`
+    const find = () => root.querySelector<HTMLElement>(selector)
+    if (!find()) {
+      if (toolUseId || !messageId) return
+      const index = messages.findIndex((message) => message.id === messageId)
+      if (index < 0) {
+        // 目标还没加载：只取它所在的片段（服务端按 around 返回一页）。
+        if (messagesProp || !activeHostId || !sessionId) return
+        if (jumpLoadRef.current === messageId) return
+        jumpLoadRef.current = messageId
+        let attempts = 0
+        const load = () => {
+          void useAppStore
+            .getState()
+            .ensureMessageLoaded(activeHostId, sessionId, messageId)
+            .then((ok) => {
+              if (jumpLoadRef.current !== messageId) return
+              // 别的取段正在占用时只重试加载（不派发定位），有上限。
+              if (!ok && attempts < 3 && isJumpCurrent(request.token)) {
+                attempts += 1
+                jumpLoadTimer.current = window.setTimeout(load, 200)
+                return
+              }
+              jumpLoadRef.current = null
+              // 取不到这一段就结束这次跳转，别让它一直挂着等后续消息变化。
+              if (!ok) settleJump(request.token)
+              bumpJump()
+            })
+        }
+        load()
+        return
+      }
+      // 已加载但被挂载窗口裁掉：窗口锚到目标前 60 条，下一轮渲染再定位。
+      const anchor = messages[Math.max(0, index - 60)]
+      if (!anchor || windowAnchorId === anchor.id) return
+      setWindowAnchorId(anchor.id)
+      setWindowSize((size) => Math.max(size, Math.min(MAX_WINDOW, 320)))
+      setWindowCap((cap) => Math.max(cap, Math.min(MAX_WINDOW, 320)))
+      return
+    }
+    const box = scrollBox()
+    if (!box) return
+    jumpRef.current = null
+    if (toolUseId) {
+      find()?.querySelector<HTMLElement>('.tool-row[aria-expanded="false"]')?.click()
+    }
+    jumpPlacementRef.current?.()
+    jumpPlacementRef.current = placeElement(box, find, {
+      align: request.align,
+      shouldWrite: () => isJumpCurrent(request.token),
+      done: () => {
+        jumpPlacementRef.current = null
+        settleJump(request.token)
+      },
+    })
+  }, [
+    jumpTick,
+    messages,
+    windowAnchorId,
+    windowSize,
+    windowCap,
+    messagesProp,
+    activeHostId,
+    sessionId,
+    scrollBox,
+    bumpJump,
+  ])
+
   // 固定轮次必须始终可用：即使不在挂载窗口里也要先取回并保持挂载（反馈11#05）。
+  // 被别的取段占用而失败、或快照重置了消息时允许重试；每轮最多试 3 次，避免死循环。
   const pinnedLoadRef = useRef<Set<string>>(new Set())
+  const pinnedAttemptsRef = useRef<Map<string, number>>(new Map())
+  const pinnedRetryTimer = useRef(0)
+  const pinnedMessagesRef = useRef(messages)
+  const [, bumpPinned] = useState(0)
   useEffect(() => {
     if (messagesProp || !activeHostId || !sessionId || pinnedTurns.length === 0) return
+    if (pinnedMessagesRef.current !== messages) {
+      // 消息集合变了（取段成功/快照重置）：重新给固定轮次尝试机会。
+      pinnedMessagesRef.current = messages
+      pinnedAttemptsRef.current.clear()
+    }
     const loaded = new Set(messages.map((message) => message.id))
-    const missing = pinnedTurns.filter((id) => !loaded.has(id) && !pinnedLoadRef.current.has(id))
+    for (const id of pinnedTurns) if (loaded.has(id)) pinnedAttemptsRef.current.delete(id)
+    const missing = pinnedTurns.filter(
+      (id) =>
+        !loaded.has(id) &&
+        !pinnedLoadRef.current.has(id) &&
+        (pinnedAttemptsRef.current.get(id) ?? 0) < 3,
+    )
     if (missing.length === 0) return
-    for (const id of missing) pinnedLoadRef.current.add(id)
+    for (const id of missing) {
+      pinnedLoadRef.current.add(id)
+      pinnedAttemptsRef.current.set(id, (pinnedAttemptsRef.current.get(id) ?? 0) + 1)
+    }
     void useAppStore
       .getState()
       .loadTurnRange(activeHostId, sessionId, missing)
+      .finally(() => {
+        for (const id of missing) pinnedLoadRef.current.delete(id)
+      })
       .then((ok) => {
-        // 被其他取段占用而没成功时允许下次消息变化后重试。
-        if (!ok) for (const id of missing) pinnedLoadRef.current.delete(id)
+        if (ok) return
+        // 被其他取段占用而没成功：允许稍后重试。
+        window.clearTimeout(pinnedRetryTimer.current)
+        pinnedRetryTimer.current = window.setTimeout(() => bumpPinned((n) => n + 1), 700)
       })
   }, [pinnedTurns, messages, messagesProp, activeHostId, sessionId])
+  useEffect(() => () => window.clearTimeout(pinnedRetryTimer.current), [])
 
   // 挂载集合 = 窗口 [windowFrom, windowTo) + 固定轮（含该轮的 assistant 回复）。
   // 两段之间不连续的部分用固定高度占位条代替，已加载但未挂载与尚未加载分开标注。

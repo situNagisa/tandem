@@ -3284,6 +3284,237 @@ async function main() {
       await page.screenshot({ path: '/tmp/fb11-after/05-rail.png' })
     })
 
+    desktop('跳转统一：会话图与轮次大纲调用同一个实现（反馈0220#03）', async (page) => {
+      await openSession(page, 'long')
+      const nodes = page.locator('[data-group="graph"] [data-graph-turn-id]')
+      await nodes.first().waitFor({ timeout: 10_000 })
+      const count = await nodes.count()
+      assert.ok(count >= 3, `会话图节点太少：${count}`)
+      // 记下所有跳转派发：统一实现在每次跳转只派发一次并带递增 token，
+      // 旧实现会在 12 秒内每 300ms 反复派发（会话图点击后滚轮抽搐的根因）。
+      await page.evaluate(() => {
+        window.__jumpLog = []
+        window.addEventListener('tandem-jump-message', (event) => {
+          window.__jumpLog.push(event.detail ?? {})
+        })
+      })
+      const node = nodes.nth(Math.floor(count * 0.5))
+      const turnId = await node.getAttribute('data-graph-turn-id')
+      await node.click()
+      await page.waitForTimeout(400)
+      let log = await page.evaluate(() => window.__jumpLog)
+      assert.equal(log.length, 1, `会话图点击派发了 ${log.length} 次跳转事件`)
+      assert.equal(log[0].messageId, turnId, '会话图跳转目标不对')
+      assert.equal(typeof log[0].token, 'number', '会话图跳转没有走统一的跳转服务（缺少 token）')
+      await page.waitForTimeout(900)
+      log = await page.evaluate(() => window.__jumpLog)
+      assert.equal(log.length, 1, `跳转后仍在反复派发事件（${log.length} 次），会不断把视口拉回去`)
+
+      // 从轮次大纲点同一轮：也必须只派发一次，且 token 递增（同一个服务、后一次替换前一次）。
+      await page.locator('.turn-hit').hover()
+      await page.waitForFunction(
+        () => document.querySelector('.turn-rail')?.getAttribute('data-open') === 'true',
+        null,
+        { timeout: 5_000 },
+      )
+      await page.waitForTimeout(500)
+      let row = null
+      for (let step = 0; step < 60 && !row; step++) {
+        if (step > 0) {
+          await page.mouse.wheel(0, -100)
+          await page.waitForTimeout(140)
+        }
+        row = await page.evaluate((id) => {
+          const pin = document.querySelector(`.turn-item-p[data-turn="${CSS.escape(id)}"]`)
+          const el = pin?.closest('.turn-item')
+          if (!el || !el.checkVisibility() || Number(getComputedStyle(el).opacity) < 0.5) return null
+          const r = el.getBoundingClientRect()
+          return { x: r.x + r.width / 2, y: r.y + r.height / 2, pos: el.dataset.turnPos }
+        }, turnId)
+      }
+      assert.ok(row, '大纲里找不到会话图点击的同一轮')
+      await page.mouse.click(row.x, row.y)
+      await page.waitForTimeout(500)
+      log = await page.evaluate(() => window.__jumpLog)
+      assert.equal(log.length, 2, `大纲点击派发了 ${log.length - 1} 次跳转事件`)
+      assert.equal(log[1].messageId, turnId, '大纲与会话图点的不是同一条消息')
+      assert.ok(log[1].token > log[0].token, '大纲跳转没有复用同一个跳转服务')
+      await page.waitForTimeout(900)
+      log = await page.evaluate(() => window.__jumpLog)
+      assert.equal(log.length, 2, '大纲跳转后仍在反复派发事件')
+      await page.screenshot({ path: '/tmp/jump-0220/reg-unified.png' })
+    })
+
+    desktop('跳转后用户滚动不被拉回（反馈0220#03 R68）', async (page) => {
+      await openSession(page, 'long')
+      const nodes = page.locator('[data-group="graph"] [data-graph-turn-id]')
+      await nodes.first().waitFor({ timeout: 10_000 })
+      const count = await nodes.count()
+      await page.evaluate(() => {
+        window.__scroll = { on: true, samples: [] }
+        const tick = () => {
+          const box = document.querySelector('.chat-scroll')
+          if (!window.__scroll.on) return
+          window.__scroll.samples.push(box.scrollTop)
+          requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      })
+      await nodes.nth(Math.floor(count * 0.6)).click()
+      await page.waitForTimeout(200)
+      const box = await page.locator('.chat-scroll').boundingBox()
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.evaluate(() => (window.__scroll.wheelAt = window.__scroll.samples.length))
+      for (let i = 0; i < 10; i++) {
+        await page.mouse.wheel(0, -160)
+        await page.waitForTimeout(180)
+      }
+      await page.waitForTimeout(1500)
+      const data = await page.evaluate(() => {
+        window.__scroll.on = false
+        return window.__scroll
+      })
+      const after = data.samples.slice(data.wheelAt ?? 0)
+      assert.ok(after.length > 30, `滚轮期间采样帧太少：${after.length}`)
+      assert.ok(Math.min(...after) < after[0] - 100, '滚轮上滚没有生效')
+      let pulledBack = 0
+      for (let i = 1; i < after.length; i++) if (after[i] > after[i - 1] + 3) pulledBack += 1
+      assert.equal(pulledBack, 0, `用户滚轮后视口被拉回 ${pulledBack} 次（跳转的定时补正仍在执行）`)
+      await page.screenshot({ path: '/tmp/jump-0220/reg-wheel.png' })
+    })
+
+    desktop('大纲未加载轮标注、点击只取该片段（反馈0220#03 R40）', async (page) => {
+      const asked = []
+      page.on('request', (request) => {
+        const url = request.url()
+        if (url.includes('/api/sessions/huge/messages')) asked.push(url)
+      })
+      await openSession(page, 'huge')
+      await page.waitForFunction(
+        () => /第 \d+ \/ 320 轮/.test(document.querySelector('.turn-count')?.textContent ?? ''),
+        null,
+        { timeout: 15_000 },
+      )
+      await page.locator('.turn-hit').hover()
+      await page.waitForFunction(
+        () => document.querySelector('.turn-rail')?.getAttribute('data-open') === 'true',
+        null,
+        { timeout: 5_000 },
+      )
+      await page.waitForTimeout(500)
+      let row = null
+      for (let attempt = 0; attempt < 6 && !row; attempt++) {
+        for (let i = 0; i < 140; i++) await page.mouse.wheel(0, -100)
+        await page.waitForTimeout(500)
+        row = await page.evaluate(() => {
+          const hit = document.querySelector('.turn-hit')?.getBoundingClientRect()
+          const el = [...document.querySelectorAll('.turn-item[data-unloaded="true"]')]
+            .filter((item) => {
+              if (Number(item.dataset.turnPos) < 2 || !item.checkVisibility()) return false
+              const style = getComputedStyle(item)
+              if (Number(style.opacity) < 0.2 || style.visibility === 'hidden') return false
+              const r = item.getBoundingClientRect()
+              const y = r.y + r.height / 2
+              return !!hit && y > hit.top + 18 && y < hit.bottom - 18 && r.width > 40
+            })
+            .sort((a, b) => a.getBoundingClientRect().y - b.getBoundingClientRect().y)[0]
+          if (!el) return null
+          const r = el.getBoundingClientRect()
+          return {
+            x: r.x + r.width / 2,
+            y: r.y + r.height / 2,
+            pos: Number(el.dataset.turnPos),
+            no: Number(el.dataset.turnNo),
+            tag: el.querySelector('.turn-item-c')?.textContent?.trim() ?? '',
+            dashed: getComputedStyle(el.querySelector('.turn-item-k')).backgroundImage,
+          }
+        })
+      }
+      assert.ok(row, '大纲里看不到未加载轮次')
+      assert.equal(row.tag, '未加载', `未加载轮的标记是「${row.tag}」`)
+      assert.match(row.dashed, /repeating|gradient/, '未加载轮的刻度不是虚线')
+      const before = asked.length
+      await page.mouse.click(row.x, row.y)
+      await page.locator(`[data-turn-id="hu${row.no}"]`).waitFor({ state: 'attached', timeout: 20_000 })
+      await page.waitForFunction(
+        (id) => {
+          const el = document.querySelector(`[data-turn-id="${id}"]`)
+          if (!el) return false
+          const rect = el.getBoundingClientRect()
+          return rect.top >= -4 && rect.top < window.innerHeight - 120
+        },
+        `hu${row.no}`,
+        { timeout: 5_000 },
+      )
+      const fetched = asked.slice(before)
+      assert.equal(fetched.length, 1, `点击未加载轮请求了 ${fetched.length} 次片段（应只取该轮所在的一段）`)
+      const url = fetched[0]
+      assert.match(url, new RegExp(`around=hu${row.no}(&|$)`), `不是按该轮取片段：${url}`)
+      assert.doesNotMatch(url, /before=/, '点击未加载轮却按翻页取了一整段历史')
+      assert.match(
+        await page.locator('.turn-count').innerText(),
+        new RegExp(`第 ${row.no} / 320 轮`),
+        '点击未加载轮后大纲没有定位到该轮',
+      )
+      await page.screenshot({ path: '/tmp/jump-0220/reg-unloaded-rail.png' })
+    })
+
+    desktop('固定轮次初次打开、滚动、跳转后始终挂载（反馈0220#03 R40）', async (page) => {
+      await openSession(page, 'huge')
+      await page.waitForFunction(
+        () => /第 \d+ \/ 320 轮/.test(document.querySelector('.turn-count')?.textContent ?? ''),
+        null,
+        { timeout: 15_000 },
+      )
+      await page.locator('.turn-hit').focus()
+      await page.keyboard.press('Home')
+      await page.locator('[data-turn-id="hu1"]').waitFor({ state: 'attached', timeout: 20_000 })
+      for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown')
+      await page.locator('[data-turn-id="hu5"]').waitFor({ state: 'attached', timeout: 10_000 })
+      // 行上的操作条是悬停才显示的浮层，用 DOM 点击避免被同一行的时间/用量浮层挡住。
+      await page.evaluate(() => {
+        const row = document.querySelector('[data-turn-id="hu5"]')
+        row?.querySelector('button[aria-label="固定此轮"]')?.click()
+      })
+      await page.waitForFunction(
+        () => !!document.querySelector('[data-turn-id="hu5"] [aria-label="取消固定此轮"]'),
+        null,
+        { timeout: 10_000 },
+      )
+      // 重新打开会话：首屏只有尾部消息，固定的第 5 轮不在其中，仍必须取回并挂载。
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForFunction(
+        () => /第 \d+ \/ 320 轮/.test(document.querySelector('.turn-count')?.textContent ?? ''),
+        null,
+        { timeout: 20_000 },
+      )
+      await page.locator('[data-turn-id="hu5"]').waitFor({ state: 'attached', timeout: 20_000 })
+      // 滚到底部：固定轮不参与卸载。
+      for (let i = 0; i < 6; i++) {
+        await page.evaluate(() => {
+          const box = document.querySelector('.chat-scroll')
+          if (box) box.scrollTop = box.scrollHeight
+        })
+        await page.waitForTimeout(180)
+      }
+      assert.equal(
+        await page.locator('[data-turn-id="hu5"]').count(),
+        1,
+        '滚到底部后固定的第 5 轮被卸载了',
+      )
+      // 再跳到最后一轮：固定轮仍挂在 DOM 里。
+      await page.locator('.turn-hit').focus()
+      await page.keyboard.press('End')
+      await page.locator('[data-turn-id="hu320"]').waitFor({ state: 'attached', timeout: 20_000 })
+      await page.waitForTimeout(400)
+      assert.equal(
+        await page.locator('[data-turn-id="hu5"]').count(),
+        1,
+        '跳转后固定的第 5 轮不在了',
+      )
+      await page.screenshot({ path: '/tmp/jump-0220/reg-pinned.png' })
+    })
+
     desktop('轮次大纲悬停显示该轮用量、全文可读（#01 R15）', async (page) => {
       await openSession(page, 'long')
       await page.locator('.turn-hit').hover()

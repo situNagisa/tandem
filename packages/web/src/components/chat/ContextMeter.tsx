@@ -43,11 +43,6 @@ function colorFor(rate: number): string {
   return 'var(--t-text-secondary)'
 }
 
-/** 让消息列表把某条消息滚到视口中部（消息可能还没挂载，由 MessageList 负责补窗口）。 */
-export function jumpToMessage(messageId: string): void {
-  window.dispatchEvent(new CustomEvent('tandem-jump-message', { detail: { messageId } }))
-}
-
 /** 按会话记住最近一次上下文占用：切换会话时不闪「卡片消失→出现」。 */
 const contextCache = new Map<string, ContextBreakdown>()
 
