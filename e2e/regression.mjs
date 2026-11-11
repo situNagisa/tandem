@@ -140,7 +140,17 @@ function createMockProvider() {
     }
     // 配额交接：主分组第一次成功，之后返回 429 与限流头；备用分组始终成功。
     if (typeof body.model === 'string' && body.model.startsWith('route-')) {
-      routeSeen.push({ model: body.model, stream: body.stream === true })
+      routeSeen.push({
+        model: body.model,
+        stream: body.stream === true,
+        systemText: (body.messages ?? [])
+          .filter((message) => message.role === 'system')
+          .map((message) => (typeof message.content === 'string' ? message.content : JSON.stringify(message.content)))
+          .join('\n'),
+        toolNames: Array.isArray(body.tools)
+          ? body.tools.map((tool) => tool?.function?.name ?? tool?.name).filter(Boolean)
+          : [],
+      })
       if (body.stream !== true) {
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(
@@ -4230,16 +4240,27 @@ async function main() {
       const input = page.locator('[aria-label="消息输入框"]')
       await input.waitFor()
 
-      // 2009#01：分工（关闭 / 适度 / 积极）与取向（省钱 / 均衡 / 质量优先）各一组单选，都在「分工与取向」菜单里。
-      await page.locator('button[aria-label^="分工与取向："]').first().click()
-      const route = page.locator('[role="menu"][aria-label="分工与取向"]').first()
-      await route.waitFor()
-      const routeText = await route.innerText()
-      await page.screenshot({ path: '/tmp/fb8-after/03.png' })
-      for (const label of ['分工', '取向', '记住为会话偏好']) {
-        assert.ok(routeText.includes(label), `分工与取向菜单缺少「${label}」：${routeText}`)
+      // 1601#04：分工与取向并入模型菜单；原生开关在最上面，没有再「记住为会话偏好」，芯片只显示模型名。
+      const routeChip = page.locator('button[aria-label^="选择模型："]').first()
+      assert.doesNotMatch(
+        (await routeChip.getAttribute('aria-label')) ?? '',
+        /分工|取向/,
+        '模型芯片上不应额外显示分工/取向',
+      )
+      const openModel = async () => {
+        await routeChip.click()
+        const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+        await menu.waitFor()
+        return menu
       }
-      await route.getByRole('menuitem', { name: /^分工/ }).hover()
+      const modelMenu = await openModel()
+      const modelMenuText = await modelMenu.innerText()
+      await page.screenshot({ path: '/tmp/fb8-after/03.png' })
+      for (const label of ['原生', '分工', '取向']) {
+        assert.ok(modelMenuText.includes(label), `模型菜单缺少「${label}」：${modelMenuText}`)
+      }
+      assert.ok(!modelMenuText.includes('记住为会话偏好'), '模型菜单不应再有「记住为会话偏好」')
+      await modelMenu.getByRole('menuitem', { name: /^分工/ }).hover()
       const delegationMenu = page.locator('[role="menu"][aria-label="分工"]').first()
       await delegationMenu.waitFor({ state: 'visible', timeout: 5_000 })
       const delegationText = await delegationMenu.innerText()
@@ -4250,8 +4271,7 @@ async function main() {
       await page.keyboard.press('Escape')
       await page.keyboard.press('Escape')
 
-      await page.locator('button[aria-label^="分工与取向："]').first().click()
-      const biasRoute = page.locator('[role="menu"][aria-label="分工与取向"]').first()
+      const biasRoute = await openModel()
       await biasRoute.getByRole('menuitem', { name: /^取向/ }).hover()
       const biasMenu = page.locator('[role="menu"][aria-label="取向"]').first()
       await biasMenu.waitFor({ state: 'visible', timeout: 5_000 })
@@ -5827,23 +5847,36 @@ async function main() {
       await page.keyboard.press('Escape')
       await page.waitForTimeout(200)
 
-      await page.locator('main button[aria-haspopup="menu"][aria-label^="分工与取向"]').first().click()
-      const exec = page.locator('[role="menu"][aria-label="分工与取向"]').first()
-      await exec.waitFor()
-      const execInfo = await exec.evaluate((el) => {
-        const rows = [...el.querySelectorAll('[role="menuitem"]')]
-        return {
-          heights: rows.map((row) => row.getBoundingClientRect().height),
-          stacked: rows.some((row) =>
-            [...row.querySelectorAll('span')].some((span) => {
-              const cs = getComputedStyle(span)
-              return cs.display === 'flex' && cs.flexDirection === 'column' && cs.display !== 'none'
-            }),
-          ),
-        }
-      })
-      assert.ok(execInfo.heights.every((height) => height <= 32), `分工与取向菜单项高度 ${execInfo.heights.join(',')}`)
-      assert.equal(execInfo.stacked, false, '分工与取向菜单仍有第二行说明')
+      for (const group of ['分工', '取向']) {
+        await page.locator('button[aria-label^="选择模型"]').first().click()
+        const routeMenu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+        await routeMenu.waitFor()
+        assert.match(
+          (await routeMenu.locator('[data-menu-footer]').innerText()),
+          /原生[\s\S]*分工[\s\S]*取向/,
+          '模型菜单底部缺少原生/分工/取向',
+        )
+        await routeMenu.getByRole('menuitem', { name: new RegExp(`^${group}`) }).hover()
+        const sub = page.locator(`[role="menu"][aria-label="${group}"]`).first()
+        await sub.waitFor({ state: 'visible', timeout: 5_000 })
+        const info = await sub.evaluate((el) => {
+          const rows = [...el.querySelectorAll('[role="menuitemradio"]')]
+          return {
+            heights: rows.map((row) => row.getBoundingClientRect().height),
+            stacked: rows.some((row) =>
+              [...row.querySelectorAll('span')].some((span) => {
+                const cs = getComputedStyle(span)
+                return cs.display === 'flex' && cs.flexDirection === 'column' && cs.display !== 'none'
+              }),
+            ),
+          }
+        })
+        assert.ok(info.heights.every((height) => height <= 32), `${group}菜单项高度 ${info.heights.join(',')}`)
+        assert.equal(info.stacked, false, `${group}菜单仍有第二行说明`)
+        await page.keyboard.press('Escape')
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(200)
+      }
       await page.keyboard.press('Escape')
     })
 
@@ -8064,12 +8097,10 @@ async function main() {
       await page.waitForTimeout(600)
       const newComposer = page.locator('[aria-label="消息输入框"]').first()
       await newComposer.waitFor({ timeout: 10_000 })
-      await checkMenu(page.locator('button[aria-label^="分工与取向"]').first(), '分工与取向（新会话页）')
       await checkMenu(page.locator('button[aria-label^="选择模型"]').first(), '模型芯片（新会话页）')
 
       // 会话页：输入框菜单、环境条三个胶囊、窗口 ⋯ 菜单、权限模式。
       await openSession(page, 'long')
-      await checkMenu(page.locator('button[aria-label^="分工与取向"]').first(), '分工与取向')
       await checkMenu(page.locator('button[aria-label^="选择模型"]').first(), '模型芯片')
       await checkMenu(page.locator('button[aria-label^="权限模式"]').first(), '权限模式')
       const envTriggers = page.locator('[data-env-bar] button[aria-haspopup]')
@@ -9521,7 +9552,7 @@ async function main() {
       await page.keyboard.press('Escape')
     })
 
-      desktop('分工路由：分工关闭零派发、取向省钱整单交执行者、分工积极协作、确认卡与学到的偏好', async (page) => {
+      desktop('分工路由：原生不注入且 Task 可用、分工关闭零派发、取向省钱整单交执行者、分工积极协作、确认卡与学到的偏好', async (page) => {
         const shotsDir = '/tmp/route2-shots'
         mkdirSync(shotsDir, { recursive: true })
         const divisionSettings = {
@@ -9606,29 +9637,123 @@ async function main() {
           return sessionOf()
         }
         const planCount = async () => (await sessionOf()).messages.filter((m) => m.routePlan).length
-        // 「分工与取向」菜单里选一项只作用于下一条消息（未勾选「记住为会话偏好」）。
+        // 1601#04：选择即写入会话（后续消息都用），没有「记住为会话偏好」。
         const pickRoute = async (group, label) => {
-          await page.getByRole('button', { name: /^分工与取向：/ }).first().click()
-          await page.getByRole('menuitem', { name: new RegExp(`^${group}`) }).hover()
+          await page.getByRole('button', { name: /^选择模型：/ }).first().click()
+          const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+          await menu.waitFor()
+          await menu.getByRole('menuitem', { name: new RegExp(`^${group}`) }).hover()
           const sub = page.locator(`[role="menu"][aria-label="${group}"]`).first()
           await sub.waitFor({ state: 'visible', timeout: 5_000 })
           await sub.getByRole('menuitemradio', { name: label, exact: true }).click()
           await page.waitForTimeout(200)
         }
+        const pickNative = async (expectChecked = false) => {
+          await page.getByRole('button', { name: /^选择模型：/ }).first().click()
+          const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+          await menu.waitFor()
+          const box = menu.getByRole('menuitemcheckbox', { name: '原生' })
+          await box.waitFor()
+          if (expectChecked) {
+            // 刷新后会话摘要稍后才到：等菜单反映出会话里的原生状态再点，避免点成「开」。
+            await page.waitForFunction(
+              () => document.querySelector('[role="menuitemcheckbox"][aria-checked="true"]'),
+              null,
+              { timeout: 10_000 },
+            )
+          }
+          await box.click()
+          await page.waitForTimeout(200)
+          await page.keyboard.press('Escape')
+        }
 
-        // 1. 分工关闭：主会话自己完成，零 Task 子代理，也不出提示行。
+        // 0. 原生：不注入任何分工/取向/路由说明，工具不减（Task 仍可用）；选择即写入会话，下一条与再下一条都用它。
+        await pickNative()
+        assert.equal((await sessionOf()).routeNative, true, '原生开关没有写入会话')
+        for (const round of [1, 2]) {
+          const start = provider.routeSeen.length
+          const native = await sendTurn('解释一下这个函数的作用', '路由模型 route-power 已回复。')
+          const calls = provider.routeSeen.slice(start)
+          assert.equal(calls.length, 1, `原生第 ${round} 条消息不应额外请求模型`)
+          assert.ok(calls[0].toolNames.includes('Task'), `原生第 ${round} 条消息 Task 不可用`)
+          assert.ok(!calls[0].systemText.includes('# 分工：'), `原生第 ${round} 条消息仍注入分工说明`)
+          assert.ok(
+            !calls[0].systemText.includes('多代理协作 · 本轮'),
+            `原生第 ${round} 条消息仍注入规划说明`,
+          )
+          const plan = native.messages.filter((m) => m.routePlan).at(-1)?.routePlan
+          assert.equal(plan?.mode, 'native', `原生第 ${round} 条消息提示行不是原生`)
+          assert.equal((plan?.injected ?? []).length, 0, '原生不应有注入原文')
+          assert.match(JSON.stringify(native.messages), /原生（未注入）/, '提示行没有标注原生（未注入）')
+        }
+        // 原生打开时分工与取向两组置灰并注明。
+        await page.getByRole('button', { name: /^选择模型：/ }).first().click()
+        await page.locator('[role="menu"][aria-label="选择模型"]').first().waitFor()
+        await page.getByRole('menuitem', { name: /^分工/ }).hover()
+        const nativeDelegation = page.locator('[role="menu"][aria-label="分工"]').first()
+        await nativeDelegation.waitFor({ state: 'visible', timeout: 5_000 })
+        assert.match(await nativeDelegation.innerText(), /原生模式下不生效/, '原生时分工分组的说明缺失')
+        assert.equal(
+          await nativeDelegation.getByRole('menuitemradio', { name: '适度', exact: true }).getAttribute('aria-disabled'),
+          'true',
+          '原生时分工选项没有置灰',
+        )
+        await page.screenshot({ path: path.join(shotsDir, 'model-menu-native.png') })
+        await page.keyboard.press('Escape')
+        await page.keyboard.press('Escape')
+        // 反馈1601#04 截图：深/浅色模型菜单，原生打开时分工/取向置灰并注明。
+        const fixDir = '/tmp/fix-1601b'
+        mkdirSync(fixDir, { recursive: true })
+        for (const theme of ['dark', 'light']) {
+          await page.evaluate((next) => localStorage.setItem('tandem.theme.v1', next), theme)
+          await page.reload({ waitUntil: 'domcontentloaded' })
+          await page.locator('[aria-label="消息输入框"]').waitFor({ timeout: 20_000 })
+          await page.getByRole('button', { name: /^选择模型：/ }).first().click()
+          const themedMenu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+          await themedMenu.waitFor()
+          await page.waitForFunction(
+            () => document.querySelector('[role="menuitemcheckbox"][aria-checked="true"]'),
+            null,
+            { timeout: 10_000 },
+          )
+          await page.screenshot({ path: path.join(fixDir, `model-menu-native-${theme}.png`) })
+          await themedMenu.getByRole('menuitem', { name: /^分工/ }).hover()
+          const themedSub = page.locator('[role="menu"][aria-label="分工"]').first()
+          await themedSub.waitFor({ state: 'visible', timeout: 5_000 })
+          assert.equal(
+            await themedSub.getByRole('menuitemradio', { name: '适度', exact: true }).getAttribute('aria-disabled'),
+            'true',
+            `${theme} 原生时分工选项没有置灰`,
+          )
+          assert.match(await themedSub.innerText(), /原生模式下不生效/, `${theme} 原生时缺少「原生模式下不生效」`)
+          await page.screenshot({ path: path.join(fixDir, `model-menu-native-disabled-${theme}.png`) })
+          await page.keyboard.press('Escape')
+          await page.keyboard.press('Escape')
+        }
+        await pickNative(true)
+        await waitUntil('关闭原生写回会话', async () => (await sessionOf()).routeNative === undefined)
+        assert.equal((await sessionOf()).routeNative, undefined, '关闭原生没有写回会话')
+
+        // 1. 分工关闭：主会话自己完成，零 Task 子代理，也不出提示行；下一条与再下一条都用它。
         await pickRoute('分工', '关闭')
+        assert.equal((await sessionOf()).delegation, 'none', '分工关闭没有写入会话')
         const plansBeforeOff = await planCount()
-        const directStart = provider.routeSeen.length
-        await sendTurn('解释一下这个函数的作用', '路由模型 route-power 已回复。')
-        const directCalls = provider.routeSeen.slice(directStart)
-        assert.equal(directCalls.length, 1, '简单问答不应产生额外模型请求')
-        assert.equal(directCalls[0].model, 'route-power', '分工关闭应由主会话模型处理')
-        assert.equal((await childrenOf()).length, 0, '分工关闭不应派发子代理')
-        assert.equal(await planCount(), plansBeforeOff, '分工关闭时不应出现提示行')
+        for (const round of [1, 2]) {
+          const directStart = provider.routeSeen.length
+          await sendTurn('解释一下这个函数的作用', '路由模型 route-power 已回复。')
+          const directCalls = provider.routeSeen.slice(directStart)
+          assert.equal(directCalls.length, 1, `分工关闭第 ${round} 条不应产生额外模型请求`)
+          assert.equal(directCalls[0].model, 'route-power', `分工关闭第 ${round} 条应由主会话模型处理`)
+          assert.equal((await childrenOf()).length, 0, `分工关闭第 ${round} 条不应派发子代理`)
+          assert.equal(await planCount(), plansBeforeOff, `分工关闭第 ${round} 条不应出现提示行`)
+        }
+        assert.equal((await sessionOf()).delegation, 'none', '分工关闭在后续消息中没有保留')
 
-        // 2. 取向省钱：机械任务整单交给执行者子代理，主会话模型不参与。
+        // 2. 分工适度 + 取向省钱：机械任务整单交给执行者子代理，主会话模型不参与。
+        await pickRoute('分工', '适度')
         await pickRoute('取向', '省钱')
+        assert.equal((await sessionOf()).delegation, 'less', '分工适度没有写入会话')
+        assert.equal((await sessionOf()).routeBias, 'cost', '取向省钱没有写入会话')
         const cheapStart = provider.routeSeen.length
         const cheap = await sendTurn('安装依赖并跑通构建', '便宜执行完成：依赖已安装，构建通过。')
         const cheapCalls = provider.routeSeen.slice(cheapStart)
@@ -9682,7 +9807,8 @@ async function main() {
         )
         await page.screenshot({ path: path.join(shotsDir, 'division-roles.png') })
 
-        // 4b. 多代理协作前确认：卡片改模型 + 删除子任务 + 收件箱事件（分工为默认适度）。
+        // 4b. 多代理协作前确认：卡片改模型 + 删除子任务 + 收件箱事件（分工回到适度）。
+        await pickRoute('分工', '适度')
         await api(base, token, '/api/settings', {
           method: 'PUT',
           body: JSON.stringify({

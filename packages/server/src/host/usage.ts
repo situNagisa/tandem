@@ -36,6 +36,8 @@ export function calibrateContext(host: Host, rec: SessionRecord, context: Contex
 export function promptOptions(host: Host, rec: SessionRecord,
     opts: { allowTask?: boolean; hookContext?: string } = {}) {
   const allowTask = opts.allowTask !== false;
+  // 原生模式不注入分工/取向说明；Task 本身仍可用，模型自己决定是否派子代理。
+  const withDelegationPrompt = allowTask && rec.routeNative !== true;
   return {
     allowTask,
     planMode: rec.permissionMode === 'plan',
@@ -47,7 +49,7 @@ export function promptOptions(host: Host, rec: SessionRecord,
       host.promptTemplates.get('memoryRule', rec.cwd),
     ),
     wiki: rec.wikiRun ? '' : host.wiki.promptSection(rec.cwd),
-    ...(allowTask
+    ...(withDelegationPrompt
       ? { delegationPrompt: host.delegationPrompt(rec), delegationKey: host.delegationKey(rec) }
       : {}),
     ...(allowTask

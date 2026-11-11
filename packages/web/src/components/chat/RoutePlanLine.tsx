@@ -41,7 +41,11 @@ export function RoutePlanLine({ text, plan }: { text: string; plan: RoutePlan })
         </button>
       ) : (
         <Tooltip
-          label="仅用于选择分工与模型，未向模型注入内容"
+          label={
+            plan.mode === 'native'
+              ? '原生模式：未向模型注入分工或取向说明'
+              : '仅用于选择分工与模型，未向模型注入内容'
+          }
           className="flex min-w-0 flex-1 items-center px-1 py-0.5"
         >
           <span className="min-w-0 flex-1">{text}</span>

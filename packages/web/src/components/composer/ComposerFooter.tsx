@@ -1,9 +1,7 @@
 import type { RefObject } from 'react'
-import { ArrowUp, GitFork, Paperclip, Square } from 'lucide-react'
+import { ArrowUp, Paperclip, Square } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
 import { Button, IconButton } from '../ui/Button'
-import { Menu } from '../ui/Menu'
-import { cn } from '../../lib/cn'
 import { formatTokens } from '../../lib/format'
 import type {
   DelegationStrategy,
@@ -17,14 +15,6 @@ import { ContextMeter } from '../chat/ContextMeter'
 import { VoiceButton, type VoiceButtonHandle } from '../voice/VoiceButton'
 import { ModelMenu } from './ModelMenu'
 import { MobileMoreMenu, PermissionModeMenu, ThinkingModeMenu } from './ComposerMenus'
-import {
-  DELEGATION_META,
-  DELEGATION_ORDER,
-  ROUTE_BIAS_META,
-  ROUTE_BIAS_ORDER,
-  delegationLabel,
-  routeBiasLabel,
-} from '../../lib/routeLabels'
 import { MAX_ATTACHMENTS } from './composerTypes'
 
 interface ComposerFooterProps {
@@ -51,10 +41,10 @@ interface ComposerFooterProps {
   expectedPct: number | undefined
   effectiveDelegation: DelegationStrategy
   effectiveRouteBias: RoutePreference | undefined
+  routeNative: boolean
   onChangeDelegation: (strategy: DelegationStrategy) => void
   onChangeRouteBias: (bias: RoutePreference) => void
-  keepRouteMode: boolean
-  onToggleKeepRouteMode: () => void
+  onChangeRouteNative: (native: boolean) => void
   uiProfiles: Profile[]
   currentProfileId: string
   currentGroupId: string | undefined
@@ -103,10 +93,10 @@ export function ComposerFooter({
   expectedPct,
   effectiveDelegation,
   effectiveRouteBias,
+  routeNative,
   onChangeDelegation,
   onChangeRouteBias,
-  keepRouteMode,
-  onToggleKeepRouteMode,
+  onChangeRouteNative,
   uiProfiles,
   currentProfileId,
   currentGroupId,
@@ -180,81 +170,6 @@ export function ComposerFooter({
               <ContextMeter compactDisabled={running} />
             </span>
           )}
-          {!compact && (
-            <Menu
-              side="top"
-              align="end"
-              className="w-[268px]"
-              aria-label="分工与取向"
-              trigger={({ open }) => (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-expanded={open}
-                  aria-haspopup="menu"
-                  aria-label={`分工与取向：${delegationLabel(effectiveDelegation)} · ${routeBiasLabel(effectiveRouteBias)}`}
-                  tooltip="本条消息的分工与取向；记住后作为会话偏好"
-                  tooltipSide="top"
-                  className={cn(
-                    'max-w-[148px] justify-start gap-1 px-2 font-normal text-text',
-                    open && 'bg-[var(--t-bg-hover)]',
-                  )}
-                >
-                  <GitFork size={12} className="shrink-0 opacity-70" />
-                  <span className="truncate">
-                    {delegationLabel(effectiveDelegation)} · {routeBiasLabel(effectiveRouteBias)}
-                  </span>
-                </Button>
-              )}
-            >
-              <Menu.Sub>
-                <Menu.SubTrigger trailing={delegationLabel(effectiveDelegation)} hint="是否派子代理">
-                  分工
-                </Menu.SubTrigger>
-                <Menu.SubContent className="w-[220px]" aria-label="分工">
-                  <Menu.RadioGroup
-                    value={effectiveDelegation}
-                    onValueChange={(value) => onChangeDelegation(value as DelegationStrategy)}
-                  >
-                    {DELEGATION_ORDER.map((value) => (
-                      <Menu.RadioItem key={value} value={value} hint={DELEGATION_META[value].hint}>
-                        {DELEGATION_META[value].label}
-                      </Menu.RadioItem>
-                    ))}
-                  </Menu.RadioGroup>
-                </Menu.SubContent>
-              </Menu.Sub>
-              <Menu.Sub>
-                <Menu.SubTrigger
-                  trailing={routeBiasLabel(effectiveRouteBias)}
-                  hint="执行者与子代理用什么模型"
-                >
-                  取向
-                </Menu.SubTrigger>
-                <Menu.SubContent className="w-[220px]" aria-label="取向">
-                  <Menu.RadioGroup
-                    value={effectiveRouteBias}
-                    onValueChange={(value) => onChangeRouteBias(value as RoutePreference)}
-                  >
-                    {ROUTE_BIAS_ORDER.map((value) => (
-                      <Menu.RadioItem key={value} value={value} hint={ROUTE_BIAS_META[value].hint}>
-                        {ROUTE_BIAS_META[value].label}
-                      </Menu.RadioItem>
-                    ))}
-                  </Menu.RadioGroup>
-                </Menu.SubContent>
-              </Menu.Sub>
-              <Menu.Separator />
-              <Menu.Item
-                keepOpen
-                hint="记住当前分工与取向，本会话后续消息都用这组设置"
-                trailing={keepRouteMode ? '✓' : undefined}
-                onSelect={onToggleKeepRouteMode}
-              >
-                记住为会话偏好
-              </Menu.Item>
-            </Menu>
-          )}
           <ModelMenu
             compact={compact}
             profiles={uiProfiles}
@@ -268,6 +183,12 @@ export function ComposerFooter({
             effort={effort}
             efforts={supportedEfforts}
             effortLabels={effortLabels}
+            delegation={effectiveDelegation}
+            routeBias={effectiveRouteBias}
+            routeNative={routeNative}
+            onDelegationChange={onChangeDelegation}
+            onRouteBiasChange={onChangeRouteBias}
+            onRouteNativeChange={onChangeRouteNative}
             loading={profilesLoading}
             disabled={modelDisabled}
             open={modelMenuOpen}

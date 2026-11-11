@@ -481,10 +481,24 @@ const DECISIONS = [
   },
   {
     id: 'route-labels',
-    source: '2026-11-10 用户原话（反馈2009#01）：「这个地方功能是不是要调整一下？上面的四个选项和委派倾向貌似有些许重复，应该是分为两个维度？一个看积不积极派子代理，一个看是质量优先还是成本优先。」替代 反馈8#03/#09 的旧菜单决定',
-    decision: '输入框两个独立维度：分工（关闭/适度/积极）与取向（省钱/均衡/质量优先）',
-    files: [F.routeLabels, F.composerFooter],
-    need: [/分工/, /取向/, /关闭/, /适度/, /积极/, /省钱/, /均衡/, /质量优先/],
+    source: '2026-11-10 用户原话（反馈2009#01）：「这个地方功能是不是要调整一下？上面的四个选项和委派倾向貌似有些许重复，应该是分为两个维度？一个看积不积极派子代理，一个看是质量优先还是成本优先。」；2026-11-11 用户原话（反馈1601#04）：「这个可以移入旁边选择模型的列表里，然后我觉得没必要有记住为会话偏好，选择了后当前会话之后都用选择的策略。」',
+    decision: '分工与取向并入模型菜单（原生开关 + 分工/取向两组），选择即写入当前会话、无「记住」；模型芯片只显示模型名',
+    files: [F.routeLabels, F.modelMenu, F.composerFooter],
+    need: [/分工/, /取向/, /关闭/, /适度/, /积极/, /省钱/, /均衡/, /质量优先/, /Menu\.CheckItem/, /onRouteNativeChange/],
+    deny: [/记住为会话偏好/, /aria-label="分工与取向"/],
+  },
+  {
+    id: 'route-native',
+    source: '2026-11-11 16:11 用户原话（反馈1601#04 更正）：「\'关闭这个功能\' 指的是再增加一个关闭的选项，选了这个并不意味着就不派子代理，不怎么样了，而是说不注入提示词，用原生模型自己去跑」',
+    decision: '原生开关：不注入任何分工/取向/路由提示词、不做路由规则分类改写；工具不减（含 Task），提示行「原生（未注入）」；分工原「关闭」仍是主会话不派子代理',
+    files: [
+      F.modelRoutingServer,
+      'packages/server/src/host/subagents.ts',
+      F.modelMenu,
+      F.composerFooter,
+      F.protocol,
+    ],
+    need: [/mode: 'native'/, /routeNativeFor/, /原生（未注入）/, /routeNative\?: boolean/, /原生模式下不生效/],
   },
   {
     id: 'model-latest-selection',

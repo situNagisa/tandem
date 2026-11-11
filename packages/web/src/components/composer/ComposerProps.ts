@@ -22,6 +22,9 @@ export interface ComposerProps {
   /** 无会话模式的分工；会话内直接从 summary 读取。 */
   delegation?: DelegationStrategy
   onDelegationChange?: (strategy: DelegationStrategy) => void
+  /** 无会话模式的原生模式；会话内直接从 summary 读取。 */
+  routeNative?: boolean
+  onRouteNativeChange?: (native: boolean) => void
   onPermissionModeChange?: (mode: PermissionMode) => void
   /** 无会话模式的思考强度；缺省读上次使用值。 */
   effort?: ReasoningEffort

@@ -214,6 +214,11 @@ export function routeBiasFor(host: Host, rec: SessionRecord): RoutePreference {
   );
 }
 
+/** 原生模式：不注入分工/取向/路由说明，不做路由规则分类改写；工具不减（Task 仍可用）。 */
+export function routeNativeFor(rec: SessionRecord): boolean {
+  return rec.routeNative === true;
+}
+
 export function presetSummary(host: Host, cwd: string): string {
   const presets = host.subagentPresets.list(cwd);
   if (presets.length === 0) return '（无自定义预设）';
@@ -222,8 +227,9 @@ export function presetSummary(host: Host, cwd: string): string {
     .join('；');
 }
 
-export function taskToolDescription(host: Host, cwd: string): string {
+export function taskToolDescription(host: Host, cwd: string, native = false): string {
   const base = TASK_DESCRIPTION_DEFAULT.replace(/\{\{presets\}\}/g, host.presetSummary(cwd));
+  if (native) return base;
   return (
     base +
     '\n分工路由：role="executor" 把机械子任务交给配置的便宜执行模型；role="specialist" 可带 domain（ui/backend/test/docs/data/ops/general）交给领域专长模型。' +
@@ -251,7 +257,8 @@ export function delegationPrompt(host: Host, rec: SessionRecord): string {
 
 export function toolDefinitions(host: Host, rec: SessionRecord, allowTask = true): ToolDefinition[] {
   const strategy = host.delegationFor(rec);
-  const canDelegate = allowTask && strategy !== 'none' && (rec.depth ?? 0) < 3;
+  const native = routeNativeFor(rec);
+  const canDelegate = allowTask && (native || strategy !== 'none') && (rec.depth ?? 0) < 3;
   const hasSkills = !host.remote && host.skills
     .list(rec.cwd)
     .some((skill) => skill.enabled && skill.modelInvocable);
@@ -276,7 +283,7 @@ export function toolDefinitions(host: Host, rec: SessionRecord, allowTask = true
     )
     .map((tool) =>
       tool.name === 'Task'
-        ? { ...tool, description: host.taskToolDescription(rec.cwd) }
+        ? { ...tool, description: host.taskToolDescription(rec.cwd, native) }
         : tool,
     );
   const mcp = host.remote ? [] : host.mcp.toolDefinitions(rec.cwd).filter((tool) => allowed(tool.name));

@@ -54,8 +54,6 @@ interface Options {
   scopeTarget: SessionTarget | undefined
   hostStatus: string
   pendingRequests: PermissionRequest[]
-  routeOverride: import('@tandem/protocol').TurnRouteOverride | undefined
-  setRouteOverride: (route: import('@tandem/protocol').TurnRouteOverride | undefined) => void
   onSubmit?: (content: ContentBlock[]) => unknown | Promise<unknown>
   onStop?: () => void
   interrupt: StoreState['interrupt']
@@ -101,8 +99,6 @@ export function useComposerSend({
   scopeTarget,
   hostStatus,
   pendingRequests,
-  routeOverride,
-  setRouteOverride,
   onSubmit,
   onStop,
   interrupt,
@@ -195,8 +191,7 @@ export function useComposerSend({
         decide(request.id, 'deny', outgoingText || undefined, scopeTarget)
       }
     }
-    if (!send(blocks, scopeTarget, routeOverride)) return
-    setRouteOverride(undefined)
+    if (!send(blocks, scopeTarget)) return
     rememberSent(outgoingText)
     resetInput()
   }

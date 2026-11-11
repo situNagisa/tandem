@@ -207,6 +207,8 @@ export interface ModelRoutingSettings {
   preference: RoutePreference;
   /** 可选：用小模型判断难度（一次很小的请求，默认关闭）。 */
   judge?: boolean;
+  /** 可选：新会话默认原生模式（不注入分工/取向说明，工具不减，模型自己决定是否派子代理）。 */
+  native?: boolean;
   /** 可选：分工路由配置；模型菜单选「分工」时使用。 */
   division?: DivisionRoutingSettings;
 }
@@ -267,9 +269,9 @@ export interface AutoRouteSavings {
   /** 分工路由：按角色拆分。 */
   byRole?: Partial<Record<RouteRole, RouteRoleUsage>>;
 }
-/** 单轮路由模式：单代理 / 整单交执行者 / 多代理协作（由分工×取向与规则得出）。 */
-export type TurnRouteMode = 'direct' | 'cheap' | 'division';
-/** 发送一条消息时的一次性分工/取向覆盖；未勾选「记住为会话偏好」时只作用于这一条。 */
+/** 单轮路由模式：单代理 / 整单交执行者 / 多代理协作（由分工×取向与规则得出）；原生 = 不注入任何分工/取向说明。 */
+export type TurnRouteMode = 'direct' | 'cheap' | 'division' | 'native';
+/** 发送一条消息时的一次性分工/取向覆盖；输入框选择已直接写入会话，这里只供确认卡「改为单代理」等内部路径使用。 */
 export interface TurnRouteOverride {
   delegation?: DelegationStrategy;
   routeBias?: RoutePreference;
@@ -353,6 +355,8 @@ export interface SessionSummary {
   effort?: ReasoningEffort; // 思考强度：映射到 Anthropic thinking budget / OpenAI reasoning_effort；模型不支持时忽略
   /** 分工；缺省按 Host 设置（默认 less）。 */
   delegation?: DelegationStrategy;
+  /** 原生模式：不注入分工/取向/路由提示词，不做路由规则分类改写；工具不减，Task 仍可用。 */
+  routeNative?: boolean;
   status: SessionStatus;
   /** 模型请求因网络错误/超时连续失败后进入「等待网络」：下一次重试时间与原因。 */
   retryInfo?: RetryInfo;
@@ -510,12 +514,14 @@ export interface CreateSessionInput {
   permissionMode?: PermissionMode;
   effort?: ReasoningEffort;
   delegation?: DelegationStrategy;
+  /** 原生模式：不注入分工/取向说明；缺省跟随设置「模型路由 → 新会话默认」。 */
+  routeNative?: boolean;
   title?: string;
   worktree?: { branch?: string };
 }
 export type ReasoningEffort = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'max';
 // cwd：会话中途切换工作目录（下一轮生效，重新检测 env）
-export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'autoRoute' | 'routeBias' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'cwd' | 'pinnedTurns'>>;
+export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'autoRoute' | 'routeBias' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'routeNative' | 'cwd' | 'pinnedTurns'>>;
 
 // ---------- 外部会话（本机已有的 Claude Code / Codex 会话） ----------
 // 原则：只读原软件的文件，绝不写回；"导入"= 复制成 Tandem 会话后继续（可换任意模型）。

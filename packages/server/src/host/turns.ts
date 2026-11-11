@@ -188,7 +188,7 @@ export async function sendToModel(
     }
     result = await runTurn(host, rec, {
       ...(routePlan ? { routePlan } : {}),
-      allowTask: routePlan?.mode === 'division',
+      allowTask: routePlan?.mode === 'division' || routePlan?.mode === 'native',
     });
   } finally {
     rt.turnRoute = undefined;

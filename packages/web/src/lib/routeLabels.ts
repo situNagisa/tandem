@@ -7,6 +7,10 @@ export interface RouteModeMeta {
 }
 
 export const ROUTE_MODE_META: Record<TurnRouteMode, RouteModeMeta> = {
+  native: {
+    label: '原生',
+    hint: '不注入分工与取向说明，模型照常拥有全部工具，自己决定是否派子代理',
+  },
   direct: {
     label: '单代理',
     hint: '主会话模型自己完成，不派子代理',

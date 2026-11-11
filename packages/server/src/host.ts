@@ -173,6 +173,7 @@ import {
   delegationPrompt,
   presetSummary,
   routeBiasFor,
+  routeNativeFor,
   runSubagent,
   subagentConfig,
   taskToolDescription,
@@ -684,12 +685,16 @@ export class Host {
     return routeBiasFor(this, rec);
   }
 
+  routeNativeFor(rec: SessionRecord): boolean {
+    return routeNativeFor(rec);
+  }
+
   presetSummary(cwd: string): string {
     return presetSummary(this, cwd);
   }
 
-  taskToolDescription(cwd: string): string {
-    return taskToolDescription(this, cwd);
+  taskToolDescription(cwd: string, native = false): string {
+    return taskToolDescription(this, cwd, native);
   }
 
   delegationKey(rec: SessionRecord): PromptTemplateKey {
@@ -792,6 +797,7 @@ export class Host {
     permissionMode?: unknown;
     effort?: unknown;
     delegation?: unknown;
+    routeNative?: unknown;
     title?: unknown;
     worktree?: unknown;
   }): Promise<SessionRecord> {
@@ -813,6 +819,7 @@ export class Host {
       archived?: unknown;
       effort?: unknown;
       delegation?: unknown;
+      routeNative?: unknown;
       cwd?: unknown;
     },
   ): SessionRecord | undefined {

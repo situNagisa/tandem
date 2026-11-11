@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import type { ReasoningEffort, RoutePreference, TurnRouteOverride } from '@tandem/protocol'
+import type { ReasoningEffort, RoutePreference } from '@tandem/protocol'
 import { cachedRouteBias, loadRouteBias, subscribeRouteBias } from '../../lib/routeBias'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
@@ -36,6 +36,7 @@ interface Options {
   permissionModeProp: import('@tandem/protocol').PermissionMode | undefined
   routeBiasProp: RoutePreference | undefined
   delegationProp: import('@tandem/protocol').DelegationStrategy | undefined
+  routeNativeProp: boolean | undefined
   effortProp: ReasoningEffort | undefined
   hostIdProp: string | undefined
   cwdProp: string | undefined
@@ -50,6 +51,7 @@ export function useComposerStore({
   permissionModeProp,
   routeBiasProp,
   delegationProp,
+  routeNativeProp,
   effortProp,
   hostIdProp,
   cwdProp,
@@ -127,15 +129,13 @@ export function useComposerStore({
   const currentModel = sessionless ? (modelProp ?? '') : (summary?.model ?? '')
   const autoRoute = sessionless ? currentModel === 'auto' : summary?.autoRoute === true
   const routedModel = summary?.route?.model
-  const [routeOverride, setRouteOverride] = useState<TurnRouteOverride | undefined>(undefined)
-  const [keepRouteMode, setKeepRouteMode] = useState(false)
   const globalRouteBias = useGlobalRouteBias(effectiveHostId)
-  const effectiveDelegation = sessionless
-    ? (delegationProp ?? 'less')
-    : (routeOverride?.delegation ?? summary?.delegation ?? 'less')
+  // 选择即写入会话：会话页的当前值就是会话记录里的值，新会话页用创建前选择的值。
+  const effectiveDelegation = sessionless ? (delegationProp ?? 'less') : (summary?.delegation ?? 'less')
   const effectiveRouteBias = sessionless
     ? (routeBiasProp ?? globalRouteBias)
-    : (routeOverride?.routeBias ?? summary?.routeBias ?? globalRouteBias)
+    : (summary?.routeBias ?? globalRouteBias)
+  const routeNative = sessionless ? (routeNativeProp ?? false) : summary?.routeNative === true
   const currentProfileId = sessionless ? (profileIdProp ?? '') : (summary?.profileId ?? '')
   const currentGroupId = sessionless ? groupIdProp : summary?.groupId
   const contextUsed = summary?.context?.usedTokens ?? 0
@@ -186,12 +186,9 @@ export function useComposerStore({
     currentModel,
     autoRoute,
     routedModel,
-    routeOverride,
-    setRouteOverride,
-    keepRouteMode,
-    setKeepRouteMode,
     effectiveDelegation,
     effectiveRouteBias,
+    routeNative,
     currentProfileId,
     currentGroupId,
     contextUsed,

@@ -81,6 +81,7 @@ export function summaryOf(s: Session): SessionSummary {
     ...(s.resumePaused ? { resumePaused: true as const } : {}),
     ...(s.effort ? { effort: s.effort } : {}),
     ...(s.delegation ? { delegation: s.delegation } : {}),
+    ...(s.routeNative ? { routeNative: true as const } : {}),
     ...(s.pinned ? { pinned: true } : {}),
     ...(s.pinnedTurns && s.pinnedTurns.length ? { pinnedTurns: [...s.pinnedTurns] } : {}),
     ...(s.forkedFrom ? { forkedFrom: { ...s.forkedFrom } } : {}),

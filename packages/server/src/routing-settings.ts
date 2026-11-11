@@ -190,15 +190,17 @@ export function normalizeRoutingSettings(value: unknown): ModelRoutingSettings |
     ? (raw.preference as RoutePreference)
     : 'balanced';
   const division = normalizeDivision(raw.division);
-  // 没有候选池时，只有默认（均衡、不判断难度、无分工）才算「未配置」；
+  const native = raw.native === true;
+  // 没有候选池时，只有默认（均衡、不判断难度、非原生、无分工）才算「未配置」；
   // 用户单独调整的偏好必须保存，否则设置保存后会被判为未启用并回写旧值（R17）。
-  if (candidates.length === 0 && preference === 'balanced' && raw.judge !== true && !division) {
+  if (candidates.length === 0 && preference === 'balanced' && raw.judge !== true && !native && !division) {
     return undefined;
   }
   return {
     candidates,
     preference,
     ...(raw.judge === true ? { judge: true } : {}),
+    ...(native ? { native: true } : {}),
     ...(division ? { division } : {}),
   };
 }
