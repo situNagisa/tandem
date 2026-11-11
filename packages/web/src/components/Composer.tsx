@@ -63,6 +63,8 @@ export function Composer({
   onRouteBiasChange,
   delegation: delegationProp,
   onDelegationChange,
+  routeNative: routeNativeProp,
+  onRouteNativeChange,
   onPermissionModeChange,
   effort: effortProp,
   onEffortChange,
@@ -116,12 +118,9 @@ export function Composer({
     currentModel,
     autoRoute,
     routedModel,
-    routeOverride,
-    setRouteOverride,
-    keepRouteMode,
-    setKeepRouteMode,
     effectiveDelegation,
     effectiveRouteBias,
+    routeNative,
     currentProfileId,
     currentGroupId,
     contextUsed,
@@ -139,6 +138,7 @@ export function Composer({
     permissionModeProp,
     routeBiasProp,
     delegationProp,
+    routeNativeProp,
     effortProp,
     hostIdProp,
     cwdProp,
@@ -237,7 +237,7 @@ export function Composer({
     changeAutoRoute,
     applyDelegation,
     applyRouteBias,
-    toggleKeepRouteMode,
+    applyRouteNative,
     changeEffort,
     switchLabel,
     switchCost,
@@ -248,6 +248,7 @@ export function Composer({
     onModelChange,
     onRouteBiasChange,
     onDelegationChange,
+    onRouteNativeChange,
     onEffortChange,
     summary,
     activeHostId,
@@ -266,12 +267,6 @@ export function Composer({
     localEffort,
     setLocalEffort,
     effort,
-    keepRouteMode,
-    setKeepRouteMode,
-    effectiveDelegation,
-    effectiveRouteBias,
-    routeOverride,
-    setRouteOverride,
     setModelMenuOpen,
     setPendingSwitch,
     setPermissionMode,
@@ -345,8 +340,6 @@ export function Composer({
     scopeTarget,
     hostStatus,
     pendingRequests,
-    routeOverride,
-    setRouteOverride,
     onSubmit,
     onStop,
     interrupt,
@@ -448,10 +441,10 @@ export function Composer({
           expectedPct={expectedPct}
           effectiveDelegation={effectiveDelegation}
           effectiveRouteBias={effectiveRouteBias}
+          routeNative={routeNative}
           onChangeDelegation={applyDelegation}
           onChangeRouteBias={applyRouteBias}
-          keepRouteMode={keepRouteMode}
-          onToggleKeepRouteMode={toggleKeepRouteMode}
+          onChangeRouteNative={applyRouteNative}
           uiProfiles={uiProfiles}
           currentProfileId={currentProfileId}
           currentGroupId={currentGroupId}

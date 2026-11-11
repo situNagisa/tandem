@@ -8,7 +8,6 @@ import type {
   ProviderKind,
   RoutePreference,
   SessionSummary,
-  TurnRouteOverride,
 } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
@@ -28,6 +27,7 @@ interface Options {
   onModelChange?: (profileId: string, groupId: string | undefined, model: string) => void
   onRouteBiasChange?: (bias: RoutePreference) => void
   onDelegationChange?: (strategy: DelegationStrategy) => void
+  onRouteNativeChange?: (native: boolean) => void
   onEffortChange?: (effort: ReasoningEffort, remember?: boolean) => void
   summary: SessionSummary | null
   activeHostId: string | null
@@ -46,12 +46,6 @@ interface Options {
   localEffort: ReasoningEffort
   setLocalEffort: (effort: ReasoningEffort) => void
   effort: ReasoningEffort
-  keepRouteMode: boolean
-  setKeepRouteMode: (keep: boolean) => void
-  effectiveDelegation: DelegationStrategy
-  effectiveRouteBias: RoutePreference | undefined
-  routeOverride: TurnRouteOverride | undefined
-  setRouteOverride: (route: TurnRouteOverride | undefined) => void
   setModelMenuOpen: (open: boolean) => void
   setPendingSwitch: (
     value: { profileId: string; groupId?: string; model: string; tokens: number } | null,
@@ -67,6 +61,7 @@ export function useComposerModelControls({
   onModelChange,
   onRouteBiasChange,
   onDelegationChange,
+  onRouteNativeChange,
   onEffortChange,
   summary,
   activeHostId,
@@ -85,12 +80,6 @@ export function useComposerModelControls({
   localEffort,
   setLocalEffort,
   effort,
-  keepRouteMode,
-  setKeepRouteMode,
-  effectiveDelegation,
-  effectiveRouteBias,
-  routeOverride,
-  setRouteOverride,
   setModelMenuOpen,
   setPendingSwitch,
   setPermissionMode,
@@ -207,7 +196,6 @@ export function useComposerModelControls({
       onModelChange?.(profile, group, 'auto')
       return
     }
-    // 模型菜单只管模型；分工与取向改由输入框的「分工与取向」菜单统一选择。
     void updateSession(activeHostId!, summary!.id, { model: 'auto' })
   }
 
@@ -224,14 +212,12 @@ export function useComposerModelControls({
     applyAutoRoute()
   }
 
-  // 会话内只写本条消息的覆盖；「记住为会话偏好」打开时同时落库。
+  // 选择即写入会话，之后所有消息都用这组设置；新会话页在创建时写入。
   const applyDelegation = (strategy: DelegationStrategy) => {
     if (sessionless) {
       onDelegationChange?.(strategy)
       return
     }
-    setRouteOverride({ ...routeOverride, delegation: strategy })
-    if (!keepRouteMode) return
     if (activeHostId && summary) {
       void updateSession(activeHostId, summary.id, { delegation: strategy })
     }
@@ -242,21 +228,19 @@ export function useComposerModelControls({
       onRouteBiasChange?.(bias)
       return
     }
-    setRouteOverride({ ...routeOverride, routeBias: bias })
-    if (!keepRouteMode) return
     if (activeHostId && summary) {
       void updateSession(activeHostId, summary.id, { routeBias: bias })
     }
   }
 
-  const toggleKeepRouteMode = () => {
-    const next = !keepRouteMode
-    setKeepRouteMode(next)
-    if (next && !sessionless && activeHostId && summary) {
-      void updateSession(activeHostId, summary.id, {
-        delegation: effectiveDelegation,
-        ...(effectiveRouteBias ? { routeBias: effectiveRouteBias } : {}),
-      })
+  /** 原生模式：不注入分工/取向说明，工具不减，模型自己决定是否派子代理。 */
+  const applyRouteNative = (native: boolean) => {
+    if (sessionless) {
+      onRouteNativeChange?.(native)
+      return
+    }
+    if (activeHostId && summary) {
+      void updateSession(activeHostId, summary.id, { routeNative: native })
     }
   }
 
@@ -331,7 +315,7 @@ export function useComposerModelControls({
     changeAutoRoute,
     applyDelegation,
     applyRouteBias,
-    toggleKeepRouteMode,
+    applyRouteNative,
     changeEffort,
     switchLabel,
     switchCost,

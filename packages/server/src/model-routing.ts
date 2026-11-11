@@ -648,9 +648,13 @@ export function planTurnRoute(
 ): RoutePlan | undefined {
   const settings: ModelRoutingSettings = routingSettingsOf(host) ?? { candidates: [], preference: 'balanced' };
   const delegation = host.delegationFor(rec);
-  if (delegation === 'none') return undefined;
   const text = input.text.trim();
   if (!text) return undefined;
+  // 原生模式：不做规则分类，不注入任何分工/取向说明；提示行只标「原生（未注入）」。
+  if (rec.routeNative === true) {
+    return { mode: 'native', reason: '不注入分工与取向说明，模型自行决定是否派子代理', domain: 'general', specialist: false };
+  }
+  if (delegation === 'none') return undefined;
   const bias = host.routeBiasFor(rec);
   const signals = routeSignalsOf(host, rec, { content: [{ type: 'text', text }] }, 0, rec.routeState?.lastFailed === true);
   const complexity = scoreRoute(signals, bias, rec.routeState).complexity;
@@ -790,6 +794,7 @@ export function estimateDivisionPlanCost(host: Host, plan: RoutePlan, prompts: s
 }
 
 export function routePlanText(plan: RoutePlan): string {
+  if (plan.mode === 'native') return '原生（未注入）';
   const mode =
     plan.mode === 'direct' ? '单代理' : plan.mode === 'cheap' ? '整单交执行者' : '多代理协作';
   const detail =

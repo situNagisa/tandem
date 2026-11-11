@@ -11,6 +11,7 @@ import {
   planTurnRoute,
   recentToolInputs,
   resolveDivisionAssignment,
+  routePlanText,
   type RouteSignals,
 } from '../src/model-routing.js';
 import { normalizeRoutingSettings } from '../src/routing-settings.js';
@@ -193,6 +194,15 @@ test('分工关闭：不规划，任何取向都不派发', () => {
     const host = fakeHost(routing, { bias, delegation: 'none' });
     assert.equal(planTurnRoute(host, rec(complexText), { text: complexText }), undefined, bias);
   }
+});
+
+test('原生：不做规则分类、不注入，提示行为「原生（未注入）」', () => {
+  const native = { ...rec(complexText), routeNative: true };
+  // 原生优先于分工关闭：仍出提示行，但不带任何注入原文。
+  const plan = planTurnRoute(fakeHost(routing, { delegation: 'none' }), native, { text: complexText });
+  assert.equal(plan?.mode, 'native');
+  assert.equal(plan?.injected, undefined);
+  assert.equal(plan ? routePlanText(plan) : '', '原生（未注入）');
 });
 
 test('多步批量任务分工；专长领域命中', () => {

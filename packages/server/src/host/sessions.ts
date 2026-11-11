@@ -34,6 +34,7 @@ import {
   normalizeRouteBias,
   normalizeRoutingSettings,
 } from '../routing-settings.js';
+import { routingSettingsOf } from '../model-routing.js';
 import {
   PAGE_BYTES_MAX,
   PAGE_LIMIT_DEFAULT,
@@ -207,6 +208,7 @@ export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
     ...(rec.resumePaused ? { resumePaused: true } : {}),
     ...(rec.effort ? { effort: rec.effort } : {}),
     ...(rec.delegation ? { delegation: rec.delegation } : {}),
+    ...(rec.routeNative ? { routeNative: true } : {}),
     // 可选字段只在有值时下发，老客户端不受影响
     ...(rec.pinned ? { pinned: true } : {}),
     ...(rec.pinnedInProject ? { pinnedInProject: true } : {}),
@@ -440,6 +442,7 @@ export async function createSession(host: Host, input: {
     permissionMode?: unknown;
     effort?: unknown;
     delegation?: unknown;
+    routeNative?: unknown;
     title?: unknown;
     worktree?: unknown;
   }): Promise<SessionRecord> {
@@ -483,6 +486,11 @@ export async function createSession(host: Host, input: {
     throw new Error(`无效的 delegation: ${String(input.delegation)}`);
   }
   const delegation = normalizeDelegation(input.delegation) ?? host.settings().defaultDelegation ?? 'less';
+  // 原生模式：显式传入为准；未传时跟随设置「模型路由 → 新会话默认」。
+  const routeNative =
+    typeof input.routeNative === 'boolean'
+      ? input.routeNative
+      : routingSettingsOf(host)?.native === true;
 
   // worktree 会话：先创建 worktree，会话 cwd 指向新目录
   const shortId = randomUUID().slice(0, 8);
@@ -515,6 +523,7 @@ export async function createSession(host: Host, input: {
     permissionMode,
     ...(effort ? { effort } : {}),
     delegation,
+    ...(routeNative ? { routeNative: true } : {}),
     depth: 0,
     status: 'idle',
     createdAt: now,
@@ -555,6 +564,7 @@ export function updateSession(host: Host, id: string,
       archived?: unknown;
       effort?: unknown;
       delegation?: unknown;
+      routeNative?: unknown;
       cwd?: unknown;
     },): SessionRecord | undefined {
   const rec = host.store.get(id);
@@ -592,6 +602,10 @@ export function updateSession(host: Host, id: string,
     const delegation = normalizeDelegation(patch.delegation);
     if (!delegation) throw new Error(`无效的 delegation: ${patch.delegation}`);
     rec.delegation = delegation;
+  }
+  if (typeof patch.routeNative === 'boolean') {
+    if (patch.routeNative) rec.routeNative = true;
+    else delete rec.routeNative;
   }
   if (typeof patch.permissionMode === 'string') {
     if (!PERMISSION_MODES.has(patch.permissionMode as PermissionMode)) {
@@ -691,6 +705,7 @@ export function forkSession(host: Host, id: string, messageId?: string): Session
     ...(src.effort ? { effort: src.effort } : {}),
     ...(src.delegation ? { delegation: src.delegation } : {}),
     ...(src.routeBias ? { routeBias: src.routeBias } : {}),
+    ...(src.routeNative ? { routeNative: true } : {}),
     status: 'idle',
     createdAt: now,
     updatedAt: now,

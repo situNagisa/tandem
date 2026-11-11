@@ -94,6 +94,7 @@ export function NewSessionView() {
   const [effortPick, setEffortPick] = useState<ReasoningEffort>(loadLastEffort)
   const [effort, setEffort] = useState<ReasoningEffort>(effortPick)
   const [delegation, setDelegation] = useState<DelegationStrategy>('less')
+  const [routeNative, setRouteNative] = useState(false)
   const [worktree, setWorktree] = useState(false)
   const [worktreeBranch, setWorktreeBranch] = useState('')
   const [sending, setSending] = useState(false)
@@ -127,7 +128,9 @@ export function NewSessionView() {
       api
         .settings(target)
         .then((settings) => {
-          if (!cancelled && settings.defaultDelegation) setDelegation(settings.defaultDelegation)
+          if (cancelled) return
+          if (settings.defaultDelegation) setDelegation(settings.defaultDelegation)
+          if (settings.modelRouting?.native) setRouteNative(true)
         })
         .catch(() => {})
     }
@@ -245,6 +248,7 @@ export function NewSessionView() {
           permissionMode,
           effort,
           delegation,
+          routeNative,
           ...(worktree && gitRepo === 'yes'
             ? { worktree: { ...(worktreeBranch.trim() ? { branch: worktreeBranch.trim() } : {}) } }
             : {}),
@@ -314,9 +318,11 @@ export function NewSessionView() {
           effort={effortPick}
           routeBias={routeBias}
           delegation={delegation}
+          routeNative={routeNative}
           onModelChange={chooseAccount}
           onRouteBiasChange={setRouteBias}
           onDelegationChange={setDelegation}
+          onRouteNativeChange={setRouteNative}
           onPermissionModeChange={setPermissionMode}
           onEffortChange={(next, remember = true) => {
             setEffort(next)

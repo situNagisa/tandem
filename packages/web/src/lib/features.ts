@@ -179,7 +179,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     ],
     settingsPage: 'routing',
     components: ['DivisionRoutingSection', 'DivisionPlanCard', 'RoutePlanLine'],
-    keywords: ['分工', '多代理协作', '规划者', '执行者', '专长', '省钱', '整单交执行者', '分工与取向', '确认卡'],
+    keywords: ['分工', '多代理协作', '规划者', '执行者', '专长', '省钱', '整单交执行者', '原生', '确认卡'],
   },
   {
     id: 'usage-budget',

@@ -270,6 +270,22 @@ export function ModelRoutingSection() {
           />
         </SettingRow>
         <SettingRow
+          label="新会话默认"
+          hint="选「原生」时新会话不注入分工与取向说明，模型照常拥有全部工具（含 Task），自己决定是否派子代理；仍可在模型菜单里逐个会话改。"
+        >
+          <SegmentedControl
+            value={routing.native ? 'native' : 'routing'}
+            options={[
+              { value: 'routing', label: '分工与取向' },
+              { value: 'native', label: '原生' },
+            ]}
+            onChange={(value) =>
+              persist({ ...routing, ...(value === 'native' ? { native: true } : { native: undefined }) })
+            }
+            aria-label="新会话默认"
+          />
+        </SettingRow>
+        <SettingRow
           label="用小模型判断难度"
           hint="每轮额外发一次很小的请求（默认关闭）；失败或超时按规则打分。"
         >

@@ -291,7 +291,7 @@ export function SubagentsSection() {
             </option>
           ))}
         </Select>
-        <span className="text-[12px] text-muted">会话内可在输入框底栏的「分工与取向」随时切换。</span>
+        <span className="text-[12px] text-muted">会话内可在模型菜单里切换分工与取向。</span>
       </Card>
 
       {error && <div className="rounded-lg border border-danger/25 bg-danger-soft/50 px-3 py-2 text-[12px] text-danger">{error}</div>}
