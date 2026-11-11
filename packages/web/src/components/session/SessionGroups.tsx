@@ -24,7 +24,7 @@ interface SessionGroupsProps {
     nested?: boolean,
   ) => ReactNode
   openExternal: (hostId: string, ext: ExternalItem) => void
-  toggleProject: (key: string) => void
+  setProjectCollapsed: (key: string, collapsed: boolean) => void
   toggleProjectPinned: (key: string) => void
   newSessionIn: (hostId: string, cwd: string) => void
 }
@@ -40,7 +40,7 @@ export function SessionGroups({
   query,
   renderRow,
   openExternal,
-  toggleProject,
+  setProjectCollapsed,
   toggleProjectPinned,
   newSessionIn,
 }: SessionGroupsProps) {
@@ -73,7 +73,8 @@ export function SessionGroups({
           }
 
           const renderProject = (hostId: string, project: ProjectGroup, indented: boolean) => {
-            const projCollapsed = !!collapsed[project.key]
+            // 兼容旧键（按项目名）；新键按主机 + 项目路径记，重开/重建 Host 条目后仍能恢复。
+            const projCollapsed = collapsed[project.collapseKey] ?? !!collapsed[project.key]
             const projectPinned = pinnedProjects.includes(project.key)
             const hostName = hosts.find((h) => h.id === hostId)?.name ?? ''
             const projectTip = [hostName, project.cwd].filter(Boolean).join(' · ')
@@ -103,7 +104,7 @@ export function SessionGroups({
               >
                 <div className="group/proj flex h-8 min-w-0 items-center rounded-lg pr-0.5 transition-colors hover:bg-[var(--t-bg-hover)] max-sm:h-11">
                   <button data-raw-button
-                    onClick={() => toggleProject(project.key)}
+                    onClick={() => setProjectCollapsed(project.collapseKey, !projCollapsed)}
                     className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg pl-1.5 text-left text-[13px] font-medium text-text-secondary transition-colors duration-[120ms] hover:text-text max-sm:h-11"
                     aria-expanded={!projCollapsed}
                     data-tip={projectTip || project.name}
@@ -245,13 +246,13 @@ export function SessionGroups({
             <>
               {pinnedSection}
               {normalGroups.map((host) => {
-                const hostKey = `host:${host.id}`
-                const hostCollapsed = !!collapsed[hostKey]
+                const hostCollapsed =
+                  collapsed[host.collapseKey] ?? !!collapsed[`host:${host.id}`]
                 return (
                   <div key={host.id} className="mb-1" data-host-group={host.id}>
                     <div className="flex min-w-0 items-center gap-1.5 px-2.5 pb-1 pt-2">
                       <button data-raw-button
-                        onClick={() => toggleProject(hostKey)}
+                        onClick={() => setProjectCollapsed(host.collapseKey, !hostCollapsed)}
                         className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left text-[12px] font-medium text-text-tertiary transition-colors duration-[120ms] hover:text-text-secondary"
                         aria-expanded={!hostCollapsed}
                         data-tip={host.online ? host.name : `${host.name} · 离线，显示缓存的会话列表`}

@@ -11,6 +11,8 @@ export interface ExternalItem extends ExternalSession {
 
 export interface ProjectGroup {
   key: string
+  /** 折叠状态用的标识：主机 + 项目路径（见 projectCollapseKey）。 */
+  collapseKey: string
   name: string
   cwd?: string
   branch?: string
@@ -22,6 +24,8 @@ export interface ProjectGroup {
 export interface HostGroup {
   id: string
   name: string
+  /** 折叠状态用的标识：见 hostCollapseKey。 */
+  collapseKey: string
   online: boolean
   projects: ProjectGroup[]
   count: number
@@ -46,6 +50,24 @@ export function projectName(s: SessionSummary): string {
   return worktreeRepoName(s) || s.env?.repoName || basename(s.cwd) || '未命名项目'
 }
 
+type CollapseHost = { id: string; hostId?: string }
+
+/** 折叠状态的主机标识：优先 Host 自己的 hostId（客户端重建 Host 条目后仍稳定）。 */
+export function hostCollapseKey(host: CollapseHost): string {
+  return `host:${host.hostId || host.id}`
+}
+
+/**
+ * 折叠状态的项目标识：主机 + 项目路径。按名字记时，同名项目（不同目录）会互相影响，
+ * 项目名或 env 口径变化后也会丢掉已折叠状态（反馈1601#05）。
+ */
+export function projectCollapseKey(host: CollapseHost, project: { cwd?: string; name: string }): string {
+  const path = (project.cwd || project.name).trim().replace(/\\/g, '/').replace(/\/+$/, '')
+  // Windows 盘符路径大小写不敏感；Linux 路径保持原样。
+  const stable = /^[a-z]:/i.test(path) ? path.toLowerCase() : path
+  return `${host.hostId || host.id}:${stable}`
+}
+
 /** 侧栏项目归组名；Sidebar 的筛选菜单复用同一口径。 */
 export function sessionProjectName(s: SessionSummary): string {
   return projectName(s)
@@ -64,7 +86,7 @@ export function matchesStatus(s: SessionSummary, filter: SessionFilter['status']
 }
 
 export function buildGroups(
-  hosts: Array<{ id: string; name: string }>,
+  hosts: Array<{ id: string; name: string; hostId?: string }>,
   runtimes: AppState['runtimes'],
   externalSessions: ExternalItem[],
   query: string,
@@ -117,6 +139,8 @@ export function buildGroups(
       if (!group) {
         group = {
           key,
+          // 折叠按仓库根（没有则 cwd）记，不跟着显示名/排序变化。
+          collapseKey: projectCollapseKey(h, { cwd: s.env?.repoRoot || s.cwd, name }),
           name,
           cwd: s.cwd,
           branch: s.worktree ? undefined : s.env?.branch,
@@ -146,6 +170,7 @@ export function buildGroups(
         if (!group) {
           group = {
             key: `${h.id}:${base}`,
+            collapseKey: projectCollapseKey(h, { cwd: ext.cwd, name: base }),
             name: base,
             cwd: ext.cwd,
             items: [],
@@ -182,6 +207,7 @@ export function buildGroups(
     groups.push({
       id: h.id,
       name: h.name,
+      collapseKey: hostCollapseKey(h),
       online: rt?.status === 'online',
       projects,
       count:

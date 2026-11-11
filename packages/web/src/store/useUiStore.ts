@@ -134,6 +134,8 @@ interface UiState {
   toggleSidebar: () => void
   setSidebarWidth: (width: number) => void
   toggleProject: (key: string) => void
+  /** 直接设置某个主机/项目分组的折叠状态（键见 sessionListUtils 的 collapseKey）。 */
+  setProjectCollapsed: (key: string, collapsed: boolean) => void
   setShowArchived: (show: boolean) => void
   setShowSubagents: (show: boolean) => void
   setShowExternalSessions: (show: boolean) => void
@@ -354,6 +356,11 @@ export const useUiStore = create<UiState>((set, get) => {
   },
   toggleProject: (key) => {
     const next = { ...get().collapsedProjects, [key]: !get().collapsedProjects[key] }
+    saveCollapsedProjects(next)
+    set({ collapsedProjects: next })
+  },
+  setProjectCollapsed: (key, collapsed) => {
+    const next = { ...get().collapsedProjects, [key]: collapsed }
     saveCollapsedProjects(next)
     set({ collapsedProjects: next })
   },
