@@ -1299,7 +1299,7 @@ export type WorkspaceModelProxyEvent =
   | { type: 'block_start'; index: number; block: ContentBlock }
   | { type: 'text'; index: number; text: string }
   | { type: 'tool_input'; index: number; partialJson: string }
-  | { type: 'rate_limit'; info: Record<string, unknown> }
+  | { type: 'rate_limit'; info: Record<string, unknown>; keyId?: string }
   | { type: 'effort_dropped'; detail?: string }
   | { type: 'done'; usage: Usage; stopReason?: string; keyId?: string; costUsd?: number }
   | { type: 'error'; message: string };

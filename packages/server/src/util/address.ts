@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 
 export function publicBaseUrl(app: FastifyInstance): { url: string; warning?: string } {
   const address = app.server.address();
-  const port = address && typeof address === 'object' && address.port ? address.port : 7878;
+  const port = address && typeof address === 'object' && address.port ? address.port : 8481;
   const bound = address && typeof address === 'object' ? address.address : '127.0.0.1';
   const loopback = bound === '127.0.0.1' || bound === '::1' || bound === 'localhost';
   const any = bound === '0.0.0.0' || bound === '::' || bound === '::0';
@@ -15,7 +15,7 @@ export function publicBaseUrl(app: FastifyInstance): { url: string; warning?: st
   if (loopback) {
     return {
       url: withHost('127.0.0.1'),
-      warning: 'Host 只监听 127.0.0.1，这个链接只有本机能打开。让 Host 用 --host 0.0.0.0 启动后，同事才能通过局域网访问。',
+      warning: '工作站只监听 127.0.0.1，这个链接只有本机能打开。让工作站用 --host 0.0.0.0 启动后，同事才能通过局域网访问。',
     };
   }
   if (!any) return { url: withHost(bound) };

@@ -100,12 +100,6 @@ const PUBLIC_PATHS = new Set([
   '/api/accounts/refresh',
   '/api/accounts/logout',
   '/api/accounts/workspace/snapshot',
-  // 主机签名接口：自己校验 Ed25519 签名，不使用账号令牌。
-  '/api/workstation/host/profiles/snapshot',
-  '/api/workstation/host/profiles/import',
-  '/api/workstation/host/model-proxy',
-  '/api/workstation/host/models',
-  '/api/workstation/host/profile-test',
 ]);
 
 function tokenOf(req: FastifyRequest): string {

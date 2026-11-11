@@ -22,7 +22,7 @@ import { builtinCapabilities, overrideFor } from './providers/capabilities.js';
 import { completeText } from './providers/index.js';
 import { costOfUsage, priceForModel, type Price } from './usage.js';
 import { normalizeRoutingSettings } from './routing-settings.js';
-import type { SessionRecord } from './types.js';
+import type { SessionRecord, StoredProfile } from './types.js';
 import type { Host } from './host.js';
 
 const TIERS: ModelTier[] = ['fast', 'balanced', 'power'];
@@ -299,9 +299,11 @@ export function pickRoute(input: {
 }
 
 /** 分组 Key 的可用性（只读，不推进 round-robin 游标）。 */
-function candidateAvailable(host: Host, candidate: RouteCandidate, fallbackKey: string): boolean {
+function candidateAvailable(host: Host, candidate: RouteCandidate, profile: StoredProfile): boolean {
+  // 账号级模型账号：Key 与冷却都在工作站，主机侧只按账号可见即视为可用。
+  if (profile.proxied) return true;
   const group = host.groupFor(candidate.profileId, candidate.groupId);
-  if (!group?.keys?.length) return !!fallbackKey;
+  if (!group?.keys?.length) return !!profile.apiKey;
   const now = Date.now();
   return group.keys.some(
     (key) => !key.disabled && !!key.apiKey && (!key.cooldownUntil || key.cooldownUntil <= now),
@@ -318,7 +320,7 @@ export function candidateMetas(host: Host, settings: ModelRoutingSettings): Rout
     if (!models.includes(candidate.model)) continue;
     const override = overrideFor(profile.modelCapabilities, candidate.model);
     const contextWindow = override?.contextWindow ?? builtinCapabilities(profile.kind, candidate.model).contextWindow;
-    const available = candidateAvailable(host, candidate, profile.apiKey);
+    const available = candidateAvailable(host, candidate, profile);
     const blocked = !!host.budgets.blockingRule({
       profileId: candidate.profileId,
       ...(candidate.groupId ? { groupId: candidate.groupId } : {}),
@@ -502,7 +504,7 @@ function metaForAssignment(
     kind: profile.kind,
     ...(contextWindow !== undefined ? { contextWindow } : {}),
     ...(price ? { price } : {}),
-    available: candidateAvailable(host, candidate, profile.apiKey),
+    available: candidateAvailable(host, candidate, profile),
     budgetBlocked: !!host.budgets.blockingRule({
       profileId: assignment.profileId,
       ...(assignment.groupId ? { groupId: assignment.groupId } : {}),
@@ -901,13 +903,15 @@ export async function judgeDifficulty(host: Host, settings: ModelRoutingSettings
     if (!candidate) continue;
     const profile = host.profileFor(candidate.profileId, candidate.groupId);
     const keys = host.keyCandidates(candidate.profileId, candidate.groupId);
-    const key = keys.candidates.find((item) => item.profile.apiKey);
+    const key = keys.candidates.find((item) => item.profile.apiKey || item.profile.proxied);
     if (!profile || !key) continue;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 6_000);
     try {
       const raw = await completeText({
         profile: key.profile,
+        ...(candidate.groupId ? { groupId: candidate.groupId } : {}),
+        proxy: host.profileProxyFor({}),
         model: candidate.model,
         system: '你只输出一个词：easy、medium 或 hard。不要解释。',
         prompt: `判断这个任务对编码 agent 的难度：\n${messageText.slice(0, 1200)}`,

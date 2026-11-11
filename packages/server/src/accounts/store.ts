@@ -1301,24 +1301,6 @@ export class AccountsStore {
     return this.status();
   }
 
-  /** 主机签名代理鉴权：账号必须是主机主人，或被显式授权使用该主机。 */
-  accountCanAccessHost(hostId: string, accountId: string): boolean {
-    if (this.state?.mode !== 'center') return false;
-    const account = this.state.accounts.find((a) => a.id === accountId && !a.disabled);
-    const host = this.state.hosts.find((h) => h.id === hostId);
-    if (!account || !host) return false;
-    if (host.ownerId === accountId) return true;
-    if ((host.grants ?? []).some((grant) => grant.accountId === accountId)) return true;
-    // 旧数据没有 ownerId：管理员代管（迁移期）
-    return !host.ownerId && isWorkspaceAdmin(account.role);
-  }
-
-  /** 主机所属账号（模型代理默认记账对象）。 */
-  hostOwnerAccountId(hostId: string): string | undefined {
-    if (this.state?.mode !== 'center') return undefined;
-    return this.state.hosts.find((h) => h.id === hostId)?.ownerId;
-  }
-
   listAccountSummaries(q = ''): WorkstationAccountSummary[] {
     const state = this.requireCenter();
     const needle = q.trim().toLowerCase();

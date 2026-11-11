@@ -84,7 +84,9 @@ export async function planCards(host: Host, board: Board, goal: string): Promise
   const candidate = selection.candidates[0];
   const profile = candidate?.profile ?? host.profileFor(profileId, groupId);
   const model = board.defaults.model || profile?.defaultModel || '';
-  if (!profile?.apiKey || !model) throw new Error('没有可用的账号或模型，请先在设置里配置账号');
+  if ((!profile?.apiKey && !profile?.proxied) || !model) {
+    throw new Error('没有可用的账号或模型，请先在设置里配置账号');
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 120_000);
@@ -92,6 +94,8 @@ export async function planCards(host: Host, board: Board, goal: string): Promise
   try {
     raw = await completeText({
       profile,
+      ...(groupId ? { groupId } : {}),
+      proxy: host.profileProxyFor({}),
       model,
       system: PLANNER_SYSTEM,
       prompt: plannerPrompt(host, board, goal),

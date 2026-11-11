@@ -69,7 +69,9 @@ export async function draftRule(
   const key = host.keyCandidates(rec.profileId, rec.groupId).candidates[0];
   const profile = key?.profile ?? host.profileFor(rec.profileId, rec.groupId);
   const model = rec.model || profile?.defaultModel || '';
-  if (!profile?.apiKey || !model) throw new Error('当前会话没有可用的模型账号，无法生成规则');
+  if ((!profile?.apiKey && !profile?.proxied) || !model) {
+    throw new Error('当前会话没有可用的模型账号，无法生成规则');
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
@@ -77,6 +79,8 @@ export async function draftRule(
   try {
     raw = await completeText({
       profile,
+      ...(rec.groupId ? { groupId: rec.groupId } : {}),
+      proxy: host.profileProxyFor(rec),
       model,
       system: DRAFT_SYSTEM,
       prompt: `当前项目路径：${rec.cwd}\n用户的话：${sentence}\n只输出一个 JSON 对象。`,

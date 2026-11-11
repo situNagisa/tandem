@@ -433,8 +433,8 @@ export async function runTurn(
                       profile: candidate.profile,
                       ...(requestGroupId ? { groupId: requestGroupId } : {}),
                       proxy: host.profileProxyFor(rec),
-                      onRateLimit: (info) =>
-                        host.recordKeyQuota(requestProfileId, requestGroupId, candidate.keyId, info),
+                      onRateLimit: (info, reportedKeyId) =>
+                        host.recordKeyQuota(requestProfileId, requestGroupId, candidate.keyId ?? reportedKeyId, info),
                       model,
                       system: redact(system),
                       messages: requestMessages,

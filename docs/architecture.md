@@ -1,6 +1,6 @@
 # Tandem 架构地图
 
-> 更新：2026-11-10。
+> 更新：2026-11-11。
 
 > 目标：新加入的人或 agent 只读这一页 + 目标目录的少量文件，就能安全修改；改完用 `node scripts/check.mjs` 自动发现回归。
 > 与 `AGENTS.md`、`docs/design.md`、`packages/protocol/src/index.ts` 冲突时，以它们为准。
@@ -32,7 +32,7 @@
 | `src/model-routing.ts` / `src/routing-settings.ts` | 自动模型路由：按消息长度/关键词/上下文/失败信号打难度分，在用户候选池按快速·均衡·强力与省钱·均衡·质量偏好选模型；连续失败升级、简单成功回落，统计相对强力档的节省；设置有会话入口 |
 | `src/host.ts` | Host 类：持有全部状态与构造，方法按职责转调到 `host/`（外部 API 不变） |
 | `src/access.ts` | 连接身份（所有者 / 工作站账号 / 设备令牌）、角色边界、项目可见性、REST 白名单 |
-| `src/accounts/` + `src/workstation/` + `routes/accounts.ts` | 工作站：`accounts/store.ts`（初始化/注册/绑定码/主机登记/逐主机授权、Ed25519 访问/刷新令牌与 `perHost` 声明、吊销快照）；`workstation/server.ts`（工作站进程：账号 API、Web UI、`/h/<hostId>` 直转主机上下文）；`workstation/context.ts`（Host + Fastify 上下文）、`local.ts`（本机主机上下文，`LocalHostEnv`）、`bridge.ts`/`client.ts`（账号级模型账号进程内直连）；远端机器只跑 `packages/executor`，`executor/hub.ts` 建远端上下文；设计 `docs/workstation.md`、`docs/features/executor.md` |
+| `src/accounts/` + `src/workstation/` + `routes/accounts.ts` | 工作站：`accounts/store.ts`（初始化/注册/绑定码/主机登记/逐主机授权、Ed25519 访问/刷新令牌与 `perHost` 声明、吊销快照）、`accounts/host-identity.ts`（主机长期 Ed25519 身份）；`workstation/server.ts`（工作站进程：账号 API、Web UI、`/h/<hostId>` 直转主机上下文、`listen/close`）；`workstation/context.ts`（Host + Fastify 上下文，只监听回环随机端口）、`local.ts`（运行工作站的这台机器：进程内本机上下文 `localHostEnv`）、`bridge.ts`（模型账号进程内入口）/`client.ts`（主机上下文侧）、`debug/hosts.ts`（调试版本机 + 演示主机自动登记）；远端机器只跑 `packages/executor`，`executor/hub.ts` 建远端上下文（`RemoteHostEnv`）；设计 `docs/workstation.md`、`docs/features/executor.md` |
 | `src/host/` | Host 实现按职责拆分（纯搬移）：`sessions.ts`（读取/转换/CRUD）、`turns.ts`（发送/回合/排队/中断/compact）、`commands.ts`（斜杠命令/本地消息）、`permissions.ts`（审批/plan/恢复）、`keys.ts`（账号/分组/Key 轮询）、`usage.ts`（上下文/预算/模型）、`subagents.ts`（子代理/委派/工具可见性）、`vcs.ts`（git 环境/worktree）、`rewind.ts`（检查点回退）、`hooks.ts`、`inbox.ts`、`external.ts`（外部会话通知/导入）、`helpers.ts`（无状态纯函数） |
 | `src/agent/loop.ts` | 单轮 agent 循环：模型 → 工具 → tool_result → 再请求，直到结束 |
 | `src/agent/prompt.ts` | 系统提示组装（含注入段落清单） |
@@ -128,28 +128,26 @@ Web/Desktop/Android
 客户端 store ── 按 session seq 应用事件；断线带 sinceSeq 重放，不足则用 snapshot
 ```
 
-模型账号是账号级，主机上下文不持有 Key：
+模型账号是账号级，主机上下文不持有 Key；主机上下文与工作站同进程，直接调用进程内桥接：
 
 ```mermaid
 sequenceDiagram
   participant C as 客户端（工作站账号令牌）
   participant W as 工作站
-  participant H as 主机（agent / provider 代理）
+  participant H as 主机上下文（agent）
   participant U as 上游 provider
 
   C->>W: 登录 / GET /api/workstation/profiles（只回掩码）
   C->>H: 新建会话 + 发消息（经工作站 /h/<hostId>）
-  H->>W: POST /api/workstation/host/model-proxy（登记私钥签名，带 accountId/profileId/消息）
-  W->>W: 校验签名、账号对主机的访问权、profile 归属；选 Key
+  H->>W: 进程内 bridge.runProxy（accountId/profileId/消息）
   W->>U: 用账号 Key 发起流式请求
   U-->>W: SSE
-  W-->>H: NDJSON 事件（block_start/text/tool_input/done/usage/costUsd）
+  W-->>H: 事件（block_start/text/tool_input/done/usage/costUsd）
   W->>W: 按账号 + 主机记账（model-usage.json）
   H-->>C: WS 会话事件（与本地 provider 相同）
 ```
 
-- 主机上下文与工作站同进程，模型请求直接调用账号级模型账号；存储与归属不变。
-- 旧主机首次以账号身份连接时，本地 `profiles.json` 一次性上传后删除；之后只有账号级存储。
+- 本机上下文（`workstation/local.ts`）只监听回环随机端口，`HostEnv` 是 `localHostEnv`；执行器上下文是 `RemoteHostEnv`。两者用同一份 Host 代码，客户端只经 `/h/<hostId>` 访问。
 - REST 负责“请求-响应”（列表、设置、diff、导入导出）；WS 负责会话内实时事件与跨端同步。
 - 所有会话事件带每会话单调 `seq`；`Hub` 保留最近 2000 条，重连用 `subscribe {sinceSeq}`。
 - 持久化：会话 `store.ts`（防抖写盘）、运行意图 `run-state.ts`（原子写）、上传/导出按需。
@@ -176,7 +174,7 @@ sequenceDiagram
 | 加一个工具 | `server/src/tools/<name>.ts` 实现 `definition` + `run`；在 `tools/index.ts` 的 `TOOLS/TOOL_MAP` 注册；涉及权限时设 `readOnly/requiresApproval`；前端工具卡在 `ToolCard.tsx` |
 | 加一个 REST 接口 | 先在 `protocol` 注释/types 定义；`server/src/server.ts` 加路由（后续放 `routes/`）；`web/src/lib/api.ts` 加方法 |
 | 改连接身份/可见范围 | `server/src/access.ts` + `routes/ws.ts` + 账号授权（`accounts/store.ts` 的 `perHost`）；前端 `runtimes[hostId].team`（只读角色与可见目录） |
-| 改工作站/账号 | 协议 `Workspace*` / `Workstation*`；服务端 `src/accounts/store.ts`、`src/workstation/server.ts`、`routes/accounts.ts`、`server.ts` 的 token 解析；前端 `components/workstation/WorkstationOnboarding.tsx`、`WorkstationSection.tsx`、`components/accounts/LoginDialog.tsx`、`hostsSlice` 的 `workspaceLogin/applyWorkstationLogin/syncWorkstationHosts`；设计 `docs/workstation.md`，回归在 `e2e/regression.mjs`「工作站客户端-服务」 |
+| 改工作站/账号 | 协议 `Workspace*` / `Workstation*`；服务端 `src/accounts/store.ts`、`src/workstation/server.ts`、`routes/accounts.ts`、`server.ts` 的 token 解析；前端 `components/auth/LoginGate.tsx`、`components/workstation/AddHostDialog.tsx`（唯一的添加主机对话框，含「添加这台电脑」→ `POST /api/workstation/hosts/local`）、`settings/HostsSection.tsx`（唯一主机列表与详情）、`hostsSlice` 的 `workspaceLogin/applyWorkstationLogin/syncWorkstationHosts`；设计 `docs/workstation.md`，回归在 `e2e/regression.mjs`「登录门 / 主机管理」 |
 | 改账号级模型账号 | 协议 `Profile` / `WorkspaceProfilesSnapshot` / `WorkspaceModelProxy*`；工作站 `src/workstation/profiles.ts`（加密存储）、`modelProxy.ts`（流式转发+记账）、`bridge.ts`/`client.ts`（主机上下文进程内直连）；主机镜像 `host.ts` 的 `enableWorkstationProfiles/syncWorkstationProfiles/profileProxyFor`；provider 入口 `providers/workstation.ts`；前端 `ProfilesSection` + `KeysPanel` + `hostsSlice.refreshProfiles`；说明 `docs/features/model-accounts.md`；回归 `e2e/workstation-check.mjs` |
 | 加一个 WS 事件 | `protocol` 的 `ServerMsg/ClientMsg`；server 用 `Hub.broadcastSession/broadcastAll`；web `appStore/serverMessages.ts` 事件 switch + `ws.ts` 类型 |
 | 加一个设置页 | `web/src/lib/types.ts` 的 `SettingsTab`；`SettingsDialog.tsx` 的 `TABS` 与条件渲染；页面放 `components/settings/`；数据走 `api.ts`。设置项要进 `lib/settingsRegistry.ts` 并给容器加 `data-setting-id`，命令面板/设置搜索才能定位 |
