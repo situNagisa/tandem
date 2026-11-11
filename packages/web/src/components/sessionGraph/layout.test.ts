@@ -163,8 +163,27 @@ describe('layoutSessionGraph', () => {
     expect(turnRows).toEqual([...turnRows].sort((a, b) => a - b))
   })
 
-  it('最后一轮派出的子代理：汇回主线轨道上的空行，不产生结果节点', () => {
+  it('挂在最后一轮之后的分叉仍在行范围内，不会翻转成负行号', () => {
     const layout = layoutSessionGraph({
+      sessionId: 's',
+      turns: turns(2),
+      subagents: [],
+      forks: [{ id: 'fork-1', title: '分叉', turnId: 't2', createdAt: 0 }],
+    })
+    const fork = layout.nodes.find((n) => n.kind === 'fork')!
+    expect(fork.row).toBeGreaterThanOrEqual(0)
+    expect(fork.row).toBeLessThan(layout.rows)
+    for (const node of layout.nodes) {
+      expect(node.row).toBeGreaterThanOrEqual(0)
+      expect(node.row).toBeLessThan(layout.rows)
+    }
+    for (const edge of layout.edges) {
+      expect(edge.fromRow).toBeGreaterThanOrEqual(0)
+      expect(edge.toRow).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('最后一轮派出的子代理：汇回主线轨道上的空行，不产生结果节点', () => {    const layout = layoutSessionGraph({
       sessionId: 's',
       turns: turns(2),
       subagents: [sub('a', 't2')],

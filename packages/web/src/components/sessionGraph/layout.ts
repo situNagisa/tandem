@@ -390,6 +390,7 @@ export function layoutSessionGraph(input: GraphInput): GraphLayout {
         turnId: turn.id,
         label: fork.title || '分叉',
         forkSessionId: fork.id,
+        ...(fork.relation ? { forkRelation: fork.relation } : {}),
       })
       edges.push({
         fromLane: 0,
@@ -432,6 +433,11 @@ export function layoutSessionGraph(input: GraphInput): GraphLayout {
 
   // 空会话也保留一行，便于显示空态说明。
   if (rows === 0) rows = 1
+
+  // 分叉可能挂在本会话最后一轮之后：先让行数覆盖所有节点与连线端点，
+  // 否则倒序翻转后会得到负行号（节点画不出来）。
+  for (const node of nodes) rows = Math.max(rows, node.row + 1)
+  for (const edge of edges) rows = Math.max(rows, edge.fromRow + 1, edge.toRow + 1)
 
   /**
    * 时间倒序（反馈1926#06）：布局仍按对话顺序计算，最后一次性翻转所有行号。

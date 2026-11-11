@@ -82,6 +82,11 @@ const F = {
   graphView: 'packages/web/src/components/sessionGraph/SessionGraphView.tsx',
   graphCard: 'packages/web/src/components/sessionGraph/SessionGraphCard.tsx',
   graphLayout: 'packages/web/src/components/sessionGraph/layout.ts',
+  graphData: 'packages/web/src/components/sessionGraph/data.ts',
+  hoverCard: 'packages/web/src/components/ui/HoverCard.tsx',
+  topology: 'packages/web/src/components/session/SessionTopology.tsx',
+  sessionTree: 'packages/web/src/lib/sessionTree.ts',
+  sessionListUtils: 'packages/web/src/components/session/sessionListUtils.ts',
   protocol: 'packages/protocol/src/index.ts',
   external: 'packages/server/src/external.ts',
   contextServer: 'packages/server/src/context.ts',
@@ -235,6 +240,39 @@ const DECISIONS = [
     decision: '子代理只读视图里点会话图主线节点，先退出子代理视图再定位该轮',
     files: [F.graphCard],
     need: [/if \(agentSession\) closeAgentSession\(\)/],
+  },
+  {
+    id: 'sidebar-fork-same-row',
+    source:
+      '2026-11-11 22:09 用户原话（以后分叉就不要新增一个会话选项卡了，跟原来的会话共用一个选项卡）',
+    decision:
+      '侧栏分叉与原会话共用一行：按会话树归并，行标题是根会话标题，点击打开树内最近活动的会话，未读/运行中/待审批按树汇总，打开分叉时行内小字标出分叉名',
+    files: [F.sessionList, F.sessionRow, F.sessionListUtils, F.sessionTree],
+    need: [/sessionTreeRootId/, /openedId/, /branchTitle/, /data-session-branch/, /treeIds/],
+    deny: [/data-fork-row/],
+  },
+  {
+    id: 'sidebar-hover-topology',
+    source:
+      '2026-11-11 22:09 用户原话（每个会话的选项卡，悬停的时候在右侧弹出一个会话图，这个图只包含拓扑节点，不包含轮次信息…UI、交互方式都跟会话图保持一致）',
+    decision:
+      '悬停侧栏会话行在右侧弹出会话拓扑图：节点 = 会话（主会话/分叉/子代理），不显示轮次与 token；布局、泳道色、连线、悬停线高亮 + 会话名 tip 与会话图共用同一套代码；点节点切换会话',
+    files: [F.hoverCard, F.topology, F.graphLayout, F.graphView],
+    need: [
+      /HOVER_CARD_OPEN_DELAY = TIP_SHOW_DELAY/,
+      /layoutSessionTopology/,
+      /data-session-topology/,
+      /node\.kind === 'session'/,
+    ],
+  },
+  {
+    id: 'graph-trunk-current',
+    source:
+      '2026-11-11 22:09 用户原话（右侧栏的会话图，如果在某个分叉或者主会话时，最右边的主线要换成对应的会话，跟git的切分支是一样的）',
+    decision:
+      '右栏会话图以当前会话为主线：在分叉里当前分叉占主线轨道（仍在最左第 0 列），来源会话与其他分叉作为分支泳道，来源会话行尾写「原会话」',
+    files: [F.graphData, F.graphLayout, F.graphView],
+    need: [/relation: 'source'/, /forkRelation === 'source' \? '原会话'/, /forkedFrom\?\.sessionId/],
   },
   // 消息区（反馈16#01 / #02 / #10 / #11）
   {

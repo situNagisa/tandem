@@ -2,6 +2,14 @@
 
 > 更新：2026-11-11。只保留最近 3 轮；更早见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
+## 迭代 72（2026-11-11）侧栏会话树与悬停拓扑图
+- [x] 侧栏分叉与原会话共用一行（用户 22:09 原话）：`lib/sessionTree.ts` 归并、`buildGroups` 一行一棵树；标题取根、点击打开树内最近活动的会话、未读/运行/待审批汇总、置顶整树生效；打开分叉时行内小字标出分叉名。
+- [x] 悬停会话行在右侧弹出拓扑图（`ui/HoverCard` + `SessionTopology`）：节点 = 会话、无轮次与 token；布局、泳道色、连线、悬停线高亮 + 会话名 tip 复用 `sessionGraph`，点节点切换会话。
+- [x] 右栏会话图切分支：分叉视图以当前分叉为主线，来源会话与其他分叉作分支泳道（来源写「原会话」）；主线仍在第 0 列。
+- [x] 检查：decisions-check 新增 3 条；单测 layout 拓扑 / sessionListUtils；regression 新增「侧栏分叉并入原会话行…」。
+- 验证：`node scripts/check.mjs --skip-smoke`；截图（深/浅）在 `/tmp/fork-topo/`。
+- 详见 [features/session-tree.md](features/session-tree.md)。
+
 ## 迭代 71（2026-11-11）工作站 / 主机信息架构（T1–T5、T7）
 - [x] T1 术语：设备面板改「设备」（标题与描述不再写死 ADB/串口）；账号菜单去掉设备入口，改由环境条已挂载 chip 与主机详情「设备」进入；「工作站管理」→「工作站设置」且仅 admin/owner 显示，新增「账号设置」。
 - [x] T2/T3 主机唯一列表 + 详情：`HostsSection` 合并工作站归属（我的/获授权）、本机标、版本不一致；行只留状态，点行开 `HostDetailDrawer`（改名、设备、诊断、重连、授权、移除，移除确认写明影响）；授权弹层抽成 `HostGrantDialog`。设置→工作站不再列主机。
@@ -17,10 +25,3 @@
 - [x] 交互：#10 每条轨道线 12px 透明命中描边，悬停高亮整条会话轨道、其余降亮，tooltip 显示会话名；#03 子代理视图点主线节点先退出子代理再定位该轮。
 - [x] #07 覆盖滚动条（共享层）取最外层祖先留白，让到卡片外的面板内边距，不压卡片头部控件。
 - 验证：`node scripts/check.mjs --skip-smoke` 通过；截图与对比图 `/tmp/graph-1926/`。
-
-## 迭代 69（2026-11-11）反馈1601：切换闪屏 / 文件夹弹层 / 金额 / 折叠记忆
-- [x] #02 P0 切换会话闪屏（R10 复发）：帧采样定位到消息区在切换后 1 帧内下移 132px——注入说明行在首屏快照之后才挂载，ResizeObserver 的贴底补偿排到了下一帧。ChatView 改在 ResizeObserver/MutationObserver 回调里绘制前同步补 scrollTop；右栏上下文按会话缓存，切换时卡片不再消失一帧；regression 反馈1601#02 逐帧断言贴底、可见首行不动、右栏分组/会话图稳定。
-- [x] #01 文件夹弹层改 ui/Menu（R01 复发）：Menu.Label / Menu.Separator / Menu.Item，去掉手写标题与 border-t 分隔；ui-audit 新增 role-menuitem 与手写菜单标题/分隔线规则。
-- [x] #03 用户消息金额：`formatCost` 对 0<usd<0.00005 显示 `<$0.0001`，0 显示 `$0`；单测 + regression。
-- [x] #05 侧栏折叠记忆：折叠键改为 hostId + 仓库根路径（旧键兼容），重开恢复；regression 反馈1601#05。
-- 验证：`node scripts/check.mjs --skip-smoke --skip-regression` 全绿；本包新增/涉及的 regression 用例（1601#02/#05、文件夹弹层 4 条、用户消息金额、最占空间）单跑全过。全量 regression 剩余的「反馈2102#02 会话图快速连点」「反馈1919#07 回到底部恢复跟随」在干净基线 2bfbb1b 上同样失败（已逐一回退 ChatView 复测），属既有问题。截图（深/浅）在 `/tmp/fix-1601a/`。

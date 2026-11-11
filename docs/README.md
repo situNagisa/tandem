@@ -26,6 +26,7 @@
 | [对话区](features/conversation.md) | 轮次大纲（用量着色、固定、Alt 只看已固定）与「最占空间」按轮次聚合；消息耗时与轮次耗时汇总；上下文卡分类与缓存命中 |
 | [项目 Wiki](features/wiki.md) | 概览/模块/术语表阅读区；固定阅读列宽度、宽内容内部滚动 |
 | [会话图](features/session-graph.md) | 右栏 git graph：轮次主线、子代理合并分支、分叉不合并分支；彩色泳道、同形节点 |
+| [会话树](features/session-tree.md) | 分叉与原会话共用侧栏一行；悬停行的会话拓扑图；右栏按当前分叉切主线 |
 | [手机预览](features/mobile-preview.md) | 调试版在电脑上模拟手机尺寸/触摸；真机调试见 [test-guides/mobile-debugging.md](test-guides/mobile-debugging.md) |
 | [发布](features/release.md) | 版本、签名、更新源、上架材料 |
 | [反馈模式](features/feedback.md) | 调试版实时落盘草稿、.tfb 包结构与解包命令 |

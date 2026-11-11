@@ -145,7 +145,8 @@ export function buildSessionGraph(input: {
   const parts = turnsFromMessages(input.messages)
   const all = Object.values(input.subagents ?? {})
   const subagents = buildSubagentTree(all, input.sessionId, parts.turns)
-  const forks: GraphFork[] = (input.hostSessions ?? [])
+  const sessions = input.hostSessions ?? []
+  const forks: GraphFork[] = sessions
     .filter((session) => session.forkedFrom?.sessionId === input.sessionId)
     .sort((a, b) => a.createdAt - b.createdAt)
     .map((session) => {
@@ -157,6 +158,45 @@ export function buildSessionGraph(input: {
         createdAt: session.createdAt,
       }
     })
+
+  // 当前会话是分叉时切分支（用户 2026-11-11 22:09 原话：跟 git 切分支一样）：
+  // 以当前分叉为主线，来源会话与其他分叉作为分支泳道，挂在当前分叉的分叉点。
+  const self = sessions.find((session) => session.id === input.sessionId)
+  if (self?.forkedFrom?.sessionId) {
+    const byId = new Map(sessions.map((session) => [session.id, session]))
+    const branchTurn = resolveForkTurn(self, parts.turns, parts.turnOfMessage)
+    const added = new Set(forks.map((fork) => fork.id))
+    let cursor: SessionSummary | undefined = self
+    for (let depth = 0; depth < 32 && cursor?.forkedFrom?.sessionId; depth += 1) {
+      const parent = byId.get(cursor.forkedFrom.sessionId)
+      if (!parent) break
+      if (!added.has(parent.id)) {
+        added.add(parent.id)
+        forks.push({
+          id: parent.id,
+          title: parent.title || '原会话',
+          ...(branchTurn ? { turnId: branchTurn } : {}),
+          createdAt: parent.createdAt,
+          relation: 'source',
+        })
+      }
+      for (const sibling of sessions
+        .filter((session) => session.forkedFrom?.sessionId === parent.id)
+        .sort((a, b) => a.createdAt - b.createdAt)) {
+        if (sibling.id === input.sessionId || added.has(sibling.id)) continue
+        added.add(sibling.id)
+        forks.push({
+          id: sibling.id,
+          title: sibling.title || '分叉',
+          ...(branchTurn ? { turnId: branchTurn } : {}),
+          createdAt: sibling.createdAt,
+          relation: 'fork',
+        })
+      }
+      cursor = parent
+    }
+  }
+
   return {
     sessionId: input.sessionId,
     ...(input.title ? { title: input.title } : {}),
