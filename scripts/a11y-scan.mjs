@@ -29,7 +29,7 @@ const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-prac
 // 与 packages/web/src/lib/settingsRegistry.ts 的 SETTINGS_PAGES 保持同步（设置导航是「分组 → 页面」）。
 const SETTINGS_PAGES = [
   '通用', '主机', '账号与模型', '自动路由', '用量与预算', '权限', 'Secrets', 'Agent 能力',
-  '定时任务', '记忆', '成员与分享', '外观', '通知', '语音', '浏览器', '扩展', '评测', '网关',
+  '定时任务', '记忆', '分享', '外观', '通知', '语音', '浏览器', '扩展', '评测', '网关',
   '同步与备份',
 ]
 

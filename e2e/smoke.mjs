@@ -19,7 +19,7 @@ const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
 const HOST_ENTRY = path.join(ROOT, 'packages/server/dist/cli.js')
 const SETTINGS_PAGES = [
   'general', 'hosts', 'profiles', 'routing', 'usage-budgets', 'permissions', 'secrets',
-  'agent', 'schedules', 'memory', 'team-shares', 'appearance', 'notifications', 'voice',
+  'agent', 'schedules', 'memory', 'shares', 'appearance', 'notifications', 'voice',
   'browser', 'extensions', 'evals', 'gateway', 'sync',
 ]
 const ADVANCED_PAGES = new Set(['extensions', 'evals', 'gateway', 'sync'])
