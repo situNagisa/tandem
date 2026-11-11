@@ -15,6 +15,7 @@ import {
   sign as cryptoSign,
 } from 'node:crypto';
 import path from 'node:path';
+import { existsSync, renameSync } from 'node:fs';
 import type {
   AccountLoginInput,
   AccountLoginResult,
@@ -948,10 +949,23 @@ export class AccountsStore {
 
   // ---------- 工作站服务：注册、主机登记、授权 ----------
   /**
+   * 数据目录里的 accounts.json 不是工作站（旧 Host 的成员文件）：工作站首次启动时按全新工作站初始化，
+   * 原文件备份为 accounts.json.old-host 留着，不报「本机还不是账号中心」。
+   */
+  private resetForeignMemberFile(): void {
+    if (this.state?.mode !== 'member') return;
+    const backup = `${this.file}.old-host`;
+    if (!existsSync(backup)) renameSync(this.file, backup);
+    this.state = undefined;
+    this.close();
+  }
+
+  /**
    * 只初始化工作站本身（私钥 + 空账号列表），不创建管理员。
    * 供调试版内置测试账号使用；首个真实注册用户仍会成为管理员。
    */
   ensureWorkstationState(name: string): void {
+    this.resetForeignMemberFile();
     if (this.state?.mode === 'center') return;
     if (this.state) throw Object.assign(new Error('本机已作为主机加入工作站'), { statusCode: 409 });
     const { publicKey, privateKey } = generateKeyPairSync('ed25519');
@@ -1010,6 +1024,7 @@ export class AccountsStore {
 
   /** 首次初始化工作站：创建管理员账号与空的 Host 列表（本机也需显式添加）。 */
   initializeWorkstation(name: string, username: string, password: string): AccountLoginResult {
+    this.resetForeignMemberFile();
     if (this.state) throw Object.assign(new Error('工作站已初始化'), { statusCode: 409 });
     if (!name.trim()) throw Object.assign(new Error('请填写工作站名称'), { statusCode: 400 });
     if (!/^[A-Za-z0-9_.-]{3,32}$/.test(username.trim())) throw Object.assign(new Error('用户名需为 3–32 位字母、数字、下划线、点或短横线'), { statusCode: 400 });

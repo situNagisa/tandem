@@ -48,9 +48,9 @@ export function ensureDebugWorkstation(
   app: FastifyInstance,
   profiles?: AccountProfileStore,
 ): void {
-  const mode = store.mode();
-  if (mode !== 'none' && mode !== 'center') return;
+  // 根目录是旧主机的成员文件时，ensureWorkstationState 会按全新工作站初始化（原文件备份为 *.old-host）。
   store.ensureWorkstationState('调试工作站');
+  if (store.mode() !== 'center') return;
   const credentials = ensureTestAccount(store, home);
   if (!credentials) return;
   // 调试账号自带演示模型账号（演示 provider，不需要 Key）；主机侧只拿到元数据。
