@@ -2793,6 +2793,17 @@ async function main() {
       }
     }
 
+    /** 工作站入口收在侧栏底部账号菜单里（反馈1323#04）：先打开一行账号菜单，再点「工作站」。 */
+    const openWorkstationPanel = async (page) => {
+      const footer = page.locator('aside [data-sidebar-footer]')
+      await footer.locator('button[aria-haspopup="menu"]').first().click()
+      const menu = page.getByRole('menu')
+      await menu.waitFor({ timeout: 5_000 })
+      await page.waitForTimeout(220)
+      await menu.getByRole('menuitem', { name: '工作站', exact: true }).click()
+      await menu.waitFor({ state: 'hidden', timeout: 3_000 }).catch(() => {})
+    }
+
     // ---------------------------------------------------------------- desktop
 
     desktop('长会话打开贴在最新消息', async (page) => {
@@ -10676,7 +10687,7 @@ async function main() {
         )
         await page.reload({ waitUntil: 'domcontentloaded' })
         await openSession(page, sessionId)
-        await page.getByRole('button', { name: '工作站' }).click()
+        await openWorkstationPanel(page)
         const dialog = page.getByRole('dialog', { name: '工作站' })
         await dialog.waitFor({ state: 'visible' })
         await dialog.getByText('设备主机 A', { exact: true }).waitFor({ timeout: 10_000 })
@@ -10725,7 +10736,7 @@ async function main() {
         )
         await page.reload({ waitUntil: 'domcontentloaded' })
         await openSession(page, 'long')
-        await page.getByRole('button', { name: '工作站' }).click()
+        await openWorkstationPanel(page)
         const dialog = page.getByRole('dialog', { name: '工作站' })
         await dialog.waitFor({ state: 'visible' })
         const section = dialog.locator('section', { hasText: baseA }).first()
@@ -10823,7 +10834,7 @@ async function main() {
           { url: baseB, token: tokenB },
         )
         await page.reload({ waitUntil: 'domcontentloaded' })
-        await page.getByRole('button', { name: '工作站' }).click()
+        await openWorkstationPanel(page)
         const dialog = page.getByRole('dialog', { name: '工作站' })
         await dialog.waitFor({ state: 'visible' })
         const section = dialog.locator('section[data-host-section]').filter({ hasText: baseB }).first()
@@ -10868,7 +10879,7 @@ async function main() {
 
         await dialog.getByRole('button', { name: '完成' }).click()
         await openSession(page, 'long')
-        await page.getByRole('button', { name: '工作站' }).click()
+        await openWorkstationPanel(page)
         const dialog2 = page.getByRole('dialog', { name: '工作站' })
         await dialog2.waitFor({ state: 'visible' })
         const section2 = dialog2.locator('section[data-host-section]').filter({ hasText: baseB }).first()
@@ -10964,7 +10975,7 @@ async function main() {
         assert.ok(serialAfter > serialBefore, '演示串口日志没有自动滚动')
 
         // 工作站界面标注「演示设备」。
-        await page.getByRole('button', { name: '工作站' }).click()
+        await openWorkstationPanel(page)
         const dialog = page.getByRole('dialog', { name: '工作站' })
         await dialog.waitFor({ state: 'visible' })
         await dialog.getByText('演示设备', { exact: true }).first().waitFor({ timeout: 10_000 })
@@ -11345,6 +11356,88 @@ async function main() {
           debugHost.child.kill('SIGTERM')
         }
       },
+    })
+
+    // ---------------------------------------------------- 反馈1323（2026-11-11）
+    const fix1323Shots = '/tmp/fix-1323c'
+    const shot1323 = (name) => path.join(fix1323Shots, name)
+    /** 截图用：把页面切到浅色（主题由 root 的 dark 类控制）。 */
+    const useLightTheme = async (page) => {
+      await page.evaluate(() => {
+        document.documentElement.classList.remove('dark')
+        document.documentElement.style.colorScheme = 'light'
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#faf9f5')
+        localStorage.setItem('tandem.theme.v1', 'light')
+      })
+      await page.waitForTimeout(120)
+    }
+
+    fb2102('反馈1323#04：侧栏底部一行账号 + 齿轮，账号菜单含工作站入口', async (page) => {
+      mkdirSync(fix1323Shots, { recursive: true })
+      // 工作区账号只存在 localStorage；主机仍用已连上的直连地址，不新增网络依赖。
+      await page.evaluate(() => {
+        const now = Date.now()
+        localStorage.setItem(
+          'tandem.account.v1',
+          JSON.stringify({
+            centerUrl: 'http://127.0.0.1:9',
+            accessToken: 'reg-access',
+            refreshToken: 'reg-refresh',
+            accessExpiresAt: now + 86_400_000,
+            refreshExpiresAt: now + 30 * 86_400_000,
+            account: { id: 'acc-reg', name: '调试账号', username: 'debug', debug: true },
+            workspace: { id: 'ws-reg', name: '调试' },
+          }),
+        )
+      })
+      await page.reload()
+      const footer = page.locator('aside [data-sidebar-footer]')
+      await footer.waitFor({ timeout: 20_000 })
+      const controls = await footer.locator('button').evaluateAll((els) =>
+        els.map((el) => {
+          const r = el.getBoundingClientRect()
+          return { y: r.y, h: r.height, w: r.width, x: r.x }
+        }),
+      )
+      assert.equal(controls.length, 2, `侧栏底部应只有账号与齿轮两个控件：${controls.length}`)
+      assert.ok(
+        Math.abs(controls[0].y + controls[0].h / 2 - (controls[1].y + controls[1].h / 2)) <= 1,
+        '账号与齿轮不在同一行',
+      )
+      assert.ok(controls[0].w > controls[1].w && controls[0].x < controls[1].x, '账号在左、齿轮在右')
+      const footerText = await footer.innerText()
+      assert.match(footerText, /调试账号/, '底部没有显示账号名')
+      assert.doesNotMatch(footerText, /工作站/, `底部不应再有整行「工作站」：${footerText}`)
+      assert.doesNotMatch(footerText, /^设置$/m, `底部不应再有整行「设置」：${footerText}`)
+
+      // 齿轮是唯一设置入口。
+      await footer.getByRole('button', { name: '设置', exact: true }).click()
+      const settingsDialog = page.getByRole('dialog', { name: '设置' })
+      await settingsDialog.waitFor({ timeout: 5_000 })
+      await settingsDialog.locator('button[aria-label="关闭"]').first().evaluate((el) => el.click())
+      await settingsDialog.waitFor({ state: 'hidden', timeout: 5_000 })
+
+      const accountTrigger = footer.getByRole('button', { name: /调试账号/ })
+      await accountTrigger.click()
+      const menu = page.getByRole('menu')
+      await menu.waitFor({ timeout: 5_000 })
+      const items = (await menu.getByRole('menuitem').allInnerTexts()).map((text) => text.trim())
+      assert.ok(items.includes('工作站'), `账号菜单缺少工作站入口：${items.join(' / ')}`)
+      assert.ok(items.some((text) => text.includes('工作站管理')), `账号菜单缺少工作站管理：${items.join(' / ')}`)
+      assert.ok(items.some((text) => text.includes('退出')), `账号菜单缺少退出登录：${items.join(' / ')}`)
+      await page.waitForTimeout(200)
+      await page.screenshot({ path: shot1323('04-sidebar-account-menu-dark.png') })
+      await useLightTheme(page)
+      await page.screenshot({ path: shot1323('04-sidebar-account-menu-light.png') })
+
+      // 工作站入口仍可用（只是从整行收进菜单）。
+      await menu.getByRole('menuitem', { name: '工作站', exact: true }).click()
+      const workstation = page.getByRole('dialog', { name: '工作站' })
+      await workstation.waitFor({ timeout: 5_000 })
+      await page.getByRole('menu').waitFor({ state: 'detached', timeout: 2_000 }).catch(() => {})
+      assert.equal(await page.getByRole('menu').count(), 0, '选中工作站后账号菜单应收起')
+
+      await page.evaluate(() => localStorage.removeItem('tandem.account.v1'))
     })
 
     // 工作站客户端-服务：只跑工作站 + 两台主机，注册/绑定/授权/E2E 流式（API 级，独立进程）。

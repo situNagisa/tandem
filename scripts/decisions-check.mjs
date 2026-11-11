@@ -322,10 +322,11 @@ const DECISIONS = [
   },
   {
     id: 'sidebar-single-settings',
-    source: '侧栏信息层级',
-    decision: '全应用唯一设置入口',
+    source: '侧栏信息层级；反馈1323#04（2026-11-11 原话「这里的ui参考claude code，收成一个选项，显示账号，右边一个齿轮，表示设置，账号点开后可以看到一些其他的项」）',
+    decision: '全应用唯一设置入口：侧栏底部一行，左侧账号、右侧齿轮；工作站入口收进账号菜单',
     files: [F.sidebar, F.app],
-    need: [/openSettings\(\)/, /<span className="min-w-0 flex-1 truncate">设置<\/span>/, /<Sidebar \/>/],
+    need: [/openSettings\(\)/, /label="设置"/, /data-sidebar-footer/, /aria-label="账号与工作站"/, /<Sidebar \/>/],
+    deny: [/<span className="min-w-0 flex-1 truncate">设置<\/span>/],
   },
   {
     id: 'sidebar-host-groups',

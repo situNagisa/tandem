@@ -49,6 +49,8 @@ export function Sidebar({
   const isDebugAccount = !!account?.account.debug
   const logoutWorkspace = useAppStore((s) => s.workspaceLogout)
   const [loginOpen, setLoginOpen] = useState(false)
+  // 底部账号菜单：选中项会打开模态（工作站 / 设置），必须先收起菜单，否则模态关闭后菜单还挂着。
+  const [footerMenuOpen, setFooterMenuOpen] = useState(false)
   const activeHostUrl = useAppStore(
     (s) => s.hosts.find((h) => h.id === s.activeHostId)?.url ?? '',
   )
@@ -75,6 +77,14 @@ export function Sidebar({
   )
 
   const row = 'group w-full min-h-11 justify-start gap-2 px-2.5 md:min-h-8'
+  /** 先收起底部菜单，再打开它要落的模态；否则模态关闭后菜单会留在原地。 */
+  const footerAction = (fn: () => void) => {
+    setFooterMenuOpen(false)
+    window.setTimeout(() => {
+      fn()
+      onNavigate?.()
+    }, 0)
+  }
   const projectOptions = useMemo(() => {
     const names = new Set<string>()
     for (const host of hosts) {
@@ -369,97 +379,118 @@ export function Sidebar({
       />
 
       <div className="border-t border-border px-2 py-1.5">
-        <Button
-          variant="ghost"
-          onClick={() => {
-            setWorkstationOpen(true)
-            onNavigate?.()
-          }}
-          className={cn(row, 'text-[12.5px] text-text-tertiary')}
-          tooltip="所有主机的 ADB / 串口设备"
-          tooltipSide="top"
-        >
-          <MonitorSmartphone size={15} className="shrink-0" />
-          <span className="min-w-0 flex-1 truncate">工作站</span>
-        </Button>
-        {account ? (
-          <Menu
-            aria-label="工作区账号"
-            side="top"
-            trigger={
-              <Button
-                variant="ghost"
-                className={cn(row, 'text-[12.5px] text-text-tertiary')}
-                tooltip={`${account.workspace.name} · ${account.account.name}`}
-                tooltipSide="top"
-              >
-                <UserRound size={15} className="shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{account.account.name}</span>
-                {__TANDEM_DEBUG__ && isDebugAccount && (
-                  <span className="shrink-0 rounded border border-border bg-[var(--t-bg-subtle)] px-1 text-[10px] leading-4 text-text-tertiary">
-                    调试
-                  </span>
-                )}
-                <ChevronUp size={13} className="shrink-0 opacity-60" />
-              </Button>
-            }
-          >
-            <div className="px-2 py-1.5">
-              <div className="flex items-center gap-1.5 truncate text-[12.5px] font-medium text-text">
-                {account.account.name}
-                {__TANDEM_DEBUG__ && isDebugAccount && (
-                  <span className="rounded border border-border bg-[var(--t-bg-subtle)] px-1 text-[10px] leading-4 text-text-tertiary">
-                    调试
-                  </span>
-                )}
+        <div className="flex min-w-0 items-center gap-1" data-sidebar-footer="">
+          {account ? (
+            <Menu
+              aria-label="账号与工作站"
+              side="top"
+              open={footerMenuOpen}
+              onOpenChange={setFooterMenuOpen}
+              trigger={
+                <Button
+                  variant="ghost"
+                  className={cn(row, 'min-w-0 flex-1 text-[12.5px] text-text-tertiary')}
+                  tooltip={`${account.workspace.name} · ${account.account.name}`}
+                  tooltipSide="top"
+                >
+                  <UserRound size={15} className="shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{account.account.name}</span>
+                  {__TANDEM_DEBUG__ && isDebugAccount && (
+                    <span className="shrink-0 rounded border border-border bg-[var(--t-bg-subtle)] px-1 text-[10px] leading-4 text-text-tertiary">
+                      调试
+                    </span>
+                  )}
+                  <ChevronUp size={13} className="shrink-0 opacity-60" />
+                </Button>
+              }
+            >
+              <div className="px-2 py-1.5">
+                <div className="flex items-center gap-1.5 truncate text-[12.5px] font-medium text-text">
+                  {account.account.name}
+                  {__TANDEM_DEBUG__ && isDebugAccount && (
+                    <span className="rounded border border-border bg-[var(--t-bg-subtle)] px-1 text-[10px] leading-4 text-text-tertiary">
+                      调试
+                    </span>
+                  )}
+                </div>
+                <div className="truncate text-[11.5px] text-muted">
+                  {account.workspace.name} · {account.account.username}
+                </div>
               </div>
-              <div className="truncate text-[11.5px] text-muted">
-                {account.workspace.name} · {account.account.username}
-              </div>
-            </div>
-            <MenuItem icon={<Settings size={13} />} onSelect={() => openSettings('accounts')}>
-              工作站管理
-            </MenuItem>
-            <MenuItem icon={<LogOut size={13} />} danger onSelect={() => void logoutWorkspace()}>
-              {__TANDEM_DEBUG__ && isDebugAccount ? '退出调试账号' : '退出登录'}
-            </MenuItem>
-            {__TANDEM_DEBUG__ && isDebugAccount && (
               <MenuItem
-                icon={<LogIn size={13} />}
-                onSelect={() => {
-                  void (async () => {
-                    await logoutWorkspace()
-                    setLoginOpen(true)
-                  })()
-                }}
+                icon={<MonitorSmartphone size={13} />}
+                hint="所有主机的 ADB / 串口设备"
+                onSelect={() => footerAction(() => setWorkstationOpen(true))}
               >
-                用其他账号登录
+                工作站
               </MenuItem>
-            )}
-          </Menu>
-        ) : (
-          <Button
-            variant="ghost"
-            onClick={() => setLoginOpen(true)}
-            className={cn(row, 'text-[12.5px] text-text-tertiary')}
-            tooltip="登录工作站账号，看到自己的主机"
+              <MenuItem icon={<Settings size={13} />} onSelect={() => footerAction(() => openSettings('accounts'))}>
+                工作站管理
+              </MenuItem>
+              <Menu.Separator />
+              <MenuItem icon={<LogOut size={13} />} danger onSelect={() => footerAction(() => void logoutWorkspace())}>
+                {__TANDEM_DEBUG__ && isDebugAccount ? '退出调试账号' : '退出登录'}
+              </MenuItem>
+              {__TANDEM_DEBUG__ && isDebugAccount && (
+                <MenuItem
+                  icon={<LogIn size={13} />}
+                  onSelect={() => {
+                    setFooterMenuOpen(false)
+                    void (async () => {
+                      await logoutWorkspace()
+                      setLoginOpen(true)
+                    })()
+                  }}
+                >
+                  用其他账号登录
+                </MenuItem>
+              )}
+            </Menu>
+          ) : (
+            <Menu
+              aria-label="账号与工作站"
+              side="top"
+              open={footerMenuOpen}
+              onOpenChange={setFooterMenuOpen}
+              trigger={
+                <Button
+                  variant="ghost"
+                  className={cn(row, 'min-w-0 flex-1 text-[12.5px] text-text-tertiary')}
+                  tooltip="登录工作站账号，看到自己的主机"
+                  tooltipSide="top"
+                >
+                  <LogIn size={15} className="shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">账号登录</span>
+                  <ChevronUp size={13} className="shrink-0 opacity-60" />
+                </Button>
+              }
+            >
+              <MenuItem icon={<LogIn size={13} />} onSelect={() => footerAction(() => setLoginOpen(true))}>
+                账号登录
+              </MenuItem>
+              <MenuItem
+                icon={<MonitorSmartphone size={13} />}
+                hint="所有主机的 ADB / 串口设备"
+                onSelect={() => footerAction(() => setWorkstationOpen(true))}
+              >
+                工作站
+              </MenuItem>
+            </Menu>
+          )}
+          <IconButton
+            size="md"
+            label="设置"
+            tooltip="设置"
             tooltipSide="top"
+            onClick={() => {
+              openSettings()
+              onNavigate?.()
+            }}
+            className="shrink-0 text-text-tertiary"
           >
-            <LogIn size={15} className="shrink-0" />
-            <span className="min-w-0 flex-1 truncate">账号登录</span>
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          onClick={() => {
-            openSettings()
-            onNavigate?.()
-          }}
-          className={cn(row, 'text-[12.5px] text-text-tertiary')}
-        >
-          <Settings size={15} className="shrink-0" />
-          <span className="min-w-0 flex-1 truncate">设置</span>
-        </Button>
+            <Settings size={15} />
+          </IconButton>
+        </div>
       </div>
       <LoginDialog open={loginOpen} onClose={() => setLoginOpen(false)} />
     </div>
