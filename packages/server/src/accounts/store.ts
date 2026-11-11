@@ -40,7 +40,7 @@ import type {
   WorkspaceStatus,
 } from '@tandem/protocol';
 import { readJson, writePrivateFile } from '../config.js';
-import { generateHostKey, identityFromHostKey } from '../workstation/e2e.js';
+import { generateHostKey, identityFromHostKey } from './host-identity.js';
 import { IS_DEBUG_FLAVOR } from '../flavor.js';
 
 export const ACCESS_TTL_MS = 30 * 60 * 1000;
@@ -158,6 +158,8 @@ export interface AccountStoreOptions {
   hostName: string;
   version?: string;
   platform?: string;
+  /** 工作站本机主机上下文的 hostId（列表里标记「本机」）。 */
+  localHostId?: string;
 }
 
 function b64url(buf: Buffer | string): string {
@@ -478,28 +480,7 @@ export class AccountsStore {
     };
   }
 
-  /** 更新本机（中心）在 Host 列表里的地址。 */
-  ensureSelfHost(urls: string[]): WorkspaceHostInfo | undefined {
-    if (this.state?.mode !== 'center') return undefined;
-    const state = this.state;
-    const clean = [...new Set(urls.filter((u) => /^https?:\/\//i.test(u)))];
-    let host = state.hosts.find((h) => h.id === this.opts.hostId);
-    if (!host) {
-      host = {
-        id: this.opts.hostId,
-        name: this.opts.hostName,
-        urls: clean,
-        addedAt: Date.now(),
-        ...(this.opts.version ? { version: this.opts.version } : {}),
-        ...(this.opts.platform ? { platform: this.opts.platform } : {}),
-      };
-      state.hosts.push(host);
-    } else if (clean.length) {
-      host.urls = clean;
-    }
-    this.save();
-    return host;
-  }
+
 
   setup(name: string, username: string, password: string, urls: string[], hostName?: string): { workspace: WorkspaceInfo; host: WorkspaceHostInfo; account: WorkspaceAccount } {
     if (this.state) throw Object.assign(new Error('本机已经加入或创建了工作区'), { statusCode: 409 });
@@ -594,6 +575,7 @@ export class AccountsStore {
         ...h,
         // 只有主人需要看到自己主机上的授权列表；获授权方不暴露其他人的账号。
         ...(h.ownerId === account.id ? {} : { grants: undefined }),
+        ...(this.opts.localHostId === h.id ? { local: true } : {}),
         viaWorkstation: true,
       }));
   }
@@ -903,7 +885,6 @@ export class AccountsStore {
     state.snapshotVersion += 1;
     this.audit(actor, 'account.create', `${username} · ${role}`);
     this.save();
-    void this.pushSnapshot();
     return this.publicAccount(account, { totpSecret: true });
   }
 
@@ -938,7 +919,6 @@ export class AccountsStore {
     state.snapshotVersion += 1;
     this.audit(actor, 'account.update', account.username);
     this.save();
-    void this.pushSnapshot();
     return this.publicAccount(account);
   }
 
@@ -956,7 +936,6 @@ export class AccountsStore {
     state.snapshotVersion += 1;
     this.audit(actor, 'account.revoke', account.username);
     this.save();
-    void this.pushSnapshot();
   }
 
   registerDeviceKey(accountId: string, publicKey: string): void {
@@ -1114,7 +1093,6 @@ export class AccountsStore {
     state.snapshotVersion += 1;
     this.audit(username, first ? 'account.register.admin' : 'account.register');
     this.save();
-    void this.pushSnapshot();
     return {
       ...this.signAccess(account),
       account: this.publicAccount(account),
@@ -1185,6 +1163,7 @@ export class AccountsStore {
       lastSeenAt: Date.now(),
       ...(host.version ? { version: host.version } : {}),
       ...(host.platform ? { platform: host.platform } : {}),
+      ...(this.opts.localHostId === id ? { local: true } : {}),
       ...(IS_DEBUG_FLAVOR && host.demo ? { demo: true } : {}),
     };
     if (existing) Object.assign(existing, info);
@@ -1192,7 +1171,6 @@ export class AccountsStore {
     state.snapshotVersion += 1;
     this.audit(account.username, 'host.register', `${info.name} · ${fingerprint.slice(0, 12)}…`);
     this.save();
-    void this.pushSnapshot();
     return info;
   }
 
@@ -1219,7 +1197,6 @@ export class AccountsStore {
     state.snapshotVersion += 1;
     this.audit(accountId, 'host.remove', host.name);
     this.save();
-    void this.pushSnapshot();
   }
 
   setHostGrant(hostId: string, ownerAccountId: string, input: WorkstationGrantInput): WorkspaceHostInfo {
@@ -1245,7 +1222,6 @@ export class AccountsStore {
     state.snapshotVersion += 1;
     this.audit(ownerAccountId, 'host.grant', `${host.name} → ${target.username} · ${role}${dirs.length ? ` · ${dirs.length} 个目录` : ''}`);
     this.save();
-    void this.pushSnapshot();
     return { ...host };
   }
 
@@ -1260,7 +1236,6 @@ export class AccountsStore {
     state.snapshotVersion += 1;
     this.audit(ownerAccountId, 'host.grant.remove', host.name);
     this.save();
-    void this.pushSnapshot();
   }
 
   markHostOnline(hostId: string, online: boolean): void {
@@ -1276,6 +1251,54 @@ export class AccountsStore {
     if (this.state?.mode !== 'center') return undefined;
     const host = this.state.hosts.find((h) => h.id === hostId);
     return host?.publicKey;
+  }
+
+  /** 已登记主机（工作站视角）；本机上下文启动时据此恢复成员身份。 */
+  hostRecord(hostId: string): WorkspaceHostInfo | undefined {
+    if (this.state?.mode !== 'center') return undefined;
+    const host = this.state.hosts.find((h) => h.id === hostId);
+    return host ? { ...host, ...(this.opts.localHostId === host.id ? { local: true } : {}) } : undefined;
+  }
+
+  /**
+   * 工作站进程内的主机上下文：直接用工作站状态成为成员 Host（不再经绑定码/HTTP）。
+   * 只用于本机与调试演示主机；执行器仍用一次性绑定码兑换。
+   */
+  becomeMember(input: {
+    url: string;
+    workspace: WorkspaceInfo;
+    centerPublicKey: string;
+    syncToken: string;
+    snapshotVersion: number;
+    ownerAccountId?: string;
+    hostName: string;
+  }): WorkspaceStatus {
+    if (this.state) {
+      if (this.state.mode !== 'member') throw Object.assign(new Error('本机已是工作站'), { statusCode: 409 });
+      this.retargetWorkstation(input.url);
+      return this.status();
+    }
+    const member: MemberFile = {
+      mode: 'member',
+      version: 1,
+      modelVersion: 2,
+      workspace: input.workspace,
+      centerUrl: input.url.trim().replace(/\/+$/, ''),
+      centerPublicKey: input.centerPublicKey,
+      syncToken: input.syncToken,
+      hosts: [],
+      revoked: {},
+      invalidBefore: {},
+      snapshotVersion: input.snapshotVersion,
+      joinedAt: Date.now(),
+      hostName: input.hostName,
+      ...(input.ownerAccountId ? { ownerAccountId: input.ownerAccountId } : {}),
+    };
+    this.ensureMemberHostKey(member);
+    this.state = member;
+    this.save();
+    this.start();
+    return this.status();
   }
 
   /** 主机签名代理鉴权：账号必须是主机主人，或被显式授权使用该主机。 */
@@ -1314,7 +1337,7 @@ export class AccountsStore {
 
   workstationStatus(urls: string[]): WorkstationPublicStatus {
     if (this.state?.mode !== 'center') {
-      return { initialized: false, registration: 'open', urls };
+      return { initialized: false, registration: 'open', urls, hostId: this.opts.hostId };
     }
     return {
       initialized: true,
@@ -1420,10 +1443,7 @@ export class AccountsStore {
     return this.state?.mode === 'member' ? this.state.centerUrl : undefined;
   }
 
-  /**
-   * 内嵌工作站避让端口后更新保存的加入地址。
-   * 工作区与公钥不变（同一份工作站数据），只改隧道/同步的目标端口。
-   */
+  /** 工作站端口变化后更新成员上下文的同步地址（工作区与公钥不变）。 */
   retargetWorkstation(url: string): void {
     if (this.state?.mode !== 'member') return;
     const base = url.trim().replace(/\/+$/, '');
@@ -1432,26 +1452,9 @@ export class AccountsStore {
     this.save();
   }
 
-  leaveWorkspace(): void {
-    if (this.state?.mode !== 'member') throw Object.assign(new Error('本机不是加入方 Host'), { statusCode: 400 });
-    this.close();
-    this.state = undefined;
-    this.save();
-  }
 
-  /** 中心推给加入方 Host 的快照（公开接口，但必须中心签名）。 */
-  applySignedSnapshot(body: unknown): boolean {
-    if (this.state?.mode !== 'member') return false;
-    const b = body as { snapshot?: WorkspaceSnapshot; signature?: string } | undefined;
-    if (!b || !b.snapshot || typeof b.signature !== 'string') return false;
-    const snapshot = b.snapshot;
-    if (snapshot.workspace?.id !== this.state.workspace.id) return false;
-    // 快照版本只增不减：拒绝重放旧快照把已吊销账号“复活”。
-    if (typeof snapshot.version !== 'number' || snapshot.version < this.state.snapshotVersion) return false;
-    if (!verifyPayload(JSON.stringify(snapshot), b.signature, this.state.centerPublicKey)) return false;
-    this.applySnapshot(snapshot);
-    return true;
-  }
+
+
 
   private applySnapshot(snapshot: WorkspaceSnapshot): void {
     if (this.state?.mode !== 'member') return;
@@ -1480,11 +1483,7 @@ export class AccountsStore {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as { snapshot?: WorkspaceSnapshot; signature?: string };
-      if (!body.snapshot || !body.signature) throw new Error('快照格式无效');
-      if (body.snapshot.workspace?.id !== state.workspace.id) throw new Error('工作区不匹配');
-      if (typeof body.snapshot.version !== 'number' || body.snapshot.version < state.snapshotVersion) throw new Error('快照版本过旧');
-      if (!verifyPayload(JSON.stringify(body.snapshot), body.signature, state.centerPublicKey)) throw new Error('快照签名无效');
-      this.applySnapshot(body.snapshot);
+      if (!this.applySignedSnapshot(body)) throw new Error('快照无效或版本过旧');
     } catch (err) {
       const message = (err as Error).message;
       if (state.lastSyncError !== message) {
@@ -1494,35 +1493,21 @@ export class AccountsStore {
     }
   }
 
+  /** 加入方应用中心签名快照（syncFromCenter 与测试直接调用）；版本只增不减。 */
+  applySignedSnapshot(body: unknown): boolean {
+    if (this.state?.mode !== 'member') return false;
+    const b = body as { snapshot?: WorkspaceSnapshot; signature?: string } | undefined;
+    if (!b || !b.snapshot || typeof b.signature !== 'string') return false;
+    const snapshot = b.snapshot;
+    if (snapshot.workspace?.id !== this.state.workspace.id) return false;
+    if (typeof snapshot.version !== 'number' || snapshot.version < this.state.snapshotVersion) return false;
+    if (!verifyPayload(JSON.stringify(snapshot), b.signature, this.state.centerPublicKey)) return false;
+    this.applySnapshot(snapshot);
+    return true;
+  }
+
   /** Host 注册：吊销生效后断开该账号的长连接。 */
   onRevoked?: (revoked: Record<string, number>) => void;
 
-  private async pushSnapshot(): Promise<void> {
-    const state = this.state;
-    if (state?.mode !== 'center') return;
-    let body: string;
-    try {
-      const signed = this.signedSnapshot();
-      body = JSON.stringify({ snapshot: signed.snapshot, signature: signed.signature });
-    } catch {
-      return;
-    }
-    await Promise.all(
-      state.hosts
-        .filter((h) => h.id !== this.opts.hostId)
-        .flatMap((h) => h.urls.slice(0, 1))
-        .map(async (url) => {
-          try {
-            await fetch(`${url.replace(/\/+$/, '')}/api/accounts/workspace/sync`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'x-tandem-workspace-token': state.syncToken },
-              body,
-              signal: AbortSignal.timeout(3000),
-            });
-          } catch {
-            // 离线 Host 靠轮询补齐
-          }
-        }),
-    );
-  }
+
 }

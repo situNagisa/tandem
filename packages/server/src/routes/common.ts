@@ -5,9 +5,6 @@ import type { Host } from '../host.js';
 
 export interface RouteDeps {
   host: Host;
-
-  /** 本机作为主机的出站工作站隧道（加入/退出后即时启停）。 */
-  workstation?: { start(): void; stop(): void; status(): { connected: boolean; url?: string } };
 }
 
 export const PROVIDER_KINDS: ProviderKind[] = ['anthropic', 'openai', 'openai-compatible', 'gemini', 'tandem-gateway'];

@@ -1,20 +1,18 @@
 # 账号与模型（设置）
 
-> 更新：2026-11-10。设计原则见 [design.md](../design.md) 的 P21；根因见 [feedback-ledger.md](../feedback-ledger.md) 的 R59/R60/R42/R43/R37。协议字段见 `packages/protocol/src/index.ts`。
+> 更新：2026-11-11。设计原则见 [design.md](../design.md) 的 P21；根因见 [feedback-ledger.md](../feedback-ledger.md) 的 R59/R60/R42/R43/R37。协议字段见 `packages/protocol/src/index.ts`。
 
 ## 归属：工作站账号级（反馈12#01 · R59）
 
 - 模型账号（provider 账号、分组、Key、倍率、模型勾选）属于**登录的工作站账号**，与具体主机无关。设置 → 账号与模型在所有主机上显示同一份数据，不随「当前主机」变化。
 - Key **只加密保存在工作站**：`workstation/profiles.json`（AES-256-GCM，0600），密钥单独放 `workstation/profiles.key`（0600）。主机只同步元数据与 `apiKeyMasked`，任何主机本地文件都没有 Key 明文。
-- 主机上的 agent 发起模型请求时，经签名请求（Ed25519，主机登记公钥验签）把 `profileId/分组/模型/消息/工具` 发给工作站；工作站校验「该账号有权使用这台主机」且 profile 属于该账号，再用真实 Key 调上游，NDJSON 流式回传 `block_start/text/tool_input/rate_limit/effort_dropped/done/error`。主机回放为原有 provider 回调，所以 UI、工具循环、用量显示都不变。
+- 主机上的 agent 发起模型请求时，直接调用工作站进程内的模型账号入口（`workstation/bridge.ts`：`profileId/分组/模型/消息/工具` → 真实 Key 调上游 → `block_start/text/tool_input/rate_limit/effort_dropped/done/error`），不签名、不转发。主机回放为原有 provider 回调，所以 UI、工具循环、用量显示都不变。
 - 同组多 Key 的故障切换、冷却、额度头解析都在工作站完成；`done` 事件带 `keyId/costUsd`，工作站按账号 + 主机记账到 `workstation/model-usage.json`。
-- 个人模式（工作站与主机同一进程、桌面内嵌）走进程内直连，不经网络，但存储与归属仍是账号级。
-- 旧数据一次性搬迁：主机以账号身份连接时，把本地 `profiles.json` 上传到工作站账号，随后**删除主机本地文件**；同名同协议以工作站已有为准，丢弃主机的。不保留旧的按主机模型账号 API：工作站模式下 `/api/profiles` 返回 410，客户端直接调用 `/api/workstation/profiles`。
-- 共享主机：被授权人在该主机上开会话时使用**自己的**账号级模型账号；会话记录 `workspaceAccountId`，代理请求带上发起人账号，工作站校验访问权。管理员也看不到他人 Key 明文（只有掩码）。
+- 不做旧数据搬迁：主机上下文都是工作站进程内新建的，模型账号只在工作站账号级存储里。主机上下文的 `/api/profiles` 返回 410，客户端直接调用 `/api/workstation/profiles`。
+- 共享主机：被授权人在该主机上开会话时使用**自己的**账号级模型账号；会话记录 `workspaceAccountId`，模型请求按发起人账号取 Key。管理员也看不到他人 Key 明文（只有掩码）。
 - 调试版调试账号自动带一个 `demo` 演示模型账号（不需要 Key）。
-- 未做「短期凭据下发」：每次请求都由主机经签名通道转给工作站。以后若成为性能瓶颈再加。
 
-设置页实现：工作站登录时 `ProfilesSection` / `KeysPanel` 直接调用 `/api/workstation/profiles*`；`appStore.refreshProfiles` 也从工作站拉取并同步到所有主机运行时缓存。本地模式（未加入工作站）仍读写主机自己的 `profiles.json`。
+设置页实现：登录后 `ProfilesSection` / `KeysPanel` 直接调用 `/api/workstation/profiles*`；`appStore.refreshProfiles` 也从工作站拉取并同步到所有主机运行时缓存。
 
 账号对应一个 Base URL，下面可有多个分组（各自协议与 Key），会话按所选分组运行。
 
@@ -45,8 +43,8 @@
 
 ## 验证
 
-- 单测：`packages/server/test/account-profiles.test.ts`（Key 加密落盘/只回掩码、代理鉴权「主机 A 不能用用户 B 的账号」、迁移后工作站有 & 主机无 Key、流式透传/中断/按账号记账）、`profile-keys.test.ts`、`packages/web/src/lib/modelSelection.test.ts`。
-- 回归：`e2e/workstation-check.mjs`（两台主机 + 工作站：旧 profiles 搬迁后主机无 `profiles.json`、主机目录搜不到 Key、远端会话经工作站代理成功、bob 在共享主机用自己的 Key、主机本地搜不到 bob 的 Key、旧 `/api/profiles` 返回 410）；`e2e/regression.mjs`「账号编辑：Key 掩码不回传、拉取模型只选最新、无原生下拉」；「菜单行文字行高不被裁切」。
+- 单测：`packages/server/test/account-profiles.test.ts`（Key 加密落盘/只回掩码、流式转发/中断/按账号记账）、`profile-keys.test.ts`、`packages/web/src/lib/modelSelection.test.ts`。
+- 回归：`e2e/workstation-check.mjs`（工作站 + 本机主机上下文：账号级 Key 只回掩码、主机目录搜不到 Key、会话成功、bob 在共享主机用自己的 Key、旧 `/api/profiles` 返回 410）；`e2e/regression.mjs`「账号编辑：Key 掩码不回传、拉取模型只选最新、无原生下拉」；「菜单行文字行高不被裁切」。
 - 全量：`node scripts/check.mjs`。
 
 ## 下拉/弹层首次打开不抖（反馈12#10 · R52）

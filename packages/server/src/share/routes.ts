@@ -26,8 +26,20 @@ function clientIp(req: FastifyRequest): string {
   return req.socket.remoteAddress ?? 'unknown';
 }
 
-/** 生成同事可访问的地址；Host 只监听回环时给出提示。 */
-function shareUrl(app: FastifyInstance, id: string, token: string): { url: string; warning?: string } {
+/** 生成同事可访问的地址；经工作站转发时用客户端的地址与 /h/<hostId> 前缀。 */
+function shareUrl(req: FastifyRequest, app: FastifyInstance, id: string, token: string): { url: string; warning?: string } {
+  const forwardedHost = req.headers['x-forwarded-host'];
+  const prefix = req.headers['x-forwarded-prefix'];
+  if (typeof forwardedHost === 'string' && forwardedHost) {
+    const path = typeof prefix === 'string' ? prefix.replace(/\/+$/, '') : '';
+    const loopback = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(forwardedHost);
+    return {
+      url: `http://${forwardedHost}${path}/s/${id}#${token}`,
+      ...(loopback
+        ? { warning: '工作站只监听 127.0.0.1，这个链接只有本机能打开。让工作站用 --host 0.0.0.0 启动后，同事才能通过局域网访问。' }
+        : {}),
+    };
+  }
   return publicUrl(app, `/s/${id}#${token}`);
 }
 
@@ -73,7 +85,7 @@ export function registerShareRoutes(app: FastifyInstance, host: Host): ShareStor
       });
       store.writeSnapshot(meta.id, data);
     }
-    const { url, warning } = shareUrl(app, meta.id, token);
+    const { url, warning } = shareUrl(req, app, meta.id, token);
     return reply.code(201).send({
       shareId: meta.id,
       url,

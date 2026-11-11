@@ -65,7 +65,7 @@
 - 「打开文件夹…」的两种去向：
   - **桌面版且所选主机就是本机** → 系统文件夹对话框（preload `folder.pick` → 主进程 `folder:pick`）。
   - **其他情况**（网页、手机、远程主机、WSL 里的 Host 与 Windows 客户端不是同一文件系统）→ 应用内「打开文件夹」对话框，里面复用 `FolderBrowser` 目录浏览器。
-- 本机判定：`window.tandemDesktop.isDesktop === true` 且所选主机的 `HostInfo.id`（Host 配置里的 hostId）等于桌面内嵌 Host 的 hostId（主进程 `host:local-id`）；任一信息缺失按非本机处理。实现见 `lib/desktopFolder.ts`，单测 `desktopFolder.test.ts`。
+- 本机判定：`window.tandemDesktop.isDesktop === true` 且所选主机的 `HostInfo.id` 等于桌面内置工作站的本地主机上下文 hostId（主进程 `host:local-id`）；任一信息缺失按非本机处理。实现见 `lib/desktopFolder.ts`，单测 `desktopFolder.test.ts`。
 - 回归（`e2e/regression.mjs`）：「环境条容器透明、触发器可见且不越界」「环境条文件夹弹层只列最近文件夹与「打开文件夹…」（反馈1323#09）」「非 Git 仓库时不显示 Worktree 开关（反馈1323#07）」「非 Git 仓库时不显示分支触发器（反馈1323#08）」「文件夹弹层沿用 ui/Menu 的边距与行高（反馈1601#01）」。
 
 ## 8. 验证

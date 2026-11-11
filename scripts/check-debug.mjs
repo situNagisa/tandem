@@ -36,23 +36,15 @@ writeDesktopFlavor('debug')
 const server = readServerFlavor(path.join(ROOT, 'packages/server/dist'))
 if (server.flavor !== 'debug') errors.push(`server dist/flavor.js=${server.flavor || '缺失'}，期望 debug`)
 if (server.readsEnv) errors.push('server dist/flavor.js 仍在运行时读 TANDEM_FLAVOR')
-expectContains('packages/server/dist/server.js', 'IS_DEBUG_FLAVOR', 'debug 风味判断')
-expectContains('packages/server/dist/server.js', 'workstationBootstrap.js', '调试账号启动钩子')
+expectContains('packages/server/dist/workstation/server.js', 'IS_DEBUG_FLAVOR', 'debug 风味判断')
+expectContains('packages/server/dist/workstation/server.js', 'debug/workstationService.js', '调试账号初始化')
+expectContains('packages/server/dist/workstation/server.js', 'debug/hosts.js', '调试主机自动登记')
 expectContains(
   'packages/server/dist/debug/workstationService.js',
   '/api/debug/auto-login',
   '自动登录路由',
 )
-expectContains(
-  'packages/server/dist/debug/workstationBootstrap.js',
-  '/api/debug/auto-login',
-  '自动登录调用',
-)
-expectContains(
-  'packages/server/dist/debug/workstationBootstrap.js',
-  'IS_DEBUG_FLAVOR',
-  '调试账号启用条件',
-)
+expectContains('packages/server/dist/debug/hosts.js', 'ensureDebugHosts', '调试主机入口')
 
 // Desktop：main / preload / 草稿模块。
 if (readDesktopFlavor(path.join(ROOT, 'packages/desktop/flavor.generated.js')) !== 'debug') {

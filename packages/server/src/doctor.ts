@@ -336,12 +336,56 @@ async function profileChecks(host: Host): Promise<DoctorCheck[]> {
     ];
   }
   const checks: DoctorCheck[] = [];
+  // 账号级模型账号：Key 只在工作站，主机用进程内 bridge 测试真实连通性。
+  const accountClient = host.mirrorProfiles ? host.workstationProfiles() : undefined;
+  const accountId = host.accounts.ownerAccountId();
   for (const profile of profiles) {
     const groups: Array<StoredProfileGroup | undefined> = profile.groups?.length
       ? profile.groups
       : [undefined];
     for (const group of groups) {
       const groupTitle = group ? `账号「${profile.name}」· 分组「${group.name}」` : `账号「${profile.name}」`;
+      if (accountClient && accountId) {
+        const model = profile.defaultModel || profile.models[0] || '';
+        const keys: StoredProfileKey[] = group?.keys?.length ? group.keys.filter((key) => !key.disabled) : [{ id: 'base', apiKey: '' }];
+        if (keys.length === 0) {
+          checks.push(
+            check(
+              `profile.${profile.id}.${group?.id ?? 'base'}`,
+              groupTitle,
+              'warn',
+              '分组里没有可用的 Key。',
+              '在「账号与模型」中启用或补齐 Key。',
+            ),
+          );
+          continue;
+        }
+        for (const [index, key] of keys.entries()) {
+          const label = key.label?.trim() || (keys.length > 1 ? `Key ${index + 1}` : '');
+          const title = label ? `${groupTitle} · ${label}` : groupTitle;
+          const started = Date.now();
+          const result = await accountClient
+            .testProfile(accountId, profile.id, group?.id, key.id === 'base' ? undefined : key.id)
+            .catch((err: unknown) => ({ ok: false, error: errorMessage(err) }));
+          checks.push(
+            result.ok
+              ? check(
+                  `profile.${profile.id}.${group?.id ?? 'base'}.${key.id || index}`,
+                  title,
+                  'ok',
+                  `模型 ${model} 连接正常（${Date.now() - started}ms）。`,
+                )
+              : check(
+                  `profile.${profile.id}.${group?.id ?? 'base'}.${key.id || index}`,
+                  title,
+                  'fail',
+                  `模型 ${model} 连接失败：${result.error ?? '未知错误'}`,
+                  '检查账号 Base URL、Key 与服务商状态，确认模型名可用。',
+                ),
+          );
+        }
+        continue;
+      }
       const keys: StoredProfileKey[] =
         group?.keys?.length
           ? group.keys

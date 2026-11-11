@@ -244,9 +244,14 @@ export async function streamAccountModel(
   if (result.ok) return;
   if (result.rethrown && result.last) throw result.last.error;
   if (result.fatal) throw result.fatal.error;
-  throw new Error(
+  const final = new Error(
     group
       ? groupUnavailableError(group, errors) || '所有 Key 都不可用'
       : '当前账号没有可用的 API Key',
   );
+  // 把最后一次上游失败的限额/状态带到主机侧：主机据此记录 Key 限流并进入交接流程。
+  const source = result.last?.error as { status?: unknown; rateLimit?: unknown } | undefined;
+  if (source?.status !== undefined) Object.assign(final, { status: source.status });
+  if (source?.rateLimit !== undefined) Object.assign(final, { rateLimit: source.rateLimit });
+  throw final;
 }

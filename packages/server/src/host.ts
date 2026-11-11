@@ -89,6 +89,7 @@ import { canSeeSession } from './access.js';
 import type { ParsedCommand } from './agent/commands.js';
 import { readVersion, type PermissionEntry } from './host/helpers.js';
 import { WorkstationProfileClient } from './workstation/client.js';
+import type { WorkstationModelBridge } from './workstation/bridge.js';
 import type { ProxyRunner } from './providers/types.js';
 import os from 'node:os';
 import {
@@ -201,6 +202,7 @@ export class Host {
   mirrorProfiles = false;
   private profileClient?: WorkstationProfileClient;
   private profileSyncAt = new Map<string, number>();
+  private readonly modelBridge?: WorkstationModelBridge;
   readonly store: SessionStore;
   /** 会话全文索引（Tandem + 外部会话），落盘 ~/.tandem/index/search.json。 */
   readonly searchIndex: SearchIndex;
@@ -283,8 +285,13 @@ export class Host {
 
   accounts!: AccountsStore;
 
-  constructor(config?: HostConfig, home = tandemHome(), options: { remote?: boolean } = {}) {
+  constructor(
+    config?: HostConfig,
+    home = tandemHome(),
+    options: { remote?: boolean; modelBridge?: WorkstationModelBridge } = {},
+  ) {
     this.home = home;
+    this.modelBridge = options.modelBridge;
     this.remote = options.remote === true;
     this.config = config ?? loadHostConfig(home);
     this.hub.setSessionVisibility((access, sessionId) => canSeeSession(access, this.store.get(sessionId)));
@@ -366,8 +373,8 @@ export class Host {
       for (const id of Object.keys(revoked)) this.hub.disconnectMember(id);
     };
     this.accounts.start();
-    // 已加入工作站：模型账号改为账号级（Key 在工作站），主机只保存同步下来的元数据与掩码。
-    if (this.accounts.mode() === 'member') {
+    // 工作站进程内的主机上下文：模型账号是账号级（Key 在工作站），主机只保存同步下来的元数据与掩码。
+    if (this.modelBridge || this.accounts.mode() === 'member') {
       this.mirrorProfiles = true;
       this.profiles = new ProfileStore(home, { file: 'workstation-profiles.json', mirror: true });
     }
@@ -528,10 +535,6 @@ export class Host {
     }
     const accountId = this.accounts.ownerAccountId();
     if (!accountId) return;
-    const { migrateHostProfiles } = await import('./workstation/migrate.js');
-    await migrateHostProfiles(this).catch((err: unknown) => {
-      console.warn('[tandem] 迁移本机模型账号到工作站失败，下次启动重试:', (err as Error).message);
-    });
     await this.syncWorkstationProfiles(accountId, true).catch(() => undefined);
   }
 
@@ -539,15 +542,11 @@ export class Host {
   workstationProfiles(): WorkstationProfileClient | undefined {
     if (!this.mirrorProfiles) return undefined;
     if (this.profileClient) return this.profileClient;
-    const join = this.accounts.workstationJoin();
-    const identity = this.accounts.hostIdentity();
-    if (!join || !identity) return undefined;
+    if (!this.modelBridge) return undefined;
     this.profileClient = new WorkstationProfileClient({
-      home: this.home,
       hostId: this.config.hostId,
       hostName: os.hostname(),
-      baseUrl: join.url,
-      hostKey: identity.hostKey,
+      bridge: this.modelBridge,
     });
     return this.profileClient;
   }
@@ -557,7 +556,9 @@ export class Host {
     const client = this.workstationProfiles();
     if (!client || !accountId) return;
     const last = this.profileSyncAt.get(accountId) ?? 0;
-    if (!force && Date.now() - last < 15_000) return;
+    // 进程内桥接是内存读取，每次都同步；远端同步 15 秒内不重复拉取。
+    const window = this.modelBridge ? 0 : 15_000;
+    if (!force && Date.now() - last < window) return;
     this.profileSyncAt.set(accountId, Date.now());
     try {
       const snapshot = await client.snapshot(accountId);

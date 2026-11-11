@@ -131,9 +131,11 @@ export function verifyDesktopBundle(resourcesDir, expectedFlavor) {
     errors.push('内置 server flavor.js 仍在运行时读 TANDEM_FLAVOR')
   }
   if (expectedFlavor === 'debug') {
-    const bootstrap = path.join(resourcesDir, 'server', 'dist', 'debug', 'workstationBootstrap.js')
     const service = path.join(resourcesDir, 'server', 'dist', 'debug', 'workstationService.js')
-    if (!fs.existsSync(bootstrap)) errors.push('内置 server 缺少调试账号启动钩子')
+    const hosts = path.join(resourcesDir, 'server', 'dist', 'debug', 'hosts.js')
+    if (!fs.existsSync(hosts) || !fs.readFileSync(hosts, 'utf8').includes('ensureDebugHosts')) {
+      errors.push('内置 server 缺少调试主机自动登记')
+    }
     if (!fs.existsSync(service) || !fs.readFileSync(service, 'utf8').includes('/api/debug/auto-login')) {
       errors.push('内置 server 缺少 /api/debug/auto-login')
     }

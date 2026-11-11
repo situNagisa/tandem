@@ -13,7 +13,7 @@ import {
   pickShareUrl,
   type AddHostPlatform,
 } from '../../lib/addHostCommand'
-import { findLocalControl, pageIsLoopback } from '../../lib/localHosts'
+import { pageIsLoopback } from '../../lib/localHosts'
 import { toast } from '../../store/appStore/helpers'
 import { cn } from '../../lib/cn'
 import { Modal } from '../ui/Modal'
@@ -87,7 +87,7 @@ export function AddHostDialog() {
   const baselineRef = useRef<Set<string> | null>(null)
   const chosenIdRef = useRef<string | null>(null)
 
-  const localHost = useMemo(() => (open ? findLocalControl() : undefined), [open])
+  const localAvailable = open && pageIsLoopback()
   const share = useMemo(() => pickShareUrl(base, status?.urls ?? []), [base, status])
   const url = selectedUrl ?? share.url
   const statusReady = !!status || !!statusError
@@ -226,11 +226,12 @@ export function AddHostDialog() {
   const localLabel = pageIsLoopback() ? '添加这台电脑' : '添加此主机（当前页面所在的电脑）'
 
   const joinLocal = async () => {
-    if (!localHost || !bind) return
+    const session = useAppStore.getState().account
+    if (!session) return
     setJoiningLocal(true)
     setLocalError(null)
     try {
-      await workstationApi.join(localHost, { workstationUrl: base, code: bind.code })
+      await workstationApi.addLocalHost(session.centerUrl, session.accessToken)
       setTokenUsed(true)
       setPhase((current) => (current === 'connected' ? current : 'waiting'))
     } catch (err) {
@@ -404,12 +405,12 @@ export function AddHostDialog() {
           {error && <p className="text-[12px] leading-5 text-[var(--t-danger)]">{error}</p>}
           {localError && <p className="text-[12px] leading-5 text-[var(--t-danger)]">{localError}</p>}
 
-          {localHost && (
+          {localAvailable && (
             <Button
               variant="secondary"
               size="sm"
               data-testid="addhost-local"
-              disabled={!bind || tokenInvalid || joiningLocal}
+              disabled={joiningLocal}
               onClick={() => void joinLocal()}
             >
               {joiningLocal ? <Spinner size={13} /> : <Plus size={13} />}

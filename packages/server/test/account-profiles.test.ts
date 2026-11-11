@@ -1,4 +1,4 @@
-// 账号级模型账号：工作站加密存储、主机签名代理鉴权、迁移幂等与流式透传。
+// 账号级模型账号：工作站加密存储与流式透传（Key 只在工作站）。
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import http from 'node:http';
@@ -6,14 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { AccountsStore } from '../src/accounts/store.js';
-import { ProfileStore } from '../src/config.js';
-import { generateHostKey, identityFromHostKey } from '../src/workstation/e2e.js';
-import { b64u } from '@tandem/protocol/wire';
 import { AccountProfileStore } from '../src/workstation/profiles.js';
 import { WorkstationUsageStore, streamAccountModel } from '../src/workstation/modelProxy.js';
-import { signHostRequest, verifyHostRequest } from '../src/workstation/hostAuth.js';
-import { migrateHostProfiles } from '../src/workstation/migrate.js';
-import type { Host } from '../src/host.js';
 import type { StoredProfile } from '../src/types.js';
 import type { WorkspaceModelProxyEvent } from '@tandem/protocol';
 
@@ -108,102 +102,6 @@ test('工作站账号模型账号：Key 加密落盘、只回掩码、重启可�
     assert.equal(reopened.list('acct-1')[0]?.apiKey, 'sk-plain-disk-key-abcdef', '重启后应能解密');
   } finally {
     rmSync(home, { recursive: true, force: true });
-  }
-});
-
-test('代理鉴权：主机 A 不能用用户 B 的账号；签名过期/篡改被拒', () => {
-  const home = temp();
-  try {
-    const center = new AccountsStore({ home, hostId: 'ws', hostName: 'ws' });
-    const setup = center.setup('测试工作站', 'alice', 'alice-pass-1', []);
-    const alice = setup.account;
-    const bob = center.createAccount({ username: 'bob', password: 'bob-pass-1', role: 'member', scope: 'hosts', hostIds: [] });
-    const hostKey = generateHostKey();
-    const identity = identityFromHostKey(hostKey);
-    const host = center.registerHost(alice.id, {
-      id: '11111111-1111-4111-8111-111111111111',
-      name: '主机 A',
-      publicKey: b64u(identity.publicRaw),
-      fingerprint: identity.fingerprint,
-    });
-    assert.equal(host.ownerId, alice.id);
-    assert.equal(center.accountCanAccessHost(host.id, alice.id), true);
-    assert.equal(center.accountCanAccessHost(host.id, bob.id), false, '未授权账号不能使用主机');
-    center.setHostGrant(host.id, alice.id, { accountId: bob.id, role: 'observer' });
-    assert.equal(center.accountCanAccessHost(host.id, bob.id), true, '授权后可用');
-    center.removeHostGrant(host.id, alice.id, bob.id);
-
-    const body = Buffer.from(JSON.stringify({ accountId: alice.id }));
-    const pathName = '/api/workstation/host/profiles/snapshot';
-    const headers = signHostRequest(hostKey, { hostId: host.id, accountId: alice.id, method: 'POST', path: pathName, body });
-    const fakeReq = (h: Record<string, string>, b: Buffer) =>
-      ({ headers: h, method: 'POST', raw: { url: pathName }, body: JSON.parse(b.toString()) }) as never;
-    assert.deepEqual(verifyHostRequest(center, fakeReq(headers, body), body), { hostId: host.id, accountId: alice.id });
-    assert.throws(
-      () => verifyHostRequest(center, fakeReq(headers, Buffer.from('{}')), Buffer.from('{}')),
-      /签名无效/,
-    );
-    const expired = signHostRequest(hostKey, {
-      hostId: host.id,
-      accountId: alice.id,
-      method: 'POST',
-      path: pathName,
-      body,
-      timestamp: Date.now() - 10 * 60_000,
-    });
-    assert.throws(() => verifyHostRequest(center, fakeReq(expired, body), body), /已过期/);
-    const bobHeaders = signHostRequest(hostKey, { hostId: host.id, accountId: bob.id, method: 'POST', path: pathName, body: Buffer.from(JSON.stringify({ accountId: bob.id })) });
-    assert.throws(
-      () =>
-        verifyHostRequest(
-          center,
-          fakeReq(bobHeaders, Buffer.from(JSON.stringify({ accountId: bob.id }))),
-          Buffer.from(JSON.stringify({ accountId: bob.id })),
-        ),
-      /无权使用/,
-    );
-  } finally {
-    rmSync(home, { recursive: true, force: true });
-  }
-});
-
-test('迁移：主机本地 profiles 搬到工作站后，主机侧不再有 profiles 文件与 Key', async () => {
-  const home = temp('tandem-acct-mig-');
-  const hostHome = temp('tandem-acct-host-');
-  try {
-    const accountId = 'acct-1';
-    const store = new AccountProfileStore(home);
-    const legacyStore = new ProfileStore(hostHome);
-    legacyStore.create({
-      name: '仅主机账号',
-      kind: 'openai-compatible',
-      baseUrl: 'http://127.0.0.1:1/v1',
-      apiKey: 'sk-legacy-only-key',
-      models: ['m1'],
-      defaultModel: 'm1',
-    });
-    const fakeClient = {
-      importProfiles: async (acct: string, profiles: StoredProfile[]) => {
-        const result = store.importStored(acct, profiles);
-        return { ...result, profiles: store.publicList(acct) };
-      },
-    };
-    const fakeHost = {
-      home: hostHome,
-      config: { hostId: 'h1' },
-      mirrorProfiles: true,
-      accounts: { ownerAccountId: () => accountId },
-      workstationProfiles: () => fakeClient,
-      syncWorkstationProfiles: async () => undefined,
-    } as unknown as Host;
-    const result = await migrateHostProfiles(fakeHost);
-    assert.equal(result?.imported, 1);
-    assert.ok(store.list(accountId).some((p) => p.name === '仅主机账号' && p.apiKey === 'sk-legacy-only-key'), '工作站应有可用的 Key');
-    assert.equal(existsSync(path.join(hostHome, 'profiles.json')), false, '迁移后主机本地 profiles 文件应删除');
-    assertNoKeyUnder(hostHome, 'sk-legacy-only-key');
-  } finally {
-    rmSync(home, { recursive: true, force: true });
-    rmSync(hostHome, { recursive: true, force: true });
   }
 });
 

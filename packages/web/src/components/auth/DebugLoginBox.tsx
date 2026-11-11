@@ -5,7 +5,6 @@ import { Spinner } from '../ui/Spinner'
 import { Button } from '../ui/Button'
 import {
   debugLoginAt,
-  localDebugWorkstationUrls,
   probeDebugWorkstation,
   setDebugAutoLoginEnabled,
 } from '../../lib/debugAccount'
@@ -18,7 +17,7 @@ export function DebugLoginBox({ workstationUrl }: { workstationUrl: string }) {
   useEffect(() => {
     let alive = true
     void (async () => {
-      const candidates = [workstationUrl, ...(await localDebugWorkstationUrls())].filter(Boolean)
+      const candidates = [workstationUrl].filter(Boolean)
       for (const url of candidates) {
         if (await probeDebugWorkstation(url)) {
           if (alive) setTarget(url)

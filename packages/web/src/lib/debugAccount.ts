@@ -4,7 +4,6 @@ import type { AccountLoginResult, WorkstationPublicStatus } from '@tandem/protoc
 import { ApiError, workstationApi } from './api'
 import { readRaw, writeRaw } from './storage'
 import { useAppStore } from '../store/useAppStore'
-import { loadLocalHosts } from './localHosts'
 
 const AUTOLOGIN_KEY = 'tandem.debug.account.autologin'
 
@@ -83,25 +82,9 @@ export async function debugLoginAt(raw: string): Promise<boolean> {
   return (await attemptDebugLogin(raw)) === 'ok'
 }
 
-/** 本机调试工作站的候选地址：只来自本机 Host（内嵌/已加入的工作站）。 */
-export async function localDebugWorkstationUrls(): Promise<string[]> {
-  const urls: string[] = []
-  const controls = loadLocalHosts().filter((h) => isLoopbackUrl(h.url))
-  for (const host of controls) {
-    try {
-      const local = await workstationApi.localStatus(host)
-      if (local.embedded.running) urls.push(...local.embedded.urls.filter(isLoopbackUrl))
-      if (local.join?.url && isLoopbackUrl(local.join.url)) urls.push(local.join.url)
-    } catch {
-      /* 令牌失效或 Host 没起来 */
-    }
-  }
-  return [...new Set(urls.map(baseUrl))]
-}
-
 /**
- * 调试版：页面在本机回环地址上打开时，自动登录本机工作站的调试账号。
- * Host 刚启动时内嵌工作站可能还没就绪，短时间重试；明确不是工作站的地址（4xx）不重试。
+ * 调试版：页面在回环地址上打开时，自动登录这个工作站的调试账号。
+ * 工作站刚启动时可能还没就绪，短时间重试；明确不是工作站的地址（4xx）不重试。
  */
 export async function tryDebugLocalAutoLogin(): Promise<boolean> {
   if (!isDebugAutoLoginEnabled()) return false
@@ -109,26 +92,10 @@ export async function tryDebugLocalAutoLogin(): Promise<boolean> {
   if (!isLoopbackUrl(window.location.origin)) return false
   const deadline = Date.now() + 8000
   let delay = 300
-  let originTried = false
   for (;;) {
-    let retry = false
-    const urls = await localDebugWorkstationUrls()
-    for (const url of urls) {
-      const state = await attemptDebugLogin(url)
-      if (state === 'ok') return true
-      if (state === 'unavailable') retry = true
-    }
-    // 有本机凭据但还没拿到工作站地址：内嵌工作站可能刚启动，继续等。
-    if (!urls.length && loadLocalHosts().some((h) => baseUrl(h.url) === window.location.origin)) retry = true
-    // 页面本身就是工作站（http://127.0.0.1:8481）时才用当前源；页面由 Host 托管时
-    // 它没有工作站状态接口，401 之后继续探测只会刷屏。
-    if (!retry && !originTried) {
-      originTried = true
-      const state = await attemptDebugLogin(window.location.origin)
-      if (state === 'ok') return true
-      if (state === 'unavailable') retry = true
-    }
-    if (!retry || Date.now() >= deadline) return false
+    const state = await attemptDebugLogin(window.location.origin)
+    if (state === 'ok') return true
+    if (state !== 'unavailable' || Date.now() >= deadline) return false
     await new Promise((resolve) => setTimeout(resolve, delay))
     delay = Math.min(Math.round(delay * 1.6), 1500)
   }

@@ -95,6 +95,8 @@ export function sanitizeHosts(input: unknown): HostConfig[] {
       url: h.url,
       token: h.token,
       addedAt: typeof h.addedAt === 'number' ? h.addedAt : Date.now(),
+      ...(typeof h.accountId === 'string' ? { accountId: h.accountId } : {}),
+      ...(typeof h.accountName === 'string' ? { accountName: h.accountName } : {}),
       ...(h.mode === 'relay'
         ? {
             mode: 'relay' as const,

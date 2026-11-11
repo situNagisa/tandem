@@ -3,7 +3,7 @@
 > 更新：2026-11-09。
 
 > 给产品所有者：在**你自己的两台 Windows 机器 + 一台安卓手机 + 一块 USB 串口板**上验证。
-> 全程只用公司内网 / 你自己的局域网；不要做端口映射、反向代理或公网隧道。测试前确认两台机器能互相 `ping`，且防火墙允许 Tandem 端口（默认 7878，或你添加 Host 时看到的端口）。
+> 全程只用公司内网 / 你自己的局域网；不要做端口映射、反向代理或公网隧道。测试前确认两台机器能互相 `ping`，且防火墙允许工作站端口（默认 8481）。
 
 ## 1. 准备
 
@@ -12,7 +12,7 @@
 - 安卓手机：开发者选项 → USB 调试；USB 连接后 `adb devices -l` 能看到 `device`（先装 Google platform-tools 并接受手机授权弹窗）。
 - USB 串口板：装好驱动（CH340 / CP210x / FTDI 等），在「设备管理器 → 端口」看到 `COMx`；用串口助手确认能收发。
 - 如 `adb` 不在 PATH：给 Tandem Host 设置环境变量 `TANDEM_ADB_BIN=C:\platform-tools\adb.exe` 后重启 Host；或在 Host 的 `config.json` 写 `"devices":{"adbPath":"C:\\platform-tools\\adb.exe"}`。
-- 记下 A 的局域网地址与 Host 端口，例如 `http://192.168.1.20:7878`。
+- 记下工作站地址，例如 `http://192.168.1.20:8481`，用账号登录。
 
 **B 机（写代码/跑会话的那台；Windows 或另一台）**
 - 安装 Tandem，添加 Host：A 的地址 + A 的主 token（「设置 → 主机」或 Host 启动日志里的 `?token=`）。

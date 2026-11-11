@@ -9,7 +9,6 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { chromium } from 'playwright'
 import WebSocket from 'ws'
-import { E2EChannel } from '../packages/protocol/dist/e2eClient.js'
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
 const CLI = path.join(ROOT, 'packages/server/dist/cli.js')
@@ -104,7 +103,7 @@ function mockProvider(target) {
 
 function startWorkstation(home) {
   mkdirSync(home, { recursive: true })
-  const child = spawn(process.execPath, [CLI, 'workstation', '--port', '0', '--host', '127.0.0.1'], {
+  const child = spawn(process.execPath, [CLI, '--port', '0', '--host', '127.0.0.1'], {
     cwd: ROOT,
     env: {
       ...process.env,
@@ -243,14 +242,13 @@ export async function runExecutorCheck(home) {
     await page.locator('[data-testid="no-hosts"]').waitFor({ state: 'detached', timeout: 60_000 })
     await waitFor(async () => !(await page.locator('[data-testid="sidebar-new-session"]').isDisabled()), '浏览器里新会话入口可用')
 
-    // 会话经工作站上的远端主机上下文处理（E2E 与其他主机一致）；重新登录拿到包含该主机的访问令牌。
+    // 会话经工作站上的远端主机上下文处理；重新登录拿到包含该主机的访问令牌。
     const fresh = await json(WS, '/api/workstation/login', {
       method: 'POST',
       body: JSON.stringify({ username: 'exec-alice', password }),
     })
-    const channel = new E2EChannel({ baseUrl: `${WS}/h/${host.id}`, fingerprint: host.fingerprint })
     const auth = { Authorization: `Bearer ${fresh.accessToken}`, 'Content-Type': 'application/json' }
-    const sessionRes = await channel.fetch('/api/sessions', {
+    const sessionRes = await fetch(`${WS}/h/${host.id}/api/sessions`, {
       method: 'POST',
       headers: auth,
       body: JSON.stringify({
@@ -265,17 +263,16 @@ export async function runExecutorCheck(home) {
     const session = await sessionRes.json()
 
     const reply = await new Promise((resolve, reject) => {
-      const socket = channel.openWebSocket(`/ws?token=${encodeURIComponent(fresh.accessToken)}`)
+      const socket = new WebSocket(`${WS}/h/${host.id}/ws?token=${encodeURIComponent(fresh.accessToken)}`)
       const timer = setTimeout(() => reject(new Error(`远端会话未完成（工作站日志）：\n${ws.logs()}`)), 90_000)
-      socket.onopen = () => {
+      socket.on('open', () => {
         socket.send(JSON.stringify({ type: 'subscribe', sessionId: session.id }))
         setTimeout(() => {
           socket.send(JSON.stringify({ type: 'send', sessionId: session.id, content: [{ type: 'text', text: TRIGGER }] }))
         }, 200)
-      }
-      socket.onmessage = (event) => {
-        if (typeof event.data !== 'string') return
-        const message = JSON.parse(event.data)
+      })
+      socket.on('message', (data) => {
+        const message = JSON.parse(data.toString())
         if (message.type === 'message_end' && message.message?.role === 'assistant') {
           const text = messageText(message.message)
           if (text.includes('远端读回')) {
@@ -292,8 +289,8 @@ export async function runExecutorCheck(home) {
           clearTimeout(timer)
           reject(new Error(`回合失败：${message.error}`))
         }
-      }
-      socket.onerror = () => reject(new Error('加密 WebSocket 连接失败'))
+      })
+      socket.on('error', () => reject(new Error('主机 WebSocket 连接失败')))
     })
     assert.equal(reply, `远端读回完成：${PAYLOAD}`, 'Bash 应读回 Write 写入的内容')
     assert.equal(readFileSync(target, 'utf8'), PAYLOAD, '远端文件内容应为 Write 写入的内容')

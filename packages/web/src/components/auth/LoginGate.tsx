@@ -1,11 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { ArrowRight, LogIn, MonitorSmartphone, ShieldCheck } from 'lucide-react'
+import { ArrowRight, LogIn, ShieldCheck } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
 import type { WorkstationPublicStatus } from '@tandem/protocol'
 import { useAppStore } from '../../store/useAppStore'
 import { workstationApi } from '../../lib/api'
 import { loadLastWorkstationUrl } from '../../lib/storage'
-import { findLocalControl, pageIsLoopback } from '../../lib/localHosts'
 import { BrandMark } from '../BrandMark'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Controls'
@@ -29,8 +28,7 @@ async function probe(url: string): Promise<WorkstationPublicStatus | null> {
 
 /**
  * 登录门：打开 Tandem 先登录工作站，登录后才进入工作台。
- * 工作站地址依次尝试：上次登录的地址 → 页面本身（页面由工作站托管）→ 本机 Host 内嵌的工作站
- * （页面在回环地址打开时，若还没启动就自动启动，个人使用不用再选一次）。
+ * 工作站地址依次尝试：上次登录的地址 → 页面本身（页面由工作站托管）。
  */
 export function LoginGate() {
   const [stage, setStage] = useState<Stage>('probing')
@@ -42,34 +40,12 @@ export function LoginGate() {
   const [inviteCode, setInviteCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const control = findLocalControl()
 
   const accept = (url: string, info: WorkstationPublicStatus) => {
     setWorkstationUrl(normalize(url))
     setStatus(info)
     setError(null)
     setStage(info.initialized ? 'login' : 'setup')
-  }
-
-  const useLocalWorkstation = async (autoStart: boolean): Promise<boolean> => {
-    if (!control) return false
-    try {
-      const local = await workstationApi.localStatus(control)
-      let urls = local.embedded.running ? local.embedded.urls : []
-      if (urls.length === 0 && autoStart) {
-        urls = (await workstationApi.enableLocal(control)).urls
-      }
-      for (const url of urls.filter((u) => /127\.0\.0\.1|localhost/.test(u)).concat(urls)) {
-        const info = await probe(url)
-        if (info) {
-          accept(url, info)
-          return true
-        }
-      }
-    } catch {
-      /* 本机 Host 不可用或没有权限 */
-    }
-    return false
   }
 
   useEffect(() => {
@@ -81,15 +57,11 @@ export function LoginGate() {
         if (!alive) return
         if (info) return accept(last, info)
       }
-      // 页面由 Host 托管时（有本机凭据）它没有公开的工作站状态接口，不必探测。
-      if (!control) {
-        const origin = window.location.origin
-        const info = await probe(origin)
-        if (!alive) return
-        if (info) return accept(origin, info)
-      }
-      if (await useLocalWorkstation(pageIsLoopback())) return
+      // 页面由工作站托管：直接探测当前地址。
+      const origin = window.location.origin
+      const info = await probe(origin)
       if (!alive) return
+      if (info) return accept(origin, info)
       setWorkstationUrl(last)
       if (last) setError(`无法连接 ${last}，请检查地址或网络。`)
       setStage('connect')
@@ -234,23 +206,9 @@ export function LoginGate() {
                   autoFocus
                 />
               </label>
-              {control && (
-                <Button
-                  variant="secondary"
-                  className="w-full justify-center"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      if (!(await useLocalWorkstation(true))) throw new Error('无法启动这台电脑的工作站')
-                    }, '无法启动这台电脑的工作站')
-                  }
-                >
-                  <MonitorSmartphone size={14} /> 使用这台电脑的工作站
-                </Button>
-              )}
-              {!control && !workstationUrl.trim() && (
+              {!workstationUrl.trim() && (
                 <p data-testid="login-token-hint" className="text-[12px] leading-5 text-muted">
-                  这个地址没有保存登录凭据。请用终端里打印的带 ?token= 的地址打开（Host 页面），或在上面填写工作站地址。
+                  请填写工作站地址，例如终端启动时打印的 http://127.0.0.1:8481。
                 </p>
               )}
             </div>

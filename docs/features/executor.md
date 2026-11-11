@@ -27,7 +27,7 @@
 - Windows `.cmd` 的 `%`：成对的 `%NAME%` 原样保留，其余 `%` 双写，结果与 cmd 命令行一致；未定义的 `%NAME%` 在命令行保持原文、在 `.cmd` 里变成空，未处理。`wrap`（沙箱包装）只在 POSIX 生效。CreateProcess 的当前目录上限是 260 字符，超出时本机与远端都无法启动命令。
 - 执行器 `join` 之后，身份文件存在即优先使用，`--token` 被忽略。
 
-## 工作站侧接口（M2–M3）
+## 工作站侧接口
 
 工具只经 `ToolContext.env`（`packages/server/src/host-env.ts` 的 `HostEnv`）访问项目所在机器。两个实现：
 
@@ -54,12 +54,12 @@
 
 ## 接入产品
 
-- **安装**：`/install.sh`、`/install.ps1` 嵌入各平台 sha256（构建产物 `SHA256SUMS`），从 `<工作站>/executor/<平台>` 下载（无压缩），装到 `~/.tandem-executor/bin/tandem-exec`，前台 `join`。`--service` / `-Service` 只写启动项（systemd --user、LaunchAgent、HKCU Run），下次登录生效。工作站不再下发完整 Host 安装包。
-- **登记**：绑定码 `ach_<密钥>.<指纹>`（`POST /api/workstation/hosts/bind-code`）。`ExecutorHub.enroll`（`executor/hub.ts`）用与本机加入相同的 `registerAsHost` 登记，执行器公钥记入 `remote-hosts/executors.json`（0600）。
-- **远端主机上下文**：每台执行器是工作站进程里的一个 `Host`（`remote: true`），数据在 `remote-hosts/<主机 ID>/`，经本机回环隧道接入（`createApp` + `WorkstationAgent`）。客户端照旧走 `/h/<主机 ID>` 与端到端加密，前端不改。
+- **安装**：`/install.sh`、`/install.ps1` 嵌入各平台 sha256（构建产物 `SHA256SUMS`），从 `<工作站>/executor/<平台>` 下载（无压缩），装到 `~/.tandem-executor/bin/tandem-exec`，前台 `join`。`--service` / `-Service` 只写启动项（systemd --user、LaunchAgent、HKCU Run），下次登录生效。工作站不下发完整 Host 安装包。
+- **登记**：绑定码 `ach_<密钥>.<指纹>`（`POST /api/workstation/hosts/bind-code`）。`ExecutorHub.enroll`（`executor/hub.ts`）用与本机上下文相同的 `registerAsHost` 成员身份登记，执行器公钥记入 `remote-hosts/executors.json`（0600）。
+- **远端主机上下文**：每台执行器是工作站进程里的一个 `Host`（`remote: true`），数据在 `remote-hosts/<主机 ID>/`，与其他主机上下文一样只监听回环随机端口；客户端走 `/h/<主机 ID>`。
 - **工具环境**：连接时 `Host.env` 换成 `RemoteHostEnv`，Read、Glob、Grep、Write、Edit、Bash、BashOutput、KillBash、Task 经 `ctx.env` 在远端运行。断开后 `env` 保留，调用以「执行器未就绪」失败；主机在线 = 执行器已连接（`hub.isLive`）。
 - **远端不支持**（`host.remote`）：隐藏 browser_*、Device*、Adb*、Serial*、Skill、Wiki*、MCP；钩子不执行；不做 git 检测（无 worktree、分支、PR）；切换会话目录返回 501。`REMOTE_UNSUPPORTED`（`server.ts`）对文件浏览、外部会话、浏览器、设备、MCP、技能、Wiki、评测、看板、钩子、诊断、语音及会话的 git/worktree/PR/回退/导入返回 501。
-- **重启与授权**：`ExecutorHub.restore` 为每台已登记执行器重建上下文，不等执行器连接；工作站端口变化后需重新执行安装命令。授权沿用普通主机模型（`perHost`），被授权账号的操作未单独验证。
+- **重启与授权**：`ExecutorHub.restore` 为每台已登记执行器重建上下文，不等执行器连接；授权沿用普通主机模型（`perHost`），被授权账号的操作未单独验证。
 - **未做**：`bg.*` 后台任务（断线续跑）、远端检查点回退、自更新、设备/浏览器/串口/MCP、旧会话导入。远端 Windows 的路径语义已接入，未在真实 Windows 会话上端到端验证。
 
 ## 构建

@@ -12,10 +12,6 @@
     "./wire": {
       "types": "./dist/wire.d.ts",
       "default": "./dist/wire.js"
-    },
-    "./e2e": {
-      "types": "./dist/e2eClient.d.ts",
-      "default": "./dist/e2eClient.js"
     }
   },
   "scripts": {

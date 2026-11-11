@@ -7,7 +7,6 @@ import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import type { Host } from './host.js';
-import { WorkstationAgent } from './workstation/agent.js';
 import { startPrPolling } from './vcs.js';
 import { registerSttRoutes } from './stt.js';
 import { isPublicSharePath, registerShareRoutes } from './share/routes.js';
@@ -54,22 +53,7 @@ const REMOTE_UNSUPPORTED = [
   /^\/api\/sessions\/[^/]+\/(changes|branches|checkout|vcs|worktree|pr|browser|devices|preview|rewind|ai-review)(\/|$)/,
 ];
 
-export interface WorkstationTunnelDeps {
-  /** 可选 target：内嵌工作站的真实监听地址（避让端口后与保存的加入地址不同）。 */
-  start: (target?: string) => void;
-  stop: () => void;
-  status: () => { connected: boolean; url?: string };
-}
-
-export async function createApp(
-  host: Host,
-  extras: {
-    /** 调试版演示主机：不再安装调试工作站引导，避免递归创建演示主机。 */
-    demoHost?: boolean;
-    /** 调试版演示主机：登记后由调用方手动启动隧道。 */
-    onWorkstationDeps?: (deps: WorkstationTunnelDeps) => void;
-  } = {},
-): Promise<FastifyInstance> {
+export async function createApp(host: Host): Promise<FastifyInstance> {
   const app = Fastify({
     logger: false,
     bodyLimit: 30 * 1024 * 1024,
@@ -130,6 +114,10 @@ export async function createApp(
           };
     }
     req.principal = principal;
+    // 账号级模型账号：任何已认证请求前同步元数据（进程内读取，按秒节流）。
+    if (principal.kind === 'account' && host.mirrorProfiles) {
+      await host.syncWorkstationProfiles(principal.id).catch(() => undefined);
+    }
     const denied = guardRequest(host, principal, req.method, urlPath);
     if (denied) return reply.code(denied.code).send({ error: denied.message });
     if (host.remote && REMOTE_UNSUPPORTED.some((re) => re.test(urlPath))) {
@@ -147,53 +135,7 @@ export async function createApp(
   // ---------- 会话只读分享（内网） ----------
   registerShareRoutes(app, host);
 
-  // 本机作为主机加入工作站后：主动向工作站建立出站隧道（E2E 强制）。
-  let workstationAgent: WorkstationAgent | undefined;
-  const startWorkstationTunnel = (target?: string) => {
-    const join = host.accounts.workstationJoin();
-    if (!join) return;
-    if (workstationAgent) {
-      // 内嵌工作站换了端口：只改目标并重连，不重建 agent。
-      if (target) workstationAgent.retarget(target);
-      return;
-    }
-    const address = app.server.address();
-    const port = address && typeof address === 'object' && address.port ? address.port : 7878;
-    workstationAgent = new WorkstationAgent(
-      { url: target ?? join.url, hostKey: join.hostKey, requireE2E: true },
-      host.config.hostId,
-      port,
-    );
-    workstationAgent.start();
-  };
-  const stopWorkstationTunnel = () => {
-    workstationAgent?.stop();
-    workstationAgent = undefined;
-  };
-  const workstationDeps = {
-    start: startWorkstationTunnel,
-    stop: stopWorkstationTunnel,
-    status: () => {
-      const join = host.accounts.workstationJoin();
-      return { connected: workstationAgent?.isConnected() ?? false, ...(join ? { url: join.url } : {}) };
-    },
-  };
-  extras.onWorkstationDeps?.(workstationDeps);
-  const deps: RouteDeps = { host, workstation: workstationDeps };
-
-  if (IS_DEBUG_FLAVOR && !extras.demoHost) {
-    // 调试版 Host：首次启动自动登录本机工作站的测试账号；发布构建不加载此模块。
-    // 必须先于下面的 onListen 安装：内嵌工作站换端口后，隧道第一次启动就连实际地址。
-    const { installDebugWorkstationBootstrap } = await import('./debug/workstationBootstrap.js');
-    installDebugWorkstationBootstrap(app, host, workstationDeps);
-  }
-
-  app.addHook('onListen', async () => {
-    startWorkstationTunnel();
-    // 账号级模型账号：同步工作站元数据并迁移旧的本机 profiles（幂等）。
-    if (host.accounts.mode() === 'member') void host.enableWorkstationProfiles();
-  });
-  app.addHook('onClose', async () => stopWorkstationTunnel());
+  const deps: RouteDeps = { host };
 
   registerHostRoutes(app, deps);
   registerUpdateRoutes(app, deps);

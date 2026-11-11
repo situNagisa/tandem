@@ -1,6 +1,7 @@
-// 工作站服务：账号注册/登录、主机登记、授权，以及主机出站隧道的转发。
-// 只转发端到端加密流量（/_e2e）；会话内容对工作站不可见。只在内网使用。
-import { createHash, createPublicKey, randomBytes, randomUUID, verify } from 'node:crypto';
+// 工作站服务：程序本体。账号注册/登录、主机登记、授权、会话与 agent 都在这里。
+// 主机上下文（本机 + 执行器主机）在同一进程内运行，客户端只连工作站并用 /h/<hostId> 访问主机。
+import { createHash, randomUUID } from 'node:crypto';
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
@@ -11,18 +12,6 @@ import fastifyStatic from '@fastify/static';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { HostTunnel } from './tunnel.js';
-import {
-  TUNNEL_PATH,
-  TUNNEL_VERSION,
-  b64u,
-  isValidHostId,
-  parseJson,
-  registrationMessage,
-  unb64u,
-  type TunnelChallenge,
-  type TunnelHello,
-} from './wire.js';
 import type {
   ListModelsInput,
   Profile,
@@ -41,7 +30,7 @@ import type {
   WorkstationRegisterInput,
 } from '@tandem/protocol';
 import { AccountsStore } from '../accounts/store.js';
-import { effectiveProfile, readJson } from '../config.js';
+import { effectiveProfile, loadHostConfig, readJson } from '../config.js';
 import { IS_DEBUG_FLAVOR } from '../flavor.js';
 import { groupUnavailableError, orderedAvailableKeys, profileWithKey } from '../key-rotation.js';
 import { listModels as fetchModelList, testProfile as testProviderProfile } from '../providers/index.js';
@@ -52,15 +41,14 @@ import { ExecutorHub } from '../executor/hub.js';
 import { WS_PATH as EXECUTOR_PATH } from '../executor/wire.js';
 import { AccountProfileStore } from './profiles.js';
 import { streamAccountModel, WorkstationUsageStore } from './modelProxy.js';
-import { verifyHostRequest } from './hostAuth.js';
 import { BalanceService } from './balance.js';
 import { parseProfileInput } from '../routes/profiles.js';
+import { LocalHost, LOCAL_HOST_SUBDIR } from './local.js';
+import type { WorkstationModelBridge } from './bridge.js';
+import type { HostContext } from './context.js';
+import { isLoopbackAddress } from '../util/net.js';
 
 const MAX_FRAME = 40 * 1024 * 1024;
-const HELLO_TIMEOUT_MS = 10_000;
-const TUNNEL_PING_MS = 20_000;
-const MAX_STREAMS = 256;
-const BYTES_PER_SEC = 16 * 1024 * 1024;
 
 export interface WorkstationOptions {
   /** accounts.json 所在目录（工作站独立数据目录）。 */
@@ -79,6 +67,8 @@ export interface WorkstationModelService {
 export interface WorkstationHandle {
   app: FastifyInstance;
   store: AccountsStore;
+  /** 本机主机上下文的 hostId（「添加这台机器」成功后出现在主机列表）。 */
+  localHostId: string;
   /** 账号级模型账号（加密存储）。 */
   profiles: AccountProfileStore;
   /** 按账号的模型用量记账。 */
@@ -129,14 +119,6 @@ function accountOf(req: FastifyRequest): WsAccount {
   return (req as FastifyRequest & { wsAccount: WsAccount }).wsAccount;
 }
 
-function ed25519Public(raw: Uint8Array) {
-  return createPublicKey({ key: { kty: 'OKP', crv: 'Ed25519', x: b64u(raw) }, format: 'jwk' });
-}
-
-function shortId(hostId: string): string {
-  return `${hostId.slice(0, 8)}…`;
-}
-
 const EXECUTOR_TARGET = /^(linux|darwin|windows)-(amd64|arm64)$/;
 
 /** 执行器构建产物目录（scripts/build-executor.mjs 的输出）。 */
@@ -170,12 +152,15 @@ export function executorDigests(dir = executorDistDir()): Record<string, string>
 export function createWorkstation(options: WorkstationOptions): WorkstationHandle {
   const hostId =
     options.hostId ?? `ws-${createHash('sha256').update(path.resolve(options.home)).digest('hex').slice(0, 24)}`;
+  // 本机主机上下文的数据目录里已有（或生成）稳定的 hostId；列表里据此标记「本机」。
+  const localHostId = loadHostConfig(path.join(options.home, LOCAL_HOST_SUBDIR)).hostId;
   const store = new AccountsStore({
     home: options.home,
     hostId,
     hostName: options.hostName ?? os.hostname(),
     ...(options.version ? { version: options.version } : {}),
     platform: process.platform,
+    localHostId,
   });
   const profiles = new AccountProfileStore(options.home);
   const usage = new WorkstationUsageStore(options.home);
@@ -241,6 +226,19 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
     },
   };
 
+  // 主机上下文的 agent 直接调用账号级模型账号（进程内，不经签名 HTTP 代理）。
+  const modelBridge: WorkstationModelBridge = {
+    snapshot: (accountId) => snapshotFor(accountId),
+    importProfiles: async (accountId, incoming) => importProfilesInto(accountId, incoming),
+    runProxy: (accountId, hostId, body, emit, signal) =>
+      streamAccountModel({ profiles, usage, accountId, hostId, rotation }, { ...body, accountId }, emit, signal),
+    listModels: (accountId, input) => modelService.listModels(accountId, input),
+    testProfile: (accountId, profileId, groupId, keyId) =>
+      modelService.testProfile(accountId, profileId, groupId, keyId),
+    publicProfiles: (accountId) => profiles.publicList(accountId),
+  };
+  const local = new LocalHost(options.home, modelBridge, options.version);
+
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 * 1024 });
   // 调试版：自动创建本地测试账号并挂上仅回环可用的免密登录；发布构建不会加载这个模块。
   // 回归/联调用 TANDEM_DEBUG_ACCOUNT=0 模拟发布语义（只影响 debug 构建）。
@@ -253,9 +251,6 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
           console.warn('[workstation] 调试初始化失败:', (err as Error).message);
         })
     : Promise.resolve();
-  const tunnels = new Map<string, HostTunnel>();
-  const clientWss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME });
-  const tunnelWss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME });
   const executorWss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME });
   const selfUrl = (): string => {
     const address = app.server.address();
@@ -265,7 +260,7 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
     const host = wildcard ? '127.0.0.1' : bound.includes(':') ? `[${bound}]` : bound;
     return `http://${host}:${port}`;
   };
-  const executors = new ExecutorHub({ home: options.home, store, selfUrl });
+  const executors = new ExecutorHub({ home: options.home, store, selfUrl, modelBridge });
 
   void app.register(cors, {
     origin: true,
@@ -278,7 +273,7 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
   app.removeAllContentTypeParsers();
   app.addContentTypeParser('*', (req, payload, done) => {
     const url = (req.raw.url ?? '').split('?')[0] ?? '';
-    if (url.startsWith('/h/') || url === TUNNEL_PATH) return done(null);
+    if (url.startsWith('/h/')) return done(null);
     const chunks: Buffer[] = [];
     payload.on('data', (chunk: Buffer) => chunks.push(chunk));
     payload.on('end', () => {
@@ -338,7 +333,11 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
     return { port, urls: [...urls] };
   };
 
-  app.get('/healthz', async () => ({ ok: true, hostsOnline: tunnels.size, initialized: store.mode() === 'center' }));
+  app.get('/healthz', async () => ({
+    ok: true,
+    hostsOnline: (hostOnline(local.hostId) ? 1 : 0) + extraContexts.size + executors.onlineCount(),
+    initialized: store.mode() === 'center',
+  }));
 
   // 执行器二进制（无压缩）；安装脚本用嵌入的 sha256 校验。
   app.get('/executor/:target', async (req, reply) => {
@@ -460,16 +459,23 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
 
   app.post('/api/workstation/hosts/bind-code', async (req) => store.createHostBindCode(accountOf(req).account.id));
 
+  // 「添加这台机器」：把运行工作站的这台机器登记为当前账号的主机（仅本机回环可操作）。
+  app.post('/api/workstation/hosts/local', async (req, reply) => {
+    if (store.mode() !== 'center') return reply.code(404).send({ error: '工作站尚未初始化' });
+    if (!isLoopbackAddress(req.socket.remoteAddress)) {
+      return reply.code(403).send({ error: '只能在工作站这台机器上添加本机主机' });
+    }
+    try {
+      if (!local.context) await local.start(selfUrl());
+      return await local.register(store, accountOf(req).account.id, selfUrl());
+    } catch (err) {
+      return reply.code((err as { statusCode?: number }).statusCode ?? 500).send({ error: (err as Error).message });
+    }
+  });
+
   app.delete('/api/workstation/hosts/:id', async (req, reply) => {
     const id = decodeURIComponent((req.params as { id: string }).id);
     store.removeHostByOwner(id, accountOf(req).account.id);
-    // 移除后立即断开该主机的隧道；主机下次重连会因未登记被拒绝。
-    const tunnel = tunnels.get(id);
-    if (tunnel) {
-      tunnels.delete(id);
-      tunnel.closeAll('主机已被主人移除');
-      tunnel.socket.close(4404, '主机已被主人移除');
-    }
     return reply.code(204).send();
   });
 
@@ -593,36 +599,8 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
     return result;
   });
 
-  // 主机签名：同步账号元数据（不含 Key）、迁移旧数据、模型代理与模型列表/测试。
-  const signedBody = (body: unknown): Buffer => Buffer.from(JSON.stringify(body ?? {}));
-  const signed = (req: FastifyRequest, expectedAccountId?: string) => {
-    const body = req.body ?? {};
-    let verified: ReturnType<typeof verifyHostRequest>;
-    try {
-      verified = verifyHostRequest(store, req, signedBody(body));
-    } catch (err) {
-      console.warn('[workstation] 主机签名请求被拒:', (err as Error).message, req.raw.url);
-      throw err;
-    }
-    const declared = (body as { accountId?: unknown }).accountId;
-    if (typeof declared === 'string' && declared && declared !== verified.accountId) {
-      throw Object.assign(new Error('请求体的账号与签名不一致'), { statusCode: 403 });
-    }
-    if (expectedAccountId && verified.accountId !== expectedAccountId) {
-      throw Object.assign(new Error('账号不一致'), { statusCode: 403 });
-    }
-    return { ...verified, body };
-  };
-
-  app.post('/api/workstation/host/profiles/snapshot', async (req) => {
-    const { accountId } = signed(req);
-    return snapshotFor(accountId);
-  });
-
-  app.post('/api/workstation/host/profiles/import', async (req, reply) => {
-    const body = req.body as { accountId?: unknown; hostName?: unknown; profiles?: unknown };
-    const { accountId } = signed(req, typeof body.accountId === 'string' ? body.accountId : undefined);
-    const incoming = Array.isArray(body.profiles) ? (body.profiles as WorkspaceProfileImportItem[]) : [];
+  /** 账号级模型账号的历史导入（主机上下文不再经过 HTTP，由 bridge 调用）。 */
+  const importProfilesInto = (accountId: string, incoming: WorkspaceProfileImportItem[]): WorkspaceProfileImportResult => {
     const stored: StoredProfile[] = [];
     for (const item of incoming) {
       if (!item || typeof item !== 'object' || !item.name || !item.kind) continue;
@@ -637,71 +615,31 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
       });
     }
     const result = profiles.importStored(accountId, stored);
-    const out: WorkspaceProfileImportResult = { ...result, profiles: profiles.publicList(accountId) };
-    return out;
-  });
+    return { ...result, profiles: profiles.publicList(accountId) };
+  };
 
-  app.post('/api/workstation/host/models', async (req, reply) => {
-    const { accountId, body } = signed(req);
-    const input = body as Partial<ListModelsInput> & { profileId?: string; groupId?: string };
-    if (!input.profileId) return reply.code(400).send({ error: 'profileId 不能为空' });
-    const stored = profiles.get(accountId, input.profileId);
-    if (!stored) return reply.code(404).send({ error: '账号不存在' });
-    return modelService.listModels(accountId, input as ListModelsInput);
-  });
+  // ---------- 主机转发（/h/<hostId>） ----------
+  // 所有主机上下文都在本进程内，只监听回环随机端口；工作站把它们直接转给客户端。
+  const extraContexts = new Map<string, HostContext>();
+  const contextById = (hostId: string): HostContext | undefined => {
+    if (hostId === local.hostId) return local.context;
+    return extraContexts.get(hostId) ?? executors.context(hostId);
+  };
+  const hostOnline = (hostId: string): boolean => {
+    if (hostId === local.hostId) return !!local.context;
+    if (extraContexts.has(hostId)) return true;
+    return executors.isLive(hostId);
+  };
 
-  app.post('/api/workstation/host/profile-test', async (req, reply) => {
-    const { accountId, body } = signed(req);
-    const input = body as { profileId?: string; groupId?: string; keyId?: string };
-    if (!input.profileId) return reply.code(400).send({ error: 'profileId 不能为空' });
-    return modelService.testProfile(accountId, input.profileId, input.groupId, input.keyId);
-  });
-
-  app.post('/api/workstation/host/model-proxy', async (req, reply) => {
-    const { accountId, hostId: signedHostId, body } = signed(req);
-    const input = body as unknown as WorkspaceModelProxyInput;
-    if (!input.profileId || !input.model) {
-      return reply.code(400).send({ error: 'profileId 与 model 不能为空' });
-    }
-    const controller = new AbortController();
-    reply.hijack();
-    const res = reply.raw;
-    res.writeHead(200, {
-      'content-type': 'application/x-ndjson; charset=utf-8',
-      'cache-control': 'no-store',
-      connection: 'keep-alive',
-    });
-    const write = (event: WorkspaceModelProxyEvent) => {
-      if (!res.writableEnded) res.write(`${JSON.stringify(event)}\n`);
-    };
-    // 客户端（主机）断开或取消：中止上游请求并释放 Key 轮询占位。
-    // 注意不能用 req.raw 的 close：请求体读完就会触发，会把正常请求当成取消。
-    res.on('close', () => {
-      if (!res.writableEnded) controller.abort();
-    });
-    try {
-      await streamAccountModel(
-        { profiles, usage, accountId, hostId: signedHostId, rotation },
-        { ...input, accountId },
-        write,
-        controller.signal,
-      );
-    } catch (err) {
-      console.warn('[workstation] 模型代理失败:', (err as Error).message);
-      if (!controller.signal.aborted) write({ type: 'error', message: truncateEnd((err as Error).message, 800) });
-    } finally {
-      if (!res.writableEnded) res.end();
-    }
-  });
-
-  // ---------- 隧道 ----------
   const parseClientUrl = (raw: string): { hostId: string; url: string } | null => {
     const match = /^\/h\/([^/?#]+)(\/[^#]*|\?[^#]*)?$/.exec(raw);
-    if (!match || !isValidHostId(match[1])) return null;
+    if (!match || !/^[A-Za-z0-9_-]{8,64}$/.test(match[1]!)) return null;
     let rest = match[2] ?? '/';
     if (rest.startsWith('?')) rest = `/${rest}`;
-    return { hostId: match[1], url: rest };
+    return { hostId: match[1]!, url: rest };
   };
+
+  const HOP_BY_HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 
   const proxy = (req: FastifyRequest, reply: import('fastify').FastifyReply): void => {
     reply.hijack();
@@ -712,114 +650,85 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
       res.writeHead(status, {
         'content-type': 'application/json; charset=utf-8',
         'content-length': Buffer.byteLength(body),
-        'access-control-allow-origin': '*',
       });
       res.end(body);
     };
     const target = parseClientUrl(raw.url ?? '');
     if (!target) return fail(404, 'Not Found');
-    if (!target.url.startsWith('/_e2e')) return fail(403, '工作站只转发端到端加密连接（/_e2e）');
-    const tunnel = tunnels.get(target.hostId);
-    if (!tunnel) return fail(502, '主机不在线');
-    tunnel.proxyHttp(raw, res, target.url);
+    const ctx = contextById(target.hostId);
+    if (!ctx || !hostOnline(target.hostId)) return fail(502, '主机不在线');
+    const headers: Record<string, string | string[]> = {};
+    for (const [key, value] of Object.entries(raw.headers)) {
+      if (value === undefined || HOP_BY_HOP.has(key.toLowerCase())) continue;
+      headers[key] = value;
+    }
+    headers.host = `127.0.0.1:${ctx.port}`;
+    if (typeof raw.headers.host === 'string') headers['x-forwarded-host'] = raw.headers.host;
+    headers['x-forwarded-prefix'] = `/h/${target.hostId}`;
+    const upstream = http.request(
+      { host: '127.0.0.1', port: ctx.port, method: raw.method, path: target.url, headers },
+      (up) => {
+        res.writeHead(up.statusCode ?? 502, up.headers);
+        up.pipe(res);
+      },
+    );
+    upstream.on('error', () => {
+      if (!res.headersSent) fail(502, '主机不在线');
+      else res.destroy();
+    });
+    raw.pipe(upstream);
   };
   app.all('/h/:hostId', proxy);
   app.all('/h/:hostId/*', proxy);
-
-  const handleTunnel = (ws: WebSocket): void => {
-    const challenge = randomBytes(32).toString('base64url');
-    let hostId: string | null = null;
-    let tunnel: HostTunnel | null = null;
-    const timer = setTimeout(() => ws.close(4408, '握手超时'), HELLO_TIMEOUT_MS);
-    ws.send(JSON.stringify({ type: 'challenge', v: TUNNEL_VERSION, nonce: challenge } satisfies TunnelChallenge));
-    ws.once('message', (data, isBinary) => {
-      clearTimeout(timer);
-      try {
-        if (isBinary) throw new Error('hello 必须是文本帧');
-        const hello = parseJson<TunnelHello>(Buffer.from(data as Buffer));
-        if (hello.type !== 'hello' || !isValidHostId(hello.hostId)) throw new Error('hello 无效');
-        const registered = store.hostPublicKey(hello.hostId);
-        if (!registered) {
-          ws.close(4404, '主机未登记：请先在客户端添加主机');
-          return;
-        }
-        if (registered !== hello.pub) {
-          ws.close(4403, '主机公钥与登记不一致');
-          return;
-        }
-        const pub = unb64u(hello.pub);
-        if (pub.length !== 32) throw new Error('公钥长度无效');
-        const ok = verify(null, registrationMessage(challenge, hello.hostId), ed25519Public(pub), unb64u(hello.sig));
-        if (!ok) {
-          ws.close(4401, '签名无效');
-          return;
-        }
-        hostId = hello.hostId;
-      } catch (err) {
-        ws.close(4400, (err as Error).message.slice(0, 100));
-        return;
-      }
-      const previous = tunnels.get(hostId);
-      tunnel = new HostTunnel(hostId, ws, { maxStreams: MAX_STREAMS, bytesPerSec: BYTES_PER_SEC }, clientWss);
-      tunnels.set(hostId, tunnel);
-      if (previous) {
-        previous.closeAll('主机已在别处重连');
-        previous.socket.close(4409, '被同一公钥的新连接取代');
-      }
-      store.markHostOnline(hostId, executors.isLive(hostId));
-      ws.send(JSON.stringify({ type: 'ready' }));
-      console.log(`[workstation] 主机上线 ${shortId(hostId)}（在线 ${tunnels.size}）`);
-    });
-
-    let alive = true;
-    ws.on('pong', () => (alive = true));
-    const pinger = setInterval(() => {
-      if (!alive) {
-        ws.terminate();
-        return;
-      }
-      alive = false;
-      if (ws.readyState === WebSocket.OPEN) ws.ping();
-    }, TUNNEL_PING_MS);
-    pinger.unref();
-
-    ws.on('close', () => {
-      clearTimeout(timer);
-      clearInterval(pinger);
-      if (hostId && tunnel) {
-        tunnel.closeAll('主机已断开');
-        if (tunnels.get(hostId) === tunnel) {
-          tunnels.delete(hostId);
-          store.markHostOnline(hostId, false);
-          console.log(`[workstation] 主机下线 ${shortId(hostId)}（在线 ${tunnels.size}）`);
-        }
-      }
-    });
-    ws.on('error', () => ws.terminate());
-  };
 
   const refuse = (socket: Duplex, status: string): void => {
     socket.write(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
     socket.destroy();
   };
 
+  const proxyWebSocket = (req: IncomingMessage, socket: Duplex, head: Buffer, target: { hostId: string; url: string }): void => {
+    const ctx = contextById(target.hostId);
+    if (!ctx || !hostOnline(target.hostId)) return refuse(socket, '502 Bad Gateway');
+    const headers: Record<string, string | string[]> = {};
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (value === undefined || HOP_BY_HOP.has(key.toLowerCase())) continue;
+      headers[key] = value;
+    }
+    headers.host = `127.0.0.1:${ctx.port}`;
+    if (typeof req.headers.host === 'string') headers['x-forwarded-host'] = req.headers.host;
+    headers['x-forwarded-prefix'] = `/h/${target.hostId}`;
+    headers.connection = 'Upgrade';
+    headers.upgrade = req.headers.upgrade ?? 'websocket';
+    const upstream = http.request({ host: '127.0.0.1', port: ctx.port, method: 'GET', path: target.url, headers });
+    upstream.on('upgrade', (up, upSocket, upHead) => {
+      const lines = [`HTTP/1.1 101 Switching Protocols`];
+      for (let i = 0; i < up.rawHeaders.length; i += 2) lines.push(`${up.rawHeaders[i]}: ${up.rawHeaders[i + 1]}`);
+      socket.write(`${lines.join('\r\n')}\r\n\r\n`);
+      if (upHead.length) socket.write(upHead);
+      if (head.length) upSocket.write(head);
+      upSocket.pipe(socket);
+      socket.pipe(upSocket);
+      upSocket.on('error', () => socket.destroy());
+      socket.on('error', () => upSocket.destroy());
+    });
+    upstream.on('response', (up) => {
+      up.resume();
+      refuse(socket, `${up.statusCode ?? 502} ${up.statusMessage ?? ''}`.trim());
+    });
+    upstream.on('error', () => refuse(socket, '502 Bad Gateway'));
+    upstream.end();
+  };
+
   app.server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     socket.on('error', () => socket.destroy());
     const rawUrl = req.url ?? '';
-    if (rawUrl.split('?')[0] === TUNNEL_PATH) {
-      tunnelWss.handleUpgrade(req, socket, head, (ws) => handleTunnel(ws));
-      return;
-    }
     if (rawUrl.split('?')[0] === EXECUTOR_PATH) {
       executorWss.handleUpgrade(req, socket, head, (ws) => executors.accept(ws));
       return;
     }
     const target = parseClientUrl(rawUrl);
     if (!target) return refuse(socket, '404 Not Found');
-    if (!target.url.startsWith('/_e2e')) return refuse(socket, '403 Forbidden');
-    const tunnel = tunnels.get(target.hostId);
-    if (!tunnel) return refuse(socket, '502 Bad Gateway');
-    tunnel.proxyWebSocket(req, socket, head, target.url, () => undefined);
+    proxyWebSocket(req, socket, head, target);
   });
 
   // ---------- 静态 Web UI ----------
@@ -830,7 +739,7 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
   }
   app.setNotFoundHandler((req, reply) => {
     const url = req.raw.url ?? '';
-    if (!hasWeb || req.method !== 'GET' || url.startsWith('/api') || url.startsWith('/h/') || url === TUNNEL_PATH) {
+    if (!hasWeb || req.method !== 'GET' || url.startsWith('/api') || url.startsWith('/h/')) {
       return reply.code(404).send({ error: 'Not Found' });
     }
     return reply.sendFile('index.html');
@@ -839,6 +748,7 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
   return {
     app,
     store,
+    localHostId,
     profiles,
     usage,
     modelService,
@@ -846,30 +756,39 @@ export function createWorkstation(options: WorkstationOptions): WorkstationHandl
     listen: async (port, host) => {
       await debugReady;
       await app.listen({ port, host });
+      const self = selfUrl();
       await executors.restore();
+      await local.start(self).catch((err: unknown) => {
+        console.warn('[workstation] 本机主机上下文启动失败:', (err as Error).message);
+      });
+      await local.adopt(store, self).catch(() => undefined);
+      if (debugAccountEnabled) {
+        const mod = await import('../debug/hosts.js').catch(() => undefined);
+        await mod
+          ?.ensureDebugHosts({
+            store,
+            selfUrl: self,
+            local,
+            extraContexts,
+            modelBridge,
+            home: options.home,
+            ...(options.version ? { version: options.version } : {}),
+          })
+          .catch((err: unknown) => console.warn('[workstation] 调试主机初始化失败:', (err as Error).message));
+      }
       const info = addressInfo();
       return info;
     },
     close: async () => {
-      for (const tunnel of tunnels.values()) tunnel.socket.close(1001, '工作站关闭');
+      for (const ctx of extraContexts.values()) await ctx.close().catch(() => undefined);
+      extraContexts.clear();
       profiles.dispose();
       store.close();
+      await local.close().catch(() => undefined);
       await executors.close();
       await app.close();
     },
   };
-}
-
-/** 读取已存在的工作站数据（用于判断是否已初始化）。 */
-export function readWorkstationMeta(home: string): { initialized: boolean } {
-  const raw = readJson<{ mode?: string }>(path.join(home, 'accounts.json'));
-  return { initialized: raw?.mode === 'center' };
-}
-
-export { hostIdFromHome };
-
-function hostIdFromHome(home: string): string {
-  return `ws-${createHash('sha256').update(path.resolve(home)).digest('hex').slice(0, 24)}`;
 }
 
 export type { WorkstationHostClaimResult };

@@ -5,31 +5,22 @@
  * 命令面板搜不到、/api/demo 路由不存在、关于页显示发布版。
  *
  * 前置：node scripts/build-flavor.mjs release
- * 使用临时 Host（TANDEM_HOME=/tmp/...），不碰 ~/.tandem。
+ * 使用临时工作站（TANDEM_HOME=/tmp/...），不碰 ~/.tandem。
  */
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { randomUUID } from 'node:crypto'
 import { chromium } from 'playwright'
 
 const ROOT = path.resolve(new URL('..', import.meta.url).pathname)
 const HOST_ENTRY = path.join(ROOT, 'packages/server/dist/cli.js')
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-function startHost({ home, token, hostId }) {
+function startWorkstation({ home }) {
   const configDir = path.join(home, '.tandem')
   mkdirSync(path.join(configDir, 'sessions'), { recursive: true })
-  writeFileSync(
-    path.join(configDir, 'config.json'),
-    JSON.stringify(
-      { hostId, token, idleTimeoutSec: 180, resumeOnRestart: 'auto', defaultDelegation: 'less' },
-      null,
-      2,
-    ),
-  )
   const child = spawn(process.execPath, [HOST_ENTRY, '--port', '0'], {
     cwd: ROOT,
     env: {
@@ -37,6 +28,7 @@ function startHost({ home, token, hostId }) {
       HOME: home,
       TANDEM_HOME: configDir,
       CODEX_HOME: path.join(home, '.codex'),
+      TANDEM_DEBUG_ACCOUNT: '0',
       NO_PROXY: '127.0.0.1,localhost',
       no_proxy: '127.0.0.1,localhost',
     },
@@ -53,9 +45,9 @@ function startHost({ home, token, hostId }) {
     stderr += chunk
   })
   const ready = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Host 启动超时\n${stdout}\n${stderr}`)), 20_000)
+    const timer = setTimeout(() => reject(new Error(`工作站启动超时\n${stdout}\n${stderr}`)), 20_000)
     const check = () => {
-      const match = stdout.match(/访问:\s+http:\/\/127\.0\.0\.1:(\d+)\/\?token=/)
+      const match = stdout.match(/访问:\s+http:\/\/127\.0\.0\.1:(\d+)/)
       if (match) {
         clearTimeout(timer)
         resolve(Number(match[1]))
@@ -64,7 +56,7 @@ function startHost({ home, token, hostId }) {
     child.stdout.on('data', check)
     child.once('exit', (code) => {
       clearTimeout(timer)
-      reject(new Error(`Host 提前退出（${code}）\n${stdout}\n${stderr}`))
+      reject(new Error(`工作站提前退出（${code}）\n${stdout}\n${stderr}`))
     })
   })
   return { child, ready, logs: () => `${stdout}\n${stderr}` }
@@ -72,27 +64,20 @@ function startHost({ home, token, hostId }) {
 
 async function main() {
   const home = mkdtempSync(path.join(os.tmpdir(), 'tandem-release-'))
-  const token = randomUUID()
-  const hostId = randomUUID()
-  const host = startHost({ home, token, hostId })
+  const host = startWorkstation({ home })
   let browser
   try {
     const port = await host.ready
     const base = `http://127.0.0.1:${port}`
 
-    const demoRes = await fetch(`${base}/api/demo`, {
-      headers: { authorization: `Bearer ${token}` },
-    })
-    assert.equal(demoRes.status, 404, '/api/demo 在发布版应返回 404')
-    const replayRes = await fetch(`${base}/api/demo/scenarios/subagents/replay`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}` },
-    })
-    assert.equal(replayRes.status, 404, '/api/demo/scenarios/* 在发布版应返回 404')
+    const demoRes = await fetch(`${base}/api/demo`)
+    assert.ok([404, 401].includes(demoRes.status), '/api/demo 在发布版应不可用')
+    const replayRes = await fetch(`${base}/api/demo/scenarios/subagents/replay`, { method: 'POST' })
+    assert.ok([404, 401].includes(replayRes.status), '/api/demo/scenarios/* 在发布版应不可用')
 
     browser = await chromium.launch({ headless: true })
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
-    await page.goto(`${base}/?token=${token}`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' })
 
     // 登录门：发布版打开先看到登录/注册页，没有任何调试登录入口，也不会自动登录。
     await page.locator('[data-testid="login-gate"]').waitFor({ state: 'visible', timeout: 20_000 })
@@ -188,7 +173,7 @@ async function main() {
     await sleep(200)
 
     // 手机预览查询参数在发布版不生效（不渲染模拟顶栏）。
-    await page.goto(`${base}/?token=${token}&mobilePreview=1`, {
+    await page.goto(`${base}/?mobilePreview=1`, {
       waitUntil: 'domcontentloaded',
     })
     await page.locator('[aria-label="消息输入框"]').first().waitFor({ state: 'visible', timeout: 20_000 })
