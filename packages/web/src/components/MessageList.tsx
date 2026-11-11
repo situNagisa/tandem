@@ -653,16 +653,10 @@ function MessageListInner({
             : document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId!)}"]`)
         const el = find()
         if (!el) return
-        const row = el.closest<HTMLElement>('.msg-row') ?? el
         if (toolUseId) {
           el.querySelector<HTMLElement>('.tool-row[aria-expanded="false"]')?.click()
         }
         el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-        row.classList.remove('msg-jump-hit')
-        // 强制重启动画：连续搜索不同命中时也能看见高亮
-        void row.offsetWidth
-        row.classList.add('msg-jump-hit')
-        window.setTimeout(() => row.classList.remove('msg-jump-hit'), 2800)
         // 目标上下的 content-visibility 行会在滚动中才按实际高度展开，平滑滚动按开始时的
         // 布局落点会偏一截（会话图连点后目标不居中）。布局稳定后按实际位置补正到居中。
         for (const timer of settleTimers.current) window.clearTimeout(timer)

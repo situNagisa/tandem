@@ -3082,7 +3082,7 @@ async function main() {
       assert.equal(afterWheel.value, before.value, '滚轮滚动大纲时当前轮被改变了')
       assert.equal(afterWheel.count, before.count, '滚轮滚动大纲时轮次胶囊被改变了')
 
-      // 预览滚动到最早几轮后点其中一行：应先加载该段消息，再滚动并高亮。
+      // 预览滚动到最早几轮后点其中一行：应先加载该段消息，再滚动定位（不加高亮）。
       for (let i = 0; i < 420; i++) await page.mouse.wheel(0, -100)
       await page.waitForTimeout(800)
       const row = await page.evaluate(() => {
@@ -3098,10 +3098,16 @@ async function main() {
       await page.mouse.click(row.x, row.y)
       await page.locator(`[data-turn-id="hu${row.pos}"]`).waitFor({ state: 'attached', timeout: 20_000 })
       await page.waitForFunction(
-        (id) => document.querySelector(`[data-turn-id="${id}"]`)?.closest('.msg-row')?.classList.contains('msg-jump-hit'),
+        (id) => {
+          const el = document.querySelector(`[data-turn-id="${id}"]`)
+          if (!el) return false
+          const rect = el.getBoundingClientRect()
+          return rect.bottom > 0 && rect.top < window.innerHeight
+        },
         `hu${row.pos}`,
         { timeout: 5_000 },
       )
+      assert.equal(await page.locator('.msg-jump-hit').count(), 0, '跳转后消息仍被高亮')
       const jumped = await read()
       assert.match(jumped.count, new RegExp(`第 ${row.pos} / 320 轮`), '点击大纲后没有定位到目标轮')
       await page.screenshot({ path: '/tmp/fb10-after/01.png' })
@@ -3259,14 +3265,16 @@ async function main() {
         .locator(`[data-turn-id="hu${target}"]`)
         .waitFor({ state: 'attached', timeout: 20_000 })
       await page.waitForFunction(
-        (id) =>
-          document
-            .querySelector(`[data-turn-id="${id}"]`)
-            ?.closest('.msg-row')
-            ?.classList.contains('msg-jump-hit'),
+        (id) => {
+          const el = document.querySelector(`[data-turn-id="${id}"]`)
+          if (!el) return false
+          const rect = el.getBoundingClientRect()
+          return rect.bottom > 0 && rect.top < window.innerHeight
+        },
         `hu${target}`,
         { timeout: 5_000 },
       )
+      assert.equal(await page.locator('.msg-jump-hit').count(), 0, '跳转到未加载轮后消息仍被高亮')
       assert.ok(row, '点击未加载轮没有跳转到位')
       await page.screenshot({ path: '/tmp/fb11-after/05-rail.png' })
     })
@@ -9078,15 +9086,14 @@ async function main() {
       )
       assert.match(detailText, /打开会话/, '展开明细后没有打开会话入口')
 
-      // 明细里的命令也可点：跳到会话中对应的工具卡并高亮。
+      // 明细里的命令也可点：跳到会话中对应的工具卡并定位。
       const firstDetail = details.getByTestId('aggregate-detail').first()
       await firstDetail.click()
       await page.waitForFunction(() => window.location.hash.includes('/s/inboxmulti'), null, {
         timeout: 15_000,
       })
-      await page.waitForFunction(() => !!document.querySelector('.msg-jump-hit'), null, {
-        timeout: 15_000,
-      })
+      await page.locator('[data-tool-use-id]').first().waitFor({ state: 'visible', timeout: 15_000 })
+      assert.equal(await page.locator('.msg-jump-hit').count(), 0, '跳转后工具卡仍被高亮')
       assert.equal(
         await page.locator('.tool-card, [data-tool-use-id]').first().isVisible(),
         true,
@@ -9392,7 +9399,7 @@ async function main() {
       },
     })
 
-    desktop('全文搜索：命中片段、打开会话并高亮消息', async (page) => {
+    desktop('全文搜索：命中片段、打开会话并定位消息', async (page) => {
       await page.keyboard.press('Control+k')
       const input = page.getByRole('textbox', { name: '搜索会话、命令与设置' })
       await input.waitFor({ state: 'visible', timeout: 5_000 })
@@ -9415,13 +9422,16 @@ async function main() {
         timeout: 10_000,
       })
       await page.waitForFunction(
-        () =>
-          document
-            .querySelector('[data-message-id="s2"]')
-            ?.classList.contains('msg-jump-hit') === true,
+        () => {
+          const el = document.querySelector('[data-message-id="s2"]')
+          if (!el) return false
+          const rect = el.getBoundingClientRect()
+          return rect.bottom > 0 && rect.top < window.innerHeight
+        },
         null,
         { timeout: 12_000 },
       )
+      assert.equal(await page.locator('.msg-jump-hit').count(), 0, '搜索跳转后消息仍被高亮')
     })
 
     desktop('快捷键：外观页由命令注册表生成、自定义生效、冲突提示', async (page) => {
@@ -11264,7 +11274,8 @@ async function main() {
       await showTop()
       await graph.locator('div[data-kind="turn"]').first().click()
       await breadcrumb.waitFor({ state: 'detached', timeout: 10_000 })
-      await page.locator('.msg-jump-hit').first().waitFor({ state: 'visible', timeout: 10_000 })
+      await page.locator('[data-turn-id]').first().waitFor({ state: 'visible', timeout: 10_000 })
+      assert.equal(await page.locator('.msg-jump-hit').count(), 0, '从子代理视图返回后消息仍被高亮')
 
       // 卡片右上角可全高展开，顶部返回恢复面板；全高页头不再有汇总。
       await group.locator('[aria-label="全高显示会话图"]').click()
