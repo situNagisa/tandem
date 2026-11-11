@@ -1187,13 +1187,6 @@ export const workstationApi = {
       embedded: { running: boolean; urls: string[]; port?: number }
       join: null | { url: string; workspaceName: string; fingerprint: string; connected: boolean }
     }>(h, '/api/workstation/local/status'),
-  enableLocal: (h: HostConfig) =>
-    request<{ urls: string[]; port: number; initialized: boolean }>(h, '/api/workstation/local/enable', {
-      method: 'POST',
-    }),
-  join: (h: HostConfig, input: { workstationUrl: string; code: string }) =>
-    request<WorkspaceStatus>(h, '/api/workstation/join', { method: 'POST', body: JSON.stringify(input) }),
-  leave: (h: HostConfig) => request<void>(h, '/api/workstation/leave', { method: 'POST' }),
 }
 
 /** 导入外部会话时可选的目标账号 / 分组 / 模型；不填则沿用原软件上下文。 */
