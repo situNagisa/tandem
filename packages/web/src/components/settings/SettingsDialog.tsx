@@ -52,7 +52,8 @@ const PAGE_ICONS: Record<SettingsPageId, typeof Server> = {
   agent: Bot,
   schedules: CalendarClock,
   memory: Brain,
-  'team-shares': Users,
+  workstation: Users,
+  shares: Share2,
   appearance: Palette,
   notifications: Bell,
   voice: Mic,
@@ -71,11 +72,13 @@ export function SettingsDialog() {
   const role = useAppStore((s) =>
     s.activeHostId ? s.runtimes[s.activeHostId]?.team?.role : undefined,
   )
+  const workspaceRole = useAppStore((s) => s.account?.account.role)
+  const workspaceAdmin = workspaceRole === 'admin' || workspaceRole === 'owner'
   const focusSetting = useUiStore((s) => s.focusSetting)
   const focus = useUiStore((s) => s.settingsFocus)
   const setAboutOpen = useUiStore((s) => s.setAboutOpen)
   // 成员连接只保留客户端自己的设置页；Host 级设置由服务端 403 兜底。
-  const memberTabs = new Set<SettingsTab>(['hosts', 'accounts', 'appearance', 'notifications'])
+  const memberTabs = new Set<SettingsTab>(['hosts', 'appearance', 'notifications'])
   const visiblePages = useMemo(
     () =>
       SETTINGS_PAGES.map((page) => ({
@@ -83,9 +86,11 @@ export function SettingsDialog() {
         tabs:
           role && role !== 'owner'
             ? page.tabs.filter((item) => memberTabs.has(item))
-            : page.tabs,
+            : page.id === 'workstation' && !workspaceAdmin
+              ? []
+              : page.tabs,
       })).filter((page) => page.tabs.length > 0),
-    [role],
+    [role, workspaceAdmin],
   )
   const visiblePageIds = useMemo(
     () => new Set(visiblePages.map((page) => page.id)),
