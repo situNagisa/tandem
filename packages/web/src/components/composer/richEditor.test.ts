@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseEditor } from './richEditor'
+import { parseEditor, registerToken, tokenDeleteRange } from './richEditor'
 
 describe('输入框 Markdown 渲染模型', () => {
   it('代码围栏与代码行使用等宽样式层，原文不变', () => {
@@ -31,5 +31,41 @@ describe('输入框 Markdown 渲染模型', () => {
       '`code`',
     ])
     expect(line.runs.map((run) => run.text).join('')).toBe(source)
+  })
+
+  it('已选路径只显示名字，模型长度保留完整路径', () => {
+    registerToken('src/hello.ts')
+    registerToken('src/')
+    const source = '看 src/hello.ts 和 src/ '
+    const runs = parseEditor(source)[0]!.runs
+    const file = runs.find((run) => run.src === 'src/hello.ts')!
+    expect(file.text).toBe('hello.ts')
+    expect(file.len).toBe(12)
+    expect(file.title).toBe('src/hello.ts')
+    const folder = runs.find((run) => run.src === 'src/')!
+    expect(folder.text).toBe('src/')
+    expect(folder.len).toBe(4)
+  })
+
+  it('未选中过的路径不当成标记', () => {
+    const runs = parseEditor('@src/h')[0]!.runs
+    expect(runs.some((run) => run.src)).toBe(false)
+  })
+
+  it('补全插入过的路径删掉尾随空格后仍是标记', () => {
+    registerToken('src/hello.ts')
+    const runs = parseEditor('src/hello.ts')[0]!.runs
+    expect(runs[0]).toMatchObject({ text: 'hello.ts', src: 'src/hello.ts' })
+    expect(tokenDeleteRange('src/hello.ts', 12, 'Backspace')).toEqual({ start: 0, end: 12 })
+  })
+
+  it('退格/删除整块移除光标旁的路径标记', () => {
+    registerToken('src/hello.ts')
+    const text = 'a src/hello.ts b'
+    const start = text.indexOf('src/hello.ts')
+    const end = start + 'src/hello.ts'.length
+    expect(tokenDeleteRange(text, end, 'Backspace')).toEqual({ start, end })
+    expect(tokenDeleteRange(text, start, 'Delete')).toEqual({ start, end })
+    expect(tokenDeleteRange(text, end + 1, 'Backspace')).toBeNull()
   })
 })

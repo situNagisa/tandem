@@ -12,6 +12,7 @@ import { usePreviewStore } from '../../store/usePreviewStore'
 import { recordModelUse } from '../../lib/recentModels'
 import { loadSentHistory, pushSentHistory, saveDraft } from '../../lib/storage'
 import { handleMarkdownEnter, handleMarkdownTab } from './markdownInput'
+import { tokenDeleteRange } from './richEditor'
 import type { ComposerEditorHandle } from './ComposerEditor'
 import { detectCompletion, type Completion, type CompletionEntry } from './completion'
 import type { Attachment, PastedText } from './composerTypes'
@@ -40,7 +41,7 @@ interface Options {
   completion: Completion | null
   items: CompletionEntry[]
   index: number
-  selectItem: (item: CompletionEntry) => void
+  selectItem: (item: CompletionEntry, openFolder?: boolean) => void
   cycleMode: () => void
   running: boolean
   stopping: boolean
@@ -219,10 +220,14 @@ export function useComposerSend({
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const composing = composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229
+    const folderItem = completion?.kind === 'file' ? items[index] : undefined
     if (
       !composing &&
       completion &&
-      (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End')
+      (e.key === 'ArrowLeft' ||
+        (e.key === 'ArrowRight' && !folderItem?.isDir) ||
+        e.key === 'Home' ||
+        e.key === 'End')
     ) {
       setCompletion(null)
     }
@@ -251,6 +256,15 @@ export function useComposerSend({
           const item = items[index]
           if (item) selectItem(item)
           return
+        }
+        // 文件夹可以进入后继续浏览目录内容。
+        if (e.key === 'ArrowRight' && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
+          const item = items[index]
+          if (item?.isDir) {
+            e.preventDefault()
+            selectItem(item, true)
+            return
+          }
         }
       }
     }
@@ -298,6 +312,28 @@ export function useComposerSend({
         }
       }
       return
+    }
+    // @ 路径标记不可拆：退格/删除整块移除。
+    if (
+      !composing &&
+      (e.key === 'Backspace' || e.key === 'Delete') &&
+      !e.shiftKey &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey
+    ) {
+      const selection = editorRef.current?.getSelection()
+      if (selection && selection.start === selection.end) {
+        const range = tokenDeleteRange(textRef.current, selection.start, e.key)
+        if (range) {
+          e.preventDefault()
+          applyTextEdit({
+            text: textRef.current.slice(0, range.start) + textRef.current.slice(range.end),
+            caret: range.start,
+          })
+          return
+        }
+      }
     }
     if (e.key === 'Enter') {
       if (composing) return

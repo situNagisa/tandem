@@ -1935,6 +1935,19 @@ html:not(.dark) .composer-card:focus-within {
   font-family: var(--t-font-mono);
   font-size: 0.92em;
 }
+.ce-path {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--syn-attr) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--syn-attr) 30%, transparent);
+  color: var(--syn-attr);
+  padding: 0 3px;
+  white-space: nowrap;
+}
+.composer-editor[data-composing="true"] .ce-path {
+  background: none;
+  box-shadow: none;
+  padding: 0;
+}
 
 /* ---------- 子代理层级树（反馈12#03） ---------- */
 .agent-guides {

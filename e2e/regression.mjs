@@ -4464,6 +4464,117 @@ async function main() {
       await input.fill('')
     })
 
+    desktop('输入框 @ 选文件与文件夹：文件夹可进入、路径标记只显示名字、发送仍是完整路径（反馈2102#07）', async (page) => {
+      mkdirSync('/tmp/fix-1323b', { recursive: true })
+      const atSession = await api(base, token, '/api/sessions', {
+        method: 'POST',
+        body: JSON.stringify({
+          cwd: repo,
+          profileId: 'p-main',
+          groupId: 'g1',
+          model: 'mock-1',
+          permissionMode: 'default',
+          title: '@ 补全回归',
+        }),
+      })
+      await gotoSession(page, atSession.id)
+      await waitModelReady(page)
+      const input = page.locator('[aria-label="消息输入框"]')
+      const value = () => input.getAttribute('data-value')
+      const waitCaret = (pos) =>
+        page.waitForFunction(
+          (want) =>
+            Number(
+              document.querySelector('[data-testid="composer-input"]')?.getAttribute('data-caret'),
+            ) === want,
+          pos,
+          { timeout: 5_000 },
+        )
+      const menu = page.locator('.completion-panel').first()
+      const sessionOf = () => api(base, token, `/api/sessions/${atSession.id}`)
+      const messageCount = async () => (await sessionOf()).messages.length
+
+      // 列表里同时有文件夹与文件；文件夹带图标。
+      await input.fill('@sr')
+      await menu.waitFor({ state: 'visible', timeout: 5_000 })
+      await menu.getByText('src/', { exact: false }).first().waitFor({ timeout: 5_000 })
+      assert.ok((await menu.locator('.lucide-folder').count()) >= 1, '@ 列表里文件夹没有图标')
+      assert.ok((await menu.innerText()).includes('hello.ts'), '@ 列表里没有文件')
+
+      // 进入文件夹继续浏览，不关闭补全。
+      await input.press('ArrowRight')
+      assert.equal(await value(), '@src/', '进入文件夹后查询没有变成目录前缀')
+      await menu.getByText('hello.ts', { exact: false }).first().waitFor({ timeout: 5_000 })
+      assert.ok((await menu.innerText()).includes('src/'), '进入文件夹后没有列出目录内容')
+      await input.press('Escape')
+
+      // 直接选中文件夹：输入框只显示文件夹名，悬停给完整路径。
+      await input.fill('@sr')
+      await menu.waitFor({ state: 'visible', timeout: 5_000 })
+      await menu.getByText('src/', { exact: false }).first().waitFor()
+      await input.press('Enter')
+      await waitCaret(5)
+      assert.equal(await value(), 'src/ ', '选中文件夹后原文不是完整路径')
+      const folderToken = input.locator('.ce-path').first()
+      assert.equal((await folderToken.innerText()).trim(), 'src/', '文件夹标记没有只显示名字')
+      assert.equal(await folderToken.getAttribute('title'), 'src/', '文件夹标记悬停没有完整路径')
+
+      // 选中文件：标记只显示文件名，发送内容包含完整相对路径。
+      await input.fill('@hello')
+      await menu.waitFor({ state: 'visible', timeout: 5_000 })
+      await menu.getByText('hello.ts', { exact: false }).first().waitFor()
+      await input.press('Enter')
+      await waitCaret(13)
+      assert.equal(await value(), 'src/hello.ts ', '选中文件后原文不是完整路径')
+      const fileToken = input.locator('.ce-path').first()
+      assert.equal((await fileToken.innerText()).trim(), 'hello.ts', '文件标记没有只显示文件名')
+      assert.equal(await fileToken.getAttribute('title'), 'src/hello.ts', '文件标记悬停没有完整路径')
+      // 退格整块删除：先删尾随空格，标记仍是整块，再退格才移除。
+      const waitValue = (expected) =>
+        page.waitForFunction(
+          (want) =>
+            document.querySelector('[data-testid="composer-input"]')?.getAttribute('data-value') ===
+            want,
+          expected,
+          { timeout: 5_000 },
+        )
+      await input.press('Backspace')
+      await waitValue('src/hello.ts')
+      assert.equal(await input.locator('.ce-path').count(), 1, '删掉尾随空格后标记被拆成纯文本')
+      await input.press('Backspace')
+      await waitValue('')
+      assert.equal((await value()).trim(), '', '退格没有整块删除路径标记')
+      assert.equal(await input.locator('.ce-path').count(), 0, '路径标记没有被移除')
+      // 清掉残留的空白，再重新选文件（fill 直接覆盖带标记的 DOM 不可靠）。
+      await page.keyboard.press('Control+a')
+      await input.press('Backspace')
+      await waitValue('')
+      assert.equal(await value(), '', '全选删除后输入框没有清空')
+      await input.fill('@hello')
+      await menu.waitFor({ state: 'visible', timeout: 5_000 })
+      await menu.getByText('hello.ts', { exact: false }).first().waitFor()
+      await input.press('Enter')
+      await waitCaret(13)
+      await page.screenshot({ path: '/tmp/fix-1323b/2102-light.png' })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.screenshot({ path: '/tmp/fix-1323b/2102-dark.png' })
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
+
+      const before = await messageCount()
+      const seenBefore = provider.seenUserTexts.length
+      await page.getByRole('button', { name: '发送消息' }).click()
+      for (let i = 0; i < 80; i++) {
+        const current = await sessionOf()
+        if (current.status === 'idle' && current.messages.length > before) break
+        await sleep(100)
+      }
+      assert.ok(
+        provider.seenUserTexts.slice(seenBefore).some((text) => text.includes('src/hello.ts')),
+        '发送内容没有包含完整路径',
+      )
+      await input.fill('')
+    })
+
     desktop('模型菜单顶部显示最近使用模型（跨账号分组）并可直接选中（#7-04）', async (page) => {
       await openSession(page, 'long')
       await page.evaluate(() => {

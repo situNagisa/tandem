@@ -11,9 +11,9 @@ export interface EditorRun {
   os: number
   /** 额外的样式类 */
   cls?: string
-  /** 模型长度；显示文本与模型文本不同时使用 */
+  /** 模型长度；仅当显示文本与模型文本不同（已选路径标记）时设置 */
   len?: number
-  /** token 在原文中的完整文本 */
+  /** token 在原文中的完整文本（例如 `src/a.ts`） */
   src?: string
   /** 悬停提示 */
   title?: string
@@ -28,8 +28,63 @@ export interface EditorLine {
   runs: EditorRun[]
 }
 
-function splitTokens(content: string, base: number): Array<{ text: string; os: number }> {
-  return content ? [{ text: content, os: base }] : []
+/** 本次输入里通过补全插入过的路径；只有这些完整路径会显示成不可拆分的名字标记。 */
+const knownTokens = new Set<string>()
+let tokenPattern: RegExp | null = null
+
+export function registerToken(src: string): void {
+  knownTokens.add(src)
+  tokenPattern = null
+  if (knownTokens.size > 200) {
+    const first = knownTokens.values().next().value
+    if (first) knownTokens.delete(first)
+  }
+}
+
+function escapeRe(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function tokenRe(): RegExp | null {
+  if (!knownTokens.size) return null
+  if (!tokenPattern) {
+    const alternatives = [...knownTokens]
+      .sort((a, b) => b.length - a.length)
+      .map(escapeRe)
+      .join('|')
+    tokenPattern = new RegExp(`(^|[\\s([{'"\`，。；：])(${alternatives})(?=\\s|$)`, 'g')
+  }
+  return tokenPattern
+}
+
+function basename(path: string): string {
+  const trimmed = path.endsWith('/') ? path.slice(0, -1) : path
+  const cut = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  return cut < 0 ? trimmed : trimmed.slice(cut + 1)
+}
+
+/** 把一行切成「已选中路径」与普通文本块；路径按登记表整段匹配。 */
+function splitTokens(content: string, base: number): Array<{
+  text: string
+  os: number
+  token?: string
+}> {
+  const pattern = tokenRe()
+  if (!pattern) return content ? [{ text: content, os: base }] : []
+  const parts: Array<{ text: string; os: number; token?: string }> = []
+  let cursor = 0
+  pattern.lastIndex = 0
+  for (const match of content.matchAll(pattern)) {
+    const index = match.index ?? 0
+    const prefix = match[1] ?? ''
+    const path = match[2] ?? ''
+    const at = index + prefix.length
+    if (at > cursor) parts.push({ text: content.slice(cursor, at), os: base + cursor })
+    parts.push({ text: path, os: base + at, token: path })
+    cursor = at + path.length
+  }
+  if (cursor < content.length) parts.push({ text: content.slice(cursor), os: base + cursor })
+  return parts
 }
 
 const INLINE_RE = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\([^)\n]+\))/g
@@ -67,7 +122,20 @@ function inlineRuns(content: string, base: number): EditorRun[] {
 function contentRuns(content: string, base: number): EditorRun[] {
   const runs: EditorRun[] = []
   for (const part of splitTokens(content, base)) {
-    runs.push(...inlineRuns(part.text, part.os))
+    if (part.token === undefined) {
+      runs.push(...inlineRuns(part.text, part.os))
+      continue
+    }
+    const isDir = part.token.endsWith('/')
+    const name = basename(part.token) + (isDir ? '/' : '')
+    runs.push({
+      text: name,
+      os: part.os,
+      cls: 'ce-path',
+      len: part.text.length,
+      src: part.text,
+      title: part.token,
+    })
   }
   return runs
 }
@@ -154,4 +222,25 @@ export function parseEditor(text: string): EditorLine[] {
     start = end + 1
   }
   return lines
+}
+
+/**
+ * 光标附近要整体删除的 @token 范围。
+ * Backspace 删光标前紧邻的 token，Delete 删光标后紧邻的 token；没有则返回 null。
+ */
+export function tokenDeleteRange(
+  text: string,
+  caret: number,
+  key: 'Backspace' | 'Delete',
+): { start: number; end: number } | null {
+  for (const line of parseEditor(text)) {
+    for (const run of line.runs) {
+      if (!run.src) continue
+      const start = run.os
+      const end = run.os + run.len!
+      if (key === 'Backspace' && end === caret) return { start, end }
+      if (key === 'Delete' && start === caret) return { start, end }
+    }
+  }
+  return null
 }

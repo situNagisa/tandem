@@ -5,6 +5,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { useClickOutside } from '../../lib/hooks'
 import { detectCompletion, type Completion, type CompletionEntry } from './completion'
 import type { ComposerEditorHandle } from './ComposerEditor'
+import { registerToken } from './richEditor'
 import { SOURCE_LABEL } from './composerTypes'
 
 interface Options {
@@ -95,7 +96,11 @@ export function useComposerCompletion({
   const items = useMemo<CompletionEntry[]>(() => {
     if (!completion) return []
     if (completion.kind === 'file') {
-      return fileItems.map((path) => ({ kind: 'file' as const, value: path, label: path }))
+      return fileItems.map((path) => {
+        const dir = path.endsWith('/')
+        const value = dir ? path.slice(0, -1) : path
+        return { kind: 'file' as const, value, label: path, isDir: dir }
+      })
     }
     const q = completion.query.toLowerCase()
     return commands
@@ -122,7 +127,7 @@ export function useComposerCompletion({
     setIndex((i) => Math.min(i, Math.max(0, items.length - 1)))
   }, [items.length])
 
-  const selectItem = (item: CompletionEntry) => {
+  const selectItem = (item: CompletionEntry, openFolder = false) => {
     if (!completion) return
     const before = text.slice(0, completion.start)
     const after = text.slice(completion.end)
@@ -135,7 +140,23 @@ export function useComposerCompletion({
       setModelMenuOpen(true)
       return
     }
-    const insertion = `${item.value} `
+    if (item.kind === 'file' && item.isDir && openFolder) {
+      // 进入文件夹继续浏览：保留补全菜单，查询变成 `@dir/`。
+      const insertion = `@${item.value}/`
+      const next = before + insertion + after
+      const caret = before.length + insertion.length
+      setText(next)
+      setCompletion(detectCompletion(next, caret))
+      window.requestAnimationFrame(() => {
+        const editor = editorRef.current
+        if (!editor) return
+        editor.focus()
+        editor.setSelection(caret)
+      })
+      return
+    }
+    const insertion = `${item.value}${item.isDir ? '/' : ''} `
+    registerToken(insertion.trim())
     const next = before + insertion + after
     setText(next)
     setCompletion(null)

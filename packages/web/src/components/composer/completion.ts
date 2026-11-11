@@ -11,6 +11,8 @@ export interface CompletionEntry {
   label: string
   description?: string
   badge?: string
+  /** @ 补全里的文件夹：可继续进入，也可直接选中为路径标记。 */
+  isDir?: boolean
 }
 
 export function detectCompletion(value: string, caret: number): Completion | null {

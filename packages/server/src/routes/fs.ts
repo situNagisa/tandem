@@ -114,10 +114,15 @@ export function registerFsRoutes(app: FastifyInstance, deps: RouteDeps): void {
     }
 
     // 缓存 2s：连续输入时不再每敲一个字符都重新遍历整棵仓库
-    const files = await walkFilesAsync(cwd, { maxEntries: 20_000, cacheMs: 2_000 });
+    const files = await walkFilesAsync(cwd, {
+      maxEntries: 20_000,
+      cacheMs: 2_000,
+      includeDirs: true,
+    });
     const scored: Array<{ rel: string; score: number }> = [];
     for (const file of files) {
-      const rel = toPosix(path.relative(cwd, file));
+      const isDir = file.endsWith('/');
+      const rel = toPosix(path.relative(cwd, file)) + (isDir ? '/' : '');
       if (rel.startsWith('..')) continue;
       const score = fuzzyScore(q, rel);
       if (score !== null) scored.push({ rel, score });
