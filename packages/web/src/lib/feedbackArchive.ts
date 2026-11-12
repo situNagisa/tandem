@@ -46,6 +46,10 @@ export interface ArchiveItemFiles {
   snapshot?: string
   trace?: string
   afterImage?: string
+  /** 调整条目的结构化改动清单（粘 clone 结构快照）。 */
+  adjust?: string
+  /** 调整条目的 Markdown 实现说明。 */
+  adjustMarkdown?: string
 }
 
 export interface ArchiveManifest {
@@ -211,10 +215,25 @@ export function buildFeedbackArchive(input: ArchiveInput): FeedbackArchive {
     let snapshotSummary: string[] = []
 
     const isRegion = item.screenshotKind === 'region'
+    const isAdjust = item.mode === 'adjust'
     const screenshotParts = dataUrlParts(item.screenshot)
     if (screenshotParts) {
-      itemFiles.screenshot = `${number}-${isRegion ? '区域截图' : '元素截图'}.${screenshotParts.ext}`
+      itemFiles.screenshot = `${number}-${isAdjust ? '调整前' : isRegion ? '区域截图' : '元素截图'}.${screenshotParts.ext}`
       pushBytes(itemFiles.screenshot, screenshotParts.bytes)
+    }
+    if (isAdjust && item.afterImage) {
+      const afterAdjust = dataUrlParts(item.afterImage)
+      if (afterAdjust) {
+        itemFiles.afterImage = `${number}-调整后.${afterAdjust.ext}`
+        pushBytes(itemFiles.afterImage, afterAdjust.bytes)
+      }
+    }
+    if (isAdjust && item.adjustSnapshot) {
+      itemFiles.adjust = `${number}-调整.json`
+      const { markdown: _markdown, ...adjustData } = item.adjustSnapshot
+      pushText(itemFiles.adjust, `${JSON.stringify(adjustData, null, 2)}\n`)
+      itemFiles.adjustMarkdown = `${number}-调整说明.md`
+      pushText(itemFiles.adjustMarkdown, item.adjustSnapshot.markdown)
     }
     const annotatedParts = dataUrlParts(item.annotatedScreenshot)
     if (annotatedParts) {
@@ -267,6 +286,18 @@ export function buildFeedbackArchive(input: ArchiveInput): FeedbackArchive {
       lines.push(`- 根因建议：${item.causeId}${item.causeTitle ? ` · ${item.causeTitle}` : ''}`)
     }
     if (item.mode === 'region') lines.push('- 选择方式：框选区域')
+    if (item.mode === 'adjust') lines.push('- 选择方式：调整（冻结副本）')
+    if (item.adjust) {
+      lines.push(
+        `- 调整：${item.adjust.changeCount} 项${item.adjust.nonStandard ? `（${item.adjust.nonStandard} 项非标准值）` : ''} · 冻结 ${item.adjust.freezeMs}ms`,
+      )
+      if (itemFiles.adjustMarkdown) {
+        lines.push(`- 调整说明：\`${itemFiles.adjustMarkdown}\`（agent 可直接按条实现）`)
+      }
+      if (itemFiles.adjust) lines.push(`- 调整清单：\`${itemFiles.adjust}\`（含结构快照）`)
+      if (item.adjust.tokens.length) lines.push(`- 命中 token：${item.adjust.tokens.join('、')}`)
+      if (itemFiles.afterImage) lines.push(`- 调整后截图：\`${itemFiles.afterImage}\``)
+    }
     if (item.component) lines.push(`- 组件：\`${item.component}\``)
     if (item.selector) lines.push(`- 选择器：\`${String(item.selector).replace(/`/g, "'")}\``)
     if (item.route) lines.push(`- 路由：\`${item.route}\``)
@@ -356,6 +387,8 @@ export function buildFeedbackArchive(input: ArchiveInput): FeedbackArchive {
     const {
       screenshot: _screenshot,
       annotatedScreenshot: _annotated,
+      afterImage: _afterImage,
+      adjustSnapshot: _adjustSnapshot,
       references: _references,
       video: _video,
       snapshot: _snapshot,
