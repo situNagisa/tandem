@@ -23,9 +23,13 @@ export const PRIORITY_OPTIONS: ReadonlyArray<{ value: FeedbackPriority; label: s
   { value: 'P2', label: 'P2' },
 ]
 
-export const SELECT_MODE_OPTIONS: ReadonlyArray<{ value: FeedbackSelectMode; label: string }> = [
+/** 反馈工具：点选 / 框选 / 调整（调整只在调试版出现，见 FeedbackMode）。 */
+export type FeedbackTool = FeedbackSelectMode | 'adjust'
+
+export const SELECT_MODE_OPTIONS: ReadonlyArray<{ value: FeedbackTool; label: string }> = [
   { value: 'element', label: '点选' },
   { value: 'region', label: '框选' },
+  { value: 'adjust', label: '调整' },
 ]
 
 export const MAX_VIDEO_BYTES = 8 * 1024 * 1024

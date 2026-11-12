@@ -3,8 +3,9 @@ import { createPortal } from 'react-dom'
 import {
   loadFeedbackSnapshotPrefs,
   saveFeedbackSnapshotPrefs,
+  type AdjustSnapshot,
+  type FeedbackItem,
   type FeedbackRect,
-  type FeedbackSelectMode,
   type FeedbackVideo,
 } from '../../lib/feedback'
 import {
@@ -13,10 +14,13 @@ import {
   flushDraftNow,
 } from '../../lib/feedbackDrafts'
 import { FEEDBACK_CAUSE_RULES } from '../../lib/feedbackCauses'
-import { FEEDBACK_FEATURE_OPTIONS } from '../../lib/feedbackFeatures'
+import { FEEDBACK_FEATURE_OPTIONS, inferFeedbackTag } from '../../lib/feedbackFeatures'
+import { feedbackPlatform } from '../../lib/mobilePreview'
+import { useAppStore } from '../../store/useAppStore'
 import { rectFor } from '../../lib/feedbackCapture'
 import { useFeedbackStore } from '../../store/useFeedbackStore'
 import { useUiStore } from '../../store/useUiStore'
+import { FeedbackAdjust, type AdjustPayload } from './FeedbackAdjust'
 import { FeedbackAnnotator } from './FeedbackAnnotator'
 import { FeedbackDrawer, type SnapshotPrefs } from './FeedbackDrawer'
 import { FeedbackEditor } from './FeedbackEditor'
@@ -28,8 +32,10 @@ import {
   safeQuery,
   viewportRectFor,
   type EditorState,
+  type FeedbackTool,
   type VerifyState,
 } from './feedbackModeHelpers'
+import { summarizeAdjust } from './feedbackAdjust'
 import { useFeedbackCapture } from './useFeedbackCapture'
 import { useFeedbackEditing } from './useFeedbackEditing'
 import { useFeedbackExport } from './useFeedbackExport'
@@ -46,7 +52,7 @@ export function FeedbackMode() {
   const pendingFeature = useFeedbackStore((s) => s.pendingFeature)
   const draft = useFeedbackStore((s) => s.draft)
   const exit = useFeedbackStore((s) => s.exit)
-  const [selectMode, setSelectMode] = useState<FeedbackSelectMode>('element')
+  const [selectMode, setSelectMode] = useState<FeedbackTool>('element')
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [saving, setSaving] = useState(false)
   const [tick, setTick] = useState(0)
@@ -69,6 +75,8 @@ export function FeedbackMode() {
   const prefsRef = useRef(prefs)
   prefsRef.current = prefs
   const focusTimerRef = useRef<number | null>(null)
+  const adjustEscapeRef = useRef<(() => boolean) | null>(null)
+  const adjustSessionRef = useRef<{ id: string } | null>(null)
 
   const { startPageShot, attachPageShot, pageShotTasksRef } = useFeedbackPageShots(setEditor)
   const { layerRef, hover, regionBox, regionBusy, captureBusy } = useFeedbackCapture({
@@ -195,11 +203,29 @@ export function FeedbackMode() {
         setDrawerOpen(false)
         return
       }
+      if (selectModeRef.current === 'adjust') {
+        const handled = adjustEscapeRef.current?.()
+        if (!handled) setSelectMode('element')
+        return
+      }
       exit()
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [active, exit])
+
+  // 进入调整：输入浮窗、抽屉与标注层都先收起，冻结副本不应被反馈自身的弹层挡住。
+  useEffect(() => {
+    if (selectMode !== 'adjust') {
+      adjustSessionRef.current = null
+      return
+    }
+    setEditor(null)
+    setDrawerOpen(false)
+    setAnnotator(null)
+    setFocusRect(null)
+    setVerify(null)
+  }, [selectMode])
 
   // 滚动/缩放后重新定位徽标与高亮。
   useEffect(() => {
@@ -230,6 +256,18 @@ export function FeedbackMode() {
       }
       if (e.key === 'Escape') return
       const mod = e.metaKey || e.ctrlKey
+      if (selectModeRef.current === 'adjust') {
+        // 调整工具自己处理 Delete / 方向键 / Ctrl+Z；其余按键仍拦下，避免应用响应。
+        const allowed =
+          e.key === 'Delete' ||
+          e.key === 'Backspace' ||
+          e.key.startsWith('Arrow') ||
+          (mod && e.key.toLowerCase() === 'z')
+        if (allowed) return
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        return
+      }
       if (mod && e.shiftKey && e.key.toLowerCase() === 'f') return
       // 允许全局 Ctrl+V，供输入浮窗接收参考图（纯文字粘贴也照常）。
       if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'v') return
@@ -284,6 +322,93 @@ export function FeedbackMode() {
       if (focusTimerRef.current) window.clearTimeout(focusTimerRef.current)
     }
   }, [])
+
+  /** 调整条目：改动清单 + 前后截图进普通反馈条目，随 .tfb 导出。 */
+  const buildAdjustItem = (
+    payload: AdjustPayload,
+    afterImage: string | null,
+  ): FeedbackItem => {
+    const snapshot: AdjustSnapshot = payload.snapshot
+    const first = snapshot.changes[0]
+    const itemId = `fb-${payload.id}`
+    const existing = useFeedbackStore.getState().items.find((item) => item.id === itemId)
+    const pending = useFeedbackStore.getState().pendingFeature
+    const inferred = inferFeedbackTag({
+      route: snapshot.route,
+      component: first?.target.component,
+      selector: first?.target.selector,
+      text: snapshot.title,
+      textSnippet: first?.target.textSnippet,
+    })
+    const featureId = pending?.featureId ?? inferred?.featureId
+    const featureName =
+      pending?.featureName ??
+      (featureId
+        ? FEEDBACK_FEATURE_OPTIONS.find((feature) => feature.id === featureId)?.title ?? featureId
+        : undefined)
+    const causeId = inferred?.causeId
+    const causeTitle = inferred?.causeTitle
+    const app = useAppStore.getState()
+    const hostId = app.active?.hostId ?? app.activeHostId ?? undefined
+    const hostInfo = hostId ? app.runtimes[hostId]?.info : undefined
+    return {
+      id: itemId,
+      type: 'suggestion',
+      text: `调整：${snapshot.title}`,
+      mode: 'adjust',
+      priority: 'P1',
+      selector: first?.target.selector ?? '',
+      component: first?.target.component,
+      textSnippet: first?.target.textSnippet ?? snapshot.title,
+      route: snapshot.route,
+      rect: first?.target.rect ?? { x: 0, y: 0, width: 0, height: 0, pageX: 0, pageY: 0 },
+      viewport: { width: snapshot.viewport.width, height: snapshot.viewport.height },
+      dpr: snapshot.viewport.dpr,
+      theme: snapshot.theme,
+      platform: feedbackPlatform(),
+      ua: navigator.userAgent,
+      hostId,
+      hostName: hostInfo?.name,
+      hostPlatform: hostInfo?.platform,
+      hostVersion: hostInfo?.version,
+      sessionId: app.active?.sessionId,
+      createdAt: existing?.createdAt ?? snapshot.createdAt,
+      screenshot: payload.beforeImage ?? existing?.screenshot ?? undefined,
+      screenshotKind: 'viewport',
+      afterImage: afterImage ?? existing?.afterImage ?? undefined,
+      adjust: summarizeAdjust(snapshot),
+      adjustSnapshot: snapshot,
+      ...(featureId ? { featureId, featureName: featureName ?? featureId } : {}),
+      ...(causeId ? { causeId, causeTitle } : {}),
+    }
+  }
+
+  const handleAdjustProgress = (payload: AdjustPayload) => {
+    adjustSessionRef.current = { id: payload.id }
+    useFeedbackStore.getState().upsertItem(buildAdjustItem(payload, null))
+  }
+
+  const handleAdjustFinish = (payload: AdjustPayload) => {
+    adjustSessionRef.current = null
+    useFeedbackStore.getState().upsertItem(buildAdjustItem(payload, payload.afterImage))
+    setSelectMode('element')
+    setDrawerOpen(true)
+    useUiStore
+      .getState()
+      .toast(`已生成调整条目（${payload.snapshot.changes.length} 项），可在条目里改文字后导出`, 'success')
+  }
+
+  const handleAdjustClose = () => {
+    const changes = adjustSessionRef.current
+      ? useFeedbackStore.getState().items.find((item) => item.id === `fb-${adjustSessionRef.current!.id}`)
+          ?.adjust?.changeCount ?? 0
+      : 0
+    adjustSessionRef.current = null
+    setSelectMode('element')
+    if (changes > 0) {
+      useUiStore.getState().toast(`已保留 ${changes} 项调整（未导出）`, 'info')
+    }
+  }
 
   const verifyEntry = verify?.queue[verify.index] ?? null
   const verifyLive = useMemo(() => {
@@ -413,6 +538,16 @@ export function FeedbackMode() {
         desktopDraft={!!desktopFeedback()}
         onDeleteDraft={clearDraft}
       />
+
+      {selectMode === 'adjust' && (
+        <FeedbackAdjust
+          onClose={handleAdjustClose}
+          onProgress={handleAdjustProgress}
+          onFinish={handleAdjustFinish}
+          onNotify={(message, tone) => useUiStore.getState().toast(message, tone)}
+          escapeRef={adjustEscapeRef}
+        />
+      )}
 
       {annotator && (
         <FeedbackAnnotator

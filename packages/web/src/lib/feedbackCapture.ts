@@ -702,8 +702,51 @@ export async function capturePageShot(): Promise<{ dataURL: string; width: numbe
   }
 }
 
-function imageSize(dataURL: string): Promise<{ width?: number; height?: number }> {
-  return new Promise((resolve) => {
+/**
+ * 调整模式的前后截图：按元素边框盒截当前视口。
+ * - 传 `document.body`：进入调整前（反馈 UI 由 filter 跳过）；
+ * - 传冻结 stage：导出时（插入的示意控件会临时克隆进 stage）。
+ * 与整页缩略图不同，这里不缩到 900px，保留 1600px 上限内的清晰度。
+ */
+export async function captureSnapshotShot(root: Element): Promise<string | null> {
+  const startedAt = performance.now()
+  const probe: CaptureProbe = { record: null, startedAt, cloneEndedAt: 0 }
+  try {
+    const scale = Math.min(2, Math.max(1, window.devicePixelRatio || 1))
+    const native = nativeCapture()
+    if (native) {
+      const box = root.getBoundingClientRect()
+      const shot = await native({
+        x: Math.max(0, Math.floor(box.left)),
+        y: Math.max(0, Math.floor(box.top)),
+        width: Math.max(1, Math.ceil(Math.min(box.width, window.innerWidth))),
+        height: Math.max(1, Math.ceil(Math.min(box.height, window.innerHeight))),
+      })
+      if (shot) {
+        const record = shotPerfStart('element', { native: true })
+        const final = (await shrinkShot(shot, MAX_IMAGE_WIDTH)) ?? shot
+        shotPerfEnd(record, performance.now() - startedAt, await imageSize(final))
+        return final
+      }
+    }
+    const record = shotPerfStart('element')
+    probe.record = record
+    const clip = intersect(viewportBox(), root.getBoundingClientRect())
+    const prune = planShotPrune(root, clip)
+    if (record) record.pruned = prune.pruned
+    probe.startedAt = performance.now()
+    const canvas = await domToCanvas(root, shotOptions(probe, prune, { scale, background: backgroundFor(root) }))
+    const final = limitWidth(canvas)
+    const dataURL = await canvasToShot(final, probe)
+    shotPerfEnd(record, performance.now() - startedAt, { width: final.width, height: final.height })
+    return dataURL
+  } catch {
+    shotPerfEnd(probe.record, performance.now() - startedAt)
+    return null
+  }
+}
+
+function imageSize(dataURL: string): Promise<{ width?: number; height?: number }> {  return new Promise((resolve) => {
     const img = new Image()
     img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight })
     img.onerror = () => resolve({})

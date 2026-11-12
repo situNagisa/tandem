@@ -310,6 +310,11 @@ export function FeedbackDrawer({
                       {item.priority ?? 'P1'}
                     </Badge>
                     {item.mode === 'region' && <Badge tone="neutral">框选</Badge>}
+                    {item.mode === 'adjust' && (
+                      <Badge tone="annotation" data-tip="冻结副本上的改动清单；导出 .tfb 后生成可执行的调整说明">
+                        调整 {item.adjust?.changeCount ?? 0} 项
+                      </Badge>
+                    )}
                     {item.featureName && (
                       <Badge tone="annotation" data-tip={`功能：${item.featureName}`}>
                         {item.featureName}

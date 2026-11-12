@@ -39,6 +39,13 @@ export default defineConfig({
     __TANDEM_FLAVOR__: JSON.stringify(flavor),
     __TANDEM_DEBUG__: JSON.stringify(flavor === 'debug'),
   },
+  // 调试版保留函数/组件名：反馈调整的改动清单要给出组件名，压缩后的 `$c` 不可读。
+  // 发布版照常压缩，名称不进产物。
+  build: {
+    outDir: 'dist',
+    chunkSizeWarningLimit: 1200,
+    ...(flavor === 'debug' ? { rolldownOptions: { output: { keepNames: true } } } : {}),
+  },
   server: {
     port: 5173,
     strictPort: false,
@@ -47,9 +54,5 @@ export default defineConfig({
       '/ws': { target: 'ws://127.0.0.1:8481', ws: true, changeOrigin: true },
       '/h': { target: 'http://127.0.0.1:8481', ws: true, changeOrigin: true },
     },
-  },
-  build: {
-    outDir: 'dist',
-    chunkSizeWarningLimit: 1200,
   },
 })

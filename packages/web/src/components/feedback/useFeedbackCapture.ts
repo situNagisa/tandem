@@ -19,12 +19,13 @@ import {
   isUiTarget,
   scrollableFrom,
   type EditorState,
+  type FeedbackTool,
 } from './feedbackModeHelpers'
 
 interface CaptureOptions {
   active: boolean
   editorRef: MutableRefObject<EditorState | null>
-  selectModeRef: MutableRefObject<FeedbackSelectMode>
+  selectModeRef: MutableRefObject<FeedbackTool>
   setEditor: Dispatch<SetStateAction<EditorState | null>>
   attachPageShot: (route: string) => void
 }
@@ -219,6 +220,8 @@ export function useFeedbackCapture({
 
     const onPointerDown = (e: PointerEvent) => {
       if (isFeedbackUi(e.target)) return
+      // 调整模式由自己的命中层接管指针。
+      if (selectModeRef.current === 'adjust') return
       // 阻止默认行为也避免了焦点转移，radix 菜单/Popover 不会被判为外部点击而关闭。
       e.preventDefault()
       e.stopImmediatePropagation()
@@ -240,6 +243,7 @@ export function useFeedbackCapture({
 
     const onPointerUp = (e: PointerEvent) => {
       if (isFeedbackUi(e.target)) return
+      if (selectModeRef.current === 'adjust') return
       e.preventDefault()
       e.stopImmediatePropagation()
       const start = down
@@ -287,6 +291,7 @@ export function useFeedbackCapture({
     }
 
     const onWheel = (e: WheelEvent) => {
+      if (selectModeRef.current === 'adjust') return
       e.preventDefault()
       e.stopPropagation()
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1

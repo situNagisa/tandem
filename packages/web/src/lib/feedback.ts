@@ -16,6 +16,97 @@ export type FeedbackPriority = 'P0' | 'P1' | 'P2'
 
 export type FeedbackSelectMode = 'element' | 'region'
 
+/** 截图粒度：视口截图用于「调整」的前后对比。 */
+export type FeedbackScreenshotKind = 'element' | 'page' | 'region' | 'viewport'
+
+/** 反馈「调整」的数据结构：冻结副本上的改动清单，随 .tfb 打包给 agent 实现。 */
+export type AdjustKind =
+  | 'resize'
+  | 'icon'
+  | 'delete'
+  | 'hide'
+  | 'text'
+  | 'move'
+  | 'reorder'
+  | 'insert'
+  | 'note'
+
+export interface AdjustSourceLocation {
+  fileName: string
+  lineNumber?: number
+  columnNumber?: number
+}
+
+export interface AdjustAnchor {
+  selector: string
+  testId?: string
+  ariaLabel?: string
+  dataAttrs?: Record<string, string>
+}
+
+export interface AdjustTargetMeta {
+  selector: string
+  component?: string
+  tag: string
+  classes: string[]
+  textSnippet: string
+  ariaLabel?: string
+  testId?: string
+  anchor?: AdjustAnchor
+  source?: AdjustSourceLocation
+  rect: FeedbackRect
+}
+
+export interface AdjustFreezeStats {
+  durationMs: number
+  sourceNodes: number
+  clonedNodes: number
+  scrollContainers: number
+  skipped: number
+}
+
+export interface AdjustChange {
+  id: string
+  kind: AdjustKind
+  at: number
+  target: AdjustTargetMeta
+  before?: Record<string, unknown>
+  after?: Record<string, unknown>
+  note?: string
+  behavior?: string
+  tokens?: { width?: string; height?: string }
+  standard?: boolean
+}
+
+export interface AdjustSnapshot {
+  version: 1
+  kind: 'adjust'
+  id: string
+  title: string
+  route: string
+  theme: 'light' | 'dark'
+  viewport: { width: number; height: number; dpr: number }
+  createdAt: number
+  freeze: AdjustFreezeStats
+  changes: AdjustChange[]
+  structure: Array<{
+    changeId: string
+    selector: string
+    html: string
+    styles: Record<string, string>
+  }>
+  /** agent 可直接照做的 Markdown；导出时单独落成「NN-调整说明.md」。 */
+  markdown: string
+}
+
+export interface AdjustSummary {
+  changeCount: number
+  freezeMs: number
+  tokens: string[]
+  nonStandard: number
+  sourceAvailable: boolean
+}
+
 export interface FeedbackReference {
   id: string
   name: string
@@ -99,14 +190,20 @@ export interface FeedbackItem {
   createdAt: number
   /** dataURL；元素截图优先，失败时为整页缩略图。 */
   screenshot?: string
-  screenshotKind?: 'element' | 'page' | 'region'
+  screenshotKind?: FeedbackScreenshotKind
   /** 元素截图是在四周补了 16px 背景的版本。 */
   screenshotPadding?: number
-  /** 选择方式：点选元素 / 拖拽框选区域。 */
-  mode?: FeedbackSelectMode
+  /** 选择方式：点选元素 / 拖拽框选区域 / 调整（冻结副本）。 */
+  mode?: FeedbackSelectMode | 'adjust'
   priority?: FeedbackPriority
   /** 标注后的截图（dataURL）；原图始终保留在 screenshot。 */
   annotatedScreenshot?: string
+  /** 调整后的视口截图（dataURL）；调整前截图在 screenshot。 */
+  afterImage?: string
+  /** 调整条目的摘要（改动数、非标准值、命中 token 等）。 */
+  adjust?: AdjustSummary
+  /** 调整条目的结构化改动清单与结构快照。 */
+  adjustSnapshot?: AdjustSnapshot
   references?: FeedbackReference[]
   /** 反馈前 60 秒的操作轨迹。 */
   trace?: FeedbackTraceEntry[]
@@ -178,17 +275,19 @@ const MAX_PAGE_SHOTS = 12
 interface StoredItemBlobs {
   screenshot?: Blob
   annotated?: Blob
+  afterImage?: Blob
   references?: Blob[]
   video?: Blob
 }
 
 type StoredItem = Omit<
   FeedbackItem,
-  'screenshot' | 'annotatedScreenshot' | 'references' | 'video'
+  'screenshot' | 'annotatedScreenshot' | 'afterImage' | 'references' | 'video'
 > & {
   /** 旧格式直接带 dataURL；新格式在 blobs 里。 */
   screenshot?: string
   annotatedScreenshot?: string
+  afterImage?: string
   references?: Array<Pick<FeedbackReference, 'id' | 'name' | 'addedAt'> | FeedbackReference>
   video?: FeedbackVideo | Omit<FeedbackVideo, 'dataURL'>
 }
@@ -306,6 +405,12 @@ async function hydrateStored(input: StoredIdbState): Promise<FeedbackStoredState
         : blobs?.annotated
           ? ((await blobToDataUrl(blobs.annotated)) ?? undefined)
           : undefined
+    const afterImage =
+      typeof raw.afterImage === 'string'
+        ? raw.afterImage
+        : blobs?.afterImage
+          ? ((await blobToDataUrl(blobs.afterImage)) ?? undefined)
+          : undefined
     const rawReferences = Array.isArray(raw.references) ? raw.references : []
     const references: FeedbackReference[] | undefined = rawReferences.length
       ? (
@@ -337,14 +442,19 @@ async function hydrateStored(input: StoredIdbState): Promise<FeedbackStoredState
     const {
       screenshot: _storedShot,
       annotatedScreenshot: _storedAnnotated,
+      afterImage: _storedAfter,
       references: _storedRefs,
       video: _storedVideo,
       ...rest
     } = raw
     items.push({
-      ...(rest as Omit<FeedbackItem, 'screenshot' | 'annotatedScreenshot' | 'references' | 'video'>),
+      ...(rest as Omit<
+        FeedbackItem,
+        'screenshot' | 'annotatedScreenshot' | 'afterImage' | 'references' | 'video'
+      >),
       ...(screenshot ? { screenshot } : {}),
       ...(annotatedScreenshot ? { annotatedScreenshot } : {}),
+      ...(afterImage ? { afterImage } : {}),
       ...(references?.length ? { references } : {}),
       ...(video ? { video } : {}),
     })
@@ -401,6 +511,7 @@ export async function saveFeedbackState(state: FeedbackStoredState): Promise<voi
     const {
       screenshot,
       annotatedScreenshot,
+      afterImage,
       references,
       video,
       ...rest
@@ -429,6 +540,8 @@ export async function saveFeedbackState(state: FeedbackStoredState): Promise<voi
     if (screenshot) entry.screenshot = screenshot
     const annotated = dataUrlToBlob(item.annotatedScreenshot)
     if (annotated) entry.annotated = annotated
+    const after = dataUrlToBlob(item.afterImage)
+    if (after) entry.afterImage = after
     const references = (item.references ?? [])
       .map((reference) => dataUrlToBlob(reference.dataURL))
       .filter((blob): blob is Blob => !!blob)
@@ -469,7 +582,15 @@ export async function saveFeedbackState(state: FeedbackStoredState): Promise<voi
   // 镜像只保留文字与坐标，避免撑爆 5MB 配额；截图仍可从 IndexedDB 读回。
   try {
     const meta = {
-      items: state.items.slice(-20).map(({ screenshot: _screenshot, annotatedScreenshot: _annotated, references: _refs, video: _video, ...rest }) => rest),
+      items: state.items.slice(-20).map(({
+        screenshot: _screenshot,
+        annotatedScreenshot: _annotated,
+        afterImage: _after,
+        adjustSnapshot: _adjust,
+        references: _refs,
+        video: _video,
+        ...rest
+      }) => rest),
       pageShots: [],
       receipt: state.receipt
         ? {
