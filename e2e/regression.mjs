@@ -12216,6 +12216,57 @@ async function main() {
       )
       await running.waitFor({ state: 'detached', timeout: 60_000 }).catch(() => {})
     })
+    desktop('反馈1110：会话图悬停的节点额外放大加外圈，同线其他节点不变', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const scenario = state.scenarios.find((item) => item.id === 'subagents')
+      assert.ok(scenario?.sessionIds?.length >= 4, '演示子代理场景缺少子代理/分叉会话')
+      const mainId = scenario.sessionIds[0]
+      await openSession(page, mainId)
+      const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+      const nodes = graph.locator(`[data-graph-turn-id][data-session-id="${mainId}"]`)
+      await nodes.first().waitFor({ timeout: 10_000 })
+      assert.ok((await nodes.count()) >= 2, '同一会话的节点不足两个，无法比较悬停差异')
+      await nodes.first().hover()
+      const info = await page.evaluate((sessionId) => {
+        const all = [...document.querySelectorAll('[data-group="graph"] [data-graph-turn-id]')].filter(
+          (el) => el.getAttribute('data-session-id') === sessionId,
+        )
+        const dot = (el) => el.querySelector('[data-marker="circle"]')
+        const shape = (el) =>
+          el
+            ? {
+                hovered: el.getAttribute('data-hovered') === 'true',
+                size: dot(el).getBoundingClientRect().width,
+                shadow: getComputedStyle(dot(el)).boxShadow,
+                bg: getComputedStyle(el).backgroundColor,
+              }
+            : null
+        const hovered = all.find((el) => el.getAttribute('data-hovered') === 'true')
+        return { count: all.length, hovered: shape(hovered), other: shape(all.find((el) => el !== hovered)) }
+      }, mainId)
+      assert.ok(info.hovered, '悬停的节点没有 data-hovered')
+      assert.ok(info.other, '找不到同线的其他节点')
+      assert.equal(info.hovered.size, 10, `悬停节点没有放大到 10px（${info.hovered.size}）`)
+      assert.equal(info.other.size, 8, `同线其他节点也被放大了（${info.other.size}）`)
+      assert.equal(info.other.hovered, false, '同线其他节点也被标成悬停')
+      assert.notEqual(info.hovered.shadow, 'none', '悬停节点没有外圈')
+      assert.equal(
+        info.other.bg,
+        info.hovered.bg,
+        '悬停节点与同线其他节点的行背景不一致（整条线高亮应保持）',
+      )
+      const dir = '/tmp/fix-1110'
+      mkdirSync(dir, { recursive: true })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.waitForTimeout(150)
+      await page.screenshot({ path: `${dir}/hover-node-dark.png` })
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
+      await page.waitForTimeout(150)
+      await page.screenshot({ path: `${dir}/hover-node-light.png` })
+    })
+
 
     desktop('会话图泳道线 tooltip 以指针定位并完整显示在视口内（反馈1926#10）', async (page) => {
       let state = await api(base, token, '/api/demo')

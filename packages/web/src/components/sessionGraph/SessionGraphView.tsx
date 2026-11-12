@@ -152,7 +152,7 @@ export interface SessionGraphViewProps {
   layout: GraphLayout
   /** 当前所在轮（1-based 主线轮号），节点外圈高亮。 */
   activeTurn?: number
-  /** 会话正在运行：最新主线的轮节点外圈呼吸，与侧栏「运行中」同一个动画。 */
+  /** 当前会话正在运行（服务端树里的状态可能晚一拍）：最新主线的轮节点外圈呼吸。 */
   running?: boolean
   onOpen: (node: GraphNode) => void
   /** 点连线：打开该线归属的会话。 */
@@ -189,6 +189,8 @@ export function SessionGraphView({
   const [viewport, setViewport] = useState({ top: 0, height: 168 })
   const [selected, setSelected] = useState<string | null>(null)
   const [hoverOwner, setHoverOwner] = useState<string | null>(null)
+  /** 指针所在的那个轮节点：同线整条高亮之外，它自己再放大一档并加外圈（反馈1110）。 */
+  const [hoveredNode, setHoveredNode] = useState<string | null>(null)
 
   useLayoutEffect(() => {
     const el = scrollRef.current
@@ -278,8 +280,10 @@ export function SessionGraphView({
             const isSelected = selected === node.key
             const isCurrentTurn =
               node.current && node.kind === 'turn' && !!activeTurn && node.turnNo === activeTurn
+            const isHoveredNode = hoveredNode === node.key
             const isRunning =
               running && node.current && node.kind === 'turn' && node.turnNo === latestTurnNo
+            const dotSize = isHoveredNode ? 10 : 8
             const canOpen = !readOnly
             const isHovered = hoverOwner === node.sessionId
             const showName = compact && node.sessionLabel
@@ -317,8 +321,15 @@ export function SessionGraphView({
                   data-attach-point={node.attachPoint ? 'true' : undefined}
                   data-active={isCurrentTurn ? 'true' : undefined}
                   data-running={isRunning ? 'true' : undefined}
-                  onPointerEnter={() => setHoverOwner(node.sessionId)}
-                  onPointerLeave={() => setHoverOwner(null)}
+                  data-hovered={isHoveredNode ? 'true' : undefined}
+                  onPointerEnter={() => {
+                    setHoverOwner(node.sessionId)
+                    setHoveredNode(node.key)
+                  }}
+                  onPointerLeave={() => {
+                    setHoverOwner(null)
+                    setHoveredNode(null)
+                  }}
                   onClick={() => {
                     if (readOnly) return
                     setSelected(node.key)
@@ -350,12 +361,15 @@ export function SessionGraphView({
                   <span
                     aria-hidden="true"
                     data-marker="circle"
-                    className="absolute top-1/2 size-[8px] -translate-y-1/2 rounded-full"
+                    className="absolute top-1/2 -translate-y-1/2 rounded-full"
                     style={{
-                      left: laneColumnX(layout, node.lane) - 4 - (textX - 6),
+                      left: laneColumnX(layout, node.lane) - dotSize / 2 - (textX - 6),
+                      width: dotSize,
+                      height: dotSize,
                       backgroundColor: color,
-                      boxShadow:
-                        isCurrentTurn || (compact && node.current)
+                      boxShadow: isHoveredNode
+                        ? `0 0 0 1.5px var(--t-surface), 0 0 0 3px ${color}`
+                        : isCurrentTurn || (compact && node.current)
                           ? '0 0 0 1.5px var(--t-surface), 0 0 0 3px var(--t-focus-ring)'
                           : undefined,
                     }}
