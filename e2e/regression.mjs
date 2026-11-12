@@ -8728,6 +8728,40 @@ async function main() {
       assert.ok(childId, '演示场景缺少子代理会话')
     })
 
+    desktop('反馈1603#06：代理卡行尾不再有 ⋯，右键子代理行仍可换模型重跑/交回', async (page) => {
+      let demo = await api(base, token, '/api/demo')
+      if (!demo.active) demo = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const mainId = demo.scenarios.find((item) => item.id === 'subagents').sessionIds[0]
+      await openSession(page, mainId)
+      if (!(await page.locator('[data-group="agents"]').count())) {
+        await page.getByRole('button', { name: '切换信息面板' }).click()
+      }
+      const agents = page.locator('[data-group="agents"]')
+      await agents.waitFor({ timeout: 10_000 })
+      const row = agents.locator('button[data-tip]').first()
+      await row.waitFor({ timeout: 10_000 })
+      await row.hover()
+      await page.waitForTimeout(200)
+      assert.equal(
+        await agents.locator('button[aria-label="子代理操作"]').count(),
+        0,
+        '代理卡仍有行尾 ⋯ 按钮',
+      )
+      // 功能不丢：右键子代理行打开同一组操作。
+      await row.click({ button: 'right' })
+      const menu = page.locator('[role="menu"]').last()
+      await menu.waitFor({ timeout: 5_000 })
+      const text = await menu.innerText()
+      assert.match(text, /换模型重跑/, `右键菜单缺少换模型重跑：${text}`)
+      assert.match(text, /交回主会话/, `右键菜单缺少交回主会话：${text}`)
+      const dir = '/tmp/fix-1603c'
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: `${dir}/06-agents-context-menu.png` })
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(150)
+      assert.equal(await page.locator('[role="menu"]').count(), 0, 'Esc 后右键菜单没有关闭')
+    })
+
     desktop('反馈2108#02：子代理工具行点击直接进入子代理会话，不展开卡片', async (page) => {
       let demo = await api(base, token, '/api/demo')
       if (!demo.active) demo = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
