@@ -7,6 +7,7 @@ import type { ActiveSession, SessionTarget, UiMessage } from '../../lib/types'
 import { useUiStore } from '../useUiStore'
 import { DRAFT_SESSION_PREFIX } from '../../lib/draftSession'
 import {
+  childSubscriptions,
   connections,
   emptyActiveSession,
   isRunningStatus,
@@ -22,6 +23,7 @@ export type SessionsSlice = Pick<
   AppState,
   | 'openSession'
   | 'openSessionView'
+  | 'ensureSubagent'
   | 'commitPendingFocus'
   | 'closeSessionView'
   | 'focusSessionView'
@@ -57,6 +59,8 @@ export function createSessionsSlice(
     clearChildSubscriptions,
     applySessionSummary,
     applySnapshot,
+    subscribeChild,
+    syncChildren,
     removeSummary,
     removeSessionView,
     ensureConnection,
@@ -103,6 +107,31 @@ export function createSessionsSlice(
         }
       }, 3000)
     }
+  }
+
+  /** 从分叉/其他会话直接进入子代理时，把它挂到树根会话的视图上并订阅快照。 */
+  const ensureSubagent = (hostId: string, childId: string): void => {
+    const shown = Object.values(get().sessionViews).some(
+      (view) => view.hostId === hostId && !!view.subagents[childId],
+    )
+    if (shown) {
+      subscribeChild(hostId, childId)
+      return
+    }
+    const sessions = get().runtimes[hostId]?.sessions ?? []
+    const byId = new Map(sessions.map((item) => [item.id, item]))
+    let root = byId.get(childId)
+    if (!root) return
+    const seen = new Set<string>([root.id])
+    while (root.parentId && !seen.has(root.parentId)) {
+      const parent = byId.get(root.parentId)
+      if (!parent) break
+      seen.add(parent.id)
+      root = parent
+    }
+    openSessionView(hostId, root.id)
+    syncChildren(hostId, root.id)
+    subscribeChild(hostId, childId)
   }
 
   const focusView = (hostId: string, sessionId: string): void => {
@@ -174,6 +203,7 @@ export function createSessionsSlice(
     },
 
     openSessionView,
+    ensureSubagent,
 
     closeSessionView: (hostId, sessionId) => {
       const view = get().sessionViews[viewKeyOf(hostId, sessionId)]
@@ -181,11 +211,16 @@ export function createSessionsSlice(
       const wasActive = matchesView(get().active, hostId, sessionId)
       connections.get(hostId)?.unsubscribe(sessionId)
       removeSessionView(hostId, sessionId)
-      if (wasActive) {
-        const remaining = Object.values(get().sessionViews)
-        set({ active: remaining[0] ?? null })
+      const remaining = Object.values(get().sessionViews)
+      if (wasActive) set({ active: remaining[0] ?? null })
+      // 视图关闭后若没有别的视图还显示这些子代理，就一并退订：
+      // 保留的订阅记录会让重新打开的主会话不再请求子代理快照，子代理视图停在骨架屏（反馈1603#08）。
+      for (const childId of Object.keys(view.subagents)) {
+        if (remaining.some((item) => item.hostId === hostId && !!item.subagents[childId])) continue
+        childSubscriptions.get(hostId)?.delete(childId)
+        connections.get(hostId)?.unsubscribe(childId)
       }
-      if (!Object.values(get().sessionViews).some((item) => item.hostId === hostId)) {
+      if (!remaining.some((item) => item.hostId === hostId)) {
         clearChildSubscriptions(hostId)
       }
     },

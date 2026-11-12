@@ -154,6 +154,8 @@ export interface SessionGraphViewProps {
   activeTurn?: number
   /** 当前会话正在运行（服务端树里的状态可能晚一拍）：最新主线的轮节点外圈呼吸。 */
   running?: boolean
+  /** 当前会话在等待用户输入（服务端树里的状态可能晚一拍）：最新主线轮显示等待标记。 */
+  waiting?: boolean
   onOpen: (node: GraphNode) => void
   /** 点连线：打开该线归属的会话。 */
   onOpenSession?: (sessionId: string) => void
@@ -177,6 +179,7 @@ export function SessionGraphView({
   layout,
   activeTurn,
   running = false,
+  waiting = false,
   onOpen,
   onOpenSession,
   readOnly = false,
@@ -281,14 +284,14 @@ export function SessionGraphView({
             const isCurrentTurn =
               node.current && node.kind === 'turn' && !!activeTurn && node.turnNo === activeTurn
             const isHoveredNode = hoveredNode === node.key
-            // 任何正在运行的会话（主会话/分叉/子代理）都在自己最新一轮上呼吸；
+            // 任何正在运行/等待输入的会话（主会话/分叉/子代理）都在自己最新一轮上标记；
             // 当前会话的状态以传进来的实时值为准（服务端树晚一拍）。
+            const isLatestOfSession = node.turnNo === latestTurnOf.get(node.sessionId)
+            const isWaiting = (node.waiting || (waiting && !!node.current)) && isLatestOfSession
             const isRunning =
-              (node.running || (running && !!node.current)) &&
-              node.turnNo === latestTurnOf.get(node.sessionId)
+              !isWaiting && (node.running || (running && !!node.current)) && isLatestOfSession
             const dotSize = isHoveredNode ? 10 : 8
             const canOpen = !readOnly
-            const isHovered = hoverOwner === node.sessionId
             const showName = compact && node.sessionLabel
             const label = compact
               ? showName
@@ -305,7 +308,7 @@ export function SessionGraphView({
                   className={cn(
                     'group/node pointer-events-auto absolute inset-y-0 right-0 flex min-w-0 items-center rounded-[5px] pr-1 transition-colors',
                     canOpen && 'cursor-pointer hover:bg-[var(--t-bg-hover)]',
-                    (isSelected || isHovered) && 'bg-[var(--t-bg-hover)]',
+                    isSelected && 'bg-[var(--t-bg-hover)]',
                     !canOpen && 'pointer-events-none',
                   )}
                   style={{ left: textX - 6, paddingLeft: 6 }}
@@ -324,7 +327,9 @@ export function SessionGraphView({
                   data-attach-point={node.attachPoint ? 'true' : undefined}
                   data-active={isCurrentTurn ? 'true' : undefined}
                   data-running={isRunning ? 'true' : undefined}
+                  data-waiting={isWaiting ? 'true' : undefined}
                   data-hovered={isHoveredNode ? 'true' : undefined}
+                  data-row-hovered={isHoveredNode ? 'true' : undefined}
                   onPointerEnter={() => {
                     setHoverOwner(node.sessionId)
                     setHoveredNode(node.key)
@@ -361,6 +366,15 @@ export function SessionGraphView({
                       height: NODE_HIT_SIZE,
                     }}
                   />
+                  {isWaiting && (
+                    <span
+                      aria-hidden="true"
+                      data-marker-ring="waiting"
+                      data-tip="等待你的输入/审批"
+                      className="running-dot absolute top-1/2 z-[1] size-2 -translate-y-1/2 rounded-full bg-accent"
+                      style={{ left: laneColumnX(layout, node.lane) - 4 - (textX - 6) }}
+                    />
+                  )}
                   <span
                     aria-hidden="true"
                     data-marker="circle"

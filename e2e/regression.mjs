@@ -12234,6 +12234,7 @@ async function main() {
       await nodes.first().waitFor({ timeout: 10_000 })
       assert.ok((await nodes.count()) >= 2, '同一会话的节点不足两个，无法比较悬停差异')
       await nodes.first().hover()
+      await page.waitForTimeout(220)
       const info = await page.evaluate((sessionId) => {
         const all = [...document.querySelectorAll('[data-group="graph"] [data-graph-turn-id]')].filter(
           (el) => el.getAttribute('data-session-id') === sessionId,
@@ -12243,13 +12244,19 @@ async function main() {
           el
             ? {
                 hovered: el.getAttribute('data-hovered') === 'true',
+                rowHovered: el.getAttribute('data-row-hovered') === 'true',
                 size: dot(el).getBoundingClientRect().width,
                 shadow: getComputedStyle(dot(el)).boxShadow,
                 bg: getComputedStyle(el).backgroundColor,
               }
             : null
         const hovered = all.find((el) => el.getAttribute('data-hovered') === 'true')
-        return { count: all.length, hovered: shape(hovered), other: shape(all.find((el) => el !== hovered)) }
+        return {
+          count: all.length,
+          rowHoveredCount: document.querySelectorAll('[data-row-hovered="true"]').length,
+          hovered: shape(hovered),
+          other: shape(all.find((el) => el !== hovered)),
+        }
       }, mainId)
       assert.ok(info.hovered, '悬停的节点没有 data-hovered')
       assert.ok(info.other, '找不到同线的其他节点')
@@ -12257,10 +12264,13 @@ async function main() {
       assert.equal(info.other.size, 8, `同线其他节点也被放大了（${info.other.size}）`)
       assert.equal(info.other.hovered, false, '同线其他节点也被标成悬停')
       assert.notEqual(info.hovered.shadow, 'none', '悬停节点没有外圈')
-      assert.equal(
+      assert.equal(info.hovered.rowHovered, true, '悬停的轮次行没有 data-row-hovered')
+      assert.equal(info.other.rowHovered, false, '同会话其他行也被标成悬停（反馈1603#05）')
+      assert.equal(info.rowHoveredCount, 1, `同时高亮了 ${info.rowHoveredCount} 行（只应高亮悬停的一行）`)
+      assert.notEqual(
         info.other.bg,
         info.hovered.bg,
-        '悬停节点与同线其他节点的行背景不一致（整条线高亮应保持）',
+        '悬停行与同线其他行的背景一致（同分支标题行不应一起高亮，反馈1603#05）',
       )
       const dir = '/tmp/fix-1110'
       mkdirSync(dir, { recursive: true })
@@ -12338,6 +12348,171 @@ async function main() {
       await page.evaluate(() => document.documentElement.classList.remove('dark'))
       await page.waitForTimeout(150)
       await page.screenshot({ path: `${dir}/running-multi-light.png` })
+    })
+
+    desktop('反馈1603#05：会话图悬停只高亮被悬停的那一行标题', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const mainId = state.scenarios.find((item) => item.id === 'subagents').sessionIds[0]
+      await openSession(page, mainId)
+      const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+      const rows = graph.locator(`[data-graph-turn-id][data-session-id="${mainId}"]`)
+      await rows.first().waitFor({ timeout: 10_000 })
+      assert.ok((await rows.count()) >= 2, '同一会话的节点不足两个，无法比较悬停差异')
+      await rows.first().hover()
+      await page.waitForTimeout(220)
+      const info = await page.evaluate((sessionId) => {
+        const all = [...document.querySelectorAll('[data-graph-turn-id]')].filter(
+          (el) => el.getAttribute('data-session-id') === sessionId,
+        )
+        const hovered = all.find((el) => el.getAttribute('data-hovered') === 'true')
+        return {
+          count: all.length,
+          rowHovered: document.querySelectorAll('[data-row-hovered="true"]').length,
+          hoveredBg: hovered ? getComputedStyle(hovered).backgroundColor : null,
+          otherBg: all.filter((el) => el !== hovered).map((el) => getComputedStyle(el).backgroundColor),
+          lines: document.querySelectorAll('[data-session-graph-edges] [data-hovered="true"]').length,
+        }
+      }, mainId)
+      assert.equal(info.rowHovered, 1, `同时高亮了 ${info.rowHovered} 行（只应高亮悬停的一行）`)
+      assert.ok(info.hoveredBg, '悬停的轮次行没有背景高亮')
+      assert.ok(
+        info.otherBg.every((bg) => bg !== info.hoveredBg),
+        '同分支的其他标题行也被高亮了',
+      )
+      assert.ok(info.lines > 0, '悬停时整条泳道线的高亮消失了')
+      const dir = '/tmp/fix-1603b'
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: `${dir}/05-hover-row.png` })
+    })
+
+    desktop('反馈1603#07：等待输入的会话最新轮有等待标记，运行中/子代理仍有呼吸动画', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const permissionId = state.scenarios.find((item) => item.id === 'permission').sessionIds[0]
+      await openSession(page, permissionId)
+      const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+      const waiting = graph.locator('[data-waiting="true"]').first()
+      await waiting.waitFor({ state: 'visible', timeout: 10_000 })
+      const marker = waiting.locator('[data-marker-ring="waiting"]')
+      await marker.waitFor({ state: 'visible', timeout: 5_000 })
+      const latestRow = await page.evaluate((sessionId) => {
+        const rows = [...document.querySelectorAll('[data-graph-turn-id]')]
+          .filter((el) => el.getAttribute('data-session-id') === sessionId)
+          .map((el) => Number(el.getAttribute('data-row')))
+        return rows.length ? Math.min(...rows) : null
+      }, permissionId)
+      assert.equal(
+        Number(await waiting.getAttribute('data-row')),
+        latestRow,
+        '等待标记不在该会话最新一轮',
+      )
+      const style = await marker.evaluate((el) => ({
+        className: el.className,
+        animation: getComputedStyle(el).animationName,
+        background: getComputedStyle(el).backgroundColor,
+      }))
+      assert.match(style.className, /bg-accent/, '等待标记没有复用侧栏待审批色')
+      assert.match(style.className, /running-dot/, '等待标记没有呼吸动画')
+      assert.equal(style.animation, 'tandem-breathe', `等待标记动画不对：${style.animation}`)
+      // tooltip 必须是等待输入的说明，而不是轮次标题。标记在呼吸动画中，直接用指针坐标悬停。
+      const markerBox = await marker.boundingBox()
+      assert.ok(markerBox, '等待标记没有可悬停区域')
+      await page.mouse.move(markerBox.x + markerBox.width / 2, markerBox.y + markerBox.height / 2)
+      await page.waitForFunction(
+        () => document.getElementById('tandem-tooltip')?.hasAttribute('data-open'),
+        null,
+        { timeout: 5_000 },
+      )
+      const tip = await page.locator('#tandem-tooltip').innerText()
+      assert.equal(tip.trim(), '等待你的输入/审批', `等待标记 tooltip 不对：${tip.trim()}`)
+      await page.mouse.move(4, 4)
+      const dir = '/tmp/fix-1603b'
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: `${dir}/07-waiting.png` })
+
+      // 子代理在自己的泳道上运行时也显示 running-dot。
+      const subState = await api(base, token, '/api/demo')
+      const [mainId, childId] = subState.scenarios.find((item) => item.id === 'subagents').sessionIds
+      await page.route(/\/api\/sessions\/[^/]+\/graph$/, async (route) => {
+        const response = await route.fetch()
+        const json = await response.json()
+        for (const session of json.sessions ?? []) {
+          if (session.id === childId) session.running = true
+        }
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(json) })
+      })
+      await openSession(page, mainId)
+      const childRunning = page.locator(
+        `[data-group="graph"] [data-graph-turn-id][data-session-id="${childId}"][data-running="true"]`,
+      )
+      await childRunning.waitFor({ state: 'visible', timeout: 10_000 })
+      const childRing = childRunning.locator('[data-marker-ring="running"]')
+      await childRing.waitFor({ state: 'visible', timeout: 5_000 })
+      const childStyle = await childRing.evaluate((el) => ({
+        className: el.className,
+        animation: getComputedStyle(el).animationName,
+      }))
+      assert.match(childStyle.className, /running-dot/, '子代理运行标记没有复用 running-dot')
+      assert.equal(childStyle.animation, 'tandem-breathe', '子代理运行标记没有呼吸动画')
+      await page.unroute(/\/api\/sessions\/[^/]+\/graph$/)
+    })
+
+    desktop('反馈1603#08：分叉/主会话切换后子代理会话每次都能加载', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const [mainId, childId, , forkId] = state.scenarios.find((item) => item.id === 'subagents').sessionIds
+      await openSession(page, mainId)
+      const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+      const waitRoute = (id) =>
+        page.waitForFunction((sid) => window.location.hash.includes(`/s/${sid}`), id, { timeout: 10_000 })
+      const clickNode = async (sessionId) => {
+        const node = page
+          .locator(`[data-group="graph"] [data-graph-turn-id][data-session-id="${sessionId}"]`)
+          .first()
+        await node.waitFor({ state: 'visible', timeout: 10_000 })
+        await node.click()
+      }
+      const expectAgentLoaded = async (where) => {
+        await page.locator('[data-agent-breadcrumb]').waitFor({ state: 'visible', timeout: 10_000 })
+        await page.locator('[data-turn-id]').first().waitFor({ timeout: 10_000 })
+        assert.ok((await page.locator('[data-turn-id]').count()) > 0, `${where} 子代理视图没有消息`)
+        assert.equal(await page.locator('.skeleton').count(), 0, `${where} 子代理视图停在骨架屏`)
+      }
+      // 按轨迹循环 5 轮：主会话 → 分叉 → 主会话 → 打开子代理 → 返回。
+      for (let round = 1; round <= 5; round += 1) {
+        await clickNode(forkId)
+        await waitRoute(forkId)
+        await page.waitForTimeout(250)
+        await clickNode(mainId)
+        await waitRoute(mainId)
+        await page.waitForTimeout(900)
+        const row = page
+          .locator('aside button')
+          .filter({ hasText: '竞品文案' })
+          .first()
+        await row.waitFor({ timeout: 10_000 })
+        await row.click()
+        await expectAgentLoaded(`第 ${round} 轮`)
+        await page.locator('button[data-tip^="返回主会话"]').first().click()
+        await page.locator('[data-agent-breadcrumb]').waitFor({ state: 'detached', timeout: 5_000 })
+      }
+      // 最后从分叉视图的会话图子代理节点直接进入（此时没有主会话视图）。
+      await clickNode(forkId)
+      await waitRoute(forkId)
+      await page.waitForTimeout(500)
+      const subNode = page
+        .locator(`[data-group="graph"] [data-graph-turn-id][data-session-id="${childId}"]`)
+        .first()
+      await subNode.waitFor({ state: 'visible', timeout: 10_000 })
+      await subNode.click()
+      await expectAgentLoaded('从分叉视图进入')
+      const dir = '/tmp/fix-1603b'
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: `${dir}/08-agent-loaded.png` })
     })
 
     desktop('会话图泳道线 tooltip 以指针定位并完整显示在视口内（反馈1926#10）', async (page) => {

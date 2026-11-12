@@ -52,8 +52,8 @@
 - 不读 git remote 的值、不 push；不连公网；测试 Host 一律 TANDEM_HOME=/tmp/…；不用 pkill -f。
 
 ## 本轮手工操作 / 出错环节（只留最近 5 轮，每轮 ≤5 行）
-- 2026-11-12 用户批评"实现特别糟糕"：①我把"分叉用 git 图切主线"理解成每个会话各画一张图，子代理又"保守"成单节点分支；②跳转、悬停浮层又各写一套。教训：概念类需求先用一个具体例子（节点/边）写清再派；验收亲自点用户原场景（反馈模式、真实长会话、外部会话）；新交互必须复用已有实现（跳转=轮次大纲那套，浮层=反馈模式能停住的那套）。
 - 2026-11-12 调整工具修整：`data-tandem-src` 由 `packages/web/debug-source-plugin.mjs`（只 debug flavor、`apply:'build'`）用 rolldown `parseSync` 在 JSX 开标签名后插属性，发布版由 `scan-release` 禁词兜底；`metaFor` 先读注入位置，恢复的副本没有原元素映射时直接对副本算 meta。
 - 2026-11-12 调整工具修整：小元素手柄外置后，元素旁操作条要再让 44px 并设 z-134，否则会盖住 se 手柄或落到左侧改动清单下面；插入控件首次 commit 后 ref 才登记 DOM，需要 `useEffect([inserted])` 补一次 bump，选中框/手柄才会出现。
 - 2026-11-12 调整工具修整：继续调整依赖 `adjustSnapshot.copy`（stage.innerHTML）；`buildSnapshot(true)` 只在完成时带，实时草稿带会反复序列化大 HTML。`.tfb` 导出后 store 按现有逻辑清空，所以「继续调整」要在导出前验收。
 - 2026-11-12 调整工具修整：反馈模式 `[data-feedback-ui]` 的 `cursor:pointer !important` 会压掉内联 cursor，调整模式光标必须用 `data-cursor`/`data-resize-cursor` + `index.css` 的 !important 规则；释放副本时用 `adjustReleasedRef` 同时放开捕获层与全局按键拦截。
+- 2026-11-12 反馈1603：子代理加载不出的根因是 `childSubscriptions` 保留了已关闭视图的订阅，重开主会话时 `subscribeChild` 直接 return、服务端不再补发快照；修复在 `closeSessionView` 退订孤儿 + 空条目重新订阅 + `ensureSubagent`。会话图等待状态要服务端另下发 `waiting`（原来只认 `running`），不能只改客户端。

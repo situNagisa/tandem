@@ -250,6 +250,22 @@ const DECISIONS = [
     need: [/running\?: boolean/, /rec\.status === 'running'/, /running: true/, /latestTurnOf/, /session\.status/],
   },
   {
+    id: 'graph-row-hover-only',
+    source: '反馈1603#05（2026-11-12 用户原话：悬停在某个选项卡上的时候，不需要把所有同分支的选项卡都高亮，只需要高亮悬停的选项卡即可）',
+    decision:
+      '悬停轮次标题行时只有该行有悬停底色（data-row-hovered），同会话其他标题行保持原背景；整条泳道线与被悬停节点的高亮保持不变',
+    files: [F.graphView],
+    need: [/data-row-hovered=\{isHoveredNode/, /isSelected && 'bg-\[var\(--t-bg-hover\)\]'/, /hoverOwner/],
+  },
+  {
+    id: 'graph-waiting-input-marker',
+    source: '反馈1603#07（2026-11-12 用户原话：当正在思考，或者等待输入的时候，需要有呼吸效果和对应的输入标记）',
+    decision:
+      '等待用户输入（待审批/回答提问）的会话最新一轮显示侧栏待审批同色（bg-accent）的等待标记并带呼吸动画，tooltip 为「等待你的输入/审批」；graph 接口按 waiting_permission 下发 waiting',
+    files: [F.protocol, F.graphServer, F.graphData, F.graphView],
+    need: [/waiting\?: boolean/, /rec\.status === 'waiting_permission'/, /data-marker-ring="waiting"/, /等待你的输入\/审批/],
+  },
+  {
     id: 'graph-main-click-from-subagent',
     source: '反馈1926#03（2026-11-11 用户原话：在子代理页面中，点击会话图的主会话，无法跳转）',
     decision: '子代理只读视图里点会话图主线节点，先退出子代理视图再定位该轮',

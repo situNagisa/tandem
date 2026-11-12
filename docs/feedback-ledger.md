@@ -74,3 +74,6 @@
 | R73 | 一轮内每段 assistant 回复都保留下方操作/用量行空白 | 1 | `MessageList` 按轮算 `lastAssistantOfTurn`，只给最后一条渲染 `data-msg-meta` 与 `msg-more`；regression 反馈0220#05 |
 | R74 | 会话图按视图各画一套拓扑：分叉视图把来源会话画成单节点支线、主会话上的子代理看不见；悬停拓扑只有会话点，看不出从哪一轮分叉/派出 | 2 | `GET /api/sessions/:id/graph` 下发整棵树的轮次与接入关系；`layoutSessionGraph` 唯一布局（trunk 参数 + compact 参数，紧凑模式保留分叉点/派出点/汇回点）；单测 `layout.test.ts`；decisions-check `graph-trunk-current`/`graph-one-topology-per-tree`/`sidebar-hover-topology`；regression 反馈0220#08/#07 |
 | R75 | 会话图的运行状态只认当前会话（分叉/子代理在跑看不出来）；悬停只高亮整条线，不知道指针停在哪一个节点 | 1 | graph 接口每个会话下发 `running`，`SessionGraphView` 按所属会话在各自最新一轮显示 `running-dot`；悬停节点 `data-hovered` + 圆点 10px + 同色外圈；regression 反馈1110 两条 |
+| R76 | 会话图悬停高亮按会话归属套到该会话所有标题行，而不是指针所在行 | 1 | `SessionGraphView` 标题行底色只跟 `data-row-hovered`（`data-hovered` 仍只标记悬停节点）；regression 反馈1603#05 / 反馈1110 悬停节点 |
+| R77 | 会话图只把 `running` 当作活动状态：待审批/等待回答时服务端不下发、客户端不渲染，等待输入没有任何标记 | 1 | graph 接口按 `waiting_permission` 下发 `waiting`；最新轮 `bg-accent running-dot` 等待标记 + 「等待你的输入/审批」tooltip；regression 反馈1603#07 |
+| R78 | 子代理快照订阅记录与视图生命周期脱节：主会话视图关闭后订阅残留，重开时不再请求快照，子代理视图停在骨架屏；从分叉视图进入时数据挂在树根视图而当前视图找不到 | 1 | `closeSessionView` 退订只属于该视图的子代理；`subscribeChild` 对空条目重新订阅；`ensureSubagent` 补开树根视图；regression 反馈1603#08 |
