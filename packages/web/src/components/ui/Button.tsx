@@ -35,7 +35,9 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
   ghost:
     'border border-transparent text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-text active:bg-[var(--t-bg-active)]',
   'danger-ghost':
-    'border border-transparent text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-danger active:bg-[var(--t-bg-active)]',
+    // 2026-11-12 用户原话「危险按钮用红色，不用中性色」：危险操作常态就是 danger 文字，
+    // 仍不做红底红框（P17 的确认与可撤销要求不变）。
+    'border border-transparent text-danger hover:bg-[var(--t-bg-hover)] hover:text-danger active:bg-[var(--t-bg-active)]',
 }
 
 /** 调试版「调整」按变体名换 class 时读取；样式仍以本文件为准，不要在别处复制。 */

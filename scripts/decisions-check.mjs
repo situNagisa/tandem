@@ -417,10 +417,20 @@ const DECISIONS = [
   },
   {
     id: 'approval-claude-style',
-    source: '反馈14#07',
-    decision: '审批卡问句 + 灰色说明 + 拒绝/允许一次 + 更多，中性色无编号列表',
+    source: '反馈14#07；反馈1603#03（2026-11-12 调整说明）',
+    decision:
+      '审批卡问句 + 灰色说明；宽度 352 与消息列左对齐；按钮行贴卡片底部，顺序为 拒绝 / 更多 / 允许一次（主按钮），无编号列表',
     files: [F.permissionCard],
-    need: [/允许一次/, /拒绝/, /Ctrl/, /添加为规则/, /本会话总是允许/],
+    need: [
+      /允许一次/,
+      /拒绝/,
+      /Ctrl/,
+      /添加为规则/,
+      /本会话总是允许/,
+      /max-w-\[352px\]/,
+      /mt-auto/,
+      /variant="primary"/,
+    ],
     deny: [/radiogroup/, /role="radio"/],
   },
   {
@@ -519,6 +529,24 @@ const DECISIONS = [
     decision: '会话行 hover 显示 ⋯，时间不被遮挡',
     files: [F.sessionList, F.sessionRow, F.sessionGroups, F.chatCss],
     need: [/group-hover/, /会话操作|⋯/],
+  },
+  {
+    id: 'sidebar-old-sessions-collapsed',
+    source: '2026-11-12 用户原话「超过一定时间的会话可以隐藏掉，点击按钮才加载出来」',
+    decision:
+      '项目分组里最近活动超过 7 天的会话默认收起，组末一行「更早的 N 个会话」点开才渲染；固定、运行中、待审批、未读始终显示，展开状态按项目记住',
+    files: [
+      F.sessionGroups,
+      F.sessionList,
+      'packages/web/src/components/session/sessionListUtils.ts',
+      'packages/web/src/store/useUiStore.ts',
+    ],
+    need: [
+      /OLDER_SESSION_MS = 7 \* 24 \* 60 \* 60 \* 1000/,
+      /staysVisibleWhenOlder/,
+      /更早的 \{olderHidden.length\} 个会话/,
+      /expandedOlderProjects/,
+    ],
   },
   {
     id: 'tour-pill-auto-hide',
@@ -851,10 +879,16 @@ const DECISIONS = [
   },
   {
     id: 'danger-ghost',
-    source: '色板 v3',
-    decision: '危险按钮中性，hover 只文字转 danger，不做红底红框',
-    files: [F.button],
-    need: [/danger-ghost/, /hover:text-danger/],
+    source: '2026-11-12 用户原话「危险按钮用红色，不用中性色」（取代色板 v3 的中性做法）',
+    decision:
+      '危险操作（删除/移除等 danger 变体按钮与菜单危险项）常态就是 danger 红字，不做红底红框；确认与可撤销入口不变',
+    files: [F.button, F.menu],
+    need: [
+      /border border-transparent text-danger hover:bg-\[var\(--t-bg-hover\)\] hover:text-danger/,
+      /danger && 'text-danger!/,
+      /danger \? 'text-danger' : 'text-muted'/,
+    ],
+    deny: [/bg-danger(?!-soft)/],
   },
   {
     id: 'edit-width',

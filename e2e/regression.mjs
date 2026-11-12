@@ -2022,6 +2022,23 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       todos: [{ content: '分屏 B 的待办', status: 'pending' }],
       updatedAt: Date.now() - 1650,
     }),
+    // 反馈1603#01：超过 7 天的会话默认收起；项目固定 / 未读的始终显示（运行态由单测覆盖）。
+    mk('oldidle1', '旧会话 · 空闲一', [
+      message('oi1', 'user', '很久以前的会话一'),
+      message('oi2', 'assistant', '早就结束了。', { model: 'mock-1' }),
+    ], { updatedAt: Date.now() - 9 * 86_400_000 }),
+    mk('oldidle2', '旧会话 · 空闲二', [
+      message('oi3', 'user', '很久以前的会话二'),
+      message('oi4', 'assistant', '早就结束了。', { model: 'mock-1' }),
+    ], { updatedAt: Date.now() - 12 * 86_400_000 }),
+    mk('oldpinned', '旧会话 · 项目固定', [
+      message('op3', 'user', '很久以前但固定了'),
+      message('op4', 'assistant', '仍然要看见。', { model: 'mock-1' }),
+    ], { updatedAt: Date.now() - 10 * 86_400_000, pinnedInProject: true }),
+    mk('oldunread', '旧会话 · 未读', [
+      message('ou3', 'user', '很久以前但没看过'),
+      message('ou4', 'assistant', '仍然要看见。', { model: 'mock-1' }),
+    ], { updatedAt: Date.now() - 11 * 86_400_000, unread: true }),
   ]
   // 待审批会话：Host 启动时按 resumeState 恢复并重新广播权限请求，供手机审批卡走查。
   const approveAt = Date.now() - 1200
@@ -8711,6 +8728,40 @@ async function main() {
       assert.ok(childId, '演示场景缺少子代理会话')
     })
 
+    desktop('反馈1603#06：代理卡行尾不再有 ⋯，右键子代理行仍可换模型重跑/交回', async (page) => {
+      let demo = await api(base, token, '/api/demo')
+      if (!demo.active) demo = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const mainId = demo.scenarios.find((item) => item.id === 'subagents').sessionIds[0]
+      await openSession(page, mainId)
+      if (!(await page.locator('[data-group="agents"]').count())) {
+        await page.getByRole('button', { name: '切换信息面板' }).click()
+      }
+      const agents = page.locator('[data-group="agents"]')
+      await agents.waitFor({ timeout: 10_000 })
+      const row = agents.locator('button[data-tip]').first()
+      await row.waitFor({ timeout: 10_000 })
+      await row.hover()
+      await page.waitForTimeout(200)
+      assert.equal(
+        await agents.locator('button[aria-label="子代理操作"]').count(),
+        0,
+        '代理卡仍有行尾 ⋯ 按钮',
+      )
+      // 功能不丢：右键子代理行打开同一组操作。
+      await row.click({ button: 'right' })
+      const menu = page.locator('[role="menu"]').last()
+      await menu.waitFor({ timeout: 5_000 })
+      const text = await menu.innerText()
+      assert.match(text, /换模型重跑/, `右键菜单缺少换模型重跑：${text}`)
+      assert.match(text, /交回主会话/, `右键菜单缺少交回主会话：${text}`)
+      const dir = '/tmp/fix-1603c'
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: `${dir}/06-agents-context-menu.png` })
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(150)
+      assert.equal(await page.locator('[role="menu"]').count(), 0, 'Esc 后右键菜单没有关闭')
+    })
+
     desktop('反馈2108#02：子代理工具行点击直接进入子代理会话，不展开卡片', async (page) => {
       let demo = await api(base, token, '/api/demo')
       if (!demo.active) demo = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
@@ -9123,6 +9174,41 @@ async function main() {
       await openSettings(page, '通用', 'desktop')
       await auditA11y(page, '设置 · 通用')
       await closeSettings(page)
+    })
+
+    desktop('反馈1603#03：审批卡宽度 352、按钮 拒绝/更多/允许一次（主按钮）贴底', async (page) => {
+      await openSession(page, 'approve')
+      const card = page.locator('.permission-card').first()
+      await card.waitFor({ timeout: 10_000 })
+      const inner = card.locator(':scope > div').first()
+      const width = (await inner.boundingBox()).width
+      assert.ok(
+        Math.abs(width - 352) <= 2,
+        `审批卡宽度 ${Math.round(width)}px，没有按 352 收窄`,
+      )
+      const deny = card.locator('[data-permission-deny]')
+      const allow = card.locator('[data-permission-allow]')
+      const more = card.getByRole('button', { name: '更多' })
+      const [denyBox, moreBox, allowBox] = await Promise.all([
+        deny.boundingBox(),
+        more.boundingBox(),
+        allow.boundingBox(),
+      ])
+      assert.ok(denyBox && moreBox && allowBox, '按钮不可见')
+      assert.ok(
+        denyBox.x + denyBox.width < moreBox.x && moreBox.x + moreBox.width < allowBox.x,
+        `按钮顺序不是 拒绝 / 更多 / 允许一次：${denyBox.x} ${moreBox.x} ${allowBox.x}`,
+      )
+      assert.equal(await deny.getAttribute('data-variant'), 'secondary', '拒绝按钮变体不是次要按钮')
+      assert.equal(await allow.getAttribute('data-variant'), 'primary', '允许一次不是主按钮')
+      assert.match(await allow.innerText(), /Ctrl/, '允许一次缺少 Ctrl⏎ 提示')
+      // 按钮行贴卡片底部内边距（py-3 = 12px），卡片变高时仍停在底部。
+      const innerBox = await inner.boundingBox()
+      const gap = innerBox.y + innerBox.height - (allowBox.y + allowBox.height)
+      assert.ok(Math.abs(gap - 12) <= 2, `按钮行离卡片底部 ${Math.round(gap)}px，没有贴底`)
+      const dir = '/tmp/fix-1603c'
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: `${dir}/03-permission-card.png` })
     })
 
     desktop('反馈14#07：审批是对话流里的一条消息，样式参考 Claude Code Desktop', async (page) => {
@@ -9733,6 +9819,51 @@ async function main() {
       assert.ok(seen, '已读版本没有写入 localStorage')
     })
 
+    desktop('反馈1603#01：超过 7 天的会话默认收起，点开才加载，固定/未读始终显示', async (page) => {
+      const row = (id) => page.locator(`[data-session-row][data-session-id="${id}"]`)
+      await row('long').waitFor({ state: 'visible', timeout: 15_000 })
+      const project = page.locator('[data-project-row]').filter({ has: row('long') }).first()
+      const older = project.locator('[data-older-sessions]')
+
+      // 默认收起：7 天前的空闲会话不渲染，固定/未读的仍然显示。
+      assert.equal(await row('oldidle1').count(), 0, '7 天前的会话没有收起')
+      assert.equal(await row('oldidle2').count(), 0, '7 天前的会话没有收起')
+      assert.equal(await row('oldpinned').count(), 1, '项目固定的旧会话被收起了')
+      assert.equal(await row('oldunread').count(), 1, '未读的旧会话被收起了')
+      await older.waitFor({ state: 'visible', timeout: 5_000 })
+      assert.match(await older.innerText(), /更早的 2 个会话/, '组末没有「更早的 N 个会话」入口')
+      assert.equal(await older.getAttribute('aria-expanded'), 'false', '收起态的展开按钮语义不对')
+
+      // 点击才加载并展开。
+      await older.click()
+      await row('oldidle1').waitFor({ state: 'visible', timeout: 5_000 })
+      assert.equal(await row('oldidle2').count(), 1, '展开后旧会话没有全部出现')
+      assert.equal(await older.getAttribute('aria-expanded'), 'true', '展开后的语义不对')
+
+      // 展开状态按项目记住：重新加载页面后仍是展开的。
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await row('long').waitFor({ state: 'visible', timeout: 20_000 })
+      await row('oldidle1').waitFor({ state: 'visible', timeout: 10_000 })
+      // 再点收起，回到默认并按项目记住。
+      await project.locator('[data-older-sessions]').click()
+      await row('oldidle1').waitFor({ state: 'detached', timeout: 5_000 })
+      assert.equal(await row('oldpinned').count(), 1, '收起后固定的旧会话消失了')
+      const stored = await page.evaluate(() => {
+        try {
+          return JSON.parse(localStorage.getItem('tandem.ui.v1') ?? '{}').expandedOlderProjects ?? null
+        } catch {
+          return null
+        }
+      })
+      assert.ok(stored === null || !stored.length, `收起后仍记着展开状态：${JSON.stringify(stored)}`)
+      const dir = '/tmp/fix-1603c'
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: `${dir}/01-older-sessions-collapsed.png` })
+      await older.click()
+      await page.waitForTimeout(200)
+      await page.screenshot({ path: `${dir}/01-older-sessions-expanded.png` })
+    })
+
     desktop('会话筛选：状态筛选与「已筛选 · 清除」', async (page) => {
       const row = (id) => page.locator(`[data-session-row][data-session-id="${id}"]`)
       await row('long').waitFor({ state: 'visible', timeout: 10_000 })
@@ -9747,6 +9878,49 @@ async function main() {
       await tag.click()
       await row('long').waitFor({ state: 'visible', timeout: 5_000 })
       assert.equal(await page.getByRole('button', { name: /已筛选/ }).count(), 0, '清除后筛选标签仍在')
+    })
+
+    desktop('反馈1603#02：菜单危险项（删除）文字与图标常态 danger 色', async (page) => {
+      const row = page.locator('[data-session-row][data-session-id="long"]').first()
+      await row.waitFor({ state: 'visible', timeout: 15_000 })
+      await row.hover()
+      await row.getByRole('button', { name: '会话操作' }).click()
+      const menu = page.locator('[role="menu"]').last()
+      await menu.waitFor({ timeout: 5_000 })
+      const info = await menu.evaluate((el) => {
+        const item = [...el.querySelectorAll('[role="menuitem"]')].find((node) =>
+          (node.textContent ?? '').trim().startsWith('删除'),
+        )
+        if (!item) return null
+        const style = getComputedStyle(item)
+        const svg = item.querySelector('svg')
+        return {
+          text: style.color,
+          icon: svg ? getComputedStyle(svg).color : null,
+          danger: getComputedStyle(document.documentElement).getPropertyValue('--t-danger').trim(),
+        }
+      })
+      assert.ok(info, '会话菜单里没有删除项')
+      const toRgb = (value) => {
+        const hex = value.replace('#', '')
+        if (hex.length !== 6) return value
+        return `rgb(${parseInt(hex.slice(0, 2), 16)}, ${parseInt(hex.slice(2, 4), 16)}, ${parseInt(hex.slice(4, 6), 16)})`
+      }
+      const danger = toRgb(info.danger)
+      assert.equal(info.text, danger, `删除项文字不是 danger 色：${info.text} / ${danger}`)
+      assert.equal(info.icon, danger, `删除项图标不是 danger 色：${info.icon} / ${danger}`)
+      // 其他普通项仍是中性色，不能整菜单变红。
+      const normal = await menu.evaluate((el) => {
+        const item = [...el.querySelectorAll('[role="menuitem"]')].find((node) =>
+          (node.textContent ?? '').trim().startsWith('重命名'),
+        )
+        return item ? getComputedStyle(item).color : null
+      })
+      assert.ok(normal && normal !== danger, `普通菜单项也被染成 danger 色：${normal}`)
+      const dir = '/tmp/fix-1603c'
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: `${dir}/02-menu-danger-item.png` })
+      await page.keyboard.press('Escape')
     })
 
     desktop('反馈2156#02：打开会话后重新加载，未读点不再出现', async (page) => {
@@ -13292,6 +13466,118 @@ async function main() {
         0,
         '退出后仍有调整界面残留',
       )
+    })
+
+    fbAdjust('调整说明：同元素连续改尺寸/移动合并为一条、选择器跳过 Radix/React 自动 id', async (page) => {
+      // 先打开一个 Radix 菜单（冻结副本里才带 #radix-… 的运行时 id）。
+      await openSession(page, 'long')
+      await page.getByRole('button', { name: '筛选会话' }).click()
+      await page.waitForTimeout(200)
+      await page.keyboard.press('Control+Shift+F')
+      await page.waitForSelector('html.feedback-mode', { timeout: 8000 })
+      await page.waitForTimeout(500)
+      const bar = page.getByRole('region', { name: '反馈模式工具栏' })
+      await bar.getByRole('button', { name: '调整', exact: true }).click()
+      await page.locator('[data-adjust-toolbar]').waitFor({ timeout: 20000 })
+      await page.waitForFunction(() => window.__feedbackAdjust?.stats?.clonedNodes > 0, null, { timeout: 30000 })
+
+      const probe = '[data-testid="sidebar-new-session"]'
+      assert.equal(await page.evaluate((sel) => window.__feedbackAdjust.select(sel), probe), true, '选不中新建会话按钮')
+      const stageWidth = () =>
+        page.evaluate(
+          (sel) =>
+            Math.round(
+              document.querySelector(`[data-adjust-stage] ${sel}`).getBoundingClientRect().width,
+            ),
+          probe,
+        )
+      const dragE = async (dx) => {
+        const handle = await page.locator('[data-adjust-handle="e"]').boundingBox()
+        assert.ok(handle, '缺少 e 手柄')
+        await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+        await page.mouse.down()
+        await page.mouse.move(handle.x + handle.width / 2 + dx, handle.y + handle.height / 2, { steps: 8 })
+        await page.mouse.up()
+        await page.waitForTimeout(220)
+      }
+      const before = await stageWidth()
+      await dragE(20)
+      await dragE(40)
+      const after = await stageWidth()
+      let changes = await page.evaluate(() => window.__feedbackAdjust.changes())
+      const resizes = changes.filter(
+        (change) => change.kind === 'resize' && change.target.testId === 'sidebar-new-session',
+      )
+      assert.equal(resizes.length, 1, `同元素连续改尺寸没有合并：${resizes.length} 条`)
+      assert.equal(resizes[0].before.width, before, `合并后改前值不是第一次拖动前：${resizes[0].before.width} / ${before}`)
+      assert.equal(resizes[0].after.width, after, `合并后改后值不是最后一次：${resizes[0].after.width} / ${after}`)
+
+      // 换一个元素再改：不会被合并进来。
+      assert.equal(
+        await page.evaluate(() => window.__feedbackAdjust.select('[aria-label^="收件箱"]')),
+        true,
+        '选不中收件箱按钮',
+      )
+      const handle2 = await page.locator('[data-adjust-handle="e"]').boundingBox()
+      await page.mouse.move(handle2.x + handle2.width / 2, handle2.y + handle2.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(handle2.x + handle2.width / 2 + 16, handle2.y + handle2.height / 2, { steps: 6 })
+      await page.mouse.up()
+      await page.waitForTimeout(220)
+      changes = await page.evaluate(() => window.__feedbackAdjust.changes())
+      assert.equal(
+        changes.filter((change) => change.kind === 'resize').length,
+        2,
+        '不同元素的改尺寸被错误合并',
+      )
+
+      // 选择器：Radix/React 自动 id 不进选择器，生成的结构路径在副本里唯一命中。
+      const auto = await page.evaluate(() => {
+        const stage = document.querySelector('[data-adjust-stage]')
+        const el = [...stage.querySelectorAll('[id]')].find((node) =>
+          /^(radix-|_r_|:r)/i.test(node.id),
+        )
+        if (!el) return null
+        el.setAttribute('data-adjust-probe', 'auto-id')
+        return { id: el.id, selected: window.__feedbackAdjust.select('[data-adjust-probe="auto-id"]') }
+      })
+      assert.ok(auto?.selected, '副本里没有可选的自动 id 元素')
+      await page.keyboard.press('ArrowRight')
+      await page.waitForTimeout(120)
+      await page.keyboard.press('ArrowRight')
+      await page.waitForTimeout(150)
+      changes = await page.evaluate(() => window.__feedbackAdjust.changes())
+      // 生成的选择器不包含自动 id，并能在副本里唯一解析。
+      for (const change of changes) {
+        assert.equal(
+          /#radix-|#_r_[0-9a-z]+_|#:r[0-9a-z]+:/i.test(change.target.selector),
+          false,
+          `选择器里出现运行时自动 id：${change.target.selector}`,
+        )
+        assert.ok(change.target.selector, '改动目标缺少选择器')
+      }
+      const resolved = await page.evaluate(() => {
+        const stage = document.querySelector('[data-adjust-stage]')
+        return window.__feedbackAdjust.changes().map((change) => {
+          try {
+            return stage.querySelectorAll(change.target.selector).length
+          } catch {
+            return -1
+          }
+        })
+      })
+      assert.equal(resolved.some((count) => count < 0), false, '有选择器无法解析')
+      assert.equal(resolved.some((count) => count === 0), false, '有选择器在副本里挂不上')
+      const dir = '/tmp/fix-1603c'
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: `${dir}/adjust-merged-changes.png` })
+
+      for (let i = 0; i < 5; i += 1) {
+        if (!(await page.locator('html.feedback-mode').count())) break
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(150)
+      }
+      await page.waitForFunction(() => !document.documentElement.classList.contains('feedback-mode'), null, { timeout: 10000 })
     })
 
     // 调整模式各浮层互不遮挡：插入面板、悬停预览、选中工具条、改动清单、提示条。

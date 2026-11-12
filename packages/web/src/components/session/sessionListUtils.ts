@@ -91,6 +91,18 @@ export function isRunningStatus(status: SessionSummary['status']): boolean {
   return status === 'running' || status === 'waiting_permission' || status === 'retrying'
 }
 
+/** 反馈1603#01：最近活动超过 7 天的会话在项目分组里默认收起。 */
+export const OLDER_SESSION_MS = 7 * 24 * 60 * 60 * 1000
+
+/** 固定、运行中、待审批、未读的会话不受「更早的会话」收起规则影响。 */
+export function staysVisibleWhenOlder(row: SessionTreeRow): boolean {
+  return !!row.pinnedInProject || isRunningStatus(row.status) || !!row.unread
+}
+
+export function isOlderSession(row: SessionTreeRow, cutoff: number): boolean {
+  return row.updatedAt < cutoff && !staysVisibleWhenOlder(row)
+}
+
 export function matchesStatus(s: SessionSummary, filter: SessionFilter['status']): boolean {
   if (filter === 'all') return true;
   if (filter === 'running') return s.status === 'running' || s.status === 'retrying';

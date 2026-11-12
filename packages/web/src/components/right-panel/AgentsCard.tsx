@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { Bot, Ellipsis } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Bot } from 'lucide-react'
 import type { SubagentSession } from '../../lib/types'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
@@ -7,7 +7,6 @@ import { useNow } from '../../lib/hooks'
 import { api } from '../../lib/api'
 import { Menu } from '../ui/Menu'
 import { EmptyState } from '../ui/EmptyState'
-import { IconButton } from '../ui/Button'
 import { profileModelGroups } from '../../lib/profileModels'
 import { useSessionView } from '../session/SessionScope'
 import { runningSince } from '../../lib/runClock'
@@ -53,6 +52,7 @@ function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number;
         : sub.loading
           ? '加载中'
           : '已结束'
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null)
   const rerun = async (model?: string) => {
     if (!host || !id) return
     try {
@@ -93,6 +93,13 @@ function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number;
           if (hostId) openAgentSession(hostId, id)
           else focusAgent(id)
         }}
+        onContextMenu={(e) => {
+          // 反馈1603#06：去掉行尾常驻的 ⋯；换模型重跑 / 交回主会话改为右键子代理行。
+          if (!id || running) return
+          e.preventDefault()
+          e.stopPropagation()
+          setMenuAt({ x: e.clientX, y: e.clientY })
+        }}
         className="flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 text-left text-[13px] transition-colors hover:bg-[var(--t-bg-hover)]"
         data-tip={sub.summary ? `${sub.summary.title} · ${sub.summary.model}` : undefined}
       >
@@ -122,22 +129,23 @@ function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number;
         </span>
       )}
     </button>
-    {!running && id && (
+    {menuAt && id && (
       <Menu
+        open
+        onOpenChange={(next) => {
+          if (!next) setMenuAt(null)
+        }}
         side="bottom"
-        align="end"
+        align="start"
+        sideOffset={2}
         className="w-[240px]"
         aria-label={`子代理操作：${sub.summary?.title ?? ''}`}
-        trigger={({ open }) => (
-          <IconButton
-            size="sm"
-            label="子代理操作"
-            tooltip="换模型重跑 / 交回主会话（单代理）"
-            className={cn('size-6! shrink-0 opacity-0 group-hover:opacity-100', open && 'opacity-100')}
-          >
-            <Ellipsis size={13} />
-          </IconButton>
-        )}
+        trigger={
+          <span
+            aria-hidden
+            style={{ position: 'fixed', left: menuAt.x, top: menuAt.y, width: 1, height: 1 }}
+          />
+        }
       >
         <Menu.Sub>
           <Menu.SubTrigger>换模型重跑</Menu.SubTrigger>

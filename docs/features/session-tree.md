@@ -1,6 +1,6 @@
 # 会话树（侧栏会话行、悬停拓扑图、切分支）
 
-> 更新：2026-11-12。用户 2026-11-11 22:09 原话决定了三件事，单点断言在 `scripts/decisions-check.mjs` 的 `sidebar-fork-same-row`、`sidebar-hover-topology`、`graph-trunk-current`。绘制规范、颜色与高度见 [session-graph.md](session-graph.md)。
+> 更新：2026-11-12。用户 2026-11-11 22:09 与 2026-11-12 的原话决定了侧栏会话行的几件事，单点断言在 `scripts/decisions-check.mjs` 的 `sidebar-fork-same-row`、`sidebar-hover-topology`、`sidebar-old-sessions-collapsed`、`graph-trunk-current`。绘制规范、颜色与高度见 [session-graph.md](session-graph.md)。
 
 ## 一行一棵会话树
 
@@ -9,6 +9,12 @@
 - 未读、运行中、待审批按树内任一会话汇总；汇总优先级：待审批 → 运行中 → 等待网络 → 错误 → 空闲。
 - 置顶按整棵树生效：行出现在置顶区时，取消置顶会取消树内所有会话的置顶，避免分叉留在置顶区。
 - 子代理/孙代理仍不进侧栏；根会话已归档而分叉未归档时，分叉退回独立一行，不会消失。会话树的归并口径在 `lib/sessionTree.ts`（分叉跟 `forkedFrom`、子代理跟 `parentId` 向上找根）。
+
+## 更早的会话默认收起（反馈1603#01）
+
+- 项目分组里最近活动超过 7 天的会话默认不渲染，组末一行「更早的 N 个会话」（次要文字行，带折叠箭头）；点开才加载并展开，再点收起。阈值常量 `OLDER_SESSION_MS`（7 天）。
+- 固定（项目内固定）、运行中、待审批、等待网络、未读的会话不受影响，始终显示。
+- 展开状态按项目记在本机（`expandedOlderProjects`，键与折叠记忆同源：主机 + 仓库根路径），换会话或刷新后保持；搜索与「已归档」视图不收起。
 
 ## 悬停拓扑图
 
@@ -26,11 +32,17 @@
 - 子代理只读视图不切换主线：右栏仍是其父会话的会话图，点主线节点先退出子代理视图再定位（沿用反馈1926#03）。
 - 用户原话说「最右边的主线要换成对应的会话」；现行画法主线固定在第 0 列（最左），按产品经理的要求保持轨道位置不变，只替换主线代表的会话。
 
+## 右栏代理卡（子代理列表）
+
+- 一行一个子代理（按层级缩进 + 竖引导线），点行打开该子代理的只读会话；行尾不再有常驻 ⋯ 按钮（2026-11-12 用户原话「去掉」）。
+- 「换模型重跑 / 交回主会话（单代理）」改为右键子代理行打开同一组操作；运行中的行不弹菜单。
+
 ## 代码位置
 
 - `packages/web/src/lib/sessionTree.ts`：会话树根归并（侧栏与拓扑图共用）。
 - `packages/web/src/components/session/sessionListUtils.ts`：分叉归并成一行、状态/未读汇总、点击目标与分叉名。
 - `packages/web/src/components/session/SessionRow.tsx`：行内分叉名、整树置顶、悬停浮层入口。
+- `packages/web/src/components/right-panel/AgentsCard.tsx`：右栏代理卡；行右键菜单（换模型重跑 / 交回主会话）。
 - `packages/web/src/components/session/SessionTopology.tsx`：悬停浮层的拓扑图内容与节点点击。
 - `packages/web/src/components/ui/HoverCard.tsx`：悬停浮层原语（Portal + 碰撞避让 + 延迟）。
 - `packages/web/src/components/sessionGraph/layout.ts` 的 `layoutSessionGraph`（trunk = 当前会话，`compact` = 悬停浮层）；`data.ts` 的 `graphFromTree`；`useGraphTree.ts` 按树缓存拓扑。
@@ -39,4 +51,5 @@
 
 - `e2e/regression.mjs`「侧栏分叉并入原会话行、悬停拓扑图、右栏切分支」：分叉前后侧栏行数不变；悬停出现拓扑浮层、树内每个会话都有节点、分叉点/派出点被画出、无轮次文字；点分叉节点跳转、行内出现分叉名；在分叉里右栏主线归属仍是该分叉（`data-edge-owner`），分叉轮次在 trunk 上、来源会话是分支泳道。
 - `e2e/regression.mjs` 反馈0220#06/#07：单会话树不弹卡片；反馈模式卡片停住；悬停名称行高亮对应线；点线/节点跳转；线外 5px 仍命中。
-- 单测：`layout.test.ts`（整棵树共拓扑 + 主线切换 + 紧凑模式）、`sessionListUtils.test.ts`（归并与汇总）。
+- `e2e/regression.mjs`「反馈1603#01：超过 7 天的会话默认收起，点开才加载，固定/未读始终显示」与「反馈1603#06：代理卡行尾不再有 ⋯，右键子代理行仍可换模型重跑/交回」。
+- 单测：`layout.test.ts`（整棵树共拓扑 + 主线切换 + 紧凑模式）、`sessionListUtils.test.ts`（归并与汇总、7 天收起与固定/运行中/未读例外）。
