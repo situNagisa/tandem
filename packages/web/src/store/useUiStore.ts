@@ -94,6 +94,8 @@ interface UiState {
   /** 手机首页内嵌的收件箱视图是否可见；只用于抑制未读角标，不控制弹层。 */
   inboxViewOpen: boolean
   toasts: Toast[]
+  /** 反馈「调整」期间收起提示条，避免压住调整面板；提示改由调整工具条状态区显示。 */
+  toastSuppressed: boolean
   promptSeed: { text: string; nonce: number } | null
   /** 右侧代理列表点击后，定位并展开消息流中的对应 Task 卡片。 */
   agentFocus: { id: string; nonce: number } | null
@@ -181,6 +183,8 @@ interface UiState {
     options?: { onClick?: () => void; actionLabel?: string; durationMs?: number },
   ) => void
   dismissToast: (id: number) => void
+  clearToasts: () => void
+  setToastSuppressed: (suppressed: boolean) => void
   seedPrompt: (text: string) => void
   clearPromptSeed: () => void
   focusAgent: (id: string) => void
@@ -314,6 +318,7 @@ export const useUiStore = create<UiState>((set, get) => {
   inboxOpen: false,
   inboxViewOpen: false,
   toasts: [],
+  toastSuppressed: false,
   promptSeed: null,
   agentFocus: null,
   agentSession: null,
@@ -497,6 +502,8 @@ export const useUiStore = create<UiState>((set, get) => {
   setInboxViewOpen: (open) => set({ inboxViewOpen: open }),
 
   toast: (text, kind = 'info', options) => {
+    // 调整期间提示统一显示在调整工具条状态区（反馈「调整」）。
+    if (get().toastSuppressed) return
     const now = Date.now()
     for (const [key, at] of recentToastAt) {
       if (now - at >= TOAST_DEDUPE_MS) recentToastAt.delete(key)
@@ -530,6 +537,12 @@ export const useUiStore = create<UiState>((set, get) => {
     }
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
   },
+  clearToasts: () => {
+    for (const timer of toastTimers.values()) window.clearTimeout(timer)
+    toastTimers.clear()
+    set({ toasts: [] })
+  },
+  setToastSuppressed: (suppressed) => set({ toastSuppressed: suppressed }),
   seedPrompt: (text) => set({ promptSeed: { text, nonce: Date.now() } }),
   clearPromptSeed: () => set({ promptSeed: null }),
   focusAgent: (id) =>

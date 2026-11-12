@@ -401,6 +401,7 @@ export function FeedbackMode() {
     useFeedbackStore.getState().upsertItem(buildAdjustItem(payload, payload.afterImage))
     setSelectMode('element')
     setDrawerOpen(true)
+    useUiStore.getState().setToastSuppressed(false)
     useUiStore
       .getState()
       .toast(`已生成调整条目（${payload.snapshot.changes.length} 项），可在条目里改文字后导出`, 'success')
@@ -415,6 +416,7 @@ export function FeedbackMode() {
       : 0
     adjustSessionRef.current = null
     setSelectMode('element')
+    useUiStore.getState().setToastSuppressed(false)
     if (changes > 0) {
       useUiStore.getState().toast(`已保留 ${changes} 项调整（未导出）`, 'info')
     }
@@ -564,7 +566,6 @@ export function FeedbackMode() {
           onClose={handleAdjustClose}
           onProgress={handleAdjustProgress}
           onFinish={handleAdjustFinish}
-          onNotify={(message, tone) => useUiStore.getState().toast(message, tone)}
           escapeRef={adjustEscapeRef}
           resume={resumeAdjust}
           onReleaseChange={setAdjustReleased}

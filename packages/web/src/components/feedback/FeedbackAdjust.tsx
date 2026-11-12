@@ -72,6 +72,7 @@ import {
 } from './feedbackAdjustApply'
 import {
   AdjustChangeList,
+  AdjustFloating,
   AdjustIconPicker,
   AdjustInsertPanel,
   AdjustListEditor,
@@ -79,7 +80,9 @@ import {
   AdjustStateBadge,
   AdjustTextPanel,
   AdjustVariantPanel,
+  type AdjustRect,
 } from './FeedbackAdjustPanels'
+import { useUiStore } from '../../store/useUiStore'
 import { renderInserted } from './feedbackAdjustInsert'
 import { UI_ATTR } from './feedbackModeHelpers'
 
@@ -189,7 +192,6 @@ export interface FeedbackAdjustProps {
   onClose: () => void
   onProgress: (payload: AdjustPayload) => void
   onFinish: (payload: AdjustPayload) => void
-  onNotify: (message: string, tone?: 'info' | 'success' | 'error') => void
   /** 父组件处理 Esc：返回 true 表示调整工具自己消费了（关面板/取消选择）。 */
   escapeRef: MutableRefObject<(() => boolean) | null>
   /** 继续调整：从已有条目恢复冻结副本与改动清单。 */
@@ -313,12 +315,32 @@ export function FeedbackAdjust({
   onClose,
   onProgress,
   onFinish,
-  onNotify,
   escapeRef,
   resume,
   onReleaseChange,
 }: FeedbackAdjustProps) {
   const [phase, setPhase] = useState<'freezing' | 'ready' | 'released'>('freezing')
+  /** 调整期间的提示显示在底部工具条状态区，不再弹 toast。 */
+  const [notice, setNotice] = useState<{ id: number; text: string; tone: 'info' | 'success' | 'error' } | null>(null)
+  const noticeSeq = useRef(0)
+  const notify = useCallback((message: string, tone: 'info' | 'success' | 'error' = 'info') => {
+    noticeSeq.current += 1
+    setNotice({ id: noticeSeq.current, text: message, tone })
+  }, [])
+
+  // 进入调整先收起已有提示条，并在调整期间停用 toast；提示改走底部状态区。
+  useEffect(() => {
+    const ui = useUiStore.getState()
+    ui.clearToasts()
+    ui.setToastSuppressed(true)
+    return () => ui.setToastSuppressed(false)
+  }, [])
+
+  useEffect(() => {
+    if (!notice) return
+    const timer = window.setTimeout(() => setNotice(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [notice])
   const [freeze, setFreeze] = useState<AdjustFreeze | null>(null)
   const freezeRef = useRef<AdjustFreeze | null>(null)
   const [selected, setSelected] = useState<Element | null>(null)
@@ -337,6 +359,14 @@ export function FeedbackAdjust({
   const [iconPicker, setIconPicker] = useState(false)
   const [iconQuery, setIconQuery] = useState('')
   const [insertPanel, setInsertPanel] = useState(false)
+  const [insertPreviewKey, setInsertPreviewKey] = useState<string | null>(null)
+  /** 调整浮层的实际视口矩形，用于让选中工具条避开面板/预览/清单/底栏。 */
+  const [adjustRects, setAdjustRects] = useState<{
+    changes?: AdjustRect
+    panel?: AdjustRect
+    preview?: AdjustRect
+    toolbar?: AdjustRect
+  }>({})
   const [inserted, setInserted] = useState<AdjustInsertedItem[]>([])
   const insertedRef = useRef<AdjustInsertedItem[]>(inserted)
   insertedRef.current = inserted
@@ -452,6 +482,122 @@ export function FeedbackAdjust({
   )
 
   const bump = useCallback(() => setTick((value) => value + 1), [])
+
+  useEffect(() => {
+    const onResize = () => bump()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [bump])
+
+  // Radix 定位完成后再量浮层矩形，供选中工具条计算碰撞留白。
+  useEffect(() => {
+    const measure = () => {
+      const read = (selector: string): AdjustRect | undefined => {
+        const element = document.querySelector(selector)
+        if (!element) return undefined
+        const rect = element.getBoundingClientRect()
+        return {
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+          width: rect.width,
+          height: rect.height,
+        }
+      }
+      const next = {
+        changes: read('[data-adjust-changes]'),
+        panel: read('[data-adjust-insert-panel]'),
+        preview: read('[data-adjust-insert-preview]'),
+        toolbar: read('[data-adjust-toolbar]'),
+      }
+      const same = (a?: AdjustRect, b?: AdjustRect) =>
+        a === b ||
+        (!!a &&
+          !!b &&
+          Math.abs(a.left - b.left) < 0.5 &&
+          Math.abs(a.top - b.top) < 0.5 &&
+          Math.abs(a.right - b.right) < 0.5 &&
+          Math.abs(a.bottom - b.bottom) < 0.5)
+      setAdjustRects((prev) =>
+        same(prev.changes, next.changes) &&
+        same(prev.panel, next.panel) &&
+        same(prev.preview, next.preview) &&
+        same(prev.toolbar, next.toolbar)
+          ? prev
+          : next,
+      )
+    }
+    const frame = requestAnimationFrame(measure)
+    const timers = [window.setTimeout(measure, 80), window.setTimeout(measure, 260)]
+    return () => {
+      cancelAnimationFrame(frame)
+      for (const timer of timers) window.clearTimeout(timer)
+    }
+  })
+
+  /** 选中工具条：上/下方优先，同时避开左右两侧的清单/面板/预览与底部工具条。 */
+  const selectionPadding = useMemo(() => {
+    if (!selectedRect) return { top: 8, left: 8, right: 8, bottom: 8 }
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+    const wide = viewportWidth >= 1024
+    const padding = { top: 8, left: 8, right: 8, bottom: 8 }
+    // 工具条可能落在元素上/下方，取一段竖直范围判断是否和侧边浮层重叠。
+    const bandTop = selectedRect.y - 48
+    const bandBottom = selectedRect.y + selectedRect.height + 72
+    const overlapsVertically = (rect: AdjustRect) => rect.top < bandBottom && rect.bottom > bandTop
+    if (adjustRects.changes) {
+      if (wide) {
+        if (overlapsVertically(adjustRects.changes)) {
+          padding.left = Math.max(padding.left, Math.ceil(adjustRects.changes.right) + 8)
+        }
+      } else {
+        // 窄视口下清单是顶部横条，工具条整体让到它下方。
+        padding.top = Math.max(padding.top, Math.ceil(adjustRects.changes.bottom) + 8)
+      }
+    }
+    if (adjustRects.panel) {
+      if (adjustRects.panel.width >= viewportWidth * 0.8) {
+        padding.bottom = Math.max(padding.bottom, Math.ceil(viewportHeight - adjustRects.panel.top) + 8)
+      } else {
+        padding.right = Math.max(padding.right, Math.ceil(viewportWidth - adjustRects.panel.left) + 8)
+      }
+    }
+    if (adjustRects.preview) {
+      if (wide) {
+        if (overlapsVertically(adjustRects.preview)) {
+          padding.right = Math.max(padding.right, Math.ceil(viewportWidth - adjustRects.preview.left) + 8)
+        }
+      } else {
+        padding.bottom = Math.max(padding.bottom, Math.ceil(viewportHeight - adjustRects.preview.top) + 8)
+      }
+    }
+    if (adjustRects.toolbar) {
+      padding.bottom = Math.max(padding.bottom, Math.ceil(viewportHeight - adjustRects.toolbar.top) + 8)
+    }
+    return padding
+  }, [selectedRect, adjustRects])
+
+  // 窄视口里清单/预览/抽屉几乎占满整行，选中元素若被浮层盖住时，
+  // 把工具条的锚点移到浮层之间的空档（上/下由空档决定），再由 Radix 做碰撞。
+  const barPlacement = useMemo(() => {
+    if (!selectedRect) return { anchor: { x: 0, y: 0 }, side: 'bottom' as const }
+    const centerX = selectedRect.x + selectedRect.width / 2
+    const bottomY = selectedRect.y + selectedRect.height
+    if (window.innerWidth >= 1024) return { anchor: { x: centerX, y: bottomY }, side: 'bottom' as const }
+    const safeTop = (adjustRects.changes?.bottom ?? 0) + 8
+    const safeBottom =
+      Math.min(
+        adjustRects.preview?.top ?? Number.POSITIVE_INFINITY,
+        adjustRects.panel?.top ?? Number.POSITIVE_INFINITY,
+      ) - 8
+    if (safeBottom - safeTop >= 44) {
+      if (bottomY > safeBottom) return { anchor: { x: centerX, y: safeBottom }, side: 'top' as const }
+      if (selectedRect.y < safeTop) return { anchor: { x: centerX, y: safeTop }, side: 'bottom' as const }
+    }
+    return { anchor: { x: centerX, y: bottomY }, side: 'bottom' as const }
+  }, [selectedRect, adjustRects])
 
   const structureFor = useCallback((): AdjustSnapshot['structure'] => {
     const out: AdjustSnapshot['structure'] = []
@@ -636,7 +782,7 @@ export function FeedbackAdjust({
           seed(frozen, initial.snapshot, false)
           setPhase('ready')
           exposeDebug(frozen)
-          onNotify(
+          notify(
             `已恢复上次的冻结副本 · ${initial.snapshot.changes.length} 项改动${copy.truncated ? '（HTML 超限已截断，可重新冻结）' : ''}`,
             'info',
           )
@@ -656,7 +802,7 @@ export function FeedbackAdjust({
         if (initial) seed(frozen, initial.snapshot, true)
         setPhase('ready')
         exposeDebug(frozen)
-        onNotify(
+        notify(
           initial
             ? `已重新冻结并重放 ${initial.snapshot.changes.length} 项改动`
             : `画面已冻结 · ${frozen.stats.clonedNodes.toLocaleString('zh-CN')} 个节点 · ${frozen.stats.durationMs}ms`,
@@ -1086,7 +1232,7 @@ export function FeedbackAdjust({
         setInserted((current) => current.filter((entry) => entry.id !== item.id))
         setSelectedInsertedId(null)
       }
-      onNotify('已删除插入的示意控件', 'success')
+      notify('已删除插入的示意控件', 'success')
       return
     }
     const element = selectedRef.current
@@ -1125,7 +1271,7 @@ export function FeedbackAdjust({
     })
     setSelected(null)
     setHover(null)
-    onNotify('已记录删除；可从改动清单回退', 'success')
+    notify('已记录删除；可从改动清单回退', 'success')
   }
 
   /** 用 lucide 图标组件生成一颗静态 svg，替换选中元素里的图标（保留尺寸相关 class/属性）。 */
@@ -1197,7 +1343,7 @@ export function FeedbackAdjust({
       },
     })
     setIconPicker(false)
-    onNotify(`图标已换成 ${entry.name}`, 'success')
+    notify(`图标已换成 ${entry.name}`, 'success')
   }
 
   /** 换样式变体：只改 ui/* 的变体 class 并记录变体名。 */
@@ -1231,7 +1377,7 @@ export function FeedbackAdjust({
     })
     setVariantPanel(false)
     bump()
-    onNotify(`变体已换成 ${variant}`, 'success')
+    notify(`变体已换成 ${variant}`, 'success')
   }
 
   /** 改纯文本：替换元素下的直接文本节点，记录改前/改后。 */
@@ -1267,7 +1413,7 @@ export function FeedbackAdjust({
       },
     })
     bump()
-    onNotify('已记录改文字', 'success')
+    notify('已记录改文字', 'success')
   }
 
   /** 隐藏：保留布局占位，只设 visibility:hidden，与删除区分。 */
@@ -1304,7 +1450,7 @@ export function FeedbackAdjust({
       },
     })
     bump()
-    onNotify('已隐藏（保留占位）；可从改动清单回退', 'success')
+    notify('已隐藏（保留占位）；可从改动清单回退', 'success')
   }
 
   const insertControl = (option: AdjustInsertOption, x?: number, y?: number) => {
@@ -1358,7 +1504,7 @@ export function FeedbackAdjust({
     setSelectedInsertedId(id)
     bump()
     if (option.container) setListEditorId(id)
-    onNotify(`已插入${option.label}`, 'success')
+    notify(`已插入${option.label}`, 'success')
   }
 
   /** 更新插入的示意控件，并把内容/备注同步进改动清单。 */
@@ -1438,7 +1584,7 @@ export function FeedbackAdjust({
         op.change.behavior = text || undefined
         setOps((prev) => [...prev])
         publish()
-        onNotify(text ? '行为备注已更新' : '已清除行为备注', 'success')
+        notify(text ? '行为备注已更新' : '已清除行为备注', 'success')
       }
       setNoteTarget(null)
       return
@@ -1446,7 +1592,7 @@ export function FeedbackAdjust({
     if (insertedSelected) {
       patchInserted(insertedSelected.id, { behavior: text })
       setNoteTarget(null)
-      if (text) onNotify('行为备注已更新', 'success')
+      if (text) notify('行为备注已更新', 'success')
       return
     }
     const meta = selectedMeta
@@ -1475,7 +1621,7 @@ export function FeedbackAdjust({
       redo: () => undefined,
     })
     setNoteTarget(null)
-    onNotify('已记录行为备注', 'success')
+    notify('已记录行为备注', 'success')
   }
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>, handle: (typeof HANDLE_LIST)[number]) => {
@@ -1981,7 +2127,7 @@ export function FeedbackAdjust({
     setTextPanel(false)
     setPhase('released')
     onReleaseChange?.(true)
-    onNotify('已退出副本：现在可以操作真实界面，摆好状态后点「重新冻结」', 'info')
+    notify('已退出副本：现在可以操作真实界面，摆好状态后点「重新冻结」', 'info')
   }
 
   /** 重新冻结真实界面，并按选择器把已有改动挂到新副本；挂不上的标红。 */
@@ -2005,7 +2151,7 @@ export function FeedbackAdjust({
       setPhase('ready')
       bump()
       publish()
-      onNotify(
+      notify(
         failed.length
           ? `已重新冻结；${failed.length} 项改动按选择器没挂上（清单已标红）`
           : '已重新冻结，已有改动全部挂到新副本',
@@ -2019,9 +2165,9 @@ export function FeedbackAdjust({
     if (!snapshot) return
     try {
       await navigator.clipboard.writeText(snapshot.markdown)
-      onNotify('已复制 Markdown 说明', 'success')
+      notify('已复制 Markdown 说明', 'success')
     } catch {
-      onNotify('复制失败', 'error')
+      notify('复制失败', 'error')
     }
   }
 
@@ -2172,24 +2318,22 @@ export function FeedbackAdjust({
 
       {/* 选中元素旁的快捷操作条 */}
       {ready && selectedRect && selectedMeta && (
-        <div
-          {...{ [UI_ATTR]: '' }}
-          data-adjust-selection-bar=""
-          className="pointer-events-auto fixed z-[134] flex max-w-[calc(100vw-16px)] flex-wrap items-center gap-1 rounded-lg border border-border bg-surface p-1 shadow-md"
+        <AdjustFloating
+          key={`bar-${selectionPadding.top}-${selectionPadding.right}-${selectionPadding.bottom}-${selectionPadding.left}`}
+          anchor={barPlacement.anchor}
+          side={barPlacement.side}
+          align="center"
+          sideOffset={selectedRect.width < 28 || selectedRect.height < 28 ? 20 : 12}
+          padding={selectionPadding}
+          layer={134}
+          ariaLabel="选中元素操作"
+          dataAttrs={{ 'data-adjust-selection-bar': '' }}
+          className="pointer-events-auto flex max-w-[calc(100vw-16px)] flex-wrap items-center gap-1 rounded-lg border border-border bg-surface p-1 shadow-md"
           style={{
-            left: Math.max(8, Math.min(selectedRect.x, Math.max(8, window.innerWidth - 560))),
-            top: (() => {
-              // 靠近底部时放上方；上方也会压到底部状态条时改放顶部工具条下方。
-              const bottomZone = window.innerHeight - 118
-              // 小元素的手柄在元素外侧，操作条要再让开，避免盖住 se 手柄。
-              const below =
-                selectedRect.y +
-                selectedRect.height +
-                (selectedRect.width < 28 || selectedRect.height < 28 ? 44 : 22)
-              if (below <= bottomZone) return below
-              const above = selectedRect.y - 46
-              return above > 70 && above <= bottomZone ? above : 58
-            })(),
+            maxWidth: Math.max(
+              220,
+              window.innerWidth - selectionPadding.left - selectionPadding.right - 2,
+            ),
           }}
         >
           <span
@@ -2308,7 +2452,7 @@ export function FeedbackAdjust({
               </Button>
             </>
           )}
-        </div>
+        </AdjustFloating>
       )}
 
       {/* 插入的示意控件：真实复用 ui/* 组件，渲染在冻结副本之上 */}
@@ -2393,7 +2537,12 @@ export function FeedbackAdjust({
             if (event.button !== 0) return
             insertDragRef.current = { option, startX: event.clientX, startY: event.clientY }
           }}
-          onClose={() => setInsertPanel(false)}
+          onClose={() => {
+            setInsertPreviewKey(null)
+            setInsertPanel(false)
+          }}
+          toolbarTop={adjustRects.toolbar?.top}
+          onPreviewChange={setInsertPreviewKey}
         />
       )}
 
@@ -2477,12 +2626,19 @@ export function FeedbackAdjust({
       >
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="annotation">调整</Badge>
-          <span className="min-w-0 flex-1 truncate text-[12px] text-text-secondary">
-            {phase === 'freezing'
-              ? '正在截取调整前画面并冻结当前视口…'
-              : phase === 'released'
-                ? `已退出副本 · ${ops.length} 项改动保留；摆好真实界面后点「重新冻结」`
-                : `已冻结 · ${freeze?.stats.clonedNodes.toLocaleString('zh-CN') ?? 0} 个节点 · ${freeze?.stats.durationMs ?? 0}ms · ${ops.length} 项改动${summary.nonStandard ? ` · ${summary.nonStandard} 项非标准值` : ''}`}
+          <span
+            data-adjust-status=""
+            className={cn(
+              'min-w-0 flex-1 truncate text-[12px]',
+              notice?.tone === 'error' ? 'text-danger' : 'text-text-secondary',
+            )}
+          >
+            {notice?.text ??
+              (phase === 'freezing'
+                ? '正在截取调整前画面并冻结当前视口…'
+                : phase === 'released'
+                  ? `已退出副本 · ${ops.length} 项改动保留；摆好真实界面后点「重新冻结」`
+                  : `已冻结 · ${freeze?.stats.clonedNodes.toLocaleString('zh-CN') ?? 0} 个节点 · ${freeze?.stats.durationMs ?? 0}ms · ${ops.length} 项改动${summary.nonStandard ? ` · ${summary.nonStandard} 项非标准值` : ''}`)}
           </span>
           {dirty && <span className="text-[11px] text-warning">未导出</span>}
           <Button
