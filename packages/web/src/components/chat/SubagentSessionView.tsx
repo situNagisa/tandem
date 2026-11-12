@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Bot, ChevronRight, Lock } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
 import { Button } from '../ui/Button'
@@ -14,12 +14,22 @@ import { TurnRail } from './TurnRail'
  * 顶部面包屑「主会话 › 子代理 › …」逐层返回；不提供输入框。
  */
 export function SubagentSessionView({ hostId, id }: { hostId: string; id: string }) {
-  const view = useAppStore((s) => s.active)
+  // 子代理数据挂在它所属树根会话的视图上：从分叉等不含它的会话进入时，取真正持有它的视图。
+  const view = useAppStore((s) => {
+    if (s.active?.subagents[id]) return s.active
+    return Object.values(s.sessionViews).find((item) => item.subagents[id]) ?? s.active
+  })
   const closeAgentSession = useUiStore((s) => s.closeAgentSession)
   const openAgentSession = useUiStore((s) => s.openAgentSession)
+  const ensureSubagent = useAppStore((s) => s.ensureSubagent)
+  const sessionCount = useAppStore((s) => (s.runtimes[hostId]?.sessions.length ?? 0))
   const isMobile = useIsMobile()
   const scrollRef = useRef<HTMLDivElement>(null)
   const sub = view?.subagents[id]
+  // 当前打开的会话里还没有这个子代理（例如从分叉视图点子代理节点）：补开树根视图并订阅快照。
+  useEffect(() => {
+    if (!sub) ensureSubagent(hostId, id)
+  }, [sub, ensureSubagent, hostId, id, sessionCount])
   const chain = useMemo(() => {
     const all = view?.subagents ?? {}
     const list: Array<{ id: string; title: string }> = []

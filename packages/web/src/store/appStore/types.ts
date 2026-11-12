@@ -112,6 +112,8 @@ export interface AppState {
   openSession: (hostId: string, sessionId: string) => void
   /** 后台打开一个分屏会话视图，不切换焦点。 */
   openSessionView: (hostId: string, sessionId: string) => void
+  /** 确保子代理会话已挂到某个已打开视图并订阅到快照（从分叉/其他会话直接进入子代理时用）。 */
+  ensureSubagent: (hostId: string, childId: string) => void
   /** 切换会话时目标首屏未就绪则暂留当前画面；目标就绪后由 store 订阅调用，force 为超时兜底。 */
   commitPendingFocus: (force?: boolean) => void
   /** 关闭一个会话视图（不改变路由）。 */

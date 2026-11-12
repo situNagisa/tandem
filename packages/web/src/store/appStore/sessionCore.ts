@@ -208,16 +208,21 @@ export function createSessionCore(
   }
 
   const subscribeChild = (hostId: string, childId: string): void => {
-    const hasChild = Object.values(get().sessionViews).some(
+    const views = Object.values(get().sessionViews).filter(
       (view) => view.hostId === hostId && !!view.subagents[childId],
     )
-    if (!hasChild) return
+    if (views.length === 0) return
     let set = childSubscriptions.get(hostId)
     if (!set) {
       set = new Set()
       childSubscriptions.set(hostId, set)
     }
-    if (set.has(childId)) return
+    // 视图重建后条目是空的：服务端对已订阅的会话不再补发快照，重新订阅一次取首屏（反馈1603#08）。
+    const empty = views.every((view) => {
+      const sub = view.subagents[childId]!
+      return sub.loading && sub.messages.length === 0
+    })
+    if (set.has(childId) && !empty) return
     set.add(childId)
     connections.get(hostId)?.subscribe(childId)
   }

@@ -12460,6 +12460,61 @@ async function main() {
       await page.unroute(/\/api\/sessions\/[^/]+\/graph$/)
     })
 
+    desktop('反馈1603#08：分叉/主会话切换后子代理会话每次都能加载', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const [mainId, childId, , forkId] = state.scenarios.find((item) => item.id === 'subagents').sessionIds
+      await openSession(page, mainId)
+      const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+      const waitRoute = (id) =>
+        page.waitForFunction((sid) => window.location.hash.includes(`/s/${sid}`), id, { timeout: 10_000 })
+      const clickNode = async (sessionId) => {
+        const node = page
+          .locator(`[data-group="graph"] [data-graph-turn-id][data-session-id="${sessionId}"]`)
+          .first()
+        await node.waitFor({ state: 'visible', timeout: 10_000 })
+        await node.click()
+      }
+      const expectAgentLoaded = async (where) => {
+        await page.locator('[data-agent-breadcrumb]').waitFor({ state: 'visible', timeout: 10_000 })
+        await page.locator('[data-turn-id]').first().waitFor({ timeout: 10_000 })
+        assert.ok((await page.locator('[data-turn-id]').count()) > 0, `${where} 子代理视图没有消息`)
+        assert.equal(await page.locator('.skeleton').count(), 0, `${where} 子代理视图停在骨架屏`)
+      }
+      // 按轨迹循环 5 轮：主会话 → 分叉 → 主会话 → 打开子代理 → 返回。
+      for (let round = 1; round <= 5; round += 1) {
+        await clickNode(forkId)
+        await waitRoute(forkId)
+        await page.waitForTimeout(250)
+        await clickNode(mainId)
+        await waitRoute(mainId)
+        await page.waitForTimeout(900)
+        const row = page
+          .locator('aside button')
+          .filter({ hasText: '竞品文案' })
+          .first()
+        await row.waitFor({ timeout: 10_000 })
+        await row.click()
+        await expectAgentLoaded(`第 ${round} 轮`)
+        await page.locator('button[data-tip^="返回主会话"]').first().click()
+        await page.locator('[data-agent-breadcrumb]').waitFor({ state: 'detached', timeout: 5_000 })
+      }
+      // 最后从分叉视图的会话图子代理节点直接进入（此时没有主会话视图）。
+      await clickNode(forkId)
+      await waitRoute(forkId)
+      await page.waitForTimeout(500)
+      const subNode = page
+        .locator(`[data-group="graph"] [data-graph-turn-id][data-session-id="${childId}"]`)
+        .first()
+      await subNode.waitFor({ state: 'visible', timeout: 10_000 })
+      await subNode.click()
+      await expectAgentLoaded('从分叉视图进入')
+      const dir = '/tmp/fix-1603b'
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: `${dir}/08-agent-loaded.png` })
+    })
+
     desktop('会话图泳道线 tooltip 以指针定位并完整显示在视口内（反馈1926#10）', async (page) => {
       let state = await api(base, token, '/api/demo')
       if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
