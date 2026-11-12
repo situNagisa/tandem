@@ -135,6 +135,11 @@ async function main() {
       'undefined',
       '发布版不应暴露调整工具的调试入口',
     )
+    assert.equal(
+      await page.evaluate(() => document.querySelectorAll('[data-tandem-src]').length),
+      0,
+      '发布版不应注入组件源码位置 data-tandem-src',
+    )
 
     // 组件画廊路由回首页
     await page.evaluate(() => {

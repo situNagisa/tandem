@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+// @ts-expect-error 调试版构建插件是纯 JS，不需要类型声明
+import { debugSourcePlugin } from './debug-source-plugin.mjs'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }
 const srcDir = path.dirname(fileURLToPath(import.meta.url))
@@ -33,7 +35,13 @@ function releaseStubPlugin() {
 }
 
 export default defineConfig({
-  plugins: [releaseStubPlugin(), react(), tailwindcss()],
+  plugins: [
+    releaseStubPlugin(),
+    // 调试版给原生 DOM 注入 data-tandem-src（组件源码 file:line）；发布版不加载。
+    debugSourcePlugin({ root: path.resolve(srcDir, '../..'), flavor }),
+    react(),
+    tailwindcss(),
+  ],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __TANDEM_FLAVOR__: JSON.stringify(flavor),

@@ -26,6 +26,7 @@ const WEB_FORBIDDEN = [
   'FeedbackAdjust',
   'feedbackAdjust',
   'data-adjust-',
+  'data-tandem-src',
   'FeedbackAnnotator',
   'FeedbackDrawer',
   'useFeedbackStore',
