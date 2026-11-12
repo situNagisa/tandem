@@ -83,6 +83,9 @@ const F = {
   graphCard: 'packages/web/src/components/sessionGraph/SessionGraphCard.tsx',
   graphLayout: 'packages/web/src/components/sessionGraph/layout.ts',
   graphData: 'packages/web/src/components/sessionGraph/data.ts',
+  graphTree: 'packages/web/src/components/sessionGraph/useGraphTree.ts',
+  graphServer: 'packages/server/src/host/graph.ts',
+  jump: 'packages/web/src/lib/jump.ts',
   hoverCard: 'packages/web/src/components/ui/HoverCard.tsx',
   topology: 'packages/web/src/components/session/SessionTopology.tsx',
   sessionTree: 'packages/web/src/lib/sessionTree.ts',
@@ -193,10 +196,10 @@ const DECISIONS = [
   },
   {
     id: 'graph-uniform-node',
-    source: '2026-11-09 用户决定：会话图配色与节点形状',
-    decision: '所有节点统一 8px 实心圆',
+    source: '2026-11-09 用户决定：会话图配色与节点形状（2026-11-12 反馈1110：悬停的节点放大一档）',
+    decision: '所有节点统一 8px 实心圆，只有指针悬停的那一个放大到 10px',
     files: [F.graphView],
-    need: [/data-marker="circle"/, /size-\[8px\]/, /rounded-full/],
+    need: [/data-marker="circle"/, /isHoveredNode \? 10 : 8/, /rounded-full/],
   },
   {
     id: 'graph-lane-colors',
@@ -230,11 +233,38 @@ const DECISIONS = [
     need: [/data-edge-hit/, /data-tip=\{edge\.label\}/, /EDGE_HIT_WIDTH = 13/, /ownerId/],
   },
   {
+    id: 'graph-hover-node',
+    source: '反馈1110（2026-11-12 用户原话：悬停的会话没有更加高亮，不知道自己悬停在哪了，缺少交互）',
+    decision:
+      '悬停某节点时同一会话整条线保持高亮，被悬停的那个轮节点再突出：圆点 8px→10px 并加同色外圈（data-hovered），同线其他节点不变；悬停浮层紧凑模式同样适用',
+    files: [F.graphView],
+    need: [/data-hovered=\{isHoveredNode/, /isHoveredNode \? 10 : 8/, /hoveredNode/],
+  },
+  {
+    id: 'graph-running-all-sessions',
+    source:
+      '反馈1110（2026-11-12 用户原话：最新的正在思考输出的轮次没有对应的标识…子代理、分叉、主会话都要有，哪条线在思考运行可以一眼看出来）',
+    decision:
+      '会话图里任何运行中的会话（主会话/分叉/子代理）都在自己最新一轮节点显示与侧栏一致的 running-dot 呼吸动画；graph 接口按会话下发 running，会话运行状态变化时重新拉取拓扑',
+    files: [F.protocol, F.graphServer, F.graphData, F.graphTree, F.graphView],
+    need: [/running\?: boolean/, /rec\.status === 'running'/, /running: true/, /latestTurnOf/, /session\.status/],
+  },
+  {
     id: 'graph-main-click-from-subagent',
     source: '反馈1926#03（2026-11-11 用户原话：在子代理页面中，点击会话图的主会话，无法跳转）',
     decision: '子代理只读视图里点会话图主线节点，先退出子代理视图再定位该轮',
     files: [F.graphCard],
     need: [/if \(agentSession\) closeAgentSession\(\)/],
+  },
+  {
+    id: 'jump-single-spring',
+    source:
+      '反馈1110（2026-11-12 用户原话：跳转用之前的轮次大纲的跳转代码，不需要滑轮中断跳转，只是统一跳转逻辑，并且不要一直轮询锁视图，现在的跳转没有跳转动画了）',
+    decision:
+      '所有入口（轮次大纲、会话图、搜索、收件箱、子代理返回）只有一个跳转实现 lib/jump.ts：focusMessage/focusTool 用轮次大纲原来的弹簧跟随动画滚动（长距离先瞬移到目标前约 1 屏），到达后最多复核一次落点就停；不轮询、不按定时器反复写 scrollTop，滚轮不中断动画，结束后视口归用户',
+    files: [F.jump, F.messageList, 'packages/web/src/components/chat/TurnRail.tsx'],
+    need: [/createJumpScroller/, /startJumpScroll/, /FOLLOW_K = 240/, /focusMessage\(/],
+    deny: [/CANCEL_EVENTS/, /armCancel/, /pollJump/],
   },
   {
     id: 'sidebar-fork-same-row',

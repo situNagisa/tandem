@@ -178,6 +178,7 @@ export function sessionGraph(
       id: rec.id,
       title: rec.title || '未命名会话',
       kind: kindOf(rec),
+      ...(rec.status === 'running' ? { running: true } : {}),
       turns: turns.map(({ start: _start, ...turn }) => turn),
     };
     if (rec.forkedFrom) {

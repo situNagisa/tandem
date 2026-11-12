@@ -12268,6 +12268,73 @@ async function main() {
     })
 
 
+    desktop('反馈1110：会话图所有运行中的会话都在最新轮显示运行动画', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const scenario = state.scenarios.find((item) => item.id === 'subagents')
+      assert.ok(scenario?.sessionIds?.length >= 4, '演示子代理场景缺少子代理/分叉会话')
+      const [mainId, childId, , forkId] = scenario.sessionIds
+      // 真实运行状态由 Host 的 status 下发：这里拦截拓扑响应同时标记主会话/子代理/分叉在运行。
+      const runningIds = new Set([mainId, childId, forkId])
+      await page.route(/\/api\/sessions\/[^/]+\/graph$/, async (route) => {
+        const response = await route.fetch()
+        const json = await response.json()
+        for (const session of json.sessions ?? []) {
+          if (runningIds.has(session.id)) session.running = true
+        }
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(json) })
+      })
+      await openSession(page, mainId)
+      const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+      await page.locator('[data-group="graph"] [data-running="true"]').first().waitFor({ timeout: 10_000 })
+      const info = await page.evaluate(() => {
+        const all = [...document.querySelectorAll('[data-graph-turn-id]')].map((el) => ({
+          session: el.getAttribute('data-session-id'),
+          row: Number(el.getAttribute('data-row')),
+          running: el.getAttribute('data-running') === 'true',
+          ring: el.querySelector('[data-marker-ring="running"]'),
+        }))
+        const latest = new Map()
+        for (const node of all) {
+          latest.set(node.session, Math.min(latest.get(node.session) ?? Infinity, node.row))
+        }
+        return {
+          latest: [...latest],
+          running: all
+            .filter((node) => node.running)
+            .map((node) => ({
+              session: node.session,
+              row: node.row,
+              ring: !!node.ring,
+              className: node.ring?.className ?? '',
+              animation: node.ring ? getComputedStyle(node.ring).animationName : '',
+            })),
+        }
+      })
+      assert.ok(info.running.length >= 3, `运行中的会话线太少：${info.running.length}`)
+      assert.equal(
+        new Set(info.running.map((node) => node.session)).size,
+        info.running.length,
+        '同一条会话线出现了多个运行标识（应只在最新一轮）',
+      )
+      for (const node of info.running) {
+        const latestRow = info.latest.find(([session]) => session === node.session)?.[1]
+        assert.equal(node.row, latestRow, `${node.session} 的运行标识不在最新一轮`)
+        assert.ok(node.ring, `${node.session} 的运行标识没有外圈动画`)
+        assert.match(node.className, /running-dot/, `${node.session} 的运行标识没有复用 running-dot`)
+        assert.equal(node.animation, 'tandem-breathe', `${node.session} 的运行动画不对：${node.animation}`)
+      }
+      const dir = '/tmp/fix-1110'
+      mkdirSync(dir, { recursive: true })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.waitForTimeout(150)
+      await page.screenshot({ path: `${dir}/running-multi-dark.png` })
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
+      await page.waitForTimeout(150)
+      await page.screenshot({ path: `${dir}/running-multi-light.png` })
+    })
+
     desktop('会话图泳道线 tooltip 以指针定位并完整显示在视口内（反馈1926#10）', async (page) => {
       let state = await api(base, token, '/api/demo')
       if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })

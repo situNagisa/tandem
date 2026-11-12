@@ -70,6 +70,7 @@ export function graphFromTree(tree: SessionGraphTree, sessionId = tree.sessionId
       ...(session.parentId ? { parentId: session.parentId } : {}),
       ...(session.attachSessionId ? { attachSessionId: session.attachSessionId } : {}),
       ...(session.attachTurnId ? { attachTurnId: session.attachTurnId } : {}),
+      ...(session.running ? { running: true } : {}),
       turns: session.turns.map((turn) => ({
         id: turn.id,
         no: turn.no,

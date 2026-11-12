@@ -53,7 +53,7 @@
 - 不读 git remote 的值、不 push；不连公网；测试 Host 一律 TANDEM_HOME=/tmp/…；不用 pkill -f。
 
 ## 本轮手工操作 / 出错环节（只留最近 5 轮，每轮 ≤5 行）
+- 2026-11-12 反馈1110：跳转动画回到轮次大纲的 `ScrollFollower`（`lib/jump.ts` 的 `createJumpScroller`），滚轮不再取消、也不再逐帧收敛；`MessageList` 只在元素挂载后调 `startJumpScroll`。会话图运行标识靠 graph 接口的 `running` + `useSessionGraphTree` 签名里加 `status`，不轮询。regression 断言动画用 rAF 逐帧采样（≥3 帧变化且单帧位移小于总位移）；悬停/运行两条用演示「子代理层级」场景，运行状态用 `page.route` 改写 graph 响应。跳早期轮时窗口切到顶部会让 scrollTop 被夹到底，`onScroll` 必须按 `jumpingRef` 忽略这段程序滚动，否则窗口被掰回尾部、目标当场卸载（R40 固定轮用例的连带失败就是这么来的）。
 - 2026-11-12 用户批评"实现特别糟糕"：①我把"分叉用 git 图切主线"理解成每个会话各画一张图，子代理又"保守"成单节点分支；②跳转、悬停浮层又各写一套。教训：概念类需求先用一个具体例子（节点/边）写清再派；验收亲自点用户原场景（反馈模式、真实长会话、外部会话）；新交互必须复用已有实现（跳转=轮次大纲那套，浮层=反馈模式能停住的那套）。
 - 2026-11-12 反馈0220#03 跳转：复现要把 `~/.tandem` 复制到 `/tmp/tdm-long` 并把真实会话 jsonl 拼长（>200 条）才会命中懒加载；Playwright 采样要在真实 Host 上跑，`page.mouse.wheel` 前后记录 rAF 帧才能看出「被拉回」；行上的固定按钮会被悬停用量浮层挡住，回归里用 DOM `click()`。
 - 2026-11-12 会话图（反馈0220）：右栏与悬停浮层共用 `layoutSessionGraph`，拓扑来自 `GET /api/sessions/:id/graph`；改布局/组件后先 `npm run build -w @tandem/web` 再跑 regression（Host 服务的是 dist）；会话图虚拟滚动，Playwright 要逐段滚动收集节点；采样坐标取整，否则相邻泳道 tooltip 会串。
-- 2026-11-12 反馈0220：交接「继续/关闭」要先改协议 `HandoffPolicy`；服务端判定在 `host/handoff.ts` 的 `triggerHandoff`/`chooseHandoff` 与会话级 `handoffBypass`，工作站模式下冷却 Key 还要经 `includeCoolingKeys` 传到 `workstation/modelProxy.ts` 才会真正打到上游；文件链接改成行内代码 + `POST /api/fs/exist`；回归夹具 `trail`/`links2`/`quota-continue`/`quota-off`。

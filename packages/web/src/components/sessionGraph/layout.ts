@@ -30,6 +30,8 @@ export interface GraphSession {
   /** 接入点所属会话（可能是祖先会话）与接入轮次。 */
   attachSessionId?: string
   attachTurnId?: string
+  /** 该会话正在运行：它最新一轮的节点显示运行动画。 */
+  running?: boolean
   /** 本会话独有的轮次（分叉不含复制来的祖先轮次），对话顺序。 */
   turns: GraphTurn[]
 }
@@ -73,6 +75,8 @@ export interface GraphNode {
   subagentId?: string
   forkSessionId?: string
   pinned?: boolean
+  /** 所属会话正在运行。 */
+  running?: boolean
 }
 
 export type GraphEdgeKind = 'main' | 'subagent' | 'fork'
@@ -367,6 +371,7 @@ export function layoutSessionGraph(
       ...(trunkSet.has(turnId) ? { trunk: true } : {}),
       ...(session.id === activeSessionId ? { current: true } : {}),
       ...(turn.pinned ? { pinned: true } : {}),
+      ...(session.running ? { running: true } : {}),
       ...(relation === 'subagent' ? { subagentId: session.id } : {}),
       ...(relation === 'fork' ? { forkSessionId: session.id } : {}),
     })

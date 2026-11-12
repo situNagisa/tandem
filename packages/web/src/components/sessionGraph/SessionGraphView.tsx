@@ -202,14 +202,14 @@ export function SessionGraphView({
     return () => observer.disconnect()
   }, [height])
 
-  const latestTurnNo = useMemo(
-    () =>
-      layout.nodes.reduce(
-        (max, node) => (node.current && node.kind === 'turn' ? Math.max(max, node.turnNo) : max),
-        0,
-      ),
-    [layout.nodes],
-  )
+  /** 每个会话最新一轮的轮号：运行中的会话只在这一轮上显示动画。 */
+  const latestTurnOf = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const node of layout.nodes) {
+      map.set(node.sessionId, Math.max(map.get(node.sessionId) ?? 0, node.turnNo))
+    }
+    return map
+  }, [layout.nodes])
   const overscan = 6
   const textX = graphTextX(layout.columns)
   const startRow = Math.max(0, Math.floor(viewport.top / GRAPH_ROW_H) - overscan)
@@ -281,8 +281,11 @@ export function SessionGraphView({
             const isCurrentTurn =
               node.current && node.kind === 'turn' && !!activeTurn && node.turnNo === activeTurn
             const isHoveredNode = hoveredNode === node.key
+            // 任何正在运行的会话（主会话/分叉/子代理）都在自己最新一轮上呼吸；
+            // 当前会话的状态以传进来的实时值为准（服务端树晚一拍）。
             const isRunning =
-              running && node.current && node.kind === 'turn' && node.turnNo === latestTurnNo
+              (node.running || (running && !!node.current)) &&
+              node.turnNo === latestTurnOf.get(node.sessionId)
             const dotSize = isHoveredNode ? 10 : 8
             const canOpen = !readOnly
             const isHovered = hoverOwner === node.sessionId
