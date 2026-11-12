@@ -147,12 +147,13 @@ function str(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
-function Kbd({ children, className }: { children: React.ReactNode; className?: string }) {
+function Kbd({ children, onPrimary = false }: { children: React.ReactNode; onPrimary?: boolean }) {
   return (
     <kbd
       className={cn(
-        'ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-[4px] px-1 text-[12px] font-normal leading-none text-[var(--t-text-tertiary)]',
-        className,
+        'ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-[4px] px-1 text-[12px] font-normal leading-none',
+        // 主按钮白底黑字时键帽跟着主按钮前景色，不能沿用深色次要文字（对比度不足）。
+        onPrimary ? 'text-[var(--t-primary-fg)] opacity-70' : 'text-[var(--t-text-tertiary)]',
       )}
     >
       {children}
@@ -357,9 +358,9 @@ export function PermissionCard({
             className="max-sm:min-h-11"
           >
             允许一次
-            <span className="flex items-center gap-0.5 opacity-70">
-              <Kbd className="text-[var(--t-primary-fg)]">Ctrl</Kbd>
-              <Kbd className="text-[var(--t-primary-fg)]">⏎</Kbd>
+            <span className="flex items-center gap-0.5">
+              <Kbd onPrimary>Ctrl</Kbd>
+              <Kbd onPrimary>⏎</Kbd>
             </span>
           </Button>
         </div>

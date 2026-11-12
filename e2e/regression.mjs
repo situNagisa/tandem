@@ -9176,6 +9176,41 @@ async function main() {
       await closeSettings(page)
     })
 
+    desktop('反馈1603#03：审批卡宽度 352、按钮 拒绝/更多/允许一次（主按钮）贴底', async (page) => {
+      await openSession(page, 'approve')
+      const card = page.locator('.permission-card').first()
+      await card.waitFor({ timeout: 10_000 })
+      const inner = card.locator(':scope > div').first()
+      const width = (await inner.boundingBox()).width
+      assert.ok(
+        Math.abs(width - 352) <= 2,
+        `审批卡宽度 ${Math.round(width)}px，没有按 352 收窄`,
+      )
+      const deny = card.locator('[data-permission-deny]')
+      const allow = card.locator('[data-permission-allow]')
+      const more = card.getByRole('button', { name: '更多' })
+      const [denyBox, moreBox, allowBox] = await Promise.all([
+        deny.boundingBox(),
+        more.boundingBox(),
+        allow.boundingBox(),
+      ])
+      assert.ok(denyBox && moreBox && allowBox, '按钮不可见')
+      assert.ok(
+        denyBox.x + denyBox.width < moreBox.x && moreBox.x + moreBox.width < allowBox.x,
+        `按钮顺序不是 拒绝 / 更多 / 允许一次：${denyBox.x} ${moreBox.x} ${allowBox.x}`,
+      )
+      assert.equal(await deny.getAttribute('data-variant'), 'secondary', '拒绝按钮变体不是次要按钮')
+      assert.equal(await allow.getAttribute('data-variant'), 'primary', '允许一次不是主按钮')
+      assert.match(await allow.innerText(), /Ctrl/, '允许一次缺少 Ctrl⏎ 提示')
+      // 按钮行贴卡片底部内边距（py-3 = 12px），卡片变高时仍停在底部。
+      const innerBox = await inner.boundingBox()
+      const gap = innerBox.y + innerBox.height - (allowBox.y + allowBox.height)
+      assert.ok(Math.abs(gap - 12) <= 2, `按钮行离卡片底部 ${Math.round(gap)}px，没有贴底`)
+      const dir = '/tmp/fix-1603c'
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: `${dir}/03-permission-card.png` })
+    })
+
     desktop('反馈14#07：审批是对话流里的一条消息，样式参考 Claude Code Desktop', async (page) => {
       await openSession(page, 'approve')
       const card = page.locator('.permission-card').first()
@@ -9224,41 +9259,6 @@ async function main() {
       assert.match(resultText, /npm test/)
       assert.equal(await page.locator('.permission-card').count(), 0, '允许后审批卡没有收起')
       assert.ok(await result.evaluate((el) => !!el.closest('.chat-scroll')), '审批结果不在对话流里')
-    })
-
-    desktop('反馈1603#03：审批卡宽度 352、按钮 拒绝/更多/允许一次（主按钮）贴底', async (page) => {
-      await openSession(page, 'approve')
-      const card = page.locator('.permission-card').first()
-      await card.waitFor({ timeout: 10_000 })
-      const inner = card.locator(':scope > div').first()
-      const width = (await inner.boundingBox()).width
-      assert.ok(
-        Math.abs(width - 352) <= 2,
-        `审批卡宽度 ${Math.round(width)}px，没有按 352 收窄`,
-      )
-      const deny = card.locator('[data-permission-deny]')
-      const allow = card.locator('[data-permission-allow]')
-      const more = card.getByRole('button', { name: '更多' })
-      const [denyBox, moreBox, allowBox] = await Promise.all([
-        deny.boundingBox(),
-        more.boundingBox(),
-        allow.boundingBox(),
-      ])
-      assert.ok(denyBox && moreBox && allowBox, '按钮不可见')
-      assert.ok(
-        denyBox.x + denyBox.width < moreBox.x && moreBox.x + moreBox.width < allowBox.x,
-        `按钮顺序不是 拒绝 / 更多 / 允许一次：${denyBox.x} ${moreBox.x} ${allowBox.x}`,
-      )
-      assert.equal(await deny.getAttribute('data-variant'), 'secondary', '拒绝按钮变体不是次要按钮')
-      assert.equal(await allow.getAttribute('data-variant'), 'primary', '允许一次不是主按钮')
-      assert.match(await allow.innerText(), /Ctrl/, '允许一次缺少 Ctrl⏎ 提示')
-      // 按钮行贴卡片底部内边距（py-3 = 12px），卡片变高时仍停在底部。
-      const innerBox = await inner.boundingBox()
-      const gap = innerBox.y + innerBox.height - (allowBox.y + allowBox.height)
-      assert.ok(Math.abs(gap - 12) <= 2, `按钮行离卡片底部 ${Math.round(gap)}px，没有贴底`)
-      const dir = '/tmp/fix-1603c'
-      mkdirSync(dir, { recursive: true })
-      await page.screenshot({ path: `${dir}/03-permission-card.png` })
     })
 
     desktop('反馈14#07：Esc 拒绝、发送消息视为拒绝并说明', async (page) => {
