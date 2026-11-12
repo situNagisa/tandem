@@ -250,6 +250,14 @@ const DECISIONS = [
     need: [/running\?: boolean/, /rec\.status === 'running'/, /running: true/, /latestTurnOf/, /session\.status/],
   },
   {
+    id: 'graph-row-hover-only',
+    source: '反馈1603#05（2026-11-12 用户原话：悬停在某个选项卡上的时候，不需要把所有同分支的选项卡都高亮，只需要高亮悬停的选项卡即可）',
+    decision:
+      '悬停轮次标题行时只有该行有悬停底色（data-row-hovered），同会话其他标题行保持原背景；整条泳道线与被悬停节点的高亮保持不变',
+    files: [F.graphView],
+    need: [/data-row-hovered=\{isHoveredNode/, /isSelected && 'bg-\[var\(--t-bg-hover\)\]'/, /hoverOwner/],
+  },
+  {
     id: 'graph-main-click-from-subagent',
     source: '反馈1926#03（2026-11-11 用户原话：在子代理页面中，点击会话图的主会话，无法跳转）',
     decision: '子代理只读视图里点会话图主线节点，先退出子代理视图再定位该轮',

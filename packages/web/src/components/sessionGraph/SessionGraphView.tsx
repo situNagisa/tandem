@@ -288,7 +288,6 @@ export function SessionGraphView({
               node.turnNo === latestTurnOf.get(node.sessionId)
             const dotSize = isHoveredNode ? 10 : 8
             const canOpen = !readOnly
-            const isHovered = hoverOwner === node.sessionId
             const showName = compact && node.sessionLabel
             const label = compact
               ? showName
@@ -305,7 +304,7 @@ export function SessionGraphView({
                   className={cn(
                     'group/node pointer-events-auto absolute inset-y-0 right-0 flex min-w-0 items-center rounded-[5px] pr-1 transition-colors',
                     canOpen && 'cursor-pointer hover:bg-[var(--t-bg-hover)]',
-                    (isSelected || isHovered) && 'bg-[var(--t-bg-hover)]',
+                    isSelected && 'bg-[var(--t-bg-hover)]',
                     !canOpen && 'pointer-events-none',
                   )}
                   style={{ left: textX - 6, paddingLeft: 6 }}
@@ -325,6 +324,7 @@ export function SessionGraphView({
                   data-active={isCurrentTurn ? 'true' : undefined}
                   data-running={isRunning ? 'true' : undefined}
                   data-hovered={isHoveredNode ? 'true' : undefined}
+                  data-row-hovered={isHoveredNode ? 'true' : undefined}
                   onPointerEnter={() => {
                     setHoverOwner(node.sessionId)
                     setHoveredNode(node.key)
