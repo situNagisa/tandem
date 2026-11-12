@@ -33,6 +33,7 @@
 - 完成与继续调整：完成生成一条普通反馈条目（`mode: adjust`，前后截图 + 结构化清单 + 结构快照 + Markdown），快照同时保存副本 HTML（`adjustSnapshot.copy`，上限 3MB；含内联样式与 `data-tandem-src`）与尺寸；每条改动仍带 `structure[].styles` 计算样式快照。抽屉里「继续调整」恢复当时的副本、改动与插入控件，在其上增删改后保存更新同一条目（不新建，文本/优先级/标签保留，截图与清单更新）；旧条目没有副本 HTML 时退回「重新冻结 + 重放改动」。草稿落盘与 `.tfb` 里的调整 JSON 同样带副本快照。
 - 组件与源码定位：调试版构建保留函数名（`build.rolldownOptions.output.keepNames`）；`packages/web/debug-source-plugin.mjs` 仅在 debug flavor 给原生 DOM 注 `data-tandem-src="packages/web/src/…:行号"`，清单写该元素自身的 `file:line`；拿不到时退回标签名 + 最近 `data-testid`/`aria-label`/`data-*` 锚点 + 选择器。发布版不加载插件（`scan-release` 禁用 `data-tandem-src`）。
 - 手机：调试版手机预览/移动布局（412×915、触屏）下工具栏、插入面板与悬停预览不越界，触屏点选、拖手柄改大小、完成与继续调整均可用；手柄不再对触摸事件直接返回。
+- 浮层避让：插入面板、悬停预览、选中工具条、改动清单都走 Radix 碰撞（与 `ui/Popover` 同一套 flip/shift）；桌面上面板居右、清单居左、预览在面板左侧，窄视口面板改底部抽屉、预览在其上方；选中工具条放到选中元素上/下方并避开这些浮层。调整期间收起已有 toast，新提示显示在底部工具条状态区。
 - 限制：不搬副本 HTML，agent 必须按 `ui/*` 重写；发布版无入口（`scan-release` 禁用 `FeedbackAdjust`、`feedbackAdjust`、`data-adjust-`、`data-tandem-src`）。
 
 ## 截图性能（长会话，R48）
@@ -52,4 +53,4 @@
 
 - 加密与跨设备同步不做；录屏 8MB / 60 秒。
 - 桌面草稿目录只在桌面调试版存在；打包时 `feedback-drafts*.js` 必须进 `app.asar`，`scripts/check-debug.mjs` 会检查。
-- 自动检查：`e2e/regression.mjs` 的体验清单导出、草稿恢复与「调整工具」用例（含小元素、光标、插入预览、变体/文字/隐藏、重新冻结、继续调整、手机布局），以及「调整说明：同元素连续改尺寸/移动合并为一条、选择器跳过 Radix/React 自动 id」；`e2e/release-flavor.mjs` 检查发布版没有调整入口且没有 `data-tandem-src`。
+- 自动检查：`e2e/regression.mjs` 的体验清单导出、草稿恢复与「调整工具」用例（含小元素、光标、插入预览、变体/文字/隐藏、重新冻结、继续调整、手机布局、面板/预览/选中条/改动清单/toast 互不遮挡的 1440×900 与 390×844 两档视口），以及「调整说明：同元素连续改尺寸/移动合并为一条、选择器跳过 Radix/React 自动 id」；`e2e/release-flavor.mjs` 检查发布版没有调整入口且没有 `data-tandem-src`。

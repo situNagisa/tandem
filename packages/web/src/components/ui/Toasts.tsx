@@ -19,7 +19,8 @@ export function Toasts() {
   const toasts = useUiStore((s) => s.toasts)
   const dismiss = useUiStore((s) => s.dismissToast)
   const settingsOpen = useUiStore((s) => s.settingsOpen)
-  if (!toasts.length) return null
+  const suppressed = useUiStore((s) => s.toastSuppressed)
+  if (!toasts.length || suppressed) return null
   return (
     <div
       // 反馈模式下提示条升到捕获层之上，操作按钮（如「打开所在文件夹」）仍可点击。

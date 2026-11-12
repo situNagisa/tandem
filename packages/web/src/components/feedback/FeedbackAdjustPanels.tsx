@@ -2,12 +2,22 @@
  * 调整工具右侧的面板：换图标、插入控件、容器展开编辑、行为备注、改动清单。
  * 全部是反馈 UI（data-feedback-ui），不参与冻结副本与导出截图。
  */
-import { useState, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react'
+import * as RPopover from '@radix-ui/react-popover'
 import { Layers, ListChecks, MessageSquare, PencilLine, Plus, X } from 'lucide-react'
 import { Badge } from '../ui/Badge'
 import { Button, IconButton } from '../ui/Button'
 import { Input, Textarea } from '../ui/Controls'
 import { cn } from '../../lib/cn'
+import { portalLayer } from '../../lib/overlay'
 import { ADJUST_ICONS, type AdjustIconEntry } from './adjustIcons.generated'
 import { renderInsertPreview } from './feedbackAdjustInsert'
 import {
@@ -21,8 +31,139 @@ import {
 } from './feedbackAdjust'
 import { UI_ATTR } from './feedbackModeHelpers'
 
-export const PANEL_CLASS =
-  'pointer-events-auto fixed z-[133] flex flex-col rounded-xl border border-border bg-surface p-2 shadow-lg'
+// 调整工具是调试版浮层（Radix 负责定位），沿用反馈工具原有的紧凑面板样式。
+export const PANEL_SURFACE = 'flex flex-col rounded-xl border border-border bg-surface p-2 shadow-lg' // ui-audit-ignore 浮层表面（非卡片）
+export const PANEL_CLASS = `pointer-events-auto fixed z-[133] ${PANEL_SURFACE}`
+
+export interface AdjustRect {
+  left: number
+  top: number
+  right: number
+  bottom: number
+  width: number
+  height: number
+}
+
+interface AdjustFloatingProps {
+  /** 虚拟锚点（视口坐标），由 Radix 负责翻转/平移，不手写弹层坐标。 */
+  anchor: { x: number; y: number }
+  side: 'top' | 'bottom' | 'left' | 'right'
+  align?: 'start' | 'center' | 'end'
+  sideOffset?: number
+  /** 视口边缘留白，也用于把其它调整浮层的位置让出来。 */
+  padding?: number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>
+  layer?: number
+  dataAttrs?: Record<string, string>
+  ariaLabel?: string
+  className?: string
+  style?: CSSProperties
+  children: ReactNode
+  onRect?: (rect: AdjustRect) => void
+}
+
+/** 调整工具的浮层：与 ui/Popover 同一套 Radix 碰撞避让，锚点只给参照元素/边缘。 */
+export function AdjustFloating({
+  anchor,
+  side,
+  align = 'start',
+  sideOffset = 8,
+  padding = 8,
+  layer = 133,
+  dataAttrs,
+  ariaLabel,
+  className,
+  style,
+  children,
+  onRect,
+}: AdjustFloatingProps) {
+  const contentRef = useRef<HTMLDivElement>(null)
+  const reportRef = useRef(onRect)
+  reportRef.current = onRect
+  const report = useCallback(() => {
+    const element = contentRef.current
+    if (!element || !reportRef.current) return
+    const rect = element.getBoundingClientRect()
+    reportRef.current({
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+    })
+  }, [])
+  useEffect(() => {
+    // Radix 在布局阶段/下一帧完成定位，量两次并跟随尺寸变化。
+    const frames: number[] = []
+    const first = requestAnimationFrame(() => {
+      const second = requestAnimationFrame(report)
+      frames.push(second)
+    })
+    frames.push(first)
+    const element = contentRef.current
+    const observer = element ? new ResizeObserver(report) : null
+    if (element) observer?.observe(element)
+    window.addEventListener('resize', report)
+    return () => {
+      for (const frame of frames.splice(0)) cancelAnimationFrame(frame)
+      observer?.disconnect()
+      window.removeEventListener('resize', report)
+    }
+  }, [report, anchor.x, anchor.y])
+  return (
+    <RPopover.Root open modal={false}>
+      <RPopover.Anchor asChild>
+        <span
+          aria-hidden
+          style={{ position: 'fixed', left: anchor.x, top: anchor.y, width: 0, height: 0, pointerEvents: 'none' }}
+        />
+      </RPopover.Anchor>
+      <RPopover.Portal>
+        <RPopover.Content
+          {...portalLayer('adjust')}
+          role="dialog"
+          aria-label={ariaLabel}
+          side={side}
+          align={align}
+          sideOffset={sideOffset}
+          collisionPadding={padding}
+          avoidCollisions
+          sticky="always"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          onCloseAutoFocus={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => event.preventDefault()}
+          onPointerDownOutside={(event) => event.preventDefault()}
+          onFocusOutside={(event) => event.preventDefault()}
+          onInteractOutside={(event) => event.preventDefault()}
+          className={cn('outline-none', layer === 134 ? 'z-[134]' : 'z-[133]')}
+        >
+          <div
+            ref={contentRef}
+            {...{ [UI_ATTR]: '' }}
+            {...dataAttrs}
+            className={className}
+            style={style}
+          >
+            {children}
+          </div>
+        </RPopover.Content>
+      </RPopover.Portal>
+    </RPopover.Root>
+  )
+}
+
+/** 窄视口（手机/小窗）下，插入面板改为底部抽屉。 */
+export function useWideViewport(): boolean {
+  const [wide, setWide] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= 1024))
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 1024px)')
+    const update = () => setWide(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  return wide
+}
 
 interface IconPickerProps {
   currentIcon?: string
@@ -105,79 +246,132 @@ interface InsertPanelProps {
   onPick: (option: AdjustInsertOption) => void
   onOptionPointerDown: (option: AdjustInsertOption, event: ReactPointerEvent<HTMLButtonElement>) => void
   onClose: () => void
+  /** 底部调整工具条的上沿，窄视口下抽屉放在它上方。 */
+  toolbarTop?: number
+  /** 悬停预览出现/消失，父级据此重新计算选中工具条的避让边距。 */
+  onPreviewChange?: (key: string | null) => void
 }
 
-export function AdjustInsertPanel({ onPick, onOptionPointerDown, onClose }: InsertPanelProps) {
+export function AdjustInsertPanel({
+  onPick,
+  onOptionPointerDown,
+  onClose,
+  toolbarTop,
+  onPreviewChange,
+}: InsertPanelProps) {
   const [hover, setHover] = useState<AdjustInsertOption | null>(null)
+  const [panelRect, setPanelRect] = useState<AdjustRect | null>(null)
+  const wide = useWideViewport()
+  const showHover = (option: AdjustInsertOption | null) => {
+    setHover(option)
+    onPreviewChange?.(option?.key ?? null)
+  }
+  const handleRect = useCallback((rect: AdjustRect) => {
+    setPanelRect((prev) =>
+      prev &&
+      Math.abs(prev.left - rect.left) < 0.5 &&
+      Math.abs(prev.top - rect.top) < 0.5 &&
+      Math.abs(prev.width - rect.width) < 0.5 &&
+      Math.abs(prev.height - rect.height) < 0.5
+        ? prev
+        : rect,
+    )
+  }, [])
+  const viewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth
+  const viewportHeight = typeof window === 'undefined' ? 0 : window.innerHeight
+  const bottomAnchor = Math.max(64, (toolbarTop ?? viewportHeight - 120) - 8)
+  const panelAnchor = wide
+    ? { x: viewportWidth - 12, y: 64 }
+    : { x: viewportWidth / 2, y: bottomAnchor }
+  const previewAnchor = panelRect
+    ? wide
+      ? { x: panelRect.left, y: panelRect.top }
+      : { x: panelRect.left + panelRect.width / 2, y: panelRect.top }
+    : null
   return (
     <>
-    <div
-      {...{ [UI_ATTR]: '' }}
-      data-adjust-insert-panel=""
-      className={cn(PANEL_CLASS, 'right-4 top-16 max-h-[min(560px,76vh)] w-[min(330px,calc(100vw-24px))]')}
-      role="dialog"
-      aria-label="插入控件"
-    >
-      <div className="flex items-center gap-1.5 px-1 pb-1.5">
-        <Plus size={13} className="text-annotation" />
-        <span className="text-[12.5px] font-medium text-text">插入控件</span>
-        <span className="ml-auto text-[11px] text-muted">ui/* 现有组件</span>
-        <IconButton label="关闭插入面板" size="inline" onClick={onClose}>
-          <X size={12} />
-        </IconButton>
-      </div>
-      <p className="px-1 pb-1 text-[11px] text-muted">
-        点按放在视口中部，或拖到画面上落下。
-      </p>
-      <div className="min-h-0 overflow-y-auto">
-        {INSERT_GROUPS.map((group) => {
-          const options = INSERT_OPTIONS.filter((option) => option.group === group)
-          if (options.length === 0) return null
-          return (
-            <div key={group} className="pb-1">
-              <p className="px-1 pb-0.5 text-[11px] text-muted">{group}</p>
-              {options.map((option) => (
-                <button
-                  data-raw-button
-                  key={option.key}
-                  type="button"
-                  data-insert-option={option.key}
-                  className="flex w-full items-center justify-between rounded-md px-1.5 py-1 text-left text-[12.5px] text-text-soft hover:bg-hover hover:text-text"
-                  onClick={() => onPick(option)}
-                  onPointerDown={(event) => onOptionPointerDown(option, event)}
-                  onPointerEnter={() => setHover(option)}
-                  onFocus={() => setHover(option)}
-                >
-                  <span>{option.label}</span>
-                  <span className="text-[11px] text-muted">{option.variant}</span>
-                </button>
-              ))}
-            </div>
-          )
-        })}
-      </div>
-    </div>
-    {hover && (
-      <div
-        {...{ [UI_ATTR]: '' }}
-        data-adjust-insert-preview={hover.key}
-        className="pointer-events-none fixed right-[366px] top-16 z-[133] w-[320px] rounded-xl border border-border bg-surface p-2 shadow-lg max-lg:right-4 max-lg:top-auto max-lg:bottom-24"
-        aria-label={`${hover.label} 预览`}
+      <AdjustFloating
+        anchor={panelAnchor}
+        side={wide ? 'left' : 'top'}
+        align={wide ? 'start' : 'center'}
+        padding={8}
+        ariaLabel="插入控件"
+        dataAttrs={{ 'data-adjust-insert-panel': '' }}
+        onRect={handleRect}
+        className={cn(
+          PANEL_SURFACE,
+          wide
+            ? 'max-h-[min(560px,calc(100vh-96px))] w-[330px]'
+            : 'max-h-[38vh] w-[calc(100vw-24px)] max-w-[480px]',
+        )}
       >
         <div className="flex items-center gap-1.5 px-1 pb-1.5">
-          <span className="text-[12px] font-medium text-text">预览 · {hover.label}</span>
-          <span className="ml-auto text-[11px] text-muted">
-            ui/{hover.group === '组合控件' ? 'Card + ListRow' : hover.group}
-          </span>
+          <Plus size={13} className="text-annotation" />
+          <span className="text-[12.5px] font-medium text-text">插入控件</span>
+          <span className="ml-auto text-[11px] text-muted">ui/* 现有组件</span>
+          <IconButton label="关闭插入面板" size="inline" onClick={onClose}>
+            <X size={12} />
+          </IconButton>
         </div>
-        <p className="px-1 pb-1.5 text-[11px] text-muted">
-          用真实 ui/* 组件渲染的示例；插入后按当前主题显示。
+        <p className="px-1 pb-1 text-[11px] text-muted">
+          点按放在视口中部，或拖到画面上落下。
         </p>
-        <div className="flex justify-center rounded-lg border border-dashed border-border bg-bg-subtle p-3">
-          {renderInsertPreview(hover)}
+        <div className="min-h-0 overflow-y-auto">
+          {INSERT_GROUPS.map((group) => {
+            const options = INSERT_OPTIONS.filter((option) => option.group === group)
+            if (options.length === 0) return null
+            return (
+              <div key={group} className="pb-1">
+                <p className="px-1 pb-0.5 text-[11px] text-muted">{group}</p>
+                {options.map((option) => (
+                  <button
+                    data-raw-button
+                    key={option.key}
+                    type="button"
+                    data-insert-option={option.key}
+                    className="flex w-full items-center justify-between rounded-md px-1.5 py-1 text-left text-[12.5px] text-text-soft hover:bg-hover hover:text-text"
+                    onClick={() => onPick(option)}
+                    onPointerDown={(event) => onOptionPointerDown(option, event)}
+                    onPointerEnter={() => showHover(option)}
+                    onFocus={() => showHover(option)}
+                  >
+                    <span>{option.label}</span>
+                    <span className="text-[11px] text-muted">{option.variant}</span>
+                  </button>
+                ))}
+              </div>
+            )
+          })}
         </div>
-      </div>
-    )}
+      </AdjustFloating>
+      {hover && previewAnchor && (
+        <AdjustFloating
+          anchor={previewAnchor}
+          side={wide ? 'left' : 'top'}
+          align={wide ? 'start' : 'center'}
+          padding={8}
+          ariaLabel={`${hover.label} 预览`}
+          dataAttrs={{ 'data-adjust-insert-preview': hover.key }}
+          className={cn(
+            PANEL_SURFACE,
+            'pointer-events-none w-[min(320px,calc(100vw-24px))]',
+            !wide && 'max-h-[min(88px,20vh)] overflow-hidden',
+          )}
+        >
+          <div className="flex items-center gap-1.5 px-1 pb-1.5">
+            <span className="text-[12px] font-medium text-text">预览 · {hover.label}</span>
+            <span className="ml-auto text-[11px] text-muted">
+              ui/{hover.group === '组合控件' ? 'Card + ListRow' : hover.group}
+            </span>
+          </div>
+          <p className="px-1 pb-1.5 text-[11px] text-muted max-lg:hidden">
+            用真实 ui/* 组件渲染的示例；插入后按当前主题显示。
+          </p>
+          <div className="flex min-h-0 justify-center overflow-auto rounded-lg border border-dashed border-border bg-bg-subtle p-2 lg:p-3">
+            {renderInsertPreview(hover)}
+          </div>
+        </AdjustFloating>
+      )}
     </>
   )
 }
@@ -369,12 +563,21 @@ function changeSubtitle(op: AdjustOp): string {
 }
 
 export function AdjustChangeList({ ops, onSelect, onNote, onRevert }: ChangeListProps) {
+  const wide = useWideViewport()
   if (ops.length === 0) return null
   return (
-    <div
-      {...{ [UI_ATTR]: '' }}
-      data-adjust-changes=""
-      className={cn(PANEL_CLASS, 'left-3 top-16 max-h-[min(440px,62vh)] w-[306px]')}
+    <AdjustFloating
+      anchor={{ x: 12, y: wide ? 64 : 96 }}
+      side="bottom"
+      align="start"
+      ariaLabel="改动清单"
+      dataAttrs={{ 'data-adjust-changes': '' }}
+      className={cn(
+        PANEL_SURFACE,
+        wide
+          ? 'max-h-[min(440px,62vh)] w-[306px]'
+          : 'max-h-[min(64px,12vh)] w-[min(306px,calc(100vw-24px))]',
+      )}
     >
       <div className="flex items-center gap-1.5 px-1 pb-1">
         <ListChecks size={12} className="text-annotation" />
@@ -436,7 +639,7 @@ export function AdjustChangeList({ ops, onSelect, onNote, onRevert }: ChangeList
           </div>
         ))}
       </div>
-    </div>
+    </AdjustFloating>
   )
 }
 

@@ -13403,6 +13403,132 @@ async function main() {
       await page.waitForFunction(() => !document.documentElement.classList.contains('feedback-mode'), null, { timeout: 10000 })
     })
 
+    // 调整模式各浮层互不遮挡：插入面板、悬停预览、选中工具条、改动清单、提示条。
+    checks.push({
+      name: '调整模式浮层互不遮挡：面板/预览/选中条/改动清单/提示（1440×900 与 390×844）',
+      viewport: 'desktop',
+      context: 'fb-adjust',
+      fn: async (page) => {
+        const state = await api(base, token, '/api/demo')
+        if (!state.active) await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+        const chatId = (await api(base, token, '/api/demo')).scenarios.find((item) => item.id === 'chat-tools').sessionIds[0]
+        const shotDir = '/tmp/fb-adjust-3'
+        mkdirSync(shotDir, { recursive: true })
+
+        const assertLayout = async (target, viewport, label) => {
+          await openSession(target, chatId)
+          await target.keyboard.press('Control+Shift+F')
+          await target.waitForSelector('html.feedback-mode', { timeout: 8000 })
+          await target.waitForTimeout(600)
+          const feedbackBar = target.getByRole('region', { name: '反馈模式工具栏' })
+          // 先制造一条提示条，进入调整后应被收起（toast 不再压住调整面板）。
+          await feedbackBar.getByRole('button', { name: '导出', exact: true }).click()
+          await target.locator('[data-toast-layer] [role="status"]').first().waitFor({ timeout: 5000 })
+          await feedbackBar.getByRole('button', { name: '调整', exact: true }).click()
+          await target.waitForFunction(() => window.__feedbackAdjust?.stats?.clonedNodes > 0, null, { timeout: 30000 })
+          await target.waitForTimeout(300)
+
+          const selected = await target.evaluate(() => {
+            const stage = document.querySelector('[data-adjust-stage]')
+            const el = [...stage.querySelectorAll('[data-testid], button')].find((node) => {
+              const r = node.getBoundingClientRect()
+              return r.width > 80 && r.height > 20 && r.top > 70 && r.bottom < innerHeight - 220
+            })
+            if (!el) return false
+            el.setAttribute('data-adjust-probe', 'overlay')
+            return window.__feedbackAdjust.select('[data-adjust-probe="overlay"]')
+          })
+          assert.equal(selected, true, `${label}：无法选中用于避让检查的元素`)
+          await target.waitForTimeout(200)
+          await target.keyboard.press('ArrowRight')
+          await target.waitForTimeout(300)
+
+          await target.locator('[data-adjust-toolbar]').getByRole('button', { name: '插入控件' }).click()
+          await target.locator('[data-insert-option="button-primary"]').hover()
+          await target.locator('[data-adjust-insert-preview="button-primary"]').waitFor({ timeout: 5000 })
+          await target.waitForTimeout(700)
+
+          const layout = await target.evaluate(() => {
+            const read = (selector) => {
+              const el = document.querySelector(selector)
+              if (!el) return null
+              const r = el.getBoundingClientRect()
+              return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height }
+            }
+            return {
+              toast: read('[data-toast-layer] [role="status"]'),
+              toastLayer: document.querySelectorAll('[data-toast-layer]').length,
+              panel: read('[data-adjust-insert-panel]'),
+              preview: read('[data-adjust-insert-preview="button-primary"]'),
+              bar: read('[data-adjust-selection-bar]'),
+              changes: read('[data-adjust-changes]'),
+              status: document.querySelector('[data-adjust-status]')?.textContent ?? '',
+            }
+          })
+          // 调整期间不弹 toast：已有提示收起，新提示走工具条状态区。
+          assert.equal(layout.toastLayer, 0, `${label}：调整期间仍有 toast 层`)
+          assert.equal(layout.toast, null, `${label}：调整期间仍有 toast`)
+          assert.ok(layout.status.trim().length > 0, `${label}：调整工具条状态区为空`)
+          for (const key of ['panel', 'preview', 'bar', 'changes']) {
+            const box = layout[key]
+            assert.ok(box && box.width > 0 && box.height > 0, `${label}：缺少 ${key}`)
+            assert.ok(
+              box.left >= -0.5 &&
+                box.top >= -0.5 &&
+                box.right <= viewport.width + 0.5 &&
+                box.bottom <= viewport.height + 0.5,
+              `${label}：${key} 越出视口 ${JSON.stringify(box)}`,
+            )
+          }
+          const pairs = [
+            ['panel', 'preview'],
+            ['panel', 'bar'],
+            ['panel', 'changes'],
+            ['preview', 'bar'],
+            ['preview', 'changes'],
+            ['bar', 'changes'],
+          ]
+          for (const [a, b] of pairs) {
+            const one = layout[a]
+            const two = layout[b]
+            const overlap =
+              one.left < two.right && two.left < one.right && one.top < two.bottom && two.top < one.bottom
+            assert.equal(overlap, false, `${label}：${a} 与 ${b} 相交 ${JSON.stringify({ [a]: one, [b]: two })}`)
+          }
+          await target.screenshot({ path: path.join(shotDir, `regression-${label}.png`) })
+
+          for (let i = 0; i < 5; i += 1) {
+            if (!(await target.locator('html.feedback-mode').count())) break
+            await target.keyboard.press('Escape')
+            await target.waitForTimeout(150)
+          }
+          await target.waitForFunction(() => !document.documentElement.classList.contains('feedback-mode'), null, {
+            timeout: 10000,
+          })
+        }
+
+        await assertLayout(page, { width: 1440, height: 900 }, 'desktop')
+
+        const mobileCtx = await browser.newContext({
+          viewport: { width: 390, height: 844 },
+          deviceScaleFactor: 2,
+          isMobile: true,
+          hasTouch: true,
+        })
+        await mobileCtx.addInitScript(() => {
+          localStorage.setItem('tandem.theme.v1', 'dark')
+        })
+        const mobilePage = await newPage(mobileCtx, 'mobile')
+        try {
+          await assertLayout(mobilePage, { width: 390, height: 844 }, 'mobile')
+          assert.equal(mobilePage.__errors.length, 0, `手机页面脚本错误：${mobilePage.__errors.join('；')}`)
+        } finally {
+          await mobilePage.close().catch(() => {})
+          await mobileCtx.close().catch(() => {})
+        }
+      },
+    })
+
     fbAdjustMobile('调整工具（手机布局）：点选/手柄/插入预览/继续调整都可用', async (page) => {
       const state = await api(base, token, '/api/demo')
       if (!state.active) await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
