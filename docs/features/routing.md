@@ -69,7 +69,8 @@
 
 ## 思考强度
 
-`packages/server/src/providers/capabilities.ts` 是唯一能力表：按模型 id 推断档位、厂商叫法与参数映射；provider 返回能力优先，账号/分组可覆盖。OpenAI 走 `reasoning_effort`（o 系列 low/medium/high，gpt-5/6 含 minimal）；Anthropic 走 `budget_tokens`（2K/8K/16K/32K）；Grok/Gemini/DeepSeek 按各自 API；不支持思考返回空数组，菜单隐藏该项。芯片只显示模型名，强度只在菜单/tooltip/aria-label。
+`packages/server/src/providers/capabilities.ts` 是唯一能力表：按「型号 × 实际请求协议」推断档位、厂商叫法与参数映射；provider 返回能力优先，账号/分组可覆盖。Anthropic adaptive 型号（4.7 及以后，Sonnet 4.6 无 xhigh）发 `thinking: { type: "adaptive", display: "summarized" }` + `output_config.effort`，档位 low/medium/high/xhigh/max、标签「低 · low … 超高 · xhigh / 最高 · max」、无 token 预算；`display: "summarized"` 必须显式传（默认 omitted 时思考文本为空，UI 看不到「思考了 Ns」）；只有支持 `thinking: { type: "disabled" }` 的型号才有「关」，Opus 5.5 / Sonnet 5.5 / Fable/Mythos 5.x 不能关闭。
+manual 型号（4.6 及以前）走 `budget_tokens`，保留 2K/8K/16K/32K 标签。OpenAI 兼容协议访问 Claude 只能走 `reasoning_effort`（low/medium/high），菜单注明「经 OpenAI 兼容协议，由中转决定是否生效」。未显式选择时按官方默认（Opus 5.5 / Haiku 5.5 → medium，其余 → high）显示「默认（高）」且不发送 effort；其余 provider 按各自 API，不支持思考返回空数组、菜单隐藏该项。芯片只显示模型名，强度只在菜单/tooltip/aria-label。
 
 ## 验证与限制
 

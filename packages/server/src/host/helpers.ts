@@ -33,7 +33,7 @@ export const PERMISSION_MODES = new Set<PermissionMode>([
   'bypassPermissions',
 ]);
 
-export const EFFORTS = new Set<ReasoningEffort>(['off', 'minimal', 'low', 'medium', 'high', 'max']);
+export const EFFORTS = new Set<ReasoningEffort>(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 
 export interface PermissionEntry {
   sessionId: string;

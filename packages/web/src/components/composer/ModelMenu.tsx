@@ -9,7 +9,7 @@ import type {
 import { ChevronDown, Sparkles } from 'lucide-react'
 import { Spinner } from '../ui/Spinner'
 import { cn } from '../../lib/cn'
-import { EFFORT_LABEL, nearestEffort } from '../../lib/effort'
+import { EFFORT_LABEL } from '../../lib/effort'
 import { prettyModel, shortModelName } from '../../lib/modelName'
 import { groupName, profileModelGroups } from '../../lib/profileModels'
 import { rankRecentModels } from '../../lib/recentModels'
@@ -54,10 +54,14 @@ interface ModelPanelProps {
   autoModel?: string
   prices?: Record<string, ModelPriceInfo>
   pricesLoading?: boolean
-  effort: ReasoningEffort
+  effort?: ReasoningEffort
   efforts: ReasoningEffort[]
   /** 各档位在该模型厂商的原始叫法（来自服务端能力表）。 */
   effortLabels?: Partial<Record<ReasoningEffort, string>>
+  /** 未显式选择时模型的官方默认档位。 */
+  defaultEffort?: ReasoningEffort
+  /** 该协议下思考强度是否真的生效的说明（如 OpenAI 兼容中转）。 */
+  effortNote?: string
   /** 分工与取向：与模型设置放在同一个菜单里，选择即写入当前会话。 */
   delegation: DelegationStrategy
   routeBias: RoutePreference | undefined
@@ -91,6 +95,8 @@ function useModelPanel({
   effort,
   efforts,
   effortLabels,
+  defaultEffort,
+  effortNote,
   delegation,
   routeBias,
   routeNative,
@@ -113,11 +119,9 @@ function useModelPanel({
   const currentGroup =
     currentGroups.find((group) => (group.groupId ?? undefined) === (groupId ?? undefined)) ??
     currentGroups[0]
-  const selectedEffort = efforts.length
-    ? efforts.includes(effort)
-      ? effort
-      : nearestEffort(efforts, effort)
-    : 'off'
+  // 未选过或该型号不支持所存档位时，不假装选中某一档：显示模型官方默认。
+  const selectedEffort = effort && efforts.includes(effort) ? effort : undefined
+  const defaultEffortLabel = defaultEffort ? EFFORT_LABEL[defaultEffort] : undefined
 
   useEffect(() => {
     if (currentProfile) onLoadPrices?.(currentProfile.id, currentGroup?.groupId)
@@ -298,12 +302,23 @@ function useModelPanel({
       </Menu.Sub>
       {!autoRoute && efforts.length > 0 && (
         <Menu.Sub>
-          <Menu.SubTrigger trailing={effortLabels?.[selectedEffort] ?? EFFORT_LABEL[selectedEffort]}>
+          <Menu.SubTrigger
+            trailing={
+              selectedEffort
+                ? (effortLabels?.[selectedEffort] ?? EFFORT_LABEL[selectedEffort])
+                : defaultEffortLabel
+                  ? `默认（${defaultEffortLabel}）`
+                  : '未指定'
+            }
+          >
             思考强度
           </Menu.SubTrigger>
-          <Menu.SubContent className="w-[210px]" aria-label="思考强度">
+          <Menu.SubContent className="w-[230px]" aria-label="思考强度">
+            {!selectedEffort && defaultEffortLabel && (
+              <Menu.Label>默认（{defaultEffortLabel}）· 未选时按模型官方默认</Menu.Label>
+            )}
             <Menu.RadioGroup
-              value={selectedEffort}
+              value={selectedEffort ?? ''}
               onValueChange={(next) => onEffortChange(next as ReasoningEffort)}
             >
               {efforts.map((value) => (
@@ -312,6 +327,7 @@ function useModelPanel({
                 </Menu.RadioItem>
               ))}
             </Menu.RadioGroup>
+            {effortNote && <Menu.Label>{effortNote}</Menu.Label>}
           </Menu.SubContent>
         </Menu.Sub>
       )}
@@ -357,6 +373,8 @@ export function ModelMenu({
   effort,
   efforts,
   effortLabels,
+  defaultEffort,
+  effortNote,
   delegation,
   routeBias,
   routeNative,
@@ -403,8 +421,8 @@ export function ModelMenu({
     }
     onOpenChange(next)
   }
-  const showEffort = !autoRoute && efforts.length > 0 && efforts.includes(effort)
-  const effortName = effortLabels?.[effort] ?? EFFORT_LABEL[effort]
+  const showEffort = !autoRoute && !!effort && efforts.length > 0 && efforts.includes(effort)
+  const effortName = showEffort ? (effortLabels?.[effort] ?? EFFORT_LABEL[effort]) : undefined
   // 模型芯片只显示模型名；思考强度用一个小点表示，具体档位在 tooltip 里（反馈8#11）。
   const label = autoRoute
     ? `自动${autoModel ? ` · ${shortModelName(autoModel)}` : ''}`
@@ -423,6 +441,8 @@ export function ModelMenu({
     effort,
     efforts,
     effortLabels,
+    defaultEffort,
+    effortNote,
     delegation,
     routeBias,
     routeNative,
@@ -461,12 +481,12 @@ export function ModelMenu({
               : autoRoute
                 ? `自动路由 · 当前 ${autoModel ?? model}（候选池在设置 → 自动路由）`
                 : currentProfile
-                  ? `${currentProfile.name}${currentGroup ? ` › ${currentGroup}` : ''} · ${model}${showEffort && effort !== 'off' ? ` · 思考强度 ${effortName}` : ''}`
+                  ? `${currentProfile.name}${currentGroup ? ` › ${currentGroup}` : ''} · ${model}${showEffort ? ` · 思考强度 ${effortName}` : ''}`
                   : '选择账号与模型'
           }
           tooltipSide="top"
           data-effort={effort}
-          aria-label={`选择模型：${label}${showEffort && effort !== 'off' ? `（思考强度：${effortName}）` : ''}`}
+          aria-label={`选择模型：${label}${showEffort ? `（思考强度：${effortName}）` : ''}`}
           className={cn(
             'min-w-0 max-w-[220px] justify-start gap-1 px-2 font-normal max-sm:min-h-11 max-sm:max-w-[36vw]',
             compact && 'max-w-[128px] px-1.5',

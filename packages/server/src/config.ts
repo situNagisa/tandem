@@ -508,7 +508,7 @@ export function normalizePrice(
   return Object.keys(out).length ? out : undefined;
 }
 
-const EFFORT_VALUES: ReasoningEffort[] = ['off', 'minimal', 'low', 'medium', 'high', 'max'];
+const EFFORT_VALUES: ReasoningEffort[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
 /** 账号/分组上的模型能力覆盖：{ 模型名: { efforts, contextWindow } }。 */
 export function normalizeModelCapabilities(
@@ -519,7 +519,13 @@ export function normalizeModelCapabilities(
   for (const [model, raw] of Object.entries(value as Record<string, unknown>)) {
     const name = model.trim();
     if (!name || !raw || typeof raw !== 'object') continue;
-    const caps = raw as { efforts?: unknown; effortLabels?: unknown; contextWindow?: unknown };
+    const caps = raw as {
+      efforts?: unknown;
+      effortLabels?: unknown;
+      defaultEffort?: unknown;
+      effortNote?: unknown;
+      contextWindow?: unknown;
+    };
     const item: ModelCapabilities = {};
     if (Array.isArray(caps.efforts)) {
       item.efforts = [
@@ -539,9 +545,21 @@ export function normalizeModelCapabilities(
       }
       if (Object.keys(labels).length) item.effortLabels = labels;
     }
+    if (EFFORT_VALUES.includes(caps.defaultEffort as ReasoningEffort)) {
+      item.defaultEffort = caps.defaultEffort as ReasoningEffort;
+    }
+    if (typeof caps.effortNote === 'string' && caps.effortNote.trim()) {
+      item.effortNote = caps.effortNote.trim().slice(0, 120);
+    }
     const window = Number(caps.contextWindow);
     if (Number.isFinite(window) && window > 0) item.contextWindow = window;
-    if (item.efforts !== undefined || item.effortLabels !== undefined || item.contextWindow !== undefined) {
+    if (
+      item.efforts !== undefined ||
+      item.effortLabels !== undefined ||
+      item.defaultEffort !== undefined ||
+      item.effortNote !== undefined ||
+      item.contextWindow !== undefined
+    ) {
       out[name] = item;
     }
   }

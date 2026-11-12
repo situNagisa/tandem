@@ -8,7 +8,7 @@ import { postWithBodyFallbacks, summarizeUpstreamRejection } from '../upstream/r
 import { applyAnthropicUsage } from '../upstream/usage.js';
 import { createIdleTimeout, idleTimeoutError } from './idle-timeout.js';
 import { parseRateLimitHeaders, retryAfterMs } from './rate-limit.js';
-import { ANTHROPIC_THINKING_BUDGETS, builtinCapabilities, claudeThinkingMode, overrideFor } from './capabilities.js';
+import { ANTHROPIC_THINKING_BUDGETS, adaptiveCanDisable, builtinCapabilities, claudeThinkingMode, overrideFor } from './capabilities.js';
 import type { StreamRequest, StreamResult } from './types.js';
 
 type AnyBlock = Record<string, any>;
@@ -107,10 +107,18 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
   };
   if (tools.length > 0) body.tools = tools;
   if (adaptive) {
-    body.thinking = { type: 'adaptive' };
+    // adaptive 型号默认 display=omitted（思考文本为空），显式 summarized 才能在 UI 看到思考过程。
+    body.thinking = { type: 'adaptive', display: 'summarized' };
     body.output_config = { effort: req.effort };
   } else if (budget) {
     body.thinking = { type: 'enabled', budget_tokens: budget };
+  } else if (
+    req.effort === 'off' &&
+    claudeThinkingMode(req.model) === 'adaptive' &&
+    adaptiveCanDisable(req.model)
+  ) {
+    // 默认就开 adaptive 的型号，不传 thinking 并不等于关；显式 disabled 才是真的关。
+    body.thinking = { type: 'disabled' };
   }
 
   const idle = createIdleTimeout(req.signal, req.idleTimeoutSec);
@@ -144,7 +152,7 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
             /thinking\.type\.enabled\\?"? is not supported/.test(res.text),
           drop: (body) => ({
             ...body,
-            thinking: { type: 'adaptive' },
+            thinking: { type: 'adaptive', display: 'summarized' },
             output_config: { effort: req.effort },
           }),
         },

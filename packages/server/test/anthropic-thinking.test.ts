@@ -68,7 +68,7 @@ async function requestBlocks(baseUrl: string, model: string, onEffortDropped: ()
   return blocks;
 }
 
-function request(baseUrl: string, model: string, onEffortDropped: () => void, blocks: unknown[] = []) {
+function request(baseUrl: string, model: string, onEffortDropped: () => void, blocks: unknown[] = [], effort: 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' = 'medium') {
   return streamChat({
     profile: profileAt(baseUrl),
     model,
@@ -81,7 +81,7 @@ function request(baseUrl: string, model: string, onEffortDropped: () => void, bl
     signal: new AbortController().signal,
     idleTimeoutSec: 30,
     maxTokens: 8192,
-    effort: 'medium',
+    effort,
     onEffortDropped,
     onRateLimit: () => {},
     onBlockStart: () => {},
@@ -93,19 +93,53 @@ function request(baseUrl: string, model: string, onEffortDropped: () => void, bl
 const REJECTED_ENABLED =
   '{"type":"error","error":{"type":"invalid_request_error","message":"\\"thinking.type.enabled\\" is not supported for this model. Use \\"thinking.type.adaptive\\" and \\"output_config.effort\\" to control thinking behavior."}}';
 
-test('adaptive 型号发送 thinking.adaptive + output_config.effort，不带 budget_tokens', async () => {
+test('adaptive 型号发送 thinking.adaptive + summarized + output_config.effort，不带 budget_tokens', async () => {
   let dropped = 0;
   await withServer(
     () => ({ status: 200, body: OK_STREAM }),
     async (baseUrl, captured) => {
       const blocks = await requestBlocks(baseUrl, 'claude-opus-5-5', () => dropped++);
       assert.equal(captured.length, 1);
-      assert.deepEqual(captured[0]!.body.thinking, { type: 'adaptive' });
+      assert.deepEqual(captured[0]!.body.thinking, { type: 'adaptive', display: 'summarized' });
       assert.deepEqual(captured[0]!.body.output_config, { effort: 'medium' });
+      assert.equal(captured[0]!.body.thinking.budget_tokens, undefined);
       assert.deepEqual(blocks, [{ type: 'text', text: 'ok' }]);
     },
   );
   assert.equal(dropped, 0);
+});
+
+test('adaptive 型号的 xhigh / max 原样作为 effort 发送', async () => {
+  for (const effort of ['xhigh', 'max'] as const) {
+    await withServer(
+      () => ({ status: 200, body: OK_STREAM }),
+      async (baseUrl, captured) => {
+        await request(baseUrl, 'claude-sonnet-5-5', () => {}, [], effort);
+        assert.deepEqual(captured[0]!.body.thinking, { type: 'adaptive', display: 'summarized' });
+        assert.deepEqual(captured[0]!.body.output_config, { effort });
+      },
+    );
+  }
+});
+
+test('显式关闭：支持 disabled 的 adaptive 型号发 thinking.disabled，不支持的型号不发 thinking', async () => {
+  await withServer(
+    () => ({ status: 200, body: OK_STREAM }),
+    async (baseUrl, captured) => {
+      await request(baseUrl, 'claude-opus-5', () => {}, [], 'off');
+      assert.deepEqual(captured[0]!.body.thinking, { type: 'disabled' });
+      assert.equal(captured[0]!.body.output_config, undefined);
+    },
+  );
+  await withServer(
+    () => ({ status: 200, body: OK_STREAM }),
+    async (baseUrl, captured) => {
+      // Sonnet 5.5 不能关闭思考；菜单也不提供「关」，兼容旧会话里残留的 off 时不发参数。
+      await request(baseUrl, 'claude-sonnet-5-5', () => {}, [], 'off');
+      assert.equal(captured[0]!.body.thinking, undefined);
+      assert.equal(captured[0]!.body.output_config, undefined);
+    },
+  );
 });
 
 test('manual 型号仍发送 budget_tokens', async () => {
@@ -126,7 +160,7 @@ test('上游提示 thinking.type.enabled 不支持：改用 adaptive 重试成�
     async (baseUrl, captured) => {
       const blocks = await requestBlocks(baseUrl, 'claude-sonnet-4-5', () => dropped++);
       assert.equal(captured.length, 2);
-      assert.deepEqual(captured[1]!.body.thinking, { type: 'adaptive' });
+      assert.deepEqual(captured[1]!.body.thinking, { type: 'adaptive', display: 'summarized' });
       assert.deepEqual(captured[1]!.body.output_config, { effort: 'medium' });
       assert.deepEqual(blocks, [{ type: 'text', text: 'ok' }]);
     },

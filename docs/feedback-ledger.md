@@ -27,7 +27,7 @@
 | R23 | 按主机切换割裂会话列表、缩进过大 | 2 | design P15；regression 侧栏按主机分组/缩进 ≤8px |
 | R24 | 价格模型不符合中转倍率实际 | 1 | 官方价 × 账号 × 分组倍率；单测 pricing；regression 计算式 |
 | R25 | 轮次关键数据缺少就地入口、指标口径不清 | 2 | 轮次 tooltip + 固定上下文着色；单测 turnUsage；regression 大纲用量/无切换 |
-| R26 | 思考强度档位硬编码；型号按旧名前缀判定思考协议，新代际被误判为不支持 | 2 | `providers/capabilities.ts` `claudeThinkingMode`/`parseClaudeModel` 按家族+版本；`anthropic.ts` 只接受 adaptive 的 400 改用 adaptive 重试、不计降级；降级通知只在去掉思考参数重试成功后发出，内容为脱敏后的上游原话（`summarizeUpstreamRejection`）；单测 `model-families`、`anthropic-thinking`、`effort-fallback`；regression 厂商档位 |
+| R26 | 思考强度档位硬编码；型号按旧名前缀判定思考协议，新代际被误判为不支持；adaptive 型号仍显示旧 budget 标签（·2K/8K/16K/32K）、缺 xhigh，且未传 `display: summarized` 导致思考文本为空 | 3 | `providers/capabilities.ts` `claudeThinkingMode`/`parseClaudeModel` 按家族+版本；`anthropic.ts` 只接受 adaptive 的 400 改用 adaptive 重试、不计降级；降级通知只在去掉思考参数重试成功后发出，内容为脱敏后的上游原话（`summarizeUpstreamRejection`）；adaptive 按官方 effort 表（low/medium/high/xhigh/max，无预算标签，只有支持 disabled 的型号有「关」）并显式 `display: summarized`；未选时显示官方默认；单测 `model-families`、`anthropic-thinking`、`effort-fallback`、`capabilities`；regression 厂商档位（Sonnet 5.5 无 ·2K、含 xhigh） |
 | R27 | 固定操作重排阅读列表导致乱飞 | 1 | 固定不重排、原位图钉；regression 阅读顺序/滚动位置 |
 | R28 | 辅助视图做成独立悬停浮层，跨空白即收起 | 1 | 同一大纲 Alt/点击两用；regression Alt 切换 |
 | R29 | 设备权限/占用不可见，用户无处修复 | 1 | 只读探测 + 修复说明 + 深度检测；单测 serial-access；regression 设备行/修复 |

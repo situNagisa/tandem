@@ -1428,6 +1428,17 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       createdAt: Date.now() - 20_000,
     },
     {
+      // 反馈2121#01：Anthropic 协议 + adaptive 型号，档位按官方 effort 表而不是旧 token 预算。
+      id: 'p-claude',
+      name: 'Claude 账号',
+      kind: 'anthropic',
+      baseUrl: `http://127.0.0.1:${mockPort}`,
+      apiKey: 'reg-key-claude',
+      models: ['claude-sonnet-5-5', 'claude-sonnet-4-5'],
+      defaultModel: 'claude-sonnet-5-5',
+      createdAt: Date.now() - 25_000,
+    },
+    {
       id: 'p-quota',
       name: '限流账号',
       kind: 'openai-compatible',
@@ -1803,6 +1814,11 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       message('pr1', 'user', '看看这个模型的价格'),
       message('pr2', 'assistant', '按参考价估算。', { model: 'o3' }),
     ], { groupId: 'g2', model: 'o3', updatedAt: Date.now() - 980 }),
+    // 反馈2121#01：adaptive 型号的思考强度档位（无 token 预算标签）。
+    mk('claude-effort', 'Claude 思考强度会话', [
+      message('ce1', 'user', '这道题先想一想'),
+      message('ce2', 'assistant', '好的。', { model: 'claude-sonnet-5-5' }),
+    ], { profileId: 'p-claude', groupId: undefined, model: 'claude-sonnet-5-5', effort: 'max', updatedAt: Date.now() - 985 }),
     // 反馈1601#03：输入 6 tok、按参考价折算后不足 $0.0001，不能显示成 $0.0000。
     mk('tinycost', '小额花费会话', [
       message('tc1', 'user', '这条输入的金额不要显示成 0', {
@@ -4751,6 +4767,30 @@ async function main() {
       assert.match(text, /中 · medium/, `o3 档位缺少 medium：${text}`)
       assert.match(text, /高 · high/, `o3 档位缺少 high：${text}`)
       assert.equal(await submenu.getByRole('menuitemradio', { name: '关', exact: true }).count(), 0, 'o3 不应出现「关」档位')
+      await page.keyboard.press('Escape')
+      await page.keyboard.press('Escape')
+
+      // 反馈2121#01：Anthropic adaptive 型号按官方 effort 表，不再显示 2K/8K/16K/32K 预算标签。
+      await openSession(page, 'claude-effort')
+      await waitModelReady(page)
+      await page.locator('button[aria-label^="选择模型"]').first().click()
+      const claudeMenu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+      await claudeMenu.waitFor()
+      const claudeEffortTrigger = claudeMenu.getByRole('menuitem', { name: /思考强度/ }).first()
+      await claudeEffortTrigger.hover()
+      const claudeSubmenu = page.locator('[role="menu"][aria-label="思考强度"]').first()
+      await claudeSubmenu.waitFor({ state: 'visible', timeout: 5_000 })
+      const claudeText = await claudeSubmenu.innerText()
+      for (const label of ['低 · low', '中 · medium', '高 · high', '超高 · xhigh', '最高 · max']) {
+        assert.ok(claudeText.includes(label), `Sonnet 5.5 缺少档位 ${label}：${claudeText}`)
+      }
+      assert.doesNotMatch(claudeText, /\d+K/, `adaptive 型号仍显示 token 预算标签：${claudeText}`)
+      assert.equal(
+        await claudeSubmenu.getByRole('menuitemradio', { name: '关', exact: true }).count(),
+        0,
+        'Sonnet 5.5 不能关闭思考，不应出现「关」',
+      )
+      assert.match(await claudeEffortTrigger.innerText(), /最高 · max/, '当前档位没有显示厂商原名')
       await page.keyboard.press('Escape')
       await page.keyboard.press('Escape')
 

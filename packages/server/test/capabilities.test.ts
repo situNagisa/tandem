@@ -31,9 +31,41 @@ test('Anthropic 支持 extended thinking 的型号使用 budget 预设', () => {
   const caps = builtinCapabilities('anthropic', 'claude-sonnet-4-5');
   assert.deepEqual(caps.efforts, ['off', 'low', 'medium', 'high', 'max']);
   assert.equal(caps.effortLabels?.medium, '中 · 8K');
+  assert.equal(caps.defaultEffort, 'off');
   assert.equal(ANTHROPIC_THINKING_BUDGETS.low, 2048);
   assert.equal(ANTHROPIC_THINKING_BUDGETS.max, 32000);
   assert.deepEqual(builtinCapabilities('anthropic', 'claude-2.1').efforts, []);
+});
+
+test('adaptive 型号档位按官方 effort 表，标签不带 token 预算', () => {
+  const sonnet = builtinCapabilities('anthropic', 'claude-sonnet-5-5');
+  assert.deepEqual(sonnet.efforts, ['low', 'medium', 'high', 'xhigh', 'max']);
+  assert.equal(sonnet.defaultEffort, 'high');
+  assert.equal(sonnet.effortLabels?.xhigh, '超高 · xhigh');
+  assert.equal(sonnet.effortLabels?.max, '最高 · max');
+  assert.ok(!JSON.stringify(sonnet.effortLabels).match(/K'/), 'adaptive 标签不应带预算');
+
+  const opus = builtinCapabilities('anthropic', 'claude-opus-5-5');
+  assert.equal(opus.defaultEffort, 'medium', 'Opus 5.5 官方默认 medium');
+  assert.ok(!opus.efforts?.includes('off'), 'Opus 5.5 不能关闭思考，菜单不提供「关」');
+
+  const opus5 = builtinCapabilities('anthropic', 'claude-opus-5');
+  assert.ok(opus5.efforts?.includes('off'), 'Opus 5 可在 high 及以下关闭思考');
+
+  const haiku = builtinCapabilities('anthropic', 'claude-haiku-5-5');
+  assert.equal(haiku.defaultEffort, 'medium', 'Haiku 5.5 官方默认 medium');
+
+  // 4.6 在本项目仍按 manual（budget_tokens）处理；Sonnet 4.6 本身没有 xhigh。
+  assert.ok(!builtinCapabilities('anthropic', 'claude-sonnet-4-6').efforts?.includes('xhigh'));
+});
+
+test('同型号经 OpenAI 兼容协议时只有 reasoning_effort 档位并注明由中转决定', () => {
+  const caps = builtinCapabilities('openai-compatible', 'claude-sonnet-5-5');
+  assert.deepEqual(caps.efforts, ['low', 'medium', 'high']);
+  assert.equal(caps.effortLabels?.high, '高 · high');
+  assert.match(caps.effortNote ?? '', /OpenAI 兼容协议/);
+  assert.equal(builtinCapabilities('anthropic', 'claude-sonnet-5-5').effortNote, undefined);
+  assert.equal(openaiReasoningEffort('openai-compatible', 'claude-sonnet-5-5', 'xhigh'), undefined);
 });
 
 test('Grok / Gemini / DeepSeek 各按 API 实际档位', () => {

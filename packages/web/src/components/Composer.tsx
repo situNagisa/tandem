@@ -16,7 +16,6 @@ import { selectionContextText, selectionLabel, selectionSource } from '../lib/pr
 import { useSessionTarget, useSessionView } from './session/SessionScope'
 import { useIsMobile } from '../lib/hooks'
 import { cn } from '../lib/cn'
-import { loadLastEffort } from '../lib/effort'
 import { loadDraft } from '../lib/storage'
 import { Button, IconButton } from './ui/Button'
 import { VoiceButton, type VoiceButtonHandle } from './voice/VoiceButton'
@@ -225,6 +224,8 @@ export function Composer({
     modelEfforts,
     modelEffortLabels,
     modelContextWindow,
+    modelDefaultEffort,
+    modelEffortNote,
     supportedEfforts,
     modelPrices,
     cachedPrices,
@@ -456,6 +457,8 @@ export function Composer({
           effort={effort}
           supportedEfforts={supportedEfforts}
           effortLabels={modelEffortLabels}
+          defaultEffort={modelDefaultEffort}
+          effortNote={modelEffortNote}
           profilesLoading={profilesLoading}
           modelDisabled={disabled || (!sessionless && !summary)}
           modelMenuOpen={modelMenuOpen}

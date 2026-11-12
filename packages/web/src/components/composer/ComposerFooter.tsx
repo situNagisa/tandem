@@ -53,9 +53,11 @@ interface ComposerFooterProps {
   routedModel: string | undefined
   modelPrices: Record<string, ModelPriceInfo> | undefined
   pricesLoading: boolean
-  effort: ReasoningEffort
+  effort: ReasoningEffort | undefined
   supportedEfforts: ReasoningEffort[]
   effortLabels: Partial<Record<ReasoningEffort, string>> | undefined
+  defaultEffort: ReasoningEffort | undefined
+  effortNote: string | undefined
   profilesLoading: boolean
   modelDisabled: boolean
   modelMenuOpen: boolean
@@ -108,6 +110,8 @@ export function ComposerFooter({
   effort,
   supportedEfforts,
   effortLabels,
+  defaultEffort,
+  effortNote,
   profilesLoading,
   modelDisabled,
   modelMenuOpen,
@@ -183,6 +187,8 @@ export function ComposerFooter({
             effort={effort}
             efforts={supportedEfforts}
             effortLabels={effortLabels}
+            defaultEffort={defaultEffort}
+            effortNote={effortNote}
             delegation={effectiveDelegation}
             routeBias={effectiveRouteBias}
             routeNative={routeNative}

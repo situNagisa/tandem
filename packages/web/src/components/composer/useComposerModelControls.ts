@@ -43,9 +43,9 @@ interface Options {
   mode: PermissionMode
   contextUsed: number
   autoRoute: boolean
-  localEffort: ReasoningEffort
+  localEffort: ReasoningEffort | undefined
   setLocalEffort: (effort: ReasoningEffort) => void
-  effort: ReasoningEffort
+  effort: ReasoningEffort | undefined
   setModelMenuOpen: (open: boolean) => void
   setPendingSwitch: (
     value: { profileId: string; groupId?: string; model: string; tokens: number } | null,
@@ -87,11 +87,15 @@ export function useComposerModelControls({
   updateSession,
 }: Options) {
   const [modelEfforts, setModelEfforts] = useState<ReasoningEffort[] | undefined>(undefined)
+  const [modelEffortsKey, setModelEffortsKey] = useState<string | undefined>(undefined)
   const [modelEffortLabels, setModelEffortLabels] = useState<
     Partial<Record<ReasoningEffort, string>> | undefined
   >(undefined)
   const [modelContextWindow, setModelContextWindow] = useState<number | undefined>(undefined)
+  const [modelDefaultEffort, setModelDefaultEffort] = useState<ReasoningEffort | undefined>(undefined)
+  const [modelEffortNote, setModelEffortNote] = useState<string | undefined>(undefined)
   const supportedEfforts = modelEfforts ?? defaultEffortsForKind(currentKind)
+  const capabilitiesKey = `${currentProfileId}:${currentGroupId ?? ''}:${currentModel}`
 
   const [priceCache, setPriceCache] = useState<
     Record<string, Record<string, ModelPriceInfo> | 'loading'>
@@ -100,8 +104,11 @@ export function useComposerModelControls({
   // 当前模型支持哪些思考强度与上下文上限；请求失败按 provider 默认处理
   useEffect(() => {
     setModelEfforts(undefined)
+    setModelEffortsKey(undefined)
     setModelEffortLabels(undefined)
     setModelContextWindow(undefined)
+    setModelDefaultEffort(undefined)
+    setModelEffortNote(undefined)
     if (!effectiveHostId || !currentProfileId || !currentModel || autoRoute) return
     const host = useAppStore.getState().hosts.find((h) => h.id === effectiveHostId)
     if (!host) return
@@ -111,8 +118,11 @@ export function useComposerModelControls({
       .then((info) => {
         if (cancelled) return
         setModelEfforts(info.efforts)
+        setModelEffortsKey(capabilitiesKey)
         setModelEffortLabels(info.effortLabels)
         setModelContextWindow(info.contextWindow)
+        setModelDefaultEffort(info.defaultEffort)
+        setModelEffortNote(info.effortNote)
       })
       .catch(() => {
         /* 能力未知时保留默认档位 */
@@ -257,14 +267,20 @@ export function useComposerModelControls({
   }
 
   // 切换模型后当前强度不再受支持：降到最近的可用档；完全不支持思考则回到关。
+  // 能力还没返回对应模型的档位时不改（避免旧模型的档位把新会话的档位改掉）。
+  // 未选过（undefined）保持未选，按模型官方默认；显式「关」在不能关闭思考的型号上同样按未选处理。
   // 无会话时每次都回报生效档位（不写入记忆），新会话页据此发送；换回支持更高档的模型时由调用方传入的原选择恢复。
   useEffect(() => {
-    if (modelEfforts === undefined) return
-    const next = nearestEffort(modelEfforts, effort)
-    if (next !== effort) changeEffort(next, false)
-    else if (sessionless) onEffortChange?.(next, false)
+    if (modelEfforts === undefined || modelEffortsKey !== capabilitiesKey || effort === undefined) return
+    if (!modelEfforts.includes(effort)) {
+      if (effort === 'off' && modelDefaultEffort !== undefined) return
+      const next = nearestEffort(modelEfforts, effort)
+      if (next !== effort) changeEffort(next, false)
+      return
+    }
+    if (sessionless) onEffortChange?.(effort, false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelEfforts, effort])
+  }, [modelEfforts, effort, modelDefaultEffort])
 
   const switchLabel = (pick: { profileId: string; groupId?: string; model: string }) => {
     if (pick.model === 'auto') return '自动路由'
@@ -303,6 +319,8 @@ export function useComposerModelControls({
     modelEfforts,
     modelEffortLabels,
     modelContextWindow,
+    modelDefaultEffort,
+    modelEffortNote,
     supportedEfforts,
     modelPrices,
     cachedPrices,

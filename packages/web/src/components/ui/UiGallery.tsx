@@ -209,7 +209,7 @@ export function UiGallery() {
                       投入程度越高，回复越详尽，但耗时越长、用量越多。
                     </p>
                     <Menu.RadioGroup value="high" onValueChange={() => {}}>
-                      {['off', 'minimal', 'low', 'medium', 'high', 'max'].map((e) => (
+                      {['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map((e) => (
                         <Menu.RadioItem key={e} value={e} trailing={e === 'high' ? '推荐' : undefined}>
                           {{ off: '关', low: '低', medium: '中', high: '高', max: '最高' }[e]}
                         </Menu.RadioItem>

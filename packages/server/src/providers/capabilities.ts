@@ -7,7 +7,10 @@ import type {
   ReasoningEffort,
 } from '@tandem/protocol';
 
+/** extended thinking（4.5 及以前）：厂商只有 token 预算，没有档位名。 */
 const ANTHROPIC_EFFORTS: ReasoningEffort[] = ['off', 'low', 'medium', 'high', 'max'];
+/** adaptive thinking（4.7 及以后）：档位走 output_config.effort，没有 token 预算。 */
+const ADAPTIVE_EFFORTS: ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 /** o 系列：low/medium/high；gpt-5 及以后另有 minimal。 */
 const OPENAI_REASONING: ReasoningEffort[] = ['low', 'medium', 'high'];
 const OPENAI_MINIMAL: ReasoningEffort[] = ['minimal', 'low', 'medium', 'high'];
@@ -22,6 +25,14 @@ const LABELS = {
     medium: '中 · 8K',
     high: '高 · 16K',
     max: '最高 · 32K',
+  } satisfies Partial<Record<ReasoningEffort, string>>,
+  anthropicAdaptive: {
+    off: '关',
+    low: '低 · low',
+    medium: '中 · medium',
+    high: '高 · high',
+    xhigh: '超高 · xhigh',
+    max: '最高 · max',
   } satisfies Partial<Record<ReasoningEffort, string>>,
   openai: {
     minimal: '极低 · minimal',
@@ -97,6 +108,42 @@ export function claudeThinkingMode(model: string): 'adaptive' | 'manual' | undef
   return undefined;
 }
 
+/**
+ * adaptive 型号是否支持 `thinking: { type: "disabled" }`（官方按型号不同）。
+ * 不支持关闭的型号（Opus 5.5、Sonnet 5.5、Fable/Mythos 5.x）菜单不提供「关」。
+ */
+export function adaptiveCanDisable(model: string): boolean {
+  const claude = parseClaudeModel(model);
+  if (!claude) return false;
+  const { family, major, minor } = claude;
+  if (family === 'opus' || family === 'sonnet') {
+    if (major === 4) return true;
+    if (major === 5) return minor < 5;
+    return false;
+  }
+  if (family === 'haiku') return major >= 4;
+  return false;
+}
+
+/** adaptive 型号实际支持的 effort 档位（官方型号表；未知新代际按全部五档）。 */
+export function adaptiveEfforts(model: string): ReasoningEffort[] {
+  const claude = parseClaudeModel(model);
+  // Sonnet 4.6 只有 low/medium/high/max，没有 xhigh
+  if (claude && claude.family === 'sonnet' && claude.major === 4 && claude.minor === 6) {
+    return ADAPTIVE_EFFORTS.filter((effort) => effort !== 'xhigh');
+  }
+  return [...ADAPTIVE_EFFORTS];
+}
+
+/** 未显式选择时的官方默认 effort：Opus 5.5 / Haiku 5.5 为 medium，其余为 high。 */
+export function adaptiveDefaultEffort(model: string): ReasoningEffort {
+  const claude = parseClaudeModel(model);
+  if (claude && (claude.family === 'opus' || claude.family === 'haiku') && claude.major === 5 && claude.minor >= 5) {
+    return 'medium';
+  }
+  return 'high';
+}
+
 function styleFor(kind: ProviderKind, model: string): EffortStyle {
   const effectiveKind: ProviderKind = kind === 'tandem-gateway' ? 'openai-compatible' : kind;
   const id = model.toLowerCase();
@@ -118,8 +165,9 @@ function styleFor(kind: ProviderKind, model: string): EffortStyle {
 function labelFor(style: EffortStyle): Partial<Record<ReasoningEffort, string>> | undefined {
   switch (style) {
     case 'anthropic':
-    case 'anthropic-adaptive':
       return { ...LABELS.anthropic };
+    case 'anthropic-adaptive':
+      return { ...LABELS.anthropicAdaptive };
     case 'openai-minimal':
       return { ...LABELS.openai };
     case 'openai-reasoning':
@@ -135,11 +183,14 @@ function labelFor(style: EffortStyle): Partial<Record<ReasoningEffort, string>> 
   }
 }
 
-function effortsFor(style: EffortStyle): ReasoningEffort[] {
+function effortsFor(style: EffortStyle, model: string): ReasoningEffort[] {
   switch (style) {
     case 'anthropic':
-    case 'anthropic-adaptive':
       return [...ANTHROPIC_EFFORTS];
+    case 'anthropic-adaptive': {
+      const efforts = adaptiveEfforts(model);
+      return adaptiveCanDisable(model) ? ['off', ...efforts] : efforts;
+    }
     case 'openai-minimal':
       return [...OPENAI_MINIMAL];
     case 'openai-reasoning':
@@ -156,9 +207,15 @@ function effortsFor(style: EffortStyle): ReasoningEffort[] {
 
 export function builtinCapabilities(kind: ProviderKind, model: string): ModelCapabilities {
   const style = styleFor(kind, model);
-  const caps: ModelCapabilities = { efforts: effortsFor(style) };
+  const caps: ModelCapabilities = { efforts: effortsFor(style, model) };
   const labels = labelFor(style);
   if (labels) caps.effortLabels = labels;
+  if (style === 'anthropic') caps.defaultEffort = 'off';
+  if (style === 'anthropic-adaptive') caps.defaultEffort = adaptiveDefaultEffort(model);
+  // OpenAI 兼容协议访问 Claude 时，思考强度只能走 reasoning_effort，生效与否由中转决定。
+  if (style === 'openai-reasoning' && claudeThinkingMode(model)) {
+    caps.effortNote = '经 OpenAI 兼容协议，由中转决定是否生效';
+  }
 
   const id = model.toLowerCase();
   const claude = /^claude-/.test(id);
@@ -207,6 +264,10 @@ export function applyModelCapabilities(
   if (efforts !== undefined) info.efforts = [...efforts];
   const labels = override?.effortLabels ?? provider?.effortLabels ?? builtin.effortLabels;
   if (labels !== undefined) info.effortLabels = { ...labels };
+  const defaultEffort = override?.defaultEffort ?? provider?.defaultEffort ?? builtin.defaultEffort;
+  if (defaultEffort !== undefined) info.defaultEffort = defaultEffort;
+  const effortNote = override?.effortNote ?? provider?.effortNote ?? builtin.effortNote;
+  if (effortNote !== undefined) info.effortNote = effortNote;
   const contextWindow =
     override?.contextWindow ??
     info.contextWindow ??
@@ -229,7 +290,7 @@ export function resolveEfforts(
 
 /**
  * OpenAI 兼容端点的 reasoning_effort 值。
- * 能力表明确列出该档位才发送；max 不是 OpenAI 的档位，映射为 high。
+ * 能力表明确列出该档位才发送；max / xhigh 不是 OpenAI 的档位，映射为 high。
  */
 export function openaiReasoningEffort(
   kind: ProviderKind,
@@ -240,7 +301,7 @@ export function openaiReasoningEffort(
   if (!effort || effort === 'off') return undefined;
   const supported = resolveEfforts(kind, model, overrides);
   if (!supported || !supported.includes(effort)) return undefined;
-  return effort === 'max' ? 'high' : effort;
+  return effort === 'max' || effort === 'xhigh' ? 'high' : effort;
 }
 
 /** Anthropic extended thinking 的 budget_tokens 预设（厂商只有预算，没有档位名）。 */

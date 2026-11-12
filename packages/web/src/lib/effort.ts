@@ -1,7 +1,7 @@
 import type { ProviderKind, ReasoningEffort } from '@tandem/protocol'
 import { readRaw, writeRaw } from './storage'
 
-export const EFFORTS: ReasoningEffort[] = ['off', 'minimal', 'low', 'medium', 'high', 'max']
+export const EFFORTS: ReasoningEffort[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 
 export const EFFORT_LABEL: Record<ReasoningEffort, string> = {
   off: '关',
@@ -9,6 +9,7 @@ export const EFFORT_LABEL: Record<ReasoningEffort, string> = {
   low: '低',
   medium: '中',
   high: '高',
+  xhigh: '超高',
   max: '最高',
 }
 
@@ -21,7 +22,7 @@ export function effortSuffix(effort: ReasoningEffort | undefined): string {
 export function defaultEffortsForKind(kind: ProviderKind | undefined): ReasoningEffort[] {
   if (kind === 'anthropic' || kind === undefined) return [...EFFORTS]
   if (kind === 'demo') return ['off']
-  return EFFORTS.filter((effort) => effort !== 'max' && effort !== 'off')
+  return EFFORTS.filter((effort) => effort !== 'max' && effort !== 'xhigh' && effort !== 'off')
 }
 
 /** 当前强度不在支持列表时，取档位距离最近的一项；列表为空表示不支持思考。 */
@@ -42,12 +43,13 @@ export function nearestEffort(
 
 const EFFORT_KEY = 'tandem.effort.v1'
 
-export function loadLastEffort(): ReasoningEffort {
+/** 上次显式选择过的档位；没选过返回 undefined（按模型官方默认，不擅自发送）。 */
+export function loadLastEffort(): ReasoningEffort | undefined {
   const raw = readRaw(EFFORT_KEY)
-  if (raw === 'off' || raw === 'minimal' || raw === 'low' || raw === 'medium' || raw === 'high' || raw === 'max') {
+  if (raw === 'off' || raw === 'minimal' || raw === 'low' || raw === 'medium' || raw === 'high' || raw === 'xhigh' || raw === 'max') {
     return raw
   }
-  return 'off'
+  return undefined
 }
 
 export function rememberEffort(effort: ReasoningEffort): void {

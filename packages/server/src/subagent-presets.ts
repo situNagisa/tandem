@@ -12,7 +12,7 @@ import type {
 import { ensureDir, readJson, tandemHome } from './config.js';
 import { normalizeDelegation } from './routing-settings.js';
 
-const EFFORTS = new Set<ReasoningEffort>(['off', 'minimal', 'low', 'medium', 'high', 'max']);
+const EFFORTS = new Set<ReasoningEffort>(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 const MODES = new Set<PermissionMode>(['default', 'acceptEdits', 'plan', 'bypassPermissions']);
 const ALIASES = new Set(['sonnet', 'opus', 'haiku']);
 const MAX_PROMPT = 20_000;

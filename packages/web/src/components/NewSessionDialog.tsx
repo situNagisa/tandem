@@ -91,8 +91,9 @@ export function NewSessionView() {
   const [routeBias, setRouteBias] = useState<RoutePreference | undefined>(undefined)
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default')
   // effort 是本次显示与发送的档位（模型不支持时已降档）；effortPick 是用户主动选的档位，只它写入记忆。
-  const [effortPick, setEffortPick] = useState<ReasoningEffort>(loadLastEffort)
-  const [effort, setEffort] = useState<ReasoningEffort>(effortPick)
+  // 都没选过时为 undefined：按模型官方默认，不擅自发送。
+  const [effortPick, setEffortPick] = useState<ReasoningEffort | undefined>(loadLastEffort)
+  const [effort, setEffort] = useState<ReasoningEffort | undefined>(effortPick)
   const [delegation, setDelegation] = useState<DelegationStrategy>('less')
   const [routeNative, setRouteNative] = useState(false)
   const [worktree, setWorktree] = useState(false)
@@ -246,7 +247,7 @@ export function NewSessionView() {
           model,
           ...(routeBias ? { routeBias } : {}),
           permissionMode,
-          effort,
+          ...(effort ? { effort } : {}),
           delegation,
           routeNative,
           ...(worktree && gitRepo === 'yes'

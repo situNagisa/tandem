@@ -140,11 +140,12 @@ export function useComposerStore({
   const currentGroupId = sessionless ? groupIdProp : summary?.groupId
   const contextUsed = summary?.context?.usedTokens ?? 0
   const contextWindow = summary?.context?.contextWindow
-  const [localEffort, setLocalEffort] = useState<ReasoningEffort>(loadLastEffort)
+  const [localEffort, setLocalEffort] = useState<ReasoningEffort | undefined>(loadLastEffort)
   const currentProfile = uiProfiles.find((p) => p.id === currentProfileId)
   const currentGroup = currentProfile?.groups?.find((g) => g.id === currentGroupId)
   const currentKind = currentGroup?.kind ?? currentProfile?.kind
-  const effort = sessionless ? (effortProp ?? localEffort) : (summary?.effort ?? 'off')
+  // 会话未显式选过时为 undefined：按模型官方默认，不擅自发送档位。
+  const effort = sessionless ? (effortProp ?? localEffort) : summary?.effort
   const draftKey = sessionId ? `${activeHostId ?? ''}:${sessionId}` : `new:${effectiveHostId ?? ''}`
   return {
     isMobile,
