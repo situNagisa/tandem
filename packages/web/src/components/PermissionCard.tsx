@@ -147,9 +147,14 @@ function str(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
-function Kbd({ children }: { children: React.ReactNode }) {
+function Kbd({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <kbd className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-[4px] px-1 text-[12px] font-normal leading-none text-[var(--t-text-tertiary)]">
+    <kbd
+      className={cn(
+        'ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-[4px] px-1 text-[12px] font-normal leading-none text-[var(--t-text-tertiary)]',
+        className,
+      )}
+    >
       {children}
     </kbd>
   )
@@ -250,11 +255,11 @@ export function PermissionCard({
   return (
     <div
       ref={cardRef}
-      className="permission-card msg-row mb-1"
+      className="permission-card msg-row mb-1 w-full max-w-[352px]"
       data-permission-id={request.id}
       data-permission-active={active ? 'true' : undefined}
     >
-      <div className="rounded-xl border border-border bg-[color-mix(in_srgb,var(--t-surface)_94%,transparent)] px-3.5 py-3">
+      <div className="flex h-full flex-col rounded-xl border border-border bg-[color-mix(in_srgb,var(--t-surface)_94%,transparent)] px-3.5 py-3">
         <div className="flex min-w-0 items-baseline gap-1 text-[13px] leading-[1.5] text-text">
           <span className="shrink-0">{verb}</span>
           <code
@@ -301,7 +306,19 @@ export function PermissionCard({
             </button>
           </div>
         )}
-        <div className="mt-2.5 flex items-center gap-1.5 max-sm:flex-wrap">
+        {/* 反馈1603#03：拒绝在左、更多居中、允许一次（主按钮）在右；按钮行贴卡片底部内边距，
+            卡片变高时仍在底部（用户 2026-11-12 原话）。 */}
+        <div className="mt-auto flex items-center gap-1.5 pt-4 max-sm:flex-wrap">
+          <Button
+            size="sm"
+            variant="secondary"
+            data-permission-deny=""
+            onClick={deny}
+            className="max-sm:min-h-11"
+          >
+            拒绝
+          </Button>
+          <span className="min-w-0 flex-1" />
           <Menu
             side="top"
             align="start"
@@ -334,24 +351,15 @@ export function PermissionCard({
           <span className="min-w-0 flex-1" />
           <Button
             size="sm"
-            variant="secondary"
-            data-permission-deny=""
-            onClick={deny}
-            className="max-sm:min-h-11"
-          >
-            拒绝
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
+            variant="primary"
             data-permission-allow=""
             onClick={allow}
-            className="border-border-strong bg-[var(--t-bg-active)] text-text hover:bg-[var(--t-bg-hover)] max-sm:min-h-11"
+            className="max-sm:min-h-11"
           >
             允许一次
-            <span className="flex items-center gap-0.5 text-[11px] text-muted">
-              <Kbd>Ctrl</Kbd>
-              <Kbd>⏎</Kbd>
+            <span className="flex items-center gap-0.5 opacity-70">
+              <Kbd className="text-[var(--t-primary-fg)]">Ctrl</Kbd>
+              <Kbd className="text-[var(--t-primary-fg)]">⏎</Kbd>
             </span>
           </Button>
         </div>

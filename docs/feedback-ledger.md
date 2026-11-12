@@ -53,7 +53,7 @@
 | R50 | 换主机塞进主机胶囊，语义错位 | 2 | 待定状态 + 自动打开文件夹 + 输入禁用/取消；regression 换主机流程 |
 | R52 | 弹层动画覆盖 Radix transform，首帧抖动 | 2 | 动画只在内层 + 触发器不缩放 + 异步固定尺寸；ui-audit content-transform；regression 15 帧 ≤1px |
 | R53 | 子代理会话关联不稳、层级用子/孙文字 | 1 | `parentToolUseId`/`tool_result.subagent` + 层级树 + 只读子会话；regression |
-| R54 | 审批卡像重框表单/停靠输入框上方 | 2 | 审批改为对话消息 + Claude 样式；regression 内联/Esc/发送即拒绝/小屏 |
+| R54 | 审批卡像重框表单/停靠输入框上方 | 3 | 审批改为对话消息 + Claude 样式；宽度 352、按钮 拒绝/更多/允许一次 贴底（反馈1603#03）；regression 内联/Esc/发送即拒绝/小屏/宽度与顺序 |
 | R55 | 登录与添加主机流程缺失 | 2 | LoginGate + 无主机空状态 + 一次性令牌 + 持久连接；调试版回环不带 token 自动补凭据、401 不重试；e2e 登录门/安装/免 token 进入 |
 | R56 | Windows 一行命令安装/登记失败被崩溃掩盖 | 3 | 平台裁剪 + 不硬退出 + hostId 校验 + 失败归因 + HKCU 自启；单测/用户实机 |
 | R57 | 隐藏操作条参与宽度计算，短气泡被撑宽 | 1 | 气泡 `w-fit max-w-full`；regression 气泡宽度 |

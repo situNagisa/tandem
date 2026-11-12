@@ -17,6 +17,12 @@
 - 运行提示：流式有末尾光标；等首个 token / 等工具返回时消息流末尾显示「⟳ 正在思考… 12s」/「⟳ 正在运行 Bash… 5s」；工具行执行中显示 spinner 与已运行时长（`chat/TurnActivity.tsx`，与侧栏计时同源）。
 - 排队消息：运行中发送的消息先显示本地排队气泡，被 agent 读取后原位替换成正式消息；只替换内容一致的排队项，不能消失或跑到末尾（反馈16#11 / R62）。
 
+## 审批卡（内联在对话流，反馈14#07 / 1603#03）
+
+- 审批是对话流里的一条消息：一句问句 + 灰色说明；宽度最大 352px、与消息列左对齐（2026-11-12 调整数据 758→352）。
+- 按钮行贴卡片底部内边距（`mt-auto`，卡片变高时仍在底部），顺序固定为「拒绝（次要）/ 更多（幽灵）/ 允许一次（主按钮，含 Ctrl⏎ 键帽）」；更多菜单里是「本会话总是允许」「添加为规则…」。
+- 「拒绝」保持次要中性按钮，不算危险操作；Ctrl/Cmd+Enter 允许一次、Esc 拒绝的行为不变。
+
 ## 用户消息气泡
 
 - 用户消息用与助手正文同一个 `Markdown` 组件渲染（`variant="user"`）：标题降级为 15px/600，列表悬挂缩进，代码块与表格沿用消息区样式（卡片化、内部横滚），引用显示左竖线；气泡字号/行高与正文一致（15/1.65）。
@@ -59,4 +65,4 @@
 
 ## 验证
 
-单测：`turnUsage.test.ts`、`context.test.ts`、`external.test.ts`、`format.test.ts`、`codeWrapLines.test.ts`。回归：`e2e/regression.mjs` 的轮次大纲/懒加载/外部预览/空分组/反馈16#01#02#10#11 用例；全量 `node scripts/check.mjs`。
+回归：`e2e/regression.mjs`「反馈1603#03：审批卡宽度 352、按钮 拒绝/更多/允许一次（主按钮）贴底」。单测：`turnUsage.test.ts`、`context.test.ts`、`external.test.ts`、`format.test.ts`、`codeWrapLines.test.ts`。回归：`e2e/regression.mjs` 的轮次大纲/懒加载/外部预览/空分组/反馈16#01#02#10#11 用例；全量 `node scripts/check.mjs`。

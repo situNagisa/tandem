@@ -401,10 +401,20 @@ const DECISIONS = [
   },
   {
     id: 'approval-claude-style',
-    source: '反馈14#07',
-    decision: '审批卡问句 + 灰色说明 + 拒绝/允许一次 + 更多，中性色无编号列表',
+    source: '反馈14#07；反馈1603#03（2026-11-12 调整说明）',
+    decision:
+      '审批卡问句 + 灰色说明；宽度 352 与消息列左对齐；按钮行贴卡片底部，顺序为 拒绝 / 更多 / 允许一次（主按钮），无编号列表',
     files: [F.permissionCard],
-    need: [/允许一次/, /拒绝/, /Ctrl/, /添加为规则/, /本会话总是允许/],
+    need: [
+      /允许一次/,
+      /拒绝/,
+      /Ctrl/,
+      /添加为规则/,
+      /本会话总是允许/,
+      /max-w-\[352px\]/,
+      /mt-auto/,
+      /variant="primary"/,
+    ],
     deny: [/radiogroup/, /role="radio"/],
   },
   {
