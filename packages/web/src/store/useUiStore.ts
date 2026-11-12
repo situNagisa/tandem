@@ -14,12 +14,14 @@ import {
 import { boardPaneSessionId, columnCount, equalWeights, MAX_SPLIT_PANES, rowCount } from '../lib/split'
 import {
   loadCollapsedProjects,
+  loadExpandedOlderProjects,
   loadPinnedProjects,
   loadSidebarWidth,
   loadSplitState,
   loadTheme,
   loadUiPrefs,
   saveCollapsedProjects,
+  saveExpandedOlderProjects,
   savePinnedProjects,
   saveSidebarWidth,
   saveSplitState,
@@ -44,6 +46,8 @@ interface UiState {
   sidebarCollapsed: boolean
   sidebarWidth: number
   collapsedProjects: Record<string, boolean>
+  /** 反馈1603#01：项目里「更早的 N 个会话」是否展开（按项目折叠键记）。 */
+  expandedOlderProjects: Record<string, boolean>
   showArchived: boolean
   showSubagents: boolean
   showExternalSessions: boolean
@@ -133,6 +137,7 @@ interface UiState {
   toggleProject: (key: string) => void
   /** 直接设置某个主机/项目分组的折叠状态（键见 sessionListUtils 的 collapseKey）。 */
   setProjectCollapsed: (key: string, collapsed: boolean) => void
+  setOlderSessionsExpanded: (key: string, expanded: boolean) => void
   setShowArchived: (show: boolean) => void
   setShowSubagents: (show: boolean) => void
   setShowExternalSessions: (show: boolean) => void
@@ -274,6 +279,7 @@ export const useUiStore = create<UiState>((set, get) => {
   sidebarCollapsed: prefs.sidebarCollapsed ?? false,
   sidebarWidth: loadSidebarWidth(),
   collapsedProjects: loadCollapsedProjects(),
+  expandedOlderProjects: loadExpandedOlderProjects(),
   showArchived: false,
   showSubagents: prefs.showSubagents ?? false,
   showExternalSessions: prefs.showExternalSessions ?? true,
@@ -357,6 +363,11 @@ export const useUiStore = create<UiState>((set, get) => {
     const next = { ...get().collapsedProjects, [key]: collapsed }
     saveCollapsedProjects(next)
     set({ collapsedProjects: next })
+  },
+  setOlderSessionsExpanded: (key, expanded) => {
+    const next = { ...get().expandedOlderProjects, [key]: expanded }
+    saveExpandedOlderProjects(next)
+    set({ expandedOlderProjects: next })
   },
   setShowArchived: (show) => set({ showArchived: show }),
   setShowSubagents: (show) => {

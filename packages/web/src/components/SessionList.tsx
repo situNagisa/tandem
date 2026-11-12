@@ -80,6 +80,8 @@ export function SessionList({
   const deleteSession = useAppStore((s) => s.deleteSession)
   const collapsed = useUiStore((s) => s.collapsedProjects)
   const setProjectCollapsed = useUiStore((s) => s.setProjectCollapsed)
+  const expandedOlder = useUiStore((s) => s.expandedOlderProjects)
+  const setOlderSessionsExpanded = useUiStore((s) => s.setOlderSessionsExpanded)
   const showArchived = useUiStore((s) => s.showArchived)
   const setShowArchived = useUiStore((s) => s.setShowArchived)
   const showExternalSessions = useUiStore((s) => s.showExternalSessions)
@@ -383,6 +385,8 @@ export function SessionList({
           groups={groups}
           pinnedProjects={pinnedProjects}
           collapsed={collapsed}
+          expandedOlder={expandedOlder}
+          setOlderSessionsExpanded={setOlderSessionsExpanded}
           expandedExternal={expandedExternal}
           setExpandedExternal={setExpandedExternal}
           showArchived={showArchived}

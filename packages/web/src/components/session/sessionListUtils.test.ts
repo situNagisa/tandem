@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionSummary } from '@tandem/protocol'
 import type { AppState } from '../../store/appStore/types'
-import { buildGroups } from './sessionListUtils'
+import { OLDER_SESSION_MS, buildGroups, isOlderSession, staysVisibleWhenOlder } from './sessionListUtils'
 
 function session(id: string, extra: Partial<SessionSummary> = {}): SessionSummary {
   return {
@@ -105,5 +105,28 @@ describe('buildGroups（侧栏会话树）', () => {
     })
     const { hosts } = groupsOf([root, fork])
     expect(hosts[0]!.projects[0]!.items.map((row) => row.id)).toEqual(['fork'])
+  })
+
+  it('反馈1603：7 天前的会话默认收起，固定/运行中/待审批/未读始终显示', () => {
+    const now = Date.now()
+    const cutoff = now - OLDER_SESSION_MS
+    const old = (extra: Partial<SessionSummary> = {}) =>
+      session('old', { updatedAt: now - OLDER_SESSION_MS - 1000, ...extra })
+
+    expect(isOlderSession(old(), cutoff)).toBe(true)
+    // 6 天 23 小时仍在阈值内；恰好 7 天按「超过」处理，不收起。
+    expect(isOlderSession(session('recent', { updatedAt: now - OLDER_SESSION_MS + 1000 }), cutoff)).toBe(false)
+    expect(isOlderSession(session('edge', { updatedAt: cutoff }), cutoff)).toBe(false)
+
+    for (const keep of [
+      old({ pinnedInProject: true }),
+      old({ status: 'running' }),
+      old({ status: 'waiting_permission' }),
+      old({ status: 'retrying' }),
+      old({ unread: true }),
+    ]) {
+      expect(staysVisibleWhenOlder(keep)).toBe(true)
+      expect(isOlderSession(keep, cutoff)).toBe(false)
+    }
   })
 })

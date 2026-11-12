@@ -6,12 +6,16 @@ import { cn } from '../../lib/cn'
 import { Tooltip } from '../ui/Tooltip'
 import { IconButton } from '../ui/Button'
 import type { ExternalItem, HostGroup, ProjectGroup } from './sessionListUtils'
+import { OLDER_SESSION_MS, isOlderSession } from './sessionListUtils'
 
 interface SessionGroupsProps {
   hosts: Array<{ id: string; name: string }>
   groups: HostGroup[]
   pinnedProjects: string[]
   collapsed: Record<string, boolean>
+  /** 反馈1603#01：展开了「更早的 N 个会话」的项目（按项目折叠键记）。 */
+  expandedOlder: Record<string, boolean>
+  setOlderSessionsExpanded: (key: string, expanded: boolean) => void
   expandedExternal: Record<string, boolean>
   setExpandedExternal: (update: (current: Record<string, boolean>) => Record<string, boolean>) => void
   showArchived: boolean
@@ -34,6 +38,8 @@ export function SessionGroups({
   groups,
   pinnedProjects,
   collapsed,
+  expandedOlder,
+  setOlderSessionsExpanded,
   expandedExternal,
   setExpandedExternal,
   showArchived,
@@ -87,10 +93,42 @@ export function SessionGroups({
             const externalSourceLabel = project.externals.some((e) => e.source === 'claude-code')
               ? 'Claude Code'
               : 'Codex'
+            // 反馈1603#01：最近活动超过 7 天的会话默认收起，组末一行点开才渲染；
+            // 固定、运行中、待审批、未读的会话始终显示。搜索与已归档视图不收起。
+            const cutoff = Date.now() - OLDER_SESSION_MS
+            const olderHidden =
+              searching || showArchived ? [] : project.items.filter((s) => isOlderSession(s, cutoff))
+            const olderExpanded = !!expandedOlder[project.collapseKey]
+            const olderHiddenIds = new Set(olderHidden.map((s) => s.id))
+            const visibleItems =
+              olderExpanded || olderHidden.length === 0
+                ? project.items
+                : project.items.filter((s) => !olderHiddenIds.has(s.id))
             const entries = [
-              ...project.items.map((s) => (
+              ...visibleItems.map((s) => (
                 <Fragment key={`${hostId}:${s.id}`}>{renderRow(hostId, s, 0, 'recent', true)}</Fragment>
               )),
+              ...(olderHidden.length > 0
+                ? [
+                    <button
+                      key={`${project.key}:older`}
+                      data-raw-button
+                      type="button"
+                      data-older-sessions=""
+                      aria-expanded={olderExpanded}
+                      onClick={() =>
+                        setOlderSessionsExpanded(project.collapseKey, !olderExpanded)
+                      }
+                      className="flex h-8 w-full items-center gap-1.5 rounded-lg pl-2 pr-2 text-left text-[12px] text-text-tertiary transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-secondary"
+                    >
+                      <ChevronRight
+                        size={11}
+                        className={cn('shrink-0 transition-transform duration-150', olderExpanded && 'rotate-90')}
+                      />
+                      更早的 {olderHidden.length} 个会话
+                    </button>,
+                  ]
+                : []),
               ...shownExternals.map((ext) => renderExternal(hostId, ext)),
             ]
             return (

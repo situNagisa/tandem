@@ -505,6 +505,24 @@ const DECISIONS = [
     need: [/group-hover/, /会话操作|⋯/],
   },
   {
+    id: 'sidebar-old-sessions-collapsed',
+    source: '2026-11-12 用户原话「超过一定时间的会话可以隐藏掉，点击按钮才加载出来」',
+    decision:
+      '项目分组里最近活动超过 7 天的会话默认收起，组末一行「更早的 N 个会话」点开才渲染；固定、运行中、待审批、未读始终显示，展开状态按项目记住',
+    files: [
+      F.sessionGroups,
+      F.sessionList,
+      'packages/web/src/components/session/sessionListUtils.ts',
+      'packages/web/src/store/useUiStore.ts',
+    ],
+    need: [
+      /OLDER_SESSION_MS = 7 \* 24 \* 60 \* 60 \* 1000/,
+      /staysVisibleWhenOlder/,
+      /更早的 \{olderHidden.length\} 个会话/,
+      /expandedOlderProjects/,
+    ],
+  },
+  {
     id: 'tour-pill-auto-hide',
     source: '反馈1323#01（2026-11-11 原话「这个如果说没点开来看，过一段时间就自动退掉」）',
     decision: '新功能提示条出现后 30 秒内没点开就自动收起并记为本版本已读；点开过按原有导览逻辑',

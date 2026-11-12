@@ -2022,6 +2022,23 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       todos: [{ content: '分屏 B 的待办', status: 'pending' }],
       updatedAt: Date.now() - 1650,
     }),
+    // 反馈1603#01：超过 7 天的会话默认收起；项目固定 / 未读的始终显示（运行态由单测覆盖）。
+    mk('oldidle1', '旧会话 · 空闲一', [
+      message('oi1', 'user', '很久以前的会话一'),
+      message('oi2', 'assistant', '早就结束了。', { model: 'mock-1' }),
+    ], { updatedAt: Date.now() - 9 * 86_400_000 }),
+    mk('oldidle2', '旧会话 · 空闲二', [
+      message('oi3', 'user', '很久以前的会话二'),
+      message('oi4', 'assistant', '早就结束了。', { model: 'mock-1' }),
+    ], { updatedAt: Date.now() - 12 * 86_400_000 }),
+    mk('oldpinned', '旧会话 · 项目固定', [
+      message('op3', 'user', '很久以前但固定了'),
+      message('op4', 'assistant', '仍然要看见。', { model: 'mock-1' }),
+    ], { updatedAt: Date.now() - 10 * 86_400_000, pinnedInProject: true }),
+    mk('oldunread', '旧会话 · 未读', [
+      message('ou3', 'user', '很久以前但没看过'),
+      message('ou4', 'assistant', '仍然要看见。', { model: 'mock-1' }),
+    ], { updatedAt: Date.now() - 11 * 86_400_000, unread: true }),
   ]
   // 待审批会话：Host 启动时按 resumeState 恢复并重新广播权限请求，供手机审批卡走查。
   const approveAt = Date.now() - 1200
@@ -9731,6 +9748,51 @@ async function main() {
       assert.equal(await page.getByRole('button', { name: /新功能 · \d+ 项/ }).count(), 0, '已读后导览卡仍出现')
       const seen = await page.evaluate(() => localStorage.getItem('tandem.changelogSeen.v1'))
       assert.ok(seen, '已读版本没有写入 localStorage')
+    })
+
+    desktop('反馈1603#01：超过 7 天的会话默认收起，点开才加载，固定/未读始终显示', async (page) => {
+      const row = (id) => page.locator(`[data-session-row][data-session-id="${id}"]`)
+      await row('long').waitFor({ state: 'visible', timeout: 15_000 })
+      const project = page.locator('[data-project-row]').filter({ has: row('long') }).first()
+      const older = project.locator('[data-older-sessions]')
+
+      // 默认收起：7 天前的空闲会话不渲染，固定/未读的仍然显示。
+      assert.equal(await row('oldidle1').count(), 0, '7 天前的会话没有收起')
+      assert.equal(await row('oldidle2').count(), 0, '7 天前的会话没有收起')
+      assert.equal(await row('oldpinned').count(), 1, '项目固定的旧会话被收起了')
+      assert.equal(await row('oldunread').count(), 1, '未读的旧会话被收起了')
+      await older.waitFor({ state: 'visible', timeout: 5_000 })
+      assert.match(await older.innerText(), /更早的 2 个会话/, '组末没有「更早的 N 个会话」入口')
+      assert.equal(await older.getAttribute('aria-expanded'), 'false', '收起态的展开按钮语义不对')
+
+      // 点击才加载并展开。
+      await older.click()
+      await row('oldidle1').waitFor({ state: 'visible', timeout: 5_000 })
+      assert.equal(await row('oldidle2').count(), 1, '展开后旧会话没有全部出现')
+      assert.equal(await older.getAttribute('aria-expanded'), 'true', '展开后的语义不对')
+
+      // 展开状态按项目记住：重新加载页面后仍是展开的。
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await row('long').waitFor({ state: 'visible', timeout: 20_000 })
+      await row('oldidle1').waitFor({ state: 'visible', timeout: 10_000 })
+      // 再点收起，回到默认并按项目记住。
+      await project.locator('[data-older-sessions]').click()
+      await row('oldidle1').waitFor({ state: 'detached', timeout: 5_000 })
+      assert.equal(await row('oldpinned').count(), 1, '收起后固定的旧会话消失了')
+      const stored = await page.evaluate(() => {
+        try {
+          return JSON.parse(localStorage.getItem('tandem.ui.v1') ?? '{}').expandedOlderProjects ?? null
+        } catch {
+          return null
+        }
+      })
+      assert.ok(stored === null || !stored.length, `收起后仍记着展开状态：${JSON.stringify(stored)}`)
+      const dir = '/tmp/fix-1603c'
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: `${dir}/01-older-sessions-collapsed.png` })
+      await older.click()
+      await page.waitForTimeout(200)
+      await page.screenshot({ path: `${dir}/01-older-sessions-expanded.png` })
     })
 
     desktop('会话筛选：状态筛选与「已筛选 · 清除」', async (page) => {

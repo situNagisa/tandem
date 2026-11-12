@@ -1,6 +1,6 @@
 # 会话树（侧栏会话行、悬停拓扑图、切分支）
 
-> 更新：2026-11-12。用户 2026-11-11 22:09 原话决定了三件事，单点断言在 `scripts/decisions-check.mjs` 的 `sidebar-fork-same-row`、`sidebar-hover-topology`、`graph-trunk-current`。绘制规范、颜色与高度见 [session-graph.md](session-graph.md)。
+> 更新：2026-11-12。用户 2026-11-11 22:09 与 2026-11-12 的原话决定了侧栏会话行的几件事，单点断言在 `scripts/decisions-check.mjs` 的 `sidebar-fork-same-row`、`sidebar-hover-topology`、`sidebar-old-sessions-collapsed`、`graph-trunk-current`。绘制规范、颜色与高度见 [session-graph.md](session-graph.md)。
 
 ## 一行一棵会话树
 
@@ -9,6 +9,12 @@
 - 未读、运行中、待审批按树内任一会话汇总；汇总优先级：待审批 → 运行中 → 等待网络 → 错误 → 空闲。
 - 置顶按整棵树生效：行出现在置顶区时，取消置顶会取消树内所有会话的置顶，避免分叉留在置顶区。
 - 子代理/孙代理仍不进侧栏；根会话已归档而分叉未归档时，分叉退回独立一行，不会消失。会话树的归并口径在 `lib/sessionTree.ts`（分叉跟 `forkedFrom`、子代理跟 `parentId` 向上找根）。
+
+## 更早的会话默认收起（反馈1603#01）
+
+- 项目分组里最近活动超过 7 天的会话默认不渲染，组末一行「更早的 N 个会话」（次要文字行，带折叠箭头）；点开才加载并展开，再点收起。阈值常量 `OLDER_SESSION_MS`（7 天）。
+- 固定（项目内固定）、运行中、待审批、等待网络、未读的会话不受影响，始终显示。
+- 展开状态按项目记在本机（`expandedOlderProjects`，键与折叠记忆同源：主机 + 仓库根路径），换会话或刷新后保持；搜索与「已归档」视图不收起。
 
 ## 悬停拓扑图
 

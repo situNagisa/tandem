@@ -140,6 +140,8 @@ export interface UiPrefs {
   /** 应用预览侧面板宽度。 */
   previewWidth?: number
   collapsedProjects?: string[]
+  /** 反馈1603#01：展开过「更早的 N 个会话」的项目（按项目折叠键记）。 */
+  expandedOlderProjects?: string[]
   notifications?: boolean
   /** App 内本地通知（安卓本地通知，不经推送服务）。 */
   nativeNotifications?: boolean
@@ -209,6 +211,18 @@ export function loadCollapsedProjects(): Record<string, boolean> {
 
 export function saveCollapsedProjects(map: Record<string, boolean>): void {
   saveUiPrefs({ collapsedProjects: Object.keys(map).filter((k) => map[k]) })
+}
+
+export function loadExpandedOlderProjects(): Record<string, boolean> {
+  const list = loadUiPrefs().expandedOlderProjects
+  if (!Array.isArray(list)) return {}
+  const map: Record<string, boolean> = {}
+  for (const key of list) if (typeof key === 'string') map[key] = true
+  return map
+}
+
+export function saveExpandedOlderProjects(map: Record<string, boolean>): void {
+  saveUiPrefs({ expandedOlderProjects: Object.keys(map).filter((k) => map[k]) })
 }
 
 export function loadPinnedProjects(): string[] {
