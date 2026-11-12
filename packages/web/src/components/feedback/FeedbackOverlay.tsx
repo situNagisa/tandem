@@ -5,16 +5,16 @@ import { Badge } from '../ui/Badge'
 import { Button, IconButton } from '../ui/Button'
 import { Input, SegmentedControl } from '../ui/Controls'
 import { cn } from '../../lib/cn'
-import { feedbackTypeLabel, type FeedbackItem, type FeedbackRect, type FeedbackSelectMode, type FeedbackVideo } from '../../lib/feedback'
+import { feedbackTypeLabel, type FeedbackItem, type FeedbackRect, type FeedbackVideo } from '../../lib/feedback'
 import type { FeedbackTag } from '../../lib/feedbackFeatures'
-import { SELECT_MODE_OPTIONS, UI_ATTR, type EditorState, type VerifyState } from './feedbackModeHelpers'
+import { SELECT_MODE_OPTIONS, UI_ATTR, type EditorState, type FeedbackTool, type VerifyState } from './feedbackModeHelpers'
 
 interface FeedbackOverlayProps {
   layerRef: RefObject<HTMLDivElement | null>
   items: FeedbackItem[]
   pendingFeature: FeedbackTag | null
-  selectMode: FeedbackSelectMode
-  onSelectModeChange: (mode: FeedbackSelectMode) => void
+  selectMode: FeedbackTool
+  onSelectModeChange: (mode: FeedbackTool) => void
   editor: EditorState | null
   selected: FeedbackRect | null
   hover: { rect: FeedbackRect; label: string } | null
@@ -90,7 +90,7 @@ export function FeedbackOverlay({
             className="pointer-events-none fixed inset-0 z-[110]"
             aria-hidden
           >
-            {hover && !editor && !regionBox && (
+            {hover && !editor && !regionBox && selectMode !== 'adjust' && (
               <div
                 className="absolute rounded-[2px]"
                 style={{

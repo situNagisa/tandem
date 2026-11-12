@@ -98,7 +98,7 @@ function draftSignature(): string {
     state.items
       .map(
         (item) =>
-          `${item.id}:${item.createdAt}:${item.text.length}:${item.annotatedScreenshot?.length ?? 0}:${item.references?.length ?? 0}`,
+          `${item.id}:${item.createdAt}:${item.text.length}:${item.annotatedScreenshot?.length ?? 0}:${item.afterImage?.length ?? 0}:${item.adjustSnapshot?.changes.length ?? 0}:${item.references?.length ?? 0}`,
       )
       .join('|'),
     state.pageShots.map((shot) => `${shot.id}:${shot.createdAt}`).join('|'),

@@ -32,6 +32,13 @@ function expectContains(file, needle, label = needle) {
 writeServerFlavor('debug')
 writeDesktopFlavor('debug')
 
+// 调整工具的图标集由源码里的 lucide 导入生成，必须是最新的。
+const iconCheck = spawnSync(process.execPath, ['scripts/feedback-adjust-icons.mjs', '--check'], {
+  cwd: ROOT,
+  stdio: 'inherit',
+})
+if (iconCheck.status !== 0) errors.push('调整工具图标集过期（scripts/feedback-adjust-icons.mjs --check）')
+
 // Host：常量 + 自动登录路由 + 启动钩子。
 const server = readServerFlavor(path.join(ROOT, 'packages/server/dist'))
 if (server.flavor !== 'debug') errors.push(`server dist/flavor.js=${server.flavor || '缺失'}，期望 debug`)

@@ -58,7 +58,7 @@ export function useFeedbackEditing({
     setEditor({
       mode: 'edit',
       itemId: item.id,
-      kind: item.mode ?? 'element',
+      kind: item.mode === 'region' ? 'region' : 'element',
       element,
       rect: viewportRectFor(item),
       type: item.type,

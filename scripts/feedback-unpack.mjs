@@ -61,6 +61,9 @@ function dataFromManifest(manifest) {
       })),
       video: files.video ? { ...files.video, dataURL: { __file: files.video.file } } : undefined,
       __afterFile: files.afterImage,
+      __adjustFile: files.adjust,
+      __adjustMdFile: files.adjustMarkdown,
+      __afterAdjustFile: item.mode === 'adjust' ? files.afterImage : undefined,
       __traceFile: files.trace,
       __snapshotFile: files.snapshot,
       snapshot: files.snapshot ? { summary: item.snapshotSummary ?? [] } : undefined,
@@ -190,6 +193,35 @@ function safeName(value, fallback) {
   return name || fallback
 }
 
+/** 旧的 JSON 包可能只带改动数据；没有现成 Markdown 时按同一格式渲染一份。 */
+function fallbackAdjustMarkdown(snapshot) {
+  const changes = Array.isArray(snapshot?.changes) ? snapshot.changes : []
+  const lines = [
+    `# 调整 · ${oneLine(snapshot?.title) || 'UI 调整'}`,
+    '',
+    `- 路由：\`${snapshot?.route ?? ''}\``,
+    `- 主题：${snapshot?.theme === 'dark' ? '深色' : '浅色'} · 视口 ${snapshot?.viewport?.width ?? '?'}×${snapshot?.viewport?.height ?? '?'} @${snapshot?.viewport?.dpr ?? 1}x`,
+    `- 改动：${changes.length} 项`,
+    '',
+    '## 按顺序实现',
+    '',
+  ]
+  changes.forEach((change, index) => {
+    const target = change?.target ?? {}
+    lines.push(
+      `${index + 1}. **${change?.kind ?? '改动'}**：目标 \`${String(target.selector ?? target.tag ?? '').replace(/`/g, "'")}\``,
+    )
+    if (change?.note) lines.push(`   - 说明：${oneLine(change.note)}`)
+    if (change?.behavior) lines.push(`   - 行为备注：${oneLine(change.behavior)}`)
+    lines.push('')
+  })
+  lines.push(
+    '实现注意：只用 `packages/web/src/components/ui/*` 现有组件与变体；不要直接复制「调整.json」里的 HTML。',
+    '',
+  )
+  return lines.join('\n')
+}
+
 const items = Array.isArray(data.items) ? data.items : []
 const pageShots = Array.isArray(data.pageShots) ? data.pageShots : []
 const errors = Array.isArray(data.errors) ? data.errors : []
@@ -269,6 +301,7 @@ items.forEach((item, index) => {
   lines.push(`- 功能：${featureName}`)
   if (item.causeId) lines.push(`- 根因建议：${item.causeId}${causeName ? ` · ${causeName}` : ''}`)
   if (item.mode === 'region') lines.push('- 选择方式：框选区域')
+  if (item.mode === 'adjust') lines.push('- 选择方式：调整（冻结副本）')
   if (item.component) lines.push(`- 组件：\`${item.component}\``)
   if (item.selector) lines.push(`- 选择器：\`${String(item.selector).replace(/`/g, "'")}\``)
   if (item.route) lines.push(`- 路由：\`${item.route}\``)
@@ -282,9 +315,10 @@ items.forEach((item, index) => {
   }
 
   const isRegion = item.screenshotKind === 'region'
+  const isAdjust = item.mode === 'adjust'
   const originalName = suggestedName(
     item.screenshot,
-    `${number}-${isRegion ? '区域截图' : '元素截图'}.png`,
+    `${number}-${isAdjust ? '调整前' : isRegion ? '区域截图' : '元素截图'}.png`,
   )
   const originalWritten = writeAsset(item.screenshot, path.join(outDir, originalName))
   const annotatedName = suggestedName(item.annotatedScreenshot, `${number}-标注截图.png`)
@@ -304,6 +338,38 @@ items.forEach((item, index) => {
   if (annotatedWritten) {
     fileCount += 1
     lines.push(`- 标注后截图：\`${annotatedName}\`${originalWritten ? `（原图见 \`${originalName}\`）` : ''}`)
+  }
+
+  if (isAdjust) {
+    let adjustFile = item.__adjustFile
+    let adjustMdFile = item.__adjustMdFile
+    let afterName = item.__afterAdjustFile
+    if (item.adjustSnapshot && !adjustFile) {
+      const { markdown, ...adjustData } = item.adjustSnapshot
+      adjustFile = `${number}-调整.json`
+      writeFileSync(path.join(outDir, adjustFile), `${JSON.stringify(adjustData, null, 2)}\n`, 'utf8')
+      adjustMdFile = `${number}-调整说明.md`
+      writeFileSync(
+        path.join(outDir, adjustMdFile),
+        typeof markdown === 'string' ? markdown : fallbackAdjustMarkdown(item.adjustSnapshot),
+        'utf8',
+      )
+      fileCount += 2
+    }
+    if (item.afterImage && !afterName) {
+      afterName = suggestedName(item.afterImage, `${number}-调整后.png`)
+      if (writeAsset(item.afterImage, path.join(outDir, afterName))) fileCount += 1
+    }
+    const summary = item.adjust ?? {}
+    lines.push(
+      `- 调整：${summary.changeCount ?? item.adjustSnapshot?.changes?.length ?? '?'} 项${summary.nonStandard ? `（${summary.nonStandard} 项非标准值）` : ''}${summary.freezeMs ? ` · 冻结 ${summary.freezeMs}ms` : ''}`,
+    )
+    if (adjustMdFile) lines.push(`- 调整说明：\`${adjustMdFile}\`（按条实现）`)
+    if (adjustFile) lines.push(`- 调整清单：\`${adjustFile}\`（含结构快照）`)
+    if (Array.isArray(summary.tokens) && summary.tokens.length) {
+      lines.push(`- 命中 token：${summary.tokens.join('、')}`)
+    }
+    if (afterName) lines.push(`- 调整后截图：\`${afterName}\``)
   }
 
   const references = Array.isArray(item.references) ? item.references : []
