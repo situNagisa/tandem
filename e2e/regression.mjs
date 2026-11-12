@@ -3501,7 +3501,55 @@ async function main() {
       await page.screenshot({ path: '/tmp/jump-0220/reg-unified.png' })
     })
 
-    desktop('跳转后用户滚动不被拉回（反馈0220#03 R68）', async (page) => {
+    desktop('跳转有动画：点击后 scrollTop 在 ≥3 帧内逐步变化（反馈1110）', async (page) => {
+      await openSession(page, 'long')
+      const nodes = page.locator('[data-group="graph"] [data-graph-turn-id]')
+      await nodes.first().waitFor({ timeout: 10_000 })
+      const count = await nodes.count()
+      await page.evaluate(() => {
+        window.__scroll = { on: true, samples: [] }
+        const tick = () => {
+          const box = document.querySelector('.chat-scroll')
+          if (!window.__scroll.on) return
+          window.__scroll.samples.push(box.scrollTop)
+          requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      })
+      await nodes.nth(Math.max(0, Math.floor(count * 0.25))).click()
+      await page.waitForTimeout(1400)
+      const samples = await page.evaluate(() => {
+        window.__scroll.on = false
+        return window.__scroll.samples
+      })
+      const start = samples[0]
+      const final = samples[samples.length - 1]
+      assert.ok(Math.abs(final - start) > 200, `跳转没有产生位移：${start} → ${final}`)
+      const steps = []
+      for (let i = 1; i < samples.length; i++) {
+        const delta = samples[i] - samples[i - 1]
+        if (Math.abs(delta) >= 1) steps.push(delta)
+      }
+      assert.ok(steps.length >= 3, `跳转只有 ${steps.length} 帧在滚动，像是一次跳到位（没有动画）`)
+      const total = Math.abs(final - start)
+      const biggest = Math.max(...steps.map(Math.abs))
+      assert.ok(biggest < total, `跳转在一帧内完成了全部 ${total}px 位移，没有动画`)
+      // 动画中间帧截图（深/浅）：再点一次，在弹簧滑入途中取帧。
+      const dir = '/tmp/fix-1110'
+      mkdirSync(dir, { recursive: true })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await nodes.nth(Math.max(0, Math.floor(count * 0.7))).click()
+      await page.waitForTimeout(90)
+      await page.screenshot({ path: `${dir}/jump-anim-mid-dark.png` })
+      await page.waitForTimeout(1400)
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
+      await nodes.nth(Math.max(0, Math.floor(count * 0.15))).click()
+      await page.waitForTimeout(90)
+      await page.screenshot({ path: `${dir}/jump-anim-mid-light.png` })
+      await page.screenshot({ path: '/tmp/jump-0220/reg-anim.png' })
+    })
+
+    desktop('跳转动画结束后不再写 scrollTop、之后滚轮不被拉回（反馈0220#03 R68）', async (page) => {
       await openSession(page, 'long')
       const nodes = page.locator('[data-group="graph"] [data-graph-turn-id]')
       await nodes.first().waitFor({ timeout: 10_000 })
@@ -3517,7 +3565,15 @@ async function main() {
         requestAnimationFrame(tick)
       })
       await nodes.nth(Math.floor(count * 0.6)).click()
-      await page.waitForTimeout(200)
+      // 弹簧动画 + 落点复核应在 1.5s 内结束：之后 scrollTop 必须完全静止（不再轮询锁视图）。
+      await page.waitForTimeout(1500)
+      const settledAt = await page.evaluate(() => window.__scroll.samples.length)
+      await page.waitForTimeout(700)
+      const idle = await page.evaluate((from) => window.__scroll.samples.slice(from), settledAt)
+      assert.ok(idle.length > 20, `静止期采样帧太少：${idle.length}`)
+      const drift = Math.max(...idle) - Math.min(...idle)
+      assert.ok(drift <= 1, `跳转动画结束后仍在写 scrollTop（${drift}px）`)
+      // 之后用户滚轮不再被任何补正拉回。
       const box = await page.locator('.chat-scroll').boundingBox()
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
       await page.evaluate(() => (window.__scroll.wheelAt = window.__scroll.samples.length))
@@ -3525,7 +3581,7 @@ async function main() {
         await page.mouse.wheel(0, -160)
         await page.waitForTimeout(180)
       }
-      await page.waitForTimeout(1500)
+      await page.waitForTimeout(1200)
       const data = await page.evaluate(() => {
         window.__scroll.on = false
         return window.__scroll

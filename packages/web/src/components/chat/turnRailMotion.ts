@@ -1,5 +1,5 @@
 // 轮次条的动效内核：轻量 spring（只写 transform/opacity，不触发布局）。
-// 对话区的定位与取消统一在 lib/jump.ts。
+// 对话区的定位（含同一套弹簧跟随）统一在 lib/jump.ts。
 
 let reducedQuery: MediaQueryList | null = null
 export function prefersReducedMotion(): boolean {
