@@ -682,6 +682,29 @@ export function FeedbackAdjust({
   const pushOp = useCallback(
     (op: AdjustOp) => {
       op.redo()
+      const last = opsRef.current[opsRef.current.length - 1]
+      // 反馈1603：同一元素的连续改尺寸 / 移动合并成一条，保留第一次的改前值与最后一次的改后值，
+      // 清单不再逐次列出拖动过程。撤销回到第一次拖动前，重做落到最后一次。
+      if (
+        op.mergeTarget &&
+        (op.change.kind === 'resize' || op.change.kind === 'move') &&
+        last?.mergeTarget === op.mergeTarget &&
+        last.change.kind === op.change.kind
+      ) {
+        last.change.after = op.change.after
+        last.change.tokens = op.change.tokens
+        last.change.standard = op.change.standard
+        last.change.note = op.change.note
+        last.change.at = op.change.at
+        last.redo = op.redo
+        redoRef.current = []
+        setRedoCount(0)
+        moveMergeRef.current = null
+        setOps((current) => [...current])
+        bump()
+        publish()
+        return
+      }
       setOps((current) => [...current, op])
       redoRef.current = []
       setRedoCount(0)
@@ -823,6 +846,7 @@ export function FeedbackAdjust({
     pushOp({
       change,
       structure,
+      mergeTarget: state.element,
       undo: () =>
         insertedItem
           ? applyInsertedSize(insertedItem.width, insertedItem.height)
@@ -868,6 +892,7 @@ export function FeedbackAdjust({
     pushOp({
       change,
       structure,
+      mergeTarget: element,
       undo: () => applyBox(element, width, height, startOffsetX, startOffsetY),
       redo: () => {
         const offsets = offsetsRef.current.get(element)

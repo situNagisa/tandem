@@ -77,6 +77,11 @@ export interface AdjustOp {
   undo: () => void
   redo: () => void
   structure?: { html: string; styles: Record<string, string> }
+  /**
+   * 反馈1603：同一元素上连续的改尺寸 / 移动合并为一条改动，只保留首尾值
+   * （清单写「宽度 203→164」而不是逐次拖动过程）。只用于相邻且同类、同元素的改动。
+   */
+  mergeTarget?: Element
 }
 
 export interface AdjustFreeze {

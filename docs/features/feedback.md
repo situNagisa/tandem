@@ -25,9 +25,11 @@
 - 尺寸：高度吸附 24/28/32/36/44（±2px），宽度吸附 4px 栅格；面板显示 token 名，未命中标「非标准值」并写进清单。
 - 编辑：换图标只从项目在用的 lucide 集选（`scripts/feedback-adjust-icons.mjs` 扫描导入生成 `adjustIcons.generated.ts`，`check-debug` 校验未过期）；Button/IconButton 换 `ButtonVariant`、Badge 换 `BadgeTone`（只记变体名，class 来自 `ui/*` 导出的映射）；纯文本改文字（记改前/改后）；隐藏只设 `visibility:hidden` 并保留布局占位（与删除区分）；Delete 删除；Ctrl+Z / Ctrl+Shift+Z 撤销重做；改动清单每条可单独回退。
 - 位置：默认拖动是同容器换序（清单写「第 N 个位置 / 在某项之后」）；按住 Alt 自由拖动并显示对齐吸附线，清单记 `translate(dx,dy)`；方向键 1px、Shift 8px。
+- 清单合并（反馈1603）：同一元素上**连续**的改尺寸 / 移动只留一条改动，改前取第一次拖动前、改后取最后一次，实现时不跟逐次拖动过程（如「宽度 758→352」「translate 最终值」）；撤销回到第一次拖动前，重做落到最后一次。
+- 选择器（反馈1603）：生成时跳过 Radix / React useId 的运行时自动 id（`radix-_r_x_`、`_r_x_`、`:r x:`），退回 `data-*`/`aria-label`/class + 结构路径，避免恢复副本或重新挂载后挂不上。
 - 插入：面板只列 `ui/*` 现有导出与变体（Button/IconButton/Badge/ListRow/Input/Card/列表 Card+ListRow/菜单示意），点按或拖入；悬停选项时在面板旁用真实 `ui/*` 组件渲染预览（深浅色跟随当前主题）。插入的控件同样有手柄、吸附 token、可拖动/删除/备注；容器可「展开编辑」加示意行、每行选 ListRow/Button/Badge 并写行备注；清单标明「示意草稿，按 ui/* 复刻」。
 - 备注：元素、单条改动、容器、示意行都可写行为备注，导出时紧跟对应改动。
-- 重新冻结：副本不可交互（菜单/弹层要先打开再进入）。工具条「重新冻结」先退出副本、让用户操作真实界面，随后重新克隆并按选择器把已有改动挂回新副本；挂不上的改动在清单标红并在 Markdown 注明「恢复副本后未挂上」。
+- 重新冻结：副本不可交互（菜单/弹层要先打开再进入），选择器不含自动 id，恢复后按结构路径挂回。工具条「重新冻结」先退出副本、让用户操作真实界面，随后重新克隆并按选择器把已有改动挂回新副本；挂不上的改动在清单标红并在 Markdown 注明「恢复副本后未挂上」。
 - 完成与继续调整：完成生成一条普通反馈条目（`mode: adjust`，前后截图 + 结构化清单 + 结构快照 + Markdown），快照同时保存副本 HTML（`adjustSnapshot.copy`，上限 3MB；含内联样式与 `data-tandem-src`）与尺寸；每条改动仍带 `structure[].styles` 计算样式快照。抽屉里「继续调整」恢复当时的副本、改动与插入控件，在其上增删改后保存更新同一条目（不新建，文本/优先级/标签保留，截图与清单更新）；旧条目没有副本 HTML 时退回「重新冻结 + 重放改动」。草稿落盘与 `.tfb` 里的调整 JSON 同样带副本快照。
 - 组件与源码定位：调试版构建保留函数名（`build.rolldownOptions.output.keepNames`）；`packages/web/debug-source-plugin.mjs` 仅在 debug flavor 给原生 DOM 注 `data-tandem-src="packages/web/src/…:行号"`，清单写该元素自身的 `file:line`；拿不到时退回标签名 + 最近 `data-testid`/`aria-label`/`data-*` 锚点 + 选择器。发布版不加载插件（`scan-release` 禁用 `data-tandem-src`）。
 - 手机：调试版手机预览/移动布局（412×915、触屏）下工具栏、插入面板与悬停预览不越界，触屏点选、拖手柄改大小、完成与继续调整均可用；手柄不再对触摸事件直接返回。
@@ -50,4 +52,4 @@
 
 - 加密与跨设备同步不做；录屏 8MB / 60 秒。
 - 桌面草稿目录只在桌面调试版存在；打包时 `feedback-drafts*.js` 必须进 `app.asar`，`scripts/check-debug.mjs` 会检查。
-- 自动检查：`e2e/regression.mjs` 的体验清单导出、草稿恢复与「调整工具」用例（含小元素、光标、插入预览、变体/文字/隐藏、重新冻结、继续调整、手机布局）；`e2e/release-flavor.mjs` 检查发布版没有调整入口且没有 `data-tandem-src`。
+- 自动检查：`e2e/regression.mjs` 的体验清单导出、草稿恢复与「调整工具」用例（含小元素、光标、插入预览、变体/文字/隐藏、重新冻结、继续调整、手机布局），以及「调整说明：同元素连续改尺寸/移动合并为一条、选择器跳过 Radix/React 自动 id」；`e2e/release-flavor.mjs` 检查发布版没有调整入口且没有 `data-tandem-src`。

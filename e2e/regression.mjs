@@ -13293,6 +13293,116 @@ async function main() {
       )
     })
 
+    fbAdjust('调整说明：同元素连续改尺寸/移动合并为一条、选择器跳过 Radix/React 自动 id', async (page) => {
+      // 先打开一个 Radix 菜单（冻结副本里才带 #radix-… 的运行时 id）。
+      await openSession(page, 'long')
+      await page.getByRole('button', { name: '筛选会话' }).click()
+      await page.waitForTimeout(200)
+      await page.keyboard.press('Control+Shift+F')
+      await page.waitForSelector('html.feedback-mode', { timeout: 8000 })
+      await page.waitForTimeout(500)
+      const bar = page.getByRole('region', { name: '反馈模式工具栏' })
+      await bar.getByRole('button', { name: '调整', exact: true }).click()
+      await page.locator('[data-adjust-toolbar]').waitFor({ timeout: 20000 })
+      await page.waitForFunction(() => window.__feedbackAdjust?.stats?.clonedNodes > 0, null, { timeout: 30000 })
+
+      const probe = '[data-testid="sidebar-new-session"]'
+      assert.equal(await page.evaluate((sel) => window.__feedbackAdjust.select(sel), probe), true, '选不中新建会话按钮')
+      const stageWidth = () =>
+        page.evaluate(
+          (sel) =>
+            Math.round(
+              document.querySelector(`[data-adjust-stage] ${sel}`).getBoundingClientRect().width,
+            ),
+          probe,
+        )
+      const dragE = async (dx) => {
+        const handle = await page.locator('[data-adjust-handle="e"]').boundingBox()
+        assert.ok(handle, '缺少 e 手柄')
+        await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+        await page.mouse.down()
+        await page.mouse.move(handle.x + handle.width / 2 + dx, handle.y + handle.height / 2, { steps: 8 })
+        await page.mouse.up()
+        await page.waitForTimeout(220)
+      }
+      const before = await stageWidth()
+      await dragE(20)
+      await dragE(40)
+      const after = await stageWidth()
+      let changes = await page.evaluate(() => window.__feedbackAdjust.changes())
+      const resizes = changes.filter(
+        (change) => change.kind === 'resize' && change.target.testId === 'sidebar-new-session',
+      )
+      assert.equal(resizes.length, 1, `同元素连续改尺寸没有合并：${resizes.length} 条`)
+      assert.equal(resizes[0].before.width, before, `合并后改前值不是第一次拖动前：${resizes[0].before.width} / ${before}`)
+      assert.equal(resizes[0].after.width, after, `合并后改后值不是最后一次：${resizes[0].after.width} / ${after}`)
+
+      // 换一个元素再改：不会被合并进来。
+      assert.equal(
+        await page.evaluate(() => window.__feedbackAdjust.select('[aria-label^="收件箱"]')),
+        true,
+        '选不中收件箱按钮',
+      )
+      const handle2 = await page.locator('[data-adjust-handle="e"]').boundingBox()
+      await page.mouse.move(handle2.x + handle2.width / 2, handle2.y + handle2.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(handle2.x + handle2.width / 2 + 16, handle2.y + handle2.height / 2, { steps: 6 })
+      await page.mouse.up()
+      await page.waitForTimeout(220)
+      changes = await page.evaluate(() => window.__feedbackAdjust.changes())
+      assert.equal(
+        changes.filter((change) => change.kind === 'resize').length,
+        2,
+        '不同元素的改尺寸被错误合并',
+      )
+
+      // 选择器：Radix/React 自动 id 不进选择器，生成的结构路径在副本里唯一命中。
+      const auto = await page.evaluate(() => {
+        const stage = document.querySelector('[data-adjust-stage]')
+        const el = [...stage.querySelectorAll('[id]')].find((node) =>
+          /^(radix-|_r_|:r)/i.test(node.id),
+        )
+        if (!el) return null
+        el.setAttribute('data-adjust-probe', 'auto-id')
+        return { id: el.id, selected: window.__feedbackAdjust.select('[data-adjust-probe="auto-id"]') }
+      })
+      assert.ok(auto?.selected, '副本里没有可选的自动 id 元素')
+      await page.keyboard.press('ArrowRight')
+      await page.waitForTimeout(120)
+      await page.keyboard.press('ArrowRight')
+      await page.waitForTimeout(150)
+      changes = await page.evaluate(() => window.__feedbackAdjust.changes())
+      // 生成的选择器不包含自动 id，并能在副本里唯一解析。
+      for (const change of changes) {
+        assert.equal(
+          /#radix-|#_r_[0-9a-z]+_|#:r[0-9a-z]+:/i.test(change.target.selector),
+          false,
+          `选择器里出现运行时自动 id：${change.target.selector}`,
+        )
+        assert.ok(change.target.selector, '改动目标缺少选择器')
+      }
+      const resolved = await page.evaluate(() => {
+        const stage = document.querySelector('[data-adjust-stage]')
+        return window.__feedbackAdjust.changes().map((change) => {
+          try {
+            return stage.querySelectorAll(change.target.selector).length
+          } catch {
+            return -1
+          }
+        })
+      })
+      assert.equal(resolved.some((count) => count < 0), false, '有选择器无法解析')
+      assert.equal(resolved.some((count) => count === 0), false, '有选择器在副本里挂不上')
+      const dir = '/tmp/fix-1603c'
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: `${dir}/adjust-merged-changes.png` })
+
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(200)
+      if (await page.locator('html.feedback-mode').count()) await page.keyboard.press('Escape')
+      await page.waitForFunction(() => !document.documentElement.classList.contains('feedback-mode'), null, { timeout: 10000 })
+    })
+
     fbAdjustMobile('调整工具（手机布局）：点选/手柄/插入预览/继续调整都可用', async (page) => {
       const state = await api(base, token, '/api/demo')
       if (!state.active) await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
