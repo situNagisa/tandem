@@ -38,6 +38,9 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
     'border border-transparent text-text-soft hover:bg-[var(--t-bg-hover)] hover:text-danger active:bg-[var(--t-bg-active)]',
 }
 
+/** 调试版「调整」按变体名换 class 时读取；样式仍以本文件为准，不要在别处复制。 */
+export const BUTTON_VARIANT_CLASS = VARIANT_CLASS
+
 const BASE =
   // 反馈10#07：按钮也承载选项卡/菜单项文字；行高 ≥ 1.4 才不会被固定高度裁掉字形上下缘。
   'inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap text-left text-[13px] font-medium leading-[1.4] transition-[background-color,border-color,color,opacity,transform] duration-[80ms] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--t-focus-ring)]'
@@ -74,6 +77,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     <button
       ref={ref}
       type={type}
+      data-variant={variant}
+      data-size={size}
       className={cn(
         BASE,
         !rest['aria-haspopup'] && PRESS_SCALE,
@@ -122,6 +127,9 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       ref={ref}
       type={type}
       aria-label={label}
+      data-variant={variant}
+      data-size={size}
+      data-icon-button=""
       className={cn(
         BASE,
         !rest['aria-haspopup'] && PRESS_SCALE,

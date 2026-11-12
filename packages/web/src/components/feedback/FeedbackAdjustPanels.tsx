@@ -2,13 +2,14 @@
  * 调整工具右侧的面板：换图标、插入控件、容器展开编辑、行为备注、改动清单。
  * 全部是反馈 UI（data-feedback-ui），不参与冻结副本与导出截图。
  */
-import type { PointerEvent as ReactPointerEvent } from 'react'
-import { Layers, ListChecks, MessageSquare, Plus, X } from 'lucide-react'
+import { useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { Layers, ListChecks, MessageSquare, PencilLine, Plus, X } from 'lucide-react'
 import { Badge } from '../ui/Badge'
 import { Button, IconButton } from '../ui/Button'
 import { Input, Textarea } from '../ui/Controls'
 import { cn } from '../../lib/cn'
 import { ADJUST_ICONS, type AdjustIconEntry } from './adjustIcons.generated'
+import { renderInsertPreview } from './feedbackAdjustInsert'
 import {
   INSERT_GROUPS,
   INSERT_OPTIONS,
@@ -107,11 +108,13 @@ interface InsertPanelProps {
 }
 
 export function AdjustInsertPanel({ onPick, onOptionPointerDown, onClose }: InsertPanelProps) {
+  const [hover, setHover] = useState<AdjustInsertOption | null>(null)
   return (
+    <>
     <div
       {...{ [UI_ATTR]: '' }}
       data-adjust-insert-panel=""
-      className={cn(PANEL_CLASS, 'right-4 top-16 max-h-[min(560px,76vh)] w-[330px]')}
+      className={cn(PANEL_CLASS, 'right-4 top-16 max-h-[min(560px,76vh)] w-[min(330px,calc(100vw-24px))]')}
       role="dialog"
       aria-label="插入控件"
     >
@@ -142,6 +145,8 @@ export function AdjustInsertPanel({ onPick, onOptionPointerDown, onClose }: Inse
                   className="flex w-full items-center justify-between rounded-md px-1.5 py-1 text-left text-[12.5px] text-text-soft hover:bg-hover hover:text-text"
                   onClick={() => onPick(option)}
                   onPointerDown={(event) => onOptionPointerDown(option, event)}
+                  onPointerEnter={() => setHover(option)}
+                  onFocus={() => setHover(option)}
                 >
                   <span>{option.label}</span>
                   <span className="text-[11px] text-muted">{option.variant}</span>
@@ -152,6 +157,28 @@ export function AdjustInsertPanel({ onPick, onOptionPointerDown, onClose }: Inse
         })}
       </div>
     </div>
+    {hover && (
+      <div
+        {...{ [UI_ATTR]: '' }}
+        data-adjust-insert-preview={hover.key}
+        className="pointer-events-none fixed right-[366px] top-16 z-[133] w-[320px] rounded-xl border border-border bg-surface p-2 shadow-lg max-lg:right-4 max-lg:top-auto max-lg:bottom-24"
+        aria-label={`${hover.label} 预览`}
+      >
+        <div className="flex items-center gap-1.5 px-1 pb-1.5">
+          <span className="text-[12px] font-medium text-text">预览 · {hover.label}</span>
+          <span className="ml-auto text-[11px] text-muted">
+            ui/{hover.group === '组合控件' ? 'Card + ListRow' : hover.group}
+          </span>
+        </div>
+        <p className="px-1 pb-1.5 text-[11px] text-muted">
+          用真实 ui/* 组件渲染的示例；插入后按当前主题显示。
+        </p>
+        <div className="flex justify-center rounded-lg border border-dashed border-border bg-bg-subtle p-3">
+          {renderInsertPreview(hover)}
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 
@@ -408,6 +435,119 @@ export function AdjustChangeList({ ops, onSelect, onNote, onRevert }: ChangeList
             </button>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+interface VariantPanelProps {
+  component: string
+  variants: ReadonlyArray<string>
+  current?: string
+  onPick: (variant: string) => void
+  onClose: () => void
+}
+
+/** 换 Button / IconButton / Badge 的样式变体；每个选项用真实组件渲染。 */
+export function AdjustVariantPanel({ component, variants, current, onPick, onClose }: VariantPanelProps) {
+  return (
+    <div
+      {...{ [UI_ATTR]: '' }}
+      data-adjust-variant-panel=""
+      className={cn(PANEL_CLASS, 'bottom-24 right-4 w-[min(300px,calc(100vw-24px))]')}
+      role="dialog"
+      aria-label="换样式变体"
+    >
+      <div className="flex items-center gap-1.5 px-1 pb-1.5">
+        <Layers size={13} className="text-annotation" />
+        <span className="text-[12.5px] font-medium text-text">换变体 · {component}</span>
+        <IconButton label="关闭变体面板" size="inline" className="ml-auto" onClick={onClose}>
+          <X size={12} />
+        </IconButton>
+      </div>
+      <p className="px-1 pb-1 text-[11px] leading-4 text-muted">
+        只记录 ui/* 的变体名；实现时用同名组件的 variant 属性，不抄 class。
+      </p>
+      <div className="grid min-h-0 grid-cols-1 gap-1 overflow-y-auto p-0.5">
+        {variants.map((variant) => (
+          <button
+            data-raw-button
+            key={variant}
+            type="button"
+            data-adjust-variant={variant}
+            className={cn(
+              'flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-hover',
+              current === variant && 'bg-hover',
+            )}
+            onClick={() => onPick(variant)}
+          >
+            <span className="pointer-events-none flex min-w-[92px] items-center">
+              {component === 'Badge' ? (
+                <Badge tone={variant as never}>{variant}</Badge>
+              ) : component === 'IconButton' ? (
+                <IconButton label={variant} variant={variant as never} size="inline" tabIndex={-1}>
+                  <Plus size={14} />
+                </IconButton>
+              ) : (
+                <Button variant={variant as never} size="md" tabIndex={-1}>
+                  {variant}
+                </Button>
+              )}
+            </span>
+            <span className="ml-auto font-mono text-[11px] text-muted">{variant}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+interface TextPanelProps {
+  title: string
+  value: string
+  onChange: (value: string) => void
+  onSave: () => void
+  onClose: () => void
+}
+
+/** 改文字：只允许纯文本节点，记录改前/改后。 */
+export function AdjustTextPanel({ title, value, onChange, onSave, onClose }: TextPanelProps) {
+  return (
+    <div
+      {...{ [UI_ATTR]: '' }}
+      data-adjust-text-panel=""
+      className={cn(PANEL_CLASS, 'bottom-24 right-4 w-[min(330px,calc(100vw-24px))]')}
+      role="dialog"
+      aria-label="改文字"
+    >
+      <div className="flex items-center gap-1.5 px-1 pb-1.5">
+        <PencilLine size={13} className="text-annotation" />
+        <span className="text-[12.5px] font-medium text-text">改文字</span>
+        <IconButton label="关闭改文字面板" size="inline" className="ml-auto" onClick={onClose}>
+          <X size={12} />
+        </IconButton>
+      </div>
+      <p className="px-1 pb-1 text-[11px] leading-4 text-muted">
+        {title} · 只改这段纯文本；富文本/代码块请先在真实界面改。
+      </p>
+      <Input
+        size="sm"
+        autoFocus
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') onSave()
+        }}
+        placeholder="新的文字"
+        aria-label="新的文字"
+      />
+      <div className="mt-1.5 flex justify-end gap-1">
+        <Button size="inline" variant="ghost" onClick={onClose}>
+          取消
+        </Button>
+        <Button size="inline" variant="primary" onClick={onSave}>
+          保存文字
+        </Button>
       </div>
     </div>
   )

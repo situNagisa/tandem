@@ -1236,6 +1236,16 @@ html.feedback-mode [data-feedback-capture] {
   cursor: crosshair !important;
 }
 
+/* 调整模式：命中层与手柄按拖动语义显示光标（覆盖反馈模式的 pointer !important） */
+html.feedback-mode [data-adjust-hit-layer][data-cursor='default'] { cursor: default !important; }
+html.feedback-mode [data-adjust-hit-layer][data-cursor='grab'] { cursor: grab !important; }
+html.feedback-mode [data-adjust-hit-layer][data-cursor='grabbing'] { cursor: grabbing !important; }
+html.feedback-mode [data-adjust-hit-layer][data-cursor='move'] { cursor: move !important; }
+html.feedback-mode [data-adjust-handle][data-resize-cursor='nwse-resize'] { cursor: nwse-resize !important; }
+html.feedback-mode [data-adjust-handle][data-resize-cursor='nesw-resize'] { cursor: nesw-resize !important; }
+html.feedback-mode [data-adjust-handle][data-resize-cursor='ew-resize'] { cursor: ew-resize !important; }
+html.feedback-mode [data-adjust-handle][data-resize-cursor='ns-resize'] { cursor: ns-resize !important; }
+
 /* 反馈模式的捕获层在 z-105；带操作的提示条要能点到 */
 html.feedback-mode [data-toast-layer] {
   z-index: 140;

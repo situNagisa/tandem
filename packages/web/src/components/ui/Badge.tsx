@@ -8,7 +8,7 @@ import { cn } from '../../lib/cn'
  */
 export type BadgeTone = 'neutral' | 'success' | 'warn' | 'danger' | 'annotation'
 
-const TONE_CLASS: Record<BadgeTone, string> = {
+export const BADGE_TONE_CLASS: Record<BadgeTone, string> = {
   neutral: 'border-border text-text-tertiary',
   success: 'border-success/45 text-success',
   warn: 'border-warning/45 text-warning',
@@ -28,7 +28,7 @@ export function Badge({ tone = 'neutral', icon, className, children, ...rest }: 
       data-tone={tone}
       className={cn(
         'inline-flex h-5 min-w-0 shrink-0 items-center gap-1 rounded-[4px] border bg-transparent px-1.5 text-[11px] font-medium leading-[1.2] whitespace-nowrap [&_svg]:size-3',
-        TONE_CLASS[tone],
+        BADGE_TONE_CLASS[tone],
         className,
       )}
       {...rest}

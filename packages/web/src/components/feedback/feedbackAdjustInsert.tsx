@@ -9,7 +9,7 @@ import { Button, IconButton, type ButtonVariant } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { Input } from '../ui/Controls'
 import { ListRow } from '../ui/ListRow'
-import type { AdjustInsertedItem } from './feedbackAdjust'
+import type { AdjustInsertedItem, AdjustInsertOption } from './feedbackAdjust'
 
 function RowView({
   component,
@@ -89,22 +89,27 @@ function ContainerRows({ item, size }: { item: AdjustInsertedItem; size: 'sm' | 
 }
 
 export function renderInserted(item: AdjustInsertedItem) {
+  const size = item.width && item.height ? { width: item.width, height: item.height } : undefined
   if (item.kind === 'button') {
     return (
-      <Button size="md" variant={item.variant as ButtonVariant}>
+      <Button size="md" variant={item.variant as ButtonVariant} style={size}>
         {item.label}
       </Button>
     )
   }
   if (item.kind === 'icon-button') {
     return (
-      <IconButton label={item.label} variant={item.variant as ButtonVariant}>
+      <IconButton label={item.label} variant={item.variant as ButtonVariant} style={size}>
         <Plus size={16} />
       </IconButton>
     )
   }
   if (item.kind === 'badge') {
-    return <Badge tone={item.variant as BadgeTone}>{item.label}</Badge>
+    return (
+      <Badge tone={item.variant as BadgeTone} style={size}>
+        {item.label}
+      </Badge>
+    )
   }
   if (item.kind === 'list-row') {
     return (
@@ -113,15 +118,16 @@ export function renderInserted(item: AdjustInsertedItem) {
         title={item.label}
         detail={item.behavior || undefined}
         className="w-[260px] border border-border"
+        style={size}
       />
     )
   }
   if (item.kind === 'input') {
-    return <Input size="md" readOnly placeholder="输入框" className="w-[220px]" />
+    return <Input size="md" readOnly placeholder="输入框" className="w-[220px]" style={size} />
   }
   if (item.kind === 'card') {
     return (
-      <Card className="w-[280px]">
+      <Card className="w-[280px]" style={size}>
         <p className="text-[13px] font-medium text-text">卡片标题</p>
         <p className="mt-1 text-[12px] text-muted">用于承载一组内容；行为在备注里说明。</p>
         {item.rows.length > 0 && (
@@ -134,7 +140,7 @@ export function renderInserted(item: AdjustInsertedItem) {
   }
   if (item.kind === 'menu') {
     return (
-      <Card data-adjust-menu="" className="w-[240px] p-2">
+      <Card data-adjust-menu="" className="w-[240px] p-2" style={size}>
         <ContainerHeader icon title="菜单（示意）" count={`${item.rows.length} 行`} />
         <ContainerRows item={item} size="sm" />
         <p className="px-1.5 pt-1 text-[11px] text-muted">实现时用 ui/Menu 的 Item，不用手写菜单行。</p>
@@ -148,4 +154,24 @@ export function renderInserted(item: AdjustInsertedItem) {
       <ContainerRows item={item} size="md" />
     </Card>
   )
+}
+
+/** 插入面板悬停预览：用同一套 ui/* 组件渲染示例，深浅色跟随当前主题。 */
+export function renderInsertPreview(option: AdjustInsertOption) {
+  const sampleRows = [
+    { id: 'p1', component: 'ListRow' as const, title: '会话标题', note: '显示标题 + 项目名' },
+    { id: 'p2', component: 'ListRow' as const, title: '最后活动时间', note: '点击切换到该会话' },
+  ]
+  return renderInserted({
+    id: 'preview',
+    kind: option.kind,
+    group: option.group,
+    label: option.label,
+    variant: option.variant,
+    x: 0,
+    y: 0,
+    behavior: '',
+    rows: option.container ? sampleRows : [],
+    container: option.container,
+  })
 }

@@ -26,6 +26,8 @@ interface CaptureOptions {
   active: boolean
   editorRef: MutableRefObject<EditorState | null>
   selectModeRef: MutableRefObject<FeedbackTool>
+  /** 调整工具临时退出副本时暂停捕获层，让真实界面可操作。 */
+  adjustReleasedRef?: MutableRefObject<boolean>
   setEditor: Dispatch<SetStateAction<EditorState | null>>
   attachPageShot: (route: string) => void
 }
@@ -34,6 +36,7 @@ export function useFeedbackCapture({
   active,
   editorRef,
   selectModeRef,
+  adjustReleasedRef,
   setEditor,
   attachPageShot,
 }: CaptureOptions) {
@@ -308,11 +311,13 @@ export function useFeedbackCapture({
 
     // 其余指针/触摸/焦点事件在 window capture 阶段消化，避免 Radix 关闭弹层。
     const blockInteraction = (e: Event) => {
+      if (adjustReleasedRef?.current) return
       if (isFeedbackUi(e.target)) return
       e.preventDefault()
       e.stopImmediatePropagation()
     }
     const blockFocus = (e: Event) => {
+      if (adjustReleasedRef?.current) return
       e.stopImmediatePropagation()
     }
     const blocked = [

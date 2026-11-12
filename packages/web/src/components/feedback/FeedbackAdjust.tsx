@@ -22,7 +22,9 @@ import { flushSync } from 'react-dom'
 import {
   AlertTriangle,
   Check,
+  EyeOff,
   Layers,
+  PencilLine,
   MessageSquare,
   Plus,
   RefreshCw,
@@ -32,15 +34,16 @@ import {
   X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { captureSnapshotShot } from '../../lib/feedbackCapture'
+import { captureSnapshotShot, cssSelectorFor } from '../../lib/feedbackCapture'
 import type { AdjustChange, AdjustSnapshot, FeedbackRect } from '../../lib/feedback'
-import { Badge } from '../ui/Badge'
-import { Button, IconButton } from '../ui/Button'
+import { Badge, BADGE_TONE_CLASS } from '../ui/Badge'
+import { BUTTON_VARIANT_CLASS, Button, IconButton } from '../ui/Button'
 import { cn } from '../../lib/cn'
 import { ADJUST_ICONS, type AdjustIconEntry } from './adjustIcons.generated'
 import {
   adjustKindLabel,
   buildAdjustSnapshot,
+  createAdjustStage,
   describeSize,
   freezeAppViewport,
   iconSvgFor,
@@ -58,12 +61,24 @@ import {
   type AdjustTargetMeta,
 } from './feedbackAdjust'
 import {
+  applyVariant,
+  captureBoxStyle,
+  elementOwnText,
+  isInsertedTarget,
+  opFromChange,
+  reattachChanges,
+  restoreBoxStyle,
+  setElementText,
+} from './feedbackAdjustApply'
+import {
   AdjustChangeList,
   AdjustIconPicker,
   AdjustInsertPanel,
   AdjustListEditor,
   AdjustNotePanel,
   AdjustStateBadge,
+  AdjustTextPanel,
+  AdjustVariantPanel,
 } from './FeedbackAdjustPanels'
 import { renderInserted } from './feedbackAdjustInsert'
 import { UI_ATTR } from './feedbackModeHelpers'
@@ -95,6 +110,8 @@ interface ResizeDrag {
   kind: 'resize'
   handle: (typeof HANDLE_LIST)[number]
   element: Element
+  /** 拖的是插入的示意控件时，尺寸写回条目而不是副本内联样式。 */
+  insertedId?: string
   startX: number
   startY: number
   startW: number
@@ -160,6 +177,8 @@ interface InsertDrag {
 
 export interface AdjustPayload {
   id: string
+  /** 继续调整已有条目时复用原条目 id，保存时更新同一条，不新建。 */
+  itemId?: string
   snapshot: AdjustSnapshot
   beforeImage: string | null
   afterImage: string | null
@@ -173,7 +192,16 @@ export interface FeedbackAdjustProps {
   onNotify: (message: string, tone?: 'info' | 'success' | 'error') => void
   /** 父组件处理 Esc：返回 true 表示调整工具自己消费了（关面板/取消选择）。 */
   escapeRef: MutableRefObject<(() => boolean) | null>
+  /** 继续调整：从已有条目恢复冻结副本与改动清单。 */
+  resume?: { itemId: string; snapshot: AdjustSnapshot } | null
+  /** 临时退出副本操作真实界面时，通知反馈模式暂停捕获层。 */
+  onReleaseChange?: (released: boolean) => void
 }
+
+/** 副本 HTML 上限：再大就截断并提示可以重新冻结。 */
+const COPY_HTML_LIMIT = 3_000_000
+const BUTTON_VARIANTS = Object.keys(BUTTON_VARIANT_CLASS)
+const BADGE_VARIANTS = Object.keys(BADGE_TONE_CLASS)
 
 function clampRect(rect: FeedbackRect): FeedbackRect {
   const x = Math.max(0, Math.min(Math.round(rect.x), window.innerWidth - 4))
@@ -229,14 +257,68 @@ function insertedComponentLabel(item: AdjustInsertedItem): string {
   return 'Input'
 }
 
+/** 继续调整 / 重新冻结时，从 insert 改动重建插入的示意控件。 */
+function insertedItemFromChange(change: AdjustChange): AdjustInsertedItem | null {
+  if (change.kind !== 'insert') return null
+  const after = (change.after ?? {}) as {
+    itemId?: string
+    component?: string
+    variant?: string
+    rows?: Array<{ component?: string; title?: string; note?: string }>
+    note?: string
+    position?: { x?: number; y?: number }
+    width?: number
+    height?: number
+    container?: boolean
+  }
+  if (!after.itemId) return null
+  const component = after.component ?? ''
+  const kind: AdjustInsertedItem['kind'] = component.startsWith('列表')
+    ? 'list'
+    : component.startsWith('菜单')
+      ? 'menu'
+      : component.startsWith('卡片')
+        ? 'card'
+        : component === 'IconButton'
+          ? 'icon-button'
+          : component === 'Button'
+            ? 'button'
+            : component === 'Badge'
+              ? 'badge'
+              : component === 'ListRow'
+                ? 'list-row'
+                : 'input'
+  return {
+    id: after.itemId,
+    kind,
+    group: '',
+    label: after.component ?? '控件',
+    variant: after.variant ?? '',
+    x: after.position?.x ?? 0,
+    y: after.position?.y ?? 0,
+    width: after.width,
+    height: after.height,
+    behavior: after.note ?? change.behavior ?? '',
+    rows: (after.rows ?? []).map((row, index) => ({
+      id: `${after.itemId}-row-${index}`,
+      component: (row.component === 'Button' || row.component === 'Badge' ? row.component : 'ListRow') as AdjustInsertedRow['component'],
+      title: row.title ?? '',
+      note: row.note ?? '',
+    })),
+    container: after.container ?? (kind === 'list' || kind === 'menu' || kind === 'card'),
+  }
+}
+
 export function FeedbackAdjust({
   onClose,
   onProgress,
   onFinish,
   onNotify,
   escapeRef,
+  resume,
+  onReleaseChange,
 }: FeedbackAdjustProps) {
-  const [phase, setPhase] = useState<'freezing' | 'ready'>('freezing')
+  const [phase, setPhase] = useState<'freezing' | 'ready' | 'released'>('freezing')
   const [freeze, setFreeze] = useState<AdjustFreeze | null>(null)
   const freezeRef = useRef<AdjustFreeze | null>(null)
   const [selected, setSelected] = useState<Element | null>(null)
@@ -270,6 +352,13 @@ export function FeedbackAdjust({
   const [reorderLine, setReorderLine] = useState<ReorderDrag['line']>(null)
   const [dropGhost, setDropGhost] = useState<{ x: number; y: number; label: string } | null>(null)
   const [finishBusy, setFinishBusy] = useState(false)
+  const [variantPanel, setVariantPanel] = useState(false)
+  const [textPanel, setTextPanel] = useState(false)
+  const [textDraft, setTextDraft] = useState('')
+  const [cursor, setCursor] = useState<'default' | 'grab' | 'grabbing' | 'move'>('default')
+  const resumeRef = useRef(resume ?? null)
+  const itemIdRef = useRef<string | undefined>(resume?.itemId)
+  const releasedRef = useRef(false)
   const offsetsRef = useRef(new WeakMap<Element, OffsetState>())
   const moveMergeRef = useRef<{ element: Element; op: AdjustOp; at: number } | null>(null)
   const pointerRef = useRef<{ x: number; y: number; alt: boolean; raf: number } | null>(null)
@@ -279,7 +368,7 @@ export function FeedbackAdjust({
   const insertedMoveRef = useRef<InsertedMove | null>(null)
   const suppressClickRef = useRef(false)
   const beforeImageRef = useRef<string | null>(null)
-  const sessionIdRef = useRef(newAdjustId('adj'))
+  const sessionIdRef = useRef(resume?.snapshot.id ?? newAdjustId('adj'))
   const publishTimerRef = useRef<number | null>(null)
   const [dirty, setDirty] = useState(false)
 
@@ -312,6 +401,12 @@ export function FeedbackAdjust({
     }
   }, [selected, insertedSelected, tick, inserted])
 
+  // 插入控件首次提交后 ref 才登记 DOM；补一次渲染，选中框/手柄才会出现。
+  useEffect(() => {
+    if (inserted.length > 0) bump()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inserted])
+
   const sizeInfo = useMemo(() => {
     if (!selectedRect) return null
     return describeSize(selectedRect.width, selectedRect.height)
@@ -334,6 +429,27 @@ export function FeedbackAdjust({
 
   const iconTarget = !insertedSelected && selected ? iconSvgFor(selected) : null
   const currentIconName = lucideIconName(iconTarget)
+
+  const variantInfo = useMemo(() => {
+    void tick
+    if (!selected || insertedSelected) return null
+    const tone = selected.getAttribute('data-tone')
+    if (tone) return { component: 'Badge', current: tone, variants: BADGE_VARIANTS }
+    const variant = selected.getAttribute('data-variant')
+    if (!variant) return null
+    const component =
+      selected.getAttribute('data-icon-button') !== null
+        ? 'IconButton'
+        : selectedMeta?.component === 'Button'
+          ? 'Button'
+          : 'Button'
+    return { component, current: variant, variants: BUTTON_VARIANTS }
+  }, [selected, insertedSelected, selectedMeta, tick])
+
+  const ownText = useMemo(
+    () => (selected && !insertedSelected ? elementOwnText(selected) : ''),
+    [selected, insertedSelected, tick],
+  )
 
   const bump = useCallback(() => setTick((value) => value + 1), [])
 
@@ -364,13 +480,24 @@ export function FeedbackAdjust({
     return out
   }, [])
 
-  const buildSnapshot = useCallback((): AdjustSnapshot | null => {
+  const buildSnapshot = useCallback((includeCopy = false): AdjustSnapshot | null => {
     const frozen = freezeRef.current
     if (!frozen) return null
+    const theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+    const html = frozen.stage.innerHTML
+    const copy = includeCopy
+      ? {
+          html: html.slice(0, COPY_HTML_LIMIT),
+          width: window.innerWidth,
+          height: window.innerHeight,
+          theme: theme as 'light' | 'dark',
+          truncated: html.length > COPY_HTML_LIMIT,
+        }
+      : undefined
     return buildAdjustSnapshot({
       id: sessionIdRef.current,
       route: window.location.hash || '#/',
-      theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+      theme,
       viewport: {
         width: window.innerWidth,
         height: window.innerHeight,
@@ -379,6 +506,7 @@ export function FeedbackAdjust({
       freeze: frozen.stats,
       changes: opsRef.current.map((op) => op.change),
       structure: structureFor(),
+      copy,
     })
   }, [structureFor])
 
@@ -388,6 +516,7 @@ export function FeedbackAdjust({
     if (!snapshot || snapshot.changes.length === 0) return
     onProgress({
       id: sessionIdRef.current,
+      itemId: itemIdRef.current,
       snapshot,
       beforeImage: beforeImageRef.current,
       afterImage: null,
@@ -407,55 +536,130 @@ export function FeedbackAdjust({
     [publishNow],
   )
 
-  // 进入调整：先截「调整前」，再同步克隆当前视口；两段之间让「正在冻结」提示绘制出来。
+  // 进入调整：继续调整时从快照恢复副本；否则先截「调整前」，再同步克隆当前视口。
+  // 两段之间让「正在冻结」提示绘制出来。
   useEffect(() => {
     let cancelled = false
     let raf = 0
+
+    const exposeDebug = (frozen: AdjustFreeze) => {
+      const debugWindow = window as unknown as Record<string, unknown>
+      debugWindow.__feedbackAdjust = {
+        stats: frozen.stats,
+        changes: () => opsRef.current.map((op) => op.change),
+        inserted: () => insertedRef.current,
+        insertedSelected: () => selectedInsertedRef.current,
+        insertedDom: () => [...insertedDomRef.current.keys()],
+        selected: () => {
+          const el = selectedRef.current
+          return el
+            ? {
+                tag: el.tagName,
+                label: el.getAttribute('aria-label'),
+                inStage: !!freezeRef.current?.stage.contains(el),
+              }
+            : null
+        },
+        select: (target: string) => {
+          const item = insertedRef.current.find((entry) => entry.id === target)
+          if (item) {
+            setSelected(null)
+            setSelectedInsertedId(item.id)
+            bump()
+            return true
+          }
+          let element: Element | null = null
+          try {
+            element = frozen.stage.querySelector(target)
+          } catch {
+            element = null
+          }
+          if (!element && /^[\w.-]+$/.test(target)) {
+            element = frozen.stage.querySelector(`[data-testid="${target}"]`)
+          }
+          if (!element) return false
+          setSelected(element)
+          setSelectedInsertedId(null)
+          bump()
+          return true
+        },
+        freeze: frozen,
+        hit: (x: number, y: number, alt = false) => {
+          const element = hitTest(x, y, alt)
+          return element
+            ? {
+                tag: element.tagName,
+                src: element.getAttribute('data-tandem-src'),
+                rect: rectOf(element),
+              }
+            : null
+        },
+        cursor: () => (document.querySelector('[data-adjust-hit-layer]') as HTMLElement | null)?.style.cursor ?? '',
+      }
+    }
+
+    /** 恢复条目里的改动清单；reapply=true 表示新副本需要重放改动。 */
+    const seed = (frozen: AdjustFreeze, snapshot: AdjustSnapshot, reapply: boolean) => {
+      const changes = snapshot.changes.map((change) => ({ ...change, stale: false }))
+      if (reapply) reattachChanges(changes, frozen.stage)
+      const items = changes
+        .map((change) => insertedItemFromChange(change))
+        .filter((item): item is AdjustInsertedItem => item !== null)
+      insertedRef.current = items
+      setInserted(items)
+      const rebuilt = changes.map((change) => opFromChange(change, frozen.stage))
+      opsRef.current = rebuilt
+      setOps(rebuilt)
+      redoRef.current = []
+      setRedoCount(0)
+      bump()
+    }
+
     const enter = async () => {
-      const before = await captureSnapshotShot(document.body)
-      if (cancelled) return
-      beforeImageRef.current = before
+      const initial = resumeRef.current
+      if (initial?.snapshot.copy?.html) {
+        raf = requestAnimationFrame(() => {
+          if (cancelled) return
+          const copy = initial.snapshot.copy!
+          const restored = createAdjustStage()
+          restored.innerHTML = copy.html
+          document.body.appendChild(restored)
+          const frozen: AdjustFreeze = {
+            stage: restored,
+            originals: new WeakMap(),
+            metas: new WeakMap(),
+            stats: initial.snapshot.freeze,
+            dispose: () => restored.remove(),
+          }
+          freezeRef.current = frozen
+          setFreeze(frozen)
+          seed(frozen, initial.snapshot, false)
+          setPhase('ready')
+          exposeDebug(frozen)
+          onNotify(
+            `已恢复上次的冻结副本 · ${initial.snapshot.changes.length} 项改动${copy.truncated ? '（HTML 超限已截断，可重新冻结）' : ''}`,
+            'info',
+          )
+        })
+        return
+      }
+      if (!initial) {
+        const before = await captureSnapshotShot(document.body)
+        if (cancelled) return
+        beforeImageRef.current = before
+      }
       raf = requestAnimationFrame(() => {
         if (cancelled) return
         const frozen = freezeAppViewport()
         freezeRef.current = frozen
         setFreeze(frozen)
+        if (initial) seed(frozen, initial.snapshot, true)
         setPhase('ready')
-        const debugWindow = window as unknown as Record<string, unknown>
-        debugWindow.__feedbackAdjust = {
-          stats: frozen.stats,
-          changes: () => opsRef.current.map((op) => op.change),
-          inserted: () => insertedRef.current,
-          selected: () => {
-            const el = selectedRef.current
-            return el
-              ? {
-                  tag: el.tagName,
-                  label: el.getAttribute('aria-label'),
-                  inStage: !!freezeRef.current?.stage.contains(el),
-                }
-              : null
-          },
-          select: (target: string) => {
-            const item = insertedRef.current.find((entry) => entry.id === target)
-            if (item) {
-              setSelected(null)
-              setSelectedInsertedId(item.id)
-              bump()
-              return true
-            }
-            let element = frozen.stage.querySelector(target)
-            if (!element) element = frozen.stage.querySelector(`[data-testid="${target}"]`)
-            if (!element) return false
-            setSelected(element)
-            setSelectedInsertedId(null)
-            bump()
-            return true
-          },
-          freeze: frozen,
-        }
+        exposeDebug(frozen)
         onNotify(
-          `画面已冻结 · ${frozen.stats.clonedNodes.toLocaleString('zh-CN')} 个节点 · ${frozen.stats.durationMs}ms`,
+          initial
+            ? `已重新冻结并重放 ${initial.snapshot.changes.length} 项改动`
+            : `画面已冻结 · ${frozen.stats.clonedNodes.toLocaleString('zh-CN')} 个节点 · ${frozen.stats.durationMs}ms`,
           'info',
         )
         publishNow()
@@ -468,6 +672,7 @@ export function FeedbackAdjust({
       if (publishTimerRef.current) window.clearTimeout(publishTimerRef.current)
       freezeRef.current?.dispose()
       freezeRef.current = null
+      onReleaseChange?.(false)
       const debugWindow = window as unknown as Record<string, unknown>
       delete debugWindow.__feedbackAdjust
     }
@@ -556,7 +761,14 @@ export function FeedbackAdjust({
   }
 
   const addResizeOp = (state: ResizeDrag, live: NonNullable<ResizeDrag['live']>) => {
-    const meta = freezeRef.current ? metaForClone(freezeRef.current, state.element) : null
+    const insertedItem = state.insertedId
+      ? insertedRef.current.find((entry) => entry.id === state.insertedId)
+      : undefined
+    const meta = insertedItem
+      ? insertedMeta(insertedItem, state.element as HTMLElement)
+      : freezeRef.current
+        ? metaForClone(freezeRef.current, state.element)
+        : null
     if (!meta) return
     const changed =
       Math.round(state.startW) !== live.width ||
@@ -575,6 +787,7 @@ export function FeedbackAdjust({
         height: Math.round(state.startH),
         offsetX: state.startOffsetX,
         offsetY: state.startOffsetY,
+        ...(insertedItem ? {} : { style: captureBoxStyle(state.element) }),
       },
       after: live,
       tokens: live.tokens,
@@ -585,17 +798,39 @@ export function FeedbackAdjust({
           : `已吸附：${tokenText || '4px 栅格'}。`,
     }
     let structure: AdjustOp['structure']
-    try {
-      structure = { html: state.element.outerHTML.slice(0, 6000), styles: styleSnapshot(state.element) }
-    } catch {
-      structure = undefined
+    if (!insertedItem) {
+      try {
+        structure = { html: state.element.outerHTML.slice(0, 6000), styles: styleSnapshot(state.element) }
+      } catch {
+        structure = undefined
+      }
+    }
+    const applyInsertedSize = (width?: number, height?: number) => {
+      if (!insertedItem) return
+      setInserted((current) =>
+        current.map((entry) => (entry.id === insertedItem.id ? { ...entry, width, height } : entry)),
+      )
+      const insertOp = opsRef.current.find(
+        (entry) =>
+          entry.change.kind === 'insert' &&
+          (entry.change.after as { itemId?: string } | undefined)?.itemId === insertedItem.id,
+      )
+      if (insertOp) {
+        insertOp.change.after = { ...(insertOp.change.after ?? {}), width, height }
+        setOps((entries) => [...entries])
+      }
     }
     pushOp({
       change,
       structure,
       undo: () =>
-        applyBox(state.element, state.startW, state.startH, state.startOffsetX, state.startOffsetY),
-      redo: () => applyBox(state.element, live.width, live.height, live.offsetX, live.offsetY),
+        insertedItem
+          ? applyInsertedSize(insertedItem.width, insertedItem.height)
+          : applyBox(state.element, state.startW, state.startH, state.startOffsetX, state.startOffsetY),
+      redo: () =>
+        insertedItem
+          ? applyInsertedSize(live.width, live.height)
+          : applyBox(state.element, live.width, live.height, live.offsetX, live.offsetY),
     })
   }
 
@@ -616,7 +851,11 @@ export function FeedbackAdjust({
       kind: 'move',
       at: Date.now(),
       target: meta,
-      before: { offsetX: startOffsetX, offsetY: startOffsetY },
+      before: {
+        offsetX: startOffsetX,
+        offsetY: startOffsetY,
+        style: captureBoxStyle(element),
+      },
       after: { offsetX, offsetY },
       note: `自由拖动 translate(${offsetX}px, ${offsetY}px)；实现时优先按布局语义（间距/对齐）落位。`,
     }
@@ -706,6 +945,8 @@ export function FeedbackAdjust({
     setInsertPanel(false)
     setListEditorId(null)
     setNoteTarget(null)
+    setVariantPanel(false)
+    setTextPanel(false)
     bump()
   }
 
@@ -725,30 +966,84 @@ export function FeedbackAdjust({
     setInsertPanel(false)
     setListEditorId(null)
     setNoteTarget(null)
+    setVariantPanel(false)
+    setTextPanel(false)
     setSnapLines({ v: [], h: [] })
     setReorderLine(null)
     bump()
   }
 
+  /** 命中：小于 16px 的元素把命中区向外扩 8px，指针擦边也能选中。 */
   const hitTest = (x: number, y: number, alt: boolean): Element | null => {
     const root = freezeRef.current?.stage
     if (!root) return null
+    const usable = (element: Element) =>
+      root.contains(element) &&
+      element !== root &&
+      element.tagName !== 'STYLE' &&
+      element.tagName !== 'SCRIPT'
     try {
-      for (const element of document.elementsFromPoint(x, y)) {
-        if (!(element instanceof Element)) continue
-        if (element === root) continue
-        if (!root.contains(element)) continue
-        if (element.tagName === 'STYLE' || element.tagName === 'SCRIPT') continue
-        const interactive = element.closest(
-          'button, a[href], [role="button"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
-        )
-        let picked = interactive && root.contains(interactive) ? interactive : element
-        if (alt) {
-          const parent = picked.parentElement
-          if (parent && parent !== root) picked = parent
+      const chain = document.elementsFromPoint(x, y).filter((element) => element instanceof Element && usable(element)) as Element[]
+      let base = chain[0] ?? null
+      if (base) {
+        const box = base.getBoundingClientRect()
+        if (box.width < 16 || box.height < 16) {
+          // 直接命中的就是小元素：保持它。
+        } else {
+          // 背景容器命中时，找指针外扩 8px 内的小元素（例如 10px 状态点、图标）。
+          let best: Element | null = null
+          let bestArea = Infinity
+          const near = new Set<Element>()
+          for (const [dx, dy] of [
+            [0, 0],
+            [8, 0],
+            [-8, 0],
+            [0, 8],
+            [0, -8],
+            [8, 8],
+            [-8, -8],
+          ] as const) {
+            for (const element of document.elementsFromPoint(x + dx, y + dy)) {
+              if (!(element instanceof Element) || !usable(element)) continue
+              if (element !== base) near.add(element)
+            }
+          }
+          for (const candidate of near) {
+            const box = candidate.getBoundingClientRect()
+            if (box.width >= 16 && box.height >= 16) continue
+            // 另一个可交互控件里的图标不抢当前指针，避免点此及彼。
+            if (!base.contains(candidate)) {
+              const foreignInteractive = candidate.closest(
+                'button, a[href], [role="button"], [role="menuitem"]',
+              )
+              if (foreignInteractive) continue
+            }
+            const distance = Math.max(
+              box.left - x,
+              0,
+              x - box.right,
+              0,
+            ) + Math.max(box.top - y, 0, y - box.bottom, 0)
+            if (distance > 8) continue
+            const area = Math.max(1, box.width * box.height)
+            if (area < bestArea) {
+              best = candidate
+              bestArea = area
+            }
+          }
+          if (best) base = best
         }
-        return picked
       }
+      if (!base) return null
+      const interactive = base.closest(
+        'button, a[href], [role="button"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
+      )
+      let picked = interactive && root.contains(interactive) ? interactive : base
+      if (alt) {
+        const parent = picked.parentElement
+        if (parent && parent !== root) picked = parent
+      }
+      return picked
     } catch {
       /* 节点失效 */
     }
@@ -762,6 +1057,7 @@ export function FeedbackAdjust({
     if (dragRef.current || pendingRef.current) return
     const element = hitTest(point.x, point.y, point.alt)
     setHover((current) => (current === element ? current : element))
+    setCursor(element ? (point.alt ? 'move' : 'grab') : 'default')
   }
 
   const queueHover = (x: number, y: number, alt: boolean) => {
@@ -800,12 +1096,21 @@ export function FeedbackAdjust({
     const parent = element.parentNode
     const next = element.nextSibling
     const html = element.outerHTML.slice(0, 6000)
+    const parentSelector = element.parentElement ? cssSelectorFor(element.parentElement) : undefined
+    const siblingIndex = element.parentElement
+      ? Array.from(element.parentElement.children).indexOf(element)
+      : undefined
     const change: AdjustChange = {
       id: newAdjustId('chg'),
       kind: 'delete',
       at: Date.now(),
       target: meta,
-      before: { html: `${html.slice(0, 400)}${html.length > 400 ? '…' : ''}` },
+      before: {
+        html: `${html.slice(0, 400)}${html.length > 400 ? '…' : ''}`,
+        htmlFull: html,
+        parentSelector,
+        index: siblingIndex,
+      },
       note: '删除该元素及其子树。',
     }
     pushOp({
@@ -893,6 +1198,113 @@ export function FeedbackAdjust({
     })
     setIconPicker(false)
     onNotify(`图标已换成 ${entry.name}`, 'success')
+  }
+
+  /** 换样式变体：只改 ui/* 的变体 class 并记录变体名。 */
+  const changeVariant = (variant: string) => {
+    const element = selectedRef.current
+    if (!element || !variantInfo) return
+    const meta = freezeRef.current ? metaForClone(freezeRef.current, element) : null
+    if (!meta) return
+    const before = (element.getAttribute('data-tone') ?? element.getAttribute('data-variant') ?? '') as string
+    if (!applyVariant(element, variant)) return
+    const change: AdjustChange = {
+      id: newAdjustId('chg'),
+      kind: 'variant',
+      at: Date.now(),
+      target: meta,
+      before: { variant: before },
+      after: { variant },
+      note: `样式变体：${variantInfo.component} ${before || '?'} → ${variant}（实现时用组件的 variant 属性）。`,
+    }
+    pushOp({
+      change,
+      structure: { html: element.outerHTML.slice(0, 6000), styles: styleSnapshot(element) },
+      undo: () => {
+        applyVariant(element, before)
+        bump()
+      },
+      redo: () => {
+        applyVariant(element, variant)
+        bump()
+      },
+    })
+    setVariantPanel(false)
+    bump()
+    onNotify(`变体已换成 ${variant}`, 'success')
+  }
+
+  /** 改纯文本：替换元素下的直接文本节点，记录改前/改后。 */
+  const saveText = () => {
+    const element = selectedRef.current
+    if (!element) return
+    const before = elementOwnText(element)
+    const after = textDraft.trim()
+    setTextPanel(false)
+    if (!after || after === before) return
+    const meta = freezeRef.current ? metaForClone(freezeRef.current, element) : null
+    if (!meta) return
+    setElementText(element, after)
+    const change: AdjustChange = {
+      id: newAdjustId('chg'),
+      kind: 'text',
+      at: Date.now(),
+      target: meta,
+      before: { text: before },
+      after: { text: after },
+      note: '纯文本改文字；富文本与代码块不在此开放。',
+    }
+    pushOp({
+      change,
+      structure: { html: element.outerHTML.slice(0, 6000), styles: styleSnapshot(element) },
+      undo: () => {
+        setElementText(element, before)
+        bump()
+      },
+      redo: () => {
+        setElementText(element, after)
+        bump()
+      },
+    })
+    bump()
+    onNotify('已记录改文字', 'success')
+  }
+
+  /** 隐藏：保留布局占位，只设 visibility:hidden，与删除区分。 */
+  const hideSelected = () => {
+    const element = selectedRef.current
+    if (!element || insertedSelected) return
+    const meta = freezeRef.current ? metaForClone(freezeRef.current, element) : null
+    if (!meta) return
+    const before = { style: captureBoxStyle(element) }
+    const html = element as HTMLElement
+    html.style.visibility = 'hidden'
+    element.setAttribute('data-adjust-hidden', '')
+    const change: AdjustChange = {
+      id: newAdjustId('chg'),
+      kind: 'hide',
+      at: Date.now(),
+      target: meta,
+      before,
+      after: { hidden: true },
+      note: '隐藏（保留布局占位），不是删除。',
+    }
+    pushOp({
+      change,
+      structure: { html: element.outerHTML.slice(0, 6000), styles: styleSnapshot(element) },
+      undo: () => {
+        restoreBoxStyle(element, before.style)
+        element.removeAttribute('data-adjust-hidden')
+        bump()
+      },
+      redo: () => {
+        ;(element as HTMLElement).style.visibility = 'hidden'
+        element.setAttribute('data-adjust-hidden', '')
+        bump()
+      },
+    })
+    bump()
+    onNotify('已隐藏（保留占位）；可从改动清单回退', 'success')
   }
 
   const insertControl = (option: AdjustInsertOption, x?: number, y?: number) => {
@@ -1067,7 +1479,10 @@ export function FeedbackAdjust({
   }
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>, handle: (typeof HANDLE_LIST)[number]) => {
-    const element = selectedRef.current
+    const insertedId = selectedInsertedRef.current ?? undefined
+    const element = insertedId
+      ? insertedDomRef.current.get(insertedId) ?? null
+      : selectedRef.current
     if (!element) return
     event.preventDefault()
     event.stopPropagation()
@@ -1077,6 +1492,7 @@ export function FeedbackAdjust({
       kind: 'resize',
       handle,
       element,
+      ...(insertedId ? { insertedId } : {}),
       startX: event.clientX,
       startY: event.clientY,
       startW: box.width,
@@ -1333,7 +1749,18 @@ export function FeedbackAdjust({
         offsetY += dy
       }
       const snapped = snapSize(Math.max(8, width), Math.max(8, height))
-      applyBox(drag.element, snapped.width, snapped.height, offsetX, offsetY)
+      if (drag.insertedId) {
+        const id = drag.insertedId
+        setInserted((current) =>
+          current.map((entry) =>
+            entry.id === id
+              ? { ...entry, width: snapped.width, height: snapped.height }
+              : entry,
+          ),
+        )
+      } else {
+        applyBox(drag.element, snapped.width, snapped.height, offsetX, offsetY)
+      }
       drag.live = {
         width: snapped.width,
         height: snapped.height,
@@ -1401,6 +1828,7 @@ export function FeedbackAdjust({
     }
     setSnapLines({ v: [], h: [] })
     setLastSnap(null)
+    setCursor(hover ? 'grab' : 'default')
     bump()
   }
 
@@ -1443,6 +1871,41 @@ export function FeedbackAdjust({
       deleteSelected()
       return
     }
+    if (event.key === 'Tab') {
+      const current = selectedRef.current
+      if (!current) return
+      const parent = current.parentElement
+      const root = freezeRef.current?.stage
+      if (!parent || parent === root) return
+      const siblings = Array.from(parent.children).filter(
+        (child): child is Element => child instanceof Element && child !== current,
+      )
+      if (siblings.length === 0) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      const index = Array.from(parent.children).indexOf(current)
+      const total = parent.children.length
+      const ordered = [...siblings].sort((a, b) => {
+        const ai = Array.from(parent.children).indexOf(a)
+        const bi = Array.from(parent.children).indexOf(b)
+        const delta = (i: number) => (event.shiftKey ? (index - i + total) % total : (i - index + total) % total)
+        return delta(ai) - delta(bi)
+      })
+      selectElement(ordered[0] ?? null)
+      setHover(ordered[0] ?? null)
+      return
+    }
+    if (event.key === 'Enter') {
+      const current = selectedRef.current
+      if (!current) return
+      const child = Array.from(current.children).find((node): node is Element => node instanceof Element)
+      if (!child) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      selectElement(child)
+      setHover(child)
+      return
+    }
     if (event.key.startsWith('Arrow')) {
       if (!selectedRef.current) return
       event.preventDefault()
@@ -1475,6 +1938,14 @@ export function FeedbackAdjust({
       setInsertPanel(false)
       return true
     }
+    if (variantPanel) {
+      setVariantPanel(false)
+      return true
+    }
+    if (textPanel) {
+      setTextPanel(false)
+      return true
+    }
     if (listEditorId) {
       setListEditorId(null)
       return true
@@ -1493,6 +1964,55 @@ export function FeedbackAdjust({
       escapeRef.current = null
     }
   }, [escapeRef])
+
+  /** 临时退出冻结副本：让用户先操作真实界面（打开菜单、展开行等），随后重新冻结。 */
+  const releaseCopy = () => {
+    if (phase !== 'ready') return
+    freezeRef.current?.dispose()
+    freezeRef.current = null
+    setFreeze(null)
+    releasedRef.current = true
+    clearSelection()
+    setIconPicker(false)
+    setInsertPanel(false)
+    setListEditorId(null)
+    setNoteTarget(null)
+    setVariantPanel(false)
+    setTextPanel(false)
+    setPhase('released')
+    onReleaseChange?.(true)
+    onNotify('已退出副本：现在可以操作真实界面，摆好状态后点「重新冻结」', 'info')
+  }
+
+  /** 重新冻结真实界面，并按选择器把已有改动挂到新副本；挂不上的标红。 */
+  const refreezeCopy = () => {
+    if (phase !== 'released' && phase !== 'ready') return
+    setPhase('freezing')
+    requestAnimationFrame(() => {
+      if (freezeRef.current) freezeRef.current.dispose()
+      const frozen = freezeAppViewport()
+      freezeRef.current = frozen
+      setFreeze(frozen)
+      const changes = opsRef.current.map((op) => op.change)
+      const failed = reattachChanges(changes, frozen.stage)
+      const rebuilt = changes.map((change) => opFromChange(change, frozen.stage))
+      opsRef.current = rebuilt
+      setOps(rebuilt)
+      redoRef.current = []
+      setRedoCount(0)
+      releasedRef.current = false
+      onReleaseChange?.(false)
+      setPhase('ready')
+      bump()
+      publish()
+      onNotify(
+        failed.length
+          ? `已重新冻结；${failed.length} 项改动按选择器没挂上（清单已标红）`
+          : '已重新冻结，已有改动全部挂到新副本',
+        failed.length ? 'error' : 'success',
+      )
+    })
+  }
 
   const copyMarkdown = async () => {
     const snapshot = buildSnapshot()
@@ -1531,10 +2051,11 @@ export function FeedbackAdjust({
       } finally {
         clone?.remove()
       }
-      const snapshot = buildSnapshot()
+      const snapshot = buildSnapshot(true)
       if (!snapshot) return
       onFinish({
         id: sessionIdRef.current,
+        itemId: itemIdRef.current,
         snapshot,
         beforeImage: beforeImageRef.current,
         afterImage,
@@ -1571,8 +2092,10 @@ export function FeedbackAdjust({
         <div
           {...{ [UI_ATTR]: '' }}
           data-adjust-hit-layer=""
+          data-cursor={cursor}
           aria-hidden
-          className="fixed inset-0 z-[120] cursor-default touch-none"
+          className="fixed inset-0 z-[120] touch-none"
+          style={{ cursor }}
           onPointerMove={(event) => {
             if (dragRef.current || pendingRef.current) return
             queueHover(event.clientX, event.clientY, event.altKey)
@@ -1597,6 +2120,7 @@ export function FeedbackAdjust({
               element = base.parentElement
             }
             selectElement(element)
+            setCursor('grabbing')
             pendingRef.current = {
               element,
               startX: event.clientX,
@@ -1643,7 +2167,7 @@ export function FeedbackAdjust({
         {snapLines.h.map((y) => (
           <div key={`h-${y}`} className="absolute inset-x-0 h-px bg-annotation/80" style={{ top: y }} />
         ))}
-        {ready && selectionBox(selectedRect, selected ? HANDLE_LIST : null, startResize)}
+        {ready && selectionBox(selectedRect, selected || insertedSelected ? HANDLE_LIST : null, startResize)}
       </div>
 
       {/* 选中元素旁的快捷操作条 */}
@@ -1651,13 +2175,17 @@ export function FeedbackAdjust({
         <div
           {...{ [UI_ATTR]: '' }}
           data-adjust-selection-bar=""
-          className="pointer-events-auto fixed z-[132] flex flex-wrap items-center gap-1 rounded-lg border border-border bg-surface p-1 shadow-md"
+          className="pointer-events-auto fixed z-[134] flex max-w-[calc(100vw-16px)] flex-wrap items-center gap-1 rounded-lg border border-border bg-surface p-1 shadow-md"
           style={{
-            left: Math.max(8, Math.min(selectedRect.x, window.innerWidth - 520)),
+            left: Math.max(8, Math.min(selectedRect.x, Math.max(8, window.innerWidth - 560))),
             top: (() => {
               // 靠近底部时放上方；上方也会压到底部状态条时改放顶部工具条下方。
               const bottomZone = window.innerHeight - 118
-              const below = selectedRect.y + selectedRect.height + 8
+              // 小元素的手柄在元素外侧，操作条要再让开，避免盖住 se 手柄。
+              const below =
+                selectedRect.y +
+                selectedRect.height +
+                (selectedRect.width < 28 || selectedRect.height < 28 ? 44 : 22)
               if (below <= bottomZone) return below
               const above = selectedRect.y - 46
               return above > 70 && above <= bottomZone ? above : 58
@@ -1717,6 +2245,45 @@ export function FeedbackAdjust({
             </>
           ) : (
             <>
+              {variantInfo && (
+                <Button
+                  size="inline"
+                  variant="ghost"
+                  icon={<Layers size={12} />}
+                  tooltip={`当前变体：${variantInfo.current}`}
+                  onClick={() => {
+                    setTextPanel(false)
+                    setIconPicker(false)
+                    setVariantPanel((open) => !open)
+                  }}
+                >
+                  换变体
+                </Button>
+              )}
+              {ownText && (
+                <Button
+                  size="inline"
+                  variant="ghost"
+                  icon={<PencilLine size={12} />}
+                  onClick={() => {
+                    setVariantPanel(false)
+                    setIconPicker(false)
+                    setTextDraft(ownText)
+                    setTextPanel(true)
+                  }}
+                >
+                  改文字
+                </Button>
+              )}
+              <Button
+                size="inline"
+                variant="ghost"
+                icon={<EyeOff size={12} />}
+                tooltip="隐藏但保留布局占位（与删除区分）"
+                onClick={hideSelected}
+              >
+                隐藏
+              </Button>
               <Button
                 size="inline"
                 variant="ghost"
@@ -1749,7 +2316,10 @@ export function FeedbackAdjust({
         {...{ [UI_ATTR]: '' }}
         data-adjust-inserted-layer=""
         ref={insertedLayerRef}
-        className="pointer-events-none fixed inset-0 z-[122]"
+        className={cn(
+          'pointer-events-none fixed inset-0 z-[122]',
+          phase !== 'ready' && 'invisible',
+        )}
       >
         {inserted.map((item) => (
           <div
@@ -1843,6 +2413,26 @@ export function FeedbackAdjust({
           )
         })()}
 
+      {variantPanel && variantInfo && (
+        <AdjustVariantPanel
+          component={variantInfo.component}
+          variants={variantInfo.variants}
+          current={variantInfo.current}
+          onPick={changeVariant}
+          onClose={() => setVariantPanel(false)}
+        />
+      )}
+
+      {textPanel && selected && (
+        <AdjustTextPanel
+          title={selectionLabel}
+          value={textDraft}
+          onChange={setTextDraft}
+          onSave={saveText}
+          onClose={() => setTextPanel(false)}
+        />
+      )}
+
       {noteTarget && (
         <AdjustNotePanel
           title={
@@ -1888,16 +2478,28 @@ export function FeedbackAdjust({
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="annotation">调整</Badge>
           <span className="min-w-0 flex-1 truncate text-[12px] text-text-secondary">
-            {!ready
+            {phase === 'freezing'
               ? '正在截取调整前画面并冻结当前视口…'
-              : `已冻结 · ${freeze?.stats.clonedNodes.toLocaleString('zh-CN') ?? 0} 个节点 · ${freeze?.stats.durationMs ?? 0}ms · ${ops.length} 项改动${summary.nonStandard ? ` · ${summary.nonStandard} 项非标准值` : ''}`}
+              : phase === 'released'
+                ? `已退出副本 · ${ops.length} 项改动保留；摆好真实界面后点「重新冻结」`
+                : `已冻结 · ${freeze?.stats.clonedNodes.toLocaleString('zh-CN') ?? 0} 个节点 · ${freeze?.stats.durationMs ?? 0}ms · ${ops.length} 项改动${summary.nonStandard ? ` · ${summary.nonStandard} 项非标准值` : ''}`}
           </span>
           {dirty && <span className="text-[11px] text-warning">未导出</span>}
           <Button
             size="inline"
             variant="ghost"
+            icon={<RefreshCw size={12} />}
+            disabled={phase === 'freezing'}
+            onClick={phase === 'released' ? refreezeCopy : releaseCopy}
+            tooltip="临时退出副本操作真实界面，再重新冻结并保留已有改动"
+          >
+            重新冻结
+          </Button>
+          <Button
+            size="inline"
+            variant="ghost"
             icon={<Undo2 size={12} />}
-            disabled={ops.length === 0}
+            disabled={ops.length === 0 || phase !== 'ready'}
             onClick={undo}
             tooltip="撤销（Ctrl+Z）"
           >
@@ -1907,7 +2509,7 @@ export function FeedbackAdjust({
             size="inline"
             variant="ghost"
             icon={<RefreshCw size={12} />}
-            disabled={redoCount === 0}
+            disabled={redoCount === 0 || phase !== 'ready'}
             onClick={redo}
             tooltip="重做（Ctrl+Shift+Z）"
           >
@@ -1917,7 +2519,7 @@ export function FeedbackAdjust({
             size="inline"
             variant="ghost"
             icon={<Plus size={12} />}
-            disabled={!ready}
+            disabled={phase !== 'ready'}
             onClick={() => {
               setInsertPanel((open) => !open)
               setListEditorId(null)
@@ -1935,7 +2537,7 @@ export function FeedbackAdjust({
             size="inline"
             variant="primary"
             icon={<Check size={12} />}
-            disabled={!ready || finishBusy || ops.length === 0}
+            disabled={phase !== 'ready' || finishBusy || ops.length === 0}
             onClick={() => void finish()}
             tooltip="生成一条调整反馈条目（前后截图 + 改动清单），随后在反馈模式导出 .tfb"
           >
@@ -1946,12 +2548,13 @@ export function FeedbackAdjust({
           </Button>
         </div>
         <p className="mt-1 px-1 text-[11px] leading-4 text-muted">
-          点击选中 · Alt+点击选父级 · 拖动换序 · Alt+拖动自由移动 · 方向键微调 · Delete 删除 ·
-          Ctrl+Z 撤销。悬停才出现的按钮/菜单请先打开再进入调整；所有改动只作用于冻结副本。
+          点击选中 · Alt+点击选父级 · Tab/Shift+Tab 切兄弟 · Enter 进子级 · 拖动换序 ·
+          Alt+拖动自由移动 · 方向键微调 · Delete 删除 · Ctrl+Z 撤销。悬停才出现的按钮/菜单请先打开再进入调整，
+          或点「重新冻结」临时操作真实界面；所有改动只作用于冻结副本。
         </p>
       </div>
 
-      {!ready && (
+      {phase === 'freezing' && (
         <div
           {...{ [UI_ATTR]: '' }}
           className="pointer-events-none fixed inset-x-0 top-16 z-[132] flex justify-center"
@@ -1959,6 +2562,26 @@ export function FeedbackAdjust({
           <span className="flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-[12px] text-text-secondary shadow-md">
             <AlertTriangle size={12} className="text-annotation" /> 正在冻结当前画面…
           </span>
+        </div>
+      )}
+
+      {phase === 'released' && (
+        <div
+          {...{ [UI_ATTR]: '' }}
+          data-adjust-released=""
+          className="pointer-events-auto fixed left-1/2 top-16 z-[140] -translate-x-1/2 px-2"
+        >
+          <div className="flex w-[min(620px,calc(100vw-24px))] flex-wrap items-center gap-2 rounded-xl border border-annotation/50 bg-surface px-3 py-2 shadow-lg">
+            <span className="min-w-0 flex-1 text-[12px] leading-4 text-text">
+              已退出副本：可先操作真实界面，摆好后重新冻结（改动会按选择器挂回新副本）。
+            </span>
+            <Button size="inline" variant="primary" icon={<RefreshCw size={12} />} onClick={refreezeCopy}>
+              现在重新冻结
+            </Button>
+            <Button size="inline" variant="ghost" onClick={onClose}>
+              退出调整
+            </Button>
+          </div>
         </div>
       )}
     </>,
@@ -1971,6 +2594,8 @@ export function FeedbackAdjust({
     onHandleDown: (event: ReactPointerEvent<HTMLDivElement>, handle: (typeof HANDLE_LIST)[number]) => void,
   ) {
     if (!rect || !handles) return null
+    // 元素比手柄还小时，把手柄放到外侧，避免盖住要调整的元素。
+    const outset = rect.width < 28 || rect.height < 28 ? 8 : 0
     return (
       <>
         <div
@@ -1984,26 +2609,25 @@ export function FeedbackAdjust({
               '0 0 0 2px var(--t-annotation), 0 0 0 6px color-mix(in srgb, var(--t-annotation) 18%, transparent)',
           }}
         />
-        <div
-          className="absolute"
-          style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
-        >
-          {HANDLE_LIST.map((handle) => (
+        {HANDLE_LIST.map((handle) => {
+          const x =
+            handle.fx < 0 ? rect.x - outset : handle.fx > 0 ? rect.x + rect.width + outset : rect.x + rect.width / 2
+          const y =
+            handle.fy < 0 ? rect.y - outset : handle.fy > 0 ? rect.y + rect.height + outset : rect.y + rect.height / 2
+          return (
             <div
               data-adjust-handle={handle.key}
+              data-resize-cursor={handle.cursor}
               key={handle.key}
-              className={cn(
-                'pointer-events-auto absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-[2px] border border-white bg-annotation shadow-sm',
-                handle.className,
-              )}
-              style={{ cursor: handle.cursor }}
-              onPointerDown={(event) => {
-                if (event.pointerType === 'touch') return
-                onHandleDown(event, handle)
-              }}
-            />
-          ))}
-        </div>
+              aria-label={`调整 ${handle.key}`}
+              className="pointer-events-auto absolute flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+              style={{ left: x, top: y, cursor: handle.cursor }}
+              onPointerDown={(event) => onHandleDown(event, handle)}
+            >
+              <span className="pointer-events-none size-2.5 rounded-[2px] border border-white bg-annotation shadow-sm" />
+            </div>
+          )
+        })}
       </>
     )
   }

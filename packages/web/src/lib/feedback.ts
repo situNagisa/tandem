@@ -23,6 +23,7 @@ export type FeedbackScreenshotKind = 'element' | 'page' | 'region' | 'viewport'
 export type AdjustKind =
   | 'resize'
   | 'icon'
+  | 'variant'
   | 'delete'
   | 'hide'
   | 'text'
@@ -76,6 +77,8 @@ export interface AdjustChange {
   behavior?: string
   tokens?: { width?: string; height?: string }
   standard?: boolean
+  /** 重新冻结/恢复副本后，这条改动没能按选择器挂到新副本上。 */
+  stale?: boolean
 }
 
 export interface AdjustSnapshot {
@@ -97,6 +100,18 @@ export interface AdjustSnapshot {
   }>
   /** agent 可直接照做的 Markdown；导出时单独落成「NN-调整说明.md」。 */
   markdown: string
+  /**
+   * 冻结副本快照：再次进入「继续调整」时用它在不重冻真实界面的情况下恢复副本。
+   * HTML 已含改动后的内联样式；应用 CSS 由同一文档提供，因此不需要逐节点计算样式。
+   */
+  copy?: {
+    html: string
+    width: number
+    height: number
+    theme: 'light' | 'dark'
+    /** 超过上限被截断时无法完整恢复，进入时提示仍可重新冻结。 */
+    truncated?: boolean
+  }
 }
 
 export interface AdjustSummary {

@@ -149,6 +149,7 @@ export function FeedbackDrawer({
   onClearReceipt,
   onVerify,
   onExportVerification,
+  onResumeAdjust,
   draft,
   desktopDraft,
   onDeleteDraft,
@@ -168,6 +169,8 @@ export function FeedbackDrawer({
   onClearReceipt: () => void
   onVerify: () => void
   onExportVerification: () => void
+  /** 已完成的调整条目：恢复当时的冻结副本继续修改同一条目。 */
+  onResumeAdjust: (item: FeedbackItem) => void
   draft: FeedbackDraftInfo | null
   /** 桌面调试版：草稿实时写进下载目录下的草稿文件夹。 */
   desktopDraft: boolean
@@ -354,6 +357,17 @@ export function FeedbackDrawer({
                     >
                       <Pencil size={9} /> 编辑
                     </button>
+                    {item.mode === 'adjust' && item.adjustSnapshot && (
+                      <button
+                        data-raw-button
+                        type="button"
+                        onClick={() => onResumeAdjust(item)}
+                        className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-annotation hover:bg-surface-2"
+                        data-tip="恢复当时的冻结副本，继续修改并更新同一条目"
+                      >
+                        <Pencil size={9} /> 继续调整
+                      </button>
+                    )}
                     <button data-raw-button
                       type="button"
                       onClick={() => onDelete(item.id)}

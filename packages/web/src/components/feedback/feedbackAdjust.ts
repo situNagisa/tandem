@@ -55,6 +55,9 @@ export interface AdjustInsertedItem {
   variant: string
   x: number
   y: number
+  /** 手动拖手柄后的尺寸；未拖过时用组件自身尺寸。 */
+  width?: number
+  height?: number
   behavior: string
   rows: AdjustInsertedRow[]
   container: boolean
@@ -165,13 +168,7 @@ function iframePlaceholder(source: HTMLIFrameElement, copy: Element): Element {
  * - 滚动容器沿用原来的 scrollTop/scrollLeft；canvas 固化；iframe 换占位；
  * - 指针事件由上层命中层接管，副本自身不响应。
  */
-export function freezeAppViewport(): AdjustFreeze {
-  const startedAt = performance.now()
-  const sourceNodes = document.querySelectorAll('*').length
-  let clonedNodes = 0
-  let skipped = 0
-  const scrollContainers: Array<{ source: Element; copy: Element }> = []
-
+export function createAdjustStage(): HTMLDivElement {
   const stage = document.createElement('div')
   stage.setAttribute('data-adjust-stage', '')
   stage.setAttribute('aria-hidden', 'true')
@@ -188,6 +185,17 @@ export function freezeAppViewport(): AdjustFreeze {
     'pointer-events:auto',
     'contain:paint',
   ].join(';')
+  return stage
+}
+
+export function freezeAppViewport(): AdjustFreeze {
+  const startedAt = performance.now()
+  const sourceNodes = document.querySelectorAll('*').length
+  let clonedNodes = 0
+  let skipped = 0
+  const scrollContainers: Array<{ source: Element; copy: Element }> = []
+
+  const stage = createAdjustStage()
 
   const originals = new WeakMap<Element, Element>()
   const metas = new WeakMap<Element, AdjustTargetMeta>()
@@ -401,6 +409,20 @@ function ownComponentName(element: Element): string | undefined {
   return undefined
 }
 
+/** 调试版构建注入的源码位置（`data-tandem-src="packages/web/src/…:行号"`）。 */
+function injectedSource(element: Element): AdjustSourceLocation | undefined {
+  const node = element.closest('[data-tandem-src]')
+  const value = node?.getAttribute('data-tandem-src')
+  if (!value) return undefined
+  const match = /^(.*?):(\d+)(?::(\d+))?$/.exec(value)
+  if (!match) return undefined
+  return {
+    fileName: match[1] ?? value,
+    lineNumber: Number(match[2]),
+    ...(match[3] ? { columnNumber: Number(match[3]) } : {}),
+  }
+}
+
 function rectOf(element: Element): FeedbackRect {
   const box = element.getBoundingClientRect()
   return {
@@ -426,7 +448,7 @@ export function metaFor(element: Element): AdjustTargetMeta {
     ariaLabel: element.closest('[aria-label]')?.getAttribute('aria-label') ?? undefined,
     testId: element.closest('[data-testid]')?.getAttribute('data-testid') ?? undefined,
     anchor: anchorFor(element),
-    source: reactSource(element),
+    source: injectedSource(element) ?? reactSource(element),
     rect: rectOf(element),
   }
 }
@@ -436,7 +458,8 @@ export function metaForClone(freeze: AdjustFreeze, clone: Element | null): Adjus
   const cached = freeze.metas.get(clone)
   if (cached) return cached
   const original = freeze.originals.get(clone)
-  const meta = original ? metaFor(original) : null
+  // 从快照恢复的副本没有「原元素」映射；直接从副本自己读 class/aria/data-tandem-src。
+  const meta = original ? metaFor(original) : metaFor(clone)
   if (meta) freeze.metas.set(clone, meta)
   return meta
 }
@@ -565,6 +588,7 @@ export function describeSize(width: number, height: number): { label: string; st
 const KIND_LABEL: Record<AdjustKind, string> = {
   resize: '改尺寸',
   icon: '换图标',
+  variant: '换变体',
   delete: '删除',
   move: '移动',
   text: '改文字',
@@ -635,7 +659,7 @@ function anchorLine(meta: AdjustTargetMeta): string | null {
 function sourceLine(meta: AdjustTargetMeta): string | null {
   if (!meta.source) return null
   const file = meta.source.fileName.replace(/^.*?packages\//, 'packages/')
-  return `源码：\`${file}${meta.source.lineNumber ? `:${meta.source.lineNumber}` : ''}\`（React 调试信息）`
+  return `源码：\`${file}${meta.source.lineNumber ? `:${meta.source.lineNumber}` : ''}\`（调试版构建注入的源码位置）`
 }
 
 function iconMarkdownName(name: string | undefined): string {
@@ -721,6 +745,9 @@ function changeBlock(change: AdjustChange, index: number): string[] {
       `   - **非标准值**：未命中 ui 尺寸档位，实现时就近取最近档位并保持现有间距。`,
     )
   }
+  if (change.stale) {
+    lines.push(`   - **恢复副本后未挂上**：目标选择器在恢复的副本里已失效，实现时按目标描述与截图重新定位。`)
+  }
   if (change.note) lines.push(`   - 说明：${oneLine(change.note)}`)
   const after = change.after as
     | {
@@ -793,6 +820,7 @@ export function buildAdjustSnapshot(input: {
   freeze: AdjustFreezeStats
   changes: AdjustChange[]
   structure: AdjustSnapshot['structure']
+  copy?: AdjustSnapshot['copy']
 }): AdjustSnapshot {
   const title = input.title ?? adjustTitle(input.changes)
   const base = {
@@ -807,6 +835,7 @@ export function buildAdjustSnapshot(input: {
     freeze: input.freeze,
     changes: input.changes,
     structure: input.structure,
+    ...(input.copy ? { copy: input.copy } : {}),
   }
   return { ...base, markdown: adjustMarkdown(base) }
 }

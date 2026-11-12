@@ -76,13 +76,18 @@ export function FeedbackMode() {
   prefsRef.current = prefs
   const focusTimerRef = useRef<number | null>(null)
   const adjustEscapeRef = useRef<(() => boolean) | null>(null)
-  const adjustSessionRef = useRef<{ id: string } | null>(null)
+  const adjustSessionRef = useRef<{ id: string; itemId?: string } | null>(null)
+  const [adjustReleased, setAdjustReleased] = useState(false)
+  const adjustReleasedRef = useRef(false)
+  adjustReleasedRef.current = adjustReleased
+  const [resumeAdjust, setResumeAdjust] = useState<{ itemId: string; snapshot: AdjustSnapshot } | null>(null)
 
   const { startPageShot, attachPageShot, pageShotTasksRef } = useFeedbackPageShots(setEditor)
   const { layerRef, hover, regionBox, regionBusy, captureBusy } = useFeedbackCapture({
     active,
     editorRef,
     selectModeRef,
+    adjustReleasedRef,
     setEditor,
     attachPageShot,
   })
@@ -218,8 +223,11 @@ export function FeedbackMode() {
   useEffect(() => {
     if (selectMode !== 'adjust') {
       adjustSessionRef.current = null
+      setAdjustReleased(false)
+      setResumeAdjust(null)
       return
     }
+    setAdjustReleased(false)
     setEditor(null)
     setDrawerOpen(false)
     setAnnotator(null)
@@ -330,7 +338,7 @@ export function FeedbackMode() {
   ): FeedbackItem => {
     const snapshot: AdjustSnapshot = payload.snapshot
     const first = snapshot.changes[0]
-    const itemId = `fb-${payload.id}`
+    const itemId = payload.itemId ?? `fb-${payload.id}`
     const existing = useFeedbackStore.getState().items.find((item) => item.id === itemId)
     const pending = useFeedbackStore.getState().pendingFeature
     const inferred = inferFeedbackTag({
@@ -340,23 +348,23 @@ export function FeedbackMode() {
       text: snapshot.title,
       textSnippet: first?.target.textSnippet,
     })
-    const featureId = pending?.featureId ?? inferred?.featureId
+    const featureId = existing?.featureId ?? pending?.featureId ?? inferred?.featureId
     const featureName =
       pending?.featureName ??
       (featureId
         ? FEEDBACK_FEATURE_OPTIONS.find((feature) => feature.id === featureId)?.title ?? featureId
         : undefined)
-    const causeId = inferred?.causeId
-    const causeTitle = inferred?.causeTitle
+    const causeId = existing?.causeId ?? inferred?.causeId
+    const causeTitle = existing?.causeTitle ?? inferred?.causeTitle
     const app = useAppStore.getState()
     const hostId = app.active?.hostId ?? app.activeHostId ?? undefined
     const hostInfo = hostId ? app.runtimes[hostId]?.info : undefined
     return {
       id: itemId,
-      type: 'suggestion',
-      text: `调整：${snapshot.title}`,
+      type: existing?.type ?? 'suggestion',
+      text: existing?.text ?? `调整：${snapshot.title}`,
       mode: 'adjust',
-      priority: 'P1',
+      priority: existing?.priority ?? 'P1',
       selector: first?.target.selector ?? '',
       component: first?.target.component,
       textSnippet: first?.target.textSnippet ?? snapshot.title,
@@ -384,7 +392,7 @@ export function FeedbackMode() {
   }
 
   const handleAdjustProgress = (payload: AdjustPayload) => {
-    adjustSessionRef.current = { id: payload.id }
+    adjustSessionRef.current = { id: payload.id, itemId: payload.itemId }
     useFeedbackStore.getState().upsertItem(buildAdjustItem(payload, null))
   }
 
@@ -399,9 +407,11 @@ export function FeedbackMode() {
   }
 
   const handleAdjustClose = () => {
-    const changes = adjustSessionRef.current
-      ? useFeedbackStore.getState().items.find((item) => item.id === `fb-${adjustSessionRef.current!.id}`)
-          ?.adjust?.changeCount ?? 0
+    const session = adjustSessionRef.current
+    const changes = session
+      ? useFeedbackStore.getState().items.find(
+          (item) => item.id === (session.itemId ?? `fb-${session.id}`),
+        )?.adjust?.changeCount ?? 0
       : 0
     adjustSessionRef.current = null
     setSelectMode('element')
@@ -471,6 +481,7 @@ export function FeedbackMode() {
         onToggleDrawer={() => setDrawerOpen((open) => !open)}
         onExport={() => void exportAll()}
         onExit={exit}
+        interactionPaused={adjustReleased}
       />
 
       {editor && (
@@ -534,6 +545,15 @@ export function FeedbackMode() {
         }}
         onVerify={startVerify}
         onExportVerification={() => void exportVerification()}
+        onResumeAdjust={(item) => {
+          if (!item.adjustSnapshot) {
+            useUiStore.getState().toast('这条调整没有保存副本，无法继续调整', 'error')
+            return
+          }
+          setResumeAdjust({ itemId: item.id, snapshot: item.adjustSnapshot })
+          setDrawerOpen(false)
+          setSelectMode('adjust')
+        }}
         draft={draft}
         desktopDraft={!!desktopFeedback()}
         onDeleteDraft={clearDraft}
@@ -546,6 +566,8 @@ export function FeedbackMode() {
           onFinish={handleAdjustFinish}
           onNotify={(message, tone) => useUiStore.getState().toast(message, tone)}
           escapeRef={adjustEscapeRef}
+          resume={resumeAdjust}
+          onReleaseChange={setAdjustReleased}
         />
       )}
 

@@ -40,6 +40,8 @@ interface FeedbackOverlayProps {
   onToggleDrawer: () => void
   onExport: () => void
   onExit: () => void
+  /** 调整工具临时退出副本：捕获层不拦截真实界面。 */
+  interactionPaused?: boolean
 }
 
 export function FeedbackOverlay({
@@ -73,6 +75,7 @@ export function FeedbackOverlay({
   onToggleDrawer,
   onExport,
   onExit,
+  interactionPaused = false,
 }: FeedbackOverlayProps) {
   return (
     <>
@@ -80,7 +83,10 @@ export function FeedbackOverlay({
           <div
             ref={layerRef}
             {...{ [UI_ATTR]: '', 'data-feedback-capture': '' }}
-            className="pointer-events-auto fixed inset-0 z-[105] touch-none select-none"
+            className={cn(
+              'fixed inset-0 z-[105] touch-none select-none',
+              interactionPaused ? 'pointer-events-none' : 'pointer-events-auto',
+            )}
             aria-hidden
           />
 
