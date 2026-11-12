@@ -2,7 +2,7 @@
 
 > 更新：2026-11-12。只保留最近 3 轮；更早见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
-## 迭代 76（2026-11-12）反馈「调整」：冻结副本上改 UI，导出给 agent 实现（P0–P2）
+## 迭代 77（2026-11-12）反馈「调整」：冻结副本上改 UI，导出给 agent 实现（P0–P2）
 - [x] 原话「反馈模式下，我自主去小小的调整下 ui……我调整后不会立即生效，只是给你一个参考的结构」+「冻结副本我觉得就挺好的」「还想要备注行为……要注意复用现有控件和设定好的高度、宽度值」：反馈工具条新增「调整」，进入即冻结当前视口为静态副本；悬停/点击/Alt 选父级、8 手柄吸 token（24/28/32/36/44、4px 栅格，非标准值标注）、换项目在用的 lucide 图标、删除、换序（默认）与 Alt 自由拖动（吸附线 + translate）、撤销/重做/单条回退；插入 `ui/*` 控件与容器示意行、元素/改动/行行为备注。
 - [x] 产出：完成即生成一条 `mode: adjust` 反馈条目（前后截图、`NN-调整.json` 改动清单与结构快照、`NN-调整说明.md`），随 `.tfb` 导出；`scripts/feedback-unpack.mjs` 生成 agent 可逐条照做的说明，`feedback.md`/`by-feature` 链接过去；草稿实时落盘。图标集由 `scripts/feedback-adjust-icons.mjs` 扫描导入生成，调试版保留组件名（keepNames），拿不到时退回标签名 + `data-*` 锚点 + 选择器。
 - [x] 检查：regression 新增「调整工具」用例（冻结后真实 DOM 不变、尺寸吸附 token、清单字段、unpack 说明、发布版无入口）；`e2e/release-flavor.mjs` 断言无调整入口；`scan-release` 禁用 `FeedbackAdjust`/`feedbackAdjust`/`data-adjust-`。详见 [features/feedback.md](features/feedback.md)。
