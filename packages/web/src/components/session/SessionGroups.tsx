@@ -119,7 +119,7 @@ export function SessionGroups({
                       onClick={() =>
                         setOlderSessionsExpanded(project.collapseKey, !olderExpanded)
                       }
-                      className="flex h-8 w-full items-center gap-1.5 rounded-lg pl-2 pr-2 text-left text-[12px] text-text-tertiary transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-secondary"
+                      className="flex h-8 w-full items-center gap-1.5 rounded-lg pl-2 pr-2 text-left text-[12px] text-text-tertiary transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-secondary max-sm:h-11"
                     >
                       <ChevronRight
                         size={11}
@@ -208,7 +208,7 @@ export function SessionGroups({
                         onClick={() =>
                           setExpandedExternal((s) => ({ ...s, [project.key]: true }))
                         }
-                        className="flex h-8 w-full items-center gap-1.5 rounded-lg pl-2 pr-2 text-left text-[12px] text-text-tertiary transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-secondary"
+                        className="flex h-8 w-full items-center gap-1.5 rounded-lg pl-2 pr-2 text-left text-[12px] text-text-tertiary transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-secondary max-sm:h-11"
                       >
                         <ChevronRight size={11} className="shrink-0 rotate-90" />
                         更多 {externalSourceLabel} 会话（{hiddenExternalCount}）
@@ -223,7 +223,7 @@ export function SessionGroups({
                             return next
                           })
                         }
-                        className="flex h-8 w-full items-center gap-1.5 rounded-lg pl-2 pr-2 text-left text-[12px] text-text-tertiary transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-secondary"
+                        className="flex h-8 w-full items-center gap-1.5 rounded-lg pl-2 pr-2 text-left text-[12px] text-text-tertiary transition-colors duration-[120ms] hover:bg-[var(--t-bg-hover)] hover:text-text-secondary max-sm:h-11"
                       >
                         <ChevronRight size={11} className="shrink-0" />
                         收起 {externalSourceLabel} 会话
