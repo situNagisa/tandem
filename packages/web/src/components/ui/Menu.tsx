@@ -291,7 +291,7 @@ const RadixMenuItem = forwardRef<HTMLDivElement, MenuItemProps>(function RadixMe
         ROW_BASE,
         ROW_STATE,
         selected && 'text-text',
-        danger && 'text-danger hover:text-danger data-[highlighted]:text-danger focus:text-danger',
+        danger && 'text-danger! hover:text-danger! data-[highlighted]:text-danger! focus:text-danger!',
         className,
       )}
     >
@@ -349,7 +349,7 @@ const MenuCheckItem = forwardRef<HTMLDivElement, MenuCheckItemProps>(function Me
       className={cn(
         ROW_BASE,
         ROW_STATE,
-        danger && 'text-danger data-[highlighted]:text-danger',
+        danger && 'text-danger! data-[highlighted]:text-danger!',
         className,
       )}
     >
@@ -418,7 +418,7 @@ const MenuRadioItem = forwardRef<HTMLDivElement, MenuRadioItemProps>(function Me
         ROW_BASE,
         ROW_STATE,
         'data-[state=checked]:text-text',
-        danger && 'text-danger data-[highlighted]:text-danger',
+        danger && 'text-danger! data-[highlighted]:text-danger!',
         className,
       )}
     >
@@ -749,7 +749,7 @@ export const MenuItem = forwardRef<HTMLButtonElement, LegacyMenuItemProps>(funct
         'data-[active=true]:bg-[var(--t-bg-hover)] data-[active=true]:text-text',
         'aria-disabled:hover:bg-transparent aria-disabled:hover:text-text-soft',
         selected && 'text-text',
-        danger && 'text-danger hover:text-danger focus:text-danger data-[active=true]:text-danger',
+        danger && 'text-danger! hover:text-danger! focus:text-danger! data-[active=true]:text-danger!',
         className,
       )}
     >

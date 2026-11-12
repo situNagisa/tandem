@@ -869,7 +869,7 @@ const DECISIONS = [
     files: [F.button, F.menu],
     need: [
       /border border-transparent text-danger hover:bg-\[var\(--t-bg-hover\)\] hover:text-danger/,
-      /danger && 'text-danger/,
+      /danger && 'text-danger!/,
       /danger \? 'text-danger' : 'text-muted'/,
     ],
     deny: [/bg-danger(?!-soft)/],
