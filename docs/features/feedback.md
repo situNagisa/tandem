@@ -20,14 +20,18 @@
 ## 调整：冻结副本上改 UI（2026-11-12 用户决定）
 
 - 进入：工具条「调整」→ 先截调整前画面，再同步克隆当前视口为静态 stage（fixed、`isolation`、`contain`，跳过 script/style/反馈 UI/toast）；canvas 固化、iframe 换占位、输入框只读、滚动位置恢复。真实界面全程不动，退出 `stage.remove()`。
-- 选中：悬停描边 / 点击选中 / Alt+点击选父级；点图标落到最近的可交互控件。8 手柄改宽高：高度吸附 24/28/32/36/44（±2px），宽度吸附 4px 栅格；面板显示 token 名，未命中标「非标准值」并写进清单。
-- 编辑：换图标只从项目在用的 lucide 集选（`scripts/feedback-adjust-icons.mjs` 扫描导入生成 `adjustIcons.generated.ts`，`check-debug` 校验未过期）；Delete 删除；Ctrl+Z / Ctrl+Shift+Z 撤销重做；改动清单每条可单独回退。
+- 选中：悬停描边 / 点击选中 / Alt+点击选父级 / Tab·Shift+Tab 在兄弟间切换 / Enter 进子级；点图标落到最近的可交互控件。小于 16px 的元素把命中区外扩 8px（指针擦边 6px 也能选中），操作条避开外侧手柄。
+- 手柄：8 个方向改宽高；元素小于 28px 时手柄放到元素外侧，每个手柄 20px 命中区（视觉 10px）；悬停手柄显示 nwse/nesw/ew/ns 光标，悬停可拖动元素显示 grab、按住 Alt 显示 move、拖动中 grabbing（`index.css` 的调整模式规则覆盖反馈模式 pointer）。
+- 尺寸：高度吸附 24/28/32/36/44（±2px），宽度吸附 4px 栅格；面板显示 token 名，未命中标「非标准值」并写进清单。
+- 编辑：换图标只从项目在用的 lucide 集选（`scripts/feedback-adjust-icons.mjs` 扫描导入生成 `adjustIcons.generated.ts`，`check-debug` 校验未过期）；Button/IconButton 换 `ButtonVariant`、Badge 换 `BadgeTone`（只记变体名，class 来自 `ui/*` 导出的映射）；纯文本改文字（记改前/改后）；隐藏只设 `visibility:hidden` 并保留布局占位（与删除区分）；Delete 删除；Ctrl+Z / Ctrl+Shift+Z 撤销重做；改动清单每条可单独回退。
 - 位置：默认拖动是同容器换序（清单写「第 N 个位置 / 在某项之后」）；按住 Alt 自由拖动并显示对齐吸附线，清单记 `translate(dx,dy)`；方向键 1px、Shift 8px。
-- 插入：面板只列 `ui/*` 现有导出与变体（Button/IconButton/Badge/ListRow/Input/Card/列表 Card+ListRow/菜单示意），点按或拖入；容器可「展开编辑」加示意行、每行选 ListRow/Button/Badge 并写行备注；清单标明「示意草稿，按 ui/* 复刻」。
+- 插入：面板只列 `ui/*` 现有导出与变体（Button/IconButton/Badge/ListRow/Input/Card/列表 Card+ListRow/菜单示意），点按或拖入；悬停选项时在面板旁用真实 `ui/*` 组件渲染预览（深浅色跟随当前主题）。插入的控件同样有手柄、吸附 token、可拖动/删除/备注；容器可「展开编辑」加示意行、每行选 ListRow/Button/Badge 并写行备注；清单标明「示意草稿，按 ui/* 复刻」。
 - 备注：元素、单条改动、容器、示意行都可写行为备注，导出时紧跟对应改动。
-- 完成：生成一条普通反馈条目（`mode: adjust`，前后截图 + 结构化清单 + 结构快照 + Markdown），返回反馈模式在抽屉里改文字，再导出 `.tfb`。改动实时进草稿；刷新只恢复清单与说明，需重新冻结。
-- 组件定位：调试版构建保留函数名（`build.rolldownOptions.output.keepNames`），只写「该元素本身由某组件渲染」的名字；拿不到或只是祖先组件时退回标签名 + 最近 `data-testid`/`aria-label`/`data-*` 锚点 + 选择器；React 调试信息可用时写 `file:line`。
-- 限制：副本不可交互（菜单/弹层要先在真实界面打开再进入调整）；不搬副本 HTML，agent 必须按 `ui/*` 重写；发布版无入口（`scan-release` 禁用 `FeedbackAdjust`、`feedbackAdjust`、`data-adjust-`）。
+- 重新冻结：副本不可交互（菜单/弹层要先打开再进入）。工具条「重新冻结」先退出副本、让用户操作真实界面，随后重新克隆并按选择器把已有改动挂回新副本；挂不上的改动在清单标红并在 Markdown 注明「恢复副本后未挂上」。
+- 完成与继续调整：完成生成一条普通反馈条目（`mode: adjust`，前后截图 + 结构化清单 + 结构快照 + Markdown），快照同时保存副本 HTML（`adjustSnapshot.copy`，上限 3MB；含内联样式与 `data-tandem-src`）与尺寸；每条改动仍带 `structure[].styles` 计算样式快照。抽屉里「继续调整」恢复当时的副本、改动与插入控件，在其上增删改后保存更新同一条目（不新建，文本/优先级/标签保留，截图与清单更新）；旧条目没有副本 HTML 时退回「重新冻结 + 重放改动」。草稿落盘与 `.tfb` 里的调整 JSON 同样带副本快照。
+- 组件与源码定位：调试版构建保留函数名（`build.rolldownOptions.output.keepNames`）；`packages/web/debug-source-plugin.mjs` 仅在 debug flavor 给原生 DOM 注 `data-tandem-src="packages/web/src/…:行号"`，清单写该元素自身的 `file:line`；拿不到时退回标签名 + 最近 `data-testid`/`aria-label`/`data-*` 锚点 + 选择器。发布版不加载插件（`scan-release` 禁用 `data-tandem-src`）。
+- 手机：调试版手机预览/移动布局（412×915、触屏）下工具栏、插入面板与悬停预览不越界，触屏点选、拖手柄改大小、完成与继续调整均可用；手柄不再对触摸事件直接返回。
+- 限制：不搬副本 HTML，agent 必须按 `ui/*` 重写；发布版无入口（`scan-release` 禁用 `FeedbackAdjust`、`feedbackAdjust`、`data-adjust-`、`data-tandem-src`）。
 
 ## 截图性能（长会话，R48）
 
@@ -46,4 +50,4 @@
 
 - 加密与跨设备同步不做；录屏 8MB / 60 秒。
 - 桌面草稿目录只在桌面调试版存在；打包时 `feedback-drafts*.js` 必须进 `app.asar`，`scripts/check-debug.mjs` 会检查。
-- 自动检查：`e2e/regression.mjs` 的体验清单导出、草稿恢复与「调整工具」用例；`e2e/release-flavor.mjs` 检查发布版没有调整入口。
+- 自动检查：`e2e/regression.mjs` 的体验清单导出、草稿恢复与「调整工具」用例（含小元素、光标、插入预览、变体/文字/隐藏、重新冻结、继续调整、手机布局）；`e2e/release-flavor.mjs` 检查发布版没有调整入口且没有 `data-tandem-src`。

@@ -1,5 +1,11 @@
 # 进度
 
+## 迭代 78（2026-11-12）反馈「调整」修整：小元素/光标/预览、变体·文字·隐藏、重新冻结与继续调整、调试版源码定位
+- [x] 原话「新增控件列表悬停时需可预览」：插入面板悬停选项时在面板旁用真实 `ui/*` 组件渲染示例，移开消失，深浅色跟随主题。
+- [x] 原话「控件样式太小……无法调整大小，无法选中，鼠标形状不会改变」：小于 16px 元素命中区外扩 8px；Tab/Shift+Tab 切兄弟、Enter 进子级；小元素手柄外置、20px 命中区、方向光标；命中层 grab/move/grabbing。插入的控件（含容器/示意行）同样有手柄、吸附 token、可拖动/删除/备注。
+- [x] 「没做的」六项：Button/IconButton/Badge 变体切换、纯文本改文字、隐藏（保留占位）、手机预览/移动布局可用、重新冻结（退出副本操作真实界面→重新克隆并重放改动，挂不上的标红）、调试版源码定位（`debug-source-plugin.mjs` 仅 debug flavor 注入 `data-tandem-src`，清单写 file:line）。
+- [x] 原话「完成调整后，想再次进入之前调整过的副本修整之前的改动无法进入」：调整快照保存副本 HTML（≤3MB）与改动清单；抽屉「继续调整」恢复副本、改动与插入控件，保存更新同一条目（截图/清单更新，不新建）；草稿与 `.tfb` 同样带快照。
+- 检查：`node scripts/check.mjs --skip-smoke`；regression 的调整用例新增小元素/光标、插入预览、变体/文字/隐藏、重新冻结、继续调整与手机布局；`release-flavor` 断言发布版无调整入口且无 `data-tandem-src`。截图在 `/tmp/fb-adjust-2/`。
 > 更新：2026-11-12。只保留最近 3 轮；更早见 [archive/progress/2026-11.md](archive/progress/2026-11.md)。每轮结束更新这里并删除超出的旧轮次。
 
 ## 迭代 77（2026-11-12）反馈「调整」：冻结副本上改 UI，导出给 agent 实现（P0–P2）
@@ -13,10 +19,3 @@
 - [x] 原话「最新的正在思考输出的轮次没有对应标识…子代理、分叉、主会话都要有」：graph 接口每个会话下发 `running`，客户端按所属会话在各自最新一轮显示 `running-dot`；运行状态变化（`session_updated`）经 `useSessionGraphTree` 的签名重新拉取拓扑（R75）。
 - [x] 检查：decisions-check 新增 `jump-single-spring`/`graph-hover-node`/`graph-running-all-sessions`、更新 `graph-uniform-node`；regression 更新 0220#03 滚轮用例、新增「跳转有动画」与反馈1110 两条。
 - 验证：`node scripts/check.mjs --skip-smoke`；截图（深/浅）`/tmp/fix-1110/`（跳转中间帧、悬停节点、三条线同时运行）。
-
-## 迭代 75（2026-11-12）反馈0220：额度交接可继续/可关闭、文件链接只认明确引用、一轮只留一处操作行
-- [x] #02 原话「额度预算它就没有继续功能…我没办法继续，现在就用不掉这个额度」：交接卡首位加「继续使用当前分组」→ 服务端 `chooseHandoff('continue')` 写会话级 `handoffBypass`、继续本轮，同类提醒不再拦截、冷却 Key 直接重试到上游报错；设置「额度交接」新增 `off`（关闭）真正跳过建卡；`forecast` 只提示不拦截；预算规则停用/删除后 `blockingRule` 不再阻止并加单测（反馈0220#02 / R72）。
-- [x] #04 原话「不能靠字符串识别，只要长得像文件就当成文件」：删除纯文本启发式（`splitFileRefs`/remarkFileLinker），只保留 Markdown 链接与「行内代码 + Host 批量存在性 `POST /api/fs/exist`」；客户端 60s 缓存、同帧合并请求（反馈0220#04 / R06）。
-- [x] #05 原话「只有最后一段需要留空白…中间这些不需要」：`MessageList` 按轮算最后一条 assistant，只有它渲染时间/用量/操作行（反馈0220#05 / R73）。
-- [x] 检查：单测 `handoff`/`budgets`/`fileLinks`；regression 新增 0220#02 两条、#04、#05 共 4 条。
-- 验证：`node scripts/check.mjs --skip-smoke`；截图在 `/tmp/fix-0220c/`。

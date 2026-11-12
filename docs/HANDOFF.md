@@ -52,8 +52,8 @@
 - 不读 git remote 的值、不 push；不连公网；测试 Host 一律 TANDEM_HOME=/tmp/…；不用 pkill -f。
 
 ## 本轮手工操作 / 出错环节（只留最近 5 轮，每轮 ≤5 行）
-- 2026-11-12 反馈1110：跳转动画回到轮次大纲的 `ScrollFollower`（`lib/jump.ts` 的 `createJumpScroller`），滚轮不再取消、也不再逐帧收敛；`MessageList` 只在元素挂载后调 `startJumpScroll`。会话图运行标识靠 graph 接口的 `running` + `useSessionGraphTree` 签名里加 `status`，不轮询。regression 断言动画用 rAF 逐帧采样（≥3 帧变化且单帧位移小于总位移）；悬停/运行两条用演示「子代理层级」场景，运行状态用 `page.route` 改写 graph 响应。跳早期轮时窗口切到顶部会让 scrollTop 被夹到底，`onScroll` 必须按 `jumpingRef` 忽略这段程序滚动，否则窗口被掰回尾部、目标当场卸载（R40 固定轮用例的连带失败就是这么来的）。
 - 2026-11-12 用户批评"实现特别糟糕"：①我把"分叉用 git 图切主线"理解成每个会话各画一张图，子代理又"保守"成单节点分支；②跳转、悬停浮层又各写一套。教训：概念类需求先用一个具体例子（节点/边）写清再派；验收亲自点用户原场景（反馈模式、真实长会话、外部会话）；新交互必须复用已有实现（跳转=轮次大纲那套，浮层=反馈模式能停住的那套）。
-- 2026-11-12 反馈0220#03 跳转：复现要把 `~/.tandem` 复制到 `/tmp/tdm-long` 并把真实会话 jsonl 拼长（>200 条）才会命中懒加载；Playwright 采样要在真实 Host 上跑，`page.mouse.wheel` 前后记录 rAF 帧才能看出「被拉回」；行上的固定按钮会被悬停用量浮层挡住，回归里用 DOM `click()`。
-- 2026-11-12 会话图（反馈0220）：右栏与悬停浮层共用 `layoutSessionGraph`，拓扑来自 `GET /api/sessions/:id/graph`；改布局/组件后先 `npm run build -w @tandem/web` 再跑 regression（Host 服务的是 dist）；会话图虚拟滚动，Playwright 要逐段滚动收集节点；采样坐标取整，否则相邻泳道 tooltip 会串。
-- 2026-11-12 反馈0220：交接「继续/关闭」先改协议 `HandoffPolicy`，服务端判定在 `host/handoff.ts` 与会话级 `handoffBypass`；文件链接只认 Markdown 链接与「行内代码 + `POST /api/fs/exist`」。
+- 2026-11-12 调整工具修整：`data-tandem-src` 由 `packages/web/debug-source-plugin.mjs`（只 debug flavor、`apply:'build'`）用 rolldown `parseSync` 在 JSX 开标签名后插属性，发布版由 `scan-release` 禁词兜底；`metaFor` 先读注入位置，恢复的副本没有原元素映射时直接对副本算 meta。
+- 2026-11-12 调整工具修整：小元素手柄外置后，元素旁操作条要再让 44px 并设 z-134，否则会盖住 se 手柄或落到左侧改动清单下面；插入控件首次 commit 后 ref 才登记 DOM，需要 `useEffect([inserted])` 补一次 bump，选中框/手柄才会出现。
+- 2026-11-12 调整工具修整：继续调整依赖 `adjustSnapshot.copy`（stage.innerHTML）；`buildSnapshot(true)` 只在完成时带，实时草稿带会反复序列化大 HTML。`.tfb` 导出后 store 按现有逻辑清空，所以「继续调整」要在导出前验收。
+- 2026-11-12 调整工具修整：反馈模式 `[data-feedback-ui]` 的 `cursor:pointer !important` 会压掉内联 cursor，调整模式光标必须用 `data-cursor`/`data-resize-cursor` + `index.css` 的 !important 规则；释放副本时用 `adjustReleasedRef` 同时放开捕获层与全局按键拦截。
