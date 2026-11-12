@@ -32,6 +32,8 @@ export interface GraphSession {
   attachTurnId?: string
   /** 该会话正在运行：它最新一轮的节点显示运行动画。 */
   running?: boolean
+  /** 该会话在等待用户输入（待审批 / 回答提问）：它最新一轮的节点显示等待标记。 */
+  waiting?: boolean
   /** 本会话独有的轮次（分叉不含复制来的祖先轮次），对话顺序。 */
   turns: GraphTurn[]
 }
@@ -77,6 +79,8 @@ export interface GraphNode {
   pinned?: boolean
   /** 所属会话正在运行。 */
   running?: boolean
+  /** 所属会话在等待用户输入。 */
+  waiting?: boolean
 }
 
 export type GraphEdgeKind = 'main' | 'subagent' | 'fork'
@@ -372,6 +376,7 @@ export function layoutSessionGraph(
       ...(session.id === activeSessionId ? { current: true } : {}),
       ...(turn.pinned ? { pinned: true } : {}),
       ...(session.running ? { running: true } : {}),
+      ...(session.waiting ? { waiting: true } : {}),
       ...(relation === 'subagent' ? { subagentId: session.id } : {}),
       ...(relation === 'fork' ? { forkSessionId: session.id } : {}),
     })

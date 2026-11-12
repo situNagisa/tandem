@@ -826,6 +826,8 @@ export interface SessionGraphSession {
   attachTurnId?: string;
   /** 该会话正在运行（主会话、分叉、子代理各自独立）：客户端在它最新一轮节点上显示运行动画。 */
   running?: boolean;
+  /** 该会话在等待用户输入（待审批 / 回答提问）：客户端在它最新一轮节点上显示等待标记。 */
+  waiting?: boolean;
   /** 本会话独有的轮次（分叉不含复制来的祖先轮次），按对话顺序。 */
   turns: SessionGraphTurn[];
 }

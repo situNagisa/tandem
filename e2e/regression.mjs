@@ -12387,6 +12387,79 @@ async function main() {
       await page.screenshot({ path: `${dir}/05-hover-row.png` })
     })
 
+    desktop('反馈1603#07：等待输入的会话最新轮有等待标记，运行中/子代理仍有呼吸动画', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const permissionId = state.scenarios.find((item) => item.id === 'permission').sessionIds[0]
+      await openSession(page, permissionId)
+      const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+      const waiting = graph.locator('[data-waiting="true"]').first()
+      await waiting.waitFor({ state: 'visible', timeout: 10_000 })
+      const marker = waiting.locator('[data-marker-ring="waiting"]')
+      await marker.waitFor({ state: 'visible', timeout: 5_000 })
+      const latestRow = await page.evaluate((sessionId) => {
+        const rows = [...document.querySelectorAll('[data-graph-turn-id]')]
+          .filter((el) => el.getAttribute('data-session-id') === sessionId)
+          .map((el) => Number(el.getAttribute('data-row')))
+        return rows.length ? Math.min(...rows) : null
+      }, permissionId)
+      assert.equal(
+        Number(await waiting.getAttribute('data-row')),
+        latestRow,
+        '等待标记不在该会话最新一轮',
+      )
+      const style = await marker.evaluate((el) => ({
+        className: el.className,
+        animation: getComputedStyle(el).animationName,
+        background: getComputedStyle(el).backgroundColor,
+      }))
+      assert.match(style.className, /bg-accent/, '等待标记没有复用侧栏待审批色')
+      assert.match(style.className, /running-dot/, '等待标记没有呼吸动画')
+      assert.equal(style.animation, 'tandem-breathe', `等待标记动画不对：${style.animation}`)
+      // tooltip 必须是等待输入的说明，而不是轮次标题。标记在呼吸动画中，直接用指针坐标悬停。
+      const markerBox = await marker.boundingBox()
+      assert.ok(markerBox, '等待标记没有可悬停区域')
+      await page.mouse.move(markerBox.x + markerBox.width / 2, markerBox.y + markerBox.height / 2)
+      await page.waitForFunction(
+        () => document.getElementById('tandem-tooltip')?.hasAttribute('data-open'),
+        null,
+        { timeout: 5_000 },
+      )
+      const tip = await page.locator('#tandem-tooltip').innerText()
+      assert.equal(tip.trim(), '等待你的输入/审批', `等待标记 tooltip 不对：${tip.trim()}`)
+      await page.mouse.move(4, 4)
+      const dir = '/tmp/fix-1603b'
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: `${dir}/07-waiting.png` })
+
+      // 子代理在自己的泳道上运行时也显示 running-dot。
+      const subState = await api(base, token, '/api/demo')
+      const [mainId, childId] = subState.scenarios.find((item) => item.id === 'subagents').sessionIds
+      await page.route(/\/api\/sessions\/[^/]+\/graph$/, async (route) => {
+        const response = await route.fetch()
+        const json = await response.json()
+        for (const session of json.sessions ?? []) {
+          if (session.id === childId) session.running = true
+        }
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(json) })
+      })
+      await openSession(page, mainId)
+      const childRunning = page.locator(
+        `[data-group="graph"] [data-graph-turn-id][data-session-id="${childId}"][data-running="true"]`,
+      )
+      await childRunning.waitFor({ state: 'visible', timeout: 10_000 })
+      const childRing = childRunning.locator('[data-marker-ring="running"]')
+      await childRing.waitFor({ state: 'visible', timeout: 5_000 })
+      const childStyle = await childRing.evaluate((el) => ({
+        className: el.className,
+        animation: getComputedStyle(el).animationName,
+      }))
+      assert.match(childStyle.className, /running-dot/, '子代理运行标记没有复用 running-dot')
+      assert.equal(childStyle.animation, 'tandem-breathe', '子代理运行标记没有呼吸动画')
+      await page.unroute(/\/api\/sessions\/[^/]+\/graph$/)
+    })
+
     desktop('会话图泳道线 tooltip 以指针定位并完整显示在视口内（反馈1926#10）', async (page) => {
       let state = await api(base, token, '/api/demo')
       if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })

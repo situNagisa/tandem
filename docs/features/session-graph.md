@@ -19,6 +19,7 @@
 - 轨道式（反馈2108#01 打分卡选 B）：所有连线 2px、正交圆角 6px；列复用（`layout.ts` 的 `assignColumns`）：行区间不相交的分支共用一列，同轮并行或嵌套的分支占相邻列，水平线只在转折点相交（单测 `layout.test.ts`）。列距 14px（给连线命中带留空间，反馈0220#07）。
 - 子代理与分叉靠「是否汇回」区分：子代理有 `data-merge` 汇回线；分叉不合并且会话起点节点行尾写「分叉」。
 - 当前所在轮用节点外圈 ring 高亮；固定轮带小图钉。**任何正在运行的会话**（主会话、分叉、子代理）各自最新一轮节点外圈都用与侧栏「运行中」相同的 `running-dot` 呼吸动画，一眼看出哪条线在跑（反馈2156#03 / 反馈1110，尊重 `prefers-reduced-motion`）。
+- **等待用户输入**（待审批 / 回答提问）的会话，最新一轮节点用与侧栏「待审批」同色的标记（`bg-accent` + `running-dot` 呼吸），tooltip 为「等待你的输入/审批」；主会话、分叉、子代理与悬停浮层同样适用（反馈1603#07）。
 - 颜色要求节点与背景 ≥ 3:1，相邻泳道色相拉开（色弱友好）。文字 ≥12px。
 
 ## 交互
@@ -31,7 +32,7 @@
 
 ## 数据来源与关联
 
-- **`GET /api/sessions/:id/graph` → `SessionGraphTree`**（协议在 `packages/protocol`）：只回树内所有会话的轮次 id / 首行摘要、会话父子关系（分叉 `forkedFrom`、子代理 `parentId`）、**接入点**（分叉点轮次 / 派发子代理的轮次，可能属于祖先会话）与**运行状态** `running`，不下发消息体。分叉复制历史（消息 id 保留）的去重、跨会话分叉点解析、`parentToolUseId → 轮次` 的映射都在服务端做。
+- **`GET /api/sessions/:id/graph` → `SessionGraphTree`**（协议在 `packages/protocol`）：只回树内所有会话的轮次 id / 首行摘要、会话父子关系（分叉 `forkedFrom`、子代理 `parentId`）、**接入点**（分叉点轮次 / 派发子代理的轮次，可能属于祖先会话）与**运行状态** `running` / `waiting`（`waiting_permission`），不下发消息体。分叉复制历史（消息 id 保留）的去重、跨会话分叉点解析、`parentToolUseId → 轮次` 的映射都在服务端做。
 - 客户端 `useSessionGraphTree` 按树的根缓存：同一棵树里切主会话/分叉不重新请求，树内会话更新时间或运行状态变化（新轮、新分叉、子代理开始/结束）时重新拉取。
 - **子代理**：`SessionSummary.parentId` 形成树；服务端优先用 `parentToolUseId`（Task 工具的 tool_use id）定位到发起它的那一轮，旧数据按 Task description / 子代理标题兜底。
 - **分叉**：只有显式分叉会持久化（`POST /api/sessions/:id/fork` 写入 `forkedFrom`）。编辑并重发只是新增一条用户消息；回退会截断消息，不保留被替换的旧分支，因此会话图不把这两种情况画成持久分支。分支名取分叉会话标题。

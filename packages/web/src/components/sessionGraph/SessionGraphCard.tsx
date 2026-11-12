@@ -34,6 +34,7 @@ export function SessionGraphCard({
   const agentSession = useUiStore((s) => s.agentSession)
   const activeTurn = useTurnNavStore((s) => s.active)
   const running = summary?.status === 'running'
+  const waiting = summary?.status === 'waiting_permission'
   const tree = useSessionGraphTree(hostId, sessionId)
 
   const input = useMemo(() => {
@@ -89,6 +90,7 @@ export function SessionGraphCard({
           layout={layout}
           activeTurn={activeTurn}
           running={running}
+          waiting={waiting}
           onOpen={open}
           onOpenSession={openSessionNode}
           height={full ? 'full' : graphCardHeight(layout.rows)}

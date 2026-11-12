@@ -174,11 +174,14 @@ export function sessionGraph(
 
   const sessions: SessionGraphSession[] = members.map((rec) => {
     const turns = ownTurns.get(rec.id) ?? [];
+    // 待审批/等待回答也是用户要处理的状态：下发给会话图，在最新一轮显示等待标记（反馈1603#07）。
+    const waiting = rec.status === 'waiting_permission';
     const base: SessionGraphSession = {
       id: rec.id,
       title: rec.title || '未命名会话',
       kind: kindOf(rec),
       ...(rec.status === 'running' ? { running: true } : {}),
+      ...(waiting ? { waiting: true } : {}),
       turns: turns.map(({ start: _start, ...turn }) => turn),
     };
     if (rec.forkedFrom) {
