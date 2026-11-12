@@ -8,8 +8,8 @@ import { useAppStore } from '../../store/useAppStore'
 const cache = new Map<string, SessionGraphTree>()
 
 /**
- * 会话树拓扑：根 + 递归分叉 + 所有子代理的轮次摘要与接入关系。
- * 按树的根缓存；树内任何会话的更新时间变化（新轮次、分叉、子代理结束）时重新拉取。
+ * 会话树拓扑：根 + 递归分叉 + 所有子代理的轮次摘要、接入关系与运行状态。
+ * 按树的根缓存；树内任何会话的更新时间或运行状态变化（新轮次、分叉、子代理开始/结束）时重新拉取。
  */
 export function useSessionGraphTree(
   hostId: string | null,
@@ -26,7 +26,7 @@ export function useSessionGraphTree(
       .filter((session) => sessionTreeRootId(session, byId) === root)
       .sort((a, b) => a.id.localeCompare(b.id))
     const signature = members
-      .map((session) => `${session.id}:${session.updatedAt}:${session.title}`)
+      .map((session) => `${session.id}:${session.updatedAt}:${session.status}:${session.title}`)
       .join('|')
     return { rootId: root, signature }
   }, [sessions, sessionId])

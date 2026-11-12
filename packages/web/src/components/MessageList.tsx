@@ -4,7 +4,7 @@ import { GitFork } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useSessionView } from './session/SessionScope'
 import { cn } from '../lib/cn'
-import { isJumpCurrent, placeElement, settleJump, subscribeJump, type JumpRequest } from '../lib/jump'
+import { isJumpCurrent, settleJump, startJumpScroll, subscribeJump, type JumpRequest } from '../lib/jump'
 import { MESSAGE_PAGE_SIZE, gapMessage } from '../lib/messagePaging'
 import { activeToolUses } from '../lib/turnActivity'
 import { navigate } from '../lib/router'
@@ -466,6 +466,11 @@ function MessageListInner({
    * 跳到早期轮次时把窗口移到目标附近，窗口外的消息不挂载，由占位条代替。
    */
   const [windowAnchorId, setWindowAnchorId] = useState<string | null>(null)
+  /**
+   * 跳转进行中：挂载窗口跟着目标走，期间程序滚动的 scroll 事件不能把窗口掰回尾部
+   * （跳到早期轮时窗口切到顶部会让 scrollTop 被夹到底，旧逻辑据此误判「用户回到底部」）。
+   */
+  const jumpingRef = useRef(false)
   const anchorIndex = windowAnchorId
     ? messages.findIndex((message) => message.id === windowAnchorId)
     : -1
@@ -550,7 +555,8 @@ function MessageListInner({
     const onScroll = () => {
       const distance = box.scrollHeight - box.scrollTop - box.clientHeight
       // 锚定窗口往下滚到头：先扩大挂载窗口；已经到会话末尾就恢复跟随尾部。
-      if (windowAnchorId && distance < 100) {
+      // 跳转动画期间不动窗口（窗口切换导致 scrollTop 被夹到底时不能误判成回到底部）。
+      if (windowAnchorId && !jumpingRef.current && distance < 100) {
         if (windowTo < messages.length && windowSize < MAX_WINDOW) {
           setWindowSize((size) => Math.min(messages.length, MAX_WINDOW, size + BACKFILL_STEP))
         } else {
@@ -621,7 +627,7 @@ function MessageListInner({
   }
 
   // 定位：轮次大纲/会话图/搜索/收件箱/上下文面板共用 lib/jump 这一个实现。
-  // 目标未加载时只取它所在片段；挂载后在窗口里一次定位、最多一次补正；用户滚动立即取消。
+  // 目标未加载时只取它所在片段；挂载后用轮次大纲的弹簧动画滑到落点，结束后不再写 scrollTop。
   const [jumpTick, setJumpTick] = useState(0)
   const jumpRef = useRef<JumpRequest | null>(null)
   const jumpLoadRef = useRef<string | null>(null)
@@ -650,10 +656,12 @@ function MessageListInner({
     const request = jumpRef.current
     if (!request) return
     if (!isJumpCurrent(request.token)) {
-      // 用户已经接管滚动（或又有新的一次跳转）：不再定位。
+      // 又有新的一次跳转（或已结束）：不再定位。
       jumpRef.current = null
+      jumpingRef.current = false
       return
     }
+    jumpingRef.current = true
     const root = rootRef.current
     if (!root) return
     const messageId = request.messageId
@@ -686,7 +694,10 @@ function MessageListInner({
               }
               jumpLoadRef.current = null
               // 取不到这一段就结束这次跳转，别让它一直挂着等后续消息变化。
-              if (!ok) settleJump(request.token)
+              if (!ok) {
+                settleJump(request.token)
+                jumpingRef.current = false
+              }
               bumpJump()
             })
         }
@@ -708,13 +719,9 @@ function MessageListInner({
       find()?.querySelector<HTMLElement>('.tool-row[aria-expanded="false"]')?.click()
     }
     jumpPlacementRef.current?.()
-    jumpPlacementRef.current = placeElement(box, find, {
-      align: request.align,
-      shouldWrite: () => isJumpCurrent(request.token),
-      done: () => {
-        jumpPlacementRef.current = null
-        settleJump(request.token)
-      },
+    jumpPlacementRef.current = startJumpScroll(request.token, box, find, request.align, () => {
+      jumpPlacementRef.current = null
+      jumpingRef.current = false
     })
   }, [
     jumpTick,

@@ -824,6 +824,8 @@ export interface SessionGraphSession {
   attachSessionId?: string;
   /** 接入轮次 id：分叉点轮次 / 派发子代理的轮次。 */
   attachTurnId?: string;
+  /** 该会话正在运行（主会话、分叉、子代理各自独立）：客户端在它最新一轮节点上显示运行动画。 */
+  running?: boolean;
   /** 本会话独有的轮次（分叉不含复制来的祖先轮次），按对话顺序。 */
   turns: SessionGraphTurn[];
 }

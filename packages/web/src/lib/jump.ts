@@ -1,11 +1,12 @@
 /**
  * 会话定位：轮次大纲、会话图、搜索、收件箱、上下文面板共用这一个实现。
  *
- * - 一次跳转只派发一次：目标消息未加载时只取它所在的片段，挂载后在当前帧实际定位，
- *   随后只在布局还没稳定时（≤0.3s）逐帧收敛落点，稳定即停；
- * - 用户滚轮 / 触摸 / 拖动滚动条 / 按键滚动会立即取消这次跳转剩下的定位与补正，
- *   不会在用户滚动时把视口拉回去（反馈0220#03 / R68）；
- * - 不再用定时轮询反复派发事件：新一次跳转直接替换上一次，MessageList 挂载时领取尚未完成的跳转。
+ * - 一次跳转只派发一次：目标消息未加载时只取它所在的片段，挂载后用轮次大纲同款弹簧动画滑到落点
+ *   （长距离先瞬移到目标前约 1 屏再滑入）；到达后最多复核一次落点（content-visibility 的行
+ *   渲染后才变成真实高度），之后不再写 scrollTop；
+ * - 用户滚轮不中断这次跳转，动画自然结束；结束后视口归用户，不会有定时补正把视口拉回去
+ *   （反馈1110：不需要滑轮中断跳转，也不要一直轮询锁视图）；
+ * - 不派发定时轮询事件：新一次跳转直接替换上一次，MessageList 挂载时领取尚未完成的跳转。
  */
 
 export const JUMP_EVENT = 'tandem-jump-message'
@@ -25,63 +26,20 @@ type JumpListener = (request: JumpRequest) => void
 
 let seq = 0
 let active: JumpRequest | null = null
-let detachCancel: (() => void) | null = null
 let expireTimer = 0
 const listeners = new Set<JumpListener>()
 
-const CANCEL_KEYS = new Set(['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' '])
-const CANCEL_EVENTS = ['wheel', 'touchstart', 'touchmove', 'pointerdown'] as const
-
-function disarm(): void {
-  detachCancel?.()
-  detachCancel = null
-  window.clearTimeout(expireTimer)
-  expireTimer = 0
-}
-
-function cancelActive(): void {
-  if (!active) return
-  seq += 1
-  active = null
-  disarm()
-}
-
-/** 用户接管滚动：取消当前跳转剩下的定位/补正。程序写入 scrollTop 不会派发这些事件。 */
-function armCancel(): void {
-  if (detachCancel) return
-  const cancel = () => cancelActive()
-  const onKey = (event: KeyboardEvent) => {
-    if (!CANCEL_KEYS.has(event.key)) return
-    const target = event.target as HTMLElement | null
-    if (
-      target &&
-      (target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.tagName === 'SELECT' ||
-        target.isContentEditable)
-    ) {
-      return
-    }
-    cancel()
-  }
-  for (const type of CANCEL_EVENTS) window.addEventListener(type, cancel, { passive: true, capture: true })
-  window.addEventListener('keydown', onKey, true)
-  detachCancel = () => {
-    for (const type of CANCEL_EVENTS) window.removeEventListener(type, cancel, true)
-    window.removeEventListener('keydown', onKey, true)
-  }
-}
-
-/** 跳转请求是否仍然有效（用户还没接管滚动、也没有发起新的跳转）。 */
+/** 跳转请求是否仍然有效（没有新的跳转替换它）。 */
 export function isJumpCurrent(token: number): boolean {
   return active?.token === token
 }
 
-/** 定位完成（或放弃）：释放取消监听。 */
+/** 定位完成（或放弃）：之后的挂载不再领取这次跳转。 */
 export function settleJump(token: number): void {
   if (!isJumpCurrent(token)) return
   active = null
-  disarm()
+  window.clearTimeout(expireTimer)
+  expireTimer = 0
 }
 
 /**
@@ -98,7 +56,6 @@ export function subscribeJump(listener: JumpListener): () => void {
 
 export function jumpTo(target: JumpTarget): void {
   if (!target.messageId && !target.toolUseId) return
-  cancelActive()
   const token = ++seq
   active = {
     token,
@@ -106,9 +63,11 @@ export function jumpTo(target: JumpTarget): void {
     ...(target.toolUseId ? { toolUseId: target.toolUseId } : {}),
     ...(target.align ? { align: target.align } : {}),
   }
-  armCancel()
   // 目标一直没挂载（网络失败/视图已切走）时自动失效，避免下一次挂载的无关注释去领取旧跳转。
-  expireTimer = window.setTimeout(() => cancelActive(), 15_000)
+  window.clearTimeout(expireTimer)
+  expireTimer = window.setTimeout(() => {
+    if (active?.token === token) active = null
+  }, 15_000)
   // ChatView 等只需要知道「正在跳转」的观察者：停止贴底跟随。
   window.dispatchEvent(
     new CustomEvent(JUMP_EVENT, {
@@ -128,59 +87,204 @@ export function focusTool(toolUseId: string | undefined): void {
   if (toolUseId) jumpTo({ toolUseId })
 }
 
-/** 目标相对视口该落的位置：贴顶（大纲逐轮切换）或居中；比视口还高时都贴顶。 */
-function targetOffset(box: HTMLElement, el: HTMLElement, align: JumpTarget['align']): number {
+function reducedMotion(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+/** 目标相对滚动区该落的 scrollTop：贴顶（大纲逐轮切换）或居中；比视口还高时贴顶。 */
+function targetScrollTop(box: HTMLElement, el: HTMLElement, align?: JumpTarget['align']): number {
   const view = box.getBoundingClientRect()
   const rect = el.getBoundingClientRect()
   const gap =
     align === 'start' || rect.height >= box.clientHeight - 32
       ? 16
       : (box.clientHeight - rect.height) / 2
-  return rect.top - view.top - gap
+  const max = Math.max(0, box.scrollHeight - box.clientHeight)
+  return Math.min(max, Math.max(0, box.scrollTop + rect.top - view.top - gap))
+}
+
+const FOLLOW_K = 240
+const FOLLOW_C = 31
+
+interface JumpScroller {
+  /** 每帧重新取目标 scrollTop（按消息 id 找元素，跳过 content-visibility 的估算高度）。 */
+  to(locate: () => number | null, done: () => void): void
+  cancel(): void
 }
 
 /**
- * 把目标放到滚动区指定落点（中线 / 贴顶）。content-visibility 的行在绘制后才变成真实高度，
- * 所以落点稳定前逐帧收敛几次（≤20 帧），稳定三帧就收尾；不会在稳定后继续写。
- * `find` 每次重新取元素（目标可能刚挂载）；`shouldWrite` 在用户接管滚动后返回 false。
+ * 对话区滚动跟随：临界阻尼弹簧追一个"实时目标"（轮次大纲原来的跳转动画）。
+ * 距离很远时先瞬移到目标前约 1 屏，再弹簧滑入，避免长距离动画中途反复改落点。
+ * 到达后复核一次落点（渲染后行高变真实值）就结束，不轮询、不按定时器反复写 scrollTop。
+ * 用户滚轮不打断动画（滚动锚定/用户滚动会被并入当前位置，弹簧随即继续追目标）。
  */
-export function placeElement(
+function createJumpScroller(getRoot: () => HTMLElement | null): JumpScroller {
+  let raf = 0
+  let locate: (() => number | null) | null = null
+  let onDone: (() => void) | null = null
+  let pos = 0
+  let vel = 0
+  let last = 0
+  let written = 0
+  let verifyTimer = 0
+  let verifies = 0
+  let teleported = false
+  let began = 0
+
+  const settle = () => {
+    const done = onDone
+    locate = null
+    onDone = null
+    done?.()
+  }
+
+  const stop = () => {
+    if (raf) cancelAnimationFrame(raf)
+    raf = 0
+    window.clearTimeout(verifyTimer)
+    locate = null
+    onDone = null
+  }
+
+  const verify = (keep: () => number | null) => {
+    const root = getRoot()
+    if (!root || locate !== keep) return
+    const target = keep()
+    const max = Math.max(0, root.scrollHeight - root.clientHeight)
+    if (target == null || Math.abs(Math.min(max, Math.max(0, target)) - root.scrollTop) <= 3) {
+      settle()
+      return
+    }
+    // 渲染后行高变成真实值：以当前位置重新滑一次，之后不再写。
+    locate = keep
+    teleported = true
+    pos = root.scrollTop
+    vel = 0
+    written = root.scrollTop
+    last = performance.now()
+    began = last
+    raf = requestAnimationFrame(frame)
+  }
+
+  const frame = (now: number) => {
+    raf = 0
+    if (!locate) return
+    const root = getRoot()
+    if (!root) return stop()
+    const dt = Math.min(0.033, Math.max(0.001, (now - last) / 1000))
+    last = now
+    // 滚动锚定会在 content-visibility 渲染后改 scrollTop：并入当前位置继续追。
+    if (Math.abs(root.scrollTop - written) > 1) pos = root.scrollTop
+    const target = locate()
+    if (target == null) return settle()
+    const max = Math.max(0, root.scrollHeight - root.clientHeight)
+    const goal = Math.min(max, Math.max(0, target))
+    if (!teleported) {
+      teleported = true
+      const reach = root.clientHeight * 2.2
+      if (Math.abs(goal - pos) > reach) {
+        pos = goal - Math.sign(goal - pos) * root.clientHeight * 1.1
+        vel = 0
+      }
+    }
+    const n = Math.max(1, Math.ceil(dt / 0.004))
+    const h = dt / n
+    for (let i = 0; i < n; i++) {
+      vel += (FOLLOW_K * (goal - pos) - FOLLOW_C * vel) * h
+      pos += vel * h
+    }
+    const done =
+      (Math.abs(goal - pos) < 0.5 && Math.abs(vel) < 6) || now - began >= 900
+    if (done) pos = goal
+    root.scrollTop = pos
+    written = root.scrollTop
+    if (done) {
+      const keep = locate
+      if (verifies < 2) {
+        verifies++
+        verifyTimer = window.setTimeout(() => verify(keep), 140)
+      } else {
+        settle()
+      }
+      return
+    }
+    raf = requestAnimationFrame(frame)
+  }
+
+  return {
+    to(next, done) {
+      const root = getRoot()
+      if (!root) {
+        done()
+        return
+      }
+      window.clearTimeout(verifyTimer)
+      locate = next
+      onDone = done
+      verifies = 0
+      const max = () => Math.max(0, root.scrollHeight - root.clientHeight)
+      if (reducedMotion()) {
+        if (raf) cancelAnimationFrame(raf)
+        raf = 0
+        const t = next()
+        if (t != null) {
+          root.scrollTop = Math.min(max(), Math.max(0, t))
+          written = root.scrollTop
+        }
+        pos = root.scrollTop
+        vel = 0
+        teleported = true
+        verifyTimer = window.setTimeout(() => verify(next), 140)
+        return
+      }
+      teleported = false
+      if (!raf) {
+        pos = root.scrollTop
+        written = root.scrollTop
+        vel = 0
+        last = performance.now()
+        began = last
+        raf = requestAnimationFrame(frame)
+      }
+    },
+    cancel: stop,
+  }
+}
+
+let scroller: { box: HTMLElement; follow: JumpScroller } | null = null
+
+/**
+ * 用一个实例把视口滑到目标（轮次大纲/会话图/搜索/收件箱/子代理返回共用）。
+ * `find` 每次重新取元素；返回的函数取消这次动画（列表卸载时调用）。
+ */
+export function startJumpScroll(
+  token: number,
   box: HTMLElement,
   find: () => HTMLElement | null,
-  options: { shouldWrite?: () => boolean; done?: () => void; align?: JumpTarget['align'] } = {},
+  align?: JumpTarget['align'],
+  onDone?: () => void,
 ): () => void {
-  let raf = 0
-  let stopped = false
-  let steady = 0
-  let frames = 0
-  const allowed = () => !stopped && (options.shouldWrite?.() ?? true)
-  const finish = () => {
-    if (stopped) return
-    stopped = true
-    cancelAnimationFrame(raf)
-    options.done?.()
+  if (!isJumpCurrent(token)) {
+    onDone?.()
+    return () => {}
   }
-  const step = () => {
-    raf = 0
-    if (!allowed()) return finish()
-    const el = find()
-    if (!el) return finish()
-    const delta = targetOffset(box, el, options.align)
-    if (Math.abs(delta) > 4) {
-      const max = Math.max(0, box.scrollHeight - box.clientHeight)
-      box.scrollTop = Math.min(max, Math.max(0, box.scrollTop + delta))
-      steady = 0
-    } else if (++steady >= 3 && frames >= 4) {
-      return finish()
-    }
-    // content-visibility 的行在绘制后才变成真实高度：落点稳定前逐帧收敛（≤20 帧、约 0.3s），
-    // 连续几帧不再变化就收尾；用户一滚动 allowed 变 false，立即停止，不再把视口拉回去。
-    if (++frames >= 20) return finish()
-    raf = requestAnimationFrame(step)
+  if (!scroller || scroller.box !== box) {
+    scroller?.follow.cancel()
+    scroller = { box, follow: createJumpScroller(() => box) }
   }
-  step()
+  const current = scroller.follow
+  current.to(
+    () => {
+      const el = find()
+      return el ? targetScrollTop(box, el, align) : null
+    },
+    () => {
+      settleJump(token)
+      onDone?.()
+    },
+  )
   return () => {
-    cancelAnimationFrame(raf)
-    stopped = true
+    current.cancel()
+    onDone?.()
   }
 }

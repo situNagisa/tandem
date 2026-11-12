@@ -438,8 +438,8 @@ export function TurnRail({
       if (opts?.recenter !== false) scene?.setCenter(viewPos)
     }
     if (!targetId) return
-    // 与会话图/搜索/收件箱同一个跳转实现：未加载时只取该轮所在片段，挂载后一次定位；
-    // 用户一旦滚动就取消剩下的定位（反馈0220#03）。
+    // 与会话图/搜索/收件箱同一个跳转实现：未加载时只取该轮所在片段，挂载后弹簧动画滑到贴顶
+    // （反馈0220#03 / 反馈1110）。
     setLoadingTurnId(loadedIds.has(targetId) ? null : targetId)
     focusMessage(targetId, 'start')
   }, [loadedIds])

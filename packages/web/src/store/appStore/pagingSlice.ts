@@ -91,7 +91,17 @@ export function createPagingSlice(
     const view = get().sessionViews[key]
     if (!view) return false
     if (view.messages.some((message) => message.id === messageId)) return true
-    if (view.loadingSegment) return false
+    if (view.loadingSegment) {
+      // 同一会话同一时刻只取一段（固定轮加载、大纲/收件箱跳转可能同时要取）：
+      // 后来者等前一次取完再看目标是否已经到位，而不是直接失败（跳转就会点了没反应）。
+      for (let i = 0; i < 25 && get().sessionViews[key]?.loadingSegment; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      const settled = get().sessionViews[key]
+      if (!settled) return false
+      if (settled.messages.some((message) => message.id === messageId)) return true
+      if (settled.loadingSegment) return false
+    }
     const host = getHost(hostId)
     if (!host) return false
     patchView(hostId, sessionId, (active) => ({ ...active, loadingSegment: true }))

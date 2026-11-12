@@ -3501,7 +3501,55 @@ async function main() {
       await page.screenshot({ path: '/tmp/jump-0220/reg-unified.png' })
     })
 
-    desktop('跳转后用户滚动不被拉回（反馈0220#03 R68）', async (page) => {
+    desktop('跳转有动画：点击后 scrollTop 在 ≥3 帧内逐步变化（反馈1110）', async (page) => {
+      await openSession(page, 'long')
+      const nodes = page.locator('[data-group="graph"] [data-graph-turn-id]')
+      await nodes.first().waitFor({ timeout: 10_000 })
+      const count = await nodes.count()
+      await page.evaluate(() => {
+        window.__scroll = { on: true, samples: [] }
+        const tick = () => {
+          const box = document.querySelector('.chat-scroll')
+          if (!window.__scroll.on) return
+          window.__scroll.samples.push(box.scrollTop)
+          requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      })
+      await nodes.nth(Math.max(0, Math.floor(count * 0.25))).click()
+      await page.waitForTimeout(1400)
+      const samples = await page.evaluate(() => {
+        window.__scroll.on = false
+        return window.__scroll.samples
+      })
+      const start = samples[0]
+      const final = samples[samples.length - 1]
+      assert.ok(Math.abs(final - start) > 200, `跳转没有产生位移：${start} → ${final}`)
+      const steps = []
+      for (let i = 1; i < samples.length; i++) {
+        const delta = samples[i] - samples[i - 1]
+        if (Math.abs(delta) >= 1) steps.push(delta)
+      }
+      assert.ok(steps.length >= 3, `跳转只有 ${steps.length} 帧在滚动，像是一次跳到位（没有动画）`)
+      const total = Math.abs(final - start)
+      const biggest = Math.max(...steps.map(Math.abs))
+      assert.ok(biggest < total, `跳转在一帧内完成了全部 ${total}px 位移，没有动画`)
+      // 动画中间帧截图（深/浅）：再点一次，在弹簧滑入途中取帧。
+      const dir = '/tmp/fix-1110'
+      mkdirSync(dir, { recursive: true })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await nodes.nth(Math.max(0, Math.floor(count * 0.7))).click()
+      await page.waitForTimeout(90)
+      await page.screenshot({ path: `${dir}/jump-anim-mid-dark.png` })
+      await page.waitForTimeout(1400)
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
+      await nodes.nth(Math.max(0, Math.floor(count * 0.15))).click()
+      await page.waitForTimeout(90)
+      await page.screenshot({ path: `${dir}/jump-anim-mid-light.png` })
+      await page.screenshot({ path: '/tmp/jump-0220/reg-anim.png' })
+    })
+
+    desktop('跳转动画结束后不再写 scrollTop、之后滚轮不被拉回（反馈0220#03 R68）', async (page) => {
       await openSession(page, 'long')
       const nodes = page.locator('[data-group="graph"] [data-graph-turn-id]')
       await nodes.first().waitFor({ timeout: 10_000 })
@@ -3517,7 +3565,15 @@ async function main() {
         requestAnimationFrame(tick)
       })
       await nodes.nth(Math.floor(count * 0.6)).click()
-      await page.waitForTimeout(200)
+      // 弹簧动画 + 落点复核应在 1.5s 内结束：之后 scrollTop 必须完全静止（不再轮询锁视图）。
+      await page.waitForTimeout(1500)
+      const settledAt = await page.evaluate(() => window.__scroll.samples.length)
+      await page.waitForTimeout(700)
+      const idle = await page.evaluate((from) => window.__scroll.samples.slice(from), settledAt)
+      assert.ok(idle.length > 20, `静止期采样帧太少：${idle.length}`)
+      const drift = Math.max(...idle) - Math.min(...idle)
+      assert.ok(drift <= 1, `跳转动画结束后仍在写 scrollTop（${drift}px）`)
+      // 之后用户滚轮不再被任何补正拉回。
       const box = await page.locator('.chat-scroll').boundingBox()
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
       await page.evaluate(() => (window.__scroll.wheelAt = window.__scroll.samples.length))
@@ -3525,7 +3581,7 @@ async function main() {
         await page.mouse.wheel(0, -160)
         await page.waitForTimeout(180)
       }
-      await page.waitForTimeout(1500)
+      await page.waitForTimeout(1200)
       const data = await page.evaluate(() => {
         window.__scroll.on = false
         return window.__scroll
@@ -12159,6 +12215,124 @@ async function main() {
         '会话图运行中动画与侧栏运行中不一致',
       )
       await running.waitFor({ state: 'detached', timeout: 60_000 }).catch(() => {})
+    })
+    desktop('反馈1110：会话图悬停的节点额外放大加外圈，同线其他节点不变', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const scenario = state.scenarios.find((item) => item.id === 'subagents')
+      assert.ok(scenario?.sessionIds?.length >= 4, '演示子代理场景缺少子代理/分叉会话')
+      const mainId = scenario.sessionIds[0]
+      await openSession(page, mainId)
+      const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+      const nodes = graph.locator(`[data-graph-turn-id][data-session-id="${mainId}"]`)
+      await nodes.first().waitFor({ timeout: 10_000 })
+      assert.ok((await nodes.count()) >= 2, '同一会话的节点不足两个，无法比较悬停差异')
+      await nodes.first().hover()
+      const info = await page.evaluate((sessionId) => {
+        const all = [...document.querySelectorAll('[data-group="graph"] [data-graph-turn-id]')].filter(
+          (el) => el.getAttribute('data-session-id') === sessionId,
+        )
+        const dot = (el) => el.querySelector('[data-marker="circle"]')
+        const shape = (el) =>
+          el
+            ? {
+                hovered: el.getAttribute('data-hovered') === 'true',
+                size: dot(el).getBoundingClientRect().width,
+                shadow: getComputedStyle(dot(el)).boxShadow,
+                bg: getComputedStyle(el).backgroundColor,
+              }
+            : null
+        const hovered = all.find((el) => el.getAttribute('data-hovered') === 'true')
+        return { count: all.length, hovered: shape(hovered), other: shape(all.find((el) => el !== hovered)) }
+      }, mainId)
+      assert.ok(info.hovered, '悬停的节点没有 data-hovered')
+      assert.ok(info.other, '找不到同线的其他节点')
+      assert.equal(info.hovered.size, 10, `悬停节点没有放大到 10px（${info.hovered.size}）`)
+      assert.equal(info.other.size, 8, `同线其他节点也被放大了（${info.other.size}）`)
+      assert.equal(info.other.hovered, false, '同线其他节点也被标成悬停')
+      assert.notEqual(info.hovered.shadow, 'none', '悬停节点没有外圈')
+      assert.equal(
+        info.other.bg,
+        info.hovered.bg,
+        '悬停节点与同线其他节点的行背景不一致（整条线高亮应保持）',
+      )
+      const dir = '/tmp/fix-1110'
+      mkdirSync(dir, { recursive: true })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.waitForTimeout(150)
+      await page.screenshot({ path: `${dir}/hover-node-dark.png` })
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
+      await page.waitForTimeout(150)
+      await page.screenshot({ path: `${dir}/hover-node-light.png` })
+    })
+
+
+    desktop('反馈1110：会话图所有运行中的会话都在最新轮显示运行动画', async (page) => {
+      let state = await api(base, token, '/api/demo')
+      if (!state.active) state = await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const scenario = state.scenarios.find((item) => item.id === 'subagents')
+      assert.ok(scenario?.sessionIds?.length >= 4, '演示子代理场景缺少子代理/分叉会话')
+      const [mainId, childId, , forkId] = scenario.sessionIds
+      // 真实运行状态由 Host 的 status 下发：这里拦截拓扑响应同时标记主会话/子代理/分叉在运行。
+      const runningIds = new Set([mainId, childId, forkId])
+      await page.route(/\/api\/sessions\/[^/]+\/graph$/, async (route) => {
+        const response = await route.fetch()
+        const json = await response.json()
+        for (const session of json.sessions ?? []) {
+          if (runningIds.has(session.id)) session.running = true
+        }
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(json) })
+      })
+      await openSession(page, mainId)
+      const graph = page.locator('[data-group="graph"] [data-session-graph]').first()
+      await graph.waitFor({ state: 'visible', timeout: 15_000 })
+      await page.locator('[data-group="graph"] [data-running="true"]').first().waitFor({ timeout: 10_000 })
+      const info = await page.evaluate(() => {
+        const all = [...document.querySelectorAll('[data-graph-turn-id]')].map((el) => ({
+          session: el.getAttribute('data-session-id'),
+          row: Number(el.getAttribute('data-row')),
+          running: el.getAttribute('data-running') === 'true',
+          ring: el.querySelector('[data-marker-ring="running"]'),
+        }))
+        const latest = new Map()
+        for (const node of all) {
+          latest.set(node.session, Math.min(latest.get(node.session) ?? Infinity, node.row))
+        }
+        return {
+          latest: [...latest],
+          running: all
+            .filter((node) => node.running)
+            .map((node) => ({
+              session: node.session,
+              row: node.row,
+              ring: !!node.ring,
+              className: node.ring?.className ?? '',
+              animation: node.ring ? getComputedStyle(node.ring).animationName : '',
+            })),
+        }
+      })
+      assert.ok(info.running.length >= 3, `运行中的会话线太少：${info.running.length}`)
+      assert.equal(
+        new Set(info.running.map((node) => node.session)).size,
+        info.running.length,
+        '同一条会话线出现了多个运行标识（应只在最新一轮）',
+      )
+      for (const node of info.running) {
+        const latestRow = info.latest.find(([session]) => session === node.session)?.[1]
+        assert.equal(node.row, latestRow, `${node.session} 的运行标识不在最新一轮`)
+        assert.ok(node.ring, `${node.session} 的运行标识没有外圈动画`)
+        assert.match(node.className, /running-dot/, `${node.session} 的运行标识没有复用 running-dot`)
+        assert.equal(node.animation, 'tandem-breathe', `${node.session} 的运行动画不对：${node.animation}`)
+      }
+      const dir = '/tmp/fix-1110'
+      mkdirSync(dir, { recursive: true })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.waitForTimeout(150)
+      await page.screenshot({ path: `${dir}/running-multi-dark.png` })
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
+      await page.waitForTimeout(150)
+      await page.screenshot({ path: `${dir}/running-multi-light.png` })
     })
 
     desktop('会话图泳道线 tooltip 以指针定位并完整显示在视口内（反馈1926#10）', async (page) => {
