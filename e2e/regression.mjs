@@ -2808,6 +2808,8 @@ async function main() {
     const small = (name, fn) => checks.push({ name, viewport: 'small', fn })
     // 反馈2102：与用户截图同尺寸、深色主题的桌面窗口。
     const fb2102 = (name, fn) => checks.push({ name, viewport: 'desktop', context: 'fb2102', fn })
+    // 反馈「调整」：与用户截图同类的深色 1440×900 窗口。
+    const fbAdjust = (name, fn) => checks.push({ name, viewport: 'desktop', context: 'fb-adjust', fn })
 
     const newPage = async (ctx, viewport, opts = {}) => {
       const page = await ctx.newPage()
@@ -12567,6 +12569,211 @@ async function main() {
       await page.waitForFunction(() => !document.documentElement.classList.contains('feedback-mode'))
     })
 
+    fbAdjust('调整工具：冻结副本改尺寸吸附 token、换图标/备注/删除/插入/平移并导出 adjust.md', async (page) => {
+      const state = await api(base, token, '/api/demo')
+      if (!state.active) await api(base, token, '/api/demo', { method: 'POST', body: JSON.stringify({}) })
+      const chatId = (await api(base, token, '/api/demo')).scenarios.find((item) => item.id === 'chat-tools').sessionIds[0]
+      await openSession(page, chatId)
+
+      // 真实界面结构签名（忽略走动的时间和 React 自增 id）。
+      const signature = () =>
+        page.evaluate(() => {
+          const root = document.querySelector('#root')
+          if (!root) return ''
+          const stable = ['data-testid', 'data-session-id', 'data-session-row', 'data-turn-id', 'data-project-key', 'data-host-group', 'role']
+          return [...root.querySelectorAll('*')]
+            .filter((el) => !el.closest('[data-feedback-ui]'))
+            .map((el) => {
+              const attrs = [...el.attributes]
+                .filter((attr) => stable.includes(attr.name))
+                .map((attr) => `${attr.name}=${attr.value.replace(/\d+/g, '#')}`)
+                .join('|')
+              return `${el.tagName}:${attrs}`
+            })
+            .join('\u0001')
+        })
+
+      await page.keyboard.press('Control+Shift+F')
+      await page.waitForSelector('html.feedback-mode', { timeout: 8000 })
+      await page.waitForTimeout(700)
+      const rootBefore = await signature()
+      const sameSignature = async (label) => {
+        const now = await signature()
+        if (now === rootBefore) return
+        const a = rootBefore.split('\u0001')
+        const b = now.split('\u0001')
+        const at = a.findIndex((line, index) => line !== b[index])
+        throw new Error(
+          `${label}：真实界面 DOM 被改动（第 ${at} 项 ${a[at] ?? '缺失'} → ${b[at] ?? '缺失'}；共 ${a.length}/${b.length}）`,
+        )
+      }
+      const bar = page.getByRole('region', { name: '反馈模式工具栏' })
+      await bar.getByRole('button', { name: '调整', exact: true }).click()
+      const toolbar = page.locator('[data-adjust-toolbar]')
+      await toolbar.waitFor({ timeout: 20000 })
+      await page.waitForFunction(() => window.__feedbackAdjust?.stats?.clonedNodes > 0, null, { timeout: 30000 })
+      assert.equal(await page.locator('[data-adjust-stage]').count(), 1, '没有冻结副本')
+      await sameSignature('冻结后')
+
+      // 改尺寸：拖 e 手柄，宽度吸到 4px 栅格并记 token。
+      assert.equal(await page.evaluate(() => window.__feedbackAdjust.select('[data-testid="sidebar-new-session"]')), true, '选不中新建会话按钮')
+      await page.locator('[data-adjust-selection-bar]').waitFor({ timeout: 5000 })
+      const handle = await page.locator('[data-adjust-handle="e"]').boundingBox()
+      assert.ok(handle, '缺少 e 手柄')
+      await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(handle.x + handle.width / 2 + 12, handle.y + handle.height / 2, { steps: 8 })
+      await page.mouse.up()
+      await page.waitForTimeout(250)
+      let changes = await page.evaluate(() => window.__feedbackAdjust.changes())
+      const resize = changes.find((change) => change.kind === 'resize')
+      assert.ok(resize, '改尺寸没有进改动清单')
+      assert.ok(resize.after.width % 4 === 0, `宽度没有吸附 4px 栅格：${resize.after.width}`)
+      assert.ok(resize.tokens?.width || resize.tokens?.height, '尺寸没有记录 token')
+      assert.equal(resize.standard, true, '吸附后仍标成非标准值')
+      assert.ok(resize.target.selector && resize.target.rect, '改动目标缺少选择器或位置')
+
+      // 撤销 / 重做 / 单条回退。
+      await page.keyboard.press('Control+z')
+      changes = await page.evaluate(() => window.__feedbackAdjust.changes())
+      assert.equal(changes.some((change) => change.kind === 'resize'), false, '撤销没有生效')
+      await page.keyboard.press('Control+Shift+z')
+      changes = await page.evaluate(() => window.__feedbackAdjust.changes())
+      assert.equal(changes.some((change) => change.kind === 'resize'), true, '重做没有生效')
+
+      // 换图标 + 行为备注。
+      await page.locator('[data-adjust-selection-bar]').getByRole('button', { name: '换图标' }).click()
+      const iconName = (await page.locator('[data-adjust-icon]').first().getAttribute('data-adjust-icon')) ?? ''
+      await page.locator(`[data-adjust-icon="${iconName}"]`).click()
+      await page.locator('[data-adjust-selection-bar]').getByRole('button', { name: '行为备注' }).click()
+      await page.locator('[data-adjust-note-panel] textarea').fill('点击后打开新建会话；悬停显示快捷键。')
+      await page.locator('[data-adjust-note-panel]').getByRole('button', { name: '保存备注' }).click()
+      await page.waitForTimeout(200)
+      changes = await page.evaluate(() => window.__feedbackAdjust.changes())
+      assert.ok(changes.some((change) => change.kind === 'icon' && change.after.icon === iconName), '换图标没有记录')
+      assert.ok(changes.some((change) => change.kind === 'note' && change.behavior?.includes('新建会话')), '行为备注没有记录')
+
+      // 删除 + 撤销恢复。
+      assert.equal(
+        await page.evaluate(() => window.__feedbackAdjust.select('[aria-label^="收件箱"]')),
+        true,
+        '选不中收件箱按钮',
+      )
+      await page.waitForTimeout(120)
+      await page.keyboard.press('Delete')
+      await page.waitForTimeout(200)
+      changes = await page.evaluate(() => window.__feedbackAdjust.changes())
+      assert.ok(changes.some((change) => change.kind === 'delete'), '删除没有记录')
+      await page.keyboard.press('Control+z')
+      await page.waitForTimeout(150)
+      assert.equal(
+        await page.evaluate(() => !!document.querySelector('[data-adjust-stage] [aria-label^="收件箱"]')),
+        true,
+        '撤销删除后元素没有恢复',
+      )
+
+      // 插入列表并加两行、写容器备注。
+      await toolbar.getByRole('button', { name: '插入控件' }).click()
+      await page.locator('[data-insert-option="list"]').click()
+      const listEditor = page.locator('[data-adjust-expand]')
+      await listEditor.waitFor({ timeout: 5000 })
+      await listEditor.getByRole('button', { name: '添加行' }).click()
+      await listEditor.getByRole('button', { name: '添加行' }).click()
+      await listEditor.locator('input[aria-label="第 1 行标题"]').fill('会话标题')
+      await listEditor.locator('input[aria-label="第 1 行备注"]').fill('显示标题 + 项目名')
+      await listEditor.locator('input[aria-label="第 2 行标题"]').fill('最后活动时间')
+      await listEditor.locator('input[aria-label="第 2 行备注"]').fill('点击切换到该会话')
+      await listEditor.locator('textarea[aria-label="容器行为备注"]').fill('按最近使用排序；空状态显示「还没有会话」。')
+      await page.waitForTimeout(350)
+      changes = await page.evaluate(() => window.__feedbackAdjust.changes())
+      const insert = changes.find((change) => change.kind === 'insert')
+      assert.equal(insert?.after?.rows?.length, 2, '示意行没有进改动清单')
+      assert.ok(insert?.after?.note?.includes('最近使用'), '容器备注没有同步')
+
+      // Alt 拖动：自由平移并记 translate。
+      const hasTurn = await page.evaluate(() => {
+        const stage = document.querySelector('[data-adjust-stage]')
+        const turn = [...stage.querySelectorAll('[data-turn-id]')].find((row) => {
+          const rect = row.getBoundingClientRect()
+          return rect.top > 220 && rect.bottom < window.innerHeight - 200
+        })
+        if (!turn) return false
+        turn.setAttribute('data-adjust-probe', 'turn')
+        return window.__feedbackAdjust.select('[data-adjust-probe="turn"]')
+      })
+      assert.equal(hasTurn, true, '没有可拖动的可见轮次')
+      const box = await page.evaluate(() => {
+        const rect = document.querySelector('[data-adjust-stage] [data-adjust-probe="turn"]').getBoundingClientRect()
+        return { x: rect.left + 40, y: rect.top + 20 }
+      })
+      await page.keyboard.down('Alt')
+      await page.mouse.move(box.x, box.y)
+      await page.mouse.down()
+      await page.mouse.move(box.x + 60, box.y + 40, { steps: 10 })
+      await page.mouse.up()
+      await page.keyboard.up('Alt')
+      await page.waitForTimeout(250)
+      changes = await page.evaluate(() => window.__feedbackAdjust.changes())
+      const move = changes.find((change) => change.kind === 'move' && change.after?.offsetX)
+      assert.ok(move, 'Alt 拖动没有记录 translate')
+      await sameSignature('调整过程中')
+
+      // 完成并保存 → 调整条目；导出 .tfb 并解包。
+      await toolbar.getByRole('button', { name: /完成并保存/ }).click()
+      const drawer = page.locator('aside[aria-label="反馈条目"]')
+      await drawer.waitFor({ timeout: 30000 })
+      await drawer.getByText(/调整 \d+ 项/).first().waitFor({ timeout: 10000 })
+      assert.equal(await page.locator('[data-adjust-stage]').count(), 0, '退出调整后冻结副本没有销毁')
+      await sameSignature('退出调整后')
+
+      const downloadPromise = page.waitForEvent('download')
+      await bar.getByRole('button', { name: '导出', exact: true }).click()
+      const download = await downloadPromise
+      const downloadFile = path.join(home, 'adjust-export.tfb')
+      await download.saveAs(downloadFile)
+      const unpacked = mkdtempSync(path.join(home, 'adjust-unpack-'))
+      execFileSync(process.execPath, [path.join(ROOT, 'scripts/feedback-unpack.mjs'), downloadFile, unpacked], { encoding: 'utf8' })
+      const manifest = JSON.parse(readFileSync(path.join(unpacked, 'manifest.json'), 'utf8'))
+      const adjustItem = manifest.items.find((item) => item.mode === 'adjust')
+      assert.ok(adjustItem, '导出的 manifest 没有调整条目')
+      assert.equal(adjustItem.adjust.changeCount >= 5, true, '调整条目改动数不对')
+      assert.ok(adjustItem.files.adjust && adjustItem.files.adjustMarkdown, 'manifest 缺少调整清单/说明文件')
+      assert.ok(existsSync(path.join(unpacked, '01-调整前.png')), '缺少调整前截图')
+      assert.ok(existsSync(path.join(unpacked, '01-调整后.png')), '缺少调整后截图')
+      const adjustJson = JSON.parse(readFileSync(path.join(unpacked, '01-调整.json'), 'utf8'))
+      assert.equal(adjustJson.version, 1)
+      assert.equal(adjustJson.kind, 'adjust')
+      assert.ok(adjustJson.route && adjustJson.theme === 'dark' && adjustJson.viewport.width > 0, '调整清单缺少环境字段')
+      assert.ok(adjustJson.changes.length >= 5 && adjustJson.structure.length > 0, '调整清单缺少改动或结构快照')
+      for (const change of adjustJson.changes) {
+        assert.ok(change.id && change.kind && change.at && change.target?.selector, '改动条目字段不完整')
+      }
+      const adjustMd = readFileSync(path.join(unpacked, '01-调整说明.md'), 'utf8')
+      assert.match(adjustMd, /## 按顺序实现/)
+      assert.match(adjustMd, /\*\*改尺寸\*\*/)
+      assert.match(adjustMd, /尺寸 token：/)
+      assert.match(adjustMd, /\*\*换图标\*\*/)
+      assert.match(adjustMd, /行为备注：点击后打开新建会话/)
+      assert.match(adjustMd, /示意内容（草稿/)
+      assert.match(adjustMd, /1\. ListRow：会话标题 — 备注：显示标题 \+ 项目名/)
+      assert.match(adjustMd, /translate\(60px, 40px\)/)
+      assert.match(adjustMd, /只用 \`packages\/web\/src\/components\/ui\/\*\` 现有组件与变体/)
+      const feedbackMd = readFileSync(path.join(unpacked, 'feedback.md'), 'utf8')
+      assert.match(feedbackMd, /调整说明：`01-调整说明\.md`/)
+      assert.match(feedbackMd, /调整后截图：`01-调整后\.png`/)
+
+      // 退出反馈模式后不残留调整界面。
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(200)
+      if (await page.locator('html.feedback-mode').count()) await page.keyboard.press('Escape')
+      await page.waitForFunction(() => !document.documentElement.classList.contains('feedback-mode'), null, { timeout: 10000 })
+      assert.equal(
+        await page.locator('[data-adjust-toolbar], [data-adjust-stage], [data-adjust-hit-layer]').count(),
+        0,
+        '退出后仍有调整界面残留',
+      )
+    })
+
     desktop('反馈截图：长会话点选/框选/整页不卡且内容非空（R48）', async (page) => {
       await openSession(page, 'huge')
       // 滚到底部：截图应截当前可见的最后几轮，而不是会话开头。
@@ -13923,6 +14130,12 @@ async function main() {
         ownContext = true
       } else if (check.context === 'fb2102') {
         ctx = await browser.newContext({ viewport: { width: 1912, height: 914 }, deviceScaleFactor: 1 })
+        await ctx.addInitScript(() => {
+          localStorage.setItem('tandem.theme.v1', 'dark')
+        })
+        ownContext = true
+      } else if (check.context === 'fb-adjust') {
+        ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 })
         await ctx.addInitScript(() => {
           localStorage.setItem('tandem.theme.v1', 'dark')
         })

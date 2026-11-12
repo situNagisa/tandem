@@ -40,7 +40,6 @@
 
 ## 用户已定的方向（不要回退）
 `docs/design.md` 的 P01–P22 是原则；具体决定在 `scripts/decisions-check.mjs`、`ui-audit` 与回归「用户决定」检查里。最近的：暂不做 iOS；做任务看板；工作站与设备共享；账号制；分工路由（不在同会话切模型、简单任务不能变复杂、要能人工选择）；输入框「分工 × 取向」（2026-11-10 用户原话，见 decisions-check route-labels）；宽内容与正文同宽；消息时间/用量悬停显示；添加远程主机统一通过工作站一行命令。
-
 ## 没有用户时怎么推进
 - 自用测试闭环：代理用户用真实账号副本走 5 个真实任务 → 用反馈模式记录 → 按 docs/feedback-ledger.md 根因修（复发必须共享层修 + 自动检查）→ 下一轮复验。记录在 `docs/archive/dogfood/`。
 - 候选功能池：docs/archive/research/explore-v2-2026-11-08.md 剩余（双向语音、OTel 导出、auto-merge 等，优先级低）；新功能优先来自用户提议与自用测试发现。
@@ -56,4 +55,5 @@
 - 2026-11-12 用户批评"实现特别糟糕"：①我把"分叉用 git 图切主线"理解成每个会话各画一张图，子代理又"保守"成单节点分支；②跳转、悬停浮层又各写一套。教训：概念类需求先用一个具体例子（节点/边）写清再派；验收亲自点用户原场景（反馈模式、真实长会话、外部会话）；新交互必须复用已有实现（跳转=轮次大纲那套，浮层=反馈模式能停住的那套）。
 - 2026-11-12 反馈0220#03 跳转：复现要把 `~/.tandem` 复制到 `/tmp/tdm-long` 并把真实会话 jsonl 拼长（>200 条）才会命中懒加载；Playwright 采样要在真实 Host 上跑，`page.mouse.wheel` 前后记录 rAF 帧才能看出「被拉回」；行上的固定按钮会被悬停用量浮层挡住，回归里用 DOM `click()`。
 - 2026-11-12 会话图（反馈0220）：右栏与悬停浮层共用 `layoutSessionGraph`，拓扑来自 `GET /api/sessions/:id/graph`；改布局/组件后先 `npm run build -w @tandem/web` 再跑 regression（Host 服务的是 dist）；会话图虚拟滚动，Playwright 要逐段滚动收集节点；采样坐标取整，否则相邻泳道 tooltip 会串。
-- 2026-11-12 反馈0220：交接「继续/关闭」要先改协议 `HandoffPolicy`；服务端判定在 `host/handoff.ts` 的 `triggerHandoff`/`chooseHandoff` 与会话级 `handoffBypass`，工作站模式下冷却 Key 还要经 `includeCoolingKeys` 传到 `workstation/modelProxy.ts` 才会真正打到上游；文件链接改成行内代码 + `POST /api/fs/exist`；回归夹具 `trail`/`links2`/`quota-continue`/`quota-off`。
+- 2026-11-12 反馈0220：交接「继续/关闭」先改协议 `HandoffPolicy`，服务端判定在 `host/handoff.ts` 与会话级 `handoffBypass`；文件链接只认 Markdown 链接与「行内代码 + `POST /api/fs/exist`」。
+- 2026-11-12 反馈调整：冻结副本 stage 的 `pointer-events` 必须是 auto，否则 `elementsFromPoint` 跳过整棵副本（点击/拖动全失效）；前后截图分别走 `captureSnapshotShot(body/stage)`，插入控件导出前临时克隆进 stage；右下浮动面板会挡住底部元素与侧栏，Playwright 坐标要避开；DOM 对比要跳过 `[data-feedback-ui]`（toast 在 #root 内）与 React 自增 id。

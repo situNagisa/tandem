@@ -124,6 +124,17 @@ async function main() {
     await page.keyboard.press('Control+Shift+F')
     await sleep(500)
     assert.equal(await page.locator(feedbackUi).count(), 0, 'Ctrl+Shift+F 在发布版不应生效')
+    // 调整工具（冻结副本、插入控件）沿用反馈模式的剔除机制，发布版不应挂载任何入口。
+    assert.equal(
+      await page.locator('[data-adjust-toolbar], [data-adjust-stage], [data-adjust-hit-layer]').count(),
+      0,
+      '发布版不应挂载调整工具',
+    )
+    assert.equal(
+      await page.evaluate(() => typeof (window).__feedbackAdjust),
+      'undefined',
+      '发布版不应暴露调整工具的调试入口',
+    )
 
     // 组件画廊路由回首页
     await page.evaluate(() => {
