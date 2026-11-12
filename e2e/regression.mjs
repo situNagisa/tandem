@@ -13397,9 +13397,11 @@ async function main() {
       mkdirSync(dir, { recursive: true })
       await page.screenshot({ path: `${dir}/adjust-merged-changes.png` })
 
-      await page.keyboard.press('Escape')
-      await page.waitForTimeout(200)
-      if (await page.locator('html.feedback-mode').count()) await page.keyboard.press('Escape')
+      for (let i = 0; i < 5; i += 1) {
+        if (!(await page.locator('html.feedback-mode').count())) break
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(150)
+      }
       await page.waitForFunction(() => !document.documentElement.classList.contains('feedback-mode'), null, { timeout: 10000 })
     })
 
