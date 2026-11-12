@@ -9811,6 +9811,49 @@ async function main() {
       assert.equal(await page.getByRole('button', { name: /已筛选/ }).count(), 0, '清除后筛选标签仍在')
     })
 
+    desktop('反馈1603#02：菜单危险项（删除）文字与图标常态 danger 色', async (page) => {
+      const row = page.locator('[data-session-row][data-session-id="long"]').first()
+      await row.waitFor({ state: 'visible', timeout: 15_000 })
+      await row.hover()
+      await row.getByRole('button', { name: '会话操作' }).click()
+      const menu = page.locator('[role="menu"]').last()
+      await menu.waitFor({ timeout: 5_000 })
+      const info = await menu.evaluate((el) => {
+        const item = [...el.querySelectorAll('[role="menuitem"]')].find((node) =>
+          (node.textContent ?? '').trim().startsWith('删除'),
+        )
+        if (!item) return null
+        const style = getComputedStyle(item)
+        const svg = item.querySelector('svg')
+        return {
+          text: style.color,
+          icon: svg ? getComputedStyle(svg).color : null,
+          danger: getComputedStyle(document.documentElement).getPropertyValue('--t-danger').trim(),
+        }
+      })
+      assert.ok(info, '会话菜单里没有删除项')
+      const toRgb = (value) => {
+        const hex = value.replace('#', '')
+        if (hex.length !== 6) return value
+        return `rgb(${parseInt(hex.slice(0, 2), 16)}, ${parseInt(hex.slice(2, 4), 16)}, ${parseInt(hex.slice(4, 6), 16)})`
+      }
+      const danger = toRgb(info.danger)
+      assert.equal(info.text, danger, `删除项文字不是 danger 色：${info.text} / ${danger}`)
+      assert.equal(info.icon, danger, `删除项图标不是 danger 色：${info.icon} / ${danger}`)
+      // 其他普通项仍是中性色，不能整菜单变红。
+      const normal = await menu.evaluate((el) => {
+        const item = [...el.querySelectorAll('[role="menuitem"]')].find((node) =>
+          (node.textContent ?? '').trim().startsWith('重命名'),
+        )
+        return item ? getComputedStyle(item).color : null
+      })
+      assert.ok(normal && normal !== danger, `普通菜单项也被染成 danger 色：${normal}`)
+      const dir = '/tmp/fix-1603c'
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: `${dir}/02-menu-danger-item.png` })
+      await page.keyboard.press('Escape')
+    })
+
     desktop('反馈2156#02：打开会话后重新加载，未读点不再出现', async (page) => {
       const row = (id) => page.locator(`[data-session-row][data-session-id="${id}"]`)
       await page.waitForFunction(

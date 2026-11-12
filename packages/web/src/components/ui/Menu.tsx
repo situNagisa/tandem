@@ -61,6 +61,7 @@ function RowContent({
   trailing,
   selected,
   checked,
+  danger = false,
   labelTitle,
 }: {
   icon?: ReactNode
@@ -68,6 +69,8 @@ function RowContent({
   trailing?: ReactNode
   selected?: boolean
   checked?: boolean
+  /** 危险项（删除/移除）：文字与图标常态 danger 色（反馈1603#02）。 */
+  danger?: boolean
   /** 标签被截断时的全文入口（原生 title，由 ui/Tooltip 统一转成标准提示）。 */
   labelTitle?: string
 }) {
@@ -76,7 +79,12 @@ function RowContent({
   return (
     <>
       {icon && (
-        <span className="flex size-4 shrink-0 items-center justify-center text-muted [&_svg]:size-3.5">
+        <span
+          className={cn(
+            'flex size-4 shrink-0 items-center justify-center [&_svg]:size-3.5',
+            danger ? 'text-danger' : 'text-muted',
+          )}
+        >
           {icon}
         </span>
       )}
@@ -291,6 +299,7 @@ const RadixMenuItem = forwardRef<HTMLDivElement, MenuItemProps>(function RadixMe
         icon={icon}
         trailing={trailing}
         selected={selected}
+        danger={danger}
         labelTitle={tip ? undefined : autoLabelTitle(children)}
       >
         {children}
@@ -348,6 +357,7 @@ const MenuCheckItem = forwardRef<HTMLDivElement, MenuCheckItemProps>(function Me
         icon={icon}
         trailing={trailing}
         checked={checked}
+        danger={danger}
         labelTitle={tip ? undefined : autoLabelTitle(children)}
       >
         {children}
@@ -416,6 +426,7 @@ const MenuRadioItem = forwardRef<HTMLDivElement, MenuRadioItemProps>(function Me
         icon={icon}
         trailing={trailing}
         checked={false}
+        danger={danger}
         labelTitle={tip ? undefined : autoLabelTitle(children)}
       >
         {children}
@@ -738,7 +749,7 @@ export const MenuItem = forwardRef<HTMLButtonElement, LegacyMenuItemProps>(funct
         'data-[active=true]:bg-[var(--t-bg-hover)] data-[active=true]:text-text',
         'aria-disabled:hover:bg-transparent aria-disabled:hover:text-text-soft',
         selected && 'text-text',
-        danger && 'text-danger hover:text-danger focus:text-danger',
+        danger && 'text-danger hover:text-danger focus:text-danger data-[active=true]:text-danger',
         className,
       )}
     >
@@ -746,6 +757,7 @@ export const MenuItem = forwardRef<HTMLButtonElement, LegacyMenuItemProps>(funct
         icon={icon}
         trailing={trailing}
         selected={selected}
+        danger={danger}
         labelTitle={tip ? undefined : autoLabelTitle(children)}
       >
         {children}

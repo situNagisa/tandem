@@ -14,7 +14,7 @@
 | R08 | 点了没反应 / 数据未就绪被当异常 | 6 | 加载态与默认值兜底；store `openSession` 同步地址栏（`sessionsSlice`，否则 `navigate` 同址短路吞掉按路由的跳转）；decisions-check `route-follows-session`；regression 新会话环境条/模型价格/手机环境条/反馈2108#04；外部会话图节点点击定位（0220#01） |
 | R09 | 反馈模式与浮层交互冲突 | 3 | `lib/overlay` + `data-portal-layer`；HoverCard 与菜单/Popover 同一规则（反馈模式下指针离开不收起）；ui-audit contains/portal；regression 反馈圈选/0220#06 悬停卡片停住 |
 | R10 | 提示/动效不符合习惯、尺寸跳动 | 11 | decisions-check `envbar-host-icon`；标准 Tooltip/固定尺寸/动效 token；regression 设置窗口/动画测量/高级分组/运行进度；切换会话保留旧画面（sessionsSlice `pendingFocus`）、新会话乐观占位（`startSession` 草稿）；贴底时后到内容绘制前补齐滚动（ChatView ResizeObserver/MutationObserver）；侧栏分组折叠按主机+项目路径记忆；regression 反馈2102#01/#06、反馈1601#02/#05、反馈2156#01（跳转只定位不加高亮）/#03（运行中节点呼吸动画） |
-| R11 | 危险或不可逆操作没有确认/预览 | 2 | `ui/ConfirmAction`；regression 合并/压缩/删除确认 |
+| R11 | 危险或不可逆操作没有确认/预览，且与其他操作同样中性、不易分辨 | 3 | `ui/ConfirmAction`；危险变体按钮与菜单危险项常态 `--danger` 文字、不做红底（2026-11-12 用户原话「危险按钮用红色，不用中性色」）；regression 合并/压缩/删除确认、反馈1603#02 菜单删除项 |
 | R12 | 完成态缺少后续操作 | 1 | 状态驱动操作清单；regression 看板完成卡 |
 | R13 | 事件流水未聚合、聚合行交互错误 | 2 | `ui/AggregateRow`；单测 inbox；regression 收件箱/看板回合 |
 | R14 | 面板与对话区争抢空间/焦点、宽度抖动 | 10 | design P12/P13；`ui/Panel`/`ui/Card`/`ResizeHandle`；ui-audit right-panel-*；decisions-check RP-06；regression 宽内容/换行/空分组/收起/宽度稳定；反馈2156#04 上下文卡删除「最占空间」 |

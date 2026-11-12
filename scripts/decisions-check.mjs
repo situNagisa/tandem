@@ -853,10 +853,16 @@ const DECISIONS = [
   },
   {
     id: 'danger-ghost',
-    source: '色板 v3',
-    decision: '危险按钮中性，hover 只文字转 danger，不做红底红框',
-    files: [F.button],
-    need: [/danger-ghost/, /hover:text-danger/],
+    source: '2026-11-12 用户原话「危险按钮用红色，不用中性色」（取代色板 v3 的中性做法）',
+    decision:
+      '危险操作（删除/移除等 danger 变体按钮与菜单危险项）常态就是 danger 红字，不做红底红框；确认与可撤销入口不变',
+    files: [F.button, F.menu],
+    need: [
+      /border border-transparent text-danger hover:bg-\[var\(--t-bg-hover\)\] hover:text-danger/,
+      /danger && 'text-danger/,
+      /danger \? 'text-danger' : 'text-muted'/,
+    ],
+    deny: [/bg-danger(?!-soft)/],
   },
   {
     id: 'edit-width',
