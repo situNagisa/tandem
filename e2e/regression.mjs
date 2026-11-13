@@ -1824,6 +1824,28 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       message('c451', 'user', '看看这个文件'),
       message('c452', 'assistant', '好的。', { model: 'claude-sonnet-4-5' }),
     ], { profileId: 'p-claude', groupId: undefined, model: 'claude-sonnet-4-5', updatedAt: Date.now() - 990 }),
+    // 升级前落库的上下文快照：分母停在 200K、没有 longContext，原生 1M 型号打开时应实时按 1M 显示。
+    mk('claude-legacy', 'Claude 旧快照会话', [
+      message('clg1', 'user', '继续上次的活'),
+      message('clg2', 'assistant', '好的。', { model: 'claude-sonnet-5-5' }),
+    ], {
+      profileId: 'p-claude',
+      groupId: undefined,
+      model: 'claude-sonnet-5-5',
+      context: {
+        model: 'claude-sonnet-5-5',
+        contextWindow: 200_000,
+        usedTokens: 61_000,
+        parts: [
+          { kind: 'system', tokens: 10_000 },
+          { kind: 'tools', tokens: 6_000 },
+          { kind: 'messages', tokens: 45_000 },
+          { kind: 'free', tokens: 139_000 },
+        ],
+        updatedAt: Date.now() - 3_600_000,
+      },
+      updatedAt: Date.now() - 995,
+    }),
     // 反馈1601#03：输入 6 tok、按参考价折算后不足 $0.0001，不能显示成 $0.0000。
     mk('tinycost', '小额花费会话', [
       message('tc1', 'user', '这条输入的金额不要显示成 0', {
@@ -4847,6 +4869,52 @@ async function main() {
         'Sonnet 4.5 不应出现 1M 上下文开关',
       )
       await page.keyboard.press('Escape')
+    })
+
+    desktop('旧上下文快照的分母按当前型号与 1M 开关实时计算', async (page) => {
+      // 升级前落库的快照分母是 200K、longContext 缺省；原生 1M 型号初次打开就应是 1M。
+      const legacy = await api(base, token, '/api/sessions/claude-legacy')
+      assert.equal(legacy.context?.contextWindow, 1_000_000, '读取旧快照时分母没有按型号能力重算')
+      await openSession(page, 'claude-legacy')
+      if (!(await page.locator('[data-group]').count())) {
+        await page.getByRole('button', { name: '切换信息面板' }).first().click()
+      }
+      const group = page.locator('[data-group="context"]').first()
+      await group.waitFor({ state: 'visible', timeout: 15_000 })
+      const card = group.locator('[data-context-card]').first()
+      await card.waitFor({ state: 'visible', timeout: 15_000 })
+      assert.match(await card.innerText(), /61k \/ 1\.00m/, '旧快照初次打开的分母不是 1M')
+
+      // 切到 200K 后分母变 200k。
+      const switchContext = async (label) => {
+        await page.locator('button[aria-label^="选择模型"]').first().click()
+        const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+        await menu.waitFor()
+        await menu.getByRole('menuitem', { name: /上下文/ }).first().hover()
+        const submenu = page.locator('[role="menu"][aria-label="上下文"]').first()
+        await submenu.waitFor({ state: 'visible', timeout: 5_000 })
+        await submenu.getByRole('menuitemradio', { name: label }).click()
+        await menu.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {})
+      }
+      await switchContext('200K')
+      assert.match(await card.innerText(), /61k \/ 200k/, '切到 200K 后分母没有变化')
+      assert.equal(
+        (await api(base, token, '/api/sessions/claude-legacy')).context?.contextWindow,
+        200_000,
+        '切到 200K 后快照分母没有落成 200K',
+      )
+
+      // 再切回 1M 分母回到 1M，刷新页面后保持。
+      await switchContext('1M')
+      assert.match(await card.innerText(), /61k \/ 1\.00m/, '切回 1M 后分母没有回到 1M')
+      await page.reload()
+      await page.locator('[data-turn-id]').first().waitFor({ timeout: 20_000 })
+      if (!(await page.locator('[data-group]').count())) {
+        await page.getByRole('button', { name: '切换信息面板' }).first().click()
+      }
+      const reloaded = page.locator('[data-context-card]').first()
+      await reloaded.waitFor({ state: 'visible', timeout: 15_000 })
+      assert.match(await reloaded.innerText(), /61k \/ 1\.00m/, '刷新后上下文卡分母不是 1M')
     })
 
     desktop('输入框：token 估算、切换确认与分工取向合并（反馈8#01 #03 #05 #08 #09 #11 / 10#02 / 2009#01）', async (page) => {

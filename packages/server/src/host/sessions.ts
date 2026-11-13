@@ -6,6 +6,7 @@ import path from 'node:path';
 import type {
   AiReviewSettings,
   ContentBlock,
+  ContextBreakdown,
   ContextSettings,
   HostInfo,
   HostSettings,
@@ -191,6 +192,14 @@ export function ensureSessionEnv(host: Host, rec: SessionRecord): void {
 export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
   const secretsCount = host.secrets.countFor(rec.cwd);
   const quota = host.estimateQuota(rec);
+  if (rec.context) {
+    const live = withLiveWindow(host, rec, rec.context);
+    // 旧快照的分母在内存里收敛并落盘，之后读取走快路径
+    if (live !== rec.context) {
+      rec.context = live;
+      host.store.markDirty(rec.id, true);
+    }
+  }
   const context = rec.context ? { ...rec.context, quota } : undefined;
   return {
     id: rec.id,
@@ -686,27 +695,32 @@ export function updateSession(host: Host, id: string,
   }
 
   // 换模型/分组或切换 1M 后，已有上下文快照的分母与剩余按新窗口更新
-  refreshContextWindow(host, rec);
-  host.store.markDirty(rec.id, true);
+  if (rec.context) {
+    rec.context = withLiveWindow(host, rec, rec.context);
+    host.store.markDirty(rec.id, true);
+  }
   host.broadcastSummary(rec);
   return rec;
 }
 
-/** 切换 1M/200K 或换模型后，已算出的上下文快照只改分母与剩余，不重建系统提示。 */
-function refreshContextWindow(host: Host, rec: SessionRecord): void {
-  if (!rec.context) return;
+/** 当前型号能力与会话 1M 开关下的上下文上限。 */
+export function contextWindowOf(host: Host, rec: SessionRecord): number {
   const profile = host.profileFor(rec.route?.profileId ?? rec.profileId, rec.route?.groupId ?? rec.groupId);
   const model = rec.route?.model || rec.model || profile?.defaultModel || '';
-  const window = contextWindowForModel(
-    model,
-    profile?.kind,
-    profile?.modelCapabilities,
-    rec.longContext,
-  );
-  const used = rec.context.usedTokens;
-  const parts = rec.context.parts.filter((part) => part.kind !== 'free');
-  rec.context = {
-    ...rec.context,
+  return contextWindowForModel(model, profile?.kind, profile?.modelCapabilities, rec.longContext);
+}
+
+/**
+ * 快照里的分母是上一次算出的值，换模型/切 1M/升级前落库后都会过期；
+ * 读取与下发时按当前能力重算分母与剩余，只改这两项，不重建其他部分。
+ */
+export function withLiveWindow(host: Host, rec: SessionRecord, context: ContextBreakdown): ContextBreakdown {
+  const window = contextWindowOf(host, rec);
+  if (context.contextWindow === window) return context;
+  const used = context.usedTokens;
+  const parts = context.parts.filter((part) => part.kind !== 'free');
+  return {
+    ...context,
     contextWindow: window,
     parts: [...parts, { kind: 'free', tokens: Math.max(0, window - used) }],
     updatedAt: Date.now(),

@@ -22,6 +22,7 @@ import { priceForModel, priceInfoFor, resolvePriceForModel } from '../usage.js';
 import type { SessionRecord } from '../types.js';
 import type { Host } from '../host.js';
 import { formatUsd } from './helpers.js';
+import { withLiveWindow } from './sessions.js';
 
 export function setContext(host: Host, rec: SessionRecord, context: ContextBreakdown, broadcast = true): void {
   rec.context = context;
@@ -161,8 +162,8 @@ export function contextFor(host: Host, rec: SessionRecord): ContextBreakdown {
     threshold: settings.autoCompactThreshold,
   };
   const quota = host.estimateQuota(rec);
-  // 设置可能在会话期间改过：返回时用当前阈值覆盖旧快照
-  if (rec.context) return { ...rec.context, autoCompact, quota };
+  // 设置可能在会话期间改过：返回时用当前阈值覆盖旧快照；分母按当前型号/1M 开关重算
+  if (rec.context) return { ...withLiveWindow(host, rec, rec.context), autoCompact, quota };
   const profile = host.profileFor(rec.route?.profileId ?? rec.profileId, rec.route?.groupId ?? rec.groupId);
   const model = rec.route?.model || rec.model || profile?.defaultModel || '';
   const system = host.buildSystemFor(rec).system;
