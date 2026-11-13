@@ -76,6 +76,9 @@ export function GroupEditor({
   const [error, setError] = useState<string | null>(null)
   const [fallbackIds, setFallbackIds] = useState<string[]>(existing?.fallbackGroupIds ?? [])
   const [multiplier, setMultiplier] = useState(String(existing?.multiplier ?? 1))
+  const [longContext, setLongContext] = useState<'auto' | '1m' | '200k'>(
+    existing?.longContext === undefined ? 'auto' : existing.longContext ? '1m' : '200k',
+  )
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -182,6 +185,7 @@ export function GroupEditor({
       models: selected,
       defaultModel: selected.includes(defaultModel) ? defaultModel : selected[0],
       ...(Number.isFinite(Number(multiplier)) ? { multiplier: Number(multiplier) } : {}),
+      ...(longContext === 'auto' ? {} : { longContext: longContext === '1m' }),
       ...(fallbackIds.length
         ? { fallbackGroupIds: fallbackIds.filter((id) => id !== existing?.id) }
         : {}),
@@ -307,6 +311,25 @@ export function GroupEditor({
             value={multiplier}
             onChange={(e) => setMultiplier(e.target.value)}
             className={cn(inputCls, 'w-28 font-mono')}
+          />
+        </SettingRow>
+        <SettingRow
+          label="新会话上下文"
+          stacked
+          wide
+          hint="只影响压缩阈值与上下文卡分母；「跟随模型」按型号能力（原生 1M 默认 1M）。"
+        >
+          <MenuSelect
+            value={longContext}
+            onChange={(next) => setLongContext(next as 'auto' | '1m' | '200k')}
+            aria-label="新会话上下文"
+            size="sm"
+            options={[
+              { value: 'auto', label: '跟随模型' },
+              { value: '1m', label: '1M' },
+              { value: '200k', label: '200K' },
+            ]}
+            wrapperClassName="w-28"
           />
         </SettingRow>
       </div>

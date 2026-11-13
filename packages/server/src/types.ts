@@ -55,6 +55,8 @@ export interface StoredProfileGroup {
   /** 价格倍率：官方参考价 × 账号倍率 × 分组倍率；缺省 1。 */
   multiplier?: number;
   modelCapabilities?: Record<string, ModelCapabilities>;
+  /** 该分组新会话的上下文默认：true=1M，false=200K，缺省跟随模型能力。 */
+  longContext?: boolean;
   /** 备用分组链（同一账号内，按顺序）。 */
   fallbackGroupIds?: string[];
 }

@@ -38,6 +38,7 @@ interface Options {
   delegationProp: import('@tandem/protocol').DelegationStrategy | undefined
   routeNativeProp: boolean | undefined
   effortProp: ReasoningEffort | undefined
+  longContextProp: boolean | undefined
   hostIdProp: string | undefined
   cwdProp: string | undefined
   runningProp: boolean | undefined
@@ -53,6 +54,7 @@ export function useComposerStore({
   delegationProp,
   routeNativeProp,
   effortProp,
+  longContextProp,
   hostIdProp,
   cwdProp,
   runningProp,
@@ -146,6 +148,7 @@ export function useComposerStore({
   const currentKind = currentGroup?.kind ?? currentProfile?.kind
   // 会话未显式选过时为 undefined：按模型官方默认，不擅自发送档位。
   const effort = sessionless ? (effortProp ?? localEffort) : summary?.effort
+  const longContext = sessionless ? longContextProp : summary?.longContext
   const draftKey = sessionId ? `${activeHostId ?? ''}:${sessionId}` : `new:${effectiveHostId ?? ''}`
   return {
     isMobile,
@@ -198,6 +201,7 @@ export function useComposerStore({
     setLocalEffort,
     currentKind,
     effort,
+    longContext,
     draftKey,
   }
 }

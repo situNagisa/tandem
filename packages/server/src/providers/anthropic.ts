@@ -8,7 +8,7 @@ import { postWithBodyFallbacks, summarizeUpstreamRejection } from '../upstream/r
 import { applyAnthropicUsage } from '../upstream/usage.js';
 import { createIdleTimeout, idleTimeoutError } from './idle-timeout.js';
 import { parseRateLimitHeaders, retryAfterMs } from './rate-limit.js';
-import { ANTHROPIC_THINKING_BUDGETS, adaptiveCanDisable, builtinCapabilities, claudeThinkingMode, overrideFor } from './capabilities.js';
+import { ANTHROPIC_THINKING_BUDGETS, adaptiveCanDisable, builtinCapabilities, claudeThinkingMode, longContextFor, overrideFor } from './capabilities.js';
 import type { StreamRequest, StreamResult } from './types.js';
 
 type AnyBlock = Record<string, any>;
@@ -129,6 +129,11 @@ export async function streamAnthropic(req: StreamRequest): Promise<StreamResult>
     'x-api-key': req.profile.apiKey,
     'anthropic-version': '2023-06-01',
   };
+  // 会话选了 1M 且该型号需要 beta（Opus 4.6 / Sonnet 4.6）时才加头；原生 1M 型号不需要。
+  if (req.longContext === true) {
+    const beta = longContextFor(req.profile.kind, req.model, req.profile.modelCapabilities)?.beta;
+    if (beta) headers['anthropic-beta'] = beta;
+  }
 
   const usage: Usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   const inputBuf = new Map<number, string>();

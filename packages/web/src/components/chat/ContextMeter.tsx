@@ -254,6 +254,9 @@ export function ContextMeter({ compactDisabled }: { compactDisabled?: boolean })
             </div>
             <div className="mt-2.5 border-t border-border pt-2">
               <AutoCompactLine context={context} />
+              {context.contextNote && (
+                <div className="mt-1 text-[12px] leading-4 text-muted">{context.contextNote}</div>
+              )}
             </div>
             <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border pt-2 text-[12px] text-muted">
               <span>

@@ -238,6 +238,7 @@ export async function streamAccountModel(
         idleTimeoutSec: input.idleTimeoutSec ?? 180,
         maxTokens: input.maxTokens || 8192,
         ...(input.effort ? { effort: input.effort } : {}),
+        ...(input.longContext ? { longContext: true } : {}),
         onRateLimit: (info) => {
           recordKeyQuota(ctx.profiles, ctx.accountId, input.profileId, input.groupId, key, info);
           send({ type: 'rate_limit', info: rateLimitToJson(info), ...(key ? { keyId: key.id } : {}) });

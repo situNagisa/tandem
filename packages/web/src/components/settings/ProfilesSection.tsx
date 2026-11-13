@@ -223,6 +223,7 @@ export function ProfilesSection() {
             models: g.models,
             defaultModel: g.defaultModel || g.models[0] || '',
             ...(g.multiplier !== undefined ? { multiplier: g.multiplier } : {}),
+            ...(typeof g.longContext === 'boolean' ? { longContext: g.longContext } : {}),
             ...(g.fallbackGroupIds?.length ? { fallbackGroupIds: [...g.fallbackGroupIds] } : {}),
           }))
         : [
@@ -430,6 +431,7 @@ export function ProfilesSection() {
       models: g.models,
       defaultModel: g.defaultModel || g.models[0] || '',
       ...(g.multiplier !== undefined ? { multiplier: g.multiplier } : {}),
+      ...(typeof g.longContext === 'boolean' ? { longContext: g.longContext } : {}),
       ...(g.fallbackGroupIds?.length
         ? { fallbackGroupIds: g.fallbackGroupIds.filter((id) => id !== g.id) }
         : {}),

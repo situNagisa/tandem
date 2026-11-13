@@ -182,6 +182,7 @@ export function contextFor(host: Host, rec: SessionRecord): ContextBreakdown {
       cacheHitRate: cacheHitRateOf(rec.usage),
       providerKind: profile?.kind,
       capabilityOverrides: profile?.modelCapabilities,
+      longContext: rec.longContext,
       autoCompact,
       ...(allowTask
         ? {

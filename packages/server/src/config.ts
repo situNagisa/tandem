@@ -408,6 +408,7 @@ export class ProfileStore {
                 models: normalizeModels(group.models),
                 defaultModel: group.defaultModel || normalizeModels(group.models)[0] || '',
                 ...(group.multiplier !== undefined ? { multiplier: group.multiplier } : {}),
+                ...(typeof group.longContext === 'boolean' ? { longContext: group.longContext } : {}),
                 ...(group.fallbackGroupIds?.length ? { fallbackGroupIds: [...group.fallbackGroupIds] } : {}),
                 ...(group.modelCapabilities
                   ? { modelCapabilities: normalizeModelCapabilities(group.modelCapabilities)! }
@@ -525,6 +526,8 @@ export function normalizeModelCapabilities(
       defaultEffort?: unknown;
       effortNote?: unknown;
       contextWindow?: unknown;
+      longContext?: unknown;
+      contextNote?: unknown;
     };
     const item: ModelCapabilities = {};
     if (Array.isArray(caps.efforts)) {
@@ -553,12 +556,23 @@ export function normalizeModelCapabilities(
     }
     const window = Number(caps.contextWindow);
     if (Number.isFinite(window) && window > 0) item.contextWindow = window;
+    const lc = caps.longContext as { default?: unknown; beta?: unknown; note?: unknown } | undefined;
+    if (lc && typeof lc === 'object' && typeof lc.default === 'boolean') {
+      item.longContext = { default: lc.default };
+      if (typeof lc.beta === 'string' && lc.beta.trim()) item.longContext.beta = lc.beta.trim();
+      if (typeof lc.note === 'string' && lc.note.trim()) item.longContext.note = lc.note.trim().slice(0, 120);
+    }
+    if (typeof caps.contextNote === 'string' && caps.contextNote.trim()) {
+      item.contextNote = caps.contextNote.trim().slice(0, 160);
+    }
     if (
       item.efforts !== undefined ||
       item.effortLabels !== undefined ||
       item.defaultEffort !== undefined ||
       item.effortNote !== undefined ||
-      item.contextWindow !== undefined
+      item.contextWindow !== undefined ||
+      item.longContext !== undefined ||
+      item.contextNote !== undefined
     ) {
       out[name] = item;
     }
@@ -648,6 +662,7 @@ export function normalizeStoredGroups(value: unknown): StoredProfileGroup[] {
       defaultModel:
         (typeof g.defaultModel === 'string' && g.defaultModel.trim()) || models[0] || '',
       ...(caps ? { modelCapabilities: caps } : {}),
+      ...(typeof g.longContext === 'boolean' ? { longContext: g.longContext } : {}),
       ...(normalizeFallbackIds(g.fallbackGroupIds)?.length
         ? { fallbackGroupIds: normalizeFallbackIds(g.fallbackGroupIds) }
         : {}),
@@ -770,6 +785,7 @@ function buildGroups(
         (typeof raw.defaultModel === 'string' && raw.defaultModel.trim()) || old?.defaultModel || models[0] || '',
       ...(multiplier !== undefined ? { multiplier } : {}),
       ...(caps ? { modelCapabilities: caps } : {}),
+      ...(typeof raw.longContext === 'boolean' ? { longContext: raw.longContext } : {}),
       ...(fallbackGroupIds?.length ? { fallbackGroupIds } : {}),
     });
   }
@@ -802,6 +818,7 @@ function toPublicGroup(group: StoredProfileGroup): ProfileGroup {
     models: [...group.models],
     defaultModel: group.defaultModel,
     ...(group.multiplier !== undefined ? { multiplier: group.multiplier } : {}),
+    ...(typeof group.longContext === 'boolean' ? { longContext: group.longContext } : {}),
     ...(group.fallbackGroupIds?.length ? { fallbackGroupIds: [...group.fallbackGroupIds] } : {}),
     ...(group.modelCapabilities
       ? { modelCapabilities: structuredClone(group.modelCapabilities) }

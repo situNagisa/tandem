@@ -5,6 +5,7 @@ import { Button, IconButton } from '../ui/Button'
 import { formatTokens } from '../../lib/format'
 import type {
   DelegationStrategy,
+  LongContextCapability,
   ModelPriceInfo,
   PermissionMode,
   Profile,
@@ -58,6 +59,9 @@ interface ComposerFooterProps {
   effortLabels: Partial<Record<ReasoningEffort, string>> | undefined
   defaultEffort: ReasoningEffort | undefined
   effortNote: string | undefined
+  longContext: boolean | undefined
+  longContextInfo: LongContextCapability | undefined
+  contextNote: string | undefined
   profilesLoading: boolean
   modelDisabled: boolean
   modelMenuOpen: boolean
@@ -66,6 +70,7 @@ interface ComposerFooterProps {
   onChangeAutoRoute: () => void
   onLoadPrices: (profileId: string, groupId: string | undefined) => void
   onChangeEffort: (effort: ReasoningEffort) => void
+  onChangeLongContext: (longContext: boolean) => void
   onManageModels: () => void
   onSetupPrice: () => void
   onOpenModelMenu: () => void
@@ -112,6 +117,9 @@ export function ComposerFooter({
   effortLabels,
   defaultEffort,
   effortNote,
+  longContext,
+  longContextInfo,
+  contextNote,
   profilesLoading,
   modelDisabled,
   modelMenuOpen,
@@ -120,6 +128,7 @@ export function ComposerFooter({
   onChangeAutoRoute,
   onLoadPrices,
   onChangeEffort,
+  onChangeLongContext,
   onManageModels,
   onSetupPrice,
   onOpenModelMenu,
@@ -189,6 +198,9 @@ export function ComposerFooter({
             effortLabels={effortLabels}
             defaultEffort={defaultEffort}
             effortNote={effortNote}
+            longContext={longContext}
+            longContextInfo={longContextInfo}
+            contextNote={contextNote}
             delegation={effectiveDelegation}
             routeBias={effectiveRouteBias}
             routeNative={routeNative}
@@ -203,6 +215,7 @@ export function ComposerFooter({
             onSelectAuto={onChangeAutoRoute}
             onLoadPrices={onLoadPrices}
             onEffortChange={onChangeEffort}
+            onLongContextChange={onChangeLongContext}
             onManage={onManageModels}
             onSetupPrice={onSetupPrice}
             onOpen={onOpenModelMenu}

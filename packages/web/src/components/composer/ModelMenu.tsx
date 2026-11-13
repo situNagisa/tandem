@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type {
   DelegationStrategy,
+  LongContextCapability,
   ModelPriceInfo,
   Profile,
   ReasoningEffort,
@@ -62,6 +63,12 @@ interface ModelPanelProps {
   defaultEffort?: ReasoningEffort
   /** 该协议下思考强度是否真的生效的说明（如 OpenAI 兼容中转）。 */
   effortNote?: string
+  /** 会话显式选择的长上下文；缺省按能力默认。 */
+  longContext?: boolean
+  /** 支持 1M 时显示「上下文」开关。 */
+  longContextInfo?: LongContextCapability
+  /** 上下文提示（如 Haiku 5.5 超 100K 价更高）。 */
+  contextNote?: string
   /** 分工与取向：与模型设置放在同一个菜单里，选择即写入当前会话。 */
   delegation: DelegationStrategy
   routeBias: RoutePreference | undefined
@@ -74,6 +81,7 @@ interface ModelPanelProps {
   onSelectAuto: () => void
   onLoadPrices?: (profileId: string, groupId: string | undefined) => void
   onEffortChange: (effort: ReasoningEffort) => void
+  onLongContextChange: (longContext: boolean) => void
   onManage: () => void
   /** 单价未设置：跳到该账号的单价覆盖设置。 */
   onSetupPrice: (model: string) => void
@@ -97,6 +105,9 @@ function useModelPanel({
   effortLabels,
   defaultEffort,
   effortNote,
+  longContext,
+  longContextInfo,
+  contextNote,
   delegation,
   routeBias,
   routeNative,
@@ -108,6 +119,7 @@ function useModelPanel({
   onSelectAuto,
   onLoadPrices,
   onEffortChange,
+  onLongContextChange,
   onManage,
   onSetupPrice,
 }: ModelPanelProps) {
@@ -122,6 +134,8 @@ function useModelPanel({
   // 未选过或该型号不支持所存档位时，不假装选中某一档：显示模型官方默认。
   const selectedEffort = effort && efforts.includes(effort) ? effort : undefined
   const defaultEffortLabel = defaultEffort ? EFFORT_LABEL[defaultEffort] : undefined
+  // 没显式选过时按型号/分组默认显示，选中即写入会话。
+  const effectiveLongContext = longContext ?? longContextInfo?.default ?? false
 
   useEffect(() => {
     if (currentProfile) onLoadPrices?.(currentProfile.id, currentGroup?.groupId)
@@ -331,6 +345,40 @@ function useModelPanel({
           </Menu.SubContent>
         </Menu.Sub>
       )}
+      {!autoRoute && longContextInfo && (
+        <Menu.Sub>
+          <Menu.SubTrigger
+            trailing={effectiveLongContext ? '1M' : '200K'}
+            hint="上下文窗口：只影响压缩阈值与上下文卡，不改请求"
+          >
+            上下文
+          </Menu.SubTrigger>
+          <Menu.SubContent className="w-[250px]" aria-label="上下文">
+            <Menu.RadioGroup
+              value={effectiveLongContext ? '1m' : '200k'}
+              onValueChange={(next) => onLongContextChange(next === '1m')}
+            >
+              <Menu.RadioItem value="200k" hint="压缩阈值与上下文卡按 200K 计算">
+                200K
+              </Menu.RadioItem>
+              <Menu.RadioItem
+                value="1m"
+                hint={
+                  longContextInfo.beta
+                    ? `需要 beta 头 ${longContextInfo.beta}，不支持的中转会报错`
+                    : contextNote
+                      ? '由中转决定是否生效'
+                      : '原生 1M，无需 beta'
+                }
+              >
+                1M
+              </Menu.RadioItem>
+            </Menu.RadioGroup>
+            {longContextInfo.note && <Menu.Label>{longContextInfo.note}</Menu.Label>}
+            {contextNote && <Menu.Label>{contextNote}</Menu.Label>}
+          </Menu.SubContent>
+        </Menu.Sub>
+      )}
       {profiles.length > 0 && (
         <Menu.Sub>
           <Menu.SubTrigger
@@ -375,6 +423,9 @@ export function ModelMenu({
   effortLabels,
   defaultEffort,
   effortNote,
+  longContext,
+  longContextInfo,
+  contextNote,
   delegation,
   routeBias,
   routeNative,
@@ -387,6 +438,7 @@ export function ModelMenu({
   onSelectAuto,
   onLoadPrices,
   onEffortChange,
+  onLongContextChange,
   onManage,
   onSetupPrice,
   onOpen,
@@ -443,6 +495,9 @@ export function ModelMenu({
     effortLabels,
     defaultEffort,
     effortNote,
+    longContext,
+    longContextInfo,
+    contextNote,
     delegation,
     routeBias,
     routeNative,
@@ -454,6 +509,7 @@ export function ModelMenu({
     onSelectAuto,
     onLoadPrices,
     onEffortChange,
+    onLongContextChange,
     onManage,
     onSetupPrice,
   })

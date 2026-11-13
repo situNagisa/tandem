@@ -20,6 +20,7 @@ import type {
 } from '@tandem/protocol';
 import { effectiveProfile, saveHostSettings } from '../config.js';
 import { normalizeContextSettings } from '../context-settings.js';
+import { contextWindowForModel } from '../context.js';
 import { recoverAfterRestart as recoverRuns, resumeSession } from '../agent/resume.js';
 import { createWorktree, gitRepoRoot, removeWorktree, worktreeCleanliness } from '../worktree.js';
 import { errorMessage } from '../util/text.js';
@@ -207,6 +208,7 @@ export function toSummary(host: Host, rec: SessionRecord): SessionSummary {
     ...(rec.retryInfo ? { retryInfo: { ...rec.retryInfo } } : {}),
     ...(rec.resumePaused ? { resumePaused: true } : {}),
     ...(rec.effort ? { effort: rec.effort } : {}),
+    ...(typeof rec.longContext === 'boolean' ? { longContext: rec.longContext } : {}),
     ...(rec.delegation ? { delegation: rec.delegation } : {}),
     ...(rec.routeNative ? { routeNative: true } : {}),
     // 可选字段只在有值时下发，老客户端不受影响
@@ -443,6 +445,7 @@ export async function createSession(host: Host, input: {
     effort?: unknown;
     delegation?: unknown;
     routeNative?: unknown;
+    longContext?: unknown;
     title?: unknown;
     worktree?: unknown;
   }): Promise<SessionRecord> {
@@ -491,6 +494,10 @@ export async function createSession(host: Host, input: {
     typeof input.routeNative === 'boolean'
       ? input.routeNative
       : routingSettingsOf(host)?.native === true;
+  // 上下文窗口：显式传入为准，缺省按分组默认；都没有时跟随模型能力。
+  const selectedGroup = groupId ? profile.groups?.find((g) => g.id === groupId) : undefined;
+  const longContext =
+    typeof input.longContext === 'boolean' ? input.longContext : selectedGroup?.longContext;
 
   // worktree 会话：先创建 worktree，会话 cwd 指向新目录
   const shortId = randomUUID().slice(0, 8);
@@ -524,6 +531,7 @@ export async function createSession(host: Host, input: {
     ...(effort ? { effort } : {}),
     delegation,
     ...(routeNative ? { routeNative: true } : {}),
+    ...(longContext !== undefined ? { longContext } : {}),
     depth: 0,
     status: 'idle',
     createdAt: now,
@@ -565,6 +573,7 @@ export function updateSession(host: Host, id: string,
       effort?: unknown;
       delegation?: unknown;
       routeNative?: unknown;
+      longContext?: unknown;
       cwd?: unknown;
     },): SessionRecord | undefined {
   const rec = host.store.get(id);
@@ -606,6 +615,9 @@ export function updateSession(host: Host, id: string,
   if (typeof patch.routeNative === 'boolean') {
     if (patch.routeNative) rec.routeNative = true;
     else delete rec.routeNative;
+  }
+  if (typeof patch.longContext === 'boolean') {
+    rec.longContext = patch.longContext;
   }
   if (typeof patch.permissionMode === 'string') {
     if (!PERMISSION_MODES.has(patch.permissionMode as PermissionMode)) {
@@ -673,9 +685,32 @@ export function updateSession(host: Host, id: string,
     else delete rec.archived;
   }
 
+  // 换模型/分组或切换 1M 后，已有上下文快照的分母与剩余按新窗口更新
+  refreshContextWindow(host, rec);
   host.store.markDirty(rec.id, true);
   host.broadcastSummary(rec);
   return rec;
+}
+
+/** 切换 1M/200K 或换模型后，已算出的上下文快照只改分母与剩余，不重建系统提示。 */
+function refreshContextWindow(host: Host, rec: SessionRecord): void {
+  if (!rec.context) return;
+  const profile = host.profileFor(rec.route?.profileId ?? rec.profileId, rec.route?.groupId ?? rec.groupId);
+  const model = rec.route?.model || rec.model || profile?.defaultModel || '';
+  const window = contextWindowForModel(
+    model,
+    profile?.kind,
+    profile?.modelCapabilities,
+    rec.longContext,
+  );
+  const used = rec.context.usedTokens;
+  const parts = rec.context.parts.filter((part) => part.kind !== 'free');
+  rec.context = {
+    ...rec.context,
+    contextWindow: window,
+    parts: [...parts, { kind: 'free', tokens: Math.max(0, window - used) }],
+    updatedAt: Date.now(),
+  };
 }
 
 export function forkSession(host: Host, id: string, messageId?: string): SessionRecord | undefined {
@@ -703,6 +738,7 @@ export function forkSession(host: Host, id: string, messageId?: string): Session
     model: src.model,
     permissionMode: src.permissionMode,
     ...(src.effort ? { effort: src.effort } : {}),
+    ...(typeof src.longContext === 'boolean' ? { longContext: src.longContext } : {}),
     ...(src.delegation ? { delegation: src.delegation } : {}),
     ...(src.routeBias ? { routeBias: src.routeBias } : {}),
     ...(src.routeNative ? { routeNative: true } : {}),

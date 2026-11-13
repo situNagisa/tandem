@@ -1,6 +1,7 @@
 // 模型能力推断：优先用 provider 返回的字段，其次按模型 id 前缀查内置表，最后叠加账号/分组的手动覆盖。
 // 思考强度的档位、厂商叫法与请求参数映射都集中在能力表里（反馈 #7-05）。
 import type {
+  LongContextCapability,
   ModelCapabilities,
   ModelInfo,
   ProviderKind,
@@ -144,6 +145,81 @@ export function adaptiveDefaultEffort(model: string): ReasoningEffort {
   return 'high';
 }
 
+/** 1M 上下文的 beta 头；只有 4.6 一代（Opus 4.6 / Sonnet 4.6）需要，按 Claude Code 的 [1m] 变体实现。 */
+export const CONTEXT_1M_BETA = 'context-1m-2025-08-07';
+
+/**
+ * Claude 型号的长上下文能力（官方当前文档）：
+ * - 原生 1M（默认即 1M，无 beta）：Opus 4.7+、Sonnet 5+、Haiku 5.5+、Fable/Mythos 5+；
+ * - Opus 4.6 / Sonnet 4.6：支持 1M，但要 `[1m]` 变体/`context-1m-2025-08-07` beta，默认 200K；
+ * - Sonnet 4.5 及更早：只有 200K（1M beta 已于 2026-04-30 退役）。
+ * 非 Claude 型号返回 undefined。
+ */
+export function claudeLongContext(model: string): LongContextCapability | undefined {
+  const claude = parseClaudeModel(model);
+  if (!claude) return undefined;
+  const { family, major, minor } = claude;
+  const native =
+    (family === 'sonnet' && major >= 5) ||
+    (family === 'opus' && (major > 4 || (major === 4 && minor >= 7))) ||
+    (family === 'haiku' && (major > 5 || (major === 5 && minor >= 5))) ||
+    ((family === 'fable' || family === 'mythos') && major >= 5);
+  if (native) return { default: true };
+  if ((family === 'sonnet' || family === 'opus') && major === 4 && minor === 6) {
+    // 显式带 [1m] 的旧别名按已选 1M 处理
+    return { default: /\[1m\]\s*$/.test(model.trim().toLowerCase()), beta: CONTEXT_1M_BETA };
+  }
+  return undefined;
+}
+
+/** 上下文提示：Haiku 5.5 超 100K 提示价更高；经 OpenAI 兼容协议访问 Claude 时 1M 由中转决定。 */
+function contextNoteFor(model: string, kind: ProviderKind, longContext: LongContextCapability | undefined): string | undefined {
+  const claude = parseClaudeModel(model);
+  if (!claude || !longContext) return undefined;
+  const notes: string[] = [];
+  if (claude.family === 'haiku' && (claude.major > 5 || (claude.major === 5 && claude.minor >= 5))) {
+    notes.push('Haiku 5.5 超过 100K token 的提示按更高价格计费');
+  }
+  if (kind !== 'anthropic') {
+    notes.push('经 OpenAI 兼容协议，1M 是否生效由中转决定');
+  }
+  return notes.length ? notes.join('；') : undefined;
+}
+
+/** 按用户选择换算实际窗口：1M 开关只影响本地预算；缺省按型号能力。 */
+export function contextWindowWithChoice(
+  base: number,
+  longContext: LongContextCapability | undefined,
+  choice: boolean | undefined,
+): number {
+  if (!longContext) return base;
+  if (choice === true) return Math.max(base, 1_000_000);
+  if (choice === false) return Math.min(base, 200_000);
+  return longContext.default ? Math.max(base, 1_000_000) : base;
+}
+
+/** 当前协议下该型号的长上下文能力（账号覆盖 > 内置表）。 */
+export function longContextFor(
+  kind: ProviderKind,
+  model: string,
+  overrides?: Record<string, ModelCapabilities>,
+): LongContextCapability | undefined {
+  const override = overrideFor(overrides, model);
+  if (override?.longContext !== undefined) return override.longContext;
+  return builtinCapabilities(kind, model).longContext;
+}
+
+/** 上下文提示（账号覆盖 > 内置表）。 */
+export function contextNoteOf(
+  kind: ProviderKind,
+  model: string,
+  overrides?: Record<string, ModelCapabilities>,
+): string | undefined {
+  const override = overrideFor(overrides, model);
+  if (override?.contextNote !== undefined) return override.contextNote;
+  return builtinCapabilities(kind, model).contextNote;
+}
+
 function styleFor(kind: ProviderKind, model: string): EffortStyle {
   const effectiveKind: ProviderKind = kind === 'tandem-gateway' ? 'openai-compatible' : kind;
   const id = model.toLowerCase();
@@ -219,9 +295,19 @@ export function builtinCapabilities(kind: ProviderKind, model: string): ModelCap
 
   const id = model.toLowerCase();
   const claude = /^claude-/.test(id);
-  // 上下文上限按模型 id 前缀推断（与 provider 无关）
-  if (claude) caps.contextWindow = 200_000;
-  else if (/^gpt-5/.test(id)) caps.contextWindow = 400_000;
+  // 上下文上限按模型 id 前缀推断（与 provider 无关）；Claude 的 1M 能力单独标记
+  if (claude) {
+    const longContext = claudeLongContext(model);
+    // beta 头只有 Anthropic 协议能发；其它协议按 200K 保守默认，仍可手动切 1M（由中转决定）。
+    const effective =
+      longContext && kind !== 'anthropic' ? { default: false } : longContext;
+    caps.contextWindow = effective?.default ? 1_000_000 : 200_000;
+    if (effective) {
+      caps.longContext = effective;
+      const note = contextNoteFor(model, kind, effective);
+      if (note) caps.contextNote = note;
+    }
+  } else if (/^gpt-5/.test(id)) caps.contextWindow = 400_000;
   else if (/^gpt-6/.test(id)) caps.contextWindow = 500_000;
   else if (/^gpt-4\.1/.test(id)) caps.contextWindow = 1_000_000;
   else if (/^gpt-4o/.test(id)) caps.contextWindow = 128_000;
@@ -274,6 +360,16 @@ export function applyModelCapabilities(
     provider?.contextWindow ??
     builtin.contextWindow;
   if (contextWindow !== undefined) info.contextWindow = contextWindow;
+  const longContext = override?.longContext ?? provider?.longContext ?? builtin.longContext;
+  if (longContext !== undefined) {
+    // provider 明确给出更小窗口时按该窗口作默认，但仍保留手动切 1M 的选项
+    info.longContext =
+      contextWindow !== undefined
+        ? { ...longContext, default: longContext.default && contextWindow >= 1_000_000 }
+        : { ...longContext };
+  }
+  const contextNote = override?.contextNote ?? provider?.contextNote ?? builtin.contextNote;
+  if (contextNote !== undefined) info.contextNote = contextNote;
   return info;
 }
 

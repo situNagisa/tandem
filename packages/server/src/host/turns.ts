@@ -362,6 +362,7 @@ export async function compactSession(host: Host, rec: SessionRecord): Promise<vo
       model,
       keepTurns: 0,
       auto: false,
+      ...(rec.longContext !== undefined ? { longContext: rec.longContext } : {}),
       signal: abort.signal,
     });
     if (!compacted) throw new Error('当前没有可压缩的对话。');

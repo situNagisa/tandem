@@ -96,6 +96,8 @@ export function NewSessionView() {
   const [effort, setEffort] = useState<ReasoningEffort | undefined>(effortPick)
   const [delegation, setDelegation] = useState<DelegationStrategy>('less')
   const [routeNative, setRouteNative] = useState(false)
+  /** 上下文窗口：只存用户显式选择；undefined 时按分组/型号默认。 */
+  const [longContext, setLongContext] = useState<boolean | undefined>(undefined)
   const [worktree, setWorktree] = useState(false)
   const [worktreeBranch, setWorktreeBranch] = useState('')
   const [sending, setSending] = useState(false)
@@ -248,6 +250,7 @@ export function NewSessionView() {
           ...(routeBias ? { routeBias } : {}),
           permissionMode,
           ...(effort ? { effort } : {}),
+          ...(longContext !== undefined ? { longContext } : {}),
           delegation,
           routeNative,
           ...(worktree && gitRepo === 'yes'
@@ -278,8 +281,14 @@ export function NewSessionView() {
     setProfileId(pid)
     setGroupId(gid)
     setModel(m)
+    setLongContext(undefined)
     rememberNewSessionPick(hostId, { profileId: pid, groupId: gid, model: m })
   }
+
+  const currentGroup = profiles
+    .find((profile) => profile.id === profileId)
+    ?.groups?.find((group) => group.id === groupId)
+  const groupLongContextDefault = currentGroup?.longContext
 
   return (
     <div className="flex min-h-full flex-col items-center justify-center px-4 py-10 md:py-14">
@@ -317,6 +326,9 @@ export function NewSessionView() {
           groupId={groupId}
           permissionMode={permissionMode}
           effort={effortPick}
+          longContext={longContext}
+          longContextDefault={groupLongContextDefault}
+          onLongContextChange={setLongContext}
           routeBias={routeBias}
           delegation={delegation}
           routeNative={routeNative}

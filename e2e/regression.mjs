@@ -1819,6 +1819,11 @@ function seedData({ configDir, repo, hostId, mockPort, previewCwd, today, day })
       message('ce1', 'user', '这道题先想一想'),
       message('ce2', 'assistant', '好的。', { model: 'claude-sonnet-5-5' }),
     ], { profileId: 'p-claude', groupId: undefined, model: 'claude-sonnet-5-5', effort: 'max', updatedAt: Date.now() - 985 }),
+    // 1M 上下文：Sonnet 4.5 只有 200K，模型菜单不应出现上下文开关。
+    mk('claude-45', 'Claude 4.5 会话', [
+      message('c451', 'user', '看看这个文件'),
+      message('c452', 'assistant', '好的。', { model: 'claude-sonnet-4-5' }),
+    ], { profileId: 'p-claude', groupId: undefined, model: 'claude-sonnet-4-5', updatedAt: Date.now() - 990 }),
     // 反馈1601#03：输入 6 tok、按参考价折算后不足 $0.0001，不能显示成 $0.0000。
     mk('tinycost', '小额花费会话', [
       message('tc1', 'user', '这条输入的金额不要显示成 0', {
@@ -4804,6 +4809,42 @@ async function main() {
         await plainMenu.getByRole('menuitem', { name: /思考强度/ }).count(),
         0,
         '未知/不支持思考的模型仍显示思考强度',
+      )
+      await page.keyboard.press('Escape')
+    })
+
+    desktop('1M 上下文开关按型号能力显示，切换后上下文卡分母变化', async (page) => {
+      // Sonnet 5.5 原生 1M：默认显示 1M，可切到 200K。
+      await openSession(page, 'claude-effort')
+      await waitModelReady(page)
+      await page.locator('button[aria-label^="选择模型"]').first().click()
+      const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+      await menu.waitFor()
+      const contextTrigger = menu.getByRole('menuitem', { name: /上下文/ }).first()
+      assert.equal(await contextTrigger.count(), 1, `Sonnet 5.5 缺少上下文开关：${await menu.innerText()}`)
+      assert.match(await contextTrigger.innerText(), /1M/, '原生 1M 型号默认应显示 1M')
+      await contextTrigger.hover()
+      const submenu = page.locator('[role="menu"][aria-label="上下文"]').first()
+      await submenu.waitFor({ state: 'visible', timeout: 5_000 })
+      assert.equal(await submenu.getByRole('menuitemradio', { name: '200K' }).count(), 1, '上下文开关缺少 200K')
+      assert.equal(await submenu.getByRole('menuitemradio', { name: '1M' }).count(), 1, '上下文开关缺少 1M')
+      await submenu.getByRole('menuitemradio', { name: '200K' }).click()
+      await menu.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {})
+      const stored = await api(base, token, '/api/sessions/claude-effort')
+      assert.equal(stored.longContext, false, '切到 200K 没有写入会话')
+      const breakdown = await api(base, token, '/api/sessions/claude-effort/context')
+      assert.equal(breakdown.contextWindow, 200_000, '上下文卡分母没有按 200K 计算')
+
+      // Sonnet 4.5 只有 200K：菜单不显示上下文开关。
+      await openSession(page, 'claude-45')
+      await waitModelReady(page)
+      await page.locator('button[aria-label^="选择模型"]').first().click()
+      const plainMenu = page.locator('[role="menu"][aria-label="选择模型"]').first()
+      await plainMenu.waitFor()
+      assert.equal(
+        await plainMenu.getByRole('menuitem', { name: /上下文/ }).count(),
+        0,
+        'Sonnet 4.5 不应出现 1M 上下文开关',
       )
       await page.keyboard.press('Escape')
     })

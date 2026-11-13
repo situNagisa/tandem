@@ -1,6 +1,6 @@
 # 账号与模型（设置）
 
-> 更新：2026-11-12。设计原则见 [design.md](../design.md) 的 P21；根因见 [feedback-ledger.md](../feedback-ledger.md) 的 R59/R60/R42/R43/R37/R72。协议字段见 `packages/protocol/src/index.ts`。
+> 更新：2026-11-13。设计原则见 [design.md](../design.md) 的 P21；根因见 [feedback-ledger.md](../feedback-ledger.md) 的 R59/R60/R42/R43/R37/R72/R81。协议字段见 `packages/protocol/src/index.ts`。
 
 ## 归属：工作站账号级（反馈12#01 · R59）
 
@@ -47,6 +47,15 @@
 - 设置 → 通用 → 额度交接的「默认策略」可选 `off`（关闭）：服务端 `triggerHandoff` 不建卡、不等待，回合直接跑完；关闭后冷却 Key 同样直接重试。预测性提醒 `forecast` 默认只写一条提示行，不停回合。
 - 预算规则（设置 → 预算）：每条规则可单独停用/删除，`blockingRule` 只看启用且达到 100% 的规则，所以停用/删除后新请求不再被阻止（单测 `budgets`）。预算阻止命中时同样先给交接卡；选「继续使用当前分组」后本会话预算阻止不再拦（`assertBudget` 读 `handoffBypass`）。
 - 验证：单测 `packages/server/test/handoff.test.ts`、`budgets.test.ts`；回归「反馈0220#02：额度将尽时可继续使用当前分组跑完本轮」「反馈0220#02：关闭额度交接后不再出现交接卡」。
+
+## 长上下文（1M）开关（2026-11-13 · R81）
+
+- 能力表 `providers/capabilities.ts` 的 `claudeLongContext` 按型号给出上下文：原生 1M（Opus 4.7+、Sonnet 5+、Haiku 5.5、Fable/Mythos 5+）默认 1M、无需 beta；Opus 4.6 / Sonnet 4.6 默认 200K，切 1M 时 Anthropic 协议加 `anthropic-beta: context-1m-2025-08-07`（Claude Code 的 `[1m]` 变体等价物，账号/分组能力覆盖可改 beta）；Sonnet 4.5 及以前只有 200K（其 1M beta 已退役）。
+- 会话级「上下文：200K / 1M」在模型菜单（思考强度下方），只对支持 1M 的型号显示，选择写入会话 `longContext`。新会话按分组设置「新会话上下文」（跟随模型 / 200K / 1M）默认；未设置时按型号能力。创建后修改走 `PATCH /api/sessions/:id`。
+- 开关只改本地预算：上下文卡分母、自动压缩阈值、压缩输入都按有效窗口计算；原生 1M 型号切到 200K 不发任何请求参数。经 OpenAI 兼容协议访问 Claude 时不加 Anthropic beta 头，默认按 200K 保守处理、可手动切 1M，菜单与上下文面板注明「由中转决定」。
+- Haiku 5.5 超过 100K token 的提示按更高价格计费：上下文面板显示提示；价格表没有分段价，不估算金额。
+- provider 返回的 `contextWindow` 仍优先：比 1M 小的窗口把默认改成 200K，但仍可手动切 1M。
+- 验证：单测 `capabilities`、`context`、`anthropic-long-context`；回归「1M 上下文开关按型号能力显示，切换后上下文卡分母变化」。
 
 ## 验证
 

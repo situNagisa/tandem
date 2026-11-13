@@ -67,6 +67,9 @@ export function Composer({
   onPermissionModeChange,
   effort: effortProp,
   onEffortChange,
+  longContext: longContextProp,
+  onLongContextChange,
+  longContextDefault,
   hostId: hostIdProp,
   cwd: cwdProp,
   placeholder,
@@ -128,6 +131,7 @@ export function Composer({
     setLocalEffort,
     currentKind,
     effort,
+    longContext,
     draftKey,
   } = useComposerStore({
     sessionless,
@@ -139,6 +143,7 @@ export function Composer({
     delegationProp,
     routeNativeProp,
     effortProp,
+    longContextProp,
     hostIdProp,
     cwdProp,
     runningProp,
@@ -226,6 +231,8 @@ export function Composer({
     modelContextWindow,
     modelDefaultEffort,
     modelEffortNote,
+    modelLongContext,
+    modelContextNote,
     supportedEfforts,
     modelPrices,
     cachedPrices,
@@ -355,6 +362,22 @@ export function Composer({
 
   const sendState = running ? 'running' : canSend ? 'ready' : 'idle'
 
+  // 选择即写入会话；新会话页由外部记住并随创建请求写入。
+  const changeLongContext = (next: boolean) => {
+    if (sessionless) {
+      onLongContextChange?.(next)
+      return
+    }
+    if (activeHostId && summary) {
+      void updateSession(activeHostId, summary.id, { longContext: next })
+    }
+  }
+  const longContextInfo = modelLongContext
+    ? longContextDefault !== undefined
+      ? { ...modelLongContext, default: longContextDefault }
+      : modelLongContext
+    : undefined
+
   useComposerVoiceShortcut({ disabled, scopeTarget, editorRef, voiceRef })
 
   return (
@@ -459,6 +482,9 @@ export function Composer({
           effortLabels={modelEffortLabels}
           defaultEffort={modelDefaultEffort}
           effortNote={modelEffortNote}
+          longContext={longContext}
+          longContextInfo={longContextInfo}
+          contextNote={modelContextNote}
           profilesLoading={profilesLoading}
           modelDisabled={disabled || (!sessionless && !summary)}
           modelMenuOpen={modelMenuOpen}
@@ -467,6 +493,7 @@ export function Composer({
           onChangeAutoRoute={changeAutoRoute}
           onLoadPrices={loadModelPrices}
           onChangeEffort={changeEffort}
+          onChangeLongContext={changeLongContext}
           onManageModels={() => openSettings('profiles')}
           onSetupPrice={() => {
             setModelMenuOpen(false)

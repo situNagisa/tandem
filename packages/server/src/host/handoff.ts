@@ -126,7 +126,7 @@ async function fitContextForTarget(
   const profile = host.profileFor(rec.profileId, rec.groupId);
   if (!profile) return;
   const settings = normalizeContextSettings(host.config.context);
-  const window = contextWindowForModel(model, profile.kind, profile.modelCapabilities);
+  const window = contextWindowForModel(model, profile.kind, profile.modelCapabilities, rec.longContext);
   const limit = Math.floor(window * Math.min(0.8, settings.autoCompactThreshold));
   const used = () =>
     estimateMessagesTokens(rec.messages.filter((message) => !message.notice)) +
@@ -138,6 +138,7 @@ async function fitContextForTarget(
       keepTurns: settings.autoCompactKeepTurns,
       auto: true,
       force: true,
+      ...(rec.longContext !== undefined ? { longContext: rec.longContext } : {}),
       ...(signal ? { signal } : {}),
     }).catch(() => undefined);
     if (!compacted) break;

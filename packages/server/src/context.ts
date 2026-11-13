@@ -13,7 +13,7 @@ import type {
 } from '@tandem/protocol';
 import { isSystemInjectionText } from '@tandem/protocol';
 import type { ToolDefinition } from './types.js';
-import { builtinCapabilities, overrideFor } from './providers/capabilities.js';
+import { builtinCapabilities, contextNoteOf, contextWindowWithChoice, overrideFor } from './providers/capabilities.js';
 import { subagentListing } from './agent/prompt.js';
 
 type PartKind = ContextBreakdown['parts'][number]['kind'];
@@ -47,15 +47,20 @@ export function contextWindowForModel(
   model: string,
   kind?: ProviderKind,
   overrides?: Record<string, ModelCapabilities>,
+  longContext?: boolean,
 ): number {
-  const fromOverride = overrideFor(overrides, model)?.contextWindow;
-  if (fromOverride !== undefined) return fromOverride;
-  if (kind) {
-    const fromCapabilities = builtinCapabilities(kind, model).contextWindow;
-    if (fromCapabilities !== undefined) return fromCapabilities;
-  }
+  const override = overrideFor(overrides, model);
+  const builtin = kind ? builtinCapabilities(kind, model) : undefined;
   const name = model.trim().toLowerCase().replace(/^[^/]+\//, '');
-  if (/\[1m\]$/.test(name)) return 1_000_000;
+  const base =
+    override?.contextWindow ??
+    builtin?.contextWindow ??
+    (/\[1m\]$/.test(name) ? 1_000_000 : fallbackWindowFor(name));
+  const capability = override?.longContext ?? builtin?.longContext;
+  return contextWindowWithChoice(base, capability, longContext);
+}
+
+function fallbackWindowFor(name: string): number {
   for (const entry of CONTEXT_WINDOWS) {
     if (name.startsWith(entry.prefix)) return entry.tokens;
   }
@@ -98,6 +103,8 @@ export interface EstimateInput {
   capabilityOverrides?: Record<string, ModelCapabilities>;
   /** 自动压缩触发配置；只用于面板提示，不参与估算。 */
   autoCompact?: { enabled: boolean; threshold: number };
+  /** 会话级 1M 上下文选择：影响分母与压缩阈值；缺省按型号能力。 */
+  longContext?: boolean;
   /** 子代理预设（Task 工具说明里的列表）；从系统提示里拆出来单列「自定义 agents」。 */
   agents?: Array<{ name: string; description?: string }>;
 }
@@ -337,7 +344,11 @@ export function estimateBreakdown(input: EstimateInput): ContextBreakdown {
     input.model,
     input.providerKind,
     input.capabilityOverrides,
+    input.longContext,
   );
+  const contextNote = input.providerKind
+    ? contextNoteOf(input.providerKind, input.model, input.capabilityOverrides)
+    : undefined;
   return finish(
     parts,
     usedTokens,
@@ -347,6 +358,7 @@ export function estimateBreakdown(input: EstimateInput): ContextBreakdown {
     input.autoCompact,
     topItems,
     topTurns,
+    contextNote,
   );
 }
 
@@ -381,6 +393,7 @@ export function calibrateBreakdown(
       tokens: Math.round(turn.tokens * scale),
       items: turn.items.map((item) => ({ ...item, tokens: Math.round(item.tokens * scale) })),
     })),
+    estimate.contextNote,
   );
 }
 
@@ -402,6 +415,7 @@ function finish(
   autoCompact?: { enabled: boolean; threshold: number },
   topItems?: ContextTopItem[],
   topTurns?: ContextTurnItem[],
+  contextNote?: string,
 ): ContextBreakdown {
   const free = Math.max(0, contextWindow - usedTokens);
   return {
@@ -415,6 +429,7 @@ function finish(
     ...(autoCompact ? { autoCompact: { ...autoCompact } } : {}),
     ...(topItems && topItems.length > 0 ? { topItems } : {}),
     ...(topTurns && topTurns.length > 0 ? { topTurns } : {}),
+    ...(contextNote ? { contextNote } : {}),
     updatedAt: Date.now(),
   };
 }

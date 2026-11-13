@@ -75,6 +75,7 @@ function parseGroupInputs(value: unknown): ProfileGroupInput[] | undefined {
         ...(item.multiplier !== undefined && item.multiplier !== null && item.multiplier !== ''
           ? { multiplier: Number(item.multiplier) }
           : {}),
+        ...(typeof item.longContext === 'boolean' ? { longContext: item.longContext } : {}),
         ...(item.modelCapabilities && typeof item.modelCapabilities === 'object'
           ? {
               modelCapabilities:

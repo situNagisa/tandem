@@ -177,3 +177,36 @@ test('「最占空间」不把外部会话注入当成用户轮（反馈16#05 / 
   assert.deepEqual(result.topTurns?.map((turn) => turn.messageId), ['u1', 'u2']);
   assert.equal(result.topTurns?.some((turn) => /You are Codex|multi_agent_role|AGENTS\.md/.test(turn.preview)), false);
 });
+
+test('上下文分母与压缩阈值随会话 200K/1M 选择变化', async () => {
+  const { contextWindowForModel, estimateBreakdown } = await import('../src/context.js');
+  assert.equal(contextWindowForModel('claude-sonnet-5-5', 'anthropic'), 1_000_000);
+  assert.equal(contextWindowForModel('claude-sonnet-5-5', 'anthropic', undefined, false), 200_000);
+  assert.equal(contextWindowForModel('claude-sonnet-4-6', 'anthropic'), 200_000);
+  assert.equal(contextWindowForModel('claude-sonnet-4-6', 'anthropic', undefined, true), 1_000_000);
+  assert.equal(contextWindowForModel('claude-sonnet-4-5', 'anthropic', undefined, true), 200_000);
+  assert.equal(contextWindowForModel('gpt-5.2', 'openai', undefined, true), 400_000);
+
+  const base = { model: 'claude-sonnet-5-5', system: 'sys', tools: [], messages: [], cwd: '/tmp' };
+  const large = estimateBreakdown({ ...base, providerKind: 'anthropic' as const });
+  const small = estimateBreakdown({ ...base, providerKind: 'anthropic' as const, longContext: false });
+  assert.equal(large.contextWindow, 1_000_000);
+  assert.equal(small.contextWindow, 200_000);
+  assert.equal(
+    small.parts.find((part) => part.kind === 'free')!.tokens,
+    Math.max(0, 200_000 - small.usedTokens),
+  );
+});
+
+test('Haiku 5.5 的上下文提示随上下文快照下发', async () => {
+  const { estimateBreakdown } = await import('../src/context.js');
+  const value = estimateBreakdown({
+    model: 'claude-haiku-5-5',
+    system: 'sys',
+    tools: [],
+    messages: [],
+    cwd: '/tmp',
+    providerKind: 'anthropic',
+  });
+  assert.match(value.contextNote ?? '', /100K/);
+});

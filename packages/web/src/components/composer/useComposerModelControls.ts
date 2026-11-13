@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type {
   DelegationStrategy,
+  LongContextCapability,
   ModelPriceInfo,
   PermissionMode,
   Profile,
@@ -94,6 +95,8 @@ export function useComposerModelControls({
   const [modelContextWindow, setModelContextWindow] = useState<number | undefined>(undefined)
   const [modelDefaultEffort, setModelDefaultEffort] = useState<ReasoningEffort | undefined>(undefined)
   const [modelEffortNote, setModelEffortNote] = useState<string | undefined>(undefined)
+  const [modelLongContext, setModelLongContext] = useState<LongContextCapability | undefined>(undefined)
+  const [modelContextNote, setModelContextNote] = useState<string | undefined>(undefined)
   const supportedEfforts = modelEfforts ?? defaultEffortsForKind(currentKind)
   const capabilitiesKey = `${currentProfileId}:${currentGroupId ?? ''}:${currentModel}`
 
@@ -109,6 +112,8 @@ export function useComposerModelControls({
     setModelContextWindow(undefined)
     setModelDefaultEffort(undefined)
     setModelEffortNote(undefined)
+    setModelLongContext(undefined)
+    setModelContextNote(undefined)
     if (!effectiveHostId || !currentProfileId || !currentModel || autoRoute) return
     const host = useAppStore.getState().hosts.find((h) => h.id === effectiveHostId)
     if (!host) return
@@ -123,6 +128,8 @@ export function useComposerModelControls({
         setModelContextWindow(info.contextWindow)
         setModelDefaultEffort(info.defaultEffort)
         setModelEffortNote(info.effortNote)
+        setModelLongContext(info.longContext)
+        setModelContextNote(info.contextNote)
       })
       .catch(() => {
         /* 能力未知时保留默认档位 */
@@ -321,6 +328,8 @@ export function useComposerModelControls({
     modelContextWindow,
     modelDefaultEffort,
     modelEffortNote,
+    modelLongContext,
+    modelContextNote,
     supportedEfforts,
     modelPrices,
     cachedPrices,

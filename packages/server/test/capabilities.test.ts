@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   ANTHROPIC_THINKING_BUDGETS,
+  CONTEXT_1M_BETA,
   applyModelCapabilities,
   builtinCapabilities,
+  contextWindowWithChoice,
   openaiReasoningEffort,
   resolveEfforts,
 } from '../src/providers/capabilities.js';
@@ -103,4 +105,47 @@ test('未知模型不猜思考档位；账号覆盖与 provider 返回优先', (
   );
   assert.deepEqual(provider.efforts, ['low', 'high'], 'provider 返回的能力应覆盖内置表');
   assert.deepEqual(provider.effortLabels, { low: '低 · low' });
+});
+
+test('Claude 长上下文按型号：原生 1M、4.6 需 beta、4.5 仅 200K', () => {
+  const native = builtinCapabilities('anthropic', 'claude-sonnet-5-5');
+  assert.equal(native.contextWindow, 1_000_000);
+  assert.deepEqual(native.longContext, { default: true });
+  assert.equal(contextWindowWithChoice(native.contextWindow!, native.longContext, undefined), 1_000_000);
+  assert.equal(contextWindowWithChoice(native.contextWindow!, native.longContext, false), 200_000);
+
+  const beta = builtinCapabilities('anthropic', 'claude-sonnet-4-6');
+  assert.equal(beta.contextWindow, 200_000, '4.6 默认 200K，需手动切 1M');
+  assert.deepEqual(beta.longContext, { default: false, beta: CONTEXT_1M_BETA });
+  assert.equal(contextWindowWithChoice(beta.contextWindow!, beta.longContext, true), 1_000_000);
+  assert.equal(contextWindowWithChoice(beta.contextWindow!, beta.longContext, undefined), 200_000);
+  assert.deepEqual(builtinCapabilities('anthropic', 'claude-opus-4-6').longContext, {
+    default: false,
+    beta: CONTEXT_1M_BETA,
+  });
+
+  assert.equal(builtinCapabilities('anthropic', 'claude-sonnet-4-5').longContext, undefined, 'Sonnet 4.5 的 1M beta 已退役');
+  assert.equal(builtinCapabilities('anthropic', 'claude-sonnet-4-5').contextWindow, 200_000);
+  assert.equal(builtinCapabilities('anthropic', 'claude-opus-4-5').longContext, undefined);
+
+  const haiku = builtinCapabilities('anthropic', 'claude-haiku-5-5');
+  assert.equal(haiku.longContext?.default, true);
+  assert.match(haiku.contextNote ?? '', /100K/, 'Haiku 5.5 超过 100K 的提示价更高');
+  assert.equal(builtinCapabilities('anthropic', 'claude-fable-5').longContext?.default, true);
+  assert.equal(builtinCapabilities('anthropic', 'claude-opus-4-7').longContext?.default, true);
+
+  // provider 明确给出更小窗口时按该窗口作默认，但仍可手动切 1M
+  const relay = applyModelCapabilities({ id: 'claude-opus-5-5', contextWindow: 200_000 }, 'anthropic');
+  assert.equal(relay.longContext?.default, false);
+  assert.equal(contextWindowWithChoice(relay.contextWindow!, relay.longContext, true), 1_000_000);
+});
+
+test('OpenAI 兼容协议访问 Claude 时 1M 只是本地预算并注明由中转决定', () => {
+  const caps = builtinCapabilities('openai-compatible', 'claude-sonnet-5-5');
+  assert.equal(caps.longContext?.default, false, '中转可能只收 200K，默认保守');
+  assert.equal(caps.contextWindow, 200_000);
+  assert.equal(contextWindowWithChoice(caps.contextWindow!, caps.longContext, true), 1_000_000);
+  assert.match(caps.contextNote ?? '', /中转决定/);
+  assert.equal(caps.longContext?.beta, undefined, 'OpenAI 兼容协议不加 Anthropic beta 头');
+  assert.equal(builtinCapabilities('openai-compatible', 'claude-sonnet-4-6').longContext?.beta, undefined, '4.6 经 OpenAI 兼容协议也不发 beta');
 });

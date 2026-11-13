@@ -11,6 +11,16 @@ export type ProviderKind =
   | 'tandem-gateway'     // 团队自建 Tandem 网关（OpenAI 兼容入口；地址填网关 Host，Key 填网关令牌）
   | 'demo';              // 内置演示模型：只在演示工作区可用，按剧本流式输出，不发任何网络请求
 
+/** 长上下文（1M）能力：支持时模型菜单显示「上下文：200K / 1M」开关。 */
+export interface LongContextCapability {
+  /** 未显式选择时默认使用 1M。 */
+  default: boolean;
+  /** 切到 1M 时 Anthropic 协议需要带的 beta 头（如 context-1m-2025-08-07）；缺省表示不需要。 */
+  beta?: string;
+  /** 该协议下 1M 是否真的生效的说明（如经 OpenAI 兼容协议由中转决定）。 */
+  note?: string;
+}
+
 /** 单个模型的能力覆盖；缺省字段按 provider 能力或内置表推断。 */
 export interface ModelCapabilities {
   efforts?: ReasoningEffort[];
@@ -21,6 +31,9 @@ export interface ModelCapabilities {
   /** 该协议下思考强度是否真的生效的说明（如「经 OpenAI 兼容协议，由中转决定是否生效」）。 */
   effortNote?: string;
   contextWindow?: number;
+  longContext?: LongContextCapability;
+  /** 上下文相关提示（如 Haiku 5.5 超过 100K token 的提示按更高价格计费）。 */
+  contextNote?: string;
 }
 
 export interface Profile {
@@ -90,10 +103,12 @@ export interface ProfileGroup {
   /** 价格倍率：缺省继承账号倍率（等效 1）。 */
   multiplier?: number;
   modelCapabilities?: Record<string, ModelCapabilities>;
+  /** 该分组新会话的上下文默认：true=1M，false=200K，缺省跟随模型能力。 */
+  longContext?: boolean;
   /** 备用分组链（同一账号内，按顺序）：额度将尽时交接给第一个可用的分组。 */
   fallbackGroupIds?: string[];
 }
-export interface ProfileGroupInput { id?: string; name: string; kind?: ProviderKind; apiKey?: string; /** 旧的单 Key 字段，等价于 apiKeys=[{apiKey}] */ apiKeys?: ProfileKeyInput[]; keyStrategy?: KeyStrategy; baseUrl?: string; models: string[]; defaultModel: string; multiplier?: number; modelCapabilities?: Record<string, ModelCapabilities>; fallbackGroupIds?: string[] }
+export interface ProfileGroupInput { id?: string; name: string; kind?: ProviderKind; apiKey?: string; /** 旧的单 Key 字段，等价于 apiKeys=[{apiKey}] */ apiKeys?: ProfileKeyInput[]; keyStrategy?: KeyStrategy; baseUrl?: string; models: string[]; defaultModel: string; multiplier?: number; modelCapabilities?: Record<string, ModelCapabilities>; longContext?: boolean; fallbackGroupIds?: string[] }
 /** 余额查询平台：auto 按 baseUrl 识别已知平台；none 关闭；custom 用 url/path。 */
 export type BalancePlatform =
   | 'auto'
@@ -357,6 +372,8 @@ export interface SessionSummary {
   routeSavings?: AutoRouteSavings;
   permissionMode: PermissionMode;
   effort?: ReasoningEffort; // 思考强度：映射到 Anthropic thinking budget / OpenAI reasoning_effort；模型不支持时忽略
+  /** 会话级上下文窗口：true=1M，false=200K，缺省按分组/模型能力。只影响本地预算（压缩阈值与上下文卡），请求本身不改。 */
+  longContext?: boolean;
   /** 分工；缺省按 Host 设置（默认 less）。 */
   delegation?: DelegationStrategy;
   /** 原生模式：不注入分工/取向/路由提示词，不做路由规则分类改写；工具不减，Task 仍可用。 */
@@ -503,6 +520,8 @@ export interface ContextBreakdown {
   topTurns?: ContextTurnItem[];
   /** 自动压缩触发配置；老 Host 缺失时不展示提示。 */
   autoCompact?: { enabled: boolean; threshold: number };
+  /** 上下文相关提示（如 Haiku 5.5 超过 100K token 的提示按更高价格计费）。 */
+  contextNote?: string;
   /** 按当前速度的剩余轮数预估（用量卡/上下文面板共用）。 */
   quota?: QuotaEstimate;
   updatedAt: number;
@@ -522,12 +541,14 @@ export interface CreateSessionInput {
   delegation?: DelegationStrategy;
   /** 原生模式：不注入分工/取向说明；缺省跟随设置「模型路由 → 新会话默认」。 */
   routeNative?: boolean;
+  /** 上下文窗口：true=1M，false=200K；缺省按分组默认或模型能力。 */
+  longContext?: boolean;
   title?: string;
   worktree?: { branch?: string };
 }
 export type ReasoningEffort = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 // cwd：会话中途切换工作目录（下一轮生效，重新检测 env）
-export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'autoRoute' | 'routeBias' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'routeNative' | 'cwd' | 'pinnedTurns'>>;
+export type UpdateSessionInput = Partial<Pick<SessionSummary, 'title' | 'profileId' | 'groupId' | 'model' | 'autoRoute' | 'routeBias' | 'permissionMode' | 'pinned' | 'pinnedInProject' | 'archived' | 'effort' | 'delegation' | 'routeNative' | 'longContext' | 'cwd' | 'pinnedTurns'>>;
 
 // ---------- 外部会话（本机已有的 Claude Code / Codex 会话） ----------
 // 原则：只读原软件的文件，绝不写回；"导入"= 复制成 Tandem 会话后继续（可换任意模型）。
@@ -601,6 +622,8 @@ export interface ModelInfo {
   effortLabels?: Partial<Record<ReasoningEffort, string>>; // 各档位的厂商叫法（中文 + 原名）
   defaultEffort?: ReasoningEffort; // 未显式选择时的官方默认档位
   effortNote?: string; // 该协议下的生效说明（如中转是否透传）
+  longContext?: LongContextCapability; // 支持 1M 上下文时菜单显示 200K / 1M 开关
+  contextNote?: string; // 上下文提示（如 Haiku 5.5 超 100K 价更高）
 }
 /** 参考单价（每百万 token 美元）；缓存价按 provider 缓存放大的输入价折算。 */
 export interface ModelPriceInfo {
@@ -1344,6 +1367,8 @@ export interface WorkspaceModelProxyInput {
   tools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
   maxTokens: number;
   effort?: ReasoningEffort;
+  /** 会话选了 1M 上下文：provider 按型号能力决定是否加 beta 头（原生 1M 不需要）。 */
+  longContext?: boolean;
   idleTimeoutSec?: number;
   /** 用户选择「继续使用当前分组」/关闭交接：冷却中的 Key 也直接试一次。 */
   includeCoolingKeys?: boolean;

@@ -1,5 +1,12 @@
 # 进度
 
+## 迭代 80（2026-11-13）1M 上下文开关：按型号能力与协议生效（R81）
+- [x] 原话「有些模型有1m上下文的开关，你这里没支持」：`providers/capabilities.ts` 新增 `claudeLongContext`，原生 1M 型号（Opus 4.7+、Sonnet 5+、Haiku 5.5、Fable/Mythos 5+）默认 1M；Opus 4.6 / Sonnet 4.6 默认 200K、切 1M 时 Anthropic 协议加 `anthropic-beta: context-1m-2025-08-07`；Sonnet 4.5 及以前只有 200K。
+- [x] 会话级「上下文：200K / 1M」在模型菜单、只对支持 1M 的型号显示，选择写入 `longContext`；分组设置可设新会话默认；上下文卡分母、自动压缩阈值与压缩输入按有效窗口，原生 1M 切 200K 不改请求。
+- [x] Haiku 5.5 超 100K 提示价更高的说明随上下文快照下发；OpenAI 兼容协议访问 Claude 时标注 1M 由中转决定、不加 beta 头。
+- [x] 验证：单测 `capabilities`/`context`/`anthropic-long-context` 全通过；回归「1M 上下文开关按型号能力显示，切换后上下文卡分母变化」通过；用 `~/.tandem` 副本对 claude-sonnet-5-5 发一次最小请求成功（原生 1M 无需 beta），副本已删除。
+- 检查：`node scripts/check.mjs --skip-smoke`。
+
 ## 迭代 79（2026-11-12）反馈1603：会话图悬停粒度、等待输入标记、子代理会话加载
 - [x] 原话「悬停在某个选项卡上的时候，不需要把所有同分支的选项卡都高亮，只需要高亮悬停的选项卡即可」：`SessionGraphView` 标题行底色只跟 `data-row-hovered`（指针所在行），同会话其他行保持原背景；整条泳道线与悬停节点突出保持不变（R76）。
 - [x] 原话「当正在思考，或者等待输入的时候，需要有呼吸效果和对应的输入标记」：graph 接口对 `waiting_permission` 下发 `waiting`；等待输入的会话最新一轮显示侧栏待审批同色标记（`bg-accent running-dot`）与「等待你的输入/审批」tooltip，主会话/分叉/子代理与悬停浮层同样适用（R77）。

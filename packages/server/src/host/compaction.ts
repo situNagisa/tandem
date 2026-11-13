@@ -25,6 +25,8 @@ export interface CompactHistoryOptions {
   auto: boolean;
   /** 强制压缩：历史不足 keepTurns 时也至少压掉最老的一轮（上下文已超长时使用）。 */
   force?: boolean;
+  /** 会话级 1M 上下文选择；决定压缩输入能放多少。 */
+  longContext?: boolean;
   signal?: AbortSignal;
 }
 
@@ -129,7 +131,7 @@ export async function compactHistory(
   const system = host.buildSystemFor(rec, { allowTask: false }).system;
   const compactInput = fitForCompactor(
     older.filter((message) => !message.notice),
-    contextWindowForModel(opts.model, profile.kind, profile.modelCapabilities),
+    contextWindowForModel(opts.model, profile.kind, profile.modelCapabilities, opts.longContext),
     estimateTokens(system) + estimateTokens(instructionText) + 4096,
   );
 

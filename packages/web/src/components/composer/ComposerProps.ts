@@ -29,6 +29,11 @@ export interface ComposerProps {
   /** 无会话模式的思考强度；缺省读上次使用值。 */
   effort?: ReasoningEffort
   onEffortChange?: (effort: ReasoningEffort, remember?: boolean) => void
+  /** 无会话模式的上下文窗口选择（true=1M / false=200K）；缺省按分组与型号默认。 */
+  longContext?: boolean
+  onLongContextChange?: (longContext: boolean) => void
+  /** 无会话模式：分组默认的上下文窗口（用于菜单显示默认勾选）。 */
+  longContextDefault?: boolean
   /** 文件补全与斜杠命令使用的 Host / 工作目录；缺省用当前会话。 */
   hostId?: string
   cwd?: string

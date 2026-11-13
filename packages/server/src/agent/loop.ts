@@ -334,6 +334,7 @@ export async function runTurn(
           cacheHitRate: cacheHitRateOf(rec.usage),
           providerKind: profile.kind,
           capabilityOverrides: profile.modelCapabilities,
+          longContext: rec.longContext,
           autoCompact: autoCompactMeta,
           ...(allowTask
             ? {
@@ -366,6 +367,7 @@ export async function runTurn(
           model,
           keepTurns: contextSettings.autoCompactKeepTurns,
           auto: true,
+          ...(rec.longContext !== undefined ? { longContext: rec.longContext } : {}),
           signal: abort.signal,
         }).catch((err) => {
           if (!rt.interrupted && !abort.signal.aborted) {
@@ -453,6 +455,7 @@ export async function runTurn(
                       idleTimeoutSec: host.config.idleTimeoutSec ?? 180,
                       maxTokens: MAX_TOKENS,
                       effort: rec.effort,
+                      ...(rec.longContext !== undefined ? { longContext: rec.longContext } : {}),
                       ...(retryCoolingKeys ? { includeCoolingKeys: true } : {}),
                       onEffortDropped: (detail) => {
                         effortDropped = detail || '上游未返回错误详情';
@@ -555,6 +558,7 @@ export async function runTurn(
               keepTurns: contextSettings.autoCompactKeepTurns,
               auto: true,
               force: true,
+              ...(rec.longContext !== undefined ? { longContext: rec.longContext } : {}),
               signal: abort.signal,
             }).catch(() => undefined);
             if (!compacted) throw err;

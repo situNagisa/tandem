@@ -14,6 +14,8 @@ export interface ProxyRunner {
       tools: ToolDefinition[];
       maxTokens: number;
       effort?: ReasoningEffort;
+      /** 会话选了 1M：工作站按型号能力决定是否加 beta 头。 */
+      longContext?: boolean;
       idleTimeoutSec: number;
       /** 冷却中的 Key 也直接试一次（用户选择继续使用当前分组 / 关闭交接）。 */
       includeCoolingKeys?: boolean;
@@ -40,6 +42,8 @@ export interface StreamRequest {
   maxTokens: number;
   /** 思考强度；缺省或 off 时不向 provider 发送思考参数。 */
   effort?: ReasoningEffort;
+  /** 会话选了 1M 上下文：Anthropic 协议对需要 beta 的型号加 anthropic-beta 头。 */
+  longContext?: boolean;
   /** 账号级镜像：冷却中的 Key 也直接试一次（用户选择继续使用当前分组 / 关闭交接）。 */
   includeCoolingKeys?: boolean;
   /** provider 因上游拒绝思考参数而去掉参数并重试成功时调用（每轮只记一次），detail 为脱敏后的上游错误摘要。 */
