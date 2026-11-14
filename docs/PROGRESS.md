@@ -1,5 +1,11 @@
 # 进度
 
+## 迭代 81（2026-11-14）回归按功能拆分，支持按改动选跑与偶发重跑
+- [x] 拆分：`e2e/regression.mjs`（1.5 万行、223 条）改为入口，用例按功能拆到 `e2e/regression/<功能>.mjs`（conversation / composer / sidebar / session-graph / mobile / settings / model-accounts / routing / sandbox / workspace / board / feedback / workstation / shell），夹具与页面助手抽到 `e2e/regression/lib/`（common、mock-provider、seeds、page、flaky）；`compare-cases.mjs` 校验拆分前后用例名一一对应（223 = 223）。每条用例带拆分前的全局序号，入口按序号排序执行，共享 context/localStorage 的用例顺序与拆分前一致。
+- [x] 按改动选跑：`node e2e/regression.mjs --changed` 用 `git diff --name-only main...HEAD` + 工作区改动，经 `e2e/regression/map.mjs` 映射到功能文件；未命中映射或命中共享层（lib/入口/scripts/protocol/store/ui）回落全量；`scripts/check.mjs --changed` 透传。
+- [x] 偶发：用例失败后单独重跑一次，重跑通过记为 flaky 不算失败；同一次全量 flaky ≥2 次或连续 3 次全量 flaky 输出警告名单；历史记录在系统临时目录（`TANDEM_REGRESSION_FLAKY_FILE` 可覆盖），`KNOWN_FLAKY` 内置历史偶发 4 条（大会话滚到顶、轮次大纲未加载轮、反馈16#11 排队消息、登录门一行命令）。
+- 验证：拆分前后全量均 223/223（拆分前 14m50s、拆分后 14m46s；拆分前需先 `node scripts/build-executor.mjs` 才有远端执行器，否则两条安装类用例因平台产物缺失失败）；假改 `sessionGraph/layout.ts` 时 `--changed` 只跑 session-graph 25 条、94s。`node scripts/check.mjs` 全量通过（regression 223/223，888s）；检查途中「反馈1601#02」首次失败、单独重跑通过，按 flaky 记录。
+
 ## 迭代 80（2026-11-13）1M 上下文开关：按型号能力与协议生效（R81）
 - [x] 原话「有些模型有1m上下文的开关，你这里没支持」：`providers/capabilities.ts` 新增 `claudeLongContext`，原生 1M 型号（Opus 4.7+、Sonnet 5+、Haiku 5.5、Fable/Mythos 5+）默认 1M；Opus 4.6 / Sonnet 4.6 默认 200K、切 1M 时 Anthropic 协议加 `anthropic-beta: context-1m-2025-08-07`；Sonnet 4.5 及以前只有 200K。
 - [x] 会话级「上下文：200K / 1M」在模型菜单、只对支持 1M 的型号显示，选择写入 `longContext`；分组设置可设新会话默认；上下文卡分母、自动压缩阈值与压缩输入按有效窗口，原生 1M 切 200K 不改请求。
