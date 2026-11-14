@@ -9,6 +9,7 @@
 - 安卓签名密钥：`~/.tandem-release/`（不在仓库；用户需离线备份）。
 
 ## 正在进行
+- 2026-11-14 **产品定义落地计划**（用户已认可方向）：`product/` 为唯一事实来源；进度表见 `product/ROLLOUT.md`。新会话先读它与 ROLLOUT。
 - 2026-11-12 启动方式：`npm start` 即工作站（8481，数据 ~/.tandem，本机主机在 ~/.tandem/local-host）。用户真实目录已用 /tmp/tandem-migrate.sh 手工迁移，备份 ~/.tandem.bak-20261111-223921。产品不做启动时旧布局检测（用户明确要求）。
 - 2026-11-10 瘦主机（远程架构重做，用户定方向）：agent/会话/工具在工作站，远程机器只跑 Go 单文件执行器（packages/executor，~7MB，出站 WSS，双向认证）。设计与产品决定：`docs/archive/plan/thin-host-2026-11-10.md` 第 9 节。进度：M1 执行器 ✓、M2 只读工具 ✓、M3 写入与执行 ✓、M4 接入产品 ✓（一行命令装执行器、工作站 executor/hub.ts 为每台执行器建远端 Host 上下文）；待做：M6 立即删旧完整 Host 远程路径（内测不留兼容，不做旧会话导入）、设备/浏览器/MCP、断线续跑、远端检查点回退、自更新。等用户 Windows 代测（docs/test-guides/workstation.md）。原则：最小可用（用户问过"需要写这么复杂吗"）。
 - 2026-11-10 已合入：执行方式拆为「分工 / 取向」（反馈2009#01）；删除跨主机派单；会话图轨道式画法（保持泳道色，用户选 B）；反馈 1919/2102/2108 全部；一行命令添加主机已改为下载执行器（不需要 Node）。
@@ -56,4 +57,3 @@
 - 2026-11-12 调整工具修整：`data-tandem-src` 由 `packages/web/debug-source-plugin.mjs`（只 debug flavor、`apply:'build'`）用 rolldown `parseSync` 在 JSX 开标签名后插属性，发布版由 `scan-release` 禁词兜底；`metaFor` 先读注入位置，恢复的副本没有原元素映射时直接对副本算 meta。
 - 2026-11-12 调整工具修整：小元素手柄外置后，元素旁操作条要再让 44px 并设 z-134，否则会盖住 se 手柄或落到左侧改动清单下面；插入控件首次 commit 后 ref 才登记 DOM，需要 `useEffect([inserted])` 补一次 bump，选中框/手柄才会出现。
 - 2026-11-12 调整工具修整：继续调整依赖 `adjustSnapshot.copy`（stage.innerHTML）；`buildSnapshot(true)` 只在完成时带，实时草稿带会反复序列化大 HTML。`.tfb` 导出后 store 按现有逻辑清空，所以「继续调整」要在导出前验收。
-- 2026-11-12 调整工具修整：反馈模式 `[data-feedback-ui]` 的 `cursor:pointer !important` 会压掉内联 cursor，调整模式光标必须用 `data-cursor`/`data-resize-cursor` + `index.css` 的 !important 规则；释放副本时用 `adjustReleasedRef` 同时放开捕获层与全局按键拦截。

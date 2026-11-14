@@ -6,6 +6,7 @@
 类 Claude Code Desktop 的 agent 工作台；多端（PC/浏览器/安卓）互联；每会话可选账号/分组/模型/思考强度；可管理远程机器上的任务。产品所有者：徐奥（通过飞书话题沟通）。
 
 ## 事实来源（按优先级）
+0. **`product/` —— 产品定义（我们在做什么）。最高优先级，先读它。** 规格与代码、文档冲突时以它为准。只能经产品所有者确认、以 `spec:` 单独提交修改；实现提交不得改 `product/` 与验收测试。迁移期内，尚未写进 `product/` 的领域仍以下面各项为准。
 1. `docs/design.md` —— **设计原则**（P01–P22）；单点用户决定在 `scripts/decisions-check.mjs`、`scripts/ui-audit.mjs` 与 `e2e/regression.mjs` 的检查里。用户明确提过的要求不要回退。
 2. `docs/PROGRESS.md` —— 每轮做了什么、遗留什么。
 3. `packages/protocol/src/index.ts` —— 客户端与 Host 的唯一契约；改接口先改这里。
