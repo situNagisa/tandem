@@ -1,6 +1,7 @@
 import type { ProviderKind, ReasoningEffort } from '@tandem/protocol'
 import { readRaw, writeRaw } from './storage'
 
+/** 档位全集：只用于排序、校验与离线兜底；某模型实际支持哪些由服务端能力决定。 */
 export const EFFORTS: ReasoningEffort[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 
 export const EFFORT_LABEL: Record<ReasoningEffort, string> = {
@@ -18,11 +19,14 @@ export function effortSuffix(effort: ReasoningEffort | undefined): string {
   return effort && effort !== 'off' ? ` ${EFFORT_LABEL[effort]}` : ''
 }
 
-/** 能力未知时按 provider 默认展示的档位。 */
-export function defaultEffortsForKind(kind: ProviderKind | undefined): ReasoningEffort[] {
+/**
+ * 离线兜底：能力接口还没返回或请求失败时，模型菜单先给一组通用档位。
+ * 真实档位、厂商叫法与上下文窗口都以服务端下发的能力为准，这里不推断具体型号。
+ */
+export function offlineEffortsFor(kind: ProviderKind | undefined): ReasoningEffort[] {
   if (kind === 'anthropic' || kind === undefined) return [...EFFORTS]
   if (kind === 'demo') return ['off']
-  return EFFORTS.filter((effort) => effort !== 'max' && effort !== 'xhigh' && effort !== 'off')
+  return ['low', 'medium', 'high']
 }
 
 /** 当前强度不在支持列表时，取档位距离最近的一项；列表为空表示不支持思考。 */

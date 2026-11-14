@@ -43,9 +43,9 @@ import { Tooltip } from './ui/Tooltip'
 import { ShareDialog } from './share/ShareDialog'
 import { SaveEvalCaseDialog } from './evals/SaveEvalCaseDialog'
 
+import { isBusyStatus } from '../store/appStore/helpers'
 import {
   buildGroups,
-  isRunningStatus,
   projectName,
   type ExternalItem,
   type MenuState,
@@ -197,9 +197,9 @@ export function SessionList({
 
   const anyRunning = useMemo(
     () =>
-      pinned.some(({ session }) => isRunningStatus(session.status)) ||
+      pinned.some(({ session }) => isBusyStatus(session.status)) ||
       groups.some((g) =>
-        g.projects.some((p) => p.items.some((s) => isRunningStatus(s.status))),
+        g.projects.some((p) => p.items.some((s) => isBusyStatus(s.status))),
       ),
     [pinned, groups],
   )
@@ -207,7 +207,7 @@ export function SessionList({
 
   const runningElapsed = (hostId: string, s: SessionSummary): string | null => {
     const key = `${hostId}:${s.id}`
-    if (!isRunningStatus(s.status)) {
+    if (!isBusyStatus(s.status)) {
       clearRunning(key)
       return null
     }

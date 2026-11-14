@@ -10,7 +10,6 @@ import {
   childSubscriptions,
   connections,
   emptyActiveSession,
-  isRunningStatus,
   matchesView,
   newId,
   toast,

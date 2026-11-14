@@ -23,7 +23,7 @@ import {
   connections,
   emptySubagent,
   isDescendantSummary,
-  isRunningStatus,
+  isBusyStatus,
   matchesView,
   summaryOf,
   viewKeyOf,
@@ -271,7 +271,7 @@ export function createSessionCore(
               messages: session.messages,
               pending: pendingPermissions,
               loading: false,
-              running: isRunningStatus(session.status),
+              running: isBusyStatus(session.status),
               streamingMessageId:
                 session.status === 'running' && last?.role === 'assistant' ? last.id : undefined,
               liveToolInputs: {},
@@ -303,7 +303,7 @@ export function createSessionCore(
       const next: ActiveSession = {
         ...base,
         summary,
-        running: isRunningStatus(summary.status) ? true : base.running,
+        running: isBusyStatus(summary.status) ? true : base.running,
         turnError:
           summary.status === 'error'
             ? (base.turnError ?? '回合执行出错')
@@ -378,7 +378,7 @@ export function createSessionCore(
         todos: session.todos ?? [],
         loading: false,
         error: undefined,
-        running: isRunningStatus(session.status),
+        running: isBusyStatus(session.status),
         stopping: false,
         streamingMessageId:
           session.status === 'running' && last?.role === 'assistant' ? last.id : undefined,

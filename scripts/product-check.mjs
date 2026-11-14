@@ -16,6 +16,8 @@
  * D. 核心模型唯一实现：读 scripts/product-core-models.json（不放进 product/，避免污染产品定义），
  *    每个核心模型登记唯一实现模块与识别特征；packages 各包的 src 里登记模块之外出现同类特征时警告
  *    （迁移期），--strict 报错。识别特征用精确正则，宁可漏报不要误报。
+ *    模型可登记 exceptions（path + reason）放行「请求未返回时的离线兜底」这类不可避免的重复；
+ *    命中后打提示说明理由，登记的路径不存在时仍警告。
  *
  * 用法：
  *   node scripts/product-check.mjs
@@ -353,6 +355,30 @@ if (!coreModelsText.trim()) {
       errors.push(`核心模型登记不完整：${JSON.stringify(model).slice(0, 120)}（需要 id、owner、features）`)
       continue
     }
+    // 允许的例外：明确的路径 + 理由。只用于「请求未返回时的离线兜底」这类不可避免的重复；
+    // 命中后不再报同类实现，但会把理由打出来，避免悄悄保留第二套表。
+    const exceptions = Array.isArray(model.exceptions) ? model.exceptions : []
+    for (const exception of exceptions) {
+      if (
+        typeof exception?.path !== 'string' ||
+        !exception.path.trim() ||
+        typeof exception?.reason !== 'string' ||
+        !exception.reason.trim()
+      ) {
+        errors.push(
+          `核心模型 ${model.id} 的例外登记不完整：${JSON.stringify(exception).slice(0, 120)}（需要 path、reason）`,
+        )
+      }
+    }
+    const exceptionFor = (rel) => {
+      for (const exception of exceptions) {
+        if (typeof exception?.path !== 'string' || !exception.path) continue
+        const prefix = exception.path.replace(/\/$/, '')
+        if (rel === prefix || rel.startsWith(`${prefix}/`)) return exception
+      }
+      return null
+    }
+    const exceptionsHit = new Set()
     const features = []
     for (const feature of model.features) {
       try {
@@ -368,6 +394,11 @@ if (!coreModelsText.trim()) {
     for (const file of sourceFiles) {
       const rel = relPath(root, file)
       if (owned(rel)) continue
+      const exception = exceptionFor(rel)
+      if (exception) {
+        exceptionsHit.add(exception)
+        continue
+      }
       const text = readText(file)
       for (const feature of features) {
         if (feature.also && !feature.also.test(text)) continue
@@ -379,6 +410,15 @@ if (!coreModelsText.trim()) {
               `      唯一实现应为 ${owners.join('、')}`,
           )
         })
+      }
+    }
+    for (const exception of exceptions) {
+      if (!exceptionsHit.has(exception)) {
+        warnings.push(`核心模型 ${model.id} 登记的例外没有命中任何文件：${exception.path}`)
+      } else {
+        notes.push(
+          `核心模型「${model.name ?? model.id}」允许的例外：${exception.path}（${exception.reason}）`,
+        )
       }
     }
   }

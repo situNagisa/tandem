@@ -12,6 +12,7 @@ import { useSessionView } from '../session/SessionScope'
 import { runningSince } from '../../lib/runClock'
 import { formatElapsed, formatTokens } from '../../lib/format'
 import { cn } from '../../lib/cn'
+import { isBusyStatus, isRetryingStatus, isWaitingStatus } from '../../store/appStore/helpers'
 
 function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number; hostId: string | null }) {
   const focusAgent = useUiStore((s) => s.focusAgent)
@@ -34,8 +35,7 @@ function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number;
   )
   const id = sub.summary?.id ?? ''
   const status = sub.summary?.status
-  const running =
-    sub.running || status === 'running' || status === 'waiting_permission' || status === 'retrying'
+  const running = sub.running || isBusyStatus(status)
   const now = useNow(running)
   const since = runningSince(`agent:${id}`, sub.summary?.createdAt ?? Date.now())
   const usage = sub.summary?.usage
@@ -43,9 +43,9 @@ function AgentRow({ sub, depth, hostId }: { sub: SubagentSession; depth: number;
   const failed = status === 'error' || !!sub.error
   const text = failed
     ? '出错'
-    : status === 'waiting_permission'
+    : isWaitingStatus(status)
       ? '待审批'
-      : status === 'retrying'
+      : isRetryingStatus(status)
         ? '等待网络'
         : running
         ? '运行中'

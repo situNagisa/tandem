@@ -208,3 +208,73 @@ test('唯一实现：登记模块之外出现同类特征时警告，--strict �
   assert.equal(strict.code, 1, strict.out)
   assert.match(strict.out, /错误 核心模型「会话树归并」在登记模块之外出现同类实现/)
 })
+
+test('唯一实现：登记的例外命中后只提示，不再警告', (t) => {
+  const models = {
+    models: [
+      {
+        id: 'model-capabilities',
+        name: '模型能力',
+        owner: ['packages/server/src/providers/capabilities.ts'],
+        features: [{ pattern: 'OFFLINE_TABLE' }],
+        exceptions: [
+          {
+            path: 'packages/web/src/lib/effort.ts',
+            reason: '能力接口未返回时的离线兜底',
+          },
+        ],
+      },
+    ],
+  }
+  const files = {
+    ...passingTest,
+    'packages/web/src/lib/effort.ts': 'export const OFFLINE_TABLE = 1\n',
+  }
+  const root = track(t, fixture({ models, files }))
+  const loose = runCheck(root)
+  assert.equal(loose.code, 0, loose.out)
+  assert.match(loose.out, /允许的例外：packages\/web\/src\/lib\/effort\.ts（能力接口未返回时的离线兜底）/)
+  assert.doesNotMatch(loose.out, /在登记模块之外出现同类实现/)
+  const strict = runCheck(root, ['--strict'])
+  assert.equal(strict.code, 0, strict.out)
+})
+
+test('唯一实现：例外缺理由报错，路径不存在仍警告', (t) => {
+  const models = {
+    models: [
+      {
+        id: 'model-capabilities',
+        name: '模型能力',
+        owner: ['packages/server/src/providers/capabilities.ts'],
+        features: [{ pattern: 'OFFLINE_TABLE' }],
+        exceptions: [{ path: 'packages/web/src/lib/effort.ts' }],
+      },
+    ],
+  }
+  const files = {
+    ...passingTest,
+    'packages/web/src/lib/effort.ts': 'export const OFFLINE_TABLE = 1\n',
+  }
+  const root = track(t, fixture({ models, files }))
+  const { code, out } = runCheck(root)
+  assert.equal(code, 1, out)
+  assert.match(out, /例外登记不完整：.*需要 path、reason/)
+})
+
+test('唯一实现：例外登记的路径不存在时警告', (t) => {
+  const models = {
+    models: [
+      {
+        id: 'model-capabilities',
+        name: '模型能力',
+        owner: ['packages/server/src/providers/capabilities.ts'],
+        features: [{ pattern: '__never_matches__' }],
+        exceptions: [{ path: 'packages/web/src/lib/gone.ts', reason: '已删除的兜底' }],
+      },
+    ],
+  }
+  const root = track(t, fixture({ models }))
+  const { code, out } = runCheck(root)
+  assert.equal(code, 0, out)
+  assert.match(out, /登记的例外没有命中任何文件：packages\/web\/src\/lib\/gone\.ts/)
+})

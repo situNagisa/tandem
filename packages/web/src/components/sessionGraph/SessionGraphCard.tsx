@@ -12,6 +12,7 @@ import { graphFromMessages, graphFromTree } from './data'
 import { graphCardHeight, layoutSessionGraph, type GraphNode } from './layout'
 import { SessionGraphView } from './SessionGraphView'
 import { useSessionGraphTree } from './useGraphTree'
+import { isExecutingStatus, isWaitingStatus } from '../../store/appStore/helpers'
 
 function relationOf(tree: SessionGraphTree | null, sessionId: string): 'root' | 'fork' | 'subagent' {
   return tree?.sessions.find((session) => session.id === sessionId)?.kind ?? 'fork'
@@ -33,8 +34,8 @@ export function SessionGraphCard({
   const closeAgentSession = useUiStore((s) => s.closeAgentSession)
   const agentSession = useUiStore((s) => s.agentSession)
   const activeTurn = useTurnNavStore((s) => s.active)
-  const running = summary?.status === 'running'
-  const waiting = summary?.status === 'waiting_permission'
+  const running = isExecutingStatus(summary?.status)
+  const waiting = isWaitingStatus(summary?.status)
   const tree = useSessionGraphTree(hostId, sessionId)
 
   const input = useMemo(() => {
