@@ -2670,14 +2670,14 @@ desktop('[S3] 打开会话后立即上滚，不被贴底校准吸回底部', asy
       await openSession(page, 'scroll')
       const row = page.locator('[data-session-row]').filter({ hasText: '超大会话 · 320 轮' }).first()
       await row.waitFor({ timeout: 10_000 })
-      // 鼠标先移到消息区中央，切会话后立即上滚（旧实现在打开后的 600ms 校准窗口里会吞掉这次上滚）。
-      const area = await page.locator('.chat-scroll').boundingBox()
-      await page.mouse.move(area.x + area.width / 2, area.y + area.height / 2)
       await row.locator('[data-session-open], button').first().click()
       await page.waitForFunction(() => window.location.hash.includes('/s/huge'), null, {
         timeout: 10_000,
       })
       await page.locator('.msg-row[data-message-id^="hu"]').first().waitFor({ timeout: 10_000 })
+      // 切会话的点击把鼠标留在侧栏：挪回消息区后立即上滚（此时仍在打开后的贴底校准窗口里）。
+      const area = await page.locator('.chat-scroll').boundingBox()
+      await page.mouse.move(area.x + area.width / 2, area.y + area.height / 2)
       await page.mouse.wheel(0, -900)
       await page.waitForTimeout(700)
       const distance = await chatDistance(page)
@@ -2741,10 +2741,15 @@ desktop('[S10] 切换会话不闪：保留旧画面，新会话首帧即贴底',
       // 只用静态会话：前面用例的流式回合可能还在后台写入，内容增高时底部首行本就会移动。
       await openSession(page, 'codeblock')
       const stop = await startScrollSampler(page, '__s10')
-      const clickSession = async (title, sessionId, messagePrefix) => {
-        const row = page.locator('[data-session-row]').filter({ hasText: title }).first()
-        await row.waitFor({ timeout: 10_000 })
-        await row.locator('[data-session-open], button').first().click()
+      const clientHostId = await clientHostIdOf(page)
+      // 走真实路由切换（侧栏行点击与深链最终都调用 store.openSession），不依赖侧栏分组展开状态。
+      const switchTo = async (sessionId, messagePrefix) => {
+        await page.evaluate(
+          (hash) => {
+            window.location.hash = hash
+          },
+          `#/h/${clientHostId}/s/${sessionId}`,
+        )
         await page.waitForFunction((id) => window.location.hash.includes(`/s/${id}`), sessionId, {
           timeout: 10_000,
         })
@@ -2754,8 +2759,8 @@ desktop('[S10] 切换会话不闪：保留旧画面，新会话首帧即贴底',
           .waitFor({ timeout: 10_000 })
         await page.waitForTimeout(500)
       }
-      await clickSession('回归长会话', 'long', 'u1')
-      await clickSession('代码块与表格会话', 'codeblock', 'r16u1')
+      await switchTo('long', 'u1')
+      await switchTo('codeblock', 'r16u')
       const frames = await stop()
       assert.ok(frames.length > 30, `切换期间采样帧太少：${frames.length}`)
       const skeleton = frames.filter((frame) => frame.skeleton > 0)
@@ -2823,12 +2828,16 @@ desktop('[S11] 窗口尺寸变化：阅读中保持视口首行，底部保持�
         Math.abs(after.top - before.top) <= 4,
         `尺寸变化后视口首行移动了 ${Math.round(after.top - before.top)}px`,
       )
-      // 贴底态：回到底部后缩小窗口高度，仍必须停在底部。
-      await page.evaluate(() => {
-        const el = document.querySelector('.chat-scroll')
-        if (el) el.scrollTop = el.scrollHeight
-      })
-      await page.waitForTimeout(300)
+      // 贴底态：点「回到底部」后缩小窗口高度，仍必须停在底部。
+      await page.locator('.chat-jump').click()
+      await page.waitForFunction(
+        () => {
+          const el = document.querySelector('.chat-scroll')
+          return !!el && el.scrollHeight - el.scrollTop - el.clientHeight < 4
+        },
+        null,
+        { timeout: 5_000 },
+      )
       await page.setViewportSize({ width: 1100, height: 480 })
       await page.waitForTimeout(500)
       const distance = await page.evaluate(() => {
