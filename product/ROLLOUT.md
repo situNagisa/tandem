@@ -7,10 +7,10 @@
 | 1 | 入口：AGENTS.md 把 `product/` 列为最高事实来源；HANDOFF 指向本表 | AGENTS.md、HANDOFF.md | ✓ |
 | 2 | 检查脚本 `scripts/product-check.mjs` 接入 `check.mjs`：领域表概念不重复、依赖无环、行数预算；"必须"条目都有测试、测试名里的编号都存在；`spec:` 提交只改 `product/`、实现提交不改 `product/` 与验收测试；核心概念唯一实现（会话树、运行状态、模型能力、滚动位置各登记一个模块，别处出现同类计算报错） | 脚本 + 单测（故意构造违规样例各一） | ✓ b4a374f |
 | 3 | 影响清单：`node scripts/product-impact.mjs <编号…>` 列出引用这些编号的测试、决定、参照截图、代码 | 脚本 | ✓ b4a374f |
-| 4 | 会话树规格第二版（必须/意图/自由），意图配参照截图 `product/approved/tree/` | product/session-tree.md | 待产品所有者确认 |
+| 4 | 会话树规格第二版（2026-11-14 产品所有者：先做其他，稍后确认）（必须/意图/自由），意图配参照截图 `product/approved/tree/` | product/session-tree.md | 待产品所有者确认 |
 | 5 | 会话树试点：现有会话图/侧栏/子代理相关测试改名挂编号；5 处会话树归并收成一处，让第 2 步的唯一实现检查转绿 | 提交 | |
-| 6 | 任务模板：派实现任务只引用编号与参照图；验收测试先写、实现者不改；合并前独立审查子代理对照规格逐条审 | `product/` 内一节 + 协调者遵守 | |
-| 7 | 漏检记录：`product/escapes.md` 记每次"检查全过但产品所有者发现问题"及漏在哪一层 | 文件 | |
+| 6 | 任务模板：派实现任务只引用编号与参照图；验收测试先写、实现者不改；合并前独立审查子代理对照规格逐条审 | `product/` 内一节 + 协调者遵守 | ✓ |
+| 7 | 漏检记录：`product/escapes.md` 记每次"检查全过但产品所有者发现问题"及漏在哪一层 | 文件 | ✓ |
 | 8 | 其余领域按 HOST → MODEL → EXEC → CONV → AUTO → NAV → DEBUG 逐个迁移；每个领域迁完，删除 `docs/features/` 与 decisions-check 中被吸收的部分 | 每领域一个 spec 提交 | |
 | 9 | 迁移完成：design.md 通用原则并入 `product/README.md`；decisions-check 只剩挂编号的条目；删除本文件 | — | |
 
