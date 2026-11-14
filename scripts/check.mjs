@@ -12,6 +12,7 @@
  *   node scripts/check.mjs --skip-docs        跳过文档治理检查
  *   node scripts/check.mjs --skip-product     跳过产品定义落地检查
  *   node scripts/check.mjs --keep-going       某一步失败后仍继续后续步骤
+ *   node scripts/check.mjs --changed          回归只跑与改动相关的功能文件（未命中映射则全量）
  */
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
@@ -25,6 +26,7 @@ const skipBuild = args.has('--skip-build')
 const skipDocs = args.has('--skip-docs')
 const skipProduct = args.has('--skip-product')
 const keepGoing = args.has('--keep-going')
+const changed = args.has('--changed')
 
 const steps = [
   {
@@ -79,7 +81,7 @@ const steps = [
   {
     name: 'regression',
     command: 'npm',
-    args: ['run', 'regression'],
+    args: changed ? ['run', 'regression', '--', '--changed'] : ['run', 'regression'],
     skip: skipRegression,
   },
   {
