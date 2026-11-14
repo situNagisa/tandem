@@ -1,10 +1,7 @@
 import {
-  useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import { ChevronDown, GitFork, ShieldAlert, TriangleAlert } from 'lucide-react'
 import type { PermissionRequest, TeamPresence } from '@tandem/protocol'
@@ -16,6 +13,7 @@ import { navigate } from '../lib/router'
 import { isLocalHostUrl, isSameOrigin } from '../lib/hostUrl'
 import { useElementWidth, useIsMobile } from '../lib/hooks'
 import { JUMP_EVENT } from '../lib/jump'
+import { ChatScrollScope, useChatScrollController } from '../lib/scroll/ChatScrollScope'
 import { cn } from '../lib/cn'
 import { MessageList } from './MessageList'
 import { HandoffCard } from './chat/HandoffCard'
@@ -35,9 +33,6 @@ import '../styles/chat.css'
 const EMPTY_PENDING: PermissionRequest[] = []
 const EMPTY_VIEWERS: TeamPresence[] = []
 const EMPTY_MOUNTS: import('@tandem/protocol').DeviceMount[] = []
-const PIN_THRESHOLD = 80
-const JUMP_THRESHOLD = 160
-const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' '])
 
 export function ChatView() {
   const sessionTarget = useSessionTarget() ?? undefined
@@ -89,21 +84,13 @@ export function ChatView() {
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
-  const pinnedRef = useRef(true)
-  const frameRef = useRef<number | null>(null)
-  // 平滑滚动到顶前，避免 ResizeObserver 在同一帧插入瞬移
-  const programmaticUntil = useRef(0)
-  // 用户自己滚动过（滚轮/触摸/滚动条/方向键）才允许按位置重新贴底；跳转后内容收缩导致的被动滚动不算。
-  const userScrolledRef = useRef(false)
-  // 跨视图跳转（大纲/最占空间/会话图/搜索）期间不能被贴底补偿拉回底部。
-  const jumpUntil = useRef(0)
-  // 用户明确要停在底部（打开会话、点「回到底部」、发消息）：平滑滚动途中与流式增长时都继续贴底。
-  const bottomIntentRef = useRef(true)
-  // 最近一次滚动事件时的 scrollTop / scrollHeight：判断内容增高前视口是否原本就贴底。
-  const lastScrollRef = useRef({ top: 0, height: 0 })
-  // 打开会话后的贴底校准：content-visibility 的预估高度会让首次 scrollHeight 偏小。
-  const initialScrollFor = useRef<string | null>(null)
+  // 消息区滚动：贴底、跟随、上翻、回到底部、切换会话与尺寸变化全部由控制器负责（唯一写 scrollTop 的地方）。
+  const scroll = useChatScrollController(scrollRef, contentRef, sessionId)
   const [showJump, setShowJump] = useState(false)
+  useEffect(
+    () => scroll.subscribe(() => setShowJump(scroll.showFollowButton())),
+    [scroll],
+  )
   // 反馈13#02：环境条选了另一台主机但在选文件夹之前，输入框禁用并提示。
   const [pendingHostSwitch, setPendingHostSwitch] = useState<PendingHostSwitch | null>(null)
   // 消息操作条用：用户消息 id → 检查点 id。回合结束后刷新。
@@ -164,127 +151,18 @@ export function ChatView() {
     if (last) state.send(last.content, sessionTarget)
   }
 
-  const stickToBottom = useCallback(() => {
-    if (!pinnedRef.current) return
-    if (frameRef.current != null) return
-    frameRef.current = window.requestAnimationFrame(() => {
-      frameRef.current = null
-      if (!pinnedRef.current) return
-      const el = scrollRef.current
-      if (el) {
-        // 读 scrollHeight 会触发布局，新露出的 content-visibility 行会把内容撑高，写入后的滚动事件不能据此判定离开底部。
-        programmaticUntil.current = Date.now() + 600
-        el.scrollTop = el.scrollHeight
-      }
-    })
-  }, [])
-
-  const scrollToBottom = useCallback((smooth = false) => {
-    const el = scrollRef.current
-    if (!el) return
-    pinnedRef.current = true
-    bottomIntentRef.current = true
-    setShowJump(false)
-    programmaticUntil.current = Date.now() + 600
-    if (smooth) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-    else el.scrollTop = el.scrollHeight
-  }, [])
-
-  useLayoutEffect(() => {
-    pinnedRef.current = true
-    bottomIntentRef.current = true
-    setShowJump(false)
-    initialScrollFor.current = sessionId
-    const el = scrollRef.current
-    if (el) {
-      programmaticUntil.current = Date.now() + 600
-      el.scrollTop = el.scrollHeight
-    }
-  }, [sessionId])
-
-  // 消息挂载后高度仍会变化（代码高亮、content-visibility 回收），在最初几百毫秒内多次校准。
+  // 自己发出消息（含本地排队气泡）：平滑回到底部并恢复跟随。
   useEffect(() => {
-    if (!sessionId || loading || initialScrollFor.current !== sessionId) return
-    const timers = [0, 80, 240, 600].map((delay) =>
-      window.setTimeout(() => {
-        if (initialScrollFor.current !== sessionId || !pinnedRef.current) return
-        const el = scrollRef.current
-        if (el) {
-          programmaticUntil.current = Date.now() + 600
-          el.scrollTop = el.scrollHeight
-        }
-        if (delay === 600) initialScrollFor.current = null
-      }, delay),
-    )
-    return () => timers.forEach((timer) => window.clearTimeout(timer))
-  }, [sessionId, loading, messageCount])
+    if (lastIsLocal) scroll.follow()
+  }, [lastIsLocal, messageCount, scroll])
 
-  useLayoutEffect(() => {
-    stickToBottom()
-  }, [messageCount, loading, pending.length, stickToBottom])
-
+  // 跳转（轮次大纲/会话图/搜索/收件箱）由 jump.ts 逐帧写 scrollTop：控制器先让出跟随，
+  // 否则内容增高时的补底会和弹簧互抢写点；跳转结束后视口归用户。
   useEffect(() => {
-    const onJump = () => {
-      // 跳转到历史里的某轮/某张卡：不再保持底部跟随（否则补偿会把视口拉回底部）。
-      pinnedRef.current = false
-      bottomIntentRef.current = false
-      userScrolledRef.current = false
-      jumpUntil.current = Date.now() + 1200
-    }
+    const onJump = () => scroll.yieldToJump()
     window.addEventListener(JUMP_EVENT, onJump)
     return () => window.removeEventListener(JUMP_EVENT, onJump)
-  }, [])
-
-  useEffect(() => {
-    if (!lastIsLocal) return
-    scrollToBottom()
-  }, [lastIsLocal, messageCount, scrollToBottom])
-
-  // 文本流式增长、图片加载、代码高亮都会撑高内容，用 ResizeObserver 保持贴底。
-  // 从首页进入会话、或从子代理返回时滚动区节点会重新挂载，依赖变化才会重新观察。
-  useEffect(() => {
-    if (typeof ResizeObserver === 'undefined') return
-    const content = contentRef.current
-    const box = scrollRef.current
-    if (!content || !box) return
-    // 贴底时内容在视口上方增高（注入说明、代码高亮、content-visibility 行展开）：
-    // 必须在绘制前同步补齐 scrollTop。排到下一帧会先画出「内容整体下移一帧」再回弹，
-    // 切换会话时看起来就是闪屏（反馈1601#02）。
-    let lastHeight = -1
-    const pinBeforePaint = () => {
-      if (!pinnedRef.current || Date.now() < jumpUntil.current) return
-      const el = scrollRef.current
-      if (!el) return
-      // 用「这次增高之前」的滚动位置判断是否贴底：滚到顶加载更早消息、点「回到底部」
-      // 的平滑滚动中间帧都不能被误判成贴底（反馈1601#02 回归保护）。
-      // 用户明确要贴底（打开会话/点「回到底部」）时，中间帧不算数，继续跟随。
-      const prev = lastScrollRef.current
-      if (
-        !bottomIntentRef.current &&
-        prev.height > 0 &&
-        prev.height - prev.top - el.clientHeight > 2
-      ) {
-        return
-      }
-      const height = el.scrollHeight
-      if (height === lastHeight) return
-      lastHeight = height
-      programmaticUntil.current = Date.now() + 600
-      el.scrollTop = height
-      lastScrollRef.current = { top: height, height }
-    }
-    const ro = new ResizeObserver(pinBeforePaint)
-    ro.observe(content)
-    ro.observe(box)
-    // 新增一行（注入说明、加载占位条）不会立刻反映到 ResizeObserver 的尺寸观察；
-    // MutationObserver 是微任务，能赶在这次绘制前补回底部。
-    const mo = new MutationObserver(pinBeforePaint)
-    mo.observe(content, { childList: true, subtree: true })
-    return () => {
-      ro.disconnect()
-      mo.disconnect()
-    }
-  }, [stickToBottom, hasSession, agentSession, sessionId])
+  }, [scroll])
 
   useEffect(() => {
     if (!running) return
@@ -318,36 +196,6 @@ export function ChatView() {
     return () => document.removeEventListener('keydown', onKey)
   }, [running, sessionTarget])
 
-  const onScroll = () => {
-    const el = scrollRef.current
-    if (!el) return
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
-    lastScrollRef.current = { top: el.scrollTop, height: el.scrollHeight }
-    if (programmaticUntil.current > Date.now()) {
-      pinnedRef.current = true
-      setShowJump(false)
-      if (distance < 2) programmaticUntil.current = 0
-      return
-    }
-    programmaticUntil.current = 0
-    // 明确要贴底时（含平滑回到底部的中间帧）不按位置取消跟随；用户自己滚动才改写。
-    if (bottomIntentRef.current) pinnedRef.current = true
-    else if (pinnedRef.current || userScrolledRef.current) pinnedRef.current = distance < PIN_THRESHOLD
-    // 用户手动滚回底部后恢复跟随。
-    if (userScrolledRef.current) bottomIntentRef.current = distance < PIN_THRESHOLD
-    const next = distance > JUMP_THRESHOLD
-    setShowJump((prev) => (prev === next ? prev : next))
-  }
-
-  const markUserScroll = () => {
-    userScrolledRef.current = true
-    bottomIntentRef.current = false
-    programmaticUntil.current = 0
-  }
-  const onScrollKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (SCROLL_KEYS.has(e.key)) markUserScroll()
-  }
-
   const myId = team?.role === 'owner' ? 'owner' : team?.account?.id
   const otherViewers: TeamPresence[] = viewers.filter((viewer) => viewer.id !== myId)
   const readOnly = team?.role === 'observer' || team?.role === 'approver'
@@ -372,192 +220,180 @@ export function ChatView() {
   }
 
   return (
-    <div ref={rootRef} data-compact={compact ? 'true' : undefined} className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-        {announcement}
-      </div>
-      {authError && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-danger/25 bg-danger-soft/50 px-4 py-1.5 text-[13px] text-danger">
-          <ShieldAlert size={13} className="shrink-0" />
-          <span className="min-w-0 flex-1">
-            主机认证失败：{authError}（请在设置 → 主机中检查 Token）
-          </span>
-          {canDoctor && hostId && (
-            <Button
-              onClick={() => openDoctor(hostId)}
-              className="min-h-7 shrink-0 px-2 text-[12px]"
-            >
-              运行诊断
-            </Button>
-          )}
+    <ChatScrollScope controller={scroll}>
+      <div ref={rootRef} data-compact={compact ? 'true' : undefined} className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+          {announcement}
         </div>
-      )}
-      <div className="relative flex min-h-0 flex-1">
-        <div
-          ref={scrollRef}
-          onScroll={onScroll}
-          onWheel={markUserScroll}
-          onTouchMove={markUserScroll}
-          onPointerDown={(e) => {
-            if (e.target === e.currentTarget) markUserScroll()
-          }}
-          onKeyDown={onScrollKeyDown}
-          className="chat-scroll h-full w-full overflow-y-auto overscroll-contain"
-        >
-          <div
-            ref={contentRef}
-            className={cn(
-              'mx-auto flex min-h-full w-full max-w-[808px] flex-col pb-8',
-              compact ? 'px-2.5 pt-2' : 'px-4 pt-3 md:px-6 md:pt-5',
+        {authError && (
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-danger/25 bg-danger-soft/50 px-4 py-1.5 text-[13px] text-danger">
+            <ShieldAlert size={13} className="shrink-0" />
+            <span className="min-w-0 flex-1">
+              主机认证失败：{authError}（请在设置 → 主机中检查 Token）
+            </span>
+            {canDoctor && hostId && (
+              <Button
+                onClick={() => openDoctor(hostId)}
+                className="min-h-7 shrink-0 px-2 text-[12px]"
+              >
+                运行诊断
+              </Button>
             )}
+          </div>
+        )}
+        <div className="relative flex min-h-0 flex-1">
+          <div
+            ref={scrollRef}
+            className="chat-scroll h-full w-full overflow-y-auto overscroll-contain"
           >
-            <div className="flex flex-1 flex-col">
-              {otherViewers.length > 0 && (
-                <div className="mb-2 flex items-center justify-end gap-1.5 px-1 text-[12px] text-muted">
-                  <span className="mr-0.5">正在查看</span>
-                  <div className="flex -space-x-1.5">
-                    {otherViewers.slice(0, 4).map((viewer) => (
-                      <span
-                        key={viewer.id}
-                        data-tip={`${viewer.name} · ${viewer.role === 'owner' ? '所有者' : viewer.role === 'observer' ? '观察者' : viewer.role === 'approver' ? '审批者' : '协作者'}`}
-                        className="flex size-5 items-center justify-center rounded-full border border-bg bg-[var(--t-bg-active)] text-[11px] font-medium text-text-soft"
-                      >
-                        {viewer.name.slice(0, 1).toUpperCase()}
-                      </span>
-                    ))}
+            <div
+              ref={contentRef}
+              className={cn(
+                'mx-auto flex min-h-full w-full max-w-[808px] flex-col pb-8',
+                compact ? 'px-2.5 pt-2' : 'px-4 pt-3 md:px-6 md:pt-5',
+              )}
+            >
+              <div className="flex flex-1 flex-col">
+                {otherViewers.length > 0 && (
+                  <div className="mb-2 flex items-center justify-end gap-1.5 px-1 text-[12px] text-muted">
+                    <span className="mr-0.5">正在查看</span>
+                    <div className="flex -space-x-1.5">
+                      {otherViewers.slice(0, 4).map((viewer) => (
+                        <span
+                          key={viewer.id}
+                          data-tip={`${viewer.name} · ${viewer.role === 'owner' ? '所有者' : viewer.role === 'observer' ? '观察者' : viewer.role === 'approver' ? '审批者' : '协作者'}`}
+                          className="flex size-5 items-center justify-center rounded-full border border-bg bg-[var(--t-bg-active)] text-[11px] font-medium text-text-soft"
+                        >
+                          {viewer.name.slice(0, 1).toUpperCase()}
+                        </span>
+                      ))}
+                    </div>
+                    {otherViewers.length > 4 && <span>+{otherViewers.length - 4}</span>}
                   </div>
-                  {otherViewers.length > 4 && <span>+{otherViewers.length - 4}</span>}
-                </div>
-              )}
-              {forkedFrom && !loading && (
-                <div className="mb-3 flex min-w-0 items-center gap-1.5 px-1 text-[12px] leading-4 text-muted">
-                  <GitFork size={12} className="shrink-0 opacity-70" />
-                  <span className="min-w-0 truncate" data-tip={parentTitle}>
-                    分叉自 {parentTitle || '父会话'}
-                  </span>
-                  {parentSession && hostId && (
-                    <>
-                      <span className="shrink-0 opacity-60">·</span>
-                      <Button
-                        size="inline"
-                        variant="ghost"
-                        onClick={() =>
-                          navigate({
-                            kind: 'session',
-                            hostId: hostId,
-                            sessionId: parentSession.id,
-                          })
-                        }
-                      >
-                        查看
-                      </Button>
-                    </>
-                  )}
-                </div>
-              )}
-              {loading && messageCount === 0 ? (
-                <MessageList showSkeleton />
-              ) : messageCount === 0 ? (
-                <>
-                  <SessionWelcome />
-                  <HandoffCard />
-                  <MessageList permissions={inlinePending} />
-                </>
-              ) : (
-                <MessageList checkpoints={checkpoints} permissions={inlinePending} />
-              )}
-              {turnError && (
-                <TurnErrorNotice error={turnError} running={running} onRetry={retryTurn} />
-              )}
-              {error && (
-                <div className="mb-3 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-danger/30 bg-danger-soft/50 px-3 py-2 text-[12px] text-danger">
-                  <TriangleAlert size={14} className="shrink-0" />
-                  <span className="min-w-0 flex-1">{error}</span>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => reloadActiveSession(sessionTarget)}
-                    className="border-danger/30 px-2 text-[12px]"
-                  >
-                    重新加载
-                  </Button>
-                </div>
-              )}
+                )}
+                {forkedFrom && !loading && (
+                  <div className="mb-3 flex min-w-0 items-center gap-1.5 px-1 text-[12px] leading-4 text-muted">
+                    <GitFork size={12} className="shrink-0 opacity-70" />
+                    <span className="min-w-0 truncate" data-tip={parentTitle}>
+                      分叉自 {parentTitle || '父会话'}
+                    </span>
+                    {parentSession && hostId && (
+                      <>
+                        <span className="shrink-0 opacity-60">·</span>
+                        <Button
+                          size="inline"
+                          variant="ghost"
+                          onClick={() =>
+                            navigate({
+                              kind: 'session',
+                              hostId: hostId,
+                              sessionId: parentSession.id,
+                            })
+                          }
+                        >
+                          查看
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
+                {loading && messageCount === 0 ? (
+                  <MessageList showSkeleton />
+                ) : messageCount === 0 ? (
+                  <>
+                    <SessionWelcome />
+                    <HandoffCard />
+                    <MessageList permissions={inlinePending} />
+                  </>
+                ) : (
+                  <MessageList checkpoints={checkpoints} permissions={inlinePending} />
+                )}
+                {turnError && (
+                  <TurnErrorNotice error={turnError} running={running} onRetry={retryTurn} />
+                )}
+                {error && (
+                  <div className="mb-3 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-danger/30 bg-danger-soft/50 px-3 py-2 text-[12px] text-danger">
+                    <TriangleAlert size={14} className="shrink-0" />
+                    <span className="min-w-0 flex-1">{error}</span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => reloadActiveSession(sessionTarget)}
+                      className="border-danger/30 px-2 text-[12px]"
+                    >
+                      重新加载
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+
+          {(!compact || isMobile) && (
+            <TurnRail
+              scrollRef={scrollRef}
+              sessionId={sessionId}
+              onBeforeJump={() => scroll.yieldToJump()}
+            />
+          )}
+
+          <IconButton
+            onClick={() => scroll.follow({ smooth: true })}
+            label="回到底部"
+            tooltipSide="top"
+            className={cn(
+              'chat-jump absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-surface text-text-soft shadow-md hover:text-text max-md:size-11',
+              showJump
+                ? 'pointer-events-auto translate-y-0 opacity-100'
+                : 'pointer-events-none opacity-0',
+            )}
+          >
+            <ChevronDown size={16} />
+          </IconButton>
         </div>
 
-        {(!compact || isMobile) && (
-          <TurnRail
-            scrollRef={scrollRef}
-            sessionId={sessionId}
-            onBeforeJump={() => {
-              pinnedRef.current = false
-              bottomIntentRef.current = false
-              programmaticUntil.current = 0
-              userScrolledRef.current = false
-              initialScrollFor.current = null
-              setShowJump(false)
-            }}
-          />
-        )}
-
-        <IconButton
-          onClick={() => scrollToBottom(true)}
-          label="回到底部"
-          tooltipSide="top"
+        <div
+          data-composer-anchor
           className={cn(
-            'chat-jump absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-surface text-text-soft shadow-md hover:text-text max-md:size-11',
-            showJump
-              ? 'pointer-events-auto translate-y-0 opacity-100'
-              : 'pointer-events-none opacity-0',
+            'shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5 md:pb-5 md:pt-2',
+            compact ? 'px-2' : 'px-4 md:px-6',
           )}
         >
-          <ChevronDown size={16} />
-        </IconButton>
-      </div>
-
-      <div
-        data-composer-anchor
-        className={cn(
-          'shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5 md:pb-5 md:pt-2',
-          compact ? 'px-2' : 'px-4 md:px-6',
-        )}
-      >
-        <div className="mx-auto w-full max-w-[760px]">
-          {summary && hostId && (
-            <EnvBar
-              variant="session"
-              hostId={hostId}
-              cwd={summary.cwd}
-              env={summary.env}
-              worktree={summary.worktree}
-              compact={compact}
-              onPendingChange={setPendingHostSwitch}
-            />
-          )}
-          <DemoDeviceStage mounts={sessionMounts} />
-          {planRequest && <PlanCard key={planRequest.id} request={planRequest} more={0} />}
-          {readOnly ? (
-            <div className="mb-2 rounded-xl border border-border bg-bg/50 px-3 py-2.5 text-center text-[12px] leading-5 text-muted">
-              {team?.role === 'observer'
-                ? '只读观察者：可以查看会话内容，不能发消息或审批。'
-                : '审批者：可以处理审批请求，不能发消息或新建会话。'}
-            </div>
-          ) : (
-            <Composer
-              compact={compact}
-              disabled={!!pendingHostSwitch}
-              placeholder={
-                pendingHostSwitch
-                  ? `选择 ${pendingHostSwitch.hostName} 上的文件夹后继续`
-                  : undefined
-              }
-            />
-          )}
+          <div className="mx-auto w-full max-w-[760px]">
+            {summary && hostId && (
+              <EnvBar
+                variant="session"
+                hostId={hostId}
+                cwd={summary.cwd}
+                env={summary.env}
+                worktree={summary.worktree}
+                compact={compact}
+                onPendingChange={setPendingHostSwitch}
+              />
+            )}
+            <DemoDeviceStage mounts={sessionMounts} />
+            {planRequest && <PlanCard key={planRequest.id} request={planRequest} more={0} />}
+            {readOnly ? (
+              <div className="mb-2 rounded-xl border border-border bg-bg/50 px-3 py-2.5 text-center text-[12px] leading-5 text-muted">
+                {team?.role === 'observer'
+                  ? '只读观察者：可以查看会话内容，不能发消息或审批。'
+                  : '审批者：可以处理审批请求，不能发消息或新建会话。'}
+              </div>
+            ) : (
+              <Composer
+                compact={compact}
+                disabled={!!pendingHostSwitch}
+                placeholder={
+                  pendingHostSwitch
+                    ? `选择 ${pendingHostSwitch.hostName} 上的文件夹后继续`
+                    : undefined
+                }
+              />
+            )}
+          </div>
         </div>
+        <CompactConfirmDialog />
       </div>
-      <CompactConfirmDialog />
-    </div>
+    </ChatScrollScope>
   )
 }
