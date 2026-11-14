@@ -9,6 +9,7 @@ import { IconButton } from '../ui/Button'
 import { useAppStore } from '../../store/useAppStore'
 import { HoverCard } from '../ui/HoverCard'
 import { SessionTopology } from './SessionTopology'
+import { isRetryingStatus, isWaitingStatus } from '../../store/appStore/helpers'
 
 type UpdateSession = AppState['updateSession']
 
@@ -110,8 +111,11 @@ export function SessionRow({
       return ids.size > 1
     }, [hostSessions, treeIds, s.id])
     const elapsed = runningElapsed(hostId, s)
-    const runningLabel =
-      s.status === 'waiting_permission' ? '待审批' : s.status === 'retrying' ? '等待网络' : '运行中'
+    const runningLabel = isWaitingStatus(s.status)
+      ? '待审批'
+      : isRetryingStatus(s.status)
+        ? '等待网络'
+        : '运行中'
     const row = (
         <div
           data-session-row="true"
@@ -235,7 +239,7 @@ export function SessionRow({
                 className={cn(
                   'hidden max-w-full truncate text-[12px] tabular-nums transition-opacity md:inline',
                   elapsed && 'text-[12px]',
-                  s.status === 'waiting_permission' ? 'text-accent-text' : 'text-text-tertiary',
+                  isWaitingStatus(s.status) ? 'text-accent-text' : 'text-text-tertiary',
                   isActive ? 'opacity-0' : 'group-hover:opacity-0',
                 )}
                 data-tip={elapsed ? `${runningLabel} · ${elapsed}` : undefined}

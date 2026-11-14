@@ -4,6 +4,7 @@ import { Button } from '../ui/Button'
 import { cn } from '../../lib/cn'
 import { formatTokens } from '../../lib/format'
 import type { SubagentSession } from '../../lib/types'
+import { isExecutingStatus, isRetryingStatus, isWaitingStatus } from '../../store/appStore/helpers'
 import { AgentElapsed, agentKind, partialString, str } from './helpers'
 import { OutputBlock } from './OutputBlock'
 import { SubagentStream } from './SubagentStream'
@@ -45,11 +46,11 @@ export function TaskBody({
   const tokens = (summary?.usage?.inputTokens ?? 0) + (summary?.usage?.outputTokens ?? 0)
   const statusText = failed
     ? '出错'
-    : status === 'waiting_permission'
+    : isWaitingStatus(status)
       ? '待审批'
-      : status === 'retrying'
+      : isRetryingStatus(status)
         ? '等待网络'
-        : subRunning || status === 'running'
+        : subRunning || isExecutingStatus(status)
           ? '运行中'
           : summary
             ? '已结束'

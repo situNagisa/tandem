@@ -1,6 +1,7 @@
 import type { SessionStatus } from '@tandem/protocol'
 import type { ConnectionState } from '../lib/types'
 import { cn } from '../lib/cn'
+import { isExecutingStatus, isRetryingStatus, isWaitingStatus } from '../store/appStore/helpers'
 
 const CONNECTION_STYLE: Record<ConnectionState, string> = {
   online: 'bg-text-tertiary/70',
@@ -28,7 +29,7 @@ export function ConnectionDot({
 }
 
 export function SessionStatusDot({ status }: { status: SessionStatus }) {
-  if (status === 'running') {
+  if (isExecutingStatus(status)) {
     return (
       <span className="relative inline-flex size-2 shrink-0" data-tip="运行中">
         <span className="absolute inset-0 rounded-full bg-text-secondary/25 running-dot" />
@@ -36,10 +37,10 @@ export function SessionStatusDot({ status }: { status: SessionStatus }) {
       </span>
     )
   }
-  if (status === 'waiting_permission') {
+  if (isWaitingStatus(status)) {
     return <span className="inline-block size-2 shrink-0 rounded-full bg-accent" data-tip="等待审批" />
   }
-  if (status === 'retrying') {
+  if (isRetryingStatus(status)) {
     return (
       <span
         className="inline-block size-2 shrink-0 rounded-full bg-warning running-dot"

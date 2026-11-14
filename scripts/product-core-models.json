@@ -43,7 +43,14 @@
           "pattern": "(?:^|[^\\w$])EFFORTS\\s*:\\s*ReasoningEffort\\[\\]\\s*="
         }
       ],
-      "note": "前端 packages/web/src/lib/effort.ts 另有一份档位表与 defaultEffortsForKind；能力口径应由服务端能力表下发，前端只做展示回退。"
+      "exceptions": [
+        {
+          "path": "packages/web/src/lib/effort.ts",
+          "what": "模型菜单的离线兜底：能力接口未返回或失败时先给一组通用档位",
+          "reason": "服务端 GET /api/models/capabilities 是正常路径；请求尚未返回时若不给档位，模型菜单会短暂没有思考强度选项。这里只保留最小兜底（通用三档、Anthropic 全档、demo 仅「关」），档位全集另用于排序与校验；真实档位、厂商叫法与上下文窗口一律以服务端 ModelInfo 为准。"
+        }
+      ],
+      "note": "能力口径由服务端能力表下发；前端 effort.ts 只保留已登记的离线兜底例外。"
     },
     {
       "id": "scroll-position",

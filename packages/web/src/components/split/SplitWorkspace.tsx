@@ -15,6 +15,11 @@ import { useIsMobile } from '../../lib/hooks'
 import { cn } from '../../lib/cn'
 import { nodeContains } from '../../lib/overlay'
 import {
+  isExecutingStatus,
+  isRetryingStatus,
+  isWaitingStatus,
+} from '../../store/appStore/helpers'
+import {
   closeSplitPaneAt,
   focusSplitPane,
   openSplitSessionAt,
@@ -132,14 +137,13 @@ function PaneFrame({ pane, focused }: { pane: SessionTarget; focused: boolean })
   const running = useAppStore((s) => s.sessionViews[key]?.running ?? false)
   const status = summary?.status
   const title = summary?.title || '未命名会话'
-  const dot =
-    status === 'waiting_permission'
-      ? 'bg-accent'
-      : status === 'error'
-        ? 'bg-danger'
-        : running || status === 'running' || status === 'retrying'
-          ? 'bg-text-secondary running-dot'
-          : 'bg-border-strong'
+  const dot = isWaitingStatus(status)
+    ? 'bg-accent'
+    : status === 'error'
+      ? 'bg-danger'
+      : running || isExecutingStatus(status) || isRetryingStatus(status)
+        ? 'bg-text-secondary running-dot'
+        : 'bg-border-strong'
 
   const focus = () => {
     if (boardId || focused) return

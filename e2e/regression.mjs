@@ -14,7 +14,7 @@
  *   npm run regression                                  全量
  *   node e2e/regression.mjs --only "更多菜单"            只跑名称包含该片段的用例
  *   node e2e/regression.mjs --changed                   只跑与改动相关的功能文件
- *   node e2e/regression.mjs --changed --changed-base HEAD  验收/调试：只看工作区改动
+ *   node e2e/regression.mjs --changed --changed-base HEAD  验收/调试：只看工作区改动（无改动或只改文档时跳过）
  */
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
@@ -72,12 +72,21 @@ const FEATURES = [
 
 const onlyIndex = process.argv.indexOf('--only')
 const ONLY = onlyIndex >= 0 ? (process.argv[onlyIndex + 1] ?? '') : ''
-// 按改动选跑：git diff main...HEAD + 工作区改动 → 功能文件；未命中的改动回落全量。
+// 按改动选跑：改动 → 功能文件；无改动或只改文档跳过；未命中的改动回落全量。
 const CHANGED = process.argv.includes('--changed')
 const changedBaseIndex = process.argv.indexOf('--changed-base')
-const CHANGED_BASE = changedBaseIndex >= 0 ? (process.argv[changedBaseIndex + 1] ?? 'main') : 'main'
+const CHANGED_BASE = changedBaseIndex >= 0 ? (process.argv[changedBaseIndex + 1] ?? null) : null
 
 async function main() {
+  let selection = null
+  if (CHANGED) {
+    selection = selectFeatures(changedFiles(ROOT, CHANGED_BASE))
+    if (selection.skip) {
+      console.log(`${selection.reason}，跳过回归`)
+      return
+    }
+  }
+
   const home = mkdtempSync(path.join(os.tmpdir(), 'tandem-reg-'))
   const wsHome = path.join(home, 'tandem')
   const configDir = path.join(wsHome, 'local-host')
@@ -461,8 +470,6 @@ async function main() {
 
     let selectedFeatures = null
     if (CHANGED) {
-      const files = changedFiles(ROOT, CHANGED_BASE)
-      const selection = selectFeatures(files)
       if (selection.all) {
         console.log(`--changed: 回落全量（${selection.reason}）`)
       } else {

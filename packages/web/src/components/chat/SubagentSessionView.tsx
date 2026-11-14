@@ -6,6 +6,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
 import { cn } from '../../lib/cn'
 import { useIsMobile } from '../../lib/hooks'
+import { isRetryingStatus, isWaitingStatus } from '../../store/appStore/helpers'
 import { MessageList } from '../MessageList'
 import { TurnRail } from './TurnRail'
 
@@ -51,9 +52,9 @@ export function SubagentSessionView({ hostId, id }: { hostId: string; id: string
   const status = sub?.summary?.status
   const statusText = sub?.running
     ? '运行中'
-    : status === 'waiting_permission'
+    : isWaitingStatus(status)
       ? '待审批'
-      : status === 'retrying'
+      : isRetryingStatus(status)
         ? '等待网络'
         : status === 'error'
           ? '出错'
