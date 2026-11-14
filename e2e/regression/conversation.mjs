@@ -44,7 +44,47 @@ import { killExecutorsUnder, runExecutorCheck } from '../executor-check.mjs'
 
 export const feature = 'conversation'
 // 拆分前的全局用例序号：入口据此排序，保证全量执行顺序与拆分前完全一致。
-export const order = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 24, 26, 51, 52, 53, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 74, 75, 84, 85, 86, 87, 88, 89, 90, 93, 94, 95, 96, 97, 98, 100, 112, 113]
+export const order = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 24, 26, 51, 52, 53, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 74, 75, 84, 85, 86, 87, 88, 89, 90, 93, 94, 95, 96, 97, 98, 100, 112, 113, 113.1, 113.2, 113.3, 113.4, 113.5, 113.6, 113.7]
+
+/**
+ * 从下一帧起逐帧记录消息区状态（每帧一项，含还没挂上任何行的帧），
+ * 用于「每一帧都在底部 / 画面不跳动」类断言。返回停止并取结果的函数。
+ */
+async function startScrollSampler(page, key) {
+  await page.evaluate((name) => {
+    const state = (window[name] = { on: true, frames: [] })
+    const sample = (el) => {
+      const box = el.getBoundingClientRect()
+      const rows = [...el.querySelectorAll('.msg-row[data-message-id]')]
+      const first = rows.find((row) => row.getBoundingClientRect().bottom > box.top + 1)
+      return {
+        rows: rows.length,
+        skeleton: el.querySelectorAll('.skeleton').length,
+        top: el.scrollTop,
+        height: el.scrollHeight,
+        client: el.clientHeight,
+        distance: el.scrollHeight - el.scrollTop - el.clientHeight,
+        firstId: first?.getAttribute('data-message-id') ?? null,
+        firstTop: first ? Math.round(first.getBoundingClientRect().top - box.top) : null,
+      }
+    }
+    const loop = () => {
+      if (!state.on) return
+      const el = document.querySelector('.chat-scroll')
+      if (el) state.frames.push(sample(el))
+      requestAnimationFrame(loop)
+    }
+    requestAnimationFrame(loop)
+  }, key)
+  return async () => {
+    const frames = await page.evaluate((name) => {
+      const state = window[name]
+      state.on = false
+      return state.frames
+    }, key)
+    return frames
+  }
+}
 
 export function register(checks, ctx) {
   const {
@@ -2515,5 +2555,286 @@ desktop('会话信息面板：空分组默认隐藏、⋯ 菜单可显式显示�
       await panel.locator('[data-group="usage"]').waitFor({ state: 'visible', timeout: 20_000 })
       assert.equal(await panel.getByText('暂无用量', { exact: true }).count(), 0, '有数据后仍显示空状态')
       assert.match(await panel.locator('[data-group="usage"]').innerText(), /输入[\s\S]*输出/, '用量卡出现后没有数据')
+    })
+
+/** 消息区距底部像素数。 */
+const chatDistance = (page) =>
+  page.evaluate(() => {
+    const el = document.querySelector('.chat-scroll')
+    return el ? el.scrollHeight - el.scrollTop - el.clientHeight : -1
+  })
+
+desktop('[S1] 打开会话第一眼在底部，内容撑高后仍贴底', async (page) => {
+      const stop = await startScrollSampler(page, '__s1')
+      await openSession(page, 'huge')
+      await page.waitForTimeout(1200)
+      const frames = await stop()
+      assert.ok(frames.length > 30, `采样帧太少：${frames.length}`)
+      assert.ok(
+        new Set(frames.map((frame) => frame.height)).size > 1,
+        '采样期间消息区高度没有变化，无法验证内容撑高后仍贴底',
+      )
+      const off = frames.filter((frame) => frame.distance > 2)
+      assert.equal(
+        off.length,
+        0,
+        `打开会话后有 ${off.length}/${frames.length} 帧不在底部（最大 ${Math.max(...off.map((frame) => frame.distance))}px）`,
+      )
+    })
+
+desktop('[S2] 停在底部时流式输出持续贴底（距底部 ≤4px）', async (page) => {
+      await openSession(page, 'scroll')
+      await page.waitForFunction(
+        () => {
+          const el = document.querySelector('.chat-scroll')
+          return !!el && el.scrollHeight - el.scrollTop - el.clientHeight < 4
+        },
+        null,
+        { timeout: 10_000 },
+      )
+      const input = page.locator('[aria-label="消息输入框"]')
+      await input.fill('SCROLL_E2E 请逐段输出')
+      await input.press('Enter')
+      await page.locator('.md.chat-md.is-streaming').first().waitFor({ timeout: 8_000 })
+      const distances = []
+      for (let i = 0; i < 8; i++) {
+        await page.waitForTimeout(250)
+        distances.push(await chatDistance(page))
+      }
+      assert.ok(
+        distances.every((distance) => distance <= 4),
+        `流式输出期间距底部像素：${distances.join(', ')}`,
+      )
+      await page.waitForFunction(
+        () => !document.querySelector('.md.chat-md.is-streaming'),
+        null,
+        { timeout: 25_000 },
+      )
+      assert.ok((await chatDistance(page)) <= 4, '流式结束后没有停在底部')
+    })
+
+desktop('[S3] 上翻即停：滚轮或键盘上滚后，流式增高不再把视口拉回底部', async (page) => {
+      await openSession(page, 'scroll')
+      await page.waitForFunction(
+        () => {
+          const el = document.querySelector('.chat-scroll')
+          return !!el && el.scrollHeight - el.scrollTop - el.clientHeight < 4
+        },
+        null,
+        { timeout: 10_000 },
+      )
+      const scroller = page.locator('.chat-scroll').filter({ has: page.locator('.msg-row') }).first()
+      const streaming = () => page.locator('.md.chat-md.is-streaming').count()
+      const input = page.locator('[aria-label="消息输入框"]')
+      await input.fill('SCROLL_E2E 请逐段输出')
+      await input.press('Enter')
+      await page.locator('.md.chat-md.is-streaming').first().waitFor({ timeout: 8_000 })
+      // 滚轮上滚：立即停止跟随，之后内容增高只能把视口留在原处。
+      const box = await scroller.boundingBox()
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.mouse.wheel(0, -700)
+      await page.waitForTimeout(300)
+      const scrolledUp = await chatDistance(page)
+      assert.ok(scrolledUp > 120, `滚轮上滚后距底部只有 ${scrolledUp}px，视口被拉回底部`)
+      assert.ok((await streaming()) > 0, '上滚时流式输出已经结束，无法验证不跟随')
+      await page.waitForTimeout(800)
+      const later = await chatDistance(page)
+      assert.ok(later > 120, `上滚后流式输出把视口拉回底部：${scrolledUp}px → ${later}px`)
+      assert.ok(later >= scrolledUp - 2, `上滚后视口往下移动了：${scrolledUp}px → ${later}px`)
+      // 键盘上滚同样是用户意图：先回到底部恢复跟随，再按 PageUp。
+      await page.locator('.chat-jump').click()
+      await page.waitForFunction(
+        () => {
+          const el = document.querySelector('.chat-scroll')
+          return !!el && el.scrollHeight - el.scrollTop - el.clientHeight < 4
+        },
+        null,
+        { timeout: 5_000 },
+      )
+      const fromKey = await chatDistance(page)
+      await page.evaluate(() => {
+        document
+          .querySelector('.chat-scroll')
+          ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }))
+      })
+      await page.waitForTimeout(800)
+      const afterKey = await chatDistance(page)
+      assert.ok((await streaming()) > 0, '键盘上滚时流式输出已经结束，无法验证不跟随')
+      assert.ok(
+        afterKey > fromKey + 40,
+        `键盘上滚后仍在贴底：${fromKey}px → ${afterKey}px`,
+      )
+    })
+
+desktop('[S3] 打开会话后立即上滚，不被贴底校准吸回底部', async (page) => {
+      await openSession(page, 'scroll')
+      const row = page.locator('[data-session-row]').filter({ hasText: '超大会话 · 320 轮' }).first()
+      await row.waitFor({ timeout: 10_000 })
+      // 鼠标先移到消息区中央，切会话后立即上滚（旧实现在打开后的 600ms 校准窗口里会吞掉这次上滚）。
+      const area = await page.locator('.chat-scroll').boundingBox()
+      await page.mouse.move(area.x + area.width / 2, area.y + area.height / 2)
+      await row.locator('[data-session-open], button').first().click()
+      await page.waitForFunction(() => window.location.hash.includes('/s/huge'), null, {
+        timeout: 10_000,
+      })
+      await page.locator('.msg-row[data-message-id^="hu"]').first().waitFor({ timeout: 10_000 })
+      await page.mouse.wheel(0, -900)
+      await page.waitForTimeout(700)
+      const distance = await chatDistance(page)
+      assert.ok(distance > 120, `打开会话后立即上滚仍被拉回底部：距底部 ${distance}px`)
+    })
+
+desktop('[S4] 回到底部：平滑滚到底并恢复跟随', async (page) => {
+      await openSession(page, 'scroll')
+      await page.waitForFunction(
+        () => {
+          const el = document.querySelector('.chat-scroll')
+          return !!el && el.scrollHeight - el.scrollTop - el.clientHeight < 4
+        },
+        null,
+        { timeout: 10_000 },
+      )
+      const input = page.locator('[aria-label="消息输入框"]')
+      await input.fill('SCROLL_E2E 请逐段输出')
+      await input.press('Enter')
+      await page.locator('.md.chat-md.is-streaming').first().waitFor({ timeout: 8_000 })
+      const scroller = page.locator('.chat-scroll').filter({ has: page.locator('.msg-row') }).first()
+      const box = await scroller.boundingBox()
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.mouse.wheel(0, -700)
+      await page.waitForTimeout(400)
+      assert.ok((await chatDistance(page)) > 120, '上滚后没有离开底部，无法验证回到底部')
+      await page.evaluate(() => {
+        const state = (window.__s4 = { on: true, samples: [] })
+        const loop = () => {
+          if (!state.on) return
+          const el = document.querySelector('.chat-scroll')
+          if (el) state.samples.push(el.scrollTop)
+          requestAnimationFrame(loop)
+        }
+        requestAnimationFrame(loop)
+      })
+      await page.locator('.chat-jump').click()
+      await page.waitForTimeout(900)
+      const samples = await page.evaluate(() => {
+        window.__s4.on = false
+        return window.__s4.samples
+      })
+      const positions = new Set(samples.map((value) => Math.round(value)))
+      assert.ok(positions.size >= 3, `回到底部没有平滑过程（只出现 ${positions.size} 个位置）`)
+      assert.ok(
+        samples.at(-1) > samples[0] + 100,
+        `回到底部后没有滚到底：${samples[0]} → ${samples.at(-1)}`,
+      )
+      const distances = []
+      for (let i = 0; i < 6; i++) {
+        await page.waitForTimeout(250)
+        distances.push(await chatDistance(page))
+      }
+      assert.ok(
+        distances.every((distance) => distance <= 4),
+        `回到底部后没有恢复跟随，距底部像素：${distances.join(', ')}`,
+      )
+    })
+
+desktop('[S10] 切换会话不闪：保留旧画面，新会话首帧即贴底', async (page) => {
+      // 只用静态会话：前面用例的流式回合可能还在后台写入，内容增高时底部首行本就会移动。
+      await openSession(page, 'codeblock')
+      const stop = await startScrollSampler(page, '__s10')
+      const clickSession = async (title, sessionId, messagePrefix) => {
+        const row = page.locator('[data-session-row]').filter({ hasText: title }).first()
+        await row.waitFor({ timeout: 10_000 })
+        await row.locator('[data-session-open], button').first().click()
+        await page.waitForFunction((id) => window.location.hash.includes(`/s/${id}`), sessionId, {
+          timeout: 10_000,
+        })
+        await page
+          .locator(`.msg-row[data-message-id^="${messagePrefix}"]`)
+          .first()
+          .waitFor({ timeout: 10_000 })
+        await page.waitForTimeout(500)
+      }
+      await clickSession('回归长会话', 'long', 'u1')
+      await clickSession('代码块与表格会话', 'codeblock', 'r16u1')
+      const frames = await stop()
+      assert.ok(frames.length > 30, `切换期间采样帧太少：${frames.length}`)
+      const skeleton = frames.filter((frame) => frame.skeleton > 0)
+      assert.equal(skeleton.length, 0, `切换会话时有 ${skeleton.length} 帧显示骨架屏`)
+      const notBottom = frames.filter((frame) => frame.distance > 2)
+      assert.equal(
+        notBottom.length,
+        0,
+        `切换会话时有 ${notBottom.length}/${frames.length} 帧不在底部（最大 ${Math.max(...notBottom.map((frame) => frame.distance))}px）`,
+      )
+      // 同一行在显示期间不能被后到的内容推走（先下移一帧再回弹）。
+      const topsById = new Map()
+      for (const frame of frames) {
+        if (!frame.firstId || frame.firstTop === null) continue
+        const tops = topsById.get(frame.firstId) ?? []
+        tops.push(frame.firstTop)
+        topsById.set(frame.firstId, tops)
+      }
+      for (const [id, tops] of topsById) {
+        const spread = Math.max(...tops) - Math.min(...tops)
+        assert.ok(spread <= 2, `消息 ${id} 显示期间上下跳动 ${spread}px`)
+      }
+    })
+
+desktop('[S11] 窗口尺寸变化：阅读中保持视口首行，底部保持贴底', async (page) => {
+      await openSession(page, 'huge')
+      await page.waitForTimeout(300)
+      const topRow = () =>
+        page.evaluate(() => {
+          const el = document.querySelector('.chat-scroll')
+          if (!el) return null
+          const boxTop = el.getBoundingClientRect().top
+          const row = [...el.querySelectorAll('.msg-row[data-message-id]')].find(
+            (item) => item.getBoundingClientRect().bottom > boxTop + 1,
+          )
+          return row
+            ? {
+                id: row.getAttribute('data-message-id'),
+                top: row.getBoundingClientRect().top - boxTop,
+              }
+            : null
+        })
+      // 阅读态：滚到会话中部，记录视口首行与偏移。
+      await page.evaluate(() => {
+        const el = document.querySelector('.chat-scroll')
+        if (el) el.scrollTop = Math.floor((el.scrollHeight - el.clientHeight) / 2)
+      })
+      await page.waitForTimeout(400)
+      const before = await topRow()
+      assert.ok(before?.id, '滚动到中部后没有可见的消息行')
+      await page.setViewportSize({ width: 900, height: 700 })
+      await page.waitForTimeout(500)
+      const after = await page.evaluate((id) => {
+        const el = document.querySelector('.chat-scroll')
+        if (!el) return null
+        const boxTop = el.getBoundingClientRect().top
+        const row = el.querySelector(`.msg-row[data-message-id="${CSS.escape(id)}"]`)
+        return {
+          top: row ? row.getBoundingClientRect().top - boxTop : null,
+          distance: el.scrollHeight - el.scrollTop - el.clientHeight,
+        }
+      }, before.id)
+      assert.notEqual(after?.top ?? null, null, `尺寸变化后视口首行 ${before.id} 被卸载`)
+      assert.ok(
+        Math.abs(after.top - before.top) <= 4,
+        `尺寸变化后视口首行移动了 ${Math.round(after.top - before.top)}px`,
+      )
+      // 贴底态：回到底部后缩小窗口高度，仍必须停在底部。
+      await page.evaluate(() => {
+        const el = document.querySelector('.chat-scroll')
+        if (el) el.scrollTop = el.scrollHeight
+      })
+      await page.waitForTimeout(300)
+      await page.setViewportSize({ width: 1100, height: 480 })
+      await page.waitForTimeout(500)
+      const distance = await page.evaluate(() => {
+        const el = document.querySelector('.chat-scroll')
+        return el ? el.scrollHeight - el.scrollTop - el.clientHeight : -1
+      })
+      assert.ok(distance <= 2, `尺寸变化后不再贴底：距底部 ${distance}px`)
     })
 }
