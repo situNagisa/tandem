@@ -1,9 +1,9 @@
 /**
  * 源码路径 → 回归功能文件 的映射。
  *
- * `--changed` 用 `git diff --name-only main...HEAD` 与工作区改动取文件列表，逐个映射；
- * 任一文件命中共享层（e2e/regression/lib、scripts、protocol、store 等）或没有命中映射时回落全量，
- * 宁可多跑也不漏跑。
+ * `--changed` 取提交改动（基线见 changedFiles）与工作区改动，去掉文档/非代码文件后逐个映射；
+ * 没有改动或只改了非代码文件时跳过；任一文件命中共享层（e2e/regression/lib、scripts、protocol、store 等）
+ * 或没有命中映射时回落全量，宁可多跑也不漏跑。
  */
 import { execFileSync } from 'node:child_process'
 
@@ -111,12 +111,23 @@ export function featuresForFile(file) {
   return null
 }
 
-/** 一批改动文件 → { all: true, reason } 或 { features: [...] }。 */
+// 不影响运行结果的文件：文档、产品定义、代理工具目录（.claude/ 下是 worktree 元数据）。
+const NON_CODE = [/^docs\//, /^product\//, /\.md$/i, /^\.claude\//]
+
+const isNonCode = (file) => NON_CODE.some((pattern) => pattern.test(file))
+
+/**
+ * 一批改动文件 → { skip: true, reason }、{ all: true, reason } 或 { features: [...] }。
+ * skip：没有改动，或改动全是非代码文件；all：命中共享层或未命中映射。
+ */
 export function selectFeatures(files) {
-  if (!files.length) return { all: true, reason: '没有检测到改动' }
+  const normalized = files.map((file) => file.replace(/\\/g, '/').replace(/^\.\//, ''))
+  if (!normalized.length) return { skip: true, reason: '无改动' }
+  const code = normalized.filter((file) => !isNonCode(file))
+  if (!code.length) return { skip: true, reason: '只改文档' }
   const selected = new Set()
   const unmapped = []
-  for (const file of files) {
+  for (const file of code) {
     const hit = featuresForFile(file)
     if (hit === ALL) return { all: true, reason: `${file} 属于共享层` }
     if (!hit) {
@@ -131,8 +142,16 @@ export function selectFeatures(files) {
   return { all: false, features: FEATURE_NAMES.filter((name) => selected.has(name)) }
 }
 
-/** main...HEAD 的提交改动 + 工作区（含未跟踪）改动。base 默认 main，仅验收/调试时用 --changed-base 覆盖。 */
-export function changedFiles(root, base = 'main') {
+/**
+ * 提交改动 + 工作区（含未跟踪）改动。
+ *
+ * 基线：
+ * - 指定 base（--changed-base 验收/调试）：`base...HEAD`，传 HEAD 即只看工作区。
+ * - 未指定、当前在 main 上（main 与 HEAD 同一提交）：HEAD 相对最近一次合并提交（不含 HEAD 自身）；
+ *   没有合并提交时用 HEAD~1。不依赖 origin，离线也可用。
+ * - 其他分支：`main...HEAD`。
+ */
+export function changedFiles(root, base = null) {
   const git = (args) => {
     try {
       return execFileSync('git', args, { cwd: root, encoding: 'utf8' })
@@ -141,11 +160,15 @@ export function changedFiles(root, base = 'main') {
     }
   }
   const files = new Set()
-  for (const line of git(['diff', '--name-only', `${base}...HEAD`]).split('\n')) {
+  let range = base ? `${base}...HEAD` : 'main...HEAD'
+  if (!base && git(['rev-parse', 'HEAD']).trim() === git(['rev-parse', 'main']).trim()) {
+    range = `${git(['rev-list', '--merges', '-n', '1', 'HEAD~1']).trim() || 'HEAD~1'}..HEAD`
+  }
+  for (const line of git(['diff', '--name-only', range]).split('\n')) {
     const file = line.trim()
     if (file) files.add(file)
   }
-  for (const line of git(['status', '--porcelain']).split('\n')) {
+  for (const line of git(['status', '--porcelain', '--', '.', ':!.claude']).split('\n')) {
     if (!line.trim()) continue
     const rest = line.slice(3).trim()
     // 重命名显示为 "old -> new"，取新路径。
