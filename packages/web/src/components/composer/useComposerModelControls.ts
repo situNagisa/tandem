@@ -12,7 +12,7 @@ import type {
 } from '@tandem/protocol'
 import { api } from '../../lib/api'
 import { useAppStore } from '../../store/useAppStore'
-import { defaultEffortsForKind, nearestEffort, rememberEffort } from '../../lib/effort'
+import { nearestEffort, offlineEffortsFor, rememberEffort } from '../../lib/effort'
 import { prettyModel } from '../../lib/modelName'
 import { profileModelGroups } from '../../lib/profileModels'
 import { formatCost } from '../../lib/format'
@@ -97,7 +97,7 @@ export function useComposerModelControls({
   const [modelEffortNote, setModelEffortNote] = useState<string | undefined>(undefined)
   const [modelLongContext, setModelLongContext] = useState<LongContextCapability | undefined>(undefined)
   const [modelContextNote, setModelContextNote] = useState<string | undefined>(undefined)
-  const supportedEfforts = modelEfforts ?? defaultEffortsForKind(currentKind)
+  const supportedEfforts = modelEfforts ?? offlineEffortsFor(currentKind)
   const capabilitiesKey = `${currentProfileId}:${currentGroupId ?? ''}:${currentModel}`
 
   const [priceCache, setPriceCache] = useState<
@@ -132,7 +132,7 @@ export function useComposerModelControls({
         setModelContextNote(info.contextNote)
       })
       .catch(() => {
-        /* 能力未知时保留默认档位 */
+        /* 能力未知时保留离线兜底档位 */
       })
     return () => {
       cancelled = true

@@ -119,7 +119,7 @@ export function saveHosts(hosts: HostConfig[]): void {
 }
 
 export function loadTheme(): Theme {
-  const t = localStorage.getItem(KEYS.theme)
+  const t = readRaw(KEYS.theme)
   return t === 'light' || t === 'dark' || t === 'system' ? t : 'system'
 }
 

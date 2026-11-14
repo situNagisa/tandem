@@ -40,7 +40,7 @@ export function emptyActiveSession(
     pending: [],
     todos: [],
     loading: true,
-    running: summary ? isRunningStatus(summary.status) : false,
+    running: summary ? isBusyStatus(summary.status) : false,
     stopping: false,
     liveToolInputs: {},
     toolResults: {},
@@ -57,7 +57,7 @@ export function emptySubagent(summary: SessionSummary | null = null): SubagentSe
     messages: [],
     pending: [],
     loading: true,
-    running: summary ? isRunningStatus(summary.status) : false,
+    running: summary ? isBusyStatus(summary.status) : false,
     liveToolInputs: {},
     toolResults: {},
   }
@@ -142,8 +142,24 @@ export function sameOrigin(url: string, origin: string): boolean {
   }
 }
 
-export function isRunningStatus(status: SessionSummary['status']): boolean {
+/** 忙/等：运行中、待审批、等待重试。侧栏、顶栏、代理列表共用这一份判定。 */
+export function isBusyStatus(status: SessionSummary['status'] | undefined): boolean {
   return status === 'running' || status === 'waiting_permission' || status === 'retrying'
+}
+
+/** 正在跑（不含等待审批、等待重试）。 */
+export function isExecutingStatus(status: SessionSummary['status'] | undefined): boolean {
+  return status === 'running'
+}
+
+/** 等待审批。 */
+export function isWaitingStatus(status: SessionSummary['status'] | undefined): boolean {
+  return status === 'waiting_permission'
+}
+
+/** 网络中断、等待重试。 */
+export function isRetryingStatus(status: SessionSummary['status'] | undefined): boolean {
+  return status === 'retrying'
 }
 
 /** 旧数据没有 depth 时沿 parentId 链推算。 */

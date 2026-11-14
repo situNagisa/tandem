@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { BackgroundTask, RetryInfo } from '@tandem/protocol'
+import type { BackgroundTask, RetryInfo, SessionStatus } from '@tandem/protocol'
 import {
   Bot,
   Columns2,
@@ -31,6 +31,12 @@ import { cn } from '../lib/cn'
 import { clearSplitWorkspace } from '../lib/splitActions'
 import { isDesktop, isMacDesktop, isWindowsDesktop } from '../lib/desktop'
 import { HOST_NOT_ON_WORKSTATION } from '../lib/relay'
+import {
+  isBusyStatus,
+  isExecutingStatus,
+  isRetryingStatus,
+  isWaitingStatus,
+} from '../store/appStore/helpers'
 import { ConnectionDot } from './StatusDot'
 import { Badge } from './ui/Badge'
 import { Button, IconButton } from './ui/Button'
@@ -54,7 +60,7 @@ function StatePill({
   onResume,
 }: {
   running: boolean
-  status?: string
+  status?: SessionStatus
   offline: boolean
   connecting: boolean
   elapsed?: string
@@ -75,7 +81,7 @@ function StatePill({
       </span>
     )
   }
-  if (status === 'retrying' || retryInfo) {
+  if (isRetryingStatus(status) || retryInfo) {
     return (
       <span className={cn(pill, 'rounded-full border border-border bg-surface px-2 py-1')}>
         <span className="size-1.5 rounded-full bg-warning running-dot" />
@@ -105,7 +111,7 @@ function StatePill({
       </span>
     )
   }
-  if (status === 'waiting_permission') {
+  if (isWaitingStatus(status)) {
     return (
       <span className={pill}>
         <span className="size-1.5 shrink-0 rounded-full bg-accent" />
@@ -118,7 +124,7 @@ function StatePill({
   if (status === 'error') {
     return <span className={cn(pill, 'text-danger')}>出错</span>
   }
-  if (running || status === 'running') {
+  if (running || isExecutingStatus(status)) {
     return (
       <span className={pill}>
         <span className="size-1.5 shrink-0 rounded-full bg-text-secondary running-dot" />
@@ -248,7 +254,7 @@ function MoreMenu() {
                 trailing={
                   row.status === 'error'
                     ? '出错'
-                    : row.status === 'waiting_permission'
+                    : isWaitingStatus(row.status)
                       ? '待审批'
                       : row.running
                         ? '运行中'
@@ -356,9 +362,9 @@ export function TopBar() {
   })
   const summary = useAppStore((s) => s.active?.summary ?? null)
   const status = summary?.status
-  const retrying = status === 'retrying' || !!summary?.retryInfo
+  const retrying = isRetryingStatus(status) || !!summary?.retryInfo
   const running = useAppStore((s) => s.active?.running ?? false)
-  const ticking = running || status === 'waiting_permission' || status === 'retrying'
+  const ticking = running || isBusyStatus(status)
   const now = useNow(ticking)
   const retrySeconds = summary?.retryInfo
     ? Math.max(0, Math.ceil((summary.retryInfo.nextAt - now) / 1000))

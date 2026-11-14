@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { Bot, FolderTree, Globe2, SquareTerminal } from 'lucide-react'
+import type { SessionStatus } from '@tandem/protocol'
 import type { SubagentSession } from '../../lib/types'
 import { useAppStore } from '../../store/useAppStore'
 import { useUiStore } from '../../store/useUiStore'
@@ -8,6 +9,7 @@ import { useBrowserStore } from '../../store/useBrowserStore'
 import { cn } from '../../lib/cn'
 import { IconButton } from '../ui/Button'
 import { Popover } from '../ui/Popover'
+import { isBusyStatus, isRetryingStatus, isWaitingStatus } from '../../store/appStore/helpers'
 
 const EMPTY_SUBS: Record<string, SubagentSession> = {}
 const EMPTY_TASKS: import('@tandem/protocol').BackgroundTask[] = []
@@ -56,7 +58,7 @@ export interface SubagentRow {
   id: string
   title: string
   depth: number
-  status?: string
+  status?: SessionStatus
   running: boolean
 }
 
@@ -84,11 +86,7 @@ export function useSubagentRows(): SubagentRow[] {
         const sub = subagents[id]
         const summary = sub?.summary
         if (!sub || !summary) continue
-        const running =
-          sub.running ||
-          summary.status === 'running' ||
-          summary.status === 'waiting_permission' ||
-          summary.status === 'retrying'
+        const running = sub.running || isBusyStatus(summary.status)
         out.push({
           id,
           title: summary.title || '未命名子代理',
@@ -165,9 +163,9 @@ export function SubagentsButton() {
                   >
                     {row.status === 'error'
                       ? '出错'
-                      : row.status === 'waiting_permission'
+                      : isWaitingStatus(row.status)
                         ? '待审批'
-                        : row.status === 'retrying'
+                        : isRetryingStatus(row.status)
                           ? '等待网络'
                           : row.running
                             ? '运行中'
