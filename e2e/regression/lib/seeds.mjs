@@ -1626,6 +1626,55 @@ export function seedData({ configDir, repo, hostId, mockPort, previewCwd, today,
       { updatedAt: Date.now() - 940 },
     ),
   )
+  // 反馈1724#04/#05：公式渲染（行内/块级/代码里不渲染）与用户消息单个换行。
+  sessions.push(
+    mk('mdmath', '公式与换行渲染', [
+      message(
+        'mm1',
+        'user',
+        '第一行不加空行\n第二行紧跟其后\n\n这才是另一段。',
+        { createdAt: createdAt + 1_000 },
+      ),
+      message(
+        'mm2',
+        'assistant',
+        [
+          '行内公式 $E=mc^2$ 与行内代码 `$HOME` 都不应混淆。',
+          '',
+          '块级公式：',
+          '',
+          '$$',
+          '\\begin{aligned}',
+          '  \\mathrm{whole}&:\\ c_i=\\mathrm{fail}\\ \\Rightarrow\\ \\forall b:\\ (i,b)\\notin\\operatorname{im}\\delta \\\\',
+          '  \\mathrm{prefix}&:\\ \\forall b>k_i:\\ (i,b)\\notin\\operatorname{im}\\delta\\quad\\text{this formula is deliberately long enough to need horizontal scrolling inside the block}',
+          '\\end{aligned}',
+          '$$',
+          '',
+          '代码块里保持源码：',
+          '',
+          '```sh',
+          'echo $HOME && echo $$',
+          '```',
+        ].join('\n'),
+        {
+          model: 'mock-1',
+          createdAt: createdAt + 2_000,
+          usage: { inputTokens: 1200, outputTokens: 300, costUsd: 0.004 },
+        },
+      ),
+      message(
+        'mm3',
+        'user',
+        '单换行\n仍是一行内的换行',
+        { createdAt: createdAt + 3_000 },
+      ),
+      message('mm4', 'assistant', '收到。', {
+        model: 'mock-1',
+        createdAt: createdAt + 4_000,
+        usage: { inputTokens: 900, outputTokens: 20, costUsd: 0.003 },
+      }),
+    ]),
+  )
   for (const session of sessions) writeJson(path.join(configDir, 'sessions', `${session.id}.json`), session)
   writeJson(path.join(configDir, 'sessions', 'compact.compact.json'), {
     noticeId: 'cmp-notice',

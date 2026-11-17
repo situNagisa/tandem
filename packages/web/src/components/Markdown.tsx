@@ -1,6 +1,7 @@
 import { isValidElement, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
 import { ArrowLeftRight, FileText } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { useAppStore } from '../store/useAppStore'
@@ -14,7 +15,9 @@ import {
   type FileRef,
 } from '../lib/fileLinks'
 import { useFileRefExists } from '../lib/fileRefExists'
+import { remarkHardBreaks, remarkMathNodes } from '../lib/markdownMath'
 import { CodeBlock } from './CodeBlock'
+import { MathTex } from './MathTex'
 
 function nodeText(node: ReactNode): string {
   if (typeof node === 'string' || typeof node === 'number') return String(node)
@@ -63,12 +66,15 @@ function MarkdownTable({ children }: { children?: ReactNode }) {
   )
 }
 
+/** 自定义标签（数学公式）不在这份 HTML 标签表里，运行时按标签名查组件。 */
+type MarkdownComponents = Components
+
 function makeComponents(
   streaming: boolean,
   cwd: string | undefined,
   exists: Record<string, boolean>,
-): Components {
-  return {
+): MarkdownComponents {
+  const base: Components = {
     pre({ children }) {
       const info = codeInfo(children)
       if (!info) return <pre>{children}</pre>
@@ -142,9 +148,23 @@ function makeComponents(
       )
     },
   }
+  // 数学公式标签只在运行时按标签名查组件，不在 react-markdown 的 HTML 标签类型里。
+  return Object.assign(base, {
+    'math-inline': ({ node }: { node?: unknown }) => (
+      <MathTex tex={texOf(node)} display={false} />
+    ),
+    'math-block': ({ node }: { node?: unknown }) => <MathTex tex={texOf(node)} display />,
+  }) as Components
 }
 
-const REMARK_PLUGINS = [remarkGfm]
+function texOf(node: unknown): string {
+  const properties = (node as { properties?: Record<string, unknown> } | undefined)?.properties
+  const tex = properties?.['data-tex']
+  return typeof tex === 'string' ? tex : ''
+}
+
+const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkMathNodes]
+const USER_REMARK_PLUGINS = [...REMARK_PLUGINS, remarkHardBreaks]
 
 /**
  * 流式时按动画帧合并 delta；文本越长渲染间隔越大，避免整段 Markdown
@@ -207,6 +227,12 @@ function splitChunks(text: string): Chunk[] {
     const line = lines[i]
     offset += line.length + 1
     const trimmed = line.trimStart()
+    // 块级公式 `$$` 也算围栏：流式时不能把一段公式切到两个 chunk 里。
+    if (trimmed.trim() === '$$' && (!fence || fence === '$$')) {
+      fence = fence === '$$' ? null : '$$'
+      prevNonBlank = line
+      continue
+    }
     const fenceMatch = /^(```+|~~~+)/.exec(trimmed)
     if (fenceMatch) {
       const marker = fenceMatch[1][0]
