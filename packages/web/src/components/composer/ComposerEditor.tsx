@@ -214,10 +214,10 @@ export function ComposerEditor({
     e.stopPropagation()
     const view = viewRef.current
     if (!view) return
-    const { from, to } = view.state.selection.main
-    view.dispatch({
-      changes: { from, to, insert: plain },
-      selection: { anchor: from + plain.length },
+    // 交给 CodeMirror 计算插入后的选区：剪贴板里的 \r\n 会被归一成 \n，
+    // 用原始字符数推算光标会落到文档之外（RangeError: Selection points outside of document）。
+    view.dispatch(view.state.replaceSelection(plain), {
+      userEvent: 'input.paste',
       scrollIntoView: true,
     })
   }
