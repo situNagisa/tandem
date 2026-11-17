@@ -1760,6 +1760,27 @@ desktop('消息用量只保留一行小字（#7-03）', async (page) => {
       await page.keyboard.press('Escape')
     })
 
+desktop('用量卡悬停显示按模型的金额明细与差额（反馈1724#06）', async (page) => {
+      await openSession(page, 'mdmath')
+      const total = page.locator('[data-usage-total]').first()
+      await total.waitFor()
+      await total.hover()
+      const card = page.locator('[data-usage-breakdown]').first()
+      await card.waitFor({ state: 'visible', timeout: 10_000 })
+      const text = await card.innerText()
+      assert.match(text, /mock\s*1/i, `缺少按模型的行：${text}`)
+      assert.match(text, /2 次/, `缺少调用次数：${text}`)
+      assert.match(text, /\$0\.0070/, `模型小计不对：${text}`)
+      assert.match(text, /其他（压缩、评审等）/, `缺少差额行：${text}`)
+      assert.match(text, /\$0\.113/, `差额金额不对：${text}`)
+      assert.match(text, /合计[\s\S]*\$0\.12/, `合计与总量不一致：${text}`)
+      assert.match(text, /历史不重算/, '缺少历史金额不重算的说明')
+      mkdirSync('/tmp/fix-1724', { recursive: true })
+      await page.evaluate(() => document.documentElement.classList.add('dark'))
+      await page.screenshot({ path: '/tmp/fix-1724/1724-06-usage-dark.png' })
+      await page.evaluate(() => document.documentElement.classList.remove('dark'))
+    })
+
 desktop('消息耗时显示在用量行末尾，轮次大纲汇总模型与工具耗时（A）', async (page) => {
       await openSession(page, 'long')
       const summary = page.locator('[data-message-id="a40"] [data-usage-summary]')
@@ -2846,7 +2867,6 @@ desktop('[S11] 窗口尺寸变化：阅读中保持视口首行，底部保持�
       })
       assert.ok(distance <= 2, `尺寸变化后不再贴底：距底部 ${distance}px`)
     })
-}
 
 desktop('公式渲染：行内与块级用 KaTeX、代码里的 $ 保持源码（反馈1724#04）', async (page) => {
       await openSession(page, 'mdmath')
@@ -2896,3 +2916,4 @@ desktop('公式渲染：行内与块级用 KaTeX、代码里的 $ 保持源码�
     })
 
 
+}

@@ -250,6 +250,14 @@ export function registerSessionRoutes(app: FastifyInstance, deps: RouteDeps): vo
     return host.contextFor(rec);
   });
 
+  // 用量卡悬停明细：按模型汇总消息上的 usage，差额单列（历史金额不重算）。
+  app.get('/api/sessions/:id/usage', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const rec = host.getSession(id);
+    if (!rec) return bad(reply, '会话不存在', 404);
+    return host.usageBreakdown(rec);
+  });
+
   app.get('/api/sessions/:id/injections', async (req, reply) => {
     const { id } = req.params as { id: string };
     const rec = host.getSession(id);

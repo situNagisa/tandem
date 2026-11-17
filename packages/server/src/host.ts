@@ -162,6 +162,7 @@ import {
   calibrateContext,
   contextFor,
   injectionsFor,
+  sessionUsageBreakdown,
   listModels,
   modelCapabilities,
   modelPrices,
@@ -496,6 +497,10 @@ export class Host {
 
   contextFor(rec: SessionRecord): ContextBreakdown {
     return contextFor(this, rec);
+  }
+
+  usageBreakdown(rec: SessionRecord): import('@tandem/protocol').SessionUsageBreakdown {
+    return sessionUsageBreakdown(this, rec);
   }
 
   refreshEnv(id: string): Promise<void> {

@@ -428,6 +428,30 @@ export interface Usage {
   keyId?: string;            // 本轮实际使用的分组 Key id（多 Key 切换后便于统计）
 }
 
+/** 会话用量按模型拆分的明细行（用量卡悬停提示）。costUsd 是记账时按当时单价折算的金额，历史不重算。 */
+export interface SessionUsageRow {
+  model: string;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  costUsd: number;
+}
+
+/** GET /api/sessions/:id/usage -> SessionUsageBreakdown */
+export interface SessionUsageBreakdown {
+  /** 按模型汇总（花费从高到低）。 */
+  rows: SessionUsageRow[];
+  /** 计入会话总量但不在任何消息上的部分（压缩、AI 评审、更早的分页消息等）。 */
+  residual: SessionUsageRow;
+  total: Usage;
+  /** 当前生效单价（每百万 token，已乘账号/分组倍率），按会话当前账号/分组解析。 */
+  prices: Record<string, ModelPriceInfo>;
+  /** 至少一行是按同家族最近代际估算的型号（价格表未收录该代）。 */
+  estimated: boolean;
+}
+
 // ---------- 配额预估与会话交接 ----------
 /** 会话交接策略：询问 / 自动切到备用分组 / 自动等待重置 / 关闭（不暂停）。 */
 export type HandoffPolicy = 'ask' | 'switch' | 'wait' | 'off';

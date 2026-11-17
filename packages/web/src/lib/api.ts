@@ -76,6 +76,7 @@ import type {
   PermissionInsights,
   PermissionRule,
   SandboxStatus,
+  SessionUsageBreakdown,
   PermissionRuleDraft,
   PermissionRequest,
   PrActionResult,
@@ -751,6 +752,8 @@ export const api = {
     }),
   injections: (h: HostConfig, sessionId: string) =>
     request<InjectionSnapshot>(h, `/api/sessions/${sessionId}/injections`),
+  sessionUsage: (h: HostConfig, sessionId: string) =>
+    request<SessionUsageBreakdown>(h, `/api/sessions/${sessionId}/usage`),
 
   memory: (h: HostConfig, scope: MemoryScope, project?: string) =>
     request<MemoryFile>(h, `/api/memory${qs({ scope, project })}`),

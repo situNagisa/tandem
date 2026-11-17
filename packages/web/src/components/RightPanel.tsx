@@ -339,6 +339,7 @@ export function RightPanel() {
       copied={copied}
       hostStatus={hostStatus}
       host={host}
+      sessionId={sessionId}
       openSettings={openSettings}
     />
   )
