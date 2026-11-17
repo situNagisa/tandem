@@ -1569,6 +1569,39 @@ desktop('反馈1603#08：分叉/主会话切换后子代理会话每次都能加
       await subNode.waitFor({ state: 'visible', timeout: 10_000 })
       await subNode.click()
       await expectAgentLoaded('从分叉视图进入')
+      // 与用户反馈同序的 6 轮：侧栏重新点主会话 → 会话图分叉节点 → 点第 2/最后节点
+      // → 轮换右栏「代理」卡里的不同子代理 → Escape。每一轮都必须有消息，不能停在骨架屏。
+      for (let round = 0; round < 6; round += 1) {
+        await page.locator('[data-session-row]').filter({ hasText: '子代理层级' }).first().click()
+        await page.waitForTimeout(800)
+        const fork = page.locator('[data-group="graph"] [data-fork-id]').first()
+        if (await fork.count()) {
+          await fork.click()
+          await page.waitForTimeout(700)
+        }
+        const nodes = page.locator('[data-group="graph"] [data-graph-turn-id]')
+        const n = await nodes.count()
+        if (n > 2) {
+          await nodes.nth(1).click()
+          await page.waitForTimeout(300)
+          await nodes.nth(n - 1).click()
+          await page.waitForTimeout(600)
+        }
+        const items = page
+          .locator('section')
+          .filter({ hasText: '代理' })
+          .first()
+          .locator('button, [role="button"]')
+          .filter({ hasText: '子代理' })
+        const k = await items.count()
+        assert.ok(k > 0, `侧栏轮次 ${round + 1}：右栏代理卡没有子代理行`)
+        await items.nth(round % k).click()
+        await page.waitForTimeout(1500)
+        await expectAgentLoaded(`侧栏轮次 ${round + 1}`)
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(300)
+      }
+
       const dir = '/tmp/fix-1603b'
       mkdirSync(dir, { recursive: true })
       await page.screenshot({ path: `${dir}/08-agent-loaded.png` })
