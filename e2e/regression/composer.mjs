@@ -582,6 +582,20 @@ desktop('用户消息单换行按换行显示、发送原文不变（反馈1724#
       assert.match(seeded.text, /第一行不加空行\n第二行紧跟其后/, `气泡换行不正确：${seeded.text}`)
 
       // 输入框预览同样按行显示；发送给模型的原文保持单个换行。
+      // 在专用会话里发送：共享夹具 mdmath 的用量被后续用例断言（1724#06 的按模型 2 次），
+      // 往它里面发消息会多出一次调用。
+      const sendSession = await api(base, token, '/api/sessions', {
+        method: 'POST',
+        body: JSON.stringify({
+          cwd: repo,
+          profileId: 'p-main',
+          groupId: 'g1',
+          model: 'mock-1',
+          permissionMode: 'default',
+          title: '单换行发送回归',
+        }),
+      })
+      await gotoSession(page, sendSession.id)
       const source = '单行甲\n单行乙'
       const input = page.locator('[aria-label="消息输入框"]')
       await input.fill(source)
@@ -601,7 +615,7 @@ desktop('用户消息单换行按换行显示、发送原文不变（反馈1724#
         null,
         { timeout: 20_000 },
       )
-      const saved = await api(base, token, '/api/sessions/mdmath')
+      const saved = await api(base, token, `/api/sessions/${sendSession.id}`)
       const sent = saved.messages.filter((m) => m.role === 'user').at(-1)?.content?.[0]?.text ?? ''
       assert.equal(sent, '单行甲\n单行乙', `发送给模型的原文被改动：${JSON.stringify(sent)}`)
       const lastBubble = page.locator('[data-msg-bubble]').last()

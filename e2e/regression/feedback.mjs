@@ -117,6 +117,9 @@ desktop('反馈模式点击不穿透，选中的是底层元素', async (page) =
 desktop('反馈模式圈选浮层：模型菜单（含子菜单）、命令面板、环境条、看板抽屉', async (page) => {
       await openSession(page, 'nockpt')
       await waitModelReady(page)
+      // 菜单主体只列最近使用模型（决策 menu-recent-models）；清掉记录才会回退到当前分组的
+      // mock-1。共享 context 的 localStorage 会被前面发过消息的用例写入 O3。
+      await page.evaluate(() => localStorage.removeItem('tandem.recentModels.v1'))
       const editor = page.getByRole('dialog', { name: '反馈输入' })
 
       const enterFeedback = async () => {

@@ -53,7 +53,7 @@
 - 不读 git remote 的值、不 push；不连公网；测试 Host 一律 TANDEM_HOME=/tmp/…；不用 pkill -f。
 
 ## 本轮手工操作 / 出错环节（只留最近 5 轮，每轮 ≤5 行）
+- 2026-11-17 回归全量同 5 条失败都是用例间状态泄漏，`--only` 单跑不复现：发送写进共享会话（用量）、发送写进 `tandem.recentModels.v1`（模型菜单只剩最近使用）、固定轮留在共享 Host 的 huge（S7/S8 开局多加载一段）。新增 `--from/--to` 与重复 `--only` 做区间二分，偶发重跑改用全新 context。
 - 2026-11-13 1M 上下文：worktree 必须建 `node_modules` → 主仓、`packages/*/node_modules/@tandem/*` → 本 worktree 的软链，否则 tsc 读到主仓 protocol 旧类型；官方两份文档冲突（platform 把 4.6 列为原生 1M，Claude Code 说 4.6 只能 `[1m]`），按 Claude Code 的保守口径实现（4.6 默认 200K + beta）。
 - 2026-11-12 调整工具修整：`data-tandem-src` 由 `packages/web/debug-source-plugin.mjs`（只 debug flavor、`apply:'build'`）用 rolldown `parseSync` 在 JSX 开标签名后插属性，发布版由 `scan-release` 禁词兜底；`metaFor` 先读注入位置，恢复的副本没有原元素映射时直接对副本算 meta。
 - 2026-11-12 调整工具修整：小元素手柄外置后，元素旁操作条要再让 44px 并设 z-134，否则会盖住 se 手柄或落到左侧改动清单下面；插入控件首次 commit 后 ref 才登记 DOM，需要 `useEffect([inserted])` 补一次 bump，选中框/手柄才会出现。
-- 2026-11-12 调整工具修整：继续调整依赖 `adjustSnapshot.copy`（stage.innerHTML）；`buildSnapshot(true)` 只在完成时带，实时草稿带会反复序列化大 HTML。`.tfb` 导出后 store 按现有逻辑清空，所以「继续调整」要在导出前验收。

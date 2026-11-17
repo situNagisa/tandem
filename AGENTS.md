@@ -24,7 +24,7 @@
 - 用户的具体问题通过产品内「反馈模式」（Ctrl+Shift+F）导出 `tandem-feedback-*.tfb`（zip 容器，改扩展名可解压）发到飞书；桌面调试版同时把每条实时写进 `<下载>/Tandem 反馈/草稿-*/`（用户在本机时可直接读 `/mnt/c/Users/JDHC/Downloads/Tandem 反馈/`）。用 `lark-cli im +messages-mget --message-ids <id> --download-resources` 下载，`node scripts/feedback-unpack.mjs <tfb|json|草稿目录> <outDir>` 解包（旧 .json 仍兼容）后逐条处理，逐条回报并附修复后截图；包格式见 `docs/features/feedback.md`。
 - 处理每条反馈前先查 `docs/feedback-ledger.md` 归到某个根因（R01…）；同一根因第二次出现必须在共享层修并加自动检查（ui-audit/单测/回归），不能只修表面。
 - 交付前协调者亲自用 Playwright 点击验收用户反馈的每一条（只截静态图会漏掉"点了没反应、弹层被裁"类问题）。
-- **提交前运行 `node scripts/check.mjs`**（docs → build → debug-artifacts → ui-audit → decisions → 单测 → smoke → regression → release）；子代理默认至少跑 `node scripts/check.mjs --skip-smoke`。日常改动用 `node scripts/check.mjs --changed`（或 `node e2e/regression.mjs --changed`）只跑与改动相关的 `e2e/regression/<功能>.mjs`，合并后跑全量；回归用例按功能拆分，公共夹具在 `e2e/regression/lib/`，失败会自动单独重跑一次并记为偶发。
+- **提交前运行 `node scripts/check.mjs`**（docs → build → debug-artifacts → ui-audit → decisions → 单测 → smoke → regression → release）；子代理默认至少跑 `node scripts/check.mjs --skip-smoke`。日常改动用 `node scripts/check.mjs --changed`（或 `node e2e/regression.mjs --changed`）只跑与改动相关的 `e2e/regression/<功能>.mjs`，合并后跑全量；回归用例按功能拆分，公共夹具在 `e2e/regression/lib/`，失败会自动在**全新的浏览器 context**里单独重跑一次并记为偶发（共享 context 的 localStorage 可能已被前序用例污染）。定位用例间状态泄漏用 `--from <order> --to <order>` 只跑一段（`--only` 可重复，命中任一即可），把「前序用例 + 失败用例」放在一起复现。
 - **文档规则**：新写的一次性记录直接放 `docs/archive/`；功能变更只更新对应 `docs/features/<功能>.md`，不另写新文档；同一事实只在一处记录，其他地方链接过去。`scripts/docs-check.mjs` 会检查断链、根目录越界与现行文档更新日期。
 - 每轮结束：`npm run build`，`npm run apk -w @tandem/mobile`，`npm run dist:win -w @tandem/desktop`（产物会复制到 Windows「下载」目录），更新 `docs/PROGRESS.md`。
 

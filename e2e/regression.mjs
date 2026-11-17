@@ -12,7 +12,8 @@
  * 前置：npm run build（check.mjs 会先构建）。
  * 用法：
  *   npm run regression                                  全量
- *   node e2e/regression.mjs --only "更多菜单"            只跑名称包含该片段的用例
+ *   node e2e/regression.mjs --only "更多菜单"            只跑名称包含该片段的用例（可重复，命中任一即可）
+ *   node e2e/regression.mjs --from 70 --to 80           只跑 order 区间内的用例（定位「前序用例 + 失败用例」）
  *   node e2e/regression.mjs --changed                   只跑与改动相关的功能文件
  *   node e2e/regression.mjs --changed --changed-base HEAD  验收/调试：只看工作区改动（无改动或只改文档时跳过）
  */
@@ -70,8 +71,16 @@ const FEATURES = [
   shell,
 ]
 
-const onlyIndex = process.argv.indexOf('--only')
-const ONLY = onlyIndex >= 0 ? (process.argv[onlyIndex + 1] ?? '') : ''
+const ONLY = process.argv.flatMap((arg, index) => (arg === '--only' ? [process.argv[index + 1] ?? ''] : [])).filter(Boolean)
+const numberArg = (flag) => {
+  const index = process.argv.indexOf(flag)
+  if (index < 0) return null
+  const value = Number(process.argv[index + 1])
+  return Number.isFinite(value) ? value : null
+}
+// 按 order 区间选跑：二分状态泄漏时，把「前序用例 + 失败用例」放在一起复现。
+const FROM = numberArg('--from')
+const TO = numberArg('--to')
 // 按改动选跑：改动 → 功能文件；无改动或只改文档跳过；未命中的改动回落全量。
 const CHANGED = process.argv.includes('--changed')
 const changedBaseIndex = process.argv.indexOf('--changed-base')
@@ -413,19 +422,14 @@ async function main() {
 
 
     browser = await chromium.launch({ headless: true })
-    const desktopContext = await browser.newContext({ viewport: DESKTOP, deviceScaleFactor: 1 })
-    const mobileContext = await browser.newContext({
-      viewport: MOBILE,
-      deviceScaleFactor: 2,
-      isMobile: true,
-      hasTouch: true,
-    })
-    const smallContext = await browser.newContext({
-      viewport: SMALL,
-      deviceScaleFactor: 2,
-      isMobile: true,
-      hasTouch: true,
-    })
+    const CONTEXT_OPTIONS = {
+      desktop: { viewport: DESKTOP, deviceScaleFactor: 1 },
+      mobile: { viewport: MOBILE, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
+      small: { viewport: SMALL, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
+    }
+    const desktopContext = await browser.newContext(CONTEXT_OPTIONS.desktop)
+    const mobileContext = await browser.newContext(CONTEXT_OPTIONS.mobile)
+    const smallContext = await browser.newContext(CONTEXT_OPTIONS.small)
 
     const checks = []
     const desktop = (name, fn) => checks.push({ name, viewport: 'desktop', fn })
@@ -495,30 +499,27 @@ async function main() {
 
     // ------------------------------------------------------------------ 执行
 
-    const selected = (ONLY ? checks.filter((item) => item.name.includes(ONLY)) : checks).sort(
-      (a, b) => (a.order ?? 0) - (b.order ?? 0),
-    )
-    if (ONLY && !selected.length) throw new Error(`--only "${ONLY}" 没有匹配任何用例`)
+    const selected = checks
+      .filter((item) => (ONLY.length ? ONLY.some((pattern) => item.name.includes(pattern)) : true))
+      .filter((item) => (FROM === null && TO === null ? true : item.order !== undefined && item.order >= (FROM ?? -Infinity) && item.order <= (TO ?? Infinity)))
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    if (ONLY.length && !selected.length) throw new Error(`--only "${ONLY.join(' / ')}" 没有匹配任何用例`)
+    if ((FROM !== null || TO !== null) && !selected.length) throw new Error(`--from/--to ${FROM ?? ''}..${TO ?? ''} 没有匹配任何用例`)
     if (CHANGED && !selected.length) throw new Error('--changed 没有匹配任何用例')
 
     /** 跑一条用例；gate/offline/win32 等用例各自建独立 context（共享 context 会带上前面用例的存储）。 */
     const runCheck = async (check, attempt = 1) => {
-      let context =
-        check.viewport === 'mobile'
-          ? mobileContext
-          : check.viewport === 'small'
-            ? smallContext
-            : desktopContext
+      let context
       let ownContext = false
       if (check.gate) {
         // 登录门用例用独立 context：前面的用例可能通过 context 级 init script / 登录状态污染共享存储。
-        context = await browser.newContext({ viewport: DESKTOP, deviceScaleFactor: 1 })
+        context = await browser.newContext(CONTEXT_OPTIONS.desktop)
         ownContext = true
       } else if (check.context === 'offline') {
-        context = await browser.newContext({ viewport: DESKTOP, deviceScaleFactor: 1 })
+        context = await browser.newContext(CONTEXT_OPTIONS.desktop)
         ownContext = true
       } else if (check.context === 'win32') {
-        context = await browser.newContext({ viewport: DESKTOP, deviceScaleFactor: 1 })
+        context = await browser.newContext(CONTEXT_OPTIONS.desktop)
         await context.addInitScript(() => {
           window.tandemDesktop = { isDesktop: true, platform: 'win32' }
         })
@@ -546,6 +547,18 @@ async function main() {
           localStorage.setItem('tandem.theme.v1', 'dark')
         })
         ownContext = true
+      } else if (attempt > 1) {
+        // 偶发重跑用全新 context：共享 context 的 localStorage（最近模型、主题、折叠/固定状态等）
+        // 可能已被前序用例改过，原样重跑会再次撞上同一份污染。
+        context = await browser.newContext(CONTEXT_OPTIONS[check.viewport] ?? CONTEXT_OPTIONS.desktop)
+        ownContext = true
+      } else {
+        context =
+          check.viewport === 'mobile'
+            ? mobileContext
+            : check.viewport === 'small'
+              ? smallContext
+              : desktopContext
       }
       const page = await pageHelpers.newPage(context, check.viewport, { gate: !!check.gate })
       const started = Date.now()

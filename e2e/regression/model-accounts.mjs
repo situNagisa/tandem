@@ -399,6 +399,9 @@ desktop('模型菜单：单价未设置时可跳到该账号的单价覆盖', as
       // 用未被其它用例改过模型的会话，保证看到内置表里没有的 mock-1。
       await openSession(page, 'nockpt')
       await waitModelReady(page)
+      // 最近使用记录会让菜单主体改列别的分组模型（决策 menu-recent-models），
+      // 清掉才会回退到当前分组的 mock-1。
+      await page.evaluate(() => localStorage.removeItem('tandem.recentModels.v1'))
       const modelButton = page.locator('button[aria-label^="选择模型"]').first()
       await modelButton.click()
       const menu = page.locator('[role="menu"][aria-label="选择模型"]').first()

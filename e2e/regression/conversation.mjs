@@ -3129,6 +3129,13 @@ desktop('[S6] 新跳转替换旧跳转：最终停在第二个目标，中途不
     })
 
 desktop('[S7] 跳到未加载的轮只取该段，加载后定位到目标', async (page) => {
+      // 固定的轮在打开会话时会按 around 取回（连同所在的整页），hu1 会提前进入内存，
+      // 后面的 Home 跳转就不再发片段请求。前序用例（固定轮初次打开）会在共享 Host 上留下
+      // huge 会话的固定轮，这里先清空，保证从「只有尾部」的初始状态开始。
+      await api(base, token, '/api/sessions/huge', {
+        method: 'PATCH',
+        body: JSON.stringify({ pinnedTurns: [] }),
+      })
       const asked = []
       page.on('request', (request) => {
         const url = request.url()
@@ -3159,6 +3166,11 @@ desktop('[S7] 跳到未加载的轮只取该段，加载后定位到目标', asy
     })
 
 desktop('[S8] 滚到顶部加载更早消息，视口同一行停在同一位置', async (page) => {
+      // 与 S7 相同：固定的轮会在打开时把开头几轮一起取回，顶部就没有可加载的更早消息了。
+      await api(base, token, '/api/sessions/huge', {
+        method: 'PATCH',
+        body: JSON.stringify({ pinnedTurns: [] }),
+      })
       await openSession(page, 'huge')
       await page.locator('.msg-gap-band').first().waitFor({ state: 'visible', timeout: 10_000 })
       // 用户上滚（真实滚轮让控制器进入阅读态），再滚到顶部。
