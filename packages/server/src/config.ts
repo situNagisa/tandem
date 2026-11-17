@@ -650,6 +650,7 @@ export function normalizeStoredGroups(value: unknown): StoredProfileGroup[] {
     const id = typeof g.id === 'string' && g.id ? g.id : randomUUID();
     const apiKey = typeof g.apiKey === 'string' ? g.apiKey : '';
     const keys = normalizeStoredKeys(g.keys, apiKey, id);
+    const multiplier = normalizeMultiplier(g.multiplier);
     out.push({
       id,
       name,
@@ -661,6 +662,7 @@ export function normalizeStoredGroups(value: unknown): StoredProfileGroup[] {
       models,
       defaultModel:
         (typeof g.defaultModel === 'string' && g.defaultModel.trim()) || models[0] || '',
+      ...(multiplier !== undefined ? { multiplier } : {}),
       ...(caps ? { modelCapabilities: caps } : {}),
       ...(typeof g.longContext === 'boolean' ? { longContext: g.longContext } : {}),
       ...(normalizeFallbackIds(g.fallbackGroupIds)?.length

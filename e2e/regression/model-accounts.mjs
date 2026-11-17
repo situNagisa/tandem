@@ -541,6 +541,38 @@ desktop('账号/分组倍率叠加并在模型菜单显示计算方式（#04）'
         assert.match(text, /输出 \$0\.6\/M → \$0\.24\/M/, `模型菜单没有显示输出最终价：${text}`)
         assert.match(text, /缓存读 \$0\.03/, `模型菜单没有显示最终缓存价：${text}`)
         await page.keyboard.press('Escape')
+
+        // 发一条消息：用量明细要写出「官方价 × 账号倍率 × 分组倍率 = 实际单价」，记账金额乘倍率。
+        const box = page.locator('[aria-label="消息输入框"]').first()
+        await box.fill('倍率回归：发一条消息')
+        await box.press('Enter')
+        await page.getByText('回归回复。').first().waitFor({ timeout: 20_000 })
+        const total = page.locator('[data-usage-total]').first()
+        await total.waitFor({ timeout: 10_000 })
+        await total.hover()
+        const card = page.locator('[data-usage-breakdown]').first()
+        await card.waitFor({ state: 'visible', timeout: 10_000 })
+        const cardText = await card.innerText()
+        assert.match(
+          cardText,
+          /官方价 输入 \$0\.15 × 账号 0\.5 × 分组 0\.8 = \$0\.06/,
+          `用量明细没有显示输入倍率：${cardText}`,
+        )
+        assert.match(
+          cardText,
+          /输出 \$0\.6 × 账号 0\.5 × 分组 0\.8 = \$0\.24/,
+          `用量明细没有显示输出倍率：${cardText}`,
+        )
+        const usage = await api(base, token, `/api/sessions/${session.id}/usage`)
+        const usageRow = usage.rows.find((item) => item.model === 'gpt-4o-mini')
+        assert.ok(usageRow, `用量明细里没有 gpt-4o-mini：${JSON.stringify(usage.rows)}`)
+        const expected = (usageRow.inputTokens * 0.06 + usageRow.outputTokens * 0.24) / 1e6
+        assert.ok(
+          Math.abs(usageRow.costUsd - expected) < 1e-8,
+          `记账金额没有乘倍率：${usageRow.costUsd} != ${expected}`,
+        )
+        assert.equal(usage.prices['gpt-4o-mini']?.accountMultiplier, 0.5, '明细缺少账号倍率')
+        assert.equal(usage.prices['gpt-4o-mini']?.groupMultiplier, 0.8, '明细缺少分组倍率')
       } finally {
         if (session?.id) {
           await api(base, token, `/api/sessions/${session.id}?deleteWorktree=false`, {

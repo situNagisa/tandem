@@ -16,6 +16,18 @@ function priceSource(price: ModelPriceInfo | undefined): string {
   return price.officialInput !== undefined ? '内置官方价 × 账号/分组倍率' : '内置官方价'
 }
 
+/** 官方价 × 账号倍率 × 分组倍率 = 实际单价；倍率为 1 时不写。 */
+function multiplierLine(price: ModelPriceInfo): string | undefined {
+  if (price.officialInput === undefined) return undefined
+  const account = price.accountMultiplier ?? 1
+  const group = price.groupMultiplier ?? 1
+  const factors =
+    (account !== 1 ? ` × 账号 ${account}` : '') + (group !== 1 ? ` × 分组 ${group}` : '')
+  const input = `输入 $${priceNumber(price.officialInput)}${factors} = $${priceNumber(price.input)}`
+  const output = `输出 $${priceNumber(price.officialOutput ?? 0)}${factors} = $${priceNumber(price.output)}`
+  return `官方价 ${input} · ${output} / 百万`
+}
+
 function tokenLine(row: SessionUsageRow): string {
   const parts = [`输入 ${formatTokens(row.inputTokens)}`, `输出 ${formatTokens(row.outputTokens)}`]
   if (row.cacheReadTokens > 0) parts.push(`缓存读 ${formatTokens(row.cacheReadTokens)}`)
@@ -76,6 +88,7 @@ export function UsageBreakdownCard({ host, sessionId }: { host: HostConfig; sess
       </div>
       {data.rows.map((row) => {
         const price = data.prices[row.model]
+        const multiplied = price ? multiplierLine(price) : undefined
         return (
           <div key={row.model} className="border-t border-border/60 py-1.5 first:border-t-0">
             <div className="flex min-w-0 items-baseline justify-between gap-2">
@@ -96,6 +109,7 @@ export function UsageBreakdownCard({ host, sessionId }: { host: HostConfig; sess
                 {price.cacheWrite !== undefined ? ` · 缓存写 $${priceNumber(price.cacheWrite)}` : ''}
               </div>
             ) : null}
+            {multiplied ? <div className="text-[12px] leading-4 text-muted">{multiplied}</div> : null}
             <div className="flex items-baseline gap-1.5 text-[12px] leading-4 text-text-tertiary">
               <span>{priceSource(price)}</span>
               {!price && data.profileId ? (

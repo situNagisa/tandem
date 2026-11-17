@@ -4,7 +4,8 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { ProfileGroupInput, ProfileInput } from '@tandem/protocol';
-import { ProfileStore, looksMaskedKey } from '../src/config.js';
+import { ProfileStore, effectiveProfile, looksMaskedKey } from '../src/config.js';
+import { priceForModel } from '../src/usage.js';
 
 function store(): ProfileStore {
   return new ProfileStore(mkdtempSync(path.join(tmpdir(), 'tandem-keys-')));
@@ -30,6 +31,43 @@ test('掩码识别：回传的掩码与空值都视为未修改', () => {
   assert.equal(looksMaskedKey('••••abcd'), true);
   assert.equal(looksMaskedKey('sk-real-key'), false);
   assert.equal(looksMaskedKey(''), false);
+});
+
+test('账号/分组倍率保存后重新加载仍在，计价按官方价 × 账号倍率 × 分组倍率', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'tandem-multiplier-'));
+  const created = new ProfileStore(dir).create(
+    baseInput({ multiplier: 0.5, groups: [group({ id: 'g1', multiplier: 0.8 })] }),
+  );
+  // 重启后从存储读回：规范化不能丢倍率。
+  const reloaded = new ProfileStore(dir).get(created.id)!;
+  assert.equal(reloaded.multiplier, 0.5, '账号倍率重新加载后丢失');
+  assert.equal(reloaded.groups?.[0]?.multiplier, 0.8, '分组倍率重新加载后丢失');
+  const effective = effectiveProfile(reloaded, 'g1');
+  assert.equal(effective.groupMultiplier, 0.8);
+  assert.deepEqual(priceForModel(effective, 'claude-sonnet-4-5'), {
+    input: 1.2,
+    output: 6,
+    cacheWrite5m: 1.5,
+    cacheWrite1h: 2.4,
+    cacheRead: 0.12,
+  });
+});
+
+test('只设分组倍率时计价为官方价 × 分组倍率', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'tandem-multiplier-'));
+  const created = new ProfileStore(dir).create(
+    baseInput({ groups: [group({ id: 'g1', multiplier: 0.5 })] }),
+  );
+  const reloaded = new ProfileStore(dir).get(created.id)!;
+  assert.equal(reloaded.multiplier, undefined);
+  const effective = effectiveProfile(reloaded, 'g1');
+  assert.deepEqual(priceForModel(effective, 'claude-sonnet-4-5'), {
+    input: 1.5,
+    output: 7.5,
+    cacheWrite5m: 1.875,
+    cacheWrite1h: 3,
+    cacheRead: 0.15,
+  });
 });
 
 test('编辑分组其他字段时保留原 Key', () => {
