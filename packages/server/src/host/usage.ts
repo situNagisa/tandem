@@ -290,7 +290,6 @@ export function modelPrices(host: Host, profileId: string,
       out[model] = {
         ...priceInfoFor(resolved.price, profile.kind),
         source: resolved.source,
-        ...(resolved.estimatedFrom ? { estimatedFrom: resolved.estimatedFrom } : {}),
         ...(multiplied && resolved.official
           ? {
               officialInput: resolved.official.input,
@@ -383,19 +382,16 @@ export function sessionUsageBreakdown(host: Host, rec: SessionRecord): SessionUs
   };
   const profile = rec.profileId ? host.profileFor(rec.profileId, rec.groupId) : undefined;
   const prices: Record<string, import('@tandem/protocol').ModelPriceInfo> = {};
-  let estimated = false;
   for (const row of list) {
     const resolved = resolvePriceForModel(profile, row.model);
     if (!resolved) continue;
     prices[row.model] = {
       ...priceInfoFor(resolved.price, profile?.kind ?? 'openai-compatible'),
       source: resolved.source,
-      ...(resolved.estimatedFrom ? { estimatedFrom: resolved.estimatedFrom } : {}),
       ...(resolved.official ? { officialInput: resolved.official.input, officialOutput: resolved.official.output } : {}),
       ...(resolved.accountMultiplier ? { accountMultiplier: resolved.accountMultiplier } : {}),
       ...(resolved.groupMultiplier ? { groupMultiplier: resolved.groupMultiplier } : {}),
     };
-    if (resolved.estimatedFrom) estimated = true;
   }
-  return { rows: list, residual, total: { ...rec.usage }, prices, estimated };
+  return { rows: list, residual, total: { ...rec.usage }, prices, ...(rec.profileId ? { profileId: rec.profileId } : {}) };
 }

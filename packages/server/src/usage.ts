@@ -1,32 +1,93 @@
 // 用量统计：每轮模型调用后按 day/host/profile/model 累加到 ~/.tandem/usage.json。
-// 单价为"参考价"（每百万 token 美元），账号上配置的 price 优先覆盖。
+// 单价只有两个来源：账号自定义单价，或下面逐型号收录的官方价；未收录的型号视为未知单价。
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ProviderKind, Usage, UsageStatsRow } from '@tandem/protocol';
-import { parseClaudeModel } from './providers/capabilities.js';
 import type { StoredProfile } from './types.js';
 
-export interface Price {
+/** 一组每百万 token 单价（美元）。缓存价缺省时按协议倍率折算（仅账号自定义单价会走到）。 */
+export interface PriceRates {
   input: number;
   output: number;
+  /** 缓存读（命中）单价。 */
+  cacheRead?: number;
+  /** 缓存写 5 分钟 TTL 单价。 */
+  cacheWrite5m?: number;
+  /** 缓存写 1 小时 TTL 单价。 */
+  cacheWrite1h?: number;
+}
+
+export interface Price extends PriceRates {
+  /** 单次请求提示 token 超过 threshold 时整条请求改用这份单价（Haiku 5.5 100K 分段）。 */
+  longPrompt?: { threshold: number; rates: PriceRates };
 }
 
 /**
- * 内置参考单价表（参考官方定价，2026-11；单位：美元/百万 token）。
- * 按模型名前缀匹配，越具体的放在越前面；中转倍率由账号/分组倍率叠加。
+ * 内置官方单价表（美元 / 百万 token）。
+ * 来源与核对日期见每段注释；只收官方定价页上逐型号列出的价格，没有就不收，
+ * 不在型号之间借价或按家族估算。按模型名前缀匹配（取最长命中），版本后缀与供应商前缀不影响。
  */
-const BUILTIN_PRICES: Array<{ prefix: string; price: Price }> = [
-  // Anthropic Claude 2 之后的型号按家族 + 版本见 CLAUDE_PRICES
+export const BUILTIN_PRICES: Array<{ prefix: string; price: Price }> = [
+  // Anthropic: https://platform.claude.com/docs/en/about-claude/pricing （2026-11-17 核对）
   { prefix: 'claude-2', price: { input: 8, output: 24 } },
-  // OpenAI GPT-6 / GPT-5 / GPT-4.1 / GPT-4o / o 系列
-  { prefix: 'gpt-6-mini', price: { input: 0.25, output: 2 } },
-  { prefix: 'gpt-6-nano', price: { input: 0.05, output: 0.4 } },
-  { prefix: 'gpt-6', price: { input: 1.25, output: 10 } },
+  { prefix: 'claude-3-opus', price: { input: 15, output: 75, cacheWrite5m: 18.75, cacheWrite1h: 30, cacheRead: 1.5 } },
+  { prefix: 'claude-3-sonnet', price: { input: 3, output: 15, cacheWrite5m: 3.75, cacheWrite1h: 6, cacheRead: 0.3 } },
+  { prefix: 'claude-3-5-sonnet', price: { input: 3, output: 15, cacheWrite5m: 3.75, cacheWrite1h: 6, cacheRead: 0.3 } },
+  { prefix: 'claude-3.5-sonnet', price: { input: 3, output: 15, cacheWrite5m: 3.75, cacheWrite1h: 6, cacheRead: 0.3 } },
+  { prefix: 'claude-3-7-sonnet', price: { input: 3, output: 15, cacheWrite5m: 3.75, cacheWrite1h: 6, cacheRead: 0.3 } },
+  { prefix: 'claude-3.7-sonnet', price: { input: 3, output: 15, cacheWrite5m: 3.75, cacheWrite1h: 6, cacheRead: 0.3 } },
+  { prefix: 'claude-3-5-haiku', price: { input: 0.8, output: 4, cacheWrite5m: 1, cacheWrite1h: 1.6, cacheRead: 0.08 } },
+  { prefix: 'claude-3.5-haiku', price: { input: 0.8, output: 4, cacheWrite5m: 1, cacheWrite1h: 1.6, cacheRead: 0.08 } },
+  { prefix: 'claude-3-haiku', price: { input: 0.25, output: 1.25, cacheWrite5m: 0.3, cacheRead: 0.03 } },
+  { prefix: 'claude-opus-4-1', price: { input: 15, output: 75, cacheWrite5m: 18.75, cacheWrite1h: 30, cacheRead: 1.5 } },
+  { prefix: 'claude-opus-4', price: { input: 15, output: 75, cacheWrite5m: 18.75, cacheWrite1h: 30, cacheRead: 1.5 } },
+  { prefix: 'claude-opus-4-5', price: { input: 5, output: 25, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5 } },
+  { prefix: 'claude-opus-4-6', price: { input: 5, output: 25, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5 } },
+  { prefix: 'claude-opus-4-7', price: { input: 5, output: 25, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5 } },
+  { prefix: 'claude-opus-4-8', price: { input: 5, output: 25, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5 } },
+  { prefix: 'claude-opus-5-5', price: { input: 4, output: 20, cacheWrite5m: 5, cacheWrite1h: 8, cacheRead: 0.2 } },
+  { prefix: 'claude-opus-5', price: { input: 5, output: 25, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5 } },
+  { prefix: 'claude-sonnet-4', price: { input: 3, output: 15, cacheWrite5m: 3.75, cacheWrite1h: 6, cacheRead: 0.3 } },
+  { prefix: 'claude-sonnet-4-5', price: { input: 3, output: 15, cacheWrite5m: 3.75, cacheWrite1h: 6, cacheRead: 0.3 } },
+  { prefix: 'claude-sonnet-4-6', price: { input: 3, output: 15, cacheWrite5m: 3.75, cacheWrite1h: 6, cacheRead: 0.3 } },
+  { prefix: 'claude-sonnet-5-5', price: { input: 2, output: 10, cacheWrite5m: 2.5, cacheWrite1h: 4, cacheRead: 0.1 } },
+  { prefix: 'claude-sonnet-5', price: { input: 2, output: 10, cacheWrite5m: 2.5, cacheWrite1h: 4, cacheRead: 0.2 } },
+  { prefix: 'claude-haiku-4-5', price: { input: 1, output: 5, cacheWrite5m: 1.25, cacheWrite1h: 2, cacheRead: 0.1 } },
+  {
+    prefix: 'claude-haiku-5-5',
+    price: {
+      input: 0.1,
+      output: 0.5,
+      cacheWrite5m: 0.125,
+      cacheWrite1h: 0.2,
+      cacheRead: 0.01,
+      longPrompt: {
+        threshold: 100_000,
+        rates: { input: 0.5, output: 2.5, cacheWrite5m: 0.625, cacheWrite1h: 1, cacheRead: 0.05 },
+      },
+    },
+  },
+  { prefix: 'claude-fable-5-2', price: { input: 8, output: 40, cacheWrite5m: 10, cacheWrite1h: 16, cacheRead: 0.2 } },
+  { prefix: 'claude-fable-5-1', price: { input: 10, output: 50, cacheWrite5m: 12.5, cacheWrite1h: 20, cacheRead: 0.25 } },
+  { prefix: 'claude-fable-5', price: { input: 10, output: 50, cacheWrite5m: 12.5, cacheWrite1h: 20, cacheRead: 1 } },
+  { prefix: 'claude-mythos-5-2', price: { input: 8, output: 40, cacheWrite5m: 10, cacheWrite1h: 16, cacheRead: 0.2 } },
+  { prefix: 'claude-mythos-5-1', price: { input: 10, output: 50, cacheWrite5m: 12.5, cacheWrite1h: 20, cacheRead: 0.25 } },
+  { prefix: 'claude-mythos-5', price: { input: 10, output: 50, cacheWrite5m: 12.5, cacheWrite1h: 20, cacheRead: 1 } },
+  // OpenAI: https://developers.openai.com/api/docs/pricing （2026-11-17 核对；Standard 档）
+  { prefix: 'gpt-6.1-sol', price: { input: 2, output: 10, cacheRead: 0.1 } },
+  { prefix: 'gpt-6.1-terra', price: { input: 1, output: 5, cacheRead: 0.05 } },
+  { prefix: 'gpt-6-astra-law', price: { input: 10, output: 50, cacheRead: 1 } },
+  { prefix: 'gpt-6-astra', price: { input: 10, output: 50, cacheRead: 1 } },
+  { prefix: 'gpt-6-cyber', price: { input: 20, output: 100, cacheRead: 2 } },
+  { prefix: 'gpt-6-rosalind', price: { input: 15, output: 75, cacheRead: 1.5 } },
+  { prefix: 'gpt-6-luna', price: { input: 0.1, output: 0.5, cacheRead: 0.01 } },
+  { prefix: 'chat-latest', price: { input: 5, output: 30, cacheRead: 0.5 } },
+  // 旧代际（官方当前定价页不再单列，保留已知历史官方价，不跨型号借价）
+  { prefix: 'gpt-5.1-codex', price: { input: 1.25, output: 10 } },
   { prefix: 'gpt-5-pro', price: { input: 15, output: 120 } },
   { prefix: 'gpt-5-codex', price: { input: 1.25, output: 10 } },
   { prefix: 'gpt-5-mini', price: { input: 0.25, output: 2 } },
   { prefix: 'gpt-5-nano', price: { input: 0.05, output: 0.4 } },
-  { prefix: 'gpt-5', price: { input: 1.25, output: 10 } },
   { prefix: 'gpt-4.1-mini', price: { input: 0.4, output: 1.6 } },
   { prefix: 'gpt-4.1-nano', price: { input: 0.1, output: 0.4 } },
   { prefix: 'gpt-4.1', price: { input: 2, output: 8 } },
@@ -43,61 +104,77 @@ const BUILTIN_PRICES: Array<{ prefix: string; price: Price }> = [
   { prefix: 'o3-mini', price: { input: 1.1, output: 4.4 } },
   { prefix: 'o3', price: { input: 2, output: 8 } },
   { prefix: 'o4-mini', price: { input: 1.1, output: 4.4 } },
-  // DeepSeek
+  // DeepSeek: https://api-docs.deepseek.com/quick_start/pricing （2026-11-17 核对；高峰档）
+  { prefix: 'deepseek-v4-pro', price: { input: 1.32, output: 3.96, cacheRead: 0.044 } },
+  { prefix: 'deepseek-flash', price: { input: 0.3, output: 1.2, cacheRead: 0.006 } },
+  // 官方说明 legacy 名 deepseek-v4-flash 仍按 Flash 计费
+  { prefix: 'deepseek-v4-flash', price: { input: 0.3, output: 1.2, cacheRead: 0.006 } },
+  // 旧代际（官方当前页不再单列，保留已知历史官方价）
   { prefix: 'deepseek-reasoner', price: { input: 0.55, output: 2.19 } },
   { prefix: 'deepseek-r1', price: { input: 0.55, output: 2.19 } },
   { prefix: 'deepseek-chat', price: { input: 0.27, output: 1.1 } },
   { prefix: 'deepseek-coder', price: { input: 0.27, output: 1.1 } },
   { prefix: 'deepseek-v3', price: { input: 0.27, output: 1.1 } },
-  // Google Gemini
-  { prefix: 'gemini-3-pro', price: { input: 1.25, output: 10 } },
-  { prefix: 'gemini-3-flash', price: { input: 0.3, output: 2.5 } },
-  { prefix: 'gemini-2.5-pro', price: { input: 1.25, output: 10 } },
+  // Google Gemini: https://ai.google.dev/gemini-api/docs/pricing （2026-11-17 核对）
+  {
+    prefix: 'gemini-3.1-pro',
+    price: {
+      input: 2,
+      output: 12,
+      longPrompt: { threshold: 200_000, rates: { input: 4, output: 18 } },
+    },
+  },
+  { prefix: 'gemini-3-flash', price: { input: 0.5, output: 3 } },
+  {
+    prefix: 'gemini-2.5-pro',
+    price: {
+      input: 1.25,
+      output: 10,
+      longPrompt: { threshold: 200_000, rates: { input: 2.5, output: 15 } },
+    },
+  },
   { prefix: 'gemini-2.5-flash-lite', price: { input: 0.1, output: 0.4 } },
   { prefix: 'gemini-2.5-flash', price: { input: 0.3, output: 2.5 } },
   { prefix: 'gemini-2.0-flash-lite', price: { input: 0.075, output: 0.3 } },
   { prefix: 'gemini-2.0-flash', price: { input: 0.1, output: 0.4 } },
   { prefix: 'gemini-1.5-pro', price: { input: 1.25, output: 5 } },
   { prefix: 'gemini-1.5-flash', price: { input: 0.075, output: 0.3 } },
-  // Kimi / Moonshot
+  // Kimi / Moonshot（官方页未给出可解析的单价表，沿用已知价）
   { prefix: 'kimi-k2', price: { input: 0.6, output: 2.5 } },
   { prefix: 'kimi-latest', price: { input: 2, output: 8 } },
   { prefix: 'moonshot-v1-128k', price: { input: 1.68, output: 1.68 } },
   { prefix: 'moonshot-v1-32k', price: { input: 0.84, output: 0.84 } },
   { prefix: 'moonshot-v1-8k', price: { input: 0.17, output: 0.17 } },
-  // Qwen
+  // Qwen（Alibaba Cloud 官方页只列出 qwen-max / qwen-plus 的当前价）
   { prefix: 'qwen3-max', price: { input: 1.2, output: 6 } },
   { prefix: 'qwen3-coder', price: { input: 0.3, output: 1.2 } },
   { prefix: 'qwen-max', price: { input: 1.6, output: 6.4 } },
   { prefix: 'qwen-plus', price: { input: 0.4, output: 1.2 } },
   { prefix: 'qwen-turbo', price: { input: 0.05, output: 0.2 } },
   { prefix: 'qwen-long', price: { input: 0.07, output: 0.28 } },
-  // GLM（智谱）
-  { prefix: 'glm-4.6', price: { input: 0.6, output: 2.2 } },
-  { prefix: 'glm-4.5', price: { input: 0.6, output: 2.2 } },
+  // GLM（智谱）: https://docs.z.ai/guides/overview/pricing （2026-11-17 核对）
+  { prefix: 'glm-5.3-flashx-legal', price: { input: 0.37, output: 1.25, cacheRead: 0.075 } },
+  { prefix: 'glm-5.3-flashx', price: { input: 0.37, output: 1.25, cacheRead: 0.075 } },
+  { prefix: 'glm-5.3-flash', price: { input: 0.15, output: 0.5, cacheRead: 0.03 } },
+  { prefix: 'glm-5.3', price: { input: 1.4, output: 4.4, cacheRead: 0.26 } },
+  { prefix: 'glm-5.2', price: { input: 1.4, output: 4.4, cacheRead: 0.26 } },
+  { prefix: 'glm-5.1', price: { input: 1.4, output: 4.4, cacheRead: 0.26 } },
+  { prefix: 'glm-5', price: { input: 1, output: 3.2, cacheRead: 0.2 } },
+  { prefix: 'glm-4.7-flashx', price: { input: 0.07, output: 0.4, cacheRead: 0.01 } },
+  { prefix: 'glm-4.7', price: { input: 0.6, output: 2.2, cacheRead: 0.11 } },
+  { prefix: 'glm-4.6v-flashx', price: { input: 0.04, output: 0.4, cacheRead: 0.004 } },
+  { prefix: 'glm-4.6v', price: { input: 0.3, output: 0.9, cacheRead: 0.05 } },
+  { prefix: 'glm-4.6', price: { input: 0.6, output: 2.2, cacheRead: 0.11 } },
+  { prefix: 'glm-4.5-x', price: { input: 2.2, output: 8.9, cacheRead: 0.45 } },
+  { prefix: 'glm-4.5-airx', price: { input: 1.1, output: 4.5, cacheRead: 0.22 } },
+  { prefix: 'glm-4.5-air', price: { input: 0.2, output: 1.1, cacheRead: 0.03 } },
+  { prefix: 'glm-4.5v', price: { input: 0.6, output: 1.8, cacheRead: 0.11 } },
+  { prefix: 'glm-4.5', price: { input: 0.6, output: 2.2, cacheRead: 0.11 } },
+  { prefix: 'glm-4-32b-0414-128k', price: { input: 0.1, output: 0.1 } },
+  { prefix: 'glm-ocr', price: { input: 0.03, output: 0.03 } },
   { prefix: 'glm-4-plus', price: { input: 0.7, output: 0.7 } },
   { prefix: 'glm-4', price: { input: 0.6, output: 0.6 } },
 ];
-
-/** 已收录的 Claude 代际（版本升序）；新代际按同家族最近一代估算。fable / mythos 暂无参考价。 */
-const CLAUDE_PRICES: Array<{ family: string; major: number; minor: number; price: Price }> = [
-  { family: 'opus', major: 3, minor: 0, price: { input: 15, output: 75 } },
-  { family: 'opus', major: 4, minor: 0, price: { input: 15, output: 75 } },
-  { family: 'opus', major: 4, minor: 1, price: { input: 15, output: 75 } },
-  { family: 'opus', major: 4, minor: 5, price: { input: 5, output: 25 } },
-  { family: 'sonnet', major: 3, minor: 0, price: { input: 3, output: 15 } },
-  { family: 'sonnet', major: 3, minor: 5, price: { input: 3, output: 15 } },
-  { family: 'sonnet', major: 3, minor: 7, price: { input: 3, output: 15 } },
-  { family: 'sonnet', major: 4, minor: 0, price: { input: 3, output: 15 } },
-  { family: 'sonnet', major: 4, minor: 5, price: { input: 3, output: 15 } },
-  { family: 'haiku', major: 3, minor: 0, price: { input: 0.25, output: 1.25 } },
-  { family: 'haiku', major: 3, minor: 5, price: { input: 0.8, output: 4 } },
-  { family: 'haiku', major: 4, minor: 5, price: { input: 1, output: 5 } },
-];
-
-function versionAtMost(major: number, minor: number, limitMajor: number, limitMinor: number): boolean {
-  return major < limitMajor || (major === limitMajor && minor <= limitMinor);
-}
 
 /** 去掉供应商前缀后的小写模型名，兼容 openrouter 的 "vendor/model" 写法。 */
 function normalizeModel(model: string): string {
@@ -107,17 +184,15 @@ function normalizeModel(model: string): string {
 }
 
 /**
- * 取模型单价：账号 price 精确匹配 → 账号 price 前缀匹配 → 内置参考价。
- * 返回 undefined 表示未知模型，仍统计 token，但 cost 记 0。
+ * 取模型单价：账号 price 精确匹配 → 账号 price 前缀匹配 → 内置官方价。
+ * 返回 undefined 表示未收录官方价，仍统计 token，花费显示为「未知单价」。
  */
 export interface ResolvedPrice {
   /** 实际生效单价（已乘倍率；账号覆盖时就是覆盖价）。 */
   price: Price;
   source: 'account' | 'builtin';
-  /** 内置官方参考价（未乘倍率）。 */
-  official?: Price;
-  /** 未收录的新代际按同家族最近已知型号估算时，给出被借用的型号，如 `claude-opus-4.5`。 */
-  estimatedFrom?: string;
+  /** 内置官方价（未乘倍率）。 */
+  official?: PriceRates;
   /** 实际生效的账号/分组倍率；为 1 时不返回。 */
   accountMultiplier?: number;
   groupMultiplier?: number;
@@ -126,8 +201,7 @@ export interface ResolvedPrice {
 /**
  * 取模型的实际单价：
  * - 账号 `price` 覆盖（精确/前缀）优先，覆盖后不再乘倍率；
- * - 否则内置官方参考价 × 账号倍率 × 分组倍率（缺省 1）。
- * 返回 undefined 表示未知模型，仍统计 token，但 cost 记 0。
+ * - 否则内置官方价 × 账号倍率 × 分组倍率（缺省 1）。
  */
 export function resolvePriceForModel(
   profile: StoredProfile | undefined,
@@ -151,23 +225,26 @@ export function resolvePriceForModel(
   const accountMultiplier = multiplierOf(profile?.multiplier);
   const groupMultiplier = multiplierOf(profile?.groupMultiplier);
   const multiplied = accountMultiplier !== 1 || groupMultiplier !== 1;
+  const factor = accountMultiplier * groupMultiplier;
   return {
-    price: {
-      input: roundPrice(builtin.price.input * accountMultiplier * groupMultiplier),
-      output: roundPrice(builtin.price.output * accountMultiplier * groupMultiplier),
-    },
+    price: scalePrice(builtin.price, factor),
     source: 'builtin',
-    ...(builtin.estimatedFrom ? { estimatedFrom: builtin.estimatedFrom } : {}),
     ...(multiplied ? { official: { ...builtin.price } } : {}),
     ...(accountMultiplier !== 1 ? { accountMultiplier } : {}),
     ...(groupMultiplier !== 1 ? { groupMultiplier } : {}),
   };
 }
 
-/**
- * 内置参考价：先按前缀表精确命中；未命中时按家族 + 版本取不高于该版本的最近一代（Claude / GPT 基础款）。
- */
-function builtinPriceFor(name: string): { price: Price; estimatedFrom?: string } | undefined {
+/** 内置官方价：只按前缀表命中，不跨型号借价。 */
+function builtinPriceFor(name: string): { price: Price } | undefined {
+  const exact = matchPrefix(name);
+  // 版本点号写法（claude-opus-5.5 / claude-3.5-sonnet）归一成连字符后可能命中更具体的条目。
+  const dashed = name.includes('.') ? matchPrefix(name.replace(/\./g, '-')) : undefined;
+  const best = dashed && (!exact || dashed.prefix.length > exact.prefix.length) ? dashed : exact;
+  return best ? { price: best.price } : undefined;
+}
+
+function matchPrefix(name: string): { prefix: string; price: Price } | undefined {
   let best: { prefix: string; price: Price } | undefined;
   for (const entry of BUILTIN_PRICES) {
     const index = name.indexOf(entry.prefix);
@@ -175,42 +252,28 @@ function builtinPriceFor(name: string): { price: Price; estimatedFrom?: string }
     if (index > 0 && /[a-z0-9]/.test(name[index - 1]!)) continue;
     if (!best || entry.prefix.length > best.prefix.length) best = entry;
   }
-  if (best) return { price: best.price };
+  return best;
+}
 
-  const claude = parseClaudeModel(name);
-  if (claude) {
-    let nearest: (typeof CLAUDE_PRICES)[number] | undefined;
-    for (const entry of CLAUDE_PRICES) {
-      if (entry.family !== claude.family) continue;
-      if (versionAtMost(entry.major, entry.minor, claude.major, claude.minor)) nearest = entry;
-    }
-    if (!nearest) return undefined;
-    const exact = nearest.major === claude.major && nearest.minor === claude.minor;
-    return {
-      price: nearest.price,
-      ...(exact ? {} : { estimatedFrom: `claude-${nearest.family}-${nearest.major}.${nearest.minor}` }),
+function scaleRates(rates: PriceRates, factor: number): PriceRates {
+  return {
+    input: roundPrice(rates.input * factor),
+    output: roundPrice(rates.output * factor),
+    ...(rates.cacheRead !== undefined ? { cacheRead: roundPrice(rates.cacheRead * factor) } : {}),
+    ...(rates.cacheWrite5m !== undefined ? { cacheWrite5m: roundPrice(rates.cacheWrite5m * factor) } : {}),
+    ...(rates.cacheWrite1h !== undefined ? { cacheWrite1h: roundPrice(rates.cacheWrite1h * factor) } : {}),
+  };
+}
+
+function scalePrice(price: Price, factor: number): Price {
+  const scaled: Price = scaleRates(price, factor);
+  if (price.longPrompt) {
+    scaled.longPrompt = {
+      threshold: price.longPrompt.threshold,
+      rates: scaleRates(price.longPrompt.rates, factor),
     };
   }
-
-  const gpt = name.match(/(?:^|[^a-z0-9])gpt-(\d+)(?:\.(\d+))?(?=[-.]|$)/);
-  if (gpt) {
-    const major = Number(gpt[1]);
-    const minor = Number(gpt[2] ?? 0);
-    let nearest: (typeof BUILTIN_PRICES)[number] | undefined;
-    let nearestVersion: [number, number] = [-1, 0];
-    for (const entry of BUILTIN_PRICES) {
-      const base = entry.prefix.match(/^gpt-(\d+)(?:\.(\d+))?$/);
-      if (!base) continue;
-      const version: [number, number] = [Number(base[1]), Number(base[2] ?? 0)];
-      if (!versionAtMost(version[0], version[1], major, minor)) continue;
-      if (version[0] > nearestVersion[0] || (version[0] === nearestVersion[0] && version[1] > nearestVersion[1])) {
-        nearest = entry;
-        nearestVersion = version;
-      }
-    }
-    if (nearest) return { price: nearest.price, estimatedFrom: nearest.prefix };
-  }
-  return undefined;
+  return scaled;
 }
 
 function multiplierOf(value: number | undefined): number {
@@ -225,29 +288,43 @@ export function priceForModel(profile: StoredProfile | undefined, model: string)
   return resolvePriceForModel(profile, model)?.price;
 }
 
-/** 缓存读取价相对输入价的倍率（展示与计费保持一致）。 */
+/** 缓存读取价相对输入价的倍率（仅账号自定义单价缺缓存价时使用）。 */
 export function cacheReadMultiplier(kind: ProviderKind): number {
   return kind === 'anthropic' ? 0.1 : 0.5;
 }
 
-/** 缓存写入价相对输入价的倍率；不单独计费的 provider 返回 0。 */
+/** 缓存写入价相对输入价的倍率（仅账号自定义单价缺缓存价时使用）。 */
 export function cacheWriteMultiplier(kind: ProviderKind): number {
   return kind === 'anthropic' ? 1.25 : 0;
+}
+
+/** 取某档单价里各 token 种类的实际单价（缓存价缺省时按协议倍率折算）。 */
+function effectiveRates(price: PriceRates, kind: ProviderKind): Required<PriceRates> {
+  const write = cacheWriteMultiplier(kind);
+  const w5 = price.cacheWrite5m ?? price.input * write;
+  return {
+    input: price.input,
+    output: price.output,
+    cacheRead: price.cacheRead ?? price.input * cacheReadMultiplier(kind),
+    cacheWrite5m: w5,
+    cacheWrite1h: price.cacheWrite1h ?? w5,
+  };
 }
 
 /** 把单价折算成菜单展示用的每百万 token 价格（含缓存命中）。 */
 export function priceInfoFor(price: Price, kind: ProviderKind): import('@tandem/protocol').ModelPriceInfo {
   const round = (value: number) => Math.round(value * 1e6) / 1e6;
-  const write = cacheWriteMultiplier(kind);
+  const rates = effectiveRates(price, kind);
   return {
-    input: price.input,
-    output: price.output,
-    cacheRead: round(price.input * cacheReadMultiplier(kind)),
-    ...(write > 0 ? { cacheWrite: round(price.input * write) } : {}),
+    input: rates.input,
+    output: rates.output,
+    cacheRead: round(rates.cacheRead),
+    ...(rates.cacheWrite5m > 0 ? { cacheWrite: round(rates.cacheWrite5m) } : {}),
+    ...(price.cacheWrite1h !== undefined ? { cacheWrite1h: round(rates.cacheWrite1h) } : {}),
   };
 }
 
-/** 计算单次调用花费（美元）。 */
+/** 计算单次调用花费（美元）；未知单价为 0（界面按价格缺失显示「未知单价」）。 */
 export function costOf(price: Price | undefined, inputTokens: number, outputTokens: number): number {
   if (!price) return 0;
   const cost = (inputTokens * price.input + outputTokens * price.output) / 1_000_000;
@@ -256,8 +333,9 @@ export function costOf(price: Price | undefined, inputTokens: number, outputToke
 }
 
 /**
- * 按模型单价与缓存倍率计算一次调用花费。
- * Anthropic 缓存读取 0.1×输入价、写入 1.25×；OpenAI 系 cached 输入 0.5×。
+ * 按模型单价与缓存价计算一次调用花费。
+ * 优先用表里逐型号的缓存读写价；账号自定义单价没有缓存价时按协议倍率折算。
+ * 上游只给缓存写总数（没有 5m/1h 拆分）时按 5 分钟价计。
  */
 export function costOfUsage(
   price: Price | undefined,
@@ -267,13 +345,21 @@ export function costOfUsage(
   if (!price) return 0;
   const cacheRead = usage.cacheReadTokens ?? 0;
   const cacheWrite = usage.cacheWriteTokens ?? 0;
-  const readMultiplier = cacheReadMultiplier(kind);
-  const writeMultiplier = cacheWriteMultiplier(kind);
+  const split5m = usage.cacheWrite5mTokens ?? 0;
+  const split1h = usage.cacheWrite1hTokens ?? 0;
+  const write5m = split5m + split1h > 0 ? split5m : cacheWrite;
+  const write1h = split5m + split1h > 0 ? split1h : 0;
+  const promptTokens = usage.inputTokens + cacheRead + cacheWrite;
+  const rates = effectiveRates(
+    price.longPrompt && promptTokens > price.longPrompt.threshold ? price.longPrompt.rates : price,
+    kind,
+  );
   const cost =
-    (usage.inputTokens * price.input +
-      cacheRead * price.input * readMultiplier +
-      cacheWrite * price.input * writeMultiplier +
-      usage.outputTokens * price.output) /
+    (usage.inputTokens * rates.input +
+      cacheRead * rates.cacheRead +
+      write5m * rates.cacheWrite5m +
+      write1h * rates.cacheWrite1h +
+      usage.outputTokens * rates.output) /
     1_000_000;
   return Math.round(cost * 1e8) / 1e8;
 }
@@ -286,17 +372,20 @@ function localDay(date = new Date()): string {
 }
 
 interface UsageFile {
+  version?: number;
   rows?: UsageStatsRow[];
 }
 
 export class UsageStore {
   private file: string;
+  private version: number;
   private rows = new Map<string, UsageStatsRow>();
   private timer?: NodeJS.Timeout;
 
   constructor(home: string) {
     this.file = path.join(home, 'usage.json');
     const data = this.load();
+    this.version = typeof data?.version === 'number' ? data.version : 1;
     for (const row of data?.rows ?? []) {
       if (!row || typeof row.day !== 'string' || typeof row.model !== 'string') continue;
       const keyId = typeof row.keyId === 'string' && row.keyId ? row.keyId : undefined;
@@ -331,6 +420,30 @@ export class UsageStore {
         });
       }
     }
+  }
+
+  /** 价格表 schema 版本；2 表示已做过估算价重算。 */
+  get schemaVersion(): number {
+    return this.version;
+  }
+
+  /** 一次性价格迁移跑完后标记，之后不再重算历史。 */
+  markPricingMigrated(): void {
+    this.version = 2;
+    this.flush();
+  }
+
+  /** 一次性迁移用：按给定函数改写行金额，返回改写行数。 */
+  reprice(matcher: (row: UsageStatsRow) => number | undefined): number {
+    let changed = 0;
+    for (const row of this.rows.values()) {
+      const next = matcher(row);
+      if (next === undefined || next === row.costUsd) continue;
+      row.costUsd = next;
+      changed += 1;
+    }
+    if (changed) this.scheduleSave();
+    return changed;
   }
 
   /** 记一次模型调用增量，返回本次花费（未知单价为 0）。 */
@@ -421,7 +534,7 @@ export class UsageStore {
     try {
       mkdirSync(path.dirname(this.file), { recursive: true });
       const tmp = `${this.file}.${process.pid}.tmp`;
-      writeFileSync(tmp, JSON.stringify({ rows: this.list() }, null, 2), 'utf8');
+      writeFileSync(tmp, JSON.stringify({ version: this.version, rows: this.list() }, null, 2), 'utf8');
       renameSync(tmp, this.file);
     } catch (err) {
       console.error('[tandem] 保存用量统计失败:', (err as Error).message);

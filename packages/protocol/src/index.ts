@@ -422,7 +422,9 @@ export interface Usage {
   inputTokens: number;       // 未命中缓存的输入
   outputTokens: number;
   cacheReadTokens?: number;  // 命中缓存读取（Anthropic cache_read_input_tokens / OpenAI cached_tokens）
-  cacheWriteTokens?: number; // 写入缓存（Anthropic cache_creation_input_tokens）
+  cacheWriteTokens?: number; // 写入缓存总量（Anthropic cache_creation_input_tokens）
+  cacheWrite5mTokens?: number; // 其中 5 分钟 TTL 的写入（Anthropic cache_creation.ephemeral_5m_input_tokens）
+  cacheWrite1hTokens?: number; // 其中 1 小时 TTL 的写入（Anthropic cache_creation.ephemeral_1h_input_tokens）
   reasoningTokens?: number;  // 输出中的推理 token（OpenAI reasoning_tokens 等，已含在 outputTokens 内）
   costUsd?: number;
   keyId?: string;            // 本轮实际使用的分组 Key id（多 Key 切换后便于统计）
@@ -448,8 +450,8 @@ export interface SessionUsageBreakdown {
   total: Usage;
   /** 当前生效单价（每百万 token，已乘账号/分组倍率），按会话当前账号/分组解析。 */
   prices: Record<string, ModelPriceInfo>;
-  /** 至少一行是按同家族最近代际估算的型号（价格表未收录该代）。 */
-  estimated: boolean;
+  /** 会话所属账号：有未收录官方价的型号时，用量卡据此跳到该账号的单价覆盖。 */
+  profileId?: string;
 }
 
 // ---------- 配额预估与会话交接 ----------
@@ -645,17 +647,18 @@ export interface ModelInfo {
   longContext?: LongContextCapability; // 支持 1M 上下文时菜单显示 200K / 1M 开关
   contextNote?: string; // 上下文提示（如 Haiku 5.5 超 100K 价更高）
 }
-/** 参考单价（每百万 token 美元）；缓存价按 provider 缓存放大的输入价折算。 */
+/** 官方单价（每百万 token 美元）；缓存价逐型号收录，缺省时按协议倍率折算。 */
 export interface ModelPriceInfo {
   input: number;
   output: number;
   cacheRead?: number;
+  /** 缓存写（5 分钟 TTL）。 */
   cacheWrite?: number;
-  /** 价格来源：账号自定义单价，或内置参考价（菜单显示「参考价」）。 */
+  /** 缓存写（1 小时 TTL），仅官方表逐型号收录时下发。 */
+  cacheWrite1h?: number;
+  /** 价格来源：账号自定义单价，或内置官方价（菜单显示「参考价」）。 */
   source?: 'account' | 'builtin';
-  /** 新代际未收录时按同家族已知型号估算，如 `claude-opus-4.5`。 */
-  estimatedFrom?: string;
-  /** 内置参考价（未乘倍率），仅在倍率不为 1 时下发，用于 tooltip 计算说明。 */
+  /** 内置官方价（未乘倍率），仅在倍率不为 1 时下发，用于 tooltip 计算说明。 */
   officialInput?: number;
   officialOutput?: number;
   /** 实际生效的倍率；缺省视为 1。 */

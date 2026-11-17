@@ -64,8 +64,9 @@
 
 ## 价格与倍率
 
-内置官方参考价（Claude、GPT-4o/4.1/5/6、o 系列、DeepSeek、Gemini、Kimi/Moonshot、Qwen、GLM，按前缀匹配，表头注明参考日期）。实际价 = 官方价 × 账号倍率 × 分组倍率；账号按模型覆盖单价优先，覆盖价不乘倍率。计费、压缩、网关、Wiki、评测与菜单展示共用 `resolvePriceForModel` / `priceForModel`；菜单 tooltip 显示计算式，无参考价显示「无参考价 · 去设置」；历史花费不重算。
-
+价格只有两个来源：账号按模型自定义单价，或内置表逐型号收录的官方价（来源 URL 与核对日期见 `usage.ts` 表头）。官方价按模型名前缀取最长命中，**不在型号之间借价或按家族估算**；官方页没列出的型号视为未知单价，菜单与用量卡显示「未知单价 / 该型号尚未收录官方价」，并复用「单价未设置 → 跳到该账号单价覆盖」入口。
+- 每条官方价含输入、输出、缓存读、缓存写 5m / 1h 单价；计费按未命中输入、输出、`cache_read`、`cache_creation`（5m/1h 拆分，只给总数时按 5m）分别乘价。Haiku 5.5 按单次请求提示 token（输入 + 缓存读写）超过 100K 切高价档。
+- 实际价 = 官方价 × 账号倍率 × 分组倍率；账号覆盖价不乘倍率。历史花费不重算，例外是 2026-11 一次性迁移把旧表借价记的账按官方价重算（`price-migration.ts`，`usage.json` `version: 2`）。`npm run check-prices` 抓官方页与内置表比对。
 ## 思考强度
 
 `packages/server/src/providers/capabilities.ts` 是唯一能力表：按「型号 × 实际请求协议」推断档位、厂商叫法与参数映射；provider 返回能力优先，账号/分组可覆盖。同一张表也给出上下文窗口与 1M 开关能力（原生 1M / 4.6 需 beta / 4.5 仅 200K），见 `model-accounts.md`「长上下文（1M）开关」。Anthropic adaptive 型号（4.7 及以后，Sonnet 4.6 无 xhigh）发 `thinking: { type: "adaptive", display: "summarized" }` + `output_config.effort`，档位 low/medium/high/xhigh/max、标签「低 · low … 超高 · xhigh / 最高 · max」、无 token 预算；`display: "summarized"` 必须显式传（默认 omitted 时思考文本为空，UI 看不到「思考了 Ns」）；只有支持 `thinking: { type: "disabled" }` 的型号才有「关」，Opus 5.5 / Sonnet 5.5 / Fable/Mythos 5.x 不能关闭。
