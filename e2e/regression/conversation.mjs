@@ -44,7 +44,7 @@ import { killExecutorsUnder, runExecutorCheck } from '../executor-check.mjs'
 
 export const feature = 'conversation'
 // 拆分前的全局用例序号：入口据此排序，保证全量执行顺序与拆分前完全一致。
-export const order = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 24, 26, 51, 52, 53, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 74, 75, 84, 85, 86, 87, 88, 89, 90, 93, 94, 95, 96, 97, 98, 100, 112, 113, 113.1, 113.2, 113.3, 113.4, 113.5, 113.6, 113.7]
+export const order = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 24, 26, 51, 52, 53, 56, 57, 60, 61, 62, 63, 64, 65, 66, 67, 74, 75, 84, 85, 86, 87, 88, 89, 90, 93, 94, 95, 96, 97, 98, 100, 112, 113, 113.1, 113.2, 113.3, 113.4, 113.5, 113.6, 113.7, 114.1, 114.2, 114.3, 114.4, 114.5, 114.6, 114.7, 114.8, 114.9]
 
 /**
  * 从下一帧起逐帧记录消息区状态（每帧一项，含还没挂上任何行的帧），
@@ -84,6 +84,98 @@ async function startScrollSampler(page, key) {
     }, key)
     return frames
   }
+}
+
+/**
+ * 逐帧记录消息区位置，并拦截对 `.chat-scroll` 的每一次 JS 写 `scrollTop`。
+ * 控制器是唯一写者：写入记账（t + 写入前后的真实值）用来断言「动画结束后不再写 / 滚轮不被拉回」。
+ */
+async function startScrollWriteSampler(page, key) {
+  await page.evaluate((name) => {
+    const state = (window[name] = { on: true, samples: [], writes: [] })
+    const desc = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop')
+    const original = desc.set
+    Object.defineProperty(Element.prototype, 'scrollTop', {
+      configurable: true,
+      get: desc.get,
+      set(value) {
+        if (this.classList?.contains('chat-scroll')) {
+          state.writes.push({
+            t: performance.now(),
+            value: Number(value),
+            before: desc.get.call(this),
+          })
+        }
+        original.call(this, value)
+      },
+    })
+    const tick = () => {
+      if (!state.on) return
+      const el = document.querySelector('.chat-scroll')
+      if (el) state.samples.push({ t: performance.now(), top: el.scrollTop })
+      requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  }, key)
+  return async () => {
+    return page.evaluate((name) => {
+      const state = window[name]
+      state.on = false
+      return { samples: state.samples, writes: state.writes }
+    }, key)
+  }
+}
+
+/** 控制器写入记账次数（调试构建暴露；生产构建没有时可回退为 null）。 */
+async function controllerWrites(page) {
+  return page.evaluate(() => window.__tandemChatScroll?.snapshot?.().writes ?? null)
+}
+
+/** 等 scrollTop 写入静止 `quiet` 毫秒，返回静止时的写入次数与时间。 */
+async function waitForScrollWritesQuiet(page, key, quiet = 500, timeout = 8_000) {
+  const started = Date.now()
+  let last = -1
+  let lastAt = Date.now()
+  while (Date.now() - started < timeout) {
+    const count = await page.evaluate((name) => window[name]?.writes?.length ?? 0, key)
+    if (count !== last) {
+      last = count
+      lastAt = Date.now()
+    }
+    if (Date.now() - lastAt >= quiet) {
+      return page.evaluate((name) => ({
+        count: window[name].writes.length,
+        at: performance.now(),
+      }), key)
+    }
+    await page.waitForTimeout(50)
+  }
+  throw new Error(`scrollTop 写入在 ${timeout}ms 内没有静止`)
+}
+
+/** 视口内第一条可见消息行（含半截行）的 id 与相对滚动区顶部的偏移。 */
+async function firstVisibleRow(page) {
+  return page.evaluate(() => {
+    const box = document.querySelector('.chat-scroll')
+    if (!box) return null
+    const boxTop = box.getBoundingClientRect().top
+    const row = [...box.querySelectorAll('.msg-row[data-message-id]')].find(
+      (item) => item.getBoundingClientRect().bottom > boxTop + 1,
+    )
+    return row
+      ? { id: row.getAttribute('data-message-id'), offset: row.getBoundingClientRect().top - boxTop }
+      : null
+  })
+}
+
+/** 某条消息行相对滚动区顶部的偏移（行不在 DOM 里返回 null）。 */
+async function rowOffset(page, id) {
+  return page.evaluate((messageId) => {
+    const box = document.querySelector('.chat-scroll')
+    const row = document.querySelector(`.msg-row[data-message-id="${CSS.escape(messageId)}"]`)
+    if (!box || !row) return null
+    return row.getBoundingClientRect().top - box.getBoundingClientRect().top
+  }, id)
 }
 
 export function register(checks, ctx) {
@@ -391,14 +483,30 @@ desktop('固定轮次滚到底部仍挂载、中间占位条可加载（反馈11
       // 固定第 5 轮，再滚到底部：固定的轮必须仍在 DOM 里。
       for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown')
       await page.locator('[data-turn-id="hu5"]').waitFor({ state: 'attached', timeout: 10_000 })
+      // 连续跳转的弹簧落定后再点行内按钮；操作条是悬停浮层，用 DOM 点击避免命中时间/用量浮层。
       await page
-        .locator('[data-turn-id="hu5"]')
-        .getByRole('button', { name: '固定此轮' })
-        .click()
-      await page.waitForFunction(
-        () => !!document.querySelector('[data-turn-id="hu5"] [aria-label="取消固定此轮"]'),
-        null,
-        { timeout: 10_000 },
+        .waitForFunction(
+          () => (window.__tandemChatScroll?.state?.kind ?? 'idle') !== 'jumping',
+          null,
+          { timeout: 5_000 },
+        )
+        .catch(() => {})
+      await page.waitForTimeout(300)
+      await page.evaluate(() => {
+        document.querySelector('[data-turn-id="hu5"] button[aria-label="固定此轮"]')?.click()
+      })
+      await page.waitForTimeout(500)
+      const pinState = await page.evaluate(() => {
+        const row = document.querySelector('[data-turn-id="hu5"]')
+        return {
+          row: !!row,
+          labels: row ? [...row.querySelectorAll('[aria-label]')].map((el) => el.getAttribute('aria-label')) : [],
+          pinned: [...document.querySelectorAll('[data-turn-id]')].filter((el) => el.querySelector('[aria-label="取消固定此轮"]')).map((el) => el.getAttribute('data-turn-id')),
+        }
+      })
+      assert.ok(
+        pinState.labels.includes('取消固定此轮'),
+        `点击固定没有生效：${JSON.stringify(pinState)}`,
       )
       for (let i = 0; i < 8; i++) {
         await page.evaluate(() => {
@@ -2845,5 +2953,392 @@ desktop('[S11] 窗口尺寸变化：阅读中保持视口首行，底部保持�
         return el ? el.scrollHeight - el.scrollTop - el.clientHeight : -1
       })
       assert.ok(distance <= 2, `尺寸变化后不再贴底：距底部 ${distance}px`)
+    })
+
+desktop('[S5] 跳转：弹簧动画、大纲贴顶其他入口居中，到位后不再写视口', async (page) => {
+      await openSession(page, 'long')
+      const nodes = page.locator('[data-group="graph"] [data-graph-turn-id]')
+      await nodes.first().waitFor({ timeout: 10_000 })
+      const count = await nodes.count()
+      assert.ok(count >= 3, `会话图节点太少：${count}`)
+      const turnId = await nodes.nth(Math.floor(count * 0.5)).getAttribute('data-graph-turn-id')
+      const stop = await startScrollWriteSampler(page, '__s5sampler')
+      await nodes.nth(Math.floor(count * 0.5)).click()
+      await page.waitForTimeout(1500)
+      const recorded = await stop()
+      const tops = recorded.samples.map((sample) => sample.top)
+      const steps = tops.filter((top, i) => i > 0 && Math.abs(top - tops[i - 1]) >= 1)
+      const motion = steps.filter((delta) => Math.abs(delta) >= 3)
+      // 远距离会先瞬移一帧，随后至少还有两帧弹簧位移。
+      assert.ok(motion.length >= 2, `跳转只有 ${motion.length} 帧真实位移，像是一次跳到位（没有动画）`)
+      // 其他入口居中：目标行中点在视口里。
+      const centered = await page.evaluate((id) => {
+        const box = document.querySelector('.chat-scroll')
+        const row = document.querySelector(`.msg-row[data-message-id="${CSS.escape(id)}"]`)
+        if (!box || !row) return null
+        const rect = row.getBoundingClientRect()
+        return {
+          offset: rect.top - box.getBoundingClientRect().top,
+          height: rect.height,
+          client: box.clientHeight,
+        }
+      }, turnId)
+      assert.ok(centered, `跳转目标 ${turnId} 没有挂载`)
+      const expected = (centered.client - centered.height) / 2
+      assert.ok(
+        Math.abs(centered.offset - expected) <= 40,
+        `会话图跳转没有居中：目标偏移 ${Math.round(centered.offset)}，应约 ${Math.round(expected)}`,
+      )
+      // 到位后不再改视口。
+      const quiet = await waitForScrollWritesQuiet(page, '__s5sampler')
+      const ledger = await controllerWrites(page)
+      await page.waitForTimeout(800)
+      assert.equal(await controllerWrites(page), ledger, '跳转到位后仍在写 scrollTop')
+      const late = await page.evaluate(
+        (at) => window.__s5sampler.writes.filter((write) => write.t > at).length,
+        quiet.at,
+      )
+      assert.equal(late, 0, `跳转到位后仍有 ${late} 次 scrollTop 写入`)
+
+      // 轮次大纲把目标放顶部。
+      await page.locator('.turn-hit').focus()
+      await page.keyboard.press('Home')
+      await page.locator('[data-turn-id="u1"]').waitFor({ state: 'attached', timeout: 10_000 })
+      await page.waitForTimeout(1400)
+      const rail = await rowOffset(page, 'u1')
+      assert.ok(rail !== null && rail >= -4 && rail <= 40, `大纲跳转没有贴顶：第 1 轮偏移 ${rail}`)
+    })
+
+desktop('[S5] 跳转后立即滚轮 3 秒：逐帧单调、动画结束后不再写入（反馈1724#03）', async (page) => {
+      await openSession(page, 'huge')
+      const nodes = page.locator('[data-group="graph"] [data-graph-turn-id]')
+      await nodes.first().waitFor({ timeout: 10_000 })
+      const count = await nodes.count()
+      const target = async (ratio) => nodes.nth(Math.floor(count * ratio))
+      const stop = await startScrollWriteSampler(page, '__s5wheel')
+      const clickAt = await page.evaluate(() => performance.now())
+      // 用户轨迹：快速连点几个会话图节点，然后立刻连续上滚。
+      for (const ratio of [0.7, 0.8, 0.85]) {
+        await (await target(ratio)).click()
+        await page.waitForTimeout(80)
+      }
+      const box = await page.locator('.chat-scroll').boundingBox()
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      for (let i = 0; i < 60; i++) {
+        await page.mouse.wheel(0, -120)
+        await page.waitForTimeout(40)
+      }
+      await page.waitForTimeout(200)
+      const { samples, writes } = await stop()
+      assert.ok(writes.length > 0, '跳转没有写 scrollTop')
+      const last = writes[writes.length - 1]
+      const span = last.t - clickAt
+      // 连点三次（最后一下才开始跳）之后，弹簧最多 900ms + 开头几十毫秒；旧实现还要再复核重追两轮。
+      assert.ok(span <= 1_600, `跳转的写入持续了 ${Math.round(span)}ms，之后仍在追目标（轮询锁视图）`)
+      const tail = samples.filter((sample) => sample.t > last.t + 100)
+      assert.ok(tail.length > 30, `滚轮期间采样帧太少：${tail.length}`)
+      let pulled = 0
+      for (let i = 1; i < tail.length; i++) if (tail[i].top - tail[i - 1].top > 1) pulled += 1
+      assert.equal(pulled, 0, `动画结束后滚轮上滚被拉回 ${pulled} 次`)
+      assert.ok(tail[0].top - tail[tail.length - 1].top > 200, '连续上滚没有产生位移')
+      // 控制器的写入记账：之后 800ms 不再有写入。
+      const ledger = await controllerWrites(page)
+      assert.ok(ledger !== null, '调试构建应暴露控制器写入记账（window.__tandemChatScroll）')
+      await page.waitForTimeout(800)
+      assert.equal(await controllerWrites(page), ledger, '动画结束后控制器仍在写 scrollTop')
+    })
+
+desktop('[S6] 新跳转替换旧跳转：最终停在第二个目标，中途不来回抖', async (page) => {
+      await openSession(page, 'long')
+      const nodes = page.locator('[data-group="graph"] [data-graph-turn-id]')
+      await nodes.first().waitFor({ timeout: 10_000 })
+      const count = await nodes.count()
+      const first = nodes.nth(Math.floor(count * 0.2))
+      const second = nodes.nth(Math.floor(count * 0.6))
+      const secondId = await second.getAttribute('data-graph-turn-id')
+      await page.evaluate(() => {
+        window.__s6samples = { on: true, tops: [] }
+        const tick = () => {
+          if (!window.__s6samples.on) return
+          window.__s6samples.tops.push(document.querySelector('.chat-scroll')?.scrollTop ?? 0)
+          requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      })
+      await first.click()
+      await page.waitForTimeout(80)
+      await second.click()
+      await page.waitForTimeout(1800)
+      const tops = await page.evaluate(() => {
+        window.__s6samples.on = false
+        return window.__s6samples.tops
+      })
+      const info = await page.evaluate((id) => {
+        const box = document.querySelector('.chat-scroll')
+        const row = document.querySelector(`.msg-row[data-message-id="${CSS.escape(id)}"]`)
+        if (!box || !row) return null
+        const rect = row.getBoundingClientRect()
+        return {
+          offset: rect.top - box.getBoundingClientRect().top,
+          height: rect.height,
+          client: box.clientHeight,
+          top: box.scrollTop,
+        }
+      }, secondId)
+      assert.ok(info, `第二个目标 ${secondId} 没有挂载`)
+      const expected = (info.client - info.height) / 2
+      assert.ok(
+        Math.abs(info.offset - expected) <= 60,
+        `最终没有停在第二个目标：偏移 ${Math.round(info.offset)}，应约 ${Math.round(expected)}`,
+      )
+      // 动画结束后视口稳定，不来回抖。
+      const settled = tops.slice(-20)
+      assert.ok(Math.max(...settled) - Math.min(...settled) <= 1, '跳转结束后视口仍在抖动')
+    })
+
+desktop('[S7] 跳到未加载的轮只取该段，加载后定位到目标', async (page) => {
+      const asked = []
+      page.on('request', (request) => {
+        const url = request.url()
+        if (url.includes('/api/sessions/huge/messages') && url.includes('around=')) asked.push(url)
+      })
+      await openSession(page, 'huge')
+      await page.waitForFunction(
+        () => /第 \d+ \/ 320 轮/.test(document.querySelector('.turn-count')?.textContent ?? ''),
+        null,
+        { timeout: 15_000 },
+      )
+      const before = asked.length
+      await page.locator('.turn-hit').focus()
+      await page.keyboard.press('Home')
+      await page.locator('[data-turn-id="hu1"]').waitFor({ state: 'attached', timeout: 20_000 })
+      await page.waitForTimeout(600)
+      const fetched = asked.slice(before)
+      assert.equal(fetched.length, 1, `点击未加载轮请求了 ${fetched.length} 次片段（应只取该轮所在的一段）`)
+      assert.match(fetched[0], /around=hu1(&|$)/, `不是按该轮取片段：${fetched[0]}`)
+      assert.doesNotMatch(fetched[0], /before=/, '点击未加载轮却按翻页取了一整段历史')
+      const offset = await rowOffset(page, 'hu1')
+      assert.ok(offset !== null && offset > -4 && offset < 200, `加载后没有定位到目标：偏移 ${offset}`)
+      assert.match(
+        await page.locator('.turn-count').innerText(),
+        /第 1 \/ 320 轮/,
+        '点击未加载轮后大纲没有定位到该轮',
+      )
+    })
+
+desktop('[S8] 滚到顶部加载更早消息，视口同一行停在同一位置', async (page) => {
+      await openSession(page, 'huge')
+      await page.locator('.msg-gap-band').first().waitFor({ state: 'visible', timeout: 10_000 })
+      // 用户上滚（真实滚轮让控制器进入阅读态），再滚到顶部。
+      const box = await page.locator('.chat-scroll').boundingBox()
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.mouse.wheel(0, -240)
+      await page.waitForTimeout(120)
+      await page.evaluate(() => {
+        const el = document.querySelector('.chat-scroll')
+        if (el) el.scrollTop = 0
+      })
+      await page.waitForFunction(
+        () => (document.querySelector('.chat-scroll')?.scrollTop ?? 1) <= 2,
+        null,
+        { timeout: 5_000 },
+      )
+      const before = await page.evaluate(() => {
+        const box = document.querySelector('.chat-scroll')
+        const boxTop = box.getBoundingClientRect().top
+        const row = [...document.querySelectorAll('.msg-row[data-message-id]')].find(
+          (el) => el.getBoundingClientRect().top >= boxTop - 2,
+        )
+        return {
+          height: box.scrollHeight,
+          top: box.scrollTop,
+          id: row?.dataset.messageId,
+          offset: row ? row.getBoundingClientRect().top - boxTop : null,
+        }
+      })
+      assert.ok(before.id, '滚到顶部后没有可见的消息行')
+      await page.waitForFunction(
+        (height) => (document.querySelector('.chat-scroll')?.scrollHeight ?? 0) > height + 500,
+        before.height,
+        { timeout: 20_000 },
+      )
+      await page.waitForTimeout(400)
+      const after = await rowOffset(page, before.id)
+      assert.ok(after !== null, `加载更早消息后视口首行 ${before.id} 被卸载`)
+      assert.ok(
+        Math.abs(after - before.offset) <= 4,
+        `加载更早消息后视口首行移动了 ${Math.round(after - before.offset)}px`,
+      )
+      const top = await page.evaluate(() => document.querySelector('.chat-scroll').scrollTop)
+      assert.ok(top > 300, `加载更早消息后滚动位置跳回顶部：${top}`)
+    })
+
+desktop('[S9] 固定的轮始终挂载：滚到底部和跳转后仍在 DOM', async (page) => {
+      await openSession(page, 'huge')
+      await page.waitForFunction(
+        () => /第 \d+ \/ 320 轮/.test(document.querySelector('.turn-count')?.textContent ?? ''),
+        null,
+        { timeout: 15_000 },
+      )
+      await page.locator('.turn-hit').focus()
+      await page.keyboard.press('Home')
+      await page.locator('[data-turn-id="hu1"]').waitFor({ state: 'attached', timeout: 20_000 })
+      for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown')
+      await page.locator('[data-turn-id="hu5"]').waitFor({ state: 'attached', timeout: 10_000 })
+      await page.evaluate(() => {
+        document.querySelector('[data-turn-id="hu5"] button[aria-label="固定此轮"]')?.click()
+      })
+      await page.waitForFunction(
+        () => !!document.querySelector('[data-turn-id="hu5"] [aria-label="取消固定此轮"]'),
+        null,
+        { timeout: 10_000 },
+      )
+      for (let i = 0; i < 6; i++) {
+        await page.evaluate(() => {
+          const box = document.querySelector('.chat-scroll')
+          if (box) box.scrollTop = box.scrollHeight
+        })
+        await page.waitForTimeout(180)
+      }
+      assert.equal(
+        await page.locator('[data-turn-id="hu5"]').count(),
+        1,
+        '滚到底部后固定的第 5 轮被卸载了',
+      )
+      await page.locator('.turn-hit').focus()
+      await page.keyboard.press('End')
+      await page.locator('[data-turn-id="hu320"]').waitFor({ state: 'attached', timeout: 20_000 })
+      await page.waitForTimeout(500)
+      assert.equal(
+        await page.locator('[data-turn-id="hu5"]').count(),
+        1,
+        '跳到最后一轮后固定的第 5 轮不在了',
+      )
+    })
+
+desktop('[S5×S8] 跳到早期轮并触发顶部取段，视口最终停在目标、无回拉', async (page) => {
+      await openSession(page, 'huge')
+      await page.waitForFunction(
+        () => /第 \d+ \/ 320 轮/.test(document.querySelector('.turn-count')?.textContent ?? ''),
+        null,
+        { timeout: 15_000 },
+      )
+      const stop = await startScrollWriteSampler(page, '__s58')
+      // 搜索入口跳到还没加载的第 150 轮：跳转动画经过顶部时，旧实现会一边取段一边写锚点（E×F）。
+      await page.keyboard.press('Control+k')
+      const input = page.getByRole('textbox', { name: '搜索会话、命令与设置' })
+      await input.waitFor({ state: 'visible', timeout: 5_000 })
+      await input.fill('大会话第 150 轮')
+      const hit = page.locator('[data-search-hit]').filter({ hasText: '大会话第 150 轮' }).first()
+      await hit.waitFor({ state: 'visible', timeout: 10_000 })
+      await hit.click()
+      await page.locator('[data-turn-id="hu150"]').waitFor({ state: 'attached', timeout: 20_000 })
+      await page.waitForTimeout(1500)
+      // 取段与动画都结束：目标停在落点，之后再等 1.2 秒不再被任何补偿推走。
+      const landed = await rowOffset(page, 'hu150')
+      assert.ok(landed !== null, '跳转目标 hu150 没有挂载')
+      const view = await page.evaluate(() => {
+        const box = document.querySelector('.chat-scroll')
+        return { client: box.clientHeight, top: box.scrollTop }
+      })
+      assert.ok(landed > -4 && landed < view.client - 80, `跳转没有停在可视区：偏移 ${landed}`)
+      const ledger = await controllerWrites(page)
+      await page.waitForTimeout(1_200)
+      const after = await rowOffset(page, 'hu150')
+      assert.ok(after !== null, '取段结束后目标 hu150 被卸载')
+      assert.ok(
+        Math.abs(after - landed) <= 8,
+        `顶部取段把目标轮推走了 ${Math.round(after - landed)}px`,
+      )
+      assert.equal(await controllerWrites(page), ledger, '跳转/取段结束后仍在写 scrollTop')
+      await stop()
+    })
+
+desktop('[S9×S3] 上翻阅读时固定轮插入，视口首行不变', async (page) => {
+      await openSession(page, 'huge')
+      await page.waitForFunction(
+        () => /第 \d+ \/ 320 轮/.test(document.querySelector('.turn-count')?.textContent ?? ''),
+        null,
+        { timeout: 15_000 },
+      )
+      await page.locator('.turn-hit').focus()
+      await page.keyboard.press('Home')
+      await page.locator('[data-turn-id="hu1"]').waitFor({ state: 'attached', timeout: 20_000 })
+      for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown')
+      await page.locator('[data-turn-id="hu5"]').waitFor({ state: 'attached', timeout: 10_000 })
+      await page.evaluate(() => {
+        document.querySelector('[data-turn-id="hu5"] button[aria-label="固定此轮"]')?.click()
+      })
+      await page.waitForFunction(
+        () => !!document.querySelector('[data-turn-id="hu5"] [aria-label="取消固定此轮"]'),
+        null,
+        { timeout: 10_000 },
+      )
+      // 固定轮不在首屏快照里：重新打开会话时按需取回并插到列表上方。
+      // 让取段慢一点，才能在它到达前进入「上翻阅读」状态。
+      await page.route('**/api/sessions/huge/messages*', async (route) => {
+        if (route.request().url().includes('around=hu5')) {
+          await new Promise((resolve) => setTimeout(resolve, 2500))
+        }
+        await route.continue()
+      })
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForFunction(
+        () => /第 \d+ \/ 320 轮/.test(document.querySelector('.turn-count')?.textContent ?? ''),
+        null,
+        { timeout: 20_000 },
+      )
+      await page.locator('.chat-scroll').waitFor({ state: 'visible', timeout: 10_000 })
+      await page.waitForTimeout(400)
+      const box = await page.locator('.chat-scroll').boundingBox()
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      for (let i = 0; i < 8; i++) {
+        await page.mouse.wheel(0, -200)
+        await page.waitForTimeout(60)
+      }
+      await page.waitForTimeout(200)
+      const before = await firstVisibleRow(page)
+      assert.ok(before?.id, '上翻后没有可见的消息行')
+      await page.locator('[data-turn-id="hu5"]').waitFor({ state: 'attached', timeout: 15_000 })
+      await page.waitForTimeout(900)
+      const after = await rowOffset(page, before.id)
+      assert.ok(after !== null, `固定轮插入后视口首行 ${before.id} 被卸载`)
+      assert.ok(
+        Math.abs(after - before.offset) <= 6,
+        `固定轮插入把视口首行推走了 ${Math.round(after - before.offset)}px`,
+      )
+    })
+
+desktop('跳转结束后 3 秒无 scrollTop 写入', async (page) => {
+      await openSession(page, 'huge')
+      await page.waitForFunction(
+        () => /第 \d+ \/ 320 轮/.test(document.querySelector('.turn-count')?.textContent ?? ''),
+        null,
+        { timeout: 15_000 },
+      )
+      const stop = await startScrollWriteSampler(page, '__s5idle')
+      const clickAt = await page.evaluate(() => performance.now())
+      await page.keyboard.press('Control+k')
+      const input = page.getByRole('textbox', { name: '搜索会话、命令与设置' })
+      await input.waitFor({ state: 'visible', timeout: 5_000 })
+      await input.fill('大会话第 150 轮')
+      const hit = page.locator('[data-search-hit]').filter({ hasText: '大会话第 150 轮' }).first()
+      await hit.waitFor({ state: 'visible', timeout: 10_000 })
+      await hit.click()
+      await page.locator('[data-turn-id="hu150"]').waitFor({ state: 'attached', timeout: 20_000 })
+      const quiet = await waitForScrollWritesQuiet(page, '__s5idle', 400, 8_000)
+      assert.ok(
+        quiet.at - clickAt <= 2_500,
+        `跳转的写入持续了 ${Math.round(quiet.at - clickAt)}ms 才静止`,
+      )
+      const ledger = await controllerWrites(page)
+      await page.waitForTimeout(3_000)
+      assert.equal(await controllerWrites(page), ledger, '跳转结束后 3 秒内仍有 scrollTop 写入')
+      const late = await page.evaluate(
+        (at) => window.__s5idle.writes.filter((write) => write.t > at).length,
+        quiet.at,
+      )
+      assert.equal(late, 0, `跳转结束后 3 秒内仍有 ${late} 次 scrollTop 写入`)
+      await stop()
     })
 }
