@@ -40,7 +40,7 @@ import { useSessionView } from './session/SessionScope'
 import { cn } from '../lib/cn'
 import { ConnectionDot } from './StatusDot'
 import { Button, IconButton } from './ui/Button'
-import { Switch } from './ui/Controls'
+import { Input, Switch } from './ui/Controls'
 import { Menu, MenuItem, MenuList } from './ui/Menu'
 import { Modal } from './ui/Modal'
 
@@ -441,7 +441,7 @@ async function canPickFolderNatively(hostId: string): Promise<boolean> {
 
 /**
  * 分支下拉：与主机、文件夹共用 ui/Menu（同样的行样式、宽度规则与底部动作区）。
- * 顶部搜索框是 Menu 的通用能力：筛选已有分支，输入新名字则底部动作变成「新建分支 “…”」。
+ * 「新建分支…」在底部原位变成输入框：回车创建并切换，Esc 取消。
  */
 function BranchMenu({
   hostId,
@@ -461,16 +461,17 @@ function BranchMenu({
   const host = useAppStore((s) => s.hosts.find((h) => h.id === hostId) ?? null)
   const toast = useUiStore((s) => s.toast)
   const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState('')
   const [branches, setBranches] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
-  const searchRef = useRef<HTMLInputElement>(null)
+  const [creating, setCreating] = useState(false)
+  const [name, setName] = useState('')
 
-  // 每次打开重新拉分支；收起时清掉筛选词与忙碌状态，下次打开是新的会话。
+  // 每次打开重新拉分支；收起时清掉新建态与忙碌状态，下次打开是新的会话。
   useEffect(() => {
     if (!open) {
-      setQuery('')
+      setCreating(false)
+      setName('')
       setBusy(false)
       return
     }
@@ -513,23 +514,6 @@ function BranchMenu({
     }
   }
 
-  const typed = query.trim()
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return branches
-    return branches.filter((branch) => branch.toLowerCase().includes(q))
-  }, [branches, query])
-  const exact = branches.find((branch) => branch === typed)
-  const canCreate = !!typed && !exact
-
-  /** ↑↓/Enter 落在列表行上：搜索框只负责筛选与建分支。 */
-  const focusFirstRow = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    const content = event.currentTarget.closest('[data-radix-menu-content]')
-    content
-      ?.querySelector<HTMLElement>('[data-menu-body] [role="menuitem"]:not([aria-disabled="true"])')
-      ?.focus()
-  }
-
   return (
     <Menu
       open={open}
@@ -540,41 +524,39 @@ function BranchMenu({
       className={cn(ENV_MENU_CLASS, className)}
       bodyClassName="max-h-[260px]"
       aria-label="切换分支"
-      header={
-        <Menu.Search
-          ref={searchRef}
-          value={query}
-          onChange={setQuery}
-          label="筛选或新建分支"
-          placeholder="筛选分支，或输入新分支名"
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-              event.preventDefault()
-              if (canCreate) void run(typed, true)
-              else if (exact) void run(exact, false)
-              else focusFirstRow(event)
-            } else if (event.key === 'ArrowDown') {
-              event.preventDefault()
-              focusFirstRow(event)
-            }
-          }}
-        />
-      }
       footer={
-        <Menu.Item
-          icon={<Plus size={13} />}
-          keepOpen={!canCreate}
-          onSelect={() => {
-            if (!canCreate) {
-              // Radix 选中后会把焦点留在行上，下一帧再落回搜索框。
-              window.requestAnimationFrame(() => searchRef.current?.focus())
-              return
-            }
-            void run(typed, true)
-          }}
-        >
-          {canCreate ? `新建分支 “${typed}”` : '新建分支…'}
-        </Menu.Item>
+        creating ? (
+          <Input
+            size="sm"
+            autoFocus
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            disabled={busy}
+            placeholder="新分支名"
+            aria-label="新分支名"
+            className="w-full min-w-0 font-mono text-[12px]"
+            onKeyDown={(event) => {
+              // 输入框自己消费按键，不让菜单的键盘导航与 typeahead 抢走。
+              event.stopPropagation()
+              if (event.key === 'Escape') {
+                event.preventDefault()
+                setCreating(false)
+                setName('')
+              } else if (event.key === 'Enter' && !event.nativeEvent.isComposing && name.trim()) {
+                event.preventDefault()
+                void run(name.trim(), true)
+              }
+            }}
+          />
+        ) : (
+          <Menu.Item
+            icon={<Plus size={13} />}
+            keepOpen
+            onSelect={() => setCreating(true)}
+          >
+            新建分支…
+          </Menu.Item>
+        )
       }
       trigger={trigger}
     >
@@ -585,10 +567,7 @@ function BranchMenu({
         </Menu.Item>
       )}
       {!loading && branches.length === 0 && <Menu.Item disabled>当前目录不是 git 仓库</Menu.Item>}
-      {!loading && branches.length > 0 && filtered.length === 0 && (
-        <Menu.Item disabled>没有匹配的分支</Menu.Item>
-      )}
-      {filtered.map((branch) => (
+      {branches.map((branch) => (
         <Menu.Item
           key={branch}
           icon={<GitBranch size={13} />}

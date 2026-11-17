@@ -1620,25 +1620,20 @@ desktop('反馈2236#01：主机/文件夹/分支下拉共用同一个 ui/Menu（
         )
 
         if (i === 2) {
-          // 分支下拉的搜索/新建能力来自共享的 Menu.Search，不是 EnvBar 单独实现。
-          const search = panel.getByRole('textbox', { name: '筛选或新建分支' })
-          assert.equal(await search.count(), 1, '分支下拉缺少共享的顶部搜索框')
-          await search.fill('fb2236-no-such-branch')
-          await page.waitForFunction(
-            () =>
-              !document.querySelector(
-                '[data-menu-body] [role="menuitem"]:not([aria-disabled="true"])',
-              ),
-            null,
-            { timeout: 5_000 },
+          // 分支下拉不带筛选框；「新建分支…」在底部原位变成输入框，回车发起创建并切换。
+          assert.equal(await panel.getByRole('textbox').count(), 0, '分支下拉不应有筛选/搜索框')
+          await panel.locator('[data-menu-footer] [role="menuitem"]').first().click()
+          const input = panel.getByRole('textbox', { name: '新分支名' })
+          await input.waitFor({ state: 'visible', timeout: 5_000 })
+          const branchName = `fb2236-new-${Date.now()}`
+          await input.fill(branchName)
+          const request = page.waitForRequest(
+            (req) => req.method() === 'POST' && /\/checkout$/.test(new URL(req.url()).pathname),
           )
-          const create = panel.locator('[data-menu-footer] [role="menuitem"]').first()
-          assert.match(
-            (await create.innerText()).trim(),
-            /新建分支 “fb2236-no-such-branch”/,
-            '搜索不到分支时底部动作没有变成新建',
-          )
-          await search.fill('')
+          await input.press('Enter')
+          const body = (await request).postDataJSON()
+          assert.equal(body.branch, branchName, '回车没有用输入的名字发起新建分支')
+          assert.equal(body.create, true, '回车发起的不是新建分支')
         }
 
         await page.evaluate(() => document.documentElement.classList.add('dark'))
