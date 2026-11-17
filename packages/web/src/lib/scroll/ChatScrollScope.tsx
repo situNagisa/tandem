@@ -33,6 +33,15 @@ export function useChatScrollController(
     if (box && content) controller.attach(box, content, key ?? '')
     else controller.detachDom()
   })
+  useLayoutEffect(() => {
+    // 调试版暴露写入记账，回归用它断言「动画结束后不再写 scrollTop」。
+    if (!__TANDEM_DEBUG__) return
+    const scope = window as Window & { __tandemChatScroll?: ChatScrollController }
+    scope.__tandemChatScroll = controller
+    return () => {
+      if (scope.__tandemChatScroll === controller) delete scope.__tandemChatScroll
+    }
+  }, [controller])
   useLayoutEffect(() => () => controller.destroy(), [controller])
   return controller
 }

@@ -4,7 +4,8 @@ import { GitFork } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { useSessionView } from './session/SessionScope'
 import { cn } from '../lib/cn'
-import { isJumpCurrent, settleJump, startJumpScroll, subscribeJump, type JumpRequest } from '../lib/jump'
+import { isJumpCurrent, settleJump, subscribeJump, focusMessage, type JumpRequest } from '../lib/jump'
+import { useChatScroll } from '../lib/scroll/ChatScrollScope'
 import { MESSAGE_PAGE_SIZE, gapMessage } from '../lib/messagePaging'
 import { activeToolUses } from '../lib/turnActivity'
 import { navigate } from '../lib/router'
@@ -466,11 +467,6 @@ function MessageListInner({
    * 跳到早期轮次时把窗口移到目标附近，窗口外的消息不挂载，由占位条代替。
    */
   const [windowAnchorId, setWindowAnchorId] = useState<string | null>(null)
-  /**
-   * 跳转进行中：挂载窗口跟着目标走，期间程序滚动的 scroll 事件不能把窗口掰回尾部
-   * （跳到早期轮时窗口切到顶部会让 scrollTop 被夹到底，旧逻辑据此误判「用户回到底部」）。
-   */
-  const jumpingRef = useRef(false)
   const anchorIndex = windowAnchorId
     ? messages.findIndex((message) => message.id === windowAnchorId)
     : -1
@@ -493,99 +489,30 @@ function MessageListInner({
     return () => clearTimeout(timer)
   }, [windowSize, target, messages.length, anchorIndex])
 
-  // 服务端分页：滚到顶部附近时向前取一页，并按新增高度补回滚动位置。
+  // 服务端分页：滚到顶部附近时向前取一页；取页前后的位置由控制器的锚点保持
+  // （插入前 beginAnchor，数据落地、内容高度连续 2 帧不变后自动收尾，不用定时器）。
+  const scroll = useChatScroll()
   const scrollBox = useCallback((): HTMLElement | null => {
     return (rootRef.current?.closest('.chat-scroll') as HTMLElement | null) ?? null
   }, [])
-  const pendingAnchor = useRef<{
-    id?: string
-    offset?: number
-    height: number
-    top: number
-  } | null>(null)
+  /** 在路上的取段/固定轮/补缺口；锚点保留到最后一个落地。 */
+  const anchorLoads = useRef(0)
+  const [anchorSettle, setAnchorSettle] = useState(0)
+  const beginAnchoredLoad = useCallback(() => {
+    anchorLoads.current += 1
+    scroll?.beginAnchor()
+  }, [scroll])
+  const finishAnchoredLoad = useCallback(() => {
+    anchorLoads.current = Math.max(0, anchorLoads.current - 1)
+    if (anchorLoads.current === 0) setAnchorSettle((n) => n + 1)
+  }, [])
   const prevLength = useRef(messages.length)
-  const captureAnchor = useCallback(() => {
-    const box = scrollBox()
-    if (!box) return null
-    const boxTop = box.getBoundingClientRect().top
-    const row = [...box.querySelectorAll<HTMLElement>('.msg-row[data-message-id]')].find(
-      (el) => el.getBoundingClientRect().bottom > boxTop + 1,
-    )
-    return {
-      ...(row?.dataset.messageId ? { id: row.dataset.messageId } : {}),
-      ...(row ? { offset: row.getBoundingClientRect().top - boxTop } : {}),
-      height: box.scrollHeight,
-      top: box.scrollTop,
-    }
-  }, [scrollBox])
-  const restoreAnchor = useCallback(() => {
-    const anchor = pendingAnchor.current
-    const box = scrollBox()
-    if (!anchor || !box) return
-    if (anchor.id) {
-      const row = box
-        .querySelector<HTMLElement>(`[data-message-id="${CSS.escape(anchor.id)}"]`)
-        ?.closest<HTMLElement>('.msg-row')
-      if (row && anchor.offset !== undefined) {
-        const offset = row.getBoundingClientRect().top - box.getBoundingClientRect().top
-        box.scrollTop += offset - anchor.offset
-        return
-      }
-    }
-    box.scrollTop = box.scrollHeight - anchor.height + anchor.top
-  }, [scrollBox])
-  const requestOlder = useCallback(() => {
-    if (messagesProp || !sessionId || !activeHostId || !hasEarlier) return
-    const box = scrollBox()
-    if (!box || pendingAnchor.current) return
-    pendingAnchor.current = captureAnchor()
-    // 先扩大渲染窗口，新页到达时才有位置可挂载。
-    setWindowCap((cap) => cap + MESSAGE_PAGE_SIZE)
-    setWindowSize((size) => size + MESSAGE_PAGE_SIZE)
-    void useAppStore.getState().loadEarlierMessages({
-      hostId: activeHostId,
-      sessionId,
-    })
-  }, [messagesProp, sessionId, activeHostId, hasEarlier, scrollBox, captureAnchor])
-
-  useEffect(() => {
-    if (messagesProp || !sessionId) return
-    const box = scrollBox()
-    if (!box) return
-    const onScroll = () => {
-      const distance = box.scrollHeight - box.scrollTop - box.clientHeight
-      // 锚定窗口往下滚到头：先扩大挂载窗口；已经到会话末尾就恢复跟随尾部。
-      // 跳转动画期间不动窗口（窗口切换导致 scrollTop 被夹到底时不能误判成回到底部）。
-      if (windowAnchorId && !jumpingRef.current && distance < 100) {
-        if (windowTo < messages.length && windowSize < MAX_WINDOW) {
-          setWindowSize((size) => Math.min(messages.length, MAX_WINDOW, size + BACKFILL_STEP))
-        } else {
-          setWindowAnchorId(null)
-        }
-      }
-      if (!hasEarlier) return
-      if (box.scrollTop > 240) return
-      if (box.scrollHeight <= box.clientHeight + 120) return
-      requestOlder()
-    }
-    box.addEventListener('scroll', onScroll, { passive: true })
-    return () => box.removeEventListener('scroll', onScroll)
-  }, [
-    messagesProp,
-    sessionId,
-    hasEarlier,
-    requestOlder,
-    scrollBox,
-    windowAnchorId,
-    windowTo,
-    windowSize,
-    messages.length,
-  ])
-
   useLayoutEffect(() => {
-    if (messages.length > prevLength.current && pendingAnchor.current) {
-      restoreAnchor()
-      // 在顶部继续加载更早的历史时，把已加载的部分都挂上；否则新取回的一页会立刻被窗口裁掉。
+    // 数据已经提交到 DOM（这次布局之前）：可以开始按稳定帧收尾锚点。
+    if (anchorLoads.current === 0) scroll?.endAnchor()
+    if (messages.length > prevLength.current) {
+      // 在顶部继续加载更早的历史 / 点占位条取段：把已加载的部分都挂上，
+      // 否则新取回的一页会立刻被挂载窗口裁掉（看不到刚加载的内容）。
       const box = scrollBox()
       if (box && box.scrollTop < 240) {
         setWindowSize(messages.length)
@@ -593,46 +520,67 @@ function MessageListInner({
       }
     }
     prevLength.current = messages.length
-  }, [messages, restoreAnchor, scrollBox])
+  }, [messages, loadingEarlier, loadingSegment, anchorSettle, scroll, scrollBox])
 
-  // 内容可见性/异步排版会让高度在后续帧继续变化：锚点期间持续观察，稳定后再放开。
+  const requestOlder = useCallback(() => {
+    if (messagesProp || !sessionId || !activeHostId || !hasEarlier) return
+    if (!scroll || scroll.state.kind === 'anchoring') return
+    const box = scrollBox()
+    if (!box) return
+    if (box.scrollHeight <= box.clientHeight + 120) return
+    beginAnchoredLoad()
+    // 先扩大渲染窗口，新页到达时才有位置可挂载。
+    setWindowCap((cap) => cap + MESSAGE_PAGE_SIZE)
+    setWindowSize((size) => size + MESSAGE_PAGE_SIZE)
+    void useAppStore
+      .getState()
+      .loadEarlierMessages({ hostId: activeHostId, sessionId })
+      .finally(finishAnchoredLoad)
+  }, [
+    messagesProp,
+    sessionId,
+    activeHostId,
+    hasEarlier,
+    scroll,
+    scrollBox,
+    beginAnchoredLoad,
+    finishAnchoredLoad,
+  ])
+
+  // 顶部取段由控制器的「到达顶部」结论触发（跳转中不触发，E×F）。
+  useEffect(() => scroll?.onReachTop(requestOlder), [scroll, requestOlder])
+
+  // 用户自己滚到挂载窗口底部：先扩大窗口；已经到会话末尾就恢复跟随尾部。
+  // 不再按距离猜（跳转结束后的距离判断会把窗口掰回尾部、把视口拉走）。
   useEffect(() => {
-    if (!pendingAnchor.current) return
-    const content = rootRef.current
-    const ro =
-      content && typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(() => restoreAnchor())
-        : null
-    if (content) ro?.observe(content)
-    const timers = [0, 120, 320, 700, 1200].map((delay) =>
-      window.setTimeout(() => restoreAnchor(), delay),
-    )
-    const fallback = window.setTimeout(() => {
-      pendingAnchor.current = null
-      ro?.disconnect()
-    }, 2600)
-    return () => {
-      ro?.disconnect()
-      timers.forEach((timer) => window.clearTimeout(timer))
-      window.clearTimeout(fallback)
-    }
-  }, [messages.length, loadingEarlier, loadingSegment, restoreAnchor])
+    if (!scroll) return
+    return scroll.onReachBottom(() => {
+      if (!windowAnchorId) return
+      if (windowTo < messages.length && windowSize < MAX_WINDOW) {
+        setWindowSize((size) => Math.min(messages.length, MAX_WINDOW, size + BACKFILL_STEP))
+      } else {
+        setWindowAnchorId(null)
+      }
+    })
+  }, [scroll, windowAnchorId, windowTo, windowSize, messages.length])
 
   const fillGap = (gapId: string) => {
     if (!sessionId || !activeHostId) return
-    pendingAnchor.current = captureAnchor()
+    beginAnchoredLoad()
     setWindowCap((cap) => cap + MESSAGE_PAGE_SIZE)
     setWindowSize((size) => size + MESSAGE_PAGE_SIZE)
-    void useAppStore.getState().fillMessageGap(activeHostId, sessionId, gapId)
+    void useAppStore
+      .getState()
+      .fillMessageGap(activeHostId, sessionId, gapId)
+      .finally(finishAnchoredLoad)
   }
 
-  // 定位：轮次大纲/会话图/搜索/收件箱/上下文面板共用 lib/jump 这一个实现。
-  // 目标未加载时只取它所在片段；挂载后用轮次大纲的弹簧动画滑到落点，结束后不再写 scrollTop。
+  // 定位：轮次大纲/会话图/搜索/收件箱/上下文面板共用 lib/jump 这一个入口，
+  // 滚动交给消息区控制器（弹簧、远距离瞬移、落点复核、结束后不再写）。
   const [jumpTick, setJumpTick] = useState(0)
   const jumpRef = useRef<JumpRequest | null>(null)
   const jumpLoadRef = useRef<string | null>(null)
   const jumpLoadTimer = useRef(0)
-  const jumpPlacementRef = useRef<(() => void) | null>(null)
   const bumpJump = useCallback(() => setJumpTick((n) => n + 1), [])
 
   useEffect(
@@ -644,85 +592,81 @@ function MessageListInner({
     [bumpJump],
   )
 
-  useEffect(
-    () => () => {
-      window.clearTimeout(jumpLoadTimer.current)
-      jumpPlacementRef.current?.()
-    },
-    [],
-  )
+  useEffect(() => () => window.clearTimeout(jumpLoadTimer.current), [])
+
+  // 控制器结算这次跳转（到达/超时/被替换）：不再重复定位，之后消息变化不影响视口。
+  useEffect(() => {
+    if (!scroll) return
+    return scroll.onJumpEnd((token) => {
+      if (jumpRef.current?.token === token) jumpRef.current = null
+    })
+  }, [scroll])
 
   useEffect(() => {
     const request = jumpRef.current
-    if (!request) return
+    if (!request || !scroll) return
     if (!isJumpCurrent(request.token)) {
       // 又有新的一次跳转（或已结束）：不再定位。
       jumpRef.current = null
-      jumpingRef.current = false
       return
     }
-    jumpingRef.current = true
     const root = rootRef.current
     if (!root) return
     const messageId = request.messageId
     const toolUseId = request.toolUseId
     if (!messageId && !toolUseId) return
-    const selector = toolUseId
-      ? `[data-tool-use-id="${CSS.escape(toolUseId)}"]`
-      : `[data-message-id="${CSS.escape(messageId!)}"]`
-    const find = () => root.querySelector<HTMLElement>(selector)
-    if (!find()) {
-      if (toolUseId || !messageId) return
-      const index = messages.findIndex((message) => message.id === messageId)
-      if (index < 0) {
-        // 目标还没加载：只取它所在的片段（服务端按 around 返回一页）。
-        if (messagesProp || !activeHostId || !sessionId) return
-        if (jumpLoadRef.current === messageId) return
-        jumpLoadRef.current = messageId
-        let attempts = 0
-        const load = () => {
-          void useAppStore
-            .getState()
-            .ensureMessageLoaded(activeHostId, sessionId, messageId)
-            .then((ok) => {
-              if (jumpLoadRef.current !== messageId) return
-              // 别的取段正在占用时只重试加载（不派发定位），有上限。
-              if (!ok && attempts < 3 && isJumpCurrent(request.token)) {
-                attempts += 1
-                jumpLoadTimer.current = window.setTimeout(load, 200)
-                return
-              }
-              jumpLoadRef.current = null
-              // 取不到这一段就结束这次跳转，别让它一直挂着等后续消息变化。
-              if (!ok) {
-                settleJump(request.token)
-                jumpingRef.current = false
-              }
-              bumpJump()
-            })
-        }
-        load()
-        return
-      }
-      // 已加载但被挂载窗口裁掉：窗口锚到目标前 60 条，下一轮渲染再定位。
-      const anchor = messages[Math.max(0, index - 60)]
-      if (!anchor || windowAnchorId === anchor.id) return
-      setWindowAnchorId(anchor.id)
-      setWindowSize((size) => Math.max(size, Math.min(MAX_WINDOW, 320)))
-      setWindowCap((cap) => Math.max(cap, Math.min(MAX_WINDOW, 320)))
+    if (toolUseId) {
+      const el = root.querySelector<HTMLElement>(
+        `[data-tool-use-id="${CSS.escape(toolUseId)}"]`,
+      )
+      el?.querySelector<HTMLElement>('.tool-row[aria-expanded="false"]')?.click()
+      if (el) scroll.jump({ toolUseId }, { token: request.token, align: request.align })
       return
     }
-    const box = scrollBox()
-    if (!box) return
-    jumpRef.current = null
-    if (toolUseId) {
-      find()?.querySelector<HTMLElement>('.tool-row[aria-expanded="false"]')?.click()
+    if (!messageId) return
+    if (root.querySelector(`[data-message-id="${CSS.escape(messageId)}"]`)) {
+      scroll.jump({ messageId }, { token: request.token, align: request.align })
+      return
     }
-    jumpPlacementRef.current?.()
-    jumpPlacementRef.current = startJumpScroll(request.token, box, find, request.align, () => {
-      jumpPlacementRef.current = null
-      jumpingRef.current = false
-    })
+    if (messagesProp || !activeHostId || !sessionId) return
+    const index = messages.findIndex((message) => message.id === messageId)
+    if (index < 0) {
+      // 目标还没加载：只取它所在的片段（服务端按 around 返回一页）。
+      if (jumpLoadRef.current === messageId) return
+      jumpLoadRef.current = messageId
+      let attempts = 0
+      const load = () => {
+        void useAppStore
+          .getState()
+          .ensureMessageLoaded(activeHostId, sessionId, messageId)
+          .then((ok) => {
+            if (jumpLoadRef.current !== messageId) return
+            // 别的取段正在占用时只重试加载（不派发定位），有上限。
+            if (!ok && attempts < 3 && isJumpCurrent(request.token)) {
+              attempts += 1
+              jumpLoadTimer.current = window.setTimeout(load, 200)
+              return
+            }
+            jumpLoadRef.current = null
+            // 取不到这一段就结束这次跳转，别让它一直挂着等后续消息变化。
+            if (!ok) {
+              settleJump(request.token)
+              if (scroll.state.kind === 'jumping' && scroll.state.token === request.token) {
+                scroll.cancelJump()
+              }
+            }
+            bumpJump()
+          })
+      }
+      load()
+      return
+    }
+    // 已加载但被挂载窗口裁掉：窗口锚到目标前 60 条，下一轮渲染再定位。
+    const anchor = messages[Math.max(0, index - 60)]
+    if (!anchor || windowAnchorId === anchor.id) return
+    setWindowAnchorId(anchor.id)
+    setWindowSize((size) => Math.max(size, Math.min(MAX_WINDOW, 320)))
+    setWindowCap((cap) => Math.max(cap, Math.min(MAX_WINDOW, 320)))
   }, [
     jumpTick,
     messages,
@@ -732,7 +676,7 @@ function MessageListInner({
     messagesProp,
     activeHostId,
     sessionId,
-    scrollBox,
+    scroll,
     bumpJump,
   ])
 
@@ -763,11 +707,13 @@ function MessageListInner({
       pinnedLoadRef.current.add(id)
       pinnedAttemptsRef.current.set(id, (pinnedAttemptsRef.current.get(id) ?? 0) + 1)
     }
+    beginAnchoredLoad()
     void useAppStore
       .getState()
       .loadTurnRange(activeHostId, sessionId, missing)
       .finally(() => {
         for (const id of missing) pinnedLoadRef.current.delete(id)
+        finishAnchoredLoad()
       })
       .then((ok) => {
         if (ok) return
@@ -775,7 +721,15 @@ function MessageListInner({
         window.clearTimeout(pinnedRetryTimer.current)
         pinnedRetryTimer.current = window.setTimeout(() => bumpPinned((n) => n + 1), 700)
       })
-  }, [pinnedTurns, messages, messagesProp, activeHostId, sessionId])
+  }, [
+    pinnedTurns,
+    messages,
+    messagesProp,
+    activeHostId,
+    sessionId,
+    beginAnchoredLoad,
+    finishAnchoredLoad,
+  ])
   useEffect(() => () => window.clearTimeout(pinnedRetryTimer.current), [])
 
   // 挂载集合 = 窗口 [windowFrom, windowTo) + 固定轮（含该轮的 assistant 回复）。
@@ -1027,15 +981,18 @@ function MessageListInner({
     const ids = serverTurns
       .slice(range.fromTurn - 1, range.fromTurn - 1 + count)
       .map((mark) => mark.messageId)
-    pendingAnchor.current = captureAnchor()
+    beginAnchoredLoad()
     setBandBusy(gapId)
     void useAppStore
       .getState()
       .loadTurnRange(activeHostId, sessionId, ids)
-      .finally(() => setBandBusy(null))
+      .finally(() => {
+        setBandBusy(null)
+        finishAnchoredLoad()
+      })
   }
 
-  /** 已加载但不在挂载窗口里：把窗口移到这一段，并停在原占位条位置。 */
+  /** 已加载但不在挂载窗口里：把窗口移到这一段，再跳到这一段的起点。 */
   const showUnmounted = (gap: NonNullable<UiMessage['gap']>) => {
     const afterIndex = gap.afterId
       ? messages.findIndex((message) => message.id === gap.afterId)
@@ -1045,11 +1002,7 @@ function MessageListInner({
     setWindowAnchorId(next.id)
     setWindowSize((size) => Math.max(size, Math.min(MAX_WINDOW, 320)))
     setWindowCap((cap) => Math.max(cap, Math.min(MAX_WINDOW, 320)))
-    window.setTimeout(() => {
-      scrollBox()
-        ?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(next.id)}"]`)
-        ?.scrollIntoView({ block: 'start' })
-    }, 60)
+    focusMessage(next.id, 'start')
   }
 
   // 助理消息的操作条以它前面最近一条可见用户消息作为本轮锚点。
