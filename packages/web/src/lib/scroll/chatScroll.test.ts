@@ -287,13 +287,12 @@ describe('状态迁移', () => {
     expect(back.effects).toEqual([])
   })
 
-  it('23. jumping + 用户上滚 → 仍 jumping（R68）；结束后 detached，不再回底', () => {
+  it('23. jumping + 用户滚动 → 结束跳转进入 detached，不再写回（1724#03）', () => {
     const scrolled = last(jumping, [{ type: 'user-scroll', atBottom: false }])
-    expect(scrolled.state.kind).toBe('jumping')
-    expect(scrolled.effects).toEqual([])
-    const arrived = play(scrolled.state, [{ type: 'jump-arrived' }, { type: 'jump-verify', residual: 0 }])
-    expect(arrived[1]?.state.kind).toBe('detached')
-    const after = last(arrived[1]!.state, [{ type: 'user-scroll', atBottom: false }])
+    expect(scrolled.state.kind).toBe('detached')
+    // 只结算这次跳转；没有任何写位置的 effect（不回拉、不追目标）。
+    expect(scrolled.effects).toEqual([{ type: 'jump-end', token: 7, reason: 'cancelled' }])
+    const after = last(scrolled.state, [{ type: 'user-scroll', atBottom: false }])
     expect(after.state.kind).toBe('detached')
     expect(after.effects).toEqual([])
   })
@@ -475,7 +474,7 @@ describe('第 3 节两两组合：应该谁赢', () => {
     expect(steps[1]?.state.kind).toBe('detached')
   })
 
-  it('C×E：跳转期间 C 不打断；跳完只停目标，不再被拉走', () => {
+  it('C×E：跳转中用户滚动立即结算，之后不再写视口', () => {
     const steps = play(detached, [
       { type: 'jump', token: 3, target, mounted: true },
       { type: 'user-scroll', atBottom: false },
@@ -483,8 +482,11 @@ describe('第 3 节两两组合：应该谁赢', () => {
       { type: 'jump-verify', residual: 0 },
       { type: 'user-scroll', atBottom: false },
     ])
-    expect(steps[1]?.state.kind).toBe('jumping')
-    expect(steps[1]?.effects).toEqual([])
+    expect(steps[1]?.state.kind).toBe('detached')
+    expect(steps[1]?.effects).toEqual([{ type: 'jump-end', token: 3, reason: 'cancelled' }])
+    // 跳转已结束：后续到达/复核事件都不改变状态与视口。
+    expect(steps[2]?.state.kind).toBe('detached')
+    expect(steps[2]?.effects).toEqual([])
     expect(steps[3]?.state.kind).toBe('detached')
     expect(steps[4]?.state.kind).toBe('detached')
     expect(steps[4]?.effects).toEqual([])

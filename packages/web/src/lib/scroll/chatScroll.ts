@@ -459,8 +459,12 @@ export function next(state: ScrollState, event: ScrollEvent): ScrollTransition {
             ? { state: { kind: 'following' }, effects: [{ type: 'drop-anchor' }] }
             : { state: { kind: 'detached' }, effects: [{ type: 'drop-anchor' }] }
         case 'jumping':
-          // R68：跳转期间不打断，只记录；结束后视口归用户。
-          return unchanged(state)
+          // 1724#03：用户一滚动就结束这次跳转（进入 detached），之后不再写视口。
+          // 不能把用户位置并入后继续追目标——那会在每次滚轮后把视图写回目标，形成持续锁定。
+          return {
+            state: { kind: 'detached' },
+            effects: [{ type: 'jump-end', token: state.token, reason: 'cancelled' }],
+          }
         default:
           return unchanged(state)
       }

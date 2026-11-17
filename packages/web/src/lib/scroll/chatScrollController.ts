@@ -61,8 +61,6 @@ interface JumpAnimation {
   teleported: boolean
   beganAt: number
   lastWritten: number
-  /** 用户在这次跳转期间真的滚动过：动画自然结束后直接结算，不再复核重追。 */
-  userScrolled: boolean
 }
 
 export interface ChatScrollController {
@@ -108,6 +106,8 @@ const KEY_UP = new Set(['PageUp', 'ArrowUp', 'Home'])
 const KEY_DOWN = new Set(['PageDown', 'ArrowDown', 'End', ' '])
 /** 跳转一直挂不上目标（取段失败/视图已切走）时自动失效（保留原语义）。 */
 const JUMP_EXPIRE_MS = 15_000
+/** 跳转动画从点击算起的最长时长（规格 2026-11-14「约 300ms」）。 */
+const JUMP_MAX_MS = 300
 /** 弹簧到达后的落点复核：内容高度稳定 2 帧（或最多 12 帧）后测一次，最多 2 次复核。 */
 const VERIFY_STABLE_FRAMES = 2
 /** 锚点收尾：content-visibility 的行高会分几批变成真实值，稳定帧要留够余量。 */
@@ -385,7 +385,7 @@ class ChatScrollControllerImpl implements ChatScrollController {
       this.releaseTempAnchor()
       this.topRow = this.captureTopRow()
       const at = atBottom(sample) && this.scrollIntent === 'down'
-      this.noteUserTakeover()
+      // 跳转期间的真实滚动由状态机直接结算（转 detached，不再写视口，1724#03）。
       this.apply({ type: 'user-scroll', atBottom: at })
       // 用户把挂载窗口滚到了底（不必是「恢复跟随」那种向下意图）：窗口从这里回尾/扩展。
       if (atBottom(sample) && this.state.kind !== 'jumping') this.emit(this.reachBottomListeners)
@@ -397,11 +397,10 @@ class ChatScrollControllerImpl implements ChatScrollController {
   private onWheel = (event: WheelEvent): void => {
     if (event.deltaY === 0) return
     this.scrollIntent = event.deltaY < 0 ? 'up' : 'down'
+    // 跳转中用户任何方向滚动：立即结算跳转，之后不再写视口（1724#03）。
+    if (this.endJumpForUserInput()) return
     // 上滚的提前量：浏览器真正改变位置之前就停止跟随，避免同一帧里的补底把这次上滚吃掉。
-    if (event.deltaY < 0) {
-      this.noteUserTakeover()
-      this.leaveFollow()
-    }
+    if (event.deltaY < 0) this.leaveFollow()
   }
 
   private onTouchStart = (event: TouchEvent): void => {
@@ -415,10 +414,8 @@ class ChatScrollControllerImpl implements ChatScrollController {
     if (Math.abs(at - start) < 2) return
     // 手指往下拖 = 看更早的内容；往上推 = 往更新的内容走。
     this.scrollIntent = at > start ? 'up' : 'down'
-    if (this.scrollIntent === 'up') {
-      this.noteUserTakeover()
-      this.leaveFollow()
-    }
+    if (this.endJumpForUserInput()) return
+    if (this.scrollIntent === 'up') this.leaveFollow()
   }
 
   private onPointerDown = (event: PointerEvent): void => {
@@ -426,17 +423,15 @@ class ChatScrollControllerImpl implements ChatScrollController {
     if (event.target !== this.box) return
     // 槽内点击可能向上也可能向下，方向未知：先停跟随，不据此恢复。
     this.scrollIntent = null
-    this.noteUserTakeover()
+    if (this.endJumpForUserInput()) return
     this.leaveFollow()
   }
 
   private onKeyDown = (event: KeyboardEvent): void => {
-    if (KEY_UP.has(event.key)) {
-      this.scrollIntent = 'up'
-      this.noteUserTakeover()
-      this.leaveFollow()
-    } else if (KEY_DOWN.has(event.key)) {
-      this.scrollIntent = 'down'
+    if (KEY_UP.has(event.key) || KEY_DOWN.has(event.key)) {
+      this.scrollIntent = KEY_UP.has(event.key) ? 'up' : 'down'
+      if (this.endJumpForUserInput()) return
+      if (this.scrollIntent === 'up') this.leaveFollow()
     }
   }
 
@@ -448,12 +443,17 @@ class ChatScrollControllerImpl implements ChatScrollController {
     this.updateButton()
   }
 
-  /** 跳转期间用户真的滚了：动画自然走完，但结束后直接结算、不再复核把视口拉回目标。 */
-  private noteUserTakeover(): void {
-    if (this.state.kind !== 'jumping' || !this.jumpAnim) return
-    this.jumpAnim.userScrolled = true
-    // 已经到位、正在复核：用户接手即结束，不再按落点补写。
-    if (this.jumpAnim.verifying) this.apply({ type: 'cancel-jump' })
+  /**
+   * 跳转中用户真的操作了：立即结束这次跳转（状态机转 detached），此后不再写视口。
+   * 在 scroll 事件之前就用滚轮/触摸/按键的提前量结算，保证「滚轮后不会被写回」。
+   */
+  private endJumpForUserInput(): boolean {
+    if (this.state.kind !== 'jumping') return false
+    this.releaseTempAnchor()
+    this.apply({ type: 'user-scroll', atBottom: false })
+    this.spring = null
+    this.updateButton()
+    return true
   }
 
   private checkReachTop(sample: ScrollSample): void {
@@ -642,7 +642,6 @@ class ChatScrollControllerImpl implements ChatScrollController {
         teleported: false,
         beganAt: 0,
         lastWritten: box.scrollTop,
-        userScrolled: false,
       }
     }
     const anim = this.jumpAnim
@@ -717,7 +716,7 @@ class ChatScrollControllerImpl implements ChatScrollController {
       this.apply({ type: 'jump-verify', residual })
       return
     }
-    // 用户滚动（或别的组件写入）会被并入当前位置，弹簧随即继续追目标（R68：不打断动画）。
+    // 浏览器夹紧等外部写入会被并入当前位置继续追目标；用户滚动已在事件入口结算跳转（1724#03）。
     if (Math.abs(box.scrollTop - anim.lastWritten) > 1) {
       anim.pos = box.scrollTop
       anim.vel = 0
@@ -741,16 +740,11 @@ class ChatScrollControllerImpl implements ChatScrollController {
       const step = stepSpring(anim.pos, anim.vel, goal, dt)
       anim.pos = step.done ? goal : step.pos
       anim.vel = step.vel
-      done = step.done || now - anim.beganAt >= 900
+      done = step.done || now - anim.beganAt >= JUMP_MAX_MS
     }
     this.write(done ? goal : anim.pos)
     anim.lastWritten = box.scrollTop
     if (!done) return
-    if (anim.userScrolled) {
-      // 用户已经接管：动画自然走完就结束，不再复核重追（反馈1724#03）。
-      this.apply({ type: 'cancel-jump' })
-      return
-    }
     this.apply({ type: 'jump-arrived' })
   }
 

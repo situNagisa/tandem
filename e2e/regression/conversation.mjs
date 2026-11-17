@@ -92,7 +92,12 @@ async function startScrollSampler(page, key) {
  */
 async function startScrollWriteSampler(page, key) {
   await page.evaluate((name) => {
-    const state = (window[name] = { on: true, samples: [], writes: [] })
+    const state = (window[name] = { on: true, samples: [], writes: [], wheels: [] })
+    document.addEventListener(
+      'wheel',
+      () => state.wheels.push(performance.now()),
+      { capture: true, passive: true },
+    )
     const desc = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop')
     const original = desc.set
     Object.defineProperty(Element.prototype, 'scrollTop', {
@@ -121,7 +126,7 @@ async function startScrollWriteSampler(page, key) {
     return page.evaluate((name) => {
       const state = window[name]
       state.on = false
-      return { samples: state.samples, writes: state.writes }
+      return { samples: state.samples, writes: state.writes, wheels: state.wheels }
     }, key)
   }
 }
@@ -3009,43 +3014,49 @@ desktop('[S5] 跳转：弹簧动画、大纲贴顶其他入口居中，到位后
       assert.ok(rail !== null && rail >= -4 && rail <= 40, `大纲跳转没有贴顶：第 1 轮偏移 ${rail}`)
     })
 
-desktop('[S5] 跳转后立即滚轮 3 秒：逐帧单调、动画结束后不再写入（反馈1724#03）', async (page) => {
-      await openSession(page, 'huge')
+desktop('[S5] 跳转后立即连续滚轮：滚轮后不再写回、≤350ms 结束（反馈1724#03）', async (page) => {
+      await openSession(page, 'long')
       const nodes = page.locator('[data-group="graph"] [data-graph-turn-id]')
       await nodes.first().waitFor({ timeout: 10_000 })
       const count = await nodes.count()
-      const target = async (ratio) => nodes.nth(Math.floor(count * ratio))
       const stop = await startScrollWriteSampler(page, '__s5wheel')
       const clickAt = await page.evaluate(() => performance.now())
-      // 用户轨迹：快速连点几个会话图节点，然后立刻连续上滚。
-      for (const ratio of [0.7, 0.8, 0.85]) {
-        await (await target(ratio)).click()
-        await page.waitForTimeout(80)
-      }
+      await nodes.nth(Math.floor(count * 0.5)).click()
+      // 用户轨迹：点完很快就开始滚轮，每 100ms 一格。
+      await page.waitForTimeout(150)
       const box = await page.locator('.chat-scroll').boundingBox()
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-      for (let i = 0; i < 60; i++) {
-        await page.mouse.wheel(0, -120)
-        await page.waitForTimeout(40)
+      for (let i = 0; i < 20; i++) {
+        await page.mouse.wheel(0, 120)
+        await page.waitForTimeout(100)
       }
-      await page.waitForTimeout(200)
-      const { samples, writes } = await stop()
+      await page.waitForTimeout(300)
+      const { writes, wheels } = await stop()
       assert.ok(writes.length > 0, '跳转没有写 scrollTop')
-      const last = writes[writes.length - 1]
-      const span = last.t - clickAt
-      // 连点三次（最后一下才开始跳）之后，弹簧最多 900ms + 开头几十毫秒；旧实现还要再复核重追两轮。
-      assert.ok(span <= 1_600, `跳转的写入持续了 ${Math.round(span)}ms，之后仍在追目标（轮询锁视图）`)
-      const tail = samples.filter((sample) => sample.t > last.t + 100)
-      assert.ok(tail.length > 30, `滚轮期间采样帧太少：${tail.length}`)
-      let pulled = 0
-      for (let i = 1; i < tail.length; i++) if (tail[i].top - tail[i - 1].top > 1) pulled += 1
-      assert.equal(pulled, 0, `动画结束后滚轮上滚被拉回 ${pulled} 次`)
-      assert.ok(tail[0].top - tail[tail.length - 1].top > 200, '连续上滚没有产生位移')
-      // 控制器的写入记账：之后 800ms 不再有写入。
-      const ledger = await controllerWrites(page)
-      assert.ok(ledger !== null, '调试构建应暴露控制器写入记账（window.__tandemChatScroll）')
-      await page.waitForTimeout(800)
-      assert.equal(await controllerWrites(page), ledger, '动画结束后控制器仍在写 scrollTop')
+      assert.ok(wheels.length >= 15, `滚轮事件太少：${wheels.length}`)
+      // 每一次 WHEEL 之后都不能再有控制器写入（状态机在滚轮事件当帧结束跳转）。
+      for (const tw of wheels) {
+        const late = writes.find((write) => write.t > tw)
+        assert.equal(
+          late,
+          undefined,
+          `滚轮后控制器仍写回 scrollTop：${JSON.stringify(late)}（滚轮 ${Math.round(tw)}，点击 ${Math.round(clickAt)}）`,
+        )
+      }
+      // 从点击算起 ≤350ms 结束，之后零写入。
+      const lastWrite = writes[writes.length - 1]
+      assert.ok(
+        lastWrite.t - clickAt <= 350,
+        `跳转动画持续了 ${Math.round(lastWrite.t - clickAt)}ms，超过最长时长`,
+      )
+      assert.equal(
+        writes.filter((write) => write.t > clickAt + 350).length,
+        0,
+        '动画最长时长之后仍在写 scrollTop',
+      )
+      const kind = await page.evaluate(() => window.__tandemChatScroll?.state?.kind)
+      // 滚轮后跳转必须已结束；滚到会话末尾时会恢复 following（也是用户的意图）。
+      assert.notEqual(kind, 'jumping', `滚轮后跳转没有结束：${kind}`)
     })
 
 desktop('[S6] 新跳转替换旧跳转：最终停在第二个目标，中途不来回抖', async (page) => {
