@@ -275,17 +275,20 @@ const MarkdownChunk = memo(function MarkdownChunk({
   streaming,
   cwd,
   exists,
+  hardBreaks,
 }: {
   text: string
   streaming: boolean
   cwd?: string
   exists: Record<string, boolean>
+  /** 用户消息：段落内单个换行按换行显示。 */
+  hardBreaks?: boolean
 }) {
   const components = useMemo(() => makeComponents(streaming, cwd, exists), [streaming, cwd, exists])
   return (
     <div className={cn('md-chunk', streaming && 'is-streaming')}>
       <ReactMarkdown
-        remarkPlugins={REMARK_PLUGINS}
+        remarkPlugins={hardBreaks ? USER_REMARK_PLUGINS : REMARK_PLUGINS}
         components={components}
         urlTransform={(url) => url}
       >
@@ -327,6 +330,7 @@ export const Markdown = memo(function Markdown({
             streaming={streaming && i === chunks.length - 1}
             cwd={cwd}
             exists={exists}
+            hardBreaks={variant === 'user'}
           />
         ) : null,
       )}
